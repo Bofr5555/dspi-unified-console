@@ -83,18 +83,8 @@ fn main() -> ExitCode {
         Some("dump") => cmd_dump(serial, json),
         Some("watch") => cmd_watch(serial, json),
         // No arguments opens the interface; arguments run one command and exit.
-        None => cmd_tui(
-            serial,
-            flags.contains(&"--lite"),
-            flags.contains(&"--no-animation"),
-            palette,
-        ),
-        Some(other) if other.starts_with("--") => cmd_tui(
-            serial,
-            flags.contains(&"--lite"),
-            flags.contains(&"--no-animation"),
-            palette,
-        ),
+        None => cmd_tui(serial, &flags, palette),
+        Some(other) if other.starts_with("--") => cmd_tui(serial, &flags, palette),
         // Everything else is a command in the shared grammar, so the CLI and the
         // TUI's ':' line accept exactly the same syntax.
         Some(_) => cmd_run(serial, &flags, json),
@@ -180,6 +170,8 @@ OPTIONS:
     --json                   machine-readable output
     --no-animation           no connect reveal or easing
     --lite                   reduce redraw rate, for a Pi or a slow link
+    --fixture                open the interface on the built-in example
+                             device (no hardware needed)
     --theme <name>           calm (default), console, amber, dark or mono
     --dry-run                report what would be written, write nothing
     --quiet                  do not echo each change
@@ -749,17 +741,47 @@ fn cmd_screenshot(serial: Option<&str>, args: &[&str], flags: &[&str]) -> u8 {
     exit::OK
 }
 
-fn cmd_tui(
-    serial: Option<&str>,
-    lite: bool,
-    no_animation: bool,
-    palette: dspi_tui::theme::Palette,
-) -> u8 {
+fn cmd_tui(serial: Option<&str>, flags: &[&str], palette: dspi_tui::theme::Palette) -> u8 {
+    let lite = flags.contains(&"--lite");
+    let no_animation = flags.contains(&"--no-animation");
+
+    // `--fixture` runs the interface on the built-in example device, the one
+    // `screenshot` draws, so the terminal handling can be exercised on a
+    // machine (or under Wine, or in CI) with no DSPi attached.
+    if flags.contains(&"--fixture") {
+        let state = dspi_tui::shell::fixture::state();
+        let mock = dspi_transport::MockTransport::new().answering_everything(vec![0u8; 64]);
+        let Some(mut session) = Session::new(Box::new(mock), state.caps.clone()) else {
+            return exit::TRANSPORT;
+        };
+        return run_tui(&mut session, state, lite, no_animation, palette);
+    }
+
     let mut session = match connect(serial) {
         Ok(s) => s,
         Err(c) => return c,
     };
 
+    // One chunked read seeds everything the bulk packet covers, so the first
+    // frame shows the person's tuning rather than a flat line.
+    let bulk = match session.snapshot() {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("dspi: could not read the device state: {e}");
+            return exit::TRANSPORT;
+        }
+    };
+    let state = dspi_session::DeviceState::new(session.capabilities().clone(), bulk);
+    run_tui(&mut session, state, lite, no_animation, palette)
+}
+
+fn run_tui(
+    session: &mut Session,
+    state: dspi_session::DeviceState,
+    lite: bool,
+    no_animation: bool,
+    palette: dspi_tui::theme::Palette,
+) -> u8 {
     let theme = dspi_tui::Theme::new(
         palette,
         dspi_tui::theme::ColorDepth::detect(),
@@ -773,17 +795,6 @@ fn cmd_tui(
     if no_animation {
         perf.animate = false;
     }
-
-    // One chunked read seeds everything the bulk packet covers, so the first
-    // frame shows the person's tuning rather than a flat line.
-    let bulk = match session.snapshot() {
-        Ok(b) => b,
-        Err(e) => {
-            eprintln!("dspi: could not read the device state: {e}");
-            return exit::TRANSPORT;
-        }
-    };
-    let state = dspi_session::DeviceState::new(session.capabilities().clone(), bulk);
     let live = dspi_tui::live::Live::new(
         state,
         theme,
@@ -791,7 +802,7 @@ fn cmd_tui(
         Box::new(dspi_tui::live::ConsoleScreens::new()),
     );
 
-    match dspi_tui::live::run(live, &mut session) {
+    match dspi_tui::live::run(live, session) {
         Ok(()) => exit::OK,
         Err(e) => {
             eprintln!("dspi: {e}");
@@ -1489,6 +1500,7 @@ const NOT_A_SCRIPT: &[&str] = &[
     "--doctor",
     "--install-udev",
     "--lite",
+    "--fixture",
 ];
 
 /// Should this invocation read commands from standard input?
