@@ -20,9 +20,10 @@
 //!   every chunk session (vendor_commands.c:4669-4672). A bulk write is
 //!   applied when it passes [`BulkPacket::decode`] and notifies
 //!   `BULK_INVALIDATED` with source `BULK_SET`. The device keeps its own
-//!   header. A wrong-version or wrong-size bulk write **stalls** here; the
-//!   firmware ACKs the transfer and refuses it later on the main loop, so a
-//!   host sees no error there, only no change.
+//!   header. A wrong-version or wrong-size bulk write **stalls** here
+//!   (unless [`FakeOptions::ack_unknown_sets`]); the firmware ACKs the
+//!   transfer and refuses it later on the main loop, so a host sees no
+//!   error there, only no change. A chunk out of sequence always stalls.
 //! - **Scalars:** the GET/SET pairs in `SCALARS`, plus the matrix route,
 //!   EQ and crossover bands, and channel names. A SET patches the image at
 //!   the field's bulk offset and, when the bytes changed, queues
@@ -145,9 +146,17 @@ impl Capture {
 pub struct FakeOptions {
     /// Answer the extension channel (the Bofr5555/DSPi fork's K340 build).
     pub extensions: bool,
-    /// ACK an OUT request the fake does not model, as the firmware does on
-    /// USB (`REQ_EXTENSION` still stalls). Off by default, so a test sees a
-    /// write the fake would silently drop.
+    /// ACK an OUT request the fake does not model or refuses, as the
+    /// firmware does on USB (`REQ_EXTENSION` still stalls). Off by default,
+    /// so a test sees a write the fake would silently drop. Known gaps even
+    /// with it on:
+    /// - with `extensions: false` the fake still stalls an OUT
+    ///   `REQ_EXTENSION`, whereas firmware without the extension channel
+    ///   ACKs it as an unknown plain opcode;
+    /// - a `0xA1` of the wrong length over 64 bytes stalls on the firmware
+    ///   (it does not fit `vendor_rx_buf[64]`) but is ACKed here;
+    /// - the bulk-owner lock (a STALL while another transport owns the bulk
+    ///   buffer) is not modelled.
     pub ack_unknown_sets: bool,
     /// The largest control transfer, reported by
     /// [`Transport::max_transfer`] and enforced on every request. `None` is
@@ -1361,21 +1370,33 @@ impl State {
             }
             true
         } else {
-            self.set_other(opcode, value, data)
+            match self.set_other(opcode, value, data) {
+                Some(ok) => ok,
+                // A chunk out of sequence stalls at the setup stage, whatever
+                // the options (bulk_params_chunking.md).
+                None => return Err(TransportError::Stalled { opcode }),
+            }
         };
-        if ok {
+        // Over USB the firmware ACKs every SET it refuses or does not know,
+        // except the extension channel's (vendor_commands.c:4761-4766); only
+        // UART, I2C and MIDI answer ERROR. The fake stalls a refusal unless
+        // `ack_unknown_sets` asks for the firmware's behaviour.
+        if ok || (opcode != op::REQ_EXTENSION && self.options.ack_unknown_sets) {
             Ok(())
         } else {
             Err(TransportError::Stalled { opcode })
         }
     }
 
-    /// False stalls the request.
-    fn set_other(&mut self, opcode: u8, value: u16, data: &[u8]) -> bool {
+    /// `Some(false)` refuses the request (ACKed or stalled: see
+    /// [`State::set`]); `None` stalls it in any case.
+    fn set_other(&mut self, opcode: u8, value: u16, data: &[u8]) -> Option<bool> {
         let host = nfy::PARAM_SRC_HOST_SET as u8;
-        match opcode {
+        Some(match opcode {
+            // Refused: ACKed and dropped on USB, ERROR on UART/I2C/MIDI;
+            // stalls here unless ack_unknown_sets.
             op::REQ_SET_ALL_PARAMS => self.apply_bulk(data.to_vec()),
-            op::REQ_SET_ALL_PARAMS_CHUNK => self.set_chunk(usize::from(value), data),
+            op::REQ_SET_ALL_PARAMS_CHUNK => return self.set_chunk(usize::from(value), data),
             op::REQ_SET_PREAMP => {
                 // Legacy: every input at once.
                 if let Some(db) = data.get(..F32.2) {
@@ -1439,19 +1460,20 @@ impl State {
                 true
             }
             op::REQ_EXTENSION if self.options.extensions => self.set_ext(value, data),
-            // The firmware ACKs any other OUT on USB; the extension channel's
-            // refusals always stall.
-            _ => self.options.ack_unknown_sets && opcode != op::REQ_EXTENSION,
-        }
+            // Unknown: see `State::set` for ACK versus stall.
+            _ => false,
+        })
     }
 
-    fn set_chunk(&mut self, off: usize, data: &[u8]) -> bool {
+    /// `None`: a chunk out of sequence (always a stall); `Some(false)`: the
+    /// complete image was refused.
+    fn set_chunk(&mut self, off: usize, data: &[u8]) -> Option<bool> {
         if off == 0 {
             self.chunked = Chunked::Set { buf: Vec::new() };
         }
         let Chunked::Set { buf } = &mut self.chunked else {
             self.chunked = Chunked::None;
-            return false;
+            return None;
         };
         let fits = buf
             .len()
@@ -1459,16 +1481,16 @@ impl State {
             .is_some_and(|end| end <= generated::BULK_SIZE);
         if off != buf.len() || !fits {
             self.chunked = Chunked::None;
-            return false;
+            return None;
         }
         buf.extend_from_slice(data);
         if buf.len() < generated::BULK_SIZE {
-            return true;
+            return Some(true);
         }
         // The last byte landed: apply, as `0xA1` would.
         match std::mem::replace(&mut self.chunked, Chunked::None) {
-            Chunked::Set { buf } => self.apply_bulk(buf),
-            _ => false,
+            Chunked::Set { buf } => Some(self.apply_bulk(buf)),
+            _ => None,
         }
     }
 
@@ -1741,7 +1763,7 @@ mod tests_wp_t4 {
     // ---- identity and bulk ----------------------------------------------
 
     #[test]
-    fn the_demo_reads_back_its_capture() {
+    fn wp_t4_the_demo_reads_back_its_capture() {
         let mut d = FakeDevice::demo();
         let plat = d.control_in_upto(op::REQ_GET_PLATFORM, 0, 7).unwrap();
         assert_eq!(plat, DEMO_PLATFORM);
@@ -1875,7 +1897,7 @@ mod tests_wp_t4 {
     // ---- scalar writes ----------------------------------------------------
 
     #[test]
-    fn a_write_changes_the_image_and_notifies() {
+    fn wp_t4_a_write_changes_the_image_and_notifies() {
         let mut d = FakeDevice::demo();
         let mut src = d.notifications().unwrap();
         let remote = d.remote();
@@ -2227,6 +2249,8 @@ mod tests_wp_t4 {
                     let _ = d.control_in_upto(opcode, value, 4096);
                     let _ = d.control_out(opcode, value, &[0x21, 2, 3, 4, 5, 6, 7, 8]);
                     let _ = d.control_out(opcode, value, &[0xFF; 20]);
+                    let _ = d.control_out(opcode, value, &[0x21; 44]);
+                    let _ = d.control_out(opcode, value, &[0; 16]);
                     let _ = d.control_out(opcode, value, &[]);
                 }
             }

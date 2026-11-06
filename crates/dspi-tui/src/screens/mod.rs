@@ -44,6 +44,8 @@ use dspi_proto::FilterType;
 use dspi_proto::value::EqParamPacket;
 use dspi_proto::xover;
 use dspi_session::DeviceState;
+// Crossover gate and the Console's cleared band: shared with every GUI (WP S5).
+pub use dspi_session::clipboard::{cleared_band, supports_crossover};
 
 pub use autoeq::AutoEqPanel;
 pub use clipboard::ChannelClipboard;
@@ -160,11 +162,6 @@ pub fn supports_bypass(state: &DeviceState) -> bool {
 /// Notch and all-pass shipped in the same release as bypass.
 fn supports_notch(state: &DeviceState) -> bool {
     supports_bypass(state)
-}
-
-/// Crossovers are addressable from wire format V11 (bands 20 to 23).
-pub fn supports_crossover(state: &DeviceState) -> bool {
-    state.caps.wire_format >= 11
 }
 
 /// The Linkwitz Transform arrived at V22, and the Console offers it on outputs
@@ -424,20 +421,6 @@ pub fn identify_command(state: &DeviceState, output: usize) -> Option<String> {
             1u16 << output
         )
     })
-}
-
-/// A band reset to its default (flat) state, as the Console's Clear does.
-pub fn cleared_band(channel: u8, band: u8) -> EqParamPacket {
-    EqParamPacket {
-        channel,
-        band,
-        filter_type: FilterType::Flat,
-        bypass: false,
-        freq: 1000.0,
-        q: 0.707,
-        gain_db: 0.0,
-        qp: None,
-    }
 }
 
 /// The Console's name for a channel, falling back to its descriptor when the

@@ -86,8 +86,10 @@ pub enum TransportError {
     #[error("the device is locked by another client")]
     Locked,
 
-    /// Any other failure a non-USB link reports (busy, rate limited, a frame
-    /// error). The message names the link's own status.
+    /// A non-USB transport's failure that has no variant of its own: a link's
+    /// status (busy, rate limited, a frame error) or a local MIDI-system
+    /// error (a port that cannot be opened or written). The message names
+    /// the link's or the system's own words.
     #[error("{0}")]
     Remote(String),
 }
@@ -312,7 +314,9 @@ pub trait NotificationSource: Send {
 /// [`TransportCaps::kind`]):
 /// - `TimedOut { retries: 0 }`: a single timeout, retried on every link. A
 ///   timeout with `retries > 0` means the transport already ran its own busy
-///   window (MIDI, DSPi Link) and gave up; it is returned at once.
+///   window (MIDI, DSPi Link) and gave up; it is returned at once. When the
+///   retries here run out on timeouts, the error is
+///   `TimedOut { retries: BUSY_RETRIES }`, so it is not retried again.
 /// - `Stalled`: retried only over USB and the fake device, where a stall
 ///   inside the blackout is the busy signal. Over MIDI and Link a stall is
 ///   the device's or hub's `ERROR`, a definitive refusal.
@@ -325,12 +329,14 @@ pub fn with_busy_retry<T>(
     opcode: u8,
 ) -> Result<T> {
     let stall_is_busy = matches!(kind, TransportKind::Usb | TransportKind::Fake);
-    let mut last_err = None;
+    // The last busy answer; a stall stays a stall (callers read a stall as
+    // "not supported"), a timeout becomes an exhausted one.
+    let mut last_stall = None;
     for i in 0..=BUSY_RETRIES {
         match attempt() {
             Ok(v) => return Ok(v),
-            Err(e @ TransportError::TimedOut { retries: 0, .. }) => last_err = Some(e),
-            Err(e @ TransportError::Stalled { .. }) if stall_is_busy => last_err = Some(e),
+            Err(TransportError::TimedOut { retries: 0, .. }) => last_stall = None,
+            Err(e @ TransportError::Stalled { .. }) if stall_is_busy => last_stall = Some(e),
             // A disconnect is not a busy window; re-acquisition is the
             // caller's job. A refusal or an exhausted retry is final.
             Err(e) => return Err(e),
@@ -339,7 +345,9 @@ pub fn with_busy_retry<T>(
             std::thread::sleep(BUSY_BACKOFF);
         }
     }
-    Err(last_err.unwrap_or(TransportError::TimedOut {
+    // Exhausted: a timeout is reported with the retries spent, so an outer
+    // wrapper does not run the whole window again.
+    Err(last_stall.unwrap_or(TransportError::TimedOut {
         opcode,
         retries: BUSY_RETRIES,
     }))
@@ -517,6 +525,35 @@ mod tests {
             0x90,
         );
         assert_eq!(calls, BUSY_RETRIES + 1, "the fake device behaves like USB");
+    }
+
+    /// An exhausted retry reports the retries it spent, so wrapping the
+    /// call in a second `with_busy_retry` does not run the window again.
+    #[test]
+    fn an_exhausted_retry_is_not_retried_again() {
+        let mut calls = 0;
+        let r: Result<()> = with_busy_retry(
+            TransportKind::Usb,
+            || {
+                with_busy_retry(
+                    TransportKind::Usb,
+                    || {
+                        calls += 1;
+                        Err(TransportError::TimedOut {
+                            opcode: 0x90,
+                            retries: 0,
+                        })
+                    },
+                    0x90,
+                )
+            },
+            0x90,
+        );
+        assert!(matches!(
+            r,
+            Err(TransportError::TimedOut { retries, .. }) if retries == BUSY_RETRIES
+        ));
+        assert_eq!(calls, BUSY_RETRIES + 1, "the outer wrapper ran once");
     }
 
     /// A timeout whose transport already ran its own busy window (retries >
