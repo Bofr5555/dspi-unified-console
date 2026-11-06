@@ -241,3 +241,86 @@ fn wp_tm10_a_closed_pipe_ends_an_export_quietly() {
         assert!(o.stderr.is_empty(), "{args:?}");
     }
 }
+
+/// Runs with standard output going to `stdout`.
+fn with_stdout(args: &[&str], stdout: Stdio) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_dspi"))
+        .arg("--demo")
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(stdout)
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap()
+        .wait_with_output()
+        .unwrap()
+}
+
+/// The commands that report on standard output, with their documents on file.
+fn reporting_commands(tag: &str) -> Vec<Vec<String>> {
+    let preset = scratch(&format!("{tag}-in.dspipreset"));
+    std::fs::write(&preset, MAC).unwrap();
+    let filters = scratch(&format!("{tag}-in.txt"));
+    std::fs::write(&filters, out(&ok(dspi(&["export", "-"], None)))).unwrap();
+    let cs = scratch(&format!("{tag}-cs.json"));
+    let cs_doc = out(&ok(dspi(&["cs", "export", "-"], None)));
+    std::fs::write(&cs, cs_doc).unwrap();
+    let (preset, filters, cs) = (
+        preset.to_str().unwrap().to_string(),
+        filters.to_str().unwrap().to_string(),
+        cs.to_str().unwrap().to_string(),
+    );
+    let s = |v: &[&str]| v.iter().map(|a| a.to_string()).collect::<Vec<_>>();
+    vec![
+        s(&["import", &preset]),
+        s(&["import", &preset, "--json"]),
+        s(&["import", &filters]),
+        s(&["import", &filters, "--json"]),
+        s(&["cs", "import", &cs]),
+        s(&["cs", "import", &cs, "--json"]),
+    ]
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn wp_tm10_a_full_disk_is_a_failure_with_a_reason() {
+    let full = || {
+        let f = std::fs::File::options()
+            .write(true)
+            .open("/dev/full")
+            .unwrap();
+        Stdio::from(f)
+    };
+    let mut commands = reporting_commands("full");
+    // A document on standard output, and a report about one written to a file.
+    let path = scratch("full-out.dspipreset");
+    let path = path.to_str().unwrap();
+    for args in [
+        &["export", "-"][..],
+        &["export", "-", "--json"],
+        &["cs", "export", "-"],
+        &["export", path],
+        &["cs", "export", path],
+    ] {
+        commands.push(args.iter().map(|a| a.to_string()).collect());
+    }
+    for args in &commands {
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        let o = with_stdout(&args, full());
+        let said = String::from_utf8_lossy(&o.stderr);
+        assert_eq!(o.status.code(), Some(4), "{args:?}: {said}");
+        assert!(said.contains("could not write"), "{args:?}: {said}");
+    }
+}
+
+#[test]
+fn wp_tm10_a_closed_reader_does_not_fail_an_import() {
+    for args in reporting_commands("closed") {
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        let (reader, writer) = std::io::pipe().unwrap();
+        drop(reader);
+        let o = with_stdout(&args, Stdio::from(writer));
+        assert_eq!(o.status.code(), Some(0), "{args:?}");
+        assert!(o.stderr.is_empty(), "{args:?}");
+    }
+}

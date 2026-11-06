@@ -150,12 +150,13 @@ fn write_document(path: &str, text: &str) -> Result<(), String> {
 }
 
 /// One line of a command's own report, to standard output unless that holds the
-/// document. A closed pipe ends the report, not the command.
+/// document. These are TM15's macros: a closed reader ends the report and not
+/// the command, and any other failure ends the process with [`exit::TRANSPORT`].
 fn say(to_stderr: bool, line: &str) {
     if to_stderr {
-        let _ = writeln!(std::io::stderr(), "{line}");
+        eprintln!("{line}");
     } else {
-        let _ = writeln!(std::io::stdout(), "{line}");
+        println!("{line}");
     }
 }
 
