@@ -167,7 +167,9 @@ pub(crate) mod link {
 
     // ── Replies ───────────────────────────────────────────────────────
 
-    /// The `code` of a failure reply (module docs).
+    /// The `code` of a failure reply (module docs). A Link error keeps its own
+    /// code rather than `fns_misc`'s plain `"link"`: clients act on `wrong_hub`,
+    /// `wrong_pin` and `rate_limited`.
     fn error_code(e: &DspiError) -> &str {
         match e {
             DspiError::Link { code, .. } => code,
@@ -180,7 +182,6 @@ pub(crate) mod link {
             DspiError::Locked => "locked",
             DspiError::Denied => "denied",
             DspiError::Io { .. } => "io",
-            // review w1a, provisional: variants added by CG6 and CG8 (finding).
             DspiError::AutoEq { .. } => "autoeq",
             DspiError::FirmwareGuardBlocked { .. } => "firmware_guard",
         }
