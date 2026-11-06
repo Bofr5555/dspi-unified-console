@@ -91,6 +91,8 @@ mod presets;
 mod raw;
 mod rta;
 mod stats;
+// -- WP CG11 --
+mod vreg;
 // -- WP CG6 --
 pub mod autoeq;
 // -- WP CG10 --
@@ -102,6 +104,8 @@ pub use device::MidiInputHandle;
 pub use error::{DspiError, Result};
 pub use firmware::*;
 pub use records::*;
+// -- WP CG11 --
+pub use vreg::{VregCalPhase, VregCalView, VregChoice, VregDemoEvent};
 // Work-package sections: add re-exports only inside your own section.
 // -- WP C0 --
 // -- WP C1 --
@@ -143,6 +147,9 @@ pub struct DspiCore {
     /// What `link_close` needs without the lock (WP C15).
     #[cfg(feature = "link")]
     pub(crate) link_control: Mutex<Option<link::LinkControl>>,
+    // -- WP CG11 --
+    /// The core-voltage calibration flow. Taken before `inner`, never after.
+    pub(crate) vreg_cal: Mutex<vreg::CalState>,
     // -- WP CG2 --
     /// The running hub browse.
     #[cfg(feature = "mdns")]
@@ -510,6 +517,8 @@ impl DspiCore {
             me: me.clone(),
             #[cfg(feature = "link")]
             link_control: Mutex::new(None),
+            // -- WP CG11 --
+            vreg_cal: Mutex::new(vreg::CalState::new()),
             // -- WP CG2 --
             #[cfg(feature = "mdns")]
             browse: link_browse::BrowseSlot::default(),

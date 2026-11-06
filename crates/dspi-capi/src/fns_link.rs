@@ -183,6 +183,8 @@ pub(crate) mod link {
             DspiError::Io { .. } => "io",
             DspiError::AutoEq { .. } => "autoeq",
             DspiError::FirmwareGuardBlocked { .. } => "firmware_guard",
+            // -- WP CG14 --
+            DspiError::OvervoltWordRequired { .. } => "overvolt_word",
         }
     }
 

@@ -509,7 +509,12 @@ mod tests {
     }
 
     fn start_trial(session: &mut Session) {
-        core_vreg_op(session.transport_mut(), VregOp::Trial(0x0E)).unwrap();
+        core_vreg_op(
+            session.transport_mut(),
+            VregOp::Trial(0x0E),
+            Some("OVERVOLT"),
+        )
+        .unwrap();
     }
 
     #[test]

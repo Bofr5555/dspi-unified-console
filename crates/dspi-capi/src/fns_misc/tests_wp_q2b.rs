@@ -74,7 +74,7 @@ fn wp_q2b_a_null_handle_gives_the_failure_value() {
         dspi_set_adat_input_clock_mode(n, 0),
         dspi_test_dac_mute(n),
         dspi_set_crossfeed_pair_map(n, p, 4),
-        dspi_core_vreg_op(n, 0, 0),
+        dspi_core_vreg_op(n, 0, 0, null()),
     ] {
         assert_eq!(v, 0xFF);
     }
@@ -558,7 +558,7 @@ fn wp_q2b_extension_channel_replies() {
     } else {
         assert_eq!(vreg["code"], "unsupported");
     }
-    assert_eq!(dspi_core_vreg_op(h, 99, 0), 0xFF);
+    assert_eq!(dspi_core_vreg_op(h, 99, 0, null()), 0xFF);
     free(h);
 }
 

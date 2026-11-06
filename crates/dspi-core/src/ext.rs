@@ -100,11 +100,17 @@ impl DspiCore {
     /// of TRIAL_END and CLEAR is ignored (sent as 0). Read the status back
     /// with [`DspiCore::fetch_core_vreg`].
     ///
-    /// Errors: `Disconnected`; `ReadOnly` on a read-only connection;
+    /// WP CG14: a SET or TRIAL reads the unit's status first and goes through
+    /// `dspi_session::overvolt`: a raise above 1.20 V from what it reports now
+    /// needs `word`, exactly `OVERVOLT`, or nothing is written. This is the
+    /// one path to 1.30 V; the GUIs' flow stops at 1.25 V (`core_vreg_cal_*`).
+    ///
+    /// Errors: `OvervoltWordRequired` as above; `Disconnected`; `ReadOnly` on
+    /// a read-only connection;
     /// `Unsupported` when the device has no usable core-voltage extension;
     /// `Refused { status: EXT_WRITE_REFUSED }` when the device stalls the
     /// request anyway; `Denied`, `Locked` or `Transfer` from the link.
-    pub fn core_vreg_op(&self, op: u8, value: u8) -> Result<()> {
+    pub fn core_vreg_op(&self, op: u8, value: u8, word: Option<String>) -> Result<()> {
         let mut inner = self.lock();
         let floor = match &inner.conn()?.ext.core_vreg {
             Some(s) => s.default_vreg,
@@ -112,7 +118,7 @@ impl DspiCore {
         };
         let request = vreg_request(op, value, floor)?;
         let mut w = inner.writable_conn()?;
-        sx::core_vreg_op(w.conn().transport(), request).map_err(write_error)
+        sx::core_vreg_op(w.conn().transport(), request, word.as_deref()).map_err(write_error)
     }
 }
 
@@ -237,6 +243,7 @@ fn read_error(e: ExtError) -> DspiError {
         }
         ExtError::Refused { .. } => refused(),
         ExtError::Transport(t) => t.into(),
+        e @ ExtError::WordRequired { .. } => DspiError::OvervoltWordRequired { msg: e.to_string() },
         ExtError::NotApplied(msg) | ExtError::BadArgument(msg) => {
             DspiError::InvalidArgument { msg }
         }
@@ -250,6 +257,7 @@ fn write_error(e: ExtError) -> DspiError {
     match e {
         ExtError::Refused { .. } | ExtError::Unsupported { .. } => refused(),
         ExtError::Transport(t) => t.into(),
+        e @ ExtError::WordRequired { .. } => DspiError::OvervoltWordRequired { msg: e.to_string() },
         ExtError::NotApplied(msg) | ExtError::BadArgument(msg) => {
             DspiError::InvalidArgument { msg }
         }
