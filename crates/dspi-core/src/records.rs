@@ -212,6 +212,9 @@ pub struct DspState {
     // Input / misc
     pub input_source: u8,
     pub lg_sound_sync_enabled: bool,
+    /// Bit k: S/PDIF input k+1 is enabled. Bit 0 (input 1) is always set:
+    /// the first S/PDIF input cannot be disabled, and setters must keep the
+    /// bit when they write the mask.
     pub spdif_inputs_enabled: u8,
     pub adat_input_enabled: bool,
     pub spdif_rx_pins: Vec<u8>,
@@ -674,6 +677,9 @@ pub struct Uf2Info {
     /// Bytes of flash the image covers.
     pub payload_bytes: u32,
     /// The DSPi firmware version found in the image (`1.1.6`), "" if none.
+    /// It is the image's program-version string, so an untagged build
+    /// carries a `git describe` suffix (`1.1.6-beta3-16-g557bce7`); compare
+    /// versions on the leading `major.minor.patch[-betaN]` only.
     pub firmware_version: String,
 }
 

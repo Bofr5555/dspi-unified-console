@@ -89,16 +89,43 @@ comes as default methods, so every existing implementor still compiles:
 `TransportError` holds no backend types. It gained `Denied`, `Locked` and
 `Remote` for non-USB links.
 
-**Echo rule** (gate 1, B1). `dspi_transport::is_own_write(kind, source,
-origin, session)` decides it, and `Notification::is_own_echo(kind, session)`
-applies it to `PARAM_CHANGED` and `BULK_INVALIDATED`. The firmware tags a
-change by the path it came in on, so the rule depends on the transport kind:
+**Echo rule** (gate 1, B1; revised after wave 1).
+`dspi_transport::is_own_write(kind, source, origin, session,
+own_bulk_pending)` decides it; `Notification::is_own_echo(kind, session,
+own_bulk_pending)` applies it to `PARAM_CHANGED` and `BULK_INVALIDATED`.
+The firmware tags a change by the path it came in on, except bulk applies:
 
 | Kind | Ours | Why |
 |---|---|---|
-| Usb, Fake | `HOST_SET`, `BULK_SET` | a device has one USB host |
-| Midi | `PARAM_SRC_MIDI` (10), `BULK_SET` | MIDI writes notify as MIDI (notify.h:122, MIDI spec 4.2), so a `HOST_SET` seen over MIDI is another host's USB write. `BULK_SET` is ambiguous (bulk_params.c tags every bulk apply `BULK_SET`, whatever the transport), but it arrives as `BULK_INVALIDATED`, which makes a client re-read anyway |
-| Link | origin == our session id and != 0, any source | the hub writes for every client, over USB or (a bridge) UART; only the origin tells clients apart (Link spec 8.3) |
+| Usb, Fake | `HOST_SET`; `BULK_SET` only while `own_bulk_pending` | a device has one USB host for scalar writes |
+| Midi | `PARAM_SRC_MIDI` (10); `BULK_SET` only while `own_bulk_pending` | MIDI writes notify as MIDI (notify.h:122, MIDI spec 4.2), so a `HOST_SET` seen over MIDI is another host's USB write |
+| Link | origin == our session id and != 0, any source; `own_bulk_pending` ignored | the hub writes for every client, over USB or (a bridge) UART; only the origin tells clients apart (Link spec 8.3) |
+
+**Bulk echoes.** The firmware tags *every* bulk apply `BULK_SET`, whatever
+path it came in on (bulk_params.c:371/408, `notify_end_bulk`; confirmed on a
+unit over MIDI), so the source alone cannot tell our `0xA1`/`0xA3` from
+another host's. `dspi_session::notify::EchoFilter` (pure; the caller passes
+the clock) tracks it:
+- `bulk_write_started()` when our bulk write goes out;
+- `bulk_write_finished(now, ok)` on its reply: an OK reply opens a window
+  until `now + 1 s` (`EchoFilter::WINDOW`), a failure closes it;
+- `classify(now, kind, source, origin, session)` claims the first
+  `BULK_SET` while the write is in flight or inside the window, **once**,
+  then it is consumed. Everything else is foreign: an unclaimed invalidation
+  only costs a re-read.
+
+`Connection::echo` holds one per connection (base). WP C2 (`apply_all_params`)
+and any other bulk writer bracket their write with it; WP C7 classifies
+with it; WP C1 resets it on reopen. Reference behaviour: the iOS console's
+`MIDITransport` (`dspi-ios/patches/console-116/0005`). A firmware follow-up
+(owner decision) could tag bulk applies by transport; the filter then only
+matters for old firmware.
+
+**Busy retries** (`dspi_transport::with_busy_retry(kind, ..)`, revised after
+wave 1): a single `TimedOut { retries: 0 }` is retried on every link; a
+`TimedOut` with `retries > 0` (the transport already ran its own busy
+window: MIDI, Link) is returned at once; `Stalled` is retried only on Usb
+and Fake (on MIDI and Link a stall is a definitive `ERROR`).
 
 **Threads.** The old core shared one libusb handle between threads. In the
 new core the control path sits behind the `DspiCore` mutex, and
@@ -537,8 +564,13 @@ Sizes are in agent-days.
     (`proptest_uf2_inspect_never_panics`).
 - **Parity:** 3.0 and 3.3, "UF2 validation / flash writer".
 
-**C12: Curves and stateless helpers.** Size 0.5.
-- **Owns:** `crates/dspi-core/src/curves.rs`.
+**C12: Curves and stateless helpers.** Size 0.5. (Merged in wave 1.)
+- **Owns:** `crates/dspi-core/src/curves.rs`, `crates/dspi-core/src/curves_ref.rs`
+  (frozen reference data from the old core).
+- **Also provides** `quantize_gain` and `quantize_delay` (public in
+  `curves.rs`), the old core's exact behaviour without clamping: C3/C4
+  clamp a gain **before** quantizing and a delay **after**, as the old core
+  did.
 - **Implements:** every function in that file.
 - **Inputs:** the old `dsp_math.rs`, and `dspi_proto::dsp`. Prefer
   `dspi_proto::dsp`, and keep the 201-point grid.
@@ -570,7 +602,7 @@ Sizes are in agent-days.
     additions (optional on top: a C `_Static_assert(offsetof(...))` file
     compiled with `cc`);
   - note for Q2a: `dspi_get_state` returns a pointer to a `DspState`
-    (about 7 KB) cached per handle, refreshed on each call.
+    (12,812 bytes) cached per handle, refreshed on each call.
 - **Parity:** 3.0 "FFI", C side.
 
 ### Wave 2a (needs wave 1 merged)
@@ -584,6 +616,25 @@ Every `dspi-core` WP:
 - writes the mirror with C0's codec;
 - writes only through `Inner::writable_conn` (a `Writable`, §1.2).
 
+Facts from wave 1 that the setters (C2, C3, C4, C6) must respect:
+- `DspState.spdif_inputs_enabled` bit 0 (S/PDIF input 1) always stays set
+  when a setter writes the mask;
+- a Linkwitz Transform's `qp` is clamped to 0.1..20 and a NaN is refused
+  (`InvalidArgument`), as C0's codec expects;
+- gains are clamped before `curves::quantize_gain`, delays after
+  `curves::quantize_delay` (C12), as the old core did;
+- a master-volume write is answered first by the legacy v1 volume packet,
+  then by the `PARAM_CHANGED`, on the firmware and on `FakeDevice`;
+  notification handling must expect both.
+
+`FakeDevice` after wave 1 (T4, T4b): `FakeOptions` has `extensions`,
+`ack_unknown_sets` (ACK unknown OUT requests as the firmware does on USB)
+and `max_transfer`; `FakeRemote` has `poke`, `push`, `set_status`,
+`load_image`, `image` and `disconnect` for tests. The demo answers every
+`probe_features` read except the signal generator and the analyser (T4b;
+its review may add small T4 fix-ups in parallel with wave 2a; they touch
+`fake.rs` only).
+
 **C1: Devices and transports.** Size 1.
 - **Owns:** `crates/dspi-core/src/device.rs`, and `attach_probed` in
   `crates/dspi-core/src/lib.rs` (only that function).
@@ -594,10 +645,22 @@ Every `dspi-core` WP:
     `open_demo`, `open_midi` (returns `Arc<MidiInputHandle>`) and
     `disconnect`;
   - `preamp_max_db`.
-- **Connect sequence:** `attach_probed` (§1.2), switched to `probe_any`
-  (S2), `compat::read_bulk_any` (S2, setting `wire`), `state::decode_bulk`
-  (C0) and `ExtState::probe` (S3). Un-ignore
+- **Connect sequence:** `attach_probed` (§1.2), switched to
+  `probe_any_with_image` (S2; one image read serves probe and mirror),
+  setting `wire` from its read mode, `state::decode_bulk` (C0) and
+  `ExtState::probe` (S3, called inside `attach_probed`). Un-ignore
   `wp_c1_attach_probed_opens_the_demo_device`.
+- **After wave 1** (review notes):
+  - take a transport's `notifications()` **exactly once** (Link and MIDI
+    allow one reader) and start the reader before anything else in the
+    sequence can fail, so a failure cannot leave an orphaned subscription;
+  - `open_fd`: refuse `fd < 0`, then
+    `BorrowedFd::borrow_raw(fd).try_clone_to_owned()` (a `dup`; Kotlin keeps
+    and closes its own), then `UsbTransport::from_fd`;
+  - never surface `Notifications::is_disconnected()` after an intentional
+    drop or re-attach (the old reader reports the drop as a disconnect;
+    `FakeDevice` does too);
+  - reset `Connection::echo` with the connection.
 - **Thread rules:** §1.2, with a test that reopening joins the old reader.
 - **Deps:** T1, T2, T4, S2, S3, C0.
 - **Parity:** 3.0 "FFI".
@@ -609,7 +672,9 @@ Every `dspi-core` WP:
   - `fetch_all` reads through `compat::read_bulk_any`. It sets `compat`,
     `wire_read` and the read-only mode (§1.5), then reads the per-item
     values.
-  - `apply_all_params` refuses unless the connection is writable.
+  - `apply_all_params` refuses unless the connection is writable, and
+    brackets its bulk write with `Connection::echo`
+    (`bulk_write_started` / `bulk_write_finished(Instant::now(), ok)`).
   - Over Link, bulk reads are single-shot.
 - **Deps:** C0, S2, T4.
 - **Parity:** 3.2 "read-only mode for older firmware".
@@ -674,6 +739,8 @@ clipboard).
       0003);
     - takes the drained packets out under the lock and calls nothing
       while holding it (§1.2 thread rules);
+    - classifies echoes with `Connection::echo.classify_notification(
+      Instant::now(), caps.kind, session_id, ..)` (§1.2 bulk echoes);
   - `monitor_read` and `monitor_clear`.
 - **Input:** the old `notify.rs` and `monitor.rs`.
 - **Deps:** C0, T4.
@@ -768,6 +835,7 @@ clipboard).
   - keeps the old name, signature and failure value (see
     `crates/dspi-core-linux/src/lib.rs`).
 - **Deps:** Q1, C0–C5, C12.
+- **Header:** as Q2b, do not edit `cbindgen.toml`'s `[export] include`.
 - **Check:** from this wave, `ci/check.sh --step qt-capi` builds the Qt app
   against `dspi_capi` (CMake `DSPI_CORE_LIB`, already in the base); it
   passes once Q2a and Q2b are both merged (the reviewer runs it on the
@@ -780,6 +848,10 @@ clipboard).
   channel, names, diagnostics, firmware and the demo device; these are
   additions to the header.
 - **Deps:** Q1, C6–C11, C13, C14.
+- **Header:** Q2a and Q2b must not edit `crates/dspi-capi/cbindgen.toml`'s
+  `[export] include` list (Q1's); a function or type the header needs is
+  exported by its own `#[unsafe(no_mangle)] pub extern "C"` / `pub`
+  declaration.
 
 **R1: The terminal on every transport.** Size 1.
 - **Owns:** `apps/terminal/src/{main.rs,doctor.rs}`, and the connect code
@@ -829,6 +901,10 @@ clipboard).
     and the library file names (`dspi_capi.dll`, `libdspi_capi.a`, the
     macOS `lipo` line, `deploy-mingw.sh`);
   - `ci/check.sh` (the qt step and the exclusions);
+  - `crates/dspi-capi`: delete Q1's temporary
+    `wp_q1_snapshot_matches_the_old_crate` test and the dev-dependency it
+    needs (the old header then lives only in
+    `tests/data/dspi_core_old.h`);
   - the workspace `Cargo.toml` members;
   - deleting `crates/dspi-core-linux`.
 - **Done when:**
@@ -846,6 +922,19 @@ clipboard).
 - **Implements:** the layout, builds, crates and licences after the merge,
   and the updated parity table.
 - **Deps:** Q3.
+
+### Later work (after wave 4)
+
+**P2: Shared protocol tables in `dspi-proto`.** Size 0.5.
+- A public `LIVE_BANDS` constant (the 10 bands the consoles show of the
+  firmware's 12), replacing the hand constants in `FakeDevice` and the core.
+- `dspi_proto::xover` made f64-exact, with its Bessel table public, so C12
+  deletes its duplicate (`curves.rs`) and computes crossovers through proto.
+- **Done when:** C12's parity tests still hold (mag within 1e-6 dB).
+
+**Firmware (owner decision, Bofr5555/DSPi):** `bulk_params_apply(.., source)`
+so `BULK_INVALIDATED` carries `PARAM_SRC_MIDI`/`HOST_SET`/`UART`; the echo
+filter then only serves older firmware.
 
 ### Wave summary
 
@@ -896,31 +985,10 @@ additive edits only.
 
 ## 4. Status
 
-**Base** (`core-merge`, up to the commit that adds this file):
-- **proto:** the `ext` codecs, `wire_compat`, and `frame` (checked against
-  the firmware's vectors).
-- **transport:** the trait extensions (caps, session id, lock, origin), the
-  echo rule per transport kind, and skeletons for `fake`, `midi` (typed
-  `PipeError`, `Arc<dyn MidiPipe>`), `link` and `from_fd`.
-- **session:**
-  - `Notification.origin`, `Source::Midi`, `Source::raw`, `is_own_echo(kind,
-    session)`;
-  - a bounded notification queue, a fallible `Notifications::start`, and
-    `start_with_waker`;
-  - `transport_mut`;
-  - skeletons for `fast`, `compat`, `probe_any`, `ext_state`, `cs_model` and
-    `clipboard`.
-- **dspi-core:** the full skeleton: records, errors, listeners, `Inner`,
-  `Connection`, the typed `Writable`, `attach` and `attach_probed`,
-  `MidiInputHandle`, per-WP section markers, strict lints.
-- **dspi-capi:** a skeleton with `guard`; library `dspi_capi`.
-- **old core:** package renamed to `dspi-core-linux`.
-- **Qt:** CMake cache variable `DSPI_CORE_LIB` (default `dspi_core`).
-- **ci/:** `run.sh` (job cap `DSPI_JOBS`, default 4), `check.sh` (scoped
-  `--crate`, optional steps including `qt-capi` and `proptest`),
-  `container/Containerfile`; `clippy.toml` at the root.
-
-**Gate 1** (Fable): findings B1–B4, S-a–S-o and the nits were applied to
-the base and this plan before wave 1.
-
-**Base checks:** in the commit message of the gate-1 fixes.
+- **Base** (gate 1): see the commit history up to `4f3e391`.
+- **Wave 1** merged at `8b92066`: P1, S1, S2, S3, S4, T1, T2, T4, T5, C0,
+  C11, C12, Q1, each reviewed and fixed; full CI green (1569 tests).
+- **Base after wave 1** (this commit and the two before it): bulk-echo
+  filter and the revised echo rule, kind-aware `with_busy_retry`,
+  `Reply::Error` in the mock, MIDI using `Frame::check_len`,
+  `Connection::echo`, record docs, plan notes for wave 2.

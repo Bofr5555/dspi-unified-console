@@ -161,6 +161,11 @@ pub(crate) struct Connection {
     pub(crate) wire: Option<WireRead>,
     /// The extension channel, probed on connect (WP S3).
     pub(crate) ext: ExtState,
+    /// Recognises the invalidation of our own bulk writes (PLAN §1.2):
+    /// `apply_all_params` (WP C2) and any other `0xA1`/`0xA3` writer call
+    /// `bulk_write_started` / `bulk_write_finished(Instant::now(), ok)`;
+    /// `process_notifications` (WP C7) classifies with it.
+    pub(crate) echo: dspi_session::notify::EchoFilter,
 }
 
 /// A placeholder transport for a `Connection` built before its session
@@ -206,6 +211,7 @@ impl Connection {
             notifications: None,
             wire: None,
             ext: ExtState::default(),
+            echo: dspi_session::notify::EchoFilter::default(),
         }
     }
 
