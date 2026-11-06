@@ -210,6 +210,11 @@ pub struct Notification {
     /// The link's attribution (DSPi Link session id of the writer, 0 for the
     /// device); `None` over USB and MIDI. See [`Notification::is_own_echo`].
     pub origin: Option<u16>,
+    /// When the reader thread received the packet. Echo classification
+    /// ([`EchoFilter::classify_notification`]) uses this, not the time the
+    /// client drains the queue, so a late drain cannot push our own bulk
+    /// write's `BULK_SET` outside its window and misread it as foreign.
+    pub received: Instant,
 }
 
 impl Notification {
@@ -334,17 +339,17 @@ impl EchoFilter {
         own
     }
 
-    /// [`EchoFilter::classify`] for a decoded notification; false for events
-    /// without a source.
+    /// [`EchoFilter::classify`] for a decoded notification, at the time the
+    /// reader received it ([`Notification::received`], not the time of the
+    /// drain); false for events without a source.
     pub fn classify_notification(
         &mut self,
-        now: Instant,
         kind: dspi_transport::TransportKind,
         session: Option<u16>,
         note: &Notification,
     ) -> bool {
         match note.source() {
-            Some(src) => self.classify(now, kind, src.raw(), note.origin, session),
+            Some(src) => self.classify(note.received, kind, src.raw(), note.origin, session),
             None => false,
         }
     }
@@ -580,6 +585,12 @@ impl Notifications {
                         Ok(a) => (a.packet, a.origin),
                         Err(dspi_transport::TransportError::Disconnected) => {
                             disc_flag.store(true, Ordering::Relaxed);
+                            // Wake the client once so it notices the end
+                            // (MIDI port closed, Link session over) instead
+                            // of waiting for a packet that never comes.
+                            if let Some(w) = &waker {
+                                w();
+                            }
                             break;
                         }
                         // A stall or a transient error: give the bus a
@@ -592,6 +603,7 @@ impl Notifications {
                     if packet.is_empty() {
                         continue;
                     }
+                    let received = Instant::now();
                     let n = match decode(&packet) {
                         Ok((_, Event::Idle)) => continue,
                         Ok((seq, event)) => {
@@ -605,6 +617,7 @@ impl Notifications {
                                 event,
                                 lost,
                                 origin,
+                                received,
                             }
                         }
                         // A packet we cannot read is still a packet we
@@ -617,6 +630,7 @@ impl Notifications {
                             },
                             lost: true,
                             origin,
+                            received,
                         },
                     };
                     if !deliver(n) {
@@ -901,6 +915,29 @@ mod tests {
         f.bulk_write_started();
         assert!(f.classify(t0, K::Usb, n::PARAM_SRC_HOST_SET as u8, None, None));
         assert!(f.own_bulk_pending(t0));
+    }
+
+    /// The end of the stream (a MIDI port closed, a Link session over)
+    /// wakes the client once, so it notices without waiting for a packet.
+    #[test]
+    fn a_disconnect_wakes_the_client_once() {
+        use std::sync::atomic::AtomicUsize;
+        let mock = MockTransport::new();
+        mock.push_notification(dspi_transport::mock::MockNotifications::DISCONNECT.to_vec());
+        let woken = Arc::new(AtomicUsize::new(0));
+        let w = Arc::clone(&woken);
+        let waker: Waker = Arc::new(move || {
+            w.fetch_add(1, Ordering::SeqCst);
+        });
+        let n =
+            Notifications::start_with_waker(mock.notifications().unwrap(), Some(waker)).unwrap();
+        let t0 = std::time::Instant::now();
+        while !n.is_disconnected() {
+            assert!(t0.elapsed() < Duration::from_secs(5), "never disconnected");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        std::thread::sleep(Duration::from_millis(20));
+        assert_eq!(woken.load(Ordering::SeqCst), 1);
     }
 
     /// A reader that is not drained must not grow without bound: past

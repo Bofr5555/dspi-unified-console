@@ -345,6 +345,7 @@ fn main() {
                     event,
                     lost: false,
                     origin: None,
+                    received: std::time::Instant::now(),
                 },
             );
             at += 0.734;

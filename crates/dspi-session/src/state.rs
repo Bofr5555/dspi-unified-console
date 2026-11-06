@@ -1771,6 +1771,7 @@ mod tests {
             },
             lost: false,
             origin: None,
+            received: std::time::Instant::now(),
         };
         assert_eq!(
             s.apply(&n),
@@ -1795,6 +1796,7 @@ mod tests {
             },
             lost: false,
             origin: None,
+            received: std::time::Instant::now(),
         };
         assert!(matches!(s.apply(&n), Applied::NeedsReread { .. }));
         assert!(s.stale);
@@ -1806,6 +1808,7 @@ mod tests {
             },
             lost: false,
             origin: None,
+            received: std::time::Instant::now(),
         };
         assert!(matches!(
             s.apply(&n),
@@ -1820,6 +1823,7 @@ mod tests {
             event: Event::PresetLoaded { slot: 2 },
             lost: true,
             origin: None,
+            received: std::time::Instant::now(),
         };
         assert_eq!(s.apply(&n), Applied::PresetLoaded { slot: 2 });
         assert!(s.stale, "a lost packet always means a re-read");
@@ -1834,6 +1838,7 @@ mod tests {
             event: e,
             lost: false,
             origin: None,
+            received: std::time::Instant::now(),
         });
         assert_eq!(s.siggen_state, Some((1, 0, 4, 0xFF)));
         let (_, e) = crate::notify::decode(&[
@@ -1856,6 +1861,7 @@ mod tests {
             event: e,
             lost: false,
             origin: None,
+            received: std::time::Instant::now(),
         });
         assert_eq!(s.ir_learn, Some((2, 1, 0x1234_5678)));
     }
@@ -1872,6 +1878,7 @@ mod tests {
             event: e,
             lost: false,
             origin: None,
+            received: std::time::Instant::now(),
         });
         assert!(matches!(applied, Applied::Status(Event::CsAux { .. })));
         assert_eq!(s.cs_aux, Some((4, 1, 0x0C80)));
@@ -2091,6 +2098,7 @@ mod tests {
                 },
                 lost: false,
                 origin: None,
+                received: std::time::Instant::now(),
             });
             assert_eq!(
                 applied,
@@ -2130,6 +2138,7 @@ mod tests {
                 },
                 lost: false,
                 origin: None,
+                received: std::time::Instant::now(),
             });
             assert_eq!(
                 applied,
