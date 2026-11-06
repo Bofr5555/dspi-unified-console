@@ -18,6 +18,8 @@ midir = { version = "0.10", optional = true }
 # -- WP T3 --
 # -- WP T4 --
 # -- WP T5 --
+# log::warn! when a LinkTransport is dropped with its notifications never taken.
+log.workspace = true
 
 [features]
 # DSPi Link transport (WP T5).
