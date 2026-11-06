@@ -543,9 +543,10 @@ artifacts were rebuilt from `main` in the containers.
 
 ## 11. Parity after the merge
 
-The full survey is `~/prog/dspi-mobile/docs/FEATURE-PARITY.md`. It was written
-before the merge, by reading code, and sits outside this repository; moving it here
-as `docs/PARITY.md` is client plan WP XC0 (`docs/core-merge/PLAN-CLIENTS.md`). Its
+The full survey is [`docs/PARITY.md`](PARITY.md), moved here from
+`dspi-mobile/docs/FEATURE-PARITY.md` by client plan WP XC0
+(`docs/core-merge/PLAN-CLIENTS.md`). Its matrix was written before the merge, by
+reading code; its section 5 is XC0's floor audit, on this tree. In the matrix, the
 macOS, iOS, Android and Windows C# columns still stand: **none of those apps is on
 this core yet.** Its UI-only rows for Qt and the Terminal also stand (accessibility,
 localisation, tray, RTA overlay in the TUI and so on).
