@@ -23,6 +23,8 @@ pub mod surfaces;
 pub mod tube;
 #[cfg(feature = "undo")]
 pub mod undo;
+// -- WP CG11 --
+pub mod vreg_calibrate;
 pub mod write;
 
 pub use notify::{Event, Notification, Notifications, Source};
