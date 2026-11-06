@@ -7,8 +7,8 @@
 # Each is built in a podman container of the oldest distribution it targets.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/../.." && pwd)
-version=v$(grep -oP 'setApplicationVersion\("\K[^"]+' "$repo/qt/src/main.cpp")
+repo=$(cd "$here/../../../.." && pwd)    # the dspi-unified-console root
+version=v$(grep -oP 'setApplicationVersion\("\K[^"]+' "$repo/apps/desktop/qt/src/main.cpp")
 
 tools="$repo/dist/tools"
 mkdir -p "$tools"
@@ -21,7 +21,7 @@ done
 rm -f "$repo"/dist/*.AppImage "$repo"/dist/*.tar.gz "$repo"/dist/*.deb "$repo"/dist/*.rpm
 
 podman build -t dspi-console-build -f "$here/Containerfile.ubuntu" "$here"
-podman run --rm -v "$repo":/src:z -e VERSION="$version" dspi-console-build /src/packaging/linux/build-ubuntu.sh
+podman run --rm -v "$repo":/src:z -e VERSION="$version" dspi-console-build /src/apps/desktop/packaging/linux/build-ubuntu.sh
 podman build -t dspi-console-build-fedora -f "$here/Containerfile.fedora" "$here"
-podman run --rm -v "$repo":/src:z dspi-console-build-fedora /src/packaging/linux/build-fedora.sh
+podman run --rm -v "$repo":/src:z dspi-console-build-fedora /src/apps/desktop/packaging/linux/build-fedora.sh
 ls -l "$repo"/dist/*.AppImage "$repo"/dist/*.tar.gz "$repo"/dist/*.deb "$repo"/dist/*.rpm

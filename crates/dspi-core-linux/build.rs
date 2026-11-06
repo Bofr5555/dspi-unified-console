@@ -3,7 +3,8 @@ use std::path::PathBuf;
 
 fn main() {
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let output_dir = PathBuf::from(&crate_dir).join("..").join("include");
+    // The crate's own include/ (crates/dspi-core-linux/include/dspi_core.h)
+    let output_dir = PathBuf::from(&crate_dir).join("include");
 
     std::fs::create_dir_all(&output_dir).expect("failed to create include/");
 

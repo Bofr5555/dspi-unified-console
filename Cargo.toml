@@ -1,12 +1,22 @@
+# One workspace for every Rust part of the unified console:
+#   crates/dspi-core-linux  the desktop app's core (C ABI for Qt), from DSPi-Console-Linux
+#   crates/dspi-proto, -transport, -session, -cmd, -tui  DSPi-Terminal's crates
+#   crates/dspi-link        the DSPi Link client, from the Android console
+#   apps/terminal           the `dspi` terminal client
+#   xtask                   DSPi-Terminal's developer tasks
+# The Terminal crates inherit [workspace.package] below; dspi-core-linux and
+# dspi-link set their own edition and licence fields.
 [workspace]
 resolver = "3"
 members = [
+    "crates/dspi-core-linux",
     "crates/dspi-proto",
     "crates/dspi-transport",
     "crates/dspi-session",
     "crates/dspi-cmd",
     "crates/dspi-tui",
-    "crates/dspi",
+    "crates/dspi-link",
+    "apps/terminal",
     "xtask",
 ]
 
@@ -26,6 +36,7 @@ dspi-tui = { path = "crates/dspi-tui" }
 
 anyhow = "1"
 thiserror = "2"
+log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

@@ -1,6 +1,7 @@
 # Build environment for the Windows release, cross-compiled on Linux:
-#   podman build -t dspi-windows packaging/windows
-#   podman run --rm -v "$PWD":/src:Z -w /src dspi-windows packaging/windows/build-windows.sh
+#   podman build -t dspi-windows apps/desktop/packaging/windows
+#   podman run --rm -v "$PWD":/src:Z -w /src dspi-windows apps/desktop/packaging/windows/build-windows.sh
+# (from the dspi-unified-console root)
 # Everything from Fedora's repositories, Rust from rustup.
 FROM registry.fedoraproject.org/fedora:44
 RUN dnf -y install --setopt=install_weak_deps=False \

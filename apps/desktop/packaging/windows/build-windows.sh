@@ -7,16 +7,17 @@
 #
 #   packaging/windows/build-windows.sh [output dir, default dist/]
 set -euo pipefail
-root=$(cd "$(dirname "$0")/../.." && pwd)
-out=${1:-$root/dist}
-target=${CARGO_TARGET_DIR:-$root/target}
+root=$(cd "$(dirname "$0")/../.." && pwd)          # apps/desktop
+repo=$(cd "$root/../.." && pwd)                      # the dspi-unified-console root
+out=${1:-$repo/dist}
+target=${CARGO_TARGET_DIR:-$repo/target}
 build=${BUILD_DIR:-$root/qt/build-win64}   # (gitignored)
 triple=x86_64-pc-windows-gnu
 
 version=$(sed -n 's/.*setApplicationVersion("\([^"]*\)").*/\1/p' "$root/qt/src/main.cpp")
 name="DSPi-Console-$version-windows-x86_64"
 
-(cd "$root" && cargo build --release --target $triple)
+(cd "$repo" && cargo build --release -p dspi-core --target $triple)
 cmake -S "$root/qt" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_TOOLCHAIN_FILE=/usr/share/mingw/toolchain-mingw64.cmake \
       -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR="$target" -DDSPI_RUST_TARGET=$triple

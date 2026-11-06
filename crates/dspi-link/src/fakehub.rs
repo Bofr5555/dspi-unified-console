@@ -30,10 +30,10 @@ use tungstenite::{Message, WebSocket};
 
 use crate::frames::{kind, status, CmdResponse, Dir, Frame, NotifyFrame, PollFrame};
 
-pub const BULK_V32: &[u8] = include_bytes!("../../../fixtures/link/device/bulk_v32.bin");
-pub const PLATFORM: &[u8] = include_bytes!("../../../fixtures/link/device/platform.bin");
-pub const STATUS_WVALUE9: &[u8] = include_bytes!("../../../fixtures/link/device/status_wvalue9.bin");
-const POLICY: &str = include_str!("../../../fixtures/link/policy/commands.json");
+pub const BULK_V32: &[u8] = include_bytes!("../../../tests/fixtures/link/device/bulk_v32.bin");
+pub const PLATFORM: &[u8] = include_bytes!("../../../tests/fixtures/link/device/platform.bin");
+pub const STATUS_WVALUE9: &[u8] = include_bytes!("../../../tests/fixtures/link/device/status_wvalue9.bin");
+const POLICY: &str = include_str!("../../../tests/fixtures/link/policy/commands.json");
 
 /// Firmware request ids the fake device knows.
 pub mod req {

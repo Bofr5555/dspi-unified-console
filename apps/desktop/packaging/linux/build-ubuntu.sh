@@ -8,15 +8,16 @@ name="DSPi-Console-$VERSION"
 
 # Build from a copy, leaving the host's build directories alone
 rm -rf /work && mkdir /work
-tar -C /src --exclude=./target --exclude=./qt/build --exclude=./.git --exclude=./dist -cf - . | tar -C /work -xf -
+tar -C /src --exclude=./target --exclude=./apps/desktop/qt/build --exclude=./.git --exclude=./dist -cf - . | tar -C /work -xf -
 cd /work
-cargo build --release
+cargo build --release -p dspi-core
+cd /work/apps/desktop
 cmake -S qt -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j"$(nproc)"
 
 # The app, its Qt libraries, QML modules and plugins (X11 and Wayland)
 export QMAKE=/usr/lib/qt5/bin/qmake
-export QML_SOURCES_PATHS=/work/qt/qml
+export QML_SOURCES_PATHS=/work/apps/desktop/qt/qml
 export EXTRA_PLATFORM_PLUGINS="libqwayland-generic.so;libqwayland-egl.so"
 export EXTRA_QT_PLUGINS="waylandcompositor;svg"
 cp qt/dspi-console.svg build/dspi-console.svg

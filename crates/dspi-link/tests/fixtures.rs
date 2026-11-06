@@ -1,4 +1,4 @@
-//! The upstream DSPi-Link fixtures (`fixtures/link/`, WeebLabs/DSPi-Link
+//! The upstream DSPi-Link fixtures (`tests/fixtures/link/`, WeebLabs/DSPi-Link
 //! 86f10e3): every frame decodes to its `frames.json` meaning and re-encodes
 //! byte for byte; every message parses; the device captures match
 //! `capture.json`.
@@ -11,7 +11,7 @@ use dspi_link::messages::{out, AuthOk, ClientInfo, DeviceInfo, ErrReply, HelloHu
 use serde_json::Value;
 
 fn dir(sub: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/link").join(sub)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/link").join(sub)
 }
 
 fn hex(s: &str) -> Vec<u8> {

@@ -26,8 +26,11 @@ message(STATUS "Building against Qt ${QT_VERSION}")
 # The Rust core (dspi-core). Build it first with cargo; these say where its
 # header and library are. DSPI_RUST_TARGET is the cargo --target triple when
 # cross-compiling (e.g. x86_64-pc-windows-gnu), empty for a native build.
-set(DSPI_CORE_DIR "${CMAKE_SOURCE_DIR}/.." CACHE PATH "Directory holding include/dspi_core.h")
-set(DSPI_CARGO_TARGET_DIR "${DSPI_CORE_DIR}/target" CACHE PATH "cargo's target directory")
+# In dspi-unified-console the core is crates/dspi-core-linux and cargo's
+# target directory is the repository root's target/.
+get_filename_component(DSPI_REPO_ROOT "${CMAKE_SOURCE_DIR}/../../.." ABSOLUTE)
+set(DSPI_CORE_DIR "${DSPI_REPO_ROOT}/crates/dspi-core-linux" CACHE PATH "Directory holding include/dspi_core.h")
+set(DSPI_CARGO_TARGET_DIR "${DSPI_REPO_ROOT}/target" CACHE PATH "cargo's target directory")
 set(DSPI_RUST_TARGET "" CACHE STRING "cargo --target triple, empty for the host")
 if(DSPI_RUST_TARGET)
     set(DSPI_CORE_LIBDIR "${DSPI_CARGO_TARGET_DIR}/${DSPI_RUST_TARGET}/release")
