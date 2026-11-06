@@ -596,6 +596,7 @@ name = "dspi-term"
 version = "2.0.0-dev"
 dependencies = [
  "dspi-cmd",
+ "dspi-link",
  "dspi-proto",
  "dspi-session",
  "dspi-transport",
@@ -623,11 +624,13 @@ dependencies = [
  "crossterm",
  "dirs",
  "dspi-cmd",
+ "dspi-link",
  "dspi-proto",
  "dspi-session",
  "dspi-transport",
  "ratatui",
  "serde",
+ "thiserror",
  "toml 1.1.4+spec-1.1.0",
  "unicode-width 0.2.0",
 ]

@@ -1,0 +1,1294 @@
+//! How the terminal reaches a device: USB, the demo device, USB MIDI or a
+//! DSPi Link hub, and getting it back after it was lost.
+//!
+//! The rest of the terminal sees a [`Session`] and does not care which link is
+//! under it. What does differ per link lives here:
+//!
+//! - **Opening** ([`Target`]): choosing a port or a hub's device, and pairing.
+//! - **Who changed what** ([`attribution`], [`foreign_words`]): the echo rule
+//!   of `docs/core-merge/PLAN.md` §1.2, in words.
+//! - **Coming back** ([`Reconnector`]): a replug, or a hub that went away. The
+//!   open runs on its own thread, because a Link connect can block for seconds
+//!   and the interface has to keep drawing meanwhile.
+//!
+//! Owned by WP R1.
+#![warn(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
+
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::time::{Duration, Instant};
+
+use dspi_link::socket::TcpConnector;
+use dspi_link::{AuthState, ConnectOptions, LinkClient, LinkError};
+use dspi_proto::generated::ext as ext_ids;
+use dspi_proto::generated::opcodes as op;
+use dspi_session::ext_state::ExtState;
+use dspi_session::{DeviceState, Session, Source, compat, probe};
+use dspi_transport::{
+    DeviceDescriptor, FakeDevice, LinkTransport, NotificationSource, Transport, TransportCaps,
+    TransportError, TransportKind, UsbTransport,
+};
+use serde::{Deserialize, Serialize};
+
+/// The role a terminal asks a hub for: it edits, it does not administer.
+const LINK_ROLE: &str = "control";
+
+/// How long the first reconnect attempt is put off after a failed one.
+const RETRY_FIRST: Duration = Duration::from_secs(1);
+
+/// The longest wait between attempts on a hub. A local bus or MIDI port is
+/// cheap to look at (and never faster than once a second, as midir asks), so
+/// those stay at [`RETRY_FIRST`].
+const RETRY_LINK_MAX: Duration = Duration::from_secs(30);
+
+/// Where the terminal should find its device.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Target {
+    /// `--device`, or the only DSPi on the bus.
+    Usb { serial: Option<String> },
+    /// `--demo`: the built-in simulated device.
+    Demo,
+    /// `--midi [PORT]`: a USB MIDI control channel, by part of its name.
+    Midi { port: Option<String> },
+    /// `--link HOST[:PORT]`.
+    Link(LinkTarget),
+}
+
+/// A hub, and which of its devices.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkTarget {
+    pub host: String,
+    pub port: u16,
+    /// A serial (or the end of one) or part of a device's name; `None` is the
+    /// hub's only online device.
+    pub device: Option<String>,
+    /// `--pin`, for scripts and for hubs that issue no token.
+    pub pin: Option<String>,
+    /// The token file; `None` is the default in the config directory.
+    pub tokens: Option<PathBuf>,
+}
+
+impl LinkTarget {
+    /// `HOST`, `HOST:PORT` or a bracketed IPv6 address, as typed. `None` when
+    /// it cannot be an address.
+    pub fn parse(address: &str) -> Option<Self> {
+        let (host, port) = dspi_link::address::parse_address(address)?;
+        Some(Self {
+            host,
+            port,
+            device: None,
+            pin: None,
+            tokens: None,
+        })
+    }
+
+    fn ws_url(&self) -> String {
+        dspi_link::address::ws_url(&self.host, self.port, None)
+    }
+
+    fn address(&self) -> String {
+        format!("{}:{}", self.host, self.port)
+    }
+
+    fn token_store(&self) -> TokenStore {
+        match &self.tokens {
+            Some(p) => TokenStore::at(p.clone()),
+            None => TokenStore::default_location(),
+        }
+    }
+}
+
+/// Why a device could not be opened.
+#[derive(Debug, thiserror::Error)]
+pub enum OpenError {
+    #[error(transparent)]
+    Transport(#[from] TransportError),
+    #[error("DSPi Link hub {address}: {source}")]
+    Link { address: String, source: LinkError },
+    /// The hub wants a PIN and nothing supplied one.
+    #[error("{hub} needs pairing: {}", pin_hint(.pin_source))]
+    NeedsPin { hub: String, pin_source: String },
+    /// A PIN was tried and refused.
+    #[error("{hub} refused the PIN ({reason}); check it and that pairing is open on the hub")]
+    PinRefused { hub: String, reason: String },
+    /// More than one candidate, and nothing to tell them apart.
+    #[error("{} {what} found ({}); select one with {flag}", .names.len(), .names.join(", "))]
+    Ambiguous {
+        what: &'static str,
+        flag: &'static str,
+        names: Vec<String>,
+    },
+    #[error("this build of dspi has no MIDI support")]
+    NoMidi,
+    #[error("the device reported an impossible channel map")]
+    ChannelMap,
+    /// The first read of the whole device state failed.
+    #[error("could not read the device state: {0}")]
+    Snapshot(String),
+}
+
+impl OpenError {
+    /// Retrying cannot help: a person has to do something first.
+    pub fn is_final(&self) -> bool {
+        matches!(
+            self,
+            Self::NeedsPin { .. } | Self::PinRefused { .. } | Self::NoMidi
+        )
+    }
+
+    /// There is simply no such device (exit code 2), not a device in trouble.
+    pub fn is_no_device(&self) -> bool {
+        matches!(
+            self,
+            Self::Transport(TransportError::NotFound | TransportError::SerialNotFound(_))
+        )
+    }
+}
+
+fn pin_hint(pin_source: &str) -> &'static str {
+    if pin_source == "fixed" {
+        "pass the hub's PIN with --pin, or run `dspi --link` in a terminal"
+    } else {
+        "open pairing on the hub, then pass the PIN it shows with --pin, or run `dspi --link` in a terminal"
+    }
+}
+
+/// Asks a person for a hub's PIN: the hub's name and its `pin_source`
+/// (`window` or `fixed`) come in, the PIN or nothing comes out.
+pub type PinPrompt<'a> = &'a dyn Fn(&str, &str) -> Option<String>;
+
+/// A prompt that has nobody to ask: a reconnect, or a check.
+pub fn no_prompt(_hub: &str, _source: &str) -> Option<String> {
+    None
+}
+
+/// An opened device with everything the interface starts from.
+pub struct Connected {
+    pub session: Session,
+    pub state: DeviceState,
+    pub ext: ExtState,
+}
+
+/// One device a target can see, for `dspi list`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Listed {
+    pub serial: String,
+    pub name: String,
+    pub detail: String,
+}
+
+impl Target {
+    /// Open the link. Nothing has been asked of the device yet.
+    pub fn open(&self, pin: PinPrompt<'_>) -> Result<Box<dyn Transport>, OpenError> {
+        match self {
+            Self::Usb { serial: Some(s) } => Ok(Box::new(UsbTransport::open_serial(s)?)),
+            Self::Usb { serial: None } => Ok(Box::new(UsbTransport::open_only()?)),
+            Self::Demo => Ok(Box::new(FakeDevice::demo())),
+            Self::Midi { port } => open_midi(port.as_deref()),
+            Self::Link(l) => open_link(l, pin),
+        }
+    }
+
+    /// Open and probe: enough for a one-shot command.
+    pub fn open_session(&self, pin: PinPrompt<'_>) -> Result<Session, OpenError> {
+        let mut t = self.open(pin)?;
+        let caps = probe(t.as_mut())?;
+        Session::new(t, caps).ok_or(OpenError::ChannelMap)
+    }
+
+    /// Open, probe and read the whole state: enough for the interface.
+    pub fn connect(&self, pin: PinPrompt<'_>) -> Result<Connected, OpenError> {
+        let mut t = self.open(pin)?;
+        let caps = probe(t.as_mut())?;
+        // A stall or a refusal is already "absent" in the probe. What is left
+        // is the link failing, which only matters if the link is gone: the
+        // extension channel is never a reason to turn a device away.
+        let ext = match ExtState::probe(t.as_mut()) {
+            Ok(e) => e,
+            Err(TransportError::Disconnected) => {
+                return Err(TransportError::Disconnected.into());
+            }
+            Err(_) => ExtState::default(),
+        };
+        let mut session = Session::new(t, caps.clone()).ok_or(OpenError::ChannelMap)?;
+        let bulk = session
+            .snapshot()
+            .map_err(|e| OpenError::Snapshot(e.to_string()))?;
+        Ok(Connected {
+            session,
+            state: DeviceState::new(caps, bulk),
+            ext,
+        })
+    }
+
+    /// The same target, held to the device it found: a reconnect must not pick
+    /// up whichever other DSPi happens to be there. A MIDI port's name is not
+    /// stable across a replug (ALSA numbers its clients), so its filter stays.
+    pub fn pinned(&self, serial: &str) -> Self {
+        match self {
+            Self::Usb { .. } if !serial.is_empty() => Self::Usb {
+                serial: Some(serial.to_owned()),
+            },
+            Self::Link(l) if !serial.is_empty() => Self::Link(LinkTarget {
+                device: Some(serial.to_owned()),
+                ..l.clone()
+            }),
+            other => other.clone(),
+        }
+    }
+
+    /// Whether the bus can be enumerated for more DSPis to switch to.
+    pub fn is_usb(&self) -> bool {
+        matches!(self, Self::Usb { .. })
+    }
+
+    /// Words for the title bar; USB, the default, says nothing.
+    pub fn via(&self) -> String {
+        match self {
+            Self::Usb { .. } => String::new(),
+            Self::Demo => "demo".into(),
+            Self::Midi { .. } => "MIDI".into(),
+            Self::Link(l) => format!("Link {}", l.host),
+        }
+    }
+
+    /// Whether every read is slow enough to want the light refresh rate.
+    pub fn is_slow(&self) -> bool {
+        matches!(self, Self::Midi { .. } | Self::Link(_))
+    }
+
+    /// What this target can see, without choosing among it. USB has its own
+    /// listing in `dspi list`.
+    pub fn list(&self, pin: PinPrompt<'_>) -> Result<Vec<Listed>, OpenError> {
+        match self {
+            Self::Usb { .. } => Ok(dspi_transport::list_devices()?
+                .iter()
+                .map(|d| Listed {
+                    serial: d.serial.clone(),
+                    name: d.short_name(),
+                    detail: format!("bus {} addr {}", d.bus_id, d.address),
+                })
+                .collect()),
+            Self::Demo => {
+                let d = FakeDevice::demo();
+                Ok(vec![Listed {
+                    serial: d.descriptor().serial.clone(),
+                    name: d.descriptor().short_name(),
+                    detail: "built-in demo device".into(),
+                }])
+            }
+            Self::Midi { .. } => midi_names().map(|names| {
+                names
+                    .into_iter()
+                    .map(|name| Listed {
+                        serial: String::new(),
+                        name,
+                        detail: "USB MIDI".into(),
+                    })
+                    .collect()
+            }),
+            Self::Link(l) => {
+                let client = link_client(l, pin)?;
+                let list = client
+                    .devices()
+                    .into_iter()
+                    .map(|d| Listed {
+                        serial: d.serial,
+                        name: d.name,
+                        detail: d.state,
+                    })
+                    .collect();
+                client.close();
+                Ok(list)
+            }
+        }
+    }
+}
+
+/// The one of `items` that `wanted` means. Exact matches (of a key or a whole
+/// name) beat partial ones, so a name that contains another still works.
+fn choose<'a, T>(
+    items: &'a [T],
+    wanted: Option<&str>,
+    keys: impl Fn(&T) -> Vec<&str>,
+    label: impl Fn(&T) -> String,
+    what: &'static str,
+    flag: &'static str,
+) -> Result<&'a T, OpenError> {
+    let matches: Vec<&T> = match wanted {
+        None => items.iter().collect(),
+        Some(w) => {
+            let w = w.to_lowercase();
+            let exact: Vec<&T> = items
+                .iter()
+                .filter(|i| keys(i).iter().any(|k| k.to_lowercase() == w))
+                .collect();
+            if exact.is_empty() {
+                items
+                    .iter()
+                    .filter(|i| keys(i).iter().any(|k| k.to_lowercase().contains(&w)))
+                    .collect()
+            } else {
+                exact
+            }
+        }
+    };
+    match matches.as_slice() {
+        [] => Err(match wanted {
+            Some(w) => TransportError::SerialNotFound(w.to_owned()),
+            None => TransportError::NotFound,
+        }
+        .into()),
+        [one] => Ok(one),
+        many => Err(OpenError::Ambiguous {
+            what,
+            flag,
+            names: many.iter().map(|i| label(i)).collect(),
+        }),
+    }
+}
+
+#[cfg(feature = "midi")]
+fn open_midi(port: Option<&str>) -> Result<Box<dyn Transport>, OpenError> {
+    use dspi_transport::midi::midir_port;
+    let ports = midir_port::list_ports();
+    let chosen = choose(
+        &ports,
+        port,
+        |p| vec![p.name.as_str()],
+        |p| p.name.clone(),
+        "DSPi MIDI ports",
+        "--midi <name>",
+    )?;
+    let t = midir_port::open(chosen)?;
+    Ok(Box::new(Adapted::new(t, None)))
+}
+
+#[cfg(not(feature = "midi"))]
+fn open_midi(_port: Option<&str>) -> Result<Box<dyn Transport>, OpenError> {
+    Err(OpenError::NoMidi)
+}
+
+#[cfg(feature = "midi")]
+fn midi_names() -> Result<Vec<String>, OpenError> {
+    Ok(dspi_transport::midi::midir_port::list_ports()
+        .into_iter()
+        .map(|p| p.name)
+        .collect())
+}
+
+#[cfg(not(feature = "midi"))]
+fn midi_names() -> Result<Vec<String>, OpenError> {
+    Err(OpenError::NoMidi)
+}
+
+/// The DSPi MIDI ports this host can see, for `dspi doctor`. `None` in a build
+/// without MIDI.
+pub fn midi_ports() -> Option<Vec<String>> {
+    midi_names().ok()
+}
+
+fn link_error(l: &LinkTarget, source: LinkError) -> OpenError {
+    OpenError::Link {
+        address: l.address(),
+        source,
+    }
+}
+
+/// A session with the hub, authenticated as far as a stored token, `--pin` or
+/// the prompt takes it.
+///
+/// The token is stored against the hub's id, which only the hello says (the
+/// address can change; the id does not), so a hub in PIN mode is met twice:
+/// once to learn its id, and again with the token, if there is one.
+pub fn link_client(l: &LinkTarget, pin: PinPrompt<'_>) -> Result<LinkClient, OpenError> {
+    let connector = TcpConnector::default();
+    let url = l.ws_url();
+    let store = l.token_store();
+    let mut opts = ConnectOptions {
+        client_name: "DSPi Terminal".into(),
+        app: "dspi".into(),
+        app_version: env!("CARGO_PKG_VERSION").into(),
+        token: None,
+    };
+    let (mut client, mut auth) =
+        LinkClient::connect(&connector, &url, &opts, None).map_err(|e| link_error(l, e))?;
+    if matches!(auth, AuthState::NeedsPairing { .. })
+        && let Some(token) = store.get(&client.hello().hub.id)
+    {
+        client.close();
+        opts.token = Some(token);
+        (client, auth) =
+            LinkClient::connect(&connector, &url, &opts, None).map_err(|e| link_error(l, e))?;
+    }
+    if let AuthState::NeedsPairing { pin_source } = auth
+        && let Err(e) = pair(l, &client, &store, &pin_source, pin)
+    {
+        client.close();
+        return Err(e);
+    }
+    Ok(client)
+}
+
+fn pair(
+    l: &LinkTarget,
+    client: &LinkClient,
+    store: &TokenStore,
+    pin_source: &str,
+    pin: PinPrompt<'_>,
+) -> Result<(), OpenError> {
+    let hub = hub_name(client, l);
+    let Some(code) = l.pin.clone().or_else(|| pin(&hub, pin_source)) else {
+        return Err(OpenError::NeedsPin {
+            hub,
+            pin_source: pin_source.to_owned(),
+        });
+    };
+    match client.pair(&code, LINK_ROLE) {
+        Ok(token) => {
+            if !token.is_empty() {
+                // A token that cannot be stored costs a PIN next time, not
+                // this connection.
+                let _ = store.put(&client.hello().hub.id, &token);
+            }
+            Ok(())
+        }
+        Err(LinkError::Rejected { code, msg }) => Err(OpenError::PinRefused {
+            hub,
+            reason: if msg.is_empty() { code } else { msg },
+        }),
+        Err(e) => Err(link_error(l, e)),
+    }
+}
+
+fn hub_name(client: &LinkClient, l: &LinkTarget) -> String {
+    let name = &client.hello().hub.name;
+    if name.is_empty() {
+        l.address()
+    } else {
+        name.clone()
+    }
+}
+
+fn open_link(l: &LinkTarget, pin: PinPrompt<'_>) -> Result<Box<dyn Transport>, OpenError> {
+    let client = link_client(l, pin)?;
+    match bind_link_device(l, &client) {
+        Ok(t) => Ok(t),
+        Err(e) => {
+            client.close();
+            Err(e)
+        }
+    }
+}
+
+fn bind_link_device(l: &LinkTarget, client: &LinkClient) -> Result<Box<dyn Transport>, OpenError> {
+    let all = client.devices();
+    let online: Vec<_> = all.iter().filter(|d| d.state != "offline").collect();
+    let chosen = choose(
+        &online,
+        l.device.as_deref(),
+        |d| vec![d.serial.as_str(), d.name.as_str()],
+        |d| {
+            if d.name.is_empty() {
+                d.serial.clone()
+            } else {
+                format!("{} {}", d.serial, d.name)
+            }
+        },
+        "devices on this hub",
+        "--device <serial>",
+    )?;
+    let handle = u8::try_from(chosen.handle).map_err(|_| {
+        link_error(
+            l,
+            LinkError::Protocol(format!("device handle {} is out of range", chosen.handle)),
+        )
+    })?;
+    let t = LinkTransport::new(client.clone(), handle, &chosen.serial);
+    Ok(Box::new(Adapted::new(t, Some(client.clone()))))
+}
+
+/// Pairing tokens, by hub id, in `~/.config/dspi/link-tokens.toml`. It is kept
+/// apart from `config.toml` so settings can be shared without the secrets, and
+/// is readable only by its owner.
+#[derive(Debug, Clone)]
+struct TokenStore {
+    path: Option<PathBuf>,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct TokenFile {
+    #[serde(default)]
+    tokens: BTreeMap<String, String>,
+}
+
+impl TokenStore {
+    fn at(path: PathBuf) -> Self {
+        Self { path: Some(path) }
+    }
+
+    fn default_location() -> Self {
+        Self {
+            path: dirs::config_dir().map(|d| d.join("dspi").join("link-tokens.toml")),
+        }
+    }
+
+    fn load(path: &Path) -> TokenFile {
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|t| toml::from_str(&t).ok())
+            .unwrap_or_default()
+    }
+
+    fn get(&self, hub_id: &str) -> Option<String> {
+        let mut file = Self::load(self.path.as_deref()?);
+        file.tokens.remove(hub_id)
+    }
+
+    fn put(&self, hub_id: &str, token: &str) -> std::io::Result<()> {
+        let Some(path) = self.path.as_deref() else {
+            return Ok(());
+        };
+        let mut file = Self::load(path);
+        file.tokens.insert(hub_id.to_owned(), token.to_owned());
+        let text = toml::to_string(&file).map_err(std::io::Error::other)?;
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        // Whole or not at all, and never world-readable, even for a moment.
+        let tmp = path.with_extension("toml.new");
+        write_private(&tmp, text.as_bytes())?;
+        std::fs::rename(&tmp, path)
+    }
+}
+
+#[cfg(unix)]
+fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)?;
+    f.write_all(bytes)
+}
+
+#[cfg(not(unix))]
+fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    std::fs::write(path, bytes)
+}
+
+/// A link's transport as the session needs it.
+///
+/// Two things the plain transports leave to their embedder:
+///
+/// - `dspi_session::probe` and `Session::snapshot` read the image with the
+///   chunked opcode whatever the link, and a link without `chunked_bulk` (MIDI,
+///   DSPi Link: Link spec 8.2) refuses or does not carry it. So a chunk read is
+///   answered here from one single-shot read. The session's own
+///   `read_bulk_from` should honour `chunked_bulk`, as `compat::read_bytes`
+///   does; this goes away when it does (see the WP R1 report).
+/// - Dropping a `LinkTransport` leaves its hub session open, so a device switch
+///   or a reconnect would leak one each time. The session closes with this.
+struct Adapted<T: Transport> {
+    inner: T,
+    image: Option<Vec<u8>>,
+    client: Option<LinkClient>,
+}
+
+impl<T: Transport> Adapted<T> {
+    fn new(inner: T, client: Option<LinkClient>) -> Self {
+        Self {
+            inner,
+            image: None,
+            client,
+        }
+    }
+
+    /// `want` bytes of the image at `offset`, or fewer at its end. Offset 0
+    /// starts a new read, as it starts a new snapshot on the firmware.
+    fn chunk(&mut self, offset: u16, want: u16) -> dspi_transport::Result<Vec<u8>> {
+        if offset == 0 {
+            self.image = None;
+            self.image = Some(
+                compat::read_bulk_bytes(&mut self.inner).map_err(|e| match e {
+                    dspi_session::WriteError::Transport(t) => t,
+                    other => TransportError::Remote(other.to_string()),
+                })?,
+            );
+        }
+        let stalled = TransportError::Stalled {
+            opcode: op::REQ_GET_ALL_PARAMS_CHUNK,
+        };
+        let image = self.image.as_deref().ok_or(stalled.clone())?;
+        let start = usize::from(offset);
+        let end = start.saturating_add(usize::from(want)).min(image.len());
+        image.get(start..end).map(<[u8]>::to_vec).ok_or(stalled)
+    }
+}
+
+impl<T: Transport> Transport for Adapted<T> {
+    fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
+        if opcode != op::REQ_GET_ALL_PARAMS_CHUNK {
+            return self.inner.control_in(opcode, value, len);
+        }
+        let part = self.chunk(value, len)?;
+        if part.len() < usize::from(len) {
+            return Err(TransportError::ShortRead {
+                opcode,
+                wanted: usize::from(len),
+                got: part.len(),
+            });
+        }
+        Ok(part)
+    }
+
+    fn control_in_upto(
+        &mut self,
+        opcode: u8,
+        value: u16,
+        max_len: u16,
+    ) -> dspi_transport::Result<Vec<u8>> {
+        if opcode == op::REQ_GET_ALL_PARAMS_CHUNK {
+            return self.chunk(value, max_len);
+        }
+        self.inner.control_in_upto(opcode, value, max_len)
+    }
+
+    fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> dspi_transport::Result<()> {
+        self.inner.control_out(opcode, value, data)
+    }
+
+    fn descriptor(&self) -> &DeviceDescriptor {
+        self.inner.descriptor()
+    }
+
+    fn max_transfer(&self) -> usize {
+        self.inner.max_transfer()
+    }
+
+    fn notifications(&self) -> Option<Box<dyn NotificationSource>> {
+        self.inner.notifications()
+    }
+
+    fn caps(&self) -> TransportCaps {
+        self.inner.caps()
+    }
+
+    fn session_id(&self) -> Option<u16> {
+        self.inner.session_id()
+    }
+
+    fn lock(&mut self, reason: &str, timeout: Duration) -> dspi_transport::Result<()> {
+        self.inner.lock(reason, timeout)
+    }
+
+    fn unlock(&mut self) {
+        self.inner.unlock();
+    }
+}
+
+impl<T: Transport> Drop for Adapted<T> {
+    fn drop(&mut self) {
+        if let Some(client) = &self.client {
+            self.inner.unlock();
+            client.close();
+        }
+    }
+}
+
+/// What stands in for a device that has gone: every request fails at once with
+/// no I/O, and the real transport has been let go, so its USB interface is free
+/// for the device's return and its hub session is closed.
+pub struct Offline {
+    descriptor: DeviceDescriptor,
+}
+
+impl Offline {
+    pub fn new(serial: &str) -> Self {
+        Self {
+            descriptor: DeviceDescriptor {
+                serial: serial.to_owned(),
+                bus_id: "offline".into(),
+                address: 0,
+            },
+        }
+    }
+}
+
+impl Transport for Offline {
+    fn control_in(&mut self, _: u8, _: u16, _: u16) -> dspi_transport::Result<Vec<u8>> {
+        Err(TransportError::Disconnected)
+    }
+
+    fn control_out(&mut self, _: u8, _: u16, _: &[u8]) -> dspi_transport::Result<()> {
+        Err(TransportError::Disconnected)
+    }
+
+    fn descriptor(&self) -> &DeviceDescriptor {
+        &self.descriptor
+    }
+}
+
+/// The words for a change that is not ours (§1.2), given the link it came over.
+///
+/// [`Source::describe`] assumes USB, where `HOST_SET` and `BULK_SET` mean this
+/// host. Off that path they do not: over MIDI a `HOST_SET` is another host's
+/// USB write, and over Link the hub writes for every client.
+pub fn foreign_words(kind: TransportKind, source: Source, origin: Option<u16>) -> &'static str {
+    match (kind, source) {
+        (TransportKind::Link, _) if origin.is_some_and(|o| o != 0) => {
+            "changed by another Link client"
+        }
+        (TransportKind::Midi, Source::HostSet) => "changed over USB",
+        (_, Source::HostSet | Source::BulkSet) => "changed elsewhere",
+        (_, other) => other.describe(),
+    }
+}
+
+/// The words for a change's source, ours included, by the scalar rule.
+pub fn attribution(
+    kind: TransportKind,
+    session: Option<u16>,
+    source: Source,
+    origin: Option<u16>,
+) -> &'static str {
+    if dspi_transport::is_own_write(kind, source.raw(), origin, session, false) {
+        "changed by this host"
+    } else {
+        foreign_words(kind, source, origin)
+    }
+}
+
+/// Whether a `BULK_INVALIDATED` the echo filter did not claim is worth a line
+/// saying someone else changed the settings. It is re-read either way (§1.2);
+/// the line has to be true.
+///
+/// So not when it may be our own doing: a scalar write too big for a
+/// `PARAM_CHANGED` falls back to an invalidation on our own path
+/// (`notification_protocol_v2_spec.md` 3.4), and `UNKNOWN` is a merge that can
+/// include our writes. A preset load and a factory reset have their own
+/// messages.
+pub fn bulk_is_news(
+    kind: TransportKind,
+    session: Option<u16>,
+    source: Source,
+    origin: Option<u16>,
+) -> bool {
+    !matches!(source, Source::Preset | Source::Factory | Source::Unknown)
+        && !dspi_transport::is_own_write(kind, source.raw(), origin, session, false)
+}
+
+/// The extension channel in a few words for the title bar: empty on stock
+/// firmware.
+pub fn ext_label(ext: &ExtState) -> String {
+    if ext.supported.is_empty() {
+        return String::new();
+    }
+    let names: Vec<String> = ext
+        .supported
+        .iter()
+        .map(|&id| match id {
+            ext_ids::EXT_CROSSFEED_PAIR_MAP => "xfeed".to_owned(),
+            ext_ids::EXT_CORE_VREG => "vreg".to_owned(),
+            ext_ids::EXT_NOTIFY_FEATURES => "notify".to_owned(),
+            other => format!("0x{other:04X}"),
+        })
+        .collect();
+    format!("ext {}", names.join(" "))
+}
+
+/// One look at the reconnect in progress.
+pub enum Reconnect {
+    /// Not back yet.
+    Waiting,
+    /// It is back: adopt this.
+    Connected(Box<Connected>),
+    /// Stop trying: a person has to do something first.
+    GaveUp(OpenError),
+}
+
+type Opener = dyn Fn() -> Result<Connected, OpenError> + Send + Sync;
+
+/// Tries to get a lost device back, on a thread of its own, at a sensible pace.
+pub struct Reconnector {
+    open: Arc<Opener>,
+    wait: Duration,
+    max_wait: Duration,
+    next_try: Option<Instant>,
+    running: Option<Receiver<Result<Connected, OpenError>>>,
+}
+
+impl Reconnector {
+    /// For `target`: nobody is asked for a PIN, since nobody may be looking.
+    pub fn new(target: Target) -> Self {
+        let max_wait = if matches!(target, Target::Link(_)) {
+            RETRY_LINK_MAX
+        } else {
+            RETRY_FIRST
+        };
+        Self::with_opener(Arc::new(move || target.connect(&no_prompt)), max_wait)
+    }
+
+    fn with_opener(open: Arc<Opener>, max_wait: Duration) -> Self {
+        Self {
+            open,
+            wait: RETRY_FIRST,
+            max_wait,
+            next_try: None,
+            running: None,
+        }
+    }
+
+    /// Call as often as you like: it never blocks. The first attempt goes out
+    /// at once, later ones as the back-off allows.
+    pub fn poll(&mut self, now: Instant) -> Reconnect {
+        if let Some(rx) = &self.running {
+            match rx.try_recv() {
+                Err(TryRecvError::Empty) => return Reconnect::Waiting,
+                Ok(Ok(c)) => {
+                    self.running = None;
+                    self.wait = RETRY_FIRST;
+                    self.next_try = None;
+                    return Reconnect::Connected(Box::new(c));
+                }
+                Ok(Err(e)) if e.is_final() => {
+                    self.running = None;
+                    return Reconnect::GaveUp(e);
+                }
+                // A failed attempt, or a thread that died: try again later.
+                Ok(Err(_)) | Err(TryRecvError::Disconnected) => {
+                    self.running = None;
+                    self.next_try = now.checked_add(self.wait);
+                    self.wait = self.wait.saturating_mul(2).min(self.max_wait);
+                    return Reconnect::Waiting;
+                }
+            }
+        }
+        if self.next_try.is_some_and(|t| now < t) {
+            return Reconnect::Waiting;
+        }
+        let (tx, rx) = mpsc::channel();
+        let open = Arc::clone(&self.open);
+        let started = std::thread::Builder::new()
+            .name("dspi-reconnect".into())
+            .spawn(move || {
+                // The receiver may be gone: a late result then closes itself.
+                let _ = tx.send(open());
+            });
+        match started {
+            Ok(_) => self.running = Some(rx),
+            Err(_) => self.next_try = now.checked_add(self.wait),
+        }
+        Reconnect::Waiting
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_r1 {
+    use super::*;
+    use dspi_link::fakehub::{Auth, FakeHub, HubConfig};
+    use dspi_session::Notifications;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::thread::sleep;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("dspi-r1-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("tokens.toml")
+    }
+
+    fn link(hub: &FakeHub, tokens: PathBuf) -> LinkTarget {
+        let mut l = LinkTarget::parse(&hub.addr().to_string()).unwrap();
+        l.tokens = Some(tokens);
+        l
+    }
+
+    fn pin_hub() -> FakeHub {
+        FakeHub::start(HubConfig {
+            auth: Auth::Window("1234".into()),
+            ..HubConfig::default()
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn wp_r1_the_demo_device_connects_with_its_extensions() {
+        let c = Target::Demo.connect(&no_prompt).unwrap();
+        assert!(c.state.connected);
+        assert!(!c.ext.supported.is_empty());
+        assert!(ext_label(&c.ext).starts_with("ext "), "{:?}", c.ext);
+    }
+
+    #[test]
+    fn wp_r1_a_hub_device_opens_probes_and_reads_single_shot() {
+        let hub = FakeHub::start(HubConfig::default()).unwrap();
+        let l = link(&hub, scratch("open"));
+        let c = Target::Link(l).connect(&no_prompt).unwrap();
+        assert!(!c.state.caps.serial.is_empty());
+        let chunked = hub
+            .log()
+            .iter()
+            .filter(|e| e.2 == dspi_link::fakehub::req::GET_ALL_PARAMS_CHUNK)
+            .count();
+        assert_eq!(chunked, 0, "a hub is never asked for chunks (spec 8.2)");
+    }
+
+    #[test]
+    fn wp_r1_a_bridge_hub_that_blocks_chunks_still_opens() {
+        let hub = FakeHub::start(HubConfig::bridge()).unwrap();
+        let mut l = link(&hub, scratch("bridge"));
+        l.pin = bridge_pin();
+        Target::Link(l).connect(&no_prompt).unwrap();
+    }
+
+    fn bridge_pin() -> Option<String> {
+        match HubConfig::bridge().auth {
+            Auth::Fixed(pin) | Auth::Window(pin) => Some(pin),
+            Auth::None => None,
+        }
+    }
+
+    #[test]
+    fn wp_r1_closing_the_session_ends_the_hub_session() {
+        let hub = FakeHub::start(HubConfig::default()).unwrap();
+        let c = Target::Link(link(&hub, scratch("close")))
+            .connect(&no_prompt)
+            .unwrap();
+        assert_eq!(hub.sessions().len(), 1);
+        drop(c);
+        for _ in 0..100 {
+            if hub.sessions().is_empty() {
+                return;
+            }
+            sleep(Duration::from_millis(20));
+        }
+        panic!("the hub still lists {:?}", hub.sessions());
+    }
+
+    #[test]
+    fn wp_r1_a_pin_hub_with_no_way_to_ask_says_so_and_is_final() {
+        let hub = pin_hub();
+        let Err(e) = Target::Link(link(&hub, scratch("nopin"))).open(&no_prompt) else {
+            panic!("opened without a PIN");
+        };
+        assert!(matches!(e, OpenError::NeedsPin { .. }), "{e}");
+        assert!(e.is_final());
+    }
+
+    #[test]
+    fn wp_r1_a_wrong_pin_names_the_cause() {
+        let hub = pin_hub();
+        let prompt = |_: &str, _: &str| Some("0000".to_string());
+        let Err(e) = Target::Link(link(&hub, scratch("wrong"))).open(&prompt) else {
+            panic!("a wrong PIN was accepted");
+        };
+        assert!(matches!(e, OpenError::PinRefused { .. }), "{e}");
+        assert!(e.is_final());
+    }
+
+    #[test]
+    fn wp_r1_pairing_stores_a_token_that_replaces_the_pin_next_time() {
+        let hub = pin_hub();
+        let tokens = scratch("token");
+        let asked = AtomicUsize::new(0);
+        let prompt = |_: &str, _: &str| {
+            asked.fetch_add(1, Ordering::SeqCst);
+            Some("1234".to_string())
+        };
+        let target = Target::Link(link(&hub, tokens.clone()));
+        drop(target.open(&prompt).unwrap());
+        assert_eq!(asked.load(Ordering::SeqCst), 1);
+        assert!(tokens.exists(), "the token is on disk");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&tokens).unwrap().permissions().mode();
+            assert_eq!(mode & 0o077, 0, "only its owner reads the token file");
+        }
+        drop(target.open(&prompt).unwrap());
+        assert_eq!(asked.load(Ordering::SeqCst), 1, "the token was enough");
+    }
+
+    #[test]
+    fn wp_r1_choose_prefers_exact_then_partial_and_refuses_to_guess() {
+        let items = ["DSPi Control", "DSPi Control 2", "Other"];
+        let pick = |w: Option<&str>| {
+            choose(
+                &items,
+                w,
+                |i| vec![*i],
+                |i| (*i).to_string(),
+                "ports",
+                "--midi",
+            )
+            .copied()
+        };
+        assert_eq!(pick(Some("dspi control")).unwrap(), "DSPi Control");
+        assert_eq!(pick(Some("control 2")).unwrap(), "DSPi Control 2");
+        assert!(matches!(
+            pick(Some("control")),
+            Err(OpenError::Ambiguous { .. })
+        ));
+        assert!(matches!(
+            pick(Some("nothing")),
+            Err(OpenError::Transport(TransportError::SerialNotFound(_)))
+        ));
+        assert!(matches!(pick(None), Err(OpenError::Ambiguous { .. })));
+        assert!(matches!(
+            choose(
+                &[] as &[&str],
+                None,
+                |i| vec![*i],
+                |i| i.to_string(),
+                "p",
+                "f"
+            ),
+            Err(OpenError::Transport(TransportError::NotFound))
+        ));
+    }
+
+    #[test]
+    fn wp_r1_a_target_is_pinned_to_the_device_it_found() {
+        let usb = Target::Usb { serial: None }.pinned("ABC");
+        assert_eq!(
+            usb,
+            Target::Usb {
+                serial: Some("ABC".into())
+            }
+        );
+        // An empty serial pins nothing.
+        assert_eq!(
+            Target::Usb { serial: None }.pinned(""),
+            Target::Usb { serial: None }
+        );
+        let midi = Target::Midi { port: None };
+        assert_eq!(midi.pinned("ABC"), midi, "a port name is not stable");
+        let Target::Link(l) = Target::Link(LinkTarget::parse("hub").unwrap()).pinned("ABC") else {
+            panic!("still a hub");
+        };
+        assert_eq!(l.device.as_deref(), Some("ABC"));
+        assert_eq!(l.port, dspi_link::DEFAULT_PORT);
+    }
+
+    /// The table of §1.2, as words. `HOST_SET` and `BULK_SET` only mean this
+    /// host on USB.
+    #[test]
+    fn wp_r1_words_follow_the_link_not_the_source_alone() {
+        use TransportKind as K;
+        // USB: HOST_SET is ours.
+        assert_eq!(
+            attribution(K::Usb, None, Source::HostSet, None),
+            "changed by this host"
+        );
+        assert_eq!(
+            attribution(K::Usb, None, Source::BulkSet, None),
+            "changed elsewhere",
+            "a BULK_SET with no write of ours pending is not ours"
+        );
+        assert_eq!(
+            attribution(K::Usb, None, Source::Midi, None),
+            "changed over MIDI"
+        );
+        // MIDI: our writes notify as MIDI; HOST_SET is another host's.
+        assert_eq!(
+            attribution(K::Midi, None, Source::Midi, None),
+            "changed by this host"
+        );
+        assert_eq!(
+            attribution(K::Midi, None, Source::HostSet, None),
+            "changed over USB"
+        );
+        // Link: only the origin tells clients apart.
+        assert_eq!(
+            attribution(K::Link, Some(7), Source::HostSet, Some(7)),
+            "changed by this host"
+        );
+        assert_eq!(
+            attribution(K::Link, Some(7), Source::HostSet, Some(8)),
+            "changed by another Link client"
+        );
+        assert_eq!(
+            attribution(K::Link, Some(7), Source::HostSet, Some(0)),
+            "changed elsewhere",
+            "origin 0 is the device's own change, never this host"
+        );
+        assert_eq!(
+            attribution(K::Link, Some(7), Source::Gpio, Some(0)),
+            Source::Gpio.describe()
+        );
+    }
+
+    #[test]
+    fn wp_r1_a_bulk_line_is_only_said_when_it_cannot_be_our_own_doing() {
+        use TransportKind as K;
+        let news = |k, s, src, o| bulk_is_news(k, s, src, o);
+        assert!(news(K::Usb, None, Source::BulkSet, None));
+        assert!(news(K::Usb, None, Source::Midi, None));
+        assert!(news(K::Midi, None, Source::HostSet, None));
+        assert!(news(K::Link, Some(7), Source::HostSet, Some(8)));
+        // Our own path: a big scalar write falls back to an invalidation.
+        assert!(!news(K::Usb, None, Source::HostSet, None));
+        assert!(!news(K::Midi, None, Source::Midi, None));
+        assert!(!news(K::Link, Some(7), Source::HostSet, Some(7)));
+        // A merge may hold ours; these two report themselves.
+        for quiet in [Source::Unknown, Source::Preset, Source::Factory] {
+            assert!(!news(K::Usb, None, quiet, None), "{quiet:?}");
+        }
+    }
+
+    #[test]
+    fn wp_r1_the_ext_label_names_what_the_firmware_lists() {
+        assert_eq!(ext_label(&ExtState::default()), "");
+        let ext = ExtState {
+            supported: vec![
+                ext_ids::EXT_CROSSFEED_PAIR_MAP,
+                ext_ids::EXT_CORE_VREG,
+                ext_ids::EXT_NOTIFY_FEATURES,
+                0x8001,
+            ],
+            ..ExtState::default()
+        };
+        assert_eq!(ext_label(&ext), "ext xfeed vreg notify 0x8001");
+    }
+
+    fn poll_until_connected(r: &mut Reconnector) -> Box<Connected> {
+        for _ in 0..500 {
+            match r.poll(Instant::now()) {
+                Reconnect::Connected(c) => return c,
+                Reconnect::GaveUp(e) => panic!("gave up: {e}"),
+                Reconnect::Waiting => sleep(Duration::from_millis(10)),
+            }
+        }
+        panic!("never connected");
+    }
+
+    #[test]
+    fn wp_r1_reconnect_retries_at_a_pace_until_the_device_is_back() {
+        let tries = Arc::new(AtomicUsize::new(0));
+        let seen = Arc::clone(&tries);
+        let opener: Arc<Opener> = Arc::new(move || {
+            if seen.fetch_add(1, Ordering::SeqCst) == 0 {
+                Err(TransportError::NotFound.into())
+            } else {
+                Target::Demo.connect(&no_prompt)
+            }
+        });
+        let mut r = Reconnector::with_opener(opener, RETRY_FIRST);
+        let t0 = Instant::now();
+        // The first attempt goes out at once and fails.
+        assert!(matches!(r.poll(t0), Reconnect::Waiting));
+        while tries.load(Ordering::SeqCst) == 0 {
+            sleep(Duration::from_millis(5));
+        }
+        sleep(Duration::from_millis(30));
+        assert!(matches!(r.poll(t0), Reconnect::Waiting));
+        // Nothing more until the back-off has passed.
+        for _ in 0..5 {
+            assert!(matches!(r.poll(t0), Reconnect::Waiting));
+        }
+        sleep(Duration::from_millis(30));
+        assert_eq!(tries.load(Ordering::SeqCst), 1);
+        // Then it comes back.
+        let later = t0 + RETRY_FIRST;
+        assert!(matches!(r.poll(later), Reconnect::Waiting));
+        for _ in 0..500 {
+            if let Reconnect::Connected(_) = r.poll(later) {
+                assert_eq!(tries.load(Ordering::SeqCst), 2);
+                return;
+            }
+            sleep(Duration::from_millis(10));
+        }
+        panic!("never connected");
+    }
+
+    #[test]
+    fn wp_r1_reconnect_gives_up_when_a_person_is_needed() {
+        let opener: Arc<Opener> = Arc::new(|| {
+            Err(OpenError::NeedsPin {
+                hub: "Hub".into(),
+                pin_source: "window".into(),
+            })
+        });
+        let mut r = Reconnector::with_opener(opener, RETRY_FIRST);
+        for _ in 0..500 {
+            match r.poll(Instant::now()) {
+                Reconnect::GaveUp(e) => {
+                    assert!(e.to_string().contains("needs pairing"), "{e}");
+                    return;
+                }
+                Reconnect::Connected(_) => panic!("connected"),
+                Reconnect::Waiting => sleep(Duration::from_millis(10)),
+            }
+        }
+        panic!("never gave up");
+    }
+
+    #[test]
+    fn wp_r1_a_hub_that_restarts_is_reconnected_with_its_token() {
+        let hub = pin_hub();
+        let tokens = scratch("restart");
+        let target = Target::Link(link(&hub, tokens));
+        let prompt = |_: &str, _: &str| Some("1234".to_string());
+        let c = target.connect(&prompt).unwrap();
+        let serial = c.state.caps.serial.clone();
+        let mut session = c.session;
+        let source = session
+            .with_transport(|t| Ok(t.notifications()))
+            .unwrap()
+            .unwrap();
+        let notes = Notifications::start(source).unwrap();
+
+        hub.close_all(1001);
+        for _ in 0..200 {
+            if notes.is_disconnected() {
+                break;
+            }
+            sleep(Duration::from_millis(10));
+        }
+        assert!(notes.is_disconnected(), "the reader saw the session end");
+
+        let mut r = Reconnector::new(target.pinned(&serial));
+        let back = poll_until_connected(&mut r);
+        assert_eq!(back.state.caps.serial, serial);
+    }
+
+    #[test]
+    fn wp_r1_offline_answers_disconnected_without_io() {
+        let mut t = Offline::new("ABC");
+        assert_eq!(t.descriptor().serial, "ABC");
+        assert!(matches!(
+            t.control_in(1, 0, 4),
+            Err(TransportError::Disconnected)
+        ));
+        assert!(matches!(
+            t.control_out(1, 0, &[0]),
+            Err(TransportError::Disconnected)
+        ));
+        assert!(t.notifications().is_none());
+    }
+
+    #[test]
+    fn wp_r1_tokens_survive_a_second_hub_and_a_bad_file() {
+        let path = scratch("store");
+        let s = TokenStore::at(path.clone());
+        assert_eq!(s.get("a"), None);
+        s.put("a", "one").unwrap();
+        s.put("b", "two").unwrap();
+        assert_eq!(s.get("a").as_deref(), Some("one"));
+        assert_eq!(s.get("b").as_deref(), Some("two"));
+        std::fs::write(&path, "not [ toml").unwrap();
+        assert_eq!(s.get("a"), None, "a bad file reads as no tokens");
+    }
+}
