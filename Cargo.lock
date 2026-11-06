@@ -516,6 +516,8 @@ dependencies = [
  "dspi-core",
  "dspi-proto",
  "log",
+ "proptest",
+ "serde_json",
 ]
 
 [[package]]

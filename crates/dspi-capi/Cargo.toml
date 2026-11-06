@@ -20,6 +20,7 @@ crate-type = ["cdylib", "staticlib"]
 [dependencies]
 dspi-core.workspace = true
 log.workspace = true
+serde_json.workspace = true
 # -- WP Q1 --
 # -- WP Q2a --
 # -- WP Q2b --
@@ -36,6 +37,8 @@ cbindgen = "0.29"
 # The constants test checks the header's literals against the generated ones.
 dspi-proto.workspace = true
 # -- WP Q2a --
+# PLAN section 1.9: the C ABI's null and short-buffer property tests.
+proptest = "1"
 # -- WP Q2b --
 
 [build-dependencies]
