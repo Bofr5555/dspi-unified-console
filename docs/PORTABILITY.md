@@ -5,51 +5,45 @@ DSPi-Terminal, ported so that one code base builds natively on Linux,
 Windows and macOS. It also covers how the two came
 together in this repository.
 
+**Two periods.** The port was done on the old desktop core (`dspi-core-linux`:
+rusb, libusb, `dspi_core.dll`). Then the core merge
+([`core-merge/PLAN.md`](core-merge/PLAN.md)) replaced that core and deleted it.
+Summary and sections 1, 6, 7 and 11 describe the state after the merge.
+Sections 2, 4 (the results table), 5, 8, 9 and 10 are the record of that earlier
+work: **their results were not repeated on the merged core unless section 4 says
+so.** The root [`README.md`](../README.md) has the current layout and builds.
+
 Ground rules for the work:
 - the Linux and Windows builds and tests ran in podman containers;
 - the macOS ones ran in the macOS VM (section 9);
 - nothing was pushed by me;
 - the only device touched was the DSPi passed through to the macOS VM,
-  and that was read-only (section 9).
+  and that was read-only (section 9), on the old core and the Terminal stack.
 
-All Windows checks ran under Wine, so the USB path on real Windows (WinUSB)
-is **not verified on hardware**.
+The USB path on real Windows (WinUSB) is **not verified on hardware**, on either
+core. On the merged core no real device has been used on any platform.
 
 ## Summary
 
-- **Desktop app.** The app is Qt and QML, built with CMake. It was Qt 5.15
-  only; it now builds against **Qt 6 (preferred) or Qt 5.15**, which took
-  small, mechanical changes. The Rust core `dspi-core` uses rusb/libusb and
-  a cbindgen C ABI.
-- **Windows x86_64.** The app is cross-compiled from Linux with Fedora's
-  MinGW Qt 6. The core is built for `x86_64-pc-windows-gnu` and ships as
-  `dspi_core.dll`. Under Wine 11:
-  - the app starts;
-  - it shows the first-launch wizard;
-  - after "Skip Setup" it shows the no-device state ("No Devices").
-
-  The deliverables are a runnable folder, a zip and a per-user NSIS
-  installer. The installer was also tested under Wine.
-- **MSVC.** The core and the terminal client build for
-  `x86_64-pc-windows-msvc` from Linux with cargo-xwin, and their tests pass
-  under Wine. A full MSVC Qt build needs Qt's MSVC binaries, which in
-  practice means a Windows runner (see "MSVC Qt builds" below).
-- **DSPi-Terminal.**
-  - It builds and runs on Linux, Windows GNU and Windows MSVC; all 1297
-    tests pass on Linux and under Wine.
-  - Its protocol headers are refreshed to Bofr5555/DSPi `bofr-main`
-    `af001ec` (v1.1.6 final plus the extension channel).
-  - It gained `dspi ext list | xfeed-map | vreg`.
-- **One repository.** Everything now lives in this monorepo, with history,
-  in one Cargo workspace. On Linux, 1378 tests pass.
-- **macOS (phase 2, section 9).**
-  - A universal (x86_64 + arm64) `DSPi Console.app` and `.dmg`, built
-    with Qt 6.11.2.
-  - A full native menu bar and ⌘ shortcut labels.
-  - All 1378 tests pass on macOS.
-  - In the Intel VM the app connected to the DSPi and read its state.
-    `dspi` read the extension channel there (K340 pair map, core
-    voltage). No writes were made.
+- **Desktop app.** Qt and QML, built with CMake, against **Qt 6 (preferred) or
+  Qt 5.15**. It links the C ABI crate `dspi-capi` (library `dspi_capi`, header
+  `dspi_core.h`) over `dspi-core`. There is no libusb any more: USB is nusb.
+- **Windows x86_64.** Cross-compiled from Linux with Fedora's MinGW Qt 6. The core
+  ships as `dspi_capi.dll`. The deliverables are a runnable folder, a zip and a
+  per-user NSIS installer. All are built on the merged tree; none has been started
+  on it (the Wine and Windows 11 runs in section 10 were on the old core).
+- **MSVC.** `dspi_capi.dll` and `dspi.exe` build for `x86_64-pc-windows-msvc` from
+  Linux with cargo-xwin. **The Qt app has not been linked with MSVC** (see "MSVC Qt
+  builds" below).
+- **macOS.** A universal app and `.dmg` were built and run on the old core
+  (section 9). `build-macos.sh` is updated for `dspi_capi` but **has not been run on
+  the merged tree**.
+- **Terminal.** Builds for Linux, Windows GNU and Windows MSVC. On the merged tree
+  it reaches USB, the demo device, USB MIDI and DSPi Link hubs, and reconnects by
+  itself.
+- **One repository, one core.** Everything lives in this monorepo, with history, in
+  one Cargo workspace. Protocol constants are generated from Bofr5555/DSPi
+  `bofr-main` `04122d3` for every client.
 
 ## 1. What the desktop app is built with
 
@@ -58,8 +52,8 @@ is **not verified on hardware**.
 | GUI | Qt Quick / QML (about 150 QML files) plus 17 C++ files: a bridge, custom QQuickItems for plots, and controllers. `QApplication` with Fusion as the fallback style, plus a custom `qml/style` (ToolTip). |
 | Qt | was 5.15 only; now 6.x (tested 6.11.2) or 5.15 (tested 5.15.18) |
 | Build | CMake (AUTOMOC/AUTORCC); resources in `qt/resources.qrc` |
-| Core | Rust crate `dspi-core` (`crates/dspi-core-linux/`): `staticlib` and `cdylib`, 150 `extern "C"` functions, header from cbindgen |
-| USB | rusb 0.9 over libusb. Linux uses the system libusb; Windows and macOS now build libusb from source into the core (rusb `vendored`). |
+| Core | Rust crate `dspi-capi` (`crates/dspi-capi/`, over `crates/dspi-core/`): `staticlib` and `cdylib`, 167 `extern "C"` functions, header `include/dspi_core.h` from cbindgen in its `build.rs`. Linked statically on Linux and macOS; a DLL on Windows. |
+| USB | nusb 0.2, pure Rust over usbfs, WinUSB and IOKit. No C library and no driver step. |
 | Optional | KDE KWindowSystem (blur and shadow): KF5 with Qt 5, KF6 with Qt 6 |
 
 ### 1.1 Linux-specific parts (inventory)
@@ -81,6 +75,10 @@ is **not verified on hardware**.
 | macOS code already upstream: NSVisualEffectView, CoreText text, AppKit system colours (`MacSystemColors.mm`), `getfsstat` | `main.cpp`, `*.mm` | built in phase 2 |
 
 ## 2. What changed (`portable` commits, now in this repository's history)
+
+*On the old core. Items 1, 4, 7 and 8 name things the merge has since replaced: the
+library is `dspi_capi`, rusb and libusb are gone, and wIndex is handled in
+`dspi_transport::usb`.*
 
 1. **Build: say where the core is, and link it as a DLL on Windows.**
    - CMake cache variables `DSPI_CORE_DIR`, `DSPI_CARGO_TARGET_DIR` and
@@ -167,9 +165,34 @@ Monorepo commits on top:
 
 ## 4. Build results (2026-11-06)
 
-Paths below are in the scratch directory
-`/tmp/claude-1000/-home-bofr-prog-dspi-k340-amplifier/8d838519-065f-490c-bea1-470a339f3928/scratchpad/qtport/`
-(`Q`) unless absolute.
+### On the merged tree (WP Q3, `wp/Q3` at `3c88309`)
+
+Linux containers, through `ci/check.sh`. No device.
+
+| Step | Result |
+|---|---|
+| `--crate dspi-capi --crate dspi-core --crate dspi-tui --crate dspi-ffi` | fmt and clippy clean, 1202 tests passed |
+| `--step qt`, `--step qt5` | The app builds on Qt 6 and Qt 5.15 |
+| `--step qt-offscreen` | Qt 6, the real app with its smoke driver on the demo device: 127 checks, 0 failures, 0 QML errors |
+| `--step qt5-offscreen` | The same on Qt 5.15: 110 checks, 0 failures, 0 QML errors |
+| `--step qt-windows` | MinGW Qt 6 app, folder (580 files, 127 MB), zip (50 MB), installer (34 MB). Built, not started. |
+| `--step windows-msvc` | `dspi_capi.dll`, `dspi.exe` (dev profile). Built, not run. |
+
+The whole workspace's test step last ran at the wave 3 merge (`d190535`): 2182
+passed. `--step android` and `--step proptest` passed in the same round.
+
+**The smoke driver does not reach** the spectrum analyser, control surfaces, signal
+generator or buffer statistics, past their no-device paths: `FakeDevice` does not
+model them, and the driver prints `NOT EXERCISED`. The Qt code for these is compiled
+against the new core and has not run with real data on it.
+
+**Not run on the merged tree:** `build-macos.sh`, any Qt link with MSVC,
+`build-release.sh` (Linux packages), the `dspi-windows` image's route to
+`build-windows.sh`, Wine, real Windows, and any real device, hub or MIDI port.
+
+### On the old core
+
+Paths below were in a session scratch directory (`Q`), which has not been kept.
 
 | Target | Result | Artifact |
 |---|---|---|
@@ -196,7 +219,8 @@ that.
 ### MSVC Qt builds
 
 - **Core and terminal:** `cargo xwin build --target x86_64-pc-windows-msvc`
-  works in a Linux container. The Microsoft CRT and SDK come from
+  works in a Linux container (`ci/check.sh --step windows-msvc`). The Microsoft CRT
+  and SDK come from
   Microsoft under the licence the owner accepted.
 - **The Qt app with MSVC, without Windows,** is possible in principle but
   was not attempted. It would need:
@@ -206,31 +230,27 @@ that.
     (`QT_HOST_PATH`).
 
   That is fragile and unsupported by Qt.
-- **On a hosted `windows-2022` runner** it is routine:
+- **On a hosted `windows-2022` runner** it should be routine:
   `install-qt-action` (Qt's official MSVC build), `cargo build -p
-  dspi-core`, CMake with Ninja under the MSVC environment, `windeployqt`,
-  and optionally `signtool`. See `ci/github-actions-build.yml`. The CMake
-  file already links `dspi_core.dll.lib` when `MSVC` is set.
+  dspi-capi`, CMake with Ninja under the MSVC environment, `windeployqt`,
+  and optionally `signtool`. See `ci/github-actions-build.yml`, a draft that has
+  never run. The CMake file links `dspi_capi.dll.lib` when `MSVC` is set.
 - **Not compiled with MSVC yet, so expect small fixes:** the desktop C++
   sources have only been compiled by GCC (MinGW and Linux). The code was
   kept to standard C++17 and Qt, with the POSIX calls gated.
 
 ### USB on Windows
 
-- The desktop core uses libusb's WinUSB backend (vendored libusb 1.0.2x).
+- Both apps now use the same code: `dspi_transport::usb`, nusb over WinUSB directly.
   It does no driver installation and assumes no Zadig.
 - The firmware's MS OS 2.0 descriptors (vendor code 0x01, a function
   subset for interface 2) make Windows bind WinUSB to interface 2 on first
   plug-in. The audio interfaces stay with `usbaudio2.sys`.
-- The core claims interface 2. Control transfers now always carry wIndex
-  low byte = 2 on Windows. Notifications are read on bulk IN 0x83 on the
-  same interface.
-- WinUSB is exclusive per interface. While the C#/WinUI console or `dspi`
-  has the device open, this app sees it as inaccessible and says so.
-- The terminal uses nusb (pure Rust), WinUSB directly, interface 2,
-  wIndex 2, and transfers capped at 4 KB, so it sends chunked.
-- **Unverified on real Windows hardware** for both apps. The first test
-  with a DSPi should:
+- The transport claims interface 2 and sends wIndex 2. Transfers are capped at
+  4 KB, so bulk goes chunked.
+- WinUSB is exclusive per interface. While another console has the device open,
+  it cannot be opened here.
+- **Unverified on real Windows hardware.** The first test with a DSPi should:
   1. check that Device Manager shows "DSPi" under Universal Serial Bus
      devices (WinUSB);
   2. connect, read the state, change a value;
@@ -238,6 +258,11 @@ that.
   4. run a firmware update.
 
 ## 5. DSPi-Terminal
+
+*The port as it was done. Since then the crates have grown into the shared core
+(README, "The core"): `--demo`, `--midi` and `--link`, reconnect, and an ext probe on
+connect. On Linux the default build now needs ALSA headers for midir;
+`--no-default-features` drops that.*
 
 **Source.** Repository `WeebLabs/DSPi-Terminal`, port branch `portable`
 based on `main` @ `8389b20`, now `apps/terminal/` plus `crates/` here.
@@ -276,7 +301,8 @@ builds.
 **Protocol pin.**
 - **Before:** WeebLabs/DSPi `release/v1.1.6` @ `557bce7` (1.1.6 beta 4).
 - **After:** Bofr5555/DSPi `bofr-main` @ `af001ec` (1.1.6 final plus the
-  extension channel). Wire format V32, 247 opcodes, CS caps v22.
+  extension channel). Wire format V32, 247 opcodes, CS caps v22. Now `04122d3`,
+  which adds `EXT_NOTIFY_FEATURES` (`crates/dspi-proto/firmware/PROVENANCE.toml`).
 - **Opcodes 0x54–0x57** moved from the legacy channel gain/mute to
   source/device names. They are probed with a 32-byte read, so older
   firmware reads as "absent".
@@ -312,7 +338,7 @@ none has run against a K340 yet.
 `Q/mono/import.sh`, and it ran in the build container. Mapping:
 
 - **DSPi-Console-Linux** (`portable` = `main` `4683a2c` plus 8 commits):
-  - `core/` → `crates/dspi-core-linux/`;
+  - `core/` → `crates/dspi-core-linux/` (deleted since, by the merge);
   - everything else → `apps/desktop/`.
 - **DSPi-Terminal** (`portable` = `main` `8389b20` plus 5 commits):
   - `crates/dspi/` → `apps/terminal/`;
@@ -327,43 +353,45 @@ none has run against a K340 yet.
 
 **Workspace.**
 - The root `Cargo.toml` is Terminal's, grown to all members.
-- The core keeps its package name `dspi-core`; the directory says
-  `-linux` to tell it from the Terminal stack.
-- The C header is generated into `crates/dspi-core-linux/include/`.
+- The C header is generated into `crates/dspi-capi/include/` (gitignored).
 
-**Two protocol stacks for now.**
-- The desktop core's constants are still hand-transcribed at 1.1.6 beta 4.
-  For example, it keeps the 0x54–0x57 channel gain/mute constants, which
-  nothing calls.
-- The Terminal stack is generated from `bofr-main`.
-- The intended end state, per `RUST-CORE-CONSOLIDATION.md`:
-  1. move the desktop's C ABI onto `dspi-proto` / `dspi-session` (S9 there);
-  2. then delete `crates/dspi-core-linux`.
+**One protocol stack.** This section used to describe two. Since the merge:
+- every client gets its constants from `dspi-proto`, generated from `bofr-main`;
+- the desktop's C ABI runs over `dspi-core`, on `dspi-session`;
+- `crates/dspi-core-linux` is deleted. `git show d190535` still has it;
+- the library is `dspi_capi`, not `dspi_core`: that name would collide in
+  `target/` with `dspi-core`'s own library. The header keeps the name `dspi_core.h`.
 
 ## 7. Remaining gaps and open questions
 
-1. **Licences.**
-   - DSPi-Console-Linux has no licence file upstream.
+1. **Licences. Nothing is final.** The repository is private and carries GPL-3.0
+   as the owner's working assumption; final terms are open between the owner and
+   Weeb Labs (README, "Licensing").
+   - DSPi-Console-Linux has no licence file upstream. The Android console's
+     `NOTICE.md` records "MIT per Weeb Labs, file pending".
    - DSPi-Terminal states GPL-3.0-or-later but has no LICENSE file.
-   - dspi-link's terms need to be confirmed (its old workspace said
+   - `dspi-link`'s manifest has no licence field (its old workspace said
      `UNLICENSED`).
-
-   These need settling before the repository is published.
-2. **Hardware.** No Windows (or Linux) USB run of either app yet. See the
-   checklist in 4.
-3. **MSVC Qt build:** only on a Windows runner (or a fragile cross setup).
-4. **Linux release packaging** still targets Qt 5 (Ubuntu 22.04
+2. **Hardware.** No run of the merged core on any real device, hub or MIDI port.
+   See the checklist in 4.
+3. **MSVC Qt build:** only on a Windows runner (or a fragile cross setup). Never
+   linked.
+4. **macOS:** `build-macos.sh` not run on the merged tree.
+5. **The demo device** has no spectrum analyser, control surfaces, signal generator
+   or buffer statistics, so Qt's paths for them have not run on the new core. These
+   need a device.
+6. **Linux release packaging** still targets Qt 5 (Ubuntu 22.04
    AppImage/.deb, Fedora 42 .rpm). Moving it to Qt 6 means a newer base
    (Ubuntu 24.04), which raises the glibc floor.
-5. **AUR `PKGBUILD`** builds from the upstream DSPi-Console-Linux
+7. **AUR `PKGBUILD`** builds from the upstream DSPi-Console-Linux
    repository's layout. It needs a new source URL and paths if the
    monorepo becomes the source.
-6. The desktop core's protocol constants are not generated from
-   `bofr-main` (see 6).
-7. Windows: shadow, Snap Layouts, signing (see 3).
-8. `Qt.labs.settings` deprecation on Qt 6.11 (runtime note only).
+8. **Build images:** `ci/run.sh`'s images rest on `dspi-qtport:4` and
+   `dspi-termport-xwin:1`, whose Containerfiles are not in this repository.
+9. Windows: shadow, Snap Layouts, signing (see 3).
+10. `Qt.labs.settings` deprecation on Qt 6.11 (runtime note only).
 
-## 8. macOS effort (estimate made before phase 2)
+## 8. macOS effort (estimate made before phase 2; on the old core)
 
 **Already present upstream.**
 - Full macOS code paths: native titlebar and vibrancy, CoreText text,
@@ -390,7 +418,7 @@ none has run against a K340 yet.
 - Signing and notarisation need an Apple developer ID; that is the owner's
   call.
 
-## 9. macOS phase 2 (done, 2026-11-06)
+## 9. macOS phase 2 (done, 2026-11-06, on the old core)
 
 The work ran in the Intel macOS 26.7.2 VM (`ssh macvm`), one heavy job at a
 time. The code moved between the host and the VM as git bundles.
@@ -450,7 +478,7 @@ the VM: `DSPi-Console-1.1.6-beta4-macos.dmg` and the universal `dspi`.
   entitlement for a non-sandboxed app). A sandboxed or App Store build
   would need the USB entitlement.
 
-## 10. Windows 11 run (real Windows, 2026-11-06)
+## 10. Windows 11 run (real Windows, 2026-11-06, on the old core)
 
 Tested in a Windows 11 Pro VM (build 26300) with no GPU: Qt renders on
 WARP, which is Direct3D 11 in software. The screen is 1280 × 800 at 100 %.
@@ -513,3 +541,41 @@ artifacts were rebuilt from `main` in the containers.
 - A drop shadow or border for the frameless tool windows.
 - Signing.
 
+## 11. Parity after the merge
+
+The full survey is `~/prog/dspi-mobile/docs/FEATURE-PARITY.md`. It was written
+before the merge, by reading code, and sits outside this repository; moving it here
+as `docs/PARITY.md` is client plan WP XC0 (`docs/core-merge/PLAN-CLIENTS.md`). Its
+macOS, iOS, Android and Windows C# columns still stand: **none of those apps is on
+this core yet.** Its UI-only rows for Qt and the Terminal also stand (accessibility,
+localisation, tray, RTA overlay in the TUI and so on).
+
+This table is what the merge changed. Row numbers are the survey's. "Core" means
+`dspi-core` or, for the Terminal, the session crates. A check here means the code
+exists and is tested against simulated devices; no row has run on hardware on this
+tree.
+
+| # | Feature | Core | C ABI | Qt UI | Terminal |
+|---|---|---|---|---|---|
+| A1 | USB vendor | nusb | yes | yes | yes |
+| A2 | USB MIDI | `open_midi`, midir feature | **no** | no | `--midi` |
+| A3 | Link client | `link_*`; no mDNS | **no** (CG1) | no (QD9) | `--link`; no mDNS |
+| A7 | Demo device | `open_demo`, stateful | `dspi_open_demo` | `--demo` | `--demo` |
+| A8 | Reconnect after replug | `poll_hotplug` | yes | yes | now automatic |
+| A9 | Wire V32 constants | generated from `bofr-main` | yes | yes | yes |
+| A10 | Older and newer firmware | read-only mirror (V16..V31, newer prefix) | `compat` | banner; the bridge still gates its calls on `COMPAT_OK`, and the read-only mode has not been brought to the UI | still refused (strict `probe`) |
+| A11 | `EXT_LIST` probe on connect | yes | `dspi_ext_status` | not called | yes, on the overview line |
+| A12 | Live sync, echoes | echo rule per link, two bulk modes | yes | through the C ABI | yes, with attribution |
+| B2, B3 | Source names, device name | yes | yes | **not called** | yes |
+| B14 | Crossfeed pair map | yes | yes | **not called** | CLI |
+| B22 | Core voltage | yes | yes | **not called** | CLI (full), label on the overview |
+| B23, C2 | Output latency, clock diagnostics | yes | yes | **not called** | yes |
+| C1 | RTA | engine, worker | yes | code in place, not run on this core | panel |
+| C4 | Signal generator | yes | yes | code in place, not run on this core | yes |
+| E6 | Control surfaces | editing model in session | JSON | code in place, not run on this core | yes |
+| F1 | Firmware update | `uf2_inspect`, `flash_to_drive` | yes | **not called**: its own updater, bundled beta4 images only | finds the drive; copy by hand |
+
+"Not called" means the Qt sources do not reference the C function: the core side is
+done and the UI is client plan work (track QD). The survey's section 4 expected
+the move to the Terminal crates to close those Qt rows; it closed the core side, and
+the rows stay open until the UI exists.
