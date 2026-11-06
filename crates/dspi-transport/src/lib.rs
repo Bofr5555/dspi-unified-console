@@ -26,6 +26,7 @@ pub use usb::{UsbTransport, list_devices};
 // -- WP T2 --
 // -- WP T3 --
 // -- WP T4 --
+pub use fake::{Capture, FakeOptions, FakeRemote};
 // -- WP T5 --
 
 /// How long to wait on a single control transfer before treating it as timed out.
