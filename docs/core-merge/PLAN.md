@@ -91,9 +91,12 @@ comes as default methods, so every existing implementor still compiles:
 
 **Echo rule** (gate 1, B1; revised after wave 1).
 `dspi_transport::is_own_write(kind, source, origin, session,
-own_bulk_pending)` decides it; `Notification::is_own_echo(kind, session,
-own_bulk_pending)` applies it to `PARAM_CHANGED` and `BULK_INVALIDATED`.
-The firmware tags a change by the path it came in on, except bulk applies:
+own_bulk_pending)` decides it. `Notification::is_own_echo(kind, session, &echo)`
+asks and `EchoFilter::classify_notification` classifies, for `PARAM_CHANGED`
+and `BULK_INVALIDATED`. The firmware tags a change by the path it came in on.
+This table is the rule for scalar changes, and for bulk invalidations on
+**untagged** firmware; for tagged firmware's bulk invalidations see the
+"Bulk echoes" table below:
 
 | Kind | Ours | Why |
 |---|---|---|
@@ -882,6 +885,21 @@ Notes for every wave-2b brief (after the wave-2a review):
   - `device_unlock` must not release a lock on a connection that replaced
     the one the flow locked (`presets.rs`, its doc says so): make it
     connection-specific (for example a generation number in `Connection`).
+  - **A re-read that fails is forgotten** (wave 2b, C7-4):
+    `refresh_after_notifications` logs the error and drops it, so after a
+    network hiccup the mirror stays stale until the next event. Add a
+    refresh-pending state on `Connection` with a retry limit;
+  - **Link robustness** (owner's request: pairing can be wonky depending on the
+    hub, and it copes badly with random network hiccups). Findings:
+    `~/.cache/dspi-build/work/kingsnake/LINK-HUB-FINDINGS.md`, being written;
+    read it first if it exists. The WP covers:
+    - reconnect with backoff after a lost session;
+    - timeouts on every step, so a hiccup cannot hang a caller;
+    - token reuse across reconnects;
+    - clear pairing errors that name the cause (wrong PIN, window closed, hub
+      refused);
+    - fault-injection tests on the fake hub (drops, stalls, late and duplicate
+      frames, hub restarts, a token rejected).
 - **F1:**
   - a reconnect runs inside `poll_hotplug`, so it blocks the polling thread
     for that poll: document it in the binding, so the app polls off the UI
@@ -1018,10 +1036,6 @@ Notes for every wave-2b brief (after the wave-2a review):
   deletes its duplicate (`curves.rs`) and computes crossovers through proto.
 - **Done when:** C12's parity tests still hold (mag within 1e-6 dB).
 
-**Firmware headers:** `dspi-proto/firmware` is pinned to the `bulk-source`
-branch (`f54a064`, three commits on `bofr-main`, not pushed yet). Re-pin to
-`bofr-main` when they land there (`docs/terminal/firmware-bump.md`).
-
 ### Wave summary
 
 | Wave | WPs (run in parallel) |
@@ -1079,6 +1093,7 @@ additive edits only.
 - **Base after wave 2b** (WP B2, branch `wp/B2`):
   - registry: ADAT input rows write-as-read, sources 4..6, preamps to +24 dB
     with the RP2040 limit in the session, `Repr::Text` trims NULs only;
+    headers at `bofr-main` `04122d3`;
   - session: `try_core1_conflict`, `arm_learn`/`cancel_learn` return `bool`
     with `cs_model::apply_learn`, tagged bulk echoes (§1.2);
   - core: `me: Weak<DspiCore>` with `rta_start(&self)`,
