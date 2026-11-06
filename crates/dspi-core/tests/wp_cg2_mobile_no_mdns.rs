@@ -10,15 +10,7 @@ fn tree(args: &[&str]) -> String {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let out = Command::new(cargo)
         .current_dir(root)
-        .args([
-            "tree",
-            "--locked",
-            "--offline",
-            "--target",
-            "all",
-            "--prefix",
-            "none",
-        ])
+        .args(["tree", "--locked", "--target", "all", "--prefix", "none"])
         .args(args)
         .output()
         .expect("cargo runs");
