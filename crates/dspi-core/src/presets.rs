@@ -24,8 +24,10 @@ use std::time::{Duration, Instant};
 
 use dspi_proto::enums::FilterType;
 use dspi_proto::generated::opcodes as op;
+use dspi_proto::generated::ranges::{SUBHARM_CEILING_MAX, SUBHARM_LEVEL_MIN};
 use dspi_proto::generated::status as st;
 use dspi_proto::generated::tube as tb;
+use dspi_session::tube;
 
 use crate::connect::{read_preset_directory, read_preset_name, refresh_params_locked};
 use crate::consts::*;
@@ -338,7 +340,8 @@ impl DspiCore {
     /// -3.0 dB", "2 bands changed on Output 1"). The master volume counts
     /// only in WITH_PRESET master-volume mode, the hardware wiring and the
     /// limiters only in WITH_PRESET output-config mode, both judged by the
-    /// live mode. Empty before any baseline. Never fails.
+    /// live mode. The user volume and the DAC mute are no preset change, as
+    /// on macOS. Empty before any baseline. Never fails.
     pub fn preset_changes(&self) -> Vec<String> {
         let guard = self.lock();
         match &guard.baseline {
@@ -657,7 +660,9 @@ fn val(v: f32) -> String {
     }
 }
 
-/// A delay to its stored 0.0001 ms, without trailing zeros ("1", "1.25").
+/// A delay to its stored 0.0001 ms, without trailing zeros ("1", "1.25"). The
+/// macOS Console sets whole milliseconds and words them "1"; the core keeps
+/// finer delays, which one decimal would show as no change ("1.2 → 1.2").
 fn ms(v: f32) -> String {
     let s = format!("{v:.4}");
     s.trim_end_matches('0').trim_end_matches('.').to_string()
@@ -671,20 +676,63 @@ fn plural(n: usize) -> &'static str {
     if n == 1 { "" } else { "s" }
 }
 
-/// A wire channel's name, or its default label.
+/// A wire channel's name, or its default name.
 fn channel_label(s: &DspState, wire: usize) -> String {
-    if let Some(name) = s.channel_names.get(wire).filter(|n| !n.is_empty()) {
-        return name.clone();
+    match s.channel_names.get(wire).filter(|n| !n.is_empty()) {
+        Some(name) => name.clone(),
+        None => default_channel_name(s, wire),
     }
+}
+
+/// The firmware's default name for a wire channel under `s`'s output types,
+/// as `DSPViewModel.defaultChannelNames` has it: "USB L", "USB R", "USB 3" on
+/// the inputs; "<SPDIF|I2S> <slot> <L|R>" on the outputs, the last one "PDM".
+fn default_channel_name(s: &DspState, wire: usize) -> String {
     let ins = usize::from(s.num_input_channels);
-    if wire < ins {
+    let Some(out) = wire.checked_sub(ins) else {
         return match wire {
             0 => "USB L".into(),
             1 => "USB R".into(),
-            n => format!("Input {}", n.saturating_add(1)),
+            n => format!("USB {}", n.saturating_add(1)),
         };
+    };
+    if out.saturating_add(1) == usize::from(s.num_output_channels) {
+        return "PDM".into();
     }
-    format!("Output {}", wire.saturating_sub(ins).saturating_add(1))
+    let slot = out / 2;
+    let kind = if at(&s.output_types, slot) == 1 {
+        "I2S"
+    } else {
+        "SPDIF"
+    };
+    let side = if out % 2 == 0 { "L" } else { "R" };
+    format!("{kind} {} {side}", slot.saturating_add(1))
+}
+
+/// Outputs (left, right) of crossfeed pair `p`, as `CrossfeedPairMap.pair`:
+/// byte 0 is the default pair, so a pair written out on its own default
+/// outputs is no change.
+fn crossfeed_pair(map: &[u8], p: usize) -> (usize, usize) {
+    match at(map, p) {
+        0 => (p.saturating_mul(2), p.saturating_mul(2).saturating_add(1)),
+        b => (usize::from(b & 0x0F), usize::from(b >> 4)),
+    }
+}
+
+/// An input source's title, as `DSPViewModel.builtInInputSourceTitle`; `s`
+/// is the live state, whose optional S/PDIF inputs decide whether the first
+/// one needs its number. The macOS Console puts the user's source name first;
+/// the core's mirror holds no source names, so the built-in title is what it has.
+fn source_title(s: &DspState, source: u8) -> String {
+    match source {
+        0 => "USB".into(),
+        1 if s.spdif_inputs_enabled & 0x0E != 0 => "S/PDIF 1".into(),
+        1 => "S/PDIF".into(),
+        2 => "I2S".into(),
+        3 => "ADAT".into(),
+        4..=6 => format!("S/PDIF {}", source.saturating_sub(2)),
+        _ => format!("Source {source}"),
+    }
 }
 
 fn band(v: &[Vec<FilterParams>], ch: usize, b: usize) -> Option<FilterParams> {
@@ -731,18 +779,10 @@ fn diff(o: &DspState, n: &DspState) -> Vec<String> {
         diff_hardware(o, n, &mut c);
     }
     if o.input_source != n.input_source {
-        let src = |v: u8| match v {
-            0 => "USB".to_string(),
-            1 => "S/PDIF".into(),
-            2 => "I2S".into(),
-            3 => "ADAT".into(),
-            4..=6 => format!("S/PDIF {}", v.saturating_sub(2)),
-            _ => format!("Source {v}"),
-        };
         c.push(format!(
             "Input source: {} → {}",
-            src(o.input_source),
-            src(n.input_source)
+            source_title(n, o.input_source),
+            source_title(n, n.input_source)
         ));
     }
     if o.lg_sound_sync_enabled != n.lg_sound_sync_enabled {
@@ -846,6 +886,22 @@ fn diff_effects(o: &DspState, n: &DspState, c: &mut Vec<String>) {
             o.crossfeed_output_pair_mask, n.crossfeed_output_pair_mask
         ));
     }
+    for p in 0..CROSSFEED_MAP_PAIRS {
+        let (a, b) = (
+            crossfeed_pair(&o.crossfeed_pair_map, p),
+            crossfeed_pair(&n.crossfeed_pair_map, p),
+        );
+        if a != b {
+            c.push(format!(
+                "Crossfeed pair {} outputs: {}/{} → {}/{}",
+                p.saturating_add(1),
+                a.0.saturating_add(1),
+                a.1.saturating_add(1),
+                b.0.saturating_add(1),
+                b.1.saturating_add(1)
+            ));
+        }
+    }
 
     // Psychoacoustic bass
     if o.psybass_enabled != n.psybass_enabled {
@@ -857,13 +913,14 @@ fn diff_effects(o: &DspState, n: &DspState, c: &mut Vec<String>) {
             o.psybass_output_mask, n.psybass_output_mask
         ));
     }
+    if ne(o.psybass_cutoff_hz, n.psybass_cutoff_hz) {
+        c.push(format!(
+            "Psybass cutoff: {} → {} Hz",
+            val(o.psybass_cutoff_hz),
+            val(n.psybass_cutoff_hz)
+        ));
+    }
     for (name, a, b, unit) in [
-        (
-            "Psybass cutoff",
-            o.psybass_cutoff_hz,
-            n.psybass_cutoff_hz,
-            " Hz",
-        ),
         (
             "Psybass harmonics",
             o.psybass_harmonics_db,
@@ -917,7 +974,11 @@ fn diff_subharm(o: &DspState, n: &DspState, c: &mut Vec<String>) {
         ));
     }
     let level = |v: f32| {
-        if v <= -30.0 { "Off".to_string() } else { db(v) }
+        if v <= SUBHARM_LEVEL_MIN {
+            "off".to_string()
+        } else {
+            format!("{} dB", val(v))
+        }
     };
     for (name, i) in [
         ("Subharm 24-36 Hz", SUBHARM_PARAM_LOW),
@@ -930,9 +991,9 @@ fn diff_subharm(o: &DspState, n: &DspState, c: &mut Vec<String>) {
         }
     }
     let select = |v: f32| match v as i32 {
-        1 => "Percussive",
-        2 => "Sustained",
-        _ => "All material",
+        1 => "percussive",
+        2 => "sustained",
+        _ => "all material",
     };
     let (a, b) = sh(SUBHARM_PARAM_SELECT);
     if ne(a, b) {
@@ -959,7 +1020,11 @@ fn diff_subharm(o: &DspState, n: &DspState, c: &mut Vec<String>) {
         ));
     }
     let ceiling = |v: f32| {
-        if v >= 0.0 { "Off".to_string() } else { db(v) }
+        if v >= SUBHARM_CEILING_MAX {
+            "off".to_string()
+        } else {
+            format!("{} dBFS", val(v))
+        }
     };
     let (a, b) = sh(SUBHARM_PARAM_CEILING);
     if ne(a, b) {
@@ -983,10 +1048,6 @@ fn diff_subharm(o: &DspState, n: &DspState, c: &mut Vec<String>) {
 }
 
 fn diff_tube(o: &DspState, n: &DspState, c: &mut Vec<String>) {
-    const TUBE_NAMES: [&str; 17] = [
-        "Custom", "12AX7", "5751", "12AT7", "12AY7", "12AU7", "6SN7", "6SL7", "6DJ8", "EF86",
-        "6SJ7", "EL84", "EL34", "6L6", "6V6", "KT88", "300B",
-    ];
     let t = |i: u16| (at(&o.tube, usize::from(i)), at(&n.tube, usize::from(i)));
     let (a, b) = t(tb::TUBE_PARAM_ENABLED);
     if ne(a, b) {
@@ -999,7 +1060,9 @@ fn diff_tube(o: &DspState, n: &DspState, c: &mut Vec<String>) {
             a as u32, b as u32
         ));
     }
-    let tube = |v: f32| TUBE_NAMES.get(v as usize).copied().unwrap_or("Custom");
+    // The float comes from the device: `as` saturates, and both names take
+    // any value.
+    let tube = |v: f32| tube::type_name(v as u8);
     let (a, b) = t(tb::TUBE_PARAM_TUBE_TYPE);
     if ne(a, b) {
         c.push(format!("Tube type: {} → {}", tube(a), tube(b)));
@@ -1016,12 +1079,7 @@ fn diff_tube(o: &DspState, n: &DspState, c: &mut Vec<String>) {
             c.push(format!("{name}: {}{unit} → {}{unit}", val(a), val(b)));
         }
     }
-    let rect = |v: f32| match v as i32 {
-        0 => "Solid state",
-        2 => "Tube (slow)",
-        3 => "Tube (heavy)",
-        _ => "Tube",
-    };
+    let rect = |v: f32| tube::rectifier_name(v as u8);
     let (a, b) = t(tb::TUBE_PARAM_RECTIFIER);
     if ne(a, b) {
         c.push(format!("Tube rectifier: {} → {}", rect(a), rect(b)));
@@ -1030,9 +1088,19 @@ fn diff_tube(o: &DspState, n: &DspState, c: &mut Vec<String>) {
     if ne(a, b) {
         c.push(format!("Tube output stage: {}", on(b != 0.0)));
     }
+    let (a, b) = t(tb::TUBE_PARAM_XFMR_DAMPING);
+    if ne(a, b) {
+        c.push(format!("Tube damping factor: {} → {}", val(a), val(b)));
+    }
+    let (a, b) = t(tb::TUBE_PARAM_XFMR_RES_HZ);
+    if ne(a, b) {
+        c.push(format!(
+            "Tube speaker resonance: {} → {} Hz",
+            val(a),
+            val(b)
+        ));
+    }
     for (name, i, unit) in [
-        ("Tube damping factor", tb::TUBE_PARAM_XFMR_DAMPING, ""),
-        ("Tube speaker resonance", tb::TUBE_PARAM_XFMR_RES_HZ, " Hz"),
         ("Tube mix", tb::TUBE_PARAM_MIX_PCT, "%"),
         ("Tube output trim", tb::TUBE_PARAM_TRIM_DB, " dB"),
     ] {
@@ -1086,16 +1154,14 @@ fn diff_upmix_leveller(o: &DspState, n: &DspState, c: &mut Vec<String>) {
     if ne(a, b) {
         c.push(format!("Stereo Upmixer: {}", on(b != 0.0)));
     }
-    let centre = |v: f32| match v as i32 {
-        0 => "Sinner",
-        1 => "Logician",
-        _ => "Off",
+    // A value past the names reads as its number, as on macOS.
+    let mode = |names: [&str; 3], v: f32| {
+        names
+            .get(v as usize)
+            .map_or_else(|| val(v), |n| (*n).to_string())
     };
-    let surround = |v: f32| match v as i32 {
-        1 => "Sinner",
-        2 => "Logician",
-        _ => "Off",
-    };
+    let centre = |v: f32| mode(["Sinner", "Logician", "Off"], v);
+    let surround = |v: f32| mode(["Off", "Sinner", "Logician"], v);
     let (a, b) = up(UPMIX_PARAM_CENTER_MODE);
     if ne(a, b) {
         c.push(format!("Centre mode: {} → {}", centre(a), centre(b)));
@@ -1138,8 +1204,7 @@ fn diff_upmix_leveller(o: &DspState, n: &DspState, c: &mut Vec<String>) {
         let sp = |v: u8| {
             ["Slow", "Medium", "Fast"]
                 .get(usize::from(v))
-                .copied()
-                .unwrap_or("Medium")
+                .map_or_else(|| v.to_string(), |n| (*n).to_string())
         };
         c.push(format!(
             "Leveller speed: {} → {}",
@@ -1181,10 +1246,14 @@ fn diff_channels(
     all: usize,
     c: &mut Vec<String>,
 ) {
-    // Input channel delays (outputs have their own below)
-    for w in 0..ins {
+    // Channel delays. The firmware mirrors an output's delay onto its channel,
+    // so an output whose own delay changed gets its one line below.
+    for w in 0..all {
         let (a, b) = (at(&o.channel_delays, w), at(&n.channel_delays, w));
-        if ne(a, b) {
+        let reported = w
+            .checked_sub(ins)
+            .is_some_and(|out| ne(at(&o.output_delay_ms, out), at(&n.output_delay_ms, out)));
+        if ne(a, b) && !reported {
             c.push(format!(
                 "{} delay: {} ms → {} ms",
                 channel_label(n, w),
@@ -1256,15 +1325,14 @@ fn diff_channels(
 
     // Channel names. Changing an output's type makes the firmware rename its
     // channels that are still at their default: a consequence, not an edit.
-    let types_changed = o.output_types != n.output_types;
+    // Only default-to-default is skipped, so a real rename always shows.
     for w in 0..all {
-        let (a, b) = (o.channel_names.get(w), n.channel_names.get(w));
-        if a != b && !(types_changed && w >= ins) {
-            c.push(format!(
-                "'{}' → '{}'",
-                a.map_or("", String::as_str),
-                b.map_or("", String::as_str)
-            ));
+        let (a, b) = (
+            o.channel_names.get(w).map_or("", String::as_str),
+            n.channel_names.get(w).map_or("", String::as_str),
+        );
+        if a != b && !(a == default_channel_name(o, w) && b == default_channel_name(n, w)) {
+            c.push(format!("'{a}' → '{b}'"));
         }
     }
 }
@@ -1310,13 +1378,17 @@ fn diff_hardware(o: &DspState, n: &DspState, c: &mut Vec<String>) {
     for k in 1..4usize {
         let bit = |m: u8| m.checked_shr(k as u32).is_some_and(|v| v & 1 == 1);
         let (was, now) = (bit(o.spdif_inputs_enabled), bit(n.spdif_inputs_enabled));
-        let nth = k.saturating_add(1);
         if was != now {
-            c.push(format!("S/PDIF {nth} input: {}", on(now)));
+            c.push(format!("S/PDIF {} input: {}", k.saturating_add(1), on(now)));
         }
+    }
+    for k in 1..4usize {
         let (a, b) = (at(&o.spdif_rx_pins, k), at(&n.spdif_rx_pins, k));
         if a != b {
-            c.push(format!("S/PDIF {nth} RX pin: GPIO {a} → GPIO {b}"));
+            c.push(format!(
+                "S/PDIF {} RX pin: GPIO {a} → GPIO {b}",
+                k.saturating_add(1)
+            ));
         }
     }
     if o.i2s_input_channels != n.i2s_input_channels {
@@ -1335,7 +1407,16 @@ fn diff_hardware(o: &DspState, n: &DspState, c: &mut Vec<String>) {
         }
     }
     if o.i2s_input_rate != n.i2s_input_rate {
-        c.push("I2S rate changed".into());
+        let hz = |v: u8| match v {
+            0 => 44100,
+            2 => 96000,
+            _ => 48000,
+        };
+        c.push(format!(
+            "I2S rate: {} Hz → {} Hz",
+            hz(o.i2s_input_rate),
+            hz(n.i2s_input_rate)
+        ));
     }
     let mode = |v: u8| if v == 1 { "Slave" } else { "Master" };
     if o.i2s_clock_mode != n.i2s_clock_mode {
@@ -1360,7 +1441,7 @@ fn diff_hardware(o: &DspState, n: &DspState, c: &mut Vec<String>) {
     if o.adat_input_pin != n.adat_input_pin {
         let pin = |v: u8| {
             if v == 0xFF {
-                "Not set".to_string()
+                "unset".to_string()
             } else {
                 format!("GPIO {v}")
             }
@@ -2180,6 +2261,30 @@ mod tests_wp_c5 {
     }
 
     #[test]
+    fn wp_cg7_the_pair_map_dirties_the_preset_and_the_user_volume_does_not() {
+        let (core, _, _) = open(Spy::demo());
+        core.capture_baseline();
+        edit(&core, |s| {
+            s.user_volume_db -= 20.0;
+            s.dac_mute_enabled = !s.dac_mute_enabled;
+        });
+        assert!(!core.preset_dirty(), "{:?}", core.preset_changes());
+        assert!(core.preset_changes().is_empty());
+
+        edit(&core, |s| s.crossfeed_pair_map = vec![0x02, 0x13, 0, 0]);
+        assert!(core.preset_dirty());
+        assert_eq!(
+            core.preset_changes(),
+            [
+                "Crossfeed pair 1 outputs: 1/2 → 3/1",
+                "Crossfeed pair 2 outputs: 3/4 → 4/2",
+            ]
+        );
+        edit(&core, |s| s.crossfeed_pair_map = vec![0; 4]);
+        assert!(!core.preset_dirty());
+    }
+
+    #[test]
     fn wp_c5_formatting_helpers() {
         assert_eq!(ms(0.0), "0");
         assert_eq!(ms(10.0), "10");
@@ -2188,5 +2293,402 @@ mod tests_wp_c5 {
         assert_eq!(val(3.0), "3");
         assert_eq!(val(3.25), "3.2");
         assert_eq!(db(-3.0), "-3.0 dB");
+    }
+}
+
+/// Swift's diff table (`PresetSnapshot.diff`, ext-channel-116 at 48cf7c5), row
+/// by row: the wanted lines are Swift's format strings with values filled in,
+/// in Swift's order.
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg7 {
+    use dspi_transport::Capture;
+
+    use super::*;
+
+    type Edit = fn(&mut DspState, &mut DspState);
+
+    /// An RP2350-sized device with the firmware's default names, the two
+    /// persistence modes on WITH_PRESET.
+    fn base() -> DspState {
+        let mut s = state::default_state();
+        state::decode_bulk(&Capture::demo().bulk, &mut s).unwrap();
+        s.num_input_channels = 8;
+        s.num_output_channels = 9;
+        s.master_volume_mode = WITH_PRESET;
+        s.output_config_mode = WITH_PRESET;
+        s.output_types = vec![0; 4];
+        s.channel_names = (0..17).map(|w| default_channel_name(&s, w)).collect();
+        s.bulk_raw = state::encode_bulk(&s);
+        s
+    }
+
+    /// `base()` with `edit` applied, through both paths: the diff alone, and
+    /// the images the core really compares.
+    fn lines(edit: Edit) -> (Vec<String>, Vec<String>) {
+        let (mut o, mut n) = (base(), base());
+        edit(&mut o, &mut n);
+        o.bulk_raw = state::encode_bulk(&o);
+        n.bulk_raw = state::encode_bulk(&n);
+        (diff(&o, &n), changes(&o.bulk_raw, &n))
+    }
+
+    fn sub(s: &mut DspState, i: u8, v: f32) {
+        s.subharm[usize::from(i)] = v;
+    }
+    fn tube_p(s: &mut DspState, i: u16, v: f32) {
+        s.tube[usize::from(i)] = v;
+    }
+    fn up(s: &mut DspState, i: u8, v: f32) {
+        s.upmix[usize::from(i)] = v;
+    }
+    /// One band with an edit that shows.
+    fn band_edit(v: &mut [Vec<FilterParams>], ch: usize, bands: &[usize]) {
+        for &b in bands {
+            v[ch][b].freq += 50.0;
+        }
+    }
+
+    /// Every row, in Swift's order, one edit each.
+    #[rustfmt::skip]
+    fn table() -> Vec<(Edit, Vec<&'static str>)> {
+        vec![
+            // Global
+            (|o, n| { o.input_preamp_db[0] = 0.0; n.input_preamp_db[0] = -3.0; }, vec!["Preamp L: 0.0 dB → -3.0 dB"]),
+            (|o, n| { o.input_preamp_db[1] = 1.5; n.input_preamp_db[1] = 2.0; }, vec!["Preamp R: 1.5 dB → 2.0 dB"]),
+            (|o, n| { o.input_preamp_db[2] = 0.0; n.input_preamp_db[2] = 1.0; }, vec!["Preamp FC: 0.0 dB → 1.0 dB"]),
+            (|o, n| { o.input_preamp_db[3] = 0.0; n.input_preamp_db[3] = 1.0; }, vec!["Preamp LFE: 0.0 dB → 1.0 dB"]),
+            (|o, n| { o.input_preamp_db[4] = 0.0; n.input_preamp_db[4] = 1.0; }, vec!["Preamp BL: 0.0 dB → 1.0 dB"]),
+            (|o, n| { o.input_preamp_db[5] = 0.0; n.input_preamp_db[5] = 1.0; }, vec!["Preamp BR: 0.0 dB → 1.0 dB"]),
+            (|o, n| { o.input_preamp_db[6] = 0.0; n.input_preamp_db[6] = 1.0; }, vec!["Preamp SL: 0.0 dB → 1.0 dB"]),
+            (|o, n| { o.input_preamp_db[7] = 0.0; n.input_preamp_db[7] = 1.0; }, vec!["Preamp SR: 0.0 dB → 1.0 dB"]),
+            (|o, n| { o.master_volume_db = -128.0; n.master_volume_db = -20.5; }, vec!["Master Volume: -∞ dB → -20.5 dB"]),
+            (|o, n| { o.bypass = false; n.bypass = true; }, vec!["Master EQ bypass: off → on"]),
+            // Loudness
+            (|o, n| { o.loudness_enabled = false; n.loudness_enabled = true; }, vec!["Loudness: enabled"]),
+            (|o, n| { o.loudness_output_mask = 1; n.loudness_output_mask = 0x1FF; }, vec!["Loudness outputs: 0x0001 → 0x01FF"]),
+            (|o, n| { o.loudness_ref_spl = 83.0; n.loudness_ref_spl = 80.5; }, vec!["Loudness ref SPL: 83 → 80.5"]),
+            (|o, n| { o.loudness_intensity = 100.0; n.loudness_intensity = 50.0; }, vec!["Loudness intensity: 100% → 50%"]),
+            // Crossfeed
+            (|o, n| { o.crossfeed_enabled = true; n.crossfeed_enabled = false; }, vec!["Crossfeed: disabled"]),
+            (|o, n| { o.crossfeed_preset = 0; n.crossfeed_preset = 2; }, vec!["Crossfeed preset: 0 → 2"]),
+            (|o, n| { o.crossfeed_freq = 700.0; n.crossfeed_freq = 650.0; }, vec!["Crossfeed frequency: 700 → 650 Hz"]),
+            (|o, n| { o.crossfeed_feed = 4.5; n.crossfeed_feed = 6.0; }, vec!["Crossfeed feed: 4.5 → 6"]),
+            (|o, n| { o.crossfeed_itd = false; n.crossfeed_itd = true; }, vec!["Crossfeed ITD: enabled"]),
+            (|o, n| { o.crossfeed_output_pair_mask = 1; n.crossfeed_output_pair_mask = 3; }, vec!["Crossfeed output pairs: 0x01 → 0x03"]),
+            // The pair map: the K340 preset, pair 1 left out3 and right out1.
+            (|o, n| { o.crossfeed_pair_map = vec![0; 4]; n.crossfeed_pair_map = vec![0x02, 0x13, 0, 0]; }, vec!["Crossfeed pair 1 outputs: 1/2 → 3/1", "Crossfeed pair 2 outputs: 3/4 → 4/2"]),
+            // Psychoacoustic bass
+            (|o, n| { o.psybass_enabled = false; n.psybass_enabled = true; }, vec!["Psychoacoustic Bass: enabled"]),
+            (|o, n| { o.psybass_output_mask = 3; n.psybass_output_mask = 15; }, vec!["Psybass outputs: 0x0003 → 0x000F"]),
+            (|o, n| { o.psybass_cutoff_hz = 120.0; n.psybass_cutoff_hz = 80.0; }, vec!["Psybass cutoff: 120 → 80 Hz"]),
+            (|o, n| { o.psybass_harmonics_db = 3.0; n.psybass_harmonics_db = 4.5; }, vec!["Psybass harmonics: 3 dB → 4.5 dB"]),
+            (|o, n| { o.psybass_drive_db = 0.0; n.psybass_drive_db = 2.0; }, vec!["Psybass drive: 0 dB → 2 dB"]),
+            (|o, n| { o.psybass_character_pct = 50.0; n.psybass_character_pct = 60.0; }, vec!["Psybass character: 50% → 60%"]),
+            (|o, n| { o.psybass_original_db = 0.0; n.psybass_original_db = -6.0; }, vec!["Psybass original bass: 0 dB → -6 dB"]),
+            // Subharmonic synthesizer
+            (|o, n| { sub(o, SUBHARM_PARAM_ENABLED, 0.0); sub(n, SUBHARM_PARAM_ENABLED, 1.0); }, vec!["Subharmonic Synthesizer: enabled"]),
+            (|o, n| { sub(o, SUBHARM_PARAM_MASK, 1.0); sub(n, SUBHARM_PARAM_MASK, 3.0); }, vec!["Subharm outputs: 0x0001 → 0x0003"]),
+            (|o, n| { sub(o, SUBHARM_PARAM_LOW, -30.0); sub(n, SUBHARM_PARAM_LOW, -6.0); }, vec!["Subharm 24-36 Hz: off → -6 dB"]),
+            (|o, n| { sub(o, SUBHARM_PARAM_HIGH, -7.5); sub(n, SUBHARM_PARAM_HIGH, -30.0); }, vec!["Subharm 36-56 Hz: -7.5 dB → off"]),
+            (|o, n| { sub(o, SUBHARM_PARAM_TOP, -1.0); sub(n, SUBHARM_PARAM_TOP, -2.0); }, vec!["Subharm 56-80 Hz: -1 dB → -2 dB"]),
+            (|o, n| { sub(o, SUBHARM_PARAM_SELECT, 0.0); sub(n, SUBHARM_PARAM_SELECT, 1.0); }, vec!["Subharm selectivity: all material → percussive"]),
+            (|o, n| { sub(o, SUBHARM_PARAM_SELECT, 2.0); sub(n, SUBHARM_PARAM_SELECT, 0.0); }, vec!["Subharm selectivity: sustained → all material"]),
+            (|o, n| { sub(o, SUBHARM_PARAM_DEPTH, 50.0); sub(n, SUBHARM_PARAM_DEPTH, 75.0); }, vec!["Subharm selectivity depth: 50% → 75%"]),
+            (|o, n| { sub(o, SUBHARM_PARAM_HOLD, 100.0); sub(n, SUBHARM_PARAM_HOLD, 200.0); }, vec!["Subharm selectivity hold: 100 ms → 200 ms"]),
+            (|o, n| { sub(o, SUBHARM_PARAM_CEILING, 0.0); sub(n, SUBHARM_PARAM_CEILING, -6.5); }, vec!["Subharm sub ceiling: off → -6.5 dBFS"]),
+            (|o, n| { sub(o, SUBHARM_PARAM_LINK, 0.0); sub(n, SUBHARM_PARAM_LINK, 1.0); }, vec!["Subharm pair link: linked"]),
+            (|o, n| { sub(o, SUBHARM_PARAM_BOOST, 0.0); sub(n, SUBHARM_PARAM_BOOST, 3.0); }, vec!["Subharm LF boost: 0 dB → 3 dB"]),
+            // Tube modeller
+            (|o, n| { tube_p(o, tb::TUBE_PARAM_ENABLED, 0.0); tube_p(n, tb::TUBE_PARAM_ENABLED, 1.0); }, vec!["Tube Modeller: enabled"]),
+            (|o, n| { tube_p(o, tb::TUBE_PARAM_OUTPUT_MASK, 1.0); tube_p(n, tb::TUBE_PARAM_OUTPUT_MASK, 2.0); }, vec!["Tube outputs: 0x0001 → 0x0002"]),
+            (|o, n| { tube_p(o, tb::TUBE_PARAM_TUBE_TYPE, 0.0); tube_p(n, tb::TUBE_PARAM_TUBE_TYPE, 1.0); }, vec!["Tube type: Custom → 12AX7 / ECC83"]),
+            (|o, n| { tube_p(o, tb::TUBE_PARAM_TUBE_TYPE, 8.0); tube_p(n, tb::TUBE_PARAM_TUBE_TYPE, 16.0); }, vec!["Tube type: 6DJ8 / ECC88 / 6922 → 300B / 2A3"]),
+            (|o, n| { tube_p(o, tb::TUBE_PARAM_DRIVE_DB, 0.0); tube_p(n, tb::TUBE_PARAM_DRIVE_DB, 6.0); }, vec!["Tube drive: 0 dB → 6 dB"]),
+            (|o, n| { tube_p(o, tb::TUBE_PARAM_BIAS_PCT, 10.0); tube_p(n, tb::TUBE_PARAM_BIAS_PCT, 5.0); }, vec!["Tube bias: 10% → 5%"]),
+            (|o, n| { tube_p(o, tb::TUBE_PARAM_ASYM_DB, 3.0); tube_p(n, tb::TUBE_PARAM_ASYM_DB, 2.0); }, vec!["Tube asymmetry: 3 dB → 2 dB"]),
+            (|o, n| { tube_p(o, tb::TUBE_PARAM_HARDNESS_PCT, 40.0); tube_p(n, tb::TUBE_PARAM_HARDNESS_PCT, 50.0); }, vec!["Tube knee hardness: 40% → 50%"]),
+            (|o, n| { tube_p(o, tb::TUBE_PARAM_SAG_PCT, 15.0); tube_p(n, tb::TUBE_PARAM_SAG_PCT, 20.0); }, vec!["Tube sag: 15% → 20%"]),
+            (|o, n| { tube_p(o, tb::TUBE_PARAM_RECTIFIER, 0.0); tube_p(n, tb::TUBE_PARAM_RECTIFIER, 1.0); }, vec!["Tube rectifier: Solid state → GZ34 / 5AR4"]),
+            (|o, n| { tube_p(o, tb::TUBE_PARAM_RECTIFIER, 2.0); tube_p(n, tb::TUBE_PARAM_RECTIFIER, 3.0); }, vec!["Tube rectifier: 5U4 → 5Y3"]),
+            (|o, n| { tube_p(o, tb::TUBE_PARAM_XFMR_ENABLED, 0.0); tube_p(n, tb::TUBE_PARAM_XFMR_ENABLED, 1.0); }, vec!["Tube output stage: enabled"]),
+            (|o, n| { tube_p(o, tb::TUBE_PARAM_XFMR_DAMPING, 4.0); tube_p(n, tb::TUBE_PARAM_XFMR_DAMPING, 8.0); }, vec!["Tube damping factor: 4 → 8"]),
+            (|o, n| { tube_p(o, tb::TUBE_PARAM_XFMR_RES_HZ, 95.0); tube_p(n, tb::TUBE_PARAM_XFMR_RES_HZ, 80.0); }, vec!["Tube speaker resonance: 95 → 80 Hz"]),
+            (|o, n| { tube_p(o, tb::TUBE_PARAM_MIX_PCT, 100.0); tube_p(n, tb::TUBE_PARAM_MIX_PCT, 50.0); }, vec!["Tube mix: 100% → 50%"]),
+            (|o, n| { tube_p(o, tb::TUBE_PARAM_TRIM_DB, 0.0); tube_p(n, tb::TUBE_PARAM_TRIM_DB, -3.0); }, vec!["Tube output trim: 0 dB → -3 dB"]),
+            // Output limiter
+            (|o, n| { o.limiter_enabled[0] = false; n.limiter_enabled[0] = true; }, vec!["SPDIF 1 L limiter: enabled"]),
+            (|o, n| { o.limiter_threshold_db[1] = -1.0; n.limiter_threshold_db[1] = -3.25; }, vec!["SPDIF 1 R limiter threshold: -1.0 → -3.2 dBFS"]),
+            (|o, n| { o.limiter_release_ms[2] = 100.0; n.limiter_release_ms[2] = 50.0; }, vec!["SPDIF 2 L limiter release: 100 ms → 50 ms"]),
+            (|o, n| { o.limiter_link_group[8] = 0; n.limiter_link_group[8] = 2; }, vec!["PDM limiter link: Unlinked → Group 2"]),
+            // Stereo upmixer
+            (|o, n| { up(o, UPMIX_PARAM_ENABLED, 0.0); up(n, UPMIX_PARAM_ENABLED, 1.0); }, vec!["Stereo Upmixer: enabled"]),
+            (|o, n| { up(o, UPMIX_PARAM_CENTER_MODE, 0.0); up(n, UPMIX_PARAM_CENTER_MODE, 2.0); }, vec!["Centre mode: Sinner → Off"]),
+            (|o, n| { up(o, UPMIX_PARAM_CENTER_MODE, 1.0); up(n, UPMIX_PARAM_CENTER_MODE, 3.0); }, vec!["Centre mode: Logician → 3"]),
+            (|o, n| { up(o, UPMIX_PARAM_SURROUND_MODE, 0.0); up(n, UPMIX_PARAM_SURROUND_MODE, 2.0); }, vec!["Surround mode: Off → Logician"]),
+            (|o, n| { up(o, UPMIX_PARAM_SURROUND_MODE, 1.0); up(n, UPMIX_PARAM_SURROUND_MODE, 7.0); }, vec!["Surround mode: Sinner → 7"]),
+            (|o, n| { up(o, UPMIX_PARAM_STRENGTH, 50.0); up(n, UPMIX_PARAM_STRENGTH, 60.0); }, vec!["Centre strength: 50% → 60%"]),
+            (|o, n| { up(o, UPMIX_PARAM_WIDTH, 50.0); up(n, UPMIX_PARAM_WIDTH, 60.0); }, vec!["Centre width: 50% → 60%"]),
+            (|o, n| { up(o, UPMIX_PARAM_THRESHOLD, 50.0); up(n, UPMIX_PARAM_THRESHOLD, 60.0); }, vec!["Correlation threshold: 50% → 60%"]),
+            (|o, n| { up(o, UPMIX_PARAM_ATTACK, 5.0); up(n, UPMIX_PARAM_ATTACK, 10.0); }, vec!["Centre attack: 5 ms → 10 ms"]),
+            (|o, n| { up(o, UPMIX_PARAM_RELEASE, 50.0); up(n, UPMIX_PARAM_RELEASE, 100.0); }, vec!["Centre release: 50 ms → 100 ms"]),
+            (|o, n| { up(o, UPMIX_PARAM_DETECTOR_HPF, 100.0); up(n, UPMIX_PARAM_DETECTOR_HPF, 200.0); }, vec!["Detector HPF: 100 Hz → 200 Hz"]),
+            (|o, n| { up(o, UPMIX_PARAM_SURROUND_DELAY, 10.0); up(n, UPMIX_PARAM_SURROUND_DELAY, 20.0); }, vec!["Surround delay: 10 ms → 20 ms"]),
+            (|o, n| { up(o, UPMIX_PARAM_SURROUND_HPF, 100.0); up(n, UPMIX_PARAM_SURROUND_HPF, 200.0); }, vec!["Surround HPF: 100 Hz → 200 Hz"]),
+            (|o, n| { up(o, UPMIX_PARAM_SURROUND_LPF, 7000.0); up(n, UPMIX_PARAM_SURROUND_LPF, 9000.0); }, vec!["Surround LPF: 7000 Hz → 9000 Hz"]),
+            (|o, n| { up(o, UPMIX_PARAM_DECORRELATION, 50.0); up(n, UPMIX_PARAM_DECORRELATION, 60.0); }, vec!["Decorrelation: 50% → 60%"]),
+            (|o, n| { up(o, UPMIX_PARAM_PRESENCE, 0.0); up(n, UPMIX_PARAM_PRESENCE, 2.0); }, vec!["Centre presence: 0 dB → 2 dB"]),
+            // Volume leveller
+            (|o, n| { o.leveller_enabled = false; n.leveller_enabled = true; }, vec!["Volume Leveller: enabled"]),
+            (|o, n| { o.leveller_amount = 50.0; n.leveller_amount = 60.0; }, vec!["Leveller amount: 50% → 60%"]),
+            (|o, n| { o.leveller_speed = 0; n.leveller_speed = 2; }, vec!["Leveller speed: Slow → Fast"]),
+            (|o, n| { o.leveller_speed = 1; n.leveller_speed = 5; }, vec!["Leveller speed: Medium → 5"]),
+            (|o, n| { o.leveller_max_gain_db = 6.0; n.leveller_max_gain_db = 12.0; }, vec!["Leveller max gain: 6 dB → 12 dB"]),
+            (|o, n| { o.leveller_lookahead = false; n.leveller_lookahead = true; }, vec!["Leveller lookahead: enabled"]),
+            (|o, n| { o.leveller_gate_db = -60.0; n.leveller_gate_db = -50.0; }, vec!["Leveller gate: -60 dB → -50 dB"]),
+            (|o, n| { o.leveller_detector_mask = 1; n.leveller_detector_mask = 3; }, vec!["Leveller detector channels changed"]),
+            (|o, n| { o.leveller_apply_mask = 1; n.leveller_apply_mask = 3; }, vec!["Leveller apply channels changed"]),
+            // Channel delays, an input's and an output channel's alone
+            (|o, n| { o.channel_delays[0] = 0.0; n.channel_delays[0] = 10.0; }, vec!["USB L delay: 0 ms → 10 ms"]),
+            (|o, n| { o.channel_delays[9] = 2.0; n.channel_delays[9] = 3.0; }, vec!["SPDIF 1 R delay: 2 ms → 3 ms"]),
+            // Matrix
+            (|o, n| { o.matrix_routing[0][0] = false; n.matrix_routing[0][0] = true; }, vec!["1 crosspoint changed"]),
+            (|o, n| {
+                o.matrix_gain[1][1] = 0.0; n.matrix_gain[1][1] = -6.0;
+                o.matrix_invert[1][2] = false; n.matrix_invert[1][2] = true;
+            }, vec!["2 crosspoints changed"]),
+            // Outputs
+            (|o, n| { o.output_enabled[0] = true; n.output_enabled[0] = false; }, vec!["SPDIF 1 L disabled"]),
+            (|o, n| { o.output_enabled[0] = false; n.output_enabled[0] = true; }, vec!["SPDIF 1 L enabled"]),
+            (|o, n| { o.output_muted[1] = false; n.output_muted[1] = true; }, vec!["SPDIF 1 R muted"]),
+            (|o, n| { o.output_muted[1] = true; n.output_muted[1] = false; }, vec!["SPDIF 1 R unmuted"]),
+            (|o, n| { o.output_gain_db[2] = 0.0; n.output_gain_db[2] = -9.0; }, vec!["SPDIF 2 L gain: 0.0 dB → -9.0 dB"]),
+            (|o, n| {
+                // The firmware mirrors it onto the channel: still one line.
+                o.output_delay_ms[3] = 1.0; n.output_delay_ms[3] = 2.0;
+                o.channel_delays[11] = 1.0; n.channel_delays[11] = 2.0;
+            }, vec!["SPDIF 2 R delay: 1 ms → 2 ms"]),
+            // EQ and crossover bands
+            (|o, n| { let _ = o; band_edit(&mut n.filters, 0, &[0]); }, vec!["1 band changed on USB L"]),
+            (|o, n| { let _ = o; band_edit(&mut n.filters, 8, &[0, 1, 2]); }, vec!["3 bands changed on SPDIF 1 L"]),
+            (|o, n| { let _ = o; band_edit(&mut n.xover, 8, &[0]); }, vec!["1 crossover band changed on SPDIF 1 L"]),
+            (|o, n| { let _ = o; band_edit(&mut n.xover, 16, &[0, 1]); }, vec!["2 crossover bands changed on PDM"]),
+            // Names
+            (|o, n| { let _ = o; n.channel_names[2] = "Centre".into(); }, vec!["'USB 3' → 'Centre'"]),
+            // Output configuration
+            (|o, n| { o.output_pins[0] = 6; n.output_pins[0] = 7; }, vec!["1 pin assignment changed"]),
+            (|o, n| { o.output_pins[0] = 6; n.output_pins[0] = 7; o.output_pins[1] = 8; n.output_pins[1] = 9; }, vec!["2 pin assignments changed"]),
+            (|o, n| { o.output_types[3] = 0; n.output_types[3] = 1; }, vec!["1 output type changed"]),
+            (|o, n| { o.i2s_bck_pin = 14; n.i2s_bck_pin = 16; }, vec!["BCK pin: GPIO 14 → GPIO 16"]),
+            (|o, n| { o.mck_enabled = false; n.mck_enabled = true; }, vec!["MCK: enabled"]),
+            (|o, n| { o.mck_pin = 13; n.mck_pin = 17; }, vec!["MCK pin: GPIO 13 → GPIO 17"]),
+            (|o, n| { o.mck_multiplier = 0; n.mck_multiplier = 1; }, vec!["MCK multiplier: 128x → 256x"]),
+            (|o, n| { o.spdif_rx_pins[0] = 5; n.spdif_rx_pins[0] = 4; }, vec!["S/PDIF RX pin: GPIO 5 → GPIO 4"]),
+            (|o, n| { o.spdif_inputs_enabled = 0x01; n.spdif_inputs_enabled = 0x03; }, vec!["S/PDIF 2 input: enabled"]),
+            (|o, n| { o.spdif_rx_pins[3] = 20; n.spdif_rx_pins[3] = 21; }, vec!["S/PDIF 4 RX pin: GPIO 20 → GPIO 21"]),
+            (|o, n| { o.i2s_input_channels = 2; n.i2s_input_channels = 8; }, vec!["I2S input channels: 2 → 8"]),
+            (|o, n| { o.i2s_rx_pins[1] = 10; n.i2s_rx_pins[1] = 11; }, vec!["I2S RX pin (pair 2): GPIO 10 → GPIO 11"]),
+            (|o, n| { o.i2s_input_rate = 0; n.i2s_input_rate = 2; }, vec!["I2S rate: 44100 Hz → 96000 Hz"]),
+            (|o, n| { o.i2s_clock_mode = 0; n.i2s_clock_mode = 1; }, vec!["I2S clock mode: Master → Slave"]),
+            (|o, n| { o.adat_out_enabled = false; n.adat_out_enabled = true; }, vec!["ADAT output: enabled"]),
+            (|o, n| { o.adat_out_pin = 22; n.adat_out_pin = 23; }, vec!["ADAT pin: GPIO 22 → GPIO 23"]),
+            (|o, n| { o.adat_input_enabled = false; n.adat_input_enabled = true; }, vec!["ADAT input: enabled"]),
+            (|o, n| { o.adat_input_pin = 0xFF; n.adat_input_pin = 24; }, vec!["ADAT input pin: unset → GPIO 24"]),
+            (|o, n| { o.adat_input_clock_mode = 1; n.adat_input_clock_mode = 0; }, vec!["ADAT input clock mode: Slave → Master"]),
+            // Input source and LG Sound Sync
+            (|o, n| { o.input_source = 0; n.input_source = 2; }, vec!["Input source: USB → I2S"]),
+            (|o, n| { o.input_source = 3; n.input_source = 5; }, vec!["Input source: ADAT → S/PDIF 3"]),
+            (|o, n| { o.lg_sound_sync_enabled = false; n.lg_sound_sync_enabled = true; }, vec!["LG Sound Sync: enabled"]),
+        ]
+    }
+
+    #[test]
+    fn wp_cg7_every_row_reads_as_swift_words_it() {
+        for (i, (edit, want)) in table().into_iter().enumerate() {
+            let (direct, via_image) = lines(edit);
+            assert_eq!(direct, want, "row {i}, the diff");
+            assert_eq!(via_image, want, "row {i}, through the images");
+        }
+    }
+
+    #[test]
+    fn wp_cg7_rows_come_in_swifts_order() {
+        // One row per setting, all at once, in the table's order. Edits of
+        // the same setting and the rows that move a label are left out.
+        let picked = |want: &[&str]| {
+            ![
+                "Subharm selectivity: sustained",
+                "Tube type: 6DJ8",
+                "Tube rectifier: 5U4",
+                "Centre mode: Logician",
+                "Surround mode: Sinner",
+                "Leveller speed: Medium",
+                "SPDIF 1 L enabled",
+                "SPDIF 1 R unmuted",
+                "2 crosspoints",
+                "2 pin assignments",
+                "Input source: ADAT",
+            ]
+            .iter()
+            .any(|p| want.iter().any(|w| w.starts_with(p)))
+        };
+        let (mut o, mut n) = (base(), base());
+        let mut want = Vec::new();
+        for (edit, lines) in table() {
+            if picked(&lines) {
+                edit(&mut o, &mut n);
+                want.extend(lines);
+            }
+        }
+        assert_eq!(diff(&o, &n), want);
+    }
+
+    #[test]
+    fn wp_cg7_a_pair_on_its_default_outputs_is_no_change() {
+        // Explicit (left 0, right 1) reads the same as byte 0, as
+        // `CrossfeedPairMap.pair` has it.
+        let (o, mut n) = (base(), base());
+        n.crossfeed_pair_map[0] = 0x10;
+        assert!(diff(&o, &n).is_empty());
+        // Pair 3 written out: only the byte that moves the pair counts.
+        n.crossfeed_pair_map[2] = 0x54;
+        assert!(diff(&o, &n).is_empty());
+        n.crossfeed_pair_map[3] = 0x76;
+        assert!(diff(&o, &n).is_empty());
+        n.crossfeed_pair_map[3] = 0x67;
+        assert_eq!(diff(&o, &n), ["Crossfeed pair 4 outputs: 7/8 → 8/7"],);
+    }
+
+    #[test]
+    fn wp_cg7_a_short_pair_map_reads_as_default() {
+        // Decoded from firmware without the bytes.
+        let (mut o, n) = (base(), base());
+        o.crossfeed_pair_map.clear();
+        assert!(diff(&o, &n).is_empty());
+    }
+
+    #[test]
+    fn wp_cg7_user_volume_and_dac_mute_are_no_change() {
+        // Swift's snapshot holds neither.
+        let (mut o, mut n) = (base(), base());
+        o.user_volume_db = 0.0;
+        n.user_volume_db = -20.0;
+        o.dac_mute_enabled = false;
+        n.dac_mute_enabled = true;
+        n.dac_mute_active_low = !o.dac_mute_active_low;
+        n.dac_mute_pin = o.dac_mute_pin.wrapping_add(1);
+        n.dac_mute_hold_ms = o.dac_mute_hold_ms.wrapping_add(1);
+        n.dac_mute_release_ms = o.dac_mute_release_ms.wrapping_add(1);
+        o.bulk_raw = state::encode_bulk(&o);
+        n.bulk_raw = state::encode_bulk(&n);
+        assert_ne!(o.bulk_raw, n.bulk_raw, "the images do differ");
+        assert!(diff(&o, &n).is_empty());
+        assert!(changes(&o.bulk_raw, &n).is_empty());
+    }
+
+    #[test]
+    fn wp_cg7_gates_follow_the_live_modes() {
+        // In INDEPENDENT mode the wiring, the limiters and the master volume
+        // are not the preset's; everything else still is.
+        let (mut o, mut n) = (base(), base());
+        n.output_config_mode = 0;
+        n.master_volume_mode = 0;
+        n.output_pins[0] = n.output_pins[0].wrapping_add(1);
+        n.limiter_enabled[0] = !o.limiter_enabled[0];
+        n.i2s_input_rate = (o.i2s_input_rate + 1) % 3;
+        o.master_volume_db = 0.0;
+        n.master_volume_db = -5.0;
+        assert!(diff(&o, &n).is_empty(), "{:?}", diff(&o, &n));
+        // The mode is the live one: back on WITH_PRESET they count again.
+        n.output_config_mode = WITH_PRESET;
+        n.master_volume_mode = WITH_PRESET;
+        assert_eq!(diff(&o, &n)[0], "Master Volume: 0.0 dB → -5.0 dB");
+        assert!(diff(&o, &n).contains(&"1 pin assignment changed".to_string()));
+    }
+
+    #[test]
+    fn wp_cg7_default_to_default_renames_are_skipped_and_real_ones_are_not() {
+        let (o, mut n) = (base(), base());
+        // The firmware renames the slot's channels on a type flip.
+        n.output_types[0] = 1;
+        n.channel_names[8] = "I2S 1 L".into();
+        n.channel_names[9] = "I2S 1 R".into();
+        assert_eq!(diff(&o, &n), ["1 output type changed"]);
+        // A user's rename in the same edit shows, also on another output.
+        n.channel_names[10] = "Woofer".into();
+        n.channel_names[9] = "Tweeter".into();
+        assert_eq!(
+            diff(&o, &n),
+            [
+                "'SPDIF 1 R' → 'Tweeter'",
+                "'SPDIF 2 L' → 'Woofer'",
+                "1 output type changed",
+            ]
+        );
+        // In INDEPENDENT mode the type change is not listed, and neither is
+        // its rename.
+        let mut m = n.clone();
+        m.output_config_mode = 0;
+        m.channel_names[9] = "I2S 1 R".into();
+        m.channel_names[10] = "SPDIF 2 L".into();
+        assert!(diff(&o, &m).is_empty());
+        // A user's name going back to a default is a rename too.
+        let mut custom = base();
+        custom.channel_names[8] = "Woofer".into();
+        assert_eq!(diff(&custom, &base()), ["'Woofer' → 'SPDIF 1 L'"]);
+    }
+
+    #[test]
+    fn wp_cg7_the_first_spdif_takes_its_number_with_others_on() {
+        let (mut o, mut n) = (base(), base());
+        o.input_source = 0;
+        n.input_source = 1;
+        n.spdif_inputs_enabled = 0x01;
+        o.spdif_inputs_enabled = 0x01;
+        assert_eq!(diff(&o, &n), ["Input source: USB → S/PDIF"]);
+        o.spdif_inputs_enabled = 0x05;
+        n.spdif_inputs_enabled = 0x05;
+        assert_eq!(diff(&o, &n), ["Input source: USB → S/PDIF 1"]);
+        n.input_source = 6;
+        assert_eq!(diff(&o, &n), ["Input source: USB → S/PDIF 4"]);
+        n.input_source = 9;
+        assert_eq!(diff(&o, &n), ["Input source: USB → Source 9"]);
+    }
+
+    #[test]
+    fn wp_cg7_spdif_enables_come_before_the_optional_pins() {
+        let (mut o, mut n) = (base(), base());
+        o.spdif_inputs_enabled = 0x01;
+        n.spdif_inputs_enabled = 0x0F;
+        o.spdif_rx_pins[1] = 10;
+        n.spdif_rx_pins[1] = 11;
+        assert_eq!(
+            diff(&o, &n),
+            [
+                "S/PDIF 2 input: enabled",
+                "S/PDIF 3 input: enabled",
+                "S/PDIF 4 input: enabled",
+                "S/PDIF 2 RX pin: GPIO 10 → GPIO 11",
+            ]
+        );
+    }
+
+    #[test]
+    fn wp_cg7_a_default_label_is_the_firmwares_default_name() {
+        let mut s = base();
+        s.channel_names = vec![String::new(); 17];
+        s.output_types = vec![0, 1, 0, 0];
+        assert_eq!(channel_label(&s, 0), "USB L");
+        assert_eq!(channel_label(&s, 1), "USB R");
+        assert_eq!(channel_label(&s, 2), "USB 3");
+        assert_eq!(channel_label(&s, 8), "SPDIF 1 L");
+        assert_eq!(channel_label(&s, 11), "I2S 2 R");
+        assert_eq!(channel_label(&s, 16), "PDM");
+        // RP2040: two inputs and five outputs.
+        s.num_input_channels = 2;
+        s.num_output_channels = 5;
+        assert_eq!(channel_label(&s, 2), "SPDIF 1 L");
+        assert_eq!(channel_label(&s, 5), "I2S 2 R");
+        assert_eq!(channel_label(&s, 6), "PDM");
     }
 }
