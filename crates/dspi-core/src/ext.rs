@@ -117,12 +117,6 @@ impl DspiCore {
 
 // ------------------------------------------------- for WP C4 (crossfeed)
 
-/// Whether the connected device has a usable pair map (listed by `EXT_LIST`
-/// and read on connect). False without a device.
-pub(crate) fn pair_map_supported(inner: &mut Inner) -> bool {
-    inner.conn().is_ok_and(|c| c.ext.pair_map.is_some())
-}
-
 /// [`DspiCore::set_crossfeed_pair_map`] with the lock already held, for
 /// WP C4's crossfeed setters or a caller changing several things in one
 /// critical section. Same contract and errors.
@@ -178,9 +172,9 @@ fn store_pair_map(inner: &mut Inner, map: PairMap) {
         c.ext.pair_map = Some(map);
     }
     inner.state.crossfeed_pair_map = map.0.to_vec();
-    // Only an image read from the device is re-encoded: without one
-    // (`bulk_raw` empty) there is nothing to patch.
-    if !inner.state.bulk_raw.is_empty() {
+    // Only this build's own image is re-encoded: a read-only connection
+    // (another wire format, or no image) keeps the image it was shown.
+    if inner.state.bulk_valid {
         inner.state.bulk_raw = state::encode_bulk(&inner.state);
     }
 }

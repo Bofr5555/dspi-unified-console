@@ -290,7 +290,6 @@ fn wp_c8_a_listed_sub_command_whose_read_failed_is_absent() {
     assert_eq!(p.core.fetch_core_vreg(), Err(DspiError::Unsupported));
     assert_eq!(p.core.core_vreg_op(4, 0), Err(DspiError::Unsupported));
     assert_eq!(p.traffic(), before);
-    assert!(!pair_map_supported(&mut p.core.lock()));
 }
 
 // ------------------------------------------------------------ pair map
@@ -298,7 +297,6 @@ fn wp_c8_a_listed_sub_command_whose_read_failed_is_absent() {
 #[test]
 fn wp_c8_the_k340_pair_map_round_trips_into_the_mirror() {
     let p = k340();
-    assert!(pair_map_supported(&mut p.core.lock()));
     assert_eq!(p.core.fetch_crossfeed_pair_map().unwrap(), vec![0; 4]);
 
     p.core.set_crossfeed_pair_map(K340_MAP.to_vec()).unwrap();
@@ -414,7 +412,13 @@ fn wp_c8_a_read_only_connection_never_writes_the_extension_channel() {
     assert!(!p.core.lock().conn().unwrap().writable());
     // Reads work.
     assert!(p.core.ext_status().unwrap().has_pair_map);
+    let image = p.core.get_state().bulk_raw;
     assert_eq!(p.core.fetch_crossfeed_pair_map().unwrap(), vec![0; 4]);
+    assert_eq!(
+        p.core.get_state().bulk_raw,
+        image,
+        "the mapped image is kept"
+    );
     let vreg = p.core.fetch_core_vreg().unwrap();
 
     let outs = p.traffic().1;

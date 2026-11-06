@@ -164,6 +164,11 @@ impl DspiCore {
     pub fn fetch_clock_diag(&self) -> Result<ClockDiag> {
         let mut inner = self.lock();
         let conn = inner.conn()?;
+        // Straight to the transport, not `Connection::get_upto`: the stall
+        // must stay a `TransportError` to read as "not built in". No busy
+        // retry either: on USB `with_busy_retry` treats a stall as busy and
+        // retries it, which would make every read of a build without the
+        // opcode slow, and this is a diagnostic poll the caller repeats.
         let raw = match conn
             .transport()
             .control_in_upto(op::REQ_GET_CLOCK_DIAG, 0, CLOCK_DIAG_READ)

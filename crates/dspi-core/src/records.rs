@@ -606,9 +606,11 @@ pub struct LinkAddress {
 pub struct ExtStatus {
     /// `EXT_LIST`: supported sub-command ids; empty on stock firmware.
     pub supported: Vec<u16>,
-    /// Whether `EXT_CROSSFEED_PAIR_MAP` is supported.
+    /// Whether `EXT_CROSSFEED_PAIR_MAP` is usable: listed by `EXT_LIST` and
+    /// read successfully on connect.
     pub has_pair_map: bool,
-    /// Whether `EXT_CORE_VREG` is supported.
+    /// Whether `EXT_CORE_VREG` is usable: listed by `EXT_LIST` and read
+    /// successfully on connect.
     pub has_core_vreg: bool,
 }
 

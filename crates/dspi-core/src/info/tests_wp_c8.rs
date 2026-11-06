@@ -34,6 +34,17 @@ fn names_round_trip_through_the_demo_device() {
 }
 
 #[test]
+#[ignore = "proto Text trim fix"]
+fn wp_c8_names_keep_their_spaces() {
+    // `Repr::Text::decode` trims whitespace today; it should trim only NULs.
+    let p = k340();
+    p.core.set_device_name(" TV ".into()).unwrap();
+    assert_eq!(p.core.get_device_name().unwrap(), " TV ");
+    p.core.set_input_source_name(3, " TV ".into()).unwrap();
+    assert_eq!(p.core.get_input_source_name(3).unwrap(), " TV ");
+}
+
+#[test]
 fn wp_c8_bad_names_and_sources_are_refused_before_any_traffic() {
     let p = k340();
     p.core.set_device_name("Den".into()).unwrap();
