@@ -147,8 +147,9 @@ See [`docs/platforms.md`](docs/platforms.md) for what has been verified where.
 ## Protocol source of truth
 
 The firmware headers in `crates/dspi-proto/firmware/` are vendored from
-`WeebLabs/DSPi` at `release/v1.1.6` @ `557bce7` (firmware 1.1.6 beta 4, wire
-format V32, 244 vendor opcodes, control-surface caps v20) and parsed at build
+`Bofr5555/DSPi` at `bofr-main` @ `af001ec` (Weeb Labs firmware 1.1.6 final
+plus the fork's extension channel; wire format V32, 247 vendor opcodes,
+control-surface caps v22) and parsed at build
 time to generate every opcode and constant and the wire image's section
 offsets. What the generator cannot lift from a `#define` (the packet
 structs, which the build does not parse, and the tube type table, which

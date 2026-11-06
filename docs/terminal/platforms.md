@@ -1,16 +1,26 @@
 # Platform support
 
-*Last verified 2026-07-27 against `release/v1.1.5` @ `9776c2f`.*
+*Last verified 2026-07-27 against `release/v1.1.5` @ `9776c2f`; Windows and
+Linux x86_64 rows re-checked 2026-11-06 at `bofr-main` @ `af001ec`.*
 
 ## Status
 
-| Platform | Target triple | Type-checks | Linked | Run on hardware |
-|---|---|---:|---:|---:|
-| macOS (Apple silicon) | `aarch64-apple-darwin` | yes | yes | **yes** |
-| macOS (Intel) | `x86_64-apple-darwin` | yes | no | no |
-| Windows | `x86_64-pc-windows-msvc` | yes | no | no |
-| Linux, Raspberry Pi 3/4/5 | `aarch64-unknown-linux-gnu` | yes | no | no |
-| Linux, older Pi | `armv7-unknown-linux-gnueabihf` | yes | no | no |
+| Platform | Target triple | Type-checks | Linked | Tests run | Run on hardware |
+|---|---|---:|---:|---:|---:|
+| macOS (Apple silicon) | `aarch64-apple-darwin` | yes | yes | yes | **yes** |
+| macOS (Intel) | `x86_64-apple-darwin` | yes | no | no | no |
+| Linux x86_64 | `x86_64-unknown-linux-gnu` | yes | yes | yes | no |
+| Windows (MSVC) | `x86_64-pc-windows-msvc` | yes | yes (cargo-xwin) | no | no |
+| Windows (MinGW) | `x86_64-pc-windows-gnu` | yes | yes | yes, under Wine | no |
+| Linux, Raspberry Pi 3/4/5 | `aarch64-unknown-linux-gnu` | yes | no | no | no |
+| Linux, older Pi | `armv7-unknown-linux-gnueabihf` | yes | no | no | no |
+
+Both Windows builds were cross-linked on Linux and smoke-tested under Wine 11
+with no device: `--help`, `--version`, `list` (and `--json`), `doctor`, and
+the interface itself on the example device (`dspi --fixture`) in a pty, which
+draws, takes keys and restores the screen on `q`. The whole test suite of the
+MinGW build passes under Wine. None of that touches USB, so WinUSB itself is
+still unverified on real Windows.
 
 **Be careful reading that table.** Everything type-checks on every target, and
 the platform-specific *logic* is unit-tested for all of them, but only macOS on

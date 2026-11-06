@@ -507,3 +507,31 @@ rather than applied (3422c0c). It emits no PARAM_CHANGED, and
 `REQ_GET_USER_VOLUME` and the bulk `user_volume` report only the applied value,
 so the change is invisible until the input switches to USB, when it is applied
 unless a vendor, control-surface, preset or LG write came in between.
+
+## 37. The bump to 1.1.6 final and the extension channel (bofr-main)
+
+Vendored from `Bofr5555/DSPi` `bofr-main` @ `af001ec` (2026-11-06): Weeb Labs
+`release/v1.1.6` final (`9ffce34`, `FW_VERSION_BETA` 0, caps v22) plus the
+fork's extension channel. Wire format stays V32 at 6136 bytes.
+
+- **0x54-0x57 changed meaning.** At beta 4 they were the legacy 3-channel
+  gain and mute. At 1.1.6 final they are `REQ_SET/GET_INPUT_SOURCE_NAME` and
+  `REQ_SET/GET_DEVICE_NAME`, and the bulk `gain_db[3]` / `mute[3]` are sent
+  as zero and ignored. Older firmware still answers 0x55 with a 4-byte gain
+  and 0x57 with a 1-byte mute, so support is probed with a 32-byte read and a
+  short reply counts as absent (`device_name_spec.md` section 2). Never send
+  0x56 to firmware that fails that probe.
+- **New opcodes:** `REQ_OUTPUT_LATENCY` 0x03 (OUT: 1-byte `OutputLatencyId`;
+  IN wValue 0: 12-byte `OutputLatencyStatus`, wValue 1: the option table),
+  `REQ_GET_CLOCK_DIAG` 0x82 (zero-length unless built with
+  `DSPI_CLOCK_DIAG`), and the fork's `REQ_EXTENSION` 0x00.
+- **CS nouns** `PRESET_SAVE` (79, caps v21) and `OUTPUT_LATENCY` (80, caps
+  v22).
+- **The crossfeed section's `reserved2` is `pair_map[4]`** on bofr-main (bulk
+  offset 44). Zero is the default map, so stock hosts that write zeros there
+  stay correct; a host that rewrites the bulk packet must preserve the four
+  bytes or it resets a K340's map.
+- **The extension channel** multiplexes sub-commands by `wValue` under opcode
+  0x00: `EXT_LIST` 0x0000, `EXT_CROSSFEED_PAIR_MAP` 0x0001,
+  `EXT_CORE_VREG` 0x0002. Stock firmware stalls 0x00, which reads as "no
+  extensions". `dspi ext` drives it (`crates/dspi-session/src/ext.rs`).

@@ -1,7 +1,9 @@
 # `WireBulkParams` V32 wire format
 
 *Derived from `crates/dspi-proto/firmware/bulk_params.h`, vendored from
-`WeebLabs/DSPi` `release/v1.1.6` @ `557bce7` (v1.1.6 beta 4).*
+`WeebLabs/DSPi` `release/v1.1.6` @ `557bce7` (v1.1.6 beta 4); still V32 at
+`Bofr5555/DSPi` `bofr-main` @ `af001ec` (1.1.6 final plus the fork), where the
+crossfeed `rsv` word is the output pair map.*
 
 This document exists because **no released documentation describes this layout**.
 `DSPi/Documentation/commands.md` §13 documents wire format **V14 at 3664 bytes**
@@ -72,7 +74,7 @@ throughout; floats are IEEE 754 single-precision at 4-byte-aligned offsets.
 |--:|-------:|-----:|---------|----------|
 | 1 | 0 | 16 | `header` | see §4 |
 | 2 | 16 | 16 | `global` | f32 preamp_gain_db; u8 bypass; u8 loudness_enabled; u16 loudness_output_mask (V19+); f32 loudness_ref_spl; f32 loudness_intensity_pct |
-| 3 | 32 | 16 | `crossfeed` | u8 enabled; u8 preset; u8 itd_enabled; u8 output_pair_mask (V20+); f32 custom_fc; f32 custom_feed_db; u32 rsv |
+| 3 | 32 | 16 | `crossfeed` | u8 enabled; u8 preset; u8 itd_enabled; u8 output_pair_mask (V20+); f32 custom_fc; f32 custom_feed_db; u32 rsv (bofr-main: u8 pair_map[4], 0 = default) |
 | 4 | 48 | 16 | `legacy` | f32 gain_db[3]; u8 mute[3]; u8 rsv |
 | 5 | 64 | 68 | `delays` | f32 delay_ms[17] |
 | 6 | 132 | 576 | `crosspoints` | `WireCrosspoint[8][9]`, input-major, 8 B each |
