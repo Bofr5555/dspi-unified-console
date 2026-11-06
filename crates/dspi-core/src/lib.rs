@@ -82,6 +82,8 @@ mod notify;
 mod params;
 mod params_fx;
 mod presets;
+// -- WP CG4 --
+mod raw;
 mod rta;
 mod stats;
 
