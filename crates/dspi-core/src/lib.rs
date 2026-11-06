@@ -77,6 +77,9 @@ mod hotplug;
 mod info;
 #[cfg(feature = "link")]
 pub mod link;
+// -- WP CG2 --
+#[cfg(feature = "mdns")]
+pub mod link_browse;
 mod monitor;
 mod notify;
 mod params;
@@ -126,6 +129,10 @@ pub struct DspiCore {
     /// What `link_close` needs without the lock (WP C15).
     #[cfg(feature = "link")]
     pub(crate) link_control: Mutex<Option<link::LinkControl>>,
+    // -- WP CG2 --
+    /// The running hub browse.
+    #[cfg(feature = "mdns")]
+    pub(crate) browse: link_browse::BrowseSlot,
 }
 
 /// Everything behind the lock.
@@ -477,6 +484,9 @@ impl DspiCore {
             me: me.clone(),
             #[cfg(feature = "link")]
             link_control: Mutex::new(None),
+            // -- WP CG2 --
+            #[cfg(feature = "mdns")]
+            browse: link_browse::BrowseSlot::default(),
         })
     }
 }

@@ -45,6 +45,10 @@ uniffi = { workspace = true, optional = true }
 default = []
 # DSPi Link sessions (WP C15, over dspi-transport's Link adapter, WP T5).
 link = ["dep:dspi-link", "dspi-transport/link"]
+# -- WP CG2 --
+# Finding hubs over mDNS (link_browse.rs). Desktop only: dspi-ffi must not enable it
+# (tests/wp_cg2_mobile_no_mdns.rs).
+mdns = ["link", "dspi-link/mdns"]
 # Desktop MIDI ports through midir (WP T3).
 midir = ["dspi-transport/midir"]
 # UniFFI derives and exports, for crates/dspi-ffi (WP F1).
