@@ -16,8 +16,12 @@
 //!   keeps the prompt, and `link_pair` dials when the socket has gone.
 //! - The device bound with `link_select_device` is bound again, by serial,
 //!   and read: after a reconnect, and when the hub lists it online again.
-//! - Before a token goes out on a reconnect, `GET /dspi/v1/info` checks that
-//!   the same hub still answers at that address.
+//! - On a reconnect the token is looked up after the hello
+//!   (`SessionConfig::token_for`), so another hub taking over the address
+//!   never sees it, and that hub is not accepted as this session's.
+//! - What to do about a failure is the client's [`LinkError::retry_advice`]:
+//!   `rate_limited` waits a minute and keeps the token, and a refused
+//!   handshake ends the session.
 //!
 //! It is never joined, because a dial may take half a minute: closing sets
 //! `cancel`, and it stops at its next step. It holds the core only weakly,
@@ -60,7 +64,10 @@ use std::time::{Duration, Instant};
 use dspi_link::frames::PollFrame;
 use dspi_link::messages::{DeviceInfo, PollSpec};
 use dspi_link::socket::{TcpConnector, WsConnector};
-use dspi_link::{AuthState, ConnectOptions, Dir, LinkClient, LinkError, LinkEvents};
+use dspi_link::{
+    AuthState, ConnectOptions, Dir, LinkClient, LinkError, LinkEvents, RetryAdvice, SessionConfig,
+    SessionState, Timing,
+};
 use dspi_proto::generated::opcodes as op;
 use dspi_proto::packets::RtaBandFrame;
 use dspi_transport::link::map_status;
@@ -116,52 +123,69 @@ const BRIDGED_BANDS_EVERY: Duration = Duration::from_millis(250);
 /// Bin frames on a bridged hub.
 const BRIDGED_BINS_EVERY: Duration = Duration::from_millis(250);
 
-/// What the supervisor waits between tries.
+/// The session's timers: production's, or shortened by a test.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Backoff {
-    pub(crate) first: Duration,
-    pub(crate) max: Duration,
+pub(crate) struct Tuning {
+    /// The client's timers.
+    pub(crate) timing: Timing,
+    /// Backoff delays are divided by this.
+    pub(crate) backoff_divisor: u32,
 }
 
-impl Default for Backoff {
+impl Default for Tuning {
     fn default() -> Self {
         Self {
-            first: Duration::from_secs(1),
-            max: Duration::from_secs(30),
+            timing: Timing::default(),
+            backoff_divisor: 1,
         }
     }
 }
 
-impl Backoff {
-    /// The wait after `failures` failed tries: first, 2 x first, ... max.
-    fn delay(&self, failures: u32) -> Duration {
-        self.first
-            .saturating_mul(2u32.saturating_pow(failures.min(10)))
-            .min(self.max)
+impl Tuning {
+    /// The wait after `failures` failed tries, by the advice for `error`
+    /// (none: a lost session). `None`: do not try again.
+    fn delay(&self, error: Option<&LinkError>, failures: u32) -> Option<Duration> {
+        let advice = error.map_or(
+            RetryAdvice::Retry {
+                min_delay: Duration::ZERO,
+            },
+            LinkError::retry_advice,
+        );
+        let delay = advice.delay(failures)?;
+        Some(delay.checked_div(self.backoff_divisor).unwrap_or(delay))
     }
 }
 
 /// What wakes the supervisor.
 enum Msg {
-    /// The device list of client `instance` changed.
+    /// The device list of the client with this epoch changed.
     Devices(u64),
+    /// The hub issued a token, perhaps after `link_pair` timed out.
+    Token { hub_id: String, token: String },
     /// Something else changed: look again.
     Kick,
 }
 
-/// The client's events, as wake-ups. Safe on any thread, under any lock.
+/// The client's events, as messages. Safe on any thread, under any lock, and
+/// never blocking: some run on the client's reader thread.
 struct Forward {
-    instance: u64,
     tx: Sender<Msg>,
 }
 
 impl LinkEvents for Forward {
-    fn devices_changed(&self) {
-        let _ = self.tx.send(Msg::Devices(self.instance));
+    fn session_devices_changed(&self, epoch: u64) {
+        let _ = self.tx.send(Msg::Devices(epoch));
     }
 
-    fn closed(&self, _code: Option<u16>, _reason: &str) {
+    fn session_closed(&self, _epoch: u64, _code: Option<u16>, _reason: &str) {
         let _ = self.tx.send(Msg::Kick);
+    }
+
+    fn token_issued(&self, hub_id: &str, token: &str) {
+        let _ = self.tx.send(Msg::Token {
+            hub_id: hub_id.to_lowercase(),
+            token: token.to_owned(),
+        });
     }
 }
 
@@ -171,12 +195,13 @@ struct Target {
     url: String,
     client_name: String,
     app_version: String,
-    /// The token for this hub, kept until a pairing replaces it or the hub
-    /// revokes it.
+    /// The token for this hub, kept until a pairing replaces it, or the hub
+    /// refuses or revokes it.
     token: String,
     /// The `hid` of the hub this session belongs to.
     hub_id: String,
     connector: Arc<dyn WsConnector>,
+    timing: Timing,
 }
 
 /// The device bound with `link_select_device`.
@@ -208,13 +233,15 @@ struct Retry {
 pub(crate) struct LinkSession {
     id: u64,
     target: Target,
-    backoff: Backoff,
+    tuning: Tuning,
     client: Option<LinkClient>,
-    /// Which client's events count.
+    /// The epoch of the client whose events count.
     instance: u64,
     pin_source: String,
     /// The hub wants a PIN. Survives the socket: the prompt stays up.
     needs_pin: bool,
+    /// The hub refused or revoked the token: the app should forget it.
+    token_refused: bool,
     /// The current client's end has been handled.
     loss_seen: bool,
     retry: Option<Retry>,
@@ -266,13 +293,17 @@ impl LinkSession {
         if self.needs_pin {
             return LinkPhase::NeedsPairing;
         }
-        let Some(client) = self.client.as_ref().filter(|c| c.is_ready()) else {
+        let Some(client) = self.client.as_ref() else {
             return LinkPhase::Reconnecting;
         };
-        let devices = client.devices();
-        if !devices.iter().any(|d| board_present(&d.state)) {
-            return LinkPhase::NoDevice;
+        match client.session_state() {
+            SessionState::Online => {}
+            SessionState::NoBoard => return LinkPhase::NoDevice,
+            SessionState::NeedsAuth | SessionState::DeviceListUnknown | SessionState::Closed => {
+                return LinkPhase::Reconnecting;
+            }
         }
+        let devices = client.devices();
         match &self.bound {
             None => LinkPhase::ChooseDevice,
             Some(b) if b.opening => LinkPhase::ChooseDevice,
@@ -285,13 +316,24 @@ impl LinkSession {
         }
     }
 
-    fn schedule_retry(&mut self, now: Instant) {
+    /// Plan the next try after a failure, or end the session if the advice
+    /// is not to try again.
+    fn schedule_retry(&mut self, error: Option<&LinkError>, now: Instant) {
         let failures = self.retry.map_or(0, |r| r.failures.saturating_add(1));
-        let delay = self.backoff.delay(failures);
-        self.retry = Some(Retry {
-            failures,
-            next_at: now.checked_add(delay).unwrap_or(now),
-        });
+        match self.tuning.delay(error, failures) {
+            Some(delay) => {
+                self.retry = Some(Retry {
+                    failures,
+                    next_at: now.checked_add(delay).unwrap_or(now),
+                });
+            }
+            None => {
+                let reason = error.map_or_else(String::new, ToString::to_string);
+                self.retry = None;
+                self.ended = true;
+                self.unreported_end = Some((None, reason));
+            }
+        }
     }
 
     /// The current client's end, once: decide what follows.
@@ -319,10 +361,11 @@ impl LinkSession {
         }
         if dspi_link::should_reconnect(code) {
             self.retry = None;
-            self.schedule_retry(now);
+            self.schedule_retry(None, now);
         } else {
             if code == Some(4002) {
                 self.target.token.clear();
+                self.token_refused = true;
             }
             self.ended = true;
             self.unreported_end = Some((code, reason));
@@ -338,16 +381,14 @@ enum Step {
     /// The session is gone.
     Stop,
     Wait(Option<Duration>, Option<Arc<LinkSide>>),
-    Dial(Target),
+    Dial(Box<Target>),
     Rebind(u8, String),
+    /// Read a device list that failed after a pairing.
+    ReadDevices(LinkClient),
 }
 
 /// A session number; never reused.
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
-/// A client number; never reused.
-static NEXT_INSTANCE: AtomicU64 = AtomicU64::new(1);
-
-#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// Open a DSPi Link session to `url` (`link_ws_url`), replacing any
     /// previous one. `token` = the token stored for this hub's id ("" =
@@ -359,7 +400,9 @@ impl DspiCore {
     /// [`LinkListener`] and `link_status`. An app does not redial.
     ///
     /// Errors: [`DspiError::Link`], its `code` being `io`, `handshake`,
-    /// `hub_busy` (all the hub's sessions are in use; try again), `protocol`,
+    /// `hub_busy` (all the hub's sessions are in use; try again in a few
+    /// seconds), `handshake_refused` (trying again will not help),
+    /// `rate_limited` (the token stays good; wait a minute), `protocol`,
     /// `timeout`, `closed`, or the hub's own.
     pub fn link_connect(
         &self,
@@ -374,33 +417,34 @@ impl DspiCore {
             app_version,
             token,
             Arc::new(TcpConnector::default()),
-            Backoff::default(),
+            Tuning::default(),
         )
     }
 
     /// Pair with the PIN the user typed (role `control`, as the macOS
     /// Console asks). Returns the token to store against the hub id ("" when
     /// the hub issued none). If the hub dropped the socket while the prompt
-    /// was up (its 30 s auth deadline), it is dialled again first.
+    /// was up (its 30 s auth deadline), it is dialled again first. A pairing
+    /// succeeds even if the device list then fails; the core reads it again.
     ///
     /// Errors, as [`DspiError::Link`] with `msg` ready to show:
     /// - `wrong_pin`: a wrong PIN, or, on a hub showing its PIN in a window,
     ///   one that is wrong or expired, or a closed window (the hub does not
     ///   say which). Ask again;
     /// - `rate_limited`: too many wrong tries; the hub refuses for a minute;
-    /// - `internal`: the hub failed;
+    /// - `timeout`: no answer. The hub may still have accepted the PIN:
+    ///   [`LinkListener::on_link_token_issued`] then still delivers the token;
     /// - anything else [`DspiCore::link_connect`] reports;
     /// - [`DspiError::Disconnected`] with no session.
     pub fn link_pair(&self, pin: String) -> Result<String> {
-        let (client, instance, pin_source) = self.pairing_client()?;
-        let token = client
-            .pair(pin.trim(), PAIR_ROLE)
-            .map_err(|e| map_pair_error(e, &pin_source))?;
+        let (client, instance) = self.pairing_client()?;
+        let token = client.pair(pin.trim(), PAIR_ROLE).map_err(map_error)?;
         let mut inner = self.lock();
         if let Some(s) = inner.link.as_mut().filter(|s| s.instance == instance) {
             s.needs_pin = false;
             s.last_close = None;
             if !token.is_empty() {
+                s.token_refused = false;
                 s.target.token.clone_from(&token);
             }
             let _ = s.tx.send(Msg::Kick);
@@ -452,6 +496,7 @@ impl DspiCore {
                 u32::try_from(left).unwrap_or(u32::MAX)
             }),
             pin_source: s.pin_source.clone(),
+            token_refused: s.token_refused,
         }
     }
 
@@ -573,7 +618,7 @@ impl DspiCore {
         app_version: String,
         token: String,
         connector: Arc<dyn WsConnector>,
-        backoff: Backoff,
+        tuning: Tuning,
     ) -> Result<LinkHello> {
         self.link_close();
         let (tx, rx) = mpsc::channel();
@@ -584,21 +629,25 @@ impl DspiCore {
             token,
             hub_id: String::new(),
             connector,
+            timing: tuning.timing,
         };
-        let instance = NEXT_INSTANCE.fetch_add(1, Ordering::Relaxed);
-        let (client, state) =
-            dial(&target, Some(&target.token), instance, &tx).map_err(map_error)?;
+        let (client, state) = dial(&target, true, &tx).map_err(map_error)?;
         let hello = hello_record(&client, &state);
         target.hub_id.clone_from(&hello.hub_id);
+        if hello.token_refused {
+            target.token.clear();
+        }
+        let instance = client.epoch();
         let cancel = Arc::new(AtomicBool::new(false));
         let session = LinkSession {
             id: NEXT_SESSION.fetch_add(1, Ordering::Relaxed),
             target,
-            backoff,
+            tuning,
             client: Some(client),
             instance,
             pin_source: hello.pin_source.clone(),
             needs_pin: hello.needs_pairing,
+            token_refused: hello.token_refused,
             loss_seen: false,
             retry: None,
             last_close: None,
@@ -630,33 +679,32 @@ impl DspiCore {
 
     /// The client to pair on: the current one, or a new one if the hub
     /// dropped the socket during the prompt.
-    fn pairing_client(&self) -> Result<(LinkClient, u64, String)> {
+    fn pairing_client(&self) -> Result<(LinkClient, u64)> {
         let (target, tx) = {
             let inner = self.lock();
             let s = inner.link.as_ref().ok_or(DspiError::Disconnected)?;
             if let Some(c) = s.client.as_ref().filter(|c| !c.is_closed()) {
-                return Ok((c.clone(), s.instance, s.pin_source.clone()));
+                return Ok((c.clone(), s.instance));
             }
             if !s.needs_pin {
                 return Err(DspiError::Disconnected);
             }
             (s.target.clone(), s.tx.clone())
         };
-        let instance = NEXT_INSTANCE.fetch_add(1, Ordering::Relaxed);
-        let (client, state) = dial(&target, None, instance, &tx).map_err(map_error)?;
-        let source = client.hello().pin_source().to_owned();
+        let (client, state) = dial(&target, false, &tx).map_err(map_error)?;
+        let instance = client.epoch();
         let mut inner = self.lock();
         let Some(s) = inner.link.as_mut() else {
             drop(inner);
             client.close();
             return Err(DspiError::Disconnected);
         };
+        s.pin_source = client.hello().pin_source().to_owned();
         s.client = Some(client.clone());
         s.instance = instance;
         s.loss_seen = false;
-        s.needs_pin = matches!(state, AuthState::NeedsPairing { .. });
-        s.pin_source.clone_from(&source);
-        Ok((client, instance, source))
+        s.needs_pin = state.needs_pin();
+        Ok((client, instance))
     }
 
     /// Open device `handle` on the current client and record it as bound.
@@ -731,7 +779,6 @@ impl DspiCore {
     fn finish_dial(
         &self,
         id: u64,
-        instance: u64,
         dialled: std::result::Result<(LinkClient, AuthState), LinkError>,
     ) -> bool {
         let now = Instant::now();
@@ -739,40 +786,64 @@ impl DspiCore {
         let Some(s) = guard.link.as_mut().filter(|s| s.id == id) else {
             drop(guard);
             if let Ok((client, _)) = dialled {
-                client.set_events(None);
                 client.close();
             }
             return false;
         };
         match dialled {
             Ok((client, state)) => {
-                let needs_pin = matches!(state, AuthState::NeedsPairing { .. });
+                if matches!(state, AuthState::TokenRefused { .. }) {
+                    s.target.token.clear();
+                    s.token_refused = true;
+                }
                 s.pin_source = client.hello().pin_source().to_owned();
+                s.instance = client.epoch();
                 s.client = Some(client);
-                s.instance = instance;
                 s.loss_seen = false;
                 s.retry = None;
-                s.needs_pin = needs_pin;
-                if !needs_pin {
+                s.needs_pin = state.needs_pin();
+                if !s.needs_pin {
                     s.last_close = None;
                 }
                 if let Some(b) = &mut s.bound {
                     b.attached = false;
                 }
-                true
             }
             Err(e) => {
-                let permanent = matches!(e, LinkError::Protocol(_));
                 log::info!("DSPi Link reconnect failed: {e}");
                 s.last_close = Some((None, e.to_string()));
-                if permanent {
-                    s.ended = true;
-                    s.retry = None;
-                    s.unreported_end = Some((None, e.to_string()));
-                } else {
-                    s.schedule_retry(now);
+                s.schedule_retry(Some(&e), now);
+            }
+        }
+        true
+    }
+
+    /// A token from the hub: keep it for reconnects, and tell the app.
+    fn note_token(&self, hub_id: String, token: String) {
+        {
+            let mut inner = self.lock();
+            if let Some(s) = inner.link.as_mut() {
+                s.target.token.clone_from(&token);
+                s.needs_pin = false;
+                s.token_refused = false;
+            }
+        }
+        self.listeners
+            .link
+            .call(|l| l.on_link_token_issued(hub_id, token));
+    }
+
+    /// The device list that failed after a pairing: read it again.
+    fn read_devices(&self, id: u64, client: &LinkClient) {
+        let result = client.refresh_devices();
+        let mut inner = self.lock();
+        if let Some(s) = inner.link.as_mut().filter(|s| s.id == id) {
+            match result {
+                Ok(_) => s.retry = None,
+                Err(e) => {
+                    log::info!("reading the hub's device list failed: {e}");
+                    s.schedule_retry(Some(&e), Instant::now());
                 }
-                true
             }
         }
     }
@@ -796,7 +867,7 @@ impl DspiCore {
                             if let Some(b) = &mut s.bound {
                                 b.attached = false;
                             }
-                            s.schedule_retry(Instant::now());
+                            s.schedule_retry(None, Instant::now());
                         }
                     }
                     false
@@ -832,7 +903,7 @@ fn next_step(s: &mut LinkSession, conn_gen: Option<u64>, now: Instant) -> Step {
             return Step::Wait(None, None);
         }
         return match s.retry {
-            Some(r) if now >= r.next_at => Step::Dial(s.target.clone()),
+            Some(r) if now >= r.next_at => Step::Dial(Box::new(s.target.clone())),
             Some(r) => Step::Wait(Some(r.next_at.saturating_duration_since(now)), None),
             // Closed, and `note_loss` runs before this: nothing to wait for.
             None => Step::Wait(None, None),
@@ -841,6 +912,14 @@ fn next_step(s: &mut LinkSession, conn_gen: Option<u64>, now: Instant) -> Step {
     let Some(client) = s.client.clone().filter(LinkClient::is_ready) else {
         return Step::Wait(None, None);
     };
+    if client.session_state() == SessionState::DeviceListUnknown {
+        return match s.retry {
+            Some(r) if now < r.next_at => {
+                Step::Wait(Some(r.next_at.saturating_duration_since(now)), None)
+            }
+            _ => Step::ReadDevices(client),
+        };
+    }
     let devices = client.devices();
     // Closed by the app with the session up (`disconnect`).
     if s.bound
@@ -898,15 +977,19 @@ fn supervise(me: &Weak<DspiCore>, id: u64, rx: &Receiver<Msg>, cancel: &AtomicBo
         let Some(core) = me.upgrade() else {
             return;
         };
-        if let Some(Msg::Devices(instance)) = msg {
-            let current = core
-                .lock()
-                .link
-                .as_ref()
-                .is_some_and(|s| s.id == id && s.instance == instance);
-            if current {
-                core.listeners.link.call(|l| l.on_link_devices_changed());
+        match msg {
+            Some(Msg::Devices(epoch)) => {
+                let current = core
+                    .lock()
+                    .link
+                    .as_ref()
+                    .is_some_and(|s| s.id == id && s.instance == epoch);
+                if current {
+                    core.listeners.link.call(|l| l.on_link_devices_changed());
+                }
             }
+            Some(Msg::Token { hub_id, token }) => core.note_token(hub_id, token),
+            Some(Msg::Kick) | None => {}
         }
         drop(core);
         match run_steps(me, id, cancel) {
@@ -945,17 +1028,15 @@ fn run_steps(me: &Weak<DspiCore>, id: u64, cancel: &AtomicBool) -> Option<Option
             Step::Dial(target) => {
                 let tx = core.lock().link.as_ref().map(|s| s.tx.clone())?;
                 drop(core);
-                let instance = NEXT_INSTANCE.fetch_add(1, Ordering::Relaxed);
-                let dialled = redial(&target, instance, &tx);
-                let core = me.upgrade();
-                let Some(core) = core else {
+                let dialled = redial(&target, &tx);
+                let Some(core) = me.upgrade() else {
                     if let Ok((client, _)) = dialled {
                         client.close();
                     }
                     return None;
                 };
                 let ok = dialled.is_ok();
-                if !core.finish_dial(id, instance, dialled) {
+                if !core.finish_dial(id, dialled) {
                     return None;
                 }
                 core.listeners.link.call(|l| l.on_link_status_changed());
@@ -963,119 +1044,81 @@ fn run_steps(me: &Weak<DspiCore>, id: u64, cancel: &AtomicBool) -> Option<Option
                     core.listeners.link.call(|l| l.on_link_devices_changed());
                 }
             }
-            Step::Rebind(handle, serial) => {
-                core.rebind(id, handle, serial);
-            }
+            Step::Rebind(handle, serial) => core.rebind(id, handle, serial),
+            Step::ReadDevices(client) => core.read_devices(id, &client),
         }
     }
 }
 
-/// Connect, authenticate with `token` ("" or `None` = without one).
+/// Connect and, if `with_token`, authenticate with the session's token. Once
+/// the hub's id is known, the token is looked up after the hello, so another
+/// hub at the address never sees it.
 fn dial(
     target: &Target,
-    token: Option<&String>,
-    instance: u64,
+    with_token: bool,
     tx: &Sender<Msg>,
 ) -> std::result::Result<(LinkClient, AuthState), LinkError> {
+    let token = Some(&target.token).filter(|t| with_token && !t.is_empty());
+    let known_hub = !target.hub_id.is_empty();
     let opts = ConnectOptions {
         client_name: target.client_name.clone(),
         app: APP_NAME.into(),
         app_version: target.app_version.clone(),
-        token: token.filter(|t| !t.is_empty()).cloned(),
+        token: token.filter(|_| !known_hub).cloned(),
     };
-    let forward = Forward {
-        instance,
-        tx: tx.clone(),
+    let lookup = token.filter(|_| known_hub).map(|token| {
+        let (hub_id, token) = (target.hub_id.clone(), token.clone());
+        let lookup: dspi_link::TokenLookup =
+            Arc::new(move |hub: &str| hub.eq_ignore_ascii_case(&hub_id).then(|| token.clone()));
+        lookup
+    });
+    let cfg = SessionConfig {
+        timing: target.timing,
+        token_for: lookup,
+        ..SessionConfig::default()
     };
-    LinkClient::connect(
+    LinkClient::connect_with(
         target.connector.as_ref(),
         &target.url,
         &opts,
-        Some(Arc::new(forward)),
+        Some(Arc::new(Forward { tx: tx.clone() })),
+        &cfg,
     )
 }
 
-/// A dial on a reconnect: the same hub only. The token goes out only after
-/// the info endpoint named the hub (an address can pass to another hub on a
-/// DHCP change); the hello is checked in any case.
+/// A dial on a reconnect: the same hub only.
 fn redial(
     target: &Target,
-    instance: u64,
     tx: &Sender<Msg>,
 ) -> std::result::Result<(LinkClient, AuthState), LinkError> {
-    let other_hub = || LinkError::Io("another hub answers at this address".into());
-    if !target.token.is_empty()
-        && !target.hub_id.is_empty()
-        && let Some((host, port)) = url_authority(&target.url)
-        && let Ok(info) = dspi_link::address::fetch_info(&host, port, INFO_TIMEOUT)
-        && !info.hub.id.eq_ignore_ascii_case(&target.hub_id)
-    {
-        return Err(other_hub());
-    }
-    let (client, state) = dial(target, Some(&target.token), instance, tx)?;
+    let (client, state) = dial(target, true, tx)?;
     if !target.hub_id.is_empty() && !client.hello().hub.id.eq_ignore_ascii_case(&target.hub_id) {
         client.set_events(None);
         client.close();
-        return Err(other_hub());
+        return Err(LinkError::Io("another hub answers at this address".into()));
     }
     Ok((client, state))
 }
 
-/// `host` and `port` of a `ws://host:port/path` URL.
-fn url_authority(url: &str) -> Option<(String, u16)> {
-    let rest = url.strip_prefix("ws://")?;
-    let authority = rest.split('/').next()?;
-    dspi_link::address::parse_address(authority)
-}
-
-/// A client failure as a typed error (spec 7.1 codes pass through).
+/// A client failure as a typed error, its text ready to show. Spec 7.1 codes
+/// pass through.
 fn map_error(e: LinkError) -> DspiError {
     let msg = e.to_string();
     let code: &str = match &e {
         LinkError::Io(_) => "io",
-        // Switch-over: L1 types the handshake status.
-        LinkError::Handshake(m) if m.contains("503") => {
-            return DspiError::Link {
-                code: "hub_busy".into(),
-                msg: "The hub is busy: all its sessions are in use.".into(),
-            };
-        }
         LinkError::Handshake(_) => "handshake",
+        LinkError::HubBusy => "hub_busy",
+        LinkError::HandshakeRefused { .. } => "handshake_refused",
         LinkError::Protocol(_) => "protocol",
         LinkError::Timeout => "timeout",
         LinkError::Closed { .. } => "closed",
+        LinkError::WrongPin { .. } => "wrong_pin",
+        LinkError::RateLimited { .. } => "rate_limited",
         LinkError::Rejected { code, .. } => code,
     };
     DspiError::Link {
         code: code.to_owned(),
         msg,
-    }
-}
-
-/// A failed pairing, worded by where the PIN comes from (findings F3). Real
-/// hubs answer `unauthenticated`, also for a closed or expired window.
-fn map_pair_error(e: LinkError, pin_source: &str) -> DspiError {
-    let LinkError::Rejected { code, .. } = &e else {
-        return map_error(e);
-    };
-    let (code, msg) = match code.as_str() {
-        "unauthenticated" | "denied" if pin_source == "fixed" => {
-            ("wrong_pin", "Wrong PIN. It is set in the hub's setup page.")
-        }
-        "unauthenticated" | "denied" => (
-            "wrong_pin",
-            "Wrong or expired code. Open a new pairing window on the hub and try again.",
-        ),
-        "rate_limited" => (
-            "rate_limited",
-            "Too many wrong tries. The hub refuses for a minute.",
-        ),
-        "internal" => ("internal", "The hub failed to process the pairing."),
-        _ => return map_error(e),
-    };
-    DspiError::Link {
-        code: code.into(),
-        msg: msg.into(),
     }
 }
 
@@ -1089,7 +1132,8 @@ fn hello_record(client: &LinkClient, state: &AuthState) -> LinkHello {
         proto_minor: h.proto.minor,
         auth: h.auth.clone(),
         pin_source: h.pin_source().to_owned(),
-        needs_pairing: matches!(state, AuthState::NeedsPairing { .. }),
+        needs_pairing: state.needs_pin(),
+        token_refused: matches!(state, AuthState::TokenRefused { .. }),
         caps: h.caps.clone(),
         max_payload: h.limits.max_payload,
         max_inflight: h.limits.max_inflight,

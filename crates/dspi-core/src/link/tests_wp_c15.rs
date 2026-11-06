@@ -6,7 +6,7 @@ use std::collections::VecDeque;
 use std::io;
 use std::sync::atomic::AtomicUsize;
 
-use dspi_link::fakehub::{Auth, FakeHub, HubConfig, req};
+use dspi_link::fakehub::{Auth, DeviceListFault, FakeHub, HubConfig, req};
 use dspi_link::frames::Frame;
 use dspi_link::socket::{WsMessage, WsPair, WsReceiver, WsRecv, WsSender};
 use serde_json::{Value, json};
@@ -14,10 +14,7 @@ use serde_json::{Value, json};
 use super::*;
 
 const WAIT: Duration = Duration::from_secs(8);
-const FAST: Backoff = Backoff {
-    first: Duration::from_millis(20),
-    max: Duration::from_millis(100),
-};
+const FAST: u32 = 50;
 
 type Rewrite = Box<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
@@ -28,15 +25,8 @@ struct Faults {
     out_delay_ms: AtomicU64,
     /// Text frames containing the first string are held for the given ms.
     hold_text: Mutex<Option<(String, u64)>>,
-    /// Deliver every frame in twice.
-    duplicate_in: AtomicBool,
-    /// Lose the reply to the next command, keeping it for [`Faults::late`].
-    swallow_next_cmd: AtomicBool,
-    late: Mutex<Option<WsMessage>>,
     /// Frames to deliver next.
     inject: Mutex<VecDeque<WsMessage>>,
-    /// End the socket without a close frame.
-    cut: AtomicBool,
     /// Change inbound text.
     rewrite: Mutex<Option<Rewrite>>,
     /// Text sent, in order.
@@ -72,7 +62,6 @@ impl WsConnector for FaultConnector {
             Box::new(FaultReceiver {
                 inner: rx,
                 faults: Arc::clone(&self.faults),
-                again: None,
             }),
         ))
     }
@@ -114,43 +103,18 @@ impl WsSender for FaultSender {
 struct FaultReceiver {
     inner: Box<dyn WsReceiver>,
     faults: Arc<Faults>,
-    again: Option<WsMessage>,
 }
 
 impl WsReceiver for FaultReceiver {
     fn recv(&mut self) -> WsRecv {
         let f = Arc::clone(&self.faults);
-        if f.cut.swap(false, Ordering::SeqCst) {
-            return WsRecv::Closed {
-                code: None,
-                reason: "cut".into(),
-            };
-        }
-        if let Some(m) = self.again.take() {
-            return WsRecv::Message(m);
-        }
         if let Some(m) = guard(&f.inject).pop_front() {
             return WsRecv::Message(m);
         }
         match self.inner.recv() {
             WsRecv::Message(WsMessage::Text(t)) => {
                 let t = guard(&f.rewrite).as_ref().and_then(|r| r(&t)).unwrap_or(t);
-                if f.duplicate_in.load(Ordering::SeqCst) {
-                    self.again = Some(WsMessage::Text(t.clone()));
-                }
                 WsRecv::Message(WsMessage::Text(t))
-            }
-            WsRecv::Message(WsMessage::Binary(b)) => {
-                if matches!(Frame::decode(&b), Ok(Frame::CmdResponse(_)))
-                    && f.swallow_next_cmd.swap(false, Ordering::SeqCst)
-                {
-                    *guard(&f.late) = Some(WsMessage::Binary(b));
-                    return WsRecv::Idle;
-                }
-                if f.duplicate_in.load(Ordering::SeqCst) {
-                    self.again = Some(WsMessage::Binary(b.clone()));
-                }
-                WsRecv::Message(WsMessage::Binary(b))
             }
             other => other,
         }
@@ -177,7 +141,10 @@ fn connect_with(
         Arc::new(FaultConnector {
             faults: Arc::clone(faults),
         }),
-        FAST,
+        Tuning {
+            timing: Timing::default(),
+            backoff_divisor: FAST,
+        },
     )
 }
 
@@ -229,6 +196,7 @@ impl LinkListener for Events {
     fn on_link_status_changed(&self) {
         self.status.fetch_add(1, Ordering::SeqCst);
     }
+    fn on_link_token_issued(&self, _hub_id: String, _token: String) {}
 }
 
 // ── The API ────────────────────────────────────────────────────────────
@@ -324,39 +292,36 @@ fn wp_c15_a_connect_failure_names_the_cause() {
 
 #[test]
 fn wp_c15_error_words() {
+    let code = |e: LinkError| match map_error(e) {
+        DspiError::Link { code, .. } => code,
+        other => panic!("{other:?}"),
+    };
+    let wrong = LinkError::WrongPin {
+        pin_source: dspi_link::PinSource::Window,
+    };
+    let DspiError::Link { msg, .. } = map_error(wrong.clone()) else {
+        panic!()
+    };
+    assert!(msg.contains("expired"), "{msg}");
+    assert_eq!(code(wrong), "wrong_pin");
+    assert_eq!(
+        code(LinkError::RateLimited { msg: String::new() }),
+        "rate_limited"
+    );
+    assert_eq!(code(LinkError::HubBusy), "hub_busy");
+    assert_eq!(
+        code(LinkError::HandshakeRefused {
+            status: 403,
+            msg: String::new()
+        }),
+        "handshake_refused"
+    );
+    assert_eq!(code(LinkError::Timeout), "timeout");
     let rejected = |code: &str| LinkError::Rejected {
         code: code.into(),
         msg: String::new(),
     };
-    let code = |e: DspiError| match e {
-        DspiError::Link { code, .. } => code,
-        other => panic!("{other:?}"),
-    };
-    // What both real hubs answer, and what the fake hub answers.
-    for wrong in ["unauthenticated", "denied"] {
-        assert_eq!(code(map_pair_error(rejected(wrong), "fixed")), "wrong_pin");
-        let DspiError::Link { msg, .. } = map_pair_error(rejected(wrong), "window") else {
-            panic!()
-        };
-        assert!(msg.contains("expired"), "{msg}");
-    }
-    assert_eq!(
-        code(map_pair_error(rejected("rate_limited"), "fixed")),
-        "rate_limited"
-    );
-    assert_eq!(
-        code(map_pair_error(rejected("internal"), "fixed")),
-        "internal"
-    );
-    assert_eq!(code(map_pair_error(LinkError::Timeout, "fixed")), "timeout");
-    assert_eq!(
-        code(map_error(LinkError::Handshake("HTTP error: 503".into()))),
-        "hub_busy"
-    );
-    assert_eq!(
-        code(map_error(LinkError::Handshake("HTTP error: 400".into()))),
-        "handshake"
-    );
+    assert_eq!(code(rejected("internal")), "internal");
     assert_eq!(map_lock_error(rejected("locked")), DspiError::Locked);
     assert_eq!(map_lock_error(rejected("denied")), DspiError::Denied);
     assert_eq!(
@@ -369,11 +334,19 @@ fn wp_c15_error_words() {
 }
 
 #[test]
-fn wp_c15_backoff_doubles_up_to_the_limit() {
-    let b = Backoff::default();
-    let secs: Vec<u64> = (0..8).map(|i| b.delay(i).as_secs()).collect();
-    assert_eq!(secs, [1, 2, 4, 8, 16, 30, 30, 30]);
-    assert_eq!(b.delay(u32::MAX).as_secs(), 30);
+fn wp_c15_the_client_advice_sets_the_delay() {
+    let t = Tuning::default();
+    let secs = |e: Option<&LinkError>, n| t.delay(e, n).map(|d| d.as_secs());
+    let lost: Vec<_> = (0..7).map(|i| secs(None, i).unwrap()).collect();
+    assert_eq!(lost, [1, 2, 4, 8, 16, 30, 30]);
+    let limited = LinkError::RateLimited { msg: String::new() };
+    assert_eq!(secs(Some(&limited), 0), Some(60));
+    assert_eq!(secs(Some(&LinkError::HubBusy), 0), Some(5));
+    let refused = LinkError::HandshakeRefused {
+        status: 403,
+        msg: String::new(),
+    };
+    assert_eq!(secs(Some(&refused), 0), None);
 }
 
 // ── Pairing ────────────────────────────────────────────────────────────
@@ -458,13 +431,12 @@ fn wp_c15_a_cut_socket_reconnects_and_a_failed_dial_backs_off() {
     let addr = hub.addr();
     let core = DspiCore::new();
     let (faults, _) = connect_faulty(&core, &hub, "");
-    faults.cut.store(true, Ordering::SeqCst);
-    // The cut shows at the next receive tick.
-    hub.resync();
+    hub.drop_connections();
     wait_until("a reconnect", || faults.sent("\"hello\"") >= 2);
     wait_phase(&core, LinkPhase::ChooseDevice);
 
     // The hub goes away for a while, then comes back on the same address.
+    hub.stop();
     drop(hub);
     wait_until("the retries to count up", || {
         core.link_status().reconnect_attempt >= 2
@@ -496,54 +468,148 @@ fn restart(addr: std::net::SocketAddr, cfg: HubConfig) -> FakeHub {
     }
 }
 
-#[test]
-fn wp_c15_a_restarted_hub_refuses_the_token_and_the_prompt_comes_back() {
-    let hub = pin_hub();
-    let addr = hub.addr();
-    let core = DspiCore::new();
-    let (faults, _) = connect_faulty(&core, &hub, "");
+/// A paired session, on a hub with PIN 123456.
+fn paired(core: &DspiCore, hub: &FakeHub) -> Arc<Faults> {
+    let (faults, _) = connect_faulty(core, hub, "");
     core.link_pair("123456".into()).unwrap();
+    wait_phase(core, LinkPhase::ChooseDevice);
+    faults
+}
+
+#[test]
+fn wp_c15_a_rebooted_hub_takes_the_token_back_at_once() {
+    let hub = pin_hub();
+    let core = DspiCore::new();
+    let faults = paired(&core, &hub);
+    hub.restart();
+    wait_until("the token", || faults.sent("auth.token") == 1);
     wait_phase(&core, LinkPhase::ChooseDevice);
-    drop(hub);
-    // Same id, fresh token table.
-    let _hub = restart(
-        addr,
-        HubConfig {
-            auth: Auth::Fixed("123456".into()),
-            ..HubConfig::bridge()
-        },
-    );
+    assert!(!core.link_status().token_refused);
+}
+
+#[test]
+fn wp_c15_a_refused_token_brings_the_prompt_back_and_says_so() {
+    let hub = pin_hub();
+    let core = DspiCore::new();
+    let faults = paired(&core, &hub);
+    hub.fail_tokens_with(Some("unauthenticated"));
+    hub.drop_connections();
     wait_phase(&core, LinkPhase::NeedsPairing);
+    assert!(core.link_status().token_refused, "forget it");
     assert_eq!(faults.sent("auth.token"), 1);
     let hellos = faults.sent("\"hello\"");
     std::thread::sleep(Duration::from_millis(300));
     assert_eq!(faults.sent("\"hello\""), hellos, "no retry into a lockout");
+    hub.fail_tokens_with(None);
     core.link_pair("123456".into()).unwrap();
     wait_phase(&core, LinkPhase::ChooseDevice);
+    assert!(!core.link_status().token_refused);
+}
+
+#[test]
+fn wp_c15_not_now_keeps_the_token_and_retries() {
+    for code in ["rate_limited", "internal"] {
+        let hub = pin_hub();
+        let core = DspiCore::new();
+        let faults = paired(&core, &hub);
+        hub.fail_tokens_with(Some(code));
+        hub.drop_connections();
+        wait_until("a refused token", || faults.sent("auth.token") >= 1);
+        wait_phase(&core, LinkPhase::Reconnecting);
+        let st = core.link_status();
+        assert!(!st.token_refused, "{code}: the token stays good");
+        hub.fail_tokens_with(None);
+        core.link_retry_now();
+        wait_phase(&core, LinkPhase::ChooseDevice);
+    }
 }
 
 #[test]
 fn wp_c15_the_token_does_not_go_to_another_hub_at_the_address() {
     let hub = pin_hub();
-    let addr = hub.addr();
     let core = DspiCore::new();
-    let (faults, _) = connect_faulty(&core, &hub, "");
-    core.link_pair("123456".into()).unwrap();
-    wait_phase(&core, LinkPhase::ChooseDevice);
-    drop(hub);
-    let _other = restart(
-        addr,
-        HubConfig {
-            hub_id: "11111111-2222-4333-8444-555555555555".into(),
-            auth: Auth::Fixed("654321".into()),
-            ..HubConfig::bridge()
-        },
-    );
+    paired(&core, &hub);
+    let seen = hub.tokens_seen().len();
+    hub.factory_reset("11111111-2222-4333-8444-555555555555");
     wait_until("a refused try", || {
         core.link_status().close_reason.contains("another hub")
     });
-    assert_eq!(faults.sent("auth.token"), 0, "the secret stays home");
-    assert_eq!(core.link_status().phase, LinkPhase::Reconnecting);
+    assert_eq!(hub.tokens_seen().len(), seen, "the secret stays home");
+    let st = core.link_status();
+    assert_eq!(st.phase, LinkPhase::Reconnecting);
+    assert!(!st.token_refused, "it is still good for its own hub");
+}
+
+#[test]
+fn wp_c15_a_busy_hub_is_retried_and_a_refusal_ends_it() {
+    let hub = open_hub();
+    let core = DspiCore::new();
+    let events = Arc::new(Events::default());
+    core.set_link_listener(Some(events.clone()));
+    connect_faulty(&core, &hub, "");
+    hub.refuse_handshake(Some(503));
+    hub.drop_connections();
+    wait_until("a try", || core.link_status().reconnect_attempt >= 1);
+    assert!(core.link_status().close_reason.contains("busy"));
+    hub.refuse_handshake(None);
+    core.link_retry_now();
+    wait_phase(&core, LinkPhase::ChooseDevice);
+
+    hub.refuse_handshake(Some(403));
+    hub.drop_connections();
+    wait_phase(&core, LinkPhase::Closed);
+    wait_until("the listener", || guard(&events.closed).len() == 1);
+    assert!(guard(&events.closed)[0].1.contains("403"));
+    core.set_link_listener(None);
+}
+
+#[test]
+fn wp_c15_connect_errors_are_typed() {
+    let hub = open_hub();
+    hub.refuse_handshake(Some(503));
+    let core = DspiCore::new();
+    let faults = Arc::new(Faults::default());
+    match connect_with(&core, &hub, "", &faults) {
+        Err(DspiError::Link { code, .. }) => assert_eq!(code, "hub_busy"),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(core.link_status().phase, LinkPhase::Idle);
+}
+
+#[test]
+fn wp_c15_a_token_reaches_the_app_at_once() {
+    #[derive(Default)]
+    struct Tokens(Mutex<Vec<(String, String)>>);
+    impl LinkListener for Tokens {
+        fn on_link_devices_changed(&self) {}
+        fn on_link_closed(&self, _: i32, _: String) {}
+        fn on_link_status_changed(&self) {}
+        fn on_link_token_issued(&self, hub_id: String, token: String) {
+            guard(&self.0).push((hub_id, token));
+        }
+    }
+    let hub = pin_hub();
+    let core = DspiCore::new();
+    let l = Arc::new(Tokens::default());
+    core.set_link_listener(Some(l.clone()));
+    let (_, hello) = connect_faulty(&core, &hub, "");
+    let token = core.link_pair("123456".into()).unwrap();
+    wait_until("the event", || !guard(&l.0).is_empty());
+    assert_eq!(guard(&l.0)[0], (hello.hub_id, token));
+    core.set_link_listener(None);
+}
+
+#[test]
+fn wp_c15_a_failed_device_list_after_pairing_is_read_again() {
+    let hub = pin_hub();
+    let core = DspiCore::new();
+    connect_faulty(&core, &hub, "");
+    hub.fail_device_list(DeviceListFault::Error("internal".into()), 2);
+    let token = core.link_pair("123456".into()).unwrap();
+    assert!(!token.is_empty(), "the token is safe");
+    wait_phase(&core, LinkPhase::ChooseDevice);
+    assert_eq!(core.link_devices().len(), 1);
+    assert!(hub.sessions().len() == 1);
 }
 
 #[test]
@@ -603,29 +669,68 @@ fn wp_c15_disconnect_with_the_session_up_is_not_undone() {
 fn wp_c15_duplicate_frames_do_no_harm() {
     let hub = open_hub();
     let core = DspiCore::new();
-    let (faults, _) = connect_faulty(&core, &hub, "");
-    faults.duplicate_in.store(true, Ordering::SeqCst);
+    connect_faulty(&core, &hub, "");
+    hub.duplicate_frames(true);
     bind(&core);
     core.set_master_volume(-20.0).unwrap();
     core.set_master_volume(-21.0).unwrap();
     assert_eq!(core.get_state().master_volume_db, -21.0);
 }
 
+/// A session whose client gives up quickly.
+fn connect_quick(core: &DspiCore, hub: &FakeHub) {
+    core.link_connect_with(
+        hub.url(),
+        "wp-c15".into(),
+        "test".into(),
+        String::new(),
+        Arc::new(TcpConnector::default()),
+        Tuning {
+            timing: Timing {
+                request_timeout: Duration::from_millis(400),
+                probe_timeout: Duration::from_millis(300),
+                ..Timing::default()
+            },
+            backoff_divisor: FAST,
+        },
+    )
+    .unwrap();
+}
+
 #[test]
-fn wp_c15_a_stalled_reply_times_out_and_comes_late_without_harm() {
+fn wp_c15_a_late_reply_does_no_harm() {
     let hub = open_hub();
     let core = DspiCore::new();
-    let (faults, _) = connect_faulty(&core, &hub, "");
+    connect_quick(&core, &hub);
     bind(&core);
-    faults.swallow_next_cmd.store(true, Ordering::SeqCst);
+    hub.hold_replies();
     let start = Instant::now();
     assert!(core.set_master_volume(-30.0).is_err());
-    assert!(start.elapsed() < Duration::from_secs(12), "bounded");
-    let late = guard(&faults.late).take().expect("the reply was held");
-    guard(&faults.inject).push_back(late);
-    // An unknown tag, then the session goes on.
+    assert!(start.elapsed() < Duration::from_secs(2), "bounded");
+    hub.release_replies();
     core.set_master_volume(-31.0).unwrap();
     assert_eq!(core.get_state().master_volume_db, -31.0);
+}
+
+#[test]
+fn wp_c15_a_stalled_hub_is_noticed_and_reconnected() {
+    let hub = open_hub();
+    let core = DspiCore::new();
+    connect_quick(&core, &hub);
+    bind(&core);
+    let generation = core.lock().conn().unwrap().generation;
+    hub.stall(true);
+    let start = Instant::now();
+    assert!(core.set_master_volume(-30.0).is_err());
+    assert!(start.elapsed() < Duration::from_secs(2), "bounded");
+    wait_until("the probe to fail", || {
+        core.link_status().phase == LinkPhase::Reconnecting
+    });
+    hub.stall(false);
+    wait_until("the rebind", || {
+        core.link_status().phase == LinkPhase::Bound
+            && core.lock().conn().is_ok_and(|c| c.generation != generation)
+    });
 }
 
 // ── Threads ────────────────────────────────────────────────────────────
@@ -648,6 +753,9 @@ impl LinkListener for Reentrant {
         self.calls.fetch_add(1, Ordering::SeqCst);
         let _ = self.core.link_status();
         let _ = self.core.get_state();
+    }
+    fn on_link_token_issued(&self, _hub_id: String, _token: String) {
+        let _ = self.core.link_status();
     }
 }
 
@@ -757,6 +865,26 @@ fn wp_c15_selecting_again_keeps_one_session() {
 }
 
 #[test]
+fn wp_c15_dropping_a_lone_link_transport_ends_its_session() {
+    // No core: the transport holds the client's last handle.
+    let hub = open_hub();
+    let opts = ConnectOptions {
+        client_name: "t".into(),
+        app: "t".into(),
+        app_version: "t".into(),
+        token: None,
+    };
+    let (client, _) =
+        LinkClient::connect(&TcpConnector::default(), &hub.url(), &opts, None).unwrap();
+    let serial = client.devices()[0].serial.clone();
+    let transport = LinkTransport::new(client, 0, &serial);
+    let _source = transport.notifications();
+    wait_until("the session", || hub.sessions().len() == 1);
+    drop(transport);
+    wait_until("the slot back", || hub.sessions().is_empty());
+}
+
+#[test]
 fn wp_c15_a_new_connect_closes_the_old_session() {
     let hub = open_hub();
     let core = DspiCore::new();
@@ -800,32 +928,12 @@ fn wp_c15_a_reconnect_leaves_one_session() {
 
 // ── No board (finding F9) ──────────────────────────────────────────────
 
-/// Every device reads `state` in device messages.
-fn device_state(faults: &Faults, state: &'static str) {
-    faults.set_rewrite(move |t| {
-        if !t.contains("\"state\"") {
-            return None;
-        }
-        let mut v: Value = serde_json::from_str(t).ok()?;
-        if let Some(list) = v.get_mut("devices").and_then(Value::as_array_mut) {
-            for d in list {
-                d["state"] = json!(state);
-            }
-        }
-        if let Some(d) = v.get_mut("device") {
-            d["state"] = json!(state);
-        }
-        Some(v.to_string())
-    });
-}
-
 #[test]
 fn wp_c15_paired_with_no_board_is_its_own_phase() {
     let hub = pin_hub();
+    hub.set_board_present(false);
     let core = DspiCore::new();
-    let faults = Arc::new(Faults::default());
-    device_state(&faults, "offline");
-    connect_with(&core, &hub, "", &faults).unwrap();
+    connect_faulty(&core, &hub, "");
     assert_eq!(core.link_status().phase, LinkPhase::NeedsPairing);
     core.link_pair("123456".into()).unwrap();
     wait_phase(&core, LinkPhase::NoDevice);
@@ -837,20 +945,18 @@ fn wp_c15_paired_with_no_board_is_its_own_phase() {
 fn wp_c15_a_board_that_comes_back_is_bound_again() {
     let hub = open_hub();
     let core = DspiCore::new();
-    let (faults, _) = connect_faulty(&core, &hub, "");
+    connect_faulty(&core, &hub, "");
     bind(&core);
     let generation = core.lock().conn().unwrap().generation;
-
-    device_state(&faults, "offline");
-    // `lock.acquire` makes the fake hub announce `device.changed`.
-    hub.hold_lock(0, 0);
     let client = core.lock().link.as_ref().unwrap().client.clone().unwrap();
-    client.lock_acquire(0, "t", 1).unwrap();
+
+    hub.set_board_present(false);
+    client.refresh_devices().unwrap();
     wait_phase(&core, LinkPhase::NoDevice);
     assert_eq!(core.lock().conn().unwrap().generation, generation);
 
-    device_state(&faults, "online");
-    client.lock_acquire(0, "t", 1).unwrap();
+    hub.set_board_present(true);
+    client.refresh_devices().unwrap();
     wait_until("the rebind", || {
         core.link_status().phase == LinkPhase::Bound
             && core.lock().conn().is_ok_and(|c| c.generation != generation)

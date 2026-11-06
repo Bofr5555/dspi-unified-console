@@ -49,4 +49,7 @@ pub trait LinkListener: Send + Sync {
     /// a PIN needed, no board, bound again (the mirror is then already
     /// fetched; re-read `get_state` and call `rta_start` again).
     fn on_link_status_changed(&self);
+    /// The hub issued a token: store it now against `hub_id`. Comes as soon as
+    /// the hub's answer arrives, even if `link_pair` has already timed out.
+    fn on_link_token_issued(&self, hub_id: String, token: String);
 }

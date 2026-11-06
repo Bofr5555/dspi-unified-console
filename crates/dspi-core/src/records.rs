@@ -528,6 +528,9 @@ pub struct LinkHello {
     pub caps: Vec<String>,
     pub max_payload: u32,
     pub max_inflight: u32,
+    /// The hub refused the token passed in: forget it. Only this says the
+    /// token is bad; any other failure keeps it.
+    pub token_refused: bool,
 }
 
 /// One device the hub shares (`device.list`, spec 7.4).
@@ -584,6 +587,9 @@ pub struct LinkStatus {
     /// `window` or `fixed`, for [`LinkPhase::NeedsPairing`]'s wording; "" with
     /// no session.
     pub pin_source: String,
+    /// The hub refused or revoked the stored token, during a reconnect too:
+    /// forget it. Cleared by the next pairing.
+    pub token_refused: bool,
 }
 
 /// `GET /dspi/v1/info` (spec 3.2), for a hub added by address.
