@@ -82,6 +82,13 @@ pub mod req {
     pub const SET_ALL_PARAMS_CHUNK: u8 = 0xA3;
     pub const RTA_GET_BANDS_ALL: u8 = 0x0F;
     pub const SET_MASTER_VOLUME: u8 = 0xD2;
+    // -- WP CG5 -- firmware config.h:167-174
+    pub const RTA_SET_CONFIG: u8 = 0x08;
+    pub const RTA_GET_CONFIG: u8 = 0x09;
+    pub const RTA_GET_CAPS: u8 = 0x0A;
+    pub const RTA_GET_BANDS: u8 = 0x0B;
+    pub const RTA_GET_STATUS: u8 = 0x0D;
+    pub const RTA_CONTROL: u8 = 0x0E;
 }
 
 /// Bulk offset of the master volume in wire V32 (core `OFF_MASTER_VOLUME`).
@@ -143,6 +150,9 @@ pub struct HubConfig {
     pub poll_budget_bps: u32,
     /// The time source of the hub's auth, keepalive, rate-limit, board and poll timers.
     pub clock: Arc<dyn Clock>,
+    /// -- WP CG5 -- The device has an analyser. False: every RTA opcode is a
+    /// STALL, as on firmware without one.
+    pub rta: bool,
 }
 
 impl Default for HubConfig {
@@ -174,6 +184,7 @@ impl Default for HubConfig {
             board_removal_hold: Duration::from_secs(60),
             poll_budget_bps: 200_000,
             clock: Arc::new(SystemClock),
+            rta: false, // -- WP CG5 --
         }
     }
 }
@@ -289,6 +300,7 @@ struct FailureRecord {
 struct State {
     cfg: HubConfig,
     image: Vec<u8>,
+    rta: FakeRta, // -- WP CG5 --
     fw_seq: u8,
     next_session: u16,
     sessions: HashMap<u16, SessionRec>,
@@ -527,6 +539,8 @@ impl State {
             return (status::TIMEOUT, Vec::new());
         }
         match (dir, b_request) {
+            // -- WP CG5 --
+            (_, 0x08..=0x0F) if self.cfg.rta => self.rta_device(sid, dir, b_request, w_value, payload),
             (Dir::Get, req::GET_PLATFORM) => (status::OK, PLATFORM.to_vec()),
             (Dir::Get, req::GET_SERIAL) => (status::OK, self.cfg.serial.as_bytes().to_vec()),
             (Dir::Get, req::GET_STATUS) => (status::OK, STATUS_WVALUE9.to_vec()),
@@ -618,6 +632,152 @@ impl State {
     }
 }
 
+// -- WP CG5 --
+// The simulated analyser (`HubConfig::rta`). Its reply layouts are the firmware's
+// (DSPi `rta.h`:60-129, `RtaConfig`, `RtaCaps`, `RtaBandFrame`, `RtaStatus`). It has
+// no audio: every channel reads the same flat frame. No bins (0x0C): a bin frame
+// is only published after a transform, so that opcode STALLs as before the first.
+// A SET applies at once, where the firmware does so from its main loop.
+
+const RTA_VERSION: u8 = 3; // rta.h:28
+const RTA_INPUTS: u32 = 2;
+const RTA_OUTPUTS: u32 = 4;
+const RTA_BANDS: usize = 37; // rta.h, RTA_MAX_BANDS
+const RTA_CENTRES: [u16; RTA_BANDS] = [
+    16, 20, 25, 31, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500,
+    3150, 4000, 5000, 6300, 8000, 10000, 12500, 16000, 20000, 25000, 31500, 40000, 50000, 63000,
+];
+
+struct FakeRta {
+    config: [u8; 12],
+    running: bool,
+}
+
+impl Default for FakeRta {
+    fn default() -> Self {
+        // Output tap, channel 0, 1024 points, 300 ms, 12 dB/s.
+        let mut config = [RTA_VERSION, 1, 1, 0, 10, 0, 0, 0, 12, 0, 0, 0];
+        config[6..8].copy_from_slice(&300u16.to_le_bytes());
+        Self { config, running: false }
+    }
+}
+
+impl FakeRta {
+    fn mask(&self) -> u16 {
+        u16::from_le_bytes([self.config[2], self.config[3]])
+    }
+
+    /// `tap_valid_mask` (rta.c), for tap byte `tap`.
+    fn tap_mask(tap: u8) -> u16 {
+        let width = if tap == 0 { RTA_INPUTS } else { RTA_OUTPUTS };
+        ((1u32 << width) - 1) as u16
+    }
+
+    /// `config_valid` and `apply_config` (rta.c:370-395): the clamps too.
+    fn apply(&mut self, p: &[u8]) -> bool {
+        let Ok(mut c) = <[u8; 12]>::try_from(p) else {
+            return false;
+        };
+        let valid = c[0] == RTA_VERSION && c[1] <= 1 && (8..=10).contains(&c[4]);
+        let mask = u16::from_le_bytes([c[2], c[3]]) & Self::tap_mask(c[1]);
+        if !valid || mask == 0 {
+            return false;
+        }
+        c[2..4].copy_from_slice(&mask.to_le_bytes());
+        let avg = u16::from_le_bytes([c[6], c[7]]).min(10000);
+        c[6..8].copy_from_slice(&avg.to_le_bytes());
+        c[8] = c[8].min(100);
+        (c[5], c[10], c[11]) = (0, 0, 0);
+        self.config = c;
+        true
+    }
+
+    /// `RtaCaps`, 16 bytes (rta.h:73-87).
+    fn caps() -> Vec<u8> {
+        let mut c = vec![RTA_VERSION, RTA_INPUTS as u8, RTA_OUTPUTS as u8, 8, 10, 10, 14, RTA_BANDS as u8, 243, 120];
+        c.extend_from_slice(&5000u16.to_le_bytes());
+        c.extend_from_slice(&529u16.to_le_bytes());
+        c.extend_from_slice(&70u16.to_le_bytes());
+        c
+    }
+
+    /// `RtaBandFrame`, 82 bytes (rta.h:90-99): 34 bands at the FFT's table.
+    fn band_frame(channel: u8) -> Vec<u8> {
+        let mut f = vec![RTA_VERSION, channel, 1, 34];
+        f.extend_from_slice(&10u16.to_le_bytes());
+        f.extend_from_slice(&[0, 0]);
+        f.extend_from_slice(&[200; RTA_BANDS]);
+        f.extend_from_slice(&[243; RTA_BANDS]);
+        f
+    }
+
+    /// `RtaStatus`, 24 bytes (rta.h:113-129).
+    fn status(&self) -> Vec<u8> {
+        let live = if self.running { self.mask() } else { 0 };
+        let mut s = vec![RTA_VERSION, u8::from(self.running), self.config[1], 0xFF, 0, live.count_ones() as u8];
+        s.extend_from_slice(&live.to_le_bytes());
+        s.extend_from_slice(&90u16.to_le_bytes()); // frames_per_s
+        s.extend_from_slice(&[0; 6]); // busy, last frame, idle
+        s.extend_from_slice(&48_000u32.to_le_bytes());
+        s.extend_from_slice(&[0, 0, 0, 0]); // first_band, reserved, bass busy
+        s
+    }
+}
+
+impl State {
+    /// The analyser's vendor commands (firmware `vendor_commands.c`:1948, 4499-4600).
+    fn rta_device(&mut self, sid: u16, dir: Dir, b_request: u8, w_value: u16, payload: &[u8]) -> (u8, Vec<u8>) {
+        match (dir, b_request) {
+            (Dir::Set, req::RTA_SET_CONFIG) => {
+                if !self.rta.apply(payload) {
+                    return (status::ERROR, Vec::new());
+                }
+                // notify.c, NOTIFY_EVT_RTA_CONFIG: header, the applied config, source.
+                let mut p = vec![0x02, 0x0D, 0, 0];
+                p.extend_from_slice(&self.rta.config);
+                p.push(1);
+                self.notify(p, sid);
+                (status::OK, Vec::new())
+            }
+            (Dir::Get, req::RTA_GET_CONFIG) => (status::OK, self.rta.config.to_vec()),
+            (Dir::Get, req::RTA_GET_CAPS) if w_value == 0 => (status::OK, FakeRta::caps()),
+            // Chunks of 32 centres, from 1 (rta_get_caps_centres, rta.c:436-448).
+            (Dir::Get, req::RTA_GET_CAPS) => {
+                let first = (w_value as usize - 1).saturating_mul(32);
+                if first >= RTA_BANDS {
+                    return (status::ERROR, Vec::new());
+                }
+                (status::OK, RTA_CENTRES.iter().skip(first).take(32).flat_map(|c| c.to_le_bytes()).collect())
+            }
+            // A band read starts the analyser (`rta_note_read`).
+            (Dir::Get, req::RTA_GET_BANDS) => {
+                let width = if self.rta.config[1] == 0 { RTA_INPUTS } else { RTA_OUTPUTS };
+                if u32::from(w_value) >= width {
+                    return (status::ERROR, Vec::new());
+                }
+                self.rta.running = true;
+                (status::OK, FakeRta::band_frame(w_value as u8))
+            }
+            (Dir::Get, req::RTA_GET_BANDS_ALL) => {
+                self.rta.running = true;
+                let mask = self.rta.mask();
+                (status::OK, (0..16u8).filter(|c| mask >> c & 1 != 0).flat_map(FakeRta::band_frame).collect())
+            }
+            (Dir::Get, req::RTA_GET_STATUS) => (status::OK, self.rta.status()),
+            // The configuration survives STOP.
+            (Dir::Get, req::RTA_CONTROL) if w_value <= 2 => {
+                match w_value {
+                    0 => self.rta.running = false,
+                    1 => self.rta.running = true,
+                    _ => {}
+                }
+                (status::OK, vec![1])
+            }
+            _ => (status::ERROR, Vec::new()),
+        }
+    }
+}
+
 impl FakeHub {
     pub fn start(cfg: HubConfig) -> io::Result<FakeHub> {
         let listener = TcpListener::bind(cfg.bind)?;
@@ -626,6 +786,7 @@ impl FakeHub {
         let board_attached = cfg.board_attached;
         let state = Arc::new(Mutex::new(State {
             image: cfg.image.clone(),
+            rta: FakeRta::default(), // -- WP CG5 --
             cfg,
             faults: Faults::default(),
             failures: HashMap::new(),
@@ -693,6 +854,11 @@ impl FakeHub {
         let o = off as usize;
         s.image[o..o + value.len()].copy_from_slice(value);
         s.param_changed(off, value, source, origin);
+    }
+
+    /// -- WP CG5 -- The analyser configuration the device holds (12 bytes).
+    pub fn rta_config(&self) -> [u8; 12] {
+        lock(&self.state).rta.config
     }
 
     /// Send RESYNC (reason 2, cache rebuilt) to every session.
