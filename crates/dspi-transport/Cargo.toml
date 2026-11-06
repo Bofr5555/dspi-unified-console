@@ -13,6 +13,11 @@ thiserror.workspace = true
 nusb = "0.2"
 dspi-link = { path = "../dspi-link", optional = true }
 midir = { version = "0.10", optional = true }
+# -- WP T1 --
+# -- WP T2 --
+# -- WP T3 --
+# -- WP T4 --
+# -- WP T5 --
 
 [features]
 # DSPi Link transport (WP T5).
@@ -24,3 +29,9 @@ midir = ["dep:midir"]
 [dev-dependencies]
 proptest = "1"
 dspi-link = { path = "../dspi-link", features = ["fake-hub"] }
+# -- WP T1 --
+# -- WP T2 --
+# -- WP T3 --
+# -- WP T4 --
+# -- WP T5 --
+

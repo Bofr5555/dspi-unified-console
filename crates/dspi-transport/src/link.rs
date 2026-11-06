@@ -9,6 +9,12 @@
 //! writer's session id as their origin.
 //!
 //! Owned by WP T5 (docs/core-merge/PLAN.md).
+#![warn(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
 
 use dspi_link::LinkClient;
 
@@ -31,7 +37,9 @@ pub struct LinkTransport {
 }
 
 impl LinkTransport {
-    /// Device `handle` on the hub `client` is connected to.
+    /// Device `handle` on the hub `client` is connected to. Link handles are
+    /// one byte on the wire (spec 7.4); the embedder API takes a `u32` for
+    /// the bindings and refuses anything above 255 before calling this.
     pub fn new(client: LinkClient, handle: u8, serial: &str) -> Self {
         let _ = (client, handle, serial);
         todo!("WP T5")
@@ -84,6 +92,7 @@ impl Transport for LinkTransport {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests {
     #[test]
     #[ignore = "WP T5"]

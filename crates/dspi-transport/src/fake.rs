@@ -9,6 +9,12 @@
 //!
 //! Model it on the macOS Console's `FakeTransport` and the Android app's
 //! `FakeDspiCore`. Owned by WP T4 (docs/core-merge/PLAN.md).
+#![warn(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
 
 use std::time::Duration;
 
@@ -91,6 +97,7 @@ impl Transport for FakeDevice {
 const NOTIFY_POLL: Duration = Duration::from_millis(20);
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests {
     #[test]
     #[ignore = "WP T4"]

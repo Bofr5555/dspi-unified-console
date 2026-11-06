@@ -261,7 +261,10 @@ fn map_transfer_error(e: TransferError, opcode: u8) -> TransportError {
 impl UsbTransport {
     /// Open a device from a file descriptor the platform already opened:
     /// Android's `UsbManager.openDevice()` (`UsbDeviceConnection.fileDescriptor`),
-    /// where nothing can enumerate the bus. Claims the vendor interface only.
+    /// where nothing can enumerate the bus. Takes ownership of `fd`: the
+    /// caller passes a `dup(2)` of the platform's descriptor, so Kotlin can
+    /// still close its own `UsbDeviceConnection`. Claims the vendor
+    /// interface only.
     /// Owned by WP T1 (docs/core-merge/PLAN.md).
     pub fn from_fd(fd: std::os::fd::OwnedFd, serial: &str) -> Result<Self> {
         let _ = (fd, serial);

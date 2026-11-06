@@ -18,9 +18,15 @@ pub mod mock;
 pub mod usb;
 
 pub use fake::FakeDevice;
-pub use midi::{MidiPipe, MidiTransport};
+pub use midi::{MidiPipe, MidiTransport, PipeError};
 pub use mock::MockTransport;
 pub use usb::{UsbTransport, list_devices};
+// Work-package sections: add re-exports only inside your own section.
+// -- WP T1 --
+// -- WP T2 --
+// -- WP T3 --
+// -- WP T4 --
+// -- WP T5 --
 
 /// How long to wait on a single control transfer before treating it as timed out.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_millis(1000);

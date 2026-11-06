@@ -12,6 +12,12 @@
 //!   in flight, matched by tag, with the spec's retry rules.
 //!
 //! Owned by WP T2 (codec client and transport) and WP T3 (`midir_port`).
+#![warn(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -20,11 +26,23 @@ use dspi_proto::frame::{Frame, Message};
 
 use crate::{DeviceDescriptor, NotificationSource, Result, Transport, TransportCaps};
 
+/// Why a [`MidiPipe`] could not send.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum PipeError {
+    /// The port is closed or the device went away.
+    #[error("the MIDI port is closed")]
+    Closed,
+    /// The platform refused the send; the text is the platform's.
+    #[error("MIDI send failed: {0}")]
+    Failed(String),
+}
+
 /// How the host sends bytes to the device's MIDI IN port. Called from the
-/// thread that issues requests; must not block for long.
+/// thread that issues requests; must not block for long. Shared (`Arc`) so a
+/// binding can hand in a foreign object (a Kotlin or Swift callback).
 pub trait MidiPipe: Send + Sync {
     /// Send one complete SysEx message (`F0 .. F7`).
-    fn send(&self, sysex: &[u8]) -> std::result::Result<(), String>;
+    fn send(&self, sysex: &[u8]) -> std::result::Result<(), PipeError>;
 }
 
 /// What a received message means to the client.
@@ -99,7 +117,7 @@ impl MidiTransport {
 
     /// A transport sending through `pipe`; feed received bytes to the
     /// returned [`MidiInput`]. `serial` names the device for the picker.
-    pub fn new(pipe: Box<dyn MidiPipe>, mfr: &[u8], serial: &str) -> (Self, MidiInput) {
+    pub fn new(pipe: Arc<dyn MidiPipe>, mfr: &[u8], serial: &str) -> (Self, MidiInput) {
         let _ = (pipe, mfr, serial);
         todo!("WP T2")
     }
@@ -126,7 +144,7 @@ impl Transport for MidiTransport {
     }
 
     /// No transfer cap: SysEx has no length limit and the bulk image goes in
-    /// one message.
+    /// one message (spec 3.4).
     fn max_transfer(&self) -> usize {
         usize::MAX
     }
@@ -135,10 +153,14 @@ impl Transport for MidiTransport {
         todo!("WP T2")
     }
 
+    /// `chunked_bulk: false`: the firmware serves `0xA2`/`0xA3` over MIDI
+    /// (spec 4.2), but single-shot `0xA0`/`0xA1` are the recommended bulk
+    /// commands there (one message, no chunk session to abort), so the
+    /// session reads and writes the image in one request.
     fn caps(&self) -> TransportCaps {
         TransportCaps {
             kind: crate::TransportKind::Midi,
-            chunked_bulk: true,
+            chunked_bulk: false,
             remote: false,
         }
     }
@@ -166,6 +188,7 @@ pub mod midir_port {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests {
     #[test]
     #[ignore = "WP T2"]
