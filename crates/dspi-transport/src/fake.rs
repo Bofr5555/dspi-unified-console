@@ -7,8 +7,44 @@
 //! real device would send, and answers the extension channel (`EXT_LIST`,
 //! the crossfeed pair map, the core-voltage status).
 //!
-//! Model it on the macOS Console's `FakeTransport` and the Android app's
-//! `FakeDspiCore`. Owned by WP T4 (docs/core-merge/PLAN.md).
+//! What it answers, and where it differs from the firmware
+//! (Bofr5555/DSPi `vendor_commands.c`):
+//!
+//! - **Identity:** `GET_PLATFORM` (the capture's reply), `GET_SERIAL`,
+//!   `GET_BUILD_INFO`, `GET_STATUS` (sub-query 9 is the meter block; the
+//!   others answer a `u32`, as the firmware does).
+//! - **Bulk:** `0xA0`/`0xA1` single-shot and `0xA2`/`0xA3` chunked, with the
+//!   chunking spec's session rules (`bulk_params_chunking.md`): offset 0
+//!   starts a session, chunks are sequential, any other request tears the
+//!   session down, and an out-of-order chunk stalls. A bulk write is applied
+//!   when it passes [`BulkPacket::decode`] (else it stalls) and notifies
+//!   `BULK_INVALIDATED` with source `BULK_SET`. The device keeps its own
+//!   header.
+//! - **Scalars:** the GET/SET pairs in `SCALARS`, plus the matrix route,
+//!   EQ and crossover bands, and channel names. A SET patches the image at
+//!   the field's bulk offset and, when the bytes changed, queues
+//!   `PARAM_CHANGED` with source `HOST_SET`. Offsets come from the generated
+//!   section table plus the per-section layouts below (`bulk_params.h`),
+//!   which the tests check against the generated section lengths. As on the
+//!   firmware, a SET with an out-of-range index or a short payload is
+//!   acknowledged and changes nothing; a GET with a bad index stalls. Range
+//!   clamps (delay >= 0, loudness limits) are not modelled.
+//! - **Presets:** directory, names, startup, active slot, save/load/delete
+//!   (in memory), the two persistence modes. A load sends `PRESET_LOADED`
+//!   and `BULK_INVALIDATED` (source `PRESET`) and keeps the live master
+//!   volume in the independent mode.
+//! - **Extensions** (with [`FakeOptions::extensions`]): `EXT_LIST`, the pair
+//!   map (validated and normalised as `crossfeed_map.h`; a write lands in
+//!   the bulk image's `crossfeed.pair_map` and notifies) and the core-voltage
+//!   status and requests (`core_vreg.h`).
+//! - **Everything else stalls**, in both directions. (The firmware ACKs an
+//!   unknown SET on USB; a fake that stalls makes a missing model visible.)
+//!
+//! A read never returns `Ok` with fewer bytes than [`Transport::control_in`]
+//! asked for: that is [`TransportError::ShortRead`]. Only
+//! [`Transport::control_in_upto`] returns a short reply.
+//!
+//! Owned by WP T4 (docs/core-merge/PLAN.md).
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -16,18 +52,50 @@
     clippy::arithmetic_side_effects
 )]
 
-use std::time::Duration;
+use std::collections::VecDeque;
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::time::{Duration, Instant};
+
+use dspi_proto::generated::{
+    self, ext as gext, filter, notify as nfy, opcodes as op, status as st, wire as w,
+};
+use dspi_proto::packets::BuildInfo;
+use dspi_proto::wire::{BulkPacket, WireHeader};
 
 use crate::{
-    DeviceDescriptor, NotificationSource, Result, Transport, TransportCaps, TransportKind,
+    DeviceDescriptor, NotificationSource, Result, Transport, TransportCaps, TransportError,
+    TransportKind,
 };
+
+/// The bundled RP2350 capture (`tests/fixtures/link/device/`, see its
+/// `capture.json`): `REQ_GET_PLATFORM`, `REQ_GET_ALL_PARAMS` and
+/// `REQ_GET_STATUS` sub-query 9 as a v1.1.6 beta5 device answered them.
+const DEMO_PLATFORM: &[u8] = include_bytes!("../../../tests/fixtures/link/device/platform.bin");
+const DEMO_BULK: &[u8] = include_bytes!("../../../tests/fixtures/link/device/bulk_v32.bin");
+const DEMO_STATUS: &[u8] = include_bytes!("../../../tests/fixtures/link/device/status_wvalue9.bin");
+
+/// The serial every fake reports (`GET_SERIAL` and the descriptor).
+const SERIAL: &str = "DEMO0000DSPI0001";
 
 /// A captured device to start from: a `REQ_GET_PLATFORM` reply and a V32
 /// bulk image. `tests/fixtures/link/device/` holds a real RP2350 capture.
 #[derive(Debug, Clone)]
 pub struct Capture {
+    /// The `REQ_GET_PLATFORM` reply, 4 to 7 bytes.
     pub platform: Vec<u8>,
+    /// The `REQ_GET_ALL_PARAMS` reply: a whole `WireBulkParams`.
     pub bulk: Vec<u8>,
+}
+
+impl Capture {
+    /// The capture bundled with this crate: an RP2350 on v1.1.6 beta5, 8
+    /// inputs and 9 outputs, master volume -20 dB.
+    pub fn demo() -> Self {
+        Self {
+            platform: DEMO_PLATFORM.to_vec(),
+            bulk: DEMO_BULK.to_vec(),
+        }
+    }
 }
 
 /// Which optional firmware features the fake answers for.
@@ -37,51 +105,183 @@ pub struct FakeOptions {
     pub extensions: bool,
 }
 
+/// A simulated device behind the [`Transport`] trait. See the module docs
+/// for what it answers.
 pub struct FakeDevice {
     descriptor: DeviceDescriptor,
-    #[allow(dead_code)]
-    capture: Capture,
-    #[allow(dead_code)]
-    options: FakeOptions,
+    shared: Arc<Shared>,
 }
 
+/// A handle on a [`FakeDevice`]'s state that stays usable after the device
+/// was moved into a session or a core: a test plays the device's side with
+/// it (a knob turned at the device, an unplug) and inspects the image.
+#[derive(Clone)]
+pub struct FakeRemote {
+    shared: Arc<Shared>,
+}
+
+/// State shared by the device, its notification sources and its remotes.
+struct Shared {
+    state: Mutex<State>,
+    /// Signalled when a packet is queued or the device goes away.
+    wake: Condvar,
+}
+
+/// Packets held for the notification endpoint; the oldest goes first when
+/// nobody reads.
+const MAX_QUEUE: usize = 1024;
+
+/// `CROSSFEED_MAP_PAIRS` (crossfeed_map.h): the pair map's width.
+const MAP_PAIRS: usize = 4;
+
+/// Live PEQ bands per channel: `MAX_BANDS` (12) is the storage depth and
+/// "only bands 0..9 are active today" (config.h:880). Not a define, so not
+/// generated; `probe_band_count` measures it.
+const LIVE_BANDS: usize = 10;
+
+/// The demo's build default core voltage, 1.20 V (the K340 build,
+/// `DSPI_VREG_MV=1200`).
+const DEMO_VREG: u8 = 0x0D;
+
+/// `MASTER_VOLUME_MODE_INDEPENDENT` (config.h:517), not generated.
+const MV_INDEPENDENT: u8 = 0;
+
+/// `OUTPUT_CONFIG_MODE_WITH_PRESET` (config.h:531), the firmware default.
+const OC_WITH_PRESET: u8 = 1;
+
 impl FakeDevice {
+    /// A device that answers from `capture`. Nothing in the capture is
+    /// trusted: a short or odd image gives a device with that image (and no
+    /// channels where the header is missing), never a panic.
     pub fn new(capture: Capture, options: FakeOptions) -> Self {
         Self {
             descriptor: DeviceDescriptor {
-                serial: "DEMO0000DSPI0001".into(),
+                serial: SERIAL.into(),
                 bus_id: "demo".into(),
                 address: 0,
             },
-            capture,
-            options,
+            shared: Arc::new(Shared {
+                state: Mutex::new(State::new(capture, options)),
+                wake: Condvar::new(),
+            }),
         }
     }
 
     /// The built-in demo device: the RP2350 capture bundled with this crate,
     /// with the extension channel on.
     pub fn demo() -> Self {
-        todo!("WP T4: bundle the capture (include_bytes!) and build the demo")
+        let dev = Self::new(Capture::demo(), FakeOptions { extensions: true });
+        {
+            let mut s = dev.shared.lock();
+            // The capture's own meter block; `new` synthesises a silent one.
+            if DEMO_STATUS.len() == s.status_len() {
+                s.status = DEMO_STATUS.to_vec();
+            }
+        }
+        dev
+    }
+
+    /// A handle for a test to act as the device (see [`FakeRemote`]).
+    pub fn remote(&self) -> FakeRemote {
+        FakeRemote {
+            shared: Arc::clone(&self.shared),
+        }
+    }
+
+    fn run<T>(&self, f: impl FnOnce(&mut State) -> Result<T>) -> Result<T> {
+        let mut s = self.shared.lock();
+        if s.gone {
+            return Err(TransportError::Disconnected);
+        }
+        let r = f(&mut s);
+        let queued = !s.queue.is_empty();
+        drop(s);
+        if queued {
+            self.shared.wake.notify_all();
+        }
+        r
+    }
+}
+
+impl Drop for FakeDevice {
+    /// Closing the device ends its notification stream, as a closed USB
+    /// handle does.
+    fn drop(&mut self) {
+        self.shared.lock().gone = true;
+        self.shared.wake.notify_all();
+    }
+}
+
+impl FakeRemote {
+    /// A change made at the device (a knob, a UART host): patch the image at
+    /// `offset` and, if the bytes changed, queue `PARAM_CHANGED` with
+    /// `source` (a `PARAM_SRC_*`). False, with nothing changed, when the
+    /// bytes would touch the header or run off the image.
+    pub fn poke(&self, offset: usize, bytes: &[u8], source: u8) -> bool {
+        let ok = offset >= WireHeader::LEN && self.shared.lock().write(offset, bytes, source);
+        self.shared.wake.notify_all();
+        ok
+    }
+
+    /// The device's bulk image as it stands.
+    pub fn image(&self) -> Vec<u8> {
+        self.shared.lock().image.clone()
+    }
+
+    /// Unplug: every later request, and the notification stream, fail with
+    /// [`TransportError::Disconnected`].
+    pub fn disconnect(&self) {
+        self.shared.lock().gone = true;
+        self.shared.wake.notify_all();
+    }
+}
+
+impl Shared {
+    fn lock(&self) -> MutexGuard<'_, State> {
+        // Every update to the state is a plain assignment between checks, so
+        // a test thread that panicked while holding the lock leaves nothing
+        // half-written that matters.
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
 impl Transport for FakeDevice {
     fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> Result<Vec<u8>> {
-        let _ = (opcode, value, len);
-        todo!("WP T4")
+        let want = usize::from(len);
+        let mut reply = self.run(|s| s.get(opcode, value, want))?;
+        if reply.len() < want {
+            return Err(TransportError::ShortRead {
+                opcode,
+                wanted: want,
+                got: reply.len(),
+            });
+        }
+        reply.truncate(want);
+        Ok(reply)
+    }
+
+    fn control_in_upto(&mut self, opcode: u8, value: u16, max_len: u16) -> Result<Vec<u8>> {
+        let mut reply = self.run(|s| s.get(opcode, value, usize::from(max_len)))?;
+        reply.truncate(usize::from(max_len));
+        Ok(reply)
     }
 
     fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> Result<()> {
-        let _ = (opcode, value, data);
-        todo!("WP T4")
+        self.run(|s| s.set(opcode, value, data))
     }
 
     fn descriptor(&self) -> &DeviceDescriptor {
         &self.descriptor
     }
 
+    /// The device's notification stream. Every source shares one queue, so
+    /// two readers split the packets between them, as two readers of one
+    /// USB endpoint would. Ends with `Disconnected` once the device is
+    /// dropped or unplugged.
     fn notifications(&self) -> Option<Box<dyn NotificationSource>> {
-        todo!("WP T4: notifications for the writes applied")
+        Some(Box::new(FakeNotifications {
+            shared: Arc::clone(&self.shared),
+        }))
     }
 
     fn caps(&self) -> TransportCaps {
@@ -93,21 +293,1780 @@ impl Transport for FakeDevice {
     }
 }
 
-#[allow(dead_code)]
-const NOTIFY_POLL: Duration = Duration::from_millis(20);
+/// The fake's notification endpoint.
+struct FakeNotifications {
+    shared: Arc<Shared>,
+}
+
+impl NotificationSource for FakeNotifications {
+    fn read(&mut self, timeout: Duration) -> Result<Vec<u8>> {
+        let start = Instant::now();
+        let mut s = self.shared.lock();
+        loop {
+            if s.gone {
+                return Err(TransportError::Disconnected);
+            }
+            if let Some(p) = s.queue.pop_front() {
+                return Ok(p);
+            }
+            let left = timeout.saturating_sub(start.elapsed());
+            if left.is_zero() {
+                // Silence: the endpoint NAKs until the timeout.
+                return Ok(Vec::new());
+            }
+            s = match self.shared.wake.wait_timeout(s, left) {
+                Ok((g, _)) => g,
+                Err(p) => p.into_inner().0,
+            };
+        }
+    }
+}
+
+// ------------------------------------------------------------------ layouts
+
+/// `(name, offset from the start of its struct, length)`, as the
+/// `*_FIELDS` tables in `dspi_proto::wire`. The tests check each struct's
+/// fields are contiguous and fill the generated section.
+type Field = (&'static str, usize, usize);
+
+// `WireGlobalParams` (bulk_params.h:60-67).
+// Layout only: checked by the tests, never written.
+#[cfg(test)]
+const G_PREAMP: Field = ("preamp_gain_db", 0, 4);
+const G_BYPASS: Field = ("bypass", 4, 1);
+const G_LOUDNESS: Field = ("loudness_enabled", 5, 1);
+const G_LOUDNESS_MASK: Field = ("loudness_output_mask", 6, 2);
+const G_LOUDNESS_REF: Field = ("loudness_ref_spl", 8, 4);
+const G_LOUDNESS_INT: Field = ("loudness_intensity_pct", 12, 4);
+
+// `WireCrossfeedParams` (bulk_params.h:72-82).
+const X_ENABLED: Field = ("enabled", 0, 1);
+const X_PRESET: Field = ("preset", 1, 1);
+const X_ITD: Field = ("itd_enabled", 2, 1);
+const X_PAIR_MASK: Field = ("output_pair_mask", 3, 1);
+const X_FC: Field = ("custom_fc", 4, 4);
+const X_FEED: Field = ("custom_feed_db", 8, 4);
+const X_PAIR_MAP: Field = ("pair_map", 12, 4);
+
+// `WireOutputChannel` (bulk_params.h:115-121), one per output.
+const O_ENABLED: Field = ("enabled", 0, 1);
+const O_MUTE: Field = ("mute", 1, 1);
+// Layout only: checked by the tests, never written.
+#[cfg(test)]
+const O_RESERVED: Field = ("reserved", 2, 2);
+const O_GAIN: Field = ("gain_db", 4, 4);
+const O_DELAY: Field = ("delay_ms", 8, 4);
+const OUTPUT_LEN: usize = 12;
+
+// `WireCrosspoint` (bulk_params.h:105-110), `[input][WIRE_MAX_OUTPUT_CHANNELS]`.
+const C_ENABLED: Field = ("enabled", 0, 1);
+const C_PHASE: Field = ("phase_invert", 1, 1);
+// Layout only: checked by the tests, never written.
+#[cfg(test)]
+const C_RESERVED: Field = ("reserved", 2, 2);
+const C_GAIN: Field = ("gain_db", 4, 4);
+const CROSSPOINT_LEN: usize = 8;
+
+// `WireMasterVolume` (bulk_params.h:198-201).
+const MV_DB: Field = ("master_volume_db", 0, 4);
+// Layout only: checked by the tests, never written.
+#[cfg(test)]
+const MV_RESERVED: Field = ("reserved", 4, 12);
+
+// `WireUserVolume` (bulk_params.h:274-278).
+const UV_DB: Field = ("user_volume_db", 0, 4);
+const UV_MUTE: Field = ("user_mute", 4, 1);
+// Layout only: checked by the tests, never written.
+#[cfg(test)]
+const UV_RESERVED: Field = ("reserved", 5, 11);
+
+// `WireBandParams` (bulk_params.h:136-145), `eq[ch][WIRE_MAX_BANDS]` and
+// `crossovers[ch][WIRE_MAX_XOVER_BANDS]`.
+const B_TYPE: Field = ("type", 0, 1);
+const B_BYPASS: Field = ("bypass", 1, 1);
+const B_QP: Field = ("qp", 2, 2);
+const B_FREQ: Field = ("freq", 4, 4);
+const B_Q: Field = ("q", 8, 4);
+const B_GAIN: Field = ("gain_db", 12, 4);
+const BAND_LEN: usize = 16;
+
+/// One `float` per channel (`WireChannelDelays`) or per input
+/// (`WirePreampConfig`).
+const F32: Field = ("value", 0, 4);
+
+/// `(offset, len)` of a section in the generated table.
+fn section(name: &str) -> Option<(usize, usize)> {
+    generated::SECTIONS
+        .iter()
+        .find(|(n, _, _)| *n == name)
+        .map(|(_, off, len)| (*off, *len))
+}
+
+/// Field `f` of a record: `rec[f.1 .. f.1 + f.2]`.
+fn field_of(rec: &[u8], f: Field) -> Option<&[u8]> {
+    rec.get(f.1..f.1.checked_add(f.2)?)
+}
+
+/// What a scalar's `wValue` indexes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Index {
+    None,
+    /// `0 .. num_input_channels`.
+    Input,
+    /// `0 .. num_output_channels`.
+    Output,
+    /// `0 .. num_channels`.
+    Channel,
+}
+
+/// How the firmware stores a SET's bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Store {
+    /// As sent.
+    Raw,
+    /// `!= 0` stored as 0/1.
+    Bool,
+}
+
+/// A parameter with a plain GET/SET pair whose value is one bulk field.
+struct Scalar {
+    set: u8,
+    get: u8,
+    section: &'static str,
+    field: Field,
+    /// Record size when `index` is not `None`.
+    stride: usize,
+    index: Index,
+    store: Store,
+}
+
+const fn scalar(set: u8, get: u8, section: &'static str, field: Field, store: Store) -> Scalar {
+    Scalar {
+        set,
+        get,
+        section,
+        field,
+        stride: 0,
+        index: Index::None,
+        store,
+    }
+}
+
+const fn indexed(
+    (set, get): (u8, u8),
+    section: &'static str,
+    field: Field,
+    stride: usize,
+    index: Index,
+    store: Store,
+) -> Scalar {
+    Scalar {
+        set,
+        get,
+        section,
+        field,
+        stride,
+        index,
+        store,
+    }
+}
+
+/// The scalar parameters, with the bulk field each one lives in (the
+/// firmware's `notify_param_write` offsets in `vendor_commands.c`).
+const SCALARS: &[Scalar] = &[
+    scalar(
+        op::REQ_SET_MASTER_VOLUME,
+        op::REQ_GET_MASTER_VOLUME,
+        "master_volume",
+        MV_DB,
+        Store::Raw,
+    ),
+    scalar(
+        op::REQ_SET_USER_VOLUME,
+        op::REQ_GET_USER_VOLUME,
+        "user_volume",
+        UV_DB,
+        Store::Raw,
+    ),
+    scalar(
+        op::REQ_SET_USER_MUTE,
+        op::REQ_GET_USER_MUTE,
+        "user_volume",
+        UV_MUTE,
+        Store::Bool,
+    ),
+    scalar(
+        op::REQ_SET_BYPASS,
+        op::REQ_GET_BYPASS,
+        "global",
+        G_BYPASS,
+        Store::Bool,
+    ),
+    scalar(
+        op::REQ_SET_LOUDNESS,
+        op::REQ_GET_LOUDNESS,
+        "global",
+        G_LOUDNESS,
+        Store::Bool,
+    ),
+    scalar(
+        op::REQ_SET_LOUDNESS_MASK,
+        op::REQ_GET_LOUDNESS_MASK,
+        "global",
+        G_LOUDNESS_MASK,
+        Store::Raw,
+    ),
+    scalar(
+        op::REQ_SET_LOUDNESS_REF,
+        op::REQ_GET_LOUDNESS_REF,
+        "global",
+        G_LOUDNESS_REF,
+        Store::Raw,
+    ),
+    scalar(
+        op::REQ_SET_LOUDNESS_INTENSITY,
+        op::REQ_GET_LOUDNESS_INTENSITY,
+        "global",
+        G_LOUDNESS_INT,
+        Store::Raw,
+    ),
+    scalar(
+        op::REQ_SET_CROSSFEED,
+        op::REQ_GET_CROSSFEED,
+        "crossfeed",
+        X_ENABLED,
+        Store::Bool,
+    ),
+    scalar(
+        op::REQ_SET_CROSSFEED_PRESET,
+        op::REQ_GET_CROSSFEED_PRESET,
+        "crossfeed",
+        X_PRESET,
+        Store::Raw,
+    ),
+    scalar(
+        op::REQ_SET_CROSSFEED_ITD,
+        op::REQ_GET_CROSSFEED_ITD,
+        "crossfeed",
+        X_ITD,
+        Store::Bool,
+    ),
+    scalar(
+        op::REQ_SET_CROSSFEED_OUTPUTS,
+        op::REQ_GET_CROSSFEED_OUTPUTS,
+        "crossfeed",
+        X_PAIR_MASK,
+        Store::Raw,
+    ),
+    scalar(
+        op::REQ_SET_CROSSFEED_FREQ,
+        op::REQ_GET_CROSSFEED_FREQ,
+        "crossfeed",
+        X_FC,
+        Store::Raw,
+    ),
+    scalar(
+        op::REQ_SET_CROSSFEED_FEED,
+        op::REQ_GET_CROSSFEED_FEED,
+        "crossfeed",
+        X_FEED,
+        Store::Raw,
+    ),
+    indexed(
+        (op::REQ_SET_PREAMP_CH, op::REQ_GET_PREAMP_CH),
+        "preamp",
+        F32,
+        4,
+        Index::Input,
+        Store::Raw,
+    ),
+    indexed(
+        (op::REQ_SET_DELAY, op::REQ_GET_DELAY),
+        "delays",
+        F32,
+        4,
+        Index::Channel,
+        Store::Raw,
+    ),
+    indexed(
+        (op::REQ_SET_OUTPUT_ENABLE, op::REQ_GET_OUTPUT_ENABLE),
+        "outputs",
+        O_ENABLED,
+        OUTPUT_LEN,
+        Index::Output,
+        Store::Bool,
+    ),
+    indexed(
+        (op::REQ_SET_OUTPUT_MUTE, op::REQ_GET_OUTPUT_MUTE),
+        "outputs",
+        O_MUTE,
+        OUTPUT_LEN,
+        Index::Output,
+        Store::Raw,
+    ),
+    indexed(
+        (op::REQ_SET_OUTPUT_GAIN, op::REQ_GET_OUTPUT_GAIN),
+        "outputs",
+        O_GAIN,
+        OUTPUT_LEN,
+        Index::Output,
+        Store::Raw,
+    ),
+    indexed(
+        (op::REQ_SET_OUTPUT_DELAY, op::REQ_GET_OUTPUT_DELAY),
+        "outputs",
+        O_DELAY,
+        OUTPUT_LEN,
+        Index::Output,
+        Store::Raw,
+    ),
+];
+
+// -------------------------------------------------------------------- state
+
+/// An open chunked bulk transfer (`bulk_params_chunking.md`).
+enum Chunked {
+    None,
+    /// A read: the image as it was at offset 0, and the next offset.
+    Get {
+        snapshot: Vec<u8>,
+        next: usize,
+    },
+    /// A write: what arrived so far, from offset 0.
+    Set {
+        buf: Vec<u8>,
+    },
+}
+
+/// The core-voltage state behind `EXT_CORE_VREG` (core_vreg.h).
+struct Vreg {
+    live: u8,
+    stored_sel: u8,
+    default_vreg: u8,
+    flags: u8,
+    hang_count: u8,
+    trial: Option<u8>,
+    failed_trial: u8,
+    failed_trial_uptime_s: u32,
+}
+
+const NAME_LEN: usize = st::PRESET_NAME_LEN as usize;
+const SLOTS: usize = st::PRESET_SLOTS as usize;
+
+/// The preset store (flash_storage.c's directory, in memory).
+struct Presets {
+    names: Vec<[u8; NAME_LEN]>,
+    /// The bulk image saved in each slot.
+    slots: Vec<Option<Vec<u8>>>,
+    active: u8,
+    startup_mode: u8,
+    default_slot: u8,
+    output_config_mode: u8,
+    master_volume_mode: u8,
+}
+
+struct State {
+    platform: Vec<u8>,
+    image: Vec<u8>,
+    /// `GET_STATUS` sub-query 9.
+    status: Vec<u8>,
+    options: FakeOptions,
+    chunked: Chunked,
+    presets: Presets,
+    vreg: Vreg,
+    queue: VecDeque<Vec<u8>>,
+    seq: u8,
+    started: Instant,
+    /// Unplugged or closed.
+    gone: bool,
+}
+
+impl State {
+    fn new(capture: Capture, options: FakeOptions) -> Self {
+        let mut presets = Presets {
+            names: vec![[0; NAME_LEN]; SLOTS],
+            slots: vec![None; SLOTS],
+            active: 0,
+            startup_mode: st::PRESET_STARTUP_SPECIFIED as u8,
+            default_slot: 0,
+            output_config_mode: OC_WITH_PRESET,
+            master_volume_mode: MV_INDEPENDENT,
+        };
+        // Slot 0 holds what the device is running.
+        if let (Some(name), Some(slot)) = (presets.names.first_mut(), presets.slots.first_mut()) {
+            put_name(name, b"Demo");
+            *slot = Some(capture.bulk.clone());
+        }
+        let mut s = Self {
+            platform: capture.platform,
+            image: capture.bulk,
+            status: Vec::new(),
+            options,
+            chunked: Chunked::None,
+            presets,
+            vreg: Vreg {
+                live: DEMO_VREG,
+                stored_sel: 0,
+                default_vreg: DEMO_VREG,
+                flags: 0,
+                hang_count: 0,
+                trial: None,
+                failed_trial: 0,
+                failed_trial_uptime_s: 0,
+            },
+            queue: VecDeque::new(),
+            seq: 0,
+            started: Instant::now(),
+            gone: false,
+        };
+        // A silent meter block of the right size, with two live inputs.
+        let mut status = vec![0; s.status_len()];
+        if let Some(last) = status.last_mut() {
+            *last = s.num_inputs().min(2);
+        }
+        s.status = status;
+        s
+    }
+
+    fn header_byte(&self, i: usize) -> u8 {
+        self.image.get(i).copied().unwrap_or(0)
+    }
+
+    fn num_channels(&self) -> u8 {
+        self.header_byte(2)
+    }
+
+    fn num_outputs(&self) -> u8 {
+        self.header_byte(3)
+    }
+
+    fn num_inputs(&self) -> u8 {
+        self.header_byte(4)
+    }
+
+    /// `peaks[num_channels] u16, cpu0, cpu1, clip_flags u32, active_inputs`.
+    fn status_len(&self) -> usize {
+        usize::from(self.num_channels())
+            .saturating_mul(2)
+            .saturating_add(7)
+    }
+
+    fn bound(&self, index: Index) -> usize {
+        usize::from(match index {
+            Index::None => 1,
+            Index::Input => self.num_inputs(),
+            Index::Output => self.num_outputs(),
+            Index::Channel => self.num_channels(),
+        })
+    }
+
+    /// The absolute offset of field `field` in record `i` of a section with
+    /// `stride`-byte records. `None` when the field would leave the section
+    /// or the image.
+    fn locate(&self, section_name: &str, stride: usize, i: usize, field: Field) -> Option<usize> {
+        let (base, len) = section(section_name)?;
+        let (_, rel, flen) = field;
+        let in_section = i.checked_mul(stride)?.checked_add(rel)?;
+        if in_section.checked_add(flen)? > len {
+            return None;
+        }
+        let off = base.checked_add(in_section)?;
+        (off.checked_add(flen)? <= self.image.len()).then_some(off)
+    }
+
+    fn scalar_at(&self, s: &Scalar, value: u16) -> Option<usize> {
+        let i = match s.index {
+            Index::None => 0,
+            // The firmware takes the index from the low byte.
+            _ => usize::from(value & 0xFF),
+        };
+        if i >= self.bound(s.index) {
+            return None;
+        }
+        self.locate(s.section, s.stride, i, s.field)
+    }
+
+    fn bytes(&self, off: usize, len: usize) -> Option<Vec<u8>> {
+        self.image
+            .get(off..off.checked_add(len)?)
+            .map(<[u8]>::to_vec)
+    }
+
+    /// Patch the image and, if anything changed, queue `PARAM_CHANGED`.
+    /// False, with nothing changed, when the bytes do not fit the image.
+    fn write(&mut self, off: usize, bytes: &[u8], source: u8) -> bool {
+        let (Ok(off16), Ok(len16)) = (u16::try_from(off), u16::try_from(bytes.len())) else {
+            return false;
+        };
+        let Some(dst) = off
+            .checked_add(bytes.len())
+            .and_then(|end| self.image.get_mut(off..end))
+        else {
+            return false;
+        };
+        if dst == bytes {
+            // The firmware notifies against its shadow: no change, no packet.
+            return true;
+        }
+        dst.copy_from_slice(bytes);
+        let mut p = vec![
+            nfy::NOTIFY_V2_VERSION as u8,
+            nfy::NOTIFY_EVT_PARAM_CHANGED as u8,
+            0,
+            0,
+        ];
+        p.extend_from_slice(&off16.to_le_bytes());
+        p.extend_from_slice(&len16.to_le_bytes());
+        p.extend_from_slice(&[source, 0, 0, 0]);
+        p.extend_from_slice(bytes);
+        self.push(p);
+        true
+    }
+
+    /// Queue a v2 packet, stamping its sequence byte. The oldest packet goes
+    /// when the queue is full.
+    fn push(&mut self, mut packet: Vec<u8>) {
+        if let Some(seq) = packet.get_mut(3) {
+            *seq = self.seq;
+        }
+        self.seq = self.seq.wrapping_add(1);
+        if self.queue.len() >= MAX_QUEUE {
+            self.queue.pop_front();
+        }
+        self.queue.push_back(packet);
+    }
+
+    /// An 8-byte v2 event with one argument byte.
+    fn event(&mut self, event: u16, arg: u8) {
+        self.push(vec![
+            nfy::NOTIFY_V2_VERSION as u8,
+            event as u8,
+            0,
+            0,
+            arg,
+            0,
+            0,
+            0,
+        ]);
+    }
+
+    /// Take `body` as the new image, except the header (the device's own
+    /// shape) and the `keep` sections, which keep their live bytes.
+    fn replace_body(&mut self, body: &[u8], keep: &[&str]) {
+        let mut next = body.to_vec();
+        let n = next.len().min(self.image.len());
+        for name in keep.iter().copied().chain(["header"]) {
+            if let Some((off, len)) = section(name) {
+                let end = off.saturating_add(len).min(n);
+                if let (Some(dst), Some(src)) = (next.get_mut(off..end), self.image.get(off..end)) {
+                    dst.copy_from_slice(src);
+                }
+            }
+        }
+        if let (Some(dst), Some(src)) = (self.image.get_mut(..n), next.get(..n)) {
+            dst.copy_from_slice(src);
+        }
+    }
+
+    /// `bulk_params_apply`: exactly this wire version and size, or refused.
+    fn apply_bulk(&mut self, payload: Vec<u8>) -> bool {
+        match BulkPacket::decode(payload) {
+            Ok(p) => {
+                self.replace_body(p.as_bytes(), &[]);
+                self.event(
+                    nfy::NOTIFY_EVT_BULK_INVALIDATED,
+                    nfy::PARAM_SRC_BULK_SET as u8,
+                );
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    // ------------------------------------------------------------- IN
+
+    /// The full reply to an IN request; the caller truncates to `wLength`.
+    fn get(&mut self, opcode: u8, value: u16, want: usize) -> Result<Vec<u8>> {
+        if opcode != op::REQ_GET_ALL_PARAMS_CHUNK {
+            self.chunked = Chunked::None;
+        }
+        let reply = if let Some(s) = SCALARS.iter().find(|s| s.get == opcode) {
+            self.scalar_at(s, value)
+                .and_then(|o| self.bytes(o, s.field.2))
+        } else {
+            self.get_other(opcode, value, want)
+        };
+        reply.ok_or(TransportError::Stalled { opcode })
+    }
+
+    fn get_other(&mut self, opcode: u8, value: u16, want: usize) -> Option<Vec<u8>> {
+        match opcode {
+            op::REQ_GET_PLATFORM => Some(self.platform.clone()),
+            op::REQ_GET_SERIAL => Some(SERIAL.as_bytes().to_vec()),
+            op::REQ_GET_BUILD_INFO => Some(
+                BuildInfo {
+                    describe: "dspi-fake".into(),
+                    date: "2026-11-06".into(),
+                }
+                .encode()
+                .to_vec(),
+            ),
+            op::REQ_GET_STATUS => Some(self.get_status(value)),
+            op::REQ_GET_ALL_PARAMS => Some(self.image.clone()),
+            op::REQ_GET_ALL_PARAMS_CHUNK => self.get_chunk(usize::from(value), want),
+            // Legacy: input 0's preamp.
+            op::REQ_GET_PREAMP => self
+                .locate("preamp", 4, 0, F32)
+                .and_then(|o| self.bytes(o, F32.2)),
+            op::REQ_GET_MATRIX_ROUTE => self.get_route(value),
+            op::REQ_GET_EQ_PARAM => self.get_eq(value),
+            op::REQ_GET_CHANNEL_NAME => self
+                .channel_name_at(value)
+                .and_then(|o| self.bytes(o, usize::from(w::WIRE_NAME_LEN))),
+            op::REQ_PRESET_GET_DIR => Some(self.preset_dir()),
+            op::REQ_PRESET_GET_NAME => self
+                .presets
+                .names
+                .get(usize::from(value & 0xFF))
+                .map(|n| n.to_vec()),
+            op::REQ_PRESET_GET_ACTIVE => Some(vec![self.presets.active]),
+            op::REQ_PRESET_GET_STARTUP => Some(vec![
+                self.presets.startup_mode,
+                self.presets.default_slot,
+                self.presets.active,
+            ]),
+            op::REQ_GET_OUTPUT_CONFIG_MODE => Some(vec![self.presets.output_config_mode]),
+            op::REQ_GET_MASTER_VOLUME_MODE => Some(vec![self.presets.master_volume_mode]),
+            // Write-as-read: the slot in wValue, a status byte back.
+            op::REQ_PRESET_SAVE => Some(vec![self.preset_save(value)]),
+            op::REQ_PRESET_LOAD => Some(vec![self.preset_load(value)]),
+            op::REQ_PRESET_DELETE => Some(vec![self.preset_delete(value)]),
+            op::REQ_EXTENSION if self.options.extensions => self.get_ext(value),
+            _ => None,
+        }
+    }
+
+    /// `REQ_GET_STATUS`: sub-query 9 is the meter block; the others are the
+    /// firmware's `u32` counters and readings, here quiet and plausible.
+    fn get_status(&self, value: u16) -> Vec<u8> {
+        if value == 9 {
+            return self.status.clone();
+        }
+        let v: u32 = match value {
+            13 => 307_200_000,
+            14 => dspi_proto::ext::vreg_mv(self.vreg.live).map_or(0, u32::from),
+            15 => 48_000,
+            16 => 3_500,
+            23 => u32::from(self.status.last().copied().unwrap_or(0)),
+            _ => 0,
+        };
+        v.to_le_bytes().to_vec()
+    }
+
+    fn get_chunk(&mut self, off: usize, want: usize) -> Option<Vec<u8>> {
+        if off == 0 {
+            // Offset 0 snapshots the image, so every chunk is from one state.
+            self.chunked = Chunked::Get {
+                snapshot: self.image.clone(),
+                next: 0,
+            };
+        }
+        let Chunked::Get { snapshot, next } = &mut self.chunked else {
+            return None;
+        };
+        if off != *next || off >= snapshot.len() {
+            self.chunked = Chunked::None;
+            return None;
+        }
+        // The device clamps a chunk that runs past the end.
+        let end = off.saturating_add(want).min(snapshot.len());
+        let part = snapshot.get(off..end).map(<[u8]>::to_vec);
+        *next = end;
+        if end == snapshot.len() {
+            self.chunked = Chunked::None;
+        }
+        part
+    }
+
+    /// `wValue = (input << 8) | output`; a `MatrixRoutePacket` back.
+    fn get_route(&self, value: u16) -> Option<Vec<u8>> {
+        let [output, input] = value.to_le_bytes();
+        let rec = self.bytes(self.route_at(input, output)?, CROSSPOINT_LEN)?;
+        let mut r = vec![input, output];
+        r.extend_from_slice(field_of(&rec, C_ENABLED)?);
+        r.extend_from_slice(field_of(&rec, C_PHASE)?);
+        r.extend_from_slice(field_of(&rec, C_GAIN)?);
+        Some(r)
+    }
+
+    fn route_at(&self, input: u8, output: u8) -> Option<usize> {
+        if input >= self.num_inputs() || output >= self.num_outputs() {
+            return None;
+        }
+        let i = usize::from(input)
+            .checked_mul(usize::from(w::WIRE_MAX_OUTPUT_CHANNELS))?
+            .checked_add(usize::from(output))?;
+        self.locate(
+            "crosspoints",
+            CROSSPOINT_LEN,
+            i,
+            ("record", 0, CROSSPOINT_LEN),
+        )
+    }
+
+    /// Where band `band` of channel `ch` lives: a PEQ band in `eq` (true),
+    /// or a crossover band (`XOVER_BAND_BASE..`, outputs only) in
+    /// `crossovers` (false).
+    fn band_at(&self, ch: u8, band: u8) -> Option<(usize, bool)> {
+        if ch >= self.num_channels() {
+            return None;
+        }
+        let (ch, band) = (usize::from(ch), usize::from(band));
+        let rec = ("band", 0, BAND_LEN);
+        if band < LIVE_BANDS {
+            let i = ch
+                .checked_mul(usize::from(w::WIRE_MAX_BANDS))?
+                .checked_add(band)?;
+            return Some((self.locate("eq", BAND_LEN, i, rec)?, true));
+        }
+        let x = band.checked_sub(usize::from(filter::XOVER_BAND_BASE))?;
+        if x >= usize::from(filter::MAX_XOVER_BANDS) || ch < usize::from(self.num_inputs()) {
+            return None;
+        }
+        let i = ch
+            .checked_mul(usize::from(w::WIRE_MAX_XOVER_BANDS))?
+            .checked_add(x)?;
+        Some((self.locate("crossovers", BAND_LEN, i, rec)?, false))
+    }
+
+    /// `wValue = (channel << 8) | (band << 3) | param`; four bytes back.
+    fn get_eq(&self, value: u16) -> Option<Vec<u8>> {
+        let [lo, ch] = value.to_le_bytes();
+        let (band, param) = (lo.checked_shr(3)?, lo & 0x07);
+        let (off, peq) = self.band_at(ch, band)?;
+        let b = self.bytes(off, BAND_LEN)?;
+        let byte = |f: Field| field_of(&b, f).and_then(|v| v.first().copied());
+        let v: Vec<u8> = match param {
+            0 => u32::from(byte(B_TYPE)?).to_le_bytes().to_vec(),
+            1 => field_of(&b, B_FREQ)?.to_vec(),
+            2 => field_of(&b, B_Q)?.to_vec(),
+            3 => field_of(&b, B_GAIN)?.to_vec(),
+            4 => u32::from(byte(B_BYPASS)? == 1).to_le_bytes().to_vec(),
+            5 if peq => {
+                let mut qp = field_of(&b, B_QP)?.to_vec();
+                qp.extend_from_slice(&[0, 0]);
+                qp
+            }
+            _ => vec![0; 4],
+        };
+        Some(v)
+    }
+
+    fn channel_name_at(&self, value: u16) -> Option<usize> {
+        let ch = value & 0xFF;
+        if ch >= u16::from(self.num_channels()) {
+            return None;
+        }
+        let len = usize::from(w::WIRE_NAME_LEN);
+        self.locate("channel_names", len, usize::from(ch), ("name", 0, len))
+    }
+
+    /// `REQ_PRESET_GET_DIR`, 7 bytes (`PresetDirectory`).
+    fn preset_dir(&self) -> Vec<u8> {
+        let occupied = self
+            .presets
+            .slots
+            .iter()
+            .zip(0u32..)
+            .filter(|(s, _)| s.is_some())
+            .fold(0u16, |m, (_, i)| m | 1u16.checked_shl(i).unwrap_or(0));
+        let [lo, hi] = occupied.to_le_bytes();
+        let p = &self.presets;
+        vec![
+            lo,
+            hi,
+            p.startup_mode,
+            p.default_slot,
+            p.active,
+            p.output_config_mode,
+            p.master_volume_mode,
+        ]
+    }
+
+    /// The slot in `wValue`'s low byte, if it exists.
+    fn preset_slot(value: u16) -> Option<(usize, u8)> {
+        let slot = u8::try_from(value & 0xFF).ok()?;
+        (usize::from(slot) < SLOTS).then_some((usize::from(slot), slot))
+    }
+
+    fn preset_save(&mut self, value: u16) -> u8 {
+        let Some((i, slot)) = Self::preset_slot(value) else {
+            return st::PRESET_ERR_INVALID_SLOT as u8;
+        };
+        if let Some(s) = self.presets.slots.get_mut(i) {
+            *s = Some(self.image.clone());
+        }
+        self.presets.active = slot;
+        st::PRESET_OK as u8
+    }
+
+    fn preset_load(&mut self, value: u16) -> u8 {
+        let Some((i, slot)) = Self::preset_slot(value) else {
+            return st::PRESET_ERR_INVALID_SLOT as u8;
+        };
+        // The reply only says "accepted"; an empty slot changes nothing here.
+        if let Some(Some(body)) = self.presets.slots.get(i).cloned() {
+            let keep: &[&str] = if self.presets.master_volume_mode == MV_INDEPENDENT {
+                &["master_volume"]
+            } else {
+                &[]
+            };
+            self.replace_body(&body, keep);
+            self.presets.active = slot;
+            self.event(nfy::NOTIFY_EVT_PRESET_LOADED, slot);
+            self.event(
+                nfy::NOTIFY_EVT_BULK_INVALIDATED,
+                nfy::PARAM_SRC_PRESET as u8,
+            );
+        }
+        st::PRESET_OK as u8
+    }
+
+    fn preset_delete(&mut self, value: u16) -> u8 {
+        let Some((i, _)) = Self::preset_slot(value) else {
+            return st::PRESET_ERR_INVALID_SLOT as u8;
+        };
+        if let Some(s) = self.presets.slots.get_mut(i) {
+            *s = None;
+        }
+        if let Some(n) = self.presets.names.get_mut(i) {
+            *n = [0; NAME_LEN];
+        }
+        st::PRESET_OK as u8
+    }
+
+    fn get_ext(&self, value: u16) -> Option<Vec<u8>> {
+        match value {
+            gext::EXT_LIST => Some(
+                [gext::EXT_CROSSFEED_PAIR_MAP, gext::EXT_CORE_VREG]
+                    .iter()
+                    .flat_map(|id| id.to_le_bytes())
+                    .collect(),
+            ),
+            gext::EXT_CROSSFEED_PAIR_MAP => self
+                .locate("crossfeed", 0, 0, X_PAIR_MAP)
+                .and_then(|o| self.bytes(o, X_PAIR_MAP.2)),
+            gext::EXT_CORE_VREG => Some(self.vreg_status()),
+            _ => None,
+        }
+    }
+
+    /// `CoreVregStatus`, 16 bytes (extension_channel_spec.md 2.3).
+    fn vreg_status(&self) -> Vec<u8> {
+        let v = &self.vreg;
+        let uptime = u32::try_from(self.started.elapsed().as_secs()).unwrap_or(u32::MAX);
+        let mut b = vec![
+            v.live,
+            v.stored_sel,
+            v.default_vreg,
+            v.flags,
+            v.hang_count,
+            u8::from(v.trial.is_some()),
+            v.trial.unwrap_or(0),
+            v.failed_trial,
+        ];
+        b.extend_from_slice(&v.failed_trial_uptime_s.to_le_bytes());
+        b.extend_from_slice(&uptime.to_le_bytes());
+        b
+    }
+
+    // ------------------------------------------------------------ OUT
+
+    fn set(&mut self, opcode: u8, value: u16, data: &[u8]) -> Result<()> {
+        if opcode != op::REQ_SET_ALL_PARAMS_CHUNK {
+            self.chunked = Chunked::None;
+        }
+        let ok = if let Some(s) = SCALARS.iter().find(|s| s.set == opcode) {
+            if let (Some(off), Some(bytes)) = (self.scalar_at(s, value), data.get(..s.field.2)) {
+                let bytes = match s.store {
+                    Store::Raw => bytes.to_vec(),
+                    Store::Bool => vec![u8::from(bytes.iter().any(|b| *b != 0))],
+                };
+                self.write(off, &bytes, nfy::PARAM_SRC_HOST_SET as u8);
+            }
+            true
+        } else {
+            self.set_other(opcode, value, data)
+        };
+        if ok {
+            Ok(())
+        } else {
+            Err(TransportError::Stalled { opcode })
+        }
+    }
+
+    /// False stalls the request.
+    fn set_other(&mut self, opcode: u8, value: u16, data: &[u8]) -> bool {
+        let host = nfy::PARAM_SRC_HOST_SET as u8;
+        match opcode {
+            op::REQ_SET_ALL_PARAMS => self.apply_bulk(data.to_vec()),
+            op::REQ_SET_ALL_PARAMS_CHUNK => self.set_chunk(usize::from(value), data),
+            op::REQ_SET_PREAMP => {
+                // Legacy: every input at once.
+                if let Some(db) = data.get(..F32.2) {
+                    for i in 0..usize::from(self.num_inputs()) {
+                        if let Some(off) = self.locate("preamp", 4, i, F32) {
+                            self.write(off, db, host);
+                        }
+                    }
+                }
+                true
+            }
+            op::REQ_SET_MATRIX_ROUTE => {
+                // `MatrixRoutePacket`: input, output, enabled, phase, gain.
+                if let [input, output, en, ph, g0, g1, g2, g3, ..] = *data
+                    && let Some(off) = self.route_at(input, output)
+                {
+                    let rec = [u8::from(en != 0), u8::from(ph != 0), 0, 0, g0, g1, g2, g3];
+                    self.write(off, &rec, host);
+                }
+                true
+            }
+            op::REQ_SET_EQ_PARAM => {
+                self.set_eq(data);
+                true
+            }
+            op::REQ_SET_CHANNEL_NAME => {
+                if !data.is_empty()
+                    && let Some(off) = self.channel_name_at(value)
+                {
+                    let mut name = [0u8; NAME_LEN];
+                    put_name(&mut name, data);
+                    self.write(off, &name, host);
+                }
+                true
+            }
+            op::REQ_PRESET_SET_NAME => {
+                if !data.is_empty()
+                    && let Some(name) = self.presets.names.get_mut(usize::from(value & 0xFF))
+                {
+                    put_name(name, data);
+                }
+                true
+            }
+            op::REQ_PRESET_SET_STARTUP => {
+                if let [mode, slot, ..] = *data {
+                    self.presets.startup_mode = mode;
+                    self.presets.default_slot = slot;
+                }
+                true
+            }
+            op::REQ_SET_OUTPUT_CONFIG_MODE => {
+                if let Some(m) = data.first() {
+                    self.presets.output_config_mode = *m;
+                }
+                true
+            }
+            op::REQ_SET_MASTER_VOLUME_MODE => {
+                if let Some(m) = data.first() {
+                    self.presets.master_volume_mode = *m;
+                }
+                true
+            }
+            op::REQ_EXTENSION if self.options.extensions => self.set_ext(value, data),
+            _ => false,
+        }
+    }
+
+    fn set_chunk(&mut self, off: usize, data: &[u8]) -> bool {
+        if off == 0 {
+            self.chunked = Chunked::Set { buf: Vec::new() };
+        }
+        let Chunked::Set { buf } = &mut self.chunked else {
+            return false;
+        };
+        let fits = buf
+            .len()
+            .checked_add(data.len())
+            .is_some_and(|end| end <= generated::BULK_SIZE);
+        if off != buf.len() || !fits {
+            self.chunked = Chunked::None;
+            return false;
+        }
+        buf.extend_from_slice(data);
+        if buf.len() < generated::BULK_SIZE {
+            return true;
+        }
+        // The last byte landed: apply, as `0xA1` would.
+        match std::mem::replace(&mut self.chunked, Chunked::None) {
+            Chunked::Set { buf } => self.apply_bulk(buf),
+            _ => false,
+        }
+    }
+
+    /// An `EqParamPacket` (channel, band, type, bypass, freq, Q, gain: 16
+    /// bytes), plus the optional `qp` (`Q * 512`, 2 bytes).
+    fn set_eq(&mut self, data: &[u8]) {
+        let Some(&[ch, band, ftype, bypass, ref floats @ ..]) = data.get(..16) else {
+            return;
+        };
+        let Some((off, peq)) = self.band_at(ch, band) else {
+            return;
+        };
+        let Some(old) = self.bytes(off, BAND_LEN) else {
+            return;
+        };
+        let qp: &[u8] = match (data.get(16..18), peq) {
+            (Some(q), _) => q,
+            // Keep the stored PEQ value; crossover bands carry none.
+            (None, true) => field_of(&old, B_QP).unwrap_or(&[0, 0]),
+            (None, false) => &[0, 0],
+        };
+        let mut rec = Vec::with_capacity(BAND_LEN);
+        rec.push(ftype);
+        // The firmware's rule: exactly 1 bypasses.
+        rec.push(u8::from(bypass == 1));
+        rec.extend_from_slice(qp);
+        rec.extend_from_slice(floats);
+        self.write(off, &rec, nfy::PARAM_SRC_HOST_SET as u8);
+    }
+
+    /// False stalls the request.
+    fn set_ext(&mut self, value: u16, data: &[u8]) -> bool {
+        match value {
+            gext::EXT_CROSSFEED_PAIR_MAP => {
+                let Ok(map) = <[u8; MAP_PAIRS]>::try_from(data) else {
+                    return false;
+                };
+                // `NUM_SPDIF_INSTANCES`: the stereo outputs, without the PDM sub.
+                let pairs = usize::from(self.num_outputs().checked_div(2).unwrap_or(0));
+                // An invalid map is acknowledged and ignored.
+                if let Some(norm) = pair_map_normalized(map, pairs.min(MAP_PAIRS))
+                    && let Some(off) = self.locate("crossfeed", 0, 0, X_PAIR_MAP)
+                {
+                    self.write(off, &norm, nfy::PARAM_SRC_HOST_SET as u8);
+                }
+                true
+            }
+            gext::EXT_CORE_VREG => match *data {
+                [code, v] => self.vreg_request(code, v),
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    /// `{op, value}` (extension_channel_spec.md 2.3). False refuses it.
+    fn vreg_request(&mut self, code: u8, v: u8) -> bool {
+        use dspi_proto::ext::CoreVregStatus as S;
+        let r = &mut self.vreg;
+        match code {
+            0 if v == 0 || (r.default_vreg..=0x0F).contains(&v) => {
+                r.stored_sel = v;
+                r.flags &= !S::FLAG_AUTO_RAISED;
+                r.hang_count = 0;
+                if r.trial.is_none() {
+                    r.live = if v == 0 { r.default_vreg } else { v };
+                }
+            }
+            1 if (0x0C..=0x0F).contains(&v) => {
+                r.trial = Some(v);
+                r.live = v;
+            }
+            2 => {
+                r.trial = None;
+                r.live = if r.stored_sel == 0 {
+                    r.default_vreg
+                } else {
+                    r.stored_sel
+                };
+            }
+            3 if v <= 1 => {
+                if v == 0 {
+                    r.flags |= S::FLAG_AUTO_DISABLED;
+                } else {
+                    r.flags &= !S::FLAG_AUTO_DISABLED;
+                }
+            }
+            4 => {
+                r.hang_count = 0;
+                r.failed_trial = 0;
+                r.failed_trial_uptime_s = 0;
+            }
+            _ => return false,
+        }
+        true
+    }
+}
+
+/// `crossfeed_map_valid` then `crossfeed_map_normalize` (crossfeed_map.h):
+/// each of the first `pairs` pairs takes two distinct stereo outputs below
+/// `2 * pairs`, no output is in two pairs, and bytes past `pairs` are 0.
+/// `None` for an invalid map.
+fn pair_map_normalized(map: [u8; MAP_PAIRS], pairs: usize) -> Option<[u8; MAP_PAIRS]> {
+    if pairs == 0 {
+        return None;
+    }
+    let limit = pairs.checked_mul(2)?;
+    let mut used = 0u32;
+    let mut out = [0u8; MAP_PAIRS];
+    for (p, (b, o)) in map.iter().zip(out.iter_mut()).enumerate() {
+        if p >= pairs {
+            if *b != 0 {
+                return None;
+            }
+            continue;
+        }
+        let dl = p.checked_mul(2)?;
+        let dr = dl.checked_add(1)?;
+        let (l, r) = match *b {
+            0 => (dl, dr),
+            b => (usize::from(b & 0x0F), usize::from(b.checked_shr(4)?)),
+        };
+        if l >= limit || r >= limit || l == r {
+            return None;
+        }
+        let bit = |i: usize| 1u32.checked_shl(u32::try_from(i).ok()?);
+        let bits = bit(l)? | bit(r)?;
+        if used & bits != 0 {
+            return None;
+        }
+        used |= bits;
+        *o = if (l, r) == (dl, dr) { 0 } else { *b };
+    }
+    Some(out)
+}
+
+/// Copy a name the firmware's way: at most `NAME_LEN - 1` bytes, NUL padded.
+fn put_name(dst: &mut [u8; NAME_LEN], src: &[u8]) {
+    *dst = [0; NAME_LEN];
+    let n = src.len().min(NAME_LEN.saturating_sub(1));
+    if let (Some(d), Some(s)) = (dst.get_mut(..n), src.get(..n)) {
+        d.copy_from_slice(s);
+    }
+}
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
-mod tests {
-    #[test]
-    #[ignore = "WP T4"]
-    fn the_demo_reads_back_its_capture() {
-        todo!("WP T4")
+mod tests_wp_t4 {
+    use super::*;
+    use dspi_proto::generated::wire::WIRE_FORMAT_VERSION;
+
+    fn f32_at(b: &[u8], o: usize) -> f32 {
+        f32::from_le_bytes(b[o..o + 4].try_into().unwrap())
+    }
+
+    fn off_of(name: &str) -> usize {
+        section(name).unwrap().0
+    }
+
+    /// Every packet queued so far, without waiting.
+    fn drain(src: &mut Box<dyn NotificationSource>) -> Vec<Vec<u8>> {
+        let mut out = Vec::new();
+        loop {
+            let p = src.read(Duration::ZERO).unwrap();
+            if p.is_empty() {
+                return out;
+            }
+            out.push(p);
+        }
+    }
+
+    fn read_chunked(d: &mut FakeDevice, chunk: usize) -> Vec<u8> {
+        let mut buf = Vec::new();
+        while buf.len() < generated::BULK_SIZE {
+            let want = chunk.min(generated::BULK_SIZE - buf.len());
+            let part = d
+                .control_in(op::REQ_GET_ALL_PARAMS_CHUNK, buf.len() as u16, want as u16)
+                .unwrap();
+            buf.extend_from_slice(&part);
+        }
+        buf
+    }
+
+    // ---- layouts against the generated sections ------------------------
+
+    fn assert_contiguous(what: &str, fields: &[Field], len: usize) {
+        let mut at = 0;
+        for (name, off, flen) in fields {
+            assert_eq!(
+                *off, at,
+                "{what}.{name} is not where the previous field ends"
+            );
+            at += flen;
+        }
+        assert_eq!(at, len, "{what} does not fill its {len} bytes");
     }
 
     #[test]
-    #[ignore = "WP T4"]
+    fn wp_t4_layouts_fill_their_generated_sections() {
+        let len = |s: &str| section(s).unwrap().1;
+        let (ins, outs, chans) = (
+            usize::from(w::WIRE_MAX_INPUT_CHANNELS),
+            usize::from(w::WIRE_MAX_OUTPUT_CHANNELS),
+            usize::from(w::WIRE_MAX_CHANNELS),
+        );
+        let global = [
+            G_PREAMP,
+            G_BYPASS,
+            G_LOUDNESS,
+            G_LOUDNESS_MASK,
+            G_LOUDNESS_REF,
+            G_LOUDNESS_INT,
+        ];
+        assert_contiguous("global", &global, len("global"));
+        let crossfeed = [
+            X_ENABLED,
+            X_PRESET,
+            X_ITD,
+            X_PAIR_MASK,
+            X_FC,
+            X_FEED,
+            X_PAIR_MAP,
+        ];
+        assert_contiguous("crossfeed", &crossfeed, len("crossfeed"));
+        assert_contiguous("master_volume", &[MV_DB, MV_RESERVED], len("master_volume"));
+        assert_contiguous(
+            "user_volume",
+            &[UV_DB, UV_MUTE, UV_RESERVED],
+            len("user_volume"),
+        );
+        assert_contiguous(
+            "output",
+            &[O_ENABLED, O_MUTE, O_RESERVED, O_GAIN, O_DELAY],
+            OUTPUT_LEN,
+        );
+        assert_eq!(OUTPUT_LEN * outs, len("outputs"));
+        assert_contiguous(
+            "crosspoint",
+            &[C_ENABLED, C_PHASE, C_RESERVED, C_GAIN],
+            CROSSPOINT_LEN,
+        );
+        assert_eq!(CROSSPOINT_LEN * ins * outs, len("crosspoints"));
+        assert_contiguous(
+            "band",
+            &[B_TYPE, B_BYPASS, B_QP, B_FREQ, B_Q, B_GAIN],
+            BAND_LEN,
+        );
+        assert_eq!(BAND_LEN * chans * usize::from(w::WIRE_MAX_BANDS), len("eq"));
+        assert_eq!(
+            BAND_LEN * chans * usize::from(w::WIRE_MAX_XOVER_BANDS),
+            len("crossovers")
+        );
+        assert_eq!(F32.2 * chans, len("delays"));
+        assert_eq!(F32.2 * ins, len("preamp"));
+        assert_eq!(usize::from(w::WIRE_NAME_LEN) * chans, len("channel_names"));
+        // The pair map's bulk offset, as the extension spec states it.
+        assert_eq!(off_of("crossfeed") + X_PAIR_MAP.1, 44);
+        for s in SCALARS {
+            let (_, slen) = section(s.section).unwrap();
+            let room = if s.index == Index::None {
+                slen
+            } else {
+                s.stride
+            };
+            assert!(s.field.1 + s.field.2 <= room, "{}.{}", s.section, s.field.0);
+            assert!(s.index == Index::None || s.stride > 0);
+        }
+    }
+
+    // ---- identity and bulk ----------------------------------------------
+
+    #[test]
+    fn the_demo_reads_back_its_capture() {
+        let mut d = FakeDevice::demo();
+        let plat = d.control_in_upto(op::REQ_GET_PLATFORM, 0, 7).unwrap();
+        assert_eq!(plat, DEMO_PLATFORM);
+        assert_eq!(
+            d.control_in(op::REQ_GET_ALL_PARAMS, 0, generated::BULK_SIZE as u16)
+                .unwrap(),
+            DEMO_BULK
+        );
+        assert_eq!(read_chunked(&mut d, 1024), DEMO_BULK);
+        assert_eq!(read_chunked(&mut d, 4096), DEMO_BULK);
+        assert_eq!(
+            d.control_in(op::REQ_GET_STATUS, 9, 41).unwrap(),
+            DEMO_STATUS
+        );
+        let bi = d.control_in(op::REQ_GET_BUILD_INFO, 0, 64).unwrap();
+        assert_eq!(BuildInfo::decode(&bi).unwrap().describe, "dspi-fake");
+        assert_eq!(
+            d.control_in(op::REQ_GET_SERIAL, 0, 16).unwrap(),
+            SERIAL.as_bytes()
+        );
+        let h = WireHeader::decode(&DEMO_BULK[..16]).unwrap();
+        assert_eq!(h.format_version, WIRE_FORMAT_VERSION as u8);
+        assert_eq!(d.caps().kind, TransportKind::Fake);
+    }
+
+    #[test]
+    fn wp_t4_control_in_never_returns_short() {
+        let mut d = FakeDevice::demo();
+        assert!(matches!(
+            d.control_in(op::REQ_GET_PLATFORM, 0, 64),
+            Err(TransportError::ShortRead {
+                wanted: 64,
+                got: 7,
+                ..
+            })
+        ));
+        // The device clamps a chunk past the end; `control_in` refuses it.
+        d.control_in(op::REQ_GET_ALL_PARAMS_CHUNK, 0, 6000).unwrap();
+        assert!(matches!(
+            d.control_in(op::REQ_GET_ALL_PARAMS_CHUNK, 6000, 1000),
+            Err(TransportError::ShortRead { got: 136, .. })
+        ));
+        // `control_in_upto` takes it.
+        d.control_in(op::REQ_GET_ALL_PARAMS_CHUNK, 0, 6000).unwrap();
+        let tail = d
+            .control_in_upto(op::REQ_GET_ALL_PARAMS_CHUNK, 6000, 1000)
+            .unwrap();
+        assert_eq!(tail, &DEMO_BULK[6000..]);
+    }
+
+    #[test]
+    fn wp_t4_chunked_reads_follow_the_session_rules() {
+        let mut d = FakeDevice::demo();
+        let chunk =
+            |d: &mut FakeDevice, off: u16| d.control_in(op::REQ_GET_ALL_PARAMS_CHUNK, off, 1024);
+        // No session: a later offset stalls.
+        assert!(matches!(
+            chunk(&mut d, 1024),
+            Err(TransportError::Stalled { .. })
+        ));
+        // Out of order stalls and ends the session.
+        chunk(&mut d, 0).unwrap();
+        assert!(chunk(&mut d, 2048).is_err());
+        assert!(chunk(&mut d, 1024).is_err());
+        // Another request tears an open session down.
+        chunk(&mut d, 0).unwrap();
+        d.control_in(op::REQ_GET_MASTER_VOLUME, 0, 4).unwrap();
+        assert!(chunk(&mut d, 1024).is_err());
+        // The snapshot is taken at offset 0: a change at the device in
+        // between is not in it (and, not being a request, keeps the session).
+        let mut buf = chunk(&mut d, 0).unwrap();
+        let r = d.remote();
+        assert!(r.poke(off_of("master_volume"), &(-3.0f32).to_le_bytes(), 5));
+        while buf.len() < generated::BULK_SIZE {
+            let want = 1024.min(generated::BULK_SIZE - buf.len());
+            buf.extend(
+                d.control_in(op::REQ_GET_ALL_PARAMS_CHUNK, buf.len() as u16, want as u16)
+                    .unwrap(),
+            );
+        }
+        assert_eq!(buf, DEMO_BULK);
+        assert_ne!(r.image(), DEMO_BULK);
+    }
+
+    #[test]
+    fn wp_t4_bulk_writes_apply_and_invalidate() {
+        let mut d = FakeDevice::demo();
+        let mut src = d.notifications().unwrap();
+        let mv = off_of("master_volume");
+        let mut img = DEMO_BULK.to_vec();
+        img[mv..mv + 4].copy_from_slice(&(-7.5f32).to_le_bytes());
+
+        // Chunked, in order.
+        for (i, part) in img.chunks(2048).enumerate() {
+            d.control_out(op::REQ_SET_ALL_PARAMS_CHUNK, (i * 2048) as u16, part)
+                .unwrap();
+        }
+        assert_eq!(d.remote().image(), img);
+        assert_eq!(
+            drain(&mut src),
+            vec![vec![2, 3, 0, 0, nfy::PARAM_SRC_BULK_SET as u8, 0, 0, 0]]
+        );
+
+        // Out of order stalls.
+        assert!(
+            d.control_out(op::REQ_SET_ALL_PARAMS_CHUNK, 2048, &img[2048..4096])
+                .is_err()
+        );
+        // Another wire version or size is refused.
+        let mut bad = img.clone();
+        bad[0] = 31;
+        assert!(d.control_out(op::REQ_SET_ALL_PARAMS, 0, &bad).is_err());
+        assert!(
+            d.control_out(op::REQ_SET_ALL_PARAMS, 0, &img[..100])
+                .is_err()
+        );
+        // Single-shot.
+        img[mv..mv + 4].copy_from_slice(&(-1.0f32).to_le_bytes());
+        d.control_out(op::REQ_SET_ALL_PARAMS, 0, &img).unwrap();
+        assert_eq!(
+            f32_at(&d.control_in(op::REQ_GET_MASTER_VOLUME, 0, 4).unwrap(), 0),
+            -1.0
+        );
+        // The header stays the device's own.
+        let mut other = img.clone();
+        other[1] = 0; // claims RP2040
+        d.control_out(op::REQ_SET_ALL_PARAMS, 0, &other).unwrap();
+        assert_eq!(d.remote().image()[1], DEMO_BULK[1]);
+    }
+
+    // ---- scalar writes ----------------------------------------------------
+
+    #[test]
     fn a_write_changes_the_image_and_notifies() {
-        todo!("WP T4")
+        let mut d = FakeDevice::demo();
+        let mut src = d.notifications().unwrap();
+        let remote = d.remote();
+        let off = off_of("master_volume");
+        assert_eq!(f32_at(DEMO_BULK, off), -20.0, "capture.json");
+
+        d.control_out(op::REQ_SET_MASTER_VOLUME, 0, &(-12.5f32).to_le_bytes())
+            .unwrap();
+        let got = d.control_in(op::REQ_GET_MASTER_VOLUME, 0, 4).unwrap();
+        assert_eq!(f32_at(&got, 0), -12.5);
+        assert_eq!(f32_at(&remote.image(), off), -12.5);
+
+        let p = src.read(Duration::from_millis(100)).unwrap();
+        let mut want = vec![2, 2, 0, 0];
+        want.extend_from_slice(&(off as u16).to_le_bytes());
+        want.extend_from_slice(&4u16.to_le_bytes());
+        want.extend_from_slice(&[nfy::PARAM_SRC_HOST_SET as u8, 0, 0, 0]);
+        want.extend_from_slice(&(-12.5f32).to_le_bytes());
+        assert_eq!(p, want);
+
+        // The same value again: no change, no packet.
+        d.control_out(op::REQ_SET_MASTER_VOLUME, 0, &(-12.5f32).to_le_bytes())
+            .unwrap();
+        assert!(drain(&mut src).is_empty());
+    }
+
+    #[test]
+    fn wp_t4_indexed_scalars_land_in_their_records() {
+        let mut d = FakeDevice::demo();
+        let mut src = d.notifications().unwrap();
+        let img = |d: &FakeDevice| d.remote().image();
+        let outs = off_of("outputs");
+
+        d.control_out(op::REQ_SET_OUTPUT_GAIN, 3, &(-4.0f32).to_le_bytes())
+            .unwrap();
+        assert_eq!(f32_at(&img(&d), outs + 3 * 12 + 4), -4.0);
+        d.control_out(op::REQ_SET_OUTPUT_MUTE, 8, &[1]).unwrap();
+        assert_eq!(img(&d)[outs + 8 * 12 + 1], 1);
+        assert_eq!(d.control_in(op::REQ_GET_OUTPUT_MUTE, 8, 1).unwrap(), [1]);
+        // Booleans are stored as 0/1.
+        d.control_out(op::REQ_SET_BYPASS, 0, &[7]).unwrap();
+        assert_eq!(d.control_in(op::REQ_GET_BYPASS, 0, 1).unwrap(), [1]);
+        d.control_out(op::REQ_SET_DELAY, 16, &2.5f32.to_le_bytes())
+            .unwrap();
+        assert_eq!(f32_at(&img(&d), off_of("delays") + 16 * 4), 2.5);
+        d.control_out(op::REQ_SET_PREAMP_CH, 7, &(-3.0f32).to_le_bytes())
+            .unwrap();
+        assert_eq!(
+            f32_at(&d.control_in(op::REQ_GET_PREAMP_CH, 7, 4).unwrap(), 0),
+            -3.0
+        );
+        let sources: Vec<u8> = drain(&mut src).iter().map(|p| p[8]).collect();
+        assert_eq!(sources.len(), 5);
+        assert!(sources.iter().all(|s| *s == nfy::PARAM_SRC_HOST_SET as u8));
+
+        // Past the device's count: a GET stalls, a SET is a silent no-op, as
+        // is a short payload.
+        let before = img(&d);
+        assert!(matches!(
+            d.control_in(op::REQ_GET_OUTPUT_GAIN, 9, 4),
+            Err(TransportError::Stalled { .. })
+        ));
+        d.control_out(op::REQ_SET_OUTPUT_GAIN, 9, &1.0f32.to_le_bytes())
+            .unwrap();
+        d.control_out(op::REQ_SET_PREAMP_CH, 8, &1.0f32.to_le_bytes())
+            .unwrap();
+        d.control_out(op::REQ_SET_MASTER_VOLUME, 0, &[1, 2])
+            .unwrap();
+        assert_eq!(img(&d), before);
+        assert!(drain(&mut src).is_empty());
+    }
+
+    #[test]
+    fn wp_t4_matrix_eq_and_names() {
+        let mut d = FakeDevice::demo();
+        // A crosspoint, packet in and out.
+        let mut pkt = vec![1, 4, 1, 5];
+        pkt.extend_from_slice(&(-6.0f32).to_le_bytes());
+        d.control_out(op::REQ_SET_MATRIX_ROUTE, 0, &pkt).unwrap();
+        let got = d
+            .control_in(op::REQ_GET_MATRIX_ROUTE, (1 << 8) | 4, 8)
+            .unwrap();
+        assert_eq!(got[..4], [1, 4, 1, 1]);
+        assert_eq!(f32_at(&got, 4), -6.0);
+        let at = off_of("crosspoints") + (9 + 4) * 8;
+        assert_eq!(d.remote().image()[at..at + 2], [1, 1]);
+
+        // A PEQ band, read back one parameter at a time.
+        let mut band = vec![10, 3, 2, 1];
+        for v in [1000.0f32, 0.7, -3.0] {
+            band.extend_from_slice(&v.to_le_bytes());
+        }
+        d.control_out(op::REQ_SET_EQ_PARAM, 0, &band).unwrap();
+        let get = |d: &mut FakeDevice, ch: u16, b: u16, p: u16| {
+            d.control_in(op::REQ_GET_EQ_PARAM, (ch << 8) | (b << 3) | p, 4)
+        };
+        assert_eq!(get(&mut d, 10, 3, 0).unwrap(), 2u32.to_le_bytes());
+        assert_eq!(f32_at(&get(&mut d, 10, 3, 1).unwrap(), 0), 1000.0);
+        assert_eq!(f32_at(&get(&mut d, 10, 3, 2).unwrap(), 0), 0.7);
+        assert_eq!(f32_at(&get(&mut d, 10, 3, 3).unwrap(), 0), -3.0);
+        assert_eq!(get(&mut d, 10, 3, 4).unwrap(), 1u32.to_le_bytes());
+        // Reserved bands stall, which is how a host counts the live ones.
+        assert!(get(&mut d, 0, 9, 0).is_ok());
+        assert!(get(&mut d, 0, 10, 0).is_err());
+        // Crossover bands exist on outputs only.
+        assert!(get(&mut d, 8, 20, 0).is_ok());
+        assert!(get(&mut d, 0, 20, 0).is_err());
+        assert!(get(&mut d, 17, 0, 0).is_err());
+
+        // A channel name, at most 31 bytes, NUL padded.
+        d.control_out(op::REQ_SET_CHANNEL_NAME, 2, b"Tweeter L")
+            .unwrap();
+        let name = d.control_in(op::REQ_GET_CHANNEL_NAME, 2, 32).unwrap();
+        assert_eq!(&name[..10], b"Tweeter L\0");
+        d.control_out(op::REQ_SET_CHANNEL_NAME, 2, &[b'x'; 40])
+            .unwrap();
+        let name = d.control_in(op::REQ_GET_CHANNEL_NAME, 2, 32).unwrap();
+        assert_eq!((name[30], name[31]), (b'x', 0));
+    }
+
+    // ---- presets ----------------------------------------------------------
+
+    #[test]
+    fn wp_t4_presets_save_load_and_name() {
+        let mut d = FakeDevice::demo();
+        let mut src = d.notifications().unwrap();
+        let dir = d.control_in(op::REQ_PRESET_GET_DIR, 0, 7).unwrap();
+        assert_eq!(dir, [1, 0, 0, 0, 0, OC_WITH_PRESET, MV_INDEPENDENT]);
+        let name = d.control_in(op::REQ_PRESET_GET_NAME, 0, 32).unwrap();
+        assert_eq!(&name[..5], b"Demo\0");
+        assert!(d.control_in(op::REQ_PRESET_GET_NAME, 10, 32).is_err());
+        assert_eq!(d.control_in(op::REQ_PRESET_GET_ACTIVE, 0, 1).unwrap(), [0]);
+
+        // Change a gain, save to slot 3, name it.
+        let outs = off_of("outputs");
+        d.control_out(op::REQ_SET_OUTPUT_GAIN, 0, &(-9.0f32).to_le_bytes())
+            .unwrap();
+        assert_eq!(
+            d.control_in(op::REQ_PRESET_SAVE, 3, 1).unwrap(),
+            [st::PRESET_OK as u8]
+        );
+        d.control_out(op::REQ_PRESET_SET_NAME, 3, b"Night").unwrap();
+        let dir = d.control_in(op::REQ_PRESET_GET_DIR, 0, 7).unwrap();
+        assert_eq!(dir[..2], [0b1001, 0]);
+        assert_eq!(dir[4], 3);
+        assert_eq!(
+            &d.control_in(op::REQ_PRESET_GET_NAME, 3, 32).unwrap()[..6],
+            b"Night\0"
+        );
+        // The master volume is independent of presets by default: a load
+        // brings the gain back but leaves the volume.
+        d.control_out(op::REQ_SET_MASTER_VOLUME, 0, &(-30.0f32).to_le_bytes())
+            .unwrap();
+        assert_eq!(drain(&mut src).len(), 2);
+        assert_eq!(d.control_in(op::REQ_PRESET_LOAD, 0, 1).unwrap(), [0]);
+        let img = d.remote().image();
+        assert_eq!(f32_at(&img, outs + 4), f32_at(DEMO_BULK, outs + 4));
+        assert_eq!(f32_at(&img, off_of("master_volume")), -30.0);
+        assert_eq!(
+            drain(&mut src),
+            vec![
+                vec![2, 4, 0, 2, 0, 0, 0, 0],
+                vec![2, 3, 0, 3, nfy::PARAM_SRC_PRESET as u8, 0, 0, 0],
+            ]
+        );
+        assert_eq!(d.control_in(op::REQ_PRESET_GET_ACTIVE, 0, 1).unwrap(), [0]);
+        assert_eq!(d.control_in(op::REQ_PRESET_DELETE, 3, 1).unwrap(), [0]);
+        assert_eq!(d.control_in(op::REQ_PRESET_GET_DIR, 0, 7).unwrap()[0], 1);
+        assert_eq!(
+            d.control_in(op::REQ_PRESET_SAVE, 10, 1).unwrap(),
+            [st::PRESET_ERR_INVALID_SLOT as u8]
+        );
+        d.control_out(op::REQ_PRESET_SET_STARTUP, 0, &[1, 3])
+            .unwrap();
+        assert_eq!(
+            d.control_in(op::REQ_PRESET_GET_STARTUP, 0, 3).unwrap(),
+            [1, 3, 0]
+        );
+    }
+
+    // ---- extensions ------------------------------------------------------
+
+    #[test]
+    fn wp_t4_extensions_answer_only_when_enabled() {
+        let mut plain = FakeDevice::new(Capture::demo(), FakeOptions::default());
+        assert!(matches!(
+            plain.control_in_upto(op::REQ_EXTENSION, gext::EXT_LIST, 64),
+            Err(TransportError::Stalled { .. })
+        ));
+
+        let mut d = FakeDevice::demo();
+        let list = d
+            .control_in_upto(op::REQ_EXTENSION, gext::EXT_LIST, 64)
+            .unwrap();
+        assert_eq!(dspi_proto::ext::decode_list(&list), [1, 2]);
+        assert!(
+            d.control_out(op::REQ_EXTENSION, gext::EXT_LIST, &[])
+                .is_err()
+        );
+        assert!(d.control_in(op::REQ_EXTENSION, 0x7777, 4).is_err());
+    }
+
+    #[test]
+    fn wp_t4_pair_map_validates_normalises_and_notifies() {
+        let mut d = FakeDevice::demo();
+        let mut src = d.notifications().unwrap();
+        let read = |d: &mut FakeDevice| {
+            d.control_in(op::REQ_EXTENSION, gext::EXT_CROSSFEED_PAIR_MAP, 4)
+                .unwrap()
+        };
+        assert_eq!(read(&mut d), [0; 4]);
+        // The K340 map, with an explicit default for pair 2.
+        d.control_out(
+            op::REQ_EXTENSION,
+            gext::EXT_CROSSFEED_PAIR_MAP,
+            &[0x02, 0x13, 0x54, 0x00],
+        )
+        .unwrap();
+        assert_eq!(read(&mut d), [0x02, 0x13, 0, 0]);
+        let p = drain(&mut src);
+        assert_eq!(p.len(), 1);
+        assert_eq!(u16::from_le_bytes([p[0][4], p[0][5]]), 44);
+        assert_eq!(p[0][12..], [0x02, 0x13, 0, 0]);
+        // Invalid maps are acknowledged and ignored: an output in two
+        // pairs, a pair onto itself, the PDM sub (output 8).
+        for bad in [[0x02, 0x12, 0, 0], [0x11, 0, 0, 0], [0x80, 0, 0, 0]] {
+            d.control_out(op::REQ_EXTENSION, gext::EXT_CROSSFEED_PAIR_MAP, &bad)
+                .unwrap();
+            assert_eq!(read(&mut d), [0x02, 0x13, 0, 0]);
+        }
+        assert!(drain(&mut src).is_empty());
+        // The wrong length stalls.
+        assert!(
+            d.control_out(op::REQ_EXTENSION, gext::EXT_CROSSFEED_PAIR_MAP, &[0; 3])
+                .is_err()
+        );
+        // Five outputs (RP2040): two pairs, so pairs 2 and 3 stay default.
+        assert_eq!(pair_map_normalized([0, 0, 0x54, 0], 2), None);
+        assert_eq!(pair_map_normalized([0x10, 0x32, 0, 0], 2), Some([0; 4]));
+    }
+
+    #[test]
+    fn wp_t4_core_vreg_requests() {
+        use dspi_proto::ext::{CoreVregStatus, VregOp};
+        let mut d = FakeDevice::demo();
+        let status = |d: &mut FakeDevice| {
+            CoreVregStatus::decode(
+                &d.control_in(op::REQ_EXTENSION, gext::EXT_CORE_VREG, 16)
+                    .unwrap(),
+            )
+            .unwrap()
+        };
+        let req = |d: &mut FakeDevice, o: VregOp| {
+            d.control_out(op::REQ_EXTENSION, gext::EXT_CORE_VREG, &o.encode())
+        };
+        assert_eq!(status(&mut d).live_vreg, DEMO_VREG);
+        req(&mut d, VregOp::Trial(0x0F)).unwrap();
+        let s = status(&mut d);
+        assert!(s.trial_active);
+        assert_eq!((s.live_vreg, s.trial_vreg), (0x0F, 0x0F));
+        assert_eq!(
+            d.control_in(op::REQ_GET_STATUS, 14, 4).unwrap(),
+            1300u32.to_le_bytes()
+        );
+        req(&mut d, VregOp::TrialEnd).unwrap();
+        assert_eq!(status(&mut d).live_vreg, DEMO_VREG);
+        req(&mut d, VregOp::Set(0x0E)).unwrap();
+        let s = status(&mut d);
+        assert_eq!((s.stored_sel, s.live_vreg), (0x0E, 0x0E));
+        // Below the build default, outside the window, an unknown op.
+        assert!(req(&mut d, VregOp::Set(0x0C)).is_err());
+        assert!(req(&mut d, VregOp::Trial(0x0B)).is_err());
+        assert!(
+            d.control_out(op::REQ_EXTENSION, gext::EXT_CORE_VREG, &[9, 0])
+                .is_err()
+        );
+        req(&mut d, VregOp::Auto(false)).unwrap();
+        assert_eq!(status(&mut d).flags, CoreVregStatus::FLAG_AUTO_DISABLED);
+    }
+
+    // ---- the device's side ---------------------------------------------
+
+    #[test]
+    fn wp_t4_remote_pokes_unplugs_and_close_ends_the_stream() {
+        let d = FakeDevice::demo();
+        let mut src = d.notifications().unwrap();
+        let r = d.remote();
+        let off = off_of("user_volume");
+        assert!(r.poke(off, &(-5.0f32).to_le_bytes(), nfy::PARAM_SRC_GPIO as u8));
+        assert!(!r.poke(0, &[0], 5), "the header is not data");
+        assert!(!r.poke(generated::BULK_SIZE - 1, &[0, 0], 5));
+        let p = src.read(Duration::from_millis(100)).unwrap();
+        assert_eq!(p[8], nfy::PARAM_SRC_GPIO as u8);
+
+        // A reader blocked in `read` wakes when a packet arrives.
+        let r2 = r.clone();
+        let t = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(20));
+            r2.poke(off, &(-6.0f32).to_le_bytes(), 5);
+        });
+        let p = src.read(Duration::from_secs(5)).unwrap();
+        assert_eq!(f32_at(&p, 12), -6.0);
+        t.join().unwrap();
+        // Silence is an empty packet once the timeout runs out.
+        assert!(src.read(Duration::from_millis(10)).unwrap().is_empty());
+
+        drop(d);
+        assert!(matches!(
+            src.read(Duration::from_millis(10)),
+            Err(TransportError::Disconnected)
+        ));
+
+        let mut d = FakeDevice::demo();
+        d.remote().disconnect();
+        assert!(matches!(
+            d.control_in(op::REQ_GET_PLATFORM, 0, 7),
+            Err(TransportError::Disconnected)
+        ));
+    }
+
+    #[test]
+    fn wp_t4_a_bad_capture_never_panics() {
+        let captures = [
+            vec![],
+            vec![32],
+            vec![0xFF; 40],
+            DEMO_BULK[..5000].to_vec(),
+            DEMO_BULK.to_vec(),
+        ];
+        for bulk in captures {
+            let mut d = FakeDevice::new(
+                Capture {
+                    platform: vec![],
+                    bulk,
+                },
+                FakeOptions { extensions: true },
+            );
+            for opcode in 0..=255u8 {
+                for value in [0u16, 1, 2, 9, 14, 0x0103, 0x10FF, 0xFFFF] {
+                    let _ = d.control_in(opcode, value, 64);
+                    let _ = d.control_in_upto(opcode, value, 4096);
+                    let _ = d.control_out(opcode, value, &[0x21, 2, 3, 4, 5, 6, 7, 8]);
+                    let _ = d.control_out(opcode, value, &[0xFF; 20]);
+                    let _ = d.control_out(opcode, value, &[]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn wp_t4_unknown_requests_stall() {
+        let mut d = FakeDevice::demo();
+        assert!(matches!(
+            d.control_in(op::REQ_GET_CS_CAPS, 0xFFFF, 4),
+            Err(TransportError::Stalled { opcode }) if opcode == op::REQ_GET_CS_CAPS
+        ));
+        assert!(matches!(
+            d.control_out(op::REQ_FACTORY_RESET, 0, &[]),
+            Err(TransportError::Stalled { .. })
+        ));
     }
 }
