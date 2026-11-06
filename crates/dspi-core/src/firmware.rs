@@ -709,6 +709,11 @@ fn unescape_mount_field(field: &str) -> String {
 /// file systems, and anything mounted under a boot ROM's volume label. Read
 /// from the kernel's table, which touches no file system (a board that
 /// rebooted mid-write can leave a dead mount whose `stat` blocks).
+///
+/// This deliberately widens the net: the label match is a basename prefix
+/// (`RPI-RP2`, `RP2350`, so `RP2350 1` and `RPI-RP21` qualify) and every FAT
+/// mount is included. It only picks places to look; the `INFO_UF2.TXT`
+/// filter in [`drive_at`] decides what is a boot ROM drive.
 #[cfg(any(target_os = "linux", test))]
 fn mountinfo_candidates(table: &str) -> Vec<PathBuf> {
     let mut out = Vec::new();
@@ -732,7 +737,8 @@ fn mountinfo_candidates(table: &str) -> Vec<PathBuf> {
     out
 }
 
-/// Entries of `dir` named after a boot ROM volume label.
+/// Entries of `dir` named after a boot ROM volume label (a basename-prefix
+/// heuristic, like [`mountinfo_candidates`]; `INFO_UF2.TXT` decides).
 #[cfg(any(target_os = "linux", target_os = "macos", test))]
 fn labelled_entries(dir: &Path) -> Vec<PathBuf> {
     std::fs::read_dir(dir)
@@ -857,9 +863,18 @@ fn check_space(free: Option<u64>, needed: usize, drive: &str) -> Result<()> {
 ///
 /// The board reboots into the new firmware as it takes the last block, so
 /// the sync can fail because the drive has gone: that (sync failed and the
-/// drive's `INFO_UF2.TXT` is no longer readable) counts as success. Whether
-/// the new firmware runs is for the caller to confirm when the device comes
-/// back.
+/// drive's `INFO_UF2.TXT` is no longer readable) counts as success, logged
+/// at warn level. It cannot be told apart from a cable pulled mid-write, so
+/// `Ok` means only "every byte was handed to the drive". **The caller must
+/// confirm success** by waiting for the DSPi to re-enumerate and report the
+/// image's version (`Uf2Info::firmware_version`); a timeout there is the
+/// failure.
+///
+/// The `INFO_UF2.TXT` re-check and the write are separate path-based
+/// operations, so a different drive mounted at the same path in between
+/// would get the file (an inherent check-then-use race; the Qt updater has
+/// the same). The window is a few milliseconds and both boot ROMs reject an
+/// image of the other family.
 ///
 /// Errors: [`DspiError::InvalidArgument`] for an invalid image, a drive that
 /// is not a boot ROM's, or a family mismatch; [`DspiError::Io`] for a drive
@@ -917,8 +932,14 @@ pub fn flash_to_drive(image: Vec<u8>, drive: BootloaderDrive) -> Result<()> {
     match file.sync_all() {
         Ok(()) => Ok(()),
         // The board took the last block and rebooted: the normal ending.
+        // Indistinguishable from a pulled cable; the caller confirms.
         Err(e) if read_info(root).is_none() => {
-            log::info!("flash_to_drive: drive went away during sync ({e}); board rebooted");
+            log::warn!(
+                "flash_to_drive: {} bytes written to {}, drive gone during sync ({e}); \
+                 assuming the board rebooted, the caller must confirm",
+                image.len(),
+                drive.path
+            );
             Ok(())
         }
         Err(e) => Err(io(format!("writing the firmware failed: {e}"))),
@@ -1190,13 +1211,13 @@ mod tests {
         assert_eq!(info.firmware_version, "");
     }
 
-    /// The images the Qt app bundles, when present in the tree.
+    /// The images the Qt app bundles (both must be in the tree).
     #[test]
     fn wp_c11_bundled_images_inspect_as_valid() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/desktop/qt/firmware");
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            return;
-        };
+        let entries =
+            std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("{} is missing: {e}", dir.display()));
+        let mut seen = 0;
         for e in entries.filter_map(|e| e.ok()) {
             let name = e.file_name().to_string_lossy().into_owned();
             if !name.ends_with(".uf2") {
@@ -1207,7 +1228,13 @@ mod tests {
             let expect = if name.contains("RP2350") { 1 } else { 0 };
             assert_eq!(info.platform, expect, "{name}");
             assert!(info.firmware_version.starts_with("1."), "{name}: {info:?}");
+            seen += 1;
         }
+        assert!(
+            seen >= 2,
+            "expected the RP2040 and RP2350 images in {}",
+            dir.display()
+        );
     }
 
     fn problem(image: Vec<u8>) -> String {
