@@ -75,7 +75,7 @@ add_executable(DSPiConsole ${DSPI_APP_SOURCES})
 # The app with its offscreen test driver (ci/check.sh --step qt-offscreen).
 option(DSPI_SMOKE "Also build DSPiConsoleSmoke, the app with its test driver" OFF)
 if(DSPI_SMOKE)
-    add_executable(DSPiConsoleSmoke ${DSPI_APP_SOURCES} smoke/SmokeDriver.cpp smoke/SmokeDriverHw.cpp smoke/SmokeDriver.h)
+    add_executable(DSPiConsoleSmoke ${DSPI_APP_SOURCES} smoke/SmokeDriver.cpp smoke/SmokeDriverHw.cpp smoke/SmokeDriverReplug.cpp smoke/SmokeDriver.h)
     target_include_directories(DSPiConsoleSmoke PRIVATE ${DSPI_CORE_DIR}/include src/ smoke/)
     target_compile_definitions(DSPiConsoleSmoke PRIVATE DSPI_SMOKE)
     target_link_libraries(DSPiConsoleSmoke PRIVATE

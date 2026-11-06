@@ -78,7 +78,8 @@ static QVariantMap coreJson(F call) {
 // ── The pass ──
 
 void SmokeDriver::finish() {
-    printf("smoke: %d checks, %d failures, %d not run\n", m_passed + m_failures, m_failures, m_notRun);
+    m_failures += qmlErrors();
+    printf("smoke: %d checks, %d failures (%d QML errors), %d not run\n", m_passed + m_failures, m_failures, qmlErrors(), m_notRun);
     fflush(stdout);
     QCoreApplication::exit(m_failures ? 1 : 0);
 }
@@ -223,7 +224,7 @@ void SmokeDriver::hwRtaTap(int tap, const char *name) {
     const bool got = waitFor(4000, [&frames]() { return frames >= 3; });
     const RtaSnapshot &s = rta->snapshot();
     outcome(item, running && got && s.tap == tap && s.count > 0,
-            QStringLiteral("mask 0x%1, %2 frames, %3 channels, %4 frames/s, %5 µs a transform, order %6")
+            QString::fromLatin1(got ? "" : "is a stream playing? digital silence changes no picture; ") + QStringLiteral("mask 0x%1, %2 frames, %3 channels, %4 frames/s, %5 µs a transform, order %6")
                 .arg(mask, 0, 16).arg(frames).arg(int(s.count)).arg(rta->framesPerSecond()).arg(rta->transformUs()).arg(rta->appliedOrder()));
     QObject::disconnect(c);
     rta->release(id);
