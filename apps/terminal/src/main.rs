@@ -13,9 +13,11 @@ use dspi_proto::registry::{Kind, REGISTRY, by_path};
 use dspi_proto::value::Value;
 
 use dspi_session::ext_state::ExtState;
-use dspi_session::{Outcome, Session, probe};
+use dspi_session::{Outcome, Session};
 use dspi_transport::{Transport, TransportError, list_devices};
 use dspi_tui::shell::connect::{LinkTarget, OpenError, Target, printable};
+// -- WP TM4 --
+use dspi_tui::shell::read_only;
 
 /// Exit codes are part of the interface: scripts branch on these.
 mod exit {
@@ -426,29 +428,39 @@ fn cmd_list(target: &Target, json: bool) -> u8 {
     exit::OK
 }
 
-fn cmd_dump(target: &Target, json: bool) -> u8 {
-    let mut t = match open(target) {
-        Ok(t) => t,
-        Err(e) => return fail_open(e),
-    };
+/// `dspi dump --json`'s document.
+// -- WP TM4 --
+fn dump_json(
+    caps: &dspi_session::Capabilities,
+    ext: &ExtState,
+) -> Result<serde_json::Value, serde_json::Error> {
+    let mut doc = serde_json::to_value(caps)?;
+    if let Some(o) = doc.as_object_mut() {
+        o.insert("extensions".into(), serde_json::json!(ext.supported));
+        o.insert("bulk_source".into(), serde_json::json!(ext.bulk_source()));
+        o.insert(
+            "read_only".into(),
+            serde_json::json!(read_only::is_read_only(caps)),
+        );
+    }
+    Ok(doc)
+}
 
-    let caps = match probe(t.as_mut()) {
-        Ok(c) => c,
-        Err(e) => return fail(e),
+fn cmd_dump(target: &Target, json: bool) -> u8 {
+    // -- WP TM4 --
+    // Through the connect path, so another wire format is described rather
+    // than refused, and says that it is read-only.
+    let mut session = match connect(target) {
+        Ok(s) => s,
+        Err(c) => return c,
     };
     // Absent is an answer: only the link failing is an error, and then the
     // rest of what this prints is already known.
-    let ext = ExtState::probe(t.as_mut()).unwrap_or_default();
+    let ext = ExtState::probe(session.transport_mut()).unwrap_or_default();
+    let caps = session.capabilities();
 
     if json {
-        let doc = serde_json::to_value(&caps).map(|mut v| {
-            if let Some(o) = v.as_object_mut() {
-                o.insert("extensions".into(), serde_json::json!(ext.supported));
-                o.insert("bulk_source".into(), serde_json::json!(ext.bulk_source()));
-            }
-            v
-        });
-        match doc.and_then(|d| serde_json::to_string_pretty(&d)) {
+        match dump_json(caps, &ext).and_then(|d| serde_json::to_string_pretty(&d)) {
             Ok(s) => println!("{s}"),
             Err(e) => {
                 eprintln!("dspi: could not serialise state: {e}");
@@ -465,6 +477,10 @@ fn cmd_dump(target: &Target, json: bool) -> u8 {
         printable(&caps.firmware),
         caps.wire_format
     );
+    // -- WP TM4 --
+    if let Some(banner) = read_only::banner(caps) {
+        println!("{banner}");
+    }
     println!(
         "{} channels: {} in, {} out, {} bands each",
         caps.num_channels, caps.num_inputs, caps.num_outputs, caps.max_bands
@@ -1528,7 +1544,8 @@ fn raw_in(target: &Target, args: &[&str], json: bool) -> u8 {
     };
     let value = args.get(2).and_then(|v| parse_num(v)).unwrap_or(0) as u16;
 
-    let mut t = match open(target) {
+    // -- WP TM4 --
+    let mut t = match target.open_raw(&prompt_pin) {
         Ok(t) => t,
         Err(e) => return fail_open(e),
     };
@@ -1566,7 +1583,7 @@ fn raw_in(target: &Target, args: &[&str], json: bool) -> u8 {
         }
         Err(e) => {
             eprintln!("dspi: {e}");
-            exit::TRANSPORT
+            transfer_exit(&e)
         }
     }
 }
@@ -1590,7 +1607,8 @@ fn raw_out(target: &Target, args: &[&str], json: bool) -> u8 {
         }
     };
 
-    let mut t = match open(target) {
+    // -- WP TM4 --
+    let mut t = match target.open_raw(&prompt_pin) {
         Ok(t) => t,
         Err(e) => return fail_open(e),
     };
@@ -1614,7 +1632,7 @@ fn raw_out(target: &Target, args: &[&str], json: bool) -> u8 {
         }
         Err(e) => {
             eprintln!("dspi: {e}");
-            exit::TRANSPORT
+            transfer_exit(&e)
         }
     }
 }
@@ -1631,7 +1649,8 @@ fn raw_war(target: &Target, args: &[&str], json: bool) -> u8 {
     };
     let value = args.get(1).and_then(|v| parse_num(v)).unwrap_or(0) as u16;
 
-    let mut t = match open(target) {
+    // -- WP TM4 --
+    let mut t = match target.open_raw(&prompt_pin) {
         Ok(t) => t,
         Err(e) => return fail_open(e),
     };
@@ -1661,7 +1680,7 @@ fn raw_war(target: &Target, args: &[&str], json: bool) -> u8 {
         }
         Err(e) => {
             eprintln!("dspi: {e}");
-            exit::TRANSPORT
+            transfer_exit(&e)
         }
     }
 }
@@ -2195,7 +2214,19 @@ fn write_exit(e: &dspi_session::WriteError) -> u8 {
         // Nothing was written and the old value stands, which is the same
         // thing a script needs to know about a silent rejection.
         W::Core1Conflict { .. } => exit::REJECTED,
-        W::Transport(_) => exit::TRANSPORT,
+        W::Transport(e) => transfer_exit(e),
+    }
+}
+
+/// The exit status for a transfer that failed.
+// -- WP TM4 --
+fn transfer_exit(e: &TransportError) -> u8 {
+    match e {
+        // Nothing was written and trying again will not change that: a
+        // read-only device, or a hub that does not allow it. Unlike a transport
+        // failure, not worth a script's retry.
+        TransportError::Denied(_) => exit::REJECTED,
+        _ => exit::TRANSPORT,
     }
 }
 
@@ -2239,7 +2270,8 @@ fn fail(e: TransportError) -> u8 {
     eprintln!("dspi: {e}");
     match e {
         TransportError::NotFound | TransportError::SerialNotFound(_) => exit::NO_DEVICE,
-        _ => exit::TRANSPORT,
+        // -- WP TM4 --
+        e => transfer_exit(&e),
     }
 }
 
@@ -2544,5 +2576,90 @@ undo
     fn force_is_off_unless_it_is_asked_for() {
         assert!(!force(&["out.enable", "8", "on"]));
         assert!(force(&["out.enable", "8", "on", "--force"]));
+    }
+}
+
+// -- WP TM4 --
+#[cfg(test)]
+mod tests_wp_tm4 {
+    use dspi_transport::mock::Direction;
+    use dspi_transport::{FakeDevice, MockTransport};
+    use dspi_tui::shell::connect::session_on;
+
+    use super::*;
+
+    /// A device of a wire format newer than this build, and its transfer log.
+    fn newer_device() -> (Session, dspi_transport::mock::LogHandle) {
+        let mut demo = FakeDevice::demo();
+        let platform = demo
+            .control_in_upto(dspi_proto::generated::opcodes::REQ_GET_PLATFORM, 0, 7)
+            .unwrap();
+        let mut image = demo.remote().image();
+        image.extend_from_slice(&[0; 16]);
+        image[0] = 33;
+        let len = image.len() as u16;
+        image[6..8].copy_from_slice(&len.to_le_bytes());
+        let mock = MockTransport::new()
+            .data(dspi_proto::generated::opcodes::REQ_GET_PLATFORM, platform)
+            .window(
+                dspi_proto::generated::opcodes::REQ_GET_ALL_PARAMS_CHUNK,
+                image,
+            )
+            .answering_everything(vec![0u8; 512]);
+        let log = mock.log_handle();
+        (session_on(Box::new(mock)).unwrap(), log)
+    }
+
+    #[test]
+    fn wp_tm4_dump_json_says_whether_the_device_is_read_only() {
+        let ext = ExtState::default();
+        let (session, _) = newer_device();
+        let doc = dump_json(session.capabilities(), &ext).unwrap();
+        assert_eq!(doc["read_only"], serde_json::json!(true));
+        assert_eq!(doc["wire_format"], serde_json::json!(33));
+
+        let writable = Target::Demo.open_session(&prompt_pin).unwrap();
+        let doc = dump_json(writable.capabilities(), &ext).unwrap();
+        assert_eq!(doc["read_only"], serde_json::json!(false));
+    }
+
+    #[test]
+    fn wp_tm4_dump_still_works_on_the_demo_device() {
+        assert_eq!(cmd_dump(&Target::Demo, true), exit::OK);
+        assert_eq!(cmd_dump(&Target::Demo, false), exit::OK);
+    }
+
+    #[test]
+    fn wp_tm4_a_set_on_a_read_only_device_is_rejected_and_sends_nothing() {
+        let (mut session, log) = newer_device();
+        let cmd = Command::Set {
+            path: "vol.master",
+            indices: Vec::new(),
+            value: Value::Float(-3.0),
+        };
+        assert_eq!(run(&mut session, cmd, true, true, false), exit::REJECTED);
+        let log = log.lock().unwrap();
+        assert!(!log.iter().any(|e| e.direction == Direction::Out));
+    }
+
+    #[test]
+    fn wp_tm4_a_refusal_is_not_a_transport_failure() {
+        assert_eq!(
+            transfer_exit(&TransportError::Denied("no".into())),
+            exit::REJECTED
+        );
+        assert_eq!(fail(TransportError::Denied("no".into())), exit::REJECTED);
+        assert_eq!(
+            transfer_exit(&TransportError::Disconnected),
+            exit::TRANSPORT
+        );
+    }
+
+    #[test]
+    fn wp_tm4_raw_passes_on_a_writable_device() {
+        assert_eq!(
+            raw_out(&Target::Demo, &["0xD2", "0", "00", "00", "A0", "C1"], true),
+            exit::OK
+        );
     }
 }
