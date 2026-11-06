@@ -116,6 +116,16 @@ pub const TUBE_PARAM_COUNT: usize = dspi_proto::generated::tube::TUBE_NUM_PARAMS
 // -- WP C3 --
 // -- WP C4 --
 // -- WP C5 --
+/// `save_params` / `load_params` / `factory_reset` status: done. These
+/// `FLASH_*` codes are the old core's; the firmware headers do not name
+/// them.
+pub const FLASH_OK: u8 = 0;
+/// Flash status: the write failed (also any refused revert-to-saved).
+pub const FLASH_ERR_WRITE: u8 = 1;
+/// Flash status: nothing saved to load.
+pub const FLASH_ERR_NO_DATA: u8 = 2;
+/// Flash status: the stored data failed its CRC.
+pub const FLASH_ERR_CRC: u8 = 3;
 // -- WP C6 --
 // -- WP C7 --
 // -- WP C8 --
