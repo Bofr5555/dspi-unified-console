@@ -181,10 +181,12 @@ impl Session {
 
         let bytes = match shape {
             Shape::Exact(len) => self.with_transport(|t| {
-                with_busy_retry(|| t.control_in(get, wvalue, len as u16), get)
+                let kind = t.caps().kind;
+                with_busy_retry(kind, || t.control_in(get, wvalue, len as u16), get)
             })?,
             Shape::UpTo(len) => self.with_transport(|t| {
-                with_busy_retry(|| t.control_in_upto(get, wvalue, len as u16), get)
+                let kind = t.caps().kind;
+                with_busy_retry(kind, || t.control_in_upto(get, wvalue, len as u16), get)
             })?,
             Shape::Bins => match self.read_bin_frame()? {
                 Some(frame) => frame,

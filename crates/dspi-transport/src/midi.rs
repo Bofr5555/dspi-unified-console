@@ -501,20 +501,19 @@ impl Transport for MidiTransport {
     }
 
     fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> Result<()> {
-        // The frame's length field is 16 bits; a longer payload would be
-        // encoded with a wrapped length.
-        if u16::try_from(data.len()).is_err() {
-            return Err(TransportError::Remote(format!(
-                "opcode 0x{opcode:02X}: {} bytes do not fit one MIDI frame",
-                data.len()
-            )));
-        }
         let frame = Frame::Set {
             request: opcode,
             value,
             index: VENDOR_INTERFACE,
             payload: data.to_vec(),
         };
+        // The frame's length field is 16 bits; a longer payload would be
+        // encoded with a wrapped length (P1's check, one rule for every user).
+        frame.check_len().map_err(|e| {
+            TransportError::Remote(format!(
+                "opcode 0x{opcode:02X}: {e}; it does not fit one MIDI frame"
+            ))
+        })?;
         self.transact(opcode, &frame, false).map(|_| ())
     }
 
@@ -1041,7 +1040,7 @@ mod tests_wp_t2 {
         // The echo rule (§1.2): over MIDI our writes come back as MIDI.
         let own: Vec<bool> = sources
             .iter()
-            .map(|&s| is_own_write(TransportKind::Midi, s, None, t.session_id()))
+            .map(|&s| is_own_write(TransportKind::Midi, s, None, t.session_id(), false))
             .collect();
         assert_eq!(own, [false, true, false]);
         assert_eq!(&got[1][12..16], &(-3.0f32).to_le_bytes());
@@ -1066,7 +1065,21 @@ mod tests_wp_t2 {
         assert_eq!(dev.sends.load(Ordering::SeqCst), 2);
         let p = notes.read(Duration::from_millis(200)).unwrap();
         assert_eq!(p[1] as u16, n::NOTIFY_EVT_BULK_INVALIDATED);
-        assert!(is_own_write(TransportKind::Midi, source_of(&p), None, None));
+        // BULK_SET: ours only while our bulk write is pending (EchoFilter).
+        assert!(!is_own_write(
+            TransportKind::Midi,
+            source_of(&p),
+            None,
+            None,
+            false
+        ));
+        assert!(is_own_write(
+            TransportKind::Midi,
+            source_of(&p),
+            None,
+            None,
+            true
+        ));
         assert_eq!(t.max_transfer(), usize::MAX);
     }
 

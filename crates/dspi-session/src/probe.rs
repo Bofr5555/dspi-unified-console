@@ -137,7 +137,9 @@ pub(crate) fn read_bulk_from(
     while buf.len() < total {
         let offset = buf.len();
         let want = chunk.min(total - offset);
+        let kind = t.caps().kind;
         let part = with_busy_retry(
+            kind,
             || t.control_in(op::REQ_GET_ALL_PARAMS_CHUNK, offset as u16, want as u16),
             op::REQ_GET_ALL_PARAMS_CHUNK,
         )?;
@@ -236,7 +238,9 @@ fn identify(t: &mut dyn Transport) -> Result<(PlatformInfo, String)> {
     // through a 6136-byte transfer. Ask for 7 bytes and take what comes: older
     // firmware answers 4 or 6, and the decode follows the spec's fallback
     // rule (firmware_versioning_spec.md:109).
+    let kind = t.caps().kind;
     let plat = with_busy_retry(
+        kind,
         || t.control_in_upto(op::REQ_GET_PLATFORM, 0, PlatformInfo::REQUEST_LEN as u16),
         op::REQ_GET_PLATFORM,
     )?;

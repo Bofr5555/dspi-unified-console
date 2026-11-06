@@ -87,6 +87,10 @@ pub enum Reply {
     Sequence(Vec<Reply>),
     /// The device went away.
     Disconnect,
+    /// Fail with this error, on IN and OUT alike: a link's own failures
+    /// (`Locked`, `Denied`, `TimedOut` after the transport's own retries,
+    /// `Remote`, ...).
+    Error(TransportError),
 }
 
 /// One recorded exchange, for asserting what the code under test actually sent.
@@ -209,6 +213,7 @@ impl MockTransport {
                 Ok(all[start..].to_vec())
             }
             Reply::Disconnect => Err(TransportError::Disconnected),
+            Reply::Error(e) => Err(e.clone()),
             // A stall, and anything that would need its own bookkeeping to
             // nest, which nothing needs yet.
             _ => Err(TransportError::Stalled { opcode }),
@@ -225,6 +230,7 @@ impl MockTransport {
             None => Err(TransportError::Stalled { opcode }),
             Some(Reply::Stall) => Err(TransportError::Stalled { opcode }),
             Some(Reply::Disconnect) => Err(TransportError::Disconnected),
+            Some(Reply::Error(e)) => Err(e.clone()),
             Some(Reply::Data(d)) => Ok(d.clone()),
             Some(Reply::Window(all)) => {
                 let start = (value as usize).min(all.len());
@@ -299,6 +305,7 @@ impl Transport for MockTransport {
         match self.replies.get(&opcode) {
             Some(Reply::Stall) => Err(TransportError::Stalled { opcode }),
             Some(Reply::Disconnect) => Err(TransportError::Disconnected),
+            Some(Reply::Error(e)) => Err(e.clone()),
             _ => Ok(()),
         }
     }
@@ -352,7 +359,7 @@ mod tests {
         let mut t =
             MockTransport::new().reply(0x90, Reply::BusyThen(2, Box::new(Reply::Data(vec![0x00]))));
 
-        let r = with_busy_retry(|| t.control_in(0x90, 3, 1), 0x90);
+        let r = with_busy_retry(crate::TransportKind::Usb, || t.control_in(0x90, 3, 1), 0x90);
         assert_eq!(r.unwrap(), vec![0x00]);
         // Two refusals plus the successful third.
         assert_eq!(t.opcodes_seen().len(), 3);
@@ -417,5 +424,21 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn an_error_reply_returns_that_error_both_ways() {
+        let mut t = MockTransport::new()
+            .reply(0x90, Reply::Error(TransportError::Locked))
+            .reply(0x91, Reply::Error(TransportError::Remote("BUSY".into())));
+        assert!(matches!(
+            t.control_in(0x90, 0, 1),
+            Err(TransportError::Locked)
+        ));
+        assert!(matches!(
+            t.control_out(0x90, 0, &[1]),
+            Err(TransportError::Locked)
+        ));
+        assert!(matches!(t.control_in(0x91, 0, 1), Err(TransportError::Remote(m)) if m == "BUSY"));
     }
 }

@@ -96,7 +96,9 @@ pub(crate) fn read_bytes(
 
     let mut image = ChunkedImage::new(t.max_transfer());
     while let Some((offset, len)) = image.next_request() {
+        let kind = t.caps().kind;
         let part = with_busy_retry(
+            kind,
             || t.control_in_upto(op::REQ_GET_ALL_PARAMS_CHUNK, offset, len),
             op::REQ_GET_ALL_PARAMS_CHUNK,
         )?;

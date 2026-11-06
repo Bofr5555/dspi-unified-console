@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use dspi_transport::NotificationSource;
 
@@ -216,14 +216,136 @@ impl Notification {
     /// Whether this is the echo of a write this client made, by the rule of
     /// the link it came over ([`dspi_transport::is_own_write`]): `kind` is
     /// the transport's [`dspi_transport::TransportCaps::kind`], `session` its
-    /// [`dspi_transport::Transport::session_id`]. Such a change is already in
-    /// the client's mirror.
-    pub fn is_own_echo(&self, kind: dspi_transport::TransportKind, session: Option<u16>) -> bool {
+    /// [`dspi_transport::Transport::session_id`], and `own_bulk_pending`
+    /// whether one of our own bulk writes may explain a `BULK_SET`
+    /// invalidation (see [`EchoFilter`], which also consumes it). Such a
+    /// change is already in the client's mirror.
+    pub fn is_own_echo(
+        &self,
+        kind: dspi_transport::TransportKind,
+        session: Option<u16>,
+        own_bulk_pending: bool,
+    ) -> bool {
         match &self.event {
             Event::ParamChanged { source, .. } | Event::BulkInvalidated { source } => {
-                dspi_transport::is_own_write(kind, source.raw(), self.origin, session)
+                dspi_transport::is_own_write(
+                    kind,
+                    source.raw(),
+                    self.origin,
+                    session,
+                    own_bulk_pending,
+                )
             }
             _ => false,
+        }
+    }
+
+    /// The `ParamSource` byte of an event that has one.
+    pub fn source(&self) -> Option<Source> {
+        match &self.event {
+            Event::ParamChanged { source, .. } | Event::BulkInvalidated { source } => Some(*source),
+            _ => None,
+        }
+    }
+}
+
+/// Recognises the `BULK_INVALIDATED` that answers our own bulk write.
+///
+/// The firmware tags every bulk apply `BULK_SET`, whatever path it came in
+/// on (bulk_params.c:371/408), so on USB, MIDI and the fake device the source
+/// cannot tell our `0xA1`/`0xA3` from another host's. The device's bulk lock
+/// keeps other hosts' bulk writes out while ours is in flight and for a
+/// moment after, so: a `BULK_SET` invalidation that arrives while our bulk
+/// write is in flight, or within [`EchoFilter::WINDOW`] of its successful
+/// reply, is ours, **once**. Everything else is foreign; an unclaimed
+/// invalidation only costs the client a re-read. Over Link the origin
+/// decides and this filter is not consulted.
+///
+/// Pure (the caller passes the clock); reference behaviour: the iOS
+/// console's `MIDITransport` (`dspi-ios` patch console-116/0005).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EchoFilter {
+    state: BulkEcho,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum BulkEcho {
+    /// No bulk write of ours to account for.
+    #[default]
+    Idle,
+    /// Our bulk write is on the wire; `claimed` once its invalidation was seen.
+    InFlight { claimed: bool },
+    /// Our bulk write was accepted; its invalidation may still arrive until
+    /// `until`.
+    Window { until: Instant },
+}
+
+impl EchoFilter {
+    /// How long after our bulk write's reply its invalidation is still
+    /// expected.
+    pub const WINDOW: Duration = Duration::from_secs(1);
+
+    /// Our `0xA1` (or the first `0xA3` chunk) is about to be sent.
+    pub fn bulk_write_started(&mut self) {
+        self.state = BulkEcho::InFlight { claimed: false };
+    }
+
+    /// Our bulk write finished (`ok`: the device accepted it). Opens the
+    /// window unless the invalidation already came, or the write failed.
+    pub fn bulk_write_finished(&mut self, now: Instant, ok: bool) {
+        self.state = match self.state {
+            BulkEcho::InFlight { claimed: false } if ok => match now.checked_add(Self::WINDOW) {
+                Some(until) => BulkEcho::Window { until },
+                None => BulkEcho::Idle,
+            },
+            _ => BulkEcho::Idle,
+        };
+    }
+
+    /// Whether a `BULK_SET` arriving `now` would be claimed as ours.
+    pub fn own_bulk_pending(&self, now: Instant) -> bool {
+        match self.state {
+            BulkEcho::Idle => false,
+            BulkEcho::InFlight { claimed } => !claimed,
+            BulkEcho::Window { until } => now < until,
+        }
+    }
+
+    /// Classify one notification's source: true if it is our own echo. A
+    /// `BULK_SET` claimed here consumes the pending bulk write, so a second
+    /// one is foreign.
+    pub fn classify(
+        &mut self,
+        now: Instant,
+        kind: dspi_transport::TransportKind,
+        source: u8,
+        origin: Option<u16>,
+        session: Option<u16>,
+    ) -> bool {
+        let pending = self.own_bulk_pending(now);
+        let own = dspi_transport::is_own_write(kind, source, origin, session, pending);
+        let bulk = u16::from(source) == n::PARAM_SRC_BULK_SET;
+        if own && bulk && kind != dspi_transport::TransportKind::Link {
+            self.state = match self.state {
+                BulkEcho::InFlight { .. } => BulkEcho::InFlight { claimed: true },
+                _ => BulkEcho::Idle,
+            };
+        }
+        own
+    }
+
+    /// [`EchoFilter::classify`] for a decoded notification; false for events
+    /// without a source.
+    pub fn classify_notification(
+        &mut self,
+        now: Instant,
+        kind: dspi_transport::TransportKind,
+        session: Option<u16>,
+        note: &Notification,
+    ) -> bool {
+        match note.source() {
+            Some(src) => self.classify(now, kind, src.raw(), note.origin, session),
+            None => false,
         }
     }
 }
@@ -744,6 +866,41 @@ mod tests {
             let got = n.next(Duration::from_secs(2)).expect("a packet");
             assert!(!got.lost, "{got:?}");
         }
+    }
+
+    #[test]
+    fn echo_filter_claims_our_bulk_invalidation_once() {
+        use dspi_transport::TransportKind as K;
+        let bulk = n::PARAM_SRC_BULK_SET as u8;
+        let t0 = Instant::now();
+        let mut f = EchoFilter::default();
+        assert!(!f.classify(t0, K::Usb, bulk, None, None), "idle: foreign");
+
+        // Invalidation after the reply, inside the window: ours, once.
+        f.bulk_write_started();
+        f.bulk_write_finished(t0, true);
+        assert!(f.own_bulk_pending(t0 + Duration::from_millis(900)));
+        assert!(f.classify(t0 + Duration::from_millis(10), K::Midi, bulk, None, None));
+        assert!(!f.classify(t0 + Duration::from_millis(20), K::Midi, bulk, None, None));
+
+        // Invalidation while in flight: ours; the reply then opens no window.
+        f.bulk_write_started();
+        assert!(f.classify(t0, K::Usb, bulk, None, None));
+        f.bulk_write_finished(t0, true);
+        assert!(!f.classify(t0, K::Usb, bulk, None, None));
+
+        // Past the window, or after a failed write: foreign.
+        f.bulk_write_started();
+        f.bulk_write_finished(t0, true);
+        assert!(!f.classify(t0 + EchoFilter::WINDOW, K::Usb, bulk, None, None));
+        f.bulk_write_started();
+        f.bulk_write_finished(t0, false);
+        assert!(!f.classify(t0, K::Usb, bulk, None, None));
+
+        // A HOST_SET over USB is ours regardless, and does not consume.
+        f.bulk_write_started();
+        assert!(f.classify(t0, K::Usb, n::PARAM_SRC_HOST_SET as u8, None, None));
+        assert!(f.own_bulk_pending(t0));
     }
 
     /// A reader that is not drained must not grow without bound: past

@@ -383,7 +383,9 @@ impl Session {
     pub fn read_band(&mut self, channel: u8, band: u8) -> Result<EqParamPacket, WriteError> {
         let scalar = |s: &mut Self, param: u8, len: u16| -> Result<Vec<u8>, WriteError> {
             let wvalue = ((channel as u16) << 8) | ((band as u16) << 3) | param as u16;
+            let kind = s.transport.caps().kind;
             Ok(with_busy_retry(
+                kind,
                 || s.transport.control_in(op::REQ_GET_EQ_PARAM, wvalue, len),
                 op::REQ_GET_EQ_PARAM,
             )?)
@@ -484,7 +486,12 @@ impl Session {
             repr.len().max(1)
         };
 
-        let bytes = with_busy_retry(|| self.transport.control_in(get, wvalue, len as u16), get)?;
+        let kind = self.transport.caps().kind;
+        let bytes = with_busy_retry(
+            kind,
+            || self.transport.control_in(get, wvalue, len as u16),
+            get,
+        )?;
 
         // A crosspoint reads back in the words the grammar writes it:
         // `on -6.0 dB inv`, `off`.

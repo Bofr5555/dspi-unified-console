@@ -601,7 +601,8 @@ mod tests_wp_t5 {
             TransportKind::Link,
             own.packet[8],
             own.origin,
-            session
+            session,
+            false
         ));
 
         // Another client's write, and a change at the device (origin 0)
@@ -613,7 +614,8 @@ mod tests_wp_t5 {
             TransportKind::Link,
             other.packet[8],
             other.origin,
-            session
+            session,
+            false
         ));
         hub.external_change(OFF_MASTER_VOLUME, &(-3.0f32).to_le_bytes(), host, 0);
         let device = next_note(notes.as_mut());
@@ -622,7 +624,8 @@ mod tests_wp_t5 {
             TransportKind::Link,
             device.packet[8],
             device.origin,
-            session
+            session,
+            false
         ));
 
         // Silence is an empty packet, the session ending is Disconnected
