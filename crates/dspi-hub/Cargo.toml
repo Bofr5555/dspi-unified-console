@@ -1,0 +1,48 @@
+[package]
+name = "dspi-hub"
+description = "The DSPi Link hub: owns local devices and serves them to the app and to network clients"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+# docs/core-merge/HUB.md is the design. No UI and no OS code here: a binding
+# decides when a hub runs. Not in any mobile graph (PLAN-CLIENTS section 8).
+
+[features]
+default = ["usb"]
+# The hub finds and claims USB devices itself (usb.rs). Without it a hub serves
+# only what the embedder attaches.
+usb = ["dep:nusb", "dspi-transport/usb"]
+# The embedding app as a hub session (app.rs). Off for a headless hub, which has
+# no DspiCore. Why not always on: `dspi hub` would link the whole embedder API
+# to use none of it.
+app = ["dep:dspi-core"]
+# The Bonjour responder (advertise.rs, WP HB5), CG2's `MdnsAdvertiser`.
+mdns = ["dspi-link/mdns"]
+
+[dependencies]
+dspi-proto.workspace = true
+# `link` for its status table (`map_status`), so the app's in-process transport
+# and the network one read a hub's answer the same way. No USB unless asked.
+dspi-transport = { path = "../dspi-transport", default-features = false, features = ["link"] }
+# The frame types and codec the hub shares with the client.
+dspi-link.workspace = true
+dspi-core = { workspace = true, optional = true }
+thiserror.workspace = true
+log.workspace = true
+# policy/commands.json, the hub's command table (policy.rs).
+serde.workspace = true
+serde_json.workspace = true
+# Bus enumeration with the vendor id, which `dspi_transport::list_devices` does
+# not report and `dspi-core` needs to tell legacy firmware. Same version as there.
+nusb = { version = "0.2", optional = true }
+
+[dev-dependencies]
+dspi-transport = { path = "../dspi-transport", default-features = false, features = ["link"] }
+
+[[test]]
+name = "wp_hb0_app_path"
+required-features = ["app"]
