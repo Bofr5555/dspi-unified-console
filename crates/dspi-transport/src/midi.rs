@@ -607,6 +607,19 @@ impl NotificationSource for MidiNotifications {
 /// calls [`MidiInput::close`] when it is gone, which fails the request in
 /// flight and ends the notification reader ([`TransportError::Disconnected`]).
 /// The watcher is never joined: dropping the transport wakes it and it exits.
+///
+/// Backend notes:
+/// - **ALSA:** a send to an unplugged port returns `Ok` (the event goes to no
+///   subscriber), so a request in flight at the unplug waits for the watcher
+///   (up to [`WATCH_INTERVAL`]) rather than failing at once. ALSA ids are
+///   `client:port` and can be reused by a device hot-plugged within one
+///   watch interval, which the watcher then takes for the old device.
+/// - **WinMM:** the driver errors on a send to a removed device; with the
+///   port gone that is [`PipeError::Closed`]. [`PipeError::Closed`] is only
+///   ever reached when the driver errors *and* the port is gone.
+/// - **CoreMIDI:** two identical devices can show identically named ports;
+///   their outputs and inputs are then paired by enumeration order (see
+///   [`PortInfo::name`]).
 #[cfg(feature = "midir")]
 pub mod midir_port {
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -636,7 +649,10 @@ pub mod midir_port {
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct PortInfo {
         /// The host's name for the device's MIDI IN port (our output), as
-        /// shown in a picker; also the transport's serial.
+        /// shown in a picker; also the transport's serial. Unique within one
+        /// [`list_ports`] result: when several pairs share a host name
+        /// (identical devices on CoreMIDI), each gets ` ({output_id})`
+        /// appended.
         pub name: String,
         /// midir's stable id of the device's MIDI OUT port (our input).
         pub input_id: String,
@@ -659,7 +675,9 @@ pub mod midir_port {
     /// Pair the DSPi outputs with the DSPi inputs, in output order: first by
     /// identical name (ALSA, CoreMIDI and WinMM name both directions of a
     /// device alike), then the leftovers in listing order. An output without
-    /// an input is left out: the transport needs both directions.
+    /// an input is left out: the transport needs both directions. Identically
+    /// named ports of identical devices pair by enumeration order, and their
+    /// names are made unique with the output id ([`PortInfo::name`]).
     fn pair_ports(outputs: &[Listed], inputs: &[Listed]) -> Vec<PortInfo> {
         let outs: Vec<&Listed> = outputs.iter().filter(|p| is_dspi_port(&p.name)).collect();
         let mut ins: Vec<Option<&Listed>> = inputs
@@ -680,7 +698,8 @@ pub mod midir_port {
         for p in paired.iter_mut().filter(|p| p.is_none()) {
             *p = rest.next();
         }
-        outs.into_iter()
+        let mut ports: Vec<PortInfo> = outs
+            .into_iter()
             .zip(paired)
             .filter_map(|(o, i)| {
                 Some(PortInfo {
@@ -689,7 +708,17 @@ pub mod midir_port {
                     output_id: o.id.clone(),
                 })
             })
-            .collect()
+            .collect();
+        let shared: Vec<bool> = ports
+            .iter()
+            .map(|p| ports.iter().filter(|q| q.name == p.name).nth(1).is_some())
+            .collect();
+        for (p, shared) in ports.iter_mut().zip(shared) {
+            if shared {
+                p.name = format!("{} ({})", p.name, p.output_id);
+            }
+        }
+        ports
     }
 
     fn list_inputs(io: &midir::MidiInput) -> Vec<Listed> {
@@ -718,7 +747,9 @@ pub mod midir_port {
 
     /// The DSPi control ports visible to this host. Empty when there are
     /// none, or when the platform's MIDI system cannot be opened (no ALSA
-    /// sequencer, for example).
+    /// sequencer, for example). Each call opens and closes the platform's
+    /// MIDI clients (two ALSA sequencer clients): do not poll it faster than
+    /// about once a second.
     pub fn list_ports() -> Vec<PortInfo> {
         let (Ok(input), Ok(output)) = (
             midir::MidiInput::new(CLIENT_NAME),
@@ -859,7 +890,10 @@ pub mod midir_port {
 
     impl<O: Output> Drop for Pipe<O> {
         /// Stops the watcher without joining it (§1.2: a transport may be
-        /// dropped under a lock).
+        /// dropped under a lock). Warning: dropping the midir input
+        /// connection that follows does block (it joins midir's thread on
+        /// ALSA, calls `midiInClose` on WinMM), so callers drop the transport
+        /// with no lock held that the input callback could need.
         fn drop(&mut self) {
             self.watch.stop.store(true, Ordering::Release);
             if let Some(t) = lock(&self.watch.thread).take() {
@@ -972,6 +1006,30 @@ pub mod midir_port {
             );
             assert!(pair_ports(&[], &ins).is_empty());
             assert!(pair_ports(&outs, &[]).is_empty());
+        }
+
+        #[test]
+        fn wp_t3_identical_names_get_unique_serials() {
+            // Two identical devices on CoreMIDI: same names both ways, paired
+            // by enumeration order, told apart by the output id.
+            let outs = [
+                listed("101", "DSPi Control"),
+                listed("201", "DSPi Control"),
+                listed("301", "DSPi Control 2"),
+            ];
+            let ins = [
+                listed("100", "DSPi Control"),
+                listed("200", "DSPi Control"),
+                listed("300", "DSPi Control 2"),
+            ];
+            assert_eq!(
+                pair_ports(&outs, &ins),
+                [
+                    info("DSPi Control (101)", "100", "101"),
+                    info("DSPi Control (201)", "200", "201"),
+                    info("DSPi Control 2", "300", "301"),
+                ]
+            );
         }
 
         #[test]
