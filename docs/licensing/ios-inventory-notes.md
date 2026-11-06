@@ -53,7 +53,7 @@ Read 2026-11-06 at the commits named. Authors are the full history of those clon
 
 - **Blame shows who last changed a line, not who owns it.** `-C` follows moved code within a commit; rewrites and ports are not followed, hence `CRATE_ORIGINS` in the script.
 - **Today's iOS app does not link the Rust core yet.** Both halves are listed because the target state has both; SW removes much of the Swift, starting with `Commands.swift`. The Swift `#if os(macOS)` code in member files is counted though it does not compile for iOS.
-- **The file list comes from a Linux `cargo check`,** because `nusb` stops an iOS check today. The crate list is the real iOS target's. The script fails loudly on a platform-gated `mod`; code gated inside a file is counted.
+- **The crate list and the file list are both the real iOS target's:** `cargo tree` and `cargo check --target aarch64-apple-ios`, without `dspi-ffi`'s default `usb`, so `nusb` is out of both (WP CG3). The script fails loudly on a platform-gated `mod`; code gated inside a file is counted.
 - **The `.uf2` images were not rebuilt and compared** with the tag they are named after.
 - **Crate licences are the manifests' words.** `cargo-deny` checks them; nobody read each crate's files. Apple's SDK modules are not listed.
 
