@@ -38,6 +38,10 @@ pub enum WsMessage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WsRecv {
     Message(WsMessage),
+    /// A control frame arrived (ping or pong): nothing for the client logic, but
+    /// proof the peer is alive. A foreign socket must report these, or a healthy
+    /// idle session looks dead.
+    Alive,
     /// Nothing arrived within the receiver's tick (about a second): lets the
     /// reader loop check for shutdown and keepalive.
     Idle,
