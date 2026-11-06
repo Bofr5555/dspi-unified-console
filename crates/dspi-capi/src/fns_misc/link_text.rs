@@ -66,8 +66,8 @@ pub extern "C" fn dspi_link_phase_texts(buf: *mut c_char, len: u32) -> u32 {
     })
 }
 
-/// The release notes, as the JSON document they are: [{version, headline, items}],
-/// newest first; no `ok` wrapper. Returns the bytes needed including the NUL, 0 for
+/// The release notes for the platform this library was compiled for, as a JSON
+/// document: [{version, headline, items}], newest first; no `ok` wrapper. Returns the bytes needed including the NUL, 0 for
 /// a panic.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_onboarding_whats_new_json(buf: *mut c_char, len: u32) -> u32 {
@@ -76,8 +76,9 @@ pub extern "C" fn dspi_onboarding_whats_new_json(buf: *mut c_char, len: u32) -> 
     })
 }
 
-/// The Getting Started wizard's data, as the JSON document it is; no `ok` wrapper.
-/// `dspi_core::link_text` describes it. Returns the bytes needed including the NUL,
+/// The Getting Started wizard's data for the platform this library was compiled
+/// for, as a JSON document; no `ok` wrapper. `dspi_core::link_text` describes it.
+/// Returns the bytes needed including the NUL,
 /// 0 for a panic.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_onboarding_getting_started_json(buf: *mut c_char, len: u32) -> u32 {

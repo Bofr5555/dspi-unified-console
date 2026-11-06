@@ -106,8 +106,8 @@ CRATE_ORIGINS = {
 # Assets whose origin is outside the tree they sit in. Longest prefix wins.
 ASSET_ORIGINS = {
     "assets/onboarding/": (
-        "Console fork `ext-channel-116` `48cf7c5`: `whatsnew.json` is `Onboarding/WhatsNew.json` as is; "
-        "`getting_started.json` holds the strings of `Onboarding/GettingStartedView.swift` and "
+        "Console fork `ext-channel-116` `48cf7c5`: `whatsnew.json` is `Onboarding/WhatsNew.json` with per-platform placeholders added by WP CG10, "
+        "and renders back to it byte for byte on macOS; `getting_started.json` holds the strings of `Onboarding/GettingStartedView.swift` and "
         "`FirmwareInstallUI.swift`, some reworded and some added by WP CG10",
         "`LICENSE` there is GPL-3.0, the README there says MIT, and no file has a header. Treat as uncertain",
         "Weeb Labs + owner (bofr). Blame here shows only the commit that copied them",
