@@ -22,6 +22,7 @@ pub mod packets;
 pub mod registry;
 pub mod value;
 pub mod wire;
+pub mod wire_compat;
 pub mod xover;
 
 pub use channel::ChannelMap;
