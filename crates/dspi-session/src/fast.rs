@@ -106,8 +106,12 @@ impl Session {
 
     /// The platform limit [`Session::write`] checks beyond the registry's
     /// range: the delay buffers hold 42 ms on an RP2040 against 85 ms on an
-    /// RP2350 (config.h:94-99). Kept identical to the check in `write`.
-    fn check_platform_range(&self, d: &ParamDesc, value: &Value) -> Result<(), WriteError> {
+    /// RP2350 (config.h:94-99). Shared by `send` and `write`.
+    pub(crate) fn check_platform_range(
+        &self,
+        d: &ParamDesc,
+        value: &Value,
+    ) -> Result<(), WriteError> {
         if matches!(d.path, "ch.delay" | "out.delay")
             && self.capabilities().platform == Platform::Rp2040
             && value.as_f32().is_some_and(|v| v > 42.0)
@@ -121,9 +125,9 @@ impl Session {
     }
 }
 
-/// Put one validated EQ field into a band read from the device, as the EQ
-/// path of `Session::write` does.
-fn apply_eq_field(
+/// Put one validated EQ field into a band read from the device. Shared by
+/// `send` and the EQ path of `Session::write`.
+pub(crate) fn apply_eq_field(
     packet: &mut EqParamPacket,
     d: &ParamDesc,
     value: &Value,
