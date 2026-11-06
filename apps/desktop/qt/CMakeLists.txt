@@ -36,6 +36,9 @@ get_filename_component(DSPI_REPO_ROOT "${CMAKE_SOURCE_DIR}/../../.." ABSOLUTE)
 set(DSPI_CORE_DIR "${DSPI_REPO_ROOT}/crates/dspi-core-linux" CACHE PATH "Directory holding include/dspi_core.h")
 set(DSPI_CARGO_TARGET_DIR "${DSPI_REPO_ROOT}/target" CACHE PATH "cargo's target directory")
 set(DSPI_RUST_TARGET "" CACHE STRING "cargo --target triple, empty for the host")
+# The core library's name: dspi_core (the old core, crates/dspi-core-linux)
+# or dspi_capi (the merged core's C ABI, crates/dspi-capi; docs/core-merge).
+set(DSPI_CORE_LIB "dspi_core" CACHE STRING "Rust core library name (dspi_core or dspi_capi)")
 if(DSPI_RUST_TARGET)
     set(DSPI_CORE_LIBDIR "${DSPI_CARGO_TARGET_DIR}/${DSPI_RUST_TARGET}/release")
 else()
@@ -91,14 +94,14 @@ if(WIN32)
     # Windows: the core is a DLL (dspi_core.dll) next to the exe, linked
     # through cargo's import library
     if(MSVC)
-        target_link_libraries(DSPiConsole PRIVATE ${DSPI_CORE_LIBDIR}/dspi_core.dll.lib)
+        target_link_libraries(DSPiConsole PRIVATE ${DSPI_CORE_LIBDIR}/${DSPI_CORE_LIB}.dll.lib)
     else()
-        target_link_libraries(DSPiConsole PRIVATE ${DSPI_CORE_LIBDIR}/libdspi_core.dll.a)
+        target_link_libraries(DSPiConsole PRIVATE ${DSPI_CORE_LIBDIR}/lib${DSPI_CORE_LIB}.dll.a)
     endif()
     add_custom_command(TARGET DSPiConsole POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${DSPI_CORE_LIBDIR}/dspi_core.dll $<TARGET_FILE_DIR:DSPiConsole>)
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${DSPI_CORE_LIBDIR}/${DSPI_CORE_LIB}.dll $<TARGET_FILE_DIR:DSPiConsole>)
 else()
-    target_link_libraries(DSPiConsole PRIVATE ${DSPI_CORE_LIBDIR}/libdspi_core.a)
+    target_link_libraries(DSPiConsole PRIVATE ${DSPI_CORE_LIBDIR}/lib${DSPI_CORE_LIB}.a)
 endif()
 
 if(APPLE)

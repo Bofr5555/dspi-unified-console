@@ -16,7 +16,8 @@
 #   cargo-home/               shared registry and git caches
 #   xwin-cache/               the MSVC CRT/SDK (cross profile)
 #   work/<branch>/            scratch (/work; HOME and TMPDIR live there)
-# SRC overrides the source tree (default: this worktree). No USB devices are
+# SRC overrides the source tree (default: this worktree). DSPI_JOBS caps
+# cargo's parallel jobs per container (default 4; several WPs build at once). No USB devices are
 # visible in the container.
 set -euo pipefail
 here=${SRC:-$(cd "$(dirname "$0")/.." && pwd)}
@@ -29,7 +30,7 @@ mkdir -p "$B/cargo-home/registry" "$B/cargo-home/git" "$B/work/$branch/home" \
 common=(--rm -i --userns=keep-id
   -v "$here":/src:z -v "$B/work/$branch":/work:z
   -v "$B/work/empty":/sys/bus/usb/devices:ro,z
-  -e HOME=/work/home -e TMPDIR=/work/tmp -w /src)
+  -e HOME=/work/home -e TMPDIR=/work/tmp -e CARGO_BUILD_JOBS="${DSPI_JOBS:-4}" -w /src)
 case "$profile" in
   default)
     mkdir -p "$B/target/$branch"

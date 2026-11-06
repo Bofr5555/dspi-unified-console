@@ -12,14 +12,21 @@
 #       windows-msvc                  cargo xwin build of dspi-core, dspi-capi, dspi-term
 #       android                       cargo ndk build of dspi-core (arm64, armv7, x86_64)
 #       wasm                          dspi-proto for wasm32-unknown-unknown
-#       qt                            the Qt 6 desktop app against the C ABI crate
-#       proptest                      the fuzz-style property tests, longer run
+#       qt                            the Qt 6 desktop app against the old core
+#                                     (crates/dspi-core-linux), until WP Q3
+#       qt-capi                       the Qt 6 desktop app against the merged
+#                                     core's C ABI (crates/dspi-capi, library
+#                                     dspi_capi); expected to pass from wave 3
+#       proptest                      the property tests (functions named
+#                                     proptest_*), 20000 cases each
 #   ci/check.sh --all                 full gate plus every optional step
 #
-# Lint level: clippy's default set, warnings denied (-D warnings). The retired
-# crates/dspi-core-linux (package dspi-core-linux) is outside the gates until
-# WP Q2 deletes it: it is neither rustfmt- nor clippy-clean, and one of its
-# tests compares struct padding.
+# Lint level: clippy's default set, warnings denied (-D warnings), plus the
+# stricter lints the core-merge crates and modules enable themselves
+# (unwrap_used, expect_used, indexing_slicing, arithmetic_side_effects;
+# clippy.toml exempts test code). The retired crates/dspi-core-linux (package
+# dspi-core-linux) is outside the gates until WP Q3 deletes it: it is neither
+# rustfmt- nor clippy-clean, and one of its tests compares struct padding.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 RUN=ci/run.sh
@@ -30,8 +37,8 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --crate) crates+=("$2"); shift 2 ;;
     --step) steps+=("$2"); shift 2 ;;
-    --all) steps=(fmt clippy test windows-gnu windows-msvc android wasm qt proptest); shift ;;
-    -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
+    --all) steps=(fmt clippy test windows-gnu windows-msvc android wasm qt qt-capi proptest); shift ;;
+    -h|--help) sed -n "2,30p" "$0"; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -63,9 +70,13 @@ for s in "${steps[@]}"; do
       DSPI_PROFILE=cross $RUN "cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 --platform 26 build -p dspi-core --features link" ;;
     wasm) DSPI_PROFILE=cross $RUN "cargo build -p dspi-proto --target wasm32-unknown-unknown" ;;
     qt)
-      # Until WP Q2 the app links the old core; WP Q2 switches this to dspi-capi.
+      # The old core, until WP Q3 removes it.
       $RUN "cargo build --release -p dspi-core-linux && cmake -S apps/desktop/qt -B /work/build-desktop-qt6 -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target && cmake --build /work/build-desktop-qt6" ;;
-    proptest) $RUN "PROPTEST_CASES=20000 cargo test --workspace ${EXCLUDE[*]} --all-features --release proptest" ;;
+    qt-capi)
+      $RUN "cargo build --release -p dspi-capi && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-capi -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_CORE_DIR=/src/crates/dspi-capi -DDSPI_CORE_LIB=dspi_capi && cmake --build /work/build-desktop-qt6-capi" ;;
+    proptest)
+      # Every property test function is named proptest_* (PLAN §1.9).
+      $RUN "PROPTEST_CASES=20000 cargo test --workspace ${EXCLUDE[*]} --all-features --release -- proptest_" ;;
     *) echo "unknown step $s" >&2; exit 2 ;;
   esac
   ok "$s"
