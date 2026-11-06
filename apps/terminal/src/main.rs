@@ -100,7 +100,7 @@ fn main() -> ExitCode {
         Some("autoeq") => cmd_autoeq(target, &positional(&flags), &flags),
         Some("--install-udev") => doctor::install_udev(),
         Some("screenshot") => cmd_screenshot(target, &positional(&flags), &flags),
-        Some("export") => cmd_export(target, &positional(&flags)),
+        Some("export") => cmd_export(target, &positional(&flags), json),
         Some("import") => cmd_import(target, &positional(&flags), &flags),
         Some("dump") => cmd_dump(target, json),
         Some("watch") => cmd_watch(target, json),
@@ -539,7 +539,7 @@ fn cmd_dump(target: &Target, json: bool) -> u8 {
 /// Useful for documentation and for checking a layout at a size you do not have
 /// a terminal for, such as the 80x24 floor.
 /// Write every channel's filters to a Console-compatible file.
-fn cmd_export(target: &Target, args: &[&str]) -> u8 {
+fn cmd_export(target: &Target, args: &[&str], json: bool) -> u8 {
     let Some(path) = args.first() else {
         eprintln!("dspi: export needs a file name, e.g. `dspi export tuning.txt`");
         return exit::USAGE;
@@ -547,7 +547,7 @@ fn cmd_export(target: &Target, args: &[&str]) -> u8 {
 
     // The extension picks the format: a filter bank, or a whole-device document.
     if path.ends_with(dspi_session::preset_file::FILE_EXTENSION) {
-        return export_preset(target, path);
+        return export_preset(target, path, json);
     }
 
     let mut session = match connect(target) {
@@ -628,11 +628,19 @@ fn cmd_export(target: &Target, args: &[&str]) -> u8 {
     let text = dspi_session::filterfile::write(&file, &stamp);
     match std::fs::write(path, &text) {
         Ok(()) => {
-            println!(
-                "Wrote {path}: {} channels, {} bands",
-                file.channels.len(),
-                file.channels.iter().map(|c| c.peq.len()).sum::<usize>()
-            );
+            // -- WP TM4 --
+            // A band or preamp the device refuses is left out of this format,
+            // so nothing is invented and there is nothing to warn about.
+            let bands = file.channels.iter().map(|c| c.peq.len()).sum::<usize>();
+            if json {
+                let doc = export_json(&caps, path, file.channels.len(), None);
+                println!("{doc}");
+            } else {
+                println!(
+                    "Wrote {path}: {} channels, {bands} bands",
+                    file.channels.len()
+                );
+            }
             exit::OK
         }
         Err(e) => {
@@ -642,8 +650,28 @@ fn cmd_export(target: &Target, args: &[&str]) -> u8 {
     }
 }
 
+/// `dspi export --json`'s report.
+// -- WP TM4 --
+fn export_json(
+    caps: &dspi_session::Capabilities,
+    path: &str,
+    channels: usize,
+    warning: Option<&str>,
+) -> serde_json::Value {
+    let mut doc = serde_json::json!({
+        "ok": true,
+        "path": path,
+        "channels": channels,
+        "read_only": read_only::is_read_only(caps),
+    });
+    if let (Some(w), Some(o)) = (warning, doc.as_object_mut()) {
+        o.insert("warning".into(), serde_json::json!(w));
+    }
+    doc
+}
+
 /// Capture everything the device is doing into a `.dspipreset`.
-fn export_preset(target: &Target, path: &str) -> u8 {
+fn export_preset(target: &Target, path: &str, json: bool) -> u8 {
     let mut session = match connect(target) {
         Ok(s) => s,
         Err(c) => return c,
@@ -657,11 +685,22 @@ fn export_preset(target: &Target, path: &str) -> u8 {
 
     match std::fs::write(path, dspi_session::preset_file::write(&doc)) {
         Ok(()) => {
-            println!(
-                "Wrote {path}: {} channels, {} crosspoints",
-                doc.channels.len(),
-                doc.matrix.len()
-            );
+            // -- WP TM4 --
+            let caps = session.capabilities();
+            let warning = read_only::export_warning(caps, path);
+            if let Some(w) = &warning {
+                eprintln!("dspi: warning: {w}");
+            }
+            if json {
+                let doc = export_json(caps, path, doc.channels.len(), warning.as_deref());
+                println!("{doc}");
+            } else {
+                println!(
+                    "Wrote {path}: {} channels, {} crosspoints",
+                    doc.channels.len(),
+                    doc.matrix.len()
+                );
+            }
             exit::OK
         }
         Err(e) => {
@@ -2640,6 +2679,32 @@ mod tests_wp_tm4 {
         assert_eq!(run(&mut session, cmd, true, true, false), exit::REJECTED);
         let log = log.lock().unwrap();
         assert!(!log.iter().any(|e| e.direction == Direction::Out));
+    }
+
+    #[test]
+    fn wp_tm4_export_json_reports_read_only_and_the_warning() {
+        let (session, _) = newer_device();
+        let caps = session.capabilities();
+        let w = read_only::export_warning(caps, "x.dspipreset").unwrap();
+        let doc = export_json(caps, "x.dspipreset", 2, Some(&w));
+        assert_eq!(doc["read_only"], serde_json::json!(true));
+        assert_eq!(doc["warning"], serde_json::json!(w));
+    }
+
+    #[test]
+    fn wp_tm4_export_on_a_writable_device_has_no_warning() {
+        let dir = std::env::current_exe().unwrap();
+        let path = dir.with_file_name("wp_tm4_export.dspipreset");
+        let path = path.to_str().unwrap();
+        assert_eq!(export_preset(&Target::Demo, path, true), exit::OK);
+        let _ = std::fs::remove_file(path);
+
+        let demo = Target::Demo.open_session(&prompt_pin).unwrap();
+        let caps = demo.capabilities();
+        assert_eq!(read_only::export_warning(caps, "x"), None);
+        let doc = export_json(caps, "x", 2, None);
+        assert_eq!(doc["read_only"], serde_json::json!(false));
+        assert!(doc.get("warning").is_none());
     }
 
     #[test]

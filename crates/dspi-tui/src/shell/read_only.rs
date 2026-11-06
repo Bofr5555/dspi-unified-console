@@ -223,6 +223,25 @@ pub fn banner(caps: &Capabilities) -> Option<String> {
     })
 }
 
+/// What to tell someone exporting a whole-device document from this device.
+///
+/// `preset_file::capture` asks for each setting in turn and takes a refused
+/// read as zero or off. An older firmware refuses whatever it does not have, so
+/// the file holds values nobody set (0 dB master volume, say), and importing it
+/// elsewhere applies them. `None` when writable.
+pub fn export_warning(caps: &Capabilities, path: &str) -> Option<String> {
+    is_read_only(caps).then(|| {
+        format!(
+            "this device is read-only (firmware {}, wire V{}). Any setting its firmware does \
+             not report is saved in {} as zero or off, which is not a value you set. Check \
+             the file before importing it on another device.",
+            printable(&caps.firmware),
+            caps.wire_format,
+            printable(path),
+        )
+    })
+}
+
 /// What a read-only device's bulk reads answer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BulkReads {
@@ -1296,6 +1315,83 @@ mod tests_wp_tm4 {
             guard_raw(Box::new(mock)),
             Err(OpenError::Transport(TransportError::Disconnected))
         ));
+    }
+
+    /// Why export warns: settings an older firmware refuses come out as zero,
+    /// whatever the device's image says, and an import then applies them.
+    #[test]
+    fn wp_tm4_a_preset_export_from_old_firmware_holds_values_nobody_set() {
+        let mut image = image_as(17);
+        let master = off("master_volume");
+        image[master..master + 4].copy_from_slice(&(-12.0f32).to_le_bytes());
+        // Unlike `device`: an opcode it has no answer for stalls, as firmware
+        // does. Over MIDI a stall is final, which spares the test USB's retries.
+        struct Midi(MockTransport);
+        impl Transport for Midi {
+            fn control_in(&mut self, o: u8, v: u16, l: u16) -> Result<Vec<u8>> {
+                self.0.control_in(o, v, l)
+            }
+            fn control_in_upto(&mut self, o: u8, v: u16, l: u16) -> Result<Vec<u8>> {
+                self.0.control_in_upto(o, v, l)
+            }
+            fn control_out(&mut self, o: u8, v: u16, d: &[u8]) -> Result<()> {
+                self.0.control_out(o, v, d)
+            }
+            fn descriptor(&self) -> &DeviceDescriptor {
+                self.0.descriptor()
+            }
+            fn max_transfer(&self) -> usize {
+                8192
+            }
+            fn caps(&self) -> TransportCaps {
+                TransportCaps {
+                    chunked_bulk: false,
+                    kind: dspi_transport::TransportKind::Midi,
+                    ..TransportCaps::USB
+                }
+            }
+        }
+        let platform = FakeDevice::demo()
+            .control_in_upto(op::REQ_GET_PLATFORM, 0, 7)
+            .unwrap();
+        let old = MockTransport::new()
+            .data(op::REQ_GET_PLATFORM, platform)
+            .data(op::REQ_GET_ALL_PARAMS, image);
+        let mut c = connected_on(Box::new(Midi(old))).unwrap();
+        assert_eq!(c.state.caps.wire_format, 17);
+        let doc = preset_file::capture(&mut c.session, None);
+        assert_eq!(doc.global.master_volume_db, 0.0, "not the device's -12");
+        assert_eq!(doc.global.user_volume_db, 0.0);
+        assert_eq!(doc.meta.wire_format_version, 17, "the file does say V17");
+
+        // Imported on a writable device, those are real writes: output gains
+        // on a plain import, and with `--volume` the user volume, at 0 dB.
+        let (mock, log) = device(demo_image());
+        let mut target = session_on(Box::new(mock)).unwrap();
+        let _ = preset_file::apply(
+            &mut target,
+            &doc,
+            ApplyOptions {
+                audio_processing: true,
+                volume_levels: true,
+                hardware_io: false,
+            },
+        );
+        let log = log.lock().unwrap();
+        for opcode in [op::REQ_SET_OUTPUT_GAIN, op::REQ_SET_USER_VOLUME] {
+            let sent = log
+                .iter()
+                .find(|e| e.direction == Direction::Out && e.opcode == opcode)
+                .unwrap_or_else(|| panic!("the import sets 0x{opcode:02X}"));
+            assert_eq!(sent.payload, 0.0f32.to_le_bytes(), "0x{opcode:02X}");
+        }
+
+        let warning = export_warning(&c.state.caps, "x.dspipreset").unwrap();
+        assert!(
+            warning.contains("V17") && warning.contains("x.dspipreset"),
+            "{warning}"
+        );
+        assert_eq!(export_warning(&fixture::caps(), "x.dspipreset"), None);
     }
 
     /// The state a read-only connection hands the interface keeps its image.
