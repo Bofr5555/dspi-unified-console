@@ -10,5 +10,7 @@ mod f3;
 mod f4;
 mod f5;
 mod f6;
+mod f7;
 mod f8;
+mod faults;
 mod hub;

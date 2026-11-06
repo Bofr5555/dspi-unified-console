@@ -63,12 +63,16 @@ pub struct Timing {
     pub ping_interval: Duration,
     /// This much silence, control frames included, means the link is gone.
     pub silence_limit: Duration,
-    /// See [`LinkClient::command`]: how long a probe ping has to get an answer.
+    /// After a request times out, a ping goes out at once; nothing from the hub
+    /// for this long then means the link is gone. Much shorter than
+    /// `silence_limit`, because now someone is waiting.
     pub probe_timeout: Duration,
     /// How often the keepalive thread looks at the clock.
     pub keepalive_tick: Duration,
-    /// Hello, authentication and the device list together. The socket's own
-    /// connect comes on top ([`crate::socket::TcpConnector::connect_timeout`]).
+    /// Hello, authentication and the device list together, instead of
+    /// `request_timeout` each. The socket's own connect comes on top
+    /// ([`crate::socket::TcpConnector::connect_timeout`]); a foreign connector
+    /// must bound itself.
     pub connect_budget: Duration,
 }
 
@@ -230,6 +234,15 @@ struct Session {
     list_error: Option<LinkError>,
 }
 
+/// A request timed out, so the link is under suspicion: a ping goes out, and
+/// anything arriving from the hub clears it.
+#[derive(Default)]
+struct Probe {
+    armed_at: Option<Instant>,
+    /// For the keepalive thread: the caller must not block on a stuck socket.
+    ping_wanted: bool,
+}
+
 struct Inner {
     sender: Box<dyn WsSender>,
     hello: HelloHub,
@@ -256,6 +269,7 @@ struct Inner {
     timing: Timing,
     clock: Arc<dyn Clock>,
     epoch: u64,
+    probe: Mutex<Probe>,
     /// `auth.pair` requests not settled yet: sent, or given up on by a timeout.
     open_pairs: Mutex<HashSet<u64>>,
 }
@@ -314,13 +328,17 @@ impl LinkClient {
         cfg: &SessionConfig,
     ) -> Result<(LinkClient, AuthState), LinkError> {
         let (sender, mut receiver) = connector.connect(url, SUB_PROTOCOL)?;
+        // Each step gets what is left. The step limit is this budget, not
+        // request_timeout: the embedder must not sit in connect for the sum of them
+        let deadline = Instant::now() + cfg.timing.connect_budget;
+        let left = move || deadline.saturating_duration_since(Instant::now());
         let client =
             ClientInfo { name: opts.client_name.clone(), app: opts.app.clone(), version: opts.app_version.clone() };
         if let Err(e) = sender.send(WsMessage::Text(out::hello(&client))) {
             sender.close(1000);
             return Err(LinkError::Io(e.to_string()));
         }
-        let hello = match Self::await_hello(receiver.as_mut(), cfg.timing.request_timeout) {
+        let hello = match Self::await_hello(receiver.as_mut(), left()) {
             Ok(h) => h,
             Err(e) => {
                 sender.close(1000);
@@ -356,6 +374,7 @@ impl LinkClient {
             timing: cfg.timing,
             clock: Arc::clone(&cfg.clock),
             epoch: NEXT_EPOCH.fetch_add(1, Ordering::Relaxed),
+            probe: Mutex::new(Probe::default()),
             open_pairs: Mutex::new(HashSet::new()),
         });
         let c = LinkClient { inner };
@@ -375,7 +394,7 @@ impl LinkClient {
                 None => opts.token.clone(),
             };
             match token.as_deref().filter(|t| !t.is_empty()) {
-                Some(token) => match c.request(|id| out::auth_token(id, token), c.inner.timing.request_timeout) {
+                Some(token) => match c.request(|id| out::auth_token(id, token), left()) {
                     Ok(v) => {
                         c.became_ready(&v);
                         AuthState::Ready
@@ -395,10 +414,7 @@ impl LinkClient {
             }
         } else {
             // Open access: the session is open; ask for our id anyway (spec 6.1)
-            match c.request(
-                |id| out::auth_pair(id, OPEN_ACCESS_PIN, &opts.client_name, None),
-                c.inner.timing.request_timeout,
-            ) {
+            match c.request(|id| out::auth_pair(id, OPEN_ACCESS_PIN, &opts.client_name, None), left()) {
                 Ok(v) => c.became_ready(&v),
                 Err(LinkError::Rejected { .. }) => {
                     log::warn!("dspi-link: open hub refused the session probe; own echoes cannot be recognised");
@@ -412,7 +428,7 @@ impl LinkClient {
             AuthState::Ready
         };
         if state == AuthState::Ready {
-            if let Err(e) = c.refresh_devices() {
+            if let Err(e) = c.refresh_devices_within(left()) {
                 c.close();
                 return Err(e);
             }
@@ -508,15 +524,19 @@ impl LinkClient {
 
     /// Re-read `device.list`.
     pub fn refresh_devices(&self) -> Result<Vec<DeviceInfo>, LinkError> {
-        let result = self.read_device_list();
+        self.refresh_devices_within(self.inner.timing.request_timeout)
+    }
+
+    fn refresh_devices_within(&self, timeout: Duration) -> Result<Vec<DeviceInfo>, LinkError> {
+        let result = self.read_device_list(timeout);
         if let Err(e) = &result {
             lock(&self.inner.session).list_error = Some(e.clone());
         }
         result
     }
 
-    fn read_device_list(&self) -> Result<Vec<DeviceInfo>, LinkError> {
-        let v = self.request(out::device_list, self.inner.timing.request_timeout)?;
+    fn read_device_list(&self, timeout: Duration) -> Result<Vec<DeviceInfo>, LinkError> {
+        let v = self.request(out::device_list, timeout)?;
         let list: Vec<DeviceInfo> = v
             .get("devices")
             .cloned()
@@ -692,6 +712,7 @@ impl LinkClient {
             Ok(r) => r,
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 lock(&self.inner.pending_cmd).remove(&tag);
+                self.suspect();
                 CmdResponse { tag, status: status::TIMEOUT, payload: Vec::new() }
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -767,7 +788,9 @@ impl LinkClient {
 
     fn fire(&self, make: impl FnOnce(u64) -> String) {
         let id = self.inner.next_id.fetch_add(1, Ordering::SeqCst);
-        let _ = self.inner.sender.send(WsMessage::Text(make(id)));
+        if self.inner.sender.send(WsMessage::Text(make(id))).is_err() {
+            self.socket_failed(None, &close_reason(None));
+        }
     }
 
     fn request(&self, make: impl FnOnce(u64) -> String, timeout: Duration) -> Result<Value, LinkError> {
@@ -783,6 +806,7 @@ impl LinkClient {
         lock(&self.inner.pending_json).insert(id, tx);
         if let Err(e) = self.inner.sender.send(WsMessage::Text(text)) {
             lock(&self.inner.pending_json).remove(&id);
+            self.socket_failed(None, &close_reason(None));
             return Err(LinkError::Io(e.to_string()));
         }
         match rx.recv_timeout(timeout) {
@@ -794,6 +818,7 @@ impl LinkClient {
                         return r;
                     }
                 }
+                self.suspect();
                 Err(LinkError::Timeout)
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -801,6 +826,34 @@ impl LinkClient {
                 Err(LinkError::Closed { code, reason })
             }
         }
+    }
+
+    // ── Liveness ───────────────────────────────────────────────────────
+
+    /// A request got no answer in time. That alone proves nothing (the device
+    /// may be slow behind a live hub), but it is the first sign of a half-open
+    /// link: probe it now instead of waiting out the silence limit.
+    fn suspect(&self) {
+        let mut probe = lock(&self.inner.probe);
+        if probe.armed_at.is_none() {
+            probe.armed_at = Some(self.inner.clock.now());
+            probe.ping_wanted = true;
+        }
+    }
+
+    fn heard_from_hub(&self) {
+        *lock(&self.inner.last_inbound) = self.inner.clock.now();
+        *lock(&self.inner.probe) = Probe::default();
+    }
+
+    /// Silence past the limit, or a probe left unanswered.
+    fn link_is_dead(&self) -> bool {
+        let timing = &self.inner.timing;
+        let now = self.inner.clock.now();
+        let armed_at = lock(&self.inner.probe).armed_at;
+        let last_inbound = *lock(&self.inner.last_inbound);
+        now.saturating_duration_since(last_inbound) > timing.silence_limit
+            || armed_at.is_some_and(|t| now.saturating_duration_since(t) > timing.probe_timeout)
     }
 
     // ── Threads ────────────────────────────────────────────────────────
@@ -818,22 +871,20 @@ impl LinkClient {
                 let me = LinkClient { inner };
                 match received {
                     WsRecv::Message(m) => {
-                        *lock(&me.inner.last_inbound) = me.inner.clock.now();
+                        me.heard_from_hub();
                         match m {
                             WsMessage::Text(t) => me.handle_text(&t),
                             WsMessage::Binary(b) => me.handle_binary(&b),
                         }
                     }
-                    WsRecv::Alive => *lock(&me.inner.last_inbound) = me.inner.clock.now(),
+                    WsRecv::Alive => me.heard_from_hub(),
                     WsRecv::Idle => {
                         if me.is_closed() {
                             break;
                         }
-                        let now = me.inner.clock.now();
-                        if now.saturating_duration_since(*lock(&me.inner.last_inbound)) > me.inner.timing.silence_limit
-                        {
+                        if me.link_is_dead() {
                             me.inner.sender.close(1001);
-                            me.socket_failed(None, "connection lost");
+                            me.socket_failed(None, &close_reason(None));
                             break;
                         }
                     }
@@ -858,12 +909,13 @@ impl LinkClient {
                     _ => return,
                 };
                 let now = inner.clock.now();
-                if now.saturating_duration_since(last_ping) < inner.timing.ping_interval {
+                let probing = std::mem::take(&mut lock(&inner.probe).ping_wanted);
+                if !probing && now.saturating_duration_since(last_ping) < inner.timing.ping_interval {
                     continue;
                 }
                 last_ping = now;
                 if inner.sender.ping().is_err() {
-                    LinkClient { inner }.socket_failed(None, "connection lost");
+                    LinkClient { inner }.socket_failed(None, &close_reason(None));
                     return;
                 }
             })

@@ -983,6 +983,10 @@ fn session(ws: &mut WebSocket<Replay>, state: &Arc<Mutex<State>>, stop: &AtomicB
             }
         }
         let read = ws.read();
+        // The network went dark during that read: the frame never got here
+        if read.is_ok() && lock(state).faults.stalled {
+            continue;
+        }
         if read.is_ok() {
             last_activity = clock.now();
         }

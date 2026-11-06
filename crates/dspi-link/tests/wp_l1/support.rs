@@ -95,6 +95,8 @@ use std::sync::Mutex;
 use dspi_link::socket::{WsReceiver, WsSender};
 use dspi_link::{LinkClient, LinkError, LinkEvents, SessionConfig, Timing};
 
+type Responder = Box<dyn Fn(&serde_json::Value) -> Option<serde_json::Value> + Send + Sync>;
+
 /// The scripted socket's hub side.
 pub struct MockHub {
     inbound: Sender<WsRecv>,
@@ -104,7 +106,7 @@ pub struct MockHub {
     pub closed: AtomicBool,
     pub sent: Mutex<VecDeque<WsMessage>>,
     /// Text requests -> reply; `None` means silence.
-    respond: Box<dyn Fn(&serde_json::Value) -> Option<serde_json::Value> + Send + Sync>,
+    respond: Responder,
 }
 
 impl MockHub {

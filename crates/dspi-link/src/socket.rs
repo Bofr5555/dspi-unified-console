@@ -16,9 +16,14 @@
 //! is sending.
 
 use std::io::{self, Read, Write};
-use std::net::{Shutdown, TcpStream, ToSocketAddrs};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::net::{IpAddr, Shutdown, SocketAddr, TcpStream, ToSocketAddrs};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex, TryLockError};
+use std::thread;
+use std::time::{Duration, Instant};
+
+use socket2::{SockRef, TcpKeepalive};
 
 use tungstenite::client::IntoClientRequest;
 use tungstenite::handshake::HandshakeError;
@@ -78,10 +83,19 @@ pub trait WsConnector: Send + Sync {
 const MAX_MESSAGE: usize = 1 << 20;
 const READ_TICK: Duration = Duration::from_millis(1000);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
+/// The close frame is a courtesy on a socket that may be stuck.
+const CLOSE_WRITE_TIMEOUT: Duration = Duration::from_secs(1);
+/// SO_KEEPALIVE, as the bridge sets on its side (`http_server.c`): a backstop
+/// for when nothing is being sent; the client's own pings notice sooner.
+const KEEPALIVE_TIME: Duration = Duration::from_secs(30);
+#[cfg(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "ios", target_os = "windows"))]
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(5);
 
 /// `tungstenite` over `std::net::TcpStream`.
 #[derive(Debug, Clone)]
 pub struct TcpConnector {
+    /// The whole of [`WsConnector::connect`]: name lookup, TCP connect (shared
+    /// between a host's addresses) and the WebSocket handshake.
     pub connect_timeout: Duration,
 }
 
@@ -98,10 +112,22 @@ struct Pipe {
     buffered: bool,
     out: Vec<u8>,
     wlock: Arc<Mutex<()>>,
+    /// A write failed part way, so a frame may be cut in two on the wire: the
+    /// stream can never be trusted again. Shared by both halves.
+    broken: Arc<AtomicBool>,
+    /// During the handshake: reads end here however slowly bytes trickle in.
+    deadline: Option<Instant>,
 }
 
 impl Read for Pipe {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if let Some(deadline) = self.deadline {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return Err(io::ErrorKind::TimedOut.into());
+            }
+            self.tcp.set_read_timeout(Some(left))?;
+        }
         self.tcp.read(buf)
     }
 }
@@ -117,11 +143,18 @@ impl Write for Pipe {
     }
 
     fn flush(&mut self) -> io::Result<()> {
+        if self.broken.load(Ordering::SeqCst) {
+            self.out.clear();
+            return Err(io::ErrorKind::BrokenPipe.into());
+        }
         if !self.out.is_empty() {
             let _g = self.wlock.lock().unwrap_or_else(|p| p.into_inner());
             let r = self.tcp.write_all(&self.out);
             self.out.clear();
-            r?;
+            if let Err(e) = r {
+                self.broken.store(true, Ordering::SeqCst);
+                return Err(e);
+            }
         }
         self.tcp.flush()
     }
@@ -177,25 +210,73 @@ where
     }
 }
 
+/// The addresses of `host`. A lookup can block far longer than a caller may wait
+/// (mDNS names on a dead network), so it runs on its own thread, which ends by
+/// itself when the resolver gives up.
+fn resolve(host: &str, port: u16, deadline: Instant) -> Result<Vec<SocketAddr>, LinkError> {
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return Ok(vec![SocketAddr::new(ip, port)]);
+    }
+    let (tx, rx) = mpsc::sync_channel(1);
+    let name = host.to_owned();
+    thread::Builder::new()
+        .name("dspi-link-dns".into())
+        .spawn(move || {
+            let _ = tx.send((name.as_str(), port).to_socket_addrs().map(Iterator::collect::<Vec<_>>));
+        })
+        .map_err(|e| LinkError::Io(e.to_string()))?;
+    match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+        Ok(r) => r.map_err(|e| LinkError::Io(e.to_string())),
+        Err(mpsc::RecvTimeoutError::Timeout) => Err(LinkError::Timeout),
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(LinkError::Io("name lookup failed".into())),
+    }
+}
+
+/// The first of `addrs` to connect, with the time left shared out among them.
+fn connect_any(addrs: &[SocketAddr], deadline: Instant) -> Result<TcpStream, LinkError> {
+    let mut last = None;
+    for (a, left_to_try) in addrs.iter().zip((1..=addrs.len()).rev()) {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(LinkError::Timeout);
+        }
+        let share = u32::try_from(left_to_try).map_or(left, |n| left / n);
+        match TcpStream::connect_timeout(a, share) {
+            Ok(s) => return Ok(s),
+            Err(e) => last = Some(e),
+        }
+    }
+    Err(match last {
+        Some(e) if matches!(e.kind(), io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock) => LinkError::Timeout,
+        Some(e) => LinkError::Io(e.to_string()),
+        None => LinkError::Io("no address".into()),
+    })
+}
+
+/// NODELAY and SO_KEEPALIVE. Neither is worth failing a connection for.
+fn tune(tcp: &TcpStream) {
+    let _ = tcp.set_nodelay(true);
+    let keepalive = TcpKeepalive::new().with_time(KEEPALIVE_TIME);
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "android",
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "windows"
+    ))]
+    let keepalive = keepalive.with_interval(KEEPALIVE_INTERVAL);
+    if let Err(e) = SockRef::from(tcp).set_tcp_keepalive(&keepalive) {
+        log::warn!("dspi-link: no TCP keepalive: {e}");
+    }
+}
+
 impl WsConnector for TcpConnector {
     fn connect(&self, url: &str, protocol: &str) -> Result<WsPair, LinkError> {
+        let deadline = Instant::now() + self.connect_timeout;
         let (host, port) = authority(url).ok_or_else(|| LinkError::Io(format!("not a ws:// URL: {url}")))?;
-        let addrs: Vec<_> =
-            (host.as_str(), port).to_socket_addrs().map_err(|e| LinkError::Io(e.to_string()))?.collect();
-        let mut last = io::Error::new(io::ErrorKind::NotFound, "no address");
-        let mut tcp = None;
-        for a in &addrs {
-            match TcpStream::connect_timeout(a, self.connect_timeout) {
-                Ok(s) => {
-                    tcp = Some(s);
-                    break;
-                }
-                Err(e) => last = e,
-            }
-        }
-        let tcp = tcp.ok_or_else(|| LinkError::Io(last.to_string()))?;
-        let _ = tcp.set_nodelay(true);
-        tcp.set_read_timeout(Some(Duration::from_secs(10))).map_err(|e| LinkError::Io(e.to_string()))?;
+        let addrs = resolve(&host, port, deadline)?;
+        let tcp = connect_any(&addrs, deadline)?;
+        tune(&tcp);
         tcp.set_write_timeout(Some(WRITE_TIMEOUT)).map_err(|e| LinkError::Io(e.to_string()))?;
 
         let mut request = url.into_client_request().map_err(|e| LinkError::Handshake(e.to_string()))?;
@@ -205,7 +286,15 @@ impl WsConnector for TcpConnector {
         );
         let wlock = Arc::new(Mutex::new(()));
         let write_half = tcp.try_clone().map_err(|e| LinkError::Io(e.to_string()))?;
-        let pipe = Pipe { tcp, buffered: false, out: Vec::new(), wlock: Arc::clone(&wlock) };
+        let broken = Arc::new(AtomicBool::new(false));
+        let pipe = Pipe {
+            tcp,
+            buffered: false,
+            out: Vec::new(),
+            wlock: Arc::clone(&wlock),
+            broken: Arc::clone(&broken),
+            deadline: Some(deadline),
+        };
         let (mut reader, response) =
             tungstenite::client::client_with_config(request, pipe, Some(config())).map_err(handshake_error)?;
         match response.headers().get("Sec-WebSocket-Protocol").and_then(|v| v.to_str().ok()) {
@@ -213,16 +302,24 @@ impl WsConnector for TcpConnector {
             other => log::warn!("dspi-link: hub did not echo sub-protocol {protocol} (got {other:?})"),
         }
         reader.get_mut().buffered = true;
+        reader.get_mut().deadline = None;
         reader.get_ref().tcp.set_read_timeout(Some(READ_TICK)).map_err(|e| LinkError::Io(e.to_string()))?;
         let shutdown = write_half.try_clone().map_err(|e| LinkError::Io(e.to_string()))?;
         let writer = WebSocket::from_raw_socket(
-            Pipe { tcp: write_half, buffered: true, out: Vec::new(), wlock },
+            Pipe {
+                tcp: write_half,
+                buffered: true,
+                out: Vec::new(),
+                wlock,
+                broken: Arc::clone(&broken),
+                deadline: None,
+            },
             Role::Client,
             Some(config()),
         );
         Ok((
             Box::new(TcpSender { ws: Mutex::new(writer), shutdown }),
-            Box::new(TcpReceiver { ws: reader, close_code: None }),
+            Box::new(TcpReceiver { ws: reader, close_code: None, broken }),
         ))
     }
 }
@@ -246,8 +343,15 @@ impl WsSender for TcpSender {
     }
 
     fn close(&self, code: u16) {
-        {
-            let mut ws = self.ws.lock().unwrap_or_else(|p| p.into_inner());
+        // A writer stuck on a dead link holds the lock for up to WRITE_TIMEOUT.
+        // Then there is no use for a close frame, and the shutdown frees it.
+        let _ = self.shutdown.set_write_timeout(Some(CLOSE_WRITE_TIMEOUT));
+        let ws = match self.ws.try_lock() {
+            Ok(ws) => Some(ws),
+            Err(TryLockError::Poisoned(p)) => Some(p.into_inner()),
+            Err(TryLockError::WouldBlock) => None,
+        };
+        if let Some(mut ws) = ws {
             let _ = ws.close(Some(CloseFrame { code: CloseCode::from(code), reason: "".into() }));
             let _ = ws.flush();
         }
@@ -258,11 +362,16 @@ impl WsSender for TcpSender {
 struct TcpReceiver {
     ws: WebSocket<Pipe>,
     close_code: Option<u16>,
+    broken: Arc<AtomicBool>,
 }
 
 impl WsReceiver for TcpReceiver {
     fn recv(&mut self) -> WsRecv {
         loop {
+            // Read errors include our own failed pong: see Pipe::broken
+            if self.broken.load(Ordering::SeqCst) {
+                return WsRecv::Closed { code: self.close_code, reason: "write failed".into() };
+            }
             match self.ws.read() {
                 Ok(Message::Text(t)) => return WsRecv::Message(WsMessage::Text(t.as_str().to_owned())),
                 Ok(Message::Binary(b)) => return WsRecv::Message(WsMessage::Binary(b.to_vec())),
@@ -274,7 +383,8 @@ impl WsReceiver for TcpReceiver {
                     continue; // the next read finishes the close handshake
                 }
                 Err(tungstenite::Error::Io(e))
-                    if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) =>
+                    if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut)
+                        && !self.broken.load(Ordering::SeqCst) =>
                 {
                     return WsRecv::Idle
                 }
@@ -289,7 +399,85 @@ impl WsReceiver for TcpReceiver {
 
 #[cfg(test)]
 mod tests {
-    use super::authority;
+    use super::{authority, connect_any, tune, TcpConnector, WsConnector};
+    use crate::LinkError;
+    use socket2::SockRef;
+    use std::net::{TcpListener, TcpStream};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn wp_l1_tuned_sockets_keep_alive_and_no_delay() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let tcp = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        assert!(!SockRef::from(&tcp).keepalive().unwrap());
+        tune(&tcp);
+        assert!(SockRef::from(&tcp).keepalive().unwrap());
+        assert!(tcp.nodelay().unwrap());
+    }
+
+    /// F10's hypothesis: a timed-out write may have cut a frame in two, and
+    /// carrying on would desynchronise the stream for good.
+    #[test]
+    fn wp_l1_a_failed_write_breaks_the_pipe_for_good() {
+        use super::Pipe;
+        use std::io::Write;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{Arc, Mutex};
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let tcp = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let _peer_never_reads = listener.accept().unwrap();
+        tcp.set_write_timeout(Some(Duration::from_millis(20))).unwrap();
+        let broken = Arc::new(AtomicBool::new(false));
+        let mut pipe = Pipe {
+            tcp,
+            buffered: true,
+            out: Vec::new(),
+            wlock: Arc::new(Mutex::new(())),
+            broken: Arc::clone(&broken),
+            deadline: None,
+        };
+        pipe.write_all(&vec![0u8; 64 << 20]).unwrap();
+        assert!(pipe.flush().is_err(), "more than the socket buffers can hold");
+        assert!(broken.load(Ordering::SeqCst));
+        pipe.write_all(b"x").unwrap();
+        assert_eq!(pipe.flush().unwrap_err().kind(), std::io::ErrorKind::BrokenPipe, "nothing more goes out");
+    }
+
+    #[test]
+    fn wp_l1_a_spent_budget_connects_to_nothing() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let spent = Instant::now();
+        let e = connect_any(&[listener.local_addr().unwrap()], spent).err().unwrap();
+        assert_eq!(e, LinkError::Timeout);
+    }
+
+    #[test]
+    fn wp_l1_a_refused_port_is_an_io_error_not_a_timeout() {
+        let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let url = format!("ws://127.0.0.1:{port}/dspi/v1");
+        let c = TcpConnector { connect_timeout: Duration::from_secs(2) };
+        assert!(matches!(c.connect(&url, "dspi-link-1").err().unwrap(), LinkError::Io(_)));
+    }
+
+    #[test]
+    fn wp_l1_a_trickling_handshake_ends_at_the_deadline() {
+        use std::io::Write;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("ws://{}/dspi/v1", listener.local_addr().unwrap());
+        let feeder = std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            // Bytes keep coming, so no single read ever times out
+            let _ = s.write_all(b"HTTP/1.1 101 Switching Protocols\r\nX-Slow: ");
+            while s.write_all(b"x").is_ok() {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        });
+        let started = Instant::now();
+        let c = TcpConnector { connect_timeout: Duration::from_millis(100) };
+        assert_eq!(c.connect(&url, "dspi-link-1").err().unwrap(), LinkError::Timeout);
+        assert!(started.elapsed() < Duration::from_secs(3));
+        drop(feeder); // Ends by itself on the broken pipe
+    }
 
     #[test]
     fn authority_parses_hosts() {
