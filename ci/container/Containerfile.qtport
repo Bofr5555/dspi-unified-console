@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# The Linux and Windows port image (tag localhost/dspi-qtport:<n>; see images.conf):
+# Fedora 44, Rust with the windows-gnu and windows-msvc std, Qt 5 and 6, MinGW Qt,
+# NSIS, Wine, Xvfb. ci/container/Containerfile builds on it.
+#
+# :4 and earlier were built from files in a scratch area, in four steps, on the
+# moving tag fedora:44 and Rust `stable`. This is those four steps as one file,
+# with the base and the toolchain pinned. :4 had Rust 1.99.1. Compared with :4 by
+# `rpm -qa` on 2026-11-06: the same 694 packages, one version differs (tzdata).
+#
+# Sources: Fedora's repositories (dnf checks each package's signature against the
+# keys in the base image) and static.rust-lang.org. Fedora's mirrors keep only the
+# current update of a package, so package versions are as of the build and only the
+# base is pinned.
+FROM registry.fedoraproject.org/fedora:44@sha256:b3e011d47e686a89781495c9a87bc80349af742965e5d51e79cd51711982e4a2
+
+# The Rust version must match apps/android/rust-toolchain.toml and
+# apps/android/container/Containerfile. rustup-init's SHA-256 is the one published
+# at static.rust-lang.org/rustup/archive/<version>/<triple>/rustup-init.sha256.
+ARG RUSTUP_VERSION=1.29.2
+ARG RUSTUP_INIT_SHA256=5be191e8c70a5007074254cb74d78dbfdd25cd5a61c27de7b8e5410122ec24f4
+ARG RUST_TOOLCHAIN=1.99.1
+
+RUN dnf -y install --setopt=install_weak_deps=False \
+      gcc gcc-c++ cmake ninja-build make pkgconf-pkg-config git which file findutils \
+      libusb1-devel systemd-devel \
+      qt5-qtbase-devel qt5-qtdeclarative-devel qt5-qtquickcontrols2-devel qt5-qtsvg-devel \
+      qt5-qtquickcontrols2 qt5-qtgraphicaleffects \
+      qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtsvg-devel qt6-qtbase-private-devel qt6-qttools-devel \
+      mingw64-gcc mingw64-gcc-c++ mingw64-binutils mingw64-winpthreads-static mingw64-crt \
+      mingw64-qt5-qtbase mingw64-qt5-qtbase-devel mingw64-qt5-qtdeclarative mingw64-qt5-qtquickcontrols2 \
+      mingw64-qt5-qtsvg mingw64-qt5-qttools mingw64-qt5-qttools-tools mingw64-qt5-qtwinextras \
+      mingw64-qt6-qtbase mingw64-qt6-qtdeclarative mingw64-qt6-qtsvg mingw64-qt6-qttools mingw64-qt6-qtshadertools \
+      mingw64-qt6-qt5compat \
+      wine-core wine-common xorg-x11-server-Xvfb dejavu-sans-fonts google-noto-sans-fonts \
+      curl ca-certificates \
+      xwd ImageMagick mesa-dri-drivers mesa-libGL xdotool kf6-kwindowsystem-devel kf5-kwindowsystem-devel \
+      mingw32-nsis zip \
+      git-filter-repo \
+ && dnf clean all
+
+ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH=/opt/cargo/bin:$PATH
+RUN d=$(mktemp -d) \
+ && curl --proto '=https' --tlsv1.2 -fsSL -o "$d/rustup-init" \
+      "https://static.rust-lang.org/rustup/archive/$RUSTUP_VERSION/x86_64-unknown-linux-gnu/rustup-init" \
+ && echo "$RUSTUP_INIT_SHA256  $d/rustup-init" | sha256sum -c - \
+ && chmod +x "$d/rustup-init" \
+ && "$d/rustup-init" -y --no-modify-path --profile minimal --default-toolchain "$RUST_TOOLCHAIN" \
+ && rm -rf "$d" \
+ && rustup target add x86_64-pc-windows-gnu x86_64-pc-windows-msvc \
+ && chmod -R a+rwX /opt/cargo /opt/rustup

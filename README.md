@@ -134,11 +134,10 @@ Over Link neither applies: the origin session id decides. Details:
 ## Building
 
 The project's own builds run in containers; nothing is installed on the host.
-`ci/check.sh` runs each step below through `ci/run.sh`, which needs the image
-`localhost/dspi-coremerge:2` (`ci/container/Containerfile`, based on a local
-`dspi-qtport:4` whose Containerfile is **not** in this repository) and, for the
-`cross` profile, `localhost/dspi-termport-xwin:1`, also not defined here. A clean
-machine cannot recreate them from this repository yet.
+`ci/check.sh` runs each step below through `ci/run.sh`. Its images are listed in
+`ci/container/images.conf`, and `ci/container/build-images.sh` builds any that are
+missing from their committed Containerfiles. `ci/matrix.sh` does that too, then builds
+and tests every client from one commit and prints the result.
 
 `cargo` and `cmake` commands below run at the repository root and work the same
 with your own toolchain.
