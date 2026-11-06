@@ -1,174 +1,762 @@
-# One Rust core: the merge
+# One Rust core: design and work packages
 
-*Branch `core-merge`, started 2026-11-06.* This merges the repository's two
-Rust protocol cores into one:
+*Branch `core-merge`. Design 2026-11-06. Base: see section 4.*
+
+This plan merges the repository's two Rust protocol cores into one:
 
 - **Terminal crates** (`dspi-proto`, `dspi-transport`, `dspi-session`):
   nusb, constants generated from the firmware headers, GPL-3.0-or-later.
   They are the base.
-- **Desktop core** (`crates/dspi-core-linux`, package `dspi-core`): rusb,
-  hand-copied constants, a ~150-function C ABI used by the Qt app. It is
-  retired into the base.
-
-Background: `dspi-mobile/docs/RUST-CORE-CONSOLIDATION.md` (the study).
+- **Old desktop core** (`crates/dspi-core-linux`, now package
+  `dspi-core-linux`, library `dspi_core`): rusb, hand-copied constants, the
+  ~150-function C ABI the Qt app uses. It is retired into the base.
 
 The owner's order of work:
 1. Windows (done);
-2. parity audit;
+2. parity audit (`dspi-mobile/docs/FEATURE-PARITY.md`);
 3. **this merge**;
 4. Android's `dspi-ffi` onto the merged core;
-5. the iOS app onto it, through UniFFI Swift.
+5. the iOS app onto it, through UniFFI Swift on its own branch.
 
-The design aims to make 4 and 5 thin wrappers, and to keep a later
-web/wasm build possible.
+The design keeps steps 4 and 5 thin wrappers and leaves a web/wasm build
+possible later.
 
-## Layout
+Background reading:
+- `dspi-mobile/docs/RUST-CORE-CONSOLIDATION.md` (the study);
+- `dspi-mobile/docs/WIRE-FORMAT-COMPAT.md`;
+- Bofr5555/DSPi `Documentation/Features/{usb_midi_control_spec,extension_channel_spec,control_interfaces_spec}.md`.
+
+The work is split into work packages (WPs) for parallel agents. Each one
+gets [`WP-BRIEF.md`](WP-BRIEF.md).
+
+---
+
+## 1. Design
+
+### 1.1 Layout
 
 ```
 crates/
   dspi-proto      pure protocol. No I/O, no threads.
                   generated constants (bofr-main headers), bulk codec (V32),
                   wire_compat (V16..V33 read-only, normalised to V32),
-                  ext (extension channel codecs), frame (UART frame,
-                  CRC16, MIDI SysEx 7-bit packing and the decoder)
+                  ext (extension-channel codecs), frame (UART frame, CRC16,
+                  MIDI SysEx 7-bit packing and decoder)
   dspi-transport  the one Transport trait, TransportCaps, TransportError
-                  backends: usb (nusb; from_fd on Android/Linux),
-                  midi (sans-IO SysEx client + blocking driver over a pipe;
-                  midir ports behind feature `midir`), link (DSPi Link adapter,
-                  feature `link`), mock (scripted), fake (demo device)
+                  usb    nusb; UsbTransport::from_fd on Linux/Android
+                  midi   sans-IO MidiClient + blocking MidiTransport over an
+                         app-supplied MidiPipe; midir ports behind feature `midir`
+                  link   DSPi Link adapter (feature `link`)
+                  fake   the stateful demo device
+                  mock   scripted replies (awkward paths)
   dspi-link       DSPi Link client (WebSocket), unchanged
-  dspi-session    state machine + protocol operations: probe, DeviceState
-                  (the bulk image is the mirror), notifications with origin
-                  attribution, writes (confirmed, and a fast path), RTA engine,
-                  control surfaces, presets, filter files, AutoEQ
-  dspi-core       the embedder API: one object for a GUI or a binding.
-                  Device manager (scan, select, fd, transport, hotplug),
-                  notify/RTA threads, the console operations as plain Rust
-                  records (DspState, ...), JSON features
-  dspi-capi       C ABI over dspi-core for the Qt app: the old function names
-                  and repr(C) records, header include/dspi_core.h, library
-                  name dspi_core
-  dspi-cmd, dspi-tui, apps/terminal   unchanged consumers of the session
+  dspi-session    state machine + protocol operations: probe, DeviceState (the
+                  bulk image as mirror), notifications with origin, writes
+                  (confirmed, and the fast path), compat reads, ext probe,
+                  RTA engine, control surfaces (+ the editing model), presets,
+                  filter files, AutoEQ, channel clipboard
+  dspi-core       the embedder API: DspiCore, one object for a GUI or a
+                  binding. Records (DspState, ...), typed DspiError, listener
+                  traits, device manager, notify/RTA threads, JSON features,
+                  firmware files
+  dspi-capi       C ABI over dspi-core for the Qt app: the old names and
+                  #[repr(C)] records, header include/dspi_core.h; library name
+                  becomes dspi_core in WP Q3
+  dspi-cmd, dspi-tui, apps/terminal   the terminal, a direct session consumer
+  dspi-core-linux the old core; deleted by WP Q3
 ```
 
-Later on top of `dspi-core`:
-- `dspi-ffi`, UniFFI: Kotlin for Android, Swift for iOS;
-- `dspi-wasm`, over proto and session with an async driver.
+Later, on top of `dspi-core`:
+- `dspi-ffi`: UniFFI, giving Kotlin for Android and Swift for iOS (the
+  scaffold is WP F1);
+- `dspi-wasm`: over proto and session, with an async driver (not in this
+  plan).
 
-## The Transport trait
+### 1.2 The Transport trait (done in the base)
 
-Terminal's shape is kept: `&mut self`, `control_in` / `control_in_upto` /
-`control_out`, `max_transfer`, and `notifications()` returning a separate
-`NotificationSource`. Android patch 0004's Link needs are added as
-default methods, so existing implementors are unchanged:
+Terminal's shape is kept: `&mut self`; `control_in`, `control_in_upto` and
+`control_out`; `max_transfer`; and `notifications()`, which returns a
+separate `NotificationSource`. What the Link needs (from Android patch 0004)
+comes as default methods, so every existing implementor still compiles:
 
 | Method | Default (USB) | Used for |
 |---|---|---|
-| `caps() -> TransportCaps` | kind Usb, `chunked_bulk: true` | bulk reads and writes use single-shot 0xA0/0xA1 when false (Link spec 8.2) |
-| `session_id() -> Option<u16>` | `None` | echo attribution (below) |
-| `lock(reason, timeout)` / `unlock()` | no-op `Ok` | Link device lock around multi-step flows (spec 7.7) |
-| `NotificationSource::read_attributed` | `(read(), origin None)` | Link and MIDI supply the origin |
+| `caps() -> TransportCaps` | kind `Usb`, `chunked_bulk: true`, `remote: false` | when `chunked_bulk` is false, bulk goes single-shot as `0xA0`/`0xA1` (Link spec 8.2) |
+| `session_id() -> Option<u16>` | `None` | echo attribution |
+| `lock(reason, timeout)` / `unlock()` | no-op | the Link device lock around multi-step flows (spec 7.7) |
+| `NotificationSource::read_attributed` | `read()` with origin `None` | Link supplies the writer's session id |
 
-Errors stay one `TransportError`, with no backend types inside. Link
-statuses map onto it:
+`TransportError` holds no backend types. It gained `Denied`, `Locked` and
+`Remote` for non-USB links.
 
-| Link status | `TransportError` |
-|---|---|
-| ERROR, BLOCKED | `Stalled` (the RTA bands-all fallback depends on this) |
-| TIMEOUT | `TimedOut` |
-| NO_DEVICE | `Disconnected` |
-| DENIED | `Denied` |
-| LOCKED | `Locked` |
-| others | `Remote` |
+**Echo rule.** `dspi_transport::is_own_write(origin, session)` decides it,
+and `Notification::is_own_echo` applies it:
+- with no session id (USB, MIDI), every `HOST_SET` notification is ours;
+- with a session id (Link), only an origin equal to that id is ours;
+- origin 0 is never ours.
 
-**Echo attribution** (0004's rule): a notification whose source is
-`HOST_SET` is our own echo when:
-- the transport has no session id (USB: every host write is ours, as
-  before);
-- or its origin equals our session id (Link). Origin 0 is never ours.
+**Threads.** The old core shared one libusb handle between threads. In the
+new core the control path sits behind the `DspiCore` mutex, and
+notifications come from the separate `NotificationSource`. The mutex also
+serialises chunked bulk sessions, which any other request aborts on the
+device.
 
-`dspi-session` stores the origin on each `Notification` and decides this
-in one function.
+### 1.3 Sans-IO
 
-**Threads.** The desktop core shared one libusb handle between the GUI
-thread, the notify listener and the RTA worker. The merged core gets the
-same effect without `Sync` on the trait:
-- the control path is one `Mutex<Box<dyn Transport>>` in `dspi-core`; it
-  also serialises chunked bulk sessions, which any other request aborts on
-  the device;
-- notifications come from the separate `NotificationSource`.
-
-## Sans-IO
-
-What is pure today, and stays pure:
-- `dspi-proto`, all of it;
-- `DeviceState::apply(notification)`;
+These parts are pure:
+- all of `dspi-proto`;
+- `DeviceState::apply`;
 - notify decoding;
 - the RTA engine's `accept_*`;
-- the MIDI client: `MidiClient::request(..) -> bytes` and
-  `MidiClient::receive(bytes) -> events`. It never touches a port. The
-  blocking `MidiTransport` drives it over a `MidiPipe` that the app
-  supplies (Kotlin `MidiManager`, Swift CoreMIDI) or that midir supplies
-  (ALSA, WinMM, CoreMIDI).
+- the mirror codec `dspi_core::state`;
+- `MidiClient` (request to bytes, bytes to events). The blocking
+  `MidiTransport` drives it over a `MidiPipe`.
 
-The session's operations are written against `&mut dyn Transport` and block.
-An async driver for wasm means either an async twin of the trait or a
-request/reply split of those operations. Both build on the pure parts
-above and are not part of this merge.
+Session operations block on `&mut dyn Transport`. A wasm build needs an async
+twin of the trait, or a request/reply split of those operations. Both build on
+the pure parts. Neither is in this plan, but no WP may add I/O to a pure part.
 
-## The state mirror
+### 1.4 The mirror
 
-The device's bulk image (`BulkPacket`) is the single source of truth:
-- connect reads it;
-- notifications patch it at their offsets;
-- writes patch it once sent.
+`DspiCore` keeps a `DspState` record (`Inner::state`, returned by
+`get_state`) that holds the device's bulk image in `bulk_raw`.
+- `state::decode_bulk` fills the record from the image.
+- `state::encode_bulk` writes the record back into the image.
 
-`dspi-core`'s `DspState` (the record the GUIs read) is a view decoded from
-the image, plus the few values the image does not carry (preset directory,
-Core 1 mode, DAC mute status, control interfaces). It is checked against
-`dspstate_v32.json` (the Android fixture: the old core's decode of a real
-capture).
+The contract is in `crates/dspi-core/src/state.rs` (WP C0). It is the old
+core's proven model, now on the generated offsets.
 
-Writes from a GUI happen at slider rate, so `dspi-core` uses the session's
-fast path: encode, send, patch the mirror. It skips the Terminal CLI's
-confirming read-back and undo journal.
+How the mirror stays current:
+- **Setters** send through the session's fast path (`Session::send`, WP S1)
+  or a raw opcode where the registry has no path. They then update the
+  record field.
+- **Notifications** patch `encode_bulk(state)` at the packet's offset and
+  re-decode.
+- **Our own echoes** (§1.2) are applied too, because the device is
+  authoritative. They are not reported as external changes.
 
-## Wire formats
+The Terminal keeps `dspi_session::DeviceState` (a `BulkPacket`). The same
+notifications drive both.
 
-V32 is read and written. V16..V31 and newer images are read best-effort
-for display (`wire_compat`, ported from Android patch 0003, design in
-`dspi-mobile/docs/WIRE-FORMAT-COMPAT.md`). Such a state is never written
-back, and the compatibility verdict stays TOO_OLD or TOO_NEW.
+Some values are not in the image: the preset directory and names, the Core 1
+mode, DAC mute support, the control interfaces and subharm solo. They stay in
+the record, and `fetch_all` reads them one by one.
 
-## Extension channel
+### 1.5 Wire formats and the read-only mode
 
-`REQ_EXTENSION` 0x00 with the sub-command in `wValue`:
+V32 is read and written. Other wire formats are read best-effort, for display
+only (`dspi_proto::wire_compat`, in the base, from Android patch 0003):
+- older images (V16..V31) are mapped onto the V32 layout;
+- newer images keep their V32 prefix.
+
+Such a connection is **read-only**:
+- `Connection::writable()` is false;
+- every setter returns `DspiError::ReadOnly`;
+- `compat` is `COMPAT_FIRMWARE_TOO_OLD` or `COMPAT_FIRMWARE_TOO_NEW`;
+- `bulk_valid` is false, so the image is never written back.
+
+### 1.6 Extension channel
+
+`REQ_EXTENSION` 0x00 carries the sub-command in `wValue`:
 - `EXT_LIST` 0x0000;
 - `EXT_CROSSFEED_PAIR_MAP` 0x0001;
 - `EXT_CORE_VREG` 0x0002.
 
-Spec: `DSPi-bofr/Documentation/Features/extension_channel_spec.md`. A stall
-means "not supported", never an error worth retrying.
+The codecs are in `dspi_proto::ext` and the I/O in `dspi_session::ext`.
+`ExtState::probe` (WP S3) runs on connect (WP C1) and is kept on the
+connection. A stall means "not supported". It is never an error and is never
+retried.
 
-## Parity rows covered (FEATURE-PARITY.md, section 3)
+### 1.7 Trust boundaries and the panic policy
 
-The core-side rows of `dspi-mobile/docs/FEATURE-PARITY.md` (2026-11-06)
-and where each one lands:
-
-| Parity row | Lands in | Milestone |
+| Boundary | Untrusted input | Rule |
 |---|---|---|
-| 3.0 FFI over `dspi-session` | `dspi-core` (embedder API) + `dspi-capi`; UniFFI later on `dspi-core` | 2–3 |
-| 3.0 TUI logic GUIs need: control-surface editing model (`cs_model.rs`), channel clipboard | moved from `dspi-tui` to `dspi-session` | 2 |
-| 3.0 / 3.2 / 3.3 Read-only decoder for older wire formats | `dspi-proto::wire_compat`; display-only state in session and core | 1 (codec), 2 (state) |
-| 3.0 / 3.3 EXT_LIST probe on connect; pair map and core voltage in the device model | `dspi-proto::ext`; probe and `DeviceState` fields in session; C ABI accessors | 1 (codec), 2 (probe/state), 3 (C ABI) |
-| 3.0 / 3.2 / 3.3 `LinkClient` as a Transport | `dspi-transport::link` (feature `link`); mDNS browse is not in scope | 1 |
-| 3.0 USB MIDI SysEx transport | `dspi-proto::frame` + `dspi-transport::midi` (pipe; midir on desktop) | 1 |
-| 3.0 / 3.2 Stateful demo device | `dspi-transport::fake`: writes patch its image, it notifies, and it answers the extension channel | 1 |
-| 3.0 / 3.3 UF2 validation and flash writer | `dspi-core::firmware`: UF2 checks, bootloader-drive copy, bootloader entry | 3 |
-| 3.2 Input-source and device names (0x54–0x57), output latency, clock diagnostics (0x03, 0x82) | already in session; exposed through `dspi-core` and new C ABI functions | 3 |
-| 3.0 AutoEQ fetch injectable | not in scope (UI side, AutoEQ) unless trivial | — |
+| Device | every reply, the bulk image, notify packets, MIDI SysEx from the device | Check lengths before indexing. A short or odd reply is a typed error or "absent", never a panic. Nothing from the device sizes an allocation unchecked (`payload_length`, SysEx length). |
+| DSPi Link peer (hub) | the JSON control plane, binary frames, `bulk_b64`, device lists | As for the device, plus time bounds (`dspi-link`'s timeouts). A hub cannot make the client block forever or allocate without bound. |
+| App-supplied MIDI pipe | arbitrary bytes in any split, from Kotlin, Swift or midir | The decoder ignores foreign data. A malformed message fails the request in flight with an error. A buffer has a cap: the largest legal message is 7032 bytes, plus slack. |
+| C ABI callers | null pointers, short buffers, bad UTF-8, wrong handles | Checked before use. Every export runs inside `dspi_capi::guard` (`catch_unwind`), which returns the documented failure value. |
+| UniFFI callers (later) | values from Kotlin and Swift | UniFFI marshals them. Methods validate ranges (`InvalidArgument`). |
+| Files | `.dspipreset`, filter files, `.uf2`, AutoEQ data | Parse errors are values. A UF2 is fully validated before any byte goes to a drive. |
 
-## Status
+**Panic policy.**
+- No `unwrap`, no `expect`, no unchecked indexing and no unchecked
+  arithmetic on device, network, file or caller data.
+- `unwrap` is allowed only on an invariant the code itself establishes, with
+  a comment saying why.
+- Listener callbacks are wrapped (`Slot::call`).
 
-Milestones and their results are recorded at the end of this file as they
-land.
+### 1.8 Code-quality bar (reviewed per wave)
+
+- **CI gates:** `ci/check.sh` passes. That means `cargo fmt`, clippy at the
+  default lint set with `-D warnings`, the workspace tests, and the Windows
+  GNU cross-build.
+- **Errors:** typed enums (`TransportError`, `WriteError`, `DspiError`,
+  `FrameError`, ...), never strings or magic numbers. The one exception is
+  the C ABI, which keeps the old conventions.
+- **Docs:** every `pub` item in `dspi-core` and `dspi-capi` has a doc
+  comment that states what it does, its units and its failure modes.
+- **Tests:**
+  - each WP adds tests, and the test module or test name carries the WP id
+    (for example `mod tests_wp_c3`, `fn wp_c3_master_volume_round_trips`);
+  - tests run without a device, against `FakeDevice` (WP T4),
+    `MockTransport` or fixtures.
+- **Skeleton markers:** each `todo!("WP xx")` and `#[ignore = "WP xx"]` is
+  removed by the WP it names. After wave 4,
+  `grep -rn 'todo!("WP\|ignore = "WP'` finds nothing.
+- **Dependencies:** a new dependency needs a line in the WP report saying
+  why. No unpinned git dependencies.
+
+### 1.9 Fuzz and property tests
+
+These tests use `proptest`, which runs on stable inside the normal test run.
+`ci/check.sh --step proptest` runs them longer, with 20 000 cases.
+`cargo-fuzz` targets can come later under `fuzz/`. They need nightly, so they
+will not be a gate.
+
+| Target | Property | Lives in | WP |
+|---|---|---|---|
+| `Frame::decode` | never panics on any bytes; `decode(encode(f)) == f` | `crates/dspi-proto/tests/proptest_frame.rs` | P1 |
+| `SysexDecoder::feed` | never panics on any bytes in any split; a valid message inside noise is found exactly once | same | P1 |
+| `pack7` / `unpack7` | round trip; `unpack7` never panics | same | P1 |
+| `wire_compat::normalize_bytes` / `normalize` | never panics on any bytes or length; for V16..V31 images, the header and the fields both layouts share agree after mapping | `crates/dspi-proto/tests/proptest_wire.rs` | P1 |
+| `BulkPacket::decode`, `WireHeader::decode` | never panic | same | P1 |
+| `dspi_session::notify::decode` | never panics; `DeviceState::apply` of any decoded packet never panics | `crates/dspi-session/tests/proptest_notify.rs` | P1 |
+| `MidiClient::receive` | never panics; replies match their tags | `crates/dspi-transport/src/midi.rs` tests | T2 |
+| `state::decode_bulk` / `encode_bulk` | `decode(encode(decode(x)))` equals `decode(x)` for random V32 images | `crates/dspi-core/src/state.rs` tests | C0 |
+| `uf2_inspect` | never panics on any bytes | `crates/dspi-core/src/firmware.rs` tests | C11 |
+| C ABI | null and short-buffer calls return the failure value | `crates/dspi-capi` tests | Q2a, Q2b |
+
+### 1.10 Shared files
+
+These files belong to the base. WPs change them only additively, and list
+each change in their report; the reviewer merges them:
+- `Cargo.toml` (the workspace's and each crate's);
+- `Cargo.lock`, which is regenerated on merge;
+- the `crates/*/src/lib.rs` module lists;
+- `crates/dspi-core/src/{lib.rs,records.rs,consts.rs,error.rs,callbacks.rs}`.
+
+New records and new `DspiError` variants count as additive. A WP that needs
+to change `Inner` or `Connection` says so in its report rather than working
+around the need.
+
+---
+
+## 2. Work packages
+
+**For every WP:**
+- Branch `wp/<id>` from `core-merge`. The coordinator creates the worktree.
+- Run `ci/check.sh --crate <crate>` for every crate touched. The reviewer
+  runs the full `ci/check.sh` on the merged wave.
+- Report in the format in `WP-BRIEF.md`.
+
+The interfaces are in the skeleton; "Implements" points to them. A WP may add
+private helpers and tests freely. It adds public items beyond its interface
+only with a justification in its report.
+
+Sizes are in agent-days.
+
+### Wave 1 (depends on the base only)
+
+**P1: Property tests for the codecs.** Size 0.5.
+- **Owns:**
+  - `crates/dspi-proto/tests/proptest_frame.rs`;
+  - `crates/dspi-proto/tests/proptest_wire.rs`;
+  - `crates/dspi-session/tests/proptest_notify.rs`.
+- **May fix** panics it finds in `crates/dspi-proto/src/{frame.rs,wire_compat.rs,wire.rs}`
+  and in `decode` in `crates/dspi-session/src/notify.rs`.
+- **Implements:** the P1 rows of §1.9.
+- **Done when:**
+  - every target exists;
+  - every panic found is fixed and has a regression test;
+  - `ci/check.sh --crate dspi-proto --crate dspi-session` passes.
+- **Parity:** none (hardening).
+
+**S1: Session fast write.** Size 0.5.
+- **Owns:** `crates/dspi-session/src/fast.rs`.
+- **Implements:** `Session::send`, documented in the file. It goes through
+  the registry the way `Session::write` does: `by_path`, `check_available`,
+  `check_indices`, `kind.validate`, `build_wvalue`, `repr().encode`. EQ
+  fields are written as whole bands.
+- **Done when:**
+  - a scalar costs one transfer (assert with `MockTransport::log_handle`);
+  - an EQ scalar costs one read and one write;
+  - write-as-read stores `last_write_status`;
+  - its errors are the same as `write`'s.
+- **Parity:** prerequisite of 3.0 "FFI".
+
+**S2: Compat bulk read and a tolerant probe.** Size 1.
+- **Owns:** `crates/dspi-session/src/compat.rs`,
+  `crates/dspi-session/src/probe.rs`.
+- **Implements:** `compat::read_bulk_any` and `compat::read_bulk_bytes`.
+  The bulk read is chunked and sized by `wire_compat::image_length`, or
+  single-shot when `!caps().chunked_bulk`.
+- **Adds:** a probe entry point that returns `Capabilities` for firmware of
+  another wire format instead of refusing it. It picks the public name and
+  reports it. The existing `probe` keeps its behaviour for the Terminal.
+- **Done when:** tests on `MockTransport` cover a V28 image, a V33 image
+  (which reads past 6136 bytes) and the single-shot path.
+- **Parity:** 3.0, 3.2 and 3.3, "read-only decoder for older wire formats".
+
+**S3: Extension probe in the session.** Size 0.5.
+- **Owns:** `crates/dspi-session/src/ext_state.rs`,
+  `crates/dspi-session/src/ext.rs`.
+- **Implements:** `ExtState::probe` and `has`.
+- **Done when:**
+  - stock firmware probes as an empty state;
+  - a K340 gives the list, the pair map and the vreg status;
+  - a stall is never an error, and a disconnect is.
+- **Parity:** 3.0 and 3.3, "EXT_LIST probe on connect".
+
+**S4: Move the control-surface editing model into the session.** Size 1.
+- **Owns:**
+  - `crates/dspi-session/src/cs_model.rs`;
+  - `crates/dspi-tui/src/settings/cs_model.rs` (deleted or re-exported);
+  - `crates/dspi-tui/src/settings/{mod.rs,surfaces.rs}` and
+    `crates/dspi-tui/src/settings/surfaces/*.rs`, for imports only.
+- **Moves** the part that does not depend on the TUI (data, validation, op
+  application). TUI-only types (`Cx`, `SessionReply`) stay in the TUI behind
+  an adapter. The tests move with the code.
+- **Done when:** the TUI behaves as before (its tests pass with only path
+  changes) and the session API is documented.
+- **Parity:** 3.0, "TUI logic GUIs need: CS editing model".
+
+**T1: USB from a file descriptor, and Android gating.** Size 0.5.
+- **Owns:** `crates/dspi-transport/src/usb.rs`.
+- **Implements:** `UsbTransport::from_fd`, which calls
+  `nusb::Device::from_fd` and claims interface 2.
+- **Android:** `list_devices` and `open*` return an empty list or
+  `NotFound` without calling `nusb::list_devices`, which does not exist
+  there. The study's ~50-line diff for this was on the tmpfs scratch and is
+  gone; RUST-CORE-CONSOLIDATION.md §5.2 describes it.
+- **Done when:** `ci/check.sh --step android` gets past `dspi-transport`.
+  It fails there today.
+- **Parity:** prerequisite of step 4.
+
+**T2: MIDI SysEx client and transport.** Size 1.
+- **Owns:** `crates/dspi-transport/src/midi.rs`, except the `midir_port`
+  module, whose signatures stay for T3.
+- **Implements:** `MidiClient`, `MidiInput` and `MidiTransport`, following
+  the docs in the file and spec section 5:
+  - one request in flight, with tags 1..0x7E;
+  - a `0x7F` reply, or an error with the request's tag, fails the request
+    in flight;
+  - `BUSY`, `BULK_LOCKED` and `CRC_ERROR` are retried;
+  - `ERROR` maps to `Stalled`;
+  - requests have timeouts;
+  - notifications come through `NotificationSource`.
+- **Done when:**
+  - tests drive `MidiTransport` against an in-process fake device that
+    speaks SysEx, built on `dspi_proto::frame`;
+  - they cover GET, SET, bulk `0xA0`/`0xA1`, a notification between
+    replies, a CRC error retried, and a timeout;
+  - the proptest row for `MidiClient::receive` (§1.9) is covered.
+- **Parity:** 3.0, "USB MIDI SysEx transport".
+
+**T4: The stateful demo device.** Size 1.
+- **Owns:** `crates/dspi-transport/src/fake.rs`.
+- **Implements:** `FakeDevice::{new, demo}` and its `Transport` impl.
+  - It bundles `tests/fixtures/link/device/{platform,bulk_v32}.bin` with
+    `include_bytes!`.
+  - It answers:
+    - the platform, firmware-version and build-info reads;
+    - bulk `0xA0`, and `0xA2` chunked (offset in `wValue`, per the bulk
+      chunking spec);
+    - bulk writes `0xA1` and `0xA3`;
+    - `REQ_GET_STATUS`;
+    - the preset directory and names.
+  - Scalar writes that land at a bulk offset patch the image and queue a
+    `PARAM_CHANGED` with source `HOST_SET`. Find each offset by comparing
+    with the old core's `encode`; a table is fine.
+  - With `options.extensions` set, it answers `EXT_LIST`, the pair map and
+    vreg.
+  - It stalls on anything unknown.
+- **Done when:**
+  - the Terminal's `probe` and `read_bulk` succeed against
+    `FakeDevice::demo()`;
+  - a master-volume write reads back and notifies.
+- **Parity:** 3.0 and 3.2, "stateful demo device".
+
+**T5: DSPi Link transport.** Size 1.
+- **Owns:** `crates/dspi-transport/src/link.rs`.
+- **Implements:** `map_status` and `LinkTransport`.
+- **Input:** `~/prog/dspi-mobile/dspi-android/rust/dspi-ffi/src/link.rs`.
+- **Done when:** tests run against `dspi-link`'s fake hub (a
+  dev-dependency with feature `fake-hub`; fixtures in `tests/fixtures/link`)
+  and cover:
+  - a bulk read, single-shot or from the snapshot;
+  - a SET;
+  - a notification with its origin;
+  - the lock;
+  - the status mapping.
+- **Parity:** 3.0, 3.2 and 3.3, "`LinkClient` → `Transport`". mDNS browse is
+  not in scope.
+
+**C0: The mirror codec.** Size 1.
+- **Owns:** `crates/dspi-core/src/state.rs`, and additions to
+  `crates/dspi-core/src/consts.rs`.
+- **Implements:** `default_state`, `apply_platform`, `decode_bulk` and
+  `encode_bulk`.
+- **Inputs:**
+  - the old codec in `crates/dspi-core-linux/src/{protocol.rs,state.rs,types.rs}`;
+  - the `dspi_proto::generated` offsets: `SECTIONS`, `wire::*` and the
+    `*_FIELDS` tables.
+- **Done when:**
+  - the capture decodes to `tests/fixtures/device/dspstate_v32.json` field
+    for field (camelCase names);
+  - `default_state()` equals `dspstate_default.json`;
+  - the round-trip property in §1.9 holds;
+  - the two `#[ignore = "WP C0"]` tests in `lib.rs` are un-ignored.
+- **Parity:** prerequisite of everything in `dspi-core`.
+
+**C11: Firmware files and the bootloader drive.** Size 1.
+- **Owns:** `crates/dspi-core/src/firmware.rs`.
+- **Implements:** `uf2_inspect`, `bootloader_counts`, `bootloader_drives`
+  and `flash_to_drive`.
+- **Inputs:**
+  - `apps/desktop/qt/src/FirmwareUpdater.cpp`, for drive discovery on
+    Linux, macOS and Windows, and the sync rules;
+  - the Android app's Kotlin UF2 validator (in `dspi-mobile/dspi-android`;
+    search for `Uf2`).
+- **Constraints:**
+  - nusb enumeration is gated off on Android;
+  - drive tests use a temp dir under `$TMPDIR` (on `~/.cache` in the
+    container) that contains an `INFO_UF2.TXT`.
+- **Done when:** UF2 tests cover an RP2040 image, an RP2350 image, a
+  truncated file, a wrong family, and garbage (proptest).
+- **Parity:** 3.0 and 3.3, "UF2 validation / flash writer".
+
+**C12: Curves and stateless helpers.** Size 0.5.
+- **Owns:** `crates/dspi-core/src/curves.rs`.
+- **Implements:** every function in that file.
+- **Inputs:** the old `dsp_math.rs`, and `dspi_proto::dsp`. Prefer
+  `dspi_proto::dsp`, and keep the 201-point grid.
+- **Done when:** values match the old core's to within 1e-6 dB on its test
+  bands, with its tests ported.
+- **Parity:** none (the C ABI needs it).
+
+**Q1: The C ABI's records and header.** Size 1.
+- **Owns:**
+  - `crates/dspi-capi/src/types.rs`;
+  - `crates/dspi-capi/build.rs`;
+  - `crates/dspi-capi/cbindgen.toml`;
+  - `crates/dspi-capi/include/`;
+  - additions to `crates/dspi-capi/Cargo.toml` (cbindgen as a
+    build-dependency).
+- **Implements:**
+  - the `#[repr(C)]` structs of the old ABI, with identical layout:
+    `DspState`, `FilterParams`, `SystemStatus`, ... and the `notify`,
+    `rta`, `siggen` and `stats` records;
+  - `From<&dspi_core::records::X>` conversions;
+  - cbindgen writing `include/dspi_core.h`, keeping the old `build.rs`'s
+    workaround for cross builds.
+- **Done when:**
+  - a test asserts `size_of`, `align_of` and `offset_of` against the old
+    crate's types for every shared struct;
+  - the struct section of the generated header equals the old header's,
+    apart from additions.
+- **Parity:** 3.0 "FFI", C side.
+
+### Wave 2 (needs wave 1 merged)
+
+Every `dspi-core` WP:
+- tests against `FakeDevice` (T4), attached with `DspiCore::attach`;
+- writes the mirror with C0's codec;
+- checks `Inner::writable_conn` before any write.
+
+**C1: Devices and transports.** Size 1.
+- **Owns:** `crates/dspi-core/src/device.rs`.
+- **Implements:**
+  - discovery through nusb: VID `2E8B` (and the legacy VID), PID `FEAA`,
+    and the count of DSPis it cannot open;
+  - `select_device`, `open_fd`, `open_transport`, `open_demo`,
+    `open_midi` and `disconnect`;
+  - hotplug polling with auto-reconnect;
+  - `preamp_max_db`.
+- **Connect sequence:**
+  1. Probe, with S2's tolerant probe.
+  2. Build the `Session`.
+  3. Start the notification reader, with the `NotifyListener` waker.
+  4. Run `ExtState::probe`.
+- **Deps:** T1, T2, T4, S2, S3, C0.
+- **Parity:** 3.0 "FFI"; 3.3 "auto-reconnect" (core side).
+
+**C2: Connect, fetch, state.** Size 1.
+- **Owns:** `crates/dspi-core/src/connect.rs`.
+- **Implements:** `fetch_all`, `refresh_params`, `apply_all_params`,
+  `fetch_status`, `get_state`, `max_delay_ms` and `clear_clips`.
+  - `fetch_all` reads through `compat::read_bulk_any`. It sets `compat`,
+    `wire_read` and the read-only mode (§1.5), then reads the per-item
+    values.
+  - `apply_all_params` refuses unless the connection is writable.
+  - Over Link, bulk reads are single-shot.
+- **Deps:** C0, S2, T4.
+- **Parity:** 3.2 "read-only mode for older firmware".
+
+**C3: DSP parameters.** Size 1.
+- **Owns:** `crates/dspi-core/src/params.rs`.
+- **Implements:** its 37 methods. Each one:
+  1. checks `writable_conn`;
+  2. sends through S1's fast path;
+  3. updates the record and `bulk_raw`.
+- **Input:** the old core's `commands.rs`, for semantics (units, clamps,
+  return codes).
+- **Deps:** C0, S1, T4.
+
+**C4: Effects parameters.** Size 0.5.
+- **Owns:** `crates/dspi-core/src/params_fx.rs`.
+- **Implements:** its 12 methods, under the same rules as C3.
+- **Deps:** C0, S1, T4.
+
+**C5: Presets.** Size 1.
+- **Owns:** `crates/dspi-core/src/presets.rs`.
+- **Implements:**
+  - save, load, copy, delete and rename a preset;
+  - the directory, startup mode, save and load params, factory reset;
+  - the baseline and diff (`preset_dirty`, `preset_changes`).
+- Load and factory reset run under the Link device lock.
+- **Inputs:** the old `presetdiff.rs`; the session's `PresetSnapshot::diff`.
+- **Deps:** C0, T4.
+
+**C6: Hardware configuration.** Size 1.
+- **Owns:** `crates/dspi-core/src/hardware.rs`.
+- **Implements:** its 35 methods. Status bytes map to `Refused`. The Core 1
+  conflict check uses the session's `core1_conflict`.
+- **Deps:** C0, S1, T4.
+
+**C7: Notifications and the monitor.** Size 1.
+- **Owns:** `crates/dspi-core/src/notify.rs`,
+  `crates/dspi-core/src/monitor.rs`.
+- **Implements:**
+  - `set_notify_listener`;
+  - `process_notifications`:
+    - returns the `NotifyResult` flags the old core returned;
+    - applies the echo rule (§1.2, §1.4);
+    - forces a bulk re-read on a sequence gap;
+    - on a read-only connection, re-reads instead of patching (patch
+      0003);
+  - `monitor_read` and `monitor_clear`.
+- **Input:** the old `notify.rs` and `monitor.rs`.
+- **Deps:** C0, T4.
+
+**C8: Extension channel, names, diagnostics.** Size 0.5.
+- **Owns:** `crates/dspi-core/src/ext.rs`, `crates/dspi-core/src/info.rs`.
+- **Implements:**
+  - the pair map, `ext_status` and the core vreg;
+  - the input-source and device names, output latency and clock
+    diagnostics, through the registry paths.
+- **Deps:** S3, C0, T4.
+- **Parity:** 3.2 "extension channel" (core side); "input-source names,
+  device name, output latency, clock diagnostics".
+
+**C9: Spectrum analyser.** Size 1.
+- **Owns:** `crates/dspi-core/src/rta.rs`.
+- **Implements:** `rta_*` on the session's `RtaEngine`:
+  - a worker thread takes the core lock for each poll and wakes the
+    `RtaListener`;
+  - on `Stalled` (Link), it falls back from bands-all;
+  - the records match the old ones.
+- **Deps:** T4.
+
+**C10: Signal generator and statistics.** Size 0.5.
+- **Owns:** `crates/dspi-core/src/stats.rs`.
+- **Implements:** `siggen_*`, the statistics, and the S/PDIF RX status.
+- **Deps:** T4.
+
+**C13: Configuration and filter files.** Size 1.
+- **Owns:** `crates/dspi-core/src/files.rs`.
+- **Implements:** `config_export`, `config_import`, `config_inspect`,
+  `filters_export`, `filters_inspect` and `filters_import`.
+  - They keep the old core's JSON shapes, which the Qt app parses.
+  - Use the session's `preset_file` and `filterfile` where their output is
+    identical.
+- **Tests:** against `tests/fixtures/*Filters.txt`, plus the old core's
+  tests.
+- **Deps:** C0.
+
+**C14: Control surfaces for the editor.** Size 1.
+- **Owns:** `crates/dspi-core/src/cs.rs`.
+- **Implements:** `cs_fetch`, `cs_snapshot`, `cs_apply` and `cs_pin_uses`,
+  on the session's CS model (S4).
+  - The JSON ops are the old core's `cs.rs` ops, which the Qt
+    `CsController` sends.
+- **Deps:** S4, T4.
+
+**T3: midir ports.** Size 0.5.
+- **Owns:** the `midir_port` module of `crates/dspi-transport/src/midi.rs`,
+  and nothing else in that file.
+- **Implements:** `list_ports` and `open`, over ALSA, WinMM and CoreMIDI,
+  matching ports named "DSPi Control".
+- **Done when:**
+  - it builds on Linux and Windows GNU with `--features midir`;
+  - its tests run without a device, using a fake at the pipe level.
+- **Deps:** T2.
+
+**S5: Move the channel clipboard into the session.** Size 0.5.
+- **Owns:**
+  - `crates/dspi-session/src/clipboard.rs`;
+  - `crates/dspi-tui/src/screens/clipboard.rs`;
+  - the import lines in `crates/dspi-tui/src/screens/{mod.rs,matrix.rs}`
+    and `crates/dspi-tui/src/live.rs`.
+- **Deps:** S4, because both touch the same TUI tree.
+- **Parity:** 3.0 "channel clipboard".
+
+### Wave 3
+
+**C15: DSPi Link in the core.** Size 1.
+- **Owns:** `crates/dspi-core/src/link.rs`.
+- **Implements:**
+  - `link_connect`, `link_pair`, `link_devices`, `link_status`,
+    `link_close` and `set_link_listener`;
+  - `link_select_device`, which opens a `LinkTransport` through C1's
+    `open_transport`;
+  - the module's free functions.
+- **Input:** the link part of the Android `dspi-ffi/src/core.rs`.
+- **Deps:** T5, C1.
+
+**Q2a: C ABI, part 1.** Size 1.
+- **Owns:** `crates/dspi-capi/src/fns_device.rs`.
+- **Implements:** the C functions for device, connect, params, params_fx,
+  presets and curves. Each one:
+  - runs in `guard`;
+  - keeps the old name, signature and failure value (see
+    `crates/dspi-core-linux/src/lib.rs`).
+- **Deps:** Q1, C0–C5, C12.
+
+**Q2b: C ABI, part 2.** Size 1.
+- **Owns:** `crates/dspi-capi/src/fns_misc.rs`.
+- **Implements:** the C functions for hardware, notify, monitor, RTA,
+  siggen/stats, files and CS. It also adds new functions for the extension
+  channel, names, diagnostics, firmware and the demo device; these are
+  additions to the header.
+- **Deps:** Q1, C6–C11, C13, C14.
+
+**R1: The terminal on every transport.** Size 1.
+- **Owns:** `apps/terminal/src/{main.rs,doctor.rs}`, and the connect code
+  in `crates/dspi-tui/src/shell/`. List the files touched in the report.
+- **Implements:**
+  - `--demo` (FakeDevice), `--midi [PORT]` (midir) and
+    `--link HOST[:PORT]`;
+  - the ext probe shown on the overview line;
+  - the echo rule;
+  - auto-reconnect after a replug.
+- **Deps:** T2, T3, T4, T5, S3.
+- **Parity:** 3.3 "probe on connect" (probe side), "auto-reconnect", "Link
+  client" (core side).
+
+**F1: Binding readiness (UniFFI).** Size 1.
+- **Owns:**
+  - a `uniffi` feature in `crates/dspi-core/Cargo.toml`;
+  - `cfg_attr(feature = "uniffi", ...)` derives in `records.rs`, `error.rs`
+    and `callbacks.rs`, and the exports on `DspiCore`;
+  - a new crate `crates/dspi-ffi`: a cdylib with the UniFFI scaffolding, on
+    UniFFI 0.29.x as Android pins.
+- **Test:** runs `uniffi-bindgen` for Kotlin and Swift in the container,
+  and compiles the output where it can (Kotlin with `kotlinc`, if the image
+  has it; otherwise generation only).
+- **Deps:** all of C0–C15.
+- **Parity:** prerequisite of steps 4 and 5.
+
+### Wave 4
+
+**Q3: Switch the Qt app and delete the old core.** Size 1.
+- **Owns:**
+  - `crates/dspi-capi/Cargo.toml` (library name becomes `dspi_core`);
+  - `apps/desktop/qt/CMakeLists.txt`;
+  - `apps/desktop/qt/src/*.{cpp,h}`, only where the ABI changed;
+  - the build scripts under `apps/desktop/packaging/**`
+    (`-p dspi-capi`);
+  - `ci/check.sh` (the qt step and the exclusions);
+  - the workspace `Cargo.toml` members;
+  - deleting `crates/dspi-core-linux`.
+- **Done when:**
+  - the Qt 6 build runs offscreen on the demo device (an app flag or an
+    environment variable; the WP picks one and reports it);
+  - Qt 5 builds;
+  - `build-windows.sh` (Windows GNU) builds;
+  - the `windows-msvc` step builds the `dspi_core` DLL;
+  - the macOS VM check runs if the coordinator schedules it (one heavy job
+    at a time; GUI through `launchctl asuser`).
+- **Deps:** Q2a, Q2b, F1, R1.
+
+**D1: Docs.** Size 0.5.
+- **Owns:** `README.md`, `docs/PORTABILITY.md`, and section 4 of this file.
+- **Implements:** the layout, builds, crates and licences after the merge,
+  and the updated parity table.
+- **Deps:** Q3.
+
+### Wave summary
+
+| Wave | WPs (run in parallel) |
+|---|---|
+| 1 | P1, S1, S2, S3, S4, T1, T2, T4, T5, C0, C11, C12, Q1 |
+| 2 | C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C13, C14, T3, S5 |
+| 3 | C15, Q2a, Q2b, R1, F1 |
+| 4 | Q3, D1 |
+
+Within a wave, no two WPs own the same file. Shared files (§1.10) get
+additive edits only.
+
+### Review gates
+
+1. **Before wave 1:** a review of the plan, and an adversarial review of the
+   design and the base.
+2. **After each wave:**
+   - the full `ci/check.sh` on the merged result, plus `--step android`,
+     `--step wasm` and `--step windows-msvc` from wave 2 on;
+   - a code-quality review against §1.8;
+   - an adversarial review of the new code against §1.7.
+
+   Fix-ups go back to the WP's branch.
+3. **Before `core-merge` goes to `main`:** a final full pass with
+   `ci/check.sh --all`.
+
+---
+
+## 3. Parity rows covered (FEATURE-PARITY.md, section 3)
+
+| Parity row | WP |
+|---|---|
+| 3.0 FFI over `dspi-session` | C0–C15 (API), Q1/Q2a/Q2b (C), F1 (UniFFI) |
+| 3.0 TUI logic GUIs need: CS editing model, channel clipboard | S4, S5. The bootloader watch is C11 and curve sampling is C12. |
+| 3.0 / 3.2 / 3.3 Read-only decoder for older wire formats | base (`wire_compat`), S2, C2, C7 |
+| 3.0 / 3.3 EXT_LIST probe on connect, ext state in the device model | base (codecs), S3, C1, C8, R1 |
+| 3.0 / 3.2 / 3.3 `LinkClient` as a Transport | T5, C15, R1. mDNS browse is not in scope. |
+| 3.0 USB MIDI SysEx transport | base (`frame`), T2, T3 |
+| 3.0 / 3.2 Stateful demo device | T4, C1 (`open_demo`), R1 (`--demo`) |
+| 3.0 / 3.3 UF2 validation and flash writer | C11; bootloader entry is C6 |
+| 3.2 Input-source and device names, output latency, clock diagnostics | C8, Q2b |
+| 3.3 Auto-reconnect | C1 (core), R1 (terminal) |
+| 3.0 AutoEQ fetch injectable | not in scope |
+
+---
+
+## 4. Status
+
+**Base** (`core-merge`, up to the commit that adds this file):
+- **proto:** the `ext` codecs, `wire_compat`, and `frame` (checked against
+  the firmware's vectors).
+- **transport:** the trait extensions, and skeletons for `fake`, `midi`,
+  `link` and `from_fd`.
+- **session:**
+  - `Notification.origin` and `is_own_echo`;
+  - `transport_mut`;
+  - skeletons for `fast`, `compat`, `ext_state`, `cs_model` and
+    `clipboard`.
+- **dspi-core:** the full skeleton: records, errors, listeners, `Inner`,
+  `Connection`, `attach`.
+- **dspi-capi:** a skeleton with `guard`.
+- **old core:** package renamed to `dspi-core-linux`.
+- **ci/:** `run.sh`, `check.sh` and `container/Containerfile`.
+
+**Base checks** (2026-11-06, `ci/check.sh`):
+
+| Step | Result |
+|---|---|
+| fmt | OK |
+| clippy | OK |
+| test | 1340 passed, 0 failed, 33 ignored (the skeleton's, plus the Terminal's own) |
+| windows-gnu | OK |
+| windows-msvc | OK |
+| wasm | OK (`dspi-proto`) |
+| qt (Qt 6 against the old core) | OK |
+| android | fails in `dspi-transport` (`nusb::list_devices`); this is WP T1's done criterion |
