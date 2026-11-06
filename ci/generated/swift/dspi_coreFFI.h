@@ -494,9 +494,74 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_config_import(void*_Nonnull ptr, 
 void uniffi_dspi_core_fn_method_dspicore_copy_preset(void*_Nonnull ptr, uint8_t source, uint8_t dest, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_CLOSE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_CLOSE
+void uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_close(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_COMMIT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_COMMIT
+void uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_commit(void*_Nonnull ptr, RustBuffer typed, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_KEEP
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_KEEP
+void uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_keep(void*_Nonnull ptr, uint32_t soak_s, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_OPEN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_OPEN
+void uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_open(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_POLL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_POLL
+RustBuffer uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_poll(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_START
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_START
+void uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_start(void*_Nonnull ptr, uint8_t target, uint32_t soak_s, RustBuffer typed, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_VIEW
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_VIEW
+RustBuffer uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_view(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_DEMO_EVENT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_DEMO_EVENT
+void uniffi_dspi_core_fn_method_dspicore_core_vreg_demo_event(void*_Nonnull ptr, RustBuffer event, uint32_t seconds, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_MANUAL_AUTO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_MANUAL_AUTO
+void uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_auto(void*_Nonnull ptr, int8_t on, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_MANUAL_CLEAR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_MANUAL_CLEAR
+void uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_clear(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_MANUAL_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_MANUAL_SET
+void uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_set(void*_Nonnull ptr, uint8_t value, RustBuffer typed, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_MANUAL_TRIAL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_MANUAL_TRIAL
+void uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_trial(void*_Nonnull ptr, uint8_t value, RustBuffer typed, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_OP
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_OP
-void uniffi_dspi_core_fn_method_dspicore_core_vreg_op(void*_Nonnull ptr, uint8_t op, uint8_t value, RustCallStatus *_Nonnull out_status
+void uniffi_dspi_core_fn_method_dspicore_core_vreg_op(void*_Nonnull ptr, uint8_t op, uint8_t value, RustBuffer word, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_TRIAL_END
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_TRIAL_END
+void uniffi_dspi_core_fn_method_dspicore_core_vreg_trial_end(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_APPLY
@@ -1553,9 +1618,32 @@ RustBuffer uniffi_dspi_core_fn_func_link_fetch_info(RustBuffer host, uint16_t po
 RustBuffer uniffi_dspi_core_fn_func_link_parse_address(RustBuffer text, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_PHASE_TEXT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_PHASE_TEXT
+RustBuffer uniffi_dspi_core_fn_func_link_phase_text(RustBuffer phase, RustBuffer pin_source, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_PHASE_TEXTS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_PHASE_TEXTS
+RustBuffer uniffi_dspi_core_fn_func_link_phase_texts(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_WS_URL
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_WS_URL
 RustBuffer uniffi_dspi_core_fn_func_link_ws_url(RustBuffer host, uint16_t port, RustBuffer path, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_ONBOARDING_GETTING_STARTED_JSON
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_ONBOARDING_GETTING_STARTED_JSON
+RustBuffer uniffi_dspi_core_fn_func_onboarding_getting_started_json(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_ONBOARDING_WHATS_NEW_JSON
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_ONBOARDING_WHATS_NEW_JSON
+RustBuffer uniffi_dspi_core_fn_func_onboarding_whats_new_json(RustCallStatus *_Nonnull out_status
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_QUANTIZE_DELAY
@@ -1979,9 +2067,33 @@ uint16_t uniffi_dspi_core_checksum_func_link_parse_address(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_PHASE_TEXT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_PHASE_TEXT
+uint16_t uniffi_dspi_core_checksum_func_link_phase_text(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_PHASE_TEXTS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_PHASE_TEXTS
+uint16_t uniffi_dspi_core_checksum_func_link_phase_texts(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_WS_URL
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_WS_URL
 uint16_t uniffi_dspi_core_checksum_func_link_ws_url(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_ONBOARDING_GETTING_STARTED_JSON
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_ONBOARDING_GETTING_STARTED_JSON
+uint16_t uniffi_dspi_core_checksum_func_onboarding_getting_started_json(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_ONBOARDING_WHATS_NEW_JSON
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_ONBOARDING_WHATS_NEW_JSON
+uint16_t uniffi_dspi_core_checksum_func_onboarding_whats_new_json(void
     
 );
 #endif
@@ -2081,9 +2193,87 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_copy_preset(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_CAL_CLOSE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_CAL_CLOSE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_close(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_CAL_COMMIT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_CAL_COMMIT
+uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_commit(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_CAL_KEEP
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_CAL_KEEP
+uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_keep(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_CAL_OPEN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_CAL_OPEN
+uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_open(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_CAL_POLL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_CAL_POLL
+uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_poll(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_CAL_START
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_CAL_START
+uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_start(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_CAL_VIEW
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_CAL_VIEW
+uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_view(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_DEMO_EVENT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_DEMO_EVENT
+uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_demo_event(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_MANUAL_AUTO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_MANUAL_AUTO
+uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_auto(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_MANUAL_CLEAR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_MANUAL_CLEAR
+uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_clear(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_MANUAL_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_MANUAL_SET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_set(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_MANUAL_TRIAL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_MANUAL_TRIAL
+uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_trial(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_OP
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_OP
 uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_op(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_TRIAL_END
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_TRIAL_END
+uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_trial_end(void
     
 );
 #endif

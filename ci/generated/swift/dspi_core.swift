@@ -1350,6 +1350,102 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func copyPreset(source: UInt8, dest: UInt8) throws 
     
     /**
+     * Close the flow: the user left. No traffic. `InvalidArgument` during a
+     * run, which goes on until ended.
+     */
+    func coreVregCalClose() throws 
+    
+    /**
+     * Save the voltage that passed, with a `SET`: the one explicit step from
+     * a pass to flash. The status is read first, so a hang since the last
+     * poll takes the pass back. Read back by later polls: `Committed` or
+     * `VerifyFailed`. `typed` is the word when the view's `commit_needs_word`
+     * says so, even if it was typed for the trial. A refusal leaves the flow in
+     * `Passed`, with the trial running. Errors as for starting.
+     */
+    func coreVregCalCommit(typed: String?) throws 
+    
+    /**
+     * Keep a trial found on the device: the soak counts from now, for
+     * `soak_s` seconds. A trial outside the flow's range is left alone and
+     * cannot pass. Sends nothing. Errors as for opening.
+     */
+    func coreVregCalKeep(soakS: UInt32) throws 
+    
+    /**
+     * Open the flow: the user reached it, from Advanced. Shows the warning
+     * and what is on record; sends no write.
+     *
+     * `Disconnected`; `Unsupported` without a usable `EXT_CORE_VREG`;
+     * `Denied` after a hub refused a write on this connection; `ReadOnly`;
+     * `InvalidArgument` during a run.
+     */
+    func coreVregCalOpen() throws 
+    
+    /**
+     * Read the device and advance the flow; never fails, the view says.
+     * Call on every connect and about once a second while the page shows.
+     * The only write that can go out is the next step of a run the user
+     * started; never a `SET`, and none after the connection changed. Blocks
+     * for a read: call it off the UI thread.
+     */
+    func coreVregCalPoll()  -> VregCalView
+    
+    /**
+     * Start a run: the current record is cleared, `target` goes on trial
+     * once the device shows that, and the soak counts for `soak_s` seconds.
+     * `typed` is what the user typed when the view says this needs the word.
+     *
+     * `OvervoltWordRequired`, with no write, if it does and that is not
+     * exactly the word. `InvalidArgument`, with no write, for a voltage
+     * outside the build default to 1.25 V, a soak under the minimum, a trial
+     * already running, or the wrong phase. `Disconnected`,
+     * `Unsupported`, `ReadOnly`; `Refused`, `Denied`, `Locked`, `Transfer` for
+     * the write, which is not retried.
+     */
+    func coreVregCalStart(target: UInt8, soakS: UInt32, typed: String?) throws 
+    
+    /**
+     * The calibration flow as it stands, from memory: no traffic. It waits
+     * for a poll or request in flight, so a slow link can hold it up as long
+     * as that read: call it off the UI thread too.
+     */
+    func coreVregCalView()  -> VregCalView
+    
+    /**
+     * Play an event on the demo device, for clients' tests and demo mode.
+     * `seconds` is for [`VregDemoEvent::AdvanceUptime`]. `Unsupported`, with
+     * no traffic, on anything but a simulated device.
+     */
+    func coreVregDemoEvent(event: VregDemoEvent, seconds: UInt32) throws 
+    
+    /**
+     * Manual `AUTO`: the firmware's automatic raising after repeated hangs.
+     * Errors as for starting.
+     */
+    func coreVregManualAuto(on: Bool) throws 
+    
+    /**
+     * Manual `CLEAR`: forget the hang count and the last trial failure.
+     * `InvalidArgument` during a run, whose result it would erase. Errors
+     * otherwise as for starting.
+     */
+    func coreVregManualClear() throws 
+    
+    /**
+     * Manual `SET` from the Advanced page. `value` 0 is the reset to the
+     * build default; anything else has the flow's limits and confirmation.
+     * Read back by later polls, as a commit. Errors as for starting.
+     */
+    func coreVregManualSet(value: UInt8, typed: String?) throws 
+    
+    /**
+     * Manual `TRIAL`, with the flow's limits and confirmation. It shows as a
+     * found trial on the next poll. Errors as for starting.
+     */
+    func coreVregManualTrial(value: UInt8, typed: String?) throws 
+    
+    /**
      * `EXT_CORE_VREG` write: `op` 0 set (value = VREG code, 0 = build
      * default), 1 trial, 2 end trial, 3 auto (value 0/1), 4 clear
      * (`dspi_proto::ext::VregOp`).
@@ -1361,12 +1457,27 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * of TRIAL_END and CLEAR is ignored (sent as 0). Read the status back
      * with [`DspiCore::fetch_core_vreg`].
      *
-     * Errors: `Disconnected`; `ReadOnly` on a read-only connection;
+     * WP CG14: a SET or TRIAL reads the unit's status first and goes through
+     * `dspi_session::overvolt`: a raise above 1.20 V from what it reports now
+     * needs `word`, exactly `OVERVOLT`, or nothing is written. This is the
+     * one path to 1.30 V; the GUIs' flow stops at 1.25 V (`core_vreg_cal_*`).
+     *
+     * Errors: `OvervoltWordRequired` as above; `Disconnected`; `ReadOnly` on
+     * a read-only connection;
      * `Unsupported` when the device has no usable core-voltage extension;
      * `Refused { status: EXT_WRITE_REFUSED }` when the device stalls the
      * request anyway; `Denied`, `Locked` or `Transfer` from the link.
      */
-    func coreVregOp(op: UInt8, value: UInt8) throws 
+    func coreVregOp(op: UInt8, value: UInt8, word: String?) throws 
+    
+    /**
+     * End a trial, or abort a run, with `TRIAL_END`, at any time but while a
+     * save is being read back. Works without a fresh status, so a run can be
+     * aborted while reads are failing. `Disconnected` and `ReadOnly` change
+     * nothing. A write that fails otherwise is not retried: later polls end
+     * in `Ended`, or in `VerifyFailed`, from which it can be asked for again.
+     */
+    func coreVregTrialEnd() throws 
     
     /**
      * One control-surface operation, JSON `{op, index, ...}` (the old
@@ -1510,8 +1621,8 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * [`DspiCore::apply_all_params`]) returns [`DspiError::ReadOnly`].
      *
      * The optional per-item reads (presets, Core 1 mode, subharm solo, DAC
-     * mute, control interfaces) leave their defaults when the firmware does
-     * not answer them.
+     * mute, control interfaces, input source names) leave their defaults
+     * when the firmware does not answer them.
      *
      * Right after a connect that already decoded this connect's image
      * (`Connection::fresh_image`, set by `attach_probed`), the platform and
@@ -2130,7 +2241,9 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * only in WITH_PRESET master-volume mode, the hardware wiring and the
      * limiters only in WITH_PRESET output-config mode, both judged by the
      * live mode. The user volume and the DAC mute are no preset change, as
-     * on macOS. Empty before any baseline. Never fails.
+     * on macOS. An input source goes by the user's name when it has one,
+     * from the connection's cache, so this does no I/O. Empty before any
+     * baseline. Never fails.
      */
     func presetChanges()  -> [String]
     
@@ -2173,7 +2286,8 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      *
      * Without a device, or with nothing queued, it returns an empty
      * result. Never fails and never panics on device data. Blocks only
-     * for a re-read (one bulk read and the directory read).
+     * for a re-read (one bulk read and the directory read, plus the input
+     * source names after a lost packet).
      */
     func processNotifications()  -> NotifyResult
     
@@ -2215,7 +2329,8 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * transfer with the core's lock held: call it off the UI thread.
      *
      * Errors: [`DspiError::InvalidArgument`] for `REQ_SET_ALL_PARAMS`, the
-     * chunk opcodes, or more than 65535 bytes of `data` (nothing is sent);
+     * chunk opcodes, an `EXT_CORE_VREG` request, or more than 65535 bytes of
+     * `data` (nothing is sent);
      * [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a read-only
      * connection (nothing is sent); [`DspiError::Refused`] with status 0
      * when the device stalls; [`DspiError::Denied`], [`DspiError::Locked`]
@@ -3470,6 +3585,164 @@ open func copyPreset(source: UInt8, dest: UInt8)throws   {try rustCallWithError(
 }
     
     /**
+     * Close the flow: the user left. No traffic. `InvalidArgument` during a
+     * run, which goes on until ended.
+     */
+open func coreVregCalClose()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_close(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
+     * Save the voltage that passed, with a `SET`: the one explicit step from
+     * a pass to flash. The status is read first, so a hang since the last
+     * poll takes the pass back. Read back by later polls: `Committed` or
+     * `VerifyFailed`. `typed` is the word when the view's `commit_needs_word`
+     * says so, even if it was typed for the trial. A refusal leaves the flow in
+     * `Passed`, with the trial running. Errors as for starting.
+     */
+open func coreVregCalCommit(typed: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_commit(self.uniffiClonePointer(),
+        FfiConverterOptionString.lower(typed),$0
+    )
+}
+}
+    
+    /**
+     * Keep a trial found on the device: the soak counts from now, for
+     * `soak_s` seconds. A trial outside the flow's range is left alone and
+     * cannot pass. Sends nothing. Errors as for opening.
+     */
+open func coreVregCalKeep(soakS: UInt32)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_keep(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(soakS),$0
+    )
+}
+}
+    
+    /**
+     * Open the flow: the user reached it, from Advanced. Shows the warning
+     * and what is on record; sends no write.
+     *
+     * `Disconnected`; `Unsupported` without a usable `EXT_CORE_VREG`;
+     * `Denied` after a hub refused a write on this connection; `ReadOnly`;
+     * `InvalidArgument` during a run.
+     */
+open func coreVregCalOpen()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_open(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
+     * Read the device and advance the flow; never fails, the view says.
+     * Call on every connect and about once a second while the page shows.
+     * The only write that can go out is the next step of a run the user
+     * started; never a `SET`, and none after the connection changed. Blocks
+     * for a read: call it off the UI thread.
+     */
+open func coreVregCalPoll() -> VregCalView  {
+    return try!  FfiConverterTypeVregCalView_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_poll(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Start a run: the current record is cleared, `target` goes on trial
+     * once the device shows that, and the soak counts for `soak_s` seconds.
+     * `typed` is what the user typed when the view says this needs the word.
+     *
+     * `OvervoltWordRequired`, with no write, if it does and that is not
+     * exactly the word. `InvalidArgument`, with no write, for a voltage
+     * outside the build default to 1.25 V, a soak under the minimum, a trial
+     * already running, or the wrong phase. `Disconnected`,
+     * `Unsupported`, `ReadOnly`; `Refused`, `Denied`, `Locked`, `Transfer` for
+     * the write, which is not retried.
+     */
+open func coreVregCalStart(target: UInt8, soakS: UInt32, typed: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_start(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(target),
+        FfiConverterUInt32.lower(soakS),
+        FfiConverterOptionString.lower(typed),$0
+    )
+}
+}
+    
+    /**
+     * The calibration flow as it stands, from memory: no traffic. It waits
+     * for a poll or request in flight, so a slow link can hold it up as long
+     * as that read: call it off the UI thread too.
+     */
+open func coreVregCalView() -> VregCalView  {
+    return try!  FfiConverterTypeVregCalView_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_view(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Play an event on the demo device, for clients' tests and demo mode.
+     * `seconds` is for [`VregDemoEvent::AdvanceUptime`]. `Unsupported`, with
+     * no traffic, on anything but a simulated device.
+     */
+open func coreVregDemoEvent(event: VregDemoEvent, seconds: UInt32)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_core_vreg_demo_event(self.uniffiClonePointer(),
+        FfiConverterTypeVregDemoEvent_lower(event),
+        FfiConverterUInt32.lower(seconds),$0
+    )
+}
+}
+    
+    /**
+     * Manual `AUTO`: the firmware's automatic raising after repeated hangs.
+     * Errors as for starting.
+     */
+open func coreVregManualAuto(on: Bool)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_auto(self.uniffiClonePointer(),
+        FfiConverterBool.lower(on),$0
+    )
+}
+}
+    
+    /**
+     * Manual `CLEAR`: forget the hang count and the last trial failure.
+     * `InvalidArgument` during a run, whose result it would erase. Errors
+     * otherwise as for starting.
+     */
+open func coreVregManualClear()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_clear(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
+     * Manual `SET` from the Advanced page. `value` 0 is the reset to the
+     * build default; anything else has the flow's limits and confirmation.
+     * Read back by later polls, as a commit. Errors as for starting.
+     */
+open func coreVregManualSet(value: UInt8, typed: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_set(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(value),
+        FfiConverterOptionString.lower(typed),$0
+    )
+}
+}
+    
+    /**
+     * Manual `TRIAL`, with the flow's limits and confirmation. It shows as a
+     * found trial on the next poll. Errors as for starting.
+     */
+open func coreVregManualTrial(value: UInt8, typed: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_trial(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(value),
+        FfiConverterOptionString.lower(typed),$0
+    )
+}
+}
+    
+    /**
      * `EXT_CORE_VREG` write: `op` 0 set (value = VREG code, 0 = build
      * default), 1 trial, 2 end trial, 3 auto (value 0/1), 4 clear
      * (`dspi_proto::ext::VregOp`).
@@ -3481,15 +3754,35 @@ open func copyPreset(source: UInt8, dest: UInt8)throws   {try rustCallWithError(
      * of TRIAL_END and CLEAR is ignored (sent as 0). Read the status back
      * with [`DspiCore::fetch_core_vreg`].
      *
-     * Errors: `Disconnected`; `ReadOnly` on a read-only connection;
+     * WP CG14: a SET or TRIAL reads the unit's status first and goes through
+     * `dspi_session::overvolt`: a raise above 1.20 V from what it reports now
+     * needs `word`, exactly `OVERVOLT`, or nothing is written. This is the
+     * one path to 1.30 V; the GUIs' flow stops at 1.25 V (`core_vreg_cal_*`).
+     *
+     * Errors: `OvervoltWordRequired` as above; `Disconnected`; `ReadOnly` on
+     * a read-only connection;
      * `Unsupported` when the device has no usable core-voltage extension;
      * `Refused { status: EXT_WRITE_REFUSED }` when the device stalls the
      * request anyway; `Denied`, `Locked` or `Transfer` from the link.
      */
-open func coreVregOp(op: UInt8, value: UInt8)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+open func coreVregOp(op: UInt8, value: UInt8, word: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_core_vreg_op(self.uniffiClonePointer(),
         FfiConverterUInt8.lower(op),
-        FfiConverterUInt8.lower(value),$0
+        FfiConverterUInt8.lower(value),
+        FfiConverterOptionString.lower(word),$0
+    )
+}
+}
+    
+    /**
+     * End a trial, or abort a run, with `TRIAL_END`, at any time but while a
+     * save is being read back. Works without a fresh status, so a run can be
+     * aborted while reads are failing. `Disconnected` and `ReadOnly` change
+     * nothing. A write that fails otherwise is not retried: later polls end
+     * in `Ended`, or in `VerifyFailed`, from which it can be asked for again.
+     */
+open func coreVregTrialEnd()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_core_vreg_trial_end(self.uniffiClonePointer(),$0
     )
 }
 }
@@ -3683,8 +3976,8 @@ open func fetchAdatOutStatus()throws  -> AdatOutStatus  {
      * [`DspiCore::apply_all_params`]) returns [`DspiError::ReadOnly`].
      *
      * The optional per-item reads (presets, Core 1 mode, subharm solo, DAC
-     * mute, control interfaces) leave their defaults when the firmware does
-     * not answer them.
+     * mute, control interfaces, input source names) leave their defaults
+     * when the firmware does not answer them.
      *
      * Right after a connect that already decoded this connect's image
      * (`Connection::fresh_image`, set by `attach_probed`), the platform and
@@ -4587,7 +4880,9 @@ open func preampMaxDb() -> Float  {
      * only in WITH_PRESET master-volume mode, the hardware wiring and the
      * limiters only in WITH_PRESET output-config mode, both judged by the
      * live mode. The user volume and the DAC mute are no preset change, as
-     * on macOS. Empty before any baseline. Never fails.
+     * on macOS. An input source goes by the user's name when it has one,
+     * from the connection's cache, so this does no I/O. Empty before any
+     * baseline. Never fails.
      */
 open func presetChanges() -> [String]  {
     return try!  FfiConverterSequenceString.lift(try! rustCall() {
@@ -4640,7 +4935,8 @@ open func presetDirty() -> Bool  {
      *
      * Without a device, or with nothing queued, it returns an empty
      * result. Never fails and never panics on device data. Blocks only
-     * for a re-read (one bulk read and the directory read).
+     * for a re-read (one bulk read and the directory read, plus the input
+     * source names after a lost packet).
      */
 open func processNotifications() -> NotifyResult  {
     return try!  FfiConverterTypeNotifyResult_lift(try! rustCall() {
@@ -4695,7 +4991,8 @@ open func rawGet(opcode: UInt8, value: UInt16, len: UInt16)throws  -> Data  {
      * transfer with the core's lock held: call it off the UI thread.
      *
      * Errors: [`DspiError::InvalidArgument`] for `REQ_SET_ALL_PARAMS`, the
-     * chunk opcodes, or more than 65535 bytes of `data` (nothing is sent);
+     * chunk opcodes, an `EXT_CORE_VREG` request, or more than 65535 bytes of
+     * `data` (nothing is sent);
      * [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a read-only
      * connection (nothing is sent); [`DspiError::Refused`] with status 0
      * when the device stalls; [`DspiError::Denied`], [`DspiError::Locked`]
@@ -10942,8 +11239,9 @@ public struct FirmwareGuardVerdict {
      */
     public var message: String
     /**
-     * What to ask the user to type when a risk is involved, else "". Compared
-     * exactly: case and spaces count.
+     * What to ask the user to type when a risk is involved, else "": the
+     * phrase, or for [`FirmwareGuardReason::Overvolt`] the word. Compared
+     * exactly: case and spaces count, and the one does not stand for the other.
      */
     public var confirmationPhrase: String
     /**
@@ -10971,8 +11269,9 @@ public struct FirmwareGuardVerdict {
          * For the user, in English.
          */message: String, 
         /**
-         * What to ask the user to type when a risk is involved, else "". Compared
-         * exactly: case and spaces count.
+         * What to ask the user to type when a risk is involved, else "": the
+         * phrase, or for [`FirmwareGuardReason::Overvolt`] the word. Compared
+         * exactly: case and spaces count, and the one does not stand for the other.
          */confirmationPhrase: String, 
         /**
          * The image's stamped voltage in mV; 0 if it has none (taken as 1150).
@@ -12191,6 +12490,139 @@ public func FfiConverterTypeLinkInfo_lift(_ buf: RustBuffer) throws -> LinkInfo 
 #endif
 public func FfiConverterTypeLinkInfo_lower(_ value: LinkInfo) -> RustBuffer {
     return FfiConverterTypeLinkInfo.lower(value)
+}
+
+
+/**
+ * What to tell the user about a [`LinkPhase`].
+ */
+public struct LinkPhaseText {
+    /**
+     * Stable key of `text`, for localising: `no_device`, `needs_pairing.fixed`.
+     */
+    public var key: String
+    /**
+     * The phase's name ([`link_phase_key`]), also for an entry split by
+     * `pin_source`.
+     */
+    public var phase: String
+    /**
+     * The English.
+     */
+    public var text: String
+    /**
+     * Stable key of `action`, if the phase has a button of its own.
+     */
+    public var actionKey: String?
+    /**
+     * The English of that button.
+     * [`LinkPhase::Reconnecting`] has one, which calls `link_close`: the owner's
+     * rule is that a lost connection always offers the way out.
+     */
+    public var action: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Stable key of `text`, for localising: `no_device`, `needs_pairing.fixed`.
+         */key: String, 
+        /**
+         * The phase's name ([`link_phase_key`]), also for an entry split by
+         * `pin_source`.
+         */phase: String, 
+        /**
+         * The English.
+         */text: String, 
+        /**
+         * Stable key of `action`, if the phase has a button of its own.
+         */actionKey: String?, 
+        /**
+         * The English of that button.
+         * [`LinkPhase::Reconnecting`] has one, which calls `link_close`: the owner's
+         * rule is that a lost connection always offers the way out.
+         */action: String?) {
+        self.key = key
+        self.phase = phase
+        self.text = text
+        self.actionKey = actionKey
+        self.action = action
+    }
+}
+
+#if compiler(>=6)
+extension LinkPhaseText: Sendable {}
+#endif
+
+
+extension LinkPhaseText: Equatable, Hashable {
+    public static func ==(lhs: LinkPhaseText, rhs: LinkPhaseText) -> Bool {
+        if lhs.key != rhs.key {
+            return false
+        }
+        if lhs.phase != rhs.phase {
+            return false
+        }
+        if lhs.text != rhs.text {
+            return false
+        }
+        if lhs.actionKey != rhs.actionKey {
+            return false
+        }
+        if lhs.action != rhs.action {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(key)
+        hasher.combine(phase)
+        hasher.combine(text)
+        hasher.combine(actionKey)
+        hasher.combine(action)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkPhaseText: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkPhaseText {
+        return
+            try LinkPhaseText(
+                key: FfiConverterString.read(from: &buf), 
+                phase: FfiConverterString.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf), 
+                actionKey: FfiConverterOptionString.read(from: &buf), 
+                action: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LinkPhaseText, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.key, into: &buf)
+        FfiConverterString.write(value.phase, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterOptionString.write(value.actionKey, into: &buf)
+        FfiConverterOptionString.write(value.action, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkPhaseText_lift(_ buf: RustBuffer) throws -> LinkPhaseText {
+    return try FfiConverterTypeLinkPhaseText.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkPhaseText_lower(_ value: LinkPhaseText) -> RustBuffer {
+    return FfiConverterTypeLinkPhaseText.lower(value)
 }
 
 
@@ -16035,6 +16467,568 @@ public func FfiConverterTypeUpmixStatus_lower(_ value: UpmixStatus) -> RustBuffe
 
 
 /**
+ * The flow as a client shows it.
+ */
+public struct VregCalView {
+    /**
+     * The connection can use the flow: `EXT_CORE_VREG` present, writable,
+     * and not refused by a hub. While false with phase `Idle`, hide the
+     * flow. While false in another phase the device is away: show the phase.
+     */
+    public var available: Bool
+    /**
+     * Where the flow is.
+     */
+    public var phase: VregCalPhase
+    /**
+     * A stable key for `message`, for clients that localise.
+     */
+    public var messageKey: String
+    /**
+     * The state or result, stated plainly in English.
+     */
+    public var message: String
+    /**
+     * The warning to show before the flow, with the datasheet limits.
+     */
+    public var warning: String
+    /**
+     * What a soak does and does not show.
+     */
+    public var soakNote: String
+    /**
+     * The voltages offered, lowest first. Empty on a build default the flow
+     * does not cover, or before a first status.
+     */
+    public var choices: [VregChoice]
+    /**
+     * What to type when `needs_word` or `commit_needs_word`: `OVERVOLT`,
+     * exactly.
+     */
+    public var confirmationWord: String
+    /**
+     * `core_vreg_cal_commit` needs the word now, while `phase` is `Passed`.
+     * Saving a trial above 1.20 V that is not already stored asks for it, even
+     * though it was typed to start the trial: going from RAM to flash is an
+     * upward change of its own. Ask again; do not reuse the earlier answer.
+     */
+    public var commitNeedsWord: Bool
+    /**
+     * The soak to suggest, seconds.
+     */
+    public var defaultSoakS: UInt32
+    /**
+     * The shortest soak accepted, seconds.
+     */
+    public var minSoakS: UInt32
+    /**
+     * The run's or found trial's voltage; 0 if none.
+     */
+    public var targetVreg: UInt8
+    /**
+     * The soak asked for, seconds; 0 if none.
+     */
+    public var soakS: UInt32
+    /**
+     * Seconds of soak counted so far.
+     */
+    public var elapsedS: UInt32
+    /**
+     * The failure shown or on record: its voltage; 0 if none.
+     */
+    public var failedVreg: UInt8
+    /**
+     * Seconds the failed trial ran, if this host saw it start and the record
+     * still has the time.
+     */
+    public var ranS: UInt32?
+    /**
+     * The device's uptime when that trial hung; 0 if the record lost it. Its
+     * whole run, so at most an upper bound on the trial.
+     */
+    public var uptimeAtHangS: UInt32
+    /**
+     * The next voltage up to offer after that failure; 0 if none.
+     */
+    public var nextVreg: UInt8
+    /**
+     * Nothing above that failure to try: a hardware problem.
+     */
+    public var hardwareProblem: Bool
+    /**
+     * Why the result is unknown (`record_gone`, `not_started`,
+     * `trial_changed`); `None` unless `phase` is `Unknown`.
+     */
+    public var unknownReason: String?
+    /**
+     * The device stopped answering since the last status: a hang in
+     * progress, or a dropped link. The result is still open.
+     */
+    public var linkLost: Bool
+    /**
+     * `core_vreg_cal_start` applies now.
+     */
+    public var canStart: Bool
+    /**
+     * `core_vreg_cal_keep` applies now.
+     */
+    public var canKeep: Bool
+    /**
+     * `core_vreg_cal_commit` applies now.
+     */
+    public var canCommit: Bool
+    /**
+     * The last status read from the device.
+     */
+    public var status: CoreVregInfo?
+    /**
+     * Why the last call or read failed, in a sentence; `None` once one
+     * succeeded.
+     */
+    public var lastError: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The connection can use the flow: `EXT_CORE_VREG` present, writable,
+         * and not refused by a hub. While false with phase `Idle`, hide the
+         * flow. While false in another phase the device is away: show the phase.
+         */available: Bool, 
+        /**
+         * Where the flow is.
+         */phase: VregCalPhase, 
+        /**
+         * A stable key for `message`, for clients that localise.
+         */messageKey: String, 
+        /**
+         * The state or result, stated plainly in English.
+         */message: String, 
+        /**
+         * The warning to show before the flow, with the datasheet limits.
+         */warning: String, 
+        /**
+         * What a soak does and does not show.
+         */soakNote: String, 
+        /**
+         * The voltages offered, lowest first. Empty on a build default the flow
+         * does not cover, or before a first status.
+         */choices: [VregChoice], 
+        /**
+         * What to type when `needs_word` or `commit_needs_word`: `OVERVOLT`,
+         * exactly.
+         */confirmationWord: String, 
+        /**
+         * `core_vreg_cal_commit` needs the word now, while `phase` is `Passed`.
+         * Saving a trial above 1.20 V that is not already stored asks for it, even
+         * though it was typed to start the trial: going from RAM to flash is an
+         * upward change of its own. Ask again; do not reuse the earlier answer.
+         */commitNeedsWord: Bool, 
+        /**
+         * The soak to suggest, seconds.
+         */defaultSoakS: UInt32, 
+        /**
+         * The shortest soak accepted, seconds.
+         */minSoakS: UInt32, 
+        /**
+         * The run's or found trial's voltage; 0 if none.
+         */targetVreg: UInt8, 
+        /**
+         * The soak asked for, seconds; 0 if none.
+         */soakS: UInt32, 
+        /**
+         * Seconds of soak counted so far.
+         */elapsedS: UInt32, 
+        /**
+         * The failure shown or on record: its voltage; 0 if none.
+         */failedVreg: UInt8, 
+        /**
+         * Seconds the failed trial ran, if this host saw it start and the record
+         * still has the time.
+         */ranS: UInt32?, 
+        /**
+         * The device's uptime when that trial hung; 0 if the record lost it. Its
+         * whole run, so at most an upper bound on the trial.
+         */uptimeAtHangS: UInt32, 
+        /**
+         * The next voltage up to offer after that failure; 0 if none.
+         */nextVreg: UInt8, 
+        /**
+         * Nothing above that failure to try: a hardware problem.
+         */hardwareProblem: Bool, 
+        /**
+         * Why the result is unknown (`record_gone`, `not_started`,
+         * `trial_changed`); `None` unless `phase` is `Unknown`.
+         */unknownReason: String?, 
+        /**
+         * The device stopped answering since the last status: a hang in
+         * progress, or a dropped link. The result is still open.
+         */linkLost: Bool, 
+        /**
+         * `core_vreg_cal_start` applies now.
+         */canStart: Bool, 
+        /**
+         * `core_vreg_cal_keep` applies now.
+         */canKeep: Bool, 
+        /**
+         * `core_vreg_cal_commit` applies now.
+         */canCommit: Bool, 
+        /**
+         * The last status read from the device.
+         */status: CoreVregInfo?, 
+        /**
+         * Why the last call or read failed, in a sentence; `None` once one
+         * succeeded.
+         */lastError: String?) {
+        self.available = available
+        self.phase = phase
+        self.messageKey = messageKey
+        self.message = message
+        self.warning = warning
+        self.soakNote = soakNote
+        self.choices = choices
+        self.confirmationWord = confirmationWord
+        self.commitNeedsWord = commitNeedsWord
+        self.defaultSoakS = defaultSoakS
+        self.minSoakS = minSoakS
+        self.targetVreg = targetVreg
+        self.soakS = soakS
+        self.elapsedS = elapsedS
+        self.failedVreg = failedVreg
+        self.ranS = ranS
+        self.uptimeAtHangS = uptimeAtHangS
+        self.nextVreg = nextVreg
+        self.hardwareProblem = hardwareProblem
+        self.unknownReason = unknownReason
+        self.linkLost = linkLost
+        self.canStart = canStart
+        self.canKeep = canKeep
+        self.canCommit = canCommit
+        self.status = status
+        self.lastError = lastError
+    }
+}
+
+#if compiler(>=6)
+extension VregCalView: Sendable {}
+#endif
+
+
+extension VregCalView: Equatable, Hashable {
+    public static func ==(lhs: VregCalView, rhs: VregCalView) -> Bool {
+        if lhs.available != rhs.available {
+            return false
+        }
+        if lhs.phase != rhs.phase {
+            return false
+        }
+        if lhs.messageKey != rhs.messageKey {
+            return false
+        }
+        if lhs.message != rhs.message {
+            return false
+        }
+        if lhs.warning != rhs.warning {
+            return false
+        }
+        if lhs.soakNote != rhs.soakNote {
+            return false
+        }
+        if lhs.choices != rhs.choices {
+            return false
+        }
+        if lhs.confirmationWord != rhs.confirmationWord {
+            return false
+        }
+        if lhs.commitNeedsWord != rhs.commitNeedsWord {
+            return false
+        }
+        if lhs.defaultSoakS != rhs.defaultSoakS {
+            return false
+        }
+        if lhs.minSoakS != rhs.minSoakS {
+            return false
+        }
+        if lhs.targetVreg != rhs.targetVreg {
+            return false
+        }
+        if lhs.soakS != rhs.soakS {
+            return false
+        }
+        if lhs.elapsedS != rhs.elapsedS {
+            return false
+        }
+        if lhs.failedVreg != rhs.failedVreg {
+            return false
+        }
+        if lhs.ranS != rhs.ranS {
+            return false
+        }
+        if lhs.uptimeAtHangS != rhs.uptimeAtHangS {
+            return false
+        }
+        if lhs.nextVreg != rhs.nextVreg {
+            return false
+        }
+        if lhs.hardwareProblem != rhs.hardwareProblem {
+            return false
+        }
+        if lhs.unknownReason != rhs.unknownReason {
+            return false
+        }
+        if lhs.linkLost != rhs.linkLost {
+            return false
+        }
+        if lhs.canStart != rhs.canStart {
+            return false
+        }
+        if lhs.canKeep != rhs.canKeep {
+            return false
+        }
+        if lhs.canCommit != rhs.canCommit {
+            return false
+        }
+        if lhs.status != rhs.status {
+            return false
+        }
+        if lhs.lastError != rhs.lastError {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(available)
+        hasher.combine(phase)
+        hasher.combine(messageKey)
+        hasher.combine(message)
+        hasher.combine(warning)
+        hasher.combine(soakNote)
+        hasher.combine(choices)
+        hasher.combine(confirmationWord)
+        hasher.combine(commitNeedsWord)
+        hasher.combine(defaultSoakS)
+        hasher.combine(minSoakS)
+        hasher.combine(targetVreg)
+        hasher.combine(soakS)
+        hasher.combine(elapsedS)
+        hasher.combine(failedVreg)
+        hasher.combine(ranS)
+        hasher.combine(uptimeAtHangS)
+        hasher.combine(nextVreg)
+        hasher.combine(hardwareProblem)
+        hasher.combine(unknownReason)
+        hasher.combine(linkLost)
+        hasher.combine(canStart)
+        hasher.combine(canKeep)
+        hasher.combine(canCommit)
+        hasher.combine(status)
+        hasher.combine(lastError)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeVregCalView: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> VregCalView {
+        return
+            try VregCalView(
+                available: FfiConverterBool.read(from: &buf), 
+                phase: FfiConverterTypeVregCalPhase.read(from: &buf), 
+                messageKey: FfiConverterString.read(from: &buf), 
+                message: FfiConverterString.read(from: &buf), 
+                warning: FfiConverterString.read(from: &buf), 
+                soakNote: FfiConverterString.read(from: &buf), 
+                choices: FfiConverterSequenceTypeVregChoice.read(from: &buf), 
+                confirmationWord: FfiConverterString.read(from: &buf), 
+                commitNeedsWord: FfiConverterBool.read(from: &buf), 
+                defaultSoakS: FfiConverterUInt32.read(from: &buf), 
+                minSoakS: FfiConverterUInt32.read(from: &buf), 
+                targetVreg: FfiConverterUInt8.read(from: &buf), 
+                soakS: FfiConverterUInt32.read(from: &buf), 
+                elapsedS: FfiConverterUInt32.read(from: &buf), 
+                failedVreg: FfiConverterUInt8.read(from: &buf), 
+                ranS: FfiConverterOptionUInt32.read(from: &buf), 
+                uptimeAtHangS: FfiConverterUInt32.read(from: &buf), 
+                nextVreg: FfiConverterUInt8.read(from: &buf), 
+                hardwareProblem: FfiConverterBool.read(from: &buf), 
+                unknownReason: FfiConverterOptionString.read(from: &buf), 
+                linkLost: FfiConverterBool.read(from: &buf), 
+                canStart: FfiConverterBool.read(from: &buf), 
+                canKeep: FfiConverterBool.read(from: &buf), 
+                canCommit: FfiConverterBool.read(from: &buf), 
+                status: FfiConverterOptionTypeCoreVregInfo.read(from: &buf), 
+                lastError: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: VregCalView, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.available, into: &buf)
+        FfiConverterTypeVregCalPhase.write(value.phase, into: &buf)
+        FfiConverterString.write(value.messageKey, into: &buf)
+        FfiConverterString.write(value.message, into: &buf)
+        FfiConverterString.write(value.warning, into: &buf)
+        FfiConverterString.write(value.soakNote, into: &buf)
+        FfiConverterSequenceTypeVregChoice.write(value.choices, into: &buf)
+        FfiConverterString.write(value.confirmationWord, into: &buf)
+        FfiConverterBool.write(value.commitNeedsWord, into: &buf)
+        FfiConverterUInt32.write(value.defaultSoakS, into: &buf)
+        FfiConverterUInt32.write(value.minSoakS, into: &buf)
+        FfiConverterUInt8.write(value.targetVreg, into: &buf)
+        FfiConverterUInt32.write(value.soakS, into: &buf)
+        FfiConverterUInt32.write(value.elapsedS, into: &buf)
+        FfiConverterUInt8.write(value.failedVreg, into: &buf)
+        FfiConverterOptionUInt32.write(value.ranS, into: &buf)
+        FfiConverterUInt32.write(value.uptimeAtHangS, into: &buf)
+        FfiConverterUInt8.write(value.nextVreg, into: &buf)
+        FfiConverterBool.write(value.hardwareProblem, into: &buf)
+        FfiConverterOptionString.write(value.unknownReason, into: &buf)
+        FfiConverterBool.write(value.linkLost, into: &buf)
+        FfiConverterBool.write(value.canStart, into: &buf)
+        FfiConverterBool.write(value.canKeep, into: &buf)
+        FfiConverterBool.write(value.canCommit, into: &buf)
+        FfiConverterOptionTypeCoreVregInfo.write(value.status, into: &buf)
+        FfiConverterOptionString.write(value.lastError, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVregCalView_lift(_ buf: RustBuffer) throws -> VregCalView {
+    return try FfiConverterTypeVregCalView.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVregCalView_lower(_ value: VregCalView) -> RustBuffer {
+    return FfiConverterTypeVregCalView.lower(value)
+}
+
+
+/**
+ * A voltage the flow offers on the connected device.
+ */
+public struct VregChoice {
+    /**
+     * VREG code.
+     */
+    public var code: UInt8
+    /**
+     * The voltage, mV.
+     */
+    public var millivolts: UInt16
+    /**
+     * A trial of it would raise this unit above 1.20 V now, so `OVERVOLT`
+     * must be typed.
+     */
+    public var needsWord: Bool
+    /**
+     * The same for a save (`core_vreg_manual_set`), which does not count a
+     * running trial as current.
+     */
+    public var saveNeedsWord: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * VREG code.
+         */code: UInt8, 
+        /**
+         * The voltage, mV.
+         */millivolts: UInt16, 
+        /**
+         * A trial of it would raise this unit above 1.20 V now, so `OVERVOLT`
+         * must be typed.
+         */needsWord: Bool, 
+        /**
+         * The same for a save (`core_vreg_manual_set`), which does not count a
+         * running trial as current.
+         */saveNeedsWord: Bool) {
+        self.code = code
+        self.millivolts = millivolts
+        self.needsWord = needsWord
+        self.saveNeedsWord = saveNeedsWord
+    }
+}
+
+#if compiler(>=6)
+extension VregChoice: Sendable {}
+#endif
+
+
+extension VregChoice: Equatable, Hashable {
+    public static func ==(lhs: VregChoice, rhs: VregChoice) -> Bool {
+        if lhs.code != rhs.code {
+            return false
+        }
+        if lhs.millivolts != rhs.millivolts {
+            return false
+        }
+        if lhs.needsWord != rhs.needsWord {
+            return false
+        }
+        if lhs.saveNeedsWord != rhs.saveNeedsWord {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(code)
+        hasher.combine(millivolts)
+        hasher.combine(needsWord)
+        hasher.combine(saveNeedsWord)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeVregChoice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> VregChoice {
+        return
+            try VregChoice(
+                code: FfiConverterUInt8.read(from: &buf), 
+                millivolts: FfiConverterUInt16.read(from: &buf), 
+                needsWord: FfiConverterBool.read(from: &buf), 
+                saveNeedsWord: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: VregChoice, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.code, into: &buf)
+        FfiConverterUInt16.write(value.millivolts, into: &buf)
+        FfiConverterBool.write(value.needsWord, into: &buf)
+        FfiConverterBool.write(value.saveNeedsWord, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVregChoice_lift(_ buf: RustBuffer) throws -> VregChoice {
+    return try FfiConverterTypeVregChoice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVregChoice_lower(_ value: VregChoice) -> RustBuffer {
+    return FfiConverterTypeVregChoice.lower(value)
+}
+
+
+/**
  * Why a [`crate::DspiCore`] call failed.
  */
 public enum DspiError: Swift.Error {
@@ -16135,6 +17129,15 @@ public enum DspiError: Swift.Error {
          * The guard's words, for the user.
          */msg: String
     )
+    /**
+     * This raises the core voltage above 1.20 V from what the unit reports
+     * now, and the word `OVERVOLT` was not given. Nothing was written.
+     */
+    case OvervoltWordRequired(
+        /**
+         * Which voltage, and what to type.
+         */msg: String
+    )
 }
 
 
@@ -16178,6 +17181,9 @@ public struct FfiConverterTypeDspiError: FfiConverterRustBuffer {
             retryAfterS: try FfiConverterOptionUInt32.read(from: &buf)
             )
         case 12: return .FirmwareGuardBlocked(
+            msg: try FfiConverterString.read(from: &buf)
+            )
+        case 13: return .OvervoltWordRequired(
             msg: try FfiConverterString.read(from: &buf)
             )
 
@@ -16247,6 +17253,11 @@ public struct FfiConverterTypeDspiError: FfiConverterRustBuffer {
         
         case let .FirmwareGuardBlocked(msg):
             writeInt(&buf, Int32(12))
+            FfiConverterString.write(msg, into: &buf)
+            
+        
+        case let .OvervoltWordRequired(msg):
+            writeInt(&buf, Int32(13))
             FfiConverterString.write(msg, into: &buf)
             
         }
@@ -16519,6 +17530,11 @@ public enum FirmwareGuardReason {
      * The board's needs are not known.
      */
     case boardUnknown
+    /**
+     * WP CG14: the image runs above 1.20 V and above the board's current
+     * voltage. Its `confirmation_phrase` is the word `OVERVOLT`.
+     */
+    case overvolt
 }
 
 
@@ -16546,6 +17562,8 @@ public struct FfiConverterTypeFirmwareGuardReason: FfiConverterRustBuffer {
         
         case 5: return .boardUnknown
         
+        case 6: return .overvolt
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -16572,6 +17590,10 @@ public struct FfiConverterTypeFirmwareGuardReason: FfiConverterRustBuffer {
         
         case .boardUnknown:
             writeInt(&buf, Int32(5))
+        
+        
+        case .overvolt:
+            writeInt(&buf, Int32(6))
         
         }
     }
@@ -16752,6 +17774,314 @@ extension LinkPhase: Equatable, Hashable {}
 
 
 
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Where a run is: [`VregCalView::phase`]. The details are in the view.
+ */
+
+public enum VregCalPhase {
+    
+    /**
+     * The flow is not open.
+     */
+    case idle
+    /**
+     * Open: show the warning and what the device has on record.
+     */
+    case review
+    /**
+     * Clearing the device's record before the trial.
+     */
+    case clearing
+    /**
+     * The trial was sent and is not seen running yet.
+     */
+    case startingTrial
+    /**
+     * The trial runs; the soak is counting. Abort is available.
+     */
+    case soaking
+    /**
+     * Passed: the trial still runs and nothing is saved. Commit or end.
+     */
+    case passed
+    /**
+     * The trial hung: `failed_vreg`, `ran_s`, `next_vreg`, `hardware_problem`.
+     */
+    case failed
+    /**
+     * The result cannot be known: run again.
+     */
+    case unknown
+    /**
+     * A trial nobody here started is running: end or keep.
+     */
+    case trialFound
+    /**
+     * A kept trial outside the flow's range: left alone, cannot pass.
+     */
+    case trialLeftRunning
+    /**
+     * Ending the trial.
+     */
+    case ending
+    /**
+     * The trial ended.
+     */
+    case ended
+    /**
+     * Saving: waiting to read the voltage back.
+     */
+    case committing
+    /**
+     * Saved and read back.
+     */
+    case committed
+    /**
+     * A save or an end did not show in time. Nothing was retried.
+     */
+    case verifyFailed
+}
+
+
+#if compiler(>=6)
+extension VregCalPhase: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeVregCalPhase: FfiConverterRustBuffer {
+    typealias SwiftType = VregCalPhase
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> VregCalPhase {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .idle
+        
+        case 2: return .review
+        
+        case 3: return .clearing
+        
+        case 4: return .startingTrial
+        
+        case 5: return .soaking
+        
+        case 6: return .passed
+        
+        case 7: return .failed
+        
+        case 8: return .unknown
+        
+        case 9: return .trialFound
+        
+        case 10: return .trialLeftRunning
+        
+        case 11: return .ending
+        
+        case 12: return .ended
+        
+        case 13: return .committing
+        
+        case 14: return .committed
+        
+        case 15: return .verifyFailed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: VregCalPhase, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .idle:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .review:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .clearing:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .startingTrial:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .soaking:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .passed:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .unknown:
+            writeInt(&buf, Int32(8))
+        
+        
+        case .trialFound:
+            writeInt(&buf, Int32(9))
+        
+        
+        case .trialLeftRunning:
+            writeInt(&buf, Int32(10))
+        
+        
+        case .ending:
+            writeInt(&buf, Int32(11))
+        
+        
+        case .ended:
+            writeInt(&buf, Int32(12))
+        
+        
+        case .committing:
+            writeInt(&buf, Int32(13))
+        
+        
+        case .committed:
+            writeInt(&buf, Int32(14))
+        
+        
+        case .verifyFailed:
+            writeInt(&buf, Int32(15))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVregCalPhase_lift(_ buf: RustBuffer) throws -> VregCalPhase {
+    return try FfiConverterTypeVregCalPhase.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVregCalPhase_lower(_ value: VregCalPhase) -> RustBuffer {
+    return FfiConverterTypeVregCalPhase.lower(value)
+}
+
+
+extension VregCalPhase: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * What can happen to the demo device: [`DspiCore::core_vreg_demo_event`].
+ */
+
+public enum VregDemoEvent {
+    
+    /**
+     * The watchdog fires.
+     */
+    case hang
+    /**
+     * A requested reboot: no failure on record.
+     */
+    case reboot
+    /**
+     * Power lost: every record gone.
+     */
+    case powerCycle
+    /**
+     * `seconds` pass on the device's clock.
+     */
+    case advanceUptime
+}
+
+
+#if compiler(>=6)
+extension VregDemoEvent: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeVregDemoEvent: FfiConverterRustBuffer {
+    typealias SwiftType = VregDemoEvent
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> VregDemoEvent {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .hang
+        
+        case 2: return .reboot
+        
+        case 3: return .powerCycle
+        
+        case 4: return .advanceUptime
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: VregDemoEvent, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .hang:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .reboot:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .powerCycle:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .advanceUptime:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVregDemoEvent_lift(_ buf: RustBuffer) throws -> VregDemoEvent {
+    return try FfiConverterTypeVregDemoEvent.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVregDemoEvent_lower(_ value: VregDemoEvent) -> RustBuffer {
+    return FfiConverterTypeVregDemoEvent.lower(value)
+}
+
+
+extension VregDemoEvent: Equatable, Hashable {}
+
+
+
+
+
+
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -16915,6 +18245,30 @@ fileprivate struct FfiConverterOptionTypeRtaListener: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeRtaListener.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeCoreVregInfo: FfiConverterRustBuffer {
+    typealias SwiftType = CoreVregInfo?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeCoreVregInfo.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeCoreVregInfo.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -17173,6 +18527,31 @@ fileprivate struct FfiConverterSequenceTypeLinkDevice: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeLinkPhaseText: FfiConverterRustBuffer {
+    typealias SwiftType = [LinkPhaseText]
+
+    public static func write(_ value: [LinkPhaseText], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLinkPhaseText.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LinkPhaseText] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LinkPhaseText]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLinkPhaseText.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeMonitorEntry: FfiConverterRustBuffer {
     typealias SwiftType = [MonitorEntry]
 
@@ -17365,6 +18744,31 @@ fileprivate struct FfiConverterSequenceTypeSpdifBufferStats: FfiConverterRustBuf
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeSpdifBufferStats.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeVregChoice: FfiConverterRustBuffer {
+    typealias SwiftType = [VregChoice]
+
+    public static func write(_ value: [VregChoice], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeVregChoice.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [VregChoice] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [VregChoice]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeVregChoice.read(from: &buf))
         }
         return seq
     }
@@ -17739,6 +19143,28 @@ public func linkParseAddress(text: String)throws  -> LinkAddress  {
 })
 }
 /**
+ * The wording of `phase`. `pin_source` is [`crate::LinkStatus::pin_source`]:
+ * it matters only to [`LinkPhase::NeedsPairing`], and anything but `fixed`
+ * means `window`, as a hub that does not say does (spec 7.2).
+ */
+public func linkPhaseText(phase: LinkPhase, pinSource: String) -> LinkPhaseText  {
+    return try!  FfiConverterTypeLinkPhaseText_lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_link_phase_text(
+        FfiConverterTypeLinkPhase_lower(phase),
+        FfiConverterString.lower(pinSource),$0
+    )
+})
+}
+/**
+ * The whole wording table: every key once, for a client's translation files.
+ */
+public func linkPhaseTexts() -> [LinkPhaseText]  {
+    return try!  FfiConverterSequenceTypeLinkPhaseText.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_link_phase_texts($0
+    )
+})
+}
+/**
  * The WebSocket URL for a hub. An empty `path` is the default (`/dspi/v1`).
  */
 public func linkWsUrl(host: String, port: UInt16, path: String) -> String  {
@@ -17747,6 +19173,25 @@ public func linkWsUrl(host: String, port: UInt16, path: String) -> String  {
         FfiConverterString.lower(host),
         FfiConverterUInt16.lower(port),
         FfiConverterString.lower(path),$0
+    )
+})
+}
+/**
+ * The Getting Started wizard's data for this build's platform: see the module
+ * docs.
+ */
+public func onboardingGettingStartedJson() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_onboarding_getting_started_json($0
+    )
+})
+}
+/**
+ * The release notes for this build's platform: see the module docs.
+ */
+public func onboardingWhatsNewJson() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_onboarding_whats_new_json($0
     )
 })
 }
@@ -17876,7 +19321,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_link_parse_address() != 30128) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_func_link_phase_text() != 33877) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_link_phase_texts() != 45098) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_func_link_ws_url() != 18495) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_onboarding_getting_started_json() != 59413) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_onboarding_whats_new_json() != 47484) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_quantize_delay() != 45128) {
@@ -17927,7 +19384,46 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_copy_preset() != 46555) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_op() != 56434) {
+    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_close() != 22148) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_commit() != 44738) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_keep() != 33548) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_open() != 25170) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_poll() != 8331) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_start() != 64866) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_view() != 20235) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_demo_event() != 36183) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_auto() != 58533) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_clear() != 10120) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_set() != 2842) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_trial() != 30445) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_op() != 61912) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_trial_end() != 31305) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_cs_apply() != 3367) {
@@ -17960,7 +19456,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_adat_out_status() != 51824) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_fetch_all() != 31366) {
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_all() != 28305) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_buffer_stats() != 4897) {
@@ -18122,19 +19618,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_preamp_max_db() != 3403) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_preset_changes() != 43652) {
+    if (uniffi_dspi_core_checksum_method_dspicore_preset_changes() != 43967) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_preset_dirty() != 19546) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_process_notifications() != 30019) {
+    if (uniffi_dspi_core_checksum_method_dspicore_process_notifications() != 39404) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_raw_get() != 1394) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_raw_set() != 61393) {
+    if (uniffi_dspi_core_checksum_method_dspicore_raw_set() != 35984) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_refresh_params() != 360) {

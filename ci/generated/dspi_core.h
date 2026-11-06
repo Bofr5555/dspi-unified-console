@@ -4575,11 +4575,13 @@ uint32_t dspi_fetch_core_vreg(struct FfiCore *core, char *buf, uint32_t len);
 /**
  * Core voltage write: `op` 0 set (value = VREG code, 0 = build default),
  * 1 trial, 2 end trial, 3 auto (value 0/1), 4 clear. Out-of-range requests
- * are refused here with nothing sent. Returns 0 on success, the device's
+ * are refused here with nothing sent. A set or trial above 1.20 V and above
+ * what the unit reports now needs `word`, exactly "OVERVOLT"; null or anything
+ * else refuses it with nothing written. Returns 0 on success, the device's
  * status byte if it refused, 0xFF otherwise. Read the status back with
  * `dspi_fetch_core_vreg`.
  */
-uint8_t dspi_core_vreg_op(struct FfiCore *core, uint8_t op, uint8_t value);
+uint8_t dspi_core_vreg_op(struct FfiCore *core, uint8_t op, uint8_t value, const char *word);
 
 /**
  * The user's name for input source `source` ("" when unnamed), cut to fit
@@ -4665,6 +4667,83 @@ uint32_t dspi_flash_to_drive(const uint8_t *image,
  * 0 if not, -1 with no device open or for a null or invalid string.
  */
 int8_t dspi_firmware_version_matches(struct FfiCore *core, const char *version);
+
+/**
+ * The calibration flow as it stands, from memory, with no traffic (it waits
+ * for a call in flight, so keep it off the UI thread): JSON
+ * {ok, available, phase, messageKey, message, warning, soakNote, ...}, the
+ * fields of dspi-core's `VregCalView`. Returns the length needed.
+ */
+uint32_t dspi_core_vreg_cal_view(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Read the device and advance the flow, as `dspi_core_vreg_cal_view` for the
+ * reply. Call about once a second while the page shows, and on every connect.
+ * The next step of a run the user started may go out here, but never a save,
+ * and a second call for a larger buffer does no harm. Returns the length needed.
+ */
+uint32_t dspi_core_vreg_cal_poll(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Open the flow: the user reached it from Advanced. Sends no write.
+ */
+uint8_t dspi_core_vreg_cal_open(struct FfiCore *core);
+
+/**
+ * Close the flow: the user left. Refused while a run is under way.
+ */
+uint8_t dspi_core_vreg_cal_close(struct FfiCore *core);
+
+/**
+ * Start a run at VREG code `target` for `soak_s` seconds. `typed` is what the
+ * user typed when the view says the voltage needs the word, or null.
+ */
+uint8_t dspi_core_vreg_cal_start(struct FfiCore *core,
+                                 uint8_t target,
+                                 uint32_t soak_s,
+                                 const char *typed);
+
+/**
+ * Keep a trial found on the device, for `soak_s` seconds from now.
+ */
+uint8_t dspi_core_vreg_cal_keep(struct FfiCore *core, uint32_t soak_s);
+
+/**
+ * Save the voltage that passed. `typed` as for `dspi_core_vreg_cal_start`.
+ */
+uint8_t dspi_core_vreg_cal_commit(struct FfiCore *core, const char *typed);
+
+/**
+ * End a trial, or abort a run.
+ */
+uint8_t dspi_core_vreg_trial_end(struct FfiCore *core);
+
+/**
+ * Manual save: `value` 0 is the build default, otherwise the flow's limits
+ * and confirmation apply. `typed` as for `dspi_core_vreg_cal_start`.
+ */
+uint8_t dspi_core_vreg_manual_set(struct FfiCore *core, uint8_t value, const char *typed);
+
+/**
+ * Manual trial, with the flow's limits and confirmation.
+ */
+uint8_t dspi_core_vreg_manual_trial(struct FfiCore *core, uint8_t value, const char *typed);
+
+/**
+ * Turn the firmware's automatic raising on or off.
+ */
+uint8_t dspi_core_vreg_manual_auto(struct FfiCore *core, bool on);
+
+/**
+ * Forget the hang count and the last trial failure. Refused during a run.
+ */
+uint8_t dspi_core_vreg_manual_clear(struct FfiCore *core);
+
+/**
+ * On the demo device only: 0 a hang, 1 a requested reboot, 2 a power cycle,
+ * 3 `seconds` passing on the device's clock.
+ */
+uint8_t dspi_core_vreg_demo_event(struct FfiCore *core, uint8_t event, uint32_t seconds);
 
 /**
  * What the open board needs, read from the device now: JSON {ok, requiredMv,
@@ -4807,6 +4886,40 @@ void dspi_autoeq_rebuild_cancel(struct AutoEqRebuildHandle *handle);
  * call from inside the callback. Null is ignored.
  */
 void dspi_autoeq_rebuild_free(struct AutoEqRebuildHandle *handle);
+
+/**
+ * What to tell the user about a Link phase, in JSON: {ok, key, phase, text,
+ * actionKey, action}, or {ok:false, code:"invalid", error} for a `phase` that is
+ * no phase. `phase` is the name `dspi_link_status` reports. `pin_source` is its
+ * `pinSource`; it matters only to `needs_pairing`, and null reads as `window`.
+ * `key` is what to localise by: the phase's name, or `needs_pairing.window` or
+ * `needs_pairing.fixed`. `actionKey` and `action` are null, or a button the phase
+ * must show: `reconnecting`'s calls `dspi_link_close`.
+ * Returns the bytes needed including the NUL, 0 for a null `phase` or a panic.
+ */
+uint32_t dspi_link_phase_text(const char *phase, const char *pin_source, char *buf, uint32_t len);
+
+/**
+ * The whole wording table in JSON, every key once: {ok, value:[{key, phase, text,
+ * actionKey, action}]}. Returns the bytes needed including the NUL, 0 for a panic.
+ */
+uint32_t dspi_link_phase_texts(char *buf, uint32_t len);
+
+/**
+ * The release notes for the platform this library was compiled for, as a JSON
+ * document: [{version, headline, items}], newest first; no `ok` wrapper. Returns the bytes needed including the NUL, 0 for
+ * a panic.
+ */
+uint32_t dspi_onboarding_whats_new_json(char *buf,
+                                        uint32_t len);
+
+/**
+ * The Getting Started wizard's data for the platform this library was compiled
+ * for, as a JSON document; no `ok` wrapper. `dspi_core::link_text` describes it.
+ * Returns the bytes needed including the NUL,
+ * 0 for a panic.
+ */
+uint32_t dspi_onboarding_getting_started_json(char *buf, uint32_t len);
 
 /**
  * Start looking for hubs on the local network, replacing any browse running.

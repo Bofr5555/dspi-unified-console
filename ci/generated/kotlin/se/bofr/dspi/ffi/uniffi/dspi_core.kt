@@ -1304,6 +1304,40 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1361,7 +1395,15 @@ fun uniffi_dspi_core_checksum_func_link_fetch_info(
 ): Short
 fun uniffi_dspi_core_checksum_func_link_parse_address(
 ): Short
+fun uniffi_dspi_core_checksum_func_link_phase_text(
+): Short
+fun uniffi_dspi_core_checksum_func_link_phase_texts(
+): Short
 fun uniffi_dspi_core_checksum_func_link_ws_url(
+): Short
+fun uniffi_dspi_core_checksum_func_onboarding_getting_started_json(
+): Short
+fun uniffi_dspi_core_checksum_func_onboarding_whats_new_json(
 ): Short
 fun uniffi_dspi_core_checksum_func_quantize_delay(
 ): Short
@@ -1395,7 +1437,33 @@ fun uniffi_dspi_core_checksum_method_dspicore_config_import(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_copy_preset(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_close(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_commit(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_keep(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_open(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_poll(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_start(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_view(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_demo_event(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_auto(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_clear(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_set(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_trial(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_op(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_trial_end(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_cs_apply(
 ): Short
@@ -1852,7 +1920,33 @@ fun uniffi_dspi_core_fn_method_dspicore_config_import(`ptr`: Pointer,`text`: Rus
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_copy_preset(`ptr`: Pointer,`source`: Byte,`dest`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-fun uniffi_dspi_core_fn_method_dspicore_core_vreg_op(`ptr`: Pointer,`op`: Byte,`value`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_close(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_commit(`ptr`: Pointer,`typed`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_keep(`ptr`: Pointer,`soakS`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_open(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_poll(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_start(`ptr`: Pointer,`target`: Byte,`soakS`: Int,`typed`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_view(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_core_vreg_demo_event(`ptr`: Pointer,`event`: RustBuffer.ByValue,`seconds`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_auto(`ptr`: Pointer,`on`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_clear(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_set(`ptr`: Pointer,`value`: Byte,`typed`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_trial(`ptr`: Pointer,`value`: Byte,`typed`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_core_vreg_op(`ptr`: Pointer,`op`: Byte,`value`: Byte,`word`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_core_vreg_trial_end(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_cs_apply(`ptr`: Pointer,`op`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -2274,7 +2368,15 @@ fun uniffi_dspi_core_fn_func_link_fetch_info(`host`: RustBuffer.ByValue,`port`: 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_parse_address(`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_link_phase_text(`phase`: RustBuffer.ByValue,`pinSource`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_link_phase_texts(uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_ws_url(`host`: RustBuffer.ByValue,`port`: Short,`path`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_onboarding_getting_started_json(uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_onboarding_whats_new_json(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_quantize_delay(`ms`: Float,uniffi_out_err: UniffiRustCallStatus, 
 ): Float
@@ -2471,7 +2573,19 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_func_link_parse_address() != 30128.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_func_link_phase_text() != 33877.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_link_phase_texts() != 45098.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_func_link_ws_url() != 18495.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_onboarding_getting_started_json() != 59413.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_onboarding_whats_new_json() != 47484.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_quantize_delay() != 45128.toShort()) {
@@ -2522,7 +2636,46 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_copy_preset() != 46555.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_op() != 56434.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_close() != 22148.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_commit() != 44738.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_keep() != 33548.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_open() != 25170.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_poll() != 8331.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_start() != 64866.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_view() != 20235.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_demo_event() != 36183.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_auto() != 58533.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_clear() != 10120.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_set() != 2842.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_trial() != 30445.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_op() != 61912.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_trial_end() != 31305.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_cs_apply() != 3367.toShort()) {
@@ -2555,7 +2708,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_adat_out_status() != 51824.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_all() != 31366.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_all() != 28305.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_buffer_stats() != 4897.toShort()) {
@@ -2717,19 +2870,19 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_preamp_max_db() != 3403.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_preset_changes() != 43652.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_preset_changes() != 43967.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_preset_dirty() != 19546.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_process_notifications() != 30019.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_process_notifications() != 39404.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_raw_get() != 1394.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_raw_set() != 61393.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_raw_set() != 35984.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_refresh_params() != 360.toShort()) {
@@ -4660,6 +4813,102 @@ public interface DspiCoreInterface {
     fun `copyPreset`(`source`: kotlin.UByte, `dest`: kotlin.UByte)
     
     /**
+     * Close the flow: the user left. No traffic. `InvalidArgument` during a
+     * run, which goes on until ended.
+     */
+    fun `coreVregCalClose`()
+    
+    /**
+     * Save the voltage that passed, with a `SET`: the one explicit step from
+     * a pass to flash. The status is read first, so a hang since the last
+     * poll takes the pass back. Read back by later polls: `Committed` or
+     * `VerifyFailed`. `typed` is the word when the view's `commit_needs_word`
+     * says so, even if it was typed for the trial. A refusal leaves the flow in
+     * `Passed`, with the trial running. Errors as for starting.
+     */
+    fun `coreVregCalCommit`(`typed`: kotlin.String?)
+    
+    /**
+     * Keep a trial found on the device: the soak counts from now, for
+     * `soak_s` seconds. A trial outside the flow's range is left alone and
+     * cannot pass. Sends nothing. Errors as for opening.
+     */
+    fun `coreVregCalKeep`(`soakS`: kotlin.UInt)
+    
+    /**
+     * Open the flow: the user reached it, from Advanced. Shows the warning
+     * and what is on record; sends no write.
+     *
+     * `Disconnected`; `Unsupported` without a usable `EXT_CORE_VREG`;
+     * `Denied` after a hub refused a write on this connection; `ReadOnly`;
+     * `InvalidArgument` during a run.
+     */
+    fun `coreVregCalOpen`()
+    
+    /**
+     * Read the device and advance the flow; never fails, the view says.
+     * Call on every connect and about once a second while the page shows.
+     * The only write that can go out is the next step of a run the user
+     * started; never a `SET`, and none after the connection changed. Blocks
+     * for a read: call it off the UI thread.
+     */
+    fun `coreVregCalPoll`(): VregCalView
+    
+    /**
+     * Start a run: the current record is cleared, `target` goes on trial
+     * once the device shows that, and the soak counts for `soak_s` seconds.
+     * `typed` is what the user typed when the view says this needs the word.
+     *
+     * `OvervoltWordRequired`, with no write, if it does and that is not
+     * exactly the word. `InvalidArgument`, with no write, for a voltage
+     * outside the build default to 1.25 V, a soak under the minimum, a trial
+     * already running, or the wrong phase. `Disconnected`,
+     * `Unsupported`, `ReadOnly`; `Refused`, `Denied`, `Locked`, `Transfer` for
+     * the write, which is not retried.
+     */
+    fun `coreVregCalStart`(`target`: kotlin.UByte, `soakS`: kotlin.UInt, `typed`: kotlin.String?)
+    
+    /**
+     * The calibration flow as it stands, from memory: no traffic. It waits
+     * for a poll or request in flight, so a slow link can hold it up as long
+     * as that read: call it off the UI thread too.
+     */
+    fun `coreVregCalView`(): VregCalView
+    
+    /**
+     * Play an event on the demo device, for clients' tests and demo mode.
+     * `seconds` is for [`VregDemoEvent::AdvanceUptime`]. `Unsupported`, with
+     * no traffic, on anything but a simulated device.
+     */
+    fun `coreVregDemoEvent`(`event`: VregDemoEvent, `seconds`: kotlin.UInt)
+    
+    /**
+     * Manual `AUTO`: the firmware's automatic raising after repeated hangs.
+     * Errors as for starting.
+     */
+    fun `coreVregManualAuto`(`on`: kotlin.Boolean)
+    
+    /**
+     * Manual `CLEAR`: forget the hang count and the last trial failure.
+     * `InvalidArgument` during a run, whose result it would erase. Errors
+     * otherwise as for starting.
+     */
+    fun `coreVregManualClear`()
+    
+    /**
+     * Manual `SET` from the Advanced page. `value` 0 is the reset to the
+     * build default; anything else has the flow's limits and confirmation.
+     * Read back by later polls, as a commit. Errors as for starting.
+     */
+    fun `coreVregManualSet`(`value`: kotlin.UByte, `typed`: kotlin.String?)
+    
+    /**
+     * Manual `TRIAL`, with the flow's limits and confirmation. It shows as a
+     * found trial on the next poll. Errors as for starting.
+     */
+    fun `coreVregManualTrial`(`value`: kotlin.UByte, `typed`: kotlin.String?)
+    
+    /**
      * `EXT_CORE_VREG` write: `op` 0 set (value = VREG code, 0 = build
      * default), 1 trial, 2 end trial, 3 auto (value 0/1), 4 clear
      * (`dspi_proto::ext::VregOp`).
@@ -4671,12 +4920,27 @@ public interface DspiCoreInterface {
      * of TRIAL_END and CLEAR is ignored (sent as 0). Read the status back
      * with [`DspiCore::fetch_core_vreg`].
      *
-     * Errors: `Disconnected`; `ReadOnly` on a read-only connection;
+     * WP CG14: a SET or TRIAL reads the unit's status first and goes through
+     * `dspi_session::overvolt`: a raise above 1.20 V from what it reports now
+     * needs `word`, exactly `OVERVOLT`, or nothing is written. This is the
+     * one path to 1.30 V; the GUIs' flow stops at 1.25 V (`core_vreg_cal_*`).
+     *
+     * Errors: `OvervoltWordRequired` as above; `Disconnected`; `ReadOnly` on
+     * a read-only connection;
      * `Unsupported` when the device has no usable core-voltage extension;
      * `Refused { status: EXT_WRITE_REFUSED }` when the device stalls the
      * request anyway; `Denied`, `Locked` or `Transfer` from the link.
      */
-    fun `coreVregOp`(`op`: kotlin.UByte, `value`: kotlin.UByte)
+    fun `coreVregOp`(`op`: kotlin.UByte, `value`: kotlin.UByte, `word`: kotlin.String?)
+    
+    /**
+     * End a trial, or abort a run, with `TRIAL_END`, at any time but while a
+     * save is being read back. Works without a fresh status, so a run can be
+     * aborted while reads are failing. `Disconnected` and `ReadOnly` change
+     * nothing. A write that fails otherwise is not retried: later polls end
+     * in `Ended`, or in `VerifyFailed`, from which it can be asked for again.
+     */
+    fun `coreVregTrialEnd`()
     
     /**
      * One control-surface operation, JSON `{op, index, ...}` (the old
@@ -4820,8 +5084,8 @@ public interface DspiCoreInterface {
      * [`DspiCore::apply_all_params`]) returns [`DspiError::ReadOnly`].
      *
      * The optional per-item reads (presets, Core 1 mode, subharm solo, DAC
-     * mute, control interfaces) leave their defaults when the firmware does
-     * not answer them.
+     * mute, control interfaces, input source names) leave their defaults
+     * when the firmware does not answer them.
      *
      * Right after a connect that already decoded this connect's image
      * (`Connection::fresh_image`, set by `attach_probed`), the platform and
@@ -5440,7 +5704,9 @@ public interface DspiCoreInterface {
      * only in WITH_PRESET master-volume mode, the hardware wiring and the
      * limiters only in WITH_PRESET output-config mode, both judged by the
      * live mode. The user volume and the DAC mute are no preset change, as
-     * on macOS. Empty before any baseline. Never fails.
+     * on macOS. An input source goes by the user's name when it has one,
+     * from the connection's cache, so this does no I/O. Empty before any
+     * baseline. Never fails.
      */
     fun `presetChanges`(): List<kotlin.String>
     
@@ -5483,7 +5749,8 @@ public interface DspiCoreInterface {
      *
      * Without a device, or with nothing queued, it returns an empty
      * result. Never fails and never panics on device data. Blocks only
-     * for a re-read (one bulk read and the directory read).
+     * for a re-read (one bulk read and the directory read, plus the input
+     * source names after a lost packet).
      */
     fun `processNotifications`(): NotifyResult
     
@@ -5525,7 +5792,8 @@ public interface DspiCoreInterface {
      * transfer with the core's lock held: call it off the UI thread.
      *
      * Errors: [`DspiError::InvalidArgument`] for `REQ_SET_ALL_PARAMS`, the
-     * chunk opcodes, or more than 65535 bytes of `data` (nothing is sent);
+     * chunk opcodes, an `EXT_CORE_VREG` request, or more than 65535 bytes of
+     * `data` (nothing is sent);
      * [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a read-only
      * connection (nothing is sent); [`DspiError::Refused`] with status 0
      * when the device stalls; [`DspiError::Denied`], [`DspiError::Locked`]
@@ -6849,6 +7117,222 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Close the flow: the user left. No traffic. `InvalidArgument` during a
+     * run, which goes on until ended.
+     */
+    @Throws(DspiException::class)override fun `coreVregCalClose`()
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_close(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Save the voltage that passed, with a `SET`: the one explicit step from
+     * a pass to flash. The status is read first, so a hang since the last
+     * poll takes the pass back. Read back by later polls: `Committed` or
+     * `VerifyFailed`. `typed` is the word when the view's `commit_needs_word`
+     * says so, even if it was typed for the trial. A refusal leaves the flow in
+     * `Passed`, with the trial running. Errors as for starting.
+     */
+    @Throws(DspiException::class)override fun `coreVregCalCommit`(`typed`: kotlin.String?)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_commit(
+        it, FfiConverterOptionalString.lower(`typed`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Keep a trial found on the device: the soak counts from now, for
+     * `soak_s` seconds. A trial outside the flow's range is left alone and
+     * cannot pass. Sends nothing. Errors as for opening.
+     */
+    @Throws(DspiException::class)override fun `coreVregCalKeep`(`soakS`: kotlin.UInt)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_keep(
+        it, FfiConverterUInt.lower(`soakS`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Open the flow: the user reached it, from Advanced. Shows the warning
+     * and what is on record; sends no write.
+     *
+     * `Disconnected`; `Unsupported` without a usable `EXT_CORE_VREG`;
+     * `Denied` after a hub refused a write on this connection; `ReadOnly`;
+     * `InvalidArgument` during a run.
+     */
+    @Throws(DspiException::class)override fun `coreVregCalOpen`()
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_open(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Read the device and advance the flow; never fails, the view says.
+     * Call on every connect and about once a second while the page shows.
+     * The only write that can go out is the next step of a run the user
+     * started; never a `SET`, and none after the connection changed. Blocks
+     * for a read: call it off the UI thread.
+     */override fun `coreVregCalPoll`(): VregCalView {
+            return FfiConverterTypeVregCalView.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_poll(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Start a run: the current record is cleared, `target` goes on trial
+     * once the device shows that, and the soak counts for `soak_s` seconds.
+     * `typed` is what the user typed when the view says this needs the word.
+     *
+     * `OvervoltWordRequired`, with no write, if it does and that is not
+     * exactly the word. `InvalidArgument`, with no write, for a voltage
+     * outside the build default to 1.25 V, a soak under the minimum, a trial
+     * already running, or the wrong phase. `Disconnected`,
+     * `Unsupported`, `ReadOnly`; `Refused`, `Denied`, `Locked`, `Transfer` for
+     * the write, which is not retried.
+     */
+    @Throws(DspiException::class)override fun `coreVregCalStart`(`target`: kotlin.UByte, `soakS`: kotlin.UInt, `typed`: kotlin.String?)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_start(
+        it, FfiConverterUByte.lower(`target`),FfiConverterUInt.lower(`soakS`),FfiConverterOptionalString.lower(`typed`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * The calibration flow as it stands, from memory: no traffic. It waits
+     * for a poll or request in flight, so a slow link can hold it up as long
+     * as that read: call it off the UI thread too.
+     */override fun `coreVregCalView`(): VregCalView {
+            return FfiConverterTypeVregCalView.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_view(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Play an event on the demo device, for clients' tests and demo mode.
+     * `seconds` is for [`VregDemoEvent::AdvanceUptime`]. `Unsupported`, with
+     * no traffic, on anything but a simulated device.
+     */
+    @Throws(DspiException::class)override fun `coreVregDemoEvent`(`event`: VregDemoEvent, `seconds`: kotlin.UInt)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core_vreg_demo_event(
+        it, FfiConverterTypeVregDemoEvent.lower(`event`),FfiConverterUInt.lower(`seconds`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Manual `AUTO`: the firmware's automatic raising after repeated hangs.
+     * Errors as for starting.
+     */
+    @Throws(DspiException::class)override fun `coreVregManualAuto`(`on`: kotlin.Boolean)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_auto(
+        it, FfiConverterBoolean.lower(`on`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Manual `CLEAR`: forget the hang count and the last trial failure.
+     * `InvalidArgument` during a run, whose result it would erase. Errors
+     * otherwise as for starting.
+     */
+    @Throws(DspiException::class)override fun `coreVregManualClear`()
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_clear(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Manual `SET` from the Advanced page. `value` 0 is the reset to the
+     * build default; anything else has the flow's limits and confirmation.
+     * Read back by later polls, as a commit. Errors as for starting.
+     */
+    @Throws(DspiException::class)override fun `coreVregManualSet`(`value`: kotlin.UByte, `typed`: kotlin.String?)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_set(
+        it, FfiConverterUByte.lower(`value`),FfiConverterOptionalString.lower(`typed`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Manual `TRIAL`, with the flow's limits and confirmation. It shows as a
+     * found trial on the next poll. Errors as for starting.
+     */
+    @Throws(DspiException::class)override fun `coreVregManualTrial`(`value`: kotlin.UByte, `typed`: kotlin.String?)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_trial(
+        it, FfiConverterUByte.lower(`value`),FfiConverterOptionalString.lower(`typed`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * `EXT_CORE_VREG` write: `op` 0 set (value = VREG code, 0 = build
      * default), 1 trial, 2 end trial, 3 auto (value 0/1), 4 clear
      * (`dspi_proto::ext::VregOp`).
@@ -6860,17 +7344,42 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * of TRIAL_END and CLEAR is ignored (sent as 0). Read the status back
      * with [`DspiCore::fetch_core_vreg`].
      *
-     * Errors: `Disconnected`; `ReadOnly` on a read-only connection;
+     * WP CG14: a SET or TRIAL reads the unit's status first and goes through
+     * `dspi_session::overvolt`: a raise above 1.20 V from what it reports now
+     * needs `word`, exactly `OVERVOLT`, or nothing is written. This is the
+     * one path to 1.30 V; the GUIs' flow stops at 1.25 V (`core_vreg_cal_*`).
+     *
+     * Errors: `OvervoltWordRequired` as above; `Disconnected`; `ReadOnly` on
+     * a read-only connection;
      * `Unsupported` when the device has no usable core-voltage extension;
      * `Refused { status: EXT_WRITE_REFUSED }` when the device stalls the
      * request anyway; `Denied`, `Locked` or `Transfer` from the link.
      */
-    @Throws(DspiException::class)override fun `coreVregOp`(`op`: kotlin.UByte, `value`: kotlin.UByte)
+    @Throws(DspiException::class)override fun `coreVregOp`(`op`: kotlin.UByte, `value`: kotlin.UByte, `word`: kotlin.String?)
         = 
     callWithPointer {
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core_vreg_op(
-        it, FfiConverterUByte.lower(`op`),FfiConverterUByte.lower(`value`),_status)
+        it, FfiConverterUByte.lower(`op`),FfiConverterUByte.lower(`value`),FfiConverterOptionalString.lower(`word`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * End a trial, or abort a run, with `TRIAL_END`, at any time but while a
+     * save is being read back. Works without a fresh status, so a run can be
+     * aborted while reads are failing. `Disconnected` and `ReadOnly` change
+     * nothing. A write that fails otherwise is not retried: later polls end
+     * in `Ended`, or in `VerifyFailed`, from which it can be asked for again.
+     */
+    @Throws(DspiException::class)override fun `coreVregTrialEnd`()
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core_vreg_trial_end(
+        it, _status)
 }
     }
     
@@ -7120,8 +7629,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * [`DspiCore::apply_all_params`]) returns [`DspiError::ReadOnly`].
      *
      * The optional per-item reads (presets, Core 1 mode, subharm solo, DAC
-     * mute, control interfaces) leave their defaults when the firmware does
-     * not answer them.
+     * mute, control interfaces, input source names) leave their defaults
+     * when the firmware does not answer them.
      *
      * Right after a connect that already decoded this connect's image
      * (`Connection::fresh_image`, set by `attach_probed`), the platform and
@@ -8303,7 +8812,9 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * only in WITH_PRESET master-volume mode, the hardware wiring and the
      * limiters only in WITH_PRESET output-config mode, both judged by the
      * live mode. The user volume and the DAC mute are no preset change, as
-     * on macOS. Empty before any baseline. Never fails.
+     * on macOS. An input source goes by the user's name when it has one,
+     * from the connection's cache, so this does no I/O. Empty before any
+     * baseline. Never fails.
      */override fun `presetChanges`(): List<kotlin.String> {
             return FfiConverterSequenceString.lift(
     callWithPointer {
@@ -8366,7 +8877,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      *
      * Without a device, or with nothing queued, it returns an empty
      * result. Never fails and never panics on device data. Blocks only
-     * for a re-read (one bulk read and the directory read).
+     * for a re-read (one bulk read and the directory read, plus the input
+     * source names after a lost packet).
      */override fun `processNotifications`(): NotifyResult {
             return FfiConverterTypeNotifyResult.lift(
     callWithPointer {
@@ -8429,7 +8941,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * transfer with the core's lock held: call it off the UI thread.
      *
      * Errors: [`DspiError::InvalidArgument`] for `REQ_SET_ALL_PARAMS`, the
-     * chunk opcodes, or more than 65535 bytes of `data` (nothing is sent);
+     * chunk opcodes, an `EXT_CORE_VREG` request, or more than 65535 bytes of
+     * `data` (nothing is sent);
      * [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a read-only
      * connection (nothing is sent); [`DspiError::Refused`] with status 0
      * when the device stalls; [`DspiError::Denied`], [`DspiError::Locked`]
@@ -13810,8 +14323,9 @@ data class FirmwareGuardVerdict (
      */
     var `message`: kotlin.String, 
     /**
-     * What to ask the user to type when a risk is involved, else "". Compared
-     * exactly: case and spaces count.
+     * What to ask the user to type when a risk is involved, else "": the
+     * phrase, or for [`FirmwareGuardReason::Overvolt`] the word. Compared
+     * exactly: case and spaces count, and the one does not stand for the other.
      */
     var `confirmationPhrase`: kotlin.String, 
     /**
@@ -14407,6 +14921,71 @@ public object FfiConverterTypeLinkInfo: FfiConverterRustBuffer<LinkInfo> {
             FfiConverterUInt.write(value.`protoMinor`, buf)
             FfiConverterString.write(value.`wsPath`, buf)
             FfiConverterSequenceString.write(value.`serials`, buf)
+    }
+}
+
+
+
+/**
+ * What to tell the user about a [`LinkPhase`].
+ */
+data class LinkPhaseText (
+    /**
+     * Stable key of `text`, for localising: `no_device`, `needs_pairing.fixed`.
+     */
+    var `key`: kotlin.String, 
+    /**
+     * The phase's name ([`link_phase_key`]), also for an entry split by
+     * `pin_source`.
+     */
+    var `phase`: kotlin.String, 
+    /**
+     * The English.
+     */
+    var `text`: kotlin.String, 
+    /**
+     * Stable key of `action`, if the phase has a button of its own.
+     */
+    var `actionKey`: kotlin.String?, 
+    /**
+     * The English of that button.
+     * [`LinkPhase::Reconnecting`] has one, which calls `link_close`: the owner's
+     * rule is that a lost connection always offers the way out.
+     */
+    var `action`: kotlin.String?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLinkPhaseText: FfiConverterRustBuffer<LinkPhaseText> {
+    override fun read(buf: ByteBuffer): LinkPhaseText {
+        return LinkPhaseText(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LinkPhaseText) = (
+            FfiConverterString.allocationSize(value.`key`) +
+            FfiConverterString.allocationSize(value.`phase`) +
+            FfiConverterString.allocationSize(value.`text`) +
+            FfiConverterOptionalString.allocationSize(value.`actionKey`) +
+            FfiConverterOptionalString.allocationSize(value.`action`)
+    )
+
+    override fun write(value: LinkPhaseText, buf: ByteBuffer) {
+            FfiConverterString.write(value.`key`, buf)
+            FfiConverterString.write(value.`phase`, buf)
+            FfiConverterString.write(value.`text`, buf)
+            FfiConverterOptionalString.write(value.`actionKey`, buf)
+            FfiConverterOptionalString.write(value.`action`, buf)
     }
 }
 
@@ -16296,6 +16875,284 @@ public object FfiConverterTypeUpmixStatus: FfiConverterRustBuffer<UpmixStatus> {
 
 
 
+/**
+ * The flow as a client shows it.
+ */
+data class VregCalView (
+    /**
+     * The connection can use the flow: `EXT_CORE_VREG` present, writable,
+     * and not refused by a hub. While false with phase `Idle`, hide the
+     * flow. While false in another phase the device is away: show the phase.
+     */
+    var `available`: kotlin.Boolean, 
+    /**
+     * Where the flow is.
+     */
+    var `phase`: VregCalPhase, 
+    /**
+     * A stable key for `message`, for clients that localise.
+     */
+    var `messageKey`: kotlin.String, 
+    /**
+     * The state or result, stated plainly in English.
+     */
+    var `message`: kotlin.String, 
+    /**
+     * The warning to show before the flow, with the datasheet limits.
+     */
+    var `warning`: kotlin.String, 
+    /**
+     * What a soak does and does not show.
+     */
+    var `soakNote`: kotlin.String, 
+    /**
+     * The voltages offered, lowest first. Empty on a build default the flow
+     * does not cover, or before a first status.
+     */
+    var `choices`: List<VregChoice>, 
+    /**
+     * What to type when `needs_word` or `commit_needs_word`: `OVERVOLT`,
+     * exactly.
+     */
+    var `confirmationWord`: kotlin.String, 
+    /**
+     * `core_vreg_cal_commit` needs the word now, while `phase` is `Passed`.
+     * Saving a trial above 1.20 V that is not already stored asks for it, even
+     * though it was typed to start the trial: going from RAM to flash is an
+     * upward change of its own. Ask again; do not reuse the earlier answer.
+     */
+    var `commitNeedsWord`: kotlin.Boolean, 
+    /**
+     * The soak to suggest, seconds.
+     */
+    var `defaultSoakS`: kotlin.UInt, 
+    /**
+     * The shortest soak accepted, seconds.
+     */
+    var `minSoakS`: kotlin.UInt, 
+    /**
+     * The run's or found trial's voltage; 0 if none.
+     */
+    var `targetVreg`: kotlin.UByte, 
+    /**
+     * The soak asked for, seconds; 0 if none.
+     */
+    var `soakS`: kotlin.UInt, 
+    /**
+     * Seconds of soak counted so far.
+     */
+    var `elapsedS`: kotlin.UInt, 
+    /**
+     * The failure shown or on record: its voltage; 0 if none.
+     */
+    var `failedVreg`: kotlin.UByte, 
+    /**
+     * Seconds the failed trial ran, if this host saw it start and the record
+     * still has the time.
+     */
+    var `ranS`: kotlin.UInt?, 
+    /**
+     * The device's uptime when that trial hung; 0 if the record lost it. Its
+     * whole run, so at most an upper bound on the trial.
+     */
+    var `uptimeAtHangS`: kotlin.UInt, 
+    /**
+     * The next voltage up to offer after that failure; 0 if none.
+     */
+    var `nextVreg`: kotlin.UByte, 
+    /**
+     * Nothing above that failure to try: a hardware problem.
+     */
+    var `hardwareProblem`: kotlin.Boolean, 
+    /**
+     * Why the result is unknown (`record_gone`, `not_started`,
+     * `trial_changed`); `None` unless `phase` is `Unknown`.
+     */
+    var `unknownReason`: kotlin.String?, 
+    /**
+     * The device stopped answering since the last status: a hang in
+     * progress, or a dropped link. The result is still open.
+     */
+    var `linkLost`: kotlin.Boolean, 
+    /**
+     * `core_vreg_cal_start` applies now.
+     */
+    var `canStart`: kotlin.Boolean, 
+    /**
+     * `core_vreg_cal_keep` applies now.
+     */
+    var `canKeep`: kotlin.Boolean, 
+    /**
+     * `core_vreg_cal_commit` applies now.
+     */
+    var `canCommit`: kotlin.Boolean, 
+    /**
+     * The last status read from the device.
+     */
+    var `status`: CoreVregInfo?, 
+    /**
+     * Why the last call or read failed, in a sentence; `None` once one
+     * succeeded.
+     */
+    var `lastError`: kotlin.String?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeVregCalView: FfiConverterRustBuffer<VregCalView> {
+    override fun read(buf: ByteBuffer): VregCalView {
+        return VregCalView(
+            FfiConverterBoolean.read(buf),
+            FfiConverterTypeVregCalPhase.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeVregChoice.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalTypeCoreVregInfo.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: VregCalView) = (
+            FfiConverterBoolean.allocationSize(value.`available`) +
+            FfiConverterTypeVregCalPhase.allocationSize(value.`phase`) +
+            FfiConverterString.allocationSize(value.`messageKey`) +
+            FfiConverterString.allocationSize(value.`message`) +
+            FfiConverterString.allocationSize(value.`warning`) +
+            FfiConverterString.allocationSize(value.`soakNote`) +
+            FfiConverterSequenceTypeVregChoice.allocationSize(value.`choices`) +
+            FfiConverterString.allocationSize(value.`confirmationWord`) +
+            FfiConverterBoolean.allocationSize(value.`commitNeedsWord`) +
+            FfiConverterUInt.allocationSize(value.`defaultSoakS`) +
+            FfiConverterUInt.allocationSize(value.`minSoakS`) +
+            FfiConverterUByte.allocationSize(value.`targetVreg`) +
+            FfiConverterUInt.allocationSize(value.`soakS`) +
+            FfiConverterUInt.allocationSize(value.`elapsedS`) +
+            FfiConverterUByte.allocationSize(value.`failedVreg`) +
+            FfiConverterOptionalUInt.allocationSize(value.`ranS`) +
+            FfiConverterUInt.allocationSize(value.`uptimeAtHangS`) +
+            FfiConverterUByte.allocationSize(value.`nextVreg`) +
+            FfiConverterBoolean.allocationSize(value.`hardwareProblem`) +
+            FfiConverterOptionalString.allocationSize(value.`unknownReason`) +
+            FfiConverterBoolean.allocationSize(value.`linkLost`) +
+            FfiConverterBoolean.allocationSize(value.`canStart`) +
+            FfiConverterBoolean.allocationSize(value.`canKeep`) +
+            FfiConverterBoolean.allocationSize(value.`canCommit`) +
+            FfiConverterOptionalTypeCoreVregInfo.allocationSize(value.`status`) +
+            FfiConverterOptionalString.allocationSize(value.`lastError`)
+    )
+
+    override fun write(value: VregCalView, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`available`, buf)
+            FfiConverterTypeVregCalPhase.write(value.`phase`, buf)
+            FfiConverterString.write(value.`messageKey`, buf)
+            FfiConverterString.write(value.`message`, buf)
+            FfiConverterString.write(value.`warning`, buf)
+            FfiConverterString.write(value.`soakNote`, buf)
+            FfiConverterSequenceTypeVregChoice.write(value.`choices`, buf)
+            FfiConverterString.write(value.`confirmationWord`, buf)
+            FfiConverterBoolean.write(value.`commitNeedsWord`, buf)
+            FfiConverterUInt.write(value.`defaultSoakS`, buf)
+            FfiConverterUInt.write(value.`minSoakS`, buf)
+            FfiConverterUByte.write(value.`targetVreg`, buf)
+            FfiConverterUInt.write(value.`soakS`, buf)
+            FfiConverterUInt.write(value.`elapsedS`, buf)
+            FfiConverterUByte.write(value.`failedVreg`, buf)
+            FfiConverterOptionalUInt.write(value.`ranS`, buf)
+            FfiConverterUInt.write(value.`uptimeAtHangS`, buf)
+            FfiConverterUByte.write(value.`nextVreg`, buf)
+            FfiConverterBoolean.write(value.`hardwareProblem`, buf)
+            FfiConverterOptionalString.write(value.`unknownReason`, buf)
+            FfiConverterBoolean.write(value.`linkLost`, buf)
+            FfiConverterBoolean.write(value.`canStart`, buf)
+            FfiConverterBoolean.write(value.`canKeep`, buf)
+            FfiConverterBoolean.write(value.`canCommit`, buf)
+            FfiConverterOptionalTypeCoreVregInfo.write(value.`status`, buf)
+            FfiConverterOptionalString.write(value.`lastError`, buf)
+    }
+}
+
+
+
+/**
+ * A voltage the flow offers on the connected device.
+ */
+data class VregChoice (
+    /**
+     * VREG code.
+     */
+    var `code`: kotlin.UByte, 
+    /**
+     * The voltage, mV.
+     */
+    var `millivolts`: kotlin.UShort, 
+    /**
+     * A trial of it would raise this unit above 1.20 V now, so `OVERVOLT`
+     * must be typed.
+     */
+    var `needsWord`: kotlin.Boolean, 
+    /**
+     * The same for a save (`core_vreg_manual_set`), which does not count a
+     * running trial as current.
+     */
+    var `saveNeedsWord`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeVregChoice: FfiConverterRustBuffer<VregChoice> {
+    override fun read(buf: ByteBuffer): VregChoice {
+        return VregChoice(
+            FfiConverterUByte.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: VregChoice) = (
+            FfiConverterUByte.allocationSize(value.`code`) +
+            FfiConverterUShort.allocationSize(value.`millivolts`) +
+            FfiConverterBoolean.allocationSize(value.`needsWord`) +
+            FfiConverterBoolean.allocationSize(value.`saveNeedsWord`)
+    )
+
+    override fun write(value: VregChoice, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`code`, buf)
+            FfiConverterUShort.write(value.`millivolts`, buf)
+            FfiConverterBoolean.write(value.`needsWord`, buf)
+            FfiConverterBoolean.write(value.`saveNeedsWord`, buf)
+    }
+}
+
+
+
 
 
 /**
@@ -16470,6 +17327,21 @@ sealed class DspiException: kotlin.Exception() {
             get() = "msg=${ `msg` }"
     }
     
+    /**
+     * This raises the core voltage above 1.20 V from what the unit reports
+     * now, and the word `OVERVOLT` was not given. Nothing was written.
+     */
+    class OvervoltWordRequired(
+        
+        /**
+         * Which voltage, and what to type.
+         */
+        val `msg`: kotlin.String
+        ) : DspiException() {
+        override val message
+            get() = "msg=${ `msg` }"
+    }
+    
 
     companion object ErrorHandler : UniffiRustCallStatusErrorHandler<DspiException> {
         override fun lift(error_buf: RustBuffer.ByValue): DspiException = FfiConverterTypeDspiError.lift(error_buf)
@@ -16513,6 +17385,9 @@ public object FfiConverterTypeDspiError : FfiConverterRustBuffer<DspiException> 
                 FfiConverterOptionalUInt.read(buf),
                 )
             12 -> DspiException.FirmwareGuardBlocked(
+                FfiConverterString.read(buf),
+                )
+            13 -> DspiException.OvervoltWordRequired(
                 FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
@@ -16579,6 +17454,11 @@ public object FfiConverterTypeDspiError : FfiConverterRustBuffer<DspiException> 
                 4UL
                 + FfiConverterString.allocationSize(value.`msg`)
             )
+            is DspiException.OvervoltWordRequired -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`msg`)
+            )
         }
     }
 
@@ -16639,6 +17519,11 @@ public object FfiConverterTypeDspiError : FfiConverterRustBuffer<DspiException> 
             }
             is DspiException.FirmwareGuardBlocked -> {
                 buf.putInt(12)
+                FfiConverterString.write(value.`msg`, buf)
+                Unit
+            }
+            is DspiException.OvervoltWordRequired -> {
+                buf.putInt(13)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
@@ -16772,7 +17657,12 @@ enum class FirmwareGuardReason {
     /**
      * The board's needs are not known.
      */
-    BOARD_UNKNOWN;
+    BOARD_UNKNOWN,
+    /**
+     * WP CG14: the image runs above 1.20 V and above the board's current
+     * voltage. Its `confirmation_phrase` is the word `OVERVOLT`.
+     */
+    OVERVOLT;
     companion object
 }
 
@@ -16866,6 +17756,144 @@ public object FfiConverterTypeLinkPhase: FfiConverterRustBuffer<LinkPhase> {
     override fun allocationSize(value: LinkPhase) = 4UL
 
     override fun write(value: LinkPhase, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Where a run is: [`VregCalView::phase`]. The details are in the view.
+ */
+
+enum class VregCalPhase {
+    
+    /**
+     * The flow is not open.
+     */
+    IDLE,
+    /**
+     * Open: show the warning and what the device has on record.
+     */
+    REVIEW,
+    /**
+     * Clearing the device's record before the trial.
+     */
+    CLEARING,
+    /**
+     * The trial was sent and is not seen running yet.
+     */
+    STARTING_TRIAL,
+    /**
+     * The trial runs; the soak is counting. Abort is available.
+     */
+    SOAKING,
+    /**
+     * Passed: the trial still runs and nothing is saved. Commit or end.
+     */
+    PASSED,
+    /**
+     * The trial hung: `failed_vreg`, `ran_s`, `next_vreg`, `hardware_problem`.
+     */
+    FAILED,
+    /**
+     * The result cannot be known: run again.
+     */
+    UNKNOWN,
+    /**
+     * A trial nobody here started is running: end or keep.
+     */
+    TRIAL_FOUND,
+    /**
+     * A kept trial outside the flow's range: left alone, cannot pass.
+     */
+    TRIAL_LEFT_RUNNING,
+    /**
+     * Ending the trial.
+     */
+    ENDING,
+    /**
+     * The trial ended.
+     */
+    ENDED,
+    /**
+     * Saving: waiting to read the voltage back.
+     */
+    COMMITTING,
+    /**
+     * Saved and read back.
+     */
+    COMMITTED,
+    /**
+     * A save or an end did not show in time. Nothing was retried.
+     */
+    VERIFY_FAILED;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeVregCalPhase: FfiConverterRustBuffer<VregCalPhase> {
+    override fun read(buf: ByteBuffer) = try {
+        VregCalPhase.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: VregCalPhase) = 4UL
+
+    override fun write(value: VregCalPhase, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * What can happen to the demo device: [`DspiCore::core_vreg_demo_event`].
+ */
+
+enum class VregDemoEvent {
+    
+    /**
+     * The watchdog fires.
+     */
+    HANG,
+    /**
+     * A requested reboot: no failure on record.
+     */
+    REBOOT,
+    /**
+     * Power lost: every record gone.
+     */
+    POWER_CYCLE,
+    /**
+     * `seconds` pass on the device's clock.
+     */
+    ADVANCE_UPTIME;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeVregDemoEvent: FfiConverterRustBuffer<VregDemoEvent> {
+    override fun read(buf: ByteBuffer) = try {
+        VregDemoEvent.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: VregDemoEvent) = 4UL
+
+    override fun write(value: VregDemoEvent, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
     }
 }
@@ -17092,6 +18120,38 @@ public object FfiConverterOptionalTypeRtaListener: FfiConverterRustBuffer<RtaLis
         } else {
             buf.put(1)
             FfiConverterTypeRtaListener.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeCoreVregInfo: FfiConverterRustBuffer<CoreVregInfo?> {
+    override fun read(buf: ByteBuffer): CoreVregInfo? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeCoreVregInfo.read(buf)
+    }
+
+    override fun allocationSize(value: CoreVregInfo?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeCoreVregInfo.allocationSize(value)
+        }
+    }
+
+    override fun write(value: CoreVregInfo?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeCoreVregInfo.write(value, buf)
         }
     }
 }
@@ -17382,6 +18442,34 @@ public object FfiConverterSequenceTypeLinkDevice: FfiConverterRustBuffer<List<Li
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeLinkPhaseText: FfiConverterRustBuffer<List<LinkPhaseText>> {
+    override fun read(buf: ByteBuffer): List<LinkPhaseText> {
+        val len = buf.getInt()
+        return List<LinkPhaseText>(len) {
+            FfiConverterTypeLinkPhaseText.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<LinkPhaseText>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeLinkPhaseText.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<LinkPhaseText>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeLinkPhaseText.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeMonitorEntry: FfiConverterRustBuffer<List<MonitorEntry>> {
     override fun read(buf: ByteBuffer): List<MonitorEntry> {
         val len = buf.getInt()
@@ -17596,6 +18684,34 @@ public object FfiConverterSequenceTypeSpdifBufferStats: FfiConverterRustBuffer<L
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeSpdifBufferStats.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeVregChoice: FfiConverterRustBuffer<List<VregChoice>> {
+    override fun read(buf: ByteBuffer): List<VregChoice> {
+        val len = buf.getInt()
+        return List<VregChoice>(len) {
+            FfiConverterTypeVregChoice.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<VregChoice>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeVregChoice.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<VregChoice>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeVregChoice.write(it, buf)
         }
     }
 }
@@ -18017,12 +19133,63 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     
 
         /**
+         * The wording of `phase`. `pin_source` is [`crate::LinkStatus::pin_source`]:
+         * it matters only to [`LinkPhase::NeedsPairing`], and anything but `fixed`
+         * means `window`, as a hub that does not say does (spec 7.2).
+         */ fun `linkPhaseText`(`phase`: LinkPhase, `pinSource`: kotlin.String): LinkPhaseText {
+            return FfiConverterTypeLinkPhaseText.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_link_phase_text(
+        FfiConverterTypeLinkPhase.lower(`phase`),FfiConverterString.lower(`pinSource`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The whole wording table: every key once, for a client's translation files.
+         */ fun `linkPhaseTexts`(): List<LinkPhaseText> {
+            return FfiConverterSequenceTypeLinkPhaseText.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_link_phase_texts(
+        _status)
+}
+    )
+    }
+    
+
+        /**
          * The WebSocket URL for a hub. An empty `path` is the default (`/dspi/v1`).
          */ fun `linkWsUrl`(`host`: kotlin.String, `port`: kotlin.UShort, `path`: kotlin.String): kotlin.String {
             return FfiConverterString.lift(
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_link_ws_url(
         FfiConverterString.lower(`host`),FfiConverterUShort.lower(`port`),FfiConverterString.lower(`path`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The Getting Started wizard's data for this build's platform: see the module
+         * docs.
+         */ fun `onboardingGettingStartedJson`(): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_onboarding_getting_started_json(
+        _status)
+}
+    )
+    }
+    
+
+        /**
+         * The release notes for this build's platform: see the module docs.
+         */ fun `onboardingWhatsNewJson`(): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_onboarding_whats_new_json(
+        _status)
 }
     )
     }
