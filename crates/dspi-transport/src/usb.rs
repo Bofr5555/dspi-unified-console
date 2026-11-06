@@ -85,7 +85,7 @@ pub fn list_devices() -> Result<Vec<DeviceDescriptor>> {
         .map_err(|e| TransportError::Usb(e.to_string()))?;
 
     let mut found: Vec<DeviceDescriptor> = devices
-        .filter(|d| d.vendor_id() == USB_VID && d.product_id() == USB_PID)
+        .filter(|d| is_dspi(d.vendor_id(), d.product_id()))
         .filter_map(|d| {
             Some(DeviceDescriptor {
                 serial: d.serial_number()?.to_string(),
@@ -140,7 +140,7 @@ impl UsbTransport {
             .map_err(|e| TransportError::Usb(e.to_string()))?;
 
         let info = devices
-            .filter(|d| d.vendor_id() == USB_VID && d.product_id() == USB_PID)
+            .filter(|d| is_dspi(d.vendor_id(), d.product_id()))
             .find(|d| d.serial_number() == Some(serial))
             .ok_or_else(|| TransportError::SerialNotFound(serial.to_string()))?;
 
@@ -290,13 +290,11 @@ fn map_transfer_error(e: TransferError, opcode: u8) -> TransportError {
 }
 
 /// The vendor ID older firmware enumerated with (the Raspberry Pi VID). The
-/// old core accepted it, and `dspi-core`'s scan does too; a device adopted
-/// from a descriptor is held to the same rule.
-#[cfg(any(target_os = "linux", target_os = "android"))]
+/// old core accepted it, so an un-updated device still shows up (and probe
+/// tells it to update); enumeration and `from_fd` share the rule.
 const LEGACY_USB_VID: u16 = 0x2E8A;
 
 /// Whether a device descriptor's IDs name a DSPi (current or legacy VID).
-#[cfg(any(target_os = "linux", target_os = "android"))]
 fn is_dspi(vid: u16, pid: u16) -> bool {
     pid == USB_PID && (vid == USB_VID || vid == LEGACY_USB_VID)
 }
@@ -350,7 +348,6 @@ impl UsbTransport {
 mod tests_wp_t1 {
     use super::*;
 
-    #[cfg(any(target_os = "linux", target_os = "android"))]
     #[test]
     fn wp_t1_is_dspi_accepts_current_and_legacy_vid_only() {
         assert!(is_dspi(USB_VID, USB_PID));
@@ -393,10 +390,10 @@ mod tests_wp_t1 {
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
     #[test]
-    fn wp_t1_from_fd_rejects_garbage_without_panicking() {
+    fn wp_t1_from_fd_on_a_regular_file_is_a_usb_error_not_a_panic() {
         let file = open_with(b"not a usb device", "garbage.bin");
         let res = UsbTransport::from_fd(file.into(), "SERIAL");
-        assert!(res.is_err());
+        assert!(matches!(res, Err(TransportError::Usb(_))));
     }
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -404,12 +401,13 @@ mod tests_wp_t1 {
     fn wp_t1_from_fd_rejects_empty_descriptor_without_panicking() {
         let file = open_with(&[], "empty.bin");
         let res = UsbTransport::from_fd(file.into(), "SERIAL");
-        assert!(res.is_err());
+        assert!(matches!(res, Err(TransportError::Usb(_))));
     }
 
     /// A file that reads like a DSPi but is not a usbfs node: nusb parses the
-    /// descriptors, then the device-node operations fail. That must be an
-    /// error, and adopting a duplicate leaves the caller's descriptor open
+    /// descriptors, then the device-node operations fail inside nusb (before
+    /// the VID check, which only `wp_t1_is_dspi_*` covers without a device).
+    /// That must be a `Usb` error, and adopting a duplicate leaves the caller's descriptor open
     /// (the contract `DspiCore::open_fd` relies on: Kotlin closes its own).
     #[cfg(any(target_os = "linux", target_os = "android"))]
     #[test]
@@ -421,20 +419,12 @@ mod tests_wp_t1 {
         let mut file = open_with(&bytes, "dspi-like.bin");
         let dup: OwnedFd = file.try_clone().unwrap().into();
         let res = UsbTransport::from_fd(dup, "SERIAL");
-        assert!(res.is_err());
+        assert!(matches!(res, Err(TransportError::Usb(_))));
 
         // The caller's own descriptor is untouched.
         file.seek(SeekFrom::Start(0)).unwrap();
         let mut back = Vec::new();
         file.read_to_end(&mut back).unwrap();
         assert_eq!(back, bytes);
-    }
-
-    #[cfg(any(target_os = "linux", target_os = "android"))]
-    #[test]
-    fn wp_t1_from_fd_on_foreign_device_errors() {
-        let file = open_with(&descriptors(0x1234, 0x5678), "foreign.bin");
-        let res = UsbTransport::from_fd(file.into(), "SERIAL");
-        assert!(res.is_err());
     }
 }
