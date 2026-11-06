@@ -122,7 +122,9 @@ fn busy_window(
 fn map_link_error(e: LinkError) -> TransportError {
     match e {
         LinkError::Rejected { code, .. } if code == "locked" => TransportError::Locked,
-        LinkError::Rejected { code, msg } if code == "denied" => TransportError::Denied(msg),
+        LinkError::Rejected { code, msg } if code == "denied" => {
+            TransportError::Denied(dspi_link::sanitize_hub_text(&msg))
+        }
         LinkError::Closed { .. } => TransportError::Disconnected,
         // A control-plane request has no opcode
         LinkError::Timeout => TransportError::TimedOut {
@@ -579,6 +581,63 @@ mod tests_wp_t5 {
             t.control_out(0x42, 0, &[0; 65]),
             Err(TransportError::Remote(_))
         ));
+    }
+
+    /// The hub's text must not reach a terminal or a log with its escapes intact.
+    #[test]
+    fn wp_l1_a_denied_message_from_the_hub_is_sanitised() {
+        let e = map_link_error(LinkError::Rejected {
+            code: "denied".into(),
+            msg: "no\u{1b}[2J\u{9b}31m\nway".into(),
+        });
+        match e {
+            TransportError::Denied(m) => assert_eq!(m, "no\u{fffd}[2J\u{fffd}31m\u{fffd}way"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// A session past `max_inflight` gets RATE_LIMITED. The transport does not
+    /// retry it (the command did not run, and only time frees a slot): it is a
+    /// typed error naming the status, at once, and the next command works.
+    #[test]
+    fn wp_l1_rate_limited_surfaces_as_a_remote_error() {
+        let hub = FakeHub::start(HubConfig {
+            max_inflight: 1,
+            ..HubConfig::default()
+        })
+        .unwrap();
+        let cfg = dspi_link::SessionConfig {
+            timing: dspi_link::Timing {
+                request_timeout: Duration::from_millis(500),
+                ..dspi_link::Timing::default()
+            },
+            ..dspi_link::SessionConfig::default()
+        };
+        let opts = ConnectOptions {
+            client_name: "wp-l1".into(),
+            app: "dspi-transport tests".into(),
+            app_version: "test".into(),
+            token: None,
+        };
+        let (c, _) =
+            LinkClient::connect_with(&TcpConnector::default(), &hub.url(), &opts, None, &cfg)
+                .unwrap();
+        let serial = c.devices()[0].serial.clone();
+        let mut t = LinkTransport::new(c, 0, &serial);
+        hub.hold_replies();
+        assert!(matches!(
+            t.control_in(req::GET_PLATFORM, 0, 7),
+            Err(TransportError::TimedOut { .. })
+        ));
+        let ran = hub.log().len();
+        match t.control_in(req::GET_PLATFORM, 0, 7) {
+            Err(TransportError::Remote(m)) => assert!(m.contains("RATE_LIMITED"), "{m}"),
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(hub.log().len(), ran, "not retried, and it did not run");
+        hub.release_replies();
+        std::thread::sleep(Duration::from_millis(20));
+        assert_eq!(t.control_in(req::GET_PLATFORM, 0, 7).unwrap().len(), 7);
     }
 
     #[test]

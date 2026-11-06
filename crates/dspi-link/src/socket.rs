@@ -15,6 +15,7 @@
 //! automatic pong/close replies can never interleave with a frame the writer
 //! is sending.
 
+use std::fmt;
 use std::io::{self, Read, Write};
 use std::net::{IpAddr, Shutdown, SocketAddr, TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -34,10 +35,21 @@ use tungstenite::{Message, WebSocket};
 use crate::LinkError;
 
 /// One whole WebSocket message.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum WsMessage {
     Text(String),
     Binary(Vec<u8>),
+}
+
+/// By hand: a text message may be an `auth.pair` or an `auth.token`, so the
+/// content never reaches a log.
+impl fmt::Debug for WsMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            WsMessage::Text(t) => write!(f, "Text({} bytes)", t.len()),
+            WsMessage::Binary(b) => write!(f, "Binary({} bytes)", b.len()),
+        }
+    }
 }
 
 /// What [`WsReceiver::recv`] returns.

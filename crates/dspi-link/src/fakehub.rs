@@ -24,7 +24,17 @@
 //!   tokens alike for 60 s; 5 failures, or one success, end a PIN window;
 //! - [`HubConfig::max_sessions`] answers 503 before the upgrade, and a bridge
 //!   answers 400 when the sub-protocol is missing;
-//! - no board attached: `device.list` is empty ([`FakeHub::set_board_present`]).
+//! - a board that goes away ([`FakeHub::set_board_present`]) is reported
+//!   `offline`, ends the polls and answers NO_DEVICE, and after
+//!   [`HubConfig::board_removal_hold`] is `device.removed`, leaving an empty
+//!   `device.list` (bridge spec 7.6). It comes back as `device.changed` within
+//!   the hold, and as `device.added` after it;
+//! - more than `max_inflight` of a session's commands outstanding answer
+//!   RATE_LIMITED (bridge spec 8.3). The fake device answers at once, so
+//!   commands are outstanding only while [`FakeHub::hold_replies`] holds them;
+//! - polls are granted against one [`HubConfig::poll_budget_bps`] shared by all
+//!   sessions (bridge spec 7.7): identical polls count once, a rate may be cut,
+//!   and what cannot get 1 Hz answers `busy` with nothing changed.
 //!
 //! Faults are injected through [`FakeHub`] methods: [`FakeHub::stall`],
 //! [`FakeHub::drop_connections`], [`FakeHub::drop_next_replies`],
@@ -124,7 +134,14 @@ pub struct HubConfig {
     pub rate_limit_window: Duration,
     /// How long `rate_limited` lasts.
     pub rate_limit_lockout: Duration,
-    /// The time source of the hub's auth, keepalive and rate-limit timers.
+    /// False: the hub starts with no board, and `device.list` is empty.
+    pub board_attached: bool,
+    /// How long a lost board stays `offline` before `device.removed` (60 s).
+    pub board_removal_hold: Duration,
+    /// Bytes per second all polls may use together. The hello advertises it.
+    /// Mac hub 200000; a bridge at 1 Mbaud 40000.
+    pub poll_budget_bps: u32,
+    /// The time source of the hub's auth, keepalive, rate-limit, board and poll timers.
     pub clock: Arc<dyn Clock>,
 }
 
@@ -153,6 +170,9 @@ impl Default for HubConfig {
             rate_limit_failures: 5,
             rate_limit_window: Duration::from_secs(60),
             rate_limit_lockout: Duration::from_secs(60),
+            board_attached: true,
+            board_removal_hold: Duration::from_secs(60),
+            poll_budget_bps: 200_000,
             clock: Arc::new(SystemClock),
         }
     }
@@ -175,6 +195,7 @@ impl HubConfig {
                 .collect(),
             max_inflight: 4,
             max_sessions: Some(4),
+            poll_budget_bps: 40_000,
             ..Self::default()
         }
     }
@@ -225,9 +246,37 @@ struct SessionRec {
     token: Option<String>,
     link_seq: u16,
     poll_seq: u16,
-    polls: HashMap<u8, (Vec<u8>, Duration, Instant)>,
+    polls: HashMap<u8, PollRec>,
     peer: Option<IpAddr>,
     held: Vec<Out>,
+}
+
+/// One granted poll of a session.
+struct PollRec {
+    /// `bRequest`, `wValue` and `wLength` as bytes: what makes polls identical.
+    spec: Vec<u8>,
+    hz: u32,
+    every: Duration,
+    next: Instant,
+}
+
+/// The fastest rate a poll may have (`hello.limits.poll_max_hz`).
+const POLL_MAX_HZ: u32 = 20;
+/// Bytes a poll costs on the link beyond its answer: request header, CRC and
+/// response overhead (bridge `poll_cost_bytes`).
+const POLL_OVERHEAD_BYTES: u64 = 18;
+
+fn poll_cost(spec: &[u8]) -> u64 {
+    POLL_OVERHEAD_BYTES + u64::from(u16::from_le_bytes([spec[3], spec[4]]))
+}
+
+/// Where the simulated board is.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Board {
+    Online,
+    /// Lost at this time; handle kept until [`HubConfig::board_removal_hold`].
+    Offline(Instant),
+    Absent,
 }
 
 /// Auth failures of one address (spec 6.2).
@@ -252,7 +301,7 @@ struct State {
     /// A PIN window is open (spec 6.2: 5 failures or one success end it).
     window_open: bool,
     window_failures: u32,
-    board_present: bool,
+    board: Board,
     pings_sent: u64,
     pongs_received: u64,
     /// Every token presented to `auth.token`.
@@ -346,10 +395,89 @@ impl State {
         json!({
             "handle": 0, "serial": self.cfg.serial, "name": self.cfg.device_name,
             "platform": p[0], "fw": format!("{}.{}.{}", p[1], p[4], p[5]), "fw_beta": p[6], "outputs": p[3],
-            "wire_version": self.image[0], "state": "online",
+            "wire_version": self.image[0], "state": if self.board == Board::Online { "online" } else { "offline" },
             "link": if self.cfg.kind == "bridge" { "uart" } else { "usb" },
             "locked_by": self.lock.map(|l| l.0),
         })
+    }
+
+    /// Replies to this session's commands not delivered yet.
+    fn outstanding(&self, sid: u16) -> usize {
+        self.sessions.get(&sid).map_or(0, |r| r.held.iter().filter(|o| matches!(o, Out::Binary(_))).count())
+    }
+
+    fn set_board(&mut self, present: bool) {
+        match (present, self.board) {
+            (false, Board::Online) => {
+                self.board = Board::Offline(self.now());
+                // Spec 7.6: a subscription ends when the device goes offline
+                for r in self.sessions.values_mut() {
+                    r.polls.clear();
+                }
+                let changed = json!({"t": "device.changed", "device": self.device_json()}).to_string();
+                self.broadcast(changed);
+            }
+            (true, Board::Offline(_)) => {
+                self.board = Board::Online;
+                let changed = json!({"t": "device.changed", "device": self.device_json()}).to_string();
+                self.broadcast(changed);
+            }
+            (true, Board::Absent) => {
+                self.board = Board::Online;
+                let added = json!({"t": "device.added", "device": self.device_json()}).to_string();
+                self.broadcast(added);
+            }
+            _ => {}
+        }
+    }
+
+    /// A lost board's handle runs out.
+    fn board_tick(&mut self) {
+        if let Board::Offline(since) = self.board {
+            if self.now().saturating_duration_since(since) >= self.cfg.board_removal_hold {
+                self.board = Board::Absent;
+                self.lock = None;
+                let removed = json!({"t": "device.removed", "handle": 0, "serial": self.cfg.serial}).to_string();
+                self.broadcast(removed);
+            }
+        }
+    }
+
+    /// The rates for `requests` (`slot`, spec, wanted Hz) of session `sid`, or
+    /// `None` if one cannot get 1 Hz (bridge `grant_rates`): all sessions share
+    /// one budget, a poll identical to a running one costs only the rate it adds,
+    /// and the slots being replaced no longer count.
+    fn grant_polls(&self, sid: u16, requests: &[(u8, Vec<u8>, u32)]) -> Option<Vec<u32>> {
+        let mut rates: HashMap<&[u8], u32> = HashMap::new();
+        for (id, r) in self.sessions.iter().filter(|(_, r)| r.authed) {
+            for (slot, p) in &r.polls {
+                if !(*id == sid && requests.iter().any(|q| q.0 == *slot)) {
+                    let rate = rates.entry(&p.spec).or_default();
+                    *rate = (*rate).max(p.hz);
+                }
+            }
+        }
+        let budget = u64::from(self.cfg.poll_budget_bps);
+        let mut used: u64 = rates.iter().map(|(spec, hz)| poll_cost(spec) * u64::from(*hz)).sum();
+        let mut granted = Vec::with_capacity(requests.len());
+        for (_, spec, wanted) in requests {
+            let cost = poll_cost(spec);
+            let running = rates.get(spec.as_slice()).copied().unwrap_or(0);
+            let mut hz = (*wanted).min(POLL_MAX_HZ);
+            if hz > running {
+                let affordable = budget.saturating_sub(used) / cost;
+                hz = hz.min(u32::try_from(u64::from(running) + affordable).unwrap_or(u32::MAX));
+            }
+            if hz < 1 {
+                return None;
+            }
+            if hz > running {
+                used += cost * u64::from(hz - running);
+                rates.insert(spec, hz);
+            }
+            granted.push(hz);
+        }
+        Some(granted)
     }
 
     fn broadcast(&mut self, text: String) {
@@ -362,6 +490,9 @@ impl State {
 
     /// Relay a v2 packet to every authenticated session (spec 8.3).
     fn notify(&mut self, mut packet: Vec<u8>, origin: u16) {
+        if self.board != Board::Online {
+            return; // Relayed only while a device is present (bridge spec 7.6)
+        }
         packet[3] = self.fw_seq;
         self.fw_seq = self.fw_seq.wrapping_add(1);
         for s in self.sessions.values_mut() {
@@ -444,8 +575,12 @@ impl State {
     fn command(&mut self, sid: u16, f: crate::frames::CmdRequest) -> CmdResponse {
         let reply = |status: u8, payload: Vec<u8>| CmdResponse { tag: f.tag, status, payload };
         let role = self.sessions.get(&sid).map(|s| s.role.clone()).unwrap_or_default();
-        if f.handle != 0 || !self.board_present {
+        // In the order of bridge spec 8.3
+        if f.handle != 0 || self.board != Board::Online {
             return reply(status::NO_DEVICE, Vec::new());
+        }
+        if f.payload.len() > 8192 || (f.dir == Dir::Get && f.w_length as usize > 8192) {
+            return reply(status::TOO_LARGE, Vec::new());
         }
         if !allowed(&role, self.class(f.b_request, f.dir as u8)) {
             return reply(status::DENIED, Vec::new());
@@ -456,6 +591,9 @@ impl State {
             } else if holder != sid {
                 return reply(status::LOCKED, Vec::new());
             }
+        }
+        if self.outstanding(sid) >= self.cfg.max_inflight as usize {
+            return reply(status::RATE_LIMITED, Vec::new());
         }
         let bulk = matches!(f.b_request, req::GET_ALL_PARAMS | req::SET_ALL_PARAMS);
         if self.cfg.bridge_limits {
@@ -468,9 +606,6 @@ impl State {
             if f.dir == Dir::Set && !bulk && f.payload.len() > 64 {
                 return reply(status::OVERSIZE, Vec::new());
             }
-        }
-        if f.payload.len() > 8192 || (f.dir == Dir::Get && f.w_length as usize > 8192) {
-            return reply(status::TOO_LARGE, Vec::new());
         }
         self.log.push((sid, f.dir as u8, f.b_request, f.w_value));
         let (st, mut data) = self.device(sid, f.dir, f.b_request, f.w_value, f.w_length, &f.payload);
@@ -488,6 +623,7 @@ impl FakeHub {
         let listener = TcpListener::bind(cfg.bind)?;
         let addr = listener.local_addr()?;
         listener.set_nonblocking(true)?;
+        let board_attached = cfg.board_attached;
         let state = Arc::new(Mutex::new(State {
             image: cfg.image.clone(),
             cfg,
@@ -495,7 +631,7 @@ impl FakeHub {
             failures: HashMap::new(),
             window_open: true,
             window_failures: 0,
-            board_present: true,
+            board: if board_attached { Board::Online } else { Board::Absent },
             pings_sent: 0,
             pongs_received: 0,
             tokens_seen: Vec::new(),
@@ -511,6 +647,7 @@ impl FakeHub {
         let (st, sp) = (Arc::clone(&state), Arc::clone(&stop));
         thread::Builder::new().name("fakehub-accept".into()).spawn(move || {
             while !sp.load(Ordering::SeqCst) {
+                lock(&st).board_tick();
                 match listener.accept() {
                     Ok((tcp, _)) => {
                         let (st, sp) = (Arc::clone(&st), Arc::clone(&sp));
@@ -688,10 +825,13 @@ impl FakeHub {
         lock(&self.state).faults.refuse_handshake = status;
     }
 
-    /// Attach or remove the board. With none, `device.list` is empty and
-    /// commands answer NO_DEVICE; pairing still works (`hub.c`).
+    /// Lose or attach the board, with the events a real hub sends. Lost: every
+    /// session hears `device.changed` with `state: offline`, polls end and
+    /// commands answer NO_DEVICE; [`HubConfig::board_removal_hold`] later comes
+    /// `device.removed`. Back: `device.changed`, or `device.added` after the
+    /// removal. Pairing works throughout (`hub.c`).
     pub fn set_board_present(&self, present: bool) {
-        lock(&self.state).board_present = present;
+        lock(&self.state).set_board(present);
     }
 
     /// Open a new PIN window (Mac hub: the user presses the button again).
@@ -775,7 +915,7 @@ fn serve(mut tcp: TcpStream, state: Arc<Mutex<State>>, stop: Arc<AtomicBool>) {
             "proto": {"major": 1, "minor": s.cfg.proto_minor},
             "hub": {"id": s.cfg.hub_id, "name": s.cfg.name, "kind": s.cfg.kind, "version": "0.0-fake"},
             "auth": if s.cfg.auth == Auth::None { "none" } else { "pin" }, "tls": false, "ws": "/dspi/v1",
-            "devices": [{"serial": s.cfg.serial, "name": s.cfg.device_name}],
+            "devices": if s.board == Board::Absent { json!([]) } else { json!([{"serial": s.cfg.serial, "name": s.cfg.device_name}]) },
         })
         .to_string();
         drop(s);
@@ -924,13 +1064,13 @@ fn session(ws: &mut WebSocket<Replay>, state: &Arc<Mutex<State>>, stop: &AtomicB
         // Polls due
         let due: Vec<(u8, Vec<u8>)> = {
             let mut s = lock(state);
-            let now = Instant::now();
+            let now = s.now();
             let mut due = Vec::new();
             if let Some(r) = s.sessions.get_mut(&sid) {
-                for (slot, (spec, every, next)) in r.polls.iter_mut() {
-                    if now >= *next {
-                        *next = now + *every;
-                        due.push((*slot, spec.clone()));
+                for (slot, p) in r.polls.iter_mut() {
+                    if now >= p.next {
+                        p.next = now + p.every;
+                        due.push((*slot, p.spec.clone()));
                     }
                 }
             }
@@ -1000,11 +1140,17 @@ fn session(ws: &mut WebSocket<Replay>, state: &Arc<Mutex<State>>, stop: &AtomicB
             }
             Ok(Message::Pong(_)) => lock(state).pongs_received += 1,
             Ok(Message::Binary(b)) => {
+                // RATE_LIMITED is the hub's own answer: it waits for no device
+                let mut at_once = false;
                 let reply = {
                     let mut s = lock(state);
                     let authed = s.sessions.get(&sid).is_some_and(|r| r.authed);
                     match Frame::decode(&b) {
-                        Ok(Frame::CmdRequest(f)) if authed => Some(Frame::CmdResponse(s.command(sid, f)).encode()),
+                        Ok(Frame::CmdRequest(f)) if authed => {
+                            let r = s.command(sid, f);
+                            at_once = r.status == status::RATE_LIMITED;
+                            Some(Frame::CmdResponse(r).encode())
+                        }
                         Ok(Frame::Unknown { kind: k, tag }) if authed && k < 0x80 => Some(
                             Frame::CmdResponse(CmdResponse { tag, status: status::UNSUPPORTED, payload: vec![] })
                                 .encode(),
@@ -1021,7 +1167,9 @@ fn session(ws: &mut WebSocket<Replay>, state: &Arc<Mutex<State>>, stop: &AtomicB
                     }
                 };
                 if let Some(r) = reply {
-                    if !reply_out(ws, state, sid, Out::Binary(r)) {
+                    let sent =
+                        if at_once { write_out(ws, Out::Binary(r)) } else { reply_out(ws, state, sid, Out::Binary(r)) };
+                    if !sent {
                         break;
                     }
                 }
@@ -1076,7 +1224,7 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str) -> Vec<String> {
                 "auth": if s.cfg.auth == Auth::None { "none" } else { "pin" },
                 "caps": s.cfg.caps,
                 "limits": {"max_frame": if s.cfg.bridge_limits { 16384 } else { 65536 }, "max_payload": 8192,
-                           "max_inflight": s.cfg.max_inflight, "poll_max_hz": 20, "poll_budget_bps": 200000},
+                           "max_inflight": s.cfg.max_inflight, "poll_max_hz": POLL_MAX_HZ, "poll_budget_bps": s.cfg.poll_budget_bps},
             });
             if let Auth::Fixed(_) = s.cfg.auth {
                 h["pin_source"] = json!("fixed");
@@ -1174,11 +1322,11 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str) -> Vec<String> {
                     None => {}
                 }
             }
-            let devices = if s.board_present { vec![s.device_json()] } else { vec![] };
+            let devices = if s.board == Board::Absent { vec![] } else { vec![s.device_json()] };
             vec![ok(&id, json!({"devices": devices}))]
         }
         "device.snapshot" => {
-            if v["handle"].as_u64() != Some(0) {
+            if v["handle"].as_u64() != Some(0) || s.board != Board::Online {
                 return vec![err(&id, "no_device", "")];
             }
             let b64 = data_encoding::BASE64.encode(&s.image);
@@ -1189,7 +1337,10 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str) -> Vec<String> {
             )]
         }
         "poll.subscribe" => {
-            let mut granted = Vec::new();
+            if v["handle"].as_u64() != Some(0) || s.board != Board::Online {
+                return vec![err(&id, "no_device", "")];
+            }
+            let mut requests = Vec::new();
             let role = s.sessions.get(&sid).map(|r| r.role.clone()).unwrap_or_default();
             let polls = v["polls"].as_array().cloned().unwrap_or_default();
             for p in polls {
@@ -1197,14 +1348,23 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str) -> Vec<String> {
                 if s.class(rq, 1) != "read" || !allowed(&role, "read") {
                     return vec![err(&id, "denied", "poll commands must be read")];
                 }
-                let hz = p["hz"].as_u64().unwrap_or(1).clamp(1, 20);
+                let hz = u32::try_from(p["hz"].as_u64().unwrap_or(1)).unwrap_or(u32::MAX).max(1);
                 let val = p["val"].as_u64().unwrap_or(0) as u16;
                 let len = p["len"].as_u64().unwrap_or(0) as u16;
                 let mut spec = vec![rq];
                 spec.extend_from_slice(&val.to_le_bytes());
                 spec.extend_from_slice(&len.to_le_bytes());
+                requests.push((slot, spec, hz));
+            }
+            let Some(rates) = s.grant_polls(sid, &requests) else {
+                return vec![err(&id, "busy", "the poll budget cannot fit these polls even at 1 Hz")];
+            };
+            let now = s.now();
+            let mut granted = Vec::new();
+            for ((slot, spec, _), hz) in requests.into_iter().zip(rates) {
                 if let Some(r) = s.sessions.get_mut(&sid) {
-                    r.polls.insert(slot, (spec, Duration::from_millis(1000 / hz), Instant::now()));
+                    let every = Duration::from_millis(1000 / u64::from(hz));
+                    r.polls.insert(slot, PollRec { spec, hz, every, next: now });
                 }
                 granted.push(json!({"slot": slot, "hz": hz}));
             }
