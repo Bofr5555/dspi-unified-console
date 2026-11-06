@@ -101,25 +101,36 @@ The firmware tags a change by the path it came in on, except bulk applies:
 | Midi | `PARAM_SRC_MIDI` (10); `BULK_SET` only while `own_bulk_pending` | MIDI writes notify as MIDI (notify.h:122, MIDI spec 4.2), so a `HOST_SET` seen over MIDI is another host's USB write |
 | Link | origin == our session id and != 0, any source; `own_bulk_pending` ignored | the hub writes for every client, over USB or (a bridge) UART; only the origin tells clients apart (Link spec 8.3) |
 
-**Bulk echoes.** The firmware tags *every* bulk apply `BULK_SET`, whatever
-path it came in on (bulk_params.c:371/408, `notify_end_bulk`; confirmed on a
-unit over MIDI), so the source alone cannot tell our `0xA1`/`0xA3` from
-another host's. `dspi_session::notify::EchoFilter` (pure; the caller passes
-the clock) tracks it:
-- `bulk_write_started()` when our bulk write goes out;
-- `bulk_write_finished(now, ok)` on its reply: an OK reply opens a window
-  until `now + 1 s` (`EchoFilter::WINDOW`), a failure closes it;
-- `classify(now, kind, source, origin, session)` claims the first
-  `BULK_SET` while the write is in flight or inside the window, **once**,
-  then it is consumed. Everything else is foreign: an unclaimed invalidation
-  only costs a re-read.
+**Bulk echoes.** `dspi_session::notify::EchoFilter` (pure; the caller passes
+the clock) recognises the `BULK_INVALIDATED` of our own `0xA1`/`0xA3`. The
+caller brackets the write: `bulk_write_started(now)`, then
+`bulk_write_finished(now, ok)`. `classify_notification` (at the packet's
+`received` stamp) applies one of two modes, chosen at connect from
+`ExtState::bulk_source()`:
 
-`Connection::echo` holds one per connection (base). WP C2 (`apply_all_params`)
-and any other bulk writer bracket their write with it; WP C7 classifies
-with it; WP C1 resets it on reopen. Reference behaviour: the iOS console's
-`MIDITransport` (`dspi-ios/patches/console-116/0005`). A firmware follow-up
-(owner decision) could tag bulk applies by transport; the filter then only
-matters for old firmware.
+| Firmware | Ours | Everything else |
+|---|---|---|
+| Reports `NOTIFY_FEAT_BULK_SOURCE` (`EXT_NOTIFY_FEATURES` 0x0003; `bulk-source` commits; the K340 runs it) | source = our path (`HOST_SET` on USB, `MIDI` on MIDI) **and** a SET of ours outstanding on it; a match settles all outstanding SETs (`notification_protocol_v2_spec.md` 3.5.1) | re-read, including `UNKNOWN` and `BULK_SET` |
+| Older or stock, or the feature read was refused | `BULK_SET` while the write is in flight or within `EchoFilter::WINDOW` (1 s) of an OK reply, **once** (reference: iOS `MIDITransport`, `console-116/0005`). These firmwares tag every bulk apply `BULK_SET`, whatever the path (bulk_params.c:371/408) | re-read |
+
+In both modes:
+- a failed write is no longer outstanding;
+- an invalidation received before our write started is foreign;
+- tagged mode has no time window, but a SET whose invalidation never comes
+  expires after `EchoFilter::SOURCE_EXPIRY` (5 s, an addition to the spec's
+  rule), so it cannot hide a later foreign write;
+- our own echo skips the re-read and does nothing else. An unclaimed
+  invalidation only costs a re-read.
+
+`Connection::echo` holds one filter per connection; `attach_probed` sets its
+mode, `apply_all_params` brackets the write, WP C7 classifies.
+
+**Over Link** the origin decides and the filter is not consulted, so a hub's
+`policy/commands.json`, which lacks `0x00` and makes the extension channel
+(0x0003 included) admin-only, costs nothing here: a viewer's `ExtState` has
+no features (`Denied` reads as absent) and a viewer writes no bulk anyway. If
+a Link client ever needs the tag itself, it needs the hub's policy changed
+first.
 
 **Busy retries** (`dspi_transport::with_busy_retry(kind, ..)`, revised after
 wave 1): a single `TimedOut { retries: 0 }` is retried on every link; a
@@ -649,8 +660,9 @@ Facts from wave 1 that the setters (C2, C3, C4, C6) must respect:
   notification handling must expect both.
 
 `FakeDevice` after wave 1 (T4, T4b): `FakeOptions` has `extensions`,
-`ack_unknown_sets` (ACK unknown OUT requests as the firmware does on USB)
-and `max_transfer`; `FakeRemote` has `poke`, `push`, `set_status`,
+`ack_unknown_sets` (ACK unknown OUT requests as the firmware does on USB),
+`max_transfer` and `bulk_source` (the tagged firmware of §1.2; the demo stays
+untagged); `FakeRemote` has `poke`, `push`, `set_status`,
 `load_image`, `image` and `disconnect` for tests. The demo answers every
 `probe_features` read except the signal generator and the analyser (T4b;
 its review may add small T4 fix-ups in parallel with wave 2a; they touch
@@ -860,6 +872,32 @@ Notes for every wave-2b brief (after the wave-2a review):
 
 ### Wave 3
 
+**Notes from the wave 2b reviews, for these briefs:**
+
+- **C15:**
+  - never wait for the Link device lock (up to 60 s) with the core mutex
+    held; take it with the mutex released, re-check the connection, go on;
+  - the RTA worker's per-poll lock hold grows over Link (a round trip per
+    poll): keep the hold short, or poll outside it;
+  - `device_unlock` must not release a lock on a connection that replaced
+    the one the flow locked (`presets.rs`, its doc says so): make it
+    connection-specific (for example a generation number in `Connection`).
+- **F1:**
+  - a reconnect runs inside `poll_hotplug`, so it blocks the polling thread
+    for that poll: document it in the binding, so the app polls off the UI
+    thread;
+  - `firmware_version_matches` belongs to the update flow (the confirm
+    step after reconnecting), so export it with `firmware.rs`;
+  - fold the `require_feature` / `require` duplicates into one helper while
+    documenting records.
+- **Q2a, Q2b, Q3:**
+  - `CsController` (Qt) must surface a `cs_apply` reply's `error` field; the
+    stricter number parsing now reports what the old core wrapped silently;
+  - `CrossfeedWindow.qml`'s dimmed rows now show the device's custom values
+    (a preset no longer writes `custom_fc`/`custom_feed_db` into the mirror).
+    If the preset's own values are wanted, they come from a lookup table in
+    Qt, not from the core.
+
 **C15: DSPi Link in the core.** Size 1.
 - **Handles:** Link device handles are one byte on the wire; the API takes
   `u32` (binding-friendly) and refuses values over 255 with
@@ -980,9 +1018,9 @@ Notes for every wave-2b brief (after the wave-2a review):
   deletes its duplicate (`curves.rs`) and computes crossovers through proto.
 - **Done when:** C12's parity tests still hold (mag within 1e-6 dB).
 
-**Firmware (owner decision, Bofr5555/DSPi):** `bulk_params_apply(.., source)`
-so `BULK_INVALIDATED` carries `PARAM_SRC_MIDI`/`HOST_SET`/`UART`; the echo
-filter then only serves older firmware.
+**Firmware headers:** `dspi-proto/firmware` is pinned to the `bulk-source`
+branch (`f54a064`, three commits on `bofr-main`, not pushed yet). Re-pin to
+`bofr-main` when they land there (`docs/terminal/firmware-bump.md`).
 
 ### Wave summary
 
@@ -1036,7 +1074,14 @@ additive edits only.
 - **Base** (gate 1): see the commit history up to `4f3e391`.
 - **Wave 1** merged at `8b92066`: P1, S1, S2, S3, S4, T1, T2, T4, T5, C0,
   C11, C12, Q1, each reviewed and fixed; full CI green (1569 tests).
-- **Base after wave 1** (this commit and the two before it): bulk-echo
-  filter and the revised echo rule, kind-aware `with_busy_retry`,
-  `Reply::Error` in the mock, MIDI using `Frame::check_len`,
-  `Connection::echo`, record docs, plan notes for wave 2.
+- **Wave 2a** and **wave 2b** merged; `core-merge` at `5ba1eaf`, full CI green
+  (1912 tests).
+- **Base after wave 2b** (WP B2, branch `wp/B2`):
+  - registry: ADAT input rows write-as-read, sources 4..6, preamps to +24 dB
+    with the RP2040 limit in the session, `Repr::Text` trims NULs only;
+  - session: `try_core1_conflict`, `arm_learn`/`cancel_learn` return `bool`
+    with `cs_model::apply_learn`, tagged bulk echoes (§1.2);
+  - core: `me: Weak<DspiCore>` with `rta_start(&self)`,
+    `refresh_params_locked`, `fetch_all` captures the baseline;
+  - fake: `bulk_source`, legacy preamp, output delay as channel delay,
+    `SAVE_PARAMS`, `FACTORY_RESET`, the Core 1 conflict read.
