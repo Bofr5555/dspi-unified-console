@@ -22,6 +22,9 @@
 #                                     MinGW Qt 6 app, zip and installer
 #       proptest                      the property tests (functions named
 #                                     proptest_*), 20000 cases each
+#       kotlin                        generate the UniFFI bindings and compile
+#                                     them with kotlinc (ci/compile-bindings.sh)
+#       swift                         the same with swiftc, linked to the library
 #   ci/check.sh --all                 full gate plus every optional step
 #
 # Lint level: clippy's default set, warnings denied (-D warnings), plus the
@@ -31,14 +34,16 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 RUN=ci/run.sh
+# -- WP CG9 -- The image with kotlinc and swiftc. Other steps keep ci/run.sh's.
+BINDINGS_IMAGE=localhost/dspi-coremerge:3
 crates=()
 steps=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --crate) crates+=("$2"); shift 2 ;;
     --step) steps+=("$2"); shift 2 ;;
-    --all) steps=(fmt clippy test windows-gnu windows-msvc android wasm qt qt5 qt-offscreen qt5-offscreen qt-windows proptest); shift ;;
-    -h|--help) sed -n "2,30p" "$0"; exit 0 ;;
+    --all) steps=(fmt clippy test windows-gnu windows-msvc android wasm qt qt5 qt-offscreen qt5-offscreen qt-windows proptest kotlin swift); shift ;;
+    -h|--help) sed -n "2,33p" "$0"; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -82,6 +87,8 @@ for s in "${steps[@]}"; do
     proptest)
       # Every property test function is named proptest_* (PLAN §1.9).
       $RUN "PROPTEST_CASES=20000 cargo test --workspace --all-features --release -- proptest_" ;;
+    kotlin|swift)
+      DSPI_IMAGE=${DSPI_IMAGE:-$BINDINGS_IMAGE} $RUN "ci/compile-bindings.sh $s" ;;
     *) echo "unknown step $s" >&2; exit 2 ;;
   esac
   ok "$s"
