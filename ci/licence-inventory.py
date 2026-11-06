@@ -11,7 +11,9 @@ Facts for the owner and Weeb Labs (PLAN-CLIENTS.md 0.4, WP LC1). Not legal text.
     ci/licence-inventory.py --gate      as --check, but a new or removed source
                                         file by a known author only warns. A new
                                         crate, licence, asset, package or outside
-                                        contributor still exits 1 (ci/check.sh)
+                                        contributor still exits 1, and so does a
+                                        recorded Swift half with no tree to check
+                                        it against (ci/check.sh)
 
 Runs on the host, standard library only, reads git read-only. Cargo runs in the
 container (ci/run.sh). The inputs:
@@ -660,7 +662,9 @@ def compare(old: dict, new: dict) -> tuple[list[str], list[str]]:
 
     old_s, new_s = old.get("swift"), new.get("swift")
     if new_s is None:
-        soft.append("Swift half not checked: no Console tree (--console, $DSPI_CONSOLE_TREE or --fetch-console)")
+        # The record has a Swift half, so a missing tree must not pass as a match.
+        message = "Swift half not checked: no Console tree (--console, $DSPI_CONSOLE_TREE or --fetch-console)"
+        (hard if old_s is not None else soft).append(message)
         return hard, soft
     if old_s is None:
         hard.append("the record has no Swift half: run --write")
@@ -815,8 +819,12 @@ def render(data: dict) -> str:
         header = fw["headers"]
         emit("### Firmware headers behind `dspi-proto`'s generated constants\n")
         emit(f"`crates/dspi-proto/build.rs` generates Rust constants from {header['files']} vendored firmware headers, so they "
-             f"reach the binary as numbers and names, though the headers themselves are not compiled in. Firmware at "
-             f"`{header['commit']}` (GPL-3.0), blame by holder: {holders_cell(header['lines'])}.\n")
+             f"reach the binary as numbers and names, though the headers themselves are not compiled in. They come from "
+             f"`{header['branch']}` `{header['commit']}` (GPL-3.0), which is Weeb Labs' release plus the fork's extension "
+             f"channel, hence the owner's lines. Blame by holder: {holders_cell(header['lines'])}.\n")
+        if fw.get("images"):
+            emit(f"The `.uf2` images in section 6 are a different firmware: they are named for tag `{FIRMWARE_TAG}` "
+                 f"(`{fw['images']['commit']}`), without those lines.\n")
         for who, files in sorted(header["outside"].items()):
             emit(f"- **{who}:** " + ", ".join(f"`{Path(p).name}` ({n})" for p, n in sorted(files.items())))
         emit("")
@@ -953,6 +961,7 @@ def build_full(args, snap: dict) -> dict:
         commit = re.search(r'^commit\s*=\s*"([0-9a-f]+)"', prov, re.M).group(1)
         paths = [f"firmware/DSPi/{Path(p).name}" for p in headers]
         firmware["headers"] = firmware_report(fw_tree, commit, "firmware/DSPi", paths)
+        firmware["headers"]["branch"] = re.search(r'^branch\s*=\s*"([^"]+)"', prov, re.M).group(1)
 
     swift_out = None
     contributors: list[dict] = []

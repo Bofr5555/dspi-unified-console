@@ -24,7 +24,10 @@
 #                                     proptest_*), 20000 cases each
 #       licences                      the iOS build against docs/licensing/
 #                                     (ci/licence-inventory.py --gate); a new
-#                                     crate, licence, asset or outside author fails
+#                                     crate, licence, asset or outside author fails.
+#                                     Runs python3 (stdlib only) and git on the host,
+#                                     cargo in the container; may clone the Console
+#                                     fork on first use
 #       deny                          cargo-deny: licences and sources, whole
 #                                     workspace (deny.toml)
 #   ci/check.sh --all                 full gate plus every optional step
@@ -43,7 +46,7 @@ while [ $# -gt 0 ]; do
     --crate) crates+=("$2"); shift 2 ;;
     --step) steps+=("$2"); shift 2 ;;
     --all) steps=(fmt clippy test windows-gnu licences deny windows-msvc android wasm qt qt5 qt-offscreen qt5-offscreen qt-windows proptest); shift ;;
-    -h|--help) sed -n "2,35p" "$0"; exit 0 ;;
+    -h|--help) sed -n "2,38p" "$0"; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
   esac
 done

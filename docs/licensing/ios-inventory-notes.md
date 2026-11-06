@@ -45,7 +45,9 @@ Read 2026-11-06 at the commits named. Authors are the full history of those clon
 | sigman78 web console, dspictl (shallow) | MIT | Tips by SiGMan, Steffen Uhlig | No |
 | DSPi-ESP32-Front-Panel, DSPiCliRemote (shallow) | No licence | Not checked beyond the tip | No: do not copy |
 
-**The metadata fix for `dspi-link`.** Its manifest now inherits the workspace's `GPL-3.0-or-later`, which is what this repo says and what the plan's entry asks for. Android's words are "version 3" with §7 terms and that crate's old workspace said `UNLICENSED`, so the or-later and the absence of §7 terms are the owner's to confirm. He is its only author by git. Its MIT origin (spec, policy, fixtures) is recorded in the manifest.
+**Weeb Labs' earlier statement.** The owner's working memory records, dated 2026-11-02: "core + consoles MIT per author; core LICENSE file pending upstream", when Weeb Labs agreed to the Android app being published. The same entry notes that GitHub shows the macOS Console as GPL-3.0. This is that record of what was said, **not a licence file**: no tree read here carries such a grant, and it does not settle the Console's `LICENSE` against its README.
+
+**The metadata fix for `dspi-link`.** Its manifest now inherits the workspace's `GPL-3.0-or-later`, which is what this repo says and what the plan's entry asks for. Android's words are "version 3" with §7 terms and that crate's old workspace said `UNLICENSED`. The owner is its only author by git, and the coordinator relays his confirmation of the field, 2026-11-06: "gpl3 seems to only be an issue on ios". Nothing relayed covers the absence of the §7 terms here. Its MIT origin (spec, policy, fixtures) is recorded in the manifest.
 
 ### Limits of this inventory
 
