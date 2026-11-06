@@ -347,9 +347,8 @@ impl LinkClient {
         let state = if c.inner.hello.pin_required() {
             // Only now is it known which hub answered at this address
             let token = match &cfg.token_for {
-                Some(token_for) if c.inner.hello.hub.id.is_empty() => {
+                Some(_) if c.inner.hello.hub.id.is_empty() => {
                     log::warn!("dspi-link: hub without an id gets no token");
-                    let _ = token_for;
                     None
                 }
                 Some(token_for) => token_for(&c.inner.hello.hub.id),

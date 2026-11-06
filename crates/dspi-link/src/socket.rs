@@ -21,6 +21,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tungstenite::client::IntoClientRequest;
+use tungstenite::handshake::HandshakeError;
 use tungstenite::protocol::frame::coding::CloseCode;
 use tungstenite::protocol::{CloseFrame, Role, WebSocketConfig};
 use tungstenite::{Message, WebSocket};
@@ -152,6 +153,30 @@ fn authority(url: &str) -> Option<(String, u16)> {
     }
 }
 
+/// Keeps a hostile hub's refusal text down to a line for a UI.
+const MAX_REFUSAL_TEXT: usize = 200;
+
+/// What a failed upgrade means: a status a hub chose to send, a timeout, or a
+/// broken exchange.
+fn handshake_error<S>(e: HandshakeError<S>) -> LinkError
+where
+    S: tungstenite::handshake::HandshakeRole,
+{
+    match e {
+        HandshakeError::Interrupted(_) => LinkError::Timeout,
+        HandshakeError::Failure(tungstenite::Error::Http(response)) => {
+            let text = response.body().as_deref().map(String::from_utf8_lossy).unwrap_or_default();
+            let text: String = text.trim().chars().take(MAX_REFUSAL_TEXT).collect();
+            LinkError::from_handshake_status(response.status().as_u16(), text)
+        }
+        HandshakeError::Failure(tungstenite::Error::Io(e)) => match e.kind() {
+            io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut => LinkError::Timeout,
+            _ => LinkError::Io(e.to_string()),
+        },
+        HandshakeError::Failure(e) => LinkError::Handshake(e.to_string()),
+    }
+}
+
 impl WsConnector for TcpConnector {
     fn connect(&self, url: &str, protocol: &str) -> Result<WsPair, LinkError> {
         let (host, port) = authority(url).ok_or_else(|| LinkError::Io(format!("not a ws:// URL: {url}")))?;
@@ -181,8 +206,8 @@ impl WsConnector for TcpConnector {
         let wlock = Arc::new(Mutex::new(()));
         let write_half = tcp.try_clone().map_err(|e| LinkError::Io(e.to_string()))?;
         let pipe = Pipe { tcp, buffered: false, out: Vec::new(), wlock: Arc::clone(&wlock) };
-        let (mut reader, response) = tungstenite::client::client_with_config(request, pipe, Some(config()))
-            .map_err(|e| LinkError::Handshake(e.to_string()))?;
+        let (mut reader, response) =
+            tungstenite::client::client_with_config(request, pipe, Some(config())).map_err(handshake_error)?;
         match response.headers().get("Sec-WebSocket-Protocol").and_then(|v| v.to_str().ok()) {
             Some(p) if p.eq_ignore_ascii_case(protocol) => {}
             other => log::warn!("dspi-link: hub did not echo sub-protocol {protocol} (got {other:?})"),
