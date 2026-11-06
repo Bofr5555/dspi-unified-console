@@ -114,7 +114,8 @@ pub struct ConnectOptions {
     pub client_name: String,
     pub app: String,
     pub app_version: String,
-    /// The token stored for this hub's `hid`, if any.
+    /// The token stored for the hub expected at this address, if any. It goes out
+    /// whichever hub answers; [`SessionConfig::token_for`] is the safe way.
     pub token: Option<String>,
 }
 
@@ -344,7 +345,17 @@ impl LinkClient {
         c.spawn_threads(receiver);
 
         let state = if c.inner.hello.pin_required() {
-            match &opts.token {
+            // Only now is it known which hub answered at this address
+            let token = match &cfg.token_for {
+                Some(token_for) if c.inner.hello.hub.id.is_empty() => {
+                    log::warn!("dspi-link: hub without an id gets no token");
+                    let _ = token_for;
+                    None
+                }
+                Some(token_for) => token_for(&c.inner.hello.hub.id),
+                None => opts.token.clone(),
+            };
+            match token.as_deref().filter(|t| !t.is_empty()) {
                 Some(token) => match c.request(|id| out::auth_token(id, token), c.inner.timing.request_timeout) {
                     Ok(v) => {
                         c.became_ready(&v);
