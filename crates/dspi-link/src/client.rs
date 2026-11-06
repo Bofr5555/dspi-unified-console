@@ -13,7 +13,7 @@
 //!   synthetic `BULK_INVALIDATED` packet for the bound device, so the core's
 //!   own re-read path runs (macOS does the same for RESYNC only).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
@@ -47,6 +47,8 @@ const CONNECT_BUDGET: Duration = Duration::from_secs(15);
 /// After a request times out, a ping must be answered within this, or by
 /// anything else from the hub.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long a request that timed out waits for a reply the reader just took.
+const HANDOVER_GRACE: Duration = Duration::from_millis(50);
 /// How often the keepalive thread looks at its clock.
 const KEEPALIVE_TICK: Duration = Duration::from_millis(250);
 
@@ -251,6 +253,8 @@ struct Inner {
     timing: Timing,
     clock: Arc<dyn Clock>,
     epoch: u64,
+    /// `auth.pair` requests not settled yet: sent, or given up on by a timeout.
+    open_pairs: Mutex<HashSet<u64>>,
 }
 
 /// A live session with one hub. Cheap to clone (shared state).
@@ -334,6 +338,7 @@ impl LinkClient {
             timing: cfg.timing,
             clock: Arc::clone(&cfg.clock),
             epoch: NEXT_EPOCH.fetch_add(1, Ordering::Relaxed),
+            open_pairs: Mutex::new(HashSet::new()),
         });
         let c = LinkClient { inner };
         c.spawn_threads(receiver);
@@ -408,19 +413,43 @@ impl LinkClient {
     /// PIN is [`LinkError::WrongPin`] and `rate_limited` [`LinkError::RateLimited`];
     /// the session stays open for another try.
     pub fn pair(&self, pin: &str, role: &str) -> Result<String, LinkError> {
-        let name = self.inner.client_name.clone();
-        let v = self
-            .request(|id| out::auth_pair(id, pin, &name, Some(role)), self.inner.timing.request_timeout)
-            .map_err(|e| match e {
-                LinkError::Rejected { code, .. } if is_credential_refusal(&code) => {
-                    LinkError::WrongPin { pin_source: self.inner.hello.pin_source_kind() }
-                }
-                e => typed_refusal(e),
-            })?;
-        self.became_ready(&v);
-        self.refresh_devices()?;
-        let ok: AuthOk = serde_json::from_value(v).unwrap_or_default();
-        Ok(ok.token.unwrap_or_default())
+        let id = self.inner.next_id.fetch_add(1, Ordering::SeqCst);
+        lock(&self.inner.open_pairs).insert(id);
+        let text = out::auth_pair(id, pin, &self.inner.client_name, Some(role));
+        let result = self.request_id(id, text, self.inner.timing.request_timeout);
+        // After a timeout the id stays: the reply may still come, and a Mac hub
+        // has spent its window on it
+        if !matches!(result, Err(LinkError::Timeout)) {
+            lock(&self.inner.open_pairs).remove(&id);
+        }
+        let v = result.map_err(|e| match e {
+            LinkError::Rejected { code, .. } if is_credential_refusal(&code) => {
+                LinkError::WrongPin { pin_source: self.inner.hello.pin_source_kind() }
+            }
+            e => typed_refusal(e),
+        })?;
+        let token = self.paired(&v);
+        // The token is safe from here on; a list that fails is for the caller to
+        // read in session_state() and retry, not a failed pairing
+        if let Err(e) = self.refresh_devices() {
+            log::warn!("dspi-link: paired, but device.list failed: {e}");
+        }
+        Ok(token)
+    }
+
+    /// The hub accepted a PIN: the session is ready and the embedder has the
+    /// token before anything else can fail.
+    fn paired(&self, v: &Value) -> String {
+        self.became_ready(v);
+        let ok: AuthOk = serde_json::from_value(v.clone()).unwrap_or_default();
+        let token = ok.token.unwrap_or_default();
+        if !token.is_empty() {
+            let ev = lock(&self.inner.events).clone();
+            if let Some(ev) = ev {
+                ev.token_issued(&self.inner.hello.hub.id, &token);
+            }
+        }
+        token
     }
 
     fn became_ready(&self, v: &Value) {
@@ -443,6 +472,14 @@ impl LinkClient {
 
     /// Re-read `device.list`.
     pub fn refresh_devices(&self) -> Result<Vec<DeviceInfo>, LinkError> {
+        let result = self.read_device_list();
+        if let Err(e) = &result {
+            lock(&self.inner.session).list_error = Some(e.clone());
+        }
+        result
+    }
+
+    fn read_device_list(&self) -> Result<Vec<DeviceInfo>, LinkError> {
         let v = self.request(out::device_list, self.inner.timing.request_timeout)?;
         let list: Vec<DeviceInfo> = v
             .get("devices")
@@ -694,20 +731,29 @@ impl LinkClient {
     }
 
     fn request(&self, make: impl FnOnce(u64) -> String, timeout: Duration) -> Result<Value, LinkError> {
+        let id = self.inner.next_id.fetch_add(1, Ordering::SeqCst);
+        self.request_id(id, make(id), timeout)
+    }
+
+    fn request_id(&self, id: u64, text: String, timeout: Duration) -> Result<Value, LinkError> {
         if let Some((code, reason)) = self.closed_reason() {
             return Err(LinkError::Closed { code, reason });
         }
-        let id = self.inner.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = mpsc::sync_channel(1);
         lock(&self.inner.pending_json).insert(id, tx);
-        if let Err(e) = self.inner.sender.send(WsMessage::Text(make(id))) {
+        if let Err(e) = self.inner.sender.send(WsMessage::Text(text)) {
             lock(&self.inner.pending_json).remove(&id);
             return Err(LinkError::Io(e.to_string()));
         }
         match rx.recv_timeout(timeout) {
             Ok(r) => r,
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                lock(&self.inner.pending_json).remove(&id);
+                if lock(&self.inner.pending_json).remove(&id).is_none() {
+                    // The reader took it in that instant, and is about to hand it over
+                    if let Ok(r) = rx.recv_timeout(HANDOVER_GRACE) {
+                        return r;
+                    }
+                }
                 Err(LinkError::Timeout)
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -778,8 +824,14 @@ impl LinkClient {
         };
         match msg {
             Inbound::Ok { id, body } => {
-                if let Some(tx) = lock(&self.inner.pending_json).remove(&id) {
+                let waiting = lock(&self.inner.pending_json).remove(&id);
+                if let Some(tx) = waiting {
                     let _ = tx.send(Ok(body));
+                } else if lock(&self.inner.open_pairs).remove(&id) {
+                    // pair() gave up on this reply. The list cannot be read from
+                    // the reader thread: the embedder does, on this event
+                    self.paired(&body);
+                    self.fire_devices_changed();
                 }
             }
             Inbound::Err(e) => {
