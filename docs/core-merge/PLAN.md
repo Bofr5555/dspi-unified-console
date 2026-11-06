@@ -167,6 +167,11 @@ read-only connection (§1.5) does not compile. Reviewers check that
 `Session::send`/`write`/`write_band`, `control_out` and write-as-read
 opcodes appear only on a `Writable`.
 
+One named exception: `REQ_CLEAR_CLIPS` (clearing the meters' clip latch,
+`clear_clips`) changes no setting and is allowed on a read-only
+connection, so it may go through a plain `Connection` (`get`). Any other
+exception needs a line here.
+
 ### 1.3 Sans-IO
 
 These parts are pure:
@@ -220,6 +225,19 @@ Such a connection is **read-only**:
 - every setter returns `DspiError::ReadOnly`;
 - `compat` is `COMPAT_FIRMWARE_TOO_OLD` or `COMPAT_FIRMWARE_TOO_NEW`;
 - `bulk_valid` is false, so the image is never written back.
+
+**Unmappable images** (decision after wave 2a review). When the device
+identifies itself (`GET_PLATFORM` succeeds) but its image cannot be mapped
+(pre-V16, an implausible newer image, or a legacy-VID unit whose bulk read
+fails), `attach_probed` still installs the connection, so the app can show
+the device, its status and offer a firmware update:
+- `Connection::link` stays `Wire::Raw` (no `Session`), `wire` is `None`;
+- the mirror comes from `state::apply_platform` only, `bulk_valid` false;
+- `compat` is `COMPAT_FIRMWARE_TOO_OLD` or `COMPAT_FIRMWARE_TOO_NEW` from
+  the version byte;
+- `Connection::get` / `get_upto` keep working (`fetch_status`,
+  `enter_bootloader`), every setter is `ReadOnly`, and anything needing the
+  session returns `Disconnected`'s sibling error from `Connection::session`.
 
 ### 1.6 Extension channel
 
@@ -660,7 +678,16 @@ its review may add small T4 fix-ups in parallel with wave 2a; they touch
   - never surface `Notifications::is_disconnected()` after an intentional
     drop or re-attach (the old reader reports the drop as a disconnect;
     `FakeDevice` does too);
-  - reset `Connection::echo` with the connection.
+  - reset `Connection::echo` with the connection;
+  - set `Connection::fresh_image` when the mirror was decoded from this
+    connect's image (C2's `fetch_all` then skips re-reading platform and
+    image, but still does the per-item reads);
+  - unmappable images: install the connection read-only with `Wire::Raw`
+    (§1.5, "Unmappable images");
+  - close and displace paths stop the RTA worker with
+    `rta::take_worker(&mut inner)`, then drop the guard, then
+    `worker.stop()` (base hook; C9 fills it). The same pattern applies to
+    the Link reader (C15).
 - **Thread rules:** §1.2, with a test that reopening joins the old reader.
 - **Deps:** T1, T2, T4, S2, S3, C0.
 - **Parity:** 3.0 "FFI".
@@ -684,6 +711,21 @@ files; it needs only C0), **T3** (midir ports) and **S5** (channel
 clipboard).
 
 ### Wave 2b (needs wave 2a merged)
+
+Notes for every wave-2b brief (after the wave-2a review):
+- **Link device lock.** Multi-request flows take the transport's lock:
+  `conn.transport().lock(reason, Duration::from_secs(60))` ... `unlock()`,
+  as the Android console does: bulk restores, preset save/copy/import (C5),
+  multi-step hardware flows (C6). A lock refusal is `DspiError::Locked`.
+- **Refusals on the fake.** With `FakeOptions::ack_unknown_sets` a refused
+  or unknown SET looks like success; tests assert a refusal by reading the
+  value back, not by the SET's result.
+- **C1b:** never call midir's `list_ports` faster than about once a
+  second; hotplug diffs use an enumeration-only scan (no opening).
+- **Desktop MIDI open** is `midir_port::list_ports()` + `midir_port::open()`
+  + `DspiCore::open_transport` (no special API).
+- **C2** consumes `Connection::fresh_image`; **C7** classifies echoes at
+  `Notification::received`.
 
 **C1b: Hotplug and reconnection.** Size 0.5.
 - **Owns:** `crates/dspi-core/src/hotplug.rs`.
@@ -740,7 +782,9 @@ clipboard).
     - takes the drained packets out under the lock and calls nothing
       while holding it (§1.2 thread rules);
     - classifies echoes with `Connection::echo.classify_notification(
-      Instant::now(), caps.kind, session_id, ..)` (§1.2 bulk echoes);
+      caps.kind, session_id, &note)`, which uses the packet's
+      `Notification::received` stamp, not the drain time (§1.2 bulk
+      echoes);
   - `monitor_read` and `monitor_clear`.
 - **Input:** the old `notify.rs` and `monitor.rs`.
 - **Deps:** C0, T4.
@@ -795,7 +839,8 @@ clipboard).
 - **Owns:** the `midir_port` module of `crates/dspi-transport/src/midi.rs`,
   and nothing else in that file.
 - **Implements:** `list_ports` and `open`, over ALSA, WinMM and CoreMIDI,
-  matching ports named "DSPi Control".
+  matching ports named "DSPi Control"; an input and an output port are
+  paired by midir id.
 - **Done when:**
   - it builds on Linux and Windows GNU with `--features midir`;
   - its tests run without a device, using a fake at the pipe level.
