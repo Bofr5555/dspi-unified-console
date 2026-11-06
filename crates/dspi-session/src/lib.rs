@@ -16,6 +16,8 @@ pub mod pins;
 pub mod preset_file;
 pub mod probe;
 pub mod readout;
+// -- WP CG12 --
+pub mod ring_health;
 pub mod rta;
 pub mod runtime;
 pub mod state;
