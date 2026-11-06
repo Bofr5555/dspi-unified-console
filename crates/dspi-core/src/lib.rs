@@ -123,6 +123,9 @@ pub struct DspiCore {
     /// This object, for threads a `&self` method starts (the RTA worker).
     /// Methods stay `&self`, which is what UniFFI exports.
     pub(crate) me: Weak<DspiCore>,
+    /// What `link_close` needs without the lock (WP C15).
+    #[cfg(feature = "link")]
+    pub(crate) link_control: Mutex<Option<link::LinkControl>>,
 }
 
 /// Everything behind the lock.
@@ -199,6 +202,9 @@ pub(crate) struct Connection {
     /// A re-read after a notification failed and is to be tried again
     /// (`notify.rs`, WP C15).
     pub(crate) refresh_pending: Option<notify::RefreshPending>,
+    /// The next `process_notifications` reports a full refresh: the core read
+    /// the device again by itself (a Link re-attach, WP C15).
+    pub(crate) announce_refresh: bool,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -270,6 +276,7 @@ impl Connection {
             generation: NEXT_GENERATION.fetch_add(1, Ordering::Relaxed),
             side: None,
             refresh_pending: None,
+            announce_refresh: false,
         }
     }
 
@@ -422,6 +429,8 @@ impl DspiCore {
             inner: Mutex::new(Inner::new()),
             listeners: Arc::new(Listeners::default()),
             me: me.clone(),
+            #[cfg(feature = "link")]
+            link_control: Mutex::new(None),
         })
     }
 
@@ -477,12 +486,23 @@ impl DspiCore {
     /// connected.
     pub(crate) fn attach_probed(
         &self,
-        mut transport: Box<dyn Transport>,
+        transport: Box<dyn Transport>,
         serial: String,
         vid: u16,
     ) -> Result<()> {
         self.close_connection();
+        self.attach_opened(transport, serial, vid)
+    }
 
+    /// [`DspiCore::attach_probed`] from step 2, the old connection being
+    /// closed already. The mirror changes only when the new one is installed
+    /// (a Link re-attach keeps the last known state until then).
+    pub(crate) fn attach_opened(
+        &self,
+        mut transport: Box<dyn Transport>,
+        serial: String,
+        vid: u16,
+    ) -> Result<()> {
         let listeners = Arc::clone(&self.listeners);
         let waker: dspi_session::notify::Waker =
             Arc::new(move || listeners.notify.call(|l| l.on_notifications()));

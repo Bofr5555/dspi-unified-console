@@ -37,8 +37,10 @@
 //!
 //! The poll enumerates USB only. It never lists MIDI ports (midir's
 //! `list_ports` must not be polled faster than about once a second, and a
-//! MIDI connection is not reopened by serial); a lost MIDI or Link
-//! connection is still closed by step 1 and reported as departed.
+//! MIDI connection is not reopened by serial); a lost MIDI connection is
+//! still closed by step 1 and reported as departed. So is a Link connection
+//! whose session has ended; while the session is reconnecting, step 1 leaves
+//! it alone (`link.rs`, WP C15).
 
 use std::sync::Arc;
 

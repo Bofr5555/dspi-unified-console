@@ -24,7 +24,8 @@ pub trait RtaListener: Send + Sync {
 /// Device arrival and departure, from `poll_hotplug`.
 ///
 /// The device you were connected to going away always gives `on_departed`
-/// with its serial, whatever the transport (USB, MIDI, Link). This is the
+/// with its serial, whatever the transport (USB, MIDI, Link; a Link session
+/// that is reconnecting does not count yet, see `link_status`). This is the
 /// signal to rely on: `NOTIFY_DISCONNECTED` is only reported if
 /// `process_notifications` ran before `poll_hotplug` closed the connection.
 ///

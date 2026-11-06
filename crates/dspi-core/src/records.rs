@@ -760,7 +760,8 @@ pub enum LinkPhase {
     /// No session.
     #[default]
     Idle,
-    /// The hub wants a PIN: ask for it and call `link_pair`.
+    /// The hub wants a PIN (never paired, or the token was refused or revoked:
+    /// see `token_refused`): ask for it and call `link_pair`. Retries stop here.
     NeedsPairing,
     /// Connected and authenticated, but the hub has no DSPi to offer: the
     /// board is off, or its control interface is not enabled. Not a failure
@@ -773,10 +774,16 @@ pub enum LinkPhase {
     /// Bound to a device.
     Bound,
     /// The session was lost, or the bound device is being re-attached; the
-    /// core retries with backoff. `close_reason` says why it was lost.
+    /// core retries with backoff. Entered at once. `close_reason` says why,
+    /// `reconnect_attempt` and `reconnect_in_ms` how it goes; `link_close`
+    /// stops it. The mirror stays last known; calls that need the device fail
+    /// at once with `Disconnected`, and nothing is queued.
     Reconnecting,
-    /// Ended and not retried (revoked, protocol error, refused by the hub):
-    /// see `close_code` and `close_reason`.
+    /// Ended and not retried (a protocol error): see `close_code` and
+    /// `close_reason`.
     Closed,
+    /// The hub refuses this client (a 4xx handshake). Retrying will not help
+    /// until something changes on the hub: see `close_reason`.
+    Refused,
 }
 // -- WP F1 --

@@ -27,6 +27,22 @@
 //! `cancel`, and it stops at its next step. It holds the core only weakly,
 //! and never across a dial.
 //!
+//! # A lost session
+//!
+//! A lost session is a state the user sees ([`LinkPhase::Reconnecting`], with
+//! a banner and a way out), not a teardown:
+//! - the listener hears of it at once;
+//! - the connection and the mirror stay, last known, until the device is read
+//!   again. The core does not report the device as departed;
+//! - calls that need the device fail at once with
+//!   [`DspiError::Disconnected`]: its client answers NO_DEVICE without a round
+//!   trip. Nothing is queued: a write made now is never sent later;
+//! - afterwards the device is read and bound again, the polls subscribed anew,
+//!   and the next `process_notifications` reports `NOTIFY_REFRESHED`;
+//! - it ends by itself when a person is needed: [`LinkPhase::NeedsPairing`]
+//!   (token refused or revoked), [`LinkPhase::Refused`] (a 4xx handshake);
+//! - `link_close` leaves it from any thread, at once: see there.
+//!
 //! # No core lock on the network
 //!
 //! [`LinkSide`] is the connection's [`SideChannel`]. It reaches the device
@@ -61,6 +77,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::{Duration, Instant};
 
+use dspi_link::clock::{Clock, SystemClock};
 use dspi_link::frames::PollFrame;
 use dspi_link::messages::{DeviceInfo, PollSpec};
 use dspi_link::socket::{TcpConnector, WsConnector};
@@ -123,13 +140,20 @@ const BRIDGED_BANDS_EVERY: Duration = Duration::from_millis(250);
 /// Bin frames on a bridged hub.
 const BRIDGED_BINS_EVERY: Duration = Duration::from_millis(250);
 
+/// How long `link_close` waits for its teardown; a stalled link's goes on behind.
+const CLOSE_WAIT: Duration = Duration::from_millis(100);
+/// How long `link_connect` waits for the teardown of the session it replaces.
+const REPLACE_WAIT: Duration = Duration::from_secs(20);
+
 /// The session's timers: production's, or shortened by a test.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone)]
 pub(crate) struct Tuning {
     /// The client's timers.
     pub(crate) timing: Timing,
     /// Backoff delays are divided by this.
     pub(crate) backoff_divisor: u32,
+    /// The client's liveness clock.
+    pub(crate) clock: Arc<dyn Clock>,
 }
 
 impl Default for Tuning {
@@ -137,6 +161,7 @@ impl Default for Tuning {
         Self {
             timing: Timing::default(),
             backoff_divisor: 1,
+            clock: Arc::new(SystemClock),
         }
     }
 }
@@ -202,6 +227,17 @@ struct Target {
     hub_id: String,
     connector: Arc<dyn WsConnector>,
     timing: Timing,
+    clock: Arc<dyn Clock>,
+}
+
+/// What `link_close` needs without the `Inner` lock, which a command on a
+/// stalled link can hold for seconds. Its mutex is never held on the network
+/// or while taking `Inner`.
+pub(crate) struct LinkControl {
+    id: u64,
+    cancel: Arc<AtomicBool>,
+    tx: Sender<Msg>,
+    client: Option<LinkClient>,
 }
 
 /// The device bound with `link_select_device`.
@@ -248,6 +284,11 @@ pub(crate) struct LinkSession {
     last_close: Option<(Option<u16>, String)>,
     /// Over, and not retried.
     ended: bool,
+    /// Ended because the hub refuses this client (a 4xx handshake).
+    refused: bool,
+    /// The app closed the bound device with the session up. If it now opens
+    /// another one, it has left the hub.
+    released: bool,
     /// An end the listener has not heard of yet.
     unreported_end: Option<Closed>,
     bound: Option<Bound>,
@@ -287,6 +328,9 @@ impl LinkSession {
     }
 
     fn phase(&self, conn_gen: Option<u64>) -> LinkPhase {
+        if self.refused {
+            return LinkPhase::Refused;
+        }
         if self.ended {
             return LinkPhase::Closed;
         }
@@ -331,6 +375,7 @@ impl LinkSession {
                 let reason = error.map_or_else(String::new, ToString::to_string);
                 self.retry = None;
                 self.ended = true;
+                self.refused = matches!(error, Some(LinkError::HandshakeRefused { .. }));
                 self.unreported_end = Some((None, reason));
             }
         }
@@ -351,11 +396,19 @@ impl LinkSession {
             .is_some_and(|b| b.attached && conn_gen != Some(b.generation))
         {
             self.bound = None;
+            self.released = true;
         }
         if let Some(b) = &mut self.bound {
             b.attached = false;
         }
         self.last_close = Some((code, reason.clone()));
+        if code == Some(4002) {
+            // Revoked: a person has to pair again; `link_pair` dials.
+            self.target.token.clear();
+            self.token_refused = true;
+            self.needs_pin = true;
+            self.retry = None;
+        }
         if self.needs_pin {
             return;
         }
@@ -363,10 +416,6 @@ impl LinkSession {
             self.retry = None;
             self.schedule_retry(None, now);
         } else {
-            if code == Some(4002) {
-                self.target.token.clear();
-                self.token_refused = true;
-            }
             self.ended = true;
             self.unreported_end = Some((code, reason));
         }
@@ -465,7 +514,11 @@ impl DspiCore {
     /// user. No blocking beyond the core lock.
     pub fn link_status(&self) -> LinkStatus {
         let inner = self.lock();
-        let Some(s) = inner.link.as_ref() else {
+        let Some(s) = inner
+            .link
+            .as_ref()
+            .filter(|s| !s.cancel.load(Ordering::SeqCst))
+        else {
             return LinkStatus {
                 close_code: -1,
                 ..LinkStatus::default()
@@ -486,7 +539,7 @@ impl DspiCore {
                 .into_iter()
                 .map(|(request, dir)| LinkDenied { request, dir })
                 .collect(),
-            closed: phase == LinkPhase::Closed,
+            closed: matches!(phase, LinkPhase::Closed | LinkPhase::Refused),
             close_code: code.map_or(-1, i32::from),
             close_reason: reason,
             phase,
@@ -528,6 +581,7 @@ impl DspiCore {
             if !s.client.as_ref().is_some_and(LinkClient::is_ready) {
                 return Err(DspiError::Disconnected);
             }
+            s.released = false;
             s.bound = Some(Bound {
                 handle,
                 serial: serial.clone(),
@@ -538,7 +592,7 @@ impl DspiCore {
                 side: None,
             });
         }
-        let opened = self.open_bound(handle, serial);
+        let opened = self.open_bound(handle, serial, false);
         if opened.is_err() {
             let mut inner = self.lock();
             if let Some(s) = inner.link.as_mut()
@@ -550,29 +604,17 @@ impl DspiCore {
         opened
     }
 
-    /// Close the Link session (normal close) and drop a device bound to it.
-    /// Does not wait for a dial in progress; its result is thrown away. A
-    /// USB device open meanwhile stays open. Quiet: no `on_link_closed`.
+    /// Close the Link session (normal close) and drop a device bound to it,
+    /// and stop any reconnecting: this is the banner's abort button.
+    ///
+    /// Safe on a UI thread: it returns within about 100 ms whatever the link
+    /// does, and `link_status` then says [`LinkPhase::Idle`]. It does not need
+    /// the core lock, and ends a command stuck on a stalled link. On a healthy
+    /// link the device is closed when it returns; on a stalled one that
+    /// finishes behind it. A dial in progress is thrown away. A USB device open
+    /// meanwhile stays open. Quiet: no `on_link_closed`.
     pub fn link_close(&self) {
-        let (session, ours) = {
-            let mut inner = self.lock();
-            let generation = inner.conn.as_ref().map(|c| c.generation);
-            let session = inner.link.take();
-            let ours = session.as_ref().is_some_and(|s| {
-                s.bound
-                    .as_ref()
-                    .is_some_and(|b| generation == Some(b.generation))
-            });
-            if let Some(c) = session.as_ref().and_then(|s| s.client.as_ref()) {
-                c.set_events(None);
-            }
-            (session, ours)
-        };
-        // The reader stops before the socket goes, so this is no unplug.
-        if ours {
-            self.close_connection();
-        }
-        drop(session);
+        self.close_session(CLOSE_WAIT);
     }
 
     /// Register (`Some`) or clear (`None`) the session events listener. Same
@@ -610,6 +652,85 @@ impl DspiCore {
 }
 
 impl DspiCore {
+    /// Stop the session now, finish its teardown on a thread of its own, and
+    /// wait for that up to `wait`.
+    fn close_session(&self, wait: Duration) {
+        let Some(control) = guard(&self.link_control).take() else {
+            return;
+        };
+        control.cancel.store(true, Ordering::SeqCst);
+        let _ = control.tx.send(Msg::Kick);
+        let Some(core) = self.me.upgrade() else {
+            return;
+        };
+        let (done, finished) = mpsc::sync_channel::<()>(1);
+        let id = control.id;
+        let client = control.client;
+        let spawned = std::thread::Builder::new()
+            .name("dspi-link-close".into())
+            .spawn(move || {
+                core.finish_close(id, client);
+                let _ = done.send(());
+            });
+        match spawned {
+            Ok(_) => {
+                let _ = finished.recv_timeout(wait);
+            }
+            Err(e) => log::warn!("cannot close the Link session in the background: {e}"),
+        }
+    }
+
+    /// The rest of a close. The socket goes first: that ends whatever is stuck
+    /// on it, a command holding the core lock or the analyser's poll included.
+    fn finish_close(&self, id: u64, client: Option<LinkClient>) {
+        if let Some(c) = &client {
+            c.set_events(None);
+            c.close();
+        }
+        let (session, ours) = {
+            let mut inner = self.lock();
+            let generation = inner.conn.as_ref().map(|c| c.generation);
+            if inner.link.as_ref().is_some_and(|s| s.id == id) {
+                let session = inner.link.take();
+                let ours = session.as_ref().is_some_and(|s| {
+                    s.bound
+                        .as_ref()
+                        .is_some_and(|b| generation == Some(b.generation))
+                });
+                (session, ours)
+            } else {
+                (None, false)
+            }
+        };
+        if ours {
+            self.close_connection();
+        }
+        drop(session);
+    }
+
+    /// Note the session's current client for `link_close`.
+    fn control_client(&self, id: u64, client: &LinkClient) {
+        if let Some(c) = guard(&self.link_control).as_mut().filter(|c| c.id == id) {
+            c.client = Some(client.clone());
+        }
+    }
+
+    /// Close the connection for a re-attach: as `close_connection`, but the
+    /// mirror stays last known.
+    fn close_keeping_mirror(&self) {
+        let (old, worker) = {
+            let mut inner = self.lock();
+            let worker = crate::rta::take_worker(&mut inner);
+            (inner.conn.take(), worker)
+        };
+        if let Some(worker) = worker {
+            worker.stop();
+        }
+        if let Some(conn) = old {
+            crate::device::shut(conn);
+        }
+    }
+
     /// [`DspiCore::link_connect`] over `connector` (tests inject faults).
     pub(crate) fn link_connect_with(
         &self,
@@ -620,7 +741,7 @@ impl DspiCore {
         connector: Arc<dyn WsConnector>,
         tuning: Tuning,
     ) -> Result<LinkHello> {
-        self.link_close();
+        self.close_session(REPLACE_WAIT);
         let (tx, rx) = mpsc::channel();
         let mut target = Target {
             url,
@@ -630,6 +751,7 @@ impl DspiCore {
             hub_id: String::new(),
             connector,
             timing: tuning.timing,
+            clock: Arc::clone(&tuning.clock),
         };
         let (client, state) = dial(&target, true, &tx).map_err(map_error)?;
         let hello = hello_record(&client, &state);
@@ -652,6 +774,8 @@ impl DspiCore {
             retry: None,
             last_close: None,
             ended: false,
+            refused: false,
+            released: false,
             unreported_end: None,
             bound: None,
             reported: LinkPhase::Idle,
@@ -660,6 +784,12 @@ impl DspiCore {
         };
         let (me, id) = (self.me.clone(), session.id);
         let kick = session.tx.clone();
+        *guard(&self.link_control) = Some(LinkControl {
+            id,
+            cancel: Arc::clone(&cancel),
+            tx: kick.clone(),
+            client: session.client.clone(),
+        });
         // Installed first: the supervisor ends when it finds no session.
         let displaced = self.lock().link.replace(session);
         drop(displaced);
@@ -667,6 +797,7 @@ impl DspiCore {
             .name("dspi-link".into())
             .spawn(move || supervise(&me, id, &rx, &cancel));
         if let Err(e) = spawned {
+            *guard(&self.link_control) = None;
             let session = self.lock().link.take();
             drop(session);
             return Err(DspiError::Io {
@@ -704,11 +835,17 @@ impl DspiCore {
         s.instance = instance;
         s.loss_seen = false;
         s.needs_pin = state.needs_pin();
+        let id = s.id;
+        drop(inner);
+        self.control_client(id, &client);
         Ok((client, instance))
     }
 
     /// Open device `handle` on the current client and record it as bound.
-    fn open_bound(&self, handle: u8, serial: String) -> Result<()> {
+    ///
+    /// `keep_mirror`: a re-attach. The mirror stays last known until the new
+    /// image replaces it, and a failure leaves it.
+    fn open_bound(&self, handle: u8, serial: String, keep_mirror: bool) -> Result<()> {
         let (client, instance) = {
             let inner = self.lock();
             let s = inner.link.as_ref().ok_or(DspiError::Disconnected)?;
@@ -716,7 +853,12 @@ impl DspiCore {
             (client.ok_or(DspiError::Disconnected)?, s.instance)
         };
         let transport = LinkTransport::new(client.clone(), handle, &serial);
-        self.open_transport(Box::new(transport), serial.clone(), 0)?;
+        if keep_mirror {
+            self.close_keeping_mirror();
+            self.attach_opened(Box::new(transport), serial.clone(), 0)?;
+        } else {
+            self.open_transport(Box::new(transport), serial.clone(), 0)?;
+        }
 
         let mut guard = self.lock();
         let inner = &mut *guard;
@@ -748,21 +890,28 @@ impl DspiCore {
 
     /// Decide the next supervisor step, under the lock.
     fn plan_step(&self, id: u64, now: Instant) -> (Step, Option<Closed>, bool) {
-        let mut guard = self.lock();
-        let inner = &mut *guard;
+        let mut locked = self.lock();
+        let inner = &mut *locked;
         let conn_gen = inner.conn.as_ref().map(|c| c.generation);
-        let Some(s) = inner.link.as_mut().filter(|s| s.id == id) else {
+        let Some(s) = inner
+            .link
+            .as_mut()
+            .filter(|s| s.id == id && !s.cancel.load(Ordering::SeqCst))
+        else {
             return (Step::Stop, None, false);
         };
         // The app opened another device over the bound one: it has left the
         // hub, so give back the slot (a bridge has only 4 or 8) and stop
         // reconnecting. `link_select_device` on this session is not this.
-        if s.bound.as_ref().is_some_and(|b| {
-            !b.opening && b.generation != 0 && conn_gen.is_some_and(|g| g != b.generation)
-        }) {
+        let displaced = match &s.bound {
+            Some(b) => !b.opening && conn_gen.is_some_and(|g| g != b.generation),
+            None => s.released && conn_gen.is_some(),
+        };
+        if displaced {
             log::info!("the Link device was displaced: closing its hub session");
             let session = inner.link.take();
-            drop(guard);
+            drop(locked);
+            *guard(&self.link_control) = None;
             drop(session);
             return (Step::Stop, None, true);
         }
@@ -782,9 +931,13 @@ impl DspiCore {
         dialled: std::result::Result<(LinkClient, AuthState), LinkError>,
     ) -> bool {
         let now = Instant::now();
-        let mut guard = self.lock();
-        let Some(s) = guard.link.as_mut().filter(|s| s.id == id) else {
-            drop(guard);
+        let mut inner = self.lock();
+        let Some(s) = inner
+            .link
+            .as_mut()
+            .filter(|s| s.id == id && !s.cancel.load(Ordering::SeqCst))
+        else {
+            drop(inner);
             if let Ok((client, _)) = dialled {
                 client.close();
             }
@@ -798,6 +951,7 @@ impl DspiCore {
                 }
                 s.pin_source = client.hello().pin_source().to_owned();
                 s.instance = client.epoch();
+                self.control_client(id, &client);
                 s.client = Some(client);
                 s.loss_seen = false;
                 s.retry = None;
@@ -848,17 +1002,16 @@ impl DspiCore {
         }
     }
 
-    /// Bind the device again and read it. On failure the connection is closed
-    /// and the supervisor tries again later.
+    /// Bind the device again and read it. On failure the connection is closed,
+    /// the mirror stays last known, and the supervisor tries again later.
     fn rebind(&self, id: u64, handle: u8, serial: String) {
         let result = self
-            .open_bound(handle, serial)
+            .open_bound(handle, serial, true)
             .and_then(|()| self.fetch_all());
         let ended_meanwhile = {
             let mut inner = self.lock();
-            let current = inner.link.as_mut().filter(|s| s.id == id);
-            match current {
-                None => true,
+            let flagged = match inner.link.as_mut().filter(|s| s.id == id) {
+                None => None,
                 Some(s) => {
                     match &result {
                         Ok(()) => s.retry = None,
@@ -870,26 +1023,44 @@ impl DspiCore {
                             s.schedule_retry(None, Instant::now());
                         }
                     }
-                    false
+                    Some(result.is_ok())
                 }
+            };
+            if flagged == Some(true)
+                && let Some(conn) = inner.conn.as_mut()
+            {
+                conn.announce_refresh = true;
             }
+            flagged.is_none()
         };
-        if ended_meanwhile || result.is_err() {
-            self.close_link_device();
+        if ended_meanwhile {
+            let link = self
+                .lock()
+                .conn
+                .as_ref()
+                .is_some_and(|c| c.caps.kind == TransportKind::Link);
+            if link {
+                self.close_connection();
+            }
+        } else if result.is_err() {
+            self.close_keeping_mirror();
+        } else {
+            self.listeners.notify.call(|l| l.on_notifications());
         }
     }
+}
 
-    /// Close the open connection if it is a Link one.
-    fn close_link_device(&self) {
-        let link = self
-            .lock()
-            .conn
-            .as_ref()
-            .is_some_and(|c| c.caps.kind == TransportKind::Link);
-        if link {
-            self.close_connection();
-        }
-    }
+/// Whether the open connection is bound to a session still working on it: a
+/// stream that ended there is a lost session, not a departed device.
+pub(crate) fn session_recovers(inner: &crate::Inner) -> bool {
+    let generation = inner.conn.as_ref().map(|c| c.generation);
+    inner.link.as_ref().is_some_and(|s| {
+        !s.ended
+            && !s.cancel.load(Ordering::SeqCst)
+            && s.bound
+                .as_ref()
+                .is_some_and(|b| generation == Some(b.generation))
+    })
 }
 
 /// The next step for session `s`, under the lock.
@@ -927,9 +1098,12 @@ fn next_step(s: &mut LinkSession, conn_gen: Option<u64>, now: Instant) -> Step {
         .is_some_and(|b| !b.opening && b.attached && conn_gen != Some(b.generation))
     {
         s.bound = None;
+        s.released = true;
     }
+    let released = s.released;
     let Some(b) = s.bound.as_mut().filter(|b| !b.opening) else {
-        return Step::Wait(None, None);
+        // After `disconnect`, a device opened next is noticed by this wake-up.
+        return Step::Wait(released.then_some(FEED_CHECK), None);
     };
     let Some(d) = devices.iter().find(|d| d.serial == b.serial) else {
         b.seen_offline = true;
@@ -1074,8 +1248,8 @@ fn dial(
     });
     let cfg = SessionConfig {
         timing: target.timing,
+        clock: Arc::clone(&target.clock),
         token_for: lookup,
-        ..SessionConfig::default()
     };
     LinkClient::connect_with(
         target.connector.as_ref(),
@@ -1786,5 +1960,6 @@ pub fn link_fetch_info(host: String, port: u16) -> Result<LinkInfo> {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 #[path = "link/tests_wp_c15.rs"]
 mod tests_wp_c15;

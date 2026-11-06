@@ -6,6 +6,7 @@ use std::collections::VecDeque;
 use std::io;
 use std::sync::atomic::AtomicUsize;
 
+use dspi_link::clock::ManualClock;
 use dspi_link::fakehub::{Auth, DeviceListFault, FakeHub, HubConfig, req};
 use dspi_link::frames::Frame;
 use dspi_link::socket::{WsMessage, WsPair, WsReceiver, WsRecv, WsSender};
@@ -142,8 +143,8 @@ fn connect_with(
             faults: Arc::clone(faults),
         }),
         Tuning {
-            timing: Timing::default(),
             backoff_divisor: FAST,
+            ..Tuning::default()
         },
     )
 }
@@ -557,7 +558,8 @@ fn wp_c15_a_busy_hub_is_retried_and_a_refusal_ends_it() {
 
     hub.refuse_handshake(Some(403));
     hub.drop_connections();
-    wait_phase(&core, LinkPhase::Closed);
+    wait_phase(&core, LinkPhase::Refused);
+    assert!(core.link_status().closed);
     wait_until("the listener", || guard(&events.closed).len() == 1);
     assert!(guard(&events.closed)[0].1.contains("403"));
     core.set_link_listener(None);
@@ -613,23 +615,20 @@ fn wp_c15_a_failed_device_list_after_pairing_is_read_again() {
 }
 
 #[test]
-fn wp_c15_revocation_ends_the_session() {
+fn wp_c15_revocation_asks_for_a_person() {
     let hub = pin_hub();
     let core = DspiCore::new();
     let (faults, _) = connect_faulty(&core, &hub, "");
-    let events = Arc::new(Events::default());
-    core.set_link_listener(Some(events.clone()));
     core.link_pair("123456".into()).unwrap();
     hub.revoke_all();
-    wait_phase(&core, LinkPhase::Closed);
+    wait_phase(&core, LinkPhase::NeedsPairing);
     let st = core.link_status();
-    assert!(st.closed);
     assert_eq!(st.close_code, 4002);
-    wait_until("the listener", || guard(&events.closed).len() == 1);
-    assert_eq!(guard(&events.closed)[0].0, 4002);
+    assert!(st.token_refused);
     std::thread::sleep(Duration::from_millis(150));
     assert_eq!(faults.sent("\"hello\""), 1, "not retried");
-    core.set_link_listener(None);
+    core.link_pair("123456".into()).unwrap();
+    wait_phase(&core, LinkPhase::ChooseDevice);
 }
 
 #[test]
@@ -692,6 +691,7 @@ fn connect_quick(core: &DspiCore, hub: &FakeHub) {
                 ..Timing::default()
             },
             backoff_divisor: FAST,
+            ..Tuning::default()
         },
     )
     .unwrap();
@@ -731,6 +731,215 @@ fn wp_c15_a_stalled_hub_is_noticed_and_reconnected() {
         core.link_status().phase == LinkPhase::Bound
             && core.lock().conn().is_ok_and(|c| c.generation != generation)
     });
+}
+
+// ── The banner: a lost session is a visible, cancellable state ────────
+
+/// A bound session on a manual liveness clock, with short timers.
+fn connect_clocked(core: &DspiCore, hub: &FakeHub, divisor: u32) -> Arc<ManualClock> {
+    let clock = Arc::new(ManualClock::new());
+    core.link_connect_with(
+        hub.url(),
+        "wp-c15".into(),
+        "test".into(),
+        String::new(),
+        Arc::new(TcpConnector::default()),
+        Tuning {
+            timing: Timing {
+                keepalive_tick: Duration::from_millis(10),
+                connect_budget: Duration::from_millis(300),
+                request_timeout: Duration::from_millis(300),
+                ..Timing::default()
+            },
+            backoff_divisor: divisor,
+            clock: clock.clone(),
+        },
+    )
+    .unwrap();
+    bind(core);
+    wait_phase(core, LinkPhase::Bound);
+    clock
+}
+
+/// The hub goes silent and the liveness limit passes on the manual clock.
+/// (On a hub that still answers, our ping's pong would prove it alive.)
+fn lose(core: &DspiCore, hub: &FakeHub, clock: &ManualClock) {
+    hub.stall(true);
+    wait_until("the session to be lost", || {
+        clock.advance(Timing::default().silence_limit + Duration::from_secs(1));
+        std::thread::sleep(Duration::from_millis(20));
+        core.link_status().phase != LinkPhase::Bound
+    });
+}
+
+fn rebound(core: &DspiCore, generation: u64) -> bool {
+    core.link_status().phase == LinkPhase::Bound
+        && core.lock().conn().is_ok_and(|c| c.generation != generation)
+}
+
+fn process_until_refreshed(core: &DspiCore) {
+    wait_until("NOTIFY_REFRESHED", || {
+        core.process_notifications().flags & crate::consts::NOTIFY_REFRESHED != 0
+    });
+}
+
+#[test]
+fn wp_c15_a_stall_shows_at_once_and_recovers_with_the_mirror_read_again() {
+    let hub = open_hub();
+    let core = DspiCore::new();
+    let events = Arc::new(Events::default());
+    core.set_link_listener(Some(events.clone()));
+    let clock = connect_clocked(&core, &hub, FAST);
+    core.set_master_volume(-30.0).unwrap();
+    let generation = core.lock().conn().unwrap().generation;
+    let before = events.status.load(Ordering::SeqCst);
+
+    lose(&core, &hub, &clock);
+    wait_phase(&core, LinkPhase::Reconnecting);
+    wait_until("the event", || {
+        events.status.load(Ordering::SeqCst) > before
+    });
+    let st = core.link_status();
+    assert!(!st.connected && !st.closed);
+    assert!(!st.close_reason.is_empty());
+    let state = core.get_state();
+    assert!(state.bulk_valid, "the mirror stays");
+    assert_eq!(state.master_volume_db, -30.0);
+    assert!(core.is_connected());
+    // Not a departed device.
+    core.poll_hotplug();
+    assert!(core.is_connected());
+    let flags = core.process_notifications().flags;
+    assert_eq!(flags & crate::consts::NOTIFY_DISCONNECTED, 0);
+    assert_eq!(core.get_state().master_volume_db, -30.0);
+
+    hub.stall(false);
+    wait_until("the rebind", || rebound(&core, generation));
+    process_until_refreshed(&core);
+    assert!(guard(&events.closed).is_empty());
+    core.set_link_listener(None);
+}
+
+#[test]
+fn wp_c15_a_false_alarm_recovers_with_the_mirror_intact() {
+    // The hub is fine: only our clock thought otherwise.
+    let hub = open_hub();
+    let core = DspiCore::new();
+    let clock = connect_clocked(&core, &hub, FAST);
+    core.set_master_volume(-27.5).unwrap();
+    let generation = core.lock().conn().unwrap().generation;
+    lose(&core, &hub, &clock);
+    hub.stall(false);
+    wait_until("the rebind", || {
+        assert_eq!(core.get_state().master_volume_db, -27.5, "never a default");
+        rebound(&core, generation)
+    });
+    process_until_refreshed(&core);
+    let state = core.get_state();
+    assert!(state.bulk_valid);
+    assert_eq!(state.master_volume_db, -27.5);
+    meters_live(&core);
+}
+
+#[test]
+fn wp_c15_while_reconnecting_writes_fail_fast_and_are_never_replayed() {
+    let hub = open_hub();
+    let core = DspiCore::new();
+    let clock = connect_clocked(&core, &hub, 1);
+    core.set_master_volume(-30.0).unwrap();
+    let generation = core.lock().conn().unwrap().generation;
+    let image = hub.image();
+
+    hub.refuse_handshake(Some(503));
+    lose(&core, &hub, &clock);
+    hub.stall(false);
+    wait_phase(&core, LinkPhase::Reconnecting);
+
+    let start = Instant::now();
+    assert_eq!(core.set_master_volume(-6.0), Err(DspiError::Disconnected));
+    assert_eq!(core.fetch_status().unwrap_err(), DspiError::Disconnected);
+    assert_eq!(core.apply_all_params(), Err(DspiError::Disconnected));
+    assert_eq!(core.save_params(), Err(DspiError::Disconnected));
+    assert!(
+        start.elapsed() < Duration::from_millis(100),
+        "{:?}",
+        start.elapsed()
+    );
+    assert_eq!(core.get_state().master_volume_db, -30.0, "the mirror holds");
+
+    hub.refuse_handshake(None);
+    core.link_retry_now();
+    wait_until("the rebind", || rebound(&core, generation));
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(hub.image(), image, "nothing replayed");
+    assert_eq!(core.get_state().master_volume_db, -30.0);
+}
+
+#[test]
+fn wp_c15_stop_during_backoff_returns_at_once() {
+    let hub = open_hub();
+    let core = DspiCore::new();
+    let clock = connect_clocked(&core, &hub, 1);
+    hub.refuse_handshake(Some(503));
+    lose(&core, &hub, &clock);
+    wait_until("the backoff", || core.link_status().reconnect_in_ms > 500);
+
+    let start = Instant::now();
+    core.link_close();
+    assert!(
+        start.elapsed() < Duration::from_millis(150),
+        "{:?}",
+        start.elapsed()
+    );
+    assert_eq!(core.link_status().phase, LinkPhase::Idle);
+    wait_until("the device to go", || !core.is_connected());
+    assert!(!core.get_state().bulk_valid, "a stop does reset the mirror");
+}
+
+#[test]
+fn wp_c15_stop_does_not_wait_for_a_stuck_command() {
+    let hub = open_hub();
+    let core = DspiCore::new();
+    connect_faulty(&core, &hub, "");
+    bind(&core);
+    hub.stall(true);
+    let writer = {
+        let core = Arc::clone(&core);
+        std::thread::spawn(move || core.set_master_volume(-9.0))
+    };
+    // The command is on the wire, holding the core lock for its 10 s.
+    std::thread::sleep(Duration::from_millis(100));
+    let start = Instant::now();
+    core.link_close();
+    assert!(
+        start.elapsed() < Duration::from_millis(150),
+        "{:?}",
+        start.elapsed()
+    );
+    assert!(writer.join().unwrap().is_err());
+    assert!(
+        start.elapsed() < Duration::from_secs(2),
+        "{:?}",
+        start.elapsed()
+    );
+    wait_until("the device to go", || !core.is_connected());
+    assert_eq!(core.link_status().phase, LinkPhase::Idle);
+}
+
+#[test]
+fn wp_c15_a_session_refused_while_reconnecting_keeps_the_mirror() {
+    let hub = open_hub();
+    let core = DspiCore::new();
+    let clock = connect_clocked(&core, &hub, FAST);
+    core.set_master_volume(-12.0).unwrap();
+    hub.refuse_handshake(Some(403));
+    lose(&core, &hub, &clock);
+    wait_phase(&core, LinkPhase::Refused);
+    let st = core.link_status();
+    assert!(st.close_reason.contains("403"), "{st:?}");
+    assert_eq!(st.reconnect_attempt, 0);
+    core.link_close();
+    wait_until("the device to go", || !core.is_connected());
 }
 
 // ── Threads ────────────────────────────────────────────────────────────

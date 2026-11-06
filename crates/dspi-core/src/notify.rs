@@ -92,6 +92,12 @@ const XOVER_BANDS: usize = g::wire::WIRE_MAX_XOVER_BANDS as usize;
 
 /// Whether the connection's notification reader saw the stream end.
 pub(crate) fn stream_ended_locked(inner: &Inner) -> bool {
+    // A lost Link session is no departed device: its core reconnects, and the
+    // connection and the mirror stay until then (WP C15).
+    #[cfg(feature = "link")]
+    if crate::link::session_recovers(inner) {
+        return false;
+    }
     inner
         .conn
         .as_ref()
@@ -134,7 +140,9 @@ impl DspiCore {
     /// - `NOTIFY_DISCONNECTED`: the stream ended because the device went
     ///   away (never after an intentional close). It is reported on every
     ///   call until the connection is closed; the caller should close it
-    ///   (`disconnect`, or C1b's hotplug handling).
+    ///   (`disconnect`, or C1b's hotplug handling). A lost DSPi Link session
+    ///   does not count while the core is reconnecting (`link_status`):
+    ///   leave the connection alone, and the mirror stays last known.
     ///
     /// Every packet is also recorded in the monitor log
     /// ([`DspiCore::monitor_read`]).
@@ -152,6 +160,11 @@ impl DspiCore {
         let follow = {
             let mut guard = self.lock();
             let mut follow = apply_queued(&mut guard, &mut result);
+            if let Some(conn) = guard.conn.as_mut()
+                && std::mem::take(&mut conn.announce_refresh)
+            {
+                result.flags |= NOTIFY_STATE | NOTIFY_CURVES | NOTIFY_REFRESHED;
+            }
             if let Some(conn) = guard.conn.as_mut()
                 && let Some(p) = conn.refresh_pending.as_mut()
             {
@@ -275,6 +288,7 @@ fn refresh_failed(
 /// patch. Returns whether a re-read is needed.
 fn apply_queued(inner: &mut Inner, r: &mut NotifyResult) -> FollowUp {
     let mut follow = FollowUp::default();
+    let ended = stream_ended_locked(inner);
     let Some(conn) = inner.conn.as_mut() else {
         return follow;
     };
@@ -282,7 +296,6 @@ fn apply_queued(inner: &mut Inner, r: &mut NotifyResult) -> FollowUp {
         return follow;
     };
     let notes = reader.drain();
-    let ended = reader.is_disconnected();
     let kind = conn.caps.kind;
     let session = conn.session_id;
     // Patch only an image in this build's own layout; another wire format's
