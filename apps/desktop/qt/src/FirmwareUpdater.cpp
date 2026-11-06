@@ -15,7 +15,13 @@
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
+#ifdef Q_OS_WIN
+#include <io.h>
+#include <sys/stat.h>
+#include <QStorageInfo>
+#else
 #include <unistd.h>
+#endif
 #ifdef Q_OS_MACOS
 #include <sys/mount.h>
 #include <vector>
@@ -26,7 +32,11 @@ extern "C" {
 }
 
 namespace {
-#ifdef Q_OS_MACOS
+#if defined(Q_OS_WIN)
+int syncData(int fd) { return ::_commit(fd); }   // FlushFileBuffers
+#define write _write
+#define close _close
+#elif defined(Q_OS_MACOS)
 int syncData(int fd) { return ::fsync(fd); }
 #else
 int syncData(int fd) { return ::fdatasync(fd); }
@@ -172,6 +182,13 @@ QString FirmwareUpdater::mountPointOf(const QString &device, const QString &labe
         if (QFileInfo(mountPoint).fileName() == label) return mountPoint;
     }
     return QString();
+#elif defined(Q_OS_WIN)
+    // Windows gives the drive a letter by itself; find it by its label
+    Q_UNUSED(device);
+    for (const QStorageInfo &volume : QStorageInfo::mountedVolumes()) {
+        if (volume.isValid() && volume.isReady() && volume.name() == label) return volume.rootPath();
+    }
+    return QString();
 #endif
     QFile f("/proc/self/mountinfo");
     if (!f.open(QIODevice::ReadOnly)) return QString();
@@ -306,7 +323,7 @@ void FirmwareUpdater::install() {
         return;
     }
     const QByteArray data = image.readAll();
-    const QString dest = m_mountPoint + "/" + QFileInfo(path).fileName();
+    const QString dest = QDir(m_mountPoint).filePath(QFileInfo(path).fileName());
     const QString device = m_device;
 
     m_progress = 0;
@@ -320,7 +337,13 @@ void FirmwareUpdater::install() {
     if (m_writer.joinable()) m_writer.join();
     m_writer = std::thread([self, data, dest, device]() {
         QString error;
+#ifdef Q_OS_WIN
+        // Binary mode: text mode would turn every LF byte into CR LF
+        const int fd = ::_wopen(reinterpret_cast<const wchar_t *>(QDir::toNativeSeparators(dest).utf16()),
+                                _O_WRONLY | _O_CREAT | _O_TRUNC | _O_BINARY, _S_IREAD | _S_IWRITE);
+#else
         const int fd = ::open(QFile::encodeName(dest).constData(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+#endif
         if (fd < 0) {
             error = "could not open the board's drive for writing.";
         } else {
