@@ -141,14 +141,15 @@ rewritten with `git filter-repo`, and it was merged with
 
 ## Licensing
 
-This repository combines parts under different terms. **Read this before
-redistributing.**
+The repository as a whole is distributed under the **GNU General Public License v3.0** (`LICENSE`),
+the owner's working assumption until Weeb Labs confirms the terms of the parts below. Parts keep
+their own notices:
 
 | Component | Licence | Notes |
 |---|---|---|
 | DSPi-Terminal parts (`apps/terminal/`, `crates/dspi-proto`, `dspi-transport`, `dspi-session`, `dspi-cmd`, `dspi-tui`, `xtask/`) | GPL-3.0-or-later | Stated in its Cargo manifests and README. Upstream has no LICENSE file. |
-| DSPi-Console-Linux parts (`apps/desktop/`, `crates/dspi-core-linux/`) | **Unclear** | Upstream has no licence file and no licence field. The Android console's NOTICE says "MIT (per Weeb Labs; licence file pending upstream)", but that is not a licence grant in this repository. **Open question for Weeb Labs.** |
-| `crates/dspi-link/` | Bofr5555's work; GPL-3.0 with the section 7 terms in the Android console's NOTICE | Its old workspace said `UNLICENSED`. **To confirm before publishing.** |
+| DSPi-Console-Linux parts (`apps/desktop/`, `crates/dspi-core-linux/`) | GPL-3.0 (working assumption) | Upstream has no licence file and no licence field; the Android console's NOTICE says "MIT (per Weeb Labs; licence file pending upstream)". Distributed here under GPL-3.0 until Weeb Labs confirms. |
+| `crates/dspi-link/` | GPL-3.0 (Bofr5555) | Its old workspace said `UNLICENSED`; now GPL-3.0 like the rest. |
 | `tests/fixtures/link/` | MIT, Weeb Labs | `LICENSE.DSPi-Link` next to the files. |
 | Vendored firmware headers (`crates/dspi-proto/firmware/`) and bundled firmware images (`apps/desktop/qt/firmware/*.uf2`) | GPL-3.0 (DSPi firmware) | |
 | AutoEQ database (`apps/desktop/qt/autoeq/`, `crates/dspi-session/autoeq/`) | MIT (AutoEq measurements, jaakkopasanen/AutoEq) | |
