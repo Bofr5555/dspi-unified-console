@@ -352,7 +352,11 @@ impl Drop for LinkTransport {
                 self.handle
             );
         }
-        self.unlock();
+        // A closed session holds no lock, and the send could wait on a half-open
+        // socket on the caller's thread.
+        if !self.client.is_closed() {
+            self.unlock();
+        }
         self.client.stop_notifications(self.handle);
     }
 }

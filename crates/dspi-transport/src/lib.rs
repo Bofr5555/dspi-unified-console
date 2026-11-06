@@ -86,6 +86,11 @@ pub enum TransportError {
     #[error("the device is locked by another client")]
     Locked,
 
+    /// The device answered with something that does not decode, whatever link
+    /// it came over.
+    #[error("malformed reply: {0}")]
+    Malformed(String),
+
     /// A non-USB transport's failure that has no variant of its own: a link's
     /// status (busy, rate limited, a frame error) or a local MIDI-system
     /// error (a port that cannot be opened or written). The message names

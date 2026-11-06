@@ -6,8 +6,10 @@
 //! on Windows. A generic "permission denied" helps nobody, so every check knows
 //! what to suggest where.
 
+use dspi_link::LinkError;
 use dspi_proto::{USB_PID, USB_VID};
 use dspi_transport::{TransportError, UsbTransport, list_devices};
+use dspi_tui::shell::connect::{self, LinkTarget, OpenError, Target};
 
 /// Where the Linux rule belongs.
 const UDEV_PATH: &str = "/etc/udev/rules.d/70-dspi.rules";
@@ -38,7 +40,9 @@ impl Status {
     }
 }
 
-pub fn run() -> u8 {
+/// Check the way to `target`; plain `dspi doctor` is USB, and says whether any
+/// MIDI port is there too.
+pub fn run(target: &Target) -> u8 {
     println!(
         "dspi {} on {} {}\n",
         env!("CARGO_PKG_VERSION"),
@@ -47,7 +51,24 @@ pub fn run() -> u8 {
     );
 
     let mut checks = vec![terminal_check()];
-    checks.extend(usb_checks());
+    match target {
+        Target::Usb { .. } => {
+            checks.extend(usb_checks());
+            // An aside here, so it must not make noise: ALSA prints to stderr
+            // when the sequencer is not loaded.
+            let midi_may_work =
+                !cfg!(target_os = "linux") || std::path::Path::new("/dev/snd/seq").exists();
+            if midi_may_work
+                && let Some(ports) = connect::midi_ports()
+                && !ports.is_empty()
+            {
+                checks.push(midi_ports_found(&ports));
+            }
+        }
+        Target::Demo => checks.push(demo_check()),
+        Target::Midi { .. } => checks.extend(midi_checks(target)),
+        Target::Link(l) => checks.extend(link_checks(target, l)),
+    }
 
     for c in &checks {
         c.print();
@@ -153,6 +174,102 @@ fn usb_checks() -> Vec<Status> {
         out.push(udev_check());
     }
 
+    out
+}
+
+fn midi_ports_found(ports: &[String]) -> Status {
+    Status::Ok(format!(
+        "DSPi MIDI port(s): {}",
+        connect::printable(&ports.join(", "))
+    ))
+}
+
+/// Opened and asked, as the USB check does: seeing a device proves little.
+fn open_check(target: &Target, name: &str) -> Status {
+    let opened = target.open_session(&connect::no_prompt);
+    match opened {
+        Ok(s) => {
+            let caps = s.capabilities();
+            Status::Ok(format!(
+                "{name}: {} firmware {}, wire V{}, {} channels",
+                caps.platform.name(),
+                connect::printable(&caps.firmware),
+                caps.wire_format,
+                caps.num_channels
+            ))
+        }
+        Err(e @ OpenError::NeedsPin { .. }) => Status::Warn(e.to_string()),
+        Err(e) => Status::Fail(format!("{name}: {e}"), open_fix(&e).into()),
+    }
+}
+
+fn open_fix(e: &OpenError) -> &'static str {
+    match e {
+        OpenError::Ambiguous { .. } => "Name the one you mean.",
+        OpenError::NoMidi => "Use a build with the `midi` feature.",
+        OpenError::PinRefused { .. } => {
+            "Check the PIN. A hub that shows one only accepts it while pairing is open."
+        }
+        OpenError::Link {
+            source: LinkError::RateLimited { .. } | LinkError::HubBusy,
+            ..
+        } => "This clears by itself: wait, then try again.",
+        OpenError::Link {
+            source: LinkError::HandshakeRefused { .. },
+            ..
+        } => "The hub is there but will not take this client. Check its settings and version.",
+        OpenError::Link { .. } => {
+            "Check the address, and that the hub is running and on this network."
+        }
+        _ => "Try unplugging and replugging the device.",
+    }
+}
+
+fn demo_check() -> Status {
+    open_check(&Target::Demo, "demo device")
+}
+
+fn midi_checks(target: &Target) -> Vec<Status> {
+    let Some(ports) = connect::midi_ports() else {
+        return vec![Status::Fail(
+            "this build has no MIDI support".into(),
+            "Use a build with the `midi` feature.".into(),
+        )];
+    };
+    if ports.is_empty() {
+        return vec![Status::Fail(
+            "no DSPi MIDI port found (looking for \"DSPi Control\")".into(),
+            "Check the cable and that the firmware has USB MIDI control. On Linux the \
+             ALSA sequencer (snd-seq) must be loaded."
+                .into(),
+        )];
+    }
+    vec![midi_ports_found(&ports), open_check(target, "MIDI")]
+}
+
+fn link_checks(target: &Target, l: &LinkTarget) -> Vec<Status> {
+    let mut out = Vec::new();
+    let timeout = std::time::Duration::from_secs(3);
+    // The info endpoint answers without a session, so a failure here is the
+    // network or the address rather than pairing.
+    match dspi_link::address::fetch_info(&l.host, l.port, timeout) {
+        Ok(info) => out.push(Status::Ok(format!(
+            "hub {} at {}:{}, {} device(s), access: {}",
+            connect::printable(&info.hub.name),
+            l.host,
+            l.port,
+            info.devices.len(),
+            if info.auth.is_empty() {
+                "unknown".to_owned()
+            } else {
+                connect::printable(&info.auth)
+            },
+        ))),
+        Err(e) => out.push(Status::Warn(format!(
+            "the hub's info endpoint did not answer: {e}"
+        ))),
+    }
+    out.push(open_check(target, "hub device"));
     out
 }
 

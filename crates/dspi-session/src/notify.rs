@@ -106,18 +106,14 @@ impl Source {
         v as u8
     }
 
-    /// Our own writes over USB come back as `HostSet`; everything else is
-    /// news. Over other links use [`Notification::is_own_echo`], which knows
-    /// the link's rule.
-    pub fn is_ours(self) -> bool {
-        matches!(self, Self::HostSet | Self::BulkSet)
-    }
-
-    /// The Console's wording for the echo line.
+    /// What the source byte itself says, in words for the echo line. It does
+    /// not say whose the change was: that depends on the link, so ask
+    /// [`Notification::is_own_echo`] first.
     pub fn describe(self) -> &'static str {
         match self {
             Self::Unknown | Self::Other(_) => "changed elsewhere",
-            Self::HostSet | Self::BulkSet => "changed by this host",
+            Self::HostSet => "changed over USB",
+            Self::BulkSet => "changed by a bulk write",
             Self::Preset => "changed by a preset load",
             Self::Factory => "reset to factory defaults",
             Self::Gpio => "changed by control surface",
@@ -1318,12 +1314,14 @@ mod tests {
     fn sources_describe_themselves_in_the_consoles_words() {
         assert_eq!(Source::from_raw(7), Source::Uac1);
         assert_eq!(Source::from_raw(42), Source::Other(42));
-        assert!(Source::HostSet.is_ours());
         for b in 0..=255u8 {
             assert_eq!(Source::from_raw(b).raw(), b, "raw round-trips");
         }
         assert_eq!(Source::from_raw(10), Source::Midi);
-        assert!(!Source::Gpio.is_ours());
         assert_eq!(Source::Gpio.describe(), "changed by control surface");
+        // Whose a change is depends on the link, so the byte never claims it.
+        for b in 0..=255u8 {
+            assert!(!Source::from_raw(b).describe().contains("this host"));
+        }
     }
 }

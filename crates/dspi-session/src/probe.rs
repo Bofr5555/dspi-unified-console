@@ -109,12 +109,15 @@ pub struct SiggenCaps {
     pub types: Vec<dspi_proto::packets::SiggenTypeDesc>,
 }
 
-/// Read the full bulk snapshot, chunked.
+/// Read the full bulk snapshot.
 ///
 /// The packet is 6136 bytes, which exceeds WinUSB's 4 KB single-transfer cap, so
-/// the chunked opcode is used on every platform rather than only on Windows.
-/// One path, exercised everywhere. Offset 0 snapshots under the firmware's bulk
-/// lock, so the read must start there and proceed in order.
+/// on USB the chunked opcode is used on every platform rather than only on
+/// Windows. Offset 0 snapshots under the firmware's bulk lock, so the read must
+/// start there and proceed in order.
+///
+/// A link without chunked bulk (MIDI, DSPi Link: `TransportCaps::chunked_bulk`)
+/// reads the image in one single-shot `0xA0` instead.
 pub fn read_bulk(t: &mut dyn Transport) -> Result<BulkPacket> {
     read_bulk_from(t, None)
 }
@@ -130,6 +133,16 @@ pub(crate) fn read_bulk_from(
     t: &mut dyn Transport,
     firmware: Option<&FirmwareVersion>,
 ) -> Result<BulkPacket> {
+    if !t.caps().chunked_bulk {
+        let image = crate::compat::read_bytes(t, firmware)?;
+        if let Some(&wire) = image.first()
+            && wire != WIRE_FORMAT_VERSION as u8
+        {
+            return Err(TransportError::Incompatible(refusal(firmware, wire)));
+        }
+        return BulkPacket::decode(image).map_err(|e| TransportError::Malformed(e.to_string()));
+    }
+
     let total = generated::BULK_SIZE;
     let chunk = t.max_transfer().min(1024);
     let mut buf = Vec::with_capacity(total);
@@ -152,7 +165,7 @@ pub(crate) fn read_bulk_from(
         }
     }
 
-    BulkPacket::decode(buf).map_err(|e| TransportError::Usb(e.to_string()))
+    BulkPacket::decode(buf).map_err(|e| TransportError::Malformed(e.to_string()))
 }
 
 /// What to tell someone whose device speaks another wire format.
@@ -714,6 +727,125 @@ mod tests {
         let info = probe(&mut t).unwrap().build_info.unwrap();
         assert_eq!(info.describe, "v1.1.6-beta4-0-g557bce7");
         assert_eq!(info.date, "2026-09-28");
+    }
+
+    /// A link without chunked bulk, over a scripted device.
+    struct NoChunks {
+        inner: MockTransport,
+        kind: dspi_transport::TransportKind,
+    }
+
+    impl Transport for NoChunks {
+        fn control_in(
+            &mut self,
+            opcode: u8,
+            value: u16,
+            len: u16,
+        ) -> dspi_transport::Result<Vec<u8>> {
+            self.inner.control_in(opcode, value, len)
+        }
+
+        fn control_in_upto(
+            &mut self,
+            opcode: u8,
+            value: u16,
+            max_len: u16,
+        ) -> dspi_transport::Result<Vec<u8>> {
+            self.inner.control_in_upto(opcode, value, max_len)
+        }
+
+        fn control_out(
+            &mut self,
+            opcode: u8,
+            value: u16,
+            data: &[u8],
+        ) -> dspi_transport::Result<()> {
+            self.inner.control_out(opcode, value, data)
+        }
+
+        fn descriptor(&self) -> &dspi_transport::DeviceDescriptor {
+            self.inner.descriptor()
+        }
+
+        fn max_transfer(&self) -> usize {
+            8192
+        }
+
+        fn caps(&self) -> dspi_transport::TransportCaps {
+            dspi_transport::TransportCaps {
+                kind: self.kind,
+                chunked_bulk: false,
+                remote: self.kind == dspi_transport::TransportKind::Link,
+            }
+        }
+    }
+
+    const NO_CHUNK_LINKS: [dspi_transport::TransportKind; 2] = [
+        dspi_transport::TransportKind::Link,
+        dspi_transport::TransportKind::Midi,
+    ];
+
+    fn chunk_reads(log: &dspi_transport::mock::LogHandle) -> usize {
+        log.lock()
+            .unwrap()
+            .iter()
+            .filter(|e| e.opcode == op::REQ_GET_ALL_PARAMS_CHUNK)
+            .count()
+    }
+
+    /// Link spec 8.2: a hub refuses the chunked opcodes, and MIDI carries the
+    /// image as one SysEx. `device()` also answers chunks, so a read that used
+    /// them would pass but for the count.
+    #[test]
+    fn wp_r1_a_link_without_chunked_bulk_reads_single_shot() {
+        for kind in NO_CHUNK_LINKS {
+            let inner = device().data(op::REQ_GET_ALL_PARAMS, bulk_bytes());
+            let log = inner.log_handle();
+            let mut t = NoChunks { inner, kind };
+            let bulk = read_bulk(&mut t).unwrap();
+            assert_eq!(bulk.header().format_version, WIRE_FORMAT_VERSION as u8);
+            let caps = probe(&mut t).unwrap();
+            assert_eq!(caps.wire_format, WIRE_FORMAT_VERSION as u8);
+            assert_eq!(chunk_reads(&log), 0, "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn wp_r1_a_session_snapshot_without_chunked_bulk_reads_single_shot() {
+        for kind in NO_CHUNK_LINKS {
+            let inner = device().data(op::REQ_GET_ALL_PARAMS, bulk_bytes());
+            let log = inner.log_handle();
+            let mut t = NoChunks { inner, kind };
+            let caps = probe(&mut t).unwrap();
+            let mut session = crate::Session::new(Box::new(t), caps).unwrap();
+            session.snapshot().unwrap();
+            assert_eq!(chunk_reads(&log), 0, "{kind:?}");
+        }
+    }
+
+    /// Another wire format is refused by name on this path too, and a reply
+    /// shorter than its header says is an error, not a panic.
+    #[test]
+    fn wp_r1_a_single_shot_read_refuses_what_it_cannot_use() {
+        let mut old = vec![0u8; 5944];
+        old[0] = 28;
+        old[6..8].copy_from_slice(&5944u16.to_le_bytes());
+        let inner = MockTransport::new()
+            .data(op::REQ_GET_PLATFORM, vec![1, 1, 0x16, 9])
+            .data(op::REQ_GET_SERIAL, b"4BA1DDB9D1443D6A".to_vec())
+            .data(op::REQ_GET_ALL_PARAMS, old);
+        let kind = dspi_transport::TransportKind::Link;
+        let err = probe(&mut NoChunks { inner, kind }).unwrap_err();
+        let TransportError::Incompatible(msg) = &err else {
+            panic!("expected a refusal, got {err:?}");
+        };
+        assert!(msg.contains("wire format V28"), "{msg}");
+
+        let mut short = bulk_bytes();
+        short.truncate(100);
+        let inner = MockTransport::new().data(op::REQ_GET_ALL_PARAMS, short);
+        let err = read_bulk(&mut NoChunks { inner, kind }).unwrap_err();
+        assert!(matches!(err, TransportError::ShortRead { .. }), "{err:?}");
     }
 
     /// A packet in an older wire format, as a beta2 or beta3 device sends.
