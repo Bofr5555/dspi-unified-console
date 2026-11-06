@@ -481,6 +481,8 @@ impl DspiCore {
 /// USB enumeration through nusb.
 mod usb {
     use crate::records::DeviceInfo;
+    #[cfg(not(target_os = "android"))]
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     /// Every DSPi on the bus, and how many could not be opened. `ours`
     /// (the device the core holds) is listed without opening it.
@@ -537,6 +539,10 @@ mod usb {
         Vec::new()
     }
 
+    /// Enumeration failed last time (see [`dspis`]).
+    #[cfg(not(target_os = "android"))]
+    static LIST_FAILING: AtomicBool = AtomicBool::new(false);
+
     /// The DSPis on the bus (empty, logged, if enumeration fails).
     #[cfg(not(target_os = "android"))]
     fn dspis() -> impl Iterator<Item = nusb::DeviceInfo> {
@@ -544,10 +550,19 @@ mod usb {
         let devices = match nusb::list_devices().wait() {
             Ok(d) => Some(d),
             Err(e) => {
-                log::warn!("USB enumeration failed: {e}");
+                // Polled every half second: a warning when it starts failing,
+                // then quiet until it has worked again.
+                if !LIST_FAILING.swap(true, Ordering::Relaxed) {
+                    log::warn!("USB enumeration failed: {e}");
+                } else {
+                    log::debug!("USB enumeration failed: {e}");
+                }
                 None
             }
         };
+        if devices.is_some() {
+            LIST_FAILING.store(false, Ordering::Relaxed);
+        }
         devices
             .into_iter()
             .flatten()

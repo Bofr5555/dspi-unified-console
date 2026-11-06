@@ -17,6 +17,7 @@
 #       qt5                           the same against Qt 5.15
 #       qt-offscreen                  the Qt 6 app with its smoke driver, on the
 #                                     demo device, offscreen (apps/desktop/qt/smoke)
+#       qt5-offscreen                 the same on Qt 5.15
 #       qt-windows                    packaging/windows/build-windows.sh: the
 #                                     MinGW Qt 6 app, zip and installer
 #       proptest                      the property tests (functions named
@@ -36,8 +37,8 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --crate) crates+=("$2"); shift 2 ;;
     --step) steps+=("$2"); shift 2 ;;
-    --all) steps=(fmt clippy test windows-gnu windows-msvc android wasm qt qt5 qt-offscreen qt-windows proptest); shift ;;
-    -h|--help) sed -n "2,30p" "$0"; exit 0 ;;
+    --all) steps=(fmt clippy test windows-gnu windows-msvc android wasm qt qt5 qt-offscreen qt5-offscreen qt-windows proptest); shift ;;
+    -h|--help) sed -n "2,27p" "$0"; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -72,6 +73,10 @@ for s in "${steps[@]}"; do
       $RUN "cargo build --release -p dspi-capi && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-capi -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target && cmake --build /work/build-desktop-qt6-capi" ;;
     qt5)
       $RUN "cargo build --release -p dspi-capi && cmake -S apps/desktop/qt -B /work/build-desktop-qt5 -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=5 -DDSPI_CARGO_TARGET_DIR=/target && cmake --build /work/build-desktop-qt5" ;;
+    qt-offscreen)
+      $RUN "cargo build --release -p dspi-capi && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt6-smoke --target DSPiConsoleSmoke && apps/desktop/qt/smoke/run.sh /work/build-desktop-qt6-smoke/DSPiConsoleSmoke /work/smoke-out" ;;
+    qt5-offscreen)
+      $RUN "cargo build --release -p dspi-capi && cmake -S apps/desktop/qt -B /work/build-desktop-qt5-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=5 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt5-smoke --target DSPiConsoleSmoke && apps/desktop/qt/smoke/run.sh /work/build-desktop-qt5-smoke/DSPiConsoleSmoke /work/smoke-out-qt5" ;;
     qt-windows)
       $RUN "BUILD_DIR=/work/build-desktop-win64 apps/desktop/packaging/windows/build-windows.sh /work/dist-windows" ;;
     proptest)

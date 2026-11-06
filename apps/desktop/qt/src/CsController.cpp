@@ -1,6 +1,7 @@
 #include "CsController.h"
 #include "DSPiBridge.h"
 
+#include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
 
@@ -110,8 +111,12 @@ QVariantMap CsController::call(const QByteArray &json) {
 }
 
 QVariantMap CsController::apply(const QVariantMap &op) {
+    m_lastError.clear();
     if (!m_bridge->connected()) return { { "ok", false }, { "status", 0xFF } };
     QVariantMap r = call(QJsonDocument(QJsonObject::fromVariantMap(op)).toJson(QJsonDocument::Compact));
+    // The reason a reply without a device status gives; statusMessage() shows it
+    m_lastError = r.value("error").toString();
+    if (!m_lastError.isEmpty()) qDebug().noquote() << "Control surfaces:" << op.value("op").toString() << m_lastError;
     reload();
     const QString kind = op.value("op").toString();
     if (kind == "macroFire" && r.value("ok").toBool()) {
@@ -175,6 +180,6 @@ QString CsController::statusMessage(int code) const {
     case 0x24: return "That I2C bus belongs to the I2C control interface";
     case 0x25: return "That display page isn't valid";
     case 0x26: return "The target isn't an auxiliary output, or a level control needs a dimmable one";
-    default:   return "Failed to apply the binding";
+    default:   return m_lastError.isEmpty() ? QStringLiteral("Failed to apply the binding") : m_lastError;
     }
 }

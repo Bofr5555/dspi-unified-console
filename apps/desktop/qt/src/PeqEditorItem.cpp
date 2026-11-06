@@ -159,6 +159,13 @@ void PeqEditorItem::updateActive() {
 // Follow the device unless a gesture holds live values
 void PeqEditorItem::reload() {
     updateActive();
+#ifdef Q_OS_MACOS
+    // Global EQ bypass dims the bands of input channels only (PeqGraphEditor
+    // dimAll; config.flat is set for inputs)
+    m_dimmed = m_active && m_bridge->bypass() && m_bridge->isInputChannel(m_channel);
+#else
+    m_dimmed = m_active && m_bridge->bypass();   // global EQ bypass
+#endif
     if (!m_active || m_editing || m_mode == DragDot || m_mode == DragQ) { update(); return; }
     FilterParams bands[BANDS_PER_CHANNEL], xover[MAX_XOVER_BANDS];
     int nx = 0;
@@ -998,13 +1005,7 @@ void PeqEditorItem::keyPressEvent(QKeyEvent *e) {
 void PeqEditorItem::paint(QPainter *p) {
     if (!m_active || width() < 10 || height() < 10) return;
     p->setRenderHint(QPainter::Antialiasing);
-#ifdef Q_OS_MACOS
-    // Global EQ bypass dims the bands of input channels only (PeqGraphEditor
-    // dimAll; config.flat is set for inputs)
-    if (m_bridge->bypass() && m_bridge->isInputChannel(m_channel)) p->setOpacity(0.5);
-#else
-    if (m_bridge->bypass()) p->setOpacity(0.5);   // global EQ bypass
-#endif
+    if (m_dimmed) p->setOpacity(0.5);
 
     // Lobes and outlines: plain bands first, lit ones on top
     for (int pass = 0; pass < 2; pass++)

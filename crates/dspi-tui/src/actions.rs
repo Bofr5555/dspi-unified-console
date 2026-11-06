@@ -1621,7 +1621,7 @@ mod tests {
     }
 
     fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("dspi-actions-{}", std::process::id()));
+        let dir = crate::test_dir("actions");
         std::fs::create_dir_all(&dir).expect("scratch");
         dir.join(name)
     }
@@ -2003,7 +2003,7 @@ mod tests {
 
     #[test]
     fn a_path_completes_the_way_a_shell_does() {
-        let dir = std::env::temp_dir().join(format!("dspi-complete-{}", std::process::id()));
+        let dir = crate::test_dir("complete");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("tuning-room")).unwrap();
         std::fs::write(dir.join("tuning-a.txt"), "x").unwrap();

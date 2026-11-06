@@ -37,6 +37,9 @@
 #include "MeterItem.h"
 #include "WindowEffects.h"
 #include "TextFocusReleaser.h"
+#ifdef DSPI_SMOKE
+#include "SmokeDriver.h"
+#endif
 
 static void setPlatformDarkMode()
 {
@@ -411,8 +414,8 @@ int main(int argc, char *argv[])
     qmlRegisterType<BufferTraceItem>("DSPi", 1, 0, "BufferTraceItem");
     qmlRegisterType<MeterItem>("DSPi", 1, 0, "MeterItem");
 
-    // Create bridge
-    DSPiBridge bridge;
+    // Create bridge. --demo runs on the core's simulated DSPi, no hardware needed.
+    DSPiBridge bridge(QCoreApplication::arguments().contains(QStringLiteral("--demo")));
 
     // Before the engine, so it outlives every view that uses it
     RtaController rta(&bridge);
@@ -423,6 +426,9 @@ int main(int argc, char *argv[])
     StatsController stats(&bridge);
     MonitorModel monitor(&bridge);
     ConfigFiles configFiles(&bridge);
+
+    // Before the engine too: the views read it until they are destroyed
+    WindowEffects windowEffects(isMacOS);
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("bridge", &bridge);
@@ -452,7 +458,6 @@ int main(int argc, char *argv[])
 #endif
 
     // Blur and shadow for the frameless windows (main window, Settings)
-    WindowEffects windowEffects(isMacOS);
     engine.rootContext()->setContextProperty("windowEffects", &windowEffects);
     QPalette sysPal = QGuiApplication::palette();
     engine.rootContext()->setContextProperty("nativeWindowColor", sysPal.color(QPalette::Window));
@@ -475,6 +480,11 @@ int main(int argc, char *argv[])
 #ifndef Q_OS_MACOS
     // The sidebar is resizable; QML updates the strip as it changes
     windowEffects.decorate(mainWindow, mainWindow->property("sidebarWidth").toInt(), true);
+#endif
+
+#ifdef DSPI_SMOKE
+    SmokeDriver smoke({ &engine, &bridge, &rta, &siggen, &controlSurfaces, &firmware, &autoeq, &stats, &monitor, &configFiles });
+    smoke.start();
 #endif
 
     return app.exec();

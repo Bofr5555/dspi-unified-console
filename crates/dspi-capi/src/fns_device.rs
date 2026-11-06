@@ -14,9 +14,11 @@
 //! The status byte functions return the device's status from
 //! [`DspiError::Refused`], and their documented value for every other error.
 
+use std::collections::BTreeMap;
 use std::ffi::{CStr, c_char};
 use std::ptr;
 use std::sync::{Mutex, PoisonError};
+use std::time::{Duration, Instant};
 
 use dspi_core::{DspiCore, DspiError, Result, records as r};
 
@@ -34,13 +36,53 @@ const MAX_BANDS: usize = isize::MAX as usize / size_of::<FilterParams>();
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
+/// How often one failure is logged as a warning: the Qt app polls some calls
+/// every 60 ms, and one that keeps failing must not flood the log.
+const WARN_EVERY: Duration = Duration::from_secs(30);
+/// Distinct failures remembered; more start the table over (a few repeats get
+/// through, which is harmless).
+const WARN_TABLE: usize = 64;
+
+/// When each failure last went to the log, and how many were held back since.
+static WARNED: Mutex<BTreeMap<String, (Instant, u32)>> = Mutex::new(BTreeMap::new());
+
+/// Whether to log `message` at `now`, with how many repeats were held back
+/// since it was last logged; `None` holds this one back too.
+pub(crate) fn warn_now(
+    table: &mut BTreeMap<String, (Instant, u32)>,
+    message: &str,
+    now: Instant,
+) -> Option<u32> {
+    if let Some((last, held)) = table.get_mut(message) {
+        if now.saturating_duration_since(*last) < WARN_EVERY {
+            *held = held.saturating_add(1);
+            return None;
+        }
+        let repeats = *held;
+        *last = now;
+        *held = 0;
+        return Some(repeats);
+    }
+    if table.len() >= WARN_TABLE {
+        table.clear();
+    }
+    table.insert(message.to_owned(), (now, 0));
+    Some(0)
+}
+
 /// Log an error the old conventions cannot carry: no device is routine, anything
-/// else is worth a warning.
+/// else is worth a warning, once per [`WARN_EVERY`] for each message.
 fn log_failure(e: &DspiError) {
     if matches!(e, DspiError::Disconnected) {
         log::debug!("dspi-capi: {e}");
-    } else {
-        log::warn!("dspi-capi: {e}");
+        return;
+    }
+    let message = e.to_string();
+    let mut table = WARNED.lock().unwrap_or_else(PoisonError::into_inner);
+    match warn_now(&mut table, &message, Instant::now()) {
+        Some(0) => log::warn!("dspi-capi: {message}"),
+        Some(n) => log::warn!("dspi-capi: {message} (and {n} more)"),
+        None => log::debug!("dspi-capi: {message}"),
     }
 }
 
@@ -194,6 +236,9 @@ fn write_curve(curve: Vec<f64>, out: *mut f64) -> bool {
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_new() -> *mut FfiCore {
     guard(ptr::null_mut(), || {
+        // As the old core: stderr, level from RUST_LOG, errors by default.
+        // A second core (or a host's own logger) keeps the logger it has.
+        let _ = env_logger::try_init();
         let core = DspiCore::new();
         let state = DspState::from(&core.get_state());
         Box::into_raw(Box::new(FfiCore {

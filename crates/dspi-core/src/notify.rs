@@ -194,6 +194,7 @@ impl DspiCore {
     /// C1b's hotplug handling; false with no device or no reader. An
     /// intentional close never sets it (the reader is stopped before the
     /// transport is dropped, and the connection is gone from the core).
+    #[cfg(test)]
     pub(crate) fn notification_stream_ended(&self) -> bool {
         stream_ended_locked(&self.lock())
     }

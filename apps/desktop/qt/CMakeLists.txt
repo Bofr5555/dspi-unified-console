@@ -51,7 +51,7 @@ set(DSPI_VER_MAJOR ${CMAKE_MATCH_1})
 set(DSPI_VER_MINOR ${CMAKE_MATCH_2})
 set(DSPI_VER_PATCH ${CMAKE_MATCH_3})
 
-add_executable(DSPiConsole
+set(DSPI_APP_SOURCES
     src/main.cpp
     src/DSPiBridge.cpp
     src/BodePlotItem.cpp
@@ -70,6 +70,18 @@ add_executable(DSPiConsole
     src/WindowEffects.cpp
     resources.qrc
 )
+add_executable(DSPiConsole ${DSPI_APP_SOURCES})
+
+# The app with its offscreen test driver (ci/check.sh --step qt-offscreen).
+option(DSPI_SMOKE "Also build DSPiConsoleSmoke, the app with its test driver" OFF)
+if(DSPI_SMOKE)
+    add_executable(DSPiConsoleSmoke ${DSPI_APP_SOURCES} smoke/SmokeDriver.cpp smoke/SmokeDriver.h)
+    target_include_directories(DSPiConsoleSmoke PRIVATE ${DSPI_CORE_DIR}/include src/ smoke/)
+    target_compile_definitions(DSPiConsoleSmoke PRIVATE DSPI_SMOKE)
+    target_link_libraries(DSPiConsoleSmoke PRIVATE
+        Qt::Core Qt::Gui Qt::Widgets Qt::Quick Qt::QuickControls2 Qt::Qml Qt::Network
+        ${DSPI_CORE_LIBDIR}/lib${DSPI_CORE_LIB}.a pthread dl m)
+endif()
 
 target_include_directories(DSPiConsole PRIVATE
     ${DSPI_CORE_DIR}/include
