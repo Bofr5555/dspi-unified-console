@@ -415,7 +415,8 @@ int main(int argc, char *argv[])
     qmlRegisterType<MeterItem>("DSPi", 1, 0, "MeterItem");
 
     // Create bridge. --demo runs on the core's simulated DSPi, no hardware needed.
-    DSPiBridge bridge(QCoreApplication::arguments().contains(QStringLiteral("--demo")));
+    DSPiBridge bridge(QCoreApplication::arguments().contains(QStringLiteral("--demo"))
+                          ? DSPiBridge::Mode::Demo : DSPiBridge::Mode::Hardware);
 
     // Before the engine, so it outlives every view that uses it
     RtaController rta(&bridge);

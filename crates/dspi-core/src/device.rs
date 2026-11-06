@@ -1213,7 +1213,7 @@ mod tests_wp_c1 {
         );
         assert_eq!(
             (s.fw_major, s.fw_minor, s.fw_patch, s.fw_beta),
-            (1, 1, 6, 5)
+            (1, 1, 6, 4)
         );
         assert_eq!(s.platform_id, 1);
         assert_eq!(s.platform_id, want.platform_id);

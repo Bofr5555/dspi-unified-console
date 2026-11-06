@@ -794,8 +794,8 @@ pub struct PinUse {
     pub slot: u8,
 }
 
-/// `dspi_bootloader_counts`. Always 0/0 on Android (libusb cannot
-/// enumerate there); Android uses the Kotlin BootloaderLocator instead.
+/// `dspi_bootloader_counts`. Always 0/0 on Android (no bus to
+/// enumerate from native code); Android uses the Kotlin BootloaderLocator instead.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct BootloaderCounts {

@@ -21,7 +21,7 @@ fn wp_t4_the_terminal_probes_and_reads_the_demo() {
         (caps.num_channels, caps.num_inputs, caps.num_outputs),
         (17, 8, 9)
     );
-    assert_eq!(caps.firmware, "1.1.6 beta 5");
+    assert_eq!(caps.firmware, "1.1.6 beta 4");
     assert_eq!(caps.serial, "DEMO0000DSPI0001");
     assert_eq!((caps.max_bands, caps.band_storage), (10, 12));
     assert_eq!(caps.active_preset, Some(0));

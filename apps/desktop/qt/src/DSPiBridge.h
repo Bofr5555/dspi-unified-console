@@ -129,8 +129,9 @@ class DSPiBridge : public QObject
     Q_PROPERTY(int core1Mode READ core1Mode NOTIFY stateChanged)
 
 public:
-    // demo: also offer the built-in demo device, and open it first (--demo)
-    explicit DSPiBridge(bool demo = false, QObject *parent = nullptr);
+    // Demo also offers the built-in demo device, and opens it first (--demo)
+    enum class Mode { Hardware, Demo };
+    explicit DSPiBridge(Mode mode = Mode::Hardware, QObject *parent = nullptr);
     ~DSPiBridge();
 
     // Property getters

@@ -39,8 +39,8 @@ static const char *kPdmColor = "#BA87F2";
 // FakeDevice::demo's serial; dspi_open_demo opens it whatever the USB bus holds
 static const char *const kDemoSerial = "DEMO0000DSPI0001";
 
-DSPiBridge::DSPiBridge(bool demo, QObject *parent)
-    : QObject(parent), m_demo(demo)
+DSPiBridge::DSPiBridge(Mode mode, QObject *parent)
+    : QObject(parent), m_demo(mode == Mode::Demo)
 {
     m_core = dspi_core_new();
     // Every state change may make the preset dirty or clean again

@@ -4,8 +4,9 @@
 //! being a rewrite: it is the only place a `bmRequestType` is constructed, and
 //! `wIndex` is not a parameter at all, so no call site can get either wrong.
 //!
-//! Only [`UsbTransport`] ships today. [`MockTransport`] backs the tests,
-//! including the awkward cases (stalls, timeouts, a simulated flash blackout)
+//! The backends are USB ([`UsbTransport`]), USB MIDI (`midi`), DSPi Link
+//! (`link`, feature `link`) and the demo device (`fake`). [`MockTransport`] backs
+//! the tests, including the awkward cases (stalls, timeouts, a simulated flash blackout)
 //! that are impractical to provoke on real hardware.
 
 use std::time::Duration;

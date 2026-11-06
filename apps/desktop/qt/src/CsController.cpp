@@ -153,6 +153,8 @@ void CsController::onNotified(bool aux, bool learn) {
 }
 
 QString CsController::statusMessage(int code) const {
+    // 0xFF is "no device status": the last apply()'s own reason, when it gave one
+    if (code == 0xFF && !m_lastError.isEmpty()) return m_lastError;
     switch (code) {
     case 0x00: return QString();
     case 0x01: return "A pin is out of range, or an encoder's two pins are equal";
@@ -180,6 +182,6 @@ QString CsController::statusMessage(int code) const {
     case 0x24: return "That I2C bus belongs to the I2C control interface";
     case 0x25: return "That display page isn't valid";
     case 0x26: return "The target isn't an auxiliary output, or a level control needs a dimmable one";
-    default:   return m_lastError.isEmpty() ? QStringLiteral("Failed to apply the binding") : m_lastError;
+    default:   return "Failed to apply the binding";
     }
 }

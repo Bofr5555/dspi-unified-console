@@ -116,6 +116,14 @@ const DEMO_PLATFORM: &[u8] = include_bytes!("../../../tests/fixtures/link/device
 const DEMO_BULK: &[u8] = include_bytes!("../../../tests/fixtures/link/device/bulk_v32.bin");
 const DEMO_STATUS: &[u8] = include_bytes!("../../../tests/fixtures/link/device/status_wvalue9.bin");
 
+/// The beta the demo says it runs, in `GET_PLATFORM`'s seventh byte: 4, the
+/// release the consoles target (`setApplicationVersion` in the Qt app, whose
+/// bundled firmware is beta 4), so a demo never shows a "newer firmware" banner.
+/// The capture is beta 5, but this is no fiction about the image: tag v1.1.6-beta4
+/// has `FW_VERSION_BETA` 4 and `WIRE_FORMAT_VERSION` 32 with the same 6136 bytes.
+/// Beta 5's one opcode (`REQ_GET_CLOCK_DIAG`) is not modelled here anyway.
+const DEMO_FW_BETA: u8 = 4;
+
 /// The serial every fake reports (`GET_SERIAL` and the descriptor).
 const SERIAL: &str = "DEMO0000DSPI0001";
 /// `FLASH_OK`: the reply to the deferred flash commands.
@@ -132,11 +140,15 @@ pub struct Capture {
 }
 
 impl Capture {
-    /// The capture bundled with this crate: an RP2350 on v1.1.6 beta5, 8
-    /// inputs and 9 outputs, master volume -20 dB.
+    /// The capture bundled with this crate, reporting [`DEMO_FW_BETA`]: an
+    /// RP2350 on v1.1.6, 8 inputs and 9 outputs, master volume -20 dB.
     pub fn demo() -> Self {
+        let mut platform = DEMO_PLATFORM.to_vec();
+        if let Some(beta) = platform.get_mut(6) {
+            *beta = DEMO_FW_BETA;
+        }
         Self {
-            platform: DEMO_PLATFORM.to_vec(),
+            platform,
             bulk: DEMO_BULK.to_vec(),
         }
     }
@@ -1851,7 +1863,8 @@ mod tests_wp_t4 {
     fn wp_t4_the_demo_reads_back_its_capture() {
         let mut d = FakeDevice::demo();
         let plat = d.control_in_upto(op::REQ_GET_PLATFORM, 0, 7).unwrap();
-        assert_eq!(plat, DEMO_PLATFORM);
+        assert_eq!(plat.get(..6), DEMO_PLATFORM.get(..6));
+        assert_eq!(plat.get(6), Some(&DEMO_FW_BETA));
         assert_eq!(
             d.control_in(op::REQ_GET_ALL_PARAMS, 0, generated::BULK_SIZE as u16)
                 .unwrap(),

@@ -9,7 +9,7 @@ arch=('x86_64')
 url="https://github.com/WeebLabs/DSPi-Console-Linux"
 license=('unknown')
 depends=('qt5-base' 'qt5-declarative' 'qt5-quickcontrols2' 'qt5-svg' 'qt5-wayland' 'hicolor-icon-theme'
-         'kwindowsystem5' 'libx11' 'gcc-libs' 'glibc')
+         'kwindowsystem5' 'libusb' 'systemd-libs' 'libx11' 'gcc-libs' 'glibc')
 makedepends=('git' 'cargo' 'cmake')
 optdepends=('kwayland-integration: blurred sidebar on KDE Plasma (Wayland)'
             'xdg-desktop-portal: native file dialogs'
