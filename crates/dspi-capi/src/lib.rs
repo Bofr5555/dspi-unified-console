@@ -48,6 +48,26 @@ pub(crate) fn guard<T>(fail: T, f: impl FnOnce() -> T) -> T {
     })
 }
 
+/// The handle behind the C ABI's `struct FfiCore *`: created by
+/// `dspi_core_new` and freed by `dspi_core_free`.
+pub struct FfiCore {
+    pub(crate) core: std::sync::Arc<dspi_core::DspiCore>,
+    /// The record `dspi_get_state` points at, refreshed on each call.
+    #[allow(dead_code)] // read only by dspi_get_state
+    pub(crate) state: std::sync::Mutex<Box<types::DspState>>,
+}
+
+/// Run `f` on the handle `p` inside [`guard`]; `fail` for a null handle or a
+/// panic.
+pub(crate) fn with_core<T>(p: *const FfiCore, fail: T, f: impl FnOnce(&FfiCore) -> T) -> T {
+    if p.is_null() {
+        return fail;
+    }
+    // SAFETY: a non-null handle comes from `dspi_core_new` and stays valid
+    // until `dspi_core_free`; that is the C caller's contract.
+    guard(fail, || f(unsafe { &*p }))
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests {
