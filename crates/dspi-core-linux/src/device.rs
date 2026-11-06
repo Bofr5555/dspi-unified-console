@@ -124,6 +124,10 @@ impl DeviceManager {
             Ok(h) => h,
             // Listed by the kernel but not ours to open: no udev rule
             Err(rusb::Error::Access) => return Probe::NoAccess,
+            // Windows: no WinUSB driver bound to it (firmware without the MS
+            // OS 2.0 descriptors), or another program holds it
+            #[cfg(windows)]
+            Err(rusb::Error::NotSupported | rusb::Error::Busy) => return Probe::NoAccess,
             Err(_) => return Probe::Other,
         };
         let serial = handle

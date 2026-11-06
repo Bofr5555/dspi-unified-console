@@ -7,6 +7,20 @@ use rusb::{DeviceHandle, GlobalContext};
 
 use crate::protocol::{REQ_TYPE_IN, REQ_TYPE_OUT};
 
+/// The wIndex sent on the wire. Every request is addressed to the vendor
+/// interface (recipient = interface). WinUSB only passes such a request to
+/// the interface the handle owns, the vendor interface, so on Windows the
+/// low byte always names it, as the Windows Console does. The firmware
+/// ignores wIndex on vendor requests; elsewhere it is sent unchanged.
+#[inline]
+fn wire_index(index: u16) -> u16 {
+    if cfg!(windows) {
+        (index & 0xFF00) | crate::protocol::VENDOR_INTERFACE as u16
+    } else {
+        index
+    }
+}
+
 /// Default USB transfer timeout.
 const TIMEOUT: Duration = Duration::from_millis(1000);
 
@@ -61,7 +75,7 @@ impl UsbConnection {
         data: &[u8],
     ) -> Result<()> {
         self.handle
-            .write_control(REQ_TYPE_OUT, request, value, index, data, TIMEOUT)?;
+            .write_control(REQ_TYPE_OUT, request, value, wire_index(index), data, TIMEOUT)?;
         Ok(())
     }
 
@@ -78,7 +92,7 @@ impl UsbConnection {
         let mut buf = vec![0u8; length as usize];
         let n = self
             .handle
-            .read_control(REQ_TYPE_IN, request, value, index, &mut buf, TIMEOUT)?;
+            .read_control(REQ_TYPE_IN, request, value, wire_index(index), &mut buf, TIMEOUT)?;
         buf.truncate(n);
         Ok(buf)
     }
@@ -100,5 +114,21 @@ impl UsbConnection {
             });
         }
         Ok(data)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wire_index;
+
+    #[test]
+    fn wire_index_names_the_vendor_interface_on_windows() {
+        if cfg!(windows) {
+            assert_eq!(wire_index(0), 2);
+            assert_eq!(wire_index(0x0100), 0x0102);
+        } else {
+            assert_eq!(wire_index(0), 0);
+        }
+        assert_eq!(wire_index(2), 2);
     }
 }
