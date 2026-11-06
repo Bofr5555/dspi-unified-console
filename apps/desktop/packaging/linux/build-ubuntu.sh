@@ -10,7 +10,7 @@ name="DSPi-Console-$VERSION"
 rm -rf /work && mkdir /work
 tar -C /src --exclude=./target --exclude=./apps/desktop/qt/build --exclude=./.git --exclude=./dist -cf - . | tar -C /work -xf -
 cd /work
-cargo build --release -p dspi-core
+cargo build --release -p dspi-core-linux
 cd /work/apps/desktop
 cmake -S qt -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j"$(nproc)"

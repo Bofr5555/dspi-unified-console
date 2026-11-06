@@ -17,7 +17,7 @@ triple=x86_64-pc-windows-gnu
 version=$(sed -n 's/.*setApplicationVersion("\([^"]*\)").*/\1/p' "$root/qt/src/main.cpp")
 name="DSPi-Console-$version-windows-x86_64"
 
-(cd "$repo" && cargo build --release -p dspi-core --target $triple)
+(cd "$repo" && cargo build --release -p dspi-core-linux --target $triple)
 cmake -S "$root/qt" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_TOOLCHAIN_FILE=/usr/share/mingw/toolchain-mingw64.cmake \
       -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR="$target" -DDSPI_RUST_TARGET=$triple

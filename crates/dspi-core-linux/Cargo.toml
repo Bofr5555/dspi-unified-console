@@ -1,9 +1,13 @@
 [package]
-name = "dspi-core"
+name = "dspi-core-linux"
 version = "0.1.0"
 edition = "2021"
 
+# Retired by the core merge (docs/core-merge/PLAN.md, WP Q3): the package is
+# renamed so the new embedder crate can be `dspi-core`; the library keeps
+# its name, so the Qt build is unchanged until it switches.
 [lib]
+name = "dspi_core"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
