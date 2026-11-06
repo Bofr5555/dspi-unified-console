@@ -106,7 +106,7 @@ fn window_pin_pairing_then_token() {
     let (c, state) = connect(&hub, None);
     assert_eq!(state, AuthState::NeedsPairing { pin_source: "window".into() });
     assert!(c.devices().is_empty());
-    assert!(matches!(c.pair("000000", "control"), Err(LinkError::Rejected { .. })), "wrong PIN");
+    assert!(matches!(c.pair("000000", "control"), Err(LinkError::WrongPin { .. })));
     let token = c.pair("123456", "control").unwrap();
     assert!(!token.is_empty());
     assert_eq!(c.role(), "control");
@@ -117,9 +117,9 @@ fn window_pin_pairing_then_token() {
     let (c2, state) = connect(&hub, Some(token));
     assert_eq!(state, AuthState::Ready);
     assert_eq!(c2.devices().len(), 1);
-    // A stale token is the same as none
+    // A stale token is refused
     let (_c3, state) = connect(&hub, Some("bogus".into()));
-    assert_eq!(state, AuthState::NeedsPairing { pin_source: "window".into() });
+    assert_eq!(state, AuthState::TokenRefused { pin_source: "window".into() });
 }
 
 #[test]
