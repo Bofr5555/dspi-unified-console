@@ -837,7 +837,13 @@ fn cmd_watch(serial: Option<&str>, json: bool) -> u8 {
             return exit::TRANSPORT;
         }
     };
-    let notes = dspi_session::Notifications::start(source);
+    let notes = match dspi_session::Notifications::start(source) {
+        Ok(n) => n,
+        Err(e) => {
+            eprintln!("dspi: cannot start the notification reader: {e}");
+            return exit::TRANSPORT;
+        }
+    };
     if !json {
         println!(
             "watching {} (Ctrl-C to stop)",

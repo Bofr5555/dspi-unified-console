@@ -119,12 +119,10 @@ impl DeviceDescriptor {
     /// The short form the Console shows, so the same device reads the same way
     /// in both apps.
     pub fn short_name(&self) -> String {
-        let s = &self.serial;
-        if s.len() <= 8 {
-            s.clone()
-        } else {
-            s[s.len() - 8..].to_string()
-        }
+        // By characters, not bytes: a serial is a USB string descriptor and
+        // may hold any UTF-8.
+        let n = self.serial.chars().count();
+        self.serial.chars().skip(n.saturating_sub(8)).collect()
     }
 }
 
@@ -172,17 +170,35 @@ pub struct Attributed {
     pub origin: Option<u16>,
 }
 
-/// Whether a `HOST_SET` notification is the echo of this client's own write.
+/// Whether a notification is the echo of this client's own write.
 ///
-/// USB and MIDI (no session id): every host write is ours, since a device
-/// has one host on that link. DSPi Link: only a packet whose origin is our
-/// session id; origin 0 never is (Link spec 8.3: "must not suppress by source
-/// alone"), or a client would miss every change another client makes.
-pub fn is_own_write(origin: Option<u16>, session: Option<u16>) -> bool {
-    match (origin, session) {
-        (_, None) => true,
-        (Some(o), Some(s)) => o != 0 && o == s,
-        (None, Some(_)) => false,
+/// `source` is the packet's raw `ParamSource` (notify.h); the rule depends
+/// on the link, because the firmware tags a change by the path it came in on:
+///
+/// - **USB, fake:** `HOST_SET` and `BULK_SET`. A device has one USB host.
+/// - **MIDI:** `PARAM_SRC_MIDI` (notify.h:122, MIDI spec 4.2). A `HOST_SET`
+///   seen over MIDI is another host's USB write, never ours. `BULK_SET` is
+///   ambiguous: `bulk_params_apply` tags every bulk apply `BULK_SET` whatever
+///   the transport (bulk_params.c:408), so it is treated as ours; it arrives as
+///   `BULK_INVALIDATED`, which makes a client re-read in any case.
+/// - **Link:** the hub writes for every client, over USB or (a bridge) UART,
+///   so the source says nothing; only the origin does. Ours iff the origin is
+///   our session id; origin 0 (a change at the device) never is (Link spec
+///   8.3: "must not suppress by source alone").
+pub fn is_own_write(
+    kind: TransportKind,
+    source: u8,
+    origin: Option<u16>,
+    session: Option<u16>,
+) -> bool {
+    use dspi_proto::generated::notify as n;
+    let src = u16::from(source);
+    match kind {
+        TransportKind::Usb | TransportKind::Fake => {
+            src == n::PARAM_SRC_HOST_SET || src == n::PARAM_SRC_BULK_SET
+        }
+        TransportKind::Midi => src == n::PARAM_SRC_MIDI || src == n::PARAM_SRC_BULK_SET,
+        TransportKind::Link => matches!((origin, session), (Some(o), Some(s)) if o != 0 && o == s),
     }
 }
 
@@ -316,14 +332,55 @@ mod tests {
     }
 
     #[test]
-    fn own_writes_follow_the_link_rule() {
-        // USB and MIDI: no session, every host write is ours.
-        assert!(is_own_write(None, None));
-        // Link: only our own session id.
-        assert!(is_own_write(Some(7), Some(7)));
-        assert!(!is_own_write(Some(8), Some(7)));
-        assert!(!is_own_write(Some(0), Some(0)), "origin 0 is the device");
-        assert!(!is_own_write(None, Some(7)));
+    fn own_writes_follow_the_rule_of_each_link() {
+        use dspi_proto::generated::notify as n;
+        let (host, bulk, midi, uart, gpio) = (
+            n::PARAM_SRC_HOST_SET as u8,
+            n::PARAM_SRC_BULK_SET as u8,
+            n::PARAM_SRC_MIDI as u8,
+            n::PARAM_SRC_UART as u8,
+            n::PARAM_SRC_GPIO as u8,
+        );
+        for kind in [TransportKind::Usb, TransportKind::Fake] {
+            assert!(is_own_write(kind, host, None, None));
+            assert!(is_own_write(kind, bulk, None, None));
+            assert!(!is_own_write(kind, midi, None, None), "a MIDI host's write");
+            assert!(!is_own_write(kind, gpio, None, None));
+        }
+        let m = TransportKind::Midi;
+        assert!(is_own_write(m, midi, None, None));
+        assert!(
+            is_own_write(m, bulk, None, None),
+            "bulk applies are always BULK_SET"
+        );
+        assert!(
+            !is_own_write(m, host, None, None),
+            "another host's USB write"
+        );
+        assert!(!is_own_write(m, uart, None, None));
+        let l = TransportKind::Link;
+        assert!(is_own_write(l, host, Some(7), Some(7)));
+        assert!(
+            is_own_write(l, uart, Some(7), Some(7)),
+            "a bridge hub writes over UART"
+        );
+        assert!(!is_own_write(l, host, Some(8), Some(7)));
+        assert!(
+            !is_own_write(l, host, Some(0), Some(0)),
+            "origin 0 is the device"
+        );
+        assert!(!is_own_write(l, host, None, Some(7)));
+        assert!(!is_own_write(l, host, Some(7), None));
+    }
+
+    #[test]
+    fn short_name_counts_characters_not_bytes() {
+        let d = DeviceDescriptor {
+            serial: "ÅÄÖåäöÉé€x".into(),
+            bus_id: "001".into(),
+            address: 1,
+        };
+        assert_eq!(d.short_name(), "ÖåäöÉé€x");
     }
 
     #[test]

@@ -2336,7 +2336,7 @@ impl Live {
             .with_transport(|t| Ok(t.notifications()))
             .ok()
             .flatten()
-            .map(Notifications::start);
+            .and_then(|source| Notifications::start(source).ok());
     }
 
     /// Every attached device, for the picker and the title bar.
@@ -3966,7 +3966,7 @@ mod tests {
         p.extend([5, 0, 0, 0]);
         p.extend(1.0f32.to_le_bytes());
         notes.push_notification(p);
-        let n = Notifications::start(notes.notifications().unwrap());
+        let n = Notifications::start(notes.notifications().unwrap()).unwrap();
         std::thread::sleep(Duration::from_millis(50));
         log.lock().unwrap().clear();
         l.tick(&mut s, Some(&n));
@@ -4138,7 +4138,7 @@ mod tests {
         p.extend([7, 0, 0, 0]);
         p.extend((-30.0f32).to_le_bytes());
         mock.push_notification(p);
-        let n = Notifications::start(mock.notifications().unwrap());
+        let n = Notifications::start(mock.notifications().unwrap()).unwrap();
         std::thread::sleep(Duration::from_millis(50));
         l.tick(&mut s, Some(&n));
         assert_eq!(l.state.user_volume().0, -30.0);
@@ -4159,7 +4159,7 @@ mod tests {
         l.last_stats_poll = polled;
         let mock = MockTransport::new();
         mock.push_notification(vec![2, 8, 0, 13, 1, 1, 12, 0]);
-        let n = Notifications::start(mock.notifications().unwrap());
+        let n = Notifications::start(mock.notifications().unwrap()).unwrap();
         std::thread::sleep(Duration::from_millis(50));
         l.tick(&mut s, Some(&n));
         assert_eq!(l.state.adat_state, Some((true, true, 12)));
@@ -4497,7 +4497,7 @@ mod tests {
         for n in notes {
             reader.push_notification(n.clone());
         }
-        live.notes = Some(Notifications::start(reader.notifications().unwrap()));
+        live.notes = Some(Notifications::start(reader.notifications().unwrap()).unwrap());
         (live, session, log)
     }
 
@@ -4590,7 +4590,7 @@ mod tests {
             // does after the fade.
             let reader = MockTransport::new();
             let q = reader.notify_queue();
-            l.notes = Some(Notifications::start(reader.notifications().unwrap()));
+            l.notes = Some(Notifications::start(reader.notifications().unwrap()).unwrap());
             q
         };
         let delay = Duration::from_millis(200);

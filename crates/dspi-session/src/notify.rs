@@ -64,6 +64,8 @@ pub enum Source {
     Uac1,
     Uart,
     I2c,
+    /// The USB MIDI control channel (`PARAM_SRC_MIDI`, DSPI_USB_MIDI firmware).
+    Midi,
     Other(u8),
 }
 
@@ -80,11 +82,33 @@ impl Source {
             n::PARAM_SRC_UAC1 => Self::Uac1,
             n::PARAM_SRC_UART => Self::Uart,
             n::PARAM_SRC_I2C => Self::I2c,
+            n::PARAM_SRC_MIDI => Self::Midi,
             _ => Self::Other(b),
         }
     }
 
-    /// Our own writes come back as `HostSet`; everything else is news.
+    /// The raw `ParamSource` byte, for [`dspi_transport::is_own_write`].
+    pub fn raw(self) -> u8 {
+        let v = match self {
+            Self::Unknown => n::PARAM_SRC_UNKNOWN,
+            Self::HostSet => n::PARAM_SRC_HOST_SET,
+            Self::BulkSet => n::PARAM_SRC_BULK_SET,
+            Self::Preset => n::PARAM_SRC_PRESET,
+            Self::Factory => n::PARAM_SRC_FACTORY,
+            Self::Gpio => n::PARAM_SRC_GPIO,
+            Self::Internal => n::PARAM_SRC_INTERNAL,
+            Self::Uac1 => n::PARAM_SRC_UAC1,
+            Self::Uart => n::PARAM_SRC_UART,
+            Self::I2c => n::PARAM_SRC_I2C,
+            Self::Midi => n::PARAM_SRC_MIDI,
+            Self::Other(b) => return b,
+        };
+        v as u8
+    }
+
+    /// Our own writes over USB come back as `HostSet`; everything else is
+    /// news. Over other links use [`Notification::is_own_echo`], which knows
+    /// the link's rule.
     pub fn is_ours(self) -> bool {
         matches!(self, Self::HostSet | Self::BulkSet)
     }
@@ -101,6 +125,7 @@ impl Source {
             Self::Uac1 => "changed by the system volume",
             Self::Uart => "changed over UART",
             Self::I2c => "changed over I2C",
+            Self::Midi => "changed over MIDI",
         }
     }
 }
@@ -188,13 +213,15 @@ pub struct Notification {
 }
 
 impl Notification {
-    /// Whether this is the echo of a write this client made, given its own
-    /// session id on the link ([`dspi_transport::Transport::session_id`]).
-    /// Such a change is already in the client's mirror.
-    pub fn is_own_echo(&self, session: Option<u16>) -> bool {
+    /// Whether this is the echo of a write this client made, by the rule of
+    /// the link it came over ([`dspi_transport::is_own_write`]): `kind` is
+    /// the transport's [`dspi_transport::TransportCaps::kind`], `session` its
+    /// [`dspi_transport::Transport::session_id`]. Such a change is already in
+    /// the client's mirror.
+    pub fn is_own_echo(&self, kind: dspi_transport::TransportKind, session: Option<u16>) -> bool {
         match &self.event {
-            Event::ParamChanged { source, .. } => {
-                source.is_ours() && dspi_transport::is_own_write(self.origin, session)
+            Event::ParamChanged { source, .. } | Event::BulkInvalidated { source } => {
+                dspi_transport::is_own_write(kind, source.raw(), self.origin, session)
             }
             _ => false,
         }
@@ -373,10 +400,18 @@ impl Notifications {
     /// endpoint holds a read before it answers the idle packet.
     pub const KEEP_ALIVE: Duration = Duration::from_millis(100);
 
+    /// The most notifications kept waiting for [`Notifications::drain`]. A
+    /// reader that falls this far behind loses the oldest news anyway; the
+    /// queue drops new packets instead of growing without bound (a device or
+    /// a hub can send faster than a stalled UI drains), and marks the next
+    /// packet it does deliver `lost`, so the client re-reads the bulk image.
+    pub const QUEUE: usize = 1024;
+
     /// Start reading. Idle packets are dropped here; everything else is
-    /// delivered with its sequence number and the loss flag.
-    pub fn start(mut source: Box<dyn NotificationSource>) -> Self {
-        let (tx, rx) = mpsc::channel();
+    /// delivered with its sequence number, the loss flag and the link's
+    /// origin. Fails only if the reader thread cannot be spawned.
+    pub fn start(mut source: Box<dyn NotificationSource>) -> std::io::Result<Self> {
+        let (tx, rx) = mpsc::sync_channel(Self::QUEUE);
         let stop = Arc::new(AtomicBool::new(false));
         let disconnected = Arc::new(AtomicBool::new(false));
         let stop_flag = Arc::clone(&stop);
@@ -385,6 +420,23 @@ impl Notifications {
             .name("dspi-notify".into())
             .spawn(move || {
                 let mut seqs = SeqTracker::default();
+                // Set when the queue was full and a packet was dropped.
+                let mut overflowed = false;
+                // Queue one notification; false when the receiver is gone.
+                let mut deliver = |mut n: Notification| -> bool {
+                    n.lost |= overflowed;
+                    match tx.try_send(n) {
+                        Ok(()) => {
+                            overflowed = false;
+                            true
+                        }
+                        Err(mpsc::TrySendError::Full(_)) => {
+                            overflowed = true;
+                            true
+                        }
+                        Err(mpsc::TrySendError::Disconnected(_)) => false,
+                    }
+                };
                 while !stop_flag.load(Ordering::Relaxed) {
                     let (packet, origin) = match source.read_attributed(Self::READ_TIMEOUT) {
                         Ok(a) => (a.packet, a.origin),
@@ -402,54 +454,44 @@ impl Notifications {
                     if packet.is_empty() {
                         continue;
                     }
-                    match decode(&packet) {
-                        Ok((_, Event::Idle)) => {}
+                    let n = match decode(&packet) {
+                        Ok((_, Event::Idle)) => continue,
                         Ok((seq, event)) => {
                             // The v1 volume packet carries no sequence number
                             // and does not consume one (notify.c:156-159,
                             // 178), so it says nothing about loss.
                             let lost =
                                 !matches!(event, Event::MasterVolume(_)) && seqs.observe(seq);
-                            if tx
-                                .send(Notification {
-                                    seq,
-                                    event,
-                                    lost,
-                                    origin,
-                                })
-                                .is_err()
-                            {
-                                break;
+                            Notification {
+                                seq,
+                                event,
+                                lost,
+                                origin,
                             }
                         }
-                        Err(_) => {
-                            // A packet we cannot read is still a packet we
-                            // missed; say so through the loss flag.
-                            if tx
-                                .send(Notification {
-                                    seq: 0,
-                                    event: Event::Unknown {
-                                        id: 0xFF,
-                                        bytes: packet,
-                                    },
-                                    lost: true,
-                                    origin,
-                                })
-                                .is_err()
-                            {
-                                break;
-                            }
-                        }
+                        // A packet we cannot read is still a packet we
+                        // missed; say so through the loss flag.
+                        Err(_) => Notification {
+                            seq: 0,
+                            event: Event::Unknown {
+                                id: 0xFF,
+                                bytes: packet,
+                            },
+                            lost: true,
+                            origin,
+                        },
+                    };
+                    if !deliver(n) {
+                        break;
                     }
                 }
-            })
-            .expect("spawn the notification reader");
-        Self {
+            })?;
+        Ok(Self {
             rx,
             stop,
             thread: Some(thread),
             disconnected,
-        }
+        })
     }
 
     /// Everything that has arrived since the last drain, oldest first.
@@ -614,7 +656,8 @@ mod tests {
         assert_eq!(evt::SIGGEN_STATE, 0x07);
         assert_eq!(PROTOCOL_VERSION, 2);
         assert_eq!(Source::from_raw(9), Source::I2c);
-        assert_eq!(Source::from_raw(10), Source::Other(10));
+        assert_eq!(Source::from_raw(10), Source::Midi);
+        assert_eq!(Source::from_raw(11), Source::Other(11));
     }
 
     #[test]
@@ -648,7 +691,7 @@ mod tests {
         mock.push_notification(param(1, 4748, 5, &[0, 0, 0, 0]));
         mock.push_notification(vec![0]);
         mock.push_notification(vec![2, 3, 0, 3, 1, 0, 0, 0]);
-        let n = Notifications::start(mock.notifications().unwrap());
+        let n = Notifications::start(mock.notifications().unwrap()).unwrap();
         let first = n.next(Duration::from_secs(2)).expect("first");
         assert_eq!(first.seq, 1);
         assert!(!first.lost);
@@ -680,11 +723,37 @@ mod tests {
         mock.push_notification(param(8, 4748, 7, &[0, 0, 0, 0]));
         mock.push_notification(legacy);
         mock.push_notification(param(9, 4748, 7, &[0, 0, 0, 0]));
-        let n = Notifications::start(mock.notifications().unwrap());
+        let n = Notifications::start(mock.notifications().unwrap()).unwrap();
         for _ in 0..5 {
             let got = n.next(Duration::from_secs(2)).expect("a packet");
             assert!(!got.lost, "{got:?}");
         }
+    }
+
+    /// A reader that is not drained must not grow without bound: past
+    /// [`Notifications::QUEUE`] packets are dropped, and the next one
+    /// delivered says so, which makes the client re-read the image.
+    #[test]
+    fn a_full_queue_drops_and_marks_the_next_packet_lost() {
+        let mock = MockTransport::new();
+        let total = Notifications::QUEUE + 50;
+        for i in 0..total {
+            mock.push_notification(param(i as u8, 4748, 7, &[0, 0, 0, 0]));
+        }
+        let queue = mock.notify_queue();
+        let n = Notifications::start(mock.notifications().unwrap()).unwrap();
+        let t0 = std::time::Instant::now();
+        while !queue.lock().unwrap().is_empty() {
+            assert!(t0.elapsed() < Duration::from_secs(10), "the reader stalled");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(n.drain().len(), Notifications::QUEUE);
+        mock.push_notification(param(total as u8, 4748, 7, &[0, 0, 0, 0]));
+        let next = n
+            .next(Duration::from_secs(2))
+            .expect("a packet after the overflow");
+        assert!(next.lost, "the overflow is reported as a loss");
     }
 
     /// Beta4 paces the endpoint: an idle read blocks for the 100 ms
@@ -695,7 +764,7 @@ mod tests {
     fn a_paced_endpoint_delivers_events_and_stops_promptly() {
         assert!(Notifications::READ_TIMEOUT > Notifications::KEEP_ALIVE);
         let mock = MockTransport::new().with_notification_pace(Notifications::KEEP_ALIVE);
-        let n = Notifications::start(mock.notifications().unwrap());
+        let n = Notifications::start(mock.notifications().unwrap()).unwrap();
 
         // Nothing but keep-alives: nothing is delivered.
         assert!(n.next(Duration::from_millis(250)).is_none());
@@ -728,7 +797,7 @@ mod tests {
     fn a_disconnect_stops_the_reader_and_is_visible() {
         let mock = MockTransport::new();
         mock.push_notification(dspi_transport::mock::MockNotifications::DISCONNECT.to_vec());
-        let n = Notifications::start(mock.notifications().unwrap());
+        let n = Notifications::start(mock.notifications().unwrap()).unwrap();
         std::thread::sleep(Duration::from_millis(50));
         assert!(n.is_disconnected());
     }
@@ -738,6 +807,10 @@ mod tests {
         assert_eq!(Source::from_raw(7), Source::Uac1);
         assert_eq!(Source::from_raw(42), Source::Other(42));
         assert!(Source::HostSet.is_ours());
+        for b in 0..=255u8 {
+            assert_eq!(Source::from_raw(b).raw(), b, "raw round-trips");
+        }
+        assert_eq!(Source::from_raw(10), Source::Midi);
         assert!(!Source::Gpio.is_ours());
         assert_eq!(Source::Gpio.describe(), "changed by control surface");
     }

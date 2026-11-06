@@ -599,6 +599,7 @@ fn source_word(s: Source) -> String {
         Source::Uac1 => "uac1".into(),
         Source::Uart => "uart".into(),
         Source::I2c => "i2c".into(),
+        Source::Midi => "midi".into(),
         Source::Other(n) => format!("src{n}"),
     }
 }
