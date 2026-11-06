@@ -20,9 +20,12 @@ crate-type = ["cdylib", "staticlib"]
 [dependencies]
 dspi-core.workspace = true
 log.workspace = true
+serde_json.workspace = true
 # -- WP Q1 --
 # -- WP Q2a --
 # -- WP Q2b --
+# The new functions' JSON replies are built from dspi-core's Serialize records.
+serde.workspace = true
 
 [features]
 link = ["dspi-core/link"]
