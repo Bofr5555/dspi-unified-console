@@ -397,9 +397,23 @@ impl DspiCore {
     /// 5. build the [`Session`] and decode the image into a fresh mirror
     ///    ([`state::decode_bulk`], WP C0). An image of another wire format is
     ///    decoded read-only: `bulk_valid` false, `compat` too old / too new;
-    /// 6. install the connection (with a new echo filter) and the mirror.
-    ///    `selected` becomes `serial` for a USB device (`vid != 0`), and is
-    ///    cleared for any other transport.
+    /// 6. install the connection (with a new echo filter, `fresh_image`
+    ///    set) and the mirror, stop a displaced connection's RTA worker and
+    ///    reader with the lock released, and wake the [`NotifyListener`]
+    ///    once for packets that arrived during the connect. `selected`
+    ///    becomes `serial` for a USB device (`vid != 0`), and is cleared for
+    ///    any other transport.
+    ///
+    /// A device that answers `GET_PLATFORM` but whose image cannot be mapped
+    /// (pre-V16, an implausible newer image, or a legacy-VID unit whose bulk
+    /// read fails) is installed read-only instead of failing (§1.5,
+    /// "Unmappable images"): `Wire::Raw`, `wire` `None`, the mirror from
+    /// `state::apply_platform` only, `compat` too old / too new from the
+    /// image's version byte, `bulk_valid` false.
+    ///
+    /// Errors from the extension probe other than `Disconnected` (a timeout,
+    /// say during a flash blackout) leave the device connected without the
+    /// extension channel for this session.
     ///
     /// Errors: a probe failure (typed from the transport), an extension
     /// probe that lost the device ([`DspiError::Disconnected`]), a device
@@ -430,8 +444,20 @@ impl DspiCore {
             None => None,
         };
 
-        let (caps, image) =
-            dspi_session::probe::probe_any_with_image(&mut *transport).map_err(DspiError::from)?;
+        let (caps, image) = match dspi_session::probe::probe_any_with_image(&mut *transport) {
+            Ok(probed) => probed,
+            Err(e) => {
+                // §1.5 "Unmappable images": a device that identifies itself
+                // but whose image cannot be read is still shown, read-only.
+                let Some(mirror) = device::unmappable_mirror(&mut *transport, &e, vid) else {
+                    return Err(DspiError::from(e));
+                };
+                let mut conn = Connection::new(transport, serial.clone(), vid);
+                conn.notifications = notifications;
+                self.install(conn, mirror, serial, vid);
+                return Ok(());
+            }
+        };
         let ext = match ExtState::probe(&mut *transport) {
             Ok(ext) => ext,
             Err(dspi_transport::TransportError::Disconnected) => {
@@ -474,17 +500,9 @@ impl DspiCore {
         conn.wire = Some(image.read);
         conn.ext = ext;
 
-        let displaced = {
-            let mut inner = self.lock();
-            inner.state = mirror;
-            inner.selected = (vid != 0).then_some(serial);
-            inner.conn.replace(conn)
-        };
-        // Another thread may have opened a device meanwhile: the last open
-        // wins, the other is closed with the lock released.
-        if let Some(old) = displaced {
-            device::shut(old);
-        }
+        conn.fresh_image = true;
+
+        self.install(conn, mirror, serial, vid);
         Ok(())
     }
 
