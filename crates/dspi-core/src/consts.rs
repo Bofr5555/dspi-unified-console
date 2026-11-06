@@ -118,6 +118,32 @@ pub const TUBE_PARAM_COUNT: usize = dspi_proto::generated::tube::TUBE_NUM_PARAMS
 // -- WP C5 --
 // -- WP C6 --
 // -- WP C7 --
+/// `NotifyResult.flags`: some parameter changed; re-read the state.
+pub const NOTIFY_STATE: u32 = 1 << 0;
+/// A change that moves the graph (filters, gains, bypass, output enable).
+pub const NOTIFY_CURVES: u32 = 1 << 1;
+/// Everything was re-read from the device (preset load, a foreign bulk
+/// write, missed packets).
+pub const NOTIFY_REFRESHED: u32 = 1 << 2;
+/// The active USB input channel count changed.
+pub const NOTIFY_INPUT_FORMAT: u32 = 1 << 3;
+/// A preset was loaded on the device (`DspState.active_preset_slot`).
+pub const NOTIFY_PRESET: u32 = 1 << 4;
+/// The signal generator started or stopped (re-read its status). Not a
+/// parameter change: comes without `NOTIFY_STATE`.
+pub const NOTIFY_SIGGEN: u32 = 1 << 5;
+/// An auxiliary output changed state or level (re-read the control
+/// surfaces).
+pub const NOTIFY_CS_AUX: u32 = 1 << 6;
+/// IR learning finished: a code was captured or the window timed out.
+pub const NOTIFY_IR_LEARN: u32 = 1 << 7;
+/// Another host renamed an input source or the device (re-read the names:
+/// `get_input_source_name`, `get_device_name`). New in the merged core.
+pub const NOTIFY_NAMES: u32 = 1 << 8;
+/// The device's notification stream ended (unplugged, MIDI port closed,
+/// Link session over): the connection is dead and should be closed. Never
+/// set after an intentional `disconnect`. New in the merged core.
+pub const NOTIFY_DISCONNECTED: u32 = 1 << 9;
 // -- WP C8 --
 // -- WP C9 --
 // -- WP C10 --
