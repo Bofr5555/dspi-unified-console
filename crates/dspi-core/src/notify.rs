@@ -145,9 +145,7 @@ impl DspiCore {
             }
         }
         if rebaseline {
-            // What `capture_baseline` (WP C5) stores: the image of the
-            // state that now matches the loaded preset.
-            inner.baseline = Some(state::encode_bulk(&inner.state));
+            crate::presets::capture_baseline_locked(inner);
         }
         result.flags |= NOTIFY_STATE | NOTIFY_CURVES | NOTIFY_REFRESHED;
     }
@@ -212,12 +210,27 @@ fn apply_queued(inner: &mut Inner, r: &mut NotifyResult) -> FollowUp {
             }
             Event::InputFormat { .. } => r.flags |= NOTIFY_STATE | NOTIFY_INPUT_FORMAT,
             Event::SiggenState { .. } => r.flags |= NOTIFY_SIGGEN,
-            Event::CsAux { source, .. } => {
+            // Our own aux writes are already in the control-surface state
+            // (WP C14 re-reads what it writes).
+            Event::CsAux {
+                slot,
+                state,
+                level_q8,
+                source,
+            } => {
                 if !is_own(kind, source.raw(), note, session) {
+                    inner.cs.note_aux(usize::from(*slot), *state, *level_q8);
                     r.flags |= NOTIFY_CS_AUX;
                 }
             }
-            Event::IrLearn { .. } => r.flags |= NOTIFY_IR_LEARN,
+            Event::IrLearn {
+                state,
+                protocol,
+                code,
+            } => {
+                inner.cs.note_learn(*state, *protocol, *code);
+                r.flags |= NOTIFY_IR_LEARN;
+            }
             Event::Unknown { id, bytes }
                 if *id == EVT_INPUT_SOURCE_NAME || *id == EVT_DEVICE_NAME =>
             {
@@ -522,7 +535,7 @@ mod tests_wp_c7 {
         assert_eq!(inner.state.master_volume_db, -41.0);
         assert_eq!(
             inner.baseline.as_deref(),
-            Some(state::encode_bulk(&inner.state).as_slice())
+            Some(inner.state.bulk_raw.as_slice())
         );
     }
 
@@ -734,6 +747,109 @@ mod tests_wp_c7 {
         assert_eq!(r.flags & NOTIFY_CURVES, NOTIFY_CURVES);
         // The re-read brought the lost value in.
         assert_eq!(core.get_state().master_volume_db, -2.0);
+    }
+
+    /// The fake with control surfaces: it answers the caps (so the probe
+    /// finds them); every other control-surface read stalls, which
+    /// `cs_fetch` tolerates, leaving an empty configuration to show.
+    struct WithCs {
+        dev: FakeDevice,
+    }
+
+    impl WithCs {
+        fn caps_reply(opcode: u8, value: u16, len: usize) -> Option<Vec<u8>> {
+            if opcode != op::REQ_GET_CS_CAPS || value != 0xFFFF {
+                return None;
+            }
+            let caps = dspi_session::cs_model::demo::caps();
+            let mut b = dspi_proto::packets::CsCapsHeader {
+                caps_version: caps.caps_version,
+                max_bindings: caps.max_bindings,
+                type_count: caps.type_count,
+                noun_count: caps.noun_count,
+                types: caps.types,
+                max_ir_commands: caps.max_ir_commands,
+                max_groups: caps.max_groups,
+                max_macros: caps.max_macros,
+                max_macro_steps: caps.max_macro_steps,
+            }
+            .encode();
+            b.truncate(len);
+            Some(b)
+        }
+    }
+
+    impl Transport for WithCs {
+        fn control_in(&mut self, o: u8, v: u16, l: u16) -> dspi_transport::Result<Vec<u8>> {
+            match Self::caps_reply(o, v, usize::from(l)) {
+                Some(b) => Ok(b),
+                None => self.dev.control_in(o, v, l),
+            }
+        }
+        fn control_in_upto(&mut self, o: u8, v: u16, l: u16) -> dspi_transport::Result<Vec<u8>> {
+            match Self::caps_reply(o, v, usize::from(l)) {
+                Some(b) => Ok(b),
+                None => self.dev.control_in_upto(o, v, l),
+            }
+        }
+        fn control_out(&mut self, o: u8, v: u16, d: &[u8]) -> dspi_transport::Result<()> {
+            self.dev.control_out(o, v, d)
+        }
+        fn descriptor(&self) -> &DeviceDescriptor {
+            self.dev.descriptor()
+        }
+        fn max_transfer(&self) -> usize {
+            self.dev.max_transfer()
+        }
+        fn notifications(&self) -> Option<Box<dyn NotificationSource>> {
+            self.dev.notifications()
+        }
+        fn caps(&self) -> TransportCaps {
+            self.dev.caps()
+        }
+    }
+
+    #[test]
+    fn wp_c7_ir_learn_and_foreign_aux_reach_the_cs_snapshot() {
+        let dev = FakeDevice::demo();
+        let remote = dev.remote();
+        let core = DspiCore::new();
+        core.attach_probed(Box::new(WithCs { dev }), "DEMO".into(), 0)
+            .unwrap();
+        settle(&core);
+        core.cs_fetch().unwrap();
+        let snap = |core: &DspiCore| -> serde_json::Value {
+            serde_json::from_str(&core.cs_snapshot()).unwrap()
+        };
+        let before = snap(&core);
+        assert_eq!(before["supported"], true, "{before}");
+        assert!(before["learn"].is_null());
+        assert_eq!(before["auxState"][3], 0);
+
+        remote.push(ev(
+            nfy::NOTIFY_EVT_CS_IR_LEARN,
+            &[2, 1, 0, 0, 0xEF, 0x10, 0xDF, 0x20],
+        ));
+        remote.push(ev(nfy::NOTIFY_EVT_CS_AUX, &[3, 1, 0, 0x40, SRC_GPIO]));
+        // Our own write and a slot past the table change nothing.
+        remote.push(ev(nfy::NOTIFY_EVT_CS_AUX, &[4, 1, 0, 0x40, SRC_HOST]));
+        remote.push(ev(nfy::NOTIFY_EVT_CS_AUX, &[200, 1, 0, 0x40, SRC_GPIO]));
+        let want = NOTIFY_IR_LEARN | NOTIFY_CS_AUX;
+        process_until(&core, |r| r.flags & want == want);
+        settle(&core);
+
+        let s = snap(&core);
+        assert_eq!(s["learn"]["state"], 2, "{s}");
+        assert_eq!(s["learn"]["protocol"], 1);
+        assert_eq!(s["learn"]["code"], 0x20DF_10EFu32);
+        assert_eq!(s["auxState"][3], 1);
+        assert_eq!(s["auxLevel"][3], 0x4000);
+        assert_eq!(s["auxState"][4], 0, "our own write is not noted");
+        assert_eq!(s["auxLevel"][4], 0);
+
+        // A later fetch keeps the learn result: only the device's aux is re-read.
+        core.cs_fetch().unwrap();
+        assert_eq!(snap(&core)["learn"]["code"], 0x20DF_10EFu32);
     }
 
     /// A listener that calls back into the core from the reader thread.
