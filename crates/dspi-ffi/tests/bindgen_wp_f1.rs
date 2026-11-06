@@ -144,9 +144,7 @@ fn wp_f1_kotlin_surface_is_the_cores_public_api() {
         .filter(|m| !NOT_EXPORTED.contains(&m.as_str()))
         .map(|m| camel(&m))
         .collect();
-    let got: BTreeSet<String> = kotlin_methods(&core)
-        .into_iter()
-        .collect();
+    let got: BTreeSet<String> = kotlin_methods(&core).into_iter().collect();
     assert_eq!(
         want.difference(&got).collect::<Vec<_>>(),
         Vec::<&String>::new(),
