@@ -30,9 +30,15 @@ midir = ["dspi-core/midir"]
 
 [dev-dependencies]
 # -- WP Q1 --
+# Only for wp_q1_snapshot_matches_the_old_crate, which regenerates the old
+# core's header in memory to check the committed snapshot; WP Q3 deletes both.
+cbindgen = "0.29"
+# The constants test checks the header's literals against the generated ones.
+dspi-proto.workspace = true
 # -- WP Q2a --
 # -- WP Q2b --
 
 [build-dependencies]
-# The header (WP Q1), as the old core generated it.
-cbindgen = "0.27"
+# The header (WP Q1), as the old core generated it. 0.29, not the old core's
+# 0.27: 0.27 silently drops edition-2024 `#[unsafe(no_mangle)]` functions.
+cbindgen = "0.29"
