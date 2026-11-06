@@ -7,14 +7,14 @@
 //! echo line shows exactly what was done and the same lines work in a script.
 //!
 //! The model itself (what a copy takes, what a paste writes) lives in
-//! [`dspi_session::clipboard`], where every GUI shares it, and is re-exported
-//! here. What stays is what only a terminal has: the Console's channel
-//! descriptors as the copy's source name, and each planned write rendered as
-//! its command line.
+//! [`dspi_session::clipboard`], where every GUI shares it. What stays is what
+//! only a terminal has: the Console's channel descriptors as the copy's
+//! source name, and each planned write rendered as its command line.
 
-pub use dspi_session::clipboard::*;
+pub use dspi_session::clipboard::ChannelClipboard;
 
 use dspi_session::DeviceState;
+use dspi_session::clipboard::{ClipboardContext, PasteWrite, copy_channel, paste_plan};
 
 use super::{band_command, channel_name, number};
 

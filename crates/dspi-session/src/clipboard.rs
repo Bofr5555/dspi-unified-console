@@ -26,6 +26,7 @@
 use dspi_proto::FilterType;
 use dspi_proto::value::{EqParamPacket, Value};
 
+use crate::probe::Capabilities;
 use crate::{DeviceState, Outcome, Session, WriteError};
 
 /// The first crossover band, in the firmware's band numbering (20 to 23).
@@ -35,6 +36,11 @@ pub const FIRST_CROSSOVER_BAND: u8 = 20;
 pub const CROSSOVER_BANDS: usize = 4;
 
 /// What a GUI supplies to the clipboard beyond the device state.
+///
+/// For Rust callers (the TUI implements it to name channels with the
+/// Console's descriptors). The bindings (UniFFI, the C ABI) do not implement
+/// it across the boundary: they copy with the [`DeviceState`] context and
+/// set [`ChannelClipboard::source`] to the name their GUI shows.
 pub trait ClipboardContext {
     /// The device state a copy reads.
     fn state(&self) -> &DeviceState;
@@ -124,7 +130,8 @@ pub enum PasteWrite {
     },
 }
 
-/// A paste that stopped partway.
+/// A paste that stopped partway, or (with `done == 0` and no outcomes) one
+/// [`validate_paste`] refused before the first write.
 #[derive(Debug, thiserror::Error)]
 #[error("paste stopped after {done} of {total} writes: {source}")]
 pub struct PasteError {
@@ -132,14 +139,50 @@ pub struct PasteError {
     pub done: usize,
     /// How many the paste had to make.
     pub total: usize,
+    /// What each write that went through did, in plan order (`done` of them),
+    /// so a GUI knows what on the destination has changed.
+    pub outcomes: Vec<Outcome>,
     /// The write that failed.
     #[source]
     pub source: WriteError,
 }
 
 /// Crossovers are addressable from wire format V11 (bands 20 to 23).
-fn supports_crossover(state: &DeviceState) -> bool {
+pub fn supports_crossover(state: &DeviceState) -> bool {
     state.caps.wire_format >= 11
+}
+
+/// Per-band bypass shipped in firmware 1.1.4 (`DSPViewModel.firmwareSupports
+/// BandBypass`); older firmware has no bypass, so a paste sends it clear.
+pub fn supports_band_bypass(caps: &Capabilities) -> bool {
+    firmware_triple(&caps.firmware) >= (1, 1, 4)
+}
+
+/// A firmware version string as a comparable triple; an unparseable version
+/// reads as `(0, 0, 0)`, the Console's conservative default. The same
+/// parse as the TUI's `firmware_triple`.
+fn firmware_triple(version: &str) -> (u32, u32, u32) {
+    let mut parts = version
+        .split(|c: char| !c.is_ascii_digit())
+        .filter(|p| !p.is_empty())
+        .map(|p| p.parse::<u32>().unwrap_or(0));
+    (
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+    )
+}
+
+/// A band as a paste writes it onto `channel`/`band`: the bypass flag only
+/// where the firmware has one and the band is not flat, as the TUI's `eq`
+/// lines do.
+fn retarget(p: &EqParamPacket, channel: u8, band: u8, bypass_ok: bool) -> EqParamPacket {
+    EqParamPacket {
+        channel,
+        band,
+        bypass: p.bypass && p.filter_type != FilterType::Flat && bypass_ok,
+        ..*p
+    }
 }
 
 /// A band reset to its default (flat) state, as the Console's Clear does.
@@ -181,7 +224,12 @@ pub fn copy_channel(cx: &impl ClipboardContext, channel: usize) -> ChannelClipbo
 /// Every band of the bank is written, the ones the clipboard does not reach
 /// cleared, so the destination is the source rather than a merge of the two.
 /// The trim goes to every input target; the crossover bank (when the firmware
-/// has one) and the output strip go to `channel` alone, when it is an output.
+/// has one) and the output strip go to `channel` alone, when it is an output:
+/// they do not follow onto `mirror`, as they never did in the TUI.
+///
+/// A band keeps its bypass flag only on firmware with band bypass
+/// ([`supports_band_bypass`]) and when it is not flat, so a clipboard taken
+/// on one device pastes cleanly onto older firmware.
 pub fn paste_plan(
     clip: &ChannelClipboard,
     state: &DeviceState,
@@ -189,6 +237,7 @@ pub fn paste_plan(
     mirror: Option<usize>,
 ) -> Vec<PasteWrite> {
     let ni = usize::from(state.caps.num_inputs);
+    let bypass_ok = supports_band_bypass(&state.caps);
     let mut out = Vec::new();
 
     for target in std::iter::once(channel).chain(mirror) {
@@ -199,11 +248,7 @@ pub fn paste_plan(
                 .get(usize::from(band))
                 .copied()
                 .unwrap_or_else(|| cleared_band(ch, band));
-            out.push(PasteWrite::Band(EqParamPacket {
-                channel: ch,
-                band,
-                ..p
-            }));
+            out.push(PasteWrite::Band(retarget(&p, ch, band, bypass_ok)));
         }
         if let Some(db) = clip.preamp_db
             && target < ni
@@ -218,11 +263,7 @@ pub fn paste_plan(
             && supports_crossover(state)
         {
             for (band, p) in (FIRST_CROSSOVER_BAND..).zip(xo.iter().take(CROSSOVER_BANDS)) {
-                out.push(PasteWrite::Band(EqParamPacket {
-                    channel: ch,
-                    band,
-                    ..*p
-                }));
+                out.push(PasteWrite::Band(retarget(p, ch, band, bypass_ok)));
             }
         }
         if let Some((gain, delay, mute)) = clip.output {
@@ -240,27 +281,77 @@ pub fn paste_plan(
     out
 }
 
-/// Make a paste's writes on the device, in order, stopping at the first that
-/// fails. Each band is one whole-band write (bypass flag included); the other
-/// writes go through [`Session::write`], so they are range-checked and read
-/// back like any other.
+/// The registry path, indices and value of a non-band write.
+fn param_write(w: &PasteWrite) -> Option<(&'static str, u8, Value)> {
+    match *w {
+        PasteWrite::Band(_) => None,
+        PasteWrite::Preamp { input, db } => Some(("pre", channel_u8(input), Value::Float(db))),
+        PasteWrite::OutputGain { output, db } => {
+            Some(("out.gain", channel_u8(output), Value::Float(db)))
+        }
+        PasteWrite::OutputDelay { output, ms } => {
+            Some(("out.delay", channel_u8(output), Value::Float(ms)))
+        }
+        PasteWrite::OutputMute { output, mute } => {
+            Some(("out.mute", channel_u8(output), Value::Bool(mute)))
+        }
+    }
+}
+
+/// Check every write of a paste against the session without making any
+/// ([`Session::check`]): targets, ranges and platform limits. A band is
+/// checked as the registry's `eq.freq` and `eq.gain` on its channel and band
+/// (and `eq.q`, except for a crossover type, whose Q the firmware derives).
+/// Returns the index of the first bad write with its error.
+pub fn validate_paste(session: &Session, plan: &[PasteWrite]) -> Result<(), (usize, WriteError)> {
+    for (i, w) in plan.iter().enumerate() {
+        let r = match (w, param_write(w)) {
+            (PasteWrite::Band(p), _) => {
+                let at = [p.channel, p.band];
+                session
+                    .check("eq.freq", &at, &Value::Float(p.freq))
+                    .and_then(|()| session.check("eq.gain", &at, &Value::Float(p.gain_db)))
+                    .and_then(|()| {
+                        if dspi_proto::xover::meta(p.filter_type.to_raw()).is_some() {
+                            Ok(())
+                        } else {
+                            session.check("eq.q", &at, &Value::Float(p.q))
+                        }
+                    })
+            }
+            (_, Some((path, index, value))) => session.check(path, &[index], &value),
+            // `param_write` answers every non-band write.
+            (_, None) => Ok(()),
+        };
+        r.map_err(|e| (i, e))?;
+    }
+    Ok(())
+}
+
+/// Make a paste's writes on the device, in order.
+///
+/// The whole plan is checked first ([`validate_paste`]), so a bad value or
+/// target is refused before anything is written. After that the writes stop
+/// at the first that fails (the device or the transport), and the
+/// [`PasteError`] carries the outcomes of those that went through. Each band
+/// is one whole-band write (bypass flag included); the other writes go
+/// through [`Session::write`], so they are read back like any other.
 pub fn apply_paste(session: &mut Session, plan: &[PasteWrite]) -> Result<Vec<Outcome>, PasteError> {
+    if let Err((_, source)) = validate_paste(session, plan) {
+        return Err(PasteError {
+            done: 0,
+            total: plan.len(),
+            outcomes: Vec::new(),
+            source,
+        });
+    }
     let mut outcomes = Vec::with_capacity(plan.len());
     for w in plan {
-        let result = match w {
-            PasteWrite::Band(p) => session.write_band(p),
-            PasteWrite::Preamp { input, db } => {
-                session.write("pre", &[channel_u8(*input)], Value::Float(*db))
-            }
-            PasteWrite::OutputGain { output, db } => {
-                session.write("out.gain", &[channel_u8(*output)], Value::Float(*db))
-            }
-            PasteWrite::OutputDelay { output, ms } => {
-                session.write("out.delay", &[channel_u8(*output)], Value::Float(*ms))
-            }
-            PasteWrite::OutputMute { output, mute } => {
-                session.write("out.mute", &[channel_u8(*output)], Value::Bool(*mute))
-            }
+        let result = match (w, param_write(w)) {
+            (PasteWrite::Band(p), _) => session.write_band(p),
+            (_, Some((path, index, value))) => session.write(path, &[index], value),
+            // `param_write` answers every non-band write.
+            (_, None) => continue,
         };
         match result {
             Ok(o) => outcomes.push(o),
@@ -268,6 +359,7 @@ pub fn apply_paste(session: &mut Session, plan: &[PasteWrite]) -> Result<Vec<Out
                 return Err(PasteError {
                     done: outcomes.len(),
                     total: plan.len(),
+                    outcomes,
                     source,
                 });
             }
@@ -393,16 +485,86 @@ mod tests_wp_s5 {
         assert_eq!(after.xover_bands(dst as u8), xo);
     }
 
+    /// A bad value anywhere in the plan is refused before the first write,
+    /// so the destination is untouched.
     #[test]
-    fn wp_s5_a_failed_write_says_how_far_the_paste_got() {
+    fn wp_s5_a_bad_value_is_refused_before_anything_is_written() {
         let (s, mut session) = demo();
-        let clip = copy_channel(&s, 0);
+        let mut clip = copy_channel(&s, 0);
+        clip.bands[0].gain_db = 6.0;
+        clip.bands[0].filter_type = FilterType::Peaking;
         let mut plan = paste_plan(&clip, &s, 1, None);
-        // An out-of-range trim is refused before the wire.
+        // An out-of-range trim, last in the plan.
         plan.push(PasteWrite::Preamp { input: 1, db: 99.0 });
+        let (i, _) = validate_paste(&session, &plan).unwrap_err();
+        assert_eq!(i, plan.len() - 1);
+
         let e = apply_paste(&mut session, &plan).unwrap_err();
-        assert_eq!(e.done, plan.len() - 1);
-        assert_eq!(e.total, plan.len());
-        assert!(e.to_string().starts_with("paste stopped after"));
+        assert_eq!((e.done, e.total), (0, plan.len()));
+        assert!(e.outcomes.is_empty());
+        assert!(matches!(e.source, WriteError::Value(_)), "{e:?}");
+        assert!(e.to_string().starts_with("paste stopped after 0"));
+        let after = DeviceState::new(s.caps.clone(), session.snapshot().unwrap());
+        assert_eq!(after.bands(1), s.bands(1), "nothing was written");
+    }
+
+    /// A band past the device's channels is refused up front too.
+    #[test]
+    fn wp_s5_a_bad_target_is_refused_up_front() {
+        let (s, session) = demo();
+        let plan = [PasteWrite::Band(cleared_band(200, 0))];
+        let (i, e) = validate_paste(&session, &plan).unwrap_err();
+        assert_eq!(i, 0);
+        assert!(matches!(e, WriteError::BadTarget(..)), "{e:?}");
+        let ok = paste_plan(&copy_channel(&s, 0), &s, 1, Some(2));
+        assert!(validate_paste(&session, &ok).is_ok());
+    }
+
+    /// A transport failure partway carries the outcomes so far.
+    #[test]
+    fn wp_s5_a_failed_write_carries_what_went_through() {
+        use dspi_proto::generated::opcodes as op;
+        use dspi_transport::MockTransport;
+        use dspi_transport::mock::Reply;
+
+        let (s, _) = demo();
+        let clip = copy_channel(&s, 0);
+        let plan = paste_plan(&clip, &s, 1, None);
+        // Every band write fails on the wire; the plan itself is valid.
+        let t = MockTransport::new().reply(op::REQ_SET_EQ_PARAM, Reply::Disconnect);
+        let mut session = Session::new(Box::new(t), s.caps.clone()).unwrap();
+        let e = apply_paste(&mut session, &plan).unwrap_err();
+        assert_eq!(e.done, 0);
+        assert_eq!(e.outcomes.len(), e.done);
+        assert!(matches!(e.source, WriteError::Transport(_)), "{e:?}");
+    }
+
+    /// Bypass travels only where the firmware has it, and never on a flat
+    /// band, as the TUI's `eq` lines do.
+    #[test]
+    fn wp_s5_bypass_is_gated_by_firmware_and_type() {
+        let (mut s, _) = demo();
+        assert!(supports_band_bypass(&s.caps));
+        let mut clip = copy_channel(&s, 0);
+        clip.bands[0].filter_type = FilterType::Peaking;
+        clip.bands[0].bypass = true;
+        clip.bands[1].filter_type = FilterType::Flat;
+        clip.bands[1].bypass = true;
+        let bypass = |plan: &[PasteWrite], i: usize| match &plan[i] {
+            PasteWrite::Band(p) => p.bypass,
+            w => panic!("{w:?}"),
+        };
+        let plan = paste_plan(&clip, &s, 1, None);
+        assert!(bypass(&plan, 0));
+        assert!(!bypass(&plan, 1), "a flat band is never bypassed");
+
+        s.caps.firmware = "1.1.3".into();
+        assert!(!supports_band_bypass(&s.caps));
+        let plan = paste_plan(&clip, &s, 1, None);
+        assert!(!bypass(&plan, 0), "older firmware has no bypass");
+        s.caps.firmware = "1.1.4 beta 1".into();
+        assert!(supports_band_bypass(&s.caps));
+        s.caps.firmware = "garbage".into();
+        assert!(!supports_band_bypass(&s.caps));
     }
 }
