@@ -23,12 +23,16 @@ path = "src/bin/uniffi-bindgen.rs"
 required-features = ["cli"]
 
 [dependencies]
-dspi-core = { workspace = true, features = ["uniffi", "link"] }
+# Without its default `usb`: this crate's own `usb` feature turns it on (WP CG3).
+dspi-core = { path = "../dspi-core", default-features = false, features = ["uniffi", "link"] }
 uniffi.workspace = true
 log.workspace = true
 
 [features]
-default = []
+# -- WP CG3 --
+# On for Android and the host; iOS builds with --no-default-features.
+default = ["usb"]
+usb = ["dspi-core/usb"]
 cli = ["uniffi/cli"]
 
 [target.'cfg(target_os = "android")'.dependencies]
