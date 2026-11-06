@@ -208,10 +208,7 @@ fn wp_c13_lenient_fields_take_defaults() {
     assert_eq!(s.xover[8][1].filter_type, 63);
     assert!(s.matrix_routing[1][1] && s.matrix_gain[1][1] == 0.0);
     assert_eq!(b.points, 1);
-    assert_eq!(
-        b.missing,
-        ["Gone", "channel -1", "channel -1", "channel -1"]
-    );
+    assert_eq!(b.missing.names, ["Gone", "channel -1"], "each label once");
     let (lines, clean) = config_report(&b);
     assert!(!clean);
     assert_eq!(
@@ -785,10 +782,13 @@ fn wp_c13_imports_need_a_writable_device() {
     );
     let r = json_of(&core.filters_import(REW_FILTERS.into(), vec![0]));
     assert_eq!(r["ok"], false);
-    // Nothing to write: nothing to refuse.
+    // Even with nothing to write, a missing device is the error.
     let r = json_of(&core.filters_import(REW_FILTERS.into(), vec![]));
-    assert_eq!(r["ok"], true);
-    assert_eq!(r["lines"][0], "Applied filters to 0 channels.");
+    assert_eq!(r["ok"], false);
+    assert!(
+        r["error"].as_str().unwrap().contains("not connected"),
+        "{r}"
+    );
     // A bad file is reported before the device is looked at.
     let r = json_of(&core.config_import("{}".into(), 0));
     assert!(r["error"].as_str().unwrap().contains("no channel data"));
@@ -828,9 +828,7 @@ fn wp_c13_exports_and_inspects_read_the_mirror() {
     assert_eq!(v["channels"].as_array().unwrap().len(), 0);
 }
 
-#[test]
-#[ignore = "WP C13: needs WP C1, C2, C3 and C6 (connect, apply_all_params, band and I/O setters)"]
-fn wp_c13_imports_write_the_demo_device() {
+fn demo_core() -> std::sync::Arc<DspiCore> {
     let core = DspiCore::new();
     core.attach_probed(
         Box::new(dspi_transport::FakeDevice::demo()),
@@ -839,20 +837,127 @@ fn wp_c13_imports_write_the_demo_device() {
     )
     .unwrap();
     core.fetch_all().unwrap();
-    let mut s = core.get_state();
+    core
+}
+
+#[test]
+fn wp_c13_config_import_writes_the_demo_device() {
+    let core = demo_core();
     let doc = core.config_export("Demo".into(), "test".into(), 0);
     // Edit the document, import it, and read the device back.
     let mut v = parse_config(&doc).unwrap();
     v["channels"][0]["eq"][0] = json!({"type": 1, "freqHz": 321.0, "q": 2.0, "gain": -4.5});
-    let r = json_of(&core.config_import(v.to_string(), IMPORT_HARDWARE));
+    v["channels"][1]["name"] = json!("Renamed");
+    let r = json_of(&core.config_import(v.to_string(), 0));
     assert_eq!(r["ok"], true, "{r}");
+    assert_eq!(r["clean"], true, "{r}");
+    assert_eq!(core.get_state().filters[0][0], pk(321.0, -4.5, 2.0));
     core.fetch_all().unwrap();
-    s.filters[0][0] = pk(321.0, -4.5, 2.0);
-    assert_eq!(core.get_state().filters[0][0], s.filters[0][0]);
+    let s = core.get_state();
+    assert_eq!(s.filters[0][0], pk(321.0, -4.5, 2.0), "the device has it");
+    assert_eq!(s.channel_names[1], "Renamed");
+}
 
-    let r = json_of(&core.filters_import(REW_FILTERS.into(), vec![1]));
+#[test]
+#[ignore = "WP C3: needs the band setters (set_filter, set_crossover, set_input_preamp)"]
+fn wp_c13_filters_import_writes_the_demo_device() {
+    let core = demo_core();
+    let r = json_of(&core.filters_import(REW_FILTERS.into(), vec![1, 1]));
     assert_eq!(r["ok"], true, "{r}");
+    assert_eq!(r["lines"][0], "Applied filters to 1 channel.");
     assert_eq!(core.get_state().filters[1][0], pk(31.5, -4.2, 3.5));
+}
+
+#[test]
+fn wp_c13_bom_files_are_read() {
+    let s = rp2350();
+    let bom = format!("\u{feff}{MACOS_FILTERS}");
+    let v = inspect_filters(&s, &bom, 8);
+    assert_eq!(v["kind"], "native", "not misread as REW");
+    let plain = plan_filters(&s, MACOS_FILTERS, &[0, 8]);
+    let with = plan_filters(&s, &bom, &[0, 8]);
+    assert_eq!(with.writes, plain.writes);
+    let doc = format!("\u{feff}{MAC_DOC}");
+    assert!(parse_config(&doc).is_ok());
+    assert_eq!(json_of(&config_inspect(doc))["ok"], true);
+}
+
+#[test]
+fn wp_c13_bare_windows_input_headers_are_one_based() {
+    assert_eq!(section_header("Input 3", 8), Some((Chan::Input(2), None)));
+    assert_eq!(
+        section_header("Input 3: X", 8),
+        Some((Chan::Input(3), None))
+    );
+    assert_eq!(section_header("Output 2", 8), None);
+    assert_eq!(
+        section_header("Output 2: Y (Enabled)", 8),
+        Some((Chan::Output(2), Some(true)))
+    );
+    let text =
+        "# DSPi Console Filter Settings\n[Input 3]\nFilter 1: ON PK Fc 100 Hz Gain 1 dB Q 1\n";
+    let plan = plan_filters(&rp2350(), text, &[2, 3]);
+    assert_eq!(plan.writes.len(), 1);
+    assert_eq!(plan.writes[0].wire, 2);
+}
+
+#[test]
+fn wp_c13_file_integers_never_wrap() {
+    let mut old = rp2350();
+    old.dac_mute_supported = true;
+    let v = parse_config(
+        r#"{"schemaVersion": 1, "channels": [{"channelId": 0}],
+            "loudness": {"outputMask": 70000}, "leveller": {"detectorMask": 300, "applyMask": -1},
+            "io": {"outputPins": [999, 7, -3], "spdifRxPins": [256], "i2sRxPins": [1000],
+                   "i2sBckPin": 300, "mckPin": -1, "spdifEnabledExt": 513, "adatPin": 1e12,
+                   "dacHwMute": {"pin": 4096, "holdMs": 70000, "releaseMs": 20}}}"#,
+    )
+    .unwrap();
+    let s = build_config(&old, &v, IMPORT_HARDWARE).state;
+    assert_eq!(s.loudness_output_mask, old.loudness_output_mask);
+    assert_eq!(
+        (s.leveller_detector_mask, s.leveller_apply_mask),
+        (0xFF, 0xFF)
+    );
+    assert_eq!(
+        s.output_pins[..3],
+        [old.output_pins[0], 7, old.output_pins[2]]
+    );
+    assert_eq!(s.spdif_rx_pins[0], old.spdif_rx_pins[0]);
+    assert_eq!(s.i2s_rx_pins[0], old.i2s_rx_pins[0]);
+    assert_eq!(
+        (s.i2s_bck_pin, s.mck_pin, s.adat_out_pin),
+        (old.i2s_bck_pin, old.mck_pin, old.adat_out_pin)
+    );
+    assert_eq!(s.spdif_inputs_enabled, 0x01, "513 is out of range: none");
+    assert_eq!((s.dac_mute_pin, s.dac_mute_hold_ms), (old.dac_mute_pin, 0));
+    assert_eq!(s.dac_mute_release_ms, 20);
+}
+
+#[test]
+fn wp_c13_missing_channels_are_capped_and_negative_indices_missing() {
+    let channels: Vec<String> = (0..100)
+        .map(|i| {
+            format!(
+                r#"{{"isOutput": true, "outputIndex": {}, "name": "o{i}"}}"#,
+                50 + i
+            )
+        })
+        .chain(std::iter::repeat_n(
+            r#"{"inputIndex": -1, "name": "neg"}"#.to_string(),
+            1000,
+        ))
+        .collect();
+    let doc = format!(
+        r#"{{"schemaVersion": 1, "channels": [{}]}}"#,
+        channels.join(",")
+    );
+    let b = build_config(&rp2350(), &parse_config(&doc).unwrap(), 0);
+    assert_eq!(b.channels, 0, "no channel 0 from a negative index");
+    assert_eq!(b.missing.names.len(), Missing::SHOWN);
+    assert_eq!(b.missing.more, 81, "80 more outputs and neg, once");
+    let (lines, _) = config_report(&b);
+    assert!(lines[1].ends_with(", o19 and 81 more."), "{}", lines[1]);
 }
 
 // ── Property tests (PLAN §1.9) ──

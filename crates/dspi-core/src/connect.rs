@@ -32,7 +32,7 @@ use dspi_transport::TransportError;
 
 use crate::consts::*;
 use crate::records::*;
-use crate::{Connection, DspiCore, DspiError, Result, Writable, state};
+use crate::{Connection, DspiCore, DspiError, Inner, Result, Writable, state};
 
 /// The wire format this build reads and writes.
 const V32: u8 = dspi_proto::generated::wire::WIRE_FORMAT_VERSION as u8;
@@ -175,38 +175,7 @@ impl DspiCore {
     /// sent); the transport's typed error when a transfer fails (the device
     /// then applies nothing).
     pub fn apply_all_params(&self) -> Result<()> {
-        let mut guard = self.lock();
-        let inner = &mut *guard;
-        let wire = inner.conn()?.wire;
-        if matches!(
-            inner.state.compat,
-            COMPAT_FIRMWARE_TOO_OLD | COMPAT_FIRMWARE_TOO_NEW
-        ) || matches!(wire, Some(WireRead::Older | WireRead::Newer))
-        {
-            return Err(DspiError::ReadOnly);
-        }
-        if !inner.state.bulk_valid || wire.is_none() {
-            return Err(DspiError::Disconnected);
-        }
-        let image = state::encode_bulk(&inner.state);
-        let mut w = inner.writable_conn()?;
-
-        w.conn()
-            .transport()
-            .lock(LOCK_REASON, LOCK_TIMEOUT)
-            .map_err(DspiError::from)?;
-        w.conn().echo.bulk_write_started();
-        let sent = write_image(&mut w, &image);
-        w.conn()
-            .echo
-            .bulk_write_finished(Instant::now(), sent.is_ok());
-        w.conn().transport().unlock();
-        sent?;
-
-        // Cannot fail: `encode_bulk` always yields a BULK_SIZE V32 image.
-        // Were it to, the mirror simply keeps the state that was sent.
-        let _ = state::decode_bulk(&image, &mut inner.state);
-        Ok(())
+        apply_all_params_locked(&mut self.lock())
     }
 
     /// Read the meter block (`REQ_GET_STATUS` sub-query 9): the peak of each
@@ -243,11 +212,7 @@ impl DspiCore {
     /// (`platform_id` 1, 2048 samples at 48 kHz), 21 otherwise (RP2040,
     /// 1024 samples). Read from the mirror; never fails.
     pub fn max_delay_ms(&self) -> f32 {
-        if self.lock().state.platform_id == 1 {
-            42.0
-        } else {
-            21.0
-        }
+        state::max_delay_ms_for(&self.lock().state)
     }
 
     /// Clear the device's sticky clip flags (`REQ_CLEAR_CLIPS`, which reads
@@ -632,6 +597,42 @@ fn parse_status(data: &[u8], n: usize) -> Option<SystemStatus> {
         // n <= MAX_CHANNELS (17).
         num_channels: u8::try_from(n).unwrap_or(u8::MAX),
     })
+}
+
+/// [`DspiCore::apply_all_params`] with the lock already held, so a caller
+/// can change the mirror and write it in one critical section (WP C13's
+/// `config_import`). Same contract and errors.
+pub(crate) fn apply_all_params_locked(inner: &mut Inner) -> Result<()> {
+    let wire = inner.conn()?.wire;
+    if matches!(
+        inner.state.compat,
+        COMPAT_FIRMWARE_TOO_OLD | COMPAT_FIRMWARE_TOO_NEW
+    ) || matches!(wire, Some(WireRead::Older | WireRead::Newer))
+    {
+        return Err(DspiError::ReadOnly);
+    }
+    if !inner.state.bulk_valid || wire.is_none() {
+        return Err(DspiError::Disconnected);
+    }
+    let image = state::encode_bulk(&inner.state);
+    let mut w = inner.writable_conn()?;
+
+    w.conn()
+        .transport()
+        .lock(LOCK_REASON, LOCK_TIMEOUT)
+        .map_err(DspiError::from)?;
+    w.conn().echo.bulk_write_started();
+    let sent = write_image(&mut w, &image);
+    w.conn()
+        .echo
+        .bulk_write_finished(Instant::now(), sent.is_ok());
+    w.conn().transport().unlock();
+    sent?;
+
+    // Cannot fail: `encode_bulk` always yields a BULK_SIZE V32 image.
+    // Were it to, the mirror simply keeps the state that was sent.
+    let _ = state::decode_bulk(&image, &mut inner.state);
+    Ok(())
 }
 
 #[cfg(test)]

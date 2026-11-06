@@ -46,15 +46,18 @@
 //!
 //! Owned by WP C13 (docs/core-merge/PLAN.md).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use dspi_proto::generated::limiter;
 use dspi_proto::xover;
 use serde_json::{Map, Value, json};
 
+use crate::connect::apply_all_params_locked;
 use crate::consts::*;
+use crate::device::{PREAMP_MAX_DB_RP2040, PREAMP_MAX_DB_RP2350};
 use crate::records::*;
+use crate::state::default_state;
 use crate::{DspiCore, Result};
 
 /// The `.dspipreset` schema this build reads and writes.
@@ -130,15 +133,14 @@ fn is_rp2350(s: &DspState) -> bool {
     s.platform_id == 1
 }
 
-/// The longest delay (ms) the firmware's delay line holds: 2048 samples on
-/// RP2350, 1024 on RP2040, at 48 kHz (`max_delay_ms`, WP C2).
-fn max_delay(s: &DspState) -> f32 {
-    if is_rp2350(s) { 42.0 } else { 21.0 }
-}
-
 /// The preamp range (dB) the chip applies correctly (`preamp_max_db`).
 fn preamp_range(s: &DspState) -> (f32, f32) {
-    (-60.0, if is_rp2350(s) { 24.0 } else { 18.0 })
+    let max = if is_rp2350(s) {
+        PREAMP_MAX_DB_RP2350
+    } else {
+        PREAMP_MAX_DB_RP2040
+    };
+    (-60.0, max)
 }
 
 /// Crossfeed pairs on the platform: 4 on RP2350, 2 on RP2040.
@@ -204,6 +206,12 @@ fn utc_string(secs: u64) -> String {
         rem / 60 % 60,
         rem % 60
     )
+}
+
+/// The text without a leading UTF-8 byte-order mark (Notepad and
+/// PowerShell write one).
+fn strip_bom(text: &str) -> &str {
+    text.strip_prefix('\u{feff}').unwrap_or(text)
 }
 
 fn too_large(what: &str) -> String {
@@ -292,6 +300,17 @@ fn flag(v: &Value, key: &str, def: bool) -> bool {
 
 fn text(v: &Value, key: &str) -> Option<String> {
     v.get(key).and_then(Value::as_str).map(str::to_string)
+}
+
+/// An integer field that fits `T`; missing, mistyped or out of range =
+/// `def` (a file value never wraps).
+fn int_as<T: TryFrom<i64> + Into<i64> + Copy>(v: &Value, key: &str, def: T) -> T {
+    T::try_from(int(v, key, def.into())).unwrap_or(def)
+}
+
+/// `x` if it fits `T`, else `def`.
+fn fit<T: TryFrom<i64>>(x: i64, def: T) -> T {
+    T::try_from(x).unwrap_or(def)
 }
 
 /// An integer array, at most `max` entries (the rest is never read).
@@ -541,6 +560,7 @@ fn parse_config(text: &str) -> std::result::Result<Value, String> {
     if text.len() > MAX_FILE_BYTES {
         return Err(too_large("configuration file"));
     }
+    let text = strip_bom(text);
     let v: Value =
         serde_json::from_str(text).map_err(|e| format!("Not a valid configuration file: {e}."))?;
     let version = int(&v, "schemaVersion", 0);
@@ -553,6 +573,44 @@ fn parse_config(text: &str) -> std::result::Result<Value, String> {
         ));
     }
     Ok(v)
+}
+
+/// Channels of a document this device does not have: each label once, the
+/// first [`Missing::SHOWN`] named, the rest counted.
+#[derive(Debug, Default)]
+struct Missing {
+    names: Vec<String>,
+    /// Labels past the first `SHOWN` (bounded by the document's size).
+    rest: BTreeSet<String>,
+    more: usize,
+}
+
+impl Missing {
+    const SHOWN: usize = 20;
+
+    fn add(&mut self, s: String) {
+        if self.names.contains(&s) {
+            return;
+        }
+        if self.names.len() < Self::SHOWN {
+            self.names.push(s);
+        } else if self.rest.insert(s) {
+            self.more = self.more.saturating_add(1);
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.names.is_empty()
+    }
+
+    /// "a, b and 3 more".
+    fn line(&self) -> String {
+        let mut l = self.names.join(", ");
+        if self.more > 0 {
+            l.push_str(&format!(" and {} more", self.more));
+        }
+        l
+    }
 }
 
 /// Things an import left out, each named once, in order.
@@ -573,7 +631,7 @@ impl Skips {
 struct ConfigBuild {
     state: DspState,
     links: Option<u8>,
-    missing: Vec<String>,
+    missing: Missing,
     skipped: Skips,
     channels: usize,
     bands: usize,
@@ -591,7 +649,7 @@ fn build_config(old: &DspState, v: &Value, options: u32) -> ConfigBuild {
     let mut b = ConfigBuild {
         state: ns,
         links,
-        missing: Vec::new(),
+        missing: Missing::default(),
         skipped,
         channels: 0,
         bands: 0,
@@ -639,7 +697,7 @@ fn build_features(ns: &mut DspState, v: &Value, skipped: &mut Skips) {
         ns.loudness_enabled = flag(b, "enabled", false);
         ns.loudness_ref_spl = f(b, "refSpl", 83.0);
         ns.loudness_intensity = f(b, "intensityPct", 100.0);
-        ns.loudness_output_mask = int(b, "outputMask", i64::from(ns.loudness_output_mask)) as u16;
+        ns.loudness_output_mask = int_as(b, "outputMask", ns.loudness_output_mask);
     }
     if let Some(b) = block(v, "crossfeed") {
         ns.crossfeed_enabled = flag(b, "enabled", false);
@@ -647,11 +705,7 @@ fn build_features(ns: &mut DspState, v: &Value, skipped: &mut Skips) {
         ns.crossfeed_freq = f(b, "freqHz", 700.0);
         ns.crossfeed_feed = f(b, "feedDb", 4.5);
         ns.crossfeed_itd = flag(b, "itd", true);
-        ns.crossfeed_output_pair_mask = int(
-            b,
-            "outputPairMask",
-            i64::from(ns.crossfeed_output_pair_mask),
-        ) as u8;
+        ns.crossfeed_output_pair_mask = int_as(b, "outputPairMask", ns.crossfeed_output_pair_mask);
         // K340 fork: absent (other clients) keeps the current map; an
         // invalid one (e.g. from a wider platform) falls back to default.
         if let Some(m) = ints(b, "pairMap", CROSSFEED_MAP_PAIRS) {
@@ -674,8 +728,8 @@ fn build_features(ns: &mut DspState, v: &Value, skipped: &mut Skips) {
         ns.leveller_amount = f(b, "amountPct", 50.0);
         ns.leveller_max_gain_db = f(b, "maxGainDb", 15.0);
         ns.leveller_gate_db = f(b, "gateDb", -96.0);
-        ns.leveller_detector_mask = int(b, "detectorMask", 0xFF) as u8;
-        ns.leveller_apply_mask = int(b, "applyMask", 0xFF) as u8;
+        ns.leveller_detector_mask = int_as(b, "detectorMask", 0xFF);
+        ns.leveller_apply_mask = int_as(b, "applyMask", 0xFF);
     }
     if let Some(b) = block(v, "psybass") {
         ns.psybass_enabled = flag(b, "enabled", false);
@@ -684,7 +738,7 @@ fn build_features(ns: &mut DspState, v: &Value, skipped: &mut Skips) {
         ns.psybass_drive_db = f(b, "driveDb", 6.0);
         ns.psybass_character_pct = f(b, "characterPct", 50.0);
         ns.psybass_original_db = f(b, "originalDb", 0.0);
-        ns.psybass_output_mask = int(b, "outputMask", i64::from(ns.psybass_output_mask)) as u16;
+        ns.psybass_output_mask = int_as(b, "outputMask", ns.psybass_output_mask);
     }
     let k = usize::from;
     if let Some(b) = block(v, "upmix") {
@@ -784,12 +838,13 @@ fn build_channels(b: &mut ConfigBuild, v: &Value, hardware: bool) {
     let rp2350 = is_rp2350(ns);
     let n_in = usize::from(ns.num_input_channels);
     let n_out = usize::from(ns.num_output_channels);
-    let max_delay = max_delay(ns);
+    let max_delay = crate::state::max_delay_ms_for(ns);
     for c in array(v, "channels") {
         let index = |key: &str| {
             c.get(key)
                 .and_then(Value::as_i64)
-                .map(|i| usize::try_from(i.max(0)).unwrap_or(usize::MAX))
+                // Negative: no such channel (reported missing).
+                .map(|i| usize::try_from(i).unwrap_or(usize::MAX))
         };
         let r = match (
             flag(c, "isOutput", false),
@@ -807,7 +862,7 @@ fn build_channels(b: &mut ConfigBuild, v: &Value, hardware: bool) {
                 let label = text(c, "name")
                     .filter(|s| !s.is_empty())
                     .unwrap_or_else(|| format!("channel {}", int(c, "channelId", -1)));
-                b.missing.push(label);
+                b.missing.add(label);
                 continue;
             }
         };
@@ -900,10 +955,11 @@ fn build_matrix(b: &mut ConfigBuild, v: &Value) {
 
 /// The hardware I/O block.
 fn build_io(ns: &mut DspState, io: &Value) {
-    let byte = |key: &str, def: u8| int(io, key, i64::from(def)) as u8;
+    let byte = |key: &str, def: u8| int_as(io, key, def);
     if let Some(pins) = ints(io, "outputPins", MAX_PHYSICAL_OUTPUTS) {
         for (k, p) in pins.iter().enumerate() {
-            put(&mut ns.output_pins, k, *p as u8);
+            let x = fit(*p, at(&ns.output_pins, k, 0));
+            put(&mut ns.output_pins, k, x);
         }
     }
     if let Some(types) = ints(io, "outputSlotTypes", 4) {
@@ -921,17 +977,19 @@ fn build_io(ns: &mut DspState, io: &Value) {
     ns.i2s_bck_pin_slave = byte("i2sBckPinSlave", ns.i2s_bck_pin_slave);
     if let Some(rx) = ints(io, "spdifRxPins", 3) {
         for (k, p) in rx.iter().enumerate() {
-            put(&mut ns.spdif_rx_pins, k, *p as u8);
+            let x = fit(*p, at(&ns.spdif_rx_pins, k, 0));
+            put(&mut ns.spdif_rx_pins, k, x);
         }
     }
     let pin4 = byte("spdifRxPin4", at(&ns.spdif_rx_pins, 3, 0));
     put(&mut ns.spdif_rx_pins, 3, pin4);
     // S/PDIF input 1 (bit 0) is always on.
-    let ext = byte("spdifEnabledExt", 0) & 0x07;
+    let ext = fit::<u8>(int(io, "spdifEnabledExt", 0), 0) & 0x07;
     ns.spdif_inputs_enabled = 0x01 | ext.saturating_mul(2);
     if let Some(rx) = ints(io, "i2sRxPins", 4) {
         for (k, p) in rx.iter().enumerate() {
-            put(&mut ns.i2s_rx_pins, k, *p as u8);
+            let x = fit(*p, at(&ns.i2s_rx_pins, k, 0));
+            put(&mut ns.i2s_rx_pins, k, x);
         }
     }
     ns.i2s_input_channels = byte("i2sInputChannels", ns.i2s_input_channels);
@@ -955,9 +1013,9 @@ fn build_io(ns: &mut DspState, io: &Value) {
     if let (Some(d), true) = (block(io, "dacHwMute"), ns.dac_mute_supported) {
         ns.dac_mute_enabled = flag(d, "enabled", false);
         ns.dac_mute_active_low = flag(d, "activeLow", true);
-        ns.dac_mute_pin = int(d, "pin", i64::from(ns.dac_mute_pin)) as u8;
-        ns.dac_mute_hold_ms = int(d, "holdMs", 0) as u16;
-        ns.dac_mute_release_ms = int(d, "releaseMs", 0) as u16;
+        ns.dac_mute_pin = int_as(d, "pin", ns.dac_mute_pin);
+        ns.dac_mute_hold_ms = int_as(d, "holdMs", 0);
+        ns.dac_mute_release_ms = int_as(d, "releaseMs", 0);
     }
 }
 
@@ -975,10 +1033,7 @@ fn config_report(b: &ConfigBuild) -> (Vec<String>, bool) {
         plural(b.points),
     )];
     if !b.missing.is_empty() {
-        lines.push(format!(
-            "Not present on this device: {}.",
-            b.missing.join(", ")
-        ));
+        lines.push(format!("Not present on this device: {}.", b.missing.line()));
     }
     if !b.skipped.0.is_empty() {
         lines.push(format!("Skipped: {}.", b.skipped.0.join("; ")));
@@ -1347,6 +1402,11 @@ fn section_header(h: &str, pdm: usize) -> Option<(Chan, Option<bool>)> {
             .and_then(|r| r.split(':').next())
             .and_then(|n| n.trim().parse::<usize>().ok())
     };
+    // The native writer always emits `Input i: name`; a bare `Input 3` is
+    // the Windows Console's 1-based name, read by `windows_header`.
+    if !h.contains(':') {
+        return windows_header(h, pdm).map(|c| (c, None));
+    }
     if let Some(i) = idx("Input ") {
         return Some((Chan::Input(i), None));
     }
@@ -1364,6 +1424,7 @@ fn section_header(h: &str, pdm: usize) -> Option<(Chan, Option<bool>)> {
 }
 
 fn parse_filters(text: &str, pdm: usize) -> Parsed {
+    let text = strip_bom(text);
     if !text.trim_start().starts_with("# DSPi Console") {
         let mut filters = Vec::new();
         let (mut count, mut dropped) = (0usize, 0usize);
@@ -1711,21 +1772,23 @@ impl DspiCore {
     /// Build the new state, write it in one bulk SET, then send the
     /// hardware I/O that changed one setting at a time.
     fn import_config(&self, v: &Value, options: u32) -> Result<ImportReport> {
+        // Swap the mirror and write it in one critical section, so no
+        // notification lands in between; restore it if the write fails.
         let (old, mut built) = {
             let mut inner = self.lock();
             // Refuse a read-only or missing device before touching the mirror.
             inner.writable_conn().map(|_| ())?;
-            let old = inner.state.clone();
+            let old = std::mem::replace(&mut inner.state, default_state());
             let built = build_config(&old, v, options);
             inner.state = built.state.clone();
+            // The device announces the bulk write with BULK_INVALIDATED,
+            // which re-reads everything.
+            if let Err(e) = apply_all_params_locked(&mut inner) {
+                inner.state = old;
+                return Err(e);
+            }
             (old, built)
         };
-        // The device announces the bulk write with BULK_INVALIDATED, which
-        // re-reads everything.
-        if let Err(e) = self.apply_all_params() {
-            self.lock().state = old;
-            return Err(e);
-        }
         let hardware_written = if options & IMPORT_HARDWARE != 0 {
             let refused = self.write_io(&built.state, &old);
             for r in refused {
@@ -1856,8 +1919,9 @@ impl DspiCore {
     /// file applies (`kind` "error" with an `error` for a file over
     /// [`MAX_FILE_BYTES`]). Never fails.
     pub fn filters_inspect(&self, text: String, inputs: u8) -> String {
-        let inner = self.lock();
-        inspect_filters(&inner.state, &text, usize::from(inputs)).to_string()
+        // Parse outside the lock, on a copy of the mirror.
+        let state = self.lock().state.clone();
+        inspect_filters(&state, &text, usize::from(inputs)).to_string()
     }
 
     /// Apply a filter file to the channels in `wires` (wire indices; other
@@ -1870,25 +1934,34 @@ impl DspiCore {
         if text.len() > MAX_FILE_BYTES {
             return json!({ "ok": false, "error": too_large("filter file") }).to_string();
         }
-        let plan = {
+        let state = {
             let mut inner = self.lock();
-            let plan = plan_filters(&inner.state, &text, &wires);
-            if !plan.writes.is_empty()
-                && let Err(e) = inner.writable_conn()
-            {
+            if let Err(e) = inner.writable_conn() {
                 return write_failed(&e).to_string();
             }
-            plan
+            inner.state.clone()
         };
-        for w in &plan.writes {
-            if let Err(e) = self.write_channel(w) {
-                return write_failed(&e).to_string();
+        // Each wire once, parsed outside the lock.
+        let wires: Vec<u8> = wires
+            .into_iter()
+            .collect::<BTreeSet<u8>>()
+            .into_iter()
+            .collect();
+        let mut plan = plan_filters(&state, &text, &wires);
+        let writes = std::mem::take(&mut plan.writes);
+        for w in &writes {
+            match self.write_channel(w) {
+                Ok(Some(note)) => plan.note(note),
+                Ok(None) => {}
+                Err(e) => return write_failed(&e).to_string(),
             }
         }
-        json!({ "ok": true, "lines": filter_report(plan.writes.len(), &plan.notes) }).to_string()
+        json!({ "ok": true, "lines": filter_report(writes.len(), &plan.notes) }).to_string()
     }
 
-    fn write_channel(&self, w: &ChannelWrite) -> Result<()> {
+    /// Write one channel; `Some(note)` when the device kept the output in
+    /// another enable state than the file asks for.
+    fn write_channel(&self, w: &ChannelWrite) -> Result<Option<String>> {
         for (b, p) in (0u8..).zip(&w.filters) {
             self.set_filter(w.wire, b, *p)?;
         }
@@ -1901,10 +1974,16 @@ impl DspiCore {
             // Clamped to the chip's range by the setter.
             self.set_input_preamp(w.wire, db)?;
         }
-        if let Some((o, on)) = w.enable {
-            self.set_output_enable(o, on)?;
+        if let Some((o, on)) = w.enable
+            && self.set_output_enable(o, on)? != on
+        {
+            let what = if on { "enabled" } else { "disabled" };
+            return Ok(Some(format!(
+                "Output {} could not be {what}.",
+                o.saturating_add(1)
+            )));
         }
-        Ok(())
+        Ok(None)
     }
 }
 
