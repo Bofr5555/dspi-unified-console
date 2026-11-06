@@ -1,6 +1,7 @@
 package se.bofr.dspi.feature.settings
 
 import java.io.File
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -17,11 +18,15 @@ class LicensesTest {
     }
 
     @Test
-    fun rustNoticesCoverLibusbAndUniffi() {
+    fun wpAn1RustNoticesListWhatTheLibraryLinks() {
         val t = File(dir, RUST_CRATES.asset).readText()
-        assertTrue(t.contains("libusb/COPYING"))
         assertTrue(t.contains("\nuniffi "))
-        assertTrue(t.contains("\nrusb "))
+        assertTrue(t.contains("\nnusb "))
+        assertTrue(t.contains("\ntungstenite "))
+        // Gone with the old core, and what only the desktop apps link.
+        assertFalse(t.contains("libusb"))
+        assertFalse(t.contains("\nmdns-sd "))
+        assertFalse(t.contains("\nmidir "))
     }
 
     @Test

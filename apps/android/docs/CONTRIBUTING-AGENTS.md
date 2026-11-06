@@ -14,7 +14,7 @@ Read first: `PACKAGES.md` (what you own), `PORT-MAP.md` (what you port),
 3. **Only run your package's CI:** `tools/ci.sh <your-package>`. `tools/ci.sh all` is for the coordinator.
 4. **Stay inside the directories you own** (PACKAGES.md). Need a contract change, a new dependency, or a change in someone else's module? Write it up in your final report or ask the coordinator. Do not edit it yourself.
 5. **Never modify:**
-   - `third_party/DSPi-Console-Linux` (the submodule; use patches in `third_party/patches/`, which FFI owns);
+   - `crates/` at the top of the monorepo (the shared core; change it through its own work packages);
    - anything under `~/prog/DSPi*`, `~/prog/dspi_k340_amplifier`, or `../_ref/`.
 6. **No pushing, PRs, or posting anywhere.** Commit locally only.
 7. **Supply chain:**
@@ -70,7 +70,7 @@ Only `:ffi` and `:app` builds compile Rust: cargo-ndk, the NDK, and roughly 1 to
 - Small, logical commits. Subject: `<package>: <imperative summary>` (≤ 72 chars), e.g. `bridge: port status poll and clip latch from DSPiBridge.cpp`.
 - The body says *what was ported from where* (file + function), and any deviation from the reference.
 - End every commit message with the trailer the coordinator gives you (e.g. `Co-Authored-By: …`).
-- Never commit build outputs (`build/`, `rust/.staged/`, generated UniFFI Kotlin, jniLibs). `.gitignore` already covers them.
+- Never commit build outputs (`build/`, generated UniFFI Kotlin, jniLibs). `.gitignore` already covers them.
 - Generated contract files (`DspiCoreApi.kt`, `CoreTypes.kt`, `DspiConstants.kt`, `UnimplementedDspiCore.kt`, `FfiDspiCore.kt`) change only through `tools/gen_kotlin_contract.py`, and only FFI runs it.
 
 ## Porting style

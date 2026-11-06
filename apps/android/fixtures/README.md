@@ -17,8 +17,8 @@ them from a unit on 2026-10-17 (see `capture.json`).
 
 | File | Produced by | Contents |
 |---|---|---|
-| `dspstate_v32.json` | `rust/dspi-ffi/examples/dump_state.rs` | `platform.bin` + `bulk_v32.bin` decoded by the pinned core (`protocol::parse_platform` as `fetch_platform` applies it, then `protocol::decode_bulk`; `compat` = 1 OK), serialised as the dspi-ffi `DspState` record |
-| `dspstate_default.json` | same | the core's `DspState::default()` (state before any device; includes the `UPMIX/SUBHARM/TUBE_DEFAULTS` tables) |
+| `dspstate_v32.json` | `crates/dspi-core/tests/wp_an1_android_fixture.rs` | `platform.bin` + `bulk_v32.bin` decoded by the core (`state::apply_platform`, then `state::decode_bulk`; `compat` = 1 OK), serialised as the `DspState` record |
+| `dspstate_default.json` | same | the core's state before any device (`DspiCore::new().get_state()`; includes the `UPMIX/SUBHARM/TUBE_DEFAULTS` tables) |
 
 Field names are the Kotlin names of `se.bofr.dspi.core.DspState` (camelCase;
 a test checks them against the generated `CoreTypes.kt`). Values are the raw
@@ -30,10 +30,12 @@ Not in the capture, so left at their defaults in `dspstate_v32.json`: what
 `fetch_all` reads item by item after the bulk image (Core 1 mode, subharm
 solo, DAC mute, UART/I2C configs and status, preset directory and names).
 
-Regenerate after a submodule bump (the dspi-ffi tests fail while stale):
+That test fails when the core's decoder and these files part ways (they were
+written by the old core, and the new decoder matches them value for value).
+Regenerate only on purpose:
 
 ```
-tools/dev.sh bash -c 'tools/stage-core.sh && cd rust && cargo run --locked -p dspi-ffi --example dump_state'
+ci/run.sh 'DSPI_WRITE_ANDROID_FIXTURE=1 cargo test --locked -p dspi-core --test wp_an1_android_fixture'
 ```
 
 ## Firmware opcodes

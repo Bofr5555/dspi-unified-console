@@ -37,7 +37,6 @@ internal data class LicenseText(val title: String, val asset: String)
 internal data class ThirdPartyComponent(val name: String, val license: String, val url: String, val text: LicenseText?)
 
 internal val GPL3 = LicenseText("GNU General Public License v3.0", "GPL-3.0.txt")
-internal val LGPL21 = LicenseText("GNU Lesser General Public License v2.1", "LGPL-2.1.txt")
 internal val APACHE2 = LicenseText("Apache License 2.0", "Apache-2.0.txt")
 internal val MPL2 = LicenseText("Mozilla Public License 2.0", "MPL-2.0.txt")
 internal val AUTOEQ_MIT = LicenseText("AutoEq — MIT License", "AutoEq-MIT.txt")
@@ -54,10 +53,10 @@ internal val ADDITIONAL_TERMS = listOf(
 
 internal val THIRD_PARTY = listOf(
     ThirdPartyComponent(
-        "DSPi-Console-Linux core (Weeb Labs)",
-        "MIT (licence file pending upstream)",
-        "https://github.com/WeebLabs/DSPi-Console-Linux",
-        null
+        "DSPi core (Weeb Labs' DSPi-Terminal and consoles, extended by Bofr5555)",
+        "GPL-3.0-or-later",
+        "https://github.com/WeebLabs/DSPi-Terminal",
+        GPL3
     ),
     ThirdPartyComponent(
         "DSPi Console for macOS (Weeb Labs) — UI port, AutoEQ database",
@@ -78,9 +77,8 @@ internal val THIRD_PARTY = listOf(
         GPL3
     ),
     ThirdPartyComponent("AutoEq measurements (Jaakko Pasanen)", "MIT", "https://github.com/jaakkopasanen/AutoEq", AUTOEQ_MIT),
-    ThirdPartyComponent("libusb", "LGPL-2.1-or-later", "https://github.com/libusb/libusb", LGPL21),
     ThirdPartyComponent("UniFFI (Mozilla)", "MPL-2.0", "https://github.com/mozilla/uniffi-rs", MPL2),
-    ThirdPartyComponent("Rust crates (serde, rusb, tungstenite, log, …)", "MIT / Apache-2.0", "https://crates.io", RUST_CRATES),
+    ThirdPartyComponent("Rust crates (serde, nusb, tungstenite, log, …)", "MIT / Apache-2.0", "https://crates.io", RUST_CRATES),
     ThirdPartyComponent("JNA", "Apache-2.0 (or LGPL-2.1)", "https://github.com/java-native-access/jna", APACHE2),
     ThirdPartyComponent(
         "AndroidX, Jetpack Compose, Kotlin, kotlinx, Guava listenablefuture, Okio, JSpecify",
