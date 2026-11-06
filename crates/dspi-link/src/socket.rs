@@ -241,8 +241,9 @@ impl WsReceiver for TcpReceiver {
             match self.ws.read() {
                 Ok(Message::Text(t)) => return WsRecv::Message(WsMessage::Text(t.as_str().to_owned())),
                 Ok(Message::Binary(b)) => return WsRecv::Message(WsMessage::Binary(b.to_vec())),
-                // Pongs and our automatic replies to pings: nothing for the client
-                Ok(Message::Ping(_)) | Ok(Message::Pong(_)) | Ok(Message::Frame(_)) => continue,
+                // tungstenite has already queued the reply to a ping
+                Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => return WsRecv::Alive,
+                Ok(Message::Frame(_)) => continue,
                 Ok(Message::Close(frame)) => {
                     self.close_code = frame.map(|f| u16::from(f.code));
                     continue; // the next read finishes the close handshake

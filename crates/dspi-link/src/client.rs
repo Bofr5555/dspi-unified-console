@@ -38,7 +38,8 @@ pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 pub const BULK_TIMEOUT: Duration = Duration::from_secs(15);
 const BULK_OPCODES: [u8; 4] = [0xA0, 0xA1, 0xA2, 0xA3];
 const PING_INTERVAL: Duration = Duration::from_secs(15);
-/// The hub pings every 10 s (spec 4); this much silence means the link is gone.
+/// The hub pings every 10 s (spec 4), and those pings and the pongs to our own
+/// count (`WsRecv::Alive`); this much silence means the link is gone.
 const SILENCE_LIMIT: Duration = Duration::from_secs(35);
 
 /// Connect in about this much, whatever each step would allow on its own.
@@ -705,7 +706,7 @@ impl LinkClient {
                         WsMessage::Binary(b) => me.handle_binary(&b),
                     }
                 }
-                WsRecv::Alive => {}
+                WsRecv::Alive => *lock(&me.inner.last_inbound) = me.inner.clock.now(),
                 WsRecv::Idle => {
                     if me.is_closed() {
                         break;
