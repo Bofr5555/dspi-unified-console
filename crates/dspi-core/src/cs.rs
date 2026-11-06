@@ -853,12 +853,15 @@ fn write_op(inner: &mut Inner, cs: &mut CsState, kind: &str, op: &Value) -> Resu
             // the header; the first refusal is the result. Several SETs: one
             // flow under the DSPi Link device lock.
             steps.resize(max_steps, CsMacroStep::default());
-            w.conn()
-                .transport()
+            // The session first: nothing can fail between lock and unlock
+            // but the write, whose result is kept.
+            let session = w.session()?;
+            session
+                .transport_mut()
                 .lock("control-surface macro", LOCK_TIMEOUT)?;
-            let r = cs_model::apply(w.session()?, |s| s.write_macro(m_index, &header, &steps));
-            w.conn().transport().unlock();
-            with_surfaces(w.session()?, |s| {
+            let r = cs_model::apply(session, |s| s.write_macro(m_index, &header, &steps));
+            session.transport_mut().unlock();
+            with_surfaces(session, |s| {
                 if let Ok(mc) = s.read_macro(m_index)
                     && let Some(x) = d.macros.get_mut(usize::from(m_index))
                 {
@@ -885,22 +888,33 @@ fn write_op(inner: &mut Inner, cs: &mut CsState, kind: &str, op: &Value) -> Resu
         }
         "learnArm" => {
             *learn = None;
-            // The firmware answers 1 when armed and stalls without a live IR
-            // receiver (vendor_commands.c, REQ_CS_IR_LEARN).
-            return match with_surfaces(w.session()?, |s| s.arm_learn())? {
-                Ok(1) => Ok(json!({ "ok": true })),
-                Ok(_) => Err(DspiError::Refused {
-                    status: STATUS_NO_IR,
-                }),
-                Err(e) if is_stall(&e) => Err(DspiError::Refused {
-                    status: STATUS_NO_IR,
-                }),
+            let session = w.session()?;
+            // The firmware answers 1 when armed and stalls on a refusal
+            // (vendor_commands.c, REQ_CS_IR_LEARN): any reply is success.
+            // TODO(S4 bool): `arm_learn` returns the raw byte until S4 makes
+            // it a bool; do not compare it to 0 or 1.
+            return match with_surfaces(session, |s| s.arm_learn())? {
+                Ok(_) => Ok(json!({ "ok": true })),
+                // A refusal stalls and leaves the reason in the status: only
+                // the device's own NO_IR means there is no receiver.
+                Err(e) if is_stall(&e) => {
+                    let st = with_surfaces(session, |s| s.read_status())?.ok();
+                    let no_ir = st.as_ref().map(|p| p.last_status) == Some(STATUS_NO_IR);
+                    if let Some(st) = st {
+                        d.status = st;
+                    }
+                    Err(DspiError::Refused {
+                        status: if no_ir { STATUS_NO_IR } else { cs_status::BUSY },
+                    })
+                }
                 Err(e) => Err(surface_error(e)),
             };
         }
         "learnCancel" => {
             // Best effort, as the old core: a cancel the device refuses
             // leaves nothing armed to cancel.
+            // TODO(S4 bool): `cancel_learn` returns the raw byte until S4
+            // makes it a bool; it is not compared to anything here.
             let _ = with_surfaces(w.session()?, |s| s.cancel_learn())?;
             return Ok(json!({ "ok": true }));
         }
@@ -1020,8 +1034,12 @@ mod tests_wp_c14 {
         flash: CsData,
         aux: CsAuxStates,
         learn: IrLearnResult,
-        /// No live IR receiver: arming stalls.
+        /// No live IR receiver: arming stalls and reports `NO_IR`.
         no_ir: bool,
+        /// Arming stalls without touching the status (some other refusal).
+        arm_stalls: bool,
+        /// What a successful arm answers.
+        arm_reply: u8,
         /// State-changing requests the device received (OUT transfers and
         /// write-as-read opcodes).
         sets: usize,
@@ -1053,6 +1071,8 @@ mod tests_wp_c14 {
                     code: 0x20DF_10EF,
                 },
                 no_ir: false,
+                arm_stalls: false,
+                arm_reply: 1,
                 sets: 0,
                 outs: Vec::new(),
             }
@@ -1140,7 +1160,10 @@ mod tests_wp_c14 {
                             self.settle(0xFF, STATUS_NO_IR);
                             return Some(Self::stall(opcode));
                         }
-                        vec![1]
+                        if value == 1 && self.arm_stalls {
+                            return Some(Self::stall(opcode));
+                        }
+                        vec![if value == 1 { self.arm_reply } else { 1 }]
                     }
                 },
                 op::REQ_CS_MACRO_FIRE => {
@@ -1779,6 +1802,167 @@ mod tests_wp_c14 {
             json!({ "op": "binding", "index": 1, "binding": { "type": 0 } }),
         );
         assert!(!core.cs_pin_uses().iter().any(|p| p.slot == 1));
+    }
+
+    #[test]
+    fn wp_c14_an_arm_refusal_reads_the_reason_from_the_status() {
+        let (core, sim_) = cs_core();
+        // Any reply is success: the firmware's 1, or whatever another answers.
+        for reply in [1, 0, 7] {
+            sim(&sim_).arm_reply = reply;
+            assert_eq!(
+                apply(&core, json!({ "op": "learnArm" })),
+                json!({ "ok": true }),
+                "reply {reply}"
+            );
+        }
+        // A stall whose status does not say NO_IR is not "no receiver".
+        sim(&sim_).arm_stalls = true;
+        assert_eq!(
+            apply(&core, json!({ "op": "learnArm" })),
+            json!({ "ok": false, "status": cs_status::BUSY })
+        );
+        // The device's own NO_IR is, and the snapshot holds the fresh status.
+        sim(&sim_).no_ir = true;
+        assert_eq!(
+            apply(&core, json!({ "op": "learnArm" })),
+            json!({ "ok": false, "status": STATUS_NO_IR })
+        );
+        assert_eq!(snap(&core)["status"]["lastStatus"], STATUS_NO_IR);
+    }
+
+    /// A transport that counts the Link lock around a real device.
+    struct Locked {
+        dev: CsDevice,
+        locks: Arc<Mutex<Vec<&'static str>>>,
+    }
+
+    impl Transport for Locked {
+        fn control_in(
+            &mut self,
+            opcode: u8,
+            value: u16,
+            len: u16,
+        ) -> dspi_transport::Result<Vec<u8>> {
+            self.dev.control_in(opcode, value, len)
+        }
+
+        fn control_in_upto(
+            &mut self,
+            opcode: u8,
+            value: u16,
+            max_len: u16,
+        ) -> dspi_transport::Result<Vec<u8>> {
+            self.dev.control_in_upto(opcode, value, max_len)
+        }
+
+        fn control_out(
+            &mut self,
+            opcode: u8,
+            value: u16,
+            data: &[u8],
+        ) -> dspi_transport::Result<()> {
+            if opcode == op::REQ_SET_CS_MACRO {
+                self.locks.lock().unwrap().push("header");
+            }
+            self.dev.control_out(opcode, value, data)
+        }
+
+        fn descriptor(&self) -> &DeviceDescriptor {
+            self.dev.descriptor()
+        }
+
+        fn lock(&mut self, _reason: &str, _timeout: Duration) -> dspi_transport::Result<()> {
+            self.locks.lock().unwrap().push("lock");
+            Ok(())
+        }
+
+        fn unlock(&mut self) {
+            self.locks.lock().unwrap().push("unlock");
+        }
+    }
+
+    #[test]
+    fn wp_c14_a_macro_write_runs_under_the_link_lock() {
+        let locks = Arc::new(Mutex::new(Vec::new()));
+        let dev = Locked {
+            dev: CsDevice {
+                fake: FakeDevice::demo(),
+                sim: Arc::new(Mutex::new(Sim::new())),
+            },
+            locks: Arc::clone(&locks),
+        };
+        let core = DspiCore::new();
+        core.attach_probed(Box::new(dev), "DEMO".into(), 0).unwrap();
+        let r = apply(
+            &core,
+            json!({ "op": "macro", "index": 1, "macro": { "name": "x", "steps": [] } }),
+        );
+        assert_eq!(r["ok"], true);
+        assert_eq!(*locks.lock().unwrap(), ["lock", "header", "unlock"]);
+    }
+
+    #[test]
+    fn wp_c14_a_reopened_device_is_read_again() {
+        let sim_ = Arc::new(Mutex::new(Sim::new()));
+        let open = |core: &DspiCore| {
+            let dev = CsDevice {
+                fake: FakeDevice::demo(),
+                sim: Arc::clone(&sim_),
+            };
+            core.attach_probed(Box::new(dev), "DEMO".into(), 0).unwrap();
+        };
+        let core = DspiCore::new();
+        open(&core);
+        core.cs_fetch().unwrap();
+        core.lock().cs.note_learn(2, 1, 77);
+        assert!(!core.cs_pin_uses().is_empty());
+
+        // Closed: nothing is left of it.
+        core.disconnect();
+        assert_eq!(snap(&core), json!({ "supported": false }));
+        assert!(core.cs_pin_uses().is_empty());
+
+        // The device changed while we were away, and is dirty. The same serial
+        // shows nothing until it is fetched again.
+        {
+            let mut s = sim(&sim_);
+            s.live.bindings[5] = CsBinding {
+                component: ty::BUTTON,
+                gpio: [20, GPIO_UNUSED],
+                ..Default::default()
+            };
+            s.live.status.active_mask |= 1 << 5;
+            s.live.status.dirty = true;
+        }
+        open(&core);
+        assert_eq!(snap(&core), json!({ "supported": false }));
+        assert!(core.cs_pin_uses().is_empty());
+        core.cs_fetch().unwrap();
+        let s = snap(&core);
+        assert_eq!(s["bindings"][5]["gpio0"], 20);
+        assert_eq!(s["learn"], Value::Null);
+        assert!(core.cs_pin_uses().contains(&PinUse { pin: 20, slot: 5 }));
+
+        // The baseline went too: undoing the change on the device still reads
+        // as unsaved, because this connection never saw it clean.
+        let original = demo::data().bindings[5].clone();
+        {
+            let mut s = sim(&sim_);
+            s.live.bindings[5] = original;
+            s.live.status.active_mask &= !(1 << 5);
+        }
+        core.cs_fetch().unwrap();
+        assert_eq!(snap(&core)["status"]["dirty"], true);
+
+        // A connection displaced without a close forgets it as well.
+        core.install(
+            crate::Connection::new(Box::new(crate::NoTransport), "DEMO".into(), 0),
+            crate::state::default_state(),
+            "DEMO".into(),
+            0,
+        );
+        assert_eq!(snap(&core), json!({ "supported": false }));
     }
 
     #[test]
