@@ -707,6 +707,26 @@ pub struct BootloaderDrive {
 // -- WP C6 --
 // -- WP C7 --
 // -- WP C8 --
+
+/// One output-latency option (`OutputLatencyOptionWire`, config.h; 8
+/// bytes), from `fetch_output_latency_options` (WP C8).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutputLatencyOption {
+    /// `OutputLatencyId`, the value `set_output_latency` takes (never 0).
+    pub id: u8,
+    /// `OUTPUT_LATENCY_FLAG_STREAM_ONLY`: runs only with a streamed input
+    /// (S/PDIF, I2S, ADAT); USB input runs the fallback instead.
+    pub stream_only: bool,
+    /// `OUTPUT_LATENCY_WIRE_AVAILABLE`: runs as itself on the active source.
+    pub available: bool,
+    /// Nominal ring fill target, µs.
+    pub latency_us: u16,
+    /// Nominal stream-input batch, µs.
+    pub batch_us: u16,
+    /// What choosing it gives now (active source and rate applied), µs.
+    pub effective_us: u16,
+}
 // -- WP C9 --
 // -- WP C10 --
 // -- WP C11 --
