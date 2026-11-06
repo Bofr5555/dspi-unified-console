@@ -76,6 +76,25 @@ impl Default for Limits {
     }
 }
 
+/// Where a hub's PIN comes from (spec 6.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PinSource {
+    /// Shown on the hub for a pairing window; pairs one client.
+    Window,
+    /// The hub's own long-lived PIN.
+    Fixed,
+}
+
+impl PinSource {
+    /// The spec's word for it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PinSource::Window => "window",
+            PinSource::Fixed => "fixed",
+        }
+    }
+}
+
 /// The hub's `hello` (spec 7.2).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct HelloHub {
@@ -106,9 +125,14 @@ impl HelloHub {
 
     /// `window` unless the hub says `fixed` (spec 7.2).
     pub fn pin_source(&self) -> &str {
+        self.pin_source_kind().as_str()
+    }
+
+    /// [`Self::pin_source`], typed.
+    pub fn pin_source_kind(&self) -> PinSource {
         match self.pin_source.as_deref() {
-            Some("fixed") => "fixed",
-            _ => "window",
+            Some("fixed") => PinSource::Fixed,
+            _ => PinSource::Window,
         }
     }
 }
