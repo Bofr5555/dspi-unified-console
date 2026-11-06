@@ -1,14 +1,15 @@
 # dspi-unified-console
 
 One repository for the cross-platform DSPi consoles: the Qt desktop app
-(Linux, Windows, later macOS), the `dspi` terminal client, and the Rust
+(Linux, Windows, macOS), the `dspi` terminal client, and the Rust
 crates under both. [DSPi](https://github.com/WeebLabs/DSPi) is Weeb Labs'
 open-source DSP firmware for the Raspberry Pi Pico.
 
 **Status (2026-11-06).** Built from Weeb Labs' DSPi-Console-Linux and
-DSPi-Terminal, with their histories. Builds and passes its tests on Linux.
-Windows builds are cross-compiled on Linux and smoke-tested under Wine. No
-hardware has been tested on Windows yet. macOS is next.
+DSPi-Terminal, with their histories. Builds and passes its tests on Linux
+and macOS (universal app bundle). Windows builds are cross-compiled on
+Linux and smoke-tested under Wine; no hardware has been tested on Windows
+yet.
 [`docs/PORTABILITY.md`](docs/PORTABILITY.md) has the details.
 
 This is not an official Weeb Labs repository. The macOS Console
@@ -101,10 +102,22 @@ cargo build --release -p dspi-term --target x86_64-pc-windows-gnu           # Mi
 cargo xwin build --release -p dspi-term --target x86_64-pc-windows-msvc     # MSVC
 ```
 
-### macOS
+### macOS (universal: Apple silicon and Intel)
 
-Not built yet in this repository. Phase 2: an app bundle, the menu bar and
-Cmd shortcuts.
+```
+QTDIR=~/Qt/6.11.2/macos apps/desktop/packaging/macos/build-macos.sh    # dist/DSPi Console.app, dist/DSPi-Console-…-macos.dmg
+cargo build --release -p dspi-term                                      # the terminal client
+```
+
+- Needs Xcode, rustup with the `x86_64-apple-darwin` and
+  `aarch64-apple-darwin` targets, CMake and Ninja, and Qt 6 for macOS
+  from qt.io (the online installer, or `aqt install-qt mac desktop 6.11.2
+  clang_64`). Qt's macOS build is universal. Homebrew is not needed.
+- The script makes a self-contained, ad-hoc signed bundle and a .dmg.
+  Set `SIGN_ID` to a Developer ID identity to sign for distribution;
+  notarisation is a separate step.
+- No driver and no permission step: macOS lets the app open the vendor
+  interface.
 
 ## Credits
 

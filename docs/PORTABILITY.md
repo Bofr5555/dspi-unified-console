@@ -1,14 +1,16 @@
-# Making the DSPi consoles portable: Linux, Windows, then macOS
+# Making the DSPi consoles portable: Linux, Windows and macOS
 
 *2026-11-06.* This covers Weeb Labs' Linux DSPi Console (Qt) and
-DSPi-Terminal, ported so that one code base builds natively on Linux and
-Windows, with macOS as the next phase. It also covers how the two came
+DSPi-Terminal, ported so that one code base builds natively on Linux,
+Windows and macOS. It also covers how the two came
 together in this repository.
 
 Ground rules for the work:
-- every build and test ran in podman containers;
-- nothing was pushed;
-- no USB device, phone or macOS VM was touched.
+- the Linux and Windows builds and tests ran in podman containers;
+- the macOS ones ran in the macOS VM (section 9);
+- nothing was pushed by me;
+- the only device touched was the DSPi passed through to the macOS VM,
+  and that was read-only (section 9).
 
 All Windows checks ran under Wine, so the USB path on real Windows (WinUSB)
 is **not verified on hardware**.
@@ -40,6 +42,14 @@ is **not verified on hardware**.
   - It gained `dspi ext list | xfeed-map | vreg`.
 - **One repository.** Everything now lives in this monorepo, with history,
   in one Cargo workspace. On Linux, 1378 tests pass.
+- **macOS (phase 2, section 9).**
+  - A universal (x86_64 + arm64) `DSPi Console.app` and `.dmg`, built
+    with Qt 6.11.2.
+  - A full native menu bar and ⌘ shortcut labels.
+  - All 1378 tests pass on macOS.
+  - In the Intel VM the app connected to the DSPi and read its state.
+    `dspi` read the extension channel there (K340 pair map, core
+    voltage). No writes were made.
 
 ## 1. What the desktop app is built with
 
@@ -144,14 +154,16 @@ Monorepo commits on top:
 - **The menu shows "Ctrl+…" labels.** That is right on Windows; macOS
   needs "⌘".
 
-### For macOS (phase 2)
+### Applied for macOS (phase 2, see section 9)
 
-- Global menu bar (`Platform.MenuBar`, or a native `QMenuBar` with the app
-  menu's items).
-- ⌘ labels in `AppMenu` and `ActionMenu`. Qt already maps `Ctrl+` to Cmd.
-- An app bundle (`MACOSX_BUNDLE`, `Info.plist`, `.icns`), `macdeployqt`,
-  codesign and notarisation.
-- Settings stay in the standard plist.
+| Convention | How |
+|---|---|
+| Native menu bar | Built from the titlebar menu's groups (`AppMenu.groups`): Device, File, AutoEQ, Effects, Tools, Window, Help. Same enabled rules and actions; Commit and Factory Reset ask first (the old macOS menu did not). Settings (⌘,) moves to the application menu through its role; Qt adds Hide and Quit (⌘Q). Duplicate QML Shortcuts are off on macOS. |
+| ⌘ shortcut labels | `MenuStyle.shortcutLabel()`: "⇧⌘M" in the app's own menus and tooltips; the graph help says Command and Option. Qt maps `Ctrl+` to ⌘ for the keys themselves. |
+| App bundle | "DSPi Console.app": Info.plist (name, identifier `io.github.weeblabs.DSPiConsole`, versions, `NSHighResolutionCapable`, music category, minimum macOS 13) and an `.icns` made from the SVG |
+| Packaging | `macdeployqt`, ad-hoc codesign (Developer ID and the hardened runtime with `SIGN_ID`), `.dmg` |
+| Window chrome, colours, text | already upstream: native titlebar with vibrancy, AppKit colours, CoreText text |
+| Settings | the standard plist (`~/Library/Preferences`) |
 
 ## 4. Build results (2026-11-06)
 
@@ -351,7 +363,7 @@ none has run against a K340 yet.
 7. Windows: shadow, Snap Layouts, signing (see 3).
 8. `Qt.labs.settings` deprecation on Qt 6.11 (runtime note only).
 
-## 8. macOS effort (phase 2, in the macOS VM)
+## 8. macOS effort (estimate made before phase 2)
 
 **Already present upstream.**
 - Full macOS code paths: native titlebar and vibrancy, CoreText text,
@@ -377,3 +389,64 @@ none has run against a K340 yet.
   to the VM.
 - Signing and notarisation need an Apple developer ID; that is the owner's
   call.
+
+## 9. macOS phase 2 (done, 2026-11-06)
+
+The work ran in the Intel macOS 26.7.2 VM (`ssh macvm`), one heavy job at a
+time. The code moved between the host and the VM as git bundles.
+
+**What I installed in the VM** (all in the user's home, nothing system-wide):
+- rustup from rustup.rs in `~/.cargo`, `~/.rustup`: stable 1.99.1, plus
+  the `aarch64-apple-darwin` target.
+- A Python venv `~/qtport/venv` (the system Python 3.9) with `aqtinstall`
+  3.3.0, `cmake` 4.4.4 and `ninja` 1.13, all from PyPI.
+- Qt 6.11.2 `clang_64` (universal) in `~/qtport/Qt` (1.4 GB), installed
+  with aqtinstall from download.qt.io.
+- Xcode 26.6 was already there. Homebrew is not used.
+
+**Results.**
+
+| What | Result |
+|---|---|
+| `cargo test --workspace --all-features` on macOS (x86_64) | 1378 passed, 0 failed |
+| Desktop app, Qt 6.11.2 | Builds with no errors and no QML warnings except the `Qt.labs.settings` deprecation |
+| Universal app | `DSPi Console.app` is x86_64 + arm64 (`lipo`). The .dmg is 71 MB; the bundle 161 MB unpacked. The arm64 half has not been run: the VM is Intel. |
+| Run in the GUI session, DSPi attached | It connected to the DSPi (2AC1E7B6) over the VM's USB pass-through and read the platform, status and the full parameter set (chunked 2048-byte reads, which the pass-through allows). It showed preset 1, user volume −23 dB, the K340 crossovers and CPU 8 %, plus the "newer firmware" banner (the app targets 1.1.6 beta 4, the device runs 1.1.6 final). |
+| Menu bar | Opened by QMP clicks: the application menu (Preferences… ⌘, / Hide / Quit ⌘Q) and Tools (⇧⌘M, ⇧⌘A, …) |
+| Terminal client | `dspi list`, `dspi doctor` ("interface claimed, RP2350 firmware 1.1.6, wire V32, 17 channels"), `dspi ext list` (0x0001 crossfeed pair map, 0x0002 core voltage), `dspi ext vreg` (live 1.20 V, hang_count 0), `dspi ext xfeed-map` (`02 13 00 00`: pairs 2:0, 3:1, the K340 map) |
+| TUI | `--fixture` in a pty: draws and quits on `q` |
+| Universal terminal binary | `lipo` of the aarch64 and x86_64 builds |
+
+**No writes to the device.** The desktop app's connect path only reads.
+I checked the core: its fetches are GETs, and the analyser's one write
+happens only when the analyser window is open, which it wasn't. The
+terminal ran read commands only.
+
+**Screenshots** are in the host scratch directory under
+`qtport/mac/`:
+- `bundle-final.png` (the main window, connected);
+- `menu-tools.png` and `menu-app.png` (the menus);
+- `shot1.png` (the first, unbundled run).
+
+**Artifacts** are in `qtport/mac/` on the host and `~/qtport/dist/` in
+the VM: `DSPi-Console-1.1.6-beta4-macos.dmg` and the universal `dspi`.
+
+**Fixed on the way.**
+- **The Qt 5 build had been broken since the Qt 6 commit.** Qt 5.15
+  rejects `import … auto` in `qml/style/qmldir`, so there was no ToolTip
+  type and no main window. The unversioned import fixes it on both Qt
+  versions; Linux was rechecked on 5.15 and 6.11.
+- **`macdeployqt` errors.** It copies SQL drivers that link client
+  libraries a Mac doesn't have; the build script deletes those three. Its
+  "ERROR: no file at …" lines for them are expected.
+
+**Left for macOS.**
+- Signing with a Developer ID and notarisation: needs the owner's Apple
+  account.
+- A run on Apple silicon.
+- Qt names the settings item "Preferences…"; macOS 13 and later call it
+  "Settings…".
+- No Mac-specific USB permission step is needed (no driver, no
+  entitlement for a non-sandboxed app). A sandboxed or App Store build
+  would need the USB entitlement.
+

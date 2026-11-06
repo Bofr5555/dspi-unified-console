@@ -4,8 +4,8 @@
 #
 # The matrix: Rust tests on Linux, Windows and macOS; the desktop app on
 # Linux (Qt 6), on Windows as a MinGW cross build from Linux (the same
-# container as a local release) and natively with MSVC on windows-latest;
-# macOS once phase 2 lands.
+# container as a local release) and natively with MSVC on windows-2022,
+# and on macOS as a universal app bundle.
 name: build
 
 on:
@@ -101,6 +101,23 @@ jobs:
           name: dspi-console-windows-msvc
           path: dist/DSPiConsole
 
-  # desktop-macos:   phase 2: Qt 6 from install-qt-action (clang_64), cargo build for
-  #                  aarch64-apple-darwin and x86_64-apple-darwin (lipo), macdeployqt,
-  #                  codesign and notarisation.
+  desktop-macos:
+    name: Desktop app, macOS (universal)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin, aarch64-apple-darwin
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.2'
+          arch: clang_64
+      - run: brew install ninja || true
+      # Ad hoc signed; set SIGN_ID (and import a Developer ID certificate)
+      # for a distributable build, then notarise with notarytool
+      - run: QTDIR="$QT_ROOT_DIR" apps/desktop/packaging/macos/build-macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dspi-console-macos
+          path: dist/*.dmg
