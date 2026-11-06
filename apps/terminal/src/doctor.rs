@@ -6,6 +6,7 @@
 //! on Windows. A generic "permission denied" helps nobody, so every check knows
 //! what to suggest where.
 
+use dspi_link::LinkError;
 use dspi_proto::{USB_PID, USB_VID};
 use dspi_transport::{TransportError, UsbTransport, list_devices};
 use dspi_tui::shell::connect::{self, LinkTarget, OpenError, Target};
@@ -206,6 +207,14 @@ fn open_fix(e: &OpenError) -> &'static str {
         OpenError::PinRefused { .. } => {
             "Check the PIN. A hub that shows one only accepts it while pairing is open."
         }
+        OpenError::Link {
+            source: LinkError::RateLimited { .. } | LinkError::HubBusy,
+            ..
+        } => "This clears by itself: wait, then try again.",
+        OpenError::Link {
+            source: LinkError::HandshakeRefused { .. },
+            ..
+        } => "The hub is there but will not take this client. Check its settings and version.",
         OpenError::Link { .. } => {
             "Check the address, and that the hub is running and on this network."
         }

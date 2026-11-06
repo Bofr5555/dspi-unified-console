@@ -26,26 +26,23 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use dspi_link::socket::TcpConnector;
-use dspi_link::{AuthState, ConnectOptions, LinkClient, LinkError};
+use dspi_link::{AuthState, ConnectOptions, LinkClient, LinkError, RetryAdvice, SessionConfig};
 use dspi_proto::generated::ext as ext_ids;
 use dspi_session::ext_state::ExtState;
 use dspi_session::{DeviceState, Session, Source, probe};
 use dspi_transport::{
-    DeviceDescriptor, FakeDevice, LinkTransport, NotificationSource, Transport, TransportCaps,
-    TransportError, TransportKind, UsbTransport,
+    DeviceDescriptor, FakeDevice, LinkTransport, Transport, TransportError, TransportKind,
+    UsbTransport,
 };
 use serde::{Deserialize, Serialize};
 
 /// The role a terminal asks a hub for: it edits, it does not administer.
 const LINK_ROLE: &str = "control";
 
-/// How long the first reconnect attempt is put off after a failed one.
-const RETRY_FIRST: Duration = Duration::from_secs(1);
-
-/// The longest wait between attempts on a hub. A local bus or MIDI port is
-/// cheap to look at (and never faster than once a second, as midir asks), so
-/// those stay at [`RETRY_FIRST`].
-const RETRY_LINK_MAX: Duration = Duration::from_secs(30);
+/// The wait between reconnect attempts on a local bus or MIDI port, which are
+/// cheap to look at (and never faster than once a second, as midir asks). A hub
+/// follows [`LinkError::retry_advice`] instead.
+const RETRY_LOCAL: Duration = Duration::from_secs(1);
 
 /// Where the terminal should find its device.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,7 +112,7 @@ pub enum OpenError {
     #[error("{hub} needs pairing: {}", pin_hint(.pin_source))]
     NeedsPin { hub: String, pin_source: String },
     /// A PIN was tried and refused.
-    #[error("{hub} refused the PIN ({reason}); check it and that pairing is open on the hub")]
+    #[error("{hub}: {reason}")]
     PinRefused { hub: String, reason: String },
     /// More than one candidate, and nothing to tell them apart.
     #[error("{} {what} found ({}); select one with {flag}", .names.len(), .names.join(", "))]
@@ -134,12 +131,21 @@ pub enum OpenError {
 }
 
 impl OpenError {
+    /// Whether, and how soon, to try again. A hub's own errors say for
+    /// themselves; a PIN is never retried, because a hub counts the failures.
+    pub fn retry_advice(&self) -> RetryAdvice {
+        match self {
+            Self::NeedsPin { .. } | Self::PinRefused { .. } | Self::NoMidi => RetryAdvice::Stop,
+            Self::Link { source, .. } => source.retry_advice(),
+            _ => RetryAdvice::Retry {
+                min_delay: Duration::ZERO,
+            },
+        }
+    }
+
     /// Retrying cannot help: a person has to do something first.
     pub fn is_final(&self) -> bool {
-        matches!(
-            self,
-            Self::NeedsPin { .. } | Self::PinRefused { .. } | Self::NoMidi
-        )
+        self.retry_advice() == RetryAdvice::Stop
     }
 
     /// There is simply no such device (exit code 2), not a device in trouble.
@@ -421,34 +427,39 @@ fn link_error(l: &LinkTarget, source: LinkError) -> OpenError {
 }
 
 /// A session with the hub, authenticated as far as a stored token, `--pin` or
-/// the prompt takes it.
-///
-/// The token is stored against the hub's id, which only the hello says (the
-/// address can change; the id does not), so a hub in PIN mode is met twice:
-/// once to learn its id, and again with the token, if there is one.
+/// the prompt takes it. The token is stored against the hub's id and looked up
+/// after the hello, so a hub never sees another hub's token. Only a refusal of
+/// the token itself forgets it: any other failure is an error, and it stays.
 pub fn link_client(l: &LinkTarget, pin: PinPrompt<'_>) -> Result<LinkClient, OpenError> {
-    let connector = TcpConnector::default();
-    let url = l.ws_url();
     let store = l.token_store();
-    let mut opts = ConnectOptions {
+    let lookup = store.clone();
+    let cfg = SessionConfig {
+        token_for: Some(Arc::new(move |hub_id: &str| lookup.get(hub_id))),
+        ..SessionConfig::default()
+    };
+    let opts = ConnectOptions {
         client_name: "DSPi Terminal".into(),
         app: "dspi".into(),
         app_version: env!("CARGO_PKG_VERSION").into(),
         token: None,
     };
-    let (mut client, mut auth) =
-        LinkClient::connect(&connector, &url, &opts, None).map_err(|e| link_error(l, e))?;
-    if matches!(auth, AuthState::NeedsPairing { .. })
-        && let Some(token) = store.get(&client.hello().hub.id)
-    {
-        client.close();
-        opts.token = Some(token);
-        (client, auth) =
-            LinkClient::connect(&connector, &url, &opts, None).map_err(|e| link_error(l, e))?;
-    }
-    if let AuthState::NeedsPairing { pin_source } = auth
-        && let Err(e) = pair(l, &client, &store, &pin_source, pin)
-    {
+    let (client, auth) =
+        LinkClient::connect_with(&TcpConnector::default(), &l.ws_url(), &opts, None, &cfg)
+            .map_err(|e| link_error(l, e))?;
+    let pin_source = match auth {
+        AuthState::Ready => return Ok(client),
+        AuthState::NeedsPairing { pin_source } => pin_source,
+        AuthState::TokenRefused { pin_source } => {
+            if let Err(e) = store.forget(&client.hello().hub.id) {
+                pin.warn(&format!(
+                    "could not forget the refused pairing token for {} ({e}); it will be tried again next time",
+                    hub_name(&client, l)
+                ));
+            }
+            pin_source
+        }
+    };
+    if let Err(e) = pair(l, &client, &store, &pin_source, pin) {
         client.close();
         return Err(e);
     }
@@ -481,9 +492,9 @@ fn pair(
             }
             Ok(())
         }
-        Err(LinkError::Rejected { code, msg }) => Err(OpenError::PinRefused {
+        Err(e @ LinkError::WrongPin { .. }) => Err(OpenError::PinRefused {
             hub,
-            reason: if msg.is_empty() { code } else { msg },
+            reason: e.to_string(),
         }),
         Err(e) => Err(link_error(l, e)),
     }
@@ -532,11 +543,13 @@ fn bind_link_device(l: &LinkTarget, client: &LinkClient) -> Result<Box<dyn Trans
             LinkError::Protocol(format!("device handle {} is out of range", chosen.handle)),
         )
     })?;
-    let t = LinkTransport::new(client.clone(), handle, &chosen.serial);
-    Ok(Box::new(HubSession {
-        inner: t,
-        client: client.clone(),
-    }))
+    // Its clone of the client is the last one once `open_link` returns, so the
+    // hub session ends with the transport.
+    Ok(Box::new(LinkTransport::new(
+        client.clone(),
+        handle,
+        &chosen.serial,
+    )))
 }
 
 /// Pairing tokens, by hub id, in `~/.config/dspi/link-tokens.toml`. It is kept
@@ -582,7 +595,23 @@ impl TokenStore {
         };
         let mut file = Self::load(path);
         file.tokens.insert(hub_id.to_owned(), token.to_owned());
-        let text = toml::to_string(&file).map_err(std::io::Error::other)?;
+        Self::store(path, &file)
+    }
+
+    /// Drop a token the hub refused. Having none to drop is fine.
+    fn forget(&self, hub_id: &str) -> std::io::Result<()> {
+        let Some(path) = self.path.as_deref() else {
+            return Ok(());
+        };
+        let mut file = Self::load(path);
+        if file.tokens.remove(hub_id).is_none() {
+            return Ok(());
+        }
+        Self::store(path, &file)
+    }
+
+    fn store(path: &Path, file: &TokenFile) -> std::io::Result<()> {
+        let text = toml::to_string(file).map_err(std::io::Error::other)?;
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
@@ -609,68 +638,6 @@ fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 #[cfg(not(unix))]
 fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     std::fs::write(path, bytes)
-}
-
-/// A hub device whose hub session closes with it. Dropping a `LinkTransport`
-/// leaves the session open, so a device switch or a reconnect would leak one
-/// each time.
-struct HubSession {
-    inner: LinkTransport,
-    client: LinkClient,
-}
-
-impl Transport for HubSession {
-    fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
-        self.inner.control_in(opcode, value, len)
-    }
-
-    fn control_in_upto(
-        &mut self,
-        opcode: u8,
-        value: u16,
-        max_len: u16,
-    ) -> dspi_transport::Result<Vec<u8>> {
-        self.inner.control_in_upto(opcode, value, max_len)
-    }
-
-    fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> dspi_transport::Result<()> {
-        self.inner.control_out(opcode, value, data)
-    }
-
-    fn descriptor(&self) -> &DeviceDescriptor {
-        self.inner.descriptor()
-    }
-
-    fn max_transfer(&self) -> usize {
-        self.inner.max_transfer()
-    }
-
-    fn notifications(&self) -> Option<Box<dyn NotificationSource>> {
-        self.inner.notifications()
-    }
-
-    fn caps(&self) -> TransportCaps {
-        self.inner.caps()
-    }
-
-    fn session_id(&self) -> Option<u16> {
-        self.inner.session_id()
-    }
-
-    fn lock(&mut self, reason: &str, timeout: Duration) -> dspi_transport::Result<()> {
-        self.inner.lock(reason, timeout)
-    }
-
-    fn unlock(&mut self) {
-        self.inner.unlock();
-    }
-}
-
-impl Drop for HubSession {
-    fn drop(&mut self) {
-        self.inner.unlock();
-        self.client.close();
-    }
 }
 
 /// What stands in for a device that has gone: every request fails at once with
@@ -806,8 +773,10 @@ impl Prompt for Collect {
 /// Tries to get a lost device back, on a thread of its own, at a sensible pace.
 pub struct Reconnector {
     open: Arc<Opener>,
-    wait: Duration,
-    max_wait: Duration,
+    /// Failures in a row, for the back-off.
+    attempt: u32,
+    /// A hub's errors set the pace; a local look stays at [`RETRY_LOCAL`].
+    follows_advice: bool,
     next_try: Option<Instant>,
     running: Option<Receiver<Result<Connected, OpenError>>>,
     warnings: Arc<Mutex<Vec<String>>>,
@@ -816,17 +785,13 @@ pub struct Reconnector {
 impl Reconnector {
     /// For `target`: nobody is asked for a PIN, since nobody may be looking.
     pub fn new(target: Target) -> Self {
-        let max_wait = if matches!(target, Target::Link(_)) {
-            RETRY_LINK_MAX
-        } else {
-            RETRY_FIRST
-        };
+        let follows_advice = matches!(target, Target::Link(_));
         let warnings = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&warnings);
         let open = move || target.connect(&Collect(Arc::clone(&sink)));
         Self {
             warnings,
-            ..Self::with_opener(Arc::new(open), max_wait)
+            ..Self::with_opener(Arc::new(open), follows_advice)
         }
     }
 
@@ -835,11 +800,11 @@ impl Reconnector {
         std::mem::take(&mut *self.warnings.lock().unwrap_or_else(PoisonError::into_inner))
     }
 
-    fn with_opener(open: Arc<Opener>, max_wait: Duration) -> Self {
+    fn with_opener(open: Arc<Opener>, follows_advice: bool) -> Self {
         Self {
             open,
-            wait: RETRY_FIRST,
-            max_wait,
+            attempt: 0,
+            follows_advice,
             next_try: None,
             running: None,
             warnings: Arc::default(),
@@ -854,19 +819,22 @@ impl Reconnector {
                 Err(TryRecvError::Empty) => return Reconnect::Waiting,
                 Ok(Ok(c)) => {
                     self.running = None;
-                    self.wait = RETRY_FIRST;
+                    self.attempt = 0;
                     self.next_try = None;
                     return Reconnect::Connected(Box::new(c));
                 }
-                Ok(Err(e)) if e.is_final() => {
+                Ok(Err(e)) => {
                     self.running = None;
-                    return Reconnect::GaveUp(e);
+                    let Some(delay) = e.retry_advice().delay(self.attempt) else {
+                        return Reconnect::GaveUp(e);
+                    };
+                    self.back_off(now, delay);
+                    return Reconnect::Waiting;
                 }
-                // A failed attempt, or a thread that died: try again later.
-                Ok(Err(_)) | Err(TryRecvError::Disconnected) => {
+                // The thread died: try again later.
+                Err(TryRecvError::Disconnected) => {
                     self.running = None;
-                    self.next_try = now.checked_add(self.wait);
-                    self.wait = self.wait.saturating_mul(2).min(self.max_wait);
+                    self.back_off(now, RETRY_LOCAL);
                     return Reconnect::Waiting;
                 }
             }
@@ -884,9 +852,19 @@ impl Reconnector {
             });
         match started {
             Ok(_) => self.running = Some(rx),
-            Err(_) => self.next_try = now.checked_add(self.wait),
+            Err(_) => self.back_off(now, RETRY_LOCAL),
         }
         Reconnect::Waiting
+    }
+
+    fn back_off(&mut self, now: Instant, delay: Duration) {
+        let delay = if self.follows_advice {
+            delay
+        } else {
+            RETRY_LOCAL
+        };
+        self.next_try = now.checked_add(delay);
+        self.attempt = self.attempt.saturating_add(1);
     }
 }
 
@@ -1182,7 +1160,7 @@ mod tests_wp_r1 {
                 Target::Demo.connect(&no_prompt)
             }
         });
-        let mut r = Reconnector::with_opener(opener, RETRY_FIRST);
+        let mut r = Reconnector::with_opener(opener, false);
         let t0 = Instant::now();
         // The first attempt goes out at once and fails.
         assert!(matches!(r.poll(t0), Reconnect::Waiting));
@@ -1198,7 +1176,7 @@ mod tests_wp_r1 {
         sleep(Duration::from_millis(30));
         assert_eq!(tries.load(Ordering::SeqCst), 1);
         // Then it comes back.
-        let later = t0 + RETRY_FIRST;
+        let later = t0 + RETRY_LOCAL;
         assert!(matches!(r.poll(later), Reconnect::Waiting));
         for _ in 0..500 {
             if let Reconnect::Connected(_) = r.poll(later) {
@@ -1218,7 +1196,7 @@ mod tests_wp_r1 {
                 pin_source: "window".into(),
             })
         });
-        let mut r = Reconnector::with_opener(opener, RETRY_FIRST);
+        let mut r = Reconnector::with_opener(opener, false);
         for _ in 0..500 {
             match r.poll(Instant::now()) {
                 Reconnect::GaveUp(e) => {
@@ -1328,6 +1306,144 @@ mod tests_wp_r1 {
         assert!(r.take_warnings().is_empty(), "each once");
     }
 
+    fn hub_id() -> String {
+        HubConfig::default().hub_id
+    }
+
+    /// `AuthState::TokenRefused`: the stored token is forgotten, and the PIN
+    /// gets a new one.
+    #[test]
+    fn wp_r1_a_stale_token_is_forgotten_and_paired_over() {
+        let hub = pin_hub();
+        let tokens = scratch("stale");
+        let store = TokenStore::at(tokens.clone());
+        store.put(&hub_id(), "stale").unwrap();
+        let asked = AtomicUsize::new(0);
+        let prompt = |_: &str, _: &str| {
+            asked.fetch_add(1, Ordering::SeqCst);
+            Some("1234".to_string())
+        };
+        let target = Target::Link(link(&hub, tokens));
+        let t = target.open(&prompt).unwrap();
+        assert!(t.session_id().is_some(), "the client is really paired");
+        drop(t);
+        assert_eq!(asked.load(Ordering::SeqCst), 1);
+        assert_eq!(hub.tokens_seen(), vec!["stale".to_string()]);
+        let fresh = store.get(&hub_id()).unwrap();
+        assert_ne!(fresh, "stale");
+        // And the new token works, with no PIN.
+        drop(target.open(&no_prompt).unwrap());
+    }
+
+    /// With nobody to ask, a refused token must not leave an unpaired client
+    /// behind; it is an error, and the token is gone all the same.
+    #[test]
+    fn wp_r1_a_stale_token_with_nobody_to_ask_needs_a_pin() {
+        let hub = pin_hub();
+        let tokens = scratch("stale-nopin");
+        let store = TokenStore::at(tokens.clone());
+        store.put(&hub_id(), "stale").unwrap();
+        let Err(e) = Target::Link(link(&hub, tokens)).open(&no_prompt) else {
+            panic!("opened with a refused token and no PIN");
+        };
+        assert!(matches!(e, OpenError::NeedsPin { .. }), "{e}");
+        assert_eq!(store.get(&hub_id()), None);
+    }
+
+    /// A hub saying "not now" says nothing about the token.
+    #[test]
+    fn wp_r1_a_rate_limited_token_is_kept_and_the_wait_is_respected() {
+        let hub = pin_hub();
+        let tokens = scratch("limited");
+        let store = TokenStore::at(tokens.clone());
+        store.put(&hub_id(), "good").unwrap();
+        hub.fail_tokens_with(Some("rate_limited"));
+        let Err(e) = Target::Link(link(&hub, tokens)).open(&no_prompt) else {
+            panic!("opened while rate limited");
+        };
+        assert!(
+            matches!(
+                e,
+                OpenError::Link {
+                    source: LinkError::RateLimited { .. },
+                    ..
+                }
+            ),
+            "{e}"
+        );
+        assert!(!e.is_final());
+        assert_eq!(store.get(&hub_id()).as_deref(), Some("good"));
+        let wait = e.retry_advice().delay(0).unwrap();
+        assert!(wait >= dspi_link::RATE_LIMIT_BACKOFF, "{wait:?}");
+    }
+
+    /// One attempt, and none again until the hub's wait has passed, however
+    /// early in the back-off this is.
+    #[test]
+    fn wp_r1_reconnect_waits_as_long_as_the_hub_asks() {
+        let tries = Arc::new(AtomicUsize::new(0));
+        let seen = Arc::clone(&tries);
+        let opener: Arc<Opener> = Arc::new(move || {
+            seen.fetch_add(1, Ordering::SeqCst);
+            Err(OpenError::Link {
+                address: "hub".into(),
+                source: LinkError::RateLimited { msg: String::new() },
+            })
+        });
+        let mut r = Reconnector::with_opener(opener, true);
+        let t0 = Instant::now();
+        assert!(matches!(r.poll(t0), Reconnect::Waiting));
+        while r.next_try.is_none() {
+            sleep(Duration::from_millis(5));
+            assert!(matches!(r.poll(t0), Reconnect::Waiting));
+        }
+        let early = t0 + dspi_link::RATE_LIMIT_BACKOFF - Duration::from_secs(1);
+        assert!(matches!(r.poll(early), Reconnect::Waiting));
+        assert!(r.running.is_none(), "too early for another attempt");
+        assert_eq!(tries.load(Ordering::SeqCst), 1);
+        let after = t0 + dspi_link::RATE_LIMIT_BACKOFF;
+        assert!(matches!(r.poll(after), Reconnect::Waiting));
+        assert!(r.running.is_some(), "and then it tries");
+    }
+
+    #[test]
+    fn wp_r1_a_refused_handshake_stops_and_a_busy_hub_does_not() {
+        let hub = FakeHub::start(HubConfig::default()).unwrap();
+        let target = Target::Link(link(&hub, scratch("handshake")));
+        hub.refuse_handshake(Some(403));
+        let Err(e) = target.open(&no_prompt) else {
+            panic!("opened through a 403");
+        };
+        assert!(e.is_final(), "{e}");
+
+        hub.refuse_handshake(Some(503));
+        let Err(e) = target.open(&no_prompt) else {
+            panic!("opened through a 503");
+        };
+        assert!(!e.is_final(), "{e}");
+        let wait = e.retry_advice().delay(0).unwrap();
+        assert!(wait >= dspi_link::HUB_BUSY_BACKOFF, "{wait:?}");
+    }
+
+    /// A window PIN pairs one client: a second one needs a new window, and is
+    /// told so rather than retried.
+    #[test]
+    fn wp_r1_a_used_window_pin_is_refused_until_the_window_reopens() {
+        let hub = pin_hub();
+        let prompt = |_: &str, _: &str| Some("1234".to_string());
+        let first = Target::Link(link(&hub, scratch("window-a")));
+        drop(first.open(&prompt).unwrap());
+        let second = Target::Link(link(&hub, scratch("window-b")));
+        let Err(e) = second.open(&prompt) else {
+            panic!("the window paired twice");
+        };
+        assert!(matches!(e, OpenError::PinRefused { .. }), "{e}");
+        assert!(e.to_string().contains("new pairing window"), "{e}");
+        assert!(e.is_final());
+        hub.reopen_window();
+        drop(second.open(&prompt).unwrap());
+    }
+
     #[test]
     fn wp_r1_tokens_survive_a_second_hub_and_a_bad_file() {
         let path = scratch("store");
@@ -1336,6 +1452,10 @@ mod tests_wp_r1 {
         s.put("a", "one").unwrap();
         s.put("b", "two").unwrap();
         assert_eq!(s.get("a").as_deref(), Some("one"));
+        assert_eq!(s.get("b").as_deref(), Some("two"));
+        s.forget("a").unwrap();
+        s.forget("never there").unwrap();
+        assert_eq!(s.get("a"), None);
         assert_eq!(s.get("b").as_deref(), Some("two"));
         std::fs::write(&path, "not [ toml").unwrap();
         assert_eq!(s.get("a"), None, "a bad file reads as no tokens");
