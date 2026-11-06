@@ -169,6 +169,34 @@ pub(crate) fn unmappable_mirror(
     Some(mirror)
 }
 
+/// Read `GET_PLATFORM` into `mirror` (platform, output count, firmware
+/// version): `Ok(true)` when applied. A lost device is
+/// [`DspiError::Disconnected`]; any other failure (the probe has just read
+/// the same request, so it is unlikely) is logged and gives `Ok(false)`, the
+/// mirror untouched.
+pub(crate) fn read_platform_into(t: &mut dyn Transport, mirror: &mut DspState) -> Result<bool> {
+    let kind = t.caps().kind;
+    let reply = dspi_transport::with_busy_retry(
+        kind,
+        || t.control_in_upto(op::REQ_GET_PLATFORM, 0, PLATFORM_REQUEST_LEN),
+        op::REQ_GET_PLATFORM,
+    );
+    match reply {
+        Ok(reply) => match state::apply_platform(&reply, mirror) {
+            Ok(()) => Ok(true),
+            Err(e) => {
+                log::warn!("GET_PLATFORM reply not applied: {e}");
+                Ok(false)
+            }
+        },
+        Err(TransportError::Disconnected) => Err(DspiError::Disconnected),
+        Err(e) => {
+            log::warn!("GET_PLATFORM failed after the probe: {e}");
+            Ok(false)
+        }
+    }
+}
+
 /// `wLength` of the `GET_PLATFORM` read: 7 bytes, the longest reply.
 const PLATFORM_REQUEST_LEN: u16 = {
     assert!(PlatformInfo::REQUEST_LEN <= u16::MAX as usize);
@@ -1107,5 +1135,25 @@ mod tests_wp_c1 {
     #[test]
     fn wp_c1_scan_quiet_finds_nothing_without_usb() {
         assert!(DspiCore::new().scan_quiet().is_empty());
+    }
+
+    #[test]
+    fn wp_c1_attach_probed_fills_the_firmware_identity() {
+        let core = DspiCore::new();
+        core.open_demo().unwrap();
+        let mut want = state::default_state();
+        state::apply_platform(&dspi_transport::Capture::demo().platform, &mut want).unwrap();
+        let inner = core.lock();
+        let s = &inner.state;
+        assert_eq!(
+            (s.fw_major, s.fw_minor, s.fw_patch, s.fw_beta),
+            (want.fw_major, want.fw_minor, want.fw_patch, want.fw_beta)
+        );
+        assert_eq!(
+            (s.fw_major, s.fw_minor, s.fw_patch, s.fw_beta),
+            (1, 1, 6, 5)
+        );
+        assert_eq!(s.platform_id, 1);
+        assert_eq!(s.platform_id, want.platform_id);
     }
 }
