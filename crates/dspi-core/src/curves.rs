@@ -170,6 +170,32 @@ pub fn core_info() -> CoreInfo {
     }
 }
 
+/// Quantize a gain (dB) to 0.1 dB, as every gain setter does before sending
+/// (the old core's `dsp_math::quantize_gain`, bit for bit).
+///
+/// Rounds half away from zero (`f32::round` of `db * 10`), and maps -0.0
+/// to +0.0 so a zero gain is never stored or sent as negative zero. It does
+/// not clamp: callers clamp to the parameter's range first. NaN stays NaN
+/// and ±inf stays ±inf (as does a finite value whose `* 10` overflows f32);
+/// never panics.
+pub fn quantize_gain(db: f32) -> f32 {
+    let val = (db * 10.0).round() / 10.0;
+    if val == 0.0 { 0.0 } else { val }
+}
+
+/// Quantize a delay (ms) to 0.0001 ms, as the delay setters do before
+/// sending (the old core's `dsp_math::quantize_delay`, bit for bit; the
+/// Windows Console's step).
+///
+/// Rounds half away from zero (`f32::round` of `ms * 10000`), and maps
+/// -0.0 to +0.0. It does not clamp: callers clamp to `0..=max_delay_ms`
+/// afterwards, as the old core did. NaN stays NaN and ±inf stays ±inf (as
+/// does a finite value whose `* 10000` overflows f32); never panics.
+pub fn quantize_delay(ms: f32) -> f32 {
+    let val = (ms * 10000.0).round() / 10000.0;
+    if val == 0.0 { 0.0 } else { val }
+}
+
 // ── Design ──────────────────────────────────────────────────────────
 
 /// The 201 grid frequencies, in order.
@@ -311,8 +337,13 @@ fn butterworth(s: &mut Vec<Coeffs>, order: u8, hp: bool, omega_a: f64) {
 }
 
 /// Bessel (-3 dB normalised) analog pole pairs (σ, ω), from firmware
-/// `crossover.c` (the same table as `dspi_proto::xover`, which keeps it
-/// private).
+/// `crossover.c`.
+///
+/// This duplicates `dspi_proto::xover`'s private `bessel_poles`: proto's
+/// crossover design rounds through f32 and keeps the table private, so the
+/// f64-exact design lives here for now. Once a proto WP makes
+/// `xover::sections` f64-exact and public, drop this copy and the local
+/// design below and call proto.
 fn bessel_poles(order: u8) -> &'static [(f64, f64)] {
     match order {
         2 => &[(1.10160, 0.63601)],
@@ -717,6 +748,61 @@ mod tests_wp_c12 {
         assert!(!crossfeed_pair_map_valid(vec![0; 4], 5));
     }
 
+    // ── Quantizers (old dsp_math::quantize_*) ────────────────────────
+
+    #[test]
+    fn wp_c12_quantize_gain_matches_the_old_core() {
+        // The old core's own cases (its 3.14 is 3.12 here: clippy's
+        // approx_constant rejects a PI-like literal; same rounding).
+        assert_eq!(quantize_gain(3.12), 3.1);
+        assert_eq!(quantize_gain(3.15), 3.2);
+        assert_eq!(quantize_gain(-0.0).to_bits(), 0.0f32.to_bits());
+        // Rounding: half away from zero, both signs.
+        assert_eq!(quantize_gain(0.05), 0.1);
+        assert_eq!(quantize_gain(-0.05), -0.1);
+        assert_eq!(quantize_gain(-3.12), -3.1);
+        assert_eq!(quantize_gain(-3.16), -3.2);
+        assert_eq!(quantize_gain(12.0), 12.0);
+        assert_eq!(quantize_gain(-120.0), -120.0);
+        // Values that round to zero become +0.0, never -0.0.
+        for v in [-0.04f32, -0.0, 0.0, 0.04, -1e-30, f32::MIN_POSITIVE] {
+            assert_eq!(quantize_gain(v).to_bits(), 0.0f32.to_bits(), "{v}");
+        }
+        // No clamping, no panic: NaN and infinities pass through.
+        assert!(quantize_gain(f32::NAN).is_nan());
+        assert_eq!(quantize_gain(f32::INFINITY), f32::INFINITY);
+        assert_eq!(quantize_gain(f32::NEG_INFINITY), f32::NEG_INFINITY);
+        assert_eq!(quantize_gain(f32::MAX), f32::INFINITY); // * 10 overflows
+        assert_eq!(quantize_gain(1000.0), 1000.0);
+    }
+
+    #[test]
+    fn wp_c12_quantize_delay_matches_the_old_core() {
+        // The old core's own cases.
+        assert_eq!(quantize_delay(-0.00002).to_bits(), 0.0f32.to_bits());
+        assert_eq!(quantize_delay(0.25), 0.25);
+        assert_eq!(quantize_delay(1.23456), 1.2346);
+        // Rounding and sign.
+        assert_eq!(quantize_delay(1.23454), 1.2345);
+        assert_eq!(quantize_delay(-1.23456), -1.2346);
+        assert_eq!(quantize_delay(0.00005), 0.0001);
+        assert_eq!(quantize_delay(0.00004).to_bits(), 0.0f32.to_bits());
+        assert_eq!(quantize_delay(-0.0).to_bits(), 0.0f32.to_bits());
+        // Not clamped here (callers clamp to 0..=max_delay_ms after).
+        assert_eq!(quantize_delay(-5.0), -5.0);
+        assert_eq!(quantize_delay(170.0), 170.0);
+        assert!(quantize_delay(f32::NAN).is_nan());
+        assert_eq!(quantize_delay(f32::INFINITY), f32::INFINITY);
+        assert_eq!(quantize_delay(f32::NEG_INFINITY), f32::NEG_INFINITY);
+        assert_eq!(quantize_delay(f32::MAX), f32::INFINITY); // * 10000 overflows
+    }
+
+    /// The old core's formulas, verbatim, as an oracle for the proptest.
+    fn old_quantize(v: f32, scale: f32) -> f32 {
+        let val = (v * scale).round() / scale;
+        if val == 0.0 { 0.0 } else { val }
+    }
+
     // ── Version facts ───────────────────────────────────────────────
 
     #[test]
@@ -765,6 +851,16 @@ mod tests_wp_c12 {
             prop_assert_eq!(u.len(), CURVE_POINTS);
             prop_assert!(m.iter().chain(&w).chain(&u).all(|v| !v.is_nan()));
             prop_assert!(w.iter().all(|v| (-180.0..=180.0).contains(v)));
+        }
+
+        #[test]
+        fn proptest_wp_c12_quantizers_match_the_old_core(v in any::<f32>()) {
+            let (g, d) = (quantize_gain(v), quantize_delay(v));
+            let (og, od) = (old_quantize(v, 10.0), old_quantize(v, 10000.0));
+            prop_assert!(g.to_bits() == og.to_bits() || (g.is_nan() && og.is_nan()));
+            prop_assert!(d.to_bits() == od.to_bits() || (d.is_nan() && od.is_nan()));
+            prop_assert!(g.to_bits() != (-0.0f32).to_bits());
+            prop_assert!(d.to_bits() != (-0.0f32).to_bits());
         }
 
         #[test]
