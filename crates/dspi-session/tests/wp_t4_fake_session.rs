@@ -1,4 +1,6 @@
-//! WP T4 done criteria: the Terminal's session layer against the demo device.
+//! WP T4 done criteria: the Terminal's session layer against the demo device
+//! (`dspi_transport::FakeDevice`). Lives here, not in dspi-transport, so the
+//! transport needs no dev-dependency on the session.
 
 use std::time::Duration;
 
@@ -43,6 +45,9 @@ fn wp_t4_a_master_volume_write_reads_back_and_notifies() {
     assert_eq!(s.read("vol.master", &[]).unwrap().as_f32(), Some(-12.0));
 
     let off = generated::OFF_MASTER_VOLUME;
+    // The legacy v1 volume packet comes first, as from the firmware.
+    let v1 = notes.read(Duration::from_millis(500)).unwrap();
+    assert_eq!(decode(&v1).unwrap().1, Event::MasterVolume(-12.0));
     let p = notes.read(Duration::from_millis(500)).unwrap();
     let (_, ev) = decode(&p).unwrap();
     match ev {

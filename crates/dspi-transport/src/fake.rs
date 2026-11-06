@@ -16,10 +16,13 @@
 //! - **Bulk:** `0xA0`/`0xA1` single-shot and `0xA2`/`0xA3` chunked, with the
 //!   chunking spec's session rules (`bulk_params_chunking.md`): offset 0
 //!   starts a session, chunks are sequential, any other request tears the
-//!   session down, and an out-of-order chunk stalls. A bulk write is applied
-//!   when it passes [`BulkPacket::decode`] (else it stalls) and notifies
+//!   session down, and an out-of-order or failed chunk stalls and closes
+//!   every chunk session (vendor_commands.c:4669-4672). A bulk write is
+//!   applied when it passes [`BulkPacket::decode`] and notifies
 //!   `BULK_INVALIDATED` with source `BULK_SET`. The device keeps its own
-//!   header.
+//!   header. A wrong-version or wrong-size bulk write **stalls** here; the
+//!   firmware ACKs the transfer and refuses it later on the main loop, so a
+//!   host sees no error there, only no change.
 //! - **Scalars:** the GET/SET pairs in `SCALARS`, plus the matrix route,
 //!   EQ and crossover bands, and channel names. A SET patches the image at
 //!   the field's bulk offset and, when the bytes changed, queues
@@ -28,7 +31,11 @@
 //!   which the tests check against the generated section lengths. As on the
 //!   firmware, a SET with an out-of-range index or a short payload is
 //!   acknowledged and changes nothing; a GET with a bad index stalls. Range
-//!   clamps (delay >= 0, loudness limits) are not modelled.
+//!   clamps are not modelled: a delay below 0, loudness and crossfeed
+//!   limits, and the master volume's -128..0 range (a NaN or +6 dB is stored
+//!   as sent). A master-volume SET also queues the legacy v1 packet
+//!   `[0x01, 0, 0, 0, f32]` ahead of the `PARAM_CHANGED`, every time, as
+//!   `update_master_volume` does (usb_audio.c:369-375).
 //! - **Presets:** directory, names, startup, active slot, save/load/delete
 //!   (in memory), the two persistence modes. A load sends `PRESET_LOADED`
 //!   and `BULK_INVALIDATED` (source `PRESET`) and keeps the live master
@@ -37,12 +44,29 @@
 //!   map (validated and normalised as `crossfeed_map.h`; a write lands in
 //!   the bulk image's `crossfeed.pair_map` and notifies) and the core-voltage
 //!   status and requests (`core_vreg.h`).
-//! - **Everything else stalls**, in both directions. (The firmware ACKs an
-//!   unknown SET on USB; a fake that stalls makes a missing model visible.)
+//! - **Everything else stalls**, in both directions, by default: a fake
+//!   that stalls makes a missing model visible. The firmware ACKs every
+//!   unhandled OUT request on USB except `REQ_EXTENSION`;
+//!   [`FakeOptions::ack_unknown_sets`] does the same. Not modelled at all
+//!   (GETs stall): control surfaces (`0x04-0x07`, `0x10-0x2F`, `0x84-0x8F`),
+//!   the signal generator (`0xA4-0xAE`), the spectrum analyser
+//!   (`0x08-0x0F`), the band-bypass shortcut (`REQ_SET/GET_BAND_BYPASS`),
+//!   pins and clocks (`REQ_SET/GET_OUTPUT_PIN`, MCK/BCK, S/PDIF RX pin), the
+//!   Core 1 mode and conflict reads, the saved master volume, factory reset,
+//!   save-params, clip clearing, clock diagnostics, and UART/I2C config.
+//!   The `SCALARS` table and the per-opcode match in
+//!   `State::get_other`/`State::set_other` is the authoritative set.
 //!
 //! A read never returns `Ok` with fewer bytes than [`Transport::control_in`]
 //! asked for: that is [`TransportError::ShortRead`]. Only
-//! [`Transport::control_in_upto`] returns a short reply.
+//! [`Transport::control_in_upto`] returns a short reply. A request longer
+//! than [`FakeOptions::max_transfer`] fails before reaching the device, as
+//! WinUSB refuses one over 4096 bytes.
+//!
+//! **Closing.** Dropping a [`FakeDevice`] (or [`FakeRemote::disconnect`])
+//! ends its notification sources with [`TransportError::Disconnected`], as a
+//! closed USB handle does. A reader that is stopped on purpose sees the same
+//! error as an unplug; telling them apart is the owner's job.
 //!
 //! Owned by WP T4 (docs/core-merge/PLAN.md).
 #![warn(
@@ -98,18 +122,33 @@ impl Capture {
     }
 }
 
-/// Which optional firmware features the fake answers for.
+/// Which optional firmware features the fake answers for, and how strictly
+/// it behaves. `Default` is a stock-firmware device that stalls what it does
+/// not model, with no transfer-size cap below `wLength`'s.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FakeOptions {
     /// Answer the extension channel (the Bofr5555/DSPi fork's K340 build).
     pub extensions: bool,
+    /// ACK an OUT request the fake does not model, as the firmware does on
+    /// USB (`REQ_EXTENSION` still stalls). Off by default, so a test sees a
+    /// write the fake would silently drop.
+    pub ack_unknown_sets: bool,
+    /// The largest control transfer, reported by
+    /// [`Transport::max_transfer`] and enforced on every request. `None` is
+    /// 65535 (`wLength`'s limit, as libusb on Linux and macOS); `Some(4096)`
+    /// emulates WinUSB.
+    pub max_transfer: Option<usize>,
 }
+
+/// `wLength` is 16 bits.
+const MAX_W_LENGTH: usize = 65535;
 
 /// A simulated device behind the [`Transport`] trait. See the module docs
 /// for what it answers.
 pub struct FakeDevice {
     descriptor: DeviceDescriptor,
     shared: Arc<Shared>,
+    max_transfer: usize,
 }
 
 /// A handle on a [`FakeDevice`]'s state that stays usable after the device
@@ -154,7 +193,9 @@ impl FakeDevice {
     /// trusted: a short or odd image gives a device with that image (and no
     /// channels where the header is missing), never a panic.
     pub fn new(capture: Capture, options: FakeOptions) -> Self {
+        let max_transfer = options.max_transfer.unwrap_or(MAX_W_LENGTH);
         Self {
+            max_transfer,
             descriptor: DeviceDescriptor {
                 serial: SERIAL.into(),
                 bus_id: "demo".into(),
@@ -170,7 +211,11 @@ impl FakeDevice {
     /// The built-in demo device: the RP2350 capture bundled with this crate,
     /// with the extension channel on.
     pub fn demo() -> Self {
-        let dev = Self::new(Capture::demo(), FakeOptions { extensions: true });
+        let options = FakeOptions {
+            extensions: true,
+            ..FakeOptions::default()
+        };
+        let dev = Self::new(Capture::demo(), options);
         {
             let mut s = dev.shared.lock();
             // The capture's own meter block; `new` synthesises a silent one.
@@ -186,6 +231,17 @@ impl FakeDevice {
         FakeRemote {
             shared: Arc::clone(&self.shared),
         }
+    }
+
+    /// Refuse a transfer the host stack would refuse before the wire.
+    fn check_size(&self, opcode: u8, len: usize) -> Result<()> {
+        if len > self.max_transfer {
+            return Err(TransportError::Usb(format!(
+                "a {len}-byte transfer for opcode 0x{opcode:02X} exceeds the {}-byte limit",
+                self.max_transfer
+            )));
+        }
+        Ok(())
     }
 
     fn run<T>(&self, f: impl FnOnce(&mut State) -> Result<T>) -> Result<T> {
@@ -228,6 +284,34 @@ impl FakeRemote {
         self.shared.lock().image.clone()
     }
 
+    /// Queue a raw packet on the notification endpoint (any event, even a
+    /// malformed one). A v2 packet (`[2, evt, flags, seq, ..]`) gets the
+    /// device's next sequence number in byte 3, so a reader sees no loss;
+    /// anything else is queued as is.
+    pub fn push(&self, packet: Vec<u8>) {
+        self.shared.lock().push_raw(packet);
+        self.shared.wake.notify_all();
+    }
+
+    /// Replace the `GET_STATUS` sub-query 9 meter block (`peaks[n] u16,
+    /// cpu0, cpu1, clip_flags u32, active_inputs`). Not checked: a test may
+    /// set a short block to exercise a host's length check.
+    pub fn set_status(&self, bytes: Vec<u8>) {
+        self.shared.lock().status = bytes;
+    }
+
+    /// A whole-image change at the device (a preset recalled from a knob, a
+    /// UART bulk write): the image becomes `bytes` exactly, header included,
+    /// and `BULK_INVALIDATED` goes out with `source` (a `PARAM_SRC_*`).
+    pub fn load_image(&self, bytes: Vec<u8>, source: u8) {
+        {
+            let mut s = self.shared.lock();
+            s.image = bytes;
+            s.event(nfy::NOTIFY_EVT_BULK_INVALIDATED, source);
+        }
+        self.shared.wake.notify_all();
+    }
+
     /// Unplug: every later request, and the notification stream, fail with
     /// [`TransportError::Disconnected`].
     pub fn disconnect(&self) {
@@ -248,6 +332,7 @@ impl Shared {
 impl Transport for FakeDevice {
     fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> Result<Vec<u8>> {
         let want = usize::from(len);
+        self.check_size(opcode, want)?;
         let mut reply = self.run(|s| s.get(opcode, value, want))?;
         if reply.len() < want {
             return Err(TransportError::ShortRead {
@@ -261,17 +346,23 @@ impl Transport for FakeDevice {
     }
 
     fn control_in_upto(&mut self, opcode: u8, value: u16, max_len: u16) -> Result<Vec<u8>> {
+        self.check_size(opcode, usize::from(max_len))?;
         let mut reply = self.run(|s| s.get(opcode, value, usize::from(max_len)))?;
         reply.truncate(usize::from(max_len));
         Ok(reply)
     }
 
     fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> Result<()> {
+        self.check_size(opcode, data.len())?;
         self.run(|s| s.set(opcode, value, data))
     }
 
     fn descriptor(&self) -> &DeviceDescriptor {
         &self.descriptor
+    }
+
+    fn max_transfer(&self) -> usize {
+        self.max_transfer
     }
 
     /// The device's notification stream. Every source shares one queue, so
@@ -830,6 +921,21 @@ impl State {
             *seq = self.seq;
         }
         self.seq = self.seq.wrapping_add(1);
+        self.enqueue(packet);
+    }
+
+    /// [`State::push`] for a v2 packet; anything else (the v1 volume packet,
+    /// a malformed one) goes out as is and takes no sequence number.
+    fn push_raw(&mut self, packet: Vec<u8>) {
+        let v2 = packet.len() >= 4 && packet.first() == Some(&(nfy::NOTIFY_V2_VERSION as u8));
+        if v2 {
+            self.push(packet);
+        } else {
+            self.enqueue(packet);
+        }
+    }
+
+    fn enqueue(&mut self, packet: Vec<u8>) {
         if self.queue.len() >= MAX_QUEUE {
             self.queue.pop_front();
         }
@@ -972,6 +1078,9 @@ impl State {
             };
         }
         let Chunked::Get { snapshot, next } = &mut self.chunked else {
+            // A later offset with no read open (or with a write open) fails
+            // and closes every chunk session (vendor_commands.c:4669-4672).
+            self.chunked = Chunked::None;
             return None;
         };
         if off != *next || off >= snapshot.len() {
@@ -1192,6 +1301,14 @@ impl State {
                     Store::Raw => bytes.to_vec(),
                     Store::Bool => vec![u8::from(bytes.iter().any(|b| *b != 0))],
                 };
+                if opcode == op::REQ_SET_MASTER_VOLUME {
+                    // `update_master_volume` sends the v1 packet on every
+                    // call, then the v2 one if the value changed
+                    // (usb_audio.c:369-375).
+                    let mut v1 = vec![nfy::NOTIFY_EVT_MASTER_VOLUME as u8, 0, 0, 0];
+                    v1.extend_from_slice(&bytes);
+                    self.enqueue(v1);
+                }
                 self.write(off, &bytes, nfy::PARAM_SRC_HOST_SET as u8);
             }
             true
@@ -1274,7 +1391,9 @@ impl State {
                 true
             }
             op::REQ_EXTENSION if self.options.extensions => self.set_ext(value, data),
-            _ => false,
+            // The firmware ACKs any other OUT on USB; the extension channel's
+            // refusals always stall.
+            _ => self.options.ack_unknown_sets && opcode != op::REQ_EXTENSION,
         }
     }
 
@@ -1283,6 +1402,7 @@ impl State {
             self.chunked = Chunked::Set { buf: Vec::new() };
         }
         let Chunked::Set { buf } = &mut self.chunked else {
+            self.chunked = Chunked::None;
             return false;
         };
         let fits = buf
@@ -1720,6 +1840,10 @@ mod tests_wp_t4 {
         assert_eq!(f32_at(&got, 0), -12.5);
         assert_eq!(f32_at(&remote.image(), off), -12.5);
 
+        // The legacy v1 packet first, then v2.
+        let v1 = src.read(Duration::from_millis(100)).unwrap();
+        assert_eq!(v1[..4], [1, 0, 0, 0]);
+        assert_eq!(f32_at(&v1, 4), -12.5);
         let p = src.read(Duration::from_millis(100)).unwrap();
         let mut want = vec![2, 2, 0, 0];
         want.extend_from_slice(&(off as u16).to_le_bytes());
@@ -1728,10 +1852,11 @@ mod tests_wp_t4 {
         want.extend_from_slice(&(-12.5f32).to_le_bytes());
         assert_eq!(p, want);
 
-        // The same value again: no change, no packet.
+        // The same value again: no change, so only the v1 packet, which the
+        // firmware sends on every call.
         d.control_out(op::REQ_SET_MASTER_VOLUME, 0, &(-12.5f32).to_le_bytes())
             .unwrap();
-        assert!(drain(&mut src).is_empty());
+        assert_eq!(drain(&mut src).len(), 1);
     }
 
     #[test]
@@ -1861,7 +1986,7 @@ mod tests_wp_t4 {
         // brings the gain back but leaves the volume.
         d.control_out(op::REQ_SET_MASTER_VOLUME, 0, &(-30.0f32).to_le_bytes())
             .unwrap();
-        assert_eq!(drain(&mut src).len(), 2);
+        assert_eq!(drain(&mut src).len(), 3, "gain, master volume v1 and v2");
         assert_eq!(d.control_in(op::REQ_PRESET_LOAD, 0, 1).unwrap(), [0]);
         let img = d.remote().image();
         assert_eq!(f32_at(&img, outs + 4), f32_at(DEMO_BULK, outs + 4));
@@ -2043,7 +2168,10 @@ mod tests_wp_t4 {
                     platform: vec![],
                     bulk,
                 },
-                FakeOptions { extensions: true },
+                FakeOptions {
+                    extensions: true,
+                    ..FakeOptions::default()
+                },
             );
             for opcode in 0..=255u8 {
                 for value in [0u16, 1, 2, 9, 14, 0x0103, 0x10FF, 0xFFFF] {
@@ -2068,5 +2196,119 @@ mod tests_wp_t4 {
             d.control_out(op::REQ_FACTORY_RESET, 0, &[]),
             Err(TransportError::Stalled { .. })
         ));
+    }
+
+    // ---- review fixups (batch 4) ------------------------------------------
+
+    #[test]
+    fn wp_t4_unknown_sets_ack_only_when_asked() {
+        let mut strict = FakeDevice::demo();
+        assert!(strict.control_out(op::REQ_FACTORY_RESET, 0, &[]).is_err());
+        let mut lax = FakeDevice::new(
+            Capture::demo(),
+            FakeOptions {
+                ack_unknown_sets: true,
+                ..FakeOptions::default()
+            },
+        );
+        lax.control_out(op::REQ_FACTORY_RESET, 0, &[]).unwrap();
+        assert_eq!(
+            lax.remote().image(),
+            DEMO_BULK,
+            "acknowledged, not modelled"
+        );
+        // The extension channel's refusals stall even so.
+        assert!(lax.control_out(op::REQ_EXTENSION, 1, &[0; 4]).is_err());
+        // GETs still stall.
+        assert!(lax.control_in(op::REQ_GET_CS_CAPS, 0xFFFF, 4).is_err());
+    }
+
+    #[test]
+    fn wp_t4_transfers_past_max_transfer_are_refused() {
+        let mut d = FakeDevice::demo();
+        assert_eq!(d.max_transfer(), 65535);
+        d.control_in(op::REQ_GET_ALL_PARAMS, 0, generated::BULK_SIZE as u16)
+            .unwrap();
+        let mut win = FakeDevice::new(
+            Capture::demo(),
+            FakeOptions {
+                max_transfer: Some(4096),
+                ..FakeOptions::default()
+            },
+        );
+        assert_eq!(win.max_transfer(), 4096);
+        assert!(matches!(
+            win.control_in(op::REQ_GET_ALL_PARAMS, 0, generated::BULK_SIZE as u16),
+            Err(TransportError::Usb(_))
+        ));
+        assert!(matches!(
+            win.control_in_upto(op::REQ_GET_ALL_PARAMS, 0, 4097),
+            Err(TransportError::Usb(_))
+        ));
+        assert!(matches!(
+            win.control_out(op::REQ_SET_ALL_PARAMS, 0, DEMO_BULK),
+            Err(TransportError::Usb(_))
+        ));
+        // The chunked path fits.
+        assert_eq!(read_chunked(&mut win, 4096), DEMO_BULK);
+    }
+
+    #[test]
+    fn wp_t4_a_failed_chunk_closes_every_session() {
+        let mut d = FakeDevice::demo();
+        d.control_out(op::REQ_SET_ALL_PARAMS_CHUNK, 0, &DEMO_BULK[..2048])
+            .unwrap();
+        // A read chunk at a later offset fails, and takes the write with it.
+        assert!(
+            d.control_in(op::REQ_GET_ALL_PARAMS_CHUNK, 2048, 1024)
+                .is_err()
+        );
+        assert!(
+            d.control_out(op::REQ_SET_ALL_PARAMS_CHUNK, 2048, &DEMO_BULK[2048..4096])
+                .is_err()
+        );
+        // And the other way round.
+        d.control_in(op::REQ_GET_ALL_PARAMS_CHUNK, 0, 1024).unwrap();
+        assert!(
+            d.control_out(op::REQ_SET_ALL_PARAMS_CHUNK, 1024, &[0; 16])
+                .is_err()
+        );
+        assert!(
+            d.control_in(op::REQ_GET_ALL_PARAMS_CHUNK, 1024, 1024)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn wp_t4_remote_pushes_events_status_and_images() {
+        let mut d = FakeDevice::demo();
+        let mut src = d.notifications().unwrap();
+        let r = d.remote();
+        // A v2 packet takes the next sequence number; anything else is raw.
+        r.push(vec![2, 7, 0, 0xEE, 1, 0, 3, 0xFF]);
+        r.push(vec![1, 0, 0, 0, 0, 0, 0xA0, 0xC1]);
+        r.push(vec![0x55]);
+        assert_eq!(
+            drain(&mut src),
+            vec![
+                vec![2, 7, 0, 0, 1, 0, 3, 0xFF],
+                vec![1, 0, 0, 0, 0, 0, 0xA0, 0xC1],
+                vec![0x55],
+            ]
+        );
+
+        r.set_status(vec![9; 41]);
+        assert_eq!(d.control_in(op::REQ_GET_STATUS, 9, 41).unwrap(), [9; 41]);
+        r.set_status(vec![1, 2]);
+        assert!(d.control_in(op::REQ_GET_STATUS, 9, 41).is_err());
+
+        let mut img = DEMO_BULK.to_vec();
+        img[off_of("master_volume")] ^= 0x40;
+        r.load_image(img.clone(), nfy::PARAM_SRC_GPIO as u8);
+        assert_eq!(read_chunked(&mut d, 1024), img);
+        assert_eq!(
+            drain(&mut src),
+            vec![vec![2, 3, 0, 1, nfy::PARAM_SRC_GPIO as u8, 0, 0, 0]]
+        );
     }
 }
