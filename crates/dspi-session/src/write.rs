@@ -271,26 +271,13 @@ impl Session {
         indices: &[u8],
         value: Value,
     ) -> Result<Outcome, WriteError> {
-        let d = by_path(path).ok_or_else(|| WriteError::UnknownParam(path.into()))?;
-
-        let set = d
-            .set
-            .ok_or_else(|| WriteError::ReadOnly { path: path.into() })?;
+        let (d, set) = writable_param(path)?;
 
         // Belongs to this write alone; a stale code from the previous one would
         // be read as this one's refusal.
         self.last_status = None;
 
-        self.check_available(d)?;
-        self.check_indices(d, indices)?;
-
-        // Validate before the wire, so the user gets a message naming the limits
-        // rather than a bare stall from the device.
-        let value = d.kind.validate(&value)?;
-        // The delay buffers are 1024 samples on an RP2040 and 2048 on an
-        // RP2350 (config.h:94-99): 42 ms against 85 ms at 48 kHz. The registry
-        // carries the larger; the smaller is a platform fact, checked here.
-        self.check_platform_range(d, &value)?;
+        let value = self.validate_write(d, indices, &value)?;
 
         // PDM and the Core 1 EQ workers cannot both run, and the firmware skips
         // a blocked enable without saying so (survey-firmware 6.8). Ask first,
@@ -352,6 +339,38 @@ impl Session {
         let outcome = self.confirm(d, indices, &value)?;
         self.record(d, indices, before, companions, value, outcome.clone());
         Ok(outcome)
+    }
+
+    /// Check a [`write`](Self::write) without making it: the parameter
+    /// exists and is writable, is available on this device, takes these
+    /// indices, and accepts this value (range, type and platform limits).
+    /// Nothing goes on the wire. A write that passes can still be refused by
+    /// the device, or fail on the transport.
+    pub fn check(&self, path: &str, indices: &[u8], value: &Value) -> Result<(), WriteError> {
+        let (d, _) = writable_param(path)?;
+        self.validate_write(d, indices, value).map(|_| ())
+    }
+
+    /// The checks a write makes before the wire, shared by [`write`](Self::write)
+    /// and [`check`](Self::check). Returns the value as the registry
+    /// normalises it.
+    fn validate_write(
+        &self,
+        d: &ParamDesc,
+        indices: &[u8],
+        value: &Value,
+    ) -> Result<Value, WriteError> {
+        self.check_available(d)?;
+        self.check_indices(d, indices)?;
+
+        // Validate before the wire, so the user gets a message naming the limits
+        // rather than a bare stall from the device.
+        let value = d.kind.validate(value)?;
+        // The delay buffers are 1024 samples on an RP2040 and 2048 on an
+        // RP2350 (config.h:94-99): 42 ms against 85 ms at 48 kHz. The registry
+        // carries the larger; the smaller is a platform fact, checked here.
+        self.check_platform_range(d, &value)?;
+        Ok(value)
     }
 
     /// Poll every meter in one transfer.
@@ -847,6 +866,16 @@ fn decode_read(d: &ParamDesc, bytes: &[u8]) -> Value {
 /// Compare a whole band, field by field, with the same float tolerance scalars
 /// use. Comparing encoded bytes would report spurious rejections, because the
 /// device re-quantises what it stores.
+/// A parameter by path, with its SET opcode; refused when unknown or
+/// read-only.
+fn writable_param(path: &str) -> Result<(&'static ParamDesc, u8), WriteError> {
+    let d = by_path(path).ok_or_else(|| WriteError::UnknownParam(path.into()))?;
+    let set = d
+        .set
+        .ok_or_else(|| WriteError::ReadOnly { path: path.into() })?;
+    Ok((d, set))
+}
+
 fn bands_agree(sent: &EqParamPacket, actual: &EqParamPacket) -> bool {
     let close = |a: f32, b: f32| (a - b).abs() <= a.abs().max(1.0) * 1e-3;
     sent.filter_type == actual.filter_type
