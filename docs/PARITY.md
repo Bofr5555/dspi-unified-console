@@ -331,7 +331,6 @@ Audited 2026-11-06 by reading code; nothing was built or run. The Mac has every 
 | **missing** | looked for and absent |
 | **n.a.**, **skip**, **later** | not applicable; decided out (Terminal: no graphical UI); deferred by the owner |
 | a WP id | not there yet; that WP adds it |
-| **P-n** | proposed WP, section 5.3: not in the plan yet |
 
 **Depth.** Rows M41 to M53 and M55 were read for all four clients. In other rows, a cell was re-read only where this
 audit names a file. The rest are carried over from the plan's own reading: M1 to M40, M54 and M56.
@@ -346,7 +345,7 @@ audit names a file. The rest are carried over from the plan's own reading: M1 to
 | M2 | Paired clients: roles, revoke, pairing window | HB1, QD14 | TM11 (CLI) | no | no |
 | M4 | Web UI served by the hub | HB5 | TM11 | no | no |
 | M5 | Bonjour advertisement | HB5 | TM11 | no | no |
-| M6 | Menu-bar gateway (`MenuBarMode.swift:104-126`: status, address, pairing code, Open, Share on This Network, Allow a New Client, Quit) | QD12 (tray), **see 5.4** | n.a.: no GUI; a service | n.a.: service notification | n.a.: no such surface |
+| M6 | Menu-bar gateway (`MenuBarMode.swift:104-126`: status, address, pairing code, Open, Share on This Network, Allow a New Client, Quit) | QD12 (tray) | n.a.: no GUI; a service | n.a.: service notification | n.a.: no such surface |
 | M7 | Open at login, start minimised | QD13 | n.a.: a service unit | n.a. | n.a. |
 | M8 | Keep the machine awake while sharing | QD13 | TM11 | n.a.: no hub | n.a.: no hub |
 
@@ -368,7 +367,7 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (`PLAN-CLIENTS.md`
 |---|---|---|---|---|---|
 | M15 | App self-update | QD16 | n.a.: package manager | n.a.: Play | n.a.: App Store |
 | M16 | Firmware wizard: bundled image, verify, downgrade, enter bootloader without installing, export configuration before flashing (`FirmwareUpdateView.swift:384-385`); hidden on STM32H723 (`DSPi_ConsoleApp.swift:11974`) | QD11 | TM3 (non-graphical) | have most; AN18 | n.a.: no USB bootloader (owner); SW18 hides the dead window |
-| M41 | Firmware mismatch banner: any version other than the expected one (`FirmwareUpdateView.swift:481-526`, `DSPViewModel.swift:2099-2106`) | **have**: `qml/main.qml:422-487`, `src/FirmwareUpdater.cpp:128`. Expected version stays beta4 until QD11 | TM4 | **partial**: shown only for an incompatible wire format, never for another version on the same format (`feature-home/HomeModel.kt:89-97`, `feature-home/FirmwareMismatchBanner.kt:35-42`). **P-6** | **partial**: shown, but Update opens the dead firmware window (`ContentView.swift:1075-1077`). **SW18, see 5.4** |
+| M41 | Firmware mismatch banner: any version other than the expected one (`FirmwareUpdateView.swift:481-526`, `DSPViewModel.swift:2099-2106`) | **have**: `qml/main.qml:422-487`, `src/FirmwareUpdater.cpp:128`. Expected version stays beta4 until QD11 | TM4 | **partial**: shown only for an incompatible wire format, never for another version on the same format (`feature-home/HomeModel.kt:89-97`, `feature-home/FirmwareMismatchBanner.kt:35-42`). **AN2** | **partial**: shown, but Update opens the dead firmware window (`ContentView.swift:1075-1077`). **SW18** |
 
 **Onboarding** (Terminal: decided, skips)
 
@@ -382,19 +381,19 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (`PLAN-CLIENTS.md`
 
 | # | Feature | Qt | Terminal | Android | iOS |
 |---|---|---|---|---|---|
-| M42 | Unsaved-changes guard on preset switch, Copy to, device switch and quit (`DSPi_ConsoleApp.swift:11604`, `ContentView.swift:241,701`, `DSPViewModel.swift:3175,3231`, `PresetSnapshot.swift:692-735`) | **have**: `qml/main.qml:869,892,901,924,950`, `qml/components/PresetMenu.qml:99`. Diff wording: CG7 | **have**: `live.rs:1555-1566,1763,1869,2151,2263` | **partial**: preset switch and Copy to (`feature-presets/PresetMenuActions.kt:54,85,167`). No user-facing device switch yet, so no guard there (`bridge/DspiBridgeImpl.kt:771,1686,1803,1819` select by themselves). No quit on Android. **AN7, see 5.4** | **have**: `ContentView.swift:250,701-758`, `DSPViewModel.swift:3231-3236`. No quit on iOS |
+| M42 | Unsaved-changes guard on preset switch, Copy to, device switch and quit (`DSPi_ConsoleApp.swift:11604`, `ContentView.swift:241,701`, `DSPViewModel.swift:3175,3231`, `PresetSnapshot.swift:692-735`) | **have**: `qml/main.qml:869,892,901,924,950`, `qml/components/PresetMenu.qml:99`. Diff wording: CG7 | **have**: `live.rs:1555-1566,1763,1869,2151,2263` | **partial**: preset switch and Copy to (`feature-presets/PresetMenuActions.kt:54,85,167`). No user-facing device switch yet, so no guard there (`bridge/DspiBridgeImpl.kt:771,1686,1803,1819` select by themselves). No quit on Android. **AN7** | **have**: `ContentView.swift:250,701-758`, `DSPViewModel.swift:3231-3236`. No quit on iOS |
 | M43 | Preset slot menu: Save, Rename, Set as Default, Copy to, Clear, Clear All (`ContentView.swift:1546-1566`) | **have**: `qml/components/PresetMenu.qml:33-47` | **have**: `screens/presets.rs:65-110`, `live.rs:1697` | **have**: `feature-home/PresetPickerRow.kt:152-175`, `feature-presets/PresetsScreen.kt:326-364` | **have**: shared view |
 | M44 | Commit, Revert, Factory Reset (`DSPi_ConsoleApp.swift:11959-11969`) | **have**: `qml/components/AppMenu.qml:60-68` (a Device menu, not Tools), `qml/main.qml:1012-1051` | **have**: palette and Ctrl-S, `live.rs:192,1342-1346,2063-2078`, `actions.rs:1346-1373` | **have**: `feature-presets/ToolsMenuActions.kt:21,49,79`, `feature-presets/PresetsScreen.kt:375-377` | **have**: `iOS/IOSApp.swift:215-217`, `DSPi_ConsoleApp.swift:11300-11373` |
 | M45 | Channel clipboard: context menu and Cmd+C/V (`DSPi_ConsoleApp.swift:11706-11731`, `ContentView.swift:480-483,523-526`) | **have**: `qml/components/ChannelRow.qml:145-148,165-166`, `qml/main.qml:287-296`, `qml/MatrixMixerWindow.qml:196-197` | **have**: `y` and `Y`, `shell/mod.rs:228,763-764`, `live.rs:1826-1831`, `screens/clipboard.rs` | **partial**: menu only, `feature-home/ContentView.kt:352-358`, `feature-matrix/MatrixMixerView.kt:229`. Keys: AN18 | **partial**: menu only; the commands are macOS-only (`DSPi_ConsoleApp.swift:11706`). Keys: SW20 |
-| M46 | Identify output: channel-ID blips, -12 dB, two passes (`ContentView.swift:518`, `Commands.swift:3688-3704`) | **have**: `qml/components/ChannelRow.qml:154,167`, `qml/MatrixMixerWindow.qml:202,221`, `src/SiggenController.cpp:281-289` | **partial**: at -20 dB, one pass, walk flag, no clamp to the valid-channel mask (`screens/mod.rs:416-423`; keys `shell/mod.rs:229,767`, `screens/matrix.rs:1170`). **P-5** | **have**: `feature-home/ContentView.kt:341-343`, `feature-matrix/MatrixMixerView.kt:215-219`, `bridge/ControllersImpl.kt:466-471` | **have**: shared view |
-| M47 | Sidebar volume mode, remembered (`Components.swift:579`, `ContentView.swift:879-886`, `DSPi_ConsoleApp.swift:271`) | **have**: `qml/Sidebar.qml:15,329-373,402-405` | **partial**: Enter toggles it, but the choice is never saved; the config value is only read (`shell/mod.rs:856`, `live.rs:653,1734-1740`, `settings/config.rs`). **P-5** | **have**: `feature-home/components/VolumeMode.kt:34-49`, `feature-home/ContentView.kt:421` | **have**: shared view |
+| M46 | Identify output: channel-ID blips, -12 dB, two passes (`ContentView.swift:518`, `Commands.swift:3688-3704`) | **have**: `qml/components/ChannelRow.qml:154,167`, `qml/MatrixMixerWindow.qml:202,221`, `src/SiggenController.cpp:281-289` | **partial**: at -20 dB, one pass, walk flag, no clamp to the valid-channel mask (`screens/mod.rs:416-423`; keys `shell/mod.rs:229,767`, `screens/matrix.rs:1170`). **TM18** | **have**: `feature-home/ContentView.kt:341-343`, `feature-matrix/MatrixMixerView.kt:215-219`, `bridge/ControllersImpl.kt:466-471` | **have**: shared view |
+| M47 | Sidebar volume mode, remembered (`Components.swift:579`, `ContentView.swift:879-886`, `DSPi_ConsoleApp.swift:271`) | **have**: `qml/Sidebar.qml:15,329-373,402-405` | **partial**: Enter toggles it, but the choice is never saved; the config value is only read (`shell/mod.rs:856`, `live.rs:653,1734-1740`, `settings/config.rs`). **TM18** | **have**: `feature-home/components/VolumeMode.kt:34-49`, `feature-home/ContentView.kt:421` | **have**: shared view |
 | M48 | L/R link of an input pair, with which side to keep. **The plan's citation, `Components.swift:1520`, is `PreampControlView`, which nothing instantiates.** The live one is `InputChannelHeader`, `Components.swift:1201-1228,1284,1441-1481` | **have**: `qml/components/InputHeaderCard.qml:106-118,201-215` | **have**: `screens/input.rs:35,393-449` | **have**: `feature-home/components/InputChannelHeader.kt:85-111,165-169` | **have**: shared view |
 | M49 | Linkwitz Transform panel with implied boost (`Components.swift:2357`) | **have**: `qml/components/FilterRow.qml:157-180`, `qml/components/LinkwitzEditor.qml` | **have**: `screens/linkwitz.rs`, `screens/filters.rs:150,221` | **have**: `feature-home/components/FilterRow.kt`, `feature-home/ChannelDetail.kt:33-34` | **have**: shared view, as a popover |
 | M50 | Bypass Crossovers with warning, Clear All Bands (`Components.swift:1839,1870`) | **have**: `qml/FilterListView.qml:202-207,219,396-417` | **have**: through the `;` bar, no direct keys, same dialogs (`screens/filters.rs:742-775`, `screens/output.rs:428,438`, `screens/input.rs:214,225`) | **have**: `feature-home/components/FilterList.kt:140-184` | **have**: shared view, `PlatformAlert` branch |
 | M51 | Slider-reset and rename gestures (`ContentView.swift:1411,463`) | **have**: right-click reset `qml/Sidebar.qml:459-462`, `qml/components/InputHeaderCard.qml:157`, `qml/ChannelSettingsView.qml:50-59,190-195`, `qml/components/ParamRow.qml:89-94`; Alt+click rename `qml/components/ChannelRow.qml:56` | n.a.: keys, no gestures. Backspace resets and `r` renames (`shell/mod.rs:227,237`) | **have**: **double-tap** resets `ui-common/CustomSlider.kt:166-167`; rename from the long-press menu `feature-home/ContentView.kt:273,301,347` | **have**: long-press resets `Components.swift:91-93`; rename from the context menu `ContentView.swift:478,521`, since option-click is an empty stub `Components.swift:95` |
 | M52 | Limiter batch actions (`OutputLimiterView.swift:277-285`) | **have**: `qml/components/LimiterButton.qml:282,300-303` | **have**: `screens/limiter.rs:44-51,212-230,521-545` | **have**: `feature-tools/OutputLimiterView.kt:183-192` | **have**: shared view |
 | M57 | Force a reconnect (`Components.swift:538`: right-click the device picker). **New row** | have: right-click `qml/components/CpuSection.qml:127` | have: `live.rs:196,1315` | have: long-press `feature-home/components/ConnectionStatusIndicator.kt:61` | have: long press, shared view |
-| M58 | Curve visibility pills (`ContentView.swift:461`, `GraphView.swift:635`). **New row** | have: `qml/components/ChannelRow.qml:24` | **missing**: the graph draws one channel and its partner (`live.rs:822-838`). No WP proposed: reads as the Terminal's on-graph skip; **the owner to confirm** | have: `feature-home/components/SidebarRows.kt:55` | have: shared view |
+| M58 | Curve visibility pills (`ContentView.swift:461`, `GraphView.swift:635`). **New row** | have: `qml/components/ChannelRow.qml:24` | **skip**: depends on the graph, which draws one channel and its partner (`live.rs:822-838`). The coordinator is raising it with the owner | have: `feature-home/components/SidebarRows.kt:55` | have: shared view |
 | M59 | Dashboard cards per row (`DashboardView.swift:511-538`). **New row** | have: `qml/components/DashboardLayoutPopup.qml` | have: `settings/graphing.rs:284` | have: `feature-home/DashboardView.kt:259-287` | have: shared view |
 | M60 | Quick-strip toggles; secondary click opens the tool (`ContentView.swift:575-602`). **New row** | have: `qml/Sidebar.qml:190-211` | have: `shell/mod.rs:823` | have: `feature-home/ContentView.kt:385-409` | have: shared view, long press |
 | M61 | Help links, Reset Channel Names (`DSPi_ConsoleApp.swift:12080-12086,2391`). **New row** | have: `qml/components/AppMenu.qml:95-101`, `qml/settings/pages/AdvancedPage.qml:23` | have: `settings/about.rs:16`, `settings/advanced.rs:38-42` | have: `feature-settings/GeneralSettingsTab.kt:30`, `feature-settings/AdvancedSettingsTab.kt:22` | have: shared view |
@@ -411,7 +410,7 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (`PLAN-CLIENTS.md`
 | M25 | Host audio format (idle channel count, `DSPViewModel.swift:1947-1951`) | QD18 | skip: the device report collapses when idle, and it has no host API | AN18 | SW20 |
 | M26 | C0 and C1 CPU bars | QD5 | have | have | have |
 | M27 | Pop-out tool windows | have | have (graph) | n.a.: routes | n.a.: sheets |
-| M53 | Stats for Nerds, Reset Watermarks (`StatsView.swift:918-1187`), **including Output Ring Health (`:206-223,478-504,1080-1106`) and fill thresholds taken from it (`:1222`)** | **partial**: every other section, and the reset (`qml/StatsWindow.qml:231-500,331-332`). No ring health. **P-1, P-2** | **partial**: same (`screens/stats.rs:199-510`, reset `:31,358`). **P-1, P-3** | **partial**: same (`feature-analysis/StatsView.kt:274-654`, reset `:431`). **P-1, P-7** | **have**: shared view |
+| M53 | Stats for Nerds, Reset Watermarks (`StatsView.swift:918-1187`), **including Output Ring Health (`:206-223,478-504,1080-1106`) and fill thresholds taken from it (`:1222`)** | **partial**: every other section, and the reset (`qml/StatsWindow.qml:231-500,331-332`). No ring health. **CG12, QD29** | **partial**: same (`screens/stats.rs:199-510`, reset `:31,358`). **CG12, TM16** | **partial**: same (`feature-analysis/StatsView.kt:274-654`, reset `:431`). **CG12, AN25** | **have**: shared view |
 | M54 | Interrupt Monitor (`InterruptMonitor.swift:1001-1010`) | have | have | have | have |
 
 **Files**
@@ -428,16 +427,16 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (`PLAN-CLIENTS.md`
 
 | # | Feature | Qt | Terminal | Android | iOS |
 |---|---|---|---|---|---|
-| M33 | Input-source names | QD4 | **partial**: command only, `in.name` (`crates/dspi-proto/src/registry.rs:2274`); no screen uses it. **P-4** | AN6 | have |
-| M34 | Device name (`DSPi_ConsoleApp.swift:1740`) | QD4 | **partial**: command only, `dev.name` (`registry.rs:2879`); not on Global Parameters. **P-4** | AN6 | have |
-| M35 | Output latency (`DSPi_ConsoleApp.swift:1912`) | QD5 | **partial**: command only, `out.latency` (`registry.rs:2897`); not on Global Parameters. **P-4** | AN6 | have |
+| M33 | Input-source names | QD4 | **partial**: command only, `in.name` (`crates/dspi-proto/src/registry.rs:2274`); no screen uses it. **TM17** | AN6 | have |
+| M34 | Device name (`DSPi_ConsoleApp.swift:1740`) | QD4 | **partial**: command only, `dev.name` (`registry.rs:2879`); not on Global Parameters. **TM17** | AN6 | have |
+| M35 | Output latency (`DSPi_ConsoleApp.swift:1912`) | QD5 | **partial**: command only, `out.latency` (`registry.rs:2897`); not on Global Parameters. **TM17** | AN6 | have |
 | M36 | Core-voltage status | QD3 | TM2 | AN6 | have |
 | M37 | Pair-map editor, K340 preset, in files and diff | QD2, CG7 | TM1, TM10 | have; CG7 | have |
 | M38 | Tube Basic and Advanced | have | TM7 | have | have |
 | M39 | Demo device (dev flag on Mac) | QD7 | have (R1) | have | have |
 | M40 | USB MIDI (dev flag on Mac) | CG1, as a dev option | have (R1) | n.a.: vendor USB works | have; SW5 |
 | M56 | Core-voltage writes and calibration under Advanced. **Above the floor:** owner's addition; the Mac has status only today | QD28 | have (CLI: set, trial, auto, clear) | AN23 | SW23 (both targets) |
-| M55 | Settings: Spectrum, Graphing, Global Parameters (`DSPi_ConsoleApp.swift:1707-2381`) | **partial**: Spectrum and Graphing complete. Global lacks Device Name (QD4) and Output Latency (QD5), so the rest of the row closes with those | **partial**: Spectrum and Graphing complete; Glow has no terminal meaning (`settings/config.rs:21-31`). Global lacks Device Name and Output Latency. **P-4** | **partial**: Spectrum and Graphing complete. Global lacks Device Name and Output Latency (AN6) | **have**: `iOS/IOSApp.swift:306` wraps the same `SettingsView` |
+| M55 | Settings: Spectrum, Graphing, Global Parameters (`DSPi_ConsoleApp.swift:1707-2381`) | **partial**: Spectrum and Graphing complete. Global lacks Device Name (QD4) and Output Latency (QD5), so the rest of the row closes with those | **partial**: Spectrum and Graphing complete; Glow has no terminal meaning (`settings/config.rs:21-31`). Global lacks Device Name and Output Latency. **TM17** | **partial**: Spectrum and Graphing complete. Global lacks Device Name and Output Latency (AN6) | **have**: `iOS/IOSApp.swift:306` wraps the same `SettingsView` |
 
 ### 5.2 The Mac's menus and settings pages, walked
 
@@ -479,25 +478,14 @@ Android's one Hardware tab serves Inputs, Outputs and I2S as three pages (`featu
 **One setting is not a floor item.** `graphAnimationSpeed` has a slider and storage on the Mac and nothing reads it
 (`DSPi_ConsoleApp.swift:160,2285-2287` are its only uses), so its absence from Qt needs no WP.
 
-### 5.3 Proposed WPs (not in the plan)
+### 5.3 WPs this audit added to the plan
 
-| Id | What | Owns | Size | Deps |
-|---|---|---|---|---|
-| P-1 | Output ring health in the session: status from `REQ_OUTPUT_LATENCY` index 2 with `REQ_GET_STATUS` 26–31 (`StatsView.swift:478-504`). In `dspi-session` because the Terminal does not link `dspi-core`; exported through `dspi-core` to C and UniFFI | new `crates/dspi-session/src/ring_health.rs`, a binding in `crates/dspi-core/src/stats.rs` | 0.25 | `main` |
-| P-2 | Qt: the section and the ring-scaled fill thresholds | `qml/StatsWindow.qml`, `src/StatsController.cpp` (after QD5, which owns them in wave 1) | 0.25 | P-1, QD5 |
-| P-3 | Terminal: the section and thresholds | `screens/stats.rs` | 0.25 | P-1 |
-| P-4 | Terminal: Device Name and Output Latency on Global Parameters; source names on Inputs | `settings/global.rs`, `settings/inputs.rs` | 0.5 | `main` |
-| P-5 | Terminal: save the volume mode; Identify at the Mac's level, passes and valid-channel mask | `live.rs` volume arm, `settings/config.rs`, `screens/mod.rs` | 0.25 | `main` |
-| P-6 | Android: banner compares firmware versions, as the Mac and Qt do. Could fold into AN2, which owns `HomeModel.kt` | `feature-home/HomeModel.kt`, `FirmwareMismatchBanner.kt` | 0.25 | AN1 |
-| P-7 | Android: the section and thresholds | `feature-analysis/StatsView.kt`, `bridge/` stats controller | 0.25 | P-1, AN1 |
+| WP | What | Rows |
+|---|---|---|
+| CG12 | Output ring health in the session, exported to C and UniFFI | M53 |
+| QD29, TM16, AN25 | The ring health section and ring-scaled thresholds in each client | M53 |
+| TM17 | Device Name and Output Latency on Global Parameters, source names on Inputs | M33, M34, M35, M55 |
+| TM18 | Volume mode saved; Identify at the Mac's level, passes and mask | M46, M47 |
 
-iOS needs nothing new here. SW14, which moves Stats onto the core, picks up P-1.
-
-### 5.4 Scope notes for WPs already planned
-
-- **AN7** adds the first user-facing device switch on Android. It must call `withUnsavedChanges`, and must not switch by itself while the preset is dirty, or M42 stays partial.
-- **SW18** should also cover the banner's Update button (`ContentView.swift:1075-1077`) and the Tools entry (`iOS/IOSApp.swift:218-220`), not only the wizard step. Otherwise iOS still reaches the dead window.
-- **QD12** lists "quick volume", which the Mac's menu-bar item does not have, and does not list Share on This Network and Allow a New Client, which it does (`MenuBarMode.swift:117-120`). Those two need HB6's controller, so QD12's WP or QD14 must say who adds them.
-- **TM10:** the "to be checked" on Save Master Volume and Save Output Configuration is answered: both work (M30).
-- **QD4** puts Device Name on the Inputs page; the Mac has it on Global Parameters. Fine as long as `PLAN-CLIENTS.md` means it.
-- **`PLAN-CLIENTS.md` section 3 has not been edited**: XC0 does not own it. Its "hit" cells, and the M48 citation, should be replaced from section 5.1.
+`PLAN-CLIENTS.md` has their scope, and these changes to WPs it already had: AN2 (banner compares versions, M41), AN7 (device
+switch guarded, M42), SW18 (banner button and Tools entry, M41), QD12 and QD14 (the Mac's menu-bar items, M6), QD4 (Device Name on Global Parameters).
