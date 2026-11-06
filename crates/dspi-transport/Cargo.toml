@@ -31,9 +31,6 @@ proptest = "1"
 dspi-link = { path = "../dspi-link", features = ["fake-hub"] }
 # -- WP T1 --
 # -- WP T2 --
-# The MIDI queue-overflow test (tests/midi_session_wp_t2.rs) checks that the
-# session's notify reader marks the loss; a dev-only cycle, which Cargo allows.
-dspi-session = { path = "../dspi-session" }
 # -- WP T3 --
 # -- WP T4 --
 # -- WP T5 --

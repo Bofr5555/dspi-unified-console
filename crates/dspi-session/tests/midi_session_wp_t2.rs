@@ -1,4 +1,5 @@
-//! WP T2: a MIDI notification queue overflow, seen end to end through the
+//! WP T2 (lives here, not in dspi-transport, to avoid a dev-dependency
+//! cycle): a MIDI notification queue overflow, seen end to end through the
 //! session's notify reader. The transport drops the oldest packets
 //! (`midi.rs`, `NOTIFY_QUEUE`); the gap in the `seq` byte must make
 //! `dspi_session::Notifications` mark the next delivered packet `lost`, so
