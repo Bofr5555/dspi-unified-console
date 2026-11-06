@@ -450,3 +450,66 @@ the VM: `DSPi-Console-1.1.6-beta4-macos.dmg` and the universal `dspi`.
   entitlement for a non-sandboxed app). A sandboxed or App Store build
   would need the USB entitlement.
 
+## 10. Windows 11 run (real Windows, 2026-11-06)
+
+Tested in a Windows 11 Pro VM (build 26300) with no GPU: Qt renders on
+WARP, which is Direct3D 11 in software. The screen is 1280 × 800 at 100 %.
+No DSPi was attached, so only the no-device paths were tested. The
+artifacts were rebuilt from `main` in the containers.
+
+**What worked.**
+- **Installer:** the NSIS installer installed per user (no UAC prompt)
+  and upgraded over an existing install. It was not downloaded, so there
+  was no SmartScreen prompt; an unsigned download will get one.
+- **Startup:** the first-launch wizard leads to the main window ("No
+  Devices"), and settings go to `%APPDATA%\DSPi\DSPi Console.ini`.
+- **Window chrome and menus:**
+  - Windows-style caption buttons; maximise and restore work.
+  - The app menu and its submenus work.
+  - The native Windows file dialog opens (AutoEQ > Update Database >
+    Import File).
+  - Ctrl+, and Ctrl+Shift+A work.
+  - Settings and the Spectrum Analyser render correctly under WARP.
+- **Uninstall:** removes the program folder, the Start menu entry and
+  the Apps entry, and keeps the settings.
+- **The zip** runs from any folder.
+- **Performance under WARP:**
+  - About 1 s to the first frame once the QML cache exists; 6–9 s on the
+    first launch after an install (QML compiled at run time, plus
+    Defender scanning 580 new files).
+  - Idle: about 1.3 % of one core, 136 MB working set.
+- **Terminal:**
+  - `dspi --version`, `list` ("No DSPi found.", exit 2), `doctor`
+    ("USB subsystem reachable", then no device) and `ext` (no device),
+    for both the MinGW and the MSVC build.
+  - The `--fixture` TUI works in Windows Terminal (truecolour, braille)
+    and in conhost (16 colours, blocks) and quits on `q`.
+
+**Fixed after the run.**
+- **The window could sit under the taskbar.** A frameless window opened at
+  the screen's corner at its full 950 × 813, so on a 1280 × 800 screen
+  Skip Setup and Continue were under the taskbar. It is now kept inside
+  the work area and centred (Windows only).
+- **"Run DSPi Console" on the installer's last page** goes through the
+  shell (`ExecShell`). The installer now also has the app's own side
+  artwork instead of NSIS's default.
+- **About said "for Linux"**; it now names the platform.
+- **The MSVC `dspi.exe` didn't start on a clean Windows**
+  (STATUS_DLL_NOT_FOUND, VCRUNTIME140.dll). MSVC builds now link the C
+  runtime statically (`.cargo/config.toml`). The MinGW builds were
+  unaffected.
+
+**Not checked here.**
+- Windows 11's rounded corners: Windows turns them off without GPU
+  acceleration.
+- Real HiDPI: the display scaling setting was left alone; Qt 6 is per-
+  monitor DPI aware.
+- Everything that needs a DSPi (see 4, "USB on Windows").
+
+**Follow-ups.**
+- Precompile the QML (Qt 6 `qt_add_qml_module` or `qmlcachegen`) to cut
+  the first launch.
+- An installer check that the app isn't running during an upgrade.
+- A drop shadow or border for the frameless tool windows.
+- Signing.
+
