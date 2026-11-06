@@ -7,9 +7,7 @@
 //! bar's first dirty category.
 //!
 //! The device name is the exception: its dialog's OK is the commit, and it
-//! writes at once. Save speaks the command grammar, which cannot say an empty
-//! name or a `"` in one (`dspi_cmd::tokenize`), so a staged name could not be
-//! cleared.
+//! writes at once.
 
 use std::rc::Rc;
 

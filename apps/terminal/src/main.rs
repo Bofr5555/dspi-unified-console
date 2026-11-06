@@ -2254,6 +2254,8 @@ fn write_exit(e: &dspi_session::WriteError) -> u8 {
         // thing a script needs to know about a silent rejection.
         W::Core1Conflict { .. } => exit::REJECTED,
         W::Transport(_) => exit::TRANSPORT,
+        // -- WP TM20 -- Sent, and the device never said it finished.
+        W::Unsettled { .. } => exit::TRANSPORT,
     }
 }
 
