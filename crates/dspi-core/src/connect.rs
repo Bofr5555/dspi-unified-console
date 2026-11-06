@@ -46,8 +46,19 @@ const LEGACY_VID: u16 = 0x2E8A;
 /// transport with a smaller `max_transfer` gets smaller chunks.
 const BULK_WRITE_CHUNK: usize = 2048;
 
+/// Why `apply_all_params` takes the Link device lock (shown to other
+/// consoles).
+const LOCK_REASON: &str = "Applying configuration";
+
+/// How long `apply_all_params` waits for the Link device lock.
+const LOCK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
 /// `REQ_GET_PLATFORM` answers 4, 6 or 7 bytes.
 const PLATFORM_LEN: u16 = 7;
+
+/// Bytes of `REQ_GET_DAC_HW_MUTE_CONFIG` used: enabled, active-low, pin,
+/// pad, hold ms, release ms (the first 8 bytes of the image's section).
+const DAC_MUTE_REPLY: usize = 8;
 
 /// `REQ_GET_STATUS` sub-query: the meter block.
 const STATUS_METERS: u16 = 9;
@@ -73,6 +84,18 @@ impl DspiCore {
     /// mute, control interfaces) leave their defaults when the firmware does
     /// not answer them.
     ///
+    /// Right after a connect that already decoded this connect's image
+    /// (`Connection::fresh_image`, set by `attach_probed`), the platform and
+    /// the image are not read again: the mirror's image fields and `compat`
+    /// are kept and only the per-item values are read. The flag is consumed,
+    /// so a later call reads everything.
+    ///
+    /// Holds the core's lock for the whole read: a few hundred milliseconds
+    /// over USB, seconds over MIDI or a slow Link. Every other call that
+    /// takes the lock (`get_state`, setters, the RTA worker's polls) waits
+    /// meanwhile; that also keeps a chunked bulk read from being torn down
+    /// by another request.
+    ///
     /// Errors: [`DspiError::Disconnected`] with no device open or when it
     /// went away; [`DspiError::Transfer`] (and the transport's other typed
     /// errors) when the device could not be talked to. An incompatible
@@ -81,9 +104,20 @@ impl DspiCore {
         let mut guard = self.lock();
         let inner = &mut *guard;
         let conn = inner.conn.as_mut().ok_or(DspiError::Disconnected)?;
-        let mut next = state::default_state();
-        let wire = fetch_into(conn, &mut next)?;
+        let (mut next, wire) = if conn.fresh_image {
+            let mut next = inner.state.clone();
+            reset_per_item(&mut next);
+            (next, conn.wire)
+        } else {
+            let mut next = state::default_state();
+            let wire = read_platform_and_image(conn, &mut next)?;
+            (next, wire)
+        };
+        if wire.is_some() {
+            read_per_item(conn, &mut next);
+        }
         conn.wire = wire;
+        conn.fresh_image = false;
         inner.state = next;
         Ok(())
     }
@@ -129,11 +163,17 @@ impl DspiCore {
     /// mirror is re-decoded from the image that was sent (the codec's clamps
     /// applied).
     ///
+    /// Runs under the transport's device lock (`Transport::lock`, a no-op
+    /// except on DSPi Link, where another console's changes are held off
+    /// for its duration; PLAN "Link device lock").
+    ///
     /// Errors: [`DspiError::Disconnected`] with no device open, or, like the
     /// old core, when no image has been read yet (nothing to apply: call
     /// [`DspiCore::fetch_all`] first); [`DspiError::ReadOnly`] when the
-    /// firmware speaks another wire format; the transport's typed error
-    /// when a transfer fails (the device then applies nothing).
+    /// firmware speaks another wire format; [`DspiError::Locked`] /
+    /// [`DspiError::Denied`] when the Link hub refuses its lock (nothing is
+    /// sent); the transport's typed error when a transfer fails (the device
+    /// then applies nothing).
     pub fn apply_all_params(&self) -> Result<()> {
         let mut guard = self.lock();
         let inner = &mut *guard;
@@ -151,11 +191,16 @@ impl DspiCore {
         let image = state::encode_bulk(&inner.state);
         let mut w = inner.writable_conn()?;
 
+        w.conn()
+            .transport()
+            .lock(LOCK_REASON, LOCK_TIMEOUT)
+            .map_err(DspiError::from)?;
         w.conn().echo.bulk_write_started();
         let sent = write_image(&mut w, &image);
         w.conn()
             .echo
             .bulk_write_finished(Instant::now(), sent.is_ok());
+        w.conn().transport().unlock();
         sent?;
 
         // Cannot fail: `encode_bulk` always yields a BULK_SIZE V32 image.
@@ -210,7 +255,9 @@ impl DspiCore {
     ///
     /// Meter housekeeping, not a parameter: it touches no setting and
     /// nothing in the bulk image, so it is allowed on a read-only
-    /// connection too.
+    /// connection too. This is the one named exception (PLAN §1.2) to
+    /// "state-changing opcodes only on a `Writable`": it goes out on a plain
+    /// `Connection`.
     ///
     /// Errors: [`DspiError::Disconnected`] with no device open; the
     /// transport's typed error when the transfer fails.
@@ -234,40 +281,59 @@ enum Image {
     Unmapped { version: u8 },
 }
 
-/// The whole of `fetch_all` on a connection and a fresh state: platform,
-/// image, per-item values. Returns the connection's new `wire` (`None` when
-/// no image could be shown).
-fn fetch_into(conn: &mut Connection, s: &mut DspState) -> Result<Option<WireRead>> {
-    let legacy = conn.vid == LEGACY_VID;
-    match read_platform(conn, s) {
-        Ok(()) => {}
-        Err(DspiError::Disconnected) => return Err(DspiError::Disconnected),
-        // Old firmware may answer this differently; it is too old anyway.
-        Err(_) if legacy => {}
-        Err(e) => return Err(e),
+/// The platform and image part of `fetch_all`, on a fresh state. Returns
+/// the connection's new `wire` (`None` when no image could be shown).
+fn read_platform_and_image(conn: &mut Connection, s: &mut DspState) -> Result<Option<WireRead>> {
+    if conn.vid == LEGACY_VID {
+        // Pre-May-2026 firmware: far older than any wire format this build
+        // maps, so its image is not even asked for (the old core's rule; it
+        // also saves the busy retries a refused chunked read would cost).
+        // It may answer differently; it is too old anyway. Only its being
+        // gone is an error.
+        if let Err(DspiError::Disconnected) = read_platform(conn, s) {
+            return Err(DspiError::Disconnected);
+        }
+        s.compat = COMPAT_FIRMWARE_TOO_OLD;
+        s.bulk_valid = false;
+        return Ok(None);
     }
-
-    let read = match read_image(conn, s) {
-        Ok(Image::Read(read)) => read,
-        Ok(Image::Unmapped { version }) => {
+    read_platform(conn, s)?;
+    match read_image(conn, s)? {
+        Image::Read(read) => Ok(Some(read)),
+        Image::Unmapped { version } => {
             if version != 0 {
                 s.format_version = version;
             }
             s.compat = compat_of(version);
             s.bulk_valid = false;
-            return Ok(None);
+            Ok(None)
         }
-        Err(DspiError::Disconnected) => return Err(DspiError::Disconnected),
-        Err(_) if legacy => {
-            s.compat = COMPAT_FIRMWARE_TOO_OLD;
-            s.bulk_valid = false;
-            return Ok(None);
-        }
-        Err(e) => return Err(e),
-    };
+    }
+}
 
-    // The values the image does not carry. Each is optional: firmware that
-    // lacks one stalls, and the default stays.
+/// Put the values the image does not carry back to their defaults, so a
+/// failed per-item read cannot leave a previous device's value behind.
+fn reset_per_item(s: &mut DspState) {
+    let d = state::default_state();
+    s.core1_mode = d.core1_mode;
+    s.subharm_solo = d.subharm_solo;
+    s.dac_mute_supported = d.dac_mute_supported;
+    s.ctrl_iface_supported = d.ctrl_iface_supported;
+    s.ctrl_status = d.ctrl_status;
+    s.uart = d.uart;
+    s.i2c = d.i2c;
+    s.preset_occupied = d.preset_occupied;
+    s.preset_startup_mode = d.preset_startup_mode;
+    s.preset_default_slot = d.preset_default_slot;
+    s.active_preset_slot = d.active_preset_slot;
+    s.output_config_mode = d.output_config_mode;
+    s.master_volume_mode = d.master_volume_mode;
+    s.preset_names = d.preset_names;
+}
+
+/// The values the image does not carry. Each is optional: firmware that
+/// lacks one stalls, and the default stays.
+fn read_per_item(conn: &mut Connection, s: &mut DspState) {
     let _ = read_core1_mode(conn, s);
     let _ = read_subharm_solo(conn, s);
     let _ = read_dac_mute(conn, s);
@@ -278,7 +344,6 @@ fn fetch_into(conn: &mut Connection, s: &mut DspState) -> Result<Option<WireRead
             let _ = read_preset_name(conn, s, slot);
         }
     }
-    Ok(Some(read))
 }
 
 /// `COMPAT_*` for a device wire format other than V32's (0: unknown, old).
@@ -420,10 +485,11 @@ pub(crate) fn read_subharm_solo(conn: &mut Connection, s: &mut DspState) -> Resu
 }
 
 /// `REQ_GET_DAC_HW_MUTE_CONFIG` (8 bytes): marks the DAC mute supported and
-/// takes the device's live config, keeping the image in step when it is
-/// writable (a later bulk write would re-apply it).
+/// takes the device's live config. When the image is writable its 8 bytes
+/// are patched into `bulk_raw` at the DAC mute section (a later bulk write
+/// would re-apply them); nothing else in `bulk_raw` changes.
 pub(crate) fn read_dac_mute(conn: &mut Connection, s: &mut DspState) -> Result<()> {
-    let d = read_min(conn, op::REQ_GET_DAC_HW_MUTE_CONFIG, 0, 16, 8)?;
+    let d = read_min(conn, op::REQ_GET_DAC_HW_MUTE_CONFIG, 0, 16, DAC_MUTE_REPLY)?;
     s.dac_mute_supported = true;
     s.dac_mute_enabled = byte(&d, 0) != 0;
     s.dac_mute_active_low = byte(&d, 1) != 0;
@@ -431,7 +497,15 @@ pub(crate) fn read_dac_mute(conn: &mut Connection, s: &mut DspState) -> Result<(
     s.dac_mute_hold_ms = u16_at(&d, 4);
     s.dac_mute_release_ms = u16_at(&d, 6);
     if s.bulk_valid {
-        s.bulk_raw = state::encode_bulk(s);
+        let at = dspi_proto::generated::OFF_DAC_HW_MUTE;
+        let n = DAC_MUTE_REPLY.min(dspi_proto::generated::LEN_DAC_HW_MUTE);
+        if let (Some(dst), Some(src)) = (
+            at.checked_add(n)
+                .and_then(|end| s.bulk_raw.get_mut(at..end)),
+            d.get(..n),
+        ) {
+            dst.copy_from_slice(src);
+        }
     }
     Ok(())
 }
@@ -632,6 +706,8 @@ mod tests_wp_c2 {
         assert_eq!(s.format_version, 32);
         assert!(s.bulk_valid);
         assert_eq!(s.bulk_raw.len(), dspi_proto::generated::BULK_SIZE);
+        // The DAC mute read patches its section only: still the device's image.
+        assert_eq!(s.bulk_raw, _r.image());
         assert_eq!(s.master_volume_db, want.master_volume_db);
         assert_eq!(s.filters, want.filters);
         assert_eq!(s.channel_names, want.channel_names);
@@ -759,11 +835,24 @@ mod tests_wp_c2 {
                 )
         };
         let core = DspiCore::new();
-        core.attach(Box::new(device()), "LEGACY".into(), LEGACY_VID);
+        let legacy = device();
+        let log = legacy.log_handle();
+        core.attach(Box::new(legacy), "LEGACY".into(), LEGACY_VID);
         core.fetch_all().unwrap();
         let s = core.get_state();
         assert_eq!(s.compat, COMPAT_FIRMWARE_TOO_OLD);
+        assert!(!s.bulk_valid);
         assert_eq!((s.fw_major, s.fw_minor, s.fw_patch), (1, 0, 5));
+        // The image is not even asked for, and nothing else is read.
+        assert_eq!(
+            log.lock()
+                .unwrap()
+                .iter()
+                .map(|e| e.opcode)
+                .collect::<Vec<_>>(),
+            vec![op::REQ_GET_PLATFORM]
+        );
+        assert_eq!(core.apply_all_params(), Err(DspiError::ReadOnly));
 
         // The same device under the current VID could not be talked to.
         let core = DspiCore::new();
@@ -858,16 +947,44 @@ mod tests_wp_c2 {
         assert_eq!(decoded(&remote.image()).master_volume_db, -40.0);
     }
 
-    /// A FakeDevice behind a DSPi Link-like transport: no chunked bulk.
-    /// Records the opcodes it carries.
-    struct NoChunks {
+    /// A FakeDevice behind a recording transport: optionally Link-like (no
+    /// chunked bulk), optionally refusing the device lock. Logs every
+    /// transfer as `"in|out <opcode> <wValue>"` and the lock calls.
+    struct Spy {
         inner: FakeDevice,
-        seen: Arc<Mutex<Vec<u8>>>,
+        log: Arc<Mutex<Vec<String>>>,
+        link: bool,
+        refuse_lock: Option<TransportError>,
     }
 
-    impl Transport for NoChunks {
+    impl Spy {
+        fn new(inner: FakeDevice, link: bool) -> (Self, Arc<Mutex<Vec<String>>>) {
+            let log = Arc::new(Mutex::new(Vec::new()));
+            let spy = Self {
+                inner,
+                log: Arc::clone(&log),
+                link,
+                refuse_lock: None,
+            };
+            (spy, log)
+        }
+        fn note(&self, what: String) {
+            self.log.lock().unwrap().push(what);
+        }
+    }
+
+    fn count(log: &Arc<Mutex<Vec<String>>>, entry: &str) -> usize {
+        log.lock().unwrap().iter().filter(|e| *e == entry).count()
+    }
+
+    fn has_op(log: &Arc<Mutex<Vec<String>>>, dir: &str, opcode: u8) -> bool {
+        let prefix = format!("{dir} {opcode:02X} ");
+        log.lock().unwrap().iter().any(|e| e.starts_with(&prefix))
+    }
+
+    impl Transport for Spy {
         fn control_in(&mut self, op: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
-            self.seen.lock().unwrap().push(op);
+            self.note(format!("in {op:02X} {value}"));
             self.inner.control_in(op, value, len)
         }
         fn control_in_upto(
@@ -876,28 +993,46 @@ mod tests_wp_c2 {
             value: u16,
             len: u16,
         ) -> dspi_transport::Result<Vec<u8>> {
-            self.seen.lock().unwrap().push(op);
+            self.note(format!("in {op:02X} {value}"));
             self.inner.control_in_upto(op, value, len)
         }
         fn control_out(&mut self, op: u8, value: u16, data: &[u8]) -> dspi_transport::Result<()> {
-            self.seen.lock().unwrap().push(op);
+            self.note(format!("out {op:02X} {value}"));
             self.inner.control_out(op, value, data)
         }
         fn descriptor(&self) -> &DeviceDescriptor {
             self.inner.descriptor()
         }
         fn max_transfer(&self) -> usize {
-            8192
+            if self.link {
+                8192
+            } else {
+                self.inner.max_transfer()
+            }
         }
         fn notifications(&self) -> Option<Box<dyn NotificationSource>> {
             None
         }
         fn caps(&self) -> TransportCaps {
-            TransportCaps {
-                kind: TransportKind::Link,
-                chunked_bulk: false,
-                remote: true,
+            if self.link {
+                TransportCaps {
+                    kind: TransportKind::Link,
+                    chunked_bulk: false,
+                    remote: true,
+                }
+            } else {
+                self.inner.caps()
             }
+        }
+        fn lock(&mut self, reason: &str, timeout: Duration) -> dspi_transport::Result<()> {
+            self.note(format!("lock {reason} {}", timeout.as_secs()));
+            match &self.refuse_lock {
+                Some(e) => Err(e.clone()),
+                None => Ok(()),
+            }
+        }
+        fn unlock(&mut self) {
+            self.note("unlock".into());
         }
     }
 
@@ -905,23 +1040,133 @@ mod tests_wp_c2 {
     fn wp_c2_over_link_bulk_goes_single_shot() {
         let dev = FakeDevice::demo();
         let remote = dev.remote();
-        let seen = Arc::new(Mutex::new(Vec::new()));
-        let t = NoChunks {
-            inner: dev,
-            seen: Arc::clone(&seen),
-        };
+        let (t, log) = Spy::new(dev, true);
         let core = DspiCore::new();
         core.attach(Box::new(t), "LINK".into(), 0);
         core.fetch_all().unwrap();
         assert_eq!(core.get_state().compat, COMPAT_OK);
         core.lock().state.master_volume_db = -12.0;
         core.apply_all_params().unwrap();
-        let seen = seen.lock().unwrap().clone();
-        assert!(seen.contains(&op::REQ_GET_ALL_PARAMS));
-        assert!(seen.contains(&op::REQ_SET_ALL_PARAMS));
-        assert!(!seen.contains(&op::REQ_GET_ALL_PARAMS_CHUNK));
-        assert!(!seen.contains(&op::REQ_SET_ALL_PARAMS_CHUNK));
+        assert!(has_op(&log, "in", op::REQ_GET_ALL_PARAMS));
+        assert!(has_op(&log, "out", op::REQ_SET_ALL_PARAMS));
+        assert!(!has_op(&log, "in", op::REQ_GET_ALL_PARAMS_CHUNK));
+        assert!(!has_op(&log, "out", op::REQ_SET_ALL_PARAMS_CHUNK));
         assert_eq!(decoded(&remote.image()).master_volume_db, -12.0);
+    }
+
+    #[test]
+    fn wp_c2_apply_all_params_runs_under_the_link_lock() {
+        let (t, log) = Spy::new(FakeDevice::demo(), true);
+        let core = DspiCore::new();
+        core.attach(Box::new(t), "LINK".into(), 0);
+        core.fetch_all().unwrap();
+        log.lock().unwrap().clear();
+        core.apply_all_params().unwrap();
+        let entries = log.lock().unwrap().clone();
+        let write = format!("out {:02X} 0", op::REQ_SET_ALL_PARAMS);
+        assert_eq!(
+            entries,
+            vec![
+                "lock Applying configuration 60".to_string(),
+                write,
+                "unlock".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn wp_c2_a_refused_lock_sends_nothing() {
+        for (refusal, want) in [
+            (TransportError::Locked, DspiError::Locked),
+            (TransportError::Denied("viewer".into()), DspiError::Denied),
+        ] {
+            let dev = FakeDevice::demo();
+            let remote = dev.remote();
+            let (mut t, log) = Spy::new(dev, true);
+            t.refuse_lock = Some(refusal);
+            let core = DspiCore::new();
+            core.attach(Box::new(t), "LINK".into(), 0);
+            core.fetch_all().unwrap();
+            let before = remote.image();
+            core.lock().state.master_volume_db = -50.0;
+            assert_eq!(core.apply_all_params(), Err(want));
+            assert!(!has_op(&log, "out", op::REQ_SET_ALL_PARAMS));
+            assert_eq!(count(&log, "unlock"), 0);
+            assert_eq!(remote.image(), before);
+            let mut inner = core.lock();
+            assert!(!inner.conn().unwrap().echo.own_bulk_pending(Instant::now()));
+        }
+    }
+
+    #[test]
+    fn wp_c2_a_failed_write_still_unlocks() {
+        let opts = FakeOptions {
+            max_transfer: Some(1024), // refuses the 6136-byte 0xA1
+            ..FakeOptions::default()
+        };
+        let (t, log) = Spy::new(FakeDevice::new(Capture::demo(), opts), true);
+        let core = DspiCore::new();
+        core.attach(Box::new(t), "LINK".into(), 0);
+        // Read over the chunk-free path is single-shot too: 0xA0 also over
+        // the limit, so seed the mirror as a connect would have.
+        {
+            let mut inner = core.lock();
+            state::decode_bulk(&demo_bulk(), &mut inner.state).unwrap();
+            inner.state.compat = COMPAT_OK;
+            inner.conn().unwrap().wire = Some(WireRead::Exact);
+        }
+        assert!(core.apply_all_params().is_err());
+        assert_eq!(count(&log, "unlock"), 1);
+    }
+
+    #[test]
+    fn wp_c2_fetch_all_after_a_fresh_connect_reads_the_image_once() {
+        let dev = FakeDevice::demo();
+        let (t, log) = Spy::new(dev, false);
+        let core = DspiCore::new();
+        core.attach_probed(Box::new(t), "DEMO".into(), 0).unwrap();
+        // What C1's attach_probed leaves behind: the mirror decoded from
+        // this connect's image, the platform applied, the flag set.
+        {
+            let mut inner = core.lock();
+            let inner = &mut *inner;
+            let raw = inner.state.bulk_raw.clone();
+            state::decode_bulk(&raw, &mut inner.state).unwrap();
+            state::apply_platform(&Capture::demo().platform, &mut inner.state).unwrap();
+            inner.state.compat = COMPAT_OK;
+            inner.state.core1_mode = 7; // a stale per-item value
+            inner.conn.as_mut().unwrap().fresh_image = true;
+        }
+        let image_start = format!("in {:02X} 0", op::REQ_GET_ALL_PARAMS_CHUNK);
+        // The base attach_probed reads the image in probe and again for the
+        // mirror; C1's reads it once. Either way fetch_all adds no read.
+        let attach_reads = count(&log, &image_start);
+        assert!(attach_reads >= 1);
+        let platform = format!("in {:02X} 0", op::REQ_GET_PLATFORM);
+        let platform_reads = count(&log, &platform);
+
+        core.fetch_all().unwrap();
+        assert_eq!(count(&log, &image_start), attach_reads, "no image re-read");
+        assert_eq!(
+            count(&log, &platform),
+            platform_reads,
+            "no platform re-read"
+        );
+        assert!(
+            has_op(&log, "in", op::REQ_PRESET_GET_DIR),
+            "per-item reads run"
+        );
+        let s = core.get_state();
+        assert_eq!(s.compat, COMPAT_OK);
+        assert!(s.bulk_valid);
+        assert_eq!(s.master_volume_db, decoded(&demo_bulk()).master_volume_db);
+        assert!(s.dac_mute_supported);
+        assert_eq!(s.core1_mode, 0, "per-item values reset, then re-read");
+        assert!(!core.lock().conn().unwrap().fresh_image, "consumed");
+
+        // A later fetch reads everything again.
+        core.fetch_all().unwrap();
+        assert_eq!(count(&log, &image_start), attach_reads + 1);
     }
 
     #[test]
