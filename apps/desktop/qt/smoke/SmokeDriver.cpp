@@ -69,6 +69,8 @@ void SmokeDriver::run() {
     testControlSurfaces();
     testSiggenAndStats();
     testFiles();
+    testImportAppliesOnce();
+    testSeam();
     testAutoEq();
     testWindows();
     // -- WP QD30 --
