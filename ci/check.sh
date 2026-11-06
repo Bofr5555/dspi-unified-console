@@ -3,7 +3,7 @@
 # (ci/run.sh), never on tmpfs.
 #
 #   ci/check.sh                       full gate (reviewer/merger): fmt, clippy,
-#                                     tests, Windows GNU cross-build
+#                                     tests, Windows GNU cross-build, licences, deny
 #   ci/check.sh --crate dspi-core     scoped (WP agents): fmt, clippy and tests
 #   ci/check.sh --crate a --crate b   of the named packages only
 #   ci/check.sh --step NAME ...       one or more optional steps:
@@ -22,6 +22,11 @@
 #                                     MinGW Qt 6 app, zip and installer
 #       proptest                      the property tests (functions named
 #                                     proptest_*), 20000 cases each
+#       licences                      the iOS build against docs/licensing/
+#                                     (ci/licence-inventory.py --gate); a new
+#                                     crate, licence, asset or outside author fails
+#       deny                          cargo-deny: licences and sources, whole
+#                                     workspace (deny.toml)
 #   ci/check.sh --all                 full gate plus every optional step
 #
 # Lint level: clippy's default set, warnings denied (-D warnings), plus the
@@ -37,13 +42,13 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --crate) crates+=("$2"); shift 2 ;;
     --step) steps+=("$2"); shift 2 ;;
-    --all) steps=(fmt clippy test windows-gnu windows-msvc android wasm qt qt5 qt-offscreen qt5-offscreen qt-windows proptest); shift ;;
-    -h|--help) sed -n "2,30p" "$0"; exit 0 ;;
+    --all) steps=(fmt clippy test windows-gnu licences deny windows-msvc android wasm qt qt5 qt-offscreen qt5-offscreen qt-windows proptest); shift ;;
+    -h|--help) sed -n "2,35p" "$0"; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
   esac
 done
 if [ ${#crates[@]} -eq 0 ] && [ ${#steps[@]} -eq 0 ]; then
-  steps=(fmt clippy test windows-gnu)
+  steps=(fmt clippy test windows-gnu licences deny)
 fi
 
 ok() { printf '\n== %s: OK\n' "$1"; }
@@ -82,6 +87,11 @@ for s in "${steps[@]}"; do
     proptest)
       # Every property test function is named proptest_* (PLAN §1.9).
       $RUN "PROPTEST_CASES=20000 cargo test --workspace --all-features --release -- proptest_" ;;
+    licences) python3 ci/licence-inventory.py --gate --fetch-console ;;
+    deny)
+      deny_image=localhost/dspi-coremerge-deny:1
+      podman image exists "$deny_image" || podman build -q -t "$deny_image" -f ci/container/Containerfile.deny ci/container
+      DSPI_IMAGE=$deny_image $RUN "cargo deny --workspace --all-features --locked check licenses bans sources" ;;
     *) echo "unknown step $s" >&2; exit 2 ;;
   esac
   ok "$s"

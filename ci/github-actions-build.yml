@@ -18,6 +18,15 @@ permissions:
   contents: read
 
 jobs:
+  licences:
+    name: Licences (cargo-deny, deny.toml)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses bans sources
+
   rust:
     name: Rust tests (${{ matrix.os }})
     strategy:
