@@ -24,9 +24,9 @@
           "text": "Setup is short and has one job: getting the DSPi firmware onto your Pico. Once it is running, everything else is set up in the app as you need it."
         },
         {
-          "id": "welcome.job_from_computer",
+          "id": "welcome.job_elsewhere",
           "when": "cannot_install_firmware",
-          "text": "This device cannot install firmware, so the DSPi firmware goes onto your Pico from a computer. Once it is running, everything else is set up in the app as you need it."
+          "text": "This app cannot install firmware: use DSPi Console on macOS, Windows or Linux. Once the firmware is running, everything else is set up in the app as you need it."
         }
       ],
       "rows": [
@@ -43,10 +43,10 @@
           "text": "The board restarts and the app confirms the install worked."
         },
         {
-          "id": "welcome.install_from_computer",
+          "id": "welcome.install_elsewhere",
           "when": "cannot_install_firmware",
           "icon": "connect",
-          "text": "Install the DSPi firmware from DSPi Console on a computer, then connect your Pico here."
+          "text": "Install the DSPi firmware on your Pico there, then connect it here."
         },
         {
           "id": "welcome.shape",
@@ -100,7 +100,7 @@
         {
           "id": "card.waiting",
           "title": "Waiting for your Pico",
-          "text": "Hold the BOOTSEL button while connecting your Pico-compatible device to your [[computer]]. Once detected, it will appear here."
+          "text": "Hold the BOOTSEL button while connecting your Pico-compatible device[[if macos: to your computer]]. Once detected, it will appear here."
         },
         {
           "id": "card.looking",
@@ -193,13 +193,13 @@
           "id": "done.sound",
           "when": "desktop",
           "icon": "speaker",
-          "text": "Pick the DSPi as the output device in [[sound_settings]] to hear your [[computer]] through it."
+          "text": "Pick the DSPi as the output device in [[sound_settings]] to hear [[if macos:your computer]][[if not_macos:audio]] through it."
         },
         {
           "id": "done.sound_usb",
           "when": "mobile",
           "icon": "speaker",
-          "text": "Connect the DSPi over USB to hear your [[computer]] through it."
+          "text": "Connect the DSPi over USB to hear audio through it."
         },
         {
           "id": "done.filters",

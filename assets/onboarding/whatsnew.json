@@ -13,7 +13,7 @@
       "The spectrum analyser keeps drawing while windows open, and the [[hardware_page]] settings page no longer stalls the app while it loads.",
       "On the RP2040, level meters and clip indicators no longer read 6 dB hot, so full-volume USB playback stops showing false clipping, and the signal generator plays at the level you set.",
       "A bypassed EQ band no longer stays bypassed after a factory reset, a preset delete or loading an empty slot.",
-      "Outputs on a mixed S/PDIF and I2S layout no longer fall silent after the [[computer]] pauses playback."
+      "Outputs on a mixed S/PDIF and I2S layout no longer fall silent [[if macos:after the computer pauses playback]][[if not_macos:when playback pauses]]."
     ]
   },
   {
@@ -22,7 +22,7 @@
     "items": [
       {
         "when": "desktop",
-        "text": "DSPi Link shares the devices plugged into [[this_computer]] with phones, browsers and other Consoles on your local network. Switch it on under Settings > Networking, then pair each new client with a six-digit code and choose whether it can only watch, change settings, or administer the hub."
+        "text": "DSPi Link shares [[if macos:the devices plugged into this Mac with phones, browsers and other Consoles]][[if not_macos:connected DSPi devices with browsers, apps and other Consoles]] on your local network. Switch it on under Settings > Networking, then pair each new client with a six-digit code and choose whether it can only watch, change settings, or administer the hub."
       },
       {
         "when": "desktop",
@@ -41,7 +41,7 @@
       "Saving a preset, importing a configuration, learning an IR code or installing firmware now holds other Consoles on DSPi Link off the device until it finishes. A change refused that way says another console is applying changes.",
       "After a USB board is unplugged, Console switches to a device shared by another hub instead of leaving it unselected in the device menu.",
       "With firmware beta 5, slave mode tracks an S/PDIF, ADAT or I2S source far more closely and with cleaner output clocks, and the RP2350 accepts 4-channel 24-bit USB audio.",
-      "Changing the [[computer]]'s volume is once again followed by the device.",
+      "Changing the [[if macos:computer's ]]volume is once again followed by the device.",
       "Stats shows S/PDIF and I2S output buffer fill in fine steps, and its time since the last starvation keeps counting while the window is open.",
       "I2S input data pins may use GPIOs parked on unused pairs, which are listed under Unused pairs.",
       "Applying an AutoEQ profile trims only the two inputs it equalises, instead of every input on the device.",
@@ -63,7 +63,7 @@
         "text": "The effect windows are laid out in two columns, so their controls and graphs fit side by side."
       },
       "The Matrix Mixer labels its input rows with the channel names.",
-      "Changing the [[computer]]'s volume while listening to a non-USB input no longer shows a volume the device is not actually playing at.",
+      "Changing the [[if macos:computer's ]]volume while listening to a non-USB input no longer shows a volume the device is not actually playing at.",
       "DSPi Console uses much less CPU while connected to the device."
     ]
   },

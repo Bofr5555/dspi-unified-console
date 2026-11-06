@@ -31,6 +31,10 @@
 //!
 //! Conditions are in [`Platform::holds`]. Add a term or condition only when a text
 //! needs one.
+//!
+//! **No text names what the user is holding** (owner: "The users generally know if
+//! they are using a computer or a phone"). Say the thing without the noun. Only
+//! macOS keeps such words, because there the text is Weeb Labs' original.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -154,6 +158,7 @@ impl Platform {
         let mobile = matches!(self, Self::Android | Self::Ios);
         match condition {
             "macos" => Some(self == Self::MacOs),
+            "not_macos" => Some(self != Self::MacOs),
             "desktop" => Some(!mobile),
             "mobile" => Some(mobile),
             // iOS has no route to the bootloader (SW18).
@@ -168,17 +173,13 @@ impl Platform {
 fn term(name: &str, platform: Platform) -> Option<&'static str> {
     use Platform::{Android, Ios, Linux, MacOs, Windows};
     let word = match (name, platform) {
-        ("computer", MacOs | Windows | Linux) => "computer",
-        ("computer", Android | Ios) => "phone or tablet",
-        ("this_computer", MacOs) => "this Mac",
-        ("this_computer", Windows | Linux | Android | Ios) => "this computer",
         // The settings page that holds outputs and pins.
         ("hardware_page", MacOs | Android | Ios) => "Hardware",
         ("hardware_page", Windows | Linux) => "Outputs",
-        // Lines with this term are `desktop`: mobile systems have no such choice.
+        // Only in `desktop` lines: mobile systems have no such choice.
         ("sound_settings", MacOs) => "macOS Sound settings",
         ("sound_settings", Windows) => "Windows Sound settings",
-        ("sound_settings", Linux | Android | Ios) => "your desktop's sound settings",
+        ("sound_settings", Linux) => "your desktop's sound settings",
         _ => return None,
     };
     Some(word)
@@ -439,6 +440,13 @@ mod tests_wp_cg10 {
         Platform::Ios,
     ];
 
+    const NOT_MACOS: [Platform; 4] = [
+        Platform::Windows,
+        Platform::Linux,
+        Platform::Android,
+        Platform::Ios,
+    ];
+
     /// The Swift console's file, `ext-channel-116` at `48cf7c5`, unchanged.
     const SWIFT_WHATS_NEW: &str =
         include_str!("../../../tests/fixtures/onboarding/WhatsNew.swift-48cf7c5.json");
@@ -581,7 +589,7 @@ mod tests_wp_cg10 {
         let linux = all_text(Platform::Linux);
         for pc in [&windows, &linux] {
             for want in [
-                "this computer",
+                "connected DSPi devices with browsers",
                 "(Ctrl+Shift+D)",
                 "under Outputs",
                 "right-click",
@@ -591,17 +599,14 @@ mod tests_wp_cg10 {
         }
         assert!(windows.contains("Windows Sound settings"));
         assert!(linux.contains("your desktop's sound settings"));
-        for platform in [
-            Platform::Windows,
-            Platform::Linux,
-            Platform::Android,
-            Platform::Ios,
-        ] {
+        for platform in NOT_MACOS {
             let text = all_text(platform);
-            for gone in ["Cmd+", "this Mac", "macOS", "menu bar"] {
+            for gone in ["Cmd+", "this Mac", "macOS Sound", "menu bar"] {
                 assert!(!text.contains(gone), "{platform:?}: {gone}");
             }
         }
+        assert!(!windows.contains("macOS") && !linux.contains("macOS"));
+        assert!(!all_text(Platform::Android).contains("macOS"));
         for platform in [Platform::Android, Platform::Ios] {
             let text = all_text(platform);
             for gone in [
@@ -615,13 +620,45 @@ mod tests_wp_cg10 {
                 assert!(!text.contains(gone), "{platform:?}: {gone}");
             }
             for want in [
-                "phone or tablet",
                 "touch and hold",
                 "Tap an input",
                 "pinch to change",
+                "Connect the DSPi over USB to hear audio through it.",
             ] {
                 assert!(text.contains(want), "{platform:?}: {want}");
             }
+        }
+    }
+
+    /// The owner's rule: outside macOS, no text names what the user is holding.
+    /// Whole words, so "Headphone" passes, and "device's" only where it is the
+    /// DSPi's.
+    #[test]
+    fn wp_cg10_no_text_names_the_host_outside_macos() {
+        const HOST: [&str; 6] = [
+            "computer",
+            "computers",
+            "phone",
+            "phones",
+            "tablet",
+            "tablets",
+        ];
+        const THE_DSPI: &str = "one device's spectrum analyser";
+        for platform in NOT_MACOS {
+            for s in rendered(platform) {
+                let lower = s.to_lowercase();
+                let words = lower.split(|c: char| !c.is_alphanumeric() && c != '\'');
+                for word in words {
+                    assert!(!HOST.contains(&word), "{platform:?}: {s}");
+                }
+                let without = lower.replace(THE_DSPI, "");
+                assert!(!without.contains("device's"), "{platform:?}: {s}");
+            }
+        }
+        // The check reads what it should: the original has them all on macOS.
+        let mac = all_text(Platform::MacOs);
+        for word in ["computer's", "phones", "your computer", THE_DSPI] {
+            assert!(mac.contains(word), "{word}");
         }
     }
 
@@ -733,9 +770,7 @@ mod tests_wp_cg10 {
             }
         }
         let ios = all_text(Platform::Ios);
-        assert!(ios.contains("from a computer"));
+        assert!(ios.contains("use DSPi Console on macOS, Windows or Linux"));
         assert!(!ios.contains("right here"));
-        let android = all_text(Platform::Android);
-        assert!(android.contains("to your phone or tablet"));
     }
 }
