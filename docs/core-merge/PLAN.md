@@ -189,6 +189,18 @@ and `REQ_ENTER_BOOTLOADER` (`enter_bootloader`, so a too-old or too-new device
 can still be updated, see 1.5) are allowed the same way. Any other exception
 needs a line here.
 
+**Raw commands** (WP CG4, `dspi-core/src/raw.rs`). `DspiCore::raw_get` and
+`raw_set` let a binding that has not moved to the typed API (Swift, SW4) share
+the core's one link. `raw_set`, and `raw_get` of anything but a plain read
+(a `_GET_` opcode, the IN side of `REQ_EXTENSION`, `REQ_LIMITER` and
+`REQ_OUTPUT_LATENCY`, or an exception above), go through `Writable`, so a
+read-only connection refuses them. An unknown opcode counts as a write. Each call
+holds the `DspiCore` mutex for its one transfer, so it cannot land inside a
+chunked bulk session. `0xA1`, `0xA2` and `0xA3` are refused, since a session cannot
+span raw calls and `apply_all_params` owns the write; the single-shot `0xA0`
+read stays. They are not exceptions to the typed-write rule, and new code
+uses the typed API.
+
 ### 1.3 Sans-IO
 
 These parts are pure:
