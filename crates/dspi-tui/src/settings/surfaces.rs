@@ -19,7 +19,7 @@
 //!
 //! Every write here is a deferred, live-only preview: the device applies it a
 //! tick later and reports the outcome through `REQ_GET_CS_STATUS`, and nothing
-//! reaches flash until the save bar's Save. [`cs_model::run`] does the waiting.
+//! reaches flash until the save bar's Save. `cs_model::run` does the waiting.
 //!
 //! The same card list, filtered to the two auxiliary output types, is
 //! Settings > Control > Auxiliary Outputs, as the Console builds it
