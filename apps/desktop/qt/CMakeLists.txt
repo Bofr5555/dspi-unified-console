@@ -101,12 +101,8 @@ if(APPLE)
     set_source_files_properties(src/MacSystemColors.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
     target_link_libraries(DSPiConsole PRIVATE "-framework AppKit")
 
-    # libusb from Homebrew
-    find_library(LIBUSB usb-1.0 HINTS /opt/homebrew/opt/libusb/lib)
-    target_include_directories(DSPiConsole PRIVATE /opt/homebrew/opt/libusb/include)
-    target_link_libraries(DSPiConsole PRIVATE ${LIBUSB})
-
-    # macOS frameworks required by rusb/libusb
+    # libusb is built into the core (rusb's vendored feature, core/Cargo.toml);
+    # these are the macOS frameworks it uses
     find_library(IOKIT IOKit)
     find_library(CF CoreFoundation)
     find_library(SEC Security)
