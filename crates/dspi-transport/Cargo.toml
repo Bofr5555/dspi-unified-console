@@ -10,7 +10,7 @@ repository.workspace = true
 [dependencies]
 dspi-proto.workspace = true
 thiserror.workspace = true
-nusb = "0.2"
+nusb = { version = "0.2", optional = true }
 dspi-link = { workspace = true, optional = true }
 midir = { version = "0.10", optional = true }
 # -- WP T1 --
@@ -22,6 +22,11 @@ midir = { version = "0.10", optional = true }
 log.workspace = true
 
 [features]
+# -- WP CG3 --
+default = ["usb"]
+# The USB backend (`usb` module, `UsbTransport`), over nusb. Off for iOS, where
+# nusb has no backend and does not compile.
+usb = ["dep:nusb"]
 # DSPi Link transport (WP T5).
 link = ["dep:dspi-link"]
 # Desktop MIDI ports through midir: ALSA, WinMM, CoreMIDI (WP T3). Android and

@@ -9,7 +9,8 @@ repository.workspace = true
 
 [dependencies]
 dspi-proto.workspace = true
-dspi-transport.workspace = true
+# Without its default `usb`: this crate's own `usb` feature turns it on (WP CG3).
+dspi-transport = { path = "../dspi-transport", default-features = false }
 # Without the Terminal's parts: the mobile libraries (WP F1) carry neither the
 # command grammar nor the bundled AutoEQ database.
 dspi-session = { path = "../dspi-session", default-features = false }
@@ -18,8 +19,8 @@ thiserror.workspace = true
 log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-# Bootloader enumeration (WP C11).
-nusb = "0.2"
+# Bootloader and device enumeration (WP C11). Optional since WP CG3.
+nusb = { version = "0.2", optional = true }
 # -- WP C0 --
 # -- WP C1 --
 # -- WP C1b --
@@ -42,7 +43,12 @@ nusb = "0.2"
 uniffi = { workspace = true, optional = true }
 
 [features]
-default = []
+# -- WP CG3 --
+default = ["usb"]
+# USB through nusb: on for desktop, macOS and Android. Off for iOS, where nusb
+# has no backend and does not compile; the USB methods stay in the API and report
+# no devices or `Unsupported`, so one binding fits every platform.
+usb = ["dep:nusb", "dspi-transport/usb"]
 # DSPi Link sessions (WP C15, over dspi-transport's Link adapter, WP T5).
 link = ["dep:dspi-link", "dspi-transport/link"]
 # Desktop MIDI ports through midir (WP T3).
