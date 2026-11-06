@@ -142,6 +142,10 @@ pub const FLASH_ERR_CRC: u8 = 3;
 // -- WP C6 --
 // -- WP C7 --
 // -- WP C8 --
+/// `DspiError::Refused { status }` for an extension-channel write the
+/// device stalled (`REQ_EXTENSION`, WP C8): the extension channel has no
+/// status byte, so this code stands for "refused".
+pub const EXT_WRITE_REFUSED: u8 = 0xFF;
 // -- WP C9 --
 // -- WP C10 --
 // -- WP C11 --
