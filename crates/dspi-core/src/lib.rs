@@ -35,6 +35,16 @@
 //! The skeleton methods marked `todo!("WP ..")` are filled in by the work
 //! packages listed in `docs/core-merge/PLAN.md`.
 
+// The core-merge quality bar (docs/core-merge/PLAN.md §1.7, §1.8): no
+// panicking shortcuts on outside data. clippy.toml exempts test code from the
+// first three; test modules allow arithmetic_side_effects themselves.
+// missing_docs is turned on by WP F1, which documents every record.
+#![warn(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
 // Skeleton phase: the shared plumbing below is used only once the work
 // packages fill the methods in. WP Q3 removes this allow.
 #![allow(dead_code)]
@@ -60,6 +70,7 @@ mod ext;
 pub mod files;
 mod firmware;
 mod hardware;
+mod hotplug;
 mod info;
 #[cfg(feature = "link")]
 pub mod link;
@@ -73,14 +84,35 @@ mod stats;
 
 pub use callbacks::{DeviceEvents, LinkListener, NotifyListener, RtaListener};
 pub use curves::*;
+pub use device::MidiInputHandle;
 pub use error::{DspiError, Result};
 pub use firmware::*;
 pub use records::*;
+// Work-package sections: add re-exports only inside your own section.
+// -- WP C0 --
+// -- WP C1 --
+// -- WP C1b --
+// -- WP C2 --
+// -- WP C3 --
+// -- WP C4 --
+// -- WP C5 --
+// -- WP C6 --
+// -- WP C7 --
+// -- WP C8 --
+// -- WP C9 --
+// -- WP C10 --
+// -- WP C11 --
+// -- WP C12 --
+// -- WP C13 --
+// -- WP C14 --
+// -- WP C15 --
+// -- WP F1 --
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 pub struct DspiCore {
     pub(crate) inner: Mutex<Inner>,
-    pub(crate) listeners: Listeners,
+    /// Shared with the reader and worker threads, which wake the app.
+    pub(crate) listeners: Arc<Listeners>,
 }
 
 /// Everything behind the lock.
@@ -131,6 +163,30 @@ pub(crate) struct Connection {
     pub(crate) ext: ExtState,
 }
 
+/// A placeholder transport for a `Connection` built before its session
+/// (`attach_probed` replaces it at once). Every call is `Disconnected`.
+struct NoTransport;
+
+impl Transport for NoTransport {
+    fn control_in(&mut self, _: u8, _: u16, _: u16) -> dspi_transport::Result<Vec<u8>> {
+        Err(dspi_transport::TransportError::Disconnected)
+    }
+
+    fn control_out(&mut self, _: u8, _: u16, _: &[u8]) -> dspi_transport::Result<()> {
+        Err(dspi_transport::TransportError::Disconnected)
+    }
+
+    fn descriptor(&self) -> &dspi_transport::DeviceDescriptor {
+        static NONE: std::sync::OnceLock<dspi_transport::DeviceDescriptor> =
+            std::sync::OnceLock::new();
+        NONE.get_or_init(|| dspi_transport::DeviceDescriptor {
+            serial: String::new(),
+            bus_id: String::new(),
+            address: 0,
+        })
+    }
+}
+
 /// The transport, raw or inside a session.
 pub(crate) enum Wire {
     Raw(Box<dyn Transport>),
@@ -153,7 +209,8 @@ impl Connection {
         }
     }
 
-    /// The transport, whichever form the connection is in.
+    /// The transport, whichever form the connection is in. For reads; a
+    /// write goes through [`Writable`].
     pub(crate) fn transport(&mut self) -> &mut dyn Transport {
         match &mut self.link {
             Wire::Raw(t) => &mut **t,
@@ -161,7 +218,8 @@ impl Connection {
         }
     }
 
-    /// The session, once the device has been probed.
+    /// The session, once the device has been probed. For reads; writes go
+    /// through [`Writable::session`].
     pub(crate) fn session(&mut self) -> Result<&mut Session> {
         match &mut self.link {
             Wire::Session(s) => Ok(s),
@@ -180,9 +238,48 @@ impl Connection {
         Ok(self.transport().control_in(opcode, value, len)?)
     }
 
+    /// IN transfer whose reply may be shorter than `max_len` (replies sized
+    /// by the device), errors typed.
+    pub(crate) fn get_upto(&mut self, opcode: u8, value: u16, max_len: u16) -> Result<Vec<u8>> {
+        Ok(self.transport().control_in_upto(opcode, value, max_len)?)
+    }
+}
+
+/// A connection whose state may be written: the only way to send a change.
+///
+/// Returned by [`Inner::writable_conn`], which refuses a read-only
+/// connection (another wire format, §1.5 of the plan). A [`Connection`]
+/// alone offers reads only (`get`, `get_upto`, session reads); every
+/// setter goes through this type, so a write on a read-only connection is a
+/// compile error rather than a forgotten check. Rule for reviewers:
+/// `Session::send`/`write`/`write_band`, `control_out` and write-as-read
+/// opcodes appear only on a `Writable`.
+pub(crate) struct Writable<'a>(&'a mut Connection);
+
+impl Writable<'_> {
     /// OUT transfer, errors typed.
     pub(crate) fn set(&mut self, opcode: u8, value: u16, data: &[u8]) -> Result<()> {
-        Ok(self.transport().control_out(opcode, value, data)?)
+        Ok(self.0.transport().control_out(opcode, value, data)?)
+    }
+
+    /// A write-as-read opcode (parameters in `wValue`, a status byte back):
+    /// the status, 0 = applied.
+    pub(crate) fn set_as_read(&mut self, opcode: u8, value: u16) -> Result<u8> {
+        let b = self.0.transport().control_in(opcode, value, 1)?;
+        b.first().copied().ok_or(DspiError::Transfer {
+            msg: format!("empty status reply to opcode 0x{opcode:02X}"),
+        })
+    }
+
+    /// The session, for `Session::send` (WP S1) and the session's write
+    /// helpers.
+    pub(crate) fn session(&mut self) -> Result<&mut Session> {
+        self.0.session()
+    }
+
+    /// The connection, for reads in the middle of a write.
+    pub(crate) fn conn(&mut self) -> &mut Connection {
+        self.0
     }
 }
 
@@ -208,12 +305,12 @@ impl Inner {
         self.conn.as_mut().ok_or(DspiError::Disconnected)
     }
 
-    /// The open connection, if its state may be written
+    /// The open connection as a [`Writable`], if its state may be written
     /// ([`DspiError::ReadOnly`] for another wire format).
-    pub(crate) fn writable_conn(&mut self) -> Result<&mut Connection> {
+    pub(crate) fn writable_conn(&mut self) -> Result<Writable<'_>> {
         let c = self.conn()?;
         if c.writable() {
-            Ok(c)
+            Ok(Writable(c))
         } else {
             Err(DspiError::ReadOnly)
         }
@@ -257,7 +354,7 @@ impl DspiCore {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             inner: Mutex::new(Inner::new()),
-            listeners: Listeners::default(),
+            listeners: Arc::new(Listeners::default()),
         })
     }
 
@@ -271,6 +368,65 @@ impl DspiCore {
         inner.selected = Some(serial);
     }
 
+    /// The connect sequence every `open_*` ends in (WP C1 wraps it in
+    /// `open_transport`):
+    ///
+    /// 1. take the old connection out under the lock and drop it with the
+    ///    lock released (its reader thread joins);
+    /// 2. probe the device and build the [`Session`];
+    /// 3. read the bulk image into the mirror;
+    /// 4. start the notification reader, waking the [`NotifyListener`];
+    /// 5. install the connection.
+    ///
+    /// Base version: strict V32 probe and bulk read, the image kept in
+    /// `bulk_raw` only. As their WPs land, C1 switches it to S2's
+    /// `probe_any` and `compat::read_bulk_any` (setting `wire` from the read
+    /// mode), C0's `state::decode_bulk`, and S3's `ExtState::probe`; C1 owns
+    /// this function from wave 2 on.
+    pub(crate) fn attach_probed(
+        &self,
+        mut transport: Box<dyn Transport>,
+        serial: String,
+        vid: u16,
+    ) -> Result<()> {
+        let old = self.lock().conn.take();
+        drop(old);
+
+        let caps = dspi_session::probe(&mut *transport).map_err(DspiError::from)?;
+        let mut session = Session::new(transport, caps).ok_or(DspiError::InvalidArgument {
+            msg: "the device reported an impossible channel layout".into(),
+        })?;
+        let bulk = dspi_session::read_bulk(session.transport_mut()).map_err(DspiError::from)?;
+
+        let listeners = Arc::clone(&self.listeners);
+        let waker: dspi_session::notify::Waker =
+            Arc::new(move || listeners.notify.call(|l| l.on_notifications()));
+        let notifications = match session.transport_mut().notifications() {
+            Some(source) => Some(
+                dspi_session::Notifications::start_with_waker(source, Some(waker)).map_err(
+                    |e| DspiError::Io {
+                        msg: format!("cannot start the notification reader: {e}"),
+                    },
+                )?,
+            ),
+            None => None,
+        };
+
+        let mut conn = Connection::new(Box::new(NoTransport), serial.clone(), vid);
+        conn.caps = session.transport_mut().caps();
+        conn.session_id = session.transport_mut().session_id();
+        conn.link = Wire::Session(Box::new(session));
+        conn.notifications = notifications;
+        conn.wire = Some(WireRead::Exact);
+
+        let mut inner = self.lock();
+        inner.state.bulk_raw = bulk.as_bytes().to_vec();
+        inner.state.bulk_valid = true;
+        inner.conn = Some(conn);
+        inner.selected = Some(serial);
+        Ok(())
+    }
+
     /// The lock. A panic while it was held does not poison the API.
     pub(crate) fn lock(&self) -> MutexGuard<'_, Inner> {
         self.inner.lock().unwrap_or_else(|p| p.into_inner())
@@ -278,6 +434,7 @@ impl DspiCore {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests {
     use super::*;
 
@@ -286,6 +443,18 @@ mod tests {
     fn a_new_core_is_disconnected() {
         let core = DspiCore::new();
         assert!(matches!(core.lock().conn(), Err(DspiError::Disconnected)));
+    }
+
+    #[test]
+    #[ignore = "WP C1: needs C0's default_state and T4's FakeDevice::demo"]
+    fn wp_c1_attach_probed_opens_the_demo_device() {
+        let core = DspiCore::new();
+        let demo = dspi_transport::FakeDevice::demo();
+        core.attach_probed(Box::new(demo), "DEMO".into(), 0)
+            .unwrap();
+        let mut inner = core.lock();
+        assert!(inner.conn().is_ok());
+        assert_eq!(inner.state.bulk_raw.len(), 6136);
     }
 
     #[test]

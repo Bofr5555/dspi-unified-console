@@ -284,6 +284,10 @@ pub fn normalize_bytes(data: &[u8]) -> Result<(Vec<u8>, WireRead), WireError> {
     // mask, I2S clock mode and the three ADAT input bytes sat one byte earlier.
     if v < 28 {
         let ic = input_config;
+        // Cannot fail: a 5-byte range converts to [u8; 5]. `out` is
+        // BULK_SIZE long and the input-config section ends 16 bytes after
+        // `ic`, well inside it; `data` was checked against bulk_size(v) above,
+        // and every slice of it here ends before that size.
         let tail: [u8; 5] = out[ic + 10..ic + 15].try_into().unwrap();
         out[ic + 10] = 0; // S/PDIF 4 pin: absent
         out[ic + 11..ic + 16].copy_from_slice(&tail);

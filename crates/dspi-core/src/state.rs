@@ -51,6 +51,7 @@ pub fn encode_bulk(state: &DspState) -> Vec<u8> {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests {
     #[test]
     #[ignore = "WP C0"]

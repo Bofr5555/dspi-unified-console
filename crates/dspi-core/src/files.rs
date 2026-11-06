@@ -44,6 +44,7 @@ pub fn config_inspect(text: String) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests {
     #[test]
     #[ignore = "WP C13"]

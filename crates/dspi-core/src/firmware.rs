@@ -39,6 +39,7 @@ pub fn flash_to_drive(image: Vec<u8>, drive: BootloaderDrive) -> Result<()> {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests {
     #[test]
     #[ignore = "WP C11"]

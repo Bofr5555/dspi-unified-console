@@ -42,6 +42,25 @@ pub enum DspiError {
     /// A file could not be read or written (presets, firmware images).
     #[error("{msg}")]
     Io { msg: String },
+    // Work-package sections: add variants only inside your own section.
+    // -- WP C0 --
+    // -- WP C1 --
+    // -- WP C1b --
+    // -- WP C2 --
+    // -- WP C3 --
+    // -- WP C4 --
+    // -- WP C5 --
+    // -- WP C6 --
+    // -- WP C7 --
+    // -- WP C8 --
+    // -- WP C9 --
+    // -- WP C10 --
+    // -- WP C11 --
+    // -- WP C12 --
+    // -- WP C13 --
+    // -- WP C14 --
+    // -- WP C15 --
+    // -- WP F1 --
 }
 
 pub type Result<T> = std::result::Result<T, DspiError>;
@@ -83,6 +102,7 @@ pub(crate) fn status(code: u8) -> Result<()> {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests {
     use super::*;
 

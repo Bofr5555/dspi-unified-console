@@ -688,3 +688,24 @@ pub struct BootloaderDrive {
     /// `INFO_UF2.TXT`, verbatim.
     pub info: String,
 }
+
+// Work-package sections: append new records only inside your own section
+// (docs/core-merge/WP-BRIEF.md). Keep the order.
+// -- WP C0 --
+// -- WP C1 --
+// -- WP C1b --
+// -- WP C2 --
+// -- WP C3 --
+// -- WP C4 --
+// -- WP C5 --
+// -- WP C6 --
+// -- WP C7 --
+// -- WP C8 --
+// -- WP C9 --
+// -- WP C10 --
+// -- WP C11 --
+// -- WP C12 --
+// -- WP C13 --
+// -- WP C14 --
+// -- WP C15 --
+// -- WP F1 --

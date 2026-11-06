@@ -1,0 +1,6 @@
+# Workspace clippy configuration (docs/core-merge/PLAN.md §1.8). The strict
+# lints the core-merge crates enable (unwrap_used, expect_used,
+# indexing_slicing) do not apply inside #[cfg(test)] code.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-indexing-slicing-in-tests = true

@@ -47,6 +47,7 @@ pub fn core_info() -> CoreInfo {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests {
     #[test]
     #[ignore = "WP C12"]

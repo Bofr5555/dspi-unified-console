@@ -79,6 +79,7 @@ pub fn link_fetch_info(host: String, port: u16) -> Result<LinkInfo> {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests {
     #[test]
     #[ignore = "WP C15"]

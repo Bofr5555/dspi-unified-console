@@ -21,6 +21,17 @@
 //! `fns_misc.rs` (WP Q2b) the functions; `build.rs` writes
 //! `include/dspi_core.h` with cbindgen (WP Q1).
 
+// The core-merge quality bar (docs/core-merge/PLAN.md §1.7, §1.8): no
+// panicking shortcuts on outside data. clippy.toml exempts test code from the
+// first three; test modules allow arithmetic_side_effects themselves.
+// missing_docs is turned on by WP F1, which documents every record.
+#![warn(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
+
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 mod fns_device;
@@ -38,6 +49,7 @@ pub(crate) fn guard<T>(fail: T, f: impl FnOnce() -> T) -> T {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests {
     use super::*;
 

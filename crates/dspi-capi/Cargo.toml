@@ -8,17 +8,31 @@ license.workspace = true
 repository.workspace = true
 
 [lib]
-# Becomes `dspi_core` (dspi_core.dll / libdspi_core.{a,so,dylib}), the name
-# the Qt build links, in WP Q3, which also removes crates/dspi-core-linux,
-# whose library has that name today. No rlib: a cdylib/staticlib crate named
-# like the dspi-core rlib would collide in target/.
+# Stays `dspi_capi` (gate 1, S-j): renaming it to `dspi_core` would collide
+# in target/ with the old core's library and with dspi-core's rlib. The
+# header keeps the name `dspi_core.h`. The Qt build picks the library with
+# the CMake cache variable DSPI_CORE_LIB (ci/check.sh --step qt-capi, from
+# wave 3; WP Q3 makes it the default and updates the packaging scripts).
+# No rlib, for the same collision reason.
 name = "dspi_capi"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
 dspi-core.workspace = true
 log.workspace = true
+# -- WP Q1 --
+# -- WP Q2a --
+# -- WP Q2b --
 
 [features]
 link = ["dspi-core/link"]
 midir = ["dspi-core/midir"]
+
+[dev-dependencies]
+# -- WP Q1 --
+# -- WP Q2a --
+# -- WP Q2b --
+
+[build-dependencies]
+# The header (WP Q1), as the old core generated it.
+cbindgen = "0.27"

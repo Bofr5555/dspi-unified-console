@@ -18,6 +18,24 @@ serde.workspace = true
 serde_json.workspace = true
 # Bootloader enumeration (WP C11).
 nusb = "0.2"
+# -- WP C0 --
+# -- WP C1 --
+# -- WP C1b --
+# -- WP C2 --
+# -- WP C3 --
+# -- WP C4 --
+# -- WP C5 --
+# -- WP C6 --
+# -- WP C7 --
+# -- WP C8 --
+# -- WP C9 --
+# -- WP C10 --
+# -- WP C11 --
+# -- WP C12 --
+# -- WP C13 --
+# -- WP C14 --
+# -- WP C15 --
+# -- WP F1 --
 
 [features]
 default = []
@@ -28,3 +46,22 @@ midir = ["dspi-transport/midir"]
 
 [dev-dependencies]
 proptest = "1"
+# -- WP C0 --
+# -- WP C1 --
+# -- WP C1b --
+# -- WP C2 --
+# -- WP C3 --
+# -- WP C4 --
+# -- WP C5 --
+# -- WP C6 --
+# -- WP C7 --
+# -- WP C8 --
+# -- WP C9 --
+# -- WP C10 --
+# -- WP C11 --
+# -- WP C12 --
+# -- WP C13 --
+# -- WP C14 --
+# -- WP C15 --
+# -- WP F1 --
+
