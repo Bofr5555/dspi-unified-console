@@ -70,7 +70,7 @@ fn wp_l1_a_dropped_connection_reads_as_connection_lost_and_reconnects() {
     hub.drop_connections();
     assert!(wait(|| c.is_closed()));
     assert_eq!(c.closed_reason().unwrap(), (None, "connection lost".to_owned()), "no raw socket text");
-    assert_eq!(ev.closed.lock().unwrap().len(), 1);
+    assert!(wait(|| ev.closed.lock().unwrap().len() == 1), "the event follows the state");
     let (c2, _) = LinkClient::connect(&TcpConnector::default(), &hub.url(), &opts(None), None).unwrap();
     assert_ne!(c2.session_id(), c.session_id());
 }

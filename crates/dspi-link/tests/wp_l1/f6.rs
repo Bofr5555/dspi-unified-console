@@ -58,6 +58,7 @@ fn wp_l1_f6_a_stale_close_is_identifiable_on_a_shared_listener() {
     let new = connect_ev(&hub, &shared, &SessionConfig::default()).unwrap();
     assert_ne!(old.epoch(), new.epoch());
     old.close();
+    assert!(wait(|| !shared.closed.lock().unwrap().is_empty()), "whichever thread delivers it");
     let got = shared.closed.lock().unwrap().clone();
     assert_eq!(got.len(), 1);
     assert_eq!(got[0].0, old.epoch(), "the listener can see this is the old session");

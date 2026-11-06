@@ -32,7 +32,7 @@ fn wp_l1_f7_a_command_timeout_probes_and_no_answer_ends_it_early() {
     timed_out_command(&c);
     assert!(wait(|| pings(&hub) == 1), "the probe goes out at once, not at the next regular ping");
     clock.advance(Duration::from_secs(4));
-    std::thread::sleep(Duration::from_millis(10));
+    hub.settle();
     assert!(!c.is_closed(), "within the probe's time");
     clock.advance(Duration::from_millis(1100));
     assert!(wait(|| c.is_closed()), "dead about 5 s after the timeout, not 35 s");
@@ -47,9 +47,9 @@ fn wp_l1_f7_a_slow_device_on_a_live_hub_is_not_a_dead_session() {
     hub.answer_pings.store(true, Ordering::SeqCst);
     timed_out_command(&c);
     assert!(wait(|| pings(&hub) == 1));
-    std::thread::sleep(Duration::from_millis(10)); // The pong is read
+    hub.settle(); // The pong is read
     clock.advance(Duration::from_secs(6));
-    std::thread::sleep(Duration::from_millis(10));
+    hub.settle();
     assert!(!c.is_closed(), "the ping was answered");
     // And the next timeout probes again
     timed_out_command(&c);
@@ -63,9 +63,9 @@ fn wp_l1_f7_any_inbound_frame_answers_the_probe() {
     timed_out_command(&c);
     assert!(wait(|| pings(&hub) == 1));
     hub.push(WsRecv::Message(WsMessage::Text(r#"{"t":"hub.config.changed"}"#.into())));
-    std::thread::sleep(Duration::from_millis(10));
+    hub.settle();
     clock.advance(Duration::from_secs(6));
-    std::thread::sleep(Duration::from_millis(10));
+    hub.settle();
     assert!(!c.is_closed());
 }
 

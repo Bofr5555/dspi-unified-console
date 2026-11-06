@@ -101,6 +101,7 @@ type Responder = Box<dyn Fn(&serde_json::Value) -> Option<serde_json::Value> + S
 pub struct MockHub {
     inbound: Sender<WsRecv>,
     pub pings: AtomicU32,
+    idles: AtomicU32,
     pub answer_pings: AtomicBool,
     pub fail_sends: AtomicBool,
     pub closed: AtomicBool,
@@ -113,10 +114,17 @@ impl MockHub {
     pub fn push(&self, r: WsRecv) {
         let _ = self.inbound.send(r);
     }
+
+    /// Returns once the client's reader has handled everything pushed so far and
+    /// looked at its clock: it has come back for more twice, finding nothing.
+    pub fn settle(&self) {
+        let seen = self.idles.load(Ordering::SeqCst);
+        wait(|| self.idles.load(Ordering::SeqCst) >= seen + 2);
+    }
 }
 
 struct MockSender(Arc<MockHub>);
-struct MockReceiver(Receiver<WsRecv>);
+struct MockReceiver(Arc<MockHub>, Receiver<WsRecv>);
 
 impl WsSender for MockSender {
     fn send(&self, msg: WsMessage) -> std::io::Result<()> {
@@ -148,7 +156,10 @@ impl WsSender for MockSender {
 impl WsReceiver for MockReceiver {
     fn recv(&mut self) -> WsRecv {
         // A short tick, so the client looks at its clock often
-        self.0.recv_timeout(Duration::from_millis(2)).unwrap_or(WsRecv::Idle)
+        self.1.recv_timeout(Duration::from_millis(2)).unwrap_or_else(|_| {
+            self.0.idles.fetch_add(1, Ordering::SeqCst);
+            WsRecv::Idle
+        })
     }
 }
 
@@ -160,7 +171,7 @@ pub struct MockConnector {
 impl WsConnector for MockConnector {
     fn connect(&self, _url: &str, _protocol: &str) -> Result<WsPair, LinkError> {
         let rx = self.rx.lock().unwrap().take().ok_or(LinkError::Io("one connect only".into()))?;
-        Ok((Box::new(MockSender(Arc::clone(&self.hub))), Box::new(MockReceiver(rx))))
+        Ok((Box::new(MockSender(Arc::clone(&self.hub))), Box::new(MockReceiver(Arc::clone(&self.hub), rx))))
     }
 }
 
@@ -173,6 +184,7 @@ pub fn mock_hub(
     let hub = Arc::new(MockHub {
         inbound: tx,
         pings: AtomicU32::new(0),
+        idles: AtomicU32::new(0),
         answer_pings: AtomicBool::new(false),
         fail_sends: AtomicBool::new(false),
         closed: AtomicBool::new(false),
@@ -244,6 +256,7 @@ pub fn mock_hub_without_id() -> (Arc<MockHub>, MockConnector) {
     let hub = Arc::new(MockHub {
         inbound: tx,
         pings: AtomicU32::new(0),
+        idles: AtomicU32::new(0),
         answer_pings: AtomicBool::new(false),
         fail_sends: AtomicBool::new(false),
         closed: AtomicBool::new(false),

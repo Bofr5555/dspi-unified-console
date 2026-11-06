@@ -15,9 +15,7 @@ fn wp_l1_f1_control_frames_are_liveness() {
     for _ in 0..5 {
         clock.advance(Duration::from_secs(30));
         hub.push(WsRecv::Alive);
-        let pings = hub.pings.load(std::sync::atomic::Ordering::SeqCst);
-        assert!(wait(|| hub.pings.load(std::sync::atomic::Ordering::SeqCst) > pings), "the keepalive thread ran");
-        std::thread::sleep(Duration::from_millis(10)); // Several reader ticks
+        hub.settle();
         assert!(!c.is_closed(), "30 s after a pong is within the limit");
     }
     clock.advance(Duration::from_secs(36));
