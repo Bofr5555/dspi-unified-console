@@ -1,7 +1,7 @@
 // Reference values for the WP C12 tests in curves.rs (included there, test
 // only). Generated once from the old core, crates/dspi-core-linux/src/
-// dsp_math.rs at core-merge 4f3e391, by a throwaway program that compiled that
-// file and printed, per case: `response_at` at 20, 300, 1k, 4k, 10k and
+// dsp_math.rs (since deleted, WP Q3) at core-merge 4f3e391, by a throwaway
+// program that compiled that file and printed, per case: `response_at` at 20, 300, 1k, 4k, 10k and
 // 20k Hz (f32), and every 8th point of `compute_magnitude_curve` (f64 dB) and
 // of `compute_phase_curve` wrapped and unwrapped (degrees; the old core
 // rounds phase through f32). Bands are (type, freq, q, gain, qp, bypass).

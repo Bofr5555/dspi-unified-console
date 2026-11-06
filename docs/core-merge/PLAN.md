@@ -49,7 +49,7 @@ crates/
                   link   DSPi Link adapter (feature `link`)
                   fake   the stateful demo device
                   mock   scripted replies (awkward paths)
-  dspi-link       DSPi Link client (WebSocket), unchanged
+  dspi-link       DSPi Link client (WebSocket)
   dspi-session    state machine + protocol operations: probe, DeviceState (the
                   bulk image as mirror), notifications with origin, writes
                   (confirmed, and the fast path), compat reads, ext probe,
@@ -60,17 +60,17 @@ crates/
                   traits, device manager, notify/RTA threads, JSON features,
                   firmware files
   dspi-capi       C ABI over dspi-core for the Qt app: the old names and
-                  #[repr(C)] records, header include/dspi_core.h; library name
-                  becomes dspi_core in WP Q3
+                  #[repr(C)] records, header include/dspi_core.h; the library
+                  stays dspi_capi (gate 1, S-j: `dspi_core` collides in target/)
+  dspi-ffi        UniFFI library over dspi-core, for Kotlin and Swift (WP F1)
   dspi-cmd, dspi-tui, apps/terminal   the terminal, a direct session consumer
-  dspi-core-linux the old core; deleted by WP Q3
 ```
 
-Later, on top of `dspi-core`:
-- `dspi-ffi`: UniFFI, giving Kotlin for Android and Swift for iOS (the
-  scaffold is WP F1);
-- `dspi-wasm`: over proto and session, with an async driver (not in this
-  plan).
+The old core, `dspi-core-linux`, was deleted by WP Q3; `git show d190535`
+still has it, and later sections of this plan cite it as it was.
+
+Later, on top of `dspi-core`: `dspi-wasm`, over proto and session, with an
+async driver (not in this plan).
 
 ### 1.2 The Transport trait (done in the base)
 
@@ -1100,3 +1100,31 @@ additive edits only.
     `refresh_params_locked`, `fetch_all` captures the baseline;
   - fake: `bulk_source`, legacy preamp, output delay as channel delay,
     `SAVE_PARAMS`, `FACTORY_RESET`, the Core 1 conflict read.
+- **Wave 3** merged at `d190535`: C15, Q2a, Q2b, R1, F1, plus L1 (Link
+  robustness), each reviewed and fixed. The full test step on it: 2182 passed,
+  1 ignored (`wp_q3_every_old_function_is_exported`, which Q3 turned on).
+  `android`, `windows-msvc`, `proptest` and the Qt build against `dspi_capi`
+  passed in the same round.
+- **Wave 4:**
+  - **Q3**, branch `wp/Q3` at `3c88309`: the Qt app on `dspi_capi`, old core
+    deleted. Its checks: `--crate dspi-capi/-core/-tui/-ffi` (1202 tests
+    passed), `--step qt`, `qt5`, `qt-offscreen` (Qt 6: 127 checks, 0 failures),
+    `qt5-offscreen` (Qt 5: 110 checks, 0 failures), `qt-windows`,
+    `windows-msvc`.
+  - **D1** (this text): `README.md`, `docs/PORTABILITY.md`, the desktop docs.
+  - The final gate (§2, review gate 3) had not run when this was written.
+
+**Not run on the merged tree:**
+- any real device, over any transport; any real DSPi Link hub or bridge (the
+  fake hub only); any real MIDI port;
+- `apps/desktop/packaging/macos/build-macos.sh`, and the macOS VM check Q3
+  left to the coordinator;
+- the Qt app with MSVC (only the `dspi_capi` DLL and `dspi.exe` are built);
+- `apps/desktop/packaging/linux/build-release.sh`;
+- the spectrum analyser, control surfaces, signal generator and buffer
+  statistics through Qt: the demo device has none of them, and the smoke driver
+  prints `NOT EXERCISED`.
+
+**After this plan.** `docs/core-merge/PLAN-CLIENTS.md` (branch `plan/clients`,
+merged later) takes every client onto this core. The current parity state is
+in `docs/PORTABILITY.md`, section 11.

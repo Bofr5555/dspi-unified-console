@@ -8,7 +8,7 @@ DSPi Console controls the whole device: parametric equalisation, active crossove
 loudness compensation, headphone crossfeed, dynamics, bass enhancement, stereo upmixing, a limiter on every
 output, physical control surfaces and hardware configuration, all applied live over USB with no reflashing.
 
-It is a Qt 5 / QML interface on a Rust core, and follows the design and behaviour of
+It is a Qt 6 or 5.15 / QML interface on a Rust core, and follows the design and behaviour of
 [DSPi Console for macOS](https://github.com/WeebLabs/DSPi-Console).
 
 ---
@@ -203,32 +203,37 @@ Elsewhere the sidebar is solid; everything else is the same.
 
 ## Building from source
 
-Install a Rust toolchain ([rustup](https://rustup.rs)), CMake, a C++17 compiler, Qt 5.15 with Qt Quick
-Controls 2, libusb and libudev. KF5 WindowSystem is optional and enables the KDE blur and window shadows.
+This app now lives in the `dspi-unified-console` monorepo, and its Rust core is `crates/dspi-capi` over
+`crates/dspi-core` at the repository root. The root `README.md` has every build, including the containers.
+
+Install a Rust toolchain ([rustup](https://rustup.rs)), CMake, a C++17 compiler and Qt 6 or Qt 5.15 with Qt Quick
+Controls 2. CMake prefers Qt 6; `-DDSPI_QT_MAJOR=5` forces Qt 5. KF5 or KF6 WindowSystem is optional and enables
+the KDE blur and window shadows. The USB code is pure Rust, so libusb and libudev are not needed. The package
+lists below are for Qt 5:
 
 ```
 # Fedora
-sudo dnf install cmake gcc-c++ libusb1-devel systemd-devel qt5-qtbase-devel qt5-qtdeclarative-devel \
+sudo dnf install cmake gcc-c++ qt5-qtbase-devel qt5-qtdeclarative-devel \
     qt5-qtquickcontrols2-devel qt5-qtsvg qt5-qtwayland kf5-kwindowsystem-devel
 
 # Debian / Ubuntu
-sudo apt install build-essential cmake pkg-config libusb-1.0-0-dev libudev-dev qtbase5-dev \
+sudo apt install build-essential cmake pkg-config qtbase5-dev \
     qtdeclarative5-dev qtquickcontrols2-5-dev libqt5svg5 qtwayland5 libkf5windowsystem-dev \
     qml-module-qtquick2 qml-module-qtquick-window2 qml-module-qtquick-layouts \
     qml-module-qtquick-controls2 qml-module-qtquick-templates2 qml-module-qt-labs-settings \
     qml-module-qt-labs-platform
 
 # Arch
-sudo pacman -S cmake qt5-base qt5-declarative qt5-quickcontrols2 qt5-svg qt5-wayland kwindowsystem5 libusb
+sudo pacman -S cmake qt5-base qt5-declarative qt5-quickcontrols2 qt5-svg qt5-wayland kwindowsystem5
 ```
 
-Then:
+Then, from the repository root:
 
 ```
-cargo build --release                         # Rust core and include/dspi_core.h
-cmake -S qt -B qt/build -DCMAKE_BUILD_TYPE=Release
-cmake --build qt/build -j"$(nproc)"
-./qt/build/DSPiConsole
+cargo build --release -p dspi-capi            # Rust core and crates/dspi-capi/include/dspi_core.h
+cmake -S apps/desktop/qt -B apps/desktop/qt/build -DCMAKE_BUILD_TYPE=Release
+cmake --build apps/desktop/qt/build -j"$(nproc)"
+./apps/desktop/qt/build/DSPiConsole           # --demo runs on a simulated device
 ```
 
 The QML, firmware images and AutoEQ database are compiled into the binary.
@@ -245,7 +250,7 @@ Fedora 42). `cmake --install` lays out a system install, and the AUR package is 
 
 | Path | Contents |
 |---|---|
-| `core/` | Rust core: USB protocol, device state, preset tracking, control surfaces, filter response math. Exposes a C API (generated into `include/` by cbindgen). |
+| `../../crates/dspi-capi/` | The C API the app links, generated into `include/` by cbindgen, over the repository's Rust core (`../../crates/dspi-core/`): USB protocol, device state, preset tracking, control surfaces, filter response math. |
 | `qt/src/` | C++: the bridge between the core and QML, the response graph and on-graph editor, analyser and meter views, firmware updater, AutoEQ library. |
 | `qt/qml/` | The interface: main window, channel pages, tool windows, settings and shared components. |
 | `qt/firmware/` | The bundled DSPi firmware images. |

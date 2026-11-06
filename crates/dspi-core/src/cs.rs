@@ -9,7 +9,8 @@
 //! `save` writes it to flash and `revert` reloads the saved one.
 //!
 //! The editor talks to this module in JSON, in the old desktop core's shapes
-//! (`crates/dspi-core-linux/src/cs.rs`), which the Qt `CsController` parses:
+//! (its `cs.rs`, deleted by WP Q3, last at `d190535`), which the Qt
+//! `CsController` parses:
 //! [`DspiCore::cs_snapshot`] describes everything, [`DspiCore::cs_apply`]
 //! performs one operation and re-reads what it changed.
 //!
