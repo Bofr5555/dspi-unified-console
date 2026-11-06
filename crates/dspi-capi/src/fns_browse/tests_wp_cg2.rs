@@ -24,11 +24,13 @@ fn free(h: *mut FfiCore) {
     drop(unsafe { Box::from_raw(h) });
 }
 
+/// One call into one generous buffer: a browse may change between two calls, so
+/// asking for the length first and then reading would race the fake advertiser.
 fn read(f: impl Fn(*mut c_char, u32) -> u32) -> serde_json::Value {
-    let needed = f(null_mut(), 0);
-    assert!(needed > 0);
-    let mut buf = vec![0u8; needed as usize];
-    assert_eq!(f(buf.as_mut_ptr().cast(), needed), needed);
+    let mut buf = vec![0u8; 256 * 1024];
+    let needed = f(buf.as_mut_ptr().cast(), buf.len() as u32) as usize;
+    assert!(needed > 0 && needed <= buf.len(), "needed {needed}");
+    buf.truncate(needed);
     assert_eq!(buf.pop(), Some(0), "NUL-terminated");
     serde_json::from_slice(&buf).unwrap()
 }

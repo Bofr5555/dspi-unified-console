@@ -10,13 +10,25 @@ fn tree(args: &[&str]) -> String {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let out = Command::new(cargo)
         .current_dir(root)
-        .args(["tree", "--locked", "--target", "all", "--prefix", "none"])
+        // Never the network from a test step: `--target all` wants crates for every
+        // platform, which a host build does not download.
+        .args([
+            "tree",
+            "--locked",
+            "--offline",
+            "--target",
+            "all",
+            "--prefix",
+            "none",
+        ])
         .args(args)
         .output()
         .expect("cargo runs");
     assert!(
         out.status.success(),
-        "cargo tree: {}",
+        "cargo tree {args:?} failed offline. If a crate is missing from the cache, run \
+         `ci/run.sh 'cargo fetch --locked'` once (it fetches for every target), then \
+         test again. This test does not download.\n{}",
         String::from_utf8_lossy(&out.stderr)
     );
     String::from_utf8_lossy(&out.stdout).into_owned()

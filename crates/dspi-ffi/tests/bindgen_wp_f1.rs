@@ -11,7 +11,19 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// The public `DspiCore` methods a binding cannot carry: the argument is a Rust
 /// trait object. Everything else is exported.
-const NOT_EXPORTED: &[&str] = &["open_transport"];
+const NOT_EXPORTED: &[&str] = &[
+    "open_transport",
+    // -- WP CG2 --
+    // Behind feature `mdns`, which dspi-ffi leaves off: Android and iOS browse with
+    // their system APIs. core_methods() reads the source, so it sees them anyway.
+    "link_browse_start",
+    "link_browse_start_with",
+    "link_browse_stop",
+    "link_browse_snapshot",
+    "link_browse_resolve",
+    "link_browse_reresolve",
+    "link_browse_verify",
+];
 
 /// `crates/dspi-core/src/link.rs`, exported by WP C15.
 const LINK_METHODS: &[&str] = &[
