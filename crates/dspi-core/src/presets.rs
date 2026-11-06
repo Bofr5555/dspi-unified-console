@@ -46,6 +46,11 @@ const LOCK_TIMEOUT: Duration = Duration::from_secs(60);
 const PRESET_ERR_INVALID_SLOT: u8 = st::PRESET_ERR_INVALID_SLOT as u8;
 const PRESET_ERR_CRC: u8 = st::PRESET_ERR_CRC as u8;
 
+/// Preset name buffer, bytes, NUL included. The same size as
+/// `CHANNEL_NAME_LEN` (bulk_params.h: `WIRE_NAME_LEN` must match it), but the
+/// preset's own constant.
+const PRESET_NAME_LEN: usize = st::PRESET_NAME_LEN as usize;
+
 /// `set_preset_startup` mode: load `default_slot` at boot.
 const STARTUP_SPECIFIED: u8 = st::PRESET_STARTUP_SPECIFIED as u8;
 /// `set_preset_startup` mode: load the last active slot at boot.
@@ -59,17 +64,18 @@ impl DspiCore {
     /// slot. **Writes flash.**
     ///
     /// Sends `REQ_PRESET_SAVE`, then waits up to 1.5 s for the deferred save
-    /// to show in the directory (a late confirmation is logged, not an
-    /// error). The mirror's active slot and occupied mask follow, and the
-    /// baseline becomes the live state (it now matches the active preset).
-    /// Runs under the Link device lock.
+    /// to show in the directory. The mirror's active slot and occupied mask
+    /// follow, and the baseline becomes the live state (it now matches the
+    /// active preset). Runs under the Link device lock.
     ///
     /// Errors: [`DspiError::Refused`] with the `PRESET_*` status
     /// (`PRESET_ERR_INVALID_SLOT` for a slot past 9, without sending);
     /// [`DspiError::ReadOnly`] on a read-only connection;
     /// [`DspiError::Disconnected`]; [`DspiError::Locked`] /
-    /// [`DspiError::Denied`] when the Link hub refuses its lock; the
-    /// transport's typed error when a transfer fails.
+    /// [`DspiError::Denied`] when the Link hub refuses its lock;
+    /// [`DspiError::Transfer`] when the device does not confirm in time (the
+    /// mirror then follows the directory, if it answers, and the baseline
+    /// stays); the transport's typed error when a transfer fails.
     pub fn save_preset(&self, slot: u8) -> Result<()> {
         let bit = slot_bit(slot)?;
         self.with_device_lock("Saving preset", |inner| {
@@ -83,8 +89,7 @@ impl DspiCore {
     /// mirror.
     ///
     /// Sends `REQ_PRESET_LOAD`, waits up to 1.5 s for the device to report
-    /// the slot active (a late confirmation is logged, not an error), then
-    /// re-reads the bulk image ([`DspiCore::refresh_params`]) and the
+    /// the slot active, then re-reads the bulk image ([`DspiCore::refresh_params`]) and the
     /// directory. The baseline becomes the loaded state. Runs under the Link
     /// device lock. The device also notifies `PRESET_LOADED` and then
     /// `BULK_INVALIDATED` (source `PRESET`); `process_notifications`
@@ -92,8 +97,12 @@ impl DspiCore {
     ///
     /// Errors: [`DspiError::Refused`] with the `PRESET_*` status;
     /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
-    /// [`DspiError::Locked`] / [`DspiError::Denied`]; the transport's typed
-    /// error when a transfer, or the re-read, fails.
+    /// [`DspiError::Locked`] / [`DspiError::Denied`];
+    /// [`DspiError::Transfer`] when the device does not confirm the load in
+    /// time (a load that failed on the device looks the same: the image is
+    /// not re-read, the active slot follows the directory if it answers, and
+    /// the baseline stays); the transport's typed error when a transfer, or
+    /// the re-read, fails.
     pub fn load_preset(&self, slot: u8) -> Result<()> {
         slot_bit(slot)?;
         device_lock(&mut self.lock(), "Loading preset")?;
@@ -112,23 +121,21 @@ impl DspiCore {
     /// Link device lock.
     ///
     /// Errors: as [`DspiCore::save_preset`] for either slot, plus
-    /// [`DspiError::Transfer`] when the device does not confirm the first
-    /// save in time (nothing is saved to `source` then).
+    /// [`DspiError::Transfer`] when the device does not confirm either save
+    /// in time (after the first, nothing is saved to `source`; `dest` may
+    /// hold the live state and the directory says which slot is active).
     pub fn copy_preset(&self, source: u8, dest: u8) -> Result<()> {
         let source_bit = slot_bit(source)?;
         let dest_bit = slot_bit(dest)?;
         self.with_device_lock("Copying preset", |inner| {
             save_locked(inner, dest, dest_bit)?;
             if !wait_for(inner.conn()?, |c| Ok(read_active(c)? == dest)) {
-                return Err(DspiError::Transfer {
-                    msg: format!("the device did not confirm saving preset {dest} in time"),
-                });
+                return Err(unconfirmed(inner, "saving", dest));
             }
             save_locked(inner, source, source_bit)?;
             if !wait_for(inner.conn()?, |c| Ok(read_active(c)? == source)) {
-                log::warn!("saving preset {source} did not confirm in time");
+                return Err(unconfirmed(inner, "saving", source));
             }
-            inner.state.active_preset_slot = source;
             capture_baseline_locked(inner);
             Ok(())
         })
@@ -143,8 +150,11 @@ impl DspiCore {
     ///
     /// Errors: [`DspiError::Refused`] with the `PRESET_*` status;
     /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
-    /// [`DspiError::Locked`] / [`DspiError::Denied`]; the transport's typed
-    /// error when a transfer or the re-read fails.
+    /// [`DspiError::Locked`] / [`DspiError::Denied`];
+    /// [`DspiError::Transfer`] when the device does not confirm in time (the
+    /// mirror's directory fields then follow the directory, if it answers,
+    /// and the name is kept); the transport's typed error when a transfer or
+    /// the re-read fails.
     pub fn delete_preset(&self, slot: u8) -> Result<()> {
         let bit = slot_bit(slot)?;
         device_lock(&mut self.lock(), "Deleting preset")?;
@@ -335,6 +345,10 @@ impl DspiCore {
     /// Release the device lock taken by a flow that has to drop the core's
     /// lock on the way (to call `refresh_params` / `fetch_all`, which take
     /// it themselves).
+    ///
+    /// Unlocks the current connection: if the connection was replaced
+    /// mid-flow, this is a stray unlock on the new one (the old one's lock
+    /// went with its transport).
     fn device_unlock(&self) {
         if let Some(c) = self.lock().conn.as_mut() {
             c.transport().unlock();
@@ -350,17 +364,25 @@ impl DspiCore {
                 .set_as_read(op::REQ_PRESET_LOAD, u16::from(slot))?;
             error::status(code)?;
             if !wait_for(guard.conn()?, |c| Ok(read_active(c)? == slot)) {
-                log::warn!("loading preset {slot} did not confirm in time");
+                return Err(unconfirmed(&mut guard, "loading", slot));
             }
         }
         self.refresh_params()?;
         let mut guard = self.lock();
         let inner = &mut *guard;
-        if let Some(conn) = inner.conn.as_mut() {
-            // The directory is a courtesy here: the load itself succeeded.
-            let _ = read_preset_directory(conn, &mut inner.state);
+        let directory = inner
+            .conn
+            .as_mut()
+            .map(|conn| read_preset_directory(conn, &mut inner.state));
+        if !matches!(directory, Some(Ok(_))) {
+            // The load was confirmed; only the directory read failed.
+            inner.state.active_preset_slot = slot;
         }
-        inner.state.active_preset_slot = slot;
+        // The directory is trusted over the poll: the baseline must not be
+        // taken against a slot the device says is not the active one.
+        if inner.state.active_preset_slot != slot {
+            return Err(unconfirmed(inner, "loading", slot));
+        }
         capture_baseline_locked(inner);
         Ok(())
     }
@@ -375,7 +397,7 @@ impl DspiCore {
                 .set_as_read(op::REQ_PRESET_DELETE, u16::from(slot))?;
             error::status(code)?;
             if !wait_for(inner.conn()?, |c| Ok(read_occupied(c)? & bit == 0)) {
-                log::warn!("deleting preset {slot} did not confirm in time");
+                return Err(unconfirmed(inner, "deleting", slot));
             }
             let s = &mut inner.state;
             s.preset_occupied &= !bit;
@@ -466,11 +488,23 @@ fn save_locked(inner: &mut Inner, slot: u8, bit: u16) -> Result<()> {
         .set_as_read(op::REQ_PRESET_SAVE, u16::from(slot))?;
     error::status(code)?;
     if !wait_for(inner.conn()?, |c| Ok(read_occupied(c)? & bit != 0)) {
-        log::warn!("saving preset {slot} did not confirm in time");
+        return Err(unconfirmed(inner, "saving", slot));
     }
     inner.state.active_preset_slot = slot;
     inner.state.preset_occupied |= bit;
     Ok(())
+}
+
+/// A deferred operation the device did not confirm in time, which may also
+/// have failed on the device: the mirror's directory fields follow the
+/// directory, if it answers, instead of assuming the operation's outcome.
+fn unconfirmed(inner: &mut Inner, doing: &str, slot: u8) -> DspiError {
+    if let Some(conn) = inner.conn.as_mut() {
+        let _ = read_preset_directory(conn, &mut inner.state);
+    }
+    DspiError::Transfer {
+        msg: format!("the device did not confirm {doing} preset {slot} in time"),
+    }
 }
 
 /// Poll `done` until it holds or the deferred-operation timeout passes. A
@@ -508,7 +542,7 @@ fn read_occupied(conn: &mut Connection) -> Result<u16> {
 /// lone NUL, which clears the name.
 fn name_payload(name: &str) -> Vec<u8> {
     let name = name.split('\0').next().unwrap_or("");
-    let mut len = name.len().min(CHANNEL_NAME_LEN.saturating_sub(1));
+    let mut len = name.len().min(PRESET_NAME_LEN.saturating_sub(1));
     while !name.is_char_boundary(len) {
         len = len.saturating_sub(1);
     }
@@ -1307,6 +1341,7 @@ mod tests_wp_c5 {
         remote: FakeRemote,
         log: Log,
         overrides: HashMap<u8, Vec<u8>>,
+        stalls: Vec<u8>,
         refuse_lock: Option<TransportError>,
         reset_image: Option<Vec<u8>>,
     }
@@ -1322,6 +1357,7 @@ mod tests_wp_c5 {
                 remote,
                 log: Arc::default(),
                 overrides: HashMap::new(),
+                stalls: Vec::new(),
                 refuse_lock: None,
                 reset_image: None,
             }
@@ -1341,6 +1377,9 @@ mod tests_wp_c5 {
             upto: bool,
         ) -> dspi_transport::Result<Vec<u8>> {
             self.note(format!("in {op:02X} {value}"));
+            if self.stalls.contains(&op) {
+                return Err(TransportError::Stalled { opcode: op });
+            }
             if let Some(r) = self.overrides.get(&op) {
                 if op == op::REQ_FACTORY_RESET
                     && let Some(img) = self.reset_image.take()
@@ -1627,7 +1666,7 @@ mod tests_wp_c5 {
         assert_eq!(name_payload(""), vec![0]);
         assert_eq!(name_payload("ab\0cd"), b"ab\0".to_vec());
         let long = name_payload(&"x".repeat(40));
-        assert_eq!(long.len(), CHANNEL_NAME_LEN);
+        assert_eq!(long.len(), PRESET_NAME_LEN);
         assert_eq!(long.last(), Some(&0));
     }
 
@@ -1932,6 +1971,120 @@ mod tests_wp_c5 {
         c.filters[0][0].filter_type = 11;
         d.filters[0][0].filter_type = 11;
         assert_eq!(diff(&c, &d).len(), 1);
+    }
+
+    /// A directory reply: occupied mask and active slot, WITH_PRESET output
+    /// config, independent master volume.
+    fn dir(mask: u8, active: u8) -> [u8; 7] {
+        [mask, 0, 0, 0, active, WITH_PRESET, 0]
+    }
+
+    fn is_transfer<T: std::fmt::Debug>(r: Result<T>) {
+        assert!(matches!(r, Err(DspiError::Transfer { .. })), "{r:?}");
+    }
+
+    #[test]
+    fn wp_c5_an_unconfirmed_load_trusts_the_directory() {
+        // Accepted, then the device stays on slot 0 (a CRC failure on its
+        // main loop looks like this).
+        let spy = Spy::demo()
+            .answer(op::REQ_PRESET_LOAD, &[0])
+            .answer(op::REQ_PRESET_GET_ACTIVE, &[0])
+            .answer(op::REQ_PRESET_GET_DIR, &dir(0b101, 0));
+        let (core, _, log) = open(spy);
+        core.capture_baseline();
+        let baseline = core.lock().baseline.clone();
+        edit(&core, |s| s.bypass = !s.bypass);
+        log.lock().unwrap().clear();
+
+        is_transfer(core.load_preset(2));
+        bracketed(&log, "Loading preset");
+        assert!(
+            !sent(&log, "in", op::REQ_GET_ALL_PARAMS_CHUNK),
+            "no re-read"
+        );
+        assert_eq!(core.get_state().active_preset_slot, 0);
+        assert_eq!(core.lock().baseline, baseline);
+        assert!(core.preset_dirty(), "the edit is still unsaved");
+    }
+
+    #[test]
+    fn wp_c5_a_confirmed_load_without_a_directory_takes_the_slot() {
+        let mut spy = Spy::demo()
+            .answer(op::REQ_PRESET_LOAD, &[0])
+            .answer(op::REQ_PRESET_GET_ACTIVE, &[3]);
+        spy.stalls.push(op::REQ_PRESET_GET_DIR);
+        let (core, _, _) = open(spy);
+        core.load_preset(3).unwrap();
+        assert_eq!(core.get_state().active_preset_slot, 3);
+        assert!(core.lock().baseline.is_some());
+    }
+
+    #[test]
+    fn wp_c5_a_directory_naming_another_slot_wins_over_the_poll() {
+        let spy = Spy::demo()
+            .answer(op::REQ_PRESET_LOAD, &[0])
+            .answer(op::REQ_PRESET_GET_ACTIVE, &[3])
+            .answer(op::REQ_PRESET_GET_DIR, &dir(0b1001, 0));
+        let (core, _, log) = open(spy);
+        is_transfer(core.load_preset(3));
+        assert_eq!(entries(&log).last().map(String::as_str), Some("unlock"));
+        assert_eq!(core.get_state().active_preset_slot, 0);
+        assert_eq!(core.lock().baseline, None);
+    }
+
+    #[test]
+    fn wp_c5_an_unconfirmed_save_changes_nothing_but_the_directory() {
+        let spy = Spy::demo()
+            .answer(op::REQ_PRESET_SAVE, &[0])
+            .answer(op::REQ_PRESET_GET_DIR, &dir(0b1, 0));
+        let (core, _, log) = open(spy);
+        is_transfer(core.save_preset(3));
+        bracketed(&log, "Saving preset");
+        let s = core.get_state();
+        assert_eq!((s.active_preset_slot, s.preset_occupied), (0, 0b1));
+        assert_eq!(core.lock().baseline, None);
+    }
+
+    #[test]
+    fn wp_c5_an_unconfirmed_delete_keeps_the_slot_and_its_name() {
+        let spy = Spy::demo()
+            .answer(op::REQ_PRESET_DELETE, &[0])
+            .answer(op::REQ_PRESET_GET_DIR, &dir(0b1, 0));
+        let (core, _, log) = open(spy);
+        let name = core.get_state().preset_names[0].clone();
+        assert!(!name.is_empty());
+        is_transfer(core.delete_preset(0));
+        bracketed(&log, "Deleting preset");
+        assert!(
+            !sent(&log, "in", op::REQ_GET_ALL_PARAMS_CHUNK),
+            "no re-read"
+        );
+        let s = core.get_state();
+        assert_eq!(s.preset_occupied, 0b1);
+        assert_eq!(s.preset_names[0], name);
+    }
+
+    #[test]
+    fn wp_c5_an_unconfirmed_copy_stops_and_keeps_the_baseline() {
+        // The first save never reports active: the source is not re-saved.
+        let spy = Spy::demo().answer(op::REQ_PRESET_GET_ACTIVE, &[0]);
+        let (core, _, log) = open(spy);
+        is_transfer(core.copy_preset(0, 4));
+        bracketed(&log, "Copying preset");
+        let saves = entries(&log)
+            .into_iter()
+            .filter(|e| e.starts_with(&format!("in {:02X} ", op::REQ_PRESET_SAVE)))
+            .count();
+        assert_eq!(saves, 1);
+        assert_eq!(core.lock().baseline, None);
+
+        // The second save never reports active.
+        let spy = Spy::demo().answer(op::REQ_PRESET_GET_ACTIVE, &[4]);
+        let (core, _, log) = open(spy);
+        is_transfer(core.copy_preset(0, 4));
+        bracketed(&log, "Copying preset");
+        assert_eq!(core.lock().baseline, None);
     }
 
     #[test]
