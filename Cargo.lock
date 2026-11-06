@@ -588,6 +588,7 @@ version = "2.0.0-dev"
 dependencies = [
  "dspi-link",
  "dspi-proto",
+ "dspi-session",
  "midir",
  "nusb",
  "proptest",

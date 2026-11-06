@@ -125,13 +125,27 @@ impl MidiClient {
     }
 }
 
-/// Notifications held for the reader before the oldest is dropped. Matches
-/// the core's queue (`Notifications::QUEUE`); a drop shows up downstream as a
-/// gap in the packets' `seq` byte, which forces a bulk re-read.
+/// Notifications held for the reader before the oldest is dropped.
+///
+/// Policy: drop the **oldest**, keep the newest. A reader this far behind has
+/// lost news either way; what matters is that the loss is seen. Every v2
+/// packet carries a `seq` byte, so dropping packets here leaves a gap that
+/// the session's reader (`dspi_session::notify::Notifications`) turns into
+/// `lost` on the next packet it delivers, which forces a bulk re-read; the
+/// packets kept are the most recent state. Same size as the session's queue
+/// (`Notifications::QUEUE`).
 const NOTIFY_QUEUE: usize = 1024;
 
 /// Retries after `BUSY`, `BULK_LOCKED` or `CRC_ERROR`: each means the device
 /// did not act on the request, so resending is safe for any opcode.
+///
+/// Combined back-off: a request still `BUSY` after these comes back as
+/// [`TransportError::TimedOut`], which the session's
+/// [`crate::with_busy_retry`] (idempotent reads only) retries in turn, up to
+/// `BUSY_RETRIES` more times 150 ms apart. Worst case for such a read:
+/// (1 + 4) x (1 + 4) = 25 transmissions over about 0.6 s + 5 x 0.2 s of
+/// back-off, plus the device's own 50 ms per `BUSY` (spec 4.2). Writes and a
+/// final `BULK_LOCKED` ([`TransportError::Locked`]) are not retried again.
 const STATUS_RETRIES: u32 = crate::BUSY_RETRIES as u32;
 
 /// Back-off before retry *n* is `n` times this. The firmware already retries
@@ -155,8 +169,11 @@ struct State {
     /// Its answer, once it came.
     reply: Option<std::result::Result<Frame, FrameError>>,
     notes: VecDeque<Vec<u8>>,
-    /// The transport was dropped or the pipe reported the port closed.
+    /// The transport was dropped, the pipe reported the port closed, or
+    /// the app called [`MidiInput::close`].
     closed: bool,
+    /// A [`MidiNotifications`] exists (one reader at a time).
+    reader_taken: bool,
 }
 
 impl Shared {
@@ -233,6 +250,15 @@ impl MidiInput {
             self.shared.notified.notify_all();
         }
     }
+
+    /// The port went away (the platform reported the device unplugged or
+    /// the port closed): fails the request in flight with
+    /// [`TransportError::Disconnected`] at once, ends the notification
+    /// reader (after the packets already queued), and makes every later
+    /// request fail the same way. Idempotent.
+    pub fn close(&self) {
+        self.shared.close();
+    }
 }
 
 /// A blocking transport over a [`MidiPipe`].
@@ -270,6 +296,7 @@ impl MidiTransport {
                 reply: None,
                 notes: VecDeque::new(),
                 closed: false,
+                reader_taken: false,
             }),
             replied: Condvar::new(),
             notified: Condvar::new(),
@@ -418,10 +445,13 @@ fn status_error(opcode: u8, code: u8, retries: u32) -> TransportError {
     match code {
         // The device stayed busy through every retry: the same outcome as a
         // USB transfer that kept timing out in a flash blackout.
-        status::BUSY | status::BULK_LOCKED => TransportError::TimedOut {
+        status::BUSY => TransportError::TimedOut {
             opcode,
             retries: usize::try_from(retries).unwrap_or(usize::MAX),
         },
+        // Another host (USB, UART, I2C) holds the bulk buffer: not a busy
+        // window, so the session must not treat it as one.
+        status::BULK_LOCKED => TransportError::Locked,
         // What USB answers with a STALL.
         status::ERROR => TransportError::Stalled { opcode },
         status::BLOCKED => TransportError::Denied(format!(
@@ -499,10 +529,22 @@ impl Transport for MidiTransport {
     }
 
     /// The notifications the device sends on the MIDI port (tag 0), as the
-    /// USB endpoint would deliver them. Meant for one reader: several would
-    /// share the queue. Ends with [`TransportError::Disconnected`] once the
-    /// transport is dropped or the pipe reports the port closed.
+    /// USB endpoint would deliver them.
+    ///
+    /// **One reader at a time:** while a reader returned by this method is
+    /// alive, another call returns `None` (two readers would split the
+    /// queue between them). Dropping the reader frees the slot. The reader
+    /// ends with [`TransportError::Disconnected`] once the
+    /// transport is dropped, the pipe reports the port closed or
+    /// [`MidiInput::close`] is called.
     fn notifications(&self) -> Option<Box<dyn NotificationSource>> {
+        {
+            let mut st = self.shared.lock();
+            if st.reader_taken {
+                return None;
+            }
+            st.reader_taken = true;
+        }
         Some(Box::new(MidiNotifications {
             shared: Arc::clone(&self.shared),
         }))
@@ -524,6 +566,12 @@ impl Transport for MidiTransport {
 /// The notification reader of a [`MidiTransport`].
 struct MidiNotifications {
     shared: Arc<Shared>,
+}
+
+impl Drop for MidiNotifications {
+    fn drop(&mut self) {
+        self.shared.lock().reader_taken = false;
+    }
 }
 
 impl NotificationSource for MidiNotifications {
@@ -1301,6 +1349,87 @@ mod tests_wp_t2 {
             .unwrap_err();
         assert!(matches!(e, TransportError::Remote(_)), "{e:?}");
         assert_eq!(dev.sends.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn wp_t2_closing_the_input_fails_the_request_and_ends_the_reader() {
+        let (mut t, dev, input) = connect(FakeMidiDevice::new());
+        dev.dev().silent = true;
+        let mut notes = t.notifications().unwrap();
+        let reader = std::thread::spawn(move || notes.read(Duration::from_secs(5)));
+        let closer = {
+            let input = input.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(50));
+                input.close();
+            })
+        };
+        let started = Instant::now();
+        // Default timeout 1.5 s: the close must end the wait well before.
+        let e = t.control_in_upto(op::REQ_GET_PLATFORM, 0, 7).unwrap_err();
+        assert!(matches!(e, TransportError::Disconnected), "{e:?}");
+        assert!(started.elapsed() < Duration::from_millis(1000));
+        closer.join().unwrap();
+        assert!(matches!(
+            reader.join().unwrap(),
+            Err(TransportError::Disconnected)
+        ));
+        let sends = dev.sends.load(Ordering::SeqCst);
+        assert!(matches!(
+            t.control_out(op::REQ_SET_MASTER_VOLUME, 0, &[0; 4]),
+            Err(TransportError::Disconnected)
+        ));
+        assert_eq!(
+            dev.sends.load(Ordering::SeqCst),
+            sends,
+            "nothing sent after close"
+        );
+        input.close(); // idempotent
+    }
+
+    #[test]
+    fn wp_t2_one_notification_reader_at_a_time() {
+        let (t, _, _) = connect(FakeMidiDevice::new());
+        let first = t.notifications().unwrap();
+        assert!(
+            t.notifications().is_none(),
+            "a second reader would split the queue"
+        );
+        drop(first);
+        assert!(
+            t.notifications().is_some(),
+            "dropping the reader frees the slot"
+        );
+    }
+
+    #[test]
+    fn wp_t2_a_final_bulk_locked_is_locked() {
+        let (mut t, dev, _) = connect(FakeMidiDevice::new());
+        for _ in 0..=STATUS_RETRIES {
+            dev.dev().inject.push_back(Box::new(|tag| {
+                sysex(
+                    tag,
+                    &Frame::GetResponse {
+                        status: status::BULK_LOCKED,
+                        payload: Vec::new(),
+                    },
+                )
+            }));
+        }
+        let e = t
+            .control_in(op::REQ_GET_ALL_PARAMS, 0, BULK_SIZE as u16)
+            .unwrap_err();
+        assert!(matches!(e, TransportError::Locked), "{e:?}");
+        assert_eq!(
+            dev.dev().log.len(),
+            1 + STATUS_RETRIES as usize,
+            "retried first"
+        );
+        // Once the lock is released the read goes through.
+        let image = t
+            .control_in(op::REQ_GET_ALL_PARAMS, 0, BULK_SIZE as u16)
+            .unwrap();
+        assert_eq!(image.len(), BULK_SIZE);
     }
 
     // -- property tests (§1.9) -----------------------------------------------
