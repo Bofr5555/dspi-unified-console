@@ -249,6 +249,8 @@ struct Inner {
     last_fw_seq: Mutex<HashMap<u8, u8>>,
     closed: Mutex<Option<(Option<u16>, String)>>,
     events: Mutex<Option<Arc<dyn LinkEvents>>>,
+    /// The `closed` event has gone out.
+    closed_delivered: AtomicBool,
     last_inbound: Mutex<Instant>,
     stopping: AtomicBool,
     timing: Timing,
@@ -258,7 +260,16 @@ struct Inner {
     open_pairs: Mutex<HashSet<u64>>,
 }
 
-/// A live session with one hub. Cheap to clone (shared state).
+impl Drop for Inner {
+    fn drop(&mut self) {
+        if lock(&self.closed).is_none() {
+            self.sender.close(1000);
+        }
+    }
+}
+
+/// A live session with one hub. Cheap to clone (shared state). The session ends
+/// when the last clone is dropped, without a `closed` event.
 #[derive(Clone)]
 pub struct LinkClient {
     inner: Arc<Inner>,
@@ -305,7 +316,10 @@ impl LinkClient {
         let (sender, mut receiver) = connector.connect(url, SUB_PROTOCOL)?;
         let client =
             ClientInfo { name: opts.client_name.clone(), app: opts.app.clone(), version: opts.app_version.clone() };
-        sender.send(WsMessage::Text(out::hello(&client))).map_err(|e| LinkError::Io(e.to_string()))?;
+        if let Err(e) = sender.send(WsMessage::Text(out::hello(&client))) {
+            sender.close(1000);
+            return Err(LinkError::Io(e.to_string()));
+        }
         let hello = match Self::await_hello(receiver.as_mut(), cfg.timing.request_timeout) {
             Ok(h) => h,
             Err(e) => {
@@ -333,7 +347,10 @@ impl LinkClient {
             last_link_seq: Mutex::new(None),
             last_fw_seq: Mutex::new(HashMap::new()),
             closed: Mutex::new(None),
-            events: Mutex::new(events),
+            // Installed once connect has succeeded: a failed connect owes its
+            // caller only the Err, never a `closed` that outlives it
+            events: Mutex::new(None),
+            closed_delivered: AtomicBool::new(false),
             last_inbound: Mutex::new(cfg.clock.now()),
             stopping: AtomicBool::new(false),
             timing: cfg.timing,
@@ -342,7 +359,10 @@ impl LinkClient {
             open_pairs: Mutex::new(HashSet::new()),
         });
         let c = LinkClient { inner };
-        c.spawn_threads(receiver);
+        if let Err(e) = c.spawn_threads(receiver) {
+            c.close();
+            return Err(e);
+        }
 
         let state = if c.inner.hello.pin_required() {
             // Only now is it known which hub answered at this address
@@ -392,7 +412,15 @@ impl LinkClient {
             AuthState::Ready
         };
         if state == AuthState::Ready {
-            c.refresh_devices()?;
+            if let Err(e) = c.refresh_devices() {
+                c.close();
+                return Err(e);
+            }
+        }
+        // `closed` may have happened already: set_events delivers it then
+        c.set_events(events);
+        if state == AuthState::Ready {
+            c.fire_devices_changed();
         }
         Ok((c, state))
     }
@@ -408,10 +436,8 @@ impl LinkClient {
                 }
                 WsRecv::Message(_) | WsRecv::Alive | WsRecv::Idle => {}
                 WsRecv::Closed { code, reason } => {
-                    return Err(LinkError::Closed {
-                        code,
-                        reason: if code.is_some() { close_reason(code) } else { reason },
-                    })
+                    log::debug!("dspi-link: closed during hello: {reason}");
+                    return Err(LinkError::Closed { code, reason: close_reason(code) });
                 }
             }
         }
@@ -572,8 +598,12 @@ impl LinkClient {
         lock(&self.inner.closed).clone()
     }
 
+    /// Replace the session's listener. If the session ended and no listener has
+    /// heard about it yet, the new one gets `closed` before this returns, so an
+    /// embedder can record [`Self::epoch`] first and install the listener after.
     pub fn set_events(&self, events: Option<Arc<dyn LinkEvents>>) {
         *lock(&self.inner.events) = events;
+        self.deliver_closed();
     }
 
     // ── Data plane ─────────────────────────────────────────────────────
@@ -775,56 +805,70 @@ impl LinkClient {
 
     // ── Threads ────────────────────────────────────────────────────────
 
-    fn spawn_threads(&self, mut receiver: Box<dyn WsReceiver>) {
-        let me = self.clone();
-        let _ = thread::Builder::new().name("dspi-link-rx".into()).spawn(move || loop {
-            match receiver.recv() {
-                WsRecv::Message(m) => {
-                    *lock(&me.inner.last_inbound) = me.inner.clock.now();
-                    match m {
-                        WsMessage::Text(t) => me.handle_text(&t),
-                        WsMessage::Binary(b) => me.handle_binary(&b),
+    fn spawn_threads(&self, mut receiver: Box<dyn WsReceiver>) -> Result<(), LinkError> {
+        let spawn_error = |e: std::io::Error| LinkError::Io(e.to_string());
+        // Weak, so the threads cannot keep a session open after its last handle
+        // is gone: Inner's Drop closes the socket, and that ends the reader
+        let weak = Arc::downgrade(&self.inner);
+        thread::Builder::new()
+            .name("dspi-link-rx".into())
+            .spawn(move || loop {
+                let received = receiver.recv();
+                let Some(inner) = weak.upgrade() else { return };
+                let me = LinkClient { inner };
+                match received {
+                    WsRecv::Message(m) => {
+                        *lock(&me.inner.last_inbound) = me.inner.clock.now();
+                        match m {
+                            WsMessage::Text(t) => me.handle_text(&t),
+                            WsMessage::Binary(b) => me.handle_binary(&b),
+                        }
                     }
-                }
-                WsRecv::Alive => *lock(&me.inner.last_inbound) = me.inner.clock.now(),
-                WsRecv::Idle => {
-                    if me.is_closed() {
+                    WsRecv::Alive => *lock(&me.inner.last_inbound) = me.inner.clock.now(),
+                    WsRecv::Idle => {
+                        if me.is_closed() {
+                            break;
+                        }
+                        let now = me.inner.clock.now();
+                        if now.saturating_duration_since(*lock(&me.inner.last_inbound)) > me.inner.timing.silence_limit
+                        {
+                            me.inner.sender.close(1001);
+                            me.socket_failed(None, "connection lost");
+                            break;
+                        }
+                    }
+                    WsRecv::Closed { code, reason } => {
+                        log::debug!("dspi-link: socket closed: {reason}");
+                        me.socket_failed(code, &close_reason(code));
                         break;
                     }
-                    let now = me.inner.clock.now();
-                    if now.saturating_duration_since(*lock(&me.inner.last_inbound)) > me.inner.timing.silence_limit {
-                        me.inner.sender.close(1001);
-                        me.socket_failed(None, "connection lost");
-                        break;
-                    }
                 }
-                WsRecv::Closed { code, reason } => {
-                    let reason = if code.is_some() { close_reason(code) } else { reason };
-                    me.socket_failed(code, &reason);
-                    break;
-                }
-            }
-        });
+            })
+            .map_err(spawn_error)?;
         // Keepalive: a ping that cannot be written is the earliest sign the socket is gone
         let weak = Arc::downgrade(&self.inner);
         let tick = self.inner.timing.keepalive_tick;
         let mut last_ping = self.inner.clock.now();
-        let _ = thread::Builder::new().name("dspi-link-ping".into()).spawn(move || loop {
-            thread::sleep(tick);
-            let inner = match weak.upgrade() {
-                Some(i) if lock(&i.closed).is_none() => i,
-                _ => return,
-            };
-            let now = inner.clock.now();
-            if now.saturating_duration_since(last_ping) < inner.timing.ping_interval {
-                continue;
-            }
-            last_ping = now;
-            if inner.sender.ping().is_err() {
-                LinkClient { inner }.socket_failed(None, "connection lost");
-                return;
-            }
-        });
+        thread::Builder::new()
+            .name("dspi-link-ping".into())
+            .spawn(move || loop {
+                thread::sleep(tick);
+                let inner = match weak.upgrade() {
+                    Some(i) if lock(&i.closed).is_none() => i,
+                    _ => return,
+                };
+                let now = inner.clock.now();
+                if now.saturating_duration_since(last_ping) < inner.timing.ping_interval {
+                    continue;
+                }
+                last_ping = now;
+                if inner.sender.ping().is_err() {
+                    LinkClient { inner }.socket_failed(None, "connection lost");
+                    return;
+                }
+            })
+            .map_err(spawn_error)?;
+        Ok(())
     }
 
     fn handle_text(&self, text: &str) {
@@ -957,9 +1001,15 @@ impl LinkClient {
         lock(&self.inner.notify_sinks).clear();
         lock(&self.inner.poll_sinks).clear();
         self.inner.inflight_free.notify_all();
-        let ev = lock(&self.inner.events).clone();
-        if let Some(ev) = ev {
-            ev.session_closed(self.inner.epoch, code, reason);
+        self.deliver_closed();
+    }
+
+    /// Tell the listener the session ended: once, to whichever listener is there.
+    fn deliver_closed(&self) {
+        let Some((code, reason)) = self.closed_reason() else { return };
+        let Some(ev) = lock(&self.inner.events).clone() else { return };
+        if !self.inner.closed_delivered.swap(true, Ordering::SeqCst) {
+            ev.session_closed(self.inner.epoch, code, &reason);
         }
     }
 }
