@@ -55,7 +55,12 @@
 //! - **Extensions** (with [`FakeOptions::extensions`]): `EXT_LIST`, the pair
 //!   map (validated and normalised as `crossfeed_map.h`; a write lands in
 //!   the bulk image's `crossfeed.pair_map` and notifies) and the core-voltage
-//!   status and requests (`core_vreg.h`).
+//!   status and requests (`core_vreg.h`). WP CG11: a voltage is what
+//!   `core_vreg.c` would program, a `SET` ends a running trial, and
+//!   [`VregSim`] plays hangs, reboots and power cycles as
+//!   `core_vreg_boot_apply` treats them. It can also hold requests in the
+//!   firmware's one staging slot until its main loop runs
+//!   ([`FakeRemote::vreg_stage_requests`]).
 //! - **Everything else stalls**, in both directions, by default: a fake
 //!   that stalls makes a missing model visible. The firmware ACKs every
 //!   unhandled OUT request on USB except `REQ_EXTENSION`;
@@ -364,6 +369,87 @@ impl FakeRemote {
     pub fn disconnect(&self) {
         self.shared.lock().gone = true;
         self.shared.wake.notify_all();
+    }
+
+    // -- WP CG11 --
+
+    /// Play a hang, reboot, power cycle or passing time on the core-voltage
+    /// state.
+    pub fn vreg_sim(&self, sim: VregSim) {
+        self.shared.lock().vreg_sim(sim);
+    }
+
+    /// Set the build default (`DSPI_VREG_MV`) as a boot with it would: no
+    /// trial, nothing stored.
+    pub fn vreg_set_build_default(&self, code: u8) {
+        let mut s = self.shared.lock();
+        s.vreg.default_vreg = code;
+        s.vreg.stored_sel = 0;
+        s.vreg.trial = None;
+        s.vreg.live = code;
+    }
+
+    /// Hold core-voltage requests in the firmware's one staging slot until
+    /// [`FakeRemote::vreg_run_main_loop`], as the firmware does: the status
+    /// read right after a write shows the old state, and a second write
+    /// replaces a first that was not applied yet.
+    pub fn vreg_stage_requests(&self, on: bool) {
+        self.shared.lock().vreg.stage_requests = on;
+    }
+
+    /// The main loop applies the staged core-voltage request, if any.
+    pub fn vreg_run_main_loop(&self) {
+        self.shared.lock().vreg_run_main_loop();
+    }
+}
+
+/// `REQ_EXTENSION` OUT sub-command only a [`FakeDevice`] answers, from the
+/// experimental range: a [`VregSim::encode`] payload. It lets a client's demo
+/// device mode play hangs without a [`FakeRemote`] (QD28, AN23, SW23). A host
+/// checks for [`TransportKind::Fake`] before sending it.
+pub const EXT_FAKE_VREG_SIM: u16 = 0xFFF0;
+
+/// What can happen to a simulated device's core-voltage state (WP CG11).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VregSim {
+    /// The 8 s watchdog fires. A running trial is reported as failed, with
+    /// this run's whole uptime, as `core_vreg.c` does; otherwise the hang
+    /// counts, and two raise the stored voltage. Uptime restarts.
+    Hang,
+    /// A requested reboot (`watchdog_reboot`: USB reset, BOOTSEL). Back on
+    /// the persisted voltage with no failure recorded. The failed-trial code
+    /// survives; its uptime, kept in RAM, does not.
+    Reboot,
+    /// Power lost: the scratch registers go too, so every record is gone.
+    PowerCycle,
+    /// This many seconds pass on the device's clock.
+    Advance(u32),
+}
+
+impl VregSim {
+    /// The [`EXT_FAKE_VREG_SIM`] payload.
+    pub fn encode(self) -> [u8; 5] {
+        let (kind, secs) = match self {
+            VregSim::Hang => (0, 0),
+            VregSim::Reboot => (1, 0),
+            VregSim::PowerCycle => (2, 0),
+            VregSim::Advance(secs) => (3, secs),
+        };
+        let [a, b, c, d] = secs.to_le_bytes();
+        [kind, a, b, c, d]
+    }
+
+    fn decode(data: &[u8]) -> Option<Self> {
+        let [kind, a, b, c, d] = *data else {
+            return None;
+        };
+        match kind {
+            0 => Some(VregSim::Hang),
+            1 => Some(VregSim::Reboot),
+            2 => Some(VregSim::PowerCycle),
+            3 => Some(VregSim::Advance(u32::from_le_bytes([a, b, c, d]))),
+            _ => None,
+        }
     }
 }
 
@@ -808,6 +894,13 @@ struct Vreg {
     trial: Option<u8>,
     failed_trial: u8,
     failed_trial_uptime_s: u32,
+    // -- WP CG11 --
+    /// Seconds added to the real clock since the last boot ([`VregSim::Advance`]).
+    uptime_offset_s: u32,
+    /// Hold requests for the "main loop", as `core_vreg_req_*` does.
+    stage_requests: bool,
+    /// The one staging slot: a later request overwrites an unapplied one.
+    staged: Option<(u8, u8)>,
 }
 
 const NAME_LEN: usize = st::PRESET_NAME_LEN as usize;
@@ -880,6 +973,10 @@ impl State {
                 trial: None,
                 failed_trial: 0,
                 failed_trial_uptime_s: 0,
+                // -- WP CG11 --
+                uptime_offset_s: 0,
+                stage_requests: false,
+                staged: None,
             },
             queue: VecDeque::new(),
             seq: 0,
@@ -1409,7 +1506,7 @@ impl State {
     /// `CoreVregStatus`, 16 bytes (extension_channel_spec.md 2.3).
     fn vreg_status(&self) -> Vec<u8> {
         let v = &self.vreg;
-        let uptime = u32::try_from(self.started.elapsed().as_secs()).unwrap_or(u32::MAX);
+        let uptime = self.vreg_uptime_s();
         let mut b = vec![
             v.live,
             v.stored_sel,
@@ -1639,36 +1736,63 @@ impl State {
                 [code, v] => self.vreg_request(code, v),
                 _ => false,
             },
+            // -- WP CG11 --
+            EXT_FAKE_VREG_SIM => match VregSim::decode(data) {
+                Some(sim) => {
+                    self.vreg_sim(sim);
+                    true
+                }
+                None => false,
+            },
             _ => false,
         }
     }
 
-    /// `{op, value}` (extension_channel_spec.md 2.3). False refuses it.
+    /// `{op, value}` (extension_channel_spec.md 2.3). False refuses it
+    /// (`core_vreg_request_valid`); a valid one is applied at once, or staged
+    /// for the main loop with [`FakeRemote::vreg_stage_requests`].
     fn vreg_request(&mut self, code: u8, v: u8) -> bool {
+        let r = &mut self.vreg;
+        let valid = match code {
+            0 => v == 0 || (r.default_vreg..=0x0F).contains(&v),
+            1 => (0x0C..=0x0F).contains(&v),
+            2 | 4 => true,
+            3 => v <= 1,
+            _ => false,
+        };
+        if !valid {
+            return false;
+        }
+        if r.stage_requests {
+            r.staged = Some((code, v));
+        } else {
+            self.vreg_apply(code, v);
+        }
+        true
+    }
+
+    /// `core_vreg_apply_request`, for a request already validated.
+    fn vreg_apply(&mut self, code: u8, v: u8) {
         use dspi_proto::ext::CoreVregStatus as S;
         let r = &mut self.vreg;
         match code {
-            0 if v == 0 || (r.default_vreg..=0x0F).contains(&v) => {
+            0 => {
                 r.stored_sel = v;
                 r.flags &= !S::FLAG_AUTO_RAISED;
                 r.hang_count = 0;
-                if r.trial.is_none() {
-                    r.live = if v == 0 { r.default_vreg } else { v };
-                }
+                // An explicit choice ends a trial (`core_vreg.c`, OP_SET).
+                r.trial = None;
+                r.live = r.resolved();
             }
-            1 if (0x0C..=0x0F).contains(&v) => {
+            1 => {
                 r.trial = Some(v);
                 r.live = v;
             }
             2 => {
                 r.trial = None;
-                r.live = if r.stored_sel == 0 {
-                    r.default_vreg
-                } else {
-                    r.stored_sel
-                };
+                r.live = r.resolved();
             }
-            3 if v <= 1 => {
+            3 => {
                 if v == 0 {
                     r.flags |= S::FLAG_AUTO_DISABLED;
                 } else {
@@ -1680,9 +1804,82 @@ impl State {
                 r.failed_trial = 0;
                 r.failed_trial_uptime_s = 0;
             }
-            _ => return false,
+            _ => {}
         }
-        true
+    }
+
+    // -- WP CG11 --
+
+    fn vreg_uptime_s(&self) -> u32 {
+        u32::try_from(self.started.elapsed().as_secs())
+            .unwrap_or(u32::MAX)
+            .saturating_add(self.vreg.uptime_offset_s)
+    }
+
+    /// The firmware's main loop reaches the staged request, if any.
+    fn vreg_run_main_loop(&mut self) {
+        if let Some((code, v)) = self.vreg.staged.take() {
+            self.vreg_apply(code, v);
+        }
+    }
+
+    fn vreg_sim(&mut self, sim: VregSim) {
+        match sim {
+            VregSim::Advance(secs) => {
+                self.vreg.uptime_offset_s = self.vreg.uptime_offset_s.saturating_add(secs);
+            }
+            VregSim::Hang => self.vreg_boot(true, false),
+            VregSim::Reboot => self.vreg_boot(false, false),
+            VregSim::PowerCycle => self.vreg_boot(false, true),
+        }
+    }
+
+    /// `core_vreg_boot_apply` after a reset: `watchdog` for our own 8 s
+    /// watchdog firing, `power_on` when the scratch registers were lost.
+    fn vreg_boot(&mut self, watchdog: bool, power_on: bool) {
+        use dspi_proto::ext::CoreVregStatus as S;
+        let prev_uptime = self.vreg_uptime_s();
+        let r = &mut self.vreg;
+        let prev_trial = r.trial.take();
+        // RAM: lost on every reset. The staged request goes with it.
+        r.staged = None;
+        r.failed_trial_uptime_s = 0;
+        if power_on {
+            // SCRATCH0: the count and the failed-trial code live here.
+            r.hang_count = 0;
+            r.failed_trial = 0;
+        }
+        if watchdog {
+            if let Some(trial) = prev_trial {
+                r.failed_trial = trial;
+                r.failed_trial_uptime_s = prev_uptime;
+            } else {
+                r.hang_count = r.hang_count.saturating_add(1).min(0xF);
+            }
+        }
+        let mut v = r.resolved();
+        if r.flags & S::FLAG_AUTO_DISABLED == 0 && r.hang_count >= 2 && v < 0x0E {
+            v = v.saturating_add(1);
+            r.stored_sel = v;
+            r.flags |= S::FLAG_AUTO_RAISED;
+            // `core_vreg_persist` clears it once the raise is written.
+            r.hang_count = 0;
+        }
+        r.live = v;
+        r.uptime_offset_s = 0;
+        self.started = Instant::now();
+    }
+}
+
+impl Vreg {
+    /// `resolve()`: the voltage a stored selection runs at.
+    fn resolved(&self) -> u8 {
+        let v = if self.stored_sel == 0 {
+            self.default_vreg
+        } else {
+            self.stored_sel
+        };
+        v.max(self.default_vreg).clamp(0x0C, 0x0F)
     }
 }
 
@@ -2624,5 +2821,94 @@ mod tests_wp_t4 {
             };
             assert_eq!(u16::from(p[4]), want);
         }
+    }
+}
+
+/// WP CG11: the simulation's own hook; its effects are tested through the core
+/// (`dspi-core`'s `vreg/tests_wp_cg11.rs`).
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg11 {
+    use super::*;
+
+    fn with_extensions() -> FakeDevice {
+        FakeDevice::new(
+            Capture::demo(),
+            FakeOptions {
+                extensions: true,
+                ..FakeOptions::default()
+            },
+        )
+    }
+
+    #[test]
+    fn wp_cg11_the_sim_payload_round_trips_and_a_bad_one_is_refused() {
+        for sim in [
+            VregSim::Hang,
+            VregSim::Reboot,
+            VregSim::PowerCycle,
+            VregSim::Advance(0x0102_0304),
+        ] {
+            assert_eq!(VregSim::decode(&sim.encode()), Some(sim));
+        }
+        assert_eq!(VregSim::decode(&[9, 0, 0, 0, 0]), None);
+        assert_eq!(VregSim::decode(&[0]), None);
+
+        let mut d = with_extensions();
+        assert!(matches!(
+            d.control_out(op::REQ_EXTENSION, EXT_FAKE_VREG_SIM, &[9, 0, 0, 0, 0]),
+            Err(TransportError::Stalled { .. })
+        ));
+    }
+
+    #[test]
+    fn wp_cg11_the_sim_is_not_listed_and_a_stock_device_stalls_it() {
+        let mut d = with_extensions();
+        let list = d
+            .control_in_upto(op::REQ_EXTENSION, gext::EXT_LIST, 64)
+            .unwrap();
+        assert!(
+            !list
+                .chunks(2)
+                .any(|c| c == EXT_FAKE_VREG_SIM.to_le_bytes().as_slice())
+        );
+        let mut stock = FakeDevice::new(Capture::demo(), FakeOptions::default());
+        assert!(matches!(
+            stock.control_out(
+                op::REQ_EXTENSION,
+                EXT_FAKE_VREG_SIM,
+                &VregSim::Hang.encode()
+            ),
+            Err(TransportError::Stalled { .. })
+        ));
+    }
+
+    #[test]
+    fn wp_cg11_staging_keeps_one_request_and_a_reset_loses_it() {
+        let d = with_extensions();
+        let r = d.remote();
+        r.vreg_stage_requests(true);
+        let mut d = d;
+        let status = |d: &mut FakeDevice| {
+            d.control_in(op::REQ_EXTENSION, gext::EXT_CORE_VREG, 16)
+                .unwrap()
+        };
+        d.control_out(op::REQ_EXTENSION, gext::EXT_CORE_VREG, &[1, 0x0E])
+            .unwrap();
+        d.control_out(op::REQ_EXTENSION, gext::EXT_CORE_VREG, &[1, 0x0F])
+            .unwrap();
+        assert_eq!(status(&mut d)[5], 0, "not applied yet");
+        r.vreg_run_main_loop();
+        assert_eq!(status(&mut d)[6], 0x0F, "the later request won");
+        d.control_out(op::REQ_EXTENSION, gext::EXT_CORE_VREG, &[2, 0])
+            .unwrap();
+        r.vreg_sim(VregSim::Reboot);
+        r.vreg_run_main_loop();
+        assert_eq!(status(&mut d)[5], 0);
+        // A refused request is not staged.
+        assert!(
+            d.control_out(op::REQ_EXTENSION, gext::EXT_CORE_VREG, &[1, 0x10])
+                .is_err()
+        );
     }
 }
