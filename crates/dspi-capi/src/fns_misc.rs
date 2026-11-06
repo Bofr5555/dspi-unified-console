@@ -1169,6 +1169,26 @@ pub extern "C" fn dspi_fetch_clock_diag(core: *mut FfiCore, buf: *mut c_char, le
     text(core, buf, len, |c| json_reply(c.fetch_clock_diag()))
 }
 
+// -- WP CG12 --
+
+/// The output rings' health: JSON {ok, targetFrames, targetUs, batchFrames,
+/// underrunEpisodes, refusedBlocks, lowestFill, worstInputGapUs, worstUsbGapUs,
+/// overBudgetSteps}, with `lowestFill` null before the first write. On firmware
+/// without the status, {"ok":true,"value":null}: show no section. Returns the
+/// length needed.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_fetch_ring_health(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
+    text(core, buf, len, |c| json_reply(c.fetch_ring_health()))
+}
+
+/// The live outputs' fill, on the ring's scale where the firmware has one:
+/// JSON {ok, value: [{fillPct, minPct, maxPct, band}]}, `band` being "good",
+/// "warn" or "bad". Returns the length needed.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_fetch_output_fills(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
+    text(core, buf, len, |c| json_reply(c.fetch_output_fills()))
+}
+
 // ── Added: firmware ───────────────────────────────────────────────────
 
 /// Check a `.uf2` image: JSON {ok, valid, problem, familyId, platform,
@@ -1436,3 +1456,9 @@ mod tests_wp_cg8 {
 #[path = "fns_misc/tests_wp_q2b.rs"]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_q2b;
+
+// -- WP CG12 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+#[path = "fns_misc/tests_wp_cg12.rs"]
+mod tests_wp_cg12;

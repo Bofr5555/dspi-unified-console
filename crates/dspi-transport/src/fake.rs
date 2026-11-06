@@ -13,6 +13,10 @@
 //! - **Identity:** `GET_PLATFORM` (the capture's reply), `GET_SERIAL`,
 //!   `GET_BUILD_INFO`, `GET_STATUS` (sub-query 9 is the meter block; the
 //!   others answer a `u32`, as the firmware does).
+//! - **Output rings (WP CG12):** `GET_BUFFER_STATS` in the firmware's layout,
+//!   with every live ring steady at the current latency target, which is a
+//!   demo's picture and not measured behaviour. Sub-query 28 (lowest fill)
+//!   stays at the firmware's start value, no write seen. Nothing streams.
 //! - **Bulk:** `0xA0`/`0xA1` single-shot and `0xA2`/`0xA3` chunked, with the
 //!   chunking spec's session rules (`bulk_params_chunking.md`): offset 0
 //!   starts a session, chunks are sequential, any other request tears the
@@ -839,6 +843,9 @@ struct State {
     /// The demo coverage's non-bulk state (names, latency, control
     /// interfaces).
     extras: features::Extras,
+    // -- WP CG12 --
+    /// `BufferStatsPacket.sequence`: counts the reads, wrapping.
+    buffer_stats_sequence: u16,
     queue: VecDeque<Vec<u8>>,
     seq: u8,
     started: Instant,
@@ -871,6 +878,8 @@ impl State {
             chunked: Chunked::None,
             presets,
             extras: features::Extras::new(),
+            // -- WP CG12 --
+            buffer_stats_sequence: 0,
             vreg: Vreg {
                 live: DEMO_VREG,
                 stored_sel: 0,
@@ -1145,6 +1154,8 @@ impl State {
                 .to_vec(),
             ),
             op::REQ_GET_STATUS => Some(self.get_status(value)),
+            // -- WP CG12 --
+            op::REQ_GET_BUFFER_STATS => self.get_buffer_stats(),
             op::REQ_GET_ALL_PARAMS => Some(self.image.clone()),
             op::REQ_GET_ALL_PARAMS_CHUNK => self.get_chunk(usize::from(value), want),
             // Legacy: input 0's preamp.
@@ -1195,9 +1206,48 @@ impl State {
             15 => 48_000,
             16 => 3_500,
             23 => u32::from(self.status.last().copied().unwrap_or(0)),
+            // -- WP CG12 --
+            // `output_ring_min_prewrite` before its first write
+            // (audio_pipeline.c:1856, vendor_commands.c:2570).
+            28 => u32::MAX,
             _ => 0,
         };
         v.to_le_bytes().to_vec()
+    }
+
+    // -- WP CG12 --
+    /// `REQ_GET_BUFFER_STATS`: `BufferStatsPacket` (config.h:1165-1194), 44
+    /// bytes, filled as vendor_commands.c:3378-3405 does, from a fill at the
+    /// current target (`REQ_OUTPUT_LATENCY`). The bucket mapping is
+    /// `get_slot_consumer_stats` (audio_pipeline.c:1764-1783). The watermarks
+    /// sit at the fill. `dspi_proto`'s packet has no `fill_centi_pct`, so the
+    /// bytes are laid out here.
+    fn get_buffer_stats(&mut self) -> Option<Vec<u8>> {
+        /// `SLOT_FILL_FRAMES_PER_BUCKET`, `SLOT_FILL_MAX_BUCKETS`.
+        const BUCKET_FRAMES: u32 = 48;
+        const BUCKETS: u32 = 16;
+        let status = self.get_feature(op::REQ_OUTPUT_LATENCY, 0)??;
+        let fill = u32::from(u16::from_le_bytes([*status.get(4)?, *status.get(5)?]));
+        let buckets = (fill / BUCKET_FRAMES).min(BUCKETS);
+        let pct = u8::try_from(buckets.saturating_mul(100) / BUCKETS).ok()?;
+        let centi = u16::try_from((fill * 10_000 / (BUCKET_FRAMES * BUCKETS)).min(65_535)).ok()?;
+        let [centi0, centi1] = centi.to_le_bytes();
+        let prepared = u8::try_from(buckets).ok()?;
+        let free = u8::try_from(BUCKETS.saturating_sub(buckets)).ok()?;
+        let entry = [free, prepared, 1, pct, pct, pct, centi0, centi1];
+        // NUM_SPDIF_INSTANCES (config.h:804-807): 4 with 9 outputs, 2 with 5.
+        let live = usize::from((self.num_outputs() / 2).min(4));
+
+        let sequence = self.buffer_stats_sequence;
+        self.buffer_stats_sequence = sequence.wrapping_add(1);
+        // Not streaming, no PDM: flags 0, and the PDM entry stays zero.
+        let mut b = vec![u8::try_from(live).ok()?, 0];
+        b.extend(sequence.to_le_bytes());
+        for slot in 0..4 {
+            b.extend(if slot < live { entry } else { [0; 8] });
+        }
+        b.extend([0; 8]);
+        Some(b)
     }
 
     fn get_chunk(&mut self, off: usize, want: usize) -> Option<Vec<u8>> {
@@ -2624,5 +2674,84 @@ mod tests_wp_t4 {
             };
             assert_eq!(u16::from(p[4]), want);
         }
+    }
+}
+
+// -- WP CG12 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg12 {
+    use dspi_proto::packets::BufferStatsPacket;
+
+    use super::*;
+    use crate::Transport;
+
+    fn stats(d: &mut FakeDevice) -> Vec<u8> {
+        d.control_in(op::REQ_GET_BUFFER_STATS, 0, 44).unwrap()
+    }
+
+    fn target(d: &mut FakeDevice) -> u16 {
+        let s = d.control_in(op::REQ_OUTPUT_LATENCY, 0, 12).unwrap();
+        u16::from_le_bytes([s[4], s[5]])
+    }
+
+    #[test]
+    fn wp_cg12_lowest_fill_starts_as_the_firmware_does() {
+        let mut d = FakeDevice::demo();
+        let v = d.control_in(op::REQ_GET_STATUS, 28, 4).unwrap();
+        assert_eq!(v, u32::MAX.to_le_bytes());
+    }
+
+    #[test]
+    fn wp_cg12_buffer_stats_have_the_firmware_layout() {
+        let mut d = FakeDevice::demo();
+        let frames = u32::from(target(&mut d));
+        let raw = stats(&mut d);
+        assert_eq!(raw.len(), BufferStatsPacket::SIZE);
+
+        let p = BufferStatsPacket::decode(&raw).unwrap();
+        assert_eq!(p.num_spdif, 4);
+        assert_eq!(p.flags, 0);
+        let buckets = (frames / 48) as u8;
+        let live = p.spdif[3];
+        assert_eq!(live.consumer_prepared, buckets);
+        assert_eq!(live.consumer_free, 16 - buckets);
+        assert_eq!(live.consumer_playing, 1);
+        assert_eq!(
+            u32::from(live.consumer_fill_pct),
+            u32::from(buckets) * 100 / 16
+        );
+        assert_eq!(live.consumer_min_fill_pct, live.consumer_fill_pct);
+        assert_eq!(live.consumer_max_fill_pct, live.consumer_fill_pct);
+        // fill_centi_pct, bytes 6-7 of the last entry: frames over 768.
+        let centi = u32::from(u16::from_le_bytes([raw[34], raw[35]]));
+        assert_eq!(centi, frames * 10_000 / 768);
+        assert_eq!(&raw[36..44], &[0; 8]);
+    }
+
+    #[test]
+    fn wp_cg12_the_sequence_counts_reads() {
+        let mut d = FakeDevice::demo();
+        let first = stats(&mut d);
+        let second = stats(&mut d);
+        let seq = |b: &[u8]| u16::from_le_bytes([b[2], b[3]]);
+        assert_eq!(seq(&second), seq(&first).wrapping_add(1));
+    }
+
+    #[test]
+    fn wp_cg12_the_fill_follows_the_latency_setting() {
+        let mut d = FakeDevice::demo();
+        let before = target(&mut d);
+        let centi = |d: &mut FakeDevice| {
+            let raw = stats(d);
+            u32::from(u16::from_le_bytes([raw[10], raw[11]]))
+        };
+        let was = centi(&mut d);
+        // 8 ms, the longest option, runs on every source.
+        d.control_out(op::REQ_OUTPUT_LATENCY, 0, &[7]).unwrap();
+        let after = target(&mut d);
+        assert_ne!(before, after);
+        assert_ne!(was, centi(&mut d));
+        assert_eq!(centi(&mut d), u32::from(after) * 10_000 / 768);
     }
 }
