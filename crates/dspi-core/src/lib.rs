@@ -139,6 +139,11 @@ pub(crate) struct Inner {
     /// The DSPi Link session (WP C15).
     #[cfg(feature = "link")]
     pub(crate) link: Option<link::LinkSession>,
+    // -- WP C1b --
+    /// The hotplug poll's own view of the bus and its pending reconnect
+    /// (WP C1b). Kept apart from `devices`, which the picker's scan
+    /// filters to the openable units.
+    pub(crate) hotplug: hotplug::HotplugState,
 }
 
 /// An open device.
@@ -310,6 +315,8 @@ impl Inner {
             cs: cs::CsState::default(),
             #[cfg(feature = "link")]
             link: None,
+            // -- WP C1b --
+            hotplug: hotplug::HotplugState::default(),
         }
     }
 
