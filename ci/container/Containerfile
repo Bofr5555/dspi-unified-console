@@ -1,0 +1,12 @@
+# The core-merge build image (tag localhost/dspi-coremerge:<n>).
+#
+# Base: localhost/dspi-qtport:4, the Linux/Windows port image (Fedora 44,
+# Rust 1.99.1 with the windows-gnu and windows-msvc std, Qt 5/6, MinGW Qt 6;
+# its Containerfile is in the qtport scratch area, see docs/PORTABILITY.md).
+# Adds what ci/check.sh needs on top: rustfmt, clippy, ALSA headers (midir).
+FROM localhost/dspi-qtport:4
+USER root
+RUN rustup component add rustfmt clippy \
+ && dnf install -y --setopt=install_weak_deps=False alsa-lib-devel \
+ && dnf clean all \
+ && chmod -R a+rwX /opt/rustup /opt/cargo/bin

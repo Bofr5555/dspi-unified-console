@@ -17,10 +17,13 @@ pub mod generated {
 pub mod channel;
 pub mod dsp;
 pub mod enums;
+pub mod ext;
+pub mod frame;
 pub mod packets;
 pub mod registry;
 pub mod value;
 pub mod wire;
+pub mod wire_compat;
 pub mod xover;
 
 pub use channel::ChannelMap;

@@ -117,3 +117,13 @@ pub fn render_frame_ansi(
     out
 }
 pub use theme::Theme;
+
+/// A directory for a test's files, per process, beside the test binary in the
+/// target directory: the system's temp dir may be a tmpfs. Not created.
+#[cfg(test)]
+pub(crate) fn test_dir(name: &str) -> std::path::PathBuf {
+    std::env::current_exe()
+        .expect("the test binary's path")
+        .with_file_name("test-scratch")
+        .join(format!("{name}-{}", std::process::id()))
+}

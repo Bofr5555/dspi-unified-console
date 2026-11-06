@@ -17,11 +17,16 @@ AppWindow {
     minimumHeight: 360 + titlebarHeight
 
     readonly property var presets: [
-        { name: "Default",   detail: "700 Hz / 4.5 dB · Balanced, most popular" },
-        { name: "Chu Moy",   detail: "700 Hz / 6.0 dB · Stronger spatial effect" },
-        { name: "Jan Meier", detail: "650 Hz / 9.5 dB · Natural speaker-like" },
+        { name: "Default",   detail: "700 Hz / 4.5 dB · Balanced, most popular", fc: 700, feed: 4.5 },
+        { name: "Chu Moy",   detail: "700 Hz / 6.0 dB · Stronger spatial effect", fc: 700, feed: 6.0 },
+        { name: "Jan Meier", detail: "650 Hz / 9.5 dB · Natural speaker-like", fc: 650, feed: 9.5 },
         { name: "Custom",    detail: "User-defined parameters" }]
     readonly property bool isCustom: bridge.crossfeedPreset === 3
+    // What the rows and the graph show: a preset's own values (crossfeed.c), which
+    // the device doesn't report, or the device's custom values under Custom
+    readonly property var activePreset: presets[bridge.crossfeedPreset] || presets[3]
+    readonly property real shownFreq: activePreset.fc !== undefined ? activePreset.fc : bridge.crossfeedFreq
+    readonly property real shownFeed: activePreset.feed !== undefined ? activePreset.feed : bridge.crossfeedFeed
     // Stereo output pairs (S/PDIF instances); the mono PDM sub is never crossfed
     readonly property int pairCount: Math.max(1, Math.floor(bridge.numOutputChannels / 2))
 
@@ -279,24 +284,25 @@ AppWindow {
                     ParamRow {
                         id: freqRow
                         label: "Cutoff Frequency"; unit: "Hz"; from: 500; to: 2000; stepSize: 10; decimals: 0
-                        value: bridge.crossfeedFreq
+                        value: win.shownFreq
                         caption: "Simulates head shadow lowpass cutoff. Lower = more bass crossfeed. Typical: 650–700 Hz."
                         onLiveChanged: bridge.setCrossfeedFreq(v, true)
                         onCommitted: {
                             bridge.setCrossfeedFreq(v)
-                            if (!win.isCustom) bridge.setCrossfeedPreset(3)
+                            // Leaving a preset: its other value carries over
+                            if (!win.isCustom) { bridge.setCrossfeedFeed(win.shownFeed); bridge.setCrossfeedPreset(3) }
                         }
                     }
                     Divider {}
                     ParamRow {
                         id: feedRow
                         label: "Feed Level"; unit: "dB"; from: 0; to: 15; stepSize: 0.1; decimals: 1
-                        value: bridge.crossfeedFeed
+                        value: win.shownFeed
                         caption: "Crossfeed attenuation below the direct signal. Higher = more crossfeed. Typical: 4.5–9.5 dB."
                         onLiveChanged: bridge.setCrossfeedFeed(v, true)
                         onCommitted: {
                             bridge.setCrossfeedFeed(v)
-                            if (!win.isCustom) bridge.setCrossfeedPreset(3)
+                            if (!win.isCustom) { bridge.setCrossfeedFreq(win.shownFreq); bridge.setCrossfeedPreset(3) }
                         }
                     }
                 }

@@ -1,0 +1,5 @@
+# This crate's namespace holds only init_logging. A UniFFI Kotlin file declares
+# its runtime helpers at package level, so two namespaces cannot share a package.
+[bindings.kotlin]
+package_name = "se.bofr.dspi.ffi.uniffi.logging"
+cdylib_name = "dspi_ffi"

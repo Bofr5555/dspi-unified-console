@@ -208,7 +208,7 @@ pub struct Session {
     /// Pin and clock setters report `PIN_CONFIG_*` here (config.h:607-613) and
     /// then quietly keep the old value, so the caller that wants to say *why*
     /// a step was refused needs the code, not just the readback.
-    last_status: Option<u8>,
+    pub(crate) last_status: Option<u8>,
 }
 
 impl Session {
@@ -254,6 +254,12 @@ impl Session {
         f(&mut *self.transport)
     }
 
+    /// The transport, for callers that keep their own driver loop (the
+    /// embedder API in `dspi-core`). Prefer [`Session::with_transport`].
+    pub fn transport_mut(&mut self) -> &mut dyn Transport {
+        &mut *self.transport
+    }
+
     pub fn channel_map(&self) -> &ChannelMap {
         &self.map
     }
@@ -265,34 +271,13 @@ impl Session {
         indices: &[u8],
         value: Value,
     ) -> Result<Outcome, WriteError> {
-        let d = by_path(path).ok_or_else(|| WriteError::UnknownParam(path.into()))?;
-
-        let set = d
-            .set
-            .ok_or_else(|| WriteError::ReadOnly { path: path.into() })?;
+        let (d, set) = writable_param(path)?;
 
         // Belongs to this write alone; a stale code from the previous one would
         // be read as this one's refusal.
         self.last_status = None;
 
-        self.check_available(d)?;
-        self.check_indices(d, indices)?;
-
-        // Validate before the wire, so the user gets a message naming the limits
-        // rather than a bare stall from the device.
-        let value = d.kind.validate(&value)?;
-        // The delay buffers are 1024 samples on an RP2040 and 2048 on an
-        // RP2350 (config.h:94-99): 42 ms against 85 ms at 48 kHz. The registry
-        // carries the larger; the smaller is a platform fact, checked here.
-        if matches!(path, "ch.delay" | "out.delay")
-            && self.caps.platform == dspi_proto::Platform::Rp2040
-            && value.as_f32().is_some_and(|v| v > 42.0)
-        {
-            return Err(WriteError::PlatformRange {
-                path: path.into(),
-                max: "42 ms".into(),
-            });
-        }
+        let value = self.validate_write(d, indices, &value)?;
 
         // PDM and the Core 1 EQ workers cannot both run, and the firmware skips
         // a blocked enable without saying so (survey-firmware 6.8). Ask first,
@@ -356,6 +341,38 @@ impl Session {
         Ok(outcome)
     }
 
+    /// Check a [`write`](Self::write) without making it: the parameter
+    /// exists and is writable, is available on this device, takes these
+    /// indices, and accepts this value (range, type and platform limits).
+    /// Nothing goes on the wire. A write that passes can still be refused by
+    /// the device, or fail on the transport.
+    pub fn check(&self, path: &str, indices: &[u8], value: &Value) -> Result<(), WriteError> {
+        let (d, _) = writable_param(path)?;
+        self.validate_write(d, indices, value).map(|_| ())
+    }
+
+    /// The checks a write makes before the wire, shared by [`write`](Self::write)
+    /// and [`check`](Self::check). Returns the value as the registry
+    /// normalises it.
+    fn validate_write(
+        &self,
+        d: &ParamDesc,
+        indices: &[u8],
+        value: &Value,
+    ) -> Result<Value, WriteError> {
+        self.check_available(d)?;
+        self.check_indices(d, indices)?;
+
+        // Validate before the wire, so the user gets a message naming the limits
+        // rather than a bare stall from the device.
+        let value = d.kind.validate(value)?;
+        // The delay buffers are 1024 samples on an RP2040 and 2048 on an
+        // RP2350 (config.h:94-99): 42 ms against 85 ms at 48 kHz. The registry
+        // carries the larger; the smaller is a platform fact, checked here.
+        self.check_platform_range(d, &value)?;
+        Ok(value)
+    }
+
     /// Poll every meter in one transfer.
     pub fn meters(&mut self) -> Result<crate::Meters, WriteError> {
         Ok(crate::read_meters(
@@ -385,7 +402,9 @@ impl Session {
     pub fn read_band(&mut self, channel: u8, band: u8) -> Result<EqParamPacket, WriteError> {
         let scalar = |s: &mut Self, param: u8, len: u16| -> Result<Vec<u8>, WriteError> {
             let wvalue = ((channel as u16) << 8) | ((band as u16) << 3) | param as u16;
+            let kind = s.transport.caps().kind;
             Ok(with_busy_retry(
+                kind,
                 || s.transport.control_in(op::REQ_GET_EQ_PARAM, wvalue, len),
                 op::REQ_GET_EQ_PARAM,
             )?)
@@ -455,22 +474,7 @@ impl Session {
     ) -> Result<Outcome, WriteError> {
         let mut packet = self.read_band(channel, band)?;
 
-        match d.path {
-            "eq.type" => {
-                packet.filter_type = FilterType::from_raw(value.as_u8().unwrap_or(0));
-                // Switching to a Linkwitz Transform needs a Qp to send; the
-                // firmware reads 0 as "use the 0.707 default".
-                if packet.filter_type.is_linkwitz() && packet.qp.is_none() {
-                    packet.qp = Some(0.707);
-                }
-            }
-            "eq.freq" => packet.freq = value.as_f32().unwrap_or(packet.freq),
-            "eq.q" => packet.q = value.as_f32().unwrap_or(packet.q),
-            "eq.gain" => packet.gain_db = value.as_f32().unwrap_or(packet.gain_db),
-            other => {
-                return Err(WriteError::UnknownParam(other.into()));
-            }
-        }
+        crate::fast::apply_eq_field(&mut packet, d, value)?;
 
         self.write_band(&packet)
     }
@@ -501,7 +505,12 @@ impl Session {
             repr.len().max(1)
         };
 
-        let bytes = with_busy_retry(|| self.transport.control_in(get, wvalue, len as u16), get)?;
+        let kind = self.transport.caps().kind;
+        let bytes = with_busy_retry(
+            kind,
+            || self.transport.control_in(get, wvalue, len as u16),
+            get,
+        )?;
 
         // A crosspoint reads back in the words the grammar writes it:
         // `on -6.0 dB inv`, `off`.
@@ -614,7 +623,7 @@ impl Session {
     }
 
     /// Refuse a parameter this device does not have, with the reason.
-    fn check_available(&self, d: &ParamDesc) -> Result<(), WriteError> {
+    pub(crate) fn check_available(&self, d: &ParamDesc) -> Result<(), WriteError> {
         let why = match d.requires {
             Requires::Always => return Ok(()),
             Requires::Rp2350 => {
@@ -701,7 +710,7 @@ impl Session {
         }
     }
 
-    fn build_wvalue(
+    pub(crate) fn build_wvalue(
         &self,
         d: &ParamDesc,
         indices: &[u8],
@@ -857,6 +866,16 @@ fn decode_read(d: &ParamDesc, bytes: &[u8]) -> Value {
 /// Compare a whole band, field by field, with the same float tolerance scalars
 /// use. Comparing encoded bytes would report spurious rejections, because the
 /// device re-quantises what it stores.
+/// A parameter by path, with its SET opcode; refused when unknown or
+/// read-only.
+fn writable_param(path: &str) -> Result<(&'static ParamDesc, u8), WriteError> {
+    let d = by_path(path).ok_or_else(|| WriteError::UnknownParam(path.into()))?;
+    let set = d
+        .set
+        .ok_or_else(|| WriteError::ReadOnly { path: path.into() })?;
+    Ok((d, set))
+}
+
 fn bands_agree(sent: &EqParamPacket, actual: &EqParamPacket) -> bool {
     let close = |a: f32, b: f32| (a - b).abs() <= a.abs().max(1.0) * 1e-3;
     sent.filter_type == actual.filter_type
@@ -1506,10 +1525,21 @@ impl Session {
     /// difference between a greyed-out option with a reason and a control that
     /// appears to do nothing.
     pub fn core1_conflict(&mut self, output: u8) -> bool {
-        self.transport
-            .control_in(op::REQ_GET_CORE1_CONFLICT, output as u16, 1)
-            .map(|d| d.first().copied().unwrap_or(0) != 0)
-            .unwrap_or(false)
+        self.try_core1_conflict(output).unwrap_or(false)
+    }
+
+    /// [`Session::core1_conflict`] with the read's failure kept: a caller
+    /// about to write must not read a lost device as "no conflict". An empty
+    /// reply is [`TransportError::ShortRead`] too.
+    pub fn try_core1_conflict(&mut self, output: u8) -> Result<bool, TransportError> {
+        let d = self
+            .transport
+            .control_in(op::REQ_GET_CORE1_CONFLICT, output as u16, 1)?;
+        d.first().map(|b| *b != 0).ok_or(TransportError::ShortRead {
+            opcode: op::REQ_GET_CORE1_CONFLICT,
+            wanted: 1,
+            got: 0,
+        })
     }
 
     /// The PDM sub, which is always the last output

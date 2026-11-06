@@ -91,6 +91,11 @@ pub struct ShellModel {
     pub platform: String,
     pub firmware: String,
     pub serial_short: String,
+    /// The link, when it is not plain USB: `MIDI`, `Link <host>`, `demo`.
+    pub via: String,
+    /// The extension channel's sub-commands (`ext xfeed vreg`); empty on
+    /// stock firmware.
+    pub ext: String,
     pub connected: bool,
     /// Every attached device, by display name; more than one enables the
     /// picker.
@@ -175,6 +180,8 @@ impl ShellModel {
             platform: String::new(),
             firmware: String::new(),
             serial_short: String::new(),
+            via: String::new(),
+            ext: String::new(),
             connected: false,
             devices: Vec::new(),
             preset_label: "Empty".into(),

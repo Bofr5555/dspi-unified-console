@@ -36,8 +36,11 @@ static const char *kOutputColors[MAX_OUTPUTS - 1] = {
 
 static const char *kPdmColor = "#BA87F2";
 
-DSPiBridge::DSPiBridge(QObject *parent)
-    : QObject(parent)
+// FakeDevice::demo's serial; dspi_open_demo opens it whatever the USB bus holds
+static const char *const kDemoSerial = "DEMO0000DSPI0001";
+
+DSPiBridge::DSPiBridge(Mode mode, QObject *parent)
+    : QObject(parent), m_demo(mode == Mode::Demo)
 {
     m_core = dspi_core_new();
     // Every state change may make the preset dirty or clean again
@@ -965,15 +968,21 @@ int DSPiBridge::checkCore1Conflict(int output) {
 
 // ── Device management ──
 
-void DSPiBridge::scanDevices() {
+// The DSPis on USB, after the demo device when the app runs with one
+QStringList DSPiBridge::listSerials() {
     DeviceInfo devices[8];
-    uint32_t count = dspi_scan_devices(m_core, devices, 8);
-
+    const uint32_t count = dspi_scan_devices(m_core, devices, 8);
     QStringList serials;
+    if (m_demo) serials.append(QString::fromLatin1(kDemoSerial));
     for (uint32_t i = 0; i < count; i++) {
         serials.append(QString::fromUtf8(reinterpret_cast<const char *>(devices[i].serial),
                                          devices[i].serial_len));
     }
+    return serials;
+}
+
+void DSPiBridge::scanDevices() {
+    const QStringList serials = listSerials();
     if (serials != m_availableSerials) {
         m_availableSerials = serials;
         emit devicesChanged();
@@ -1034,7 +1043,10 @@ void DSPiBridge::installUdevRule() {
 
 void DSPiBridge::selectDevice(const QString &serial) {
     QByteArray utf8 = serial.toUtf8();
-    if (!dspi_select_device(m_core, utf8.constData())) {
+    const bool opened = m_demo && serial == QLatin1String(kDemoSerial)
+                            ? dspi_open_demo(m_core)
+                            : dspi_select_device(m_core, utf8.constData());
+    if (!opened) {
 #ifdef Q_OS_LINUX
         m_connectionError = QString("Could not open DSPi %1. Check that its udev rule is installed and that no other "
                                     "program is using it. Right-click the device name to retry.").arg(serial.right(8));
@@ -1087,11 +1099,7 @@ void DSPiBridge::disconnectDevice() {
 void DSPiBridge::rescan() {
     const QString previous = m_selectedSerial;
     if (connected()) disconnectDevice();
-    DeviceInfo devices[8];
-    const uint32_t count = dspi_scan_devices(m_core, devices, 8);
-    QStringList serials;
-    for (uint32_t i = 0; i < count; i++)
-        serials.append(QString::fromUtf8(reinterpret_cast<const char *>(devices[i].serial), devices[i].serial_len));
+    const QStringList serials = listSerials();
     m_availableSerials = serials;
     emit devicesChanged();
     updateInaccessible();
@@ -1407,28 +1415,32 @@ void DSPiBridge::setPsybassEnabled(bool en) {
 // ── Matrix helpers ──
 
 void DSPiBridge::directRouting() {
-    auto *s = state();
-    int nIn = s->num_input_channels, nOut = s->num_output_channels;
+    // state() is a snapshot: read it afresh after each write
+    const int nIn = state()->num_input_channels, nOut = state()->num_output_channels;
     // PDM shares Core 1 with the EQ-worker outputs, so a 1:1 layout turns it off
-    if (nOut > 0 && s->output_enabled[nOut - 1]) dspi_set_output_enable(m_core, nOut - 1, false);
+    if (nOut > 0 && state()->output_enabled[nOut - 1]) dspi_set_output_enable(m_core, nOut - 1, false);
     for (int i = 0; i < nIn; i++)
         for (int o = 0; o < nOut; o++) {
-            bool on = (i == o) && !isPdmOutput(o);
+            const bool on = (i == o) && !isPdmOutput(o);
+            const auto *s = state();
             dspi_set_matrix_route(m_core, i, o, on, on ? 0.0f : s->matrix_gain[i][o],
                                   on ? false : s->matrix_invert[i][o]);
         }
     for (int o = 0; o < qMin(nIn, nOut - 1); o++)
-        if (!s->output_enabled[o]) dspi_set_output_enable(m_core, o, true);
+        if (!state()->output_enabled[o]) dspi_set_output_enable(m_core, o, true);
     emit stateChanged();
     emit magnitudesChanged();
 }
 
 void DSPiBridge::clearRouting() {
-    auto *s = state();
-    for (int i = 0; i < s->num_input_channels; i++)
-        for (int o = 0; o < s->num_output_channels; o++)
+    // state() is a snapshot: read it afresh after each write
+    const int nIn = state()->num_input_channels, nOut = state()->num_output_channels;
+    for (int i = 0; i < nIn; i++)
+        for (int o = 0; o < nOut; o++) {
+            const auto *s = state();
             if (s->matrix_routing[i][o])
                 dspi_set_matrix_route(m_core, i, o, false, s->matrix_gain[i][o], s->matrix_invert[i][o]);
+        }
     emit stateChanged();
 }
 

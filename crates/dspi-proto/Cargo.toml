@@ -10,10 +10,16 @@ repository.workspace = true
 [dependencies]
 thiserror.workspace = true
 serde = { workspace = true, optional = true }
+# -- WP P1 --
 
 [features]
 default = ["serde"]
 serde = ["dep:serde"]
+
+[dev-dependencies]
+proptest = "1"
+serde_json.workspace = true
+# -- WP P1 --
 
 [build-dependencies]
 # The generator parses the vendored firmware headers. Deliberately dependency

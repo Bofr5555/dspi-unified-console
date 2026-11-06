@@ -159,16 +159,30 @@ void PeqEditorItem::updateActive() {
 // Follow the device unless a gesture holds live values
 void PeqEditorItem::reload() {
     updateActive();
+    const bool wasDimmed = m_dimmed;
+#ifdef Q_OS_MACOS
+    // Global EQ bypass dims the bands of input channels only (PeqGraphEditor
+    // dimAll; config.flat is set for inputs)
+    m_dimmed = m_active && m_bridge->bypass() && m_bridge->isInputChannel(m_channel);
+#else
+    m_dimmed = m_active && m_bridge->bypass();   // global EQ bypass
+#endif
     if (!m_active || m_editing || m_mode == DragDot || m_mode == DragQ) { update(); return; }
     FilterParams bands[BANDS_PER_CHANNEL], xover[MAX_XOVER_BANDS];
     int nx = 0;
-    if (!m_bridge->channelBands(m_channel, bands, xover, &nx)) return;
+    if (!m_bridge->channelBands(m_channel, bands, xover, &nx)) {
+        if (wasDimmed != m_dimmed) update();
+        return;
+    }
     float offset = m_bridge->channelGainOffset(m_channel);
     QColor color(m_bridge->channelColor(m_channel));
     bool same = std::memcmp(bands, m_bands, sizeof(bands)) == 0 && nx == m_xoverCount
                 && std::memcmp(xover, m_xover, sizeof(FilterParams) * nx) == 0
                 && offset == m_offset && color == m_channelColor;
-    if (same) return;
+    if (same) {
+        if (wasDimmed != m_dimmed) update();
+        return;
+    }
     std::memcpy(m_bands, bands, sizeof(bands));
     std::memcpy(m_xover, xover, sizeof(xover));
     m_xoverCount = nx;
@@ -998,13 +1012,7 @@ void PeqEditorItem::keyPressEvent(QKeyEvent *e) {
 void PeqEditorItem::paint(QPainter *p) {
     if (!m_active || width() < 10 || height() < 10) return;
     p->setRenderHint(QPainter::Antialiasing);
-#ifdef Q_OS_MACOS
-    // Global EQ bypass dims the bands of input channels only (PeqGraphEditor
-    // dimAll; config.flat is set for inputs)
-    if (m_bridge->bypass() && m_bridge->isInputChannel(m_channel)) p->setOpacity(0.5);
-#else
-    if (m_bridge->bypass()) p->setOpacity(0.5);   // global EQ bypass
-#endif
+    if (m_dimmed) p->setOpacity(0.5);
 
     // Lobes and outlines: plain bands first, lit ones on top
     for (int pass = 0; pass < 2; pass++)

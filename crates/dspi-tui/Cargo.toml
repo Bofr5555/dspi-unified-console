@@ -9,7 +9,8 @@ repository.workspace = true
 
 [dependencies]
 dspi-proto.workspace = true
-dspi-transport.workspace = true
+# `link`: the terminal opens DSPi Link hubs itself (WP R1, shell/connect.rs).
+dspi-transport = { workspace = true, features = ["link"] }
 dspi-session.workspace = true
 dspi-cmd.workspace = true
 ratatui = "0.29"
@@ -18,3 +19,20 @@ unicode-width = "0.2"
 dirs = "6.0.0"
 toml = "1.1.4"
 serde = { workspace = true, features = ["derive"] }
+# -- WP R1 --
+# The hub session the terminal connects, pairs and closes (shell/connect.rs);
+# dspi-transport only wraps an open one.
+dspi-link.workspace = true
+# OpenError, as the other crates' typed errors.
+thiserror.workspace = true
+
+[features]
+default = ["midi"]
+# `--midi`: desktop MIDI ports through midir. Off, the build needs no ALSA
+# headers on Linux and `--midi` says it is unavailable.
+midi = ["dspi-transport/midir"]
+
+[dev-dependencies]
+# -- WP R1 --
+# The in-process hub the Link tests connect to.
+dspi-link = { workspace = true, features = ["fake-hub"] }

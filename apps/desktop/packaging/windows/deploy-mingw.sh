@@ -1,6 +1,6 @@
 #!/bin/bash
 # Lay out a runnable Windows folder from a MinGW cross build, on Linux: the
-# exe, dspi_core.dll, the Qt and MinGW runtime DLLs it loads, the Qt plugins
+# exe, dspi_capi.dll, the Qt and MinGW runtime DLLs it loads, the Qt plugins
 # and the QML modules the app imports. What windeployqt does on Windows.
 #
 #   deploy-mingw.sh <build dir> <output dir> [qt major, default 6]
@@ -29,7 +29,7 @@ else
 fi
 
 rm -rf "$out"; mkdir -p "$out"
-cp "$build/DSPiConsole.exe" "$build/dspi_core.dll" "$out/"
+cp "$build/DSPiConsole.exe" "$build/dspi_capi.dll" "$out/"
 
 # Plugins, in the folders Qt looks for them next to the exe
 for p in $plugin_list; do

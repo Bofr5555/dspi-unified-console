@@ -19,7 +19,7 @@
 //!
 //! Every write here is a deferred, live-only preview: the device applies it a
 //! tick later and reports the outcome through `REQ_GET_CS_STATUS`, and nothing
-//! reaches flash until the save bar's Save. [`cs_model::run`] does the waiting.
+//! reaches flash until the save bar's Save. `cs_model::run` does the waiting.
 //!
 //! The same card list, filtered to the two auxiliary output types, is
 //! Settings > Control > Auxiliary Outputs, as the Console builds it
@@ -2486,11 +2486,11 @@ impl SettingsPage for SurfacesPage {
                         self.ir_messages.remove(&sub);
                         PageEvent::Session(SessionRequest::new(
                             TAG_LEARN | sub as u32,
-                            // The arm answers PIN_CONFIG_SUCCESS or
-                            // CS_STATUS_NO_IR (control_surfaces.h:798), so a
-                            // refusal says so rather than waiting for a button
-                            // the device is not listening for.
-                            move |session| m::run_code(session, LEARN_PROMPT, |s| s.arm_learn()),
+                            // A refused arm stalls and leaves the reason in
+                            // the status, so a refusal says so rather than
+                            // waiting for a button the device is not
+                            // listening for.
+                            move |session| m::run_learn(session, LEARN_PROMPT, true),
                         ))
                     }
                     _ => {
@@ -2520,7 +2520,7 @@ impl SettingsPage for SurfacesPage {
                         .insert(sub, ("Learn cancelled.".into(), false));
                 }
                 PageEvent::Session(SessionRequest::new(TAG_LEARN_CANCEL, |session| {
-                    m::run_code(session, "Learn cancelled", |s| s.cancel_learn())
+                    m::run_learn(session, "Learn cancelled", false)
                 }))
             }
             (Item::IrNoun(sub), Action::Selected(c)) => {
@@ -3630,13 +3630,34 @@ mod tests {
             c.cs = Some(cs);
             c
         };
-        // CS_STATUS_NO_IR from the arm.
-        let t = MockTransport::new().data(op::REQ_CS_IR_LEARN, vec![0x1E]);
+        // A refused arm stalls and leaves CS_STATUS_NO_IR in the status.
+        let limits = m::demo::caps();
+        let mut packet = vec![
+            0u8;
+            dspi_session::surfaces::CsStatusPacket::SIZE.max(
+                dspi_session::surfaces::CsStatusPacket::wire_len(
+                    limits.max_bindings,
+                    limits.max_ir_commands
+                ),
+            )
+        ];
+        packet[0] = 0x1E;
+        let t = MockTransport::new()
+            .reply(op::REQ_CS_IR_LEARN, dspi_transport::mock::Reply::Stall)
+            .data(op::REQ_GET_CS_STATUS, packet);
+        let mut session = dspi_session::Session::new(Box::new(t), caps(limits)).expect("session");
+        assert_eq!(
+            m::run_learn(&mut session, LEARN_PROMPT, true),
+            SessionReply::Err("Set up an IR receiver first".into())
+        );
+
+        // The firmware's acknowledgement of an arm is 1, not a status code.
+        let t = MockTransport::new().data(op::REQ_CS_IR_LEARN, vec![1]);
         let mut session =
             dspi_session::Session::new(Box::new(t), caps(m::demo::caps())).expect("session");
         assert_eq!(
-            m::run_code(&mut session, LEARN_PROMPT, |s| s.arm_learn()),
-            SessionReply::Err("Set up an IR receiver first".into())
+            m::run_learn(&mut session, LEARN_PROMPT, true),
+            SessionReply::Ok(LEARN_PROMPT.into())
         );
 
         // And the page turns that into the card's own error, with nothing left

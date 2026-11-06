@@ -1,15 +1,19 @@
 # One workspace for every Rust part of the unified console:
-#   crates/dspi-core-linux  the desktop app's core (C ABI for Qt), from DSPi-Console-Linux
+#   crates/dspi-core        the embedder API over the session (docs/core-merge/PLAN.md)
+#   crates/dspi-capi        its C ABI for the Qt app
+#   crates/dspi-ffi         its UniFFI library for Android and iOS
 #   crates/dspi-proto, -transport, -session, -cmd, -tui  DSPi-Terminal's crates
 #   crates/dspi-link        the DSPi Link client, from the Android console
 #   apps/terminal           the `dspi` terminal client
 #   xtask                   DSPi-Terminal's developer tasks
-# The Terminal crates inherit [workspace.package] below; dspi-core-linux and
-# dspi-link set their own edition and licence fields.
+# The Terminal crates and the core-merge crates inherit [workspace.package]
+# below; dspi-link sets its own edition and licence fields.
 [workspace]
 resolver = "3"
 members = [
-    "crates/dspi-core-linux",
+    "crates/dspi-core",
+    "crates/dspi-capi",
+    "crates/dspi-ffi",
     "crates/dspi-proto",
     "crates/dspi-transport",
     "crates/dspi-session",
@@ -33,12 +37,17 @@ dspi-transport = { path = "crates/dspi-transport" }
 dspi-session = { path = "crates/dspi-session" }
 dspi-cmd = { path = "crates/dspi-cmd" }
 dspi-tui = { path = "crates/dspi-tui" }
+dspi-core = { path = "crates/dspi-core" }
+dspi-link = { path = "crates/dspi-link" }
 
 anyhow = "1"
 thiserror = "2"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Pinned: UniFFI's Kotlin and Swift output changes between minors. Same pin as
+# the Android app (dspi-android/rust/Cargo.toml).
+uniffi = "=0.29.5"
 
 [profile.release]
 lto = "thin"

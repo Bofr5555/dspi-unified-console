@@ -129,7 +129,9 @@ class DSPiBridge : public QObject
     Q_PROPERTY(int core1Mode READ core1Mode NOTIFY stateChanged)
 
 public:
-    explicit DSPiBridge(QObject *parent = nullptr);
+    // Demo also offers the built-in demo device, and opens it first (--demo)
+    enum class Mode { Hardware, Demo };
+    explicit DSPiBridge(Mode mode = Mode::Hardware, QObject *parent = nullptr);
     ~DSPiBridge();
 
     // Property getters
@@ -495,6 +497,8 @@ private:
     QString m_selectedSerial;
     QStringList m_availableSerials;
     int m_inaccessible = 0;
+    bool m_demo = false;
+    QStringList listSerials();
     void updateInaccessible();
     QTimer *m_statusTimer = nullptr;
     QTimer *m_hotplugTimer = nullptr;
@@ -516,6 +520,8 @@ private:
     // Channel visibility (app ids)
     bool m_channelVisible[kAppChannelCount];
 
+    // The core's state as of this call. The record stays where it is but is a
+    // snapshot: re-read it after a write. GUI thread only (each call rewrites it).
     const DspState *state() const;
     static QVariantList floatList(const float *v, int n);
     bool usable() const;              // connected to compatible firmware

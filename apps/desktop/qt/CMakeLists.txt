@@ -30,12 +30,13 @@ message(STATUS "Building against Qt ${QT_VERSION}")
 # The Rust core (dspi-core). Build it first with cargo; these say where its
 # header and library are. DSPI_RUST_TARGET is the cargo --target triple when
 # cross-compiling (e.g. x86_64-pc-windows-gnu), empty for a native build.
-# In dspi-unified-console the core is crates/dspi-core-linux and cargo's
-# target directory is the repository root's target/.
+# The core is the C ABI crate crates/dspi-capi (library dspi_capi, header
+# dspi_core.h); cargo's target directory is the repository root's target/.
 get_filename_component(DSPI_REPO_ROOT "${CMAKE_SOURCE_DIR}/../../.." ABSOLUTE)
-set(DSPI_CORE_DIR "${DSPI_REPO_ROOT}/crates/dspi-core-linux" CACHE PATH "Directory holding include/dspi_core.h")
+set(DSPI_CORE_DIR "${DSPI_REPO_ROOT}/crates/dspi-capi" CACHE PATH "Directory holding include/dspi_core.h")
 set(DSPI_CARGO_TARGET_DIR "${DSPI_REPO_ROOT}/target" CACHE PATH "cargo's target directory")
 set(DSPI_RUST_TARGET "" CACHE STRING "cargo --target triple, empty for the host")
+set(DSPI_CORE_LIB "dspi_capi" CACHE STRING "Rust core library name")
 if(DSPI_RUST_TARGET)
     set(DSPI_CORE_LIBDIR "${DSPI_CARGO_TARGET_DIR}/${DSPI_RUST_TARGET}/release")
 else()
@@ -50,7 +51,7 @@ set(DSPI_VER_MAJOR ${CMAKE_MATCH_1})
 set(DSPI_VER_MINOR ${CMAKE_MATCH_2})
 set(DSPI_VER_PATCH ${CMAKE_MATCH_3})
 
-add_executable(DSPiConsole
+set(DSPI_APP_SOURCES
     src/main.cpp
     src/DSPiBridge.cpp
     src/BodePlotItem.cpp
@@ -69,6 +70,18 @@ add_executable(DSPiConsole
     src/WindowEffects.cpp
     resources.qrc
 )
+add_executable(DSPiConsole ${DSPI_APP_SOURCES})
+
+# The app with its offscreen test driver (ci/check.sh --step qt-offscreen).
+option(DSPI_SMOKE "Also build DSPiConsoleSmoke, the app with its test driver" OFF)
+if(DSPI_SMOKE)
+    add_executable(DSPiConsoleSmoke ${DSPI_APP_SOURCES} smoke/SmokeDriver.cpp smoke/SmokeDriverHw.cpp smoke/SmokeDriverReplug.cpp smoke/SmokeDriver.h)
+    target_include_directories(DSPiConsoleSmoke PRIVATE ${DSPI_CORE_DIR}/include src/ smoke/)
+    target_compile_definitions(DSPiConsoleSmoke PRIVATE DSPI_SMOKE)
+    target_link_libraries(DSPiConsoleSmoke PRIVATE
+        Qt::Core Qt::Gui Qt::Widgets Qt::Quick Qt::QuickControls2 Qt::Qml Qt::Network
+        ${DSPI_CORE_LIBDIR}/lib${DSPI_CORE_LIB}.a pthread dl m)
+endif()
 
 target_include_directories(DSPiConsole PRIVATE
     ${DSPI_CORE_DIR}/include
@@ -88,17 +101,17 @@ if(WIN32)
     # Windows 11 rounded corners for the frameless windows (WindowEffects)
     target_link_libraries(DSPiConsole PRIVATE dwmapi)
 
-    # Windows: the core is a DLL (dspi_core.dll) next to the exe, linked
+    # Windows: the core is a DLL (dspi_capi.dll) next to the exe, linked
     # through cargo's import library
     if(MSVC)
-        target_link_libraries(DSPiConsole PRIVATE ${DSPI_CORE_LIBDIR}/dspi_core.dll.lib)
+        target_link_libraries(DSPiConsole PRIVATE ${DSPI_CORE_LIBDIR}/${DSPI_CORE_LIB}.dll.lib)
     else()
-        target_link_libraries(DSPiConsole PRIVATE ${DSPI_CORE_LIBDIR}/libdspi_core.dll.a)
+        target_link_libraries(DSPiConsole PRIVATE ${DSPI_CORE_LIBDIR}/lib${DSPI_CORE_LIB}.dll.a)
     endif()
     add_custom_command(TARGET DSPiConsole POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${DSPI_CORE_LIBDIR}/dspi_core.dll $<TARGET_FILE_DIR:DSPiConsole>)
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${DSPI_CORE_LIBDIR}/${DSPI_CORE_LIB}.dll $<TARGET_FILE_DIR:DSPiConsole>)
 else()
-    target_link_libraries(DSPiConsole PRIVATE ${DSPI_CORE_LIBDIR}/libdspi_core.a)
+    target_link_libraries(DSPiConsole PRIVATE ${DSPI_CORE_LIBDIR}/lib${DSPI_CORE_LIB}.a)
 endif()
 
 if(APPLE)
@@ -120,8 +133,7 @@ if(APPLE)
     set_source_files_properties(src/MacSystemColors.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
     target_link_libraries(DSPiConsole PRIVATE "-framework AppKit")
 
-    # libusb is built into the core (rusb's vendored feature, core/Cargo.toml);
-    # these are the macOS frameworks it uses
+    # The macOS frameworks the core's USB stack (nusb) and Rust's std use
     find_library(IOKIT IOKit)
     find_library(CF CoreFoundation)
     find_library(SEC Security)
@@ -129,11 +141,8 @@ if(APPLE)
     target_link_libraries(DSPiConsole PRIVATE ${IOKIT} ${CF} ${SEC} ${OBJC}
         "-framework SystemConfiguration")
 elseif(UNIX)
-    # Linux: libusb via pkg-config, plus pthreads and dl
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(LIBUSB REQUIRED libusb-1.0)
-    target_include_directories(DSPiConsole PRIVATE ${LIBUSB_INCLUDE_DIRS})
-    target_link_libraries(DSPiConsole PRIVATE ${LIBUSB_LIBRARIES} pthread dl udev)
+    # Linux: the core talks to usbfs itself (nusb); it needs only these
+    target_link_libraries(DSPiConsole PRIVATE pthread dl m)
 
     # Optional: KDE blur-behind support
     # KF5 with Qt 5, KF6 with Qt 6

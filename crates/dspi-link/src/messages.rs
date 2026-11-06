@@ -5,6 +5,8 @@
 //! Port of the client half of DSPi-Console `release/v1.1.6`
 //! `Link/LinkMessages.swift`.
 
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -76,6 +78,25 @@ impl Default for Limits {
     }
 }
 
+/// Where a hub's PIN comes from (spec 6.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PinSource {
+    /// Shown on the hub for a pairing window; pairs one client.
+    Window,
+    /// The hub's own long-lived PIN.
+    Fixed,
+}
+
+impl PinSource {
+    /// The spec's word for it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PinSource::Window => "window",
+            PinSource::Fixed => "fixed",
+        }
+    }
+}
+
 /// The hub's `hello` (spec 7.2).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct HelloHub {
@@ -106,9 +127,14 @@ impl HelloHub {
 
     /// `window` unless the hub says `fixed` (spec 7.2).
     pub fn pin_source(&self) -> &str {
+        self.pin_source_kind().as_str()
+    }
+
+    /// [`Self::pin_source`], typed.
+    pub fn pin_source_kind(&self) -> PinSource {
         match self.pin_source.as_deref() {
-            Some("fixed") => "fixed",
-            _ => "window",
+            Some("fixed") => PinSource::Fixed,
+            _ => PinSource::Window,
         }
     }
 }
@@ -121,7 +147,7 @@ pub struct Policy {
 }
 
 /// The `ok` to `auth.token` / `auth.pair` (spec 7.3).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct AuthOk {
     #[serde(default)]
     pub session: u32,
@@ -131,6 +157,18 @@ pub struct AuthOk {
     pub token: Option<String>,
     #[serde(default)]
     pub policy: Option<Policy>,
+}
+
+/// By hand, so a token never reaches a log.
+impl fmt::Debug for AuthOk {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AuthOk")
+            .field("session", &self.session)
+            .field("role", &self.role)
+            .field("token", &self.token.as_ref().map(|_| "<redacted>"))
+            .field("policy", &self.policy)
+            .finish()
+    }
 }
 
 /// One entry of `device.list` / `device.added` / `device.changed` (spec 7.4).
@@ -240,7 +278,7 @@ pub struct InfoDevice {
 }
 
 /// A message from the hub, by `t`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Inbound {
     Hello(HelloHub),
     Ok {
@@ -263,6 +301,26 @@ pub enum Inbound {
     Other {
         t: String,
     },
+}
+
+/// By hand: the body of an `ok` may carry a token, so it never reaches a log.
+impl fmt::Debug for Inbound {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Inbound::Hello(h) => f.debug_tuple("Hello").field(h).finish(),
+            Inbound::Ok { id, .. } => f.debug_struct("Ok").field("id", id).finish_non_exhaustive(),
+            Inbound::Err(e) => f.debug_tuple("Err").field(e).finish(),
+            Inbound::DeviceAdded(d) => f.debug_tuple("DeviceAdded").field(d).finish(),
+            Inbound::DeviceChanged(d) => f.debug_tuple("DeviceChanged").field(d).finish(),
+            Inbound::DeviceRemoved { handle, serial } => {
+                f.debug_struct("DeviceRemoved").field("handle", handle).field("serial", serial).finish()
+            }
+            Inbound::PollError { handle, slot, code } => {
+                f.debug_struct("PollError").field("handle", handle).field("slot", slot).field("code", code).finish()
+            }
+            Inbound::Other { t } => f.debug_struct("Other").field("t", t).finish(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

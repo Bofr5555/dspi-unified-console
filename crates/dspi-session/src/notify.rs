@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use dspi_transport::NotificationSource;
 
@@ -64,6 +64,8 @@ pub enum Source {
     Uac1,
     Uart,
     I2c,
+    /// The USB MIDI control channel (`PARAM_SRC_MIDI`, DSPI_USB_MIDI firmware).
+    Midi,
     Other(u8),
 }
 
@@ -80,20 +82,38 @@ impl Source {
             n::PARAM_SRC_UAC1 => Self::Uac1,
             n::PARAM_SRC_UART => Self::Uart,
             n::PARAM_SRC_I2C => Self::I2c,
+            n::PARAM_SRC_MIDI => Self::Midi,
             _ => Self::Other(b),
         }
     }
 
-    /// Our own writes come back as `HostSet`; everything else is news.
-    pub fn is_ours(self) -> bool {
-        matches!(self, Self::HostSet | Self::BulkSet)
+    /// The raw `ParamSource` byte, for [`dspi_transport::is_own_write`].
+    pub fn raw(self) -> u8 {
+        let v = match self {
+            Self::Unknown => n::PARAM_SRC_UNKNOWN,
+            Self::HostSet => n::PARAM_SRC_HOST_SET,
+            Self::BulkSet => n::PARAM_SRC_BULK_SET,
+            Self::Preset => n::PARAM_SRC_PRESET,
+            Self::Factory => n::PARAM_SRC_FACTORY,
+            Self::Gpio => n::PARAM_SRC_GPIO,
+            Self::Internal => n::PARAM_SRC_INTERNAL,
+            Self::Uac1 => n::PARAM_SRC_UAC1,
+            Self::Uart => n::PARAM_SRC_UART,
+            Self::I2c => n::PARAM_SRC_I2C,
+            Self::Midi => n::PARAM_SRC_MIDI,
+            Self::Other(b) => return b,
+        };
+        v as u8
     }
 
-    /// The Console's wording for the echo line.
+    /// What the source byte itself says, in words for the echo line. It does
+    /// not say whose the change was: that depends on the link, so ask
+    /// [`Notification::is_own_echo`] first.
     pub fn describe(self) -> &'static str {
         match self {
             Self::Unknown | Self::Other(_) => "changed elsewhere",
-            Self::HostSet | Self::BulkSet => "changed by this host",
+            Self::HostSet => "changed over USB",
+            Self::BulkSet => "changed by a bulk write",
             Self::Preset => "changed by a preset load",
             Self::Factory => "reset to factory defaults",
             Self::Gpio => "changed by control surface",
@@ -101,6 +121,7 @@ impl Source {
             Self::Uac1 => "changed by the system volume",
             Self::Uart => "changed over UART",
             Self::I2c => "changed over I2C",
+            Self::Midi => "changed over MIDI",
         }
     }
 }
@@ -182,6 +203,284 @@ pub struct Notification {
     /// The sequence number skipped: something was dropped before this one,
     /// and the bulk shadow can no longer be trusted.
     pub lost: bool,
+    /// The link's attribution (DSPi Link session id of the writer, 0 for the
+    /// device); `None` over USB and MIDI. See [`Notification::is_own_echo`].
+    pub origin: Option<u16>,
+    /// When the reader thread received the packet. Echo classification
+    /// ([`EchoFilter::classify_notification`]) uses this, not the time the
+    /// client drains the queue, so a late drain cannot push our own bulk
+    /// write's `BULK_SET` outside its window and misread it as foreign.
+    pub received: Instant,
+}
+
+impl Notification {
+    /// Whether this is the echo of a write this client made, by the rule of
+    /// the link it came over ([`dspi_transport::is_own_write`]): `kind` is
+    /// the transport's [`dspi_transport::TransportCaps::kind`], `session` its
+    /// [`dspi_transport::Transport::session_id`]. A `BULK_INVALIDATED` off Link
+    /// follows `echo`'s rule, at the packet's `received` stamp: the source that
+    /// answers a bulk write in the filter's mode, with one of ours pending; a
+    /// preset load, a factory reset or a merged `UNKNOWN` never is ours. This
+    /// only asks: [`EchoFilter::classify_notification`] also consumes the
+    /// write it answers. Such a change is already in the client's mirror.
+    pub fn is_own_echo(
+        &self,
+        kind: dspi_transport::TransportKind,
+        session: Option<u16>,
+        echo: &EchoFilter,
+    ) -> bool {
+        match &self.event {
+            Event::BulkInvalidated { source } if kind != dspi_transport::TransportKind::Link => {
+                echo.answers_our_bulk(self.received, kind, source.raw())
+            }
+            Event::ParamChanged { source, .. } | Event::BulkInvalidated { source } => {
+                dspi_transport::is_own_write(kind, source.raw(), self.origin, session, false)
+            }
+            _ => false,
+        }
+    }
+
+    /// The `ParamSource` byte of an event that has one.
+    pub fn source(&self) -> Option<Source> {
+        match &self.event {
+            Event::ParamChanged { source, .. } | Event::BulkInvalidated { source } => Some(*source),
+            _ => None,
+        }
+    }
+}
+
+/// Recognises the `BULK_INVALIDATED` that answers our own bulk write. Over
+/// Link the origin decides and this state is not consulted; on USB, MIDI and
+/// the fake device there are two modes, chosen once per connection with
+/// [`EchoFilter::set_bulk_source`].
+///
+/// **Tagged** (firmware reporting `NOTIFY_FEAT_BULK_SOURCE`, sub-command
+/// `EXT_NOTIFY_FEATURES`; `notification_protocol_v2_spec.md` 3.5.1): an
+/// invalidation is ours only when its source is the path we write on
+/// (`HOST_SET` over USB, `MIDI` over MIDI) and a bulk SET of ours on that path
+/// is outstanding; a match settles every outstanding SET, because a merged
+/// invalidation can stand for several. Any other source (`UNKNOWN`, `BULK_SET`,
+/// another path) is foreign. Several hosts can share a path, so the
+/// outstanding-SET condition is what keeps another app's write from reading
+/// as ours. An outstanding SET whose invalidation never comes (the device
+/// refused the image on its main loop) expires after
+/// [`EchoFilter::SOURCE_EXPIRY`], so it cannot hide a later foreign write.
+///
+/// **Time window** (older or stock firmware, or the feature read was refused):
+/// the firmware tags every bulk apply `BULK_SET` whatever path it came in on
+/// (bulk_params.c:371/408), so the source cannot tell our `0xA1`/`0xA3` from
+/// another host's. The device's bulk lock keeps other hosts' bulk writes out
+/// while ours is in flight and for a moment after, so: a `BULK_SET`
+/// invalidation that arrives while our bulk write is in flight, or within
+/// [`EchoFilter::WINDOW`] of its successful reply, is ours, **once**.
+///
+/// A hole no client can close: another host's SET on our path, merged with ours
+/// into one `HOST_SET` entry, cannot be told apart from ours alone, so its
+/// change goes unread; [`EchoFilter::SOURCE_EXPIRY`] bounds how long a pending
+/// SET can be taken for such a write.
+///
+/// In both modes an invalidation received before our write started is foreign,
+/// and everything unclaimed is foreign: it only costs the client a re-read.
+///
+/// Pure (the caller passes the clock); reference for the window: the iOS
+/// console's `MIDITransport` (`dspi-ios` patch console-116/0005).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EchoFilter {
+    /// The device tags bulk applies with their path.
+    bulk_source: bool,
+    /// Time-window mode's state.
+    state: BulkEcho,
+    /// Tagged mode's state: our bulk SETs whose invalidation has not come.
+    outstanding: u32,
+    /// When the first outstanding SET started.
+    since: Option<Instant>,
+    /// When the outstanding SETs expire; `None` while one is in flight.
+    expires: Option<Instant>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum BulkEcho {
+    /// No bulk write of ours to account for.
+    #[default]
+    Idle,
+    /// Our bulk write is on the wire; `claimed` once its invalidation was seen.
+    InFlight { since: Instant, claimed: bool },
+    /// Our bulk write was accepted; its invalidation may still arrive until
+    /// `until`.
+    Window { since: Instant, until: Instant },
+}
+
+impl EchoFilter {
+    /// How long after our bulk write's reply its invalidation is still
+    /// expected, on firmware that does not tag bulk applies.
+    pub const WINDOW: Duration = Duration::from_secs(1);
+
+    /// How long an outstanding SET waits for its tagged invalidation after
+    /// the reply. Generous: the apply runs on the device's main loop, and
+    /// expiring only costs a re-read.
+    pub const SOURCE_EXPIRY: Duration = Duration::from_secs(5);
+
+    /// Choose the mode: `true` when the device reports
+    /// `NOTIFY_FEAT_BULK_SOURCE` ([`crate::ext_state::ExtState::bulk_source`]).
+    /// Absent or refused means the time window.
+    pub fn set_bulk_source(&mut self, tagged: bool) {
+        self.bulk_source = tagged;
+    }
+
+    /// Whether this filter runs in tagged mode.
+    pub fn bulk_source(&self) -> bool {
+        self.bulk_source
+    }
+
+    /// Our `0xA1` (or the first `0xA3` chunk) is about to be sent.
+    pub fn bulk_write_started(&mut self, now: Instant) {
+        self.state = BulkEcho::InFlight {
+            since: now,
+            claimed: false,
+        };
+        if self.outstanding == 0 {
+            self.since = Some(now);
+        }
+        self.outstanding = self.outstanding.saturating_add(1);
+        self.expires = None;
+    }
+
+    /// Our bulk write finished (`ok`: the device accepted it). Opens the
+    /// window unless the invalidation already came, or the write failed; a
+    /// failed write is no longer outstanding, whether or not it reached the
+    /// device (if it did, the re-read it causes is safe).
+    pub fn bulk_write_finished(&mut self, now: Instant, ok: bool) {
+        self.state = match self.state {
+            BulkEcho::InFlight {
+                since,
+                claimed: false,
+            } if ok => match now.checked_add(Self::WINDOW) {
+                Some(until) => BulkEcho::Window { since, until },
+                None => BulkEcho::Idle,
+            },
+            _ => BulkEcho::Idle,
+        };
+        if !ok {
+            self.outstanding = self.outstanding.saturating_sub(1);
+        }
+        if self.outstanding == 0 {
+            self.since = None;
+            self.expires = None;
+        } else {
+            self.expires = now.checked_add(Self::SOURCE_EXPIRY);
+        }
+    }
+
+    /// Whether a bulk invalidation received at `now` could be claimed as ours.
+    pub fn own_bulk_pending(&self, now: Instant) -> bool {
+        if self.bulk_source {
+            return self.outstanding > 0
+                && self.since.is_some_and(|since| now >= since)
+                && self.expires.is_none_or(|until| now < until);
+        }
+        match self.state {
+            BulkEcho::Idle => false,
+            BulkEcho::InFlight { since, claimed } => !claimed && now >= since,
+            BulkEcho::Window { since, until } => now >= since && now < until,
+        }
+    }
+
+    /// Whether a `BULK_INVALIDATED` with this raw source, received at `now`,
+    /// answers a bulk write of ours (off Link): the mode's source, with one
+    /// pending.
+    fn answers_our_bulk(
+        &self,
+        now: Instant,
+        kind: dspi_transport::TransportKind,
+        source: u8,
+    ) -> bool {
+        use dspi_transport::TransportKind as K;
+        let tag = match (self.bulk_source, kind) {
+            (false, _) => n::PARAM_SRC_BULK_SET,
+            (true, K::Midi) => n::PARAM_SRC_MIDI,
+            (true, _) => n::PARAM_SRC_HOST_SET,
+        };
+        u16::from(source) == tag && self.own_bulk_pending(now)
+    }
+
+    /// Nothing of ours is outstanding any more (tagged mode).
+    fn settle_outstanding(&mut self) {
+        self.outstanding = 0;
+        self.since = None;
+        self.expires = None;
+    }
+
+    /// Classify a `BULK_INVALIDATED` received at `now` by its raw source:
+    /// true if it is our own echo, and the client skips the re-read. A claim
+    /// consumes what it answers (see the type's docs).
+    pub fn classify_invalidation(
+        &mut self,
+        now: Instant,
+        kind: dspi_transport::TransportKind,
+        source: u8,
+        origin: Option<u16>,
+        session: Option<u16>,
+    ) -> bool {
+        if kind == dspi_transport::TransportKind::Link {
+            return dspi_transport::is_own_write(kind, source, origin, session, false);
+        }
+        // A mixed-source merge stands for every rewrite in it, ours included,
+        // and is re-read. Left outstanding, our SET would let another app's
+        // later HOST_SET read as ours.
+        if self.bulk_source
+            && u16::from(source) == n::PARAM_SRC_UNKNOWN
+            && self.own_bulk_pending(now)
+        {
+            self.settle_outstanding();
+            return false;
+        }
+        if !self.answers_our_bulk(now, kind, source) {
+            return false;
+        }
+        if self.bulk_source {
+            self.settle_outstanding();
+        }
+        self.state = match self.state {
+            BulkEcho::InFlight { since, .. } => BulkEcho::InFlight {
+                since,
+                claimed: true,
+            },
+            _ => BulkEcho::Idle,
+        };
+        true
+    }
+
+    /// Classify any other event's source: true if it is our own echo. Takes
+    /// no bulk state: `PARAM_CHANGED` never answers a bulk write.
+    pub fn classify(
+        &self,
+        kind: dspi_transport::TransportKind,
+        source: u8,
+        origin: Option<u16>,
+        session: Option<u16>,
+    ) -> bool {
+        dspi_transport::is_own_write(kind, source, origin, session, false)
+    }
+
+    /// Classify a decoded notification at the time the reader received it
+    /// ([`Notification::received`], not the time of the drain); false for
+    /// events without a source.
+    pub fn classify_notification(
+        &mut self,
+        kind: dspi_transport::TransportKind,
+        session: Option<u16>,
+        note: &Notification,
+    ) -> bool {
+        match &note.event {
+            Event::BulkInvalidated { source } => {
+                self.classify_invalidation(note.received, kind, source.raw(), note.origin, session)
+            }
+            Event::ParamChanged { source, .. } => {
+                self.classify(kind, source.raw(), note.origin, session)
+            }
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -332,6 +631,9 @@ impl SeqTracker {
     }
 }
 
+/// Called by the reader thread when notifications are waiting.
+pub type Waker = Arc<dyn Fn() + Send + Sync>;
+
 /// The reader thread and its channel.
 pub struct Notifications {
     rx: Receiver<Notification>,
@@ -356,10 +658,28 @@ impl Notifications {
     /// endpoint holds a read before it answers the idle packet.
     pub const KEEP_ALIVE: Duration = Duration::from_millis(100);
 
+    /// The most notifications kept waiting for [`Notifications::drain`]. A
+    /// reader that falls this far behind loses the oldest news anyway; the
+    /// queue drops new packets instead of growing without bound (a device or
+    /// a hub can send faster than a stalled UI drains), and marks the next
+    /// packet it does deliver `lost`, so the client re-reads the bulk image.
+    pub const QUEUE: usize = 1024;
+
     /// Start reading. Idle packets are dropped here; everything else is
-    /// delivered with its sequence number and the loss flag.
-    pub fn start(mut source: Box<dyn NotificationSource>) -> Self {
-        let (tx, rx) = mpsc::channel();
+    /// delivered with its sequence number, the loss flag and the link's
+    /// origin. Fails only if the reader thread cannot be spawned.
+    pub fn start(source: Box<dyn NotificationSource>) -> std::io::Result<Self> {
+        Self::start_with_waker(source, None)
+    }
+
+    /// [`Notifications::start`], calling `waker` (on the reader thread) each
+    /// time a notification has been queued. A GUI's waker only schedules a
+    /// drain; it must not block or call back into the reader's owner.
+    pub fn start_with_waker(
+        mut source: Box<dyn NotificationSource>,
+        waker: Option<Waker>,
+    ) -> std::io::Result<Self> {
+        let (tx, rx) = mpsc::sync_channel(Self::QUEUE);
         let stop = Arc::new(AtomicBool::new(false));
         let disconnected = Arc::new(AtomicBool::new(false));
         let stop_flag = Arc::clone(&stop);
@@ -368,11 +688,37 @@ impl Notifications {
             .name("dspi-notify".into())
             .spawn(move || {
                 let mut seqs = SeqTracker::default();
+                // Set when the queue was full and a packet was dropped.
+                let mut overflowed = false;
+                // Queue one notification; false when the receiver is gone.
+                let mut deliver = |mut n: Notification| -> bool {
+                    n.lost |= overflowed;
+                    match tx.try_send(n) {
+                        Ok(()) => {
+                            overflowed = false;
+                            if let Some(w) = &waker {
+                                w();
+                            }
+                            true
+                        }
+                        Err(mpsc::TrySendError::Full(_)) => {
+                            overflowed = true;
+                            true
+                        }
+                        Err(mpsc::TrySendError::Disconnected(_)) => false,
+                    }
+                };
                 while !stop_flag.load(Ordering::Relaxed) {
-                    let packet = match source.read(Self::READ_TIMEOUT) {
-                        Ok(p) => p,
+                    let (packet, origin) = match source.read_attributed(Self::READ_TIMEOUT) {
+                        Ok(a) => (a.packet, a.origin),
                         Err(dspi_transport::TransportError::Disconnected) => {
                             disc_flag.store(true, Ordering::Relaxed);
+                            // Wake the client once so it notices the end
+                            // (MIDI port closed, Link session over) instead
+                            // of waiting for a packet that never comes.
+                            if let Some(w) = &waker {
+                                w();
+                            }
                             break;
                         }
                         // A stall or a transient error: give the bus a
@@ -385,45 +731,47 @@ impl Notifications {
                     if packet.is_empty() {
                         continue;
                     }
-                    match decode(&packet) {
-                        Ok((_, Event::Idle)) => {}
+                    let received = Instant::now();
+                    let n = match decode(&packet) {
+                        Ok((_, Event::Idle)) => continue,
                         Ok((seq, event)) => {
                             // The v1 volume packet carries no sequence number
                             // and does not consume one (notify.c:156-159,
                             // 178), so it says nothing about loss.
                             let lost =
                                 !matches!(event, Event::MasterVolume(_)) && seqs.observe(seq);
-                            if tx.send(Notification { seq, event, lost }).is_err() {
-                                break;
+                            Notification {
+                                seq,
+                                event,
+                                lost,
+                                origin,
+                                received,
                             }
                         }
-                        Err(_) => {
-                            // A packet we cannot read is still a packet we
-                            // missed; say so through the loss flag.
-                            if tx
-                                .send(Notification {
-                                    seq: 0,
-                                    event: Event::Unknown {
-                                        id: 0xFF,
-                                        bytes: packet,
-                                    },
-                                    lost: true,
-                                })
-                                .is_err()
-                            {
-                                break;
-                            }
-                        }
+                        // A packet we cannot read is still a packet we
+                        // missed; say so through the loss flag.
+                        Err(_) => Notification {
+                            seq: 0,
+                            event: Event::Unknown {
+                                id: 0xFF,
+                                bytes: packet,
+                            },
+                            lost: true,
+                            origin,
+                            received,
+                        },
+                    };
+                    if !deliver(n) {
+                        break;
                     }
                 }
-            })
-            .expect("spawn the notification reader");
-        Self {
+            })?;
+        Ok(Self {
             rx,
             stop,
             thread: Some(thread),
             disconnected,
-        }
+        })
     }
 
     /// Everything that has arrived since the last drain, oldest first.
@@ -588,7 +936,8 @@ mod tests {
         assert_eq!(evt::SIGGEN_STATE, 0x07);
         assert_eq!(PROTOCOL_VERSION, 2);
         assert_eq!(Source::from_raw(9), Source::I2c);
-        assert_eq!(Source::from_raw(10), Source::Other(10));
+        assert_eq!(Source::from_raw(10), Source::Midi);
+        assert_eq!(Source::from_raw(11), Source::Other(11));
     }
 
     #[test]
@@ -622,7 +971,7 @@ mod tests {
         mock.push_notification(param(1, 4748, 5, &[0, 0, 0, 0]));
         mock.push_notification(vec![0]);
         mock.push_notification(vec![2, 3, 0, 3, 1, 0, 0, 0]);
-        let n = Notifications::start(mock.notifications().unwrap());
+        let n = Notifications::start(mock.notifications().unwrap()).unwrap();
         let first = n.next(Duration::from_secs(2)).expect("first");
         assert_eq!(first.seq, 1);
         assert!(!first.lost);
@@ -654,11 +1003,265 @@ mod tests {
         mock.push_notification(param(8, 4748, 7, &[0, 0, 0, 0]));
         mock.push_notification(legacy);
         mock.push_notification(param(9, 4748, 7, &[0, 0, 0, 0]));
-        let n = Notifications::start(mock.notifications().unwrap());
+        let n = Notifications::start(mock.notifications().unwrap()).unwrap();
         for _ in 0..5 {
             let got = n.next(Duration::from_secs(2)).expect("a packet");
             assert!(!got.lost, "{got:?}");
         }
+    }
+
+    #[test]
+    fn echo_filter_claims_our_bulk_invalidation_once() {
+        use dspi_transport::TransportKind as K;
+        let bulk = n::PARAM_SRC_BULK_SET as u8;
+        let t0 = Instant::now();
+        let mut f = EchoFilter::default();
+        let c =
+            |f: &mut EchoFilter, at, kind, src| f.classify_invalidation(at, kind, src, None, None);
+        assert!(!c(&mut f, t0, K::Usb, bulk), "idle: foreign");
+
+        // Invalidation after the reply, inside the window: ours, once.
+        f.bulk_write_started(t0);
+        f.bulk_write_finished(t0, true);
+        assert!(f.own_bulk_pending(t0 + Duration::from_millis(900)));
+        assert!(c(&mut f, t0 + Duration::from_millis(10), K::Midi, bulk));
+        assert!(!c(&mut f, t0 + Duration::from_millis(20), K::Midi, bulk));
+
+        // Invalidation while in flight: ours; the reply then opens no window.
+        f.bulk_write_started(t0);
+        assert!(c(&mut f, t0, K::Usb, bulk));
+        f.bulk_write_finished(t0, true);
+        assert!(!c(&mut f, t0, K::Usb, bulk));
+
+        // Past the window, or after a failed write: foreign.
+        f.bulk_write_started(t0);
+        f.bulk_write_finished(t0, true);
+        assert!(!c(&mut f, t0 + EchoFilter::WINDOW, K::Usb, bulk));
+        f.bulk_write_started(t0);
+        f.bulk_write_finished(t0, false);
+        assert!(!c(&mut f, t0, K::Usb, bulk));
+
+        // Received before the write started (drained late): foreign.
+        let t1 = t0 + Duration::from_secs(10);
+        f.bulk_write_started(t1);
+        assert!(!c(&mut f, t0, K::Usb, bulk));
+        assert!(c(&mut f, t1, K::Usb, bulk));
+
+        // Without the feature no other source answers a bulk write.
+        f.bulk_write_started(t1);
+        assert!(!c(&mut f, t1, K::Usb, n::PARAM_SRC_HOST_SET as u8));
+        assert!(!c(&mut f, t1, K::Midi, n::PARAM_SRC_MIDI as u8));
+        assert!(f.own_bulk_pending(t1), "and nothing was consumed");
+    }
+
+    /// `notification_protocol_v2_spec.md` 3.5.1, the host rule.
+    #[test]
+    fn echo_filter_with_tagged_firmware_follows_the_host_rule() {
+        use dspi_transport::TransportKind as K;
+        let (host, midi, bulk, unknown, preset) = (
+            n::PARAM_SRC_HOST_SET as u8,
+            n::PARAM_SRC_MIDI as u8,
+            n::PARAM_SRC_BULK_SET as u8,
+            n::PARAM_SRC_UNKNOWN as u8,
+            n::PARAM_SRC_PRESET as u8,
+        );
+        let t0 = Instant::now();
+        let tagged = || {
+            let mut f = EchoFilter::default();
+            f.set_bulk_source(true);
+            f
+        };
+        let c =
+            |f: &mut EchoFilter, at, kind, src| f.classify_invalidation(at, kind, src, None, None);
+
+        // Our path with a SET outstanding: ours; nothing outstanding: another
+        // app on the same path.
+        let mut f = tagged();
+        assert!(!c(&mut f, t0, K::Usb, host), "no SET of ours");
+        f.bulk_write_started(t0);
+        f.bulk_write_finished(t0, true);
+        assert!(c(&mut f, t0, K::Usb, host));
+        assert!(!c(&mut f, t0, K::Usb, host), "settled");
+
+        // Any other source is foreign and settles nothing.
+        f.bulk_write_started(t0);
+        for src in [midi, bulk, preset] {
+            assert!(!c(&mut f, t0, K::Usb, src), "source {src}");
+        }
+        assert!(f.own_bulk_pending(t0));
+
+        // A merged entry stands for our SET too: it re-reads and settles it, so
+        // another app's later HOST_SET is not taken for ours.
+        let mut f = tagged();
+        f.bulk_write_started(t0);
+        f.bulk_write_finished(t0, true);
+        assert!(!c(&mut f, t0, K::Usb, unknown));
+        assert!(!f.own_bulk_pending(t0));
+        assert!(!c(&mut f, t0, K::Usb, host));
+        // With nothing pending it settles nothing and a later SET is unaffected.
+        let mut f = tagged();
+        assert!(!c(&mut f, t0, K::Usb, unknown));
+        f.bulk_write_started(t0);
+        assert!(c(&mut f, t0, K::Usb, host));
+
+        // Over MIDI the path is MIDI.
+        let mut f = tagged();
+        f.bulk_write_started(t0);
+        assert!(!c(&mut f, t0, K::Midi, host));
+        assert!(c(&mut f, t0, K::Midi, midi));
+
+        // A match settles every outstanding SET; a later one is foreign.
+        let mut f = tagged();
+        f.bulk_write_started(t0);
+        f.bulk_write_finished(t0, true);
+        f.bulk_write_started(t0);
+        f.bulk_write_finished(t0, true);
+        assert!(c(&mut f, t0, K::Usb, host));
+        assert!(!c(&mut f, t0, K::Usb, host));
+
+        // A failed SET is not outstanding; the other one still is.
+        let mut f = tagged();
+        f.bulk_write_started(t0);
+        f.bulk_write_finished(t0, true);
+        f.bulk_write_started(t0);
+        f.bulk_write_finished(t0, false);
+        assert!(c(&mut f, t0, K::Usb, host));
+        let mut f = tagged();
+        f.bulk_write_started(t0);
+        f.bulk_write_finished(t0, false);
+        assert!(!c(&mut f, t0, K::Usb, host));
+
+        // Invalidation before the reply: the reply does not re-arm anything.
+        let mut f = tagged();
+        f.bulk_write_started(t0);
+        assert!(c(&mut f, t0, K::Usb, host));
+        f.bulk_write_finished(t0, true);
+        assert!(!c(&mut f, t0, K::Usb, host));
+
+        // No time window in this mode, but a device that never answered
+        // cannot hide a foreign write for ever.
+        let mut f = tagged();
+        f.bulk_write_started(t0);
+        f.bulk_write_finished(t0, true);
+        assert!(f.own_bulk_pending(t0 + EchoFilter::WINDOW + Duration::from_secs(1)));
+        assert!(!c(&mut f, t0 + EchoFilter::SOURCE_EXPIRY, K::Usb, host));
+
+        // Received before the SET started: foreign.
+        let mut f = tagged();
+        let t1 = t0 + Duration::from_secs(10);
+        f.bulk_write_started(t1);
+        assert!(!c(&mut f, t0, K::Usb, host));
+    }
+
+    /// `HOST_SET` on a `PARAM_CHANGED` is ours over USB, but a tagged
+    /// `BULK_INVALIDATED` with `HOST_SET` is another app's unless we have a
+    /// SET out: the event type decides which rule applies.
+    #[test]
+    fn echo_filter_tells_param_changes_from_invalidations() {
+        use dspi_transport::TransportKind as K;
+        let mut f = EchoFilter::default();
+        f.set_bulk_source(true);
+        let note = |event| Notification {
+            seq: 0,
+            event,
+            lost: false,
+            origin: None,
+            received: Instant::now(),
+        };
+        let inval = note(Event::BulkInvalidated {
+            source: Source::HostSet,
+        });
+        let param = note(Event::ParamChanged {
+            offset: 16,
+            source: Source::HostSet,
+            bytes: vec![0],
+        });
+        assert!(!f.classify_notification(K::Usb, None, &inval));
+        assert!(f.classify_notification(K::Usb, None, &param));
+        assert!(!inval.is_own_echo(K::Usb, None, &f));
+        assert!(param.is_own_echo(K::Usb, None, &f));
+        let mut pending = f.clone();
+        pending.bulk_write_started(inval.received);
+        assert!(inval.is_own_echo(K::Usb, None, &pending));
+        assert!(
+            pending.own_bulk_pending(inval.received),
+            "asking consumes nothing"
+        );
+
+        // With a bulk write of ours pending, only the mode's source is ours: not
+        // a preset load, a factory reset or a merged entry.
+        for source in [
+            Source::Preset,
+            Source::Factory,
+            Source::Unknown,
+            Source::BulkSet,
+        ] {
+            let other = note(Event::BulkInvalidated { source });
+            assert!(!other.is_own_echo(K::Usb, None, &pending), "{source:?}");
+        }
+        let mut window = EchoFilter::default();
+        window.bulk_write_started(inval.received);
+        assert!(
+            !inval.is_own_echo(K::Usb, None, &window),
+            "HOST_SET, untagged"
+        );
+        for source in [Source::Preset, Source::Factory, Source::Unknown] {
+            let other = note(Event::BulkInvalidated { source });
+            assert!(!other.is_own_echo(K::Usb, None, &window), "{source:?}");
+        }
+        let bulk = note(Event::BulkInvalidated {
+            source: Source::BulkSet,
+        });
+        assert!(bulk.is_own_echo(K::Usb, None, &window));
+    }
+
+    /// The end of the stream (a MIDI port closed, a Link session over)
+    /// wakes the client once, so it notices without waiting for a packet.
+    #[test]
+    fn a_disconnect_wakes_the_client_once() {
+        use std::sync::atomic::AtomicUsize;
+        let mock = MockTransport::new();
+        mock.push_notification(dspi_transport::mock::MockNotifications::DISCONNECT.to_vec());
+        let woken = Arc::new(AtomicUsize::new(0));
+        let w = Arc::clone(&woken);
+        let waker: Waker = Arc::new(move || {
+            w.fetch_add(1, Ordering::SeqCst);
+        });
+        let n =
+            Notifications::start_with_waker(mock.notifications().unwrap(), Some(waker)).unwrap();
+        let t0 = std::time::Instant::now();
+        while !n.is_disconnected() {
+            assert!(t0.elapsed() < Duration::from_secs(5), "never disconnected");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        std::thread::sleep(Duration::from_millis(20));
+        assert_eq!(woken.load(Ordering::SeqCst), 1);
+    }
+
+    /// A reader that is not drained must not grow without bound: past
+    /// [`Notifications::QUEUE`] packets are dropped, and the next one
+    /// delivered says so, which makes the client re-read the image.
+    #[test]
+    fn a_full_queue_drops_and_marks_the_next_packet_lost() {
+        let mock = MockTransport::new();
+        let total = Notifications::QUEUE + 50;
+        for i in 0..total {
+            mock.push_notification(param(i as u8, 4748, 7, &[0, 0, 0, 0]));
+        }
+        let queue = mock.notify_queue();
+        let n = Notifications::start(mock.notifications().unwrap()).unwrap();
+        let t0 = std::time::Instant::now();
+        while !queue.lock().unwrap().is_empty() {
+            assert!(t0.elapsed() < Duration::from_secs(10), "the reader stalled");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(n.drain().len(), Notifications::QUEUE);
+        mock.push_notification(param(total as u8, 4748, 7, &[0, 0, 0, 0]));
+        let next = n
+            .next(Duration::from_secs(2))
+            .expect("a packet after the overflow");
+        assert!(next.lost, "the overflow is reported as a loss");
     }
 
     /// Beta4 paces the endpoint: an idle read blocks for the 100 ms
@@ -669,7 +1272,7 @@ mod tests {
     fn a_paced_endpoint_delivers_events_and_stops_promptly() {
         assert!(Notifications::READ_TIMEOUT > Notifications::KEEP_ALIVE);
         let mock = MockTransport::new().with_notification_pace(Notifications::KEEP_ALIVE);
-        let n = Notifications::start(mock.notifications().unwrap());
+        let n = Notifications::start(mock.notifications().unwrap()).unwrap();
 
         // Nothing but keep-alives: nothing is delivered.
         assert!(n.next(Duration::from_millis(250)).is_none());
@@ -702,7 +1305,7 @@ mod tests {
     fn a_disconnect_stops_the_reader_and_is_visible() {
         let mock = MockTransport::new();
         mock.push_notification(dspi_transport::mock::MockNotifications::DISCONNECT.to_vec());
-        let n = Notifications::start(mock.notifications().unwrap());
+        let n = Notifications::start(mock.notifications().unwrap()).unwrap();
         std::thread::sleep(Duration::from_millis(50));
         assert!(n.is_disconnected());
     }
@@ -711,8 +1314,14 @@ mod tests {
     fn sources_describe_themselves_in_the_consoles_words() {
         assert_eq!(Source::from_raw(7), Source::Uac1);
         assert_eq!(Source::from_raw(42), Source::Other(42));
-        assert!(Source::HostSet.is_ours());
-        assert!(!Source::Gpio.is_ours());
+        for b in 0..=255u8 {
+            assert_eq!(Source::from_raw(b).raw(), b, "raw round-trips");
+        }
+        assert_eq!(Source::from_raw(10), Source::Midi);
         assert_eq!(Source::Gpio.describe(), "changed by control surface");
+        // Whose a change is depends on the link, so the byte never claims it.
+        for b in 0..=255u8 {
+            assert!(!Source::from_raw(b).describe().contains("this host"));
+        }
     }
 }

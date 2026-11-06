@@ -727,6 +727,8 @@ mod tests {
                 seq: seq as u8,
                 event,
                 lost: false,
+                origin: None,
+                received: std::time::Instant::now(),
             });
         }
         let c = cx(&d, &st, &cfg);

@@ -17,7 +17,8 @@ use crossterm::event::{self, Event as TermEvent, KeyCode, KeyEvent, KeyModifiers
 use dspi_cmd::{Candidate, Context};
 use dspi_proto::dsp;
 use dspi_proto::value::Value;
-use dspi_session::notify::Notification;
+use dspi_session::ext_state::ExtState;
+use dspi_session::notify::{EchoFilter, Notification};
 use dspi_session::{Applied, DeviceState, Notifications, Outcome, Session, Source};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -33,6 +34,7 @@ use crate::screens::{
     SignalsPanel, SpectrumPanel, StatsPanel, SubharmPanel, UpmixerPanel, clipboard, panel, presets,
 };
 use crate::settings::{AppConfig, SettingsData, SettingsScreen};
+use crate::shell::connect::{self, Reconnect, Reconnector, Target};
 use crate::shell::{
     ChannelItem, Screen, Selection, Shell, ShellEvent, ShellModel, Tool, VolumeMode,
 };
@@ -505,8 +507,9 @@ struct NoteEffects {
     loaded: Option<u8>,
     /// A `BULK_INVALIDATED` from a preset operation.
     preset_bulk: bool,
-    /// The last section someone else changed, for the echo line.
-    changed_elsewhere: Option<(&'static str, Source)>,
+    /// The last section someone else changed, and how they did, for the echo
+    /// line.
+    changed_elsewhere: Option<(&'static str, &'static str)>,
 }
 
 /// The device's active preset slot (`REQ_PRESET_GET_ACTIVE`,
@@ -570,6 +573,24 @@ pub struct Live {
     clip_since: Option<Instant>,
     /// The notification reader, re-armed on every device switch.
     notes: Option<Notifications>,
+    /// The link's kind, and our session id on a shared one: whose a change is
+    /// depends on them (PLAN §1.2). Read when the notifications are armed.
+    link_kind: dspi_transport::TransportKind,
+    link_session: Option<u16>,
+    /// Recognises the echo of a bulk write of ours. The terminal sends none
+    /// today (`0xA1`/`0xA3` have no caller here), so nothing is ever
+    /// outstanding and every invalidation reads as foreign, on either mode of
+    /// firmware; a bulk write added here must bracket itself with
+    /// `bulk_write_started`/`bulk_write_finished`.
+    echo: EchoFilter,
+    /// Where this device was found, when it can be found again. `None` for
+    /// the built-in fixture.
+    target: Option<Target>,
+    /// Getting the device back once it is lost; `None` once that needs a
+    /// person (or without a target).
+    reconnect: Option<Reconnector>,
+    /// The lost device's transport has been let go.
+    offline: bool,
     last_screen_poll: Instant,
     /// A hazardous command has been confirmed and may go through once.
     hazard_confirmed: bool,
@@ -659,6 +680,12 @@ impl Live {
             hazard_confirmed: false,
             popout_pinned: None,
             devices_checked: None,
+            link_kind: dspi_transport::TransportCaps::USB.kind,
+            link_session: None,
+            echo: EchoFilter::default(),
+            target: None,
+            reconnect: None,
+            offline: false,
             last_upmix_poll: Instant::now() - Duration::from_secs(2),
             subharm: SubharmPoll::default(),
             last_stats_poll: Instant::now() - Duration::from_secs(3),
@@ -684,11 +711,10 @@ impl Live {
         let (ni, no) = (caps.num_inputs as usize, caps.num_outputs as usize);
         m.platform = format!("{:?}", caps.platform).to_uppercase();
         m.firmware = caps.firmware.clone();
-        m.serial_short = if caps.serial.len() > 8 {
-            caps.serial[caps.serial.len() - 8..].to_string()
-        } else {
-            caps.serial.clone()
-        };
+        // By characters: the device chooses this text, and slicing it by bytes
+        // can land inside one.
+        let extra = caps.serial.chars().count().saturating_sub(8);
+        m.serial_short = caps.serial.chars().skip(extra).collect();
         m.connected = s.connected;
         m.preset_label = match caps.active_preset {
             Some(p) => PresetMenu::slot_label(&self.shared.borrow(), p),
@@ -1450,6 +1476,10 @@ impl Live {
     }
 
     fn open_device_picker(&mut self) {
+        if self.target.as_ref().is_some_and(|t| !t.is_usb()) {
+            self.note("One device connected");
+            return;
+        }
         let devices = actions::device_list();
         if devices.len() < 2 {
             self.note(if devices.is_empty() {
@@ -2332,15 +2362,104 @@ impl Live {
     /// restarted; the old one is dropped first so its interface is released.
     pub fn arm_notifications(&mut self, session: &mut Session) {
         self.notes = None;
+        (self.link_kind, self.link_session) = session
+            .with_transport(|t| Ok((t.caps().kind, t.session_id())))
+            .unwrap_or((dspi_transport::TransportCaps::USB.kind, None));
         self.notes = session
             .with_transport(|t| Ok(t.notifications()))
             .ok()
             .flatten()
-            .map(Notifications::start);
+            .and_then(|source| Notifications::start(source).ok());
     }
 
-    /// Every attached device, for the picker and the title bar.
+    /// Where this device came from and what its extension channel offers:
+    /// the title bar's words, the echo filter's mode, and what to reopen when
+    /// it is lost. A `target` still open to any device is held to this one.
+    pub fn set_connection(&mut self, target: &Target, ext: &ExtState) {
+        let target = target.pinned(&self.state.caps.serial);
+        self.shell.model.via = target.via();
+        self.shell.model.ext = connect::ext_label(ext);
+        self.echo = EchoFilter::default();
+        self.echo.set_bulk_source(ext.bulk_source());
+        self.reconnect = Some(Reconnector::new(target.clone()));
+        self.target = Some(target);
+        self.offline = false;
+    }
+
+    /// Bring a lost device back, once one has been lost. Never blocks: the
+    /// open runs on the reconnector's thread.
+    pub fn advance_reconnect(&mut self, session: &mut Session) {
+        if self.state.connected || self.reconnect.is_none() {
+            return;
+        }
+        if !self.offline {
+            self.go_offline(session);
+        }
+        // A bootloader handoff is the device leaving on purpose, and its
+        // dialog is on screen: let that finish first.
+        if self.boot.is_some() {
+            return;
+        }
+        let Some(r) = self.reconnect.as_mut() else {
+            return;
+        };
+        let polled = r.poll(Instant::now());
+        // Only when an attempt has ended: a warning shown now would be replaced
+        // by the outcome's note on a later poll.
+        let warned = if matches!(polled, Reconnect::Waiting) {
+            String::new()
+        } else {
+            r.take_warnings().iter().map(|w| format!("; {w}")).collect()
+        };
+        match polled {
+            Reconnect::Waiting => {}
+            Reconnect::GaveUp(e) => {
+                self.reconnect = None;
+                // On the echo line too, which stays: a status fades, and this
+                // is why the title bar goes on saying "Not connected".
+                let why = format!("Not reconnecting: {e}{warned}");
+                self.echo(why.clone());
+                self.note(why);
+            }
+            Reconnect::Connected(c) => {
+                let c = *c;
+                *session = c.session;
+                self.adopt(session, c.state);
+                if let Some(target) = self.target.clone() {
+                    self.set_connection(&target, &c.ext);
+                }
+                self.arm_notifications(session);
+                self.connect_analyser(session);
+                self.note(format!(
+                    "Reconnected to {}; undo history cleared{warned}",
+                    self.state.caps.serial
+                ));
+            }
+        }
+    }
+
+    /// Let go of a lost device's transport: its USB interface has to be free
+    /// when it comes back, and a dead hub session has no use. Until then the
+    /// polls fail at once, with no I/O.
+    fn go_offline(&mut self, session: &mut Session) {
+        self.offline = true;
+        self.notes = None;
+        let serial = self.state.caps.serial.clone();
+        let offline = Box::new(connect::Offline::new(&serial));
+        if let Some(s) = Session::new(offline, self.state.caps.clone()) {
+            *session = s;
+        }
+        self.note(format!("Lost {serial}; waiting for it to come back"));
+    }
+
+    /// Every attached device, for the picker and the title bar. Only USB can
+    /// be enumerated for others: over any other link it is just this one.
     pub fn refresh_devices(&mut self) {
+        if let Some(t) = self.target.as_ref().filter(|t| !t.is_usb()) {
+            self.shell.model.devices = vec![format!("DSPi {}", t.via())];
+            self.devices_checked = Some(Instant::now());
+            return;
+        }
         self.shell.model.devices = dspi_transport::list_devices()
             .map(|ds| {
                 ds.iter()
@@ -2625,10 +2744,16 @@ impl Live {
         // and the log has to keep running while the panel is closed so
         // opening it shows what just happened.
         self.shared.borrow_mut().log.push(at, note);
+        // The source byte alone does not say whose a change is: that depends on
+        // the link (PLAN §1.2).
+        let own = self
+            .echo
+            .classify_notification(self.link_kind, self.link_session, note);
         match self.state.apply(note) {
             Applied::Section { name, source } => {
-                if !source.is_ours() {
-                    fx.changed_elsewhere = Some((name, source));
+                if !own {
+                    let words = connect::foreign_words(self.link_kind, source, note.origin);
+                    fx.changed_elsewhere = Some((name, words));
                     if matches!(name, "user_volume" | "master_volume")
                         && let Some(from) = self.shown_volume
                     {
@@ -2639,6 +2764,14 @@ impl Live {
             Applied::NeedsReread { source } => {
                 fx.reread = true;
                 fx.preset_bulk |= source == Source::Preset;
+                // A re-read forced by a lost packet is no change at all.
+                if !own
+                    && matches!(note.event, dspi_session::Event::BulkInvalidated { .. })
+                    && connect::bulk_is_news(self.link_kind, self.link_session, source, note.origin)
+                {
+                    let words = connect::foreign_words(self.link_kind, source, note.origin);
+                    fx.changed_elsewhere = Some(("settings", words));
+                }
             }
             Applied::PresetLoaded { slot } => {
                 fx.reread = true;
@@ -2707,8 +2840,8 @@ impl Live {
             None if fresh && fx.preset_bulk => self.state.mark_saved(),
             _ => {}
         }
-        if let Some((name, source)) = fx.changed_elsewhere {
-            self.echo(format!("{} {}", name.replace('_', " "), source.describe()));
+        if let Some((name, words)) = fx.changed_elsewhere {
+            self.echo(format!("{} {words}", name.replace('_', " ")));
         }
     }
 
@@ -2897,21 +3030,6 @@ impl Live {
     }
 }
 
-/// Open another DSPi by serial, probing it from scratch.
-///
-/// Nothing about the old device is carried over: a different unit can have a
-/// different channel count, a different firmware and different features, and
-/// reusing any of that would show one device's shape under another's name.
-fn open_device(serial: &str) -> Result<(Session, DeviceState), String> {
-    let mut transport =
-        dspi_transport::UsbTransport::open_serial(serial).map_err(|e| e.to_string())?;
-    let caps = dspi_session::probe(&mut transport).map_err(|e| e.to_string())?;
-    let mut session =
-        Session::new(Box::new(transport), caps.clone()).ok_or("unusable channel map")?;
-    let bulk = session.snapshot().map_err(|e| e.to_string())?;
-    Ok((session, DeviceState::new(caps, bulk)))
-}
-
 /// Run the live interface until the person quits.
 pub fn run(mut live: Live, session: &mut Session) -> io::Result<()> {
     live.arm_notifications(session);
@@ -2950,16 +3068,25 @@ pub fn run(mut live: Live, session: &mut Session) -> io::Result<()> {
             live.flush_writes(session, false);
             if let Some(serial) = live.switch_to.take() {
                 live.release(session);
-                match open_device(&serial) {
-                    Ok((next, state)) => {
-                        *session = next;
-                        live.adopt(session, state);
+                // Nothing about the old device is carried over: a different
+                // unit can have a different channel count, a different firmware
+                // and different features, and reusing any of that would show
+                // one device's shape under another's name.
+                let target = Target::Usb {
+                    serial: Some(serial.clone()),
+                };
+                match target.connect(&connect::no_prompt) {
+                    Ok(next) => {
+                        *session = next.session;
+                        live.adopt(session, next.state);
+                        live.set_connection(&target, &next.ext);
                         live.arm_notifications(session);
                         live.connect_analyser(session);
                     }
                     Err(e) => live.note(format!("Could not open {serial}: {e}")),
                 }
             }
+            live.advance_reconnect(session);
             if live.should_quit {
                 live.release(session);
                 return Ok(());
@@ -2996,6 +3123,311 @@ fn display_value(d: &dspi_proto::registry::ParamDesc, v: &Value) -> String {
         return (*name).to_string();
     }
     v.display(d.kind.unit())
+}
+
+#[cfg(test)]
+mod tests_wp_r1 {
+    use super::*;
+    use crate::theme::{ColorDepth, Glyphs};
+    use dspi_proto::generated::notify as nfy;
+    use dspi_session::notify::Event;
+    use dspi_transport::{FakeDevice, FakeRemote, Transport, TransportKind};
+    use ratatui::buffer::Buffer;
+
+    /// A live interface on a demo device, with its remote control.
+    fn on_demo() -> (Live, Session, FakeRemote) {
+        let fake = FakeDevice::demo();
+        let remote = fake.remote();
+        let mut t: Box<dyn Transport> = Box::new(fake);
+        let caps = dspi_session::probe(t.as_mut()).unwrap();
+        let ext = ExtState::probe(t.as_mut()).unwrap();
+        let mut session = Session::new(t, caps.clone()).unwrap();
+        let bulk = session.snapshot().unwrap();
+        let theme = Theme::console(ColorDepth::TrueColor, Glyphs::Braille);
+        let mut live = Live::new(
+            DeviceState::new(caps, bulk),
+            theme,
+            Performance::default(),
+            Box::new(ConsoleScreens::new()),
+        );
+        live.set_connection(&Target::Demo, &ext);
+        live.arm_notifications(&mut session);
+        (live, session, remote)
+    }
+
+    fn note(event: Event, origin: Option<u16>) -> Notification {
+        Notification {
+            seq: 1,
+            event,
+            lost: false,
+            origin,
+            received: Instant::now(),
+        }
+    }
+
+    fn param(source: Source, origin: Option<u16>) -> Notification {
+        let offset = dspi_proto::generated::SECTIONS
+            .iter()
+            .find(|(n, _, _)| *n == "master_volume")
+            .map(|(_, o, _)| *o as u16)
+            .unwrap_or_default();
+        note(
+            Event::ParamChanged {
+                offset,
+                source,
+                bytes: (-20.0f32).to_le_bytes().to_vec(),
+            },
+            origin,
+        )
+    }
+
+    /// What the echo line says after this one notification.
+    fn line(l: &mut Live, s: &mut Session, n: &Notification) -> Option<String> {
+        let mut fx = NoteEffects::default();
+        l.take_note(n, Instant::now(), &mut fx);
+        let _ = s;
+        fx.changed_elsewhere
+            .map(|(name, words)| format!("{name} {words}"))
+    }
+
+    #[test]
+    fn wp_r1_the_changed_elsewhere_line_follows_the_link() {
+        let (mut l, mut s, _r) = on_demo();
+        // USB and the demo device: HOST_SET is our own echo.
+        l.link_kind = TransportKind::Usb;
+        assert_eq!(line(&mut l, &mut s, &param(Source::HostSet, None)), None);
+        // A BULK_SET with no write of ours pending is not ours.
+        assert_eq!(
+            line(&mut l, &mut s, &param(Source::BulkSet, None)).as_deref(),
+            Some("master_volume changed elsewhere")
+        );
+        assert_eq!(
+            line(&mut l, &mut s, &param(Source::Gpio, None)).as_deref(),
+            Some("master_volume changed by control surface")
+        );
+
+        // MIDI: our writes come back as MIDI, and a HOST_SET is another host.
+        l.link_kind = TransportKind::Midi;
+        assert_eq!(line(&mut l, &mut s, &param(Source::Midi, None)), None);
+        assert_eq!(
+            line(&mut l, &mut s, &param(Source::HostSet, None)).as_deref(),
+            Some("master_volume changed over USB")
+        );
+
+        // Link: the origin decides, whatever the source.
+        l.link_kind = TransportKind::Link;
+        l.link_session = Some(7);
+        assert_eq!(
+            line(&mut l, &mut s, &param(Source::Uart, Some(7))),
+            None,
+            "a bridge writes for us over UART"
+        );
+        assert_eq!(
+            line(&mut l, &mut s, &param(Source::HostSet, Some(8))).as_deref(),
+            Some("master_volume changed by another Link client")
+        );
+        assert_eq!(
+            line(&mut l, &mut s, &param(Source::HostSet, Some(0))).as_deref(),
+            Some("master_volume changed elsewhere")
+        );
+    }
+
+    /// PLAN §1.2's "Bulk echoes": the terminal writes no bulk, so nothing of
+    /// ours is ever outstanding and the filter claims nothing, on either mode
+    /// of firmware. Every invalidation is re-read. The line is said only when
+    /// it is true: a `HOST_SET` can be our own big scalar write, an `UNKNOWN`
+    /// a merge holding ours.
+    #[test]
+    fn wp_r1_every_bulk_invalidation_is_re_read_and_only_a_foreign_one_is_news() {
+        let (mut l, _s, _r) = on_demo();
+        l.link_kind = TransportKind::Usb;
+        for tagged in [false, true] {
+            l.echo.set_bulk_source(tagged);
+            for (source, news) in [
+                (Source::HostSet, false),
+                (Source::Unknown, false),
+                (Source::BulkSet, true),
+                (Source::Midi, true),
+            ] {
+                let n = note(Event::BulkInvalidated { source }, None);
+                let mut fx = NoteEffects::default();
+                l.take_note(&n, Instant::now(), &mut fx);
+                assert!(fx.reread, "{source:?} is re-read (tagged: {tagged})");
+                assert_eq!(fx.changed_elsewhere.is_some(), news, "{source:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn wp_r1_a_preset_load_or_a_lost_packet_is_not_reported_as_a_change_elsewhere() {
+        let (mut l, _s, _r) = on_demo();
+        for source in [Source::Preset, Source::Factory] {
+            let n = note(Event::BulkInvalidated { source }, None);
+            let mut fx = NoteEffects::default();
+            l.take_note(&n, Instant::now(), &mut fx);
+            assert!(fx.reread);
+            assert!(fx.changed_elsewhere.is_none(), "{source:?}");
+        }
+        let mut lost = note(Event::Idle, None);
+        lost.lost = true;
+        let mut fx = NoteEffects::default();
+        l.take_note(&lost, Instant::now(), &mut fx);
+        assert!(fx.reread);
+        assert!(fx.changed_elsewhere.is_none());
+    }
+
+    #[test]
+    fn wp_r1_a_foreign_bulk_says_so_on_the_echo_line() {
+        let (mut l, mut s, r) = on_demo();
+        // The demo device's `load_image` is a bulk apply by somebody else.
+        r.load_image(r.image(), nfy::PARAM_SRC_BULK_SET as u8);
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline {
+            let notes = l.notes.take();
+            l.tick(&mut s, notes.as_ref());
+            l.notes = notes;
+            if !l.shell.model.echo.is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(l.shell.model.echo, "settings changed elsewhere");
+    }
+
+    #[test]
+    fn wp_r1_the_title_bar_names_the_link_and_the_extensions() {
+        let (mut l, _s, _r) = on_demo();
+        l.sync_model();
+        let m = &l.shell.model;
+        assert_eq!(m.via, "demo");
+        assert!(m.ext.starts_with("ext "), "{:?}", m.ext);
+        let area = Rect::new(0, 0, 130, 40);
+        let mut buf = Buffer::empty(area);
+        l.draw(area, &mut buf);
+        let top: String = (0..area.width).map(|x| buf[(x, 0)].symbol()).collect();
+        assert!(top.contains("· demo · ext "), "{top}");
+        assert!(top.contains("Connected"), "{top}");
+    }
+
+    #[test]
+    fn wp_r1_a_narrow_title_bar_keeps_the_connection_state() {
+        let (mut l, _s, _r) = on_demo();
+        l.sync_model();
+        let area = Rect::new(0, 0, 80, 24);
+        let mut buf = Buffer::empty(area);
+        l.draw(area, &mut buf);
+        let top: String = (0..area.width).map(|x| buf[(x, 0)].symbol()).collect();
+        assert!(top.contains("Connected"), "{top}");
+    }
+
+    /// Unplug, and the interface goes offline and comes back on the same demo
+    /// target by itself: the reader saw the end, the transport was let go, and
+    /// the device was probed again from scratch.
+    #[test]
+    fn wp_r1_a_lost_device_comes_back_without_a_restart() {
+        let (mut l, mut s, r) = on_demo();
+        r.disconnect();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut went_offline = false;
+        while Instant::now() < deadline {
+            let notes = l.notes.take();
+            l.tick(&mut s, notes.as_ref());
+            l.notes = notes;
+            went_offline |= !l.state.connected;
+            l.advance_reconnect(&mut s);
+            if went_offline && l.state.connected {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(went_offline, "the disconnect was seen");
+        assert!(l.state.connected, "and the device came back");
+        assert!(l.shell.model.connected);
+        assert!(l.notes.is_some(), "with its notifications armed again");
+        assert!(!l.offline);
+        assert!(
+            l.shell
+                .model
+                .status
+                .as_deref()
+                .is_some_and(|m| m.contains("Reconnected")),
+            "{:?}",
+            l.shell.model.status
+        );
+        // And it answers.
+        assert!(s.meters().is_ok());
+    }
+
+    /// A token the reconnect's re-pairing could not store is said on screen:
+    /// its thread must not write to the terminal the interface is drawing on.
+    #[test]
+    fn wp_r1_a_failed_token_save_during_a_reconnect_reaches_the_status_line() {
+        use dspi_link::fakehub::{Auth, FakeHub, HubConfig};
+        let hub = FakeHub::start(HubConfig {
+            auth: Auth::Window("1234".into()),
+            ..HubConfig::default()
+        })
+        .unwrap();
+        // A file where the token file's directory should be.
+        let blocked = connect::test_dir().join(format!("live-blocked-{}", std::process::id()));
+        std::fs::write(&blocked, "x").unwrap();
+        let mut link = connect::LinkTarget::parse(&hub.addr().to_string()).unwrap();
+        link.pin = Some("1234".into());
+        link.tokens = Some(blocked.join("tokens.toml"));
+
+        let (mut l, mut s, _r) = on_demo();
+        // `set_connection` holds the target to the device it has.
+        l.state.caps.serial = HubConfig::default().serial;
+        l.set_connection(&Target::Link(link), &ExtState::default());
+        l.state.connected = false;
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !l.state.connected && Instant::now() < deadline {
+            l.advance_reconnect(&mut s);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(l.state.connected, "the device came back");
+        let status = l.shell.model.status.clone().unwrap_or_default();
+        assert!(status.contains("Reconnected"), "{status:?}");
+        assert!(status.contains("pairing token"), "{status:?}");
+    }
+
+    /// PLAN §1.7: a device's text cannot reach the terminal raw, because every
+    /// cell goes through ratatui's buffer, which drops control characters.
+    #[test]
+    fn wp_r1_the_interface_draws_no_control_characters_from_a_device() {
+        let (mut l, _s, _r) = on_demo();
+        l.state.caps.serial = "\u{1b}[2J\u{9b}2J\u{7}evil".into();
+        l.sync_model();
+        let area = Rect::new(0, 0, 130, 40);
+        let mut buf = Buffer::empty(area);
+        l.draw(area, &mut buf);
+        assert!(
+            !buf.content()
+                .iter()
+                .any(|c| c.symbol().contains(char::is_control))
+        );
+    }
+
+    #[test]
+    fn wp_r1_without_a_target_nothing_tries_to_reconnect() {
+        let (mut l, mut s, _r) = on_demo();
+        l.reconnect = None;
+        l.target = None;
+        l.state.connected = false;
+        l.advance_reconnect(&mut s);
+        assert!(!l.offline);
+        assert!(!l.state.connected);
+    }
+
+    #[test]
+    fn wp_r1_a_handoff_to_the_bootloader_is_not_interrupted() {
+        let (mut l, mut s, _r) = on_demo();
+        l.boot = Some(actions::BootloaderWatch::new());
+        l.state.connected = false;
+        l.advance_reconnect(&mut s);
+        assert!(l.offline, "the transport is let go");
+        assert!(!l.state.connected, "but the watch runs first");
+    }
 }
 
 #[cfg(test)]
@@ -3381,7 +3813,7 @@ mod tests {
     }
 
     fn scratch(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("dspi-live-{}", std::process::id()));
+        let dir = connect::test_dir().join(format!("dspi-live-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("scratch");
         dir.join(name)
     }
@@ -3966,7 +4398,7 @@ mod tests {
         p.extend([5, 0, 0, 0]);
         p.extend(1.0f32.to_le_bytes());
         notes.push_notification(p);
-        let n = Notifications::start(notes.notifications().unwrap());
+        let n = Notifications::start(notes.notifications().unwrap()).unwrap();
         std::thread::sleep(Duration::from_millis(50));
         log.lock().unwrap().clear();
         l.tick(&mut s, Some(&n));
@@ -4138,7 +4570,7 @@ mod tests {
         p.extend([7, 0, 0, 0]);
         p.extend((-30.0f32).to_le_bytes());
         mock.push_notification(p);
-        let n = Notifications::start(mock.notifications().unwrap());
+        let n = Notifications::start(mock.notifications().unwrap()).unwrap();
         std::thread::sleep(Duration::from_millis(50));
         l.tick(&mut s, Some(&n));
         assert_eq!(l.state.user_volume().0, -30.0);
@@ -4159,7 +4591,7 @@ mod tests {
         l.last_stats_poll = polled;
         let mock = MockTransport::new();
         mock.push_notification(vec![2, 8, 0, 13, 1, 1, 12, 0]);
-        let n = Notifications::start(mock.notifications().unwrap());
+        let n = Notifications::start(mock.notifications().unwrap()).unwrap();
         std::thread::sleep(Duration::from_millis(50));
         l.tick(&mut s, Some(&n));
         assert_eq!(l.state.adat_state, Some((true, true, 12)));
@@ -4497,7 +4929,7 @@ mod tests {
         for n in notes {
             reader.push_notification(n.clone());
         }
-        live.notes = Some(Notifications::start(reader.notifications().unwrap()));
+        live.notes = Some(Notifications::start(reader.notifications().unwrap()).unwrap());
         (live, session, log)
     }
 
@@ -4590,7 +5022,7 @@ mod tests {
             // does after the fade.
             let reader = MockTransport::new();
             let q = reader.notify_queue();
-            l.notes = Some(Notifications::start(reader.notifications().unwrap()));
+            l.notes = Some(Notifications::start(reader.notifications().unwrap()).unwrap());
             q
         };
         let delay = Duration::from_millis(200);

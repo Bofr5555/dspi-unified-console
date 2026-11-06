@@ -413,7 +413,15 @@ const fn p(
 
 const SPEED: &[(u8, &str)] = &[(0, "slow"), (1, "medium"), (2, "fast")];
 const CF_PRESET: &[(u8, &str)] = &[(0, "default"), (1, "chumoy"), (2, "meier"), (3, "custom")];
-const SOURCE: &[(u8, &str)] = &[(0, "usb"), (1, "spdif"), (2, "i2s"), (3, "adat")];
+const SOURCE: &[(u8, &str)] = &[
+    (0, "usb"),
+    (1, "spdif"),
+    (2, "i2s"),
+    (3, "adat"),
+    (4, "spdif2"),
+    (5, "spdif3"),
+    (6, "spdif4"),
+];
 /// `OutputLatencyId` (output_latency.h): stable ids, 0 is never valid.
 const OUTPUT_LATENCY: &[(u8, &str)] = &[
     (1, "0.67ms"),
@@ -572,7 +580,7 @@ pub static REGISTRY: &[ParamDesc] = &[
         Float {
             unit: Unit::Db,
             min: -60.0,
-            max: 20.0,
+            max: 24.0,
         },
         Tg::Input,
         Some(op::REQ_SET_PREAMP_CH),
@@ -592,7 +600,7 @@ pub static REGISTRY: &[ParamDesc] = &[
         Float {
             unit: Unit::Db,
             min: -60.0,
-            max: 20.0,
+            max: 24.0,
         },
         Tg::None,
         Some(op::REQ_SET_PREAMP),
@@ -2455,8 +2463,8 @@ pub static REGISTRY: &[ParamDesc] = &[
         Tg::None,
         Some(op::REQ_SET_ADAT_INPUT_ENABLE),
         Some(op::REQ_GET_ADAT_INPUT_ENABLE),
-        DOut,
-        Wv::Zero,
+        DWar,
+        Wv::ValueOnly,
         Hz::Reconfig,
         Ps::LiveOnly,
         Rq::Feature("adat_input"),
@@ -2491,8 +2499,8 @@ pub static REGISTRY: &[ParamDesc] = &[
         Tg::None,
         Some(op::REQ_SET_ADAT_INPUT_CLOCK_MODE),
         Some(op::REQ_GET_ADAT_INPUT_CLOCK_MODE),
-        DOut,
-        Wv::Zero,
+        DWar,
+        Wv::ValueOnly,
         Hz::Reconfig,
         Ps::LiveOnly,
         Rq::Feature("adat_input"),
@@ -4030,6 +4038,45 @@ mod tests {
                 d.plain.chars().next().unwrap().is_uppercase(),
                 "{} description should read as a sentence",
                 d.path
+            );
+        }
+    }
+
+    /// `REQ_SET_ADAT_INPUT_ENABLE` and `_CLOCK_MODE` are write-as-read, with
+    /// the value in `wValue` (vendor_commands.c:4045, 4152); an OUT with a
+    /// payload is not what the firmware dispatches.
+    #[test]
+    fn wp_b2_the_adat_input_rows_are_write_as_read() {
+        for path in ["in.adat.enable", "in.adat.clock"] {
+            let d = by_path(path).unwrap();
+            assert_eq!(d.dir, Dir::WriteAsRead, "{path}");
+            assert!(matches!(d.wvalue, WValue::ValueOnly), "{path}");
+        }
+    }
+
+    /// The firmware's input sources 0..6, and the +24 dB an RP2350 takes (an
+    /// RP2040's lower limit is a platform fact, checked in the session).
+    #[test]
+    fn wp_b2_sources_and_preamp_ranges_match_the_firmware() {
+        let Kind::Choice(sources) = by_path("in.source").unwrap().kind else {
+            panic!("in.source is a choice");
+        };
+        let ids: Vec<u8> = sources.iter().map(|(v, _)| *v).collect();
+        assert_eq!(ids, [0, 1, 2, 3, 4, 5, 6]);
+        for path in ["pre", "pre.all"] {
+            assert!(
+                by_path(path)
+                    .unwrap()
+                    .kind
+                    .validate(&Value::Float(24.0))
+                    .is_ok()
+            );
+            assert!(
+                by_path(path)
+                    .unwrap()
+                    .kind
+                    .validate(&Value::Float(24.5))
+                    .is_err()
             );
         }
     }

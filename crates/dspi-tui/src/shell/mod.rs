@@ -7,6 +7,7 @@
 //! popups, dialogs and the help overlay, and asks the application for
 //! everything else through [`ShellEvent`]. See `docs/plan/DESIGN.md` 2 and 3.
 
+pub mod connect;
 pub mod fixture;
 pub mod layout;
 pub mod model;
@@ -943,15 +944,9 @@ impl Shell {
 
     fn draw_title(&self, area: Rect, buf: &mut Buffer, t: &Theme) {
         let m = &self.model;
-        let left = format!(
+        let mut left = format!(
             " DSPi  {} · fw {} · {}",
             m.platform, m.firmware, m.serial_short
-        );
-        buf.set_string(
-            area.x,
-            area.y,
-            truncate(&left, area.width as usize),
-            t.title(),
         );
         let dot = match (m.connected, t.glyphs) {
             (true, Glyphs::Ascii) => "*",
@@ -972,6 +967,22 @@ impl Shell {
         );
         let right = format!("{dot} {conn}   {preset} ");
         let rw = right.chars().count() as u16;
+        // The link and the extension channel, as far as they fit: the
+        // connection state on the right matters more.
+        for extra in [&m.via, &m.ext] {
+            if !extra.is_empty()
+                && area.width > rw + left.chars().count() as u16 + extra.chars().count() as u16 + 5
+            {
+                left.push_str(" · ");
+                left.push_str(extra);
+            }
+        }
+        buf.set_string(
+            area.x,
+            area.y,
+            truncate(&left, area.width as usize),
+            t.title(),
+        );
         if area.width > rw + left.chars().count() as u16 + 2 {
             let x = area.x + area.width - rw;
             buf.set_string(

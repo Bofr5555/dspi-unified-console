@@ -214,6 +214,8 @@ mod tests {
             seq,
             event,
             lost: false,
+            origin: None,
+            received: std::time::Instant::now(),
         }
     }
 

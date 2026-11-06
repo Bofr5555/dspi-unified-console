@@ -13,7 +13,8 @@
 //!   synthetic `BULK_INVALIDATED` packet for the bound device, so the core's
 //!   own re-read path runs (macOS does the same for RESYNC only).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
@@ -22,6 +23,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
+use crate::clock::{Clock, SystemClock};
 use crate::frames::{status, CmdRequest, CmdResponse, Dir, Frame, PollFrame};
 use crate::messages::{out, AuthOk, ClientInfo, DeviceInfo, HelloHub, Inbound, PollGrant, PollSpec, Snapshot};
 use crate::socket::{WsConnector, WsMessage, WsReceiver, WsRecv, WsSender};
@@ -37,18 +39,106 @@ pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 pub const BULK_TIMEOUT: Duration = Duration::from_secs(15);
 const BULK_OPCODES: [u8; 4] = [0xA0, 0xA1, 0xA2, 0xA3];
 const PING_INTERVAL: Duration = Duration::from_secs(15);
-/// The hub pings every 10 s (spec 4); this much silence means the link is gone.
+/// The hub pings every 10 s (spec 4), and those pings and the pongs to our own
+/// count (`WsRecv::Alive`); this much silence means the link is gone.
 const SILENCE_LIMIT: Duration = Duration::from_secs(35);
 
+/// Connect in about this much, whatever each step would allow on its own.
+const CONNECT_BUDGET: Duration = Duration::from_secs(15);
+/// After a request times out, a ping must be answered within this, or by
+/// anything else from the hub.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long a request that timed out waits for a reply the reader just took.
+const HANDOVER_GRACE: Duration = Duration::from_millis(50);
+/// How often the keepalive thread looks at its clock.
+const KEEPALIVE_TICK: Duration = Duration::from_millis(250);
+
+/// A session's timers. The defaults are what production uses.
+#[derive(Debug, Clone, Copy)]
+pub struct Timing {
+    /// A request's answer; [`REQUEST_TIMEOUT`].
+    pub request_timeout: Duration,
+    /// A bulk command's or snapshot's answer; [`BULK_TIMEOUT`].
+    pub bulk_timeout: Duration,
+    /// Our pings to the hub.
+    pub ping_interval: Duration,
+    /// This much silence, control frames included, means the link is gone.
+    pub silence_limit: Duration,
+    /// After a request times out, a ping goes out at the next keepalive tick
+    /// (within [`Self::keepalive_tick`], 250 ms); nothing from the hub for this
+    /// long then means the link is gone. Much shorter than `silence_limit`,
+    /// because now someone is waiting.
+    ///
+    /// The trade-off: a Wi-Fi stall of 5 s or more right after an unanswered 10 s
+    /// request costs a reconnect that waiting might have saved. That is accepted:
+    /// the UI shows a reconnect banner, which beats freezing for 35 s.
+    pub probe_timeout: Duration,
+    /// How often the keepalive thread looks at the clock.
+    pub keepalive_tick: Duration,
+    /// Hello, authentication and the device list together, instead of
+    /// `request_timeout` each. The socket's own connect comes on top
+    /// ([`crate::socket::TcpConnector::connect_timeout`]); a foreign connector
+    /// must bound itself.
+    pub connect_budget: Duration,
+}
+
+impl Default for Timing {
+    fn default() -> Self {
+        Self {
+            request_timeout: REQUEST_TIMEOUT,
+            bulk_timeout: BULK_TIMEOUT,
+            ping_interval: PING_INTERVAL,
+            silence_limit: SILENCE_LIMIT,
+            probe_timeout: PROBE_TIMEOUT,
+            keepalive_tick: KEEPALIVE_TICK,
+            connect_budget: CONNECT_BUDGET,
+        }
+    }
+}
+
+/// Picks the token for the hub whose `hub.id` it is given, after the hello has
+/// said which hub answered (spec 6.2, `tokenFor` in dspi-link-js).
+pub type TokenLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
+
+/// The optional parts of [`LinkClient::connect_with`].
+#[derive(Clone)]
+pub struct SessionConfig {
+    pub timing: Timing,
+    /// The time source of the liveness timers.
+    pub clock: Arc<dyn Clock>,
+    /// When set, [`ConnectOptions::token`] is ignored and this picks the token
+    /// after the hello, so a hub never sees a token stored for another hub.
+    pub token_for: Option<TokenLookup>,
+}
+
+impl Default for SessionConfig {
+    fn default() -> Self {
+        Self { timing: Timing::default(), clock: Arc::new(SystemClock), token_for: None }
+    }
+}
+
 /// What the embedder passes to [`LinkClient::connect`].
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ConnectOptions {
     /// Shown in the hub's client list (Android: `Build.MODEL` by default).
     pub client_name: String,
     pub app: String,
     pub app_version: String,
-    /// The token stored for this hub's `hid`, if any.
+    /// The token stored for the hub expected at this address, if any. It goes out
+    /// whichever hub answers; [`SessionConfig::token_for`] is the safe way.
     pub token: Option<String>,
+}
+
+/// By hand, so a token never reaches a log.
+impl fmt::Debug for ConnectOptions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ConnectOptions")
+            .field("client_name", &self.client_name)
+            .field("app", &self.app)
+            .field("app_version", &self.app_version)
+            .field("token", &self.token.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
 }
 
 /// Where authentication stands after [`LinkClient::connect`].
@@ -61,7 +151,42 @@ pub enum AuthState {
     NeedsPairing {
         pin_source: String,
     },
+    /// The hub refused the token it was given (`unauthenticated` or `denied`),
+    /// the one case where a stored token is bad: forget it for
+    /// [`LinkClient::hello`]'s hub id, then proceed as for
+    /// [`AuthState::NeedsPairing`]. Every other failure is an `Err` from connect
+    /// and keeps the token.
+    TokenRefused {
+        pin_source: String,
+    },
 }
+
+impl AuthState {
+    /// The session is waiting for [`LinkClient::pair`].
+    pub fn needs_pin(&self) -> bool {
+        !matches!(self, AuthState::Ready)
+    }
+}
+
+/// Where a session stands, for a UI to tell "connected, no DSPi" from failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionState {
+    /// Connected; waiting for [`LinkClient::pair`].
+    NeedsAuth,
+    /// Authenticated, but `device.list` has not been read (see
+    /// [`LinkClient::device_list_error`]); [`LinkClient::refresh_devices`] retries.
+    DeviceListUnknown,
+    /// Authenticated, and the hub has no board online. A bridge runs happily
+    /// with none. Wait for [`LinkEvents::devices_changed`].
+    NoBoard,
+    /// Authenticated, with at least one board that is not offline.
+    Online,
+    /// The session is over.
+    Closed,
+}
+
+/// Process-unique session numbers for [`LinkClient::epoch`].
+static NEXT_EPOCH: AtomicU64 = AtomicU64::new(1);
 
 /// One NOTIFY for the bound device: the verbatim v2 packet and its attribution.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +202,21 @@ pub trait LinkEvents: Send + Sync {
     fn devices_changed(&self) {}
     /// The session ended. `code` is the hub's close code, if it sent one.
     fn closed(&self, _code: Option<u16>, _reason: &str) {}
+    /// The hub issued `token` for `hub_id`: store it now. Called as soon as the
+    /// `ok` arrives, before anything else can fail, and also when that `ok`
+    /// arrives after [`LinkClient::pair`] has already timed out.
+    fn token_issued(&self, _hub_id: &str, _token: &str) {}
+    /// [`Self::devices_changed`], with the session's [`LinkClient::epoch`]. A
+    /// listener shared between sessions overrides this and ignores old epochs.
+    fn session_devices_changed(&self, _epoch: u64) {
+        self.devices_changed();
+    }
+    /// [`Self::closed`], with the session's [`LinkClient::epoch`]. A listener
+    /// shared between sessions overrides this: an old session's close must not
+    /// tear down a healthy new one.
+    fn session_closed(&self, _epoch: u64, code: Option<u16>, reason: &str) {
+        self.closed(code, reason);
+    }
 }
 
 /// Human reason for a hub close code (macOS `LinkClient.reason(forCloseCode:)`).
@@ -106,6 +246,34 @@ struct Session {
     denied: Vec<(u8, u8)>,
     ready: bool,
     devices: Vec<DeviceInfo>,
+    /// `devices` is what `device.list` said, not just what events added.
+    devices_read: bool,
+    /// Why the last `device.list` failed.
+    list_error: Option<LinkError>,
+    /// How often each handle went from present to offline or gone.
+    offline_counts: HashMap<u32, u64>,
+}
+
+impl Session {
+    /// The list says handle `handle` is now `state` (`None`: gone). Counts a
+    /// board leaving at the moment it is heard, so a quick flap is not missed by
+    /// someone who looks at the list later.
+    fn note_board(&mut self, handle: u32, state: Option<&str>) {
+        let was_present = self.devices.iter().any(|d| d.handle == handle && d.state != "offline");
+        if was_present && state.is_none_or(|s| s == "offline") {
+            let count = self.offline_counts.entry(handle).or_default();
+            *count = count.wrapping_add(1);
+        }
+    }
+}
+
+/// A request timed out, so the link is under suspicion: a ping goes out, and
+/// anything arriving from the hub clears it.
+#[derive(Default)]
+struct Probe {
+    armed_at: Option<Instant>,
+    /// For the keepalive thread: the caller must not block on a stuck socket.
+    ping_wanted: bool,
 }
 
 struct Inner {
@@ -127,14 +295,44 @@ struct Inner {
     last_fw_seq: Mutex<HashMap<u8, u8>>,
     closed: Mutex<Option<(Option<u16>, String)>>,
     events: Mutex<Option<Arc<dyn LinkEvents>>>,
+    /// The `closed` event has gone out.
+    closed_delivered: AtomicBool,
     last_inbound: Mutex<Instant>,
     stopping: AtomicBool,
+    timing: Timing,
+    clock: Arc<dyn Clock>,
+    epoch: u64,
+    probe: Mutex<Probe>,
+    /// `auth.pair` requests not settled yet: sent, or given up on by a timeout.
+    open_pairs: Mutex<HashSet<u64>>,
 }
 
-/// A live session with one hub. Cheap to clone (shared state).
+impl Drop for Inner {
+    fn drop(&mut self) {
+        if lock(&self.closed).is_none() {
+            self.sender.close(1000);
+        }
+    }
+}
+
+/// A live session with one hub. Cheap to clone (shared state). The session ends
+/// when the last clone is dropped, without a `closed` event.
 #[derive(Clone)]
 pub struct LinkClient {
     inner: Arc<Inner>,
+}
+
+/// The hub refused the credential itself: a wrong PIN or a bad token. Both real
+/// hubs say `unauthenticated`; `denied` is what the spec's vocabulary also allows.
+fn is_credential_refusal(code: &str) -> bool {
+    matches!(code, "unauthenticated" | "denied")
+}
+
+fn typed_refusal(e: LinkError) -> LinkError {
+    match e {
+        LinkError::Rejected { code, msg } if code == "rate_limited" => LinkError::RateLimited { msg },
+        e => e,
+    }
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -151,11 +349,29 @@ impl LinkClient {
         opts: &ConnectOptions,
         events: Option<Arc<dyn LinkEvents>>,
     ) -> Result<(LinkClient, AuthState), LinkError> {
+        Self::connect_with(connector, url, opts, events, &SessionConfig::default())
+    }
+
+    /// [`Self::connect`] with a token lookup, timers and a clock.
+    pub fn connect_with(
+        connector: &dyn WsConnector,
+        url: &str,
+        opts: &ConnectOptions,
+        events: Option<Arc<dyn LinkEvents>>,
+        cfg: &SessionConfig,
+    ) -> Result<(LinkClient, AuthState), LinkError> {
         let (sender, mut receiver) = connector.connect(url, SUB_PROTOCOL)?;
+        // Each step gets what is left. The step limit is this budget, not
+        // request_timeout: the embedder must not sit in connect for the sum of them
+        let deadline = Instant::now() + cfg.timing.connect_budget;
+        let left = move || deadline.saturating_duration_since(Instant::now());
         let client =
             ClientInfo { name: opts.client_name.clone(), app: opts.app.clone(), version: opts.app_version.clone() };
-        sender.send(WsMessage::Text(out::hello(&client))).map_err(|e| LinkError::Io(e.to_string()))?;
-        let hello = match Self::await_hello(receiver.as_mut()) {
+        if let Err(e) = sender.send(WsMessage::Text(out::hello(&client))) {
+            sender.close(1000);
+            return Err(LinkError::Io(e.to_string()));
+        }
+        let hello = match Self::await_hello(receiver.as_mut(), left()) {
             Ok(h) => h,
             Err(e) => {
                 sender.close(1000);
@@ -182,34 +398,56 @@ impl LinkClient {
             last_link_seq: Mutex::new(None),
             last_fw_seq: Mutex::new(HashMap::new()),
             closed: Mutex::new(None),
-            events: Mutex::new(events),
-            last_inbound: Mutex::new(Instant::now()),
+            // Installed once connect has succeeded: a failed connect owes its
+            // caller only the Err, never a `closed` that outlives it
+            events: Mutex::new(None),
+            closed_delivered: AtomicBool::new(false),
+            last_inbound: Mutex::new(cfg.clock.now()),
             stopping: AtomicBool::new(false),
+            timing: cfg.timing,
+            clock: Arc::clone(&cfg.clock),
+            epoch: NEXT_EPOCH.fetch_add(1, Ordering::Relaxed),
+            probe: Mutex::new(Probe::default()),
+            open_pairs: Mutex::new(HashSet::new()),
         });
         let c = LinkClient { inner };
-        c.spawn_threads(receiver);
+        if let Err(e) = c.spawn_threads(receiver) {
+            c.close();
+            return Err(e);
+        }
 
         let state = if c.inner.hello.pin_required() {
-            match &opts.token {
-                Some(token) => match c.request(|id| out::auth_token(id, token), REQUEST_TIMEOUT) {
+            // Only now is it known which hub answered at this address
+            let token = match &cfg.token_for {
+                Some(_) if c.inner.hello.hub.id.is_empty() => {
+                    log::warn!("dspi-link: hub without an id gets no token");
+                    None
+                }
+                Some(token_for) => token_for(&c.inner.hello.hub.id),
+                None => opts.token.clone(),
+            };
+            match token.as_deref().filter(|t| !t.is_empty()) {
+                Some(token) => match c.request(|id| out::auth_token(id, token), left()) {
                     Ok(v) => {
                         c.became_ready(&v);
                         AuthState::Ready
                     }
-                    // A refused or expired token is indistinguishable from none: pair again
-                    Err(LinkError::Rejected { .. }) => {
-                        AuthState::NeedsPairing { pin_source: c.inner.hello.pin_source().into() }
+                    // The one case where the token itself is bad (dspi-link-js
+                    // TOKEN_REJECTION_CODES)
+                    Err(LinkError::Rejected { code, .. }) if is_credential_refusal(&code) => {
+                        AuthState::TokenRefused { pin_source: c.inner.hello.pin_source().into() }
                     }
+                    // The hub said "not now", or the link failed: the token stays good
                     Err(e) => {
                         c.close();
-                        return Err(e);
+                        return Err(typed_refusal(e));
                     }
                 },
                 None => AuthState::NeedsPairing { pin_source: c.inner.hello.pin_source().into() },
             }
         } else {
             // Open access: the session is open; ask for our id anyway (spec 6.1)
-            match c.request(|id| out::auth_pair(id, OPEN_ACCESS_PIN, &opts.client_name, None), REQUEST_TIMEOUT) {
+            match c.request(|id| out::auth_pair(id, OPEN_ACCESS_PIN, &opts.client_name, None), left()) {
                 Ok(v) => c.became_ready(&v),
                 Err(LinkError::Rejected { .. }) => {
                     log::warn!("dspi-link: open hub refused the session probe; own echoes cannot be recognised");
@@ -223,13 +461,21 @@ impl LinkClient {
             AuthState::Ready
         };
         if state == AuthState::Ready {
-            c.refresh_devices()?;
+            if let Err(e) = c.refresh_devices_within(left()) {
+                c.close();
+                return Err(e);
+            }
+        }
+        // `closed` may have happened already: set_events delivers it then
+        c.set_events(events);
+        if state == AuthState::Ready {
+            c.fire_devices_changed();
         }
         Ok((c, state))
     }
 
-    fn await_hello(receiver: &mut dyn WsReceiver) -> Result<HelloHub, LinkError> {
-        let deadline = Instant::now() + REQUEST_TIMEOUT;
+    fn await_hello(receiver: &mut dyn WsReceiver, timeout: Duration) -> Result<HelloHub, LinkError> {
+        let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
             match receiver.recv() {
                 WsRecv::Message(WsMessage::Text(t)) => {
@@ -237,12 +483,10 @@ impl LinkClient {
                         return Ok(h);
                     }
                 }
-                WsRecv::Message(_) | WsRecv::Idle => {}
+                WsRecv::Message(_) | WsRecv::Alive | WsRecv::Idle => {}
                 WsRecv::Closed { code, reason } => {
-                    return Err(LinkError::Closed {
-                        code,
-                        reason: if code.is_some() { close_reason(code) } else { reason },
-                    })
+                    log::debug!("dspi-link: closed during hello: {reason}");
+                    return Err(LinkError::Closed { code, reason: close_reason(code) });
                 }
             }
         }
@@ -250,14 +494,47 @@ impl LinkClient {
     }
 
     /// Pair with the PIN the user typed (spec 6.2). Returns the token to store
-    /// against [`HelloHub::hub`] `id` (empty when the hub issued none).
+    /// against [`HelloHub::hub`] `id` (empty when the hub issued none). A refused
+    /// PIN is [`LinkError::WrongPin`] and `rate_limited` [`LinkError::RateLimited`];
+    /// the session stays open for another try.
     pub fn pair(&self, pin: &str, role: &str) -> Result<String, LinkError> {
-        let name = self.inner.client_name.clone();
-        let v = self.request(|id| out::auth_pair(id, pin, &name, Some(role)), REQUEST_TIMEOUT)?;
-        self.became_ready(&v);
-        self.refresh_devices()?;
-        let ok: AuthOk = serde_json::from_value(v).unwrap_or_default();
-        Ok(ok.token.unwrap_or_default())
+        let id = self.inner.next_id.fetch_add(1, Ordering::SeqCst);
+        lock(&self.inner.open_pairs).insert(id);
+        let text = out::auth_pair(id, pin, &self.inner.client_name, Some(role));
+        let result = self.request_id(id, text, self.inner.timing.request_timeout);
+        // After a timeout the id stays: the reply may still come, and a Mac hub
+        // has spent its window on it
+        if !matches!(result, Err(LinkError::Timeout)) {
+            lock(&self.inner.open_pairs).remove(&id);
+        }
+        let v = result.map_err(|e| match e {
+            LinkError::Rejected { code, .. } if is_credential_refusal(&code) => {
+                LinkError::WrongPin { pin_source: self.inner.hello.pin_source_kind() }
+            }
+            e => typed_refusal(e),
+        })?;
+        let token = self.paired(&v);
+        // The token is safe from here on; a list that fails is for the caller to
+        // read in session_state() and retry, not a failed pairing
+        if let Err(e) = self.refresh_devices() {
+            log::warn!("dspi-link: paired, but device.list failed: {e}");
+        }
+        Ok(token)
+    }
+
+    /// The hub accepted a PIN: the session is ready and the embedder has the
+    /// token before anything else can fail.
+    fn paired(&self, v: &Value) -> String {
+        self.became_ready(v);
+        let ok: AuthOk = serde_json::from_value(v.clone()).unwrap_or_default();
+        let token = ok.token.unwrap_or_default();
+        if !token.is_empty() {
+            let ev = lock(&self.inner.events).clone();
+            if let Some(ev) = ev {
+                ev.token_issued(&self.inner.hello.hub.id, &token);
+            }
+        }
+        token
     }
 
     fn became_ready(&self, v: &Value) {
@@ -280,7 +557,19 @@ impl LinkClient {
 
     /// Re-read `device.list`.
     pub fn refresh_devices(&self) -> Result<Vec<DeviceInfo>, LinkError> {
-        let v = self.request(out::device_list, REQUEST_TIMEOUT)?;
+        self.refresh_devices_within(self.inner.timing.request_timeout)
+    }
+
+    fn refresh_devices_within(&self, timeout: Duration) -> Result<Vec<DeviceInfo>, LinkError> {
+        let result = self.read_device_list(timeout);
+        if let Err(e) = &result {
+            lock(&self.inner.session).list_error = Some(e.clone());
+        }
+        result
+    }
+
+    fn read_device_list(&self, timeout: Duration) -> Result<Vec<DeviceInfo>, LinkError> {
+        let v = self.request(out::device_list, timeout)?;
         let list: Vec<DeviceInfo> = v
             .get("devices")
             .cloned()
@@ -288,7 +577,17 @@ impl LinkClient {
             .transpose()
             .map_err(|e| LinkError::Protocol(e.to_string()))?
             .unwrap_or_default();
-        lock(&self.inner.session).devices = list.clone();
+        {
+            let mut s = lock(&self.inner.session);
+            let known: Vec<u32> = s.devices.iter().map(|d| d.handle).collect();
+            for handle in known {
+                let state = list.iter().find(|d| d.handle == handle).map(|d| d.state.clone());
+                s.note_board(handle, state.as_deref());
+            }
+            s.devices = list.clone();
+            s.devices_read = true;
+            s.list_error = None;
+        }
         self.fire_devices_changed();
         Ok(list)
     }
@@ -320,6 +619,42 @@ impl LinkClient {
         lock(&self.inner.session).devices.clone()
     }
 
+    /// Why the last `device.list` failed, until one succeeds.
+    pub fn device_list_error(&self) -> Option<LinkError> {
+        lock(&self.inner.session).list_error.clone()
+    }
+
+    /// How often device `handle` has gone from present to offline or gone in this
+    /// session, counted as the hub said it. A changed count means the hub ended
+    /// that device's polls and the board may have rebooted, even if it is back
+    /// by the time anyone looks.
+    pub fn offline_count(&self, handle: u32) -> u64 {
+        lock(&self.inner.session).offline_counts.get(&handle).copied().unwrap_or(0)
+    }
+
+    /// Where this session stands. See [`SessionState`].
+    pub fn session_state(&self) -> SessionState {
+        if self.is_closed() {
+            return SessionState::Closed;
+        }
+        let s = lock(&self.inner.session);
+        if !s.ready {
+            SessionState::NeedsAuth
+        } else if s.devices.iter().any(|d| d.state != "offline") {
+            SessionState::Online
+        } else if s.devices_read {
+            SessionState::NoBoard
+        } else {
+            SessionState::DeviceListUnknown
+        }
+    }
+
+    /// This session's process-unique number, passed to
+    /// [`LinkEvents::session_closed`] and [`LinkEvents::session_devices_changed`].
+    pub fn epoch(&self) -> u64 {
+        self.inner.epoch
+    }
+
     pub fn is_closed(&self) -> bool {
         lock(&self.inner.closed).is_some()
     }
@@ -329,8 +664,12 @@ impl LinkClient {
         lock(&self.inner.closed).clone()
     }
 
+    /// Replace the session's listener. If the session ended and no listener has
+    /// heard about it yet, the new one gets `closed` before this returns, so an
+    /// embedder can record [`Self::epoch`] first and install the listener after.
     pub fn set_events(&self, events: Option<Arc<dyn LinkEvents>>) {
         *lock(&self.inner.events) = events;
+        self.deliver_closed();
     }
 
     // ── Data plane ─────────────────────────────────────────────────────
@@ -349,7 +688,8 @@ impl LinkClient {
         w_length: u16,
         payload: &[u8],
     ) -> CmdResponse {
-        let timeout = if BULK_OPCODES.contains(&b_request) { BULK_TIMEOUT } else { REQUEST_TIMEOUT };
+        let timing = &self.inner.timing;
+        let timeout = if BULK_OPCODES.contains(&b_request) { timing.bulk_timeout } else { timing.request_timeout };
         let deadline = Instant::now() + timeout;
         if !self.is_ready() {
             return CmdResponse { tag: 0, status: status::NO_DEVICE, payload: Vec::new() };
@@ -399,6 +739,11 @@ impl LinkClient {
         };
         let (tx, rx) = mpsc::sync_channel(1);
         lock(&self.inner.pending_cmd).insert(tag, tx);
+        // As in request_id: see socket_failed's order
+        if self.is_closed() {
+            lock(&self.inner.pending_cmd).remove(&tag);
+            return CmdResponse { tag, status: status::NO_DEVICE, payload: Vec::new() };
+        }
         let frame = Frame::CmdRequest(CmdRequest {
             tag,
             handle,
@@ -418,6 +763,7 @@ impl LinkClient {
             Ok(r) => r,
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 lock(&self.inner.pending_cmd).remove(&tag);
+                self.suspect();
                 CmdResponse { tag, status: status::TIMEOUT, payload: Vec::new() }
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -451,12 +797,12 @@ impl LinkClient {
 
     /// `device.snapshot` (spec 7.5), when the hub has the `snapshot` capability.
     pub fn snapshot(&self, handle: u8) -> Result<Snapshot, LinkError> {
-        let v = self.request(|id| out::device_snapshot(id, handle), BULK_TIMEOUT)?;
+        let v = self.request(|id| out::device_snapshot(id, handle), self.inner.timing.bulk_timeout)?;
         serde_json::from_value(v).map_err(|e| LinkError::Protocol(e.to_string()))
     }
 
     pub fn poll_subscribe(&self, handle: u8, polls: &[PollSpec]) -> Result<Vec<PollGrant>, LinkError> {
-        let v = self.request(|id| out::poll_subscribe(id, handle, polls), REQUEST_TIMEOUT)?;
+        let v = self.request(|id| out::poll_subscribe(id, handle, polls), self.inner.timing.request_timeout)?;
         v.get("granted")
             .cloned()
             .map(serde_json::from_value)
@@ -472,7 +818,11 @@ impl LinkClient {
     /// `lock.acquire` (spec 7.7). Ok when held; `Rejected { code: "locked" }`
     /// when another session holds it.
     pub fn lock_acquire(&self, handle: u8, reason: &str, timeout_ms: u32) -> Result<(), LinkError> {
-        self.request(|id| out::lock_acquire(id, handle, reason, timeout_ms.min(60_000)), REQUEST_TIMEOUT).map(|_| ())
+        self.request(
+            |id| out::lock_acquire(id, handle, reason, timeout_ms.min(60_000)),
+            self.inner.timing.request_timeout,
+        )
+        .map(|_| ())
     }
 
     /// Fire and forget; a lost release expires on the hub (macOS).
@@ -489,24 +839,40 @@ impl LinkClient {
 
     fn fire(&self, make: impl FnOnce(u64) -> String) {
         let id = self.inner.next_id.fetch_add(1, Ordering::SeqCst);
-        let _ = self.inner.sender.send(WsMessage::Text(make(id)));
+        if self.inner.sender.send(WsMessage::Text(make(id))).is_err() {
+            self.socket_failed(None, &close_reason(None));
+        }
     }
 
     fn request(&self, make: impl FnOnce(u64) -> String, timeout: Duration) -> Result<Value, LinkError> {
-        if let Some((code, reason)) = self.closed_reason() {
-            return Err(LinkError::Closed { code, reason });
-        }
         let id = self.inner.next_id.fetch_add(1, Ordering::SeqCst);
+        self.request_id(id, make(id), timeout)
+    }
+
+    fn request_id(&self, id: u64, text: String, timeout: Duration) -> Result<Value, LinkError> {
         let (tx, rx) = mpsc::sync_channel(1);
         lock(&self.inner.pending_json).insert(id, tx);
-        if let Err(e) = self.inner.sender.send(WsMessage::Text(make(id))) {
+        // After the insert: socket_failed sets `closed` before it drains, so either
+        // it sees this entry and answers it, or this sees `closed`
+        if let Some((code, reason)) = self.closed_reason() {
             lock(&self.inner.pending_json).remove(&id);
+            return Err(LinkError::Closed { code, reason });
+        }
+        if let Err(e) = self.inner.sender.send(WsMessage::Text(text)) {
+            lock(&self.inner.pending_json).remove(&id);
+            self.socket_failed(None, &close_reason(None));
             return Err(LinkError::Io(e.to_string()));
         }
         match rx.recv_timeout(timeout) {
             Ok(r) => r,
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                lock(&self.inner.pending_json).remove(&id);
+                if lock(&self.inner.pending_json).remove(&id).is_none() {
+                    // The reader took it in that instant, and is about to hand it over
+                    if let Ok(r) = rx.recv_timeout(HANDOVER_GRACE) {
+                        return r;
+                    }
+                }
+                self.suspect();
                 Err(LinkError::Timeout)
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -516,54 +882,99 @@ impl LinkClient {
         }
     }
 
+    // ── Liveness ───────────────────────────────────────────────────────
+
+    /// A request got no answer in time. That alone proves nothing (the device
+    /// may be slow behind a live hub), but it is the first sign of a half-open
+    /// link: probe it now instead of waiting out the silence limit.
+    fn suspect(&self) {
+        let mut probe = lock(&self.inner.probe);
+        if probe.armed_at.is_none() {
+            probe.armed_at = Some(self.inner.clock.now());
+            probe.ping_wanted = true;
+        }
+    }
+
+    fn heard_from_hub(&self) {
+        *lock(&self.inner.last_inbound) = self.inner.clock.now();
+        *lock(&self.inner.probe) = Probe::default();
+    }
+
+    /// Silence past the limit, or a probe left unanswered.
+    fn link_is_dead(&self) -> bool {
+        let timing = &self.inner.timing;
+        let now = self.inner.clock.now();
+        let armed_at = lock(&self.inner.probe).armed_at;
+        let last_inbound = *lock(&self.inner.last_inbound);
+        now.saturating_duration_since(last_inbound) > timing.silence_limit
+            || armed_at.is_some_and(|t| now.saturating_duration_since(t) > timing.probe_timeout)
+    }
+
     // ── Threads ────────────────────────────────────────────────────────
 
-    fn spawn_threads(&self, mut receiver: Box<dyn WsReceiver>) {
-        let me = self.clone();
-        let _ = thread::Builder::new().name("dspi-link-rx".into()).spawn(move || loop {
-            match receiver.recv() {
-                WsRecv::Message(m) => {
-                    *lock(&me.inner.last_inbound) = Instant::now();
-                    match m {
-                        WsMessage::Text(t) => me.handle_text(&t),
-                        WsMessage::Binary(b) => me.handle_binary(&b),
+    fn spawn_threads(&self, mut receiver: Box<dyn WsReceiver>) -> Result<(), LinkError> {
+        let spawn_error = |e: std::io::Error| LinkError::Io(e.to_string());
+        // Weak, so the threads cannot keep a session open after its last handle
+        // is gone: Inner's Drop closes the socket, and that ends the reader
+        let weak = Arc::downgrade(&self.inner);
+        thread::Builder::new()
+            .name("dspi-link-rx".into())
+            .spawn(move || loop {
+                let received = receiver.recv();
+                let Some(inner) = weak.upgrade() else { return };
+                let me = LinkClient { inner };
+                match received {
+                    WsRecv::Message(m) => {
+                        me.heard_from_hub();
+                        match m {
+                            WsMessage::Text(t) => me.handle_text(&t),
+                            WsMessage::Binary(b) => me.handle_binary(&b),
+                        }
                     }
-                }
-                WsRecv::Idle => {
-                    if me.is_closed() {
+                    WsRecv::Alive => me.heard_from_hub(),
+                    WsRecv::Idle => {
+                        if me.is_closed() {
+                            break;
+                        }
+                        if me.link_is_dead() {
+                            me.inner.sender.close(1001);
+                            me.socket_failed(None, &close_reason(None));
+                            break;
+                        }
+                    }
+                    WsRecv::Closed { code, reason } => {
+                        log::debug!("dspi-link: socket closed: {reason}");
+                        me.socket_failed(code, &close_reason(code));
                         break;
                     }
-                    if lock(&me.inner.last_inbound).elapsed() > SILENCE_LIMIT {
-                        me.inner.sender.close(1001);
-                        me.socket_failed(None, "connection lost");
-                        break;
-                    }
                 }
-                WsRecv::Closed { code, reason } => {
-                    let reason = if code.is_some() { close_reason(code) } else { reason };
-                    me.socket_failed(code, &reason);
-                    break;
-                }
-            }
-        });
+            })
+            .map_err(spawn_error)?;
         // Keepalive: a ping that cannot be written is the earliest sign the socket is gone
         let weak = Arc::downgrade(&self.inner);
-        let _ = thread::Builder::new().name("dspi-link-ping".into()).spawn(move || loop {
-            let mut slept = Duration::ZERO;
-            while slept < PING_INTERVAL {
-                thread::sleep(Duration::from_millis(250));
-                slept += Duration::from_millis(250);
-                match weak.upgrade() {
-                    Some(i) if lock(&i.closed).is_none() => {}
+        let tick = self.inner.timing.keepalive_tick;
+        let mut last_ping = self.inner.clock.now();
+        thread::Builder::new()
+            .name("dspi-link-ping".into())
+            .spawn(move || loop {
+                thread::sleep(tick);
+                let inner = match weak.upgrade() {
+                    Some(i) if lock(&i.closed).is_none() => i,
                     _ => return,
+                };
+                let now = inner.clock.now();
+                let probing = std::mem::take(&mut lock(&inner.probe).ping_wanted);
+                if !probing && now.saturating_duration_since(last_ping) < inner.timing.ping_interval {
+                    continue;
                 }
-            }
-            let Some(inner) = weak.upgrade() else { return };
-            if inner.sender.ping().is_err() {
-                LinkClient { inner }.socket_failed(None, "connection lost");
-                return;
-            }
-        });
+                last_ping = now;
+                if inner.sender.ping().is_err() {
+                    LinkClient { inner }.socket_failed(None, &close_reason(None));
+                    return;
+                }
+            })
+            .map_err(spawn_error)?;
+        Ok(())
     }
 
     fn handle_text(&self, text: &str) {
@@ -573,18 +984,28 @@ impl LinkClient {
         };
         match msg {
             Inbound::Ok { id, body } => {
-                if let Some(tx) = lock(&self.inner.pending_json).remove(&id) {
+                let waiting = lock(&self.inner.pending_json).remove(&id);
+                if let Some(tx) = waiting {
                     let _ = tx.send(Ok(body));
+                } else if lock(&self.inner.open_pairs).remove(&id) {
+                    // pair() gave up on this reply. The list cannot be read from
+                    // the reader thread: the embedder does, on this event
+                    self.paired(&body);
+                    self.fire_devices_changed();
                 }
             }
             Inbound::Err(e) => {
-                if let Some(tx) = e.id.and_then(|id| lock(&self.inner.pending_json).remove(&id)) {
+                let Some(id) = e.id else { return };
+                // Settled, also when pair() has already given up on it
+                lock(&self.inner.open_pairs).remove(&id);
+                if let Some(tx) = lock(&self.inner.pending_json).remove(&id) {
                     let _ = tx.send(Err(LinkError::Rejected { code: e.code, msg: e.msg.unwrap_or_default() }));
                 }
             }
             Inbound::DeviceAdded(d) | Inbound::DeviceChanged(d) => {
                 {
                     let mut s = lock(&self.inner.session);
+                    s.note_board(d.handle, Some(&d.state));
                     match s.devices.iter_mut().find(|x| x.handle == d.handle) {
                         Some(x) => *x = d,
                         None => s.devices.push(d),
@@ -593,7 +1014,10 @@ impl LinkClient {
                 self.fire_devices_changed();
             }
             Inbound::DeviceRemoved { handle, .. } => {
-                lock(&self.inner.session).devices.retain(|d| d.handle != handle);
+                let mut s = lock(&self.inner.session);
+                s.note_board(handle, None);
+                s.devices.retain(|d| d.handle != handle);
+                drop(s);
                 self.fire_devices_changed();
             }
             Inbound::Hello(_) | Inbound::PollError { .. } | Inbound::Other { .. } => {}
@@ -661,7 +1085,7 @@ impl LinkClient {
     fn fire_devices_changed(&self) {
         let ev = lock(&self.inner.events).clone();
         if let Some(ev) = ev {
-            ev.devices_changed();
+            ev.session_devices_changed(self.inner.epoch);
         }
     }
 
@@ -690,9 +1114,15 @@ impl LinkClient {
         lock(&self.inner.notify_sinks).clear();
         lock(&self.inner.poll_sinks).clear();
         self.inner.inflight_free.notify_all();
-        let ev = lock(&self.inner.events).clone();
-        if let Some(ev) = ev {
-            ev.closed(code, reason);
+        self.deliver_closed();
+    }
+
+    /// Tell the listener the session ended: once, to whichever listener is there.
+    fn deliver_closed(&self) {
+        let Some((code, reason)) = self.closed_reason() else { return };
+        let Some(ev) = lock(&self.inner.events).clone() else { return };
+        if !self.inner.closed_delivered.swap(true, Ordering::SeqCst) {
+            ev.session_closed(self.inner.epoch, code, &reason);
         }
     }
 }

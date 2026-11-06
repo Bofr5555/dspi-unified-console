@@ -6,13 +6,15 @@
 
 repository = "https://github.com/Bofr5555/DSPi"
 branch     = "bofr-main"
-commit     = "af001ecc86204ee9be01189604b5902377816ddf"
-short      = "af001ec"
-committed  = "2026-11-06 11:27:32 +0100"
+commit     = "04122d34699204d7dddda4d177072be6187f5e2a"
+short      = "04122d3"
+committed  = "2026-11-06 18:42:41 +0100"
 vendored   = "2026-11-06"
 # bofr-main is Weeb Labs release/v1.1.6 final (9ffce34, caps v22) plus the
 # fork's extension channel (REQ_EXTENSION 0x00, EXT_* sub-commands in
 # config.h; Documentation/Features/extension_channel_spec.md there).
+# It also has EXT_NOTIFY_FEATURES 0x0003 and NOTIFY_FEAT_BULK_SOURCE; only those
+# lines and a bulk_params_apply prototype differ from af001ec.
 
 files = [
   "config.h",            # vendor opcodes, channel model, platform constants, firmware version

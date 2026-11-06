@@ -12,8 +12,10 @@ use dspi_cmd::{Command, Context};
 use dspi_proto::registry::{Kind, REGISTRY, by_path};
 use dspi_proto::value::Value;
 
+use dspi_session::ext_state::ExtState;
 use dspi_session::{Outcome, Session, probe};
-use dspi_transport::{Transport, TransportError, UsbTransport, list_devices};
+use dspi_transport::{Transport, TransportError, list_devices};
+use dspi_tui::shell::connect::{LinkTarget, OpenError, Target, printable};
 
 /// Exit codes are part of the interface: scripts branch on these.
 mod exit {
@@ -29,8 +31,25 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let flags: Vec<&str> = args.iter().map(String::as_str).collect();
 
+    // Where the device is comes off first, so the rest reads the same on every
+    // link: `dspi --demo dump` and `dspi dump --demo` are one command.
+    let (target, flags) = match parse_target(&flags) {
+        Ok(parsed) => parsed,
+        Err(e) => {
+            eprintln!("dspi: {e}");
+            return ExitCode::from(exit::USAGE);
+        }
+    };
+    let target = match resolve_pin(target, std::env::var("DSPI_PIN").ok(), read_stdin_line) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("dspi: {e}");
+            return ExitCode::from(exit::USAGE);
+        }
+    };
+    let target = &target;
+
     let json = flags.contains(&"--json");
-    let serial = flag_value(&flags, "--device");
     let palette = match flag_value(&flags, "--theme") {
         Some(name) => match dspi_tui::theme::Palette::parse(name) {
             Some(p) => p,
@@ -55,10 +74,10 @@ fn main() -> ExitCode {
     // someone is piping commands in.
     let script = flag_value(&flags, "-f").or_else(|| flag_value(&flags, "--file"));
     if script.is_some() {
-        return ExitCode::from(cmd_script(serial, script, &flags, json));
+        return ExitCode::from(cmd_script(target, script, &flags, json));
     }
     if wants_stdin_script(&flags, std::io::IsTerminal::is_terminal(&std::io::stdin())) {
-        return ExitCode::from(cmd_script(serial, None, &flags, json));
+        return ExitCode::from(cmd_script(target, None, &flags, json));
     }
 
     let code = match flags.first().copied() {
@@ -70,28 +89,166 @@ fn main() -> ExitCode {
             version();
             exit::OK
         }
-        Some("list") => cmd_list(json),
+        Some("list") => cmd_list(target, json),
         Some("params") => cmd_params(),
         Some("completions") => cmd_completions(&positional(&flags)),
-        Some("doctor") | Some("--doctor") => doctor::run(),
-        Some("raw") => cmd_raw(serial, &positional(&flags), json),
-        Some("ext") => cmd_ext(serial, &positional(&flags), json),
-        Some("autoeq") => cmd_autoeq(serial, &positional(&flags), &flags),
+        Some("doctor") | Some("--doctor") => doctor::run(target),
+        Some("raw") => cmd_raw(target, &positional(&flags), json),
+        Some("ext") => cmd_ext(target, &positional(&flags), json),
+        Some("autoeq") => cmd_autoeq(target, &positional(&flags), &flags),
         Some("--install-udev") => doctor::install_udev(),
-        Some("screenshot") => cmd_screenshot(serial, &positional(&flags), &flags),
-        Some("export") => cmd_export(serial, &positional(&flags)),
-        Some("import") => cmd_import(serial, &positional(&flags), &flags),
-        Some("dump") => cmd_dump(serial, json),
-        Some("watch") => cmd_watch(serial, json),
+        Some("screenshot") => cmd_screenshot(target, &positional(&flags), &flags),
+        Some("export") => cmd_export(target, &positional(&flags)),
+        Some("import") => cmd_import(target, &positional(&flags), &flags),
+        Some("dump") => cmd_dump(target, json),
+        Some("watch") => cmd_watch(target, json),
         // No arguments opens the interface; arguments run one command and exit.
-        None => cmd_tui(serial, &flags, palette),
-        Some(other) if other.starts_with("--") => cmd_tui(serial, &flags, palette),
+        None => cmd_tui(target, &flags, palette),
+        Some(other) if other.starts_with("--") => cmd_tui(target, &flags, palette),
         // Everything else is a command in the shared grammar, so the CLI and the
         // TUI's ':' line accept exactly the same syntax.
-        Some(_) => cmd_run(serial, &flags, json),
+        Some(_) => cmd_run(target, &flags, json),
     };
 
     ExitCode::from(code)
+}
+
+/// The words that can follow `--midi` without being a port name: every command
+/// and parameter. `--midi=NAME` is there for a port that shares a name with one.
+fn is_command_word(word: &str) -> bool {
+    /// What this binary adds to the shared grammar's verbs.
+    const TERMINAL_VERBS: &[&str] = &["ext", "autoeq", "screenshot", "export", "import", "watch"];
+    TERMINAL_VERBS.contains(&word)
+        || dspi_cmd::VERBS.iter().any(|(n, _)| *n == word)
+        || by_path(word).is_some()
+}
+
+/// Take the flags that say where the device is, leaving everything else in
+/// order. Refuses a contradiction rather than choosing for the user.
+fn parse_target<'a>(flags: &[&'a str]) -> Result<(Target, Vec<&'a str>), String> {
+    let mut rest = Vec::with_capacity(flags.len());
+    let mut device = None;
+    let mut demo = false;
+    let mut midi: Option<Option<String>> = None;
+    let mut link: Option<String> = None;
+    let mut pin = None;
+
+    let mut it = flags.iter().copied().peekable();
+    while let Some(f) = it.next() {
+        // `--name=value`, for each flag that takes a value.
+        let (name, inline) = match f.split_once('=') {
+            Some((n, v)) if n.starts_with("--") => (n, Some(v)),
+            _ => (f, None),
+        };
+        let mut value = |what: &str| -> Result<String, String> {
+            match inline {
+                Some(v) => Ok(v.to_owned()),
+                None => it
+                    .next()
+                    .map(str::to_owned)
+                    .ok_or_else(|| format!("{name} needs {what}")),
+            }
+        };
+        match name {
+            "--device" => device = Some(value("a serial")?),
+            "--pin" => pin = Some(value("the hub's PIN")?),
+            "--link" => link = Some(value("a hub address, HOST[:PORT]")?),
+            "--demo" if inline.is_none() => demo = true,
+            "--midi" => {
+                midi = Some(match inline {
+                    Some(v) => Some(v.to_owned()),
+                    None => it
+                        .next_if(|w| !w.starts_with('-') && !is_command_word(w))
+                        .map(str::to_owned),
+                });
+            }
+            _ => rest.push(f),
+        }
+    }
+
+    let chosen = [demo, midi.is_some(), link.is_some()]
+        .iter()
+        .filter(|c| **c)
+        .count();
+    if chosen > 1 {
+        return Err("choose one of --demo, --midi and --link".into());
+    }
+    if pin.is_some() && link.is_none() {
+        return Err("--pin only means something with --link".into());
+    }
+    if device.is_some() && (demo || midi.is_some()) {
+        return Err("--device selects a USB device or a hub's device; \
+                    use --midi <name> for a MIDI port"
+            .into());
+    }
+    let target = if demo {
+        Target::Demo
+    } else if let Some(port) = midi {
+        Target::Midi { port }
+    } else if let Some(address) = link {
+        let parsed = LinkTarget::parse(&address)
+            .ok_or_else(|| format!("`{address}` is not a hub address; try HOST[:PORT]"))?;
+        Target::Link(LinkTarget {
+            device,
+            pin,
+            ..parsed
+        })
+    } else {
+        Target::Usb { serial: device }
+    };
+    Ok((target, rest))
+}
+
+/// Where a script's PIN comes from, since a `--pin 1234` on the command line is
+/// visible to every user in `ps` and stays in the shell's history: `--pin -`
+/// reads a line of standard input, and `DSPI_PIN` is used when no `--pin` says
+/// otherwise.
+fn resolve_pin(
+    target: Target,
+    env: Option<String>,
+    stdin: impl FnOnce() -> Option<String>,
+) -> Result<Target, String> {
+    let Target::Link(mut l) = target else {
+        return Ok(target);
+    };
+    let usable = |p: String| {
+        let p = p.trim().to_owned();
+        (!p.is_empty()).then_some(p)
+    };
+    l.pin = match l.pin.take().as_deref() {
+        Some("-") => Some(
+            stdin()
+                .and_then(usable)
+                .ok_or("--pin - found no PIN on standard input")?,
+        ),
+        Some(p) => Some(p.to_owned()),
+        None => env.and_then(usable),
+    };
+    Ok(Target::Link(l))
+}
+
+fn read_stdin_line() -> Option<String> {
+    let mut line = String::new();
+    std::io::stdin().read_line(&mut line).ok()?;
+    Some(line)
+}
+
+/// Ask for a hub's PIN, when there is a person to ask.
+fn prompt_pin(hub: &str, source: &str) -> Option<String> {
+    use std::io::{IsTerminal, Write};
+    if !std::io::stdin().is_terminal() {
+        return None;
+    }
+    if source == "fixed" {
+        eprint!("PIN for {hub}: ");
+    } else {
+        eprint!("Open pairing on {hub}, and type the PIN it shows: ");
+    }
+    std::io::stderr().flush().ok()?;
+    let mut line = String::new();
+    std::io::stdin().read_line(&mut line).ok()?;
+    let pin = line.trim();
+    (!pin.is_empty()).then(|| pin.to_owned())
 }
 
 fn flag_value<'a>(flags: &'a [&'a str], name: &str) -> Option<&'a str> {
@@ -131,6 +288,7 @@ USAGE:
                              draws the built-in example device)
     dspi watch               print the device's notifications as they arrive
     dspi list                list every connected DSPi
+                             (--midi: the MIDI ports; --link: the hub's devices)
     dspi params              list every parameter this build knows
     dspi get <path> [i..]    read one parameter
     dspi set <path> [i..] v  write one parameter, and confirm it
@@ -175,7 +333,16 @@ EXAMPLES:
     printf 'vol.user -18\\nbass.on on\\n' | dspi
 
 OPTIONS:
-    --device <serial>        target a specific device
+    --device <serial>        target a specific device (on USB or on a hub)
+    --demo                   use the built-in simulated device
+    --midi [PORT]            connect over USB MIDI; PORT is part of the port's
+                             name (--midi=PORT if it could be read as a command)
+    --link <host[:port]>     connect through a DSPi Link hub
+    --pin <pin>              the hub's PIN, when pairing without a terminal.
+                             On the command line it shows in `ps` and in shell
+                             history: for scripts, use `--pin -` (one line of
+                             standard input) or the DSPI_PIN environment variable
+                             (the token is kept in the config directory)
     --json                   machine-readable output
     --no-animation           no connect reveal or easing
     --lite                   reduce redraw rate, for a Pi or a slow link
@@ -191,7 +358,39 @@ OPTIONS:
     );
 }
 
-fn cmd_list(json: bool) -> u8 {
+/// What a MIDI host or a hub can see, in the shape `list` prints for USB.
+fn list_remote(target: &Target, json: bool) -> u8 {
+    let listed = match target.list(&prompt_pin) {
+        Ok(l) => l,
+        Err(e) => return fail_open(e),
+    };
+    if listed.is_empty() {
+        if json {
+            println!("[]");
+        } else {
+            eprintln!("No DSPi found.");
+        }
+        return exit::NO_DEVICE;
+    }
+    if json {
+        let arr: Vec<_> = listed
+            .iter()
+            .map(|d| serde_json::json!({ "serial": d.serial, "name": d.name, "detail": d.detail }))
+            .collect();
+        println!("{}", serde_json::Value::Array(arr));
+    } else {
+        for d in &listed {
+            // `Target::list` has made these printable.
+            println!("{}  {}  {}", d.name, d.serial, d.detail);
+        }
+    }
+    exit::OK
+}
+
+fn cmd_list(target: &Target, json: bool) -> u8 {
+    if !target.is_usb() {
+        return list_remote(target, json);
+    }
     let devices = match list_devices() {
         Ok(d) => d,
         Err(e) => return fail(e),
@@ -227,19 +426,29 @@ fn cmd_list(json: bool) -> u8 {
     exit::OK
 }
 
-fn cmd_dump(serial: Option<&str>, json: bool) -> u8 {
-    let mut t = match open(serial) {
+fn cmd_dump(target: &Target, json: bool) -> u8 {
+    let mut t = match open(target) {
         Ok(t) => t,
-        Err(e) => return fail(e),
+        Err(e) => return fail_open(e),
     };
 
-    let caps = match probe(&mut t) {
+    let caps = match probe(t.as_mut()) {
         Ok(c) => c,
         Err(e) => return fail(e),
     };
+    // Absent is an answer: only the link failing is an error, and then the
+    // rest of what this prints is already known.
+    let ext = ExtState::probe(t.as_mut()).unwrap_or_default();
 
     if json {
-        match serde_json::to_string_pretty(&caps) {
+        let doc = serde_json::to_value(&caps).map(|mut v| {
+            if let Some(o) = v.as_object_mut() {
+                o.insert("extensions".into(), serde_json::json!(ext.supported));
+                o.insert("bulk_source".into(), serde_json::json!(ext.bulk_source()));
+            }
+            v
+        });
+        match doc.and_then(|d| serde_json::to_string_pretty(&d)) {
             Ok(s) => println!("{s}"),
             Err(e) => {
                 eprintln!("dspi: could not serialise state: {e}");
@@ -251,9 +460,9 @@ fn cmd_dump(serial: Option<&str>, json: bool) -> u8 {
 
     println!(
         "{}  {}  firmware {}  wire V{}",
-        caps.serial,
+        printable(&caps.serial),
         caps.platform.name(),
-        caps.firmware,
+        printable(&caps.firmware),
         caps.wire_format
     );
     println!(
@@ -261,10 +470,15 @@ fn cmd_dump(serial: Option<&str>, json: bool) -> u8 {
         caps.num_channels, caps.num_inputs, caps.num_outputs, caps.max_bands
     );
     if let Some(b) = &caps.build_info {
-        println!("build {}  {}", b.describe, b.date);
+        println!("build {}  {}", printable(&b.describe), printable(&b.date));
     }
     if let Some(p) = caps.active_preset {
         println!("active preset: {p}");
+    }
+
+    let label = dspi_tui::shell::connect::ext_label(&ext);
+    if !label.is_empty() {
+        println!("{label}");
     }
 
     println!("\nchannels");
@@ -272,8 +486,8 @@ fn cmd_dump(serial: Option<&str>, json: bool) -> u8 {
         println!(
             "  {:>2}  {:<12}  {:<16}  {}",
             c.index,
-            c.slug,
-            c.name,
+            printable(&c.slug),
+            printable(&c.name),
             if c.is_output { "output" } else { "input" }
         );
     }
@@ -309,7 +523,7 @@ fn cmd_dump(serial: Option<&str>, json: bool) -> u8 {
 /// Useful for documentation and for checking a layout at a size you do not have
 /// a terminal for, such as the 80x24 floor.
 /// Write every channel's filters to a Console-compatible file.
-fn cmd_export(serial: Option<&str>, args: &[&str]) -> u8 {
+fn cmd_export(target: &Target, args: &[&str]) -> u8 {
     let Some(path) = args.first() else {
         eprintln!("dspi: export needs a file name, e.g. `dspi export tuning.txt`");
         return exit::USAGE;
@@ -317,10 +531,10 @@ fn cmd_export(serial: Option<&str>, args: &[&str]) -> u8 {
 
     // The extension picks the format: a filter bank, or a whole-device document.
     if path.ends_with(dspi_session::preset_file::FILE_EXTENSION) {
-        return export_preset(serial, path);
+        return export_preset(target, path);
     }
 
-    let mut session = match connect(serial) {
+    let mut session = match connect(target) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -413,8 +627,8 @@ fn cmd_export(serial: Option<&str>, args: &[&str]) -> u8 {
 }
 
 /// Capture everything the device is doing into a `.dspipreset`.
-fn export_preset(serial: Option<&str>, path: &str) -> u8 {
-    let mut session = match connect(serial) {
+fn export_preset(target: &Target, path: &str) -> u8 {
+    let mut session = match connect(target) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -447,7 +661,7 @@ fn export_preset(serial: Option<&str>, path: &str) -> u8 {
 /// gets the same clamping, gating and readback as a typed command. Anything the
 /// file asks for that this device cannot do is reported rather than skipped
 /// quietly.
-fn cmd_import(serial: Option<&str>, args: &[&str], flags: &[&str]) -> u8 {
+fn cmd_import(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
     let Some(path) = args.first() else {
         eprintln!("dspi: import needs a file name");
         return exit::USAGE;
@@ -463,7 +677,7 @@ fn cmd_import(serial: Option<&str>, args: &[&str], flags: &[&str]) -> u8 {
     // takes a different path; the extension picks, and a mis-typed name gets a
     // clear answer rather than a confusing parse error.
     if path.ends_with(dspi_session::preset_file::FILE_EXTENSION) {
-        return import_preset(&text, path, flags);
+        return import_preset(target, &text, path, flags);
     }
 
     let file = match dspi_session::filterfile::parse(&text) {
@@ -474,7 +688,7 @@ fn cmd_import(serial: Option<&str>, args: &[&str], flags: &[&str]) -> u8 {
         }
     };
 
-    let mut session = match connect(serial) {
+    let mut session = match connect(target) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -563,7 +777,7 @@ fn cmd_import(serial: Option<&str>, args: &[&str], flags: &[&str]) -> u8 {
 ///
 /// Applying every block is still to come; reading, validating and reporting is
 /// what makes a file trustworthy before anyone acts on it, so that lands first.
-fn import_preset(text: &str, path: &str, flags: &[&str]) -> u8 {
+fn import_preset(target: &Target, text: &str, path: &str, flags: &[&str]) -> u8 {
     use dspi_session::preset_file;
 
     let doc = match preset_file::parse(text) {
@@ -596,7 +810,7 @@ fn import_preset(text: &str, path: &str, flags: &[&str]) -> u8 {
         println!("Carries: {}", features.join(", "));
     }
 
-    let mut session = match connect(flag_value(flags, "--device")) {
+    let mut session = match connect(target) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -683,7 +897,7 @@ fn legacy_channel(name: &str, caps: &dspi_session::Capabilities) -> Option<u8> {
     }
 }
 
-fn cmd_screenshot(serial: Option<&str>, args: &[&str], flags: &[&str]) -> u8 {
+fn cmd_screenshot(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
     let width: u16 = args.first().and_then(|a| a.parse().ok()).unwrap_or(120);
     let height: u16 = args.get(1).and_then(|a| a.parse().ok()).unwrap_or(40);
     let screen = args.get(2).copied().unwrap_or("overview");
@@ -692,8 +906,8 @@ fn cmd_screenshot(serial: Option<&str>, args: &[&str], flags: &[&str]) -> u8 {
     // Without a device (or with --fixture) the frame comes from the same
     // fixture the gallery and the tests use, so documentation needs no
     // hardware.
-    let fixture = flags.contains(&"--fixture") || open(serial).is_err();
-    let (mut session, state) = if fixture {
+    let fixture = flags.contains(&"--fixture") || open(target).is_err();
+    let (mut session, state, ext) = if fixture {
         let state = if screen == "settings" {
             dspi_tui::settings::demo::state()
         } else {
@@ -703,21 +917,12 @@ fn cmd_screenshot(serial: Option<&str>, args: &[&str], flags: &[&str]) -> u8 {
         let Some(session) = Session::new(Box::new(mock), state.caps.clone()) else {
             return exit::TRANSPORT;
         };
-        (session, state)
+        (session, state, None)
     } else {
-        let mut session = match connect(serial) {
-            Ok(s) => s,
-            Err(c) => return c,
-        };
-        let bulk = match session.snapshot() {
-            Ok(b) => b,
-            Err(e) => {
-                eprintln!("dspi: could not read the device state: {e}");
-                return exit::TRANSPORT;
-            }
-        };
-        let state = dspi_session::DeviceState::new(session.capabilities().clone(), bulk);
-        (session, state)
+        match target.connect(&prompt_pin) {
+            Ok(c) => (c.session, c.state, Some(c.ext)),
+            Err(e) => return fail_open(e),
+        }
     };
     let theme = dspi_tui::Theme::new(
         dspi_tui::theme::Palette::Calm,
@@ -734,6 +939,9 @@ fn cmd_screenshot(serial: Option<&str>, args: &[&str], flags: &[&str]) -> u8 {
         dspi_tui::perf::Performance::lite(),
         Box::new(dspi_tui::live::ConsoleScreens::new()),
     );
+    if let Some(ext) = &ext {
+        live.set_connection(target, ext);
+    }
     live.refresh_presets(&mut session);
     live.tick(&mut session, None);
     if !live.show(&mut session, screen) {
@@ -750,7 +958,7 @@ fn cmd_screenshot(serial: Option<&str>, args: &[&str], flags: &[&str]) -> u8 {
     exit::OK
 }
 
-fn cmd_tui(serial: Option<&str>, flags: &[&str], palette: dspi_tui::theme::Palette) -> u8 {
+fn cmd_tui(target: &Target, flags: &[&str], palette: dspi_tui::theme::Palette) -> u8 {
     let lite = flags.contains(&"--lite");
     let no_animation = flags.contains(&"--no-animation");
 
@@ -763,30 +971,23 @@ fn cmd_tui(serial: Option<&str>, flags: &[&str], palette: dspi_tui::theme::Palet
         let Some(mut session) = Session::new(Box::new(mock), state.caps.clone()) else {
             return exit::TRANSPORT;
         };
-        return run_tui(&mut session, state, lite, no_animation, palette);
+        return run_tui(&mut session, state, None, lite, no_animation, palette);
     }
 
-    let mut session = match connect(serial) {
-        Ok(s) => s,
-        Err(c) => return c,
+    // One bulk read seeds everything the packet covers, so the first frame
+    // shows the person's tuning rather than a flat line.
+    let mut c = match target.connect(&prompt_pin) {
+        Ok(c) => c,
+        Err(e) => return fail_open(e),
     };
-
-    // One chunked read seeds everything the bulk packet covers, so the first
-    // frame shows the person's tuning rather than a flat line.
-    let bulk = match session.snapshot() {
-        Ok(b) => b,
-        Err(e) => {
-            eprintln!("dspi: could not read the device state: {e}");
-            return exit::TRANSPORT;
-        }
-    };
-    let state = dspi_session::DeviceState::new(session.capabilities().clone(), bulk);
-    run_tui(&mut session, state, lite, no_animation, palette)
+    let link = Some((target, &c.ext));
+    run_tui(&mut c.session, c.state, link, lite, no_animation, palette)
 }
 
 fn run_tui(
     session: &mut Session,
     state: dspi_session::DeviceState,
+    connection: Option<(&Target, &ExtState)>,
     lite: bool,
     no_animation: bool,
     palette: dspi_tui::theme::Palette,
@@ -796,7 +997,9 @@ fn run_tui(
         dspi_tui::theme::ColorDepth::detect(),
         dspi_tui::perf::detect_glyphs(),
     );
-    let mut perf = if lite {
+    // Every meter read is a round trip over a hub or a SysEx exchange.
+    let slow = connection.is_some_and(|(t, _)| t.is_slow());
+    let mut perf = if lite || slow {
         dspi_tui::perf::Performance::lite()
     } else {
         dspi_tui::perf::Performance::detect()
@@ -804,12 +1007,15 @@ fn run_tui(
     if no_animation {
         perf.animate = false;
     }
-    let live = dspi_tui::live::Live::new(
+    let mut live = dspi_tui::live::Live::new(
         state,
         theme,
         perf,
         Box::new(dspi_tui::live::ConsoleScreens::new()),
     );
+    if let Some((target, ext)) = connection {
+        live.set_connection(target, ext);
+    }
 
     match dspi_tui::live::run(live, session) {
         Ok(()) => exit::OK,
@@ -825,8 +1031,8 @@ fn run_tui(
 /// This is the Console's Interrupt Monitor as a one-shot: turn the OS volume
 /// slider and watch `user_volume` arrive with source `UAC1`. With `--json`,
 /// one object per line.
-fn cmd_watch(serial: Option<&str>, json: bool) -> u8 {
-    let mut session = match connect(serial) {
+fn cmd_watch(target: &Target, json: bool) -> u8 {
+    let mut session = match connect(target) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -837,13 +1043,22 @@ fn cmd_watch(serial: Option<&str>, json: bool) -> u8 {
             return exit::TRANSPORT;
         }
     };
-    let notes = dspi_session::Notifications::start(source);
+    let notes = match dspi_session::Notifications::start(source) {
+        Ok(n) => n,
+        Err(e) => {
+            eprintln!("dspi: cannot start the notification reader: {e}");
+            return exit::TRANSPORT;
+        }
+    };
     if !json {
         println!(
             "watching {} (Ctrl-C to stop)",
-            session.capabilities().serial
+            printable(&session.capabilities().serial)
         );
     }
+    let (kind, own_session) = session
+        .with_transport(|t| Ok((t.caps().kind, t.session_id())))
+        .unwrap_or((dspi_transport::TransportCaps::USB.kind, None));
     let started = std::time::Instant::now();
     loop {
         if notes.is_disconnected() {
@@ -855,7 +1070,7 @@ fn cmd_watch(serial: Option<&str>, json: bool) -> u8 {
         };
         let t = started.elapsed().as_secs_f64();
         if json {
-            let (name, detail) = describe_event(&n.event);
+            let (name, detail) = describe_event(&n, kind, own_session);
             println!(
                 "{{\"t\":{t:.3},\"seq\":{},\"lost\":{},\"event\":\"{name}\",\"detail\":\"{}\"}}",
                 n.seq,
@@ -863,7 +1078,7 @@ fn cmd_watch(serial: Option<&str>, json: bool) -> u8 {
                 detail.replace('"', "'")
             );
         } else {
-            let (name, detail) = describe_event(&n.event);
+            let (name, detail) = describe_event(&n, kind, own_session);
             let lost = if n.lost { "  (packets lost)" } else { "" };
             println!("{t:8.3}  #{:<3}  {name:<18} {detail}{lost}", n.seq);
         }
@@ -872,9 +1087,17 @@ fn cmd_watch(serial: Option<&str>, json: bool) -> u8 {
 
 /// A one-line description of a notification, naming the bulk field it
 /// touched where it can.
-fn describe_event(e: &dspi_session::Event) -> (&'static str, String) {
+///
+/// The source's words depend on the link it came over (PLAN §1.2).
+fn describe_event(
+    n: &dspi_session::Notification,
+    kind: dspi_transport::TransportKind,
+    own_session: Option<u16>,
+) -> (&'static str, String) {
     use dspi_session::Event;
-    match e {
+    use dspi_tui::shell::connect::attribution;
+    let says = |source: dspi_session::Source| attribution(kind, own_session, source, n.origin);
+    match &n.event {
         Event::Idle => ("idle", String::new()),
         Event::MasterVolume(db) => ("master_volume", format!("{db:.1} dB (legacy)")),
         Event::ParamChanged {
@@ -896,11 +1119,11 @@ fn describe_event(e: &dspi_session::Event) -> (&'static str, String) {
                 format!(
                     "{section}+{} = {value} [{}]",
                     *offset as usize - section_offset(section),
-                    source.describe()
+                    says(*source)
                 ),
             )
         }
-        Event::BulkInvalidated { source } => ("bulk_invalidated", source.describe().to_string()),
+        Event::BulkInvalidated { source } => ("bulk_invalidated", says(*source).to_string()),
         Event::PresetLoaded { slot } => ("preset_loaded", format!("slot {}", slot + 1)),
         Event::InputFormat { channels } => ("input_format", format!("{channels} channels")),
         Event::SiggenState {
@@ -950,7 +1173,7 @@ fn describe_event(e: &dspi_session::Event) -> (&'static str, String) {
                 "slot {slot} {} level {:.1}% [{}]",
                 if *state != 0 { "on" } else { "off" },
                 *level_q8 as f32 / 256.0,
-                source.describe()
+                says(*source)
             ),
         ),
         Event::Unknown { id, bytes } => ("unknown", format!("0x{id:02X} {}", hex_string(bytes))),
@@ -966,7 +1189,7 @@ fn section_offset(name: &str) -> usize {
 }
 
 /// Search the AutoEQ database, or apply a profile.
-fn cmd_autoeq(serial: Option<&str>, args: &[&str], flags: &[&str]) -> u8 {
+fn cmd_autoeq(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
     use dspi_session::autoeq;
 
     let db = match autoeq::load() {
@@ -1013,7 +1236,7 @@ fn cmd_autoeq(serial: Option<&str>, args: &[&str], flags: &[&str]) -> u8 {
                 return exit::USAGE;
             };
 
-            let mut session = match connect(serial) {
+            let mut session = match connect(target) {
                 Ok(s) => s,
                 Err(c) => return c,
             };
@@ -1148,7 +1371,7 @@ fn cmd_autoeq(serial: Option<&str>, args: &[&str], flags: &[&str]) -> u8 {
 /// change the device.
 /// The fork's extension channel (REQ_EXTENSION 0x00). Firmware without it
 /// stalls every request, which is reported as "not supported", not a crash.
-fn cmd_ext(serial: Option<&str>, args: &[&str], json: bool) -> u8 {
+fn cmd_ext(target: &Target, args: &[&str], json: bool) -> u8 {
     use dspi_session::ext::{self, ExtError, VregOp};
 
     // Parse before touching the device, so a typo costs no connect.
@@ -1162,11 +1385,17 @@ fn cmd_ext(serial: Option<&str>, args: &[&str], json: bool) -> u8 {
     let parsed: Result<Do, ExtError> = match args {
         [] | ["list"] => Ok(Do::List),
         ["xfeed-map"] => Ok(Do::MapRead),
-        ["xfeed-map", pairs @ ..] => ext::PairMap::parse(pairs).map(Do::MapWrite),
+        ["xfeed-map", pairs @ ..] => ext::PairMap::parse(pairs)
+            .map(Do::MapWrite)
+            .map_err(ExtError::from),
         ["vreg"] => Ok(Do::Vreg),
         ["vreg", "set", "default"] => Ok(Do::VregOp(VregOp::Set(0))),
-        ["vreg", "set", v] => ext::parse_vreg(v).map(|c| Do::VregOp(VregOp::Set(c))),
-        ["vreg", "trial", v] => ext::parse_vreg(v).map(|c| Do::VregOp(VregOp::Trial(c))),
+        ["vreg", "set", v] => ext::parse_vreg(v)
+            .map(|c| Do::VregOp(VregOp::Set(c)))
+            .map_err(ExtError::from),
+        ["vreg", "trial", v] => ext::parse_vreg(v)
+            .map(|c| Do::VregOp(VregOp::Trial(c)))
+            .map_err(ExtError::from),
         ["vreg", "trial-end"] => Ok(Do::VregOp(VregOp::TrialEnd)),
         ["vreg", "auto", "on"] => Ok(Do::VregOp(VregOp::Auto(true))),
         ["vreg", "auto", "off"] => Ok(Do::VregOp(VregOp::Auto(false))),
@@ -1184,7 +1413,7 @@ fn cmd_ext(serial: Option<&str>, args: &[&str], json: bool) -> u8 {
         }
     };
 
-    let mut session = match connect(serial) {
+    let mut session = match connect(target) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -1273,11 +1502,11 @@ fn map_text(m: &dspi_session::ext::PairMap, json: bool) -> String {
     }
 }
 
-fn cmd_raw(serial: Option<&str>, args: &[&str], json: bool) -> u8 {
+fn cmd_raw(target: &Target, args: &[&str], json: bool) -> u8 {
     match args.first().copied() {
-        Some("out") => raw_out(serial, &args[1..], json),
-        Some("war") => raw_war(serial, &args[1..], json),
-        _ => raw_in(serial, args, json),
+        Some("out") => raw_out(target, &args[1..], json),
+        Some("war") => raw_war(target, &args[1..], json),
+        _ => raw_in(target, args, json),
     }
 }
 
@@ -1287,7 +1516,7 @@ fn parse_num(s: &str) -> Option<u32> {
         .or_else(|| s.parse().ok())
 }
 
-fn raw_in(serial: Option<&str>, args: &[&str], json: bool) -> u8 {
+fn raw_in(target: &Target, args: &[&str], json: bool) -> u8 {
     let (Some(op_s), Some(len_s)) = (args.first(), args.get(1)) else {
         eprintln!("dspi: raw needs an opcode and a length, e.g. `dspi raw 0x87 32`");
         eprintln!("      an optional third argument is wValue.");
@@ -1299,9 +1528,9 @@ fn raw_in(serial: Option<&str>, args: &[&str], json: bool) -> u8 {
     };
     let value = args.get(2).and_then(|v| parse_num(v)).unwrap_or(0) as u16;
 
-    let mut t = match open(serial) {
+    let mut t = match open(target) {
         Ok(t) => t,
-        Err(e) => return fail(e),
+        Err(e) => return fail_open(e),
     };
 
     match t.control_in(opcode as u8, value, len as u16) {
@@ -1343,7 +1572,7 @@ fn raw_in(serial: Option<&str>, args: &[&str], json: bool) -> u8 {
 }
 
 /// `dspi raw out <op> <wValue> <hex bytes...>`
-fn raw_out(serial: Option<&str>, args: &[&str], json: bool) -> u8 {
+fn raw_out(target: &Target, args: &[&str], json: bool) -> u8 {
     let (Some(op_s), Some(val_s)) = (args.first(), args.get(1)) else {
         eprintln!("dspi: raw out needs an opcode, a wValue and the payload,");
         eprintln!("      e.g. `dspi raw out 0x42 0 08 03 01 00`");
@@ -1361,9 +1590,9 @@ fn raw_out(serial: Option<&str>, args: &[&str], json: bool) -> u8 {
         }
     };
 
-    let mut t = match open(serial) {
+    let mut t = match open(target) {
         Ok(t) => t,
-        Err(e) => return fail(e),
+        Err(e) => return fail_open(e),
     };
 
     match t.control_out(opcode as u8, value as u16, &payload) {
@@ -1395,16 +1624,16 @@ fn raw_out(serial: Option<&str>, args: &[&str], json: bool) -> u8 {
 /// Write-as-read: a mutation issued as a one-byte IN with the parameters in
 /// `wValue`. Several of the pin and clock setters are only reachable this way,
 /// and the byte that comes back is the status code, not data.
-fn raw_war(serial: Option<&str>, args: &[&str], json: bool) -> u8 {
+fn raw_war(target: &Target, args: &[&str], json: bool) -> u8 {
     let Some(opcode) = args.first().and_then(|s| parse_num(s)) else {
         eprintln!("dspi: raw war needs an opcode and a wValue, e.g. `dspi raw war 0xC2 0x010E`");
         return exit::USAGE;
     };
     let value = args.get(1).and_then(|v| parse_num(v)).unwrap_or(0) as u16;
 
-    let mut t = match open(serial) {
+    let mut t = match open(target) {
         Ok(t) => t,
-        Err(e) => return fail(e),
+        Err(e) => return fail_open(e),
     };
 
     match t.control_in(opcode as u8, value, 1) {
@@ -1501,9 +1730,9 @@ fn cmd_completions(args: &[&str]) -> u8 {
 /// Parsing needs the device's channel names, so this connects first. That costs
 /// a little latency on a bad command, but it means `dspi ch.delay i2s.1.l 5`
 /// works with the names the device actually reports.
-fn cmd_run(serial: Option<&str>, flags: &[&str], json: bool) -> u8 {
+fn cmd_run(target: &Target, flags: &[&str], json: bool) -> u8 {
     let args = positional_all(flags);
-    let mut s = match connect(serial) {
+    let mut s = match connect(target) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -1537,7 +1766,7 @@ fn force(flags: &[&str]) -> bool {
 /// The device is opened once for the whole script rather than once per line,
 /// which is the point: a hundred `eq` lines against a fresh connection each
 /// time would spend all of its time probing.
-fn cmd_script(serial: Option<&str>, path: Option<&str>, flags: &[&str], json: bool) -> u8 {
+fn cmd_script(target: &Target, path: Option<&str>, flags: &[&str], json: bool) -> u8 {
     let text = match path {
         Some(p) => match std::fs::read_to_string(p) {
             Ok(t) => t,
@@ -1561,7 +1790,7 @@ fn cmd_script(serial: Option<&str>, path: Option<&str>, flags: &[&str], json: bo
         return exit::OK;
     }
 
-    let mut s = match connect(serial) {
+    let mut s = match connect(target) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -1945,13 +2174,8 @@ fn positional<'a>(flags: &'a [&'a str]) -> Vec<&'a str> {
     out
 }
 
-fn connect(serial: Option<&str>) -> Result<Session, u8> {
-    let mut t = open(serial).map_err(fail)?;
-    let caps = probe(&mut t).map_err(fail)?;
-    Session::new(Box::new(t), caps).ok_or_else(|| {
-        eprintln!("dspi: the device reported an impossible channel map");
-        exit::TRANSPORT
-    })
+fn connect(target: &Target) -> Result<Session, u8> {
+    target.open_session(&prompt_pin).map_err(fail_open)
 }
 
 /// Distinguish "you typed something wrong" from "the device is unhappy".
@@ -1983,13 +2207,31 @@ fn show(kind: Kind, v: &Value) -> String {
     {
         return (*name).to_string();
     }
-    v.display(kind.unit())
+    // A channel name, or any other text, is the device's to choose.
+    printable(&v.display(kind.unit()))
 }
 
-fn open(serial: Option<&str>) -> dspi_transport::Result<UsbTransport> {
-    match serial {
-        Some(s) => UsbTransport::open_serial(s),
-        None => UsbTransport::open_only(),
+fn open(target: &Target) -> Result<Box<dyn Transport>, OpenError> {
+    target.open(&prompt_pin)
+}
+
+/// Report a failed open, with the exit code a script branches on.
+fn fail_open(e: OpenError) -> u8 {
+    match e {
+        OpenError::Transport(t) => fail(t),
+        // A hub without the device is a device that is not there; everything
+        // else about opening is a transport failure.
+        other => {
+            eprintln!("dspi: {other}");
+            if matches!(
+                other,
+                OpenError::NeedsPin { .. } | OpenError::PinRefused { .. }
+            ) {
+                exit::USAGE
+            } else {
+                exit::TRANSPORT
+            }
+        }
     }
 }
 
@@ -1998,6 +2240,156 @@ fn fail(e: TransportError) -> u8 {
     match e {
         TransportError::NotFound | TransportError::SerialNotFound(_) => exit::NO_DEVICE,
         _ => exit::TRANSPORT,
+    }
+}
+
+#[cfg(test)]
+mod tests_wp_r1 {
+    use super::*;
+
+    fn parsed(flags: &[&'static str]) -> (Target, Vec<&'static str>) {
+        parse_target(flags).unwrap()
+    }
+
+    #[test]
+    fn wp_r1_no_flags_is_any_usb_device() {
+        assert_eq!(parsed(&["dump"]).0, Target::Usb { serial: None });
+        assert_eq!(parsed(&["dump"]).1, vec!["dump"]);
+    }
+
+    #[test]
+    fn wp_r1_the_device_flag_comes_off_wherever_it_stands() {
+        for flags in [&["--device", "X", "dump"][..], &["dump", "--device", "X"]] {
+            let (t, rest) = parsed(flags);
+            assert_eq!(
+                t,
+                Target::Usb {
+                    serial: Some("X".into())
+                }
+            );
+            assert_eq!(rest, vec!["dump"]);
+        }
+    }
+
+    #[test]
+    fn wp_r1_demo_before_a_command_leaves_the_command() {
+        let (t, rest) = parsed(&["--demo", "get", "vol.user", "--json"]);
+        assert_eq!(t, Target::Demo);
+        assert_eq!(rest, vec!["get", "vol.user", "--json"]);
+    }
+
+    #[test]
+    fn wp_r1_midi_takes_a_port_only_when_the_next_word_can_be_one() {
+        let midi = |p: Option<&str>| Target::Midi {
+            port: p.map(str::to_owned),
+        };
+        assert_eq!(parsed(&["--midi"]).0, midi(None));
+        assert_eq!(parsed(&["--midi", "--json"]).0, midi(None));
+        let (t, rest) = parsed(&["--midi", "dump"]);
+        assert_eq!((t, rest), (midi(None), vec!["dump"]));
+        let (t, rest) = parsed(&["--midi", "vol.user", "-18"]);
+        assert_eq!((t, rest), (midi(None), vec!["vol.user", "-18"]));
+        let (t, rest) = parsed(&["--midi", "Bench", "dump"]);
+        assert_eq!((t, rest), (midi(Some("Bench")), vec!["dump"]));
+        assert_eq!(parsed(&["--midi=dump", "dump"]).0, midi(Some("dump")));
+    }
+
+    #[test]
+    fn wp_r1_link_reads_host_port_device_and_pin() {
+        let (t, rest) = parsed(&["--link", "hub:99", "--device", "X", "--pin", "1", "dump"]);
+        assert_eq!(rest, vec!["dump"]);
+        let Target::Link(l) = t else {
+            panic!("a hub target");
+        };
+        assert_eq!((l.host.as_str(), l.port), ("hub", 99));
+        assert_eq!(l.device.as_deref(), Some("X"));
+        assert_eq!(l.pin.as_deref(), Some("1"));
+        let Target::Link(l) = parsed(&["--link=[fe80::1]"]).0 else {
+            panic!("a hub target");
+        };
+        assert_eq!(l.host, "fe80::1");
+        assert_eq!(l.port, dspi_link::DEFAULT_PORT);
+    }
+
+    #[test]
+    fn wp_r1_contradictions_and_missing_values_are_refused() {
+        for flags in [
+            &["--demo", "--midi"][..],
+            &["--demo", "--link", "hub"],
+            &["--midi", "--link", "hub"],
+            &["--pin", "1"],
+            &["--device", "X", "--demo"],
+            &["--device", "X", "--midi"],
+            &["--link"],
+            &["--device"],
+            &["--link", "not an address"],
+        ] {
+            assert!(parse_target(flags).is_err(), "{flags:?}");
+        }
+    }
+
+    #[test]
+    fn wp_r1_unrelated_flags_keep_their_order() {
+        let (_, rest) = parsed(&["--theme", "calm", "--demo", "--lite"]);
+        assert_eq!(rest, vec!["--theme", "calm", "--lite"]);
+        let (_, rest) = parsed(&["--theme=amber"]);
+        assert_eq!(rest, vec!["--theme=amber"]);
+    }
+
+    #[test]
+    fn wp_r1_a_pin_comes_from_the_flag_stdin_or_the_environment() {
+        let pin = |flags: &[&'static str], env: Option<&str>, stdin: Option<&str>| {
+            let target = parsed(flags).0;
+            resolve_pin(target, env.map(str::to_owned), || stdin.map(str::to_owned)).map(|t| {
+                let Target::Link(l) = t else {
+                    panic!("a hub target");
+                };
+                l.pin
+            })
+        };
+        let hub = ["--link", "hub"];
+        assert_eq!(pin(&hub, None, None), Ok(None));
+        assert_eq!(pin(&hub, Some("12"), None), Ok(Some("12".into())));
+        assert_eq!(pin(&hub, Some("  "), None), Ok(None));
+        let flag = ["--link", "hub", "--pin", "34"];
+        assert_eq!(pin(&flag, Some("12"), None), Ok(Some("34".into())));
+        let dash = ["--link", "hub", "--pin", "-"];
+        assert_eq!(pin(&dash, Some("12"), Some("56\n")), Ok(Some("56".into())));
+        assert!(pin(&dash, Some("12"), None).is_err());
+        assert!(pin(&dash, None, Some("\n")).is_err());
+        // The environment means nothing off a hub.
+        let usb = parsed(&["dump"]).0;
+        assert_eq!(
+            resolve_pin(usb.clone(), Some("12".into()), || None),
+            Ok(usb)
+        );
+    }
+
+    #[test]
+    fn wp_r1_every_shared_verb_is_a_command_word() {
+        for (verb, _) in dspi_cmd::VERBS {
+            assert!(is_command_word(verb), "{verb}");
+        }
+        assert!(is_command_word("watch"));
+        assert!(!is_command_word("Bench"));
+    }
+
+    #[test]
+    fn wp_r1_a_command_runs_on_the_demo_device() {
+        let target = Target::Demo;
+        assert_eq!(cmd_dump(&target, true), exit::OK);
+        assert_eq!(cmd_run(&target, &["get", "vol.user"], true), exit::OK);
+    }
+
+    #[test]
+    fn wp_r1_a_refused_or_missing_pin_is_a_usage_failure() {
+        let e = OpenError::NeedsPin {
+            hub: "Hub".into(),
+            pin_source: "window".into(),
+        };
+        assert_eq!(fail_open(e), exit::USAGE);
+        let missing = OpenError::Transport(TransportError::NotFound);
+        assert_eq!(fail_open(missing), exit::NO_DEVICE);
     }
 }
 

@@ -1,6 +1,7 @@
 #include "CsController.h"
 #include "DSPiBridge.h"
 
+#include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
 
@@ -110,8 +111,12 @@ QVariantMap CsController::call(const QByteArray &json) {
 }
 
 QVariantMap CsController::apply(const QVariantMap &op) {
+    m_lastError.clear();
     if (!m_bridge->connected()) return { { "ok", false }, { "status", 0xFF } };
     QVariantMap r = call(QJsonDocument(QJsonObject::fromVariantMap(op)).toJson(QJsonDocument::Compact));
+    // The reason a reply without a device status gives; statusMessage() shows it
+    m_lastError = r.value("error").toString();
+    if (!m_lastError.isEmpty()) qDebug().noquote() << "Control surfaces:" << op.value("op").toString() << m_lastError;
     reload();
     const QString kind = op.value("op").toString();
     if (kind == "macroFire" && r.value("ok").toBool()) {
@@ -148,6 +153,8 @@ void CsController::onNotified(bool aux, bool learn) {
 }
 
 QString CsController::statusMessage(int code) const {
+    // 0xFF is "no device status": the last apply()'s own reason, when it gave one
+    if (code == 0xFF && !m_lastError.isEmpty()) return m_lastError;
     switch (code) {
     case 0x00: return QString();
     case 0x01: return "A pin is out of range, or an encoder's two pins are equal";

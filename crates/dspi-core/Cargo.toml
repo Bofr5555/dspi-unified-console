@@ -1,0 +1,80 @@
+[package]
+name = "dspi-core"
+description = "The DSPi embedder API: one object for a GUI or a language binding, over dspi-session"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+dspi-proto.workspace = true
+dspi-transport.workspace = true
+# Without the Terminal's parts: the mobile libraries (WP F1) carry neither the
+# command grammar nor the bundled AutoEQ database.
+dspi-session = { path = "../dspi-session", default-features = false }
+dspi-link = { workspace = true, optional = true }
+thiserror.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# Bootloader enumeration (WP C11).
+nusb = "0.2"
+# -- WP C0 --
+# -- WP C1 --
+# -- WP C1b --
+# -- WP C2 --
+# -- WP C3 --
+# -- WP C4 --
+# -- WP C5 --
+# -- WP C6 --
+# -- WP C7 --
+# -- WP C8 --
+# -- WP C9 --
+# -- WP C10 --
+# -- WP C11 --
+# -- WP C12 --
+# -- WP C13 --
+# -- WP C14 --
+# -- WP C15 --
+# -- WP F1 --
+# The Kotlin and Swift binding's derives and exports (feature `uniffi`).
+uniffi = { workspace = true, optional = true }
+
+[features]
+default = []
+# DSPi Link sessions (WP C15, over dspi-transport's Link adapter, WP T5).
+link = ["dep:dspi-link", "dspi-transport/link"]
+# Desktop MIDI ports through midir (WP T3).
+midir = ["dspi-transport/midir"]
+# UniFFI derives and exports, for crates/dspi-ffi (WP F1).
+uniffi = ["dep:uniffi"]
+
+[dev-dependencies]
+proptest = "1"
+# -- WP C0 --
+# -- WP C1 --
+# -- WP C1b --
+# -- WP C2 --
+# -- WP C3 --
+# -- WP C4 --
+# -- WP C5 --
+# -- WP C6 --
+# -- WP C7 --
+# -- WP C8 --
+# -- WP C9 --
+# -- WP C10 --
+# -- WP C11 --
+# -- WP C12 --
+# -- WP C13 --
+# -- WP C14 --
+# -- WP C15 --
+# The fake hub, for the Link session and fault-injection tests.
+dspi-link = { path = "../dspi-link", features = ["fake-hub"] }
+# -- WP F1 --
+
+[target.'cfg(unix)'.dependencies]
+# -- WP C11 --
+# statvfs: the free-space check before a firmware image is written to the
+# bootloader drive (firmware.rs). Already in the lock (alsa, errno, ...).
+libc = "0.2"
