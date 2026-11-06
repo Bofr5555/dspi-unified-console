@@ -394,8 +394,9 @@ impl DspiCore {
     /// 3. probe whatever the wire format (`probe_any_with_image`, WP S2): one
     ///    bulk read serves the probe and the mirror; `wire` is its read mode;
     /// 4. probe the extension channel (`ExtState::probe`, WP S3);
-    /// 5. build the [`Session`] and decode the image into a fresh mirror
-    ///    ([`state::decode_bulk`], WP C0). An image of another wire format is
+    /// 5. build the [`Session`]; read `GET_PLATFORM` into a fresh mirror
+    ///    ([`state::apply_platform`]: platform, firmware version) and decode
+    ///    the image into it ([`state::decode_bulk`], WP C0). An image of another wire format is
     ///    decoded read-only: `bulk_valid` false, `compat` too old / too new;
     /// 6. install the connection (with a new echo filter, `fresh_image`
     ///    set) and the mirror, stop a displaced connection's RTA worker and
@@ -471,7 +472,12 @@ impl DspiCore {
             }
         };
 
+        // The firmware identity is not in the image: GET_PLATFORM (the probe
+        // keeps only its typed version, not the reply) fills it, before the
+        // decode, as `fetch_all` does, so the mirror is complete and
+        // `fresh_image` may let `fetch_all` skip both reads.
         let mut mirror = state::default_state();
+        let platform_known = device::read_platform_into(&mut *transport, &mut mirror)?;
         state::decode_bulk(image.packet.as_bytes(), &mut mirror).map_err(|e| {
             DspiError::Transfer {
                 msg: format!("the bulk image could not be decoded: {e}"),
@@ -499,8 +505,9 @@ impl DspiCore {
         conn.notifications = notifications;
         conn.wire = Some(image.read);
         conn.ext = ext;
-
-        conn.fresh_image = true;
+        // Without the platform reply the mirror lacks the firmware identity:
+        // let `fetch_all` read everything again.
+        conn.fresh_image = platform_known;
 
         self.install(conn, mirror, serial, vid);
         Ok(())
