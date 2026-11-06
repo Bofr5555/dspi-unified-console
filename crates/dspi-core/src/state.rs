@@ -665,9 +665,14 @@ fn write_name(mut w: Wr<'_>, name: &str) {
 
 /// `spdif_inputs_enabled` from `spdif_rx_enabled_ext_p1`: bit 0 (input 1)
 /// is always set; bits 1-3 are the +1-encoded mask of inputs 2-4 (0 =
-/// absent, read as "only input 1").
+/// absent, read as "only input 1"). Bits 3-7 of a corrupt byte are
+/// ignored.
+///
+/// So bit 0 of `DspState.spdif_inputs_enabled` is always set after a
+/// decode, and a setter must keep it set: a state holding 0x02 encodes the
+/// mask of inputs 2-4 only and re-decodes as 0x03.
 fn parse_spdif_enabled(ext_p1: u8) -> u8 {
-    0x01 | decode_p1(ext_p1).map_or(0, |m| m.wrapping_shl(1))
+    0x01 | decode_p1(ext_p1).map_or(0, |m| (m & 0x07).wrapping_shl(1))
 }
 
 // ── The codec ─────────────────────────────────────────────────────────
@@ -820,6 +825,8 @@ pub fn decode_bulk(image: &[u8], state: &mut DspState) -> Result<(), WireError> 
         s.i2s_input_channels = c.u8(ic::I2S_INPUT_CHANNELS);
     }
     s.i2s_clock_mode = c.u8(ic::I2S_CLOCK_MODE).min(1);
+    // 0 on the wire is "unset", 0xFF in the state: the firmware's own
+    // mapping (bulk_params.c:252), not a host convention. Keep it.
     s.adat_input_pin = match c.u8(ic::ADAT_INPUT_PIN) {
         0 => 0xFF,
         pin => pin,
@@ -947,6 +954,10 @@ fn encode_params<I: Copy + Into<usize>>(mut sec: Wr<'_>, map: &[(I, usize, Kind)
 /// zero-padded first. Vectors shorter than their full length leave the
 /// image's bytes for the missing entries alone. The header's platform and
 /// channel counts are the image's, never the state's. Never fails.
+///
+/// `spdif_inputs_enabled` bit 0 (S/PDIF input 1) is not on the wire: only
+/// bits 1-3 are encoded, and decoding always sets bit 0. A setter must
+/// keep it set (0x02 would come back as 0x03).
 pub fn encode_bulk(state: &DspState) -> Vec<u8> {
     let s = state;
     let mut img = vec![0u8; BULK_SIZE];
@@ -1065,6 +1076,8 @@ pub fn encode_bulk(state: &DspState) -> Vec<u8> {
             w.u8(ic::SPDIF_RX_ENABLED_EXT_P1, encode_p1(Some(mask)));
         }
         w.u8(ic::I2S_CLOCK_MODE, s.i2s_clock_mode);
+        // 0xFF (unset) goes out as 0, the firmware's mapping
+        // (bulk_params.c:252).
         let adat_pin = if s.adat_input_pin == 0xFF {
             0
         } else {
@@ -1223,7 +1236,7 @@ mod tests_wp_c0 {
     }
 
     #[test]
-    fn the_capture_decodes_to_the_fixture() {
+    fn wp_c0_the_capture_decodes_to_the_fixture() {
         assert_matches_fixture(&capture_state(), EXPECTED_V32);
     }
 
@@ -1241,7 +1254,7 @@ mod tests_wp_c0 {
     /// decode the result, so a field that is decoded but not encoded would
     /// snap back to the stale value in `bulk_raw`.
     #[test]
-    fn every_decoded_field_is_encoded() {
+    fn wp_c0_every_decoded_field_is_encoded() {
         fn image(seed: u32) -> Vec<u8> {
             // Bytes 0x01..0x3F keep every f32 finite and every name ASCII.
             let mut x = seed;
@@ -1262,11 +1275,6 @@ mod tests_wp_c0 {
         let a = image(1);
         let mut b = image(2);
         b[..g::OFF_GLOBAL].copy_from_slice(&a[..g::OFF_GLOBAL]);
-        // The S/PDIF 2-4 mask decodes only 3 of its bits; the rest of a
-        // random byte cannot be written back from the state (as in the old
-        // core's test).
-        let ext = g::OFF_INPUT_CONFIG + ic::SPDIF_RX_ENABLED_EXT_P1;
-        b[ext] = a[ext];
         let mut s1 = default_state();
         decode_bulk(&a, &mut s1).unwrap();
         s1.bulk_raw = b;

@@ -34,7 +34,7 @@ pub const FIRMWARE_BANDS_PER_CHANNEL: usize = dspi_proto::generated::wire::WIRE_
 /// Crossover bands per channel (`DspState.xover` rows).
 pub const MAX_XOVER_BANDS: usize = dspi_proto::generated::wire::WIRE_MAX_XOVER_BANDS as usize;
 /// Preset slots (`DspState.preset_names`).
-pub const MAX_PRESETS: usize = 10;
+pub const MAX_PRESETS: usize = dspi_proto::generated::status::PRESET_SLOTS as usize;
 /// Channel and preset name buffer, bytes, NUL included: names hold at most
 /// 31 bytes of UTF-8.
 pub const CHANNEL_NAME_LEN: usize = dspi_proto::generated::wire::WIRE_NAME_LEN as usize;
