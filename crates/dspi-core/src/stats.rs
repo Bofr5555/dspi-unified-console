@@ -39,9 +39,11 @@ const CAPS_HEADER: u16 = 0xFFFF;
 /// `REQ_GET_STATUS` sub-query 9: the meter block (`fetch_status`), not a
 /// `u32` counter.
 const STATUS_METERS: u16 = 9;
-/// `REQ_GET_STATUS` sub-queries at or above this are debug-build hooks
-/// (loop profiler, some of which change state); `fetch_stat` refuses them.
-const STAT_LIMIT: u16 = 0x100;
+/// `LOOP_PROF_STATUS_BASE` (loop_prof.h): `REQ_GET_STATUS` sub-queries from
+/// here up are the loop profiler's in debug builds. Those reads return a
+/// value and clear it, and higher ones set the test pacing, so querying them
+/// changes state; `fetch_stat` refuses them.
+const LOOP_PROF_STATUS_BASE: u16 = 64;
 /// S/PDIF receivers a device can have (`SPDIF_RX_NUM_INPUTS`).
 const SPDIF_RX_MAX: u8 = 4;
 /// IEC 60958 channel status, bytes.
@@ -363,11 +365,11 @@ impl DspiCore {
     /// firmware does not know answer 0.
     ///
     /// Errors: [`DspiError::InvalidArgument`] for sub-query 9 (the meter
-    /// block, read by `fetch_status`) and for 0x100 and above (debug-build
-    /// hooks), nothing sent; [`DspiError::Disconnected`]; a transfer failure
+    /// block, read by `fetch_status`) and for 64 and above (the debug-build
+    /// loop profiler, whose reads change state), nothing sent; [`DspiError::Disconnected`]; a transfer failure
     /// or short reply as [`DspiError::Transfer`].
     pub fn fetch_stat(&self, which: u16) -> Result<u32> {
-        if which == STATUS_METERS || which >= STAT_LIMIT {
+        if which == STATUS_METERS || which >= LOOP_PROF_STATUS_BASE {
             return Err(DspiError::InvalidArgument {
                 msg: format!("status sub-query {which} is not a counter"),
             });
@@ -396,17 +398,18 @@ impl DspiCore {
     }
 
     /// Start the buffer watermarks again from now
-    /// (`REQ_RESET_BUFFER_STATS`). Changes no setting, but is a device
-    /// command, so it goes through the writable connection.
+    /// (`REQ_RESET_BUFFER_STATS`). Diagnostics housekeeping that changes no
+    /// setting and nothing in the bulk image, so like `clear_clips` it is
+    /// allowed on a read-only connection (PLAN §1.2).
     ///
-    /// Errors: [`DspiError::ReadOnly`] on a read-only connection;
-    /// [`DspiError::Refused`] for a status byte other than ACK (1);
+    /// Errors: [`DspiError::Refused`] for a status byte other than ACK (1);
     /// [`DspiError::Disconnected`] or [`DspiError::Transfer`] otherwise.
     pub fn reset_buffer_stats(&self) -> Result<()> {
-        let mut guard = self.lock();
-        let mut w = guard.writable_conn()?;
-        let status = w.set_as_read(op::REQ_RESET_BUFFER_STATS, RESET_WATERMARKS)?;
-        acked(&[status])
+        let reply = self
+            .lock()
+            .conn()?
+            .get(op::REQ_RESET_BUFFER_STATS, RESET_WATERMARKS, 1)?;
+        acked(&reply)
     }
 
     /// The S/PDIF receiver: lock state (0 inactive, 1 acquiring, 2 locked,
@@ -792,7 +795,9 @@ mod tests_wp_c10 {
         assert_eq!(core.fetch_stat(STAT_SAMPLE_RATE).unwrap(), 48_000);
         assert_eq!(core.fetch_stat(STAT_TEMPERATURE).unwrap(), 3_500);
         assert_eq!(core.fetch_stat(STAT_PDM_RING_OVERRUNS).unwrap(), 0);
-        for bad in [9, 0x100, 0x200, u16::MAX] {
+        // 63 is the last plain sub-query; 64 starts the read-and-reset profiler.
+        assert_eq!(core.fetch_stat(LOOP_PROF_STATUS_BASE - 1).unwrap(), 0);
+        for bad in [9, LOOP_PROF_STATUS_BASE, 96, 0x100, 0x200, u16::MAX] {
             assert!(matches!(
                 core.fetch_stat(bad),
                 Err(DspiError::InvalidArgument { .. })
@@ -868,19 +873,22 @@ mod tests_wp_c10 {
     }
 
     #[test]
-    fn wp_c10_reset_buffer_stats_is_a_write() {
+    fn wp_c10_reset_buffer_stats_works_on_a_read_only_connection() {
+        // Bare attach: not writable (the §1.2 exception, like clear_clips).
         let t = MockTransport::new().data(op::REQ_RESET_BUFFER_STATS, vec![1u8]);
         let (core, log) = core_on(t, false);
-        assert_eq!(core.reset_buffer_stats(), Err(DspiError::ReadOnly));
-        assert!(log.lock().unwrap().is_empty());
-
-        let t = MockTransport::new().data(op::REQ_RESET_BUFFER_STATS, vec![1u8]);
-        let (core, log) = core_on(t, true);
+        assert!(matches!(
+            core.lock().writable_conn(),
+            Err(DspiError::ReadOnly)
+        ));
         core.reset_buffer_stats().unwrap();
-        assert_eq!(sent(&log, op::REQ_RESET_BUFFER_STATS)[0].1, 1);
+        assert_eq!(
+            sent(&log, op::REQ_RESET_BUFFER_STATS),
+            [(Direction::In, RESET_WATERMARKS, vec![])]
+        );
 
         let t = MockTransport::new().data(op::REQ_RESET_BUFFER_STATS, vec![0u8]);
-        let (core, _) = core_on(t, true);
+        let (core, _) = core_on(t, false);
         assert_eq!(
             core.reset_buffer_stats(),
             Err(DspiError::Refused { status: 0 })
