@@ -8,6 +8,12 @@
 //! bulk read may come from the hub's snapshot. Notifications carry the
 //! writer's session id as their origin.
 //!
+//! Busy window (spec 8.1): BUSY, BULK_LOCKED and CRC_ERROR are retried here,
+//! up to [`BUSY_RETRIES`] times [`BUSY_BACKOFF`] apart, then reported as
+//! [`TransportError::TimedOut`]. CRC_ERROR guarantees the command did not run,
+//! and BUSY/BULK_LOCKED are refused before it does, so even a SET is safe to
+//! repeat.
+//!
 //! Time bounds (§1.7): every call goes through `dspi-link`, which bounds a
 //! command by its own timeouts (10 s, 15 s for bulk) and answers NO_DEVICE
 //! once the session is closed, so a hub cannot block a caller forever.
@@ -24,12 +30,13 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
+use dspi_link::frames::CmdResponse;
 use dspi_link::{Dir, LinkClient, LinkError, NotifyItem, status};
 use dspi_proto::generated::opcodes as op;
 
 use crate::{
-    Attributed, DeviceDescriptor, NotificationSource, Result, Transport, TransportCaps,
-    TransportError,
+    Attributed, BUSY_BACKOFF, BUSY_RETRIES, DeviceDescriptor, NotificationSource, Result,
+    Transport, TransportCaps, TransportError,
 };
 
 /// The hub capability that offers `device.snapshot` (spec 7.5).
@@ -38,6 +45,17 @@ const CAP_SNAPSHOT: &str = "snapshot";
 const CAP_LOCK: &str = "lock";
 /// Longest lock a client may ask for (spec 7.7; `dspi-link` clamps too).
 const LOCK_MAX_MS: u32 = 60_000;
+/// A snapshot older than this is not used for the first bulk read; the
+/// device is read instead.
+const SNAPSHOT_MAX_AGE_MS: u64 = 5_000;
+/// What [`Transport::max_transfer`] reports when the hub's `max_payload` does
+/// not fit a `usize` (spec 7.2's default).
+const MAX_PAYLOAD_DEFAULT: usize = 8192;
+/// Bounds for the hub's `max_payload`. Spec 7.2 has hubs advertise at least
+/// 8192; a 0 or tiny value would make a chunked reader spin, and a vendor
+/// request carries at most `u16::MAX` bytes.
+const MAX_PAYLOAD_MIN: usize = 64;
+const MAX_PAYLOAD_MAX: usize = 65_535;
 
 /// Map a Link CMD status onto a transport error (`None` for OK).
 ///
@@ -46,6 +64,8 @@ const LOCK_MAX_MS: u32 = 60_000;
 /// bands-all fallback rely on that (a bridge answers RTA bands-all ERROR and
 /// the chunked bulk opcodes BLOCKED). TIMEOUT means the hub gave up on the
 /// device; the command may have run, so it is never retried blindly here.
+/// BUSY, BULK_LOCKED and CRC_ERROR map to `Remote` here; [`LinkTransport`]
+/// retries them first (its busy window) and never returns them as such.
 pub fn map_status(status: u8, opcode: u8) -> Option<TransportError> {
     Some(match status {
         status::OK => return None,
@@ -63,20 +83,62 @@ pub fn map_status(status: u8, opcode: u8) -> Option<TransportError> {
     })
 }
 
+/// Whether a Link status is a busy window to retry (spec 8.1).
+fn is_busy(status: u8) -> bool {
+    matches!(
+        status,
+        status::BUSY | status::BULK_LOCKED | status::CRC_ERROR
+    )
+}
+
+/// Run `attempt` through the busy window: retry BUSY, BULK_LOCKED and
+/// CRC_ERROR up to [`BUSY_RETRIES`] times, `backoff` apart; after that the
+/// request is `TimedOut { retries: BUSY_RETRIES }`. Any other status is
+/// mapped by [`map_status`]; OK yields the reply's payload.
+fn busy_window(
+    opcode: u8,
+    backoff: Duration,
+    mut attempt: impl FnMut() -> CmdResponse,
+) -> Result<Vec<u8>> {
+    for i in 0..=BUSY_RETRIES {
+        let r = attempt();
+        if !is_busy(r.status) {
+            return match map_status(r.status, opcode) {
+                Some(e) => Err(e),
+                None => Ok(r.payload),
+            };
+        }
+        if i < BUSY_RETRIES {
+            std::thread::sleep(backoff);
+        }
+    }
+    Err(TransportError::TimedOut {
+        opcode,
+        retries: BUSY_RETRIES,
+    })
+}
+
 /// A `lock.acquire` failure as a transport error.
 fn map_link_error(e: LinkError) -> TransportError {
     match e {
         LinkError::Rejected { code, .. } if code == "locked" => TransportError::Locked,
         LinkError::Rejected { code, msg } if code == "denied" => TransportError::Denied(msg),
         LinkError::Closed { .. } => TransportError::Disconnected,
+        // A control-plane request has no opcode
+        LinkError::Timeout => TransportError::TimedOut {
+            opcode: 0,
+            retries: 0,
+        },
         other => TransportError::Remote(other.to_string()),
     }
 }
 
-/// Whether `opcode` is the single-shot bulk read (`0xA0`), compared as the
-/// generated constant's own type so its width does not matter.
-fn is_bulk_read(opcode: u8) -> bool {
-    u16::from(opcode) == u16::from(op::REQ_GET_ALL_PARAMS)
+/// The hub's `max_payload` as a transfer size, clamped to
+/// [`MAX_PAYLOAD_MIN`]..=[`MAX_PAYLOAD_MAX`].
+fn clamp_max_payload(max_payload: u32) -> usize {
+    usize::try_from(max_payload).map_or(MAX_PAYLOAD_DEFAULT, |n| {
+        n.clamp(MAX_PAYLOAD_MIN, MAX_PAYLOAD_MAX)
+    })
 }
 
 /// One device (a hub handle) on a DSPi Link session, as a [`Transport`].
@@ -86,6 +148,12 @@ fn is_bulk_read(opcode: u8) -> bool {
 /// reports [`TransportError::Disconnected`]). Open at most one per handle and
 /// session at a time: the stream is per handle, so a second one would take it
 /// over and the first one's drop would end it.
+///
+/// The notification stream is subscribed in [`LinkTransport::new`], so no
+/// event is lost before the reader starts, and it is unbounded until read.
+/// The embedder must therefore take [`Transport::notifications`] exactly once
+/// per transport and drain it for as long as the transport lives; a transport
+/// dropped without that logs a warning.
 pub struct LinkTransport {
     client: LinkClient,
     handle: u8,
@@ -128,10 +196,15 @@ impl LinkTransport {
         }
     }
 
-    /// The bulk image from the hub's snapshot, if it has one of at least
-    /// `len` bytes. Any failure falls back to a device read.
+    /// The bulk image from the hub's snapshot, if it has a fresh one of at
+    /// least `len` bytes. Any failure, or a snapshot older than
+    /// [`SNAPSHOT_MAX_AGE_MS`], falls back to a device read.
     fn snapshot_bulk(&self, len: u16) -> Option<Vec<u8>> {
-        let mut blob = self.client.snapshot(self.handle).ok()?.bulk()?;
+        let snap = self.client.snapshot(self.handle).ok()?;
+        if snap.age_ms.is_some_and(|a| a > SNAPSHOT_MAX_AGE_MS) {
+            return None;
+        }
+        let mut blob = snap.bulk()?;
         if blob.len() < usize::from(len) {
             return None;
         }
@@ -141,25 +214,23 @@ impl LinkTransport {
 
     /// One GET; the reply may be shorter than `len`, never longer.
     fn get(&mut self, opcode: u8, value: u16, len: u16) -> Result<Vec<u8>> {
-        if is_bulk_read(opcode)
+        if opcode == op::REQ_GET_ALL_PARAMS
             && std::mem::take(&mut self.snapshot_unused)
             && let Some(blob) = self.snapshot_bulk(len)
         {
             return Ok(blob);
         }
-        let r = self.client.command(
-            self.handle,
-            Dir::Get,
-            opcode,
-            value,
-            dspi_proto::VENDOR_INTERFACE,
-            len,
-            &[],
-        );
-        if let Some(e) = map_status(r.status, opcode) {
-            return Err(e);
-        }
-        let mut payload = r.payload;
+        let mut payload = busy_window(opcode, BUSY_BACKOFF, || {
+            self.client.command(
+                self.handle,
+                Dir::Get,
+                opcode,
+                value,
+                dspi_proto::VENDOR_INTERFACE,
+                len,
+                &[],
+            )
+        })?;
         payload.truncate(usize::from(len));
         Ok(payload)
     }
@@ -189,27 +260,36 @@ impl Transport for LinkTransport {
                 data.len()
             )));
         };
-        let r = self.client.command(
-            self.handle,
-            Dir::Set,
-            opcode,
-            value,
-            dspi_proto::VENDOR_INTERFACE,
-            len,
-            data,
-        );
-        map_status(r.status, opcode).map_or(Ok(()), Err)
+        busy_window(opcode, BUSY_BACKOFF, || {
+            self.client.command(
+                self.handle,
+                Dir::Set,
+                opcode,
+                value,
+                dspi_proto::VENDOR_INTERFACE,
+                len,
+                data,
+            )
+        })
+        .map(drop)
     }
 
     fn descriptor(&self) -> &DeviceDescriptor {
         &self.descriptor
     }
 
-    /// The hub's `max_payload` (spec 7.2; 8192 when it does not say).
+    /// The hub's `max_payload` (spec 7.2; 8192 when it does not say),
+    /// clamped to 64..=65535 so a bogus advertisement cannot stall a chunked
+    /// reader or exceed a vendor request.
     fn max_transfer(&self) -> usize {
-        usize::try_from(self.client.hello().limits.max_payload).unwrap_or(usize::MAX)
+        clamp_max_payload(self.client.hello().limits.max_payload)
     }
 
+    /// The device's notification stream. Take it exactly once and drain it
+    /// (see [`LinkTransport`]): the first call returns the stream subscribed
+    /// in [`LinkTransport::new`]. Any further call subscribes anew, which
+    /// replaces the handle's sink on the session: the earlier source then
+    /// reports [`TransportError::Disconnected`].
     fn notifications(&self) -> Option<Box<dyn NotificationSource>> {
         let first = self
             .notes
@@ -259,6 +339,17 @@ impl Transport for LinkTransport {
 
 impl Drop for LinkTransport {
     fn drop(&mut self) {
+        let untaken = self
+            .notes
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+            .is_some();
+        if untaken {
+            log::warn!(
+                "DSPi Link handle {}: transport dropped without its notifications ever being taken",
+                self.handle
+            );
+        }
         self.unlock();
         self.client.stop_notifications(self.handle);
     }
@@ -600,5 +691,71 @@ mod tests_wp_t5 {
         t.lock("Saving preset", Duration::from_secs(5)).unwrap();
         assert_eq!(hub.lock_holder(), None);
         t.unlock();
+    }
+
+    /// A scripted status sequence through the busy window; `calls` counts
+    /// the attempts.
+    fn scripted(statuses: &[u8]) -> (Result<Vec<u8>>, usize) {
+        let mut calls = 0;
+        let r = busy_window(0xA0, Duration::ZERO, || {
+            let status = statuses.get(calls).copied().unwrap_or(status::OK);
+            calls += 1;
+            CmdResponse {
+                tag: 1,
+                status,
+                payload: vec![7; 3],
+            }
+        });
+        (r, calls)
+    }
+
+    #[test]
+    fn wp_t5_busy_statuses_are_retried_then_time_out() {
+        for busy in [status::BUSY, status::BULK_LOCKED, status::CRC_ERROR] {
+            let (r, calls) = scripted(&[busy, busy]);
+            assert_eq!(r.unwrap(), vec![7; 3], "status 0x{busy:02X} recovers");
+            assert_eq!(calls, 3);
+        }
+        let (r, calls) = scripted(&[status::BUSY; BUSY_RETRIES + 1]);
+        assert!(matches!(
+            r,
+            Err(TransportError::TimedOut {
+                opcode: 0xA0,
+                retries: BUSY_RETRIES
+            })
+        ));
+        assert_eq!(calls, BUSY_RETRIES + 1, "gives up rather than looping");
+        let (r, calls) = scripted(&[status::BUSY, status::ERROR]);
+        assert!(matches!(r, Err(TransportError::Stalled { opcode: 0xA0 })));
+        assert_eq!(calls, 2);
+        let (r, calls) = scripted(&[status::TIMEOUT]);
+        assert!(
+            matches!(r, Err(TransportError::TimedOut { retries: 0, .. })),
+            "a hub TIMEOUT may have run: not retried"
+        );
+        assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn wp_t5_max_payload_is_clamped() {
+        assert_eq!(clamp_max_payload(0), 64);
+        assert_eq!(clamp_max_payload(1), 64);
+        assert_eq!(clamp_max_payload(8192), 8192);
+        assert_eq!(clamp_max_payload(u32::MAX), 65_535);
+    }
+
+    #[test]
+    fn wp_t5_a_second_notifications_call_ends_the_first() {
+        let hub = FakeHub::start(HubConfig::default()).unwrap();
+        let mut t = open(&hub);
+        let mut first = t.notifications().unwrap();
+        let mut second = t.notifications().unwrap();
+        assert!(matches!(
+            first.read(WAIT),
+            Err(TransportError::Disconnected)
+        ));
+        t.control_out(req::SET_MASTER_VOLUME, 0, &(-9.0f32).to_le_bytes())
+            .unwrap();
+        assert_eq!(next_note(second.as_mut()).origin, t.session_id());
     }
 }
