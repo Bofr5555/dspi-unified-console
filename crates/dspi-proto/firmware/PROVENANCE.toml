@@ -4,12 +4,15 @@
 # To bump: follow docs/firmware-bump.md, which regenerates constants and tells
 # you exactly what changed.
 
-repository = "https://github.com/WeebLabs/DSPi"
-branch     = "release/v1.1.6"
-commit     = "557bce7f150b2d1f9166272a2b6a0a2ef6888d60"
-short      = "557bce7"
-committed  = "2026-09-28 18:41:31 +0100"
-vendored   = "2026-09-29"
+repository = "https://github.com/Bofr5555/DSPi"
+branch     = "bofr-main"
+commit     = "af001ecc86204ee9be01189604b5902377816ddf"
+short      = "af001ec"
+committed  = "2026-11-06 11:27:32 +0100"
+vendored   = "2026-11-06"
+# bofr-main is Weeb Labs release/v1.1.6 final (9ffce34, caps v22) plus the
+# fork's extension channel (REQ_EXTENSION 0x00, EXT_* sub-commands in
+# config.h; Documentation/Features/extension_channel_spec.md there).
 
 files = [
   "config.h",            # vendor opcodes, channel model, platform constants, firmware version

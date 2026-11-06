@@ -76,15 +76,18 @@ typedef struct __attribute__((packed)) {
     uint8_t  output_pair_mask;       // Bit p: crossfeed runs on output pair p (V20+)
     float    custom_fc;              // Custom crossover frequency (Hz)
     float    custom_feed_db;         // Custom feed level (dB)
-    uint32_t reserved2;              // Future expansion
+    uint8_t  pair_map[4];            // Byte p: outputs of pair p, 0x00 = default (2p, 2p+1),
+                                     // else (right << 4) | left; see crossfeed_map.h.  Claims the
+                                     // former reserved2 (always zero = default map); V32 unchanged.
 } WireCrossfeedParams;               // 16 bytes
 
 // ============================================================================
 // Section 4: Legacy Channel Gain/Mute (16 bytes)
 // ============================================================================
+// Retired: always sent as zero (0 dB, unmuted) and ignored on SET.
 typedef struct __attribute__((packed)) {
-    float    gain_db[3];             // Per-channel gain
-    uint8_t  mute[3];               // Per-channel mute (0/1)
+    float    gain_db[3];
+    uint8_t  mute[3];
     uint8_t  reserved;
 } WireLegacyChannels;                // 16 bytes
 
@@ -359,7 +362,7 @@ typedef struct __attribute__((packed)) {
 // so only enabled/mode fields need validation on apply.
 typedef struct __attribute__((packed)) {
     uint8_t  enabled;                // 0/1
-    uint8_t  center_mode;            // UPMIX_CENTER_* (0-1)
+    uint8_t  center_mode;            // UPMIX_CENTER_* (0-2)
     uint8_t  surround_mode;          // UPMIX_SURROUND_* (0-2)
     int8_t   presence_q1;            // V26+: presence bell dB * 2 (was reserved)
     float    strength_pct;

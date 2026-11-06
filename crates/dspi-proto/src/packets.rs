@@ -3238,6 +3238,10 @@ pub const CS_NOUNS: &[(&str, u8)] = &[
     ("limiter_release", 76),   // continuous MS_LOG 10..1000
     ("limiter_link", 77),      // enum 0..LIMITER_LINK_GROUP_MAX (0 = unlinked)
     ("limiter_gr", 78),        // continuous dB 0..30, read-only
+    // Caps v21, no target.
+    ("preset_save", 79), // trigger: save the live state to the active preset
+    // Caps v22, no target.
+    ("output_latency", 80), // enum 0..6 = OutputLatencyId - 1
 ];
 
 /// Actions (control_surfaces.h:227-241).
@@ -5877,9 +5881,9 @@ mod tests {
     fn the_expected_firmware_is_the_vendored_one() {
         assert_eq!(
             FirmwareVersion::expected(),
-            FirmwareVersion::new(1, 1, 6, 4)
+            FirmwareVersion::new(1, 1, 6, 0)
         );
-        assert_eq!(FirmwareVersion::expected().to_string(), "1.1.6 beta 4");
+        assert_eq!(FirmwareVersion::expected().to_string(), "1.1.6");
     }
 
     /// 64 bytes: describe in 0-47, date in 48-59, zeros in 60-63
@@ -6527,9 +6531,9 @@ mod tests {
     #[test]
     fn the_noun_table_covers_every_noun_the_firmware_defines() {
         use crate::generated::cs;
-        // CS_NOUN_COUNT is 79 at caps v20 (control_surfaces.h:251).
+        // CS_NOUN_COUNT is 81 at caps v22 (control_surfaces.h:258).
         assert_eq!(CS_NOUNS.len(), cs::CS_NOUN_COUNT as usize);
-        assert_eq!(CS_NOUNS.len(), 79);
+        assert_eq!(CS_NOUNS.len(), 81);
         for (i, (_, raw)) in CS_NOUNS.iter().enumerate() {
             assert_eq!(*raw as usize, i, "the noun table must stay in order");
         }

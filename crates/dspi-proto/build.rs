@@ -59,6 +59,9 @@ const DEFINE_GROUPS: &[(&str, &str)] = &[
     // The version this header set describes (config.h:659-667). Used only to
     // name the firmware a refused device should be updated to.
     ("FW_VERSION_", "firmware"),
+    // Extension channel sub-command ids, selected by wValue under
+    // REQ_EXTENSION (0x00). Not opcodes: they never reach ALL_OPCODES.
+    ("EXT_", "ext"),
 ];
 
 /// Enumerators lifted alongside the defines. Some headers carry protocol ids

@@ -114,6 +114,9 @@
  * unit the release noun needs.  No structure sizes change.
  * See Documentation/Features/output_limiter_spec.md.
  *
+ * Caps v22 appends OUTPUT_LATENCY (80), a deferred enum over the output
+ * latency options via REQ_OUTPUT_LATENCY.  No structure sizes change.
+ *
  * See Documentation/Features/control_surfaces_spec.md.
  */
 
@@ -248,6 +251,10 @@ typedef enum {
     CS_NOUN_LIMITER_RELEASE = 76, // continuous ms 10..1000 (CS_UNIT_MS_LOG)
     CS_NOUN_LIMITER_LINK   = 77, // enum 0..LIMITER_LINK_GROUP_MAX (0 = unlinked)
     CS_NOUN_LIMITER_GR     = 78, // continuous dB 0..30, read-only (gain reduction)
+    // --- caps v21 additions ---
+    CS_NOUN_PRESET_SAVE    = 79, // trigger (save live state to the active preset)
+    // --- caps v22 additions ---
+    CS_NOUN_OUTPUT_LATENCY = 80, // enum 0..6 = OutputLatencyId - 1 (requested option)
     CS_NOUN_COUNT
 } CsNoun;
 
@@ -635,7 +642,7 @@ typedef struct __attribute__((packed)) {
 } CsTypeDesc;
 
 typedef struct __attribute__((packed)) {
-    uint8_t  caps_version; // capability format version (20); see the file
+    uint8_t  caps_version; // capability format version (22); see the file
                            // header for what each version added
     uint8_t  max_bindings; // CS_MAX_BINDINGS
     uint8_t  type_count;   // CS_TYPE_COUNT (table follows, index = CsType)
@@ -695,8 +702,8 @@ typedef struct __attribute__((packed)) {
                                         // same PWM slice+channel
 #define CS_STATUS_EVENT_IN_USE    0x1A  // another button binding already has
                                         // this GPIO+event pair
-#define CS_STATUS_BUSY            0x1B  // a previous binding SET is still
-                                        // queued for apply; retry shortly
+#define CS_STATUS_BUSY            0x1B  // a previous SET is still queued for
+                                        // apply, or a revert is running; retry
 #define CS_STATUS_FLASH_ERROR     0x1C  // directory persist failed (REQ_CS_SAVE)
 #define CS_STATUS_IR_IN_USE       0x1D  // another slot already holds the IR
                                         // component (one receiver per device)
@@ -819,14 +826,19 @@ bool     control_surfaces_set_aux_level(uint8_t slot, uint16_t level_q8);  // cl
 // and level into the boot fields of every CS_AUX_X_BOOT_SAVED slot.
 void control_surfaces_aux_prepare_save(void);
 
-// Re-apply the persisted config (bindings + IR commands + slot names) from
-// the directory cache, discarding the live preview.  Per-slot failures land
-// in slot_status exactly as at boot.  Main-loop only (releases and reclaims
-// GPIOs).
-void control_surfaces_revert(void);
+// Start re-applying the persisted config from the directory cache, discarding
+// the live preview, as a background job (bg_job.h). Per-slot failures land in
+// slot_status exactly as at boot; on completion the dirty flag clears and
+// cs_last_status reads SUCCESS. Main-loop only (releases and reclaims GPIOs).
+void control_surfaces_revert_begin(void);
+
+// True while a revert runs: applies, aux writes, macro fire and IR learn refuse
+// (CS_STATUS_BUSY or false); reads answer with the reverted or pre-revert state,
+// never a torn one (current_architecture.md, Control Surfaces).
+bool control_surfaces_busy(void);
 
 // Preview dirty flag: set when a live apply diverges from flash, cleared by
-// save / revert (main.c owns the transitions around the flash write).
+// save (main.c, around the flash write) and by a revert's completion.
 bool control_surfaces_dirty(void);
 void control_surfaces_set_dirty(bool dirty);
 

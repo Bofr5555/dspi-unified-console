@@ -687,7 +687,8 @@ impl Session {
             Target::SpdifInput => indices[0] < 4,
             // config.h:454: only the optional inputs can be switched.
             Target::SpdifExtraInput => (1..4).contains(&indices[0]),
-            Target::LegacyChannel => indices[0] < 3,
+            // audio_input.h: INPUT_SOURCE_MAX is 6 (S/PDIF 4).
+            Target::InputSource => indices[0] <= 6,
             // Bounded by the device but not separately reported; the firmware
             // range-checks these and answers with a status code.
             _ => true,
@@ -805,7 +806,7 @@ fn target_name(t: Target) -> &'static str {
         Target::CsDisplayPage => "display page",
         Target::SpdifInput => "S/PDIF input",
         Target::SpdifExtraInput => "optional S/PDIF input",
-        Target::LegacyChannel => "legacy channel",
+        Target::InputSource => "input source",
         _ => "index",
     }
 }

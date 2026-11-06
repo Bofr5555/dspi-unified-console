@@ -16,7 +16,6 @@ extern volatile uint32_t pdm_ring_overruns;   // Core 0 couldn't push (ring full
 extern volatile uint32_t pdm_ring_underruns;  // Core 1 needed sample but ring empty
 extern volatile uint32_t pdm_dma_overruns;    // Core 1 write caught up to DMA read
 extern volatile uint32_t pdm_dma_underruns;   // Core 1 write fell behind DMA read
-extern volatile uint32_t spdif_overruns;      // USB callback couldn't get buffer (pool full)
 extern volatile uint32_t spdif_underruns;     // USB packet gap > 2ms (consumer likely starved)
 extern volatile uint32_t usb_audio_packets;   // Debug: count of USB audio packets received
 extern volatile uint32_t usb_audio_alt_set;   // Debug: last alt setting selected
@@ -58,7 +57,10 @@ extern volatile uint32_t nominal_feedback_10_14;
 // from float precision noise when 0 dBFS signals pass through biquad filters.
 // +0.01 dB headroom: catches audible clipping, ignores float rounding artifacts.
 #define CLIP_THRESH_F   1.001f              // RP2350 float path
-#define CLIP_THRESH_Q28 ((1 << 28) + 268)   // RP2040 Q28 path (~0.001 in Q28)
+// RP2040 samples reach full scale at 2^29 (Q28 value 2.0), not 1 << 28.
+// See "RP2040 Sample Scale" in current_architecture.md.
+#define SAMPLE_FULL_SCALE_Q28 (1 << 29)
+#define CLIP_THRESH_Q28 (SAMPLE_FULL_SCALE_Q28 + SAMPLE_FULL_SCALE_Q28 / 1000)
 
 #define FILTER_SHIFT 28
 
@@ -68,7 +70,7 @@ extern volatile uint32_t nominal_feedback_10_14;
 #define PDM_DMA_RING_BITS 13      // log2(2048 * 4 bytes) = 13
 #define PDM_PIO pio1
 #define PDM_SM 0
-#define PDM_CLIP_THRESH 29500  // ~90% modulation (was 26214 / 80%)
+#define PDM_FULL_SCALE 29500   // 0 dBFS lands here: ~90% modulation, the stable ceiling
 
 // PDM Sigma-Delta Tuning
 // Dither mask: controls TPDF amplitude. Start small (0x1FF), increase if idle tones persist
@@ -80,10 +82,17 @@ extern volatile uint32_t nominal_feedback_10_14;
 // PDM Soft Start/Stop
 #define PDM_FADE_IN_SHIFT   10                        // 2^10 = 1024 samples
 #define PDM_FADE_IN_SAMPLES (1u << PDM_FADE_IN_SHIFT) // ~21ms at 48kHz
+#define PDM_HOLD_TIMEOUT_US 100000u   // pdm_hold_hw: covers the fade-out at 44.1 kHz with margin
 
 // SPDIF Buffer Configuration
-#define AUDIO_BUFFER_COUNT    8   // Producer buffers per SPDIF instance
-#define SPDIF_CONSUMER_BUFFER_COUNT 16  // Consumer buffers per SPDIF instance (DMA side)
+// Slot ring fill scale in 48-frame buckets (16 = 768 frames): the unit of
+// REQ_GET_BUFFER_STATS and of the clock servos' fill error and gains. The rings
+// themselves track fill to the frame; buckets survive for wire compatibility.
+#define SPDIF_CONSUMER_BUFFER_COUNT 16
+#define SLOT_FILL_FRAMES_PER_BUCKET 48u
+
+// Pipeline block buffers. The steady-state ring fill and the block size producers
+// deliver come from the selected output latency option (output_latency.h).
 #define AUDIO_BUFFER_SAMPLES  192
 
 // DELAY CONFIGURATION
@@ -98,12 +107,10 @@ extern volatile uint32_t nominal_feedback_10_14;
 #endif
 #define MAX_DELAY_MASK    (MAX_DELAY_SAMPLES - 1)
 
-// Latency alignment (in samples - automatically adapts to sample rate)
-// SPDIF path: watermark = AUDIO_BUFFER_COUNT/2 buffers
-// PDM path: DMA buffer = PDM_DMA_BUFFER_SIZE/8 PCM samples
-#define SPDIF_BUFFER_SAMPLES  384  // Consumer path depth at 50% fill (16 buffers * 48 samples * 50%)
+// Sub alignment: the PDM sub is delayed by the ring fill target minus this.
+// Known defect: PDM's real latency is not its DMA ring size, so the offset is
+// miscalibrated; see current_architecture.md PDM "Known alignment defect".
 #define PDM_BUFFER_SAMPLES    (PDM_DMA_BUFFER_SIZE / 8)                           // 256
-#define SUB_ALIGN_SAMPLES     (SPDIF_BUFFER_SAMPLES - PDM_BUFFER_SAMPLES)         // 128
 
 // ----------------------------------------------------------------------------
 // VENDOR INTERFACE CONFIGURATION (WinUSB / WCID)
@@ -128,11 +135,23 @@ extern volatile uint32_t nominal_feedback_10_14;
 // tud_vendor_control_xfer_cb in vendor_commands.c.
 #define MS_VENDOR_CODE      0x01
 
+// Extension channel: one opcode multiplexing features that live outside the
+// upstream opcode map; see Documentation/Features/extension_channel_spec.md.
+// wValue = extension sub-command ID; direction from bmRequestType (IN = get,
+// OUT = set).  An unknown sub-command, a wrong direction or a wrong length
+// STALLs, exactly like an unknown opcode, so stock firmware (which STALLs 0x00)
+// reads as "no extensions".  IDs 0x0001-0x7FFF are coordinated with Weeb Labs
+// and listed in the spec; 0x8000-0xFFFF are experimental/private, never shipped.
+#define REQ_EXTENSION               0x00
+#define EXT_LIST                    0x0000  // IN: supported IDs, uint16 LE ascending (excl. 0), truncated to wLength
+#define EXT_CROSSFEED_PAIR_MAP      0x0001  // IN: uint8[4]; OUT: uint8[4] (crossfeed_map.h)
+#define EXT_CORE_VREG               0x0002  // IN: CoreVregStatus (16 B); OUT: {op, value} (core_vreg.h)
+
 // Control Surfaces auxiliary outputs (caps v18); see control_surfaces.h and
 // Documentation/Features/control_surfaces_aux_spec.md.  wValue is the binding
 // slot holding the aux component.  0x01 is MS_VENDOR_CODE above, intercepted
 // in tud_vendor_control_xfer_cb before the application dispatcher sees it;
-// 0x00, 0x02 and 0x03 stay unallocated.
+// 0x00 is REQ_EXTENSION (above); 0x02 stays unallocated; 0x03 is REQ_OUTPUT_LATENCY.
 #define REQ_SET_CS_AUX_STATE        0x04  // wValue = slot, 1 byte 0/1; immediate, runtime
                                           // only; STALL unless the slot is an aux output
 #define REQ_GET_CS_AUX_STATE        0x05  // wValue = slot: 1 byte (STALL if not an aux);
@@ -235,6 +254,13 @@ extern volatile uint32_t nominal_feedback_10_14;
 // except the read-only GET blocks LIMITER_GET_METER / LIMITER_GET_STATUS.
 #define REQ_LIMITER                 0x81
 
+// Output latency option (output_latency.h).  One opcode: OUT sets a 1-byte
+// option ID (unknown IDs are ignored); IN with wValue 0 gets OutputLatencyStatus,
+// wValue 1 the option table as OutputLatencyOptionWire entries, others STALL.
+#define REQ_OUTPUT_LATENCY          0x03
+#define OUTPUT_LATENCY_GET_STATUS   0
+#define OUTPUT_LATENCY_GET_OPTIONS  1
+
 // Vendor Request Commands (EP0 control transfers)
 #define REQ_SET_EQ_PARAM    0x42
 #define REQ_GET_EQ_PARAM    0x43
@@ -268,10 +294,12 @@ extern volatile uint32_t nominal_feedback_10_14;
 // SPDIF input.  Hosts use the deferred, SPDIF-safe REQ_PRESET_LOAD (0x91) instead.
 #define REQ_SAVE_OUTPUT_CONFIG  0x52
 #define REQ_FACTORY_RESET   0x53
-#define REQ_SET_CHANNEL_GAIN 0x54
-#define REQ_GET_CHANNEL_GAIN 0x55
-#define REQ_SET_CHANNEL_MUTE 0x56
-#define REQ_GET_CHANNEL_MUTE 0x57
+// Device-global input source names; see Documentation/Features/input_source_names_spec.md.
+#define REQ_SET_INPUT_SOURCE_NAME   0x54  // wValue = source ID, payload = 1-32 byte name (leading NUL clears)
+#define REQ_GET_INPUT_SOURCE_NAME   0x55  // wValue = source ID, returns 32-byte NUL-terminated name (zeros = unnamed)
+// Device-global board name; see Documentation/Features/device_name_spec.md.
+#define REQ_SET_DEVICE_NAME         0x56  // wValue = 0, payload = 1-32 byte name (leading NUL clears)
+#define REQ_GET_DEVICE_NAME         0x57  // wValue = 0, returns 32-byte NUL-terminated name (zeros = unnamed)
 #define REQ_SET_LOUDNESS            0x58
 #define REQ_GET_LOUDNESS            0x59
 #define REQ_SET_LOUDNESS_REF        0x5A
@@ -325,6 +353,11 @@ extern volatile uint32_t nominal_feedback_10_14;
 #define REQ_GET_PLATFORM            0x7F
 #define REQ_GET_BUILD_INFO          0x80  // 64-byte git-describe/date blob; provenance for
                                           // humans only, no software may gate on it
+
+// Clock / audio-path diagnostics: the packed ClockDiagPacket latched by the
+// 1 Hz clock_diag poll.  Zero-length unless built with -DDSPI_CLOCK_DIAG=ON,
+// or when the packet does not fit the requesting transport (UART/I2C).
+#define REQ_GET_CLOCK_DIAG          0x82
 
 // Clip Detection Commands
 #define REQ_CLEAR_CLIPS             0x83
@@ -664,7 +697,7 @@ typedef struct __attribute__((packed)) {
 // Pre-release ordinal: 0 = final release, 1..255 = beta N of this patch.  Betas
 // share their patch number, so this byte is the only thing telling two of them
 // apart; it must be zeroed in the same commit that tags the final release.
-#define FW_VERSION_BETA             4
+#define FW_VERSION_BETA             0
 
 // Universal "reset to default" escape hatch for every single-pin SET command
 // (REQ_SET_OUTPUT_PIN, REQ_SET_I2S_BCK_PIN, REQ_SET_MCK_PIN, REQ_SET_ADAT_PIN,
@@ -733,6 +766,36 @@ typedef struct __attribute__((packed)) {
 #else
 #define PICO_SPDIF_RX_DMA_CH0      4
 #define PICO_SPDIF_RX_DMA_CH1      5
+#endif
+
+// Soft VCXO (system PLL fractional trim, soft_vcxo.c): two explicit DMA
+// channels, DMA timer 0, and one PWM slice used purely as a DREQ pacer
+// (no GPIO).  RP2350 slice 8 has no bondable GPIO on RP2350A, so it can
+// never conflict; RP2040 slice 7 (GPIOs 14/15) is guarded against in the
+// control-surface PWM LED bind path.
+#if PICO_RP2350
+#define SOFT_VCXO_DMA_PULSE        11
+#define SOFT_VCXO_DMA_PACE         12
+#define SOFT_VCXO_PWM_SLICE         8
+#else
+#define SOFT_VCXO_DMA_PULSE        10
+#define SOFT_VCXO_DMA_PACE         11
+#define SOFT_VCXO_PWM_SLICE         7
+#endif
+#define SOFT_VCXO_DMA_TIMER         0
+
+// Output slot rings: RP2040 lacks ENDLESS-mode DMA, so each slot's
+// free-running ring needs a reload partner channel (slot i uses
+// OUTPUT_SLOT_RELOAD_DMA_BASE + i). RP2350 uses ENDLESS mode, no partner.
+#if !PICO_RP2350
+#define OUTPUT_SLOT_RELOAD_DMA_BASE 6
+#endif
+
+// Clock / audio-path diagnostics (clock_diag.c and the statics it reads in
+// soft_vcxo.c, input_servo.c, spdif_input.c): set by the DSPI_CLOCK_DIAG CMake
+// option, compiled out otherwise.
+#ifndef DSPI_CLOCK_DIAG
+#define DSPI_CLOCK_DIAG            0
 #endif
 
 // Number of configurable outputs (SPDIF + PDM)
@@ -859,7 +922,7 @@ typedef struct {
     float             vol_mul_start;   // Master-scaled vol at sample 0
     float             vol_mul_step;    // Per-sample increment
     uint32_t          delay_write_idx;  // Snapshot for Core 1 delay processing
-    int32_t          *spdif_out[3];     // Pairs 1-3 output buffers (NULL = skip)
+    int32_t          *spdif_out[3];     // Pairs 1-3 slot staging (interleaved S24)
     // ADAT-active snapshot for THIS packet: both cores must pick the same
     // slot finalization mode (in-place S24 staging vs fused convert+
     // interleave) so ADAT never reads unconverted rows.  See output_s24.h.
@@ -870,7 +933,7 @@ typedef struct {
     int32_t           vol_mul_start;   // Q15 master-scaled vol at sample 0
     int32_t           vol_mul_step;    // Q15 per-sample increment
     uint32_t          delay_write_idx;
-    int32_t          *spdif_out[1];    // SPDIF pair 2 output buffer (NULL = skip)
+    int32_t          *spdif_out[1];    // Pair 2 slot staging (interleaved S24)
 #endif
     // Loudness snapshot for THIS packet; Core 0 samples the coefficient
     // pointer and output mask once and both cores use the same view, so a
@@ -880,6 +943,7 @@ typedef struct {
     // Crossfeed snapshot for THIS packet; same single-view rationale.
     const void       *xfeed_coeffs;    // CrossfeedCoeffs or NULL = off
     uint8_t           xfeed_mask;      // Bit p = crossfeed output pair p
+    uint32_t          xfeed_map;       // Crossfeed pair map (crossfeed_map.h)
     // Psychoacoustic bass snapshot for THIS packet; same single-view rationale.
     const void       *psybass_coeffs;  // PsybassCoeffs or NULL = off
     uint16_t          psybass_mask;    // Bit k = process output k
@@ -1098,13 +1162,15 @@ typedef struct __attribute__((packed)) {
 
 // Buffer Statistics Wire Format — fits in a single 64-byte control transfer
 typedef struct __attribute__((packed)) {
-    uint8_t consumer_free;       // [0-4] SPDIF buffers available for DMA
-    uint8_t consumer_prepared;   // [0-4] SPDIF buffers queued for DMA playback
+    uint8_t consumer_free;       // [0-16] free ring space, 48-frame buckets
+    uint8_t consumer_prepared;   // [0-16] ring fill, 48-frame buckets
     uint8_t consumer_playing;    // [0-1] DMA in-flight
     uint8_t consumer_fill_pct;   // Consumer pipeline fill %
     uint8_t consumer_min_fill_pct; // Lowest consumer fill since last reset
     uint8_t consumer_max_fill_pct; // Highest consumer fill since last reset
-    uint8_t pad[2];
+    uint16_t fill_centi_pct;     // Sample-granular fill, 0.01% units on the
+                                 // same 16-bucket scale (5000 = 50.00%).
+                                 // Was pad[2]; zero on older firmware.
 } SpdifBufferStats;              // 8 bytes
 
 typedef struct __attribute__((packed)) {
@@ -1124,6 +1190,28 @@ typedef struct __attribute__((packed)) {
     SpdifBufferStats spdif[4];   // Per-instance (unused zeroed)
     PdmBufferStats pdm;
 } BufferStatsPacket;             // 4 + 32 + 8 = 44 bytes
+
+// REQ_OUTPUT_LATENCY replies.  The effective option and its target depend on
+// the active source and rate; the requested ID is what both re-derive from.
+typedef struct __attribute__((packed)) {
+    uint8_t  requested_id;       // stored OutputLatencyId
+    uint8_t  effective_id;       // option in force (a stream-only request on USB differs)
+    uint16_t effective_us;       // ring fill target at the current rate, ceiling applied
+    uint16_t target_frames;      // live slot ring fill target
+    uint16_t batch_frames;       // stream-input batch at the current rate
+    uint8_t  pending;            // 1 until a SET has fully applied
+    uint8_t  option_count;       // entries in the OUTPUT_LATENCY_GET_OPTIONS reply
+    uint16_t reserved;
+} OutputLatencyStatus;           // 12 bytes
+
+typedef struct __attribute__((packed)) {
+    uint8_t  id;                 // OutputLatencyId
+    uint8_t  flags;              // OUTPUT_LATENCY_FLAG_* | OUTPUT_LATENCY_WIRE_AVAILABLE
+    uint16_t latency_us;         // nominal ring fill target
+    uint16_t batch_us;           // nominal stream-input batch
+    uint16_t effective_us;       // what selecting it gives now (source and rate applied)
+} OutputLatencyOptionWire;       // 8 bytes
+#define OUTPUT_LATENCY_WIRE_AVAILABLE  0x80u   // runs as itself on the active source
 
 extern uint8_t channel_band_counts[NUM_CHANNELS];
 extern volatile SystemStatusPacket global_status;
@@ -1156,6 +1244,16 @@ static inline int32_t clip_s24(int32_t x) {
     if (x > 0x7FFFFF) return 0x7FFFFF;
     if (x < -0x800000) return -0x800000;
     return x;
+}
+
+// Same rounding as (x + 32) >> 6, without wrapping when x is near INT32_MAX.
+static inline int32_t q28_to_s24(int32_t x) {
+    return clip_s24((x >> 6) + ((x >> 5) & 1));
+}
+
+// Block peak to the 0..32767 meter scale RP2350 reports.
+static inline uint16_t peak_to_meter_q28(int32_t pk) {
+    return ((uint32_t)pk >= (uint32_t)SAMPLE_FULL_SCALE_Q28) ? 32767 : (uint16_t)(pk >> 14);
 }
 
 // Q15 fixed-point multiply using 16-bit partial products.

@@ -334,6 +334,10 @@ open_enum! {
         LimiterRelease      = 76, "Limiter release";
         LimiterLink         = 77, "Limiter link group";
         LimiterGr           = 78, "Limiter gain reduction";
+        // Caps v21.
+        PresetSave          = 79, "Save preset";
+        // Caps v22.
+        OutputLatency       = 80, "Output latency";
     }
 }
 
@@ -499,7 +503,8 @@ mod tests {
         assert!(!CsType::from_raw(cs::CS_TYPE_COUNT as u8).is_known());
     }
 
-    /// `CS_NOUN_COUNT` is 79 (control_surfaces.h:251), so 78 is the last one.
+    /// `CS_NOUN_COUNT` is 81 at caps v22 (control_surfaces.h:258), so 80 is
+    /// the last one.
     #[test]
     fn the_noun_table_ends_where_the_firmware_says() {
         use crate::generated::cs;
@@ -509,6 +514,8 @@ mod tests {
         assert_eq!(CsNoun::from_raw(68), CsNoun::Aux);
         assert_eq!(CsNoun::from_raw(72), CsNoun::TubeType);
         assert_eq!(CsNoun::from_raw(78), CsNoun::LimiterGr);
+        assert_eq!(CsNoun::from_raw(79), CsNoun::PresetSave);
+        assert_eq!(CsNoun::from_raw(80), CsNoun::OutputLatency);
         assert!(!CsNoun::from_raw(cs::CS_NOUN_COUNT as u8).is_known());
         for n in 0..cs::CS_NOUN_COUNT as u8 {
             assert!(CsNoun::from_raw(n).is_known(), "noun {n} has no variant");

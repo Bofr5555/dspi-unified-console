@@ -131,6 +131,11 @@ fn shape(path: &str, caps: &Capabilities) -> Option<Shape> {
         "diag.usb" => Exact(24),
         // One byte each (vendor_commands.c:2545-2549, 2551-2570).
         "diag.core1" | "diag.core1.conflict" => Exact(1),
+        // Zero-length unless the firmware was built with DSPI_CLOCK_DIAG
+        // (config.h REQ_GET_CLOCK_DIAG); the packet is well under this.
+        "diag.clock" => UpTo(256),
+        // Room for 32 sub-command ids (extension_channel_spec.md 2.1).
+        "ext.list" => UpTo(64),
         _ => return None,
     })
 }

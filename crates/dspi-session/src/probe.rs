@@ -363,6 +363,14 @@ fn probe_features(t: &mut dyn Transport) -> Vec<Feature> {
         ),
         // The spectrum analyser's caps header (config.h:149, rta.h:72-87).
         ("spectrum_analyser", op::REQ_RTA_GET_CAPS, 0, 16),
+        // v1.1.6 final reassigned 0x54-0x57 from the legacy channel gain and
+        // mute. Older firmware answers 0x55 with a 4-byte gain and 0x57 with
+        // a 1-byte mute, so only a full 32-byte name counts; a short read is
+        // "absent" (device_name_spec.md section 2).
+        ("input_source_names", op::REQ_GET_INPUT_SOURCE_NAME, 0, 32),
+        ("device_name", op::REQ_GET_DEVICE_NAME, 0, 32),
+        // OutputLatencyStatus, 12 bytes (config.h REQ_OUTPUT_LATENCY).
+        ("output_latency", op::REQ_OUTPUT_LATENCY, 0, 12),
     ];
 
     probes
@@ -673,8 +681,8 @@ mod tests {
         assert_eq!(
             msg,
             "This device runs firmware 1.1.6 early beta (wire format V28); DSPi Terminal \
-             expects 1.1.6 beta 4 (wire format V32). Update the device's firmware to \
-             v1.1.6 beta 4 to use it with DSPi Terminal."
+             expects 1.1.6 (wire format V32). Update the device's firmware to \
+             v1.1.6 to use it with DSPi Terminal."
         );
         assert_eq!(err.to_string(), *msg, "shown as is");
         let chunks = log
@@ -695,7 +703,10 @@ mod tests {
         let mut t = old_device(vec![1, 1, 0x16, 9, 1, 6, 3], 30, 5980);
         let msg = probe(&mut t).unwrap_err().to_string();
         assert!(msg.starts_with("This device runs firmware 1.1.6 beta 3 (wire format V30);"));
-        assert!(msg.contains("v1.1.6 beta 4"), "{msg}");
+        assert!(
+            msg.contains("Update the device's firmware to v1.1.6 to"),
+            "{msg}"
+        );
     }
 
     /// A device ahead of this build is refused too, and the thing to update

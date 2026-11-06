@@ -82,6 +82,25 @@
 // level_q8_LE(2), src]; level is 8.8 percent, 0 on a CS_TYPE_AUX_OUT slot.
 #define NOTIFY_EVT_CS_AUX            0x0C
 
+// v2 spectrum analyser applied a staged REQ_RTA_SET_CONFIG, changed or not.
+// Never pushed for frame restarts (preset, rate, input, auto-off/start).
+// Packet (17 bytes): [ver=2, evt=0x0D, flags=0, seq, RtaConfig as applied
+// (12), src]; src is the source of the SET that staged it.
+#define NOTIFY_EVT_RTA_CONFIG        0x0D
+
+// 0x0E is held by the ac3-dts-decode branch (SPDIF_FORMAT).
+
+// v2 input source name stored (REQ_SET_INPUT_SOURCE_NAME); name is all zeros
+// when cleared.  src is the SET's dispatch source.
+// Packet (40 bytes): [ver=2, evt=0x0F, flags=0, seq, source_id, src, 0, 0,
+// name(32)]
+#define NOTIFY_EVT_INPUT_SOURCE_NAME 0x0F
+
+// v2 board name stored (REQ_SET_DEVICE_NAME); same layout as 0x0F with
+// byte 4 zero.  Packet (40 bytes): [ver=2, evt=0x10, flags=0, seq, 0, src,
+// 0, 0, name(32)]
+#define NOTIFY_EVT_DEVICE_NAME       0x10
+
 // v2 protocol version byte (first byte of every v2 packet)
 #define NOTIFY_V2_VERSION            0x02
 
@@ -100,6 +119,7 @@ typedef enum {
     PARAM_SRC_UAC1     = 7,  // UAC1 Feature Unit SET_CUR (OS volume slider, mute key)
     PARAM_SRC_UART     = 8,  // External UART control interface
     PARAM_SRC_I2C      = 9,  // External I2C target control interface
+    PARAM_SRC_MIDI     = 10, // USB MIDI SysEx control channel (DSPI_USB_MIDI)
 } ParamSource;
 
 // ---------------------------------------------------------------------------
@@ -163,6 +183,20 @@ void notify_push_cs_ir_learn(uint8_t state, uint8_t protocol, uint32_t code);
 // Aux output change (NOTIFY_EVT_CS_AUX).  Safe from any dispatch context.
 void notify_push_cs_aux(uint8_t slot, uint8_t state, uint16_t level_q8, ParamSource src);
 
+// Analyser config applied (NOTIFY_EVT_RTA_CONFIG).  cfg is the 12-byte
+// RtaConfig as applied.  Safe from any dispatch context.
+#define NOTIFY_RTA_CONFIG_LEN        12
+void notify_push_rta_config(const void *cfg, ParamSource src);
+
+// Input source name stored (NOTIFY_EVT_INPUT_SOURCE_NAME).  name is the
+// 32-byte stored entry.  Safe from any dispatch context.
+#define NOTIFY_INPUT_SOURCE_NAME_LEN 32
+void notify_push_input_source_name(uint8_t source_id, const char *name, ParamSource src);
+
+// Board name stored (NOTIFY_EVT_DEVICE_NAME).  name is the 32-byte stored
+// entry.  Safe from any dispatch context.
+void notify_push_device_name(const char *name, ParamSource src);
+
 // ---------------------------------------------------------------------------
 // Consumers
 //
@@ -180,6 +214,10 @@ typedef enum {
     NOTIFY_CONSUMER_USB  = 0,   // always active
     NOTIFY_CONSUMER_UART = 1,   // active while the UART transport is live
                                 // with notifications enabled
+#ifdef DSPI_USB_MIDI
+    NOTIFY_CONSUMER_MIDI = 2,   // active while the USB MIDI function is
+                                // configured (midi_control.c)
+#endif
     NOTIFY_CONSUMER_COUNT
 } NotifyConsumer;
 

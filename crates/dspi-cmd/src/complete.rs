@@ -108,7 +108,7 @@ pub fn complete(tokens: &[&str], partial: &str, ctx: &Context) -> Vec<Candidate>
             (Target::Crosspoint, 0) => index_candidates(ctx.num_inputs, "input"),
             (Target::Crosspoint, 1) => index_candidates(ctx.num_outputs, "output"),
             (Target::PresetSlot, 0) => index_candidates(10, "preset slot"),
-            (Target::LegacyChannel, 0) => index_candidates(3, "channel"),
+            (Target::InputSource, 0) => index_candidates(7, "input source"),
             _ => vec![Candidate::new(
                 "",
                 format!("an index for {}", d.label),

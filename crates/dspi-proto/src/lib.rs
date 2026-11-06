@@ -160,15 +160,17 @@ mod tests {
 
     #[test]
     fn every_opcode_was_generated() {
-        // 244 REQ_* defines in config.h at release/v1.1.6 @ 557bce7: the 202 of
-        // 112f35b plus CS aux outputs 0x04-0x07 (config.h:136-145), the
-        // spectrum analyser 0x08-0x0F (config.h:146-154), the subharmonic
-        // synthesizer 0x10-0x1F, 0x2C-0x2F and 0xA9-0xAE (config.h:181-210),
-        // the tube preamp 0x3E-0x3F (config.h:228-231), the limiter 0x81
-        // (config.h:233-236) and build info 0x80 (config.h:326).
+        // 247 REQ_* defines in config.h at bofr-main @ af001ec. 244 at
+        // release/v1.1.6 @ 557bce7 (the 202 of 112f35b plus CS aux outputs
+        // 0x04-0x07, the spectrum analyser 0x08-0x0F, the subharmonic
+        // synthesizer 0x10-0x1F, 0x2C-0x2F and 0xA9-0xAE, the tube preamp
+        // 0x3E-0x3F, the limiter 0x81 and build info 0x80); v1.1.6 final
+        // reassigns 0x54-0x57 from the legacy channel gain/mute to input
+        // source and device names (same count) and adds output latency 0x03
+        // and clock diagnostics 0x82; bofr-main adds REQ_EXTENSION 0x00.
         assert_eq!(
             generated::ALL_OPCODES.len(),
-            244,
+            247,
             "opcode count changed; run the firmware-bump procedure"
         );
     }
@@ -192,7 +194,7 @@ mod tests {
                 FW_VERSION_PATCH,
                 FW_VERSION_BETA
             ),
-            (1, 1, 6, 4)
+            (1, 1, 6, 0)
         );
     }
 
@@ -214,7 +216,8 @@ mod tests {
         assert_eq!(cs::CS_TYPE_AUX_PWM, 10);
         assert_eq!(cs::CS_TYPE_COUNT, 11);
         assert_eq!(cs::CS_NOUN_LIMITER_GR, 78);
-        assert_eq!(cs::CS_NOUN_COUNT, 79);
+        assert_eq!(cs::CS_NOUN_OUTPUT_LATENCY, 80);
+        assert_eq!(cs::CS_NOUN_COUNT, 81);
     }
 
     /// Topology must never be compiled in. These are platform-conditional in

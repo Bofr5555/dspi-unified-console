@@ -73,8 +73,10 @@ pub enum Target {
     CsMacroStep,
     /// Display page slot, `CS_MAX_DISPLAY_PAGES` 16.
     CsDisplayPage,
-    /// Legacy 3-channel gain/mute space, superseded by the matrix mixer.
-    LegacyChannel,
+    /// An input source id, `0..=INPUT_SOURCE_MAX` (6): USB, S/PDIF 1, I2S,
+    /// ADAT, S/PDIF 2-4 (audio_input.h `InputSource`). Names are per source,
+    /// whether or not the source is enabled.
+    InputSource,
     /// One of the upmixer's parameter ids.
     UpmixParam,
     /// S/PDIF input index, `0..=3` (config.h:448-453).
@@ -412,6 +414,16 @@ const fn p(
 const SPEED: &[(u8, &str)] = &[(0, "slow"), (1, "medium"), (2, "fast")];
 const CF_PRESET: &[(u8, &str)] = &[(0, "default"), (1, "chumoy"), (2, "meier"), (3, "custom")];
 const SOURCE: &[(u8, &str)] = &[(0, "usb"), (1, "spdif"), (2, "i2s"), (3, "adat")];
+/// `OutputLatencyId` (output_latency.h): stable ids, 0 is never valid.
+const OUTPUT_LATENCY: &[(u8, &str)] = &[
+    (1, "0.67ms"),
+    (2, "1ms"),
+    (3, "2ms"),
+    (4, "3ms"),
+    (5, "4ms"),
+    (6, "6ms"),
+    (7, "8ms"),
+];
 const OUT_TYPE: &[(u8, &str)] = &[(0, "spdif"), (1, "i2s")];
 const CLOCK_MODE: &[(u8, &str)] = &[(0, "master"), (1, "slave")];
 const MCK_MULT: &[(u8, &str)] = &[(0, "128x"), (1, "256x")];
@@ -973,43 +985,6 @@ pub static REGISTRY: &[ParamDesc] = &[
         DWar,
         Wv::ValueSlot,
         Hz::Reconfig,
-        Ps::LiveOnly,
-        Rq::Always,
-    ),
-    // legacy 3-channel controls, superseded by the matrix mixer
-    p(
-        "legacy.gain",
-        "Channel gain (legacy)",
-        "Superseded by the matrix mixer",
-        Matrix,
-        Expert,
-        Float {
-            unit: Unit::Db,
-            min: -60.0,
-            max: 20.0,
-        },
-        Tg::LegacyChannel,
-        Some(op::REQ_SET_CHANNEL_GAIN),
-        Some(op::REQ_GET_CHANNEL_GAIN),
-        DOut,
-        Wv::Target,
-        Hz::None,
-        Ps::LiveOnly,
-        Rq::Always,
-    ),
-    p(
-        "legacy.mute",
-        "Channel mute (legacy)",
-        "Superseded by the matrix mixer",
-        Matrix,
-        Expert,
-        Bool,
-        Tg::LegacyChannel,
-        Some(op::REQ_SET_CHANNEL_MUTE),
-        Some(op::REQ_GET_CHANNEL_MUTE),
-        DOut,
-        Wv::Target,
-        Hz::None,
         Ps::LiveOnly,
         Rq::Always,
     ),
@@ -2288,6 +2263,24 @@ pub static REGISTRY: &[ParamDesc] = &[
         Rq::Always,
     ),
     p(
+        "in.name",
+        "Source name",
+        "The user's name for one input source, kept on the device",
+        Input,
+        Advanced,
+        Text { max: 32 },
+        Tg::InputSource,
+        Some(op::REQ_SET_INPUT_SOURCE_NAME),
+        Some(op::REQ_GET_INPUT_SOURCE_NAME),
+        DOut,
+        Wv::Target,
+        // Staged, then written to the preset directory by the main loop with
+        // a short output restart (input_source_names_spec.md section 4).
+        Hz::Flash,
+        Ps::DeviceGlobal,
+        Rq::Feature("input_source_names"),
+    ),
+    p(
         "in.rate",
         "Sample rate",
         "The rate the device runs at when it is the clock master",
@@ -2873,6 +2866,45 @@ pub static REGISTRY: &[ParamDesc] = &[
         Hz::None,
         Ps::ReadOnly,
         Rq::Always,
+    ),
+    p(
+        "dev.name",
+        "Device name",
+        "The board's own name, shown by every host it is plugged into",
+        System,
+        Advanced,
+        Text { max: 32 },
+        Tg::None,
+        Some(op::REQ_SET_DEVICE_NAME),
+        Some(op::REQ_GET_DEVICE_NAME),
+        DOut,
+        Wv::Zero,
+        // Same staging and directory flush as the source names
+        // (device_name_spec.md section 4).
+        Hz::Flash,
+        Ps::DeviceGlobal,
+        Rq::Feature("device_name"),
+    ),
+    p(
+        "out.latency",
+        "Output latency",
+        "How full the output rings are kept; lower is quicker, higher is safer",
+        System,
+        Expert,
+        Choice(OUTPUT_LATENCY),
+        Tg::None,
+        // OUT: 1-byte option id. IN wValue 0 is OutputLatencyStatus, whose
+        // first byte is the requested id, so a 1-byte read is the setting
+        // (config.h REQ_OUTPUT_LATENCY).
+        Some(op::REQ_OUTPUT_LATENCY),
+        Some(op::REQ_OUTPUT_LATENCY),
+        DOut,
+        Wv::Zero,
+        // A directory write and a synchronized restart, applied by the main
+        // loop; the status reports `pending` until then.
+        Hz::Flash,
+        Ps::DeviceGlobal,
+        Rq::Feature("output_latency"),
     ),
     p(
         "dev.platform",
@@ -3638,6 +3670,41 @@ pub static REGISTRY: &[ParamDesc] = &[
         Some(op::REQ_GET_CORE1_CONFLICT),
         DIn,
         Wv::Target,
+        Hz::None,
+        Ps::ReadOnly,
+        Rq::Always,
+    ),
+    p(
+        "diag.clock",
+        "Clock diagnostics",
+        "Clock and audio-path counters; empty unless built with DSPI_CLOCK_DIAG",
+        Diagnostics,
+        Expert,
+        Status,
+        Tg::None,
+        None,
+        Some(op::REQ_GET_CLOCK_DIAG),
+        DIn,
+        Wv::Zero,
+        Hz::None,
+        Ps::ReadOnly,
+        Rq::Always,
+    ),
+    // ------------------------------------------------------------- extension
+    // REQ_EXTENSION multiplexes sub-commands by wValue; EXT_LIST is wValue 0.
+    // The sub-commands themselves are typed in dspi-session's `ext` module.
+    p(
+        "ext.list",
+        "Extensions",
+        "Extension channel sub-commands this firmware supports",
+        Diagnostics,
+        Expert,
+        Status,
+        Tg::None,
+        None,
+        Some(op::REQ_EXTENSION),
+        DIn,
+        Wv::Zero,
         Hz::None,
         Ps::ReadOnly,
         Rq::Always,

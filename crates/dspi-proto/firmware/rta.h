@@ -19,6 +19,7 @@
 #include "config.h"
 #include "rta_fft.h"
 #include "rta_bass.h"
+#include "notify.h"
 
 // ---------------------------------------------------------------------------
 // Protocol constants
@@ -133,8 +134,9 @@ _Static_assert(sizeof(RtaStatus) == 24, "RtaStatus wire size");
 // ---------------------------------------------------------------------------
 
 // Validate and stage a config.  False = STALL (bad version/length/tap/order,
-// or an empty mask at that tap).  Applied by rta_service().
-bool rta_set_config(const void *payload, uint16_t len);
+// or an empty mask at that tap).  Applied by rta_service(), which announces
+// it with NOTIFY_EVT_RTA_CONFIG tagged with src.
+bool rta_set_config(const void *payload, uint16_t len, ParamSource src);
 void rta_get_config(RtaConfig *out);
 void rta_get_caps(RtaCaps *out);
 // Band centre table chunk (wValue 1..): up to 32 uint16 Hz values; returns
@@ -189,7 +191,8 @@ void rta_packet_end(uint32_t sample_count);
 // so the call sites do not each carry the Q28 conversion loop.
 void rta_tap(uint8_t tap, uint8_t row, const rta_pipe_t *buf, uint32_t n);
 
-// Main loop: apply staged config, run one bounded transform step, auto-off.
+// Main loop: apply staged config, fill liveness, auto-off. The transform of a
+// filled frame runs as a background job (bg_job.h), started by rta_packet_end().
 void rta_service(void);
 
 // Discard the frame in flight and restart capture.  Rate change, input

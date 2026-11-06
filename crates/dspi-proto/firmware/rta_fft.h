@@ -22,9 +22,11 @@
 #endif
 
 #if RTA_SAMPLE_FLOAT
-typedef float   rta_sample_t;    // linear, full scale = +/-1.0
+typedef float    rta_sample_t;   // linear, full scale = +/-1.0
+typedef float    rta_bandacc_t;  // band power accumulator
 #else
-typedef int16_t rta_sample_t;    // Q15, full scale = +/-32767
+typedef int16_t  rta_sample_t;   // Q15, full scale = +/-32767
+typedef uint64_t rta_bandacc_t;  // band power accumulator (exact integer sums)
 #endif
 
 // RTA_RAM_FUNC marks kernel code that may run from the audio path.  The host
@@ -72,11 +74,18 @@ uint16_t rta_band_centre_hz(uint8_t b);
 // Scaling: the fixed-point kernel halves every stage so the result carries a
 // 1/n factor; the float kernel applies the same 1/n so both formats agree.
 //
-// *stage must be 0 before the first call.  Each call performs one bounded
-// unit of work (no more than ~250 us on RP2040 at order 10) and returns true
-// when the transform, including the real-split pass, is complete.
+// Zero the cursor before the first call. Each call does at most max_units units
+// of the current stage (a prescale sample, a butterfly, a permutation cycle
+// start or a split bin pair) and returns true once the whole transform is done.
+// Results do not depend on max_units.
 // ---------------------------------------------------------------------------
-bool rta_fft_step(rta_sample_t *buf, uint8_t order, uint8_t *stage);
+typedef struct {
+    uint8_t  stage;
+    uint16_t pos;                          // units of the current stage already done
+    uint32_t seen[RTA_MAX_POINTS / 64];    // permutation: slots already placed
+} RtaFftCursor;
+
+bool rta_fft_step(rta_sample_t *buf, uint8_t order, RtaFftCursor *c, uint16_t max_units);
 
 // ---------------------------------------------------------------------------
 // Post-transform: frequency-domain Blackman-Harris, bin power, band sums, level bytes.
@@ -91,6 +100,20 @@ bool rta_fft_step(rta_sample_t *buf, uint8_t order, uint8_t *stage);
 // ---------------------------------------------------------------------------
 void rta_fft_finish(const rta_sample_t *buf, uint8_t order,
                     const RtaBandTable *table, float *band_power, uint8_t *bins);
+
+// The same pass, resumable in bin chunks: about 1 us per bin on RP2350, so the
+// whole pass in one main-loop step stalls every other main-loop task. Begin,
+// then step until it returns true; band_power is written on that last call.
+typedef struct {
+    uint16_t      next_bin;
+    uint8_t       band;          // first band whose range can still hold next_bin
+    rta_bandacc_t acc[RTA_MAX_BANDS];
+} RtaFinishCursor;
+
+void rta_fft_finish_begin(RtaFinishCursor *c);
+bool rta_fft_finish_step(RtaFinishCursor *c, const rta_sample_t *buf, uint8_t order,
+                         const RtaBandTable *table, float *band_power, uint8_t *bins,
+                         uint16_t max_bins);
 
 // Linear power (1.0 = 0 dBFS) to wire level byte; clamps to 0..255.
 uint8_t rta_level_from_power(float power);
