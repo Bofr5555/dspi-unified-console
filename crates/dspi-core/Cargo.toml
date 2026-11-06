@@ -31,6 +31,9 @@ nusb = "0.2"
 # -- WP C9 --
 # -- WP C10 --
 # -- WP C11 --
+# statvfs: the free-space check before a firmware image is written to the
+# bootloader drive (firmware.rs). Already in the lock (alsa, errno, ...).
+libc = "0.2"
 # -- WP C12 --
 # -- WP C13 --
 # -- WP C14 --

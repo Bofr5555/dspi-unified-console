@@ -514,6 +514,7 @@ dependencies = [
  "dspi-proto",
  "dspi-session",
  "dspi-transport",
+ "libc",
  "log",
  "nusb",
  "proptest",
