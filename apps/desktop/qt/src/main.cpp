@@ -369,7 +369,11 @@ int main(int argc, char *argv[])
     // only, so medium and semibold text comes out regular or bold. SF Pro,
     // where Apple's fonts are installed, is the same face (identical advances)
     // with every weight.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    const bool sfPro = QFontDatabase::families().contains(QStringLiteral("SF Pro"));
+#else
     const bool sfPro = QFontDatabase().families().contains(QStringLiteral("SF Pro"));
+#endif
     QFont defaultFont(sfPro ? QStringLiteral("SF Pro") : QStringLiteral(".AppleSystemUIFont"), 13);
 #elif defined(Q_OS_WIN)
     // The Windows UI font; Noto Sans if it is missing (Wine)

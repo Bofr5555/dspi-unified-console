@@ -1,4 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
+# macOS: the oldest release the app runs on (Qt 6.11's own minimum); the
+# Rust core is built for the same (MACOSX_DEPLOYMENT_TARGET, see
+# packaging/macos/build-macos.sh)
+set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Oldest macOS the app runs on")
 project(DSPiConsole VERSION 1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_AUTOMOC ON)
@@ -98,6 +102,18 @@ else()
 endif()
 
 if(APPLE)
+    # An app bundle, "DSPi Console.app", with its icon and Info.plist
+    set(DSPI_MAC_DIR ${CMAKE_SOURCE_DIR}/../packaging/macos)
+    set_source_files_properties(${DSPI_MAC_DIR}/dspi-console.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    target_sources(DSPiConsole PRIVATE ${DSPI_MAC_DIR}/dspi-console.icns)
+    set_target_properties(DSPiConsole PROPERTIES
+        MACOSX_BUNDLE ON
+        OUTPUT_NAME "DSPi Console"
+        MACOSX_BUNDLE_INFO_PLIST ${DSPI_MAC_DIR}/Info.plist.in
+        MACOSX_BUNDLE_GUI_IDENTIFIER io.github.weeblabs.DSPiConsole
+        MACOSX_BUNDLE_SHORT_VERSION_STRING ${DSPI_VER_MAJOR}.${DSPI_VER_MINOR}.${DSPI_VER_PATCH}
+        MACOSX_BUNDLE_BUNDLE_VERSION ${DSPI_VERSION})
+
     # The native Console's system colours, read from AppKit
     enable_language(OBJCXX)
     target_sources(DSPiConsole PRIVATE src/MacSystemColors.mm)
