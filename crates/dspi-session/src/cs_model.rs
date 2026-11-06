@@ -1173,6 +1173,43 @@ pub fn apply_code(
     }
 }
 
+/// Arm (`arm`) or cancel an IR learn, with the device's reason when it
+/// refuses. The firmware stalls a refusal and leaves the reason in the status
+/// packet, so a stall reads the status: `CS_STATUS_NO_IR` is
+/// [`ApplyError::Rejected`] with that code, and anything else is
+/// `CS_STATUS_BUSY` (a revert is running).
+///
+/// # Errors
+/// [`ApplyError::Rejected`] as above, also for a reply that is not the
+/// acknowledgement; [`ApplyError::Transport`] for a failed read.
+pub fn apply_learn(session: &mut Session, arm: bool) -> Result<(), ApplyError> {
+    use crate::surfaces::status;
+    let limits = session_limits(session);
+    session.with_transport(|t| {
+        let mut s = Surfaces::new(t, limits);
+        let reply = if arm { s.arm_learn() } else { s.cancel_learn() };
+        Ok(match reply {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(ApplyError::Rejected {
+                status: status::BUSY,
+            }),
+            Err(SurfaceError::Transport(TransportError::Stalled { .. })) => {
+                // The stall itself does not say why. `last_status` is the
+                // firmware's latest, so a NO_IR from an earlier arm can be
+                // read stale, and BUSY is inferred from anything else.
+                let reason = s.read_status().map(|p| p.last_status);
+                Err(ApplyError::Rejected {
+                    status: match reason {
+                        Ok(status::NO_IR) => status::NO_IR,
+                        _ => status::BUSY,
+                    },
+                })
+            }
+            Err(e) => Err(e.into()),
+        })
+    })?
+}
+
 /// The Console's placeholder while the capability tables are missing: either
 /// the device is still being read, or there is no device to read. Every picker
 /// on the three Control pages is built from device-served tables, so without

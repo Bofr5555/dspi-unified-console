@@ -25,6 +25,7 @@ fn step() -> impl Strategy<Value = Step> {
             Just(n::PARAM_SRC_BULK_SET as u8),
             Just(n::PARAM_SRC_HOST_SET as u8),
             Just(n::PARAM_SRC_MIDI as u8),
+            Just(n::PARAM_SRC_UNKNOWN as u8),
             any::<u8>(),
         ]
         .prop_map(Step::Note),
@@ -49,7 +50,7 @@ proptest! {
         for s in steps {
             match s {
                 Step::Started => {
-                    f.bulk_write_started();
+                    f.bulk_write_started(now);
                     writes += 1;
                     armed = true;
                 }
@@ -61,7 +62,7 @@ proptest! {
                 }
                 Step::Wait(ms) => now += Duration::from_millis(u64::from(ms)),
                 Step::Note(src) => {
-                    let own = f.classify(now, kind, src, None, None);
+                    let own = f.classify_invalidation(now, kind, src, None, None);
                     if u16::from(src) == n::PARAM_SRC_BULK_SET && own {
                         prop_assert!(armed, "claimed without a pending write of ours");
                         claimed += 1;
@@ -70,6 +71,53 @@ proptest! {
                 }
             }
             prop_assert!(claimed <= writes);
+        }
+    }
+
+    /// Tagged firmware: only our path's source with a SET of ours out is
+    /// ever claimed, and it settles everything.
+    #[test]
+    fn proptest_echo_filter_tagged_only_claims_our_path_when_outstanding(
+        steps in prop::collection::vec(step(), 0..60),
+        midi in any::<bool>(),
+    ) {
+        let kind = if midi { TransportKind::Midi } else { TransportKind::Usb };
+        let path = if midi { n::PARAM_SRC_MIDI } else { n::PARAM_SRC_HOST_SET };
+        let mut f = EchoFilter::default();
+        f.set_bulk_source(true);
+        let mut now = Instant::now();
+        let mut outstanding = 0usize;
+        for s in steps {
+            match s {
+                Step::Started => {
+                    f.bulk_write_started(now);
+                    outstanding += 1;
+                }
+                Step::Finished(ok) => {
+                    f.bulk_write_finished(now, ok);
+                    if !ok {
+                        outstanding = outstanding.saturating_sub(1);
+                    }
+                }
+                Step::Wait(ms) => now += Duration::from_millis(u64::from(ms)),
+                Step::Note(src) => {
+                    let pending = f.own_bulk_pending(now);
+                    let own = f.classify_invalidation(now, kind, src, None, None);
+                    if u16::from(src) == n::PARAM_SRC_UNKNOWN {
+                        prop_assert!(!own, "a merged entry is never ours");
+                        prop_assert!(!f.own_bulk_pending(now), "and it settles");
+                        if pending {
+                            outstanding = 0;
+                        }
+                    }
+                    if own {
+                        prop_assert_eq!(u16::from(src), path, "another source claimed");
+                        prop_assert!(outstanding > 0, "claimed with nothing outstanding");
+                        outstanding = 0;
+                        prop_assert!(!f.own_bulk_pending(now), "a match settles all");
+                    }
+                }
+            }
         }
     }
 
@@ -82,10 +130,11 @@ proptest! {
         started in any::<bool>(),
     ) {
         let mut f = EchoFilter::default();
+        let now = Instant::now();
         if started {
-            f.bulk_write_started();
+            f.bulk_write_started(now);
         }
-        let own = f.classify(Instant::now(), TransportKind::Link, src, origin, session);
+        let own = f.classify_invalidation(now, TransportKind::Link, src, origin, session);
         let expected = matches!((origin, session), (Some(o), Some(s)) if o != 0 && o == s);
         prop_assert_eq!(own, expected);
     }

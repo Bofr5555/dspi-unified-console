@@ -19,7 +19,8 @@
 //!   session down, and an out-of-order or failed chunk stalls and closes
 //!   every chunk session (vendor_commands.c:4669-4672). A bulk write is
 //!   applied when it passes [`BulkPacket::decode`] and notifies
-//!   `BULK_INVALIDATED` with source `BULK_SET`. The device keeps its own
+//!   `BULK_INVALIDATED` with source `BULK_SET` (`HOST_SET` with
+//!   [`FakeOptions::bulk_source`]). The device keeps its own
 //!   header. A wrong-version or wrong-size bulk write **stalls** here
 //!   (unless [`FakeOptions::ack_unknown_sets`]); the firmware ACKs the
 //!   transfer and refuses it later on the main loop, so a host sees no
@@ -65,8 +66,8 @@
 //!   band-bypass shortcut (`REQ_SET/GET_BAND_BYPASS`), pin SETs (output pins,
 //!   BCK, MCK, S/PDIF/I2S/ADAT RX pins) and output-pin GETs, the I2S
 //!   clock-pin mode, the S/PDIF RX, ADAT and I2S-slave status reads, the
-//!   control-interface status, the Core 1 mode and conflict reads, the saved
-//!   master volume, factory reset, save-params and save-output-config, clip
+//!   control-interface status, the Core 1 mode read, the saved
+//!   master volume, save-output-config, clip
 //!   clearing, clock diagnostics, buffer statistics and the DAC mute test
 //!   pulse. The `SCALARS`/`FEATURE_SCALARS` tables and the per-opcode
 //!   matches in `State::get_other`/`set_other`/`get_feature`/`set_feature`
@@ -117,6 +118,8 @@ const DEMO_STATUS: &[u8] = include_bytes!("../../../tests/fixtures/link/device/s
 
 /// The serial every fake reports (`GET_SERIAL` and the descriptor).
 const SERIAL: &str = "DEMO0000DSPI0001";
+/// `FLASH_OK`: the reply to the deferred flash commands.
+const FLASH_OK: u8 = 0;
 
 /// A captured device to start from: a `REQ_GET_PLATFORM` reply and a V32
 /// bulk image. `tests/fixtures/link/device/` holds a real RP2350 capture.
@@ -163,6 +166,13 @@ pub struct FakeOptions {
     /// 65535 (`wLength`'s limit, as libusb on Linux and macOS); `Some(4096)`
     /// emulates WinUSB.
     pub max_transfer: Option<usize>,
+    /// Tag a bulk SET's `BULK_INVALIDATED` with its path (`HOST_SET`) and
+    /// report `NOTIFY_FEAT_BULK_SOURCE` through `EXT_NOTIFY_FEATURES`, as
+    /// firmware from the `bulk-source` commits does
+    /// (`notification_protocol_v2_spec.md` 3.5.1). Off: every bulk apply is
+    /// `BULK_SET` and the sub-command is not listed. The flag is only
+    /// discoverable with [`FakeOptions::extensions`] on.
+    pub bulk_source: bool,
 }
 
 /// `wLength` is 16 bits.
@@ -446,8 +456,6 @@ impl NotificationSource for FakeNotifications {
 type Field = (&'static str, usize, usize);
 
 // `WireGlobalParams` (bulk_params.h:60-67).
-// Layout only: checked by the tests, never written.
-#[cfg(test)]
 const G_PREAMP: Field = ("preamp_gain_db", 0, 4);
 const G_BYPASS: Field = ("bypass", 4, 1);
 const G_LOUDNESS: Field = ("loudness_enabled", 5, 1);
@@ -808,6 +816,8 @@ struct Presets {
 struct State {
     platform: Vec<u8>,
     image: Vec<u8>,
+    /// What `REQ_FACTORY_RESET` restores.
+    factory: Vec<u8>,
     /// `GET_STATUS` sub-query 9.
     status: Vec<u8>,
     options: FakeOptions,
@@ -842,6 +852,7 @@ impl State {
         }
         let mut s = Self {
             platform: capture.platform,
+            factory: capture.bulk.clone(),
             image: capture.bulk,
             status: Vec::new(),
             options,
@@ -1028,15 +1039,62 @@ impl State {
         }
     }
 
+    /// `global.preamp_gain_db` reads as input 0's preamp in the bulk image
+    /// (bulk_params.c:129); the firmware sends no notification for it.
+    fn sync_legacy_preamp(&mut self) {
+        let db = self
+            .locate("preamp", 4, 0, F32)
+            .and_then(|o| self.bytes(o, F32.2));
+        if let (Some(db), Some(off)) = (db, self.locate("global", 0, 0, G_PREAMP))
+            && let Some(dst) = self.image.get_mut(off..off.saturating_add(G_PREAMP.2))
+        {
+            dst.copy_from_slice(&db);
+        }
+    }
+
+    /// An output's delay is also its channel's delay, and the firmware
+    /// notifies both (vendor_commands.c, `REQ_SET_OUTPUT_DELAY`).
+    fn mirror_output_delay(&mut self, value: u16, bytes: &[u8]) {
+        let channel = usize::from(self.num_inputs()).saturating_add(usize::from(value & 0xFF));
+        if let Some(off) = self.locate("delays", 4, channel, F32) {
+            self.write(off, bytes, nfy::PARAM_SRC_HOST_SET as u8);
+        }
+    }
+
+    /// `REQ_SAVE_PARAMS`: the live state goes to the active slot. A status
+    /// byte back; the flash write is deferred on the device.
+    fn save_params(&mut self) -> u8 {
+        let image = self.image.clone();
+        if let Some(s) = self.presets.slots.get_mut(usize::from(self.presets.active)) {
+            *s = Some(image);
+        }
+        FLASH_OK
+    }
+
+    /// `REQ_FACTORY_RESET`: the live state becomes the factory image (here,
+    /// the capture the device started from); presets stay. Answers
+    /// `FLASH_OK`, then invalidates with source `FACTORY`.
+    fn factory_reset(&mut self) -> u8 {
+        let factory = self.factory.clone();
+        self.replace_body(&factory, &[]);
+        self.event(
+            nfy::NOTIFY_EVT_BULK_INVALIDATED,
+            nfy::PARAM_SRC_FACTORY as u8,
+        );
+        FLASH_OK
+    }
+
     /// `bulk_params_apply`: exactly this wire version and size, or refused.
     fn apply_bulk(&mut self, payload: Vec<u8>) -> bool {
         match BulkPacket::decode(payload) {
             Ok(p) => {
                 self.replace_body(p.as_bytes(), &[]);
-                self.event(
-                    nfy::NOTIFY_EVT_BULK_INVALIDATED,
-                    nfy::PARAM_SRC_BULK_SET as u8,
-                );
+                let source = if self.options.bulk_source {
+                    nfy::PARAM_SRC_HOST_SET
+                } else {
+                    nfy::PARAM_SRC_BULK_SET
+                };
+                self.event(nfy::NOTIFY_EVT_BULK_INVALIDATED, source as u8);
                 true
             }
             Err(_) => false,
@@ -1104,6 +1162,10 @@ impl State {
             op::REQ_PRESET_SAVE => Some(vec![self.preset_save(value)]),
             op::REQ_PRESET_LOAD => Some(vec![self.preset_load(value)]),
             op::REQ_PRESET_DELETE => Some(vec![self.preset_delete(value)]),
+            op::REQ_SAVE_PARAMS => Some(vec![self.save_params()]),
+            op::REQ_FACTORY_RESET => Some(vec![self.factory_reset()]),
+            // No PDM/EQ-worker interlock is modelled: never a conflict.
+            op::REQ_GET_CORE1_CONFLICT => Some(vec![0]),
             op::REQ_EXTENSION if self.options.extensions => self.get_ext(value),
             _ => None,
         }
@@ -1313,12 +1375,17 @@ impl State {
 
     fn get_ext(&self, value: u16) -> Option<Vec<u8>> {
         match value {
-            gext::EXT_LIST => Some(
-                [gext::EXT_CROSSFEED_PAIR_MAP, gext::EXT_CORE_VREG]
-                    .iter()
-                    .flat_map(|id| id.to_le_bytes())
-                    .collect(),
-            ),
+            gext::EXT_LIST => {
+                let mut ids = vec![gext::EXT_CROSSFEED_PAIR_MAP, gext::EXT_CORE_VREG];
+                if self.options.bulk_source {
+                    ids.push(gext::EXT_NOTIFY_FEATURES);
+                }
+                Some(ids.iter().flat_map(|id| id.to_le_bytes()).collect())
+            }
+            // `NOTIFY_FEAT_BULK_SOURCE`, bit 0.
+            gext::EXT_NOTIFY_FEATURES if self.options.bulk_source => {
+                Some(1u32.to_le_bytes().to_vec())
+            }
             gext::EXT_CROSSFEED_PAIR_MAP => self
                 .locate("crossfeed", 0, 0, X_PAIR_MAP)
                 .and_then(|o| self.bytes(o, X_PAIR_MAP.2)),
@@ -1367,6 +1434,11 @@ impl State {
                     self.enqueue(v1);
                 }
                 self.write(off, &bytes, nfy::PARAM_SRC_HOST_SET as u8);
+                match opcode {
+                    op::REQ_SET_PREAMP_CH => self.sync_legacy_preamp(),
+                    op::REQ_SET_OUTPUT_DELAY => self.mirror_output_delay(value, &bytes),
+                    _ => {}
+                }
             }
             true
         } else {
@@ -1405,6 +1477,7 @@ impl State {
                             self.write(off, db, host);
                         }
                     }
+                    self.sync_legacy_preamp();
                 }
                 true
             }
@@ -2382,5 +2455,112 @@ mod tests_wp_t4 {
             drain(&mut src),
             vec![vec![2, 3, 0, 1, nfy::PARAM_SRC_GPIO as u8, 0, 0, 0]]
         );
+    }
+
+    // ---- WP B2 ------------------------------------------------------------
+
+    fn image_f32(d: &FakeDevice, section_name: &str, offset: usize) -> f32 {
+        let (at, _) = section(section_name).unwrap();
+        let img = d.remote().image();
+        f32::from_le_bytes(img[at + offset..at + offset + 4].try_into().unwrap())
+    }
+
+    #[test]
+    fn wp_b2_global_preamp_follows_input_0() {
+        let mut d = FakeDevice::demo();
+        d.control_out(op::REQ_SET_PREAMP_CH, 0, &(-7.0f32).to_le_bytes())
+            .unwrap();
+        assert_eq!(image_f32(&d, "global", G_PREAMP.1), -7.0);
+        d.control_out(op::REQ_SET_PREAMP_CH, 1, &(-3.0f32).to_le_bytes())
+            .unwrap();
+        assert_eq!(
+            image_f32(&d, "global", G_PREAMP.1),
+            -7.0,
+            "input 1 is not it"
+        );
+        d.control_out(op::REQ_SET_PREAMP, 0, &(-2.0f32).to_le_bytes())
+            .unwrap();
+        assert_eq!(image_f32(&d, "global", G_PREAMP.1), -2.0);
+    }
+
+    #[test]
+    fn wp_b2_an_output_delay_is_also_its_channel_delay() {
+        let mut d = FakeDevice::demo();
+        let inputs = usize::from(d.shared.lock().num_inputs());
+        let mut notes = d.notifications().unwrap();
+        while !notes.read(Duration::from_millis(1)).unwrap().is_empty() {}
+        d.control_out(op::REQ_SET_OUTPUT_DELAY, 2, &12.5f32.to_le_bytes())
+            .unwrap();
+        assert_eq!(image_f32(&d, "delays", (inputs + 2) * 4), 12.5);
+        // Both offsets notify, as the firmware does.
+        let mut offsets = Vec::new();
+        for _ in 0..2 {
+            let p = notes.read(Duration::from_millis(50)).unwrap();
+            offsets.push(u16::from_le_bytes([p[4], p[5]]) as usize);
+        }
+        assert!(offsets.contains(&(section("delays").unwrap().0 + (inputs + 2) * 4)));
+    }
+
+    #[test]
+    fn wp_b2_save_params_and_factory_reset_are_modelled() {
+        let mut d = FakeDevice::demo();
+        d.control_out(op::REQ_SET_PREAMP_CH, 0, &(-7.0f32).to_le_bytes())
+            .unwrap();
+        // Saved: reloading the active slot brings the value back.
+        assert_eq!(d.control_in(op::REQ_SAVE_PARAMS, 0, 1).unwrap(), [FLASH_OK]);
+        d.control_out(op::REQ_SET_PREAMP_CH, 0, &(-1.0f32).to_le_bytes())
+            .unwrap();
+        d.control_in(op::REQ_PRESET_LOAD, 0, 1).unwrap();
+        assert_eq!(image_f32(&d, "global", G_PREAMP.1), -7.0);
+
+        let mut notes = d.notifications().unwrap();
+        while !notes.read(Duration::from_millis(1)).unwrap().is_empty() {}
+        assert_eq!(
+            d.control_in(op::REQ_FACTORY_RESET, 0, 1).unwrap(),
+            [FLASH_OK]
+        );
+        assert_eq!(d.remote().image(), DEMO_BULK, "back to the factory image");
+        let p = notes.read(Duration::from_millis(50)).unwrap();
+        assert_eq!(u16::from(p[1]), nfy::NOTIFY_EVT_BULK_INVALIDATED);
+        assert_eq!(u16::from(p[4]), nfy::PARAM_SRC_FACTORY);
+    }
+
+    #[test]
+    fn wp_b2_bulk_source_tags_the_invalidation_and_reports_the_feature() {
+        for tagged in [false, true] {
+            let mut d = FakeDevice::new(
+                Capture::demo(),
+                FakeOptions {
+                    extensions: true,
+                    bulk_source: tagged,
+                    ..FakeOptions::default()
+                },
+            );
+            let list = d
+                .control_in_upto(op::REQ_EXTENSION, gext::EXT_LIST, 64)
+                .unwrap();
+            let listed = list
+                .chunks(2)
+                .any(|c| c == gext::EXT_NOTIFY_FEATURES.to_le_bytes());
+            assert_eq!(listed, tagged);
+            let features = d.control_in(op::REQ_EXTENSION, gext::EXT_NOTIFY_FEATURES, 4);
+            if tagged {
+                assert_eq!(features.unwrap(), [1, 0, 0, 0]);
+            } else {
+                assert!(matches!(features, Err(TransportError::Stalled { .. })));
+            }
+
+            let mut notes = d.notifications().unwrap();
+            while !notes.read(Duration::from_millis(1)).unwrap().is_empty() {}
+            d.control_out(op::REQ_SET_ALL_PARAMS, 0, DEMO_BULK).unwrap();
+            let p = notes.read(Duration::from_millis(50)).unwrap();
+            assert_eq!(u16::from(p[1]), nfy::NOTIFY_EVT_BULK_INVALIDATED);
+            let want = if tagged {
+                nfy::PARAM_SRC_HOST_SET
+            } else {
+                nfy::PARAM_SRC_BULK_SET
+            };
+            assert_eq!(u16::from(p[4]), want);
+        }
     }
 }

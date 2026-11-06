@@ -1684,8 +1684,8 @@ mod tests_wp_c6 {
 
     #[test]
     fn wp_c6_core1_conflict_read_errors_reach_the_caller() {
-        // The fake stalls the read: an error, not "no conflict".
-        let (core, _, _) = rig(&[]);
+        // A stalled read: an error, not "no conflict".
+        let (core, _, _) = rig(&[(op::REQ_GET_CORE1_CONFLICT, None)]);
         assert!(matches!(
             core.check_core1_conflict(0),
             Err(DspiError::Transfer { .. })

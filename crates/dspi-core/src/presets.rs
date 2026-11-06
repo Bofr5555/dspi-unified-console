@@ -27,7 +27,7 @@ use dspi_proto::generated::opcodes as op;
 use dspi_proto::generated::status as st;
 use dspi_proto::generated::tube as tb;
 
-use crate::connect::{read_preset_directory, read_preset_name};
+use crate::connect::{read_preset_directory, read_preset_name, refresh_params_locked};
 use crate::consts::*;
 use crate::records::*;
 use crate::{Connection, DspiCore, DspiError, Inner, Result, error, state};
@@ -357,19 +357,18 @@ impl DspiCore {
 
     /// `load_preset` once the device lock is held.
     fn load_flow(&self, slot: u8) -> Result<()> {
-        {
-            let mut guard = self.lock();
-            let code = guard
-                .writable_conn()?
-                .set_as_read(op::REQ_PRESET_LOAD, u16::from(slot))?;
-            error::status(code)?;
-            if !wait_for(guard.conn()?, |c| Ok(read_active(c)? == slot)) {
-                return Err(unconfirmed(&mut guard, "loading", slot));
-            }
-        }
-        self.refresh_params()?;
         let mut guard = self.lock();
         let inner = &mut *guard;
+        let code = inner
+            .writable_conn()?
+            .set_as_read(op::REQ_PRESET_LOAD, u16::from(slot))?;
+        error::status(code)?;
+        if !wait_for(inner.conn()?, |c| Ok(read_active(c)? == slot)) {
+            return Err(unconfirmed(inner, "loading", slot));
+        }
+        // Kept across the re-read, so no notification or setter lands between
+        // the device's state and the mirror.
+        refresh_params_locked(inner)?;
         let directory = inner
             .conn
             .as_mut()
@@ -389,27 +388,24 @@ impl DspiCore {
 
     /// `delete_preset` once the device lock is held.
     fn delete_flow(&self, slot: u8, bit: u16) -> Result<()> {
-        let was_active = {
-            let mut guard = self.lock();
-            let inner = &mut *guard;
-            let code = inner
-                .writable_conn()?
-                .set_as_read(op::REQ_PRESET_DELETE, u16::from(slot))?;
-            error::status(code)?;
-            if !wait_for(inner.conn()?, |c| Ok(read_occupied(c)? & bit == 0)) {
-                return Err(unconfirmed(inner, "deleting", slot));
-            }
-            let s = &mut inner.state;
-            s.preset_occupied &= !bit;
-            // The device clears the slot's name with it.
-            if let Some(n) = s.preset_names.get_mut(usize::from(slot)) {
-                n.clear();
-            }
-            s.active_preset_slot == slot
-        };
-        if was_active {
+        let mut guard = self.lock();
+        let inner = &mut *guard;
+        let code = inner
+            .writable_conn()?
+            .set_as_read(op::REQ_PRESET_DELETE, u16::from(slot))?;
+        error::status(code)?;
+        if !wait_for(inner.conn()?, |c| Ok(read_occupied(c)? & bit == 0)) {
+            return Err(unconfirmed(inner, "deleting", slot));
+        }
+        let s = &mut inner.state;
+        s.preset_occupied &= !bit;
+        // The device clears the slot's name with it.
+        if let Some(n) = s.preset_names.get_mut(usize::from(slot)) {
+            n.clear();
+        }
+        if s.active_preset_slot == slot {
             // Deleting the active slot applies the factory defaults.
-            self.refresh_params()?;
+            refresh_params_locked(inner)?;
         }
         Ok(())
     }
@@ -424,9 +420,8 @@ impl DspiCore {
             error::status(code)?;
         }
         thread::sleep(FACTORY_RESET_SETTLE);
-        self.fetch_all()?;
-        capture_baseline_locked(&mut self.lock());
-        Ok(())
+        // Ends with the baseline.
+        self.fetch_all()
     }
 }
 
@@ -1443,6 +1438,9 @@ mod tests_wp_c5 {
         let core = DspiCore::new();
         core.attach_probed(Box::new(spy), "DEMO".into(), 0).unwrap();
         core.fetch_all().unwrap();
+        // `fetch_all` leaves a baseline; these tests start without one, to see
+        // which flows take it.
+        core.lock().baseline = None;
         log.lock().unwrap().clear();
         (core, remote, log)
     }

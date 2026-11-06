@@ -32,7 +32,7 @@ use dspi_transport::TransportError;
 
 use crate::consts::*;
 use crate::records::*;
-use crate::{Connection, DspiCore, DspiError, Inner, Result, Writable, state};
+use crate::{Connection, DspiCore, DspiError, Inner, Result, Writable, presets, state};
 
 /// The wire format this build reads and writes.
 const V32: u8 = dspi_proto::generated::wire::WIRE_FORMAT_VERSION as u8;
@@ -90,6 +90,10 @@ impl DspiCore {
     /// are kept and only the per-item values are read. The flag is consumed,
     /// so a later call reads everything.
     ///
+    /// Ends by capturing the preset baseline, so an embedder using this as a
+    /// refresh also resets [`DspiCore::preset_dirty`]; to re-read without that,
+    /// use [`DspiCore::refresh_params`].
+    ///
     /// Holds the core's lock for the whole read: a few hundred milliseconds
     /// over USB, seconds over MIDI or a slow Link. Every other call that
     /// takes the lock (`get_state`, setters, the RTA worker's polls) waits
@@ -119,6 +123,8 @@ impl DspiCore {
         conn.wire = wire;
         conn.fresh_image = false;
         inner.state = next;
+        // What the device runs now is the state a preset is compared with.
+        presets::capture_baseline_locked(inner);
         Ok(())
     }
 
@@ -134,22 +140,7 @@ impl DspiCore {
     /// [`DspiError::Transfer`] when the read fails or the image cannot be
     /// mapped onto this build's layout.
     pub fn refresh_params(&self) -> Result<()> {
-        let mut guard = self.lock();
-        let inner = &mut *guard;
-        let conn = inner.conn.as_mut().ok_or(DspiError::Disconnected)?;
-        let mut next = inner.state.clone();
-        match read_image(conn, &mut next)? {
-            Image::Read(read) => {
-                conn.wire = Some(read);
-                inner.state = next;
-                Ok(())
-            }
-            Image::Unmapped { version } => Err(DspiError::Transfer {
-                msg: format!(
-                    "the device's settings (wire format {version}) cannot be read by this version"
-                ),
-            }),
-        }
+        refresh_params_locked(&mut self.lock())
     }
 
     /// Write the whole cached state to the device in one bulk transfer:
@@ -248,6 +239,25 @@ enum Image {
 
 /// The platform and image part of `fetch_all`, on a fresh state. Returns
 /// the connection's new `wire` (`None` when no image could be shown).
+/// [`DspiCore::refresh_params`] for a flow that already holds the core's
+/// lock, so nothing lands between the device's change and the re-read.
+pub(crate) fn refresh_params_locked(inner: &mut Inner) -> Result<()> {
+    let conn = inner.conn.as_mut().ok_or(DspiError::Disconnected)?;
+    let mut next = inner.state.clone();
+    match read_image(conn, &mut next)? {
+        Image::Read(read) => {
+            conn.wire = Some(read);
+            inner.state = next;
+            Ok(())
+        }
+        Image::Unmapped { version } => Err(DspiError::Transfer {
+            msg: format!(
+                "the device's settings (wire format {version}) cannot be read by this version"
+            ),
+        }),
+    }
+}
+
 fn read_platform_and_image(conn: &mut Connection, s: &mut DspState) -> Result<Option<WireRead>> {
     if conn.vid == LEGACY_VID {
         // Pre-May-2026 firmware: far older than any wire format this build
@@ -621,7 +631,7 @@ pub(crate) fn apply_all_params_locked(inner: &mut Inner) -> Result<()> {
         .transport()
         .lock(LOCK_REASON, LOCK_TIMEOUT)
         .map_err(DspiError::from)?;
-    w.conn().echo.bulk_write_started();
+    w.conn().echo.bulk_write_started(Instant::now());
     let sent = write_image(&mut w, &image);
     w.conn()
         .echo
@@ -884,6 +894,17 @@ mod tests_wp_c2 {
         assert_eq!(remote.image(), core.get_state().bulk_raw);
     }
 
+    /// A baseline exists once the app has connected, so `preset_dirty` means
+    /// something from the first edit on.
+    #[test]
+    fn wp_b2_fetch_all_leaves_a_baseline() {
+        let (core, _remote) = demo_core();
+        core.fetch_all().unwrap();
+        assert!(!core.preset_dirty());
+        core.set_bypass(!core.get_state().bypass).unwrap();
+        assert!(core.preset_dirty());
+    }
+
     #[test]
     fn wp_c2_apply_all_params_brackets_the_write_for_the_echo_filter() {
         let (core, _remote) = demo_core();
@@ -895,13 +916,13 @@ mod tests_wp_c2 {
         let bulk = nfy::PARAM_SRC_BULK_SET as u8;
         assert!(
             conn.echo
-                .classify(now, TransportKind::Fake, bulk, None, None)
+                .classify_invalidation(now, TransportKind::Fake, bulk, None, None)
         );
         // Claimed once: a second invalidation is another host's.
         assert!(
             !conn
                 .echo
-                .classify(now, TransportKind::Fake, bulk, None, None)
+                .classify_invalidation(now, TransportKind::Fake, bulk, None, None)
         );
         assert!(!conn.echo.own_bulk_pending(now + Duration::from_secs(2)));
     }

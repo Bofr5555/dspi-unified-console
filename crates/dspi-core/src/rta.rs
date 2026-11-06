@@ -82,17 +82,17 @@ impl DspiCore {
     /// without an analyser) and ends on disconnect, on close and on reopen;
     /// call this again after each connect.
     ///
-    /// Takes the core's `Arc` because the worker holds a weak reference to
-    /// the core for its per-poll lock. Never fails: a worker thread that
-    /// cannot be spawned is logged and the analyser stays unsupported.
-    pub fn rta_start(self: &Arc<Self>) {
+    /// The worker holds a weak reference to the core for its per-poll lock.
+    /// Never fails: a worker thread that cannot be spawned is logged and the
+    /// analyser stays unsupported.
+    pub fn rta_start(&self) {
         let mut inner = self.lock();
         if inner.rta.worker.is_some() || inner.writable_conn().is_err() {
             return;
         }
         inner.rta.next_id = inner.rta.next_id.wrapping_add(1);
         let id = inner.rta.next_id;
-        match RtaWorker::spawn(Arc::downgrade(self), Arc::clone(&self.listeners), id) {
+        match RtaWorker::spawn(self.me.clone(), Arc::clone(&self.listeners), id) {
             Ok(worker) => inner.rta.worker = Some(worker),
             Err(e) => log::warn!("cannot start the spectrum analyser worker: {e}"),
         }

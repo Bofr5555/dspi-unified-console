@@ -260,9 +260,9 @@ impl Repr {
                 *bytes.get(3)?,
             ])),
             Repr::Text(n) => Value::Text(
+                // NULs pad the field; spaces are the user's own text.
                 String::from_utf8_lossy(bytes.get(..n.min(bytes.len()))?)
                     .trim_end_matches('\0')
-                    .trim()
                     .to_string(),
             ),
             Repr::Raw => Value::Bytes(bytes.to_vec()),
@@ -452,5 +452,15 @@ mod tests {
         assert_eq!(Value::Float(64.0).display(Unit::Hz), "64 Hz");
         assert_eq!(Value::Float(3.58).display(Unit::Q), "3.58");
         assert_eq!(Value::Bool(true).display(Unit::None), "on");
+    }
+
+    #[test]
+    fn wp_b2_text_decoding_trims_nuls_not_spaces() {
+        let mut b = b" TV ".to_vec();
+        b.extend([0; 28]);
+        assert_eq!(
+            Repr::Text(32).decode(&b),
+            Some(Value::Text(" TV ".to_string()))
+        );
     }
 }

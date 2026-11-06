@@ -49,7 +49,7 @@
 // packages fill the methods in. WP Q3 removes this allow.
 #![allow(dead_code)]
 
-use std::sync::{Arc, Mutex, MutexGuard, RwLock};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock, Weak};
 
 use dspi_proto::wire_compat::WireRead;
 use dspi_session::Session;
@@ -113,6 +113,9 @@ pub struct DspiCore {
     pub(crate) inner: Mutex<Inner>,
     /// Shared with the reader and worker threads, which wake the app.
     pub(crate) listeners: Arc<Listeners>,
+    /// This object, for threads a `&self` method starts (the RTA worker).
+    /// Methods stay `&self`, which is what UniFFI exports.
+    pub(crate) me: Weak<DspiCore>,
 }
 
 /// Everything behind the lock.
@@ -168,7 +171,7 @@ pub(crate) struct Connection {
     pub(crate) ext: ExtState,
     /// Recognises the invalidation of our own bulk writes (PLAN §1.2):
     /// `apply_all_params` (WP C2) and any other `0xA1`/`0xA3` writer call
-    /// `bulk_write_started` / `bulk_write_finished(Instant::now(), ok)`;
+    /// `bulk_write_started(Instant::now())` / `bulk_write_finished(Instant::now(), ok)`;
     /// `process_notifications` (WP C7) classifies with it.
     pub(crate) echo: dspi_session::notify::EchoFilter,
     /// Set by `attach_probed` (WP C1) when it decoded the mirror from this
@@ -372,9 +375,10 @@ pub(crate) struct Listeners {
 
 impl DspiCore {
     pub fn new() -> Arc<Self> {
-        Arc::new(Self {
+        Arc::new_cyclic(|me| Self {
             inner: Mutex::new(Inner::new()),
             listeners: Arc::new(Listeners::default()),
+            me: me.clone(),
         })
     }
 
@@ -511,6 +515,8 @@ impl DspiCore {
         conn.link = Wire::Session(Box::new(session));
         conn.notifications = notifications;
         conn.wire = Some(image.read);
+        // The firmware's own word on bulk echoes; without it, the time window.
+        conn.echo.set_bulk_source(ext.bulk_source());
         conn.ext = ext;
         // Without the platform reply the mirror lacks the firmware identity:
         // let `fetch_all` read everything again.

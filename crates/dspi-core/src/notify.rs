@@ -11,9 +11,11 @@
 //!    `Notification::received` stamp, PLAN §1.2), patches `PARAM_CHANGED`
 //!    values into `encode_bulk(state)` and decodes the result once
 //!    (PLAN §1.4);
-//! 2. with the lock released: re-reads the whole image (WP C2's
-//!    `refresh_params`, then the preset directory) when the batch asked for
-//!    it: a foreign `BULK_INVALIDATED`, a sequence gap or queue overflow
+//! 2. then, under the core's lock taken again and held across the read, so no
+//!    setter lands between the device's state and the mirror (a hold that
+//!    grows to seconds over MIDI and Link): re-reads the whole image
+//!    (`connect::refresh_params_locked`, then the preset directory) when the
+//!    batch asked for it: a foreign `BULK_INVALIDATED`, a sequence gap or queue overflow
 //!    (`Notification::lost`), an offset outside the image, or any
 //!    `PARAM_CHANGED` on a read-only connection, whose offsets are another
 //!    wire format's (patch 0003).
@@ -135,12 +137,12 @@ impl DspiCore {
     /// The unlocked phase: re-read the image (C2's path), then the preset
     /// directory, and rebaseline if a preset was loaded.
     fn refresh_after_notifications(&self, rebaseline: bool, result: &mut NotifyResult) {
-        if let Err(e) = self.refresh_params() {
+        let mut guard = self.lock();
+        let inner = &mut *guard;
+        if let Err(e) = connect::refresh_params_locked(inner) {
             log::warn!("re-reading the device after a notification failed: {e}");
             return;
         }
-        let mut guard = self.lock();
-        let inner = &mut *guard;
         if let Some(conn) = inner.conn.as_mut() {
             // A failure must not undo the re-read: the directory keeps its
             // last value.
@@ -551,6 +553,75 @@ mod tests_wp_c7 {
         assert_eq!(r.flags & NOTIFY_REFRESHED, 0, "{r:?}");
         // The next one is someone else's.
         remote.load_image(remote.image(), SRC_BULK);
+        process_until(&core, |r| r.flags & NOTIFY_REFRESHED != 0);
+    }
+
+    /// Firmware that tags bulk applies (`EXT_NOTIFY_FEATURES`,
+    /// `NOTIFY_FEAT_BULK_SOURCE`): the probe switches the filter over.
+    fn tagged() -> (Arc<DspiCore>, FakeRemote) {
+        let dev = FakeDevice::new(
+            dspi_transport::fake::Capture::demo(),
+            dspi_transport::fake::FakeOptions {
+                extensions: true,
+                bulk_source: true,
+                ..Default::default()
+            },
+        );
+        let remote = dev.remote();
+        let core = DspiCore::new();
+        core.attach_probed(Box::new(dev), "DEMO".into(), 0).unwrap();
+        settle(&core);
+        (core, remote)
+    }
+
+    #[test]
+    fn wp_b2_the_probe_chooses_the_echo_rule() {
+        let (core, _) = demo();
+        assert!(!core.lock().conn().unwrap().echo.bulk_source());
+        let (core, _) = tagged();
+        assert!(core.lock().conn().unwrap().echo.bulk_source());
+    }
+
+    #[test]
+    fn wp_b2_tagged_our_own_bulk_write_is_not_re_read() {
+        let (core, remote) = tagged();
+        core.apply_all_params().unwrap();
+        let r = settle(&core);
+        assert_eq!(r.flags & NOTIFY_REFRESHED, 0, "{r:?}");
+        // The same path with nothing of ours outstanding: another app.
+        remote.load_image(remote.image(), nfy::PARAM_SRC_HOST_SET as u8);
+        process_until(&core, |r| r.flags & NOTIFY_REFRESHED != 0);
+    }
+
+    #[test]
+    fn wp_b2_tagged_any_other_source_re_reads() {
+        for source in [
+            nfy::PARAM_SRC_UNKNOWN,
+            nfy::PARAM_SRC_BULK_SET,
+            nfy::PARAM_SRC_MIDI,
+        ] {
+            let (core, remote) = tagged();
+            core.lock()
+                .conn()
+                .unwrap()
+                .echo
+                .bulk_write_started(Instant::now());
+            remote.load_image(remote.image(), source as u8);
+            process_until(&core, |r| r.flags & NOTIFY_REFRESHED != 0);
+        }
+    }
+
+    /// Without the feature, a `HOST_SET` invalidation (which older firmware
+    /// never sends) answers no bulk write of ours.
+    #[test]
+    fn wp_b2_the_window_rule_only_claims_bulk_set() {
+        let (core, remote) = demo();
+        core.lock()
+            .conn()
+            .unwrap()
+            .echo
+            .bulk_write_started(Instant::now());
+        remote.load_image(remote.image(), nfy::PARAM_SRC_HOST_SET as u8);
         process_until(&core, |r| r.flags & NOTIFY_REFRESHED != 0);
     }
 

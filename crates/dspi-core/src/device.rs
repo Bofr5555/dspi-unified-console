@@ -847,7 +847,11 @@ mod tests_wp_c1 {
     fn wp_c1_the_echo_filter_is_new_on_reopen() {
         let core = DspiCore::new();
         core.open_demo().unwrap();
-        core.lock().conn().unwrap().echo.bulk_write_started();
+        core.lock()
+            .conn()
+            .unwrap()
+            .echo
+            .bulk_write_started(Instant::now());
         let pending = |core: &DspiCore| {
             core.lock()
                 .conn()
