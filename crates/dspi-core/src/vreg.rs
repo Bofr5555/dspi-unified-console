@@ -14,8 +14,10 @@
 //! **Hidden over a hub:** a viewer's read is refused, so the extension counts
 //! as absent; a refused write hides the flow until the next connection.
 //!
-//! `core_vreg_op` stays as it was for the Terminal CLI, with the firmware's
-//! limits. A GUI uses the calls here.
+//! `core_vreg_op` keeps the firmware's limits, up to 1.30 V with the word, for
+//! the Terminal CLI. A GUI uses the calls here, which stop at 1.25 V. Both are
+//! judged by `dspi_session::overvolt` (WP CG14), and every write here goes
+//! through `core_vreg_op`, so that check runs again when it is sent.
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -28,6 +30,7 @@ use std::time::Instant;
 
 use dspi_proto::generated::opcodes as op;
 use dspi_session::ext::{CoreVregStatus, VregOp, vreg_mv};
+use dspi_session::overvolt;
 use dspi_session::vreg_calibrate::{self as cal, Calibrator, FlowError, Phase, TrialFailure};
 use dspi_transport::TransportKind;
 use dspi_transport::fake::{EXT_FAKE_VREG_SIM, VregSim};
@@ -82,8 +85,8 @@ pub struct VregChoice {
     pub code: u8,
     /// The voltage, mV.
     pub millivolts: u16,
-    /// What the user must type for it; `None` at 1.20 V and below.
-    pub typed_phrase: Option<String>,
+    /// It would raise this unit above 1.20 V now, so `OVERVOLT` must be typed.
+    pub needs_word: bool,
 }
 
 /// The flow as a client shows it.
@@ -108,6 +111,11 @@ pub struct VregCalView {
     /// The voltages offered, lowest first. Empty on a build default the flow
     /// does not cover, or before a first status.
     pub choices: Vec<VregChoice>,
+    /// What to type when `needs_word` or `commit_needs_word`: `OVERVOLT`,
+    /// exactly.
+    pub confirmation_word: String,
+    /// `core_vreg_cal_commit` needs the word now.
+    pub commit_needs_word: bool,
     /// The soak to suggest, seconds.
     pub default_soak_s: u32,
     /// The shortest soak accepted, seconds.
@@ -228,7 +236,7 @@ impl CalState {
                 .map(|code| VregChoice {
                     code,
                     millivolts: vreg_mv(code).unwrap_or(0),
-                    typed_phrase: cal::typed_phrase(code),
+                    needs_word: cal::needs_word(code, s),
                 })
                 .collect(),
             None => Vec::new(),
@@ -241,6 +249,11 @@ impl CalState {
             warning: cal::WARNING.to_owned(),
             soak_note: cal::SOAK_NOTE.to_owned(),
             choices,
+            confirmation_word: overvolt::WORD.to_owned(),
+            commit_needs_word: match (&phase, &self.status) {
+                (Phase::Passed { run, .. }, Some(s)) => cal::needs_word(run.target, s),
+                _ => false,
+            },
             default_soak_s: cal::DEFAULT_SOAK_S,
             min_soak_s: cal::MIN_SOAK_S,
             target_vreg,
@@ -323,7 +336,10 @@ fn status_of(i: &CoreVregInfo) -> CoreVregStatus {
 }
 
 fn flow_error(e: FlowError) -> DspiError {
-    DspiError::InvalidArgument { msg: e.to_string() }
+    match e {
+        FlowError::WordRequired { .. } => DspiError::OvervoltWordRequired { msg: e.to_string() },
+        e => DspiError::InvalidArgument { msg: e.to_string() },
+    }
 }
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
@@ -367,11 +383,12 @@ impl DspiCore {
 
     /// Start a run: the current record is cleared, `target` goes on trial
     /// once the device shows that, and the soak counts for `soak_s` seconds.
-    /// `typed` is what the user typed for a voltage above 1.20 V.
+    /// `typed` is what the user typed when the view says this needs the word.
     ///
-    /// `InvalidArgument`, with no write, for a voltage outside the build
-    /// default to 1.25 V, a soak under the minimum, a missing or wrong typed
-    /// phrase, a trial already running, or the wrong phase. `Disconnected`,
+    /// `OvervoltWordRequired`, with no write, if it does and that is not
+    /// exactly the word. `InvalidArgument`, with no write, for a voltage
+    /// outside the build default to 1.25 V, a soak under the minimum, a trial
+    /// already running, or the wrong phase. `Disconnected`,
     /// `Unsupported`, `ReadOnly`; `Refused`, `Denied`, `Locked`, `Transfer` for
     /// the write, which is not retried.
     pub fn core_vreg_cal_start(
@@ -385,7 +402,7 @@ impl DspiCore {
                 .machine
                 .start(s, target, soak_s, typed.as_deref(), now)
                 .map_err(flow_error)?;
-            core.vreg_send(cal, op)
+            core.vreg_send(cal, op, None)
         })
     }
 
@@ -406,7 +423,7 @@ impl DspiCore {
                 .machine
                 .commit(s, typed.as_deref(), now)
                 .map_err(flow_error)?;
-            core.vreg_send(cal, op)
+            core.vreg_send(cal, op, typed.as_deref())
         })
     }
 
@@ -430,7 +447,7 @@ impl DspiCore {
                 .machine
                 .manual_set(s, value, typed.as_deref(), now)
                 .map_err(flow_error)?;
-            core.vreg_send(cal, op)
+            core.vreg_send(cal, op, typed.as_deref())
         })
     }
 
@@ -442,14 +459,14 @@ impl DspiCore {
                 .machine
                 .manual_trial(s, value, typed.as_deref())
                 .map_err(flow_error)?;
-            core.vreg_send(cal, op)
+            core.vreg_send(cal, op, typed.as_deref())
         })
     }
 
     /// Manual `AUTO`: the firmware's automatic raising after repeated hangs.
     /// Errors as for starting.
     pub fn core_vreg_manual_auto(&self, on: bool) -> Result<()> {
-        self.vreg_call(|core, cal, _, _| core.vreg_send(cal, VregOp::Auto(on)))
+        self.vreg_call(|core, cal, _, _| core.vreg_send(cal, VregOp::Auto(on), None))
     }
 
     /// Manual `CLEAR`: forget the hang count and the last trial failure.
@@ -458,7 +475,7 @@ impl DspiCore {
     pub fn core_vreg_manual_clear(&self) -> Result<()> {
         self.vreg_call(|core, cal, _, _| {
             let op = cal.machine.manual_clear().map_err(flow_error)?;
-            core.vreg_send(cal, op)
+            core.vreg_send(cal, op, None)
         })
     }
 
@@ -559,7 +576,7 @@ impl DspiCore {
         cal.status = Some(status.clone());
         let now = cal.now_ms();
         if let Some(trial) = cal.machine.on_status(&status, now) {
-            let _ = self.vreg_send(cal, trial.op());
+            let _ = self.vreg_send(cal, trial.op(), trial.word());
         }
         Ok(status)
     }
@@ -579,9 +596,9 @@ impl DspiCore {
 
     /// Send one request, once. A failure is the flow's to know about; a hub's
     /// refusal hides it for this connection.
-    fn vreg_send(&self, cal: &mut CalState, request: VregOp) -> Result<()> {
+    fn vreg_send(&self, cal: &mut CalState, request: VregOp, word: Option<&str>) -> Result<()> {
         let [code, value] = request.encode();
-        let r = self.core_vreg_op(code, value);
+        let r = self.core_vreg_op(code, value, word.map(str::to_owned));
         if let Err(e) = &r {
             cal.last_error = Some(e.to_string());
             if *e == DspiError::Denied {
@@ -602,7 +619,7 @@ impl DspiCore {
         }
         let now = cal.now_ms();
         let request = cal.machine.end_trial(now).map_err(flow_error)?;
-        self.vreg_send(cal, request)
+        self.vreg_send(cal, request, None)
     }
 }
 

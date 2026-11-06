@@ -20,7 +20,7 @@ const TRIAL: u8 = 1;
 const TRIAL_END: u8 = 2;
 const AUTO: u8 = 3;
 const CLEAR: u8 = 4;
-const PHRASE: &str = "RAISE TO 1.25 V";
+const WORD: &str = overvolt::WORD;
 const SOAK: u32 = cal::DEFAULT_SOAK_S;
 /// Well above any real time a test takes, well below a soak.
 const MARGIN: u32 = 300;
@@ -186,7 +186,7 @@ impl Rig {
     /// Open and start, into the soak.
     fn soak_at(&self, target: u8) {
         self.core.core_vreg_cal_open().unwrap();
-        let typed = cal::typed_phrase(target);
+        let typed = cal::needs_word(target, &status_of(&self.info())).then(|| WORD.to_owned());
         self.core.core_vreg_cal_start(target, SOAK, typed).unwrap();
         assert_eq!(self.phase(), VregCalPhase::StartingTrial);
         assert_eq!(self.phase(), VregCalPhase::Soaking);
@@ -200,6 +200,14 @@ impl Rig {
 
 fn invalid<T: std::fmt::Debug>(r: Result<T>) -> bool {
     matches!(r, Err(DspiError::InvalidArgument { .. }))
+}
+
+fn no_word<T: std::fmt::Debug>(r: Result<T>) -> bool {
+    matches!(r, Err(DspiError::OvervoltWordRequired { .. }))
+}
+
+fn word() -> Option<String> {
+    Some(WORD.to_owned())
 }
 
 // ------------------------------------------------------------ the results
@@ -299,9 +307,9 @@ fn wp_cg11_fail_step_up_and_stop_at_the_cap() {
     assert_eq!((v.failed_vreg, v.next_vreg), (0x0D, 0x0E));
 
     // 1.25 V: typed.
-    assert!(invalid(r.core.core_vreg_cal_start(0x0E, SOAK, None)));
+    assert!(no_word(r.core.core_vreg_cal_start(0x0E, SOAK, None)));
     r.core
-        .core_vreg_cal_start(0x0E, SOAK, Some(PHRASE.into()))
+        .core_vreg_cal_start(0x0E, SOAK, Some(WORD.into()))
         .unwrap();
     r.poll();
     assert_eq!(r.phase(), VregCalPhase::Soaking);
@@ -313,11 +321,7 @@ fn wp_cg11_fail_step_up_and_stop_at_the_cap() {
     assert!(v.message.contains("hardware problem"));
 
     // There is no way further up.
-    assert!(invalid(r.core.core_vreg_cal_start(
-        0x0F,
-        SOAK,
-        Some("RAISE TO 1.30 V".into())
-    )));
+    assert!(invalid(r.core.core_vreg_cal_start(0x0F, SOAK, word())));
     let trials: Vec<u8> = r
         .sent()
         .iter()
@@ -558,7 +562,7 @@ fn wp_cg11_it_never_trials_below_the_build_default_or_above_1v25() {
         (0x0C, None),
         (0x0B, None),
         (0x00, None),
-        (0x0F, Some("RAISE TO 1.30 V")),
+        (0x0F, Some(WORD)),
         (0x10, None),
         (0xFF, None),
     ] {
@@ -573,11 +577,12 @@ fn wp_cg11_it_never_trials_below_the_build_default_or_above_1v25() {
     assert_eq!(r.info().live_vreg, 0x0D);
 
     // Manual SET: the same limits, and 0 still resets.
-    for (code, typed) in [(0x0C, None), (0x0F, Some("RAISE TO 1.30 V")), (0x0E, None)] {
+    for (code, typed) in [(0x0C, None), (0x0F, Some(WORD))] {
         assert!(invalid(
             r.core.core_vreg_manual_set(code, typed.map(str::to_owned))
         ));
     }
+    assert!(no_word(r.core.core_vreg_manual_set(0x0E, None)));
     assert!(r.sent().is_empty());
 
     // 1.30 V is not on the menu anywhere.
@@ -586,8 +591,9 @@ fn wp_cg11_it_never_trials_below_the_build_default_or_above_1v25() {
         v.choices.iter().map(|c| c.code).collect::<Vec<_>>(),
         vec![0x0D, 0x0E]
     );
-    assert_eq!(v.choices[0].typed_phrase, None);
-    assert_eq!(v.choices[1].typed_phrase.as_deref(), Some(PHRASE));
+    assert!(!v.choices[0].needs_word);
+    assert!(v.choices[1].needs_word);
+    assert_eq!(v.confirmation_word, "OVERVOLT");
 
     let s = Rig::stock(); // default 1.15 V: its own default is fair
     assert_eq!(
@@ -605,29 +611,191 @@ fn wp_cg11_a_build_default_above_the_flow_offers_nothing() {
     let v = r.poll();
     assert!(v.choices.is_empty());
     r.core.core_vreg_cal_open().unwrap();
-    assert!(invalid(r.core.core_vreg_cal_start(0x0F, SOAK, None)));
+    assert!(invalid(r.core.core_vreg_cal_start(0x0F, SOAK, word())));
     assert!(r.sent().is_empty());
 }
 
 #[test]
-fn wp_cg11_above_1v20_takes_the_typed_phrase_at_every_write() {
+fn wp_cg14_the_flow_asks_only_when_it_raises() {
     let r = Rig::new();
     r.core.core_vreg_cal_open().unwrap();
-    for typed in [None, Some("yes"), Some("raise to 1.25 v"), Some("")] {
+    for typed in [
+        None,
+        Some("yes"),
+        Some("overvolt"),
+        Some("OVERVOLT "),
+        Some(""),
+    ] {
         let t = typed.map(str::to_owned);
-        assert!(invalid(r.core.core_vreg_cal_start(0x0E, SOAK, t.clone())));
-        assert!(invalid(r.core.core_vreg_manual_trial(0x0E, t.clone())));
-        assert!(invalid(r.core.core_vreg_manual_set(0x0E, t)));
+        assert!(no_word(r.core.core_vreg_cal_start(0x0E, SOAK, t.clone())));
+        assert!(no_word(r.core.core_vreg_manual_trial(0x0E, t.clone())));
+        assert!(no_word(r.core.core_vreg_manual_set(0x0E, t)));
     }
     assert!(r.sent().is_empty());
 
     r.soak_at(0x0E);
     r.pass_soak();
-    assert!(invalid(r.core.core_vreg_cal_commit(None)));
-    assert_eq!(r.sent_ops(SET), 0);
-    r.core.core_vreg_cal_commit(Some(PHRASE.into())).unwrap();
+    assert!(
+        !r.poll().commit_needs_word,
+        "the unit is at 1.25 V on trial"
+    );
+    r.core.core_vreg_cal_commit(None).unwrap();
     assert_eq!(r.phase(), VregCalPhase::Committed);
     assert_eq!(r.info().stored_sel, 0x0E);
+
+    // Now at 1.25 V: trial and save it again with no word.
+    assert!(!r.poll().choices.iter().any(|c| c.needs_word));
+    r.core.core_vreg_manual_trial(0x0E, None).unwrap();
+    assert_eq!(r.phase(), VregCalPhase::TrialFound);
+    r.core.core_vreg_manual_set(0x0E, None).unwrap();
+    assert_eq!(r.phase(), VregCalPhase::Committed);
+}
+
+// ------------------------------------------------- CG14: the raw request
+
+/// A unit at `code`: stored there, on a build default of 1.15 V.
+fn unit_at(code: u8) -> Rig {
+    let r = Rig::stock();
+    if code != 0x0C {
+        r.core.core_vreg_op(SET, code, word()).unwrap();
+    }
+    r.wire.log.lock().unwrap().clear();
+    r
+}
+
+#[test]
+fn wp_cg14_the_owners_example_1v25_to_1v30_at_the_transport() {
+    for op in [SET, TRIAL] {
+        let r = unit_at(0x0E);
+        assert!(no_word(r.core.core_vreg_op(op, 0x0F, None)));
+        assert!(r.sent().is_empty(), "refused: nothing written");
+        r.core.core_vreg_op(op, 0x0F, word()).unwrap();
+        assert_eq!(r.sent(), vec![(op, 0x0F)]);
+        assert_eq!(r.info().live_vreg, 0x0F);
+    }
+}
+
+#[test]
+fn wp_cg14_each_case_at_the_transport() {
+    for (from, to, needs) in [
+        (0x0C, 0x0D, false), // 1.15 to 1.20
+        (0x0D, 0x0E, true),  // 1.20 to 1.25
+        (0x0C, 0x0E, true),  // 1.15 to 1.25
+        (0x0E, 0x0E, false), // 1.25 to 1.25
+        (0x0F, 0x0E, false), // 1.30 to 1.25
+        (0x0F, 0x0F, false), // 1.30 to 1.30
+    ] {
+        for op in [SET, TRIAL] {
+            let r = unit_at(from);
+            let without = r.core.core_vreg_op(op, to, None);
+            if needs {
+                assert!(no_word(without), "{from:#x} to {to:#x}");
+                assert!(r.sent().is_empty());
+                r.core.core_vreg_op(op, to, word()).unwrap();
+            } else {
+                without.unwrap();
+            }
+            assert_eq!(r.sent(), vec![(op, to)], "{from:#x} to {to:#x}");
+        }
+    }
+}
+
+#[test]
+fn wp_cg14_a_running_trial_counts_as_current() {
+    let r = unit_at(0x0C);
+    r.core.core_vreg_op(TRIAL, 0x0E, word()).unwrap();
+    r.core.core_vreg_op(SET, 0x0E, None).unwrap();
+    assert_eq!(r.info().stored_sel, 0x0E);
+}
+
+#[test]
+fn wp_cg14_a_wrong_word_is_refused_at_the_transport() {
+    for bad in [
+        "overvolt",
+        "Overvolt",
+        "OVERVOLT ",
+        " OVERVOLT",
+        "",
+        "--force",
+        "yes",
+    ] {
+        let r = unit_at(0x0E);
+        assert!(
+            no_word(r.core.core_vreg_op(SET, 0x0F, Some(bad.into()))),
+            "{bad:?}"
+        );
+        assert!(r.sent().is_empty(), "{bad:?}");
+    }
+}
+
+#[test]
+fn wp_cg14_an_unreadable_unit_needs_the_word_above_1v20() {
+    // A short reply, then one whose fields are not voltages.
+    for reply in [vec![1u8, 2], vec![0xFF; 16]] {
+        let r = Rig::new();
+        *r.wire.status.lock().unwrap() = Some(reply);
+        assert!(no_word(r.core.core_vreg_op(SET, 0x0E, None)));
+        assert!(no_word(r.core.core_vreg_op(TRIAL, 0x0F, None)));
+        assert!(
+            no_word(r.core.core_vreg_op(SET, 0, None)),
+            "no known target"
+        );
+        assert!(r.sent().is_empty());
+        r.core.core_vreg_op(TRIAL, 0x0D, None).unwrap();
+        r.core.core_vreg_op(TRIAL, 0x0E, word()).unwrap();
+        assert_eq!(r.sent(), vec![(TRIAL, 0x0D), (TRIAL, 0x0E)]);
+    }
+}
+
+#[test]
+fn wp_cg14_a_refusal_costs_only_the_status_read_and_no_host_record_helps() {
+    let r = unit_at(0x0E);
+    // Typed once for this unit, and it comes back down: asked again.
+    r.core.core_vreg_op(SET, 0x0F, word()).unwrap();
+    r.core.core_vreg_op(SET, 0x0E, None).unwrap();
+    assert!(no_word(r.core.core_vreg_op(SET, 0x0F, None)));
+    // A new app, the same unit: judged the same, from the unit.
+    let again = r.restart_app();
+    assert!(no_word(again.core.core_vreg_op(SET, 0x0F, None)));
+    // Others need no read and no word.
+    r.core.core_vreg_op(TRIAL_END, 0, None).unwrap();
+    r.core.core_vreg_op(AUTO, 1, None).unwrap();
+    r.core.core_vreg_op(CLEAR, 0, None).unwrap();
+}
+
+#[test]
+fn wp_cg14_a_raw_write_cannot_go_round_the_word() {
+    let r = unit_at(0x0E);
+    assert!(invalid(r.core.raw_set(
+        op::REQ_EXTENSION,
+        g::EXT_CORE_VREG,
+        vec![SET, 0x0F]
+    )));
+    assert!(invalid(r.core.raw_set(
+        op::REQ_EXTENSION,
+        g::EXT_CORE_VREG,
+        vec![TRIAL, 0x0F]
+    )));
+    assert!(r.sent().is_empty());
+    // The status can still be read raw.
+    assert_eq!(
+        r.core
+            .raw_get(op::REQ_EXTENSION, g::EXT_CORE_VREG, 16)
+            .unwrap()
+            .len(),
+        16
+    );
+}
+
+#[test]
+fn wp_cg14_1v30_stays_out_of_the_flow_even_with_the_word() {
+    let r = unit_at(0x0E);
+    assert!(invalid(r.core.core_vreg_manual_set(0x0F, word())));
+    assert!(invalid(r.core.core_vreg_manual_trial(0x0F, word())));
+    r.core.core_vreg_cal_open().unwrap();
+    assert!(invalid(r.core.core_vreg_cal_start(0x0F, SOAK, word())));
+    assert!(r.sent().is_empty());
+    assert!(r.poll().choices.iter().all(|c| c.code <= 0x0E));
 }
 
 #[test]
@@ -771,9 +939,7 @@ fn wp_cg11_manual_requests_reach_the_device_with_a_view_of_them() {
     r.core.core_vreg_manual_auto(true).unwrap();
     assert!(!r.info().auto_disabled);
 
-    r.core
-        .core_vreg_manual_trial(0x0E, Some(PHRASE.into()))
-        .unwrap();
+    r.core.core_vreg_manual_trial(0x0E, word()).unwrap();
     let v = r.poll();
     assert_eq!(v.phase, VregCalPhase::TrialFound);
     r.core.core_vreg_trial_end().unwrap();
@@ -798,6 +964,8 @@ fn wp_cg11_the_warning_states_the_limits() {
         "Audio may cut out",
         "drop off USB",
         "lower the volume",
+        "OVERVOLT",
+        "1.24 V",
     ] {
         assert!(v.warning.contains(needed), "{needed}");
     }
@@ -809,8 +977,8 @@ fn wp_cg11_the_warning_states_the_limits() {
 fn wp_cg11_the_fake_models_core_vreg_c() {
     let r = Rig::stock();
     // A SET ends a trial.
-    r.core.core_vreg_op(TRIAL, 0x0E).unwrap();
-    r.core.core_vreg_op(SET, 0x0D).unwrap();
+    r.core.core_vreg_op(TRIAL, 0x0E, word()).unwrap();
+    r.core.core_vreg_op(SET, 0x0D, None).unwrap();
     let i = r.info();
     assert_eq!((i.trial_active, i.live_vreg), (false, 0x0D));
     // Two hangs raise the stored voltage one notch.
@@ -824,7 +992,7 @@ fn wp_cg11_the_fake_models_core_vreg_c() {
     );
     assert_eq!(i.hang_count, 0);
     // A further warm reset keeps a failed trial's code but not its uptime.
-    r.core.core_vreg_op(TRIAL, 0x0D).unwrap();
+    r.core.core_vreg_op(TRIAL, 0x0D, None).unwrap();
     r.remote.vreg_sim(VregSim::Advance(50));
     r.remote.vreg_sim(VregSim::Hang);
     assert_ne!(r.info().failed_trial_uptime_s, 0);
@@ -893,7 +1061,7 @@ proptest! {
             *r.wire.status.lock().unwrap() = Some(b.to_vec());
             let before = r.sent().len();
             let _ = r.core.core_vreg_cal_open();
-            let typed = cal::typed_phrase(*target);
+            let typed = word();
             let _ = r.core.core_vreg_cal_start(*target, SOAK, typed.clone());
             r.poll();
             let _ = r.core.core_vreg_cal_commit(typed.clone());

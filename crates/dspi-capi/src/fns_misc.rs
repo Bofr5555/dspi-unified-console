@@ -218,6 +218,8 @@ fn error_code(e: &DspiError) -> &'static str {
         DspiError::AutoEq { .. } => "autoeq",
         // -- WP CG8 --
         DspiError::FirmwareGuardBlocked { .. } => "firmware_guard",
+        // -- WP CG14 --
+        DspiError::OvervoltWordRequired { .. } => "overvolt_word",
     }
 }
 
@@ -1070,12 +1072,20 @@ pub extern "C" fn dspi_fetch_core_vreg(core: *mut FfiCore, buf: *mut c_char, len
 
 /// Core voltage write: `op` 0 set (value = VREG code, 0 = build default),
 /// 1 trial, 2 end trial, 3 auto (value 0/1), 4 clear. Out-of-range requests
-/// are refused here with nothing sent. Returns 0 on success, the device's
+/// are refused here with nothing sent. A set or trial above 1.20 V and above
+/// what the unit reports now needs `word`, exactly "OVERVOLT"; null or anything
+/// else refuses it with nothing written. Returns 0 on success, the device's
 /// status byte if it refused, 0xFF otherwise. Read the status back with
 /// `dspi_fetch_core_vreg`.
 #[unsafe(no_mangle)]
-pub extern "C" fn dspi_core_vreg_op(core: *mut FfiCore, op: u8, value: u8) -> u8 {
-    status(core, |c| c.core_vreg_op(op, value))
+pub extern "C" fn dspi_core_vreg_op(
+    core: *mut FfiCore,
+    op: u8,
+    value: u8,
+    word: *const c_char,
+) -> u8 {
+    let word = c_str(word).map(str::to_owned);
+    status(core, |c| c.core_vreg_op(op, value, word))
 }
 
 // ── Added: names ──────────────────────────────────────────────────────
@@ -1282,7 +1292,7 @@ pub extern "C" fn dspi_core_vreg_cal_close(core: *mut FfiCore) -> u8 {
 }
 
 /// Start a run at VREG code `target` for `soak_s` seconds. `typed` is what the
-/// user typed for a voltage above 1.20 V, or null.
+/// user typed when the view says the voltage needs the word, or null.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_cal_start(
     core: *mut FfiCore,

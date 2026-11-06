@@ -8,9 +8,9 @@
 //! step of a [`Calibrator::start`] the user asked for. A `SET` comes only from
 //! [`Calibrator::commit`] or [`Calibrator::manual_set`]. Every voltage this
 //! module asks for lies between the build default and 1.25 V
-//! ([`in_flow_range`]), and anything above 1.20 V needs the typed phrase
-//! ([`typed_phrase`]). 1.30 V is not reachable from here at all; the Terminal
-//! CLI has its own path.
+//! ([`in_flow_range`]). Every `TRIAL` and `SET` is judged by
+//! [`crate::overvolt`] against the unit's status when it is sent. 1.30 V is not
+//! reachable from here at all; the raw request has its own path.
 //!
 //! **What the firmware tells us, and what it does not** (`core_vreg.c`):
 //!
@@ -44,10 +44,11 @@
 )]
 
 use crate::ext::{CoreVregStatus, VregOp, vreg_mv};
+use crate::overvolt;
 
 /// `VREG_VOLTAGE_1_15`: the firmware's floor, the lowest build default.
 pub const VREG_1_15: u8 = 0x0C;
-/// `VREG_VOLTAGE_1_20`: the highest voltage offered without typed confirmation.
+/// `VREG_VOLTAGE_1_20`.
 pub const VREG_1_20: u8 = 0x0D;
 /// `VREG_VOLTAGE_1_25` (`CORE_VREG_AUTO_CAP`): the flow's ceiling.
 pub const VREG_1_25: u8 = 0x0E;
@@ -65,7 +66,8 @@ pub const WARNING: &str = "Core voltage calibration changes the voltage of the R
 device. RP2350 datasheet limits: recommended up to 1.16 V, absolute maximum 1.21 V, with a \
 regulator tolerance of +/-3 %. 1.20 V is already outside the recommended range and can reach \
 about 1.24 V at the upper tolerance. 1.25 V is above the absolute maximum even before tolerance. \
-Audio may cut out and the device may drop off USB; lower the volume.";
+Audio may cut out and the device may drop off USB; lower the volume. Raising the voltage above \
+1.20 V from what the unit reports now takes the word OVERVOLT, typed exactly.";
 
 /// What a soak does and does not show.
 pub const SOAK_NOTE: &str = "Keep audio playing during the soak: that is when hangs happen. A \
@@ -87,23 +89,18 @@ pub fn offered(default_vreg: u8) -> Vec<u8> {
         .collect()
 }
 
-/// The phrase a user must type for `code`; `None` when it needs none (1.20 V
-/// and below).
-pub fn typed_phrase(code: u8) -> Option<String> {
-    if code <= VREG_1_20 {
-        return None;
-    }
-    let mv = vreg_mv(code).unwrap_or(0);
-    Some(format!("RAISE TO {}.{:02} V", mv / 1000, (mv % 1000) / 10))
+/// Whether `code` on this unit needs the word, right now.
+pub fn needs_word(code: u8, s: &CoreVregStatus) -> bool {
+    overvolt::op_needs_word(VregOp::Trial(code), Some(s))
 }
 
-fn check_typed(code: u8, typed: Option<&str>) -> Result<(), FlowError> {
-    match typed_phrase(code) {
-        Some(phrase) if typed.map(str::trim) != Some(phrase.as_str()) => {
-            Err(FlowError::ConfirmationRequired { phrase })
-        }
-        _ => Ok(()),
+fn check_word(request: VregOp, s: &CoreVregStatus, typed: Option<&str>) -> Result<(), FlowError> {
+    if overvolt::op_needs_word(request, Some(s)) && !overvolt::word_matches(typed) {
+        return Err(FlowError::WordRequired {
+            word: overvolt::WORD,
+        });
     }
+    Ok(())
 }
 
 /// `resolve()` in `core_vreg.c`: the voltage a stored selection runs at.
@@ -138,11 +135,11 @@ pub enum FlowError {
     /// The soak is shorter than [`MIN_SOAK_S`].
     #[error("a soak takes at least {MIN_SOAK_S} s")]
     SoakTooShort,
-    /// This voltage needs the typed phrase, and it was not given.
-    #[error("type \"{phrase}\" to confirm this voltage")]
-    ConfirmationRequired {
-        /// What to type.
-        phrase: String,
+    /// This raises the voltage above 1.20 V, and the word was not given.
+    #[error("type {word} to confirm this voltage")]
+    WordRequired {
+        /// What to type: [`overvolt::WORD`].
+        word: &'static str,
     },
     /// A trial is running on the device: end or keep it first.
     #[error("a trial is running on the device: end or keep it first")]
@@ -152,17 +149,26 @@ pub enum FlowError {
 /// The one request a poll can produce: the `TRIAL` of a flow the user started,
 /// checked against the status it was decided on. It cannot be a `SET`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FlowTrial(u8);
+pub struct FlowTrial {
+    code: u8,
+    /// The user typed the word when starting the run.
+    word: bool,
+}
 
 impl FlowTrial {
     /// The voltage to trial.
     pub fn code(self) -> u8 {
-        self.0
+        self.code
     }
 
     /// The request to send.
     pub fn op(self) -> VregOp {
-        VregOp::Trial(self.0)
+        VregOp::Trial(self.code)
+    }
+
+    /// The word to send it with: only if the user typed it for this run.
+    pub fn word(self) -> Option<&'static str> {
+        self.word.then_some(overvolt::WORD)
     }
 }
 
@@ -238,6 +244,8 @@ pub struct Run {
     /// `failed_trial_vreg` when the watch began: 0 after the flow's `CLEAR`;
     /// a kept trial cannot clear, so an old record must not count against it.
     baseline_failed: u8,
+    /// The user typed the word when starting this run.
+    word: bool,
 }
 
 /// Where the flow is.
@@ -566,13 +574,14 @@ impl Calibrator {
         if soak_s < MIN_SOAK_S {
             return Err(FlowError::SoakTooShort);
         }
-        check_typed(target, typed)?;
+        check_word(VregOp::Trial(target), s, typed)?;
         self.last_uptime_s = s.uptime_s;
         self.phase = Phase::Clearing {
             run: Run {
                 target,
                 soak_s,
                 baseline_failed: 0,
+                word: overvolt::word_matches(typed),
             },
             deadline_ms: now_ms.saturating_add(VERIFY_TIMEOUT_MS),
         };
@@ -601,8 +610,15 @@ impl Calibrator {
                 if s.trial_active {
                     self.phase = Phase::TrialFound { vreg: s.trial_vreg };
                 } else if s.hang_count == 0 && s.failed_trial_vreg == 0 {
-                    if in_flow_range(run.target, s.default_vreg) {
-                        trial = Some(FlowTrial(run.target));
+                    // Judged again on the status it goes out on: the unit may
+                    // have come down since the word was asked for, or not.
+                    let allowed = in_flow_range(run.target, s.default_vreg)
+                        && (run.word || !needs_word(run.target, s));
+                    if allowed {
+                        trial = Some(FlowTrial {
+                            code: run.target,
+                            word: run.word,
+                        });
                         self.phase = Phase::StartingTrial {
                             run,
                             start_uptime_s: s.uptime_s,
@@ -737,6 +753,7 @@ impl Calibrator {
                 target: s.trial_vreg,
                 soak_s,
                 baseline_failed: s.failed_trial_vreg,
+                word: false,
             },
             start_uptime_s: s.uptime_s,
         };
@@ -744,7 +761,9 @@ impl Calibrator {
         Ok(())
     }
 
-    /// Save the voltage that passed: the only way a run leads to a `SET`.
+    /// Save the voltage that passed: the only way a run leads to a `SET`. The
+    /// rule looks at the status: with the trial still running, the unit is
+    /// already at this voltage, so the word typed for the trial stands.
     pub fn commit(
         &mut self,
         s: &CoreVregStatus,
@@ -760,7 +779,7 @@ impl Calibrator {
                 default_vreg: s.default_vreg,
             });
         }
-        check_typed(run.target, typed)?;
+        check_word(VregOp::Set(run.target), s, typed)?;
         self.phase = Phase::Committing {
             value: run.target,
             deadline_ms: now_ms.saturating_add(VERIFY_TIMEOUT_MS),
@@ -780,7 +799,8 @@ impl Calibrator {
     }
 
     /// Manual `SET` from the Advanced page: `0` resets to the build default,
-    /// otherwise the flow's range and confirmation apply.
+    /// otherwise the flow's range applies. The rule applies to both; a reset
+    /// asks only on a status that does not say what the default is.
     pub fn manual_set(
         &mut self,
         s: &CoreVregStatus,
@@ -791,15 +811,13 @@ impl Calibrator {
         if self.phase.busy() {
             return Err(self.wrong_phase());
         }
-        if value != 0 {
-            if !in_flow_range(value, s.default_vreg) {
-                return Err(FlowError::OutOfRange {
-                    code: value,
-                    default_vreg: s.default_vreg,
-                });
-            }
-            check_typed(value, typed)?;
+        if value != 0 && !in_flow_range(value, s.default_vreg) {
+            return Err(FlowError::OutOfRange {
+                code: value,
+                default_vreg: s.default_vreg,
+            });
         }
+        check_word(VregOp::Set(value), s, typed)?;
         self.phase = Phase::Committing {
             value,
             deadline_ms: now_ms.saturating_add(VERIFY_TIMEOUT_MS),
@@ -824,7 +842,7 @@ impl Calibrator {
                 default_vreg: s.default_vreg,
             });
         }
-        check_typed(value, typed)?;
+        check_word(VregOp::Trial(value), s, typed)?;
         self.phase = Phase::Idle;
         Ok(VregOp::Trial(value))
     }

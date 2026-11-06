@@ -24,7 +24,9 @@ fn wp_cg11_a_whole_flow_through_c() {
     assert_eq!(v["ok"], true);
     assert_eq!(v["available"], true);
     assert_eq!(v["phase"], "idle");
-    assert_eq!(v["choices"][1]["typedPhrase"], "RAISE TO 1.25 V");
+    assert_eq!(v["choices"][0]["needsWord"], false);
+    assert_eq!(v["choices"][1]["needsWord"], true);
+    assert_eq!(v["confirmationWord"], "OVERVOLT");
 
     assert_eq!(dspi_core_vreg_cal_open(h), 0);
     assert_eq!(view(h, dspi_core_vreg_cal_view)["phase"], "review");
@@ -32,19 +34,19 @@ fn wp_cg11_a_whole_flow_through_c() {
     // Refused, and the reason is in the view.
     assert_eq!(dspi_core_vreg_cal_start(h, 0x0E, 1800, ptr::null()), 0xFF);
     let v = view(h, dspi_core_vreg_cal_view);
-    assert!(v["lastError"].as_str().unwrap().contains("RAISE TO 1.25 V"));
+    assert!(v["lastError"].as_str().unwrap().contains("OVERVOLT"));
     assert_eq!(dspi_core_vreg_cal_start(h, 0x0C, 1800, ptr::null()), 0xFF);
     assert_eq!(dspi_core_vreg_cal_start(h, 0x0F, 1800, ptr::null()), 0xFF);
 
-    let phrase = CString::new("RAISE TO 1.25 V").unwrap();
+    let phrase = CString::new("OVERVOLT").unwrap();
     assert_eq!(dspi_core_vreg_cal_start(h, 0x0E, 1800, phrase.as_ptr()), 0);
     assert_eq!(view(h, dspi_core_vreg_cal_poll)["phase"], "starting_trial");
     assert_eq!(view(h, dspi_core_vreg_cal_poll)["phase"], "soaking");
 
     assert_eq!(dspi_core_vreg_demo_event(h, 3, 1800), 0);
     assert_eq!(view(h, dspi_core_vreg_cal_poll)["phase"], "passed");
-    assert_eq!(dspi_core_vreg_cal_commit(h, ptr::null()), 0xFF);
-    assert_eq!(dspi_core_vreg_cal_commit(h, phrase.as_ptr()), 0);
+    // On trial at 1.25 V, so level: the word was typed for the trial.
+    assert_eq!(dspi_core_vreg_cal_commit(h, ptr::null()), 0);
     let v = view(h, dspi_core_vreg_cal_poll);
     assert_eq!(v["phase"], "committed");
     assert_eq!(v["status"]["storedSel"], 0x0E);
@@ -116,4 +118,34 @@ fn wp_cg11_the_functions_are_exported() {
     ] {
         assert!(header.contains(name), "{name} missing");
     }
+}
+
+/// WP CG14: the owner's example at the raw C call; what went out is read back
+/// from the device.
+#[test]
+fn wp_cg14_raw_op_takes_the_word_through_c() {
+    let h = dspi_core_new();
+    assert!(dspi_open_demo(h));
+    let word = CString::new("OVERVOLT").unwrap();
+    let lower = CString::new("overvolt").unwrap();
+    let stored = |h| view(h, dspi_core_vreg_cal_poll)["status"]["storedSel"].clone();
+
+    assert_eq!(dspi_core_vreg_op(h, 0, 0x0E, word.as_ptr()), 0);
+    assert_eq!(stored(h), 0x0E);
+    assert_eq!(dspi_core_vreg_op(h, 0, 0x0F, ptr::null()), 0xFF);
+    assert_eq!(dspi_core_vreg_op(h, 0, 0x0F, lower.as_ptr()), 0xFF);
+    assert_eq!(stored(h), 0x0E, "refused: unchanged");
+    assert_eq!(dspi_core_vreg_op(h, 0, 0x0F, word.as_ptr()), 0);
+    assert_eq!(stored(h), 0x0F);
+    assert_eq!(dspi_core_vreg_op(h, 0, 0x0E, ptr::null()), 0, "lowering");
+    assert_eq!(stored(h), 0x0E);
+    dspi_core_free(h);
+}
+
+#[test]
+fn wp_cg14_the_refusal_has_its_own_code() {
+    assert_eq!(
+        error_code(&DspiError::OvervoltWordRequired { msg: String::new() }),
+        "overvolt_word"
+    );
 }

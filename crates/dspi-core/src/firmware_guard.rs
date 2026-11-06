@@ -15,11 +15,27 @@
 //!
 //! | Board ([`FirmwareGuardBoard::required_mv`]) | Image | Result |
 //! |---|---|---|
-//! | exactly 1150: not at risk | any valid image | clear |
+//! | any | invalid | refused; confirmation does not help |
+//! | any | stamped above 1200 and above the board's current voltage, or above 1200 on an unknown board | the word `OVERVOLT` |
+//! | exactly 1150: not at risk | any other valid image | clear |
 //! | above 1150: at risk | stamped at or above it | clear |
 //! | above 1150: at risk | no stamp, or stamped lower | typed confirmation |
-//! | anything else: unknown | any valid image | typed confirmation |
-//! | any | invalid | refused; confirmation does not help |
+//! | anything else: unknown | any other valid image | typed confirmation |
+//!
+//! # Too high (WP CG14)
+//!
+//! The second row is `dspi_session::overvolt`, the rule the voltage requests
+//! use, with the image's stamp as the target and `required_mv` as the current
+//! voltage. It asks on a stock board too: a 1.25 V image on a 1.15 V board asks,
+//! a 1.20 V image on a 1.15 V board does not. An image with no stamp counts as
+//! 1.15 V, so it never asks; today's images have none. On an unknown board the
+//! word takes the place of the phrase: one typed answer per image, and an image
+//! above 1.20 V is not the too-low risk the phrase is about.
+//!
+//! **Accepted limit (owner):** a K340 already on stock firmware reports 1150 mV
+//! and is treated as that. There is no record of what it used to be, by design:
+//! the guard keeps no stored or per-serial record, and judges what the unit
+//! reports now.
 //!
 //! # How a board is judged
 //!
@@ -71,6 +87,7 @@ use std::collections::BTreeMap;
 use dspi_proto::generated::ext as g;
 use dspi_proto::generated::opcodes as op;
 use dspi_session::ext::{self as sx, CoreVregStatus, ExtError};
+use dspi_session::overvolt;
 use dspi_transport::Transport;
 
 use crate::consts::STAT_CORE_MV;
@@ -169,6 +186,9 @@ pub enum FirmwareGuardReason {
     ImageLower,
     /// The board's needs are not known.
     BoardUnknown,
+    /// WP CG14: the image runs above 1.20 V and above the board's current
+    /// voltage. Its `confirmation_phrase` is the word `OVERVOLT`.
+    Overvolt,
 }
 
 /// The result of [`firmware_guard_check`]. The default blocks.
@@ -184,8 +204,9 @@ pub struct FirmwareGuardVerdict {
     pub reason: FirmwareGuardReason,
     /// For the user, in English.
     pub message: String,
-    /// What to ask the user to type when a risk is involved, else "". Compared
-    /// exactly: case and spaces count.
+    /// What to ask the user to type when a risk is involved, else "": the
+    /// phrase, or for [`FirmwareGuardReason::Overvolt`] the word. Compared
+    /// exactly: case and spaces count, and the one does not stand for the other.
     pub confirmation_phrase: String,
     /// The image's stamped voltage in mV; 0 if it has none (taken as 1150).
     pub image_mv: u16,
@@ -277,7 +298,26 @@ fn volts(mv: u16) -> String {
 
 fn decide(stamp: Option<u16>, required_mv: u16, typed: &str) -> FirmwareGuardVerdict {
     let image_mv = stamp.unwrap_or(0);
-    let risk = if required_mv == STOCK_MV {
+    let current = (u32::from(STOCK_MV)..=MAX_BELIEVED_MV)
+        .contains(&u32::from(required_mv))
+        .then_some(required_mv);
+    let risk = if let Some(mv) = stamp.filter(|mv| overvolt::word_required(current, *mv)) {
+        Some((
+            FirmwareGuardReason::Overvolt,
+            match current {
+                Some(now) => format!(
+                    "This image runs at {}, above this board's current {}, and beyond 1.20 V.",
+                    volts(mv),
+                    volts(now)
+                ),
+                None => format!(
+                    "This image runs at {}, beyond 1.20 V, and this board's current voltage is \
+                     not known.",
+                    volts(mv)
+                ),
+            },
+        ))
+    } else if required_mv == STOCK_MV {
         None
     } else if required_mv < STOCK_MV {
         Some((
@@ -321,7 +361,12 @@ fn decide(stamp: Option<u16>, required_mv: u16, typed: &str) -> FirmwareGuardVer
             required_mv,
         };
     };
-    let confirmed = typed == CONFIRMATION_PHRASE;
+    let wanted = if reason == FirmwareGuardReason::Overvolt {
+        overvolt::WORD
+    } else {
+        CONFIRMATION_PHRASE
+    };
+    let confirmed = typed == wanted;
     if confirmed {
         log::warn!("firmware guard: risk accepted by typed confirmation: {message}");
     }
@@ -334,7 +379,7 @@ fn decide(stamp: Option<u16>, required_mv: u16, typed: &str) -> FirmwareGuardVer
         },
         reason,
         message,
-        confirmation_phrase: CONFIRMATION_PHRASE.to_owned(),
+        confirmation_phrase: wanted.to_owned(),
         image_mv,
         required_mv,
     }
@@ -695,7 +740,12 @@ mod tests_wp_cg8 {
         assert!(!v.allowed, "{v:?}");
         assert_eq!(v.decision, FirmwareGuardDecision::NeedsConfirmation);
         assert_eq!(v.reason, reason);
-        assert_eq!(v.confirmation_phrase, YES);
+        let wanted = if reason == Why::Overvolt {
+            overvolt::WORD
+        } else {
+            YES
+        };
+        assert_eq!(v.confirmation_phrase, wanted);
         assert!(!v.message.is_empty());
     }
 
@@ -844,6 +894,70 @@ mod tests_wp_cg8 {
 
     // ── Done criteria: K340-like, stock, no-extension, in-bootloader ──
 
+    // ── WP CG14: too high ──
+
+    #[test]
+    fn wp_cg14_an_image_above_1v20_and_above_the_board_needs_the_word() {
+        // The three cases of the plan.
+        let v = check(stamped("1250"), 1150, "");
+        assert_blocked(&v, Why::Overvolt);
+        assert_eq!(v.confirmation_phrase, "OVERVOLT");
+        assert!(check(stamped("1250"), 1150, "OVERVOLT").allowed);
+        assert_clear(&check(stamped("1200"), 1150, ""));
+        assert_clear(&check(stamped("1250"), 1250, ""));
+
+        // The owner's example, on a board at 1.25 V.
+        assert_blocked(&check(stamped("1300"), 1250, ""), Why::Overvolt);
+        assert!(check(stamped("1300"), 1250, "OVERVOLT").allowed);
+        // A K340 at 1.20 V.
+        assert_blocked(&check(stamped("1250"), 1200, ""), Why::Overvolt);
+        // Lower than the board stays the older rule, with its phrase.
+        let v = check(stamped("1250"), 1300, "");
+        assert_blocked(&v, Why::ImageLower);
+        assert_eq!(v.confirmation_phrase, YES);
+    }
+
+    #[test]
+    fn wp_cg14_each_risk_takes_only_its_own_answer() {
+        for bad in ["overvolt", "OVERVOLT ", "Overvolt", YES, ""] {
+            assert_blocked(&check(stamped("1300"), 1250, bad), Why::Overvolt);
+        }
+        assert_blocked(&check(stamped("1150"), 1200, "OVERVOLT"), Why::ImageLower);
+        assert_blocked(&check(unstamped(), 1200, "OVERVOLT"), Why::ImageUnknown);
+    }
+
+    #[test]
+    fn wp_cg14_an_unknown_board_asks_for_the_word_above_1v20() {
+        for mv in [0, 1, 1149, u16::MAX] {
+            assert_blocked(&check(stamped("1250"), mv, ""), Why::Overvolt);
+            assert!(check(stamped("1250"), mv, "OVERVOLT").allowed);
+        }
+        // At or below 1.20 V the older rule answers, with its phrase.
+        assert_blocked(&check(stamped("1200"), 0, "OVERVOLT"), Why::BoardUnknown);
+    }
+
+    #[test]
+    fn wp_cg14_a_stock_k340_is_treated_as_what_it_reports() {
+        // The owner's accepted limit: no record of what it used to be.
+        assert_clear(&check(stamped("1150"), 1150, ""));
+        assert_clear(&check(unstamped(), 1150, ""));
+    }
+
+    #[test]
+    fn wp_cg14_the_guarded_flash_writes_nothing_without_the_word() {
+        let board = FirmwareGuardBoard {
+            required_mv: 1150,
+            source: FirmwareGuardBoardSource::StatusBlock,
+        };
+        let drive = BootloaderDrive {
+            path: "/nonexistent-cg14".into(),
+            platform: 0,
+            info: String::new(),
+        };
+        let r = flash_to_drive_guarded(stamped("1250"), drive, board, String::new());
+        assert!(matches!(r, Err(DspiError::FirmwareGuardBlocked { .. })));
+    }
+
     #[test]
     fn wp_cg8_k340_like_board_blocks_unknown_and_lower_images() {
         // The fake's K340 build: extension channel, build default 1.20 V.
@@ -866,7 +980,8 @@ mod tests_wp_cg8 {
         assert_blocked(&go(with_e10(unstamped()), ""), Why::ImageUnknown);
 
         assert_clear(&go(stamped("1200"), ""));
-        assert_clear(&go(stamped("1250"), ""));
+        assert_blocked(&go(stamped("1250"), ""), Why::Overvolt);
+        assert!(go(stamped("1250"), overvolt::WORD).allowed);
         assert_clear(&go(with_e10(stamped("1200")), ""));
 
         let yes = go(unstamped(), YES);
@@ -910,16 +1025,14 @@ mod tests_wp_cg8 {
     fn wp_cg8_board_in_bootloader_always_asks() {
         let board = firmware_guard_board_in_bootloader();
         expect(&board, 0, Src::Bootloader);
-        for image in [
-            unstamped(),
-            stamped("1150"),
-            stamped("1200"),
-            stamped("1300"),
-        ] {
+        for image in [unstamped(), stamped("1150"), stamped("1200")] {
             let v = firmware_guard_check(image.clone(), board.clone(), String::new());
             assert_blocked(&v, Why::BoardUnknown);
             assert!(firmware_guard_check(image, board.clone(), YES.into()).allowed);
         }
+        let v = firmware_guard_check(stamped("1300"), board.clone(), String::new());
+        assert_blocked(&v, Why::Overvolt);
+        assert!(firmware_guard_check(stamped("1300"), board, overvolt::WORD.into()).allowed);
     }
 
     // ── Which boards are at risk ──
@@ -1018,12 +1131,14 @@ mod tests_wp_cg8 {
             let (_core, board) = board_on(list, vreg, stat);
             assert_eq!(board.required_mv, 0, "{name}");
             assert_eq!(board.source, Src::ReadFailed, "{name}");
-            for image in [unstamped(), stamped("1300")] {
-                assert_blocked(
-                    &firmware_guard_check(image, board.clone(), String::new()),
-                    Why::BoardUnknown,
-                );
-            }
+            assert_blocked(
+                &firmware_guard_check(unstamped(), board.clone(), String::new()),
+                Why::BoardUnknown,
+            );
+            assert_blocked(
+                &firmware_guard_check(stamped("1300"), board.clone(), String::new()),
+                Why::Overvolt,
+            );
         }
     }
 
@@ -1062,11 +1177,14 @@ mod tests_wp_cg8 {
     #[test]
     fn wp_cg8_board_values_only_stock_exactly_is_not_at_risk() {
         for mv in [0, 1, 900, 1100, 1149] {
-            assert_blocked(&check(stamped("1300"), mv, ""), Why::BoardUnknown);
+            assert_blocked(&check(stamped("1200"), mv, ""), Why::BoardUnknown);
+            assert_blocked(&check(stamped("1300"), mv, ""), Why::Overvolt);
         }
         assert_clear(&check(unstamped(), 1150, ""));
         assert_blocked(&check(unstamped(), 1151, ""), Why::ImageUnknown);
-        assert_blocked(&check(stamped("1300"), u16::MAX, ""), Why::ImageLower);
+        // Not a voltage to believe, so unreadable, not "lower".
+        assert_blocked(&check(stamped("1300"), u16::MAX, ""), Why::Overvolt);
+        assert_blocked(&check(stamped("1200"), u16::MAX, ""), Why::ImageLower);
     }
 
     #[test]
@@ -1312,7 +1430,12 @@ mod tests_wp_cg8 {
                 Just(0u16), Just(1150u16), Just(1200u16), Just(1250u16), Just(1300u16), any::<u16>()
             ],
             image_index in 0usize..6,
-            typed in prop_oneof![Just(YES.to_owned()), Just(String::new()), ".{0,40}"],
+            typed in prop_oneof![
+                Just(YES.to_owned()),
+                Just(overvolt::WORD.to_owned()),
+                Just(String::new()),
+                ".{0,40}"
+            ],
         ) {
             let images = [
                 (unstamped(), None),
@@ -1324,9 +1447,14 @@ mod tests_wp_cg8 {
             ];
             let (image, stamp) = images[image_index].clone();
             let v = check(image, required_mv, &typed);
-            let safe = required_mv == 1150
-                || (required_mv > 1150 && stamp.is_some_and(|mv| mv >= required_mv));
-            prop_assert_eq!(v.allowed, safe || typed == YES);
+            // WP CG14: too high comes first, and takes only the word.
+            let current = (1150..=2000).contains(&required_mv).then_some(required_mv);
+            let high = stamp.is_some_and(|mv| overvolt::word_required(current, mv));
+            let safe = !high
+                && (required_mv == 1150
+                    || (required_mv > 1150 && stamp.is_some_and(|mv| mv >= required_mv)));
+            let wanted = if high { overvolt::WORD } else { YES };
+            prop_assert_eq!(v.allowed, safe || typed == wanted);
             prop_assert_eq!(v.decision == FirmwareGuardDecision::Clear, safe);
         }
 

@@ -6,7 +6,7 @@ use proptest::prelude::*;
 use super::*;
 
 const SOAK: u32 = DEFAULT_SOAK_S;
-const PHRASE: &str = "RAISE TO 1.25 V";
+const WORD: &str = overvolt::WORD;
 
 /// A K340: build default 1.20 V, up for an hour, nothing on record.
 fn k340() -> CoreVregStatus {
@@ -39,14 +39,22 @@ fn running(code: u8, uptime_s: u32) -> CoreVregStatus {
     })
 }
 
+/// The `TRIAL` of a run on a K340: the word was typed if it was needed.
+fn ft(code: u8) -> FlowTrial {
+    FlowTrial {
+        code,
+        word: code > VREG_1_20,
+    }
+}
+
 /// Open, start at `target`, past the `CLEAR` and into the soak at uptime 3600.
 fn soaking(target: u8) -> Calibrator {
     let mut c = Calibrator::new();
     c.open(&k340(), 0).unwrap();
-    let typed = typed_phrase(target);
-    let op = c.start(&k340(), target, SOAK, typed.as_deref(), 0).unwrap();
+    let typed = needs_word(target, &k340()).then_some(WORD);
+    let op = c.start(&k340(), target, SOAK, typed, 0).unwrap();
     assert_eq!(op, VregOp::Clear);
-    assert_eq!(c.on_status(&k340(), 10), Some(FlowTrial(target)));
+    assert_eq!(c.on_status(&k340(), 10), Some(ft(target)));
     assert_eq!(c.on_status(&running(target, 3600), 20), None);
     assert!(matches!(c.phase(), Phase::Soaking { .. }));
     c
@@ -66,10 +74,64 @@ fn wp_cg11_the_range_runs_from_the_build_default_to_1v25_only() {
 }
 
 #[test]
-fn wp_cg11_only_above_1v20_needs_typing() {
-    assert_eq!(typed_phrase(0x0C), None);
-    assert_eq!(typed_phrase(0x0D), None);
-    assert_eq!(typed_phrase(0x0E).as_deref(), Some(PHRASE));
+fn wp_cg14_the_flow_judges_the_word_on_the_units_status() {
+    let on = |live: u8, stored: u8, default_vreg: u8| {
+        with(|s| {
+            s.live_vreg = live;
+            s.stored_sel = stored;
+            s.default_vreg = default_vreg;
+        })
+    };
+    assert!(needs_word(0x0E, &on(0x0D, 0, 0x0D)), "1.20 to 1.25");
+    assert!(needs_word(0x0E, &on(0x0C, 0, 0x0C)), "1.15 to 1.25");
+    assert!(!needs_word(0x0D, &on(0x0C, 0, 0x0C)), "1.15 to 1.20");
+    assert!(!needs_word(0x0E, &on(0x0E, 0x0E, 0x0D)), "1.25 stays");
+    assert!(!needs_word(0x0E, &on(0x0D, 0x0E, 0x0D)), "stored at 1.25");
+    assert!(!needs_word(0x0E, &on(0x0E, 0, 0x0D)), "on trial at 1.25");
+}
+
+#[test]
+fn wp_cg14_already_at_1v25_it_can_trial_with_no_word() {
+    let at = with(|s| {
+        s.stored_sel = 0x0E;
+        s.live_vreg = 0x0E;
+    });
+    let mut c = Calibrator::new();
+    c.open(&at, 0).unwrap();
+    assert_eq!(c.start(&at, 0x0E, SOAK, None, 0), Ok(VregOp::Clear));
+    let t = c.on_status(&at, 1).unwrap();
+    assert_eq!(t.word(), None);
+}
+
+#[test]
+fn wp_cg14_a_unit_that_came_down_since_the_start_stops_a_wordless_trial() {
+    let at = with(|s| {
+        s.stored_sel = 0x0E;
+        s.live_vreg = 0x0E;
+    });
+    let mut c = Calibrator::new();
+    c.open(&at, 0).unwrap();
+    c.start(&at, 0x0E, SOAK, None, 0).unwrap();
+    // Someone set it back to 1.20 V between the CLEAR and the TRIAL.
+    assert_eq!(c.on_status(&k340(), 1), None);
+    assert!(matches!(c.phase(), Phase::Unknown { .. }));
+}
+
+#[test]
+fn wp_cg14_a_save_is_judged_on_the_status_at_that_moment() {
+    let mut c = soaking(0x0E);
+    c.on_status(&running(0x0E, 3600 + SOAK), 50);
+    // The trial gone from a stale status: 1.20 V now, so 1.25 V is a raise.
+    assert!(matches!(
+        c.commit(&k340(), None, 60),
+        Err(FlowError::WordRequired { .. })
+    ));
+    assert!(matches!(c.phase(), Phase::Passed { .. }));
+    // Still on trial at 1.25 V: level, and the word was typed for the trial.
+    assert_eq!(
+        c.commit(&running(0x0E, 3600 + SOAK), None, 61),
+        Ok(VregOp::Set(0x0E))
+    );
 }
 
 #[test]
@@ -93,18 +155,18 @@ fn wp_cg11_start_checks_range_soak_and_typing_before_anything_changes() {
     let mut c = Calibrator::new();
     c.open(&k340(), 0).unwrap();
     for (target, soak, typed, ok) in [
-        (0x0C, SOAK, None, false),          // below the build default
-        (0x0F, SOAK, Some("RAISE"), false), // 1.30 V
+        (0x0C, SOAK, None, false),       // below the build default
+        (0x0F, SOAK, Some(WORD), false), // 1.30 V, word or not
         (0x0D, MIN_SOAK_S - 1, None, false),
         (0x0E, SOAK, None, false),
         (0x0E, SOAK, Some("yes"), false),
-        (0x0E, SOAK, Some("raise to 1.25 v"), false),
+        (0x0E, SOAK, Some("overvolt"), false),
     ] {
         assert_eq!(c.start(&k340(), target, soak, typed, 0).is_ok(), ok);
         assert_eq!(*c.phase(), Phase::Review, "{target:#x}");
     }
     assert_eq!(
-        c.start(&k340(), 0x0E, MIN_SOAK_S, Some(PHRASE), 0),
+        c.start(&k340(), 0x0E, MIN_SOAK_S, Some(WORD), 0),
         Ok(VregOp::Clear)
     );
 }
@@ -125,7 +187,7 @@ fn wp_cg11_the_trial_waits_for_the_clear_to_show() {
     );
     c.start(&old, 0x0D, SOAK, None, 0).unwrap();
     assert_eq!(c.on_status(&old, 100), None, "not applied yet");
-    assert_eq!(c.on_status(&k340(), 200), Some(FlowTrial(0x0D)));
+    assert_eq!(c.on_status(&k340(), 200), Some(ft(0x0D)));
 }
 
 #[test]
@@ -177,11 +239,10 @@ fn wp_cg11_a_pass_commits_nothing_until_asked() {
 fn wp_cg11_a_set_is_verified_on_stored_and_live() {
     let mut c = soaking(0x0E);
     c.on_status(&running(0x0E, 3600 + SOAK), 50);
-    assert!(matches!(
-        c.commit(&k340(), None, 60),
-        Err(FlowError::ConfirmationRequired { .. })
-    ));
-    assert_eq!(c.commit(&k340(), Some(PHRASE), 60), Ok(VregOp::Set(0x0E)));
+    assert_eq!(
+        c.commit(&running(0x0E, 3600 + SOAK), None, 60),
+        Ok(VregOp::Set(0x0E))
+    );
     // Still the trial: the main loop has not run.
     c.on_status(&running(0x0E, 3600 + SOAK), 61);
     assert!(matches!(c.phase(), Phase::Committing { .. }));
@@ -363,7 +424,7 @@ fn wp_cg11_a_failed_write_is_not_retried() {
     let mut c = Calibrator::new();
     c.open(&k340(), 0).unwrap();
     c.start(&k340(), 0x0D, SOAK, None, 0).unwrap();
-    assert_eq!(c.on_status(&k340(), 10), Some(FlowTrial(0x0D)));
+    assert_eq!(c.on_status(&k340(), 10), Some(ft(0x0D)));
     c.on_write_failed();
     assert_eq!(c.on_status(&k340(), 20), None);
     assert!(matches!(c.phase(), Phase::Unknown { .. }));
@@ -387,7 +448,7 @@ fn wp_cg11_a_found_trial_offers_end_or_keep_and_keep_counts_from_now() {
     assert!(matches!(c.phase(), Phase::Passed { .. }));
     assert!(
         c.commit(&k340(), None, 30).is_err(),
-        "1.25 V is still typed"
+        "the unit shows 1.20 V: a raise"
     );
 }
 
@@ -468,10 +529,10 @@ fn wp_cg11_manual_ops_keep_the_limits_and_stay_out_of_a_run() {
     let mut c = Calibrator::new();
     let s = k340();
     assert!(c.manual_set(&s, 0x0C, None, 0).is_err());
-    assert!(c.manual_set(&s, 0x0F, Some("RAISE TO 1.30 V"), 0).is_err());
+    assert!(c.manual_set(&s, 0x0F, Some(WORD), 0).is_err());
     assert!(c.manual_set(&s, 0x0E, None, 0).is_err());
     assert!(c.manual_trial(&s, 0x0C, None).is_err());
-    assert!(c.manual_trial(&s, 0x0F, Some("RAISE TO 1.30 V")).is_err());
+    assert!(c.manual_trial(&s, 0x0F, Some(WORD)).is_err());
     assert!(c.manual_trial(&s, 0x0E, None).is_err());
     assert_eq!(c.manual_trial(&s, 0x0D, None), Ok(VregOp::Trial(0x0D)));
     assert_eq!(c.manual_clear(), Ok(VregOp::Clear));
@@ -599,48 +660,42 @@ proptest! {
         let mut now = 0u64;
         for action in actions {
             now += 700;
-            let typed_for = |code: u8, on: bool| on.then(|| typed_phrase(code)).flatten();
+            let word = |on: bool| on.then_some(WORD);
+            let mut typed = false;
             let sent: Option<VregOp> = match action {
                 Action::Status(next) => {
                     s = next;
                     let _ = c.phase().message();
                     let _ = c.soak_elapsed_s(&s);
                     let _ = TrialFailure::on_record(&s).map(|_| ());
-                    c.on_status(&s, now).map(FlowTrial::op)
+                    let t = c.on_status(&s, now);
+                    typed = t.is_some_and(|t| t.word().is_some());
+                    t.map(FlowTrial::op)
                 }
                 Action::Open => { let _ = c.open(&s, now); None }
                 Action::Start(t, soak, ty) => {
-                    let typed = typed_for(t, ty);
-                    let r = c.start(&s, t, soak, typed.as_deref(), now).ok();
+                    let r = c.start(&s, t, soak, word(ty), now).ok();
                     if r.is_some() {
                         prop_assert!(in_flow_range(t, s.default_vreg));
                         prop_assert!(soak >= MIN_SOAK_S);
+                        prop_assert!(ty || !needs_word(t, &s), "{t:#x} on {s:?}");
                     }
                     r
                 }
-                Action::Commit(ty) => {
-                    let code = match c.phase() {
-                        Phase::Passed { run, .. } => run.target,
-                        _ => 0,
-                    };
-                    let typed = typed_for(code, ty);
-                    c.commit(&s, typed.as_deref(), now).ok()
-                }
+                Action::Commit(ty) => { typed = ty; c.commit(&s, word(ty), now).ok() }
                 Action::End => c.end_trial(now).ok(),
                 Action::Keep(soak) => { let _ = c.keep_trial(&s, soak); None }
-                Action::ManualSet(v, ty) => {
-                    let typed = typed_for(v, ty);
-                    c.manual_set(&s, v, typed.as_deref(), now).ok()
-                }
-                Action::ManualTrial(v, ty) => {
-                    let typed = typed_for(v, ty);
-                    c.manual_trial(&s, v, typed.as_deref()).ok()
-                }
+                Action::ManualSet(v, ty) => { typed = ty; c.manual_set(&s, v, word(ty), now).ok() }
+                Action::ManualTrial(v, ty) => { typed = ty; c.manual_trial(&s, v, word(ty)).ok() }
                 Action::ManualClear => c.manual_clear().ok(),
                 Action::LinkLost => { c.on_link_lost(); None }
                 Action::WriteFailed => { c.on_write_failed(); None }
                 Action::Close => { let _ = c.close(); None }
             };
+            // Nothing that raises the unit above 1.20 V goes without the word.
+            if let Some(op) = sent {
+                prop_assert!(typed || !overvolt::op_needs_word(op, Some(&s)), "{op:?} on {s:?}");
+            }
             match sent {
                 Some(VregOp::Trial(v)) => {
                     prop_assert!(in_flow_range(v, s.default_vreg), "trial {v:#x} on {s:?}");
