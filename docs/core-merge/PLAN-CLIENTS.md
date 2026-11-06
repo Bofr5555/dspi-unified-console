@@ -1,37 +1,211 @@
-# Every client on the one core: plan
+# One unified console: plan for every client
 
-*Branch `plan/clients`, cut from `core-merge` at `6771e16`. Written 2026-11-06.*
+*Branch `plan/clients`. Written 2026-11-06, revised after Fable review. Checked
+against `core-merge` up to `d190535`: `wp/F1`, `wp/L1`, `wp/R1`, `wp/Q2a`,
+`wp/Q2b`, `wp/C15` at `2cb89c1`.*
 
-`PLAN.md` ends when the core is merged and the Qt app runs on it (Q3, D1). This
-plan does the rest: every client moves onto the core, and every client closes
-its feature gaps.
+**Purpose.** One project, built from one base, for every client. In the owner's
+words: "one single unified thing that can build all the versions from the same
+base." `PLAN.md` ends when the core is
+merged and the Qt app runs on it (Q3, D1). This plan does the rest.
+
+**The target:**
+
+| Platform | Frontend | Why |
+|---|---|---|
+| macOS, iOS, iPadOS | **SwiftUI over the Rust core.** Swift keeps UI only, one Xcode project | Owner: "the only people that might care about look and feel matching everything else are mac and ios users" |
+| Linux, Windows | Qt on the Rust core | "Close enough" (owner). Replaces the Linux and Windows C# consoles |
+| Android | Kotlin/Compose on the Rust core | Exists; switches core |
+| Terminal | The session crates directly | Exists |
+| Web | Decided by a study | WB0 |
 
 **Start:** when `core-merge` reaches `main`. Owner's standing instruction: start
-the first wave then, without asking again. **Every WP here depends on that
-merge.** WP branches are cut from `main`, not `core-merge`. Hardware, flash,
-release and password steps keep their own approvals (section 6).
-
-**Checked against:** `wp/F1` `ccf38e0`, `wp/L1` `af1240d`, `wp/R1` `637e1d9`,
-`wp/Q2a` `808ceb6`, `wp/Q2b` `2c4b6bf`, and `wp/C15` `6faf847`. C15 was still
-running, so re-check its API before dispatching a WP that uses it.
+the first wave then, without asking again. **Every WP depends on that merge**, and
+WP branches are cut from `main`. Hardware, flash, release and password steps keep
+their own approvals (section 6). **Contacting Weeb Labs or making anything public is
+only ever the owner's act. No agent plans or does either.**
 
 Sizes are in agent-days, as in `PLAN.md`.
 
 | Track | WPs | Size | Depends on |
 |---|---|---|---|
-| CG: core gaps | 9 | 6.5 | `main` |
-| HB: Rust Link hub | 8 | 12 | `main` |
-| QD: Qt desktop | 27 | 23 | `main`, CG, HB for the hub page |
-| TM: Terminal | 13 | 7.25 | `main`, CG, HB for `dspi hub` |
-| AN: Android | 21 | 24.75–28.75 | `main` (AN1), CG |
-| IO: iOS | 22 | 28.5–37 | `main`, CG3, CG4 |
-| MC: macOS retirement | 4 | 1.75 | QD gates |
+| MR: one repo, one build | 2 | 1.75 | `main` |
+| LC, HO: licence inventory, handover | 2 | 1.5 | `main`; HO1 late |
+| CG: core gaps | 10 | 7.25 | `main` |
+| HB: Rust Link hub | 7 | 12 | `main` |
+| QD: Qt (Linux, Windows) | 25 | 21.25 | `main`, CG, HB for the hub page |
+| TM: Terminal | 14 | 8 | `main`, CG, HB for `dspi hub` |
+| AN: Android | 22 | 24.5–28.5 | `main`, MR1, CG9 |
+| SW: Swift (macOS and iOS) | 27 | 31.25–41.75 | `main`, MR1, CG3, CG4 |
 | WB: web | 1 + stubs | 2 (study) | `main` |
-| XC: cross-client tests | 5 | 2.75 | hub hardware |
-| **Total** | **110** | **about 109–121**, web build not counted | |
+| XC: audit, cross-client tests | 6 | 3.25 | hub hardware |
+| **Total** | **116** | **about 113–127**, not counting the web build | |
 
-The largest unknowns are iOS screen replacement, the Android control-surface
-editor and the web build (section 9).
+Two more WPs (QD15, SW21) run only if the owner counts disabled Mac features as
+floor (OD-Floor-disabled); they add 2.5, and AN19 adds 0.5.
+
+**M0, the first milestone, is about 12–14 days after `main`** (section 0.3). The
+largest unknowns are Swift domain replacement, the Android control-surface editor
+and the web build (section 9).
+
+---
+
+## 0. One base
+
+### 0.1 One repo
+
+Target layout: `crates/`, `apps/desktop`, `apps/terminal`, `apps/android`,
+`apps/apple`. This changes the letter of the owner's "separate branch of the Console
+fork" rule, so it needs **OD-Repo**; the fallback is the same SW track on a fork branch
+`rust-core-116`, with the XCFramework pinned by commit.
+
+**MR1: Import with history.** Size 0.75. Two halves.
+- **Android half (wave 0):** `dspi-android` to `apps/android` by a subdirectory rewrite
+  and an unrelated-histories merge. History is small (155 commits, 64 MB `.git`). Done
+  before AN1, which then uses the crates by path and removes `rust/`, `third_party/`
+  and patches 0000–0004. **The old question of how a public repo consumes a private
+  one disappears.**
+- **Swift half (wave 2, with SW1 and SW2):** `ext-channel-116` of the fork to
+  `apps/apple` (486 commits, 19 MB `.git`). One Xcode project, both targets.
+- **The Swift-only `-116` branches stay in the fork**, which becomes the mirror that
+  tracks upstream. The public `dspi-android` repo stays as a pointer or mirror, since
+  Play and the GPL source link point at it.
+- **Owns:** `apps/android/**`, `apps/apple/**` at import; root `.gitignore`.
+- **Done when:** `git log --follow` works on a sample file; a scan of the imported history
+  finds no key, `upload.properties`, keystore or `.aab` (`keystore/` is gitignored today;
+  only the `tools/debug-keystore.sh` script is tracked); each app's own CI still passes
+  from its new path. No push.
+- **Deps:** `main`; OD-Repo for the Swift half.
+
+**Upstream tracking** (SW-U1 writes `docs/UPSTREAM-TRACKING.md`): the diff against upstream
+Swift is confined to `Core/`, removal of `Commands.swift` and view call sites. Each upstream
+release gets a merge WP, sized 0.5–1 each. A change outside those places needs a reason in the
+review.
+
+### 0.2 One build
+
+**MR2: One entry point.** Size 1.
+- **Owns:** `ci/check.sh --all-clients` (or `xtask`, which is an empty stub today), `ci/matrix.sh`.
+- **Implements:** from one commit, build and test everything, then print a matrix:
+
+| Client | Where |
+|---|---|
+| Linux Qt, Terminal | container |
+| Windows Qt, Terminal | `xwin` in a container; run in `winvm` when scheduled |
+| Android AAB | Gradle container |
+| wasm check | container |
+| macOS app, iOS Simulator | `macvm` through `launchctl asuser`: GUI login, host unlocked, one heavy job at a time. Skipped with a clear "not run" if the VM is down |
+
+- **CG3's iOS check:** Linux containers have no Apple SDK, so the container step is
+  `cargo check --target aarch64-apple-ios` only, with no link. If a dependency's build
+  script needs the SDK, it moves to the VM. Real linking is always `macvm` (SW1).
+- **Drift step:** regenerate `dspi_core.h`, the Kotlin contract and bindings, and the Swift
+  bindings, then fail on any diff. **Generated code is never hand-edited.**
+- **Done when:** a run from a clean checkout gives the full matrix; an edited generated
+  file fails it.
+- **Deps:** MR1, CG9.
+
+**What stays on the host:** the Arm firmware toolchain only (existing exception). Everything
+else runs in podman or a VM, with verified downloads.
+
+### 0.3 Milestone M0: "one base"
+
+One commit, one command. Every client builds and runs the demo device on the same core:
+- Linux and Windows Qt (Q3);
+- Terminal;
+- an Android AAB on `dspi-ffi` (AN1, AN2);
+- the Swift app on macOS and the iOS Simulator with the core under its transports (SW1–SW4);
+- the parity table (`docs/PARITY.md`, XC0) and the build matrix (MR2).
+
+**WPs:** MR1, MR2, LC1, XC0, CG1, CG3, CG4, CG9, AN1, AN2, SW1–SW4, plus Q3 from `PLAN.md`. **About
+12–14 days after `main`**, before the floor work, reached at the end of wave 3. No UI is rewritten, so
+a Swift user sees no change; that is the point of the demonstration.
+
+**Gate:** the owner reviews M0. It is the natural point for OD-WL. It does not block CG, HB or QD work
+in flight. SW8's evidence (a Swift view model fed from the core) is the stronger second proof if the
+owner wants it first.
+
+### 0.4 Licensing (settle early: OD-Lic)
+
+**Owner's direction (decided):** dual-license only the parts needed for the App Store build. Those from Weeb
+Labs and those from the owner each get an iOS-friendly licence; the rest stays GPL. Exact terms are for the owner
+and Weeb Labs to agree, and no agent drafts legal text as final. **R-iOS waits for the owner to confirm the
+terms.** This section is a technical inventory, **not legal advice.**
+
+| Source | What the repo actually says | Notes |
+|---|---|---|
+| macOS Console | **`LICENSE` is GPL-3.0, but its README says MIT** (badge and `README.md:2066`, upstream too) | Weeb Labs told the owner MIT. Contributors: Weeb Labs, Jonathan Rosser (2 commits) |
+| Firmware | GPL-3.0 (`LICENSE`, README) | Contributors: Weeb Labs, bofr, Jonathan Rosser (17), two others |
+| DSPi-Terminal, base of the core | GPL-3.0-or-later (`Cargo.toml`, README); **no `LICENSE` file** | Sole author Weeb Labs |
+| DSPi-Console-Linux, ported into `dspi-core` | **No licence anywhere** in the repo. Android's `NOTICE.md` records "MIT per Weeb Labs, file pending" | Sole author Weeb Labs. Our workspace relabels it GPL on that word alone |
+| DSPi-Console-Windows | **No `LICENSE` file; README says GPL-3.0** | Not imported; referenced only |
+| DSPi-Link (spec, policy, fixtures, web bundle) | MIT | Fine in any route |
+| sigman78 web console, dspictl | MIT | |
+| DSPi-ESP32-Front-Panel, DSPiCliRemote | No licence | Not imported; do not copy |
+| AutoEq data | MIT per Android's `NOTICE.md` | Upstream terms to be read in LC1 |
+| Android port | GPL-3.0 + §7 terms (attribution, marked versions, no trademark) by Bofr5555. UI and texts ported from the GPL macOS app | |
+| `dspi-unified-console` | Root `LICENSE` GPL-3.0; `GPL-3.0-or-later` workspace field | Working assumption, owner, 2026-11-06 |
+| Qt | LGPL-3 | Dynamic today in all our packages. Any static Qt (QD21) needs the relinking provision |
+| Rust dependencies (254 crates at `d190535`) | All MIT, Apache, BSD, Zlib or Unicode, plus MPL-2.0 (`uniffi*`, `cbindgen`, `option-ext`); `r-efi` offers a non-LGPL choice | Nothing here blocks any route |
+| SwiftNIO | Apache-2.0 | |
+
+**The conflict.** GPL-3.0's no-further-restrictions terms and the App Store's usage rules are a known
+conflict. Weeb Labs' macOS app ships outside the store, so it has not met it. iOS cannot avoid it: **a GPL
+core in an iOS app is the problem.** Play has no such conflict, and neither do direct macOS, Windows or
+Linux downloads. Also, the iOS target's exclusion list does not exclude `Firmware/`, so GPL `.uf2` images
+appear to ship in the app; LC1 confirms, and SW18 removes them from the iOS target.
+
+**Who can grant what.** Weeb Labs for their code, subject to outside contributors; the owner for his. Known outside
+contributors so far: Jonathan Rosser (2 commits on the Mac Console, 17 on the firmware). LC1 finds out whether any of
+that reaches the iOS binary.
+
+**Keep the licensed surface small.** The iOS build's dependency set is listed and kept small: `usb` and `midir` off,
+no CLI or Terminal code, no `cli` feature, no Qt, no firmware images. `crates/dspi-tui` and `dspi-cmd` stay out (F1's
+trim). CI fails if the iOS dependency list grows without a change to the inventory.
+
+**LC1: iOS licence inventory.** Size 0.5. **Owns:** `docs/licensing/IOS-INVENTORY.md`, a check script in `ci/`, `NOTICE.md`,
+per-crate `license` fields, SPDX headers in new code, `deny.toml`.
+- **Implements:** the concrete list that makes dual licensing simple: **exactly which crates and files go into the iOS
+  binary** (core crates, Swift sources, assets), each with its copyright holders (Weeb Labs, owner, third party, from
+  `git blame` and the import history), its current licence, and which permission it needs.
+- **Flags:** any third-party part with an incompatible licence; **any contributor beyond Weeb Labs and the owner**, with
+  their files. Also records the other imported trees and the disagreements in the table above.
+- **Limits:** it changes no licence and drafts no legal text as final. It provides facts for the owner and Weeb Labs.
+- **Done when:** the inventory is generated from the iOS build's real dependency graph (`cargo tree` for the iOS target,
+  the Xcode target's membership), and re-running it detects a new file or crate; `cargo-deny` runs in CI. It is re-run
+  after each SW wave, since SW adds and removes Swift. **Deps:** `main`.
+
+### 0.5 Handover quality for Weeb Labs
+
+**Rules from now on, for every WP:**
+- **Follow their conventions:** `Documentation/` per app; `CLAUDE.md` build notes; releases tagged
+  `v<version>` and named `DSPi Console v<version>`; no em-dashes (their `networking_plan.md`); from their Qt
+  guide: "Never redraw anything unnecessarily", and QML files listed in both `resources.qrc` and `qmldir`.
+- **Shared fixtures:** `.dspipreset` and filter files live in one fixture set that every client tests.
+- **Keep settings keys:** QSettings, UserDefaults and Keychain or Keystore keys stay unchanged wherever an app
+  replaces itself.
+- **Stock firmware degrades cleanly:** clients gate extension features on `EXT_LIST`. A stall means the feature is
+  hidden, never an error.
+- **No new fork leftovers:** no new `se.bofr` or Bofr5555 names in shared code.
+
+**HO1: Handover pack.** Size 1. Late: before R-Mac and R-iOS. **Owns:** `README.md` top-level map, `Documentation/`
+per app, `docs/HANDOVER.md`.
+- **Parity against each console replaced:** macOS, Windows C#, Linux, Terminal, as rows of `docs/PARITY.md`. Windows C#
+  rows to settle, from the audit: undo and redo (Qt has none; C# has IO undo; OD5), the 0xFC/0xFD pair mask
+  (`DspDevice.cs:288` against Qt's `crossfeedOutputPairMask`), settings depth, the bulk-endpoint debug window, 12 PEQ bands
+  against 10.
+- **Migration:** settings, tokens, favourites and files per console, including what does not carry over.
+- **Leftovers to list and resolve:**
+  - Kotlin packages naming `se.bofr` (325 files; a rename is a mechanical choice for later). **Not leftovers:** the Play
+    listing, the upload key and `applicationId se.bofr.dspi_console_android`, which the owner keeps;
+  - `NOTICE.md` §7 terms naming Bofr5555;
+  - Apple side: bundle IDs, team, signing and store submission go through Weeb Labs' developer account (the
+    `WeebLabs.DSPi-Console-iOS` ID is theirs; the team is empty in the project);
+  - untagged bundled "beta4" images (really `beta3-16-g557bce7`);
+  - the `0x7D` SysEx ID.
+- **Firmware alignment:** what `bofr-main` adds to `release/v1.1.6` (core voltage, pair map, USB MIDI, tagged bulk
+  invalidations, size trims); the `0x00` reservation is not granted yet. It is offered as a PR series **through the owner**.
+- **Done when:** a reader who knows only their current consoles can build every client from the README. **Deps:** R-Qt, SW8.
 
 ---
 
@@ -39,146 +213,159 @@ editor and the web build (section 9).
 
 The brief and rules are `WP-BRIEF.md`'s, with these changes.
 
-- **Branch:** `wp/<id>` from `main`, in a worktree under `~/prog/dspi-ucwt/`
-  (Android: a branch of `dspi-android` in its own worktree; iOS: section 5.5).
-- **Process:** Opus agents do WPs in parallel. Fable reviewers check batches, run
-  the full CI and do the adversarial checks. Fixups go back to the WP agent. The
-  coordinator merges. Agents run scoped checks only. WP branches are deleted
-  after merge and QA.
-- **Toolchains** in podman or VMs. **No tmpfs.** Scratch goes in
-  `~/.cache/dspi-build/work/wp-<id>/`.
-- **The macOS app is the feature floor** (owner, 2026-11-06). Section 3 assigns
-  every macOS-only feature. Put logic in the core and let the client add only UI.
-  A gap found in the core gets its own CG or HB WP.
+- **Branch:** `wp/<id>` from `main`, in a worktree under `~/prog/dspi-ucwt/`.
+- **Process:** Opus agents do WPs in parallel. Fable reviewers check batches, run the full CI and do
+  the adversarial checks. Fixups go back to the WP agent. The coordinator merges. Agents run scoped checks
+  only. After merge and QA, WP branches are deleted and caches of merged WPs removed.
+- **Never push to Weeb Labs' repos.** Commit identity and trailer as in `WP-BRIEF.md`.
+- **Toolchains** in podman or VMs. **No tmpfs.** Scratch goes in `~/.cache/dspi-build/work/wp-<id>/`.
+- **The macOS app is the feature floor** (owner). Section 3 assigns each macOS feature. Put logic in the core,
+  and let a client add only UI. A gap found in the core gets its own CG or HB WP.
 - **Lost Link connection, every client** (owner's rule):
   - show "connection lost, reconnecting" with an abort/disconnect button;
   - the mirror stays readable;
   - writes fail fast and are never replayed.
 
-  The core provides `LinkPhase::Reconnecting`, `reconnect_attempt`,
-  `reconnect_in_ms`, `link_retry_now`, and a `link_close` usable from any thread
-  (C15). A client must not add its own retry loop or queue a write.
-- **`LinkPhase` wording is one table for all clients**, written by QD10 and
-  reused: `NeedsPairing` (by `pin_source`), `NoDevice` ("Connected to hub, no
-  DSPi found"), `ChooseDevice`, `Reconnecting`, `Refused`, `Closed`.
-- **After a reconnect** the client calls `rta_start` again if its analyser was
-  running. A listener callback must not call a `set_*_listener` method: it
-  self-deadlocks (review 3-A, on Android's engine).
+  The core provides `LinkPhase::Reconnecting`, `reconnect_attempt`, `reconnect_in_ms`, `link_retry_now`,
+  and a `link_close` usable from any thread (C15). **A client must not add its own retry loop or queue a
+  write.** Wording comes from CG10.
+- **After a reconnect** the client calls `rta_start` again if its analyser was running. A listener callback must
+  not call a `set_*_listener` method: it self-deadlocks (review 3-A).
+- **C15's surface to use:** `link_connect`'s fifth argument `expected_hub_id`, error code `wrong_hub`, and
+  `SystemStatus.stale` and `age_ms` for stale meters.
 - **Blocking calls stay off the UI thread**, `poll_hotplug` included (F1 note).
-- **Shared client files:** `DSPiBridge.{h,cpp}`, `main.cpp`, `main.qml` and the
-  Terminal's `apps/terminal/src/main.rs` command table take additive edits under
-  a `// -- WP <id> --` marker. New features go in their own controller class and
-  QML file, as `CsController` does.
+- **Same-file ownership:**
+  - Qt: **one WP per wave may edit `DSPiBridge.{h,cpp}` and `main.qml`** (W1 QD0, W2 QD6, W3 QD17). All others add a
+    controller and QML file through QD0's registrar and banner host.
+  - Terminal: `apps/terminal/src/main.rs`'s command table takes additive edits under a `// -- WP <id> --` marker.
+- **Stranded logic does not stay in a client:** the `LinkPhase` wording table and the onboarding data live in CG10,
+  AutoEQ in CG6 (QD27 re-points Qt), and the firmware guard in CG8.
 
-Mark used below: **[HW]** needs a device, **[OWNER]** needs the owner,
-**[COORD]** the coordinator runs it, not an agent.
+Marks: **[HW]** needs a device, **[OWNER]** needs the owner, **[COORD]** the coordinator runs it, not an agent.
 
 ---
 
 ## 2. Corrections to the inputs
 
-These were checked against the code. The plan follows the corrected version.
+Checked against the code. The plan follows the corrected version.
 
 | # | Input said | Code says | Effect |
 |---|---|---|---|
-| 1 | `_ref/DSPi-Console` holds the macOS reference | It is stale Weeb Labs `main` `fc686ab`: 20 Swift files, no iOS, no Link. The current reference is `~/.cache/dspi-build/work/parity-ref` (an export of `ext-channel-116`, 110 Swift files, 72 k lines), with history in `work/ext116/src` | Section 3 used parity-ref |
-| 2 | Mac is the only hub with `snapshot`, `lock`, `rename`, `web` | The ESP32 bridge advertises all of those too (`hub.c:375`). Only `fw_install` is Mac-only (spec line 388) | Hub comparison, 5.4 |
-| 3 | Core gives Qt the Link client | The C ABI has no `dspi_link_*` and no `dspi_open_midi` (Q2a, Q2b, C15 all checked). The only C-side trace is a `link` feature with nothing behind it | **CG1** |
-| 4 | Parity 3.0: Link adapter plus mDNS | `PLAN.md` §3 put browsing out of scope and no crate browses. Android (NSD) and iOS (Bonjour) have their own; Qt and Terminal have none | **CG2** |
-| 5 | F1 leaves iOS only needing a build | `nusb` is a non-optional dependency of `dspi-core` and `dspi-transport`, and nusb 0.2.9 has no iOS backend (`platform/mod.rs`: Linux, Android, Windows, macOS, wasm32). `firmware.rs` also uses it. The VM's Rust has only `*-apple-darwin` targets. **It will not compile for iOS today** | **CG3**, IO1 |
-| 6 | Android Link engine needs `token_for`, `retry_advice`, backoff | C15's supervisor moved these into the core. Android's `LinkSessionEngine` (421 lines, own backoff) would duplicate it, so the WP removes code | AN3 |
-| 7 | Android's Kotlin API needs small fixes | All 154 FFI methods exist in the core and all 37 records match, except `LinkHello` and `LinkStatus` gaining fields. But `tools/gen_kotlin_contract.py` parses `rust/dspi-ffi/src/{records,core,lib}.rs`, and the core spreads its methods over many modules behind `cfg_attr`. The generator needs rewriting; it is not a path change. Review 3-A adds: `FfiDspiCore.kt` breaks at `:57` (`initLogging` package), `:393` (exhaustive `when`), `:65-77` and `:383-387` (Link); bindgen must run once per namespace (`ffi/build.gradle.kts:74-77`) | AN1 is 2.5, not 1; **CG9** |
-| 8 | Parity B2: Android has input-source names | No such code anywhere in Android, FFI or Kotlin | AN6 |
-| 9 | Parity B23: Android latency "not checked" | Absent in FFI, bridge and UI | AN6 |
-| 10 | Parity 3.2: 0x82 clock diagnostics is a Qt gap against the reference | The Mac reference has no `CLOCK_DIAG` at all. It is above the floor; the Terminal has it. Still in QD5 as asked | Sizing only |
-| 11 | Parity: custom `.uf2` as a gap | The Mac has none either: it reboots to the bootloader and leaves the UF2 to you. Android does better. Above the floor; still in QD11 as asked | Sizing only |
-| 12 | Parity 3.0: PICOBOOT writer in core | C11 ships inspection and drive copy only. That meets the floor; Android's PICOBOOT stays in Kotlin | No WP |
-| 13 | Merge notes: preset diff keeps the old core's wording, "same as before" | Swift's diff includes preamps and the pair map (`PresetSnapshot.swift:203,260`), which the old core's excludes. Below the floor | **CG7** |
-| 14 | Parity: "never a hub" for Android per D1/D5 | D1 is a question and D5 says "client only for v1; hub on demand". Overtaken: owner decided (section 8) | None |
-| 15 | Parity 3.3 lists auto-reconnect, Link, MIDI, demo and ext probe as Terminal gaps | R1 does all of them (unmerged until wave 3 merges) | Not in TM |
-| 16 | Terminal has full preset parity | `dspi_session::preset_file` has no pair map, while `dspi_core::files` does (`pairMap`). A Terminal `.dspipreset` loses it. There is also no CS JSON in the CLI | TM10 |
-| 17 | C15's Link client meets the floor | `dspi-link` has no `fw.install` client, only the capability string | HB4 |
-| 18 | Qt bundles "beta4" | Those are untagged `beta3-16-g557bce7` builds (handover) | QD11 |
-| 19 | The bridge is pending on the owner | `br0` is up and `macr`'s `vm.toml` has the NIC. Only the patched QEMU and a restart remain | XC1 |
-| 20 | Memory: WebUSB needs firmware descriptors | sigman78's MIT console drives the vendor interface over WebUSB on stock firmware (`WebUsbTransport.ts`, read, not run). The firmware's MS OS 2.0 descriptor binds WinUSB on Windows | WB0 |
-| 21 | Studies: "macOS and iOS stay Swift" | Superseded by the owner's decisions | MC, IO |
+| 1 | `_ref/DSPi-Console` holds the macOS reference | Stale Weeb Labs `main` `fc686ab`: 20 Swift files, no iOS, no Link. The current reference is `~/.cache/dspi-build/work/parity-ref` (export of `ext-channel-116`, 110 Swift files, 72 k lines), history in `work/ext116/src` | Section 3 used parity-ref |
+| 2 | Mac hub has `fw_install`; bridge lacks it | **No hub implements `fw.install`**: `LinkSessionHandler.swift:96,98,411-416` omits it, and `crates/dspi-link/tests/fixtures.rs:101` agrees. The other capabilities are on both hubs (`hub.c:375`). The spec only reserves it | M3, M14 deleted; HB4 later |
+| 3 | Core gives Qt the Link client | The C ABI has no `dspi_link_*` and no `dspi_open_midi`. Only an empty `link` feature | **CG1** |
+| 4 | Parity 3.0: Link adapter plus mDNS | `PLAN.md` §3 put browsing out of scope and no crate browses. Android and iOS have their own; Qt and Terminal have none | **CG2** |
+| 5 | F1 leaves iOS needing only a build | `nusb` (locked at 0.2.5) is non-optional in `dspi-core` and `dspi-transport`, and has no iOS backend. `firmware.rs` also uses it. The VM's Rust has only `*-apple-darwin` targets. **It will not compile for iOS today** | **CG3**, SW1 |
+| 6 | Android Link engine needs `token_for`, `retry_advice`, backoff | C15's supervisor moved these into the core, so Android's own loop (`LinkSessionEngine`, 421 lines) must go | AN3 |
+| 7 | Android's Kotlin API needs small fixes | All 154 FFI methods exist, and all 37 records match bar added fields. But `gen_kotlin_contract.py` parses `rust/dspi-ffi/src/*`, and the core spreads methods over modules behind `cfg_attr`. Review 3-A: `FfiDspiCore.kt` breaks at `:57`, `:393`, `:65-77`, `:383-387`; bindgen must run per namespace (`ffi/build.gradle.kts:74-77`) | AN1 is 2.5; **CG9** |
+| 8 | Parity B2: Android has input-source names | No such code in FFI or Kotlin | AN6 |
+| 9 | Parity B23: Android latency "not checked" | Absent | AN6 |
+| 10 | Parity 3.2: 0x82 clock diagnostics is a Qt gap | The Mac reference has no `CLOCK_DIAG`. Above floor; still in QD5 as asked | Sizing |
+| 11 | Parity: custom `.uf2` as a gap | The Mac reboots to the bootloader and leaves the UF2 to you. Above floor; still in QD11 | Sizing |
+| 12 | Parity 3.0: PICOBOOT in core | C11 ships inspection and drive copy, which meets the floor; Android's PICOBOOT stays in Kotlin | No WP |
+| 13 | Merge notes: preset diff "same as before" | Swift's diff includes preamps and the pair map (`PresetSnapshot.swift:203,260`). Below floor | **CG7** |
+| 14 | Parity: "never a hub" per D1/D5 | D1 is a question; D5 says "client only for v1; hub on demand". Overtaken: owner decided (section 8) | None |
+| 15 | Parity 3.3: reconnect, Link, MIDI, demo, ext probe are Terminal gaps | R1 does them all | Not in TM |
+| 16 | Parity D5: Terminal has config import and export at parity | See TM10: format chosen by extension only, no stdin or stdout, `--json` ignored, no JSON filter bank, no CS block or pair map in the document | TM10 |
+| 17 | Qt bundles "beta4" | Untagged `beta3-16-g557bce7` builds (handover) | QD11, HO1 |
+| 18 | The bridge is pending on the owner | `br0` is up and `macr`'s `vm.toml` has the NIC. Patched QEMU and a restart remain | XC1 |
+| 19 | Memory: WebUSB needs firmware descriptors | sigman78's MIT console uses WebUSB on stock firmware (`WebUsbTransport.ts`, read, not run); MS OS 2.0 binds WinUSB | WB0 |
+| 20 | Studies: "macOS and iOS stay Swift" and the early "retire Swift" idea | Owner: SwiftUI on Mac and iOS over the core | SW track |
+| 21 | Parity: coach marks are a Mac feature, gap elsewhere | **Off in the shipped Mac build** (`OnboardingCoordinator.swift:35,144,163`; `DSPi_ConsoleApp.swift:12061-12065`). Only the wizard and What's New ship | **OD-Floor-disabled** |
+| 22 | Licences (`NOTICE`, studies) | Section 0.4: the Mac's `LICENSE` and README disagree; Windows has only a README line; Console-Linux has nothing | OD-Lic |
 
-**Safety gap found:** a bundled stock image runs at 1.15 V. Flashing one to a K340
-through any updater breaks the "never 1.15 V on the K340" rule, and no updater
-checks for it. **CG8** adds the check.
+**Safety gap:** a stock image has no `core_vreg` code and runs at 1.15 V. Flashing one to a K340 through any updater breaks the
+"never 1.15 V" rule, and no updater checks. **CG8** adds the check.
 
 ---
 
 ## 3. The macOS feature floor
 
-Reviewed from the app itself (menus, settings pages, the iOS target's exclusion
-list, `#if os(macOS)` blocks), not only from the audit. **"have"** means present
-and checked in that client's code.
+The Mac has every row: **"have (Swift, stays)"**, so it has no column. **XC0 finishes this audit** in wave 0 and moves it, with
+FEATURE-PARITY's matrix, to `docs/PARITY.md`; this table is then a view of it.
 
-Metal renderers and AppKit windows are implementation, not features, so they have
-no rows. The Advanced page's onboarding debug section is developer-only.
+**"have"** = checked in that client's code. **"hit"** = a code search matched, unread; XC0 confirms. iOS shares the Mac's sources, so its
+"have" is the audit's or the target's membership list. Metal renderers and AppKit windows are implementation, not rows.
 
-**Link hub and gateway** (hub on mobile: owner decided, section 8)
+**Link hub** (mobile: owner decided)
 
 | # | Feature | Qt | Terminal | Android | iOS |
 |---|---|---|---|---|---|
-| M1 | Share devices: server, open or pairing, port | HB1–3, HB5, QD14 | TM11 | no (Play build); sideload later | no |
+| M1 | Share devices: server, hub name, open or pairing, port | HB1–3, HB5, QD14 | TM11 | no (Play); sideload later | no |
 | M2 | Paired clients: roles, revoke, pairing window | HB1, QD14 | TM11 (CLI) | no | no |
-| M3 | Install firmware through a hub (hub side) | HB4 | TM11 | no | no |
 | M4 | Web UI served by the hub | HB5 | TM11 | no | no |
 | M5 | Bonjour advertisement | HB5 | TM11 | no | no |
-| M6 | Menu-bar gateway, hide from Dock | QD12, MC1 | n.a.: no GUI; runs as a service | n.a.: has a service notification | n.a.: no such surface |
-| M7 | Open at login, start minimised | QD13 | n.a.: a system service unit | n.a. | n.a. |
+| M6 | Menu-bar gateway | QD12 (tray) | n.a.: no GUI; a service | n.a.: service notification | n.a.: no such surface |
+| M7 | Open at login, start minimised | QD13 | n.a.: a service unit | n.a. | n.a. |
 | M8 | Keep the machine awake while sharing | QD13 | TM11 | n.a.: no hub | n.a.: no hub |
+
+M3 and M14 (`fw.install`) are deleted: no hub implements them (section 9).
 
 **Link client**
 
 | # | Feature | Qt | Terminal | Android | iOS |
 |---|---|---|---|---|---|
-| M9 | Find hubs, add by address | CG2, QD9 | CG2, TM9 | have; AN4 re-resolves | have; kept in IO6 |
+| M9 | Find hubs, add by address | CG2, QD9 | CG2, TM9 | have; AN4 re-resolves | have; kept in SW6 |
 | M10 | One merged device list | QD9 | have (R1) | AN7 | have |
-| M11 | Non-blocking PIN prompt, clear errors | QD9 | have (R1) | AN5 | have; re-pointed in IO6 |
-| M12 | Lost-connection banner (owner's rule) | QD10 | TM8 | AN5 | IO7 |
-| M13 | Analyser "following another console" | CG5, QD19 | CG5, TM5 | CG5, AN17 | have; re-pointed in IO14 |
-| M14 | Install firmware through a hub (client side) | HB4, QD11 | HB4, TM3 | later | later: the only firmware route iOS could have |
+| M11 | Non-blocking PIN prompt, clear errors | QD9 | have (R1) | AN5 | have; re-pointed in SW6 |
+| M12 | Lost-connection banner (owner's rule) | QD10 | TM8 | AN5 | SW7 |
+| M13 | Analyser "following another console", "Take control" (`SpectrumAnalyserView.swift:1046`) | CG5, QD19 | CG5, TM5 | CG5, AN17 | have; re-pointed in SW14 |
 
 **App and firmware**
 
 | # | Feature | Qt | Terminal | Android | iOS |
 |---|---|---|---|---|---|
 | M15 | App self-update | QD16 | n.a.: package manager | n.a.: Play | n.a.: App Store |
-| M16 | Firmware wizard: bundled final image, verify, downgrade | QD11 | TM3 (non-graphical) | have; AN18 refreshes the image | n.a.: no USB bootloader (owner); IO18 hides the dead window |
+| M16 | Firmware wizard: bundled image, verify, downgrade, enter bootloader without installing, export configuration before flashing; hidden on STM32H723 (`DSPi_ConsoleApp.swift:11974`) | QD11 | TM3 (non-graphical) | have most; AN18 | n.a.: no USB bootloader (owner); SW18 hides the dead window |
+| M41 | Firmware mismatch banner (`FirmwareUpdateView.swift:481-526`) | hit | TM4 | have | have |
 
-**Onboarding** (Terminal: owner decided, skips graphical onboarding)
+**Onboarding** (Terminal: decided, skips)
 
 | # | Feature | Qt | Terminal | Android | iOS |
 |---|---|---|---|---|---|
-| M17 | First-run wizard | have | skip | AN19 | have; IO18 drops the firmware step |
-| M18 | Basics tour with coach marks, replay | QD15 | skip | AN19 | IO21 |
-| M19 | Just-in-time hints | QD15 | skip | AN19 | IO21 |
+| M17 | Getting Started wizard (`DSPi_ConsoleApp.swift:12054`) | have | skip | AN19 | have; SW18 drops the firmware step |
 | M20 | What's New | have | skip | AN19 | have |
+| M18, M19 | Coach-mark tour, hints: **off in the shipped Mac build** | QD15 if yes | skip | AN19 if yes | SW21 if yes |
 
-**Graph and analysis** (Terminal: owner decided, skips on-graph editing; the `;` bar is the equivalent)
+**Main window and presets**
 
 | # | Feature | Qt | Terminal | Android | iOS |
 |---|---|---|---|---|---|
-| M21 | HUD chip, marquee, pull from curve, shape menu | have | skip | have | IO19 |
+| M42 | Unsaved-changes guard (`DSPi_ConsoleApp.swift:11604,11644`, `PresetSnapshot.swift:701`) | hit | hit | hit | have |
+| M43 | Preset slot menu (`ContentView.swift:1546-1566`) | hit | hit | hit | have |
+| M44 | Commit, Revert, Factory Reset (`DSPi_ConsoleApp.swift:11959-11969`) | hit | hit | hit | have |
+| M45 | Channel clipboard (`DSPi_ConsoleApp.swift:11706-11731`) | hit | hit | hit | menu only (audit) |
+| M46 | Identify output (`ContentView.swift:518`) | hit | hit | hit | have |
+| M47 | Sidebar volume mode (`Components.swift:579`) | hit | hit | hit | have |
+| M48 | L/R preamp link (`Components.swift:1520`) | hit | hit | hit | have |
+| M49 | Linkwitz Transform (`Components.swift:2357`) | hit | hit | hit | have |
+| M50 | Clear All Bands, Bypass Crossovers (`Components.swift:1839,1870`) | hit | hit | hit | have |
+| M51 | Slider-reset and rename gestures (`ContentView.swift:1411,463`) | hit | n.a.: keys, no gestures | hit | long-press; XC0 checks |
+| M52 | Limiter batch actions (`OutputLimiterView.swift:277-285`) | hit | hit | hit | have |
+
+**Graph and analysis** (Terminal: decided, skips on-graph editing; the `;` bar is the equivalent)
+
+| # | Feature | Qt | Terminal | Android | iOS |
+|---|---|---|---|---|---|
+| M21 | HUD chip, marquee, pull from curve, shape menu | have | skip | have | SW19 |
 | M22 | Analyser bar strip | have | TM6 | AN17 | have |
 | M23 | Analyser overlay on the graph | have | TM5 | have | have |
-| M24 | About 30 shortcuts, Space for the generator, graph keys | QD17 | have (own mnemonics) | AN18 (hardware keyboard) | IO20 (iPad keyboard) |
-| M25 | Host audio format (idle channel count) | QD18 | have (`INPUT_FORMAT`) | AN18 | IO20 |
+| M24 | About 30 shortcuts, Space for the generator, graph keys | QD17 | have (own mnemonics) | AN18 | SW20 |
+| M25 | Host audio format (idle channel count, `DSPViewModel.swift:1947-1951`) | QD18 | skip: the device report collapses when idle, and it has no host API | AN18 | SW20 |
 | M26 | C0 and C1 CPU bars | QD5 | have | have | have |
-| M27 | Pop-out tool windows | have | have (graph pop-out) | n.a.: one window; routes | n.a.: one sheet at a time |
+| M27 | Pop-out tool windows | have | have (graph) | n.a.: routes | n.a.: sheets |
+| M53 | Stats for Nerds, Reset Watermarks (`StatsView.swift:923-1187`) | hit | hit | hit | have |
+| M54 | Interrupt Monitor (`InterruptMonitor.swift:1001-1010`) | have | have | have | have |
 
 **Files**
 
 | # | Feature | Qt | Terminal | Android | iOS |
 |---|---|---|---|---|---|
-| M28 | Filter import with channel pickers, export | have | have | have | IO17 |
-| M29 | `.dspipreset` with apply options and report | have | have; TM10 adds the pair map | have | IO17 |
-| M30 | Save Master Volume, Save Output Configuration | have | TM10 checks and adds | have | have |
-| M31 | AutoEQ favourites | have | have | have | IO18 |
-| M32 | AutoEQ update, rebuild from GitHub, import | have | CG6, TM12 | CG6, AN18 | CG6, IO18 |
+| M28 | Filter import with channel pickers, export | have | have; TM10 adds JSON | have | SW17 |
+| M29 | `.dspipreset` with apply options and report | have | TM10 | have | SW17 |
+| M30 | Save Master Volume, Save Output Configuration | have | TM10 checks | have | have |
+| M31 | AutoEQ favourites | have | have | have | SW18 |
+| M32 | AutoEQ update, rebuild from GitHub, import, Reset to Built-in | have; QD27 re-points | CG6, TM12 | CG6, AN18 | CG6, SW18 |
 
 **Device settings**
 
@@ -191,10 +378,8 @@ no rows. The Advanced page's onboarding debug section is developer-only.
 | M37 | Pair-map editor, K340 preset, in files and diff | QD2, CG7 | TM1, TM10 | have; CG7 | have |
 | M38 | Tube Basic and Advanced | have | TM7 | have | have |
 | M39 | Demo device (dev flag on Mac) | QD7 | have (R1) | have | have |
-| M40 | USB MIDI (dev flag on Mac) | CG1, as a dev option | have (R1) | n.a.: vendor USB works | have; re-pointed in IO5 |
-
-Every row is checked against one more source at its WP: the Mac file it comes from
-is that WP's reference.
+| M40 | USB MIDI (dev flag on Mac) | CG1, as a dev option | have (R1) | n.a.: vendor USB works | have; SW5 |
+| M55 | Settings: Spectrum, Graphing, Global Parameters (`DSPi_ConsoleApp.swift:1761-2381`) | have (pages exist) | hit | have (tabs exist) | have |
 
 ---
 
@@ -204,823 +389,470 @@ is that WP's reference.
 
 **CG1: C ABI for Link and MIDI.** Size 1.
 - **Owns:** `crates/dspi-capi/src/fns_link.rs`.
-- **Implements:** every `link_*` function, the listener and the free functions
-  over C, as Q2b does; `dspi_open_midi` behind `midir`.
-- **Done when:** `ci/check.sh --crate dspi-capi` passes; `link_close` works from a
-  listener thread; the null and short-buffer rules of §1.9 hold.
-- **Deps:** `main`.
+- **Implements:** every `link_*` function (with `expected_hub_id`), the listener and the free functions; `dspi_open_midi` behind `midir`.
+- **Done when:** `ci/check.sh --crate dspi-capi` passes; `link_close` works from a listener thread; Q1's C ABI rules hold (failure values, null and short buffers). **Deps:** `main`.
 
 **CG2: Find hubs in the core.** Size 1.
-- **Owns:** `crates/dspi-link/src/discovery.rs`, `crates/dspi-core/src/link_browse.rs`,
-  `crates/dspi-capi/src/fns_browse.rs`.
-- **Implements:** browse `_dspi._tcp` through `mdns-sd` behind a feature, off for
-  mobile; `link_browse_start`, `link_browse_stop`, results listener; resolve by
-  hub id for re-resolving (finding F5). Its responder half is what HB5 reuses.
-- **Done when:** tests pass against a fake advertiser; the mobile libraries do not
-  link it; the dependency reason is stated.
-- **Deps:** `main`.
+- **Owns:** `crates/dspi-link/src/discovery.rs`, `crates/dspi-core/src/link_browse.rs`, `crates/dspi-capi/src/fns_browse.rs`.
+- **Implements:** browse `_dspi._tcp` through `mdns-sd` behind a feature, off for mobile; start, stop, results listener; resolve by hub id (F5). HB5 reuses the responder half.
+- **Done when:** tests pass against a fake advertiser; mobile libraries do not link it; the dependency reason is stated. **Deps:** `main`.
 
-**CG3: The core without USB (iOS).** Size 1.
-- **Owns:** `usb` feature (default on) in `crates/dspi-transport/Cargo.toml` and
-  `crates/dspi-core/Cargo.toml`; its gates in `device.rs`, `firmware.rs` and
-  `crates/dspi-transport/src/usb.rs`; a new `ios-check` step in `ci/check.sh`.
-- **Done when:** `dspi-ffi` passes `cargo check` for `aarch64-apple-ios`, with the
-  `usb` feature off; default builds are unchanged.
-- **Deps:** `main`.
+**CG3: USB as a feature.** Size 1.
+- **Owns:** `usb` feature in `crates/dspi-transport/Cargo.toml` and `crates/dspi-core/Cargo.toml`; its gates in `device.rs`, `firmware.rs`, `crates/dspi-transport/src/usb.rs`; an `ios-check` step in `ci/check.sh`.
+- **Implements:** on for desktop, Android and macOS (`nusb` has `macos_iokit`); off for iOS.
+- **Done when:** `dspi-ffi` passes `cargo check` for `aarch64-apple-ios` with `usb` off, as in section 0.2; default builds are unchanged. **Deps:** `main`.
 
 **CG4: Raw commands for bindings.** Size 0.5.
 - **Owns:** `crates/dspi-core/src/raw.rs`.
-- **Implements:** `raw_get` and `raw_set` on `DspiCore` (exported to UniFFI), so
-  Swift code that has not moved yet shares the core's one link (IO4). `raw_set`
-  goes through `Writable`, and a read-only connection refuses it. Adds a §1.2 line.
-- **Done when:** tests cover read-only refusal and no use while a bulk session runs.
-- **Deps:** `main`.
+- **Implements:** `raw_get` and `raw_set` on `DspiCore` (exported), so Swift that has not moved yet shares the core's one link (SW4). `raw_set` goes through `Writable`. Adds a §1.2 line in `PLAN.md`.
+- **Done when:** tests cover read-only refusal and bulk-session exclusion. **Deps:** `main`.
 
 **CG5: Analyser following state.** Size 0.5.
 - **Owns:** `crates/dspi-core/src/rta.rs`.
-- **Implements:** report whether the analyser is driving or following another
-  session, with the origin, from `RTA_CONFIG`, like `case following(origin:)` in
-  `SpectrumAnalyser.swift:84`.
-- **Done when:** the fake hub test shows a config from another session switches
-  state, and our own does not.
-- **Deps:** `main`.
+- **Implements:** driving or following another session, with the origin, from `RTA_CONFIG`, like `case following(origin:)` at `SpectrumAnalyser.swift:84`; `take_control`.
+- **Done when:** a fake-hub test shows another session's config switches state, our own does not, and Take control works. **Deps:** `main`.
 
 **CG6: AutoEQ update with a host-supplied fetch.** Size 1.
-- **Owns:** `crates/dspi-session/src/autoeq_update.rs`,
-  `crates/dspi-core/src/autoeq.rs`.
-- **Implements:** update, rebuild from GitHub and import, using a fetch callback
-  (reference: `AutoEQManager.swift:248,331,500`). No HTTP client in the core.
-- **Done when:** tests pass with a scripted fetch, including rate-limit and partial
-  failures; exported to C and UniFFI.
-- **Deps:** `main`.
+- **Owns:** `crates/dspi-session/src/autoeq.rs` (extended, **no new file**), `crates/dspi-core/src/autoeq.rs` (new binding).
+- **Implements:** update, rebuild from GitHub, import and Reset to Built-in, through a fetch callback (reference `AutoEQManager.swift:248,331,500`, `DSPi_ConsoleApp.swift:11391`). No HTTP client in the core.
+- **Done when:** tests pass with a scripted fetch, including rate limit and partial failure; exported to C and UniFFI. **Deps:** `main`.
 
 **CG7: Preset diff at the floor.** Size 0.5.
 - **Owns:** the diff section of `crates/dspi-core/src/presets.rs`.
-- **Implements:** Swift's table, `PresetSnapshot.swift`: preamps and pair map added;
-  user volume and DAC mute as Swift treats them.
-- **Done when:** a test covers each row against Swift's wording.
-- **Deps:** `main`.
+- **Implements:** Swift's table, `PresetSnapshot.swift`: preamps and pair map added; user volume and DAC mute as Swift treats them.
+- **Done when:** a test covers each row against Swift's wording. **Deps:** `main`.
 
-**CG8: Firmware guard.** Size 0.5.
+**CG8: Firmware guard.** Size 0.75.
 - **Owns:** `crates/dspi-core/src/firmware_guard.rs`.
-- **Implements:** before any flash, compare the connected board's
-  `EXT_CORE_VREG` state with the image, and return a warning that needs explicit
-  confirmation when a raised-voltage board is about to get an image not known to
-  keep it. Every updater calls it (QD11, TM3, AN18).
-- **Done when:** tests cover K340-like, stock and no-extension boards.
-- **Deps:** `main`.
+- **How an image's voltage is read:** firmware with `core_vreg` boots at max(stored, build default) (`core_vreg.c:59-62`), so a stored or built 1.20 V holds. A stock image has no `core_vreg` code at all, so a stored value does nothing and it runs at 1.15 V. The guard scans the UF2 for the build's marker: its `binary_info` stamp, or a `core_vreg` marker. **Absent means unknown, treated as 1.15 V.** Today's images carry no such stamp, so all count as unknown; adding one to `bofr-main` is a small firmware item for the coordinator, and nothing depends on it.
+- **Which boards are at risk:** the connected board reports a build default or live voltage above 1.15 V on `EXT_CORE_VREG`. A board already in the bootloader is unknown, so ask.
+- **Rule:** at-risk board plus unknown or lower image: **blocked without typed confirmation.** Every updater calls it (QD11, TM3, AN18, SW-M2).
+- **Done when:** tests cover K340-like, stock, no-extension and in-bootloader cases; exported to C and UniFFI. **Deps:** `main`.
 
-**CG9: Compile the generated bindings in CI.** Size 0.5.
-- **Owns:** new `kotlin` and `swift` steps in `ci/check.sh`, the CI image's
-  Containerfile, `crates/dspi-ffi/tests/bindgen_wp_f1.rs`.
-- **Implements:** compile F1's generated Kotlin with `kotlinc` in the container. Compile
-  the Swift with an official Swift toolchain in the container if it builds there,
-  otherwise as an opt-in step in the VM. Downloads pinned and verified. Neither is in the
-  gate today, and a Kotlin compile would have caught the breaks in AN1.
-- **Done when:** both steps pass, and a deliberately broken namespace fails them.
-- **Deps:** `main`.
+**CG9: Compile the generated bindings in CI.** Size 0.5. **Wave 0**, since AN1 depends on it.
+- **Owns:** `kotlin` and `swift` steps in `ci/check.sh`, the CI image's Containerfile, `crates/dspi-ffi/tests/bindgen_wp_f1.rs`.
+- **Implements:** compile F1's Kotlin with `kotlinc` in the container. Compile the Swift with an official Swift toolchain in the container if it works there, otherwise as a VM step. Downloads pinned and verified. A Kotlin compile would have caught review 3-A's breaks.
+- **Done when:** both steps pass, and a deliberately broken namespace fails them. **Deps:** `main`.
+
+**CG10: Shared wording and onboarding data.** Size 0.5. **Owns:** `crates/dspi-core/src/link_text.rs`, `assets/onboarding/{whatsnew,getting_started}.json`, and the catalogue if OD-Floor-disabled says yes.
+- **Implements:** one `LinkPhase` wording table as stable keys plus English: `NeedsPairing` (by `pin_source`), `NoDevice` ("Connected to hub, no DSPi found"), `ChooseDevice`, `Reconnecting`, `Refused`, `Closed`. Clients localise by key.
+- **Done when:** every phase has text; exported to C and UniFFI. **Deps:** `main`.
 
 ### 4.2 HB: the Rust Link hub
 
-The Qt app needs it regardless, under the floor rule and for retiring Swift. The
-crate has no OS or UI code, so a later Android sideload build needs only a binding.
-No work is added for that now.
+In scope on Qt regardless (owner), and used by Terminal and, later, the Mac. No OS or UI code in the crate, so a sideload Android build needs only a binding; no work is added for that now.
 
-**Reference:** Swift hub files, 3 984 lines (`LinkServer`, `LinkHub`,
-`LinkSessionHandler`, `CommandRouter`, `AuthStore`, `PollScheduler`, `NotifyRelay`,
-`SnapshotCache`, `LinkPolicy`, `LinkService`, `DeviceRegistry`, `HubTransport`,
-`USBHubDevice`, `HubDevice`, `PairingPrompt`). Also `bridge/esp32/components/hub`,
-`hub_auth`, and the spec. `dspi-link`'s `fakehub.rs` (1 251 lines) already has
-hello, tokens, roles, snapshot, polls, locks and CMD ordering at test grade.
-Earlier studies said 10–15 days.
+**Reference:** Swift hub files, 3 984 lines (`LinkServer`, `LinkHub`, `LinkSessionHandler`, `CommandRouter`, `AuthStore`, `PollScheduler`, `NotifyRelay`, `SnapshotCache`, `LinkPolicy`, `LinkService`, `DeviceRegistry`, `HubTransport`, `USBHubDevice`, `HubDevice`, `PairingPrompt`); the ESP32 hub; the spec; `fakehub.rs` (1 251 lines, test grade). Earlier studies said 10–15.
 
-**The hard part is device ownership.** Today one `DspiCore` owns one connection. A
-hub owns all local devices and serves many sessions, and the app itself must be one
-of them. Design: the hub owns the transports, and the app opens an in-process
-transport through `open_transport`, with its own session id, so the echo rule works
-unchanged. HB0 proves this first.
+**The hard part is device ownership.** One `DspiCore` owns one connection today. A hub owns all local devices and serves many sessions, and the app must be one of them. Design: the hub owns the transports and the app opens an in-process transport through `open_transport`, with its own session id, so the echo rule is unchanged.
 
-**HB0: Design and skeleton.** Size 1.
-- **Owns:** `crates/dspi-hub/` (new), `docs/core-merge/HUB.md`.
-- **Implements:** threads, ownership, the in-process transport, interfaces for
-  HB1–HB6, `todo!` markers as in `PLAN.md`.
-- **Done when:** the app-through-hub path passes a demo-device test; a **Fable
-  review of the design passes before HB1–HB3 start**.
-- **Deps:** `main`.
+**HB0: Design and skeleton.** Size 2.
+- **Owns:** `crates/dspi-hub/` (new), `docs/core-merge/HUB.md`, and the core changes it needs in `crates/dspi-core/src/{device.rs,hotplug.rs}`.
+- **Implements:** threads, ownership, the in-process transport, interfaces for later HB WPs, `todo!` markers as in `PLAN.md`.
+- **Done when:** the app-through-hub path passes a demo-device test. **A Fable review of the design passes before wave 2's HB1–HB3.** **Deps:** `main`.
 
-**HB1: Server, handshake, auth, roles.** Size 2.
-- **Owns:** `crates/dspi-hub/src/{server,auth,store}.rs`.
-- **Implements:** the WebSocket server with hello, `/dspi/v1/info`, session limits,
-  open and PIN modes, window PIN, tokens, rate limits, revoke; close codes 4001,
-  4002, 4003; ping every 10 s; 30 s dead-peer limit.
-- **Done when:** our L1 client and the fixtures pass, including wrong PIN answered
-  with `unauthenticated`, as real hubs do.
-- **Deps:** HB0.
+**HB1: Server, handshake, auth, roles.** Size 2. **Owns:** `crates/dspi-hub/src/{server,auth,store}.rs`.
+- **Implements:** WebSocket server, hello, `/dspi/v1/info`, session limits. **PIN is the default; open access is opt-in.** Window PIN, tokens, rate limits, revoke; close codes 4001, 4002, 4003; ping every 10 s; 30 s dead-peer limit.
+- **Done when:** L1's client and fixtures pass, including wrong PIN answered with `unauthenticated`, as real hubs do. **Deps:** HB0.
 
-**HB2: Commands and notifications.** Size 2.5.
-- **Owns:** `crates/dspi-hub/src/{router,policy,lock,relay}.rs`.
-- **Implements:** per-device ordered CMD with `max_inflight`; `policy/commands.json`
-  by role; device locks; NOTIFY with `origin` per session; resync. Decide and
-  document how `0x00` is classed (the upstream policy lacks it, so it is admin-only;
-  Weeb Labs has been asked).
-- **Done when:** fake-device tests cover two clients seeing each other's writes, an
-  own echo dropped, and a lock held across a vanished client released by timeout.
-- **Deps:** HB0.
+**HB2: Commands and notifications.** Size 2.5. **Owns:** `crates/dspi-hub/src/{router,policy,lock,relay}.rs`.
+- **Implements:** per-device ordered CMD with `max_inflight`; `policy/commands.json` by role; locks; NOTIFY with `origin` per session; resync. Documents how `0x00` is classed (upstream's policy lacks it, so admin-only).
+- **Done when:** tests cover two clients seeing each other's writes, an own echo dropped, and a vanished client's lock released by timeout. **Deps:** HB0.
 
-**HB3: Registry, snapshot, polls, rename.** Size 2.
-- **Owns:** `crates/dspi-hub/src/{registry,snapshot,polls}.rs`.
-- **Implements:** device list with hot-plug; `device.snapshot`; `poll.subscribe`
-  budget; `device.rename`.
-- **Done when:** C15's meter feed works against it; unplug and replug tests pass.
-- **Deps:** HB0.
+**HB3: Registry, snapshot, polls, rename.** Size 2. **Owns:** `crates/dspi-hub/src/{registry,snapshot,polls}.rs`. **Done when:** C15's meter feed works against it; unplug and replug tests pass. **Deps:** HB0.
 
-**HB4: Firmware install through a hub.** Size 1.
-- **Owns:** `crates/dspi-hub/src/fw.rs`, and `crates/dspi-link/src/fw_client.rs`
-  (client side, which does not exist yet).
-- **Implements:** `fw.install`, binary upload, progress, done, using C11's copy and
-  CG8's guard, both directions. The client API goes into `dspi-core`.
-- **Done when:** demo-device and fake-bootloader tests pass, including a bad hash and
-  a lost client. **No real flash in this WP.**
-- **Deps:** HB1, HB2, CG8.
+**HB4:** moved to later work: `fw.install`, which no hub implements.
 
-**HB5: Advertising and web UI.** Size 1.
-- **Owns:** `crates/dspi-hub/src/{advertise,web}.rs`, bundled assets.
-- **Implements:** Bonjour through CG2's library; serving the MIT DSPi-Link web bundle
-  at a pinned tag; the `web` capability.
-- **Done when:** the bundle's version and hash are pinned; a browser test connects to
-  the demo device through it.
-- **Deps:** HB1, CG2.
+**HB5: Advertising and web UI.** Size 1. **Owns:** `crates/dspi-hub/src/{advertise,web}.rs`, bundled assets. **Implements:** Bonjour through CG2's library; the MIT DSPi-Link web bundle at a pinned tag, **on only while sharing and bound to the hub's port.** **Done when:** the bundle's version and hash are pinned, and a browser test reaches the demo device. **Deps:** HB1, CG2.
 
-**HB6: C ABI for the hub.** Size 1.
-- **Owns:** `crates/dspi-capi/src/fns_hub.rs`.
-- **Implements:** start and stop, settings, client list, role, revoke, pairing
-  window, status listener.
-- **Done when:** Qt offscreen test starts a demo hub and the Terminal connects to it.
-- **Deps:** HB1–HB3.
+**HB6: C ABI for the hub.** Size 1. **Owns:** `crates/dspi-capi/src/fns_hub.rs`. **Implements:** start, stop, settings, client list, role, revoke, pairing window, status listener. **Done when:** a Qt offscreen test starts a demo hub and the Terminal connects. **Deps:** HB1–HB3.
 
-**HB7: Conformance.** Size 1.5.
-- **Owns:** `crates/dspi-hub/tests/conformance/`.
-- **Implements:** our client, the TypeScript client and the Swift client (VM) against
-  it; faults from L1's fake-hub suite; the fixtures.
-- **Done when:** all three pass, with differences to the Mac hub recorded. **[HW]**
-  Swift run needs `macr` (XC1).
-- **Deps:** HB1–HB6.
+**HB7: Conformance.** Size 1.5. **Owns:** `crates/dspi-hub/tests/conformance/`. **Implements:** our client, the TypeScript client and the Swift client (VM) against it; L1's faults; fixtures. **Done when:** all three pass, and differences from the Swift hub are recorded. **[HW]**: `macr` (XC1). **Deps:** HB1–HB6.
 
 ---
 
 ## 5. Client tracks
 
-### 5.1 Qt desktop (`apps/desktop/qt`)
+### 5.1 Qt: Linux and Windows
 
-Q3 makes it run on the core. Each WP below owns a new controller and QML file where
-possible, and takes additive edits to the shared files.
+Q3 makes it run on the core. macOS leaves this track: **the Qt `.dmg` stays a CI artefact only, unpublished.** Paths are under `apps/desktop/qt/`.
 
-**QD0: C ABI pitfalls found in review 3-A.** Size 0.25. Do it inside Q3 if Q3 has not
-closed. **Owns:** `src/ConfigFiles.cpp`, the block at `src/DSPiBridge.cpp:1409-1433`.
-**Implements:** `ConfigFiles.cpp:17-21` retries an import after a short buffer, which applies
-it twice: a reply too long is now a failure. `DSPiBridge.cpp:1409-1433` holds `state()` across
-writes: re-read it after each. **Done when:** a test shows one import applies once; the
-`state()` pointer is not used across a write. **Deps:** `main`.
+**QD0: Seam and C ABI pitfalls.** Size 0.25. Do the pitfalls inside Q3 if it is still open. **Owns:** `src/ConfigFiles.cpp`, `src/DSPiBridge.cpp:1409-1433`, new `src/Registrar.h`, new `qml/BannerHost.qml`, `main.qml`.
+- **Implements:** `ConfigFiles.cpp:17-21` retries after a short buffer, so an import applies twice: a reply too long is now a failure. `DSPiBridge.cpp:1409-1433` holds `state()` across writes: re-read it. The registrar and banner host let later WPs add without editing the bridge.
+- **Done when:** a test shows one import applies once. **Deps:** `main`.
 
-**QD1: `CsController` surfaces `error`.** Size 0.25. **Owns:** `src/CsController.cpp`.
-**Done when:** a refused `cs_apply` shows its `error` text; the stricter number
-parsing is reported, not silent. **Deps:** `main`.
+**QD1: `CsController` surfaces `error`.** Size 0.25. **Owns:** `src/CsController.cpp`. **Done when:** a refused `cs_apply` shows its `error`. **Deps:** `main`.
 
-**QD2: Pair-map editor and dimmed rows.** Size 1.
-- **Owns:** `qml/CrossfeedWindow.qml`, `src/ExtController.{h,cpp}`.
-- **Implements:** Default, K340 and Custom pairs (reference
-  `CrossfeedPairMapView.swift`), hidden on a stall. The dimmed rows show the preset's
-  own values from the table the window already holds, not the custom ones.
-- **Done when:** demo-device test edits a map and reads it back; an invalid pair is
-  refused. **Deps:** `main`.
+**QD2: Pair-map editor and dimmed rows.** Size 1. **Owns:** `qml/CrossfeedWindow.qml`, `src/ExtController.{h,cpp}`. **Implements:** Default, K340 and Custom (reference `CrossfeedPairMapView.swift`), hidden on a stall. Dimmed rows show the preset's own values from the table the window holds. **Done when:** a demo test edits and reads back a map; an invalid pair is refused. **Deps:** QD0.
 
-**QD3: Core-voltage status.** Size 0.5. **Owns:** `qml/settings/pages/` overview
-status file. **Implements:** status only, as on the Mac (OD7). **Done when:**
-it shows live mV and hang count on the demo device, and is hidden on stock firmware.
-**Deps:** QD2 (`ExtController`).
+**QD3: Core-voltage status.** Size 0.5. **Owns:** a status block in `qml/settings/pages/OverviewPage.qml`. **Implements:** status only (OD7). **Done when:** live mV and hang count show on the demo device; hidden on stock firmware. **Deps:** QD2.
 
-**QD4: Input-source and device names.** Size 0.5. **Owns:** the inputs settings page's
-name rows, the device-name row. **Done when:** edits round-trip on the demo device,
-and another client's `NOTIFY_NAMES` updates them. **Deps:** `main`.
+**QD4: Input-source and device names.** Size 0.5. **Owns:** name rows in `qml/settings/pages/InputsPage.qml`. **Done when:** edits round-trip on the demo device; another client's `NOTIFY_NAMES` updates them. **Deps:** QD0.
 
-**QD5: Output latency, clock diagnostics, C0/C1 bars.** Size 0.5.
-**Owns:** the latency settings row, `src/StatsController.cpp`, `qml/StatsWindow.qml`,
-`components/CpuSection.qml`. **Done when:** the option list comes from the device, a
-stall hides the section, and both CPU bars show. **Deps:** `main`.
+**QD5: Output latency, clock diagnostics, C0/C1 bars.** Size 0.5. **Owns:** a row in `qml/settings/pages/OutputsPage.qml`, `src/StatsController.cpp`, `qml/StatsWindow.qml`, `qml/components/CpuSection.qml`. **Done when:** options come from the device; a stall hides the section; both CPU bars show. **Deps:** QD0.
 
-**QD6: Read-only mode.** Size 1.
-- **Owns:** a new `qml/components/ReadOnlyBanner.qml`, a `writable` property on the
-  bridge, and the compat branch of `main.qml`.
-- **Implements:** older and newer firmware show all settings, disable every control,
-  keep scrolling and reading, and offer the update. Wording from
-  `WIRE-FORMAT-COMPAT.md` §4.4.
-- **Done when:** V17, V26, V31 and V33 fixtures run offscreen; no setter is called in
-  read-only mode (test); clip clear and bootloader still work. **Deps:** `main`.
+**QD6: Read-only mode.** Size 1. **Owns:** `qml/components/ReadOnlyBanner.qml`, a `writable` bridge property, compat branch of `main.qml`. **Implements:** older and newer firmware show all settings, disable every control, keep reading, offer the update (`WIRE-FORMAT-COMPAT.md` §4.4). **Done when:** V17, V26, V31, V33 fixtures run offscreen; no setter is called (test); clip clear and bootloader still work. **Deps:** QD0.
 
-**QD7: Demo mode.** Size 0.25. **Owns:** the demo entry in the device list and Q3's
-flag. **Done when:** demo is selectable with no hardware and is clearly labelled.
-**Deps:** `main`.
+**QD7: Demo mode.** Size 0.25. **Owns:** the demo entry through the registrar. **Done when:** selectable with no hardware; clearly labelled. **Deps:** QD0.
 
-**QD8: Link controller and token store.** Size 1.
-- **Owns:** `src/LinkController.{h,cpp}`, `src/TokenStore.{h,cpp}`.
-- **Implements:** wraps CG1, off the UI thread. Tokens in Keychain, Credential Manager
-  or Secret Service, falling back to a 0600 file with a warning. Tokens are deleted
-  only on `token_refused`.
-- **Done when:** fake-hub test covers pairing, a token reused after restart, and
-  `rate_limited` keeping the token. **Deps:** CG1.
+**QD8: Link controller and token store.** Size 1. **Owns:** `src/LinkController.{h,cpp}`, `src/TokenStore.{h,cpp}`. **Implements:** wraps CG1, off the UI thread, with `expected_hub_id`. Tokens in Credential Manager or Secret Service, falling back to a 0600 file with a warning; deleted only on `token_refused`. **Done when:** a fake-hub test covers pairing, reuse after restart, `wrong_hub`, and `rate_limited` keeping the token. **Deps:** CG1.
 
-**QD9: Device list, discovery, PIN prompt.** Size 1.5.
-- **Owns:** `qml/DevicesPopup.qml` (new), `qml/PairingDialog.qml` (new).
-- **Implements:** one merged list of USB, demo and hubs (browsed and by address);
-  non-blocking PIN prompt, worded by `pin_source`; every `LinkPhase`, including "no
-  DSPi found".
-- **Done when:** runs offscreen against the fake hub. Also needs the macOS plist from
-  MC1. **Deps:** QD8, CG2.
+**QD9: Device list, discovery, PIN prompt.** Size 1.5. **Owns:** `qml/DevicesPopup.qml`, `qml/PairingDialog.qml`. **Implements:** one list of USB, demo and hubs; non-blocking PIN prompt; every `LinkPhase`, CG10's text. **Done when:** runs offscreen against the fake hub. **Deps:** QD8, CG2, CG10.
 
-**QD10: Lost-connection banner.** Size 0.5. **Owns:** `qml/components/LinkBanner.qml`,
-and the `LinkPhase` wording table for other tracks. **Done when:** the owner's rule
-holds in a fake-hub fault test: banner appears at once, the mirror stays readable, a
-write fails and is not sent later, abort works during a dial. **Deps:** QD8.
+**QD10: Lost-connection banner.** Size 0.5. **Owns:** `qml/components/LinkBanner.qml`. **Done when:** in a fake-hub fault test: banner at once, mirror readable, a write fails and is not sent later, abort works during a dial, analyser restarts. **Deps:** QD8, CG10.
 
-**QD11: Firmware updater.** Size 1.
-- **Owns:** `src/FirmwareUpdater.{h,cpp}`, `qml/FirmwareUpdateWindow.qml`, `firmware/`.
-- **Implements:** images per OD4; custom `.uf2` with `uf2_inspect`; CG8's guard;
-  `firmware_version_matches` as the confirm step; install through a hub when offered.
-- **Done when:** offscreen tests cover a wrong-chip file, the guard and a fake
-  bootloader drive. **No real flash here; QD24–26 do that. Deps:** CG8, HB4 for the
-  hub path (that part may land later).
+**QD11: Firmware updater.** Size 1. **Owns:** `src/FirmwareUpdater.{h,cpp}`, `qml/FirmwareUpdateWindow.qml`, `firmware/`. **Implements:** images per OD4; custom `.uf2` with `uf2_inspect`; CG8's guard; `firmware_version_matches` replacing `FwVersion` compare; export configuration first; hidden on STM32H723. **Done when:** offscreen tests cover wrong-chip file, guard and fake bootloader drive. **No real flash here. Deps:** CG8.
 
-**QD12: Tray and menu-bar mode.** Size 1. **Owns:** `src/TrayController.{h,cpp}`.
-**Implements:** `QSystemTrayIcon`; close to tray; start minimised; quick volume;
-status; the hub keeps serving (reference `MenuBarMode.swift`). **Done when:** Linux,
-Windows and macOS each behave, with fallback when a desktop has no tray. **Deps:** `main`.
+**QD12: Tray.** Size 0.75. **Owns:** `src/TrayController.{h,cpp}`. **Implements:** Linux and Windows `QSystemTrayIcon`; close to tray; start minimised; quick volume; hub keeps serving. **Done when:** an offscreen test covers the state machine, including no-tray fallback; checked once in `winvm` and on the host desktop. **Deps:** QD0.
 
-**QD13: Open at login and keep awake.** Size 0.5. **Owns:** `src/SystemIntegration.{h,cpp}`.
-**Implements:** XDG autostart, Windows Run key, macOS login item; inhibit sleep per
-OS while sharing. **Done when:** each OS's mechanism is checked in its VM. **Deps:** QD12.
+**QD13: Open at login and keep awake.** Size 0.5. **Owns:** `src/SystemIntegration.{h,cpp}`. **Implements:** XDG autostart and Windows Run key; sleep inhibit while sharing. **Done when:** unit tests check the written entry and the inhibit call; each is verified on its OS. **Deps:** QD12.
 
-**QD14: Networking page.** Size 1.5. **Owns:** `qml/settings/pages/` networking file,
-`src/HubController.{h,cpp}`. **Implements:** `NetworkingSettingsView.swift`: share
-toggle, access, name, port, paired clients, roles, revoke, pairing code with expiry,
-other hubs, background options. Warns that a PIN crosses the network in plain text
-without TLS, as the spec says. **Done when:** offscreen on a demo hub, and a real
-client pairs through it. **Deps:** HB6, QD8.
+**QD14: Networking page.** Size 1.5. **Owns:** `qml/settings/pages/NetworkingPage.qml`, `src/HubController.{h,cpp}`. **Implements:** `NetworkingSettingsView.swift`: share toggle, hub name, access (PIN by default), port, paired clients, roles, revoke, pairing code with expiry, other hubs, background options. Says a PIN crosses the network in plain text without TLS. **Done when:** offscreen on a demo hub, and a real client pairs. **Deps:** HB6, QD8.
 
-**QD15: Coach marks and hints.** Size 1.5. **Owns:** `qml/onboarding/` (new),
-`assets/onboarding/catalogue.json` (shared with AN19). **Implements:** the catalogue,
-basics tour, replay, just-in-time hints; ordering rules from
-`OnboardingCoordinator.swift`. **Done when:** a test tour completes offscreen, and it
-does not reappear. **Deps:** `main`.
+**QD15: Coach marks.** Size 1.5. **Only if OD-Floor-disabled says yes.** Not in totals.
 
-**QD16: App self-update.** Size 1. **Owns:** `src/AppUpdater.{h,cpp}`. **Implements:**
-check our releases, compare versions, show notes, open the page. Installing in place
-only after OD8. **Done when:** tested on a local feed; off by default in distro
-packages. **Deps:** `main`.
+**QD16: App self-update.** Size 1. **Owns:** `src/AppUpdater.{h,cpp}`. **Implements:** check our releases, compare, show notes, open the page. **The check is opt-in, with a privacy line saying what is sent.** In-place install only after OD8. **Done when:** tested on a local feed; off in distro packages. **Deps:** QD0.
 
-**QD17: Shortcuts.** Size 0.5. **Owns:** shortcut definitions in `qml/main.qml`
-under its marker, and `qml/SignalGeneratorWindow.qml`. **Done when:** every Mac
-shortcut has an equivalent, Ctrl on Linux and Windows, Cmd on macOS. **Deps:** `main`.
+**QD17: Shortcuts.** Size 0.5. **Owns:** shortcuts in `qml/main.qml`, `qml/SignalGeneratorWindow.qml`. **Reference:** the list in `DSPi_ConsoleApp.swift` around lines 11700–12100. **Done when:** every Mac shortcut has a Ctrl equivalent, in a test table. **Deps:** QD0.
 
-**QD18: Host audio format.** Size 1. **Owns:** `src/HostAudioFormat*.{h,cpp,mm}`.
-**Implements:** the idle channel count per OS: CoreAudio, WASAPI, PipeWire or ALSA.
-Reference `HostAudioFormatMonitor.swift`. **Done when:** a fallback to the device's
-report exists; each OS is checked. **Deps:** `main`.
+**QD18: Host audio format.** Size 1. **Owns:** `src/HostAudioFormat*.{h,cpp}`. **Implements:** idle channel count by WASAPI and by PipeWire or ALSA, falling back to the device's report (reference `HostAudioFormatMonitor.swift`). **Done when:** a fake backend tests the fallback; each OS is checked once. **Deps:** QD0.
 
-**QD19: Analyser over Link.** Size 0.25. **Owns:** `qml/SpectrumAnalyserWindow.qml`.
-**Done when:** a following state shows, driven by CG5. **Deps:** CG5, QD8.
+**QD19: Analyser over Link.** Size 0.25. **Owns:** `qml/SpectrumAnalyserWindow.qml`. **Done when:** following state and Take control work on the fake hub. **Deps:** CG5, QD8.
 
-**QD20: Check before Windows C# retires.** Size 0.5. **Owns:** a report in
-`docs/core-merge/WINDOWS-RETIREMENT.md`. Audit's items:
-- undo and redo: Qt has none. C# has IO undo, which is OD5;
-- 0xFC/0xFD pair mask (`DspDevice.cs:288`): Qt has `crossfeedOutputPairMask`;
-  compare behaviour;
-- settings depth, the bulk-endpoint debug window, and 12 PEQ bands against Qt's 10.
+**QD20:** folded into `docs/PARITY.md` rows (XC0, HO1).
 
-**Done when:** each item has an outcome and any gap has a WP. **Deps:** `main`.
+**QD21: Packaging.** Size 1.5. **Owns:** `apps/desktop/packaging/**`. **Implements:** Linux on Qt 6 (raises the glibc floor), AUR source URL, QML precompile, installer check that the app is not running, keep Qt dynamic or add the LGPL relinking provision. The `.dmg` stays unpublished. **Done when:** artefacts build. **Deps:** Q3.
 
-**QD21: Packaging.** Size 1. **Owns:** `apps/desktop/packaging/**`. **Implements:**
-Linux packages on Qt 6 (raises the glibc floor), AUR source URL, QML precompile, an
-installer check that the app is not running. **Done when:** artefacts build; Windows
-and macOS still pass. **Deps:** Q3.
+**QD22: Accessibility.** Size 2. **Alone in the last wave**: touches most of 131 QML files. **Owns:** all of `qml/`. **Done when:** `Accessible.*` on custom controls in `components/` and the windows; keyboard-only and screen-reader pass on Linux. **Deps:** other QD UI WPs.
 
-**QD22: Accessibility.** Size 2. **Runs alone in the last wave**: it touches most of
-the 131 QML files. **Owns:** all of `apps/desktop/qt/qml`. **Done when:** `Accessible.*`
-on all custom controls in `components/` and the windows; a keyboard-only and screen
-reader pass on Linux. **Deps:** every other QD UI WP.
+**QD23: Localisation.** Size 2. **After QD22. Owns:** all QML, `translations/`. **Implements:** `qsTr`; the `.ts` build; languages per OD6. **Done when:** a pseudo-locale run shows no untranslated string or clipped layout in main windows. **Deps:** QD22.
 
-**QD23: Localisation.** Size 2. **Runs after QD22**, for the same reason. **Owns:**
-all QML, `translations/`. **Implements:** `qsTr` throughout; the build step for `.ts`;
-languages per OD6. **Done when:** a pseudo-locale run shows no untranslated string
-and no clipped layout in the main windows. **Deps:** QD22.
+**QD24: Hardware pass, Linux.** Size 0.5. **QD25: Windows.** Size 1. Both **[HW][COORD]**. Stock USB pass-through per `~/vm/windows/USB-PASSTHROUGH.md`, with the bootloader device attached too. **Owns:** `docs/core-merge/HW-QT.md`. **Done when:** connect, read, write, notifications, replug, firmware path and Link pass on the K340 under section 6's rules. **Deps:** QD0–QD14.
 
-**QD24: Hardware pass, Linux.** Size 0.5. **[HW][COORD]**. **QD25: Windows.** Size 1.
-**[HW][COORD]**: stock USB pass-through per `~/vm/windows/USB-PASSTHROUGH.md`, with the
-RP2 bootloader device attached too for firmware. **QD26: macOS.** Size 0.5. **[HW][COORD]**.
-- **Owns:** a checklist in `docs/core-merge/HW-QT.md`.
-- **Done when:** connect, read, write, notifications, replug, firmware path and Link
-  (Mac hub or bridge) pass, on the K340 under section 6's rules, with backups first.
-- **Deps:** QD0–QD14; QD26 also XC1.
+**QD27: AutoEQ on the core.** Size 0.5. **Owns:** `src/AutoEqLibrary.{h,cpp}` (453 lines), `qml/AutoEqRebuildWindow.qml`. **Implements:** re-point at CG6, with Qt supplying the fetch; remove the duplicated logic. **Done when:** existing behaviour passes against a scripted fetch. **Deps:** CG6.
 
 ### 5.2 Terminal (`apps/terminal`, `crates/dspi-tui`, `crates/dspi-cmd`)
 
-Owner decided: it skips what needs a graphical UI (on-graph editing, onboarding) and
-covers the non-graphical equivalents, including JSON import and export.
+Owner decided: it skips what needs a graphical UI (on-graph editing, onboarding) and covers the non-graphical equivalents, including JSON import and export.
 
-**TM1: Pair-map row.** Size 0.5. **Owns:** `screens/crossfeed.rs`. **Done when:** a
-Default, K340 and Custom row works on the demo device; the row is hidden on stock
-firmware. Do not confuse it with the existing `Pairs` mask row. **Deps:** `main`.
+**TM1: Pair-map row.** Size 0.5. **Owns:** `screens/crossfeed.rs`. **Done when:** Default, K340, Custom work on the demo device; hidden on stock; not confused with the `Pairs` mask row. **Deps:** `main`.
 
-**TM2: Core-voltage screen.** Size 0.5. **Owns:** `settings/overview.rs`. **Implements:**
-status in the TUI; writes stay in the CLI (OD7). **Done when:** demo-device render test.
-**Deps:** `main`.
+**TM2: Core-voltage screen.** Size 0.5. **Owns:** `settings/overview.rs`. **Implements:** TUI status; writes stay in the CLI (OD7). **Done when:** demo render test. **Deps:** `main`.
 
-**TM3: Firmware flashing.** Size 1. **Owns:** a new `apps/terminal/src/flash.rs`, and
-`dspi-core` as a dependency of the Terminal for `firmware.rs` only.
-**Implements:** `dspi flash [FILE]` with `uf2_inspect`, CG8's guard, and confirmation.
-**Done when:** fake bootloader drive test passes; refuses without `--force` in a script.
-**Deps:** CG8.
+**TM3: Firmware flashing.** Size 1. **Owns:** `apps/terminal/src/flash.rs`, `dspi-core` as a dependency for `firmware.rs` only. **Implements:** `dspi flash [FILE]` with `uf2_inspect` and CG8's guard. **`--force` does not override the guard**; only a separate `--accept-core-voltage-risk` flag plus the typed confirmation does. Suggests `dspi export` first. **Done when:** a fake bootloader drive test passes; `--force` alone is refused on an at-risk board. **Deps:** CG8.
 
-**TM4: Read-only fallback.** Size 1. **Owns:** connect path in `shell/connect.rs`,
-`apps/terminal/src/main.rs`. **Implements:** `probe_any`, the display in all screens,
-and writes refused in one place; `--json` reports `read_only`. Replaces the refusal.
-**Done when:** V17, V31 and V33 fixtures render; no write leaves (mock transport).
-**Deps:** `main`.
+**TM4: Read-only fallback.** Size 1. **Owns:** connect path in `crates/dspi-tui/src/shell/connect.rs`, `apps/terminal/src/main.rs`. **Implements:** `probe_any`, display in all screens, a firmware banner, writes refused in one place; `--json` reports `read_only`. **Done when:** V17, V31, V33 fixtures render; no write leaves (mock transport). **Deps:** `main`.
 
-**TM5: Analyser overlay.** Size 1. **Owns:** `graph.rs`, `screens/spectrum.rs`.
-**Done when:** curves on the response graph via the engine's subscription (the file says
-it allows this), and the following state shows. **Deps:** CG5.
+**TM5: Analyser overlay and following.** Size 1. **Owns:** `graph.rs`, `screens/spectrum.rs`. **Done when:** curves on the graph; following state and a take-control key work on the fake hub. **Deps:** CG5.
 
-**TM6: Bar strip.** Size 0.5. **Owns:** a new `widgets/bar_strip.rs`. **Done when:** third-octave
-strip renders in both ASCII and braille modes. **Deps:** TM5.
+**TM6: Bar strip.** Size 0.5. **Owns:** `widgets/bar_strip.rs`. **Done when:** third-octave strip renders in ASCII and braille. **Deps:** TM5.
 
-**TM7: Tube Basic/Advanced.** Size 0.25. **Owns:** `screens/tube.rs`. **Done when:** a mode
-toggle with Swift's row set. **Deps:** `main`.
+**TM7: Tube Basic/Advanced.** Size 0.25. **Owns:** `screens/tube.rs`. **Done when:** a toggle with Swift's row set. **Deps:** `main`.
 
-**TM8: Lost-link status line.** Size 0.25. **Owns:** the status line in `shell/mod.rs`.
-**Done when:** the owner's rule holds in a fake-hub test: status line, abort key, a
-failed write is not replayed. **Deps:** `main`.
+**TM8: Lost-link status line.** Size 0.25. **Owns:** status line in `shell/mod.rs`. **Done when:** in a fake-hub test: status line, abort key, failed write not replayed. **Deps:** CG10. Wave 2, since CG10 lands in wave 1.
 
-**TM9: Find hubs.** Size 0.5. **Owns:** `dspi link scan` in `main.rs`, picker in
-`shell/connect.rs`. **Done when:** a test with a fake advertiser; `--json` output. **Deps:** CG2.
+**TM9: Find hubs.** Size 0.5. **Owns:** `dspi link scan`, picker in `shell/connect.rs`. **Done when:** a fake-advertiser test; `--json` output. **Deps:** CG2.
 
-**TM10: JSON import and export gaps.** Size 0.5.
-- **Owns:** `crates/dspi-session/src/preset_file.rs`, a `cs` command in `main.rs`.
-- **Implements:** what exists is `.dspipreset`, filter files, `dump --json`, `--dry-run`.
-  Missing and added: the pair map in `.dspipreset`, matching `dspi_core::files`;
-  `dspi cs export|import` as JSON; Save Master Volume and Save Output Configuration, if
-  the check finds them absent from the CLI.
-- **Done when:** round-trip with Qt's and the Mac's document in fixtures. **Deps:** `main`.
+**TM10: JSON import and export.** Size 1.
+- **Owns:** `crates/dspi-session/src/preset_file.rs`, `cmd_export` and `cmd_import` in `apps/terminal/src/main.rs`, a `cs` command.
+- **What exists:** `.dspipreset`, a filter text format, `dump --json`, `--dry-run`.
+- **Gaps (R1's check):** format is chosen by extension only, so `dspi export x.json` writes the filter text; no `-` for stdin or stdout; `--json` has no effect on import or export; filter banks have no JSON form; the preset document has no control-surface block and appears to lack the pair map (compare `dspi_core::files` and `config_import`); `import_preset`'s doc is stale; Save Master Volume and Save Output Configuration to be checked.
+- **Done when:** round-trip with Qt's and the Mac's documents in the shared fixtures; `dspi cs export|import` work on the demo device. **Deps:** `main`.
 
-**TM11: `dspi hub`.** Size 0.5. **Owns:** `apps/terminal/src/hub.rs`. **Implements:** a headless
-hub with pairing, clients and roles as CLI commands, and a systemd unit example.
-**Done when:** a Link client connects. It is not required by the owner's Qt decision, but
-a headless gateway is what a Terminal hub is for. **Deps:** HB6.
+**TM11: `dspi hub`.** Size 0.5. **Owns:** `apps/terminal/src/hub.rs`. **Implements:** a headless hub with pairing, clients and roles as CLI commands, sleep inhibit, a systemd unit example. **Done when:** a Link client connects. **Deps:** HB6, OD11.
 
-**TM12: AutoEQ update.** Size 0.25. **Owns:** `screens/autoeq.rs`. **Implements:** CG6,
-removing the `curl` call. **Deps:** CG6.
+**TM12: AutoEQ update.** Size 0.25. **Owns:** `screens/autoeq.rs`, `crates/dspi-cmd` command. **Implements:** CG6, removing the `curl` call. **Done when:** update, rebuild and reset work on a scripted fetch, with no external process. **Deps:** CG6.
 
-**TM13: K340 hardware pass.** Size 0.5. **[HW][COORD]**. **Owns:** a checklist,
-`docs/core-merge/HW-TERMINAL.md`. **Done when:** USB replug and real MIDI ports end to end
-(R1's open item) pass. **Deps:** TM1, TM2, TM4.
+**TM13: K340 hardware pass.** Size 0.5. **[HW][COORD]**. **Owns:** `docs/core-merge/HW-TERMINAL.md`. **Done when:** USB replug and real MIDI ports end to end pass (R1's open item). **Deps:** TM1, TM2, TM4.
 
-### 5.3 Android (`dspi-android`, branch `feature/new-core`)
+**TM14: No tmpfs in tests.** Size 0.25. **Owns:** tests in `crates/dspi-tui/src/{actions.rs,settings/config.rs,settings/mod.rs}`. **Implements:** five `temp_dir()` uses move to a target-dir path. **Done when:** none remain, and tests pass. **Deps:** `main`.
 
-The swap is well contained: UI talks to the `core-api` interface, and only `ffi` sees
-UniFFI. Android stays unreleased until AN14, by owner decision.
+### 5.3 Android (`apps/android`)
+
+The swap is contained: UI talks to the `core-api` interface, and only `ffi` sees UniFFI. Owner: the next Play update waits for this.
+
+**Fast lane, independent of Qt:** AN1 → {AN2, AN3, AN6} → {AN4, AN5} → AN13 → AN14.
+- **First update** = AN1, AN2, AN3, AN13. **AN4–AN6 go in the second update** (AN22), which the 14-day closed test needs anyway.
+- XC2 must pass before Link ships. **It depends on XC1, which needs the owner's go-ahead for the `macr` restart.**
 
 **AN1: New crates in place of `dspi-ffi` and the patched core.** Size 2.5.
-- **Owns:** `rust/`, `third_party/`, `tools/{stage-core.sh,gen_kotlin_contract.py,opcode_coverage.py,REFERENCE.toml}`,
-  `ffi/**`, `core-api/**`, `NOTICE.md`, generated licences.
+- **Owns:** `rust/` (removed), `third_party/` (removed), `tools/{stage-core.sh,gen_kotlin_contract.py,opcode_coverage.py,REFERENCE.toml}`, `ffi/**`, `core-api/**`, `NOTICE.md`, generated licences.
 - **Implements:**
-  - depend on `dspi-ffi` from the unified repo (OD1 sets how);
-  - rewrite the generator to read the core's modules (`DspiConstants.kt`, `CoreTypes.kt`,
-    `DspiCoreApi.kt`, `FfiDspiCore.kt`), keeping its `--check`;
+  - use `crates/dspi-ffi` by path;
+  - rewrite the generator to read the core's modules, keeping its `--check`;
   - bindgen once per namespace (`ffi/build.gradle.kts:74-77`);
-  - `FfiDspiCore.kt:57`: `init_logging` from package `se.bofr.dspi.ffi.uniffi.logging`
-    (also `DspiApplication.kt`);
-  - `FfiDspiCore.kt:393`: `ReadOnly` and `Io` in the exhaustive `when`, and in `core-api`'s
-    `DspiException.kt`;
-  - `FfiDspiCore.kt:65-77, 383-387`: Link methods as C15 leaves them; `LinkHello` and
-    `LinkStatus` fields; `on_link_status_changed` and `on_link_token_issued` present
-    (behaviour in AN3);
-  - `NOTIFY_STALE` in `DspiConstants`; `with_foreign` listeners;
-    `MidiInputHandle.close_port`; `MidiSender` unused here;
-  - drop patches 0000–0004 and the `wip/wire-compat` branch.
-- **Done when:** `tools/ci.sh all` passes and all Kotlin module tests pass unchanged, on 3
-  ABIs. Records the new library's size. **No phone yet. Deps:** `main`.
+  - `FfiDspiCore.kt:57`: `init_logging` from `se.bofr.dspi.ffi.uniffi.logging` (also `DspiApplication.kt`);
+  - `FfiDspiCore.kt:393`: `ReadOnly` and `Io` in the `when`, and in `core-api`'s `DspiException.kt`;
+  - `FfiDspiCore.kt:65-77, 383-387`: Link methods as C15 leaves them, including `expected_hub_id`; `on_link_status_changed` and `on_link_token_issued` present (behaviour in AN3);
+  - `NOTIFY_STALE` in `DspiConstants`; `SystemStatus.stale` and `age_ms`; `MidiInputHandle.close_port`; `MidiSender` unused here;
+  - drop the `wip/wire-compat` branch.
+- **Done when:** `tools/ci.sh all` and all Kotlin module tests pass, on 3 ABIs; library size recorded. **No phone yet. Deps:** MR1, CG9.
 
-**AN2: Read-only on older firmware.** Size 0.5. **Owns:** `feature-home/.../HomeModel.kt`,
-`README.md`. **Implements:** V17–V31 now decode (free with the core). `WriteGuardedCore`
-stays. Fixes the README claim (handover). **Done when:** fixture tests; banner text
-per `WIRE-FORMAT-COMPAT.md` §4.4. **Deps:** AN1.
+**AN2: Read-only on older firmware.** Size 0.5. **Owns:** `feature-home/.../HomeModel.kt`, `README.md`. **Implements:** V17–V31 now decode; `WriteGuardedCore` stays; fixes the README claim. **Done when:** fixture tests; banner per `WIRE-FORMAT-COMPAT.md` §4.4. **Deps:** AN1.
 
-**AN3: Link engine on the core's supervisor.** Size 1.
-- **Owns:** `link/.../LinkSessionEngine.kt`, `link/.../LinkCoreOps.kt`.
-- **Implements:**
-  - delete the engine's own reconnect, backoff and token deletion: they would fight C15's
-    supervisor;
-  - follow `link_status`, and implement `on_link_status_changed` and `on_link_token_issued`;
-  - delete a token only when `token_refused` is set;
-  - remove `setListener` from inside listener callbacks (`LinkSessionEngine.kt:164, 178,
-    214`): it self-deadlocks;
-  - call `rta_start` again after a reconnect;
-  - dial off the serial FFI queue. The token for a known hub is looked up after the hello
-    (re-check how C15 exposes this when it lands).
-- **Done when:** `link` tests rewritten against the fake hub with L1's fault cases;
-  `rate_limited` keeps the token. **Deps:** AN1.
+**AN3: Link engine on the core's supervisor.** Size 1. **Owns:** `link/.../{LinkSessionEngine,LinkCoreOps}.kt`.
+- **Implements:** delete Android's own reconnect, backoff and token deletion, which would fight C15; follow `link_status`; implement `on_link_status_changed` and `on_link_token_issued`; delete a token only on `token_refused`; pass `expected_hub_id`; handle `wrong_hub`; remove `setListener` from inside callbacks (`LinkSessionEngine.kt:164,178,214`); `rta_start` again after a reconnect; dial off the serial FFI queue.
+- **Done when:** `link` tests are rewritten against the fake hub with L1's faults; `rate_limited` keeps the token. **Deps:** AN1.
 
-**AN4: Network handling.** Size 1. **Owns:** `link/.../{LinkNetworkMonitor,NsdHubBrowser,LinkSettings}.kt`.
-**Implements:** `onLost` and network change call `link_retry_now`; browse while
-reconnecting and re-resolve by hub id via `link_set_url` (F5); test the F10 items: `WifiLock`,
-binding sockets to Wi-Fi. **Done when:** unit tests with a fake monitor; F10 items
-recorded as used or rejected. **Deps:** AN3.
+**AN4: Network handling.** Size 1. **Owns:** `link/.../{LinkNetworkMonitor,NsdHubBrowser,LinkSettings}.kt`. **Implements:** `onLost` and network change call `link_retry_now`; browse while reconnecting and re-resolve via `link_set_url` (F5); test F10's items. `WifiLock` needs no new permission; **re-check Data safety if sockets get bound to Wi-Fi.** **Done when:** unit tests with a fake monitor; F10 items recorded as used or rejected. **Deps:** AN3.
 
-**AN5: Link UI.** Size 1. **Owns:** `ui-common/.../LinkBanner.kt` (new), `app/.../{LinkDialogs,AppNetworkingController,ConnectionStrip}.kt`.
-**Implements:** owner's banner on every screen; wrong-PIN text by `pin_source`; "no DSPi
-found" instead of "Connecting" (F9), with QD10's table. **Done when:** Compose tests per
-`LinkPhase`. **Deps:** AN3.
+**AN5: Link UI.** Size 1. **Owns:** `ui-common/.../LinkBanner.kt`, `app/.../{LinkDialogs,AppNetworkingController,ConnectionStrip}.kt`. **Implements:** owner's banner on every screen; wrong-PIN by `pin_source`; "no DSPi found" (F9), CG10's text. **Done when:** Compose tests per `LinkPhase`. **Deps:** AN3, CG10.
 
-**AN6: Settings rows.** Size 1. **Owns:** `feature-settings/.../{GeneralSettingsTab,PinOverviewTab}.kt`,
-`feature-home/.../` source picker. **Implements:** core voltage status, device name (also
-`device.rename` on a hub), input-source names, output latency. **Done when:** demo tests
-round-trip; hidden when the firmware lacks them. **Deps:** AN1.
+**AN6: Settings rows.** Size 1. **Owns:** `feature-settings/.../{GeneralSettingsTab,PinOverviewTab}.kt`, source picker in `feature-home`. **Implements:** core voltage status, device name, input-source names, output latency. **Done when:** demo tests round-trip; hidden when absent. **Deps:** AN1.
 
-**AN7: One device list.** Size 1. **Owns:** `app/.../{AppMode,EntryNavigator,UsbStartGate}.kt`.
-**Done when:** USB, Link and demo appear in one list, as on the Mac. Demo stays
-reachable with a DSPi attached. **Deps:** AN3.
+**AN7: One device list.** Size 1. **Owns:** `app/.../{AppMode,EntryNavigator,UsbStartGate}.kt`. **Done when:** USB, Link and demo in one list; demo reachable with a DSPi attached. **Deps:** AN3.
 
-**AN8: Control-surface spike.** Size 0.5. **Owns:** a report. **Implements:** decide the phone
-layout for the editor against Swift's 5 270-line tab and Qt's `settings/cs` (about 4 300
-lines of QML and the core's `cs_model`). Sets AN9–AN12's sizes and splits. **Done when:** a
-reviewed screen map exists. **Deps:** AN1.
+**AN8: Control-surface spike.** Size 0.5. **Owns:** a report. **Implements:** a phone layout against Swift's 5 270-line tab and Qt's `settings/cs` and pages. Sets AN9–AN12's sizes. **Done when:** a reviewed screen map exists. **Deps:** AN1.
 
-**AN9: CS bindings.** Size 2–4. **AN10: IR learn.** Size 1. **AN11: Display pages.** Size 1–2.
-**AN12: Groups, macros, aux.** Size 1.5–2.5.
-- **Owns:** one new file set each under `feature-settings/.../cs/`.
-- **Implements:** the core's `cs_snapshot`, `cs_apply` and `cs_pin_uses`.
-- **Done when:** runs on the demo device (`FakeDevice`'s CS support looks minimal: check, and extend it);
-  IR learn and display need **[HW]**; an `error` reply is shown.
-- **Deps:** AN8.
+**AN9: CS bindings.** Size 2–4. **AN10: IR learn.** Size 1. **AN11: Display pages.** Size 1–2. **AN12: Groups, macros, aux.** Size 1.5–2.5. **Owns:** one file set each under `feature-settings/.../cs/`. **Implements:** `cs_snapshot`, `cs_apply`, `cs_pin_uses`. **Done when:** runs on the demo device (`FakeDevice`'s CS support looks minimal: check, and extend); IR and display need **[HW]**; an `error` reply is shown. **Deps:** AN8.
 
-**AN13: Phone test.** Size 1. **[HW][OWNER][COORD]**. **Owns:** a checklist,
-`docs/HIL-NEW-CORE.md`. **Requires** the owner's adb port. **Done when:** the earlier HIL set
-passes on the nusb `from_fd` path (unproven on hardware): USB, notifications, old firmware,
-Link with a Mac hub, 45 s background, no secrets in logcat. Side by side with
-`applicationIdSuffix ".hil"`: never uninstall the Play build. **Deps:** AN1–AN6.
+**AN13: Phone test.** Size 1. **[HW][OWNER][COORD]**. **Owns:** `docs/HIL-NEW-CORE.md`. **Requires** the owner's adb port. **Done when:** the earlier HIL set passes on the nusb `from_fd` path (unproven on hardware): USB, notifications, old firmware, Link with a Mac hub, 45 s background, no secrets in logcat. Side by side with `applicationIdSuffix ".hil"`: never uninstall the Play build. **Deps:** AN1, AN2, AN3, XC2.
 
-**AN14: First new-core update.** Size 0.5. **[OWNER]**. **Owns:** version, release notes,
-store text. **Implements:** the unreleased crossfeed pair fix ships here; the README;
-versionCode bump; Link and Data safety text re-checked. **Done when:** an AAB is ready for
-the owner to upload. **Deps:** AN13, gate R-And.
+**AN14: First new-core update.** Size 0.5. **[OWNER]**. **Owns:** version, notes, store text. **Implements:** the unreleased crossfeed pair fix ships here; README; versionCode bump; source tarball on the release (OD1). **Done when:** an AAB is ready for the owner to upload. **Deps:** AN13, R-And.
 
-**AN15: R8.** Size 1. **Owns:** `app/build.gradle.kts`, keep rules. **Implements:** JNA and UniFFI
-keep rules, `isMinifyEnabled`. **Done when:** a release build passes a phone test
-**[HW]**. Play deadline February 2027. Own release. **Deps:** AN14.
+**AN15: R8.** Size 1. **Owns:** `app/build.gradle.kts`, keep rules. **Done when:** a release build passes a phone test **[HW]**. Play deadline February 2027; own release. **Deps:** AN14.
 
-**AN16: Edge-to-edge.** Size 1. **Owns:** `app/.../MainActivity.kt`, inset handling.
-**Done when:** every route is checked on the phone **[HW]**. Own release. **Deps:** AN14.
+**AN16: Edge-to-edge.** Size 1. **Owns:** `app/.../MainActivity.kt`, insets. **Done when:** every route checked on the phone **[HW]**. Own release. **Deps:** AN14.
 
-**AN17: Analyser bar strip and following.** Size 0.75. **Owns:** `feature-analysis/` new
-bar-strip file, overlay state. **Deps:** AN1, CG5.
+**AN17: Analyser bar strip and following.** Size 0.75. **Owns:** a bar-strip file and overlay state in `feature-analysis/`. **Done when:** Compose tests on the demo device; following and Take control work on the fake hub. **Deps:** AN1, CG5.
 
-**AN18: Small floor items.** Size 1. **Owns:** `feature-firmware/` images, AutoEQ update UI,
-a host-format reader, `feature-tools/` generator lifetime, graph keyboard map. **Implements:**
-images per OD4 with CG8's guard; CG6's update with a Kotlin fetch; `AudioManager` channel count;
-signal generator keeps running off-screen, as on the Mac; hardware-keyboard shortcuts. **Deps:**
-AN1, CG6, CG8.
+**AN18: Small floor items.** Size 1. **Owns:** `feature-firmware/`, AutoEQ update UI, a host-format reader, `feature-tools/` generator lifetime, graph keyboard map. **Implements:** images per OD4; **CG8's guard called on Android's Kotlin flashing path, PICOBOOT included**; export first; CG6's update with a Kotlin fetch; `AudioManager` channel count; generator keeps running off-screen; hardware shortcuts. **Done when:** a unit test proves the flash path cannot skip the guard; each item has a test. **Deps:** AN1, CG6, CG8.
 
-**AN19: Onboarding.** Size 1.5. **Owns:** a new `feature-onboarding/` module. **Implements:**
-first-run, coach marks, What's New, from QD15's catalogue. **Deps:** QD15.
+**AN19: Getting Started and What's New.** Size 1 (+0.5 if OD-Floor-disabled says yes). **Owns:** `feature-onboarding/`. **Done when:** first run shows once; replay from Help; data from CG10. **Deps:** CG10.
 
-**AN20: Accessibility.** Size 2. **Owns:** semantics across `feature-*`. TalkBack for
-graph, matrix and meters. **AN21: Localisation.** Size 2. **Owns:** `strings.xml` across modules.
-Both run alone in the last wave. **Deps:** all other AN UI WPs; OD6.
+**AN20: Accessibility.** Size 2. **Owns:** semantics across `feature-*`. **Done when:** a TalkBack pass on graph, matrix and meters **[HW]**. **AN21: Localisation.** Size 2. **Owns:** `strings.xml` across modules. **Done when:** a pseudo-locale run shows no hard-coded string. Both alone in the last wave. **Deps:** other AN UI WPs; OD6.
 
-### 5.4 macOS Swift Console: retire or generate
+**AN22: Second update.** Size 0.25. **[OWNER]**. **Owns:** version, notes. **Implements:** AN4–AN6. **Done when:** a phone re-test passes **[HW]**, and an AAB is ready. **Deps:** AN4, AN5, AN6, AN14.
 
-Owner's order of preference: (A) retire it, moving users to Qt on macOS; otherwise (B)
-keep a Swift UI on parts generated from the core. **It is Weeb Labs' product; we control
-only our fork. "Retire" means our line, unless Weeb Labs agrees.** Their app stays
-available to their users whatever we do.
+### 5.4 Swift: macOS and iOS (`apps/apple`)
 
-**What Qt must reach:** section 3's Qt column. All of it is in scope already, because
-the owner made the Mac the floor for every client, and the hub on Qt is in scope
-regardless. So those items count for neither route.
-
-| | A: retire, Qt on Mac | B: Swift UI on generated parts |
-|---|---|---|
-| Work that exists only for this route | MC1–MC4: **1.75** | B1 UniFFI slices for macOS 0.5; B2 USB through `nusb` on the Mac path 0.5–1; B3 Swift hub on CG4 raw commands 1–2; B4 tests 1: **3–4.5**, *after* iOS (IO4, IO8–IO14) |
-| If iOS has not moved yet | no change | adds **13.5–22** of iOS's replacement work |
-| Cheaper variant | none | Generated tables only (`Constants.swift` and layouts from `dspi-proto`): **2–3**. Removes hand-copied numbers, not the second protocol stack |
-| Free from the iOS track | nothing needed | UniFFI build, the `DeviceTransport` seam, every moved model group, tests, because the sources are shared |
-| What remains to maintain | Qt only on Mac | Mac-only Swift: hub, menu bar, updater, Metal renderers, HUD, on top of what iOS keeps |
-| What the user loses | SwiftUI and Metal fidelity, native feel | Nothing |
-| Hub | Rust (HB, in scope) | Swift, as today; but HB is still in scope for Qt, so two hubs stay in play |
-| Blocks | Developer ID and an Apple silicon run (owner) | None new |
-
-**Honest reading:** iOS keeps most of the shared Swift alive either way, so retirement saves
-only the Mac-only part: about 4 k lines of hub plus menu-bar, updater and Metal code. The floor
-rule still decides it, since it means Qt reaches the Mac's features anyway. After that, A costs
-less than B and drops a codebase. **Recommendation: A** (OD2). If the owner chooses A, the iOS
-branch need not keep the macOS target building after MC4, which removes some of iOS's
-replacement risk.
-
-**MC1: macOS integration.** Size 0.5. **Owns:** `apps/desktop/packaging/macos/`,
-`qt/CMakeLists.txt` bundle part. **Implements:** `NSLocalNetworkUsageDescription`,
-`NSBonjourServices`, "Settings…" naming (`LINUX-CONSOLE-PORTABILITY.md` §9), accessory mode
-for QD12. **Done when:** Local Network prompt appears in `macr`, and browsing works. **Deps:** QD9.
-
-**MC2: Signing and notarisation.** Size 0.5. **[OWNER]**: Apple Developer ID, password. **Owns:**
-the signing step in the build script, using hardened runtime; no App Store. **Done when:**
-a notarised `.dmg` opens with no warning on a clean Mac account. **Deps:** QD21, OD2.
-
-**MC3: Apple silicon run.** Size 0.5. **[HW][OWNER]**: the universal app's arm64 half has never
-run, and the VM and known spare Macs are Intel. **Done when:** QD26's checklist passes. **Deps:** MC2.
-
-**MC4: Retirement.** Size 0.25. **Owns:** `docs/core-merge/MAC-RETIREMENT.md`, our README lines.
-**Implements:** migration notes, saved `.dspipreset` compatibility check, our Mac build no longer
-published. Freeze `ext-channel-116` as the reference tag; hub test harness stays until HB7 passes.
-**Done when:** the owner confirms at gate R-Mac. **Deps:** R-Qt, HB7, MC3.
-
-### 5.5 iOS (Console fork, new branch `rust-core-116`)
-
-Cut from `ext-channel-116`; the Swift-only `-116` branches stay as they are (owner's
-rule). USB MIDI is the only USB transport on iPhone and iPad: no DriverKit. Builds run in
-`macvm`, one heavy job at a time, GUI session only (`ssh macvm who`, `launchctl asuser`),
-host unlocked. The VM has no GitHub credentials: use git bundles. **Pushing needs an instruction.**
+Owner decided: **SwiftUI on macOS and iOS over the Rust core; Swift keeps UI only.** One line, one Xcode project. **Every WP is done only when both targets build and test.** SW numbers match the earlier IO numbers. USB MIDI is the only USB transport on iPhone and iPad: no DriverKit. Builds run in `macvm`, one heavy job at a time, GUI session only (`ssh macvm who`, `launchctl asuser`), host unlocked. The VM has no GitHub credentials: use git bundles.
 
 **The seams, and the risk.**
 
 | Layer | Size today | Coupling |
 |---|---|---|
 | Views | most of 72 k lines | call `DSPViewModel`; 35 files hold an observed object |
-| `DSPViewModel` | 3 367 lines, 124 `@Published` | Stay the views' API |
-| `Commands.swift` | 4 929 lines, 321 functions, 289 wire references | **The replacement** |
-| Wire use elsewhere | `StatsView` 41, `DSPi_ConsoleApp` 29, `SpectrumAnalyser` 19, `TestSignalsView` 18, `ContentView` 14, others under 8 | Moved with their domain |
+| `DSPViewModel` | 3 367 lines, 124 `@Published` | Stays the views' API |
+| `Commands.swift` | 4 929 lines, 321 functions, 289 wire references | **Removed** |
+| Wire use elsewhere | `StatsView` 41, `DSPi_ConsoleApp` 29, `SpectrumAnalyser` 19, `TestSignalsView` 18, `ContentView` 14, others under 8 | Moves with its domain |
 | `DeviceTransport` | one protocol | **The seam for coexistence** |
 
-**Approach: strangler behind `DeviceTransport`.** First a `CoreBackedTransport` puts the
-core under all existing Swift code, using CG4 for raw commands: one link, one request engine.
-That is shippable on its own. Then domains move one at a time, each keeping the view model's
-API and its `@Published` properties.
+**Approach: strangler behind `DeviceTransport`.** First `CoreBackedTransport` puts the core under all existing Swift, using CG4. That alone gives M0. Then domains move one at a time, each keeping the view model's API and `@Published` properties.
 
-**Risks to resolve in IO3 and IO8:**
-- **Two mirrors.** `@Published` and the core's `DeviceState` must not disagree. Swift writes
-  optimistically; the core's mirror follows confirmed writes. The slider fast path
-  (`Commands.swift:257`) is the sharpest case.
-- **Threads.** Swift may call its transport on the main thread where a core call must not run.
-- **22 k lines of tests** assert bytes through `FakeTransport`. Each move must port or retire
-  them explicitly, not lose coverage quietly.
-- **Shared sources.** Until MC4 the macOS target must keep building unless OD2 says otherwise.
-- **Going back.** `.dspipreset`, `PresetSnapshot` and the crossfeed extension have Swift
-  codecs that must match the core's byte for byte: fixtures from `dspi-core` go in both.
+**Risks to resolve in SW3 and SW8:**
+- **Two mirrors.** `@Published` and `DeviceState` must not disagree. Swift writes optimistically; the core's mirror follows confirmed writes. The slider fast path (`Commands.swift:257`) is the sharpest case.
+- **Threads.** Swift may call its transport on the main thread, where a core call must not run.
+- **22 k lines of tests** assert bytes through `FakeTransport`. Each move must port or retire them explicitly.
+- **File formats.** `.dspipreset`, `PresetSnapshot` and the crossfeed extension have Swift codecs that must match the core's: shared fixtures.
+- **Upstream merges** get harder as `Commands.swift` goes: SW-U1.
 
-**IO1: XCFramework.** Size 1. **Owns:** `apps/ios/build-xcframework.sh` in the unified repo.
-**Implements:** add `aarch64-apple-ios`, `aarch64-apple-ios-sim` and `x86_64-apple-ios` in the VM
-(the VM is Intel, so its Simulator needs x86_64). `staticlib`, usb off. Records library size.
-**Done when:** the framework links in an empty app on the Simulator. **Deps:** CG3.
+**SW1: XCFramework.** Size 1. **Owns:** `apps/apple/build-xcframework.sh`. **Implements:** in the VM, add `aarch64-apple-ios`, `aarch64-apple-ios-sim`, `x86_64-apple-ios` (the VM is Intel) and the macOS slices. `usb` off for iOS, on for macOS. Library size recorded. **Done when:** it links in the Simulator and on macOS. **Deps:** CG3, MR1.
 
-**IO2: Swift package and compile test.** Size 1. **Owns:** `DSPi Console/Core/Generated/` and the
-Xcode project lines. **Implements:** the first real compile of the bindings in the app (F1 only
-generates them; CG9 gates the compile). `init_logging`, one run per namespace, as AN1. **Done when:**
-a test calls `core_info()` and opens the demo device. **Deps:** IO1.
+**SW2: Swift package and compile test.** Size 1. **Owns:** `DSPi Console/Core/Generated/`, Xcode project lines. **Implements:** bindings into the app; `init_logging`; one run per namespace. **Done when:** a test calls `core_info()` and opens the demo device on both targets. **Deps:** SW1, CG9.
 
-**IO3: Seam map.** Size 0.5. **Owns:** a report, `docs/IOS-SEAMS.md` in `dspi-ios`. **Implements:**
-every wire-using function mapped to a core method; those with none become core WPs; threading
-and mirror decisions stated. Re-sizes IO8–IO14. **Done when:** Fable has reviewed it. **Deps:** IO2.
+**SW3: Seam map.** Size 0.5. **Owns:** `docs/SWIFT-SEAMS.md`. **Implements:** each wire-using function mapped to a core method; those with none become core WPs; thread and mirror decisions; re-sizes SW8–SW14. **Done when:** Fable has reviewed it. **Deps:** SW2.
 
-**IO4: `CoreBackedTransport`.** Size 1.5. **Owns:** `DSPi Console/Core/CoreBackedTransport.swift`.
-**Implements:** `DeviceTransport` over CG4 and the core's notifications; the core's `FakeDevice`
-under the demo mode. **Done when:** existing `FakeTransportTests` and wire tests pass with it behind
-a launch flag. **Deps:** IO3, CG4.
+**SW4: `CoreBackedTransport`.** Size 1.5. **Owns:** `DSPi Console/Core/CoreBackedTransport.swift`. **Implements:** `DeviceTransport` over CG4 and the core's notifications; the core's `FakeDevice` under demo mode. **Done when:** existing `FakeTransportTests` and wire tests pass behind a launch flag on both targets. **Deps:** SW3, CG4.
 
-**IO5: CoreMIDI through the core.** Size 1. **Owns:** `MIDI/CoreMidiPipe.swift`, reducing
-`MIDI/MIDITransport.swift` to CoreMIDI I/O. **Implements:** `MidiSender`, `MidiInputHandle` with
-`close_port`, the Simulator relay port. **Done when:** vectors from `midi_vectors.json` pass;
-relay run **[HW]** on the K340 in the Simulator. **Deps:** IO4.
+**SW5: CoreMIDI through the core.** Size 1. **Owns:** `MIDI/CoreMidiPipe.swift`, reducing `MIDI/MIDITransport.swift` to I/O. **Implements:** `MidiSender`, `MidiInputHandle` with `close_port`, the relay port. **Done when:** `midi_vectors.json` passes; relay run **[HW]** on the K340. **Deps:** SW4.
 
-**IO6: Link through the core.** Size 1.5. **Owns:** `Link/LinkClient*.swift` replaced by
-`Core/CoreLink.swift`; keeps `HubBrowser.swift`, `LinkTokenStore.swift` and the pairing sheet.
-**Implements:** Bonjour stays in Swift (the entitlement belongs to it); keychain tokens;
-`link_retry_now` on foreground. iOS client patches (`console-116` 0014–0020) are the
-behaviour reference. Local Network prompt behaviour with Rust's BSD sockets is checked here.
-**Done when:** the Mac hub run from `A7-LINK-CLIENT-REPORT.md` passes **[HW]**. **Deps:** IO4, XC1.
+**SW6: Link through the core.** Size 1.5. **Owns:** `Link/LinkClient*.swift` replaced by `Core/CoreLink.swift`; keeps `HubBrowser.swift`, `LinkTokenStore.swift`, the pairing sheet. **Implements:** Bonjour stays in Swift (the entitlement belongs to it); `expected_hub_id`; `link_retry_now` on foreground; `rta_start` after a reconnect. Checks the Local Network prompt with Rust's BSD sockets. **Done when:** the run in `A7-LINK-CLIENT-REPORT.md` passes **[HW]**. **Deps:** SW4, XC1.
 
-**IO7: Banner and errors.** Size 0.5. **Owns:** `iOS/LinkBannerView.swift`. **Done when:** the owner's
-rule holds in a fake-hub run in the Simulator; QD10's wording; errors shown. **Deps:** IO6.
+**SW7: Banner and errors.** Size 0.5. **Owns:** `Core/LinkBannerView.swift`. **Done when:** the owner's rule holds in a fake-hub run; CG10's wording. **Deps:** SW6, CG10.
 
-**IO8: Reads and the mirror.** Size 3–5. **Go/no-go gate after it (OD3).** **Owns:**
-`Commands.swift` "Bulk Parameter Transfer" and "Notification → State Mirroring" sections
-(about 840 lines). **Implements:** view-model state filled from `DspiState`, notifications from the
-core; older firmware goes read-only (free). **Done when:** every view shows correct values on the demo
-device and against fixtures; own echoes do not flicker. **Deps:** IO4.
+**SW8: Reads and the mirror.** Size 3–5. **Go/no-go after it (OD3).** **Owns:** `Commands.swift` "Bulk Parameter Transfer" and "Notification → State Mirroring" (about 840 lines). **Implements:** view-model state from `DspState`, notifications from the core, older firmware read-only. **Done when:** every view shows correct values on the demo device and fixtures; no echo flicker. **Deps:** SW4.
 
-Then one WP per domain, each with: **Owns** its `Commands.swift` sections and the wire use in its
-views; **Done when:** wire tests are ported, the domain has no `transport.` calls left, and the app
-works on the demo device. **Size ranges are rough; IO3 re-sizes them.**
+Then one WP per domain. Each **owns** its `Commands.swift` sections and wire use in its views; **done when** wire tests are ported, the domain has no `transport.` calls, and both targets work on the demo device. SW3 re-sizes them.
 
 | WP | Domain | Size |
 |---|---|---|
-| IO9 | Volume, EQ, crossover, outputs, matrix, slider fast path | 1.5–2.5 |
-| IO10 | Effects (loudness to upmixer) | 1.5–2.5 |
-| IO11 | Pins, I2S, ADAT, inputs, UART/I2C, names | 1.5–2 |
-| IO12 | Control surfaces | 1.5–3 |
-| IO13 | Presets, `PresetDocument`, `PresetSnapshot` | 1.5–3 |
-| IO14 | Analyser (following state), Stats, signal generator, monitor | 1.5–3 |
+| SW9 | Volume, EQ, crossover, outputs, matrix, slider fast path | 1.5–2.5 |
+| SW10 | Effects (loudness to upmixer) | 1.5–2.5 |
+| SW11 | Pins, I2S, ADAT, inputs, UART/I2C, names | 1.5–2 |
+| SW12 | Control surfaces | 1.5–3 |
+| SW13 | Presets, `PresetDocument`, `PresetSnapshot` | 1.5–3 |
+| SW14 | Analyser (following state), Stats, signal generator, monitor | 1.5–3 |
 
-**IO15: Simulator and MIDI relay test.** Size 1. **[HW][COORD]**. **IO16: Real device test.** Size 0.5.
-**[HW][OWNER]**: no iPhone or iPad has ever run this app. Device availability and team signing are the
-owner's. **Owns:** `docs/IOS-HW.md`. **Done when:** USB-C MIDI, Link, background and return all pass.
-**Deps:** IO5, IO6, IO14.
+**SW15: Simulator and relay test.** Size 1. **[HW][COORD]**. **SW16: Real iPhone or iPad.** Size 0.5. **[HW][OWNER]**: no device has ever run this app. **Owns:** `docs/SWIFT-HW.md`. **Done when:** USB-C MIDI, Link, background and return pass. **Deps:** SW5, SW6, SW14.
 
-**View-layer gaps** (parity 3.1 and section 3). These can run alongside the domains, as
-they touch views only:
+**iOS view-layer gaps** (parity 3.1, section 3). Views only; alongside the domains:
 
-**IO17: File import and export.** Size 1. **Owns:** `iOS/DocumentPicker.swift`, the `notYet` block in
-`DSPi_ConsoleApp.swift`. **Done when:** filter files and `.dspipreset` both round-trip. **Deps:** IO2.
+**SW17: File import and export.** Size 1. **Owns:** `iOS/DocumentPicker.swift`, the `notYet` block in `DSPi_ConsoleApp.swift`. **Done when:** filter files and `.dspipreset` round-trip against shared fixtures. **Deps:** SW2.
 
-**IO18: AutoEQ and firmware window.** Size 0.75. **Owns:** iOS AutoEQ menu, firmware wizard step.
-**Implements:** Favourites, CG6's update; hide the dead firmware window and tell the user to use
-a computer. **Deps:** CG6, IO2.
+**SW18: AutoEQ and firmware window.** Size 0.75. **Owns:** iOS AutoEQ menu, firmware wizard step. **Implements:** Favourites, CG6's update; hide the dead firmware window and point to a computer; no `.uf2` images in the iOS target. **Done when:** UI tests cover the menu and show no firmware entry on iOS; the iOS bundle has no `.uf2`; the Mac is unchanged. **Deps:** CG6, SW2.
 
-**IO19: Touch graph.** Size 1.5. **Owns:** `iOS/PeqTouchEditor.swift`, a touch HUD. Marquee, pull
-from curve, shape chooser, value chip. **Deps:** IO2.
+**SW19: Touch graph.** Size 1.5. **Owns:** `iOS/PeqTouchEditor.swift`, a touch HUD. **Implements:** marquee, pull from curve, shape chooser, value chip. **Done when:** UI tests on iPhone and iPad cover each gesture. **Deps:** SW2.
 
-**IO20: Hardware keyboard and host format.** Size 0.75. **Owns:** `iOS/IOSApp.swift` commands,
-`iOS/AudioRouteMonitor.swift`. **Deps:** IO2.
+**SW20: Hardware keyboard and host format.** Size 0.75. **Owns:** `iOS/IOSApp.swift` commands, `iOS/AudioRouteMonitor.swift`. **Done when:** a UI test covers the iPad shortcut table; the route count falls back to the device report. **Deps:** SW2.
 
-**IO21: Coach marks.** Size 1. **Owns:** `Onboarding/` iOS panel (the macOS panel is excluded from
-this target). **Deps:** IO2.
+**SW21: Coach marks.** Size 1. **Only if OD-Floor-disabled says yes.** Not in totals.
 
-**IO22: Accessibility and localisation.** Size 3. **Owns:** all views. Runs alone, last. **Deps:**
-every other IO WP; OD6.
+**SW22: Accessibility and localisation.** Size 3. **Owns:** all views. Alone, last. **Done when:** a VoiceOver pass in the Simulator; a pseudo-locale run. **Deps:** other SW WPs; OD6.
 
-Store items (registered SysEx ID, review video, TestFlight) are later, per the owner:
-`APPSTORE-MIDI-RISK.md` applies at that point. The firmware and app's manufacturer ID `0x7D` must
-not reach a public release (OD9).
+**Mac-only additions:** about 3.5–5.5.
 
-### 5.6 Web
+**SW-M1: USB through the core.** Size 1–1.5. **Owns:** `Core/CoreUsb.swift`; reduces `USBDevice.swift` and `USBNotificationReader.swift`. **Implements:** `nusb`'s `macos_iokit` through CG3's `usb` feature, including hot-plug. **Done when:** a demo run and a mock test pass; the macOS target has no IOKit vendor path left outside the hub. **Deps:** SW4.
 
-**WB0: Study.** Size 2. **Owns:** `docs/core-merge/WEB-STUDY.md`, throwaway spikes under
-`~/.cache/dspi-build/work/wp-wb0/`. Must judge, with a working spike where marked:
+**SW-M2: Firmware through the core.** Size 0.5–1. **Owns:** `FirmwareInstaller.swift`, `BootloaderLocator.swift`, reduced to UI over C11's `firmware.rs` and CG8's guard. **Done when:** `FirmwareInstallerTests` pass; a fake drive test; guard cannot be skipped. **No real flash here. Deps:** SW-M1, CG8.
 
-| Option | Questions to answer |
+**SW-M3: Hub over `dspi-hub`.** Size 1–2. **Owns:** a UniFFI wrapper for the hub, `NetworkingSettingsView.swift` re-pointed; Swift hub files removed at the end. **Does not block R-Mac (OD-Hub).** The Swift hub stays as the reference harness until HB7 passes, then retires. **Done when:** HB7's Swift client passes against the wrapper from the Mac app. **Deps:** HB7, SW-M1.
+
+**SW-M4: What stays Swift.** Size 0.5. **Owns:** `docs/SWIFT-STAYS.md`. **Implements:** an audit that each item is UI or OS integration only, with no protocol: menu-bar mode, login item, keep-awake, `AppUpdateChecker` and installer, `HostAudioFormatMonitor`, Metal renderers. **Done when:** Fable has reviewed it, and a grep for opcodes outside `Core/` is empty. **Deps:** SW14.
+
+**SW-M5: Real Mac hardware pass.** Size 0.5. **[HW][OWNER]**: an Apple silicon run has never happened, and the VM and known spare Macs are Intel. **Owns:** `docs/SWIFT-HW.md`. **Done when:** the checklist passes under section 6's rules. Developer ID only if we distribute a binary (OD-DevID). **Deps:** SW-M1, SW-M2.
+
+**SW-U1: Upstream tracking rule.** Size 0.25. **Owns:** `docs/UPSTREAM-TRACKING.md` (section 0.1). **Done when:** a dry-run merge of a later upstream commit is recorded. **Deps:** MR1.
+
+Store items (registered SysEx ID, review video, TestFlight) are later: `APPSTORE-MIDI-RISK.md` applies then.
+
+### 5.5 Web
+
+**WB0: Study.** Size 2. **Owns:** `docs/core-merge/WEB-STUDY.md`, throwaway spikes under `~/.cache/dspi-build/work/wp-wb0/`. Must judge, with a working spike where marked:
+
+| Option | Questions |
 |---|---|
-| Rust core in wasm + a web UI **(spike)** | The session's 17 transport-using files block on `&mut dyn Transport`, about 170 call sites and 45 uses of threads or `Instant`. Compare: (a) an async twin of the trait; (b) a request and reply split (`PLAN.md` §1.3); (c) blocking in a Worker with `Atomics.wait`, needing COOP and COEP; (d) JavaScript Promise Integration. Which leaves `dspi-session` unchanged for other clients? `nusb` has a wasm32 WebUSB backend, but needs async. |
-| Qt for WebAssembly **(spike)** | Does the Qt app and the C ABI core build? Download size? Same async problem, via Asyncify or threads. |
-| Reuse what exists | sigman78's `dspi-web-console` (MIT, Svelte, WebUSB, demo mode, firmware 1.1.5+) and the DSPi-Link web UI (MIT, which HB5 already serves). What would they need for ext channel and Link? Licence fit with GPL-3.0? |
-| Link in the browser | Browsers block `ws://` from an `https://` page, and no hub has TLS. So is a hub-served page the only Link route? |
-| WebUSB | Chromium only. Check on stock and bofr-main firmware, per OS. |
-| Web MIDI | Chromium, Firefox with permission; SysEx permission. Firmware's MIDI build only. |
+| Rust core in wasm + a web UI **(spike)** | The session's 17 transport-using files block on `&mut dyn Transport`: about 170 call sites and 45 uses of threads or `Instant`. Compare (a) an async twin of the trait; (b) a request and reply split (`PLAN.md` §1.3); (c) blocking in a Worker with `Atomics.wait`, needing COOP and COEP; (d) JavaScript Promise Integration. Which leaves `dspi-session` unchanged for other clients? `nusb` has a wasm32 WebUSB backend. |
+| Qt for WebAssembly **(spike)** | Do the Qt app and the C ABI core build? Download size? Same async problem. |
+| Reuse what exists | sigman78's console (MIT, Svelte, WebUSB, demo mode, 1.1.5+) and the DSPi-Link web UI (MIT, which HB5 serves). What do they need for extensions and Link? Licence fit (OD-Lic)? |
+| Link in the browser | Browsers block `ws://` from `https://`, and no hub has TLS. Is a hub-served page the only route? |
+| WebUSB | Chromium only. Check on stock and bofr-main, per OS. **Why does sigman78's README still mention Zadig on Windows, given the firmware's MS OS 2.0 descriptor?** |
+| Web MIDI | Chromium, Firefox with permission. Firmware's MIDI build only. |
 
-- **Done when:** a recommendation, with sizes, fills in the stubs below.
-- **Deps:** `main`; no hardware needed beyond an optional WebUSB check **[HW][COORD]**.
+**Done when:** a recommendation with sizes fills the stubs. **Deps:** `main`.
 
-**Stubs, unsized until WB0:** WB1 transport and session route; WB2 UI; WB3 hosting and
-origin; WB4 hardware test. Rough range by route: reuse 3–8, Qt for WebAssembly 8–15, Rust and a
-new UI 40–70.
+**Stubs, unsized until WB0:** WB1 transport and session route; WB2 UI; WB3 hosting and origin; WB4 hardware test. Rough range by route: reuse 3–8, Qt for WebAssembly 8–15, Rust and a new UI 40–70.
 
-### 5.7 Cross-client tests
+### 5.6 Audit and cross-client tests
 
-**XC1: `macr` restart.** Size 0.5. **[COORD]** with the owner's go-ahead for the restart.
-**Owns:** nothing in a repo. **Implements:** patched QEMU and libusb per
-`qemu-usb/REPORT.md` "How to apply"; start `macr`; check `br0` address and Bonjour from the phone;
-re-attach the DSPi with QMP; rule: host unlocked. **Done when:** Mac hub is reachable from the LAN and
-the 6 KB read works. **Prerequisite for every Mac test. Deps:** none; the owner's bridge part is done.
+**XC0: Finish the floor audit.** Size 0.5. **Wave 0.** **Owns:** `docs/PARITY.md` (from FEATURE-PARITY.md). **Implements:** walk the Mac's menus and every settings page; turn every "hit" in section 3 into read code, per client; add anything missing with a WP or a reason. **Done when:** no "hit" remains, and Fable has spot-checked 10 rows. **Deps:** `main`.
 
-**XC2: Mac hub ping test.** Size 0.25. **[HW][COORD]**. **Owns:** a report. **Done when:** the Mac hub
-answers pings, so L1's 5 s probe does not kill healthy sessions; idle past 35 s survives; rate-limit keeps the
-token. **Do this before Android and iOS Link WPs merge.** **Deps:** XC1.
+**XC1: `macr` restart.** Size 0.5. **[COORD]**, **with the owner's go-ahead.** **Implements:** patched QEMU and libusb per `qemu-usb/REPORT.md`; check `br0` and Bonjour from the phone; re-attach the DSPi over QMP; host unlocked. **Done when:** the Mac hub is reachable from the LAN and the 6 KB read works. **Prerequisite for every Mac test. Deps:** none.
 
-**XC3: Real-hub test harness.** Size 0.5. **Owns:** `crates/dspi-link/tests/real_hub/`, opt-in by
-environment. **Implements:** the scripted parts of `LINK-HUB-FINDINGS.md` section 5. **Deps:** `main`.
+**XC2: Mac hub ping test.** Size 0.25. **[HW][COORD]**. **Owns:** a report. **Done when:** the Mac hub answers pings, so L1's 5 s probe does not kill healthy sessions; idle past 35 s survives; rate limit keeps the token. **Before AN13. Deps:** XC1.
 
-**XC4: ESP32 bridge suite.** Size 1. **[HW][OWNER][COORD]**: **is an ESP32 on hand and wired to a
-DSPi?** **Owns:** a report. **Implements:** all 9 items of section 5: idle, wrong PIN ×5, Wi-Fi
-pulls at 5, 20, 32 and 60 s, all slots full, DHCP change, board off, GETs over 132 B, cut after
-`auth.pair`, Doze. **Done when:** each is pass or fail with the fix filed. **Deps:** XC3, AN5 for phone cases.
+**XC3: Real-hub test harness.** Size 0.5. **Owns:** `crates/dspi-link/tests/real_hub/`, opt-in by environment. **Implements:** the scripted parts of `LINK-HUB-FINDINGS.md` section 5. **Done when:** it runs against the fake hub with the same assertions and skips cleanly with no hub set. **Deps:** `main`.
 
-**XC5: Meters over a bridge.** Size 0.5. **[HW][OWNER][COORD]**. **Owns:** a report. **Done when:** CPU, frame
-time and audio are measured with meters on, using `poll.subscribe`, against kingsnake's report that they
-had to turn meters off. **Deps:** XC4.
+**XC4: ESP32 bridge suite.** Size 1. **[HW][OWNER][COORD]**: **is an ESP32 on hand and wired to a DSPi?** **Owns:** a report. **Implements:** all 9 items: idle, wrong PIN ×5, Wi-Fi pulls at 5, 20, 32, 60 s, all slots full, DHCP change, board off, GETs over 132 B, cut after `auth.pair`, Doze. **Done when:** each is pass or fail, with fixes filed. **Deps:** XC3, AN5 for phone cases.
+
+**XC5: Meters over a bridge.** Size 0.5. **[HW][OWNER][COORD]**. **Owns:** a report. **Done when:** CPU, frame time and audio are measured with meters on, using `poll.subscribe`, against kingsnake's report. **Deps:** XC4.
 
 ---
 
-## 6. Hardware and owner tasks
+## 6. Hardware and owner-only tasks
+
+**Only the owner:** contacts Weeb Labs; makes any repo public; uploads to a store; picks licences; types passwords. **No agent plans or performs these.** Agents prepare material when asked.
 
 **Rules for every hardware step:**
 - back up settings and flash before any flash;
 - **never a 1.15 V build on the K340**: it needs 1.20 V;
 - at most 80 % volume, and test audio only through the guarded player;
-- **the coordinator runs flashes.** Subagents have refused to flash on relayed approval, and
-  they are right to; they prepare, and the coordinator acts;
+- **the coordinator runs flashes.** Subagents have refused to flash on relayed approval, rightly; they prepare, the coordinator acts;
 - run `scripts/check_usb_config.py` on any firmware with a descriptor change;
-- the Mac VM needs a GUI login and an unlocked host;
-- no agent types a password.
+- the Mac VM needs a GUI login and an unlocked host.
 
 | Task | Needs | WPs |
 |---|---|---|
-| Phone adb port (changes each time) | Owner tells the port | AN13, AN15, AN16 |
-| Play upload, forms, closed-test updates | Owner | AN14–AN16 |
+| Phone adb port (changes each time) | Owner tells the port | AN13, AN15, AN16, AN20, AN22 |
+| Play upload, forms, closed-test updates | Owner | AN14–AN16, AN22 |
 | ESP32 bridge wired to a DSPi | Owner: is one available? | XC4, XC5 |
-| Real iPhone or iPad, signing team | Owner | IO16 |
-| Apple Developer ID, notarisation password | Owner | MC2 |
-| Apple silicon Mac | Owner: is one available? | MC3 |
-| `macr` restart, DSPi moved between VMs | Coordinator; owner agrees to the restart | XC1, QD25, QD26, IO5, IO6, IO15, HB7 |
-| Real flash on the K340 | Coordinator; backups first | QD24–QD26, TM13 |
-| Registered SysEx ID | Owner, $240 | Before any public MIDI release |
+| Real iPhone or iPad, signing team | Owner | SW16 |
+| Apple silicon Mac; Developer ID if distributing | Owner | SW-M5 |
+| `macr` restart, DSPi moved between VMs | Coordinator; owner agrees to the restart | XC1, QD25, SW5, SW6, SW15, HB7 |
+| Real flash on the K340 | Coordinator; backups first | QD24, QD25, TM13 |
+| Registered SysEx ID ($240) | Owner | Before any public MIDI release |
 
 ---
 
 ## 7. Waves and gates
 
-Every wave needs `core-merge` on `main`. Within a wave, no two WPs own the same file. A
-batch of 4–8 WPs goes to one Fable reviewer.
+Every wave needs `core-merge` on `main`. Within a wave no two WPs own the same file (section 1). A batch of 4–8 WPs goes to one Fable reviewer.
 
 | Wave | WPs (parallel) | Needs |
 |---|---|---|
-| 0 | XC1, XC2, XC3 | `main` |
-| 1 | CG1–CG9, HB0, WB0; QD0, QD1, QD2, QD4, QD5, QD6, QD7, QD20; TM1, TM2, TM4, TM7, TM8, TM10; AN1 | `main` |
-| 2 | HB1, HB2, HB3; QD3, QD8, QD11, QD12, QD15, QD17, QD18; TM3, TM5, TM9, TM12; AN2, AN3, AN6, AN8; IO1 | wave 1 |
-| 3 | HB4, HB5, HB6; QD9, QD10, QD13, QD16, QD19; TM6; AN4, AN5, AN7, AN17, AN18; IO2, IO3 | wave 2; HB0's design review |
-| 4 | HB7; QD14, QD21; TM11, TM13; AN9–AN12, AN13, AN14; IO4, IO17–IO21 | wave 3; IO3's review |
-| 5 | MC1, MC2, MC3; QD24–QD26; AN15, AN16, AN19, IO5, IO6, IO7, IO8 **(then OD3)**; XC4, XC5 | wave 4; XC1 |
-| 6 | IO9–IO14 | go at OD3 |
-| 7 | QD22 then QD23; AN20 and AN21; IO15, IO16, IO22; MC4 | everything else in that client |
+| 0 | XC0, XC1, XC2, XC3; MR1 (Android half); LC1; CG9 | `main`; XC1 the owner's go-ahead |
+| 1 | MR2; AN1; CG1–CG8, CG10; HB0; WB0; QD0, QD1, QD2, QD4, QD5; TM1, TM2, TM4, TM7, TM10, TM14 | wave 0 |
+| 2 | **HB1–HB3 after HB0's review**; MR1 (Swift half), SW1, SW2, SW-U1; QD3, QD6, QD7, QD8, QD11, QD12, QD18, QD27; TM3, TM5, TM8, TM9, TM12; AN2, AN3, AN6, AN8 | wave 1 |
+| 3 | HB5, HB6; SW3 then SW4; QD9, QD10, QD13, QD16, QD17, QD19; TM6; AN4, AN5, AN7, AN13, AN14, AN17, AN18, AN19 | wave 2; **M0 at its end** |
+| 4 | HB7; SW5, SW6, SW7, SW-M1, SW-M2, SW17–SW20; QD14, QD21; TM11, TM13; AN9–AN12, AN22 | wave 3 |
+| 5 | SW8 **(then OD3)**; QD24, QD25; AN15, AN16; XC4, XC5 | wave 4 |
+| 6 | SW9–SW14; SW-M3 after HB7 | go at OD3 |
+| 7 | QD22 then QD23; AN20, AN21; SW15, SW16, SW22, SW-M4, SW-M5; HO1 | everything else in that client |
 
 **Review gates:**
-1. **This plan** gets a Fable review before wave 0 (owner).
-2. **After each wave:** the full `ci/check.sh --all` on the merged result; each other repo's own
-   CI (`tools/ci.sh all`; `xcodebuild` iPhone and iPad test in the VM); a code-quality review; an
-   adversarial review, especially the owner's Link rule and "no write in read-only".
-3. **HB0** and **IO3** get a design review before work builds on them.
-4. **Before each release:**
+1. **This plan** gets a Fable review before wave 0.
+2. **After each wave:** the full `ci/check.sh --all`, MR2's matrix once it exists, a code-quality review, and an adversarial review, especially the owner's Link rule and "no write in read-only".
+3. **HB0** and **SW3** get a design review before work builds on them.
+4. **M0:** the owner reviews it. It does not block CG, HB or QD work in flight.
+5. **Before each release:**
 
 | Gate | Must pass | Then |
 |---|---|---|
-| **R-Qt** | Section 3's Qt column; QD24–26; no setter on read-only; Link rule on a real hub; OD4 images and the guard | Owner decides to publish |
+| **R-Qt** | Section 3's Qt column, QD24, QD25; no setter on read-only; Link rule on a real hub; OD4 images and CG8 | Owner decides to publish |
 | **R-Term** | TM13; TM10's round-trip with Qt's and Mac's documents | Owner decides |
-| **R-And** | AN13 on the phone, `tools/ci.sh release`; no secrets in logs; Data safety matches the app | Owner uploads each test update (AN14, AN15, AN16 separately) |
-| **R-iOS** | IO15, IO16; a registered SysEx ID; review video | Owner; store is later |
-| **R-Mac** | R-Qt, MC3, HB7, OD2 | MC4 |
+| **R-And** | AN13 on the phone; `tools/ci.sh release`; no secrets in logs; Data safety matches; source tarball (OD1) | Owner uploads each test update (AN14, AN22, AN15, AN16) |
+| **R-Mac** | SW-M1, SW-M2, SW-M4, SW-M5, SW8–SW14, HO1. **Does not wait for HB or SW-M3** | Owner; OD-DevID if distributing |
+| **R-iOS** | SW15, SW16, HO1, LC1's inventory current; registered SysEx ID; review video; **the owner has confirmed the licence terms** | **Weeb Labs submit it, on their account.** Agents do neither |
 | **R-Web** | Set by WB0 | |
 
 ---
 
 ## 8. Decisions
 
-### Decided by the owner (recorded, not open)
-- **Link hub on mobile:** no hub on iOS. No hub in Android's Play build. A sideload-only
-  Android build with a hub is a possible later item (section 9).
-- **Terminal** skips features that need a graphical UI (on-graph editing, onboarding) and covers
-  the non-graphical equivalents, JSON import and export included (TM10).
-- **Rust Link hub** is in scope for Qt.
-- **The macOS app is the feature floor** for all clients.
-- **No DriverKit;** firmware updates over USB from iOS stay impossible.
-- **Earlier owner decisions kept:** no separate Android Link patch; R8 and edge-to-edge go in
-  separate releases.
+### Recorded (owner's, not open)
+- **Purpose:** one project, built from one base, for every client.
+- **Frontends:** SwiftUI on macOS and iOS over the Rust core, UI only. Qt on Windows and Linux. (Old OD2 is closed.)
+- **Feature floor:** the macOS app, for all clients.
+- **Link hub on mobile:** none on iOS or in Android's Play build. A sideload Android hub build is a possible later item (section 9).
+- **Terminal:** skips graphical-only features; covers non-graphical equivalents, JSON import and export included.
+- **Rust Link hub:** in scope for Qt.
+- **No DriverKit;** no USB firmware update from iOS.
+- **Store (was OD-Store):** the owner keeps the Play listing and upload key, so `applicationId se.bofr.dspi_console_android` stays. The Apple side (App Store, team, bundle IDs, signing) goes through Weeb Labs' developer account.
+- **Licence direction (was the OD-Lic route):** dual-license only the parts needed for the App Store build, from Weeb Labs and from the owner, each with an iOS-friendly licence. The rest stays GPL. Exact terms: owner and Weeb Labs. LC1 supplies the inventory.
+- **Earlier decisions kept:** no separate Android Link patch; R8 and edge-to-edge in separate releases.
 
 ### For the owner
 
 | # | Decision | Recommendation |
 |---|---|---|
-| OD1 | `dspi-unified-console` is private, but the public Android repo and the public fork will build from it. Publish it before AN14? | **Yes, at the core merge.** Otherwise the public apps cannot be built from source, which GPL distribution needs. |
-| OD2 | **macOS Swift Console:** (A) retire our line for Qt on Mac, or (B) Swift on generated parts (5.4). This replaces the earlier "macOS stays" assumption. | **A.** Extra cost 1.75 against 3–4.5 after iOS, or 16.5+ before; it drops Mac-only Swift. It costs native feel. Needs a Developer ID and an Apple silicon run. Tell Weeb Labs; their app is unaffected. |
-| OD3 | iOS go/no-go after IO8: continue replacing domains (IO9–IO14, 9–15.5 more), or stop with the core under the transports only (IO4–IO7) | **Decide on IO8's evidence.** Stopping there is a usable result: one link code path, Swift model stays. |
-| OD4 | Which firmware do Qt and Android bundle: stock 1.1.6 from Weeb Labs' tag, or a bofr-main build? | **Stock, built from a tag,** while extensions wait on Weeb Labs. K340 owners use a local `.uf2` with CG8's guard. |
-| OD5 | Qt undo and redo: Windows C# has IO undo; the Mac has none. It is above the floor. | **No,** unless QD20 finds Windows users depend on it. Cost 1–2 if wanted; the Terminal's journal is a reference. |
-| OD6 | Localisation: no client has it, the Mac included. Which languages? | **Do the plumbing (QD23, AN21, IO22) with English plus Swedish.** Dropping these three saves about 4. |
-| OD7 | Core-voltage writes in GUIs: the Mac shows status only, and the Terminal CLI has set, trial and auto. | **Status only in GUIs.** A wrong value can hang a board. |
-| OD8 | Qt self-update: check-and-link, or in-place install, which needs a signing key and a feed? | **Check-and-link now.** In-place later, adding 1–2 per OS. |
-| OD9 | Register a SysEx ID ($240) to replace `0x7D`? | **Yes, before any public firmware or iOS release using MIDI.** `0x7D` is not allowed in public products. |
-| OD10 | Confirm **Windows C# is retired** (assumption from the audit). | **Yes, after QD20.** It is frozen at V26. Weeb Labs' choice for their own repo. |
-| OD11 | `dspi hub` on the Terminal (TM11) | **Yes,** 0.5: it costs little and gives a headless gateway. |
+| **OD-Lic** | **The exact iOS terms**, once LC1's inventory exists. The direction is decided (above). Yours and Weeb Labs'. | **Not legal advice.** Settle early, using LC1's list. Also ask Weeb Labs for a Console-Linux licence and which of their Mac app's `LICENSE` (GPL) and README (MIT) holds. Remove §7 terms on what Weeb Labs would own. |
+| **OD-Repo** | `apps/android` and `apps/apple` in the monorepo with history. This changes the letter of "a separate branch of the Console fork". | **Monorepo.** The `-116` branches stay in the fork as the upstream mirror; public `dspi-android` stays as pointer or mirror. |
+| **OD-WL** | Propose the core-based frontend to Weeb Labs, and when. | **At M0**, with its matrix and parity table; SW8's evidence if you want the Swift case stronger. Yours to do. |
+| **OD-Hub** | Rust hub on the Mac too, and when the Swift hub goes. | **Yes, after HB7 (SW-M3).** R-Mac does not wait for it; the Swift hub stays as the harness until then. |
+| **OD-DevID** | Apple Developer ID ($99/yr). | **Only if we distribute a Mac binary.** Otherwise Weeb Labs sign theirs. |
+| **OD-Floor-disabled** | Do features switched off in the Mac's shipped build count as floor? Coach marks and hints are off (`OnboardingCoordinator.swift:35`). | **No.** Saves QD15, SW21 and part of AN19 (3 days). Revisit if Weeb Labs turn them on. |
+| OD1 | Repo visibility. | **Stays private until you say otherwise.** Closed-test testers get binaries, so source must reach them: a tarball on each release satisfies the GPL. Publication is not forced. |
+| OD3 | Swift go/no-go after SW8: continue (SW9–SW14, 9–15.5 more), or stop with the core under the transports (SW4–SW7) | **Decide on SW8's evidence.** Note that stopping leaves the Swift model in place, short of "UI only". |
+| OD4 | Bundled firmware for Qt, Android, Mac: stock 1.1.6 from Weeb Labs' tag, or a bofr-main build? | **Stock, built from a tag,** while extensions wait on Weeb Labs. K340 owners use a local `.uf2`, under CG8. |
+| OD5 | Qt undo and redo: Windows C# has IO undo; the Mac has none. | **No,** unless `docs/PARITY.md` shows Windows users depend on it. Cost 1–2. |
+| OD6 | Localisation: no client has it, the Mac included. | **Plumbing with English plus Swedish** (QD23, AN21, part of SW22). Dropping saves about 4. |
+| OD7 | Core-voltage writes in GUIs: Mac status only; Terminal CLI has all. | **Status only in GUIs.** A wrong value can hang a board. |
+| OD8 | Qt self-update: check-and-link, or in-place install, which needs a signing key and feed? | **Check-and-link, opt-in, now.** In-place later: 1–2 per OS. |
+| OD9 | Register a SysEx ID ($240) to replace `0x7D`? | **Yes, before any public release using MIDI.** |
+| OD10 | Confirm **Windows C# is retired.** | **Yes, after `docs/PARITY.md`'s rows are settled.** It is frozen at V26. Weeb Labs' choice for their own repo. |
+| OD11 | `dspi hub` on the Terminal (TM11). | **Yes,** 0.5: a headless gateway. |
 
 ---
 
 ## 9. Unknowns and later work
 
-**Unknowns, with what pins them down:**
-
 | Item | Rough size | Pinned by |
 |---|---|---|
-| iOS screen replacement (IO8–IO14) | 12–20.5, could be 30 | IO3 (map), IO8 (hardest part first). Mirror and thread problems could change the approach |
-| Android control-surface editor (AN9–AN12) | 5.5–9.5 | AN8. Phone layout for a 5 k-line desktop tab is a UX question; IR and display parts need hardware. `FakeDevice`'s CS support looks minimal, so allow about 0.5 more |
+| Swift domain replacement (SW8–SW14) | 12–20.5, could be 30 | SW3 (map), SW8 (hardest part first). Mirror and thread problems could change the approach |
+| Android control-surface editor (AN9–AN12) | 5.5–9.5 | AN8. Phone layout for a 5 k-line desktop tab; IR and display need hardware; `FakeDevice` work may add 0.5 |
 | Web build | 3–70 by route | WB0 |
 | Rust hub (HB) | 12, could be 18 | HB0. Multi-device ownership in the core is the risk |
 | nusb `from_fd` on Android | 0–2 | AN13: first run on a phone. No rusb fallback remains |
+| Licence terms | 0 to rewriting a part | LC1. A contributor who cannot be reached, or an incompatible third-party part, would mean replacing that part in the iOS build |
+| Upstream Swift merges | 0.5–1 each, recurring | SW-U1's dry run |
 | Accessibility work | ±50 % | The first screen of each |
 | Real ESP32 behaviour | unknown | XC4. Fixes file into `dspi-link` as new WPs |
-| Qt native feel on Mac | not sizable | Owner's judgement at R-Mac |
 
 **Not in any wave:**
-- **Android sideload build with a hub**, for a custom player: size 3–5. A UniFFI wrapper for
-  `dspi-hub`, NSD registration, a foreground-service hub, settings; separate application id and
-  no Play distribution. Needs nothing new now: HB has no OS code.
-- Hub with TLS: 2–4. No hub has it; would also open browser access from `https://`.
-- Firmware install on iOS through a hub (M14): 0.5–1, after HB4.
+- **Android sideload build with a hub**, for a custom player: 3–5. A UniFFI wrapper for `dspi-hub` (shared with SW-M3), NSD registration, a foreground-service hub, settings; its own application id; no Play distribution. Nothing is needed now.
+- **`fw.install` in hub and client:** 1–2. No hub implements it. Would give iOS its only firmware route.
+- Hub with TLS: 2–4. No hub has it; would also allow browser access from `https://`.
 - Android `MediaSession` and volume keys (optional in the audit): 1.
 - `P2` in `PLAN.md` (shared protocol tables).
-- App Store and code-signing work beyond MC2.
-- For the owner to raise with Weeb Labs, not from here: H1–H4 in `LINK-HUB-FINDINGS.md`, the
-  `0x00` entry in `policy/commands.json`.
+- App Store and code-signing work beyond the WPs above.
+- For the owner to raise with Weeb Labs, not from here: H1–H4 in `LINK-HUB-FINDINGS.md`, the `0x00` entry in `policy/commands.json`.
