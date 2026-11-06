@@ -1,5 +1,6 @@
 import QtQuick 2.15
 import "../"
+import "../../components"
 
 // Graph preferences live on the main window (and persist there).
 SettingsPage {
@@ -51,7 +52,8 @@ SettingsPage {
 
     SettingsSection {
         title: "Editing"
-        footnote: "Drag a band's dot to change it; Shift for fine steps, Alt to keep to one axis, Ctrl-drag or the wheel for its width. Double-click empty graph to add a band."
+        footnote: "Drag a band's dot to change it; Shift for fine steps, " + (isMacOS ? "Option" : "Alt") + " to keep to one axis, "
+                  + MenuStyle.ctrlName + "-drag or the wheel for its width. Double-click empty graph to add a band."
         SettingsSwitchRow {
             title: "Show Frequency Readout"
             detail: "While editing bands, label the frequency under the pointer along the bottom of the graph."

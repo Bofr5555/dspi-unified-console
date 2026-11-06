@@ -61,10 +61,10 @@ AppWindow {
             ToolButton {
                 text: monitor.paused ? "Resume" : "Pause"
                 icon: monitor.paused ? "play" : "pause"
-                tip: (monitor.paused ? "Show new events again" : "Stop showing new events (they are not kept)") + "  (Ctrl+P)"
+                tip: (monitor.paused ? "Show new events again" : "Stop showing new events (they are not kept)") + "  (" + MenuStyle.shortcutLabel("Ctrl+P") + ")"
                 onClicked: monitor.paused = !monitor.paused
             }
-            ToolButton { text: "Clear"; tip: "Empty the log  (Ctrl+K)"; onClicked: monitor.clear() }
+            ToolButton { text: "Clear"; tip: "Empty the log  (" + MenuStyle.shortcutLabel("Ctrl+K") + ")"; onClicked: monitor.clear() }
             ToolButton { text: "Copy"; tip: "Copy every line to the clipboard"; onClicked: { clip.text = monitor.allText(); clip.selectAll(); clip.copy() } }
             Item { Layout.fillWidth: true }
             Row {

@@ -346,7 +346,7 @@ Popup {
                 anchors.right: parent.right
                 anchors.rightMargin: MenuStyle.sideInset
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Ctrl+,"
+                text: MenuStyle.shortcutLabel("Ctrl+,")
                 font.pixelSize: MenuStyle.smallFontSize
                 color: isMacOS ? (settingsRow.hot ? "white" : MenuStyle.dimText) : settingsRow.hot ? Qt.rgba(1, 1, 1, 0.8) : MenuStyle.dimText
             }

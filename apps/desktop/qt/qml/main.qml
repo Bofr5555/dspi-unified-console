@@ -289,74 +289,74 @@ ApplicationWindow {
         function onStatusChanged() { if (!bridge.connected && root.selection !== "overview") root.selectOverview() }
     }
 
-    // Native menu bar: macOS only (Linux uses the titlebar menu and the
-    // Shortcuts below, which would clash with a second set)
+    // Native menu bar (macOS), built from the titlebar menu's groups
+    // (AppMenu.groups) so the two can't drift apart, with the same enabled
+    // rules and actions (Commit and Factory Reset ask first). Qt moves
+    // Settings (Cmd+,) into the application menu and adds Quit (Cmd+Q) there.
+    // Linux and Windows use the titlebar menu and the Shortcuts further down.
     Loader {
         active: isMacOS
         sourceComponent: Component {
             Platform.MenuBar {
-            Platform.Menu {
-                title: "File"
-                Platform.MenuItem {
-                    text: "Commit Parameters..."
-                    shortcut: StandardKey.Save
-                    onTriggered: {
-                        var status = bridge.saveParams()
-                        if (status !== 0) {
-                            console.warn("Save params failed:", status)
+                id: menuBar
+
+                property Component groupMenu: Component {
+                    Platform.Menu {
+                        id: gm
+                        title: modelData.text
+                        property var rows: modelData.items
+                        property Instantiator entries: Instantiator {
+                            model: gm.rows
+                            delegate: Platform.MenuItem {
+                                readonly property var row: modelData
+                                separator: row.sep === true
+                                text: row.sep ? "" : row.text
+                                shortcut: row.shortcut || ""
+                                enabled: appMenu.rowEnabled(row)
+                                onTriggered: appMenu.activateItem(row)
+                            }
+                            onObjectAdded: function(index, object) { gm.insertItem(index, object) }
+                            onObjectRemoved: function(index, object) { gm.removeItem(object) }
                         }
                     }
                 }
-                Platform.MenuItem {
-                    text: "Revert to Saved..."
-                    onTriggered: {
-                        var status = bridge.loadParams()
-                        if (status !== 0) {
-                            console.warn("Load params failed:", status)
-                        }
+
+                // Device, File, AutoEQ, Effects, Tools: inserted before Window
+                property Instantiator groups: Instantiator {
+                    model: appMenu.groups.slice(0, appMenu.groups.length - 1)
+                    delegate: menuBar.groupMenu
+                    onObjectAdded: function(index, object) { menuBar.insertMenu(index, object) }
+                    onObjectRemoved: function(index, object) { menuBar.removeMenu(object) }
+                }
+
+                Platform.Menu {
+                    title: "Window"
+                    Platform.MenuItem {
+                        text: "Minimize"
+                        shortcut: "Ctrl+M"
+                        onTriggered: root.showMinimized()
+                    }
+                    Platform.MenuItem {
+                        text: "Zoom"
+                        onTriggered: root.visibility === Window.Maximized ? root.showNormal() : root.showMaximized()
+                    }
+                    Platform.MenuSeparator {}
+                    Platform.MenuItem {
+                        text: appMenu.settingsItem.text + "\u2026"
+                        role: Platform.MenuItem.PreferencesRole
+                        shortcut: appMenu.settingsItem.shortcut
+                        onTriggered: appMenu.activateItem(appMenu.settingsItem)
                     }
                 }
-                Platform.MenuSeparator {}
-                Platform.MenuItem {
-                    text: "Factory Reset..."
-                    onTriggered: {
-                        var status = bridge.factoryReset()
-                        if (status !== 0) {
-                            console.warn("Factory reset failed:", status)
-                        }
-                    }
+
+                // Help last, as in every Mac app
+                property Instantiator help: Instantiator {
+                    model: appMenu.groups.slice(appMenu.groups.length - 1)
+                    delegate: menuBar.groupMenu
+                    onObjectAdded: function(index, object) { menuBar.addMenu(object) }
+                    onObjectRemoved: function(index, object) { menuBar.removeMenu(object) }
                 }
             }
-            Platform.Menu {
-                title: "Tools"
-                Platform.MenuItem {
-                    text: "Matrix Mixer..."
-                    shortcut: "Ctrl+Shift+M"
-                    onTriggered: matrixWindow.visible = true
-                }
-                Platform.MenuItem {
-                    text: "Loudness Compensation..."
-                    shortcut: "Ctrl+Shift+L"
-                    onTriggered: loudnessWindow.visible = true
-                }
-                Platform.MenuItem {
-                    text: "Headphone Crossfeed..."
-                    shortcut: "Ctrl+Shift+X"
-                    onTriggered: crossfeedWindow.visible = true
-                }
-                Platform.MenuItem {
-                    text: "Stats..."
-                    shortcut: "Ctrl+Shift+T"
-                    onTriggered: statsWindow.visible = true
-                }
-                Platform.MenuSeparator {}
-                Platform.MenuItem {
-                    text: "Settings..."
-                    shortcut: "Ctrl+,"
-                    onTriggered: settingsWindow.visible = true
-                }
-            }
-        }
         }
     }
 
@@ -1038,29 +1038,30 @@ ApplicationWindow {
         }
     }
 
-    // Shortcuts (Linux has no native menu bar to carry them); like the
+    // Shortcuts (Linux and Windows have no native menu bar to carry them;
+    // on macOS the menu bar carries them, so these are off there); like the
     // menu, off while the Getting Started wizard has the window. Those that
     // open a window work from any window, as menu shortcuts do on macOS (so
     // Ctrl+Shift+M also closes the Matrix from its own window); the rest act
     // on the main window and stay with it
-    Shortcut { sequences: [StandardKey.Quit]; context: Qt.ApplicationShortcut; onActivated: root.close() }
-    Shortcut { sequence: "Ctrl+S"; enabled: !root.showWizard && bridge.connected; onActivated: commitDialog.open() }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+M"; enabled: !root.showWizard; onActivated: matrixWindow.visible = !matrixWindow.visible }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+L"; enabled: !root.showWizard; onActivated: root.openToolWindow("loudness") }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+X"; enabled: !root.showWizard; onActivated: root.openToolWindow("crossfeed") }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+V"; enabled: !root.showWizard; onActivated: root.openToolWindow("leveller") }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+P"; enabled: !root.showWizard; onActivated: root.openToolWindow("psybass") }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+S"; enabled: !root.showWizard; onActivated: root.openToolWindow("subharm") }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+D"; enabled: !root.showWizard; onActivated: root.openToolWindow("tube") }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+U"; enabled: !root.showWizard; onActivated: root.openToolWindow("upmix") }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+T"; enabled: !root.showWizard; onActivated: root.openToolWindow("stats") }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+A"; enabled: !root.showWizard; onActivated: root.openToolWindow("spectrum") }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+G"; enabled: !root.showWizard; onActivated: root.openToolWindow("siggen") }
-    Shortcut { sequence: "Ctrl+I"; enabled: !root.showWizard && bridge.connected && !root.textFocused; onActivated: root.fileAction("importFilters") }
-    Shortcut { sequence: "Ctrl+E"; enabled: !root.showWizard && bridge.connected && !root.textFocused; onActivated: root.fileAction("exportFilters") }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+I"; enabled: !root.showWizard; onActivated: root.openToolWindow("monitor") }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+,"; onActivated: root.openToolWindow("settings") }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+B"; enabled: !root.showWizard; onActivated: root.openToolWindow("autoeq") }
+    Shortcut { enabled: !isMacOS; sequences: [StandardKey.Quit]; context: Qt.ApplicationShortcut; onActivated: root.close() }
+    Shortcut { sequence: "Ctrl+S"; enabled: !isMacOS && !root.showWizard && bridge.connected; onActivated: commitDialog.open() }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+M"; enabled: !isMacOS && !root.showWizard; onActivated: matrixWindow.visible = !matrixWindow.visible }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+L"; enabled: !isMacOS && !root.showWizard; onActivated: root.openToolWindow("loudness") }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+X"; enabled: !isMacOS && !root.showWizard; onActivated: root.openToolWindow("crossfeed") }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+V"; enabled: !isMacOS && !root.showWizard; onActivated: root.openToolWindow("leveller") }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+P"; enabled: !isMacOS && !root.showWizard; onActivated: root.openToolWindow("psybass") }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+S"; enabled: !isMacOS && !root.showWizard; onActivated: root.openToolWindow("subharm") }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+D"; enabled: !isMacOS && !root.showWizard; onActivated: root.openToolWindow("tube") }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+U"; enabled: !isMacOS && !root.showWizard; onActivated: root.openToolWindow("upmix") }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+T"; enabled: !isMacOS && !root.showWizard; onActivated: root.openToolWindow("stats") }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+A"; enabled: !isMacOS && !root.showWizard; onActivated: root.openToolWindow("spectrum") }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+G"; enabled: !isMacOS && !root.showWizard; onActivated: root.openToolWindow("siggen") }
+    Shortcut { sequence: "Ctrl+I"; enabled: !isMacOS && !root.showWizard && bridge.connected && !root.textFocused; onActivated: root.fileAction("importFilters") }
+    Shortcut { sequence: "Ctrl+E"; enabled: !isMacOS && !root.showWizard && bridge.connected && !root.textFocused; onActivated: root.fileAction("exportFilters") }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+I"; enabled: !isMacOS && !root.showWizard; onActivated: root.openToolWindow("monitor") }
+    Shortcut { enabled: !isMacOS; context: Qt.ApplicationShortcut; sequence: "Ctrl+,"; onActivated: root.openToolWindow("settings") }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+B"; enabled: !isMacOS && !root.showWizard; onActivated: root.openToolWindow("autoeq") }
     StatsWindow { id: statsWindow }
     SpectrumAnalyserWindow { id: spectrumWindow; app: root }
     GraphWindow { id: graphWindow }

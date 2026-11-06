@@ -39,7 +39,8 @@ Popup {
         text: {
             var t = ""
             for (var i = 0; i < menu.items.length; i++)
-                if (menu.items[i].shortcut && menu.items[i].shortcut.length > t.length) t = menu.items[i].shortcut
+                if (menu.items[i].shortcut && MenuStyle.shortcutLabel(menu.items[i].shortcut).length > t.length)
+                    t = MenuStyle.shortcutLabel(menu.items[i].shortcut)
             return t
         }
     }
@@ -179,7 +180,7 @@ Popup {
                 anchors.right: parent.right
                 anchors.rightMargin: MenuStyle.sideInset
                 anchors.verticalCenter: parent.verticalCenter
-                text: entry.shortcut || ""
+                text: MenuStyle.shortcutLabel(entry.shortcut)
                 font.pixelSize: MenuStyle.smallFontSize
                 color: isMacOS ? (row.hot ? "white" : MenuStyle.dimText) : row.hot ? Qt.rgba(1, 1, 1, 0.8) : MenuStyle.dimText
             }
