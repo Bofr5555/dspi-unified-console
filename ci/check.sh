@@ -10,7 +10,7 @@
 #       fmt clippy test               the three gates, whole workspace
 #       windows-gnu                   cargo build --workspace, x86_64-pc-windows-gnu
 #       windows-msvc                  cargo xwin build of dspi-core, dspi-capi, dspi-term
-#       android                       cargo ndk build of dspi-core (arm64, armv7, x86_64)
+#       android                       cargo ndk build of dspi-core and dspi-ffi (arm64, armv7, x86_64)
 #       wasm                          dspi-proto for wasm32-unknown-unknown
 #       qt                            the Qt 6 desktop app against the old core
 #                                     (crates/dspi-core-linux), until WP Q3
@@ -67,7 +67,7 @@ for s in "${steps[@]}"; do
     windows-msvc)
       DSPI_PROFILE=cross $RUN "cargo xwin build -p dspi-core -p dspi-capi -p dspi-term --features dspi-core/link,dspi-core/midir --target x86_64-pc-windows-msvc" ;;
     android)
-      DSPI_PROFILE=cross $RUN "cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 --platform 26 build -p dspi-core --features link" ;;
+      DSPI_PROFILE=cross $RUN "cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 --platform 26 build -p dspi-core --features link && cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 --platform 26 build -p dspi-ffi" ;;
     wasm) DSPI_PROFILE=cross $RUN "cargo build -p dspi-proto --target wasm32-unknown-unknown" ;;
     qt)
       # The old core, until WP Q3 removes it.
