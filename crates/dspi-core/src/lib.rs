@@ -34,9 +34,6 @@
 //! No method may panic on device, network or caller data. The C ABI and the
 //! bindings also catch unwinding at the boundary, but that is the last line,
 //! not the policy.
-//!
-//! The skeleton methods marked `todo!("WP ..")` are filled in by the work
-//! packages listed in `docs/core-merge/PLAN.md`.
 
 // The core-merge quality bar (docs/core-merge/PLAN.md §1.7, §1.8): no
 // panicking shortcuts on outside data. clippy.toml exempts test code from the

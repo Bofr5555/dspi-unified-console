@@ -38,7 +38,7 @@ while [ $# -gt 0 ]; do
     --crate) crates+=("$2"); shift 2 ;;
     --step) steps+=("$2"); shift 2 ;;
     --all) steps=(fmt clippy test windows-gnu windows-msvc android wasm qt qt5 qt-offscreen qt5-offscreen qt-windows proptest); shift ;;
-    -h|--help) sed -n "2,27p" "$0"; exit 0 ;;
+    -h|--help) sed -n "2,30p" "$0"; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
   esac
 done
