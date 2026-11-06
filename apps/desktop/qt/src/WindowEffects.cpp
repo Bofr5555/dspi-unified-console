@@ -9,6 +9,11 @@
 #include <QVariant>
 #include <memory>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <dwmapi.h>
+#endif
+
 #ifdef HAS_KDE_BLUR
 #include <KWindowEffects>
 #include <KWindowShadow>
@@ -42,6 +47,21 @@ void WindowEffects::decorate(QWindow *window, int blurWidth, bool shadow)
         });
     }
     if (shadow) attachShadow(window);
+#elif defined(Q_OS_WIN)
+    // Windows 11 rounds the corners of a frameless window only when asked
+    // (Windows 10 ignores the attribute). The native window is created anew
+    // when it is shown again, so this is repeated on every show.
+    Q_UNUSED(blurWidth);
+    Q_UNUSED(shadow);
+    auto round = [](QWindow *w) {
+        const DWORD kCornerPreference = 33;   // DWMWA_WINDOW_CORNER_PREFERENCE
+        const int kRound = 2;                 // DWMWCP_ROUND
+        DwmSetWindowAttribute(reinterpret_cast<HWND>(w->winId()), kCornerPreference, &kRound, sizeof kRound);
+    };
+    if (window->handle()) round(window);
+    connect(window, &QWindow::visibleChanged, this, [window, round](bool visible) {
+        if (visible) round(window);
+    });
 #else
     Q_UNUSED(blurWidth);
     Q_UNUSED(shadow);

@@ -44,7 +44,7 @@ ApplicationWindow {
     }
 
     // Platform-aware monospace font
-    readonly property string monoFont: isMacOS ? "Menlo" : "monospace"
+    readonly property string monoFont: isMacOS ? "Menlo" : isWindows ? "Consolas" : "monospace"
 
     // Graph settings (shared between SettingsWindow and BodePlotItem)
     property bool graphShowGlow: false
@@ -796,10 +796,18 @@ ApplicationWindow {
         id: udevDialog
         icon: "plug"
         iconTint: "#ff9f0a"
-        title: "DSPi Needs Permission"
-        message: "A DSPi is connected, but Linux only lets programs open it once a udev rule allows it. "
-                 + "Install the rule now? You'll be asked for your password."
-        buttons: [{ key: "cancel", text: "Not Now" }, { key: "install", text: "Install Rule", role: "primary" }]
+        title: isLinux ? "DSPi Needs Permission" : "DSPi Can't Be Opened"
+        message: isLinux
+                 ? "A DSPi is connected, but Linux only lets programs open it once a udev rule allows it. "
+                   + "Install the rule now? You'll be asked for your password."
+                 : isWindows
+                   ? "A DSPi is connected, but it couldn't be opened. Close any other program using it "
+                     + "(another DSPi Console, or a terminal client), then unplug it and plug it in again. "
+                     + "Very old firmware without WinUSB descriptors needs the WinUSB driver installed once with Zadig."
+                   : "A DSPi is connected, but it couldn't be opened. Close any other program using it, "
+                     + "then unplug it and plug it in again."
+        buttons: isLinux ? [{ key: "cancel", text: "Not Now" }, { key: "install", text: "Install Rule", role: "primary" }]
+                         : [{ key: "cancel", text: "OK", role: "primary" }]
         onChosen: if (key === "install") bridge.installUdevRule()
     }
     AppDialog {

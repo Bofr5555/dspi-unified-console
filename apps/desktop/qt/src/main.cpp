@@ -128,7 +128,7 @@ static void setupPlatformEffects(QQuickWindow *qw)
 #endif
 }
 
-#ifndef Q_OS_MACOS
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_WIN)
 // Qt 5's Wayland client takes the cursor theme and size only from
 // XCURSOR_THEME / XCURSOR_SIZE ("default" at 24 or 32 px without them), and
 // Plasma and GNOME on Wayland don't export them. It reads them when it first
@@ -219,6 +219,10 @@ int main(int argc, char *argv[])
 #endif
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);   // always on in Qt 6
+#ifdef Q_OS_WIN
+    // Windows' 125 % and 150 % scales as they are, as Qt 6 does by default
+    QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
+#endif
 #endif
 #ifdef HAS_KDE_BLUR
     // Windows need an alpha channel from creation for the blurred sidebar to
@@ -229,7 +233,7 @@ int main(int argc, char *argv[])
     QSurfaceFormat::setDefaultFormat(format);
 #endif
     QApplication app(argc, argv);
-#ifndef Q_OS_MACOS
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_WIN)
     adoptDesktopCursor();   // before any window shows a cursor
 #endif
     app.installEventFilter(new TextFocusReleaser(&app));
@@ -242,6 +246,12 @@ int main(int argc, char *argv[])
     app.setApplicationName("DSPi Console");
     app.setOrganizationName("DSPi");
     app.setApplicationVersion("1.1.6-beta4");   // firmware release this Console targets
+#ifdef Q_OS_WIN
+    // Settings in an INI file in the user's roaming AppData
+    // (%APPDATA%\DSPi\DSPi Console.ini) rather than the registry: per user,
+    // easy to back up or reset, and the same format as on Linux
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+#endif
 #ifndef Q_OS_MACOS
     // The Wayland app id, matched to dspi-console.desktop for the taskbar icon
     app.setDesktopFileName(QStringLiteral("dspi-console"));
@@ -361,6 +371,13 @@ int main(int argc, char *argv[])
     // with every weight.
     const bool sfPro = QFontDatabase().families().contains(QStringLiteral("SF Pro"));
     QFont defaultFont(sfPro ? QStringLiteral("SF Pro") : QStringLiteral(".AppleSystemUIFont"), 13);
+#elif defined(Q_OS_WIN)
+    // The Windows UI font; Noto Sans if it is missing (Wine)
+    QFont defaultFont(QStringLiteral("Segoe UI"), 13);
+    defaultFont.setStyleHint(QFont::SansSerif);
+#if QT_VERSION >= QT_VERSION_CHECK(5, 13, 0)
+    defaultFont.setFamilies({ QStringLiteral("Segoe UI"), QStringLiteral("Noto Sans"), QStringLiteral("DejaVu Sans") });
+#endif
 #else
     QFont defaultFont("Noto Sans", 13);
     // Fallback chain: Noto Sans → Segoe UI → system default
@@ -372,9 +389,13 @@ int main(int argc, char *argv[])
     app.setFont(defaultFont);
 
     // Expose platform info to QML for conditional font selection
-    bool isMacOS = false;
-#ifdef Q_OS_MACOS
+    bool isMacOS = false, isWindows = false, isLinux = false;
+#if defined(Q_OS_MACOS)
     isMacOS = true;
+#elif defined(Q_OS_WIN)
+    isWindows = true;
+#elif defined(Q_OS_LINUX)
+    isLinux = true;
 #endif
 
     // Register QML types
@@ -417,6 +438,9 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("monitor", &monitor);
     engine.rootContext()->setContextProperty("configFiles", &configFiles);
     engine.rootContext()->setContextProperty("isMacOS", isMacOS);
+    // Windows: caption buttons in the Windows layout. Linux: udev permission help.
+    engine.rootContext()->setContextProperty("isWindows", isWindows);
+    engine.rootContext()->setContextProperty("isLinux", isLinux);
 #ifdef Q_OS_MACOS
     // The native Console's colours, read by the MacColors singleton
     engine.rootContext()->setContextProperty("macSystemColors", macSystemColors());

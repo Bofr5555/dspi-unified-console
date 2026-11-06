@@ -35,6 +35,14 @@ else()
     set(DSPI_CORE_LIBDIR "${DSPI_CARGO_TARGET_DIR}/release")
 endif()
 
+# The version the app reports, e.g. 1.1.6-beta4
+file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp _ver REGEX "setApplicationVersion\\(\"[^\"]+\"\\)")
+string(REGEX REPLACE ".*setApplicationVersion\\(\"([^\"]+)\"\\).*" "\\1" DSPI_VERSION "${_ver}")
+string(REGEX MATCH "^([0-9]+)\\.([0-9]+)\\.([0-9]+)" _ "${DSPI_VERSION}")
+set(DSPI_VER_MAJOR ${CMAKE_MATCH_1})
+set(DSPI_VER_MINOR ${CMAKE_MATCH_2})
+set(DSPI_VER_PATCH ${CMAKE_MATCH_3})
+
 add_executable(DSPiConsole
     src/main.cpp
     src/DSPiBridge.cpp
@@ -65,11 +73,21 @@ target_link_libraries(DSPiConsole PRIVATE
 )
 
 if(WIN32)
+    # A GUI app (no console window), with an icon and version information
+    set(DSPI_WIN_DIR ${CMAKE_SOURCE_DIR}/../packaging/windows)
+    configure_file(${DSPI_WIN_DIR}/dspi-console.rc.in ${CMAKE_CURRENT_BINARY_DIR}/dspi-console.rc @ONLY)
+    target_sources(DSPiConsole PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/dspi-console.rc)
+    set_target_properties(DSPiConsole PROPERTIES WIN32_EXECUTABLE ON)
+    # Windows 11 rounded corners for the frameless windows (WindowEffects)
+    target_link_libraries(DSPiConsole PRIVATE dwmapi)
+
     # Windows: the core is a DLL (dspi_core.dll) next to the exe, linked
     # through cargo's import library
-    find_library(DSPI_CORE_LIB NAMES dspi_core.dll.lib dspi_core.dll.a libdspi_core.dll.a dspi_core
-        PATHS ${DSPI_CORE_LIBDIR} NO_DEFAULT_PATH REQUIRED)
-    target_link_libraries(DSPiConsole PRIVATE ${DSPI_CORE_LIB})
+    if(MSVC)
+        target_link_libraries(DSPiConsole PRIVATE ${DSPI_CORE_LIBDIR}/dspi_core.dll.lib)
+    else()
+        target_link_libraries(DSPiConsole PRIVATE ${DSPI_CORE_LIBDIR}/libdspi_core.dll.a)
+    endif()
     add_custom_command(TARGET DSPiConsole POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different ${DSPI_CORE_LIBDIR}/dspi_core.dll $<TARGET_FILE_DIR:DSPiConsole>)
 else()
@@ -118,9 +136,6 @@ endif()
 # `cmake --install` lays out a system install; `cpack -G DEB` / `cpack -G RPM`
 # build the packages (packaging/linux/build-release.sh runs them).
 if(UNIX AND NOT APPLE)
-    # The version the app reports, e.g. 1.1.6-beta4
-    file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp _ver REGEX "setApplicationVersion\\(\"[^\"]+\"\\)")
-    string(REGEX REPLACE ".*setApplicationVersion\\(\"([^\"]+)\"\\).*" "\\1" DSPI_VERSION "${_ver}")
     # Packages sort a pre-release before its release with ~: 1.1.6~beta4 < 1.1.6
     string(REPLACE "-" "~" DSPI_PKG_VERSION "${DSPI_VERSION}")
 

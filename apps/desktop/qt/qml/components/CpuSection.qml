@@ -111,7 +111,7 @@ Item {
         ToolTip.text: cpuRoot.connected
                       ? "Connected · Serial " + bridge.selectedSerial
                         + (bridge.availableSerials.length > 1 ? "\nClick to switch device. Right-click to reconnect." : "\nRight-click to reconnect.")
-                      : cpuRoot.noAccess ? "A DSPi is connected, but this app isn't allowed to open it.\nClick to install its udev rule."
+                      : cpuRoot.noAccess ? ("A DSPi is connected, but this app isn't allowed to open it.\n" + (isLinux ? "Click to install its udev rule." : "Click for help."))
                       : (bridge.connectionError || "Not connected. Right-click the device name to retry.")
     }
 

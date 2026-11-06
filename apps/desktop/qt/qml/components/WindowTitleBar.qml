@@ -2,9 +2,10 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Window 2.15
 
-// Client-side titlebar (Linux): menu button over the sidebar, centred title,
-// minimise / maximise / close. Moving and resizing go through the window
-// manager (startSystemMove / startSystemResize), so snapping still works.
+// Client-side titlebar (Linux, Windows): menu button over the sidebar, centred
+// title, minimise / maximise / close (in the Windows layout on Windows).
+// Moving and resizing go through the window manager (startSystemMove /
+// startSystemResize), so snapping still works.
 Item {
     id: bar
     property var window
@@ -99,6 +100,7 @@ Item {
     }
 
     Row {
+        visible: !isWindows
         anchors.right: parent.right
         anchors.rightMargin: 8
         anchors.verticalCenter: parent.verticalCenter
@@ -106,5 +108,40 @@ Item {
         BarButton { visible: bar.showMinMax; icon: "win-min"; onClicked: bar.window.showMinimized() }
         BarButton { visible: bar.showMinMax; icon: bar.maximized ? "win-restore" : "win-max"; onClicked: bar.toggleMaximized() }
         BarButton { icon: "win-close"; danger: true; onClicked: bar.window.close() }
+    }
+
+    // Windows: caption buttons as Windows draws them, 46 px wide, the full
+    // height of the bar, flush with the window's corner; close turns red
+    component CaptionButton: Rectangle {
+        id: cb
+        property string icon: ""
+        property bool danger: false
+        signal clicked()
+        width: 46
+        height: bar.height
+        color: cbMouse.pressed ? (danger ? "#94141e" : Qt.rgba(1, 1, 1, 0.12))
+             : cbMouse.containsMouse ? (danger ? "#c42b1c" : Qt.rgba(1, 1, 1, 0.08)) : "transparent"
+        Icon {
+            anchors.centerIn: parent
+            name: cb.icon
+            size: 14
+            color: cbMouse.containsMouse && cb.danger ? "white"
+                 : bar.window && bar.window.active ? Qt.rgba(1, 1, 1, 0.9) : Qt.rgba(1, 1, 1, 0.45)
+        }
+        MouseArea {
+            id: cbMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            onClicked: cb.clicked()
+        }
+    }
+
+    Row {
+        visible: isWindows
+        anchors.right: parent.right
+        anchors.top: parent.top
+        CaptionButton { visible: bar.showMinMax; icon: "win-min"; onClicked: bar.window.showMinimized() }
+        CaptionButton { visible: bar.showMinMax; icon: bar.maximized ? "win-restore" : "win-max"; onClicked: bar.toggleMaximized() }
+        CaptionButton { icon: "win-close"; danger: true; onClicked: bar.window.close() }
     }
 }

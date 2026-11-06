@@ -1035,8 +1035,13 @@ void DSPiBridge::installUdevRule() {
 void DSPiBridge::selectDevice(const QString &serial) {
     QByteArray utf8 = serial.toUtf8();
     if (!dspi_select_device(m_core, utf8.constData())) {
+#ifdef Q_OS_LINUX
         m_connectionError = QString("Could not open DSPi %1. Check that its udev rule is installed and that no other "
                                     "program is using it. Right-click the device name to retry.").arg(serial.right(8));
+#else
+        m_connectionError = QString("Could not open DSPi %1. Check that no other program is using it. "
+                                    "Right-click the device name to retry.").arg(serial.right(8));
+#endif
         emit statusChanged();
         return;
     }
