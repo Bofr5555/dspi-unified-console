@@ -43,7 +43,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 RUN=ci/run.sh
 # -- WP CG9 -- The image with kotlinc and swiftc. Other steps keep ci/run.sh's.
-BINDINGS_IMAGE=localhost/dspi-coremerge:3
 crates=()
 steps=()
 while [ $# -gt 0 ]; do
@@ -96,7 +95,7 @@ for s in "${steps[@]}"; do
       # Every property test function is named proptest_* (PLAN §1.9).
       $RUN "PROPTEST_CASES=20000 cargo test --workspace --all-features --release -- proptest_" ;;
     kotlin|swift)
-      DSPI_IMAGE=${DSPI_IMAGE:-$BINDINGS_IMAGE} $RUN "ci/compile-bindings.sh $s" ;;
+      $RUN "ci/compile-bindings.sh $s" ;;
     licences) python3 ci/licence-inventory.py --gate --fetch-console ;;
     deny)
       deny_image=localhost/dspi-coremerge-deny:1

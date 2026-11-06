@@ -25,21 +25,21 @@ WP branches are cut from `main`. Hardware, flash, release and password steps kee
 their own approvals (section 6). **Contacting Weeb Labs or making anything public is
 only ever the owner's act. No agent plans or does either.**
 
-Sizes are in agent-days, as in `PLAN.md`.
+Sizes are relative units, for comparing WPs. Measured in the core merge: a size-1 WP took 10–35 minutes of agent time, about an hour with review and fixups. They are estimates, and elapsed time depends on parallelism and on hardware and owner steps.
 
-| Track | WPs | Size | Depends on |
+| Track | WPs | Size (units) | Depends on |
 |---|---|---|---|
 | MR: one repo, one build | 2 | 2.25 | `main` |
 | LC, HO: licence inventory, handover | 2 | 1.75 | `main`; HO1 late |
 | CG: core gaps | 12 | 9 | `main` |
 | HB: Rust Link hub | 7 | 12 | `main` |
-| QD: Qt (Linux, Windows) | 27 | 22.25 | `main`, CG, HB for the hub page |
+| QD: Qt (Linux, Windows) | 28 | 22.5 | `main`, CG, HB for the hub page |
 | TM: Terminal | 18 | 9.75 | `main`, CG, HB for `dspi hub` |
 | AN: Android | 24 | 25.75–29.75 | `main`, MR1, CG9 |
 | SW: Swift (macOS and iOS) | 29 | 32.75–43.25 | `main`, MR1, CG3, CG4 |
 | WB: web | 1 + stubs | 2 (study) | `main` |
 | XC: audit, cross-client tests | 7 | 3.75 | hub hardware, K340 |
-| **Total** | **129** | **about 121–136**, not counting the web build | |
+| **Total** | **130** | **about 121–136**, not counting the web build | |
 
 **M0, the first milestone, is about 12–14 days after `main`** (section 0.3). The
 largest unknowns are Swift domain replacement, the Android control-surface editor
@@ -345,7 +345,7 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (section 9).
 | M50 | Bypass Crossovers, Clear All Bands (`Components.swift:1839,1870`) | have | have (`;` bar) | have | have |
 | M51 | Slider-reset and rename gestures (`ContentView.swift:1411,463`) | have | n.a.: keys, no gestures | have (double-tap resets) | have (long-press resets; rename from the context menu) |
 | M52 | Limiter batch actions (`OutputLimiterView.swift:277-285`) | have | have | have | have |
-| M57 | Force a reconnect (`Components.swift:538`) | have | have | have | have |
+| M57 | Force a reconnect (`Components.swift:538`) | have (rescan: `CpuSection.qml:127`; QD work confirms it re-opens the current device) | have | have | have |
 | M58 | Curve visibility pills (`ContentView.swift:461`, `GraphView.swift:635`) | have | skip: depends on the graph | have | have |
 | M59 | Dashboard cards per row (`DashboardView.swift:511-538`) | have | have | have | have |
 | M60 | Quick-strip toggles; secondary click opens the tool (`ContentView.swift:575-602`) | have | have | have | have |
@@ -545,6 +545,8 @@ Q3 makes it run on the core. macOS leaves this track, with Swift as the working 
 **QD13: Open at login and keep awake.** Size 0.5. **Owns:** `src/SystemIntegration.{h,cpp}`. **Implements:** XDG autostart and Windows Run key; sleep inhibit while sharing. **Done when:** unit tests check the written entry and the inhibit call; each is verified on its OS. **Deps:** QD12.
 
 **QD14: Networking page.** Size 1.5. **Owns:** `qml/settings/pages/NetworkingPage.qml`, `src/HubController.{h,cpp}`. **Implements:** `NetworkingSettingsView.swift`: share toggle, hub name, access (PIN by default), port, paired clients, roles, revoke, pairing code with expiry, other hubs, background options. Connects QD12's two hub menu items. Says a PIN crosses the network in plain text without TLS. **Done when:** offscreen on a demo hub, and a real client pairs. **Deps:** HB6, QD8.
+
+**QD30: Popover cursor on the graph gear.** Size 0.25. **Owns:** `qml/components/PopoverWindow.qml`. **Implements:** owner's report on KDE Wayland: with a `PopoverWindow` open (graph gear; check the spectrum strip's too), the pointer over the gear doesn't return to the hand until wiggled, because the popup holds a grab. **Done when:** the cursor stays right without a wiggle and a click on the gear closes the popover once, on Wayland and X11; the owner retests. **Deps:** `main`.
 
 **QD29: Output ring health.** Size 0.25. **Owns:** the section in `qml/StatsWindow.qml`, `src/StatsController.cpp`, after QD5, which owns both in wave 1. **Done when:** the section and ring-scaled thresholds show on the demo device; hidden when the status is absent. **Deps:** CG12, QD5.
 
@@ -830,12 +832,12 @@ Store items (review video, TestFlight, the SysEx ID question) are later: `APPSTO
 
 ## 7. Waves and gates
 
-Every wave needs `core-merge` on `main`. Within a wave no two WPs own the same file (section 1). A batch of 4–8 WPs goes to one Fable reviewer.
+Every wave needs `core-merge` on `main`. Within a wave no two WPs own the same file (section 1), unless the wave table sequences them ("A, then B") and B's Deps name A. A batch of 4–8 WPs goes to one Fable reviewer.
 
 | Wave | WPs (parallel) | Needs |
 |---|---|---|
 | 0 | XC0, XC1, XC2, XC3; MR1 (Android half); LC1; CG9 | `main`; XC1 the owner's go-ahead |
-| 1 | MR2; AN1; CG1–CG8, CG10–CG12; HB0; WB0; QD0 first, then QD1, QD2, QD4, then QD5; TM1, TM2, TM4, TM7, TM10, TM14, TM15, TM17 | wave 0 |
+| 1 | MR2; AN1; CG1–CG8, CG10–CG12; HB0; WB0; QD0 first, then QD1, QD2, QD4, then QD5; QD30; TM1, TM2, TM4, TM7, TM10, TM14, TM15, TM17 | wave 0 |
 | 2 | **HB1–HB3 after HB0's review**; MR1 (Swift half), then SW1, then SW2; SW-U1 after MR1; QD3, QD6, QD7, QD8, QD11, QD12, QD18, QD27, QD29; TM3, TM5, TM8, TM9, TM12, TM16, TM18; AN2, AN3, AN6, AN8, AN25 | wave 1 |
 | 3 | HB5, HB6; SW3 then SW4; QD9, QD10, QD13, QD16, QD17, QD19, QD28; TM6; AN4, AN5, AN7, AN13 then AN14, AN17, AN18, AN19, AN23 | wave 2; **M0 at its end** |
 | 4 | HB7; SW5, SW6 then SW7, SW-M1 then SW-M2, SW17–SW20, SW23; QD14, QD21; TM11, TM13; AN9–AN12, AN22 | wave 3 |
@@ -854,7 +856,7 @@ Every wave needs `core-merge` on `main`. Within a wave no two WPs own the same f
 |---|---|---|
 | **R-Qt** | Section 3's Qt column, QD24, QD25; no setter on read-only; Link rule on a real hub; OD4 images and CG8 | Owner decides to publish |
 | **R-Term** | TM13; TM10's round-trip with Qt's and Mac's documents | Owner decides |
-| **R-And** | AN13 on the phone; `tools/ci.sh release`; no secrets in logs; Data safety matches; source tarball (OD1) | Owner uploads each test update (AN14, AN22, AN15, AN16) |
+| **R-And** | AN13 on the phone; `tools/ci.sh release`; no secrets in logs; Data safety matches; source for the shipped build (the Play link points at public `dspi-android`, which won't hold it: an owner step per release, a source tarball or a public mirror of `apps/android`, OD1) | Owner uploads each test update (AN14, AN22, AN15, AN16) |
 | **R-Mac** | SW-M1, SW-M2, SW-M4, SW-M5, SW8–SW14, HO1. **If OD3 stops:** SW4–SW7, SW-M1, SW-M2, SW-M5, HO1. Either way, it **does not wait for HB or SW-M3** | Owner; OD-DevID if distributing |
 | **R-iOS** | SW15, SW16, HO1, LC1's inventory current; review video; **the SysEx ID question answered (below)**; **the owner has confirmed the licence terms** | **Weeb Labs submit it, on their account.** Agents do neither |
 | **R-Web** | Set by WB0 | |

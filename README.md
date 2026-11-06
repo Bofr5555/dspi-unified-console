@@ -286,6 +286,7 @@ The imports, with history:
 | `apps/desktop/` (and the old `crates/dspi-core-linux/`, since merged into `crates/dspi-core` and `dspi-capi` and deleted) | WeebLabs/DSPi-Console-Linux `main` | `4683a2c` (2026-10-10, "AUR package: build from the refreshed beta 4") | `portable` branch: Qt 6, Windows build and conventions, WinUSB wIndex, cargo-xwin fix |
 | `apps/terminal/`, `crates/dspi-{proto,transport,session,cmd,tui}`, `xtask/`, `tests/fixtures/*.txt` | WeebLabs/DSPi-Terminal `main` | `8389b20` (2026-09-30) | `portable` branch: firmware headers from Bofr5555/DSPi `bofr-main` (now `04122d3`: v1.1.6 final + extension channel), `dspi ext …`, `--fixture`, AutoEQ path; then the core merge |
 | `crates/dspi-link/`, `tests/fixtures/link/` | Bofr5555's Android console (`dspi-android`) `main` | `63492af` (last change to these paths `401ca8b`) | path changes, then the robustness work of the core merge |
+| `apps/android/` | Bofr5555's Android console (`dspi-android`) `main` | `63492af` | paths fixed for the new location; a ktlint fix. `apps/android/rust` and `third_party/` go when AN1 moves the app onto `crates/` |
 | `tests/fixtures/link/` (data) | WeebLabs/DSPi-Link | `86f10e3` (see its README) | none |
 
 The import method: each upstream was cloned locally, its paths were
@@ -304,14 +305,14 @@ Labs. This table says what is known; it is not legal text.
 | DSPi-Terminal parts and what grew from them (`apps/terminal/`, `crates/dspi-proto`, `dspi-transport`, `dspi-session`, `dspi-cmd`, `dspi-tui`, `xtask/`) | GPL-3.0-or-later, stated in upstream's manifests and README | Upstream has no LICENSE file. `xtask` has no licence field. |
 | DSPi-Console-Linux parts and their ports (`apps/desktop/`, `crates/dspi-core`, `dspi-capi`) | GPL-3.0-or-later here, as the working assumption | **Upstream has no licence file and no licence field.** The Android console's `NOTICE.md` records "MIT per Weeb Labs, file pending". To be confirmed by Weeb Labs. |
 | `crates/dspi-ffi` | GPL-3.0-or-later (the workspace field) | New here, over the parts above. |
-| `crates/dspi-link/` | GPL-3.0 (Bofr5555), per this repository's `LICENSE` | Its manifest has no licence field; its old workspace said `UNLICENSED`. |
+| `crates/dspi-link/` | GPL-3.0-or-later (Bofr5555; confirmed by the owner), the workspace field | Its old workspace said `UNLICENSED`. |
 | `tests/fixtures/link/` | MIT, Weeb Labs | `LICENSE.DSPi-Link` next to the files. |
 | Vendored firmware headers (`crates/dspi-proto/firmware/`) and bundled firmware images (`apps/desktop/qt/firmware/*.uf2`) | GPL-3.0 (DSPi firmware) | |
 | AutoEQ database (`apps/desktop/qt/autoeq/`, `crates/dspi-session/autoeq/`) | MIT (AutoEq measurements, jaakkopasanen/AutoEq), as recorded | Upstream terms to be read (client plan LC1). |
 
 A GPL core conflicts with App Store terms, which matters for the iOS build. The
-owner's direction and the inventory still to be made are in
-`docs/core-merge/PLAN-CLIENTS.md`, section 0.4.
+owner's direction is in `docs/core-merge/PLAN-CLIENTS.md`, section 0.4. The
+inventory is `docs/licensing/IOS-INVENTORY.md`; third-party notices are in `NOTICE.md`.
 
 "DSPi" and "DSPi Console" are Weeb Labs' names. This repository grants no
 rights to them.

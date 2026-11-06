@@ -5,7 +5,7 @@
 #   DSPI_PROFILE=cross ci/run.sh 'cargo xwin build -p dspi-core --target x86_64-pc-windows-msvc'
 #
 # Profiles:
-#   default  localhost/dspi-coremerge:2 (ci/container/Containerfile): Linux,
+#   default  localhost/dspi-coremerge:3 (ci/container/Containerfile): Linux,
 #            Windows GNU cross, Qt 5/6, rustfmt, clippy, ALSA
 #   cross    localhost/dspi-termport-xwin:1: cargo-xwin (MSVC; the owner accepted
 #            Microsoft's CRT/SDK licence), Android NDK r27 + cargo-ndk, wasm32
@@ -37,7 +37,7 @@ case "$profile" in
     exec podman run "${common[@]}" -v "$B/target/$branch":/target:z \
       -v "$B/cargo-home/registry":/opt/cargo/registry:z -v "$B/cargo-home/git":/opt/cargo/git:z \
       -e CARGO_TARGET_DIR=/target \
-      "${DSPI_IMAGE:-localhost/dspi-coremerge:2}" bash -c "$*" ;;
+      "${DSPI_IMAGE:-localhost/dspi-coremerge:3}" bash -c "$*" ;;
   cross)
     mkdir -p "$B/target/$branch-cross" "$B/cargo-home-cross"
     exec podman run "${common[@]}" -v "$B/target/$branch-cross":/target:z \

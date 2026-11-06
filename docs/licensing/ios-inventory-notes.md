@@ -17,7 +17,7 @@ The one person outside Weeb Labs and the owner whose lines reach the iOS binary.
 - **Swift, 19 lines in 4 files,** from two commits of 2026-04-20 ("Add allpass filter type", "Add notch filter"): the `.notch` and `.allPass` cases, their display names, the numerator coefficients in `DSPMath.swift`, and the firmware checks that hide them. `Commands.swift` holds none, so its removal by SW does not remove them.
 - **Firmware headers, 10 lines,** as above.
 - **`.uf2` images, 1117 lines,** only until SW18.
-- **Rust core: none by git.** `dspi-proto`'s `FILTER_TYPE` table was written by others. Whether it follows his Swift or firmware work was not traced.
+- **Rust core: none by git.** `dspi-proto`'s `FILTER_TYPE` table was written by others. Whether it follows their Swift or firmware work was not traced.
 
 The other firmware authors, Tim Prangenberg (172 lines) and Jeremy Blencowe (no surviving line), matter only for the images. Neither appears in the Swift or the Rust.
 
@@ -47,7 +47,7 @@ Read 2026-11-06 at the commits named. Authors are the full history of those clon
 
 **Weeb Labs' earlier statement.** The owner's working memory records, dated 2026-11-02: "core + consoles MIT per author; core LICENSE file pending upstream", when Weeb Labs agreed to the Android app being published. The same entry notes that GitHub shows the macOS Console as GPL-3.0. This is that record of what was said, **not a licence file**: no tree read here carries such a grant, and it does not settle the Console's `LICENSE` against its README.
 
-**The metadata fix for `dspi-link`.** Its manifest now inherits the workspace's `GPL-3.0-or-later`, which is what this repo says and what the plan's entry asks for. Android's words are "version 3" with §7 terms and that crate's old workspace said `UNLICENSED`. The owner is its only author by git, and the coordinator relays his confirmation of the field, 2026-11-06: "gpl3 seems to only be an issue on ios". Nothing relayed covers the absence of the §7 terms here. Its MIT origin (spec, policy, fixtures) is recorded in the manifest.
+**The metadata fix for `dspi-link`.** Its manifest now inherits the workspace's `GPL-3.0-or-later`, which is what this repo says and what the plan's entry asks for. Android's words are "version 3" with §7 terms and that crate's old workspace said `UNLICENSED`. The owner is its only author by git, and the coordinator relays the owner's confirmation of the field, 2026-11-06: "gpl3 seems to only be an issue on ios". Nothing relayed covers the absence of the §7 terms here. Its MIT origin (spec, policy, fixtures) is recorded in the manifest.
 
 ### Limits of this inventory
 
