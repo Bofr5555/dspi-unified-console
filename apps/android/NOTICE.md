@@ -33,12 +33,11 @@ The app includes or links:
 
 | Component | Licence | Source |
 |---|---|---|
-| DSPi-Console-Linux core (Rust protocol core, `third_party/`) | MIT (per Weeb Labs; licence file pending upstream) | https://github.com/WeebLabs/DSPi-Console-Linux |
+| DSPi core (the monorepo's `crates/`: Weeb Labs' DSPi-Terminal and consoles, extended by Bofr5555; firmware headers vendored in `crates/dspi-proto/firmware/`) | GPL-3.0-or-later (the repository's working assumption, see its `NOTICE.md`) | https://github.com/WeebLabs/DSPi-Terminal |
 | DSPi Console for macOS — UI, behaviour and texts ported from it; AutoEQ database | GPL-3.0 | https://github.com/WeebLabs/DSPi-Console |
 | DSPi Link protocol spec, policy table and test fixtures (`fixtures/link/`, tests only); the Link client follows the macOS Console's `Link/` | MIT | https://github.com/WeebLabs/DSPi-Link |
 | DSPi firmware images (`feature-firmware` assets, v1.1.6-beta5) | GPL-3.0 | https://github.com/WeebLabs/DSPi/tree/v1.1.6-beta5 |
 | AutoEq headphone measurements (in the AutoEQ database) | MIT | https://github.com/jaakkopasanen/AutoEq |
-| libusb (compiled into the native library) | LGPL-2.1-or-later | https://github.com/libusb/libusb |
 | UniFFI | MPL-2.0 | https://github.com/mozilla/uniffi-rs |
 | Other Rust crates | MIT / Apache-2.0 / Unlicense (as chosen) | listed with their licence files in `feature-settings/src/main/assets/licenses/rust-crates.txt` |
 | JNA | Apache-2.0 (dual-licensed with LGPL-2.1) | https://github.com/java-native-access/jna |
