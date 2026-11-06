@@ -13,7 +13,7 @@ This plan merges the repository's two Rust protocol cores into one:
 
 The owner's order of work:
 1. Windows (done);
-2. parity audit (`dspi-mobile/docs/FEATURE-PARITY.md`);
+2. parity audit (now [`docs/PARITY.md`](../PARITY.md));
 3. **this merge**;
 4. Android's `dspi-ffi` onto the merged core;
 5. the iOS app onto it, through UniFFI Swift on its own branch.
@@ -1065,7 +1065,7 @@ additive edits only.
 
 ---
 
-## 3. Parity rows covered (FEATURE-PARITY.md, section 3)
+## 3. Parity rows covered (`docs/PARITY.md`, section 3)
 
 | Parity row | WP |
 |---|---|
