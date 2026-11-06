@@ -208,7 +208,7 @@ pub struct Session {
     /// Pin and clock setters report `PIN_CONFIG_*` here (config.h:607-613) and
     /// then quietly keep the old value, so the caller that wants to say *why*
     /// a step was refused needs the code, not just the readback.
-    last_status: Option<u8>,
+    pub(crate) last_status: Option<u8>,
 }
 
 impl Session {
@@ -290,15 +290,7 @@ impl Session {
         // The delay buffers are 1024 samples on an RP2040 and 2048 on an
         // RP2350 (config.h:94-99): 42 ms against 85 ms at 48 kHz. The registry
         // carries the larger; the smaller is a platform fact, checked here.
-        if matches!(path, "ch.delay" | "out.delay")
-            && self.caps.platform == dspi_proto::Platform::Rp2040
-            && value.as_f32().is_some_and(|v| v > 42.0)
-        {
-            return Err(WriteError::PlatformRange {
-                path: path.into(),
-                max: "42 ms".into(),
-            });
-        }
+        self.check_platform_range(d, &value)?;
 
         // PDM and the Core 1 EQ workers cannot both run, and the firmware skips
         // a blocked enable without saying so (survey-firmware 6.8). Ask first,
@@ -461,22 +453,7 @@ impl Session {
     ) -> Result<Outcome, WriteError> {
         let mut packet = self.read_band(channel, band)?;
 
-        match d.path {
-            "eq.type" => {
-                packet.filter_type = FilterType::from_raw(value.as_u8().unwrap_or(0));
-                // Switching to a Linkwitz Transform needs a Qp to send; the
-                // firmware reads 0 as "use the 0.707 default".
-                if packet.filter_type.is_linkwitz() && packet.qp.is_none() {
-                    packet.qp = Some(0.707);
-                }
-            }
-            "eq.freq" => packet.freq = value.as_f32().unwrap_or(packet.freq),
-            "eq.q" => packet.q = value.as_f32().unwrap_or(packet.q),
-            "eq.gain" => packet.gain_db = value.as_f32().unwrap_or(packet.gain_db),
-            other => {
-                return Err(WriteError::UnknownParam(other.into()));
-            }
-        }
+        crate::fast::apply_eq_field(&mut packet, d, value)?;
 
         self.write_band(&packet)
     }
