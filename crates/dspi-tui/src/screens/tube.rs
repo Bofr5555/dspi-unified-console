@@ -127,10 +127,10 @@ pub enum View {
     Advanced,
 }
 
-/// What the panel opens in. The Console opens in Basic and remembers the choice
-/// (`TubeModellerView.swift:123`); here the panel is rebuilt on every open and
-/// has nowhere to keep it, so it opens as it always has until that is wired.
-const DEFAULT_VIEW: View = View::Advanced;
+/// What the panel opens in, the Console's default
+/// (`TubeModellerView.swift:123`). The Console also remembers the choice; here
+/// the panel is rebuilt on every open and has nowhere to keep it yet.
+const DEFAULT_VIEW: View = View::Basic;
 
 const KEYS: &[KeyHelp] = &[
     KeyHelp::new("↑ ↓", "Move"),
@@ -2039,6 +2039,11 @@ mod tests {
                 p.popup_result(Some(2), &s),
                 ScreenEvent::Command("tube.mask 0x0".into())
             );
+        }
+
+        #[test]
+        fn tm7_the_panel_opens_in_basic_as_the_console_does() {
+            assert_eq!(TubePanel::new().view, View::Basic);
         }
 
         #[test]
