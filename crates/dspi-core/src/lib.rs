@@ -89,6 +89,8 @@ mod presets;
 mod raw;
 mod rta;
 mod stats;
+// -- WP CG6 --
+pub mod autoeq;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -115,6 +117,8 @@ pub use records::*;
 // -- WP C14 --
 // -- WP C15 --
 // -- WP F1 --
+// -- WP CG6 --
+pub use autoeq::*;
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///

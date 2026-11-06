@@ -271,3 +271,29 @@ fn wp_f1_link_api_is_exported() {
         assert!(core.contains(f), "{f} is not exported");
     }
 }
+
+// -- WP CG6 --
+#[test]
+fn wp_cg6_autoeq_upkeep_is_exported() {
+    let out = generate("kotlin");
+    let core = std::fs::read_to_string(find(&out, "dspi_core.kt")).unwrap();
+    for f in [
+        "fun `autoeqDatabaseInfo`",
+        "fun `autoeqImport`",
+        "fun `autoeqUpdate`",
+        "fun `autoeqResetToBuiltin`",
+        "fun `autoeqRebuildWarning`",
+        "fun `autoeqRebuildStart`",
+        "fun `poll`",
+        "fun `cancel`",
+        "interface AutoEqFetch",
+        "class AutoEqRebuildProgress",
+    ] {
+        assert!(core.contains(f), "{f} is not exported");
+    }
+    let swift = generate("swift");
+    let core = std::fs::read_to_string(find(&swift, "dspi_core.swift")).unwrap();
+    for f in ["func autoeqRebuildStart(", "protocol AutoEqFetch"] {
+        assert!(core.contains(f), "{f} is not exported");
+    }
+}

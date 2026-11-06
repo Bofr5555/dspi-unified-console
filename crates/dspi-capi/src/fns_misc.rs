@@ -206,6 +206,8 @@ fn error_code(e: &DspiError) -> &'static str {
         DspiError::Denied => "denied",
         DspiError::Link { .. } => "link",
         DspiError::Io { .. } => "io",
+        // -- WP CG6 --
+        DspiError::AutoEq { .. } => "autoeq",
     }
 }
 
@@ -1232,6 +1234,9 @@ pub extern "C" fn dspi_firmware_version_matches(core: *mut FfiCore, version: *co
         }
     })
 }
+
+// -- WP CG6 --
+mod autoeq;
 
 #[cfg(test)]
 #[path = "fns_misc/tests_wp_q2b.rs"]
