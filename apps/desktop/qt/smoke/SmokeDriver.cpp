@@ -538,6 +538,16 @@ Item {
     // The aux page: an LED slot isn't drawn there, as a card needs the model's tables
     CsControlsView { id: v; cs: h; auxPage: true }
     MacrosPage { id: p }
+    CsSwitchRow { id: sw; checked: false }
+    function switchIn(item) {
+        for (var i = 0; i < item.children.length; i++) {
+            var c = item.children[i]
+            if (c.toggled !== undefined && c.checked !== undefined) return c
+            var found = switchIn(c)
+            if (found) return found
+        }
+        return null
+    }
     function run() {
         var out = {}
         var b = h.emptyBinding(); b.type = h.typeLed
@@ -555,6 +565,19 @@ Item {
         out.learn = v.subMessages[0].text
         out.learnIdle = v.learningSub === -1
         v.seed()
+        v.learningSub = 0
+        v.cancelLearn()
+        out.cancelLearn = v.subMessages[0].text
+        v.seed()
+        v.learningSub = 0
+        v.checkLearn()
+        out.readLearn = v.subMessages[0].text
+        out.readLearnIdle = v.learningSub === -1
+        v.seed()
+        // What a click does; the row's `checked` is what the device holds
+        var t = switchIn(sw)
+        out.switchFound = t !== null
+        if (t) { t.checked = true; t.toggled(); out.switchBack = t.checked === false }
         out.auxStateCode = v.setAuxState(0, 1)
         out.auxState = v.refusals[0]
         v.seed()
@@ -583,7 +606,7 @@ Item {
     const QString reason = m_.cs->apply({ { "op", "macroFire" }, { "index", 0 } }).value("error").toString();
     printf("smoke: QD1 expected reason: %s\n", qPrintable(reason));
     check("QD1: the core gave a reason", !reason.isEmpty() && reason != generic);
-    for (const char *k : { "remove", "removeIr", "learn", "auxState", "auxLevel", "macroFire", "macroCancel" }) {
+    for (const char *k : { "remove", "removeIr", "learn", "cancelLearn", "readLearn", "auxState", "auxLevel", "macroFire", "macroCancel" }) {
         const QString shown = out.value(QString::fromLatin1(k)).toString();
         printf("smoke: QD1 %s shows: %s\n", k, qPrintable(shown));
         check(QByteArray("QD1: shows the reason: ").append(k).constData(), shown == reason);
@@ -591,6 +614,9 @@ Item {
     check("QD1: a refused remove keeps the control", out.value("removeKept").toBool());
     check("QD1: a refused remove keeps the remote button", out.value("removeIrKept").toBool());
     check("QD1: a refused learn doesn't start listening", out.value("learnIdle").toBool());
+    check("QD1: a refused read stops the learn", out.value("readLearnIdle").toBool());
+    check("QD1: the switch row has its switch", out.value("switchFound").toBool());
+    check("QD1: a clicked switch returns to the row's state", out.value("switchBack").toBool());
     check("QD1: a refused aux switch reports it", out.value("auxStateCode").toInt() != 0);
     check("QD1: a refused aux level reports it", out.value("auxLevelCode").toInt() != 0);
     delete h;
@@ -619,9 +645,16 @@ void SmokeDriver::testSaveBarRefusal() {
     printf("smoke: QD1 save bar shows: %s\n", qPrintable(shown));
     check("QD1: the save is refused", !saved.toBool());
     check("QD1: it has the reason", !reason.isEmpty() && reason != m_.cs->statusMessage(0x7F));
-    check("QD1: the bar shows the reason", text->property("visible").toBool() && shown.contains(reason));
+    check("QD1: the bar shows the reason", text->property("visible").toBool() && shown == reason && shown.startsWith(QLatin1String("Not saved: ")));
     check("QD1: still edited, still dirty", ctx->property("edited").toBool() && ctx->property("dirty").toBool());
     settings->grabWindow().save(m_out + QStringLiteral("/settings-save-refused.png"));
+    QVariant reverted;
+    QMetaObject::invokeMethod(ctx, "revertControlSurfaces", Q_RETURN_ARG(QVariant, reverted));
+    spin(50);
+    printf("smoke: QD1 save bar shows: %s\n", qPrintable(text->property("text").toString()));
+    check("QD1: the revert is refused", !reverted.toBool());
+    check("QD1: the bar says so", text->property("text").toString().startsWith(QLatin1String("Not reverted: ")));
+    check("QD1: the draft stays", ctx->property("edited").toBool() && ctx->property("dirty").toBool());
     QMetaObject::invokeMethod(ctx, "revert");
     spin(200);
     check("QD1: revert drops the draft and the reason", !ctx->property("dirty").toBool() && ctx->property("saveError").toString().isEmpty());

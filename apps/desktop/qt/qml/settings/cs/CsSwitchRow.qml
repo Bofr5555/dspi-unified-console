@@ -8,6 +8,7 @@ CsRow {
     signal toggled(bool on)
     ToggleSwitch {
         checked: row.checked
-        onToggled: row.toggled(checked)
+        // -- WP QD1 -- A click breaks the binding: back to row.checked, so a refusal shows
+        onToggled: { row.toggled(checked); checked = Qt.binding(function () { return row.checked }) }
     }
 }

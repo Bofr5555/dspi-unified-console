@@ -285,17 +285,24 @@ Column {
         var k = learningSub
         learningSub = -1
         learnTimeout.stop()
-        setMap("subMessages", k, { text: "Learn cancelled.", error: false })
-        controlSurfaces.apply({ op: "learnCancel" })
+        // -- WP QD1 --
+        var status = result(controlSurfaces.apply({ op: "learnCancel" }))
+        setMap("subMessages", k, status === 0 ? { text: "Learn cancelled.", error: false } : { text: cs.statusMessage(status), error: true })
+    }
+    // -- WP QD1 -- A refused read says why, not that no button was pressed
+    function checkLearn() {
+        var r = controlSurfaces.apply({ op: "learnRead" })
+        if (r.ok) { finishLearn(r.state !== 1 ? r.state : 3, r.protocol || 0, r.code || 0); return }
+        if (learningSub < 0) return
+        var k = learningSub
+        learningSub = -1
+        setMap("subMessages", k, { text: cs.statusMessage(result(r)), error: true })
     }
     // The device listens for 10 s and says how it ended; ask if it hasn't
     Timer {
         id: learnTimeout
         interval: 11500
-        onTriggered: {
-            var r = controlSurfaces.apply({ op: "learnRead" })
-            view.finishLearn(r.ok && r.state !== 1 ? r.state : 3, r.protocol || 0, r.code || 0)
-        }
+        onTriggered: view.checkLearn()   // -- WP QD1 --
     }
 
     // ── Aux ──
