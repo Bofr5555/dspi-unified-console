@@ -146,9 +146,17 @@ impl Capture {
 pub struct FakeOptions {
     /// Answer the extension channel (the Bofr5555/DSPi fork's K340 build).
     pub extensions: bool,
-    /// ACK an OUT request the fake does not model, as the firmware does on
-    /// USB (`REQ_EXTENSION` still stalls). Off by default, so a test sees a
-    /// write the fake would silently drop.
+    /// ACK an OUT request the fake does not model or refuses, as the
+    /// firmware does on USB (`REQ_EXTENSION` still stalls). Off by default,
+    /// so a test sees a write the fake would silently drop. Known gaps even
+    /// with it on:
+    /// - with `extensions: false` the fake still stalls an OUT
+    ///   `REQ_EXTENSION`, whereas firmware without the extension channel
+    ///   ACKs it as an unknown plain opcode;
+    /// - a `0xA1` of the wrong length over 64 bytes stalls on the firmware
+    ///   (it does not fit `vendor_rx_buf[64]`) but is ACKed here;
+    /// - the bulk-owner lock (a STALL while another transport owns the bulk
+    ///   buffer) is not modelled.
     pub ack_unknown_sets: bool,
     /// The largest control transfer, reported by
     /// [`Transport::max_transfer`] and enforced on every request. `None` is

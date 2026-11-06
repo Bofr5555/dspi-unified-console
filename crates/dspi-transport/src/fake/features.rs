@@ -426,6 +426,9 @@ pub(super) enum Num {
     /// A mode byte: `lrintf(v)`, and anything outside `0..=max` becomes
     /// `fallback` (`upmix_clamp_center_mode`, upmix.h:129-131).
     Choice { max: u8, fallback: u8 },
+    /// A mode byte: `lrintf(v)` clamped to `0..=max` (the surround mode,
+    /// `REQ_UPMIX_SET_PARAM`).
+    ModeClamp(u8),
 }
 
 impl Num {
@@ -439,6 +442,7 @@ impl Num {
                 .to_vec(),
             Num::F32 => v.to_le_bytes().to_vec(),
             Num::Half => vec![(v.clamp(-12.0, 12.0) * 2.0).round_ties_even() as i8 as u8],
+            Num::ModeClamp(max) => vec![v.round_ties_even().clamp(0.0, f32::from(max)) as u8],
             Num::Choice { max, fallback } => {
                 let m = v.round_ties_even();
                 vec![if (0.0..=f32::from(max)).contains(&m) {
@@ -452,7 +456,9 @@ impl Num {
 
     fn decode(self, b: &[u8]) -> Option<f32> {
         Some(match self {
-            Num::Bool | Num::U8(_) | Num::Choice { .. } => f32::from(*b.first()?),
+            Num::Bool | Num::U8(_) | Num::ModeClamp(_) | Num::Choice { .. } => {
+                f32::from(*b.first()?)
+            }
             Num::U16 => f32::from(u16::from_le_bytes(b.get(..2)?.try_into().ok()?)),
             Num::F32 => f32::from_le_bytes(b.get(..4)?.try_into().ok()?),
             Num::Half => f32::from(i8::from_le_bytes([*b.first()?])) / 2.0,
@@ -504,7 +510,7 @@ pub(super) const UPMIX_PARAMS: [(Field, Num); 14] = [
             fallback: UPMIX_DEFAULT_CENTER,
         },
     ),
-    (U_SURROUND, Num::U8(2)),
+    (U_SURROUND, Num::ModeClamp(2)),
     (U_STRENGTH, Num::F32),
     (U_WIDTH, Num::F32),
     (U_THRESHOLD, Num::F32),
@@ -1741,6 +1747,11 @@ mod tests_wp_t4b {
         d.control_out(op::REQ_UPMIX_SET_PARAM, 1, &f(-1.0)).unwrap();
         assert_eq!(d.remote().image()[up + 1], 1);
         d.control_out(op::REQ_UPMIX_SET_PARAM, 2, &f(7.0)).unwrap();
+        assert_eq!(d.remote().image()[up + 2], 2);
+        // Ties to even, as lrintf: 0.5 -> 0, 1.5 -> 2.
+        d.control_out(op::REQ_UPMIX_SET_PARAM, 2, &f(0.5)).unwrap();
+        assert_eq!(d.remote().image()[up + 2], 0);
+        d.control_out(op::REQ_UPMIX_SET_PARAM, 2, &f(1.5)).unwrap();
         assert_eq!(d.remote().image()[up + 2], 2);
 
         // SET_CONFIG: one notification per changed field, in struct order.
