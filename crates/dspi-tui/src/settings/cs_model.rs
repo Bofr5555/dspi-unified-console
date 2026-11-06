@@ -70,6 +70,14 @@ pub(crate) fn run_code(
     }
 }
 
+/// [`apply_learn`] as the pages' reply: `ok`, or the device's reason.
+pub(crate) fn run_learn(session: &mut Session, ok: &str, arm: bool) -> SessionReply {
+    match apply_learn(session, arm) {
+        Ok(()) => SessionReply::Ok(ok.into()),
+        Err(e) => SessionReply::Err(e.to_string()),
+    }
+}
+
 /// The Console's placeholder while the capability tables are missing: either
 /// the device is still being read ([`AWAITING`]), or there is no device to
 /// read.

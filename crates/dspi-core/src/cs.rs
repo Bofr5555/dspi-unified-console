@@ -890,11 +890,12 @@ fn write_op(inner: &mut Inner, cs: &mut CsState, kind: &str, op: &Value) -> Resu
             *learn = None;
             let session = w.session()?;
             // The firmware answers 1 when armed and stalls on a refusal
-            // (vendor_commands.c, REQ_CS_IR_LEARN): any reply is success.
-            // TODO(S4 bool): `arm_learn` returns the raw byte until S4 makes
-            // it a bool; do not compare it to 0 or 1.
+            // (vendor_commands.c, REQ_CS_IR_LEARN).
             return match with_surfaces(session, |s| s.arm_learn())? {
-                Ok(_) => Ok(json!({ "ok": true })),
+                Ok(true) => Ok(json!({ "ok": true })),
+                Ok(false) => Err(DspiError::Refused {
+                    status: cs_status::BUSY,
+                }),
                 // A refusal stalls and leaves the reason in the status: only
                 // the device's own NO_IR means there is no receiver.
                 Err(e) if is_stall(&e) => {
@@ -913,8 +914,6 @@ fn write_op(inner: &mut Inner, cs: &mut CsState, kind: &str, op: &Value) -> Resu
         "learnCancel" => {
             // Best effort, as the old core: a cancel the device refuses
             // leaves nothing armed to cancel.
-            // TODO(S4 bool): `cancel_learn` returns the raw byte until S4
-            // makes it a bool; it is not compared to anything here.
             let _ = with_surfaces(w.session()?, |s| s.cancel_learn())?;
             return Ok(json!({ "ok": true }));
         }
@@ -1807,12 +1806,17 @@ mod tests_wp_c14 {
     #[test]
     fn wp_c14_an_arm_refusal_reads_the_reason_from_the_status() {
         let (core, sim_) = cs_core();
-        // Any reply is success: the firmware's 1, or whatever another answers.
-        for reply in [1, 0, 7] {
+        // The firmware's acknowledgement is 1; any other byte is not it.
+        sim(&sim_).arm_reply = 1;
+        assert_eq!(
+            apply(&core, json!({ "op": "learnArm" })),
+            json!({ "ok": true })
+        );
+        for reply in [0, 7] {
             sim(&sim_).arm_reply = reply;
             assert_eq!(
                 apply(&core, json!({ "op": "learnArm" })),
-                json!({ "ok": true }),
+                json!({ "ok": false, "status": cs_status::BUSY }),
                 "reply {reply}"
             );
         }

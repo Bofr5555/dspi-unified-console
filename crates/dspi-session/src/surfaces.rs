@@ -48,6 +48,8 @@ pub mod status {
     /// Another SET of the same kind was still waiting for the main loop, so
     /// this one was dropped, not queued (vendor_commands.c:1412-1417).
     pub const BUSY: u8 = 0x1B;
+    /// Learning needs a live IR component (control_surfaces.h:710).
+    pub const NO_IR: u8 = 0x1E;
     /// A value or its length is out of range (control_surfaces.h:689).
     pub const INVALID_VALUE: u8 = 0x14;
     /// Not an auxiliary output, or a level for an on/off one
@@ -710,16 +712,20 @@ impl<'t> Surfaces<'t> {
 
     // --------------------------------------------------------------- IR learn
 
-    /// Arm the receiver, answering the device's own verdict.
+    /// Arm the receiver: `true` when the device acknowledged it.
     ///
-    /// `control_surfaces.h:798`: the opcode "returns PIN_CONFIG_SUCCESS or
-    /// CS_STATUS_NO_IR (arm without a live IR component)". Dropping that byte
-    /// leaves a refused arm looking like a live one that never hears a button.
-    pub fn arm_learn(&mut self) -> Result<u8> {
+    /// The firmware answers one byte, 1, and refuses by stalling
+    /// (vendor_commands.c, `REQ_CS_IR_LEARN`), leaving the reason in the
+    /// status packet: `CS_STATUS_NO_IR` without a live IR component,
+    /// otherwise busy. (The comment at `control_surfaces.h:798` describes an
+    /// older reply.) [`crate::cs_model::apply_learn`] reads the reason.
+    pub fn arm_learn(&mut self) -> Result<bool> {
         Ok(arm_learn(self.t)?)
     }
 
-    pub fn cancel_learn(&mut self) -> Result<u8> {
+    /// Cancel a learn: `true` when the device acknowledged it. As
+    /// [`Surfaces::arm_learn`], a refusal stalls.
+    pub fn cancel_learn(&mut self) -> Result<bool> {
         Ok(cancel_learn(self.t)?)
     }
 
@@ -773,21 +779,19 @@ pub fn read_status(t: &mut dyn Transport, max_bindings: u8, max_ir: u8) -> TResu
     Status::decode_sized(&d, max_bindings, max_ir).map_err(|e| TransportError::Usb(e.to_string()))
 }
 
-/// Start listening for a remote button, answering `PIN_CONFIG_SUCCESS` or
-/// `CS_STATUS_NO_IR` (control_surfaces.h:798).
-pub fn arm_learn(t: &mut dyn Transport) -> TResult<u8> {
-    Ok(t.control_in(op::REQ_CS_IR_LEARN, learn::ARM, 1)?
-        .first()
-        .copied()
-        .unwrap_or(status::SUCCESS))
+/// Start listening for a remote button: `true` when the device answered its
+/// acknowledgement, 1. A refusal stalls (see [`Surfaces::arm_learn`]).
+pub fn arm_learn(t: &mut dyn Transport) -> TResult<bool> {
+    Ok(t.control_in(op::REQ_CS_IR_LEARN, learn::ARM, 1)?.first() == Some(&LEARN_ACK))
 }
 
-pub fn cancel_learn(t: &mut dyn Transport) -> TResult<u8> {
-    Ok(t.control_in(op::REQ_CS_IR_LEARN, learn::CANCEL, 1)?
-        .first()
-        .copied()
-        .unwrap_or(status::SUCCESS))
+/// Stop listening: `true` when the device answered its acknowledgement, 1.
+pub fn cancel_learn(t: &mut dyn Transport) -> TResult<bool> {
+    Ok(t.control_in(op::REQ_CS_IR_LEARN, learn::CANCEL, 1)?.first() == Some(&LEARN_ACK))
 }
+
+/// What `REQ_CS_IR_LEARN` answers to an arm or a cancel it accepted.
+const LEARN_ACK: u8 = 1;
 
 /// Poll for a learn result.
 ///
@@ -1443,22 +1447,23 @@ mod tests {
         assert_eq!(values, vec![learn::ARM, learn::READ]);
     }
 
-    /// `REQ_CS_IR_LEARN` answers a status byte, and a refused arm is the whole
-    /// reason to read it: without it the page waits for a button on a receiver
-    /// the device never armed (control_surfaces.h:798).
+    /// `REQ_CS_IR_LEARN` answers 1 when it accepts, and stalls when it does
+    /// not; a page must not wait for a button on a receiver the device never
+    /// armed (vendor_commands.c).
     #[test]
     fn arming_a_learn_reports_the_devices_verdict() {
-        use crate::surfaces::status;
-        let mut t = MockTransport::new().data(op::REQ_CS_IR_LEARN, vec![status::SUCCESS]);
-        assert_eq!(surfaces(&mut t).arm_learn().unwrap(), status::SUCCESS);
+        let mut t = MockTransport::new().data(op::REQ_CS_IR_LEARN, vec![1]);
+        assert!(surfaces(&mut t).arm_learn().unwrap());
+        assert!(surfaces(&mut t).cancel_learn().unwrap());
 
-        // CS_STATUS_NO_IR: arming with no live receiver.
-        let mut t = MockTransport::new().data(op::REQ_CS_IR_LEARN, vec![0x1E]);
-        assert_eq!(surfaces(&mut t).arm_learn().unwrap(), 0x1E);
+        // Anything else is not the acknowledgement.
+        let mut t = MockTransport::new().data(op::REQ_CS_IR_LEARN, vec![0]);
+        assert!(!surfaces(&mut t).arm_learn().unwrap());
+
+        // A refusal stalls; the reason is in the status packet.
+        let mut t = MockTransport::new();
+        assert!(surfaces(&mut t).arm_learn().is_err());
         assert_eq!(explain_status(0x1E), "set up an IR receiver first");
-
-        let mut t = MockTransport::new().data(op::REQ_CS_IR_LEARN, vec![status::SUCCESS]);
-        assert_eq!(surfaces(&mut t).cancel_learn().unwrap(), status::SUCCESS);
     }
 
     #[test]
