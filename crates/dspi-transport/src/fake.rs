@@ -63,7 +63,7 @@
 //!   (GETs stall): control surfaces (`0x04-0x07`, `0x20-0x2B`, `0x84-0x8F`
 //!   and the rest of `REQ_*_CS_*`), the signal generator (`0xA4-0xA8`), the
 //!   spectrum analyser (`0x08-0x0F`), subharm meter/headroom/solo, the
-//!   band-bypass shortcut (`REQ_SET/GET_BAND_BYPASS`), pin SETs (output pins,
+//!   band-bypass read (`REQ_GET_BAND_BYPASS`), pin SETs (output pins,
 //!   BCK, MCK, S/PDIF/I2S/ADAT RX pins) and output-pin GETs, the I2S
 //!   clock-pin mode, the S/PDIF RX, ADAT and I2S-slave status reads, the
 //!   control-interface status, the Core 1 mode read, the saved
@@ -1495,6 +1495,18 @@ impl State {
                 self.set_eq(data);
                 true
             }
+            op::REQ_SET_BAND_BYPASS => {
+                // `wValue = (channel << 8) | band`, one byte. A band that does
+                // not exist is ignored, as in `set_eq`.
+                let [band, ch] = value.to_le_bytes();
+                if let (Some(v), Some((off, _))) = (data.first(), self.band_at(ch, band))
+                    && let Some(at) = off.checked_add(B_BYPASS.1)
+                {
+                    // The firmware's rule: exactly 1 bypasses.
+                    self.write(at, &[u8::from(*v == 1)], host);
+                }
+                true
+            }
             op::REQ_SET_CHANNEL_NAME => {
                 if !data.is_empty()
                     && let Some(off) = self.channel_name_at(value)
@@ -1968,6 +1980,43 @@ mod tests_wp_t4 {
     }
 
     // ---- scalar writes ----------------------------------------------------
+
+    #[test]
+    fn wp_q2a_band_bypass_flips_the_band_and_notifies() {
+        let mut d = FakeDevice::demo();
+        let mut src = d.notifications().unwrap();
+        let band_off = |ch: u16, b: u16| {
+            if b >= 20 {
+                off_of("crossovers")
+                    + (usize::from(ch) * usize::from(w::WIRE_MAX_XOVER_BANDS) + usize::from(b - 20))
+                        * BAND_LEN
+            } else {
+                off_of("eq")
+                    + (usize::from(ch) * usize::from(w::WIRE_MAX_BANDS) + usize::from(b)) * BAND_LEN
+            }
+        };
+        let image = |d: &FakeDevice, at: usize| d.remote().image()[at + 1];
+
+        // A PEQ band: on, and the host-set notification says so.
+        d.control_out(op::REQ_SET_BAND_BYPASS, 3, &[1]).unwrap();
+        assert_eq!(image(&d, band_off(0, 3)), 1);
+        assert!(src.read(Duration::from_millis(100)).is_ok());
+        d.control_out(op::REQ_SET_BAND_BYPASS, 3, &[0]).unwrap();
+        assert_eq!(image(&d, band_off(0, 3)), 0);
+
+        // A crossover band on an output.
+        d.control_out(op::REQ_SET_BAND_BYPASS, (9 << 8) | 21, &[1])
+            .unwrap();
+        assert_eq!(image(&d, band_off(9, 21)), 1);
+
+        // Bands that do not exist change nothing: a crossover on an input, a
+        // gap between the ranges, a channel past the end.
+        let before = d.remote().image();
+        for v in [21, 15, (200 << 8) | 1] {
+            d.control_out(op::REQ_SET_BAND_BYPASS, v, &[1]).unwrap();
+        }
+        assert_eq!(d.remote().image(), before);
+    }
 
     #[test]
     fn wp_t4_a_write_changes_the_image_and_notifies() {

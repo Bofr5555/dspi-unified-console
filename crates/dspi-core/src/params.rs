@@ -1357,11 +1357,11 @@ mod tests_wp_c3 {
 
     #[test]
     fn wp_c3_a_failed_transfer_leaves_the_mirror_alone() {
-        // The demo does not model the band-bypass shortcut: it stalls.
+        // The demo does not model subharm solo: it stalls.
         let (core, remote) = demo();
         let before = core.get_state();
         assert!(matches!(
-            core.set_band_bypass(0, 3, true),
+            core.set_subharm_solo(true),
             Err(DspiError::Transfer { .. })
         ));
         assert_eq!(core.get_state(), before);
@@ -1372,7 +1372,6 @@ mod tests_wp_c3 {
     #[test]
     fn wp_c3_band_bypass_addresses_peq_and_crossover_bands() {
         let (core, h) = spy_core();
-        h.swallow(op::REQ_SET_BAND_BYPASS);
         core.set_band_bypass(0, 3, true).unwrap();
         core.set_band_bypass(9, 21, true).unwrap();
         assert_eq!(
