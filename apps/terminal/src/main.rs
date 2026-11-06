@@ -75,6 +75,7 @@ fn main() -> ExitCode {
         Some("completions") => cmd_completions(&positional(&flags)),
         Some("doctor") | Some("--doctor") => doctor::run(),
         Some("raw") => cmd_raw(serial, &positional(&flags), json),
+        Some("ext") => cmd_ext(serial, &positional(&flags), json),
         Some("autoeq") => cmd_autoeq(serial, &positional(&flags), &flags),
         Some("--install-udev") => doctor::install_udev(),
         Some("screenshot") => cmd_screenshot(serial, &positional(&flags), &flags),
@@ -148,6 +149,14 @@ USAGE:
     dspi raw out <op> <v> <hex...>
                              write any vendor opcode with a payload
     dspi raw war <op> <v>    issue a write-as-read and print its status byte
+    dspi ext [list]          list the firmware's extension channel commands
+    dspi ext xfeed-map [p0 p1 p2 p3]
+                             read, or set, the crossfeed output pairs:
+                             each L:R (output numbers), default, or 0xNN
+    dspi ext vreg            read the core-voltage status
+    dspi ext vreg set <V|default> | trial <V> | trial-end
+             | auto on|off | clear
+                             core-voltage operations (V: 1.20, 1250, 0x0E)
     dspi autoeq search <q>   find a headphone correction profile
     dspi autoeq apply <id>   apply one to the input channels
     dspi -f <script>         run one command per line, `#` starts a comment
@@ -1137,6 +1146,133 @@ fn cmd_autoeq(serial: Option<&str>, args: &[&str], flags: &[&str]) -> u8 {
 /// All three directions the protocol actually uses. An IN read is the default
 /// because it is the safe one; `out` and `war` are spelled out because they
 /// change the device.
+/// The fork's extension channel (REQ_EXTENSION 0x00). Firmware without it
+/// stalls every request, which is reported as "not supported", not a crash.
+fn cmd_ext(serial: Option<&str>, args: &[&str], json: bool) -> u8 {
+    use dspi_session::ext::{self, ExtError, VregOp};
+
+    // Parse before touching the device, so a typo costs no connect.
+    enum Do {
+        List,
+        MapRead,
+        MapWrite(ext::PairMap),
+        Vreg,
+        VregOp(VregOp),
+    }
+    let parsed: Result<Do, ExtError> = match args {
+        [] | ["list"] => Ok(Do::List),
+        ["xfeed-map"] => Ok(Do::MapRead),
+        ["xfeed-map", pairs @ ..] => ext::PairMap::parse(pairs).map(Do::MapWrite),
+        ["vreg"] => Ok(Do::Vreg),
+        ["vreg", "set", "default"] => Ok(Do::VregOp(VregOp::Set(0))),
+        ["vreg", "set", v] => ext::parse_vreg(v).map(|c| Do::VregOp(VregOp::Set(c))),
+        ["vreg", "trial", v] => ext::parse_vreg(v).map(|c| Do::VregOp(VregOp::Trial(c))),
+        ["vreg", "trial-end"] => Ok(Do::VregOp(VregOp::TrialEnd)),
+        ["vreg", "auto", "on"] => Ok(Do::VregOp(VregOp::Auto(true))),
+        ["vreg", "auto", "off"] => Ok(Do::VregOp(VregOp::Auto(false))),
+        ["vreg", "clear"] => Ok(Do::VregOp(VregOp::Clear)),
+        _ => Err(ExtError::BadArgument(
+            "usage: dspi ext [list] | xfeed-map [pairs] | vreg [set|trial|trial-end|auto|clear]"
+                .into(),
+        )),
+    };
+    let action = match parsed {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("dspi: {e}");
+            return exit::USAGE;
+        }
+    };
+
+    let mut session = match connect(serial) {
+        Ok(s) => s,
+        Err(c) => return c,
+    };
+    let result = session
+        .with_transport(|t| {
+            Ok(match action {
+                Do::List => ext::list(t).map(|ids| {
+                    if json {
+                        let v: Vec<_> = ids
+                            .iter()
+                            .map(|id| serde_json::json!({ "id": id, "name": ext::name(*id) }))
+                            .collect();
+                        serde_json::Value::Array(v).to_string()
+                    } else if ids.is_empty() {
+                        "extension channel present, no sub-commands".into()
+                    } else {
+                        ids.iter()
+                            .map(|id| format!("0x{id:04X}  {}", ext::name(*id)))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    }
+                }),
+                Do::MapRead => ext::read_pair_map(t).map(|m| map_text(&m, json)),
+                Do::MapWrite(m) => ext::write_pair_map(t, m).map(|m| map_text(&m, json)),
+                Do::Vreg => ext::read_core_vreg(t).map(|s| {
+                    let f = s.fields();
+                    if json {
+                        let o: serde_json::Map<_, _> = f
+                            .into_iter()
+                            .map(|(k, v)| (k.to_string(), serde_json::Value::String(v)))
+                            .collect();
+                        serde_json::Value::Object(o).to_string()
+                    } else {
+                        f.iter()
+                            .map(|(k, v)| format!("{k:<14}{v}"))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    }
+                }),
+                Do::VregOp(op) => ext::core_vreg_op(t, op).map(|()| {
+                    if json {
+                        "{\"ok\":true}".into()
+                    } else {
+                        format!("sent {op:?}; read `dspi ext vreg` to confirm")
+                    }
+                }),
+            })
+        })
+        .unwrap_or_else(|e| Err(ExtError::Transport(e)));
+
+    match result {
+        Ok(text) => {
+            println!("{text}");
+            exit::OK
+        }
+        Err(e @ (ExtError::Unsupported { .. } | ExtError::Refused { .. })) => {
+            eprintln!("dspi: {e}");
+            exit::REJECTED
+        }
+        Err(e @ ExtError::NotApplied(_)) => {
+            eprintln!("dspi: {e}");
+            exit::REJECTED
+        }
+        Err(e @ ExtError::BadArgument(_)) => {
+            eprintln!("dspi: {e}");
+            exit::USAGE
+        }
+        Err(ExtError::Transport(e)) => fail(e),
+    }
+}
+
+fn map_text(m: &dspi_session::ext::PairMap, json: bool) -> String {
+    if json {
+        let pairs: Vec<_> = (0..4)
+            .map(|p| {
+                let (l, r) = m.pair(p);
+                serde_json::json!({ "pair": p, "left": l, "right": r, "default": m.0[p] == 0 })
+            })
+            .collect();
+        serde_json::json!({ "bytes": m.0, "pairs": pairs }).to_string()
+    } else {
+        format!(
+            "{}\nbytes: {:02x} {:02x} {:02x} {:02x}",
+            m, m.0[0], m.0[1], m.0[2], m.0[3]
+        )
+    }
+}
+
 fn cmd_raw(serial: Option<&str>, args: &[&str], json: bool) -> u8 {
     match args.first().copied() {
         Some("out") => raw_out(serial, &args[1..], json),

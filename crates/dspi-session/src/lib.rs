@@ -4,6 +4,7 @@
 //! share every behaviour rather than reimplementing it.
 
 pub mod autoeq;
+pub mod ext;
 pub mod filterfile;
 pub mod notify;
 pub mod pins;

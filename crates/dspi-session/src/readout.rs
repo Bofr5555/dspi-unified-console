@@ -135,7 +135,7 @@ fn shape(path: &str, caps: &Capabilities) -> Option<Shape> {
         // (config.h REQ_GET_CLOCK_DIAG); the packet is well under this.
         "diag.clock" => UpTo(256),
         // Room for 32 sub-command ids (extension_channel_spec.md 2.1).
-        "ext.list" => UpTo(64),
+        "ext.list" => UpTo(crate::ext::LIST_READ_LEN),
         _ => return None,
     })
 }
@@ -401,6 +401,23 @@ fn decode(
             &SystemStatus::decode_sized(b, caps.num_channels).ok()?,
             caps,
         ),
+        "ext.list" => {
+            let ids = crate::ext::decode_list(b);
+            Readout {
+                lines: if ids.is_empty() {
+                    vec!["none".into()]
+                } else {
+                    ids.iter()
+                        .map(|id| format!("0x{id:04X}  {}", crate::ext::name(*id)))
+                        .collect()
+                },
+                json: json!(
+                    ids.iter()
+                        .map(|id| json!({ "id": id, "name": crate::ext::name(*id) }))
+                        .collect::<Vec<_>>()
+                ),
+            }
+        }
         _ => return None,
     })
 }
