@@ -517,6 +517,7 @@ dependencies = [
  "dspi-proto",
  "log",
  "proptest",
+ "serde",
  "serde_json",
 ]
 
