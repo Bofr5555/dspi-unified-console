@@ -597,23 +597,518 @@ impl NotificationSource for MidiNotifications {
 }
 
 /// Desktop MIDI ports through `midir` (ALSA, WinMM, CoreMIDI). WP T3.
+///
+/// [`list_ports`] finds the DSPi control ports ("DSPi Control") among the
+/// host's MIDI ports and pairs each output with its input; [`open`] connects
+/// a pair and returns a [`MidiTransport`] whose pipe owns both connections.
+///
+/// midir reports no unplug event, so an opened pair is watched: a thread
+/// checks every [`WATCH_INTERVAL`] that the output port still exists and
+/// calls [`MidiInput::close`] when it is gone, which fails the request in
+/// flight and ends the notification reader ([`TransportError::Disconnected`]).
+/// The watcher is never joined: dropping the transport wakes it and it exits.
 #[cfg(feature = "midir")]
 pub mod midir_port {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+    use std::thread::Thread;
+    use std::time::Duration;
+
+    use dspi_proto::frame::DEFAULT_MFR_ID;
+    use midir::{ConnectError, Ignore, MidiInputConnection, MidiOutput, MidiOutputConnection};
+
+    use super::{MidiInput, MidiPipe, MidiTransport, PipeError};
+    use crate::TransportError;
+
+    /// The port name the firmware gives its control channel. Matched
+    /// case-insensitively anywhere in the host's name, which adds a client
+    /// prefix and numbers on ALSA ("DSPi:DSPi Control 24:0") and an index on
+    /// WinMM ("2- DSPi Control").
+    pub const PORT_NAME: &str = "DSPi Control";
+
+    /// The client name this host registers (ALSA shows it to other apps).
+    const CLIENT_NAME: &str = "DSPi Console";
+
+    /// How often an opened pair checks that its device is still there.
+    pub const WATCH_INTERVAL: Duration = Duration::from_millis(500);
+
     /// A DSPi's MIDI port pair, by name ("DSPi Control").
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct PortInfo {
+        /// The host's name for the device's MIDI IN port (our output), as
+        /// shown in a picker; also the transport's serial.
         pub name: String,
+        /// midir's stable id of the device's MIDI OUT port (our input).
+        pub input_id: String,
+        /// midir's stable id of the device's MIDI IN port (our output).
+        pub output_id: String,
     }
 
-    /// The DSPi control ports visible to this host.
+    /// Whether a host port name is a DSPi control port.
+    pub fn is_dspi_port(name: &str) -> bool {
+        name.to_lowercase().contains(&PORT_NAME.to_lowercase())
+    }
+
+    /// One port as listed: midir's id and the host's name.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct Listed {
+        id: String,
+        name: String,
+    }
+
+    /// Pair the DSPi outputs with the DSPi inputs, in output order: first by
+    /// identical name (ALSA, CoreMIDI and WinMM name both directions of a
+    /// device alike), then the leftovers in listing order. An output without
+    /// an input is left out: the transport needs both directions.
+    fn pair_ports(outputs: &[Listed], inputs: &[Listed]) -> Vec<PortInfo> {
+        let outs: Vec<&Listed> = outputs.iter().filter(|p| is_dspi_port(&p.name)).collect();
+        let mut ins: Vec<Option<&Listed>> = inputs
+            .iter()
+            .filter(|p| is_dspi_port(&p.name))
+            .map(Some)
+            .collect();
+        let mut paired: Vec<Option<&Listed>> = outs
+            .iter()
+            .map(|o| {
+                let slot = ins
+                    .iter_mut()
+                    .find(|i| i.is_some_and(|i| i.name == o.name))?;
+                slot.take()
+            })
+            .collect();
+        let mut rest = ins.into_iter().flatten();
+        for p in paired.iter_mut().filter(|p| p.is_none()) {
+            *p = rest.next();
+        }
+        outs.into_iter()
+            .zip(paired)
+            .filter_map(|(o, i)| {
+                Some(PortInfo {
+                    name: o.name.clone(),
+                    input_id: i?.id.clone(),
+                    output_id: o.id.clone(),
+                })
+            })
+            .collect()
+    }
+
+    fn list_inputs(io: &midir::MidiInput) -> Vec<Listed> {
+        io.ports()
+            .iter()
+            .filter_map(|p| {
+                Some(Listed {
+                    id: p.id(),
+                    name: io.port_name(p).ok()?,
+                })
+            })
+            .collect()
+    }
+
+    fn list_outputs(io: &MidiOutput) -> Vec<Listed> {
+        io.ports()
+            .iter()
+            .filter_map(|p| {
+                Some(Listed {
+                    id: p.id(),
+                    name: io.port_name(p).ok()?,
+                })
+            })
+            .collect()
+    }
+
+    /// The DSPi control ports visible to this host. Empty when there are
+    /// none, or when the platform's MIDI system cannot be opened (no ALSA
+    /// sequencer, for example).
     pub fn list_ports() -> Vec<PortInfo> {
-        todo!("WP T3")
+        let (Ok(input), Ok(output)) = (
+            midir::MidiInput::new(CLIENT_NAME),
+            MidiOutput::new(CLIENT_NAME),
+        ) else {
+            return Vec::new();
+        };
+        pair_ports(&list_outputs(&output), &list_inputs(&input))
     }
 
-    /// Open a port pair and return a ready transport.
-    pub fn open(port: &PortInfo) -> crate::Result<super::MidiTransport> {
-        let _ = port;
-        todo!("WP T3")
+    fn init_failed(_: midir::InitError) -> TransportError {
+        TransportError::Remote("the host's MIDI system could not be opened".into())
+    }
+
+    fn connect_failed<T>(e: ConnectError<T>) -> TransportError {
+        match e.kind() {
+            // The port went away between listing and opening.
+            midir::ConnectErrorKind::InvalidPort => TransportError::NotFound,
+            other => TransportError::Remote(format!("could not open the MIDI port: {other}")),
+        }
+    }
+
+    /// Open a port pair and return a ready transport (manufacturer ID
+    /// [`DEFAULT_MFR_ID`], serial [`PortInfo::name`]). The connect sequence
+    /// is the caller's.
+    ///
+    /// Errors: [`TransportError::NotFound`] when either port is gone,
+    /// [`TransportError::Remote`] when the platform refuses (the MIDI system
+    /// cannot be opened, the port is held exclusively by another app on
+    /// WinMM, the watcher thread cannot start).
+    pub fn open(port: &PortInfo) -> crate::Result<MidiTransport> {
+        let mut input = midir::MidiInput::new(CLIENT_NAME).map_err(init_failed)?;
+        input.ignore(Ignore::None);
+        let output = MidiOutput::new(CLIENT_NAME).map_err(init_failed)?;
+        let probe = MidiOutput::new(CLIENT_NAME).map_err(init_failed)?;
+        let in_port = input
+            .find_port_by_id(port.input_id.clone())
+            .ok_or(TransportError::NotFound)?;
+        let out_port = output
+            .find_port_by_id(port.output_id.clone())
+            .ok_or(TransportError::NotFound)?;
+        let out = output
+            .connect(&out_port, "DSPi control out")
+            .map_err(connect_failed)?;
+
+        let output_id = port.output_id.clone();
+        let probe = Mutex::new(probe);
+        let alive = move || lock(&probe).ports().iter().any(|p| p.id() == output_id);
+        let pipe = Arc::new(Pipe::new(out, alive));
+        let (transport, receiver) = MidiTransport::new(pipe.clone(), DEFAULT_MFR_ID, &port.name);
+        let feed = receiver.clone();
+        let conn = input
+            .connect(
+                &in_port,
+                "DSPi control in",
+                move |_, bytes, _| feed.receive(bytes),
+                (),
+            )
+            .map_err(connect_failed)?;
+        *lock(&pipe.input) = Some(conn);
+        pipe.watch(receiver, WATCH_INTERVAL).map_err(|e| {
+            TransportError::Remote(format!("could not start the MIDI watcher: {e}"))
+        })?;
+        Ok(transport)
+    }
+
+    fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+        m.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Where the pipe's bytes go: a midir output connection, or a fake.
+    trait Output: Send {
+        fn send(&mut self, bytes: &[u8]) -> std::result::Result<(), String>;
+    }
+
+    impl Output for MidiOutputConnection {
+        fn send(&mut self, bytes: &[u8]) -> std::result::Result<(), String> {
+            MidiOutputConnection::send(self, bytes).map_err(|e| e.to_string())
+        }
+    }
+
+    /// Whether the device's port still exists.
+    type Alive = dyn Fn() -> bool + Send + Sync;
+
+    /// The watcher's stop flag and thread, shared with the pipe.
+    struct Watch {
+        stop: AtomicBool,
+        thread: Mutex<Option<Thread>>,
+    }
+
+    /// A [`MidiPipe`] over a midir pair. Owns the input connection, so the
+    /// device's bytes stop flowing when the transport is dropped.
+    struct Pipe<O: Output> {
+        out: Mutex<O>,
+        input: Mutex<Option<MidiInputConnection<()>>>,
+        alive: Arc<Alive>,
+        watch: Arc<Watch>,
+    }
+
+    impl<O: Output> Pipe<O> {
+        fn new(out: O, alive: impl Fn() -> bool + Send + Sync + 'static) -> Self {
+            Self {
+                out: Mutex::new(out),
+                input: Mutex::new(None),
+                alive: Arc::new(alive),
+                watch: Arc::new(Watch {
+                    stop: AtomicBool::new(false),
+                    thread: Mutex::new(None),
+                }),
+            }
+        }
+
+        /// Start the watcher: every `every`, check the port; when it is gone,
+        /// close `receiver` and exit. Exits when the pipe is dropped.
+        fn watch(&self, receiver: MidiInput, every: Duration) -> std::io::Result<()> {
+            let alive = Arc::clone(&self.alive);
+            let watch = Arc::clone(&self.watch);
+            let handle = std::thread::Builder::new()
+                .name("dspi-midi-watch".into())
+                .spawn(move || {
+                    loop {
+                        std::thread::park_timeout(every);
+                        if watch.stop.load(Ordering::Acquire) {
+                            return;
+                        }
+                        if !alive() {
+                            receiver.close();
+                            return;
+                        }
+                    }
+                })?;
+            *lock(&self.watch.thread) = Some(handle.thread().clone());
+            // Detached: the thread holds only Arcs and exits on the stop flag.
+            drop(handle);
+            Ok(())
+        }
+    }
+
+    impl<O: Output> Drop for Pipe<O> {
+        /// Stops the watcher without joining it (§1.2: a transport may be
+        /// dropped under a lock).
+        fn drop(&mut self) {
+            self.watch.stop.store(true, Ordering::Release);
+            if let Some(t) = lock(&self.watch.thread).take() {
+                t.unpark();
+            }
+        }
+    }
+
+    // `MidiInputConnection` is `Send` but not `Sync`; the pipe only reaches it
+    // through its `Mutex`, which makes the pipe `Sync`.
+    impl<O: Output> MidiPipe for Pipe<O> {
+        fn send(&self, sysex: &[u8]) -> std::result::Result<(), PipeError> {
+            let sent = lock(&self.out).send(sysex);
+            sent.map_err(|e| {
+                // A failed send to a vanished port is an unplug, not a fault.
+                if (self.alive)() {
+                    PipeError::Failed(e)
+                } else {
+                    PipeError::Closed
+                }
+            })
+        }
+    }
+
+    #[cfg(test)]
+    #[allow(clippy::arithmetic_side_effects)]
+    mod tests_wp_t3 {
+        use super::*;
+        use crate::Transport;
+        use dspi_proto::frame::{Frame, SysexDecoder, encode_sysex, status};
+        use dspi_proto::generated::opcodes as op;
+        use std::time::Instant;
+
+        fn listed(id: &str, name: &str) -> Listed {
+            Listed {
+                id: id.into(),
+                name: name.into(),
+            }
+        }
+
+        fn info(name: &str, input_id: &str, output_id: &str) -> PortInfo {
+            PortInfo {
+                name: name.into(),
+                input_id: input_id.into(),
+                output_id: output_id.into(),
+            }
+        }
+
+        #[test]
+        fn wp_t3_matches_dspi_control_in_host_names() {
+            for name in [
+                "DSPi Control",
+                "DSPi:DSPi Control 24:0",
+                "2- DSPi Control",
+                "dspi control",
+            ] {
+                assert!(is_dspi_port(name), "{name}");
+            }
+            for name in [
+                "DSPi",
+                "Midi Through:Midi Through Port-0 14:0",
+                "Control",
+                "",
+            ] {
+                assert!(!is_dspi_port(name), "{name}");
+            }
+        }
+
+        #[test]
+        fn wp_t3_pairs_alsa_ports_by_name() {
+            let outs = [
+                listed("14:0", "Midi Through:Midi Through Port-0 14:0"),
+                listed("24:0", "DSPi:DSPi Control 24:0"),
+                listed("28:0", "DSPi:DSPi Control 28:0"),
+            ];
+            // Inputs listed in another order.
+            let ins = [
+                listed("28:0", "DSPi:DSPi Control 28:0"),
+                listed("14:0", "Midi Through:Midi Through Port-0 14:0"),
+                listed("24:0", "DSPi:DSPi Control 24:0"),
+            ];
+            assert_eq!(
+                pair_ports(&outs, &ins),
+                [
+                    info("DSPi:DSPi Control 24:0", "24:0", "24:0"),
+                    info("DSPi:DSPi Control 28:0", "28:0", "28:0"),
+                ]
+            );
+        }
+
+        #[test]
+        fn wp_t3_pairs_leftovers_in_order_and_drops_lone_outputs() {
+            // Names that differ between directions pair by order; an output
+            // with no input left is not usable.
+            let outs = [
+                listed("o1", "DSPi Control"),
+                listed("o2", "MIDIOUT2 (DSPi Control)"),
+                listed("o3", "MIDIOUT3 (DSPi Control)"),
+            ];
+            let ins = [
+                listed("i2", "MIDIIN2 (DSPi Control)"),
+                listed("i1", "DSPi Control"),
+            ];
+            assert_eq!(
+                pair_ports(&outs, &ins),
+                [
+                    info("DSPi Control", "i1", "o1"),
+                    info("MIDIOUT2 (DSPi Control)", "i2", "o2"),
+                ]
+            );
+            assert!(pair_ports(&[], &ins).is_empty());
+            assert!(pair_ports(&outs, &[]).is_empty());
+        }
+
+        #[test]
+        fn wp_t3_list_ports_lists_only_dspi_ports() {
+            // The container has no DSPi (and may have no ALSA sequencer):
+            // listing must neither panic nor return a foreign port.
+            assert!(list_ports().iter().all(|p| is_dspi_port(&p.name)));
+        }
+
+        #[test]
+        fn wp_t3_open_of_a_missing_port_fails_typed() {
+            let e = open(&info("DSPi Control", "no-such-in", "no-such-out"))
+                .err()
+                .expect("no port to open");
+            assert!(
+                matches!(e, TransportError::NotFound | TransportError::Remote(_)),
+                "{e:?}"
+            );
+        }
+
+        /// A device on the far side of a fake output: answers every GET
+        /// with the platform reply through the transport's [`MidiInput`].
+        struct FakeOut {
+            decoder: SysexDecoder,
+            input: Arc<Mutex<Option<MidiInput>>>,
+            fail: Arc<Mutex<Option<String>>>,
+        }
+
+        impl Output for FakeOut {
+            fn send(&mut self, bytes: &[u8]) -> std::result::Result<(), String> {
+                if let Some(e) = self.fail.lock().unwrap().clone() {
+                    return Err(e);
+                }
+                let input = self.input.lock().unwrap().clone().unwrap();
+                for m in self.decoder.feed(bytes) {
+                    assert!(matches!(m.frame, Ok(Frame::Get { .. })));
+                    let reply = Frame::GetResponse {
+                        status: status::OK,
+                        payload: vec![1, 1, 0x16, 4, 1, 6, 0],
+                    };
+                    // Delivered in small pieces, as WinMM's buffers do.
+                    for c in encode_sysex(DEFAULT_MFR_ID, m.tag, &reply).chunks(5) {
+                        input.receive(c);
+                    }
+                }
+                Ok(())
+            }
+        }
+
+        struct Rig {
+            transport: MidiTransport,
+            pipe: Arc<Pipe<FakeOut>>,
+            present: Arc<AtomicBool>,
+            fail: Arc<Mutex<Option<String>>>,
+        }
+
+        fn rig(every: Duration) -> Rig {
+            let slot = Arc::new(Mutex::new(None));
+            let fail = Arc::new(Mutex::new(None));
+            let present = Arc::new(AtomicBool::new(true));
+            let out = FakeOut {
+                decoder: SysexDecoder::new(DEFAULT_MFR_ID),
+                input: Arc::clone(&slot),
+                fail: Arc::clone(&fail),
+            };
+            let p = Arc::clone(&present);
+            let pipe = Arc::new(Pipe::new(out, move || p.load(Ordering::SeqCst)));
+            let (transport, receiver) =
+                MidiTransport::new(pipe.clone(), DEFAULT_MFR_ID, "DSPi Control");
+            *slot.lock().unwrap() = Some(receiver.clone());
+            pipe.watch(receiver, every).unwrap();
+            Rig {
+                transport,
+                pipe,
+                present,
+                fail,
+            }
+        }
+
+        #[test]
+        fn wp_t3_pipe_carries_a_request_and_its_reply() {
+            let mut r = rig(Duration::from_millis(20));
+            let reply = r
+                .transport
+                .control_in_upto(op::REQ_GET_PLATFORM, 0, 7)
+                .unwrap();
+            assert_eq!(reply, [1, 1, 0x16, 4, 1, 6, 0]);
+            assert_eq!(r.transport.descriptor().serial, "DSPi Control");
+        }
+
+        #[test]
+        fn wp_t3_send_failure_maps_by_port_presence() {
+            let r = rig(Duration::from_secs(60));
+            *r.fail.lock().unwrap() = Some("driver says no".into());
+            assert_eq!(
+                r.pipe.send(&[0xF0, 0xF7]),
+                Err(PipeError::Failed("driver says no".into()))
+            );
+            r.present.store(false, Ordering::SeqCst);
+            assert_eq!(r.pipe.send(&[0xF0, 0xF7]), Err(PipeError::Closed));
+        }
+
+        #[test]
+        fn wp_t3_unplug_ends_the_reader_and_later_requests() {
+            let mut r = rig(Duration::from_millis(10));
+            let mut notes = r.transport.notifications().unwrap();
+            r.present.store(false, Ordering::SeqCst);
+            let started = Instant::now();
+            // The reader ends with Disconnected once the watcher sees the
+            // port gone, well before its own timeout.
+            let e = notes.read(Duration::from_secs(5)).unwrap_err();
+            assert!(matches!(e, TransportError::Disconnected), "{e:?}");
+            assert!(started.elapsed() < Duration::from_secs(4));
+            let e = r
+                .transport
+                .control_in_upto(op::REQ_GET_PLATFORM, 0, 7)
+                .unwrap_err();
+            assert!(matches!(e, TransportError::Disconnected), "{e:?}");
+        }
+
+        #[test]
+        fn wp_t3_dropping_the_transport_stops_the_watcher() {
+            let r = rig(Duration::from_secs(60));
+            let watch = Arc::clone(&r.pipe.watch);
+            drop(r);
+            // The pipe is gone: its drop set the stop flag and woke the
+            // thread, which exits without having to wait out its interval.
+            assert!(watch.stop.load(Ordering::SeqCst));
+            let started = Instant::now();
+            while Arc::strong_count(&watch) > 1 {
+                assert!(
+                    started.elapsed() < Duration::from_secs(5),
+                    "watcher still alive"
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
     }
 }
 
