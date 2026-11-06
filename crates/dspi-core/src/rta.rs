@@ -344,6 +344,24 @@ impl RtaState {
         }
     }
 
+    /// Whether this device could hold `c`: the firmware validates and limits
+    /// what it applies (`config_valid`, `apply_config`, rta.c), so anything
+    /// else in an event or a readback is damage, and must not reach the
+    /// views. False for everything while the caps are unknown.
+    fn followable(&self, c: &RtaConfig) -> bool {
+        let caps = &self.caps;
+        let shape = RtaRequest {
+            tap: c.tap,
+            mask: c.channel_mask,
+            ..RtaRequest::default()
+        };
+        caps.supported
+            && (c.tap == engine::TAP_INPUT || c.tap == engine::TAP_OUTPUT)
+            && (caps.order_min..=caps.order_max).contains(&c.fft_order)
+            && c.channel_mask != 0
+            && effective_mask(&shape, caps) == c.channel_mask
+    }
+
     /// The device holds what we want: driving, with nothing to push.
     fn holds_ours(&mut self, mine: RtaConfig) {
         let sh = &mut self.sharing;
@@ -363,7 +381,7 @@ impl RtaState {
         };
         let Some(config) = RtaConfig::decode(payload)
             .ok()
-            .filter(|c| c.channel_mask != 0)
+            .filter(|c| self.followable(c))
         else {
             log::debug!("ignoring a malformed analyser configuration event");
             return;
@@ -423,7 +441,7 @@ impl RtaState {
             // refusal. Never agreed: the engine's own give-up count decides.
             None => self.sharing.agreed,
         };
-        if another_host && read.channel_mask != 0 {
+        if another_host && self.followable(&read) {
             self.sharing.following = Some(Followed {
                 config: read,
                 origin: 0,
@@ -1944,6 +1962,80 @@ mod tests_wp_c9 {
         core.close_connection();
         assert_eq!(core.rta_get_ownership(), RtaOwnership::default());
         let _ = dev;
+    }
+
+    /// Decodes, but no device with these caps (2 in, 4 out, order 8..=10)
+    /// could hold it.
+    fn impossible() -> Vec<RtaConfig> {
+        let bad = |tap, channel_mask, fft_order| RtaConfig {
+            fft_order,
+            ..config(tap, channel_mask)
+        };
+        vec![
+            bad(255, 1, 32),
+            bad(engine::TAP_INPUT, 0x8000, 31),
+            bad(2, 1, 10),
+            bad(engine::TAP_OUTPUT, 1, 7),
+            bad(engine::TAP_OUTPUT, 1, 11),
+            bad(engine::TAP_OUTPUT, 0, 10),
+            bad(engine::TAP_OUTPUT, 0b1_0000, 10),
+            bad(engine::TAP_OUTPUT, 0b1_0001, 10),
+            bad(engine::TAP_INPUT, 0b100, 10),
+        ]
+    }
+
+    #[test]
+    fn wp_cg5_an_event_no_device_could_send_is_ignored() {
+        let (core, _dev) = driving_on(0b1, TransportKind::Usb);
+        for c in impossible() {
+            core.lock().rta.note_config(&event(c, 1), false, 9);
+            assert_eq!(core.rta_get_ownership(), RtaOwnership::default(), "{c:?}");
+        }
+        // The edges of what is possible are followed.
+        let top = RtaConfig {
+            fft_order: 8,
+            ..config(engine::TAP_INPUT, 0b11)
+        };
+        core.lock().rta.note_config(&event(top, 1), false, 9);
+        assert_eq!(core.rta_get_ownership().mask, 0b11);
+        // And an impossible one leaves that alone.
+        for c in impossible() {
+            core.lock().rta.note_config(&event(c, 1), false, 7);
+            let o = core.rta_get_ownership();
+            assert_eq!(
+                (o.origin, o.tap, o.mask, o.fft_order),
+                (9, 0, 0b11, 8),
+                "{c:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn wp_cg5_a_readback_no_device_could_send_is_ignored() {
+        let (core, _dev) = driving_on(0b1, TransportKind::Usb);
+        wait_for("caps", || core.rta_get_caps().supported);
+        // One lock throughout: the worker's own polls stay out of this.
+        let mut inner = core.lock();
+        let st = &mut inner.rta;
+        st.judge_request();
+        st.sharing.agreed = true;
+        let read = |st: &mut RtaState, c: RtaConfig| {
+            st.after_poll(&PollShare {
+                epoch: st.sharing.epoch,
+                readback: Some(c),
+                ..PollShare::default()
+            });
+        };
+        for c in impossible() {
+            read(st, c);
+            assert_eq!(st.ownership(), RtaOwnership::default(), "{c:?}");
+        }
+        read(st, config(engine::TAP_OUTPUT, 0b10));
+        assert_eq!(st.ownership().mask, 0b10, "a possible one is followed");
+        for c in impossible() {
+            read(st, c);
+            assert_eq!(st.ownership().mask, 0b10, "{c:?}");
+        }
     }
 
     #[test]
