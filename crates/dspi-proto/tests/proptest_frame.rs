@@ -82,6 +82,7 @@ proptest! {
 
     #[test]
     fn proptest_wp_p1_frame_round_trips(f in frame()) {
+        prop_assert_eq!(f.check_len(), Ok(()));
         prop_assert_eq!(Frame::decode(&f.encode()), Ok(f.clone()));
         let uart = f.encode_uart();
         prop_assert_eq!(uart[0], dspi_proto::frame::SYNC);

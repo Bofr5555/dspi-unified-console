@@ -34,11 +34,12 @@ pub const TAG_UNREADABLE: u8 = 0x7F;
 /// Largest non-bulk SET payload over UART and MIDI.
 pub const MAX_SET_PAYLOAD: usize = 64;
 
-/// The longest SysEx message [`SysexDecoder`] accepts, `F0` through `F7`
-/// inclusive (real-time bytes inside it are not counted, as they are not
-/// buffered). The largest legal message, a whole bulk image in one
-/// `GET_RESPONSE`, is about 7030 bytes; anything longer is not ours or is
-/// broken, and is dropped whole rather than buffered (PLAN §1.7).
+/// The longest SysEx message [`SysexDecoder`] accepts, counted from `F0`
+/// through `F7` inclusive. Real-time bytes (`F8`..`FF`) inside a message are
+/// not counted: the decoder passes over them and never buffers them. The
+/// largest legal message, a whole bulk image in one `GET_RESPONSE`, is about
+/// 7030 bytes; anything longer is not ours or is broken, and is dropped whole
+/// rather than buffered (PLAN §1.7).
 pub const MAX_SYSEX_LEN: usize = 8192;
 
 /// The bytes between `F0` and `F7` that [`MAX_SYSEX_LEN`] leaves room for.
@@ -151,10 +152,37 @@ pub enum FrameError {
     Packing,
     #[error("SysEx header: {0}")]
     Header(&'static str),
+    /// A payload longer than the frame's 16-bit length field can state.
+    #[error("payload of {len} bytes does not fit the 16-bit length field")]
+    TooLong { len: usize },
 }
 
 impl Frame {
+    /// The largest payload a frame can carry: its length field is 16 bits.
+    pub const MAX_PAYLOAD: usize = u16::MAX as usize;
+
+    /// Whether the frame can be encoded: its payload (or notify packet) is at
+    /// most [`Frame::MAX_PAYLOAD`] bytes. `Err(FrameError::TooLong)`
+    /// otherwise. A frame that came out of [`Frame::decode`] always passes.
+    pub fn check_len(&self) -> Result<(), FrameError> {
+        let len = match self {
+            Frame::Set { payload, .. } | Frame::GetResponse { payload, .. } => payload.len(),
+            Frame::Notification { packet } => packet.len(),
+            Frame::Get { .. } | Frame::SetResponse { .. } => 0,
+        };
+        if len > Self::MAX_PAYLOAD {
+            Err(FrameError::TooLong { len })
+        } else {
+            Ok(())
+        }
+    }
+
     /// The frame from the type byte through the CRC (the MIDI form).
+    ///
+    /// Infallible by design; it assumes [`Frame::check_len`] passed. A longer
+    /// payload is not refused here: its length field would wrap, and the
+    /// frame would not decode. Callers building frames from data they do not
+    /// control call `check_len` first.
     pub fn encode(&self) -> Vec<u8> {
         let mut f = Vec::new();
         match self {
@@ -200,7 +228,8 @@ impl Frame {
         f
     }
 
-    /// The UART form: [`SYNC`] then [`Frame::encode`].
+    /// The UART form: [`SYNC`] then [`Frame::encode`]. Same contract as
+    /// `encode`: call [`Frame::check_len`] first.
     pub fn encode_uart(&self) -> Vec<u8> {
         let mut v = vec![SYNC];
         v.extend(self.encode());
@@ -321,6 +350,10 @@ pub fn unpack7(data: &[u8]) -> Option<Vec<u8>> {
 }
 
 /// One SysEx message carrying `frame`, with the host's (or device's) `tag`.
+///
+/// Same contract as [`Frame::encode`]: the caller checks
+/// [`Frame::check_len`] first, since an over-long payload would wrap the
+/// frame's length field.
 pub fn encode_sysex(mfr: &[u8], tag: u8, frame: &Frame) -> Vec<u8> {
     let packed = pack7(&frame.encode());
     let mut v = Vec::with_capacity(packed.len() + 10);
@@ -599,6 +632,61 @@ mod tests_wp_p1 {
         let got = d.feed(&ok);
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].frame, Ok(Frame::SetResponse { status: 0 }));
+    }
+
+    #[test]
+    fn wp_p1_check_len_refuses_a_payload_the_length_field_cannot_state() {
+        let max = Frame::MAX_PAYLOAD;
+        let ok = [
+            Frame::Set {
+                request: 1,
+                value: 0,
+                index: 0,
+                payload: vec![0; max],
+            },
+            Frame::GetResponse {
+                status: 0,
+                payload: vec![0; max],
+            },
+            Frame::Notification {
+                packet: vec![0; max],
+            },
+            Frame::Get {
+                request: 1,
+                value: 0,
+                index: 0,
+                length: u16::MAX,
+            },
+            Frame::SetResponse { status: 0 },
+        ];
+        for f in &ok {
+            assert_eq!(f.check_len(), Ok(()));
+            assert_eq!(
+                Frame::decode(&f.encode()).as_ref(),
+                Ok(f),
+                "the limit round-trips"
+            );
+        }
+        let too_long = [
+            Frame::Set {
+                request: 1,
+                value: 0,
+                index: 0,
+                payload: vec![0; max + 1],
+            },
+            Frame::GetResponse {
+                status: 0,
+                payload: vec![0; max + 1],
+            },
+            Frame::Notification {
+                packet: vec![0; max + 1],
+            },
+        ];
+        for f in &too_long {
+            assert_eq!(f.check_len(), Err(FrameError::TooLong { len: max + 1 }));
+            // What check_len guards against: the length field wraps.
+            assert!(Frame::decode(&f.encode()).is_err());
+        }
     }
 
     #[test]
