@@ -1,0 +1,6 @@
+# The core Android builds against until WP AN1 moves it to crates/ and removes
+# this file (docs/core-merge/PLAN-CLIENTS.md). git reads .gitmodules only at the
+# top of the repo, so the import moved it here from apps/android.
+[submodule "apps/android/third_party/DSPi-Console-Linux"]
+	path = apps/android/third_party/DSPi-Console-Linux
+	url = https://github.com/WeebLabs/DSPi-Console-Linux.git
