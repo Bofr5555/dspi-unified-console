@@ -119,7 +119,7 @@ The imports, with history:
 |---|---|---|---|
 | `apps/desktop/`, `crates/dspi-core-linux/` | WeebLabs/DSPi-Console-Linux `main` | `4683a2c` (2026-10-10, "AUR package: build from the refreshed beta 4") | `portable` branch: Qt 6, Windows build and conventions, WinUSB wIndex, cargo-xwin fix |
 | `apps/terminal/`, `crates/dspi-{proto,transport,session,cmd,tui}`, `xtask/`, `tests/fixtures/*.txt` | WeebLabs/DSPi-Terminal `main` | `8389b20` (2026-09-30) | `portable` branch: firmware headers from Bofr5555/DSPi `bofr-main` `af001ec` (v1.1.6 final + extension channel), `dspi ext …`, `--fixture`, AutoEQ path |
-| `crates/dspi-link/`, `tests/fixtures/link/` | Bofr5555's Android console (`dspi-android`) `main` | `401ca8b` | path changes only |
+| `crates/dspi-link/`, `tests/fixtures/link/` | Bofr5555's Android console (`dspi-android`) `main` | `63492af` (last change to these paths `401ca8b`) | path changes only |
 | `tests/fixtures/link/` (data) | WeebLabs/DSPi-Link | `86f10e3` (see its README) | none |
 
 The import method: each upstream was cloned locally, its paths were
