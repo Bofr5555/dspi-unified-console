@@ -10,9 +10,15 @@
 
 use std::time::Duration;
 
+pub mod fake;
+#[cfg(feature = "link")]
+pub mod link;
+pub mod midi;
 pub mod mock;
 pub mod usb;
 
+pub use fake::FakeDevice;
+pub use midi::{MidiPipe, MidiTransport};
 pub use mock::MockTransport;
 pub use usb::{UsbTransport, list_devices};
 

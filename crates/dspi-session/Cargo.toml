@@ -23,3 +23,6 @@ default = ["serde", "bundled-autoeq"]
 # armv7 Pi; a user-supplied database still works without it.
 bundled-autoeq = []
 serde = ["dspi-proto/serde"]
+
+[dev-dependencies]
+proptest = "1"

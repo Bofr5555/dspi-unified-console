@@ -11,3 +11,16 @@ repository.workspace = true
 dspi-proto.workspace = true
 thiserror.workspace = true
 nusb = "0.2"
+dspi-link = { path = "../dspi-link", optional = true }
+midir = { version = "0.10", optional = true }
+
+[features]
+# DSPi Link transport (WP T5).
+link = ["dep:dspi-link"]
+# Desktop MIDI ports through midir: ALSA, WinMM, CoreMIDI (WP T3). Android and
+# iOS supply a MidiPipe instead.
+midir = ["dep:midir"]
+
+[dev-dependencies]
+proptest = "1"
+dspi-link = { path = "../dspi-link", features = ["fake-hub"] }

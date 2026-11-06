@@ -16,6 +16,7 @@ default = ["serde"]
 serde = ["dep:serde"]
 
 [dev-dependencies]
+proptest = "1"
 serde_json.workspace = true
 
 [build-dependencies]

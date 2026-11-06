@@ -256,3 +256,15 @@ fn map_transfer_error(e: TransferError, opcode: u8) -> TransportError {
         other => TransportError::Usb(other.to_string()),
     }
 }
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+impl UsbTransport {
+    /// Open a device from a file descriptor the platform already opened:
+    /// Android's `UsbManager.openDevice()` (`UsbDeviceConnection.fileDescriptor`),
+    /// where nothing can enumerate the bus. Claims the vendor interface only.
+    /// Owned by WP T1 (docs/core-merge/PLAN.md).
+    pub fn from_fd(fd: std::os::fd::OwnedFd, serial: &str) -> Result<Self> {
+        let _ = (fd, serial);
+        todo!("WP T1: nusb::Device::from_fd + claim interface 2")
+    }
+}

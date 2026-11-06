@@ -254,6 +254,12 @@ impl Session {
         f(&mut *self.transport)
     }
 
+    /// The transport, for callers that keep their own driver loop (the
+    /// embedder API in `dspi-core`). Prefer [`Session::with_transport`].
+    pub fn transport_mut(&mut self) -> &mut dyn Transport {
+        &mut *self.transport
+    }
+
     pub fn channel_map(&self) -> &ChannelMap {
         &self.map
     }
@@ -614,7 +620,7 @@ impl Session {
     }
 
     /// Refuse a parameter this device does not have, with the reason.
-    fn check_available(&self, d: &ParamDesc) -> Result<(), WriteError> {
+    pub(crate) fn check_available(&self, d: &ParamDesc) -> Result<(), WriteError> {
         let why = match d.requires {
             Requires::Always => return Ok(()),
             Requires::Rp2350 => {
@@ -701,7 +707,7 @@ impl Session {
         }
     }
 
-    fn build_wvalue(
+    pub(crate) fn build_wvalue(
         &self,
         d: &ParamDesc,
         indices: &[u8],

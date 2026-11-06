@@ -4,7 +4,12 @@
 //! share every behaviour rather than reimplementing it.
 
 pub mod autoeq;
+pub mod clipboard;
+pub mod compat;
+pub mod cs_model;
 pub mod ext;
+pub mod ext_state;
+mod fast;
 pub mod filterfile;
 pub mod notify;
 pub mod pins;
