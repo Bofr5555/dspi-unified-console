@@ -33,7 +33,7 @@ if [[ -n "$(git -C "$SUB" status --porcelain --untracked-files=no)" ]]; then
   fail "submodule has local modifications; the core is never edited in place (use third_party/patches/)"
 fi
 
-key="$( { echo "$PIN"; for p in "${PATCHES[@]}"; do [[ -f "$p" ]] && { echo "$p"; cat "$p"; }; done; } \
+key="$( { echo "$PIN"; echo own-workspace; for p in "${PATCHES[@]}"; do [[ -f "$p" ]] && { echo "$p"; cat "$p"; }; done; } \
         | sha256sum | cut -d' ' -f1)"
 if [[ -f "$OUT/.stamp" && "$(cat "$OUT/.stamp")" == "$key" ]]; then
   exit 0
@@ -47,4 +47,8 @@ for p in "${PATCHES[@]}"; do
   echo "stage-core: applying $(basename "$p")" >&2
   patch -d "$OUT" -p1 --forward --batch --quiet < "$p"
 done
+# The core's build.rs runs cbindgen, which runs `cargo metadata` on this manifest.
+# rust/Cargo.toml excludes .staged, so cargo keeps walking up to the monorepo's
+# workspace and refuses the package. An empty table makes it its own root.
+printf '\n[workspace]\n' >> "$OUT/core/Cargo.toml"
 echo "$key" > "$OUT/.stamp"
