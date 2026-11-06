@@ -958,25 +958,26 @@ pub struct CoreVregInfo {
     pub live_vreg: u8,
     /// Core voltage, mV; 0 if unknown.
     pub millivolts: u16,
-    /// 0 = build default.
+    /// The persisted selection in the flash directory; 0 = build default.
     pub stored_sel: u8,
     /// The build's default VREG code.
     pub default_vreg: u8,
-    /// The firmware raised the voltage by itself after hangs.
+    /// The stored selection was raised by the firmware.
     pub auto_raised: bool,
-    /// The automatic raise is disabled.
+    /// The user opted out of automatic escalation
+    /// (`CORE_VREG_FLAG_AUTO_DISABLED`).
     pub auto_disabled: bool,
-    /// Hangs counted.
+    /// Own-watchdog hangs this power session, not yet acted on.
     pub hang_count: u8,
     /// A voltage trial is running.
     pub trial_active: bool,
-    /// The trial's VREG code.
+    /// The trial's VREG code, valid while `trial_active`.
     pub trial_vreg: u8,
-    /// VREG code of the last failed trial.
+    /// VREG code of the trial whose run ended in a hang; 0 = none.
     pub failed_trial_vreg: u8,
-    /// Uptime when that trial failed, s.
+    /// How long that trial survived, s.
     pub failed_trial_uptime_s: u32,
-    /// Uptime, s.
+    /// This run's uptime, s.
     pub uptime_s: u32,
 }
 
