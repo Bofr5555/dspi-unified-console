@@ -31,15 +31,15 @@ Sizes are relative units, for comparing WPs. Measured in the core merge: a size-
 |---|---|---|---|
 | MR: one repo, one build | 2 | 2.25 | `main` |
 | LC, HO: licence inventory, handover | 2 | 1.75 | `main`; HO1 late |
-| CG: core gaps | 12 | 9 | `main` |
+| CG: core gaps | 13 | 9.25 | `main` |
 | HB: Rust Link hub | 7 | 12 | `main` |
 | QD: Qt (Linux, Windows) | 28 | 22.5 | `main`, CG, HB for the hub page |
-| TM: Terminal | 18 | 9.75 | `main`, CG, HB for `dspi hub` |
+| TM: Terminal | 20 | 10.75 | `main`, CG, HB for `dspi hub` |
 | AN: Android | 24 | 25.75–29.75 | `main`, MR1, CG9 |
 | SW: Swift (macOS and iOS) | 29 | 32.75–43.25 | `main`, MR1, CG3, CG4 |
 | WB: web | 1 + stubs | 2 (study) | `main` |
 | XC: audit, cross-client tests | 7 | 3.75 | hub hardware, K340 |
-| **Total** | **130** | **about 121–136**, not counting the web build | |
+| **Total** | **133** | **about 121–136**, not counting the web build | |
 
 **M0, the first milestone, is about 12–14 days after `main`** (section 0.3). The
 largest unknowns are Swift domain replacement, the Android control-surface editor
@@ -471,9 +471,13 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (section 9).
 - **Deps:** `main`.
 
 **CG12: Output ring health.** Size 0.25. From XC0 (M53).
+
+
 - **Owns:** new `crates/dspi-session/src/ring_health.rs`, a binding in `crates/dspi-core/src/stats.rs`.
 - **Implements:** Fill Target, Underrun Episodes, Refused Blocks, Lowest Fill, Worst Input Gap, Worst USB Gap and Over-Budget Steps, from `REQ_OUTPUT_LATENCY` index 2 with `REQ_GET_STATUS` 26–31 (reference `StatsView.swift:206-223,478-504`), plus the ring-scaled fill thresholds (`:1222`). In the session because the Terminal does not link `dspi-core`. Exported to C and UniFFI. SW14 uses it.
 - **Done when:** tests cover a device without the status (no section), a `UInt32.max` lowest fill (no value yet) and a short reply. **Deps:** `main`.
+
+**CG13: Input source names in the core.** Size 0.25. From CG7. **Owns:** a source-name cache in `crates/dspi-core/` (connect, `NOTIFY_EVT_INPUT_SOURCE_NAME`, set), `source_title` in `presets.rs`. **Implements:** the user's name first in the preset diff's Input source row, as Swift's `inputSourceTitle`. **Done when:** a renamed source shows its name in `preset_changes`, updated by another client's notify. **Deps:** CG7.
 
 ### 4.2 HB: the Rust Link hub
 
@@ -490,7 +494,8 @@ In scope on Qt regardless (owner), and used by Terminal and, later, the Mac. No 
 
 **HB1: Server, handshake, auth, roles.** Size 2. **Owns:** `crates/dspi-hub/src/{server,auth,store}.rs`.
 - **Implements:** WebSocket server, hello, `/dspi/v1/info`, session limits. **PIN is the default; open access is opt-in.** Window PIN, tokens, rate limits, revoke; close codes 4001, 4002, 4003; ping every 10 s; 30 s dead-peer limit.
-- **Done when:** L1's client and fixtures pass, including wrong PIN answered with `unauthenticated`, as real hubs do. **Deps:** HB0.
+- **Origin check (WB0):** refuse a WebSocket whose `Origin` is not the hub's own page, per Link spec section 4. Without it any web page could reach the hub.
+- **Done when:** L1's client and fixtures pass, including wrong PIN answered with `unauthenticated`, as real hubs do, and a foreign `Origin` is refused. **Deps:** HB0.
 
 **HB2: Commands and notifications.** Size 2.5. **Owns:** `crates/dspi-hub/src/{router,policy,lock,relay}.rs`.
 - **Implements:** per-device ordered CMD with `max_inflight`; `policy/commands.json` by role; locks; NOTIFY with `origin` per session; resync. Documents how `0x00` is classed (upstream's policy lacks it, so admin-only).
@@ -610,13 +615,17 @@ Owner decided: it skips what needs a graphical UI (on-graph editing, onboarding)
 
 **TM15: Closed pipes.** Size 0.25. **Owns:** output handling in `apps/terminal/src/main.rs`, under its marker. **Implements:** `dspi --demo dump | head -5` panics with "failed printing to stdout: Broken pipe". Handle a closed pipe across all CLI output: stop quietly, with the usual exit status. **Done when:** a test pipes every command that prints into a closed reader, with no panic. **Deps:** `main`.
 
-**TM14: No tmpfs in tests.** Size 0.25. **Owns:** tests in `crates/dspi-tui/src/{actions.rs,settings/config.rs,settings/mod.rs}`. **Implements:** five `temp_dir()` uses move to a target-dir path. **Done when:** none remain, and tests pass. **Deps:** `main`.
+**TM19: Multi-line Save.** Size 0.5. From TM17, confirmed by review. **Owns:** `set` and `run_commands` in `crates/dspi-tui/src/live.rs`, the save path in `settings/mod.rs`. **Implements:** a Save with several Flash-hazard lines dropped all but the last, silently. One confirmation naming all; all written in order; unwritten edits stay in the draft. `cs_dirty` keys on the request, not the page. **Deps:** `main`.
+
+**TM20: Tokenizer and latency confirm.** Size 0.5. From TM17, confirmed by review. **Owns:** `tokenize` in `crates/dspi-cmd/src/lib.rs`, `out.latency` confirm in `crates/dspi-session/src/write.rs`. **Implements:** empty quoted token and escaped quote; confirm polls `pending` as the Mac does. Hardware check in TM13. **Deps:** `main`.
+
+**TM14: No tmpfs in tests.** Done: fcfdb58 had already done it. Size 0.25. **Owns:** tests in `crates/dspi-tui/src/{actions.rs,settings/config.rs,settings/mod.rs}`. **Implements:** five `temp_dir()` uses move to a target-dir path. **Done when:** none remain, and tests pass. **Deps:** `main`.
 
 **TM16: Output ring health.** Size 0.25. **Owns:** `screens/stats.rs`. **Done when:** the section and ring-scaled thresholds render on the demo device; absent status hides it. **Deps:** CG12.
 
 **TM17: Device names and latency in the TUI.** Size 0.5. **Owns:** `settings/global.rs`, `settings/inputs.rs`. **Implements:** Device Name and Output Latency on Global Parameters and source names on Inputs, over the existing `dev.name`, `out.latency` and `in.name`. **Done when:** edits round-trip on the demo device; hidden when absent. **Deps:** `main`.
 
-**TM18: Volume mode and Identify.** Size 0.25. **Owns:** the `VolumeModeToggle` arm in `crates/dspi-tui/src/live.rs`, `settings/config.rs`, `identify_command` in `screens/mod.rs`. **Implements:** the volume mode is saved; Identify as `Commands.swift:3688-3704`: -12 dB, two passes, clamped to the valid-channel mask. **Done when:** a test restores the mode after a restart; a test checks Identify's commands. Wave 2, since TM14 owns tests in `settings/config.rs` in wave 1. **Deps:** `main`.
+**TM18: Volume mode, Identify, tube view.** Size 0.25. Also remembers TM7's tube Basic/Advanced choice (`live.rs:139` rebuilds the panel on open). **Owns:** the `VolumeModeToggle` arm in `crates/dspi-tui/src/live.rs`, `settings/config.rs`, `identify_command` in `screens/mod.rs`. **Implements:** the volume mode is saved; Identify as `Commands.swift:3688-3704`: -12 dB, two passes, clamped to the valid-channel mask. **Done when:** a test restores the mode after a restart; a test checks Identify's commands. Wave 2, since TM14 owns tests in `settings/config.rs` in wave 1. **Deps:** `main`.
 
 ### 5.3 Android (`apps/android`)
 
