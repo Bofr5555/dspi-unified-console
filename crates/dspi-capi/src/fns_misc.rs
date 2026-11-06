@@ -1240,6 +1240,9 @@ pub extern "C" fn dspi_firmware_version_matches(core: *mut FfiCore, version: *co
 // -- WP CG6 --
 mod autoeq;
 
+// -- WP CG10 --
+mod link_text;
+
 // -- WP CG8 --
 
 fn guard_board(required_mv: u16) -> dspi_core::FirmwareGuardBoard {

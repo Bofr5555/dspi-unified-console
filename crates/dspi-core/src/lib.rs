@@ -93,6 +93,8 @@ mod rta;
 mod stats;
 // -- WP CG6 --
 pub mod autoeq;
+// -- WP CG10 --
+mod link_text;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -123,6 +125,8 @@ pub use records::*;
 pub use autoeq::*;
 // -- WP CG8 --
 pub use firmware_guard::*;
+// -- WP CG10 --
+pub use link_text::*;
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
