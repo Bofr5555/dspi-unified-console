@@ -2950,6 +2950,8 @@ mod tests_wp_cg12 {
         assert_ne!(before, after);
         assert_ne!(was, centi(&mut d));
         assert_eq!(centi(&mut d), u32::from(after) * 10_000 / 768);
+    }
+}
 
 /// WP CG11: the simulation's own hook; its effects are tested through the core
 /// (`dspi-core`'s `vreg/tests_wp_cg11.rs`).
