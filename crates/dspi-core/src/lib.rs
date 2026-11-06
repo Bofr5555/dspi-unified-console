@@ -166,6 +166,12 @@ pub(crate) struct Connection {
     /// `bulk_write_started` / `bulk_write_finished(Instant::now(), ok)`;
     /// `process_notifications` (WP C7) classifies with it.
     pub(crate) echo: dspi_session::notify::EchoFilter,
+    /// Set by `attach_probed` (WP C1) when it decoded the mirror from this
+    /// connect's own image; consumed by `fetch_all` (WP C2), which then
+    /// skips re-reading the platform and the image but still does the
+    /// per-item reads. False after any later change could have made the
+    /// image stale.
+    pub(crate) fresh_image: bool,
 }
 
 /// A placeholder transport for a `Connection` built before its session
@@ -212,6 +218,7 @@ impl Connection {
             wire: None,
             ext: ExtState::default(),
             echo: dspi_session::notify::EchoFilter::default(),
+            fresh_image: false,
         }
     }
 

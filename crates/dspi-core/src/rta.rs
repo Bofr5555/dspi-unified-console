@@ -43,6 +43,28 @@ impl DspiCore {
 #[derive(Default)]
 pub(crate) struct RtaState {}
 
+/// The analyser's poll thread (WP C9). Dropping it, or [`RtaWorker::stop`],
+/// stops the thread and joins it; that must happen with the `Inner` lock
+/// released, because the worker takes the lock for each poll (PLAN §1.2).
+pub(crate) struct RtaWorker {}
+
+impl RtaWorker {
+    /// Stop the thread and wait for it. Call without holding the `Inner`
+    /// lock.
+    pub(crate) fn stop(self) {
+        todo!("WP C9")
+    }
+}
+
+/// Take the running worker out of `inner`, for the caller to stop after
+/// releasing the lock: WP C1's close and displace paths do
+/// `let w = rta::take_worker(&mut inner); drop(inner); if let Some(w) = w {
+/// w.stop() }`. `None` while no worker runs. Base hook; WP C9 fills it.
+pub(crate) fn take_worker(inner: &mut crate::Inner) -> Option<RtaWorker> {
+    let _ = inner;
+    None
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests {

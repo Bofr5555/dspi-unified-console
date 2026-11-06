@@ -65,7 +65,7 @@ for s in "${steps[@]}"; do
     test) $RUN "cargo test --workspace ${EXCLUDE[*]} --all-features --no-fail-fast" ;;
     windows-gnu) $RUN "cargo build --workspace --all-features --target x86_64-pc-windows-gnu" ;;
     windows-msvc)
-      DSPI_PROFILE=cross $RUN "cargo xwin build -p dspi-core -p dspi-capi -p dspi-term --features dspi-core/link --target x86_64-pc-windows-msvc" ;;
+      DSPI_PROFILE=cross $RUN "cargo xwin build -p dspi-core -p dspi-capi -p dspi-term --features dspi-core/link,dspi-core/midir --target x86_64-pc-windows-msvc" ;;
     android)
       DSPI_PROFILE=cross $RUN "cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 --platform 26 build -p dspi-core --features link" ;;
     wasm) DSPI_PROFILE=cross $RUN "cargo build -p dspi-proto --target wasm32-unknown-unknown" ;;
