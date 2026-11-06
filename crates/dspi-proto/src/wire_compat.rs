@@ -430,7 +430,10 @@ mod tests {
         assert_eq!(img[ic + 10], 0);
         assert_eq!(&img[ic + 11..ic + 16], &d[ic + 6..ic + 11]);
         assert_eq!(&img[adat..adat + 8], &d[adat - 4..adat + 4]);
-        assert!(img[adat + 8..].iter().all(|&b| b == 0), "nothing appended yet");
+        assert!(
+            img[adat + 8..].iter().all(|&b| b == 0),
+            "nothing appended yet"
+        );
     }
 
     #[test]

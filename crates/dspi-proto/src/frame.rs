@@ -114,10 +114,17 @@ pub enum Frame {
         index: u16,
         length: u16,
     },
-    SetResponse { status: u8 },
-    GetResponse { status: u8, payload: Vec<u8> },
+    SetResponse {
+        status: u8,
+    },
+    GetResponse {
+        status: u8,
+        payload: Vec<u8>,
+    },
     /// A v2 notify packet, exactly as the USB endpoint would deliver it.
-    Notification { packet: Vec<u8> },
+    Notification {
+        packet: Vec<u8>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -164,7 +171,9 @@ impl Frame {
                 f.extend_from_slice(&index.to_le_bytes());
                 f.extend_from_slice(&length.to_le_bytes());
             }
-            Frame::SetResponse { status } => f.extend_from_slice(&[ty::SET_RESPONSE, *status, 0, 0]),
+            Frame::SetResponse { status } => {
+                f.extend_from_slice(&[ty::SET_RESPONSE, *status, 0, 0])
+            }
             Frame::GetResponse { status, payload } => {
                 f.extend_from_slice(&[ty::GET_RESPONSE, *status]);
                 f.extend_from_slice(&(payload.len() as u16).to_le_bytes());

@@ -11,7 +11,10 @@ fn hex(s: &str) -> Vec<u8> {
 
 #[test]
 fn every_vector_encodes_and_decodes_exactly() {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/fixtures/midi/midi_vectors.json");
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/fixtures/midi/midi_vectors.json"
+    );
     let text = std::fs::read_to_string(path).unwrap();
     let mut n = 0;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
