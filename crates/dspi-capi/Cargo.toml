@@ -35,6 +35,9 @@ dspi-transport.workspace = true
 [features]
 link = ["dspi-core/link"]
 midir = ["dspi-core/midir"]
+# -- WP CG2 --
+# Finding hubs on the network. Off, the dspi_link_browse_* functions refuse.
+mdns = ["dspi-core/mdns"]
 
 [dev-dependencies]
 # -- WP Q1 --
@@ -44,8 +47,8 @@ dspi-proto.workspace = true
 # PLAN section 1.9: the C ABI's null and short-buffer property tests.
 proptest = "1"
 # -- WP Q2b --
-# -- WP CG1 --
-# The fake hub, for the Link functions' tests.
+# -- WP CG1, CG2 --
+# The fake hub, for the Link functions' tests; the fake advertiser, for the browse functions' tests.
 dspi-link = { path = "../dspi-link", features = ["fake-hub"] }
 
 [build-dependencies]
