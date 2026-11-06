@@ -36,3 +36,6 @@ midi = ["dspi-transport/midir"]
 # -- WP R1 --
 # The in-process hub the Link tests connect to.
 dspi-link = { workspace = true, features = ["fake-hub"] }
+# -- WP TM4 --
+# Holds the read-only opcode table to the Link policy fixture (shell/read_only.rs).
+serde_json.workspace = true

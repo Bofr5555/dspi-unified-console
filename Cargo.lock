@@ -693,6 +693,7 @@ dependencies = [
  "dspi-transport",
  "ratatui",
  "serde",
+ "serde_json",
  "thiserror",
  "toml 1.1.4+spec-1.1.0",
  "unicode-width 0.2.0",
