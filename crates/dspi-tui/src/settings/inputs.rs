@@ -4,19 +4,33 @@
 //! optional receivers and LG Sound Sync), I2S (clock role, channel count and a
 //! data pin per pair) and ADAT. Each section only appears when the device
 //! answered its probe, because an absent feature is removed rather than dimmed.
+//!
+//! Source names close the page. They are device-global and not wiring, so they
+//! leave the output-config category alone; the dialog's OK writes them, for the
+//! reason `global.rs` gives for the device name.
 
 use std::rc::Rc;
 
 use dspi_proto::value::Value;
 
 use crate::shell::{SessionReply, SessionRequest};
+use crate::widgets::text::truncate;
 use crate::widgets::{Action, Button, Dialog, DialogOutcome, KeyHelp, PopupList, StatusTone};
 
+use super::global::{NAME_BUTTON_WIDTH, typed_name};
 use super::pin_status as st;
 use super::{Cx, Explain, INPUT_RATES_HZ, PageEvent, Row, SettingsPage};
 
 /// The default S/PDIF RX pins, and the ADAT input's "unset" sentinel.
 pub const ADAT_INPUT_PIN_UNSET: u8 = 0xFF;
+
+/// `InputSource` (audio_input.h), the index `in.name` takes.
+const SOURCE_USB: u8 = 0;
+const SOURCE_SPDIF: u8 = 1;
+const SOURCE_I2S: u8 = 2;
+const SOURCE_ADAT: u8 = 3;
+/// S/PDIF input index `n` (1 is S/PDIF 2) is source `n + 3`.
+const SOURCE_SPDIF_BASE: u8 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Item {
@@ -30,6 +44,7 @@ enum Item {
     AdatPin,
     AdatClock,
     EnableAdatOutput,
+    SourceName(u8),
 }
 
 #[derive(Debug, Default)]
@@ -39,6 +54,8 @@ pub struct InputsPage {
     status: Option<(String, bool)>,
     /// The clock-mode change the confirm is standing in front of.
     pending_clock: Option<u8>,
+    /// The source whose name dialog is up.
+    pending_name: Option<u8>,
 }
 
 const KEYS: &[KeyHelp] = &[
@@ -129,6 +146,128 @@ impl InputsPage {
         } else {
             "I2S RX".to_string()
         }
+    }
+
+    /// The sources a name can be given to, the Console's `inputSourceOptions`:
+    /// `(id, built-in title, where it comes in)`.
+    fn name_sources(cx: &Cx<'_>) -> Vec<(u8, String, String)> {
+        let input = cx.state.input_config();
+        let multi = cx.feature("spdif_multi_input");
+        let receiver = |idx: usize| format!("Receiver on GPIO {}", Self::spdif_pin(cx, idx));
+        let optional: Vec<usize> = if multi {
+            (1..Self::spdif_inventory(cx))
+                .filter(|idx| Self::optional_enabled(cx, *idx))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let spdif_title = if optional.is_empty() {
+            "S/PDIF"
+        } else {
+            "S/PDIF 1"
+        };
+        let mut out = vec![
+            (
+                SOURCE_USB,
+                "USB".to_string(),
+                "Audio from the computer".to_string(),
+            ),
+            (SOURCE_SPDIF, spdif_title.to_string(), receiver(0)),
+        ];
+        for idx in optional {
+            out.push((
+                SOURCE_SPDIF_BASE.saturating_add(idx as u8),
+                format!("S/PDIF {}", idx + 1),
+                receiver(idx),
+            ));
+        }
+        if cx.feature("i2s_input_channels") {
+            out.push((
+                SOURCE_I2S,
+                "I2S".to_string(),
+                "External I2S device".to_string(),
+            ));
+        }
+        // Selectable only once enabled with a pin, so only then worth naming.
+        if cx.feature("adat_input")
+            && let Some(c) = &input
+            && c.adat_input_enabled == Some(true)
+            && let Some(pin) = c.adat_input_pin
+        {
+            out.push((
+                SOURCE_ADAT,
+                "ADAT".to_string(),
+                format!("Lightpipe on GPIO {pin}"),
+            ));
+        }
+        out
+    }
+
+    fn stored_name<'a>(cx: &Cx<'a>, source: u8) -> Option<&'a str> {
+        cx.data
+            .extras
+            .source_names
+            .get(usize::from(source))
+            .and_then(|n| n.as_deref())
+    }
+
+    fn source_name_rows(cx: &Cx<'_>) -> Vec<(Option<Item>, Row)> {
+        if cx.data.extras.source_names.is_empty() {
+            return Vec::new();
+        }
+        let mut rows = vec![(None, Row::Blank), (None, Row::section("Source Names"))];
+        for (source, title, detail) in Self::name_sources(cx) {
+            let Some(name) = Self::stored_name(cx, source) else {
+                continue;
+            };
+            rows.push((
+                Some(Item::SourceName(source)),
+                Row::Buttons {
+                    label: title,
+                    caption: Some(detail),
+                    buttons: vec![if name.is_empty() {
+                        "Add a name".to_string()
+                    } else {
+                        truncate(name, NAME_BUTTON_WIDTH)
+                    }],
+                    cursor: 0,
+                    enabled: cx.connected,
+                },
+            ));
+        }
+        rows.push((
+            None,
+            Row::note(
+                "Shown on the front panel and on every connected computer. An empty name uses \
+                 the built-in one.",
+            ),
+        ));
+        rows
+    }
+
+    fn rename(&mut self, source: u8, typed: &str, cx: &Cx<'_>) -> PageEvent {
+        let name = typed_name(typed);
+        if Self::stored_name(cx, source) == Some(name.as_str()) {
+            return PageEvent::Handled;
+        }
+        let done = if name.is_empty() {
+            "Source name removed".to_string()
+        } else {
+            format!("Source name set to {name}")
+        };
+        PageEvent::Session(super::device_write(
+            0,
+            "in.name",
+            vec![source],
+            Value::Text(name),
+            Rc::new(move |code| {
+                if code == st::SUCCESS {
+                    (done.clone(), false)
+                } else {
+                    ("Failed to set the source name".to_string(), true)
+                }
+            }),
+        ))
     }
 
     fn build(&self, cx: &Cx<'_>) -> Vec<(Option<Item>, Row)> {
@@ -415,6 +554,8 @@ impl InputsPage {
             }
             let _ = current;
         }
+
+        rows.extend(Self::source_name_rows(cx));
 
         if let Some((text, err)) = &self.status {
             rows.push((None, Row::Blank));
@@ -734,6 +875,17 @@ impl SettingsPage for InputsPage {
                     Self::explain(item, "ADAT output enabled".into(), 0, None),
                 )
             }
+            (Item::SourceName(source), Action::Open) => {
+                self.status = None;
+                self.pending_name = Some(source);
+                PageEvent::Dialog(Dialog::text(
+                    "Source Name",
+                    "Up to 31 plain characters. Saving writes it to the device at once, with a \
+                     brief output restart. An empty name uses the built-in one.",
+                    Self::stored_name(cx, source).unwrap_or_default(),
+                    "Add a name",
+                ))
+            }
             (_, Action::Selected(i)) => self.apply(item, i, cx),
             (_, Action::Open) => {
                 let rows = self.build(cx);
@@ -797,7 +949,13 @@ impl SettingsPage for InputsPage {
         }
     }
 
-    fn dialog_result(&mut self, outcome: DialogOutcome, _cx: &Cx<'_>) -> PageEvent {
+    fn dialog_result(&mut self, outcome: DialogOutcome, cx: &Cx<'_>) -> PageEvent {
+        if let Some(source) = self.pending_name.take() {
+            return match outcome {
+                DialogOutcome::Text(typed) => self.rename(source, &typed, cx),
+                _ => PageEvent::Handled,
+            };
+        }
         let Some(mode) = self.pending_clock.take() else {
             return PageEvent::Handled;
         };
@@ -1091,5 +1249,157 @@ mod tests {
             ScreenEvent::Command(c) => assert_eq!(c, "in.i2s.clock slave"),
             other => panic!("{other:?}"),
         }
+    }
+
+    // ---- WP TM17: source names --------------------------------------------
+    use super::super::global::tests::{ALL, answer, demo, extras};
+    use dspi_proto::generated::opcodes as op;
+    use dspi_session::Session;
+
+    fn stored(session: &mut Session, source: u8) -> Vec<u8> {
+        session
+            .with_transport(|t| t.control_in(op::REQ_GET_INPUT_SOURCE_NAME, u16::from(source), 32))
+            .expect("read")
+    }
+
+    fn name_rows(s: &SettingsScreen, st: &dspi_session::DeviceState) -> Vec<(u8, usize)> {
+        let cx = Cx {
+            state: st,
+            data: &s.data,
+            config: &s.config,
+            connected: true,
+            global_dirty: false,
+        };
+        s.pages
+            .inputs
+            .build(&cx)
+            .iter()
+            .filter(|(_, r)| r.focusable())
+            .enumerate()
+            .filter_map(|(at, (i, _))| match i {
+                Some(Item::SourceName(src)) => Some((*src, at)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn wp_tm17_a_source_name_round_trips_on_the_demo_device() {
+        let (mut session, st, s) = demo(&ALL);
+        let mut s = s.open(Page::Inputs, &st);
+        let f = frame(&mut s, &st, 120, 120);
+        assert!(f.contains("SOURCE NAMES"), "{f}");
+        assert!(f.contains("Audio from the computer"), "{f}");
+        assert!(f.contains("Add a name"), "{f}");
+
+        s.handle(key(KeyCode::Tab), &st);
+        let rows = name_rows(&s, &st);
+        let at = rows
+            .iter()
+            .find(|(src, _)| *src == SOURCE_SPDIF)
+            .map(|(_, at)| *at)
+            .expect("an S/PDIF row");
+        for _ in 0..at {
+            s.handle(key(KeyCode::Down), &st);
+        }
+        answer(&mut s, &st, &mut session, " Turn \"table\" ");
+        assert!(stored(&mut session, SOURCE_SPDIF).starts_with(b"Turn \"table\"\0"));
+        assert_eq!(
+            stored(&mut session, SOURCE_USB),
+            vec![0; 32],
+            "only that one"
+        );
+        assert_eq!(
+            s.data.extras.source_names[usize::from(SOURCE_SPDIF)].as_deref(),
+            Some("Turn \"table\""),
+            "the request re-read it on its way home"
+        );
+        let f = frame(&mut s, &st, 120, 120);
+        assert!(f.contains("Turn \"table\""), "{f}");
+        assert!(f.contains("Source name set to"), "{f}");
+        assert!(!s.output_dirty(), "a name is not wiring");
+        assert!(!s.cs_dirty(), "nor a control-surface edit");
+
+        // An empty name goes back to the built-in one.
+        answer(&mut s, &st, &mut session, "");
+        assert_eq!(stored(&mut session, SOURCE_SPDIF), vec![0; 32]);
+        assert_eq!(
+            s.data.extras.source_names[usize::from(SOURCE_SPDIF)].as_deref(),
+            Some("")
+        );
+        let f = frame(&mut s, &st, 120, 120);
+        assert!(f.contains("Source name removed"), "{f}");
+    }
+
+    #[test]
+    fn wp_tm17_the_section_is_hidden_when_the_device_lacks_it() {
+        let (_session, st, s) = demo(&[]);
+        assert!(s.data.extras.source_names.is_empty());
+        let mut s = s.open(Page::Inputs, &st);
+        let f = frame(&mut s, &st, 120, 120);
+        assert!(!f.contains("SOURCE NAMES"), "{f}");
+        assert!(
+            f.contains("S/PDIF INPUT"),
+            "the rest of the page stays: {f}"
+        );
+        assert!(name_rows(&s, &st).is_empty());
+    }
+
+    /// The rows are the sources the Console offers, under the ids the wire
+    /// takes: S/PDIF 2 is source 4, not 2.
+    #[test]
+    fn wp_tm17_rows_follow_the_available_sources() {
+        let st = state();
+        let d = data();
+        let c = AppConfig::default();
+        let cx = Cx {
+            state: &st,
+            data: &d,
+            config: &c,
+            connected: true,
+            global_dirty: false,
+        };
+        let sources = InputsPage::name_sources(&cx);
+        let ids: Vec<u8> = sources.iter().map(|(id, _, _)| *id).collect();
+        // The fixture: S/PDIF 2 on, I2S, and ADAT enabled with a pin.
+        assert_eq!(ids, vec![0, 1, 4, 2, 3]);
+        assert_eq!(sources[4].2, "Lightpipe on GPIO 13");
+        assert_eq!(sources[1].1, "S/PDIF 1");
+        assert_eq!(sources[1].2, "Receiver on GPIO 5");
+        assert_eq!(sources[2].1, "S/PDIF 2");
+        assert_eq!(sources[2].2, "Receiver on GPIO 21");
+
+        // A firmware with only the single receiver: no number on it, and no
+        // sources it does not have.
+        let mut small = state();
+        small.caps.features = vec![dspi_session::probe::Feature {
+            name: "input_source_names".into(),
+            present: true,
+            evidence: "answered".into(),
+        }];
+        let sources = InputsPage::name_sources(&Cx {
+            state: &small,
+            data: &d,
+            config: &c,
+            connected: true,
+            global_dirty: false,
+        });
+        let ids: Vec<u8> = sources.iter().map(|(id, _, _)| *id).collect();
+        assert_eq!(ids, vec![0, 1]);
+        assert_eq!(sources[1].1, "S/PDIF");
+
+        // A source whose read failed has no row, and the section still stands.
+        let mut d = data();
+        d.extras = extras();
+        d.extras.source_names[4] = None;
+        let rows = InputsPage::source_name_rows(&Cx {
+            state: &st,
+            data: &d,
+            config: &c,
+            connected: true,
+            global_dirty: false,
+        });
+        assert!(!rows.iter().any(|(i, _)| *i == Some(Item::SourceName(4))));
+        assert!(rows.iter().any(|(i, _)| *i == Some(Item::SourceName(1))));
     }
 }

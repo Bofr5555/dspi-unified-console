@@ -97,6 +97,9 @@ pub struct SettingsData {
     /// The spectrum analyser's caps, when this device has one. The runner
     /// copies them from its engine, which read them on connect.
     pub rta: Option<dspi_proto::packets::RtaCaps>,
+    // -- WP TM17 --
+    /// The device name, source names and output latency.
+    pub extras: global::DeviceExtras,
 }
 
 impl SettingsData {
@@ -156,6 +159,8 @@ impl SettingsData {
         let cs = cs_model::CsData::read(session);
         let sample_rate_hz = read_sample_rate(session);
         Self {
+            // -- WP TM17 --
+            extras: global::DeviceExtras::read(session),
             sample_rate_hz,
             rta: None,
             directory,
@@ -193,6 +198,10 @@ impl SettingsData {
         }
         if r.sample_rate_hz.is_some() {
             self.sample_rate_hz = r.sample_rate_hz;
+        }
+        // -- WP TM17 --
+        if let Some(extras) = r.extras {
+            self.extras.adopt(extras);
         }
         if let Some(cs) = r.cs {
             // The device's own unsaved flag, which is better evidence than the
@@ -278,6 +287,9 @@ pub struct Refresh {
     pub claims: Option<Vec<PinClaim>>,
     pub cs: Option<cs_model::CsData>,
     pub sample_rate_hz: Option<u32>,
+    // -- WP TM17 --
+    /// Up to ten transfers, so only taken while the pages showing them are up.
+    pub extras: Option<global::DeviceExtras>,
 }
 
 /// The rate the pipeline is running at, index `SAMPLE_RATE` of the status
@@ -330,6 +342,8 @@ impl Refresh {
                 .map(|m| m.claims().to_vec()),
             cs: None,
             sample_rate_hz: read_sample_rate(session),
+            // -- WP TM17 --
+            extras: None,
         }
     }
 
@@ -1708,13 +1722,20 @@ impl SettingsScreen {
     fn with_refresh(&self, req: SessionRequest, control: bool) -> SessionRequest {
         let slot = self.refresh.clone();
         let inner = req.run.clone();
+        // -- WP TM17 --
+        let extras = matches!(self.page, Page::Global | Page::Inputs);
         SessionRequest::new(req.tag, move |session| {
             let reply = (inner)(session);
-            *slot.borrow_mut() = Some(if control {
+            let mut refresh = if control {
                 Refresh::all(session)
             } else {
                 Refresh::hardware(session)
-            });
+            };
+            // -- WP TM17 --
+            if extras {
+                refresh.extras = Some(global::DeviceExtras::read(session));
+            }
+            *slot.borrow_mut() = Some(refresh);
             reply
         })
     }
@@ -1885,7 +1906,12 @@ impl Screen for SettingsScreen {
     fn poll(&mut self, session: &mut Session, _state: &DeviceState) {
         // The display status, ext status and slot health move on their
         // own (a knob, a running macro); nothing pushes them.
-        self.data.adopt(Refresh::all(session));
+        let mut refresh = Refresh::all(session);
+        // -- WP TM17 --
+        if matches!(self.page, Page::Global | Page::Inputs) {
+            refresh.extras = Some(global::DeviceExtras::read(session));
+        }
+        self.data.adopt(refresh);
     }
 
     fn title(&self) -> String {
@@ -2044,7 +2070,12 @@ impl Screen for SettingsScreen {
         // save bar's third category (survey-firmware 3.14). An aux output's
         // live switch and level are the exception: immediate and never dirty
         // (config.h:136-142).
-        if matches!(reply, SessionReply::Ok(_)) && !surfaces::is_live_aux_tag(tag) {
+        // -- WP TM17 -- Global and Inputs write no control-surface record, and
+        // a firmware without surfaces would never clear the flag.
+        if matches!(reply, SessionReply::Ok(_))
+            && !surfaces::is_live_aux_tag(tag)
+            && !matches!(self.page, Page::Global | Page::Inputs)
+        {
             self.data.cs_dirty = true;
         }
         // The request re-read the device on its way home; take that on before
@@ -2069,6 +2100,8 @@ impl Screen for SettingsScreen {
                 Page::Aux => self.pages.aux.session_result(tag, reply, &cx),
                 Page::Interfaces => self.pages.interfaces.session_result(tag, reply, &cx),
                 Page::Inputs => self.pages.inputs.session_result(tag, reply, &cx),
+                // -- WP TM17 --
+                Page::Global => self.pages.global.session_result(tag, reply, &cx),
                 Page::Outputs => self.pages.outputs.session_result(tag, reply, &cx),
                 Page::I2s => self.pages.i2s.session_result(tag, reply, &cx),
                 _ => PageEvent::Handled,
@@ -2369,6 +2402,8 @@ pub mod demo {
             cs: None,
             sample_rate_hz: Some(48_000),
             rta: None,
+            // -- WP TM17 --
+            extras: global::DeviceExtras::default(),
         }
     }
 }
