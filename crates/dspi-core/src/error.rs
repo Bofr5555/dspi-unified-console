@@ -95,6 +95,14 @@ pub enum DspiError {
         /// the server said.
         retry_after_s: Option<u32>,
     },
+    // -- WP CG8 --
+    /// The firmware guard stopped an image that can leave the board at too low
+    /// a core voltage (`firmware_guard_check`); nothing was written.
+    #[error("{msg}")]
+    FirmwareGuardBlocked {
+        /// The guard's words, for the user.
+        msg: String,
+    },
 }
 
 /// The result of a [`crate::DspiCore`] call.

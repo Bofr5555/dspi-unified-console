@@ -297,3 +297,33 @@ fn wp_cg6_autoeq_upkeep_is_exported() {
         assert!(core.contains(f), "{f} is not exported");
     }
 }
+
+// -- WP CG8 --
+#[test]
+fn wp_cg8_firmware_guard_is_exported() {
+    let kotlin = std::fs::read_to_string(find(&generate("kotlin"), "dspi_core.kt")).unwrap();
+    for item in [
+        "fun `firmwareGuardCheck`",
+        "fun `firmwareGuardBoard`",
+        "fun `firmwareGuardBoardInBootloader`",
+        "fun `flashToDriveGuarded`",
+        "data class FirmwareGuardBoard",
+        "data class FirmwareGuardVerdict",
+        "enum class FirmwareGuardDecision",
+        "enum class FirmwareGuardReason",
+        "enum class FirmwareGuardBoardSource",
+        "class FirmwareGuardBlocked",
+    ] {
+        assert!(kotlin.contains(item), "{item} is not in the Kotlin binding");
+    }
+    let swift = std::fs::read_to_string(find(&generate("swift"), "dspi_core.swift")).unwrap();
+    for item in [
+        "func firmwareGuardCheck(",
+        "func firmwareGuardBoard(",
+        "func firmwareGuardBoardInBootloader(",
+        "func flashToDriveGuarded(",
+        "struct FirmwareGuardVerdict",
+    ] {
+        assert!(swift.contains(item), "{item} is not in the Swift binding");
+    }
+}

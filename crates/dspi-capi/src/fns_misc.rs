@@ -208,6 +208,8 @@ fn error_code(e: &DspiError) -> &'static str {
         DspiError::Io { .. } => "io",
         // -- WP CG6 --
         DspiError::AutoEq { .. } => "autoeq",
+        // -- WP CG8 --
+        DspiError::FirmwareGuardBlocked { .. } => "firmware_guard",
     }
 }
 
@@ -1237,6 +1239,198 @@ pub extern "C" fn dspi_firmware_version_matches(core: *mut FfiCore, version: *co
 
 // -- WP CG6 --
 mod autoeq;
+
+// -- WP CG8 --
+
+fn guard_board(required_mv: u16) -> dspi_core::FirmwareGuardBoard {
+    dspi_core::FirmwareGuardBoard {
+        required_mv,
+        ..Default::default()
+    }
+}
+
+/// What the open board needs, read from the device now: JSON {ok, requiredMv,
+/// source}. Call before entering the bootloader and pass `requiredMv` to
+/// `dspi_firmware_guard_check`. No device, or an answer that cannot be
+/// believed, gives `requiredMv` 0, which means unknown: so does a failed call.
+/// Returns the length needed; 0 for a null handle.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_firmware_guard_board(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
+    text(core, buf, len, |c| json_reply(Ok(c.firmware_guard_board())))
+}
+
+/// May this image go on this board? `board_required_mv` comes from
+/// `dspi_firmware_guard_board`: 1150 not at risk, above that at risk, anything
+/// else unknown. Pass 0 for a board already in the bootloader. `typed` is what
+/// the user typed, null or "" if nothing yet. JSON {ok, allowed, decision,
+/// reason, message, confirmationPhrase, imageMv, requiredMv}; `decision` is
+/// `refused`, `needsConfirmation`, `confirmed` or `clear`, and `reason` is
+/// `imageInvalid`, `noRisk`, `imageUnknown`, `imageLower` or `boardUnknown`.
+/// Flash only on `allowed`. Returns the length needed.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_firmware_guard_check(
+    image: *const u8,
+    image_len: u32,
+    board_required_mv: u16,
+    typed: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    guard(0, || {
+        let verdict = dspi_core::firmware_guard_check(
+            c_bytes(image, image_len),
+            guard_board(board_required_mv),
+            c_text(typed),
+        );
+        copy_text(&json_reply(Ok(verdict)), buf, len)
+    })
+}
+
+/// `dspi_flash_to_drive` behind `dspi_firmware_guard_check`, with the same
+/// arguments as each. Nothing is written unless the guard allows it: a blocked
+/// image replies {ok: false, code: "firmware_guard", error}. Returns the length
+/// needed.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_flash_to_drive_guarded(
+    image: *const u8,
+    image_len: u32,
+    drive_path: *const c_char,
+    platform: i8,
+    board_required_mv: u16,
+    typed: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    guard(0, || {
+        let drive = BootloaderDrive {
+            path: c_text(drive_path),
+            platform,
+            info: String::new(),
+        };
+        let done = dspi_core::flash_to_drive_guarded(
+            c_bytes(image, image_len),
+            drive,
+            guard_board(board_required_mv),
+            c_text(typed),
+        );
+        copy_text(&json_reply(done.map(|()| serde_json::json!({}))), buf, len)
+    })
+}
+
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg8 {
+    use super::*;
+    use std::ffi::CString;
+    use std::ptr::null;
+
+    fn read(f: impl FnOnce(*mut c_char, u32) -> u32) -> serde_json::Value {
+        let mut buf = vec![0u8; 16 * 1024];
+        let needed = f(buf.as_mut_ptr().cast(), buf.len() as u32);
+        assert!(needed > 0 && needed as usize <= buf.len());
+        serde_json::from_slice(&buf[..needed as usize - 1]).unwrap()
+    }
+
+    /// One 256-byte RP2350 page in a UF2 block: valid, no stamp.
+    fn unstamped_image() -> Vec<u8> {
+        let mut b = vec![0u8; 512];
+        for (off, v) in [
+            (0usize, 0x0A32_4655u32),
+            (4, 0x9E5D_5157),
+            (8, 0x2000),
+            (12, 0x1000_0000),
+            (16, 256),
+            (20, 0),
+            (24, 1),
+            (28, 0xE48B_FF59),
+            (508, 0x0AB1_6F30),
+        ] {
+            b[off..off + 4].copy_from_slice(&v.to_le_bytes());
+        }
+        b
+    }
+
+    #[test]
+    fn wp_cg8_c_guard_blocks_and_takes_the_phrase() {
+        let image = unstamped_image();
+        let check = |mv: u16, typed: *const c_char| {
+            read(|b, l| dspi_firmware_guard_check(image.as_ptr(), 512, mv, typed, b, l))
+        };
+        let v = check(1200, null());
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["allowed"], false);
+        assert_eq!(v["decision"], "needsConfirmation");
+        assert_eq!(v["reason"], "imageUnknown");
+        assert_eq!(v["imageMv"], 0);
+        assert_eq!(v["requiredMv"], 1200);
+
+        let phrase = CString::new(v["confirmationPhrase"].as_str().unwrap()).unwrap();
+        let wrong = CString::new("yes").unwrap();
+        assert_eq!(check(1200, wrong.as_ptr())["allowed"], false);
+        let yes = check(1200, phrase.as_ptr());
+        assert_eq!(yes["allowed"], true);
+        assert_eq!(yes["decision"], "confirmed");
+
+        assert_eq!(check(0, null())["reason"], "boardUnknown");
+        assert_eq!(check(0, null())["allowed"], false);
+        assert_eq!(check(1150, null())["decision"], "clear");
+
+        let v = read(|b, l| dspi_firmware_guard_check(null(), 0, 1150, phrase.as_ptr(), b, l));
+        assert_eq!(v["allowed"], false);
+        assert_eq!(v["decision"], "refused");
+    }
+
+    #[test]
+    fn wp_cg8_c_board_read() {
+        // A failed call is "unknown" too: nothing there to read as 1150.
+        let v = read(|b, l| {
+            let h = Box::into_raw(Box::new(FfiCore {
+                core: DspiCore::new(),
+                state: std::sync::Mutex::new(Box::new(crate::types::DspState::from(
+                    &DspiCore::new().get_state(),
+                ))),
+            }));
+            let n = dspi_firmware_guard_board(h, b, l);
+            drop(unsafe { Box::from_raw(h) });
+            n
+        });
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["requiredMv"], 0);
+        assert_eq!(v["source"], "noDevice");
+        let mut buf = [0u8; 8];
+        let null_core = std::ptr::null_mut();
+        assert_eq!(
+            dspi_firmware_guard_board(null_core, buf.as_mut_ptr().cast(), 8),
+            0
+        );
+    }
+
+    #[test]
+    fn wp_cg8_c_guarded_flash_refuses_before_the_drive() {
+        let image = unstamped_image();
+        let path = CString::new("/nonexistent/drive").unwrap();
+        let v = read(|b, l| {
+            dspi_flash_to_drive_guarded(image.as_ptr(), 512, path.as_ptr(), 1, 1200, null(), b, l)
+        });
+        assert_eq!(v["ok"], false);
+        assert_eq!(v["code"], "firmware_guard");
+        let v = read(|b, l| {
+            dspi_flash_to_drive_guarded(null(), 0, path.as_ptr(), 1, 1150, null(), b, l)
+        });
+        assert_eq!(v["ok"], false);
+        assert_eq!(v["code"], "invalid");
+    }
+
+    #[test]
+    fn wp_cg8_no_reply_record_has_a_field_named_ok() {
+        for record in [
+            serde_json::to_value(dspi_core::FirmwareGuardBoard::default()).unwrap(),
+            serde_json::to_value(dspi_core::FirmwareGuardVerdict::default()).unwrap(),
+        ] {
+            assert!(!record.as_object().unwrap().contains_key("ok"), "{record}");
+        }
+    }
+}
 
 #[cfg(test)]
 #[path = "fns_misc/tests_wp_q2b.rs"]
