@@ -150,7 +150,8 @@ impl DspiCore {
     ///
     /// Without a device, or with nothing queued, it returns an empty
     /// result. Never fails and never panics on device data. Blocks only
-    /// for a re-read (one bulk read and the directory read).
+    /// for a re-read (one bulk read and the directory read, plus the input
+    /// source names after a lost packet).
     pub fn process_notifications(&self) -> NotifyResult {
         self.process_notifications_at(Instant::now())
     }
@@ -227,6 +228,10 @@ impl DspiCore {
             // last value.
             if let Err(e) = connect::read_preset_directory(conn, &mut inner.state) {
                 log::debug!("preset directory not re-read: {e}");
+            }
+            // -- WP CG13 --
+            if std::mem::take(&mut conn.source_names_stale) {
+                crate::info::read_source_names(conn);
             }
         }
         if rebaseline {
@@ -318,6 +323,8 @@ fn apply_queued(inner: &mut Inner, r: &mut NotifyResult) -> FollowUp {
         let own = conn.echo.classify_notification(kind, session, note);
         if note.lost {
             follow.refresh = true;
+            // -- WP CG13 --
+            conn.source_names_stale = true;
         }
         match &note.event {
             Event::ParamChanged { offset, bytes, .. } => {
@@ -374,6 +381,10 @@ fn apply_queued(inner: &mut Inner, r: &mut NotifyResult) -> FollowUp {
                 if *id == EVT_INPUT_SOURCE_NAME || *id == EVT_DEVICE_NAME =>
             {
                 let src = bytes.get(1).copied().unwrap_or(0);
+                // -- WP CG13 --
+                if *id == EVT_INPUT_SOURCE_NAME {
+                    crate::info::note_source_name_event(conn, bytes);
+                }
                 if !is_own(kind, src, note, session) {
                     r.flags |= NOTIFY_NAMES;
                 }

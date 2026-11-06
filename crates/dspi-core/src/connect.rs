@@ -79,8 +79,8 @@ impl DspiCore {
     ///   [`DspiCore::apply_all_params`]) returns [`DspiError::ReadOnly`].
     ///
     /// The optional per-item reads (presets, Core 1 mode, subharm solo, DAC
-    /// mute, control interfaces) leave their defaults when the firmware does
-    /// not answer them.
+    /// mute, control interfaces, input source names) leave their defaults
+    /// when the firmware does not answer them.
     ///
     /// Right after a connect that already decoded this connect's image
     /// (`Connection::fresh_image`, set by `attach_probed`), the platform and
@@ -354,6 +354,8 @@ fn read_per_item(conn: &mut Connection, s: &mut DspState) {
             let _ = read_preset_name(conn, s, slot);
         }
     }
+    // -- WP CG13 --
+    crate::info::read_source_names(conn);
 }
 
 /// `COMPAT_*` for a device wire format other than V32's (0: unknown, old).
