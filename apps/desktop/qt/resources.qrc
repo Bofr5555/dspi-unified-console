@@ -1,6 +1,7 @@
 <RCC>
     <qresource prefix="/">
         <file>qml/main.qml</file>
+        <file>qml/BannerHost.qml</file>
         <file>qml/style/ToolTip.qml</file>
         <file>qml/style/qmldir</file>
         <file>qml/Sidebar.qml</file>

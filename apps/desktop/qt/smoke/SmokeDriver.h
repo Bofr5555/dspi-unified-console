@@ -59,6 +59,8 @@ private:
     void testControlSurfaces();
     void testSiggenAndStats();
     void testFiles();
+    void testImportAppliesOnce();
+    void testSeam();
     void testAutoEq();
     void testWindows();
     void testSettingsPages();

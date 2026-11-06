@@ -37,6 +37,7 @@
 #include "MeterItem.h"
 #include "WindowEffects.h"
 #include "TextFocusReleaser.h"
+#include "Registrar.h"
 #ifdef DSPI_SMOKE
 #include "SmokeDriver.h"
 #endif
@@ -431,6 +432,9 @@ int main(int argc, char *argv[])
     // Before the engine too: the views read it until they are destroyed
     WindowEffects windowEffects(isMacOS);
 
+    // -- WP QD0 -- Owns what the registrar makes: after the bridge, and destroyed after the engine
+    QObject registered;
+
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("bridge", &bridge);
     engine.rootContext()->setContextProperty("rta", &rta);
@@ -465,6 +469,9 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("nativeButtonColor", sysPal.color(QPalette::Button));
     engine.rootContext()->setContextProperty("nativeBaseColor", sysPal.color(QPalette::Base));
     engine.rootContext()->setContextProperty("nativeAltBaseColor", sysPal.color(QPalette::AlternateBase));
+
+    // -- WP QD0 -- Controllers and banners of later work packages (src/Registrar.h)
+    Registrar::install(engine.rootContext(), &bridge, &registered);
 
     // Add QML import path for our custom module
     engine.addImportPath("qrc:/");
