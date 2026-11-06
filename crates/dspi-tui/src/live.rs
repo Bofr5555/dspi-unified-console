@@ -3631,7 +3631,7 @@ mod tests {
         }
         for (tool, name, body) in [
             (Tool::Subharm, "subharmonic_synth", "LEVELS"),
-            (Tool::Tube, "tube_preamp", "TRANSFER CURVE"),
+            (Tool::Tube, "tube_preamp", "Preamp triodes"),
         ] {
             l.state.caps.features.push(dspi_session::probe::Feature {
                 name: name.into(),

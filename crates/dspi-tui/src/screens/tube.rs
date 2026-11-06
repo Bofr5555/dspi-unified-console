@@ -1,8 +1,12 @@
 //! The Tube Modeller panel: `TubeModellerView.swift` as a tool panel.
 //!
-//! The Console has a Basic and an Advanced layout; the terminal has one, the
-//! Advanced rows, in the order the brief sets: the transfer curve, then
-//! STAGE, CHARACTER, OUTPUT STAGE and OUTPUTS.
+//! The Console has a Basic and an Advanced layout, and so has the terminal;
+//! `a` switches between them and writes nothing, so switching never changes
+//! the sound (`TubeModellerView.swift:212-213`). Advanced has every parameter,
+//! in the order the brief sets: the transfer curve, then STAGE, CHARACTER,
+//! OUTPUT STAGE and OUTPUTS. Basic has the Console's row set: the tube on show,
+//! the shelf of tubes, Drive, Mix and OUTPUTS. The Console's two columns are
+//! one here, as on every panel, and its drawn valve is the name and a lit dot.
 //!
 //! The Console mirrors the firmware's type rules locally, loading a row's
 //! four character values when a type is chosen and switching to Custom when
@@ -20,7 +24,7 @@
 //! its intermediates only far above full scale (`tube.c:449-514`), where the
 //! drawn range ends anyway.
 
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent};
 use dspi_proto::generated::ranges as r;
 use dspi_proto::generated::tube as t;
 use dspi_session::DeviceState;
@@ -33,7 +37,7 @@ use super::number;
 use super::panel::{self, Body, ChipSpec, Header, PanelGraph, Param, Row};
 use crate::shell::{Screen, ScreenEvent};
 use crate::theme::{ChannelRole, Theme};
-use crate::widgets::{Action, ChipState, KeyHelp, PopupList};
+use crate::widgets::{Action, ChipState, KeyHelp, PopupList, StatusTone};
 
 /// Name, detail, type, drive, rectifier, output stage, damping, resonance.
 type StartingPoint = (&'static str, &'static str, u8, f32, u8, bool, f32, f32);
@@ -94,8 +98,8 @@ const STARTING_POINTS: [StartingPoint; 5] = [
     ),
 ];
 
-/// The Tube menu's three groups, `TubeModellerView.swift:539-547`, after
-/// Custom.
+/// The three groups of the Tube menu, after Custom, and of the Basic shelf
+/// (`TubeModellerView.swift:539-547`, `:294-296`).
 const TYPE_GROUPS: [(&str, u8, u8); 3] = [
     ("Preamp triodes", 1, 8),
     ("Preamp pentodes", 9, 10),
@@ -111,11 +115,29 @@ const RECT_TOKENS: [&str; 4] = ["solid-state", "gz34", "5u4", "5y3"];
 /// How many inputs the transfer curve is sampled at, the Console's 240 steps.
 const CURVE_STEPS: usize = 240;
 
+/// The shelf's columns, the Console's four (`TubeModellerView.swift:306`).
+const SHELF_COLUMNS: usize = 4;
+
+/// Which of the Console's two layouts the panel shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum View {
+    /// The tube, the two controls most people need, and where it applies.
+    Basic,
+    /// Every parameter.
+    Advanced,
+}
+
+/// What the panel opens in, the Console's default
+/// (`TubeModellerView.swift:123`). The Console also remembers the choice; here
+/// the panel is rebuilt on every open and has nowhere to keep it yet.
+const DEFAULT_VIEW: View = View::Basic;
+
 const KEYS: &[KeyHelp] = &[
     KeyHelp::new("↑ ↓", "Move"),
     KeyHelp::new("← →", "Adjust"),
     KeyHelp::new("Enter", "Edit or choose"),
     KeyHelp::new("Space", "Toggle"),
+    KeyHelp::new("a", "Basic or Advanced"),
     KeyHelp::new("p", "Presets"),
     KeyHelp::new("Backspace", "Reset"),
 ];
@@ -292,6 +314,24 @@ pub fn type_caption(p: &Tube) -> String {
     }
 }
 
+/// The Basic showcase's caption, `showcaseCaption`
+/// (`TubeModellerView.swift:280-288`), which points at Advanced for what Basic
+/// does not show.
+pub fn showcase_caption(p: &Tube) -> String {
+    match type_row(p.tube_type) {
+        None => {
+            "Character set by hand. Pick a tube to load one, or fine-tune it in Advanced.".into()
+        }
+        Some(row) if row.push_pull && !p.xfmr_enabled => {
+            format!(
+                "{}. Meant for use with the output stage, in Advanced.",
+                row.style
+            )
+        }
+        Some(row) => format!("{}.", row.style),
+    }
+}
+
 /// The Tube menu: Custom, then each group under its header, as a popup's
 /// items beside the type each one chooses (`None` for a header).
 pub fn type_menu() -> Vec<(String, Option<u8>)> {
@@ -324,6 +364,9 @@ pub struct TubePanel {
     body: Body,
     chip: usize,
     pending: Option<Pending>,
+    view: View,
+    /// The cursor inside each group of the Basic shelf.
+    shelf: [usize; TYPE_GROUPS.len()],
 }
 
 impl Default for TubePanel {
@@ -334,11 +377,29 @@ impl Default for TubePanel {
 
 impl TubePanel {
     pub fn new() -> Self {
+        Self::with_view(DEFAULT_VIEW)
+    }
+
+    pub fn with_view(view: View) -> Self {
         Self {
             body: Body::default(),
             chip: 0,
             pending: None,
+            view,
+            shelf: [0; TYPE_GROUPS.len()],
         }
+    }
+
+    /// Switch layouts. Nothing is written; the two share a device state and
+    /// differ only in which of its values they show. The cursor goes back to
+    /// the header, since its place means a different row in the other layout.
+    fn toggle_view(&mut self) {
+        self.view = match self.view {
+            View::Basic => View::Advanced,
+            View::Advanced => View::Basic,
+        };
+        self.body.focus = 0;
+        self.body.first = 0;
     }
 
     /// The feature ships in wire format V31; the Console hides the body and
@@ -355,6 +416,61 @@ impl TubePanel {
                 body: "Update the DSPi firmware to use the Tube Modeller.".into(),
             }];
         }
+        match self.view {
+            View::Basic => self.basic_rows(state, theme),
+            View::Advanced => self.advanced_rows(state, theme),
+        }
+    }
+
+    /// `basicBody`, `TubeModellerView.swift:214-233`: the showcase, the shelf,
+    /// Drive and Mix, and OUTPUTS.
+    fn basic_rows(&self, state: &DeviceState, theme: &Theme) -> Vec<Row> {
+        let p = state.tube();
+        let mut rows = vec![
+            Row::Status {
+                text: type_row(p.tube_type).map_or("Custom".to_string(), |r| r.name.to_string()),
+                tone: if p.enabled {
+                    StatusTone::Ok
+                } else {
+                    StatusTone::Neutral
+                },
+            },
+            Row::Caption(showcase_caption(&p)),
+            Row::Blank,
+            Row::Section {
+                title: "Tube".into(),
+                action: None,
+            },
+        ];
+        for (g, (title, lo, hi)) in TYPE_GROUPS.iter().enumerate() {
+            rows.push(Row::Caption((*title).into()));
+            rows.push(Row::Tiles {
+                labels: (*lo..=*hi).map(shelf_label).collect(),
+                // Past the end, so no tile is lit, when the tube is in another
+                // group or is Custom.
+                selected: if (*lo..=*hi).contains(&p.tube_type) {
+                    (p.tube_type - lo) as usize
+                } else {
+                    usize::MAX
+                },
+                cursor: self.shelf[g],
+                columns: SHELF_COLUMNS,
+            });
+        }
+        rows.push(Row::Caption(
+            "Loads the character of a real tube: its bias, asymmetry, knee hardness and sag. \
+             Drive, mix and everything in Advanced keep their values."
+                .into(),
+        ));
+        rows.push(Row::Blank);
+        rows.push(Row::Param(drive_param(&p).ends("Clean", "Overdrive")));
+        rows.push(Row::Param(mix_param(&p)));
+        rows.push(Row::Blank);
+        rows.extend(self.output_rows(state, theme));
+        rows
+    }
+
+    fn advanced_rows(&self, state: &DeviceState, theme: &Theme) -> Vec<Row> {
         let p = state.tube();
         let shaper = Shaper::new(&p);
         let (second, third) = shaper.harmonics();
@@ -390,29 +506,8 @@ impl TubePanel {
                 cursor: 0,
             },
             Row::Caption(type_caption(&p)),
-            Row::Param(
-                Param::new(
-                    "Drive",
-                    p.drive_db as f64,
-                    r::TUBE_DRIVE_MIN as f64,
-                    r::TUBE_DRIVE_MAX as f64,
-                    "dB",
-                )
-                .step(0.5)
-                .decimals(1),
-            ),
-            Row::Param(
-                Param::new(
-                    "Mix",
-                    p.mix_pct as f64,
-                    r::TUBE_MIX_MIN as f64,
-                    r::TUBE_MIX_MAX as f64,
-                    "%",
-                )
-                .step(1.0)
-                .decimals(0)
-                .ends("Dry", "All tube"),
-            ),
+            Row::Param(drive_param(&p)),
+            Row::Param(mix_param(&p)),
             Row::Param(
                 Param::new(
                     "Output Trim",
@@ -534,10 +629,13 @@ impl TubePanel {
             ));
         }
         rows.push(Row::Blank);
-        rows.push(Row::Section {
-            title: "Outputs".into(),
-            action: Some("Presets ▾".into()),
-        });
+        rows.extend(self.output_rows(state, theme));
+        rows
+    }
+
+    /// `outputSection`, `TubeModellerView.swift:590-626`, in both layouts.
+    fn output_rows(&self, state: &DeviceState, theme: &Theme) -> Vec<Row> {
+        let p = state.tube();
         let chips = (0..state.caps.num_outputs as usize)
             .map(|o| ChipSpec {
                 label: (o + 1).to_string(),
@@ -555,17 +653,22 @@ impl TubePanel {
                 dimmed: false,
             })
             .collect();
-        rows.push(Row::Chips {
-            chips,
-            cursor: self.chip,
-            polarity: false,
-        });
-        rows.push(Row::Caption(
-            "Tube runs before the crossover and the per-output EQ, where a real preamp sits: \
-             a sub output saturates the full-band program and then low-passes the result."
-                .into(),
-        ));
-        rows
+        vec![
+            Row::Section {
+                title: "Outputs".into(),
+                action: Some("Presets ▾".into()),
+            },
+            Row::Chips {
+                chips,
+                cursor: self.chip,
+                polarity: false,
+            },
+            Row::Caption(
+                "Tube runs before the crossover and the per-output EQ, where a real preamp sits: \
+                 a sub output saturates the full-band program and then low-passes the result."
+                    .into(),
+            ),
+        ]
     }
 
     fn path_for(label: &str) -> &'static str {
@@ -660,6 +763,20 @@ impl TubePanel {
                     OUTPUT_PRESETS.iter().map(|s| s.to_string()).collect(),
                     0,
                 ))
+            }
+            (Row::Tiles { labels, .. }, Action::Selected(next)) => {
+                if let Some(cursor) = shelf_group(labels).and_then(|g| self.shelf.get_mut(g)) {
+                    *cursor = next;
+                }
+                ScreenEvent::Handled
+            }
+            (Row::Tiles { labels, cursor, .. }, Action::Button(_)) => {
+                match shelf_group(labels).and_then(|g| TYPE_GROUPS.get(g)) {
+                    Some((_, lo, _)) => {
+                        ScreenEvent::Command(format!("tube.type {}", *lo as usize + cursor))
+                    }
+                    None => ScreenEvent::Handled,
+                }
             }
             (Row::Param(p), Action::Changed(v)) => Self::param_command(&p.label, v),
             (Row::Param(p), Action::Reset) => {
@@ -859,6 +976,46 @@ impl TubePanel {
     }
 }
 
+/// The Drive row, the same range and step in both layouts.
+fn drive_param(p: &Tube) -> Param {
+    Param::new(
+        "Drive",
+        p.drive_db as f64,
+        r::TUBE_DRIVE_MIN as f64,
+        r::TUBE_DRIVE_MAX as f64,
+        "dB",
+    )
+    .step(0.5)
+    .decimals(1)
+}
+
+/// The Mix row, the same in both layouts.
+fn mix_param(p: &Tube) -> Param {
+    Param::new(
+        "Mix",
+        p.mix_pct as f64,
+        r::TUBE_MIX_MIN as f64,
+        r::TUBE_MIX_MAX as f64,
+        "%",
+    )
+    .step(1.0)
+    .decimals(0)
+    .ends("Dry", "All tube")
+}
+
+/// A shelf tile's text, the row's `shortName` (`TubeModellerView.swift:316`).
+fn shelf_label(n: u8) -> String {
+    type_row(n).map_or_else(|| type_name(n), |row| row.short_name().to_string())
+}
+
+/// Which group of the shelf a tile row is, by its first tile.
+fn shelf_group(labels: &[String]) -> Option<usize> {
+    let first = labels.first()?;
+    TYPE_GROUPS
+        .iter()
+        .position(|(_, lo, _)| shelf_label(*lo) == *first)
+}
+
 /// A type by number, `custom`, or any unambiguous start of one of a row's
 /// names (`12ax7`, `ecc83`, `el3`).
 fn parse_type(tok: &str) -> Option<u8> {
@@ -922,12 +1079,31 @@ impl Screen for TubePanel {
         )
         .toggle(state.tube().enabled)
         .enabled(Self::supported(state));
+        // The Console's Basic and Advanced picker, only with the feature
+        // (`TubeModellerView.swift:387-395`).
+        let header = if Self::supported(state) {
+            header.badge(
+                match self.view {
+                    View::Basic => " Basic ",
+                    View::Advanced => " Advanced ",
+                },
+                theme.label(),
+            )
+        } else {
+            header
+        };
         self.body.draw(area, buf, theme, &header, &rows, focused);
     }
 
     fn handle(&mut self, key: KeyEvent, state: &DeviceState) -> ScreenEvent {
         if !Self::supported(state) {
             return ScreenEvent::Unhandled;
+        }
+        // `a` is the layout wherever the cursor is, unless a field is being
+        // typed.
+        if key.code == KeyCode::Char('a') && self.body.edit.is_none() {
+            self.toggle_view();
+            return ScreenEvent::Handled;
         }
         let rows = self.rows(state, panel::key_theme());
         self.body.clamp(&rows);
@@ -972,7 +1148,6 @@ mod tests {
     use crate::screens::panel::testing;
     use crate::shell::{Tool, fixture};
     use crate::widgets::testing::key;
-    use crossterm::event::KeyCode;
 
     fn section(name: &str) -> usize {
         dspi_proto::generated::SECTIONS
@@ -1025,7 +1200,13 @@ mod tests {
         [(120u16, 40u16), (80, 24)]
             .into_iter()
             .map(|(w, h)| {
-                let f = testing::frame(Tool::Tube, Box::new(TubePanel::new()), s, w, h);
+                let f = testing::frame(
+                    Tool::Tube,
+                    Box::new(TubePanel::with_view(View::Advanced)),
+                    s,
+                    w,
+                    h,
+                );
                 assert_eq!(f.lines().count(), h as usize, "{w}x{h}");
                 assert!(f.contains("Tube Modeller"), "{w}x{h}:\n{f}");
                 assert!(f.contains("D closes"), "{w}x{h}:\n{f}");
@@ -1036,7 +1217,7 @@ mod tests {
 
     /// The panel alone, tall enough to hold every row.
     fn whole(s: &DeviceState) -> String {
-        testing::draw(&mut TubePanel::new(), s, 100, 80)
+        testing::draw(&mut TubePanel::with_view(View::Advanced), s, 100, 80)
     }
 
     #[test]
@@ -1163,7 +1344,7 @@ mod tests {
 
         // The popup opens on the current type and answers with its number.
         let s = state(true);
-        let mut p = TubePanel::new();
+        let mut p = TubePanel::with_view(View::Advanced);
         focus(&mut p, &s, |r| matches!(r, Row::Buttons { .. }));
         match p.handle(key(KeyCode::Enter), &s) {
             ScreenEvent::Popup(list) => {
@@ -1184,12 +1365,30 @@ mod tests {
         let s = state(true);
         let mut solid = state(true);
         set_rect(&mut solid, 0);
-        let lit = testing::fg_of(&mut TubePanel::new(), &s, 100, 80, "Sag ");
-        let dim = testing::fg_of(&mut TubePanel::new(), &solid, 100, 80, "Sag ");
-        let bias = testing::fg_of(&mut TubePanel::new(), &solid, 100, 80, "Bias");
+        let lit = testing::fg_of(
+            &mut TubePanel::with_view(View::Advanced),
+            &s,
+            100,
+            80,
+            "Sag ",
+        );
+        let dim = testing::fg_of(
+            &mut TubePanel::with_view(View::Advanced),
+            &solid,
+            100,
+            80,
+            "Sag ",
+        );
+        let bias = testing::fg_of(
+            &mut TubePanel::with_view(View::Advanced),
+            &solid,
+            100,
+            80,
+            "Bias",
+        );
         assert_ne!(lit, dim, "dimmed with solid state");
         assert_eq!(lit, bias, "and only Sag");
-        let mut p = TubePanel::new();
+        let mut p = TubePanel::with_view(View::Advanced);
         focus(
             &mut p,
             &solid,
@@ -1205,7 +1404,7 @@ mod tests {
     fn the_output_stage_rows_hide_while_it_is_off() {
         let mut s = state(true);
         let labels = |s: &DeviceState| -> Vec<String> {
-            TubePanel::new()
+            TubePanel::with_view(View::Advanced)
                 .rows(s, panel::key_theme())
                 .iter()
                 .filter_map(|r| match r {
@@ -1225,7 +1424,7 @@ mod tests {
         assert!(!off.iter().any(|l| l == "Speaker Resonance"), "{off:?}");
         assert!(!off.iter().any(|l| l.contains("at resonance")), "{off:?}");
         // The toggle stays, and turns it back on.
-        let mut p = TubePanel::new();
+        let mut p = TubePanel::with_view(View::Advanced);
         focus(&mut p, &s, |r| matches!(r, Row::Toggle { .. }));
         assert_eq!(
             p.handle(key(KeyCode::Char(' ')), &s),
@@ -1236,7 +1435,7 @@ mod tests {
     #[test]
     fn exclude_sub_clears_the_pdm_output_on_both_platforms() {
         for (s, all, no_sub) in [(state(true), 0x1FF, 0xFF), (rp2040(true), 0x1F, 0x0F)] {
-            let mut p = TubePanel::new();
+            let mut p = TubePanel::with_view(View::Advanced);
             focus(&mut p, &s, |r| matches!(r, Row::Chips { .. }));
             match p.handle(key(KeyCode::Char('p')), &s) {
                 ScreenEvent::Popup(list) => {
@@ -1272,7 +1471,7 @@ mod tests {
     #[test]
     fn a_starting_point_writes_the_consoles_eight_lines() {
         let s = state(true);
-        let mut p = TubePanel::new();
+        let mut p = TubePanel::with_view(View::Advanced);
         focus(&mut p, &s, |r| matches!(r, Row::Menu { .. }));
         match p.handle(key(KeyCode::Enter), &s) {
             ScreenEvent::Popup(list) => {
@@ -1342,7 +1541,7 @@ mod tests {
     #[test]
     fn the_command_bar_speaks_the_panels_words() {
         let s = state(true);
-        let p = TubePanel::new();
+        let p = TubePanel::with_view(View::Advanced);
         let q = |line: &str| p.quick(line, &s).unwrap();
         assert_eq!(q("on").commands, vec!["tube.on on"]);
         assert_eq!(q("off").commands, vec!["tube.on off"]);
@@ -1433,7 +1632,7 @@ mod tests {
     #[test]
     fn an_old_firmware_gets_the_consoles_banner_instead_of_the_body() {
         let s = fixture::state();
-        let mut p = TubePanel::new();
+        let mut p = TubePanel::with_view(View::Advanced);
         let f = testing::draw(&mut p, &s, 100, 30);
         assert!(
             f.contains("Requires firmware with wire format V31 or newer."),
@@ -1453,7 +1652,7 @@ mod tests {
     #[test]
     fn the_header_switch_and_the_rows_write_their_parameters() {
         let s = state(true);
-        let mut p = TubePanel::new();
+        let mut p = TubePanel::with_view(View::Advanced);
         assert_eq!(
             p.handle(key(KeyCode::Char(' ')), &s),
             ScreenEvent::Command("tube.on off".into())
@@ -1486,21 +1685,371 @@ mod tests {
     #[test]
     fn every_advertised_key_is_handled_somewhere() {
         let s = state(true);
-        for help in KEYS {
-            for k in crate::screens::tests::keys_for(help.key) {
-                let mut hit = false;
-                for focus in 0..20 {
-                    let mut p = TubePanel::new();
-                    p.body.focus = focus;
-                    let before = (p.body.focus, p.chip);
-                    let ev = p.handle(k, &s);
-                    if ev != ScreenEvent::Unhandled || (p.body.focus, p.chip) != before {
-                        hit = true;
-                        break;
+        for view in [View::Basic, View::Advanced] {
+            for help in KEYS {
+                for k in crate::screens::tests::keys_for(help.key) {
+                    let mut hit = false;
+                    for focus in 0..20 {
+                        let mut p = TubePanel::with_view(view);
+                        p.body.focus = focus;
+                        let before = (p.body.focus, p.chip);
+                        let ev = p.handle(k, &s);
+                        if ev != ScreenEvent::Unhandled || (p.body.focus, p.chip) != before {
+                            hit = true;
+                            break;
+                        }
                     }
+                    assert!(
+                        hit,
+                        "{view:?}: {:?} from {:?} is not bound",
+                        k.code, help.key
+                    );
                 }
-                assert!(hit, "{:?} from {:?} is not bound", k.code, help.key);
             }
+        }
+    }
+
+    /// WP TM7: the Basic and Advanced toggle, against `basicBody` and
+    /// `headerSection` in `TubeModellerView.swift`.
+    mod tm7_basic_advanced {
+        use super::*;
+
+        fn basic(s: &DeviceState) -> String {
+            testing::draw(&mut TubePanel::with_view(View::Basic), s, 100, 80)
+        }
+
+        /// What each focus stop of a layout is, in order.
+        fn stops(view: View, s: &DeviceState) -> Vec<String> {
+            let p = TubePanel::with_view(view);
+            let rows = p.rows(s, panel::key_theme());
+            panel::focus_rows(&rows)
+                .iter()
+                .map(|i| match &rows[*i] {
+                    Row::Param(p) => p.label.clone(),
+                    Row::Tiles { labels, .. } => format!("shelf {}", labels.join(" ")),
+                    Row::Chips { .. } => "outputs".into(),
+                    Row::Menu { title, .. } => title.clone(),
+                    Row::Buttons { label, .. }
+                    | Row::Segmented { label, .. }
+                    | Row::Toggle { label, .. } => label.clone(),
+                    other => panic!("unexpected stop {other:?}"),
+                })
+                .collect()
+        }
+
+        #[test]
+        fn tm7_basic_has_swifts_row_set_and_advanced_every_parameter() {
+            let s = state(true);
+            assert_eq!(
+                stops(View::Basic, &s),
+                [
+                    "shelf 12AX7 5751 12AT7 12AY7 12AU7 6SN7 6SL7 6DJ8",
+                    "shelf EF86 6SJ7",
+                    "shelf EL84 EL34 6L6 6V6 KT88 300B",
+                    "Drive",
+                    "Mix",
+                    "outputs",
+                ],
+            );
+            assert_eq!(
+                stops(View::Advanced, &s),
+                [
+                    "Transfer curve",
+                    "Tube",
+                    "Drive",
+                    "Mix",
+                    "Output Trim",
+                    "Bias",
+                    "Asymmetry",
+                    "Knee Hardness",
+                    "Sag",
+                    "Rectifier",
+                    "Enabled",
+                    "Damping Factor",
+                    "Speaker Resonance",
+                    "outputs",
+                ],
+            );
+        }
+
+        #[test]
+        fn tm7_basic_draws_the_consoles_text_and_none_of_advanced() {
+            let s = state(true);
+            let f = basic(&s);
+            for text in [
+                "12AX7 / ECC83",
+                "High-gain preamp triode.",
+                "TUBE",
+                "Preamp triodes",
+                "Preamp pentodes",
+                "Power stages",
+                "[12AX7",
+                "[6DJ8",
+                "[EF86",
+                "[300B",
+                "Drive",
+                "Clean",
+                "Overdrive",
+                "Mix",
+                "Dry",
+                "All tube",
+                "OUTPUTS",
+                "Presets ▾",
+                "Basic",
+            ] {
+                assert!(f.contains(text), "{text:?}:\n{f}");
+            }
+            for text in [
+                "TRANSFER CURVE",
+                "Apply preset",
+                "AT FULL SCALE",
+                "STAGE",
+                "Output Trim",
+                "CHARACTER",
+                "Bias",
+                "Asymmetry",
+                "Knee Hardness",
+                "Sag",
+                "GZ34",
+                "Damping Factor",
+                "Speaker Resonance",
+                "Advanced ",
+            ] {
+                // The shelf's own caption says "everything in Advanced", and a
+                // tube style may mention sag: look only at what is a control.
+                let hit = f
+                    .lines()
+                    .any(|l| l.contains(text) && !l.contains("in Advanced") && !l.contains("sag"));
+                assert!(!hit, "{text:?}:\n{f}");
+            }
+            let a = testing::draw(&mut TubePanel::with_view(View::Advanced), &s, 100, 80);
+            assert!(a.contains("Advanced"), "{a}");
+            assert!(a.contains("TRANSFER CURVE"), "{a}");
+            assert!(!a.contains("Overdrive"), "Basic's ends only: {a}");
+            assert!(!a.contains("[12AX7"), "no shelf: {a}");
+        }
+
+        #[test]
+        fn tm7_the_basic_frames_fit_both_sizes() {
+            let s = state(true);
+            for (w, h) in [(120u16, 40u16), (80, 24)] {
+                let f = testing::frame(
+                    Tool::Tube,
+                    Box::new(TubePanel::with_view(View::Basic)),
+                    &s,
+                    w,
+                    h,
+                );
+                assert_eq!(f.lines().count(), h as usize, "{w}x{h}");
+                assert!(f.contains("Tube Modeller"), "{w}x{h}:\n{f}");
+                assert!(f.contains("[12AX7"), "{w}x{h}:\n{f}");
+                assert!(f.contains("D closes"), "{w}x{h}:\n{f}");
+            }
+        }
+
+        #[test]
+        fn tm7_the_toggle_writes_nothing_and_goes_both_ways() {
+            let s = state(true);
+            let mut p = TubePanel::with_view(View::Advanced);
+            let a = key(KeyCode::Char('a'));
+            assert_eq!(p.handle(a, &s), ScreenEvent::Handled);
+            assert_eq!(p.view, View::Basic);
+            assert!(!testing::draw(&mut p, &s, 100, 80).contains("TRANSFER CURVE"));
+            assert_eq!(p.handle(a, &s), ScreenEvent::Handled);
+            assert_eq!(p.view, View::Advanced);
+            assert!(testing::draw(&mut p, &s, 100, 80).contains("TRANSFER CURVE"));
+        }
+
+        #[test]
+        fn tm7_the_toggle_works_from_any_row_and_returns_to_the_header() {
+            let s = state(true);
+            let mut p = TubePanel::with_view(View::Advanced);
+            focus(&mut p, &s, |r| matches!(r, Row::Chips { .. }));
+            p.handle(key(KeyCode::Char('a')), &s);
+            assert_eq!(p.view, View::Basic);
+            assert_eq!((p.body.focus, p.body.first), (0, 0));
+            // The header's switch is what the next Space reaches.
+            assert_eq!(
+                p.handle(key(KeyCode::Char(' ')), &s),
+                ScreenEvent::Command("tube.on off".into())
+            );
+        }
+
+        #[test]
+        fn tm7_a_stays_out_of_a_field_being_typed() {
+            let s = state(true);
+            let mut p = TubePanel::with_view(View::Basic);
+            focus(
+                &mut p,
+                &s,
+                |r| matches!(r, Row::Param(p) if p.label == "Drive"),
+            );
+            p.handle(key(KeyCode::Enter), &s);
+            assert!(p.body.edit.is_some());
+            p.handle(key(KeyCode::Char('a')), &s);
+            assert_eq!(p.view, View::Basic);
+            assert!(p.body.edit.is_some());
+        }
+
+        #[test]
+        fn tm7_old_firmware_gets_the_banner_and_no_toggle() {
+            let mut s = state(true);
+            s.caps.features.retain(|f| f.name != "tube_preamp");
+            let mut p = TubePanel::with_view(View::Basic);
+            let f = testing::draw(&mut p, &s, 100, 30);
+            assert!(f.contains("Requires firmware"), "{f}");
+            assert!(!f.contains("Basic") && !f.contains("Advanced"), "{f}");
+            assert_eq!(
+                p.handle(key(KeyCode::Char('a')), &s),
+                ScreenEvent::Unhandled
+            );
+            assert_eq!(p.view, View::Basic);
+        }
+
+        #[test]
+        fn tm7_every_tile_chooses_its_tube() {
+            let s = state(true);
+            let mut chosen = Vec::new();
+            for (g, (_, lo, hi)) in TYPE_GROUPS.into_iter().enumerate() {
+                let mut p = TubePanel::with_view(View::Basic);
+                p.body.focus = g + 1;
+                for n in lo..=hi {
+                    assert_eq!(
+                        p.handle(key(KeyCode::Enter), &s),
+                        ScreenEvent::Command(format!("tube.type {n}"))
+                    );
+                    chosen.push(n);
+                    p.handle(key(KeyCode::Right), &s);
+                }
+            }
+            assert_eq!(chosen, (1..=t::TUBE_TYPE_MAX as u8).collect::<Vec<u8>>());
+        }
+
+        #[test]
+        fn tm7_the_shelf_walks_out_of_its_group() {
+            let s = state(true);
+            let mut p = TubePanel::with_view(View::Basic);
+            p.body.focus = 1;
+            // Down within the triodes' two lines of four, to the last tile,
+            // then on to the pentodes.
+            p.handle(key(KeyCode::Down), &s);
+            assert_eq!((p.body.focus, p.shelf[0]), (1, SHELF_COLUMNS));
+            p.handle(key(KeyCode::Down), &s);
+            assert_eq!((p.body.focus, p.shelf[0]), (1, 7));
+            p.handle(key(KeyCode::Down), &s);
+            assert_eq!(p.body.focus, 2);
+            assert_eq!(
+                p.handle(key(KeyCode::Enter), &s),
+                ScreenEvent::Command("tube.type 9".into())
+            );
+        }
+
+        #[test]
+        fn tm7_only_the_chosen_tube_is_lit() {
+            let lit = |s: &DeviceState| -> Vec<usize> {
+                let p = TubePanel::with_view(View::Basic);
+                p.rows(s, panel::key_theme())
+                    .iter()
+                    .filter_map(|r| match r {
+                        Row::Tiles { selected, .. } => Some(*selected),
+                        _ => None,
+                    })
+                    .collect()
+            };
+            let mut s = state(true);
+            set_type(&mut s, 1);
+            assert_eq!(lit(&s), [0, usize::MAX, usize::MAX]);
+            set_type(&mut s, 10);
+            assert_eq!(lit(&s), [usize::MAX, 1, usize::MAX]);
+            set_type(&mut s, 16);
+            assert_eq!(lit(&s), [usize::MAX, usize::MAX, 5]);
+            set_type(&mut s, t::TUBE_TYPE_CUSTOM as u8);
+            assert_eq!(lit(&s), [usize::MAX; 3]);
+            // Drawing a past-the-end `selected` is safe too.
+            assert!(basic(&s).contains("[12AX7"));
+        }
+
+        #[test]
+        fn tm7_the_showcase_follows_the_consoles_three_captions() {
+            let mut s = state(true);
+            set_type(&mut s, t::TUBE_TYPE_CUSTOM as u8);
+            let f = basic(&s);
+            assert!(f.contains("Custom"), "{f}");
+            assert!(f.contains("Character set by hand."), "{f}");
+            set_type(&mut s, 12);
+            set_stage(&mut s, false);
+            let f = basic(&s);
+            assert!(f.contains("EL34"), "{f}");
+            assert!(f.contains("Meant for use with the output stage,"), "{f}");
+            set_stage(&mut s, true);
+            assert!(!basic(&s).contains("Meant for use"), "{}", basic(&s));
+        }
+
+        #[test]
+        fn tm7_the_showcase_dot_follows_the_master_switch() {
+            let tone = |on| {
+                let p = TubePanel::with_view(View::Basic);
+                p.rows(&state(on), panel::key_theme())
+                    .into_iter()
+                    .find_map(|r| match r {
+                        Row::Status { tone, .. } => Some(tone),
+                        _ => None,
+                    })
+            };
+            assert_eq!(tone(true), Some(StatusTone::Ok));
+            assert_eq!(tone(false), Some(StatusTone::Neutral));
+        }
+
+        #[test]
+        fn tm7_basics_rows_write_the_same_parameters() {
+            let s = state(true);
+            let mut p = TubePanel::with_view(View::Basic);
+            assert_eq!(
+                p.handle(key(KeyCode::Char(' ')), &s),
+                ScreenEvent::Command("tube.on off".into())
+            );
+            focus(
+                &mut p,
+                &s,
+                |r| matches!(r, Row::Param(p) if p.label == "Drive"),
+            );
+            assert_eq!(
+                p.handle(key(KeyCode::Right), &s),
+                ScreenEvent::Command("tube.drive -11.5".into())
+            );
+            focus(
+                &mut p,
+                &s,
+                |r| matches!(r, Row::Param(p) if p.label == "Mix"),
+            );
+            assert_eq!(
+                p.handle(key(KeyCode::Backspace), &s),
+                ScreenEvent::Command(format!("tube.mix {}", number(r::TUBE_DEFAULT_MIX)))
+            );
+            focus(&mut p, &s, |r| matches!(r, Row::Chips { .. }));
+            assert_eq!(
+                p.handle(key(KeyCode::Char(' ')), &s),
+                ScreenEvent::Command("tube.mask 0xFFFE".into())
+            );
+            assert!(matches!(
+                p.handle(key(KeyCode::Char('p')), &s),
+                ScreenEvent::Popup(_)
+            ));
+            assert_eq!(
+                p.popup_result(Some(2), &s),
+                ScreenEvent::Command("tube.mask 0x0".into())
+            );
+        }
+
+        #[test]
+        fn tm7_the_panel_opens_in_basic_as_the_console_does() {
+            assert_eq!(TubePanel::new().view, View::Basic);
+        }
+
+        #[test]
+        fn tm7_the_panel_lists_the_toggle_key() {
+            let p = TubePanel::with_view(View::Basic);
+            assert!(p.keys().iter().any(|k| k.key == "a"));
         }
     }
 }
