@@ -14,11 +14,17 @@ fn manifest() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// The old desktop core's header, generated in memory from its sources with
-/// its own cbindgen configuration (the file in
-/// `crates/dspi-core-linux/include/` only exists after building that crate).
+/// The old desktop core's header: a committed snapshot
+/// (`tests/data/dspi_core_old.h`), so the tests survive WP Q3 deleting
+/// `crates/dspi-core-linux`.
 fn old_header() -> String {
-    let old = manifest().join("../dspi-core-linux");
+    std::fs::read_to_string(manifest().join("tests/data/dspi_core_old.h")).unwrap()
+}
+
+/// The old crate's header regenerated in memory from its sources with its own
+/// cbindgen configuration (`with_src`: no cargo metadata, no build of that
+/// crate). Only the snapshot check uses it.
+fn regenerate_old_header(old: &Path) -> String {
     let config = cbindgen::Config::from_file(old.join("cbindgen.toml")).unwrap();
     let mut out = Vec::new();
     cbindgen::Builder::new()
@@ -187,6 +193,28 @@ fn header_fields(h: &str) -> BTreeMap<String, Vec<String>> {
         .collect()
 }
 
+/// The first C compiler found: `$CC`, then `cc`, `gcc`, `clang`.
+fn c_compiler() -> Command {
+    let candidates = std::env::var("CC")
+        .into_iter()
+        .chain(["cc", "gcc", "clang"].map(String::from));
+    for cc in candidates {
+        let found = Command::new(&cc)
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success());
+        if found {
+            return Command::new(cc);
+        }
+    }
+    panic!(
+        "the layout tests need a C compiler ($CC, cc, gcc or clang); \
+         run them in the build container: ci/run.sh 'cargo test -p dspi-capi'"
+    );
+}
+
 /// Compile `header` plus `_Static_assert`s of the Rust layouts with the C
 /// compiler; a mismatch fails the compile and names the field.
 fn check_layout_in_c(what: &str, header: &str) {
@@ -204,13 +232,12 @@ fn check_layout_in_c(what: &str, header: &str) {
             ));
         }
     }
-    let cc = std::env::var("CC").unwrap_or_else(|_| "cc".into());
-    let mut child = Command::new(&cc)
+    let mut child = c_compiler()
         .args(["-std=c11", "-fsyntax-only", "-x", "c", "-"])
         .stdin(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .unwrap_or_else(|e| panic!("the layout test needs a C compiler ({cc}): {e}"));
+        .unwrap();
     child.stdin.take().unwrap().write_all(c.as_bytes()).unwrap();
     let out = child.wait_with_output().unwrap();
     assert!(
@@ -1922,15 +1949,24 @@ fn wp_q1_input_records_round_trip() {
     assert_eq!(r::SiggenConfig::from(&SiggenConfig::from(&s)), s);
 }
 
-/// The old header file, when the old crate has been built, is what the
-/// in-memory generation produces (so the diff above is against the real
-/// thing). Skipped when the file is absent.
+/// Temporary, until WP Q3 deletes `crates/dspi-core-linux` (Q3 deletes
+/// this test and the cbindgen dev-dependency with it): the snapshot is what
+/// the old crate's sources generate, and what its build wrote when it has
+/// been built. Skipped when the old crate is gone.
 #[test]
-fn wp_q1_in_memory_old_header_matches_the_built_one() {
-    let built = manifest().join("../dspi-core-linux/include/dspi_core.h");
-    if !Path::new(&built).exists() {
+fn wp_q1_snapshot_matches_the_old_crate() {
+    let old = manifest().join("../dspi-core-linux");
+    if !old.join("src/lib.rs").exists() {
         return;
     }
-    let file = std::fs::read_to_string(built).unwrap();
-    assert_eq!(items(&old_header()), items(&file));
+    let snapshot = items(&old_header());
+    assert_eq!(
+        items(&regenerate_old_header(&old)),
+        snapshot,
+        "tests/data/dspi_core_old.h is stale: regenerate it from crates/dspi-core-linux"
+    );
+    let built = old.join("include/dspi_core.h");
+    if built.exists() {
+        assert_eq!(items(&std::fs::read_to_string(built).unwrap()), snapshot);
+    }
 }

@@ -4,8 +4,13 @@
 //! (`crates/dspi-core-linux`, header `dspi_core.h`): same names, same order,
 //! same types, so the Qt app compiles and runs unchanged. The tests
 //! (`types/tests_wp_q1.rs`) check `size_of`, `align_of` and every
-//! `offset_of` against the old header with the C compiler, and diff the
-//! generated `include/dspi_core.h` against the old one.
+//! `offset_of` against the old header (a snapshot in
+//! `tests/data/dspi_core_old.h`) with the C compiler, and diff the generated
+//! `include/dspi_core.h` against it.
+//!
+//! Fields of type `bool` are C `_Bool`: a caller must store only 0 or 1 in
+//! them, as with the old ABI. Any other byte is undefined behaviour on both
+//! sides.
 //!
 //! The records of `dspi_core::records` carry `Vec`s and `String`s where these
 //! carry fixed arrays and NUL-padded buffers. The conversions never panic: a

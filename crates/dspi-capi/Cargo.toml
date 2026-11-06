@@ -30,8 +30,8 @@ midir = ["dspi-core/midir"]
 
 [dev-dependencies]
 # -- WP Q1 --
-# The header test regenerates the old core's header in memory (with_src, no
-# cargo metadata) to diff against it.
+# Only for wp_q1_snapshot_matches_the_old_crate, which regenerates the old
+# core's header in memory to check the committed snapshot; WP Q3 deletes both.
 cbindgen = "0.29"
 # The constants test checks the header's literals against the generated ones.
 dspi-proto.workspace = true

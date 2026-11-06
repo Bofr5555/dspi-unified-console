@@ -3,13 +3,16 @@
 //! into its `dspi_core.h`), so the Qt app compiles unchanged (WP Q1).
 //!
 //! cbindgen only sees literals, so these stay literals. The tests in
-//! `types.rs` check them against the firmware-generated constants
+//! `types/tests_wp_q1.rs` check them against the firmware-generated constants
 //! (`dspi_proto::generated`) and `dspi_core::consts` wherever those name the
 //! same thing, and the header test checks every `#define` against the old
-//! header. Grouped by the old core's module.
+//! header. Grouped by the old core's module; each group's first constant
+//! carries the group's comment (full per-constant docs: WP F1).
 
 // ── dsp_math.rs ────────────────────────────────────────────────────
 
+/// Filter-response math: the sample rate and the curve size of the response
+/// functions.
 pub const SAMPLE_RATE: f64 = 48000.0;
 /// Number of magnitude curve points (log-spaced from 10 Hz to 20 kHz).
 pub const MAGNITUDE_POINTS: usize = 201;
@@ -18,6 +21,9 @@ pub const MAGNITUDE_POINTS: usize = 201;
 
 /// Bulk IN notification endpoint on the vendor interface.
 pub const NOTIFY_ENDPOINT: u8 = 0x83;
+
+/// `NotifyResult.flags` bits: what a batch of notifications changed.
+///
 /// `NotifyResult.flags`: some parameter changed; re-read the state.
 pub const NOTIFY_STATE: u32 = 1 << 0;
 /// A change that moves the graph (filters, gains, bypass, output enable).
@@ -40,6 +46,8 @@ pub const NOTIFY_IR_LEARN: u32 = 1 << 7;
 
 // ── protocol.rs ────────────────────────────────────────────────────
 
+/// USB Device IDs.
+///
 /// DSPi vendor ID. Firmware moved from 0x2E8A (Raspberry Pi's, still used by
 /// the RP2040/RP2350 ROM bootloader) to 0x2E8B in May 2026.
 pub const VENDOR_ID: u16 = 0x2e8b;
@@ -49,14 +57,21 @@ pub const LEGACY_VENDOR_ID: u16 = 0x2e8a;
 pub const PRODUCT_ID: u16 = 0xfeaa;
 /// Vendor interface number (WinUSB / WCID interface).
 pub const VENDOR_INTERFACE: u8 = 2;
+
+/// bmRequestType.
+///
 /// Host→Device | Vendor | Interface
 pub const REQ_TYPE_OUT: u8 = 0x41;
 /// Device→Host | Vendor | Interface
 pub const REQ_TYPE_IN: u8 = 0xC1;
+
+/// Control Surfaces aux outputs.
 pub const REQ_SET_CS_AUX_STATE: u8 = 0x04;
 pub const REQ_GET_CS_AUX_STATE: u8 = 0x05;
 pub const REQ_SET_CS_AUX_LEVEL: u8 = 0x06;
 pub const REQ_GET_CS_AUX_LEVEL: u8 = 0x07;
+
+/// Spectrum analyser (RTA).
 pub const REQ_RTA_SET_CONFIG: u8 = 0x08;
 pub const REQ_RTA_GET_CONFIG: u8 = 0x09;
 pub const REQ_RTA_GET_CAPS: u8 = 0x0A;
@@ -65,6 +80,8 @@ pub const REQ_RTA_GET_BINS: u8 = 0x0C;
 pub const REQ_RTA_GET_STATUS: u8 = 0x0D;
 pub const REQ_RTA_CONTROL: u8 = 0x0E;
 pub const REQ_RTA_GET_BANDS_ALL: u8 = 0x0F;
+
+/// Subharmonic synthesizer.
 pub const REQ_SET_SUBHARM: u8 = 0x10;
 pub const REQ_GET_SUBHARM: u8 = 0x11;
 pub const REQ_SET_SUBHARM_LOW: u8 = 0x12;
@@ -91,6 +108,8 @@ pub const REQ_SET_SUBHARM_HOLD: u8 = 0xAB;
 pub const REQ_GET_SUBHARM_HOLD: u8 = 0xAC;
 pub const REQ_SET_SUBHARM_CEILING: u8 = 0xAD;
 pub const REQ_GET_SUBHARM_CEILING: u8 = 0xAE;
+
+/// Control Surfaces groups, macros, display.
 pub const REQ_SET_CS_GROUP: u8 = 0x20;
 pub const REQ_GET_CS_GROUP: u8 = 0x21;
 pub const REQ_SET_CS_MACRO: u8 = 0x22;
@@ -103,6 +122,8 @@ pub const REQ_GET_CS_DISPLAY_CFG: u8 = 0x28;
 pub const REQ_SET_CS_DISPLAY_PAGE: u8 = 0x29;
 pub const REQ_GET_CS_DISPLAY_PAGE: u8 = 0x2A;
 pub const REQ_GET_CS_DISPLAY_STATUS: u8 = 0x2B;
+
+/// Psychoacoustic bass.
 pub const REQ_SET_PSYBASS: u8 = 0x30;
 pub const REQ_GET_PSYBASS: u8 = 0x31;
 pub const REQ_SET_PSYBASS_CUTOFF: u8 = 0x32;
@@ -123,6 +144,8 @@ pub const PSYBASS_PARAM_HARMONICS: u8 = 1;
 pub const PSYBASS_PARAM_DRIVE: u8 = 2;
 pub const PSYBASS_PARAM_CHARACTER: u8 = 3;
 pub const PSYBASS_PARAM_ORIGINAL: u8 = 4;
+
+/// Tube modeller.
 pub const REQ_SET_TUBE_PARAM: u8 = 0x3E;
 pub const REQ_GET_TUBE_PARAM: u8 = 0x3F;
 /// Tube parameter indices (the firmware's own; wValue of REQ_SET_TUBE_PARAM).
@@ -142,6 +165,7 @@ pub const TUBE_PARAM_RESONANCE: u8 = 11;
 pub const TUBE_PARAM_MIX: u8 = 12;
 pub const TUBE_PARAM_TRIM: u8 = 13;
 pub const TUBE_PARAM_COUNT: usize = 14;
+
 /// Subharmonic synth parameter ids for `set_subharm_param` (host-side; each
 /// field has its own request).
 pub const SUBHARM_PARAM_ENABLED: u8 = 0;
@@ -156,6 +180,8 @@ pub const SUBHARM_PARAM_HOLD: u8 = 8;
 pub const SUBHARM_PARAM_CEILING: u8 = 9;
 pub const SUBHARM_PARAM_LINK: u8 = 10;
 pub const SUBHARM_PARAM_COUNT: usize = 11;
+
+/// EQ / Preamp / Bypass / Delay.
 pub const REQ_SET_EQ_PARAM: u8 = 0x42;
 pub const REQ_GET_EQ_PARAM: u8 = 0x43;
 /// Legacy: sets every input channel's preamp to the same value.
@@ -165,6 +191,8 @@ pub const REQ_SET_BYPASS: u8 = 0x46;
 pub const REQ_GET_BYPASS: u8 = 0x47;
 pub const REQ_SET_DELAY: u8 = 0x48;
 pub const REQ_GET_DELAY: u8 = 0x49;
+
+/// Stereo upmixer.
 pub const REQ_UPMIX_SET_CONFIG: u8 = 0x4A;
 pub const REQ_UPMIX_GET_CONFIG: u8 = 0x4B;
 pub const REQ_UPMIX_SET_PARAM: u8 = 0x4C;
@@ -187,16 +215,22 @@ pub const UPMIX_PARAM_SURROUND_LPF: u8 = 11;
 pub const UPMIX_PARAM_DECORRELATION: u8 = 12;
 pub const UPMIX_PARAM_PRESENCE: u8 = 13;
 pub const UPMIX_PARAM_COUNT: usize = 14;
+
+/// Status / flash.
 pub const REQ_GET_STATUS: u8 = 0x50;
 pub const REQ_SAVE_PARAMS: u8 = 0x51;
 /// Persist the live output (IO) config in independent mode. Was the
 /// deprecated REQ_LOAD_PARAMS, which is gone.
 pub const REQ_SAVE_OUTPUT_CONFIG: u8 = 0x52;
 pub const REQ_FACTORY_RESET: u8 = 0x53;
+
+/// Legacy channel gain/mute.
 pub const REQ_SET_CHANNEL_GAIN: u8 = 0x54;
 pub const REQ_GET_CHANNEL_GAIN: u8 = 0x55;
 pub const REQ_SET_CHANNEL_MUTE: u8 = 0x56;
 pub const REQ_GET_CHANNEL_MUTE: u8 = 0x57;
+
+/// Loudness.
 pub const REQ_SET_LOUDNESS: u8 = 0x58;
 pub const REQ_GET_LOUDNESS: u8 = 0x59;
 pub const REQ_SET_LOUDNESS_REF: u8 = 0x5A;
@@ -205,6 +239,8 @@ pub const REQ_SET_LOUDNESS_INTENSITY: u8 = 0x5C;
 pub const REQ_GET_LOUDNESS_INTENSITY: u8 = 0x5D;
 pub const REQ_SET_LOUDNESS_MASK: u8 = 0xFA;
 pub const REQ_GET_LOUDNESS_MASK: u8 = 0xFB;
+
+/// Crossfeed.
 pub const REQ_SET_CROSSFEED: u8 = 0x5E;
 pub const REQ_GET_CROSSFEED: u8 = 0x5F;
 pub const REQ_SET_CROSSFEED_PRESET: u8 = 0x60;
@@ -217,6 +253,8 @@ pub const REQ_SET_CROSSFEED_ITD: u8 = 0x66;
 pub const REQ_GET_CROSSFEED_ITD: u8 = 0x67;
 pub const REQ_SET_CROSSFEED_OUTPUTS: u8 = 0xFC;
 pub const REQ_GET_CROSSFEED_OUTPUTS: u8 = 0xFD;
+
+/// ADAT input (RP2350).
 pub const REQ_SET_ADAT_INPUT_ENABLE: u8 = 0x68;
 pub const REQ_GET_ADAT_INPUT_ENABLE: u8 = 0x69;
 pub const REQ_SET_ADAT_INPUT_PIN: u8 = 0x6A;
@@ -224,6 +262,8 @@ pub const REQ_GET_ADAT_INPUT_PIN: u8 = 0x6B;
 pub const REQ_SET_ADAT_INPUT_CLOCK_MODE: u8 = 0x6C;
 pub const REQ_GET_ADAT_INPUT_CLOCK_MODE: u8 = 0x6D;
 pub const REQ_GET_ADAT_INPUT_STATUS: u8 = 0x6E;
+
+/// Matrix mixer / outputs.
 pub const REQ_SET_MATRIX_ROUTE: u8 = 0x70;
 pub const REQ_GET_MATRIX_ROUTE: u8 = 0x71;
 pub const REQ_SET_OUTPUT_ENABLE: u8 = 0x72;
@@ -234,13 +274,21 @@ pub const REQ_SET_OUTPUT_MUTE: u8 = 0x76;
 pub const REQ_GET_OUTPUT_MUTE: u8 = 0x77;
 pub const REQ_SET_OUTPUT_DELAY: u8 = 0x78;
 pub const REQ_GET_OUTPUT_DELAY: u8 = 0x79;
+
+/// Core 1.
 pub const REQ_GET_CORE1_MODE: u8 = 0x7A;
 pub const REQ_GET_CORE1_CONFLICT: u8 = 0x7B;
+
+/// Pins.
 pub const REQ_SET_OUTPUT_PIN: u8 = 0x7C;
 pub const REQ_GET_OUTPUT_PIN: u8 = 0x7D;
+
+/// Identification.
 pub const REQ_GET_SERIAL: u8 = 0x7E;
 pub const REQ_GET_PLATFORM: u8 = 0x7F;
 pub const REQ_GET_BUILD_INFO: u8 = 0x80;
+
+/// Output limiter (sub-command multiplexed).
 pub const REQ_LIMITER: u8 = 0x81;
 /// REQ_LIMITER wValue low byte: parameter index (high byte = output).
 pub const LIMITER_PARAM_ENABLED: u8 = 0;
@@ -253,7 +301,11 @@ pub const LIMITER_GET_METER: u8 = 0x80;
 pub const LIMITER_GET_STATUS: u8 = 0x81;
 /// SET output byte: apply to every output.
 pub const LIMITER_ALL_OUTPUTS: u8 = 0xFF;
+
+/// Clip detection.
 pub const REQ_CLEAR_CLIPS: u8 = 0x83;
+
+/// Control Surfaces bindings / IR.
 pub const REQ_SET_CS_BINDING: u8 = 0x84;
 pub const REQ_GET_CS_BINDING: u8 = 0x85;
 pub const REQ_GET_CS_CAPS: u8 = 0x86;
@@ -265,11 +317,15 @@ pub const REQ_GET_CS_IR_CMD: u8 = 0x8E;
 pub const REQ_CS_IR_LEARN: u8 = 0x8F;
 pub const REQ_CS_SAVE: u8 = 0x9D;
 pub const REQ_CS_REVERT: u8 = 0x9E;
+
+/// I2S clock mode.
 pub const REQ_SET_I2S_CLOCK_MODE: u8 = 0x88;
 pub const REQ_GET_I2S_CLOCK_MODE: u8 = 0x89;
 pub const REQ_GET_I2S_SLAVE_STATUS: u8 = 0x8A;
 pub const REQ_SET_I2S_CLOCK_PIN_MODE: u8 = 0xFE;
 pub const REQ_GET_I2S_CLOCK_PIN_MODE: u8 = 0xFF;
+
+/// Presets.
 pub const REQ_PRESET_SAVE: u8 = 0x90;
 pub const REQ_PRESET_LOAD: u8 = 0x91;
 pub const REQ_PRESET_DELETE: u8 = 0x92;
@@ -282,21 +338,31 @@ pub const REQ_PRESET_GET_STARTUP: u8 = 0x97;
 pub const REQ_SET_OUTPUT_CONFIG_MODE: u8 = 0x98;
 pub const REQ_GET_OUTPUT_CONFIG_MODE: u8 = 0x99;
 pub const REQ_PRESET_GET_ACTIVE: u8 = 0x9A;
+
+/// Channel names.
 pub const REQ_SET_CHANNEL_NAME: u8 = 0x9B;
 pub const REQ_GET_CHANNEL_NAME: u8 = 0x9C;
+
+/// Bulk parameter transfer.
 pub const REQ_GET_ALL_PARAMS: u8 = 0xA0;
 pub const REQ_SET_ALL_PARAMS: u8 = 0xA1;
 pub const REQ_GET_ALL_PARAMS_CHUNK: u8 = 0xA2;
 pub const REQ_SET_ALL_PARAMS_CHUNK: u8 = 0xA3;
+
+/// Signal generator.
 pub const REQ_SIGGEN_SET_CONFIG: u8 = 0xA4;
 pub const REQ_SIGGEN_GET_CONFIG: u8 = 0xA5;
 pub const REQ_SIGGEN_CONTROL: u8 = 0xA6;
 pub const REQ_SIGGEN_GET_STATUS: u8 = 0xA7;
 pub const REQ_SIGGEN_GET_CAPS: u8 = 0xA8;
+
+/// Buffer / USB statistics.
 pub const REQ_GET_BUFFER_STATS: u8 = 0xB0;
 pub const REQ_RESET_BUFFER_STATS: u8 = 0xB1;
 pub const REQ_GET_USB_ERROR_STATS: u8 = 0xB2;
 pub const REQ_RESET_USB_ERROR_STATS: u8 = 0xB3;
+
+/// Volume leveller.
 pub const REQ_SET_LEVELLER_ENABLE: u8 = 0xB4;
 pub const REQ_GET_LEVELLER_ENABLE: u8 = 0xB5;
 pub const REQ_SET_LEVELLER_AMOUNT: u8 = 0xB6;
@@ -311,6 +377,8 @@ pub const REQ_SET_LEVELLER_GATE: u8 = 0xBE;
 pub const REQ_GET_LEVELLER_GATE: u8 = 0xBF;
 pub const REQ_SET_LEVELLER_MASKS: u8 = 0xDE;
 pub const REQ_GET_LEVELLER_MASKS: u8 = 0xDF;
+
+/// Output types / I2S / MCK.
 pub const REQ_SET_OUTPUT_TYPE: u8 = 0xC0;
 pub const REQ_GET_OUTPUT_TYPE: u8 = 0xC1;
 pub const REQ_SET_I2S_BCK_PIN: u8 = 0xC2;
@@ -321,25 +389,37 @@ pub const REQ_SET_MCK_PIN: u8 = 0xC6;
 pub const REQ_GET_MCK_PIN: u8 = 0xC7;
 pub const REQ_SET_MCK_MULTIPLIER: u8 = 0xC8;
 pub const REQ_GET_MCK_MULTIPLIER: u8 = 0xC9;
+
+/// ADAT output (RP2350).
 pub const REQ_SET_ADAT_ENABLE: u8 = 0xCA;
 pub const REQ_GET_ADAT_ENABLE: u8 = 0xCB;
 pub const REQ_SET_ADAT_PIN: u8 = 0xCC;
 pub const REQ_GET_ADAT_PIN: u8 = 0xCD;
 pub const REQ_GET_ADAT_STATUS: u8 = 0xCE;
+
+/// Per-input preamp.
 pub const REQ_SET_PREAMP_CH: u8 = 0xD0;
 pub const REQ_GET_PREAMP_CH: u8 = 0xD1;
+
+/// Master volume.
 pub const REQ_SET_MASTER_VOLUME: u8 = 0xD2;
 pub const REQ_GET_MASTER_VOLUME: u8 = 0xD3;
 pub const REQ_SET_MASTER_VOLUME_MODE: u8 = 0xD4;
 pub const REQ_GET_MASTER_VOLUME_MODE: u8 = 0xD5;
 pub const REQ_SAVE_MASTER_VOLUME: u8 = 0xD6;
 pub const REQ_GET_SAVED_MASTER_VOLUME: u8 = 0xD7;
+
+/// Per-band bypass.
 pub const REQ_SET_BAND_BYPASS: u8 = 0xD8;
 pub const REQ_GET_BAND_BYPASS: u8 = 0xD9;
+
+/// User volume / mute.
 pub const REQ_SET_USER_VOLUME: u8 = 0xDA;
 pub const REQ_GET_USER_VOLUME: u8 = 0xDB;
 pub const REQ_SET_USER_MUTE: u8 = 0xDC;
 pub const REQ_GET_USER_MUTE: u8 = 0xDD;
+
+/// Input source / S/PDIF / I2S input.
 pub const REQ_SET_INPUT_SOURCE: u8 = 0xE0;
 pub const REQ_GET_INPUT_SOURCE: u8 = 0xE1;
 pub const REQ_GET_SPDIF_RX_STATUS: u8 = 0xE2;
@@ -354,18 +434,28 @@ pub const REQ_SET_I2S_RX_PIN: u8 = 0xF1;
 pub const REQ_GET_I2S_RX_PIN: u8 = 0xF2;
 pub const REQ_SET_I2S_INPUT_CHANNELS: u8 = 0xF3;
 pub const REQ_GET_I2S_INPUT_CHANNELS: u8 = 0xF4;
+
+/// LG Sound Sync.
 pub const REQ_SET_LG_SOUND_SYNC_ENABLE: u8 = 0xE6;
 pub const REQ_GET_LG_SOUND_SYNC_ENABLE: u8 = 0xE7;
 pub const REQ_GET_LG_SOUND_SYNC_STATUS: u8 = 0xE8;
+
+/// DAC hardware mute.
 pub const REQ_SET_DAC_HW_MUTE_CONFIG: u8 = 0xEA;
 pub const REQ_GET_DAC_HW_MUTE_CONFIG: u8 = 0xEB;
 pub const REQ_TEST_DAC_HW_MUTE: u8 = 0xEC;
+
+/// System.
 pub const REQ_ENTER_BOOTLOADER: u8 = 0xF0;
+
+/// UART / I2C control interfaces.
 pub const REQ_SET_UART_CONFIG: u8 = 0xF5;
 pub const REQ_GET_UART_CONFIG: u8 = 0xF6;
 pub const REQ_SET_I2C_CONFIG: u8 = 0xF7;
 pub const REQ_GET_I2C_CONFIG: u8 = 0xF8;
 pub const REQ_GET_CTRL_IFACE_STATUS: u8 = 0xF9;
+
+/// Status codes.
 pub const PIN_CONFIG_SUCCESS: u8 = 0x00;
 pub const PIN_CONFIG_INVALID_PIN: u8 = 0x01;
 pub const PIN_CONFIG_PIN_IN_USE: u8 = 0x02;
@@ -383,15 +473,24 @@ pub const FLASH_OK: u8 = 0;
 pub const FLASH_ERR_WRITE: u8 = 1;
 pub const FLASH_ERR_NO_DATA: u8 = 2;
 pub const FLASH_ERR_CRC: u8 = 3;
+
+/// wIndex conventions (as used by the macOS Console).
+///
 /// wIndex for EQ, preamp, bypass, delay, status, loudness, crossfeed, volume, core1.
 pub const WINDEX_GLOBAL: u16 = 0;
 /// wIndex for matrix/output/pin/preset/channel-name/bulk commands.
 pub const WINDEX_OUTPUT: u16 = 2;
+
+/// Firmware the core is built against.
+///
 /// Wire format this core reads and writes.
 pub const WIRE_FORMAT_VERSION: u8 = 32;
 /// Oldest wire format with the unified channel model. Anything older is
 /// incompatible (V16 broke compatibility with no migration).
 pub const MIN_WIRE_FORMAT_VERSION: u8 = 16;
+
+/// Bulk parameter wire format (WireBulkParams, V32).
+///
 /// sizeof(WireBulkParams) at V32.
 pub const BULK_PARAMS_SIZE: usize = 6136;
 /// Chunk size for REQ_GET/SET_ALL_PARAMS_CHUNK. Kept well under the 4 KB
@@ -422,12 +521,17 @@ pub const OFF_UPMIX: usize = 5900;
 pub const OFF_SUBHARM: usize = 5944;
 pub const OFF_TUBE: usize = 5980;
 pub const OFF_LIMITER: usize = 6028;
+
+/// Packets.
+///
 /// `fw_beta` for a beta that can't say which one it is: 1.1.6 betas 1 and 2
 /// predate the ordinal and answer as plain 1.1.6. Sorts below every beta.
 pub const FW_BETA_EARLY: u8 = 0xFF;
 
 // ── rta.rs ─────────────────────────────────────────────────────────
 
+/// Spectrum analyser (RTA): protocol version, record array sizes, taps and the
+/// level floor.
 pub const RTA_VERSION: u8 = 3;
 pub const RTA_MAX_BANDS: usize = 37;
 /// Channels at one tap the snapshot holds (the mask is 16 bits).
@@ -440,8 +544,11 @@ pub const RTA_FLOOR_DB: f32 = -121.5;
 
 // ── siggen.rs ──────────────────────────────────────────────────────
 
+/// Signal generator: protocol version and the number of signal types.
 pub const SIGGEN_VERSION: u8 = 1;
 pub const SIGGEN_TYPE_COUNT: usize = 15;
+
+/// Signal generator: `SiggenConfig.flags` bits and CONTROL actions.
 pub const SIGGEN_FLAG_RAW: u8 = 0x01;
 pub const SIGGEN_FLAG_DECORR: u8 = 0x02;
 pub const SIGGEN_FLAG_WALK: u8 = 0x04;
@@ -471,16 +578,22 @@ pub const STAT_USB_RING_OVERRUNS: u16 = 22;
 
 // ── presetfile.rs ──────────────────────────────────────────────────
 
+/// Preset files (`.dspipreset`): the schema version.
 pub const SCHEMA_VERSION: i64 = 1;
+
+/// Preset import: what is applied besides the DSP settings (bits).
 pub const IMPORT_VOLUMES: u32 = 1;
 pub const IMPORT_HARDWARE: u32 = 2;
 
 // ── filterfile.rs ──────────────────────────────────────────────────
 
+/// Filter files: the format version.
 pub const FORMAT_VERSION: u32 = 2;
 
 // ── cs.rs ──────────────────────────────────────────────────────────
 
+/// Control surfaces: table sizes of the binding, IR, group, macro, step and
+/// page records.
 pub const CS_MAX_BINDINGS: usize = 16;
 pub const CS_MAX_IR: usize = 16;
 pub const CS_MAX_GROUPS: usize = 8;
@@ -490,6 +603,8 @@ pub const CS_MAX_PAGES: usize = 16;
 
 // ── state.rs ───────────────────────────────────────────────────────
 
+/// `DspState.compat`: the firmware compatibility judged at connect.
+///
 /// Firmware compatibility of the connected device, as judged at connect time.
 pub const COMPAT_UNKNOWN: u8 = 0;
 /// Wire format and firmware match this core.
@@ -501,6 +616,9 @@ pub const COMPAT_FIRMWARE_TOO_NEW: u8 = 3;
 
 // ── types.rs ───────────────────────────────────────────────────────
 
+/// Filter types (firmware config.h `enum FilterType`). Value space: 0..13 PEQ
+/// types, 14..31 reserved, 32..63 crossover types (only valid in crossover
+/// bands), 64+ reserved.
 pub const FILTER_FLAT: u8 = 0;
 pub const FILTER_PEAKING: u8 = 1;
 pub const FILTER_LOWSHELF: u8 = 2;
@@ -527,8 +645,12 @@ pub const FILTER_HIGHPASS1: u8 = 13;
 /// each pair LP = even, HP = odd.
 pub const FILTER_XOVER_FIRST: u8 = 32;
 pub const FILTER_XOVER_LAST: u8 = 63;
+
 /// Default Q (Butterworth), also the Linkwitz Transform target-Q default.
 pub const DEFAULT_Q: f32 = 0.707;
+
+/// Array sizes and limits of the records (RP2350 maxima).
+///
 /// Maximum channels in the wire format (inputs + outputs, RP2350).
 pub const MAX_CHANNELS: usize = 17;
 /// Maximum input channels (RP2350).
