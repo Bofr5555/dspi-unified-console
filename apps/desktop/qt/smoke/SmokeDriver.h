@@ -66,6 +66,8 @@ private:
     void testReconnect();
     void testIdleAndCost();
     void testBypassRepaint();
+    // -- WP QD30 --
+    void testPopoverAnchor();
 
     // Whether a bypass toggle repaints the open channel's graph editor. Leaves
     // bypass as it found it. NotRun fills `why`.
