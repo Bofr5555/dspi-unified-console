@@ -215,6 +215,7 @@ mod tests {
             event,
             lost: false,
             origin: None,
+            received: std::time::Instant::now(),
         }
     }
 

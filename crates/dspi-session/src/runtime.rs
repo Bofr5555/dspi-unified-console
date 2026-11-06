@@ -232,6 +232,7 @@ mod tests {
             event: e,
             lost: false,
             origin: None,
+            received: std::time::Instant::now(),
         });
         assert_eq!(st.cs_aux_states, None);
 
@@ -248,6 +249,7 @@ mod tests {
             event: e,
             lost: false,
             origin: None,
+            received: std::time::Instant::now(),
         });
         let all = st.cs_aux_states.as_ref().unwrap();
         assert!(all.is_on(3));
@@ -261,6 +263,7 @@ mod tests {
             event: e,
             lost: false,
             origin: None,
+            received: std::time::Instant::now(),
         });
         assert_eq!(st.cs_aux_states.as_ref().unwrap().state.len(), 16);
     }

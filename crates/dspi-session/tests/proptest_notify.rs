@@ -126,7 +126,13 @@ proptest! {
         let mut s = DeviceState::new(caps(), bulk);
         for (p, lost, origin) in packets {
             let Ok((seq, event)) = notify::decode(&p) else { continue };
-            let n = Notification { seq, event, lost, origin };
+            let n = Notification {
+                seq,
+                event,
+                lost,
+                origin,
+                received: std::time::Instant::now(),
+            };
             let applied = s.apply(&n);
             if lost {
                 prop_assert!(s.stale, "a lost packet marks the mirror stale");
@@ -157,7 +163,7 @@ proptest! {
         prop_assert_eq!(seq, 7);
         let bulk = BulkPacket::decode(image(seed)).map_err(|e| TestCaseError::fail(e.to_string()))?;
         let mut s = DeviceState::new(caps(), bulk);
-        let applied = s.apply(&Notification { seq, event, lost: false, origin: None });
+        let applied = s.apply(&Notification { seq, event, lost: false, origin: None, received: std::time::Instant::now() });
         let at = offset as usize;
         if at + field.len() <= BULK_SIZE {
             prop_assert!(matches!(applied, Applied::Section { .. }), "{applied:?}");
