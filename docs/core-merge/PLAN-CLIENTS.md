@@ -29,17 +29,17 @@ Sizes are in agent-days, as in `PLAN.md`.
 
 | Track | WPs | Size | Depends on |
 |---|---|---|---|
-| MR: one repo, one build | 2 | 1.75 | `main` |
-| LC, HO: licence inventory, handover | 2 | 1.5 | `main`; HO1 late |
+| MR: one repo, one build | 2 | 2.25 | `main` |
+| LC, HO: licence inventory, handover | 2 | 1.75 | `main`; HO1 late |
 | CG: core gaps | 11 | 8.75 | `main` |
 | HB: Rust Link hub | 7 | 12 | `main` |
 | QD: Qt (Linux, Windows) | 26 | 22 | `main`, CG, HB for the hub page |
-| TM: Terminal | 14 | 8.5 | `main`, CG, HB for `dspi hub` |
+| TM: Terminal | 15 | 8.75 | `main`, CG, HB for `dspi hub` |
 | AN: Android | 23 | 25.25–29.25 | `main`, MR1, CG9 |
 | SW: Swift (macOS and iOS) | 29 | 32.75–43.25 | `main`, MR1, CG3, CG4 |
 | WB: web | 1 + stubs | 2 (study) | `main` |
 | XC: audit, cross-client tests | 7 | 3.75 | hub hardware, K340 |
-| **Total** | **122** | **about 118–133**, not counting the web build | |
+| **Total** | **123** | **about 119–134**, not counting the web build | |
 
 **M0, the first milestone, is about 12–14 days after `main`** (section 0.3). The
 largest unknowns are Swift domain replacement, the Android control-surface editor
@@ -80,8 +80,8 @@ review.
 
 ### 0.2 One build
 
-**MR2: One entry point.** Size 1.
-- **Owns:** `ci/check.sh --all-clients` (or `xtask`, which is an empty stub today), `ci/matrix.sh`.
+**MR2: One entry point.** Size 1.5.
+- **Owns:** `ci/check.sh --all-clients` (or `xtask`, which is an empty stub today), `ci/matrix.sh`, `ci/run.sh`, `ci/container/`.
 - **Implements:** from one commit, build and test everything, then print a matrix:
 
 | Client | Where |
@@ -92,13 +92,14 @@ review.
 | wasm check | container |
 | macOS Swift app, iOS Simulator, Qt `.dmg` (build only) | `macvm` through `launchctl asuser`: GUI login, host unlocked, one heavy job at a time. **"Not run" until SW2 adds these rows**, and later whenever the VM is down |
 
+- **Reproducible images:** `ci/run.sh`'s base images `localhost/dspi-qtport:4` and `localhost/dspi-termport-xwin:1` have no Containerfile in the repo (`ci/container/Containerfile` only builds on top of the first), so a clean machine cannot recreate them. **Commit a Containerfile for every image**, with pinned bases and verified downloads.
 - **CG3's iOS check:** Linux containers have no Apple SDK, so the container step is
   `cargo check --target aarch64-apple-ios` only, with no link. If a dependency's build
   script needs the SDK, it moves to the VM. Real linking is always `macvm` (SW1).
 - **Drift step:** regenerate `dspi_core.h`, the Kotlin contract and bindings, and the Swift
   bindings, then fail on any diff. **Generated code is never hand-edited.**
 - **Done when:** a run from a clean checkout gives the matrix with every non-Apple row, and the macOS and iOS
-  rows reading "not run"; an edited generated file fails it. **The full matrix is M0's gate.**
+  rows reading "not run"; an edited generated file fails it; **every image builds from its committed Containerfile with an empty podman and download cache.** **The full matrix is M0's gate.**
 - **Deps:** MR1, CG9.
 
 **What stays on the host:** the Arm firmware toolchain only (existing exception). Everything
@@ -160,13 +161,14 @@ that reaches the iOS binary.
 no CLI or Terminal code, no `cli` feature, no Qt, no firmware images. `crates/dspi-tui` and `dspi-cmd` stay out (F1's
 trim). CI fails if the iOS dependency list grows without a change to the inventory.
 
-**LC1: iOS licence inventory.** Size 0.5. **Owns:** `docs/licensing/IOS-INVENTORY.md`, a check script in `ci/`, `NOTICE.md`,
+**LC1: Licence inventory, iOS first.** Size 0.75. **Owns:** `docs/licensing/IOS-INVENTORY.md`, a check script in `ci/`, `NOTICE.md`,
 per-crate `license` fields, SPDX headers in new code, `deny.toml`.
 - **Implements:** the concrete list that makes dual licensing simple: **exactly which crates and files go into the iOS
   binary** (core crates, Swift sources, assets), each with its copyright holders (Weeb Labs, owner, third party, from
   `git blame` and the import history), its current licence, and which permission it needs.
 - **Flags:** any third-party part with an incompatible licence; **any contributor beyond Weeb Labs and the owner**, with
   their files. Also records the other imported trees and the disagreements in the table above.
+- **Metadata fixes:** the workspace `repository` field points at WeebLabs/DSPi-Terminal; `crates/dspi-link` and `xtask` have no licence field, despite a comment saying dspi-link sets its own. Correct both to what the repo actually is, with dspi-link's MIT origin recorded.
 - **Limits:** it changes no licence and drafts no legal text as final. It provides facts for the owner and Weeb Labs.
 - **Done when:** the inventory is generated from the iOS build's real dependency graph (`cargo tree` for the iOS target,
   the Xcode target's membership), and re-running it detects a new file or crate; `cargo-deny` runs in CI. It is re-run
@@ -191,6 +193,7 @@ per app, `docs/HANDOVER.md`.
   rows to settle, from the audit: undo and redo (Qt has none; C# has IO undo; owner: no for now), the 0xFC/0xFD pair mask
   (`DspDevice.cs:288` against Qt's `crossfeedOutputPairMask`), settings depth, the bulk-endpoint debug window, 12 PEQ bands
   against 10.
+- **Stale docs:** `apps/terminal/README.md`, `docs/terminal/platforms.md` and `apps/desktop/packaging/arch/PKGBUILD` still describe the pre-merge state. Bring them up to date, and retire `apps/desktop/Documentation/parity-plan.md` in favour of `docs/PARITY.md`.
 - **Migration:** settings, tokens, favourites and files per console, including what does not carry over.
 - **Leftovers to list and resolve:**
   - Kotlin packages naming `se.bofr` (325 files; a rename is a mechanical choice for later). **Not leftovers:** the Play
@@ -590,6 +593,8 @@ Owner decided: it skips what needs a graphical UI (on-graph editing, onboarding)
 
 **TM13: K340 hardware pass.** Size 0.5. **[HW][COORD]**. **Owns:** `docs/core-merge/HW-TERMINAL.md`. **Done when:** USB replug and real MIDI ports end to end pass (R1's open item). **Deps:** TM1, TM2, TM4.
 
+**TM15: Closed pipes.** Size 0.25. **Owns:** output handling in `apps/terminal/src/main.rs`, under its marker. **Implements:** `dspi --demo dump | head -5` panics with "failed printing to stdout: Broken pipe". Handle a closed pipe across all CLI output: stop quietly, with the usual exit status. **Done when:** a test pipes every command that prints into a closed reader, with no panic. **Deps:** `main`.
+
 **TM14: No tmpfs in tests.** Size 0.25. **Owns:** tests in `crates/dspi-tui/src/{actions.rs,settings/config.rs,settings/mod.rs}`. **Implements:** five `temp_dir()` uses move to a target-dir path. **Done when:** none remain, and tests pass. **Deps:** `main`.
 
 ### 5.3 Android (`apps/android`)
@@ -759,7 +764,7 @@ Store items (review video, TestFlight, the SysEx ID question) are later: `APPSTO
 
 ### 5.6 Audit and cross-client tests
 
-**XC0: Finish the floor audit.** Size 0.5. **Wave 0.** **Owns:** `docs/PARITY.md` (from FEATURE-PARITY.md). **Implements:** walk the Mac's menus and every settings page; turn every "hit" in section 3 into read code, per client; add anything missing with a WP or a reason. **Done when:** no "hit" remains, and Fable has spot-checked 10 rows. **Deps:** `main`.
+**XC0: Finish the floor audit.** Size 0.5. **Wave 0.** **Owns:** `docs/PARITY.md`, moved into the repo from `dspi-mobile/docs/FEATURE-PARITY.md`, and the references to the old path in `docs/core-merge/PLAN.md` and `docs/PORTABILITY.md` §11. **Implements:** walk the Mac's menus and every settings page; turn every "hit" in section 3 into read code, per client; add anything missing with a WP or a reason. **Done when:** no "hit" remains, and Fable has spot-checked 10 rows. **Deps:** `main`.
 
 **XC1: `macr` restart.** Size 0.5. **[COORD]**, **with the owner's go-ahead.** **Implements:** patched QEMU and libusb per `qemu-usb/REPORT.md`; check `br0` and Bonjour from the phone; re-attach the DSPi over QMP; host unlocked. **Done when:** the Mac hub is reachable from the LAN and the 6 KB read works. **Prerequisite for every Mac test. Deps:** none.
 
@@ -809,7 +814,7 @@ Every wave needs `core-merge` on `main`. Within a wave no two WPs own the same f
 | Wave | WPs (parallel) | Needs |
 |---|---|---|
 | 0 | XC0, XC1, XC2, XC3; MR1 (Android half); LC1; CG9 | `main`; XC1 the owner's go-ahead |
-| 1 | MR2; AN1; CG1–CG8, CG10, CG11; HB0; WB0; QD0 first, then QD1, QD2, QD4, QD5; TM1, TM2, TM4, TM7, TM10, TM14 | wave 0 |
+| 1 | MR2; AN1; CG1–CG8, CG10, CG11; HB0; WB0; QD0 first, then QD1, QD2, QD4, QD5; TM1, TM2, TM4, TM7, TM10, TM14, TM15 | wave 0 |
 | 2 | **HB1–HB3 after HB0's review**; MR1 (Swift half), then SW1, then SW2; SW-U1 after MR1; QD3, QD6, QD7, QD8, QD11, QD12, QD18, QD27; TM3, TM5, TM8, TM9, TM12; AN2, AN3, AN6, AN8 | wave 1 |
 | 3 | HB5, HB6; SW3 then SW4; QD9, QD10, QD13, QD16, QD17, QD19, QD28; TM6; AN4, AN5, AN7, AN13 then AN14, AN17, AN18, AN19, AN23 | wave 2; **M0 at its end** |
 | 4 | HB7; SW5, SW6 then SW7, SW-M1 then SW-M2, SW17–SW20, SW23; QD14, QD21; TM11, TM13; AN9–AN12, AN22 | wave 3 |
