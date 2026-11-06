@@ -10,6 +10,9 @@
 //!   mirror alone; status 0 updates the mirror field and `bulk_raw`.
 //!   `PIN_RESET_TO_DEFAULT` (0xFF) asks for the platform default; the setter
 //!   then reads back which pin that is, under the DSPi Link device lock.
+//!   If that read-back fails after the device accepted the reset, the
+//!   setter returns the error and the mirror keeps the old pin: re-fetch
+//!   it (`fetch_output_pin` for an output, `refresh_params` for the rest).
 //! - **Payload SETs** (OUT, no status byte): `Ok` means only that the
 //!   transfer completed. Several are applied later in the firmware's main
 //!   loop (I2S clock mode, the DAC mute, UART and I2C configs) and some are
@@ -198,7 +201,9 @@ impl DspiCore {
     /// A write-as-read pin setter. With `pin` = `PIN_RESET_TO_DEFAULT` the
     /// device picks the platform default; `readback` (opcode, `wValue`) then
     /// reads which pin that is, the set and the read under the Link device
-    /// lock. `update` gets the pin now in force.
+    /// lock. `update` gets the pin now in force. If the set succeeds but
+    /// the read-back fails, the error is returned and the mirror keeps the
+    /// old pin.
     fn set_pin_with_status(
         &self,
         opcode: u8,
@@ -264,6 +269,9 @@ impl DspiCore {
     /// `PIN_RESET_TO_DEFAULT` (0xFF) restores the platform default, which is
     /// then read back. The firmware applies the move later through a muted
     /// pipeline reset; it is live only until a preset or output-config save.
+    /// If the reset is accepted but its read-back fails, the error is
+    /// returned and the mirror keeps the old pin: re-fetch it with
+    /// [`DspiCore::fetch_output_pin`].
     ///
     /// Errors: [`DspiError::Refused`] with `PIN_CONFIG_INVALID_OUTPUT` (no
     /// such slot), `INVALID_PIN`, `PIN_IN_USE`, or `OUTPUT_ACTIVE` (the PDM
@@ -321,7 +329,9 @@ impl DspiCore {
 
     /// FLASH WRITE: persist the live physical I/O configuration (the
     /// independent mode's explicit save). The firmware writes it later in
-    /// its main loop. Runs under the DSPi Link device lock.
+    /// its main loop. Runs under the DSPi Link device lock: the deferred
+    /// flash write blacks out the device's control path for tens of
+    /// milliseconds, so other consoles must not interleave requests with it.
     ///
     /// Errors: [`DspiError::Refused`] with a `PRESET_*` status;
     /// [`DspiError::Locked`] (Link); [`DspiError::ReadOnly`],
@@ -620,7 +630,9 @@ impl DspiCore {
     /// I2S clock mode, 0 master / 1 slave. REQ_SET_I2S_CLOCK_MODE 0x88 is a
     /// payload SET with no status byte (Ok = transfer completed); the
     /// firmware applies it deferred in its main loop, and notifies then.
-    /// Sets `DspState.i2s_clock_mode`.
+    /// `DspState.i2s_clock_mode` holds the requested mode at once; the
+    /// firmware applies it later, and its notification brings the mirror to
+    /// the live mode.
     ///
     /// Errors: [`DspiError::InvalidArgument`] for a mode above 1 (the
     /// firmware would ignore it silently); [`DspiError::ReadOnly`],
@@ -894,23 +906,23 @@ impl DspiCore {
 
     /// Whether enabling `output` would conflict with Core 1's mode (PDM on
     /// the last output and the Core 1 EQ worker exclude each other, and the
-    /// firmware skips a blocked enable silently). Asked through the
-    /// session's `core1_conflict`, which reports a failed read as no
-    /// conflict.
+    /// firmware skips a blocked enable silently). One `REQ_GET_CORE1_CONFLICT`
+    /// read; a failed read is an error, never "no conflict".
     ///
-    /// Errors: [`DspiError::InvalidArgument`] for an output the device does
-    /// not have; [`DspiError::Disconnected`] with no device, or one whose
-    /// image could not be mapped (no session).
+    /// Errors: [`DspiError::InvalidArgument`] for an output past the
+    /// device's output count (`DspState.num_output_channels`);
+    /// [`DspiError::Disconnected`] with no device; a stall, timeout or other
+    /// transfer error from the read.
     pub fn check_core1_conflict(&self, output: u8) -> Result<bool> {
-        let mut guard = self.lock();
-        let session = guard.conn()?.session()?;
-        let outputs = session.channel_map().num_outputs();
-        if output >= outputs {
-            return Err(DspiError::InvalidArgument {
-                msg: format!("output {output} is out of range (0..{outputs})"),
-            });
-        }
-        Ok(session.core1_conflict(output))
+        self.read_with(|conn, s| {
+            let outputs = s.num_output_channels;
+            if output >= outputs {
+                return Err(DspiError::InvalidArgument {
+                    msg: format!("output {output} is out of range (0..{outputs})"),
+                });
+            }
+            Ok(read_u8(conn, op::REQ_GET_CORE1_CONFLICT, u16::from(output))? != 0)
+        })
     }
 }
 
@@ -1668,6 +1680,21 @@ mod tests_wp_c6 {
         ));
         let (core, _, _) = rig(&[(op::REQ_GET_CORE1_CONFLICT, Some(vec![0]))]);
         assert_eq!(core.check_core1_conflict(0), Ok(false));
+    }
+
+    #[test]
+    fn wp_c6_core1_conflict_read_errors_reach_the_caller() {
+        // The fake stalls the read: an error, not "no conflict".
+        let (core, _, _) = rig(&[]);
+        assert!(matches!(
+            core.check_core1_conflict(0),
+            Err(DspiError::Transfer { .. })
+        ));
+        let (core, _, _) = rig(&[(op::REQ_GET_CORE1_CONFLICT, Some(vec![]))]);
+        assert!(matches!(
+            core.check_core1_conflict(0),
+            Err(DspiError::Transfer { .. })
+        ));
     }
 
     // ── Connection states ─────────────────────────────────────────────
