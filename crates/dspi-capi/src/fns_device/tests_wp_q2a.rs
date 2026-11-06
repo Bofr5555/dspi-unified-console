@@ -6,6 +6,8 @@
 use std::collections::BTreeMap;
 use std::ffi::{CStr, CString};
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use proptest::prelude::*;
 
@@ -193,6 +195,65 @@ fn wp_q2a_state_resets_on_disconnect() {
     assert!(!dspi_fetch_status(h.0, ptr::null_mut()));
 }
 
+/// Counts the callbacks that run once `dspi_core_free` has begun.
+#[derive(Default)]
+struct Late {
+    freeing: AtomicBool,
+    calls: AtomicU32,
+}
+
+impl Late {
+    fn fired(&self) {
+        if self.freeing.load(Ordering::SeqCst) {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+}
+
+impl dspi_core::NotifyListener for Late {
+    fn on_notifications(&self) {
+        self.fired();
+    }
+}
+
+impl dspi_core::RtaListener for Late {
+    fn on_frame(&self) {
+        self.fired();
+    }
+}
+
+impl dspi_core::DeviceEvents for Late {
+    fn on_arrived(&self, _: String) {
+        self.fired();
+    }
+
+    fn on_departed(&self, _: String) {
+        self.fired();
+    }
+}
+
+/// Closing a device with a running analyser worker fires the RTA listener: with
+/// the caller's `user_data`, about to be freed, if it were still set.
+#[test]
+fn wp_q2a_no_callback_fires_after_free_begins() {
+    let late = Arc::new(Late::default());
+    let h = dspi_core_new();
+    with_core(h, (), |c| {
+        c.core.open_demo().unwrap();
+        c.core.set_notify_listener(Some(late.clone()));
+        c.core.rta_set_listener(Some(late.clone()));
+        c.core.set_hotplug_callback(Some(late.clone()));
+        c.core.rta_start();
+    });
+    // The worker's own first wake (the demo has no analyser, so it is its last)
+    // comes before `freeing`: only the teardown can count.
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    late.freeing.store(true, Ordering::SeqCst);
+    dspi_core_free(h);
+    assert_eq!(late.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(Arc::strong_count(&late), 1, "the core let go of them all");
+}
+
 #[test]
 fn wp_q2a_setters_reach_the_demo_device() {
     let h = Handle::demo();
@@ -202,9 +263,8 @@ fn wp_q2a_setters_reach_the_demo_device() {
 
     assert!(dspi_set_filter(h.0, 0, 2, band(1234.0)));
     assert_eq!(h.state().filters[0][2].freq, 1234.0);
-    // The demo device stalls REQ_SET_BAND_BYPASS: the failure value, unchanged.
-    assert!(!dspi_set_band_bypass(h.0, 0, 2, true));
-    assert!(!h.state().filters[0][2].bypass);
+    assert!(dspi_set_band_bypass(h.0, 0, 2, true));
+    assert!(h.state().filters[0][2].bypass);
 
     let out = h.state().num_output_channels - 1;
     assert_eq!(dspi_set_output_enable(h.0, 0, false), 0);

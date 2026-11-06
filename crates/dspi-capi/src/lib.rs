@@ -11,8 +11,9 @@
 //!   (invalid UTF-8 is an invalid argument, not a panic).
 //! - **Copy out.** Records are copied into caller-owned memory. The one
 //!   exception kept from the old ABI is `dspi_get_state`, which returns a
-//!   pointer to a `DspState` owned by the core handle, valid until the next
-//!   call on that handle from the same thread (the Qt app's usage).
+//!   pointer to a `DspState` owned by the core handle, at a fixed address until
+//!   `dspi_core_free`. Each `dspi_get_state` rewrites that record, so readers
+//!   serialise with that call (the Qt app: GUI thread only).
 //! - Errors map onto the old conventions: `bool` false, a `PRESET_*` /
 //!   `PIN_CONFIG_*` status byte from `DspiError::Refused`, `0xFF` otherwise.
 //!

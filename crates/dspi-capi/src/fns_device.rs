@@ -29,18 +29,24 @@ use crate::{FfiCore, guard, with_core};
 /// What a `PRESET_*` status call returns when the device did not answer.
 const COMM_ERROR: u8 = 0xFF;
 
+/// The longest chain `from_raw_parts` may be given: the bytes must fit `isize`.
+const MAX_BANDS: usize = isize::MAX as usize / size_of::<FilterParams>();
+
 // ── Helpers ───────────────────────────────────────────────────────────
 
-/// The value of `r`; an error is logged (the old conventions cannot carry it)
-/// and becomes `None`.
-fn logged<T>(r: Result<T>) -> Option<T> {
-    match r {
-        Ok(v) => Some(v),
-        Err(e) => {
-            log::debug!("dspi-capi: {e}");
-            None
-        }
+/// Log an error the old conventions cannot carry: no device is routine, anything
+/// else is worth a warning.
+fn log_failure(e: &DspiError) {
+    if matches!(e, DspiError::Disconnected) {
+        log::debug!("dspi-capi: {e}");
+    } else {
+        log::warn!("dspi-capi: {e}");
     }
+}
+
+/// The value of `r`; an error is logged and becomes `None`.
+fn logged<T>(r: Result<T>) -> Option<T> {
+    r.inspect_err(log_failure).ok()
 }
 
 /// A call whose outcome is `true` or `false`.
@@ -60,7 +66,7 @@ fn status_of(r: Result<()>, other: u8) -> u8 {
         Ok(()) => 0,
         Err(DspiError::Refused { status }) => status,
         Err(e) => {
-            log::debug!("dspi-capi: {e}");
+            log_failure(&e);
             other
         }
     }
@@ -159,7 +165,7 @@ fn bands(filters: *const FilterParams, count: u32) -> Vec<r::FilterParams> {
     if filters.is_null() || !filters.is_aligned() || count == 0 {
         return Vec::new();
     }
-    let count = usize::try_from(count).unwrap_or(0);
+    let count = usize::try_from(count).unwrap_or(0).min(MAX_BANDS);
     // SAFETY: not null, aligned, and holds `count` records by the function's
     // documented contract.
     let chain = unsafe { std::slice::from_raw_parts(filters, count) };
@@ -199,6 +205,11 @@ pub extern "C" fn dspi_core_new() -> *mut FfiCore {
 
 /// Destroy a core instance, closing its device. Null is ignored. The handle and
 /// any pointer `dspi_get_state` returned for it are invalid afterwards.
+///
+/// The hotplug, notify and RTA callbacks are cleared first, waiting for a call
+/// in progress on another thread: once this starts closing the device, none of
+/// them runs again, so `user_data` may go right after it returns. Do not call
+/// this from inside one of those callbacks: it would wait for itself.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_free(core: *mut FfiCore) {
     if core.is_null() {
@@ -208,6 +219,10 @@ pub extern "C" fn dspi_core_free(core: *mut FfiCore) {
         // SAFETY: a non-null handle comes from `dspi_core_new` and is freed
         // once: the C caller's contract.
         let handle = unsafe { Box::from_raw(core) };
+        // Stopping a running analyser worker fires its listener.
+        handle.core.set_notify_listener(None);
+        handle.core.rta_set_listener(None);
+        handle.core.set_hotplug_callback(None);
         handle.core.disconnect();
     });
 }
