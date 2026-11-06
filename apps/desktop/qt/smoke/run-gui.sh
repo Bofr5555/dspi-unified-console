@@ -50,5 +50,5 @@ exec podman run --rm -i --init --security-opt label=disable --network=none \
     "${display[@]}" \
     -v "$B/work/$branch":/work \
     -e HOME=/work/home-gui -e TMPDIR=/work/tmp -e QT_QUICK_BACKEND=software -e "RUST_LOG=${RUST_LOG:-warn}" \
-    "${DSPI_IMAGE:-localhost/dspi-coremerge:2}" \
+    "${DSPI_IMAGE:-localhost/dspi-coremerge:3}" \
     /work/build-desktop-qt6-capi/DSPiConsole "$@"
