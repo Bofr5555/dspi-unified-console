@@ -223,6 +223,7 @@ impl DspiCore {
         let (old, worker) = {
             let mut inner = self.lock();
             inner.state = state::default_state();
+            inner.cs = crate::cs::CsState::default();
             let worker = rta::take_worker(&mut inner);
             (inner.conn.take(), worker)
         };
@@ -244,6 +245,7 @@ impl DspiCore {
             let mut inner = self.lock();
             inner.state = mirror;
             inner.selected = (vid != 0).then_some(serial);
+            inner.cs = crate::cs::CsState::default();
             let worker = rta::take_worker(&mut inner);
             (inner.conn.replace(conn), worker)
         };
