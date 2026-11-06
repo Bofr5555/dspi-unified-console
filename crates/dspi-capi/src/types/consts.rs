@@ -68,135 +68,145 @@ pub const REQ_TYPE_IN: u8 = 0xC1;
 
 /// Control Surfaces aux outputs.
 pub const REQ_SET_CS_AUX_STATE: u8 = 0x04;
-/// Vendor request: read cs aux state.
+/// wValue = slot: 1 byte (STALL if not an aux);
+/// wValue = 0xFFFF: 48 bytes {state[16],
+/// level_q8[16] LE}, zeros on non-aux slots
 pub const REQ_GET_CS_AUX_STATE: u8 = 0x05;
-/// Vendor request: write cs aux level (wValue = slot, 2 bytes 8.8 percent LE, clamped).
+/// wValue = slot, 2 bytes 8.8 percent LE, clamped
+/// to 100 %; STALL unless a CS_TYPE_AUX_PWM slot
 pub const REQ_SET_CS_AUX_LEVEL: u8 = 0x06;
-/// Vendor request: read cs aux level.
+/// wValue = slot; 2 bytes 8.8 percent LE (0 on
+/// AUX_OUT; STALL if not an aux)
 pub const REQ_GET_CS_AUX_LEVEL: u8 = 0x07;
 
 /// Spectrum analyser (RTA).
 pub const REQ_RTA_SET_CONFIG: u8 = 0x08;
-/// Vendor request: read rta config (returns RtaConfig (12 B)).
+/// returns RtaConfig (12 B)
 pub const REQ_RTA_GET_CONFIG: u8 = 0x09;
-/// Vendor request: read rta caps (wValue 0 = RtaCaps (16 B); 1.. = band centre chunks).
+/// wValue 0 = RtaCaps (16 B); 1.. = band centre chunks
 pub const REQ_RTA_GET_CAPS: u8 = 0x0A;
-/// Vendor request: read rta bands (wValue = channel; returns RtaBandFrame (82 B)).
+/// wValue = channel; returns RtaBandFrame (82 B)
 pub const REQ_RTA_GET_BANDS: u8 = 0x0B;
-/// Vendor request: read rta bins (wValue = byte offset into the bin frame).
+/// wValue = byte offset into the bin frame
 pub const REQ_RTA_GET_BINS: u8 = 0x0C;
-/// Vendor request: read rta status (returns RtaStatus (24 B)).
+/// returns RtaStatus (24 B)
 pub const REQ_RTA_GET_STATUS: u8 = 0x0D;
-/// Vendor request: rta control (wValue = RTA_CTL_*; returns 1 byte).
+/// wValue = RTA_CTL_*; returns 1 byte
 pub const REQ_RTA_CONTROL: u8 = 0x0E;
-/// Vendor request: read rta bands all (USB only: every live channel's RtaBandFrame).
+/// USB only: every live channel's RtaBandFrame
 pub const REQ_RTA_GET_BANDS_ALL: u8 = 0x0F;
 
 /// Subharmonic synthesizer.
 pub const REQ_SET_SUBHARM: u8 = 0x10;
-/// Vendor request: read subharm.
+/// Reads what `REQ_SET_SUBHARM` writes: 1 byte 0/1
 pub const REQ_GET_SUBHARM: u8 = 0x11;
-/// Vendor request: write subharm low (float dB, 24-36 Hz band level).
+/// float dB, 24-36 Hz band level
 pub const REQ_SET_SUBHARM_LOW: u8 = 0x12;
-/// Vendor request: read subharm low.
+/// Reads what `REQ_SET_SUBHARM_LOW` writes: float dB, 24-36 Hz band level
 pub const REQ_GET_SUBHARM_LOW: u8 = 0x13;
-/// Vendor request: write subharm high (float dB, 36-56 Hz band level).
+/// float dB, 36-56 Hz band level
 pub const REQ_SET_SUBHARM_HIGH: u8 = 0x14;
-/// Vendor request: read subharm high.
+/// Reads what `REQ_SET_SUBHARM_HIGH` writes: float dB, 36-56 Hz band level
 pub const REQ_GET_SUBHARM_HIGH: u8 = 0x15;
-/// Vendor request: write subharm boost (float dB, LF boost bell).
+/// float dB, LF boost bell
 pub const REQ_SET_SUBHARM_BOOST: u8 = 0x16;
-/// Vendor request: read subharm boost.
+/// Reads what `REQ_SET_SUBHARM_BOOST` writes: float dB, LF boost bell
 pub const REQ_GET_SUBHARM_BOOST: u8 = 0x17;
-/// Vendor request: write subharm mask (uint16 LE output mask).
+/// uint16 LE output mask
 pub const REQ_SET_SUBHARM_MASK: u8 = 0x18;
-/// Vendor request: read subharm mask.
+/// Reads what `REQ_SET_SUBHARM_MASK` writes: uint16 LE output mask
 pub const REQ_GET_SUBHARM_MASK: u8 = 0x19;
-/// Vendor request: read subharm headroom (float dB: preamp headroom to free).
+/// float dB: preamp headroom to free
 pub const REQ_GET_SUBHARM_HEADROOM: u8 = 0x1A;
-/// Vendor request: write subharm top (float dB, 56-80 Hz band level).
+/// float dB, 56-80 Hz band level
 pub const REQ_SET_SUBHARM_TOP: u8 = 0x1B;
-/// Vendor request: read subharm top.
+/// Reads what `REQ_SET_SUBHARM_TOP` writes: float dB, 56-80 Hz band level
 pub const REQ_GET_SUBHARM_TOP: u8 = 0x1C;
-/// Vendor request: write subharm select (1 byte SUBHARM_SELECT_* mode).
+/// 1 byte SUBHARM_SELECT_* mode
 pub const REQ_SET_SUBHARM_SELECT: u8 = 0x1D;
-/// Vendor request: read subharm select.
+/// Reads what `REQ_SET_SUBHARM_SELECT` writes: 1 byte SUBHARM_SELECT_* mode
 pub const REQ_GET_SUBHARM_SELECT: u8 = 0x1E;
-/// Vendor request: read subharm meter (NUM_OUTPUT_CHANNELS x uint16 LE sub peaks).
+/// NUM_OUTPUT_CHANNELS x uint16 LE sub peaks
 pub const REQ_GET_SUBHARM_METER: u8 = 0x1F;
-/// Vendor request: write subharm solo (1 byte 0/1; runtime only, never persisted).
+/// 1 byte 0/1; runtime only, never persisted
 pub const REQ_SET_SUBHARM_SOLO: u8 = 0x2C;
-/// Vendor request: read subharm solo.
+/// Reads what `REQ_SET_SUBHARM_SOLO` writes: 1 byte 0/1; runtime only, never persisted
 pub const REQ_GET_SUBHARM_SOLO: u8 = 0x2D;
-/// Vendor request: write subharm link (1 byte 0/1, pair-linked synthesis).
+/// 1 byte 0/1, pair-linked synthesis
 pub const REQ_SET_SUBHARM_LINK: u8 = 0x2E;
-/// Vendor request: read subharm link.
+/// Reads what `REQ_SET_SUBHARM_LINK` writes: 1 byte 0/1, pair-linked synthesis
 pub const REQ_GET_SUBHARM_LINK: u8 = 0x2F;
-/// Vendor request: write subharm depth (float %, selectivity depth).
+/// float %, selectivity depth
 pub const REQ_SET_SUBHARM_DEPTH: u8 = 0xA9;
-/// Vendor request: read subharm depth.
+/// Reads what `REQ_SET_SUBHARM_DEPTH` writes: float %, selectivity depth
 pub const REQ_GET_SUBHARM_DEPTH: u8 = 0xAA;
-/// Vendor request: write subharm hold (float ms, selectivity hold time).
+/// float ms, selectivity hold time
 pub const REQ_SET_SUBHARM_HOLD: u8 = 0xAB;
-/// Vendor request: read subharm hold.
+/// Reads what `REQ_SET_SUBHARM_HOLD` writes: float ms, selectivity hold time
 pub const REQ_GET_SUBHARM_HOLD: u8 = 0xAC;
-/// Vendor request: write subharm ceiling (float dBFS sub ceiling (0 = off)).
+/// float dBFS sub ceiling (0 = off)
 pub const REQ_SET_SUBHARM_CEILING: u8 = 0xAD;
-/// Vendor request: read subharm ceiling.
+/// Reads what `REQ_SET_SUBHARM_CEILING` writes: float dBFS sub ceiling (0 = off)
 pub const REQ_GET_SUBHARM_CEILING: u8 = 0xAE;
 
 /// Control Surfaces groups, macros, display.
 pub const REQ_SET_CS_GROUP: u8 = 0x20;
-/// Vendor request: read cs group (wValue = group (0-7); returns 40-byte CsGroup).
+/// wValue = group (0-7); returns 40-byte CsGroup
 pub const REQ_GET_CS_GROUP: u8 = 0x21;
-/// Vendor request: write cs macro (wValue = macro (0-7), payload = 36-byte).
+/// wValue = macro (0-7), payload = 36-byte
+/// CsMacroHeaderWire (name + step_count)
 pub const REQ_SET_CS_MACRO: u8 = 0x22;
-/// Vendor request: read cs macro (wValue = macro (0-7); returns 132-byte CsMacro).
+/// wValue = macro (0-7); returns 132-byte CsMacro
 pub const REQ_GET_CS_MACRO: u8 = 0x23;
-/// Vendor request: write cs macro step (wValue = (step << 8) | macro, payload = 12-byte).
+/// wValue = (step << 8) | macro, payload = 12-byte
+/// CsMacroStep; all-zero record clears the step
 pub const REQ_SET_CS_MACRO_STEP: u8 = 0x24;
-/// Vendor request: fire macro `wValue`; 0xFFFF cancels.
+/// GET; wValue = macro fires it, 0xFFFF cancels the
+/// running one; returns 1 status byte
 pub const REQ_CS_MACRO_FIRE: u8 = 0x25;
-/// Vendor request: read cs ext status (returns 24-byte CsExtStatusPacket).
+/// returns 24-byte CsExtStatusPacket
 pub const REQ_GET_CS_EXT_STATUS: u8 = 0x26;
-/// Vendor request: write cs display cfg (payload = 12-byte CsDisplayCfg).
+/// payload = 12-byte CsDisplayCfg
 pub const REQ_SET_CS_DISPLAY_CFG: u8 = 0x27;
-/// Vendor request: read cs display cfg.
+/// returns 16 bytes: {max_pages,
+/// model_count, reserved[2]} + CsDisplayCfg
 pub const REQ_GET_CS_DISPLAY_CFG: u8 = 0x28;
-/// Vendor request: write cs display page (wValue = page (0-15), payload = 4-byte).
+/// wValue = page (0-15), payload = 4-byte
+/// CsDisplayPage; all-zero record clears it
 pub const REQ_SET_CS_DISPLAY_PAGE: u8 = 0x29;
-/// Vendor request: read cs display page (wValue = page (0-15); returns 4-byte).
+/// wValue = page (0-15); returns 4-byte
+/// CsDisplayPage
 pub const REQ_GET_CS_DISPLAY_PAGE: u8 = 0x2A;
-/// Vendor request: read cs display status (returns 8-byte CsDisplayStatus).
+/// returns 8-byte CsDisplayStatus
 pub const REQ_GET_CS_DISPLAY_STATUS: u8 = 0x2B;
 
 /// Psychoacoustic bass.
 pub const REQ_SET_PSYBASS: u8 = 0x30;
-/// Vendor request: read psybass.
+/// returns 1 byte: psychoacoustic bass on (0/1)
 pub const REQ_GET_PSYBASS: u8 = 0x31;
-/// Vendor request: write psybass cutoff.
+/// float Hz, 30..300
 pub const REQ_SET_PSYBASS_CUTOFF: u8 = 0x32;
-/// Vendor request: read psybass cutoff.
+/// Reads what `REQ_SET_PSYBASS_CUTOFF` writes: float Hz, 30..300
 pub const REQ_GET_PSYBASS_CUTOFF: u8 = 0x33;
-/// Vendor request: write psybass harmonics.
+/// float dB, -24..12
 pub const REQ_SET_PSYBASS_HARMONICS: u8 = 0x34;
-/// Vendor request: read psybass harmonics.
+/// Reads what `REQ_SET_PSYBASS_HARMONICS` writes: float dB, -24..12
 pub const REQ_GET_PSYBASS_HARMONICS: u8 = 0x35;
-/// Vendor request: write psybass drive.
+/// float dB, 0..18
 pub const REQ_SET_PSYBASS_DRIVE: u8 = 0x36;
-/// Vendor request: read psybass drive.
+/// Reads what `REQ_SET_PSYBASS_DRIVE` writes: float dB, 0..18
 pub const REQ_GET_PSYBASS_DRIVE: u8 = 0x37;
-/// Vendor request: write psybass character.
+/// float %, 0..100
 pub const REQ_SET_PSYBASS_CHARACTER: u8 = 0x38;
-/// Vendor request: read psybass character.
+/// Reads what `REQ_SET_PSYBASS_CHARACTER` writes: float %, 0..100
 pub const REQ_GET_PSYBASS_CHARACTER: u8 = 0x39;
-/// Vendor request: write psybass original.
+/// float dB, -60..0
 pub const REQ_SET_PSYBASS_ORIGINAL: u8 = 0x3A;
-/// Vendor request: read psybass original.
+/// Reads what `REQ_SET_PSYBASS_ORIGINAL` writes: float dB, -60..0
 pub const REQ_GET_PSYBASS_ORIGINAL: u8 = 0x3B;
-/// Vendor request: write psybass mask.
+/// uint16 LE output mask
 pub const REQ_SET_PSYBASS_MASK: u8 = 0x3C;
-/// Vendor request: read psybass mask.
+/// Reads what `REQ_SET_PSYBASS_MASK` writes: uint16 LE output mask
 pub const REQ_GET_PSYBASS_MASK: u8 = 0x3D;
 /// Psybass parameter ids for `set_psybass_param` (host-side, not wire values).
 pub const PSYBASS_PARAM_CUTOFF: u8 = 0;
@@ -211,7 +221,7 @@ pub const PSYBASS_PARAM_ORIGINAL: u8 = 4;
 
 /// Tube modeller.
 pub const REQ_SET_TUBE_PARAM: u8 = 0x3E;
-/// Vendor request: read tube param (wValue low byte = index, returns 4-byte float32 LE).
+/// wValue low byte = index, returns 4-byte float32 LE
 pub const REQ_GET_TUBE_PARAM: u8 = 0x3F;
 /// Tube parameter indices (the firmware's own; wValue of REQ_SET_TUBE_PARAM).
 /// Every value travels as a float, enums and flags included.
@@ -273,30 +283,30 @@ pub const SUBHARM_PARAM_COUNT: usize = 11;
 
 /// EQ / Preamp / Bypass / Delay.
 pub const REQ_SET_EQ_PARAM: u8 = 0x42;
-/// Vendor request: read eq param.
+/// wValue = channel, band and parameter; returns float (4 bytes)
 pub const REQ_GET_EQ_PARAM: u8 = 0x43;
 /// Legacy: sets every input channel's preamp to the same value.
 pub const REQ_SET_PREAMP: u8 = 0x44;
-/// Vendor request: read preamp.
+/// returns float dB
 pub const REQ_GET_PREAMP: u8 = 0x45;
-/// Vendor request: write bypass.
+/// 1 byte 0/1, master EQ bypass
 pub const REQ_SET_BYPASS: u8 = 0x46;
-/// Vendor request: read bypass.
+/// Reads what `REQ_SET_BYPASS` writes: 1 byte 0/1, master EQ bypass
 pub const REQ_GET_BYPASS: u8 = 0x47;
-/// Vendor request: write delay.
+/// wValue = wire channel, float ms
 pub const REQ_SET_DELAY: u8 = 0x48;
-/// Vendor request: read delay.
+/// Reads what `REQ_SET_DELAY` writes: wValue = wire channel, float ms
 pub const REQ_GET_DELAY: u8 = 0x49;
 
 /// Stereo upmixer.
 pub const REQ_UPMIX_SET_CONFIG: u8 = 0x4A;
-/// Vendor request: read upmix config (returns UpmixConfigPacket).
+/// returns UpmixConfigPacket
 pub const REQ_UPMIX_GET_CONFIG: u8 = 0x4B;
-/// Vendor request: write upmix param (wValue = UPMIX_PARAM_*, payload = float (4 B)).
+/// wValue = UPMIX_PARAM_*, payload = float (4 B)
 pub const REQ_UPMIX_SET_PARAM: u8 = 0x4C;
-/// Vendor request: read upmix param (wValue = UPMIX_PARAM_*, returns float).
+/// wValue = UPMIX_PARAM_*, returns float
 pub const REQ_UPMIX_GET_PARAM: u8 = 0x4D;
-/// Vendor request: read upmix status (returns UpmixStatus (16 B)).
+/// returns UpmixStatus (16 B)
 pub const REQ_UPMIX_GET_STATUS: u8 = 0x4E;
 /// Upmixer parameter ids (the firmware's own; wValue of REQ_UPMIX_SET_PARAM).
 /// Centre mode: 0 passive, 1 adaptive, 2 off. Surround: 0 off, 1 passive, 2 adaptive.
@@ -332,12 +342,12 @@ pub const UPMIX_PARAM_COUNT: usize = 14;
 
 /// Status / flash.
 pub const REQ_GET_STATUS: u8 = 0x50;
-/// Vendor request: save the live parameters to flash.
+/// GET; saves the live parameters to flash, returns a FLASH_* status byte
 pub const REQ_SAVE_PARAMS: u8 = 0x51;
 /// Persist the live output (IO) config in independent mode. Was the
 /// deprecated REQ_LOAD_PARAMS, which is gone.
 pub const REQ_SAVE_OUTPUT_CONFIG: u8 = 0x52;
-/// Vendor request: restore the factory defaults.
+/// GET; restores the factory defaults, returns a FLASH_* status byte
 pub const REQ_FACTORY_RESET: u8 = 0x53;
 
 /// Legacy channel gain/mute.
@@ -351,97 +361,100 @@ pub const REQ_GET_CHANNEL_MUTE: u8 = 0x57;
 
 /// Loudness.
 pub const REQ_SET_LOUDNESS: u8 = 0x58;
-/// Vendor request: read loudness.
+/// returns 1 byte: loudness on (0/1)
 pub const REQ_GET_LOUDNESS: u8 = 0x59;
-/// Vendor request: write loudness ref.
+/// float dB SPL, reference level
 pub const REQ_SET_LOUDNESS_REF: u8 = 0x5A;
-/// Vendor request: read loudness ref.
+/// Reads what `REQ_SET_LOUDNESS_REF` writes: float dB SPL, reference level
 pub const REQ_GET_LOUDNESS_REF: u8 = 0x5B;
-/// Vendor request: write loudness intensity.
+/// float %, intensity
 pub const REQ_SET_LOUDNESS_INTENSITY: u8 = 0x5C;
-/// Vendor request: read loudness intensity.
+/// Reads what `REQ_SET_LOUDNESS_INTENSITY` writes: float %, intensity
 pub const REQ_GET_LOUDNESS_INTENSITY: u8 = 0x5D;
-/// Vendor request: write loudness mask (payload = uint16 LE mask).
+/// payload = uint16 LE mask
 pub const REQ_SET_LOUDNESS_MASK: u8 = 0xFA;
-/// Vendor request: read loudness mask (returns uint16 LE mask).
+/// returns uint16 LE mask
 pub const REQ_GET_LOUDNESS_MASK: u8 = 0xFB;
 
 /// Crossfeed.
 pub const REQ_SET_CROSSFEED: u8 = 0x5E;
-/// Vendor request: read crossfeed.
+/// returns 1 byte: crossfeed on (0/1)
 pub const REQ_GET_CROSSFEED: u8 = 0x5F;
-/// Vendor request: write crossfeed preset.
+/// 1 byte preset index
 pub const REQ_SET_CROSSFEED_PRESET: u8 = 0x60;
-/// Vendor request: read crossfeed preset.
+/// Reads what `REQ_SET_CROSSFEED_PRESET` writes: 1 byte preset index
 pub const REQ_GET_CROSSFEED_PRESET: u8 = 0x61;
-/// Vendor request: write crossfeed freq.
+/// float Hz, custom frequency
 pub const REQ_SET_CROSSFEED_FREQ: u8 = 0x62;
-/// Vendor request: read crossfeed freq.
+/// Reads what `REQ_SET_CROSSFEED_FREQ` writes: float Hz, custom frequency
 pub const REQ_GET_CROSSFEED_FREQ: u8 = 0x63;
-/// Vendor request: write crossfeed feed.
+/// float dB, custom feed level
 pub const REQ_SET_CROSSFEED_FEED: u8 = 0x64;
-/// Vendor request: read crossfeed feed.
+/// Reads what `REQ_SET_CROSSFEED_FEED` writes: float dB, custom feed level
 pub const REQ_GET_CROSSFEED_FEED: u8 = 0x65;
-/// Vendor request: write crossfeed itd.
+/// 1 byte 0/1, interaural time delay
 pub const REQ_SET_CROSSFEED_ITD: u8 = 0x66;
-/// Vendor request: read crossfeed itd.
+/// Reads what `REQ_SET_CROSSFEED_ITD` writes: 1 byte 0/1, interaural time delay
 pub const REQ_GET_CROSSFEED_ITD: u8 = 0x67;
-/// Vendor request: write crossfeed outputs (payload = uint8 pair mask).
+/// payload = uint8 pair mask
 pub const REQ_SET_CROSSFEED_OUTPUTS: u8 = 0xFC;
-/// Vendor request: read crossfeed outputs (returns uint8 pair mask).
+/// returns uint8 pair mask
 pub const REQ_GET_CROSSFEED_OUTPUTS: u8 = 0xFD;
 
 /// ADAT input (RP2350).
 pub const REQ_SET_ADAT_INPUT_ENABLE: u8 = 0x68;
-/// Vendor request: read adat input enable.
+/// returns 1 byte: ADAT input enabled (0/1)
 pub const REQ_GET_ADAT_INPUT_ENABLE: u8 = 0x69;
-/// Vendor request: write adat input pin (wValue = GPIO; PIN_RESET_TO_DEFAULT).
+/// wValue = GPIO; PIN_RESET_TO_DEFAULT
+/// clears to unset (only while disabled)
 pub const REQ_SET_ADAT_INPUT_PIN: u8 = 0x6A;
-/// Vendor request: read adat input pin (returns uint8_t (0xFF = unset)).
+/// returns uint8_t (0xFF = unset)
 pub const REQ_GET_ADAT_INPUT_PIN: u8 = 0x6B;
-/// Vendor request: write adat input clock mode.
+/// GET; wValue = mode (0 master, 1 slave), returns a status byte
 pub const REQ_SET_ADAT_INPUT_CLOCK_MODE: u8 = 0x6C;
-/// Vendor request: read adat input clock mode.
+/// Returns the setting `REQ_SET_ADAT_INPUT_CLOCK_MODE` writes.
 pub const REQ_GET_ADAT_INPUT_CLOCK_MODE: u8 = 0x6D;
-/// Vendor request: read adat input status.
+/// returns the 20-byte ADAT input status
 pub const REQ_GET_ADAT_INPUT_STATUS: u8 = 0x6E;
 
 /// Matrix mixer / outputs.
 pub const REQ_SET_MATRIX_ROUTE: u8 = 0x70;
-/// Vendor request: read matrix route.
+/// reads one matrix crosspoint
 pub const REQ_GET_MATRIX_ROUTE: u8 = 0x71;
-/// Vendor request: write output enable.
+/// wValue = output, 1 byte 0/1
 pub const REQ_SET_OUTPUT_ENABLE: u8 = 0x72;
-/// Vendor request: read output enable.
+/// Reads what `REQ_SET_OUTPUT_ENABLE` writes: wValue = output, 1 byte 0/1
 pub const REQ_GET_OUTPUT_ENABLE: u8 = 0x73;
-/// Vendor request: write output gain.
+/// wValue = output, float dB
 pub const REQ_SET_OUTPUT_GAIN: u8 = 0x74;
-/// Vendor request: read output gain.
+/// Reads what `REQ_SET_OUTPUT_GAIN` writes: wValue = output, float dB
 pub const REQ_GET_OUTPUT_GAIN: u8 = 0x75;
-/// Vendor request: write output mute.
+/// wValue = output, 1 byte 0/1
 pub const REQ_SET_OUTPUT_MUTE: u8 = 0x76;
-/// Vendor request: read output mute.
+/// Reads what `REQ_SET_OUTPUT_MUTE` writes: wValue = output, 1 byte 0/1
 pub const REQ_GET_OUTPUT_MUTE: u8 = 0x77;
-/// Vendor request: write output delay.
+/// wValue = output, float ms
 pub const REQ_SET_OUTPUT_DELAY: u8 = 0x78;
-/// Vendor request: read output delay.
+/// Reads what `REQ_SET_OUTPUT_DELAY` writes: wValue = output, float ms
 pub const REQ_GET_OUTPUT_DELAY: u8 = 0x79;
 
 /// Core 1.
 pub const REQ_GET_CORE1_MODE: u8 = 0x7A;
-/// Vendor request: ask whether an output would conflict with core 1's mode.
+/// wValue = output; returns 1 byte, non-zero when enabling it conflicts with core 1's mode
 pub const REQ_GET_CORE1_CONFLICT: u8 = 0x7B;
 
 /// Pins.
 pub const REQ_SET_OUTPUT_PIN: u8 = 0x7C;
-/// Vendor request: read output pin.
+/// Reads what `REQ_SET_OUTPUT_PIN` writes: wValue = (GPIO<<8)|output_index;
+/// GPIO = PIN_RESET_TO_DEFAULT restores the default
 pub const REQ_GET_OUTPUT_PIN: u8 = 0x7D;
 
 /// Identification.
 pub const REQ_GET_SERIAL: u8 = 0x7E;
-/// Vendor request: read the platform and firmware version.
+/// returns the platform and the firmware version
 pub const REQ_GET_PLATFORM: u8 = 0x7F;
-/// Vendor request: read build info (64-byte git-describe/date blob; provenance for).
+/// 64-byte git-describe/date blob; provenance for
+/// humans only, no software may gate on it
 pub const REQ_GET_BUILD_INFO: u8 = 0x80;
 
 /// Output limiter (sub-command multiplexed).
@@ -466,89 +479,110 @@ pub const REQ_CLEAR_CLIPS: u8 = 0x83;
 
 /// Control Surfaces bindings / IR.
 pub const REQ_SET_CS_BINDING: u8 = 0x84;
-/// Vendor request: read cs binding (wValue = slot, returns 24-byte CsBinding).
+/// wValue = slot, returns 24-byte CsBinding
 pub const REQ_GET_CS_BINDING: u8 = 0x85;
-/// Vendor request: read cs caps (wValue = 0xFFFF: header + type table; wValue = noun: 12-byte noun descriptor).
+/// wValue = 0xFFFF: header + type table; wValue = noun: 12-byte noun descriptor
 pub const REQ_GET_CS_CAPS: u8 = 0x86;
-/// Vendor request: read cs status (returns 41-byte CsStatusPacket).
+/// returns 41-byte CsStatusPacket
 pub const REQ_GET_CS_STATUS: u8 = 0x87;
-/// Vendor request: write cs name.
+/// wValue = slot (0-15), payload = 1-32 byte name (a single
+/// NUL byte clears it); apply-live-only preview, deferred,
+/// result via REQ_GET_CS_STATUS
 pub const REQ_SET_CS_NAME: u8 = 0x8B;
-/// Vendor request: read cs name.
+/// wValue = slot, returns 32-byte NUL-terminated live name
 pub const REQ_GET_CS_NAME: u8 = 0x8C;
-/// Vendor request: write cs ir cmd.
+/// wValue = sub-slot (0-15), payload = 16-byte IrCommand;
+/// apply-live-only preview, deferred to the main loop
 pub const REQ_SET_CS_IR_CMD: u8 = 0x8D;
-/// Vendor request: read cs ir cmd (wValue = sub-slot, returns 16-byte IrCommand).
+/// wValue = sub-slot, returns 16-byte IrCommand
 pub const REQ_GET_CS_IR_CMD: u8 = 0x8E;
-/// Vendor request: arm (`wValue` 1) or cancel (`wValue` 0) IR learning.
+/// GET; wValue 1 = arm, 0 = cancel (each returns 1 status
+/// byte), 2 = read result (returns 8-byte
+/// {state, protocol, 0, 0, code_le32})
 pub const REQ_CS_IR_LEARN: u8 = 0x8F;
-/// Vendor request: persist the live control-surface configuration to flash.
+/// GET; persists the whole live CS config in one flash
+/// write; deferred, result via REQ_GET_CS_STATUS
 pub const REQ_CS_SAVE: u8 = 0x9D;
-/// Vendor request: discard the live control-surface preview and re-apply the saved configuration.
+/// GET; discards the live preview and re-applies the
+/// stored config; deferred, result via REQ_GET_CS_STATUS
 pub const REQ_CS_REVERT: u8 = 0x9E;
 
 /// I2S clock mode.
 pub const REQ_SET_I2S_CLOCK_MODE: u8 = 0x88;
-/// Vendor request: read i2s clock mode (returns uint8_t live mode (pending change not reflected)).
+/// returns uint8_t live mode (pending change not reflected)
 pub const REQ_GET_I2S_CLOCK_MODE: u8 = 0x89;
-/// Vendor request: read i2s slave status (returns 16-byte I2sSlaveStatusPacket).
+/// returns 16-byte I2sSlaveStatusPacket
 pub const REQ_GET_I2S_SLAVE_STATUS: u8 = 0x8A;
-/// Vendor request: write i2s clock pin mode.
+/// wValue = 0 unified / 1 split; returns PIN_CONFIG_* status
 pub const REQ_SET_I2S_CLOCK_PIN_MODE: u8 = 0xFE;
-/// Vendor request: read i2s clock pin mode (returns uint8_t live mode).
+/// returns uint8_t live mode
 pub const REQ_GET_I2S_CLOCK_PIN_MODE: u8 = 0xFF;
 
 /// Presets.
 pub const REQ_PRESET_SAVE: u8 = 0x90;
-/// Vendor request: load a preset.
+/// GET; wValue = slot, returns a PRESET_* status byte
 pub const REQ_PRESET_LOAD: u8 = 0x91;
-/// Vendor request: delete a preset.
+/// GET; wValue = slot, returns a PRESET_* status byte
 pub const REQ_PRESET_DELETE: u8 = 0x92;
-/// Vendor request: read a preset's name.
+/// wValue = slot; returns the name, at most 32 bytes
 pub const REQ_PRESET_GET_NAME: u8 = 0x93;
-/// Vendor request: write a preset's name.
+/// wValue = slot, payload = NUL-terminated name
 pub const REQ_PRESET_SET_NAME: u8 = 0x94;
-/// Vendor request: read the preset directory.
+/// returns the preset directory, 7 bytes (5 from older firmware)
 pub const REQ_PRESET_GET_DIR: u8 = 0x95;
-/// Vendor request: choose the preset loaded at boot.
+/// payload = [mode, default_slot]
 pub const REQ_PRESET_SET_STARTUP: u8 = 0x96;
-/// Vendor request: read the preset startup mode and slot.
+/// Returns what `REQ_PRESET_SET_STARTUP` writes.
 pub const REQ_PRESET_GET_STARTUP: u8 = 0x97;
 /// Replaced the old include-pins flag (same 0/1 meaning).
 pub const REQ_SET_OUTPUT_CONFIG_MODE: u8 = 0x98;
-/// Vendor request: read output config mode (returns uint8_t mode).
+/// returns uint8_t mode
 pub const REQ_GET_OUTPUT_CONFIG_MODE: u8 = 0x99;
-/// Vendor request: read the active preset slot.
+/// returns 1 byte: the active slot
 pub const REQ_PRESET_GET_ACTIVE: u8 = 0x9A;
 
 /// Channel names.
 pub const REQ_SET_CHANNEL_NAME: u8 = 0x9B;
-/// Vendor request: read channel name.
+/// wValue = wire channel; returns the name, at most 32 bytes
 pub const REQ_GET_CHANNEL_NAME: u8 = 0x9C;
 
 /// Bulk parameter transfer.
 pub const REQ_GET_ALL_PARAMS: u8 = 0xA0;
-/// Vendor request: write the whole bulk image in one transfer.
+/// payload = the whole bulk image in one transfer
 pub const REQ_SET_ALL_PARAMS: u8 = 0xA1;
-/// Vendor request: read one chunk of the bulk image.
+/// Chunked bulk-params access (USB-only).  Works around the Windows/WinUSB
+/// 4 KB control-transfer cap that the full WireBulkParams (5864 B at V16)
+/// cannot cross (GitHub issue #62).  wValue = byte offset, wLength = chunk
+/// size.  GET: offset 0 snapshots the struct under the bulk lock, later
+/// offsets read the snapshot out; the lock frees after the final chunk.
+/// SET: chunks must be sequential from offset 0; the normal deferred apply
+/// fires when the last byte lands.  UART and I2C have no size cap and use
+/// plain 0xA0/0xA1; these two commands are refused on those transports.
 pub const REQ_GET_ALL_PARAMS_CHUNK: u8 = 0xA2;
-/// Vendor request: write one chunk of the bulk image.
+/// Chunked bulk-params access (USB-only).  Works around the Windows/WinUSB
+/// 4 KB control-transfer cap that the full WireBulkParams (5864 B at V16)
+/// cannot cross (GitHub issue #62).  wValue = byte offset, wLength = chunk
+/// size.  GET: offset 0 snapshots the struct under the bulk lock, later
+/// offsets read the snapshot out; the lock frees after the final chunk.
+/// SET: chunks must be sequential from offset 0; the normal deferred apply
+/// fires when the last byte lands.  UART and I2C have no size cap and use
+/// plain 0xA0/0xA1; these two commands are refused on those transports.
 pub const REQ_SET_ALL_PARAMS_CHUNK: u8 = 0xA3;
 
 /// Signal generator.
 pub const REQ_SIGGEN_SET_CONFIG: u8 = 0xA4;
-/// Vendor request: read siggen config (returns SiggenConfig).
+/// returns SiggenConfig
 pub const REQ_SIGGEN_GET_CONFIG: u8 = 0xA5;
-/// Vendor request: siggen control (wValue = SIGGEN_CTL_*; returns status byte).
+/// wValue = SIGGEN_CTL_*; returns status byte
 pub const REQ_SIGGEN_CONTROL: u8 = 0xA6;
-/// Vendor request: read siggen status (returns SiggenStatus (16 B)).
+/// returns SiggenStatus (16 B)
 pub const REQ_SIGGEN_GET_STATUS: u8 = 0xA7;
-/// Vendor request: read siggen caps (wValue = type index / 0xFFFF = header).
+/// wValue = type index / 0xFFFF = header
 pub const REQ_SIGGEN_GET_CAPS: u8 = 0xA8;
 
 /// Buffer / USB statistics.
 pub const REQ_GET_BUFFER_STATS: u8 = 0xB0;
-/// Vendor request: start the buffer watermarks again.
+/// GET; wValue 1 restarts the watermarks, returns 1 byte (1 = ACK)
 pub const REQ_RESET_BUFFER_STATS: u8 = 0xB1;
 /// Vendor request: read usb error stats.
 pub const REQ_GET_USB_ERROR_STATS: u8 = 0xB2;
@@ -557,138 +591,152 @@ pub const REQ_RESET_USB_ERROR_STATS: u8 = 0xB3;
 
 /// Volume leveller.
 pub const REQ_SET_LEVELLER_ENABLE: u8 = 0xB4;
-/// Vendor request: read leveller enable.
+/// returns 1 byte: leveller on (0/1)
 pub const REQ_GET_LEVELLER_ENABLE: u8 = 0xB5;
-/// Vendor request: write leveller amount.
+/// float %
 pub const REQ_SET_LEVELLER_AMOUNT: u8 = 0xB6;
-/// Vendor request: read leveller amount.
+/// Reads what `REQ_SET_LEVELLER_AMOUNT` writes: float %
 pub const REQ_GET_LEVELLER_AMOUNT: u8 = 0xB7;
-/// Vendor request: write leveller speed.
+/// 1 byte: 0 slow, 1 medium, 2 fast
 pub const REQ_SET_LEVELLER_SPEED: u8 = 0xB8;
-/// Vendor request: read leveller speed.
+/// Reads what `REQ_SET_LEVELLER_SPEED` writes: 1 byte: 0 slow, 1 medium, 2 fast
 pub const REQ_GET_LEVELLER_SPEED: u8 = 0xB9;
-/// Vendor request: write leveller max gain.
+/// float dB
 pub const REQ_SET_LEVELLER_MAX_GAIN: u8 = 0xBA;
-/// Vendor request: read leveller max gain.
+/// Reads what `REQ_SET_LEVELLER_MAX_GAIN` writes: float dB
 pub const REQ_GET_LEVELLER_MAX_GAIN: u8 = 0xBB;
-/// Vendor request: write leveller lookahead.
+/// 1 byte 0/1
 pub const REQ_SET_LEVELLER_LOOKAHEAD: u8 = 0xBC;
-/// Vendor request: read leveller lookahead.
+/// Reads what `REQ_SET_LEVELLER_LOOKAHEAD` writes: 1 byte 0/1
 pub const REQ_GET_LEVELLER_LOOKAHEAD: u8 = 0xBD;
-/// Vendor request: write leveller gate.
+/// float dB
 pub const REQ_SET_LEVELLER_GATE: u8 = 0xBE;
-/// Vendor request: read leveller gate.
+/// Reads what `REQ_SET_LEVELLER_GATE` writes: float dB
 pub const REQ_GET_LEVELLER_GATE: u8 = 0xBF;
-/// Vendor request: write leveller masks (2 bytes: [detector_mask, apply_mask]).
+/// 2 bytes: [detector_mask, apply_mask]
 pub const REQ_SET_LEVELLER_MASKS: u8 = 0xDE;
-/// Vendor request: read leveller masks.
+/// Reads what `REQ_SET_LEVELLER_MASKS` writes: 2 bytes: [detector_mask, apply_mask]
 pub const REQ_GET_LEVELLER_MASKS: u8 = 0xDF;
 
 /// Output types / I2S / MCK.
 pub const REQ_SET_OUTPUT_TYPE: u8 = 0xC0;
-/// Vendor request: read output type.
+/// wValue = output slot; returns 1 byte OUTPUT_TYPE_*
 pub const REQ_GET_OUTPUT_TYPE: u8 = 0xC1;
-/// Vendor request: write i2s bck pin.
+/// wValue = (role<<8)|GPIO; GPIO =
+/// PIN_RESET_TO_DEFAULT restores the role's default
 pub const REQ_SET_I2S_BCK_PIN: u8 = 0xC2;
-/// Vendor request: read i2s bck pin.
+/// Reads what `REQ_SET_I2S_BCK_PIN` writes: wValue = (role<<8)|GPIO; GPIO =
+/// PIN_RESET_TO_DEFAULT restores the role's default
 pub const REQ_GET_I2S_BCK_PIN: u8 = 0xC3;
-/// Vendor request: write mck enable.
+/// GET; wValue = 0/1, returns a status byte
 pub const REQ_SET_MCK_ENABLE: u8 = 0xC4;
-/// Vendor request: read mck enable.
+/// Returns the setting `REQ_SET_MCK_ENABLE` writes.
 pub const REQ_GET_MCK_ENABLE: u8 = 0xC5;
-/// Vendor request: write mck pin (wValue = GPIO; PIN_RESET_TO_DEFAULT).
+/// wValue = GPIO; PIN_RESET_TO_DEFAULT
+/// restores PICO_I2S_MCK_PIN
 pub const REQ_SET_MCK_PIN: u8 = 0xC6;
-/// Vendor request: read mck pin.
+/// Reads what `REQ_SET_MCK_PIN` writes: wValue = GPIO; PIN_RESET_TO_DEFAULT
+/// restores PICO_I2S_MCK_PIN
 pub const REQ_GET_MCK_PIN: u8 = 0xC7;
-/// Vendor request: write mck multiplier.
+/// GET; wValue = 128 or 256, returns a status byte
 pub const REQ_SET_MCK_MULTIPLIER: u8 = 0xC8;
-/// Vendor request: read mck multiplier.
+/// Returns the setting `REQ_SET_MCK_MULTIPLIER` writes.
 pub const REQ_GET_MCK_MULTIPLIER: u8 = 0xC9;
 
 /// ADAT output (RP2350).
 pub const REQ_SET_ADAT_ENABLE: u8 = 0xCA;
-/// Vendor request: read adat enable (returns uint8_t configured enable).
+/// returns uint8_t configured enable
 pub const REQ_GET_ADAT_ENABLE: u8 = 0xCB;
-/// Vendor request: write adat pin.
+/// wValue = GPIO, returns status byte; GPIO =
+/// PIN_RESET_TO_DEFAULT restores PICO_ADAT_PIN
 pub const REQ_SET_ADAT_PIN: u8 = 0xCC;
-/// Vendor request: read adat pin (returns uint8_t).
+/// returns uint8_t
 pub const REQ_GET_ADAT_PIN: u8 = 0xCD;
-/// Vendor request: read adat status (returns AdatStatus (8 B)).
+/// returns AdatStatus (8 B)
 pub const REQ_GET_ADAT_STATUS: u8 = 0xCE;
 
 /// Per-input preamp.
 pub const REQ_SET_PREAMP_CH: u8 = 0xD0;
-/// Vendor request: read preamp ch (wValue = channel index, returns float dB).
+/// wValue = channel index, returns float dB
 pub const REQ_GET_PREAMP_CH: u8 = 0xD1;
 
 /// Master volume.
 pub const REQ_SET_MASTER_VOLUME: u8 = 0xD2;
-/// Vendor request: read master volume (returns float dB).
+/// returns float dB
 pub const REQ_GET_MASTER_VOLUME: u8 = 0xD3;
-/// Vendor request: write master volume mode (payload = uint8_t mode (see MASTER_VOLUME_MODE_*)).
+/// payload = uint8_t mode (see MASTER_VOLUME_MODE_*)
 pub const REQ_SET_MASTER_VOLUME_MODE: u8 = 0xD4;
-/// Vendor request: read master volume mode (returns uint8_t mode).
+/// returns uint8_t mode
 pub const REQ_GET_MASTER_VOLUME_MODE: u8 = 0xD5;
-/// Vendor request: save master volume (no payload, stores live master vol to directory).
+/// no payload, stores live master vol to directory
 pub const REQ_SAVE_MASTER_VOLUME: u8 = 0xD6;
-/// Vendor request: read saved master volume (returns float dB from directory's independent field).
+/// returns float dB from directory's independent field
 pub const REQ_GET_SAVED_MASTER_VOLUME: u8 = 0xD7;
 
 /// Per-band bypass.
 pub const REQ_SET_BAND_BYPASS: u8 = 0xD8;
-/// Vendor request: read band bypass.
+/// Per-Band Bypass Commands
+/// wValue = (channel << 8) | band; payload = uint8_t (1 = bypass, anything else = active)
 pub const REQ_GET_BAND_BYPASS: u8 = 0xD9;
 
 /// User volume / mute.
 pub const REQ_SET_USER_VOLUME: u8 = 0xDA;
-/// Vendor request: read user volume (returns float dB (audio_state.volume / 256)).
+/// returns float dB (audio_state.volume / 256)
 pub const REQ_GET_USER_VOLUME: u8 = 0xDB;
-/// Vendor request: write user mute (payload = uint8_t (0/1)).
+/// payload = uint8_t (0/1)
 pub const REQ_SET_USER_MUTE: u8 = 0xDC;
-/// Vendor request: read user mute (returns uint8_t (0/1)).
+/// returns uint8_t (0/1)
 pub const REQ_GET_USER_MUTE: u8 = 0xDD;
 
 /// Input source / S/PDIF / I2S input.
 pub const REQ_SET_INPUT_SOURCE: u8 = 0xE0;
-/// Vendor request: read input source (returns uint8_t).
+/// returns uint8_t
 pub const REQ_GET_INPUT_SOURCE: u8 = 0xE1;
-/// Vendor request: read spdif rx status (returns 16-byte status struct (Phase 2)).
+/// returns 16-byte status struct (Phase 2)
 pub const REQ_GET_SPDIF_RX_STATUS: u8 = 0xE2;
-/// Vendor request: read spdif rx ch status (returns 24-byte IEC 60958 channel status (Phase 2)).
+/// returns 24-byte IEC 60958 channel status (Phase 2)
 pub const REQ_GET_SPDIF_RX_CH_STATUS: u8 = 0xE3;
-/// Vendor request: write spdif rx pin.
+/// wValue = (index<<8)|GPIO; index 0..3 selects the
+/// SPDIF input (old hosts send wValue=pin => index 0).
+/// GPIO = PIN_RESET_TO_DEFAULT restores that input's
+/// default. Returns status byte.
 pub const REQ_SET_SPDIF_RX_PIN: u8 = 0xE4;
-/// Vendor request: read spdif rx pin (wValue = index (0..3); returns that input's GPIO).
+/// wValue = index (0..3); returns that input's GPIO
 pub const REQ_GET_SPDIF_RX_PIN: u8 = 0xE5;
-/// Vendor request: write spdif input enable (wValue = (index<<8)|enable; index 1..3, enable 0/1).
+/// wValue = (index<<8)|enable; index 1..3, enable 0/1.
+/// Enables/disables an optional SPDIF input. Returns status byte.
 pub const REQ_SET_SPDIF_INPUT_ENABLE: u8 = 0xE9;
-/// Vendor request: read spdif input config.
+/// returns 6 bytes: count, enable mask (bit0=input1),
+/// then the GPIO for inputs 0..3
 pub const REQ_GET_SPDIF_INPUT_CONFIG: u8 = 0xEF;
-/// Vendor request: write input rate (payload = uint32_t Hz (44100/48000/96000)).
+/// payload = uint32_t Hz (44100/48000/96000)
 pub const REQ_SET_INPUT_RATE: u8 = 0xED;
-/// Vendor request: read input rate (returns 2x uint32_t {current Hz, selected I2S Hz}).
+/// returns 2x uint32_t {current Hz, selected I2S Hz}
 pub const REQ_GET_INPUT_RATE: u8 = 0xEE;
-/// Vendor request: write i2s rx pin.
+/// wValue = (pair<<8)|GPIO; pair 0..3 selects the
+/// stereo pair (old hosts send wValue=pin => pair 0).
+/// GPIO = PIN_RESET_TO_DEFAULT restores that pair's
+/// default. Returns status byte.
 pub const REQ_SET_I2S_RX_PIN: u8 = 0xF1;
-/// Vendor request: read i2s rx pin (wValue = pair (0..3); returns that pair's GPIO).
+/// wValue = pair (0..3); returns that pair's GPIO
 pub const REQ_GET_I2S_RX_PIN: u8 = 0xF2;
-/// Vendor request: write i2s input channels (wValue = channel count (2/4/6/8); returns status byte).
+/// wValue = channel count (2/4/6/8); returns status byte
 pub const REQ_SET_I2S_INPUT_CHANNELS: u8 = 0xF3;
-/// Vendor request: read i2s input channels (returns uint8_t (active count)).
+/// returns uint8_t (active count)
 pub const REQ_GET_I2S_INPUT_CHANNELS: u8 = 0xF4;
 
 /// LG Sound Sync.
 pub const REQ_SET_LG_SOUND_SYNC_ENABLE: u8 = 0xE6;
-/// Vendor request: read lg sound sync enable (returns uint8_t).
+/// returns uint8_t
 pub const REQ_GET_LG_SOUND_SYNC_ENABLE: u8 = 0xE7;
-/// Vendor request: read lg sound sync status (returns 16-byte LgSoundSyncStatus).
+/// returns 16-byte LgSoundSyncStatus
 pub const REQ_GET_LG_SOUND_SYNC_STATUS: u8 = 0xE8;
 
 /// DAC hardware mute.
 pub const REQ_SET_DAC_HW_MUTE_CONFIG: u8 = 0xEA;
-/// Vendor request: read dac hw mute config (returns 16-byte DacHwMuteConfig).
+/// returns 16-byte DacHwMuteConfig
 pub const REQ_GET_DAC_HW_MUTE_CONFIG: u8 = 0xEB;
-/// Vendor request: test dac hw mute (no payload; pulses mute ~1s).
+/// no payload; pulses mute ~1s
 pub const REQ_TEST_DAC_HW_MUTE: u8 = 0xEC;
 
 /// System.
@@ -696,13 +744,13 @@ pub const REQ_ENTER_BOOTLOADER: u8 = 0xF0;
 
 /// UART / I2C control interfaces.
 pub const REQ_SET_UART_CONFIG: u8 = 0xF5;
-/// Vendor request: read uart config (returns UartCtrlConfig (live)).
+/// returns UartCtrlConfig (live)
 pub const REQ_GET_UART_CONFIG: u8 = 0xF6;
-/// Vendor request: write i2c config (payload = I2cCtrlConfig (8 bytes); USB-only).
+/// payload = I2cCtrlConfig (8 bytes); USB-only
 pub const REQ_SET_I2C_CONFIG: u8 = 0xF7;
-/// Vendor request: read i2c config (returns I2cCtrlConfig (live)).
+/// returns I2cCtrlConfig (live)
 pub const REQ_GET_I2C_CONFIG: u8 = 0xF8;
-/// Vendor request: read ctrl iface status (returns CtrlIfaceStatus (8 bytes)).
+/// returns CtrlIfaceStatus (8 bytes)
 pub const REQ_GET_CTRL_IFACE_STATUS: u8 = 0xF9;
 
 /// Status codes.
