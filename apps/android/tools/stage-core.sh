@@ -15,7 +15,7 @@
 # Re-stages only when the pin or a patch changed (so cargo does not rebuild the
 # core every time).
 set -euo pipefail
-ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse --show-toplevel)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SUB="$ROOT/third_party/DSPi-Console-Linux"
 OUT="$ROOT/rust/.staged/dspi-core"
 PATCHES=("$ROOT"/third_party/patches/*.patch)

@@ -6,11 +6,12 @@
 #   tools/dev.sh --build-image     (re)build the image
 #   tools/dev.sh --print-image     print the image reference
 #
-# Nothing is installed on the host. The repo (or worktree) is bind-mounted at
-# its host path; caches live in NAMED podman volumes:
+# Nothing is installed on the host. The whole monorepo checkout (or worktree) is
+# bind-mounted at its host path, not only apps/android, because the submodule's
+# git directory lives at its top; caches live in NAMED podman volumes:
 #   dspi-android-cargo    CARGO_HOME (crates.io registry/git cache)
 #   dspi-android-gradle   GRADLE_USER_HOME (wrapper dists, Maven caches)
-#   dspi-android-target-<hash of checkout path>   CARGO_TARGET_DIR (per worktree)
+#   dspi-android-target-<hash of the app's path>   CARGO_TARGET_DIR (per worktree)
 #
 # HARD RULE: the container gets no USB/hardware access. No --device, no
 # --privileged, no /dev/bus/usb. Do not add any.
@@ -20,7 +21,8 @@ IMAGE_TAG="2026-11-01-play"
 IMAGE="localhost/dspi-android-build:${IMAGE_TAG}"
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(git -C "$here/.." rev-parse --show-toplevel)"
+ROOT="$(cd "$here/.." && pwd)"
+TOP="$(git -C "$ROOT" rev-parse --show-toplevel)"
 
 case "${1:-}" in
   --build-image)
@@ -40,12 +42,12 @@ if ! podman image exists "$IMAGE"; then
   podman build -t "$IMAGE" -f "$ROOT/container/Containerfile" "$ROOT/container" >&2
 fi
 
-mounts=(-v "$ROOT:$ROOT:z")
+mounts=(-v "$TOP:$TOP:z")
 # A git worktree keeps its metadata in the main repo's .git; mount that too so
 # git (and submodules) work inside the container.
-common="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)"
+common="$(git -C "$TOP" rev-parse --path-format=absolute --git-common-dir)"
 case "$common/" in
-  "$ROOT"/*) ;;
+  "$TOP"/*) ;;
   *) mounts+=(-v "$common:$common:z") ;;
 esac
 
