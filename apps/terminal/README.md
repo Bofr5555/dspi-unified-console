@@ -120,6 +120,11 @@ dspi params                       # every parameter this build knows
 dspi export tuning.txt            # Console-compatible filter file
 dspi export room.dspipreset       # whole-device document
 dspi import tuning.txt            # apply one back
+dspi export - --json | jq .meta   # whole-device document on standard output
+dspi export f.json --format filters-json   # filters as JSON
+dspi import - --dry-run --json < room.dspipreset
+dspi cs export surfaces.json      # control-surface configuration
+dspi cs import surfaces.json --save
 dspi -f evening.dspi              # a script, one command per line
 
 dspi autoeq search hd600          # headphone corrections

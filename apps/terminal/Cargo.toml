@@ -23,6 +23,11 @@ serde_json.workspace = true
 # `dspi doctor --link` reads the hub's info endpoint.
 dspi-link.workspace = true
 
+# -- WP TM10 --
+# Documents must cross to the code Qt runs: the tests export and import through it.
+[dev-dependencies]
+dspi-core = { workspace = true }
+
 [features]
 default = ["midi"]
 # `--midi`, through midir (ALSA headers on Linux).
