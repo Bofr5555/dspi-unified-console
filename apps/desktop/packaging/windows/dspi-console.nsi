@@ -29,13 +29,25 @@ SetCompressor /SOLID lzma
 
 !define MUI_ICON "${__FILEDIR__}\dspi-console.ico"
 !define MUI_UNICON "${__FILEDIR__}\dspi-console.ico"
-!define MUI_FINISHPAGE_RUN "$INSTDIR\DSPiConsole.exe"
+; "Run DSPi Console" on the last page, started through the shell like the
+; Start menu does. The first start after an install takes several seconds
+; (QML compiled into the cache, files scanned by Defender).
+!define MUI_FINISHPAGE_RUN
+!define MUI_FINISHPAGE_RUN_TEXT "Run DSPi Console"
+!define MUI_FINISHPAGE_RUN_FUNCTION LaunchApp
+; The welcome / finish page artwork (164 x 314) instead of NSIS's default
+!define MUI_WELCOMEFINISHPAGE_BITMAP "${__FILEDIR__}\installer-side.bmp"
+!define MUI_UNWELCOMEFINISHPAGE_BITMAP "${__FILEDIR__}\installer-side.bmp"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
+
+Function LaunchApp
+  ExecShell "open" "$INSTDIR\DSPiConsole.exe" "" SW_SHOWNORMAL
+FunctionEnd
 
 Section "Install"
   SetOutPath "$INSTDIR"
