@@ -1,0 +1,308 @@
+import QtQuick 2.15
+import QtQuick.Controls 2.15
+
+Item {
+    id: cardRoot
+
+    property bool isStereo: false
+    property int leftChannel: 0
+    property int rightChannel: -1
+    property string leftName: ""
+    property string rightName: ""
+    property string leftColor: "#FFFFFF"
+    property string rightColor: "#FFFFFF"
+    property color parsedLeftColor: leftColor
+    property color parsedRightColor: rightColor
+    property string leftDescriptor: ""
+    property string rightDescriptor: ""
+    // Output cards show each channel's delay (ms); -1 hides it
+    property real leftDelay: -1
+    property real rightDelay: -1
+    // The layout gear shows at the header's right end: the readout under it moves aside
+    property bool gearVisible: false
+    readonly property real gearSlot: gearVisible ? 18 : 0
+
+    property int bandCount: 10
+    // The owner bumps this when the device state changes: the rows re-read
+    property int revision: 0
+    function ft(ch, b) { revision; return bridge.filterType(ch, b) }
+    function ff(ch, b) { revision; return bridge.filterFreq(ch, b) }
+    function fg(ch, b) { revision; return bridge.filterGain(ch, b) }
+    function fq(ch, b) { revision; return bridge.filterQ(ch, b) }
+    // Whole ms as before; a fractional delay shows its decimals (up to 4)
+    function delayText(ms) { return String(Math.round(ms * 10000) / 10000) }
+    height: 32 + 1 + (bandCount * 24)
+
+    // An off band shows a dash, as on macOS
+    readonly property var typeShort: ["–", "PK", "LS", "HS", "HC", "LC", "NO", "AP", "AP1", "LS1", "HS1", "LT", "HC1", "LC1"]
+
+    // Gradient border (left color → right color for stereo, single color for mono)
+    Rectangle {
+        id: borderRect
+        anchors.fill: parent
+        radius: 10
+        color: "transparent"
+
+        // Gradient fill that acts as the border
+        Rectangle {
+            anchors.fill: parent
+            radius: 10
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: Qt.rgba(parsedLeftColor.r, parsedLeftColor.g, parsedLeftColor.b, 0.3) }
+                GradientStop { position: 0.4; color: Qt.rgba(parsedLeftColor.r, parsedLeftColor.g, parsedLeftColor.b, 0.3) }
+                GradientStop { position: 0.6; color: isStereo ? Qt.rgba(parsedRightColor.r, parsedRightColor.g, parsedRightColor.b, 0.3) : Qt.rgba(parsedLeftColor.r, parsedLeftColor.g, parsedLeftColor.b, 0.3) }
+                GradientStop { position: 1.0; color: isStereo ? Qt.rgba(parsedRightColor.r, parsedRightColor.g, parsedRightColor.b, 0.3) : Qt.rgba(parsedLeftColor.r, parsedLeftColor.g, parsedLeftColor.b, 0.3) }
+            }
+        }
+
+        // Inner fill (opaque, covers everything except 1px gradient border)
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: 9
+            color: isMacOS ? Qt.tint(MacColors.mainContentOpaque, MacColors.opacity(MacColors.controlBackground, 0.6)) : nativeAltBaseColor
+        }
+    }
+
+    Column {
+        anchors.fill: parent
+        spacing: 0
+
+        // Header
+        Rectangle {
+            width: parent.width
+            height: 32
+            color: Qt.rgba(1, 1, 1, 0.01)
+            radius: 10
+
+            Row {
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 8
+
+                // Left channel header
+                Row {
+                    spacing: 6
+                    width: isStereo ? parent.width / 2 - 4 : parent.width
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Rectangle {
+                        width: 6; height: 6; radius: 3
+                        color: leftColor
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: leftName
+                        font.pixelSize: 11
+                        font.weight: Font.Bold
+                        color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.7)
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: leftDescriptor
+                        font.pixelSize: 8
+                        font.weight: Font.Bold
+                        color: Qt.rgba(parsedLeftColor.r, parsedLeftColor.g, parsedLeftColor.b, 0.8)
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                // Divider (stereo only)
+                Rectangle {
+                    visible: isStereo
+                    width: 1
+                    height: parent.height
+                    color: isMacOS ? MacColors.separator : Qt.rgba(0.5, 0.5, 0.5, 0.1)
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                // Right channel header (stereo only)
+                Row {
+                    visible: isStereo
+                    spacing: 6
+                    width: parent.width / 2 - 4
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Rectangle {
+                        width: 6; height: 6; radius: 3
+                        color: rightColor
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: rightName
+                        font.pixelSize: 11
+                        font.weight: Font.Bold
+                        color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.7)
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    Text {
+                        text: rightDescriptor
+                        font.pixelSize: 8
+                        font.weight: Font.Bold
+                        color: Qt.rgba(parsedRightColor.r, parsedRightColor.g, parsedRightColor.b, 0.8)
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+            }
+            // Delay readouts at the right of each half (output cards)
+            Text {
+                visible: cardRoot.leftDelay >= 0
+                x: (isStereo ? parent.width / 2 : parent.width - cardRoot.gearSlot) - width - 10
+                Behavior on x { NumberAnimation { duration: 150; easing.type: Easing.InOutQuad } }
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Delay: " + cardRoot.delayText(cardRoot.leftDelay) + "ms"
+                font.pixelSize: 9
+                font.family: root.monoFont
+                color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
+            }
+            Text {
+                visible: isStereo && cardRoot.rightDelay >= 0
+                x: parent.width - cardRoot.gearSlot - width - 10
+                Behavior on x { NumberAnimation { duration: 150; easing.type: Easing.InOutQuad } }
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Delay: " + cardRoot.delayText(cardRoot.rightDelay) + "ms"
+                font.pixelSize: 9
+                font.family: root.monoFont
+                color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
+            }
+        }
+
+        // Separator
+        Rectangle { width: parent.width; height: 1; color: isMacOS ? Qt.tint(Qt.tint(Qt.tint(MacColors.mainContentOpaque, MacColors.opacity(MacColors.controlBackground, 0.6)), MacColors.separator), MacColors.opacity(MacColors.gray, isStereo ? 0.1 : 0.2)) : Qt.rgba(0.5, 0.5, 0.5, 0.1) }
+
+        // Band rows
+        Repeater {
+            model: bandCount
+
+            Rectangle {
+                width: cardRoot.width
+                height: 24
+                color: index % 2 === 0 ? Qt.rgba(1, 1, 1, 0.03) : "transparent"
+
+                Row {
+                    anchors.fill: parent
+                    anchors.leftMargin: 8
+                    anchors.rightMargin: 8
+                    spacing: 0
+
+                    // Band number
+                    Text {
+                        width: 20
+                        text: (index + 1).toString()
+                        font.pixelSize: 10
+                        font.family: root.monoFont
+                        color: isMacOS ? MacColors.opacity(MacColors.secondaryLabel, 0.7) : Qt.rgba(1, 1, 1, 0.5)
+                        horizontalAlignment: Text.AlignCenter
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    // Left channel values
+                    Item {
+                        width: isStereo ? (parent.width - 20) / 2 : parent.width - 20
+                        height: parent.height
+
+                        Text {
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 24
+                            text: typeShort[cardRoot.ft(leftChannel, index)] || "–"
+                            font.pixelSize: 10
+                            font.weight: Font.Bold
+                            color: isMacOS ? (cardRoot.ft(leftChannel, index) > 0 ? parsedLeftColor : MacColors.opacity(MacColors.secondaryLabel, 0.4)) : cardRoot.ft(leftChannel, index) > 0 ? parsedLeftColor : Qt.rgba(1, 1, 1, 0.3)
+                            horizontalAlignment: Text.AlignLeft
+                        }
+
+                        Row {
+                            anchors.right: parent.right
+                            anchors.rightMargin: 24
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 8
+
+                            Text {
+                                visible: cardRoot.ft(leftChannel, index) > 0
+                                text: cardRoot.ff(leftChannel, index).toFixed(1) + " Hz"
+                                font.pixelSize: 10
+                                font.family: root.monoFont
+                                color: isMacOS ? MacColors.opacity(MacColors.label, 0.8) : Qt.rgba(1, 1, 1, 0.7)
+                                horizontalAlignment: Text.AlignRight
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                visible: cardRoot.ft(leftChannel, index) > 0
+                                text: cardRoot.fg(leftChannel, index).toFixed(1) + " dB"
+                                font.pixelSize: 10
+                                font.family: root.monoFont
+                                color: isMacOS ? MacColors.opacity(MacColors.label, 0.8) : Qt.rgba(1, 1, 1, 0.7)
+                                horizontalAlignment: Text.AlignRight
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                visible: cardRoot.ft(leftChannel, index) > 0
+                                text: "Q " + cardRoot.fq(leftChannel, index).toFixed(3)
+                                font.pixelSize: 10
+                                font.family: root.monoFont
+                                color: isMacOS ? MacColors.opacity(MacColors.label, 0.8) : Qt.rgba(1, 1, 1, 0.7)
+                                horizontalAlignment: Text.AlignRight
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+                    }
+
+                    // Right channel values (stereo)
+                    Item {
+                        visible: isStereo
+                        width: (parent.width - 20) / 2
+                        height: parent.height
+
+                        Text {
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 24
+                            text: rightChannel >= 0 ? (typeShort[cardRoot.ft(rightChannel, index)] || "–") : ""
+                            font.pixelSize: 10
+                            font.weight: Font.Bold
+                            color: isMacOS ? (rightChannel >= 0 && cardRoot.ft(rightChannel, index) > 0 ? parsedRightColor : MacColors.opacity(MacColors.secondaryLabel, 0.4)) : rightChannel >= 0 && cardRoot.ft(rightChannel, index) > 0 ? parsedRightColor : Qt.rgba(1, 1, 1, 0.3)
+                            horizontalAlignment: Text.AlignLeft
+                        }
+
+                        Row {
+                            anchors.right: parent.right
+                            anchors.rightMargin: 24
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 8
+
+                            Text {
+                                visible: rightChannel >= 0 && cardRoot.ft(rightChannel, index) > 0
+                                text: cardRoot.ff(rightChannel, index).toFixed(1) + " Hz"
+                                font.pixelSize: 10
+                                font.family: root.monoFont
+                                color: isMacOS ? MacColors.opacity(MacColors.label, 0.8) : Qt.rgba(1, 1, 1, 0.7)
+                                horizontalAlignment: Text.AlignRight
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                visible: rightChannel >= 0 && cardRoot.ft(rightChannel, index) > 0
+                                text: cardRoot.fg(rightChannel, index).toFixed(1) + " dB"
+                                font.pixelSize: 10
+                                font.family: root.monoFont
+                                color: isMacOS ? MacColors.opacity(MacColors.label, 0.8) : Qt.rgba(1, 1, 1, 0.7)
+                                horizontalAlignment: Text.AlignRight
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                visible: rightChannel >= 0 && cardRoot.ft(rightChannel, index) > 0
+                                text: "Q " + cardRoot.fq(rightChannel, index).toFixed(3)
+                                font.pixelSize: 10
+                                font.family: root.monoFont
+                                color: isMacOS ? MacColors.opacity(MacColors.label, 0.8) : Qt.rgba(1, 1, 1, 0.7)
+                                horizontalAlignment: Text.AlignRight
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

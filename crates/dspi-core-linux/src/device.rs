@@ -1,0 +1,291 @@
+//! Device enumeration, selection, and hot-plug detection.
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use log::{info, warn};
+use rusb::{Device, GlobalContext};
+
+use crate::notify::{NotifyHub, NotifyListener};
+use crate::rta::{RtaHub, RtaWorker};
+use crate::protocol::{LEGACY_VENDOR_ID, PRODUCT_ID, VENDOR_ID};
+use crate::types::DeviceInfo;
+use crate::usb::{UsbConnection, UsbError};
+
+/// Manages DSPi device discovery and connection lifecycle.
+pub struct DeviceManager {
+    /// All currently known devices, keyed by serial number.
+    devices: HashMap<String, DeviceInfo>,
+    /// Serial of the selected/active device.
+    selected_serial: Option<String>,
+    /// Active USB connection.
+    connection: Option<UsbConnection>,
+    /// Vendor ID of the connected device (current or legacy firmware).
+    connected_vid: Option<u16>,
+    /// Notification packets from the connected device.
+    notify_hub: Arc<NotifyHub>,
+    /// DSPis on the bus that couldn't be opened (no permission: the udev
+    /// rule is missing), as of the last scan or poll.
+    inaccessible: u32,
+    /// Reads the notification endpoint while connected (holds its own
+    /// reference to the device handle).
+    notify_listener: Option<NotifyListener>,
+    /// Spectrum analyser requests and results.
+    rta_hub: Arc<RtaHub>,
+    /// Polls the analyser while connected, once started.
+    rta_worker: Option<RtaWorker>,
+}
+
+/// What a USB device turned out to be.
+enum Probe {
+    Dspi(DeviceInfo),
+    /// A DSPi this user isn't allowed to open
+    NoAccess,
+    Other,
+}
+
+/// True for a DSPi running current or pre-May-2026 firmware.
+fn is_dspi(vid: u16, pid: u16) -> bool {
+    pid == PRODUCT_ID && (vid == VENDOR_ID || vid == LEGACY_VENDOR_ID)
+}
+
+impl DeviceManager {
+    pub fn new() -> Self {
+        Self {
+            devices: HashMap::new(),
+            selected_serial: None,
+            connection: None,
+            connected_vid: None,
+            notify_hub: Arc::new(NotifyHub::default()),
+            notify_listener: None,
+            inaccessible: 0,
+            rta_hub: Arc::new(RtaHub::default()),
+            rta_worker: None,
+        }
+    }
+
+    /// The spectrum analyser's shared state.
+    pub fn rta_hub(&self) -> Arc<RtaHub> {
+        Arc::clone(&self.rta_hub)
+    }
+
+    /// Probe and poll the connected device's spectrum analyser. Call once
+    /// the firmware is known to be compatible; a no-op if already running.
+    pub fn start_rta(&mut self) {
+        if self.rta_worker.is_some() {
+            return;
+        }
+        if let Some(conn) = &self.connection {
+            self.rta_worker = Some(RtaWorker::start(conn.shared_handle(), conn.bus(), Arc::clone(&self.rta_hub)));
+        }
+    }
+
+    /// The queue the notification listener fills.
+    pub fn notify_hub(&self) -> Arc<NotifyHub> {
+        Arc::clone(&self.notify_hub)
+    }
+
+    /// Scan for all connected DSPi devices (VID/PID match).
+    /// Returns the list of discovered devices.
+    pub fn scan(&mut self) -> Vec<DeviceInfo> {
+        self.devices.clear();
+
+        let Ok(device_list) = rusb::DeviceList::new() else {
+            warn!("Failed to enumerate USB devices");
+            return Vec::new();
+        };
+
+        self.inaccessible = 0;
+        for device in device_list.iter() {
+            match Self::probe_device(&device) {
+                Probe::Dspi(info) => { self.devices.insert(info.serial_str().to_owned(), info); }
+                Probe::NoAccess => self.inaccessible += 1,
+                Probe::Other => {}
+            }
+        }
+
+        self.devices.values().cloned().collect()
+    }
+
+    /// DSPis found by the last scan or poll that couldn't be opened for
+    /// want of permission.
+    pub fn inaccessible(&self) -> u32 {
+        self.inaccessible
+    }
+
+    /// Probe a single USB device to check if it's a DSPi device.
+    fn probe_device(device: &Device<GlobalContext>) -> Probe {
+        let Ok(desc) = device.device_descriptor() else { return Probe::Other };
+        if !is_dspi(desc.vendor_id(), desc.product_id()) {
+            return Probe::Other;
+        }
+
+        let handle = match device.open() {
+            Ok(h) => h,
+            // Listed by the kernel but not ours to open: no udev rule
+            Err(rusb::Error::Access) => return Probe::NoAccess,
+            // Windows: no WinUSB driver bound to it (firmware without the MS
+            // OS 2.0 descriptors), or another program holds it
+            #[cfg(windows)]
+            Err(rusb::Error::NotSupported | rusb::Error::Busy) => return Probe::NoAccess,
+            Err(_) => return Probe::Other,
+        };
+        let serial = handle
+            .read_serial_number_string_ascii(&desc)
+            .unwrap_or_default();
+
+        if serial.is_empty() {
+            return Probe::Other;
+        }
+
+        let mut info = DeviceInfo {
+            serial: [0u8; 64],
+            serial_len: serial.len().min(63) as u32,
+            location_id: device.address() as u32
+                | ((device.bus_number() as u32) << 8),
+        };
+        let len = info.serial_len as usize;
+        info.serial[..len].copy_from_slice(&serial.as_bytes()[..len]);
+
+        Probe::Dspi(info)
+    }
+
+    /// Select and open a specific device by serial number.
+    pub fn select_device(&mut self, serial: &str) -> Result<(), UsbError> {
+        // Close existing connection
+        self.disconnect();
+
+        let device_list = rusb::DeviceList::new().map_err(UsbError::Rusb)?;
+        for device in device_list.iter() {
+            let desc = match device.device_descriptor() {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
+            if !is_dspi(desc.vendor_id(), desc.product_id()) {
+                continue;
+            }
+            let handle = match device.open() {
+                Ok(h) => h,
+                Err(_) => continue,
+            };
+            let dev_serial = match handle.read_serial_number_string_ascii(&desc) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            if dev_serial == serial {
+                let _ = handle.claim_interface(crate::protocol::VENDOR_INTERFACE);
+                let connection = UsbConnection::new(handle);
+                self.notify_listener =
+                    Some(NotifyListener::start(connection.shared_handle(), Arc::clone(&self.notify_hub)));
+                self.connection = Some(connection);
+                self.connected_vid = Some(desc.vendor_id());
+                self.selected_serial = Some(serial.to_owned());
+                info!("Connected to DSPi device: {serial}");
+                return Ok(());
+            }
+        }
+
+        Err(UsbError::NotConnected)
+    }
+
+    /// Close current device connection.
+    pub fn disconnect(&mut self) {
+        if let Some(serial) = &self.selected_serial {
+            info!("Disconnected from DSPi device: {serial}");
+        }
+        self.rta_worker = None;
+        self.notify_listener = None;
+        self.connection = None;
+        self.connected_vid = None;
+        // Retain selected_serial for auto-reconnect
+    }
+
+    /// Vendor ID of the connected device, if any.
+    pub fn connected_vendor_id(&self) -> Option<u16> {
+        self.connected_vid
+    }
+
+    /// Check if currently connected to a device.
+    pub fn is_connected(&self) -> bool {
+        self.connection.is_some()
+    }
+
+    /// Get a reference to the active USB connection.
+    pub fn connection(&self) -> Option<&UsbConnection> {
+        self.connection.as_ref()
+    }
+
+    /// Get the selected serial number (retained even after disconnect for auto-reconnect).
+    pub fn selected_serial(&self) -> Option<&str> {
+        self.selected_serial.as_deref()
+    }
+
+    /// Get the list of known devices.
+    pub fn known_devices(&self) -> Vec<DeviceInfo> {
+        self.devices.values().cloned().collect()
+    }
+
+    /// Poll for device changes (for platforms without native hotplug).
+    /// Returns (arrivals, departures) as serial number lists.
+    pub fn poll_changes(&mut self) -> (Vec<String>, Vec<String>) {
+        let Ok(device_list) = rusb::DeviceList::new() else {
+            return (Vec::new(), Vec::new());
+        };
+
+        let mut current_serials: HashMap<String, DeviceInfo> = HashMap::new();
+        self.inaccessible = 0;
+        for device in device_list.iter() {
+            match Self::probe_device(&device) {
+                Probe::Dspi(info) => { current_serials.insert(info.serial_str().to_owned(), info); }
+                Probe::NoAccess => self.inaccessible += 1,
+                Probe::Other => {}
+            }
+        }
+
+        // Find arrivals (in current but not in previous)
+        let arrivals: Vec<String> = current_serials
+            .keys()
+            .filter(|s| !self.devices.contains_key(*s))
+            .cloned()
+            .collect();
+
+        // Find departures (in previous but not in current)
+        let departures: Vec<String> = self
+            .devices
+            .keys()
+            .filter(|s| !current_serials.contains_key(*s))
+            .cloned()
+            .collect();
+
+        // Handle auto-reconnect on arrival
+        let should_reconnect = match &self.selected_serial {
+            Some(sel) => self.connection.is_none() && arrivals.contains(sel),
+            None => false,
+        };
+        if should_reconnect {
+            let serial = self.selected_serial.clone().unwrap();
+            info!("Auto-reconnecting to {serial}");
+            let _ = self.select_device(&serial);
+        }
+
+        // Handle disconnect on departure
+        for dep in &departures {
+            if Some(dep.as_str()) == self.selected_serial.as_deref() && self.connection.is_some() {
+                info!("Selected device departed: {dep}");
+                self.rta_worker = None;
+                self.notify_listener = None;
+                self.connection = None;
+                self.connected_vid = None;
+            }
+        }
+
+        self.devices = current_serials;
+        (arrivals, departures)
+    }
+}
+
+impl Default for DeviceManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}

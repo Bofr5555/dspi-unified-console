@@ -1,0 +1,24 @@
+# Rust / Cargo
+/target/
+**/*.rs.bk
+
+# Generated files
+/include/dspi_core.h
+
+# CMake / Qt build
+qt/build/
+qt/build-*/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Release builds (packaging/linux/build-appimage.sh)
+/dist/
