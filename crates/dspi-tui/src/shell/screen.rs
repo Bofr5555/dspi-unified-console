@@ -150,6 +150,12 @@ pub trait Screen {
         ScreenEvent::Handled
     }
 
+    // -- WP TM19 --
+    /// Lines of a confirmed write reached the device, in order. Settings is
+    /// the one that listens: a Save counts only for what this names, and a
+    /// line cancelled or refused is never named.
+    fn lines_written(&mut self, _lines: &[String], _session: &mut Session, _state: &DeviceState) {}
+
     /// Called every tick with the elapsed time, for screens with motion.
     fn tick(&mut self, _dt_ms: u32) {}
 

@@ -341,6 +341,31 @@ impl GlobalPage {
         self.clean = self.draft.clone();
     }
 
+    // -- WP TM19 --
+    /// Take as saved the fields these written lines carried (the commands of
+    /// `save_commands`). Any other edit stays in the draft, and Revert goes
+    /// back to the fields as they are on the device now.
+    pub fn mark_written(&mut self, lines: &[String]) {
+        for line in lines {
+            match line.split_whitespace().next() {
+                Some("preset.startup") => {
+                    self.clean.startup_mode = self.draft.startup_mode;
+                    self.clean.default_slot = self.draft.default_slot;
+                }
+                Some("vol.master.mode") => {
+                    self.clean.master_volume_mode = self.draft.master_volume_mode;
+                }
+                Some("preset.iomode") => {
+                    self.clean.output_config_mode = self.draft.output_config_mode;
+                }
+                Some("dev.dacmute") => self.clean.dac = self.draft.dac.clone(),
+                Some("out.latency") => self.clean.output_latency = self.draft.output_latency,
+                _ => {}
+            }
+        }
+        self.edited = self.draft != self.clean;
+    }
+
     pub fn revert(&mut self) {
         self.edited = false;
         self.draft = self.clean.clone();
