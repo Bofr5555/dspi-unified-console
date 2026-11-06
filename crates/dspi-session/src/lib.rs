@@ -21,6 +21,7 @@ pub mod runtime;
 pub mod state;
 pub mod surfaces;
 pub mod tube;
+#[cfg(feature = "undo")]
 pub mod undo;
 pub mod write;
 
@@ -29,6 +30,7 @@ pub use pins::{PinClaim, PinConstraint, PinMap, PinRole};
 pub use probe::{Capabilities, Meters, probe, probe_any, read_bulk, read_meters};
 pub use readout::Readout;
 pub use state::{Applied, DeviceState, PresetSnapshot};
+#[cfg(feature = "undo")]
 pub use undo::Undone;
 pub use write::{
     Core1Conflict, Crosspoint, EnableOutcome, JournalEntry, Outcome, OutputStrip, Session,
