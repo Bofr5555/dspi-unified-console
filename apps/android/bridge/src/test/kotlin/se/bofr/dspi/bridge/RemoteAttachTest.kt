@@ -14,7 +14,7 @@ import se.bofr.dspi.fake.FakeDspiCore
 class RemoteAttachTest {
     private fun linked(): FakeDspiCore = FakeDspiCore().apply {
         closeFd() // not attached over USB
-        linkConnect("ws://10.0.2.2:11915/dspi/v1", "Pixel", "test", "")
+        linkConnect("ws://10.0.2.2:11915/dspi/v1", "Pixel", "test", "", "")
     }
 
     @Test

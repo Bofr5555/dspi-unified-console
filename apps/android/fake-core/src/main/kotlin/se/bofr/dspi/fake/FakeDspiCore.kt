@@ -33,6 +33,7 @@ import se.bofr.dspi.core.LinkDevice
 import se.bofr.dspi.core.LinkHello
 import se.bofr.dspi.core.LinkInfo
 import se.bofr.dspi.core.LinkListener
+import se.bofr.dspi.core.LinkPhase
 import se.bofr.dspi.core.LinkStatus
 import se.bofr.dspi.core.MonitorBatch
 import se.bofr.dspi.core.MonitorEntry
@@ -242,7 +243,7 @@ open class FakeDspiCore(
     @Volatile var linkHello = LinkHello(
         hubId = "6f1a2b3c-4d5e-4f60-8a9b-0c1d2e3f4a5b", hubName = "Fake Hub", hubKind = "console", hubVersion = "fake",
         protoMinor = 2, auth = "none", pinSource = "window", needsPairing = false,
-        caps = listOf("cmd", "notify", "poll", "snapshot", "lock"), maxPayload = 8192, maxInflight = 8
+        caps = listOf("cmd", "notify", "poll", "snapshot", "lock"), maxPayload = 8192, maxInflight = 8, tokenRefused = false
     )
 
     /** The hub's PIN when [linkHello] says `auth = pin`. */
@@ -261,7 +262,7 @@ open class FakeDspiCore(
     @Volatile var linkListener: LinkListener? = null
         private set
 
-    override fun linkConnect(url: String, clientName: String, appVersion: String, token: String): LinkHello =
+    override fun linkConnect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String): LinkHello =
         op("linkConnect", "$url, $clientName", device = false) {
             linkOpen = true
             linkReady = linkHello.auth != "pin" || token == linkToken
@@ -278,8 +279,25 @@ open class FakeDspiCore(
     override fun linkDevices(): List<LinkDevice> =
         if (linkReady) listOf(LinkDevice(0, serial, "Bench", "1.1.6", 5, 1, "online", "usb", 0)) else emptyList()
 
-    override fun linkStatus(): LinkStatus =
-        LinkStatus(linkOpen, linkReady, if (linkReady) 12 else 0, linkRole, emptyList(), !linkOpen, -1, "")
+    override fun linkStatus(): LinkStatus = LinkStatus(
+        connected = linkOpen,
+        ready = linkReady,
+        session = if (linkReady) 12 else 0,
+        role = linkRole,
+        denied = emptyList(),
+        closed = !linkOpen,
+        closeCode = -1,
+        closeReason = "",
+        phase = when {
+            !linkOpen -> LinkPhase.IDLE
+            linkReady -> LinkPhase.BOUND
+            else -> LinkPhase.NEEDS_PAIRING
+        },
+        reconnectAttempt = 0,
+        reconnectInMs = 0,
+        pinSource = linkHello.pinSource,
+        tokenRefused = false
+    )
 
     override fun linkSelectDevice(handle: Long, serial: String) = op("linkSelectDevice", "$handle, $serial", device = false) {
         if (!linkReady) throw DspiException.Disconnected()
@@ -370,7 +388,9 @@ open class FakeDspiCore(
             cpu1 = if (st.core1Mode == 0) 3 else 18 + tick % 2,
             clipFlags = stickyClips,
             activeInputChannels = if (st.numInputChannels > 2) st.numInputChannels else 2,
-            numChannels = st.numChannels
+            numChannels = st.numChannels,
+            stale = false,
+            ageMs = 0
         )
     }
 

@@ -33,6 +33,34 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         }
     }
 
+    // -- WP AN1 --
+    // Writes of the new core. It also refuses them by itself on a read-only
+    // connection (DspiException.ReadOnly); this layer's rule stays the same.
+    override fun setDeviceName(name: String) {
+        guard("setDeviceName")
+        return inner.setDeviceName(name)
+    }
+
+    override fun setInputSourceName(source: Int, name: String) {
+        guard("setInputSourceName")
+        return inner.setInputSourceName(source, name)
+    }
+
+    override fun setOutputLatency(id: Int) {
+        guard("setOutputLatency")
+        return inner.setOutputLatency(id)
+    }
+
+    override fun coreVregOp(op: Int, value: Int) {
+        guard("coreVregOp")
+        return inner.coreVregOp(op, value)
+    }
+
+    override fun rawSet(opcode: Int, value: Int, data: List<Int>) {
+        guard("rawSet")
+        return inner.rawSet(opcode, value, data)
+    }
+
     override fun applyAllParams() {
         guard("applyAllParams")
         return inner.applyAllParams()
@@ -557,7 +585,13 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "resetBufferStats",
             "configImport",
             "filtersImport",
-            "csApply"
+            "csApply",
+            // -- WP AN1 --
+            "setDeviceName",
+            "setInputSourceName",
+            "setOutputLatency",
+            "coreVregOp",
+            "rawSet"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -640,7 +674,39 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "setNotifyListener",
             "siggenFetchCaps",
             "siggenGetConfig",
-            "siggenGetStatus"
+            "siggenGetStatus",
+            // -- WP AN1 --
+            // Local files and the firmware-update path (as enterBootloader),
+            // reads, connection management, the analyser's request.
+            "autoeqDatabaseInfo",
+            "autoeqImport",
+            "autoeqUpdate",
+            "autoeqResetToBuiltin",
+            "autoeqRebuildWarning",
+            "autoeqRebuildStart",
+            "quantizeGain",
+            "quantizeDelay",
+            "openDemo",
+            "extStatus",
+            "fetchCoreVreg",
+            "uf2Inspect",
+            "firmwareVersionMatches",
+            "bootloaderDrives",
+            "flashToDrive",
+            "firmwareGuardBoard",
+            "firmwareGuardBoardInBootloader",
+            "firmwareGuardCheck",
+            "flashToDriveGuarded",
+            "getInputSourceName",
+            "getDeviceName",
+            "fetchOutputLatency",
+            "fetchOutputLatencyOptions",
+            "fetchClockDiag",
+            "linkRetryNow",
+            "linkSetUrl",
+            "rawGet",
+            "rtaGetOwnership",
+            "rtaTakeControl"
         )
 
         /** Control-surface operations that only read the device (`cs.rs` "refresh", "refreshStatus"). */

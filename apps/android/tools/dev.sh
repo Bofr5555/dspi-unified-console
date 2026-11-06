@@ -7,14 +7,19 @@
 #   tools/dev.sh --print-image     print the image reference
 #
 # Nothing is installed on the host. The whole monorepo checkout (or worktree) is
-# bind-mounted at its host path, not only apps/android, because the submodule's
-# git directory lives at its top; caches live in NAMED podman volumes:
+# bind-mounted at its host path, not only apps/android, because the Rust workspace
+# (Cargo.toml, crates/) is at its top; caches live in NAMED podman volumes:
 #   dspi-android-cargo    CARGO_HOME (crates.io registry/git cache)
 #   dspi-android-gradle   GRADLE_USER_HOME (wrapper dists, Maven caches)
-#   dspi-android-target-<hash of the app's path>   CARGO_TARGET_DIR (per worktree)
+#   dspi-android-target-<hash of the app's path>   CARGO_TARGET_DIR (per worktree);
+#                                                  also TMPDIR, so rustc and mktemp
+#                                                  stay off any tmpfs
+# DSPI_JOBS caps cargo's parallel jobs per container (default 4), as ci/run.sh does.
 #
 # HARD RULE: the container gets no USB/hardware access. No --device, no
-# --privileged, no /dev/bus/usb. Do not add any.
+# --privileged, no /dev/bus/usb. Do not add any. An empty directory covers
+# /sys/bus/usb/devices (as in ci/run.sh), so nothing in here can even list the
+# host's USB bus; the core's enumeration, and its tests, rely on that.
 set -euo pipefail
 
 IMAGE_TAG="2026-11-01-play"
@@ -44,12 +49,16 @@ fi
 
 mounts=(-v "$TOP:$TOP:z")
 # A git worktree keeps its metadata in the main repo's .git; mount that too so
-# git (and submodules) work inside the container.
+# git works inside the container.
 common="$(git -C "$TOP" rev-parse --path-format=absolute --git-common-dir)"
 case "$common/" in
   "$TOP"/*) ;;
   *) mounts+=(-v "$common:$common:z") ;;
 esac
+
+empty="${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}/work/empty"
+mkdir -p "$empty"
+mounts+=(-v "$empty:/sys/bus/usb/devices:ro,z")
 
 wt_hash="$(printf '%s' "$ROOT" | sha256sum | cut -c1-10)"
 mounts+=(
@@ -83,4 +92,6 @@ exec podman run --rm -i "${tty[@]}" \
   -w "$workdir" \
   -e TERM="${TERM:-dumb}" \
   -e CI="${CI:-}" \
-  "$IMAGE" "$@"
+  -e CARGO_BUILD_JOBS="${DSPI_JOBS:-4}" \
+  -e TMPDIR=/cache/target/tmp \
+  "$IMAGE" bash -c 'mkdir -p "$TMPDIR" && exec "$@"' dev.sh "$@"
