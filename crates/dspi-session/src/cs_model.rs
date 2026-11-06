@@ -1016,6 +1016,11 @@ pub trait CsContext {
     /// Who owns `gpio`, ignoring the claim of `excluding` (an owner label
     /// such as [`slot_owner`]'s), as the Console's `pinInUseBy(_:excluding:)`
     /// does. `None` when the pin is free.
+    ///
+    /// The pickers call this once per candidate pin, and some once per pin
+    /// per slot, so an implementor should answer from claims it already
+    /// holds (as [`StaticContext`] does) rather than build them per call; the
+    /// one `String` allocated for an owned pin is then the only cost.
     fn pin_owner(&self, gpio: u8, excluding: &str) -> Option<String>;
 
     /// The SDA pin of the control interface's I2C bus, when that interface
@@ -1027,6 +1032,10 @@ pub trait CsContext {
 
     /// The name of preset slot `slot`, empty when unnamed or unknown (the
     /// default).
+    ///
+    /// Empty means both "the slot has no name" and "the names were never
+    /// read"; the labels then read "Preset N" on purpose, which is right in
+    /// either case, so an implementor need not tell them apart.
     fn preset_name(&self, slot: usize) -> String {
         let _ = slot;
         String::new()
@@ -1083,10 +1092,13 @@ impl CsContext for StaticContext<'_> {
 /// capitalised [`explain_status`] clause, the rest as their own errors.
 #[derive(Debug, thiserror::Error)]
 pub enum ApplyError {
-    /// The device answered with this status code instead of `SUCCESS`
-    /// (`crate::surfaces::status`).
-    #[error("{}", capitalise(&explain_status(*.0)))]
-    Rejected(u8),
+    /// The device answered with a status code other than `SUCCESS`.
+    #[error("{}", capitalise(&explain_status(*status)))]
+    Rejected {
+        /// The device's status code, one of [`crate::surfaces::status`]
+        /// (`CS_STATUS_*` and `PIN_CONFIG_*`); [`explain_status`] words it.
+        status: u8,
+    },
     /// The write itself failed: transport, an unreadable status packet, or a
     /// device that never settled.
     #[error(transparent)]
@@ -1134,7 +1146,9 @@ pub fn apply(
     if st.last_status == crate::surfaces::status::SUCCESS {
         Ok(())
     } else {
-        Err(ApplyError::Rejected(st.last_status))
+        Err(ApplyError::Rejected {
+            status: st.last_status,
+        })
     }
 }
 
@@ -1155,7 +1169,7 @@ pub fn apply_code(
     if code == crate::surfaces::status::SUCCESS {
         Ok(())
     } else {
-        Err(ApplyError::Rejected(code))
+        Err(ApplyError::Rejected { status: code })
     }
 }
 
@@ -3249,6 +3263,11 @@ pub mod demo {
     /// A plain demo device: an RP2350 with eight inputs and nine outputs,
     /// named as the Terminal's fixtures name them, and no control surfaces
     /// yet ([`with_cs`] adds them).
+    ///
+    /// A label-only fixture for the pickers and summaries: the header and
+    /// the channel names are set, every DSP section is zero, so it is not a
+    /// plausible DSP state. The demo device is `dspi_transport`'s
+    /// `FakeDevice::demo()` (WP T4).
     pub fn base_state() -> DeviceState {
         use dspi_proto::generated::{BULK_SIZE, SECTIONS, wire::WIRE_FORMAT_VERSION};
         use dspi_proto::wire::BulkPacket;
@@ -4061,7 +4080,7 @@ mod tests_wp_s4 {
             })
         });
         let e = rejected.expect_err("rejected");
-        assert!(matches!(e, ApplyError::Rejected(0x10)));
+        assert!(matches!(e, ApplyError::Rejected { status: 0x10 }));
         // The sentence a GUI shows, as the TUI showed it before the move.
         assert_eq!(e.to_string(), capitalise(&explain_status(0x10)));
         assert_eq!(e.to_string(), "No such binding slot");
@@ -4074,7 +4093,7 @@ mod tests_wp_s4 {
 
         let mut s = session(MockTransport::new().data(op::REQ_CS_MACRO_FIRE, vec![0x10]));
         let e = apply_code(&mut s, |c| c.fire_macro(0)).expect_err("rejected");
-        assert!(matches!(e, ApplyError::Rejected(0x10)));
+        assert!(matches!(e, ApplyError::Rejected { status: 0x10 }));
     }
 
     /// A transport failure is a typed error, not a panic or a success.
