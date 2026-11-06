@@ -51,6 +51,18 @@ fn wp_cg12_health_on_the_demo_device() {
 }
 
 #[test]
+fn wp_cg12_fills_on_the_demo_device() {
+    let h = demo();
+    let reply = read_json(|b, l| dspi_fetch_output_fills(h, b, l));
+    assert_eq!(reply["ok"], true, "{reply}");
+    let fills = reply["value"].as_array().unwrap();
+    assert_eq!(fills.len(), 4);
+    assert_eq!(fills[0]["band"], "good");
+    assert!(fills[0]["fillPct"].as_f64().unwrap() > 0.0);
+    drop(unsafe { Box::from_raw(h) });
+}
+
+#[test]
 fn wp_cg12_a_null_handle_gives_the_failure_value() {
     let n = null_mut::<FfiCore>();
     let mut b = [7u8; 16];

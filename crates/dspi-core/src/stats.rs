@@ -1162,5 +1162,22 @@ mod tests_wp_cg12 {
         core.attach(Box::new(FakeDevice::demo()), "FAKE".into(), 0);
         let health = core.fetch_ring_health().unwrap().unwrap();
         assert!(health.target_frames > 0);
+        assert_eq!(health.lowest_fill, None);
+    }
+
+    #[test]
+    fn wp_cg12_fills_on_the_demo_device() {
+        let core = DspiCore::new();
+        core.open_demo().unwrap();
+        let target = core.fetch_ring_health().unwrap().unwrap().target_frames;
+        let fills = core.fetch_output_fills().unwrap();
+        assert_eq!(fills.len(), 4);
+        let want = f64::from(target) / 512.0 * 100.0;
+        for fill in fills {
+            assert!((fill.fill_pct - want).abs() < 0.02, "{fill:?}");
+            assert_eq!(fill.band, FillBand::Good);
+            assert_eq!(fill.min_pct, fill.max_pct);
+            assert!(fill.min_pct > 0);
+        }
     }
 }
