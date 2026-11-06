@@ -352,6 +352,14 @@ impl DspiCore {
     /// cannot enumerate (use `open_fd`), and in a build without the `usb`
     /// feature (iOS). Never fails: an enumeration error gives an empty list.
     pub fn scan_devices(&self) -> Vec<DeviceInfo> {
+        // -- WP HB0 -- A broker owns USB: its list stands in for the bus.
+        if let Some(broker) = self.broker() {
+            let (devices, inaccessible) = (broker.devices(), broker.inaccessible());
+            let mut inner = self.lock();
+            inner.devices = devices.clone();
+            inner.inaccessible = inaccessible;
+            return devices;
+        }
         // The device we hold is listed without being opened a second time.
         let ours = {
             let inner = self.lock();
@@ -394,7 +402,13 @@ impl DspiCore {
     /// the bus; transfer errors (no permission, busy) from opening it or from
     /// the connect sequence. [`DspiError::Unsupported`] on Android (use
     /// [`DspiCore::open_fd`]) and in a build without the `usb` feature (iOS).
+    /// With a [`crate::DeviceBroker`] set, the broker opens it instead, on any
+    /// platform.
     pub fn select_device(&self, serial: String) -> Result<()> {
+        // -- WP HB0 -- A broker owns USB: never claim the interface here.
+        if let Some(broker) = self.broker() {
+            return self.select_brokered(&*broker, serial);
+        }
         #[cfg(any(not(feature = "usb"), target_os = "android"))]
         {
             let _ = serial;
@@ -473,10 +487,13 @@ impl DspiCore {
     /// so a device another program holds is listed like any other and
     /// `inaccessible_devices` is not updated. For C1b's hotplug diffs, which
     /// run every half second; [`DspiCore::scan_devices`] is the picker's
-    /// scan. Does not touch `Inner`. Empty on Android and without the `usb`
-    /// feature.
+    /// scan. Only reads the broker from `Inner`. Empty on Android and without the
+    /// `usb` feature, unless a broker (WP HB0) owns the devices.
     pub(crate) fn scan_quiet(&self) -> Vec<DeviceInfo> {
-        usb::scan_quiet()
+        match self.broker() {
+            Some(broker) => broker.devices(),
+            None => usb::scan_quiet(),
+        }
     }
 }
 
