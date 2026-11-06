@@ -63,7 +63,6 @@ fn fault(hub: &FakeHub, line: &str) -> bool {
 
 fn main() {
     let mut cfg = HubConfig { bind: "0.0.0.0:11915".parse().unwrap(), ..HubConfig::default() };
-    let mut no_board = false;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         let mut val = || args.next().unwrap_or_else(|| panic!("{a} needs a value"));
@@ -85,12 +84,11 @@ fn main() {
             "--role" => cfg.pin_role = val(),
             "--name" => cfg.name = val(),
             "--max-sessions" => cfg.max_sessions = Some(val().parse().expect("--max-sessions N")),
-            "--no-board" => no_board = true,
+            "--no-board" => cfg.board_attached = false,
             other => panic!("unknown argument {other}"),
         }
     }
     let hub = FakeHub::start(cfg.clone()).expect("bind");
-    hub.set_board_present(!no_board);
     println!(
         "fake DSPi Link hub \"{}\" ({}) on {} id {} auth {:?}",
         cfg.name,

@@ -162,7 +162,8 @@ fn wp_l1_hub_faults_token_and_device_list() {
     assert_eq!(raw_request(&mut s, list.clone())["code"], "internal");
     assert_eq!(raw_request(&mut s, list.clone())["devices"].as_array().unwrap().len(), 1);
     hub.set_board_present(false);
-    assert_eq!(raw_request(&mut s, list)["devices"].as_array().unwrap().len(), 0, "no board: paired, empty list");
+    let offline = raw_request(&mut s, list);
+    assert_eq!(offline["devices"][0]["state"], "offline", "the handle is kept for the hold");
 }
 
 #[test]

@@ -86,16 +86,15 @@ fn wp_l1_f4_a_pair_reply_arriving_after_the_timeout_still_delivers_the_token() {
 
 #[test]
 fn wp_l1_f4_paired_with_no_board_is_its_own_state() {
-    let hub = FakeHub::start(HubConfig::bridge()).unwrap();
-    hub.set_board_present(false);
+    let hub = FakeHub::start(HubConfig { board_attached: false, ..HubConfig::bridge() }).unwrap();
     let (c, _) = LinkClient::connect(&TcpConnector::default(), &hub.url(), &opts(None), None).unwrap();
     assert_eq!(c.session_state(), SessionState::NeedsAuth);
     c.pair("482913", "control").unwrap();
     assert_eq!(c.session_state(), SessionState::NoBoard);
+    assert!(c.devices().is_empty());
     assert!(!c.is_closed());
     hub.set_board_present(true);
-    c.refresh_devices().unwrap();
-    assert_eq!(c.session_state(), SessionState::Online);
+    assert!(wait(|| c.session_state() == SessionState::Online), "device.added, with no refresh");
     c.close();
     assert_eq!(c.session_state(), SessionState::Closed);
 }
