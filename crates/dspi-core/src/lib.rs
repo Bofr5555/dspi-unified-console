@@ -34,9 +34,6 @@
 //! No method may panic on device, network or caller data. The C ABI and the
 //! bindings also catch unwinding at the boundary, but that is the last line,
 //! not the policy.
-//!
-//! The skeleton methods marked `todo!("WP ..")` are filled in by the work
-//! packages listed in `docs/core-merge/PLAN.md`.
 
 // The core-merge quality bar (docs/core-merge/PLAN.md §1.7, §1.8): no
 // panicking shortcuts on outside data. clippy.toml exempts test code from the
@@ -48,9 +45,6 @@
     clippy::indexing_slicing,
     clippy::arithmetic_side_effects
 )]
-// Skeleton phase: the shared plumbing below is used only once the work
-// packages fill the methods in. WP Q3 removes this allow.
-#![allow(dead_code)]
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, Weak};
@@ -467,6 +461,8 @@ pub(crate) struct Listeners {
     pub(crate) notify: Slot<dyn NotifyListener>,
     pub(crate) rta: Slot<dyn RtaListener>,
     pub(crate) device: Slot<dyn DeviceEvents>,
+    // Read by the Link reader only (src/link.rs behind feature `link`).
+    #[cfg_attr(not(feature = "link"), allow(dead_code))]
     pub(crate) link: Slot<dyn LinkListener>,
 }
 
@@ -490,6 +486,7 @@ impl DspiCore {
     /// probing or reading it: the bare minimum the work packages' tests use
     /// with a `FakeDevice`. WP C1's `open_transport` builds on it (probe,
     /// notifications, then `fetch_all`).
+    #[cfg(test)]
     pub(crate) fn attach(&self, transport: Box<dyn Transport>, serial: String, vid: u16) {
         let mut inner = self.lock();
         inner.conn = Some(Connection::new(transport, serial.clone(), vid));

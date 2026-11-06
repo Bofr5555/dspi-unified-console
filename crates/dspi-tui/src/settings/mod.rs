@@ -2380,9 +2380,7 @@ pub(crate) mod tests {
     /// A scratch path for a test that saves the app-side settings, unique per
     /// test so two running at once cannot collide.
     pub(crate) fn scratch(name: &str) -> std::path::PathBuf {
-        std::env::temp_dir()
-            .join(format!("dspi-settings-{}-{name}", std::process::id()))
-            .join("config.toml")
+        crate::test_dir(&format!("settings-{name}")).join("config.toml")
     }
     use crate::theme::{ColorDepth, Glyphs};
     use crossterm::event::KeyModifiers;

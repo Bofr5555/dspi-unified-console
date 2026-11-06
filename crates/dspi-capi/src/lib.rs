@@ -1,6 +1,6 @@
-//! The C ABI the Qt desktop app links: the old desktop core's functions
-//! (`crates/dspi-core-linux`, header `dspi_core.h`), same names, same
-//! signatures, same `#[repr(C)]` records, now over [`dspi_core::DspiCore`].
+//! The C ABI the Qt desktop app links: the retired desktop core's functions
+//! (header `dspi_core.h`, snapshot in `tests/data/dspi_core_old.h`), same
+//! names, same signatures, same `#[repr(C)]` records, now over [`dspi_core::DspiCore`].
 //!
 //! Rules for every `extern "C"` function here:
 //! - **No unwinding across the boundary.** The body runs inside [`guard`],
@@ -80,9 +80,77 @@ mod tests {
         assert_eq!(guard(0xFFu8, || 3), 3);
     }
 
+    /// The `dspi_*` names called in `text`, its comments left out.
+    fn called_names(text: &str) -> std::collections::BTreeSet<String> {
+        let code = text
+            .split("/*")
+            .enumerate()
+            .map(|(i, part)| {
+                if i == 0 {
+                    part
+                } else {
+                    part.split_once("*/").map_or("", |p| p.1)
+                }
+            })
+            .collect::<String>();
+        code.match_indices("dspi_")
+            .filter_map(|(i, _)| {
+                let rest = &code[i..];
+                let end = rest.find(|c: char| !(c.is_alphanumeric() || c == '_'))?;
+                rest[end..].starts_with('(').then(|| rest[..end].to_owned())
+            })
+            .collect()
+    }
+
+    /// Every function of the old core's header (the committed snapshot; the
+    /// crate is gone) is defined by an export here and is in the header the
+    /// build writes. Signatures: `wp_q2a_*`, `wp_q2b_*`.
     #[test]
-    #[ignore = "WP Q3"]
     fn wp_q3_every_old_function_is_exported() {
-        todo!("WP Q3: compare the exported names with crates/dspi-core-linux's header")
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let read = |p: &str| std::fs::read_to_string(dir.join(p)).unwrap();
+        let old = called_names(&read("tests/data/dspi_core_old.h"));
+        assert!(
+            old.len() > 140,
+            "the parser lost the old header: {}",
+            old.len()
+        );
+
+        let source = read("src/fns_device.rs") + &read("src/fns_misc.rs");
+        let exported: std::collections::BTreeSet<&str> = source
+            .split("pub extern \"C\" fn ")
+            .skip(1)
+            .filter_map(|s| s.split('(').next())
+            .collect();
+        let header = called_names(&read("include/dspi_core.h"));
+        for name in &old {
+            assert!(exported.contains(name.as_str()), "{name} is not exported");
+            assert!(header.contains(name), "{name} is not in the header");
+        }
+    }
+
+    #[test]
+    fn wp_q3_the_first_failure_logs_and_repeats_are_held_back() {
+        let mut t = std::collections::BTreeMap::new();
+        let start = std::time::Instant::now();
+        assert_eq!(fns_device::warn_now(&mut t, "a", start), Some(0));
+        let soon = start + std::time::Duration::from_secs(1);
+        assert_eq!(fns_device::warn_now(&mut t, "a", soon), None);
+        assert_eq!(fns_device::warn_now(&mut t, "a", soon), None);
+        // Another message is its own.
+        assert_eq!(fns_device::warn_now(&mut t, "b", soon), Some(0));
+        let later = start + std::time::Duration::from_secs(31);
+        assert_eq!(fns_device::warn_now(&mut t, "a", later), Some(2));
+        assert_eq!(fns_device::warn_now(&mut t, "a", later), None);
+    }
+
+    #[test]
+    fn wp_q3_the_failure_table_stays_bounded() {
+        let mut t = std::collections::BTreeMap::new();
+        let now = std::time::Instant::now();
+        for i in 0..1000 {
+            assert_eq!(fns_device::warn_now(&mut t, &i.to_string(), now), Some(0));
+        }
+        assert!(t.len() <= 64);
     }
 }

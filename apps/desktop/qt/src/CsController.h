@@ -94,6 +94,7 @@ private:
     QTimer m_macroPoll;
     int m_macroPolls = 0;
     int m_revision = 0;
+    QString m_lastError;            // the last apply()'s `error`, for statusMessage()
 };
 
 #endif // CSCONTROLLER_H

@@ -9,10 +9,7 @@ repository.workspace = true
 
 [lib]
 # Stays `dspi_capi` (gate 1, S-j): renaming it to `dspi_core` would collide
-# in target/ with the old core's library and with dspi-core's rlib. The
-# header keeps the name `dspi_core.h`. The Qt build picks the library with
-# the CMake cache variable DSPI_CORE_LIB (ci/check.sh --step qt-capi, from
-# wave 3; WP Q3 makes it the default and updates the packaging scripts).
+# in target/ with dspi-core's rlib. The header keeps the name `dspi_core.h`.
 # No rlib, for the same collision reason.
 name = "dspi_capi"
 crate-type = ["cdylib", "staticlib"]
@@ -26,6 +23,10 @@ serde_json.workspace = true
 # -- WP Q2b --
 # The new functions' JSON replies are built from dspi-core's Serialize records.
 serde.workspace = true
+# -- WP Q3 --
+# The old core's logging: dspi_core_new installs it, RUST_LOG picks the level.
+# No regex filters, so no regex in the Qt app.
+env_logger = { version = "0.11", default-features = false }
 
 [features]
 link = ["dspi-core/link"]
@@ -33,9 +34,6 @@ midir = ["dspi-core/midir"]
 
 [dev-dependencies]
 # -- WP Q1 --
-# Only for wp_q1_snapshot_matches_the_old_crate, which regenerates the old
-# core's header in memory to check the committed snapshot; WP Q3 deletes both.
-cbindgen = "0.29"
 # The constants test checks the header's literals against the generated ones.
 dspi-proto.workspace = true
 # -- WP Q2a --

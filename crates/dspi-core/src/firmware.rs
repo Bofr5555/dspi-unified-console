@@ -1463,13 +1463,22 @@ garbage line
         let _ = bootloader_drives();
     }
 
-    /// A fake drive: a fresh directory under the temp dir (on ~/.cache in
-    /// the build container) with an INFO_UF2.TXT.
+    /// A directory for a test's files, beside the test binary in the target
+    /// directory: the system's temp dir may be a tmpfs. Not created.
+    fn test_dir(name: &str) -> PathBuf {
+        std::env::current_exe()
+            .unwrap()
+            .with_file_name("test-scratch")
+            .join(format!("{name}-{}", std::process::id()))
+    }
+
+    /// A fake drive: a fresh directory beside the test binary with an
+    /// INFO_UF2.TXT.
     struct FakeDrive(PathBuf);
 
     impl FakeDrive {
         fn new(tag: &str, info: Option<&str>) -> Self {
-            let dir = std::env::temp_dir().join(format!("wp-c11-{tag}-{}", std::process::id()));
+            let dir = test_dir(&format!("wp-c11-{tag}"));
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(&dir).unwrap();
             if let Some(info) = info {

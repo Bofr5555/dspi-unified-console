@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn a_config_round_trips_through_the_file() {
-        let dir = std::env::temp_dir().join(format!("dspi-cfg-{}", std::process::id()));
+        let dir = crate::test_dir("cfg");
         let path = dir.join("config.toml");
         let mut c = AppConfig::default();
         c.graphing.show_phase = true;
@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn a_missing_or_broken_file_gives_the_defaults() {
-        let path = std::env::temp_dir().join("dspi-config-that-does-not-exist.toml");
+        let path = crate::test_dir("cfg-missing").join("does-not-exist.toml");
         assert_eq!(AppConfig::load_from(&path), AppConfig::default());
         assert_eq!(
             AppConfig::from_toml("this is not toml ]["),

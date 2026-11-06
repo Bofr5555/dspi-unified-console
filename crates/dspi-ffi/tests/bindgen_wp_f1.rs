@@ -39,9 +39,7 @@ fn generate(language: &str) -> PathBuf {
     let out = lib.parent().unwrap().join("wp-f1-bindings").join(language);
     let _ = std::fs::remove_dir_all(&out);
     std::fs::create_dir_all(&out).unwrap();
-    // One run per namespace, each with its config by path: until WP Q3 deletes
-    // the old core, whose library is also called `dspi_core`, a lookup by crate
-    // name can land in that crate's directory.
+    // One run per namespace, each with its config by path.
     let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
     for (name, dir) in [("dspi_core", "dspi-core"), ("dspi_ffi", "dspi-ffi")] {
         let run = Command::new(env!("CARGO_BIN_EXE_uniffi-bindgen"))

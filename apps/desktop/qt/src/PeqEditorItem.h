@@ -176,6 +176,7 @@ private:
     DSPiBridge *m_bridge = nullptr;
     int m_channel = -1;
     bool m_active = false;
+    bool m_dimmed = false;                // from reload(): paint() runs on the render thread
     QColor m_channelColor = Qt::white;
     float m_dbTop = 25.0f, m_dbBottom = -25.0f, m_minFreq = 15.0f, m_maxFreq = 20000.0f;
     float m_lineWidth = 2.0f;

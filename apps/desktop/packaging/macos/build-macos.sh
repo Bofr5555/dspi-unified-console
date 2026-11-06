@@ -27,11 +27,11 @@ name="DSPi-Console-$version-macos"
 libs=()
 for a in $archs; do
     t=$a-apple-darwin; [ "$a" = arm64 ] && t=aarch64-apple-darwin
-    (cd "$repo" && cargo build --release -p dspi-core-linux --target "$t")
-    libs+=("$target/$t/release/libdspi_core.a")
+    (cd "$repo" && cargo build --release -p dspi-capi --target "$t")
+    libs+=("$target/$t/release/libdspi_capi.a")
 done
 mkdir -p "$target/universal-apple-darwin/release"
-lipo -create "${libs[@]}" -output "$target/universal-apple-darwin/release/libdspi_core.a"
+lipo -create "${libs[@]}" -output "$target/universal-apple-darwin/release/libdspi_capi.a"
 
 cmake -S "$root/qt" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_PREFIX_PATH="$QTDIR" -DDSPI_QT_MAJOR=6 \

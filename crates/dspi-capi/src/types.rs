@@ -1,7 +1,7 @@
 //! The `#[repr(C)]` records of the C ABI and their conversions (WP Q1).
 //!
 //! Every struct here has the old desktop core's layout, field for field
-//! (`crates/dspi-core-linux`, header `dspi_core.h`): same names, same order,
+//! (snapshot `tests/data/dspi_core_old.h`): same names, same order,
 //! same types, so the Qt app compiles and runs unchanged. The tests
 //! (`types/tests_wp_q1.rs`) check `size_of`, `align_of` and every
 //! `offset_of` against the old header (a snapshot in

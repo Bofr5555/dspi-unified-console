@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::mem::{align_of, offset_of, size_of};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use super::*;
@@ -15,25 +15,9 @@ fn manifest() -> PathBuf {
 }
 
 /// The old desktop core's header: a committed snapshot
-/// (`tests/data/dspi_core_old.h`), so the tests survive WP Q3 deleting
-/// `crates/dspi-core-linux`.
+/// (`tests/data/dspi_core_old.h`); the crate itself is gone (WP Q3).
 fn old_header() -> String {
     std::fs::read_to_string(manifest().join("tests/data/dspi_core_old.h")).unwrap()
-}
-
-/// The old crate's header regenerated in memory from its sources with its own
-/// cbindgen configuration (`with_src`: no cargo metadata, no build of that
-/// crate). Only the snapshot check uses it.
-fn regenerate_old_header(old: &Path) -> String {
-    let config = cbindgen::Config::from_file(old.join("cbindgen.toml")).unwrap();
-    let mut out = Vec::new();
-    cbindgen::Builder::new()
-        .with_src(old.join("src/lib.rs"))
-        .with_config(config)
-        .generate()
-        .unwrap()
-        .write(&mut out);
-    String::from_utf8(out).unwrap()
 }
 
 /// The header build.rs wrote.
@@ -1947,26 +1931,4 @@ fn wp_q1_input_records_round_trip() {
         p: vec![1.0, 2.0, 3.0, 4.0],
     };
     assert_eq!(r::SiggenConfig::from(&SiggenConfig::from(&s)), s);
-}
-
-/// Temporary, until WP Q3 deletes `crates/dspi-core-linux` (Q3 deletes
-/// this test and the cbindgen dev-dependency with it): the snapshot is what
-/// the old crate's sources generate, and what its build wrote when it has
-/// been built. Skipped when the old crate is gone.
-#[test]
-fn wp_q1_snapshot_matches_the_old_crate() {
-    let old = manifest().join("../dspi-core-linux");
-    if !old.join("src/lib.rs").exists() {
-        return;
-    }
-    let snapshot = items(&old_header());
-    assert_eq!(
-        items(&regenerate_old_header(&old)),
-        snapshot,
-        "tests/data/dspi_core_old.h is stale: regenerate it from crates/dspi-core-linux"
-    );
-    let built = old.join("include/dspi_core.h");
-    if built.exists() {
-        assert_eq!(items(&std::fs::read_to_string(built).unwrap()), snapshot);
-    }
 }

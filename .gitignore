@@ -8,8 +8,7 @@
 /scratch
 .claude/
 
-# The desktop core's generated C header, and builds/releases
-/crates/dspi-core-linux/include/
+# Desktop builds and releases
 /apps/desktop/qt/build/
 /apps/desktop/qt/build-*/
 /dist/

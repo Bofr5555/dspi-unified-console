@@ -996,13 +996,22 @@ Filter 3: ON None
         }
     }
 
+    /// A directory for a test's files, beside the test binary in the target
+    /// directory: the system's temp dir may be a tmpfs. Not created.
+    fn test_dir(name: &str) -> std::path::PathBuf {
+        std::env::current_exe()
+            .unwrap()
+            .with_file_name("test-scratch")
+            .join(format!("{name}-{}", std::process::id()))
+    }
+
     #[test]
     fn a_rebuild_walks_the_listing_and_reports_progress() {
         let stop = std::sync::atomic::AtomicBool::new(false);
         let seen = std::sync::Mutex::new(Vec::new());
         // The rebuild writes wherever it is told, so it is pointed at a scratch
         // file rather than the real user database.
-        let dir = std::env::temp_dir().join(format!("dspi-autoeq-{}", std::process::id()));
+        let dir = test_dir("autoeq");
         let out = dir.join(USER_DB_NAME);
 
         let result = run_rebuild(&FakeGithub, &stop, &out, &|f, s, _| {
@@ -1047,7 +1056,7 @@ Filter 3: ON None
     #[test]
     fn a_cancelled_rebuild_says_so_rather_than_writing_half_a_database() {
         let stop = std::sync::atomic::AtomicBool::new(true);
-        let out = std::env::temp_dir().join("dspi-autoeq-cancelled.json");
+        let out = test_dir("autoeq-cancelled").join("db.json");
         let result = run_rebuild(&FakeGithub, &stop, &out, &|_, _, _| {});
         assert_eq!(result, Err("Cancelled.".into()));
     }

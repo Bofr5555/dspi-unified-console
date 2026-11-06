@@ -1,5 +1,5 @@
 # cbindgen configuration of the C ABI's header, include/dspi_core.h (WP Q1).
-# The old desktop core's (crates/dspi-core-linux/cbindgen.toml), plus the
+# The old desktop core's (the retired crate's cbindgen.toml), plus the
 # callback typedefs, so the records and constants are in the header before
 # the functions that use them land (WPs Q2a, Q2b).
 language = "C"
