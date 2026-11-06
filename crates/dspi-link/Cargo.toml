@@ -2,6 +2,11 @@
 name = "dspi-link"
 version = "0.1.0"
 edition = "2021"
+# Written by the owner in dspi-android (whose workspace said UNLICENSED, under
+# that repo's GPL-3.0 LICENSE). Its origin is MIT: Weeb Labs' DSPi-Link spec and
+# policy (tests/fixtures/link/LICENSE.DSPi-Link). See docs/licensing/.
+license.workspace = true
+repository.workspace = true
 publish = false
 description = "DSPi Link client (protocol 1.2, 1.1 hubs): frames, control plane, session over a WebSocket byte pipe"
 

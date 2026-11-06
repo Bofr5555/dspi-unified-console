@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# cargo-deny, through `ci/check.sh --step deny`. A list of what the workspace's
+# crates declare today, so a new licence or source stops the gate and gets read.
+# Not a licensing decision: see docs/licensing/ and PLAN-CLIENTS.md 0.4. The iOS
+# subset has its own stricter check (ci/licence-inventory.py).
+
+[graph]
+all-features = true
+
+[licenses]
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "MIT",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.9
+# The workspace's own crates: the field is the owner's working assumption. Name
+# each one, so a third-party GPL crate cannot come in unseen.
+exceptions = [
+    { crate = "dspi-capi", allow = ["GPL-3.0-or-later"] },
+    { crate = "dspi-cmd", allow = ["GPL-3.0-or-later"] },
+    { crate = "dspi-core", allow = ["GPL-3.0-or-later"] },
+    { crate = "dspi-ffi", allow = ["GPL-3.0-or-later"] },
+    { crate = "dspi-link", allow = ["GPL-3.0-or-later"] },
+    { crate = "dspi-proto", allow = ["GPL-3.0-or-later"] },
+    { crate = "dspi-session", allow = ["GPL-3.0-or-later"] },
+    { crate = "dspi-term", allow = ["GPL-3.0-or-later"] },
+    { crate = "dspi-transport", allow = ["GPL-3.0-or-later"] },
+    { crate = "dspi-tui", allow = ["GPL-3.0-or-later"] },
+    { crate = "xtask", allow = ["GPL-3.0-or-later"] },
+]
+
+[bans]
+# Licences and sources are this file's job. Duplicates are not.
+multiple-versions = "allow"
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
