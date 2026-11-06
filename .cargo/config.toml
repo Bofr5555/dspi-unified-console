@@ -1,0 +1,8 @@
+# Windows MSVC builds link the C runtime statically: the exes and the core
+# DLL then run on a clean Windows without the Visual C++ Redistributable
+# (VCRUNTIME140.dll is not part of Windows). MinGW builds don't need this.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
