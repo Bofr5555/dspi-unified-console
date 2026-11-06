@@ -4,7 +4,7 @@
 //! being a rewrite: it is the only place a `bmRequestType` is constructed, and
 //! `wIndex` is not a parameter at all, so no call site can get either wrong.
 //!
-//! The backends are USB ([`UsbTransport`]), USB MIDI (`midi`), DSPi Link
+//! The backends are USB (`usb`, feature `usb`, on by default), USB MIDI (`midi`), DSPi Link
 //! (`link`, feature `link`) and the demo device (`fake`). [`MockTransport`] backs
 //! the tests, including the awkward cases (stalls, timeouts, a simulated flash blackout)
 //! that are impractical to provoke on real hardware.
@@ -16,11 +16,15 @@ pub mod fake;
 pub mod link;
 pub mod midi;
 pub mod mock;
+// -- WP CG3 --
+#[cfg(feature = "usb")]
 pub mod usb;
 
 pub use fake::FakeDevice;
 pub use midi::{MidiPipe, MidiTransport, PipeError};
 pub use mock::MockTransport;
+// -- WP CG3 --
+#[cfg(feature = "usb")]
 pub use usb::{UsbTransport, list_devices};
 // Work-package sections: add re-exports only inside your own section.
 // -- WP T1 --

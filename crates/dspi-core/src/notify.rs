@@ -378,6 +378,15 @@ fn apply_queued(inner: &mut Inner, r: &mut NotifyResult) -> FollowUp {
                     r.flags |= NOTIFY_NAMES;
                 }
             }
+            // -- WP CG5 --
+            Event::Unknown { id, bytes } if *id == crate::rta::EVT_RTA_CONFIG => {
+                let src = bytes
+                    .get(crate::rta::RTA_CONFIG_SOURCE_AT)
+                    .copied()
+                    .unwrap_or(0);
+                let own = is_own(kind, src, note, session);
+                inner.rta.note_config(bytes, own, note.origin.unwrap_or(0));
+            }
             // The v1 master volume is deduplicated against its v2 twin (the
             // `PARAM_CHANGED` that follows it); the link states and unknown
             // events are only logged.

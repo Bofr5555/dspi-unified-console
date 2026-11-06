@@ -32,4 +32,6 @@ include = [
     "SpdifRxStatus",
     "DeviceEventCallback",
     "NotifyCallback",
+    # -- WP CG1 --
+    "LinkEventCallback",
 ]

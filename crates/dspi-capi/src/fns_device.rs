@@ -251,7 +251,7 @@ pub extern "C" fn dspi_core_new() -> *mut FfiCore {
 /// Destroy a core instance, closing its device. Null is ignored. The handle and
 /// any pointer `dspi_get_state` returned for it are invalid afterwards.
 ///
-/// The hotplug, notify and RTA callbacks are cleared first, waiting for a call
+/// The hotplug, notify, RTA and Link callbacks are cleared first, waiting for a call
 /// in progress on another thread: once this starts closing the device, none of
 /// them runs again, so `user_data` may go right after it returns. Do not call
 /// this from inside one of those callbacks: it would wait for itself.
@@ -268,6 +268,14 @@ pub extern "C" fn dspi_core_free(core: *mut FfiCore) {
         handle.core.set_notify_listener(None);
         handle.core.rta_set_listener(None);
         handle.core.set_hotplug_callback(None);
+        // -- WP CG1 --
+        // The session events callback goes the same way, and a closed session
+        // cannot reconnect behind the free.
+        #[cfg(feature = "link")]
+        {
+            handle.core.set_link_listener(None);
+            handle.core.link_close();
+        }
         handle.core.disconnect();
     });
 }

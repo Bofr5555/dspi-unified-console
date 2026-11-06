@@ -72,20 +72,29 @@ mod device;
 mod ext;
 pub mod files;
 mod firmware;
+// -- WP CG8 --
+mod firmware_guard;
 mod hardware;
 mod hotplug;
 mod info;
 #[cfg(feature = "link")]
 pub mod link;
+// -- WP CG2 --
+#[cfg(feature = "mdns")]
+pub mod link_browse;
 mod monitor;
 mod notify;
 mod params;
 mod params_fx;
 mod presets;
+// -- WP CG4 --
+mod raw;
 mod rta;
 mod stats;
 // -- WP CG11 --
 mod vreg;
+// -- WP CG6 --
+pub mod autoeq;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -114,6 +123,10 @@ pub use vreg::{VregCalPhase, VregCalView, VregChoice, VregDemoEvent};
 // -- WP C14 --
 // -- WP C15 --
 // -- WP F1 --
+// -- WP CG6 --
+pub use autoeq::*;
+// -- WP CG8 --
+pub use firmware_guard::*;
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -133,6 +146,10 @@ pub struct DspiCore {
     // -- WP CG11 --
     /// The core-voltage calibration flow. Taken before `inner`, never after.
     pub(crate) vreg_cal: Mutex<vreg::CalState>,
+    // -- WP CG2 --
+    /// The running hub browse.
+    #[cfg(feature = "mdns")]
+    pub(crate) browse: link_browse::BrowseSlot,
 }
 
 /// Everything behind the lock.
@@ -486,6 +503,9 @@ impl DspiCore {
             link_control: Mutex::new(None),
             // -- WP CG11 --
             vreg_cal: Mutex::new(vreg::CalState::new()),
+            // -- WP CG2 --
+            #[cfg(feature = "mdns")]
+            browse: link_browse::BrowseSlot::default(),
         })
     }
 }

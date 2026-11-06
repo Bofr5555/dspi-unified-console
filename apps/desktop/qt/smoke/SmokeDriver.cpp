@@ -25,6 +25,11 @@
 #include <QTimer>
 #include <QUrl>
 #include <QVariant>
+// -- WP QD30 --
+#include <QCursor>
+#include <QMouseEvent>
+#include <QQmlComponent>
+#include <QQuickItem>
 #include <cstdio>
 
 // QML runtime errors fail the run (TypeError, ReferenceError, a broken binding)
@@ -66,6 +71,8 @@ void SmokeDriver::run() {
     testFiles();
     testAutoEq();
     testWindows();
+    // -- WP QD30 --
+    testPopoverAnchor();
     testSettingsPages();
     testBypassRepaint();
     testSweep();
@@ -457,6 +464,107 @@ void SmokeDriver::testWindows() {
     for (const char *n : { "matrix", "loudness", "crossfeed", "leveller", "psybass", "subharm", "tube", "upmix", "stats",
                            "spectrum", "graph", "siggen", "monitor", "firmware", "whatsNew", "autoeq", "autoeqRebuild" })
         openAndGrab(n);
+}
+
+// -- WP QD30 --
+// A PopoverWindow's anchor keeps its hand cursor while the popover is open, and a
+// press anywhere on it closes the popover once. The popover's shadow margin
+// overlaps the anchor's lower part, and the catcher covers the rest. Offscreen
+// takes the non-Wayland path; PopoverWindow's own area is the same on Wayland.
+static void sendMouse(QQuickWindow *w, QEvent::Type type, const QPointF &local, Qt::MouseButton button = Qt::NoButton) {
+    const Qt::MouseButtons held = type == QEvent::MouseButtonPress ? Qt::MouseButtons(Qt::LeftButton) : Qt::MouseButtons(Qt::NoButton);
+    QMouseEvent e(type, local, local, QPointF(w->mapToGlobal(local.toPoint())), button, held, Qt::NoModifier);
+    QCoreApplication::sendEvent(w, &e);
+}
+
+static void clickAt(QQuickWindow *w, const QPointF &local) {
+    sendMouse(w, QEvent::MouseMove, local);
+    sendMouse(w, QEvent::MouseButtonPress, local, Qt::LeftButton);
+    sendMouse(w, QEvent::MouseButtonRelease, local, Qt::LeftButton);
+}
+
+void SmokeDriver::testPopoverAnchor() {
+    section("QD30 popover anchor");
+    auto *main = qobject_cast<QQuickWindow *>(root());
+    check("QD30 main window", main != nullptr);
+    if (!main) return;
+    main->show();
+    spin(200);
+
+    // Every popover the main window has built, the graph gear's among them
+    QList<QQuickWindow *> popovers;
+    for (QQuickWindow *w : root()->findChildren<QQuickWindow *>())
+        if (w->transientParent() == main && w->metaObject()->indexOfMethod("toggleBelow(QVariant)") >= 0) popovers << w;
+    check("QD30 the main window has a popover", !popovers.isEmpty());
+
+    QQmlComponent component(m_.engine);
+    component.setData("import QtQuick 2.15\n"
+                      "MouseArea {\n"
+                      "    property QtObject popover\n"
+                      "    property int clicks: 0\n"
+                      "    width: 24; height: 22; z: 1000\n"
+                      "    hoverEnabled: true\n"
+                      "    cursorShape: Qt.PointingHandCursor\n"
+                      "    onClicked: { clicks++; popover.toggleBelow(this) }\n"
+                      "}\n", QUrl());
+    for (QQuickWindow *pop : popovers) {
+        const QByteArray name = pop->metaObject()->className();
+        auto *gear = qobject_cast<QQuickItem *>(component.create());
+        check(("QD30 test anchor " + name).constData(), gear != nullptr);
+        if (!gear) continue;
+        gear->setParentItem(main->contentItem());
+        gear->setPosition(QPointF(main->width() / 2, 50));
+        gear->setProperty("popover", QVariant::fromValue<QObject *>(pop));
+
+        int opens = 0, closes = 0;
+        auto counter = connect(pop, &QWindow::visibleChanged, this, [&](bool on) { (on ? opens : closes)++; });
+        const QPointF upper(gear->x() + 12, gear->y() + 2);
+        const QPointF lower(gear->x() + 12, gear->y() + 18);
+        const QPoint lowerGlobal = main->mapToGlobal(lower.toPoint());
+        const auto what = [&name](const char *s) { return ("QD30 " + name + ": " + s); };
+
+        clickAt(main, upper);
+        check(what("the anchor opens it").constData(), pop->isVisible() && opens == 1 && gear->property("clicks").toInt() == 1);
+        // Without a move, as when the window has just appeared under the pointer
+        check(what("the hand stays on opening").constData(), main->cursor().shape() == Qt::PointingHandCursor);
+
+        check(what("its window overlaps the anchor (the reported case)").constData(), pop->geometry().contains(lowerGlobal));
+        sendMouse(main, QEvent::MouseMove, QPointF(5, 5));
+        check(what("the catcher shows no hand off the anchor").constData(), main->cursor().shape() != Qt::PointingHandCursor);
+        sendMouse(main, QEvent::MouseMove, upper);
+        check(what("back on the anchor, the hand, first move").constData(), main->cursor().shape() == Qt::PointingHandCursor);
+
+        const QPointF inPopup = pop->mapFromGlobal(lowerGlobal);
+        sendMouse(pop, QEvent::MouseMove, inPopup);
+        check(what("the hand on the anchor under the popover").constData(), pop->cursor().shape() == Qt::PointingHandCursor);
+        // The shadow beside the card: the card's own controls can show a hand
+        sendMouse(pop, QEvent::MouseMove, QPointF(2, pop->height() / 2));
+        check(what("no hand off the anchor in the popover").constData(), pop->cursor().shape() != Qt::PointingHandCursor);
+
+        // The part of the anchor under the popover
+        clickAt(pop, inPopup);
+        spin(400);   // past the anchor's reopen guard: nothing may reopen it late
+        check(what("a press under the popover closes it once").constData(), !pop->isVisible() && closes == 1 && opens == 1);
+        check(what("that press does not reach the anchor").constData(), gear->property("clicks").toInt() == 1);
+
+        // The part in the parent window
+        clickAt(main, upper);
+        check(what("reopens").constData(), pop->isVisible() && opens == 2);
+        clickAt(main, upper);
+        spin(400);
+        check(what("a press in the parent window closes it once").constData(), !pop->isVisible() && closes == 2 && opens == 2);
+
+        // The anchor's own click, the path on Wayland, where the catcher is off
+        clickAt(main, upper);
+        QMetaObject::invokeMethod(pop, "toggleBelow", Q_ARG(QVariant, QVariant::fromValue<QObject *>(gear)));
+        spin(400);
+        check(what("toggleBelow on an open popover closes it once").constData(), !pop->isVisible() && closes == 3 && opens == 3);
+
+        disconnect(counter);
+        sendMouse(main, QEvent::MouseMove, QPointF(5, 5));
+        delete gear;
+    }
+    check("QD30 no anchor component error", !component.isError());
 }
 
 void SmokeDriver::testSettingsPages() {

@@ -37,14 +37,25 @@
 //! The request (what the app wants analysed) and the listener survive a
 //! reconnect, as in the old core; `rta_start` must be called again for the
 //! new connection.
+//!
+//! The device holds one analyser configuration, and the last console to push
+//! one drives it; every other console follows (WP CG5; the Swift console's
+//! `rta_sharing_spec.md` section 3). An `NOTIFY_EVT_RTA_CONFIG` from someone
+//! else, or on firmware without the event a readback that stops agreeing,
+//! moves this core to following: [`RtaState`] then feeds the engine the
+//! device's configuration instead of the request's, and the worker's
+//! [`PollTransport`] drops the engine's push, so the snapshot shows what the
+//! analyser is doing and nothing is written over the other console.
+//! [`DspiCore::rta_take_control`], or the request changing, ends it.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, Weak};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
+use dspi_proto::generated::notify as nfy;
 use dspi_proto::generated::opcodes as op;
-use dspi_proto::packets::RtaBandFrame;
+use dspi_proto::packets::{RtaBandFrame, RtaConfig};
 use dspi_session::rta::{self as engine, Budget, Options, Request, RtaEngine, ViewId};
 use dspi_transport::{DeviceDescriptor, Transport, TransportCaps, TransportError, TransportKind};
 
@@ -59,6 +70,12 @@ pub(crate) const TICK: Duration = Duration::from_millis(60);
 /// How often the worker looks again while nothing is requested; a request
 /// wakes it at once.
 const IDLE_TICK: Duration = Duration::from_millis(500);
+/// `NOTIFY_EVT_RTA_CONFIG`, which the session's decoder delivers as
+/// `Event::Unknown` (payload from byte 4: the applied `RtaConfig`, then the
+/// source; notify.c, `NOTIFY_EVT_RTA_CONFIG`).
+pub(crate) const EVT_RTA_CONFIG: u8 = nfy::NOTIFY_EVT_RTA_CONFIG as u8;
+/// Where the source byte sits in that event's payload.
+pub(crate) const RTA_CONFIG_SOURCE_AT: usize = RtaConfig::SIZE;
 /// Per poll: the bin frame may take a few chunks (a Link transfer is small),
 /// but the lock is held for the poll, so it is bounded.
 const BUDGET: Budget = Budget {
@@ -110,6 +127,10 @@ impl DspiCore {
     /// width are ignored; an `fft_order` of 0 means the device's default,
     /// and one outside the device's range is clamped into it. Wakes the
     /// worker at once.
+    ///
+    /// A request that changes what this console asks for takes the analyser
+    /// back from a console being followed ([`Self::rta_get_ownership`]).
+    /// Releasing it (mask 0) and asking for the same thing again does not.
     pub fn rta_set_request(&self, request: RtaRequest) {
         let signal = {
             let mut inner = self.lock();
@@ -117,6 +138,7 @@ impl DspiCore {
                 return;
             }
             inner.rta.request = request;
+            inner.rta.judge_request();
             inner.rta.worker.as_ref().map(|w| Arc::clone(&w.signal))
         };
         if let Some(signal) = signal {
@@ -137,6 +159,81 @@ impl DspiCore {
     pub fn rta_get_snapshot(&self) -> RtaSnapshot {
         self.lock().rta.snapshot.clone()
     }
+
+    /// Whether this console drives the analyser or follows another one's
+    /// configuration. While following, the snapshot shows the device's tap
+    /// and channels rather than the request's. The [`RtaListener`] is woken
+    /// when this changes.
+    pub fn rta_get_ownership(&self) -> RtaOwnership {
+        self.lock().rta.ownership()
+    }
+
+    /// Stop following and push this console's own request on the next poll.
+    /// Wakes the worker at once; does nothing while already driving.
+    pub fn rta_take_control(&self) {
+        let signal = {
+            let mut inner = self.lock();
+            inner.rta.take_control();
+            inner.rta.worker.as_ref().map(|w| Arc::clone(&w.signal))
+        };
+        if let Some(signal) = signal {
+            signal.kick();
+        }
+    }
+}
+
+/// Another console's configuration, while this one follows it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Followed {
+    config: RtaConfig,
+    /// The session that pushed it; 0 when the writer is unknown.
+    origin: u16,
+}
+
+/// What this core knows about the other consoles on this connection
+/// (WP CG5; `SpectrumAnalyser.swift`, "Sharing with other consoles").
+#[derive(Debug, Default)]
+struct Sharing {
+    following: Option<Followed>,
+    /// What the request last asked for, kept while it is released, so asking
+    /// for the same again is told apart from a new choice and an event that
+    /// arrives meanwhile is judged against it.
+    last_own: Option<RtaConfig>,
+    /// The device held `last_own` since the last push. Only then does a
+    /// disagreeing readback mean another host, rather than a refusal.
+    agreed: bool,
+    /// Someone else chose what we want while we followed: the engine will
+    /// push this, and must not, since the device already holds it.
+    absorb: Option<RtaConfig>,
+    /// Bumped by anything that changes ownership, so a readback taken before
+    /// the change is not applied after it.
+    epoch: u64,
+    /// What the listener was last woken for.
+    published: RtaOwnership,
+}
+
+/// The sharing rules for one poll, and what the poll saw. Taken under the
+/// lock; over Link the poll itself runs without it.
+#[derive(Debug, Default)]
+struct PollShare {
+    /// Following: never write over the device's configuration.
+    hold: bool,
+    absorb: Option<RtaConfig>,
+    epoch: u64,
+    /// The configuration the device reported.
+    readback: Option<RtaConfig>,
+    /// A push really went out.
+    pushed: bool,
+    /// `absorb` was dropped instead of pushed.
+    absorbed: bool,
+}
+
+/// The same tap, channels and transform size. Exact: a device analysing more
+/// channels than asked for rotates through them. It clamps averaging and
+/// decay rather than refusing them, so those never decide
+/// (`RtaConfig.matches`, SpectrumAnalyser.swift).
+fn same_choice(a: &RtaConfig, b: &RtaConfig) -> bool {
+    a.tap == b.tap && a.channel_mask == b.channel_mask && a.fft_order == b.fft_order
 }
 
 /// The analyser's state and its worker thread (WP C9).
@@ -161,6 +258,8 @@ pub(crate) struct RtaState {
     /// The worker that has `engine` out for a poll with the lock released
     /// (Link only); `engine` is then a placeholder.
     engine_out: Option<u64>,
+    /// Driving or following (WP CG5).
+    sharing: Sharing,
 }
 
 impl Default for RtaState {
@@ -174,6 +273,7 @@ impl Default for RtaState {
             worker: None,
             next_id: 0,
             engine_out: None,
+            sharing: Sharing::default(),
         }
     }
 }
@@ -183,6 +283,13 @@ impl RtaState {
     /// both snapshot versions so the app redraws.
     fn reset(&mut self) {
         self.engine.disconnect();
+        // What the other consoles did belongs to the connection; what we
+        // last asked for does not.
+        self.sharing = Sharing {
+            last_own: self.sharing.last_own,
+            epoch: self.sharing.epoch.wrapping_add(1),
+            ..Sharing::default()
+        };
         self.caps = empty_caps();
         self.snapshot = RtaSnapshot {
             version: self.snapshot.version.wrapping_add(1),
@@ -191,20 +298,206 @@ impl RtaState {
         };
     }
 
-    /// Feed the request into the engine: options against the caps, one
-    /// subscription while the mask is not 0. Idempotent.
-    fn sync_request(&mut self) {
-        let req = self.request;
-        let fft_order = match (req.fft_order, self.engine.caps()) {
-            (0, _) => None,
-            (o, Some(c)) => Some(o.clamp(c.order_min, c.order_max)),
-            (o, None) => Some(o),
+    /// The configuration the request asks for; `None` while it is released
+    /// or the caps are unknown.
+    fn own_config(&self) -> Option<RtaConfig> {
+        let (req, caps) = (&self.request, &self.caps);
+        let channel_mask = effective_mask(req, caps);
+        if channel_mask == 0 || !caps.supported {
+            return None;
+        }
+        let fft_order = match req.fft_order {
+            0 => caps.order_default,
+            o => o.clamp(caps.order_min, caps.order_max),
         };
-        self.engine.set_options(Options {
+        Some(RtaConfig {
+            tap: req.tap,
+            channel_mask,
             fft_order,
             avg_ms: req.avg_ms,
             peak_decay_db_s: req.peak_decay_db_s,
-        });
+            flags: 0,
+        })
+    }
+
+    /// A change of what this console asks for takes the analyser back. The
+    /// same thing asked for again, or nothing asked for, does not.
+    fn judge_request(&mut self) {
+        let Some(mine) = self.own_config() else {
+            return;
+        };
+        if self.sharing.last_own != Some(mine) {
+            self.take_control();
+            self.sharing.agreed = false;
+            self.sharing.absorb = None;
+            self.sharing.last_own = Some(mine);
+        }
+    }
+
+    /// Stop following; the engine then wants the request again and pushes it.
+    fn take_control(&mut self) {
+        let sh = &mut self.sharing;
+        sh.epoch = sh.epoch.wrapping_add(1);
+        if sh.following.take().is_some() {
+            sh.agreed = false;
+            sh.absorb = None;
+        }
+    }
+
+    /// Whether this device could hold `c`: the firmware validates and limits
+    /// what it applies (`config_valid`, `apply_config`, rta.c), so anything
+    /// else in an event or a readback is damage, and must not reach the
+    /// views. False for everything while the caps are unknown.
+    fn followable(&self, c: &RtaConfig) -> bool {
+        let caps = &self.caps;
+        let shape = RtaRequest {
+            tap: c.tap,
+            mask: c.channel_mask,
+            ..RtaRequest::default()
+        };
+        caps.supported
+            && (c.tap == engine::TAP_INPUT || c.tap == engine::TAP_OUTPUT)
+            && (caps.order_min..=caps.order_max).contains(&c.fft_order)
+            && c.channel_mask != 0
+            && effective_mask(&shape, caps) == c.channel_mask
+    }
+
+    /// The device holds what we want: driving, with nothing to push.
+    fn holds_ours(&mut self, mine: RtaConfig) {
+        let sh = &mut self.sharing;
+        if sh.following.take().is_some() {
+            sh.absorb = Some(mine);
+        }
+        sh.agreed = true;
+    }
+
+    /// An `NOTIFY_EVT_RTA_CONFIG`, with its payload: the configuration the
+    /// device just applied. `own`: the echo rule says we wrote it. `origin`:
+    /// the session the hub attributes it to, 0 when unknown. Ignored without
+    /// a worker, whose start begins with a push of its own anyway.
+    pub(crate) fn note_config(&mut self, payload: &[u8], own: bool, origin: u16) {
+        let Some(worker_signal) = self.worker.as_ref().map(|w| Arc::clone(&w.signal)) else {
+            return;
+        };
+        let Some(config) = RtaConfig::decode(payload)
+            .ok()
+            .filter(|c| self.followable(c))
+        else {
+            log::debug!("ignoring a malformed analyser configuration event");
+            return;
+        };
+        self.judge_request();
+        self.sharing.epoch = self.sharing.epoch.wrapping_add(1);
+        // While released this is judged against what we last asked for, so a
+        // later request follows a change made in the meantime.
+        let Some(mine) = self.sharing.last_own else {
+            return;
+        };
+        if same_choice(&config, &mine) {
+            // Our echo, or someone else choosing exactly what we want.
+            self.holds_ours(mine);
+        } else if !own {
+            self.sharing.following = Some(Followed { config, origin });
+        }
+        // An echo of ours that no longer matches is an older push, superseded
+        // by one still in flight.
+        worker_signal.kick();
+    }
+
+    /// What the poll about to start must do about pushes.
+    fn poll_share(&self) -> PollShare {
+        PollShare {
+            hold: self.sharing.following.is_some(),
+            absorb: self.sharing.absorb,
+            epoch: self.sharing.epoch,
+            ..PollShare::default()
+        }
+    }
+
+    /// Judge what a finished poll saw. Firmware without the event shows
+    /// another host only here; with the event this just gets there first,
+    /// and the event then supplies the origin.
+    fn after_poll(&mut self, share: &PollShare) {
+        if share.pushed {
+            self.sharing.agreed = false;
+        }
+        if share.absorbed && self.sharing.absorb == share.absorb {
+            self.sharing.absorb = None;
+        }
+        // Anything that changed ownership mid-poll outranks this reading.
+        let Some(read) = share.readback.filter(|_| share.epoch == self.sharing.epoch) else {
+            return;
+        };
+        let Some(mine) = self.own_config() else {
+            return;
+        };
+        if same_choice(&read, &mine) {
+            self.holds_ours(mine);
+            return;
+        }
+        let another_host = match self.sharing.following {
+            Some(f) => !same_choice(&read, &f.config),
+            // It held ours and now holds something else, which is not a
+            // refusal. Never agreed: the engine's own give-up count decides.
+            None => self.sharing.agreed,
+        };
+        if another_host && self.followable(&read) {
+            self.sharing.following = Some(Followed {
+                config: read,
+                origin: 0,
+            });
+        }
+    }
+
+    /// What `rta_get_ownership` returns.
+    fn ownership(&self) -> RtaOwnership {
+        self.sharing
+            .following
+            .map_or_else(RtaOwnership::default, |f| RtaOwnership {
+                following: true,
+                origin: f.origin,
+                tap: f.config.tap,
+                mask: f.config.channel_mask,
+                fft_order: f.config.fft_order,
+            })
+    }
+
+    /// The request with the tap and channels the device really analyses:
+    /// what is polled and drawn. Released stays released.
+    fn analysed(&self) -> RtaRequest {
+        match self.sharing.following {
+            Some(f) if self.request.mask != 0 => RtaRequest {
+                tap: f.config.tap,
+                mask: f.config.channel_mask,
+                ..self.request
+            },
+            _ => self.request,
+        }
+    }
+
+    /// Feed the request into the engine: options against the caps, one
+    /// subscription while the mask is not 0. While following, the device's
+    /// configuration instead. Idempotent.
+    fn sync_request(&mut self) {
+        self.judge_request();
+        let req = self.analysed();
+        let options = match self.sharing.following {
+            Some(f) => Options {
+                fft_order: Some(f.config.fft_order),
+                avg_ms: f.config.avg_ms,
+                peak_decay_db_s: f.config.peak_decay_db_s,
+            },
+            None => Options {
+                fft_order: match (req.fft_order, self.engine.caps()) {
+                    (0, _) => None,
+                    (o, Some(c)) => Some(o.clamp(c.order_min, c.order_max)),
+                    (o, None) => Some(o),
+                },
+                avg_ms: req.avg_ms,
+                peak_decay_db_s: req.peak_decay_db_s,
+            },
+        };
+        self.engine.set_options(options);
         let mask = effective_mask(&req, &self.caps);
         if mask == 0 {
             if let Some(view) = self.view.take() {
@@ -388,7 +681,7 @@ fn levels(e: &RtaEngine, v: &[u8], bands: usize) -> Vec<f32> {
 /// The snapshot from the engine's state, for the current request.
 fn build_snapshot(st: &RtaState) -> RtaSnapshot {
     let e = &st.engine;
-    let req = st.request;
+    let req = st.analysed();
     let mask = effective_mask(&req, &st.caps);
     let mut s = empty_snapshot();
     if mask == 0 || !e.supported() {
@@ -471,12 +764,13 @@ fn build_snapshot(st: &RtaState) -> RtaSnapshot {
     s.sample_rate = dev.sample_rate_hz;
     s.first_band = first_band;
     s.fft_order = order;
-    s.config_rejected = e.rejected();
+    // Following is not a refusal, whatever the engine counted on the way.
+    s.config_rejected = e.rejected() && st.sharing.following.is_none();
     s.refresh_interval_s = e.refresh_interval().as_secs_f32();
     s
 }
 
-// ── The bands-all fallback ─────────────────────────────────────────────
+// ── The poll's transport ───────────────────────────────────────────────
 
 /// The connection's transport as the engine sees it, with the firmware's
 /// USB-only all-channel band read (`0x0F`) replaced by one `0x0B` per
@@ -485,14 +779,20 @@ fn build_snapshot(st: &RtaState) -> RtaSnapshot {
 /// On a non-USB link the refusal is permanent, so `refused` remembers it and
 /// later polls go per channel at once; over USB a STALL means the bulk lock
 /// is busy, so the next poll tries `0x0F` again.
-struct BandsFallback<'a> {
+///
+/// It also applies the sharing rules (WP CG5): while following, the engine's
+/// push of the followed configuration is dropped, so it treats that as
+/// applied and goes on polling, and every configuration read is noted in
+/// `share`.
+struct PollTransport<'a> {
     t: &'a mut dyn Transport,
     /// The channels the engine asks for (its wanted mask).
     mask: u16,
     refused: &'a mut bool,
+    share: &'a mut PollShare,
 }
 
-impl BandsFallback<'_> {
+impl PollTransport<'_> {
     /// One frame per requested channel, back to back as `0x0F` answers. A
     /// channel that fails is left out; none at all is the first error.
     fn per_channel(&mut self) -> dspi_transport::Result<Vec<u8>> {
@@ -521,9 +821,16 @@ impl BandsFallback<'_> {
     }
 }
 
-impl Transport for BandsFallback<'_> {
+impl Transport for PollTransport<'_> {
     fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
-        self.t.control_in(opcode, value, len)
+        let r = self.t.control_in(opcode, value, len);
+        if opcode == op::REQ_RTA_GET_CONFIG
+            && let Ok(b) = &r
+            && let Ok(config) = RtaConfig::decode(b)
+        {
+            self.share.readback = Some(config);
+        }
+        r
     }
 
     fn control_in_upto(
@@ -547,7 +854,19 @@ impl Transport for BandsFallback<'_> {
     }
 
     fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> dspi_transport::Result<()> {
-        self.t.control_out(opcode, value, data)
+        if opcode != op::REQ_RTA_SET_CONFIG {
+            return self.t.control_out(opcode, value, data);
+        }
+        if self.share.hold {
+            return Ok(());
+        }
+        if self.share.absorb.is_some() && RtaConfig::decode(data).ok() == self.share.absorb {
+            self.share.absorbed = true;
+            return Ok(());
+        }
+        let r = self.t.control_out(opcode, value, data);
+        self.share.pushed |= r.is_ok();
+        r
     }
 
     fn descriptor(&self) -> &DeviceDescriptor {
@@ -737,6 +1056,7 @@ fn poll_once(c: &DspiCore, id: u64, probed: &mut bool, refused: &mut bool) -> Po
     if *probed {
         inner.rta.sync_request();
     }
+    let mut share = inner.rta.poll_share();
     let mut eng = std::mem::take(&mut inner.rta.engine);
     inner.rta.engine_out = Some(id);
     drop(inner);
@@ -745,10 +1065,11 @@ fn poll_once(c: &DspiCore, id: u64, probed: &mut bool, refused: &mut bool) -> Po
         let mask = eng.wanted().map_or(0, |w| w.channel_mask);
         let mut t = side.rta_transport(mask);
         if *probed {
-            let mut ft = BandsFallback {
+            let mut ft = PollTransport {
                 t: &mut *t,
                 mask,
                 refused,
+                share: &mut share,
             };
             !eng.tick(&mut ft, now, BUDGET).disconnected
         } else {
@@ -772,6 +1093,7 @@ fn poll_once(c: &DspiCore, id: u64, probed: &mut bool, refused: &mut bool) -> Po
         };
     }
     inner.rta.engine = eng;
+    inner.rta.after_poll(&share);
     finish_poll(&mut inner, Some(alive))
 }
 
@@ -791,6 +1113,7 @@ fn poll(inner: &mut Inner, id: u64, probed: &mut bool, refused: &mut bool, now: 
     if *probed {
         inner.rta.sync_request();
     }
+    let mut share = inner.rta.poll_share();
     // The engine is moved out for the poll, so the connection can be
     // borrowed as a `Writable` alongside it.
     let mut eng = std::mem::take(&mut inner.rta.engine);
@@ -803,11 +1126,17 @@ fn poll(inner: &mut Inner, id: u64, probed: &mut bool, refused: &mut bool, now: 
             return Some(true);
         }
         let mask = eng.wanted().map_or(0, |c| c.channel_mask);
-        let mut ft = BandsFallback { t, mask, refused };
+        let mut ft = PollTransport {
+            t,
+            mask,
+            refused,
+            share: &mut share,
+        };
         let report = eng.tick(&mut ft, now, BUDGET);
         Some(!report.disconnected)
     })();
     inner.rta.engine = eng;
+    inner.rta.after_poll(&share);
     finish_poll(inner, alive)
 }
 
@@ -836,6 +1165,11 @@ fn finish_poll(inner: &mut Inner, alive: Option<bool>) -> Polled {
     }
     let next = build_snapshot(st);
     changed |= st.publish(next);
+    let ownership = st.ownership();
+    if ownership != st.sharing.published {
+        st.sharing.published = ownership;
+        changed = true;
+    }
     Polled {
         changed,
         more: alive,
@@ -1504,5 +1838,416 @@ mod tests_wp_c9 {
         assert_eq!(effective_mask(&r, &caps), 0b11);
         caps.supported = false;
         assert_eq!(effective_mask(&r, &caps), 0xFFFF);
+    }
+
+    // ── WP CG5: following another console, without a hub ──────────────
+
+    fn config(tap: u8, channel_mask: u16) -> RtaConfig {
+        RtaConfig {
+            tap,
+            channel_mask,
+            fft_order: 10,
+            avg_ms: 300,
+            peak_decay_db_s: 12,
+            flags: 0,
+        }
+    }
+
+    fn event(c: RtaConfig, source: u8) -> Vec<u8> {
+        let mut p = c.encode().to_vec();
+        p.push(source);
+        p
+    }
+
+    fn driving_on(mask: u16, kind: TransportKind) -> (Arc<DspiCore>, Arc<Mutex<Dev>>) {
+        let (t, dev) = RtaDevice::new(kind, true);
+        let core = core_with(t);
+        core.rta_set_request(request(mask));
+        core.rta_start();
+        wait_for("frames", || core.rta_get_snapshot().count > 0);
+        wait_for("the push", || dev.lock().unwrap().config.is_some());
+        (core, dev)
+    }
+
+    fn pushes(dev: &Arc<Mutex<Dev>>) -> usize {
+        count(dev, op::REQ_RTA_SET_CONFIG)
+    }
+
+    fn readbacks(dev: &Arc<Mutex<Dev>>) -> usize {
+        count(dev, op::REQ_RTA_GET_CONFIG)
+    }
+
+    #[test]
+    fn wp_cg5_a_readback_that_stops_agreeing_means_another_host() {
+        let (core, dev) = driving_on(0b1, TransportKind::Usb);
+        let seen = readbacks(&dev);
+        wait_for("agreement", || {
+            readbacks(&dev) > seen && core.lock().rta.sharing.agreed
+        });
+        let n = pushes(&dev);
+        dev.lock().unwrap().config = Some(config(engine::TAP_OUTPUT, 0b10));
+        wait_for("following", || core.rta_get_ownership().following);
+        let o = core.rta_get_ownership();
+        assert_eq!((o.origin, o.mask, o.fft_order), (0, 0b10, 10));
+        // Follows further changes in place, and never writes over them.
+        dev.lock().unwrap().config = Some(config(engine::TAP_INPUT, 0b11));
+        wait_for("the new tap", || {
+            core.rta_get_ownership().tap == engine::TAP_INPUT
+        });
+        wait_for("the new picture", || {
+            let s = core.rta_get_snapshot();
+            s.tap == engine::TAP_INPUT && s.count == 2
+        });
+        let seen = readbacks(&dev);
+        wait_for("more polls", || readbacks(&dev) >= seen + 2);
+        assert_eq!(pushes(&dev), n, "a follower does not push");
+        assert!(!core.rta_get_snapshot().config_rejected);
+    }
+
+    #[test]
+    fn wp_cg5_a_refused_push_is_not_following() {
+        // SET is taken but never applied: the readback never agrees.
+        struct Refusing(RtaDevice);
+        impl Transport for Refusing {
+            fn control_in(&mut self, o: u8, v: u16, l: u16) -> dspi_transport::Result<Vec<u8>> {
+                self.0.control_in(o, v, l)
+            }
+            fn control_out(&mut self, o: u8, v: u16, _: &[u8]) -> dspi_transport::Result<()> {
+                let refused = config(engine::TAP_OUTPUT, 0b1000);
+                self.0.dev.lock().unwrap().log.push((o, v));
+                self.0.dev.lock().unwrap().config = Some(refused);
+                Ok(())
+            }
+            fn descriptor(&self) -> &DeviceDescriptor {
+                self.0.descriptor()
+            }
+            fn caps(&self) -> TransportCaps {
+                self.0.caps()
+            }
+        }
+        let (t, dev) = RtaDevice::new(TransportKind::Usb, true);
+        let core = DspiCore::new();
+        core.attach(Box::new(Refusing(t)), "RTA".into(), 0);
+        core.lock().conn().unwrap().wire = Some(WireRead::Exact);
+        core.rta_set_request(request(0b1));
+        core.rta_start();
+        wait_for("rejected", || core.rta_get_snapshot().config_rejected);
+        assert!(!core.rta_get_ownership().following);
+        assert_eq!(pushes(&dev), 3);
+    }
+
+    #[test]
+    fn wp_cg5_events_are_judged_by_owner_and_shape() {
+        let (core, dev) = driving_on(0b1, TransportKind::Usb);
+        let note = |c: RtaConfig, own: bool, origin: u16| {
+            core.lock().rta.note_config(&event(c, 1), own, origin);
+        };
+        // Ours: confirmed, still driving.
+        note(config(engine::TAP_OUTPUT, 0b1), true, 0);
+        assert!(!core.rta_get_ownership().following);
+        // An echo of ours that no longer matches is an older push.
+        note(config(engine::TAP_OUTPUT, 0b10), true, 0);
+        assert!(!core.rta_get_ownership().following);
+        // Malformed or empty: nothing.
+        core.lock().rta.note_config(&[3, 1], false, 9);
+        note(config(engine::TAP_OUTPUT, 0), false, 9);
+        assert!(!core.rta_get_ownership().following);
+        // Someone else's, with its origin, also over a released request.
+        core.rta_set_request(request(0));
+        note(config(engine::TAP_OUTPUT, 0b10), false, 9);
+        let o = core.rta_get_ownership();
+        assert!(o.following);
+        assert_eq!((o.origin, o.tap, o.mask), (9, engine::TAP_OUTPUT, 0b10));
+        // Closing the connection forgets it.
+        core.close_connection();
+        assert_eq!(core.rta_get_ownership(), RtaOwnership::default());
+        let _ = dev;
+    }
+
+    /// Decodes, but no device with these caps (2 in, 4 out, order 8..=10)
+    /// could hold it.
+    fn impossible() -> Vec<RtaConfig> {
+        let bad = |tap, channel_mask, fft_order| RtaConfig {
+            fft_order,
+            ..config(tap, channel_mask)
+        };
+        vec![
+            bad(255, 1, 32),
+            bad(engine::TAP_INPUT, 0x8000, 31),
+            bad(2, 1, 10),
+            bad(engine::TAP_OUTPUT, 1, 7),
+            bad(engine::TAP_OUTPUT, 1, 11),
+            bad(engine::TAP_OUTPUT, 0, 10),
+            bad(engine::TAP_OUTPUT, 0b1_0000, 10),
+            bad(engine::TAP_OUTPUT, 0b1_0001, 10),
+            bad(engine::TAP_INPUT, 0b100, 10),
+        ]
+    }
+
+    #[test]
+    fn wp_cg5_an_event_no_device_could_send_is_ignored() {
+        let (core, _dev) = driving_on(0b1, TransportKind::Usb);
+        for c in impossible() {
+            core.lock().rta.note_config(&event(c, 1), false, 9);
+            assert_eq!(core.rta_get_ownership(), RtaOwnership::default(), "{c:?}");
+        }
+        // The edges of what is possible are followed.
+        let top = RtaConfig {
+            fft_order: 8,
+            ..config(engine::TAP_INPUT, 0b11)
+        };
+        core.lock().rta.note_config(&event(top, 1), false, 9);
+        assert_eq!(core.rta_get_ownership().mask, 0b11);
+        // And an impossible one leaves that alone.
+        for c in impossible() {
+            core.lock().rta.note_config(&event(c, 1), false, 7);
+            let o = core.rta_get_ownership();
+            assert_eq!(
+                (o.origin, o.tap, o.mask, o.fft_order),
+                (9, 0, 0b11, 8),
+                "{c:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn wp_cg5_a_readback_no_device_could_send_is_ignored() {
+        let (core, _dev) = driving_on(0b1, TransportKind::Usb);
+        wait_for("caps", || core.rta_get_caps().supported);
+        // One lock throughout: the worker's own polls stay out of this.
+        let mut inner = core.lock();
+        let st = &mut inner.rta;
+        st.judge_request();
+        st.sharing.agreed = true;
+        let read = |st: &mut RtaState, c: RtaConfig| {
+            st.after_poll(&PollShare {
+                epoch: st.sharing.epoch,
+                readback: Some(c),
+                ..PollShare::default()
+            });
+        };
+        for c in impossible() {
+            read(st, c);
+            assert_eq!(st.ownership(), RtaOwnership::default(), "{c:?}");
+        }
+        read(st, config(engine::TAP_OUTPUT, 0b10));
+        assert_eq!(st.ownership().mask, 0b10, "a possible one is followed");
+        for c in impossible() {
+            read(st, c);
+            assert_eq!(st.ownership().mask, 0b10, "{c:?}");
+        }
+    }
+
+    #[test]
+    fn wp_cg5_a_listener_is_woken_when_ownership_changes() {
+        let (core, _dev) = driving_on(0b1, TransportKind::Usb);
+        let wakes = Arc::new(Counter(AtomicUsize::new(0)));
+        core.rta_set_listener(Some(wakes.clone()));
+        thread::sleep(TICK * 2);
+        let before = wakes.0.load(Ordering::SeqCst);
+        core.lock()
+            .rta
+            .note_config(&event(config(engine::TAP_OUTPUT, 0b10), 1), false, 9);
+        wait_for("the wake", || wakes.0.load(Ordering::SeqCst) > before);
+        assert_eq!(core.lock().rta.sharing.published.origin, 9);
+    }
+}
+
+/// WP CG5's done criterion: two consoles on one fake hub.
+#[cfg(test)]
+#[cfg(feature = "link")]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg5 {
+    use super::*;
+    use dspi_link::fakehub::{FakeHub, HubConfig, req};
+
+    const DIR_SET: u8 = dspi_link::frames::Dir::Set as u8;
+
+    fn hub() -> FakeHub {
+        FakeHub::start(HubConfig {
+            rta: true,
+            ..HubConfig::default()
+        })
+        .unwrap()
+    }
+
+    /// A console on the hub, its analyser polling, with `mask` requested.
+    /// Returns it with its session id.
+    fn console(hub: &FakeHub, name: &str, mask: u16) -> (Arc<DspiCore>, u16) {
+        let before = hub.sessions();
+        let core = DspiCore::new();
+        core.link_connect(
+            hub.url(),
+            name.into(),
+            "test".into(),
+            String::new(),
+            String::new(),
+        )
+        .unwrap();
+        let d = core.link_devices().remove(0);
+        core.link_select_device(d.handle, d.serial).unwrap();
+        core.fetch_all().unwrap();
+        core.rta_set_request(request(mask));
+        core.rta_start();
+        let sid = hub
+            .sessions()
+            .into_iter()
+            .find(|s| !before.contains(s))
+            .unwrap();
+        (core, sid)
+    }
+
+    fn request(mask: u16) -> RtaRequest {
+        RtaRequest {
+            tap: engine::TAP_OUTPUT,
+            mask,
+            wants_bins: false,
+            fft_order: 10,
+            avg_ms: 300,
+            peak_decay_db_s: 12,
+        }
+    }
+
+    /// Run the consoles' notification handling until `f` holds, as an app
+    /// does on its wake-ups.
+    fn until(what: &str, consoles: &[&Arc<DspiCore>], mut f: impl FnMut() -> bool) {
+        let end = Instant::now() + Duration::from_secs(8);
+        loop {
+            for c in consoles {
+                c.process_notifications();
+            }
+            if f() {
+                return;
+            }
+            assert!(Instant::now() < end, "timed out waiting for {what}");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    /// Settle: long enough for several polls, notifications handled.
+    fn settle(consoles: &[&Arc<DspiCore>]) {
+        let end = Instant::now() + TICK * 6;
+        while Instant::now() < end {
+            for c in consoles {
+                c.process_notifications();
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn pushes(hub: &FakeHub, sid: u16) -> usize {
+        hub.log()
+            .iter()
+            .filter(|e| e.0 == sid && e.1 == DIR_SET && e.2 == req::RTA_SET_CONFIG)
+            .count()
+    }
+
+    fn device_mask(hub: &FakeHub) -> u16 {
+        let c = hub.rta_config();
+        u16::from_le_bytes([c[2], c[3]])
+    }
+
+    fn channels(s: &RtaSnapshot) -> Vec<u8> {
+        s.frames
+            .iter()
+            .take(usize::from(s.count))
+            .map(|f| f.channel)
+            .collect()
+    }
+
+    #[test]
+    fn wp_cg5_another_session_switches_state_ours_does_not_and_take_control_works() {
+        let hub = hub();
+        let (a, sid_a) = console(&hub, "a", 0b0001);
+        until("a's picture", &[&a], || {
+            channels(&a.rta_get_snapshot()) == [0]
+        });
+        // Our own echo arrives and changes nothing.
+        until("a's push", &[&a], || pushes(&hub, sid_a) > 0);
+        settle(&[&a]);
+        assert_eq!(a.rta_get_ownership(), RtaOwnership::default());
+
+        // Another session pushes: a follows, with the origin, and shows it.
+        let (b, sid_b) = console(&hub, "b", 0b0110);
+        until("a following", &[&a, &b], || a.rta_get_ownership().following);
+        let o = a.rta_get_ownership();
+        assert_eq!(
+            (o.origin, o.tap, o.mask, o.fft_order),
+            (sid_b, engine::TAP_OUTPUT, 0b0110, 10)
+        );
+        until("a's new picture", &[&a, &b], || {
+            channels(&a.rta_get_snapshot()) == [1, 2]
+        });
+        // The driver stays the driver, and the follower does not push.
+        let n = pushes(&hub, sid_a);
+        settle(&[&a, &b]);
+        assert!(!b.rta_get_ownership().following);
+        assert_eq!(pushes(&hub, sid_a), n, "a follower does not push");
+        assert_eq!(device_mask(&hub), 0b0110);
+
+        // Take control: a pushes its own request again, and b follows.
+        a.rta_take_control();
+        assert!(!a.rta_get_ownership().following);
+        until("a's push again", &[&a, &b], || device_mask(&hub) == 0b0001);
+        until("b following", &[&a, &b], || b.rta_get_ownership().following);
+        assert_eq!(b.rta_get_ownership().origin, sid_a);
+        assert_eq!(b.rta_get_ownership().mask, 0b0001);
+        until("a's own picture", &[&a, &b], || {
+            channels(&a.rta_get_snapshot()) == [0]
+        });
+        settle(&[&a, &b]);
+        assert!(
+            !a.rta_get_ownership().following,
+            "ours does not switch state"
+        );
+        assert_eq!(device_mask(&hub), 0b0001, "no fight");
+    }
+
+    #[test]
+    fn wp_cg5_only_a_new_choice_takes_the_analyser_back() {
+        let hub = hub();
+        let (a, sid_a) = console(&hub, "a", 0b0001);
+        until("a's push", &[&a], || pushes(&hub, sid_a) > 0);
+        let (b, _) = console(&hub, "b", 0b0110);
+        until("a following", &[&a, &b], || a.rta_get_ownership().following);
+        let n = pushes(&hub, sid_a);
+
+        // A display hidden and shown again is not a choice.
+        a.rta_set_request(request(0));
+        settle(&[&a, &b]);
+        assert!(a.rta_get_ownership().following, "survives the release");
+        a.rta_set_request(request(0b0001));
+        settle(&[&a, &b]);
+        assert!(a.rta_get_ownership().following);
+        assert_eq!(pushes(&hub, sid_a), n);
+        assert_eq!(device_mask(&hub), 0b0110);
+
+        // Picking something else is.
+        a.rta_set_request(request(0b1000));
+        assert!(!a.rta_get_ownership().following);
+        until("a's choice", &[&a, &b], || device_mask(&hub) == 0b1000);
+    }
+
+    #[test]
+    fn wp_cg5_someone_choosing_what_we_want_ends_following_without_a_push() {
+        let hub = hub();
+        let (a, sid_a) = console(&hub, "a", 0b0001);
+        until("a's push", &[&a], || pushes(&hub, sid_a) > 0);
+        let (b, _) = console(&hub, "b", 0b0110);
+        until("a following", &[&a, &b], || a.rta_get_ownership().following);
+        let n = pushes(&hub, sid_a);
+        // b picks a's channels, with other averaging: a's choice all the same.
+        b.rta_set_request(RtaRequest {
+            avg_ms: 100,
+            ..request(0b0001)
+        });
+        until("a driving", &[&a, &b], || !a.rta_get_ownership().following);
+        settle(&[&a, &b]);
+        assert_eq!(pushes(&hub, sid_a), n, "the device already holds it");
+        assert!(!a.rta_get_ownership().following);
+        assert!(!b.rta_get_ownership().following);
+        until("a's picture", &[&a, &b], || {
+            channels(&a.rta_get_snapshot()) == [0]
+        });
     }
 }

@@ -82,11 +82,11 @@ const IMAGE_FILE: &str = "firmware.uf2";
 const VOLUME_LABELS: [&str; 2] = ["RPI-RP2", "RP2350"];
 
 /// USB ids of the boot ROMs in BOOTSEL mode.
-#[cfg(not(target_os = "android"))]
+#[cfg(all(feature = "usb", not(target_os = "android")))]
 const RPI_VID: u16 = 0x2E8A;
-#[cfg(not(target_os = "android"))]
+#[cfg(all(feature = "usb", not(target_os = "android")))]
 const RP2040_BOOT_PID: u16 = 0x0003;
-#[cfg(not(target_os = "android"))]
+#[cfg(all(feature = "usb", not(target_os = "android")))]
 const RP2350_BOOT_PID: u16 = 0x000F;
 
 fn family_name(family: u32) -> String {
@@ -607,14 +607,15 @@ impl DspiCore {
 // ── Bootloader on the bus ──────────────────────────────────────────────
 
 /// Boards in BOOTSEL mode on the bus (USB `2E8A:0003` RP2040, `2E8A:000F`
-/// RP2350). 0/0 where the bus cannot be enumerated (Android).
+/// RP2350). 0/0 where the bus cannot be enumerated (Android, and a build
+/// without the `usb` feature: iOS).
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn bootloader_counts() -> BootloaderCounts {
-    #[cfg(target_os = "android")]
+    #[cfg(any(not(feature = "usb"), target_os = "android"))]
     {
         BootloaderCounts::default()
     }
-    #[cfg(not(target_os = "android"))]
+    #[cfg(all(feature = "usb", not(target_os = "android")))]
     {
         use nusb::MaybeFuture;
         let mut counts = BootloaderCounts::default();

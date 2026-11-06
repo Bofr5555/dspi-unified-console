@@ -10,7 +10,8 @@
 //! - [`socket`]: the WebSocket byte pipe ([`socket::WsConnector`]; the
 //!   built-in one is `tungstenite` over `std::net`);
 //! - [`client`]: one session ([`LinkClient`]);
-//! - [`address`]: manual entry (`host`, `host:port`) and `GET /dspi/v1/info`.
+//! - [`address`]: manual entry (`host`, `host:port`) and `GET /dspi/v1/info`;
+//! - [`discovery`]: finding hubs by DNS-SD (the network part behind feature `mdns`).
 //!
 //! The crate knows nothing about the DSPi core or any FFI; dspi-ffi adapts
 //! a [`LinkClient`] to the core's `Transport` trait.
@@ -18,6 +19,8 @@
 pub mod address;
 pub mod client;
 pub mod clock;
+// -- WP CG2 --
+pub mod discovery;
 pub mod frames;
 pub mod messages;
 pub mod socket;
