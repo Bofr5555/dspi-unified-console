@@ -366,9 +366,10 @@ impl Inner {
     }
 }
 
-/// A listener slot: set, cleared and called from any thread. A call runs
-/// with the slot's read lock held, so clearing waits for a call in flight;
-/// a listener must not set listeners from inside its own callback.
+/// A listener slot: set, replaced, cleared and called from any thread. A call
+/// runs with the slot's read lock held, so clearing or replacing a listener
+/// (`None` or `Some` alike) waits for a call in flight. For the same reason a
+/// listener must not call a `set_*_listener` from inside its own callback.
 pub(crate) struct Slot<T: ?Sized>(RwLock<Option<Arc<T>>>);
 
 impl<T: ?Sized> Default for Slot<T> {
@@ -382,13 +383,29 @@ impl<T: ?Sized> Slot<T> {
         *self.0.write().unwrap_or_else(|p| p.into_inner()) = listener;
     }
 
-    /// Call the listener if one is set. A panicking listener is contained.
+    /// Call the listener if one is set. A panicking listener is contained
+    /// and logged, naming the listener's interface.
     pub(crate) fn call(&self, f: impl FnOnce(&T)) {
         let guard = self.0.read().unwrap_or_else(|p| p.into_inner());
-        if let Some(l) = guard.as_deref() {
-            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(l)));
+        if let Some(l) = guard.as_deref()
+            && let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(l)))
+        {
+            log::error!(
+                "listener {} panicked: {}",
+                std::any::type_name::<T>(),
+                panic_text(panic.as_ref())
+            );
         }
     }
+}
+
+/// The message of a caught panic, when it has one.
+fn panic_text(panic: &(dyn std::any::Any + Send)) -> &str {
+    panic
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("no message")
 }
 
 #[derive(Default)]
@@ -583,6 +600,44 @@ mod tests {
         let mut inner = core.lock();
         assert!(inner.conn().is_ok());
         assert_eq!(inner.state.bulk_raw.len(), 6136);
+    }
+
+    #[test]
+    fn wp_f1_a_panics_text_is_read() {
+        let text = std::panic::catch_unwind(|| panic!("static")).unwrap_err();
+        assert_eq!(panic_text(text.as_ref()), "static");
+        let text = std::panic::catch_unwind(|| panic!("{}", 7)).unwrap_err();
+        assert_eq!(panic_text(text.as_ref()), "7");
+        let text = std::panic::catch_unwind(|| std::panic::panic_any(7)).unwrap_err();
+        assert_eq!(panic_text(text.as_ref()), "no message");
+    }
+
+    #[test]
+    fn wp_f1_replacing_a_listener_waits_for_a_call_in_flight() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct Slow(std::sync::mpsc::Sender<()>, Arc<AtomicBool>);
+        impl NotifyListener for Slow {
+            fn on_notifications(&self) {
+                self.0.send(()).unwrap();
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                self.1.store(true, Ordering::SeqCst);
+            }
+        }
+        struct Idle;
+        impl NotifyListener for Idle {
+            fn on_notifications(&self) {}
+        }
+        let slot: Arc<Slot<dyn NotifyListener>> = Arc::new(Slot::default());
+        let (tx, rx) = std::sync::mpsc::channel();
+        let done = Arc::new(AtomicBool::new(false));
+        slot.set(Some(Arc::new(Slow(tx, Arc::clone(&done)))));
+        let caller = Arc::clone(&slot);
+        let call = std::thread::spawn(move || caller.call(|l| l.on_notifications()));
+        rx.recv().unwrap();
+        slot.set(Some(Arc::new(Idle)));
+        assert!(done.load(Ordering::SeqCst), "set returned during the call");
+        call.join().unwrap();
     }
 
     #[test]
