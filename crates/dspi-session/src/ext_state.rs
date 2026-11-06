@@ -41,12 +41,15 @@ const LIST_LEN: u16 = {
 
 impl ExtState {
     /// Probe: `EXT_LIST`, then each supported sub-command this build knows.
-    /// A stall is "not supported" and gives the empty state, never an error;
-    /// only a transport failure (disconnect, timeout) is returned.
+    /// A stall, a short reply or a link refusing this client (DSPi Link
+    /// `DENIED`: the hub classes `REQ_EXTENSION` as `config`, which viewer
+    /// and control roles may not use) mean "absent": on `EXT_LIST` they give
+    /// the empty state, never an error. Only a transport failure (disconnect,
+    /// timeout, a lock, a link fault) is returned.
     ///
     /// One transfer per read and no retries: a stall is the answer. A listed
-    /// sub-command whose read stalls or comes back short is left `None` (it
-    /// stays in `supported`, which is what the device claimed).
+    /// sub-command whose read is absent is left `None` (it stays in
+    /// `supported`, which is what the device claimed).
     pub fn probe(t: &mut dyn Transport) -> Result<Self, TransportError> {
         let list = match t.control_in_upto(op::REQ_EXTENSION, g::EXT_LIST, LIST_LEN) {
             Ok(b) => b,
@@ -66,19 +69,26 @@ impl ExtState {
         Ok(from_replies(supported, &replies))
     }
 
-    /// Whether `EXT_LIST` named sub-command `id`.
+    /// Whether `EXT_LIST` named sub-command `id`. This can be true while the
+    /// matching field (`pair_map`, `core_vreg`) is `None`, when the listed
+    /// read was absent (stalled, short or refused), so callers check the
+    /// `Option` rather than relying on `has`.
     pub fn has(&self, id: u16) -> bool {
         self.supported.contains(&id)
     }
 }
 
 /// Sorts a failed read into "absent" (`Ok`) or a transport failure (`Err`).
-/// A stall is the device saying "not supported"; a short reply is a device
-/// answer too, just not a usable one. Everything else (disconnect, timeout, a
-/// link refusing the client) is the transport's and goes back to the caller.
+/// A stall, a short reply or a link refusing this client mean "absent": a
+/// stall is the device saying "not supported", a short reply is an answer
+/// that is not usable, and a DSPi Link `DENIED` is the hub's policy for this
+/// client's role (not a fault of the link). Everything else (disconnect,
+/// timeout, a lock, a link fault) goes back to the caller.
 fn absent(e: TransportError) -> Result<(), TransportError> {
     match e {
-        TransportError::Stalled { .. } | TransportError::ShortRead { .. } => Ok(()),
+        TransportError::Stalled { .. }
+        | TransportError::ShortRead { .. }
+        | TransportError::Denied(_) => Ok(()),
         e => Err(e),
     }
 }
@@ -100,9 +110,19 @@ fn supported_from_list(reply: &[u8]) -> Vec<u16> {
 /// ones this build knows, in id order. Unknown and experimental ids are
 /// listed in `supported` but never read.
 fn reads_for(supported: &[u16]) -> Vec<(u16, u16)> {
+    // The reply sizes as `wLength`; the conversions are checked at compile
+    // time, as for `LIST_LEN`.
+    const PAIR_MAP_LEN: u16 = {
+        assert!(PairMap::SIZE <= u16::MAX as usize);
+        PairMap::SIZE as u16
+    };
+    const CORE_VREG_LEN: u16 = {
+        assert!(CoreVregStatus::SIZE <= u16::MAX as usize);
+        CoreVregStatus::SIZE as u16
+    };
     const KNOWN: [(u16, u16); 2] = [
-        (g::EXT_CROSSFEED_PAIR_MAP, PairMap::SIZE as u16),
-        (g::EXT_CORE_VREG, CoreVregStatus::SIZE as u16),
+        (g::EXT_CROSSFEED_PAIR_MAP, PAIR_MAP_LEN),
+        (g::EXT_CORE_VREG, CORE_VREG_LEN),
     ];
     KNOWN
         .into_iter()
@@ -275,6 +295,72 @@ mod tests_wp_s3 {
         assert_eq!(s.supported, vec![3, 0x8001]);
         assert_eq!((s.pair_map, s.core_vreg), (None, None));
         assert_eq!(log.lock().unwrap().len(), 1);
+    }
+
+    /// Answers every IN request from a script of results, for errors
+    /// `MockTransport` cannot produce (it has no reply carrying an arbitrary
+    /// `TransportError`, such as `Denied`).
+    struct Scripted {
+        replies: std::collections::VecDeque<Result<Vec<u8>, TransportError>>,
+        reads: usize,
+        desc: dspi_transport::DeviceDescriptor,
+    }
+
+    impl Scripted {
+        fn new(replies: Vec<Result<Vec<u8>, TransportError>>) -> Self {
+            Self {
+                replies: replies.into(),
+                reads: 0,
+                desc: dspi_transport::DeviceDescriptor {
+                    serial: "S3TEST".into(),
+                    bus_id: "0".into(),
+                    address: 0,
+                },
+            }
+        }
+    }
+
+    impl Transport for Scripted {
+        fn control_in(&mut self, _: u8, _: u16, _: u16) -> dspi_transport::Result<Vec<u8>> {
+            self.reads += 1;
+            self.replies
+                .pop_front()
+                .unwrap_or(Err(TransportError::Disconnected))
+        }
+        fn control_out(&mut self, _: u8, _: u16, _: &[u8]) -> dspi_transport::Result<()> {
+            Err(TransportError::Disconnected)
+        }
+        fn descriptor(&self) -> &dspi_transport::DeviceDescriptor {
+            &self.desc
+        }
+    }
+
+    #[test]
+    fn wp_s3_a_denied_read_is_absent() {
+        // A viewer on DSPi Link: the hub refuses REQ_EXTENSION outright.
+        let mut t = Scripted::new(vec![Err(TransportError::Denied("config".into()))]);
+        assert_eq!(ExtState::probe(&mut t).unwrap(), ExtState::default());
+        assert_eq!(t.reads, 1);
+
+        // Refused for one sub-command only: that field is absent, the rest
+        // of the probe goes on.
+        let mut t = Scripted::new(vec![
+            Ok(vec![1, 0, 2, 0]),
+            Err(TransportError::Denied("config".into())),
+            Ok(vreg_reply()),
+        ]);
+        let s = ExtState::probe(&mut t).unwrap();
+        assert_eq!(s.supported, vec![1, 2]);
+        assert!(s.has(g::EXT_CROSSFEED_PAIR_MAP) && s.pair_map.is_none());
+        assert!(s.core_vreg.is_some());
+        assert_eq!(t.reads, 3);
+
+        // A lock is not a refusal of this client's role: it is returned.
+        let mut t = Scripted::new(vec![Err(TransportError::Locked)]);
+        assert!(matches!(
+            ExtState::probe(&mut t),
+            Err(TransportError::Locked)
+        ));
     }
 
     #[test]
