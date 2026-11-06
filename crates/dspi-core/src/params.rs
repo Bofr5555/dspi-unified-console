@@ -67,10 +67,6 @@ const INPUT_SOURCE_MAX: u8 = 6;
 /// The master volume value that mutes (`REQ_SET_MASTER_VOLUME`).
 const MASTER_VOL_MUTE_DB: f32 = -128.0;
 
-/// Crossfeed presets whose frequency and feed the old core (and the macOS
-/// Console) show at once: default, Chu Moy, Meier. 3 is custom.
-const CROSSFEED_PRESET_VALUES: [(f32, f32); 3] = [(700.0, 4.5), (700.0, 6.0), (650.0, 9.5)];
-
 /// Lowest preamp the old core allowed, on both platforms.
 const PREAMP_MIN_DB: f32 = -60.0;
 
@@ -381,20 +377,15 @@ impl DspiCore {
         })
     }
 
-    /// Crossfeed preset: 0 default, 1 Chu Moy, 2 Meier, 3 custom. For 0..2
-    /// the mirror's frequency and feed show the preset's values (700 Hz /
-    /// 4.5 dB, 700 Hz / 6 dB, 650 Hz / 9.5 dB), as the old core and the macOS
-    /// Console do; the device keeps its custom values, which a re-read shows.
+    /// Crossfeed preset: 0 default, 1 Chu Moy, 2 Meier, 3 custom. Only the
+    /// preset changes: `crossfeed_freq` and `crossfeed_feed` are the device's
+    /// custom values, which it keeps whatever the preset.
     ///
     /// Errors: [`DspiError::InvalidArgument`] for another preset; the
     /// connection and transfer errors of every setter.
     pub fn set_crossfeed_preset(&self, preset: u8) -> Result<()> {
         self.set_scalar("cf.preset", Value::Choice(preset), |s| {
             s.crossfeed_preset = preset;
-            if let Some(&(freq, feed)) = CROSSFEED_PRESET_VALUES.get(usize::from(preset)) {
-                s.crossfeed_freq = freq;
-                s.crossfeed_feed = feed;
-            }
         })
     }
 
@@ -1500,16 +1491,18 @@ mod tests_wp_c3 {
     }
 
     #[test]
-    fn wp_c3_crossfeed_presets_show_their_values() {
+    fn wp_c3_a_crossfeed_preset_keeps_the_custom_values() {
         let (core, remote) = demo();
+        core.set_crossfeed_freq(800.0).unwrap();
+        core.set_crossfeed_feed(5.0).unwrap();
         core.set_crossfeed_preset(2).unwrap();
         let s = core.get_state();
         assert_eq!(
             (s.crossfeed_preset, s.crossfeed_freq, s.crossfeed_feed),
-            (2, 650.0, 9.5)
+            (2, 800.0, 5.0)
         );
-        let (_, dev) = device_view(&core, &remote);
-        assert_eq!(dev.crossfeed_preset, 2);
+        let (mirror, dev) = device_view(&core, &remote);
+        assert_eq!(dev, mirror, "the mirror reads as the device's image");
     }
 
     #[test]
