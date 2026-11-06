@@ -1,0 +1,513 @@
+{
+ "repo_commit": "5fa91f8",
+ "rust": {
+  "authors": [
+   "Weeb Labs",
+   "owner (bofr)"
+  ],
+  "crates": {
+   "anyhow": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "1.0.104"
+   },
+   "bitflags": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "2.13.1"
+   },
+   "block-buffer": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.12.1"
+   },
+   "bytes": {
+    "first_party": false,
+    "license": "MIT",
+    "version": "1.12.1"
+   },
+   "camino": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "1.2.6"
+   },
+   "cargo-platform": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.1.9"
+   },
+   "cargo_metadata": {
+    "first_party": false,
+    "license": "MIT",
+    "version": "0.19.2"
+   },
+   "cfg-if": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "1.0.4"
+   },
+   "chacha20": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.10.2"
+   },
+   "const-oid": {
+    "first_party": false,
+    "license": "Apache-2.0 OR MIT",
+    "version": "0.10.2"
+   },
+   "cpufeatures": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.3.1"
+   },
+   "crypto-common": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.2.2"
+   },
+   "data-encoding": {
+    "first_party": false,
+    "license": "MIT",
+    "version": "2.11.1"
+   },
+   "digest": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.11.3"
+   },
+   "dirs": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "6.0.0"
+   },
+   "dirs-sys": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.5.0"
+   },
+   "dspi-core": {
+    "first_party": true,
+    "license": "GPL-3.0-or-later",
+    "version": "2.0.0-dev"
+   },
+   "dspi-ffi": {
+    "first_party": true,
+    "license": "GPL-3.0-or-later",
+    "version": "2.0.0-dev"
+   },
+   "dspi-link": {
+    "first_party": true,
+    "license": "GPL-3.0-or-later",
+    "version": "0.1.0"
+   },
+   "dspi-proto": {
+    "first_party": true,
+    "license": "GPL-3.0-or-later",
+    "version": "2.0.0-dev"
+   },
+   "dspi-session": {
+    "first_party": true,
+    "license": "GPL-3.0-or-later",
+    "version": "2.0.0-dev"
+   },
+   "dspi-transport": {
+    "first_party": true,
+    "license": "GPL-3.0-or-later",
+    "version": "2.0.0-dev"
+   },
+   "equivalent": {
+    "first_party": false,
+    "license": "Apache-2.0 OR MIT",
+    "version": "1.0.2"
+   },
+   "errno": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.3.14"
+   },
+   "fastrand": {
+    "first_party": false,
+    "license": "Apache-2.0 OR MIT",
+    "version": "2.5.0"
+   },
+   "futures-core": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.3.33"
+   },
+   "getrandom": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.4.3"
+   },
+   "hashbrown": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.17.1"
+   },
+   "heck": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.5.0"
+   },
+   "http": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "1.5.0"
+   },
+   "httparse": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "1.10.1"
+   },
+   "hybrid-array": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.4.15"
+   },
+   "indexmap": {
+    "first_party": false,
+    "license": "Apache-2.0 OR MIT",
+    "version": "2.14.0"
+   },
+   "itoa": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "1.0.18"
+   },
+   "libc": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.2.189"
+   },
+   "log": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.4.33"
+   },
+   "memchr": {
+    "first_party": false,
+    "license": "Unlicense OR MIT",
+    "version": "2.8.3"
+   },
+   "nusb": {
+    "first_party": false,
+    "license": "Apache-2.0 OR MIT",
+    "version": "0.2.5"
+   },
+   "once_cell": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "1.21.4"
+   },
+   "option-ext": {
+    "first_party": false,
+    "license": "MPL-2.0",
+    "version": "0.2.0"
+   },
+   "rand": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.10.3"
+   },
+   "rand_core": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.10.1"
+   },
+   "rustix": {
+    "first_party": false,
+    "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
+    "version": "1.1.4"
+   },
+   "semver": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "1.0.28"
+   },
+   "serde": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "1.0.229"
+   },
+   "serde_core": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "1.0.229"
+   },
+   "serde_json": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "1.0.151"
+   },
+   "sha1": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.11.0"
+   },
+   "slab": {
+    "first_party": false,
+    "license": "MIT",
+    "version": "0.4.12"
+   },
+   "socket2": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.6.1"
+   },
+   "static_assertions": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "1.1.0"
+   },
+   "tempfile": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "3.27.0"
+   },
+   "thiserror": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "2.0.19"
+   },
+   "tungstenite": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.30.0"
+   },
+   "typenum": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "1.20.1"
+   },
+   "uniffi": {
+    "first_party": false,
+    "license": "MPL-2.0",
+    "version": "0.29.5"
+   },
+   "uniffi_core": {
+    "first_party": false,
+    "license": "MPL-2.0",
+    "version": "0.29.5"
+   },
+   "uniffi_pipeline": {
+    "first_party": false,
+    "license": "MPL-2.0",
+    "version": "0.29.5"
+   },
+   "zmij": {
+    "first_party": false,
+    "license": "MIT",
+    "version": "1.0.23"
+   }
+  },
+  "files": [
+   "crates/dspi-core/src/callbacks.rs",
+   "crates/dspi-core/src/connect.rs",
+   "crates/dspi-core/src/consts.rs",
+   "crates/dspi-core/src/cs.rs",
+   "crates/dspi-core/src/curves.rs",
+   "crates/dspi-core/src/device.rs",
+   "crates/dspi-core/src/error.rs",
+   "crates/dspi-core/src/ext.rs",
+   "crates/dspi-core/src/files.rs",
+   "crates/dspi-core/src/firmware.rs",
+   "crates/dspi-core/src/hardware.rs",
+   "crates/dspi-core/src/hotplug.rs",
+   "crates/dspi-core/src/info.rs",
+   "crates/dspi-core/src/lib.rs",
+   "crates/dspi-core/src/link.rs",
+   "crates/dspi-core/src/monitor.rs",
+   "crates/dspi-core/src/notify.rs",
+   "crates/dspi-core/src/params.rs",
+   "crates/dspi-core/src/params_fx.rs",
+   "crates/dspi-core/src/presets.rs",
+   "crates/dspi-core/src/records.rs",
+   "crates/dspi-core/src/rta.rs",
+   "crates/dspi-core/src/state.rs",
+   "crates/dspi-core/src/stats.rs",
+   "crates/dspi-ffi/src/lib.rs",
+   "crates/dspi-link/src/address.rs",
+   "crates/dspi-link/src/client.rs",
+   "crates/dspi-link/src/clock.rs",
+   "crates/dspi-link/src/frames.rs",
+   "crates/dspi-link/src/lib.rs",
+   "crates/dspi-link/src/messages.rs",
+   "crates/dspi-link/src/socket.rs",
+   "crates/dspi-proto/src/channel.rs",
+   "crates/dspi-proto/src/dsp.rs",
+   "crates/dspi-proto/src/enums.rs",
+   "crates/dspi-proto/src/ext.rs",
+   "crates/dspi-proto/src/frame.rs",
+   "crates/dspi-proto/src/lib.rs",
+   "crates/dspi-proto/src/packets.rs",
+   "crates/dspi-proto/src/registry.rs",
+   "crates/dspi-proto/src/value.rs",
+   "crates/dspi-proto/src/wire.rs",
+   "crates/dspi-proto/src/wire_compat.rs",
+   "crates/dspi-proto/src/xover.rs",
+   "crates/dspi-session/src/autoeq.rs",
+   "crates/dspi-session/src/clipboard.rs",
+   "crates/dspi-session/src/compat.rs",
+   "crates/dspi-session/src/cs_model.rs",
+   "crates/dspi-session/src/ext.rs",
+   "crates/dspi-session/src/ext_state.rs",
+   "crates/dspi-session/src/fast.rs",
+   "crates/dspi-session/src/filterfile.rs",
+   "crates/dspi-session/src/lib.rs",
+   "crates/dspi-session/src/notify.rs",
+   "crates/dspi-session/src/pins.rs",
+   "crates/dspi-session/src/preset_file.rs",
+   "crates/dspi-session/src/probe.rs",
+   "crates/dspi-session/src/readout.rs",
+   "crates/dspi-session/src/rta.rs",
+   "crates/dspi-session/src/runtime.rs",
+   "crates/dspi-session/src/state.rs",
+   "crates/dspi-session/src/surfaces.rs",
+   "crates/dspi-session/src/tube.rs",
+   "crates/dspi-session/src/write.rs",
+   "crates/dspi-transport/src/../../../tests/fixtures/link/device/bulk_v32.bin",
+   "crates/dspi-transport/src/../../../tests/fixtures/link/device/platform.bin",
+   "crates/dspi-transport/src/../../../tests/fixtures/link/device/status_wvalue9.bin",
+   "crates/dspi-transport/src/fake.rs",
+   "crates/dspi-transport/src/fake/features.rs",
+   "crates/dspi-transport/src/lib.rs",
+   "crates/dspi-transport/src/link.rs",
+   "crates/dspi-transport/src/midi.rs",
+   "crates/dspi-transport/src/mock.rs",
+   "crates/dspi-transport/src/usb.rs",
+   "crates/dspi-proto/firmware/bulk_params.h",
+   "crates/dspi-proto/firmware/config.h",
+   "crates/dspi-proto/firmware/control_surfaces.h",
+   "crates/dspi-proto/firmware/limiter.h",
+   "crates/dspi-proto/firmware/notify.h",
+   "crates/dspi-proto/firmware/psybass.h",
+   "crates/dspi-proto/firmware/rta.h",
+   "crates/dspi-proto/firmware/rta_bass.h",
+   "crates/dspi-proto/firmware/rta_fft.h",
+   "crates/dspi-proto/firmware/siggen.h",
+   "crates/dspi-proto/firmware/subharm.h",
+   "crates/dspi-proto/firmware/tube.h",
+   "crates/dspi-proto/firmware/upmix.h"
+  ]
+ },
+ "schema": 1,
+ "swift": {
+  "authors": [
+   "Jonathan Rosser",
+   "Weeb Labs",
+   "owner (bofr)"
+  ],
+  "commit": "48cf7c521b66a820db5a113904d5de9528a36302",
+  "files": [
+   "DSPi Console iOS/Info.plist",
+   "DSPi Console/Assets.xcassets/AccentColor.colorset/Contents.json",
+   "DSPi Console/Assets.xcassets/AppIcon.appiconset/Contents.json",
+   "DSPi Console/Assets.xcassets/Contents.json",
+   "DSPi Console/AutoEQ/AutoEQBrowser.swift",
+   "DSPi Console/AutoEQ/AutoEQManager.swift",
+   "DSPi Console/AutoEQ/autoeq_database.json",
+   "DSPi Console/BootloaderLocator.swift",
+   "DSPi Console/ChannelPalette.swift",
+   "DSPi Console/Commands.swift",
+   "DSPi Console/Components.swift",
+   "DSPi Console/Constants.swift",
+   "DSPi Console/ContentView.swift",
+   "DSPi Console/CoreVoltageStatusView.swift",
+   "DSPi Console/CrossfeedPairMapView.swift",
+   "DSPi Console/CrossfeedView.swift",
+   "DSPi Console/CustomSlider.swift",
+   "DSPi Console/DSPMath.swift",
+   "DSPi Console/DSPViewModel.swift",
+   "DSPi Console/DSPi_ConsoleApp.swift",
+   "DSPi Console/DashboardView.swift",
+   "DSPi Console/Demo/FakeTransport.swift",
+   "DSPi Console/Demo/Fixtures/bulk_v32.bin",
+   "DSPi Console/Demo/Fixtures/platform.bin",
+   "DSPi Console/ExtensionChannel.swift",
+   "DSPi Console/ExtensionCommands.swift",
+   "DSPi Console/FilterFile.swift",
+   "DSPi Console/Firmware/DSPi-RP2040-v1.1.6.uf2",
+   "DSPi Console/Firmware/DSPi-RP2350-v1.1.6.uf2",
+   "DSPi Console/FirmwareInstallUI.swift",
+   "DSPi Console/FirmwareInstaller.swift",
+   "DSPi Console/FirmwareUpdateView.swift",
+   "DSPi Console/FirmwareVersion.swift",
+   "DSPi Console/GraphSpectrumOverlay.swift",
+   "DSPi Console/GraphView.swift",
+   "DSPi Console/HostAudioFormatMonitor.swift",
+   "DSPi Console/InterruptMonitor.swift",
+   "DSPi Console/Link/AuthStore.swift",
+   "DSPi Console/Link/CompositeTransport.swift",
+   "DSPi Console/Link/DeviceTransport.swift",
+   "DSPi Console/Link/HubBrowser.swift",
+   "DSPi Console/Link/LinkClient.swift",
+   "DSPi Console/Link/LinkClientCoordinator.swift",
+   "DSPi Console/Link/LinkClientProtocol.swift",
+   "DSPi Console/Link/LinkDiscovery.swift",
+   "DSPi Console/Link/LinkFrames.swift",
+   "DSPi Console/Link/LinkMessages.swift",
+   "DSPi Console/Link/LinkPolicy.swift",
+   "DSPi Console/Link/LinkRole.swift",
+   "DSPi Console/Link/LinkTokenStore.swift",
+   "DSPi Console/Link/NetworkTransport.swift",
+   "DSPi Console/Link/NotifyRelay.swift",
+   "DSPi Console/Link/SnapshotCache.swift",
+   "DSPi Console/Link/policy/commands.json",
+   "DSPi Console/LiveGraphHost.swift",
+   "DSPi Console/LoudnessView.swift",
+   "DSPi Console/MIDI/LocalTransportSet.swift",
+   "DSPi Console/MIDI/MIDIControlCodec.swift",
+   "DSPi Console/MIDI/MIDIControlPort.swift",
+   "DSPi Console/MIDI/MIDIRelayPort.swift",
+   "DSPi Console/MIDI/MIDITransport.swift",
+   "DSPi Console/MatrixMixerView.swift",
+   "DSPi Console/Models.swift",
+   "DSPi Console/Onboarding/CoachMark.swift",
+   "DSPi Console/Onboarding/GettingStartedView.swift",
+   "DSPi Console/Onboarding/MainWindowRoot.swift",
+   "DSPi Console/Onboarding/OnboardingCatalogue.swift",
+   "DSPi Console/Onboarding/OnboardingCoordinator.swift",
+   "DSPi Console/Onboarding/OnboardingDebug.swift",
+   "DSPi Console/Onboarding/OnboardingHint.swift",
+   "DSPi Console/Onboarding/WhatsNew.json",
+   "DSPi Console/Onboarding/WhatsNewView.swift",
+   "DSPi Console/OutputLimiterView.swift",
+   "DSPi Console/PeqGraphEditor.swift",
+   "DSPi Console/PeqGraphModel.swift",
+   "DSPi Console/PeqGraphSupport.swift",
+   "DSPi Console/PresetDocument.swift",
+   "DSPi Console/PresetDocumentTransfer.swift",
+   "DSPi Console/PresetSnapshot.swift",
+   "DSPi Console/Preview Content/Preview Assets.xcassets/Contents.json",
+   "DSPi Console/PsychoacousticBassView.swift",
+   "DSPi Console/RtaBarShaders.swift",
+   "DSPi Console/RtaCurveShaders.swift",
+   "DSPi Console/RtaMetalBars.swift",
+   "DSPi Console/RtaMetalCurves.swift",
+   "DSPi Console/RtaMetalSurface.swift",
+   "DSPi Console/RtaRenderCache.swift",
+   "DSPi Console/SpectrumAnalyser.swift",
+   "DSPi Console/SpectrumAnalyserView.swift",
+   "DSPi Console/StatsView.swift",
+   "DSPi Console/SubharmonicSynthView.swift",
+   "DSPi Console/TestSignalsView.swift",
+   "DSPi Console/ToolParameters.swift",
+   "DSPi Console/TubeIllustration.swift",
+   "DSPi Console/TubeModellerView.swift",
+   "DSPi Console/USBDevice.swift",
+   "DSPi Console/UpmixerView.swift",
+   "DSPi Console/VolumeLevellerView.swift",
+   "DSPi Console/Web/assets/index-Dbz_9Gsv.js",
+   "DSPi Console/Web/assets/style--bAmF9Uc.css",
+   "DSPi Console/Web/index.html",
+   "DSPi Console/iOS/IOSApp.swift",
+   "DSPi Console/iOS/IOSLinkPairing.swift",
+   "DSPi Console/iOS/PeqTouchEditor.swift",
+   "DSPi Console/iOS/iOSCompat.swift"
+  ],
+  "frameworks": [],
+  "products": []
+ }
+}
