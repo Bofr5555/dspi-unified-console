@@ -164,6 +164,53 @@ pub const RTA_TAP_OUTPUT: u8 = dspi_proto::generated::rta::RTA_TAP_OUTPUT as u8;
 /// level 243, 0.5 dB steps): -121.5.
 pub const RTA_FLOOR_DB: f32 = -121.5;
 // -- WP C10 --
+
+/// Signal generator config/status/caps layout version this core speaks
+/// (`SIGGEN_CFG_VERSION`, siggen.h).
+pub const SIGGEN_VERSION: u8 = 1;
+/// Length of `SiggenCaps.types` (the old core's fixed table size).
+pub const SIGGEN_TYPE_COUNT: usize = 15;
+/// `SiggenConfig.flags`: bypass the outputs' crossover and PEQ.
+pub const SIGGEN_FLAG_RAW: u8 = dspi_proto::packets::SiggenConfig::FLAG_RAW;
+/// `SiggenConfig.flags`: noise gets an independent generator per channel.
+pub const SIGGEN_FLAG_DECORR: u8 = dspi_proto::packets::SiggenConfig::FLAG_DECORR;
+/// `SiggenConfig.flags`: play the masked outputs one at a time.
+pub const SIGGEN_FLAG_WALK: u8 = dspi_proto::packets::SiggenConfig::FLAG_WALK;
+/// `siggen_control` action: fade out, then idle.
+pub const SIGGEN_CTL_STOP: u16 = dspi_proto::generated::siggen::SIGGEN_CTL_STOP;
+/// `siggen_control` action: (re)start with the staged config.
+pub const SIGGEN_CTL_START: u16 = dspi_proto::generated::siggen::SIGGEN_CTL_START;
+/// `siggen_control` action: stop at once, no fade.
+pub const SIGGEN_CTL_STOP_NOW: u16 = dspi_proto::generated::siggen::SIGGEN_CTL_STOP_NOW;
+
+/// `fetch_stat`: PDM ring overruns since boot.
+pub const STAT_PDM_RING_OVERRUNS: u16 = 3;
+/// `fetch_stat`: PDM ring underruns since boot.
+pub const STAT_PDM_RING_UNDERRUNS: u16 = 4;
+/// `fetch_stat`: PDM DMA overruns since boot.
+pub const STAT_PDM_DMA_OVERRUNS: u16 = 5;
+/// `fetch_stat`: PDM DMA underruns since boot.
+pub const STAT_PDM_DMA_UNDERRUNS: u16 = 6;
+/// `fetch_stat`: retired (S/PDIF overruns); current firmware answers 0.
+pub const STAT_SPDIF_OVERRUNS: u16 = 7;
+/// `fetch_stat`: S/PDIF underruns since boot.
+pub const STAT_SPDIF_UNDERRUNS: u16 = 8;
+/// `fetch_stat`: system clock, Hz.
+pub const STAT_CLOCK_HZ: u16 = 13;
+/// `fetch_stat`: core voltage, mV.
+pub const STAT_CORE_MV: u16 = 14;
+/// `fetch_stat`: audio sample rate, Hz.
+pub const STAT_SAMPLE_RATE: u16 = 15;
+/// `fetch_stat`: temperature, centi-degrees C, signed (an `i16` widened to
+/// `u32`).
+pub const STAT_TEMPERATURE: u16 = 16;
+/// `fetch_stat`: S/PDIF DMA starvations, all instances.
+pub const STAT_STARVATION_TOTAL: u16 = 17;
+/// `fetch_stat`: S/PDIF DMA starvations of instance 0; instances 1-3 follow
+/// (18-21).
+pub const STAT_STARVATION_FIRST: u16 = 18;
+/// `fetch_stat`: USB audio ring overruns since boot.
+pub const STAT_USB_RING_OVERRUNS: u16 = 22;
 // -- WP C11 --
 // -- WP C12 --
 // -- WP C13 --
