@@ -179,7 +179,8 @@ fn psybass_quantize(param: u8, value: f32) -> Result<(&'static str, f32)> {
 }
 
 /// The registry path and the stored value of an upmixer write. The enable
-/// and the modes round like `lrintf` (ties to even); an out-of-range centre
+/// is "not zero" (`v != 0.0f`, as `REQ_UPMIX_SET_PARAM` tests it); the
+/// modes round like `lrintf` (ties to even); an out-of-range centre
 /// mode becomes adaptive (`upmix_clamp_center_mode`: a bad value must not
 /// switch the centre off), the surround mode is clamped; the presence goes
 /// in 0.5 dB steps (`upmix_presence_encode`).
@@ -197,7 +198,8 @@ fn upmix_quantize(id: u8, value: f32) -> Result<(&'static str, f32)> {
                 upmix::UPMIX_CENTER_ADAPTIVE as f32
             }
         }
-        UPMIX_PARAM_ENABLED | UPMIX_PARAM_SURROUND_MODE => v.round_ties_even().clamp(lo, hi),
+        UPMIX_PARAM_ENABLED => f32::from(u8::from(v != 0.0)),
+        UPMIX_PARAM_SURROUND_MODE => v.round_ties_even().clamp(lo, hi),
         UPMIX_PARAM_PRESENCE => (v.clamp(lo, hi) * 2.0).round_ties_even() / 2.0,
         _ => v.clamp(lo, hi),
     };
@@ -880,6 +882,10 @@ mod tests_wp_c4 {
         assert_eq!(q(UPMIX_PARAM_DETECTOR_HPF, 5000.0), 1000.0);
         assert_eq!(q(UPMIX_PARAM_SURROUND_LPF, 10.0), 1000.0);
         assert_eq!(q(UPMIX_PARAM_ENABLED, 0.7), 1.0);
+        // `v != 0.0f` (vendor_commands.c, REQ_UPMIX_SET_PARAM), not rounding.
+        assert_eq!(q(UPMIX_PARAM_ENABLED, 0.3), 1.0);
+        assert_eq!(q(UPMIX_PARAM_ENABLED, -2.0), 1.0);
+        assert_eq!(q(UPMIX_PARAM_ENABLED, 0.0), 0.0);
         assert!(is_invalid(upmix_quantize(14, 0.0)));
         assert!(is_invalid(upmix_quantize(0, f32::NAN)));
     }
