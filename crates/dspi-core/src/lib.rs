@@ -123,6 +123,8 @@ pub use records::*;
 pub use autoeq::*;
 // -- WP CG8 --
 pub use firmware_guard::*;
+// -- WP HB0 --
+pub use hotplug::{BrokeredDevice, DeviceBroker};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
