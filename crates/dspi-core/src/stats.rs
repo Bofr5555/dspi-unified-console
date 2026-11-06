@@ -28,6 +28,7 @@ use dspi_proto::packets::{
     BufferStatsPacket, SiggenCapsHeader, SiggenConfig as WireSiggenConfig,
     SiggenStatus as WireSiggenStatus, SiggenTypeDesc, SpdifRxStatusPacket,
 };
+use dspi_session::ring_health;
 use dspi_transport::TransportError;
 
 use crate::consts::{SIGGEN_TYPE_COUNT, SIGGEN_VERSION};
@@ -190,6 +191,33 @@ fn buffer_stats(p: BufferStatsPacket) -> BufferStats {
             ring_fill_pct: p.pdm.ring_fill_pct,
             ring_min_pct: p.pdm.ring_min_fill_pct,
             ring_max_pct: p.pdm.ring_max_fill_pct,
+        },
+    }
+}
+
+fn ring_health_record(h: ring_health::RingHealth) -> RingHealth {
+    RingHealth {
+        target_frames: h.target.target_frames,
+        target_us: h.target.target_us,
+        batch_frames: h.target.batch_frames,
+        underrun_episodes: h.underrun_episodes,
+        refused_blocks: h.refused_blocks,
+        lowest_fill: h.lowest_fill,
+        worst_input_gap_us: h.worst_input_gap_us,
+        worst_usb_gap_us: h.worst_usb_gap_us,
+        over_budget_steps: h.over_budget_steps,
+    }
+}
+
+fn output_fill_record(f: ring_health::OutputFill) -> OutputFill {
+    OutputFill {
+        fill_pct: f.fill_pct,
+        min_pct: f.min_pct,
+        max_pct: f.max_pct,
+        band: match f.band {
+            ring_health::FillBand::Good => FillBand::Good,
+            ring_health::FillBand::Warn => FillBand::Warn,
+            ring_health::FillBand::Bad => FillBand::Bad,
         },
     }
 }
@@ -381,6 +409,32 @@ impl DspiCore {
             .and_then(|s| <[u8; 4]>::try_from(s).ok())
             .ok_or_else(|| malformed("status counter", "too short"))?;
         Ok(u32::from_le_bytes(v))
+    }
+
+    /// The output rings' health (Output Ring Health in the Stats window), or
+    /// `None` on firmware without `REQ_OUTPUT_LATENCY` or with a short reply to
+    /// it: show no section then. Seven transfers.
+    ///
+    /// Errors: [`DspiError::Disconnected`]; a transfer failure, or a stall or a
+    /// short reply on a counter, as [`DspiError::Transfer`]. A counter that
+    /// cannot be read fails the call rather than reading as 0.
+    pub fn fetch_ring_health(&self) -> Result<Option<RingHealth>> {
+        let mut inner = self.lock();
+        let health = ring_health::read_ring_health(inner.conn()?.transport())?;
+        Ok(health.map(ring_health_record))
+    }
+
+    /// The live outputs' fill for the Stats rows: to frame resolution, on the
+    /// ring's own scale, with the band around the live latency target. Firmware
+    /// without `REQ_OUTPUT_LATENCY` keeps its fixed scale and fixed bands. Two
+    /// transfers. Use this rather than [`BufferStats`]' percentages, whose
+    /// 48-frame steps read as an empty ring at the lowest latency.
+    ///
+    /// Errors: as for [`DspiCore::fetch_buffer_stats`].
+    pub fn fetch_output_fills(&self) -> Result<Vec<OutputFill>> {
+        let mut inner = self.lock();
+        let fills = ring_health::read_output_fills(inner.conn()?.transport())?;
+        Ok(fills.into_iter().map(output_fill_record).collect())
     }
 
     /// The buffer fill levels (%) and their watermarks
@@ -1007,5 +1061,106 @@ mod tests_wp_c10 {
                 prop_assert!(caps.types.iter().all(|t| t.params.len() == 4));
             }
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg12 {
+    use std::sync::Arc;
+
+    use dspi_transport::mock::Reply;
+    use dspi_transport::{FakeDevice, MockTransport};
+
+    use super::*;
+
+    fn core_on(t: MockTransport) -> Arc<DspiCore> {
+        let core = DspiCore::new();
+        core.attach(Box::new(t), "MOCK".into(), 0);
+        core
+    }
+
+    fn latency() -> Vec<u8> {
+        vec![3, 3, 0xD0, 0x07, 96, 0, 48, 0, 0, 7, 0, 0]
+    }
+
+    #[test]
+    fn wp_cg12_health_record() {
+        let replies = [7u32, 6, u32::MAX, 4, 3, 2]
+            .iter()
+            .map(|v| Reply::Data(v.to_le_bytes().to_vec()))
+            .collect();
+        let t = MockTransport::new()
+            .data(op::REQ_OUTPUT_LATENCY, latency())
+            .reply(op::REQ_GET_STATUS, Reply::Sequence(replies));
+        assert_eq!(
+            core_on(t).fetch_ring_health().unwrap(),
+            Some(RingHealth {
+                target_frames: 96,
+                target_us: 2000,
+                batch_frames: 48,
+                underrun_episodes: 7,
+                refused_blocks: 6,
+                lowest_fill: None,
+                worst_input_gap_us: 4,
+                worst_usb_gap_us: 3,
+                over_budget_steps: 2,
+            })
+        );
+    }
+
+    #[test]
+    fn wp_cg12_no_status_is_no_section() {
+        assert_eq!(
+            core_on(MockTransport::new()).fetch_ring_health().unwrap(),
+            None
+        );
+        let t = MockTransport::new().data(op::REQ_OUTPUT_LATENCY, vec![0u8; 3]);
+        assert_eq!(core_on(t).fetch_ring_health().unwrap(), None);
+    }
+
+    #[test]
+    fn wp_cg12_a_short_counter_is_a_transfer_error() {
+        let t = MockTransport::new()
+            .data(op::REQ_OUTPUT_LATENCY, latency())
+            .data(op::REQ_GET_STATUS, vec![1u8]);
+        assert!(matches!(
+            core_on(t).fetch_ring_health(),
+            Err(DspiError::Transfer { .. })
+        ));
+    }
+
+    #[test]
+    fn wp_cg12_without_a_device() {
+        let core = DspiCore::new();
+        assert_eq!(core.fetch_ring_health(), Err(DspiError::Disconnected));
+        assert_eq!(core.fetch_output_fills(), Err(DspiError::Disconnected));
+    }
+
+    #[test]
+    fn wp_cg12_fill_record() {
+        let mut raw = vec![0u8; BufferStatsPacket::SIZE];
+        raw[0] = 1;
+        raw[7..12].copy_from_slice(&[6, 13, 25, 0xE8, 0x03]);
+        let t = MockTransport::new()
+            .data(op::REQ_OUTPUT_LATENCY, latency())
+            .data(op::REQ_GET_BUFFER_STATS, raw);
+        assert_eq!(
+            core_on(t).fetch_output_fills().unwrap(),
+            [OutputFill {
+                fill_pct: 15.0,
+                min_pct: 20,
+                max_pct: 38,
+                band: FillBand::Good,
+            }]
+        );
+    }
+
+    #[test]
+    fn wp_cg12_health_on_the_fake_device() {
+        let core = DspiCore::new();
+        core.attach(Box::new(FakeDevice::demo()), "FAKE".into(), 0);
+        let health = core.fetch_ring_health().unwrap().unwrap();
+        assert!(health.target_frames > 0);
     }
 }

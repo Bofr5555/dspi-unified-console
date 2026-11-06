@@ -1152,4 +1152,68 @@ pub enum LinkPhase {
     /// until something changes on the hub: see `close_reason`.
     Refused,
 }
+// -- WP CG12 --
+
+/// The output rings' counters and watermarks (`fetch_ring_health`). The
+/// underrun, refused and over-budget counts are cumulative; the rest clear on
+/// `reset_buffer_stats`.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RingHealth {
+    /// How full the rings are kept, frames (Fill Target).
+    pub target_frames: u16,
+    /// The same as a time, µs.
+    pub target_us: u16,
+    /// Frames a stream input delivers per call; the fill swings by about this.
+    pub batch_frames: u16,
+    /// Times the outputs ran dry while a source owed audio. A host that pauses
+    /// its stream does not count.
+    pub underrun_episodes: u32,
+    /// Audio blocks dropped because the rings had no room.
+    pub refused_blocks: u32,
+    /// The emptiest a ring got just before a write, frames; none before the
+    /// first write.
+    pub lowest_fill: Option<u32>,
+    /// Longest wait between input deliveries, µs.
+    pub worst_input_gap_us: u32,
+    /// Longest gap between audio-carrying USB packets, µs.
+    pub worst_usb_gap_us: u32,
+    /// Background steps that overran their main-loop budget.
+    pub over_budget_steps: u32,
+}
+
+/// How an output's fill reads ([`OutputFill::band`]). The Console shows these
+/// green, yellow and red.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+#[serde(rename_all = "camelCase")]
+pub enum FillBand {
+    /// Within the expected swing.
+    #[default]
+    Good,
+    /// Outside the expected swing.
+    Warn,
+    /// Empty, or too full to take a write.
+    Bad,
+}
+
+/// One output's fill, scaled and judged (`fetch_output_fills`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutputFill {
+    /// Fill to frame resolution, %: of the ring where the firmware has the
+    /// latency setting (at most 100), else of the firmware's fixed scale (which
+    /// can pass 100).
+    pub fill_pct: f64,
+    /// Lowest fill since the last reset, % on the same scale.
+    pub min_pct: u8,
+    /// Highest fill since the last reset, % on the same scale.
+    pub max_pct: u8,
+    /// The band of `fill_pct`, around the live latency target where there is
+    /// one.
+    pub band: FillBand,
+}
+
 // -- WP F1 --
