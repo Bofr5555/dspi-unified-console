@@ -27,6 +27,10 @@ serde.workspace = true
 # The old core's logging: dspi_core_new installs it, RUST_LOG picks the level.
 # No regex filters, so no regex in the Qt app.
 env_logger = { version = "0.11", default-features = false }
+# -- WP CG1 --
+# dspi_open_midi opens a midir_port; already a dependency of dspi-core, and its
+# `midir` feature comes through dspi-core/midir.
+dspi-transport.workspace = true
 
 [features]
 link = ["dspi-core/link"]
@@ -40,6 +44,9 @@ dspi-proto.workspace = true
 # PLAN section 1.9: the C ABI's null and short-buffer property tests.
 proptest = "1"
 # -- WP Q2b --
+# -- WP CG1 --
+# The fake hub, for the Link functions' tests.
+dspi-link = { path = "../dspi-link", features = ["fake-hub"] }
 
 [build-dependencies]
 # The header (WP Q1), as the old core generated it. 0.29, not the old core's
