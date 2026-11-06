@@ -217,7 +217,9 @@ int main(int argc, char *argv[])
     // (otherwise the binary's name, which an AppImage changes)
     if (!qEnvironmentVariableIsSet("RESOURCE_NAME")) qputenv("RESOURCE_NAME", "dspi-console");
 #endif
-    QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);   // always on in Qt 6
+#endif
 #ifdef HAS_KDE_BLUR
     // Windows need an alpha channel from creation for the blurred sidebar to
     // show through: Qt can't add one to an existing surface, so the switch to
@@ -250,8 +252,14 @@ int main(int argc, char *argv[])
 
     // Fusion style — consistent dark look across platforms. The app's own
     // style (qml/style) only replaces ToolTip and falls back to Fusion.
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     QQuickStyle::setStyle(QStringLiteral(":/qml/style"));
     QQuickStyle::setFallbackStyle(QStringLiteral("Fusion"));
+#else
+    // Qt 6 takes a style by module name: qml/style/qmldir names the module
+    // and imports Fusion as its fallback (the engine adds qrc:/qml below)
+    QQuickStyle::setStyle(QStringLiteral("style"));
+#endif
 
     // Dark palette, hardcoded
 #ifdef Q_OS_MACOS
@@ -426,6 +434,9 @@ int main(int argc, char *argv[])
 
     // Add QML import path for our custom module
     engine.addImportPath("qrc:/");
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    engine.addImportPath("qrc:/qml");   // the "style" module
+#endif
 
     engine.load(QUrl(QStringLiteral("qrc:/qml/main.qml")));
     if (engine.rootObjects().isEmpty())

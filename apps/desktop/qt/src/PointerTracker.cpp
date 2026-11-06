@@ -2,6 +2,7 @@
 
 #include <QQuickWindow>
 #include <QMouseEvent>
+#include "QtCompat.h"
 #include <QHoverEvent>
 
 PointerTracker::PointerTracker(QQuickItem *parent) : QQuickItem(parent) {
@@ -23,12 +24,12 @@ bool PointerTracker::eventFilter(QObject *, QEvent *event) {
     case QEvent::MouseButtonPress:
     case QEvent::MouseButtonRelease: {
         auto *me = static_cast<QMouseEvent *>(event);
-        setInside(isVisible() && contains(mapFromScene(me->windowPos())));
+        setInside(isVisible() && contains(mapFromScene(eventScenePos(me))));
         break;
     }
     case QEvent::Enter: {
         auto *ee = static_cast<QEnterEvent *>(event);
-        setInside(isVisible() && contains(mapFromScene(ee->windowPos())));
+        setInside(isVisible() && contains(mapFromScene(eventScenePos(ee))));
         break;
     }
     case QEvent::Leave:

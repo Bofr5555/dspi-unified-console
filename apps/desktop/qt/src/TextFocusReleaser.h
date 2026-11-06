@@ -3,6 +3,7 @@
 
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include "QtCompat.h"
 #include <QObject>
 #include <QPointer>
 #include <QQuickItem>
@@ -40,7 +41,7 @@ protected:
                 if (focus && (focus->inherits("QQuickTextInput") || focus->inherits("QQuickTextEdit"))) {
                     auto *press = static_cast<QMouseEvent *>(event);
                     QRectF area = focus->mapRectToScene(QRectF(0, 0, focus->width(), focus->height()));
-                    if (!area.contains(press->windowPos()))
+                    if (!area.contains(eventScenePos(press)))
                         release(window);
                 }
             }

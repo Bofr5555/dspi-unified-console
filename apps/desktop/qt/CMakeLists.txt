@@ -4,11 +4,24 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-# Platform-specific Qt5 path hints
-if(APPLE)
-    set(Qt5_DIR "/opt/homebrew/opt/qt@5/lib/cmake/Qt5")
+# Qt 6 when it is found, else Qt 5.15. DSPI_QT_MAJOR=5 or 6 forces one.
+set(DSPI_QT_MAJOR "" CACHE STRING "Qt major version to build against (5 or 6; empty: Qt 6 if found)")
+if(APPLE AND NOT DSPI_QT_MAJOR STREQUAL "6")
+    # Homebrew's Qt 5, when Qt 5 is asked for or Qt 6 isn't installed
+    list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew/opt/qt@5")
 endif()
-find_package(Qt5 5.15 REQUIRED COMPONENTS Core Gui Widgets Quick QuickControls2 Qml Network)
+if(DSPI_QT_MAJOR)
+    set(_qt_names Qt${DSPI_QT_MAJOR})
+else()
+    set(_qt_names Qt6 Qt5)
+endif()
+find_package(QT NAMES ${_qt_names} REQUIRED COMPONENTS Core)
+if(QT_VERSION_MAJOR EQUAL 5)
+    find_package(Qt5 5.15 REQUIRED COMPONENTS Core Gui Widgets Quick QuickControls2 Qml Network)
+else()
+    find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Quick QuickControls2 Qml Network)
+endif()
+message(STATUS "Building against Qt ${QT_VERSION}")
 
 # The Rust core (dspi-core). Build it first with cargo; these say where its
 # header and library are. DSPI_RUST_TARGET is the cargo --target triple when
@@ -48,7 +61,7 @@ target_include_directories(DSPiConsole PRIVATE
 )
 
 target_link_libraries(DSPiConsole PRIVATE
-    Qt5::Core Qt5::Gui Qt5::Widgets Qt5::Quick Qt5::QuickControls2 Qt5::Qml Qt5::Network
+    Qt::Core Qt::Gui Qt::Widgets Qt::Quick Qt::QuickControls2 Qt::Qml Qt::Network
 )
 
 if(WIN32)
@@ -90,9 +103,10 @@ elseif(UNIX)
     target_link_libraries(DSPiConsole PRIVATE ${LIBUSB_LIBRARIES} pthread dl udev)
 
     # Optional: KDE blur-behind support
-    find_package(KF5WindowSystem QUIET)
-    if(KF5WindowSystem_FOUND)
-        target_link_libraries(DSPiConsole PRIVATE KF5::WindowSystem)
+    # KF5 with Qt 5, KF6 with Qt 6
+    find_package(KF${QT_VERSION_MAJOR}WindowSystem QUIET)
+    if(KF${QT_VERSION_MAJOR}WindowSystem_FOUND)
+        target_link_libraries(DSPiConsole PRIVATE KF${QT_VERSION_MAJOR}::WindowSystem)
         target_compile_definitions(DSPiConsole PRIVATE HAS_KDE_BLUR)
         message(STATUS "KDE blur-behind support enabled")
     else()
@@ -132,7 +146,11 @@ if(UNIX AND NOT APPLE)
     set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
     set(CPACK_DEBIAN_PACKAGE_SECTION sound)
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-    set(CPACK_DEBIAN_PACKAGE_DEPENDS "qml-module-qtquick2, qml-module-qtquick-window2, qml-module-qtquick-layouts, qml-module-qtquick-controls2, qml-module-qtquick-templates2, qml-module-qtqml, qml-module-qt-labs-settings, qml-module-qt-labs-platform, libqt5svg5 | libqt5svg5t64, qtwayland5")
+    if(QT_VERSION_MAJOR EQUAL 5)
+        set(CPACK_DEBIAN_PACKAGE_DEPENDS "qml-module-qtquick2, qml-module-qtquick-window2, qml-module-qtquick-layouts, qml-module-qtquick-controls2, qml-module-qtquick-templates2, qml-module-qtqml, qml-module-qt-labs-settings, qml-module-qt-labs-platform, libqt5svg5 | libqt5svg5t64, qtwayland5")
+    else()
+        set(CPACK_DEBIAN_PACKAGE_DEPENDS "qml6-module-qtquick, qml6-module-qtquick-window, qml6-module-qtquick-layouts, qml6-module-qtquick-controls, qml6-module-qtquick-templates, qml6-module-qtqml, qml6-module-qtqml-workerscript, qml6-module-qt-labs-settings, qml6-module-qt-labs-platform, libqt6svg6, qt6-wayland")
+    endif()
     set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "kwayland-integration, xdg-desktop-portal, udisks2")
     set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${PKG}/postinst;${PKG}/postrm")
 
@@ -142,7 +160,11 @@ if(UNIX AND NOT APPLE)
     set(CPACK_RPM_PACKAGE_LICENSE "Unspecified")
     set(CPACK_RPM_PACKAGE_GROUP "Applications/Multimedia")
     set(CPACK_RPM_PACKAGE_URL "https://github.com/WeebLabs/DSPi-Console-Linux")
-    set(CPACK_RPM_PACKAGE_REQUIRES "qt5-qtdeclarative, qt5-qtquickcontrols2, qt5-qtsvg, qt5-qtwayland")
+    if(QT_VERSION_MAJOR EQUAL 5)
+        set(CPACK_RPM_PACKAGE_REQUIRES "qt5-qtdeclarative, qt5-qtquickcontrols2, qt5-qtsvg, qt5-qtwayland")
+    else()
+        set(CPACK_RPM_PACKAGE_REQUIRES "qt6-qtdeclarative, qt6-qtsvg, qt6-qtwayland")
+    endif()
     set(CPACK_RPM_PACKAGE_SUGGESTS "kwayland-integration, xdg-desktop-portal, udisks2")
     set(CPACK_RPM_POST_INSTALL_SCRIPT_FILE ${PKG}/postinst)
     set(CPACK_RPM_POST_UNINSTALL_SCRIPT_FILE ${PKG}/postrm)

@@ -4,6 +4,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QMouseEvent>
+#include "QtCompat.h"
 #include <QHoverEvent>
 #include <QWheelEvent>
 #include <QKeyEvent>
@@ -760,7 +761,7 @@ void PeqEditorItem::setOrderSelection(int order) {
 void PeqEditorItem::mousePressEvent(QMouseEvent *e) {
     if (!m_active) { e->ignore(); return; }
     forceActiveFocus(Qt::MouseFocusReason);
-    QPointF p = e->localPos();
+    QPointF p = eventLocalPos(e);
     int b = dotAt(p);
     if (e->button() == Qt::RightButton) {
         if (b >= 0 && !m_selected[b]) selectBand(b, false, false);
@@ -804,7 +805,7 @@ void PeqEditorItem::cardClosed() {
 }
 
 void PeqEditorItem::mouseMoveEvent(QMouseEvent *e) {
-    QPointF p = e->localPos();
+    QPointF p = eventLocalPos(e);
     m_pointer = p;
     if (m_mode == PressDot && QLineF(p, m_pressPos).length() > kDragSlop) {
         if (roleOf(m_bands[m_pressBand].filter_type) == LockedRole) { m_mode = Idle; return; }
@@ -892,7 +893,7 @@ void PeqEditorItem::mouseReleaseEvent(QMouseEvent *e) {
 
 void PeqEditorItem::mouseDoubleClickEvent(QMouseEvent *e) {
     if (!m_active || e->button() != Qt::LeftButton) return;
-    QPointF p = e->localPos();
+    QPointF p = eventLocalPos(e);
     int b = dotAt(p);
     if (b >= 0) {
         // Its chip, with the frequency ready to type (the first click selected it)
@@ -907,7 +908,7 @@ void PeqEditorItem::mouseDoubleClickEvent(QMouseEvent *e) {
 }
 
 void PeqEditorItem::hoverMoveEvent(QHoverEvent *e) {
-    m_pointer = e->posF();
+    m_pointer = eventLocalPos(e);
     m_pointerInside = true;
     if (m_cardOpen) return;               // only the card responds while it's up
     int b = dotAt(m_pointer);
