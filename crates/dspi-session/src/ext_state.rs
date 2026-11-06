@@ -2,6 +2,12 @@
 //! on connect and kept with the device state.
 //!
 //! Owned by WP S3 (docs/core-merge/PLAN.md).
+#![warn(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
 
 use dspi_proto::ext::{CoreVregStatus, PairMap};
 use dspi_transport::Transport;
@@ -34,6 +40,7 @@ impl ExtState {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests {
     #[test]
     #[ignore = "WP S3"]

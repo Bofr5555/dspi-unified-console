@@ -180,6 +180,19 @@ pub fn refusal(firmware: Option<&FirmwareVersion>, wire: u8) -> String {
 }
 
 /// Ask the device what it is and what it can do.
+/// Probe a device whatever its wire format: what [`probe`] reads, but a
+/// firmware of another wire format is described rather than refused, and the
+/// bulk image's read mode says which ([`dspi_proto::wire_compat::WireRead`];
+/// `Exact` for this build's own format, the only writable one).
+///
+/// Owned by WP S2 (docs/core-merge/PLAN.md).
+pub fn probe_any(
+    t: &mut dyn Transport,
+) -> Result<(Capabilities, dspi_proto::wire_compat::WireRead)> {
+    let _ = t;
+    todo!("WP S2: tolerant probe")
+}
+
 pub fn probe(t: &mut dyn Transport) -> Result<Capabilities> {
     // GET_PLATFORM is the canonical liveness read; do it first so a dead or
     // wrongly-bound device fails here with a clear message rather than midway

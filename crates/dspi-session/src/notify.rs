@@ -376,6 +376,9 @@ impl SeqTracker {
     }
 }
 
+/// Called by the reader thread when notifications are waiting.
+pub type Waker = Arc<dyn Fn() + Send + Sync>;
+
 /// The reader thread and its channel.
 pub struct Notifications {
     rx: Receiver<Notification>,
@@ -410,7 +413,17 @@ impl Notifications {
     /// Start reading. Idle packets are dropped here; everything else is
     /// delivered with its sequence number, the loss flag and the link's
     /// origin. Fails only if the reader thread cannot be spawned.
-    pub fn start(mut source: Box<dyn NotificationSource>) -> std::io::Result<Self> {
+    pub fn start(source: Box<dyn NotificationSource>) -> std::io::Result<Self> {
+        Self::start_with_waker(source, None)
+    }
+
+    /// [`Notifications::start`], calling `waker` (on the reader thread) each
+    /// time a notification has been queued. A GUI's waker only schedules a
+    /// drain; it must not block or call back into the reader's owner.
+    pub fn start_with_waker(
+        mut source: Box<dyn NotificationSource>,
+        waker: Option<Waker>,
+    ) -> std::io::Result<Self> {
         let (tx, rx) = mpsc::sync_channel(Self::QUEUE);
         let stop = Arc::new(AtomicBool::new(false));
         let disconnected = Arc::new(AtomicBool::new(false));
@@ -428,6 +441,9 @@ impl Notifications {
                     match tx.try_send(n) {
                         Ok(()) => {
                             overflowed = false;
+                            if let Some(w) = &waker {
+                                w();
+                            }
                             true
                         }
                         Err(mpsc::TrySendError::Full(_)) => {

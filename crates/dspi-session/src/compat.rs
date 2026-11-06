@@ -9,6 +9,12 @@
 //! `0xA0` is used instead.
 //!
 //! Owned by WP S2 (docs/core-merge/PLAN.md).
+#![warn(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
 
 use dspi_proto::wire_compat::Normalized;
 use dspi_transport::Transport;
@@ -30,6 +36,7 @@ pub fn read_bulk_bytes(t: &mut dyn Transport) -> Result<Vec<u8>, crate::WriteErr
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests {
     #[test]
     #[ignore = "WP S2"]

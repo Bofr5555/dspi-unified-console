@@ -16,6 +16,12 @@ thiserror.workspace = true
 serde_json.workspace = true
 serde = { workspace = true }
 dirs = "6.0.0"
+# -- WP P1 --
+# -- WP S1 --
+# -- WP S2 --
+# -- WP S3 --
+# -- WP S4 --
+# -- WP S5 --
 
 [features]
 default = ["serde", "bundled-autoeq"]
@@ -26,3 +32,10 @@ serde = ["dspi-proto/serde"]
 
 [dev-dependencies]
 proptest = "1"
+# -- WP P1 --
+# -- WP S1 --
+# -- WP S2 --
+# -- WP S3 --
+# -- WP S4 --
+# -- WP S5 --
+

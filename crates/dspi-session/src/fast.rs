@@ -7,6 +7,12 @@
 //! then corrected by the device's own `PARAM_CHANGED` echo.
 //!
 //! Owned by WP S1 (docs/core-merge/PLAN.md).
+#![warn(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
 
 use dspi_proto::value::Value;
 
@@ -27,6 +33,7 @@ impl Session {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests {
     #[test]
     #[ignore = "WP S1"]
