@@ -7,6 +7,16 @@
 //! `http_status`, `network`, `bad_content`, ...), or the parent's `io` or
 //! `invalid`.
 //!
+//! # Short buffers
+//!
+//! [`dspi_autoeq_update`], [`dspi_autoeq_import`] and
+//! [`dspi_autoeq_reset_to_builtin`] change a file, so they do not take the usual
+//! ask-for-the-length-then-call-again route. With a null `buf`, or `len` under
+//! [`AUTOEQ_REPLY_MIN`], they return that minimum and do nothing: no fetch, no file
+//! change. With at least that much room they act, and the reply always fits: a
+//! `generatedAt` or `error` text too long for `buf` comes back empty, the rest of the
+//! reply intact. They never need calling twice.
+//!
 //! # The fetch callback
 //!
 //! The host's HTTP GET: [`AutoEqFetchCallback`]. It blocks until the server has
@@ -29,6 +39,9 @@ use dspi_core::{
 
 use super::{c_bytes, c_str, copy_text, json_reply};
 use crate::guard;
+
+/// The smallest reply buffer the functions that change a file act on (module docs).
+pub const AUTOEQ_REPLY_MIN: u32 = 4096;
 
 /// Where a fetch callback puts its answer. Valid only during the callback.
 pub struct AutoEqFetchSink {
@@ -169,6 +182,32 @@ fn reply<T: serde::Serialize>(r: Result<T>) -> String {
     .to_string()
 }
 
+/// Run a function that changes a file: nothing but the minimum for a null or short
+/// buffer, and otherwise a reply that fits (module docs).
+fn acting(buf: *mut c_char, len: u32, f: impl FnOnce() -> String) -> u32 {
+    if buf.is_null() || len < AUTOEQ_REPLY_MIN {
+        return AUTOEQ_REPLY_MIN;
+    }
+    copy_text(&fitted(f(), len), buf, len)
+}
+
+/// `text`, or if it does not fit `len` with its unbounded strings emptied. What is
+/// left is numbers, flags and a short code, far under [`AUTOEQ_REPLY_MIN`].
+fn fitted(text: String, len: u32) -> String {
+    if text.len() < len as usize {
+        return text;
+    }
+    let Ok(mut reply) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return text;
+    };
+    for field in ["generatedAt", "error", "problem"] {
+        if let Some(value) = reply.get_mut(field).filter(|v| v.is_string()) {
+            *value = serde_json::Value::String(String::new());
+        }
+    }
+    reply.to_string()
+}
+
 /// A path argument, or the failure reply for one.
 fn path_arg(db_path: *const c_char) -> std::result::Result<String, String> {
     c_str(db_path).map(str::to_owned).ok_or_else(|| {
@@ -198,8 +237,9 @@ pub extern "C" fn dspi_autoeq_database_info(
 
 /// Replace the database at `db_path` with a file's bytes, once they are known to be
 /// a database with at least one profile; otherwise the file is left alone. JSON as
-/// `dspi_autoeq_database_info`, or a failure. This changes a file, but is safe to
-/// repeat with a larger buffer. Returns the length needed.
+/// `dspi_autoeq_database_info`, or a failure. `buf` needs [`AUTOEQ_REPLY_MIN`] bytes;
+/// with less, this returns that minimum and does nothing (module docs). Otherwise
+/// returns the reply's length.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_autoeq_import(
     db_path: *const c_char,
@@ -209,18 +249,20 @@ pub extern "C" fn dspi_autoeq_import(
     len: u32,
 ) -> u32 {
     guard(0, || {
-        let text = path_arg(db_path).map_or_else(
-            |refused| refused,
-            |path| reply(dspi_core::autoeq_import(path, c_bytes(data, data_len))),
-        );
-        copy_text(&text, buf, len)
+        acting(buf, len, || {
+            path_arg(db_path).map_or_else(
+                |refused| refused,
+                |path| reply(dspi_core::autoeq_import(path, c_bytes(data, data_len))),
+            )
+        })
     })
 }
 
 /// Download a ready-made database from `url` and replace the one at `db_path`, once
 /// it is known to be one. Blocks for the request, calling `callback` on this thread;
-/// off the UI thread. JSON as `dspi_autoeq_import`. Give it a large enough buffer the
-/// first time, or it downloads again. Returns the length needed.
+/// off the UI thread. JSON as `dspi_autoeq_import`. `buf` needs [`AUTOEQ_REPLY_MIN`]
+/// bytes; with less, this returns that minimum and does nothing: no fetch, no file
+/// change (module docs). Otherwise returns the reply's length.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_autoeq_update(
     db_path: *const c_char,
@@ -236,27 +278,28 @@ pub extern "C" fn dspi_autoeq_update(
                 msg: msg.to_string(),
             }))
         };
-        let text = match (path_arg(db_path), c_str(url), callback) {
-            (Err(refused), _, _) => refused,
-            (_, None, _) => invalid("url is null or not UTF-8"),
-            (_, _, None) => invalid("callback is null"),
-            (Ok(path), Some(url), Some(callback)) => reply(dspi_core::autoeq_update(
-                path,
-                url.to_owned(),
-                Arc::new(CFetch {
-                    callback,
-                    user_data,
-                }),
-            )),
-        };
-        copy_text(&text, buf, len)
+        acting(buf, len, || {
+            match (path_arg(db_path), c_str(url), callback) {
+                (Err(refused), _, _) => refused,
+                (_, None, _) => invalid("url is null or not UTF-8"),
+                (_, _, None) => invalid("callback is null"),
+                (Ok(path), Some(url), Some(callback)) => reply(dspi_core::autoeq_update(
+                    path,
+                    url.to_owned(),
+                    Arc::new(CFetch {
+                        callback,
+                        user_data,
+                    }),
+                )),
+            }
+        })
     })
 }
 
 /// Reset to Built-in: remove the database at `db_path`. JSON {ok, value}: `value`
-/// true if there was one. Give it a large enough buffer the first time: a second call
-/// finds nothing to remove. The host then goes back to its own bundled copy. Returns
-/// the length needed.
+/// true if there was one. The host then goes back to its own bundled copy. `buf` needs
+/// [`AUTOEQ_REPLY_MIN`] bytes; with less, this returns that minimum and does nothing
+/// (module docs). Otherwise returns the reply's length.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_autoeq_reset_to_builtin(
     db_path: *const c_char,
@@ -264,11 +307,12 @@ pub extern "C" fn dspi_autoeq_reset_to_builtin(
     len: u32,
 ) -> u32 {
     guard(0, || {
-        let text = path_arg(db_path).map_or_else(
-            |refused| refused,
-            |path| reply(dspi_core::autoeq_reset_to_builtin(path)),
-        );
-        copy_text(&text, buf, len)
+        acting(buf, len, || {
+            path_arg(db_path).map_or_else(
+                |refused| refused,
+                |path| reply(dspi_core::autoeq_reset_to_builtin(path)),
+            )
+        })
     })
 }
 
@@ -394,12 +438,11 @@ mod tests_wp_cg6 {
         CString::new(dir.join("db.json").display().to_string()).unwrap()
     }
 
-    /// Read a function's JSON reply. Once only, with room to spare: some of these
-    /// change a file, and a second call would answer differently.
+    /// Read a function's JSON reply, with the room the ones that act require.
     fn json(f: impl Fn(*mut c_char, u32) -> u32) -> Value {
-        let mut buf = vec![0 as c_char; 4096];
-        let needed = f(buf.as_mut_ptr(), 4096);
-        assert!((1..=4096).contains(&needed), "{needed}");
+        let mut buf = vec![0 as c_char; AUTOEQ_REPLY_MIN as usize];
+        let needed = f(buf.as_mut_ptr(), AUTOEQ_REPLY_MIN);
+        assert!((1..=AUTOEQ_REPLY_MIN).contains(&needed), "{needed}");
         let text = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap();
         serde_json::from_str(text).unwrap()
     }
@@ -645,6 +688,102 @@ mod tests_wp_cg6 {
         assert_eq!(r["code"], "bad_content", "{r}");
     }
 
+    /// Counts its calls; would replace the file if it ever got that far.
+    extern "C" fn counting(
+        user_data: *mut c_void,
+        _: *const c_char,
+        _: *const c_char,
+        _: *const c_char,
+        sink: *mut AutoEqFetchSink,
+    ) {
+        let calls = unsafe { &*user_data.cast::<AtomicUsize>() };
+        calls.fetch_add(1, Ordering::SeqCst);
+        respond(sink, 200, DB);
+    }
+
+    #[test]
+    fn wp_cg6_a_short_buffer_fetches_nothing_and_changes_nothing() {
+        const OLD: &str = "the old database";
+        let db = scratch("capi-cg6-short");
+        let path = db.to_str().unwrap();
+        std::fs::write(path, OLD).unwrap();
+        let url = c"https://example.test/db.json".as_ptr();
+        let calls = AtomicUsize::new(0);
+        let user = (&raw const calls).cast_mut().cast::<c_void>();
+        let min = AUTOEQ_REPLY_MIN;
+
+        // Every null or short shape, with a buffer that must stay untouched.
+        let mut bytes = vec![0x55 as c_char; min as usize];
+        let shapes = [
+            (null_mut(), 0),
+            (null_mut(), min),
+            (null_mut(), 100_000),
+            (bytes.as_mut_ptr(), 0),
+            (bytes.as_mut_ptr(), 1),
+            (bytes.as_mut_ptr(), min - 1),
+        ];
+        for (b, l) in shapes {
+            let update = dspi_autoeq_update(db.as_ptr(), url, Some(counting), user, b, l);
+            assert_eq!(update, min, "update, {l}");
+            let import = dspi_autoeq_import(db.as_ptr(), DB.as_ptr(), DB.len() as u32, b, l);
+            assert_eq!(import, min, "import, {l}");
+            assert_eq!(
+                dspi_autoeq_reset_to_builtin(db.as_ptr(), b, l),
+                min,
+                "reset, {l}"
+            );
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 0, "a short buffer fetched");
+        assert_eq!(std::fs::read_to_string(path).unwrap(), OLD);
+        assert!(
+            bytes.iter().all(|&b| b == 0x55),
+            "a short buffer was written"
+        );
+
+        // With the minimum: exactly one fetch, one change, and no second call needed.
+        let n = dspi_autoeq_update(
+            db.as_ptr(),
+            url,
+            Some(counting),
+            user,
+            bytes.as_mut_ptr(),
+            min,
+        );
+        assert!((1..=min).contains(&n), "{n}");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(std::fs::read_to_string(path).unwrap(), DB);
+    }
+
+    /// An imported file's `generatedAt` can be any length. The file has changed by
+    /// then, so the reply still has to arrive.
+    #[test]
+    fn wp_cg6_a_reply_always_fits_the_minimum() {
+        let db = scratch("capi-cg6-long");
+        let long = "9".repeat(3 * AUTOEQ_REPLY_MIN as usize);
+        let doc = DB.replace("2026-01-02T03:04:05.000Z", &long);
+        let r = json(|b, l| dspi_autoeq_import(db.as_ptr(), doc.as_ptr(), doc.len() as u32, b, l));
+        assert_eq!(r["ok"], true, "{r}");
+        assert_eq!(r["entryCount"], 1, "{r}");
+        assert_eq!(r["generatedAt"], "", "{r}");
+        assert_eq!(std::fs::read_to_string(db.to_str().unwrap()).unwrap(), doc);
+
+        // A failure keeps its code when its words are dropped.
+        let cut = fitted(
+            json_reply::<()>(Err(DspiError::Io { msg: long })),
+            AUTOEQ_REPLY_MIN,
+        );
+        assert!(cut.len() < AUTOEQ_REPLY_MIN as usize, "{cut}");
+        let cut: Value = serde_json::from_str(&cut).unwrap();
+        assert_eq!(
+            (&cut["ok"], &cut["code"]),
+            (&Value::Bool(false), &Value::from("io"))
+        );
+
+        // Room for the whole reply keeps the whole reply.
+        let whole = r#"{"generatedAt":"2026","ok":true}"#.to_string();
+        assert_eq!(fitted(whole.clone(), AUTOEQ_REPLY_MIN), whole);
+    }
+
     #[test]
     fn the_header_declares_the_autoeq_functions() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -655,6 +794,7 @@ mod tests_wp_cg6 {
             "an unresolved type in the header"
         );
         for name in [
+            "AUTOEQ_REPLY_MIN",
             "AutoEqFetchCallback",
             "AutoEqFetchSink",
             "AutoEqRebuildHandle",
