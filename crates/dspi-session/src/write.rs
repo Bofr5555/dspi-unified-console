@@ -208,7 +208,7 @@ pub struct Session {
     /// Pin and clock setters report `PIN_CONFIG_*` here (config.h:607-613) and
     /// then quietly keep the old value, so the caller that wants to say *why*
     /// a step was refused needs the code, not just the readback.
-    last_status: Option<u8>,
+    pub(crate) last_status: Option<u8>,
 }
 
 impl Session {
