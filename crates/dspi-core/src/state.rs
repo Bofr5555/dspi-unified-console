@@ -464,6 +464,13 @@ pub fn default_state() -> DspState {
     }
 }
 
+/// Longest delay (ms) the firmware's delay line holds for this state's
+/// platform: 42 on RP2350 (`platform_id` 1, 2048 samples at 48 kHz), 21
+/// otherwise (RP2040, 1024 samples).
+pub(crate) fn max_delay_ms_for(state: &DspState) -> f32 {
+    if state.platform_id == 1 { 42.0 } else { 21.0 }
+}
+
 // ── REQ_GET_PLATFORM ──────────────────────────────────────────────────
 
 /// Apply a `REQ_GET_PLATFORM` reply (4, 6 or 7 bytes) to `state`: platform
