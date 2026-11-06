@@ -6,19 +6,21 @@
 //! or `PRESET_*` code (0 = success) and 0xFF when it did not answer; `i8` -1;
 //! a `u32` text length 0. A failed fetch leaves `out` untouched. A `void`
 //! function that fills a record writes its zero value when the handle is null.
+//! A misaligned record pointer counts as a null one.
 //!
 //! **Text functions** copy NUL-terminated UTF-8 into `buf` and return the bytes
 //! needed including the NUL. When that is more than `len`, nothing is written:
-//! call again with a larger buffer. For a call that changes the device
-//! (`dspi_config_import`, `dspi_filters_import`, `dspi_cs_apply`) that repeats
-//! the change, so give those a buffer that is large enough the first time.
+//! call again with a larger buffer. **Except** `dspi_config_import`,
+//! `dspi_filters_import` and `dspi_cs_apply`, which change the device: don't
+//! retry those. A reply too long means the write has happened, and a second
+//! call applies it again. Give them a large enough buffer the first time.
 //!
 //! **The added functions** that return a record reply in JSON, built from
 //! dspi-core's `Serialize` records: `{"ok":true, <the record's fields in
 //! camelCase>}` (a list as `"value"`), or `{"ok":false,"code":<kind>,
 //! "error":<sentence>}`. `code` is one of `disconnected`, `transfer`,
 //! `refused`, `invalid`, `unsupported`, `read_only`, `locked`, `denied`,
-//! `link`, `io` or `error`. `unsupported` is how stock firmware answers the
+//! `link` or `io`. `unsupported` is how stock firmware answers the
 //! extension channel; it is not a fault.
 
 use std::ffi::{CStr, c_char, c_void};
@@ -155,12 +157,12 @@ fn fetch<R, C>(core: *mut FfiCore, out: *mut C, f: impl FnOnce(&DspiCore) -> Res
 where
     C: for<'a> From<&'a R>,
 {
-    if out.is_null() {
+    if out.is_null() || !out.is_aligned() {
         return false;
     }
     with_core(core, false, |h| match f(&h.core) {
         Ok(v) => {
-            // SAFETY: `out` is non-null and points to a `C`; the C caller's
+            // SAFETY: not null, aligned, and points to a `C`; the C caller's
             // contract.
             unsafe { out.write(C::from(&v)) };
             true
@@ -174,12 +176,12 @@ where
 
 /// Fetch a plain value into `out`.
 fn fetch_value<T>(core: *mut FfiCore, out: *mut T, f: impl FnOnce(&DspiCore) -> Result<T>) -> bool {
-    if out.is_null() {
+    if out.is_null() || !out.is_aligned() {
         return false;
     }
     with_core(core, false, |h| match f(&h.core) {
         Ok(v) => {
-            // SAFETY: `out` is non-null and points to a `T`; the C caller's
+            // SAFETY: not null, aligned, and points to a `T`; the C caller's
             // contract.
             unsafe { out.write(v) };
             true
@@ -204,12 +206,14 @@ fn error_code(e: &DspiError) -> &'static str {
         DspiError::Denied => "denied",
         DspiError::Link { .. } => "link",
         DspiError::Io { .. } => "io",
-        #[allow(unreachable_patterns)] // a later WP may add variants
-        _ => "error",
     }
 }
 
 /// A result as the added functions' JSON reply (module docs).
+///
+/// `ok` is inserted among the record's own fields, so no record that comes
+/// through here may have a field named `ok`: it would be overwritten. A test
+/// checks every such record (`wp_q2b_no_reply_record_has_a_field_named_ok`).
 fn json_reply<T: Serialize>(r: Result<T>) -> String {
     let fields = r.and_then(|v| {
         serde_json::to_value(v).map_err(|e| DspiError::InvalidArgument { msg: e.to_string() })
@@ -594,8 +598,8 @@ pub extern "C" fn dspi_process_notifications(core: *mut FfiCore, out: *mut Notif
     let result = with_core(core, NotifyResult::default(), |h| {
         NotifyResult::from(&h.core.process_notifications())
     });
-    if !out.is_null() {
-        // SAFETY: `out` is non-null and points to a record; the C caller's
+    if !out.is_null() && out.is_aligned() {
+        // SAFETY: not null, aligned, and points to a record; the C caller's
         // contract.
         unsafe { out.write(result) };
     }
@@ -633,12 +637,12 @@ pub extern "C" fn dspi_rta_start(core: *mut FfiCore) {
 /// What to analyse. A zero mask releases the analyser.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_rta_set_request(core: *mut FfiCore, request: *const RtaRequest) {
-    if request.is_null() {
+    if request.is_null() || !request.is_aligned() {
         return;
     }
     with_core(core, (), |h| {
-        // SAFETY: `request` is non-null and points to a record; the C
-        // caller's contract.
+        // SAFETY: not null, aligned, and points to a record; the C caller's
+        // contract.
         let request = unsafe { request.read() };
         h.core.rta_set_request((&request).into());
     });
@@ -648,26 +652,26 @@ pub extern "C" fn dspi_rta_set_request(core: *mut FfiCore, request: *const RtaRe
 /// one, and for a null handle).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_rta_get_caps(core: *mut FfiCore, out: *mut RtaCapsInfo) {
-    if out.is_null() {
+    if out.is_null() || !out.is_aligned() {
         return;
     }
     let caps = with_core(core, None, |h| {
         Some(RtaCapsInfo::from(&h.core.rta_get_caps()))
     });
-    // SAFETY: `out` is non-null and points to a record; the C caller's contract.
+    // SAFETY: not null, aligned, and points to a record; the C caller's contract.
     unsafe { out.write(caps.unwrap_or_default()) };
 }
 
 /// Copy the latest snapshot into `out` (the empty one for a null handle).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_rta_get_snapshot(core: *mut FfiCore, out: *mut RtaSnapshot) {
-    if out.is_null() {
+    if out.is_null() || !out.is_aligned() {
         return;
     }
     let snapshot = with_core(core, None, |h| {
         Some(RtaSnapshot::from(&h.core.rta_get_snapshot()))
     });
-    // SAFETY: `out` is non-null and points to a record; the C caller's contract.
+    // SAFETY: not null, aligned, and points to a record; the C caller's contract.
     unsafe { out.write(snapshot.unwrap_or_default()) };
 }
 
@@ -690,11 +694,11 @@ pub extern "C" fn dspi_siggen_get_config(core: *mut FfiCore, out: *mut SiggenCon
 /// even a config it refuses: read it back to check.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_siggen_set_config(core: *mut FfiCore, cfg: *const SiggenConfig) -> bool {
-    if cfg.is_null() {
+    if cfg.is_null() || !cfg.is_aligned() {
         return false;
     }
     flag(core, |c| {
-        // SAFETY: `cfg` is non-null and points to a record; the C caller's
+        // SAFETY: not null, aligned, and points to a record; the C caller's
         // contract.
         let cfg = unsafe { cfg.read() };
         c.siggen_set_config((&cfg).into())
@@ -762,8 +766,9 @@ pub extern "C" fn dspi_fetch_spdif_rx_pin(core: *mut FfiCore, index: u8, out: *m
 
 /// Copy the notification log lines after `after_id` into `buf` as
 /// "time_ms<TAB>text<LF>" (ms since the Unix epoch), stopping before `buf`
-/// would overflow. Returns the id of the last line written (`after_id` if
-/// none); call again from there to get the rest.
+/// would overflow. A line too long for `buf` even on its own is dropped.
+/// Returns the id of the last line written or dropped (`after_id` if none);
+/// call again from there to get the rest.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_monitor_read(
     core: *mut FfiCore,
@@ -782,6 +787,13 @@ pub extern "C" fn dspi_monitor_read(
         let mut last = after_id;
         for e in h.core.monitor_read(after_id).entries {
             let line = format!("{}\t{}\n", e.time_ms, e.text);
+            if line.len() > limit {
+                // It would never fit: a caller looping until the id stops
+                // moving must not stop here for good.
+                log::debug!("dspi-capi: dropped a {}-byte monitor line", line.len());
+                last = e.id;
+                continue;
+            }
             if out.len().saturating_add(line.len()) > limit {
                 break;
             }
@@ -829,6 +841,10 @@ pub extern "C" fn dspi_config_inspect(text: *const c_char, buf: *mut c_char, len
 /// Apply a document (`options`: 1 = volumes, 2 = hardware I/O). Writes JSON
 /// {ok, error, lines, clean, links (or null), hardwareWritten}. Returns the
 /// length needed.
+///
+/// Don't retry on a short buffer: a reply too long means the write has
+/// happened, and a second call applies it again. Give it a large enough buffer
+/// the first time.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_config_import(
     core: *mut FfiCore,
@@ -864,7 +880,11 @@ pub extern "C" fn dspi_filters_inspect(
 }
 
 /// Apply a filter file to the channels in `wires` (wire indices). Writes
-/// JSON {ok, error, lines}.
+/// JSON {ok, error, lines}. Returns the length needed.
+///
+/// Don't retry on a short buffer: a reply too long means the write has
+/// happened, and a second call applies it again. Give it a large enough buffer
+/// the first time.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_filters_import(
     core: *mut FfiCore,
@@ -897,6 +917,10 @@ pub extern "C" fn dspi_cs_snapshot(core: *mut FfiCore, buf: *mut c_char, len: u3
 
 /// Perform one control surfaces operation, given as JSON {op, index, ...}.
 /// Writes JSON {ok, status, error, ...}. Returns the length needed.
+///
+/// Don't retry on a short buffer: a reply too long means the write has
+/// happened, and a second call applies it again. Give it a large enough buffer
+/// the first time.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_cs_apply(
     core: *mut FfiCore,
@@ -939,12 +963,13 @@ pub extern "C" fn dspi_cs_pin_uses(
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_bootloader_counts(rp2040: *mut u32, rp2350: *mut u32) {
     let counts = guard(Default::default(), dspi_core::bootloader_counts);
-    // SAFETY: a non-null pointer points to a u32; the C caller's contract.
+    // SAFETY: a non-null, aligned pointer points to a u32; the C caller's
+    // contract.
     unsafe {
-        if !rp2040.is_null() {
+        if !rp2040.is_null() && rp2040.is_aligned() {
             rp2040.write(counts.rp2040);
         }
-        if !rp2350.is_null() {
+        if !rp2350.is_null() && rp2350.is_aligned() {
             rp2350.write(counts.rp2350);
         }
     }

@@ -423,10 +423,13 @@ fn wp_q2b_monitor_cuts_at_whole_lines() {
     let id = dspi_monitor_read(h, 0, small.as_mut_ptr().cast(), small.len() as u32);
     assert!(id > 0 && id <= last);
     assert_eq!(&small[..first.len()], first.as_bytes());
-    // No room for a line: nothing, and the id does not move.
+    // Lines too long for the buffer are dropped and the id moves past them,
+    // so a caller looping until the id stops moving cannot get stuck.
     let mut tiny = [0x55u8; 3];
-    assert_eq!(dspi_monitor_read(h, 0, tiny.as_mut_ptr().cast(), 3), 0);
+    assert_eq!(dspi_monitor_read(h, 0, tiny.as_mut_ptr().cast(), 3), last);
     assert_eq!(tiny[0], 0);
+    // No buffer: nothing is read, so the id does not move.
+    assert_eq!(dspi_monitor_read(h, 0, tiny.as_mut_ptr().cast(), 0), 0);
 
     dspi_monitor_clear(h);
     assert_eq!(
@@ -638,6 +641,50 @@ fn wp_q2b_firmware_functions() {
     assert!(dspi_open_demo(h));
     assert!(dspi_firmware_version_matches(h, version.as_ptr()) >= 0);
     free(h);
+}
+
+#[test]
+fn wp_q2b_a_misaligned_pointer_gives_the_failure_value() {
+    let h = demo();
+    let mut words = [0x5555_5555u32; 4];
+    let bytes = words.as_mut_ptr().cast::<u8>();
+    // One byte in: misaligned for everything wider than a byte.
+    let odd = bytes.wrapping_add(1);
+    assert!(!dspi_fetch_stat(h, 0, odd.cast()));
+    assert!(!dspi_fetch_adat_out_status(h, odd.cast()));
+    assert!(!dspi_siggen_set_config(
+        h,
+        odd.cast::<SiggenConfig>().cast_const()
+    ));
+    dspi_process_notifications(h, odd.cast());
+    dspi_rta_set_request(h, odd.cast::<RtaRequest>().cast_const());
+    dspi_rta_get_caps(h, odd.cast());
+    dspi_rta_get_snapshot(h, odd.cast());
+    dspi_bootloader_counts(odd.cast(), odd.cast());
+    assert_eq!(words, [0x5555_5555u32; 4]);
+    free(h);
+}
+
+#[test]
+fn wp_q2b_no_reply_record_has_a_field_named_ok() {
+    use dspi_core::{
+        BootloaderDrive, ClockDiag, CoreVregInfo, ExtStatus, OutputLatency, OutputLatencyOption,
+        Uf2Info,
+    };
+    let records = [
+        serde_json::to_value(ExtStatus::default()).unwrap(),
+        serde_json::to_value(CoreVregInfo::default()).unwrap(),
+        serde_json::to_value(OutputLatency::default()).unwrap(),
+        serde_json::to_value(OutputLatencyOption::default()).unwrap(),
+        serde_json::to_value(ClockDiag::default()).unwrap(),
+        serde_json::to_value(Uf2Info::default()).unwrap(),
+        serde_json::to_value(BootloaderDrive::default()).unwrap(),
+    ];
+    for record in records {
+        let fields = record.as_object().unwrap();
+        assert!(!fields.is_empty());
+        assert!(!fields.contains_key("ok"), "{record}");
+    }
 }
 
 #[test]
