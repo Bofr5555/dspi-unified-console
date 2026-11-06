@@ -2404,7 +2404,9 @@ impl Live {
         let Some(r) = self.reconnect.as_mut() else {
             return;
         };
-        match r.poll(Instant::now()) {
+        let polled = r.poll(Instant::now());
+        let warnings = r.take_warnings();
+        match polled {
             Reconnect::Waiting => {}
             Reconnect::GaveUp(e) => {
                 self.reconnect = None;
@@ -2425,6 +2427,9 @@ impl Live {
                 self.connect_analyser(session);
                 self.note(format!("Reconnected to {}", self.state.caps.serial));
             }
+        }
+        for w in warnings {
+            self.note(w);
         }
     }
 
@@ -3186,8 +3191,7 @@ mod tests_wp_r1 {
         // USB and the demo device: HOST_SET is our own echo.
         l.link_kind = TransportKind::Usb;
         assert_eq!(line(&mut l, &mut s, &param(Source::HostSet, None)), None);
-        // A BULK_SET with no write of ours pending is not ours, which the old
-        // `is_ours` got wrong.
+        // A BULK_SET with no write of ours pending is not ours.
         assert_eq!(
             line(&mut l, &mut s, &param(Source::BulkSet, None)).as_deref(),
             Some("master_volume changed elsewhere")
@@ -3347,6 +3351,39 @@ mod tests_wp_r1 {
         );
         // And it answers.
         assert!(s.meters().is_ok());
+    }
+
+    /// A token the reconnect's re-pairing could not store is said on screen:
+    /// its thread must not write to the terminal the interface is drawing on.
+    #[test]
+    fn wp_r1_a_failed_token_save_during_a_reconnect_reaches_the_status_line() {
+        use dspi_link::fakehub::{Auth, FakeHub, HubConfig};
+        let hub = FakeHub::start(HubConfig {
+            auth: Auth::Window("1234".into()),
+            ..HubConfig::default()
+        })
+        .unwrap();
+        // A file where the token file's directory should be.
+        let blocked =
+            std::env::temp_dir().join(format!("dspi-r1-{}-live-blocked", std::process::id()));
+        std::fs::write(&blocked, "x").unwrap();
+        let mut link = connect::LinkTarget::parse(&hub.addr().to_string()).unwrap();
+        link.pin = Some("1234".into());
+        link.tokens = Some(blocked.join("tokens.toml"));
+
+        let (mut l, mut s, _r) = on_demo();
+        // `set_connection` holds the target to the device it has.
+        l.state.caps.serial = HubConfig::default().serial;
+        l.set_connection(&Target::Link(link), &ExtState::default());
+        l.state.connected = false;
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !l.state.connected && Instant::now() < deadline {
+            l.advance_reconnect(&mut s);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(l.state.connected, "the device came back");
+        let status = l.shell.model.status.clone().unwrap_or_default();
+        assert!(status.contains("pairing token"), "{status:?}");
     }
 
     #[test]

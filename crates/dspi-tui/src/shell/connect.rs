@@ -21,16 +21,15 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use dspi_link::socket::TcpConnector;
 use dspi_link::{AuthState, ConnectOptions, LinkClient, LinkError};
 use dspi_proto::generated::ext as ext_ids;
-use dspi_proto::generated::opcodes as op;
 use dspi_session::ext_state::ExtState;
-use dspi_session::{DeviceState, Session, Source, compat, probe};
+use dspi_session::{DeviceState, Session, Source, probe};
 use dspi_transport::{
     DeviceDescriptor, FakeDevice, LinkTransport, NotificationSource, Transport, TransportCaps,
     TransportError, TransportKind, UsbTransport,
@@ -160,9 +159,29 @@ fn pin_hint(pin_source: &str) -> &'static str {
     }
 }
 
-/// Asks a person for a hub's PIN: the hub's name and its `pin_source`
-/// (`window` or `fixed`) come in, the PIN or nothing comes out.
-pub type PinPrompt<'a> = &'a dyn Fn(&str, &str) -> Option<String>;
+/// Whoever is opening the device: asked for a hub's PIN, told what went wrong
+/// without stopping the connect. A closure or a function is a prompt that says
+/// its warnings on standard error, which is right until the interface takes the
+/// terminal.
+pub trait Prompt {
+    /// The PIN for the hub called `hub`, whose `pin_source` is `window` or
+    /// `fixed`; `None` when there is nobody to ask.
+    fn pin(&self, hub: &str, pin_source: &str) -> Option<String>;
+
+    /// Something the person should know.
+    fn warn(&self, message: &str) {
+        eprintln!("dspi: warning: {message}");
+    }
+}
+
+impl<F: Fn(&str, &str) -> Option<String>> Prompt for F {
+    fn pin(&self, hub: &str, pin_source: &str) -> Option<String> {
+        self(hub, pin_source)
+    }
+}
+
+/// How the opening functions take a [`Prompt`].
+pub type PinPrompt<'a> = &'a dyn Prompt;
 
 /// A prompt that has nobody to ask: a reconnect, or a check.
 pub fn no_prompt(_hub: &str, _source: &str) -> Option<String> {
@@ -367,8 +386,7 @@ fn open_midi(port: Option<&str>) -> Result<Box<dyn Transport>, OpenError> {
         "DSPi MIDI ports",
         "--midi <name>",
     )?;
-    let t = midir_port::open(chosen)?;
-    Ok(Box::new(Adapted::new(t, None)))
+    Ok(Box::new(midir_port::open(chosen)?))
 }
 
 #[cfg(not(feature = "midi"))]
@@ -445,7 +463,7 @@ fn pair(
     pin: PinPrompt<'_>,
 ) -> Result<(), OpenError> {
     let hub = hub_name(client, l);
-    let Some(code) = l.pin.clone().or_else(|| pin(&hub, pin_source)) else {
+    let Some(code) = l.pin.clone().or_else(|| pin.pin(&hub, pin_source)) else {
         return Err(OpenError::NeedsPin {
             hub,
             pin_source: pin_source.to_owned(),
@@ -453,10 +471,13 @@ fn pair(
     };
     match client.pair(&code, LINK_ROLE) {
         Ok(token) => {
-            if !token.is_empty() {
-                // A token that cannot be stored costs a PIN next time, not
-                // this connection.
-                let _ = store.put(&client.hello().hub.id, &token);
+            if !token.is_empty()
+                && let Err(e) = store.put(&client.hello().hub.id, &token)
+            {
+                // It costs a PIN next time, not this connection.
+                pin.warn(&format!(
+                    "could not save the pairing token for {hub} ({e}); it will ask for a PIN next time"
+                ));
             }
             Ok(())
         }
@@ -512,7 +533,10 @@ fn bind_link_device(l: &LinkTarget, client: &LinkClient) -> Result<Box<dyn Trans
         )
     })?;
     let t = LinkTransport::new(client.clone(), handle, &chosen.serial);
-    Ok(Box::new(Adapted::new(t, Some(client.clone()))))
+    Ok(Box::new(HubSession {
+        inner: t,
+        client: client.clone(),
+    }))
 }
 
 /// Pairing tokens, by hub id, in `~/.config/dspi/link-tokens.toml`. It is kept
@@ -587,69 +611,17 @@ fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     std::fs::write(path, bytes)
 }
 
-/// A link's transport as the session needs it.
-///
-/// Two things the plain transports leave to their embedder:
-///
-/// - `dspi_session::probe` and `Session::snapshot` read the image with the
-///   chunked opcode whatever the link, and a link without `chunked_bulk` (MIDI,
-///   DSPi Link: Link spec 8.2) refuses or does not carry it. So a chunk read is
-///   answered here from one single-shot read. The session's own
-///   `read_bulk_from` should honour `chunked_bulk`, as `compat::read_bytes`
-///   does; this goes away when it does (see the WP R1 report).
-/// - Dropping a `LinkTransport` leaves its hub session open, so a device switch
-///   or a reconnect would leak one each time. The session closes with this.
-struct Adapted<T: Transport> {
-    inner: T,
-    image: Option<Vec<u8>>,
-    client: Option<LinkClient>,
+/// A hub device whose hub session closes with it. Dropping a `LinkTransport`
+/// leaves the session open, so a device switch or a reconnect would leak one
+/// each time.
+struct HubSession {
+    inner: LinkTransport,
+    client: LinkClient,
 }
 
-impl<T: Transport> Adapted<T> {
-    fn new(inner: T, client: Option<LinkClient>) -> Self {
-        Self {
-            inner,
-            image: None,
-            client,
-        }
-    }
-
-    /// `want` bytes of the image at `offset`, or fewer at its end. Offset 0
-    /// starts a new read, as it starts a new snapshot on the firmware.
-    fn chunk(&mut self, offset: u16, want: u16) -> dspi_transport::Result<Vec<u8>> {
-        if offset == 0 {
-            self.image = None;
-            self.image = Some(
-                compat::read_bulk_bytes(&mut self.inner).map_err(|e| match e {
-                    dspi_session::WriteError::Transport(t) => t,
-                    other => TransportError::Remote(other.to_string()),
-                })?,
-            );
-        }
-        let stalled = TransportError::Stalled {
-            opcode: op::REQ_GET_ALL_PARAMS_CHUNK,
-        };
-        let image = self.image.as_deref().ok_or(stalled.clone())?;
-        let start = usize::from(offset);
-        let end = start.saturating_add(usize::from(want)).min(image.len());
-        image.get(start..end).map(<[u8]>::to_vec).ok_or(stalled)
-    }
-}
-
-impl<T: Transport> Transport for Adapted<T> {
+impl Transport for HubSession {
     fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
-        if opcode != op::REQ_GET_ALL_PARAMS_CHUNK {
-            return self.inner.control_in(opcode, value, len);
-        }
-        let part = self.chunk(value, len)?;
-        if part.len() < usize::from(len) {
-            return Err(TransportError::ShortRead {
-                opcode,
-                wanted: usize::from(len),
-                got: part.len(),
-            });
-        }
-        Ok(part)
+        self.inner.control_in(opcode, value, len)
     }
 
     fn control_in_upto(
@@ -658,9 +630,6 @@ impl<T: Transport> Transport for Adapted<T> {
         value: u16,
         max_len: u16,
     ) -> dspi_transport::Result<Vec<u8>> {
-        if opcode == op::REQ_GET_ALL_PARAMS_CHUNK {
-            return self.chunk(value, max_len);
-        }
         self.inner.control_in_upto(opcode, value, max_len)
     }
 
@@ -697,12 +666,10 @@ impl<T: Transport> Transport for Adapted<T> {
     }
 }
 
-impl<T: Transport> Drop for Adapted<T> {
+impl Drop for HubSession {
     fn drop(&mut self) {
-        if let Some(client) = &self.client {
-            self.inner.unlock();
-            client.close();
-        }
+        self.inner.unlock();
+        self.client.close();
     }
 }
 
@@ -741,9 +708,9 @@ impl Transport for Offline {
 
 /// The words for a change that is not ours (§1.2), given the link it came over.
 ///
-/// [`Source::describe`] assumes USB, where `HOST_SET` and `BULK_SET` mean this
-/// host. Off that path they do not: over MIDI a `HOST_SET` is another host's
-/// USB write, and over Link the hub writes for every client.
+/// [`Source::describe`] says what the source byte says. On a link where that
+/// byte is not news (a foreign `HOST_SET` or `BULK_SET` on USB, or anything from
+/// another client over Link) these words say what is known instead.
 pub fn foreign_words(kind: TransportKind, source: Source, origin: Option<u16>) -> &'static str {
     match (kind, source) {
         (TransportKind::Link, _) if origin.is_some_and(|o| o != 0) => {
@@ -819,6 +786,23 @@ pub enum Reconnect {
 
 type Opener = dyn Fn() -> Result<Connected, OpenError> + Send + Sync;
 
+/// A reconnect's [`Prompt`]: nobody to ask, and its warnings are kept for the
+/// interface, because a thread must not write to the terminal it draws on.
+struct Collect(Arc<Mutex<Vec<String>>>);
+
+impl Prompt for Collect {
+    fn pin(&self, _hub: &str, _pin_source: &str) -> Option<String> {
+        None
+    }
+
+    fn warn(&self, message: &str) {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(message.to_owned());
+    }
+}
+
 /// Tries to get a lost device back, on a thread of its own, at a sensible pace.
 pub struct Reconnector {
     open: Arc<Opener>,
@@ -826,6 +810,7 @@ pub struct Reconnector {
     max_wait: Duration,
     next_try: Option<Instant>,
     running: Option<Receiver<Result<Connected, OpenError>>>,
+    warnings: Arc<Mutex<Vec<String>>>,
 }
 
 impl Reconnector {
@@ -836,7 +821,18 @@ impl Reconnector {
         } else {
             RETRY_FIRST
         };
-        Self::with_opener(Arc::new(move || target.connect(&no_prompt)), max_wait)
+        let warnings = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&warnings);
+        let open = move || target.connect(&Collect(Arc::clone(&sink)));
+        Self {
+            warnings,
+            ..Self::with_opener(Arc::new(open), max_wait)
+        }
+    }
+
+    /// What the attempts so far had to say, each once.
+    pub fn take_warnings(&mut self) -> Vec<String> {
+        std::mem::take(&mut *self.warnings.lock().unwrap_or_else(PoisonError::into_inner))
     }
 
     fn with_opener(open: Arc<Opener>, max_wait: Duration) -> Self {
@@ -846,6 +842,7 @@ impl Reconnector {
             max_wait,
             next_try: None,
             running: None,
+            warnings: Arc::default(),
         }
     }
 
@@ -1277,6 +1274,58 @@ mod tests_wp_r1 {
             Err(TransportError::Disconnected)
         ));
         assert!(t.notifications().is_none());
+    }
+
+    /// A file where the token file's directory should be.
+    fn unwritable_tokens(name: &str) -> PathBuf {
+        let blocked = scratch(name);
+        std::fs::write(&blocked, "x").unwrap();
+        blocked.join("tokens.toml")
+    }
+
+    struct Recording(Mutex<Vec<String>>);
+
+    impl Prompt for Recording {
+        fn pin(&self, _: &str, _: &str) -> Option<String> {
+            Some("1234".into())
+        }
+
+        fn warn(&self, message: &str) {
+            self.0.lock().unwrap().push(message.to_owned());
+        }
+    }
+
+    #[test]
+    fn wp_r1_a_token_that_cannot_be_saved_warns_and_still_connects() {
+        let hub = pin_hub();
+        let prompt = Recording(Mutex::new(Vec::new()));
+        let target = Target::Link(link(&hub, unwritable_tokens("warn")));
+        target.open(&prompt).unwrap();
+        let said = prompt.0.lock().unwrap();
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert!(said[0].contains("pairing token"), "{said:?}");
+    }
+
+    #[test]
+    fn wp_r1_a_saved_token_warns_about_nothing() {
+        let hub = pin_hub();
+        let prompt = Recording(Mutex::new(Vec::new()));
+        let target = Target::Link(link(&hub, scratch("nowarn")));
+        target.open(&prompt).unwrap();
+        assert!(prompt.0.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn wp_r1_a_reconnect_keeps_its_warnings_for_the_interface() {
+        let hub = pin_hub();
+        let mut l = link(&hub, unwritable_tokens("collect"));
+        l.pin = Some("1234".into());
+        let mut r = Reconnector::new(Target::Link(l));
+        poll_until_connected(&mut r);
+        let said = r.take_warnings();
+        assert_eq!(said.len(), 1, "{said:?}");
+        assert!(said[0].contains("pairing token"), "{said:?}");
+        assert!(r.take_warnings().is_empty(), "each once");
     }
 
     #[test]
