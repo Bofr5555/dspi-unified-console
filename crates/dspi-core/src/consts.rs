@@ -115,6 +115,19 @@ pub const TUBE_PARAM_COUNT: usize = dspi_proto::generated::tube::TUBE_NUM_PARAMS
 // -- WP C2 --
 // -- WP C3 --
 // -- WP C4 --
+/// `set_psybass_param` id: speaker cutoff, Hz (30..300). Host-side ids, the
+/// old core's (each parameter has its own request on the wire).
+pub const PSYBASS_PARAM_CUTOFF: u8 = 0;
+/// `set_psybass_param` id: harmonics level, dB (-24..12).
+pub const PSYBASS_PARAM_HARMONICS: u8 = 1;
+/// `set_psybass_param` id: drive, dB (0..18).
+pub const PSYBASS_PARAM_DRIVE: u8 = 2;
+/// `set_psybass_param` id: character, % (0 warm .. 100 aggressive).
+pub const PSYBASS_PARAM_CHARACTER: u8 = 3;
+/// `set_psybass_param` id: original bass level, dB (-60..0).
+pub const PSYBASS_PARAM_ORIGINAL: u8 = 4;
+/// Number of `PSYBASS_PARAM_*` ids.
+pub const PSYBASS_PARAM_COUNT: usize = 5;
 // -- WP C5 --
 // -- WP C6 --
 // -- WP C7 --
