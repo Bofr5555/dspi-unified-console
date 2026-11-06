@@ -34,6 +34,17 @@ pub const TAG_UNREADABLE: u8 = 0x7F;
 /// Largest non-bulk SET payload over UART and MIDI.
 pub const MAX_SET_PAYLOAD: usize = 64;
 
+/// The longest SysEx message [`SysexDecoder`] accepts, counted from `F0`
+/// through `F7` inclusive. Real-time bytes (`F8`..`FF`) inside a message are
+/// not counted: the decoder passes over them and never buffers them. The
+/// largest legal message, a whole bulk image in one `GET_RESPONSE`, is about
+/// 7030 bytes; anything longer is not ours or is broken, and is dropped whole
+/// rather than buffered (PLAN §1.7).
+pub const MAX_SYSEX_LEN: usize = 8192;
+
+/// The bytes between `F0` and `F7` that [`MAX_SYSEX_LEN`] leaves room for.
+const MAX_SYSEX_BODY: usize = MAX_SYSEX_LEN - 2;
+
 /// `CTRL_STATUS_*` (firmware `vendor_commands.h`): the status byte of a
 /// response frame.
 pub mod status {
@@ -141,10 +152,37 @@ pub enum FrameError {
     Packing,
     #[error("SysEx header: {0}")]
     Header(&'static str),
+    /// A payload longer than the frame's 16-bit length field can state.
+    #[error("payload of {len} bytes does not fit the 16-bit length field")]
+    TooLong { len: usize },
 }
 
 impl Frame {
+    /// The largest payload a frame can carry: its length field is 16 bits.
+    pub const MAX_PAYLOAD: usize = u16::MAX as usize;
+
+    /// Whether the frame can be encoded: its payload (or notify packet) is at
+    /// most [`Frame::MAX_PAYLOAD`] bytes. `Err(FrameError::TooLong)`
+    /// otherwise. A frame that came out of [`Frame::decode`] always passes.
+    pub fn check_len(&self) -> Result<(), FrameError> {
+        let len = match self {
+            Frame::Set { payload, .. } | Frame::GetResponse { payload, .. } => payload.len(),
+            Frame::Notification { packet } => packet.len(),
+            Frame::Get { .. } | Frame::SetResponse { .. } => 0,
+        };
+        if len > Self::MAX_PAYLOAD {
+            Err(FrameError::TooLong { len })
+        } else {
+            Ok(())
+        }
+    }
+
     /// The frame from the type byte through the CRC (the MIDI form).
+    ///
+    /// Infallible by design; it assumes [`Frame::check_len`] passed. A longer
+    /// payload is not refused here: its length field would wrap, and the
+    /// frame would not decode. Callers building frames from data they do not
+    /// control call `check_len` first.
     pub fn encode(&self) -> Vec<u8> {
         let mut f = Vec::new();
         match self {
@@ -190,7 +228,8 @@ impl Frame {
         f
     }
 
-    /// The UART form: [`SYNC`] then [`Frame::encode`].
+    /// The UART form: [`SYNC`] then [`Frame::encode`]. Same contract as
+    /// `encode`: call [`Frame::check_len`] first.
     pub fn encode_uart(&self) -> Vec<u8> {
         let mut v = vec![SYNC];
         v.extend(self.encode());
@@ -311,6 +350,10 @@ pub fn unpack7(data: &[u8]) -> Option<Vec<u8>> {
 }
 
 /// One SysEx message carrying `frame`, with the host's (or device's) `tag`.
+///
+/// Same contract as [`Frame::encode`]: the caller checks
+/// [`Frame::check_len`] first, since an over-long payload would wrap the
+/// frame's length field.
 pub fn encode_sysex(mfr: &[u8], tag: u8, frame: &Frame) -> Vec<u8> {
     let packed = pack7(&frame.encode());
     let mut v = Vec::with_capacity(packed.len() + 10);
@@ -340,6 +383,10 @@ pub struct Message {
 /// products under the same ID, channel messages, real-time bytes (also inside
 /// a message) and stray `F7`s. Any other status byte inside a message ends
 /// it; `F0` also starts a new one.
+///
+/// A message longer than [`MAX_SYSEX_LEN`] is dropped whole: the decoder
+/// stops buffering at the cap, ignores the rest, and resynchronises on the
+/// next `F0`. Its memory use is therefore bounded whatever the stream holds.
 #[derive(Debug, Clone)]
 pub struct SysexDecoder {
     mfr: Vec<u8>,
@@ -381,7 +428,13 @@ impl SysexDecoder {
                 }
                 _ => {
                     if self.in_sysex {
-                        self.buf.push(b);
+                        if self.buf.len() < MAX_SYSEX_BODY {
+                            self.buf.push(b);
+                        } else {
+                            // Over the cap: drop the message, wait for an F0.
+                            self.in_sysex = false;
+                            self.buf.clear();
+                        }
                     }
                 }
             }
@@ -531,5 +584,123 @@ mod tests {
         assert!(matches!(got[0].frame, Err(FrameError::Crc { .. })));
         m[5] = 2;
         assert!(matches!(d.feed(&m)[0].frame, Err(FrameError::Header(_))));
+    }
+}
+
+/// WP P1: the decoder's size cap (PLAN §1.7, gate 1 S-d).
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_p1 {
+    use super::*;
+
+    /// `F0 7D 'D' 'S' 'P' 01 05` then `body` 7-bit bytes, then `F7`:
+    /// `7 + body + 1` bytes in all.
+    fn ours_with_body(body: usize) -> Vec<u8> {
+        let mut m = vec![0xF0, 0x7D, b'D', b'S', b'P', SYSEX_VERSION, 5];
+        m.extend((0..body).map(|i| (i % 0x80) as u8));
+        m.push(0xF7);
+        m
+    }
+
+    #[test]
+    fn wp_p1_a_message_at_the_cap_is_kept_one_over_is_dropped() {
+        let at_cap = ours_with_body(MAX_SYSEX_LEN - 8);
+        assert_eq!(at_cap.len(), MAX_SYSEX_LEN);
+        let mut d = SysexDecoder::new(DEFAULT_MFR_ID);
+        let got = d.feed(&at_cap);
+        assert_eq!(got.len(), 1, "a message of exactly the cap is reported");
+        assert_eq!(got[0].tag, 5);
+
+        let over = ours_with_body(MAX_SYSEX_LEN - 7);
+        assert_eq!(over.len(), MAX_SYSEX_LEN + 1);
+        assert!(d.feed(&over).is_empty(), "one byte over the cap is dropped");
+    }
+
+    #[test]
+    fn wp_p1_an_oversized_message_is_not_buffered_and_resyncs_on_f0() {
+        let mut d = SysexDecoder::new(DEFAULT_MFR_ID);
+        let mut s = vec![0xF0];
+        s.extend(std::iter::repeat_n(0x11, 100_000));
+        assert!(d.feed(&s).is_empty());
+        assert!(d.buf.len() <= MAX_SYSEX_BODY, "buffer stays bounded");
+        assert!(!d.in_sysex, "the message was abandoned");
+        // The rest of the oversized message, then its F7: nothing.
+        assert!(d.feed(&[0x22; 50]).is_empty());
+        assert!(d.feed(&[0xF7]).is_empty());
+        // The next message is found.
+        let ok = encode_sysex(DEFAULT_MFR_ID, 6, &Frame::SetResponse { status: 0 });
+        let got = d.feed(&ok);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].frame, Ok(Frame::SetResponse { status: 0 }));
+    }
+
+    #[test]
+    fn wp_p1_check_len_refuses_a_payload_the_length_field_cannot_state() {
+        let max = Frame::MAX_PAYLOAD;
+        let ok = [
+            Frame::Set {
+                request: 1,
+                value: 0,
+                index: 0,
+                payload: vec![0; max],
+            },
+            Frame::GetResponse {
+                status: 0,
+                payload: vec![0; max],
+            },
+            Frame::Notification {
+                packet: vec![0; max],
+            },
+            Frame::Get {
+                request: 1,
+                value: 0,
+                index: 0,
+                length: u16::MAX,
+            },
+            Frame::SetResponse { status: 0 },
+        ];
+        for f in &ok {
+            assert_eq!(f.check_len(), Ok(()));
+            assert_eq!(
+                Frame::decode(&f.encode()).as_ref(),
+                Ok(f),
+                "the limit round-trips"
+            );
+        }
+        let too_long = [
+            Frame::Set {
+                request: 1,
+                value: 0,
+                index: 0,
+                payload: vec![0; max + 1],
+            },
+            Frame::GetResponse {
+                status: 0,
+                payload: vec![0; max + 1],
+            },
+            Frame::Notification {
+                packet: vec![0; max + 1],
+            },
+        ];
+        for f in &too_long {
+            assert_eq!(f.check_len(), Err(FrameError::TooLong { len: max + 1 }));
+            // What check_len guards against: the length field wraps.
+            assert!(Frame::decode(&f.encode()).is_err());
+        }
+    }
+
+    #[test]
+    fn wp_p1_the_largest_legal_message_fits_under_the_cap() {
+        // A whole bulk image in one GET_RESPONSE, with a 3-byte manufacturer id.
+        let mfr = [0x00, 0x21, 0x7E];
+        let frame = Frame::GetResponse {
+            status: 0,
+            payload: vec![0xA5; crate::generated::BULK_SIZE],
+        };
+        let m = encode_sysex(&mfr, 9, &frame);
+        assert!(m.len() <= MAX_SYSEX_LEN, "{} bytes", m.len());
+        let got = SysexDecoder::new(&mfr).feed(&m);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].frame, Ok(frame));
     }
 }

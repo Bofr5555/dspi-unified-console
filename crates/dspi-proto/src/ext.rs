@@ -45,13 +45,26 @@ pub fn decode_list(b: &[u8]) -> Vec<u16> {
 pub struct PairMap(pub [u8; 4]);
 
 impl PairMap {
+    /// The wire size in bytes, one per pair.
     pub const SIZE: usize = 4;
+    /// How many pairs the firmware has: valid indices for [`PairMap::pair`]
+    /// are `0..PAIRS`.
+    pub const PAIRS: usize = Self::SIZE;
 
     /// The outputs of pair `p`, as `(left, right)`.
+    ///
+    /// A pair past the map (`p >= 4`; the firmware has four) has no byte, so
+    /// it reads as the default pairing `(2p, 2p+1)`, saturated at 255. It
+    /// never panics, whatever `p` a caller or a device supplies. Callers
+    /// iterating over pairs bound their own index by [`PairMap::PAIRS`]; the
+    /// value past it is a fallback, not a pair the device has.
     pub fn pair(&self, p: usize) -> (u8, u8) {
-        match self.0[p] {
-            0 => (2 * p as u8, 2 * p as u8 + 1),
-            b => (b & 0x0F, b >> 4),
+        match self.0.get(p) {
+            Some(&b) if b != 0 => (b & 0x0F, b >> 4),
+            _ => {
+                let left = u8::try_from(p.saturating_mul(2)).unwrap_or(u8::MAX);
+                (left, left.saturating_add(1))
+            }
         }
     }
 
@@ -103,7 +116,7 @@ impl PairMap {
 
 impl std::fmt::Display for PairMap {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for p in 0..4 {
+        for p in 0..Self::PAIRS {
             let (l, r) = self.pair(p);
             let tag = if self.0[p] == 0 { " (default)" } else { "" };
             if p > 0 {
@@ -250,5 +263,24 @@ impl VregOp {
             VregOp::Auto(on) => [3, on as u8],
             VregOp::Clear => [4, 0],
         }
+    }
+}
+
+/// WP P1: device- and caller-sourced indices never panic (PLAN §1.7).
+#[cfg(test)]
+mod tests_wp_p1 {
+    use super::*;
+
+    #[test]
+    fn wp_p1_a_pair_past_the_map_reads_as_the_default_pairing() {
+        let m = PairMap([0x10, 0, 0x54, 0x76]);
+        assert_eq!(m.pair(0), (0, 1));
+        assert_eq!(m.pair(1), (2, 3));
+        assert_eq!(m.pair(2), (4, 5));
+        // Past the map: this used to index out of bounds.
+        assert_eq!(m.pair(4), (8, 9));
+        assert_eq!(m.pair(127), (254, 255));
+        assert_eq!(m.pair(128), (255, 255));
+        assert_eq!(m.pair(usize::MAX), (255, 255));
     }
 }
