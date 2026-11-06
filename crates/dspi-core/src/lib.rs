@@ -381,40 +381,59 @@ impl DspiCore {
         inner.selected = Some(serial);
     }
 
-    /// The connect sequence every `open_*` ends in (WP C1 wraps it in
-    /// `open_transport`):
+    /// The connect sequence every `open_*` ends in (owned by WP C1):
     ///
-    /// 1. take the old connection out under the lock and drop it with the
-    ///    lock released (its reader thread joins);
-    /// 2. probe the device and build the [`Session`];
-    /// 3. read the bulk image into the mirror;
-    /// 4. start the notification reader, waking the [`NotifyListener`];
-    /// 5. install the connection.
+    /// 1. take the old connection out under the lock and close it with the
+    ///    lock released (`device::shut`: its reader is stopped and joined
+    ///    before its transport is dropped); the mirror resets to defaults;
+    /// 2. take the transport's notification source, exactly once (Link and
+    ///    MIDI hand out one reader), and start the reader, waking the
+    ///    [`NotifyListener`], before anything else can fail: a later failure
+    ///    drops the reader with everything else, never orphaning a
+    ///    subscription;
+    /// 3. probe whatever the wire format (`probe_any_with_image`, WP S2): one
+    ///    bulk read serves the probe and the mirror; `wire` is its read mode;
+    /// 4. probe the extension channel (`ExtState::probe`, WP S3);
+    /// 5. build the [`Session`] and decode the image into a fresh mirror
+    ///    ([`state::decode_bulk`], WP C0). An image of another wire format is
+    ///    decoded read-only: `bulk_valid` false, `compat` too old / too new;
+    /// 6. install the connection (with a new echo filter, `fresh_image`
+    ///    set) and the mirror, stop a displaced connection's RTA worker and
+    ///    reader with the lock released, and wake the [`NotifyListener`]
+    ///    once for packets that arrived during the connect. `selected`
+    ///    becomes `serial` for a USB device (`vid != 0`), and is cleared for
+    ///    any other transport.
     ///
-    /// Base version: strict V32 probe and bulk read, the image kept in
-    /// `bulk_raw` only. As their WPs land, C1 switches it to S2's
-    /// `probe_any` and `compat::read_bulk_any` (setting `wire` from the read
-    /// mode), C0's `state::decode_bulk`, and S3's `ExtState::probe`; C1 owns
-    /// this function from wave 2 on.
+    /// A device that answers `GET_PLATFORM` but whose image cannot be mapped
+    /// (pre-V16, an implausible newer image, or a legacy-VID unit whose bulk
+    /// read fails) is installed read-only instead of failing (§1.5,
+    /// "Unmappable images"): `Wire::Raw`, `wire` `None`, the mirror from
+    /// `state::apply_platform` only, `compat` too old / too new from the
+    /// image's version byte, `bulk_valid` false.
+    ///
+    /// Errors from the extension probe other than `Disconnected` (a timeout,
+    /// say during a flash blackout) leave the device connected without the
+    /// extension channel for this session.
+    ///
+    /// Errors: a probe failure (typed from the transport), an extension
+    /// probe that lost the device ([`DspiError::Disconnected`]), a device
+    /// reporting an impossible channel layout, or a reader thread that
+    /// could not be spawned ([`DspiError::Io`]). On any error nothing is
+    /// connected.
     pub(crate) fn attach_probed(
         &self,
         mut transport: Box<dyn Transport>,
         serial: String,
         vid: u16,
     ) -> Result<()> {
-        let old = self.lock().conn.take();
-        drop(old);
-
-        let caps = dspi_session::probe(&mut *transport).map_err(DspiError::from)?;
-        let mut session = Session::new(transport, caps).ok_or(DspiError::InvalidArgument {
-            msg: "the device reported an impossible channel layout".into(),
-        })?;
-        let bulk = dspi_session::read_bulk(session.transport_mut()).map_err(DspiError::from)?;
+        self.close_connection();
 
         let listeners = Arc::clone(&self.listeners);
         let waker: dspi_session::notify::Waker =
             Arc::new(move || listeners.notify.call(|l| l.on_notifications()));
-        let notifications = match session.transport_mut().notifications() {
+        // Declared before anything that can fail, so an early return drops
+        // (stops and joins) the reader.
+        let notifications = match transport.notifications() {
             Some(source) => Some(
                 dspi_session::Notifications::start_with_waker(source, Some(waker)).map_err(
                     |e| DspiError::Io {
@@ -425,18 +444,65 @@ impl DspiCore {
             None => None,
         };
 
+        let (caps, image) = match dspi_session::probe::probe_any_with_image(&mut *transport) {
+            Ok(probed) => probed,
+            Err(e) => {
+                // §1.5 "Unmappable images": a device that identifies itself
+                // but whose image cannot be read is still shown, read-only.
+                let Some(mirror) = device::unmappable_mirror(&mut *transport, &e, vid) else {
+                    return Err(DspiError::from(e));
+                };
+                let mut conn = Connection::new(transport, serial.clone(), vid);
+                conn.notifications = notifications;
+                self.install(conn, mirror, serial, vid);
+                return Ok(());
+            }
+        };
+        let ext = match ExtState::probe(&mut *transport) {
+            Ok(ext) => ext,
+            Err(dspi_transport::TransportError::Disconnected) => {
+                return Err(DspiError::Disconnected);
+            }
+            // The extension channel is optional: a device that answers
+            // everything else but times out here still connects, without it.
+            Err(e) => {
+                log::warn!("extension probe failed, continuing without it: {e}");
+                ExtState::default()
+            }
+        };
+
+        let mut mirror = state::default_state();
+        state::decode_bulk(image.packet.as_bytes(), &mut mirror).map_err(|e| {
+            DspiError::Transfer {
+                msg: format!("the bulk image could not be decoded: {e}"),
+            }
+        })?;
+        // The decoded header is the mapped V32 one; report the device's own.
+        mirror.format_version = image.device_version;
+        mirror.bulk_valid = image.is_writable();
+        mirror.compat = match image.read {
+            WireRead::Exact => consts::COMPAT_OK,
+            WireRead::Older => consts::COMPAT_FIRMWARE_TOO_OLD,
+            WireRead::Newer => consts::COMPAT_FIRMWARE_TOO_NEW,
+        };
+
+        let conn_caps = transport.caps();
+        let session_id = transport.session_id();
+        let session = Session::new(transport, caps).ok_or(DspiError::InvalidArgument {
+            msg: "the device reported an impossible channel layout".into(),
+        })?;
+
         let mut conn = Connection::new(Box::new(NoTransport), serial.clone(), vid);
-        conn.caps = session.transport_mut().caps();
-        conn.session_id = session.transport_mut().session_id();
+        conn.caps = conn_caps;
+        conn.session_id = session_id;
         conn.link = Wire::Session(Box::new(session));
         conn.notifications = notifications;
-        conn.wire = Some(WireRead::Exact);
+        conn.wire = Some(image.read);
+        conn.ext = ext;
 
-        let mut inner = self.lock();
-        inner.state.bulk_raw = bulk.as_bytes().to_vec();
-        inner.state.bulk_valid = true;
-        inner.conn = Some(conn);
-        inner.selected = Some(serial);
+        conn.fresh_image = true;
+
+        self.install(conn, mirror, serial, vid);
         Ok(())
     }
 
@@ -458,7 +524,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "WP C1: needs C0's default_state and T4's FakeDevice::demo"]
     fn wp_c1_attach_probed_opens_the_demo_device() {
         let core = DspiCore::new();
         let demo = dspi_transport::FakeDevice::demo();
