@@ -367,7 +367,7 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (`PLAN-CLIENTS.md`
 |---|---|---|---|---|---|
 | M15 | App self-update | QD16 | n.a.: package manager | n.a.: Play | n.a.: App Store |
 | M16 | Firmware wizard: bundled image, verify, downgrade, enter bootloader without installing, export configuration before flashing (`FirmwareUpdateView.swift:384-385`); hidden on STM32H723 (`DSPi_ConsoleApp.swift:11974`) | QD11 | TM3 (non-graphical) | have most; AN18 | n.a.: no USB bootloader (owner); SW18 hides the dead window |
-| M41 | Firmware mismatch banner: any version other than the expected one (`FirmwareUpdateView.swift:481-526`, `DSPViewModel.swift:2099-2106`) | **have**: `qml/main.qml:422-487`, `src/FirmwareUpdater.cpp:128`. Expected version stays beta4 until QD11 | TM4 | **partial**: shown only for an incompatible wire format, never for another version on the same format (`feature-home/HomeModel.kt:89-97`, `feature-home/FirmwareMismatchBanner.kt:35-42`). **AN2** | **partial**: shown, but Update opens the dead firmware window (`ContentView.swift:1075-1077`). **SW18** |
+| M41 | Firmware mismatch banner: any version other than the expected one (`FirmwareUpdateView.swift:481-526`, `DSPViewModel.swift:2099-2106`) | **have**: `qml/main.qml:422-487`, `src/FirmwareUpdater.cpp:128`. Expected version stays beta4 until QD11 | TM4 | **partial**: shown only for an incompatible wire format, never for another version on the same format (`feature-home/HomeModel.kt:89-97`, `feature-home/FirmwareMismatchBanner.kt:35-42`). **AN18**, with the updated images | **partial**: shown, but Update opens the dead firmware window (`ContentView.swift:1075-1077`). **SW18** |
 
 **Onboarding** (Terminal: decided, skips)
 
@@ -487,5 +487,5 @@ Android's one Hardware tab serves Inputs, Outputs and I2S as three pages (`featu
 | TM17 | Device Name and Output Latency on Global Parameters, source names on Inputs | M33, M34, M35, M55 |
 | TM18 | Volume mode saved; Identify at the Mac's level, passes and mask | M46, M47 |
 
-`PLAN-CLIENTS.md` has their scope, and these changes to WPs it already had: AN2 (banner compares versions, M41), AN7 (device
-switch guarded, M42), SW18 (banner button and Tools entry, M41), QD12 and QD14 (the Mac's menu-bar items, M6), QD4 (Device Name on Global Parameters).
+`PLAN-CLIENTS.md` has their scope, and these changes to WPs it already had: AN18 (banner compares versions, M41), AN7 (device
+switch guarded, M42), SW18 (banner button and Tools entry, M41), QD12 and QD14 (the Mac's menu-bar items, M6), QD4 and QD5 (Device Name and Output Latency on Global Parameters).

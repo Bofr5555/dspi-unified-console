@@ -320,7 +320,7 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (section 9).
 |---|---|---|---|---|---|
 | M15 | App self-update | QD16 | n.a.: package manager | n.a.: Play | n.a.: App Store |
 | M16 | Firmware wizard: bundled image, verify, downgrade, enter bootloader without installing, export configuration before flashing (`FirmwareUpdateView.swift:384-385`); hidden on STM32H723 (`DSPi_ConsoleApp.swift:11974`) | QD11 | TM3 (non-graphical) | have most; AN18 | n.a.: no USB bootloader (owner); SW18 hides the dead window |
-| M41 | Firmware mismatch banner: any version other than the expected one (`FirmwareUpdateView.swift:481-526`, `DSPViewModel.swift:2099-2106`) | have | TM4 | partial: incompatible wire format only; AN2 | partial: Update opens the dead window; SW18 |
+| M41 | Firmware mismatch banner: any version other than the expected one (`FirmwareUpdateView.swift:481-526`, `DSPViewModel.swift:2099-2106`) | have | TM4 | partial: incompatible wire format only; AN18 | partial: Update opens the dead window; SW18 |
 
 **Onboarding** (Terminal: decided, skips)
 
@@ -526,7 +526,7 @@ Q3 makes it run on the core. macOS leaves this track, with Swift as the working 
 
 **QD4: Input-source and device names.** Size 0.5. **Owns:** source-name rows in `qml/settings/pages/InputsPage.qml`; a Device Name row in `qml/settings/pages/GlobalParametersPage.qml`, as on the Mac. **Done when:** edits round-trip on the demo device; another client's `NOTIFY_NAMES` updates them. **Deps:** QD0.
 
-**QD5: Output latency, clock diagnostics, C0/C1 bars.** Size 0.5. **Owns:** a row in `qml/settings/pages/OutputsPage.qml`, `src/StatsController.cpp`, `qml/StatsWindow.qml`, `qml/components/CpuSection.qml`. **Done when:** options come from the device; a stall hides the section; both CPU bars show. **Deps:** QD0.
+**QD5: Output latency, clock diagnostics, C0/C1 bars.** Size 0.5. **Owns:** an Output Latency row in `qml/settings/pages/GlobalParametersPage.qml`, as on the Mac (`DSPi_ConsoleApp.swift:1912`), `src/StatsController.cpp`, `qml/StatsWindow.qml`, `qml/components/CpuSection.qml`. **Done when:** options come from the device; a stall hides the section; both CPU bars show. **After QD4**, which adds to the same page. **Deps:** QD0, QD4.
 
 **QD6: Read-only mode.** Size 1. **Owns:** `qml/components/ReadOnlyBanner.qml`, a `writable` bridge property, compat branch of `main.qml`. **Implements:** older and newer firmware show all settings, disable every control, keep reading, offer the update (`WIRE-FORMAT-COMPAT.md` §4.4). **Done when:** V17, V26, V31, V33 fixtures run offscreen; no setter is called (test); clip clear and bootloader still work. **Deps:** QD0.
 
@@ -638,7 +638,7 @@ The swap is contained: UI talks to the `core-api` interface, and only `ffi` sees
   - drop the `wip/wire-compat` branch.
 - **Done when:** `tools/ci.sh all` and all Kotlin module tests pass, on 3 ABIs; library size recorded. **No phone yet. Deps:** MR1, CG9.
 
-**AN2: Read-only on older firmware, version banner.** Size 0.75. **Owns:** `feature-home/.../{HomeModel,FirmwareMismatchBanner}.kt`, `README.md`. **Implements:** V17–V31 now decode; `WriteGuardedCore` stays; fixes the README claim; the banner compares firmware versions like the Mac (`DSPViewModel.swift:2099-2106`), not only the wire format (M41). **Done when:** fixture tests; banner per `WIRE-FORMAT-COMPAT.md` §4.4; a test shows it for another version on the same wire format. **Deps:** AN1.
+**AN2: Read-only on older firmware.** Size 0.5. **Owns:** `feature-home/.../HomeModel.kt`, `README.md`. **Implements:** V17–V31 now decode; `WriteGuardedCore` stays; fixes the README claim. The banner still fires on the wire format only: **the first Play update must show no version banner on a K340 or on stock final firmware** (the comparison is AN18's). **Done when:** fixture tests; banner per `WIRE-FORMAT-COMPAT.md` §4.4. **Deps:** AN1.
 
 **AN3: Link engine on the core's supervisor.** Size 1. **Owns:** `link/.../{LinkSessionEngine,LinkCoreOps}.kt`.
 - **Implements:** delete Android's own reconnect, backoff and token deletion, which would fight C15; follow `link_status`; implement `on_link_status_changed` and `on_link_token_issued`; delete a token only on `token_refused`; pass `expected_hub_id`; handle `wrong_hub`; remove `setListener` from inside callbacks (`LinkSessionEngine.kt:164,178,214`); `rta_start` again after a reconnect; dial off the serial FFI queue.
@@ -666,7 +666,7 @@ The swap is contained: UI talks to the `core-api` interface, and only `ffi` sees
 
 **AN17: Analyser bar strip and following.** Size 0.75. **Owns:** a bar-strip file and overlay state in `feature-analysis/`. **Done when:** Compose tests on the demo device; following and Take control work on the fake hub. **Deps:** AN1, CG5.
 
-**AN18: Small floor items.** Size 1. **Owns:** `feature-firmware/`, AutoEQ update UI, a host-format reader, `feature-tools/` generator lifetime, graph keyboard map. **Implements:** images per OD4; **CG8's guard called on Android's Kotlin flashing path, PICOBOOT included**; export first; CG6's update with a Kotlin fetch; `AudioManager` channel count; generator keeps running off-screen; hardware shortcuts. **Done when:** a unit test proves the flash path cannot skip the guard; each item has a test. **Deps:** AN1, CG6, CG8.
+**AN18: Small floor items.** Size 1.25. **Owns:** `feature-firmware/`, the version comparison in `feature-home/.../{HomeModel,FirmwareMismatchBanner}.kt`, AutoEQ update UI, a host-format reader, `feature-tools/` generator lifetime, graph keyboard map. **Implements:** images per OD4; **CG8's guard called on Android's Kotlin flashing path, PICOBOOT included**; export first; CG6's update with a Kotlin fetch; `AudioManager` channel count; generator keeps running off-screen; hardware shortcuts; the mismatch banner compares firmware versions like the Mac (`DSPViewModel.swift:2099-2106`), arriving with the updated images (M41). **Firmware built with our extension channel counts as acceptable:** the K340's `bofr-main` build reports a matching version plus a build stamp, so it must not get a false "update" prompt. **Done when:** a unit test proves the flash path cannot skip the guard; a test shows the banner for another version on the same wire format, and none for a matching version with a build stamp; each item has a test. **Deps:** AN1, CG6, CG8.
 
 **AN19: Getting Started and What's New.** Size 1. **Owns:** `feature-onboarding/`. **Done when:** first run shows once; replay from Help; data from CG10. **Deps:** CG10.
 
@@ -835,7 +835,7 @@ Every wave needs `core-merge` on `main`. Within a wave no two WPs own the same f
 | Wave | WPs (parallel) | Needs |
 |---|---|---|
 | 0 | XC0, XC1, XC2, XC3; MR1 (Android half); LC1; CG9 | `main`; XC1 the owner's go-ahead |
-| 1 | MR2; AN1; CG1–CG8, CG10–CG12; HB0; WB0; QD0 first, then QD1, QD2, QD4, QD5; TM1, TM2, TM4, TM7, TM10, TM14, TM15, TM17 | wave 0 |
+| 1 | MR2; AN1; CG1–CG8, CG10–CG12; HB0; WB0; QD0 first, then QD1, QD2, QD4, then QD5; TM1, TM2, TM4, TM7, TM10, TM14, TM15, TM17 | wave 0 |
 | 2 | **HB1–HB3 after HB0's review**; MR1 (Swift half), then SW1, then SW2; SW-U1 after MR1; QD3, QD6, QD7, QD8, QD11, QD12, QD18, QD27, QD29; TM3, TM5, TM8, TM9, TM12, TM16, TM18; AN2, AN3, AN6, AN8, AN25 | wave 1 |
 | 3 | HB5, HB6; SW3 then SW4; QD9, QD10, QD13, QD16, QD17, QD19, QD28; TM6; AN4, AN5, AN7, AN13 then AN14, AN17, AN18, AN19, AN23 | wave 2; **M0 at its end** |
 | 4 | HB7; SW5, SW6 then SW7, SW-M1 then SW-M2, SW17–SW20, SW23; QD14, QD21; TM11, TM13; AN9–AN12, AN22 | wave 3 |
