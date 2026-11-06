@@ -34,6 +34,16 @@ pub const TAG_UNREADABLE: u8 = 0x7F;
 /// Largest non-bulk SET payload over UART and MIDI.
 pub const MAX_SET_PAYLOAD: usize = 64;
 
+/// The longest SysEx message [`SysexDecoder`] accepts, `F0` through `F7`
+/// inclusive (real-time bytes inside it are not counted, as they are not
+/// buffered). The largest legal message, a whole bulk image in one
+/// `GET_RESPONSE`, is about 7030 bytes; anything longer is not ours or is
+/// broken, and is dropped whole rather than buffered (PLAN §1.7).
+pub const MAX_SYSEX_LEN: usize = 8192;
+
+/// The bytes between `F0` and `F7` that [`MAX_SYSEX_LEN`] leaves room for.
+const MAX_SYSEX_BODY: usize = MAX_SYSEX_LEN - 2;
+
 /// `CTRL_STATUS_*` (firmware `vendor_commands.h`): the status byte of a
 /// response frame.
 pub mod status {
@@ -340,6 +350,10 @@ pub struct Message {
 /// products under the same ID, channel messages, real-time bytes (also inside
 /// a message) and stray `F7`s. Any other status byte inside a message ends
 /// it; `F0` also starts a new one.
+///
+/// A message longer than [`MAX_SYSEX_LEN`] is dropped whole: the decoder
+/// stops buffering at the cap, ignores the rest, and resynchronises on the
+/// next `F0`. Its memory use is therefore bounded whatever the stream holds.
 #[derive(Debug, Clone)]
 pub struct SysexDecoder {
     mfr: Vec<u8>,
@@ -381,7 +395,13 @@ impl SysexDecoder {
                 }
                 _ => {
                     if self.in_sysex {
-                        self.buf.push(b);
+                        if self.buf.len() < MAX_SYSEX_BODY {
+                            self.buf.push(b);
+                        } else {
+                            // Over the cap: drop the message, wait for an F0.
+                            self.in_sysex = false;
+                            self.buf.clear();
+                        }
                     }
                 }
             }
@@ -531,5 +551,68 @@ mod tests {
         assert!(matches!(got[0].frame, Err(FrameError::Crc { .. })));
         m[5] = 2;
         assert!(matches!(d.feed(&m)[0].frame, Err(FrameError::Header(_))));
+    }
+}
+
+/// WP P1: the decoder's size cap (PLAN §1.7, gate 1 S-d).
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_p1 {
+    use super::*;
+
+    /// `F0 7D 'D' 'S' 'P' 01 05` then `body` 7-bit bytes, then `F7`:
+    /// `7 + body + 1` bytes in all.
+    fn ours_with_body(body: usize) -> Vec<u8> {
+        let mut m = vec![0xF0, 0x7D, b'D', b'S', b'P', SYSEX_VERSION, 5];
+        m.extend((0..body).map(|i| (i % 0x80) as u8));
+        m.push(0xF7);
+        m
+    }
+
+    #[test]
+    fn wp_p1_a_message_at_the_cap_is_kept_one_over_is_dropped() {
+        let at_cap = ours_with_body(MAX_SYSEX_LEN - 8);
+        assert_eq!(at_cap.len(), MAX_SYSEX_LEN);
+        let mut d = SysexDecoder::new(DEFAULT_MFR_ID);
+        let got = d.feed(&at_cap);
+        assert_eq!(got.len(), 1, "a message of exactly the cap is reported");
+        assert_eq!(got[0].tag, 5);
+
+        let over = ours_with_body(MAX_SYSEX_LEN - 7);
+        assert_eq!(over.len(), MAX_SYSEX_LEN + 1);
+        assert!(d.feed(&over).is_empty(), "one byte over the cap is dropped");
+    }
+
+    #[test]
+    fn wp_p1_an_oversized_message_is_not_buffered_and_resyncs_on_f0() {
+        let mut d = SysexDecoder::new(DEFAULT_MFR_ID);
+        let mut s = vec![0xF0];
+        s.extend(std::iter::repeat_n(0x11, 100_000));
+        assert!(d.feed(&s).is_empty());
+        assert!(d.buf.len() <= MAX_SYSEX_BODY, "buffer stays bounded");
+        assert!(!d.in_sysex, "the message was abandoned");
+        // The rest of the oversized message, then its F7: nothing.
+        assert!(d.feed(&[0x22; 50]).is_empty());
+        assert!(d.feed(&[0xF7]).is_empty());
+        // The next message is found.
+        let ok = encode_sysex(DEFAULT_MFR_ID, 6, &Frame::SetResponse { status: 0 });
+        let got = d.feed(&ok);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].frame, Ok(Frame::SetResponse { status: 0 }));
+    }
+
+    #[test]
+    fn wp_p1_the_largest_legal_message_fits_under_the_cap() {
+        // A whole bulk image in one GET_RESPONSE, with a 3-byte manufacturer id.
+        let mfr = [0x00, 0x21, 0x7E];
+        let frame = Frame::GetResponse {
+            status: 0,
+            payload: vec![0xA5; crate::generated::BULK_SIZE],
+        };
+        let m = encode_sysex(&mfr, 9, &frame);
+        assert!(m.len() <= MAX_SYSEX_LEN, "{} bytes", m.len());
+        let got = SysexDecoder::new(&mfr).feed(&m);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].frame, Ok(frame));
     }
 }
