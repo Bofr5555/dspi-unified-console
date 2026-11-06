@@ -1,0 +1,30 @@
+[package]
+name = "dspi-core"
+description = "The DSPi embedder API: one object for a GUI or a language binding, over dspi-session"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+dspi-proto.workspace = true
+dspi-transport.workspace = true
+dspi-session.workspace = true
+dspi-link = { path = "../dspi-link", optional = true }
+thiserror.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# Bootloader enumeration (WP C11).
+nusb = "0.2"
+
+[features]
+default = []
+# DSPi Link sessions (WP C15, over dspi-transport's Link adapter, WP T5).
+link = ["dep:dspi-link", "dspi-transport/link"]
+# Desktop MIDI ports through midir (WP T3).
+midir = ["dspi-transport/midir"]
+
+[dev-dependencies]
+proptest = "1"

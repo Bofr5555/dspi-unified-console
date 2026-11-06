@@ -1,0 +1,24 @@
+[package]
+name = "dspi-capi"
+description = "C ABI over dspi-core for the Qt desktop app (header include/dspi_core.h)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+# Becomes `dspi_core` (dspi_core.dll / libdspi_core.{a,so,dylib}), the name
+# the Qt build links, in WP Q3, which also removes crates/dspi-core-linux,
+# whose library has that name today. No rlib: a cdylib/staticlib crate named
+# like the dspi-core rlib would collide in target/.
+name = "dspi_capi"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+dspi-core.workspace = true
+log.workspace = true
+
+[features]
+link = ["dspi-core/link"]
+midir = ["dspi-core/midir"]
