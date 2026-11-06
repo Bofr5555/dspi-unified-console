@@ -122,7 +122,9 @@ fn busy_window(
 fn map_link_error(e: LinkError) -> TransportError {
     match e {
         LinkError::Rejected { code, .. } if code == "locked" => TransportError::Locked,
-        LinkError::Rejected { code, msg } if code == "denied" => TransportError::Denied(msg),
+        LinkError::Rejected { code, msg } if code == "denied" => {
+            TransportError::Denied(dspi_link::sanitize_hub_text(&msg))
+        }
         LinkError::Closed { .. } => TransportError::Disconnected,
         // A control-plane request has no opcode
         LinkError::Timeout => TransportError::TimedOut {
@@ -579,6 +581,19 @@ mod tests_wp_t5 {
             t.control_out(0x42, 0, &[0; 65]),
             Err(TransportError::Remote(_))
         ));
+    }
+
+    /// The hub's text must not reach a terminal or a log with its escapes intact.
+    #[test]
+    fn wp_l1_a_denied_message_from_the_hub_is_sanitised() {
+        let e = map_link_error(LinkError::Rejected {
+            code: "denied".into(),
+            msg: "no\u{1b}[2J\u{9b}31m\nway".into(),
+        });
+        match e {
+            TransportError::Denied(m) => assert_eq!(m, "no\u{fffd}[2J\u{fffd}31m\u{fffd}way"),
+            other => panic!("{other:?}"),
+        }
     }
 
     /// A session past `max_inflight` gets RATE_LIMITED. The transport does not
