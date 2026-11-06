@@ -4,9 +4,95 @@
 //! grammar arrive in later milestones; this binary exists now so that every
 //! layer below it is exercised against real hardware rather than only the mock.
 
+// -- WP TM15 --
+// All CLI output goes through these. They shadow std's macros of the same names
+// for everything below them in this file and in the modules declared below, so
+// a new `println!` is covered without anyone having to remember. Keep them above
+// every `mod` line: a macro_rules macro is only in scope after its definition.
+macro_rules! println {
+    () => { $crate::stdio::out(format_args!(""), true) };
+    ($($arg:tt)*) => { $crate::stdio::out(format_args!($($arg)*), true) };
+}
+macro_rules! print {
+    ($($arg:tt)*) => { $crate::stdio::out(format_args!($($arg)*), false) };
+}
+macro_rules! eprintln {
+    () => { $crate::stdio::err(format_args!(""), true) };
+    ($($arg:tt)*) => { $crate::stdio::err(format_args!($($arg)*), true) };
+}
+macro_rules! eprint {
+    ($($arg:tt)*) => { $crate::stdio::err(format_args!($($arg)*), false) };
+}
+
+/// Standard output and error that outlive whoever is reading them.
+///
+/// std's macros panic when a write fails, which `dspi dump | head -5` makes
+/// routine. Here a reader that has gone only ends the output: the command
+/// finishes and exits with the status it would have had, so a device change
+/// is never left half done by a closed pipe, and a refusal is still a refusal.
+/// A loop that prints until stopped must check [`reader_gone`] to end.
+mod stdio {
+    use std::fmt::Arguments;
+    use std::io::{ErrorKind, Write};
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static READER_GONE: AtomicBool = AtomicBool::new(false);
+
+    /// Has standard output's reader closed its end?
+    pub fn reader_gone() -> bool {
+        READER_GONE.load(Ordering::Relaxed)
+    }
+
+    fn write(out: &mut impl Write, args: Arguments<'_>, newline: bool) -> std::io::Result<()> {
+        out.write_fmt(args)?;
+        if newline {
+            out.write_all(b"\n")?;
+        }
+        Ok(())
+    }
+
+    /// Write to standard output. Any failure other than a closed reader, such
+    /// as a full disk, loses output someone wanted, so it ends the process and
+    /// is reported like any other failed write to a file.
+    pub fn out(args: Arguments<'_>, newline: bool) {
+        // The test harness only captures what std's own macros print.
+        if cfg!(test) {
+            std::print!("{args}{}", if newline { "\n" } else { "" });
+            return;
+        }
+        if reader_gone() {
+            return;
+        }
+        let result = write(&mut std::io::stdout().lock(), args, newline);
+        match result {
+            Ok(()) => {}
+            Err(e) if e.kind() == ErrorKind::BrokenPipe => {
+                READER_GONE.store(true, Ordering::Relaxed);
+            }
+            Err(e) => {
+                err(
+                    format_args!("dspi: could not write to standard output: {e}"),
+                    true,
+                );
+                std::process::exit(i32::from(super::exit::TRANSPORT));
+            }
+        }
+    }
+
+    /// Write to standard error. There is nowhere to report a failure of this,
+    /// and the command's exit status is what a script branches on, so it stands.
+    pub fn err(args: Arguments<'_>, newline: bool) {
+        if cfg!(test) {
+            std::eprint!("{args}{}", if newline { "\n" } else { "" });
+            return;
+        }
+        let _ = write(&mut std::io::stderr().lock(), args, newline);
+    }
+}
+
+mod doctor;
 // -- WP TM10 --
 mod cs_demo;
-mod doctor;
 mod transfer;
 
 use std::process::ExitCode;
@@ -770,6 +856,12 @@ fn cmd_watch(target: &Target, json: bool) -> u8 {
         .unwrap_or((dspi_transport::TransportCaps::USB.kind, None));
     let started = std::time::Instant::now();
     loop {
+        // -- WP TM15 --
+        // Nobody is reading and this never ends by itself. With a device that
+        // stays quiet, this is only noticed at the first print after the close.
+        if stdio::reader_gone() {
+            return exit::OK;
+        }
         if notes.is_disconnected() {
             eprintln!("dspi: device disconnected");
             return exit::TRANSPORT;
