@@ -11,8 +11,9 @@
 //!   (invalid UTF-8 is an invalid argument, not a panic).
 //! - **Copy out.** Records are copied into caller-owned memory. The one
 //!   exception kept from the old ABI is `dspi_get_state`, which returns a
-//!   pointer to a `DspState` owned by the core handle, valid until the next
-//!   call on that handle from the same thread (the Qt app's usage).
+//!   pointer to a `DspState` owned by the core handle, at a fixed address until
+//!   `dspi_core_free`. Each `dspi_get_state` rewrites that record, so readers
+//!   serialise with that call (the Qt app: GUI thread only).
 //! - Errors map onto the old conventions: `bool` false, a `PRESET_*` /
 //!   `PIN_CONFIG_*` status byte from `DspiError::Refused`, `0xFF` otherwise.
 //!
@@ -46,6 +47,26 @@ pub(crate) fn guard<T>(fail: T, f: impl FnOnce() -> T) -> T {
         log::error!("dspi-capi: a call panicked; returning its failure value");
         fail
     })
+}
+
+/// The handle behind the C ABI's `struct FfiCore *`: created by
+/// `dspi_core_new` and freed by `dspi_core_free`.
+pub struct FfiCore {
+    pub(crate) core: std::sync::Arc<dspi_core::DspiCore>,
+    /// The record `dspi_get_state` points at, refreshed on each call.
+    #[allow(dead_code)] // read only by dspi_get_state
+    pub(crate) state: std::sync::Mutex<Box<types::DspState>>,
+}
+
+/// Run `f` on the handle `p` inside [`guard`]; `fail` for a null handle or a
+/// panic.
+pub(crate) fn with_core<T>(p: *const FfiCore, fail: T, f: impl FnOnce(&FfiCore) -> T) -> T {
+    if p.is_null() {
+        return fail;
+    }
+    // SAFETY: a non-null handle comes from `dspi_core_new` and stays valid
+    // until `dspi_core_free`; that is the C caller's contract.
+    guard(fail, || f(unsafe { &*p }))
 }
 
 #[cfg(test)]
