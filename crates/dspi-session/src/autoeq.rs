@@ -101,22 +101,15 @@ pub enum AutoEqError {
 }
 
 /// The directory the user's database and favourites live in.
+///
+/// The platform's configuration directory: `$XDG_CONFIG_HOME` or `~/.config`
+/// on Linux, `~/Library/Application Support` on macOS, `%APPDATA%` on
+/// Windows. Reading `HOME` by hand sent Windows users who have it set (Git
+/// Bash, MSYS2, Cygwin) to `%HOME%\.config` instead of `%APPDATA%`.
 pub fn config_dir() -> std::path::PathBuf {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(std::path::PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|h| {
-                let p = std::path::PathBuf::from(h);
-                if cfg!(target_os = "macos") {
-                    p.join("Library/Application Support")
-                } else {
-                    p.join(".config")
-                }
-            })
-        })
-        .or_else(|| std::env::var_os("APPDATA").map(std::path::PathBuf::from))
-        .unwrap_or_else(|| std::path::PathBuf::from("."));
-    base.join("dspi-term")
+    dirs::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("dspi-term")
 }
 
 /// Where a user-supplied database would live.
