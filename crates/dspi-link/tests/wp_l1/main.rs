@@ -1,0 +1,8 @@
+//! WP L1: the Link client against a fake hub that behaves like the real ones,
+//! one module per finding of LINK-HUB-FINDINGS.md. Liveness runs on
+//! `ManualClock`, so no test waits out a real limit.
+
+#[macro_use]
+mod support;
+
+mod hub;

@@ -17,6 +17,7 @@
 
 pub mod address;
 pub mod client;
+pub mod clock;
 pub mod frames;
 pub mod messages;
 pub mod socket;

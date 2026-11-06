@@ -34,3 +34,8 @@ required-features = ["fake-hub"]
 [[test]]
 name = "client_fakehub"
 required-features = ["fake-hub"]
+
+[[test]]
+name = "wp_l1"
+path = "tests/wp_l1/main.rs"
+required-features = ["fake-hub"]

@@ -12,10 +12,35 @@
 //! the bridge's limits (`bridge: true`: 64 B SET, 132 B GET, no 0x0F, no
 //! chunked bulk). Not a conformance reference: it is as small as the client
 //! tests need.
+//!
+//! It behaves like the real hubs where that changed what a client sees
+//! (ESP32 bridge `hub.c`, `hub_auth.c`, `http_server.c`; Mac `AuthStore`):
+//! - WebSocket pings to authenticated sessions every [`HubConfig::ping_interval`],
+//!   and close 1001 after [`HubConfig::peer_timeout`] without a client frame,
+//!   so a vanished client holds its slot until then;
+//! - close 4001 at [`HubConfig::auth_deadline`] from socket open;
+//! - a wrong PIN answers `unauthenticated` with no `msg`, never `denied`;
+//! - 5 failures from one address in a minute answer `rate_limited` to PINs and
+//!   tokens alike for 60 s; 5 failures, or one success, end a PIN window;
+//! - [`HubConfig::max_sessions`] answers 503 before the upgrade, and a bridge
+//!   answers 400 when the sub-protocol is missing;
+//! - no board attached: `device.list` is empty ([`FakeHub::set_board_present`]).
+//!
+//! Faults are injected through [`FakeHub`] methods: [`FakeHub::stall`],
+//! [`FakeHub::drop_connections`], [`FakeHub::drop_next_replies`],
+//! [`FakeHub::hold_replies`] / [`FakeHub::release_replies`],
+//! [`FakeHub::duplicate_frames`], [`FakeHub::restart`], [`FakeHub::factory_reset`],
+//! [`FakeHub::fail_tokens_with`], [`FakeHub::fail_device_list`] and
+//! [`FakeHub::refuse_handshake`]. Timers run on [`HubConfig::clock`], so a test
+//! can use a [`ManualClock`](crate::clock::ManualClock) instead of waiting.
+//!
+//! Not modelled: the bridge's limit of two unauthenticated sessions per
+//! address, its 16-entry token table (4002 on eviction), the 20-failure global
+//! PIN limit, and close 1011 for a client that stopped reading.
 
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Read, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{IpAddr, Shutdown, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -28,6 +53,7 @@ use tungstenite::protocol::frame::coding::CloseCode;
 use tungstenite::protocol::CloseFrame;
 use tungstenite::{Message, WebSocket};
 
+use crate::clock::{Clock, SystemClock};
 use crate::frames::{kind, status, CmdResponse, Dir, Frame, NotifyFrame, PollFrame};
 
 pub const BULK_V32: &[u8] = include_bytes!("../../../tests/fixtures/link/device/bulk_v32.bin");
@@ -82,7 +108,24 @@ pub struct HubConfig {
     pub set_offsets: HashMap<u8, (u16, u16)>,
     /// Requests answered TIMEOUT (the hub gave up on the device).
     pub timeout_requests: HashSet<u8>,
+    /// Close 4001 this long after the socket opened without authentication.
     pub auth_deadline: Duration,
+    /// WebSocket ping to each authenticated session (both real hubs: 10 s).
+    pub ping_interval: Duration,
+    /// Close 1001 after this long without a client frame (both real hubs: 30 s).
+    /// A client that vanished holds its session slot until then.
+    pub peer_timeout: Duration,
+    /// Sessions the hub takes; more get HTTP 503 before the upgrade. `None` for
+    /// the Mac hub, which has no cap; a bridge has 4, or 8 with PSRAM.
+    pub max_sessions: Option<usize>,
+    /// Failed `auth.pair` / `auth.token` from one address within
+    /// [`Self::rate_limit_window`] before the hub answers `rate_limited`.
+    pub rate_limit_failures: usize,
+    pub rate_limit_window: Duration,
+    /// How long `rate_limited` lasts.
+    pub rate_limit_lockout: Duration,
+    /// The time source of the hub's auth, keepalive and rate-limit timers.
+    pub clock: Arc<dyn Clock>,
 }
 
 impl Default for HubConfig {
@@ -104,6 +147,13 @@ impl Default for HubConfig {
             set_offsets: HashMap::from([(req::SET_MASTER_VOLUME, (OFF_MASTER_VOLUME, 4))]),
             timeout_requests: HashSet::new(),
             auth_deadline: Duration::from_secs(30),
+            ping_interval: Duration::from_secs(10),
+            peer_timeout: Duration::from_secs(30),
+            max_sessions: None,
+            rate_limit_failures: 5,
+            rate_limit_window: Duration::from_secs(60),
+            rate_limit_lockout: Duration::from_secs(60),
+            clock: Arc::new(SystemClock),
         }
     }
 }
@@ -124,16 +174,48 @@ impl HubConfig {
                 .map(|s| s.to_string())
                 .collect(),
             max_inflight: 4,
+            max_sessions: Some(4),
             ..Self::default()
         }
     }
 }
 
+/// How [`FakeHub::fail_device_list`] breaks `device.list`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeviceListFault {
+    /// Answer `err` with this code.
+    Error(String),
+    /// Never answer.
+    Silent,
+}
+
 /// One message to a session's socket.
+#[derive(Clone)]
 enum Out {
     Text(String),
     Binary(Vec<u8>),
     Close(u16),
+    /// Cut the TCP connection without a close frame.
+    Abort,
+}
+
+/// What [`FakeHub`]'s fault injection has switched on.
+#[derive(Default)]
+struct Faults {
+    /// Sessions neither read nor write: the network went dark.
+    stalled: bool,
+    /// Answer the upgrade with this HTTP status.
+    refuse_handshake: Option<u16>,
+    /// `auth.token` answers `err` with this code.
+    token_error: Option<String>,
+    device_list: Option<DeviceListFault>,
+    device_list_times: u32,
+    /// Replies wait in the session's `held` until [`FakeHub::release_replies`].
+    hold_replies: bool,
+    /// Replies to swallow.
+    drop_replies: u32,
+    /// Every queued frame and reply goes out twice.
+    duplicate: bool,
 }
 
 struct SessionRec {
@@ -144,6 +226,15 @@ struct SessionRec {
     link_seq: u16,
     poll_seq: u16,
     polls: HashMap<u8, (Vec<u8>, Duration, Instant)>,
+    peer: Option<IpAddr>,
+    held: Vec<Out>,
+}
+
+/// Auth failures of one address (spec 6.2).
+#[derive(Default)]
+struct FailureRecord {
+    failures: Vec<Instant>,
+    locked_until: Option<Instant>,
 }
 
 struct State {
@@ -156,6 +247,16 @@ struct State {
     lock: Option<(u16, Instant)>,
     log: Vec<(u16, u8, u8, u16)>,
     classes: HashMap<(u8, u8), String>,
+    faults: Faults,
+    failures: HashMap<Option<IpAddr>, FailureRecord>,
+    /// A PIN window is open (spec 6.2: 5 failures or one success end it).
+    window_open: bool,
+    window_failures: u32,
+    board_present: bool,
+    pings_sent: u64,
+    pongs_received: u64,
+    /// Every token presented to `auth.token`.
+    tokens_seen: Vec<String>,
 }
 
 /// A running fake hub; stops when dropped.
@@ -204,6 +305,40 @@ impl State {
             self.classes.iter().filter(|(_, c)| !allowed(role, c)).map(|((r, dir), _)| [*r, *dir]).collect();
         d.sort();
         d
+    }
+
+    fn now(&self) -> Instant {
+        self.cfg.clock.now()
+    }
+
+    fn peer_of(&self, sid: u16) -> Option<IpAddr> {
+        self.sessions.get(&sid).and_then(|r| r.peer)
+    }
+
+    /// The address is in its `rate_limited` minute.
+    fn rate_limited(&mut self, peer: Option<IpAddr>) -> bool {
+        let now = self.now();
+        let Some(r) = self.failures.get_mut(&peer) else { return false };
+        match r.locked_until {
+            Some(until) if now < until => true,
+            Some(_) => {
+                *r = FailureRecord::default();
+                false
+            }
+            None => false,
+        }
+    }
+
+    fn auth_failed(&mut self, peer: Option<IpAddr>) {
+        let now = self.now();
+        let (limit, window, lockout) =
+            (self.cfg.rate_limit_failures, self.cfg.rate_limit_window, self.cfg.rate_limit_lockout);
+        let r = self.failures.entry(peer).or_default();
+        r.failures.retain(|t| now.saturating_duration_since(*t) < window);
+        r.failures.push(now);
+        if r.failures.len() >= limit {
+            r.locked_until = Some(now + lockout);
+        }
     }
 
     fn device_json(&self) -> Value {
@@ -309,7 +444,7 @@ impl State {
     fn command(&mut self, sid: u16, f: crate::frames::CmdRequest) -> CmdResponse {
         let reply = |status: u8, payload: Vec<u8>| CmdResponse { tag: f.tag, status, payload };
         let role = self.sessions.get(&sid).map(|s| s.role.clone()).unwrap_or_default();
-        if f.handle != 0 {
+        if f.handle != 0 || !self.board_present {
             return reply(status::NO_DEVICE, Vec::new());
         }
         if !allowed(&role, self.class(f.b_request, f.dir as u8)) {
@@ -356,6 +491,14 @@ impl FakeHub {
         let state = Arc::new(Mutex::new(State {
             image: cfg.image.clone(),
             cfg,
+            faults: Faults::default(),
+            failures: HashMap::new(),
+            window_open: true,
+            window_failures: 0,
+            board_present: true,
+            pings_sent: 0,
+            pongs_received: 0,
+            tokens_seen: Vec::new(),
             fw_seq: 0,
             next_session: 12,
             sessions: HashMap::new(),
@@ -463,6 +606,119 @@ impl FakeHub {
         }
     }
 
+    // ── Fault injection ───────────────────────────────────────────────
+
+    /// The network goes dark for every session, or comes back: nothing is read
+    /// or written, no pings, no timers. TCP stays up (a half-open connection).
+    pub fn stall(&self, on: bool) {
+        lock(&self.state).faults.stalled = on;
+    }
+
+    /// Cut every session's TCP connection without a close frame.
+    pub fn drop_connections(&self) {
+        let s = lock(&self.state);
+        for r in s.sessions.values() {
+            let _ = r.tx.send(Out::Abort);
+        }
+    }
+
+    /// Swallow the next `n` replies (JSON and CMD responses).
+    pub fn drop_next_replies(&self, n: u32) {
+        lock(&self.state).faults.drop_replies = n;
+    }
+
+    /// Keep replies back from now on, until [`Self::release_replies`].
+    pub fn hold_replies(&self) {
+        lock(&self.state).faults.hold_replies = true;
+    }
+
+    /// Deliver what [`Self::hold_replies`] kept back, late, and stop holding.
+    pub fn release_replies(&self) {
+        let mut s = lock(&self.state);
+        s.faults.hold_replies = false;
+        for r in s.sessions.values_mut() {
+            for o in r.held.drain(..) {
+                let _ = r.tx.send(o);
+            }
+        }
+    }
+
+    /// Send every frame and reply twice.
+    pub fn duplicate_frames(&self, on: bool) {
+        lock(&self.state).faults.duplicate = on;
+    }
+
+    /// A reboot: every connection drops with no close frame, locks and rate
+    /// limits are gone, and the hub id and tokens survive (the bridge keeps them
+    /// in NVS). The port stays bound, so a client can reconnect at once.
+    pub fn restart(&self) {
+        self.drop_connections();
+        let mut s = lock(&self.state);
+        s.lock = None;
+        s.failures.clear();
+        s.faults = Faults::default();
+    }
+
+    /// A factory reset, or another hub taking over this address: every
+    /// connection drops, `hub_id` is the new id and all tokens are gone.
+    pub fn factory_reset(&self, hub_id: &str) {
+        self.restart();
+        let mut s = lock(&self.state);
+        s.cfg.hub_id = hub_id.to_owned();
+        s.tokens.clear();
+        s.window_open = true;
+        s.window_failures = 0;
+    }
+
+    /// Answer every `auth.token` with `err` `code` (`None` ends the fault):
+    /// `unauthenticated`, `denied`, `rate_limited`, `internal`, ...
+    pub fn fail_tokens_with(&self, code: Option<&str>) {
+        lock(&self.state).faults.token_error = code.map(str::to_owned);
+    }
+
+    /// Break the next `times` `device.list` requests.
+    pub fn fail_device_list(&self, fault: DeviceListFault, times: u32) {
+        let mut s = lock(&self.state);
+        s.faults.device_list = Some(fault);
+        s.faults.device_list_times = times;
+    }
+
+    /// Answer the WebSocket upgrade with this HTTP status (`None` ends the fault).
+    pub fn refuse_handshake(&self, status: Option<u16>) {
+        lock(&self.state).faults.refuse_handshake = status;
+    }
+
+    /// Attach or remove the board. With none, `device.list` is empty and
+    /// commands answer NO_DEVICE; pairing still works (`hub.c`).
+    pub fn set_board_present(&self, present: bool) {
+        lock(&self.state).board_present = present;
+    }
+
+    /// Open a new PIN window (Mac hub: the user presses the button again).
+    pub fn reopen_window(&self) {
+        let mut s = lock(&self.state);
+        s.window_open = true;
+        s.window_failures = 0;
+    }
+
+    /// Sessions holding a slot, authenticated or not.
+    pub fn slots_in_use(&self) -> usize {
+        lock(&self.state).sessions.len()
+    }
+
+    pub fn pings_sent(&self) -> u64 {
+        lock(&self.state).pings_sent
+    }
+
+    pub fn pongs_received(&self) -> u64 {
+        lock(&self.state).pongs_received
+    }
+
+    /// Every token this hub was offered, in order.
+    pub fn tokens_seen(&self) -> Vec<String> {
+        lock(&self.state).tokens_seen.clone()
+    }
+
     pub fn stop(&self) {
         self.close_all(4003);
         self.stop.store(true, Ordering::SeqCst);
@@ -531,34 +787,27 @@ fn serve(mut tcp: TcpStream, state: Arc<Mutex<State>>, stop: Arc<AtomicBool>) {
         );
         return;
     }
-    let raw = match tcp.try_clone() {
-        Ok(t) => t,
-        Err(_) => return,
-    };
-    let stream = Replay { pre: io::Cursor::new(head), tcp };
-    let ws = tungstenite::accept_hdr(stream, |req: &Request, mut resp: Response| {
-        let asked = req.headers().get("Sec-WebSocket-Protocol").and_then(|v| v.to_str().ok()).unwrap_or("");
-        if asked.split(',').any(|p| p.trim() == "dspi-link-1") {
-            resp.headers_mut().insert("Sec-WebSocket-Protocol", "dspi-link-1".parse().unwrap());
+    // Refusals come before the upgrade (http_server.c `refuse_handshake`)
+    let peer = tcp.peer_addr().ok().map(|a| a.ip());
+    let (slot, tx_rx) = {
+        let mut s = lock(&state);
+        let refuse = if let Some(code) = s.faults.refuse_handshake {
+            Some(code)
+        } else if s.cfg.kind == "bridge" && !text.contains("dspi-link-1") {
+            Some(400)
+        } else if s.cfg.max_sessions.is_some_and(|m| s.sessions.len() >= m) {
+            Some(503)
+        } else {
+            None
+        };
+        if let Some(code) = refuse {
+            drop(s);
+            refuse_handshake(&mut tcp, code);
+            return;
         }
-        Ok(resp)
-    });
-    let Ok(mut ws) = ws else { return };
-    let _ = raw.set_read_timeout(Some(Duration::from_millis(5)));
-    session(&mut ws, &state, &stop);
-}
-
-fn send_close(ws: &mut WebSocket<Replay>, code: u16) {
-    let _ = ws.close(Some(CloseFrame { code: CloseCode::from(code), reason: "".into() }));
-    let _ = ws.flush();
-}
-
-fn session(ws: &mut WebSocket<Replay>, state: &Arc<Mutex<State>>, stop: &AtomicBool) {
-    let (tx, rx): (Sender<Out>, Receiver<Out>) = mpsc::channel();
-    let sid = {
-        let mut s = lock(state);
         let sid = s.next_session;
-        s.next_session += 1;
+        s.next_session = s.next_session.wrapping_add(1);
+        let (tx, rx): (Sender<Out>, Receiver<Out>) = mpsc::channel();
         s.sessions.insert(
             sid,
             SessionRec {
@@ -569,31 +818,107 @@ fn session(ws: &mut WebSocket<Replay>, state: &Arc<Mutex<State>>, stop: &AtomicB
                 link_seq: 0,
                 poll_seq: 0,
                 polls: HashMap::new(),
+                peer,
+                held: Vec::new(),
             },
         );
-        sid
+        (sid, rx)
     };
-    let started = Instant::now();
-    let mut last_ping = Instant::now();
-    let mut hello_done = false;
+    let raw = tcp.try_clone();
+    let stream = Replay { pre: io::Cursor::new(head), tcp };
+    let ws = tungstenite::accept_hdr(stream, |req: &Request, mut resp: Response| {
+        let asked = req.headers().get("Sec-WebSocket-Protocol").and_then(|v| v.to_str().ok()).unwrap_or("");
+        if asked.split(',').any(|p| p.trim() == "dspi-link-1") {
+            resp.headers_mut().insert("Sec-WebSocket-Protocol", "dspi-link-1".parse().unwrap());
+        }
+        Ok(resp)
+    });
+    if let (Ok(mut ws), Ok(raw)) = (ws, raw) {
+        let _ = raw.set_read_timeout(Some(Duration::from_millis(5)));
+        session(&mut ws, &state, &stop, slot, tx_rx);
+    }
+    let mut s = lock(&state);
+    s.sessions.remove(&slot);
+    if s.lock.is_some_and(|l| l.0 == slot) {
+        s.lock = None;
+    }
+}
+
+fn refuse_handshake(tcp: &mut TcpStream, code: u16) {
+    let (line, body) = match code {
+        400 => ("400 Bad Request", "Link needs the dspi-link-1 sub-protocol."),
+        403 => ("403 Forbidden", "This bridge accepts Link sessions only from its own pages."),
+        503 => ("503 Service Unavailable", "This bridge has no room for another session."),
+        _ => ("500 Internal Server Error", "Refused."),
+    };
+    let _ = write!(
+        tcp,
+        "HTTP/1.1 {line}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+}
+
+fn send_close(ws: &mut WebSocket<Replay>, code: u16) {
+    let _ = ws.close(Some(CloseFrame { code: CloseCode::from(code), reason: "".into() }));
+    let _ = ws.flush();
+}
+
+/// Write one message; `false` when the session is over.
+fn write_out(ws: &mut WebSocket<Replay>, o: Out) -> bool {
+    match o {
+        Out::Text(t) => ws.send(Message::text(t)).is_ok(),
+        Out::Binary(b) => ws.send(Message::binary(b)).is_ok(),
+        Out::Close(code) => {
+            send_close(ws, code);
+            false
+        }
+        Out::Abort => {
+            let _ = ws.get_ref().tcp.shutdown(Shutdown::Both);
+            false
+        }
+    }
+}
+
+/// A reply, through the injected faults; `false` when the session is over.
+fn reply_out(ws: &mut WebSocket<Replay>, state: &Arc<Mutex<State>>, sid: u16, o: Out) -> bool {
+    let duplicate = {
+        let mut s = lock(state);
+        if s.faults.drop_replies > 0 {
+            s.faults.drop_replies -= 1;
+            return true;
+        }
+        if s.faults.hold_replies {
+            if let Some(r) = s.sessions.get_mut(&sid) {
+                r.held.push(o);
+            }
+            return true;
+        }
+        s.faults.duplicate
+    };
+    if duplicate && !write_out(ws, o.clone()) {
+        return false;
+    }
+    write_out(ws, o)
+}
+
+fn session(ws: &mut WebSocket<Replay>, state: &Arc<Mutex<State>>, stop: &AtomicBool, sid: u16, rx: Receiver<Out>) {
+    let clock = Arc::clone(&lock(state).cfg.clock);
+    let started = clock.now();
+    let mut last_ping = started;
+    let mut last_activity = started;
     'outer: while !stop.load(Ordering::SeqCst) {
+        if lock(state).faults.stalled {
+            thread::sleep(Duration::from_millis(5));
+            continue;
+        }
         // Outgoing queue
         while let Ok(o) = rx.try_recv() {
-            match o {
-                Out::Text(t) => {
-                    if ws.send(Message::text(t)).is_err() {
-                        break 'outer;
-                    }
-                }
-                Out::Binary(b) => {
-                    if ws.send(Message::binary(b)).is_err() {
-                        break 'outer;
-                    }
-                }
-                Out::Close(code) => {
-                    send_close(ws, code);
-                    break 'outer;
-                }
+            let duplicate = lock(state).faults.duplicate && matches!(o, Out::Text(_) | Out::Binary(_));
+            if duplicate && !write_out(ws, o.clone()) {
+                break 'outer;
+            }
+            if !write_out(ws, o) {
+                break 'outer;
             }
         }
         // Polls due
@@ -635,28 +960,41 @@ fn session(ws: &mut WebSocket<Replay>, state: &Arc<Mutex<State>>, stop: &AtomicB
                 break 'outer;
             }
         }
-        if last_ping.elapsed() > Duration::from_secs(10) {
-            last_ping = Instant::now();
-            let _ = ws.send(Message::Ping(Vec::new().into()));
-        }
         {
-            let s = lock(state);
+            let now = clock.now();
+            let mut s = lock(state);
             let authed = s.sessions.get(&sid).is_some_and(|r| r.authed);
-            if !authed && hello_done && started.elapsed() > s.cfg.auth_deadline {
+            if !authed && now.saturating_duration_since(started) >= s.cfg.auth_deadline {
                 drop(s);
                 send_close(ws, 4001);
                 break;
             }
+            // Keepalive runs on open sessions only (hub.c `hub_tick`)
+            if authed && now.saturating_duration_since(last_activity) >= s.cfg.peer_timeout {
+                drop(s);
+                send_close(ws, 1001);
+                break;
+            }
+            if authed && now.saturating_duration_since(last_ping) >= s.cfg.ping_interval {
+                last_ping = now;
+                s.pings_sent += 1;
+                drop(s);
+                let _ = ws.send(Message::Ping(Vec::new().into()));
+            }
         }
-        match ws.read() {
+        let read = ws.read();
+        if read.is_ok() {
+            last_activity = clock.now();
+        }
+        match read {
             Ok(Message::Text(t)) => {
-                let replies = handle_json(state, sid, t.as_str(), &mut hello_done);
-                for r in replies {
-                    if ws.send(Message::text(r)).is_err() {
+                for r in handle_json(state, sid, t.as_str()) {
+                    if !reply_out(ws, state, sid, Out::Text(r)) {
                         break 'outer;
                     }
                 }
             }
+            Ok(Message::Pong(_)) => lock(state).pongs_received += 1,
             Ok(Message::Binary(b)) => {
                 let reply = {
                     let mut s = lock(state);
@@ -679,7 +1017,7 @@ fn session(ws: &mut WebSocket<Replay>, state: &Arc<Mutex<State>>, stop: &AtomicB
                     }
                 };
                 if let Some(r) = reply {
-                    if ws.send(Message::binary(r)).is_err() {
+                    if !reply_out(ws, state, sid, Out::Binary(r)) {
                         break;
                     }
                 }
@@ -694,10 +1032,8 @@ fn session(ws: &mut WebSocket<Replay>, state: &Arc<Mutex<State>>, stop: &AtomicB
             Err(_) => break,
         }
     }
-    let mut s = lock(state);
-    s.sessions.remove(&sid);
-    if s.lock.is_some_and(|l| l.0 == sid) {
-        s.lock = None;
+    if stop.load(Ordering::SeqCst) {
+        send_close(ws, 4003);
     }
 }
 
@@ -715,7 +1051,14 @@ fn err(id: &Value, code: &str, msg: &str) -> String {
     json!({"t": "err", "id": id, "code": code, "msg": msg}).to_string()
 }
 
-fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str, hello_done: &mut bool) -> Vec<String> {
+/// An `err` with no `msg`, as the bridge answers a failed credential (`hub.c`).
+fn err_bare(id: &Value, code: &str) -> String {
+    json!({"t": "err", "id": id, "code": code}).to_string()
+}
+
+const RATE_LIMITED_MSG: &str = "too many failures; try again in a minute";
+
+fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str) -> Vec<String> {
     let Ok(v) = serde_json::from_str::<Value>(text) else { return vec![] };
     let t = v["t"].as_str().unwrap_or("");
     let id = v["id"].clone();
@@ -723,7 +1066,6 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str, hello_done: &mut
     let authed = s.sessions.get(&sid).is_some_and(|r| r.authed);
     match t {
         "hello" => {
-            *hello_done = true;
             let mut h = json!({
                 "t": "hello", "proto": {"major": 1, "minor": s.cfg.proto_minor},
                 "hub": {"id": s.cfg.hub_id, "name": s.cfg.name, "kind": s.cfg.kind, "version": "0.0-fake"},
@@ -745,14 +1087,30 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str, hello_done: &mut
         }
         "auth.pair" => {
             let pin = v["pin"].as_str().unwrap_or("");
+            let peer = s.peer_of(sid);
+            let open = s.cfg.auth == Auth::None;
+            if !open && s.rate_limited(peer) {
+                return vec![err(&id, "rate_limited", RATE_LIMITED_MSG)];
+            }
+            let window = matches!(s.cfg.auth, Auth::Window(_));
             let (good, role) = match &s.cfg.auth {
                 Auth::None => (true, "admin".to_owned()),
                 // The hub decides the role (the requested one is a wish, spec 6.2)
-                Auth::Window(p) => (pin == p, s.cfg.pin_role.clone()),
+                Auth::Window(p) => (pin == p && s.window_open, s.cfg.pin_role.clone()),
                 Auth::Fixed(p) => (pin == p, s.cfg.pin_role.clone()),
             };
             if !good {
-                return vec![err(&id, "denied", "wrong PIN")];
+                s.auth_failed(peer);
+                if window {
+                    s.window_failures += 1;
+                    if s.window_failures >= 5 {
+                        s.window_open = false;
+                    }
+                }
+                return vec![err_bare(&id, "unauthenticated")];
+            }
+            if window {
+                s.window_open = false;
             }
             let token = if s.cfg.auth == Auth::None { None } else { Some(format!("tok-{sid}-{}", s.tokens.len())) };
             if let Some(tok) = &token {
@@ -772,6 +1130,20 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str, hello_done: &mut
         }
         "auth.token" => {
             let tok = v["token"].as_str().unwrap_or("").to_owned();
+            s.tokens_seen.push(tok.clone());
+            if let Some(code) = s.faults.token_error.clone() {
+                return vec![err(&id, &code, "injected")];
+            }
+            if s.cfg.auth == Auth::None {
+                if let Some(r) = s.sessions.get_mut(&sid) {
+                    r.authed = true;
+                }
+                return vec![ok(&id, json!({"session": sid, "role": "admin", "policy": {"denied": []}}))];
+            }
+            let peer = s.peer_of(sid);
+            if s.rate_limited(peer) {
+                return vec![err(&id, "rate_limited", RATE_LIMITED_MSG)];
+            }
             match s.tokens.get(&tok).cloned() {
                 Some(role) => {
                     let denied = s.denied(&role);
@@ -782,11 +1154,25 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str, hello_done: &mut
                     }
                     vec![ok(&id, json!({"session": sid, "role": role, "policy": {"denied": denied}}))]
                 }
-                None => vec![err(&id, "unauthenticated", "unknown token")],
+                None => {
+                    s.auth_failed(peer);
+                    vec![err_bare(&id, "unauthenticated")]
+                }
             }
         }
         _ if !authed => vec![err(&id, "unauthenticated", "")],
-        "device.list" => vec![ok(&id, json!({"devices": [s.device_json()]}))],
+        "device.list" => {
+            if s.faults.device_list_times > 0 {
+                s.faults.device_list_times -= 1;
+                match s.faults.device_list.clone() {
+                    Some(DeviceListFault::Error(code)) => return vec![err(&id, &code, "injected")],
+                    Some(DeviceListFault::Silent) => return vec![],
+                    None => {}
+                }
+            }
+            let devices = if s.board_present { vec![s.device_json()] } else { vec![] };
+            vec![ok(&id, json!({"devices": devices}))]
+        }
         "device.snapshot" => {
             if v["handle"].as_u64() != Some(0) {
                 return vec![err(&id, "no_device", "")];
