@@ -26,8 +26,8 @@ impl Bench for FakeBench {
     /// What the harness promises a real hub: GETs only, the image as it was, no
     /// lock left behind.
     fn after_scenario(&self) {
-        let set = Dir::Set as u8;
-        let writes: Vec<_> = self.0.log().into_iter().filter(|(_, dir, _, _)| *dir == set).collect();
+        let read = Dir::Get as u8;
+        let writes: Vec<_> = self.0.log().into_iter().filter(|(_, dir, _, _)| *dir != read).collect();
         assert!(writes.is_empty(), "the harness wrote: {writes:?}");
         assert_eq!(self.0.image(), BULK_V32, "the image changed");
         assert_eq!(self.0.lock_holder(), None, "a lock was left behind");
@@ -259,4 +259,25 @@ fn wp_xc3_the_bench_check_notices_a_change() {
     let (t, hub) = bridge();
     hub.external_change(dspi_link::fakehub::OFF_MASTER_VOLUME, &(-3.0f32).to_le_bytes(), 1, 99);
     t.bench.after_scenario();
+}
+
+/// With no PIN known, a "wrong" one could be the hub's, so nothing is tried.
+#[test]
+fn wp_xc3_wrong_pin_needs_the_pin() {
+    let (mut t, hub) = bridge();
+    t.allow_lockout = true;
+    t.pin = None;
+    let seen = hub.tokens_seen().len();
+    assert!(sc::wrong_pin_keeps_token(&t).is_err());
+    assert_eq!(hub.tokens_seen().len(), seen);
+}
+
+/// A hub that refuses client management: teardown skips, keeps the file and says
+/// what to remove by hand.
+#[test]
+fn wp_xc3_teardown_skips_when_the_hub_refuses() {
+    let (t, _hub) = bridge();
+    let file = std::path::Path::new("/nonexistent/token");
+    let Err(Skip(why)) = crate::real::teardown(&t, file) else { panic!("revoked on a hub with no client management") };
+    assert!(why.contains("hub's own UI") && why.contains(TEMP_CLIENT_NAME), "{why}");
 }

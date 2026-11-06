@@ -8,7 +8,7 @@
 //! |---|---|
 //! | `DSPI_REAL_HUB` | `host` or `host:port`. Unset: every `real_*` test skips. |
 //! | `DSPI_REAL_HUB_TOKEN_FILE` | The harness's token, on a hub that wants one. |
-//! | `DSPI_REAL_HUB_PIN` | The hub's PIN, for the pairing tests. Never logged. |
+//! | `DSPI_REAL_HUB_PIN` | The hub's PIN, for the pairing and wrong-PIN tests. Never logged. |
 //! | `DSPI_REAL_HUB_ALLOW_PAIR=1` | May add client records (table of 16 on a bridge; a full table evicts someone). |
 //! | `DSPI_REAL_HUB_ALLOW_LOCKOUT=1` | May run what shuts others out: wrong PINs, all slots full. |
 //! | `DSPI_REAL_HUB_REVOKE=1` | `real_teardown_revoke` may revoke the harness's own records. |
@@ -19,7 +19,9 @@
 //! Read-only by construction ([`guard`]): the harness sends only GETs that every
 //! client sends at attach, takes no lock, subscribes to nothing, and has no way
 //! to send audio. `self_checks` holds it to that, and each scenario compares the
-//! board's settings image before and after. Pairing asks for the `viewer` role.
+//! board's bulk settings image before and after. That image is all the comparison
+//! covers: the device and input-source names, the pair map, the core voltage and
+//! the preset flash are outside it. Pairing asks for the `viewer` role.
 //!
 //! Timing: every duration is written in real-hub seconds. The fake runs them ten
 //! times faster, so the same bounds run in seconds rather than minutes.
@@ -34,6 +36,11 @@
 //! 1. `real::real_setup_pair` (`ALLOW_PAIR`, `PIN`, `TOKEN_FILE`) once, on a PIN hub;
 //! 2. `real::` for the safe set, then again with `ALLOW_LOCKOUT` and `ALLOW_PAIR`;
 //! 3. `real::real_teardown_revoke` (`REVOKE`, `TOKEN_FILE`).
+//!
+//! On a Mac hub the harness's `viewer` sessions may not use `auth.list` or
+//! `auth.revoke`: teardown skips, and the pairing scenarios only say so, so remove
+//! the records `dspi-link real-hub harness` and `dspi-link real-hub harness temp`
+//! in the hub's own UI.
 //!
 //! Each pairing scenario spends one PIN on a window hub: open a window per test.
 //! A lockout scenario shuts out every client behind the container's address (for

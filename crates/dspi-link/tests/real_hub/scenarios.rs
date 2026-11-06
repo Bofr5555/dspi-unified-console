@@ -103,7 +103,7 @@ pub fn idle_session(t: &Target) -> Outcome {
     })
 }
 
-/// A PIN that is not the hub's, if the hub's is known.
+/// A PIN that is not the hub's: [`Gate::KnownPin`] says what the hub's is.
 fn wrong_pin(t: &Target) -> &'static str {
     if t.pin.as_deref() == Some("000000") {
         "000001"
@@ -116,7 +116,7 @@ fn wrong_pin(t: &Target) -> &'static str {
 /// The token is refused "not now", not "bad", and works again after the lockout.
 /// On a window hub this also ends the open window.
 pub fn wrong_pin_keeps_token(t: &Target) -> Outcome {
-    run(t, "2_wrong_pin", &[Gate::Lockout], |t, rec| {
+    run(t, "2_wrong_pin", &[Gate::Lockout, Gate::KnownPin], |t, rec| {
         let c = t.session()?;
         let pin_required = c.hello().pin_required();
         c.close();

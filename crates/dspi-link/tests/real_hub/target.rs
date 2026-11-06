@@ -224,6 +224,8 @@ pub enum Gate {
     Lockout,
     /// Adds a client record: needs `DSPI_REAL_HUB_ALLOW_PAIR` and the PIN.
     Pair,
+    /// Must know the PIN, so that a "wrong" one cannot be the hub's.
+    KnownPin,
     /// Needs a board to read from.
     Board,
     /// Needs no board: `DSPI_REAL_HUB_NO_BOARD`.
@@ -238,6 +240,7 @@ impl Gate {
             Gate::Lockout if !t.allow_lockout => Some("shuts other clients out: needs DSPI_REAL_HUB_ALLOW_LOCKOUT=1"),
             Gate::Pair if !t.allow_pair => Some("adds a client record: needs DSPI_REAL_HUB_ALLOW_PAIR=1"),
             Gate::Pair if t.pin.is_none() => Some("needs DSPI_REAL_HUB_PIN"),
+            Gate::KnownPin if t.pin.is_none() => Some("needs DSPI_REAL_HUB_PIN, so its wrong PIN cannot be the hub's"),
             Gate::Board if t.no_board => Some("needs a board, and DSPI_REAL_HUB_NO_BOARD is set"),
             Gate::NoBoard if !t.no_board => Some("needs DSPI_REAL_HUB_NO_BOARD=1, with no board attached"),
             Gate::Operator if !t.operator => Some("needs a person: DSPI_REAL_HUB_OPERATOR=1 and --nocapture"),

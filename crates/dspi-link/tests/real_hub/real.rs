@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -10,7 +10,9 @@ use dspi_link::socket::TcpConnector;
 use dspi_link::{address, AuthState};
 
 use crate::scenarios as sc;
-use crate::target::{forget_pairing, run, Bench, Forgotten, Gate, Skip, Target, CLIENT_NAME, TEMP_CLIENT_NAME};
+use crate::target::{
+    forget_pairing, run, Bench, Forgotten, Gate, Outcome, Skip, Target, CLIENT_NAME, TEMP_CLIENT_NAME,
+};
 
 pub struct Config {
     pub host: String,
@@ -171,20 +173,29 @@ fn real_teardown_revoke() {
         eprintln!("SKIP real_teardown_revoke: needs DSPI_REAL_HUB_TOKEN_FILE");
         return;
     };
-    let t = config.target();
-    let Some(token) = t.token.clone() else {
-        eprintln!("SKIP real_teardown_revoke: no token in the file");
-        return;
-    };
+    if let Err(Skip(why)) = teardown(&config.target(), &file) {
+        eprintln!("SKIP real_teardown_revoke: {why}");
+    }
+}
+
+/// A hub that refuses client management is a skip, not a failure: a `viewer`
+/// session may not revoke on a Mac hub, so the records go in the hub's own UI, and
+/// the token file stays for the operator to delete.
+pub fn teardown(t: &Target, file: &Path) -> Outcome {
+    let Some(token) = t.token.clone() else { return Err(Skip("no token in the file".into())) };
     match forget_pairing(&TcpConnector::default(), &t.url, &token, &[TEMP_CLIENT_NAME, CLIENT_NAME]) {
         Forgotten::Revoked(n) => {
             eprintln!("real_hub: revoked {n} harness client record(s)");
-            fs::remove_file(&file).unwrap_or_else(|e| panic!("{}: {e}", file.display()));
+            fs::remove_file(file).unwrap_or_else(|e| panic!("{}: {e}", file.display()));
             // Once only: each try with a revoked token counts as a failed attempt
             let (c, state) = t.dial(&t.url, Some(token), None).expect("connect");
             c.close();
             assert!(matches!(state, AuthState::TokenRefused { .. }), "the token still works: {state:?}");
+            Ok(())
         }
-        Forgotten::Refused(why) => panic!("not revoked ({why}): remove it in the hub's own UI, then delete the file"),
+        Forgotten::Refused(why) => Err(Skip(format!(
+            "not revoked ({why}): remove `{CLIENT_NAME}` and `{TEMP_CLIENT_NAME}` in the hub's own UI, then delete {}",
+            file.display()
+        ))),
     }
 }

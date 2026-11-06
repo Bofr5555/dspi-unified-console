@@ -58,6 +58,10 @@ fn wp_xc3_the_table_fits_a_bridge() {
 /// The harness's whole source: it has one door to the device, which only reads,
 /// and it holds nothing that would write. The patterns are split so this file
 /// does not match itself.
+///
+/// A scan is a tripwire for honest mistakes, nothing more: it cannot see every way
+/// to spell a write. The real check is what the hub received: the fake's
+/// `after_scenario` looks at its command log and image after every scenario.
 #[test]
 fn wp_xc3_the_source_has_no_way_to_write() {
     let files = [
@@ -73,7 +77,9 @@ fn wp_xc3_the_source_has_no_way_to_write() {
     let command = concat!(".com", "mand(");
     let forbidden = [
         concat!("c.com", "mand("),
-        concat!("Dir::", "Set,"),
+        concat!("Dir::", "Set"),
+        concat!("\"t\": ", "\"cmd\""),
+        concat!("\"t\":", "\"cmd\""),
         concat!("lock_", "acquire"),
         concat!("poll_", "subscribe"),
         concat!("auth.", "set_role"),
