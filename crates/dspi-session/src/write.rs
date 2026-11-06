@@ -24,9 +24,22 @@ use dspi_proto::registry::{
 use dspi_proto::value::{EqParamPacket, Repr, Value, ValueError, decode_qp};
 use dspi_proto::wire::BulkPacket;
 use dspi_proto::{ChannelMap, Dir, Platform};
-use dspi_transport::{Transport, TransportError, with_busy_retry};
+use dspi_transport::{Transport, TransportError, TransportKind, with_busy_retry};
+use std::time::{Duration, Instant};
 
 use crate::probe::Capabilities;
+
+/// How often the `out.latency` confirmation polls, and how long it keeps at it:
+/// the Mac's 40 x 100 ms (`Commands.swift:757-762`), held to a clock so slow
+/// reads cannot stretch it.
+const LATENCY_POLL: Duration = Duration::from_millis(100);
+const LATENCY_SETTLE: Duration = Duration::from_secs(4);
+/// `OUTPUT_LATENCY_GET_STATUS`, the `REQ_OUTPUT_LATENCY` IN `wValue` for
+/// `OutputLatencyStatus` (config.h:261, 1197-1206).
+const LATENCY_STATUS: u16 = 0;
+const LATENCY_STATUS_LEN: u16 = 12;
+/// `OutputLatencyStatus.pending`: 1 until a SET has fully applied.
+const LATENCY_PENDING_AT: usize = 8;
 
 #[derive(Debug, thiserror::Error)]
 pub enum WriteError {
@@ -70,6 +83,18 @@ pub enum WriteError {
 
     #[error(transparent)]
     Transport(#[from] TransportError),
+
+    /// The write went out, and the device did not say it had finished applying
+    /// it in the time allowed. It may still land, so this is neither success
+    /// nor a refusal, and sending it again is the caller's decision.
+    #[error(
+        "`{path}` was sent, but {why} after {waited_ms} ms; it may still apply, so read it back before sending it again"
+    )]
+    Unsettled {
+        path: String,
+        waited_ms: u64,
+        why: String,
+    },
 }
 
 /// What actually happened, which is not always what was asked for.
@@ -564,6 +589,10 @@ impl Session {
             });
         }
 
+        if d.path == "out.latency" {
+            return self.confirm_output_latency(d, sent);
+        }
+
         // A deferred write may still be applying, and the control endpoint may
         // be dead mid-flash. The retry inside read() covers the blackout.
         match self.read(d.path, indices) {
@@ -573,6 +602,73 @@ impl Session {
                 actual,
             }),
             Err(e) => Err(e),
+        }
+    }
+
+    /// Wait out the deferred `out.latency` apply, then compare.
+    ///
+    /// The firmware only notes the request; its main loop does the flash write
+    /// and the output restart (vendor_commands.c:1474-1488, main.c:2298-2309).
+    /// Until then the status reports the old id with `pending` set, so an
+    /// immediate read-back would call a good write rejected. The status is
+    /// polled as `Commands.swift:757-762` does, from 100 ms after the write.
+    ///
+    /// Blocks the calling thread for one interval when the device applies
+    /// promptly, and at most [`LATENCY_SETTLE`] plus one transfer's timeout
+    /// when it does not. The poll does not use the busy retry, which would
+    /// stretch that bound by seconds per read.
+    ///
+    /// The write is never sent again from here: a failure either ends the wait
+    /// or returns.
+    fn confirm_output_latency(
+        &mut self,
+        d: &ParamDesc,
+        sent: &Value,
+    ) -> Result<Outcome, WriteError> {
+        let get = d.get.ok_or_else(|| WriteError::ReadOnly {
+            path: d.path.into(),
+        })?;
+        let stall_is_busy = matches!(
+            self.transport.caps().kind,
+            TransportKind::Usb | TransportKind::Fake
+        );
+        let start = Instant::now();
+        loop {
+            std::thread::sleep(LATENCY_POLL);
+            let why = match self
+                .transport
+                .control_in(get, LATENCY_STATUS, LATENCY_STATUS_LEN)
+            {
+                Ok(status) => match status.get(LATENCY_PENDING_AT) {
+                    // The requested id is the status's first byte, so this one
+                    // read answers both questions.
+                    Some(0) => {
+                        let actual = decode_read(d, &status);
+                        return Ok(if values_agree(sent, &actual) {
+                            Outcome::Confirmed(actual)
+                        } else {
+                            Outcome::Rejected {
+                                sent: sent.clone(),
+                                actual,
+                            }
+                        });
+                    }
+                    Some(_) => "the device still reports it pending".to_string(),
+                    None => "the device's status reply was too short".to_string(),
+                },
+                // The flash write takes the control endpoint away for a moment.
+                Err(e) if latency_poll_can_continue(&e, stall_is_busy) => {
+                    format!("the device last answered: {e}")
+                }
+                Err(e) => return Err(e.into()),
+            };
+            if start.elapsed() >= LATENCY_SETTLE {
+                return Err(WriteError::Unsettled {
+                    path: d.path.into(),
+                    waited_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+                    why,
+                });
+            }
         }
     }
 
@@ -821,6 +917,21 @@ fn target_name(t: Target) -> &'static str {
 }
 
 /// Interpret a read according to the parameter's kind.
+/// Whether a failed status read during [`Session::write`]'s `out.latency` wait
+/// is the flash window rather than an answer. A device that has gone, or a
+/// link that refuses, will not come back within the wait, so those fail now.
+/// A stall counts only where a stall can mean busy (see
+/// [`dspi_transport::with_busy_retry`]).
+fn latency_poll_can_continue(e: &TransportError, stall_is_busy: bool) -> bool {
+    match e {
+        TransportError::Stalled { .. } => stall_is_busy,
+        TransportError::TimedOut { .. }
+        | TransportError::ShortRead { .. }
+        | TransportError::Usb(_) => true,
+        _ => false,
+    }
+}
+
 fn decode_read(d: &ParamDesc, bytes: &[u8]) -> Value {
     let repr = d.repr();
 

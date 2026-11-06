@@ -17,8 +17,16 @@ SettingsPage {
     property var live: []
     property var expanded: ({})
     property var messages: ({})
+    // -- WP QD1 -- macro -> why a run or stop was refused. A note of its own, as
+    // CsApplyRow hides `messages` while the card holds an edit.
+    property var refusals: ({})
 
-    function seed() { drafts = cs.copy(cs.macros); live = cs.copy(cs.macros); messages = ({}) }
+    function seed() { drafts = cs.copy(cs.macros); live = cs.copy(cs.macros); messages = ({}); refusals = ({}) }
+    function runOrStop(m, isRunning) {
+        var r = controlSurfaces.apply({ op: isRunning ? "macroCancel" : "macroFire", index: m })
+        var st = r && r.status !== undefined ? r.status : (r && r.ok ? 0 : 0xFF)
+        setMap("refusals", m, st !== 0 ? cs.statusMessage(st) : undefined)
+    }
     function follow() {
         var nm = cs.macros, d = drafts.slice()
         if (d.length !== nm.length) { seed(); return }
@@ -160,7 +168,7 @@ SettingsPage {
                         icon: card.isRunning ? "stop" : "play"
                         tip: card.isRunning ? "Stop this macro" : "Run this macro now"
                         enabled: cs.connected && (card.isRunning || (page.live[card.m] && page.live[card.m].steps.length > 0))
-                        onClicked: controlSurfaces.apply({ op: card.isRunning ? "macroCancel" : "macroFire", index: card.m })
+                        onClicked: page.runOrStop(card.m, card.isRunning)   // -- WP QD1 --
                     }
                 }
 
@@ -239,13 +247,17 @@ SettingsPage {
                     }
                 }
 
-                footer: CsApplyRow {
-                    visible: card.expanded || card.dirty || page.messages[card.m] !== undefined
-                    dirty: card.dirty
-                    message: page.messages[card.m] || ""
-                    onApply: page.applyMacro(card.m)
-                    onRevert: { page.setDraft(card.m, cs.copy(page.live[card.m])); page.setMap("messages", card.m, undefined) }
-                }
+                footer: [
+                    // -- WP QD1 --
+                    CsNote { warning: true; text: page.refusals[card.m] || "" },
+                    CsApplyRow {
+                        visible: card.expanded || card.dirty || page.messages[card.m] !== undefined
+                        dirty: card.dirty
+                        message: page.messages[card.m] || ""
+                        onApply: page.applyMacro(card.m)
+                        onRevert: { page.setDraft(card.m, cs.copy(page.live[card.m])); page.setMap("messages", card.m, undefined) }
+                    }
+                ]
             }
         }
 

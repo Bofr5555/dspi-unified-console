@@ -159,6 +159,7 @@ AppWindow {
 
     SettingsContext {
         id: ctx
+        objectName: "settingsContext"   // -- WP QD1 -- for the smoke driver
         app: root
         window: settingsWindow
         onNavigateRequested: settingsWindow.navigate(pageId)
@@ -341,6 +342,7 @@ AppWindow {
         clip: true
         Behavior on height { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
         canRevert: ctx.draftDirty || ctx.csDirty
+        message: ctx.saveError   // -- WP QD1 --
         onSave: ctx.save()
         onRevert: ctx.revert()
     }

@@ -5,6 +5,7 @@ import "../components"
 Rectangle {
     id: bar
     property bool canRevert: true     // hardware edits saved to RAM can't be undone
+    property string message: ""       // -- WP QD1 -- why the device refused the last save or revert
     signal save()
     signal revert()
 
@@ -17,7 +18,9 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         spacing: 1
         Text { text: "Unsaved changes"; font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? MacColors.secondaryLabel : "white" }
-        Text { text: "Saving writes these settings to the device's flash"; font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
+        Text { visible: bar.message === ""; text: "Saving writes these settings to the device's flash"; font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
+        // -- WP QD1 --
+        Text { objectName: "saveBarReason"; visible: bar.message !== ""; width: bar.width - 220; elide: Text.ElideRight; text: bar.message; font.pixelSize: 11; color: "#ff9f0a" }
     }
 
     // A button in the app's style: outlined (secondary) or filled accent

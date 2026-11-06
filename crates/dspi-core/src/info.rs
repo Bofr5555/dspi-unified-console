@@ -24,7 +24,7 @@ use dspi_transport::TransportError;
 
 use crate::consts::CHANNEL_NAME_LEN;
 use crate::records::*;
-use crate::{DspiCore, DspiError, Result, require_feature};
+use crate::{Connection, DspiCore, DspiError, Result, require_feature};
 
 /// Longest name, bytes: the 32-byte field keeps a NUL terminator.
 const NAME_MAX: usize = CHANNEL_NAME_LEN.saturating_sub(1);
@@ -74,7 +74,16 @@ impl DspiCore {
     /// a read-only connection; `Unsupported` on firmware without source
     /// names; `Disconnected`; `Transfer`, `Denied` or `Locked` from the link.
     pub fn set_input_source_name(&self, source: u8, name: String) -> Result<()> {
-        self.write_name("in.name", &[source], name)
+        // -- WP CG13 --
+        // As `write_name`, but the cache is updated under the same lock, so a
+        // rename from elsewhere cannot land between the write and the update.
+        check_name(&name)?;
+        let mut inner = self.lock();
+        let mut w = inner.writable_conn()?;
+        w.session()?
+            .send("in.name", &[source], Value::Text(name.clone()))?;
+        note_source_name(w.conn(), source, name);
+        Ok(())
     }
 
     /// The device's own name (`REQ_GET_DEVICE_NAME`, registry `dev.name`), ""
@@ -211,6 +220,57 @@ impl DspiCore {
         // 32-byte field: "" sends a leading NUL, which clears it.
         w.session()?.send(path, indices, Value::Text(name))?;
         Ok(())
+    }
+}
+
+// -- WP CG13 --
+/// One name per input source, `0..=INPUT_SOURCE_MAX` (config.h).
+pub(crate) type SourceNames = [String; 7];
+
+/// Where a `NOTIFY_EVT_INPUT_SOURCE_NAME` payload's name field lies (see
+/// `notify::EVT_INPUT_SOURCE_NAME`).
+const SOURCE_NAME_EVENT_FIELD: std::ops::Range<usize> = 4..4 + CHANNEL_NAME_LEN;
+
+/// Read every source name into the connection's cache. Firmware without
+/// names gets no request at all (it may answer the opcode with a legacy gain).
+/// A source whose read fails keeps its last name, "" after a connect, as
+/// names are optional and the built-in title stands in.
+pub(crate) fn read_source_names(conn: &mut Connection) {
+    let supported = conn
+        .session()
+        .is_ok_and(|s| require_feature(s, F_SOURCE_NAMES).is_ok());
+    if !supported {
+        return;
+    }
+    for source in 0..conn.source_names.len() {
+        let Ok(index) = u8::try_from(source) else {
+            return;
+        };
+        let read = conn
+            .session()
+            .and_then(|s| Ok(s.read("in.name", &[index])?));
+        match read {
+            Ok(Value::Text(t)) => note_source_name(conn, index, decode_name(t.as_bytes())),
+            Err(DspiError::Disconnected) => return,
+            Ok(other) => log::debug!("source {source} name: read {other:?}"),
+            Err(e) => log::debug!("source {source} name not read: {e}"),
+        }
+    }
+}
+
+/// A `NOTIFY_EVT_INPUT_SOURCE_NAME` payload into the cache: the device's word
+/// on the name, from any client, our own echo included (the firmware may have
+/// stored something other than what was sent). A short packet is ignored.
+pub(crate) fn note_source_name_event(conn: &mut Connection, bytes: &[u8]) {
+    if let (Some(&source), Some(field)) = (bytes.first(), bytes.get(SOURCE_NAME_EVENT_FIELD)) {
+        note_source_name(conn, source, decode_name(field));
+    }
+}
+
+/// Cache `name` for `source`; a source past the table is ignored.
+fn note_source_name(conn: &mut Connection, source: u8, name: String) {
+    if let Some(slot) = conn.source_names.get_mut(usize::from(source)) {
+        *slot = name;
     }
 }
 
@@ -457,3 +517,6 @@ fn clock_diag_fields(b: &[u8]) -> Vec<NamedValue> {
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_c8;
+// -- WP CG13 --
+#[cfg(test)]
+mod tests_wp_cg13;

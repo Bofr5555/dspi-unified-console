@@ -182,6 +182,31 @@ impl SettingsData {
         }
     }
 
+    // -- WP TM19 --
+    /// Re-read the preset directory and the startup record. A failed read
+    /// keeps what we had.
+    pub fn reread_startup(&mut self, session: &mut Session) {
+        use dspi_proto::generated::opcodes as op;
+        let directory = session
+            .with_transport(|t| {
+                t.control_in(op::REQ_PRESET_GET_DIR, 0, PresetDirectory::SIZE as u16)
+            })
+            .ok()
+            .and_then(|d| PresetDirectory::decode(&d).ok());
+        if directory.is_some() {
+            self.directory = directory;
+        }
+        let startup = session
+            .with_transport(|t| {
+                t.control_in(op::REQ_PRESET_GET_STARTUP, 0, PresetStartup::SIZE as u16)
+            })
+            .ok()
+            .and_then(|d| PresetStartup::decode(&d).ok());
+        if startup.is_some() {
+            self.startup = startup;
+        }
+    }
+
     /// Take on a re-read, leaving what it does not cover.
     ///
     /// A `None` field means that read stalled or was not asked for, which is
@@ -576,6 +601,10 @@ pub(crate) enum Row {
 /// sentences: the Groups footer defines "Match Members Exactly", the Surfaces
 /// and Macros footers explain Save against Revert, and Control Interfaces ends
 /// on the I2C pull-ups. The page scrolls, so there is room.
+// -- WP TM19 --
+/// The Save line of the output-config category.
+const SAVE_IO: &str = "dev.save.io";
+
 const NOTE_LINES: usize = usize::MAX;
 
 impl Row {
@@ -975,6 +1004,17 @@ pub enum Page {
 }
 
 impl Page {
+    // -- WP TM19 --
+    /// The pages that write control-surface records. (Aux is the fourth: its
+    /// bindings are records too; its live switch and level are told apart by
+    /// tag in `session_result`.)
+    fn is_control(self) -> bool {
+        matches!(
+            self,
+            Page::Surfaces | Page::Groups | Page::Macros | Page::Aux
+        )
+    }
+
     /// The Console's page title.
     pub fn title(self) -> &'static str {
         match self {
@@ -1632,18 +1672,36 @@ impl SettingsScreen {
             lines.extend(self.pages.global.save_commands(state, &self.data));
         }
         if self.output_dirty() || self.limiter_dirty(state) {
-            lines.push("dev.save.io".to_string());
+            lines.push(SAVE_IO.to_string());
         }
         if self.cs_dirty() {
             lines.push("cs.save".to_string());
         }
-        self.pages.global.mark_saved();
-        self.io_dirty = false;
-        self.io_baseline = None;
+        // -- WP TM19 -- A category with a line to write stays dirty until
+        // `take_written` hears it reached the device: the person may yet
+        // cancel, and the device may refuse it.
+        if !self.global_dirty(state) {
+            self.pages.global.mark_saved();
+        }
+        if !lines.iter().any(|l| l == SAVE_IO) {
+            self.io_dirty = false;
+            self.io_baseline = None;
+        }
         if lines.is_empty() {
             return ScreenEvent::Handled;
         }
         ScreenEvent::Command(lines.join("\n"))
+    }
+
+    // -- WP TM19 --
+    /// Count as saved exactly what these lines wrote; the rest of the draft
+    /// and the rest of the bar stay as they were.
+    fn take_written(&mut self, lines: &[String]) {
+        self.pages.global.mark_written(lines);
+        if lines.iter().any(|l| l == SAVE_IO) {
+            self.io_dirty = false;
+            self.io_baseline = None;
+        }
     }
 
     /// Revert: drop the global draft, put the captured wiring back, and tell
@@ -1767,11 +1825,7 @@ impl SettingsScreen {
             // Only the three Control pages can change a control-surface
             // record, and reading them all back is about seventy transfers.
             PageEvent::Session(r) => {
-                let cs = matches!(
-                    self.page,
-                    Page::Surfaces | Page::Groups | Page::Macros | Page::Aux
-                );
-                ScreenEvent::Session(self.with_refresh(r, cs))
+                ScreenEvent::Session(self.with_refresh(r, self.page.is_control()))
             }
             PageEvent::IoSession(r) => {
                 self.begin_output_edit(state);
@@ -1909,6 +1963,18 @@ impl SettingsScreen {
 }
 
 impl Screen for SettingsScreen {
+    // -- WP TM19 --
+    fn lines_written(&mut self, lines: &[String], session: &mut Session, _state: &DeviceState) {
+        self.take_written(lines);
+        // Nothing pushes these and no other re-read covers them, and a draft
+        // is compared with them: a line just written must not read as unsaved,
+        // or the next Save would flash it again.
+        self.data.reread_startup(session);
+        if lines.iter().any(|l| l.starts_with("out.latency")) {
+            self.data.extras.adopt(global::DeviceExtras::read(session));
+        }
+    }
+
     fn poll(&mut self, session: &mut Session, _state: &DeviceState) {
         // The display status, ext status and slot health move on their
         // own (a knob, a running macro); nothing pushes them.
@@ -2082,11 +2148,13 @@ impl Screen for SettingsScreen {
         // save bar's third category (survey-firmware 3.14). An aux output's
         // live switch and level are the exception: immediate and never dirty
         // (config.h:136-142).
-        // -- WP TM17 -- Global and Inputs write no control-surface record, and
-        // a firmware without surfaces would never clear the flag.
+        // -- WP TM19 -- Only a Control page's write counts; the answer comes
+        // home in the same event as the request, so this is the page that
+        // asked. Any other page's write leaves the category alone, and a
+        // firmware without surfaces would never clear the flag.
         if matches!(reply, SessionReply::Ok(_))
             && !surfaces::is_live_aux_tag(tag)
-            && !matches!(self.page, Page::Global | Page::Inputs)
+            && self.page.is_control()
         {
             self.data.cs_dirty = true;
         }
@@ -2709,11 +2777,86 @@ pub(crate) mod tests {
             }
             other => panic!("{other:?}"),
         }
-        assert!(!s.global_dirty(&st) && !s.output_dirty());
+        // -- WP TM19 -- Nothing counts as saved until it reached the device.
+        assert!(s.global_dirty(&st) && s.output_dirty());
+        let startup = "preset.startup mode=last_active slot=0".to_string();
+        s.take_written(std::slice::from_ref(&startup));
+        assert!(!s.global_dirty(&st), "its one line was written");
+        assert!(s.output_dirty(), "that line was not this category's");
+        s.take_written(&[SAVE_IO.to_string()]);
+        assert!(!s.output_dirty());
         assert!(
             s.dirty(&st),
             "the control-surface flag stays until the device clears it"
         );
+    }
+
+    /// TM19: a partial write counts field by field, and Revert then goes back
+    /// to what the device holds now, not to before the part that landed.
+    #[test]
+    fn wp_tm19_a_partial_write_marks_only_its_own_fields() {
+        let (mut s, st) = screen(Page::Global);
+        s.handle(key(KeyCode::Tab), &st);
+        s.handle(key(KeyCode::Right), &st);
+        for _ in 0..30 {
+            s.handle(key(KeyCode::Down), &st);
+        }
+        s.handle(key(KeyCode::Right), &st);
+        let lines = s.pages.global.save_commands(&st, &s.data);
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        s.take_written(&lines[..1]);
+        assert!(
+            s.global_dirty(&st),
+            "the second line's edit is still staged"
+        );
+        s.take_written(&lines[1..]);
+        // Dirty compares with the device, and this fixture's never moved;
+        // what matters is that nothing is left as an edit.
+        assert!(!s.global_dirty(&st));
+    }
+
+    /// TM19: the control-surface category hears only the Control pages. The
+    /// write goes the whole way on the demo device for the others, and an IO
+    /// write on Outputs, I2S or Interfaces used to raise the flag.
+    #[test]
+    fn wp_tm19_only_a_control_page_write_marks_control_surfaces_dirty() {
+        let ok = || SessionRequest::new(1, |_| SessionReply::Ok(String::new()));
+        let mut t: Box<dyn dspi_transport::Transport> =
+            Box::new(dspi_transport::FakeDevice::demo());
+        let caps = dspi_session::probe(t.as_mut()).unwrap();
+        let mut session = Session::new(t, caps).unwrap();
+        for page in [
+            Page::Outputs,
+            Page::I2s,
+            Page::Interfaces,
+            Page::Global,
+            Page::Inputs,
+            Page::Overview,
+        ] {
+            let (mut s, st) = screen(page);
+            for ev in [PageEvent::Session(ok()), PageEvent::IoSession(ok())] {
+                match s.absorb(ev, &st) {
+                    ScreenEvent::Session(req) => {
+                        let reply = (req.run)(&mut session);
+                        s.session_result(req.tag, reply, &st);
+                    }
+                    other => panic!("{other:?}"),
+                }
+            }
+            assert!(!s.cs_dirty(), "{page:?}");
+        }
+        for page in [Page::Surfaces, Page::Groups, Page::Macros, Page::Aux] {
+            let st = cs_model::demo::state();
+            let mut s =
+                SettingsScreen::new(&st, cs_model::demo::settings_data(), AppConfig::default())
+                    .config_path(scratch("default"))
+                    .open(page, &st);
+            assert_eq!(s.page, page);
+            s.session_result(1, SessionReply::Err("no".into()), &st);
+            assert!(!s.cs_dirty(), "{page:?}: a refused write previews nothing");
+            s.session_result(1, SessionReply::Ok(String::new()), &st);
+            assert!(s.cs_dirty(), "{page:?}");
+        }
     }
 
     #[test]

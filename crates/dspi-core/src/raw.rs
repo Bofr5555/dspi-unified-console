@@ -84,13 +84,21 @@ impl DspiCore {
     /// transfer with the core's lock held: call it off the UI thread.
     ///
     /// Errors: [`DspiError::InvalidArgument`] for `REQ_SET_ALL_PARAMS`, the
-    /// chunk opcodes, or more than 65535 bytes of `data` (nothing is sent);
+    /// chunk opcodes, an `EXT_CORE_VREG` request, or more than 65535 bytes of
+    /// `data` (nothing is sent);
     /// [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a read-only
     /// connection (nothing is sent); [`DspiError::Refused`] with status 0
     /// when the device stalls; [`DspiError::Denied`], [`DspiError::Locked`]
     /// or [`DspiError::Transfer`] from the link.
     pub fn raw_set(&self, opcode: u8, value: u16, data: Vec<u8>) -> Result<()> {
         check_not_bulk_session(opcode)?;
+        // -- WP CG14 --
+        // It could not carry the confirmation word: `core_vreg_op` can.
+        if dspi_session::overvolt::is_core_vreg_write(opcode, value) {
+            return Err(DspiError::InvalidArgument {
+                msg: "core-voltage requests go through core_vreg_op, not a raw write".into(),
+            });
+        }
         if u16::try_from(data.len()).is_err() {
             return Err(DspiError::InvalidArgument {
                 msg: format!(
