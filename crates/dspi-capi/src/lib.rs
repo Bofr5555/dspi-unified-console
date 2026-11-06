@@ -38,6 +38,9 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 mod fns_device;
 mod fns_misc;
 pub mod types;
+// -- WP CG1 --
+#[cfg(any(feature = "link", feature = "midir"))]
+mod fns_link;
 
 /// Run `f`, turning a panic into `fail`. Every exported function goes
 /// through this.
