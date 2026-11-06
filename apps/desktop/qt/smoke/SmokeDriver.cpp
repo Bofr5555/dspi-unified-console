@@ -6,6 +6,7 @@
 #include "DSPiBridge.h"
 #include "FirmwareUpdater.h"
 #include "MonitorModel.h"
+#include "PeqEditorItem.h"
 #include "RtaController.h"
 #include "SiggenController.h"
 #include "StatsController.h"
@@ -18,6 +19,8 @@
 #include <QImage>
 #include <QMetaMethod>
 #include <QQmlApplicationEngine>
+#include <QQuickItemGrabResult>
+#include <QSharedPointer>
 #include <QQuickWindow>
 #include <QTimer>
 #include <QUrl>
@@ -39,7 +42,8 @@ static void messageHandler(QtMsgType type, const QMessageLogContext &ctx, const 
 void SmokeDriver::start() {
     m_out = qEnvironmentVariable("DSPI_SMOKE_OUT", QDir::currentPath());
     g_previous = qInstallMessageHandler(messageHandler);
-    QTimer::singleShot(200, this, [this]() { run(); });
+    const bool hardware = !qEnvironmentVariableIsEmpty("DSPI_SMOKE_HW");
+    QTimer::singleShot(200, this, [this, hardware]() { if (hardware) runHardware(); else run(); });
 }
 
 void SmokeDriver::run() {
@@ -56,6 +60,7 @@ void SmokeDriver::run() {
     testAutoEq();
     testWindows();
     testSettingsPages();
+    testBypassRepaint();
     testSweep();
     testReconnect();
     testIdleAndCost();
@@ -116,6 +121,7 @@ void SmokeDriver::testState() {
     check("channel name", !b->channelName(0).isEmpty());
     check("magnitude curve", !b->magnitudeCurve(0).isEmpty());
     check("firmware: device version", !m_.firmware->deviceVersion().isEmpty());
+    check("the demo's version is the app's: no banner", m_.firmware->match() == 1);
 }
 
 void SmokeDriver::testSetters() {
@@ -462,6 +468,67 @@ void SmokeDriver::testSettingsPages() {
         settings->grabWindow().save(m_out + QStringLiteral("/settings-%1.png").arg(QString::fromLatin1(id)));
     }
     settings->setVisible(false);
+}
+
+QImage SmokeDriver::grabItem(QQuickItem *item) {
+    QSharedPointer<QQuickItemGrabResult> grab = item->grabToImage();
+    if (!grab) return {};
+    bool done = false;
+    QObject::connect(grab.data(), &QQuickItemGrabResult::ready, this, [&done]() { done = true; });
+    waitFor(2000, [&done]() { return done; });
+    return done ? grab->image() : QImage();
+}
+
+SmokeDriver::Outcome SmokeDriver::bypassRepaints(QString *why) {
+    auto *b = m_.bridge;
+    int channel = -1;
+    for (int ch = 0; ch < 2 && channel < 0; ch++)
+        for (int band = 0; band < BANDS_PER_CHANNEL; band++)
+            if (b->filterType(ch, band) != FILTER_FLAT && !b->filterBypass(ch, band)) channel = ch;
+    if (channel < 0) { *why = "no live PEQ band on IN1 or IN2 to dim, and this pass adds none"; return Outcome::NotRun; }
+    b->setChannelVisible(channel, true);
+    QMetaObject::invokeMethod(root(), "selectOverview");
+    QMetaObject::invokeMethod(root(), "selectChannel", Q_ARG(QVariant, channel));
+    spin(800);
+    PeqEditorItem *editor = nullptr;
+    for (PeqEditorItem *e : root()->findChildren<PeqEditorItem *>())
+        if (e->active()) editor = e;
+    Outcome result = Outcome::NotRun;
+    if (!editor) {
+        *why = "the channel page's graph editor did not become active";
+    } else {
+        const bool original = b->bypass();
+        const QImage before = grabItem(editor);
+        b->setBypass(!original);
+        spin(600);
+        const QImage toggled = grabItem(editor);
+        b->setBypass(original);
+        spin(600);
+        const QImage after = grabItem(editor);
+        if (before.isNull() || toggled.isNull() || after.isNull()) {
+            *why = "this Qt's offscreen backend grabs no item image";
+        } else {
+            const bool changed = before != toggled, back = before == after;
+            result = changed && back ? Outcome::Pass : Outcome::Fail;
+            *why = QStringLiteral("toggling changed the editor's pixels: %1; restoring brought them back: %2")
+                       .arg(changed ? "yes" : "NO", back ? "yes" : "NO");
+        }
+    }
+    QMetaObject::invokeMethod(root(), "selectOverview");
+    spin(200);
+    return result;
+}
+
+void SmokeDriver::testBypassRepaint() {
+    section("bypass repaint");
+    QString why;
+    const Outcome o = bypassRepaints(&why);
+    printf("smoke: bypass repaint: %s\n", qPrintable(why));
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    check("bypass repaints the graph editor", o == Outcome::Pass);
+#else
+    check("bypass repaints the graph editor", o != Outcome::Fail);
+#endif
 }
 
 // Every other invokable of the bridge, with in-range and out-of-range values: a

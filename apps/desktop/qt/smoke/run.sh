@@ -5,6 +5,9 @@
 # reported once, not at the poll rate).
 #
 #   run.sh <DSPiConsoleSmoke> <output dir: log.txt and one PNG per window>
+#
+# DSPI_SMOKE_HW=1 runs the hardware pass on the real device instead (run-hw.sh
+# sets it up); DSPI_SMOKE_HW=dry runs that same pass on the demo device.
 set -uo pipefail
 app=$1; out=$2
 rm -rf "$out"; mkdir -p "$out/home"
@@ -13,7 +16,9 @@ mkdir -p "$HOME/.config/DSPi"
 printf '[onboarding]\nsetupDone=true\n' > "$HOME/.config/DSPi/DSPi Console.conf"
 export QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_FORCE_STDERR_LOGGING=1
 export RUST_LOG=warn DSPI_SMOKE_OUT="$out"
-timeout 300 "$app" --demo > "$out/log.txt" 2>&1
+args=(--demo)
+[ "${DSPI_SMOKE_HW:-}" = 1 ] && args=()
+timeout 300 "$app" "${args[@]}" > "$out/log.txt" 2>&1
 code=$?
 grep -E '^(smoke:|FAIL)' "$out/log.txt"
 if [ "$code" != 0 ]; then
@@ -21,6 +26,12 @@ if [ "$code" != 0 ]; then
     tail -30 "$out/log.txt" >&2
     exit 1
 fi
+# A run that stopped early has no summary, whatever its exit code.
+grep -q '^smoke: [0-9]* checks' "$out/log.txt" || { echo "no summary line: the driver did not finish" >&2; exit 1; }
+# This catches the core's own warnings only. dspi-capi's limiter turns a message
+# repeated after 30 s into "... (and N more)", a different line each time, and
+# holds the rest back, so a dspi-capi failure polled through a run never counts
+# here: its evidence is the N in the log.
 noisy=$(grep -E '^\[.*WARN' "$out/log.txt" | sed -E 's/^\[[^ ]* *//' | sort | uniq -c | sort -rn | awk '$1 > 5')
 if [ -n "$noisy" ]; then
     echo "repeated core warnings:" >&2

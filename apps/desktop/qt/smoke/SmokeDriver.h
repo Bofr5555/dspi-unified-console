@@ -6,7 +6,9 @@
 #include <functional>
 
 class QQmlApplicationEngine;
+class QQuickItem;
 class QQuickWindow;
+class QImage;
 class DSPiBridge;
 class RtaController;
 class SiggenController;
@@ -63,6 +65,40 @@ private:
     void testSweep();
     void testReconnect();
     void testIdleAndCost();
+    void testBypassRepaint();
+
+    // Whether a bypass toggle repaints the open channel's graph editor. Leaves
+    // bypass as it found it. NotRun fills `why`.
+    enum class Outcome { Pass, Fail, NotRun };
+    Outcome bypassRepaints(QString *why);
+    QImage grabItem(QQuickItem *item);
+
+    // The hardware pass (DSPI_SMOKE_HW; SmokeDriverHw.cpp)
+    struct Baseline {
+        QByteArray image;       // the bulk image, re-read from the device
+        QByteArray perItem;     // what is outside it: preset directory, Core 1 mode, solo
+    };
+    void runHardware();
+    bool hwPreflight();
+    bool readBaseline(Baseline *out);
+    bool compareBaseline(const Baseline &want, const char *when);
+    void hwRta();
+    void hwRtaTap(int tap, const char *name);
+    void hwControlSurfaces();
+    void hwStats();
+    void hwIoStatus();
+    void hwMeters();
+    void hwSiggenCaps();
+    void hwBypass();
+    void hwReselect(const Baseline &want);
+    void pass(const QString &item, const QString &detail = QString());
+    void fail(const QString &item, const QString &detail = QString());
+    void notRun(const QString &item, const QString &why);
+    void outcome(const QString &item, bool ok, const QString &detail = QString());
+    void reading(const QString &item, bool ok, const QString &detail = QString());
+    void finish();
+    int m_passed = 0;
+    int m_notRun = 0;
 
     App m_;
     int m_failures = 0;
