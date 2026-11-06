@@ -33,5 +33,9 @@ dspi-link = { path = "../dspi-link", features = ["fake-hub"] }
 # -- WP T2 --
 # -- WP T3 --
 # -- WP T4 --
+# The Terminal's probe, read_bulk and write path against FakeDevice
+# (tests/wp_t4_fake_session.rs, the T4 done criteria). A dev-only cycle:
+# integration tests link the one dspi-transport both crates see.
+dspi-session.workspace = true
 # -- WP T5 --
 
