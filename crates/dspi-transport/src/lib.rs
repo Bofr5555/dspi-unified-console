@@ -27,6 +27,8 @@ pub use usb::{UsbTransport, list_devices};
 // -- WP T3 --
 // -- WP T4 --
 // -- WP T5 --
+#[cfg(feature = "link")]
+pub use link::LinkTransport;
 
 /// How long to wait on a single control transfer before treating it as timed out.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_millis(1000);
