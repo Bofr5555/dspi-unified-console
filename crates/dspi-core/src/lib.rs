@@ -72,6 +72,8 @@ mod device;
 mod ext;
 pub mod files;
 mod firmware;
+// -- WP CG8 --
+mod firmware_guard;
 mod hardware;
 mod hotplug;
 mod info;
@@ -110,6 +112,8 @@ pub use records::*;
 // -- WP C14 --
 // -- WP C15 --
 // -- WP F1 --
+// -- WP CG8 --
+pub use firmware_guard::*;
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
