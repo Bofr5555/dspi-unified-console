@@ -1,4 +1,4 @@
-# The core-merge build image (tag localhost/dspi-coremerge:<n>).
+# The core-merge build image (tag localhost/dspi-coremerge:<n>; this is :3).
 #
 # Base: localhost/dspi-qtport:4, the Linux/Windows port image (Fedora 44,
 # Rust 1.99.1 with the windows-gnu and windows-msvc std, Qt 5/6, MinGW Qt 6;
@@ -10,3 +10,48 @@ RUN rustup component add rustfmt clippy \
  && dnf install -y --setopt=install_weak_deps=False alsa-lib-devel \
  && dnf clean all \
  && chmod -R a+rwX /opt/rustup /opt/cargo/bin
+
+# -- WP CG9 -- ci/check.sh's kotlin and swift steps (ci/compile-bindings.sh).
+# Nothing here goes on PATH, so every other step sees the image as it was.
+#
+# Each download comes from its publisher and fails the build on any other
+# content. Where each SHA-256 was checked, 2026-11-06:
+#   Temurin    the .sha256.txt beside the tarball on the adoptium release
+#   kotlinc    the .sha256 beside the zip, and GitHub's asset digest
+#   JNA        computed; Maven Central's .sha1 agrees
+#   coroutines computed; Maven Central's .sha1 and the Android app's Gradle
+#              verification metadata agree
+#   Swift      computed after `gpg --verify` of swift.org's .sig passed, key
+#              52BB7E3DE28A71BE22EC05FFEF80A866B47A981F from swift.org/keys
+#
+# Kotlin, JNA and coroutines are the Android app's versions; JDK 21 is its
+# JDK. Swift 6.3 is the line closest to the VM's Xcode 26.6. Fedora 41 is the
+# newest Fedora swift.org builds for; 6.3.3 runs on this Fedora 44 base.
+ARG TEMURIN_TAG=jdk-21.0.5%2B11
+ARG TEMURIN_FILE=OpenJDK21U-jdk_x64_linux_hotspot_21.0.5_11.tar.gz
+ARG TEMURIN_SHA256=3c654d98404c073b8a7e66bffb27f4ae3e7ede47d13284c132d40a83144bfd8c
+ARG KOTLIN=2.2.21
+ARG KOTLIN_SHA256=a623871f1cd9c938946948b70ef9170879f0758043885bbd30c32f024e511714
+ARG JNA=5.17.0
+ARG JNA_SHA256=b3a9408e7c51e08ef0e3bfcc08f443f6ec0f6191ba8cd7c18d53d2b22e5bdbc0
+ARG COROUTINES=1.10.2
+ARG COROUTINES_SHA256=5ca175b38df331fd64155b35cd8cae1251fa9ee369709b36d42e0a288ccce3fd
+ARG SWIFT=6.3.3
+ARG SWIFT_SHA256=98fa8aee6e20b4715905f060a7971892de527ed8aedf81f3c0d8f36ff4d7a901
+RUN set -eu; mkdir -p /opt/jdk /opt/kotlin-libs /opt/swift; d=$(mktemp -d); cd "$d" \
+ && curl -fsSL -o jdk.tgz "https://github.com/adoptium/temurin21-binaries/releases/download/$TEMURIN_TAG/$TEMURIN_FILE" \
+ && echo "$TEMURIN_SHA256  jdk.tgz" | sha256sum -c - \
+ && tar -xzf jdk.tgz -C /opt/jdk --strip-components=1 \
+ && curl -fsSL -o kotlin.zip "https://github.com/JetBrains/kotlin/releases/download/v$KOTLIN/kotlin-compiler-$KOTLIN.zip" \
+ && echo "$KOTLIN_SHA256  kotlin.zip" | sha256sum -c - \
+ && python3 -m zipfile -e kotlin.zip /opt \
+ && chmod a+x /opt/kotlinc/bin/kotlinc \
+ && curl -fsSL -o /opt/kotlin-libs/jna.jar "https://repo1.maven.org/maven2/net/java/dev/jna/jna/$JNA/jna-$JNA.jar" \
+ && echo "$JNA_SHA256  /opt/kotlin-libs/jna.jar" | sha256sum -c - \
+ && curl -fsSL -o /opt/kotlin-libs/coroutines.jar "https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/$COROUTINES/kotlinx-coroutines-core-jvm-$COROUTINES.jar" \
+ && echo "$COROUTINES_SHA256  /opt/kotlin-libs/coroutines.jar" | sha256sum -c - \
+ && curl -fsSL -o swift.tgz "https://download.swift.org/swift-$SWIFT-release/fedora41/swift-$SWIFT-RELEASE/swift-$SWIFT-RELEASE-fedora41.tar.gz" \
+ && echo "$SWIFT_SHA256  swift.tgz" | sha256sum -c - \
+ && tar -xzf swift.tgz -C /opt/swift --strip-components=2 \
+ && cd / && rm -rf "$d" \
+ && chmod -R a+rX /opt/jdk /opt/kotlinc /opt/kotlin-libs /opt/swift
