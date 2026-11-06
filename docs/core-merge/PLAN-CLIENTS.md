@@ -17,7 +17,7 @@ merged and the Qt app runs on it (Q3, D1). This plan does the rest.
 | Linux, Windows | Qt on the Rust core | "Close enough" (owner). Replaces the Linux and Windows C# consoles |
 | Android | Kotlin/Compose on the Rust core | Exists; switches core |
 | Terminal | The session crates directly | Exists |
-| Web | Decided by a study | WB0 |
+| Web | Deferred (owner, after WB0). From the Rust core when it comes, no external project | WB1 keeps the door open |
 
 **Start:** when `core-merge` reaches `main`. Owner's standing instruction: start
 the first wave then, without asking again. **Every WP depends on that merge**, and
@@ -37,9 +37,9 @@ Sizes are relative units, for comparing WPs. Measured in the core merge: a size-
 | TM: Terminal | 20 | 10.75 | `main`, CG, HB for `dspi hub` |
 | AN: Android | 24 | 25.75–29.75 | `main`, MR1, CG9 |
 | SW: Swift (macOS and iOS) | 29 | 32.75–43.25 | `main`, MR1, CG3, CG4 |
-| WB: web | 1 + stubs | 2 (study) | `main` |
+| WB: web | 2 + stubs | 2.75 (study, WB1) | `main` |
 | XC: audit, cross-client tests | 7 | 3.75 | hub hardware, K340 |
-| **Total** | **133** | **about 121–136**, not counting the web build | |
+| **Total** | **134** | **about 121–136**, not counting the web build | |
 
 **M0, the first milestone, is about 12–14 days after `main`** (section 0.3). The
 largest unknowns are Swift domain replacement, the Android control-surface editor
@@ -238,6 +238,8 @@ The brief and rules are `WP-BRIEF.md`'s, with these changes.
   - Qt: **one WP per wave may edit `DSPiBridge.{h,cpp}` and `main.qml`** (W1 QD0, W2 QD6, W3 QD17). All others add a
     controller and QML file through QD0's registrar and banner host.
   - Terminal: `apps/terminal/src/main.rs`'s command table takes additive edits under a `// -- WP <id> --` marker.
+- **Do not make the web harder** (owner). New code in the session and core takes time through the clock seam once WB1 lands, keeps device I/O behind `Transport`, adds no OS call outside a gated module, and adds no thread where a poll by the caller will do. Client code is unaffected.
+- **Platform wording** (owner: "put placeholders and switch in the right words depending on which version was compiled"). Shared text uses CG10's placeholders, resolved by compile target in the core. A client never substitutes.
 - **Do not foreclose undo** (owner: "no for now, but dont make the plumbing deliberately difficult to add later"). No undo WP.
   Every Qt setter stays routable through one place: the bridge or a registered controller's single apply path, never a direct
   `dspi_*` write from QML or a scattered call.
@@ -792,7 +794,11 @@ Store items (review video, TestFlight, the SysEx ID question) are later: `APPSTO
 
 **Done when:** a recommendation with sizes fills the stubs. **Deps:** `main`.
 
-**Stubs, unsized until WB0:** WB1 transport and session route; WB2 UI; WB3 hosting and origin; WB4 hardware test. Rough range by route: reuse 3–8, Qt for WebAssembly 8–15, Rust and a new UI 40–70.
+**Owner's decision after WB0:** "We can defer the web version for later, but don't make the code more difficult to port to the web than necessary. I would rather see one single base than including an external project." So no web client is scheduled, the study's route of pointing at sigman78's console is not taken, and no README pointer goes in. When the web comes it is the Rust core in wasm (JSPI in a dedicated Worker, one call at a time, as the study's spike ran), about 39-62 units with a new UI. `WEB-STUDY.md` keeps the evidence.
+
+**WB1: Keep the core portable to the web.** Size 0.75. Wave 2. **Owns:** a clock seam in the session and core, `SystemTime` uses, `usb` gating for wasm32, a `wasm-core` step in `ci/check.sh`. **Implements:** the non-UI part of the study's spike patch, properly tested. **Done when:** `dspi-session` and `dspi-core` pass `cargo check --target wasm32-unknown-unknown` in the gate, native behaviour is unchanged, and no client work is added. **Deps:** CG3, MR2.
+
+**Stubs, deferred, not scheduled:** WB2 UI; WB3 hosting and origin; WB4 hardware test. Corrections from WB0: browsers can reach `ws://` private addresses from `https://` in Chromium (Firefox loopback only); the wall is the hub's `Origin` check, so a hub-served page is the only route with hubs as specified. `nusb` 0.2.5 has no WebUSB backend. Qt for WebAssembly with device access is 15-25, not 8-15, and unproven.
 
 ### 5.6 Audit and cross-client tests
 
@@ -847,7 +853,7 @@ Every wave needs `core-merge` on `main`. Within a wave no two WPs own the same f
 |---|---|---|
 | 0 | XC0, XC1, XC2, XC3; MR1 (Android half); LC1; CG9 | `main`; XC1 the owner's go-ahead |
 | 1 | MR2; AN1; CG1–CG8, CG10–CG12; HB0; WB0; QD0 first, then QD1, QD2, QD4, then QD5; QD30; TM1, TM2, TM4, TM7, TM10, TM14, TM15, TM17 | wave 0 |
-| 2 | **HB1–HB3 after HB0's review**; MR1 (Swift half), then SW1, then SW2; SW-U1 after MR1; QD3, QD6, QD7, QD8, QD11, QD12, QD18, QD27, QD29; TM3, TM5, TM8, TM9, TM12, TM16, TM18; AN2, AN3, AN6, AN8, AN25 | wave 1 |
+| 2 | WB1; **HB1–HB3 after HB0's review**; MR1 (Swift half), then SW1, then SW2; SW-U1 after MR1; QD3, QD6, QD7, QD8, QD11, QD12, QD18, QD27, QD29; TM3, TM5, TM8, TM9, TM12, TM16, TM18; AN2, AN3, AN6, AN8, AN25 | wave 1 |
 | 3 | HB5, HB6; SW3 then SW4; QD9, QD10, QD13, QD16, QD17, QD19, QD28; TM6; AN4, AN5, AN7, AN13 then AN14, AN17, AN18, AN19, AN23 | wave 2; **M0 at its end** |
 | 4 | HB7; SW5, SW6 then SW7, SW-M1 then SW-M2, SW17–SW20, SW23; QD14, QD21; TM11, TM13; AN9–AN12, AN22 | wave 3 |
 | 5 | SW8 then SW-V1 **(then OD3)**; QD24, QD25; AN15, AN16; XC4, XC5, XC6 | wave 4 |
@@ -868,7 +874,7 @@ Every wave needs `core-merge` on `main`. Within a wave no two WPs own the same f
 | **R-And** | AN13 on the phone; `tools/ci.sh release`; no secrets in logs; Data safety matches; source for the shipped build (the Play link points at public `dspi-android`, which won't hold it: an owner step per release, a source tarball or a public mirror of `apps/android`, OD1) | Owner uploads each test update (AN14, AN22, AN15, AN16) |
 | **R-Mac** | SW-M1, SW-M2, SW-M4, SW-M5, SW8–SW14, HO1. **If OD3 stops:** SW4–SW7, SW-M1, SW-M2, SW-M5, HO1. Either way, it **does not wait for HB or SW-M3** | Owner; OD-DevID if distributing |
 | **R-iOS** | SW15, SW16, HO1, LC1's inventory current; review video; **the SysEx ID question answered (below)**; **the owner has confirmed the licence terms** | **Weeb Labs submit it, on their account.** Agents do neither |
-| **R-Web** | Set by WB0 | |
+| **R-Web** | Deferred; set when the owner schedules the web | |
 
 ---
 
@@ -915,7 +921,7 @@ Every wave needs `core-merge` on `main`. Within a wave no two WPs own the same f
 |---|---|---|
 | Swift domain replacement (SW8–SW14) | 12–20.5, could be 30 | SW3 (map), SW8 (hardest part first). Mirror and thread problems could change the approach |
 | Android control-surface editor (AN9–AN12) | 5.5–9.5 | AN8. Phone layout for a 5 k-line desktop tab; IR and display need hardware; `FakeDevice` work may add 0.5 |
-| Web build | 3–70 by route | WB0 |
+| Web build | deferred; 39–62 with a new UI (WEB-STUDY.md) | Owner schedules it |
 | Rust hub (HB) | 12, could be 18 | HB0. Multi-device ownership in the core is the risk |
 | nusb `from_fd` on Android | 0–2 | AN13: first run on a phone. No rusb fallback remains |
 | Licence terms | 0 to rewriting a part | LC1. A contributor who cannot be reached, or an incompatible third-party part, would mean replacing that part in the iOS build |
