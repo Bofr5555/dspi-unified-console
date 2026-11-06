@@ -81,9 +81,20 @@ pub fn list(t: &mut dyn Transport) -> Result<Vec<u16>> {
     Ok(decode_list(&b))
 }
 
+/// The live pair map. [`ExtError::Unsupported`] when the firmware lacks it; a
+/// reply shorter than four bytes is a `ShortRead` transport error.
 pub fn read_pair_map(t: &mut dyn Transport) -> Result<PairMap> {
     let b = read(t, g::EXT_CROSSFEED_PAIR_MAP, PairMap::SIZE)?;
-    Ok(PairMap([b[0], b[1], b[2], b[3]]))
+    pair_map_from(&b).ok_or(ExtError::Transport(TransportError::ShortRead {
+        opcode: op::REQ_EXTENSION,
+        wanted: PairMap::SIZE,
+        got: b.len(),
+    }))
+}
+
+/// The pair map in a reply's first four bytes; `None` when it is shorter.
+pub(crate) fn pair_map_from(b: &[u8]) -> Option<PairMap> {
+    b.get(..PairMap::SIZE)?.try_into().ok().map(PairMap)
 }
 
 /// Set the whole map, then read it back. The firmware ACKs an invalid map and
@@ -242,6 +253,20 @@ mod tests {
         assert!(f.contains(&("auto_raised", "yes".into())));
         assert!(f.contains(&("auto_disabled", "yes".into())));
         assert!(f.contains(&("failed_trial", "1.15 V (0x0C) after 90 s".into())));
+    }
+
+    #[test]
+    fn wp_s3_a_short_pair_map_reply_is_an_error_not_a_panic() {
+        let mut t = MockTransport::new().reply(
+            op::REQ_EXTENSION,
+            Reply::Sequence(vec![Reply::Data(vec![0x02, 0x13, 0])]),
+        );
+        assert!(matches!(
+            read_pair_map(&mut t),
+            Err(ExtError::Transport(TransportError::ShortRead { .. }))
+        ));
+        assert_eq!(pair_map_from(&[1, 2, 3]), None);
+        assert_eq!(pair_map_from(&[1, 2, 3, 4, 5]), Some(PairMap([1, 2, 3, 4])));
     }
 
     #[test]
