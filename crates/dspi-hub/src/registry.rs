@@ -1,12 +1,14 @@
 //! Devices by handle and serial (spec 7.4). Owned by WP HB3.
 //!
 //! Pure: the caller passes the clock, and every change returns its event so the
-//! caller publishes it with the hub's lock released. HB0 has handles, states and
-//! the offline grace, which the app's path relies on. HB3 adds names and their
-//! store, `device.*` messages, and the board name's adoption.
+//! caller publishes it with the hub's lock released. HB0 has handles, states, the
+//! offline grace and the `device.*` messages. HB3 adds names and their store, and the
+//! board name's adoption.
 
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
+
+use serde_json::{Value, json};
 
 use crate::session::SessionId;
 
@@ -78,10 +80,45 @@ pub enum RegistryEvent {
     },
 }
 
+impl RegisteredDevice {
+    /// The device object of spec 7.4, as in `device.list` and the events. `fw_beta`
+    /// is left out when unknown, and so are `inputs` and `wire_version`, which a hub
+    /// that does not interpret the image has no reason to know (a client reads them).
+    /// `link` is `usb`: the spec's other value is a bridge's UART.
+    pub fn to_json(&self) -> Value {
+        let id = &self.identity;
+        let mut device = json!({
+            "handle": self.handle,
+            "serial": id.serial,
+            "name": self.name,
+            "platform": id.platform,
+            "fw": id.firmware,
+            "outputs": id.outputs,
+            "state": match self.state {
+                DeviceState::Online => "online",
+                DeviceState::Offline => "offline",
+            },
+            "link": "usb",
+            "locked_by": self.locked_by,
+        });
+        if let (Some(beta), Some(map)) = (id.firmware_beta, device.as_object_mut()) {
+            map.insert("fw_beta".into(), beta.into());
+        }
+        device
+    }
+}
+
 impl RegistryEvent {
     /// The control-plane message for this change (`device.added` and so on, spec 7.4).
     pub fn to_json(&self) -> String {
-        todo!("WP HB3")
+        match self {
+            RegistryEvent::Added(d) => json!({"t": "device.added", "device": d.to_json()}),
+            RegistryEvent::Changed(d) => json!({"t": "device.changed", "device": d.to_json()}),
+            RegistryEvent::Removed { handle, serial } => {
+                json!({"t": "device.removed", "handle": handle, "serial": serial})
+            }
+        }
+        .to_string()
     }
 }
 
@@ -282,6 +319,59 @@ mod tests_wp_hb0 {
             assert_eq!(r.online(identity(&n.to_string())).unwrap().handle, n as u8);
         }
         assert_eq!(r.online(identity("one too many")), None);
+    }
+
+    /// Read back by the client this repo ships, field by field.
+    #[test]
+    fn wp_hb0_events_are_what_the_client_reads() {
+        let t = Instant::now();
+        let mut r = Registry::new(Duration::from_secs(60));
+        let added = r.online(identity("E6614C311B8B4E3A")).unwrap().event;
+        let RegistryEvent::Added(device) = &added else {
+            panic!("{added:?}");
+        };
+        let parsed: dspi_link::DeviceInfo = serde_json::from_value(device.to_json()).unwrap();
+        assert_eq!(parsed.handle, 0);
+        assert_eq!(parsed.serial, "E6614C311B8B4E3A");
+        assert_eq!(parsed.name, "DSPi 8B4E3A");
+        assert_eq!(parsed.platform, Some(1));
+        assert_eq!(parsed.fw.as_deref(), Some("1.1.7"));
+        assert_eq!(parsed.fw_beta, Some(0));
+        assert_eq!(parsed.outputs, Some(9));
+        assert_eq!(parsed.state, "online");
+        assert_eq!(parsed.link, "usb");
+        assert_eq!(parsed.locked_by, None);
+
+        let json: Value = serde_json::from_str(&added.to_json()).unwrap();
+        assert_eq!(json["t"], "device.added");
+        assert_eq!(json["device"]["locked_by"], Value::Null, "null, not absent");
+
+        let changed = r.offline("E6614C311B8B4E3A", t).unwrap();
+        let json: Value = serde_json::from_str(&changed.to_json()).unwrap();
+        assert_eq!(json["t"], "device.changed");
+        assert_eq!(json["device"]["state"], "offline");
+
+        let gone = RegistryEvent::Removed {
+            handle: 3,
+            serial: "A".into(),
+        };
+        let json: Value = serde_json::from_str(&gone.to_json()).unwrap();
+        assert_eq!(json["t"], "device.removed");
+        assert_eq!(
+            (json["handle"].as_u64(), json["serial"].as_str()),
+            (Some(3), Some("A"))
+        );
+    }
+
+    #[test]
+    fn wp_hb0_an_unknown_beta_is_left_out() {
+        let mut r = Registry::new(Duration::from_secs(60));
+        let mut id = identity("A");
+        id.firmware_beta = None;
+        let RegistryEvent::Added(d) = r.online(id).unwrap().event else {
+            panic!();
+        };
+        assert!(d.to_json().get("fw_beta").is_none());
     }
 
     #[test]

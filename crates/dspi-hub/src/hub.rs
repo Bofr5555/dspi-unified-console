@@ -17,6 +17,7 @@ use dspi_link::frames::CmdRequest;
 use dspi_link::status;
 use dspi_transport::{Transport, TransportError};
 
+use crate::advertise::Advertiser;
 use crate::device::{self, Attachment, DeviceShared, SupMsg};
 use crate::error::HubError;
 use crate::local::LocalTransport;
@@ -61,6 +62,11 @@ pub struct HubConfig {
     pub offline_grace: Duration,
     /// How often the bus is scanned.
     pub scan_interval: Duration,
+    /// Scan the bus at start. An app that holds a device directly clears this: nothing
+    /// is scanned or claimed until [`crate::app::AppLink::attach`] has closed that
+    /// connection and called [`HubHandle::scan_now`], so the hub never depends on the OS
+    /// refusing a second claim. A headless hub keeps it.
+    pub initial_scan: bool,
 }
 
 impl HubConfig {
@@ -73,6 +79,7 @@ impl HubConfig {
             bus: None,
             offline_grace: OFFLINE_GRACE,
             scan_interval: SCAN_INTERVAL,
+            initial_scan: true,
         }
     }
 }
@@ -172,6 +179,9 @@ struct Threads {
     supervisor: JoinHandle<()>,
     events: JoinHandle<()>,
     server: Option<Server>,
+    /// HB5 sets it after the server has bound. Dropped first in [`Hub::stop`], on the
+    /// caller's thread: its goodbye can take a second.
+    advertiser: Option<Advertiser>,
 }
 
 /// A running hub. Stops when dropped.
@@ -229,13 +239,15 @@ impl Hub {
                 .map_err(io)?
         };
         let (scanned_tx, scanned_rx) = mpsc::channel();
-        let _ = inner.sup.send(SupMsg::ScanNow(scanned_tx));
+        if config.initial_scan {
+            let _ = inner.sup.send(SupMsg::ScanNow(scanned_tx));
+        }
         let supervisor = {
             let inner = Arc::clone(&inner);
-            let interval = config.scan_interval;
+            let (interval, initial_scan) = (config.scan_interval, config.initial_scan);
             thread::Builder::new()
                 .name("hub-supervisor".into())
-                .spawn(move || supervisor_loop(&inner, &sup_rx, bus, interval))
+                .spawn(move || supervisor_loop(&inner, &sup_rx, bus, interval, initial_scan))
         };
         let supervisor = match supervisor {
             Ok(s) => s,
@@ -245,13 +257,16 @@ impl Hub {
                 return Err(io(e));
             }
         };
-        let _ = scanned_rx.recv_timeout(SCAN_NOW_TIMEOUT);
+        if config.initial_scan {
+            let _ = scanned_rx.recv_timeout(SCAN_NOW_TIMEOUT);
+        }
         let hub = Self {
             handle: HubHandle { inner },
             threads: Mutex::new(Some(Threads {
                 supervisor,
                 events,
                 server: None,
+                advertiser: None,
             })),
         };
         if let Some(network) = network {
@@ -290,7 +305,11 @@ impl Hub {
             let _state = guard(&inner.state);
             inner.stopping.store(true, Ordering::SeqCst);
         }
-        // 1. No new connections. 2. Everyone gets their close. 3. Connections go.
+        // 1. Off the network: goodbye, no new connections. 2. Everyone gets their close.
+        // 3. Connections go.
+        {
+            let _goodbye = t.advertiser;
+        }
         if let Some(server) = &t.server {
             server.stop_accepting();
         }
@@ -386,7 +405,8 @@ impl HubHandle {
     }
 
     /// Scan the bus now, past any backoff, and wait for the result: for right after
-    /// the app let go of a device.
+    /// the app let go of a device. With [`HubConfig::initial_scan`] off, this is also
+    /// what starts the periodic scans.
     pub fn scan_now(&self) {
         let (tx, rx) = mpsc::channel();
         if self.inner.sup.send(SupMsg::ScanNow(tx)).is_ok() {
@@ -451,7 +471,7 @@ impl HubHandle {
             .get(&req.handle)
             .map(|a| Arc::clone(&a.shared));
         match device {
-            Some(d) => d.submit(session.ctx(), req, done),
+            Some(d) => d.submit(session.ctx(), req, done, None),
             None => done.answer(status::NO_DEVICE, Vec::new()),
         }
     }
@@ -528,9 +548,11 @@ impl HubInner {
         let _ = self.events.send(EventMsg::Event(event));
     }
 
-    /// Publish a registry change, with `state` released. HB3 adds the `device.*`
-    /// messages to network sessions here (`RegistryEvent::to_json`).
+    /// Publish a registry change, with `state` released: the `device.*` message to
+    /// network sessions (spec 7.4), and the embedder's event. HB5's advertiser update
+    /// goes here too.
     fn publish(&self, event: RegistryEvent) {
+        self.relay.broadcast_event(&event.to_json());
         let hub_event = match event {
             RegistryEvent::Added(d) => HubEvent::DeviceOnline {
                 handle: d.handle,
@@ -666,7 +688,14 @@ impl HubInner {
         retry: &mut BTreeMap<String, Instant>,
         force: bool,
     ) {
-        let seen = bus.scan();
+        // "Cannot tell" is not "nothing there": everything stays as it is.
+        let seen = match bus.scan() {
+            Ok(seen) => seen,
+            Err(e) => {
+                log::debug!("hub: bus scan failed: {e}");
+                return;
+            }
+        };
         // Off the bus: gone, even if no reader has noticed yet.
         let departed: Vec<u8> = {
             let st = guard(&self.state);
@@ -735,6 +764,7 @@ fn supervisor_loop(
     rx: &Receiver<SupMsg>,
     mut bus: Option<Box<dyn DeviceBus>>,
     interval: Duration,
+    mut scanning: bool,
 ) {
     let mut retry = BTreeMap::new();
     let mut next_scan = Instant::now();
@@ -747,6 +777,7 @@ fn supervisor_loop(
                 }
             }
             Ok(SupMsg::ScanNow(done)) => {
+                scanning = true;
                 if let Some(bus) = bus.as_deref_mut() {
                     inner.scan_bus(bus, &mut retry, true);
                 }
@@ -754,7 +785,7 @@ fn supervisor_loop(
             }
             Ok(SupMsg::Stop) | Err(RecvTimeoutError::Disconnected) => return,
             Err(RecvTimeoutError::Timeout) => {
-                if let Some(bus) = bus.as_deref_mut() {
+                if let Some(bus) = bus.as_deref_mut().filter(|_| scanning) {
                     inner.scan_bus(bus, &mut retry, false);
                 }
                 inner.reap();

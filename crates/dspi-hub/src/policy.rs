@@ -7,10 +7,11 @@
 //! 10 makes it `config` in both directions. HB2 documents that for clients. Its IN
 //! side reads (PLAN section 1.2, raw commands), so [`Policy::mutates`] says so.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use dspi_link::Dir;
 use dspi_proto::generated::opcodes as op;
+use dspi_proto::registry::REGISTRY;
 use serde::Deserialize;
 
 use crate::session::Role;
@@ -47,6 +48,19 @@ struct Table {
 #[derive(Debug)]
 pub struct Policy {
     rows: BTreeMap<u8, Row>,
+    /// See [`Policy::retries_stall`].
+    busy_reads: BTreeSet<u8>,
+}
+
+/// The parameter reads the direct path repeats through a busy window: the GET of each
+/// registry entry (`readout.rs`, `write.rs`), and the platform read (`probe.rs`). Bulk
+/// chunks have their own loop (`device.rs`).
+fn busy_reads() -> BTreeSet<u8> {
+    REGISTRY
+        .iter()
+        .filter_map(|d| d.get)
+        .chain([op::REQ_GET_PLATFORM])
+        .collect()
 }
 
 impl Policy {
@@ -56,11 +70,13 @@ impl Policy {
         match serde_json::from_str::<Table>(COMMANDS_JSON) {
             Ok(t) => Self {
                 rows: t.commands.into_iter().map(|r| (r.code, r)).collect(),
+                busy_reads: busy_reads(),
             },
             Err(e) => {
                 log::error!("the bundled command table does not parse: {e}");
                 Self {
                     rows: BTreeMap::new(),
+                    busy_reads: busy_reads(),
                 }
             }
         }
@@ -80,13 +96,20 @@ impl Policy {
     }
 
     /// Whether a command can change the device, whichever direction carries it
-    /// (write-as-read included). Such a command is attributed to its session and
-    /// is never repeated by the hub's busy retry.
+    /// (write-as-read included). Such a command is attributed to its session.
     pub fn mutates(&self, code: u8, dir: Dir) -> bool {
         if code == op::REQ_EXTENSION && dir == Dir::Get {
             return false;
         }
         self.classify(code, dir) != Class::Read
+    }
+
+    /// Whether this command is one the hub may repeat through the device's busy window:
+    /// a parameter read. The opcode alone does not decide: the device's worker also asks
+    /// whether a write has just run (HUB.md section 4), since the same opcodes are also
+    /// the core's probes, for which a stall is the answer.
+    pub fn retries_stall(&self, code: u8, dir: Dir) -> bool {
+        dir == Dir::Get && self.busy_reads.contains(&code) && !self.mutates(code, dir)
     }
 
     /// Whether this role may issue this command (spec 6.3).
@@ -136,6 +159,16 @@ mod tests_wp_hb0 {
         let p = Policy::embedded();
         assert_eq!(p.classify(op::REQ_EXTENSION, Dir::Set), Class::Config);
         assert_eq!(p.classify(op::REQ_EXTENSION, Dir::Get), Class::Config);
+    }
+
+    #[test]
+    fn wp_hb0_only_parameter_reads_retry_a_stall() {
+        let p = Policy::embedded();
+        assert!(p.retries_stall(op::REQ_GET_PLATFORM, Dir::Get));
+        assert!(p.retries_stall(op::REQ_GET_MASTER_VOLUME, Dir::Get));
+        assert!(p.retries_stall(op::REQ_GET_EQ_PARAM, Dir::Get));
+        assert!(!p.retries_stall(op::REQ_SET_MASTER_VOLUME, Dir::Set));
+        assert!(!p.retries_stall(0xFE, Dir::Get));
     }
 
     #[test]

@@ -13,7 +13,6 @@ use std::time::{Duration, Instant};
 
 use dspi_link::frames::CmdRequest;
 use dspi_link::{Dir, status};
-use dspi_proto::VENDOR_INTERFACE;
 use dspi_proto::generated::opcodes as op;
 use dspi_proto::packets::PlatformInfo;
 use dspi_transport::{
@@ -29,6 +28,10 @@ use crate::snapshot::SnapshotCache;
 
 /// How long the reader blocks on the device before looking at its stop flag.
 const READ_TIMEOUT: Duration = Duration::from_millis(100);
+/// How long after a write a stalled parameter read is taken for a blackout. Past the
+/// firmware's own: two flash sectors at about 45 ms, and the direct path's 600 ms of
+/// retries for a deferred write.
+const BUSY_WINDOW: Duration = Duration::from_secs(1);
 /// Longest control transfer of a bulk chunk (`bulk_params_chunking.md`).
 const BULK_CHUNK: usize = 2048;
 /// `wLength` of the platform read.
@@ -48,13 +51,22 @@ pub(crate) enum SupMsg {
     Stop,
 }
 
-/// A command for the worker.
+/// One command in the worker's queue.
+struct CmdJob {
+    ctx: SessionCtx,
+    req: CmdRequest,
+    done: Completion,
+    /// When the caller gives up waiting. A command still queued past it does not run:
+    /// its caller was told `TIMEOUT`, and a write must not land after that. `None` for a
+    /// network client, whose own timeout the hub cannot see.
+    deadline: Option<Instant>,
+}
+
+/// What the worker works through.
 enum Job {
-    Cmd {
-        ctx: SessionCtx,
-        req: CmdRequest,
-        done: Completion,
-    },
+    Cmd(CmdJob),
+    /// Read the image into the snapshot cache. At most one queued per device.
+    SnapshotRead,
     Stop,
 }
 
@@ -68,19 +80,42 @@ pub(crate) struct DeviceShared {
     pub(crate) polls: Polls,
     tx: Sender<Job>,
     stopping: AtomicBool,
+    /// A [`Job::SnapshotRead`] is queued and has not started.
+    snapshot_read_queued: AtomicBool,
 }
 
 impl DeviceShared {
     /// Queue a command. Answered at once when it is not admitted or the worker has
-    /// gone; otherwise answered by the worker, in queue order.
-    pub(crate) fn submit(&self, ctx: SessionCtx, req: CmdRequest, done: Completion) {
+    /// gone; otherwise answered by the worker, in queue order. Past `deadline` it is
+    /// answered `TIMEOUT` instead of running.
+    pub(crate) fn submit(
+        &self,
+        ctx: SessionCtx,
+        req: CmdRequest,
+        done: Completion,
+        deadline: Option<Instant>,
+    ) {
         if let Err(refused) = self.router.admit(&ctx, &req, Instant::now()) {
             done.answer(refused, Vec::new());
             return;
         }
         // A send fails only once the worker has ended: dropping the job answers
         // NO_DEVICE (`Completion`).
-        let _ = self.tx.send(Job::Cmd { ctx, req, done });
+        let _ = self.tx.send(Job::Cmd(CmdJob {
+            ctx,
+            req,
+            done,
+            deadline,
+        }));
+    }
+
+    /// Have the worker read the image into the snapshot cache. Coalesced: while one is
+    /// queued, more asks add nothing, and an ask after it has started gets a new one,
+    /// so the last image read is never older than the last ask. Never blocks.
+    pub(crate) fn queue_snapshot_read(&self) {
+        if !self.snapshot_read_queued.swap(true, Ordering::SeqCst) {
+            let _ = self.tx.send(Job::SnapshotRead);
+        }
     }
 
     /// The device's serial.
@@ -125,6 +160,7 @@ impl Attachment {
             polls: Polls::default(),
             tx,
             stopping: AtomicBool::new(false),
+            snapshot_read_queued: AtomicBool::new(false),
         });
         let reader_stop = Arc::new(AtomicBool::new(false));
         let reader = match source {
@@ -209,15 +245,15 @@ fn worker_loop(
         handle: shared.handle,
         generation: shared.generation,
     };
+    let mut busy = BusyWindow::default();
     loop {
         let next = match shared.polls.next_due() {
             Some(due) => rx.recv_timeout(due.saturating_duration_since(Instant::now())),
             None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
         };
         match next {
-            Ok(Job::Cmd { ctx, req, done }) => {
-                run_command(&mut *transport, shared, &sup, ctx, &req, done);
-            }
+            Ok(Job::Cmd(job)) => run_command(&mut *transport, shared, &sup, &mut busy, job),
+            Ok(Job::SnapshotRead) => read_snapshot(&mut *transport, shared),
             Ok(Job::Stop) | Err(RecvTimeoutError::Disconnected) => return,
             Err(RecvTimeoutError::Timeout) => {}
         }
@@ -228,21 +264,84 @@ fn worker_loop(
     }
 }
 
+/// The queued re-read: in the device's order, needing no role or inflight slot. Lock
+/// or not, a read changes nothing a lock protects, and a failed one leaves the old
+/// image, which HB3's cache has invalidated already.
+fn read_snapshot(t: &mut dyn Transport, shared: &DeviceShared) {
+    shared.snapshot_read_queued.store(false, Ordering::SeqCst);
+    if shared.stopping.load(Ordering::SeqCst) {
+        return;
+    }
+    let read = if t.caps().chunked_bulk {
+        read_chunked(t, u16::MAX)
+    } else {
+        t.control_in_upto(op::REQ_GET_ALL_PARAMS, 0, u16::MAX)
+    };
+    match read {
+        Ok(image) => shared.snapshot.set_bulk(image),
+        Err(e) => log::debug!("device {}: snapshot read: {e}", shared.handle),
+    }
+}
+
+/// Whether the device may be in a blackout it caused itself: a command that can write
+/// flash or restart the pipeline has just run on it. A stall outside this window is the
+/// firmware's answer (HUB.md section 4), and repeating it would hold the queue.
+#[derive(Debug, Default)]
+struct BusyWindow {
+    last_write: Option<Instant>,
+}
+
+impl BusyWindow {
+    fn note_write(&mut self, now: Instant) {
+        self.last_write = Some(now);
+    }
+
+    fn is_open(&self, now: Instant) -> bool {
+        self.last_write
+            .is_some_and(|at| now.saturating_duration_since(at) < BUSY_WINDOW)
+    }
+}
+
 fn run_command(
     t: &mut dyn Transport,
     shared: &DeviceShared,
     sup: &Sender<SupMsg>,
-    ctx: SessionCtx,
-    req: &CmdRequest,
-    done: Completion,
+    busy: &mut BusyWindow,
+    job: CmdJob,
 ) {
-    if shared.stopping.load(Ordering::SeqCst) {
+    let CmdJob {
+        ctx,
+        req,
+        done,
+        deadline,
+    } = job;
+    let req = &req;
+    let now = Instant::now();
+    let early = if shared.stopping.load(Ordering::SeqCst) {
+        Some(status::NO_DEVICE)
+    } else if deadline.is_some_and(|d| now >= d) {
+        Some(status::TIMEOUT)
+    } else {
+        None
+    };
+    if let Some(early) = early {
         shared.router.after_exec(&ctx, ExecTicket::none(), false);
-        done.answer(status::NO_DEVICE, Vec::new());
+        done.answer(early, Vec::new());
         return;
     }
-    let ticket = shared.router.before_exec(&ctx, req, Instant::now());
-    let result = execute(t, req, shared.router.is_idempotent(req));
+    let ticket = match shared.router.before_exec(&ctx, req, now) {
+        Ok(ticket) => ticket,
+        Err((answer, payload)) => {
+            shared.router.after_exec(&ctx, ExecTicket::none(), true);
+            done.answer(answer, payload);
+            return;
+        }
+    };
+    let busy_retry = shared.router.retries_stall(req) && busy.is_open(now);
+    let result = execute(t, req, busy_retry);
+    if shared.router.mutates(req) {
+        busy.note_write(Instant::now());
+    }
     shared
         .router
         .after_exec(&ctx, ticket, result.as_ref().is_ok());
@@ -283,29 +382,25 @@ pub(crate) fn status_of(e: &TransportError) -> u8 {
 ///
 /// `0xA0` and `0xA1` become chunked sessions where the transport has them (WinUSB
 /// cannot carry the image in one transfer, spec 9.1.1), inside this one call, so
-/// nothing can land between the chunks. The hub repeats only `idempotent` reads
-/// through the busy window, as the direct path does (PLAN section 1.2): a stall in
-/// a flash blackout is not yet the device's answer. That leaves nothing for the
-/// client to retry, since over Link a stall is final.
+/// nothing can land between the chunks. `busy_retry` repeats a read through the busy
+/// window, as the direct path does for the same reads (HUB.md section 4). Everything
+/// else gets one transfer and its answer, since a stall may simply be the firmware
+/// saying it lacks the command.
+///
+/// `wIndex` is not passed on: the firmware ignores it and `Transport` has no such
+/// parameter (real clients send 0 for much of the surface, `NetworkTransport.swift`).
 pub(crate) fn execute(
     t: &mut dyn Transport,
     req: &CmdRequest,
-    idempotent: bool,
+    busy_retry: bool,
 ) -> Result<Vec<u8>, TransportError> {
-    // The transport has no wIndex: it is always the vendor interface. Forwarding
-    // anything else cannot be done, so it is refused rather than misdelivered.
-    if req.w_index != VENDOR_INTERFACE {
-        return Err(TransportError::Stalled {
-            opcode: req.b_request,
-        });
-    }
     let opcode = req.b_request;
     let caps = t.caps();
     match req.dir {
         Dir::Get if opcode == op::REQ_GET_ALL_PARAMS && caps.chunked_bulk => {
             read_chunked(t, req.w_length)
         }
-        Dir::Get if idempotent => with_busy_retry(
+        Dir::Get if busy_retry => with_busy_retry(
             caps.kind,
             || t.control_in_upto(opcode, req.w_value, req.w_length),
             opcode,
@@ -405,7 +500,9 @@ fn ingest(packet: &[u8], kind: TransportKind, shared: &DeviceShared, relay: &Rel
         }
         _ => NO_ORIGIN,
     };
-    shared.snapshot.note_packet(packet);
+    if shared.snapshot.note_packet(packet) {
+        shared.queue_snapshot_read();
+    }
     relay.publish_notify(shared.handle, origin, packet);
 }
 
@@ -433,6 +530,7 @@ pub(crate) fn read_identity(
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_hb0 {
+    use dspi_proto::VENDOR_INTERFACE;
     use dspi_proto::generated::notify as nfy;
     use dspi_transport::mock::{MockTransport, Reply};
     use dspi_transport::{FakeDevice, FakeOptions};
@@ -503,11 +601,16 @@ mod tests_wp_hb0 {
     }
 
     #[test]
-    fn wp_hb0_a_read_is_retried_through_the_busy_window_and_a_write_is_not() {
+    fn wp_hb0_busy_retry_repeats_a_read_and_nothing_else() {
         let mut m = MockTransport::new().reply(op::REQ_GET_PLATFORM, Reply::Stall);
         let e = execute(&mut m, &get(op::REQ_GET_PLATFORM, 7), true).unwrap_err();
         assert!(matches!(e, TransportError::Stalled { .. }));
         assert_eq!(m.log().len(), dspi_transport::BUSY_RETRIES + 1);
+
+        let mut m = MockTransport::new().reply(op::REQ_GET_CLOCK_DIAG, Reply::Stall);
+        let e = execute(&mut m, &get(op::REQ_GET_CLOCK_DIAG, 7), false).unwrap_err();
+        assert!(matches!(e, TransportError::Stalled { .. }));
+        assert_eq!(m.log().len(), 1, "a stall is the answer");
 
         let mut m = MockTransport::new().reply(0x77, Reply::Stall);
         let e = execute(&mut m, &set(0x77, vec![1]), false).unwrap_err();
@@ -515,15 +618,70 @@ mod tests_wp_hb0 {
         assert_eq!(m.log().len(), 1);
     }
 
+    /// `NetworkTransport.swift:341-363` sends `WINDEX_GLOBAL = 0` for EQ, volume and
+    /// more, and the firmware ignores it.
     #[test]
-    fn wp_hb0_a_foreign_windex_is_refused() {
+    fn wp_hb0_windex_is_ignored() {
         let mut d = FakeDevice::demo();
-        let req = CmdRequest {
-            w_index: 0,
-            ..get(op::REQ_GET_PLATFORM, 7)
+        let remote = d.remote();
+        let volume = (-17.5f32).to_le_bytes().to_vec();
+        for w_index in [0, 2, 0xFFFF] {
+            let write = CmdRequest {
+                w_index,
+                ..set(op::REQ_SET_MASTER_VOLUME, volume.clone())
+            };
+            execute(&mut d, &write, false).unwrap();
+            let read = CmdRequest {
+                w_index,
+                ..get(op::REQ_GET_MASTER_VOLUME, 4)
+            };
+            assert_eq!(execute(&mut d, &read, true).unwrap(), volume);
+        }
+        assert!(remote.image().windows(4).any(|w| w == volume));
+    }
+
+    #[test]
+    fn wp_hb0_the_busy_window_follows_a_write() {
+        let t = Instant::now();
+        let mut b = BusyWindow::default();
+        assert!(!b.is_open(t), "no write yet");
+        b.note_write(t);
+        assert!(b.is_open(t));
+        assert!(b.is_open(t + BUSY_WINDOW / 2));
+        assert!(!b.is_open(t + BUSY_WINDOW));
+    }
+
+    /// The re-read HB3 asks for: however many asks, one queued, and one more only for
+    /// an ask made after the read has started.
+    #[test]
+    fn wp_hb0_snapshot_reads_are_coalesced() {
+        use crate::policy::Policy;
+
+        let (tx, rx) = mpsc::channel();
+        let shared = DeviceShared {
+            handle: 0,
+            generation: 1,
+            identity: RwLock::new(read_identity(&mut FakeDevice::demo(), 0, 0).unwrap()),
+            router: Router::new(Arc::new(Policy::embedded()), 8),
+            snapshot: SnapshotCache::default(),
+            polls: Polls::default(),
+            tx,
+            stopping: AtomicBool::new(false),
+            snapshot_read_queued: AtomicBool::new(false),
         };
-        let e = execute(&mut d, &req, true).unwrap_err();
-        assert_eq!(status_of(&e), status::ERROR);
+        for _ in 0..1000 {
+            shared.queue_snapshot_read();
+        }
+        assert!(matches!(rx.try_recv(), Ok(Job::SnapshotRead)));
+        assert!(rx.try_recv().is_err(), "one queued, however many asks");
+        assert!(shared.snapshot.bulk().is_none());
+
+        let mut d = FakeDevice::demo();
+        read_snapshot(&mut d, &shared);
+        assert_eq!(shared.snapshot.bulk(), Some(d.remote().image()));
+
+        shared.queue_snapshot_read();
+        assert!(matches!(rx.try_recv(), Ok(Job::SnapshotRead)), "a new ask");
     }
 
     #[test]
@@ -575,6 +733,7 @@ mod tests_wp_hb0 {
             polls: Polls::default(),
             tx,
             stopping: AtomicBool::new(false),
+            snapshot_read_queued: AtomicBool::new(false),
         };
         let ctx = SessionCtx {
             id: 9,
@@ -583,7 +742,10 @@ mod tests_wp_hb0 {
         };
         let write = set(op::REQ_SET_MASTER_VOLUME, vec![0; 4]);
         shared.router.admit(&ctx, &write, Instant::now()).unwrap();
-        let t = shared.router.before_exec(&ctx, &write, Instant::now());
+        let t = shared
+            .router
+            .before_exec(&ctx, &write, Instant::now())
+            .unwrap();
         shared.router.after_exec(&ctx, t, true);
 
         let relay = Relay::default();

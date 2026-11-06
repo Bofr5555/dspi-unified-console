@@ -109,6 +109,8 @@ struct BusState {
     remotes: Vec<FakeRemote>,
     claim: Arc<AtomicBool>,
     opens: usize,
+    refused: usize,
+    scan_fails: bool,
 }
 
 impl TestBus {
@@ -128,28 +130,36 @@ impl TestBus {
     fn opens(&self) -> usize {
         self.0.lock().unwrap().opens
     }
+    fn refused(&self) -> usize {
+        self.0.lock().unwrap().refused
+    }
+    fn fail_scans(&self, fail: bool) {
+        self.0.lock().unwrap().scan_fails = fail;
+    }
     fn remote(&self) -> FakeRemote {
         self.0.lock().unwrap().remotes.last().unwrap().clone()
     }
 }
 
 impl DeviceBus for TestBus {
-    fn scan(&mut self) -> Vec<BusDevice> {
-        self.0
-            .lock()
-            .unwrap()
-            .present
+    fn scan(&mut self) -> Result<Vec<BusDevice>, TransportError> {
+        let s = self.0.lock().unwrap();
+        if s.scan_fails {
+            return Err(TransportError::Usb("enumeration failed".into()));
+        }
+        Ok(s.present
             .iter()
             .map(|serial| BusDevice {
                 serial: serial.clone(),
                 vid: VID,
                 location_id: 9,
             })
-            .collect()
+            .collect())
     }
     fn open(&mut self, serial: &str) -> Result<Box<dyn Transport>, TransportError> {
         let mut s = self.0.lock().unwrap();
         if s.claim.swap(true, Ordering::SeqCst) {
+            s.refused += 1;
             return Err(TransportError::Usb("busy".into()));
         }
         s.opens += 1;
@@ -462,42 +472,37 @@ fn wp_hb0_a_lock_holds_across_sessions_the_app_included() {
     );
 }
 
+/// 16 in flight at once, alternating two sessions, behind a device that holds the
+/// first: strict arrival order with a real queue (spec 8.2).
 #[test]
 fn wp_hb0_commands_run_in_arrival_order_across_sessions() {
-    let (hub, _core, _link, remote, _) = app_on_demo();
+    let hub = Hub::start(HubConfig::in_process("test")).unwrap();
+    let (gate, dev) = gated("AAAA");
+    let handle = hub.attach(Box::new(dev), 0).unwrap();
     let (a, b) = (
         Client::open(&hub, Role::Admin),
         Client::open(&hub, Role::Admin),
     );
     let (tx, rx) = mpsc::channel();
-    for n in 0..40u32 {
-        let client = if n % 2 == 0 { &a } else { &b };
-        let tx: Sender<u32> = tx.clone();
-        // Paced under max_inflight: at most one of each session is ever queued.
-        let (one_tx, one_rx) = mpsc::channel();
+    for tag in 0..16u16 {
+        let client = if tag % 2 == 0 { &a } else { &b };
+        let tx = tx.clone();
         hub.submit(
             &client.session,
-            CmdRequest {
-                tag: n as u16,
-                handle: 0,
-                dir: Dir::Set,
-                b_request: op::REQ_SET_MASTER_VOLUME,
-                w_value: 0,
-                w_index: dspi_proto::VENDOR_INTERFACE,
-                w_length: 4,
-                payload: (-(n as f32)).to_le_bytes().to_vec(),
-            },
-            Completion::new(n as u16, move |r| {
-                assert_eq!(r.status, status::OK);
-                tx.send(u32::from(r.tag)).unwrap();
-                one_tx.send(()).unwrap();
-            }),
+            volume_request(handle, tag),
+            Completion::new(tag, move |r| tx.send((r.tag, r.status)).unwrap()),
         );
-        one_rx.recv_timeout(WAIT).unwrap();
     }
-    let order: Vec<u32> = rx.try_iter().collect();
-    assert_eq!(order, (0..40).collect::<Vec<_>>());
-    let _ = find_volume(&remote, -39.0);
+    wait_until("the first in the device", || gate.1.load(Ordering::SeqCst));
+    assert!(
+        rx.try_recv().is_err(),
+        "nothing passed the one in the device"
+    );
+    gate.open();
+    let got: Vec<(u16, u8)> = (0..16).map(|_| rx.recv_timeout(WAIT).unwrap()).collect();
+    assert!(got.iter().all(|(_, s)| *s == status::OK), "{got:?}");
+    let tags: Vec<u16> = got.iter().map(|(t, _)| *t).collect();
+    assert_eq!(tags, (0..16).collect::<Vec<_>>());
 }
 
 #[test]
@@ -955,6 +960,56 @@ fn wp_hb0_a_wedged_device_times_out_for_the_app() {
     hub.stop();
 }
 
+/// The caller was told TIMEOUT while its write was still queued: it must not land
+/// afterwards. (One already inside the device cannot be recalled: spec 8.1's "may or
+/// may not have executed".)
+#[test]
+fn wp_hb0_a_write_whose_caller_timed_out_never_lands() {
+    let hub = Hub::start(HubConfig::in_process("test")).unwrap();
+    let (gate, dev) = gated("AAAA");
+    let remote = dev.0.inner.remote();
+    let handle = hub.attach(Box::new(dev), 0).unwrap();
+    let client = Client::open(&hub, Role::Admin);
+
+    // A client's write holds the device.
+    let (tx, rx) = mpsc::channel();
+    hub.submit(
+        &client.session,
+        CmdRequest {
+            payload: (-17.5f32).to_le_bytes().to_vec(),
+            ..volume_request(handle, 1)
+        },
+        Completion::new(1, move |r| tx.send(r.status).unwrap()),
+    );
+    wait_until("the client's write in the device", || {
+        gate.1.load(Ordering::SeqCst)
+    });
+
+    // The app's waits behind it, and gives up.
+    let mut local = hub
+        .open_local("AAAA")
+        .unwrap()
+        .with_answer_timeout(Duration::from_millis(50));
+    let late = (-41.5f32).to_le_bytes();
+    let write = local.control_out(op::REQ_SET_MASTER_VOLUME, 0, &late);
+    assert!(matches!(
+        write,
+        Err(TransportError::TimedOut { retries, .. }) if retries > 0
+    ));
+
+    // A later write on the same queue shows the app's has been passed over.
+    gate.open();
+    assert_eq!(rx.recv_timeout(WAIT).unwrap(), status::OK);
+    let read = client.command(handle, Dir::Get, op::REQ_GET_MASTER_VOLUME, 4, Vec::new());
+    assert_eq!(
+        read.payload,
+        (-17.5f32).to_le_bytes(),
+        "the client's stands"
+    );
+    assert!(!remote.image().windows(4).any(|w| w == late));
+    hub.stop();
+}
+
 /// Handover both ways, with USB's rule that an interface has one owner: the hub
 /// cannot claim what the core holds, nor the core what the hub holds.
 #[test]
@@ -979,7 +1034,7 @@ fn wp_hb0_the_app_hands_usb_to_the_hub_and_gets_it_back() {
     let hub = hub_with_bus(&bus);
     assert!(hub.devices().is_empty());
     assert_eq!(hub.inaccessible(), 1);
-    assert_eq!(bus.opens(), 0);
+    assert_eq!((bus.opens(), bus.refused()), (0, 1));
 
     // The app steps aside, the hub claims, the core is back on it, through the hub.
     let link = AppLink::attach(&hub.handle(), Arc::clone(&core)).unwrap();
@@ -1004,6 +1059,159 @@ fn wp_hb0_the_app_hands_usb_to_the_hub_and_gets_it_back() {
     // The core is on its own again: no broker, so a demo opens as ever.
     core.open_demo().unwrap();
     assert!(core.is_connected());
+}
+
+/// A device that stalls this many of its volume reads: a blackout, or a build without
+/// the command. Which one it is, the hub tells from whether a write has just run.
+#[test]
+fn wp_hb0_a_stall_is_retried_only_just_after_a_write() {
+    struct Stalling(Dev, Arc<AtomicUsize>);
+    impl Transport for Stalling {
+        fn control_in(&mut self, o: u8, v: u16, l: u16) -> dspi_transport::Result<Vec<u8>> {
+            self.0.control_in(o, v, l)
+        }
+        fn control_in_upto(&mut self, o: u8, v: u16, l: u16) -> dspi_transport::Result<Vec<u8>> {
+            // Only the worker counts down; the test sets it while the worker is idle.
+            if o == op::REQ_GET_MASTER_VOLUME && self.1.load(Ordering::SeqCst) > 0 {
+                self.1.fetch_sub(1, Ordering::SeqCst);
+                return Err(TransportError::Stalled { opcode: o });
+            }
+            self.0.control_in_upto(o, v, l)
+        }
+        fn control_out(&mut self, o: u8, v: u16, d: &[u8]) -> dspi_transport::Result<()> {
+            self.0.control_out(o, v, d)
+        }
+        fn descriptor(&self) -> &DeviceDescriptor {
+            self.0.descriptor()
+        }
+    }
+    let hub = Hub::start(HubConfig::in_process("test")).unwrap();
+    let stalls = Arc::new(AtomicUsize::new(0));
+    let (dev, _, _) = Dev::new("AAAA");
+    let handle = hub
+        .attach(Box::new(Stalling(dev, Arc::clone(&stalls))), 0)
+        .unwrap();
+    let client = Client::open(&hub, Role::Admin);
+    let read = |c: &Client| c.command(handle, Dir::Get, op::REQ_GET_MASTER_VOLUME, 4, Vec::new());
+
+    // Nothing has been written: the stall is the answer, at once.
+    stalls.store(1, Ordering::SeqCst);
+    assert_eq!(read(&client).status, status::ERROR);
+    assert_eq!(stalls.load(Ordering::SeqCst), 0);
+
+    // Just after a write: a blackout, sat out.
+    assert_eq!(client.set_volume(handle, -9.0), status::OK);
+    stalls.store(2, Ordering::SeqCst);
+    assert_eq!(read(&client).status, status::OK);
+    assert_eq!(stalls.load(Ordering::SeqCst), 0);
+}
+
+/// With `initial_scan` off the hub touches nothing until the app has let go, so it
+/// never leans on the OS refusing a second claim.
+#[test]
+fn wp_hb0_no_scan_means_no_claim_before_the_app_lets_go() {
+    let bus = TestBus::default();
+    bus.plug("AAAA");
+    let claim = bus.claim();
+    let direct = {
+        let (mut dev, _, _) = Dev::new("AAAA");
+        dev.usb = true;
+        claim.store(true, Ordering::SeqCst);
+        dev.claim = Arc::clone(&claim);
+        dev
+    };
+    let core = DspiCore::new();
+    core.open_transport(Box::new(direct), "AAAA".into(), VID)
+        .unwrap();
+
+    let mut config = HubConfig::in_process("test");
+    config.bus = Some(Box::new(bus.clone()));
+    config.scan_interval = Duration::from_millis(5);
+    config.initial_scan = false;
+    let hub = Hub::start(config).unwrap();
+    std::thread::sleep(Duration::from_millis(50));
+    assert_eq!((bus.opens(), bus.refused()), (0, 0), "not even tried");
+    assert_eq!(hub.inaccessible(), 0);
+
+    let link = AppLink::attach(&hub.handle(), Arc::clone(&core)).unwrap();
+    assert_eq!((bus.opens(), bus.refused()), (1, 0), "no refused claim");
+    assert!(core.is_connected());
+
+    // The periodic scans run from here on.
+    bus.unplug("AAAA");
+    wait_until("the unplug noticed", || {
+        hub.devices()[0].state == DeviceState::Offline
+    });
+    link.stop_hub(&hub);
+}
+
+/// poll_hotplug on another thread during the handover, as a desktop app does.
+#[test]
+fn wp_hb0_attach_while_hotplug_polls() {
+    for _ in 0..3 {
+        let bus = TestBus::default();
+        bus.plug("AAAA");
+        let claim = bus.claim();
+        let direct = {
+            let (mut dev, _, _) = Dev::new("AAAA");
+            dev.usb = true;
+            claim.store(true, Ordering::SeqCst);
+            dev.claim = Arc::clone(&claim);
+            dev
+        };
+        let core = DspiCore::new();
+        core.open_transport(Box::new(direct), "AAAA".into(), VID)
+            .unwrap();
+        core.scan_devices();
+        let hub = hub_with_bus(&bus);
+        let stop = Arc::new(AtomicBool::new(false));
+        let poller = {
+            let (core, stop) = (Arc::clone(&core), Arc::clone(&stop));
+            std::thread::spawn(move || {
+                while !stop.load(Ordering::SeqCst) {
+                    core.poll_hotplug();
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+            })
+        };
+        let link = AppLink::attach(&hub.handle(), Arc::clone(&core)).unwrap();
+        wait_until("connected through the hub", || core.is_connected());
+        stop.store(true, Ordering::SeqCst);
+        poller.join().unwrap();
+        let client = Client::open(&hub, Role::Viewer);
+        core.set_master_volume(-23.5).unwrap();
+        assert_eq!(client.next_origin(), LOCAL_SESSION_ID);
+        link.stop_hub(&hub);
+        assert!(!claim.load(Ordering::SeqCst));
+    }
+}
+
+/// One failed enumeration says nothing about the devices: nothing is torn down, and
+/// nothing is attached on the strength of it.
+#[test]
+fn wp_hb0_a_failed_enumeration_detaches_nothing() {
+    let bus = TestBus::default();
+    bus.plug("AAAA");
+    let hub = hub_with_bus(&bus);
+    assert_eq!(hub.devices()[0].state, DeviceState::Online);
+    let opens = bus.opens();
+    let mut local = hub.open_local("AAAA").unwrap();
+
+    bus.fail_scans(true);
+    bus.plug("BBBB");
+    std::thread::sleep(Duration::from_millis(60));
+    assert_eq!(hub.devices().len(), 1, "no attach on a failed scan");
+    assert_eq!(hub.devices()[0].state, DeviceState::Online);
+    assert_eq!(bus.opens(), opens, "no reopen");
+    bus.fail_scans(false);
+    std::thread::sleep(Duration::from_millis(60));
+    assert_eq!(hub.devices()[0].state, DeviceState::Online);
+    assert!(
+        local
+            .control_out(op::REQ_SET_MASTER_VOLUME, 0, &[0; 4])
+            .is_ok(),
+        "the same attachment all along"
+    );
 }
 
 #[test]
@@ -1057,6 +1265,61 @@ fn wp_hb0_events_reach_the_listener_on_its_own_thread() {
             HubEvent::Stopped,
         ]
     );
+}
+
+/// HUB.md section 3: `hub-events` runs no worker, so a listener calling the core cannot
+/// deadlock, though it holds up later events while it does.
+#[test]
+fn wp_hb0_a_hub_listener_calling_the_core_during_traffic_does_not_deadlock() {
+    struct Ear(Mutex<Option<Arc<DspiCore>>>, AtomicUsize);
+    impl HubListener for Ear {
+        fn on_event(&self, _: HubEvent) {
+            if let Some(core) = self.0.lock().unwrap().clone() {
+                let _ = core.set_master_volume(-5.0);
+                let _ = core.get_state();
+                self.1.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+    }
+    let (hub, core, _link, _remote, _) = app_on_demo();
+    let ear = Arc::new(Ear(
+        Mutex::new(Some(Arc::clone(&core))),
+        AtomicUsize::new(0),
+    ));
+    hub.set_listener(Some(ear.clone()));
+    let client = Client::open(&hub, Role::Admin);
+    for n in 0..20 {
+        let s = hub.open_session(Role::Viewer, None).unwrap();
+        assert_eq!(client.set_volume(0, -(n as f32)), status::OK);
+        core.set_master_volume(-(n as f32)).unwrap();
+        hub.close_session(s.id());
+    }
+    wait_until("the listener to run", || ear.1.load(Ordering::SeqCst) > 0);
+    *ear.0.lock().unwrap() = None;
+    hub.set_listener(None);
+}
+
+#[test]
+fn wp_hb0_device_events_reach_network_sessions() {
+    let hub = Hub::start(HubConfig::in_process("test")).unwrap();
+    let client = Client::open(&hub, Role::Viewer);
+    let (dev, _, _) = Dev::new("AAAA");
+    let handle = hub.attach(Box::new(dev), VID).unwrap();
+    hub.detach(handle).unwrap();
+    let events: Vec<String> = client
+        .drain()
+        .into_iter()
+        .filter_map(|f| match f {
+            Outbound::Event(e) => Some(e),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(events.len(), 2, "{events:?}");
+    let event = |e: &str| serde_json::from_str::<serde_json::Value>(e).unwrap();
+    assert_eq!(event(&events[0])["t"], "device.added");
+    assert_eq!(event(&events[0])["device"]["serial"], "AAAA");
+    assert_eq!(event(&events[1])["t"], "device.changed");
+    assert_eq!(event(&events[1])["device"]["state"], "offline");
 }
 
 /// A listener that panics or calls `stop` costs that call, not the hub.

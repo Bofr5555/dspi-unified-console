@@ -39,12 +39,6 @@ fn wp_hb3_the_meter_feed_works_against_polls() {
 }
 
 #[test]
-#[ignore = "WP HB3"]
-fn wp_hb3_device_events_reach_network_sessions() {
-    todo!("WP HB3")
-}
-
-#[test]
 #[ignore = "WP HB5"]
 fn wp_hb5_the_bundle_is_pinned_and_a_browser_reaches_the_demo_device() {
     todo!("WP HB5")

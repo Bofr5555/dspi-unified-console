@@ -5,15 +5,15 @@
 //! who a notification belongs to. Lock level L2, never held across a transfer.
 //!
 //! HB0 has what the app's path needs; HB2 adds the analyser's STOP arbitration
-//! (spec 7.15, a [`Router::before_exec`] that answers without the device), the
-//! payload limit, and the tests of its done criteria.
+//! (spec 7.15, in [`Router::before_exec`]), the payload limit, and the tests of its
+//! done criteria.
 
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use dspi_link::frames::CmdRequest;
-use dspi_link::{Dir, status};
+use dspi_link::status;
 use dspi_proto::generated::opcodes as op;
 
 use crate::lock::LockTable;
@@ -127,17 +127,32 @@ impl Router {
         Ok(())
     }
 
-    /// Whether the hub may repeat this command inside the device's busy window: a
-    /// read that changes nothing.
-    pub fn is_idempotent(&self, req: &CmdRequest) -> bool {
-        req.dir == Dir::Get && !self.policy.mutates(req.b_request, req.dir)
+    /// Whether this command is a parameter read ([`Policy::retries_stall`]).
+    pub fn retries_stall(&self, req: &CmdRequest) -> bool {
+        self.policy.retries_stall(req.b_request, req.dir)
     }
 
-    /// On the worker, right before the device call: note a write for attribution.
-    /// The notification cannot arrive first, since the call has not been made.
-    pub fn before_exec(&self, s: &SessionCtx, req: &CmdRequest, now: Instant) -> ExecTicket {
+    /// Whether this command can change the device ([`Policy::mutates`]).
+    pub fn mutates(&self, req: &CmdRequest) -> bool {
+        self.policy.mutates(req.b_request, req.dir)
+    }
+
+    /// On the worker, in queue order, right before the device call.
+    ///
+    /// `Err` answers the command with this status and payload without touching the
+    /// device: WP HB2's analyser STOP (spec 7.15) goes here, in order, so a band read
+    /// queued ahead of a STOP counts as watching. Nothing does so yet.
+    ///
+    /// `Ok` notes a write for attribution. The notification cannot arrive first, since
+    /// the call has not been made.
+    pub fn before_exec(
+        &self,
+        s: &SessionCtx,
+        req: &CmdRequest,
+        now: Instant,
+    ) -> Result<ExecTicket, (u8, Vec<u8>)> {
         if !self.policy.mutates(req.b_request, req.dir) {
-            return ExecTicket::none();
+            return Ok(ExecTicket::none());
         }
         let param = parameter_key(req);
         let mut st = self.lock();
@@ -149,10 +164,10 @@ impl Router {
         {
             let previous = Some(w.at);
             w.at = now;
-            return ExecTicket {
+            return Ok(ExecTicket {
                 token: Some(w.token),
                 previous,
-            };
+            });
         }
         let token = st.next_token;
         st.next_token = token.wrapping_add(1);
@@ -167,10 +182,10 @@ impl Router {
         if st.writers.len() > MAX_WRITERS {
             st.writers.pop_front();
         }
-        ExecTicket {
+        Ok(ExecTicket {
             token: Some(token),
             previous: None,
-        }
+        })
     }
 
     /// On the worker, right after the device call. A failed write gives back its
@@ -251,6 +266,7 @@ impl Router {
 mod tests_wp_hb0 {
     use super::*;
     use crate::session::Role;
+    use dspi_link::Dir;
 
     fn router(max: u32) -> Router {
         Router::new(Arc::new(Policy::embedded()), max)
@@ -281,7 +297,7 @@ mod tests_wp_hb0 {
 
     fn wrote(r: &Router, session: SessionId, req: &CmdRequest, now: Instant) {
         r.admit(&ctx(session), req, now).unwrap();
-        let t = r.before_exec(&ctx(session), req, now);
+        let t = r.before_exec(&ctx(session), req, now).unwrap();
         r.after_exec(&ctx(session), t, true);
     }
 
@@ -338,7 +354,7 @@ mod tests_wp_hb0 {
         let (r, t) = (router(8), Instant::now());
         let req = set(VOL, 0);
         r.admit(&ctx(2), &req, t).unwrap();
-        let ticket = r.before_exec(&ctx(2), &req, t);
+        let ticket = r.before_exec(&ctx(2), &req, t).unwrap();
         r.after_exec(&ctx(2), ticket, false);
         assert_eq!(r.consume_attribution(false, t), NO_ORIGIN);
     }

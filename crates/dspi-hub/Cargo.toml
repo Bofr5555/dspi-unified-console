@@ -46,3 +46,7 @@ dspi-transport = { path = "../dspi-transport", default-features = false, feature
 [[test]]
 name = "wp_hb0_app_path"
 required-features = ["app"]
+
+[[test]]
+name = "wp_hb0_connect_time"
+required-features = ["app"]

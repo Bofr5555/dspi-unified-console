@@ -4,17 +4,21 @@
 //! the reads ([`Polls::next_due`], [`Polls::take_due`], [`Polls::finished`]), so a
 //! poll takes its turn with the commands and no second thread touches a transport.
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use dspi_link::messages::{PollGrant, PollSpec};
 
-use crate::session::{Role, SessionId};
+use crate::session::{Outbox, Role, SessionId};
 
 /// One read for the worker to run.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct PollJob {
     /// The subscriber.
     pub session: SessionId,
+    /// Where its result goes (`Outbox::push_poll`), so the worker delivers without
+    /// looking the session up under the hub's lock.
+    pub outbox: Arc<Outbox>,
     /// Its slot.
     pub slot: u8,
     /// The GET's `bRequest`.
@@ -48,9 +52,15 @@ impl Polls {
         todo!("WP HB3")
     }
 
-    /// `poll.subscribe`: what each slot was granted.
-    pub fn subscribe(&self, session: SessionId, role: Role, specs: &[PollSpec]) -> Vec<PollGrant> {
-        let _ = (session, role, specs);
+    /// `poll.subscribe`: what each slot was granted. `outbox` is the session's.
+    pub fn subscribe(
+        &self,
+        session: SessionId,
+        outbox: &Arc<Outbox>,
+        role: Role,
+        specs: &[PollSpec],
+    ) -> Vec<PollGrant> {
+        let _ = (session, outbox, role, specs);
         todo!("WP HB3")
     }
 

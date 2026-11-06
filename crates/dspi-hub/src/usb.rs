@@ -21,7 +21,10 @@ pub struct BusDevice {
 pub trait DeviceBus: Send {
     /// Every device present, whether or not it can be opened. Must not open any,
     /// and must be cheap: the supervisor calls it twice a second.
-    fn scan(&mut self) -> Vec<BusDevice>;
+    ///
+    /// `Err` is "cannot tell" and is never an empty bus: the hub then detaches nothing
+    /// and attaches nothing until a later scan answers.
+    fn scan(&mut self) -> Result<Vec<BusDevice>, TransportError>;
 
     /// Open and claim one device. Another program holding it, a missing permission
     /// or a missing driver is an error here; the hub tries again later.
@@ -37,7 +40,7 @@ pub struct UsbBus {
 
 #[cfg(all(feature = "usb", not(target_os = "android")))]
 impl DeviceBus for UsbBus {
-    fn scan(&mut self) -> Vec<BusDevice> {
+    fn scan(&mut self) -> Result<Vec<BusDevice>, TransportError> {
         use nusb::MaybeFuture;
         let devices = match nusb::list_devices().wait() {
             Ok(devices) => {
@@ -49,7 +52,7 @@ impl DeviceBus for UsbBus {
                 if !std::mem::replace(&mut self.failing, true) {
                     log::warn!("USB enumeration failed: {e}");
                 }
-                return Vec::new();
+                return Err(TransportError::Usb(e.to_string()));
             }
         };
         let mut found: Vec<BusDevice> = devices
@@ -66,7 +69,7 @@ impl DeviceBus for UsbBus {
             })
             .collect();
         found.sort_by(|a, b| a.serial.cmp(&b.serial));
-        found
+        Ok(found)
     }
 
     fn open(&mut self, serial: &str) -> Result<Box<dyn Transport>, TransportError> {

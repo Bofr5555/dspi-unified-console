@@ -111,7 +111,8 @@ impl LocalTransport {
         let done = Completion::new(0, move |r| {
             let _ = tx.send(r);
         });
-        self.device.submit(self.session.ctx(), req, done);
+        let deadline = Instant::now().checked_add(self.answer_timeout);
+        self.device.submit(self.session.ctx(), req, done, deadline);
         rx.recv_timeout(self.answer_timeout)
             .unwrap_or_else(|e| CmdResponse {
                 tag: 0,
@@ -132,8 +133,9 @@ impl LocalTransport {
     }
 }
 
-/// A status as the transport's error. The hub has already run the busy window and
-/// bounded the wait, so a timeout says so and the core does not run its own.
+/// A status as the transport's error. The hub has already run any busy window this
+/// command gets and bounded the wait, so a timeout says so and the core does not run
+/// its own. Reads only, in any case: a write over the hub is never retried.
 fn check(st: u8, opcode: u8) -> Result<()> {
     if st == status::TIMEOUT {
         return Err(TransportError::TimedOut {
