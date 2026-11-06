@@ -179,21 +179,42 @@ pub fn refusal(firmware: Option<&FirmwareVersion>, wire: u8) -> String {
     }
 }
 
-/// Ask the device what it is and what it can do.
 /// Probe a device whatever its wire format: what [`probe`] reads, but a
 /// firmware of another wire format is described rather than refused, and the
 /// bulk image's read mode says which ([`dspi_proto::wire_compat::WireRead`];
 /// `Exact` for this build's own format, the only writable one).
 ///
+/// The image is read by [`crate::compat`] (sized by its header, single-shot
+/// where the transport has no chunked bulk) and mapped onto V32, so the
+/// channel model comes from the device's own header; `wire_format` is the
+/// device's version, not the mapped image's. A format that cannot be mapped
+/// (older than V16, or a newer one whose V32 prefix does not line up) is still
+/// refused, by name, with [`TransportError::Incompatible`].
+///
 /// Owned by WP S2 (docs/core-merge/PLAN.md).
 pub fn probe_any(
     t: &mut dyn Transport,
 ) -> Result<(Capabilities, dspi_proto::wire_compat::WireRead)> {
-    let _ = t;
-    todo!("WP S2: tolerant probe")
+    let (info, serial) = identify(t)?;
+    let image = crate::compat::read_any(t, Some(&info.version))?;
+    let caps = describe(t, info, serial, &image.packet, image.device_version)?;
+    Ok((caps, image.read))
 }
 
+/// Ask the device what it is and what it can do.
+///
+/// Strict: a device on another wire format is refused with a message that
+/// names its firmware ([`refusal`]). [`probe_any`] describes it instead.
 pub fn probe(t: &mut dyn Transport) -> Result<Capabilities> {
+    let (info, serial) = identify(t)?;
+    let bulk = read_bulk_from(t, Some(&info.version))?;
+    let wire = bulk.header().format_version;
+    describe(t, info, serial, &bulk, wire)
+}
+
+/// The liveness read and the serial: what GET_PLATFORM says, and the serial
+/// as the device reports it (empty if it does not).
+fn identify(t: &mut dyn Transport) -> Result<(PlatformInfo, String)> {
     // GET_PLATFORM is the canonical liveness read; do it first so a dead or
     // wrongly-bound device fails here with a clear message rather than midway
     // through a 6136-byte transfer. Ask for 7 bytes and take what comes: older
@@ -205,22 +226,33 @@ pub fn probe(t: &mut dyn Transport) -> Result<Capabilities> {
     )?;
     let info = PlatformInfo::decode(&plat)
         .map_err(|e| TransportError::Usb(format!("the device could not identify itself: {e}")))?;
-    let platform = info.platform();
-    let firmware_version = info.version;
 
     let serial_raw = t.control_in(op::REQ_GET_SERIAL, 0, 16).unwrap_or_default();
     let serial = String::from_utf8_lossy(&serial_raw)
         .trim_end_matches('\0')
         .trim()
         .to_string();
+    Ok((info, serial))
+}
 
-    let bulk = read_bulk_from(t, Some(&firmware_version))?;
+/// Everything after the bulk read: the channel model from `bulk` (a V32
+/// layout, mapped or not), then the per-feature probes. `wire_format` is the
+/// device's own wire format.
+fn describe(
+    t: &mut dyn Transport,
+    info: PlatformInfo,
+    serial: String,
+    bulk: &BulkPacket,
+    wire_format: u8,
+) -> Result<Capabilities> {
+    let platform = info.platform();
+    let firmware_version = info.version;
     let h: &WireHeader = bulk.header();
 
     let map = bulk
         .channel_map()
         .ok_or_else(|| TransportError::Usb("device reported an impossible channel map".into()))?;
-    let map = map.with_names(channel_names(&bulk, h.num_channels));
+    let map = map.with_names(channel_names(bulk, h.num_channels));
 
     let channels = (0..h.num_channels)
         .map(|i| ChannelInfo {
@@ -255,7 +287,7 @@ pub fn probe(t: &mut dyn Transport) -> Result<Capabilities> {
         firmware: firmware_version.to_string(),
         firmware_version,
         build_info,
-        wire_format: h.format_version,
+        wire_format,
         num_channels: h.num_channels,
         num_inputs: h.num_input_channels,
         num_outputs: h.num_output_channels,
@@ -493,6 +525,7 @@ fn probe_siggen_caps(t: &mut dyn Transport) -> Option<SiggenCaps> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dspi_proto::wire_compat::WireRead;
     use dspi_transport::MockTransport;
     use dspi_transport::mock::Reply;
 
@@ -923,6 +956,71 @@ mod tests {
             .collect();
         assert_eq!(offsets[0], 0);
         assert!(offsets.windows(2).all(|w| w[1] > w[0]));
+    }
+
+    /// The tolerant probe describes the beta2 device the strict one refuses:
+    /// its own header gives the channel model, its own version the format.
+    #[test]
+    fn wp_s2_probe_any_describes_an_older_device() {
+        let mut t = old_device(vec![1, 1, 0x16, 9], 28, 5944);
+        let (caps, read) = probe_any(&mut t).unwrap();
+        assert_eq!(read, WireRead::Older);
+        assert_eq!(caps.wire_format, 28);
+        assert_eq!(caps.firmware, "1.1.6 early beta");
+        assert_eq!(
+            (caps.num_channels, caps.num_outputs, caps.num_inputs),
+            (17, 9, 8)
+        );
+        assert_eq!(caps.channels.len(), 17);
+        assert_eq!(caps.serial, "4BA1DDB9D1443D6A");
+    }
+
+    #[test]
+    fn wp_s2_probe_any_describes_a_newer_device() {
+        let mut t = old_device(vec![1, 1, 0x17, 9, 1, 7, 0], 33, 6200);
+        let (caps, read) = probe_any(&mut t).unwrap();
+        assert_eq!(read, WireRead::Newer);
+        assert_eq!(caps.wire_format, 33);
+        assert_eq!(caps.firmware, "1.1.7");
+        let last = t
+            .log()
+            .iter()
+            .filter(|e| e.opcode == op::REQ_GET_ALL_PARAMS_CHUNK)
+            .map(|e| e.value)
+            .max();
+        assert_eq!(last, Some(6144), "read past 6136 to the header's length");
+    }
+
+    /// On this build's own format it reads what `probe` reads, and says the
+    /// image is the writable one.
+    #[test]
+    fn wp_s2_probe_any_on_the_own_format_is_exact() {
+        let (caps, read) = probe_any(&mut device()).unwrap();
+        let strict = probe(&mut device()).unwrap();
+        assert_eq!(read, WireRead::Exact);
+        assert_eq!(caps.wire_format, 32);
+        assert_eq!(caps.firmware, strict.firmware);
+        assert_eq!(caps.num_channels, strict.num_channels);
+        assert_eq!(caps.max_bands, strict.max_bands);
+        assert_eq!(caps.active_preset, strict.active_preset);
+        let names = |c: &Capabilities| {
+            c.channels
+                .iter()
+                .map(|i| i.name.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(&caps), names(&strict));
+    }
+
+    /// What cannot be mapped is still refused, by name.
+    #[test]
+    fn wp_s2_probe_any_refuses_a_pre_v16_device_by_name() {
+        let mut t = old_device(vec![1, 1, 0x15, 9], 15, 5000);
+        let err = probe_any(&mut t).unwrap_err();
+        let TransportError::Incompatible(msg) = &err else {
+            panic!("expected a refusal, got {err:?}");
+        };
+        assert!(msg.contains("firmware 1.1.5 (wire format V15)"), "{msg}");
     }
 
     #[test]
