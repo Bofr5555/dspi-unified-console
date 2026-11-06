@@ -222,6 +222,15 @@ pub(crate) struct Connection {
     /// The next `process_notifications` reports a full refresh: the core read
     /// the device again by itself (a Link re-attach, WP C15).
     pub(crate) announce_refresh: bool,
+    // -- WP CG13 --
+    /// The user's input source names, "" for unnamed: read by `fetch_all`,
+    /// kept current by `NOTIFY_EVT_INPUT_SOURCE_NAME` and
+    /// `set_input_source_name`, so `preset_changes` needs no I/O. On the
+    /// connection, so one device's names never reach the next.
+    pub(crate) source_names: info::SourceNames,
+    /// A lost notification may have been a rename: the next re-read after
+    /// notifications reads the names too.
+    pub(crate) source_names_stale: bool,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -304,6 +313,9 @@ impl Connection {
             side: None,
             refresh_pending: None,
             announce_refresh: false,
+            // -- WP CG13 --
+            source_names: info::SourceNames::default(),
+            source_names_stale: false,
         }
     }
 
