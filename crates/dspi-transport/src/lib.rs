@@ -194,8 +194,10 @@ pub struct Attributed {
 ///   so the source cannot tell a bulk write apart. It is ours only while
 ///   `own_bulk_pending` says one of our own `0xA1`/`0xA3` writes is in flight
 ///   or just finished: the caller tracks that with
-///   `dspi_session::notify::EchoFilter`. Biased to "foreign": an unclaimed
-///   invalidation makes the client re-read, which is always safe.
+///   `dspi_session::notify::EchoFilter`, which is also how a `BULK_INVALIDATED`
+///   must be classified on firmware that tags bulk applies with their path
+///   (there `HOST_SET` can be another app's bulk write). Biased to "foreign":
+///   an unclaimed invalidation makes the client re-read, which is always safe.
 /// - **Link:** the hub writes for every client, over USB or (a bridge) UART,
 ///   so the source says nothing; only the origin does. Ours iff the origin is
 ///   our session id; origin 0 (a change at the device) never is (Link spec

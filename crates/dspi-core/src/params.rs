@@ -9,8 +9,7 @@
 //! 2. send through the session's fast path ([`dspi_session::Session::send`],
 //!    validated and encoded by the parameter registry), or a raw opcode on
 //!    the [`crate::Writable`] where the registry has no whole-value path (an
-//!    EQ band) or describes a narrower range than the firmware takes (the
-//!    preamps, the input source);
+//!    EQ band);
 //! 3. only once the device has accepted the transfer, update the record
 //!    field and the image (`encode_bulk`, then `decode_bulk` of the result,
 //!    so the mirror reads exactly as the device's image would).
@@ -193,9 +192,7 @@ impl DspiCore {
     pub fn set_preamp(&self, db: f32) -> Result<()> {
         let mut inner = self.writing()?;
         let val = preamp_db(&inner, db)?;
-        // Raw: the registry's `pre.all` stops at +20 dB; the firmware and
-        // the old core take up to +24 dB on an RP2350.
-        send_raw(&mut inner, op::REQ_SET_PREAMP, 0, &val.to_le_bytes())?;
+        send(&mut inner, "pre.all", &[], Value::Float(val))?;
         inner.state.preamp_db = val;
         inner
             .state
@@ -216,13 +213,7 @@ impl DspiCore {
         let mut inner = self.writing()?;
         let i = input_index(&inner.state, input)?;
         let val = preamp_db(&inner, db)?;
-        // Raw for the same reason as `set_preamp` (the registry's `pre`).
-        send_raw(
-            &mut inner,
-            op::REQ_SET_PREAMP_CH,
-            u16::from(input),
-            &val.to_le_bytes(),
-        )?;
+        send(&mut inner, "pre", &[input], Value::Float(val))?;
         if let Some(v) = inner.state.input_preamp_db.get_mut(i) {
             *v = val;
         }
@@ -513,8 +504,7 @@ impl DspiCore {
                 "input source {source} (0..={INPUT_SOURCE_MAX})"
             )));
         }
-        // Raw: the registry's `in.source` knows sources 0..3 only.
-        send_raw(&mut inner, op::REQ_SET_INPUT_SOURCE, 0, &[source])?;
+        send(&mut inner, "in.source", &[], Value::Choice(source))?;
         inner.state.input_source = source;
         commit(&mut inner);
         Ok(())
@@ -582,7 +572,11 @@ impl DspiCore {
         let before = inner.state.output_enabled.get(o).copied().unwrap_or(false);
         // `Session::send` runs no interlock, and the firmware would skip a
         // colliding enable without a word.
-        let conflict = enabled && inner.writable_conn()?.session()?.core1_conflict(output);
+        let conflict = enabled
+            && inner
+                .writable_conn()?
+                .session()?
+                .try_core1_conflict(output)?;
         if conflict {
             log::info!("output {output}: not enabled, Core 1 runs the other side");
         } else {
@@ -926,19 +920,7 @@ mod tests_wp_c3 {
         let mut dev = mirror.clone();
         state::decode_bulk(&remote.image(), &mut dev).unwrap();
         dev.bulk_raw.clone_from(&mirror.bulk_raw);
-        fake_gaps(&mut dev, &mirror);
         (mirror, dev)
-    }
-
-    /// Two fields the firmware's image derives but the fake stores as
-    /// written: `global.preamp_gain_db` is input 0's preamp on a bulk read
-    /// (bulk_params.c:129), and an output's delay is also its channel delay
-    /// (vendor_commands.c, `REQ_SET_OUTPUT_DELAY` notifies both). The fake
-    /// patches only the field it was sent; take these from the mirror.
-    fn fake_gaps(dev: &mut DspState, mirror: &DspState) {
-        dev.preamp_db = mirror.preamp_db;
-        let inputs = usize::from(mirror.num_input_channels);
-        dev.channel_delays[inputs..].copy_from_slice(&mirror.channel_delays[inputs..]);
     }
 
     /// The mirror's own image decodes to the mirror.
