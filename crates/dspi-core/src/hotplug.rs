@@ -28,14 +28,17 @@
 //! 5. With the lock released: the closed connection is shut, the reopen
 //!    runs, then the listener hears the departures, then the arrivals.
 //!
-//! A USB connection lost by its reader is reported as departed and, if its
-//! serial is still listed (a replug faster than one poll, or the OS has not
-//! noticed yet), as arrived again, which also reopens it.
+//! A connection lost by its reader is always reported as departed, whatever
+//! its transport: MIDI has no enumeration diff to fall back on, and closing
+//! it here means `NOTIFY_DISCONNECTED` is never reported for it
+//! (`callbacks.rs`, [`DeviceEvents`]). A lost USB connection whose serial is
+//! still listed (a replug faster than one poll, or the OS has not noticed
+//! yet) is also reported as arrived again, which reopens it.
 //!
 //! The poll enumerates USB only. It never lists MIDI ports (midir's
 //! `list_ports` must not be polled faster than about once a second, and a
 //! MIDI connection is not reopened by serial); a lost MIDI or Link
-//! connection is still closed by step 1.
+//! connection is still closed by step 1 and reported as departed.
 
 use std::sync::Arc;
 
@@ -45,8 +48,9 @@ use crate::rta::RtaWorker;
 use crate::{Connection, DspiCore, Inner, Result, device, state};
 
 /// How many times polls try to reopen the selected device after it arrived
-/// (the first try included), one try per poll.
-pub(crate) const RECONNECT_ATTEMPTS: u8 = 4;
+/// (the first try included), one try per poll. Ten polls at the usual 500 ms
+/// are 5 s, long enough for a first-time WinUSB bind.
+pub(crate) const RECONNECT_ATTEMPTS: u8 = 10;
 
 /// The hotplug poll's state, behind the `Inner` lock.
 #[derive(Debug, Default)]
@@ -110,8 +114,15 @@ impl DspiCore {
     /// departures (by serial) to the hotplug listener; reconnect the
     /// selected device when it reappears, and close the open device when it
     /// departs or its notification stream ends. Desktop apps call it about
-    /// every 500 ms; it enumerates without opening anything, and blocks
-    /// while a reconnect runs the connect sequence.
+    /// every 500 ms; it enumerates without opening anything.
+    ///
+    /// A reconnect runs the connect sequence on the polling thread: an
+    /// embedder polling from its UI thread sees a stall of a few hundred
+    /// milliseconds on a replug.
+    ///
+    /// Call [`DspiCore::scan_devices`] before the first poll: the first poll
+    /// diffs against that scan, so without one every unit present is
+    /// announced as arrived.
     ///
     /// Never fails: a failed reconnect is logged and retried on the next
     /// polls (a few times). On Android there is nothing to enumerate (the
@@ -145,10 +156,9 @@ impl DspiCore {
                 None
             }
         };
-        let lost_usb = lost
+        let lost_id = lost
             .as_ref()
-            .filter(|c| c.conn.vid != 0)
-            .map(|c| c.conn.serial.clone());
+            .map(|c| (c.conn.serial.clone(), c.conn.vid != 0));
         if let Some(lost) = lost {
             log::info!(
                 "device {} lost: its notification stream ended",
@@ -165,11 +175,13 @@ impl DspiCore {
         // 3.-4. Diff, take out a departed device, pick a reopen.
         let (plan, departed) = {
             let mut inner = self.lock();
-            let plan = plan(&mut inner, now, lost_usb.as_deref());
-            let gone = inner
-                .conn
-                .as_ref()
-                .is_some_and(|c| c.vid != 0 && plan.departed.contains(&c.serial));
+            let plan = plan(&mut inner, now, lost_id);
+            // Still listed means step 1's event, not this device leaving: a
+            // connection another thread opened meanwhile stays open.
+            let listed = inner.hotplug.last.as_deref().unwrap_or_default();
+            let gone = inner.conn.as_ref().is_some_and(|c| {
+                c.vid != 0 && plan.departed.contains(&c.serial) && !listed.contains(&c.serial)
+            });
             let departed = if gone {
                 Closing::take(&mut inner)
             } else {
@@ -187,14 +199,29 @@ impl DspiCore {
             match reopen(serial) {
                 Ok(()) => {
                     log::info!("device {serial} reconnected");
-                    let mut inner = self.lock();
-                    if inner
-                        .hotplug
-                        .retry
-                        .as_ref()
-                        .is_some_and(|(s, _)| s == serial)
-                    {
-                        inner.hotplug.retry = None;
+                    let moved = {
+                        let mut inner = self.lock();
+                        if inner
+                            .hotplug
+                            .retry
+                            .as_ref()
+                            .is_some_and(|(s, _)| s == serial)
+                        {
+                            inner.hotplug.retry = None;
+                        }
+                        // The app chose something else while the reopen ran.
+                        // Only our own reopen is closed: another thread's
+                        // newer open stays.
+                        let ours = inner.conn.as_ref().is_some_and(|c| c.serial == *serial);
+                        if ours && inner.selected.as_ref() != Some(serial) {
+                            Closing::take(&mut inner)
+                        } else {
+                            None
+                        }
+                    };
+                    if let Some(closing) = moved {
+                        log::info!("selection moved during the reconnect of {serial}");
+                        closing.finish();
                     }
                 }
                 Err(e) => log::warn!("reconnecting {serial} failed: {e}"),
@@ -210,9 +237,9 @@ impl DspiCore {
 }
 
 /// The diff and the reopen decision for one poll, under the lock: `now` is
-/// the sorted, deduplicated scan, `lost_usb` the serial of a USB connection
-/// step 1 closed. Updates the baseline and the retry.
-fn plan(inner: &mut Inner, now: Vec<String>, lost_usb: Option<&str>) -> Plan {
+/// the sorted, deduplicated scan, `lost` the serial of a connection step 1
+/// closed and whether it was USB. Updates the baseline and the retry.
+fn plan(inner: &mut Inner, now: Vec<String>, lost: Option<(String, bool)>) -> Plan {
     let before: Vec<String> = match inner.hotplug.last.take() {
         Some(last) => last,
         None => inner.devices.iter().map(|d| d.serial.clone()).collect(),
@@ -227,12 +254,12 @@ fn plan(inner: &mut Inner, now: Vec<String>, lost_usb: Option<&str>) -> Plan {
         .filter(|s| !now.contains(s))
         .cloned()
         .collect();
-    if let Some(lost) = lost_usb {
-        if !departed.iter().any(|s| s == lost) {
-            departed.push(lost.to_owned());
+    if let Some((serial, usb)) = lost {
+        if usb && now.contains(&serial) && !arrived.contains(&serial) {
+            arrived.push(serial.clone());
         }
-        if now.iter().any(|s| s == lost) && !arrived.iter().any(|s| s == lost) {
-            arrived.push(lost.to_owned());
+        if !departed.contains(&serial) {
+            departed.push(serial);
         }
     }
 
@@ -448,7 +475,7 @@ mod tests_wp_c1b {
     }
 
     #[test]
-    fn wp_c1b_a_lost_non_usb_connection_is_closed_without_events() {
+    fn wp_c1b_a_lost_non_usb_connection_is_closed_and_reported_as_departed() {
         let (core, events) = core_with_events();
         let dev = FakeDevice::demo();
         let remote = dev.remote();
@@ -460,7 +487,9 @@ mod tests_wp_c1b {
         wait_for_reader_end(&core);
         core.poll_with(bus(&[]), never);
         assert!(!core.is_connected());
-        assert!(events.take().is_empty());
+        assert_eq!(events.take(), ["-MIDI"], "no arrival: not on the USB bus");
+        core.poll_with(bus(&[]), never);
+        assert!(events.take().is_empty(), "reported once");
     }
 
     #[test]
@@ -533,6 +562,47 @@ mod tests_wp_c1b {
         assert_eq!(connected_serial(&core).as_deref(), Some("A"));
         assert!(core.lock().hotplug.retry.is_none());
         core.poll_with(bus(&["A"]), never);
+    }
+
+    #[test]
+    fn wp_c1b_a_lost_midi_serial_listed_on_usb_does_not_reopen() {
+        let (core, events) = core_with_events();
+        core.poll_with(bus(&["A"]), never);
+        events.take();
+        let dev = FakeDevice::demo();
+        let remote = dev.remote();
+        core.open_transport(Box::new(dev), "A".into(), 0).unwrap();
+        remote.disconnect();
+        wait_for_reader_end(&core);
+        core.poll_with(bus(&["A"]), never);
+        assert_eq!(events.take(), ["-A"]);
+        assert!(!core.is_connected());
+    }
+
+    #[test]
+    fn wp_c1b_a_selection_moved_during_the_reopen_closes_it() {
+        let (core, _events) = core_with_events();
+        core.lock().selected = Some("A".into());
+        core.poll_with(bus(&[]), never);
+        let open = Opener::new();
+        core.poll_with(bus(&["A"]), |serial| {
+            open.on(&core)(serial)?;
+            core.lock().selected = Some("B".into());
+            Ok(())
+        });
+        assert!(!core.is_connected());
+        assert_eq!(core.lock().selected.as_deref(), Some("B"));
+    }
+
+    #[test]
+    fn wp_c1b_a_newer_open_during_the_reopen_stays() {
+        let (core, _events) = core_with_events();
+        core.lock().selected = Some("A".into());
+        core.poll_with(bus(&[]), never);
+        // Another thread opens the demo while the reopen runs: the selection
+        // is cleared, but what is open is not the reopened device.
+        core.poll_with(bus(&["A"]), |_| core.open_demo());
+        assert!(core.is_connected());
     }
 
     #[test]

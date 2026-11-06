@@ -20,7 +20,15 @@ pub trait RtaListener: Send + Sync {
     fn on_frame(&self);
 }
 
-/// Device arrival and departure.
+/// Device arrival and departure, from `poll_hotplug`.
+///
+/// The device you were connected to going away always gives `on_departed`
+/// with its serial, whatever the transport (USB, MIDI, Link). This is the
+/// signal to rely on: `NOTIFY_DISCONNECTED` is only reported if
+/// `process_notifications` ran before `poll_hotplug` closed the connection.
+///
+/// Call `scan_devices` before the first poll, or every unit present is
+/// announced as arrived.
 pub trait DeviceEvents: Send + Sync {
     fn on_arrived(&self, serial: String);
     fn on_departed(&self, serial: String);
