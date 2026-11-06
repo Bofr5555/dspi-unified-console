@@ -80,6 +80,21 @@ pub enum DspiError {
     // -- WP C14 --
     // -- WP C15 --
     // -- WP F1 --
+    // -- WP CG6 --
+    /// An AutoEQ database update failed (`crate::autoeq`). `code`:
+    /// `rate_limited`, `http_status`, `network`, `bad_content`, `no_profiles`,
+    /// `too_many_failures`, `cancelled`, `stopped` or `missing`. `msg` can be
+    /// shown.
+    #[error("{msg}")]
+    AutoEq {
+        /// The failure, as above.
+        code: String,
+        /// The words for the user.
+        msg: String,
+        /// With `rate_limited`: seconds until it is worth trying again, when
+        /// the server said.
+        retry_after_s: Option<u32>,
+    },
 }
 
 /// The result of a [`crate::DspiCore`] call.
