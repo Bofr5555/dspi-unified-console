@@ -124,6 +124,10 @@ pub const TUBE_PARAM_COUNT: usize = dspi_proto::generated::tube::TUBE_NUM_PARAMS
 // -- WP C11 --
 // -- WP C12 --
 // -- WP C13 --
+/// `config_import` option: also apply the master and user volume.
+pub const IMPORT_VOLUMES: u32 = 1;
+/// `config_import` option: also apply the hardware I/O and the limiters.
+pub const IMPORT_HARDWARE: u32 = 2;
 // -- WP C14 --
 // -- WP C15 --
 // -- WP F1 --
