@@ -10,7 +10,17 @@ if(APPLE)
 endif()
 find_package(Qt5 5.15 REQUIRED COMPONENTS Core Gui Widgets Quick QuickControls2 Qml Network)
 
-set(DSPI_CORE_DIR "${CMAKE_SOURCE_DIR}/..")
+# The Rust core (dspi-core). Build it first with cargo; these say where its
+# header and library are. DSPI_RUST_TARGET is the cargo --target triple when
+# cross-compiling (e.g. x86_64-pc-windows-gnu), empty for a native build.
+set(DSPI_CORE_DIR "${CMAKE_SOURCE_DIR}/.." CACHE PATH "Directory holding include/dspi_core.h")
+set(DSPI_CARGO_TARGET_DIR "${DSPI_CORE_DIR}/target" CACHE PATH "cargo's target directory")
+set(DSPI_RUST_TARGET "" CACHE STRING "cargo --target triple, empty for the host")
+if(DSPI_RUST_TARGET)
+    set(DSPI_CORE_LIBDIR "${DSPI_CARGO_TARGET_DIR}/${DSPI_RUST_TARGET}/release")
+else()
+    set(DSPI_CORE_LIBDIR "${DSPI_CARGO_TARGET_DIR}/release")
+endif()
 
 add_executable(DSPiConsole
     src/main.cpp
@@ -39,8 +49,19 @@ target_include_directories(DSPiConsole PRIVATE
 
 target_link_libraries(DSPiConsole PRIVATE
     Qt5::Core Qt5::Gui Qt5::Widgets Qt5::Quick Qt5::QuickControls2 Qt5::Qml Qt5::Network
-    ${DSPI_CORE_DIR}/target/release/libdspi_core.a
 )
+
+if(WIN32)
+    # Windows: the core is a DLL (dspi_core.dll) next to the exe, linked
+    # through cargo's import library
+    find_library(DSPI_CORE_LIB NAMES dspi_core.dll.lib dspi_core.dll.a libdspi_core.dll.a dspi_core
+        PATHS ${DSPI_CORE_LIBDIR} NO_DEFAULT_PATH REQUIRED)
+    target_link_libraries(DSPiConsole PRIVATE ${DSPI_CORE_LIB})
+    add_custom_command(TARGET DSPiConsole POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${DSPI_CORE_LIBDIR}/dspi_core.dll $<TARGET_FILE_DIR:DSPiConsole>)
+else()
+    target_link_libraries(DSPiConsole PRIVATE ${DSPI_CORE_LIBDIR}/libdspi_core.a)
+endif()
 
 if(APPLE)
     # The native Console's system colours, read from AppKit
