@@ -69,6 +69,7 @@ const MASTER_VOL_MUTE_DB: f32 = -128.0;
 /// Lowest preamp the old core allowed, on both platforms.
 const PREAMP_MIN_DB: f32 = -60.0;
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// PEQ band 0..9 of wire channel `ch`, sent as one whole band
     /// (`REQ_SET_EQ_PARAM`).
@@ -701,7 +702,9 @@ impl DspiCore {
         }
         Ok(name)
     }
+}
 
+impl DspiCore {
     // ── helpers ──────────────────────────────────────────────────────
 
     /// The lock, once the connection is known to be writable.

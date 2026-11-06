@@ -73,6 +73,7 @@ pub(crate) fn stream_ended_locked(inner: &Inner) -> bool {
         .is_some_and(|n| n.is_disconnected())
 }
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// Register (`Some`) or clear (`None`) the wake-up listener of the
     /// notification reader. It is called on the reader thread whenever a
@@ -124,7 +125,9 @@ impl DspiCore {
         }
         result
     }
+}
 
+impl DspiCore {
     /// Whether the open connection's notification stream ended because the
     /// device went away (unplug, closed MIDI port, ended Link session). For
     /// C1b's hotplug handling; false with no device or no reader. An

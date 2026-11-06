@@ -210,6 +210,7 @@ fn spdif_rx_status(p: SpdifRxStatusPacket) -> SpdifRxStatus {
     }
 }
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// The generator's capabilities: the `REQ_SIGGEN_GET_CAPS` header and
     /// each signal type's descriptor.

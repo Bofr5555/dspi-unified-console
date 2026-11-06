@@ -502,17 +502,10 @@ impl Inner {
     /// `Unsupported` when the probed firmware lacks `feature`. A connection
     /// without a session (unmappable image) is not judged: its read decides.
     fn require_feature(&mut self, feature: &str) -> Result<()> {
-        if let Ok(s) = self.conn()?.session() {
-            let present = s
-                .capabilities()
-                .features
-                .iter()
-                .any(|f| f.name == feature && f.present);
-            if !present {
-                return Err(DspiError::Unsupported);
-            }
+        match self.conn()?.session() {
+            Ok(s) => crate::require_feature(s, feature),
+            Err(_) => Ok(()),
         }
-        Ok(())
     }
 
     /// Read a `u16`-per-output meter: `num_output_channels` (at most
@@ -526,6 +519,7 @@ impl Inner {
     }
 }
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// Set one psychoacoustic-bass parameter. `param`: `PSYBASS_PARAM_*`
     /// (cutoff Hz 30..300, harmonics dB -24..12, drive dB 0..18, character %

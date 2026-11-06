@@ -59,6 +59,7 @@ const STARTUP_LAST_ACTIVE: u8 = st::PRESET_STARTUP_LAST_ACTIVE as u8;
 /// `output_config_mode` / `master_volume_mode`: travels with the preset.
 const WITH_PRESET: u8 = 1;
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// Save the live state to preset `slot` (0..10) and make it the active
     /// slot. **Writes flash.**
@@ -322,7 +323,9 @@ impl DspiCore {
             _ => Vec::new(),
         }
     }
+}
 
+impl DspiCore {
     // ── Flows ─────────────────────────────────────────────────────────
 
     /// Take the device lock ([`device_lock`]), run `f` under the core's

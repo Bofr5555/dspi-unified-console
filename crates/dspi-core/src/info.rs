@@ -20,12 +20,11 @@
 
 use dspi_proto::generated::opcodes as op;
 use dspi_proto::value::Value;
-use dspi_session::Session;
 use dspi_transport::TransportError;
 
 use crate::consts::CHANNEL_NAME_LEN;
 use crate::records::*;
-use crate::{DspiCore, DspiError, Result};
+use crate::{DspiCore, DspiError, Result, require_feature};
 
 /// Longest name, bytes: the 32-byte field keeps a NUL terminator.
 const NAME_MAX: usize = CHANNEL_NAME_LEN.saturating_sub(1);
@@ -51,6 +50,7 @@ const F_SOURCE_NAMES: &str = "input_source_names";
 const F_DEVICE_NAME: &str = "device_name";
 const F_LATENCY: &str = "output_latency";
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// The user's name for input source `source` (`REQ_GET_INPUT_SOURCE_NAME`,
     /// registry `in.name`); "" when unnamed.
@@ -104,7 +104,7 @@ impl DspiCore {
     pub fn fetch_output_latency(&self) -> Result<OutputLatency> {
         let mut inner = self.lock();
         let conn = inner.conn()?;
-        require(conn.session()?, F_LATENCY)?;
+        require_feature(conn.session()?, F_LATENCY)?;
         let raw = conn.get(
             op::REQ_OUTPUT_LATENCY,
             LATENCY_GET_STATUS,
@@ -123,7 +123,7 @@ impl DspiCore {
     pub fn fetch_output_latency_options(&self) -> Result<Vec<OutputLatencyOption>> {
         let mut inner = self.lock();
         let conn = inner.conn()?;
-        require(conn.session()?, F_LATENCY)?;
+        require_feature(conn.session()?, F_LATENCY)?;
         let raw = conn.get_upto(
             op::REQ_OUTPUT_LATENCY,
             LATENCY_GET_OPTIONS,
@@ -187,11 +187,13 @@ impl DspiCore {
             fields,
         })
     }
+}
 
+impl DspiCore {
     fn read_name(&self, path: &str, indices: &[u8], feature: &str) -> Result<String> {
         let mut inner = self.lock();
         let session = inner.conn()?.session()?;
-        require(session, feature)?;
+        require_feature(session, feature)?;
         match session.read(path, indices)? {
             Value::Text(t) => Ok(decode_name(t.as_bytes())),
             other => Err(DspiError::Transfer {
@@ -237,20 +239,6 @@ fn check_name(name: &str) -> Result<()> {
         });
     }
     Ok(())
-}
-
-/// `Unsupported` unless the connect probe found `feature`.
-fn require(session: &Session, feature: &str) -> Result<()> {
-    let present = session
-        .capabilities()
-        .features
-        .iter()
-        .any(|f| f.name == feature && f.present);
-    if present {
-        Ok(())
-    } else {
-        Err(DspiError::Unsupported)
-    }
 }
 
 fn short(opcode: u8, raw: &[u8]) -> DspiError {

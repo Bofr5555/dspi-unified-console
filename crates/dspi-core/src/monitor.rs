@@ -19,6 +19,7 @@ use crate::DspiCore;
 use crate::notify::{EVT_DEVICE_NAME, EVT_INPUT_SOURCE_NAME};
 use crate::records::*;
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// The log entries recorded after `after_id`, oldest first, and the id
     /// to pass next time (`after_id` itself when there are none). Pass 0

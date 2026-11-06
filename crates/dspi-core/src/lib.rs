@@ -1,8 +1,8 @@
 //! The DSPi embedder API: one object a GUI or a language binding drives.
 //!
 //! [`DspiCore`] is what the Qt desktop app reaches through the C ABI
-//! (`dspi-capi`), and what the Android and iOS apps will reach through UniFFI
-//! (WP F1). Its methods are the old desktop core's C functions, one for one,
+//! (`dspi-capi`), and what the Android and iOS apps reach through UniFFI (the
+//! `uniffi` feature, for `crates/dspi-ffi`). Its methods are the old desktop core's C functions, one for one,
 //! with typed errors ([`DspiError`]) and plain records ([`records`]); a few
 //! are added for features the old core lacked (extension channel, names,
 //! diagnostics, firmware files, more transports).
@@ -38,8 +38,8 @@
 // The core-merge quality bar (docs/core-merge/PLAN.md §1.7, §1.8): no
 // panicking shortcuts on outside data. clippy.toml exempts test code from the
 // first three; test modules allow arithmetic_side_effects themselves.
-// missing_docs is turned on by WP F1, which documents every record.
 #![warn(
+    missing_docs,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::indexing_slicing,
@@ -55,6 +55,11 @@ use dspi_proto::wire_compat::WireRead;
 use dspi_session::Session;
 use dspi_session::ext_state::ExtState;
 use dspi_transport::{Transport, TransportCaps};
+
+// The Kotlin and Swift binding (WP F1): the namespace `dspi_core`, whose
+// symbols the library `crates/dspi-ffi` re-exports.
+#[cfg(feature = "uniffi")]
+uniffi::setup_scaffolding!();
 
 pub mod callbacks;
 pub mod consts;
@@ -73,6 +78,9 @@ mod hardware;
 mod hotplug;
 mod info;
 #[cfg(feature = "link")]
+// WP C15 documents the module's last undocumented item (`link_status`); then
+// this allow goes.
+#[allow(missing_docs)]
 pub mod link;
 mod monitor;
 mod notify;
@@ -82,7 +90,7 @@ mod presets;
 mod rta;
 mod stats;
 
-pub use callbacks::{DeviceEvents, LinkListener, NotifyListener, RtaListener};
+pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
 pub use device::MidiInputHandle;
 pub use error::{DspiError, Result};
@@ -109,6 +117,10 @@ pub use records::*;
 // -- WP F1 --
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
+///
+/// Every call that touches the device blocks its thread for the transfers it
+/// makes, so a binding calls these off its UI thread.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub struct DspiCore {
     pub(crate) inner: Mutex<Inner>,
     /// Shared with the reader and worker threads, which wake the app.
@@ -266,6 +278,20 @@ impl Connection {
     }
 }
 
+/// [`DspiError::Unsupported`] unless the connect probe found `feature`.
+pub(crate) fn require_feature(session: &Session, feature: &str) -> Result<()> {
+    let present = session
+        .capabilities()
+        .features
+        .iter()
+        .any(|f| f.name == feature && f.present);
+    if present {
+        Ok(())
+    } else {
+        Err(DspiError::Unsupported)
+    }
+}
+
 /// A connection whose state may be written: the only way to send a change.
 ///
 /// Returned by [`Inner::writable_conn`], which refuses a read-only
@@ -373,7 +399,10 @@ pub(crate) struct Listeners {
     pub(crate) link: Slot<dyn LinkListener>,
 }
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
+    /// A core with no device open. No I/O.
+    #[cfg_attr(feature = "uniffi", uniffi::constructor)]
     pub fn new() -> Arc<Self> {
         Arc::new_cyclic(|me| Self {
             inner: Mutex::new(Inner::new()),
@@ -381,7 +410,9 @@ impl DspiCore {
             me: me.clone(),
         })
     }
+}
 
+impl DspiCore {
     /// Make `transport` the open device, replacing any other, without
     /// probing or reading it: the bare minimum the work packages' tests use
     /// with a `FakeDevice`. WP C1's `open_transport` builds on it (probe,

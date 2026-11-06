@@ -1042,6 +1042,7 @@ fn config_report(b: &ConfigBuild) -> (Vec<String>, bool) {
 /// `{ok, error, name, platform, firmware, savedUtc}` (`dspi_config_inspect`):
 /// `ok` false with an `error` message for text that is not a document of
 /// this schema (or is newer, or over [`MAX_FILE_BYTES`]). Needs no device.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn config_inspect(text: String) -> String {
     match parse_config(&text) {
         Ok(v) => {
@@ -1726,6 +1727,7 @@ struct ImportReport {
     hardware_written: bool,
 }
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// The device configuration (the mirror; defaults while disconnected)
     /// as a `.dspipreset` document: schema 1, pretty-printed JSON with
@@ -1763,7 +1765,9 @@ impl DspiCore {
         };
         out.to_string()
     }
+}
 
+impl DspiCore {
     /// Build the new state, write it in one bulk SET, then send the
     /// hardware I/O that changed one setting at a time.
     fn import_config(&self, v: &Value, options: u32) -> Result<ImportReport> {
@@ -1890,7 +1894,10 @@ impl DspiCore {
         }
         refused
     }
+}
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
     /// Every channel's filters as a filter text file (format 2): the first
     /// `inputs` live inputs with their preamp and PEQ bands, then every
     /// output with its PEQ and crossover bands and enable state. Reads the
@@ -1953,7 +1960,9 @@ impl DspiCore {
         }
         json!({ "ok": true, "lines": filter_report(writes.len(), &plan.notes) }).to_string()
     }
+}
 
+impl DspiCore {
     /// Write one channel; `Some(note)` when the device kept the output in
     /// another enable state than the file asks for.
     fn write_channel(&self, w: &ChannelWrite) -> Result<Option<String>> {

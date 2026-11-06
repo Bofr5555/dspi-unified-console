@@ -14,6 +14,7 @@
 // ── types.rs ──────────────────────────────────────────────────────────
 
 /// One filter band, PEQ or crossover (`types.rs` `FilterParams`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FilterParams {
@@ -32,6 +33,7 @@ pub struct FilterParams {
 }
 
 /// Lock status of a clocked input (`fetch_input_lock`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct InputLockStatus {
     /// Receiver state, the firmware's raw code; 0 = inactive.
@@ -51,6 +53,7 @@ pub struct InputLockStatus {
 }
 
 /// The ADAT output's status (`fetch_adat_out_status`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct AdatOutStatus {
     /// The output is enabled in the configuration.
@@ -68,6 +71,7 @@ pub struct AdatOutStatus {
 }
 
 /// LG Sound Sync status (`fetch_lg_status`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct LgStatus {
     /// LG Sound Sync is enabled.
@@ -81,6 +85,7 @@ pub struct LgStatus {
 }
 
 /// The UART control interface's configuration (`set_uart`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UartConfig {
@@ -97,6 +102,7 @@ pub struct UartConfig {
 }
 
 /// The I2C control interface's configuration (`set_i2c`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct I2cConfig {
@@ -111,6 +117,7 @@ pub struct I2cConfig {
 }
 
 /// The control interfaces' status (`REQ_GET_CTRL_IFACE_STATUS`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CtrlIfaceStatus {
@@ -127,6 +134,7 @@ pub struct CtrlIfaceStatus {
 }
 
 /// The stereo upmixer's live telemetry (`fetch_upmix_status`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct UpmixStatus {
     /// The upmixer is processing audio now.
@@ -146,6 +154,7 @@ pub struct UpmixStatus {
 }
 
 /// `types.rs` `SystemStatus` (REQ_GET_STATUS wValue 9), polled every 60 ms.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SystemStatus {
     /// Peak per wire channel, 0..1 (MAX_CHANNELS = 17 entries).
@@ -164,6 +173,7 @@ pub struct SystemStatus {
 }
 
 /// `types.rs` `DeviceInfo`; `serial` replaces the `serial`/`serial_len` pair.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DeviceInfo {
     /// USB serial number, the picker's identity.
@@ -174,6 +184,7 @@ pub struct DeviceInfo {
 }
 
 /// The preset directory (`get_preset_directory`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct PresetDirectory {
     /// Bit per slot: the slot holds a preset.
@@ -197,6 +208,7 @@ pub struct PresetDirectory {
 /// Channel-indexed vectors use wire channel indices (`[inputs][outputs]`,
 /// MAX_CHANNELS = 17 entries); output-indexed ones have MAX_OUTPUTS = 9,
 /// input-indexed MAX_INPUTS = 8. Only the first `num_*` entries are live.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DspState {
@@ -438,6 +450,7 @@ pub struct DspState {
 
 /// What `process_notifications` changed: `NOTIFY_*` flags and a bitmask of
 /// wire channels whose filters changed.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct NotifyResult {
     /// `NOTIFY_*` flags of what changed.
@@ -449,6 +462,7 @@ pub struct NotifyResult {
 // ── rta.rs ────────────────────────────────────────────────────────────
 
 /// What the analyser should measure (`rta_set_request`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct RtaRequest {
     /// `RTA_TAP_INPUT` (0) / `RTA_TAP_OUTPUT` (1).
@@ -467,6 +481,7 @@ pub struct RtaRequest {
 }
 
 /// The analyser's capabilities (`rta_get_caps`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RtaCapsInfo {
     /// The firmware has an analyser.
@@ -494,6 +509,7 @@ pub struct RtaCapsInfo {
 }
 
 /// One analysed channel's bands.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RtaChannelFrame {
     /// Channel within the tap.
@@ -509,6 +525,7 @@ pub struct RtaChannelFrame {
 }
 
 /// The analyser's latest frames and status (`rta_get_snapshot`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RtaSnapshot {
     /// Changes when something drawn changed (`rta_get_snapshot`).
@@ -563,6 +580,7 @@ pub struct RtaSnapshot {
 // ── siggen.rs ─────────────────────────────────────────────────────────
 
 /// A signal generator configuration (`siggen_set_config`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SiggenConfig {
     /// `SIGGEN_TYPE_*`.
@@ -586,6 +604,7 @@ pub struct SiggenConfig {
 }
 
 /// What the generator is doing (`siggen_get_status`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct SiggenStatus {
     /// `SIGGEN_STATE_*`: idle, fade in, run, gap, fade out.
@@ -605,6 +624,7 @@ pub struct SiggenStatus {
 }
 
 /// One parameter of a signal type.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct SiggenParam {
     /// `SIGGEN_PARAM_*`: what the value means (0 = unused).
@@ -618,6 +638,7 @@ pub struct SiggenParam {
 }
 
 /// One signal type the generator offers.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SiggenTypeInfo {
     /// `SIGGEN_TYPE_*`; 0xFF when its descriptor could not be read.
@@ -631,6 +652,7 @@ pub struct SiggenTypeInfo {
 }
 
 /// The generator's capabilities (`siggen_fetch_caps`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SiggenCaps {
     /// The firmware has a generator.
@@ -650,6 +672,7 @@ pub struct SiggenCaps {
 // ── stats.rs ──────────────────────────────────────────────────────────
 
 /// One S/PDIF output's buffers.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct SpdifBufferStats {
     /// Free ring space, 48-frame buckets, 0..16.
@@ -667,6 +690,7 @@ pub struct SpdifBufferStats {
 }
 
 /// The PDM output's buffers.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct PdmBufferStats {
     /// DMA buffer fill, %.
@@ -684,6 +708,7 @@ pub struct PdmBufferStats {
 }
 
 /// Buffer fill levels and watermarks (`fetch_buffer_stats`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct BufferStats {
     /// Live entries of `spdif`, at most 4.
@@ -701,6 +726,7 @@ pub struct BufferStats {
 }
 
 /// The S/PDIF receiver (`fetch_spdif_rx_status`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct SpdifRxStatus {
     /// 0 inactive, 1 acquiring, 2 locked, 3 relocking.
@@ -728,6 +754,7 @@ pub struct SpdifRxStatus {
 // ── monitor.rs (typed replacement of the C ABI's TSV text) ───────────
 
 /// One line of the notification monitor.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MonitorEntry {
     /// Rising id, for `monitor_read`.
@@ -740,6 +767,7 @@ pub struct MonitorEntry {
 
 /// Result of `monitor_read(after_id)`: the entries after `after_id` and the
 /// id to pass next time (`after_id` itself if there were none).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MonitorBatch {
     /// The id to pass next time.
@@ -751,6 +779,7 @@ pub struct MonitorBatch {
 // ── Glue-only records ────────────────────────────────────────────────
 
 /// One GPIO held by a live control-surface binding (`dspi_cs_pin_uses`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct PinUse {
     /// The GPIO.
@@ -761,6 +790,7 @@ pub struct PinUse {
 
 /// `dspi_bootloader_counts`. Always 0/0 on Android (libusb cannot
 /// enumerate there); Android uses the Kotlin BootloaderLocator instead.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct BootloaderCounts {
     /// RP2040 boards in BOOTSEL mode.
@@ -770,6 +800,7 @@ pub struct BootloaderCounts {
 }
 
 /// Version facts of the linked core, for the About page and sanity checks.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct CoreInfo {
     /// dspi-ffi crate version.
@@ -787,6 +818,7 @@ pub struct CoreInfo {
 // ── DSPi Link (dspi-link crate; DSPi-Link spec 1.2) ───────────────────
 
 /// The hub's `hello` after `link_connect` (spec 7.2).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LinkHello {
     /// `hid`: lowercase UUID, stable per hub installation. Tokens are keyed on it.
@@ -814,6 +846,7 @@ pub struct LinkHello {
 }
 
 /// One device the hub shares (`device.list`, spec 7.4).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LinkDevice {
     /// The hub's handle for it, for `link_select_device`.
@@ -837,6 +870,7 @@ pub struct LinkDevice {
 }
 
 /// A `[bRequest, dir]` row of `policy.denied` (dir 0 = SET, 1 = GET).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct LinkDenied {
     /// The `bRequest`.
@@ -846,6 +880,7 @@ pub struct LinkDenied {
 }
 
 /// Where the current Link session stands.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LinkStatus {
     /// A session exists (connected, maybe not yet authenticated).
@@ -867,6 +902,7 @@ pub struct LinkStatus {
 }
 
 /// `GET /dspi/v1/info` (spec 3.2), for a hub added by address.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LinkInfo {
     /// Lowercase UUID, stable per hub installation.
@@ -886,6 +922,7 @@ pub struct LinkInfo {
 }
 
 /// A typed hub address (spec 3.3).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LinkAddress {
     /// Host name or IP address.
@@ -898,6 +935,7 @@ pub struct LinkAddress {
 
 /// The extension channel (Bofr5555/DSPi fork; `REQ_EXTENSION` 0x00), as
 /// probed on connect (WP S3) and read on demand (WP C8).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtStatus {
@@ -912,6 +950,7 @@ pub struct ExtStatus {
 }
 
 /// `EXT_CORE_VREG` status (16 bytes, `dspi_proto::ext::CoreVregStatus`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreVregInfo {
@@ -943,6 +982,7 @@ pub struct CoreVregInfo {
 
 /// `REQ_OUTPUT_LATENCY` status (config.h; 12 bytes). Field meanings as in
 /// the firmware's `OutputLatencyStatus`.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OutputLatency {
@@ -954,6 +994,7 @@ pub struct OutputLatency {
 
 /// `REQ_GET_CLOCK_DIAG` (0x82): empty unless the firmware was built with
 /// `DSPI_CLOCK_DIAG`.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClockDiag {
@@ -966,6 +1007,7 @@ pub struct ClockDiag {
 }
 
 /// A decoded diagnostic value.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NamedValue {
@@ -976,6 +1018,7 @@ pub struct NamedValue {
 }
 
 /// What a `.uf2` file is (WP C11): checked before anything is flashed.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Uf2Info {
@@ -999,6 +1042,7 @@ pub struct Uf2Info {
 }
 
 /// A mounted RP2040/RP2350 bootloader drive (`RPI-RP2` / `RP2350`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BootloaderDrive {
@@ -1025,6 +1069,7 @@ pub struct BootloaderDrive {
 
 /// One output-latency option (`OutputLatencyOptionWire`, config.h; 8
 /// bytes), from `fetch_output_latency_options` (WP C8).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OutputLatencyOption {

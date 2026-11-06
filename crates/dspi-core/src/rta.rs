@@ -60,6 +60,7 @@ const BUDGET: Budget = Budget {
     max_time: Duration::from_millis(25),
 };
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// Register (Some) or clear (None) the analyser wake-up listener. Once it
     /// returns after None, no call is in progress (on another thread).

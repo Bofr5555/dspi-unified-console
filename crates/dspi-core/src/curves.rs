@@ -45,6 +45,7 @@ const FS: f64 = dsp::SAMPLE_RATE;
 ///
 /// Bypassed and off bands are skipped; an empty chain is 0 dB. A total
 /// power below -300 dB (a notch's exact zero) reads -300 dB.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn compute_response(filters: Vec<FilterParams>, freq: f32) -> f32 {
     let w = omega(f64::from(freq));
     let power: f64 = filters
@@ -60,6 +61,7 @@ pub fn compute_response(filters: Vec<FilterParams>, freq: f32) -> f32 {
 ///
 /// Each band is designed once, then evaluated at every point. Same rules
 /// as [`compute_response`].
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn compute_magnitude_curve(filters: Vec<FilterParams>) -> Vec<f64> {
     let sections: Vec<Coeffs> = filters.iter().flat_map(active_sections).collect();
     grid()
@@ -75,6 +77,7 @@ pub fn compute_magnitude_curve(filters: Vec<FilterParams>) -> Vec<f64> {
 ///
 /// The unwrapped curve starts at the wrapped value of the first point and
 /// then takes, between neighbours, the step in (-180°, 180°].
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn compute_phase_curve(filters: Vec<FilterParams>, unwrap: bool) -> Vec<f64> {
     let sections: Vec<Coeffs> = filters.iter().flat_map(active_sections).collect();
     let wrapped = grid().map(|f| wrapped_phase(&sections, f));
@@ -101,6 +104,7 @@ pub fn compute_phase_curve(filters: Vec<FilterParams>, unwrap: bool) -> Vec<f64>
 
 /// Frequency (Hz) of curve point `i` (0..200): log-spaced, 10 Hz at 0,
 /// 20 kHz at 200. A larger `i` extrapolates on the same spacing.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn curve_freq(i: u32) -> f64 {
     let (lo, hi) = (dsp::MIN_HZ.log10(), dsp::MAX_HZ.log10());
     // CURVE_POINTS - 1 is the constant 200 (asserted above).
@@ -117,6 +121,7 @@ pub fn curve_freq(i: u32) -> f64 {
 /// other value is `(right << 4) | left`. The non-PDM outputs are
 /// `0..2 * num_pairs`. A map that is not exactly 4 bytes, or a `num_pairs`
 /// of 0 or above 4, is invalid (false), never a panic.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn crossfeed_pair_map_valid(map: Vec<u8>, num_pairs: u8) -> bool {
     let Ok(map) = <[u8; 4]>::try_from(map.as_slice()) else {
         return false;
@@ -155,6 +160,7 @@ pub fn crossfeed_pair_map_valid(map: Vec<u8>, num_pairs: u8) -> bool {
 
 /// Version facts of the linked core: this crate's version, the wire format
 /// versions it reads and writes, the bulk image size and the curve size.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn core_info() -> CoreInfo {
     use dspi_proto::generated::{BULK_SIZE, wire::WIRE_FORMAT_VERSION};
     // The header constants fit the record's fields (checked at compile time),
@@ -178,6 +184,7 @@ pub fn core_info() -> CoreInfo {
 /// not clamp: callers clamp to the parameter's range first. NaN stays NaN
 /// and ±inf stays ±inf (as does a finite value whose `* 10` overflows f32);
 /// never panics.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn quantize_gain(db: f32) -> f32 {
     let val = (db * 10.0).round() / 10.0;
     if val == 0.0 { 0.0 } else { val }
@@ -191,6 +198,7 @@ pub fn quantize_gain(db: f32) -> f32 {
 /// -0.0 to +0.0. It does not clamp: callers clamp to `0..=max_delay_ms`
 /// afterwards, as the old core did. NaN stays NaN and ±inf stays ±inf (as
 /// does a finite value whose `* 10000` overflows f32); never panics.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn quantize_delay(ms: f32) -> f32 {
     let val = (ms * 10000.0).round() / 10000.0;
     if val == 0.0 { 0.0 } else { val }

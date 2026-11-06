@@ -22,6 +22,7 @@ use crate::consts::{CROSSFEED_MAP_PAIRS, EXT_WRITE_REFUSED};
 use crate::records::*;
 use crate::{DspiCore, DspiError, Inner, Result, state};
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// `EXT_CROSSFEED_PAIR_MAP` (Bofr5555/DSPi fork, the K340 build): the
     /// outputs of every crossfeed pair at once, 4 bytes
