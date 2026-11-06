@@ -38,6 +38,7 @@ dspi-session = { path = "crates/dspi-session" }
 dspi-cmd = { path = "crates/dspi-cmd" }
 dspi-tui = { path = "crates/dspi-tui" }
 dspi-core = { path = "crates/dspi-core" }
+dspi-link = { path = "crates/dspi-link" }
 
 anyhow = "1"
 thiserror = "2"

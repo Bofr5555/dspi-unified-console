@@ -711,11 +711,10 @@ impl Live {
         let (ni, no) = (caps.num_inputs as usize, caps.num_outputs as usize);
         m.platform = format!("{:?}", caps.platform).to_uppercase();
         m.firmware = caps.firmware.clone();
-        m.serial_short = if caps.serial.len() > 8 {
-            caps.serial[caps.serial.len() - 8..].to_string()
-        } else {
-            caps.serial.clone()
-        };
+        // By characters: the device chooses this text, and slicing it by bytes
+        // can land inside one.
+        let extra = caps.serial.chars().count().saturating_sub(8);
+        m.serial_short = caps.serial.chars().skip(extra).collect();
         m.connected = s.connected;
         m.preset_label = match caps.active_preset {
             Some(p) => PresetMenu::slot_label(&self.shared.borrow(), p),
@@ -2405,14 +2404,20 @@ impl Live {
             return;
         };
         let polled = r.poll(Instant::now());
-        let warnings = r.take_warnings();
+        // Only when an attempt has ended: a warning shown now would be replaced
+        // by the outcome's note on a later poll.
+        let warned = if matches!(polled, Reconnect::Waiting) {
+            String::new()
+        } else {
+            r.take_warnings().iter().map(|w| format!("; {w}")).collect()
+        };
         match polled {
             Reconnect::Waiting => {}
             Reconnect::GaveUp(e) => {
                 self.reconnect = None;
                 // On the echo line too, which stays: a status fades, and this
                 // is why the title bar goes on saying "Not connected".
-                let why = format!("Not reconnecting: {e}");
+                let why = format!("Not reconnecting: {e}{warned}");
                 self.echo(why.clone());
                 self.note(why);
             }
@@ -2425,11 +2430,11 @@ impl Live {
                 }
                 self.arm_notifications(session);
                 self.connect_analyser(session);
-                self.note(format!("Reconnected to {}", self.state.caps.serial));
+                self.note(format!(
+                    "Reconnected to {}; undo history cleared{warned}",
+                    self.state.caps.serial
+                ));
             }
-        }
-        for w in warnings {
-            self.note(w);
         }
     }
 
@@ -3364,8 +3369,7 @@ mod tests_wp_r1 {
         })
         .unwrap();
         // A file where the token file's directory should be.
-        let blocked =
-            std::env::temp_dir().join(format!("dspi-r1-{}-live-blocked", std::process::id()));
+        let blocked = connect::test_dir().join(format!("live-blocked-{}", std::process::id()));
         std::fs::write(&blocked, "x").unwrap();
         let mut link = connect::LinkTarget::parse(&hub.addr().to_string()).unwrap();
         link.pin = Some("1234".into());
@@ -3383,7 +3387,25 @@ mod tests_wp_r1 {
         }
         assert!(l.state.connected, "the device came back");
         let status = l.shell.model.status.clone().unwrap_or_default();
+        assert!(status.contains("Reconnected"), "{status:?}");
         assert!(status.contains("pairing token"), "{status:?}");
+    }
+
+    /// PLAN §1.7: a device's text cannot reach the terminal raw, because every
+    /// cell goes through ratatui's buffer, which drops control characters.
+    #[test]
+    fn wp_r1_the_interface_draws_no_control_characters_from_a_device() {
+        let (mut l, _s, _r) = on_demo();
+        l.state.caps.serial = "\u{1b}[2J\u{9b}2J\u{7}evil".into();
+        l.sync_model();
+        let area = Rect::new(0, 0, 130, 40);
+        let mut buf = Buffer::empty(area);
+        l.draw(area, &mut buf);
+        assert!(
+            !buf.content()
+                .iter()
+                .any(|c| c.symbol().contains(char::is_control))
+        );
     }
 
     #[test]
@@ -3791,7 +3813,7 @@ mod tests {
     }
 
     fn scratch(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("dspi-live-{}", std::process::id()));
+        let dir = connect::test_dir().join(format!("dspi-live-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("scratch");
         dir.join(name)
     }

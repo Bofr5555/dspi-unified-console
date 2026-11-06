@@ -26,7 +26,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use dspi_link::socket::TcpConnector;
-use dspi_link::{AuthState, ConnectOptions, LinkClient, LinkError, RetryAdvice, SessionConfig};
+use dspi_link::{
+    AuthState, ConnectOptions, LinkClient, LinkError, LinkEvents, RetryAdvice, SessionConfig,
+};
 use dspi_proto::generated::ext as ext_ids;
 use dspi_session::ext_state::ExtState;
 use dspi_session::{DeviceState, Session, Source, probe};
@@ -43,6 +45,19 @@ const LINK_ROLE: &str = "control";
 /// cheap to look at (and never faster than once a second, as midir asks). A hub
 /// follows [`LinkError::retry_advice`] instead.
 const RETRY_LOCAL: Duration = Duration::from_secs(1);
+
+/// How long a pairing that timed out may still come good: the hub may have
+/// spent its window on it, and the late `ok` carries the only token there is.
+const PAIR_GRACE: Duration = Duration::from_secs(2);
+
+/// `text` from a hub or a device, safe to print: control characters (C0, DEL,
+/// C1, and so ESC) become U+FFFD, so a device name cannot rewrite the terminal
+/// (PLAN §1.7). The interface needs none of this: its buffer drops them.
+pub fn printable(text: &str) -> String {
+    text.chars()
+        .map(|c| if c.is_control() { '\u{FFFD}' } else { c })
+        .collect()
+}
 
 /// Where the terminal should find its device.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -127,15 +142,22 @@ pub enum OpenError {
     ChannelMap,
     /// The first read of the whole device state failed.
     #[error("could not read the device state: {0}")]
-    Snapshot(String),
+    Snapshot(TransportError),
 }
 
 impl OpenError {
     /// Whether, and how soon, to try again. A hub's own errors say for
-    /// themselves; a PIN is never retried, because a hub counts the failures.
+    /// themselves; a PIN is never retried, because a hub counts the failures,
+    /// and what the device or the command line got wrong will not change.
     pub fn retry_advice(&self) -> RetryAdvice {
         match self {
-            Self::NeedsPin { .. } | Self::PinRefused { .. } | Self::NoMidi => RetryAdvice::Stop,
+            Self::NeedsPin { .. }
+            | Self::PinRefused { .. }
+            | Self::NoMidi
+            | Self::ChannelMap
+            | Self::Ambiguous { .. }
+            | Self::Transport(TransportError::Incompatible(_))
+            | Self::Snapshot(TransportError::Incompatible(_)) => RetryAdvice::Stop,
             Self::Link { source, .. } => source.retry_advice(),
             _ => RetryAdvice::Retry {
                 min_delay: Duration::ZERO,
@@ -243,9 +265,12 @@ impl Target {
             Err(_) => ExtState::default(),
         };
         let mut session = Session::new(t, caps.clone()).ok_or(OpenError::ChannelMap)?;
-        let bulk = session
-            .snapshot()
-            .map_err(|e| OpenError::Snapshot(e.to_string()))?;
+        let bulk = session.snapshot().map_err(|e| {
+            OpenError::Snapshot(match e {
+                dspi_session::WriteError::Transport(t) => t,
+                other => TransportError::Remote(other.to_string()),
+            })
+        })?;
         Ok(Connected {
             session,
             state: DeviceState::new(caps, bulk),
@@ -314,7 +339,7 @@ impl Target {
                     .into_iter()
                     .map(|name| Listed {
                         serial: String::new(),
-                        name,
+                        name: printable(&name),
                         detail: "USB MIDI".into(),
                     })
                     .collect()
@@ -325,9 +350,9 @@ impl Target {
                     .devices()
                     .into_iter()
                     .map(|d| Listed {
-                        serial: d.serial,
-                        name: d.name,
-                        detail: d.state,
+                        serial: printable(&d.serial),
+                        name: printable(&d.name),
+                        detail: printable(&d.state),
                     })
                     .collect();
                 client.close();
@@ -388,7 +413,7 @@ fn open_midi(port: Option<&str>) -> Result<Box<dyn Transport>, OpenError> {
         &ports,
         port,
         |p| vec![p.name.as_str()],
-        |p| p.name.clone(),
+        |p| printable(&p.name),
         "DSPi MIDI ports",
         "--midi <name>",
     )?;
@@ -443,9 +468,19 @@ pub fn link_client(l: &LinkTarget, pin: PinPrompt<'_>) -> Result<LinkClient, Ope
         app_version: env!("CARGO_PKG_VERSION").into(),
         token: None,
     };
-    let (client, auth) =
-        LinkClient::connect_with(&TcpConnector::default(), &l.ws_url(), &opts, None, &cfg)
-            .map_err(|e| link_error(l, e))?;
+    let saver = Arc::new(TokenSaver {
+        store: store.clone(),
+        failed: Mutex::default(),
+    });
+    let events: Arc<dyn LinkEvents> = saver.clone();
+    let (client, auth) = LinkClient::connect_with(
+        &TcpConnector::default(),
+        &l.ws_url(),
+        &opts,
+        Some(events),
+        &cfg,
+    )
+    .map_err(|e| link_error(l, e))?;
     let pin_source = match auth {
         AuthState::Ready => return Ok(client),
         AuthState::NeedsPairing { pin_source } => pin_source,
@@ -459,17 +494,50 @@ pub fn link_client(l: &LinkTarget, pin: PinPrompt<'_>) -> Result<LinkClient, Ope
             pin_source
         }
     };
-    if let Err(e) = pair(l, &client, &store, &pin_source, pin) {
+    let paired = pair(l, &client, &pin_source, pin);
+    for e in saver.take_failures() {
+        pin.warn(&format!(
+            "could not save the pairing token for {} ({e}); it will ask for a PIN next time",
+            hub_name(&client, l)
+        ));
+    }
+    if let Err(e) = paired {
         client.close();
         return Err(e);
     }
     Ok(client)
 }
 
+/// Stores a token the moment the hub issues it, which is also how the `ok` that
+/// arrives after [`LinkClient::pair`] has timed out is heard. It runs on the
+/// client's reader thread, so failures wait here for whoever can report them.
+struct TokenSaver {
+    store: TokenStore,
+    failed: Mutex<Vec<String>>,
+}
+
+impl TokenSaver {
+    fn take_failures(&self) -> Vec<String> {
+        std::mem::take(&mut *self.failed.lock().unwrap_or_else(PoisonError::into_inner))
+    }
+}
+
+impl LinkEvents for TokenSaver {
+    fn token_issued(&self, hub_id: &str, token: &str) {
+        if let Err(e) = self.store.put(hub_id, token) {
+            self.failed
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(e.to_string());
+        }
+    }
+}
+
+/// Pair with the PIN, and the token goes to [`TokenSaver`]. After a timeout the
+/// session stays open for [`PAIR_GRACE`], in case the answer is only late.
 fn pair(
     l: &LinkTarget,
     client: &LinkClient,
-    store: &TokenStore,
     pin_source: &str,
     pin: PinPrompt<'_>,
 ) -> Result<(), OpenError> {
@@ -481,21 +549,23 @@ fn pair(
         });
     };
     match client.pair(&code, LINK_ROLE) {
-        Ok(token) => {
-            if !token.is_empty()
-                && let Err(e) = store.put(&client.hello().hub.id, &token)
-            {
-                // It costs a PIN next time, not this connection.
-                pin.warn(&format!(
-                    "could not save the pairing token for {hub} ({e}); it will ask for a PIN next time"
-                ));
-            }
-            Ok(())
-        }
+        Ok(_) => Ok(()),
         Err(e @ LinkError::WrongPin { .. }) => Err(OpenError::PinRefused {
             hub,
             reason: e.to_string(),
         }),
+        Err(LinkError::Timeout) => {
+            let deadline = Instant::now().checked_add(PAIR_GRACE);
+            while !client.is_ready() && deadline.is_some_and(|d| Instant::now() < d) {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            if !client.is_ready() {
+                return Err(link_error(l, LinkError::Timeout));
+            }
+            // A late `ok` leaves the device list to us.
+            client.refresh_devices().map_err(|e| link_error(l, e))?;
+            Ok(())
+        }
         Err(e) => Err(link_error(l, e)),
     }
 }
@@ -505,7 +575,7 @@ fn hub_name(client: &LinkClient, l: &LinkTarget) -> String {
     if name.is_empty() {
         l.address()
     } else {
-        name.clone()
+        printable(name)
     }
 }
 
@@ -528,11 +598,11 @@ fn bind_link_device(l: &LinkTarget, client: &LinkClient) -> Result<Box<dyn Trans
         l.device.as_deref(),
         |d| vec![d.serial.as_str(), d.name.as_str()],
         |d| {
-            if d.name.is_empty() {
+            printable(&if d.name.is_empty() {
                 d.serial.clone()
             } else {
                 format!("{} {}", d.serial, d.name)
-            }
+            })
         },
         "devices on this hub",
         "--device <serial>",
@@ -626,10 +696,14 @@ impl TokenStore {
 fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
+    // A leftover from a crash keeps the mode it has, whatever is asked here.
+    match std::fs::remove_file(path) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+        _ => {}
+    }
     let mut f = std::fs::OpenOptions::new()
         .write(true)
-        .create(true)
-        .truncate(true)
+        .create_new(true)
         .mode(0o600)
         .open(path)?;
     f.write_all(bytes)
@@ -795,7 +869,9 @@ impl Reconnector {
         }
     }
 
-    /// What the attempts so far had to say, each once.
+    /// What the attempts so far had to say, each once. An attempt says it
+    /// before its result arrives, so after [`Reconnect::Connected`] or
+    /// [`Reconnect::GaveUp`] this holds everything; take it then.
     pub fn take_warnings(&mut self) -> Vec<String> {
         std::mem::take(&mut *self.warnings.lock().unwrap_or_else(PoisonError::into_inner))
     }
@@ -868,6 +944,19 @@ impl Reconnector {
     }
 }
 
+/// A directory for this crate's test files, under the build's `target` (never
+/// tmpfs).
+#[cfg(test)]
+pub(crate) fn test_dir() -> PathBuf {
+    let base = std::env::var_os("CARGO_TARGET_DIR").map_or_else(
+        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"),
+        PathBuf::from,
+    );
+    let dir = base.join("dspi-tui-test-files");
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_r1 {
@@ -878,7 +967,7 @@ mod tests_wp_r1 {
     use std::thread::sleep;
 
     fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("dspi-r1-{}-{name}", std::process::id()));
+        let dir = test_dir().join(format!("r1-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir.join("tokens.toml")
@@ -1442,6 +1531,106 @@ mod tests_wp_r1 {
         assert!(e.is_final());
         hub.reopen_window();
         drop(second.open(&prompt).unwrap());
+    }
+
+    /// F4: the hub took the PIN but answered after `pair` gave up. The grace
+    /// keeps the session open, so the token is heard and the client is usable.
+    #[test]
+    fn wp_r1_a_pair_answered_late_still_stores_its_token_and_connects() {
+        let hub = Arc::new(pin_hub());
+        let tokens = scratch("late");
+        let target = Target::Link(link(&hub, tokens.clone()));
+        let held = Arc::clone(&hub);
+        let prompt = move |_: &str, _: &str| {
+            held.hold_replies();
+            let held = Arc::clone(&held);
+            std::thread::spawn(move || {
+                sleep(dspi_link::Timing::default().request_timeout + Duration::from_millis(500));
+                held.release_replies();
+            });
+            Some("1234".to_string())
+        };
+        let t = target.open(&prompt).unwrap();
+        assert!(t.session_id().is_some());
+        drop(t);
+        assert!(TokenStore::at(tokens).get(&hub_id()).is_some());
+        drop(target.open(&no_prompt).unwrap());
+    }
+
+    #[test]
+    fn wp_r1_printable_replaces_every_control_character() {
+        assert_eq!(printable("Bench 1 é"), "Bench 1 é");
+        assert_eq!(
+            printable("a\u{1b}[2Jb\u{9b}c\u{7f}\n"),
+            "a\u{FFFD}[2Jb\u{FFFD}c\u{FFFD}\u{FFFD}"
+        );
+    }
+
+    #[test]
+    fn wp_r1_a_hub_name_with_an_escape_never_reaches_an_error_or_a_listing() {
+        let hub = FakeHub::start(HubConfig {
+            name: "Evil\u{1b}]0;x".into(),
+            device_name: "Dev\u{1b}[2J".into(),
+            auth: Auth::Window("1234".into()),
+            ..HubConfig::default()
+        })
+        .unwrap();
+        let target = Target::Link(link(&hub, scratch("evil")));
+        let Err(e) = target.open(&no_prompt) else {
+            panic!("opened without a PIN");
+        };
+        assert!(!e.to_string().contains('\u{1b}'), "{e}");
+        let prompt = |h: &str, _: &str| {
+            assert!(!h.contains('\u{1b}'));
+            Some("1234".to_string())
+        };
+        let listed = target.list(&prompt).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert!(!listed[0].name.contains('\u{1b}'), "{listed:?}");
+    }
+
+    #[test]
+    fn wp_r1_what_will_not_change_is_not_retried() {
+        let stop = [
+            OpenError::ChannelMap,
+            OpenError::Ambiguous {
+                what: "ports",
+                flag: "--midi",
+                names: Vec::new(),
+            },
+            OpenError::Transport(TransportError::Incompatible("old".into())),
+            OpenError::Snapshot(TransportError::Incompatible("old".into())),
+        ];
+        for e in &stop {
+            assert!(e.is_final(), "{e}");
+        }
+        let retry = [
+            OpenError::Transport(TransportError::NotFound),
+            OpenError::Snapshot(TransportError::Disconnected),
+        ];
+        for e in &retry {
+            assert!(!e.is_final(), "{e}");
+        }
+    }
+
+    #[test]
+    fn wp_r1_a_leftover_token_temp_file_cannot_widen_the_new_tokens_mode() {
+        let path = scratch("leftover");
+        let tmp = path.with_extension("toml.new");
+        std::fs::write(&tmp, "old").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o644)).unwrap();
+        }
+        TokenStore::at(path.clone()).put("a", "one").unwrap();
+        assert!(!tmp.exists());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o077, 0);
+        }
     }
 
     #[test]

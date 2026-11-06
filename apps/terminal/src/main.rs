@@ -15,7 +15,7 @@ use dspi_proto::value::Value;
 use dspi_session::ext_state::ExtState;
 use dspi_session::{Outcome, Session, probe};
 use dspi_transport::{Transport, TransportError, list_devices};
-use dspi_tui::shell::connect::{LinkTarget, OpenError, Target};
+use dspi_tui::shell::connect::{LinkTarget, OpenError, Target, printable};
 
 /// Exit codes are part of the interface: scripts branch on these.
 mod exit {
@@ -35,6 +35,13 @@ fn main() -> ExitCode {
     // link: `dspi --demo dump` and `dspi dump --demo` are one command.
     let (target, flags) = match parse_target(&flags) {
         Ok(parsed) => parsed,
+        Err(e) => {
+            eprintln!("dspi: {e}");
+            return ExitCode::from(exit::USAGE);
+        }
+    };
+    let target = match resolve_pin(target, std::env::var("DSPI_PIN").ok(), read_stdin_line) {
+        Ok(t) => t,
         Err(e) => {
             eprintln!("dspi: {e}");
             return ExitCode::from(exit::USAGE);
@@ -109,26 +116,11 @@ fn main() -> ExitCode {
 /// The words that can follow `--midi` without being a port name: every command
 /// and parameter. `--midi=NAME` is there for a port that shares a name with one.
 fn is_command_word(word: &str) -> bool {
-    const VERBS: &[&str] = &[
-        "list",
-        "params",
-        "completions",
-        "doctor",
-        "raw",
-        "ext",
-        "autoeq",
-        "screenshot",
-        "export",
-        "import",
-        "dump",
-        "watch",
-        "get",
-        "set",
-        "eq",
-        "undo",
-        "redo",
-    ];
-    VERBS.contains(&word) || by_path(word).is_some()
+    /// What this binary adds to the shared grammar's verbs.
+    const TERMINAL_VERBS: &[&str] = &["ext", "autoeq", "screenshot", "export", "import", "watch"];
+    TERMINAL_VERBS.contains(&word)
+        || dspi_cmd::VERBS.iter().any(|(n, _)| *n == word)
+        || by_path(word).is_some()
 }
 
 /// Take the flags that say where the device is, leaving everything else in
@@ -205,6 +197,40 @@ fn parse_target<'a>(flags: &[&'a str]) -> Result<(Target, Vec<&'a str>), String>
         Target::Usb { serial: device }
     };
     Ok((target, rest))
+}
+
+/// Where a script's PIN comes from, since a `--pin 1234` on the command line is
+/// visible to every user in `ps` and stays in the shell's history: `--pin -`
+/// reads a line of standard input, and `DSPI_PIN` is used when no `--pin` says
+/// otherwise.
+fn resolve_pin(
+    target: Target,
+    env: Option<String>,
+    stdin: impl FnOnce() -> Option<String>,
+) -> Result<Target, String> {
+    let Target::Link(mut l) = target else {
+        return Ok(target);
+    };
+    let usable = |p: String| {
+        let p = p.trim().to_owned();
+        (!p.is_empty()).then_some(p)
+    };
+    l.pin = match l.pin.take().as_deref() {
+        Some("-") => Some(
+            stdin()
+                .and_then(usable)
+                .ok_or("--pin - found no PIN on standard input")?,
+        ),
+        Some(p) => Some(p.to_owned()),
+        None => env.and_then(usable),
+    };
+    Ok(Target::Link(l))
+}
+
+fn read_stdin_line() -> Option<String> {
+    let mut line = String::new();
+    std::io::stdin().read_line(&mut line).ok()?;
+    Some(line)
 }
 
 /// Ask for a hub's PIN, when there is a person to ask.
@@ -312,7 +338,10 @@ OPTIONS:
     --midi [PORT]            connect over USB MIDI; PORT is part of the port's
                              name (--midi=PORT if it could be read as a command)
     --link <host[:port]>     connect through a DSPi Link hub
-    --pin <pin>              the hub's PIN, when pairing without a terminal
+    --pin <pin>              the hub's PIN, when pairing without a terminal.
+                             On the command line it shows in `ps` and in shell
+                             history: for scripts, use `--pin -` (one line of
+                             standard input) or the DSPI_PIN environment variable
                              (the token is kept in the config directory)
     --json                   machine-readable output
     --no-animation           no connect reveal or easing
@@ -351,6 +380,7 @@ fn list_remote(target: &Target, json: bool) -> u8 {
         println!("{}", serde_json::Value::Array(arr));
     } else {
         for d in &listed {
+            // `Target::list` has made these printable.
             println!("{}  {}  {}", d.name, d.serial, d.detail);
         }
     }
@@ -430,9 +460,9 @@ fn cmd_dump(target: &Target, json: bool) -> u8 {
 
     println!(
         "{}  {}  firmware {}  wire V{}",
-        caps.serial,
+        printable(&caps.serial),
         caps.platform.name(),
-        caps.firmware,
+        printable(&caps.firmware),
         caps.wire_format
     );
     println!(
@@ -440,7 +470,7 @@ fn cmd_dump(target: &Target, json: bool) -> u8 {
         caps.num_channels, caps.num_inputs, caps.num_outputs, caps.max_bands
     );
     if let Some(b) = &caps.build_info {
-        println!("build {}  {}", b.describe, b.date);
+        println!("build {}  {}", printable(&b.describe), printable(&b.date));
     }
     if let Some(p) = caps.active_preset {
         println!("active preset: {p}");
@@ -456,8 +486,8 @@ fn cmd_dump(target: &Target, json: bool) -> u8 {
         println!(
             "  {:>2}  {:<12}  {:<16}  {}",
             c.index,
-            c.slug,
-            c.name,
+            printable(&c.slug),
+            printable(&c.name),
             if c.is_output { "output" } else { "input" }
         );
     }
@@ -1023,7 +1053,7 @@ fn cmd_watch(target: &Target, json: bool) -> u8 {
     if !json {
         println!(
             "watching {} (Ctrl-C to stop)",
-            session.capabilities().serial
+            printable(&session.capabilities().serial)
         );
     }
     let (kind, own_session) = session
@@ -2177,7 +2207,8 @@ fn show(kind: Kind, v: &Value) -> String {
     {
         return (*name).to_string();
     }
-    v.display(kind.unit())
+    // A channel name, or any other text, is the device's to choose.
+    printable(&v.display(kind.unit()))
 }
 
 fn open(target: &Target) -> Result<Box<dyn Transport>, OpenError> {
@@ -2303,6 +2334,44 @@ mod tests_wp_r1 {
         assert_eq!(rest, vec!["--theme", "calm", "--lite"]);
         let (_, rest) = parsed(&["--theme=amber"]);
         assert_eq!(rest, vec!["--theme=amber"]);
+    }
+
+    #[test]
+    fn wp_r1_a_pin_comes_from_the_flag_stdin_or_the_environment() {
+        let pin = |flags: &[&'static str], env: Option<&str>, stdin: Option<&str>| {
+            let target = parsed(flags).0;
+            resolve_pin(target, env.map(str::to_owned), || stdin.map(str::to_owned)).map(|t| {
+                let Target::Link(l) = t else {
+                    panic!("a hub target");
+                };
+                l.pin
+            })
+        };
+        let hub = ["--link", "hub"];
+        assert_eq!(pin(&hub, None, None), Ok(None));
+        assert_eq!(pin(&hub, Some("12"), None), Ok(Some("12".into())));
+        assert_eq!(pin(&hub, Some("  "), None), Ok(None));
+        let flag = ["--link", "hub", "--pin", "34"];
+        assert_eq!(pin(&flag, Some("12"), None), Ok(Some("34".into())));
+        let dash = ["--link", "hub", "--pin", "-"];
+        assert_eq!(pin(&dash, Some("12"), Some("56\n")), Ok(Some("56".into())));
+        assert!(pin(&dash, Some("12"), None).is_err());
+        assert!(pin(&dash, None, Some("\n")).is_err());
+        // The environment means nothing off a hub.
+        let usb = parsed(&["dump"]).0;
+        assert_eq!(
+            resolve_pin(usb.clone(), Some("12".into()), || None),
+            Ok(usb)
+        );
+    }
+
+    #[test]
+    fn wp_r1_every_shared_verb_is_a_command_word() {
+        for (verb, _) in dspi_cmd::VERBS {
+            assert!(is_command_word(verb), "{verb}");
+        }
+        assert!(is_command_word("watch"));
+        assert!(!is_command_word("Bench"));
     }
 
     #[test]

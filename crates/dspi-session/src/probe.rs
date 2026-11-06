@@ -140,7 +140,7 @@ pub(crate) fn read_bulk_from(
         {
             return Err(TransportError::Incompatible(refusal(firmware, wire)));
         }
-        return BulkPacket::decode(image).map_err(|e| TransportError::Usb(e.to_string()));
+        return BulkPacket::decode(image).map_err(|e| TransportError::Malformed(e.to_string()));
     }
 
     let total = generated::BULK_SIZE;
@@ -165,7 +165,7 @@ pub(crate) fn read_bulk_from(
         }
     }
 
-    BulkPacket::decode(buf).map_err(|e| TransportError::Usb(e.to_string()))
+    BulkPacket::decode(buf).map_err(|e| TransportError::Malformed(e.to_string()))
 }
 
 /// What to tell someone whose device speaks another wire format.

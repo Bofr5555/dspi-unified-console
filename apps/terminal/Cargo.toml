@@ -21,7 +21,7 @@ dspi-tui = { workspace = true, default-features = false }
 serde_json.workspace = true
 # -- WP R1 --
 # `dspi doctor --link` reads the hub's info endpoint.
-dspi-link = { path = "../../crates/dspi-link" }
+dspi-link.workspace = true
 
 [features]
 default = ["midi"]

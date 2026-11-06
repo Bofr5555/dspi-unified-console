@@ -22,7 +22,7 @@ serde = { workspace = true, features = ["derive"] }
 # -- WP R1 --
 # The hub session the terminal connects, pairs and closes (shell/connect.rs);
 # dspi-transport only wraps an open one.
-dspi-link = { path = "../dspi-link" }
+dspi-link.workspace = true
 # OpenError, as the other crates' typed errors.
 thiserror.workspace = true
 
@@ -35,4 +35,4 @@ midi = ["dspi-transport/midir"]
 [dev-dependencies]
 # -- WP R1 --
 # The in-process hub the Link tests connect to.
-dspi-link = { path = "../dspi-link", features = ["fake-hub"] }
+dspi-link = { workspace = true, features = ["fake-hub"] }

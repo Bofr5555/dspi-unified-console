@@ -178,7 +178,10 @@ fn usb_checks() -> Vec<Status> {
 }
 
 fn midi_ports_found(ports: &[String]) -> Status {
-    Status::Ok(format!("DSPi MIDI port(s): {}", ports.join(", ")))
+    Status::Ok(format!(
+        "DSPi MIDI port(s): {}",
+        connect::printable(&ports.join(", "))
+    ))
 }
 
 /// Opened and asked, as the USB check does: seeing a device proves little.
@@ -190,7 +193,7 @@ fn open_check(target: &Target, name: &str) -> Status {
             Status::Ok(format!(
                 "{name}: {} firmware {}, wire V{}, {} channels",
                 caps.platform.name(),
-                caps.firmware,
+                connect::printable(&caps.firmware),
                 caps.wire_format,
                 caps.num_channels
             ))
@@ -252,14 +255,14 @@ fn link_checks(target: &Target, l: &LinkTarget) -> Vec<Status> {
     match dspi_link::address::fetch_info(&l.host, l.port, timeout) {
         Ok(info) => out.push(Status::Ok(format!(
             "hub {} at {}:{}, {} device(s), access: {}",
-            info.hub.name,
+            connect::printable(&info.hub.name),
             l.host,
             l.port,
             info.devices.len(),
             if info.auth.is_empty() {
-                "unknown"
+                "unknown".to_owned()
             } else {
-                &info.auth
+                connect::printable(&info.auth)
             },
         ))),
         Err(e) => out.push(Status::Warn(format!(
