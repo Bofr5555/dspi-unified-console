@@ -344,6 +344,7 @@ fn main() {
                     seq,
                     event,
                     lost: false,
+                    origin: None,
                 },
             );
             at += 0.734;

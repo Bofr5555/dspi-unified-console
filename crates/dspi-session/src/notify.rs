@@ -182,6 +182,23 @@ pub struct Notification {
     /// The sequence number skipped: something was dropped before this one,
     /// and the bulk shadow can no longer be trusted.
     pub lost: bool,
+    /// The link's attribution (DSPi Link session id of the writer, 0 for the
+    /// device); `None` over USB and MIDI. See [`Notification::is_own_echo`].
+    pub origin: Option<u16>,
+}
+
+impl Notification {
+    /// Whether this is the echo of a write this client made, given its own
+    /// session id on the link ([`dspi_transport::Transport::session_id`]).
+    /// Such a change is already in the client's mirror.
+    pub fn is_own_echo(&self, session: Option<u16>) -> bool {
+        match &self.event {
+            Event::ParamChanged { source, .. } => {
+                source.is_ours() && dspi_transport::is_own_write(self.origin, session)
+            }
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -369,8 +386,8 @@ impl Notifications {
             .spawn(move || {
                 let mut seqs = SeqTracker::default();
                 while !stop_flag.load(Ordering::Relaxed) {
-                    let packet = match source.read(Self::READ_TIMEOUT) {
-                        Ok(p) => p,
+                    let (packet, origin) = match source.read_attributed(Self::READ_TIMEOUT) {
+                        Ok(a) => (a.packet, a.origin),
                         Err(dspi_transport::TransportError::Disconnected) => {
                             disc_flag.store(true, Ordering::Relaxed);
                             break;
@@ -393,7 +410,15 @@ impl Notifications {
                             // 178), so it says nothing about loss.
                             let lost =
                                 !matches!(event, Event::MasterVolume(_)) && seqs.observe(seq);
-                            if tx.send(Notification { seq, event, lost }).is_err() {
+                            if tx
+                                .send(Notification {
+                                    seq,
+                                    event,
+                                    lost,
+                                    origin,
+                                })
+                                .is_err()
+                            {
                                 break;
                             }
                         }
@@ -408,6 +433,7 @@ impl Notifications {
                                         bytes: packet,
                                     },
                                     lost: true,
+                                    origin,
                                 })
                                 .is_err()
                             {

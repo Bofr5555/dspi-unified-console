@@ -1770,6 +1770,7 @@ mod tests {
                 bytes: (-20.0f32).to_le_bytes().to_vec(),
             },
             lost: false,
+            origin: None,
         };
         assert_eq!(
             s.apply(&n),
@@ -1793,6 +1794,7 @@ mod tests {
                 bytes: vec![0],
             },
             lost: false,
+            origin: None,
         };
         assert!(matches!(s.apply(&n), Applied::NeedsReread { .. }));
         assert!(s.stale);
@@ -1803,6 +1805,7 @@ mod tests {
                 source: Source::Preset,
             },
             lost: false,
+            origin: None,
         };
         assert!(matches!(
             s.apply(&n),
@@ -1816,6 +1819,7 @@ mod tests {
             seq: 9,
             event: Event::PresetLoaded { slot: 2 },
             lost: true,
+            origin: None,
         };
         assert_eq!(s.apply(&n), Applied::PresetLoaded { slot: 2 });
         assert!(s.stale, "a lost packet always means a re-read");
@@ -1829,6 +1833,7 @@ mod tests {
             seq: 1,
             event: e,
             lost: false,
+            origin: None,
         });
         assert_eq!(s.siggen_state, Some((1, 0, 4, 0xFF)));
         let (_, e) = crate::notify::decode(&[
@@ -1850,6 +1855,7 @@ mod tests {
             seq: 2,
             event: e,
             lost: false,
+            origin: None,
         });
         assert_eq!(s.ir_learn, Some((2, 1, 0x1234_5678)));
     }
@@ -1865,6 +1871,7 @@ mod tests {
             seq: 7,
             event: e,
             lost: false,
+            origin: None,
         });
         assert!(matches!(applied, Applied::Status(Event::CsAux { .. })));
         assert_eq!(s.cs_aux, Some((4, 1, 0x0C80)));
@@ -2083,6 +2090,7 @@ mod tests {
                     bytes,
                 },
                 lost: false,
+                origin: None,
             });
             assert_eq!(
                 applied,
@@ -2121,6 +2129,7 @@ mod tests {
                     bytes: vec![0xAA; len],
                 },
                 lost: false,
+                origin: None,
             });
             assert_eq!(
                 applied,

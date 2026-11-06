@@ -727,6 +727,7 @@ mod tests {
                 seq: seq as u8,
                 event,
                 lost: false,
+                origin: None,
             });
         }
         let c = cx(&d, &st, &cfg);

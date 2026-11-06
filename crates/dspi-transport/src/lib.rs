@@ -61,6 +61,20 @@ pub enum TransportError {
     /// message names both sides and what to update; it is shown as is.
     #[error("{0}")]
     Incompatible(String),
+
+    /// A remote link refused the request for this client (DSPi Link `DENIED`:
+    /// the role or the hub policy does not allow it).
+    #[error("not allowed: {0}")]
+    Denied(String),
+
+    /// Another client holds the device lock (DSPi Link `LOCKED`).
+    #[error("the device is locked by another client")]
+    Locked,
+
+    /// Any other failure a non-USB link reports (busy, rate limited, a frame
+    /// error). The message names the link's own status.
+    #[error("{0}")]
+    Remote(String),
 }
 
 /// Platform-specific advice for a permission failure.
@@ -108,6 +122,64 @@ impl DeviceDescriptor {
     }
 }
 
+/// What kind of link a transport is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransportKind {
+    /// USB vendor control transfers on interface 2.
+    Usb,
+    /// The USB MIDI control channel (SysEx), DSPI_USB_MIDI firmware only.
+    Midi,
+    /// DSPi Link, a hub on the network.
+    Link,
+    /// A scripted or simulated device.
+    Fake,
+}
+
+/// What a transport can and cannot do, for the code above it to adapt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransportCaps {
+    pub kind: TransportKind,
+    /// Whether the chunked bulk opcodes (`0xA2`/`0xA3`) may be used. A DSPi
+    /// Link hub refuses them (Link spec 8.2): bulk then goes single-shot
+    /// (`0xA0`/`0xA1`), which the hub chunks itself.
+    pub chunked_bulk: bool,
+    /// Whether a request is a round trip over a network, so a caller should
+    /// prefer one bulk read over many small ones and allow longer timeouts.
+    pub remote: bool,
+}
+
+impl TransportCaps {
+    pub const USB: Self = Self {
+        kind: TransportKind::Usb,
+        chunked_bulk: true,
+        remote: false,
+    };
+}
+
+/// A notification packet with what the link says about where it came from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Attributed {
+    pub packet: Vec<u8>,
+    /// The DSPi Link session id of the client whose write caused it (Link spec
+    /// 8.3), 0 for a change made at the device; `None` over USB and MIDI,
+    /// which carry no attribution beyond the packet's own source byte.
+    pub origin: Option<u16>,
+}
+
+/// Whether a `HOST_SET` notification is the echo of this client's own write.
+///
+/// USB and MIDI (no session id): every host write is ours, since a device
+/// has one host on that link. DSPi Link: only a packet whose origin is our
+/// session id; origin 0 never is (Link spec 8.3: "must not suppress by source
+/// alone"), or a client would miss every change another client makes.
+pub fn is_own_write(origin: Option<u16>, session: Option<u16>) -> bool {
+    match (origin, session) {
+        (_, None) => true,
+        (Some(o), Some(s)) => o != 0 && o == s,
+        (None, Some(_)) => false,
+    }
+}
+
 /// A channel over which vendor commands reach a device.
 ///
 /// Implementors handle the wire; they do not interpret payloads. In particular
@@ -152,6 +224,26 @@ pub trait Transport: Send {
     fn notifications(&self) -> Option<Box<dyn NotificationSource>> {
         None
     }
+
+    /// What this link supports. The default is USB's.
+    fn caps(&self) -> TransportCaps {
+        TransportCaps::USB
+    }
+
+    /// This client's session id on a shared link (DSPi Link), used to tell
+    /// our own writes' notifications from other clients'. See
+    /// [`is_own_write`].
+    fn session_id(&self) -> Option<u16> {
+        None
+    }
+
+    /// Take the link's device lock around a multi-step flow (a preset load, a
+    /// bulk restore). A link without locks succeeds at once.
+    fn lock(&mut self, _reason: &str, _timeout: Duration) -> Result<()> {
+        Ok(())
+    }
+
+    fn unlock(&mut self) {}
 }
 
 /// The firmware's notification stream: bulk IN endpoint `0x83`, 64-byte
@@ -163,6 +255,15 @@ pub trait NotificationSource: Send {
     /// One packet, sized by what actually arrived. A timeout is `Ok(vec![])`
     /// rather than an error: silence is normal.
     fn read(&mut self, timeout: Duration) -> Result<Vec<u8>>;
+
+    /// [`NotificationSource::read`] with the link's attribution. Links that
+    /// carry an origin (DSPi Link) override this.
+    fn read_attributed(&mut self, timeout: Duration) -> Result<Attributed> {
+        Ok(Attributed {
+            packet: self.read(timeout)?,
+            origin: None,
+        })
+    }
 }
 
 /// Run a transfer that may land inside a deferred write's busy window.
@@ -206,6 +307,17 @@ mod tests {
             address: 7,
         };
         assert_eq!(d.short_name(), "1B8B4E3A");
+    }
+
+    #[test]
+    fn own_writes_follow_the_link_rule() {
+        // USB and MIDI: no session, every host write is ours.
+        assert!(is_own_write(None, None));
+        // Link: only our own session id.
+        assert!(is_own_write(Some(7), Some(7)));
+        assert!(!is_own_write(Some(8), Some(7)));
+        assert!(!is_own_write(Some(0), Some(0)), "origin 0 is the device");
+        assert!(!is_own_write(None, Some(7)));
     }
 
     #[test]

@@ -214,6 +214,7 @@ mod tests {
             seq,
             event,
             lost: false,
+            origin: None,
         }
     }
 
