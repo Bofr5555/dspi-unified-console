@@ -120,6 +120,22 @@ pub const TUBE_PARAM_COUNT: usize = dspi_proto::generated::tube::TUBE_NUM_PARAMS
 // -- WP C7 --
 // -- WP C8 --
 // -- WP C9 --
+/// Spectrum analyser: band slots per channel (`RtaCapsInfo::centres`,
+/// `RtaChannelFrame::avg_db` / `peak_db`), `RTA_MAX_BANDS` (rta_fft.h:42).
+pub const RTA_MAX_BANDS: usize = dspi_proto::generated::rta::RTA_MAX_BANDS as usize;
+/// Spectrum analyser: channel slots in `RtaSnapshot::frames` (the channel
+/// mask is 16 bits).
+pub const RTA_MAX_CHANNELS: usize = 16;
+/// Spectrum analyser: bin slots in `RtaSnapshot::bins_db` (N/2 at the
+/// largest transform, 1024 points).
+pub const RTA_MAX_BINS: usize = 512;
+/// Spectrum analyser tap: after the per-input PEQ, before the matrix.
+pub const RTA_TAP_INPUT: u8 = dspi_proto::generated::rta::RTA_TAP_INPUT as u8;
+/// Spectrum analyser tap: after output gain and delay.
+pub const RTA_TAP_OUTPUT: u8 = dspi_proto::generated::rta::RTA_TAP_OUTPUT as u8;
+/// dBFS of a silent band or bin (level byte 0 at the firmware's 0 dBFS
+/// level 243, 0.5 dB steps): -121.5.
+pub const RTA_FLOOR_DB: f32 = -121.5;
 // -- WP C10 --
 // -- WP C11 --
 // -- WP C12 --
