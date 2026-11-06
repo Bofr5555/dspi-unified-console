@@ -1,0 +1,217 @@
+{
+  "title": "Getting Started",
+  "step_counter": "Step {current} of {total}",
+  "buttons": {
+    "skip": "Skip Setup",
+    "back": "Back",
+    "continue": "Continue",
+    "finish": "Start Using DSPi Console",
+    "try_again": "Try Again"
+  },
+  "stages": [
+    {
+      "id": "welcome",
+      "label": "Welcome",
+      "title": "Welcome to DSPi Console",
+      "paragraphs": [
+        {
+          "id": "welcome.intro",
+          "text": "DSPi turns a Raspberry Pi Pico into a remarkably capable audio processor: equalisation, crossovers, upmixing, loudness compensation and more, applied live to whatever you play."
+        },
+        {
+          "id": "welcome.job",
+          "when": "can_install_firmware",
+          "text": "Setup is short and has one job: getting the DSPi firmware onto your Pico. Once it is running, everything else is set up in the app as you need it."
+        },
+        {
+          "id": "welcome.job_elsewhere",
+          "when": "cannot_install_firmware",
+          "text": "This app cannot install firmware: use DSPi Console on macOS, Windows or Linux. Once the firmware is running, everything else is set up in the app as you need it."
+        }
+      ],
+      "rows": [
+        {
+          "id": "welcome.install",
+          "when": "can_install_firmware",
+          "icon": "connect",
+          "text": "Connect your Pico and install the DSPi firmware, right here."
+        },
+        {
+          "id": "welcome.confirm",
+          "when": "can_install_firmware",
+          "icon": "verified",
+          "text": "The board restarts and the app confirms the install worked."
+        },
+        {
+          "id": "welcome.install_elsewhere",
+          "when": "cannot_install_firmware",
+          "icon": "connect",
+          "text": "Install the DSPi firmware on your Pico there, then connect it here."
+        },
+        {
+          "id": "welcome.shape",
+          "icon": "sliders",
+          "text": "Outputs, wiring and audio are then yours to shape in the console."
+        }
+      ]
+    },
+    {
+      "id": "board",
+      "label": "Board",
+      "when": "can_install_firmware",
+      "headers": [
+        {
+          "id": "board.prepare",
+          "title": "Prepare your Pico",
+          "blurb": "In this step, we are going to install the DSPi firmware on your Pico-compatible device. Follow the directions below."
+        },
+        {
+          "id": "board.current",
+          "title": "Your device is ready",
+          "blurb": "This step installs the DSPi firmware, and your connected device is already running it. There is nothing to do here."
+        },
+        {
+          "id": "board.older",
+          "title": "Update your firmware",
+          "blurb": "Your DSPi is already connected, so no buttons need holding: the app can restart it and install the matching firmware in one step."
+        },
+        {
+          "id": "board.newer",
+          "title": "Your firmware is newer",
+          "blurb": "This Console ships an older firmware than your device is running. Updating the app is usually the better fix, but you can also downgrade the device to match."
+        },
+        {
+          "id": "board.installing",
+          "title": "Installing firmware",
+          "blurb": "Console ships the firmware it expects, so nothing needs a download. Keep the Pico plugged in until it checks back in."
+        },
+        {
+          "id": "board.verified",
+          "title": "Your device has been prepared",
+          "blurb": "The device has successfully restarted and DSPi Firmware is correctly installed."
+        },
+        {
+          "id": "board.failed",
+          "title": "Something needs attention",
+          "blurb": "This is almost always fixable. Follow the card below, then try again - nothing has been lost."
+        }
+      ],
+      "cards": [
+        {
+          "id": "card.waiting",
+          "title": "Waiting for your Pico",
+          "text": "Hold the BOOTSEL button while connecting your Pico-compatible device[[if macos: to your computer]]. Once detected, it will appear here."
+        },
+        {
+          "id": "card.looking",
+          "title": "Looking for your Pico",
+          "text": "Waiting for it to appear in bootloader mode. If nothing happens after a few seconds, unplug it, hold BOOTSEL, and plug it back in."
+        },
+        {
+          "id": "card.volume_wait",
+          "title": "{chip} found",
+          "text": "The board is in bootloader mode. Waiting for its {volume} drive to mount - this usually takes a second or two."
+        },
+        {
+          "id": "card.preparing",
+          "title": "Preparing to write",
+          "text": "Opening the {chip}'s {volume} drive."
+        },
+        {
+          "id": "card.ready",
+          "title": "{chip} ready",
+          "text": "The device is now in bootloader mode and ready to receive firmware.",
+          "action": "Install DSPi Firmware"
+        },
+        {
+          "id": "card.writing",
+          "title": "Writing firmware",
+          "text": "Near the end the board restarts itself and its drive disappears. That is normal - do not unplug it."
+        },
+        {
+          "id": "card.restarting",
+          "title": "Firmware written",
+          "text": "The board is restarting with its new firmware. This can take up to half a minute; leave it plugged in."
+        },
+        {
+          "id": "card.verified",
+          "title": "Firmware {version} installed",
+          "text": "That was the whole job. Continue to finish setup."
+        },
+        {
+          "id": "card.already_installed",
+          "title": "Firmware {bundled_version} already installed",
+          "text": "Your DSPi is running the firmware this Console ships, so there is nothing to install. Continue to finish setup."
+        },
+        {
+          "id": "card.update_available",
+          "title": "Firmware update available",
+          "text": "Your DSPi is running firmware {device_version}; this Console pairs with {bundled_version}. The device will restart into bootloader mode and come back updated. Audio stops until it finishes.",
+          "action": "Update DSPi Firmware"
+        },
+        {
+          "id": "card.downgrade",
+          "title": "This would be a downgrade",
+          "text": "Your DSPi is running firmware {device_version}, which is newer than this Console expects ({bundled_version}). A newer Console is the better fix, but you can downgrade the device to match this one.",
+          "action": "Downgrade Firmware"
+        },
+        {
+          "id": "card.failed_mundane",
+          "title": "Not quite ready",
+          "text": "{failure}"
+        },
+        {
+          "id": "card.failed",
+          "title": "The update did not complete",
+          "text": "{failure}"
+        }
+      ]
+    },
+    {
+      "id": "done",
+      "label": "Done",
+      "title": "You are set up",
+      "paragraphs": [
+        {
+          "id": "done.installed",
+          "when": "can_install_firmware",
+          "text": "Your Pico is running the DSPi firmware, and the console is ready whenever it is plugged in. A few places worth knowing about:"
+        },
+        {
+          "id": "done.ready",
+          "when": "cannot_install_firmware",
+          "text": "The console is ready whenever your DSPi is connected. A few places worth knowing about:"
+        }
+      ],
+      "rows": [
+        {
+          "id": "done.outputs",
+          "icon": "outputs",
+          "text": "Choose which outputs your build uses, and the pins that carry them, in Settings under [[hardware_page]]."
+        },
+        {
+          "id": "done.sound",
+          "when": "desktop",
+          "icon": "speaker",
+          "text": "Pick the DSPi as the output device in [[sound_settings]] to hear [[if macos:your computer]][[if not_macos:audio]] through it."
+        },
+        {
+          "id": "done.sound_usb",
+          "when": "mobile",
+          "icon": "speaker",
+          "text": "Connect the DSPi over USB to hear audio through it."
+        },
+        {
+          "id": "done.filters",
+          "icon": "sliders",
+          "text": "[[if desktop:Click an input or output in the sidebar]][[if mobile:Tap an input or output]] to edit its filters."
+        },
+        {
+          "id": "done.help",
+          "icon": "help",
+          "text": "Help holds release notes and links, and this wizard can be run again."
+        }
+      ]
+    }
+  ]
+}

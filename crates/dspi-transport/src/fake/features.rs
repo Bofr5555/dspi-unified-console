@@ -16,7 +16,8 @@
 //! (a type change does not rewrite bias/asym/hardness/sag), limiter group
 //! ganging on `LIMITER_ALL_OUTPUTS`, and the deferred applies (an input
 //! source, clock mode or DAC mute config takes effect, and notifies, at
-//! once). Nor are the float range clamps of the psybass, subharm, leveller,
+//! once; the output latency does too unless a test asks otherwise, see
+//! [`FakeRemote::defer_latency`]). Nor are the float range clamps of the psybass, subharm, leveller,
 //! tube and limiter parameters (a float is stored as sent; only the byte
 //! and integer fields are clamped), the tube's `custom_reset_if` (moving
 //! bias/asym/hardness/sag does not reset the type to custom), ADAT input
@@ -41,7 +42,7 @@ use dspi_proto::wire::{
     INPUT_CONFIG_FIELDS, LIMITER_OUTPUT_FIELDS, LIMITER_OUTPUT_LEN, SUBHARM_FIELDS, TUBE_FIELDS,
 };
 
-use super::{Field, Index, Scalar, State, Store, scalar};
+use super::{FakeRemote, Field, Index, Scalar, State, Store, scalar};
 
 // ------------------------------------------------------------------ layouts
 
@@ -553,6 +554,98 @@ pub(super) struct Extras {
     latency: u8,
     uart: [u8; UartCtrlConfig::SIZE],
     i2c: [u8; I2cCtrlConfig::SIZE],
+    // -- WP TM20 --
+    latency_apply: LatencyApply,
+}
+
+// -- WP TM20 --
+/// How a latency SET lands, set through [`FakeRemote`]. By default at once.
+#[derive(Default)]
+struct LatencyApply {
+    /// Status reads a SET stays pending for; `None` applies at once.
+    reads: Option<u32>,
+    /// A pending SET never finishes.
+    hold: bool,
+    /// A SET is ACKed and dropped: nothing changes, nothing stays pending.
+    refuse: bool,
+    /// Status reads that stall while a SET is pending, as the flash window does.
+    blackout: u32,
+    /// The id waiting for the main loop, and the status reads left.
+    pending: Option<(u8, u32)>,
+    /// Every SET of a known id that arrived.
+    sets: u32,
+}
+
+/// Simulated firmware timing for the output latency (`vendor_commands.c:1474`,
+/// `main.c:2298`): the SET is noted, the main loop applies it later, and the
+/// status reports the old id with `pending` set until then.
+impl FakeRemote {
+    /// A SET stays pending for this many status reads, then applies.
+    pub fn defer_latency(&self, reads: u32) {
+        self.shared.lock().extras.latency_apply.reads = Some(reads);
+    }
+
+    /// A SET stays pending for good.
+    pub fn hold_latency(&self) {
+        let mut s = self.shared.lock();
+        s.extras.latency_apply.reads = Some(0);
+        s.extras.latency_apply.hold = true;
+    }
+
+    /// A SET is ACKed and dropped. With [`Self::defer_latency`], it is dropped
+    /// when the apply comes round.
+    pub fn refuse_latency(&self) {
+        self.shared.lock().extras.latency_apply.refuse = true;
+    }
+
+    /// While a SET is pending, this many status reads stall first.
+    pub fn black_out_latency(&self, reads: u32) {
+        self.shared.lock().extras.latency_apply.blackout = reads;
+    }
+
+    /// How many latency SETs the device has received.
+    pub fn latency_sets(&self) -> u32 {
+        self.shared.lock().extras.latency_apply.sets
+    }
+}
+
+impl State {
+    /// `REQ_OUTPUT_LATENCY`'s OUT path for a known id.
+    fn latency_set(&mut self, id: u8) {
+        let a = &mut self.extras.latency_apply;
+        a.sets = a.sets.saturating_add(1);
+        match a.reads {
+            Some(reads) => a.pending = Some((id, reads)),
+            None if a.refuse => {}
+            None => self.extras.latency = id,
+        }
+    }
+
+    /// One status read's effect on a pending SET; `None` is a stall.
+    fn latency_status_read(&mut self) -> Option<Vec<u8>> {
+        let a = &mut self.extras.latency_apply;
+        if a.pending.is_some() && a.blackout > 0 {
+            a.blackout = a.blackout.saturating_sub(1);
+            return None;
+        }
+        let status = self.latency_status();
+        let a = &mut self.extras.latency_apply;
+        if let Some((id, left)) = a.pending {
+            if a.hold {
+                return Some(status);
+            }
+            if left > 0 {
+                a.pending = Some((id, left.saturating_sub(1)));
+                return Some(status);
+            }
+            a.pending = None;
+            if !a.refuse {
+                self.extras.latency = id;
+            }
+            return Some(self.latency_status());
+        }
+        Some(status)
+    }
 }
 
 impl Extras {
@@ -565,6 +658,8 @@ impl Extras {
             latency: LATENCY_DEFAULT,
             uart: UartCtrlConfig::default().encode(),
             i2c: I2cCtrlConfig::default().encode(),
+            // -- WP TM20 --
+            latency_apply: LatencyApply::default(),
         }
     }
 }
@@ -733,7 +828,8 @@ impl State {
             }
             op::REQ_GET_DEVICE_NAME => (value == 0).then(|| self.extras.device_name.to_vec()),
             op::REQ_OUTPUT_LATENCY => match value {
-                0 => Some(self.latency_status()),
+                // -- WP TM20 --
+                0 => self.latency_status_read(),
                 1 => Some(self.latency_options()),
                 _ => None,
             },
@@ -885,7 +981,8 @@ impl State {
                 // ERROR on UART/I2C/MIDI; stalls here unless
                 // ack_unknown_sets.
                 Some(&id) if LATENCY_OPTIONS.iter().any(|o| o.0 == id) => {
-                    self.extras.latency = id;
+                    // -- WP TM20 --
+                    self.latency_set(id);
                     true
                 }
                 _ => false,
@@ -1166,7 +1263,8 @@ impl State {
         b.extend(latency_us.to_le_bytes());
         b.extend(frames(latency_us, 500_000).to_le_bytes());
         b.extend(frames(batch_us, 999_999).to_le_bytes());
-        b.push(0);
+        // -- WP TM20 --
+        b.push(u8::from(self.extras.latency_apply.pending.is_some()));
         b.push(LATENCY_OPTIONS.len() as u8);
         b.extend([0, 0]);
         b

@@ -41,6 +41,14 @@ pub enum ExtError {
     #[error("{0}")]
     BadArgument(String),
 
+    /// WP CG14: this voltage is above 1.20 V and above what the unit reports
+    /// now, and the confirmation word was not given. Nothing was written.
+    #[error("{target} needs the confirmation word: type {word}", target = vreg_label(*code), word = crate::overvolt::WORD)]
+    WordRequired {
+        /// The voltage asked for.
+        code: u8,
+    },
+
     #[error(transparent)]
     Transport(TransportError),
 }
@@ -126,7 +134,20 @@ pub fn read_core_vreg(t: &mut dyn Transport) -> Result<CoreVregStatus> {
 
 /// Send one core-voltage operation. The firmware refuses (stalls) an unknown
 /// op, a voltage outside 1.15-1.30 V, or a SET below the build default.
-pub fn core_vreg_op(t: &mut dyn Transport, op: VregOp) -> Result<()> {
+///
+/// WP CG14: a `SET` or `TRIAL` first reads the unit's status, and with no
+/// [`crate::overvolt::WORD`] in `word` a raise the rule covers is refused with
+/// [`ExtError::WordRequired`] and nothing written. A failed read counts as an
+/// unreadable unit. The other requests read nothing.
+pub fn core_vreg_op(t: &mut dyn Transport, op: VregOp, word: Option<&str>) -> Result<()> {
+    if let VregOp::Set(code) | VregOp::Trial(code) = op {
+        let status = read_core_vreg(t).ok();
+        if crate::overvolt::op_needs_word(op, status.as_ref())
+            && !crate::overvolt::word_matches(word)
+        {
+            return Err(ExtError::WordRequired { code });
+        }
+    }
     write(t, g::EXT_CORE_VREG, &op.encode())
 }
 
@@ -289,8 +310,9 @@ mod tests {
 
         let mut t = MockTransport::new();
         let log = t.log_handle();
-        core_vreg_op(&mut t, VregOp::Trial(0x0E)).unwrap();
-        let e = &log.lock().unwrap()[0];
+        core_vreg_op(&mut t, VregOp::Trial(0x0E), Some("OVERVOLT")).unwrap();
+        let log = log.lock().unwrap();
+        let e = log.last().unwrap();
         assert_eq!(
             (e.direction, e.opcode, e.value),
             (Direction::Out, 0x00, 0x0002)

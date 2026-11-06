@@ -330,7 +330,7 @@ impl DspiCore {
     pub fn preset_dirty(&self) -> bool {
         let guard = self.lock();
         match &guard.baseline {
-            Some(b) if *b != guard.state.bulk_raw => !changes(b, &guard.state).is_empty(),
+            Some(b) if *b != guard.state.bulk_raw => !changes(b, &guard.state, &[]).is_empty(),
             _ => false,
         }
     }
@@ -341,11 +341,16 @@ impl DspiCore {
     /// only in WITH_PRESET master-volume mode, the hardware wiring and the
     /// limiters only in WITH_PRESET output-config mode, both judged by the
     /// live mode. The user volume and the DAC mute are no preset change, as
-    /// on macOS. Empty before any baseline. Never fails.
+    /// on macOS. An input source goes by the user's name when it has one,
+    /// from the connection's cache, so this does no I/O. Empty before any
+    /// baseline. Never fails.
     pub fn preset_changes(&self) -> Vec<String> {
         let guard = self.lock();
         match &guard.baseline {
-            Some(b) if *b != guard.state.bulk_raw => changes(b, &guard.state),
+            Some(b) if *b != guard.state.bulk_raw => {
+                let names = guard.conn.as_ref().map_or(&[][..], |c| &c.source_names[..]);
+                changes(b, &guard.state, names)
+            }
             _ => Vec::new(),
         }
     }
@@ -619,7 +624,7 @@ fn name_payload(name: &str) -> Vec<u8> {
 /// The changes from the `baseline` image to the live one, both decoded onto
 /// the live mirror (so the fields the image does not carry, such as the
 /// persistence modes, are the live ones). Empty when either does not decode.
-fn changes(baseline: &[u8], live: &DspState) -> Vec<String> {
+fn changes(baseline: &[u8], live: &DspState, source_names: &[String]) -> Vec<String> {
     let mut old = live.clone();
     let mut new = live.clone();
     if state::decode_bulk(baseline, &mut old).is_err()
@@ -627,7 +632,7 @@ fn changes(baseline: &[u8], live: &DspState) -> Vec<String> {
     {
         return Vec::new();
     }
-    diff(&old, &new)
+    diff(&old, &new, source_names)
 }
 
 // ── The diff (the old core's presetdiff.rs, on checked access) ────────
@@ -719,11 +724,13 @@ fn crossfeed_pair(map: &[u8], p: usize) -> (usize, usize) {
     }
 }
 
-/// An input source's title, as `DSPViewModel.builtInInputSourceTitle`; `s`
-/// is the live state, whose optional S/PDIF inputs decide whether the first
-/// one needs its number. The macOS Console puts the user's source name first;
-/// the core's mirror holds no source names, so the built-in title is what it has.
-fn source_title(s: &DspState, source: u8) -> String {
+/// An input source's title, as `DSPViewModel.inputSourceTitle`: the user's name
+/// when `names` has one, else the built-in title, whose number on the first
+/// S/PDIF depends on the live state `s`'s optional S/PDIF inputs.
+fn source_title(s: &DspState, names: &[String], source: u8) -> String {
+    if let Some(name) = names.get(usize::from(source)).filter(|n| !n.is_empty()) {
+        return name.clone();
+    }
     match source {
         0 => "USB".into(),
         1 if s.spdif_inputs_enabled & 0x0E != 0 => "S/PDIF 1".into(),
@@ -761,8 +768,9 @@ fn same_filter(a: Option<FilterParams>, b: Option<FilterParams>) -> bool {
 }
 
 /// What differs between the baseline `o` and the live state `n`, worded as
-/// the macOS Console words it. The persistence modes are `n`'s.
-fn diff(o: &DspState, n: &DspState) -> Vec<String> {
+/// the macOS Console words it. The persistence modes are `n`'s;
+/// `source_names` are the user's input source names.
+fn diff(o: &DspState, n: &DspState, source_names: &[String]) -> Vec<String> {
     let mut c = Vec::new();
     let ins = usize::from(n.num_input_channels).min(MAX_INPUTS);
     let outs = usize::from(n.num_output_channels).min(MAX_OUTPUTS);
@@ -781,8 +789,8 @@ fn diff(o: &DspState, n: &DspState) -> Vec<String> {
     if o.input_source != n.input_source {
         c.push(format!(
             "Input source: {} → {}",
-            source_title(n, o.input_source),
-            source_title(n, n.input_source)
+            source_title(n, source_names, o.input_source),
+            source_title(n, source_names, n.input_source)
         ));
     }
     if o.lg_sound_sync_enabled != n.lg_sound_sync_enabled {
@@ -1475,6 +1483,11 @@ mod tests_wp_c5 {
     use super::*;
 
     type Log = Arc<Mutex<Vec<String>>>;
+
+    /// The diff of a device with no source names.
+    fn diff(o: &DspState, n: &DspState) -> Vec<String> {
+        super::diff(o, n, &[])
+    }
 
     /// A demo device that logs every request and lock call, answers some
     /// IN opcodes itself (`overrides`), can refuse the lock, and on a
@@ -2308,6 +2321,11 @@ mod tests_wp_cg7 {
 
     type Edit = fn(&mut DspState, &mut DspState);
 
+    /// The diff of a device with no source names.
+    fn diff(o: &DspState, n: &DspState) -> Vec<String> {
+        super::diff(o, n, &[])
+    }
+
     /// An RP2350-sized device with the firmware's default names, the two
     /// persistence modes on WITH_PRESET.
     fn base() -> DspState {
@@ -2330,7 +2348,7 @@ mod tests_wp_cg7 {
         edit(&mut o, &mut n);
         o.bulk_raw = state::encode_bulk(&o);
         n.bulk_raw = state::encode_bulk(&n);
-        (diff(&o, &n), changes(&o.bulk_raw, &n))
+        (diff(&o, &n), changes(&o.bulk_raw, &n, &[]))
     }
 
     fn sub(s: &mut DspState, i: u8, v: f32) {
@@ -2583,7 +2601,7 @@ mod tests_wp_cg7 {
         n.bulk_raw = state::encode_bulk(&n);
         assert_ne!(o.bulk_raw, n.bulk_raw, "the images do differ");
         assert!(diff(&o, &n).is_empty());
-        assert!(changes(&o.bulk_raw, &n).is_empty());
+        assert!(changes(&o.bulk_raw, &n, &[]).is_empty());
     }
 
     #[test]
@@ -2653,6 +2671,26 @@ mod tests_wp_cg7 {
         assert_eq!(diff(&o, &n), ["Input source: USB → S/PDIF 4"]);
         n.input_source = 9;
         assert_eq!(diff(&o, &n), ["Input source: USB → Source 9"]);
+    }
+
+    #[test]
+    fn wp_cg13_the_users_name_comes_first_in_the_input_source_row() {
+        let (mut o, mut n) = (base(), base());
+        o.input_source = 0;
+        n.input_source = 1;
+        let mut names = vec![String::new(); 7];
+        names[1] = "Blu-ray".into();
+        assert_eq!(super::diff(&o, &n, &names), ["Input source: USB → Blu-ray"]);
+        names[0] = "Mac".into();
+        assert_eq!(super::diff(&o, &n, &names), ["Input source: Mac → Blu-ray"]);
+        // Unnamed and past-the-table sources keep their built-in titles.
+        names[1].clear();
+        assert_eq!(super::diff(&o, &n, &names), ["Input source: Mac → S/PDIF"]);
+        n.input_source = 9;
+        assert_eq!(
+            super::diff(&o, &n, &names),
+            ["Input source: Mac → Source 9"]
+        );
     }
 
     #[test]

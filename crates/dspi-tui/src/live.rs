@@ -403,6 +403,27 @@ impl Prompt {
     }
 }
 
+// -- WP TM19 --
+/// One write of a block that is confirmed as a whole, parsed before anything
+/// is asked or sent.
+#[derive(Debug, Clone, PartialEq)]
+struct BlockLine {
+    /// The line as the screen wrote it, which is what a report names.
+    line: String,
+    path: &'static str,
+    indices: Vec<u8>,
+    value: Value,
+}
+
+/// Whether a parameter's write is confirmed first, the way every destructive
+/// button in the Console is.
+fn needs_confirming(desc: &dspi_proto::registry::ParamDesc) -> bool {
+    matches!(
+        desc.hazard,
+        dspi_proto::registry::Hazard::Irreversible | dspi_proto::registry::Hazard::Flash
+    )
+}
+
 /// Which app-level dialog is up, so its outcome is routed here rather than
 /// to a screen.
 #[derive(Debug, Clone, PartialEq)]
@@ -430,6 +451,13 @@ enum AppDialog {
         path: String,
         indices: Vec<u8>,
         value: Value,
+    },
+    // -- WP TM19 --
+    /// Several writes in one block, some of which cannot be undone: one
+    /// confirmation for all of them, kept here until it is answered.
+    HazardBlock {
+        lines: Vec<BlockLine>,
+        note: Option<String>,
     },
     /// The Source row's list.
     SourceList,
@@ -592,8 +620,6 @@ pub struct Live {
     /// The lost device's transport has been let go.
     offline: bool,
     last_screen_poll: Instant,
-    /// A hazardous command has been confirmed and may go through once.
-    hazard_confirmed: bool,
     /// The channel the pop-out graph is pinned to when Graphing says it does
     /// not follow the selection.
     popout_pinned: Option<usize>,
@@ -677,7 +703,6 @@ impl Live {
             clip_since: None,
             notes: None,
             last_screen_poll: Instant::now(),
-            hazard_confirmed: false,
             popout_pinned: None,
             devices_checked: None,
             link_kind: dspi_transport::TransportCaps::USB.kind,
@@ -923,13 +948,7 @@ impl Live {
             self.note(format!("unknown parameter {path}"));
             return;
         };
-        // A command that cannot be undone is confirmed first, the way every
-        // destructive button in the Console is.
-        if matches!(
-            desc.hazard,
-            dspi_proto::registry::Hazard::Irreversible | dspi_proto::registry::Hazard::Flash
-        ) && !self.hazard_confirmed
-        {
+        if needs_confirming(desc) {
             self.dialog = Some((
                 AppDialog::Hazard {
                     path: path.to_string(),
@@ -944,19 +963,32 @@ impl Live {
             ));
             return;
         }
-        self.hazard_confirmed = false;
+        self.write_set(session, path, indices, value);
+    }
+
+    /// Write one parameter that needs no further confirmation, leaving a note
+    /// if it fails. True when the device took it.
+    fn write_set(
+        &mut self,
+        session: &mut Session,
+        path: &str,
+        indices: &[u8],
+        value: Value,
+    ) -> bool {
+        let Some(desc) = dspi_proto::registry::by_path(path) else {
+            self.note(format!("unknown parameter {path}"));
+            return false;
+        };
         // Anything the device has said goes in first, so a preset loaded
         // elsewhere is the baseline before this write lands on it.
         self.absorb_pending_notes(session);
         // The deferred preset and reset actions have their own flows, which
         // wait for the device to finish before re-reading.
         match (path, indices.first()) {
-            ("preset.load", Some(&slot)) => {
-                self.load_preset(session, slot);
-                return;
-            }
+            ("preset.load", Some(&slot)) => return self.load_preset(session, slot),
             ("preset.save", Some(&slot)) => {
-                if self.save_slot(session, slot) {
+                let saved = self.save_slot(session, slot);
+                if saved {
                     if Some(slot) == self.state.caps.active_preset {
                         self.state.mark_saved();
                     }
@@ -965,11 +997,11 @@ impl Live {
                 } else {
                     self.note("Save Failed");
                 }
-                return;
+                return saved;
             }
             ("dev.reset", _) => {
                 self.factory_reset(session);
-                return;
+                return true;
             }
             _ => {}
         }
@@ -979,7 +1011,7 @@ impl Live {
             && let (Some(&index), Some(enable)) = (indices.first(), value.as_bool())
         {
             self.enable_output(session, index, enable);
-            return;
+            return true;
         }
         let cmd = dspi_cmd::Command::Set {
             path: desc.path,
@@ -1002,12 +1034,14 @@ impl Live {
             {
                 self.echo(dspi_cmd::format(&cmd, &self.ctx));
                 self.refresh(session);
+                true
             }
             Ok(Outcome::Rejected { actual, .. }) => {
                 let shown = dspi_proto::registry::by_path(path)
                     .map(|d| display_value(d, &actual))
                     .unwrap_or_default();
                 self.note(format!("{path} was not applied; device kept {shown}"));
+                false
             }
             Ok(_) => {
                 self.echo(dspi_cmd::format(&cmd, &self.ctx));
@@ -1026,8 +1060,12 @@ impl Live {
                     let _ = self.state.refresh_subharm_solo(session);
                 }
                 self.refresh(session);
+                true
             }
-            Err(e) => self.note(e.to_string()),
+            Err(e) => {
+                self.note(e.to_string());
+                false
+            }
         }
     }
 
@@ -1040,7 +1078,25 @@ impl Live {
     /// A `#` line is not a command but the note to leave on the echo line once
     /// the block has run, which is how a screen that issues a hundred writes
     /// for one gesture says what it just did.
+    ///
+    /// A block of two or more commands with one that needs confirming is
+    /// confirmed once, as a whole; see [`Self::confirm_block`].
     pub fn run_commands(&mut self, session: &mut Session, lines: &str) {
+        // -- WP TM19 --
+        let commands: Vec<&str> = lines
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .collect();
+        if commands.len() > 1 && commands.iter().any(|l| self.line_needs_confirming(l)) {
+            let note = lines
+                .lines()
+                .filter_map(|l| l.trim().strip_prefix('#'))
+                .next_back()
+                .map(|n| n.trim().to_string());
+            self.confirm_block(&commands, note);
+            return;
+        }
         let mut note = None;
         for line in lines.lines() {
             let line = line.trim();
@@ -1054,6 +1110,119 @@ impl Live {
         }
         if let Some(note) = note {
             self.note(note);
+        }
+    }
+
+    // -- WP TM19 --
+    /// The registry write a line asks for, if that is all it is.
+    fn parse_write(&self, line: &str) -> Option<BlockLine> {
+        let tokens = dspi_cmd::tokenize(line);
+        let first = tokens.first()?;
+        if APP_VERBS.iter().any(|(n, _)| n == first) {
+            return None;
+        }
+        let refs: Vec<&str> = tokens.iter().map(String::as_str).collect();
+        match dspi_cmd::parse(&refs, &self.ctx).ok()? {
+            dspi_cmd::Command::Set {
+                path,
+                indices,
+                value,
+            } => Some(BlockLine {
+                line: line.to_string(),
+                path,
+                indices,
+                value,
+            }),
+            _ => None,
+        }
+    }
+
+    fn line_needs_confirming(&self, line: &str) -> bool {
+        self.parse_write(line)
+            .and_then(|w| dspi_proto::registry::by_path(w.path))
+            .is_some_and(needs_confirming)
+    }
+
+    /// Ask once about a whole block: one answer covers every line, and they
+    /// are then written in order (`run_block`).
+    ///
+    /// A line that is not a plain write has no result to report, so a block
+    /// holding one is refused before anything is asked or written. No screen
+    /// builds such a block; the check keeps a bad line from flashing half of it.
+    fn confirm_block(&mut self, commands: &[&str], note: Option<String>) {
+        let mut lines = Vec::with_capacity(commands.len());
+        for line in commands {
+            match self.parse_write(line) {
+                Some(w) => lines.push(w),
+                None => {
+                    self.note(format!("`{line}` cannot be confirmed; nothing was written"));
+                    return;
+                }
+            }
+        }
+        let mut body = Vec::new();
+        let mut others = 0usize;
+        for w in &lines {
+            match dspi_proto::registry::by_path(w.path).filter(|d| needs_confirming(d)) {
+                Some(d) => body.push(format!("`{}`: {}", w.path, d.plain)),
+                None => others = others.saturating_add(1),
+            }
+        }
+        if others > 0 {
+            body.push(format!("and {others} more in the same step"));
+        }
+        body.push(String::new());
+        body.push("This cannot be undone.".to_string());
+        // The report kind keeps one line per write, where a confirm's body
+        // would run them together; only its button row differs.
+        let mut dialog = Dialog::report("Are you sure?", body);
+        dialog.buttons = vec![Button::destructive("Continue"), Button::new("Cancel")];
+        self.dialog = Some((AppDialog::HazardBlock { lines, note }, dialog));
+    }
+
+    /// Write a confirmed block in order, stopping at the first line the device
+    /// does not take. Nothing is retried: the screen hears which lines were
+    /// written, so the rest stay in its draft, and the person hears both.
+    fn run_block(&mut self, session: &mut Session, lines: Vec<BlockLine>, note: Option<String>) {
+        let mut written = Vec::new();
+        let mut failure = None;
+        let mut rest = lines.into_iter();
+        for w in rest.by_ref() {
+            if self.write_set(session, w.path, &w.indices, w.value) {
+                written.push(w.line);
+            } else {
+                let why = self.shell.model.status.clone().unwrap_or_default();
+                failure = Some((w.line, why));
+                break;
+            }
+        }
+        self.tell_written(session, &written);
+        let Some((failed, why)) = failure else {
+            if let Some(note) = note {
+                self.note(note);
+            }
+            return;
+        };
+        let mut report = vec!["Written:".to_string()];
+        report.extend(written.iter().map(|l| format!("  {l}")));
+        if written.is_empty() {
+            report.push("  nothing".to_string());
+        }
+        report.push("Not written:".to_string());
+        report.push(format!("  {failed}"));
+        report.push(format!("    {why}"));
+        report.extend(rest.map(|w| format!("  {}", w.line)));
+        report.push("Nothing was retried. What was not written is still unsaved.".to_string());
+        self.dialog = Some((AppDialog::Report, Dialog::report("Stopped partway", report)));
+    }
+
+    /// Tell Settings which lines reached the device: only those count as saved.
+    fn tell_written(&mut self, session: &mut Session, written: &[String]) {
+        if written.is_empty() {
+            return;
+        }
+        if let Some(s) = self.shell.settings.as_deref_mut() {
+            s.lines_written(written, session, &self.state);
         }
     }
 
@@ -1112,6 +1281,14 @@ impl Live {
     /// line that is never held sends every held write first, so it cannot
     /// overtake one.
     fn run_screen_commands(&mut self, session: &mut Session, lines: &str) {
+        // -- WP TM19 -- A line that needs confirming never waits and never
+        // joins a held write in its block: the held writes go first, whatever
+        // the answer turns out to be.
+        if lines.lines().any(|l| self.line_needs_confirming(l.trim())) {
+            self.flush_writes(session, true);
+            self.run_commands(session, lines);
+            return;
+        }
         let now = self.now();
         let lines: Vec<&str> = lines
             .lines()
@@ -1978,9 +2155,16 @@ impl Live {
                 },
                 DialogOutcome::Button(0),
             ) => {
-                self.hazard_confirmed = true;
-                self.set(session, &path, &indices, value);
+                // -- WP TM19 --
+                if self.write_set(session, &path, &indices, value) {
+                    self.tell_written(session, &[path]);
+                }
             }
+            // -- WP TM19 --
+            (AppDialog::HazardBlock { lines, note }, DialogOutcome::Button(0)) => {
+                self.run_block(session, lines, note);
+            }
+            (AppDialog::HazardBlock { .. }, _) => self.note("Cancelled; nothing was written"),
             (AppDialog::SourceList, DialogOutcome::Picked(i)) => {
                 self.set(session, "in.source", &[], Value::Choice(i as u8));
             }
@@ -4188,8 +4372,9 @@ mod tests {
             .patch(section_at("master_volume"), &(-30.0f32).to_le_bytes());
         assert!(l.state.has_unsaved_changes());
         // A flash write, confirmed as the Settings dialog would.
-        l.hazard_confirmed = true;
         l.run_command(&mut s, "vol.master.mode independent");
+        let (kind, _) = l.dialog.take().unwrap();
+        l.finish_dialog(&mut s, kind, DialogOutcome::Button(0));
         assert_eq!(l.state.master_volume_mode, 0, "follows the write");
         assert!(!l.state.has_unsaved_changes());
     }
@@ -5126,5 +5311,548 @@ mod tests {
             .collect();
         assert_eq!(offs, vec![vec![0]]);
         assert_eq!(l.state.subharm_solo, Some(false));
+    }
+}
+
+/// TM19: a Save of several flash writes through the real `Live`, on a demo
+/// device that can be told to refuse one opcode.
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_tm19 {
+    use super::*;
+    use crate::theme::ColorDepth;
+    use crossterm::event::{KeyEvent, KeyModifiers};
+    use dspi_proto::generated::opcodes as op;
+    use dspi_transport::{
+        DeviceDescriptor, FakeDevice, NotificationSource, Transport, TransportCaps, TransportError,
+    };
+    use ratatui::buffer::Buffer;
+    use ratatui::layout::Rect;
+    use std::sync::{Arc, Mutex};
+
+    /// The opcodes that write what a Save writes.
+    const WRITES: [u8; 5] = [
+        op::REQ_PRESET_SET_STARTUP,
+        op::REQ_SET_MASTER_VOLUME_MODE,
+        op::REQ_SET_OUTPUT_CONFIG_MODE,
+        op::REQ_SAVE_OUTPUT_CONFIG,
+        op::REQ_CS_SAVE,
+    ];
+
+    #[derive(Clone, Default)]
+    struct Wire {
+        /// Every write opcode attempted, refused or not.
+        sent: Arc<Mutex<Vec<u8>>>,
+        refuse: Arc<Mutex<Option<u8>>>,
+    }
+
+    impl Wire {
+        fn see(&self, opcode: u8) -> dspi_transport::Result<()> {
+            if WRITES.contains(&opcode) {
+                self.sent.lock().unwrap().push(opcode);
+            }
+            if *self.refuse.lock().unwrap() == Some(opcode) {
+                return Err(TransportError::Stalled { opcode });
+            }
+            Ok(())
+        }
+        fn sent(&self) -> Vec<u8> {
+            self.sent.lock().unwrap().clone()
+        }
+    }
+
+    /// The demo device, with a hand on the wire.
+    struct Tapped(FakeDevice, Wire);
+
+    impl Transport for Tapped {
+        fn control_in(
+            &mut self,
+            opcode: u8,
+            value: u16,
+            len: u16,
+        ) -> dspi_transport::Result<Vec<u8>> {
+            self.1.see(opcode)?;
+            // The fake has no flash behind these two; the real device answers
+            // FLASH_OK once it has written (vendor_commands).
+            if matches!(opcode, op::REQ_SAVE_OUTPUT_CONFIG | op::REQ_CS_SAVE) {
+                return Ok(vec![0; usize::from(len)]);
+            }
+            self.0.control_in(opcode, value, len)
+        }
+        fn control_in_upto(
+            &mut self,
+            opcode: u8,
+            value: u16,
+            max_len: u16,
+        ) -> dspi_transport::Result<Vec<u8>> {
+            self.1.see(opcode)?;
+            self.0.control_in_upto(opcode, value, max_len)
+        }
+        fn control_out(
+            &mut self,
+            opcode: u8,
+            value: u16,
+            data: &[u8],
+        ) -> dspi_transport::Result<()> {
+            self.1.see(opcode)?;
+            self.0.control_out(opcode, value, data)
+        }
+        fn descriptor(&self) -> &DeviceDescriptor {
+            self.0.descriptor()
+        }
+        fn max_transfer(&self) -> usize {
+            self.0.max_transfer()
+        }
+        fn notifications(&self) -> Option<Box<dyn NotificationSource>> {
+            self.0.notifications()
+        }
+        fn caps(&self) -> TransportCaps {
+            self.0.caps()
+        }
+    }
+
+    fn on_demo() -> (Live, Session, Wire) {
+        let wire = Wire::default();
+        let mut t: Box<dyn Transport> = Box::new(Tapped(FakeDevice::demo(), wire.clone()));
+        let caps = dspi_session::probe(t.as_mut()).unwrap();
+        let ext = ExtState::probe(t.as_mut()).unwrap();
+        let mut session = Session::new(t, caps.clone()).unwrap();
+        let bulk = session.snapshot().unwrap();
+        let mut live = Live::new(
+            DeviceState::new(caps, bulk),
+            Theme::console(ColorDepth::TrueColor, Glyphs::Braille),
+            Performance::default(),
+            Box::new(ConsoleScreens::new()),
+        );
+        live.set_connection(&Target::Demo, &ext);
+        (live, session, wire)
+    }
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn frame(l: &mut Live) -> String {
+        let area = Rect::new(0, 0, 120, 40);
+        let mut buf = Buffer::empty(area);
+        l.draw(area, &mut buf);
+        let mut out = String::new();
+        for y in 0..area.height {
+            for x in 0..area.width {
+                out.push_str(buf[(x, y)].symbol());
+            }
+            out.push('\n');
+        }
+        out
+    }
+
+    /// Settings, on Global Parameters, with the focus in the page.
+    fn global_page(l: &mut Live, s: &mut Session) {
+        l.show(s, "settings");
+        for _ in 0..20 {
+            if frame(l).contains("STARTUP PRESET") {
+                l.handle_key(s, key(KeyCode::Tab));
+                return;
+            }
+            l.handle_key(s, key(KeyCode::Down));
+        }
+        panic!("no Global page:\n{}", frame(l));
+    }
+
+    /// Move a two-way picker off the value it is on.
+    fn flip(l: &mut Live, s: &mut Session, on: bool) {
+        l.handle_key(s, key(if on { KeyCode::Left } else { KeyCode::Right }));
+    }
+
+    /// Stage a change to the startup mode, the row after the device name the
+    /// page opens on.
+    fn edit_startup(l: &mut Live, s: &mut Session) {
+        l.handle_key(s, key(KeyCode::Down));
+        let on = device(s).0.first() == Some(&1);
+        flip(l, s, on);
+    }
+
+    /// Stage a change to both persistence modes, the page's last two rows.
+    fn edit_modes(l: &mut Live, s: &mut Session) {
+        let (_, master, io) = device(s);
+        for _ in 0..30 {
+            l.handle_key(s, key(KeyCode::Down));
+        }
+        flip(l, s, io == Value::Choice(1));
+        l.handle_key(s, key(KeyCode::Up));
+        flip(l, s, master == Value::Choice(1));
+    }
+
+    fn save(l: &mut Live, s: &mut Session) {
+        l.handle_key(s, KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+    }
+
+    /// The device's values for the three the page edits here. `read` asks for
+    /// one byte of the startup packet, so that one is read whole.
+    fn device(s: &mut Session) -> (Vec<u8>, Value, Value) {
+        (
+            s.with_transport(|t| t.control_in(op::REQ_PRESET_GET_STARTUP, 0, 2))
+                .unwrap(),
+            s.read("vol.master.mode", &[]).unwrap(),
+            s.read("preset.iomode", &[]).unwrap(),
+        )
+    }
+
+    #[test]
+    fn wp_tm19_one_confirmation_names_every_line_and_writes_them_in_order() {
+        let (mut l, mut s, wire) = on_demo();
+        global_page(&mut l, &mut s);
+        edit_startup(&mut l, &mut s);
+        edit_modes(&mut l, &mut s);
+        let before = device(&mut s);
+        save(&mut l, &mut s);
+        assert!(
+            matches!(&l.dialog, Some((AppDialog::HazardBlock { lines, .. }, _)) if lines.len() == 3),
+            "{:?}",
+            l.dialog
+        );
+        let f = frame(&mut l);
+        for path in ["preset.startup", "vol.master.mode", "preset.iomode"] {
+            assert!(f.contains(path), "{path} is not named:\n{f}");
+        }
+        assert!(wire.sent().is_empty(), "nothing goes before the answer");
+
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        assert!(l.dialog.is_none(), "{:?}", l.dialog);
+        assert_eq!(
+            wire.sent(),
+            vec![
+                op::REQ_PRESET_SET_STARTUP,
+                op::REQ_SET_MASTER_VOLUME_MODE,
+                op::REQ_SET_OUTPUT_CONFIG_MODE
+            ],
+            "every line, in the order Save gave them"
+        );
+        let after = device(&mut s);
+        assert_ne!(before.0, after.0);
+        assert_ne!(before.1, after.1);
+        assert_ne!(before.2, after.2);
+
+        save(&mut l, &mut s);
+        assert!(l.dialog.is_none());
+        assert_eq!(l.shell.model.status.as_deref(), Some("Nothing to save"));
+    }
+
+    /// The probe's block, typed as Save's own grammar: the first line used to
+    /// be lost, with only the last line's confirmation surviving.
+    #[test]
+    fn wp_tm19_the_first_line_of_a_block_is_not_dropped() {
+        let (mut l, mut s, _) = on_demo();
+        let (startup, _, iomode) = device(&mut s);
+        let want = if iomode == Value::Choice(1) {
+            "independent"
+        } else {
+            "with-preset"
+        };
+        l.run_commands(
+            &mut s,
+            &format!("preset.startup mode=specified slot=3\npreset.iomode {want}"),
+        );
+        let (kind, _) = l.dialog.take().unwrap();
+        l.finish_dialog(&mut s, kind, DialogOutcome::Button(0));
+        assert!(l.dialog.is_none(), "nothing further to ask");
+        let (startup_now, _, iomode_now) = device(&mut s);
+        assert_ne!(startup, startup_now);
+        assert_ne!(iomode, iomode_now);
+    }
+
+    /// Every line Save can hold fits: a clipped dialog would ask about writes
+    /// it does not show.
+    #[test]
+    fn wp_tm19_the_longest_save_is_named_whole_on_a_small_terminal() {
+        let (mut l, mut s, wire) = on_demo();
+        l.run_commands(
+            &mut s,
+            "preset.startup mode=specified slot=3\nvol.master.mode independent\n\
+             preset.iomode independent\n\
+             dev.dacmute enabled=on active_low=off pin=4 hold_ms=20 release_ms=20\n\
+             out.latency 1\ndev.save.io\ncs.save",
+        );
+        let area = Rect::new(0, 0, 80, 24);
+        let mut buf = Buffer::empty(area);
+        l.draw(area, &mut buf);
+        let f: String = (0..area.height)
+            .flat_map(|y| (0..area.width).map(move |x| (x, y)))
+            .map(|p| buf[p].symbol().to_string())
+            .collect();
+        for path in [
+            "preset.startup",
+            "vol.master.mode",
+            "preset.iomode",
+            "dev.dacmute",
+            "out.latency",
+            "dev.save.io",
+            "cs.save",
+            "This cannot be undone.",
+        ] {
+            assert!(f.contains(path), "{path} is not shown");
+        }
+        assert!(wire.sent().is_empty());
+    }
+
+    #[test]
+    fn wp_tm19_cancel_writes_nothing_and_keeps_the_draft_dirty() {
+        let (mut l, mut s, wire) = on_demo();
+        global_page(&mut l, &mut s);
+        edit_startup(&mut l, &mut s);
+        edit_modes(&mut l, &mut s);
+        let before = device(&mut s);
+        for answer in [key(KeyCode::Esc), key(KeyCode::Tab)] {
+            save(&mut l, &mut s);
+            assert!(matches!(l.dialog, Some((AppDialog::HazardBlock { .. }, _))));
+            l.handle_key(&mut s, answer);
+            if l.dialog.is_some() {
+                // Tab moved to Cancel; press it.
+                l.handle_key(&mut s, key(KeyCode::Enter));
+            }
+            assert!(l.dialog.is_none());
+            assert_eq!(
+                l.shell.model.status.as_deref(),
+                Some("Cancelled; nothing was written")
+            );
+        }
+        assert!(wire.sent().is_empty());
+        assert_eq!(device(&mut s), before);
+        // Still all there: the same three lines are asked about again.
+        save(&mut l, &mut s);
+        assert!(
+            matches!(&l.dialog, Some((AppDialog::HazardBlock { lines, .. }, _)) if lines.len() == 3)
+        );
+    }
+
+    #[test]
+    fn wp_tm19_a_failure_partway_reports_both_and_keeps_the_rest_in_the_draft() {
+        let (mut l, mut s, wire) = on_demo();
+        global_page(&mut l, &mut s);
+        edit_startup(&mut l, &mut s);
+        edit_modes(&mut l, &mut s);
+        let before = device(&mut s);
+        *wire.refuse.lock().unwrap() = Some(op::REQ_SET_MASTER_VOLUME_MODE);
+        save(&mut l, &mut s);
+        l.handle_key(&mut s, key(KeyCode::Enter));
+
+        // The report says who was written and who was not.
+        let Some((AppDialog::Report, dialog)) = &l.dialog else {
+            panic!("{:?}", l.dialog);
+        };
+        let crate::widgets::DialogKind::Report { lines, .. } = &dialog.kind else {
+            panic!("{:?}", dialog.kind);
+        };
+        let at = |needle: &str| lines.iter().position(|x| x.contains(needle)).unwrap();
+        assert!(at("Written:") < at("preset.startup"), "{lines:?}");
+        assert!(at("preset.startup") < at("Not written:"), "{lines:?}");
+        assert!(at("Not written:") < at("vol.master.mode"), "{lines:?}");
+        assert!(at("vol.master.mode") < at("preset.iomode"), "{lines:?}");
+        assert!(lines.iter().any(|x| x.contains("stalled")), "{lines:?}");
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        assert!(l.dialog.is_none());
+
+        // Stopped at the refusal, once, with the third line never sent.
+        assert_eq!(
+            wire.sent(),
+            vec![op::REQ_PRESET_SET_STARTUP, op::REQ_SET_MASTER_VOLUME_MODE]
+        );
+        let now = device(&mut s);
+        assert_ne!(now.0, before.0);
+        assert_eq!(now.1, before.1);
+        assert_eq!(now.2, before.2);
+
+        // The next Save asks about the two that are left, and not the written one.
+        wire.sent.lock().unwrap().clear();
+        *wire.refuse.lock().unwrap() = None;
+        save(&mut l, &mut s);
+        let Some((AppDialog::HazardBlock { lines, .. }, _)) = &l.dialog else {
+            panic!("{:?}", l.dialog);
+        };
+        let paths: Vec<&str> = lines.iter().map(|w| w.path).collect();
+        assert_eq!(paths, ["vol.master.mode", "preset.iomode"]);
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        assert_eq!(
+            wire.sent(),
+            vec![
+                op::REQ_SET_MASTER_VOLUME_MODE,
+                op::REQ_SET_OUTPUT_CONFIG_MODE
+            ]
+        );
+        save(&mut l, &mut s);
+        assert_eq!(l.shell.model.status.as_deref(), Some("Nothing to save"));
+    }
+
+    #[test]
+    fn wp_tm19_a_failure_on_the_first_line_says_nothing_was_written() {
+        let (mut l, mut s, wire) = on_demo();
+        global_page(&mut l, &mut s);
+        edit_startup(&mut l, &mut s);
+        edit_modes(&mut l, &mut s);
+        *wire.refuse.lock().unwrap() = Some(op::REQ_PRESET_SET_STARTUP);
+        save(&mut l, &mut s);
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        let Some((AppDialog::Report, dialog)) = &l.dialog else {
+            panic!("{:?}", l.dialog);
+        };
+        let crate::widgets::DialogKind::Report { lines, .. } = &dialog.kind else {
+            panic!("{:?}", dialog.kind);
+        };
+        assert_eq!(lines[1], "  nothing", "{lines:?}");
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        assert_eq!(wire.sent(), vec![op::REQ_PRESET_SET_STARTUP]);
+        save(&mut l, &mut s);
+        assert!(
+            matches!(&l.dialog, Some((AppDialog::HazardBlock { lines, .. }, _)) if lines.len() == 3),
+            "the draft is whole"
+        );
+    }
+
+    /// The output-config category too counts only once its flash went through.
+    #[test]
+    fn wp_tm19_the_output_config_stays_dirty_until_its_own_line_is_written() {
+        let (mut l, mut s, wire) = on_demo();
+        l.state.output_config_mode = 0;
+        l.run_command(&mut s, "limit.threshold 0 -6");
+        assert!(l.state.limiter_unsaved());
+        global_page(&mut l, &mut s);
+        edit_startup(&mut l, &mut s);
+
+        *wire.refuse.lock().unwrap() = Some(op::REQ_SAVE_OUTPUT_CONFIG);
+        save(&mut l, &mut s);
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        assert!(matches!(l.dialog, Some((AppDialog::Report, _))));
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        assert!(l.state.limiter_unsaved());
+
+        *wire.refuse.lock().unwrap() = None;
+        save(&mut l, &mut s);
+        let Some((AppDialog::Hazard { path, .. }, _)) = &l.dialog else {
+            panic!("only the flash is left, so one line: {:?}", l.dialog);
+        };
+        assert_eq!(path, "dev.save.io");
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        assert!(!l.state.limiter_unsaved());
+        save(&mut l, &mut s);
+        assert_eq!(l.shell.model.status.as_deref(), Some("Nothing to save"));
+    }
+
+    /// One line keeps the old dialog and its wording; only what it means for
+    /// the draft changed.
+    #[test]
+    fn wp_tm19_a_single_line_keeps_its_own_confirmation() {
+        let (mut l, mut s, wire) = on_demo();
+        global_page(&mut l, &mut s);
+        edit_startup(&mut l, &mut s);
+        save(&mut l, &mut s);
+        let Some((AppDialog::Hazard { path, .. }, dialog)) = &l.dialog else {
+            panic!("{:?}", l.dialog);
+        };
+        assert_eq!(path, "preset.startup");
+        assert_eq!(dialog.title, "Are you sure?");
+        assert!(
+            dialog.body.starts_with("`preset.startup`: "),
+            "{}",
+            dialog.body
+        );
+        assert!(
+            dialog.body.ends_with("This cannot be undone."),
+            "{}",
+            dialog.body
+        );
+
+        // Cancel: nothing sent, still dirty.
+        l.handle_key(&mut s, key(KeyCode::Esc));
+        assert!(wire.sent().is_empty());
+        save(&mut l, &mut s);
+        assert!(matches!(l.dialog, Some((AppDialog::Hazard { .. }, _))));
+
+        // A refusal: the note, no report, still dirty.
+        *wire.refuse.lock().unwrap() = Some(op::REQ_PRESET_SET_STARTUP);
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        assert!(l.dialog.is_none(), "{:?}", l.dialog);
+        assert!(
+            l.shell.model.status.as_deref().unwrap().contains("stalled"),
+            "{:?}",
+            l.shell.model.status
+        );
+        *wire.refuse.lock().unwrap() = None;
+        save(&mut l, &mut s);
+        assert!(matches!(l.dialog, Some((AppDialog::Hazard { .. }, _))));
+
+        // Confirmed: written and clean.
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        save(&mut l, &mut s);
+        assert!(l.dialog.is_none());
+        assert_eq!(l.shell.model.status.as_deref(), Some("Nothing to save"));
+    }
+
+    /// A `#` note is not a command: it does not make a block, and it is left
+    /// on the status line once the block has gone.
+    #[test]
+    fn wp_tm19_a_note_is_not_a_line_and_lands_after_the_block() {
+        let (mut l, mut s, _) = on_demo();
+        l.run_commands(&mut s, "dev.save.io\n# Saved");
+        assert!(matches!(l.dialog, Some((AppDialog::Hazard { .. }, _))));
+        l.dialog = None;
+
+        l.run_commands(&mut s, "preset.iomode independent\ndev.save.io\n# Done");
+        let (kind, _) = l.dialog.take().unwrap();
+        assert_ne!(l.shell.model.status.as_deref(), Some("Done"));
+        l.finish_dialog(&mut s, kind, DialogOutcome::Button(0));
+        assert_eq!(l.shell.model.status.as_deref(), Some("Done"));
+    }
+
+    /// A line with no result to report cannot join a confirmed block.
+    #[test]
+    fn wp_tm19_a_block_with_a_bad_line_writes_nothing() {
+        let (mut l, mut s, wire) = on_demo();
+        l.run_commands(&mut s, "preset.iomode independent\nno.such.thing 1");
+        assert!(l.dialog.is_none());
+        assert!(
+            l.shell
+                .model
+                .status
+                .as_deref()
+                .unwrap()
+                .contains("no.such.thing"),
+            "{:?}",
+            l.shell.model.status
+        );
+        assert!(wire.sent().is_empty());
+    }
+
+    /// A write held back by the rate gate is not part of what is asked about,
+    /// and is not lost when the answer is no.
+    #[test]
+    fn wp_tm19_a_held_write_goes_first_and_is_not_in_the_block() {
+        let (mut l, mut s, wire) = on_demo();
+        l.clock = Some(Instant::now());
+        l.handle_event(&mut s, ShellEvent::Command("vol.user -11".into()));
+        l.handle_event(&mut s, ShellEvent::Command("vol.user -12".into()));
+        assert_eq!(l.gate.held.len(), 1, "the second is within the interval");
+        l.handle_event(
+            &mut s,
+            ShellEvent::Command(
+                "preset.startup mode=specified slot=3\npreset.iomode independent".into(),
+            ),
+        );
+        assert!(
+            matches!(&l.dialog, Some((AppDialog::HazardBlock { lines, .. }, _)) if lines.len() == 2),
+            "{:?}",
+            l.dialog
+        );
+        assert!(l.gate.held.is_empty());
+        assert_eq!(s.read("vol.user", &[]).unwrap(), Value::Float(-12.0));
+        assert!(wire.sent().is_empty());
+    }
+
+    /// A block with nothing to confirm runs as it always has.
+    #[test]
+    fn wp_tm19_a_block_without_a_hazard_is_not_asked_about() {
+        let (mut l, mut s, _) = on_demo();
+        l.run_commands(&mut s, "vol.user -11\nvol.user -12");
+        assert!(l.dialog.is_none());
+        assert_eq!(s.read("vol.user", &[]).unwrap(), Value::Float(-12.0));
     }
 }

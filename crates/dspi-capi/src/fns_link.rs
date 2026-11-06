@@ -69,8 +69,7 @@ pub(crate) mod link {
 
     use dspi_core::link::{link_fetch_info, link_parse_address, link_ws_url};
     use dspi_core::{
-        DspiCore, DspiError, LinkDevice, LinkHello, LinkInfo, LinkListener, LinkPhase, LinkStatus,
-        Result,
+        DspiCore, DspiError, LinkDevice, LinkHello, LinkInfo, LinkListener, LinkStatus, Result,
     };
     use serde_json::{Value, json};
 
@@ -184,6 +183,8 @@ pub(crate) mod link {
             DspiError::Io { .. } => "io",
             DspiError::AutoEq { .. } => "autoeq",
             DspiError::FirmwareGuardBlocked { .. } => "firmware_guard",
+            // -- WP CG14 --
+            DspiError::OvervoltWordRequired { .. } => "overvolt_word",
         }
     }
 
@@ -212,20 +213,6 @@ pub(crate) mod link {
         c_str(p).ok_or_else(|| DspiError::InvalidArgument {
             msg: format!("{name} is null or not UTF-8"),
         })
-    }
-
-    /// The JSON name of a phase.
-    fn phase_name(p: &LinkPhase) -> &'static str {
-        match p {
-            LinkPhase::Idle => "idle",
-            LinkPhase::NeedsPairing => "needs_pairing",
-            LinkPhase::NoDevice => "no_device",
-            LinkPhase::ChooseDevice => "choose_device",
-            LinkPhase::Bound => "bound",
-            LinkPhase::Reconnecting => "reconnecting",
-            LinkPhase::Closed => "closed",
-            LinkPhase::Refused => "refused",
-        }
     }
 
     fn hello_json(h: LinkHello) -> Value {
@@ -274,7 +261,7 @@ pub(crate) mod link {
             "closed": s.closed,
             "closeCode": s.close_code,
             "closeReason": s.close_reason,
-            "phase": phase_name(&s.phase),
+            "phase": dspi_core::link_phase_key(s.phase),
             "reconnectAttempt": s.reconnect_attempt,
             "reconnectInMs": s.reconnect_in_ms,
             "pinSource": s.pin_source,
