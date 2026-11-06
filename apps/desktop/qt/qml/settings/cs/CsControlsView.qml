@@ -22,6 +22,10 @@ Column {
     property var liveIr: []
     property var expanded: ({})
     property var messages: ({})       // slot -> failed apply text
+    // -- WP QD1 --
+    // slot -> why a remove or an aux switch or level was refused. A note of its
+    // own, as CsApplyRow hides `messages` while the card holds an edit.
+    property var refusals: ({})
     property var subMessages: ({})    // remote button -> { text, error }
     property var expandedSubs: ({})
     property int learningSub: -1
@@ -35,6 +39,7 @@ Column {
         liveIr = cs.copy(cs.irCommands)
         nameEdits = ({})
         messages = ({})
+        refusals = ({})   // -- WP QD1 --
         subMessages = ({})
         displayStatus = 0
     }
@@ -172,6 +177,7 @@ Column {
         }
     }
     function revertSlot(slot) {
+        setMap("refusals", slot, undefined)   // -- WP QD1 --
         setDraft(slot, cs.copy(live[slot]))
         setMap("nameEdits", slot, undefined)
         setMap("messages", slot, undefined)
@@ -193,14 +199,23 @@ Column {
         setMap("nameEdits", slot, undefined)
         setMap("expanded", slot, undefined)
         var hadName = !!cs.names[slot]
-        if (!cs.isConfigured(live[slot])) {
-            setDraft(slot, cs.emptyBinding())
-            if (hadName) controlSurfaces.apply({ op: "name", index: slot, name: "" })
-            return
-        }
-        controlSurfaces.apply({ op: "binding", index: slot, binding: cs.emptyBinding() })
-        if (hadName) controlSurfaces.apply({ op: "name", index: slot, name: "" })
-        setDraft(slot, cs.copy(cs.bindings[slot]))
+        // -- WP QD1 -- Refused: the draft stays, which keeps the card and its note on screen
+        var status = 0
+        if (cs.isConfigured(live[slot])) status = result(controlSurfaces.apply({ op: "binding", index: slot, binding: cs.emptyBinding() }))
+        if (status === 0 && hadName) status = result(controlSurfaces.apply({ op: "name", index: slot, name: "" }))
+        if (noteRefusal(slot, status) !== 0) return
+        setDraft(slot, cs.isConfigured(live[slot]) ? cs.copy(cs.bindings[slot]) : cs.emptyBinding())
+    }
+    // -- WP QD1 --
+    function noteRefusal(slot, status) {
+        setMap("refusals", slot, status !== 0 ? cs.statusMessage(status) : undefined)
+        return status
+    }
+    function setAuxState(slot, on) {
+        return noteRefusal(slot, result(controlSurfaces.apply({ op: "auxState", index: slot, on: on })))
+    }
+    function commitAuxLevel(slot, percent) {
+        return noteRefusal(slot, result(controlSurfaces.apply({ op: "auxLevel", index: slot, percent: percent })))
     }
     function changeType(slot, type) {
         if (type !== drafts[slot].type) setDraft(slot, cs.makeBinding(type, slot))
@@ -230,14 +245,19 @@ Column {
         setMap("subMessages", k, undefined)
         setMap("expandedSubs", k, undefined)
         if (!cs.irConfigured(liveIr[k])) { setIrDraft(k, cs.emptyIr()); return }
-        controlSurfaces.apply({ op: "ir", index: k, command: cs.emptyIr() })
+        // -- WP QD1 -- Refused: the button stays, with the reason
+        var status = result(controlSurfaces.apply({ op: "ir", index: k, command: cs.emptyIr() }))
+        if (status !== 0) {
+            setMap("subMessages", k, { text: cs.statusMessage(status), error: true })
+            return
+        }
         setIrDraft(k, cs.copy(cs.irCommands[k]))
     }
     function startLearn(k) {
         setMap("subMessages", k, undefined)
         var r = controlSurfaces.apply({ op: "learnArm" })
         if (!r.ok) {
-            setMap("subMessages", k, { text: "No IR receiver is active - apply the receiver first.", error: true })
+            setMap("subMessages", k, { text: cs.statusMessage(result(r)), error: true })   // -- WP QD1 --
             return
         }
         learningSub = k
@@ -501,7 +521,7 @@ Column {
                                          : "Apply the output first; the switch works once it is running."
                         enabled: aux.live
                         checked: controlSurfaces.auxLive.state ? controlSurfaces.auxLive.state[card.slot] !== 0 : false
-                        onToggled: controlSurfaces.apply({ op: "auxState", index: card.slot, on: on })
+                        onToggled: view.setAuxState(card.slot, on)   // -- WP QD1 --
                     }
                     CsRow {
                         id: levelRow
@@ -526,7 +546,8 @@ Column {
                                 }
                                 onPressedChanged: if (!pressed) {
                                     levelThrottle.cancel()
-                                    controlSurfaces.apply({ op: "auxLevel", index: card.slot, percent: value })
+                                    // -- WP QD1 -- Refused: the slider goes back to what the device holds
+                                    if (view.commitAuxLevel(card.slot, value) !== 0) value = levelRow.stored
                                 }
                             }
                             Text {
@@ -685,19 +706,23 @@ Column {
                 }
             }
 
-            footer: CsApplyRow {
-                visible: card.expanded || card.dirty || view.messages[card.slot] !== undefined
-                dirty: card.dirty
-                message: view.messages[card.slot] || ""
-                onApply: view.applySlot(card.slot)
-                onRevert: view.revertSlot(card.slot)
-                leading: CsButton {
-                    visible: card.b.type === cs.typeIr && card.expanded
-                    text: "Add Remote Button"
-                    enabled: view.firstFreeSub >= 0 && cs.connected
-                    onClicked: view.addIrCommand()
+            footer: [
+                // -- WP QD1 --
+                CsNote { warning: true; text: view.refusals[card.slot] || "" },
+                CsApplyRow {
+                    visible: card.expanded || card.dirty || view.messages[card.slot] !== undefined
+                    dirty: card.dirty
+                    message: view.messages[card.slot] || ""
+                    onApply: view.applySlot(card.slot)
+                    onRevert: view.revertSlot(card.slot)
+                    leading: CsButton {
+                        visible: card.b.type === cs.typeIr && card.expanded
+                        text: "Add Remote Button"
+                        enabled: view.firstFreeSub >= 0 && cs.connected
+                        onClicked: view.addIrCommand()
+                    }
                 }
-            }
+            ]
         }
     }
 }

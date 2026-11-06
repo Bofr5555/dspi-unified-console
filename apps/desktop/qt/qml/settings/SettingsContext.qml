@@ -40,6 +40,11 @@ QtObject {
     // Control surfaces: applied edits not yet saved to flash
     readonly property bool csDirty: bridge.connected && controlSurfaces.unsaved
     readonly property bool dirty: draftDirty || hardwareDirty || csDirty
+    // -- WP QD1 --
+    // Why the device refused the last Save; the save bar shows it. load() leaves
+    // it: the bridge's state changes reach load() while a refused save stands.
+    property string saveError: ""
+    onDirtyChanged: if (!dirty) saveError = ""
 
     function load() {
         startupMode = bridge.presetStartupMode
@@ -56,11 +61,21 @@ QtObject {
     }
 
     function edit(name, value) {
+        saveError = ""   // -- WP QD1 --
         ctx[name] = value
         edited = true
     }
 
+    // -- WP QD1 --
+    // Write the control surfaces to flash; false (with the reason) if refused
+    function saveControlSurfaces() {
+        var st = controlSurfaces.save()
+        saveError = st !== 0 ? controlSurfaces.statusMessage(st) : ""
+        return st === 0
+    }
+
     function save() {
+        saveError = ""   // -- WP QD1 --
         if (startupMode !== bridge.presetStartupMode || defaultSlot !== bridge.presetDefaultSlot)
             bridge.setPresetStartup(startupMode, defaultSlot)
         if (masterVolumeMode !== bridge.masterVolumeMode)
@@ -71,8 +86,9 @@ QtObject {
             bridge.setDacMute(dacEnabled, dacActiveLow, dacPin, dacHoldMs, dacReleaseMs)
         if (hardwareDirty)
             bridge.saveOutputConfig()
-        if (csDirty)
-            controlSurfaces.save()
+        // -- WP QD1 -- A refused save must never look saved: the draft stays
+        if (csDirty && !saveControlSurfaces())
+            return
         edited = false
     }
 
@@ -127,6 +143,7 @@ QtObject {
     }
 
     function revert() {
+        saveError = ""   // -- WP QD1 --
         if (csDirty) controlSurfaces.revert()
         load()
     }
