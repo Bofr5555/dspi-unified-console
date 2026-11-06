@@ -5,41 +5,36 @@
 //! PEQ bank, and for an output its crossover bank and its gain, delay and
 //! mute. A paste writes that onto another channel as ordinary commands, so the
 //! echo line shows exactly what was done and the same lines work in a script.
+//!
+//! The model itself (what a copy takes, what a paste writes) lives in
+//! [`dspi_session::clipboard`], where every GUI shares it, and is re-exported
+//! here. What stays is what only a terminal has: the Console's channel
+//! descriptors as the copy's source name, and each planned write rendered as
+//! its command line.
 
-use dspi_proto::value::EqParamPacket;
+pub use dspi_session::clipboard::*;
+
 use dspi_session::DeviceState;
 
-use super::{band_command, channel_name, cleared_band, number, supports_crossover};
+use super::{band_command, channel_name, number};
 
-/// What a copy captured. The source name is kept so the paste can say where it
-/// came from.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ChannelClipboard {
-    pub source: String,
-    pub bands: Vec<EqParamPacket>,
-    /// Outputs only: the crossover bank travels between outputs and is left
-    /// alone when the clipboard came from an input.
-    pub crossover: Option<Vec<EqParamPacket>>,
-    /// Inputs only.
-    pub preamp_db: Option<f32>,
-    /// Outputs only: gain, delay, mute.
-    pub output: Option<(f32, f32, bool)>,
+/// The TUI's [`ClipboardContext`]: the device state, with the Console's
+/// descriptors ("FL", "Sub", ...) for channels the device leaves unnamed.
+struct Tui<'a>(&'a DeviceState);
+
+impl ClipboardContext for Tui<'_> {
+    fn state(&self) -> &DeviceState {
+        self.0
+    }
+
+    fn channel_name(&self, channel: usize) -> String {
+        channel_name(self.0, channel)
+    }
 }
 
 /// Take a channel's parameters.
 pub fn copy(state: &DeviceState, channel: usize) -> ChannelClipboard {
-    let ni = state.caps.num_inputs as usize;
-    let is_output = channel >= ni;
-    ChannelClipboard {
-        source: channel_name(state, channel),
-        bands: state.bands(channel as u8),
-        crossover: is_output.then(|| state.xover_bands(channel as u8)),
-        preamp_db: (!is_output).then(|| state.preamp_db(channel)),
-        output: is_output.then(|| {
-            let o = state.output(channel - ni);
-            (o.gain_db, o.delay_ms, o.mute)
-        }),
-    }
+    copy_channel(&Tui(state), channel)
 }
 
 /// The commands that put a clipboard onto a channel, and onto its linked
@@ -50,40 +45,21 @@ pub fn paste_commands(
     channel: usize,
     mirror: Option<usize>,
 ) -> Vec<String> {
-    let ni = state.caps.num_inputs as usize;
     let mut out = Vec::new();
-
-    for target in std::iter::once(channel).chain(mirror) {
-        for band in 0..state.caps.max_bands {
-            // Bands the clipboard does not reach are cleared, so the
-            // destination is the source rather than a merge of the two.
-            let p = clip
-                .bands
-                .get(band as usize)
-                .copied()
-                .unwrap_or_else(|| cleared_band(target as u8, band));
-            out.extend(band_command(state, target, band, &p));
-        }
-        if let Some(db) = clip.preamp_db
-            && target < ni
-        {
-            out.push(format!("pre {target} {}", number(db)));
-        }
-    }
-
-    if channel >= ni {
-        let o = channel - ni;
-        if let Some(xo) = &clip.crossover
-            && supports_crossover(state)
-        {
-            for (i, p) in xo.iter().enumerate().take(4) {
-                out.extend(band_command(state, channel, 20 + i as u8, p));
+    for w in paste_plan(clip, state, channel, mirror) {
+        match w {
+            PasteWrite::Band(p) => out.extend(band_command(state, p.channel as usize, p.band, &p)),
+            PasteWrite::Preamp { input, db } => out.push(format!("pre {input} {}", number(db))),
+            PasteWrite::OutputGain { output, db } => {
+                out.push(format!("out.gain {output} {}", number(db)))
             }
-        }
-        if let Some((gain, delay, mute)) = clip.output {
-            out.push(format!("out.gain {o} {}", number(gain)));
-            out.push(format!("out.delay {o} {}", number(delay)));
-            out.push(format!("out.mute {o} {}", if mute { "on" } else { "off" }));
+            PasteWrite::OutputDelay { output, ms } => {
+                out.push(format!("out.delay {output} {}", number(ms)))
+            }
+            PasteWrite::OutputMute { output, mute } => out.push(format!(
+                "out.mute {output} {}",
+                if mute { "on" } else { "off" }
+            )),
         }
     }
     out
@@ -91,7 +67,7 @@ pub fn paste_commands(
 
 /// What the echo line says after a copy.
 pub fn copied_message(clip: &ChannelClipboard) -> String {
-    format!("Copied {} parameters", clip.source)
+    clip.copied_message()
 }
 
 #[cfg(test)]
