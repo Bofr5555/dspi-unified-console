@@ -1,0 +1,31 @@
+# Vendored DSPi firmware headers. DO NOT EDIT BY HAND.
+#
+# These are the source of truth for the protocol (see REDESIGN_SPEC.md 1.4).
+# To bump: follow docs/firmware-bump.md, which regenerates constants and tells
+# you exactly what changed.
+
+repository = "https://github.com/Bofr5555/DSPi"
+branch     = "bofr-main"
+commit     = "af001ecc86204ee9be01189604b5902377816ddf"
+short      = "af001ec"
+committed  = "2026-11-06 11:27:32 +0100"
+vendored   = "2026-11-06"
+# bofr-main is Weeb Labs release/v1.1.6 final (9ffce34, caps v22) plus the
+# fork's extension channel (REQ_EXTENSION 0x00, EXT_* sub-commands in
+# config.h; Documentation/Features/extension_channel_spec.md there).
+
+files = [
+  "config.h",            # vendor opcodes, channel model, platform constants, firmware version
+  "bulk_params.h",       # WireBulkParams V32 wire format
+  "control_surfaces.h",  # CS types, nouns, actions, units, status codes, caps v20
+  "psybass.h",           # psychoacoustic bass ranges and defaults
+  "upmix.h",             # upmixer config packet and parameter ids
+  "siggen.h",            # test signal generator config, status, caps
+  "subharm.h",           # subharmonic synthesizer ranges, defaults, selectivity modes
+  "tube.h",              # tube preamp parameter ids, ranges and defaults
+  "limiter.h",           # output limiter parameter ids, read-only blocks, ranges
+  "rta.h",               # spectrum analyser wire structs and protocol constants
+  "rta_fft.h",           # analyser transform sizes, band count, level zero
+  "rta_bass.h",          # analyser bass band count
+  "notify.h",            # notification event ids and ParamSource tags
+]
