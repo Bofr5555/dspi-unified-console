@@ -1,5 +1,5 @@
 //! The named constants of the C header, copied value for value from the old
-//! desktop core (`crates/dspi-core-linux`, every `pub const` cbindgen put
+//! desktop core (`tests/data/dspi_core_old.h`, every `pub const` cbindgen put
 //! into its `dspi_core.h`), so the Qt app compiles unchanged (WP Q1).
 //!
 //! cbindgen only sees literals, so these stay literals. The tests in

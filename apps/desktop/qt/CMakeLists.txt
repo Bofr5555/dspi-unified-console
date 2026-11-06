@@ -30,15 +30,13 @@ message(STATUS "Building against Qt ${QT_VERSION}")
 # The Rust core (dspi-core). Build it first with cargo; these say where its
 # header and library are. DSPI_RUST_TARGET is the cargo --target triple when
 # cross-compiling (e.g. x86_64-pc-windows-gnu), empty for a native build.
-# In dspi-unified-console the core is crates/dspi-core-linux and cargo's
-# target directory is the repository root's target/.
+# The core is the C ABI crate crates/dspi-capi (library dspi_capi, header
+# dspi_core.h); cargo's target directory is the repository root's target/.
 get_filename_component(DSPI_REPO_ROOT "${CMAKE_SOURCE_DIR}/../../.." ABSOLUTE)
-set(DSPI_CORE_DIR "${DSPI_REPO_ROOT}/crates/dspi-core-linux" CACHE PATH "Directory holding include/dspi_core.h")
+set(DSPI_CORE_DIR "${DSPI_REPO_ROOT}/crates/dspi-capi" CACHE PATH "Directory holding include/dspi_core.h")
 set(DSPI_CARGO_TARGET_DIR "${DSPI_REPO_ROOT}/target" CACHE PATH "cargo's target directory")
 set(DSPI_RUST_TARGET "" CACHE STRING "cargo --target triple, empty for the host")
-# The core library's name: dspi_core (the old core, crates/dspi-core-linux)
-# or dspi_capi (the merged core's C ABI, crates/dspi-capi; docs/core-merge).
-set(DSPI_CORE_LIB "dspi_core" CACHE STRING "Rust core library name (dspi_core or dspi_capi)")
+set(DSPI_CORE_LIB "dspi_capi" CACHE STRING "Rust core library name")
 if(DSPI_RUST_TARGET)
     set(DSPI_CORE_LIBDIR "${DSPI_CARGO_TARGET_DIR}/${DSPI_RUST_TARGET}/release")
 else()
@@ -91,7 +89,7 @@ if(WIN32)
     # Windows 11 rounded corners for the frameless windows (WindowEffects)
     target_link_libraries(DSPiConsole PRIVATE dwmapi)
 
-    # Windows: the core is a DLL (dspi_core.dll) next to the exe, linked
+    # Windows: the core is a DLL (dspi_capi.dll) next to the exe, linked
     # through cargo's import library
     if(MSVC)
         target_link_libraries(DSPiConsole PRIVATE ${DSPI_CORE_LIBDIR}/${DSPI_CORE_LIB}.dll.lib)
@@ -123,8 +121,7 @@ if(APPLE)
     set_source_files_properties(src/MacSystemColors.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
     target_link_libraries(DSPiConsole PRIVATE "-framework AppKit")
 
-    # libusb is built into the core (rusb's vendored feature, core/Cargo.toml);
-    # these are the macOS frameworks it uses
+    # The macOS frameworks the core's USB stack (nusb) and Rust's std use
     find_library(IOKIT IOKit)
     find_library(CF CoreFoundation)
     find_library(SEC Security)
@@ -132,11 +129,8 @@ if(APPLE)
     target_link_libraries(DSPiConsole PRIVATE ${IOKIT} ${CF} ${SEC} ${OBJC}
         "-framework SystemConfiguration")
 elseif(UNIX)
-    # Linux: libusb via pkg-config, plus pthreads and dl
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(LIBUSB REQUIRED libusb-1.0)
-    target_include_directories(DSPiConsole PRIVATE ${LIBUSB_INCLUDE_DIRS})
-    target_link_libraries(DSPiConsole PRIVATE ${LIBUSB_LIBRARIES} pthread dl udev)
+    # Linux: the core talks to usbfs itself (nusb); it needs only these
+    target_link_libraries(DSPiConsole PRIVATE pthread dl m)
 
     # Optional: KDE blur-behind support
     # KF5 with Qt 5, KF6 with Qt 6

@@ -2,17 +2,15 @@
 #   crates/dspi-core        the embedder API over the session (docs/core-merge/PLAN.md)
 #   crates/dspi-capi        its C ABI for the Qt app
 #   crates/dspi-ffi         its UniFFI library for Android and iOS
-#   crates/dspi-core-linux  the old desktop core (package dspi-core-linux), being retired
 #   crates/dspi-proto, -transport, -session, -cmd, -tui  DSPi-Terminal's crates
 #   crates/dspi-link        the DSPi Link client, from the Android console
 #   apps/terminal           the `dspi` terminal client
 #   xtask                   DSPi-Terminal's developer tasks
 # The Terminal crates and the core-merge crates inherit [workspace.package]
-# below; dspi-core-linux and dspi-link set their own edition and licence fields.
+# below; dspi-link sets its own edition and licence fields.
 [workspace]
 resolver = "3"
 members = [
-    "crates/dspi-core-linux",
     "crates/dspi-core",
     "crates/dspi-capi",
     "crates/dspi-ffi",

@@ -1,6 +1,6 @@
-//! The C ABI the Qt desktop app links: the old desktop core's functions
-//! (`crates/dspi-core-linux`, header `dspi_core.h`), same names, same
-//! signatures, same `#[repr(C)]` records, now over [`dspi_core::DspiCore`].
+//! The C ABI the Qt desktop app links: the retired desktop core's functions
+//! (header `dspi_core.h`, snapshot in `tests/data/dspi_core_old.h`), same
+//! names, same signatures, same `#[repr(C)]` records, now over [`dspi_core::DspiCore`].
 //!
 //! Rules for every `extern "C"` function here:
 //! - **No unwinding across the boundary.** The body runs inside [`guard`],

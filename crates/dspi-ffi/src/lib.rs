@@ -15,9 +15,7 @@
 //!     --config crates/dspi-core/uniffi.toml --language kotlin --out-dir out
 //! ```
 //!
-//! and again with `--crate dspi_ffi --config crates/dspi-ffi/uniffi.toml`. Name
-//! the config until WP Q3 deletes the old core, whose library is also called
-//! `dspi_core`; afterwards `--library` alone finds both.
+//! and again with `--crate dspi_ffi --config crates/dspi-ffi/uniffi.toml`.
 //!
 //! # Calling it from an app
 //!
