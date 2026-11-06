@@ -25,6 +25,7 @@ fn step() -> impl Strategy<Value = Step> {
             Just(n::PARAM_SRC_BULK_SET as u8),
             Just(n::PARAM_SRC_HOST_SET as u8),
             Just(n::PARAM_SRC_MIDI as u8),
+            Just(n::PARAM_SRC_UNKNOWN as u8),
             any::<u8>(),
         ]
         .prop_map(Step::Note),
@@ -100,7 +101,16 @@ proptest! {
                 }
                 Step::Wait(ms) => now += Duration::from_millis(u64::from(ms)),
                 Step::Note(src) => {
-                    if f.classify_invalidation(now, kind, src, None, None) {
+                    let pending = f.own_bulk_pending(now);
+                    let own = f.classify_invalidation(now, kind, src, None, None);
+                    if u16::from(src) == n::PARAM_SRC_UNKNOWN {
+                        prop_assert!(!own, "a merged entry is never ours");
+                        prop_assert!(!f.own_bulk_pending(now), "and it settles");
+                        if pending {
+                            outstanding = 0;
+                        }
+                    }
+                    if own {
                         prop_assert_eq!(u16::from(src), path, "another source claimed");
                         prop_assert!(outstanding > 0, "claimed with nothing outstanding");
                         outstanding = 0;

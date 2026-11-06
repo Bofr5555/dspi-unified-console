@@ -1529,11 +1529,17 @@ impl Session {
     }
 
     /// [`Session::core1_conflict`] with the read's failure kept: a caller
-    /// about to write must not read a lost device as "no conflict".
+    /// about to write must not read a lost device as "no conflict". An empty
+    /// reply is [`TransportError::ShortRead`] too.
     pub fn try_core1_conflict(&mut self, output: u8) -> Result<bool, TransportError> {
-        self.transport
-            .control_in(op::REQ_GET_CORE1_CONFLICT, output as u16, 1)
-            .map(|d| d.first().copied().unwrap_or(0) != 0)
+        let d = self
+            .transport
+            .control_in(op::REQ_GET_CORE1_CONFLICT, output as u16, 1)?;
+        d.first().map(|b| *b != 0).ok_or(TransportError::ShortRead {
+            opcode: op::REQ_GET_CORE1_CONFLICT,
+            wanted: 1,
+            got: 0,
+        })
     }
 
     /// The PDM sub, which is always the last output

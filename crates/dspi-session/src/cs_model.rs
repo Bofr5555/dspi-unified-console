@@ -1194,6 +1194,9 @@ pub fn apply_learn(session: &mut Session, arm: bool) -> Result<(), ApplyError> {
                 status: status::BUSY,
             }),
             Err(SurfaceError::Transport(TransportError::Stalled { .. })) => {
+                // The stall itself does not say why. `last_status` is the
+                // firmware's latest, so a NO_IR from an earlier arm can be
+                // read stale, and BUSY is inferred from anything else.
                 let reason = s.read_status().map(|p| p.last_status);
                 Err(ApplyError::Rejected {
                     status: match reason {

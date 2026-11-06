@@ -221,22 +221,21 @@ impl Notification {
     /// Whether this is the echo of a write this client made, by the rule of
     /// the link it came over ([`dspi_transport::is_own_write`]): `kind` is
     /// the transport's [`dspi_transport::TransportCaps::kind`], `session` its
-    /// [`dspi_transport::Transport::session_id`], and `own_bulk_pending`
-    /// whether one of our own bulk writes may explain a bulk invalidation
-    /// (see [`EchoFilter`], which also consumes it). A `BULK_INVALIDATED`
-    /// off Link is ours only while `own_bulk_pending`, whatever its source:
-    /// firmware that tags bulk applies (`NOTIFY_FEAT_BULK_SOURCE`) marks
-    /// another host's USB bulk write `HOST_SET` too. Such a change is already
-    /// in the client's mirror.
+    /// [`dspi_transport::Transport::session_id`]. A `BULK_INVALIDATED` off Link
+    /// follows `echo`'s rule, at the packet's `received` stamp: the source that
+    /// answers a bulk write in the filter's mode, with one of ours pending; a
+    /// preset load, a factory reset or a merged `UNKNOWN` never is ours. This
+    /// only asks: [`EchoFilter::classify_notification`] also consumes the
+    /// write it answers. Such a change is already in the client's mirror.
     pub fn is_own_echo(
         &self,
         kind: dspi_transport::TransportKind,
         session: Option<u16>,
-        own_bulk_pending: bool,
+        echo: &EchoFilter,
     ) -> bool {
         match &self.event {
-            Event::BulkInvalidated { .. } if kind != dspi_transport::TransportKind::Link => {
-                own_bulk_pending
+            Event::BulkInvalidated { source } if kind != dspi_transport::TransportKind::Link => {
+                echo.answers_our_bulk(self.received, kind, source.raw())
             }
             Event::ParamChanged { source, .. } | Event::BulkInvalidated { source } => {
                 dspi_transport::is_own_write(kind, source.raw(), self.origin, session, false)
@@ -278,6 +277,11 @@ impl Notification {
 /// while ours is in flight and for a moment after, so: a `BULK_SET`
 /// invalidation that arrives while our bulk write is in flight, or within
 /// [`EchoFilter::WINDOW`] of its successful reply, is ours, **once**.
+///
+/// A hole no client can close: another host's SET on our path, merged with ours
+/// into one `HOST_SET` entry, cannot be told apart from ours alone, so its
+/// change goes unread; [`EchoFilter::SOURCE_EXPIRY`] bounds how long a pending
+/// SET can be taken for such a write.
 ///
 /// In both modes an invalidation received before our write started is foreign,
 /// and everything unclaimed is foreign: it only costs the client a re-read.
@@ -385,6 +389,31 @@ impl EchoFilter {
         }
     }
 
+    /// Whether a `BULK_INVALIDATED` with this raw source, received at `now`,
+    /// answers a bulk write of ours (off Link): the mode's source, with one
+    /// pending.
+    fn answers_our_bulk(
+        &self,
+        now: Instant,
+        kind: dspi_transport::TransportKind,
+        source: u8,
+    ) -> bool {
+        use dspi_transport::TransportKind as K;
+        let tag = match (self.bulk_source, kind) {
+            (false, _) => n::PARAM_SRC_BULK_SET,
+            (true, K::Midi) => n::PARAM_SRC_MIDI,
+            (true, _) => n::PARAM_SRC_HOST_SET,
+        };
+        u16::from(source) == tag && self.own_bulk_pending(now)
+    }
+
+    /// Nothing of ours is outstanding any more (tagged mode).
+    fn settle_outstanding(&mut self) {
+        self.outstanding = 0;
+        self.since = None;
+        self.expires = None;
+    }
+
     /// Classify a `BULK_INVALIDATED` received at `now` by its raw source:
     /// true if it is our own echo, and the client skips the re-read. A claim
     /// consumes what it answers (see the type's docs).
@@ -396,27 +425,24 @@ impl EchoFilter {
         origin: Option<u16>,
         session: Option<u16>,
     ) -> bool {
-        use dspi_transport::TransportKind as K;
-        let src = u16::from(source);
-        let path = match kind {
-            K::Link => {
-                return dspi_transport::is_own_write(kind, source, origin, session, false);
-            }
-            K::Midi => n::PARAM_SRC_MIDI,
-            K::Usb | K::Fake => n::PARAM_SRC_HOST_SET,
-        };
-        let tag = if self.bulk_source {
-            path
-        } else {
-            n::PARAM_SRC_BULK_SET
-        };
-        if src != tag || !self.own_bulk_pending(now) {
+        if kind == dspi_transport::TransportKind::Link {
+            return dspi_transport::is_own_write(kind, source, origin, session, false);
+        }
+        // A mixed-source merge stands for every rewrite in it, ours included,
+        // and is re-read. Left outstanding, our SET would let another app's
+        // later HOST_SET read as ours.
+        if self.bulk_source
+            && u16::from(source) == n::PARAM_SRC_UNKNOWN
+            && self.own_bulk_pending(now)
+        {
+            self.settle_outstanding();
+            return false;
+        }
+        if !self.answers_our_bulk(now, kind, source) {
             return false;
         }
         if self.bulk_source {
-            self.outstanding = 0;
-            self.since = None;
-            self.expires = None;
+            self.settle_outstanding();
         }
         self.state = match self.state {
             BulkEcho::InFlight { since, .. } => BulkEcho::InFlight {
@@ -1063,10 +1089,24 @@ mod tests {
 
         // Any other source is foreign and settles nothing.
         f.bulk_write_started(t0);
-        for src in [midi, bulk, unknown, preset] {
+        for src in [midi, bulk, preset] {
             assert!(!c(&mut f, t0, K::Usb, src), "source {src}");
         }
         assert!(f.own_bulk_pending(t0));
+
+        // A merged entry stands for our SET too: it re-reads and settles it, so
+        // another app's later HOST_SET is not taken for ours.
+        let mut f = tagged();
+        f.bulk_write_started(t0);
+        f.bulk_write_finished(t0, true);
+        assert!(!c(&mut f, t0, K::Usb, unknown));
+        assert!(!f.own_bulk_pending(t0));
+        assert!(!c(&mut f, t0, K::Usb, host));
+        // With nothing pending it settles nothing and a later SET is unaffected.
+        let mut f = tagged();
+        assert!(!c(&mut f, t0, K::Usb, unknown));
+        f.bulk_write_started(t0);
+        assert!(c(&mut f, t0, K::Usb, host));
 
         // Over MIDI the path is MIDI.
         let mut f = tagged();
@@ -1142,9 +1182,41 @@ mod tests {
         });
         assert!(!f.classify_notification(K::Usb, None, &inval));
         assert!(f.classify_notification(K::Usb, None, &param));
-        assert!(!inval.is_own_echo(K::Usb, None, false));
-        assert!(inval.is_own_echo(K::Usb, None, true));
-        assert!(param.is_own_echo(K::Usb, None, false));
+        assert!(!inval.is_own_echo(K::Usb, None, &f));
+        assert!(param.is_own_echo(K::Usb, None, &f));
+        let mut pending = f.clone();
+        pending.bulk_write_started(inval.received);
+        assert!(inval.is_own_echo(K::Usb, None, &pending));
+        assert!(
+            pending.own_bulk_pending(inval.received),
+            "asking consumes nothing"
+        );
+
+        // With a bulk write of ours pending, only the mode's source is ours: not
+        // a preset load, a factory reset or a merged entry.
+        for source in [
+            Source::Preset,
+            Source::Factory,
+            Source::Unknown,
+            Source::BulkSet,
+        ] {
+            let other = note(Event::BulkInvalidated { source });
+            assert!(!other.is_own_echo(K::Usb, None, &pending), "{source:?}");
+        }
+        let mut window = EchoFilter::default();
+        window.bulk_write_started(inval.received);
+        assert!(
+            !inval.is_own_echo(K::Usb, None, &window),
+            "HOST_SET, untagged"
+        );
+        for source in [Source::Preset, Source::Factory, Source::Unknown] {
+            let other = note(Event::BulkInvalidated { source });
+            assert!(!other.is_own_echo(K::Usb, None, &window), "{source:?}");
+        }
+        let bulk = note(Event::BulkInvalidated {
+            source: Source::BulkSet,
+        });
+        assert!(bulk.is_own_echo(K::Usb, None, &window));
     }
 
     /// The end of the stream (a MIDI port closed, a Link session over)

@@ -90,6 +90,10 @@ impl DspiCore {
     /// are kept and only the per-item values are read. The flag is consumed,
     /// so a later call reads everything.
     ///
+    /// Ends by capturing the preset baseline, so an embedder using this as a
+    /// refresh also resets [`DspiCore::preset_dirty`]; to re-read without that,
+    /// use [`DspiCore::refresh_params`].
+    ///
     /// Holds the core's lock for the whole read: a few hundred milliseconds
     /// over USB, seconds over MIDI or a slow Link. Every other call that
     /// takes the lock (`get_state`, setters, the RTA worker's polls) waits

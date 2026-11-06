@@ -11,9 +11,11 @@
 //!    `Notification::received` stamp, PLAN §1.2), patches `PARAM_CHANGED`
 //!    values into `encode_bulk(state)` and decodes the result once
 //!    (PLAN §1.4);
-//! 2. with the lock released: re-reads the whole image (WP C2's
-//!    `refresh_params`, then the preset directory) when the batch asked for
-//!    it: a foreign `BULK_INVALIDATED`, a sequence gap or queue overflow
+//! 2. then, under the core's lock taken again and held across the read, so no
+//!    setter lands between the device's state and the mirror (a hold that
+//!    grows to seconds over MIDI and Link): re-reads the whole image
+//!    (`connect::refresh_params_locked`, then the preset directory) when the
+//!    batch asked for it: a foreign `BULK_INVALIDATED`, a sequence gap or queue overflow
 //!    (`Notification::lost`), an offset outside the image, or any
 //!    `PARAM_CHANGED` on a read-only connection, whose offsets are another
 //!    wire format's (patch 0003).
