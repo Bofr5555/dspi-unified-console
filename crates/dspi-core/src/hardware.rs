@@ -36,21 +36,16 @@
 //!
 //! Owned by WP C6 (docs/core-merge/PLAN.md).
 
-use std::time::Duration;
-
 use dspi_proto::generated::opcodes as op;
 use dspi_transport::TransportError;
 
 use crate::consts::FW_BETA_EARLY;
 use crate::error::status;
 use crate::records::*;
-use crate::{Connection, DspiCore, DspiError, Result, Writable, connect, state};
+use crate::{Connection, DspiCore, DspiError, Inner, Result, connect, state};
 
 /// `PIN_RESET_TO_DEFAULT` (config.h): a pin setter's "the platform default".
 const PIN_RESET_TO_DEFAULT: u8 = 0xFF;
-
-/// How long a multi-request flow waits for the DSPi Link device lock.
-const LOCK_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// `REQ_SET_DAC_HW_MUTE_CONFIG` payload: the 16-byte `DacHwMuteConfig`.
 const DAC_MUTE_CONFIG_LEN: usize = 16;
@@ -110,20 +105,6 @@ fn u16_at(d: &[u8], at: usize) -> u16 {
 fn u32_at(d: &[u8], at: usize) -> u32 {
     let b = |k: usize| byte(d, at.saturating_add(k));
     u32::from_le_bytes([b(0), b(1), b(2), b(3)])
-}
-
-/// Run `f` under the transport's device lock (DSPi Link; a no-op on other
-/// links). A refused lock is [`DspiError::Locked`] and nothing is sent; the
-/// lock is released whatever `f` returns.
-fn locked<T>(
-    w: &mut Writable<'_>,
-    reason: &str,
-    f: impl FnOnce(&mut Writable<'_>) -> Result<T>,
-) -> Result<T> {
-    w.conn().transport().lock(reason, LOCK_TIMEOUT)?;
-    let r = f(w);
-    w.conn().transport().unlock();
-    r
 }
 
 /// The mirror's entry `i` of a per-index vector, if it exists.
@@ -212,24 +193,26 @@ impl DspiCore {
         readback: (u8, u16),
         update: impl FnOnce(&mut DspState, u8),
     ) -> Result<()> {
-        let mut guard = self.lock();
-        let inner = &mut *guard;
-        let actual = {
-            let mut w = inner.writable_conn()?;
-            w.conn().fresh_image = false;
-            if pin == PIN_RESET_TO_DEFAULT {
-                locked(&mut w, "Resetting a pin to its default", |w| {
-                    status(w.set_as_read(opcode, value)?)?;
-                    read_u8(w.conn(), readback.0, readback.1)
-                })?
-            } else {
+        let apply = |inner: &mut Inner| {
+            let actual = {
+                let mut w = inner.writable_conn()?;
+                w.conn().fresh_image = false;
                 status(w.set_as_read(opcode, value)?)?;
-                pin
-            }
+                if pin == PIN_RESET_TO_DEFAULT {
+                    read_u8(w.conn(), readback.0, readback.1)?
+                } else {
+                    pin
+                }
+            };
+            update(&mut inner.state, actual);
+            sync_image(&mut inner.state);
+            Ok(())
         };
-        update(&mut inner.state, actual);
-        sync_image(&mut inner.state);
-        Ok(())
+        if pin == PIN_RESET_TO_DEFAULT {
+            self.with_device_lock("Resetting a pin to its default", apply)
+        } else {
+            apply(&mut self.lock())
+        }
     }
 
     /// A payload SET (OUT, no status byte): `Ok` means the transfer
@@ -337,10 +320,12 @@ impl DspiCore {
     /// [`DspiError::Locked`] (Link); [`DspiError::ReadOnly`],
     /// [`DspiError::Disconnected`] or a transfer error.
     pub fn save_output_config(&self) -> Result<()> {
-        let mut guard = self.lock();
-        let mut w = guard.writable_conn()?;
-        locked(&mut w, "Saving output configuration", |w| {
-            status(w.set_as_read(op::REQ_SAVE_OUTPUT_CONFIG, 0)?)
+        self.with_device_lock("Saving output configuration", |inner| {
+            status(
+                inner
+                    .writable_conn()?
+                    .set_as_read(op::REQ_SAVE_OUTPUT_CONFIG, 0)?,
+            )
         })
     }
 

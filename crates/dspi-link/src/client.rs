@@ -250,6 +250,21 @@ struct Session {
     devices_read: bool,
     /// Why the last `device.list` failed.
     list_error: Option<LinkError>,
+    /// How often each handle went from present to offline or gone.
+    offline_counts: HashMap<u32, u64>,
+}
+
+impl Session {
+    /// The list says handle `handle` is now `state` (`None`: gone). Counts a
+    /// board leaving at the moment it is heard, so a quick flap is not missed by
+    /// someone who looks at the list later.
+    fn note_board(&mut self, handle: u32, state: Option<&str>) {
+        let was_present = self.devices.iter().any(|d| d.handle == handle && d.state != "offline");
+        if was_present && state.is_none_or(|s| s == "offline") {
+            let count = self.offline_counts.entry(handle).or_default();
+            *count = count.wrapping_add(1);
+        }
+    }
 }
 
 /// A request timed out, so the link is under suspicion: a ping goes out, and
@@ -564,6 +579,11 @@ impl LinkClient {
             .unwrap_or_default();
         {
             let mut s = lock(&self.inner.session);
+            let known: Vec<u32> = s.devices.iter().map(|d| d.handle).collect();
+            for handle in known {
+                let state = list.iter().find(|d| d.handle == handle).map(|d| d.state.clone());
+                s.note_board(handle, state.as_deref());
+            }
             s.devices = list.clone();
             s.devices_read = true;
             s.list_error = None;
@@ -602,6 +622,14 @@ impl LinkClient {
     /// Why the last `device.list` failed, until one succeeds.
     pub fn device_list_error(&self) -> Option<LinkError> {
         lock(&self.inner.session).list_error.clone()
+    }
+
+    /// How often device `handle` has gone from present to offline or gone in this
+    /// session, counted as the hub said it. A changed count means the hub ended
+    /// that device's polls and the board may have rebooted, even if it is back
+    /// by the time anyone looks.
+    pub fn offline_count(&self, handle: u32) -> u64 {
+        lock(&self.inner.session).offline_counts.get(&handle).copied().unwrap_or(0)
     }
 
     /// Where this session stands. See [`SessionState`].
@@ -977,6 +1005,7 @@ impl LinkClient {
             Inbound::DeviceAdded(d) | Inbound::DeviceChanged(d) => {
                 {
                     let mut s = lock(&self.inner.session);
+                    s.note_board(d.handle, Some(&d.state));
                     match s.devices.iter_mut().find(|x| x.handle == d.handle) {
                         Some(x) => *x = d,
                         None => s.devices.push(d),
@@ -985,7 +1014,10 @@ impl LinkClient {
                 self.fire_devices_changed();
             }
             Inbound::DeviceRemoved { handle, .. } => {
-                lock(&self.inner.session).devices.retain(|d| d.handle != handle);
+                let mut s = lock(&self.inner.session);
+                s.note_board(handle, None);
+                s.devices.retain(|d| d.handle != handle);
+                drop(s);
                 self.fire_devices_changed();
             }
             Inbound::Hello(_) | Inbound::PollError { .. } | Inbound::Other { .. } => {}

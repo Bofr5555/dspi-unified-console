@@ -109,6 +109,12 @@ pub struct SystemStatus {
     pub clip_flags: u32,
     pub active_input_channels: u8,
     pub num_channels: u8,
+    /// -- WP C15 -- Not a fresh reading (DSPi Link only): no recent poll frame,
+    /// so all zero, which is not silence; or a repeat of the last slow read.
+    /// Grey the meters rather than show them as live.
+    pub stale: bool,
+    /// How old the reading is, ms; 0 when `stale` with nothing read at all.
+    pub age_ms: u32,
 }
 
 /// `types.rs` `DeviceInfo`; `serial` replaces the `serial`/`serial_len` pair.
@@ -528,6 +534,9 @@ pub struct LinkHello {
     pub caps: Vec<String>,
     pub max_payload: u32,
     pub max_inflight: u32,
+    /// The hub refused the token passed in: forget it. Only this says the
+    /// token is bad; any other failure keeps it.
+    pub token_refused: bool,
 }
 
 /// One device the hub shares (`device.list`, spec 7.4).
@@ -575,6 +584,18 @@ pub struct LinkStatus {
     /// The hub's close code, -1 = none.
     pub close_code: i32,
     pub close_reason: String,
+    /// What to tell the user (WP C15).
+    pub phase: LinkPhase,
+    /// [`LinkPhase::Reconnecting`]: failed tries since the session was lost.
+    pub reconnect_attempt: u32,
+    /// [`LinkPhase::Reconnecting`]: ms until the next try, 0 = now.
+    pub reconnect_in_ms: u32,
+    /// `window` or `fixed`, for [`LinkPhase::NeedsPairing`]'s wording; "" with
+    /// no session.
+    pub pin_source: String,
+    /// The hub refused or revoked the stored token, during a reconnect too:
+    /// forget it. Cleared by the next pairing.
+    pub token_refused: bool,
 }
 
 /// `GET /dspi/v1/info` (spec 3.2), for a hub added by address.
@@ -736,4 +757,40 @@ pub struct OutputLatencyOption {
 // -- WP C13 --
 // -- WP C14 --
 // -- WP C15 --
+
+/// Where a DSPi Link session stands, for the UI's wording
+/// ([`LinkStatus::phase`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+pub enum LinkPhase {
+    /// No session.
+    #[default]
+    Idle,
+    /// The hub wants a PIN (never paired, or the token was refused or revoked:
+    /// see `token_refused`): ask for it and call `link_pair`. Retries stop here.
+    NeedsPairing,
+    /// Connected and authenticated, but the hub has no DSPi to offer: the
+    /// board is off, or its control interface is not enabled. Not a failure
+    /// of the hub or the pairing ("Connected to hub, no DSPi found"). The
+    /// core binds the device by itself when it comes back.
+    NoDevice,
+    /// A DSPi is available and none is bound: `link_devices`, then
+    /// `link_select_device`.
+    ChooseDevice,
+    /// Bound to a device.
+    Bound,
+    /// The session was lost, or the bound device is being re-attached; the
+    /// core retries with backoff. Entered at once. `close_reason` says why,
+    /// `reconnect_attempt` and `reconnect_in_ms` how it goes; `link_close`
+    /// stops it. The mirror stays last known; calls that need the device fail
+    /// at once with `Disconnected`, and nothing is queued.
+    Reconnecting,
+    /// Ended and not retried: see `close_code` and `close_reason`. A protocol
+    /// error is final, also when it comes from a redial (a hub of another
+    /// protocol version answers).
+    Closed,
+    /// The hub refuses this client (a 4xx handshake). Retrying will not help
+    /// until something changes on the hub: see `close_reason`.
+    Refused,
+}
 // -- WP F1 --

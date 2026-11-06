@@ -34,9 +34,9 @@ pub enum DspiError {
     /// DSPi Link: this session's role may not send that command.
     #[error("this console's role on the hub does not allow that")]
     Denied,
-    /// DSPi Link session failure. `code`: the spec 7.1 error code
-    /// (`denied`, `rate_limited`, ...) or `io`, `handshake`, `protocol`,
-    /// `timeout`, `closed`.
+    /// DSPi Link session failure. `code`: `wrong_pin`, `rate_limited`,
+    /// `hub_busy`, `handshake_refused`, `io`, `handshake`, `protocol`,
+    /// `timeout`, `closed`, or another spec 7.1 error code. `msg` can be shown.
     #[error("DSPi Link: {msg}")]
     Link { code: String, msg: String },
     /// A file could not be read or written (presets, firmware images).

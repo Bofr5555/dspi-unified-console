@@ -48,10 +48,7 @@ const BULK_WRITE_CHUNK: usize = 2048;
 
 /// Why `apply_all_params` takes the Link device lock (shown to other
 /// consoles).
-const LOCK_REASON: &str = "Applying configuration";
-
-/// How long `apply_all_params` waits for the Link device lock.
-const LOCK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+pub(crate) const LOCK_REASON: &str = "Applying configuration";
 
 /// `REQ_GET_PLATFORM` answers 4, 6 or 7 bytes.
 const PLATFORM_LEN: u16 = 7;
@@ -166,7 +163,18 @@ impl DspiCore {
     /// sent); the transport's typed error when a transfer fails (the device
     /// then applies nothing).
     pub fn apply_all_params(&self) -> Result<()> {
-        apply_all_params_locked(&mut self.lock())
+        check_apply_allowed(&mut self.lock())?;
+        let lock = self.acquire_device_lock(LOCK_REASON)?;
+        let result = {
+            let mut guard = self.lock();
+            if lock.is_current(&guard) {
+                apply_all_params_locked(&mut guard)
+            } else {
+                Err(DspiError::Disconnected)
+            }
+        };
+        self.release_device_lock(lock);
+        result
     }
 
     /// Read the meter block (`REQ_GET_STATUS` sub-query 9): the peak of each
@@ -177,20 +185,46 @@ impl DspiCore {
     /// `num_channels` are 0. `active_input_channels` is 0 from firmware that
     /// does not append it. Works on a read-only connection too.
     ///
+    /// Over DSPi Link this is the latest frame of a `poll.subscribe` (no
+    /// round trip, and it never delays a command): subscribed on the first
+    /// call, unsubscribed about two seconds after the last, so stop calling
+    /// when no meter is on screen. Until the first frame, or if the feed
+    /// stalls, the block reads all zero with `stale` set. A hub that refuses the
+    /// poll is read directly at a low rate; a repeat of the last such read is
+    /// `stale` too.
+    ///
     /// Errors: [`DspiError::Disconnected`] with no device open;
     /// [`DspiError::Transfer`] when the read fails or the reply is shorter
     /// than `num_channels * 2 + 6` bytes.
     pub fn fetch_status(&self) -> Result<SystemStatus> {
-        let mut guard = self.lock();
-        let inner = &mut *guard;
-        let n = usize::from(inner.state.num_channels).min(MAX_CHANNELS);
-        let conn = inner.conn.as_mut().ok_or(DspiError::Disconnected)?;
-        // n <= 17: at most 41 bytes.
-        let want = n.saturating_mul(2).saturating_add(7);
-        let len = u16::try_from(want).unwrap_or(u16::MAX);
-        let data = conn.get_upto(op::REQ_GET_STATUS, STATUS_METERS, len)?;
-        parse_status(&data, n)
-            .ok_or_else(|| short(op::REQ_GET_STATUS, want.saturating_sub(1), data.len()))
+        let (n, want, len, side) = {
+            let mut guard = self.lock();
+            let inner = &mut *guard;
+            let n = usize::from(inner.state.num_channels).min(MAX_CHANNELS);
+            let conn = inner.conn.as_mut().ok_or(DspiError::Disconnected)?;
+            // n <= 17: at most 41 bytes.
+            let want = n.saturating_mul(2).saturating_add(7);
+            let len = u16::try_from(want).unwrap_or(u16::MAX);
+            match conn.side.clone() {
+                Some(side) => (n, want, len, side),
+                None => {
+                    let data = conn.get_upto(op::REQ_GET_STATUS, STATUS_METERS, len)?;
+                    return parse_status(&data, n).ok_or_else(|| {
+                        short(op::REQ_GET_STATUS, want.saturating_sub(1), data.len())
+                    });
+                }
+            }
+        };
+        // DSPi Link: the hub's poll feed, with the core lock released. No
+        // recent frame reads as zero, not as an error or a frozen meter, and is
+        // flagged `stale`: it is not real silence.
+        let read = side.meters(len)?;
+        let data = read.data.unwrap_or_else(|| vec![0; want]);
+        let mut status = parse_status(&data, n)
+            .ok_or_else(|| short(op::REQ_GET_STATUS, want.saturating_sub(1), data.len()))?;
+        status.stale = read.stale;
+        status.age_ms = read.age_ms;
+        Ok(status)
     }
 
     /// Copy of the cached state (the C ABI returns a borrowed pointer).
@@ -606,13 +640,12 @@ fn parse_status(data: &[u8], n: usize) -> Option<SystemStatus> {
         active_input_channels: byte(data, base.saturating_add(6)),
         // n <= MAX_CHANNELS (17).
         num_channels: u8::try_from(n).unwrap_or(u8::MAX),
+        ..SystemStatus::default()
     })
 }
 
-/// [`DspiCore::apply_all_params`] with the lock already held, so a caller
-/// can change the mirror and write it in one critical section (WP C13's
-/// `config_import`). Same contract and errors.
-pub(crate) fn apply_all_params_locked(inner: &mut Inner) -> Result<()> {
+/// [`DspiCore::apply_all_params`]'s refusals, before any lock or transfer.
+fn check_apply_allowed(inner: &mut Inner) -> Result<()> {
     let wire = inner.conn()?.wire;
     if matches!(
         inner.state.compat,
@@ -624,19 +657,24 @@ pub(crate) fn apply_all_params_locked(inner: &mut Inner) -> Result<()> {
     if !inner.state.bulk_valid || wire.is_none() {
         return Err(DspiError::Disconnected);
     }
+    Ok(())
+}
+
+/// [`DspiCore::apply_all_params`] with the core lock already held, so a
+/// caller can change the mirror and write it in one critical section (WP
+/// C13's `config_import`). The caller holds the device lock
+/// ([`LOCK_REASON`], [`DspiCore::acquire_device_lock`]): it cannot be waited
+/// for here, under the core lock. Same contract and errors.
+pub(crate) fn apply_all_params_locked(inner: &mut Inner) -> Result<()> {
+    check_apply_allowed(inner)?;
     let image = state::encode_bulk(&inner.state);
     let mut w = inner.writable_conn()?;
 
-    w.conn()
-        .transport()
-        .lock(LOCK_REASON, LOCK_TIMEOUT)
-        .map_err(DspiError::from)?;
     w.conn().echo.bulk_write_started(Instant::now());
     let sent = write_image(&mut w, &image);
     w.conn()
         .echo
         .bulk_write_finished(Instant::now(), sent.is_ok());
-    w.conn().transport().unlock();
     sent?;
 
     // Cannot fail: `encode_bulk` always yields a BULK_SIZE V32 image.

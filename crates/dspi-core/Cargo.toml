@@ -63,6 +63,8 @@ proptest = "1"
 # -- WP C13 --
 # -- WP C14 --
 # -- WP C15 --
+# The fake hub, for the Link session and fault-injection tests.
+dspi-link = { path = "../dspi-link", features = ["fake-hub"] }
 # -- WP F1 --
 
 [target.'cfg(unix)'.dependencies]

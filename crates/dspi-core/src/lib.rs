@@ -17,7 +17,10 @@
 //! connection and the mirror. The notification reader runs on its own thread
 //! (it does not need the lock to read; it signals the [`NotifyListener`]),
 //! and the RTA worker takes the lock for each poll, which also serialises it
-//! against chunked bulk transfers. Listeners are called without the lock held.
+//! against chunked bulk transfers (over DSPi Link it polls with the lock
+//! released: no chunked bulk there, and a round trip must not stall the
+//! core). Listeners are called without the lock held. The DSPi Link device
+//! lock is never waited for with the core lock held.
 //!
 //! # The mirror
 //!
@@ -48,7 +51,11 @@
 // Skeleton phase: the shared plumbing below is used only once the work
 // packages fill the methods in. WP Q3 removes this allow.
 #![allow(dead_code)]
+// WP C15 already carries WP F1's `uniffi` attributes; the feature itself comes
+// with F1, whose merge removes this allow.
+#![allow(unexpected_cfgs)]
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, Weak};
 
 use dspi_proto::wire_compat::WireRead;
@@ -116,6 +123,9 @@ pub struct DspiCore {
     /// This object, for threads a `&self` method starts (the RTA worker).
     /// Methods stay `&self`, which is what UniFFI exports.
     pub(crate) me: Weak<DspiCore>,
+    /// What `link_close` needs without the lock (WP C15).
+    #[cfg(feature = "link")]
+    pub(crate) link_control: Mutex<Option<link::LinkControl>>,
 }
 
 /// Everything behind the lock.
@@ -180,7 +190,53 @@ pub(crate) struct Connection {
     /// per-item reads. False after any later change could have made the
     /// image stale.
     pub(crate) fresh_image: bool,
+    /// Unique per connection, never reused: a flow that drops the core lock
+    /// on the way uses it to tell its connection from one that replaced it
+    /// (the device lock's release, WP C15).
+    pub(crate) generation: u64,
+    /// The way to a remote device that needs no core lock (DSPi Link, set by
+    /// `link_select_device`): the device lock, the analyser and the meters
+    /// use it, so a slow link cannot stall the core. `None` on USB, MIDI and
+    /// the demo device.
+    pub(crate) side: Option<Arc<dyn SideChannel>>,
+    /// A re-read after a notification failed and is to be tried again
+    /// (`notify.rs`, WP C15).
+    pub(crate) refresh_pending: Option<notify::RefreshPending>,
+    /// The next `process_notifications` reports a full refresh: the core read
+    /// the device again by itself (a Link re-attach, WP C15).
+    pub(crate) announce_refresh: bool,
 }
+
+/// A remote device reached without the [`Inner`] lock (WP C15).
+///
+/// Everything here may wait for the network. Call it with the lock released;
+/// that is the point of it (PLAN §1.2, Wave 3 notes).
+pub(crate) trait SideChannel: Send + Sync {
+    /// Take the hub's device lock. Same errors as [`Transport::lock`].
+    fn lock(&self, reason: &str, timeout: std::time::Duration) -> Result<()>;
+    /// Release the lock taken by [`SideChannel::lock`].
+    fn unlock(&self);
+    /// A transport for one analyser poll, for the channels in `rta_mask`
+    /// (0 = none wanted any more).
+    fn rta_transport(self: Arc<Self>, rta_mask: u16) -> Box<dyn Transport>;
+    /// The latest meter block of `len` bytes, without a round trip when the
+    /// hub is feeding it.
+    fn meters(&self, len: u16) -> Result<MeterRead>;
+}
+
+/// What [`SideChannel::meters`] has.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct MeterRead {
+    /// The block; `None`: no recent frame (just subscribed, or the feed stalled).
+    pub(crate) data: Option<Vec<u8>>,
+    /// Not a fresh reading.
+    pub(crate) stale: bool,
+    /// Its age; 0 when nothing was ever read.
+    pub(crate) age_ms: u32,
+}
+
+/// Source of [`Connection::generation`]; 0 is never handed out.
+static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
 
 /// A placeholder transport for a `Connection` built before its session
 /// (`attach_probed` replaces it at once). Every call is `Disconnected`.
@@ -227,6 +283,10 @@ impl Connection {
             ext: ExtState::default(),
             echo: dspi_session::notify::EchoFilter::default(),
             fresh_image: false,
+            generation: NEXT_GENERATION.fetch_add(1, Ordering::Relaxed),
+            side: None,
+            refresh_pending: None,
+            announce_refresh: false,
         }
     }
 
@@ -379,6 +439,8 @@ impl DspiCore {
             inner: Mutex::new(Inner::new()),
             listeners: Arc::new(Listeners::default()),
             me: me.clone(),
+            #[cfg(feature = "link")]
+            link_control: Mutex::new(None),
         })
     }
 
@@ -434,12 +496,23 @@ impl DspiCore {
     /// connected.
     pub(crate) fn attach_probed(
         &self,
-        mut transport: Box<dyn Transport>,
+        transport: Box<dyn Transport>,
         serial: String,
         vid: u16,
     ) -> Result<()> {
         self.close_connection();
+        self.attach_opened(transport, serial, vid)
+    }
 
+    /// [`DspiCore::attach_probed`] from step 2, the old connection being
+    /// closed already. The mirror changes only when the new one is installed
+    /// (a Link re-attach keeps the last known state until then).
+    pub(crate) fn attach_opened(
+        &self,
+        mut transport: Box<dyn Transport>,
+        serial: String,
+        vid: u16,
+    ) -> Result<()> {
         let listeners = Arc::clone(&self.listeners);
         let waker: dspi_session::notify::Waker =
             Arc::new(move || listeners.notify.call(|l| l.on_notifications()));
@@ -524,6 +597,13 @@ impl DspiCore {
 
         self.install(conn, mirror, serial, vid);
         Ok(())
+    }
+
+    /// Tell the Link supervisor the open connection changed, so that it sees a
+    /// bound device closed or displaced at once. Call with the lock released.
+    pub(crate) fn kick_link(&self) {
+        #[cfg(feature = "link")]
+        link::kick(self);
     }
 
     /// The lock. A panic while it was held does not poison the API.

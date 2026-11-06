@@ -43,6 +43,25 @@ const FACTORY_RESET_SETTLE: Duration = Duration::from_millis(250);
 /// How long the multi-request flows wait for the Link device lock.
 const LOCK_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// A held device lock, tied to the connection it was taken on (WP C15).
+/// [`DspiCore::acquire_device_lock`] makes one;
+/// [`DspiCore::release_device_lock`] consumes it.
+#[must_use = "release it on every path"]
+pub(crate) struct DeviceLock {
+    generation: u64,
+    side: Option<std::sync::Arc<dyn crate::SideChannel>>,
+}
+
+impl DeviceLock {
+    /// Whether the connection the lock was taken on is still the open one.
+    pub(crate) fn is_current(&self, inner: &Inner) -> bool {
+        inner
+            .conn
+            .as_ref()
+            .is_some_and(|c| c.generation == self.generation)
+    }
+}
+
 const PRESET_ERR_INVALID_SLOT: u8 = st::PRESET_ERR_INVALID_SLOT as u8;
 const PRESET_ERR_CRC: u8 = st::PRESET_ERR_CRC as u8;
 
@@ -105,9 +124,9 @@ impl DspiCore {
     /// the re-read, fails.
     pub fn load_preset(&self, slot: u8) -> Result<()> {
         slot_bit(slot)?;
-        device_lock(&mut self.lock(), "Loading preset")?;
-        let result = self.load_flow(slot);
-        self.device_unlock();
+        let lock = self.acquire_device_lock("Loading preset")?;
+        let result = self.lock_current(&lock).and_then(|()| self.load_flow(slot));
+        self.release_device_lock(lock);
         result
     }
 
@@ -157,9 +176,11 @@ impl DspiCore {
     /// the re-read fails.
     pub fn delete_preset(&self, slot: u8) -> Result<()> {
         let bit = slot_bit(slot)?;
-        device_lock(&mut self.lock(), "Deleting preset")?;
-        let result = self.delete_flow(slot, bit);
-        self.device_unlock();
+        let lock = self.acquire_device_lock("Deleting preset")?;
+        let result = self
+            .lock_current(&lock)
+            .and_then(|()| self.delete_flow(slot, bit));
+        self.release_device_lock(lock);
         result
     }
 
@@ -284,9 +305,11 @@ impl DspiCore {
     /// [`DspiError::Locked`] / [`DspiError::Denied`]; the transport's typed
     /// error when the transfer or the re-read fails.
     pub fn factory_reset(&self) -> Result<()> {
-        device_lock(&mut self.lock(), "Factory reset")?;
-        let result = self.factory_reset_flow();
-        self.device_unlock();
+        let lock = self.acquire_device_lock("Factory reset")?;
+        let result = self
+            .lock_current(&lock)
+            .and_then(|()| self.factory_reset_flow());
+        self.release_device_lock(lock);
         result
     }
 
@@ -325,33 +348,86 @@ impl DspiCore {
 
     // ── Flows ─────────────────────────────────────────────────────────
 
-    /// Take the device lock ([`device_lock`]), run `f` under the core's
-    /// lock and release the device lock whatever `f` returned.
-    fn with_device_lock<T>(
+    /// Take the device lock ([`DspiCore::acquire_device_lock`]), run `f`
+    /// under the core's lock and release the device lock whatever `f`
+    /// returned.
+    pub(crate) fn with_device_lock<T>(
         &self,
         reason: &str,
         f: impl FnOnce(&mut Inner) -> Result<T>,
     ) -> Result<T> {
-        let mut guard = self.lock();
-        let inner = &mut *guard;
-        device_lock(inner, reason)?;
-        let result = f(inner);
-        if let Some(c) = inner.conn.as_mut() {
-            c.transport().unlock();
-        }
+        let lock = self.acquire_device_lock(reason)?;
+        let result = {
+            let mut guard = self.lock();
+            let inner = &mut *guard;
+            if lock.is_current(inner) {
+                f(inner)
+            } else {
+                Err(DspiError::Disconnected)
+            }
+        };
+        self.release_device_lock(lock);
         result
     }
 
-    /// Release the device lock taken by a flow that has to drop the core's
-    /// lock on the way (to call `refresh_params` / `fetch_all`, which take
-    /// it themselves).
+    /// Check the connection is writable (a read-only one is `ReadOnly`,
+    /// before any lock request) and take its device lock for `reason`. The
+    /// caller releases it on every path ([`DspiCore::release_device_lock`]).
     ///
-    /// Unlocks the current connection: if the connection was replaced
-    /// mid-flow, this is a stray unlock on the new one (the old one's lock
-    /// went with its transport).
-    fn device_unlock(&self) {
-        if let Some(c) = self.lock().conn.as_mut() {
-            c.transport().unlock();
+    /// Over DSPi Link the hub is asked with the core's lock released, and
+    /// the connection is checked again afterwards: a close or reopen while
+    /// waiting gives [`DspiError::Disconnected`], with the lock given back.
+    /// A transport without a [`crate::SideChannel`] locks under the core's
+    /// lock: a no-op on USB, MIDI and the demo device. (A `LinkTransport`
+    /// handed to `open_transport` directly would wait there; the core's own
+    /// `link_select_device` never does.)
+    pub(crate) fn acquire_device_lock(&self, reason: &str) -> Result<DeviceLock> {
+        let (generation, side) = {
+            let mut guard = self.lock();
+            let mut w = guard.writable_conn()?;
+            let conn = w.conn();
+            let side = conn.side.clone();
+            if side.is_none() {
+                conn.transport().lock(reason, LOCK_TIMEOUT)?;
+            }
+            (conn.generation, side)
+        };
+        let lock = DeviceLock { generation, side };
+        if let Some(side) = &lock.side {
+            side.lock(reason, LOCK_TIMEOUT)?;
+            if !lock.is_current(&self.lock()) {
+                self.release_device_lock(lock);
+                return Err(DspiError::Disconnected);
+            }
+        }
+        Ok(lock)
+    }
+
+    /// `Disconnected` if the connection `lock` was taken on is gone.
+    fn lock_current(&self, lock: &DeviceLock) -> Result<()> {
+        if lock.is_current(&self.lock()) {
+            Ok(())
+        } else {
+            Err(DspiError::Disconnected)
+        }
+    }
+
+    /// Release a device lock on the connection that took it. If that
+    /// connection was replaced mid-flow, the new one is left alone: its lock
+    /// is not ours to release.
+    pub(crate) fn release_device_lock(&self, lock: DeviceLock) {
+        match lock.side {
+            Some(side) => side.unlock(),
+            None => {
+                let mut guard = self.lock();
+                if let Some(c) = guard
+                    .conn
+                    .as_mut()
+                    .filter(|c| c.generation == lock.generation)
+                {
+                    c.transport().unlock();
+                }
+            }
         }
     }
 
@@ -438,18 +514,6 @@ pub(crate) fn capture_baseline_locked(inner: &mut Inner) {
         state::decode_bulk(&inner.state.bulk_raw, &mut probe).is_ok()
     };
     inner.baseline = readable.then(|| inner.state.bulk_raw.clone());
-}
-
-/// Check the connection is writable (a read-only one is `ReadOnly`, before
-/// any lock request) and take the transport's device lock for `reason`.
-/// The caller releases it on every path.
-fn device_lock(inner: &mut Inner, reason: &str) -> Result<()> {
-    inner
-        .writable_conn()?
-        .conn()
-        .transport()
-        .lock(reason, LOCK_TIMEOUT)?;
-    Ok(())
 }
 
 /// The occupied-mask bit of `slot`, or `Refused { PRESET_ERR_INVALID_SLOT }`
@@ -1452,6 +1516,33 @@ mod tests_wp_c5 {
     fn sent(log: &Log, dir: &str, opcode: u8) -> bool {
         let prefix = format!("{dir} {opcode:02X} ");
         entries(log).iter().any(|e| e.starts_with(&prefix))
+    }
+
+    #[test]
+    fn wp_c15_a_replaced_connection_keeps_its_lock() {
+        let (core, _remote, _log) = open(Spy::demo());
+        let lock = core.acquire_device_lock("Flow").unwrap();
+        // The connection is replaced mid-flow.
+        let spy = Spy::demo();
+        let new_log = Arc::clone(&spy.log);
+        core.attach_probed(Box::new(spy), "DEMO".into(), 0).unwrap();
+        new_log.lock().unwrap().clear();
+        assert!(!lock.is_current(&core.lock()));
+        core.release_device_lock(lock);
+        assert!(
+            !entries(&new_log).iter().any(|e| e == "unlock"),
+            "a stray unlock on the new connection"
+        );
+    }
+
+    #[test]
+    fn wp_c15_the_same_connection_is_unlocked() {
+        let (core, _remote, log) = open(Spy::demo());
+        log.lock().unwrap().clear();
+        let lock = core.acquire_device_lock("Flow").unwrap();
+        assert!(lock.is_current(&core.lock()));
+        core.release_device_lock(lock);
+        assert_eq!(entries(&log), ["lock Flow 60", "unlock"]);
     }
 
     /// The first and last log entries: the lock taken, then released.

@@ -1,7 +1,7 @@
 //! Listener interfaces the embedding app implements.
 //!
 //! They are called on core threads (the notification reader, the RTA
-//! worker, the Link reader) or, for [`DeviceEvents`], on the thread that calls
+//! worker, the Link session's supervisor) or, for [`DeviceEvents`], on the thread that calls
 //! `poll_hotplug`, with the core lock released. A listener may call the core's
 //! read methods (`get_state`, `rta_get_snapshot`, `process_notifications`) but
 //! must not block and must not open or close devices from inside the callback.
@@ -24,7 +24,8 @@ pub trait RtaListener: Send + Sync {
 /// Device arrival and departure, from `poll_hotplug`.
 ///
 /// The device you were connected to going away always gives `on_departed`
-/// with its serial, whatever the transport (USB, MIDI, Link). This is the
+/// with its serial, whatever the transport (USB, MIDI, Link; a Link session
+/// that is reconnecting does not count yet, see `link_status`). This is the
 /// signal to rely on: `NOTIFY_DISCONNECTED` is only reported if
 /// `process_notifications` ran before `poll_hotplug` closed the connection.
 ///
@@ -39,6 +40,17 @@ pub trait DeviceEvents: Send + Sync {
 pub trait LinkListener: Send + Sync {
     /// The hub's device list changed (`link_devices()`).
     fn on_link_devices_changed(&self);
-    /// The session ended. `code`: the hub's WebSocket close code, -1 = none.
+    /// The session ended for good: revoked, a protocol error, or refused by
+    /// the hub. A lost connection is not an end: the core reconnects with
+    /// backoff and reports it through
+    /// [`LinkListener::on_link_status_changed`]. `code`: the hub's WebSocket
+    /// close code, -1 = none.
     fn on_link_closed(&self, code: i32, reason: String);
+    /// `link_status().phase` changed, or a reconnect try failed: reconnecting,
+    /// a PIN needed, no board, bound again (the mirror is then already
+    /// fetched; re-read `get_state` and call `rta_start` again).
+    fn on_link_status_changed(&self);
+    /// The hub issued a token: store it now against `hub_id`. Comes as soon as
+    /// the hub's answer arrives, even if `link_pair` has already timed out.
+    fn on_link_token_issued(&self, hub_id: String, token: String);
 }
