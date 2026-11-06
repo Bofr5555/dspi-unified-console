@@ -7,9 +7,7 @@
 //! bar's first dirty category.
 //!
 //! The device name is the exception: its dialog's OK is the commit, and it
-//! writes at once. Save speaks the command grammar, which cannot say an empty
-//! name or a `"` in one (`dspi_cmd::tokenize`), so a staged name could not be
-//! cleared.
+//! writes at once.
 
 use std::rc::Rc;
 
@@ -339,6 +337,31 @@ impl GlobalPage {
     pub fn mark_saved(&mut self) {
         self.edited = false;
         self.clean = self.draft.clone();
+    }
+
+    // -- WP TM19 --
+    /// Take as saved the fields these written lines carried (the commands of
+    /// `save_commands`). Any other edit stays in the draft, and Revert goes
+    /// back to the fields as they are on the device now.
+    pub fn mark_written(&mut self, lines: &[String]) {
+        for line in lines {
+            match line.split_whitespace().next() {
+                Some("preset.startup") => {
+                    self.clean.startup_mode = self.draft.startup_mode;
+                    self.clean.default_slot = self.draft.default_slot;
+                }
+                Some("vol.master.mode") => {
+                    self.clean.master_volume_mode = self.draft.master_volume_mode;
+                }
+                Some("preset.iomode") => {
+                    self.clean.output_config_mode = self.draft.output_config_mode;
+                }
+                Some("dev.dacmute") => self.clean.dac = self.draft.dac.clone(),
+                Some("out.latency") => self.clean.output_latency = self.draft.output_latency,
+                _ => {}
+            }
+        }
+        self.edited = self.draft != self.clean;
     }
 
     pub fn revert(&mut self) {

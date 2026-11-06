@@ -10,3 +10,7 @@ repository.workspace = true
 [dependencies]
 dspi-proto.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+# -- WP TM20 -- The no-panic and round-trip properties of the tokenizer.
+proptest = "1"

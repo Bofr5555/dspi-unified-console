@@ -31,15 +31,15 @@ Sizes are relative units, for comparing WPs. Measured in the core merge: a size-
 |---|---|---|---|
 | MR: one repo, one build | 2 | 2.25 | `main` |
 | LC, HO: licence inventory, handover | 2 | 1.75 | `main`; HO1 late |
-| CG: core gaps | 13 | 9.25 | `main` |
+| CG: core gaps | 16 | 10.75 | `main` |
 | HB: Rust Link hub | 7 | 12 | `main` |
-| QD: Qt (Linux, Windows) | 28 | 22.5 | `main`, CG, HB for the hub page |
-| TM: Terminal | 20 | 10.75 | `main`, CG, HB for `dspi hub` |
+| QD: Qt (Linux, Windows) | 31 | 23.25 | `main`, CG, HB for the hub page |
+| TM: Terminal | 22 | 11.5 | `main`, CG, HB for `dspi hub` |
 | AN: Android | 24 | 25.75–29.75 | `main`, MR1, CG9 |
 | SW: Swift (macOS and iOS) | 29 | 32.75–43.25 | `main`, MR1, CG3, CG4 |
 | WB: web | 2 + stubs | 2.75 (study, WB1) | `main` |
 | XC: audit, cross-client tests | 7 | 3.75 | hub hardware, K340 |
-| **Total** | **134** | **about 121–136**, not counting the web build | |
+| **Total** | **146** | **about 121–136**, not counting the web build | |
 
 **M0, the first milestone, is about 12–14 days after `main`** (section 0.3). The
 largest unknowns are Swift domain replacement, the Android control-surface editor
@@ -239,7 +239,7 @@ The brief and rules are `WP-BRIEF.md`'s, with these changes.
     controller and QML file through QD0's registrar and banner host.
   - Terminal: `apps/terminal/src/main.rs`'s command table takes additive edits under a `// -- WP <id> --` marker.
 - **Do not make the web harder** (owner). New code in the session and core takes time through the clock seam once WB1 lands, keeps device I/O behind `Transport`, adds no OS call outside a gated module, and adds no thread where a poll by the caller will do. Client code is unaffected.
-- **Platform wording** (owner: "put placeholders and switch in the right words depending on which version was compiled"). Shared text uses CG10's placeholders, resolved by compile target in the core. A client never substitutes.
+- **Platform wording** (owner: "put placeholders and switch in the right words depending on which version was compiled"). Shared text uses CG10's placeholders, resolved by compile target in the core. A client never substitutes. **Don't name the host device** (owner: "Having words like phone or computer makes the text wordy"): say it plainly with no device noun; users know what they're holding.
 - **Do not foreclose undo** (owner: "no for now, but dont make the plumbing deliberately difficult to add later"). No undo WP.
   Every Qt setter stays routable through one place: the bridge or a registered controller's single apply path, never a direct
   `dspi_*` write from QML or a scattered call.
@@ -481,6 +481,12 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (section 9).
 
 **CG13: Input source names in the core.** Size 0.25. From CG7. **Owns:** a source-name cache in `crates/dspi-core/` (connect, `NOTIFY_EVT_INPUT_SOURCE_NAME`, set), `source_title` in `presets.rs`. **Implements:** the user's name first in the preset diff's Input source row, as Swift's `inputSourceTitle`. **Done when:** a renamed source shows its name in `preset_changes`, updated by another client's notify. **Deps:** CG7.
 
+**CG14: Confirmation word for raising the voltage.** Size 0.5. Owner: "no per serial record, it will have to check the current settings in the unit, any upwards change to above 1.2v should require a confirmation word. So of the unit is already 1.25 and the user changes to 1.3 then they will have to type the word". **Owns:** one rule in `dspi-session`, applied in CG11's flow and manual ops, raw `core_vreg_op` in the core and C ABI, `dspi ext vreg`, and CG8's guard. **Rule:** target above 1200 mV and above the unit's current voltage, read at that moment, needs `OVERVOLT`. An unreadable current counts as needing it. No host-side record. **Accepted limit:** a K340 already on stock reports 1150 mV and is treated as that. **Done when:** the owner's example is tested at the transport on every path. **Deps:** CG8, CG11.
+
+**CG15: Creator info for every About screen.** Size 0.25. Owner: "Make sure to properly update the about screen with creator info." **Owns:** `assets/about.json`, an accessor beside CG10's in `crates/dspi-core/src/link_text.rs`, with the same placeholders. **Implements:** one table of who made what, the links and the credit line, so no client carries its own copy: Weeb Labs for DSPi, the firmware and the Consoles; the owner for the unified console, the core merge and the Android app; credits from `NOTICE.md` and `docs/licensing/`. The wording is the owner's to approve and stays a draft until they do; no agent writes legal text here. The Terminal doesn't link `dspi-core`, so TM22 takes the data another way without a second copy. **Done when:** exported to C and UniFFI, every client's page shows it. **Clients, 0.25 each, wave 2 or their About WP:** QD33 (`AboutPage.qml`), TM22 (`settings/about.rs`), AN26 (`GeneralSettingsTab.kt`), SW24 (the Mac's and iOS's About). **Deps:** CG10.
+
+**CG16: Control surfaces on the demo device.** Size 0.75. From review w1b. **Owns:** a control-surface model in `crates/dspi-transport/src/fake/`, moved from `apps/terminal/src/cs_demo.rs`, which goes. **Implements:** the record store and refusal rules (`NO_SUCH_SLOT`, `NO_SUCH_TYPE`, pin clash) checked against the firmware, so every client's demo has surfaces and QD1's, TM's and AN9's pages can be exercised. Existing tests that assert a stall (T4) change with it. **Done when:** `dspi cs` works without the wrapper; the Qt control-surface pages render on the demo device in the offscreen pass; the unexercised items in QD1's report are covered. **Deps:** TM10.
+
 ### 4.2 HB: the Rust Link hub
 
 In scope on Qt regardless (owner), and used by Terminal and, later, the Mac. No OS or UI code in the crate, so a sideload Android build needs only a binding; no work is added for that now.
@@ -553,6 +559,10 @@ Q3 makes it run on the core. macOS leaves this track, with Swift as the working 
 
 **QD14: Networking page.** Size 1.5. **Owns:** `qml/settings/pages/NetworkingPage.qml`, `src/HubController.{h,cpp}`. **Implements:** `NetworkingSettingsView.swift`: share toggle, hub name, access (PIN by default), port, paired clients, roles, revoke, pairing code with expiry, other hubs, background options. Connects QD12's two hub menu items. Says a PIN crosses the network in plain text without TLS. **Done when:** offscreen on a demo hub, and a real client pairs. **Deps:** HB6, QD8.
 
+**QD31: Save bar reports setter failures.** Size 0.25. From QD1. **Owns:** `SettingsContext.save`'s bridge setters. A failed setter above the control-surface step must not read as saved. **Deps:** QD1.
+
+**QD32: Qt on the shared wording.** Size 0.25. From CG10. **Owns:** `apps/desktop/qt/whatsnew.json`, strings in `GettingStartedView.qml`. Re-points to CG10's data, and checks its menu paths against Qt's. **Deps:** CG10.
+
 **QD30: Popover cursor on the graph gear.** Size 0.25. **Owns:** `qml/components/PopoverWindow.qml`. **Implements:** owner's report on KDE Wayland: with a `PopoverWindow` open (graph gear; check the spectrum strip's too), the pointer over the gear doesn't return to the hand until wiggled, because the popup holds a grab. **Done when:** the cursor stays right without a wiggle and a click on the gear closes the popover once, on Wayland and X11; the owner retests. **Deps:** `main`.
 
 **QD29: Output ring health.** Size 0.25. **Owns:** the section in `qml/StatsWindow.qml`, `src/StatsController.cpp`, after QD5, which owns both in wave 1. **Done when:** the section and ring-scaled thresholds show on the demo device; hidden when the status is absent. **Deps:** CG12, QD5.
@@ -621,6 +631,8 @@ Owner decided: it skips what needs a graphical UI (on-graph editing, onboarding)
 
 **TM20: Tokenizer and latency confirm.** Size 0.5. From TM17, confirmed by review. **Owns:** `tokenize` in `crates/dspi-cmd/src/lib.rs`, `out.latency` confirm in `crates/dspi-session/src/write.rs`. **Implements:** empty quoted token and escaped quote; confirm polls `pending` as the Mac does. Hardware check in TM13. **Deps:** `main`.
 
+**TM21: Preset capture must not invent values.** Size 0.5. From TM4. **Owns:** `capture` in `crates/dspi-session/src/preset_file.rs`. **Implements:** `capture` turns any refused or failed read into 0, false or a default, and an import then writes them: on old firmware a -12 dB master exported as 0 dB. A failed read fails the export; a refused read on a read-only device uses the mapped image or omits the key; import leaves omitted keys alone and warns on an old `meta.wire_format_version`. **Deps:** TM4, TM10.
+
 **TM14: No tmpfs in tests.** Done: fcfdb58 had already done it. Size 0.25. **Owns:** tests in `crates/dspi-tui/src/{actions.rs,settings/config.rs,settings/mod.rs}`. **Implements:** five `temp_dir()` uses move to a target-dir path. **Done when:** none remain, and tests pass. **Deps:** `main`.
 
 **TM16: Output ring health.** Size 0.25. **Owns:** `screens/stats.rs`. **Done when:** the section and ring-scaled thresholds render on the demo device; absent status hides it. **Deps:** CG12.
@@ -650,6 +662,8 @@ The swap is contained: UI talks to the `core-api` interface, and only `ffi` sees
   - `NOTIFY_STALE` in `DspiConstants`; `SystemStatus.stale` and `age_ms`; `MidiInputHandle.close_port`; `MidiSender` unused here;
   - drop the `wip/wire-compat` branch.
 - **Done when:** `tools/ci.sh all` and all Kotlin module tests pass, on 3 ABIs; library size recorded. **No phone yet. Deps:** MR1, CG9.
+
+**AN27: No title bar.** Size 0.25. Owner: the "big fat dspi banner on top of the Android app" is wordy, and "while a title bar makes sense on a computer it is less useful on a mobile device". **Owns:** `AppScaffold.kt:76`. **Implements:** remove the `TopAppBar`, which holds only the title; demo state stays visible through `ConnectionStripBar`; edge-to-edge insets still correct. Screens with their own back and title rows are unchanged. **Done when:** Home starts at the connection strip on the emulator or a Compose test, and demo mode still says so. Goes out with the first update after the new core. **Deps:** AN1. SW checks the same on iOS when SW15 reaches it.
 
 **AN2: Read-only on older firmware.** Size 0.5. **Owns:** `feature-home/.../HomeModel.kt`, `README.md`. **Implements:** V17–V31 now decode; `WriteGuardedCore` stays; fixes the README claim. The banner still fires on the wire format only: **the first Play update must show no version banner on a K340 or on stock final firmware** (the comparison is AN18's). **Done when:** fixture tests; banner per `WIRE-FORMAT-COMPAT.md` §4.4. **Deps:** AN1.
 
@@ -796,7 +810,7 @@ Store items (review video, TestFlight, the SysEx ID question) are later: `APPSTO
 
 **Owner's decision after WB0:** "We can defer the web version for later, but don't make the code more difficult to port to the web than necessary. I would rather see one single base than including an external project." So no web client is scheduled, the study's route of pointing at sigman78's console is not taken, and no README pointer goes in. When the web comes it is the Rust core in wasm (JSPI in a dedicated Worker, one call at a time, as the study's spike ran), about 39-62 units with a new UI. `WEB-STUDY.md` keeps the evidence.
 
-**WB1: Keep the core portable to the web.** Size 0.75. Wave 2. **Owns:** a clock seam in the session and core, `SystemTime` uses, `usb` gating for wasm32, a `wasm-core` step in `ci/check.sh`. **Implements:** the non-UI part of the study's spike patch, properly tested. **Done when:** `dspi-session` and `dspi-core` pass `cargo check --target wasm32-unknown-unknown` in the gate, native behaviour is unchanged, and no client work is added. **Deps:** CG3, MR2.
+**WB1: Keep the core portable to the web.** Size 0.75. Wave 2. **Owns:** a clock seam in `dspi-transport` (`Cargo.toml`, `src/lib.rs`, new `src/clock.rs`, `fake.rs`), the six `SystemTime::now` sites (including `autoeq.rs`, `files.rs`, `monitor.rs`), `nusb` gating in `dspi-core/Cargo.toml` (`device.rs`, `firmware.rs`, `hotplug.rs`, `connect.rs`) on top of CG3, a `wasm-core` step in `ci/check.sh`. Compile-only by design: the 10 `thread::spawn` sites still need work when the web is scheduled. **Implements:** the non-UI part of the study's spike patch, properly tested. **Done when:** `dspi-session` and `dspi-core` pass `cargo check --target wasm32-unknown-unknown` in the gate, native behaviour is unchanged, and no client work is added. **Deps:** CG3, MR2.
 
 **Stubs, deferred, not scheduled:** WB2 UI; WB3 hosting and origin; WB4 hardware test. Corrections from WB0: browsers can reach `ws://` private addresses from `https://` in Chromium (Firefox loopback only); the wall is the hub's `Origin` check, so a hub-served page is the only route with hubs as specified. `nusb` 0.2.5 has no WebUSB backend. Qt for WebAssembly with device access is 15-25, not 8-15, and unproven.
 

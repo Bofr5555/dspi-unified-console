@@ -91,8 +91,12 @@ mod presets;
 mod raw;
 mod rta;
 mod stats;
+// -- WP CG11 --
+mod vreg;
 // -- WP CG6 --
 pub mod autoeq;
+// -- WP CG10 --
+mod link_text;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -100,6 +104,8 @@ pub use device::MidiInputHandle;
 pub use error::{DspiError, Result};
 pub use firmware::*;
 pub use records::*;
+// -- WP CG11 --
+pub use vreg::{VregCalPhase, VregCalView, VregChoice, VregDemoEvent};
 // Work-package sections: add re-exports only inside your own section.
 // -- WP C0 --
 // -- WP C1 --
@@ -123,6 +129,8 @@ pub use records::*;
 pub use autoeq::*;
 // -- WP CG8 --
 pub use firmware_guard::*;
+// -- WP CG10 --
+pub use link_text::*;
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -139,6 +147,9 @@ pub struct DspiCore {
     /// What `link_close` needs without the lock (WP C15).
     #[cfg(feature = "link")]
     pub(crate) link_control: Mutex<Option<link::LinkControl>>,
+    // -- WP CG11 --
+    /// The core-voltage calibration flow. Taken before `inner`, never after.
+    pub(crate) vreg_cal: Mutex<vreg::CalState>,
     // -- WP CG2 --
     /// The running hub browse.
     #[cfg(feature = "mdns")]
@@ -222,6 +233,15 @@ pub(crate) struct Connection {
     /// The next `process_notifications` reports a full refresh: the core read
     /// the device again by itself (a Link re-attach, WP C15).
     pub(crate) announce_refresh: bool,
+    // -- WP CG13 --
+    /// The user's input source names, "" for unnamed: read by `fetch_all`,
+    /// kept current by `NOTIFY_EVT_INPUT_SOURCE_NAME` and
+    /// `set_input_source_name`, so `preset_changes` needs no I/O. On the
+    /// connection, so one device's names never reach the next.
+    pub(crate) source_names: info::SourceNames,
+    /// A lost notification may have been a rename: the next re-read after
+    /// notifications reads the names too.
+    pub(crate) source_names_stale: bool,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -304,6 +324,9 @@ impl Connection {
             side: None,
             refresh_pending: None,
             announce_refresh: false,
+            // -- WP CG13 --
+            source_names: info::SourceNames::default(),
+            source_names_stale: false,
         }
     }
 
@@ -494,6 +517,8 @@ impl DspiCore {
             me: me.clone(),
             #[cfg(feature = "link")]
             link_control: Mutex::new(None),
+            // -- WP CG11 --
+            vreg_cal: Mutex::new(vreg::CalState::new()),
             // -- WP CG2 --
             #[cfg(feature = "mdns")]
             browse: link_browse::BrowseSlot::default(),

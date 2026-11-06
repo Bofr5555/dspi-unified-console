@@ -103,6 +103,14 @@ pub enum DspiError {
         /// The guard's words, for the user.
         msg: String,
     },
+    // -- WP CG14 --
+    /// This raises the core voltage above 1.20 V from what the unit reports
+    /// now, and the word `OVERVOLT` was not given. Nothing was written.
+    #[error("{msg}")]
+    OvervoltWordRequired {
+        /// Which voltage, and what to type.
+        msg: String,
+    },
 }
 
 /// The result of a [`crate::DspiCore`] call.

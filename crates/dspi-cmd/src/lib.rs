@@ -561,7 +561,9 @@ pub fn parse_value(d: &ParamDesc, raw: &str) -> Result<Value, ParseError> {
                 },
             }
         }
-        Kind::Text { .. } => Value::Text(raw.trim_matches('"').to_string()),
+        // `tokenize` has already taken the quoting off, so a `"` here is part of
+        // the name.
+        Kind::Text { .. } => Value::Text(raw.to_string()),
         Kind::Int { .. } => Value::Int(raw.parse().map_err(|_| bad("a whole number"))?),
         Kind::Mask => Value::Mask(match raw.strip_prefix("0x") {
             Some(hex) => u32::from_str_radix(hex, 16).map_err(|_| bad("a hex mask"))?,
@@ -709,13 +711,7 @@ fn format_value(path: &str, v: &Value) -> String {
             None => v.as_u8().unwrap_or(0).to_string(),
         },
         (Kind::Bool, Value::Bool(b)) => (if *b { "on" } else { "off" }).into(),
-        (Kind::Text { .. }, Value::Text(t)) => {
-            if t.contains(' ') {
-                format!("\"{t}\"")
-            } else {
-                t.clone()
-            }
-        }
+        (Kind::Text { .. }, Value::Text(t)) => quote(t),
         // The echo is meant to be pasted into a shell, so it needs to read as
         // a value someone would type. Full float precision is technically
         // faithful and practically noise.
@@ -734,25 +730,88 @@ fn format_value(path: &str, v: &Value) -> String {
 }
 
 /// Split a line into tokens, honouring double quotes so names with spaces work.
+///
+/// - A closed pair of quotes makes a token even with nothing in it, so
+///   `dev.name ""` says "the empty name". A lone `"` with nothing after it does
+///   not: an unfinished line must not turn a read into a clear.
+/// - `\"` is a literal quote, in or out of quotes. Backslashes are ordinary
+///   characters unless a quote follows them, where each `\\` of the run is one
+///   backslash: `C:\dir` stays as typed, and [`quote`] can write any text.
 pub fn tokenize(line: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();
     let mut quoted = false;
+    // The current token has a closed pair of quotes in it.
+    let mut closed = false;
+    let mut chars = line.chars().peekable();
 
-    for c in line.chars() {
+    while let Some(c) = chars.next() {
         match c {
-            '"' => quoted = !quoted,
+            '\\' => {
+                let mut run = 1usize;
+                while chars.next_if_eq(&'\\').is_some() {
+                    run += 1;
+                }
+                if chars.next_if_eq(&'"').is_none() {
+                    cur.extend(std::iter::repeat_n('\\', run));
+                    continue;
+                }
+                cur.extend(std::iter::repeat_n('\\', run / 2));
+                if run % 2 == 1 {
+                    cur.push('"');
+                } else {
+                    closed |= quoted;
+                    quoted = !quoted;
+                }
+            }
+            '"' => {
+                closed |= quoted;
+                quoted = !quoted;
+            }
             c if c.is_whitespace() && !quoted => {
-                if !cur.is_empty() {
+                if !cur.is_empty() || closed {
                     out.push(std::mem::take(&mut cur));
                 }
+                closed = false;
             }
             c => cur.push(c),
         }
     }
-    if !cur.is_empty() {
+    if !cur.is_empty() || closed {
         out.push(cur);
     }
+    out
+}
+
+/// Write `text` as one token that [`tokenize`] reads back unchanged. Plain text
+/// stays bare; anything empty or with whitespace or a quote in it gets quotes.
+pub fn quote(text: &str) -> String {
+    if !text.is_empty() && !text.contains(|c: char| c.is_whitespace() || c == '"') {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    // Backslashes count only where a quote comes next, so they are held until
+    // the next character says which they are.
+    let mut run = 0usize;
+    for c in text.chars() {
+        match c {
+            '\\' => run += 1,
+            '"' => {
+                out.extend(std::iter::repeat_n('\\', run * 2 + 1));
+                out.push('"');
+                run = 0;
+            }
+            c => {
+                out.extend(std::iter::repeat_n('\\', run));
+                out.push(c);
+                run = 0;
+            }
+        }
+    }
+    // The closing quote follows these, so they double too.
+    out.extend(std::iter::repeat_n('\\', run * 2));
+    out.push('"');
     out
 }
 

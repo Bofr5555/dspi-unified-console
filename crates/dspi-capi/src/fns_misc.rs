@@ -28,7 +28,15 @@ use std::ptr;
 use std::sync::Arc;
 
 use dspi_core::{
-    BootloaderDrive, DeviceEvents, DspiCore, DspiError, NotifyListener, Result, RtaListener,
+    BootloaderDrive,
+    DeviceEvents,
+    DspiCore,
+    DspiError,
+    NotifyListener,
+    Result,
+    RtaListener,
+    // -- WP CG11 --
+    VregDemoEvent,
 };
 use serde::Serialize;
 
@@ -210,6 +218,8 @@ fn error_code(e: &DspiError) -> &'static str {
         DspiError::AutoEq { .. } => "autoeq",
         // -- WP CG8 --
         DspiError::FirmwareGuardBlocked { .. } => "firmware_guard",
+        // -- WP CG14 --
+        DspiError::OvervoltWordRequired { .. } => "overvolt_word",
     }
 }
 
@@ -1062,12 +1072,20 @@ pub extern "C" fn dspi_fetch_core_vreg(core: *mut FfiCore, buf: *mut c_char, len
 
 /// Core voltage write: `op` 0 set (value = VREG code, 0 = build default),
 /// 1 trial, 2 end trial, 3 auto (value 0/1), 4 clear. Out-of-range requests
-/// are refused here with nothing sent. Returns 0 on success, the device's
+/// are refused here with nothing sent. A set or trial above 1.20 V and above
+/// what the unit reports now needs `word`, exactly "OVERVOLT"; null or anything
+/// else refuses it with nothing written. Returns 0 on success, the device's
 /// status byte if it refused, 0xFF otherwise. Read the status back with
 /// `dspi_fetch_core_vreg`.
 #[unsafe(no_mangle)]
-pub extern "C" fn dspi_core_vreg_op(core: *mut FfiCore, op: u8, value: u8) -> u8 {
-    status(core, |c| c.core_vreg_op(op, value))
+pub extern "C" fn dspi_core_vreg_op(
+    core: *mut FfiCore,
+    op: u8,
+    value: u8,
+    word: *const c_char,
+) -> u8 {
+    let word = c_str(word).map(str::to_owned);
+    status(core, |c| c.core_vreg_op(op, value, word))
 }
 
 // ── Added: names ──────────────────────────────────────────────────────
@@ -1257,8 +1275,132 @@ pub extern "C" fn dspi_firmware_version_matches(core: *mut FfiCore, version: *co
     })
 }
 
+// -- WP CG11 --
+// ── Added: core-voltage calibration ───────────────────────────────────
+//
+// The calls that return a `u8` return 0, the device's status byte if it
+// refused, or 0xFF for anything else; the reason is in the view's `lastError`.
+
+/// The calibration flow as it stands, from memory, with no traffic (it waits
+/// for a call in flight, so keep it off the UI thread): JSON
+/// {ok, available, phase, messageKey, message, warning, soakNote, ...}, the
+/// fields of dspi-core's `VregCalView`. Returns the length needed.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_core_vreg_cal_view(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
+    text(core, buf, len, |c| json_reply(Ok(c.core_vreg_cal_view())))
+}
+
+/// Read the device and advance the flow, as `dspi_core_vreg_cal_view` for the
+/// reply. Call about once a second while the page shows, and on every connect.
+/// The next step of a run the user started may go out here, but never a save,
+/// and a second call for a larger buffer does no harm. Returns the length needed.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_core_vreg_cal_poll(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
+    text(core, buf, len, |c| json_reply(Ok(c.core_vreg_cal_poll())))
+}
+
+/// Open the flow: the user reached it from Advanced. Sends no write.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_core_vreg_cal_open(core: *mut FfiCore) -> u8 {
+    status(core, |c| c.core_vreg_cal_open())
+}
+
+/// Close the flow: the user left. Refused while a run is under way.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_core_vreg_cal_close(core: *mut FfiCore) -> u8 {
+    status(core, |c| c.core_vreg_cal_close())
+}
+
+/// Start a run at VREG code `target` for `soak_s` seconds. `typed` is what the
+/// user typed when the view says the voltage needs the word, or null.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_core_vreg_cal_start(
+    core: *mut FfiCore,
+    target: u8,
+    soak_s: u32,
+    typed: *const c_char,
+) -> u8 {
+    let typed = c_str(typed).map(str::to_owned);
+    status(core, |c| c.core_vreg_cal_start(target, soak_s, typed))
+}
+
+/// Keep a trial found on the device, for `soak_s` seconds from now.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_core_vreg_cal_keep(core: *mut FfiCore, soak_s: u32) -> u8 {
+    status(core, |c| c.core_vreg_cal_keep(soak_s))
+}
+
+/// Save the voltage that passed. `typed` as for `dspi_core_vreg_cal_start`.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_core_vreg_cal_commit(core: *mut FfiCore, typed: *const c_char) -> u8 {
+    let typed = c_str(typed).map(str::to_owned);
+    status(core, |c| c.core_vreg_cal_commit(typed))
+}
+
+/// End a trial, or abort a run.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_core_vreg_trial_end(core: *mut FfiCore) -> u8 {
+    status(core, |c| c.core_vreg_trial_end())
+}
+
+/// Manual save: `value` 0 is the build default, otherwise the flow's limits
+/// and confirmation apply. `typed` as for `dspi_core_vreg_cal_start`.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_core_vreg_manual_set(
+    core: *mut FfiCore,
+    value: u8,
+    typed: *const c_char,
+) -> u8 {
+    let typed = c_str(typed).map(str::to_owned);
+    status(core, |c| c.core_vreg_manual_set(value, typed))
+}
+
+/// Manual trial, with the flow's limits and confirmation.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_core_vreg_manual_trial(
+    core: *mut FfiCore,
+    value: u8,
+    typed: *const c_char,
+) -> u8 {
+    let typed = c_str(typed).map(str::to_owned);
+    status(core, |c| c.core_vreg_manual_trial(value, typed))
+}
+
+/// Turn the firmware's automatic raising on or off.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_core_vreg_manual_auto(core: *mut FfiCore, on: bool) -> u8 {
+    status(core, |c| c.core_vreg_manual_auto(on))
+}
+
+/// Forget the hang count and the last trial failure. Refused during a run.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_core_vreg_manual_clear(core: *mut FfiCore) -> u8 {
+    status(core, |c| c.core_vreg_manual_clear())
+}
+
+/// On the demo device only: 0 a hang, 1 a requested reboot, 2 a power cycle,
+/// 3 `seconds` passing on the device's clock.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_core_vreg_demo_event(core: *mut FfiCore, event: u8, seconds: u32) -> u8 {
+    let event = match event {
+        0 => VregDemoEvent::Hang,
+        1 => VregDemoEvent::Reboot,
+        2 => VregDemoEvent::PowerCycle,
+        3 => VregDemoEvent::AdvanceUptime,
+        _ => return 0xFF,
+    };
+    status(core, |c| c.core_vreg_demo_event(event, seconds))
+}
+
+#[cfg(test)]
+#[path = "fns_misc/tests_wp_cg11.rs"]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg11;
 // -- WP CG6 --
 mod autoeq;
+
+// -- WP CG10 --
+mod link_text;
 
 // -- WP CG8 --
 

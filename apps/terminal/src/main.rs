@@ -183,7 +183,12 @@ fn main() -> ExitCode {
         Some("completions") => cmd_completions(&positional(&flags)),
         Some("doctor") | Some("--doctor") => doctor::run(target),
         Some("raw") => cmd_raw(target, &positional(&flags), json),
-        Some("ext") => cmd_ext(target, &positional(&flags), json),
+        Some("ext") => cmd_ext(
+            target,
+            &positional(&flags),
+            json,
+            flag_value(&flags, "--word"),
+        ),
         Some("autoeq") => cmd_autoeq(target, &positional(&flags), &flags),
         Some("--install-udev") => doctor::install_udev(),
         Some("screenshot") => cmd_screenshot(target, &positional(&flags), &flags),
@@ -423,7 +428,10 @@ USAGE:
     dspi ext vreg            read the core-voltage status
     dspi ext vreg set <V|default> | trial <V> | trial-end
              | auto on|off | clear
-                             core-voltage operations (V: 1.20, 1250, 0x0E)
+                             core-voltage operations (V: 1.20, 1250, 0x0E).
+                             Raising it above 1.20 V from what the unit reports
+                             now asks for the word OVERVOLT, or takes it from
+                             --word OVERVOLT in a script; --force does not count
     dspi autoeq search <q>   find a headphone correction profile
     dspi autoeq apply <id>   apply one to the input channels
     dspi -f <script>         run one command per line, `#` starts a comment
@@ -1172,7 +1180,7 @@ fn cmd_autoeq(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
 /// change the device.
 /// The fork's extension channel (REQ_EXTENSION 0x00). Firmware without it
 /// stalls every request, which is reported as "not supported", not a crash.
-fn cmd_ext(target: &Target, args: &[&str], json: bool) -> u8 {
+fn cmd_ext(target: &Target, args: &[&str], json: bool, word: Option<&str>) -> u8 {
     use dspi_session::ext::{self, ExtError, VregOp};
 
     // Parse before touching the device, so a typo costs no connect.
@@ -1254,7 +1262,7 @@ fn cmd_ext(target: &Target, args: &[&str], json: bool) -> u8 {
                             .join("\n")
                     }
                 }),
-                Do::VregOp(op) => ext::core_vreg_op(t, op).map(|()| {
+                Do::VregOp(op) => vreg_send(t, op, word, &mut prompt_overvolt_word).map(|()| {
                     if json {
                         "{\"ok\":true}".into()
                     } else {
@@ -1278,12 +1286,56 @@ fn cmd_ext(target: &Target, args: &[&str], json: bool) -> u8 {
             eprintln!("dspi: {e}");
             exit::REJECTED
         }
+        Err(e @ ExtError::WordRequired { .. }) => {
+            eprintln!("dspi: {e}");
+            eprintln!(
+                "      On a terminal it asks; in a script, pass --word {}. --force does not count.",
+                dspi_session::overvolt::WORD
+            );
+            exit::REJECTED
+        }
         Err(e @ ExtError::BadArgument(_)) => {
             eprintln!("dspi: {e}");
             exit::USAGE
         }
         Err(ExtError::Transport(e)) => fail(e),
     }
+}
+
+/// One core-voltage request (WP CG14). With `--word`, that is all it gets: a
+/// script must not end up at a prompt. Without, a refusal for the word asks
+/// through `ask`, once. `--force` plays no part.
+fn vreg_send(
+    t: &mut dyn dspi_transport::Transport,
+    op: dspi_session::ext::VregOp,
+    word: Option<&str>,
+    ask: &mut dyn FnMut() -> Option<String>,
+) -> Result<(), dspi_session::ext::ExtError> {
+    use dspi_session::ext::{self, ExtError};
+    match ext::core_vreg_op(t, op, word) {
+        Err(ExtError::WordRequired { code }) if word.is_none() => match ask() {
+            Some(typed) => ext::core_vreg_op(t, op, Some(&typed)),
+            None => Err(ExtError::WordRequired { code }),
+        },
+        other => other,
+    }
+}
+
+/// Ask for the word, when there is a person to ask. Only the line ending is
+/// taken off: the match is exact.
+fn prompt_overvolt_word() -> Option<String> {
+    use std::io::{IsTerminal, Write};
+    if !std::io::stdin().is_terminal() {
+        return None;
+    }
+    eprint!(
+        "This raises the core voltage above 1.20 V. Type {} to go ahead: ",
+        dspi_session::overvolt::WORD
+    );
+    std::io::stderr().flush().ok()?;
+    let mut line = String::new();
+    std::io::stdin().read_line(&mut line).ok()?;
+    Some(line.trim_end_matches(['\r', '\n']).to_owned())
 }
 
 fn map_text(m: &dspi_session::ext::PairMap, json: bool) -> String {
@@ -1390,6 +1442,12 @@ fn raw_out(target: &Target, args: &[&str], json: bool) -> u8 {
             return exit::USAGE;
         }
     };
+
+    // WP CG14: this path could not carry the confirmation word.
+    if dspi_session::overvolt::is_core_vreg_write(opcode as u8, value as u16) {
+        eprintln!("dspi: core-voltage requests go through `dspi ext vreg`, not `raw out`");
+        return exit::USAGE;
+    }
 
     let mut t = match open(target) {
         Ok(t) => t,
@@ -1941,7 +1999,7 @@ fn positional_all(flags: &[&str]) -> Vec<String> {
             skip = false;
             continue;
         }
-        if *f == "--device" {
+        if *f == "--device" || *f == "--word" {
             skip = true;
             continue;
         }
@@ -1962,7 +2020,7 @@ fn positional<'a>(flags: &'a [&'a str]) -> Vec<&'a str> {
             skip = false;
             continue;
         }
-        if *f == "--device" {
+        if *f == "--device" || *f == "--word" {
             skip = true;
             continue;
         }
@@ -1997,6 +2055,8 @@ fn write_exit(e: &dspi_session::WriteError) -> u8 {
         // thing a script needs to know about a silent rejection.
         W::Core1Conflict { .. } => exit::REJECTED,
         W::Transport(_) => exit::TRANSPORT,
+        // -- WP TM20 -- Sent, and the device never said it finished.
+        W::Unsettled { .. } => exit::TRANSPORT,
     }
 }
 
@@ -2345,5 +2405,135 @@ undo
     fn force_is_off_unless_it_is_asked_for() {
         assert!(!force(&["out.enable", "8", "on"]));
         assert!(force(&["out.enable", "8", "on", "--force"]));
+    }
+}
+
+/// WP CG14: `dspi ext vreg` against the fake, reading what reached it.
+#[cfg(test)]
+mod tests_wp_cg14 {
+    use super::*;
+    use dspi_session::ext::{self, ExtError, VregOp};
+    use dspi_transport::{Capture, FakeDevice, FakeOptions};
+
+    fn unit_at_1v25() -> FakeDevice {
+        let mut d = FakeDevice::new(
+            Capture::demo(),
+            FakeOptions {
+                extensions: true,
+                ..FakeOptions::default()
+            },
+        );
+        ext::core_vreg_op(&mut d, VregOp::Set(0x0E), Some("OVERVOLT")).unwrap();
+        d
+    }
+
+    fn stored(d: &mut FakeDevice) -> u8 {
+        ext::read_core_vreg(d).unwrap().stored_sel
+    }
+
+    /// A prompt that must not be reached, for a path that has no person.
+    fn no_prompt() -> Option<String> {
+        panic!("asked");
+    }
+
+    #[test]
+    fn wp_cg14_the_flag_carries_the_word_and_is_not_positional() {
+        let flags = ["ext", "vreg", "set", "1.30", "--word", "OVERVOLT"];
+        assert_eq!(flag_value(&flags, "--word"), Some("OVERVOLT"));
+        assert_eq!(positional(&flags), vec!["vreg", "set", "1.30"]);
+
+        let mut d = unit_at_1v25();
+        vreg_send(&mut d, VregOp::Set(0x0F), Some("OVERVOLT"), &mut no_prompt).unwrap();
+        assert_eq!(stored(&mut d), 0x0F);
+    }
+
+    #[test]
+    fn wp_cg14_a_wrong_flag_is_refused_and_does_not_prompt() {
+        for bad in ["overvolt", "OVERVOLT ", "--force", "yes"] {
+            let mut d = unit_at_1v25();
+            let r = vreg_send(&mut d, VregOp::Set(0x0F), Some(bad), &mut no_prompt);
+            assert!(
+                matches!(r, Err(ExtError::WordRequired { code: 0x0F })),
+                "{bad}"
+            );
+            assert_eq!(stored(&mut d), 0x0E);
+        }
+    }
+
+    #[test]
+    fn wp_cg14_force_alone_is_never_enough() {
+        // No terminal: nobody to ask, whatever the flags say.
+        let flags = ["ext", "vreg", "set", "1.30", "--force"];
+        assert!(force(&flags));
+        assert_eq!(flag_value(&flags, "--word"), None);
+        let mut d = unit_at_1v25();
+        let r = vreg_send(
+            &mut d,
+            VregOp::Set(0x0F),
+            flag_value(&flags, "--word"),
+            &mut || None,
+        );
+        assert!(matches!(r, Err(ExtError::WordRequired { .. })));
+        assert_eq!(stored(&mut d), 0x0E);
+    }
+
+    #[test]
+    fn wp_cg14_the_prompt_asks_once_and_must_match_exactly() {
+        let mut d = unit_at_1v25();
+        let mut asked = 0;
+        let r = vreg_send(&mut d, VregOp::Trial(0x0F), None, &mut || {
+            asked += 1;
+            Some("overvolt".into())
+        });
+        assert!(matches!(r, Err(ExtError::WordRequired { .. })));
+        assert_eq!(asked, 1);
+        assert!(!ext::read_core_vreg(&mut d).unwrap().trial_active);
+
+        vreg_send(&mut d, VregOp::Trial(0x0F), None, &mut || {
+            Some("OVERVOLT".into())
+        })
+        .unwrap();
+        assert_eq!(ext::read_core_vreg(&mut d).unwrap().trial_vreg, 0x0F);
+    }
+
+    #[test]
+    fn wp_cg14_raw_out_refuses_a_core_voltage_write_before_opening_anything() {
+        // A target that cannot open: a usage error, not "no device", shows the
+        // refusal came first. So nothing can have reached a device.
+        let nobody = Target::Usb {
+            serial: Some("CG14-NOT-THERE".into()),
+        };
+        for args in [
+            &["0", "2", "00", "0F"][..],
+            &["0x00", "0x0002", "01", "0F"],
+            // The same request, spelled to survive the casts to u8 and u16.
+            &["0x100", "2", "00", "0F"],
+            &["0", "0x10002", "00", "0F"],
+            &["0", "2"],
+        ] {
+            assert_eq!(raw_out(&nobody, args, false), exit::USAGE, "{args:?}");
+            assert_eq!(raw_out(&Target::Demo, args, false), exit::USAGE, "{args:?}");
+        }
+        // The check is that narrow: the same target opens for anything else,
+        // and the demo device takes another sub-command.
+        assert_eq!(
+            raw_out(&Target::Demo, &["0", "1", "00", "00", "00", "00"], false),
+            exit::OK
+        );
+        assert_ne!(
+            raw_out(&nobody, &["0", "1", "00", "00", "00", "00"], false),
+            exit::USAGE
+        );
+    }
+
+    #[test]
+    fn wp_cg14_lowering_and_level_never_ask() {
+        let mut d = unit_at_1v25();
+        vreg_send(&mut d, VregOp::Set(0x0E), None, &mut no_prompt).unwrap();
+        vreg_send(&mut d, VregOp::Set(0x0D), None, &mut || {
+            panic!("1.25 V is still stored: this is lowering")
+        })
+        .unwrap();
+        vreg_send(&mut d, VregOp::Clear, None, &mut no_prompt).unwrap();
     }
 }
