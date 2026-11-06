@@ -7,6 +7,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// The public `DspiCore` methods a binding cannot carry: the argument is a Rust
 /// trait object. Everything else is exported.
@@ -36,7 +37,14 @@ fn library() -> PathBuf {
 /// target directory, never a tmpfs.
 fn generate(language: &str) -> PathBuf {
     let lib = library();
-    let out = lib.parent().unwrap().join("wp-f1-bindings").join(language);
+    // Tests run in parallel, and each must keep the directory it generated.
+    static RUN: AtomicUsize = AtomicUsize::new(0);
+    let run = RUN.fetch_add(1, Ordering::Relaxed);
+    let out = lib
+        .parent()
+        .unwrap()
+        .join("wp-f1-bindings")
+        .join(format!("{language}-{run}"));
     let _ = std::fs::remove_dir_all(&out);
     std::fs::create_dir_all(&out).unwrap();
     // One run per namespace, each with its config by path.
@@ -130,6 +138,53 @@ fn kotlin_methods(kotlin: &str) -> BTreeSet<String> {
         })
         .map(|l| l.split(['`', '(']).next().unwrap().to_owned())
         .collect()
+}
+
+/// The generated files with this extension, relative to `dir`.
+fn generated_files(dir: &Path, extension: &str) -> BTreeSet<PathBuf> {
+    let mut found = BTreeSet::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for e in std::fs::read_dir(&d).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|x| x == extension) {
+                found.insert(p.strip_prefix(dir).unwrap().to_path_buf());
+            }
+        }
+    }
+    found
+}
+
+/// `generate` names the namespaces by hand; a run without `--crate` finds them
+/// all. `ci/check.sh --step kotlin` compiles them together, so a package two
+/// namespaces share fails there; this says why, without a compiler.
+#[test]
+fn wp_cg9_every_namespace_is_generated_with_its_own_package() {
+    let out = generate("kotlin");
+    let lib = library();
+    let all = lib.parent().unwrap().join("wp-cg9-bindings");
+    let _ = std::fs::remove_dir_all(&all);
+    std::fs::create_dir_all(&all).unwrap();
+    let run = Command::new(env!("CARGO_BIN_EXE_uniffi-bindgen"))
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .args(["generate", "--library"])
+        .arg(&lib)
+        .args(["--language", "kotlin", "--no-format", "--out-dir"])
+        .arg(&all)
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "uniffi-bindgen: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let files = generated_files(&out, "kt");
+    assert_eq!(files, generated_files(&all, "kt"), "a namespace is missing");
+
+    let dirs: BTreeSet<_> = files.iter().filter_map(|f| f.parent()).collect();
+    assert_eq!(dirs.len(), files.len(), "two namespaces share a package");
 }
 
 #[test]
