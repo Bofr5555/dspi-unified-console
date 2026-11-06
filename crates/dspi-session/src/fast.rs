@@ -121,6 +121,17 @@ impl Session {
                 max: "42 ms".into(),
             });
         }
+        // The registry carries the RP2350's +24 dB; an RP2040 applies its
+        // preamp as a Q28 multiplier, which overflows above about +18 dB.
+        if matches!(d.path, "pre" | "pre.all")
+            && self.capabilities().platform == Platform::Rp2040
+            && value.as_f32().is_some_and(|v| v > 18.0)
+        {
+            return Err(WriteError::PlatformRange {
+                path: d.path.into(),
+                max: "+18 dB".into(),
+            });
+        }
         Ok(())
     }
 }
@@ -427,5 +438,25 @@ mod tests_wp_s1 {
         let log = log_of(&log);
         assert_eq!(log.len(), 1, "no interlock query: {log:?}");
         assert_eq!(log[0].direction, Direction::Out);
+    }
+
+    /// `pre`'s range in the registry is the RP2350's; an RP2040's Q28
+    /// multiplier stops at +18 dB, a platform fact checked before the wire.
+    #[test]
+    fn wp_b2_an_rp2040_refuses_a_preamp_above_18_db() {
+        let session =
+            |platform| Session::new(Box::new(MockTransport::new()), caps(platform)).unwrap();
+        let mut s = session(Platform::Rp2040);
+        assert!(matches!(
+            s.send("pre", &[0], Value::Float(18.5)),
+            Err(WriteError::PlatformRange { .. })
+        ));
+        assert!(matches!(
+            s.send("pre.all", &[], Value::Float(24.0)),
+            Err(WriteError::PlatformRange { .. })
+        ));
+        assert!(s.send("pre", &[0], Value::Float(18.0)).is_ok());
+        let mut s = session(Platform::Rp2350);
+        assert!(s.send("pre", &[0], Value::Float(24.0)).is_ok());
     }
 }

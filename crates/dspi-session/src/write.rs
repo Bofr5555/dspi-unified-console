@@ -1525,10 +1525,15 @@ impl Session {
     /// difference between a greyed-out option with a reason and a control that
     /// appears to do nothing.
     pub fn core1_conflict(&mut self, output: u8) -> bool {
+        self.try_core1_conflict(output).unwrap_or(false)
+    }
+
+    /// [`Session::core1_conflict`] with the read's failure kept: a caller
+    /// about to write must not read a lost device as "no conflict".
+    pub fn try_core1_conflict(&mut self, output: u8) -> Result<bool, TransportError> {
         self.transport
             .control_in(op::REQ_GET_CORE1_CONFLICT, output as u16, 1)
             .map(|d| d.first().copied().unwrap_or(0) != 0)
-            .unwrap_or(false)
     }
 
     /// The PDM sub, which is always the last output

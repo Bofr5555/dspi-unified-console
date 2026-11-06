@@ -30,10 +30,20 @@ pub struct ExtState {
     /// `EXT_CORE_VREG`, when supported. Re-read on demand (it changes with
     /// uptime and the trial state).
     pub core_vreg: Option<CoreVregStatus>,
+    /// `EXT_NOTIFY_FEATURES`, when supported and readable: the
+    /// `NOTIFY_FEAT_*` flags. See [`ExtState::bulk_source`].
+    pub notify_features: Option<u32>,
 }
 
 /// `wLength` of the `EXT_LIST` read: 64 bytes, room for 32 ids. The
 /// conversion is checked at compile time.
+/// `NOTIFY_FEAT_BULK_SOURCE` (notify.h), a `(1u << 0)` the header generator
+/// does not lift; this module's tests pin it to the header.
+const NOTIFY_FEAT_BULK_SOURCE: u32 = 1 << 0;
+
+/// The reply size of `EXT_NOTIFY_FEATURES`: a `uint32`.
+const NOTIFY_FEATURES_LEN: u16 = 4;
+
 const LIST_LEN: u16 = {
     assert!(LIST_READ_LEN <= u16::MAX as usize);
     LIST_READ_LEN as u16
@@ -75,6 +85,15 @@ impl ExtState {
     /// `Option` rather than relying on `has`.
     pub fn has(&self, id: u16) -> bool {
         self.supported.contains(&id)
+    }
+
+    /// Whether the firmware tags a bulk SET's `BULK_INVALIDATED` with its
+    /// dispatch path (`NOTIFY_FEAT_BULK_SOURCE`). False when `0x0003` is not
+    /// listed or its read was refused: a viewer on DSPi Link cannot read the
+    /// extension channel at all.
+    pub fn bulk_source(&self) -> bool {
+        self.notify_features
+            .is_some_and(|f| f & NOTIFY_FEAT_BULK_SOURCE != 0)
     }
 }
 
@@ -120,9 +139,10 @@ fn reads_for(supported: &[u16]) -> Vec<(u16, u16)> {
         assert!(CoreVregStatus::SIZE <= u16::MAX as usize);
         CoreVregStatus::SIZE as u16
     };
-    const KNOWN: [(u16, u16); 2] = [
+    const KNOWN: [(u16, u16); 3] = [
         (g::EXT_CROSSFEED_PAIR_MAP, PAIR_MAP_LEN),
         (g::EXT_CORE_VREG, CORE_VREG_LEN),
+        (g::EXT_NOTIFY_FEATURES, NOTIFY_FEATURES_LEN),
     ];
     KNOWN
         .into_iter()
@@ -145,10 +165,14 @@ fn from_replies(supported: Vec<u16>, replies: &[(u16, Vec<u8>)]) -> ExtState {
     };
     let pair_map = reply(g::EXT_CROSSFEED_PAIR_MAP).and_then(crate::ext::pair_map_from);
     let core_vreg = reply(g::EXT_CORE_VREG).and_then(CoreVregStatus::decode);
+    let notify_features = reply(g::EXT_NOTIFY_FEATURES)
+        .and_then(|b| b.first_chunk::<4>())
+        .map(|b| u32::from_le_bytes(*b));
     ExtState {
         supported,
         pair_map,
         core_vreg,
+        notify_features,
     }
 }
 
@@ -159,6 +183,45 @@ mod tests_wp_s3 {
     use dspi_transport::MockTransport;
     use dspi_transport::mock::{Direction, Reply};
     use proptest::prelude::*;
+
+    #[test]
+    fn wp_b2_the_feature_bit_is_the_headers() {
+        let header = include_str!("../../dspi-proto/firmware/notify.h");
+        assert!(header.contains("#define NOTIFY_FEAT_BULK_SOURCE      (1u << 0)"));
+        assert_eq!(NOTIFY_FEAT_BULK_SOURCE, 1);
+    }
+
+    #[test]
+    fn wp_b2_notify_features_are_probed_when_listed() {
+        let list = [g::EXT_NOTIFY_FEATURES.to_le_bytes()].concat();
+        let t = MockTransport::new().reply(
+            op::REQ_EXTENSION,
+            Reply::Sequence(vec![Reply::Data(list), Reply::Data(vec![1, 0, 0, 0])]),
+        );
+        let mut t = t;
+        let e = ExtState::probe(&mut t).unwrap();
+        assert_eq!(e.notify_features, Some(1));
+        assert!(e.bulk_source());
+
+        // Listed, flag clear; listed, refused; not listed.
+        let list = [g::EXT_NOTIFY_FEATURES.to_le_bytes()].concat();
+        let e = from_replies(
+            supported_from_list(&list),
+            &[(g::EXT_NOTIFY_FEATURES, vec![0, 0, 0, 0])],
+        );
+        assert!(!e.bulk_source());
+        let e = from_replies(supported_from_list(&list), &[]);
+        assert_eq!(e.notify_features, None);
+        assert!(!e.bulk_source());
+        let e = from_replies(Vec::new(), &[(g::EXT_NOTIFY_FEATURES, vec![1, 0, 0, 0])]);
+        assert!(!e.bulk_source(), "a reply for an id not listed is ignored");
+        // A short reply is absent, not a panic.
+        let e = from_replies(
+            supported_from_list(&list),
+            &[(g::EXT_NOTIFY_FEATURES, vec![1])],
+        );
+        assert!(!e.bulk_source());
+    }
 
     /// A K340's vreg status: live 1.20 V, auto-raise on, 1 h uptime.
     fn vreg_reply() -> Vec<u8> {
@@ -185,7 +248,8 @@ mod tests_wp_s3 {
     fn wp_s3_only_known_listed_sub_commands_are_read() {
         assert!(reads_for(&[]).is_empty());
         assert_eq!(reads_for(&[2]), vec![(2, 16)]);
-        assert_eq!(reads_for(&[1, 2, 3, 0x8001]), vec![(1, 4), (2, 16)]);
+        assert_eq!(reads_for(&[1, 2, 4, 0x8001]), vec![(1, 4), (2, 16)]);
+        assert_eq!(reads_for(&[3]), vec![(3, 4)]);
     }
 
     #[test]
@@ -289,10 +353,10 @@ mod tests_wp_s3 {
 
     #[test]
     fn wp_s3_unknown_ids_are_listed_but_not_read() {
-        let mut t = MockTransport::new().data(op::REQ_EXTENSION, vec![3, 0, 1, 0x80]);
+        let mut t = MockTransport::new().data(op::REQ_EXTENSION, vec![4, 0, 1, 0x80]);
         let log = t.log_handle();
         let s = ExtState::probe(&mut t).unwrap();
-        assert_eq!(s.supported, vec![3, 0x8001]);
+        assert_eq!(s.supported, vec![4, 0x8001]);
         assert_eq!((s.pair_map, s.core_vreg), (None, None));
         assert_eq!(log.lock().unwrap().len(), 1);
     }
