@@ -259,6 +259,19 @@ pub struct LinkClient {
     inner: Arc<Inner>,
 }
 
+/// The hub refused the credential itself: a wrong PIN or a bad token. Both real
+/// hubs say `unauthenticated`; `denied` is what the spec's vocabulary also allows.
+fn is_credential_refusal(code: &str) -> bool {
+    matches!(code, "unauthenticated" | "denied")
+}
+
+fn typed_refusal(e: LinkError) -> LinkError {
+    match e {
+        LinkError::Rejected { code, msg } if code == "rate_limited" => LinkError::RateLimited { msg },
+        e => e,
+    }
+}
+
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|p| p.into_inner())
 }
@@ -332,13 +345,15 @@ impl LinkClient {
                         c.became_ready(&v);
                         AuthState::Ready
                     }
-                    // A refused or expired token is indistinguishable from none: pair again
-                    Err(LinkError::Rejected { .. }) => {
-                        AuthState::NeedsPairing { pin_source: c.inner.hello.pin_source().into() }
+                    // The one case where the token itself is bad (dspi-link-js
+                    // TOKEN_REJECTION_CODES)
+                    Err(LinkError::Rejected { code, .. }) if is_credential_refusal(&code) => {
+                        AuthState::TokenRefused { pin_source: c.inner.hello.pin_source().into() }
                     }
+                    // The hub said "not now", or the link failed: the token stays good
                     Err(e) => {
                         c.close();
-                        return Err(e);
+                        return Err(typed_refusal(e));
                     }
                 },
                 None => AuthState::NeedsPairing { pin_source: c.inner.hello.pin_source().into() },
@@ -389,10 +404,19 @@ impl LinkClient {
     }
 
     /// Pair with the PIN the user typed (spec 6.2). Returns the token to store
-    /// against [`HelloHub::hub`] `id` (empty when the hub issued none).
+    /// against [`HelloHub::hub`] `id` (empty when the hub issued none). A refused
+    /// PIN is [`LinkError::WrongPin`] and `rate_limited` [`LinkError::RateLimited`];
+    /// the session stays open for another try.
     pub fn pair(&self, pin: &str, role: &str) -> Result<String, LinkError> {
         let name = self.inner.client_name.clone();
-        let v = self.request(|id| out::auth_pair(id, pin, &name, Some(role)), self.inner.timing.request_timeout)?;
+        let v = self
+            .request(|id| out::auth_pair(id, pin, &name, Some(role)), self.inner.timing.request_timeout)
+            .map_err(|e| match e {
+                LinkError::Rejected { code, .. } if is_credential_refusal(&code) => {
+                    LinkError::WrongPin { pin_source: self.inner.hello.pin_source_kind() }
+                }
+                e => typed_refusal(e),
+            })?;
         self.became_ready(&v);
         self.refresh_devices()?;
         let ok: AuthOk = serde_json::from_value(v).unwrap_or_default();
