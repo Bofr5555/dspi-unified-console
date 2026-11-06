@@ -169,8 +169,11 @@ opcodes appear only on a `Writable`.
 
 One named exception: `REQ_CLEAR_CLIPS` (clearing the meters' clip latch,
 `clear_clips`) changes no setting and is allowed on a read-only
-connection, so it may go through a plain `Connection` (`get`). Any other
-exception needs a line here.
+connection, so it may go through a plain `Connection` (`get`).
+`REQ_RESET_BUFFER_STATS` (`reset_buffer_stats`, resets the watermarks only)
+and `REQ_ENTER_BOOTLOADER` (`enter_bootloader`, so a too-old or too-new device
+can still be updated, see 1.5) are allowed the same way. Any other exception
+needs a line here.
 
 ### 1.3 Sans-IO
 

@@ -145,12 +145,7 @@ impl DspiCore {
         // 1. A connection whose reader saw the stream end is gone.
         let lost = {
             let mut inner = self.lock();
-            let ended = inner
-                .conn
-                .as_ref()
-                .and_then(|c| c.notifications.as_ref())
-                .is_some_and(|n| n.is_disconnected());
-            if ended {
+            if crate::notify::stream_ended_locked(&inner) {
                 Closing::take(&mut inner)
             } else {
                 None

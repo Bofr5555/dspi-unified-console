@@ -181,7 +181,7 @@ fn store_pair_map(inner: &mut Inner, map: PairMap) {
 
 /// Crossfeed pairs on the platform: 4 on RP2350, 2 on RP2040 (the stereo
 /// outputs, without the PDM sub). The rule `files.rs` uses too.
-fn crossfeed_pairs(s: &DspState) -> u8 {
+pub(crate) fn crossfeed_pairs(s: &DspState) -> u8 {
     if s.platform_id == 1 { 4 } else { 2 }
 }
 

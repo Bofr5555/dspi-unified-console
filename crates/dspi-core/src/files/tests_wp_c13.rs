@@ -859,7 +859,6 @@ fn wp_c13_config_import_writes_the_demo_device() {
 }
 
 #[test]
-#[ignore = "WP C3: needs the band setters (set_filter, set_crossover, set_input_preamp)"]
 fn wp_c13_filters_import_writes_the_demo_device() {
     let core = demo_core();
     let r = json_of(&core.filters_import(REW_FILTERS.into(), vec![1, 1]));

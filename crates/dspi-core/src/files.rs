@@ -143,11 +143,6 @@ fn preamp_range(s: &DspState) -> (f32, f32) {
     (-60.0, max)
 }
 
-/// Crossfeed pairs on the platform: 4 on RP2350, 2 on RP2040.
-fn crossfeed_pairs(s: &DspState) -> u8 {
-    if is_rp2350(s) { 4 } else { 2 }
-}
-
 /// A valid pair map as the firmware stores it: explicit default bytes
 /// (`(2p+1) << 4 | 2p`) become 0.
 fn normalize_pair_map(map: &[u8]) -> Vec<u8> {
@@ -714,7 +709,7 @@ fn build_features(ns: &mut DspState, v: &Value, skipped: &mut Skips) {
                 *dst = (*x).clamp(0, 255) as u8;
             }
             ns.crossfeed_pair_map =
-                if crate::crossfeed_pair_map_valid(map.clone(), crossfeed_pairs(ns)) {
+                if crate::crossfeed_pair_map_valid(map.clone(), crate::ext::crossfeed_pairs(ns)) {
                     normalize_pair_map(&map)
                 } else {
                     vec![0; CROSSFEED_MAP_PAIRS]

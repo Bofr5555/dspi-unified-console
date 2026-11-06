@@ -2,8 +2,9 @@
 //!
 //! They are called on core threads (the notification reader, the RTA
 //! worker, the Link reader) or, for [`DeviceEvents`], on the thread that calls
-//! `poll_hotplug`. They must only *schedule* work and never call back into
-//! [`crate::DspiCore`] from inside the callback.
+//! `poll_hotplug`, with the core lock released. A listener may call the core's
+//! read methods (`get_state`, `rta_get_snapshot`, `process_notifications`) but
+//! must not block and must not open or close devices from inside the callback.
 //!
 //! The Android and iOS bindings (WP F1) export these as UniFFI callback
 //! interfaces; the C ABI wraps a C function pointer in each.

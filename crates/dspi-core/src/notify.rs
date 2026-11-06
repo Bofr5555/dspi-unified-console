@@ -62,6 +62,15 @@ const EQ_BANDS: usize = g::wire::WIRE_MAX_BANDS as usize;
 /// Crossover bands per channel in the image.
 const XOVER_BANDS: usize = g::wire::WIRE_MAX_XOVER_BANDS as usize;
 
+/// Whether the connection's notification reader saw the stream end.
+pub(crate) fn stream_ended_locked(inner: &Inner) -> bool {
+    inner
+        .conn
+        .as_ref()
+        .and_then(|c| c.notifications.as_ref())
+        .is_some_and(|n| n.is_disconnected())
+}
+
 impl DspiCore {
     /// Register (`Some`) or clear (`None`) the wake-up listener of the
     /// notification reader. It is called on the reader thread whenever a
@@ -120,12 +129,7 @@ impl DspiCore {
     /// intentional close never sets it (the reader is stopped before the
     /// transport is dropped, and the connection is gone from the core).
     pub(crate) fn notification_stream_ended(&self) -> bool {
-        let inner = self.lock();
-        inner
-            .conn
-            .as_ref()
-            .and_then(|c| c.notifications.as_ref())
-            .is_some_and(|n| n.is_disconnected())
+        stream_ended_locked(&self.lock())
     }
 
     /// The unlocked phase: re-read the image (C2's path), then the preset
