@@ -16,7 +16,18 @@
 //! (a type change does not rewrite bias/asym/hardness/sag), limiter group
 //! ganging on `LIMITER_ALL_OUTPUTS`, and the deferred applies (an input
 //! source, clock mode or DAC mute config takes effect, and notifies, at
-//! once).
+//! once). Nor are the float range clamps of the psybass, subharm, leveller,
+//! tube and limiter parameters (a float is stored as sent; only the byte
+//! and integer fields are clamped), the tube's `custom_reset_if` (moving
+//! bias/asym/hardness/sag does not reset the type to custom), ADAT input
+//! selectability needing `adat_input_pin != 0xFF` as well as the enable,
+//! and S/PDIF enable acceptance depending on the input's RX pin (any enable
+//! is accepted).
+//!
+//! Rounding: integer fields set from a float use [`f32::round`] (ties away
+//! from zero), where the firmware's `round_clamp_u` adds 0.5 and truncates
+//! and `lrintf` rounds ties to even; they differ only at exact .5 values.
+//! The upmixer's modes and presence follow `lrintf` (ties to even).
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -408,8 +419,13 @@ pub(super) enum Num {
     U16,
     /// As is.
     F32,
-    /// `int8`, half-dB steps (`presence_q1`): rounded `v * 2`, -48..=48.
+    /// `int8`, half-dB steps (`presence_q1`): `v` clamped to
+    /// `UPMIX_PRESENCE_MIN..=MAX` (+-12 dB, upmix.h:108-109), then
+    /// `lrintf(v * 2)`, so -24..=24 (`upmix_presence_encode`, upmix.h:206-209).
     Half,
+    /// A mode byte: `lrintf(v)`, and anything outside `0..=max` becomes
+    /// `fallback` (`upmix_clamp_center_mode`, upmix.h:129-131).
+    Choice { max: u8, fallback: u8 },
 }
 
 impl Num {
@@ -422,13 +438,21 @@ impl Num {
                 .to_le_bytes()
                 .to_vec(),
             Num::F32 => v.to_le_bytes().to_vec(),
-            Num::Half => vec![(v * 2.0).round().clamp(-48.0, 48.0) as i8 as u8],
+            Num::Half => vec![(v.clamp(-12.0, 12.0) * 2.0).round_ties_even() as i8 as u8],
+            Num::Choice { max, fallback } => {
+                let m = v.round_ties_even();
+                vec![if (0.0..=f32::from(max)).contains(&m) {
+                    m as u8
+                } else {
+                    fallback
+                }]
+            }
         }
     }
 
     fn decode(self, b: &[u8]) -> Option<f32> {
         Some(match self {
-            Num::Bool | Num::U8(_) => f32::from(*b.first()?),
+            Num::Bool | Num::U8(_) | Num::Choice { .. } => f32::from(*b.first()?),
             Num::U16 => f32::from(u16::from_le_bytes(b.get(..2)?.try_into().ok()?)),
             Num::F32 => f32::from_le_bytes(b.get(..4)?.try_into().ok()?),
             Num::Half => f32::from(i8::from_le_bytes([*b.first()?])) / 2.0,
@@ -465,10 +489,21 @@ pub(super) const LIMITER_PARAMS: [(Field, Num); 4] = [
     ),
 ];
 
-/// Indexed by `UPMIX_PARAM_*` (upmix.h:187-202).
+/// `UPMIX_DEFAULT_CENTER_MODE` (upmix.h), adaptive; not generated.
+const UPMIX_DEFAULT_CENTER: u8 = 1;
+
+/// Indexed by `UPMIX_PARAM_*` (upmix.h:187-202). `GET_PARAM 13` here reads
+/// the stored half-dB byte back; the firmware returns its unclamped float
+/// `presence_db`, so a value set outside +-12 dB reads back differently.
 pub(super) const UPMIX_PARAMS: [(Field, Num); 14] = [
     (U_ENABLED, Num::Bool),
-    (U_CENTER, Num::U8(2)),
+    (
+        U_CENTER,
+        Num::Choice {
+            max: 2,
+            fallback: UPMIX_DEFAULT_CENTER,
+        },
+    ),
     (U_SURROUND, Num::U8(2)),
     (U_STRENGTH, Num::F32),
     (U_WIDTH, Num::F32),
@@ -800,15 +835,22 @@ impl State {
                     self.put("upmix", 0, 0, *f, &num.encode(v));
                     true
                 }
-                // An unknown parameter or a short payload stalls.
+                // An unknown parameter or a short payload is refused: ACKed
+                // and dropped on USB, ERROR on UART/I2C/MIDI; stalls here
+                // unless ack_unknown_sets.
                 _ => false,
             },
             op::REQ_UPMIX_SET_CONFIG => {
                 if data.len() != UPMIX_LEN {
+                    // Refused: ACKed and dropped on USB, ERROR on
+                    // UART/I2C/MIDI; stalls here unless ack_unknown_sets.
                     return Some(false);
                 }
-                // Field by field, one notification each (upmix_notify_config).
-                for (f, num) in UPMIX_PARAMS {
+                // Field by field, one notification each, in struct order
+                // (upmix_notify_config, upmix.c:234-256).
+                let mut fields = UPMIX_PARAMS;
+                fields.sort_by_key(|(f, _)| f.1);
+                for (f, num) in fields {
                     if let Some(v) = data
                         .get(f.1..f.1.saturating_add(f.2))
                         .and_then(|b| num.decode(b))
@@ -833,7 +875,9 @@ impl State {
                 true
             }
             op::REQ_OUTPUT_LATENCY => match data.first() {
-                // An unknown option is refused (USB: STALL).
+                // An unknown option is refused: ACKed and dropped on USB,
+                // ERROR on UART/I2C/MIDI; stalls here unless
+                // ack_unknown_sets.
                 Some(&id) if LATENCY_OPTIONS.iter().any(|o| o.0 == id) => {
                     self.extras.latency = id;
                     true
@@ -1088,6 +1132,7 @@ impl State {
         let find = |id: u8| LATENCY_OPTIONS.iter().copied().find(|o| o.0 == id);
         let opt = find(self.extras.latency)
             .or_else(|| find(LATENCY_DEFAULT))
+            // Unreachable: the default is in the table.
             .unwrap_or((LATENCY_DEFAULT, 0, 4000, 1000));
         if opt.1 & 1 != 0 && self.ic(IC_SOURCE).unwrap_or(0) == 0 {
             return LATENCY_OPTIONS
@@ -1247,7 +1292,20 @@ mod tests_wp_t4b {
                 IC_ADAT_ENABLED_P1,
                 IC_ADAT_CLOCK_P1
             ]),
-            names(&INPUT_CONFIG_FIELDS)
+            [
+                "input_source",
+                "spdif_rx_pin",
+                "i2s_rx_pin",
+                "i2s_input_rate",
+                "i2s_input_channels",
+                "i2s_rx_pin_ext",
+                "spdif_rx_pin_ext",
+                "spdif_rx_enabled_ext_p1",
+                "i2s_clock_mode",
+                "adat_input_pin",
+                "adat_input_enabled_p1",
+                "adat_clock_mode_p1"
+            ]
         );
         assert_eq!(
             names(&[
@@ -1656,5 +1714,80 @@ mod tests_wp_t4b {
             I2cCtrlConfig::decode(&d.control_in(op::REQ_GET_I2C_CONFIG, 0, 8).unwrap()).unwrap(),
             I2cCtrlConfig::default()
         );
+    }
+
+    #[test]
+    fn wp_t4c_upmix_clamps_and_notifies_in_struct_order() {
+        let mut d = FakeDevice::demo();
+        let mut src = d.notifications().unwrap();
+        let f = |v: f32| v.to_le_bytes();
+        let up = off_of("upmix");
+        // Presence: +-12 dB, so the half-dB byte stops at 24.
+        d.control_out(op::REQ_UPMIX_SET_PARAM, 13, &f(20.0))
+            .unwrap();
+        assert_eq!(d.remote().image()[up + 3], 24);
+        d.control_out(op::REQ_UPMIX_SET_PARAM, 13, &f(-20.0))
+            .unwrap();
+        assert_eq!(d.remote().image()[up + 3] as i8, -24);
+        // lrintf: ties to even.
+        d.control_out(op::REQ_UPMIX_SET_PARAM, 13, &f(1.25))
+            .unwrap();
+        assert_eq!(d.remote().image()[up + 3], 2);
+        // An out-of-range centre mode falls back to adaptive (1); surround
+        // clamps to 2.
+        d.control_out(op::REQ_UPMIX_SET_PARAM, 1, &f(0.0)).unwrap();
+        d.control_out(op::REQ_UPMIX_SET_PARAM, 1, &f(7.0)).unwrap();
+        assert_eq!(d.remote().image()[up + 1], 1);
+        d.control_out(op::REQ_UPMIX_SET_PARAM, 1, &f(-1.0)).unwrap();
+        assert_eq!(d.remote().image()[up + 1], 1);
+        d.control_out(op::REQ_UPMIX_SET_PARAM, 2, &f(7.0)).unwrap();
+        assert_eq!(d.remote().image()[up + 2], 2);
+
+        // SET_CONFIG: one notification per changed field, in struct order.
+        drain(&mut src);
+        let mut cfg = d.control_in(op::REQ_UPMIX_GET_CONFIG, 0, 44).unwrap();
+        cfg[1] = 9; // centre mode out of range
+        cfg[3] = 100; // presence +50 dB
+        cfg[40..44].copy_from_slice(&f(33.0));
+        cfg[4..8].copy_from_slice(&f(61.0));
+        d.control_out(op::REQ_UPMIX_SET_CONFIG, 0, &cfg).unwrap();
+        let img = d.remote().image();
+        assert_eq!((img[up + 1], img[up + 3]), (1, 24));
+        let offs: Vec<usize> = drain(&mut src)
+            .iter()
+            .map(|p| usize::from(u16::from_le_bytes([p[4], p[5]])) - up)
+            .collect();
+        assert_eq!(offs, [3, 4, 40], "centre was already 1");
+    }
+
+    #[test]
+    fn wp_t4c_refusals_ack_with_ack_unknown_sets() {
+        let mut d = FakeDevice::new(
+            Capture::demo(),
+            FakeOptions {
+                extensions: true,
+                ack_unknown_sets: true,
+                ..FakeOptions::default()
+            },
+        );
+        let before = d.remote().image();
+        d.control_out(op::REQ_OUTPUT_LATENCY, 0, &[9]).unwrap();
+        assert_eq!(d.control_in(op::REQ_OUTPUT_LATENCY, 0, 12).unwrap()[0], 5);
+        d.control_out(op::REQ_UPMIX_SET_PARAM, 14, &1.0f32.to_le_bytes())
+            .unwrap();
+        d.control_out(op::REQ_UPMIX_SET_PARAM, 0, &[1]).unwrap();
+        d.control_out(op::REQ_UPMIX_SET_CONFIG, 0, &[1; 40])
+            .unwrap();
+        let mut bad = before.clone();
+        bad[0] = 31;
+        d.control_out(op::REQ_SET_ALL_PARAMS, 0, &bad).unwrap();
+        assert_eq!(d.remote().image(), before, "acknowledged, not applied");
+        // A chunk out of sequence and the extension channel still stall.
+        assert!(
+            d.control_out(op::REQ_SET_ALL_PARAMS_CHUNK, 2048, &[0; 16])
+                .is_err()
+        );
+        assert!(d.control_out(op::REQ_EXTENSION, 0x7777, &[0; 4]).is_err());
+        assert!(d.control_out(op::REQ_EXTENSION, 2, &[9, 0]).is_err());
     }
 }
