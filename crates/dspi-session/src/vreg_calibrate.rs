@@ -67,7 +67,8 @@ device. RP2350 datasheet limits: recommended up to 1.16 V, absolute maximum 1.21
 regulator tolerance of +/-3 %. 1.20 V is already outside the recommended range and can reach \
 about 1.24 V at the upper tolerance. 1.25 V is above the absolute maximum even before tolerance. \
 Audio may cut out and the device may drop off USB; lower the volume. Raising the voltage above \
-1.20 V from what the unit reports now takes the word OVERVOLT, typed exactly.";
+1.20 V from what the unit reports now takes the word OVERVOLT, typed exactly, and saving a trial \
+above 1.20 V asks for it again.";
 
 /// What a soak does and does not show.
 pub const SOAK_NOTE: &str = "Keep audio playing during the soak: that is when hangs happen. A \
@@ -89,9 +90,15 @@ pub fn offered(default_vreg: u8) -> Vec<u8> {
         .collect()
 }
 
-/// Whether `code` on this unit needs the word, right now.
+/// Whether a `TRIAL` of `code` on this unit needs the word, right now.
 pub fn needs_word(code: u8, s: &CoreVregStatus) -> bool {
     overvolt::op_needs_word(VregOp::Trial(code), Some(s))
+}
+
+/// Whether a `SET` of `code` on this unit needs the word, right now. It can
+/// where a trial does not: a running trial does not count for a `SET`.
+pub fn save_needs_word(code: u8, s: &CoreVregStatus) -> bool {
+    overvolt::op_needs_word(VregOp::Set(code), Some(s))
 }
 
 fn check_word(request: VregOp, s: &CoreVregStatus, typed: Option<&str>) -> Result<(), FlowError> {
@@ -761,9 +768,10 @@ impl Calibrator {
         Ok(())
     }
 
-    /// Save the voltage that passed: the only way a run leads to a `SET`. The
-    /// rule looks at the status: with the trial still running, the unit is
-    /// already at this voltage, so the word typed for the trial stands.
+    /// Save the voltage that passed: the only way a run leads to a `SET`. Going
+    /// from RAM to flash is an upward change of its own, so above 1.20 V and
+    /// not already stored this asks for the word, even if it was typed for the
+    /// trial. [`save_needs_word`] tells a client beforehand.
     pub fn commit(
         &mut self,
         s: &CoreVregStatus,

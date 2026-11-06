@@ -635,12 +635,24 @@ fn wp_cg14_the_flow_asks_only_when_it_raises() {
 
     r.soak_at(0x0E);
     r.pass_soak();
-    assert!(
-        !r.poll().commit_needs_word,
-        "the unit is at 1.25 V on trial"
-    );
-    r.core.core_vreg_cal_commit(None).unwrap();
+    // The word was typed for the trial; saving it asks again.
+    let v = r.poll();
+    assert!(v.commit_needs_word);
+    assert_eq!(v.confirmation_word, "OVERVOLT");
+    let choice = v.choices.iter().find(|c| c.code == 0x0E).unwrap();
+    assert!(!choice.needs_word && choice.save_needs_word);
+    let before = r.sent();
+    assert!(no_word(r.core.core_vreg_cal_commit(None)));
+    assert!(no_word(
+        r.core.core_vreg_cal_commit(Some("overvolt".into()))
+    ));
+    assert_eq!(r.sent(), before, "refused at the transport too");
+    let v = r.poll();
+    assert_eq!(v.phase, VregCalPhase::Passed, "still there to answer");
+    r.core.core_vreg_cal_commit(word()).unwrap();
+    assert_eq!(*r.sent().last().unwrap(), (SET, 0x0E));
     assert_eq!(r.phase(), VregCalPhase::Committed);
+    assert!(!r.poll().commit_needs_word);
     assert_eq!(r.info().stored_sel, 0x0E);
 
     // Now at 1.25 V: trial and save it again with no word.
@@ -704,8 +716,34 @@ fn wp_cg14_each_case_at_the_transport() {
 fn wp_cg14_a_running_trial_counts_as_current() {
     let r = unit_at(0x0C);
     r.core.core_vreg_op(TRIAL, 0x0E, word()).unwrap();
-    r.core.core_vreg_op(SET, 0x0E, None).unwrap();
+    // A TRIAL counts it: no raise.
+    r.core.core_vreg_op(TRIAL, 0x0E, None).unwrap();
+    r.core.core_vreg_op(TRIAL, 0x0D, None).unwrap();
+    r.core.core_vreg_op(TRIAL, 0x0E, None).unwrap_err();
+    r.core.core_vreg_op(TRIAL, 0x0E, word()).unwrap();
+    // A SET does not: RAM to flash is a raise, at the transport too.
+    let before = r.sent();
+    assert!(no_word(r.core.core_vreg_op(SET, 0x0E, None)));
+    assert_eq!(r.sent(), before);
+    assert_eq!(r.info().stored_sel, 0);
+    r.core.core_vreg_op(SET, 0x0E, word()).unwrap();
     assert_eq!(r.info().stored_sel, 0x0E);
+    // Stored now: another trial at it, then a save, is level.
+    r.core.core_vreg_op(TRIAL, 0x0E, None).unwrap();
+    r.core.core_vreg_op(SET, 0x0E, None).unwrap();
+}
+
+#[test]
+fn wp_cg14_a_kept_trial_nobody_here_confirmed_asks_before_it_is_saved() {
+    let r = Rig::new();
+    r.core.core_vreg_op(TRIAL, 0x0E, word()).unwrap();
+    let r2 = r.restart_app();
+    assert_eq!(r2.phase(), VregCalPhase::TrialFound);
+    r2.core.core_vreg_cal_keep(SOAK).unwrap();
+    r2.pass_soak();
+    assert!(r2.poll().commit_needs_word);
+    assert!(no_word(r2.core.core_vreg_cal_commit(None)));
+    assert_eq!(r2.info().stored_sel, 0);
 }
 
 #[test]

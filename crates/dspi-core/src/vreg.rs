@@ -85,8 +85,12 @@ pub struct VregChoice {
     pub code: u8,
     /// The voltage, mV.
     pub millivolts: u16,
-    /// It would raise this unit above 1.20 V now, so `OVERVOLT` must be typed.
+    /// A trial of it would raise this unit above 1.20 V now, so `OVERVOLT`
+    /// must be typed.
     pub needs_word: bool,
+    /// The same for a save (`core_vreg_manual_set`), which does not count a
+    /// running trial as current.
+    pub save_needs_word: bool,
 }
 
 /// The flow as a client shows it.
@@ -114,7 +118,10 @@ pub struct VregCalView {
     /// What to type when `needs_word` or `commit_needs_word`: `OVERVOLT`,
     /// exactly.
     pub confirmation_word: String,
-    /// `core_vreg_cal_commit` needs the word now.
+    /// `core_vreg_cal_commit` needs the word now, while `phase` is `Passed`.
+    /// Saving a trial above 1.20 V that is not already stored asks for it, even
+    /// though it was typed to start the trial: going from RAM to flash is an
+    /// upward change of its own. Ask again; do not reuse the earlier answer.
     pub commit_needs_word: bool,
     /// The soak to suggest, seconds.
     pub default_soak_s: u32,
@@ -237,6 +244,7 @@ impl CalState {
                     code,
                     millivolts: vreg_mv(code).unwrap_or(0),
                     needs_word: cal::needs_word(code, s),
+                    save_needs_word: cal::save_needs_word(code, s),
                 })
                 .collect(),
             None => Vec::new(),
@@ -251,7 +259,7 @@ impl CalState {
             choices,
             confirmation_word: overvolt::WORD.to_owned(),
             commit_needs_word: match (&phase, &self.status) {
-                (Phase::Passed { run, .. }, Some(s)) => cal::needs_word(run.target, s),
+                (Phase::Passed { run, .. }, Some(s)) => cal::save_needs_word(run.target, s),
                 _ => false,
             },
             default_soak_s: cal::DEFAULT_SOAK_S,
@@ -416,7 +424,9 @@ impl DspiCore {
     /// Save the voltage that passed, with a `SET`: the one explicit step from
     /// a pass to flash. The status is read first, so a hang since the last
     /// poll takes the pass back. Read back by later polls: `Committed` or
-    /// `VerifyFailed`. `typed` as for starting. Errors as for starting.
+    /// `VerifyFailed`. `typed` is the word when the view's `commit_needs_word`
+    /// says so, even if it was typed for the trial. A refusal leaves the flow in
+    /// `Passed`, with the trial running. Errors as for starting.
     pub fn core_vreg_cal_commit(&self, typed: Option<String>) -> Result<()> {
         self.vreg_call(|core, cal, s, now| {
             let op = cal

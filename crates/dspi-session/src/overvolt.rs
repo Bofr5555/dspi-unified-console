@@ -9,6 +9,11 @@
 //! unit whose current voltage cannot be read requires the word for any target
 //! above 1200 mV. Lowering, or staying level, needs no word from this rule.
 //!
+//! **A `SET` leaves a running trial's voltage out of "current".** A trial lives
+//! in RAM, so persisting it is an upward change in itself, even after the word
+//! was typed for the trial. A `TRIAL` counts what the unit is running: a higher
+//! running trial means no raise.
+//!
 //! It is a typed confirmation, not a lock: the firmware enforces only its own
 //! limits, and a client talking to the device some other way is not stopped.
 #![warn(
@@ -40,7 +45,8 @@ pub fn word_matches(typed: Option<&str>) -> bool {
 
 /// The unit's current voltage: the highest of live, stored and build default
 /// as `EXT_CORE_VREG` reports them. `None`, meaning unreadable, if any of them
-/// is not a voltage (a stored selection of 0 is the build default).
+/// is not a voltage (a stored selection of 0 is the build default). What a
+/// `TRIAL` and the firmware guard compare with.
 pub fn current_mv(s: &CoreVregStatus) -> Option<u16> {
     let stored = if s.stored_sel == 0 {
         s.default_vreg
@@ -55,18 +61,38 @@ pub fn current_mv(s: &CoreVregStatus) -> Option<u16> {
         .max()
 }
 
+/// What a `SET` compares with: [`current_mv`], but while a trial runs, without
+/// its live voltage. What the unit would come back to, the persisted voltage,
+/// is what a `SET` changes. Unreadable under the same conditions.
+pub fn persisted_mv(s: &CoreVregStatus) -> Option<u16> {
+    let current = current_mv(s)?;
+    if !s.trial_active {
+        return Some(current);
+    }
+    let stored = if s.stored_sel == 0 {
+        s.default_vreg
+    } else {
+        s.stored_sel
+    };
+    [stored, s.default_vreg]
+        .into_iter()
+        .filter_map(vreg_mv)
+        .max()
+}
+
 /// The rule for a request, on the status just read (`None` if it could not be
 /// read). Only `SET` and `TRIAL` can raise the voltage now: `TRIAL_END` returns
 /// to the stored voltage, which current already counts. `SET 0` is the build
 /// default, which current counts too; on an unreadable unit nobody can say what
 /// that is, so it needs the word. So does a code that is not a voltage.
 pub fn op_needs_word(request: VregOp, status: Option<&CoreVregStatus>) -> bool {
-    let current = status.and_then(current_mv);
+    let judge = |code: u8, current: Option<u16>| {
+        vreg_mv(code).is_none_or(|target| word_required(current, target))
+    };
     match request {
-        VregOp::Set(0) => current.is_none(),
-        VregOp::Set(code) | VregOp::Trial(code) => {
-            vreg_mv(code).is_none_or(|target| word_required(current, target))
-        }
+        VregOp::Set(0) => status.and_then(current_mv).is_none(),
+        VregOp::Set(code) => judge(code, status.and_then(persisted_mv)),
+        VregOp::Trial(code) => judge(code, status.and_then(current_mv)),
         VregOp::TrialEnd | VregOp::Auto(_) | VregOp::Clear => false,
     }
 }
@@ -165,6 +191,45 @@ mod tests_wp_cg14 {
         for other in [VregOp::TrialEnd, VregOp::Auto(true), VregOp::Clear] {
             assert!(!op_needs_word(other, None));
         }
+    }
+
+    #[test]
+    fn wp_cg14_a_set_leaves_a_running_trial_out_and_a_trial_does_not() {
+        let on_trial = |code: u8, stored: u8, default_vreg: u8| CoreVregStatus {
+            trial_active: true,
+            trial_vreg: code,
+            ..unit(code, stored, default_vreg)
+        };
+        // On trial at 1.25 V, nothing stored: persisting it is a raise.
+        let s = on_trial(0x0E, 0, 0x0D);
+        assert_eq!(current_mv(&s), Some(1250));
+        assert_eq!(persisted_mv(&s), Some(1200));
+        assert!(op_needs_word(VregOp::Set(0x0E), Some(&s)));
+        // A trial at or below what is running is no raise.
+        assert!(!op_needs_word(VregOp::Trial(0x0E), Some(&s)));
+        assert!(!op_needs_word(VregOp::Trial(0x0D), Some(&s)));
+        // Already stored at 1.25 V: level.
+        assert!(!op_needs_word(
+            VregOp::Set(0x0E),
+            Some(&on_trial(0x0E, 0x0E, 0x0D))
+        ));
+        // Above what is stored, whatever trial is running.
+        assert!(op_needs_word(
+            VregOp::Set(0x0F),
+            Some(&on_trial(0x0F, 0x0E, 0x0D))
+        ));
+        // A trial at or below 1.20 V: the rule does not reach it.
+        assert!(!op_needs_word(
+            VregOp::Set(0x0D),
+            Some(&on_trial(0x0D, 0, 0x0C))
+        ));
+        // No trial: the live voltage still counts.
+        assert!(!op_needs_word(
+            VregOp::Set(0x0E),
+            Some(&unit(0x0E, 0, 0x0D))
+        ));
+        // A bad live voltage is unreadable, trial or not.
+        assert_eq!(persisted_mv(&on_trial(0xFF, 0, 0x0D)), None);
     }
 
     proptest! {

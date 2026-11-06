@@ -45,8 +45,12 @@ fn wp_cg11_a_whole_flow_through_c() {
 
     assert_eq!(dspi_core_vreg_demo_event(h, 3, 1800), 0);
     assert_eq!(view(h, dspi_core_vreg_cal_poll)["phase"], "passed");
-    // On trial at 1.25 V, so level: the word was typed for the trial.
-    assert_eq!(dspi_core_vreg_cal_commit(h, ptr::null()), 0);
+    // Saving asks again, though the word was typed for the trial.
+    let v = view(h, dspi_core_vreg_cal_poll);
+    assert_eq!(v["commitNeedsWord"], true);
+    assert_eq!(dspi_core_vreg_cal_commit(h, ptr::null()), 0xFF);
+    assert_eq!(view(h, dspi_core_vreg_cal_poll)["phase"], "passed");
+    assert_eq!(dspi_core_vreg_cal_commit(h, phrase.as_ptr()), 0);
     let v = view(h, dspi_core_vreg_cal_poll);
     assert_eq!(v["phase"], "committed");
     assert_eq!(v["status"]["storedSel"], 0x0E);

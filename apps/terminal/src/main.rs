@@ -2694,6 +2694,36 @@ mod tests_wp_cg14 {
     }
 
     #[test]
+    fn wp_cg14_raw_out_refuses_a_core_voltage_write_before_opening_anything() {
+        // A target that cannot open: a usage error, not "no device", shows the
+        // refusal came first. So nothing can have reached a device.
+        let nobody = Target::Usb {
+            serial: Some("CG14-NOT-THERE".into()),
+        };
+        for args in [
+            &["0", "2", "00", "0F"][..],
+            &["0x00", "0x0002", "01", "0F"],
+            // The same request, spelled to survive the casts to u8 and u16.
+            &["0x100", "2", "00", "0F"],
+            &["0", "0x10002", "00", "0F"],
+            &["0", "2"],
+        ] {
+            assert_eq!(raw_out(&nobody, args, false), exit::USAGE, "{args:?}");
+            assert_eq!(raw_out(&Target::Demo, args, false), exit::USAGE, "{args:?}");
+        }
+        // The check is that narrow: the same target opens for anything else,
+        // and the demo device takes another sub-command.
+        assert_eq!(
+            raw_out(&Target::Demo, &["0", "1", "00", "00", "00", "00"], false),
+            exit::OK
+        );
+        assert_ne!(
+            raw_out(&nobody, &["0", "1", "00", "00", "00", "00"], false),
+            exit::USAGE
+        );
+    }
+
+    #[test]
     fn wp_cg14_lowering_and_level_never_ask() {
         let mut d = unit_at_1v25();
         vreg_send(&mut d, VregOp::Set(0x0E), None, &mut no_prompt).unwrap();

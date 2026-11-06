@@ -949,13 +949,22 @@ mod tests_wp_cg8 {
             required_mv: 1150,
             source: FirmwareGuardBoardSource::StatusBlock,
         };
-        let drive = BootloaderDrive {
-            path: "/nonexistent-cg14".into(),
-            platform: 0,
-            info: String::new(),
-        };
-        let r = flash_to_drive_guarded(stamped("1250"), drive, board, String::new());
-        assert!(matches!(r, Err(DspiError::FirmwareGuardBlocked { .. })));
+        let (dir, d) = drive("cg14-word");
+        let list = || std::fs::read_dir(&dir).unwrap().count();
+        let empty = list();
+        for bad in ["", "overvolt", "OVERVOLT ", YES] {
+            let r = flash_to_drive_guarded(stamped("1250"), d.clone(), board.clone(), bad.into());
+            assert!(
+                matches!(r, Err(DspiError::FirmwareGuardBlocked { .. })),
+                "{bad:?}: {r:?}"
+            );
+            assert!(!dir.join("firmware.uf2").exists(), "{bad:?}");
+            assert_eq!(list(), empty, "{bad:?}: nothing at all on the drive");
+        }
+        // The same drive takes it with the word: it was the guard that stopped it.
+        flash_to_drive_guarded(stamped("1250"), d, board, overvolt::WORD.into()).unwrap();
+        assert!(dir.join("firmware.uf2").exists());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

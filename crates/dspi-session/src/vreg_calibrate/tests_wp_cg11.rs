@@ -127,11 +127,16 @@ fn wp_cg14_a_save_is_judged_on_the_status_at_that_moment() {
         Err(FlowError::WordRequired { .. })
     ));
     assert!(matches!(c.phase(), Phase::Passed { .. }));
-    // Still on trial at 1.25 V: level, and the word was typed for the trial.
-    assert_eq!(
-        c.commit(&running(0x0E, 3600 + SOAK), None, 61),
-        Ok(VregOp::Set(0x0E))
-    );
+    // Still on trial at 1.25 V: persisting it asks again, and stays in Passed.
+    let on_trial = running(0x0E, 3600 + SOAK);
+    assert!(save_needs_word(0x0E, &on_trial));
+    assert!(!needs_word(0x0E, &on_trial), "a trial of it would be level");
+    assert!(matches!(
+        c.commit(&on_trial, None, 61),
+        Err(FlowError::WordRequired { .. })
+    ));
+    assert!(matches!(c.phase(), Phase::Passed { .. }));
+    assert_eq!(c.commit(&on_trial, Some(WORD), 62), Ok(VregOp::Set(0x0E)));
 }
 
 #[test]
@@ -240,7 +245,7 @@ fn wp_cg11_a_set_is_verified_on_stored_and_live() {
     let mut c = soaking(0x0E);
     c.on_status(&running(0x0E, 3600 + SOAK), 50);
     assert_eq!(
-        c.commit(&running(0x0E, 3600 + SOAK), None, 60),
+        c.commit(&running(0x0E, 3600 + SOAK), Some(WORD), 60),
         Ok(VregOp::Set(0x0E))
     );
     // Still the trial: the main loop has not run.
