@@ -1153,3 +1153,22 @@ pub enum LinkPhase {
     Refused,
 }
 // -- WP F1 --
+// -- WP CG5 --
+/// Who chose the analyser configuration the device holds
+/// (`rta_get_ownership`). The last console to push one drives it, and every
+/// other console follows.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RtaOwnership {
+    /// False: the device holds what this console asked for, and the fields
+    /// below are 0. True: someone else's configuration.
+    pub following: bool,
+    /// The session that pushed it; 0 when the writer is unknown.
+    pub origin: u16,
+    /// The device's tap, `RTA_TAP_INPUT` or `RTA_TAP_OUTPUT`.
+    pub tap: u8,
+    /// The device's channels.
+    pub mask: u16,
+    /// The device's transform size.
+    pub fft_order: u8,
+}

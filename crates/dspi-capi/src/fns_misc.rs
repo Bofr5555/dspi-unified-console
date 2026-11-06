@@ -34,8 +34,8 @@ use serde::Serialize;
 
 use crate::types::{
     AdatOutStatus, BufferStats, DeviceEventCallback, I2cConfig, InputLockStatus, LgStatus,
-    NotifyCallback, NotifyResult, RtaCapsInfo, RtaRequest, RtaSnapshot, SiggenCaps, SiggenConfig,
-    SiggenStatus, SpdifRxStatus, UartConfig,
+    NotifyCallback, NotifyResult, RtaCapsInfo, RtaOwnership, RtaRequest, RtaSnapshot, SiggenCaps,
+    SiggenConfig, SiggenStatus, SpdifRxStatus, UartConfig,
 };
 use crate::{FfiCore, guard, with_core};
 
@@ -673,6 +673,28 @@ pub extern "C" fn dspi_rta_get_snapshot(core: *mut FfiCore, out: *mut RtaSnapsho
     });
     // SAFETY: not null, aligned, and points to a record; the C caller's contract.
     unsafe { out.write(snapshot.unwrap_or_default()) };
+}
+
+// -- WP CG5 --
+/// Whether this console drives the analyser or follows another one's
+/// configuration (driving, all zero, for a null handle). The analyser
+/// callback is called when this changes.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_rta_get_ownership(core: *mut FfiCore, out: *mut RtaOwnership) {
+    if out.is_null() || !out.is_aligned() {
+        return;
+    }
+    let ownership = with_core(core, None, |h| {
+        Some(RtaOwnership::from(&h.core.rta_get_ownership()))
+    });
+    // SAFETY: not null, aligned, and points to a record; the C caller's contract.
+    unsafe { out.write(ownership.unwrap_or_default()) };
+}
+
+/// Stop following and push this console's own request on the next poll.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_rta_take_control(core: *mut FfiCore) {
+    with_core(core, (), |h| h.core.rta_take_control());
 }
 
 // ── Signal generator ──────────────────────────────────────────────────

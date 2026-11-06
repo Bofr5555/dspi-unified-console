@@ -854,3 +854,32 @@ fn wp_q2b_added_functions_are_in_the_header() {
         assert!(new.contains_key(name), "{name} missing");
     }
 }
+
+// -- WP CG5 --
+#[test]
+fn wp_cg5_ownership_and_take_control_are_exported() {
+    let mut o = RtaOwnership {
+        following: true,
+        ..Default::default()
+    };
+    dspi_rta_get_ownership(null_mut(), &mut o);
+    assert!(!o.following, "the null handle reads as driving");
+    dspi_rta_take_control(null_mut());
+    let h = handle();
+    dspi_rta_get_ownership(h, null_mut());
+    o.following = true;
+    dspi_rta_get_ownership(h, &mut o);
+    assert_eq!(o, RtaOwnership::default());
+    dspi_rta_take_control(h);
+    free(h);
+    let header = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("include/dspi_core.h"),
+    )
+    .unwrap();
+    assert!(
+        header.contains(
+            "void dspi_rta_get_ownership(struct FfiCore *core, struct RtaOwnership *out);"
+        )
+    );
+    assert!(header.contains("void dspi_rta_take_control(struct FfiCore *core);"));
+}
