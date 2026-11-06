@@ -19,7 +19,8 @@
 //!
 //! Layout: `types.rs` holds the `#[repr(C)]` records and their conversions
 //! from `dspi_core::records` (WP Q1); `fns_device.rs` (WP Q2a) and
-//! `fns_misc.rs` (WP Q2b) the functions; `build.rs` writes
+//! `fns_misc.rs` (WP Q2b) the functions, and `fns_browse.rs` (WP CG2) finding
+//! hubs; `build.rs` writes
 //! `include/dspi_core.h` with cbindgen (WP Q1).
 
 // The core-merge quality bar (docs/core-merge/PLAN.md §1.7, §1.8): no
@@ -37,6 +38,8 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 mod fns_device;
 mod fns_misc;
+// -- WP CG2 --
+mod fns_browse;
 pub mod types;
 
 /// Run `f`, turning a panic into `fail`. Every exported function goes
