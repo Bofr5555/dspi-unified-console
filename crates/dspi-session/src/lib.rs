@@ -26,7 +26,7 @@ pub mod write;
 
 pub use notify::{Event, Notification, Notifications, Source};
 pub use pins::{PinClaim, PinConstraint, PinMap, PinRole};
-pub use probe::{Capabilities, Meters, probe, read_bulk, read_meters};
+pub use probe::{Capabilities, Meters, probe, probe_any, read_bulk, read_meters};
 pub use readout::Readout;
 pub use state::{Applied, DeviceState, PresetSnapshot};
 pub use undo::Undone;
