@@ -32,6 +32,23 @@ fn wp_t4_the_terminal_probes_and_reads_the_demo() {
     assert_eq!(bulk.as_bytes(), BULK);
 }
 
+/// T4b: the demo answers every feature probe but the signal generator and
+/// the spectrum analyser, which it does not model.
+#[test]
+fn wp_t4b_the_demo_has_every_feature_but_siggen_and_rta() {
+    let mut d = FakeDevice::demo();
+    let caps = probe(&mut d).unwrap();
+    let absent: Vec<_> = caps
+        .features
+        .iter()
+        .filter(|f| !f.present)
+        .map(|f| (f.name.as_str(), f.evidence.as_str()))
+        .collect();
+    let names: Vec<_> = absent.iter().map(|(n, _)| *n).collect();
+    assert_eq!(names, ["test_signals", "spectrum_analyser"], "{absent:?}");
+    assert!(caps.features.len() >= 20);
+}
+
 #[test]
 fn wp_t4_a_master_volume_write_reads_back_and_notifies() {
     let mut d = FakeDevice::demo();

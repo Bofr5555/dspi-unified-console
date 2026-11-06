@@ -36,6 +36,16 @@
 //!   as sent). A master-volume SET also queues the legacy v1 packet
 //!   `[0x01, 0, 0, 0, f32]` ahead of the `PARAM_CHANGED`, every time, as
 //!   `update_master_volume` does (usb_audio.c:369-375).
+//! - **Features** (`fake/features.rs`, the demo coverage): the leveller,
+//!   psychoacoustic bass, subharmonic synthesizer, tube preamp, output
+//!   limiter and upmixer parameters, input selection and configuration
+//!   (source, I2S rate/channels/clock mode, S/PDIF and ADAT inputs), the I2S
+//!   output config (output types, BCK, MCK), ADAT output, DAC hardware mute,
+//!   LG Sound Sync, plus non-bulk models of the upmixer status, input-source
+//!   and board names (with their `0x0F`/`0x10` notifications), the output
+//!   latency option and the UART/I2C control-interface configs. With these,
+//!   `dspi_session::probe` finds every feature but the signal generator and
+//!   the spectrum analyser.
 //! - **Presets:** directory, names, startup, active slot, save/load/delete
 //!   (in memory), the two persistence modes. A load sends `PRESET_LOADED`
 //!   and `BULK_INVALIDATED` (source `PRESET`) and keeps the live master
@@ -48,14 +58,18 @@
 //!   that stalls makes a missing model visible. The firmware ACKs every
 //!   unhandled OUT request on USB except `REQ_EXTENSION`;
 //!   [`FakeOptions::ack_unknown_sets`] does the same. Not modelled at all
-//!   (GETs stall): control surfaces (`0x04-0x07`, `0x10-0x2F`, `0x84-0x8F`),
-//!   the signal generator (`0xA4-0xAE`), the spectrum analyser
-//!   (`0x08-0x0F`), the band-bypass shortcut (`REQ_SET/GET_BAND_BYPASS`),
-//!   pins and clocks (`REQ_SET/GET_OUTPUT_PIN`, MCK/BCK, S/PDIF RX pin), the
-//!   Core 1 mode and conflict reads, the saved master volume, factory reset,
-//!   save-params, clip clearing, clock diagnostics, and UART/I2C config.
-//!   The `SCALARS` table and the per-opcode match in
-//!   `State::get_other`/`State::set_other` is the authoritative set.
+//!   (GETs stall): control surfaces (`0x04-0x07`, `0x20-0x2B`, `0x84-0x8F`
+//!   and the rest of `REQ_*_CS_*`), the signal generator (`0xA4-0xA8`), the
+//!   spectrum analyser (`0x08-0x0F`), subharm meter/headroom/solo, the
+//!   band-bypass shortcut (`REQ_SET/GET_BAND_BYPASS`), pin SETs (output pins,
+//!   BCK, MCK, S/PDIF/I2S/ADAT RX pins) and output-pin GETs, the I2S
+//!   clock-pin mode, the S/PDIF RX, ADAT and I2S-slave status reads, the
+//!   control-interface status, the Core 1 mode and conflict reads, the saved
+//!   master volume, factory reset, save-params and save-output-config, clip
+//!   clearing, clock diagnostics, buffer statistics and the DAC mute test
+//!   pulse. The `SCALARS`/`FEATURE_SCALARS` tables and the per-opcode
+//!   matches in `State::get_other`/`set_other`/`get_feature`/`set_feature`
+//!   are the authoritative set.
 //!
 //! A read never returns `Ok` with fewer bytes than [`Transport::control_in`]
 //! asked for: that is [`TransportError::ShortRead`]. Only
@@ -85,6 +99,8 @@ use dspi_proto::generated::{
 };
 use dspi_proto::packets::BuildInfo;
 use dspi_proto::wire::{BulkPacket, WireHeader};
+
+mod features;
 
 use crate::{
     DeviceDescriptor, NotificationSource, Result, Transport, TransportCaps, TransportError,
@@ -508,6 +524,8 @@ enum Index {
     Output,
     /// `0 .. num_channels`.
     Channel,
+    /// An S/PDIF/I2S output slot (a stereo pair), `0 .. num_outputs / 2`.
+    Spdif,
 }
 
 /// How the firmware stores a SET's bytes.
@@ -517,6 +535,28 @@ enum Store {
     Raw,
     /// `!= 0` stored as 0/1.
     Bool,
+    /// One byte; a value above the maximum is ignored (no change).
+    Max(u8),
+    /// One byte, clamped to the maximum.
+    Clamp(u8),
+}
+
+impl Store {
+    /// The bytes to store for a SET's `bytes`; `None` ignores the SET.
+    fn apply(self, bytes: &[u8]) -> Option<Vec<u8>> {
+        let first = bytes.first().copied().unwrap_or(0);
+        match self {
+            Store::Raw => Some(bytes.to_vec()),
+            Store::Bool => Some(vec![u8::from(bytes.iter().any(|b| *b != 0))]),
+            Store::Max(m) => (first <= m).then(|| vec![first]),
+            Store::Clamp(m) => Some(vec![first.min(m)]),
+        }
+    }
+}
+
+/// Every plain GET/SET pair: the base table and the demo coverage's.
+fn all_scalars() -> impl Iterator<Item = &'static Scalar> {
+    SCALARS.iter().chain(features::FEATURE_SCALARS)
 }
 
 /// A parameter with a plain GET/SET pair whose value is one bulk field.
@@ -765,6 +805,9 @@ struct State {
     chunked: Chunked,
     presets: Presets,
     vreg: Vreg,
+    /// The demo coverage's non-bulk state (names, latency, control
+    /// interfaces).
+    extras: features::Extras,
     queue: VecDeque<Vec<u8>>,
     seq: u8,
     started: Instant,
@@ -795,6 +838,7 @@ impl State {
             options,
             chunked: Chunked::None,
             presets,
+            extras: features::Extras::new(),
             vreg: Vreg {
                 live: DEMO_VREG,
                 stored_sel: 0,
@@ -848,6 +892,7 @@ impl State {
             Index::Input => self.num_inputs(),
             Index::Output => self.num_outputs(),
             Index::Channel => self.num_channels(),
+            Index::Spdif => self.num_outputs() / 2,
         })
     }
 
@@ -996,7 +1041,10 @@ impl State {
         if opcode != op::REQ_GET_ALL_PARAMS_CHUNK {
             self.chunked = Chunked::None;
         }
-        let reply = if let Some(s) = SCALARS.iter().find(|s| s.get == opcode) {
+        if let Some(r) = self.get_feature(opcode, value) {
+            return r.ok_or(TransportError::Stalled { opcode });
+        }
+        let reply = if let Some(s) = all_scalars().find(|s| s.get == opcode) {
             self.scalar_at(s, value)
                 .and_then(|o| self.bytes(o, s.field.2))
         } else {
@@ -1295,12 +1343,12 @@ impl State {
         if opcode != op::REQ_SET_ALL_PARAMS_CHUNK {
             self.chunked = Chunked::None;
         }
-        let ok = if let Some(s) = SCALARS.iter().find(|s| s.set == opcode) {
-            if let (Some(off), Some(bytes)) = (self.scalar_at(s, value), data.get(..s.field.2)) {
-                let bytes = match s.store {
-                    Store::Raw => bytes.to_vec(),
-                    Store::Bool => vec![u8::from(bytes.iter().any(|b| *b != 0))],
-                };
+        let ok = if let Some(ok) = self.set_feature(opcode, value, data) {
+            ok
+        } else if let Some(s) = all_scalars().find(|s| s.set == opcode) {
+            if let (Some(off), Some(bytes)) = (self.scalar_at(s, value), data.get(..s.field.2))
+                && let Some(bytes) = s.store.apply(bytes)
+            {
                 if opcode == op::REQ_SET_MASTER_VOLUME {
                     // `update_master_volume` sends the v1 packet on every
                     // call, then the v2 one if the value changed
@@ -1572,16 +1620,16 @@ mod tests_wp_t4 {
     use super::*;
     use dspi_proto::generated::wire::WIRE_FORMAT_VERSION;
 
-    fn f32_at(b: &[u8], o: usize) -> f32 {
+    pub(super) fn f32_at(b: &[u8], o: usize) -> f32 {
         f32::from_le_bytes(b[o..o + 4].try_into().unwrap())
     }
 
-    fn off_of(name: &str) -> usize {
+    pub(super) fn off_of(name: &str) -> usize {
         section(name).unwrap().0
     }
 
     /// Every packet queued so far, without waiting.
-    fn drain(src: &mut Box<dyn NotificationSource>) -> Vec<Vec<u8>> {
+    pub(super) fn drain(src: &mut Box<dyn NotificationSource>) -> Vec<Vec<u8>> {
         let mut out = Vec::new();
         loop {
             let p = src.read(Duration::ZERO).unwrap();
@@ -1606,7 +1654,7 @@ mod tests_wp_t4 {
 
     // ---- layouts against the generated sections ------------------------
 
-    fn assert_contiguous(what: &str, fields: &[Field], len: usize) {
+    pub(super) fn assert_contiguous(what: &str, fields: &[Field], len: usize) {
         let mut at = 0;
         for (name, off, flen) in fields {
             assert_eq!(
