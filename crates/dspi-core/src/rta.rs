@@ -17,6 +17,12 @@
 //!   writes), rebuilds the snapshot, and drops the lock. Holding the lock for
 //!   the poll also serialises it against chunked bulk transfers, which any
 //!   other request would abort on the device.
+//! - Over DSPi Link the poll runs with the lock released, through the
+//!   connection's [`crate::SideChannel`]: a hub has no chunked bulk to
+//!   protect, and a round trip (or a stalled network) must not stall the
+//!   core. The engine is out of `Inner` for that time. Band frames then come
+//!   from the hub's `poll.subscribe` feed rather than from tunnelled reads
+//!   (WP C15; `link.rs`).
 //! - When the caps, the picture or the telemetry changed, the worker calls
 //!   the [`RtaListener`] **after** dropping the lock (PLAN §1.2).
 //! - The all-channel band read (`0x0F`) is USB-only on the firmware: a
@@ -151,6 +157,9 @@ pub(crate) struct RtaState {
     /// still the one installed here, so a worker taken out under the lock
     /// never touches the connection that replaced its own.
     next_id: u64,
+    /// The worker that has `engine` out for a poll with the lock released
+    /// (Link only); `engine` is then a placeholder.
+    engine_out: Option<u64>,
 }
 
 impl Default for RtaState {
@@ -163,6 +172,7 @@ impl Default for RtaState {
             snapshot: empty_snapshot(),
             worker: None,
             next_id: 0,
+            engine_out: None,
         }
     }
 }
@@ -681,10 +691,7 @@ fn run(core: &Weak<DspiCore>, signal: &Signal, listeners: &Listeners, id: u64) {
         let Some(c) = core.upgrade() else {
             return;
         };
-        let polled = {
-            let mut inner = c.lock();
-            poll(&mut inner, id, &mut probed, &mut refused, Instant::now())
-        };
+        let polled = poll_once(&c, id, &mut probed, &mut refused);
         // Possibly the last reference: the core then drops here, on this
         // thread, with the lock released (see `RtaWorker::shut_down`).
         drop(c);
@@ -696,6 +703,75 @@ fn run(core: &Weak<DspiCore>, signal: &Signal, listeners: &Listeners, id: u64) {
         }
         signal.wait(if polled.idle { IDLE_TICK } else { TICK });
     }
+}
+
+/// One poll: with the lock held, unless the connection has a side channel.
+fn poll_once(c: &DspiCore, id: u64, probed: &mut bool, refused: &mut bool) -> Polled {
+    let now = Instant::now();
+    let mut inner = c.lock();
+    let side = inner
+        .conn
+        .as_ref()
+        .and_then(|conn| conn.side.clone())
+        .filter(|_| inner.rta.worker.as_ref().is_some_and(|w| w.id == id));
+    let Some(side) = side else {
+        return poll(&mut inner, id, probed, refused, now);
+    };
+    // A displaced worker still has the engine out: wait for its poll to end.
+    if inner.rta.engine_out.is_some() {
+        return Polled {
+            changed: false,
+            more: true,
+            idle: false,
+        };
+    }
+    // The analyser's configuration push and STOP are writes.
+    if inner.writable_conn().is_err() {
+        return Polled {
+            changed: false,
+            more: false,
+            idle: true,
+        };
+    }
+    if *probed {
+        inner.rta.sync_request();
+    }
+    let mut eng = std::mem::take(&mut inner.rta.engine);
+    inner.rta.engine_out = Some(id);
+    drop(inner);
+
+    let alive = {
+        let mask = eng.wanted().map_or(0, |w| w.channel_mask);
+        let mut t = side.rta_transport(mask);
+        if *probed {
+            let mut ft = BandsFallback {
+                t: &mut *t,
+                mask,
+                refused,
+            };
+            !eng.tick(&mut ft, now, BUDGET).disconnected
+        } else {
+            *probed = true;
+            eng.connect(&mut *t);
+            true
+        }
+    };
+
+    let mut inner = c.lock();
+    inner.rta.engine_out = None;
+    if inner.rta.worker.as_ref().is_none_or(|w| w.id != id) {
+        // Closed or displaced meanwhile: `take_worker`'s reset missed this
+        // engine. The subscription stays with it, as after any reset.
+        eng.disconnect();
+        inner.rta.engine = eng;
+        return Polled {
+            changed: false,
+            more: false,
+            idle: true,
+        };
+    }
+    inner.rta.engine = eng;
+    finish_poll(&mut inner, Some(alive))
 }
 
 /// One poll, under the lock: the probe on the first, then one engine tick
@@ -731,7 +807,17 @@ fn poll(inner: &mut Inner, id: u64, probed: &mut bool, refused: &mut bool, now: 
         Some(!report.disconnected)
     })();
     inner.rta.engine = eng;
+    finish_poll(inner, alive)
+}
 
+/// The end of a poll: publish what the engine now knows. `alive`: `None` when
+/// the connection could not be polled, else whether the device is still there.
+fn finish_poll(inner: &mut Inner, alive: Option<bool>) -> Polled {
+    let stop = Polled {
+        changed: false,
+        more: false,
+        idle: true,
+    };
     // Not writable any more, or gone: nothing to poll.
     let Some(alive) = alive else {
         return stop;
@@ -900,6 +986,73 @@ mod tests_wp_c9 {
                 _ => stall,
             }
         }
+    }
+
+    /// A Link-like side channel: every poll is slow, and goes to a new
+    /// `RtaDevice` view of the same device.
+    struct SlowSide {
+        dev: Arc<Mutex<Dev>>,
+        polls: AtomicUsize,
+    }
+
+    impl crate::SideChannel for SlowSide {
+        fn lock(&self, _: &str, _: Duration) -> crate::Result<()> {
+            Ok(())
+        }
+        fn unlock(&self) {}
+        fn rta_transport(self: Arc<Self>, _: u16) -> Box<dyn Transport> {
+            self.polls.fetch_add(1, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(300));
+            Box::new(RtaDevice {
+                dev: Arc::clone(&self.dev),
+                kind: TransportKind::Link,
+                rta: true,
+                bands_all: false,
+                desc: DeviceDescriptor {
+                    serial: "S".into(),
+                    bus_id: "link:x".into(),
+                    address: 0,
+                },
+            })
+        }
+        fn meters(&self, _: u16) -> crate::Result<Option<Vec<u8>>> {
+            Ok(None)
+        }
+    }
+
+    #[test]
+    fn wp_c15_over_link_the_worker_polls_with_the_lock_released() {
+        let (t, dev) = RtaDevice::new(TransportKind::Link, false);
+        let core = DspiCore::new();
+        core.attach(Box::new(t), "S".into(), 0);
+        let side = Arc::new(SlowSide {
+            dev,
+            polls: AtomicUsize::new(0),
+        });
+        {
+            let mut inner = core.lock();
+            let conn = inner.conn().unwrap();
+            conn.wire = Some(WireRead::Exact);
+            conn.side = Some(side.clone());
+        }
+        core.rta_start();
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_millis(900) {
+            let t = Instant::now();
+            let _ = core.rta_get_caps();
+            assert!(
+                t.elapsed() < Duration::from_millis(150),
+                "{:?}",
+                t.elapsed()
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(side.polls.load(Ordering::SeqCst) >= 2);
+        assert!(core.rta_get_caps().supported, "the probe went through");
+        // The engine is put back, or thrown away with the old worker.
+        core.disconnect();
+        assert!(core.lock().rta.engine_out.is_none());
+        assert!(core.lock().rta.worker.is_none());
     }
 
     impl Transport for RtaDevice {

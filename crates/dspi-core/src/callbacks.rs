@@ -1,7 +1,7 @@
 //! Listener interfaces the embedding app implements.
 //!
 //! They are called on core threads (the notification reader, the RTA
-//! worker, the Link reader) or, for [`DeviceEvents`], on the thread that calls
+//! worker, the Link session's supervisor) or, for [`DeviceEvents`], on the thread that calls
 //! `poll_hotplug`, with the core lock released. A listener may call the core's
 //! read methods (`get_state`, `rta_get_snapshot`, `process_notifications`) but
 //! must not block and must not open or close devices from inside the callback.
@@ -39,6 +39,14 @@ pub trait DeviceEvents: Send + Sync {
 pub trait LinkListener: Send + Sync {
     /// The hub's device list changed (`link_devices()`).
     fn on_link_devices_changed(&self);
-    /// The session ended. `code`: the hub's WebSocket close code, -1 = none.
+    /// The session ended for good: revoked, a protocol error, or refused by
+    /// the hub. A lost connection is not an end: the core reconnects with
+    /// backoff and reports it through
+    /// [`LinkListener::on_link_status_changed`]. `code`: the hub's WebSocket
+    /// close code, -1 = none.
     fn on_link_closed(&self, code: i32, reason: String);
+    /// `link_status().phase` changed, or a reconnect try failed: reconnecting,
+    /// a PIN needed, no board, bound again (the mirror is then already
+    /// fetched; re-read `get_state` and call `rta_start` again).
+    fn on_link_status_changed(&self);
 }

@@ -575,6 +575,15 @@ pub struct LinkStatus {
     /// The hub's close code, -1 = none.
     pub close_code: i32,
     pub close_reason: String,
+    /// What to tell the user (WP C15).
+    pub phase: LinkPhase,
+    /// [`LinkPhase::Reconnecting`]: failed tries since the session was lost.
+    pub reconnect_attempt: u32,
+    /// [`LinkPhase::Reconnecting`]: ms until the next try, 0 = now.
+    pub reconnect_in_ms: u32,
+    /// `window` or `fixed`, for [`LinkPhase::NeedsPairing`]'s wording; "" with
+    /// no session.
+    pub pin_source: String,
 }
 
 /// `GET /dspi/v1/info` (spec 3.2), for a hub added by address.
@@ -736,4 +745,32 @@ pub struct OutputLatencyOption {
 // -- WP C13 --
 // -- WP C14 --
 // -- WP C15 --
+
+/// Where a DSPi Link session stands, for the UI's wording
+/// ([`LinkStatus::phase`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+pub enum LinkPhase {
+    /// No session.
+    #[default]
+    Idle,
+    /// The hub wants a PIN: ask for it and call `link_pair`.
+    NeedsPairing,
+    /// Connected and authenticated, but the hub has no DSPi to offer: the
+    /// board is off, or its control interface is not enabled. Not a failure
+    /// of the hub or the pairing ("Connected to hub, no DSPi found"). The
+    /// core binds the device by itself when it comes back.
+    NoDevice,
+    /// A DSPi is available and none is bound: `link_devices`, then
+    /// `link_select_device`.
+    ChooseDevice,
+    /// Bound to a device.
+    Bound,
+    /// The session was lost, or the bound device is being re-attached; the
+    /// core retries with backoff. `close_reason` says why it was lost.
+    Reconnecting,
+    /// Ended and not retried (revoked, protocol error, refused by the hub):
+    /// see `close_code` and `close_reason`.
+    Closed,
+}
 // -- WP F1 --

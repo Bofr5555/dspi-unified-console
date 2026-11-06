@@ -1767,10 +1767,15 @@ impl DspiCore {
     /// Build the new state, write it in one bulk SET, then send the
     /// hardware I/O that changed one setting at a time.
     fn import_config(&self, v: &Value, options: u32) -> Result<ImportReport> {
+        // The Link device lock first, with the core lock released (WP C15).
+        let device_lock = self.acquire_device_lock(crate::connect::LOCK_REASON)?;
         // Swap the mirror and write it in one critical section, so no
         // notification lands in between; restore it if the write fails.
-        let (old, mut built) = {
+        let swapped = (|| {
             let mut inner = self.lock();
+            if !device_lock.is_current(&inner) {
+                return Err(crate::DspiError::Disconnected);
+            }
             // Refuse a read-only or missing device before touching the mirror.
             inner.writable_conn().map(|_| ())?;
             let old = std::mem::replace(&mut inner.state, default_state());
@@ -1782,8 +1787,10 @@ impl DspiCore {
                 inner.state = old;
                 return Err(e);
             }
-            (old, built)
-        };
+            Ok((old, built))
+        })();
+        self.release_device_lock(device_lock);
+        let (old, mut built) = swapped?;
         let hardware_written = if options & IMPORT_HARDWARE != 0 {
             let refused = self.write_io(&built.state, &old);
             for r in refused {

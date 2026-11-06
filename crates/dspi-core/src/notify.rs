@@ -31,6 +31,7 @@
 //! Owned by WP C7 (docs/core-merge/PLAN.md).
 
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use dspi_proto::generated::{self as g, notify as nfy};
 use dspi_session::notify::{Event, Notification, Source};
@@ -39,7 +40,32 @@ use dspi_transport::TransportKind;
 use crate::callbacks::NotifyListener;
 use crate::consts::*;
 use crate::records::NotifyResult;
-use crate::{DspiCore, Inner, connect, state};
+use crate::{DspiCore, DspiError, Inner, connect, state};
+
+/// How many times a failed re-read is tried again before the mirror is
+/// reported stale ([`NOTIFY_STALE`]). With [`REFRESH_FIRST_DELAY`] doubling,
+/// the tries span about 31 s, past a hub's 30 s half-open limit.
+const REFRESH_RETRIES: u8 = 5;
+/// The wait before the first retry; each later one doubles it.
+const REFRESH_FIRST_DELAY: Duration = Duration::from_secs(1);
+
+/// A re-read that failed and is still owed (WP C15, finding C7-4). It lives
+/// on the [`crate::Connection`], so it ends with the connection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RefreshPending {
+    /// The re-read state is a preset's: it becomes the baseline.
+    rebaseline: bool,
+    /// Failed tries since the last change asked for a re-read.
+    failures: u8,
+    /// When the next try is due. A waker thread calls the
+    /// [`NotifyListener`] then; any earlier `process_notifications` skips it.
+    next_at: Instant,
+}
+
+/// The wait after `failures` failed tries (1 = the first).
+fn refresh_delay(failures: u8) -> Duration {
+    REFRESH_FIRST_DELAY.saturating_mul(2u32.saturating_pow(u32::from(failures.saturating_sub(1))))
+}
 
 /// What the locked phase leaves for the unlocked one.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -101,7 +127,10 @@ impl DspiCore {
     ///   directory: `NOTIFY_STATE | NOTIFY_CURVES | NOTIFY_REFRESHED`. A
     ///   preset load or factory reset also makes the new state the
     ///   baseline of `preset_dirty`. If the re-read fails, the flags say
-    ///   only what was patched; the failure is logged.
+    ///   only what was patched, and it is tried again: up to 5 times over
+    ///   about 31 s, each try announced by a call of the [`NotifyListener`].
+    ///   After the last one the result carries [`NOTIFY_STALE`], once; the
+    ///   next change that needs a re-read starts over.
     /// - `NOTIFY_DISCONNECTED`: the stream ended because the device went
     ///   away (never after an intentional close). It is reported on every
     ///   call until the connection is closed; the caller should close it
@@ -114,13 +143,30 @@ impl DspiCore {
     /// result. Never fails and never panics on device data. Blocks only
     /// for a re-read (one bulk read and the directory read).
     pub fn process_notifications(&self) -> NotifyResult {
+        self.process_notifications_at(Instant::now())
+    }
+
+    /// [`DspiCore::process_notifications`] at `now` (tests move the clock).
+    pub(crate) fn process_notifications_at(&self, now: Instant) -> NotifyResult {
         let mut result = NotifyResult::default();
         let follow = {
             let mut guard = self.lock();
-            apply_queued(&mut guard, &mut result)
+            let mut follow = apply_queued(&mut guard, &mut result);
+            if let Some(conn) = guard.conn.as_mut()
+                && let Some(p) = conn.refresh_pending.as_mut()
+            {
+                // A new change proves the device is back: try at once and
+                // grant the retries anew.
+                if follow.refresh {
+                    p.failures = 0;
+                }
+                follow.rebaseline |= p.rebaseline;
+                follow.refresh |= now >= p.next_at;
+            }
+            follow
         };
         if follow.refresh {
-            self.refresh_after_notifications(follow.rebaseline, &mut result);
+            self.refresh_after_notifications(follow.rebaseline, now, &mut result);
         }
         result
     }
@@ -136,14 +182,28 @@ impl DspiCore {
 
     /// The unlocked phase: re-read the image (C2's path), then the preset
     /// directory, and rebaseline if a preset was loaded.
-    fn refresh_after_notifications(&self, rebaseline: bool, result: &mut NotifyResult) {
+    fn refresh_after_notifications(
+        &self,
+        rebaseline: bool,
+        now: Instant,
+        result: &mut NotifyResult,
+    ) {
         let mut guard = self.lock();
         let inner = &mut *guard;
         if let Err(e) = connect::refresh_params_locked(inner) {
             log::warn!("re-reading the device after a notification failed: {e}");
+            let wake = inner
+                .conn
+                .as_mut()
+                .and_then(|conn| refresh_failed(conn, &e, rebaseline, now, result));
+            drop(guard);
+            if let Some(delay) = wake {
+                self.wake_notify_after(delay);
+            }
             return;
         }
         if let Some(conn) = inner.conn.as_mut() {
+            conn.refresh_pending = None;
             // A failure must not undo the re-read: the directory keeps its
             // last value.
             if let Err(e) = connect::read_preset_directory(conn, &mut inner.state) {
@@ -155,6 +215,60 @@ impl DspiCore {
         }
         result.flags |= NOTIFY_STATE | NOTIFY_CURVES | NOTIFY_REFRESHED;
     }
+
+    /// Call the [`NotifyListener`] once after `delay`, so the app comes back
+    /// for a due retry even if the device stays silent. The thread holds the
+    /// listeners, not the core, and ends by itself.
+    fn wake_notify_after(&self, delay: Duration) {
+        let listeners = Arc::clone(&self.listeners);
+        let spawned = std::thread::Builder::new()
+            .name("dspi-refresh-retry".into())
+            .spawn(move || {
+                std::thread::sleep(delay);
+                listeners.notify.call(|l| l.on_notifications());
+            });
+        if let Err(e) = spawned {
+            log::warn!("cannot schedule a re-read retry: {e}");
+        }
+    }
+}
+
+/// Note a failed re-read on `conn`. Returns the delay of a new retry that
+/// needs a wake-up: none if one is already armed, none when giving up.
+fn refresh_failed(
+    conn: &mut crate::Connection,
+    e: &DspiError,
+    rebaseline: bool,
+    now: Instant,
+    result: &mut NotifyResult,
+) -> Option<Duration> {
+    let previous = conn.refresh_pending.take();
+    // Gone: the reconnect path reads everything. Refused: it would be again.
+    if matches!(e, DspiError::Disconnected | DspiError::Denied) {
+        return None;
+    }
+    let failures = previous.map_or(0, |p| p.failures).saturating_add(1);
+    if failures > REFRESH_RETRIES {
+        log::warn!("giving up re-reading the device; the mirror may be stale");
+        result.flags |= NOTIFY_STALE;
+        return None;
+    }
+    let delay = refresh_delay(failures);
+    // A waker from an earlier failure is still sleeping: it covers this try.
+    if let Some(p) = previous.filter(|p| p.next_at > now) {
+        conn.refresh_pending = Some(RefreshPending {
+            rebaseline,
+            failures,
+            ..p
+        });
+        return None;
+    }
+    conn.refresh_pending = Some(RefreshPending {
+        rebaseline,
+        failures,
+        next_at: now.checked_add(delay).unwrap_or(now),
+    });
+    Some(delay)
 }
 
 /// The locked phase of `process_notifications`: drain, log, classify and
@@ -332,6 +446,7 @@ mod tests_wp_c7 {
     use dspi_proto::generated::opcodes as op;
     use dspi_transport::{
         DeviceDescriptor, FakeDevice, FakeRemote, NotificationSource, Transport, TransportCaps,
+        TransportError,
     };
 
     use super::*;
@@ -350,6 +465,171 @@ mod tests_wp_c7 {
         core.attach_probed(Box::new(dev), "DEMO".into(), 0).unwrap();
         settle(&core);
         (core, remote)
+    }
+
+    /// The demo device whose image reads fail while the flag is up.
+    struct Flaky {
+        inner: FakeDevice,
+        failing: Arc<AtomicBool>,
+    }
+
+    impl Transport for Flaky {
+        fn control_in(
+            &mut self,
+            opcode: u8,
+            value: u16,
+            len: u16,
+        ) -> dspi_transport::Result<Vec<u8>> {
+            if opcode == op::REQ_GET_ALL_PARAMS && self.failing.load(Ordering::SeqCst) {
+                return Err(TransportError::TimedOut { opcode, retries: 0 });
+            }
+            self.inner.control_in(opcode, value, len)
+        }
+        fn control_in_upto(
+            &mut self,
+            opcode: u8,
+            value: u16,
+            len: u16,
+        ) -> dspi_transport::Result<Vec<u8>> {
+            if matches!(
+                opcode,
+                op::REQ_GET_ALL_PARAMS | op::REQ_GET_ALL_PARAMS_CHUNK
+            ) && self.failing.load(Ordering::SeqCst)
+            {
+                return Err(TransportError::TimedOut { opcode, retries: 0 });
+            }
+            self.inner.control_in_upto(opcode, value, len)
+        }
+        fn control_out(
+            &mut self,
+            opcode: u8,
+            value: u16,
+            data: &[u8],
+        ) -> dspi_transport::Result<()> {
+            self.inner.control_out(opcode, value, data)
+        }
+        fn descriptor(&self) -> &dspi_transport::DeviceDescriptor {
+            self.inner.descriptor()
+        }
+        fn notifications(&self) -> Option<Box<dyn dspi_transport::NotificationSource>> {
+            self.inner.notifications()
+        }
+        fn caps(&self) -> dspi_transport::TransportCaps {
+            self.inner.caps()
+        }
+    }
+
+    fn flaky() -> (Arc<DspiCore>, FakeRemote, Arc<AtomicBool>) {
+        let dev = FakeDevice::demo();
+        let remote = dev.remote();
+        let failing = Arc::new(AtomicBool::new(false));
+        let core = DspiCore::new();
+        let t = Flaky {
+            inner: dev,
+            failing: Arc::clone(&failing),
+        };
+        core.attach_probed(Box::new(t), "DEMO".into(), 0).unwrap();
+        settle(&core);
+        (core, remote, failing)
+    }
+
+    /// A foreign write whose re-read fails: until it has been noted.
+    fn failed_refresh(core: &DspiCore, remote: &FakeRemote, source: u8, volume: f32) {
+        let mut img = remote.image();
+        img[g::OFF_MASTER_VOLUME..][..4].copy_from_slice(&volume.to_le_bytes());
+        remote.load_image(img, source);
+        let start = Instant::now();
+        while core.lock().conn().unwrap().refresh_pending.is_none() {
+            core.process_notifications();
+            assert!(start.elapsed() < Duration::from_secs(5));
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    #[test]
+    fn wp_c15_a_failed_re_read_is_retried_and_rebaselines() {
+        let (core, remote, failing) = flaky();
+        failing.store(true, Ordering::SeqCst);
+        failed_refresh(&core, &remote, SRC_PRESET, -44.0);
+        assert_ne!(core.get_state().master_volume_db, -44.0);
+        // Not due yet: nothing happens.
+        let now = Instant::now();
+        assert_eq!(core.process_notifications_at(now), NotifyResult::default());
+
+        failing.store(false, Ordering::SeqCst);
+        let later = now + Duration::from_secs(2);
+        let r = core.process_notifications_at(later);
+        assert_ne!(r.flags & NOTIFY_REFRESHED, 0, "{r:?}");
+        assert_eq!(core.get_state().master_volume_db, -44.0);
+        let inner = core.lock();
+        assert!(inner.conn.as_ref().unwrap().refresh_pending.is_none());
+        assert!(inner.baseline.is_some(), "the preset's rebaseline survived");
+    }
+
+    #[test]
+    fn wp_c15_retries_are_limited_and_end_in_stale_once() {
+        let (core, remote, failing) = flaky();
+        failing.store(true, Ordering::SeqCst);
+        failed_refresh(&core, &remote, SRC_BULK, -45.0);
+        let mut at = Instant::now();
+        let mut tries = 0;
+        let mut stale = 0;
+        for _ in 0..12 {
+            at += Duration::from_secs(40);
+            let r = core.process_notifications_at(at);
+            stale += u32::from(r.flags & NOTIFY_STALE != 0);
+            if core.lock().conn().unwrap().refresh_pending.is_some() {
+                tries += 1;
+            }
+        }
+        assert_eq!(tries, REFRESH_RETRIES - 1, "the first failure counts");
+        assert_eq!(stale, 1);
+
+        // The next change starts over, and it works.
+        failing.store(false, Ordering::SeqCst);
+        remote.load_image(remote.image(), SRC_BULK);
+        process_until(&core, |r| r.flags & NOTIFY_REFRESHED != 0);
+    }
+
+    #[test]
+    fn wp_c15_the_retry_wakes_the_listener_without_a_new_event() {
+        struct Wake(AtomicBool);
+        impl NotifyListener for Wake {
+            fn on_notifications(&self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+        let (core, remote, failing) = flaky();
+        failing.store(true, Ordering::SeqCst);
+        failed_refresh(&core, &remote, SRC_BULK, -46.0);
+        settle(&core);
+        let wake = Arc::new(Wake(AtomicBool::new(false)));
+        core.set_notify_listener(Some(wake.clone()));
+        let start = Instant::now();
+        while !wake.0.load(Ordering::SeqCst) {
+            assert!(start.elapsed() < Duration::from_secs(4), "no wake-up");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        core.set_notify_listener(None);
+    }
+
+    #[test]
+    fn wp_c15_a_gone_device_is_not_retried() {
+        let mut pending = crate::Connection::new(Box::new(FakeDevice::demo()), "D".into(), 0);
+        let mut r = NotifyResult::default();
+        let now = Instant::now();
+        assert_eq!(
+            refresh_failed(&mut pending, &DspiError::Disconnected, false, now, &mut r),
+            None
+        );
+        assert!(pending.refresh_pending.is_none());
+        let e = DspiError::Transfer { msg: "x".into() };
+        assert_eq!(
+            refresh_failed(&mut pending, &e, false, now, &mut r),
+            Some(REFRESH_FIRST_DELAY)
+        );
+        assert_eq!(refresh_delay(1), REFRESH_FIRST_DELAY);
+        assert_eq!(refresh_delay(5), REFRESH_FIRST_DELAY * 16);
     }
 
     /// Process until `f` holds for the accumulated result (the reader

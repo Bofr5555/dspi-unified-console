@@ -246,4 +246,8 @@ pub const IMPORT_VOLUMES: u32 = 1;
 pub const IMPORT_HARDWARE: u32 = 2;
 // -- WP C14 --
 // -- WP C15 --
+/// `process_notifications`: a re-read after a change failed every retry, so
+/// the mirror may be stale until the next change or an explicit `fetch_all`.
+/// Reported once.
+pub const NOTIFY_STALE: u32 = 1 << 10;
 // -- WP F1 --
