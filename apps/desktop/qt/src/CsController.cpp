@@ -12,13 +12,20 @@ extern "C" {
 CsController::CsController(DSPiBridge *bridge, QObject *parent)
     : QObject(parent), m_bridge(bridge)
 {
+    // Polls bypass apply(): they must not wipe the reason of a refusal a page
+    // is still showing, nor log one line per tick while the read fails.
+    const auto poll = [this](const QByteArray &op) {
+        if (!m_bridge->connected()) return;
+        call(op);
+        reload();
+    };
     m_displayPoll.setInterval(1000);
-    connect(&m_displayPoll, &QTimer::timeout, this, [this]() { apply({ { "op", "displayStatus" } }); });
+    connect(&m_displayPoll, &QTimer::timeout, this, [poll]() { poll(R"({"op":"displayStatus"})"); });
     // A running macro pushes nothing, so follow it until it ends (with a ceiling:
     // steps can carry minute-long delays)
     m_macroPoll.setInterval(250);
-    connect(&m_macroPoll, &QTimer::timeout, this, [this]() {
-        apply({ { "op", "refreshStatus" } });
+    connect(&m_macroPoll, &QTimer::timeout, this, [this, poll]() {
+        poll(R"({"op":"refreshStatus"})");
         const int running = m_model.value("ext").toMap().value("macroRunning").toInt();
         if (running == 0xFF || ++m_macroPolls >= 120) m_macroPoll.stop();
     });
@@ -50,6 +57,7 @@ void CsController::onDeviceChanged() {
     m_snapshot.clear();
     m_displayState.clear();
     m_auxLive.clear();
+    m_lastError.clear();
     m_revision++;
     emit changed();
     emit displayStateChanged();
@@ -112,7 +120,11 @@ QVariantMap CsController::call(const QByteArray &json) {
 
 QVariantMap CsController::apply(const QVariantMap &op) {
     m_lastError.clear();
-    if (!m_bridge->connected()) return { { "ok", false }, { "status", 0xFF } };
+    if (!m_bridge->connected()) {
+        // The core is not asked, so the reason is given here
+        m_lastError = QStringLiteral("The device is not connected");
+        return { { "ok", false }, { "status", 0xFF }, { "error", m_lastError } };
+    }
     QVariantMap r = call(QJsonDocument(QJsonObject::fromVariantMap(op)).toJson(QJsonDocument::Compact));
     // The reason a reply without a device status gives; statusMessage() shows it
     m_lastError = r.value("error").toString();

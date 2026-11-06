@@ -19,6 +19,9 @@
 #include <QImage>
 #include <QMetaMethod>
 #include <QQmlApplicationEngine>
+// -- WP QD1 --
+#include <QQmlContext>
+#include <QQmlExpression>
 #include <QQuickItemGrabResult>
 #include <QSharedPointer>
 #include <QQuickWindow>
@@ -77,6 +80,8 @@ void SmokeDriver::run() {
     testBypassRepaint();
     testSweep();
     testReconnect();
+    // -- WP QD1 --
+    testCsRefusals();
     testIdleAndCost();
     m_failures += g_qmlErrors;
     printf("smoke: %d checks, %d failures (%d QML errors)\n", m_checks, m_failures, g_qmlErrors);
@@ -464,6 +469,52 @@ void SmokeDriver::testWindows() {
     for (const char *n : { "matrix", "loudness", "crossfeed", "leveller", "psybass", "subharm", "tube", "upmix", "stats",
                            "spectrum", "graph", "siggen", "monitor", "firmware", "whatsNew", "autoeq", "autoeqRebuild" })
         openAndGrab(n);
+}
+
+// -- WP QD1 --
+// A refused cs_apply shows its `error`. The demo device has no control surfaces,
+// so a page can't open here: this runs the pages' own expression (applyGroup,
+// applyMacro) from QML. A device status code and the polls need real surfaces, so
+// they aren't exercised here.
+void SmokeDriver::testCsRefusals() {
+    section("control surfaces: a refusal shows its error (QD1)");
+    auto *cs = m_.cs;
+    auto *b = m_.bridge;
+    const auto shown = [this](const QString &op) {
+        QQmlExpression e(m_.engine->rootContext(), nullptr, QStringLiteral(
+            "(function() { var r = controlSurfaces.apply({ op: \"%1\" });"
+            " var st = r && r.status !== undefined ? r.status : 0xFF;"
+            " return st !== 0 ? controlSurfaces.statusMessage(st) : undefined })()").arg(op));
+        const QString text = e.evaluate().toString();
+        check("QD1: the expression evaluates", !e.hasError());
+        return text;
+    };
+    const QString generic = cs->statusMessage(0x7F);
+
+    // The core's refusal, with no device status
+    const QString unknown = shown(QStringLiteral("no-such-op"));
+    printf("smoke: QD1 unknown op shows: %s\n", qPrintable(unknown));
+    check("QD1: an unknown op shows the core's reason", unknown.contains(QLatin1String("no-such-op")));
+    check("QD1: and not the generic text", unknown != generic);
+    const QString refused = shown(QStringLiteral("save"));
+    printf("smoke: QD1 save shows: %s\n", qPrintable(refused));
+    check("QD1: a refused save shows the core's reason", !refused.isEmpty() && refused != generic);
+    check("QD1: the reply carries that reason", cs->apply({ { "op", "save" } }).value("error").toString() == refused);
+
+    // No device: refused before the core, still with a reason
+    b->disconnectDevice();
+    check("QD1: disconnected", !b->connected());
+    const QVariantMap none = cs->apply({ { "op", "save" } });
+    const QString gone = cs->statusMessage(0xFF);
+    printf("smoke: QD1 no device shows: %s\n", qPrintable(gone));
+    check("QD1: no device is refused", !none.value("ok").toBool() && none.value("error").toString() == gone);
+    check("QD1: no device gives its reason", !gone.isEmpty() && gone != generic);
+    check("QD1: the pages' expression shows it too", shown(QStringLiteral("save")) == gone);
+
+    // Another device: the old reason doesn't follow it
+    b->rescan();
+    check("QD1: back on the demo", b->connected());
+    check("QD1: a new device drops the old reason", cs->statusMessage(0xFF) == generic);
 }
 
 // -- WP QD30 --
