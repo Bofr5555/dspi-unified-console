@@ -72,13 +72,16 @@ private:
     enum class Outcome { Pass, Fail, NotRun };
     Outcome bypassRepaints(QString *why);
     QImage grabItem(QQuickItem *item);
+    static int qmlErrors();
 
-    // The hardware pass (DSPI_SMOKE_HW; SmokeDriverHw.cpp)
+    // The hardware passes (DSPI_SMOKE_HW; SmokeDriverHw.cpp, SmokeDriverReplug.cpp)
     struct Baseline {
         QByteArray image;       // the bulk image, re-read from the device
         QByteArray perItem;     // what is outside it: preset directory, Core 1 mode, solo
     };
     void runHardware();
+    void runReplug();
+    bool replugCycle(int cycle, const QString &serial, Baseline *want);
     bool hwPreflight();
     bool readBaseline(Baseline *out);
     bool compareBaseline(const Baseline &want, const char *when);

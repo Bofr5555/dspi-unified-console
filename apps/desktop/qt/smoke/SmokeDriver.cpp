@@ -39,11 +39,18 @@ static void messageHandler(QtMsgType type, const QMessageLogContext &ctx, const 
     if (g_previous) g_previous(type, ctx, msg);
 }
 
+int SmokeDriver::qmlErrors() { return g_qmlErrors; }
+
 void SmokeDriver::start() {
     m_out = qEnvironmentVariable("DSPI_SMOKE_OUT", QDir::currentPath());
     g_previous = qInstallMessageHandler(messageHandler);
     const bool hardware = !qEnvironmentVariableIsEmpty("DSPI_SMOKE_HW");
-    QTimer::singleShot(200, this, [this, hardware]() { if (hardware) runHardware(); else run(); });
+    const bool replug = qEnvironmentVariable("DSPI_SMOKE_HW") == QLatin1String("replug");
+    QTimer::singleShot(200, this, [this, hardware, replug]() {
+        if (replug) runReplug();
+        else if (hardware) runHardware();
+        else run();
+    });
 }
 
 void SmokeDriver::run() {

@@ -1,8 +1,11 @@
 #!/bin/bash
 # The hardware pass of the smoke driver, on the host's one DSPi, in a container
 # that sees only that USB device node. See SmokeDriverHw.cpp for what it does.
-# Close every other DSPi program first, and stop playback: it toggles global bypass
-# for under a second, once per check.
+# Close every other DSPi program first, and have a stream playing to the DSPi: the
+# RTA items need a real signal (the picture version does not change on digital
+# silence) and the buffer items need USB audio running. Global bypass toggles for
+# under a second, so the sound changes briefly. A test signal goes through the
+# guarded player only, at 80 % volume at most; your own music is as good.
 #
 #   apps/desktop/qt/smoke/run-hw.sh
 #
