@@ -12,11 +12,15 @@ before anything else.**
 
 - **Goal, owned files, interface, done criteria:** as in PLAN.md §2, WP `<ID>`.
 - **Edit only the files your WP owns.**
-  - The shared files in §1.10 (`Cargo.toml`s, `lib.rs` module lists,
-    `dspi-core`'s `records.rs`/`consts.rs`/`error.rs`/`callbacks.rs`)
-    take additive edits only. List each one in your report.
-  - If you need a change elsewhere, say so in your report instead of making
-    it.
+  - Shared files (§1.10) take additive edits only, and **only directly
+    under your own `// -- WP <ID> --` marker** (`# -- WP <ID> --` in
+    TOML). This covers: dspi-core's `records.rs`, `consts.rs`, `error.rs`
+    and the `pub use` block of its `lib.rs`; dspi-transport's `pub use`
+    block; and the `[dependencies]` / `[dev-dependencies]` of the core-merge
+    crates. Never reorder or edit outside your section. List each addition
+    in your report.
+  - A file without a marker for your WP is not yours: say what you need in
+    your report instead of editing it.
 - The interface is already in the skeleton (`todo!("WP <ID>")`). Keep the
   signatures. If one is wrong, change it minimally and explain why.
 - Remove every `todo!("WP <ID>")` and `#[ignore = "WP <ID>"]` you own.
@@ -51,10 +55,21 @@ before anything else.**
    - If your WP names an optional step (`--step android`, `windows-gnu`,
      ...), run it too.
    - Do not run the full gate; the reviewer does that.
-6. **Quality bar (§1.8).**
+6. **Quality bar (§1.7, §1.8).**
    - Typed errors.
-   - No `unwrap`/`expect`/unchecked indexing on device, network, file or
-     caller data (§1.7).
+   - No `unwrap`/`expect`/unchecked indexing or arithmetic on device,
+     network, file or caller data. The new crates and modules enforce
+     this with clippy lints (`unwrap_used`, `expect_used`,
+     `indexing_slicing`, `arithmetic_side_effects`, denied by
+     `-D warnings`); test code is exempt via `clippy.toml`, and test
+     modules carry `#[allow(clippy::arithmetic_side_effects)]`. Do not
+     silence a lint in non-test code without a comment proving the
+     invariant.
+   - In `dspi-core`, writes go only through `Inner::writable_conn()` (a
+     `Writable`); a plain `Connection` is for reads.
+   - Thread rules (§1.2): never join a thread or call a listener while
+     holding the `Inner` lock.
+   - Property tests are functions named `proptest_*` (§1.9).
    - Doc comments on every public item in `dspi-core`/`dspi-capi`.
    - Tests carry your WP id in the module or test name.
    - Add a dependency only with a stated reason.
