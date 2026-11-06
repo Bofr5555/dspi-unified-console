@@ -180,6 +180,9 @@ pub(crate) mod link {
             DspiError::Locked => "locked",
             DspiError::Denied => "denied",
             DspiError::Io { .. } => "io",
+            // review w1a, provisional: variants added by CG6 and CG8 (finding).
+            DspiError::AutoEq { .. } => "autoeq",
+            DspiError::FirmwareGuardBlocked { .. } => "firmware_guard",
         }
     }
 
