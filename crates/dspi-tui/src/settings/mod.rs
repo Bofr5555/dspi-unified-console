@@ -97,6 +97,10 @@ pub struct SettingsData {
     /// The spectrum analyser's caps, when this device has one. The runner
     /// copies them from its engine, which read them on connect.
     pub rta: Option<dspi_proto::packets::RtaCaps>,
+    // -- WP TM2 --
+    /// `EXT_CORE_VREG`, for Settings > Overview. `None` when the device does
+    /// not list it or the read was refused, and the section is then absent.
+    pub core_vreg: Option<dspi_proto::ext::CoreVregStatus>,
 }
 
 impl SettingsData {
@@ -156,6 +160,8 @@ impl SettingsData {
         let cs = cs_model::CsData::read(session);
         let sample_rate_hz = read_sample_rate(session);
         Self {
+            // -- WP TM2 --
+            core_vreg: overview::read_core_vreg(session),
             sample_rate_hz,
             rta: None,
             directory,
@@ -1886,6 +1892,12 @@ impl Screen for SettingsScreen {
         // The display status, ext status and slot health move on their
         // own (a knob, a running macro); nothing pushes them.
         self.data.adopt(Refresh::all(session));
+        // -- WP TM2 --
+        // Uptime and the trial state move on their own too; only the page
+        // showing them pays for the read.
+        if self.page == Page::Overview {
+            overview::poll_core_vreg(&mut self.data, session);
+        }
     }
 
     fn title(&self) -> String {
@@ -2369,6 +2381,8 @@ pub mod demo {
             cs: None,
             sample_rate_hz: Some(48_000),
             rta: None,
+            // -- WP TM2 --
+            core_vreg: None,
         }
     }
 }
