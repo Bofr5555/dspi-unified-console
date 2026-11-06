@@ -14,6 +14,16 @@ fn on_clock(hub: &FakeHub, clock: &Arc<dspi_link::clock::ManualClock>) -> LinkCl
     LinkClient::connect_with(&TcpConnector::default(), &hub.url(), &opts(None), None, &session_on(clock)).unwrap().0
 }
 
+/// `tens` times 10 s, with the keepalive answered at each step: one big jump would
+/// trip the hub's 30 s limit before the client's pong could get there.
+fn advance_alive(clock: &dspi_link::clock::ManualClock, hub: &FakeHub, tens: u32) {
+    for _ in 0..tens {
+        let pongs = hub.pongs_received();
+        clock.advance(Duration::from_secs(10));
+        assert!(wait(|| hub.pongs_received() > pongs));
+    }
+}
+
 // ── The board (L1-1) ───────────────────────────────────────────────────
 
 #[test]
@@ -39,7 +49,7 @@ fn wp_l1_board_goes_offline_then_removed_and_comes_back_added() {
     clock.advance(Duration::from_millis(100));
     assert!(rx.recv_timeout(Duration::from_millis(30)).is_err(), "polls end when the device goes offline");
 
-    clock.advance(Duration::from_secs(61));
+    advance_alive(&clock, &hub, 7);
     assert!(wait(|| c.devices().is_empty()), "device.removed after the hold");
     assert_eq!(c.session_state(), SessionState::NoBoard);
     assert!(c.refresh_devices().unwrap().is_empty());
@@ -58,10 +68,10 @@ fn wp_l1_board_back_within_the_hold_is_just_changed() {
     let c = on_clock(&hub, &clock);
     hub.set_board_present(false);
     assert!(wait(|| c.session_state() == SessionState::NoBoard));
-    clock.advance(Duration::from_secs(30));
+    advance_alive(&clock, &hub, 3);
     hub.set_board_present(true);
     assert!(wait(|| c.session_state() == SessionState::Online));
-    clock.advance(Duration::from_secs(61));
+    advance_alive(&clock, &hub, 7);
     std::thread::sleep(Duration::from_millis(30));
     assert_eq!(c.devices().len(), 1, "the removal was called off");
 }

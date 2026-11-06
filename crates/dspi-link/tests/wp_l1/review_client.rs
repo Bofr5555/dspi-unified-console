@@ -7,7 +7,9 @@ use serde_json::json;
 
 use dspi_link::messages::{AuthOk, Inbound};
 use dspi_link::socket::WsMessage;
-use dspi_link::{sanitize_hub_text, ConnectOptions, LinkClient, LinkError, LinkEvents, SessionConfig, SessionState, Timing};
+use dspi_link::{
+    sanitize_hub_text, ConnectOptions, LinkClient, LinkError, LinkEvents, SessionConfig, SessionState, Timing,
+};
 
 use crate::support::*;
 
