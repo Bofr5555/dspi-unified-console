@@ -220,9 +220,19 @@ pub(crate) trait SideChannel: Send + Sync {
     /// (0 = none wanted any more).
     fn rta_transport(self: Arc<Self>, rta_mask: u16) -> Box<dyn Transport>;
     /// The latest meter block of `len` bytes, without a round trip when the
-    /// hub is feeding it. `Ok(None)`: no recent frame (just subscribed, or
-    /// the feed stalled).
-    fn meters(&self, len: u16) -> Result<Option<Vec<u8>>>;
+    /// hub is feeding it.
+    fn meters(&self, len: u16) -> Result<MeterRead>;
+}
+
+/// What [`SideChannel::meters`] has.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct MeterRead {
+    /// The block; `None`: no recent frame (just subscribed, or the feed stalled).
+    pub(crate) data: Option<Vec<u8>>,
+    /// Not a fresh reading.
+    pub(crate) stale: bool,
+    /// Its age; 0 when nothing was ever read.
+    pub(crate) age_ms: u32,
 }
 
 /// Source of [`Connection::generation`]; 0 is never handed out.
@@ -587,6 +597,13 @@ impl DspiCore {
 
         self.install(conn, mirror, serial, vid);
         Ok(())
+    }
+
+    /// Tell the Link supervisor the open connection changed, so that it sees a
+    /// bound device closed or displaced at once. Call with the lock released.
+    pub(crate) fn kick_link(&self) {
+        #[cfg(feature = "link")]
+        link::kick(self);
     }
 
     /// The lock. A panic while it was held does not poison the API.

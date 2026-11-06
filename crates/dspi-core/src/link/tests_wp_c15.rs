@@ -139,10 +139,11 @@ fn connect_with(
         "wp-c15".into(),
         "test".into(),
         token.into(),
-        Arc::new(FaultConnector {
-            faults: Arc::clone(faults),
-        }),
+        String::new(),
         Tuning {
+            connector: Arc::new(FaultConnector {
+                faults: Arc::clone(faults),
+            }),
             backoff_divisor: FAST,
             ..Tuning::default()
         },
@@ -257,7 +258,13 @@ fn wp_c15_connect_select_fetch_close() {
     let hub = open_hub();
     let core = DspiCore::new();
     let hello = core
-        .link_connect(hub.url(), "t".into(), "1".into(), String::new())
+        .link_connect(
+            hub.url(),
+            "t".into(),
+            "1".into(),
+            String::new(),
+            String::new(),
+        )
         .unwrap();
     assert!(!hello.needs_pairing);
     assert_eq!(hello.hub_name, "Fake Hub");
@@ -285,7 +292,7 @@ fn wp_c15_a_connect_failure_names_the_cause() {
     std::thread::sleep(Duration::from_millis(100));
     let core = DspiCore::new();
     let e = core
-        .link_connect(url, "t".into(), "1".into(), String::new())
+        .link_connect(url, "t".into(), "1".into(), String::new(), String::new())
         .unwrap_err();
     assert!(matches!(e, DspiError::Link { .. }), "{e:?}");
     assert_eq!(core.link_status().phase, LinkPhase::Idle);
@@ -683,7 +690,7 @@ fn connect_quick(core: &DspiCore, hub: &FakeHub) {
         "wp-c15".into(),
         "test".into(),
         String::new(),
-        Arc::new(TcpConnector::default()),
+        String::new(),
         Tuning {
             timing: Timing {
                 request_timeout: Duration::from_millis(400),
@@ -743,7 +750,7 @@ fn connect_clocked(core: &DspiCore, hub: &FakeHub, divisor: u32) -> Arc<ManualCl
         "wp-c15".into(),
         "test".into(),
         String::new(),
-        Arc::new(TcpConnector::default()),
+        String::new(),
         Tuning {
             timing: Timing {
                 keepalive_tick: Duration::from_millis(10),
@@ -753,6 +760,7 @@ fn connect_clocked(core: &DspiCore, hub: &FakeHub, divisor: u32) -> Arc<ManualCl
             },
             backoff_divisor: divisor,
             clock: clock.clone(),
+            ..Tuning::default()
         },
     )
     .unwrap();
@@ -1256,23 +1264,231 @@ fn wp_c15_meters_subscribe_again_after_a_reconnect() {
     assert_eq!(tunnelled_status(&hub), 0);
 }
 
+/// A hub with this much poll budget, and no PIN.
+fn budget_hub(poll_budget_bps: u32) -> FakeHub {
+    FakeHub::start(HubConfig {
+        poll_budget_bps,
+        ..HubConfig::default()
+    })
+    .unwrap()
+}
+
 #[test]
 fn wp_c15_a_reduced_grant_is_taken() {
+    // Room for a few frames a second of the 15 asked for.
+    let hub = budget_hub(150);
+    let core = DspiCore::new();
+    connect_faulty(&core, &hub, "");
+    bind(&core);
+    meters_live(&core);
+    let hz = guard(&bound_side(&core).feed).meter_hz.unwrap();
+    assert!((1..15).contains(&hz), "{hz}");
+    assert_eq!(tunnelled_status(&hub), 0);
+    assert!(!core.fetch_status().unwrap().stale);
+}
+
+#[test]
+fn wp_c15_busy_on_subscribe_falls_back_to_slow_reads() {
+    let hub = budget_hub(1);
+    let core = DspiCore::new();
+    let (faults, _) = connect_faulty(&core, &hub, "");
+    bind(&core);
+    let side = bound_side(&core);
+    let _ = core.fetch_status().unwrap();
+    wait_until("the refusal", || {
+        guard(&side.feed).meter_refused_until.is_some()
+    });
+    assert_eq!(guard(&side.feed).meter_hz, None);
+    assert_eq!(faults.sent("poll.subscribe"), 1);
+    let start = Instant::now();
+    let mut repeats = 0;
+    while start.elapsed() < Duration::from_millis(400) {
+        repeats += u32::from(core.fetch_status().unwrap().stale);
+    }
+    let reads = tunnelled_status(&hub);
+    assert!((1..=6).contains(&reads), "{reads}");
+    assert!(repeats > 0, "a repeat says so");
+}
+
+#[test]
+fn wp_c15_meters_read_stale_before_the_first_frame() {
+    let hub = open_hub();
+    let core = DspiCore::new();
+    connect_faulty(&core, &hub, "");
+    bind(&core);
+    let first = core.fetch_status().unwrap();
+    assert!(first.stale, "all zero, and not silence");
+    assert!(first.peaks.iter().all(|p| *p == 0.0));
+    meters_live(&core);
+    let live = core.fetch_status().unwrap();
+    assert!(!live.stale);
+}
+
+#[test]
+fn wp_c15_no_device_on_subscribe_then_a_flap_resubscribes() {
     let hub = open_hub();
     let core = DspiCore::new();
     let (faults, _) = connect_faulty(&core, &hub, "");
-    grant(&faults, |_| Some(2));
     bind(&core);
+    let generation = core.lock().conn().unwrap().generation;
+    hub.set_board_present(false);
+    wait_phase(&core, LinkPhase::NoDevice);
+    // Refused by the hub, and the direct read answers NO_DEVICE: no hang.
+    let _ = core.fetch_status();
+    wait_until("the refusal", || {
+        let side = bound_side(&core);
+        let refused = guard(&side.feed).meter_refused_until.is_some();
+        refused || faults.sent("poll.subscribe") > 0
+    });
+    hub.set_board_present(true);
+    wait_until("the rebind", || rebound(&core, generation));
     meters_live(&core);
-    let side = core
-        .lock()
-        .link
-        .as_ref()
-        .and_then(|s| s.bound.as_ref())
-        .and_then(|b| b.side.clone())
+    assert!(faults.sent("poll.subscribe") >= 1);
+    assert!(!core.fetch_status().unwrap().stale);
+}
+
+#[test]
+fn wp_c15_a_quick_flap_is_not_missed() {
+    // Offline and back before the supervisor can look: the hub has ended this
+    // session's polls all the same.
+    let hub = open_hub();
+    let core = DspiCore::new();
+    let (faults, _) = connect_faulty(&core, &hub, "");
+    bind(&core);
+    wait_phase(&core, LinkPhase::Bound);
+    meters_live(&core);
+    let subscribed = faults.sent("poll.subscribe");
+    let generation = core.lock().conn().unwrap().generation;
+    let client = core.lock().link.as_ref().unwrap().client.clone().unwrap();
+    let before = client.offline_count(0);
+
+    hub.set_board_present(false);
+    hub.set_board_present(true);
+    wait_until("the count", || client.offline_count(0) == before + 1);
+    wait_until("the rebind", || rebound(&core, generation));
+    meters_live(&core);
+    assert_eq!(faults.sent("poll.subscribe"), subscribed + 1);
+}
+
+#[test]
+fn wp_c15_a_failed_re_read_restores_the_last_known_mirror() {
+    let hub = open_hub();
+    let core = DspiCore::new();
+    // Production's backoff: the next try stays out of this for a second.
+    core.link_connect(
+        hub.url(),
+        "t".into(),
+        "1".into(),
+        String::new(),
+        String::new(),
+    )
+    .unwrap();
+    bind(&core);
+    wait_phase(&core, LinkPhase::Bound);
+    core.set_master_volume(-33.0).unwrap();
+    // The device moves on, so an attach would decode something else.
+    hub.external_change(
+        dspi_link::fakehub::OFF_MASTER_VOLUME,
+        &(-3.0f32).to_le_bytes(),
+        1,
+        0,
+    );
+    core.lock().link.as_mut().unwrap().fail_next_read = true;
+    hub.set_board_present(false);
+    hub.set_board_present(true);
+    wait_until("the failed read", || {
+        core.link_status().close_reason.contains("re-attaching")
+    });
+    wait_until("the mirror back", || {
+        !core.is_connected() && core.get_state().master_volume_db == -33.0
+    });
+    // The retry reads the device.
+    wait_until("the rebind", || {
+        core.link_status().phase == LinkPhase::Bound && core.is_connected()
+    });
+    assert_eq!(core.get_state().master_volume_db, -3.0);
+}
+
+#[test]
+fn wp_c15_the_expected_hub_gets_the_token_and_another_gets_none() {
+    let hub = pin_hub();
+    let core = DspiCore::new();
+    let (_, hello) = connect_faulty(&core, &hub, "");
+    let token = core.link_pair("123456".into()).unwrap();
+    core.link_close();
+    wait_until("the slot back", || hub.sessions().is_empty());
+    let seen = hub.tokens_seen().len();
+
+    // The right hub.
+    let right = core
+        .link_connect(
+            hub.url(),
+            "t".into(),
+            "1".into(),
+            token.clone(),
+            hello.hub_id.to_uppercase(),
+        )
         .unwrap();
-    assert_eq!(guard(&side.feed).meter_hz, Some(2));
-    assert_eq!(tunnelled_status(&hub), 0);
+    assert!(!right.needs_pairing);
+    assert_eq!(hub.tokens_seen().len(), seen + 1);
+    core.link_close();
+    wait_until("the slot back", || hub.sessions().is_empty());
+
+    // Another one at the address.
+    let e = core
+        .link_connect(
+            hub.url(),
+            "t".into(),
+            "1".into(),
+            token,
+            "11111111-2222-4333-8444-555555555555".into(),
+        )
+        .unwrap_err();
+    match e {
+        DspiError::Link { code, .. } => assert_eq!(code, "wrong_hub"),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(hub.tokens_seen().len(), seen + 1, "the secret stays home");
+    assert_eq!(core.link_status().phase, LinkPhase::Idle);
+    wait_until("no session", || hub.sessions().is_empty());
+}
+
+#[test]
+fn wp_c15_an_invalid_url_is_ignored() {
+    assert!(valid_ws_url("ws://10.0.0.1:11915/dspi/v1"));
+    assert!(valid_ws_url("ws://[fe80::1]:1/x"));
+    assert!(!valid_ws_url("http://10.0.0.1/"));
+    assert!(!valid_ws_url("ws://a b/"));
+    assert!(!valid_ws_url("ws:///dspi/v1"));
+    let hub = open_hub();
+    let core = DspiCore::new();
+    connect_faulty(&core, &hub, "");
+    let before = core.lock().link.as_ref().unwrap().target.url.clone();
+    core.link_set_url("nonsense".into());
+    assert_eq!(core.lock().link.as_ref().unwrap().target.url, before);
+}
+
+#[test]
+fn wp_c15_hardware_flows_do_not_wait_for_the_lock_under_the_core_lock() {
+    let hub = open_hub();
+    let core = DspiCore::new();
+    let (faults, _) = connect_faulty(&core, &hub, "");
+    bind(&core);
+    *guard(&faults.hold_text) = Some(("lock.acquire".into(), 700));
+    let worker = {
+        let core = Arc::clone(&core);
+        std::thread::spawn(move || core.save_output_config())
+    };
+    wait_until("the request", || faults.sent("lock.acquire") == 1);
+    let start = Instant::now();
+    let _ = core.get_state();
+    assert!(
+        start.elapsed() < Duration::from_millis(300),
+        "{:?}",
+        start.elapsed()
+    );
+    let _ = worker.join().unwrap();
+    assert_eq!(faults.sent("lock.release"), 1);
 }
 
 #[test]
@@ -1348,12 +1564,12 @@ fn wp_c15_a_meter_poll_never_delays_a_user_command() {
     // A slow link: every frame out takes 40 ms, one at a time, with a budget
     // the hub cuts the grant to. A tunnelled meter loop would queue with the
     // command; the feed adds nothing to the link at all.
-    let hub = open_hub();
+    let hub = budget_hub(150);
     let core = DspiCore::new();
     let (faults, _) = connect_faulty(&core, &hub, "");
-    grant(&faults, |_| Some(5));
     bind(&core);
     meters_live(&core);
+    assert!(guard(&bound_side(&core).feed).meter_hz.unwrap() < 15);
     faults.out_delay_ms.store(40, Ordering::SeqCst);
 
     let stop = Arc::new(AtomicBool::new(false));
@@ -1485,12 +1701,12 @@ fn wp_c15_band_frames_come_from_polls_on_a_bridge() {
 fn wp_c15_a_refused_band_poll_throttles_tunnelled_reads_on_a_bridge() {
     let hub = FakeHub::start(HubConfig {
         auth: Auth::None,
+        poll_budget_bps: 1,
         ..HubConfig::bridge()
     })
     .unwrap();
     let core = DspiCore::new();
     let (faults, _) = connect_faulty(&core, &hub, "");
-    grant(&faults, |_| None);
     bind(&core);
     let side = bound_side(&core);
     let size = RtaBandFrame::SIZE as u16;

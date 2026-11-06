@@ -189,8 +189,9 @@ impl DspiCore {
     /// round trip, and it never delays a command): subscribed on the first
     /// call, unsubscribed about two seconds after the last, so stop calling
     /// when no meter is on screen. Until the first frame, or if the feed
-    /// stalls, the block reads all zero. A hub that refuses the poll is read
-    /// directly at a low rate.
+    /// stalls, the block reads all zero with `stale` set. A hub that refuses the
+    /// poll is read directly at a low rate; a repeat of the last such read is
+    /// `stale` too.
     ///
     /// Errors: [`DspiError::Disconnected`] with no device open;
     /// [`DspiError::Transfer`] when the read fails or the reply is shorter
@@ -215,10 +216,15 @@ impl DspiCore {
             }
         };
         // DSPi Link: the hub's poll feed, with the core lock released. No
-        // recent frame reads as silence, not as an error or a frozen meter.
-        let data = side.meters(len)?.unwrap_or_else(|| vec![0; want]);
-        parse_status(&data, n)
-            .ok_or_else(|| short(op::REQ_GET_STATUS, want.saturating_sub(1), data.len()))
+        // recent frame reads as zero, not as an error or a frozen meter, and is
+        // flagged `stale`: it is not real silence.
+        let read = side.meters(len)?;
+        let data = read.data.unwrap_or_else(|| vec![0; want]);
+        let mut status = parse_status(&data, n)
+            .ok_or_else(|| short(op::REQ_GET_STATUS, want.saturating_sub(1), data.len()))?;
+        status.stale = read.stale;
+        status.age_ms = read.age_ms;
+        Ok(status)
     }
 
     /// Copy of the cached state (the C ABI returns a borrowed pointer).
@@ -634,6 +640,7 @@ fn parse_status(data: &[u8], n: usize) -> Option<SystemStatus> {
         active_input_channels: byte(data, base.saturating_add(6)),
         // n <= MAX_CHANNELS (17).
         num_channels: u8::try_from(n).unwrap_or(u8::MAX),
+        ..SystemStatus::default()
     })
 }
 

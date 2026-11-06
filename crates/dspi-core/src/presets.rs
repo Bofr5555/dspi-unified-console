@@ -351,7 +351,7 @@ impl DspiCore {
     /// Take the device lock ([`DspiCore::acquire_device_lock`]), run `f`
     /// under the core's lock and release the device lock whatever `f`
     /// returned.
-    fn with_device_lock<T>(
+    pub(crate) fn with_device_lock<T>(
         &self,
         reason: &str,
         f: impl FnOnce(&mut Inner) -> Result<T>,

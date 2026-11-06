@@ -1015,8 +1015,8 @@ mod tests_wp_c9 {
                 },
             })
         }
-        fn meters(&self, _: u16) -> crate::Result<Option<Vec<u8>>> {
-            Ok(None)
+        fn meters(&self, _: u16) -> crate::Result<crate::MeterRead> {
+            Ok(crate::MeterRead::default())
         }
     }
 

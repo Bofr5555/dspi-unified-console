@@ -233,6 +233,7 @@ impl DspiCore {
         if let Some(conn) = old {
             shut(conn);
         }
+        self.kick_link();
     }
 
     /// The last step of the connect sequence: install `conn` and `mirror`,
@@ -255,6 +256,7 @@ impl DspiCore {
         if let Some(old) = displaced {
             shut(old);
         }
+        self.kick_link();
         if reader {
             self.listeners.notify.call(|l| l.on_notifications());
         }

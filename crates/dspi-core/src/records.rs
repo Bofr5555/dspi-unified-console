@@ -109,6 +109,12 @@ pub struct SystemStatus {
     pub clip_flags: u32,
     pub active_input_channels: u8,
     pub num_channels: u8,
+    /// -- WP C15 -- Not a fresh reading (DSPi Link only): no recent poll frame,
+    /// so all zero, which is not silence; or a repeat of the last slow read.
+    /// Grey the meters rather than show them as live.
+    pub stale: bool,
+    /// How old the reading is, ms; 0 when `stale` with nothing read at all.
+    pub age_ms: u32,
 }
 
 /// `types.rs` `DeviceInfo`; `serial` replaces the `serial`/`serial_len` pair.
@@ -779,8 +785,9 @@ pub enum LinkPhase {
     /// stops it. The mirror stays last known; calls that need the device fail
     /// at once with `Disconnected`, and nothing is queued.
     Reconnecting,
-    /// Ended and not retried (a protocol error): see `close_code` and
-    /// `close_reason`.
+    /// Ended and not retried: see `close_code` and `close_reason`. A protocol
+    /// error is final, also when it comes from a redial (a hub of another
+    /// protocol version answers).
     Closed,
     /// The hub refuses this client (a 4xx handshake). Retrying will not help
     /// until something changes on the hub: see `close_reason`.

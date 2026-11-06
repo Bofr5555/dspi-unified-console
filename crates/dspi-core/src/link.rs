@@ -94,7 +94,7 @@ use dspi_transport::{
 
 use crate::callbacks::LinkListener;
 use crate::records::*;
-use crate::{DspiCore, DspiError, Result, SideChannel};
+use crate::{DspiCore, DspiError, MeterRead, Result, SideChannel};
 
 /// The role asked for when pairing, as the macOS Console does.
 const PAIR_ROLE: &str = "control";
@@ -117,8 +117,7 @@ const METER_HZ: u32 = 15;
 const METER_HZ_BRIDGED: u32 = 10;
 /// No `fetch_status` for this long: the UI stopped asking, so unsubscribe.
 const METER_IDLE: Duration = Duration::from_secs(2);
-/// How often the supervisor looks at a bound device: the meter feed, and a
-/// connection displaced by another device (opening one sends it no message).
+/// How often the supervisor looks at a bound device's meter feed.
 const FEED_CHECK: Duration = Duration::from_secs(1);
 /// Requested band-frame rate per channel, before the budget.
 const BAND_HZ: u32 = 15;
@@ -154,6 +153,8 @@ pub(crate) struct Tuning {
     pub(crate) backoff_divisor: u32,
     /// The client's liveness clock.
     pub(crate) clock: Arc<dyn Clock>,
+    /// How to open a socket.
+    pub(crate) connector: Arc<dyn WsConnector>,
 }
 
 impl Default for Tuning {
@@ -162,6 +163,7 @@ impl Default for Tuning {
             timing: Timing::default(),
             backoff_divisor: 1,
             clock: Arc::new(SystemClock),
+            connector: Arc::new(TcpConnector::default()),
         }
     }
 }
@@ -253,6 +255,9 @@ struct Bound {
     attached: bool,
     /// The hub listed the device as not online since it was attached.
     seen_offline: bool,
+    /// The client's `offline_count` when it was attached. A change means a
+    /// flap, however quick: the hub ended this session's polls.
+    offline_base: u64,
     side: Option<Arc<LinkSide>>,
 }
 
@@ -289,6 +294,11 @@ pub(crate) struct LinkSession {
     /// The app closed the bound device with the session up. If it now opens
     /// another one, it has left the hub.
     released: bool,
+    /// The side of a binding given up, to be dropped outside the lock.
+    retired: Option<Arc<LinkSide>>,
+    /// The next re-attach's read fails.
+    #[cfg(test)]
+    fail_next_read: bool,
     /// An end the listener has not heard of yet.
     unreported_end: Option<Closed>,
     bound: Option<Bound>,
@@ -438,17 +448,22 @@ enum Step {
 
 /// A session number; never reused.
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// Open a DSPi Link session to `url` (`link_ws_url`), replacing any
     /// previous one. `token` = the token stored for this hub's id ("" =
-    /// none). Blocks for the hello and authentication (up to ~15 s). When
+    /// none). `expected_hub_id` = that id. With it, a token goes out only after
+    /// the hello has named that hub, and another hub at the address fails the
+    /// call with `wrong_hub`, having seen no token. "" = not known: the token
+    /// goes to whichever hub answers (a hub added by address, no stored id).
+    /// Blocks for the hello and authentication (up to ~15 s). When
     /// `needs_pairing`, ask for the PIN and call `link_pair`; otherwise the
     /// device list is ready (`link_devices`).
     ///
     /// From here on the core keeps the session up by itself: see
     /// [`LinkListener`] and `link_status`. An app does not redial.
     ///
-    /// Errors: [`DspiError::Link`], its `code` being `io`, `handshake`,
+    /// Errors: [`DspiError::Link`], its `code` being `wrong_hub`, `io`, `handshake`,
     /// `hub_busy` (all the hub's sessions are in use; try again in a few
     /// seconds), `handshake_refused` (trying again will not help),
     /// `rate_limited` (the token stays good; wait a minute), `protocol`,
@@ -459,13 +474,14 @@ impl DspiCore {
         client_name: String,
         app_version: String,
         token: String,
+        expected_hub_id: String,
     ) -> Result<LinkHello> {
         self.link_connect_with(
             url,
             client_name,
             app_version,
             token,
-            Arc::new(TcpConnector::default()),
+            expected_hub_id,
             Tuning::default(),
         )
     }
@@ -526,7 +542,13 @@ impl DspiCore {
         };
         let phase = s.phase(inner.conn.as_ref().map(|c| c.generation));
         let client = s.client.as_ref().filter(|c| !c.is_closed());
-        let (code, reason) = s.last_close.clone().unwrap_or((None, String::new()));
+        // The client's own word until the supervisor has looked: the banner
+        // has a reason from its first moment.
+        let (code, reason) = s
+            .last_close
+            .clone()
+            .or_else(|| s.client.as_ref().and_then(LinkClient::closed_reason))
+            .unwrap_or((None, String::new()));
         let now = Instant::now();
         LinkStatus {
             connected: client.is_some(),
@@ -563,8 +585,7 @@ impl DspiCore {
     /// the session was up. `disconnect` while reconnecting does not stop
     /// that: `link_close` does.
     ///
-    /// Opening another device over the bound one closes the hub session,
-    /// within about a second. After `disconnect` the session stays, ready
+    /// Opening another device over the bound one closes the hub session. After `disconnect` the session stays, ready
     /// for another `link_select_device`, and keeps its slot: call
     /// `link_close` when leaving the hub.
     ///
@@ -575,37 +596,45 @@ impl DspiCore {
         let handle = u8::try_from(handle).map_err(|_| DspiError::InvalidArgument {
             msg: format!("Link device handle {handle} is over 255"),
         })?;
-        {
+        // Dropped with the lock released: a side's drop writes to the socket.
+        let _replaced = {
             let mut inner = self.lock();
             let s = inner.link.as_mut().ok_or(DspiError::Disconnected)?;
             if !s.client.as_ref().is_some_and(LinkClient::is_ready) {
                 return Err(DspiError::Disconnected);
             }
             s.released = false;
-            s.bound = Some(Bound {
+            s.bound.replace(Bound {
                 handle,
                 serial: serial.clone(),
                 generation: 0,
                 opening: true,
                 attached: false,
                 seen_offline: false,
+                offline_base: 0,
                 side: None,
-            });
-        }
+            })
+        };
         let opened = self.open_bound(handle, serial, false);
         if opened.is_err() {
-            let mut inner = self.lock();
-            if let Some(s) = inner.link.as_mut()
-                && s.bound.as_ref().is_some_and(|b| b.opening)
             {
-                s.bound = None;
+                let mut inner = self.lock();
+                if let Some(s) = inner.link.as_mut()
+                    && s.bound.as_ref().is_some_and(|b| b.opening)
+                {
+                    s.bound = None;
+                }
             }
+            // The failure may have come after the attach.
+            self.close_link_device();
         }
         opened
     }
 
     /// Close the Link session (normal close) and drop a device bound to it,
-    /// and stop any reconnecting: this is the banner's abort button.
+    /// and stop any reconnecting. This is how an app leaves a hub, giving back
+    /// its session slot (`disconnect` keeps the session, for another
+    /// `link_select_device`), and it is the banner's abort button.
     ///
     /// Safe on a UI thread: it returns within about 100 ms whatever the link
     /// does, and `link_status` then says [`LinkPhase::Idle`]. It does not need
@@ -639,7 +668,14 @@ impl DspiCore {
     /// The hub answers at a new address (the app's browser found its `hid`
     /// again after a DHCP change): reconnect there from now on, at once if
     /// reconnecting. The core does not browse by itself.
+    ///
+    /// An address that cannot be dialled is logged and ignored: reconnecting
+    /// to it would fail for ever.
     pub fn link_set_url(&self, url: String) {
+        if !valid_ws_url(&url) {
+            log::warn!("ignoring an invalid Link hub address: {url}");
+            return;
+        }
         let mut inner = self.lock();
         if let Some(s) = inner.link.as_mut() {
             s.target.url = url;
@@ -689,15 +725,12 @@ impl DspiCore {
         }
         let (session, ours) = {
             let mut inner = self.lock();
-            let generation = inner.conn.as_ref().map(|c| c.generation);
+            let link = inner
+                .conn
+                .as_ref()
+                .is_some_and(|c| c.caps.kind == TransportKind::Link);
             if inner.link.as_ref().is_some_and(|s| s.id == id) {
-                let session = inner.link.take();
-                let ours = session.as_ref().is_some_and(|s| {
-                    s.bound
-                        .as_ref()
-                        .is_some_and(|b| generation == Some(b.generation))
-                });
-                (session, ours)
+                (inner.link.take(), link)
             } else {
                 (None, false)
             }
@@ -706,6 +739,18 @@ impl DspiCore {
             self.close_connection();
         }
         drop(session);
+    }
+
+    /// Close the open connection if it is a Link one.
+    fn close_link_device(&self) {
+        let link = self
+            .lock()
+            .conn
+            .as_ref()
+            .is_some_and(|c| c.caps.kind == TransportKind::Link);
+        if link {
+            self.close_connection();
+        }
     }
 
     /// Note the session's current client for `link_close`.
@@ -738,7 +783,7 @@ impl DspiCore {
         client_name: String,
         app_version: String,
         token: String,
-        connector: Arc<dyn WsConnector>,
+        expected_hub_id: String,
         tuning: Tuning,
     ) -> Result<LinkHello> {
         self.close_session(REPLACE_WAIT);
@@ -748,12 +793,21 @@ impl DspiCore {
             client_name,
             app_version,
             token,
-            hub_id: String::new(),
-            connector,
+            hub_id: expected_hub_id.to_lowercase(),
+            connector: Arc::clone(&tuning.connector),
             timing: tuning.timing,
             clock: Arc::clone(&tuning.clock),
         };
         let (client, state) = dial(&target, true, &tx).map_err(map_error)?;
+        if !target.hub_id.is_empty() && !client.hello().hub.id.eq_ignore_ascii_case(&target.hub_id)
+        {
+            client.set_events(None);
+            client.close();
+            return Err(DspiError::Link {
+                code: "wrong_hub".into(),
+                msg: "Another hub answers at this address.".into(),
+            });
+        }
         let hello = hello_record(&client, &state);
         target.hub_id.clone_from(&hello.hub_id);
         if hello.token_refused {
@@ -776,6 +830,9 @@ impl DspiCore {
             ended: false,
             refused: false,
             released: false,
+            retired: None,
+            #[cfg(test)]
+            fail_next_read: false,
             unreported_end: None,
             bound: None,
             reported: LinkPhase::Idle,
@@ -852,6 +909,8 @@ impl DspiCore {
             let client = s.client.clone().filter(LinkClient::is_ready);
             (client.ok_or(DspiError::Disconnected)?, s.instance)
         };
+        // Read before the attach: a flap during it counts as one after it.
+        let offline_base = client.offline_count(u32::from(handle));
         let transport = LinkTransport::new(client.clone(), handle, &serial);
         if keep_mirror {
             self.close_keeping_mirror();
@@ -860,6 +919,8 @@ impl DspiCore {
             self.open_transport(Box::new(transport), serial.clone(), 0)?;
         }
 
+        // Dropped with the lock released: a side's drop writes to the socket.
+        let mut old_side = None;
         let mut guard = self.lock();
         let inner = &mut *guard;
         let current = inner
@@ -881,10 +942,13 @@ impl DspiCore {
             b.opening = false;
             b.attached = true;
             b.seen_offline = false;
-            b.side = Some(side);
+            b.offline_base = offline_base;
+            old_side = b.side.replace(side);
         }
         current.retry = None;
         let _ = current.tx.send(Msg::Kick);
+        drop(guard);
+        drop(old_side);
         Ok(())
     }
 
@@ -917,9 +981,13 @@ impl DspiCore {
         }
         s.note_loss(conn_gen, now);
         let step = next_step(s, conn_gen, now);
+        let retired = s.retired.take();
         let ended = s.unreported_end.take();
         let phase = s.phase(conn_gen);
         let changed = std::mem::replace(&mut s.reported, phase) != phase;
+        // A side's drop writes to the socket: not under the lock.
+        drop(locked);
+        drop(retired);
         (step, ended, changed)
     }
 
@@ -972,14 +1040,31 @@ impl DspiCore {
         true
     }
 
+    /// The read after a re-attach.
+    fn read_rebound(&self) -> Result<()> {
+        #[cfg(test)]
+        if let Some(s) = self.lock().link.as_mut()
+            && std::mem::take(&mut s.fail_next_read)
+        {
+            return Err(DspiError::Transfer { msg: "lost".into() });
+        }
+        self.fetch_all()
+    }
+
     /// A token from the hub: keep it for reconnects, and tell the app.
     fn note_token(&self, hub_id: String, token: String) {
         {
             let mut inner = self.lock();
             if let Some(s) = inner.link.as_mut() {
-                s.target.token.clone_from(&token);
-                s.needs_pin = false;
-                s.token_refused = false;
+                // This can come after the session's end was handled, and a
+                // revoked token must not come back with it.
+                if alive(s.client.as_ref()) {
+                    s.needs_pin = false;
+                    s.token_refused = false;
+                }
+                if !s.token_refused {
+                    s.target.token.clone_from(&token);
+                }
             }
         }
         self.listeners
@@ -1003,47 +1088,43 @@ impl DspiCore {
     }
 
     /// Bind the device again and read it. On failure the connection is closed,
-    /// the mirror stays last known, and the supervisor tries again later.
+    /// the mirror goes back to what it was, and the supervisor tries again later.
     fn rebind(&self, id: u64, handle: u8, serial: String) {
+        // `install` replaces the mirror before the per-item reads: a read that
+        // then fails must not leave a half-read one where the last known was.
+        let last_known = self.lock().state.clone();
         let result = self
             .open_bound(handle, serial, true)
-            .and_then(|()| self.fetch_all());
+            .and_then(|()| self.read_rebound());
         let ended_meanwhile = {
             let mut inner = self.lock();
-            let flagged = match inner.link.as_mut().filter(|s| s.id == id) {
-                None => None,
-                Some(s) => {
-                    match &result {
-                        Ok(()) => s.retry = None,
-                        Err(e) => {
-                            log::info!("re-attaching the Link device failed: {e}");
-                            if let Some(b) = &mut s.bound {
-                                b.attached = false;
-                            }
-                            s.schedule_retry(None, Instant::now());
+            let current = inner.link.as_mut().filter(|s| s.id == id);
+            let ended = current.is_none();
+            if let Some(s) = current {
+                match &result {
+                    Ok(()) => s.retry = None,
+                    Err(e) => {
+                        log::info!("re-attaching the Link device failed: {e}");
+                        s.last_close = Some((None, format!("re-attaching the device failed: {e}")));
+                        if let Some(b) = &mut s.bound {
+                            b.attached = false;
                         }
+                        s.schedule_retry(None, Instant::now());
                     }
-                    Some(result.is_ok())
                 }
-            };
-            if flagged == Some(true)
-                && let Some(conn) = inner.conn.as_mut()
-            {
-                conn.announce_refresh = true;
+                if result.is_ok()
+                    && let Some(conn) = inner.conn.as_mut()
+                {
+                    conn.announce_refresh = true;
+                }
             }
-            flagged.is_none()
+            ended
         };
         if ended_meanwhile {
-            let link = self
-                .lock()
-                .conn
-                .as_ref()
-                .is_some_and(|c| c.caps.kind == TransportKind::Link);
-            if link {
-                self.close_connection();
-            }
+            self.close_link_device();
         } else if result.is_err() {
             self.close_keeping_mirror();
+            self.lock().state = last_known;
         } else {
             self.listeners.notify.call(|l| l.on_notifications());
         }
@@ -1076,8 +1157,15 @@ fn next_step(s: &mut LinkSession, conn_gen: Option<u64>, now: Instant) -> Step {
         return match s.retry {
             Some(r) if now >= r.next_at => Step::Dial(Box::new(s.target.clone())),
             Some(r) => Step::Wait(Some(r.next_at.saturating_duration_since(now)), None),
-            // Closed, and `note_loss` runs before this: nothing to wait for.
-            None => Step::Wait(None, None),
+            // Should not happen (`note_loss` runs before this), but a session
+            // must never sit here for ever with nothing planned.
+            None => {
+                s.schedule_retry(None, now);
+                Step::Wait(
+                    Some(FEED_CHECK.min(s.tuning.delay(None, 0).unwrap_or(FEED_CHECK))),
+                    None,
+                )
+            }
         };
     }
     let Some(client) = s.client.clone().filter(LinkClient::is_ready) else {
@@ -1097,14 +1185,15 @@ fn next_step(s: &mut LinkSession, conn_gen: Option<u64>, now: Instant) -> Step {
         .as_ref()
         .is_some_and(|b| !b.opening && b.attached && conn_gen != Some(b.generation))
     {
-        s.bound = None;
+        s.retired = s.bound.take().and_then(|b| b.side);
         s.released = true;
     }
-    let released = s.released;
     let Some(b) = s.bound.as_mut().filter(|b| !b.opening) else {
-        // After `disconnect`, a device opened next is noticed by this wake-up.
-        return Step::Wait(released.then_some(FEED_CHECK), None);
+        return Step::Wait(None, None);
     };
+    if client.offline_count(u32::from(b.handle)) != b.offline_base {
+        b.seen_offline = true;
+    }
     let Some(d) = devices.iter().find(|d| d.serial == b.serial) else {
         b.seen_offline = true;
         return Step::Wait(Some(FEED_CHECK), feed);
@@ -1260,6 +1349,20 @@ fn dial(
     )
 }
 
+/// Whether `url` is `ws://host[:port][/path]`.
+fn valid_ws_url(url: &str) -> bool {
+    url.strip_prefix("ws://")
+        .and_then(|rest| rest.split('/').next())
+        .is_some_and(|authority| dspi_link::address::parse_address(authority).is_some())
+}
+
+/// Tell the current session's supervisor to look again.
+pub(crate) fn kick(core: &DspiCore) {
+    if let Some(c) = guard(&core.link_control).as_ref() {
+        let _ = c.tx.send(Msg::Kick);
+    }
+}
+
 /// A dial on a reconnect: the same hub only.
 fn redial(
     target: &Target,
@@ -1358,6 +1461,24 @@ struct Feed {
     tunnel_meter_data: Option<Vec<u8>>,
     last_tunnel_bands: Option<Instant>,
     last_bins: Option<Instant>,
+}
+
+impl Feed {
+    /// The last tunnelled read again: not a fresh reading.
+    fn repeat_tunnelled(&self, now: Instant) -> MeterRead {
+        MeterRead {
+            data: self.tunnel_meter_data.clone(),
+            stale: true,
+            age_ms: self
+                .last_tunnel_meter
+                .map_or(0, |t| millis(now.saturating_duration_since(t))),
+        }
+    }
+}
+
+/// A duration in whole ms, saturating.
+fn millis(d: Duration) -> u32 {
+    u32::try_from(d.as_millis()).unwrap_or(u32::MAX)
 }
 
 /// One Link device, reached without the core lock (see the module's docs).
@@ -1554,7 +1675,7 @@ impl LinkSide {
 
     /// The meter block by a tunnelled read, when the hub refuses polls: at a
     /// low rate, one at a time, the last one otherwise.
-    fn meters_tunnel(&self, len: u16, now: Instant) -> Result<Option<Vec<u8>>> {
+    fn meters_tunnel(&self, len: u16, now: Instant) -> Result<MeterRead> {
         let every = if self.bridged {
             METER_TUNNEL_EVERY_BRIDGED
         } else {
@@ -1566,16 +1687,20 @@ impl LinkSide {
                 .last_tunnel_meter
                 .is_some_and(|t| now.saturating_duration_since(t) < every)
             {
-                return Ok(feed.tunnel_meter_data.clone());
+                return Ok(feed.repeat_tunnelled(now));
             }
         }
         let Ok(_one) = self.meter_tunnel.try_lock() else {
-            return Ok(guard(&self.feed).tunnel_meter_data.clone());
+            return Ok(guard(&self.feed).repeat_tunnelled(now));
         };
         guard(&self.feed).last_tunnel_meter = Some(now);
         let data = self.tunnel_get(op::REQ_GET_STATUS, STATUS_METERS, len)?;
         guard(&self.feed).tunnel_meter_data = Some(data.clone());
-        Ok(Some(data))
+        Ok(MeterRead {
+            data: Some(data),
+            stale: false,
+            age_ms: 0,
+        })
     }
 
     /// Bring the band subscription in line with `mask`, on the analyser's
@@ -1717,7 +1842,7 @@ impl SideChannel for LinkSide {
         })
     }
 
-    fn meters(&self, len: u16) -> Result<Option<Vec<u8>>> {
+    fn meters(&self, len: u16) -> Result<MeterRead> {
         if self.client.is_closed() {
             return Err(DspiError::Disconnected);
         }
@@ -1740,14 +1865,21 @@ impl SideChannel for LinkSide {
                 let _ = self.tx.send(Msg::Kick);
             }
             // Between a refusal's expiry and the next answer: the last read.
-            return Ok(feed.tunnel_meter_data.clone());
+            return Ok(feed.repeat_tunnelled(now));
         };
-        let fresh = feed
-            .latest
-            .get(&METER_SLOT)
-            .filter(|(_, at)| now.saturating_duration_since(*at) < stale_after(hz))
-            .map(|(data, _)| data.clone());
-        Ok(fresh)
+        let Some((data, at)) = feed.latest.get(&METER_SLOT) else {
+            return Ok(MeterRead {
+                data: None,
+                stale: true,
+                age_ms: 0,
+            });
+        };
+        let age = now.saturating_duration_since(*at);
+        Ok(MeterRead {
+            data: (age < stale_after(hz)).then(|| data.clone()),
+            stale: age >= stale_after(hz),
+            age_ms: millis(age),
+        })
     }
 }
 

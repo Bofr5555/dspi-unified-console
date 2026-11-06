@@ -153,7 +153,9 @@ impl DspiCore {
     pub fn process_notifications(&self) -> NotifyResult {
         self.process_notifications_at(Instant::now())
     }
+}
 
+impl DspiCore {
     /// [`DspiCore::process_notifications`] at `now` (tests move the clock).
     pub(crate) fn process_notifications_at(&self, now: Instant) -> NotifyResult {
         let mut result = NotifyResult::default();
