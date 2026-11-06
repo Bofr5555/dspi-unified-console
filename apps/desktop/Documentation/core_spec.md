@@ -1,6 +1,8 @@
 # DSPi Core Library — Complete Specification
 
-This document describes every type, function, constant, and pattern in the `dspi-core` shared library. It is intended as the sole reference a GUI developer needs to build a fully functional DSPi Console application on any platform (Windows, Linux, macOS) using C, C++, or any language with C FFI support.
+This document describes the types, functions, constants, and patterns of the DSPi core's C ABI. It is intended as a reference for a GUI developer building a DSPi Console application on any platform (Windows, Linux, macOS) using C, C++, or any language with C FFI support.
+
+> **Where this stands.** This was written for the old desktop core. That crate is gone: the C ABI is now `crates/dspi-capi` (library `dspi_capi`, header `dspi_core.h`) over `crates/dspi-core`. The old functions keep their names, signatures and failure values, so the function sections still apply. Sections 1, 2, 27 and 29 are updated; the rest has not been re-read line by line against the new core, so details of behaviour may differ. **The generated header is the authority on signatures**, and `docs/core-merge/PLAN.md` on design. The header has functions this document does not cover (extension channel, names, output latency, clock diagnostics, firmware files, the demo device).
 
 ---
 
@@ -40,11 +42,11 @@ This document describes every type, function, constant, and pattern in the `dspi
 
 ## 1. Overview
 
-`dspi-core` is a Rust library compiled as both a **dynamic library** (`.dylib` / `.so` / `.dll`) and a **static library** (`.a` / `.lib`). It exposes a pure C ABI — every public function uses `extern "C"` calling convention and operates on C-compatible types.
+`dspi-capi` is a Rust library compiled as both a **dynamic library** (`.dylib` / `.so` / `.dll`) and a **static library** (`.a` / `.lib`). It exposes a pure C ABI — every public function uses `extern "C"` calling convention and operates on C-compatible types.
 
 The library provides:
 
-- **USB device discovery and connection** via libusb
+- **USB device discovery and connection** via nusb (pure Rust, no C library)
 - **Complete protocol implementation** for the DSPi firmware (RP2040 / RP2350)
 - **DSP math** for biquad coefficient calculation and frequency response curves
 - **State caching** — after any command, the internal state is updated; the GUI can read it at any time
@@ -58,50 +60,51 @@ The GUI never sends raw USB transfers. It calls high-level functions like `dspi_
 
 ### Building
 
+From the repository root:
+
 ```bash
-cd "DSPi Console Unified"
-cargo build --release
+cargo build --release -p dspi-capi
 ```
 
 ### Output files
 
 | Platform | Dynamic Library | Static Library |
 |----------|----------------|----------------|
-| macOS | `target/release/libdspi_core.dylib` | `target/release/libdspi_core.a` |
-| Linux | `target/release/libdspi_core.so` | `target/release/libdspi_core.a` |
-| Windows | `target/release/dspi_core.dll` | `target/release/dspi_core.lib` |
+| macOS | `target/release/libdspi_capi.dylib` | `target/release/libdspi_capi.a` |
+| Linux | `target/release/libdspi_capi.so` | `target/release/libdspi_capi.a` |
+| Windows, MinGW | `dspi_capi.dll`, import library `libdspi_capi.dll.a` | |
+| Windows, MSVC | `dspi_capi.dll`, import library `dspi_capi.dll.lib` | `dspi_capi.lib` |
+
+The Qt app links the static library on Linux and macOS and the DLL on Windows (`apps/desktop/qt/CMakeLists.txt`).
 
 ### Generated C header
 
-```bash
-cbindgen --config core/cbindgen.toml --crate dspi-core --output include/dspi_core.h
-```
+The crate's `build.rs` runs cbindgen on every build.
 
-Output: `include/dspi_core.h` — include this in your C/C++ GUI code.
+Output: `crates/dspi-capi/include/dspi_core.h` — include this in your C/C++ GUI code. It is not checked in. The library is `dspi_capi` and the header keeps the name `dspi_core.h`.
 
 ### Linking in CMake (Qt example)
 
 ```cmake
-# Dynamic linking
-target_link_libraries(my_gui PRIVATE ${CMAKE_SOURCE_DIR}/../target/release/libdspi_core.so)
-target_include_directories(my_gui PRIVATE ${CMAKE_SOURCE_DIR}/../include)
+target_include_directories(my_gui PRIVATE ${REPO_ROOT}/crates/dspi-capi/include)
 
-# Or static linking (also needs libusb)
+# Dynamic linking
+target_link_libraries(my_gui PRIVATE ${REPO_ROOT}/target/release/libdspi_capi.so)
+
+# Or static linking
 target_link_libraries(my_gui PRIVATE
-    ${CMAKE_SOURCE_DIR}/../target/release/libdspi_core.a
-    usb-1.0
+    ${REPO_ROOT}/target/release/libdspi_capi.a
     pthread
     dl
+    m
 )
 ```
 
+On macOS, a static link also needs the frameworks the USB stack uses; see `apps/desktop/qt/CMakeLists.txt`.
+
 ### System dependencies
 
-| Platform | Requirement |
-|----------|------------|
-| Linux | `libusb-1.0-0-dev` (apt) or `libusb-1.0` (pacman) |
-| macOS | `brew install libusb` (bundled with rusb for dev) |
-| Windows | Bundled via rusb/vcpkg, or install Zadig for WinUSB driver |
+None for USB, on any platform. Linux needs the udev rule below to open the device without root. The `midir` feature, off by default in this crate, needs ALSA headers on Linux.
 
 ---
 
@@ -1239,22 +1242,20 @@ After `dspi_fetch_all`, check `state.platform_id` to determine the hardware plat
 
 ### Linux
 
-- Requires **udev rules** for non-root USB access. Create `/etc/udev/rules.d/99-dspi.rules`:
-  ```
-  SUBSYSTEM=="usb", ATTR{idVendor}=="2e8a", ATTR{idProduct}=="feaa", MODE="0666"
-  ```
+- Requires **udev rules** for non-root USB access. Install `apps/desktop/packaging/linux/70-dspi.rules` (it covers vendor IDs 2e8b and the older 2e8a) into `/etc/udev/rules.d/`.
   Then: `sudo udevadm control --reload-rules && sudo udevadm trigger`
 
-- The library automatically calls `set_auto_detach_kernel_driver(true)` to handle kernel driver conflicts.
+- The library claims only the vendor interface (interface 2); the audio interfaces stay with the kernel.
 
 ### Windows
 
-- Requires **WinUSB driver**. Install via [Zadig](https://zadig.akeo.ie/) — select the DSPi device and install the WinUSB driver.
-- libusb hotplug is **not supported** on Windows. The polling fallback (`dspi_poll_hotplug`) handles this transparently.
+- Uses **WinUSB**. DSPi firmware has MS OS 2.0 descriptors, so Windows binds the driver by itself; very old firmware may need [Zadig](https://zadig.akeo.ie/).
+- Hot-plug is by polling (`dspi_poll_hotplug`), as on every platform.
+- Not yet verified on real Windows hardware.
 
 ### macOS
 
-- libusb works alongside IOKit. The existing SwiftUI macOS app uses IOKit directly, but the Rust core can also be used on macOS for testing.
+- nusb talks to IOKit directly, as the SwiftUI macOS app does.
 - No special driver installation needed.
 
 ---
@@ -1334,37 +1335,31 @@ When device plugs back in:
 
 ## 29. Source File Map
 
-All Rust source files are in `core/src/`. Here is what each file contains and when a GUI developer would care about it:
+The C ABI is `crates/dspi-capi/src/`, a thin layer over `crates/dspi-core/src/`. A GUI developer only meets the C ABI; the rest says where behaviour lives.
 
-| File | Contents | GUI relevance |
-|------|----------|---------------|
-| **`types.rs`** | `FilterType`, `FilterParams`, `SystemStatus`, `DeviceInfo`, `PlatformInfo`, `PresetDirectory`, and all array-size constants (`MAX_CHANNELS`, etc.) | These are the types you work with directly. All exposed in the C header. |
-| **`protocol.rs`** | USB request code constants (0x42–0xA1), `BulkParams` struct and parser, packet builders, status parser, name encoding helpers. | You never call these directly, but the constants appear in the C header. Understanding the binary layout is useful for debugging. |
-| **`dsp_math.rs`** | `BiquadCoeffs` struct, `calculate_coefficients()`, `response_at()`, `compute_magnitude_curve()`, `quantize_gain()`, `quantize_delay()`. Sample rate is fixed at 48,000 Hz. | The `dspi_compute_response` and `dspi_compute_magnitude_curve` FFI functions call into this. Use them for your frequency response graph. |
-| **`usb.rs`** | `UsbConnection` struct wrapping `rusb::DeviceHandle`, `send_control()` and `get_control()` methods, `UsbError` enum, 1-second timeout constant. | Internal plumbing. You never interact with this directly. |
-| **`device.rs`** | `DeviceManager` struct handling device enumeration by VID/PID, serial-based selection, `poll_changes()` for hot-plug, auto-reconnect logic. | Exposed via `dspi_scan_devices`, `dspi_select_device`, `dspi_disconnect`, `dspi_is_connected`, `dspi_poll_hotplug`. |
-| **`state.rs`** | `DspState` struct with all cached parameters, `apply_bulk_params()` method, `platform_name()` and `pdm_output_index()` helpers. | Exposed via `dspi_get_state`. This is how you read all device state. |
-| **`commands.rs`** | All `set_*` and `fetch_*` command methods on `DspiCore`: EQ, preamp, bypass, delay, loudness (3 params), crossfeed (5 params), matrix route, output enable/gain/mute/delay, core1 mode/conflict, pin config, channel names, flash save/load/reset, clip clear. | Every `dspi_set_*` and `dspi_fetch_*` FFI function calls into here. |
-| **`preset.rs`** | Preset `save_preset`, `load_preset`, `delete_preset`, name get/set, directory, startup mode, include-pins, active preset. Includes the 10ms sleep after load. | Exposed via `dspi_save_preset`, `dspi_load_preset`, etc. |
-| **`lib.rs`** | `DspiCore` struct definition, `FfiCore` mutex wrapper, all 40+ `extern "C"` FFI functions, hot-plug callback type, `with_core` / `with_core_const` helpers. | This is the entire public API surface. Every function listed in this document is defined here. |
+| File | Contents |
+|------|----------|
+| `dspi-capi/src/lib.rs` | `FfiCore`, the lifecycle, the guard that catches panics at the boundary |
+| `dspi-capi/src/types.rs`, `types/consts.rs` | The `#[repr(C)]` records and constants, and their conversions |
+| `dspi-capi/src/fns_device.rs` | C functions: lifecycle, devices, connect, DSP parameters, effects, presets, curves |
+| `dspi-capi/src/fns_misc.rs` | C functions: hardware, hotplug, notify, monitor, RTA, signal generator and stats, files, control surfaces, extension channel, names, firmware, demo |
+| `dspi-core/src/lib.rs` | `DspiCore`, the lock, the mirror |
+| `dspi-core/src/device.rs`, `hotplug.rs`, `connect.rs` | Discovery, opening and closing; hot-plug and reconnection; reading the device into the mirror |
+| `dspi-core/src/state.rs`, `records.rs`, `consts.rs` | The mirror codec, the records, the named codes |
+| `dspi-core/src/params.rs`, `params_fx.rs`, `hardware.rs`, `presets.rs` | Setters and fetches by area |
+| `dspi-core/src/notify.rs`, `monitor.rs`, `rta.rs`, `stats.rs`, `cs.rs` | Notifications, the monitor, the analyser, signal generator and stats, control surfaces |
+| `dspi-core/src/ext.rs`, `info.rs`, `firmware.rs`, `files.rs`, `curves.rs` | Extension channel, names and diagnostics, firmware files, configuration and filter files, response curves |
+| `dspi-core/src/link.rs` | DSPi Link sessions (not in the C ABI yet) |
 
 ### Dependency graph (simplified)
 
 ```
-lib.rs  (FFI layer, DspiCore struct)
-  ├── commands.rs  (all set/fetch methods)
-  │     ├── protocol.rs  (constants, packet builders)
-  │     ├── dsp_math.rs  (gain/delay quantization)
-  │     └── usb.rs  (send/get control transfers)
-  ├── preset.rs  (preset save/load/delete/names)
-  │     ├── protocol.rs
-  │     └── usb.rs
-  ├── device.rs  (scan, select, disconnect, hotplug poll)
-  │     ├── protocol.rs  (VID/PID constants)
-  │     └── usb.rs  (UsbConnection)
-  ├── state.rs  (DspState, apply_bulk_params)
-  │     └── protocol.rs  (BulkParams)
-  └── types.rs  (FilterParams, SystemStatus, etc.)
+dspi-capi  (C ABI)
+  └── dspi-core  (DspiCore, the mirror, threads)
+        └── dspi-session  (probe, writes, notifications, RTA, control surfaces, presets)
+              ├── dspi-transport  (USB, MIDI, Link, demo)
+              │     └── dspi-link  (the Link feature)
+              └── dspi-proto  (generated constants, wire formats, codecs)
 ```
 
 ---

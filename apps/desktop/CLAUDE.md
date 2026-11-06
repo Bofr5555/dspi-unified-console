@@ -1,17 +1,22 @@
 # DSPi Console for Linux
 
-Qt 5.15 / QML front end (`qt/`) on a Rust core (`core/`, C ABI via cbindgen) for
-DSPi firmware 1.1.6 (wire format V32). The macOS Console
+Qt 6 or 5.15 / QML front end (`qt/`) on the repository's Rust core:
+`crates/dspi-capi` (library `dspi_capi`, header `dspi_core.h` via cbindgen) over
+`crates/dspi-core`, for DSPi firmware 1.1.6 (wire format V32). The macOS Console
 (`WeebLabs/DSPi-Console`) is the behavioural and visual reference; the Windows
 Console (`WeebLabs/DSPi-Console-Windows`) is a second reference. Phase plan and
 status: `Documentation/parity-plan.md`.
 
 ## Build and run
 
+From the repository root (toolchains run in containers: `ci/check.sh --step qt`,
+`--step qt-offscreen`, see the root `README.md`):
+
 ```
-cargo build --release                      # core -> target/release/libdspi_core.a, include/dspi_core.h
-make -C qt/build -j$(nproc)                 # app (cmake already configured in qt/build)
-cd qt/build && QT_FORCE_STDERR_LOGGING=1 ./DSPiConsole
+cargo build --release -p dspi-capi         # target/release/libdspi_capi.a, crates/dspi-capi/include/dspi_core.h
+cmake -S apps/desktop/qt -B apps/desktop/qt/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build apps/desktop/qt/build
+QT_FORCE_STDERR_LOGGING=1 apps/desktop/qt/build/DSPiConsole          # --demo: the simulated device
 ```
 
 - New QML files must be added to `qt/resources.qrc` **and** the directory's
