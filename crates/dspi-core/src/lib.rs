@@ -439,7 +439,6 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore = "WP C0: needs state::default_state"]
     fn a_new_core_is_disconnected() {
         let core = DspiCore::new();
         assert!(matches!(core.lock().conn(), Err(DspiError::Disconnected)));
@@ -458,7 +457,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "WP C0: needs state::default_state"]
     fn a_panicking_listener_is_contained() {
         struct Boom;
         impl NotifyListener for Boom {
