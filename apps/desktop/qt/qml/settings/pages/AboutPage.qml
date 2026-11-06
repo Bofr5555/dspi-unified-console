@@ -30,7 +30,7 @@ SettingsPage {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 4
             Text { text: "DSPi Console"; font.pixelSize: 22; font.weight: Font.Bold; color: isMacOS ? MacColors.label : "white" }
-            Text { text: "Version " + Qt.application.version + " for Linux"; font.pixelSize: 13; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.6) }
+            Text { text: "Version " + Qt.application.version + " for " + (isMacOS ? "macOS" : isWindows ? "Windows" : "Linux"); font.pixelSize: 13; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.6) }
             Text { text: "by Weeb Labs"; font.pixelSize: 13; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.45) }
         }
     }

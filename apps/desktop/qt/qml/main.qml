@@ -212,7 +212,19 @@ ApplicationWindow {
         rtaPageSource = rtaChannelPagesShowSpectrum ? own : own.slice(0, own.indexOf(":") + 1)
         rtaPageOtherSide = ""
     }
-    Component.onCompleted: { rtaRefreshAvailable(); startOnboarding(); Qt.callLater(offerUdevRule) }
+    Component.onCompleted: { fitToScreen(); rtaRefreshAvailable(); startOnboarding(); Qt.callLater(offerUdevRule) }
+
+    // Windows places a frameless window at the screen's corner at its full
+    // size, under the taskbar on a small screen: keep it inside the work
+    // area and centre it (Linux window managers place it themselves)
+    function fitToScreen() {
+        if (!isWindows) return
+        const area = Qt.rect(Screen.virtualX, Screen.virtualY, Screen.desktopAvailableWidth, Screen.desktopAvailableHeight)
+        width = Math.min(width, area.width)
+        height = Math.min(height, area.height)
+        x = area.x + Math.max(0, (area.width - width) / 2)
+        y = area.y + Math.max(0, (area.height - height) / 2)
+    }
 
     // Selection state: "overview", "channel:N", "output:N"
     property string selection: "overview"
