@@ -8,6 +8,15 @@ import QtQuick.Window 2.15
 // Wayland the compositor ends the popup; elsewhere a catcher in the parent
 // window takes the click). Declare it inside an Item of the parent window,
 // so it becomes that window's transient child; put the content in it.
+//
+// While it is open the anchor keeps its hand cursor and a press on it closes
+// the popover, wherever the pointer is on the anchor. Two things stand between
+// the anchor and the pointer: this window's shadow margin overlaps the anchor's
+// lower part, and on platforms other than Wayland the catcher covers the whole
+// parent window. Each has its own area over the anchor for that (anchorInPopup,
+// anchorInParent). They have no hover: the window sets the cursor from the item
+// under the pointer whenever the pointer enters or moves, so neither needs a
+// wiggle after the window appears. The anchors are all hand-cursor buttons.
 Window {
     id: pw
     default property alias content: card.data
@@ -16,6 +25,9 @@ Window {
     property int radius: 12
     readonly property int shadow: 14          // room around the card for its shadow
     property real closedAt: 0
+    // Where the anchor was at the last open: on the screen, and in the parent window
+    property rect anchorOnScreen: Qt.rect(0, 0, 0, 0)
+    property rect anchorInScene: Qt.rect(0, 0, 0, 0)
     signal aboutToOpen()
 
     flags: Qt.Popup | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint
@@ -27,6 +39,10 @@ Window {
     // Opens centred under the anchor, kept on its screen where we can tell
     function openBelow(anchor) {
         aboutToOpen()
+        var tl = anchor.mapToGlobal(0, 0)
+        anchorOnScreen = Qt.rect(tl.x, tl.y, anchor.width, anchor.height)
+        var sc = anchor.mapToItem(null, 0, 0)
+        anchorInScene = Qt.rect(sc.x, sc.y, anchor.width, anchor.height)
         var g = anchor.mapToGlobal(anchor.width / 2, anchor.height)
         var px = g.x - width / 2, py = g.y + 4 - shadow
         if (Qt.platform.pluginName !== "wayland") {
@@ -93,6 +109,17 @@ Window {
         enabled: pw.visible && Qt.platform.pluginName !== "wayland"
         visible: enabled
         onPressed: pw.close()
+
+        // A MouseArea on top shows its own cursor, so the anchor needs one here
+        MouseArea {
+            objectName: "anchorInParent"
+            x: pw.anchorInScene.x
+            y: pw.anchorInScene.y
+            width: pw.anchorInScene.width
+            height: pw.anchorInScene.height
+            cursorShape: Qt.PointingHandCursor
+            onPressed: pw.close()
+        }
     }
 
     Item {
@@ -123,5 +150,18 @@ Window {
             border.color: MenuStyle.border
             transformOrigin: Item.Top
         }
+    }
+
+    // The part of the anchor under this window, clipped to it: a pointer on the
+    // rest of the anchor is in the parent window. Live with x and y, since the
+    // compositor can place a Wayland popup other than where it was asked to.
+    MouseArea {
+        objectName: "anchorInPopup"
+        x: Math.max(0, pw.anchorOnScreen.x - pw.x)
+        y: Math.max(0, pw.anchorOnScreen.y - pw.y)
+        width: Math.max(0, Math.min(pw.width, pw.anchorOnScreen.x + pw.anchorOnScreen.width - pw.x) - x)
+        height: Math.max(0, Math.min(pw.height, pw.anchorOnScreen.y + pw.anchorOnScreen.height - pw.y) - y)
+        cursorShape: Qt.PointingHandCursor
+        onPressed: pw.close()
     }
 }
