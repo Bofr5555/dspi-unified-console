@@ -15,6 +15,9 @@ serde = { workspace = true, optional = true }
 default = ["serde"]
 serde = ["dep:serde"]
 
+[dev-dependencies]
+serde_json.workspace = true
+
 [build-dependencies]
 # The generator parses the vendored firmware headers. Deliberately dependency
 # free: it is a small, purpose-built scanner, not a general C parser, so it has

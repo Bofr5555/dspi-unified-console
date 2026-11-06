@@ -18,6 +18,7 @@ pub mod channel;
 pub mod dsp;
 pub mod enums;
 pub mod ext;
+pub mod frame;
 pub mod packets;
 pub mod registry;
 pub mod value;
