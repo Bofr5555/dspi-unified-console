@@ -143,7 +143,7 @@ fn parse_version(s: &str) -> Option<(u8, u8, u8, u8)> {
 
 /// Whether the firmware the mirror describes is `version` (see
 /// [`DspiCore::firmware_version_matches`]).
-fn version_matches(s: &DspState, version: &str) -> bool {
+pub(crate) fn version_matches(s: &DspState, version: &str) -> bool {
     let Some((major, minor, patch, beta)) = parse_version(version) else {
         return false;
     };
@@ -245,7 +245,10 @@ impl DspiCore {
         let conn = inner.conn.as_mut().ok_or(DspiError::Disconnected)?;
         f(conn, &mut inner.state)
     }
+}
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
     // ── Physical outputs ──────────────────────────────────────────────
 
     /// Move physical output `slot` (0..`num_pin_outputs`) to GPIO `pin`;
@@ -864,21 +867,6 @@ impl DspiCore {
             log::debug!("enter_bootloader: {e} (expected while the device reboots)");
         }
         Ok(())
-    }
-
-    /// Whether the open device runs firmware `version`: the leading
-    /// `major.minor.patch[-betaN]` of a UF2's `Uf2Info::firmware_version`
-    /// (`1.1.6-beta3-16-g557bce7` compares as 1.1.6 beta 3), against the
-    /// mirror's `fw_*` from `GET_PLATFORM`. The last step of a firmware
-    /// update, after the device re-enumerated and was opened again. False
-    /// for a string that does not start with a version; an early 1.1.6 beta
-    /// that does not report its number matches betas 1 and 2.
-    ///
-    /// Errors: [`DspiError::Disconnected`] with no device open.
-    pub fn firmware_version_matches(&self, version: &str) -> Result<bool> {
-        let mut guard = self.lock();
-        guard.conn()?;
-        Ok(version_matches(&guard.state, version))
     }
 
     /// 0 idle, 1 PDM, 2 EQ worker. Also stored in `DspState.core1_mode`.

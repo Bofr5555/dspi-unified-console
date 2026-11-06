@@ -1,0 +1,36 @@
+[package]
+name = "dspi-ffi"
+description = "The DSPi core for Kotlin and Swift: the UniFFI library the Android and iOS apps link"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+# cdylib: libdspi_ffi.so for Android and for bindgen's library mode.
+# staticlib: the iOS framework. lib: this crate's tests.
+name = "dspi_ffi"
+crate-type = ["cdylib", "staticlib", "lib"]
+
+[[bin]]
+# The UniFFI bindgen CLI, built from the workspace so its version always
+# matches the library's. `--features cli` keeps its dependencies out of the
+# mobile libraries.
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["cli"]
+
+[dependencies]
+dspi-core = { workspace = true, features = ["uniffi", "link"] }
+uniffi.workspace = true
+log.workspace = true
+
+[features]
+default = []
+cli = ["uniffi/cli"]
+
+[target.'cfg(target_os = "android")'.dependencies]
+# Logcat, the only log an Android app has. Same version as the Android app.
+android_logger = "0.15.1"

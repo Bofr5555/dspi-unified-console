@@ -612,6 +612,7 @@ fn settled(st: u8) -> Result<Value> {
 // The API
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// Read the whole control-surface configuration from the device:
     /// capabilities, bindings and names, IR commands, groups, macros, the
@@ -697,7 +698,9 @@ impl DspiCore {
         }
         out
     }
+}
 
+impl DspiCore {
     /// Run `f` with the CS state taken out of `Inner`, so `f` may hold the
     /// connection (`writable_conn` borrows all of `Inner`) and the state at
     /// once.

@@ -258,6 +258,7 @@ mod tests_wp_s1 {
         assert_eq!(w.opcode, op::REQ_SET_USER_VOLUME);
         assert_eq!(w.payload, (-18.0f32).to_le_bytes().to_vec());
         assert!(s.journal.is_empty(), "the fast path keeps no journal");
+        #[cfg(feature = "undo")]
         assert!(!s.can_undo(), "nor an undo step");
     }
 

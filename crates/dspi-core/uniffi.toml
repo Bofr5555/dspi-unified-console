@@ -1,0 +1,5 @@
+# The Kotlin binding of this crate's `uniffi` feature (crates/dspi-ffi). The
+# package is the one the Android app already imports.
+[bindings.kotlin]
+package_name = "se.bofr.dspi.ffi.uniffi"
+cdylib_name = "dspi_ffi"

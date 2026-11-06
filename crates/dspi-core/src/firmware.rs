@@ -29,8 +29,9 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
+use crate::hardware::version_matches;
 use crate::records::{BootloaderCounts, BootloaderDrive, Uf2Info};
-use crate::{DspiError, Result};
+use crate::{DspiCore, DspiError, Result};
 
 // ── UF2 format ─────────────────────────────────────────────────────────
 
@@ -580,14 +581,34 @@ fn inspect(bytes: &[u8]) -> Uf2Info {
 /// range it covers, and the DSPi version string inside it. Never panics; a
 /// refused image comes back with `valid == false` and the reason in
 /// `problem` (fit for "This is not a firmware file: <problem>").
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn uf2_inspect(image: Vec<u8>) -> Uf2Info {
     inspect(&image)
+}
+
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
+    /// Whether the open device runs firmware `version`: the leading
+    /// `major.minor.patch[-betaN]` of a UF2's `Uf2Info::firmware_version`
+    /// (`1.1.6-beta3-16-g557bce7` compares as 1.1.6 beta 3), against the
+    /// mirror's `fw_*` from `GET_PLATFORM`. The last step of a firmware
+    /// update, after the device re-enumerated and was opened again. False
+    /// for a string that does not start with a version; an early 1.1.6 beta
+    /// that does not report its number matches betas 1 and 2.
+    ///
+    /// Errors: [`DspiError::Disconnected`] with no device open.
+    pub fn firmware_version_matches(&self, version: &str) -> Result<bool> {
+        let mut guard = self.lock();
+        guard.conn()?;
+        Ok(version_matches(&guard.state, version))
+    }
 }
 
 // ── Bootloader on the bus ──────────────────────────────────────────────
 
 /// Boards in BOOTSEL mode on the bus (USB `2E8A:0003` RP2040, `2E8A:000F`
 /// RP2350). 0/0 where the bus cannot be enumerated (Android).
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn bootloader_counts() -> BootloaderCounts {
     #[cfg(target_os = "android")]
     {
@@ -790,6 +811,7 @@ fn candidate_roots() -> Vec<PathBuf> {
 /// RP2350 boot ROM): Linux `/proc/self/mountinfo` + `/run/media`, macOS
 /// `/Volumes`, Windows removable drives labelled `RPI-RP2` / `RP2350`.
 /// Empty on Android.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn bootloader_drives() -> Vec<BootloaderDrive> {
     let mut drives: Vec<BootloaderDrive> = Vec::new();
     for root in candidate_roots() {
@@ -879,6 +901,7 @@ fn check_space(free: Option<u64>, needed: usize, drive: &str) -> Result<()> {
 /// Errors: [`DspiError::InvalidArgument`] for an invalid image, a drive that
 /// is not a boot ROM's, or a family mismatch; [`DspiError::Io`] for a drive
 /// that has gone, is short of space, or fails the write.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn flash_to_drive(image: Vec<u8>, drive: BootloaderDrive) -> Result<()> {
     let info = inspect(&image);
     if !info.valid {

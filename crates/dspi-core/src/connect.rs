@@ -60,6 +60,7 @@ const DAC_MUTE_REPLY: usize = 8;
 /// `REQ_GET_STATUS` sub-query: the meter block.
 const STATUS_METERS: u16 = 9;
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// Identify the firmware and read every parameter into the mirror.
     ///

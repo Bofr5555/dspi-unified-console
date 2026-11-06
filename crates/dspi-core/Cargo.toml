@@ -10,7 +10,9 @@ repository.workspace = true
 [dependencies]
 dspi-proto.workspace = true
 dspi-transport.workspace = true
-dspi-session.workspace = true
+# Without the Terminal's parts: the mobile libraries (WP F1) carry neither the
+# command grammar nor the bundled AutoEQ database.
+dspi-session = { path = "../dspi-session", default-features = false }
 dspi-link = { workspace = true, optional = true }
 thiserror.workspace = true
 log.workspace = true
@@ -36,6 +38,8 @@ nusb = "0.2"
 # -- WP C14 --
 # -- WP C15 --
 # -- WP F1 --
+# The Kotlin and Swift binding's derives and exports (feature `uniffi`).
+uniffi = { workspace = true, optional = true }
 
 [features]
 default = []
@@ -43,6 +47,8 @@ default = []
 link = ["dep:dspi-link", "dspi-transport/link"]
 # Desktop MIDI ports through midir (WP T3).
 midir = ["dspi-transport/midir"]
+# UniFFI derives and exports, for crates/dspi-ffi (WP F1).
+uniffi = ["dep:uniffi"]
 
 [dev-dependencies]
 proptest = "1"

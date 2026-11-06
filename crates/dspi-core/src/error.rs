@@ -6,6 +6,8 @@
 use dspi_session::WriteError;
 use dspi_transport::TransportError;
 
+/// Why a [`crate::DspiCore`] call failed.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Error))]
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum DspiError {
     /// No device is open, or it went away.
@@ -13,14 +15,23 @@ pub enum DspiError {
     Disconnected,
     /// A transfer failed (timeout, stall, short read, flash blackout).
     #[error("transfer failed: {msg}")]
-    Transfer { msg: String },
+    Transfer {
+        /// What failed, for a log or an error line.
+        msg: String,
+    },
     /// The device answered but refused: the raw status byte (`PRESET_*`,
     /// `PIN_CONFIG_*`, `FLASH_*`, or a command-specific code).
     #[error("device refused the request (status {status})")]
-    Refused { status: u8 },
+    Refused {
+        /// The status byte, never 0.
+        status: u8,
+    },
     /// Bad argument (index out of range, malformed JSON op, ...).
     #[error("invalid argument: {msg}")]
-    InvalidArgument { msg: String },
+    InvalidArgument {
+        /// Which argument, and why.
+        msg: String,
+    },
     /// The firmware or transport does not have this feature.
     #[error("not supported by the connected firmware")]
     Unsupported,
@@ -38,10 +49,18 @@ pub enum DspiError {
     /// `hub_busy`, `handshake_refused`, `io`, `handshake`, `protocol`,
     /// `timeout`, `closed`, or another spec 7.1 error code. `msg` can be shown.
     #[error("DSPi Link: {msg}")]
-    Link { code: String, msg: String },
+    Link {
+        /// The error code, as above.
+        code: String,
+        /// The hub's or the client's words, for the user.
+        msg: String,
+    },
     /// A file could not be read or written (presets, firmware images).
     #[error("{msg}")]
-    Io { msg: String },
+    Io {
+        /// What failed, with the operating system's reason.
+        msg: String,
+    },
     // Work-package sections: add variants only inside your own section.
     // -- WP C0 --
     // -- WP C1 --
@@ -63,7 +82,17 @@ pub enum DspiError {
     // -- WP F1 --
 }
 
+/// The result of a [`crate::DspiCore`] call.
 pub type Result<T> = std::result::Result<T, DspiError>;
+
+// A foreign callback (`MidiSender`) that throws something other than a
+// `DspiError`, or whose call could not complete.
+#[cfg(feature = "uniffi")]
+impl From<uniffi::UnexpectedUniFFICallbackError> for DspiError {
+    fn from(e: uniffi::UnexpectedUniFFICallbackError) -> Self {
+        DspiError::Transfer { msg: e.reason }
+    }
+}
 
 impl From<TransportError> for DspiError {
     fn from(e: TransportError) -> Self {

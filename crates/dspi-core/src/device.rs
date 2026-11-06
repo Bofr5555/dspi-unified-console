@@ -23,9 +23,10 @@ use dspi_proto::frame::DEFAULT_MFR_ID;
 use dspi_proto::generated::opcodes as op;
 use dspi_proto::generated::wire::WIRE_FORMAT_VERSION;
 use dspi_proto::packets::PlatformInfo;
-use dspi_transport::midi::{MidiInput, MidiPipe, MidiTransport};
+use dspi_transport::midi::{MidiInput, MidiPipe, MidiTransport, PipeError};
 use dspi_transport::{FakeDevice, Transport, TransportError};
 
+use crate::callbacks::MidiSender;
 use crate::consts::{COMPAT_FIRMWARE_TOO_NEW, COMPAT_FIRMWARE_TOO_OLD};
 use crate::records::{DeviceInfo, DspState};
 use crate::{Connection, DspiCore, DspiError, Result, rta, state};
@@ -45,6 +46,18 @@ pub(crate) const PREAMP_MAX_DB_RP2040: f32 = 18.0;
 /// Highest preamp (dB) an RP2350 applies.
 pub(crate) const PREAMP_MAX_DB_RP2350: f32 = 24.0;
 
+/// A [`MidiPipe`] over the app's [`MidiSender`].
+struct SenderPipe(Arc<dyn MidiSender>);
+
+impl MidiPipe for SenderPipe {
+    fn send(&self, sysex: &[u8]) -> std::result::Result<(), PipeError> {
+        self.0.send_sysex(sysex.to_vec()).map_err(|e| match e {
+            DspiError::Disconnected => PipeError::Closed,
+            other => PipeError::Failed(other.to_string()),
+        })
+    }
+}
+
 /// A MIDI port to a DSPi: the app's sending pipe and the receiving side its
 /// MIDI callback feeds. Create one per port, for the port's life.
 ///
@@ -57,6 +70,7 @@ pub(crate) const PREAMP_MAX_DB_RP2350: f32 = 24.0;
 /// deliver the device's replies while `open_midi` is still probing.
 /// Dropping the handle does not close the device ([`DspiCore::disconnect`]
 /// does).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub struct MidiInputHandle {
     pipe: Arc<dyn MidiPipe>,
     serial: String,
@@ -75,6 +89,16 @@ impl MidiInputHandle {
             current: Mutex::new(None),
         })
     }
+}
+
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl MidiInputHandle {
+    /// A MIDI port that sends through `sender`, the binding's form of
+    /// [`MidiInputHandle::new`]. No I/O.
+    #[cfg_attr(feature = "uniffi", uniffi::constructor)]
+    pub fn with_sender(sender: Arc<dyn MidiSender>, serial: String) -> Arc<Self> {
+        Self::new(Arc::new(SenderPipe(sender)), serial)
+    }
 
     /// Feed received MIDI bytes (raw MIDI 1.0 stream, SysEx included), in
     /// any split, from any thread, to the newest connection. Foreign data,
@@ -91,13 +115,18 @@ impl MidiInputHandle {
     /// the current connection's request in flight fails at once and later
     /// ones fail with [`DspiError::Disconnected`]. Idempotent. A later
     /// `open_midi` starts afresh.
-    pub fn close(&self) {
+    ///
+    /// Not called `close`: UniFFI's Kotlin objects already have a `close()`,
+    /// which frees the object.
+    pub fn close_port(&self) {
         let input = self.lock().clone();
         if let Some(input) = input {
             input.close()
         }
     }
+}
 
+impl MidiInputHandle {
     fn lock(&self) -> std::sync::MutexGuard<'_, Option<MidiInput>> {
         self.current.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -261,7 +290,10 @@ impl DspiCore {
             self.listeners.notify.call(|l| l.on_notifications());
         }
     }
+}
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
     /// Adopt a USB device the platform already opened: Android's
     /// `UsbDeviceConnection.getFileDescriptor()`. The core `dup(2)`s the fd
     /// and owns the duplicate, so the app keeps (and later closes) its own;
@@ -394,7 +426,9 @@ impl DspiCore {
     pub fn is_connected(&self) -> bool {
         self.lock().conn.is_some()
     }
+}
 
+impl DspiCore {
     /// Open a device over a transport the embedder built (a Link device, a
     /// test double, a MIDI transport from `dspi_transport::midi::midir_port`)
     /// and run the connect sequence. Replaces any open device. `vid` is 0 for
@@ -407,7 +441,10 @@ impl DspiCore {
     ) -> Result<()> {
         self.attach_probed(transport, serial, vid)
     }
+}
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
     /// Open the built-in demo device (`dspi_transport::FakeDevice::demo`):
     /// a simulated RP2350 that answers reads and writes and notifies.
     /// Replaces any open device.
@@ -428,7 +465,9 @@ impl DspiCore {
         let serial = input.serial.clone();
         self.attach_probed(Box::new(transport), serial, 0)
     }
+}
 
+impl DspiCore {
     /// The DSPis on USB, by enumeration only: nothing is opened or claimed,
     /// so a device another program holds is listed like any other and
     /// `inaccessible_devices` is not updated. For C1b's hotplug diffs, which
@@ -968,7 +1007,7 @@ mod tests_wp_c1 {
         fn send(&self, sysex: &[u8]) -> std::result::Result<(), PipeError> {
             let input = self.input.lock().unwrap().clone().unwrap();
             if self.close_instead.load(Ordering::SeqCst) {
-                input.close();
+                input.close_port();
                 return Ok(());
             }
             let messages = self.decoder.lock().unwrap().feed(sysex);
@@ -1163,5 +1202,42 @@ mod tests_wp_c1 {
         );
         assert_eq!(s.platform_id, 1);
         assert_eq!(s.platform_id, want.platform_id);
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_f1 {
+    use super::*;
+
+    struct Sender(std::result::Result<(), DspiError>, Mutex<Vec<Vec<u8>>>);
+
+    impl MidiSender for Sender {
+        fn send_sysex(&self, sysex: Vec<u8>) -> Result<()> {
+            self.1.lock().unwrap().push(sysex);
+            self.0.clone()
+        }
+    }
+
+    #[test]
+    fn wp_f1_a_foreign_sender_is_a_pipe() {
+        let ok = Arc::new(Sender(Ok(()), Mutex::new(Vec::new())));
+        let pipe = SenderPipe(ok.clone());
+        assert_eq!(pipe.send(&[0xF0, 0xF7]), Ok(()));
+        assert_eq!(*ok.1.lock().unwrap(), vec![vec![0xF0, 0xF7]]);
+    }
+
+    #[test]
+    fn wp_f1_a_foreign_sender_error_maps_to_the_pipe_error() {
+        let closed = SenderPipe(Arc::new(Sender(
+            Err(DspiError::Disconnected),
+            Mutex::new(Vec::new()),
+        )));
+        assert_eq!(closed.send(&[]), Err(PipeError::Closed));
+        let failed = SenderPipe(Arc::new(Sender(
+            Err(DspiError::Io { msg: "busy".into() }),
+            Mutex::new(Vec::new()),
+        )));
+        assert_eq!(failed.send(&[]), Err(PipeError::Failed("busy".into())));
     }
 }

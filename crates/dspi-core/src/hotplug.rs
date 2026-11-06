@@ -101,6 +101,7 @@ struct Plan {
     reopen: Option<String>,
 }
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// Register (`Some`) or clear (`None`) the arrival/departure listener.
     /// Clearing waits for a call in progress on another thread. The
@@ -118,9 +119,11 @@ impl DspiCore {
     /// departs or its notification stream ends. Desktop apps call it about
     /// every 500 ms; it enumerates without opening anything.
     ///
-    /// A reconnect runs the connect sequence on the polling thread: an
-    /// embedder polling from its UI thread sees a stall of a few hundred
-    /// milliseconds on a replug.
+    /// **Poll off the UI thread.** A reconnect runs inside this call: the
+    /// whole connect sequence (the probe, the bulk read, the notification
+    /// reader's start) blocks the polling thread for that poll, a few hundred
+    /// milliseconds on a replug, and longer if the device answers slowly.
+    /// The listener calls and the reconnect both happen on this thread.
     ///
     /// Call [`DspiCore::scan_devices`] before the first poll: the first poll
     /// diffs against that scan, so without one every unit present is
@@ -136,7 +139,9 @@ impl DspiCore {
             |serial| self.select_device(serial.to_owned()),
         );
     }
+}
 
+impl DspiCore {
     /// [`DspiCore::poll_hotplug`] with the enumeration and the reopen
     /// supplied (tests use a fake bus).
     pub(crate) fn poll_with(

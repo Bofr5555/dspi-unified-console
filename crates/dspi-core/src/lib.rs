@@ -1,8 +1,8 @@
 //! The DSPi embedder API: one object a GUI or a language binding drives.
 //!
 //! [`DspiCore`] is what the Qt desktop app reaches through the C ABI
-//! (`dspi-capi`), and what the Android and iOS apps will reach through UniFFI
-//! (WP F1). Its methods are the old desktop core's C functions, one for one,
+//! (`dspi-capi`), and what the Android and iOS apps reach through UniFFI (the
+//! `uniffi` feature, for `crates/dspi-ffi`). Its methods are the old desktop core's C functions, one for one,
 //! with typed errors ([`DspiError`]) and plain records ([`records`]); a few
 //! are added for features the old core lacked (extension channel, names,
 //! diagnostics, firmware files, more transports).
@@ -41,8 +41,8 @@
 // The core-merge quality bar (docs/core-merge/PLAN.md §1.7, §1.8): no
 // panicking shortcuts on outside data. clippy.toml exempts test code from the
 // first three; test modules allow arithmetic_side_effects themselves.
-// missing_docs is turned on by WP F1, which documents every record.
 #![warn(
+    missing_docs,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::indexing_slicing,
@@ -51,9 +51,6 @@
 // Skeleton phase: the shared plumbing below is used only once the work
 // packages fill the methods in. WP Q3 removes this allow.
 #![allow(dead_code)]
-// WP C15 already carries WP F1's `uniffi` attributes; the feature itself comes
-// with F1, whose merge removes this allow.
-#![allow(unexpected_cfgs)]
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, Weak};
@@ -62,6 +59,11 @@ use dspi_proto::wire_compat::WireRead;
 use dspi_session::Session;
 use dspi_session::ext_state::ExtState;
 use dspi_transport::{Transport, TransportCaps};
+
+// The Kotlin and Swift binding (WP F1): the namespace `dspi_core`, whose
+// symbols the library `crates/dspi-ffi` re-exports.
+#[cfg(feature = "uniffi")]
+uniffi::setup_scaffolding!();
 
 pub mod callbacks;
 pub mod consts;
@@ -89,7 +91,7 @@ mod presets;
 mod rta;
 mod stats;
 
-pub use callbacks::{DeviceEvents, LinkListener, NotifyListener, RtaListener};
+pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
 pub use device::MidiInputHandle;
 pub use error::{DspiError, Result};
@@ -116,6 +118,10 @@ pub use records::*;
 // -- WP F1 --
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
+///
+/// Every call that touches the device blocks its thread for the transfers it
+/// makes, so a binding calls these off its UI thread.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub struct DspiCore {
     pub(crate) inner: Mutex<Inner>,
     /// Shared with the reader and worker threads, which wake the app.
@@ -326,6 +332,20 @@ impl Connection {
     }
 }
 
+/// [`DspiError::Unsupported`] unless the connect probe found `feature`.
+pub(crate) fn require_feature(session: &Session, feature: &str) -> Result<()> {
+    let present = session
+        .capabilities()
+        .features
+        .iter()
+        .any(|f| f.name == feature && f.present);
+    if present {
+        Ok(())
+    } else {
+        Err(DspiError::Unsupported)
+    }
+}
+
 /// A connection whose state may be written: the only way to send a change.
 ///
 /// Returned by [`Inner::writable_conn`], which refuses a read-only
@@ -400,9 +420,10 @@ impl Inner {
     }
 }
 
-/// A listener slot: set, cleared and called from any thread. A call runs
-/// with the slot's read lock held, so clearing waits for a call in flight;
-/// a listener must not set listeners from inside its own callback.
+/// A listener slot: set, replaced, cleared and called from any thread. A call
+/// runs with the slot's read lock held, so clearing or replacing a listener
+/// (`None` or `Some` alike) waits for a call in flight. For the same reason a
+/// listener must not call a `set_*_listener` from inside its own callback.
 pub(crate) struct Slot<T: ?Sized>(RwLock<Option<Arc<T>>>);
 
 impl<T: ?Sized> Default for Slot<T> {
@@ -416,13 +437,29 @@ impl<T: ?Sized> Slot<T> {
         *self.0.write().unwrap_or_else(|p| p.into_inner()) = listener;
     }
 
-    /// Call the listener if one is set. A panicking listener is contained.
+    /// Call the listener if one is set. A panicking listener is contained
+    /// and logged, naming the listener's interface.
     pub(crate) fn call(&self, f: impl FnOnce(&T)) {
         let guard = self.0.read().unwrap_or_else(|p| p.into_inner());
-        if let Some(l) = guard.as_deref() {
-            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(l)));
+        if let Some(l) = guard.as_deref()
+            && let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(l)))
+        {
+            log::error!(
+                "listener {} panicked: {}",
+                std::any::type_name::<T>(),
+                panic_text(panic.as_ref())
+            );
         }
     }
+}
+
+/// The message of a caught panic, when it has one.
+fn panic_text(panic: &(dyn std::any::Any + Send)) -> &str {
+    panic
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("no message")
 }
 
 #[derive(Default)]
@@ -433,7 +470,10 @@ pub(crate) struct Listeners {
     pub(crate) link: Slot<dyn LinkListener>,
 }
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
+    /// A core with no device open. No I/O.
+    #[cfg_attr(feature = "uniffi", uniffi::constructor)]
     pub fn new() -> Arc<Self> {
         Arc::new_cyclic(|me| Self {
             inner: Mutex::new(Inner::new()),
@@ -443,7 +483,9 @@ impl DspiCore {
             link_control: Mutex::new(None),
         })
     }
+}
 
+impl DspiCore {
     /// Make `transport` the open device, replacing any other, without
     /// probing or reading it: the bare minimum the work packages' tests use
     /// with a `FakeDevice`. WP C1's `open_transport` builds on it (probe,
@@ -632,6 +674,44 @@ mod tests {
         let mut inner = core.lock();
         assert!(inner.conn().is_ok());
         assert_eq!(inner.state.bulk_raw.len(), 6136);
+    }
+
+    #[test]
+    fn wp_f1_a_panics_text_is_read() {
+        let text = std::panic::catch_unwind(|| panic!("static")).unwrap_err();
+        assert_eq!(panic_text(text.as_ref()), "static");
+        let text = std::panic::catch_unwind(|| panic!("{}", 7)).unwrap_err();
+        assert_eq!(panic_text(text.as_ref()), "7");
+        let text = std::panic::catch_unwind(|| std::panic::panic_any(7)).unwrap_err();
+        assert_eq!(panic_text(text.as_ref()), "no message");
+    }
+
+    #[test]
+    fn wp_f1_replacing_a_listener_waits_for_a_call_in_flight() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct Slow(std::sync::mpsc::Sender<()>, Arc<AtomicBool>);
+        impl NotifyListener for Slow {
+            fn on_notifications(&self) {
+                self.0.send(()).unwrap();
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                self.1.store(true, Ordering::SeqCst);
+            }
+        }
+        struct Idle;
+        impl NotifyListener for Idle {
+            fn on_notifications(&self) {}
+        }
+        let slot: Arc<Slot<dyn NotifyListener>> = Arc::new(Slot::default());
+        let (tx, rx) = std::sync::mpsc::channel();
+        let done = Arc::new(AtomicBool::new(false));
+        slot.set(Some(Arc::new(Slow(tx, Arc::clone(&done)))));
+        let caller = Arc::clone(&slot);
+        let call = std::thread::spawn(move || caller.call(|l| l.on_notifications()));
+        rx.recv().unwrap();
+        slot.set(Some(Arc::new(Idle)));
+        assert!(done.load(Ordering::SeqCst), "set returned during the call");
+        call.join().unwrap();
     }
 
     #[test]
