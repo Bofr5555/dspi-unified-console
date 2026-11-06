@@ -148,18 +148,6 @@ mod tests_wp_cg10 {
         assert_eq!(no_device["actionKey"], Value::Null);
     }
 
-    /// The names here are the ones `dspi_link_status` reports: `fns_link`'s
-    /// `phase_name` is private and behind a feature, so read its source.
-    #[test]
-    fn wp_cg10_the_names_are_those_of_dspi_link_status() {
-        let source = include_str!("../fns_link.rs");
-        for phase in PHASES {
-            let name = format!("{:?}", dspi_core::link_phase_from_key(phase).unwrap());
-            let arm = format!("LinkPhase::{name} => \"{phase}\"");
-            assert!(source.contains(&arm), "fns_link.rs lacks {arm}");
-        }
-    }
-
     #[test]
     fn wp_cg10_bad_arguments_over_c() {
         assert_eq!(

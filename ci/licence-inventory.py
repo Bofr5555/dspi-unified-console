@@ -105,6 +105,13 @@ CRATE_ORIGINS = {
 
 # Assets whose origin is outside the tree they sit in. Longest prefix wins.
 ASSET_ORIGINS = {
+    "assets/onboarding/": (
+        "Console fork `ext-channel-116` `48cf7c5`: `whatsnew.json` is `Onboarding/WhatsNew.json` as is; "
+        "`getting_started.json` holds the strings of `Onboarding/GettingStartedView.swift` and "
+        "`FirmwareInstallUI.swift`, some reworded and some added by WP CG10",
+        "`LICENSE` there is GPL-3.0, the README there says MIT, and no file has a header. Treat as uncertain",
+        "Weeb Labs + owner (bofr). Blame here shows only the commit that copied them",
+    ),
     "DSPi Console/AutoEQ/autoeq_database.json": (
         "AutoEq data",
         "MIT (AutoEq's `LICENSE`); the measurements' sources are uncertain, see the notes",
@@ -257,7 +264,7 @@ def collect_cargo() -> dict:
         elif current == "dep":
             match = re.match(r"^([^\s:]+):$", line)
             if match and not match.group(1).startswith("/"):
-                files[name].add(match.group(1))
+                files[name].add(os.path.normpath(match.group(1)))
         elif current == "build" and line.startswith("cargo:rerun-if-changed="):
             rel = line.split("=", 1)[1]
             if rel.endswith((".h", ".json", ".txt", ".bin")) and name in dirs:
@@ -815,6 +822,12 @@ def render(data: dict) -> str:
             pct = rust["overlap"].get(entry["path"])
             emit(f"| `{entry['path']}` | {holders_cell(entry['lines'])} | {'' if pct is None else f'{pct}%'} |")
     emit("\n</details>\n")
+    for crate in rust["first_party"]:
+        for entry in crate["files"]:
+            origin = asset_origin(entry["path"])
+            if origin:
+                emit(f"- `{entry['path']}`: origin {origin[0]}. Licence as read: {origin[1]}. Needs: {origin[2]}.")
+    emit("")
     if fw.get("headers"):
         header = fw["headers"]
         emit("### Firmware headers behind `dspi-proto`'s generated constants\n")
