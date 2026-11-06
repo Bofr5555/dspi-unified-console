@@ -161,20 +161,26 @@ pub(crate) fn read_bulk_from(
 /// update. The firmware apply accepts exactly its own version and length
 /// (bulk_params.h:481-485), so there is no partial compatibility to offer.
 pub fn refusal(firmware: Option<&FirmwareVersion>, wire: u8) -> String {
+    refusal_for("DSPi Terminal", firmware, wire)
+}
+
+/// [`refusal`] naming any application: `app` is how the sentence calls it
+/// ("DSPi Terminal", or "this application" where the product is not known,
+/// as in the core every app shares).
+pub fn refusal_for(app: &str, firmware: Option<&FirmwareVersion>, wire: u8) -> String {
     let expected = FirmwareVersion::expected();
     let ours = WIRE_FORMAT_VERSION;
     let device = firmware.map_or_else(|| "an unknown version".to_string(), |f| f.to_string());
     if (wire as u16) < ours {
         format!(
-            "This device runs firmware {device} (wire format V{wire}); DSPi Terminal expects \
+            "This device runs firmware {device} (wire format V{wire}); {app} expects \
              {expected} (wire format V{ours}). Update the device's firmware to v{expected} to \
-             use it with DSPi Terminal."
+             use it with {app}."
         )
     } else {
         format!(
             "This device runs firmware {device} (wire format V{wire}), which is newer than \
-             DSPi Terminal expects ({expected}, wire format V{ours}). Update DSPi Terminal to \
-             use it."
+             {app} expects ({expected}, wire format V{ours}). Update {app} to use it."
         )
     }
 }
@@ -195,10 +201,20 @@ pub fn refusal(firmware: Option<&FirmwareVersion>, wire: u8) -> String {
 pub fn probe_any(
     t: &mut dyn Transport,
 ) -> Result<(Capabilities, dspi_proto::wire_compat::WireRead)> {
+    let (caps, image) = probe_any_with_image(t)?;
+    Ok((caps, image.read))
+}
+
+/// [`probe_any`], also handing back the image it read (mapped onto V32), so a
+/// connect does not read the bulk image a second time (about 6 KB: two
+/// seconds over MIDI). The read mode is `image.read`.
+pub fn probe_any_with_image(
+    t: &mut dyn Transport,
+) -> Result<(Capabilities, dspi_proto::wire_compat::Normalized)> {
     let (info, serial) = identify(t)?;
     let image = crate::compat::read_any(t, Some(&info.version))?;
     let caps = describe(t, info, serial, &image.packet, image.device_version)?;
-    Ok((caps, image.read))
+    Ok((caps, image))
 }
 
 /// Ask the device what it is and what it can do.
@@ -1010,6 +1026,21 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         assert_eq!(names(&caps), names(&strict));
+    }
+
+    /// The image comes back with the description, so a connect reads it once.
+    #[test]
+    fn wp_s2_probe_any_with_image_reads_the_image_once() {
+        let mut t = old_device(vec![1, 1, 0x16, 9], 28, 5944);
+        let (caps, image) = probe_any_with_image(&mut t).unwrap();
+        assert_eq!(image.read, WireRead::Older);
+        assert_eq!(image.device_version, caps.wire_format);
+        let first_chunks = t
+            .log()
+            .iter()
+            .filter(|e| e.opcode == op::REQ_GET_ALL_PARAMS_CHUNK && e.value == 0)
+            .count();
+        assert_eq!(first_chunks, 1, "one snapshot");
     }
 
     /// What cannot be mapped is still refused, by name.

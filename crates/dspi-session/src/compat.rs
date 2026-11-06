@@ -81,12 +81,16 @@ pub(crate) fn read_bytes(
 ) -> Result<Vec<u8>, TransportError> {
     if !t.caps().chunked_bulk {
         // The firmware answers min(wLength, image) (vendor_commands.c,
-        // REQ_GET_ALL_PARAMS), so ask for as much as the link carries.
+        // REQ_GET_ALL_PARAMS), so ask for as much as the link carries: the
+        // request's wLength (a u16) is the cap on the reply, not the
+        // transport's `max_transfer`, which only bounds it further.
+        //
+        // No `with_busy_retry`: a link without chunked bulk (MIDI, DSPi Link)
+        // retries BUSY itself and times out after seconds, so retrying here
+        // would multiply a dead device's timeout and repeat an explicit
+        // ERROR (Stalled).
         let max = u16::try_from(t.max_transfer()).unwrap_or(u16::MAX);
-        let reply = with_busy_retry(
-            || t.control_in_upto(op::REQ_GET_ALL_PARAMS, 0, max),
-            op::REQ_GET_ALL_PARAMS,
-        )?;
+        let reply = t.control_in_upto(op::REQ_GET_ALL_PARAMS, 0, max)?;
         return single_shot_image(reply);
     }
 
@@ -103,6 +107,12 @@ pub(crate) fn read_bytes(
     Ok(image.into_image())
 }
 
+/// The refusal for a format that cannot be read, in product-neutral words:
+/// this core serves the Terminal, the Qt console and the mobile apps alike.
+fn refusal(firmware: Option<&FirmwareVersion>, wire: u8) -> String {
+    crate::probe::refusal_for("this application", firmware, wire)
+}
+
 /// The opcode a bulk read on `t` uses, for naming it in an error.
 fn bulk_opcode(t: &dyn Transport) -> u8 {
     if t.caps().chunked_bulk {
@@ -116,7 +126,7 @@ fn bulk_opcode(t: &dyn Transport) -> u8 {
 fn wire_error(e: WireError, opcode: u8, firmware: Option<&FirmwareVersion>) -> TransportError {
     match e {
         WireError::UnsupportedVersion { got, .. } => {
-            TransportError::Incompatible(crate::probe::refusal(firmware, got))
+            TransportError::Incompatible(refusal(firmware, got))
         }
         WireError::WrongSize { got, expected } => TransportError::ShortRead {
             opcode,
@@ -147,9 +157,7 @@ impl ChunkError {
                 wanted: total,
                 got: offset,
             },
-            ChunkError::TooOld(v) => {
-                TransportError::Incompatible(crate::probe::refusal(firmware, v))
-            }
+            ChunkError::TooOld(v) => TransportError::Incompatible(refusal(firmware, v)),
         }
     }
 }
@@ -162,6 +170,13 @@ impl ChunkError {
 /// ([`wire_compat::image_length`], which never trusts it for V32 nor below the
 /// header, and which a `u16` bounds), and anything already read past it is
 /// dropped.
+///
+/// A read that ends before the device's own length leaves the firmware's
+/// chunk snapshot open: a V33+ header that announces less than was already
+/// read (cut here, or treated as V32's 6136 when implausible), a
+/// [`ChunkError::TooOld`] refusal, or any error. That is harmless: the next
+/// request of any kind aborts the open session (chunking spec; the firmware
+/// also reaps an abandoned one).
 #[derive(Debug, Clone)]
 pub(crate) struct ChunkedImage {
     buf: Vec<u8>,
@@ -386,6 +401,25 @@ mod tests_wp_s2 {
         assert_eq!(read_bulk_bytes(&mut t).unwrap().len(), BULK_SIZE);
     }
 
+    /// The link retries BUSY and times out itself; a stall from it is an
+    /// answer, asked once.
+    #[test]
+    fn wp_s2_a_single_shot_stall_is_not_retried() {
+        let mock = MockTransport::new().reply(op::REQ_GET_ALL_PARAMS, Reply::Stall);
+        let log = mock.log_handle();
+        let err = read_bulk_bytes(&mut Unchunked(mock)).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                crate::WriteError::Transport(TransportError::Stalled {
+                    opcode: op::REQ_GET_ALL_PARAMS
+                })
+            ),
+            "{err:?}"
+        );
+        assert_eq!(log.lock().unwrap().len(), 1);
+    }
+
     #[test]
     fn wp_s2_a_short_single_shot_reply_is_a_short_read() {
         let mut t = Unchunked(MockTransport::new().data(op::REQ_GET_ALL_PARAMS, image(32, 4000)));
@@ -435,7 +469,8 @@ mod tests_wp_s2 {
         assert!(
             matches!(
                 &err,
-                crate::WriteError::Transport(TransportError::Incompatible(m)) if m.contains("V15")
+                crate::WriteError::Transport(TransportError::Incompatible(m))
+                    if m.contains("V15") && m.contains("this application expects")
             ),
             "{err:?}"
         );
