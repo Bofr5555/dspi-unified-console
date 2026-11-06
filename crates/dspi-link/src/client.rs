@@ -14,6 +14,7 @@
 //!   own re-read path runs (macOS does the same for RESYNC only).
 
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
@@ -63,9 +64,14 @@ pub struct Timing {
     pub ping_interval: Duration,
     /// This much silence, control frames included, means the link is gone.
     pub silence_limit: Duration,
-    /// After a request times out, a ping goes out at once; nothing from the hub
-    /// for this long then means the link is gone. Much shorter than
-    /// `silence_limit`, because now someone is waiting.
+    /// After a request times out, a ping goes out at the next keepalive tick
+    /// (within [`Self::keepalive_tick`], 250 ms); nothing from the hub for this
+    /// long then means the link is gone. Much shorter than `silence_limit`,
+    /// because now someone is waiting.
+    ///
+    /// The trade-off: a Wi-Fi stall of 5 s or more right after an unanswered 10 s
+    /// request costs a reconnect that waiting might have saved. That is accepted:
+    /// the UI shows a reconnect banner, which beats freezing for 35 s.
     pub probe_timeout: Duration,
     /// How often the keepalive thread looks at the clock.
     pub keepalive_tick: Duration,
@@ -112,7 +118,7 @@ impl Default for SessionConfig {
 }
 
 /// What the embedder passes to [`LinkClient::connect`].
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ConnectOptions {
     /// Shown in the hub's client list (Android: `Build.MODEL` by default).
     pub client_name: String,
@@ -121,6 +127,18 @@ pub struct ConnectOptions {
     /// The token stored for the hub expected at this address, if any. It goes out
     /// whichever hub answers; [`SessionConfig::token_for`] is the safe way.
     pub token: Option<String>,
+}
+
+/// By hand, so a token never reaches a log.
+impl fmt::Debug for ConnectOptions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ConnectOptions")
+            .field("client_name", &self.client_name)
+            .field("app", &self.app)
+            .field("app_version", &self.app_version)
+            .field("token", &self.token.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
 }
 
 /// Where authentication stands after [`LinkClient::connect`].
@@ -693,6 +711,11 @@ impl LinkClient {
         };
         let (tx, rx) = mpsc::sync_channel(1);
         lock(&self.inner.pending_cmd).insert(tag, tx);
+        // As in request_id: see socket_failed's order
+        if self.is_closed() {
+            lock(&self.inner.pending_cmd).remove(&tag);
+            return CmdResponse { tag, status: status::NO_DEVICE, payload: Vec::new() };
+        }
         let frame = Frame::CmdRequest(CmdRequest {
             tag,
             handle,
@@ -799,11 +822,14 @@ impl LinkClient {
     }
 
     fn request_id(&self, id: u64, text: String, timeout: Duration) -> Result<Value, LinkError> {
-        if let Some((code, reason)) = self.closed_reason() {
-            return Err(LinkError::Closed { code, reason });
-        }
         let (tx, rx) = mpsc::sync_channel(1);
         lock(&self.inner.pending_json).insert(id, tx);
+        // After the insert: socket_failed sets `closed` before it drains, so either
+        // it sees this entry and answers it, or this sees `closed`
+        if let Some((code, reason)) = self.closed_reason() {
+            lock(&self.inner.pending_json).remove(&id);
+            return Err(LinkError::Closed { code, reason });
+        }
         if let Err(e) = self.inner.sender.send(WsMessage::Text(text)) {
             lock(&self.inner.pending_json).remove(&id);
             self.socket_failed(None, &close_reason(None));
@@ -941,7 +967,10 @@ impl LinkClient {
                 }
             }
             Inbound::Err(e) => {
-                if let Some(tx) = e.id.and_then(|id| lock(&self.inner.pending_json).remove(&id)) {
+                let Some(id) = e.id else { return };
+                // Settled, also when pair() has already given up on it
+                lock(&self.inner.open_pairs).remove(&id);
+                if let Some(tx) = lock(&self.inner.pending_json).remove(&id) {
                     let _ = tx.send(Err(LinkError::Rejected { code: e.code, msg: e.msg.unwrap_or_default() }));
                 }
             }

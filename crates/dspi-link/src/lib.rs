@@ -39,20 +39,27 @@ pub const DEFAULT_PORT: u16 = 11915;
 /// Default WebSocket path (spec 4).
 pub const DEFAULT_PATH: &str = "/dspi/v1";
 
+/// `text` from a hub, safe to show in a terminal or a log: control characters
+/// (C0, DEL, C1, so ESC and newlines too) become U+FFFD. [`LinkError`]'s Display
+/// applies this; its fields keep the hub's bytes.
+pub fn sanitize_hub_text(text: &str) -> String {
+    text.chars().map(|c| if c.is_control() { char::REPLACEMENT_CHARACTER } else { c }).collect()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum LinkError {
-    #[error("network error: {0}")]
+    #[error("network error: {}", sanitize_hub_text(.0))]
     Io(String),
-    #[error("WebSocket handshake failed: {0}")]
+    #[error("WebSocket handshake failed: {}", sanitize_hub_text(.0))]
     Handshake(String),
-    #[error("protocol error: {0}")]
+    #[error("protocol error: {}", sanitize_hub_text(.0))]
     Protocol(String),
     #[error("the hub did not answer in time")]
     Timeout,
-    #[error("{reason}")]
+    #[error("{}", sanitize_hub_text(reason))]
     Closed { code: Option<u16>, reason: String },
     /// An `err` reply: `code` is the spec 7.1 vocabulary (`denied`, `locked`, ...).
-    #[error("hub refused: {code} {msg}")]
+    #[error("hub refused: {} {}", sanitize_hub_text(code), sanitize_hub_text(msg))]
     Rejected { code: String, msg: String },
     /// The PIN was refused (`unauthenticated` from both real hubs, `denied` from
     /// others, spec 6.2). `pin_source` says how to word it; a window PIN may also
@@ -71,7 +78,7 @@ pub enum LinkError {
     #[error("the hub is busy: all its sessions are in use")]
     HubBusy,
     /// Any other HTTP status at the WebSocket upgrade (400, 403, ...).
-    #[error("the hub refused the connection (HTTP {status}): {msg}")]
+    #[error("the hub refused the connection (HTTP {status}): {}", sanitize_hub_text(msg))]
     HandshakeRefused { status: u16, msg: String },
 }
 
