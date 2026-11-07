@@ -60,8 +60,13 @@ void SmokeDriver::start() {
     g_previous = qInstallMessageHandler(messageHandler);
     const bool hardware = !qEnvironmentVariableIsEmpty("DSPI_SMOKE_HW");
     const bool replug = qEnvironmentVariable("DSPI_SMOKE_HW") == QLatin1String("replug");
-    QTimer::singleShot(200, this, [this, hardware, replug]() {
-        if (replug) runReplug();
+    // -- WP QD12 --
+    const QString trayLaunch = qEnvironmentVariable("DSPI_SMOKE_TRAY");
+    QTimer::singleShot(200, this, [this, hardware, replug, trayLaunch]() {
+        if (!trayLaunch.isEmpty()) runTrayLaunch(trayLaunch);
+        // -- WP QD7 --
+        else if (!qEnvironmentVariableIsEmpty("DSPI_SMOKE_DEMO_ENTRY")) runDemoEntry();
+        else if (replug) runReplug();
         else if (hardware) runHardware();
         else run();
     });
@@ -79,6 +84,8 @@ void SmokeDriver::run() {
     testSiggenAndStats();
     testFiles();
     testImportAppliesOnce();
+    // -- WP QD7 --
+    testDemoLabel();
     testSeam();
     testAutoEq();
     testWindows();
@@ -88,24 +95,50 @@ void SmokeDriver::run() {
     testBypassRepaint();
     testSweep();
     testReconnect();
+    // -- WP QD33 --
+    testAbout();
     // -- WP QD4 --
     testNames();
+    // -- WP QD32 --
+    testOnboarding();
     // -- WP QD5 --
     testOutputLatency();
     testClockDiagAndCpuBars();
+    // -- WP QD29 --
+    testRingHealth();
+    // -- WP QD31 --
+    testSaveBarSetters();
     // -- WP QD1 --
     testCsRefusals();
     // -- WP CG16 --
     testCsPages();
     // -- WP QD2 --
     testPairMap();
+    // -- WP QD3 --
+    testCoreVoltage();
     // -- WP QD6 --
     testReadOnly();
     // -- WP QD8 --
     testLink();
+    // -- WP QD27 --
+    testAutoEqUpdate();
+    testAutoEqHttp();
+    // -- WP QD18 --
+    testHostAudio();
     // -- WP QD11 --
     testFirmware();
     testIdleAndCost();
+    // -- WP QD12 -- Last: an accepted close takes the window's surface away
+    testTray();
+    m_failures += g_qmlErrors;
+    printf("smoke: %d checks, %d failures (%d QML errors)\n", m_checks, m_failures, g_qmlErrors);
+    fflush(stdout);
+    QCoreApplication::exit(m_failures ? 1 : 0);
+}
+
+// -- WP QD7 -- A run of its own, on an app started without --demo (run.sh)
+void SmokeDriver::runDemoEntry() {
+    testDemoEntry();
     m_failures += g_qmlErrors;
     printf("smoke: %d checks, %d failures (%d QML errors)\n", m_checks, m_failures, g_qmlErrors);
     fflush(stdout);
@@ -427,7 +460,6 @@ void SmokeDriver::testSiggenAndStats() {
     fw->beginWatching();
     spin(300);
     fw->stopWatching();
-    check("release notes", !fw->releaseNotes().isEmpty());
 }
 
 void SmokeDriver::testFiles() {

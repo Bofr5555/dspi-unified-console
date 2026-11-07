@@ -14,6 +14,9 @@ Item {
     property color titleColor: isMacOS ? MacColors.label : "white"
     property real trailingWidth: trailing.childrenRect.width
     property bool clickable: false     // whole row acts as a button
+    // -- WP QD33 -- Title and detail hold text from elsewhere: shown as written, never
+    // read as markup, and a word too long for the row breaks instead of running out
+    property bool verbatim: false
     signal activated()
     default property alias control: trailing.data
 
@@ -71,7 +74,8 @@ Item {
         spacing: 2
         Text {
             width: parent.width
-            wrapMode: Text.WordWrap
+            wrapMode: row.verbatim ? Text.Wrap : Text.WordWrap
+            textFormat: row.verbatim ? Text.PlainText : Text.AutoText
             text: row.title
             font.pixelSize: 13
             color: row.titleColor
@@ -79,7 +83,8 @@ Item {
         Text {
             visible: row.detail !== ""
             width: parent.width
-            wrapMode: Text.WordWrap
+            wrapMode: row.verbatim ? Text.Wrap : Text.WordWrap
+            textFormat: row.verbatim ? Text.PlainText : Text.AutoText
             text: row.detail
             font.pixelSize: isMacOS ? 10 : 11
             font.letterSpacing: row.detailTracking

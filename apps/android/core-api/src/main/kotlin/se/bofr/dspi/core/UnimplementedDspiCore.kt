@@ -88,6 +88,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun saveOutputConfig(): Unit = throw NotImplementedError("save_output_config")
 
+    override fun demoOutputSaveStatus(status: Int): Unit = throw NotImplementedError("demo_output_save_status")
+
     override fun setOutputType(slot: Int, kind: Int): Unit = throw NotImplementedError("set_output_type")
 
     override fun setI2sBckPin(role: Int, pin: Int): Unit = throw NotImplementedError("set_i2s_bck_pin")

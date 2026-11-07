@@ -1605,6 +1605,14 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func demoLatencyTiming(mode: UInt8, reads: UInt8, blackout: UInt8) throws 
     
     /**
+     * On the demo device only, for clients' tests: how
+     * [`save_output_config`](Self::save_output_config) answers from now on. 0 goes
+     * through, 0xFF stalls, another byte is that status. `Unsupported`, with no
+     * traffic, on anything but a simulated device.
+     */
+    func demoOutputSaveStatus(status: UInt8) throws 
+    
+    /**
      * Have someone else rename something on the demo device, for clients'
      * tests and demo mode: `target` is an input source, or 0xFF for the device
      * itself. The rename arrives as a notification that is not this client's
@@ -4056,6 +4064,19 @@ open func demoLatencyTiming(mode: UInt8, reads: UInt8, blackout: UInt8)throws   
         FfiConverterUInt8.lower(mode),
         FfiConverterUInt8.lower(reads),
         FfiConverterUInt8.lower(blackout),$0
+    )
+}
+}
+    
+    /**
+     * On the demo device only, for clients' tests: how
+     * [`save_output_config`](Self::save_output_config) answers from now on. 0 goes
+     * through, 0xFF stalls, another byte is that status. `Unsupported`, with no
+     * traffic, on anything but a simulated device.
+     */
+open func demoOutputSaveStatus(status: UInt8)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_demo_output_save_status(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(status),$0
     )
 }
 }
@@ -20156,6 +20177,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_demo_latency_timing() != 50542) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_demo_output_save_status() != 4211) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_demo_rename_elsewhere() != 20262) {

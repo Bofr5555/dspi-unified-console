@@ -144,6 +144,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun saveOutputConfig() = call { core.saveOutputConfig() }
 
+    override fun demoOutputSaveStatus(status: Int) = call { core.demoOutputSaveStatus(status.toUByte()) }
+
     override fun setOutputType(slot: Int, kind: Int) = call { core.setOutputType(slot.toUByte(), kind.toUByte()) }
 
     override fun setI2sBckPin(role: Int, pin: Int) = call { core.setI2sBckPin(role.toUByte(), pin.toUByte()) }

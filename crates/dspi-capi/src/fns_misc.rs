@@ -1268,6 +1268,15 @@ pub extern "C" fn dspi_demo_latency_sets(core: *mut FfiCore) -> u32 {
     })
 }
 
+// -- WP QD31 --
+/// On the demo device only: how `dspi_save_output_config` answers from now on.
+/// 0 goes through, 0xFF stalls, another byte is that `PRESET_*` status. False on
+/// anything else.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_demo_output_save_status(core: *mut FfiCore, status: u8) -> bool {
+    flag(core, |c| c.demo_output_save_status(status))
+}
+
 // -- WP QD6 --
 /// The demo device as firmware of wire format `wire` (17, 26, 31 or 33), for
 /// read-only tests. Replaces any open device. False for any other format.
@@ -1764,6 +1773,11 @@ mod tests_wp_qd4;
 #[cfg(test)]
 #[path = "fns_misc/tests_wp_qd5.rs"]
 mod tests_wp_qd5;
+
+// -- WP QD31 --
+#[cfg(test)]
+#[path = "fns_misc/tests_wp_qd31.rs"]
+mod tests_wp_qd31;
 
 // -- WP CG17 --
 #[cfg(test)]

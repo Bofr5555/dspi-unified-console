@@ -115,6 +115,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.demoLatencyTiming(mode, reads, blackout)
     }
 
+    // -- WP QD31 --
+    override fun demoOutputSaveStatus(status: Int) {
+        guard("demoOutputSaveStatus")
+        return inner.demoOutputSaveStatus(status)
+    }
+
     override fun rawSet(opcode: Int, value: Int, data: List<Int>) {
         guard("rawSet")
         return inner.rawSet(opcode, value, data)
@@ -662,7 +668,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "coreVregDemoEvent",
             "csDemoBusy",
             "demoRenameElsewhere",
-            "demoLatencyTiming"
+            "demoLatencyTiming",
+            // -- WP QD31 --
+            "demoOutputSaveStatus"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */

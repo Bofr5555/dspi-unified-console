@@ -95,9 +95,10 @@ Rectangle {
 
                 SectionHeader { text: "INPUTS"; leftPadding: 4 }
 
-                // Inputs carrying audio right now (at least the stereo pair)
+                // -- WP QD18 -- The inputs in use (at least the stereo pair), held while the host idles
                 Repeater {
-                    model: bridge.connected ? Math.min(bridge.numInputChannels, Math.max(2, bridge.activeInputChannels)) : 0
+                    objectName: "sidebarInputs"
+                    model: bridge.connected ? hostAudio.inputCount : 0
 
                     ChannelRow {
                         id: inputRow

@@ -17,7 +17,6 @@
         <file>qml/AutoEqBrowserWindow.qml</file>
         <file>qml/WhatsNewWindow.qml</file>
         <file>qml/GettingStartedView.qml</file>
-        <file>whatsnew.json</file>
         <file>dspi-console.svg</file>
         <file alias="70-dspi.rules">../packaging/linux/70-dspi.rules</file>
         <file>autoeq/autoeq_database.json</file>
@@ -26,6 +25,8 @@
         <file>qml/components/AppButton.qml</file>
         <!-- WP QD8 -->
         <file>qml/components/LinkBanner.qml</file>
+        <!-- WP QD7 -->
+        <file>qml/components/DemoBanner.qml</file>
         <file>qml/components/InstallWritingCard.qml</file>
         <file>qml/components/InstallStateCard.qml</file>
         <file>qml/components/FirmwareQuestion.qml</file>

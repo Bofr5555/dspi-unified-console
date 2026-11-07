@@ -1,5 +1,6 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
+import QtQuick.Window 2.15
 import "../"
 import "../../components"
 
@@ -35,6 +36,90 @@ SettingsPage {
         var n = 0, pins = bridge.validPins
         for (var i = 0; i < pins.length; i++) if (byPin[pins[i]] !== undefined) n++
         return n
+    }
+
+    // -- WP QD3 -- ── Core voltage ──
+    // The status only, first on the page as on the Mac; writes are QD28's, in Advanced.
+    // Read while this page shows in a window that's open.
+    readonly property bool coreVregShown: Window.visibility !== Window.Hidden && Window.visibility !== Window.Minimized
+    onCoreVregShownChanged: ext.coreVregWatching = coreVregShown
+    Component.onCompleted: ext.coreVregWatching = coreVregShown
+    Component.onDestruction: ext.coreVregWatching = false
+    readonly property var vreg: ext.coreVreg
+    readonly property bool vregRead: vreg.liveVreg !== undefined
+    // Volts for a VREG code, as dspi_proto::ext::vreg_mv; the C API has it only for
+    // the live code, as `millivolts`
+    function vregVolts(code) {
+        if (code < 0x06 || code > 0x0F) return "code 0x" + ("0" + code.toString(16).toUpperCase()).slice(-2)
+        return ((850 + 50 * (code - 0x06)) / 1000).toFixed(2) + " V"
+    }
+    function liveVolts() {
+        return vreg.millivolts > 0 ? (vreg.millivolts / 1000).toFixed(2) + " V" : vregVolts(vreg.liveVreg)
+    }
+    function formatUptime(s) {
+        var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60
+        if (d > 0) return d + " d " + h + " h"
+        if (h > 0) return h + " h " + m + " min"
+        if (m > 0) return m + " min " + sec + " s"
+        return sec + " s"
+    }
+    SettingsSection {
+        objectName: "coreVoltageSection"
+        visible: ext.hasCoreVreg
+        title: "Core Voltage"
+        footnote: "At its 307.2 MHz clock the device raises its stored voltage one step by itself after two watchdog hangs in one power session, up to 1.25 V."
+
+        SettingsValueRow {
+            objectName: "coreVregRunning"
+            title: "Running at"
+            value: page.vregRead ? page.liveVolts() + (page.vreg.trialActive ? " (trial)" : "")
+                                 : ext.coreVregFailed ? "The device did not answer" : "Reading…"
+        }
+        SettingsValueRow {
+            objectName: "coreVregTrial"
+            visible: page.vregRead && page.vreg.trialActive && page.vreg.trialVreg !== page.vreg.liveVreg
+            title: "Trial voltage"
+            value: visible ? page.vregVolts(page.vreg.trialVreg) : ""
+        }
+        SettingsValueRow {
+            objectName: "coreVregStored"
+            visible: page.vregRead
+            title: "Stored"
+            value: !page.vregRead ? "" : page.vreg.storedSel === 0 ? "Build default"
+                 : page.vregVolts(page.vreg.storedSel) + (page.vreg.autoRaised ? ", raised by the device" : "")
+        }
+        SettingsValueRow {
+            objectName: "coreVregDefault"
+            visible: page.vregRead
+            title: "Build default"
+            value: page.vregRead ? page.vregVolts(page.vreg.defaultVreg) : ""
+        }
+        SettingsValueRow {
+            objectName: "coreVregAuto"
+            visible: page.vregRead
+            title: "Automatic raising"
+            value: page.vreg.autoDisabled ? "Off" : "On"
+        }
+        SettingsValueRow {
+            objectName: "coreVregHangs"
+            visible: page.vregRead
+            title: "Hangs this session"
+            value: page.vregRead ? String(page.vreg.hangCount) : ""
+        }
+        SettingsValueRow {
+            objectName: "coreVregFailedTrial"
+            visible: page.vregRead
+            title: "Last failed trial"
+            value: !page.vregRead || page.vreg.failedTrialVreg === 0 ? "None"
+                 : page.vregVolts(page.vreg.failedTrialVreg)
+                   + (page.vreg.failedTrialUptimeS > 0 ? ", hung after " + page.formatUptime(page.vreg.failedTrialUptimeS) : "")
+        }
+        SettingsValueRow {
+            objectName: "coreVregUptime"
+            visible: page.vregRead
+            title: "Uptime"
+            value: page.vregRead ? page.formatUptime(page.vreg.uptimeS) : ""
+        }
     }
 
     // ── Map ──

@@ -667,9 +667,10 @@ void DSPiBridge::setMasterVolume(float db, bool sendOnly) {
     if (!sendOnly) emit stateChanged();
 }
 
-void DSPiBridge::setMasterVolumeMode(int mode) {
-    dspi_set_master_volume_mode(m_core, mode);
+bool DSPiBridge::setMasterVolumeMode(int mode) {
+    const bool sent = dspi_set_master_volume_mode(m_core, mode);   // -- WP QD31 --
     emit stateChanged();
+    return sent;
 }
 
 int DSPiBridge::saveMasterVolume() {
@@ -862,10 +863,11 @@ int DSPiBridge::setOutputPin(int output, int pin) {
     return hardwareEdited(dspi_set_output_pin(m_core, output, pin));
 }
 
-void DSPiBridge::setOutputConfigMode(int mode) {
-    dspi_set_output_config_mode(m_core, mode);
-    if (mode != 0) m_hardwareUnsaved = false;   // saved with the preset instead
+bool DSPiBridge::setOutputConfigMode(int mode) {
+    const bool sent = dspi_set_output_config_mode(m_core, mode);   // -- WP QD31 --
+    if (sent && mode != 0) m_hardwareUnsaved = false;   // saved with the preset instead
     emit stateChanged();
+    return sent;
 }
 
 int DSPiBridge::saveOutputConfig() {
@@ -923,9 +925,10 @@ void DSPiBridge::setPresetName(int slot, const QString &name) {
     emit stateChanged();
 }
 
-void DSPiBridge::setPresetStartup(int mode, int slot) {
-    dspi_set_preset_startup(m_core, mode, slot);
+bool DSPiBridge::setPresetStartup(int mode, int slot) {
+    const bool sent = dspi_set_preset_startup(m_core, mode, slot);   // -- WP QD31 --
     emit stateChanged();
+    return sent;
 }
 
 int DSPiBridge::saveParams() {
@@ -1757,10 +1760,10 @@ void DSPiBridge::setLgSoundSync(bool enabled) {
     emit stateChanged();
 }
 
-void DSPiBridge::setDacMute(bool enabled, bool activeLow, int pin, int holdMs, int releaseMs) {
+bool DSPiBridge::setDacMute(bool enabled, bool activeLow, int pin, int holdMs, int releaseMs) {
     if (!dspi_set_dac_mute(m_core, enabled, activeLow, pin, holdMs, releaseMs)) {
         emit dacMuteApplied(false);
-        return;
+        return false;
     }
     // The device validates and applies it in its main loop; read back what it kept
     QTimer::singleShot(150, this, [=]() {
@@ -1772,6 +1775,7 @@ void DSPiBridge::setDacMute(bool enabled, bool activeLow, int pin, int holdMs, i
         emit stateChanged();
         emit dacMuteApplied(kept);
     });
+    return true;
 }
 
 int DSPiBridge::testDacMute() { return dspi_test_dac_mute(m_core); }

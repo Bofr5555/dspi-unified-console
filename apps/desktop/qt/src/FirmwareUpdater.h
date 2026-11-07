@@ -138,8 +138,6 @@ public:
     Q_INVOKABLE void useBundledImage();
     // -1, 0 or 1 as version a sorts before, with or after b ("1.1.6-beta4")
     Q_INVOKABLE int compareVersions(const QString &a, const QString &b) const;
-    // The release notes shipped with this build (whatsnew.json), as a list
-    Q_INVOKABLE QVariantList releaseNotes() const;
 
     struct Drive {
         QString path;

@@ -457,12 +457,6 @@ int FirmwareUpdater::compareVersions(const QString &a, const QString &b) const {
     return x == y ? 0 : x < y ? -1 : 1;
 }
 
-QVariantList FirmwareUpdater::releaseNotes() const {
-    QFile f(":/whatsnew.json");
-    if (!f.open(QIODevice::ReadOnly)) return {};
-    return QJsonDocument::fromJson(f.readAll()).array().toVariantList();
-}
-
 // ── The file ──
 
 // Worker thread. Bounded, so a wrong file can't take the memory.

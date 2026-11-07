@@ -332,6 +332,27 @@ impl DspiCore {
         })
     }
 
+    // -- WP QD31 --
+    /// On the demo device only, for clients' tests: how
+    /// [`save_output_config`](Self::save_output_config) answers from now on. 0 goes
+    /// through, 0xFF stalls, another byte is that status. `Unsupported`, with no
+    /// traffic, on anything but a simulated device.
+    pub fn demo_output_save_status(&self, status: u8) -> Result<()> {
+        let mut inner = self.lock();
+        let mut w = inner.writable_conn()?;
+        if w.conn().caps.kind != dspi_transport::TransportKind::Fake {
+            return Err(DspiError::Unsupported);
+        }
+        w.conn()
+            .transport()
+            .control_out(
+                op::REQ_EXTENSION,
+                dspi_transport::fake::EXT_FAKE_OUTPUT_SAVE_SIM,
+                &[status],
+            )
+            .map_err(DspiError::from)
+    }
+
     /// The bus of output slot `slot` (a stereo pair, 0..4): 0 = S/PDIF,
     /// 1 = I2S. The firmware switches later through a muted pipeline reset.
     ///

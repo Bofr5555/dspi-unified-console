@@ -75,6 +75,10 @@ private:
     // -- WP QD5 --
     void testOutputLatency();
     void testClockDiagAndCpuBars();
+    // -- WP QD29 --
+    void testRingHealth();
+    // -- WP QD31 --
+    void testSaveBarSetters();
     // -- WP QD1 --
     void testCsRefusals();
     void testCsCallerRefusals();
@@ -83,6 +87,8 @@ private:
     void testCsPages();
     // -- WP QD2 --
     void testPairMap();
+    // -- WP QD3 --
+    void testCoreVoltage();
     // -- WP QD6 --
     void testReadOnly();
     void testDeviceChanging();
@@ -90,6 +96,23 @@ private:
     void readOnlyClickAround(QQuickWindow *window, const char *where, QQuickItem *scope = nullptr);
     // -- WP QD8 --
     void testLink();
+    // -- WP QD7 --
+    void runDemoEntry();
+    void testDemoEntry();
+    void testDemoLabel();
+    // -- WP QD33 --
+    void testAbout();
+    // -- WP QD32 --
+    void testOnboarding();
+    // -- WP QD27 --
+    void testAutoEqUpdate();
+    void testAutoEqHttp();
+    // -- WP QD18 --
+    void testHostAudio();
+    void testHostAudioOnHub();
+    // -- WP QD12 --
+    void testTray();
+    void runTrayLaunch(const QString &mode);
     // -- WP QD11 --
     void testFirmware();
 

@@ -7,6 +7,7 @@
 #include <QThreadPool>
 #include <QTimer>
 #include <QVariantList>
+#include <QVariantMap>
 #include <atomic>
 #include <functional>
 #include <utility>
@@ -40,6 +41,13 @@ class ExtController : public QObject
     Q_PROPERTY(int k340PairMask READ k340PairMask CONSTANT)
     // The window is open: follow changes from elsewhere (a preset load, a restore)
     Q_PROPERTY(bool watching READ watching WRITE setWatching NOTIFY watchingChanged)
+    // -- WP QD3 -- Core voltage, read only (firmware with EXT_CORE_VREG): the core's
+    // connect probe, then dspi_fetch_core_vreg's fields, about once a second while
+    // coreVregWatching. Empty before the first read and after a failed one.
+    Q_PROPERTY(bool hasCoreVreg READ hasCoreVreg NOTIFY changed)
+    Q_PROPERTY(QVariantMap coreVreg READ coreVreg NOTIFY coreVregChanged)
+    Q_PROPERTY(bool coreVregFailed READ coreVregFailed NOTIFY coreVregChanged)
+    Q_PROPERTY(bool coreVregWatching READ coreVregWatching WRITE setCoreVregWatching NOTIFY coreVregWatchingChanged)
 
 public:
     explicit ExtController(DSPiBridge *bridge, QObject *parent = nullptr);
@@ -71,10 +79,23 @@ public:
     // False refuses that write, as the device would. Set it with no write under way.
     void setWriteHook(std::function<bool()> hook) { m_writeHook = std::move(hook); }
 
+    // -- WP QD3 --
+    bool hasCoreVreg() const { return m_hasCoreVreg; }
+    QVariantMap coreVreg() const { return m_coreVreg; }
+    bool coreVregFailed() const { return m_coreVregFailed; }
+    bool coreVregWatching() const { return m_coreVregWatching; }
+    void setCoreVregWatching(bool on);
+    // Stands in for the core's dspi_fetch_core_vreg reply; empty goes back to the
+    // core. The demo device's read never fails, and the smoke driver needs one that does.
+    void setCoreVregOverride(const QByteArray &json) { m_coreVregOverride = json; }
+
 signals:
     void changed();
     void watchingChanged();
     void applyFinished(bool ok);
+    // -- WP QD3 --
+    void coreVregChanged();
+    void coreVregWatchingChanged();
 
 private:
     static constexpr int kMapLen = 4;
@@ -87,6 +108,11 @@ private:
     QByteArray pairsToMap(const QVariantList &pairs, bool *ok) const;
     // Runs on the worker; `done` runs on the GUI thread, unless the device changed
     void onWorker(std::function<bool(uint8_t *)> job, std::function<void(bool, QByteArray)> done);
+    // -- WP QD3 --
+    void refreshCoreVreg();
+    void setCoreVregReply(const QByteArray &reply);
+    void clearCoreVreg();
+    void syncCoreVregTimer();
 
     DSPiBridge *m_bridge;
     FfiCore *m_core;
@@ -104,6 +130,14 @@ private:
     bool m_hasPairMap = false;
     bool m_watching = false;
     bool m_refreshPending = false;
+    // -- WP QD3 --
+    QTimer m_coreVregTimer;
+    QByteArray m_coreVregOverride;
+    QVariantMap m_coreVreg;
+    bool m_hasCoreVreg = false;
+    bool m_coreVregFailed = false;
+    bool m_coreVregWatching = false;
+    bool m_coreVregPending = false;
 };
 
 #endif // EXTCONTROLLER_H
