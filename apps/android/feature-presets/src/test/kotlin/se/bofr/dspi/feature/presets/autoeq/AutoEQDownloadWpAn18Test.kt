@@ -39,7 +39,8 @@ private const val THREE = """{"version":1,"generatedAt":"2026-01-18T05:41:39Z","
 @OptIn(ExperimentalCoroutinesApi::class)
 class AutoEQDownloadWpAn18Test {
     /** The core's update as CG6 does it: fetch, check, write the file. Scripted here. */
-    private class UpdatingCore(private val answer: (String, String, AutoEqFetch) -> AutoEqDatabaseInfo, inner: DspiCoreApi) : DspiCoreApi by inner {
+    private class UpdatingCore(private val answer: (String, String, AutoEqFetch) -> AutoEqDatabaseInfo, inner: DspiCoreApi) :
+        DspiCoreApi by inner {
         override fun autoeqUpdate(dbPath: String, url: String, fetch: AutoEqFetch) = answer(dbPath, url, fetch)
     }
 
@@ -94,7 +95,17 @@ class AutoEQDownloadWpAn18Test {
         var calls = 0
         val m = AutoEQManager({ THREE }, userFile(), InMemoryFavoritesStore()).also { it.loadDatabase() }
         val host = AlertHost()
-        AutoEQMenuActions(m, bridge { _, _, _ -> calls++; throw AssertionError() }, this, host, Dispatchers.Unconfined, fetch)
+        AutoEQMenuActions(
+            m,
+            bridge { _, _, _ ->
+                calls++
+                throw AssertionError()
+            },
+            this,
+            host,
+            Dispatchers.Unconfined,
+            fetch
+        )
             .downloadDatabase("http://example.test/x.json")
         runCurrent()
         assertEquals(0, calls)
@@ -144,7 +155,15 @@ class AutoEQDownloadWpAn18Test {
         assertEquals("application/json", conn!!.sent["Accept"])
 
         val small = HttpAutoEqFetch({ u -> FakeConnection(u, 200, ByteArray(100), emptyMap()) }, maxBytes = 10)
-        assertTrue(runCatching { small.get(AutoEqFetchRequest("https://example.test/db.json", null, "DSPi")) }.exceptionOrNull() is DspiException.Transfer)
-        assertTrue(runCatching { small.get(AutoEqFetchRequest("http://example.test/db.json", null, "DSPi")) }.exceptionOrNull() is DspiException.Transfer)
+        assertTrue(
+            runCatching {
+                small.get(AutoEqFetchRequest("https://example.test/db.json", null, "DSPi"))
+            }.exceptionOrNull() is DspiException.Transfer
+        )
+        assertTrue(
+            runCatching {
+                small.get(AutoEqFetchRequest("http://example.test/db.json", null, "DSPi"))
+            }.exceptionOrNull() is DspiException.Transfer
+        )
     }
 }

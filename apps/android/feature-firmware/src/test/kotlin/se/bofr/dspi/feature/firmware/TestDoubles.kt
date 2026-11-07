@@ -1,8 +1,5 @@
 package se.bofr.dspi.feature.firmware
 
-import se.bofr.dspi.core.FirmwareGuardDecision
-import se.bofr.dspi.core.FirmwareGuardReason
-import se.bofr.dspi.core.FirmwareGuardVerdict
 import android.content.Context
 import android.hardware.usb.UsbDevice
 import java.io.File
@@ -13,6 +10,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import se.bofr.dspi.core.FirmwareGuardDecision
+import se.bofr.dspi.core.FirmwareGuardReason
+import se.bofr.dspi.core.FirmwareGuardVerdict
 import se.bofr.dspi.usb.BootloaderDevice
 import se.bofr.dspi.usb.BootloaderLocator
 import se.bofr.dspi.usb.BootloaderPermissionResult
@@ -96,7 +96,13 @@ class FakeWriter(
         return accessAnswer
     }
 
-    override suspend fun write(board: BootloaderBoard, image: FirmwareImage, uf2: Uf2Image, clearance: GuardClearance, progress: (Double) -> Unit) {
+    override suspend fun write(
+        board: BootloaderBoard,
+        image: FirmwareImage,
+        uf2: Uf2Image,
+        clearance: GuardClearance,
+        progress: (Double) -> Unit
+    ) {
         clearance.requireCovers(image)
         for (i in 1..progressSteps) progress(i.toDouble() / progressSteps)
         failure?.let { throw it }

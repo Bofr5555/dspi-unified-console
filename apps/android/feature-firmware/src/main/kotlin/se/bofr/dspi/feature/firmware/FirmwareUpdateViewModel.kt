@@ -117,7 +117,9 @@ internal class FirmwareInstallSession private constructor(context: Context, val 
             val resolver = appContext.contentResolver
             val displayName = withContext(Dispatchers.IO) {
                 runCatching {
-                    resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null }
+                    resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                        if (it.moveToFirst()) it.getString(0) else null
+                    }
                 }.getOrNull()
             }
             model.exportMessage = ConfigurationBackup.export(bridge.configFiles, displayName) { text ->

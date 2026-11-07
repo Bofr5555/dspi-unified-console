@@ -27,7 +27,13 @@ private object PreviewWriter : FirmwareWriter {
     override fun isReady(board: BootloaderBoard) = true
     override fun hasAccess(board: BootloaderBoard) = true
     override suspend fun obtainAccess(board: BootloaderBoard) = BoardAccess.GRANTED
-    override suspend fun write(board: BootloaderBoard, image: FirmwareImage, uf2: Uf2Image, clearance: GuardClearance, progress: (Double) -> Unit) = Unit
+    override suspend fun write(
+        board: BootloaderBoard,
+        image: FirmwareImage,
+        uf2: Uf2Image,
+        clearance: GuardClearance,
+        progress: (Double) -> Unit
+    ) = Unit
 }
 
 private val previewBoard = BootloaderBoard(BootloaderBoard.Chip.RP2350, "/dev/bus/usb/001/005")
@@ -46,7 +52,9 @@ private fun PreviewScreen(
     val model = remember {
         val image = FirmwareImage(BootloaderBoard.Chip.RP2350, "DSPi-RP2350-v1.1.6.uf2", FirmwareVersion.expected, ByteArray(0), true)
         FirmwareUpdateModel(
-            FirmwareInstaller(FakeBootloaderLocator(listOf(previewBoard)), StubPreviewVerifier, PreviewWriter, { image }, PreviewGuard, scope),
+            FirmwareInstaller(FakeBootloaderLocator(listOf(previewBoard)), StubPreviewVerifier, PreviewWriter, {
+                image
+            }, PreviewGuard, scope),
             bundled = { image },
             picobootWriter = PreviewWriter
         ).apply {

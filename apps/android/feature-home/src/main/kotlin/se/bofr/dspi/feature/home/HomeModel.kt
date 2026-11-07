@@ -105,8 +105,9 @@ object HomeModel {
                     if (settingsRead) "$MISSING_FEATURES_NOTE $READ_ONLY_NOTE" else SETTINGS_UNREAD_NOTE
             // -- WP AN18 --
             DspiConstants.COMPAT_OK -> when (firmwareMatch(device, expected)) {
-                FirmwareOrder.NEWER -> "This device runs firmware $version, which is newer than DSPi Console $expected. " +
-                    "Some of its features may not be shown."
+                FirmwareOrder.NEWER ->
+                    "This device runs firmware $version, which is newer than DSPi Console $expected. " +
+                        "Some of its features may not be shown."
                 FirmwareOrder.OLDER -> "This device runs firmware $version; DSPi Console expects $expected."
                 FirmwareOrder.MATCH, null -> null
             }

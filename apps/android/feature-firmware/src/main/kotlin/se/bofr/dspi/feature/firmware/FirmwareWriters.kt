@@ -70,7 +70,13 @@ class PicobootFirmwareWriter(private val permissions: BoardPermissions, private 
     override suspend fun obtainAccess(board: BootloaderBoard): BoardAccess =
         if (permissions.hasPermission(board)) BoardAccess.GRANTED else permissions.requestPermission(board)
 
-    override suspend fun write(board: BootloaderBoard, image: FirmwareImage, uf2: Uf2Image, clearance: GuardClearance, progress: (Double) -> Unit) {
+    override suspend fun write(
+        board: BootloaderBoard,
+        image: FirmwareImage,
+        uf2: Uf2Image,
+        clearance: GuardClearance,
+        progress: (Double) -> Unit
+    ) {
         // -- WP AN18 -- before the board is even opened
         clearance.requireCovers(image)
         val transport = transports.open(board)
@@ -120,7 +126,13 @@ class DriveFirmwareWriter(private val volume: Uf2Volume?) : FirmwareWriter {
 
     override suspend fun obtainAccess(board: BootloaderBoard) = BoardAccess.GRANTED
 
-    override suspend fun write(board: BootloaderBoard, image: FirmwareImage, uf2: Uf2Image, clearance: GuardClearance, progress: (Double) -> Unit) {
+    override suspend fun write(
+        board: BootloaderBoard,
+        image: FirmwareImage,
+        uf2: Uf2Image,
+        clearance: GuardClearance,
+        progress: (Double) -> Unit
+    ) {
         // -- WP AN18 -- before the drive is even touched
         clearance.requireCovers(image)
         val volume = volume ?: throw FirmwareInstallError.VolumeNotMounted(board.chip.volumeName)

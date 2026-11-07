@@ -39,11 +39,14 @@ class FirmwareGuardWpAn18Test {
     )
 
     private fun TestScope.installer(guard: FirmwareGuarding, writer: FirmwareWriter, boards: List<BootloaderBoard> = listOf(board)) =
-        FirmwareInstaller(FakeBootloaderLocator(boards), StubVerifier(v), writer, { image }, guard, this, StandardTestDispatcher(testScheduler))
+        FirmwareInstaller(FakeBootloaderLocator(boards), StubVerifier(v), writer, {
+            image
+        }, guard, this, StandardTestDispatcher(testScheduler))
 
     @Test fun wpAn18ARefusedImageIsNeverWritten() = runTest {
         val writer = FakeWriter(access = false)
-        val guard = FakeGuard { guardVerdict(false, FirmwareGuardDecision.REFUSED, FirmwareGuardReason.IMAGE_INVALID, "This is not firmware.") }
+        val guard =
+            FakeGuard { guardVerdict(false, FirmwareGuardDecision.REFUSED, FirmwareGuardReason.IMAGE_INVALID, "This is not firmware.") }
         val i = installer(guard, writer)
         i.install(board)
         advanceUntilIdle()
@@ -55,17 +58,31 @@ class FirmwareGuardWpAn18Test {
 
     @Test fun wpAn18ConfirmationGatesTheWriteUntilThePhraseIsTyped() = runTest {
         val writer = FakeWriter()
-        val guard = FakeGuard { typed -> if (typed == "I understand") guardVerdict(decision = FirmwareGuardDecision.CONFIRMED) else needsPhrase }
+        val guard = FakeGuard { typed ->
+            if (typed ==
+                "I understand"
+            ) {
+                guardVerdict(decision = FirmwareGuardDecision.CONFIRMED)
+            } else {
+                needsPhrase
+            }
+        }
         val i = installer(guard, writer)
         i.beginWatching()
         i.installWhenReady()
         advanceUntilIdle()
-        assertEquals(FirmwareInstallState.NeedsConfirmation(board.chip, needsPhrase.message, "I understand", wrongAnswer = false), i.state.value)
+        assertEquals(
+            FirmwareInstallState.NeedsConfirmation(board.chip, needsPhrase.message, "I understand", wrongAnswer = false),
+            i.state.value
+        )
         assertTrue(writer.written.isEmpty())
 
         i.confirm("i understand")
         advanceUntilIdle()
-        assertEquals(FirmwareInstallState.NeedsConfirmation(board.chip, needsPhrase.message, "I understand", wrongAnswer = true), i.state.value)
+        assertEquals(
+            FirmwareInstallState.NeedsConfirmation(board.chip, needsPhrase.message, "I understand", wrongAnswer = true),
+            i.state.value
+        )
         assertTrue(writer.written.isEmpty())
 
         i.confirm("I understand")
@@ -105,7 +122,11 @@ class FirmwareGuardWpAn18Test {
         assertTrue(e is FirmwareInstallError.GuardBlocked)
         assertEquals("the board is never opened", 0, opens)
         val refused = GuardClearance(image.bytes, needsPhrase)
-        assertTrue(runCatching { writer.write(board, image, Uf2Image.parse(image.bytes), refused) {} }.exceptionOrNull() is FirmwareInstallError.GuardBlocked)
+        assertTrue(
+            runCatching {
+                writer.write(board, image, Uf2Image.parse(image.bytes), refused) {}
+            }.exceptionOrNull() is FirmwareInstallError.GuardBlocked
+        )
         assertEquals(0, opens)
     }
 
@@ -122,14 +143,17 @@ class FirmwareGuardWpAn18Test {
             }
         }
         val other = firmwareImage(image.bytes.copyOf(), v)
-        val e = runCatching { DriveFirmwareWriter(volume).write(board, image, Uf2Image.parse(image.bytes), clearance(other)) {} }.exceptionOrNull()
+        val e = runCatching {
+            DriveFirmwareWriter(volume).write(board, image, Uf2Image.parse(image.bytes), clearance(other)) {}
+        }.exceptionOrNull()
         assertTrue(e is FirmwareInstallError.GuardBlocked)
         assertEquals(0, creates)
     }
 
     @Test fun wpAn18TheRunningBoardIsAskedBeforeItReboots() = runTest {
         val guard = FakeGuard()
-        val m = FirmwareUpdateModel(installer(guard, FakeWriter(), boards = emptyList()), bundled = { image }, picobootWriter = FakeWriter())
+        val m =
+            FirmwareUpdateModel(installer(guard, FakeWriter(), boards = emptyList()), bundled = { image }, picobootWriter = FakeWriter())
         m.installer.beginWatching()
         var readsAtReboot = -1
         m.start(deviceConnected = true) { readsAtReboot = guard.boardReads }
@@ -189,6 +213,7 @@ class FirmwareGuardWpAn18Test {
             return guardVerdict()
         }
 
-        override fun autoeqUpdate(dbPath: String, url: String, fetch: AutoEqFetch): AutoEqDatabaseInfo = throw UnsupportedOperationException()
+        override fun autoeqUpdate(dbPath: String, url: String, fetch: AutoEqFetch): AutoEqDatabaseInfo =
+            throw UnsupportedOperationException()
     }
 }

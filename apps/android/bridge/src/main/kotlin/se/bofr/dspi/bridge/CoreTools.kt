@@ -81,7 +81,8 @@ internal class CoreToolsImpl(private val bridge: DspiBridgeImpl) : CoreTools {
         CoreTools.blocked("The firmware guard could not check this image: ${e.message ?: e.javaClass.simpleName}.")
     }
 
-    override fun autoeqUpdate(dbPath: String, url: String, fetch: AutoEqFetch): AutoEqDatabaseInfo = bridge.core.autoeqUpdate(dbPath, url, fetch)
+    override fun autoeqUpdate(dbPath: String, url: String, fetch: AutoEqFetch): AutoEqDatabaseInfo =
+        bridge.core.autoeqUpdate(dbPath, url, fetch)
 
     private fun ByteArray.toWire(): List<Int> = List(size) { this[it].toInt() and 0xFF }
 }

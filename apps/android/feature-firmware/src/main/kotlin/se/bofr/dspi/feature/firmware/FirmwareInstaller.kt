@@ -245,12 +245,8 @@ sealed class FirmwareInstallState {
      * WP AN18: the firmware guard needs [phrase] typed before it allows the
      * write ([message] says why). [wrongAnswer]: what was typed did not match.
      */
-    data class NeedsConfirmation(
-        val chip: BootloaderBoard.Chip,
-        val message: String,
-        val phrase: String,
-        val wrongAnswer: Boolean
-    ) : FirmwareInstallState()
+    data class NeedsConfirmation(val chip: BootloaderBoard.Chip, val message: String, val phrase: String, val wrongAnswer: Boolean) :
+        FirmwareInstallState()
 
     /** Writing, with the fraction of the image sent so far. */
     data class Writing(val fraction: Double) : FirmwareInstallState()
@@ -443,7 +439,9 @@ class FirmwareInstaller(
         if (!verdict.allowed) {
             if (verdict.decision == FirmwareGuardDecision.NEEDS_CONFIRMATION && verdict.confirmationPhrase.isNotEmpty()) {
                 pending = Pending(board, image, uf2, writer)
-                return publish(FirmwareInstallState.NeedsConfirmation(board.chip, verdict.message, verdict.confirmationPhrase, typed.isNotEmpty()))
+                return publish(
+                    FirmwareInstallState.NeedsConfirmation(board.chip, verdict.message, verdict.confirmationPhrase, typed.isNotEmpty())
+                )
             }
             return fail(FirmwareInstallError.GuardBlocked(verdict.message))
         }
