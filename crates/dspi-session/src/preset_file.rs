@@ -2845,7 +2845,7 @@ pub fn capture(
 /// (`ISO8601DateFormatter`, PresetDocumentTransfer.swift:25), such as
 /// `2026-09-30T10:00:00Z`.
 fn utc_now() -> String {
-    let secs = std::time::SystemTime::now()
+    let secs = dspi_transport::clock::system_time()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);

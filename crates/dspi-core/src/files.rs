@@ -47,10 +47,11 @@
 //! Owned by WP C13 (docs/core-merge/PLAN.md).
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 
 use dspi_proto::generated::limiter;
 use dspi_proto::xover;
+use dspi_transport::clock::system_time;
 use serde_json::{Map, Value, json};
 
 use crate::connect::apply_all_params_locked;
@@ -171,7 +172,7 @@ fn clip_name(name: &str) -> String {
 
 /// ISO-8601 UTC for now (whole seconds), without a date library.
 fn utc_now() -> String {
-    let secs = SystemTime::now()
+    let secs = system_time()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
@@ -1910,7 +1911,7 @@ impl DspiCore {
     /// output with its PEQ and crossover bands and enable state. Reads the
     /// mirror; never fails.
     pub fn filters_export(&self, inputs: u8) -> String {
-        let now = SystemTime::now()
+        let now = system_time()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);

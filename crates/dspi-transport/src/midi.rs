@@ -21,7 +21,9 @@
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use crate::clock::Instant;
 
 use dspi_proto::VENDOR_INTERFACE;
 use dspi_proto::frame::{
@@ -418,7 +420,7 @@ impl MidiTransport {
             }
             if status::is_retryable(code) && attempt < STATUS_RETRIES {
                 attempt = attempt.saturating_add(1);
-                std::thread::sleep(STATUS_BACKOFF.saturating_mul(attempt));
+                crate::clock::sleep(STATUS_BACKOFF.saturating_mul(attempt));
                 continue;
             }
             return Err(status_error(opcode, code, attempt));

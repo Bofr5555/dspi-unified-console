@@ -25,8 +25,8 @@
     clippy::arithmetic_side_effects
 )]
 
+use dspi_transport::clock::Instant;
 use std::sync::MutexGuard;
-use std::time::Instant;
 
 use dspi_proto::generated::opcodes as op;
 use dspi_session::ext::{CoreVregStatus, VregOp, vreg_mv};

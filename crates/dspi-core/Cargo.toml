@@ -45,9 +45,10 @@ uniffi = { workspace = true, optional = true }
 [features]
 # -- WP CG3 --
 default = ["usb"]
-# USB through nusb: on for desktop, macOS and Android. Off for iOS, where nusb
-# has no backend and does not compile; the USB methods stay in the API and report
-# no devices or `Unsupported`, so one binding fits every platform.
+# USB through nusb: on for desktop, macOS and Android. Off for iOS and for
+# wasm32-unknown-unknown (WP WB1), where nusb has no backend and does not compile;
+# the USB methods stay in the API and report no devices or `Unsupported`, so one
+# binding fits every platform.
 usb = ["dep:nusb", "dspi-transport/usb"]
 # DSPi Link sessions (WP C15, over dspi-transport's Link adapter, WP T5).
 link = ["dep:dspi-link", "dspi-transport/link"]

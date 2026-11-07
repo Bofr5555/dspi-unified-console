@@ -25,7 +25,9 @@ use dspi_proto::value::{EqParamPacket, Repr, Value, ValueError, decode_qp};
 use dspi_proto::wire::BulkPacket;
 use dspi_proto::{ChannelMap, Dir, Platform};
 use dspi_transport::{Transport, TransportError, TransportKind, with_busy_retry};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use dspi_transport::clock::Instant;
 
 use crate::probe::Capabilities;
 
@@ -634,7 +636,7 @@ impl Session {
         );
         let start = Instant::now();
         loop {
-            std::thread::sleep(LATENCY_POLL);
+            dspi_transport::clock::sleep(LATENCY_POLL);
             let why = match self
                 .transport
                 .control_in(get, LATENCY_STATUS, LATENCY_STATUS_LEN)

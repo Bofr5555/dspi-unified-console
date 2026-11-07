@@ -590,7 +590,7 @@ fn fetch_text(fetch: &dyn Fetch, request: &FetchRequest) -> Result<String, Fetch
 }
 
 fn unix_now() -> u64 {
-    std::time::SystemTime::now()
+    dspi_transport::clock::system_time()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)

@@ -23,7 +23,9 @@
 //! against a real device.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use dspi_transport::clock::Instant;
 
 use dspi_proto::generated::opcodes as op;
 use dspi_proto::generated::rta as g;
