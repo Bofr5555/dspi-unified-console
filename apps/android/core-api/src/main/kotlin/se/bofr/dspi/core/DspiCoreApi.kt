@@ -225,6 +225,64 @@ interface DspiCoreApi : AutoCloseable {
     fun csDemoBusy(on: Boolean)
 
     /**
+     * What a page shows for one record, from the last [`DspiCore::cs_fetch`]:
+     * `{ok, title, summary, rows}`. `kind` is `binding`, `ir`, `step`, `page`,
+     * `display` or `group`; `slot` is the record's index; `draft` is the record as
+     * in [`DspiCore::cs_snapshot`].
+     *
+     * Each row has `id`, `title`, `detail` and `kind`. A `pick` has `value`, `text`
+     * and `options` of `{value, text, section?, owner?, disabled?}`; a `number`
+     * has `value`, `min`, `max`, `step`, `unit` and `decimals`, in natural units; a
+     * `toggle` has `on` and `enabled`; a `note` has `warning`, and its words in
+     * `detail`. `dspi_session::cs_rows` lists the ids.
+     *
+     * No device I/O. `{ok: false, error}` on a bad draft, an index the device does
+     * not have, no device, or before the first fetch. Never fails otherwise.
+     */
+    fun csDescribe(kind: String, slot: Long, draft: String): String
+
+    /**
+     * The record after one row's value changed: `{ok, draft}`. `change` is
+     * `{id, value}`: the row's id, and an option's value, a number in natural units,
+     * or a boolean. The edit resets what the change leaves meaningless, so the
+     * record stays one the firmware takes.
+     *
+     * No device I/O: nothing changes on the device until the record goes to
+     * [`DspiCore::cs_apply`]. `{ok: false, error}` when the row or the value is not
+     * one [`DspiCore::cs_describe`] offers for this record, or as `cs_describe`.
+     */
+    fun csEdit(kind: String, slot: Long, draft: String, change: String): String
+
+    /**
+     * A fresh binding of type `component` in `slot`, on free pins: `{ok, draft}`.
+     * No device I/O. `{ok: false, error}` as [`DspiCore::cs_describe`].
+     */
+    fun csNewBinding(slot: Long, component: Int): String
+
+    /**
+     * A fresh record of `kind`, `ir`, `step` or `page`: `{ok, draft}`. A step and a
+     * page are ready to apply; a remote button needs its code from a learn first.
+     * No device I/O. `{ok: false, error}` as [`DspiCore::cs_describe`].
+     */
+    fun csNewRecord(kind: String): String
+
+    /**
+     * A control-surface or pin-configuration status code as a sentence; empty for
+     * success. Needs no device.
+     */
+    fun csStatusText(code: Int): String
+
+    /**
+     * On the demo device only: the remote button a learn is waiting for was
+     * pressed. The learn ends with this protocol and code and notifies, as on a
+     * real receiver. False when nothing was armed. As
+     * [`cs_demo_busy`](Self::cs_demo_busy), it answers [`DspiError::Unsupported`]
+     * on any other device.
+     */
+    @Throws(DspiException::class)
+    fun csDemoLearn(protocol: Int, code: Long): Boolean
+
+    /**
      * Adopt a USB device the platform already opened: Android's
      * `UsbDeviceConnection.getFileDescriptor()`. The core `dup(2)`s the fd
      * and owns the duplicate, so the app keeps (and later closes) its own;

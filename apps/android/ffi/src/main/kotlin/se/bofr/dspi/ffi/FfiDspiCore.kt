@@ -92,6 +92,18 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun csDemoBusy(on: Boolean) = call { core.csDemoBusy(on) }
 
+    override fun csDescribe(kind: String, slot: Long, draft: String): String = core.csDescribe(kind, slot.toUInt(), draft)
+
+    override fun csEdit(kind: String, slot: Long, draft: String, change: String): String = core.csEdit(kind, slot.toUInt(), draft, change)
+
+    override fun csNewBinding(slot: Long, component: Int): String = core.csNewBinding(slot.toUInt(), component.toUByte())
+
+    override fun csNewRecord(kind: String): String = core.csNewRecord(kind)
+
+    override fun csStatusText(code: Int): String = core.csStatusText(code.toUByte())
+
+    override fun csDemoLearn(protocol: Int, code: Long): Boolean = call { core.csDemoLearn(protocol.toUByte(), code.toUInt()) }
+
     override fun openFd(fd: Int, serial: String, vid: Int) = call { core.openFd(fd, serial, vid.toUShort()) }
 
     override fun closeFd() = core.closeFd()

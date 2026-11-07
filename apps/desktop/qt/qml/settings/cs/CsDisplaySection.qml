@@ -32,12 +32,6 @@ Column {
         host.displayStatus = host.result(r)
     }
     function pageActive(p) { return !!p && (p.flags & cs.dpageActive) !== 0 }
-    readonly property var pageNouns: {
-        var list = []
-        for (var n = 0; n < cs.nouns.length; n++)
-            if (cs.nouns[n].actions !== 0 && n !== cs.nounDisplayPage && n !== cs.nounDisplayEdit && n !== cs.nounPageValue) list.push(n)
-        return list
-    }
     function pageSummary(p) {
         var noun = cs.nounName(p.noun, cs.typeNone)
         var nd = cs.nounDesc(p.noun)
@@ -48,10 +42,6 @@ Column {
         var p = pages[i]
         if (!pageActive(p)) return "Page " + (i + 1) + " (empty)"
         return (i + 1) + ". " + pageSummary(p)
-    }
-    function barAllowed(noun) {
-        var nd = cs.nounDesc(noun)
-        return !!nd && nd.kind === cs.kindContinuous && cs.decodeValue(nd.max, nd.unit) > cs.decodeValue(nd.min, nd.unit)
     }
     readonly property int firstFreePage: {
         for (var i = 0; i < cs.pageCount; i++) if (!pageActive(pages[i])) return i
@@ -98,19 +88,15 @@ Column {
         }
         value: ds.b.index
         onChosen: {
-            var nb = ds.cs.copy(ds.b)
-            // The address follows the model while it is the model's usual one
-            if (nb.value !== 0 && (nb.value & 0xFF) === ds.cs.displayDefaultAddress(ds.b.index)) nb.value = 0
-            nb.index = value
-            ds.host.setDraft(ds.slot, nb)
+            ds.host.setDraft(ds.slot, ds.cs.edit("binding", ds.slot, ds.b, "model", value))
         }
     }
     CsPickerRow {
         title: "SDA/SCL Pins"
         detail: "Clock and data pins are chosen in fixed pairs."
-        options: { bridge.hardware; return ds.cs.i2cSdaCandidates(ds.slot, ds.b).map(function (p) { return { value: p, text: "GPIO " + p + " / " + (p + 1) } }) }
+        options: ds.cs.pickOptions(ds.cs.rowOf(ds.cs.describe("binding", ds.slot, ds.b), "sda"))
         value: ds.b.gpio0
-        onChosen: { var nb = ds.cs.copy(ds.b); nb.gpio0 = value; nb.gpio1 = value + 1; ds.host.setDraft(ds.slot, nb) }
+        onChosen: ds.host.setDraft(ds.slot, ds.cs.edit("binding", ds.slot, ds.b, "sda", value))
     }
     CsPickerRow {
         title: "Address"
@@ -250,6 +236,11 @@ Column {
             id: pageRow
             readonly property var p: ds.pages[index] || ({})
             readonly property var nd: ds.cs.nounDesc(p.noun)
+            // -- WP CG20 -- What this page offers, and what an edit makes of it: the core's
+            readonly property var d: ds.pageActive(p) ? ds.cs.describe("page", index, p) : ({ rows: [] })
+            readonly property bool barOk: { var bar = ds.cs.rowOf(d, "bar"); return !!bar && bar.enabled }
+            readonly property var bandRow: ds.cs.rowOf(d, "band")
+            function editPage(id, value) { ds.applyPage(index, ds.cs.edit("page", index, p, id, value)) }
             readonly property bool shown: ds.st.page === index
             visible: ds.pageActive(p)
             width: ds.width
@@ -280,17 +271,11 @@ Column {
                         anchors.verticalCenter: parent.verticalCenter
                     }
                     CsPicker {
-                        categories: ds.cs.nounMenu(ds.cs.typeNone, ds.pageNouns)
+                        categories: ds.cs.pickCategories(ds.cs.rowOf(pageRow.d, "noun"))
                         value: pageRow.p.noun
                         text: ds.cs.nounName(pageRow.p.noun, ds.cs.typeNone)
                         anchors.verticalCenter: parent.verticalCenter
-                        onChosen: {
-                            var np = ds.cs.copy(pageRow.p)
-                            np.noun = value; np.target = 0; np.index = 0
-                            np.flags &= ~ds.cs.dpageGroup
-                            if (!ds.barAllowed(value)) np.flags &= ~ds.cs.dpageBar
-                            ds.applyPage(index, np)
-                        }
+                        onChosen: pageRow.editPage("noun", value)
                     }
                 }
                 Row {
@@ -302,25 +287,17 @@ Column {
                         visible: ds.graphic
                         text: "Large value"
                         checked: (pageRow.p.flags & ds.cs.dpageLarge) !== 0
-                        onToggled: {
-                            var np = ds.cs.copy(pageRow.p)
-                            if (on) np.flags |= ds.cs.dpageLarge; else np.flags &= ~ds.cs.dpageLarge
-                            ds.applyPage(index, np)
-                        }
+                        onToggled: pageRow.editPage("large", on)
                     }
                     CsCheck {
                         text: "Level bar"
-                        enabled: ds.barAllowed(pageRow.p.noun)
+                        enabled: pageRow.barOk
                         tip: !enabled ? "Only a value with a range can be drawn as a bar."
                              : ds.graphic ? "Fills the value's own row behind the text, with no row given up."
                              : (ds.b.index === 2 || ds.b.index === 5) ? "Draws the bar on the bottom row."
                              : "Draws the bar on the bottom row, moving the value up beside its name."
                         checked: (pageRow.p.flags & ds.cs.dpageBar) !== 0
-                        onToggled: {
-                            var np = ds.cs.copy(pageRow.p)
-                            if (on) np.flags |= ds.cs.dpageBar; else np.flags &= ~ds.cs.dpageBar
-                            ds.applyPage(index, np)
-                        }
+                        onToggled: pageRow.editPage("bar", on)
                     }
                     CsButton {
                         bare: true
@@ -334,18 +311,21 @@ Column {
                 visible: ds.cs.isTargeted(pageRow.nd)
                 width: parent.width
                 height: 34
-                CsPicker {
+                Row {
                     // Under the function picker (past the number and the eye)
                     x: 14 + 16 + 8 + 13 + 8
                     y: 0
-                    options: parent.visible ? ds.cs.targetOptions(pageRow.p.noun,
-                                 { flags: (pageRow.p.flags & ds.cs.dpageGroup) ? ds.cs.flagGroup : 0, target: pageRow.p.target }, true) : []
-                    value: (pageRow.p.flags & ds.cs.dpageGroup) ? 1000 + pageRow.p.target : pageRow.p.target
-                    onChosen: {
-                        var np = ds.cs.copy(pageRow.p)
-                        if (value >= 1000) { np.flags |= ds.cs.dpageGroup; np.target = value - 1000 }
-                        else { np.flags &= ~ds.cs.dpageGroup; np.target = value }
-                        ds.applyPage(index, np)
+                    spacing: 8
+                    CsPicker {
+                        options: ds.cs.pickOptions(ds.cs.rowOf(pageRow.d, "target"))
+                        value: { var t = ds.cs.rowOf(pageRow.d, "target"); return t ? t.value : 0 }
+                        onChosen: pageRow.editPage("target", value)
+                    }
+                    CsPicker {
+                        visible: pageRow.bandRow !== null
+                        options: ds.cs.pickOptions(pageRow.bandRow)
+                        value: pageRow.bandRow ? pageRow.bandRow.value : 0
+                        onChosen: pageRow.editPage("band", value)
                     }
                 }
             }
@@ -361,8 +341,7 @@ Column {
             text: "Add Page"
             icon: "plus"
             enabled: ds.firstFreePage >= 0 && ds.cs.connected
-            onClicked: ds.applyPage(ds.firstFreePage, { noun: ds.pageNouns.length > 0 ? ds.pageNouns[0] : 0, target: 0, index: 0,
-                                                        flags: ds.cs.dpageActive })
+            onClicked: ds.applyPage(ds.firstFreePage, ds.cs.newPage())
         }
         Text {
             visible: ds.firstFreePage < 0

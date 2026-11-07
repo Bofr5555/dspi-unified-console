@@ -218,7 +218,7 @@ Column {
         return noteRefusal(slot, result(controlSurfaces.apply({ op: "auxLevel", index: slot, percent: percent })))
     }
     function changeType(slot, type) {
-        if (type !== drafts[slot].type) setDraft(slot, cs.makeBinding(type, slot))
+        if (type !== drafts[slot].type) setDraft(slot, cs.edit("binding", slot, drafts[slot], "type", type))
     }
 
     // ── Remote buttons ──
@@ -483,7 +483,7 @@ Column {
                     CsPickerRow {
                         title: "GPIO"
                         detail: cs.pinDetail(cs.typeIr)
-                        options: { bridge.hardware; return cs.pinCandidates(card.slot, card.b, false).map(function (p) { return { value: p, text: "GPIO " + p } }) }
+                        options: cs.pickOptions(cs.rowOf(cs.describe("binding", card.slot, card.b), "gpio0"))
                         value: card.b.gpio0
                         onChosen: { var nb = cs.copy(card.b); nb.gpio0 = value; view.setDraft(card.slot, nb) }
                     }
@@ -574,7 +574,7 @@ Column {
                     CsPickerRow {
                         title: "GPIO"
                         detail: cs.pinDetail(card.b.type)
-                        options: { bridge.hardware; return cs.pinCandidates(card.slot, card.b, false).map(function (p) { return { value: p, text: "GPIO " + p } }) }
+                        options: cs.pickOptions(cs.rowOf(cs.describe("binding", card.slot, card.b), "gpio0"))
                         value: card.b.gpio0
                         onChosen: aux.setB("gpio0", value)
                     }

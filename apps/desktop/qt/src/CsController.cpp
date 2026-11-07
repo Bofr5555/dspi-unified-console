@@ -165,36 +165,62 @@ void CsController::onNotified(bool aux, bool learn) {
     }
 }
 
+// Ask with a buffer, and again with one of the size the core says it needs
+template <typename Call>
+static QByteArray askCore(Call call) {
+    QByteArray buf(16 * 1024, '\0');
+    uint32_t needed = call(buf.data(), uint32_t(buf.size()));
+    if (needed > uint32_t(buf.size())) {
+        buf.resize(int(needed));
+        needed = call(buf.data(), uint32_t(buf.size()));
+    }
+    buf.truncate(int(qMax<uint32_t>(1, needed) - 1));
+    return buf;
+}
+
 QString CsController::statusMessage(int code) const {
     // 0xFF is "no device status": the last apply()'s own reason, when it gave one
     if (code == 0xFF && !m_lastError.isEmpty()) return m_lastError;
-    switch (code) {
-    case 0x00: return QString();
-    case 0x01: return "A pin is out of range, or an encoder's two pins are equal";
-    case 0x02: return "A pin is already claimed by another peripheral or binding";
-    case 0x11: return "Unsupported component type";
-    case 0x12: return "Unsupported function";
-    case 0x13: return "That action isn't allowed for this component and function";
-    case 0x14: return "A value, step, range, or flag is out of bounds";
-    case 0x15: return "A potentiometer must use an ADC pin (GPIO 26, 27, or 28)";
-    case 0x10: return "Invalid slot";
-    case 0x16: return "Still applying, please retry";
-    case 0x17: return "The selected channel or band isn't valid for this function";
-    case 0x18: return "That press gesture isn't allowed here";
-    case 0x19: return "This PWM pin conflicts with another dimmable LED or output";
-    case 0x1A: return "Another button already uses this GPIO and gesture";
-    case 0x1B: return "The device was busy; please try again";
-    case 0x1C: return "The device could not write to flash";
-    case 0x1D: return "Another slot already holds the IR receiver (one per device)";
-    case 0x1E: return "Add an IR receiver before learning a remote button";
-    case 0x1F: return "That group is empty, missing, or holds the wrong kind of channel";
-    case 0x20: return "Invalid macro or step count";
-    case 0x21: return "A macro step isn't valid";
-    case 0x22: return "Another slot already holds the display (one per device)";
-    case 0x23: return "SDA and SCL must be an even/odd GPIO pair on the same I2C bus";
-    case 0x24: return "That I2C bus belongs to the I2C control interface";
-    case 0x25: return "That display page isn't valid";
-    case 0x26: return "The target isn't an auxiliary output, or a level control needs a dimmable one";
-    default:   return "Failed to apply the binding";
-    }
+    if (code == 0xFF) return QStringLiteral("Failed to apply the binding");
+    return QString::fromUtf8(askCore([&](char *buf, uint32_t len) {
+        return dspi_cs_status_text(m_bridge->core(), uint8_t(code), buf, len);
+    }));
+}
+
+// -- WP CG20 --
+static QByteArray compact(const QVariantMap &map) {
+    return QJsonDocument(QJsonObject::fromVariantMap(map)).toJson(QJsonDocument::Compact);
+}
+
+static QVariantMap parsed(const QByteArray &json) {
+    return QJsonDocument::fromJson(json).object().toVariantMap();
+}
+
+QVariantMap CsController::describe(const QString &kind, int slot, const QVariantMap &draft) const {
+    const QByteArray k = kind.toUtf8(), d = compact(draft);
+    return parsed(askCore([&](char *buf, uint32_t len) {
+        return dspi_cs_describe(m_bridge->core(), k.constData(), uint32_t(qMax(0, slot)), d.constData(), buf, len);
+    }));
+}
+
+QVariantMap CsController::edit(const QString &kind, int slot, const QVariantMap &draft,
+                               const QString &id, const QVariant &value) const {
+    const QByteArray k = kind.toUtf8(), d = compact(draft);
+    const QByteArray c = compact({ { "id", id }, { "value", value } });
+    return parsed(askCore([&](char *buf, uint32_t len) {
+        return dspi_cs_edit(m_bridge->core(), k.constData(), uint32_t(qMax(0, slot)), d.constData(), c.constData(), buf, len);
+    }));
+}
+
+QVariantMap CsController::newBinding(int slot, int type) const {
+    return parsed(askCore([&](char *buf, uint32_t len) {
+        return dspi_cs_new_binding(m_bridge->core(), uint32_t(qMax(0, slot)), uint8_t(type), buf, len);
+    }));
+}
+
+QVariantMap CsController::newRecord(const QString &kind) const {
+    const QByteArray k = kind.toUtf8();
+    return parsed(askCore([&](char *buf, uint32_t len) {
+        return dspi_cs_new_record(m_bridge->core(), k.constData(), buf, len);
+    }));
 }
