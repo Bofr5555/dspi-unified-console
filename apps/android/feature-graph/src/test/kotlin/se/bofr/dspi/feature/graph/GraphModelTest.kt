@@ -130,7 +130,7 @@ class GraphModelTest {
         val levels = DoubleArray(centres.size) { -42.0 }
         val xs = FloatArray(16)
         val ys = FloatArray(16)
-        val n = b.bandPoints(centres, levels, levels.size, centres.size, firstBand = 1, xs, ys)
+        val n = b.bandPoints(centres, levels, levels.size, centres.size, firstBand = 1, populated = -1L, xs, ys)
         assertEquals("16 Hz (the one below), 25 … 20000, and 25000 (the one above)", 7, n)
         assertTrue(xs[0] < 0)
         assertTrue(xs[n - 1] > 300)
@@ -146,7 +146,7 @@ class GraphModelTest {
         val xs = FloatArray(8)
         val ys = FloatArray(8)
         // Five slots, levels for only three: the last two sit on the floor (macOS).
-        val n = b.bandPoints(listOf(25, 50, 100, 200, 400), DoubleArray(3) { -42.0 }, 3, 5, 0, xs, ys)
+        val n = b.bandPoints(listOf(25, 50, 100, 200, 400), DoubleArray(3) { -42.0 }, 3, 5, 0, -1L, xs, ys)
         assertEquals(5, n)
         assertEquals(100.0, ys[4].toDouble(), 1e-4)
         assertEquals(50.0, ys[2].toDouble(), 1e-4)
