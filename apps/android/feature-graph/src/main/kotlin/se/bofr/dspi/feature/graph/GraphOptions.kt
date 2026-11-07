@@ -58,6 +58,7 @@ import se.bofr.dspi.ui.SwitchRow
 import se.bofr.dspi.ui.settings.AppSettings
 import se.bofr.dspi.ui.settings.AppSettingsStore
 import se.bofr.dspi.ui.settings.LocalAppSettings
+import se.bofr.dspi.ui.settings.RtaSpectrumView
 
 /**
  * The spectrum channels of the page showing the graph: the dashboard's are
@@ -183,7 +184,7 @@ internal fun rememberSpectrumSelection(bridge: DspiBridge, store: AppSettingsSto
     }
 }
 
-/** The gear's panel: SPECTRUM channels, FFT Graph, and Graph Setup. */
+/** The gear's panel: SPECTRUM channels, FFT Graph, RTA Bars, and Graph Setup. */
 @Composable
 internal fun GraphOptions(
     bridge: DspiBridge,
@@ -218,6 +219,10 @@ internal fun GraphOptions(
                     HorizontalDivider()
                     ToggleRow("FFT Graph", settings.rtaShowsGraph(onDashboard)) { on ->
                         store.update { it.withRtaShowsGraph(onDashboard, on) }
+                    }
+                    // -- WP AN34 -- the page's bar strip (macOS gear popover, SpectrumAnalyserView.swift:888)
+                    ToggleRow("RTA Bars", settings.rtaShows(RtaSpectrumView.BARS, onDashboard)) { on ->
+                        store.update { it.withRtaShows(RtaSpectrumView.BARS, onDashboard, on) }
                     }
                 } else {
                     Text(

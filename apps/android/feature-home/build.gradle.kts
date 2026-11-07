@@ -17,6 +17,8 @@ dependencies {
     // Coordinator F1: the second allowed feature edge — PRESETS' preset flows
     // (PresetMenuActions, AlertHost, ConsoleAlertDialog) behind the sidebar picker.
     implementation(project(":feature-presets"))
+    // -- WP AN34 -- the analyser's bar strip (AN17's SpectrumBarStrip) above the cards and channel details
+    implementation(project(":feature-analysis"))
     // E9: the preset controller and its alert slot live in a ViewModel.
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     // Coordinator E2: @Previews run on FakeDspiCore (debug only; release never sees it).
