@@ -105,6 +105,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.csDemoBusy(on)
     }
 
+    // -- WP CG20 --
+    override fun csDemoLearn(protocol: Int, code: Long): Boolean {
+        guard("csDemoLearn")
+        return inner.csDemoLearn(protocol, code)
+    }
+
     override fun demoRenameElsewhere(target: Int, name: String) {
         guard("demoRenameElsewhere")
         return inner.demoRenameElsewhere(target, name)
@@ -665,6 +671,8 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "coreVregManualClear",
             "coreVregDemoEvent",
             "csDemoBusy",
+            // -- WP CG20 --
+            "csDemoLearn",
             "demoRenameElsewhere",
             "demoLatencyTiming",
             // -- WP QD31 --
@@ -701,6 +709,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "configInspect",
             "crossfeedPairMapValid",
             "coreInfo",
+            // -- WP CG20 -- The editing rules: from the last read, no device I/O.
+            "csDescribe",
+            "csEdit",
+            "csNewBinding",
+            "csNewRecord",
+            "csStatusText",
             "csFetch",
             "csPinUses",
             "csSnapshot",
@@ -808,8 +822,8 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "aboutJson"
         )
 
-        /** Control-surface operations that only read the device (`cs.rs` "refresh", "refreshStatus"). */
-        private val CS_READ_OPS = setOf("refresh", "refreshStatus")
+        /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */
+        private val CS_READ_OPS = setOf("refresh", "refreshStatus", "displayStatus", "auxRead", "learnRead")
 
         private val OP = Regex("\"op\"\\s*:\\s*\"(\\w+)\"")
 

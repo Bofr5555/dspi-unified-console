@@ -85,6 +85,8 @@ private:
     void testSaveBarRefusal();
     // -- WP CG16 --
     void testCsPages();
+    // -- WP CG20 --
+    void testCsRules();
     // -- WP QD2 --
     void testPairMap();
     // -- WP QD3 --

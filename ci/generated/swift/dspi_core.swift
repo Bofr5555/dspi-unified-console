@@ -1536,6 +1536,44 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func csDemoBusy(on: Bool) throws 
     
     /**
+     * On the demo device only: the remote button a learn is waiting for was
+     * pressed. The learn ends with this protocol and code and notifies, as on a
+     * real receiver. False when nothing was armed. As
+     * [`cs_demo_busy`](Self::cs_demo_busy), it answers [`DspiError::Unsupported`]
+     * on any other device.
+     */
+    func csDemoLearn(`protocol`: UInt8, code: UInt32) throws  -> Bool
+    
+    /**
+     * What a page shows for one record, from the last [`DspiCore::cs_fetch`]:
+     * `{ok, title, summary, rows}`. `kind` is `binding`, `ir`, `step`, `page`,
+     * `display` or `group`; `slot` is the record's index; `draft` is the record as
+     * in [`DspiCore::cs_snapshot`].
+     *
+     * Each row has `id`, `title`, `detail` and `kind`. A `pick` has `value`, `text`
+     * and `options` of `{value, text, section?, owner?, disabled?}`; a `number`
+     * has `value`, `min`, `max`, `step`, `unit` and `decimals`, in natural units; a
+     * `toggle` has `on` and `enabled`; a `note` has `warning`, and its words in
+     * `detail`. `dspi_session::cs_rows` lists the ids.
+     *
+     * No device I/O. `{ok: false, error}` on a bad draft, an index the device does
+     * not have, no device, or before the first fetch. Never fails otherwise.
+     */
+    func csDescribe(kind: String, slot: UInt32, draft: String)  -> String
+    
+    /**
+     * The record after one row's value changed: `{ok, draft}`. `change` is
+     * `{id, value}`: the row's id, and an option's value, a number in natural units,
+     * or a boolean. The edit resets what the change leaves meaningless, so the
+     * record stays one the firmware takes.
+     *
+     * No device I/O: nothing changes on the device until the record goes to
+     * [`DspiCore::cs_apply`]. `{ok: false, error}` when the row or the value is not
+     * one [`DspiCore::cs_describe`] offers for this record, or as `cs_describe`.
+     */
+    func csEdit(kind: String, slot: UInt32, draft: String, change: String)  -> String
+    
+    /**
      * Read the whole control-surface configuration from the device:
      * capabilities, bindings and names, IR commands, groups, macros, the
      * display and the aux outputs (about seventy round trips).
@@ -1548,6 +1586,19 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * failure (lost device, timeout) as its typed error.
      */
     func csFetch() throws 
+    
+    /**
+     * A fresh binding of type `component` in `slot`, on free pins: `{ok, draft}`.
+     * No device I/O. `{ok: false, error}` as [`DspiCore::cs_describe`].
+     */
+    func csNewBinding(slot: UInt32, component: UInt8)  -> String
+    
+    /**
+     * A fresh record of `kind`, `ir`, `step` or `page`: `{ok, draft}`. A step and a
+     * page are ready to apply; a remote button needs its code from a learn first.
+     * No device I/O. `{ok: false, error}` as [`DspiCore::cs_describe`].
+     */
+    func csNewRecord(kind: String)  -> String
     
     /**
      * GPIOs held by live control-surface bindings, as (pin, slot): a
@@ -1567,6 +1618,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * or on firmware without control surfaces. Never fails.
      */
     func csSnapshot()  -> String
+    
+    /**
+     * A control-surface or pin-configuration status code as a sentence; empty for
+     * success. Needs no device.
+     */
+    func csStatusText(code: UInt8)  -> String
     
     /**
      * Delete preset `slot` (0..10) and its name. **Writes flash.**
@@ -3969,6 +4026,68 @@ open func csDemoBusy(on: Bool)throws   {try rustCallWithError(FfiConverterTypeDs
 }
     
     /**
+     * On the demo device only: the remote button a learn is waiting for was
+     * pressed. The learn ends with this protocol and code and notifies, as on a
+     * real receiver. False when nothing was armed. As
+     * [`cs_demo_busy`](Self::cs_demo_busy), it answers [`DspiError::Unsupported`]
+     * on any other device.
+     */
+open func csDemoLearn(`protocol`: UInt8, code: UInt32)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_cs_demo_learn(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(`protocol`),
+        FfiConverterUInt32.lower(code),$0
+    )
+})
+}
+    
+    /**
+     * What a page shows for one record, from the last [`DspiCore::cs_fetch`]:
+     * `{ok, title, summary, rows}`. `kind` is `binding`, `ir`, `step`, `page`,
+     * `display` or `group`; `slot` is the record's index; `draft` is the record as
+     * in [`DspiCore::cs_snapshot`].
+     *
+     * Each row has `id`, `title`, `detail` and `kind`. A `pick` has `value`, `text`
+     * and `options` of `{value, text, section?, owner?, disabled?}`; a `number`
+     * has `value`, `min`, `max`, `step`, `unit` and `decimals`, in natural units; a
+     * `toggle` has `on` and `enabled`; a `note` has `warning`, and its words in
+     * `detail`. `dspi_session::cs_rows` lists the ids.
+     *
+     * No device I/O. `{ok: false, error}` on a bad draft, an index the device does
+     * not have, no device, or before the first fetch. Never fails otherwise.
+     */
+open func csDescribe(kind: String, slot: UInt32, draft: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_cs_describe(self.uniffiClonePointer(),
+        FfiConverterString.lower(kind),
+        FfiConverterUInt32.lower(slot),
+        FfiConverterString.lower(draft),$0
+    )
+})
+}
+    
+    /**
+     * The record after one row's value changed: `{ok, draft}`. `change` is
+     * `{id, value}`: the row's id, and an option's value, a number in natural units,
+     * or a boolean. The edit resets what the change leaves meaningless, so the
+     * record stays one the firmware takes.
+     *
+     * No device I/O: nothing changes on the device until the record goes to
+     * [`DspiCore::cs_apply`]. `{ok: false, error}` when the row or the value is not
+     * one [`DspiCore::cs_describe`] offers for this record, or as `cs_describe`.
+     */
+open func csEdit(kind: String, slot: UInt32, draft: String, change: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_cs_edit(self.uniffiClonePointer(),
+        FfiConverterString.lower(kind),
+        FfiConverterUInt32.lower(slot),
+        FfiConverterString.lower(draft),
+        FfiConverterString.lower(change),$0
+    )
+})
+}
+    
+    /**
      * Read the whole control-surface configuration from the device:
      * capabilities, bindings and names, IR commands, groups, macros, the
      * display and the aux outputs (about seventy round trips).
@@ -3984,6 +4103,32 @@ open func csFetch()throws   {try rustCallWithError(FfiConverterTypeDspiError_lif
     uniffi_dspi_core_fn_method_dspicore_cs_fetch(self.uniffiClonePointer(),$0
     )
 }
+}
+    
+    /**
+     * A fresh binding of type `component` in `slot`, on free pins: `{ok, draft}`.
+     * No device I/O. `{ok: false, error}` as [`DspiCore::cs_describe`].
+     */
+open func csNewBinding(slot: UInt32, component: UInt8) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_cs_new_binding(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(slot),
+        FfiConverterUInt8.lower(component),$0
+    )
+})
+}
+    
+    /**
+     * A fresh record of `kind`, `ir`, `step` or `page`: `{ok, draft}`. A step and a
+     * page are ready to apply; a remote button needs its code from a learn first.
+     * No device I/O. `{ok: false, error}` as [`DspiCore::cs_describe`].
+     */
+open func csNewRecord(kind: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_cs_new_record(self.uniffiClonePointer(),
+        FfiConverterString.lower(kind),$0
+    )
+})
 }
     
     /**
@@ -4011,6 +4156,18 @@ open func csPinUses() -> [PinUse]  {
 open func csSnapshot() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_cs_snapshot(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * A control-surface or pin-configuration status code as a sentence; empty for
+     * success. Needs no device.
+     */
+open func csStatusText(code: UInt8) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_cs_status_text(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(code),$0
     )
 })
 }
@@ -20162,13 +20319,31 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_cs_demo_busy() != 31960) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_cs_demo_learn() != 38061) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_cs_describe() != 2511) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_cs_edit() != 65116) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_cs_fetch() != 19147) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_cs_new_binding() != 60717) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_cs_new_record() != 35845) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_cs_pin_uses() != 61537) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_cs_snapshot() != 43337) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_cs_status_text() != 13025) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_delete_preset() != 21426) {

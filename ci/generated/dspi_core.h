@@ -4881,6 +4881,59 @@ uint8_t dspi_core_vreg_demo_event(struct FfiCore *core, uint8_t event, uint32_t 
 uint8_t dspi_cs_demo_busy(struct FfiCore *core, bool on);
 
 /**
+ * What a page shows for one control-surface record, as JSON: `dspi_core`'s
+ * `cs_describe`. `kind` is `binding`, `ir`, `step`, `page`, `display` or `group`;
+ * `draft` is the record's JSON. No device I/O. Returns the bytes needed including
+ * the NUL; call again with a larger buffer if that exceeds `len`.
+ */
+uint32_t dspi_cs_describe(struct FfiCore *core,
+                          const char *kind,
+                          uint32_t slot,
+                          const char *draft,
+                          char *buf,
+                          uint32_t len);
+
+/**
+ * The record after one row's value changed, as JSON `{ok, draft}`: `dspi_core`'s
+ * `cs_edit`. `change` is `{id, value}`. No device I/O. Sized as [`dspi_cs_describe`].
+ */
+uint32_t dspi_cs_edit(struct FfiCore *core,
+                      const char *kind,
+                      uint32_t slot,
+                      const char *draft,
+                      const char *change,
+                      char *buf,
+                      uint32_t len);
+
+/**
+ * A fresh binding of a component type in `slot`, on free pins, as JSON `{ok, draft}`.
+ * No device I/O. Sized as [`dspi_cs_describe`].
+ */
+uint32_t dspi_cs_new_binding(struct FfiCore *core,
+                             uint32_t slot,
+                             uint8_t component,
+                             char *buf,
+                             uint32_t len);
+
+/**
+ * A fresh `ir`, `step` or `page` record, as JSON `{ok, draft}`. No device I/O. Sized
+ * as [`dspi_cs_describe`].
+ */
+uint32_t dspi_cs_new_record(struct FfiCore *core, const char *kind, char *buf, uint32_t len);
+
+/**
+ * A control-surface or pin-configuration status code as a sentence, empty for
+ * success. Sized as [`dspi_cs_describe`].
+ */
+uint32_t dspi_cs_status_text(struct FfiCore *core, uint8_t code, char *buf, uint32_t len);
+
+/**
+ * On the demo device only: the remote button an armed learn waits for was pressed.
+ * True when a learn took it; false with nothing armed, or on any other device.
+ */
+bool dspi_cs_demo_learn(struct FfiCore *core, uint8_t protocol, uint32_t code);
+
+/**
  * What the open board needs, read from the device now: JSON {ok, requiredMv,
  * source}. Call before entering the bootloader and pass `requiredMv` to
  * `dspi_firmware_guard_check`. No device, or an answer that cannot be

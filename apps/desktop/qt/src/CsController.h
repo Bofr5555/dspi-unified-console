@@ -64,8 +64,18 @@ public:
     Q_INVOKABLE int save();
     Q_INVOKABLE int revert();
 
-    // A PIN_CONFIG_* / CS status code as the macOS Console words it ("" = done)
+    // A PIN_CONFIG_* / CS status code in the core's words ("" = done)
     Q_INVOKABLE QString statusMessage(int code) const;
+
+    // -- WP CG20 -- The editing rules, from the core. No device I/O in any of them.
+    // What a page shows for one record: { ok, title, summary, rows }
+    Q_INVOKABLE QVariantMap describe(const QString &kind, int slot, const QVariantMap &draft) const;
+    // The record after row `id` took `value`: { ok, draft }, or { ok: false, error }
+    Q_INVOKABLE QVariantMap edit(const QString &kind, int slot, const QVariantMap &draft,
+                                 const QString &id, const QVariant &value) const;
+    // A fresh record: { ok, draft }
+    Q_INVOKABLE QVariantMap newBinding(int slot, int type) const;
+    Q_INVOKABLE QVariantMap newRecord(const QString &kind) const;
 
 signals:
     void changed();
