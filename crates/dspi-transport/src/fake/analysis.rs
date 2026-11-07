@@ -1702,44 +1702,47 @@ mod tests_wp_cg22 {
 
     #[test]
     fn wp_cg22_siggen_plays_stops_and_announces() {
-        let mut d = FakeDevice::demo();
+        // Synthetic instants (review c3c N1): nothing here waits on the wall clock.
+        let d = FakeDevice::demo();
         let mut n = d.notifications().unwrap();
-        d.control_out(op::REQ_SIGGEN_SET_CONFIG, 0, &sine(0b1).encode())
-            .unwrap();
-        assert_eq!(d.control_in(op::REQ_SIGGEN_CONTROL, 1, 1).unwrap(), [1]);
-        let p = next_siggen(&mut n);
-        assert_eq!(&p[4..], &[SG_RUN, 0, SINE, 0xFF]);
-        std::thread::sleep(Duration::from_millis(10));
-        let s = status(&mut d);
-        assert_eq!((s.state, s.signal_type), (SG_RUN, SINE));
-        // The analyser sees the tone at output 0, in the 1 kHz band.
-        let t = Instant::now();
+        let t0 = Instant::now();
+        let at = |ms: u64| t0 + Duration::from_millis(ms);
         {
             let mut st = lock(&d);
-            assert!(st.rta_set_config(&cfg(1, 0b11).encode(), t));
-            st.rta_note_read(t);
-            let f = st
-                .rta_band_frame(0, t + Duration::from_millis(100))
-                .unwrap();
-            let db = |l: u8| (f32::from(l) - 243.0) / 2.0;
-            assert!((db(f.avg[20]) + 20.0).abs() < 2.0, "{}", db(f.avg[20]));
-            assert!(db(f.avg[10]) < -100.0);
-            let other = st
-                .rta_band_frame(1, t + Duration::from_millis(100))
-                .unwrap();
-            assert!(db(other.avg[10]) > -40.0, "output 1 plays the programme");
+            let g = &mut st.analysis().unwrap().siggen;
+            assert!(g.stage(&sine(0b1).encode(), t0, 9));
+            assert!(g.control(1, t0, 9));
+            st.flush_siggen_events();
         }
-        // STOP fades out, then idles with HOST.
-        d.control_in(op::REQ_SIGGEN_CONTROL, 0, 1).unwrap();
-        assert_eq!(status(&mut d).state, SG_FADE_OUT);
-        std::thread::sleep(Duration::from_millis(10));
-        let s = status(&mut d);
+        // The notification source takes the device lock: read with it released.
+        let p = next_siggen(&mut n);
+        assert_eq!(&p[4..], &[SG_RUN, 0, SINE, 0xFF]);
+        let mut st = lock(&d);
+        let s = st.analysis().unwrap().siggen.status(at(10), 9);
+        assert_eq!((s.state, s.signal_type), (SG_RUN, SINE));
+        // The analyser sees the tone at output 0, in the 1 kHz band.
+        assert!(st.rta_set_config(&cfg(1, 0b11).encode(), at(10)));
+        st.rta_note_read(at(10));
+        let f = st.rta_band_frame(0, at(110)).unwrap();
+        let db = |l: u8| (f32::from(l) - 243.0) / 2.0;
+        assert!((db(f.avg[20]) + 20.0).abs() < 2.0, "{}", db(f.avg[20]));
+        assert!(db(f.avg[10]) < -100.0);
+        let other = st.rta_band_frame(1, at(110)).unwrap();
+        assert!(db(other.avg[10]) > -40.0, "output 1 plays the programme");
+        // STOP fades out for 5 ms, then idles with HOST.
+        assert!(st.analysis().unwrap().siggen.control(0, at(200), 9));
+        let g = &mut st.analysis().unwrap().siggen;
+        assert_eq!(g.status(at(204), 9).state, SG_FADE_OUT);
+        let s = g.status(at(206), 9);
         assert_eq!(
             (s.state, s.stop_reason),
             (SG_IDLE, sg::SIGGEN_STOP_HOST as u8)
         );
+        st.flush_siggen_events();
+        drop(st);
         let p = next_siggen(&mut n);
         assert_eq!(&p[4..], &[SG_IDLE, sg::SIGGEN_STOP_HOST as u8, SINE, 0xFF]);
+        let mut d = d;
         assert!(d.control_in(op::REQ_SIGGEN_CONTROL, 7, 1).is_err());
     }
 
