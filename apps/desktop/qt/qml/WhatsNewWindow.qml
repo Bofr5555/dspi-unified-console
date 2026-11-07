@@ -3,7 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Window 2.15
 import "components"
 
-// What's New: the release notes (whatsnew.json), newest first. Shown once,
+// What's New: the release notes (from the core), newest first. Shown once,
 // automatically, after Console is updated, and from Help.
 AppWindow {
     id: win
@@ -19,7 +19,7 @@ AppWindow {
     property var releases: []
 
     function load() {
-        var list = firmware.releaseNotes()
+        var list = onboardingText.releaseNotes()
         // Newest first, whatever the file's order
         list.sort(function (a, b) { return firmware.compareVersions(b.version, a.version) })
         releases = list

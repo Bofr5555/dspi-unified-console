@@ -6,12 +6,45 @@ import "components"
 // first launch (and from Help), as on macOS. One objective - a board running
 // verified DSPi firmware - in three steps: Welcome, Board, Done. The firmware
 // install happens right here, through the same updater as Firmware Update.
+// Its words are the core's (onboardingText), resolved for this platform; only
+// what the state machine picks between them and the icons belong here.
 Rectangle {
     id: wiz
+    objectName: "gettingStarted"
     color: isMacOS ? MacColors.windowMaterial : nativeWindowColor
     signal finished()
 
-    readonly property var stages: ["Welcome", "Board", "Done"]
+    readonly property var words: onboardingText.gettingStarted()
+    function byId(list, id) {
+        for (var i = 0; list && i < list.length; i++) if (list[i].id === id) return list[i]
+        return {}
+    }
+    readonly property var welcomeWords: byId(words.stages, "welcome")
+    readonly property var boardWords: byId(words.stages, "board")
+    readonly property var doneWords: byId(words.stages, "done")
+    readonly property var stages: (words.stages || []).map(function (s) { return s.label })
+    readonly property var buttons: words.buttons || {}
+    function joined(paragraphs) {
+        return (paragraphs || []).map(function (p) { return p.text }).join("\n\n")
+    }
+    // The core's `icon` names, in this app's icon set
+    function iconFor(name) {
+        switch (name) {
+        case "connect": return "plug"
+        case "verified": return "check-circle"
+        case "outputs": return "output"
+        case "help": return "question-circle"
+        default: return name
+        }
+    }
+    // A text's {name}s: values only the app knows, at run time
+    function fill(text) {
+        var values = { chip: firmware.chipName, volume: firmware.volumeName, version: firmware.verifiedVersion,
+                       bundled_version: bundled, device_version: firmware.deviceVersion, failure: firmware.failure }
+        return (text || "").replace(/\{(\w+)\}/g, function (all, name) {
+            return values[name] !== undefined ? values[name] : all
+        })
+    }
     property int stage: 0
     property bool confirmed: false
     property bool rebootRequested: false
@@ -52,76 +85,57 @@ Rectangle {
         else finished()
     }
 
-    readonly property string boardTitle: {
+    // Which header the board step shows
+    function headerFor(phase, match) {
         switch (phase) {
-        case "verified": return "Your device has been prepared"
-        case "failed": return "Something needs attention"
-        case "writing": case "waitingForDevice": return "Installing firmware"
+        case "verified": return byId(boardWords.headers, "board.verified")
+        case "failed": return byId(boardWords.headers, "board.failed")
+        case "writing": case "waitingForDevice": return byId(boardWords.headers, "board.installing")
         }
-        switch (connectedMatch) {
-        case 1: return "Your device is ready"
-        case 2: return "Update your firmware"
-        case 3: return "Your firmware is newer"
-        default: return "Prepare your Pico"
+        switch (match) {
+        case 1: return byId(boardWords.headers, "board.current")
+        case 2: return byId(boardWords.headers, "board.older")
+        case 3: return byId(boardWords.headers, "board.newer")
+        default: return byId(boardWords.headers, "board.prepare")
         }
     }
-    readonly property string boardBlurb: {
-        switch (phase) {
-        case "writing": case "waitingForDevice":
-            return "Console ships the firmware it expects, so nothing needs a download. Keep the Pico plugged in until it checks back in."
-        case "verified":
-            return "The device has successfully restarted and DSPi Firmware is correctly installed."
-        case "failed":
-            return "This is almost always fixable. Follow the card below, then try again - nothing has been lost."
-        }
-        switch (connectedMatch) {
-        case 1: return "This step installs the DSPi firmware, and your connected device is already running it. There is nothing to do here."
-        case 2: return "Your DSPi is already connected, so no buttons need holding: the app can restart it and install the matching firmware in one step."
-        case 3: return "This Console ships an older firmware than your device is running. Updating the app is usually the better fix, but you can also downgrade the device to match."
-        default: return "In this step, we are going to install the DSPi firmware on your Pico-compatible device. Follow the directions below."
-        }
+    readonly property var boardHeader: headerFor(phase, connectedMatch)
+    // A card's words, with how it looks here
+    function cardWords(id, look) {
+        var words = byId(boardWords.cards, id)
+        look.title = fill(words.title)
+        look.text = fill(words.text)
+        if (words.action) look.action = words.action
+        return look
     }
     // The board step's card: { icon, tint, spin, size, title, text, action, actionPrimary }
-    readonly property var card: {
+    function cardFor(phase, confirmed, match, mundane) {
+        var green = isMacOS ? MacColors.green : "#32d74b"
+        var orange = isMacOS ? MacColors.orange : "#ff9f0a"
         switch (phase) {
         case "idle": case "waitingForBoard":
-            if (confirmed) return { spin: true, title: "Looking for your Pico",
-                text: "Waiting for it to appear in bootloader mode. If nothing happens after a few seconds, unplug it, hold BOOTSEL, and plug it back in." }
-            if (connectedMatch === 1) return { icon: "check-circle", tint: isMacOS ? MacColors.green : "#32d74b", size: 36, title: "Firmware " + bundled + " already installed",
-                text: "Your DSPi is running the firmware this Console ships, so there is nothing to install. Continue to finish setup." }
-            if (connectedMatch === 2) return { icon: "arrow-up", title: "Firmware update available",
-                text: "Your DSPi is running firmware " + firmware.deviceVersion + "; this Console pairs with " + bundled
-                      + ". The device will restart into bootloader mode and come back updated. Audio stops until it finishes.",
-                action: "Update DSPi Firmware", actionPrimary: true }
-            if (connectedMatch === 3) return { icon: "arrow-down-circle", tint: isMacOS ? MacColors.orange : "#ff9f0a", title: "This would be a downgrade",
-                text: "Your DSPi is running firmware " + firmware.deviceVersion + ", which is newer than this Console expects (" + bundled
-                      + "). A newer Console is the better fix, but you can downgrade the device to match this one.",
-                action: "Downgrade Firmware", actionPrimary: false }
-            return { spin: true, title: "Waiting for your Pico",
-                text: "Hold the BOOTSEL button while connecting your Pico-compatible device to your computer. Once detected, it will appear here." }
+            if (confirmed) return cardWords("card.looking", { spin: true })
+            if (match === 1) return cardWords("card.already_installed", { icon: "check-circle", tint: green, size: 36 })
+            if (match === 2) return cardWords("card.update_available", { icon: "arrow-up", actionPrimary: true })
+            if (match === 3) return cardWords("card.downgrade", { icon: "arrow-down-circle", tint: orange, actionPrimary: false })
+            return cardWords("card.waiting", { spin: true })
         case "waitingForVolume":
-            return { spin: true, title: firmware.chipName + " found",
-                text: "The board is in bootloader mode. Waiting for its " + firmware.volumeName + " drive to mount - this usually takes a second or two." }
+            return cardWords("card.volume_wait", { spin: true })
         case "ready":
-            if (confirmed) return { spin: true, title: "Preparing to write",
-                text: "Opening the " + firmware.chipName + "'s " + firmware.volumeName + " drive." }
-            return { icon: "drive", tint: isMacOS ? MacColors.green : "#32d74b", title: firmware.chipName + " ready",
-                text: "The device is now in bootloader mode and ready to receive firmware.",
-                action: "Install DSPi Firmware", actionPrimary: true }
+            if (confirmed) return cardWords("card.preparing", { spin: true })
+            return cardWords("card.ready", { icon: "drive", tint: green, actionPrimary: true })
         case "waitingForDevice":
-            return { spin: true, title: "Firmware written",
-                text: "The board is restarting with its new firmware. This can take up to half a minute; leave it plugged in." }
+            return cardWords("card.restarting", { spin: true })
         case "verified":
-            return { icon: "check-circle", tint: isMacOS ? MacColors.green : "#32d74b", size: 36, title: "Firmware " + firmware.verifiedVersion + " installed",
-                text: "That was the whole job. Continue to finish setup." }
+            return cardWords("card.verified", { icon: "check-circle", tint: green, size: 36 })
         case "failed":
-            return { icon: firmware.failureMundane ? "question-circle" : "warning", tint: isMacOS ? MacColors.orange : "#ff9f0a",
-                title: firmware.failureMundane ? "Not quite ready" : "The update did not complete", text: firmware.failure,
-                action: "Try Again", actionPrimary: false }
+            return cardWords(mundane ? "card.failed_mundane" : "card.failed", { icon: mundane ? "question-circle" : "warning", tint: orange,
+                             action: buttons.try_again, actionPrimary: false })
         default:
             return { title: "", text: "" }
         }
     }
+    readonly property var card: cardFor(phase, confirmed, connectedMatch, firmware.failureMundane)
     function cardAction() {
         if (phase === "failed") resetRun()
         else if (phase === "ready") beginInstall()
@@ -163,8 +177,8 @@ Rectangle {
             anchors.leftMargin: 10
             anchors.verticalCenter: tile.verticalCenter
             spacing: 1
-            Text { text: "Getting Started"; font.pixelSize: 14; font.weight: Font.DemiBold; color: isMacOS ? MacColors.label : "white" }
-            Text { text: "Step " + (wiz.stage + 1) + " of " + wiz.stages.length; font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
+            Text { text: wiz.words.title || ""; font.pixelSize: 14; font.weight: Font.DemiBold; color: isMacOS ? MacColors.label : "white" }
+            Text { text: (wiz.words.step_counter || "").replace("{current}", wiz.stage + 1).replace("{total}", wiz.stages.length); font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
         }
         StepStrip {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -197,7 +211,7 @@ Rectangle {
             Text {
                 width: parent.width
                 wrapMode: Text.WordWrap
-                text: wiz.stage === 0 ? "Welcome to DSPi Console" : wiz.stage === 1 ? wiz.boardTitle : "You are set up"
+                text: (wiz.stage === 0 ? wiz.welcomeWords.title : wiz.stage === 1 ? wiz.boardHeader.title : wiz.doneWords.title) || ""
                 font.pixelSize: 20
                 font.weight: Font.DemiBold
                 color: isMacOS ? MacColors.label : "white"
@@ -205,10 +219,9 @@ Rectangle {
             Text {
                 width: parent.width
                 wrapMode: Text.WordWrap
-                text: wiz.stage === 0
-                      ? "DSPi turns a Raspberry Pi Pico into a remarkably capable audio processor: equalisation, crossovers, upmixing, loudness compensation and more, applied live to whatever you play.\n\nSetup is short and has one job: getting the DSPi firmware onto your Pico. Once it is running, everything else is set up in the app as you need it."
-                      : wiz.stage === 1 ? wiz.boardBlurb
-                      : "Your Pico is running the DSPi firmware, and the console is ready whenever it is plugged in. A few places worth knowing about:"
+                text: wiz.stage === 0 ? wiz.joined(wiz.welcomeWords.paragraphs)
+                      : wiz.stage === 1 ? wiz.boardHeader.blurb || ""
+                      : wiz.joined(wiz.doneWords.paragraphs)
                 font.pixelSize: 13
                 lineHeight: 1.15
                 color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.6)
@@ -219,9 +232,10 @@ Rectangle {
                 visible: wiz.stage === 0
                 width: parent.width
                 spacing: 12
-                InfoRow { icon: "plug"; text: "Connect your Pico and install the DSPi firmware, right here." }
-                InfoRow { icon: "check-circle"; text: "The board restarts and the app confirms the install worked." }
-                InfoRow { icon: "sliders"; text: "Outputs, wiring and audio are then yours to shape in the console." }
+                Repeater {
+                    model: wiz.welcomeWords.rows
+                    InfoRow { icon: wiz.iconFor(modelData.icon); text: modelData.text }
+                }
             }
 
             // Board: the install happens in place
@@ -251,6 +265,8 @@ Rectangle {
                     progress: firmware.progress
                     boardName: firmware.chipName
                     version: wiz.bundled
+                    title: wiz.byId(wiz.boardWords.cards, "card.writing").title || ""
+                    note: wiz.byId(wiz.boardWords.cards, "card.writing").text || ""
                 }
             }
 
@@ -259,10 +275,10 @@ Rectangle {
                 visible: wiz.stage === 2
                 width: parent.width
                 spacing: 12
-                InfoRow { icon: "output"; text: "Choose which outputs your build uses, and the pins that carry them, in Settings under Outputs." }
-                InfoRow { icon: "speaker"; text: "Pick DSPi as the output device in your desktop's sound settings to hear your computer through it." }
-                InfoRow { icon: "sliders"; text: "Click an input or output in the sidebar to edit its filters." }
-                InfoRow { icon: "question-circle"; text: "Help in the app menu holds release notes and links, and this wizard can be run again." }
+                Repeater {
+                    model: wiz.doneWords.rows
+                    InfoRow { icon: wiz.iconFor(modelData.icon); text: modelData.text }
+                }
             }
         }
     }
@@ -278,7 +294,7 @@ Rectangle {
         AppButton {
             x: 24
             anchors.verticalCenter: parent.verticalCenter
-            text: "Skip Setup"
+            text: wiz.buttons.skip || ""
             onClicked: wiz.finished()
         }
         Row {
@@ -288,12 +304,12 @@ Rectangle {
             spacing: 8
             AppButton {
                 visible: wiz.stage > 0 && !wiz.installing
-                text: "Back"
+                text: wiz.buttons.back || ""
                 onClicked: wiz.stage--
             }
             AppButton {
                 visible: wiz.showsContinue
-                text: wiz.stage === wiz.stages.length - 1 ? "Start Using DSPi Console" : "Continue"
+                text: (wiz.stage === wiz.stages.length - 1 ? wiz.buttons.finish : wiz.buttons["continue"]) || ""
                 // The install button owns the emphasis while it is on screen
                 primary: !(wiz.stage === 1 && !!wiz.card.action && wiz.card.actionPrimary)
                 onClicked: wiz.advance()

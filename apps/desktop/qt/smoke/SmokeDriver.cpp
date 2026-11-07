@@ -90,6 +90,8 @@ void SmokeDriver::run() {
     testReconnect();
     // -- WP QD4 --
     testNames();
+    // -- WP QD32 --
+    testOnboarding();
     // -- WP QD5 --
     testOutputLatency();
     testClockDiagAndCpuBars();
@@ -425,7 +427,6 @@ void SmokeDriver::testSiggenAndStats() {
     fw->beginWatching();
     spin(300);
     fw->stopWatching();
-    check("release notes", !fw->releaseNotes().isEmpty());
 }
 
 void SmokeDriver::testFiles() {
