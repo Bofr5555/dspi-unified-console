@@ -9,6 +9,7 @@ Column {
     property string icon: ""           // macOS: the header's SF Symbol stand-in
     property int iconSize: 16          // its glyph starts 4/24 of this in
     property string footnote: ""
+    property string note: ""           // -- WP CG29 -- plain text between the title and the card
     default property alias rows: card.data
 
     width: parent ? parent.width : 400
@@ -48,6 +49,20 @@ Column {
         font.pixelSize: 13
         font.weight: Font.DemiBold
         color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.6)
+    }
+
+    // -- WP CG29 --
+    Text {
+        visible: section.note !== ""
+        width: parent.width
+        wrapMode: Text.Wrap
+        textFormat: Text.PlainText
+        leftPadding: 4
+        rightPadding: 4
+        bottomPadding: isMacOS ? 6 : 0
+        text: section.note
+        font.pixelSize: 12
+        color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.6)
     }
 
     Rectangle {

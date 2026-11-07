@@ -23,7 +23,7 @@ use super::{Cx, PageEvent, Row, SettingsPage};
 
 /// The Console's paragraph above the links.
 pub const SUPPORT: &str = "DSPi Firmware and Console are free, open-source software that I \
-                           develop in my spare time. Contributions of any kind - code, \
+                           (Weeb Labs) develop in my spare time. Contributions of any kind - code, \
                            feedback, funding, or otherwise - are always immensely appreciated.";
 
 /// Said in place of the table if it cannot be read, which a test in `dspi-session`
@@ -143,6 +143,13 @@ impl Writer {
             .extend(fold(&clean(text), width).into_iter().map(Row::Note));
     }
 
+    /// A section heading, folded like a note. Nothing is added for empty text.
+    fn heading(&mut self, text: &str) {
+        let width = usize::from(self.width.saturating_sub(2).max(1));
+        self.rows
+            .extend(fold(&clean(text), width).into_iter().map(Row::Section));
+    }
+
     /// A name and an address: on one line if they fit, the Console's layout, and
     /// otherwise each folded on lines of its own so neither is cut.
     fn pair(&mut self, label: &str, value: &str) {
@@ -191,7 +198,9 @@ fn table_rows(table: Option<&About>, width: u16) -> Vec<Row> {
         }
         w.rows.push(Row::Blank);
     }
-    w.rows.push(Row::section("Links & Support"));
+    // -- WP CG29 -- The heading and note are the table's: they say whose links these are.
+    w.heading(&table.links_title);
+    w.note(&table.links_note);
     w.note(SUPPORT);
     for link in &table.links {
         w.pair(&link.title, &link.url);
@@ -337,6 +346,33 @@ mod tests {
     }
 
     #[test]
+    fn wp_cg29_the_links_section_is_titled_and_noted_as_weeb_labs() {
+        let table = about().unwrap();
+        let rows = table_rows(Some(&table), 200);
+        let at = rows
+            .iter()
+            .position(|r| matches!(r, Row::Section(t) if t == "Weeb Labs: links and support"))
+            .expect("the table's links title");
+        assert!(
+            matches!(&rows[at + 1], Row::Note(t) if *t == clean(&table.links_note)),
+            "{:?}",
+            rows[at + 1]
+        );
+        assert!(table.links_note.contains("not Weeb Labs"));
+        let first_link = rows
+            .iter()
+            .position(|r| matches!(r, Row::Pair(a, _) if *a == table.links[0].title))
+            .unwrap();
+        assert!(first_link > at, "the links sit under the title");
+        let frames = scrolled_to_the_end(120, 40);
+        let all: String = frames.iter().map(|f| page_text(f)).collect();
+        let squeezed = |t: &str| t.split_whitespace().collect::<String>();
+        assert!(squeezed(&all).contains(&squeezed(&table.links_note)));
+        // Section headings are drawn in capitals.
+        assert!(squeezed(&all).contains(&squeezed(&table.links_title.to_uppercase())));
+    }
+
+    #[test]
     fn wp_tm22_about_keeps_the_app_name_version_and_device() {
         let (mut s, st) = screen(Page::About);
         let f = frame(&mut s, &st, 120, 40);
@@ -377,9 +413,13 @@ mod tests {
             draft: true,
             credit_lines: vec![],
             makers: vec![],
+            links_title: String::new(),
+            links_note: String::new(),
             links: vec![],
             credits: vec![],
         };
+        t.links_title = words[0].clone();
+        t.links_note = words[2].clone();
         for (i, w) in words.iter().enumerate() {
             let id = i.to_string();
             t.credit_lines.push(CreditLine {
@@ -498,16 +538,14 @@ mod tests {
             draft: false,
             credit_lines: vec![],
             makers: vec![],
+            links_title: String::new(),
+            links_note: String::new(),
             links: vec![],
             credits: vec![],
         };
         assert!(credit_rows(Some(&empty), 59).is_empty());
         let rows = table_rows(Some(&empty), 59);
-        assert!(
-            !rows
-                .iter()
-                .any(|r| matches!(r, Row::Section(t) if t != "Links & Support"))
-        );
+        assert!(!rows.iter().any(|r| matches!(r, Row::Section(_))));
         assert!(matches!(&credit_rows(None, 59)[0], Row::Note(t) if t == NO_TABLE));
         assert!(!table_rows(None, 59).is_empty());
     }

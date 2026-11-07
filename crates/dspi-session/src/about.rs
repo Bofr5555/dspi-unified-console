@@ -29,6 +29,11 @@ pub struct About {
     pub credit_lines: Vec<CreditLine>,
     /// Who made what.
     pub makers: Vec<Maker>,
+    /// The heading of [`links`](Self::links), which says whose links they are
+    /// (WP CG29).
+    pub links_title: String,
+    /// Shown under that heading: whose channels these are, and who made this console.
+    pub links_note: String,
     /// Where to follow and support the work.
     pub links: Vec<Link>,
     /// Who and what else the work includes.
@@ -107,5 +112,24 @@ mod tests_wp_cg15 {
         assert!(table.credits.iter().any(|c| c.name == "Jonathan Rosser"));
         let autoeq = table.credits.iter().find(|c| c.name == "AutoEq").unwrap();
         assert!(autoeq.url.is_some());
+    }
+}
+
+#[cfg(test)]
+mod tests_wp_cg29 {
+    use super::*;
+
+    /// The links are Weeb Labs', and the table says so: every client shows this title
+    /// and note over them.
+    #[test]
+    fn wp_cg29_the_links_section_is_weeb_labs() {
+        let table = about().unwrap();
+        assert_eq!(table.links_title, "Weeb Labs: links and support");
+        assert_eq!(
+            table.links_note,
+            "Weeb Labs' channels for DSPi, its firmware and the original DSPi Consoles. \
+             This console is made by Bofr5555, not Weeb Labs."
+        );
+        assert!(!table.links.is_empty());
     }
 }

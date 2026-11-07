@@ -133,20 +133,20 @@ private fun ToolList(bridge: DspiBridge, onOpen: (ToolRoute) -> Unit, onNavigate
             HorizontalDivider()
         }
         // The macOS menu titles (incl. "Stats for nerbs"); all four live in :feature-analysis.
-        ANALYSIS_ITEMS.forEachIndexed { i, (title, subtitle) ->
-            ListRow(title, subtitle, null) { onNavigate(DspiRoutes.ANALYSIS) }
+        ANALYSIS_ITEMS.forEachIndexed { i, (title, subtitle, page) ->
+            ListRow(title, subtitle, null) { onNavigate(DspiRoutes.analysis(page)) }
             if (i < ANALYSIS_ITEMS.lastIndex) HorizontalDivider()
         }
     }
 }
 
-/** The diagnostic entries of the macOS Tools menu, in menu order. */
+/** The diagnostic entries of the macOS Tools menu, in menu order, each with its :feature-analysis page id (AN32). */
 internal val ANALYSIS_ITEMS =
     listOf(
-        "Signal Generator" to "Test tones, sweeps and noise",
-        "Spectrum Analyser" to "Real-time spectrum of inputs and outputs",
-        "Stats for nerbs" to "System statistics",
-        "Interrupt Monitor" to "Interrupt and buffer timing"
+        Triple("Signal Generator", "Test tones, sweeps and noise", "test-signals"),
+        Triple("Spectrum Analyser", "Real-time spectrum of inputs and outputs", "spectrum"),
+        Triple("Stats for nerbs", "System statistics", "stats"),
+        Triple("Interrupt Monitor", "Interrupt and buffer timing", "interrupt-monitor")
     )
 
 @Composable

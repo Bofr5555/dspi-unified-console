@@ -63,7 +63,8 @@ class AboutPageAn26Test {
         show(asset)
         val root = Json.parseObject(asset)!!
         fun strings(section: String, key: String) = root.list(section)!!.mapNotNull { (it as Map<String, Any?>).str(key) }
-        val shown = strings("credit_lines", "text") + strings("makers", "name") + strings("links", "title") +
+        val shown = strings("credit_lines", "text") + strings("makers", "name") +
+            listOfNotNull(root.str("links_title"), root.str("links_note")) + strings("links", "title") +
             strings("links", "detail") + strings("credits", "name") + strings("credits", "what")
         assertTrue(shown.size > 20)
         // Some credits share their words, so count: one row per entry of the file.
@@ -73,6 +74,17 @@ class AboutPageAn26Test {
             rule.onNodeWithText(made).assertExists()
         }
         assertGoogleRowsStay()
+    }
+
+    @Test
+    fun wpCg29TheLinksSectionIsTitledAndNotedAsWeebLabs() {
+        show(File("../../../assets/about.json").readText())
+        rule.onNodeWithText("Weeb Labs: links and support").assertExists()
+        rule.onNodeWithText(
+            "Weeb Labs' channels for DSPi, its firmware and the original DSPi Consoles. " +
+                "This console is made by Bofr5555, not Weeb Labs."
+        ).assertExists()
+        rule.onNode(hasText("Links & Support")).assertDoesNotExist()
     }
 
     @Test

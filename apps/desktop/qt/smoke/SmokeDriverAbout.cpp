@@ -150,6 +150,8 @@ void SmokeDriver::testAbout() {
         urls << str(o, "url");
         rowCount++;
     }
+    // -- WP CG29 -- the links section's heading and note
+    wanted << str(table, "links_title") << str(table, "links_note");
     for (const QJsonValue &v : list("credits")) {
         const QJsonObject o = v.toObject();
         wanted << str(o, "name") << str(o, "what");
@@ -162,6 +164,11 @@ void SmokeDriver::testAbout() {
         if (!shown.contains(w)) { printf("  about: not on the page: \"%s\"\n", qPrintable(w)); missing++; }
     check("QD33: every string in the table is on the page", !wanted.isEmpty() && missing == 0);
     check("QD33: a row for each maker, link and credit", rowsOf(page).size() == rowCount);
+    check("CG29: the links section is titled and noted as Weeb Labs'",
+          shown.contains(QStringLiteral("Weeb Labs: links and support"))
+          && shown.contains(QStringLiteral("Weeb Labs' channels for DSPi, its firmware and the original DSPi Consoles. "
+                                           "This console is made by Bofr5555, not Weeb Labs."))
+          && !shown.contains(QStringLiteral("Links")));
 
     // Each row with a link opens that link, and only those are clickable
     UrlCatcher catcher;

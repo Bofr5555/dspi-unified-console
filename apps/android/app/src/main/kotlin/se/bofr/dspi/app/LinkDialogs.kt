@@ -61,7 +61,7 @@ fun RemoteDialogs(
             onDismissRequest = { onUsbAnswer(false) },
             title = { Text("A DSPi is connected over USB") },
             text = {
-                Text("${state.hub?.name ?: "A hub"}'s DSPi is open over the network. Switch to the DSPi on USB?")
+                Text("You are controlling ${state.hub?.name ?: "a hub"}'s DSPi over the network. Switch to the DSPi on USB?")
             },
             confirmButton = { TextButton(onClick = { onUsbAnswer(true) }) { Text("Use USB") } },
             dismissButton = { TextButton(onClick = { onUsbAnswer(false) }) { Text("Stay on the Network") } }
