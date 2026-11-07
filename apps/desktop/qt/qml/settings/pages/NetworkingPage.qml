@@ -13,8 +13,8 @@ SettingsPage {
     writesToDevice: false
     objectName: "networkingPage"
 
-    Component.onCompleted: hub.watching = true
-    Component.onDestruction: hub.watching = false
+    Component.onCompleted: hub.watch()       // -- WP QD37 -- a watch of its own
+    Component.onDestruction: hub.unwatch()
 
     readonly property color secondary: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
     readonly property color primary: isMacOS ? MacColors.label : "white"

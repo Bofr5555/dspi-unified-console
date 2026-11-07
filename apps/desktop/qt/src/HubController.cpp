@@ -416,18 +416,23 @@ void HubController::setLookForHubs(bool on) {
     syncBrowse();
 }
 
-void HubController::setWatching(bool on) {
-    if (on == m_watching) return;
-    m_watching = on;
+void HubController::watch() {
+    if (m_watchers++ > 0) return;
     emit browseChanged();
-    if (on) refresh();
+    refresh();
+    syncBrowse();
+}
+
+void HubController::unwatch() {
+    if (m_watchers == 0 || --m_watchers > 0) return;
+    emit browseChanged();
     syncBrowse();
 }
 
 // Browse while the page shows and the user wants it, leaving this hub out. Starting
 // returns at once; stopping waits only for a wake-up in progress, which schedules.
 void HubController::syncBrowse() {
-    const bool want = m_watching && m_lookForHubs;
+    const bool want = watching() && m_lookForHubs;
     if (m_browsing && (!want || m_browseOwnId != m_hubId)) {
         dspi_link_browse_stop(m_core);
         m_browsing = false;

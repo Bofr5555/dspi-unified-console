@@ -3,6 +3,7 @@
 
 #include <QCoreApplication>
 #include <QDesktopServices>
+#include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -39,6 +40,22 @@ bool isWebPage(const QUrl &url) {
     return url.isValid() && (url.scheme() == QLatin1String("https") || url.scheme() == QLatin1String("http"))
         && !url.host().isEmpty();
 }
+}
+
+// -- WP QD37 -- (review c4q N4) The feed says which page "View Release" opens, so a
+// plain-http one on a hostile network could send the user anywhere: https only,
+// except an override (settings key or setFeed) on this machine, for a local feed.
+bool AppUpdater::feedAllowed(const QUrl &url, bool builtIn) {
+    if (!isWebPage(url)) return false;
+    if (url.scheme() == QLatin1String("https")) return true;
+    if (builtIn) return false;
+    const QString host = url.host();
+    return host.compare(QLatin1String("localhost"), Qt::CaseInsensitive) == 0 || QHostAddress(host).isLoopback();
+}
+
+QUrl AppUpdater::resolveFeed(const QUrl &override, const QUrl &builtIn) {
+    if (!override.isEmpty()) return feedAllowed(override, false) ? override : QUrl();
+    return feedAllowed(builtIn, true) ? builtIn : QUrl();
 }
 
 // ── Versions and the feed ──
@@ -146,8 +163,7 @@ AppUpdater::AppUpdater(DSPiBridge *, QObject *parent)
 void AppUpdater::setFeed(const QUrl &feed) {
     QUrl url = feed;
     if (url.isEmpty()) url = QUrl(QSettings().value(QLatin1String(kFeedKey)).toString());
-    if (url.isEmpty()) url = QUrl(QStringLiteral(DSPI_UPDATE_FEED_URL));
-    m_feed = isWebPage(url) ? url : QUrl();
+    m_feed = resolveFeed(url, QUrl(QStringLiteral(DSPI_UPDATE_FEED_URL)));
     emit feedChanged();
 }
 

@@ -3,12 +3,18 @@
 // top of this is QD14's. All of it blocks: the app keeps these calls off its GUI thread.
 #include "SmokeDriver.h"
 
+#include "HubController.h"   // -- WP QD37 --
+
 #include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QQmlApplicationEngine>
+#include <QQmlContext>
+#include <QQuickItem>
+#include <QQuickWindow>
 #include <QStringList>
 
 #include <atomic>
@@ -80,9 +86,62 @@ Run terminal(const QString &binary, int port, const QString &pin) {
     return { proc.exitStatus() == QProcess::NormalExit ? proc.exitCode() : -1, QString::fromUtf8(proc.readAll()) };
 }
 
+// -- WP QD37 --
+QQuickItem *findItem(QQuickItem *from, const QString &name) {
+    if (from->objectName() == name) return from;
+    for (QQuickItem *c : from->childItems())
+        if (QQuickItem *found = findItem(c, name)) return found;
+    return nullptr;
+}
+
 } // namespace
 
 void SmokeDriver::testHub() {
+    // -- WP QD37 -- (review c4q N3) Settings > Networking and the Devices list each hold
+    // a watch on the hub browser: closing them in either order leaves it right
+    {
+        auto *hubs = qobject_cast<HubController *>(
+            m_.engine->rootContext()->contextProperty(QStringLiteral("hub")).value<QObject *>());
+        QObject *popup = root()->findChild<QObject *>(QStringLiteral("devicesPopup"));
+        QQuickWindow *settings = nullptr;
+        for (QQuickWindow *w : root()->findChildren<QQuickWindow *>())
+            if (w->property("currentPage").isValid() && w->metaObject()->indexOfMethod("navigate(QVariant)") >= 0) settings = w;
+        check("QD37: the hub, the Devices list and Settings", hubs && popup && settings);
+        if (hubs && popup && settings) {
+            const auto opened = [popup] { return popup->property("opened").toBool(); };
+            const auto openList = [&] {
+                QMetaObject::invokeMethod(root(), "openToolWindow", Q_ARG(QVariant, QStringLiteral("devices")));
+                return waitFor(2000, opened);
+            };
+            const auto closeList = [&] {
+                QMetaObject::invokeMethod(popup, "close");
+                return waitFor(2000, [&] { return !opened(); });
+            };
+            const auto openPage = [&] {
+                settings->setVisible(true);
+                QMetaObject::invokeMethod(settings, "navigate", Q_ARG(QVariant, QStringLiteral("networking")));
+                return waitFor(2000, [&] { return findItem(settings->contentItem(), QStringLiteral("networkingPage")) != nullptr; });
+            };
+            const auto closePage = [&] {
+                QMetaObject::invokeMethod(settings, "navigate", Q_ARG(QVariant, QStringLiteral("about")));
+                settings->setVisible(false);
+                return waitFor(2000, [&] { return findItem(settings->contentItem(), QStringLiteral("networkingPage")) == nullptr; });
+            };
+            check("QD37: nothing watches to start with", !hubs->watching());
+            check("QD37: Settings, then the list, open", openPage() && openList() && hubs->watching());
+            check("QD37: Settings closed first: the list still browses", closePage() && hubs->watching());
+            check("QD37: and the list closed: browsing stops", closeList() && !hubs->watching() && !hubs->browsing());
+            check("QD37: the list, then Settings, open", openList() && openPage() && hubs->watching());
+            check("QD37: the list closed first: Settings still browses", closeList() && hubs->watching());
+            check("QD37: and Settings closed: browsing stops", closePage() && !hubs->watching() && !hubs->browsing());
+            hubs->unwatch();
+            hubs->watch();
+            check("QD37: an unwatch with none held is not counted", hubs->watching());
+            hubs->unwatch();
+            check("QD37: nothing watches at the end", !hubs->watching());
+        }
+    }
+
     const QString binary = qEnvironmentVariable("DSPI_SMOKE_TERMINAL");
     check("HB6: the Terminal is there (DSPI_SMOKE_TERMINAL)", !binary.isEmpty());
     if (binary.isEmpty()) return;

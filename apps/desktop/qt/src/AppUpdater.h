@@ -69,6 +69,12 @@ public:
     // The newest release to offer over `current`. Someone on a final release is
     // offered finals only, someone on a beta newer betas too (Swift's rule).
     static const Release *newest(const QVector<Release> &releases, const Version &current);
+    // -- WP QD37 -- Whether a feed may be asked: https, or for an override (not
+    // builtIn) also http on this machine (localhost, 127.0.0.0/8, ::1)
+    static bool feedAllowed(const QUrl &url, bool builtIn);
+    // The feed to ask: the override if there is one (none if it is not allowed),
+    // else the built-in one if allowed
+    static QUrl resolveFeed(const QUrl &override, const QUrl &builtIn);
 
     bool automatic() const { return m_automatic; }
     void setAutomatic(bool on);
@@ -94,7 +100,7 @@ public:
     // What the requests send as User-Agent; privacyLine names it
     QByteArray userAgent() const;
     // The feed to ask. Empty: the one built in (CMake DSPI_UPDATE_FEED_URL), which
-    // the settings key updates/feedUrl overrides, for a local feed.
+    // the settings key updates/feedUrl overrides, for a local feed (resolveFeed).
     void setFeed(const QUrl &feed);
     void setCurrentVersionForTest(const QString &version) { m_current = Version::parse(version); }
 

@@ -254,6 +254,42 @@ void SmokeDriver::testDevices() {
     }));
     settled();
 
+    // -- WP QD37 -- The status tooltip during a hub session (review c4o N1), and one
+    // unsaved-changes ask on a USB pick that leaves the hub (c4q N2). Under --demo the
+    // demo's serial is in the bridge's USB list, so it stands in for a USB device.
+    {
+        QQuickItem *cpuStatus = main ? findItem(main->contentItem(), QStringLiteral("cpuStatus")) : nullptr;
+        const auto tip = [&] { return cpuStatus ? cpuStatus->property("statusTip").toString() : QString(); };
+        check("QD37: the status tooltip offers a reconnect off the hub", tip().contains(QLatin1String("Right-click to reconnect")));
+        int hubSessionNotes = 0;
+        const auto noted = QObject::connect(b, &DSPiBridge::hubSessionChanged, [&] { hubSessionNotes++; });
+        if (address) address->setProperty("text", hub.address);
+        check("QD37: Connect a fourth time", click(in(popup, QStringLiteral("devicesConnect"))));
+        check("QD37: on the hub", settled() && waitFor(3000, [&] { return phaseIs("choose_device"); }));
+        check("QD37: hubSession is a property, and says so", b->property("hubSession").toBool() && hubSessionNotes > 0);
+        check("QD37: choose the hub's device", waitFor(2000, [&] { return (row = hubRow(serial)) != nullptr; }) && click(row));
+        waitFor(500, answerUnsaved);
+        check("QD37: bound", settled() && waitFor(5000, [&] { return phaseIs("bound") && b->connected(); }));
+        printf("smoke: QD37 status tooltip on the hub: '%s'\n", qPrintable(tip().replace(QLatin1Char('\n'), QLatin1String(" | "))));
+        check("QD37: the tooltip says it is a hub's device and offers no right-click",
+              tip().contains(QLatin1String("through a hub")) && tip().contains(QLatin1String("Devices…"))
+                  && !tip().contains(QLatin1String("Right-click")));
+        b->setFilter(0, 0, 1, b->filterFreq(0, 0) + 17.0f, 1.0f, 0.9f);
+        check("QD37: unsaved changes on the hub's device", waitFor(2000, [&] { return b->presetDirty(); }));
+        int asks = 0;
+        QMetaObject::invokeMethod(popup, "chooseUsb", Q_ARG(QVariant, QStringLiteral(DemoDevice::kSerial)));
+        if (waitFor(1000, answerUnsaved)) asks++;
+        while (waitFor(1500, answerUnsaved)) asks++;
+        printf("smoke: QD37 unsaved-changes asks on a USB pick during a hub session: %d\n", asks);
+        check("QD37: a USB pick during a hub session asks once", asks == 1);
+        check("QD37: and leaves the hub for the USB device", waitFor(5000, [&] {
+            return phaseIs("idle") && !b->hubSession() && b->connected() && b->selectedSerial() == QLatin1String(DemoDevice::kSerial);
+        }));
+        check("QD37: the tooltip offers the reconnect again", waitFor(1000, [&] { return tip().contains(QLatin1String("Right-click to reconnect")); }));
+        QObject::disconnect(noted);
+        settled();
+    }
+
     // A fixed PIN: the other wording; Cancel leaves the hub
     FakeHubProcess fixed;
     check("QD9: a fixed-PIN hub runs", fixed.start({ "--auth", "fixed:7351" }));
