@@ -1549,6 +1549,12 @@ void uniffi_dspi_core_fn_init_callback_vtable_rtalistener(const UniffiVTableCall
 void uniffi_dspi_core_fn_method_rtalistener_on_frame(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_ABOUT_JSON
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_ABOUT_JSON
+RustBuffer uniffi_dspi_core_fn_func_about_json(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_AUTOEQ_DATABASE_INFO
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_AUTOEQ_DATABASE_INFO
 RustBuffer uniffi_dspi_core_fn_func_autoeq_database_info(RustBuffer db_path, RustCallStatus *_Nonnull out_status
@@ -1979,6 +1985,12 @@ void ffi_dspi_core_rust_future_free_void(uint64_t handle
 #ifndef UNIFFI_FFIDEF_FFI_DSPI_CORE_RUST_FUTURE_COMPLETE_VOID
 #define UNIFFI_FFIDEF_FFI_DSPI_CORE_RUST_FUTURE_COMPLETE_VOID
 void ffi_dspi_core_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_ABOUT_JSON
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_ABOUT_JSON
+uint16_t uniffi_dspi_core_checksum_func_about_json(void
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_AUTOEQ_DATABASE_INFO

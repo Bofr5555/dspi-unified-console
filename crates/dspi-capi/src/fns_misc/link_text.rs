@@ -87,6 +87,16 @@ pub extern "C" fn dspi_onboarding_getting_started_json(buf: *mut c_char, len: u3
     })
 }
 
+// -- WP CG15 --
+/// The About table, as a JSON document with no `ok` wrapper: {draft, credit_lines:
+/// [{id, text}], makers: [{id, name, url, made}], links: [{id, title, detail, url}],
+/// credits: [{id, name, what, url?}]}. The wording is a draft while `draft` is true.
+/// Returns the bytes needed including the NUL, 0 for a panic.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_about_json(buf: *mut c_char, len: u32) -> u32 {
+    guard(0, || copy_text(&dspi_core::about_json(), buf, len))
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_cg10 {
@@ -189,6 +199,21 @@ mod tests_wp_cg10 {
         assert_eq!(wizard["stages"][0]["id"], "welcome");
     }
 
+    // -- WP CG15 --
+    #[test]
+    fn wp_cg15_about_over_c() {
+        let about: Value = serde_json::from_str(&read(|b, l| dspi_about_json(b, l))).unwrap();
+        assert_eq!(about["draft"], true);
+        assert_eq!(
+            about["credit_lines"][0]["text"],
+            "Made with love by Weeb Labs"
+        );
+        let mut buf = [0x55u8; 8];
+        let needed = dspi_about_json(buf.as_mut_ptr().cast(), buf.len() as u32);
+        assert!(needed as usize > buf.len());
+        assert_eq!(buf, [0x55u8; 8]);
+    }
+
     #[test]
     fn wp_cg10_the_header_declares_them() {
         let header = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("include/dspi_core.h");
@@ -198,6 +223,8 @@ mod tests_wp_cg10 {
             "dspi_link_phase_texts(",
             "dspi_onboarding_whats_new_json(",
             "dspi_onboarding_getting_started_json(",
+            // -- WP CG15 --
+            "dspi_about_json(",
         ] {
             assert!(header.contains(f), "{f} is not in the header");
         }
