@@ -190,7 +190,8 @@ private fun SettingsSidebar(
                         val dot =
                             (cat in hardwarePages && outputDirty) ||
                                 (cat == SettingsCategory.GLOBAL_PARAMS && edited && coordinator.globalDirty(state)) ||
-                                (cat == SettingsCategory.GLOBAL_PARAMS && coordinator.globalRowsDirty()) || // -- WP AN6 --
+                                (cat == SettingsCategory.GLOBAL_PARAMS && coordinator.globalRowsDirty()) ||
+                                // -- WP AN6 --
                                 (cat == SettingsCategory.SPDIF_INPUT && coordinator.sourceNamesDirty())
                         if (dot) Text("●", color = MacColors.orange)
                     }

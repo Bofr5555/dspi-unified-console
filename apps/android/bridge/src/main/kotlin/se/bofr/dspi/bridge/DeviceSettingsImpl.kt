@@ -20,7 +20,7 @@ class DeviceSettingsImpl internal constructor(private val bridge: DspiBridgeImpl
     private val _coreVoltage = MutableStateFlow(CoreVoltageState())
     override val coreVoltage: StateFlow<CoreVoltageState> = _coreVoltage.asStateFlow()
 
-    private var seenGeneration = bridge.deviceGeneration.value
+    private var seenGeneration = 0L // deviceGeneration starts there; the bridge is still being built here
 
     init {
         bridge.deviceChangedHooks += {
