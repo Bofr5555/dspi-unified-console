@@ -361,8 +361,9 @@ pub extern "C" fn dspi_device_lock_acquire(
     })
 }
 
-/// Release the device lock held past a call (`dspi_device_lock_acquire`, an IR
-/// learn, `dspi_enter_bootloader`). Idempotent; never blocks.
+/// Release the lock `dspi_device_lock_acquire` took, and only that one: an IR
+/// learn's lock ends with its read, cancel or window, `dspi_enter_bootloader`'s
+/// when the device leaves or after 60 s. Idempotent; never blocks.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_device_lock_release(core: *mut FfiCore) {
     with_core(core, (), |h| h.core.device_lock_release());

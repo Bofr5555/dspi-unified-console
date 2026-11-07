@@ -889,10 +889,12 @@ impl DspiCore {
     ///
     /// The device lock is taken first and held across the restart (WP CG24),
     /// so no other DSPi Link session writes to a device about to vanish; the
-    /// hub drops it when the device leaves. The connection's close gives it
-    /// back, and [`DspiCore::device_lock_release`] ends it when the install
-    /// ends otherwise (a restart that never happened); at most 60 s. A
-    /// refused lock sends nothing.
+    /// hub drops it when the device leaves, and the connection's close gives
+    /// it back; otherwise it lasts 60 s. [`DspiCore::device_lock_release`]
+    /// does not end it: an install that must end it early (a restart that
+    /// never happened) takes the caller's lock first
+    /// ([`DspiCore::device_lock_acquire`]), inside which this takes nothing
+    /// of its own, and releases that. A refused lock sends nothing.
     ///
     /// Errors: [`DspiError::Locked`] / [`DspiError::Denied`] when the Link
     /// hub refuses its lock; [`DspiError::Disconnected`] when the connection
@@ -1845,10 +1847,35 @@ mod tests_wp_c6 {
             core.held_lock_holder(),
             Some(crate::presets::Holder::Bootloader)
         );
-        // The install ends without a restart.
+        // The caller's release is not the install's.
+        core.device_lock_release();
+        assert_eq!(
+            core.held_lock_holder(),
+            Some(crate::presets::Holder::Bootloader)
+        );
+        assert!(!entries(&log).iter().any(|e| e == "unlock"));
+        // The device leaves: the lost connection ends it.
+        core.disconnect();
+        assert_eq!(core.held_lock_holder(), None);
+        // An install that may need to end early holds the caller's lock: the
+        // restart nests inside it, and the release ends both.
+        let (core, _, log) = rig(&[]);
+        core.device_lock_acquire("Installing firmware".into(), 60_000)
+            .unwrap();
+        core.enter_bootloader().unwrap();
+        assert_eq!(
+            core.held_lock_holder(),
+            Some(crate::presets::Holder::Caller)
+        );
         core.device_lock_release();
         assert_eq!(core.held_lock_holder(), None);
-        assert_eq!(entries(&log).last().map(String::as_str), Some("unlock"));
+        let e = entries(&log);
+        assert_eq!(
+            e.iter().filter(|x| x.starts_with("lock")).count(),
+            1,
+            "{e:?}"
+        );
+        assert_eq!(e.last().map(String::as_str), Some("unlock"), "{e:?}");
         // A refused lock sends nothing.
         let (core, _, log) = rig_on(FakeDevice::demo(), &[], true);
         assert_eq!(core.enter_bootloader(), Err(DspiError::Locked));

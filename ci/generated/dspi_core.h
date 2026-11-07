@@ -4257,8 +4257,9 @@ uint32_t dspi_device_lock_acquire(struct FfiCore *core,
                                   uint32_t len);
 
 /**
- * Release the device lock held past a call (`dspi_device_lock_acquire`, an IR
- * learn, `dspi_enter_bootloader`). Idempotent; never blocks.
+ * Release the lock `dspi_device_lock_acquire` took, and only that one: an IR
+ * learn's lock ends with its read, cancel or window, `dspi_enter_bootloader`'s
+ * when the device leaves or after 60 s. Idempotent; never blocks.
  */
 void dspi_device_lock_release(struct FfiCore *core);
 
