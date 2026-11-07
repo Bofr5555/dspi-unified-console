@@ -340,6 +340,12 @@ These tests use `proptest`, which runs on stable inside the normal test run.
 **Every property test function is named `proptest_*`** (gate 1, S-c), so
 `ci/check.sh --step proptest` can run them longer by name
 (`cargo test -- proptest_`, 20 000 cases).
+A test whose case costs real time (a walk through the demo device waits out
+its status polls) caps the count it takes from `PROPTEST_CASES`, sized so the
+step stays minutes long (WP CG20, `cs_rules.rs` `walk_cases`).
+The seed files proptest writes on a failure, `<crate>/proptest-regressions/`,
+are committed with the fix, as proptest recommends: every later run replays
+them first. They are never gitignored or deleted (WP CG20, review c3a F3).
 `cargo-fuzz` targets can come later under `fuzz/`. They need nightly, so they
 will not be a gate.
 
