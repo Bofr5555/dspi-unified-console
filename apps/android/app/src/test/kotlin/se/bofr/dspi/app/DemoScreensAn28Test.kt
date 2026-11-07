@@ -41,7 +41,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import se.bofr.dspi.bridge.BridgeEvent
@@ -67,7 +66,7 @@ import se.bofr.dspi.usb.BootloaderPermissionResult
  * WP AN28: every main screen of demo mode on the real core (host build of
  * libdspi_ffi over JNA), through the real bridge. No device.
  */
-@RunWith(RobolectricTestRunner::class)
+@RunWith(DspiRobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w400dp-h800dp-port-mdpi")
 class DemoScreensAn28Test {
     @get:Rule val rule = createComposeRule()

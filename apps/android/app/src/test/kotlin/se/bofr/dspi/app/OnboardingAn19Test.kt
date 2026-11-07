@@ -30,7 +30,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import se.bofr.dspi.feature.firmware.FirmwareVersion
 import se.bofr.dspi.feature.onboarding.BoardStatus
@@ -52,7 +51,7 @@ import se.bofr.dspi.ui.settings.LocalAppSettings
  * onboarding data (CG10). The strip is not the demo one, so the launch decision runs.
  * A tall window, so nothing needs scrolling (performScrollTo hangs on the paused clock).
  */
-@RunWith(RobolectricTestRunner::class)
+@RunWith(DspiRobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w400dp-h3000dp-port-mdpi")
 class OnboardingAn19Test {
     @get:Rule val rule = createComposeRule()

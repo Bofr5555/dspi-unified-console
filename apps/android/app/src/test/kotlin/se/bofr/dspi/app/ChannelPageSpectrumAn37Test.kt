@@ -27,7 +27,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import se.bofr.dspi.bridge.DspiBridge
@@ -48,7 +47,7 @@ import se.bofr.dspi.ui.settings.RtaSpectrumView
  * a gear change the strip shows the gear's channels and the analyser keeps
  * sending frames for them. On the real core's demo device.
  */
-@RunWith(RobolectricTestRunner::class)
+@RunWith(DspiRobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w400dp-h1200dp-port-mdpi")
 class ChannelPageSpectrumAn37Test {
     @get:Rule val rule = createComposeRule()

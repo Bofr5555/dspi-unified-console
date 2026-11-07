@@ -27,14 +27,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
  * AN27: no title bar. AppScaffold over a real demo bridge, with window insets as the
  * system hands them to an edge-to-edge window (targetSdk 35+). mdpi, so 1 dp = 1 px.
  */
-@RunWith(RobolectricTestRunner::class)
+@RunWith(DspiRobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w400dp-h800dp-port-mdpi")
 class NoTitleBarAn27Test {
     @get:Rule val rule = createComposeRule()
