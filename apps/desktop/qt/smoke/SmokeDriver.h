@@ -134,6 +134,8 @@ private:
     // -- WP QD17 --
     void testShortcuts();
     void testShownInputCount();
+    // -- WP QD13 --
+    void testSystemIntegration();
 
     // Whether a bypass toggle repaints the open channel's graph editor. Leaves
     // bypass as it found it. NotRun fills `why`.
