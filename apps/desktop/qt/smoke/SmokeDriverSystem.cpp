@@ -17,6 +17,7 @@
 #include <QDBusVirtualObject>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickItem>
@@ -169,13 +170,63 @@ void SmokeDriver::testSystemIntegration() {
     system->setOpenAtLogin(true);
     check("QD13: on again rewrites it", system->openAtLogin() && !fileText(entry).contains(QLatin1String("Hidden")));
 
-    // An entry for a program that has moved is pointed here at start
-    {
+    // -- WP QD13b -- An entry for another program is repointed here at start only when
+    // that program is gone; another copy that is still there stays, and is shown
+    const auto writeEntry = [&](const QString &exec) {
         QFile f(entry);
-        if (f.open(QIODevice::WriteOnly)) f.write("[Desktop Entry]\nType=Application\nExec=\"/old/place/dspi-console\"\n");
+        if (f.open(QIODevice::WriteOnly)) f.write(QStringLiteral("[Desktop Entry]\nType=Application\nExec=%1\nX-Mine=kept\n").arg(exec).toUtf8());
+    };
+    const auto pointsHere = [&]() { return fileText(entry).contains(QStringLiteral("\nExec=\"%1\"\n").arg(program)); };
+    writeEntry(QStringLiteral("\"/old/place/dspi-console\""));
+    system->setLoginItem(makeXdgLoginItem(autostart));
+    check("QD13b: an entry for a program that is gone is pointed here", pointsHere() && system->openAtLogin()
+          && system->loginOtherProgram().isEmpty() && system->loginError().isEmpty());
+
+    const QString other = QDir(m_out).filePath(QStringLiteral("qd13b-other/dspi console"));
+    QDir().mkpath(QFileInfo(other).path());
+    {
+        QFile f(other);
+        check("QD13b: another copy of the app", f.open(QIODevice::WriteOnly));
+        f.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+    }
+    writeEntry(QLatin1Char('"') + other + QStringLiteral("\" --hidden %U"));
+    QString before = fileText(entry);
+    system->setLoginItem(makeXdgLoginItem(autostart));
+    check("QD13b: an entry for another copy that is there is left alone", fileText(entry) == before && system->openAtLogin());
+    check("QD13b: and shown as that copy's", system->loginOtherProgram() == other);
+    system->pointLoginHere();
+    check("QD13b: Use This Copy points it here", pointsHere() && system->loginOtherProgram().isEmpty() && system->loginError().isEmpty());
+
+    // As a desktop's own startup tool writes it: a bare name, found on PATH
+    const QString sh = QStandardPaths::findExecutable(QStringLiteral("sh"));
+    writeEntry(QStringLiteral("sh -c true"));
+    before = fileText(entry);
+    system->setLoginItem(makeXdgLoginItem(autostart));
+    check("QD13b: a bare name on PATH is left alone", !sh.isEmpty() && fileText(entry) == before && system->loginOtherProgram() == sh);
+    writeEntry(QStringLiteral("no-such-program-qd13b"));
+    system->setLoginItem(makeXdgLoginItem(autostart));
+    check("QD13b: a bare name not on PATH is pointed here", pointsHere() && system->loginOtherProgram().isEmpty());
+
+    // The Run key the same way, in an INI file
+    {
+        const QString runIni = QDir(m_out).filePath(QStringLiteral("qd13b-run.ini"));
+        QFile::remove(runIni);
+        const auto runValue = [&]() { return QSettings(runIni, QSettings::IniFormat).value(QStringLiteral("DSPi Console")).toString(); };
+        const auto setRun = [&](const QString &value) {
+            QSettings(runIni, QSettings::IniFormat).setValue(QStringLiteral("DSPi Console"), value);
+            system->setLoginItem(makeRunKeyLoginItem(std::make_unique<QSettings>(runIni, QSettings::IniFormat)));
+        };
+        setRun(QLatin1Char('"') + other + QStringLiteral("\" --hidden"));
+        check("QD13b: Run key: another copy that is there is left alone",
+              runValue() == QLatin1Char('"') + other + QStringLiteral("\" --hidden") && system->loginOtherProgram() == other);
+        setRun(QStringLiteral("\"/no/such/place/DSPiConsole.exe\""));
+        check("QD13b: Run key: a copy that is gone is pointed here",
+              runValue() == QLatin1Char('"') + program + QLatin1Char('"') && system->loginOtherProgram().isEmpty());
+        QSettings(runIni, QSettings::IniFormat).setValue(QStringLiteral("DSPi Console"), QStringLiteral("C:\\Program Files\\DSPi\\DSPiConsole.EXE --x"));
+        auto unquoted = makeRunKeyLoginItem(std::make_unique<QSettings>(runIni, QSettings::IniFormat));
+        check("QD13b: Run key: an unquoted path reads up to .exe", unquoted->program() == QLatin1String("C:\\Program Files\\DSPi\\DSPiConsole.EXE"));
     }
     system->setLoginItem(makeXdgLoginItem(autostart));
-    check("QD13: a moved program is rewritten", fileText(entry).contains(QStringLiteral("\nExec=\"%1\"\n").arg(program)));
 
     system->setOpenAtLogin(false);
     check("QD13: off removes the entry", !system->openAtLogin() && !QFile::exists(entry) && system->loginError().isEmpty());
@@ -196,6 +247,18 @@ void SmokeDriver::testSystemIntegration() {
         QQuickItem *loginRow = findNamed(page, QStringLiteral("networkingOpenAtLogin"));
         QQuickItem *awakeRow = findNamed(page, QStringLiteral("networkingKeepAwake"));
         check("QD13: both rows on the Networking page", loginRow && awakeRow && loginRow->isVisible() && awakeRow->isVisible());
+        // -- WP QD13b -- Another copy's entry: said on the switch, and a button to take it
+        writeEntry(QLatin1Char('"') + other + QLatin1Char('"'));
+        system->setLoginItem(makeXdgLoginItem(autostart));
+        spin(100);
+        QQuickItem *hereRow = findNamed(page, QStringLiteral("networkingLoginHere"));
+        check("QD13b: the page names the other copy", hereRow && hereRow->isVisible() && loginRow
+              && loginRow->property("checked").toBool() && loginRow->property("detail").toString().contains(other));
+        if (hereRow) QMetaObject::invokeMethod(hereRow, "clicked");
+        spin(100);
+        check("QD13b: its button points the entry here", pointsHere() && hereRow && !hereRow->isVisible()
+              && loginRow && loginRow->property("detail").toString().isEmpty());
+        system->setOpenAtLogin(false);
         if (loginRow && awakeRow) {
             QMetaObject::invokeMethod(loginRow, "toggled", Q_ARG(bool, true));
             check("QD13: the login switch writes the entry", system->openAtLogin() && QFile::exists(entry)

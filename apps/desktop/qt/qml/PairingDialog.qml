@@ -14,10 +14,13 @@ Popup {
 
     readonly property bool asked: linkSession.phase === "needs_pairing"
     readonly property string pin: pinField.text.trim()
+    // -- WP QD13b -- (review c4q N1) Six digits, as IOSLinkPairing.isValid: the hub
+    // locks a client out after five wrong tries, so a typo must not cost one
+    readonly property bool valid: /^[0-9]{6}$/.test(pin)
     property bool sent: false     // Pair was pressed and its answer is out
 
     function submit() {
-        if (pin === "" || linkSession.busy) return
+        if (!valid || linkSession.busy) return
         sent = true
         linkSession.pair(pin)
     }
@@ -110,7 +113,8 @@ Popup {
             selectionColor: isMacOS ? MacColors.selectedControl : "#0a7cff"
             selectedTextColor: "white"
             selectByMouse: true
-            maximumLength: 32
+            maximumLength: 6
+            validator: RegularExpressionValidator { regularExpression: /[0-9]{0,6}/ }
             inputMethodHints: Qt.ImhDigitsOnly | Qt.ImhSensitiveData | Qt.ImhNoPredictiveText
             placeholderText: "000000"
             placeholderTextColor: Qt.rgba(1, 1, 1, 0.25)
@@ -146,7 +150,7 @@ Popup {
                 width: (parent.width - parent.spacing) / 2
                 primary: true
                 text: linkSession.busy && dlg.sent ? "Pairing…" : "Pair"
-                enabled: dlg.pin !== "" && !linkSession.busy
+                enabled: dlg.valid && !linkSession.busy
                 onClicked: dlg.submit()
             }
         }

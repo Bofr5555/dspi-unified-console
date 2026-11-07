@@ -27,6 +27,9 @@ public:
     virtual QString set(bool on, const QString &program) = 0;
     // On, and starting `program`
     virtual bool matches(const QString &program) const = 0;
+    // The program the entry starts, as recorded (a bare name found on PATH is made
+    // absolute); "" when there is no entry -- WP QD13b --
+    virtual QString program() const = 0;
 };
 
 // XDG autostart: <dir>/dspi-console.desktop, dir being $XDG_CONFIG_HOME/autostart
@@ -61,6 +64,11 @@ class SystemIntegration : public QObject
     Q_PROPERTY(bool loginSupported READ loginSupported CONSTANT)
     Q_PROPERTY(bool openAtLogin READ openAtLogin WRITE setOpenAtLogin NOTIFY loginChanged)
     Q_PROPERTY(QString loginError READ loginError NOTIFY loginChanged)
+    // -- WP QD13b -- On, but for another copy of the app that is still there: its
+    // path. Left alone until the user picks this copy (pointLoginHere). An entry for
+    // a copy that is gone is repointed here at start.
+    Q_PROPERTY(QString loginOtherProgram READ loginOtherProgram NOTIFY loginChanged)
+    Q_PROPERTY(QString thisProgram READ programPath CONSTANT)
     // Keep awake while sharing: the user's choice (QSettings system/keepAwake), and
     // whether a hold is in place now
     Q_PROPERTY(bool keepAwakeSupported READ keepAwakeSupported CONSTANT)
@@ -76,6 +84,8 @@ public:
     bool openAtLogin() const;
     void setOpenAtLogin(bool on);
     QString loginError() const { return m_loginError; }
+    QString loginOtherProgram() const { return m_loginOther; }
+    Q_INVOKABLE void pointLoginHere();
 
     bool keepAwakeSupported() const { return m_inhibitor != nullptr; }
     bool keepAwake() const { return m_keepAwake; }
@@ -102,6 +112,7 @@ private:
 
     std::unique_ptr<LoginItem> m_login;
     QString m_loginError;
+    QString m_loginOther;
 
     std::unique_ptr<SleepInhibitor> m_inhibitor;
     QPointer<TrayHub> m_hub;
