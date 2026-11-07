@@ -41,6 +41,7 @@ SettingsPage {
         property string placeholder: ""
         property var validator: null
         signal committed(string text)
+        signal accepted()
         width: 190
         height: 26
         radius: 6
@@ -61,7 +62,7 @@ SettingsPage {
             selectionColor: isMacOS ? MacColors.selectedControl : "#0a7cff"
             selectedTextColor: "white"
             validator: box.validator
-            onAccepted: focus = false
+            onAccepted: { focus = false; box.accepted() }
             onActiveFocusChanged: if (!activeFocus) box.committed(text)
             Text {
                 visible: input.text === ""
@@ -316,7 +317,7 @@ SettingsPage {
                     objectName: "networkingAddress"
                     width: 170
                     placeholder: "192.168.1.20"
-                    input.onAccepted: connectButton.clicked()
+                    onAccepted: connectButton.clicked()
                 }
                 AppButton {
                     id: connectButton
