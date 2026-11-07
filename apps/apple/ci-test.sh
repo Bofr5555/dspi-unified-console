@@ -27,9 +27,9 @@ here=$(cd "$(dirname "$0")" && pwd)
 cd "$here"
 out=${CI_OUT:-$here/build/ci}
 mkdir -p "$out"
-result=$out/$platform.xcresult
-rm -rf "$result"
-args=(-project "DSPi Console.xcodeproj" -derivedDataPath "$out/dd-$platform" -resultBundlePath "$result")
+rm -rf "$out/$platform".xcresult "$out/$platform"-*.xcresult "$out/$platform"*-tests.json
+args=(-project "DSPi Console.xcodeproj" -derivedDataPath "$out/dd-$platform")
+alone=()   # test classes run in a pass of their own, after the others
 
 case "$platform" in
   macos)
@@ -51,7 +51,10 @@ case "$platform" in
         args+=("-skip-testing:DSPi ConsoleTests/$t")
       done
       args+=(-retry-tests-on-failure -test-iterations 3)
-      echo "ci-test: in a VM: skipping 5 GPU/timing tests that fail only there, retrying failures"
+      # Its setUp waits only 20 ms on the main run loop for an async reply: in
+      # the VM it fails inside the full suite (other cases each run), not alone.
+      alone+=("DSPi ConsoleTests/RtaSharingTests")
+      echo "ci-test: in a VM: skipping 5 GPU/timing tests that fail only there, retrying failures, RtaSharingTests alone"
     fi
     ;;
   ios)
@@ -63,13 +66,25 @@ case "$platform" in
     ;;
 esac
 
-echo "-- xcodebuild test ${args[*]}"
 status=0
-xcodebuild test -quiet "${args[@]}" || status=$?
+skip=()
+# ${a[@]+"${a[@]}"}: macOS's bash 3.2 calls an empty array unbound under set -u.
+for t in ${alone[@]+"${alone[@]}"}; do skip+=("-skip-testing:$t"); done
+echo "-- xcodebuild test ${args[*]} ${skip[*]+${skip[*]}}"
+xcodebuild test -quiet "${args[@]}" ${skip[@]+"${skip[@]}"} -resultBundlePath "$out/$platform.xcresult" || status=$?
+xcrun xcresulttool get test-results tests --path "$out/$platform.xcresult" >"$out/$platform-tests.json"
+reports=("$out/$platform-tests.json")
+for t in ${alone[@]+"${alone[@]}"}; do
+  name=${t##*/}
+  echo "-- xcodebuild test-without-building, $name alone"
+  xcodebuild test-without-building -quiet "${args[@]}" "-only-testing:$t" \
+    -resultBundlePath "$out/$platform-$name.xcresult" || status=$?
+  xcrun xcresulttool get test-results tests --path "$out/$platform-$name.xcresult" >"$out/$platform-$name-tests.json"
+  reports+=("$out/$platform-$name-tests.json")
+done
 
 # The totals, and WP SW2's tests by name: a run without them does not count.
-xcrun xcresulttool get test-results tests --path "$result" >"$out/$platform-tests.json"
-python3 - "$out/$platform-tests.json" <<'EOF' || status=1
+python3 - "${reports[@]}" <<'EOF' || status=1
 import json, sys
 from collections import Counter
 results = Counter()
@@ -79,15 +94,19 @@ def walk(node):
         results[node.get("result", "?")] += 1
         if node.get("result") == "Failed":
             print(f"FAILED {node.get('nodeIdentifier', node.get('name'))}")
-            for child in node.get("children", []):
-                if child.get("nodeType") == "Failure Message":
-                    print(f"    {child.get('name', '')[:400]}")
+            def messages(n):
+                for c in n.get("children", []):
+                    if c.get("nodeType") == "Failure Message":
+                        print(f"    {c.get('name', '')[:400]}")
+                    messages(c)
+            messages(node)
         if node.get("name", "").startswith("testSW2"):
             sw2[node["name"]] = node.get("result")
     for child in node.get("children", []):
         walk(child)
-for node in json.load(open(sys.argv[1])).get("testNodes", []):
-    walk(node)
+for report in sys.argv[1:]:
+    for node in json.load(open(report)).get("testNodes", []):
+        walk(node)
 print("tests: " + ", ".join(f"{n} {r.lower()}" for r, n in sorted(results.items())))
 want = ["testSW2CoreInfo()", "testSW2OpensTheDemoDevice()", "testSW2TestHostOpensNoRealDevice()"]
 for name in want:
