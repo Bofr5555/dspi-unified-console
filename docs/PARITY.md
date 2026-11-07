@@ -489,3 +489,25 @@ Android's one Hardware tab serves Inputs, Outputs and I2S as three pages (`featu
 
 `PLAN-CLIENTS.md` has their scope, and these changes to WPs it already had: AN18 (banner compares versions, M41), AN7 (device
 switch guarded, M42), SW18 (banner button and Tools entry, M41), QD12 and QD14 (the Mac's menu-bar items, M6), QD4 and QD5 (Device Name and Output Latency on Global Parameters).
+
+---
+
+## 6. Retired documents
+
+### 6.1 The Qt app's parity plan
+
+`apps/desktop/Documentation/parity-plan.md` was retired into this file by WP HO1a (2026-11-07). It was the Linux
+console's own phase plan against the macOS and Windows consoles and firmware 1.1.6 (wire format V32), written on the
+old core before the merge. Every phase, 0 to 10, was marked done and most "untested on hardware". To read it:
+`git show fd3d6219:apps/desktop/Documentation/parity-plan.md`.
+
+Where its content went:
+
+| What | Now |
+|---|---|
+| Phase status | Section 5 (the Qt column) and the QD track in `docs/core-merge/PLAN-CLIENTS.md` |
+| "Not done by choice: separate C0/C1 CPU bars" | Since done by QD5 (row M26) |
+| Per-input delay: the firmware has one per channel, inputs included; the plan recorded that neither the macOS nor the Windows console exposed it, so the Qt app did not either | Unchanged in the Qt app; not a floor row in section 5 |
+| Notes for users: the PipeWire card profile for system volume, KDE effects on Wayland, Qt logging to the journal | `apps/desktop/README.md`, Troubleshooting |
+| Channel ids: the Qt bridge's app ids (0-1 inputs 1-2, 2-10 outputs 1-9, 11-16 inputs 3-8) against the core's wire indices | `apps/desktop/qt/src/DSPiBridge.h` (`kAppExtraInputFirst`) and `DSPiBridge::wire` in `DSPiBridge.cpp` |
+| Notes on the old core's bulk image (`bulk_raw`, `encode_bulk`, DAC mute and bulk SET) | Dropped: they describe the old core, which the merge replaced (`docs/core-merge/PLAN.md`) |
