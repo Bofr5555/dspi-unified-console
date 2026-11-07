@@ -4,20 +4,27 @@ import androidx.compose.runtime.CompositionLocalProvider
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import se.bofr.dspi.bridge.DangerousOp
 import se.bofr.dspi.bridge.DspiBridgeImpl
 import se.bofr.dspi.core.DspiConstants
+import se.bofr.dspi.core.DspiCoreApi
+import se.bofr.dspi.core.SystemStatus
 import se.bofr.dspi.fake.FakeDspiCore
 import se.bofr.dspi.feature.home.HostAudioFormat.SOURCE_SPDIF
 import se.bofr.dspi.feature.home.HostAudioFormat.SOURCE_USB
 
-/** WP AN35: the input strips follow the host format (M25), refreshed when Android's outputs change. */
+/**
+ * WP AN35: the input strips follow the host format (M25), refreshed when
+ * Android's outputs change, and the bridge mirrors a link over the same count
+ * (review c4k F1: one count for the UI and the mirror, macOS numMatrixInputs).
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 class HostStripsWpAn35Test {
     /** A host whose outputs change on demand, as `AudioDeviceCallback` reports. */
@@ -37,12 +44,25 @@ class HostStripsWpAn35Test {
         }
     }
 
-    private suspend fun TestScope.connectedBridge(): DspiBridgeImpl {
-        val core = FakeDspiCore.seeded()
+    /** The seeded device with nothing playing: it reports its stereo fallback. */
+    private class IdleCore(private val f: FakeDspiCore) : DspiCoreApi by f {
+        override fun fetchStatus(): SystemStatus = f.fetchStatus().copy(activeInputChannels = 2)
+    }
+
+    private suspend fun TestScope.connectedBridge(idle: Boolean = false): DspiBridgeImpl {
+        val fake = FakeDspiCore.seeded()
+        val core: DspiCoreApi = if (idle) IdleCore(fake) else fake
         val d = StandardTestDispatcher(testScheduler)
         val b = DspiBridgeImpl(core, backgroundScope, ffi = d, main = d, clock = { testScheduler.currentTime })
-        check(b.attachDevice(42, core.serial, DspiConstants.VENDOR_ID))
+        check(b.attachDevice(42, fake.serial, DspiConstants.VENDOR_ID))
         runCurrent()
+        if (idle) {
+            // One status poll, so the bridge has the device's idle report
+            b.setUiVisible(true)
+            advanceTimeBy(200)
+            runCurrent()
+            b.setUiVisible(false)
+        }
         return b
     }
 
@@ -54,7 +74,13 @@ class HostStripsWpAn35Test {
         val host = FakeHost(4)
         val seen = mutableListOf<Int>()
         CompositionHarness().use { h ->
-            h.setContent { CompositionLocalProvider(LocalHostChannelSource provides host) { seen += stripInputCount(b) } }
+            h.setContent {
+                CompositionLocalProvider(LocalHostChannelSource provides host) {
+                    HostChannelsFeed(b)
+                    seen += stripInputCount(b)
+                }
+            }
+            h.frame()
             assertEquals("the host's 4 channels", 4, seen.last())
             assertEquals("one AudioDeviceCallback while shown", 1, host.watchers.size)
 
@@ -81,23 +107,49 @@ class HostStripsWpAn35Test {
             assertEquals(minOf(8, device), seen.last())
         }
         assertEquals("the callback is unregistered with the screen", 0, host.watchers.size)
+        assertNull("and the bridge forgets the host", b.hostInputChannels.value)
     }
 
     @Test
-    fun wpAn35PairsFollowTheStrips() {
-        // Unknown active count or no inputs: no strips
-        assertEquals(0, HostStrips.count(8, -1, SOURCE_USB, 8, 2))
-        assertEquals(0, HostStrips.count(8, 2, SOURCE_USB, 0, 2))
-        // The host keeps 8 strips while the device idles to stereo
-        assertEquals(8, HostStrips.count(8, 2, SOURCE_USB, 8, 2))
-        assertTrue(HostStrips.pairAvailable(6, 8))
-        assertTrue(HostStrips.pairAvailable(7, 8))
-        assertFalse(HostStrips.pairAvailable(2, 2))
-        assertFalse(HostStrips.pairAvailable(-1, 8))
-        // links: one bit per pair, only for a pair laid out whole
-        assertTrue(HostStrips.linked(2, 4, 0b10))
-        assertTrue(HostStrips.linked(3, 4, 0b10))
-        assertFalse(HostStrips.linked(2, 2, 0b10))
-        assertFalse(HostStrips.linked(0, 4, 0b10))
+    fun wpAn35DemoAndLinkGiveTheBridgeNoHostCount() = runTest {
+        val b = connectedBridge()
+        val host = FakeHost(4)
+        CompositionHarness().use { h ->
+            h.setContent { CompositionLocalProvider(LocalHostChannelSource provides host) { HostChannelsFeed(b, enabled = false) } }
+            assertNull(b.hostInputChannels.value)
+            assertEquals(0, host.watchers.size)
+        }
+    }
+
+    /** Review c4k F1's probe: a pair the idle host shows is one the bridge links and mirrors. */
+    @Test
+    fun wpAn35AShownPairIsLinkedAndMirroredWhileTheDeviceIdles() = runTest {
+        val b = connectedBridge(idle = true)
+        assertTrue("the fixture has a second pair", b.numInputChannels >= 4)
+        assertEquals("the device idles to stereo", 2, b.activeInputChannels)
+        val host = FakeHost(4)
+        val strips = mutableListOf<Int>()
+        CompositionHarness().use { h ->
+            h.setContent {
+                CompositionLocalProvider(LocalHostChannelSource provides host) {
+                    HostChannelsFeed(b)
+                    strips += stripInputCount(b)
+                }
+            }
+            h.frame()
+            assertEquals("the host's 4 strips", 4, strips.last())
+            val in3 = b.inputAppId(2)
+            val in4 = b.inputAppId(3)
+            // InputChannelHeader's link toggle and the sidebar ask the same bridge
+            assertTrue("IN3/4 can be linked", b.pairAvailable(in3))
+            b.setInputLinked(in3, true, -1)
+            runCurrent()
+            assertTrue(b.isInputLinked(in3))
+            assertEquals("the sidebar selects both rows", in4, b.linkedPartner(in3))
+            b.setInputPreamp(2, -6f)
+            runCurrent()
+            assertEquals(-6f, b.inputPreampDB(2), 0.01f)
+            assertEquals("IN4 follows IN3", -6f, b.inputPreampDB(3), 0.01f)
+        }
     }
 }

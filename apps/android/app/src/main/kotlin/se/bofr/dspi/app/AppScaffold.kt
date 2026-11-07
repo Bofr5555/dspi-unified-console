@@ -67,6 +67,7 @@ import se.bofr.dspi.feature.firmware.FirmwareUpdateView
 import se.bofr.dspi.feature.graph.GraphScreen
 import se.bofr.dspi.feature.home.ChannelScreen
 import se.bofr.dspi.feature.home.HomeScreen
+import se.bofr.dspi.feature.home.HostChannelsFeed
 import se.bofr.dspi.feature.matrix.MatrixMixerView
 import se.bofr.dspi.feature.onboarding.OnboardingSource
 import se.bofr.dspi.feature.presets.PresetsScreen
@@ -154,6 +155,8 @@ fun AppScaffold(
                 DeviceListButton(devices) { c -> if (c == DeviceChoice.Network) onConnectNetwork() else onChooseDevice(c) }
             }
             key(bridge) {
+                // -- WP AN35 -- the host's USB format, for every route; the DSPi is on this phone's USB only outside demo and Link
+                HostChannelsFeed(bridge, enabled = strip !is ConnectionStrip.Demo && strip !is ConnectionStrip.Remote)
                 CompositionLocalProvider(
                     LocalDemoMode provides (strip is ConnectionStrip.Demo),
                     LocalOnboarding provides onboarding // -- WP AN19 --

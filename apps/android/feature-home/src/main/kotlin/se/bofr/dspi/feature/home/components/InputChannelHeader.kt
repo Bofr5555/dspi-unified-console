@@ -26,7 +26,6 @@ import androidx.compose.ui.unit.dp
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.core.DspState
 import se.bofr.dspi.feature.home.HomeModel
-import se.bofr.dspi.feature.home.HostStrips
 import se.bofr.dspi.feature.home.channelMap
 import se.bofr.dspi.feature.home.observeState
 import se.bofr.dspi.feature.home.stripInputCount
@@ -81,9 +80,9 @@ fun InputChannelHeader(bridge: DspiBridge, ch: Int, onClearPEQ: () -> Unit, modi
     val map = s.channelMap
     val input = map.inputOf(ch)
     val partner = bridge.pairPartner(ch)
-    // Both follow the state and the strips laid out (the host's format, the polled active-input count).
-    val pairAvailable = HostStrips.pairAvailable(input, strips)
-    val linked = HostStrips.linked(input, strips, bridge.inputLinks)
+    // Both ask the bridge, which mirrors the link over the same count the strips use (WP AN35: the host's format on USB).
+    val pairAvailable = strips > 0 && bridge.pairAvailable(ch)
+    val linked = pairAvailable && bridge.isInputLinked(ch)
     val pairLabel = HomeModel.pairLabel(maxOf(input, 0))
     val preamp = rememberSliderDrag(s.inputPreampDb.getOrElse(input) { 0f })
     var mismatch by remember { mutableStateOf<InputPairMismatch?>(null) }
