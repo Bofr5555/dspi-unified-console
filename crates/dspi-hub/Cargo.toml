@@ -67,6 +67,10 @@ proptest = "1"
 # -- WP HB3 --
 # tests/wp_hb3_meter_feed.rs: C15's own client, in `DspiCore`, over the real server.
 dspi-core = { workspace = true, features = ["link"] }
+# -- WP HB5 --
+# tests/wp_hb5_advertise.rs: a browser kept to the loopback interface, which
+# `MdnsSource` is not, and a raw look at what is on the wire. Same pin as dspi-link's.
+mdns-sd = { version = "=0.21.7", default-features = false, features = ["logging"] }
 
 [[test]]
 name = "wp_hb0_app_path"
@@ -85,3 +89,8 @@ required-features = ["app"]
 [[test]]
 name = "wp_hb1_vreg_wire"
 required-features = ["app"]
+
+# -- WP HB5 --
+[[test]]
+name = "wp_hb5_advertise"
+required-features = ["mdns"]

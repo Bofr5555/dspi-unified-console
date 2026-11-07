@@ -6,8 +6,9 @@ WP HB0, `crates/dspi-hub`. HB1, HB2, HB3, HB5 and HB6 build on this
 
 **What runs today (HB0 to HB3).** The app's session as before (`tests/wp_hb0_app_path.rs`), and now the
 network side: the server, pairing, roles, commands, notifications, polls, snapshots and names, over real
-sockets (`tests/wp_hb1_server.rs`, `tests/wp_hb1_vreg_wire.rs`, `tests/wp_hb3_meter_feed.rs`). Advertising
-and the web bundle are still HB5's `todo!`s, with named stubs in `tests/wp_hb_later.rs`.
+sockets (`tests/wp_hb1_server.rs`, `tests/wp_hb1_vreg_wire.rs`, `tests/wp_hb3_meter_feed.rs`), and
+advertising and what a browser is served (HB5: `tests/wp_hb5_advertise.rs`, `tests/wp_hb5_web.rs`). The
+upstream web bundle is not included: the owner's question (section 9, "HB5 as built").
 
 ## 1. Decisions in one place
 
@@ -37,7 +38,7 @@ and the web bundle are still HB5's `todo!`s, with named stubs in `tests/wp_hb_la
 | `hub-accept` (HB1) | 1 | the listening socket | `accept` | `stop_accepting` |
 | `hub-conn-rx-<id>`, `hub-conn-tx-<id>` (HB1) | 2 per connection | the read half; the session's outbox and the write half | the socket; `Outbox::pop` | the outbox closes, or the peer goes |
 | `hub-refuse-<id>` (HB1) | 0–4, short-lived | a socket past the limits | its request, 1 s at most | it has answered 503 |
-| the responder's own (HB5) | inside `MdnsAdvertiser` | | | dropped |
+| `mdns-sd`'s daemon (HB5) | 1, with `mdns` and while advertised | the responder's sockets | its poller | `Advertiser` dropped; joined then |
 | the app's (not ours) | | core's reader, `poll_hotplug` caller | | |
 
 A count for one device, one app and two clients is 2 + 2 + 1 + 4 = 9 threads, idle
@@ -69,6 +70,7 @@ result wait, or a listener call.
 | Level | Lock | Protects | Notes |
 |---|---|---|---|
 | L0 | `DspiCore::Inner` (not ours) | the core | **Held across `LocalTransport` calls**, so it waits on workers. Hence the rule below |
+| L0b | `HubInner::advertiser` (HB5) | the responder | Above L1, as `names_saving` is: the device list is read under it. Taken by the supervisor, `publish`, and an upgrade's `Origin` check. Its longest hold is a goodbye on a conflict, about a second at most |
 | L1 | `HubInner::state` | registry, attachments, sessions | Spawning a device's threads happens here; it does not wait for them |
 | L1b | `AuthStore` (HB1) | clients, pairing | Never held into L1 |
 | L2 | `Router::state` | inflight, lock table, writers | Per device. Taken on submit and around the call, not across it |
@@ -208,7 +210,8 @@ session is open (section 13).
 1. `set_device_broker(None)` closes the app's connection on the hub.
 2. `Hub::stop`, in this order:
    1. `stopping` is set under L1, so an attach or open either finished or fails.
-   2. `Threads::advertiser` drops, sending its goodbye (HB5), and the acceptor stops (HB1).
+   2. `HubInner::advertiser` is taken and dropped, with no lock held, sending its goodbye (HB5); the
+      acceptor stops (HB1).
    3. `Relay::close_all`: network clients get close code 4003, after what is queued;
       the app's streams end.
    4. Connections join, each cut off after 1 s if the peer will not take the frame (HB1).
@@ -453,9 +456,58 @@ socket can cost.
   the device object's `inputs` and `wire_version` are left out, which the spec allows.
 
 **HB5, `advertise.rs`, `web.rs`.** `Advertiser` wraps `MdnsAdvertiser` behind feature `mdns`.
-Start it after the server binds, with the bound port, into `Threads::advertiser`. Update it
-from `HubInner::publish`. `Hub::stop` already drops it first, on the caller's thread, since
-the goodbye can block for a second. `web::asset` is called from HB1's HTTP path, and only with `web` on.
+Start it after the server binds, with the bound port. Update it from `HubInner::publish`. `Hub::stop`
+drops it first, on the caller's thread, since the goodbye can block for a second. `web::asset` is called
+from HB1's HTTP path, and only with `web` on.
+
+<!-- WP HB5 -->
+**HB5 as built, for HB6, TM11 and HB7.** The headers of `advertise.rs` and `web.rs` have the reasons.
+- **Advertising needs feature `mdns`** on `dspi-hub` (off by default; a build without it advertises
+  nothing). HB6 and TM11 turn it on for a hub on the LAN.
+- **`NetworkConfig::advertise`:** `Lan` (default) advertises on every interface, except that a hub bound
+  to loopback stays silent; `LoopbackOnly` is for tests; `Off`. With advertising, `Hub::start` sets
+  `mdns_name` to `dspi_link::discovery::mdns_host_name(hid)` unless it is given, so a page at
+  `http://dspi-<12 of the hid>.local:<port>` passes the `Origin` check. After a host name conflict the
+  check follows the name the responder holds (`HubHandle::advertised`), and the old one is refused.
+- **TXT:** `v`, `hid`, `kind=console`, `auth`, `n` and `d` of the devices online, `web=1` with `web` on,
+  and `rev`, which changes with each announcement. `rev` is ours, not the spec's (unknown keys are ignored,
+  spec 3.1): mdns-sd's browser shows stale data when an old value comes back without it. `d` is dropped
+  past 253 bytes, one TXT string, since mdns-sd refuses the whole service past that, though the spec's
+  limit is 400 for the record.
+- **Changes are paced**, at most one per 2 s, the latest winning. A name conflict re-registers under
+  `Name (2)`, `(3)` and so on, made by `Advertiser`, not by mdns-sd, whose own rename keeps answering for
+  the old name with this hub's `hid` (mixed case) and does not defend the new one. Dots and backslashes in
+  the instance name become `-` and `/`, as mdns-sd never sees a conflict over them. `hello` keeps the
+  configured name.
+- **mdns-sd 0.21.7 faults this works round**, worth reporting upstream (the owner's call): renames looked
+  up in lower case and stored as given; `name_change` splitting an escaped dot; names with `\.` never
+  compared equal to what is read off the wire; a returning TXT value not reported by its browser; a
+  TXT string past 255 bytes refusing the service. CG2's `MdnsSource` clients get the browser one, which
+  `rev` covers for our hubs only.
+- **Tests stay on loopback.** mdns-sd joins the mDNS group on every interface when its daemon starts,
+  before any can be turned off, so a test sends IGMP and MLD membership reports there, though no mDNS
+  record. `tests/wp_hb5_advertise.rs` and `wp_hb5_web.rs` pass in a container with only `lo`
+  (`podman run --network=none`).
+- **Web:** `web::asset` serves only what is compiled into its table, `/` being `/index.html`, never under
+  `/dspi/`, with `nosniff` and `no-cache`. Today that is a placeholder page of ours, which shows the hub's
+  name and devices from `/dspi/v1/info` and opens the WebSocket. It is no control UI, so `web` should stay
+  off in the apps until there is one: `web=1` tells clients `GET /` serves a UI.
+- **The upstream bundle, not included** (the owner would rather have one base than ship an external
+  project). If approved it goes in as its built `dist/` as entries of `web::FILES`, its licence in
+  `NOTICE.md`. Pin: WeebLabs/DSPi-Link commit `86f10e38dd760d01d4f589e4b606a5250b2d523d` (2026-11-02,
+  upstream `HEAD` on 2026-11-07; no web release tag exists, only `bridge-v0.1.0`), `js/apps/web` is
+  `@dspi/web` 1.2.0, MIT. `git archive 86f10e38 js | sha256sum` =
+  `19ab666a0cbd4d02ccf03dde63cbc89ee9a8b921066be60f5af2df57cb77a13a`; trees `js` `128dca29d020ff7d709c35f422573fef0083df7e`,
+  `js/apps/web` `426818fcb1c09b9ad3e85354a8e6f9c65cb331de`; `js/package-lock.json` blob
+  `ffe94e4ac22c9b6554c849b5f319689ade8e6d44`. It is source: `npm ci && npm run build` in `js/` (Vite 7,
+  TypeScript 5.9) makes `dist/` with `index.html` and the bridge's `setup.html`. The built files' hashes are
+  not taken, as that needs npm's downloads, which nothing here needed yet.
+- **By hand in a browser:** `wp_hb5_serve_the_placeholder_for_a_browser` (ignored) serves the demo device on
+  `127.0.0.1` with no advertising, `DSPI_HB5_PORT`, `DSPI_HB5_MDNS_NAME` and `DSPI_HB5_SERVE_SECS` from the
+  environment. Run in a `--network=host` container, with headless Chrome given
+  `--host-resolver-rules="MAP <name>.local 127.0.0.1"`, the page reached the hub at `127.0.0.1`,
+  `localhost` and the `.local` name, and was refused at another name for the same address, as a DNS
+  rebinding page would be.
 
 **HB6, `dspi-capi/src/fns_hub.rs`.** `Hub::start(HubConfig)`, `Hub::stop`, `HubListener`
 as a C callback, `HubHandle::devices`, `AuthStore`'s methods, `AppLink::attach` and

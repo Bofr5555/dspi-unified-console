@@ -651,6 +651,7 @@ dependencies = [
  "httparse",
  "if-addrs",
  "log",
+ "mdns-sd",
  "nusb",
  "proptest",
  "serde",
