@@ -42,9 +42,18 @@ sealed interface LinkSessionState {
 
     data class Connecting(override val hub: LinkHub) : LinkSessionState
 
-    /** The hub wants a PIN: show the pairing prompt. [pinSource] `window` or `fixed` (spec 6.2). */
-    data class NeedsPin(override val hub: LinkHub, val pinSource: String, val error: String = "", val busy: Boolean = false) :
-        LinkSessionState
+    /**
+     * The hub wants a PIN: show the pairing prompt. [pinSource] `window` or `fixed` (spec 6.2).
+     * [errorCode]: the `DspiException.Link` code of the last failed pair (`wrong_pin`,
+     * `rate_limited`, ...), empty when [error] is not a pair's answer (WP AN36).
+     */
+    data class NeedsPin(
+        override val hub: LinkHub,
+        val pinSource: String,
+        val error: String = "",
+        val busy: Boolean = false,
+        val errorCode: String = ""
+    ) : LinkSessionState
 
     /** The hub shares several boards and none was chosen yet. */
     data class ChooseDevice(override val hub: LinkHub, val devices: List<LinkDevice>) : LinkSessionState
@@ -188,13 +197,14 @@ class LinkSessionEngine(
     /** The user typed a PIN in the prompt. `linkPair` dials again if the hub has dropped the socket meanwhile. */
     fun submitPin(pin: String) {
         val s = _state.value as? LinkSessionState.NeedsPin ?: return
-        _state.value = s.copy(busy = true, error = "")
+        _state.value = s.copy(busy = true, error = "", errorCode = "")
         val gen = generation
         scope.launch {
             val token = try {
                 ops.pair(pin)
             } catch (e: DspiException) {
-                if (gen == generation) _state.value = s.copy(busy = false, error = pairingError(e))
+                val code = (e as? DspiException.Link)?.code.orEmpty()
+                if (gen == generation) _state.value = s.copy(busy = false, error = pairingError(e), errorCode = code)
                 return@launch
             }
             if (gen != generation) return@launch

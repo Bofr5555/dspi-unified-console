@@ -462,7 +462,8 @@ private fun SidebarBottomPanel(bridge: DspiBridge, vm: HomeViewModel, prefs: App
                 enabled = canWrite,
                 onLongClick = { onNavigate(DspiRoutes.tool("psybass")) }
             )
-            SidebarIconButton(DspiIcons.info, false, "Stats for Nerbs", { onNavigate(DspiRoutes.ANALYSIS) })
+            // AN32: the stats icon opens the stats page, not the first analysis page
+            SidebarIconButton(DspiIcons.info, false, "Stats for Nerbs", { onNavigate(DspiRoutes.analysis("stats")) })
             SidebarIconButton(DspiIcons.gear, false, "Settings", { onNavigate(DspiRoutes.SETTINGS) })
             SidebarIconButton(DspiIcons.xmark, s.bypass, "Bypass Master EQ", { bridge.setBypass(!s.bypass) }, enabled = canWrite)
         }

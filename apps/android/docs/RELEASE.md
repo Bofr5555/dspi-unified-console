@@ -217,9 +217,10 @@ Answers specific to this app. Verify each against the build you upload
 
 - DSPi Link (approved 2026-11-06): the full description has, after the second
   paragraph: "Optional DSPi Link (off by default): control a DSPi that is
-  plugged into a Mac running DSPi Console, or wired to a DSPi bridge, over your
-  local network. The connection is not encrypted; use it on networks you
-  trust." (added to `store/play/listing/en-US/full_description.txt` on
+  connected to DSPi Console, or wired to a DSPi bridge, over your local
+  network. The connection is not encrypted; use it on networks you trust."
+  (AN33, 2026-11-07: "plugged into a Mac running DSPi Console" became
+  "connected to DSPi Console", no host-device nouns.) (added to `store/play/listing/en-US/full_description.txt` on
   `feature/link`; it ships with the first DSPi Link build.)
 - Short description (80 chars), full description (4000). State clearly:
   needs a DSPi board and a phone/tablet with USB host (OTG) support;

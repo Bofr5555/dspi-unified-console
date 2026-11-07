@@ -34,6 +34,24 @@ class AboutInfoAn26Test {
     }
 
     @Test
+    fun wpCg29ReadsTheLinksTitleAndNote() {
+        val a = parseAbout(asset)
+        assertEquals("Weeb Labs: links and support", a.linksTitle)
+        assertEquals(
+            "Weeb Labs' channels for DSPi, its firmware and the original DSPi Consoles. " +
+                "This console is made by Bofr5555, not Weeb Labs.",
+            a.linksNote
+        )
+        val words = (a.linksTitle + " " + a.linksNote).lowercase().split(Regex("[^a-z0-9']+"))
+        for (host in listOf("phone", "tablet", "computer", "mac", "pc", "laptop")) {
+            assertFalse(host, words.any { it.removeSuffix("'s") == host || it == host + "s" })
+        }
+        val none = parseAbout("""{"links":[{"id":"x","title":"T"}],"links_title":" "}""")
+        assertEquals(null, none.linksTitle)
+        assertEquals(null, none.linksNote)
+    }
+
+    @Test
     fun wpAn26TakesAnyWordingAndUnknownFields() {
         val a = parseAbout(
             """{"draft":false,"future":{"x":1},
@@ -57,7 +75,9 @@ class AboutInfoAn26Test {
 
     @Test
     fun wpAn26ThePageCarriesNoCopyOfTheTable() {
+        // CG29b (owner): the support paragraph names its speaker; that is not a copy of the table
         val page = File("src/main/kotlin/se/bofr/dspi/feature/settings/GeneralSettingsTab.kt").readText()
+            .replace("that I (Weeb Labs) develop", "")
         for (word in listOf("Weeb Labs", "Bofr5555", "weeblabs", "discord.gg", "ko-fi.com")) {
             assertFalse(word, page.contains(word))
         }

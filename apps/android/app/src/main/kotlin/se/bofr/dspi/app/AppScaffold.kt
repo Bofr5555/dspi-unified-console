@@ -207,6 +207,10 @@ private fun DspiRoutesHost(bridge: DspiBridge, bootloaderLocator: BootloaderLoca
         screen(nav, DspiRoutes.PRESETS) { _, go, back -> PresetsScreen(bridge, go, back) }
         screen(nav, DspiRoutes.SETTINGS) { _, go, back -> SettingsScreen(bridge, go, back) }
         screen(nav, DspiRoutes.ANALYSIS) { _, go, back -> AnalysisScreen(bridge, go, back) }
+        // -- WP AN32 -- each Tools-menu entry opens its own analysis page
+        screen(nav, DspiRoutes.ANALYSIS_PAGE, listOf(navArgument("page") { type = NavType.StringType })) { entry, go, back ->
+            AnalysisScreen(bridge, go, back, open = entry.arguments?.getString("page"))
+        }
         screen(nav, DspiRoutes.FIRMWARE) { _, go, back -> FirmwareRoute(bridge, go, back, bootloaderLocator, remote) }
         // -- WP AN19 --
         screen(nav, DspiRoutes.GETTING_STARTED) { _, go, back -> GettingStartedRoute(bridge, go, back) }
@@ -232,8 +236,8 @@ internal fun FirmwareRoute(
         // DSPi Link: the board's bootloader is on the hub's USB, not this phone's (no fw.install client)
         remote -> FirmwareNotice(
             back,
-            "This DSPi is connected through DSPi Link. Update its firmware on the computer it is plugged into " +
-                "(DSPi Console), or connect it to this phone over USB."
+            "This DSPi is connected through DSPi Link. Update its firmware in the DSPi Console it is plugged into, " +
+                "or connect it over USB."
         )
         // The firmware update path stays usable read-only (G1: enterBootloader is the one write the bridge allows)
         else -> WritesExempt { FirmwareUpdateView(bridge, go, back, bootloaderLocator = bootloaderLocator) }

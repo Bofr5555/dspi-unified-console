@@ -197,7 +197,7 @@ fun BootselHint(modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("⏻", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
-            "Hold the BOOTSEL button on your Pico-compatible device while plugging it into your phone.",
+            "Hold the BOOTSEL button on your Pico-compatible device while connecting it over USB.",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

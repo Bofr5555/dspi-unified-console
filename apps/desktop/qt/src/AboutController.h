@@ -20,6 +20,9 @@ class AboutController : public QObject
     Q_PROPERTY(QStringList creditLines READ creditLines NOTIFY changed)
     Q_PROPERTY(QVariantList makers READ makers NOTIFY changed)
     Q_PROPERTY(QVariantList links READ links NOTIFY changed)
+    // -- WP CG29 -- the links section's heading and note, which say whose links they are
+    Q_PROPERTY(QString linksTitle READ linksTitle NOTIFY changed)
+    Q_PROPERTY(QString linksNote READ linksNote NOTIFY changed)
     Q_PROPERTY(QVariantList credits READ credits NOTIFY changed)
 
 public:
@@ -28,6 +31,8 @@ public:
     QStringList creditLines() const { return m_creditLines; }
     QVariantList makers() const { return m_makers; }
     QVariantList links() const { return m_links; }
+    QString linksTitle() const { return m_linksTitle; }
+    QString linksNote() const { return m_linksNote; }
     QVariantList credits() const { return m_credits; }
 
     // Take the table from this document. Anything but a JSON object empties it.
@@ -41,6 +46,8 @@ private:
     QStringList m_creditLines;
     QVariantList m_makers;
     QVariantList m_links;
+    QString m_linksTitle;
+    QString m_linksNote;
     QVariantList m_credits;
 };
 

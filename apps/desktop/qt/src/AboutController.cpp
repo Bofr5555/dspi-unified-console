@@ -53,6 +53,8 @@ void AboutController::load(const QByteArray &json) {
     m_creditLines.clear();
     m_makers.clear();
     m_links.clear();
+    m_linksTitle = field(about, "links_title");
+    m_linksNote = field(about, "links_note");
     m_credits.clear();
 
     const auto list = [&about](const char *key) { return about.value(QLatin1String(key)).toArray(); };

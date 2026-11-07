@@ -152,7 +152,7 @@ class LinkUiAn5Test {
             p.state = asked.copy(busy = true)
         }
         rule.onNodeWithTag(WRONG_PIN_HINT_TAG).assertDoesNotExist()
-        rule.runOnIdle { p.state = asked.copy(error = "Pairing failed: the hub did not accept that code.") }
+        rule.runOnIdle { p.state = asked.copy(error = "Pairing failed: the hub did not accept that code.", errorCode = "wrong_pin") }
         rule.onNodeWithTag(WRONG_PIN_HINT_TAG).assertIsDisplayed()
         rule.onNodeWithText(wrongPinHint("window")).assertIsDisplayed()
     }
@@ -164,7 +164,7 @@ class LinkUiAn5Test {
         rule.onNodeWithText("Enter the hub's PIN.").assertIsDisplayed()
         rule.runOnIdle {
             p.tried = true
-            p.state = asked.copy(error = "Pairing failed: the hub did not accept that code.")
+            p.state = asked.copy(error = "Pairing failed: the hub did not accept that code.", errorCode = "wrong_pin")
         }
         rule.onNodeWithText("Check the hub's PIN and try again.").assertIsDisplayed()
     }
@@ -174,5 +174,23 @@ class LinkUiAn5Test {
         showPrompt(LinkSessionState.NeedsPin(hub, "window", error = "Access to Studio Mac was revoked. Pair again to reconnect."))
         rule.onNodeWithText("Access to Studio Mac was revoked. Pair again to reconnect.").assertIsDisplayed()
         rule.onNodeWithTag(WRONG_PIN_HINT_TAG).assertDoesNotExist()
+    }
+
+    // -- WP AN36 --
+
+    @Test
+    fun wpAn36TooManyAttemptsIsNotAWrongPin() {
+        val asked = LinkSessionState.NeedsPin(hub, "window")
+        val p = showPrompt(asked)
+        val wait = "Pairing failed: too many attempts. Wait a minute and try again."
+        rule.runOnIdle {
+            p.tried = true
+            p.state = asked.copy(error = wait, errorCode = "rate_limited")
+        }
+        rule.onNodeWithText(wait).assertIsDisplayed()
+        rule.onNodeWithTag(WRONG_PIN_HINT_TAG).assertDoesNotExist()
+        // The next try is turned down for its PIN: now the hint shows
+        rule.runOnIdle { p.state = asked.copy(error = "Pairing failed: the hub did not accept that code.", errorCode = "wrong_pin") }
+        rule.onNodeWithTag(WRONG_PIN_HINT_TAG).assertIsDisplayed()
     }
 }

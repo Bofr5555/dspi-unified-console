@@ -851,6 +851,16 @@ mod tests_wp_cg15 {
         assert!(!items(&doc, "credit_lines").is_empty());
     }
 
+    /// The links section names its owner: Qt and Android read these two fields from
+    /// what the core serves, the Terminal from `dspi_session::about`.
+    #[test]
+    fn wp_cg29_the_served_table_says_whose_links_they_are() {
+        let doc = table();
+        assert_eq!(doc["links_title"], "Weeb Labs: links and support");
+        let note = doc["links_note"].as_str().unwrap();
+        assert!(note.contains("Bofr5555, not Weeb Labs"), "{note}");
+    }
+
     /// The Terminal reads the file without the renderer, so what it reads and what
     /// the core serves must be the same on every platform. If this fails, a
     /// placeholder went in: the Terminal's route (`dspi_session::about`) has to learn
