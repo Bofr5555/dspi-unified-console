@@ -120,6 +120,8 @@ void SmokeDriver::run() {
     testPairMap();
     // -- WP QD3 --
     testCoreVoltage();
+    // -- WP QD28 --
+    testVregCalibration();
     // -- WP QD6 --
     testReadOnly();
     // -- WP QD8 --
