@@ -31,15 +31,15 @@ Sizes are relative units, for comparing WPs. Measured in the core merge: a size-
 |---|---|---|---|
 | MR: one repo, one build | 3 | 2.5 | `main` |
 | LC, HO: licence inventory, handover | 2 | 1.75 | `main`; HO1 late |
-| CG: core gaps | 18 | 11.75 | `main` |
+| CG: core gaps | 19 | 12 | `main` |
 | HB: Rust Link hub | 7 | 12 | `main` |
-| QD: Qt (Linux, Windows) | 31 | 23.25 | `main`, CG, HB for the hub page |
+| QD: Qt (Linux, Windows) | 32 | 23.75 | `main`, CG, HB for the hub page |
 | TM: Terminal | 22 | 11.5 | `main`, CG, HB for `dspi hub` |
 | AN: Android | 24 | 25.75–29.75 | `main`, MR1, CG9 |
 | SW: Swift (macOS and iOS) | 29 | 32.75–43.25 | `main`, MR1, CG3, CG4 |
 | WB: web | 2 + stubs | 2.75 (study, WB1) | `main` |
 | XC: audit, cross-client tests | 7 | 3.75 | hub hardware, K340 |
-| **Total** | **149** | **about 121–136**, not counting the web build | |
+| **Total** | **151** | **about 121–136**, not counting the web build | |
 
 **M0, the first milestone, is about 12–14 days after `main`** (section 0.3). The
 largest unknowns are Swift domain replacement, the Android control-surface editor
@@ -98,11 +98,11 @@ review.
   script needs the SDK, it moves to the VM. Real linking is always `macvm` (SW1).
 - **Drift step:** regenerate `dspi_core.h`, the Kotlin contract and bindings, and the Swift
   bindings, then fail on any diff. **Generated code is never hand-edited.**
-- **Done when:** a run from a clean checkout gives the matrix with every non-Apple row, and the macOS and iOS
+- **Done when (MR2 passed, 23 rows, 25.6 min):** a run from a clean checkout gives the matrix with every non-Apple row, and the macOS and iOS
   rows reading "not run"; an edited generated file fails it; **every image builds from its committed Containerfile with an empty podman and download cache.** **The full matrix is M0's gate.**
 - **Deps:** MR1, CG9.
 
-**MR3: Container user.** Size 0.25. From MR2. **Owns:** `ci/run.sh`, the images' `USER`. Files written under `--userns=keep-id` belong to uid 524288 on the host, so worktree cleanup needs `podman unshare`. **Needs** a chown of the shared caches while nothing is building, so it runs between waves. Also adds `gen_kotlin_contract.py --check` to the root gate.
+**MR3: Container user.** Size 0.25. From MR2. **Owns:** `ci/run.sh`, the images' `USER`. Files written under `--userns=keep-id` belong to uid 524288 on the host, so worktree cleanup needs `podman unshare`. **Needs** a chown of the shared caches while nothing is building, so it runs between waves. Also adds `gen_kotlin_contract.py --check` to the root gate; an `android-tests` row, as no Kotlin module test runs in the matrix, so an unclassified write would pass it; `ci/matrix.sh --only` refuses unknown ids; `dev.sh`'s Gradle journal lock collisions across containers.
 
 **What stays on the host:** the Arm firmware toolchain only (existing exception). Everything
 else runs in podman or a VM, with verified downloads.
@@ -230,7 +230,7 @@ The brief and rules are `WP-BRIEF.md`'s, with these changes.
 
   The core provides `LinkPhase::Reconnecting`, `reconnect_attempt`, `reconnect_in_ms`, `link_retry_now`,
   and a `link_close` usable from any thread (C15). **A client must not add its own retry loop or queue a
-  write.** Wording comes from CG10.
+  write** (the Terminal's `Reconnector` is the one exception, as `dspi-tui` doesn't link the core; it queues nothing). Wording comes from CG10.
 - **After a reconnect** the client calls `rta_start` again if its analyser was running. A listener callback must
   not call a `set_*_listener` method: it self-deadlocks (review 3-A).
 - **C15's surface to use:** `link_connect`'s fifth argument `expected_hub_id`, error code `wrong_hub`, and
@@ -493,6 +493,8 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (section 9).
 
 **CG18: Core config export and import must not invent values.** Size 0.75. From TM21. **Owns:** `crates/dspi-core/src/files.rs`, `config_import`. **Implements:** `config_export` writes zeros for sections an old format lacks, because the mirror comes from `decode_bulk`, and exports `default_state` while disconnected. Gate per key on `format_version`; refuse when disconnected. Import leaves omitted keys alone rather than defaulting them, and an absent `eq`, `crossover` or filter bank is not flattened (`channel_write`). Documents from the Mac and Terminal keep their meaning. **Done when:** round-trip tests on V17 and V32 fixtures, and the importer table in `docs/terminal/preset-format.md` loses its Qt row's exceptions. **Deps:** TM21.
 
+**CG19: One home for the analyser's sharing rules.** Size 0.25. From TM5. **Owns:** `crates/dspi-core/src/rta.rs`. **Implements:** the core uses `dspi_session::rta_sharing`, keeping its epoch check. **Deps:** TM5, CG5.
+
 ### 4.2 HB: the Rust Link hub
 
 In scope on Qt regardless (owner), and used by Terminal and, later, the Mac. No OS or UI code in the crate, so a sideload Android build needs only a binding; no work is added for that now.
@@ -568,6 +570,8 @@ Q3 makes it run on the core. macOS leaves this track, with Swift as the working 
 **QD31: Save bar reports setter failures.** Size 0.25. From QD1. **Owns:** `SettingsContext.save`'s bridge setters. A failed setter above the control-surface step must not read as saved. **Deps:** QD1.
 
 **QD32: Qt on the shared wording.** Size 0.25. From CG10. **Owns:** `apps/desktop/qt/whatsnew.json`, strings in `GettingStartedView.qml`. Re-points to CG10's data, and checks its menu paths against Qt's. **Deps:** CG10.
+
+**QD34: Polling off the UI thread.** Size 0.5. From QD6. **Owns:** `StatsController::pollSlow` and `pollFast`, `DSPiBridge::pollStatus`. **Implements:** blocking reads move to a worker; the smoke tests that rely on synchronous results change with them. **Deps:** QD6.
 
 **QD30: Popover cursor on the graph gear.** Size 0.25. **Owns:** `qml/components/PopoverWindow.qml`. **Implements:** owner's report on KDE Wayland: with a `PopoverWindow` open (graph gear; check the spectrum strip's too), the pointer over the gear doesn't return to the hand until wiggled, because the popup holds a grab. **Done when:** the cursor stays right without a wiggle and a click on the gear closes the popover once, on Wayland and X11; the owner retests. **Deps:** `main`.
 
