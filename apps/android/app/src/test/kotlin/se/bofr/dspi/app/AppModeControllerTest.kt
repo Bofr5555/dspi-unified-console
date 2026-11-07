@@ -32,6 +32,7 @@ class AppModeControllerTest {
             ->
             when (m.name) {
                 "setUiVisible" -> visible += args!![0] as Boolean
+                "getConnected" -> return@newProxyInstance false // WP AN7: the switch gate asks; nothing unsaved
                 "hashCode" -> return@newProxyInstance System.identityHashCode(proxy)
                 "equals" -> return@newProxyInstance proxy === args!![0]
                 "toString" -> return@newProxyInstance "RecordingBridge"
@@ -107,11 +108,10 @@ class AppModeControllerTest {
     private val unit = DspiUsbDevice("/dev/bus/usb/001/002", UsbIds.DSPI_VID, "E6614103", hasPermission = true)
 
     @Test
-    fun startsOnTheDeviceBridgeWithDemoOfferedWhenNothingIsAttached() = runTest {
+    fun startsOnTheDeviceBridge() = runTest {
         val c = controller()
         assertEquals(AppMode.DEVICE, c.mode.value)
         assertSame(device.bridge, c.bridge.value)
-        assertTrue(c.demoAvailable.value)
     }
 
     @Test
@@ -120,7 +120,6 @@ class AppModeControllerTest {
         assertTrue(c.enterDemo())
         assertEquals(AppMode.DEMO, c.mode.value)
         assertSame(demos.single().bridge, c.bridge.value)
-        assertFalse(c.demoAvailable.value)
         assertTrue(c.enterDemo()) // idempotent: no second stack
         assertEquals(1, demos.size)
 
@@ -128,11 +127,11 @@ class AppModeControllerTest {
         assertEquals(AppMode.DEVICE, c.mode.value)
         assertSame(device.bridge, c.bridge.value)
         assertEquals(1, demos.single().closed)
-        assertTrue(c.demoAvailable.value)
     }
 
+    // -- WP AN7 -- (was: demo refused while a DSPi is attached)
     @Test
-    fun demoIsRefusedWhileAnyDspiIsAttached() = runTest {
+    fun an7DemoIsReachableWhileAnyDspiIsAttached() = runTest {
         val c = controller()
         for (s in listOf(
             UsbSessionState.PermissionRequired(""),
@@ -142,15 +141,18 @@ class AppModeControllerTest {
             UsbSessionState.Open("x", UsbIds.DSPI_VID)
         )) {
             usbState.value = s
-            assertFalse("$s", c.demoAvailable.value)
-            assertFalse("$s", c.enterDemo())
+            c.switchTo(DeviceChoice.Demo)
+            assertEquals("$s", AppMode.DEMO, c.mode.value)
+            assertSame("$s", demos.last().bridge, c.bridge.value)
+            // the attached unit stays the device bridge's; leaving demo goes back to it
+            c.switchTo(DeviceChoice.Usb)
+            assertEquals("$s", AppMode.DEVICE, c.mode.value)
+            assertSame("$s", device.bridge, c.bridge.value)
+            assertEquals("$s", 1, demos.last().closed)
         }
-        usbState.value = UsbSessionState.NoDevice
         usbDevices.value = listOf(unit) // listed but no state yet
-        assertFalse(c.demoAvailable.value)
-        assertFalse(c.enterDemo())
-        assertTrue(demos.isEmpty())
-        assertSame(device.bridge, c.bridge.value)
+        assertTrue(c.enterDemo())
+        assertEquals(AppMode.DEMO, c.mode.value)
     }
 
     @Test
@@ -161,7 +163,6 @@ class AppModeControllerTest {
         assertEquals(AppMode.DEVICE, c.mode.value)
         assertSame(device.bridge, c.bridge.value)
         assertEquals(1, demos.single().closed)
-        assertFalse(c.demoAvailable.value)
     }
 
     @Test
@@ -185,7 +186,6 @@ class AppModeControllerTest {
         assertEquals(1, demos.single().closed)
         assertSame(remotes.single().bridge, c.bridge.value)
         assertEquals(listOf(hub), remotes.single().connects)
-        assertFalse(c.demoAvailable.value)
         assertFalse(c.enterDemo())
         c.exitRemote()
         assertEquals(AppMode.DEVICE, c.mode.value)

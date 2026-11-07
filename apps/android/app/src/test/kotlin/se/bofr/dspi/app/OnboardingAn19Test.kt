@@ -80,8 +80,7 @@ class OnboardingAn19Test {
                 key(launch) {
                     AppScaffold(
                         bridge,
-                        ConnectionStrip.Hidden,
-                        onEnterDemo = {},
+                        ConnectionStrip.Usb,
                         onExitDemo = {},
                         onRequestPermission = {},
                         onboarding = source

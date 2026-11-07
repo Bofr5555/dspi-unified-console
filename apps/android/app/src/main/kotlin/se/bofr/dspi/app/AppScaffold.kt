@@ -2,6 +2,7 @@ package se.bofr.dspi.app
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -11,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -19,7 +22,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -50,12 +55,17 @@ import se.bofr.dspi.ui.DspiRoutes
 import se.bofr.dspi.ui.LocalDemoMode
 import se.bofr.dspi.ui.LocalWritesAllowed
 import se.bofr.dspi.ui.WritesExempt
+import se.bofr.dspi.ui.alert.AlertHost
+import se.bofr.dspi.ui.alert.ConsoleAlertHost
 import se.bofr.dspi.ui.link.LinkBanner
 import se.bofr.dspi.ui.link.LinkBannerAction
 import se.bofr.dspi.usb.BootloaderLocator
 
 /** Test tag of the connection strip, the top of the app. */
 internal const val CONNECTION_STRIP_TAG = "connection-strip"
+
+/** Test tag of the strip's "Devices" button (WP AN7). */
+internal const val DEVICE_LIST_TAG = "device-list"
 
 /**
  * macOS window/menu structure -> one NavHost (PLAN §3.3 `ui/nav/AppScaffold.kt`).
@@ -69,6 +79,11 @@ internal const val CONNECTION_STRIP_TAG = "connection-strip"
  * `compatMessage`, refreshed with `state`), HOME draws it; the app adds
  * nothing but this strip for the USB/demo states the bridge cannot know.
  *
+ * Device list (WP AN7): the strip's "Devices" menu lists [devices] (USB, DSPi
+ * Link, demo; [deviceList]). [onChooseDevice] gets the user's pick, except
+ * "DSPi Link…", which is [onConnectNetwork]. [switchAlerts] is where a switch's
+ * Unsaved Changes alert shows ([AppModeController.switchAlerts]).
+ *
  * No title bar (AN27): the strip is the top of the app, and it is what says
  * demo mode. With no topBar the Scaffold's content padding comes from its
  * contentWindowInsets alone, so those keep the strip off the status bar. Screens
@@ -78,7 +93,6 @@ internal const val CONNECTION_STRIP_TAG = "connection-strip"
 fun AppScaffold(
     bridge: DspiBridge,
     strip: ConnectionStrip,
-    onEnterDemo: () -> Unit,
     onExitDemo: () -> Unit,
     onRequestPermission: () -> Unit,
     bootloaderLocator: BootloaderLocator? = null,
@@ -86,12 +100,18 @@ fun AppScaffold(
     onConnectNetwork: () -> Unit = {},
     // -- WP AN19 -- the core's onboarding data; null: no first-run pages (tests)
     onboarding: OnboardingSource? = null,
+    // -- WP AN7 --
+    devices: List<DeviceRow> = emptyList(),
+    onChooseDevice: (DeviceChoice) -> Unit = {},
+    switchAlerts: AlertHost? = null,
     overlay: @Composable () -> Unit = {}
 ) {
     // The IME stays out, as with the Scaffold's default insets
     Scaffold(contentWindowInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout)) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            ConnectionStripBar(strip, onEnterDemo, onExitDemo, onRequestPermission, onRemoteAction, onConnectNetwork)
+            ConnectionStripBar(strip, onExitDemo, onRequestPermission, onRemoteAction) {
+                DeviceListButton(devices) { c -> if (c == DeviceChoice.Network) onConnectNetwork() else onChooseDevice(c) }
+            }
             key(bridge) {
                 CompositionLocalProvider(
                     LocalDemoMode provides (strip is ConnectionStrip.Demo),
@@ -103,6 +123,7 @@ fun AppScaffold(
         }
     }
     overlay()
+    switchAlerts?.let { ConsoleAlertHost(it) } // -- WP AN7 --
 }
 
 @Composable
@@ -182,13 +203,11 @@ private fun NavGraphBuilder.screen(
 @Composable
 private fun ConnectionStripBar(
     strip: ConnectionStrip,
-    onEnterDemo: () -> Unit,
     onExitDemo: () -> Unit,
     onRequestPermission: () -> Unit,
     onRemoteAction: (RemoteAction) -> Unit,
-    onConnectNetwork: () -> Unit
+    devices: @Composable () -> Unit
 ) {
-    if (strip is ConnectionStrip.Hidden) return
     // -- WP AN5 -- the owner's lost-connection banner; this bar is above every route, so it is on every screen
     if (strip is ConnectionStrip.Remote && strip.lost) {
         LinkBanner(strip.text, strip.detail, strip.actions.map { a -> LinkBannerAction(a.label) { onRemoteAction(a) } })
@@ -214,15 +233,35 @@ private fun ConnectionStripBar(
         )
         when (strip) {
             ConnectionStrip.Demo -> TextButton(onClick = onExitDemo) { Text("Exit demo") }
-            is ConnectionStrip.NoDevice -> Row {
-                if (strip.networkAvailable) TextButton(onClick = onConnectNetwork) { Text("Network…") }
-                if (strip.demoAvailable) TextButton(onClick = onEnterDemo) { Text("Demo (no device)") }
-            }
             is ConnectionStrip.Remote -> Row {
                 strip.actions.forEach { a -> TextButton(onClick = { onRemoteAction(a) }) { Text(a.label) } }
             }
             is ConnectionStrip.NeedsPermission -> TextButton(onClick = onRequestPermission) { Text("Allow USB access") }
-            is ConnectionStrip.Info, ConnectionStrip.Hidden -> Unit
+            ConnectionStrip.NoDevice, ConnectionStrip.Usb, is ConnectionStrip.Info -> Unit
+        }
+        devices() // -- WP AN7 --
+    }
+}
+
+// -- WP AN7 --
+/** "Devices": the one list of every way to a DSPi, the current one ticked. Nothing while [rows] is empty. */
+@Composable
+private fun DeviceListButton(rows: List<DeviceRow>, onChoose: (DeviceChoice) -> Unit) {
+    if (rows.isEmpty()) return
+    var open by remember { mutableStateOf(false) }
+    Box {
+        TextButton(onClick = { open = true }, Modifier.testTag(DEVICE_LIST_TAG)) { Text("Devices") }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            rows.forEach { r ->
+                DropdownMenuItem(
+                    text = { Text(if (r.current) "✓ ${r.label}" else r.label) },
+                    enabled = r.enabled,
+                    onClick = {
+                        open = false
+                        if (!r.current) onChoose(r.choice)
+                    }
+                )
+            }
         }
     }
 }

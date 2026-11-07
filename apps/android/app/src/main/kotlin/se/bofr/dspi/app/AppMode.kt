@@ -2,6 +2,7 @@ package se.bofr.dspi.app
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -9,10 +10,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import se.bofr.dspi.bridge.DangerousOp
 import se.bofr.dspi.bridge.DspiBridge
+import se.bofr.dspi.core.PresetStatus
+import se.bofr.dspi.feature.presets.PresetMenuActions
+import se.bofr.dspi.feature.presets.UnsavedChangesAction
+import se.bofr.dspi.feature.presets.defaultPresetName
 import se.bofr.dspi.link.LinkHub
 import se.bofr.dspi.link.LinkSessionState
 import se.bofr.dspi.link.linkBrowseWanted
+import se.bofr.dspi.ui.alert.AlertHost
 import se.bofr.dspi.usb.DspiUsbDevice
 import se.bofr.dspi.usb.UsbSessionState
 
@@ -44,11 +51,13 @@ fun dspiPresent(state: UsbSessionState, devices: List<DspiUsbDevice>): Boolean =
 /**
  * Selects between the device bridge and an explicit, separate demo bridge
  * (PLAN §3.3 `AppState`). Rules:
- * - demo can be entered only while no DSPi is attached ([dspiPresent] false);
+ * - demo can be entered with or without a DSPi attached (WP AN7: one device list);
  * - the demo stack is its own core + bridge; the USB session only ever talks
  *   to [deviceBridge], so a real unit and the fake are never mixed;
  * - when a DSPi appears while in demo, demo is left at once and torn down,
  *   and the UI switches back to the device bridge;
+ * - a switch the user asks for ([switchTo], the strip's buttons, the D9 prompt) runs the
+ *   Unsaved Changes flow on the current bridge first (M42, [DeviceSwitchGate]);
  * - REMOTE (DSPi Link) is its own stack too; entering it leaves demo. When a
  *   DSPi appears on USB while REMOTE, the user is asked ([usbPrompt], owner
  *   decision D9) instead of switching silently. REMOTE ends when the user
@@ -81,11 +90,6 @@ class AppModeController(
         combine(usbState, usbDevices, ::dspiPresent)
             .stateIn(scope, SharingStarted.Eagerly, dspiPresent(usbState.value, usbDevices.value))
 
-    /** Whether the "Demo (no device)" action is offered now. */
-    val demoAvailable: StateFlow<Boolean> =
-        combine(present, _mode) { p, m -> !p && m == AppMode.DEVICE }
-            .stateIn(scope, SharingStarted.Eagerly, !present.value)
-
     private var remote: RemoteSession? = null
     private var remoteWatch: Job? = null
     private val _remoteState = MutableStateFlow<LinkSessionState>(LinkSessionState.Idle)
@@ -107,6 +111,11 @@ class AppModeController(
 
     /** D9: a DSPi appeared on USB while REMOTE: ask whether to switch to it. */
     val usbPrompt: StateFlow<Boolean> = _usbPrompt.asStateFlow()
+
+    // -- WP AN7 --
+    /** The Unsaved Changes alert of a device switch (and "Save Failed"); the app shows it over every screen. */
+    val switchAlerts = AlertHost()
+    private val switchGate = DeviceSwitchGate({ _bridge.value }, scope, switchAlerts)
 
     init {
         scope.launch {
@@ -160,16 +169,50 @@ class AppModeController(
         r.close()
     }
 
-    /** The USB prompt's answer: true = use the USB DSPi (leave REMOTE). */
+    /** The USB prompt's answer: true = use the USB DSPi (leave REMOTE, after the Unsaved Changes flow). */
     fun answerUsbPrompt(useUsb: Boolean) {
         _usbPrompt.value = false
-        if (useUsb) exitRemote()
+        if (useUsb) switchTo(DeviceChoice.Usb)
     }
 
-    /** Start demo mode. Refused (false) while a DSPi is attached. Idempotent. */
+    // -- WP AN7 --
+    /**
+     * The user's device switch (the device list, "Exit demo", "Disconnect", Networking's
+     * Connect): asks about unsaved changes on the current bridge first, then switches.
+     * The current USB or demo choice and [DeviceChoice.Network] (a dialog, not a switch)
+     * do nothing; the current hub again dials it again (Connect after a failure), with no prompt.
+     */
+    fun switchTo(choice: DeviceChoice) {
+        val now = when (choice) {
+            DeviceChoice.Usb -> _mode.value == AppMode.DEVICE
+            DeviceChoice.Demo -> _mode.value == AppMode.DEMO
+            is DeviceChoice.Hub -> _mode.value == AppMode.REMOTE && onHub(_remoteState.value, choice.hub)
+            DeviceChoice.Network -> true
+        }
+        if (now) {
+            if (choice is DeviceChoice.Hub) enterRemote(choice.hub)
+            return
+        }
+        switchGate.run {
+            when (choice) {
+                DeviceChoice.Usb -> {
+                    exitDemo()
+                    exitRemote()
+                }
+                DeviceChoice.Demo -> {
+                    exitRemote()
+                    enterDemo()
+                }
+                is DeviceChoice.Hub -> enterRemote(choice.hub)
+                DeviceChoice.Network -> Unit
+            }
+        }
+    }
+
+    /** Start demo mode, also with a DSPi attached (WP AN7). Refused (false) while REMOTE. Idempotent. */
     fun enterDemo(): Boolean {
         if (demo != null) return true
-        if (present.value || remote != null) return false
+        if (remote != null) return false
         val d = demoFactory()
         demo = d
         d.bridge.setUiVisible(uiVisible)
@@ -196,5 +239,39 @@ class AppModeController(
         remote?.setUiVisible(visible)
         uiShown.value = visible
         if (visible) remote?.retryNow()
+    }
+}
+
+// -- WP AN7 --
+/**
+ * M42 for a device switch: macOS `DSPViewModel.switchToDevice` asks with the
+ * Unsaved Changes alert first (`PresetMenuActions.withUnsavedChanges`, the
+ * diff from the core). Save writes the active slot (named "Preset N" if it has
+ * no name) and switches only when that worked, else "Save Failed … Device
+ * switch aborted."; Discard switches; Cancel stays. Discard reverts nothing
+ * on the unit: it keeps its live state, as on macOS.
+ */
+class DeviceSwitchGate(private val bridge: () -> DspiBridge, private val scope: CoroutineScope, private val host: AlertHost) {
+    fun run(switch: () -> Unit) {
+        val b = bridge()
+        PresetMenuActions(b, scope, host).withUnsavedChanges { action ->
+            if (action != UnsavedChangesAction.SAVE) {
+                switch()
+                return@withUnsavedChanges
+            }
+            // Decision E1: the alert's Save handler mints the token
+            val token = b.dangerousOps.confirm(DangerousOp.SAVE_PRESET)
+            // E9: the save is not stopped halfway by a configuration change
+            scope.launch(NonCancellable) {
+                val slot = b.activePresetSlot
+                if (b.presetName(slot).isEmpty()) b.setPresetName(slot, defaultPresetName(slot))
+                val status = b.savePreset(token, slot)
+                if (status == PresetStatus.OK) {
+                    switch()
+                } else {
+                    host.showWarning("Save Failed", "Failed to save preset (${status.failureText}). Device switch aborted.")
+                }
+            }
+        }
     }
 }

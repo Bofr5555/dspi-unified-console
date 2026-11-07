@@ -278,7 +278,7 @@ class DemoScreensAn28Test {
     @Test
     fun an28TheStripSaysDemoAndStaysAcrossScreens() {
         start()
-        rule.setContent { AppScaffold(bridge, ConnectionStrip.Demo, onEnterDemo = {}, onExitDemo = {}, onRequestPermission = {}) }
+        rule.setContent { AppScaffold(bridge, ConnectionStrip.Demo, onExitDemo = {}, onRequestPermission = {}) }
         settle()
         val inStrip = hasAnyAncestor(hasTestTag(CONNECTION_STRIP_TAG))
         rule.onNode(hasText(ConnectionStrip.Demo.text) and inStrip).assertIsDisplayed()
