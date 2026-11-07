@@ -42,6 +42,10 @@ dirs = "6"
 # -- WP TM11 -- `dspi hub` keeps the machine awake on Windows.
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_System_Power"] }
+# -- WP TM11 -- A background `dspi hub &` must not stop on SIGTTIN (review c4b).
+# Already in the graph.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 # -- WP TM10 --
 # Documents must cross to the code Qt runs: the tests export and import through it.

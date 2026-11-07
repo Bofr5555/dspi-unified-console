@@ -714,6 +714,7 @@ dependencies = [
  "dspi-transport",
  "dspi-tui",
  "env_logger",
+ "libc",
  "log",
  "serde_json",
  "signal-hook",

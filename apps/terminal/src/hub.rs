@@ -130,24 +130,10 @@ enum HubCommand {
 
 /// `dspi hub ...`; `flags` starts at the word `hub`, without the target flags.
 pub fn run(target: &Target, flags: &[&str], json: bool) -> u8 {
-    let demo = match target {
-        Target::Usb { serial: None } => false,
-        Target::Demo => true,
-        Target::Usb { serial: Some(_) } => {
-            return Failure::Usage(
-                "--device: a hub shares every DSPi on this machine's USB".into(),
-            )
-            .report();
-        }
-        Target::Midi { .. } | Target::Link(_) => {
-            return Failure::Usage(
-                "a hub shares this machine's USB devices; --midi, --link and --hub \
-                 reach a device elsewhere"
-                    .into(),
-            )
-            .report();
-        }
-    };
+    if let Some(code) = refuse_target(target) {
+        return code;
+    }
+    let demo = *target == Target::Demo;
     let command = match parse(flags.get(1..).unwrap_or_default(), demo, default_store()) {
         Ok(c) => c,
         Err(e) => return e.report(),
@@ -171,6 +157,22 @@ pub fn run(target: &Target, flags: &[&str], json: bool) -> u8 {
         Ok(()) => exit::OK,
         Err(e) => e.report(),
     }
+}
+
+/// A target a hub cannot run on, refused with its exit status. `main` asks before it
+/// looks for a `--hub` on the network, so `dspi --hub hub` fails at once (review c4b).
+pub fn refuse_target(target: &Target) -> Option<u8> {
+    let why = match target {
+        Target::Usb { serial: None } | Target::Demo => return None,
+        Target::Usb { serial: Some(_) } => {
+            "--device: a hub shares every DSPi on this machine's USB"
+        }
+        Target::Midi { .. } | Target::Link(_) => {
+            "a hub shares this machine's USB devices; --midi, --link and --hub \
+             reach a device elsewhere"
+        }
+    };
+    Some(Failure::Usage(why.into()).report())
 }
 
 fn usage() {
@@ -608,18 +610,18 @@ fn serve(opts: &RunOptions, json: bool) -> Result<(), Failure> {
 
 /// The lines typed at the terminal, read on a thread of their own, which a blocked
 /// read keeps until the process ends. `None` if that thread could not start.
+///
+/// A hub started in the background (`dspi hub &`) still has the terminal as its
+/// standard input, and a read from there would stop the whole process with SIGTTIN
+/// (review c4b). So SIGTTIN is ignored, which turns such a read into an error, and an
+/// error is tried again a little later rather than taken for the end of input: brought
+/// to the foreground with `fg`, the hub takes commands again.
 fn read_lines() -> Option<mpsc::Receiver<String>> {
+    ignore_background_read();
     let (tx, rx) = mpsc::channel();
     let spawned = std::thread::Builder::new()
         .name("dspi-hub-stdin".into())
-        .spawn(move || {
-            for line in std::io::stdin().lock().lines() {
-                let Ok(line) = line else { break };
-                if tx.send(line).is_err() {
-                    break;
-                }
-            }
-        });
+        .spawn(move || pump_lines(std::io::stdin().lock(), &tx, RETRY_READ));
     match spawned {
         Ok(_) => Some(rx),
         Err(e) => {
@@ -628,6 +630,44 @@ fn read_lines() -> Option<mpsc::Receiver<String>> {
         }
     }
 }
+
+/// How long a read that failed (a background job's) waits to be tried again.
+const RETRY_READ: Duration = Duration::from_secs(1);
+
+/// Send each line of `input` until its end, or until nobody listens. A failed read is
+/// tried again after `retry`.
+fn pump_lines(mut input: impl BufRead, tx: &mpsc::Sender<String>, retry: Duration) {
+    loop {
+        let mut line = String::new();
+        match input.read_line(&mut line) {
+            Ok(0) => return,
+            Ok(_) => {
+                let line = line.trim_end_matches(['\n', '\r']).to_owned();
+                if tx.send(line).is_err() {
+                    return;
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(_) => std::thread::sleep(retry),
+        }
+    }
+}
+
+/// Have a read from the terminal while in the background fail with EIO instead of
+/// stopping the process (POSIX: a process that ignores SIGTTIN gets EIO). SIGTTOU too,
+/// so that `stty tostop` does not stop a background hub at its next line of output.
+#[cfg(unix)]
+fn ignore_background_read() {
+    for signal in [libc::SIGTTIN, libc::SIGTTOU] {
+        // SAFETY: sets a disposition to SIG_IGN, which runs no code of ours.
+        if unsafe { libc::signal(signal, libc::SIG_IGN) } == libc::SIG_ERR {
+            log::warn!("dspi hub: signal {signal} not ignored: in the background it may stop");
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn ignore_background_read() {}
 
 /// One typed line. `false` to stop.
 fn command(running: &Running, line: &str, json: bool) -> bool {
@@ -1151,6 +1191,45 @@ mod tests_wp_tm11 {
             exit::USAGE,
             "dspi --hub hub: a hub is not run on another hub"
         );
+    }
+
+    /// Review c4b: a read error (a background job's EIO) is not the end of input; the
+    /// lines after it still arrive, and the end ends it.
+    #[test]
+    fn wp_tm11b_a_failed_read_is_tried_again_not_taken_for_the_end() {
+        struct Flaky(Vec<std::io::Result<&'static [u8]>>);
+        impl std::io::Read for Flaky {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.0.is_empty() {
+                    return Ok(0);
+                }
+                let chunk = self.0.remove(0)?;
+                buf[..chunk.len()].copy_from_slice(chunk);
+                Ok(chunk.len())
+            }
+        }
+        let eio = || Err(std::io::Error::from_raw_os_error(5));
+        let input = Flaky(vec![eio(), Ok(b"clients\n"), eio(), eio(), Ok(b"quit\r\n")]);
+        let (tx, rx) = mpsc::channel();
+        pump_lines(std::io::BufReader::new(input), &tx, Duration::ZERO);
+        drop(tx);
+        assert_eq!(rx.iter().collect::<Vec<_>>(), ["clients", "quit"]);
+    }
+
+    /// Review c4b: `dspi --hub hub` is refused before anything looks at the network.
+    #[test]
+    fn wp_tm11b_a_hub_on_another_target_is_refused_up_front() {
+        assert_eq!(refuse_target(&Target::Usb { serial: None }), None);
+        assert_eq!(refuse_target(&Target::Demo), None);
+        for t in [
+            Target::Link(LinkTarget::find(None)),
+            Target::Midi { port: None },
+            Target::Usb {
+                serial: Some("X".into()),
+            },
+        ] {
+            assert_eq!(refuse_target(&t), Some(exit::USAGE), "{t:?}");
+        }
     }
 
     /// HB6's rule for this binary's own logger: `RUST_LOG=trace` gets everything

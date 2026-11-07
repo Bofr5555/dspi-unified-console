@@ -138,6 +138,12 @@ fn main() -> ExitCode {
             return ExitCode::from(exit::USAGE);
         }
     };
+    // -- WP TM11 -- Before a PIN is read or a `--hub` looked for: a hub runs here.
+    if flags.first() == Some(&"hub")
+        && let Some(code) = hub::refuse_target(&target)
+    {
+        return ExitCode::from(code);
+    }
     let target = match resolve_pin(target, std::env::var("DSPI_PIN").ok(), read_stdin_line) {
         Ok(t) => t,
         Err(e) => {
