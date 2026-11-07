@@ -31,15 +31,15 @@ Sizes are relative units, for comparing WPs. Measured in the core merge: a size-
 |---|---|---|---|
 | MR: one repo, one build | 3 | 2.5 | `main` |
 | LC, HO: licence inventory, handover | 2 | 1.75 | `main`; HO1 late |
-| CG: core gaps | 19 | 12 | `main` |
+| CG: core gaps | 21 | 13.75 | `main` |
 | HB: Rust Link hub | 7 | 12 | `main` |
 | QD: Qt (Linux, Windows) | 32 | 23.75 | `main`, CG, HB for the hub page |
-| TM: Terminal | 22 | 11.5 | `main`, CG, HB for `dspi hub` |
+| TM: Terminal | 23 | 11.75 | `main`, CG, HB for `dspi hub` |
 | AN: Android | 24 | 25.75–29.75 | `main`, MR1, CG9 |
 | SW: Swift (macOS and iOS) | 29 | 32.75–43.25 | `main`, MR1, CG3, CG4 |
 | WB: web | 2 + stubs | 2.75 (study, WB1) | `main` |
 | XC: audit, cross-client tests | 7 | 3.75 | hub hardware, K340 |
-| **Total** | **151** | **about 121–136**, not counting the web build | |
+| **Total** | **155** | **about 121–136**, not counting the web build | |
 
 **M0, the first milestone, is about 12–14 days after `main`** (section 0.3). The
 largest unknowns are Swift domain replacement, the Android control-surface editor
@@ -495,6 +495,10 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (section 9).
 
 **CG19: One home for the analyser's sharing rules.** Size 0.25. From TM5. **Owns:** `crates/dspi-core/src/rta.rs`. **Implements:** the core uses `dspi_session::rta_sharing`, keeping its epoch check. **Deps:** TM5, CG5.
 
+**CG20: Control-surface editing rules in the core.** Size 1.5. From AN8. **Owns:** an export of `dspi_session::cs_model`'s rules. **Implements:** the rules live in `cs_model`, `CsHelper.qml` and the Swift tab and have drifted: Qt offers Hold on a long or double press, which the firmware refuses (`control_surfaces.c:1736-1741`). Clients ask the core. **Before** AN9, SW12. AN sizes from AN8's spike: AN9 2-2.5, AN10 1, AN11 1, AN12 1.5-2, plus `cs_demo_learn` 0.25.
+
+**CG21: One read per Stats tick.** Size 0.25. From review w2e. **Owns:** `crates/dspi-session/src/ring_health.rs`, the fill export. **Implements:** a tick reads `REQ_GET_BUFFER_STATS` once and derives fills from a cached ring target, invalidated on device change and on a latency write, as the Mac's one transfer per 60 ms. Android and Qt call it. **Deps:** AN25, QD29.
+
 ### 4.2 HB: the Rust Link hub
 
 In scope on Qt regardless (owner), and used by Terminal and, later, the Mac. No OS or UI code in the crate, so a sideload Android build needs only a binding; no work is added for that now.
@@ -643,6 +647,8 @@ Owner decided: it skips what needs a graphical UI (on-graph editing, onboarding)
 
 **TM21: Preset capture must not invent values.** Size 0.5. From TM4. **Owns:** `capture` in `crates/dspi-session/src/preset_file.rs`. **Implements:** `capture` turns any refused or failed read into 0, false or a default, and an import then writes them: on old firmware a -12 dB master exported as 0 dB. A failed read fails the export; a refused read on a read-only device uses the mapped image or omits the key; import leaves omitted keys alone and warns on an old `meta.wire_format_version`. **Deps:** TM4, TM10.
 
+**TM23: Settings page drawing.** Size 0.25. From TM22, confirmed by review. **Owns:** `draw_page` and `Row::Pair` in `settings/mod.rs`. A multi-line row straddling the top redraws from its first line; `Row::Pair` aligns by characters, not columns. **Deps:** `main`.
+
 **TM14: No tmpfs in tests.** Done: fcfdb58 had already done it. Size 0.25. **Owns:** tests in `crates/dspi-tui/src/{actions.rs,settings/config.rs,settings/mod.rs}`. **Implements:** five `temp_dir()` uses move to a target-dir path. **Done when:** none remain, and tests pass. **Deps:** `main`.
 
 **TM16: Output ring health.** Size 0.25. **Owns:** `screens/stats.rs`. **Done when:** the section and ring-scaled thresholds render on the demo device; absent status hides it. **Deps:** CG12.
@@ -674,6 +680,8 @@ The swap is contained: UI talks to the `core-api` interface, and only `ffi` sees
 - **Done when:** `tools/ci.sh all` and all Kotlin module tests pass, on 3 ABIs; library size recorded. **No phone yet. Deps:** MR1, CG9.
 
 **AN27: No title bar.** Size 0.25. Owner: the "big fat dspi banner on top of the Android app" is wordy, and "while a title bar makes sense on a computer it is less useful on a mobile device". **Owns:** `AppScaffold.kt:76`. **Implements:** remove the `TopAppBar`, which holds only the title; demo state stays visible through `ConnectionStripBar`; edge-to-edge insets still correct. Screens with their own back and title rows are unchanged. **Done when:** Home starts at the connection strip on the emulator or a Compose test, and demo mode still says so. Goes out with the first update after the new core. **Deps:** AN1. SW checks the same on iOS when SW15 reaches it.
+
+**AN28: Demo mode on the real core.** Size 0.5. From AN8. The app's demo runs on the Kotlin `FakeDspiCore`, so CG16's surfaces and the core's `fill_band` never reach it. Route the demo to the real core's demo device. **Deps:** AN1.
 
 **AN2: Read-only on older firmware.** Size 0.5. **Owns:** `feature-home/.../HomeModel.kt`, `README.md`. **Implements:** V17–V31 now decode; `WriteGuardedCore` stays; fixes the README claim. The banner still fires on the wire format only: **the first Play update must show no version banner on a K340 or on stock final firmware** (the comparison is AN18's). **Done when:** fixture tests; banner per `WIRE-FORMAT-COMPAT.md` §4.4. **Deps:** AN1.
 
