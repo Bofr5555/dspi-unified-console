@@ -99,6 +99,8 @@ mod link;
 mod transfer;
 // -- WP TM3 --
 mod flash;
+// -- WP TM11 --
+mod hub;
 
 use std::process::ExitCode;
 
@@ -212,6 +214,8 @@ fn main() -> ExitCode {
         Some("link") => link::run(&flags, json),
         // -- WP TM3 --
         Some("flash") => flash::cmd_flash(target, &flags),
+        // -- WP TM11 --
+        Some("hub") => hub::run(target, &flags, json),
         Some("dump") => cmd_dump(target, json),
         Some("watch") => cmd_watch(target, json),
         // No arguments opens the interface; arguments run one command and exit.
@@ -242,6 +246,8 @@ fn is_command_word(word: &str) -> bool {
         "link",
         // -- WP TM3 --
         "flash",
+        // -- WP TM11 -- `dspi --hub hub` is the `hub` command, not a hub called "hub".
+        "hub",
     ];
     TERMINAL_VERBS.contains(&word)
         || dspi_cmd::VERBS.iter().any(|(n, _)| *n == word)
@@ -493,6 +499,8 @@ USAGE:
     dspi -f <script>         run one command per line, `#` starts a comment
     dspi < script            the same, from standard input
     dspi --install-udev      install the Linux udev rule (needs root)
+    dspi hub [run]           share this machine's devices on the network, with
+                             PIN pairing; clients, roles: dspi hub --help
     dspi --version           show app and protocol versions, and credits
 
 EXAMPLES:

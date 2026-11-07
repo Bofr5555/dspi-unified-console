@@ -26,6 +26,22 @@ dspi-link.workspace = true
 # `dspi flash`: the UF2 check, the drive and the firmware guard. Nothing else in
 # the terminal uses it.
 dspi-core = { workspace = true }
+# -- WP TM11 --
+# `dspi hub`: the hub itself, without `app` (no DspiCore in a headless hub).
+dspi-hub = { workspace = true }
+# The hub's logs on standard error, with tungstenite held at debug (HB6's rule).
+# Same as dspi-capi's.
+env_logger = { version = "0.11", default-features = false }
+log.workspace = true
+# Ctrl-C and SIGTERM stop the hub cleanly, so clients are told and USB is let go.
+# Already in the graph through crossterm.
+signal-hook = "0.3"
+# The hub's default store, in the user's local data directory. As dspi-tui's.
+dirs = "6"
+
+# -- WP TM11 -- `dspi hub` keeps the machine awake on Windows.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Power"] }
 
 # -- WP TM10 --
 # Documents must cross to the code Qt runs: the tests export and import through it.
@@ -40,4 +56,4 @@ default = ["midi", "mdns"]
 midi = ["dspi-tui/midi"]
 # -- WP TM9 --
 # `dspi link scan`, `--hub`, and finding a hub that moved while reconnecting.
-mdns = ["dspi-tui/mdns"]
+mdns = ["dspi-tui/mdns", "dspi-hub/mdns"]  # -- WP TM11 -- `dspi hub` advertises itself
