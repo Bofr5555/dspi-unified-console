@@ -153,6 +153,10 @@ PERMISSIVE = {
 TEXT_LIMIT = 1_000_000
 AI_TRAILER = re.compile(r"\b(claude|anthropic|copilot|chatgpt|openai)\b", re.I)
 COPYRIGHT = re.compile(r"[^\n]*(?:\bcopyright\b|\bSPDX-License|licensed under|\(c\) \d{4})[^\n]*", re.I)
+# On a line COPYRIGHT matches, this comment says the line is no notice (a test's list
+# of forbidden words, say). Such a line leaves the notices and is listed in the
+# inventory under its own heading, so a waiver is always visible.
+NOT_A_NOTICE = "licence-inventory: not a notice"
 PKG = re.compile(r"^(\S+) v(\S+)(?: \(([^)]*)\))?")
 SWIFT_IMPORT = re.compile(
     r"^\s*(?:@\w+\s+)*import\s+(?:(?:class|struct|enum|func|protocol|typealias|var|let)\s+)?(\w+)",
@@ -483,7 +487,7 @@ def describe_file(repo: Path, ref: str, path: str) -> dict:
     if committed.returncode != 0:
         disk = ROOT / path
         return {"path": path, "bytes": disk.stat().st_size if disk.exists() else 0, "lines": {UNCOMMITTED: 0},
-                "by": "uncommitted", "copyright": []}
+                "by": "uncommitted", "copyright": [], "waived": []}
     data = git(repo, "show", f"{ref}:{path}", binary=True)
     text = b"\0" not in data[:8192] and len(data) <= TEXT_LIMIT
     entry = {"path": path, "bytes": len(data)}
@@ -491,11 +495,15 @@ def describe_file(repo: Path, ref: str, path: str) -> dict:
         entry["lines"] = blame(repo, ref, path)
         entry["by"] = "blame"
         decoded = data.decode(errors="replace")
-        entry["copyright"] = sorted({m.group(0).strip()[:90] for m in COPYRIGHT.finditer(decoded)})[:5]
+        hits = {m.group(0).strip() for m in COPYRIGHT.finditer(decoded)}
+        waived = {h for h in hits if NOT_A_NOTICE in h}
+        entry["copyright"] = sorted(h[:90] for h in hits - waived)[:5]
+        entry["waived"] = sorted(waived)
     else:
         entry["lines"] = log_authors(repo, ref, path)
         entry["by"] = "commits"
         entry["copyright"] = []
+        entry["waived"] = []
     return entry
 
 
@@ -814,6 +822,11 @@ def render(data: dict) -> str:
         for path, hits in sorted(rust["copyright_hits"].items()):
             emit(f"- `{path}`: {'; '.join(f'`{h}`' for h in hits)}")
         emit("")
+    if rust.get("waived_hits"):
+        emit(f"Lines the scanner matched but a comment marks as no notice (`{NOT_A_NOTICE}`):\n")
+        for path, hits in sorted(rust["waived_hits"].items()):
+            emit(f"- `{path}`: {'; '.join(f'`{h}`' for h in hits)}")
+        emit("")
     emit("<details><summary>Every first-party Rust file</summary>\n")
     emit("| File | Lines by blame | Verbatim in old core |")
     emit("|---|---|---|")
@@ -942,6 +955,7 @@ def build_full(args, snap: dict) -> dict:
     first, third = [], []
     overlap: dict[str, int] = {}
     copyright_hits: dict[str, list[str]] = {}
+    waived_hits: dict[str, list[str]] = {}
     dirs_files = cargo["files"]
     for crate in sorted(cargo["linked"].values(), key=lambda c: c["name"]):
         if not crate["first_party"]:
@@ -953,6 +967,8 @@ def build_full(args, snap: dict) -> dict:
         for entry in files:
             if entry.get("copyright"):
                 copyright_hits[entry["path"]] = entry["copyright"]
+            if entry.get("waived"):
+                waived_hits[entry["path"]] = entry["waived"]
         totals: Counter = Counter()
         for entry in files:
             totals.update(entry["lines"])
@@ -1091,6 +1107,7 @@ def build_full(args, snap: dict) -> dict:
             "old_core_overlap_pct": old_core_weighted(first, overlap),
             "gated_modules": platform_gated_modules(cargo["files"]),
             "copyright_hits": copyright_hits,
+            "waived_hits": waived_hits,
         },
         "swift": swift_out,
         "firmware": firmware,
@@ -1115,6 +1132,14 @@ def public_snapshot(snap: dict) -> dict:
     return {k: v for k, v in snap.items() if not k.startswith("_")}
 
 
+def print_about_state() -> None:
+    """Whether the About wording is approved. Only printed, never recorded, so that
+    approving it stays a change to assets/about.json alone."""
+    about = json.loads((ROOT / "assets/about.json").read_text())
+    state = "DRAFT, not approved by the owner" if about["draft"] else "approved by the owner"
+    print(f"licence-inventory: assets/about.json wording: {state}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -1125,6 +1150,7 @@ def main() -> int:
     parser.add_argument("--console-ref", help=f"its ref (default {CONSOLE_BRANCH})")
     parser.add_argument("--fetch-console", action="store_true", help="clone the fork if no tree is at hand")
     args = parser.parse_args()
+    print_about_state()
 
     snap = light_snapshot(args)
     if args.write:
