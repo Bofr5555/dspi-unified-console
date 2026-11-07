@@ -90,6 +90,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun csPinUses(): List<PinUse> = core.csPinUses().map { it.toDomain() }
 
+    override fun csDemoBusy(on: Boolean) = call { core.csDemoBusy(on) }
+
     override fun openFd(fd: Int, serial: String, vid: Int) = call { core.openFd(fd, serial, vid.toUShort()) }
 
     override fun closeFd() = core.closeFd()
@@ -213,6 +215,16 @@ class FfiDspiCore : DspiCoreApi {
     override fun getDeviceName(): String = call { core.getDeviceName() }
 
     override fun setDeviceName(name: String) = call { core.setDeviceName(name) }
+
+    override fun cachedInputSourceName(source: Int): String = call { core.cachedInputSourceName(source.toUByte()) }
+
+    override fun cachedDeviceName(): String = call { core.cachedDeviceName() }
+
+    override fun demoRenameElsewhere(target: Int, name: String) = call { core.demoRenameElsewhere(target.toUByte(), name) }
+
+    override fun demoLatencyTiming(mode: Int, reads: Int, blackout: Int) = call { core.demoLatencyTiming(mode.toUByte(), reads.toUByte(), blackout.toUByte()) }
+
+    override fun demoLatencySets(): Long = call { core.demoLatencySets().toLong() }
 
     override fun fetchOutputLatency(): OutputLatency = call { core.fetchOutputLatency().toDomain() }
 
@@ -443,8 +455,6 @@ class FfiDspiCore : DspiCoreApi {
     override fun coreVregManualClear() = call { core.coreVregManualClear() }
 
     override fun coreVregDemoEvent(event: VregDemoEvent, seconds: Long) = call { core.coreVregDemoEvent(event.toFfi(), seconds.toUInt()) }
-
-    override fun csDemoBusy(on: Boolean) = call { core.csDemoBusy(on) }
 
     override fun autoeqDatabaseInfo(dbPath: String): AutoEqDatabaseInfo = se.bofr.dspi.ffi.uniffi.autoeqDatabaseInfo(dbPath).toDomain()
 

@@ -1342,6 +1342,18 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1427,6 +1439,10 @@ fun uniffi_dspi_core_checksum_method_deviceevents_on_departed(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_apply_all_params(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_cached_device_name(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_cached_input_source_name(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_capture_baseline(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_check_core1_conflict(
@@ -1471,6 +1487,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_trial_end(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_cs_apply(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_cs_demo_busy(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_cs_fetch(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_cs_pin_uses(
@@ -1478,6 +1496,12 @@ fun uniffi_dspi_core_checksum_method_dspicore_cs_pin_uses(
 fun uniffi_dspi_core_checksum_method_dspicore_cs_snapshot(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_delete_preset(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_demo_latency_sets(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_demo_latency_timing(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_demo_rename_elsewhere(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_disconnect(
 ): Short
@@ -1914,6 +1938,10 @@ fun uniffi_dspi_core_fn_constructor_dspicore_new(uniffi_out_err: UniffiRustCallS
 ): Pointer
 fun uniffi_dspi_core_fn_method_dspicore_apply_all_params(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_cached_device_name(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_cached_input_source_name(`ptr`: Pointer,`source`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_capture_baseline(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_check_core1_conflict(`ptr`: Pointer,`output`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -1958,6 +1986,8 @@ fun uniffi_dspi_core_fn_method_dspicore_core_vreg_trial_end(`ptr`: Pointer,uniff
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_cs_apply(`ptr`: Pointer,`op`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_cs_demo_busy(`ptr`: Pointer,`on`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_cs_fetch(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_cs_pin_uses(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -1965,6 +1995,12 @@ fun uniffi_dspi_core_fn_method_dspicore_cs_pin_uses(`ptr`: Pointer,uniffi_out_er
 fun uniffi_dspi_core_fn_method_dspicore_cs_snapshot(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_delete_preset(`ptr`: Pointer,`slot`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_demo_latency_sets(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+fun uniffi_dspi_core_fn_method_dspicore_demo_latency_timing(`ptr`: Pointer,`mode`: Byte,`reads`: Byte,`blackout`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_demo_rename_elsewhere(`ptr`: Pointer,`target`: Byte,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_disconnect(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -2627,6 +2663,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_all_params() != 8407.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_cached_device_name() != 27756.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_cached_input_source_name() != 3222.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_capture_baseline() != 12643.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -2693,6 +2735,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_cs_apply() != 3367.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_cs_demo_busy() != 31960.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_cs_fetch() != 19147.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -2703,6 +2748,15 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_delete_preset() != 21426.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_demo_latency_sets() != 20471.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_demo_latency_timing() != 50542.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_demo_rename_elsewhere() != 20262.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_disconnect() != 29066.toShort()) {
@@ -4744,6 +4798,27 @@ public interface DspiCoreInterface {
     fun `applyAllParams`()
     
     /**
+     * The device's name as last known, with no traffic, kept as
+     * [`DspiCore::cached_input_source_name`] keeps source names. "" when
+     * unnamed. Errors: `Unsupported` on firmware without device names;
+     * `Disconnected`.
+     */
+    fun `cachedDeviceName`(): kotlin.String
+    
+    /**
+     * The name of input source `source` as last known, with no traffic: read
+     * on connect, kept current by notifications (from any client) and by
+     * [`DspiCore::set_input_source_name`], and read again after a lost
+     * notification. "" when unnamed. For a client's rows, which would
+     * otherwise read over the wire what connect has just read.
+     *
+     * Errors: `Unsupported` on firmware without source names; `InvalidArgument`
+     * for a source past the table; `Disconnected` without a device or before
+     * it was probed.
+     */
+    fun `cachedInputSourceName`(`source`: kotlin.UByte): kotlin.String
+    
+    /**
      * The live state now matches the active preset: remember its image as
      * the baseline for [`DspiCore::preset_dirty`] and
      * [`DspiCore::preset_changes`]. Without a device, or before an image
@@ -4980,6 +5055,15 @@ public interface DspiCoreInterface {
     fun `csApply`(`op`: kotlin.String): kotlin.String
     
     /**
+     * On the demo device only: hold it in a running revert, or let it finish.
+     * While held it gives the refusals a real device has no steady way to show:
+     * a write settles busy, and the save, the revert, a macro fire and a learn
+     * are refused. As [`core_vreg_demo_event`](Self::core_vreg_demo_event), it
+     * answers [`DspiError::Unsupported`] on any other device.
+     */
+    fun `csDemoBusy`(`on`: kotlin.Boolean)
+    
+    /**
      * Read the whole control-surface configuration from the device:
      * capabilities, bindings and names, IR commands, groups, macros, the
      * display and the aux outputs (about seventy round trips).
@@ -5029,6 +5113,32 @@ public interface DspiCoreInterface {
      * the re-read fails.
      */
     fun `deletePreset`(`slot`: kotlin.UByte)
+    
+    /**
+     * How many output-latency requests the demo device has received, for
+     * clients' tests that a wait never sends one again. `Unsupported`, with no
+     * traffic, on anything but a simulated device.
+     */
+    fun `demoLatencySets`(): kotlin.UInt
+    
+    /**
+     * Set how the demo device applies an output-latency request, for clients'
+     * tests: `mode` 0 at once (and a request held so far applies on the next
+     * status read), 1 after `reads` status reads, 2 never, 3 dropped after
+     * `reads` status reads. `blackout` status reads stall first while one is
+     * pending, as the firmware's flash window does. `Unsupported`, with no
+     * traffic, on anything but a simulated device; `InvalidArgument` for
+     * another `mode`.
+     */
+    fun `demoLatencyTiming`(`mode`: kotlin.UByte, `reads`: kotlin.UByte, `blackout`: kotlin.UByte)
+    
+    /**
+     * Have someone else rename something on the demo device, for clients'
+     * tests and demo mode: `target` is an input source, or 0xFF for the device
+     * itself. The rename arrives as a notification that is not this client's
+     * own. `Unsupported`, with no traffic, on anything but a simulated device.
+     */
+    fun `demoRenameElsewhere`(`target`: kotlin.UByte, `name`: kotlin.String)
     
     /**
      * Close the open device, whatever its transport, and reset the mirror
@@ -7003,6 +7113,49 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * The device's name as last known, with no traffic, kept as
+     * [`DspiCore::cached_input_source_name`] keeps source names. "" when
+     * unnamed. Errors: `Unsupported` on firmware without device names;
+     * `Disconnected`.
+     */
+    @Throws(DspiException::class)override fun `cachedDeviceName`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_cached_device_name(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The name of input source `source` as last known, with no traffic: read
+     * on connect, kept current by notifications (from any client) and by
+     * [`DspiCore::set_input_source_name`], and read again after a lost
+     * notification. "" when unnamed. For a client's rows, which would
+     * otherwise read over the wire what connect has just read.
+     *
+     * Errors: `Unsupported` on firmware without source names; `InvalidArgument`
+     * for a source past the table; `Disconnected` without a device or before
+     * it was probed.
+     */
+    @Throws(DspiException::class)override fun `cachedInputSourceName`(`source`: kotlin.UByte): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_cached_input_source_name(
+        it, FfiConverterUByte.lower(`source`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * The live state now matches the active preset: remember its image as
      * the baseline for [`DspiCore::preset_dirty`] and
      * [`DspiCore::preset_changes`]. Without a device, or before an image
@@ -7458,6 +7611,25 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * On the demo device only: hold it in a running revert, or let it finish.
+     * While held it gives the refusals a real device has no steady way to show:
+     * a write settles busy, and the save, the revert, a macro fire and a learn
+     * are refused. As [`core_vreg_demo_event`](Self::core_vreg_demo_event), it
+     * answers [`DspiError::Unsupported`] on any other device.
+     */
+    @Throws(DspiException::class)override fun `csDemoBusy`(`on`: kotlin.Boolean)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_cs_demo_busy(
+        it, FfiConverterBoolean.lower(`on`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * Read the whole control-surface configuration from the device:
      * capabilities, bindings and names, IR commands, groups, macros, the
      * display and the aux outputs (about seventy round trips).
@@ -7542,6 +7714,63 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_delete_preset(
         it, FfiConverterUByte.lower(`slot`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * How many output-latency requests the demo device has received, for
+     * clients' tests that a wait never sends one again. `Unsupported`, with no
+     * traffic, on anything but a simulated device.
+     */
+    @Throws(DspiException::class)override fun `demoLatencySets`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_demo_latency_sets(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Set how the demo device applies an output-latency request, for clients'
+     * tests: `mode` 0 at once (and a request held so far applies on the next
+     * status read), 1 after `reads` status reads, 2 never, 3 dropped after
+     * `reads` status reads. `blackout` status reads stall first while one is
+     * pending, as the firmware's flash window does. `Unsupported`, with no
+     * traffic, on anything but a simulated device; `InvalidArgument` for
+     * another `mode`.
+     */
+    @Throws(DspiException::class)override fun `demoLatencyTiming`(`mode`: kotlin.UByte, `reads`: kotlin.UByte, `blackout`: kotlin.UByte)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_demo_latency_timing(
+        it, FfiConverterUByte.lower(`mode`),FfiConverterUByte.lower(`reads`),FfiConverterUByte.lower(`blackout`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Have someone else rename something on the demo device, for clients'
+     * tests and demo mode: `target` is an input source, or 0xFF for the device
+     * itself. The rename arrives as a notification that is not this client's
+     * own. `Unsupported`, with no traffic, on anything but a simulated device.
+     */
+    @Throws(DspiException::class)override fun `demoRenameElsewhere`(`target`: kotlin.UByte, `name`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_demo_rename_elsewhere(
+        it, FfiConverterUByte.lower(`target`),FfiConverterString.lower(`name`),_status)
 }
     }
     

@@ -34,6 +34,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun csPinUses(): List<PinUse> = throw NotImplementedError("cs_pin_uses")
 
+    override fun csDemoBusy(on: Boolean): Unit = throw NotImplementedError("cs_demo_busy")
+
     override fun openFd(fd: Int, serial: String, vid: Int): Unit = throw NotImplementedError("open_fd")
 
     override fun closeFd(): Unit = throw NotImplementedError("close_fd")
@@ -157,6 +159,16 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun getDeviceName(): String = throw NotImplementedError("get_device_name")
 
     override fun setDeviceName(name: String): Unit = throw NotImplementedError("set_device_name")
+
+    override fun cachedInputSourceName(source: Int): String = throw NotImplementedError("cached_input_source_name")
+
+    override fun cachedDeviceName(): String = throw NotImplementedError("cached_device_name")
+
+    override fun demoRenameElsewhere(target: Int, name: String): Unit = throw NotImplementedError("demo_rename_elsewhere")
+
+    override fun demoLatencyTiming(mode: Int, reads: Int, blackout: Int): Unit = throw NotImplementedError("demo_latency_timing")
+
+    override fun demoLatencySets(): Long = throw NotImplementedError("demo_latency_sets")
 
     override fun fetchOutputLatency(): OutputLatency = throw NotImplementedError("fetch_output_latency")
 
@@ -387,7 +399,6 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun coreVregManualClear(): Unit = throw NotImplementedError("core_vreg_manual_clear")
 
     override fun coreVregDemoEvent(event: VregDemoEvent, seconds: Long): Unit = throw NotImplementedError("core_vreg_demo_event")
-    override fun csDemoBusy(on: Boolean): Unit = throw NotImplementedError("cs_demo_busy")
 
     override fun autoeqDatabaseInfo(dbPath: String): AutoEqDatabaseInfo = throw NotImplementedError("autoeq_database_info")
 

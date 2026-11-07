@@ -105,6 +105,16 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.csDemoBusy(on)
     }
 
+    override fun demoRenameElsewhere(target: Int, name: String) {
+        guard("demoRenameElsewhere")
+        return inner.demoRenameElsewhere(target, name)
+    }
+
+    override fun demoLatencyTiming(mode: Int, reads: Int, blackout: Int) {
+        guard("demoLatencyTiming")
+        return inner.demoLatencyTiming(mode, reads, blackout)
+    }
+
     override fun rawSet(opcode: Int, value: Int, data: List<Int>) {
         guard("rawSet")
         return inner.rawSet(opcode, value, data)
@@ -650,11 +660,16 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "coreVregManualAuto",
             "coreVregManualClear",
             "coreVregDemoEvent",
-            "csDemoBusy"
+            "csDemoBusy",
+            "demoRenameElsewhere",
+            "demoLatencyTiming"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
         val PASS_THROUGH: Set<String> = setOf(
+            "cachedInputSourceName",
+            "cachedDeviceName",
+            "demoLatencySets",
             // DSPi Link session management (no device writes; the hub's
             // role check and the bridge's remote read-only flag gate writes)
             "linkConnect",
