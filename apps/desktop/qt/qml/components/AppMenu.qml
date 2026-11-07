@@ -64,9 +64,10 @@ Popup {
             { icon: "speaker", text: "Save Master Volume", action: "saveMasterVolume" },
             { icon: "chip", text: "Save Output Config", action: "saveOutputConfig" },
             { sep: true },
-            { icon: "chip", text: "Firmware Update…", window: "firmware" },
+            { icon: "chip", text: "Firmware Update…", window: "firmware", firmwareUpdate: true },
             { icon: "warning", text: "Factory Reset…", action: "factoryReset", danger: true }
-        ]},
+        // -- WP QD11 -- No UF2 bootloader on this board (the STM32H723), so no entry
+        ].filter(function (r) { return !r.firmwareUpdate || menu.firmwareUpdatable })},
         { text: "File", icon: "input", items: [
             { icon: "input", text: "Import Filters…", shortcut: "Ctrl+I", action: "importFilters" },
             { icon: "output", text: "Export Filters…", shortcut: "Ctrl+E", action: "exportFilters" },
@@ -115,6 +116,8 @@ Popup {
 
     // -- WP QD6 -- Changes with the device: `groups` hides what its firmware lacks
     readonly property int firmwareFeatures: bridge.wireFeatures
+    // -- WP QD11 --
+    readonly property bool firmwareUpdatable: firmware.supported
     readonly property var writeActions: ["commit", "revert", "saveMasterVolume", "saveOutputConfig", "factoryReset", "importFilters", "importConfig"]
     function rowEnabled(r) {
         if (r.sep || r.enabled === false) return false

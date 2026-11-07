@@ -4,7 +4,7 @@ import QtQuick 2.15
 // firmware, and that the drive vanishing at the end is the normal ending.
 Rectangle {
     id: card
-    property real progress: 0
+    property real progress: 0       // below 0: how far along isn't known
     property string boardName: ""
     property string version: ""
 
@@ -23,6 +23,7 @@ Rectangle {
             Text { text: "Writing firmware"; font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? MacColors.label : "white" }
             Text {
                 anchors.right: parent.right
+                visible: card.progress >= 0
                 text: Math.round(card.progress * 100) + "%"
                 font.pixelSize: 12
                 font.weight: Font.Medium
@@ -34,7 +35,21 @@ Rectangle {
             height: 4
             radius: 2
             color: isMacOS ? MacColors.quaternaryLabel : Qt.rgba(1, 1, 1, 0.14)
-            Rectangle { width: parent.width * card.progress; height: parent.height; radius: 2; color: isMacOS ? MacColors.accent : "#0a7cff" }
+            clip: true
+            Rectangle {
+                id: bar
+                width: card.progress >= 0 ? parent.width * card.progress : parent.width / 3
+                height: parent.height
+                radius: 2
+                color: isMacOS ? MacColors.accent : "#0a7cff"
+                NumberAnimation on x {
+                    running: card.progress < 0 && card.visible
+                    loops: Animation.Infinite
+                    from: -bar.width; to: card.width
+                    duration: 1200
+                }
+                x: 0
+            }
         }
         Column {
             spacing: 4

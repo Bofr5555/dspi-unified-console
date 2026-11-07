@@ -35,6 +35,7 @@ Rectangle {
         confirmed = false
         rebootRequested = false
         firmware.reset()
+        firmware.useBundledImage()   // -- WP QD11 -- A file chosen in Firmware Update is not this wizard's
     }
     // Onto a board already in BOOTSEL
     function beginInstall() {
@@ -44,8 +45,8 @@ Rectangle {
     // Onto the DSPi already connected: restart it into the bootloader first
     function beginConnectedInstall() {
         confirmed = true
+        // -- WP QD11 -- The updater restarts the device, after the firmware guard
         firmware.installWhenReady()
-        if (!rebootRequested) { rebootRequested = true; firmware.enterBootloader() }
     }
     function advance() {
         if (stage < stages.length - 1) stage++
@@ -54,6 +55,9 @@ Rectangle {
 
     readonly property string boardTitle: {
         switch (phase) {
+        // -- WP QD11 --
+        case "unconfirmed": return "Firmware written"
+        case "question": return "One question first"
         case "verified": return "Your device has been prepared"
         case "failed": return "Something needs attention"
         case "writing": case "waitingForDevice": return "Installing firmware"
@@ -99,6 +103,13 @@ Rectangle {
                 action: "Downgrade Firmware", actionPrimary: false }
             return { spin: true, title: "Waiting for your Pico",
                 text: "Hold the BOOTSEL button while connecting your Pico-compatible device to your computer. Once detected, it will appear here." }
+        // -- WP QD11 --
+        case "checking":
+            return { spin: true, title: "Checking", text: "Looking at the firmware and the board. Nothing has changed yet." }
+        case "waitingForDrive":
+            return { spin: true, title: "Restarting into bootloader mode", text: "Waiting for the board's drive to appear." }
+        case "unconfirmed":
+            return { icon: "question-circle", tint: isMacOS ? MacColors.orange : "#ff9f0a", title: "Written, not confirmed", text: firmware.failure }
         case "waitingForVolume":
             return { spin: true, title: firmware.chipName + " found",
                 text: "The board is in bootloader mode. Waiting for its " + firmware.volumeName + " drive to mount - this usually takes a second or two." }
@@ -128,7 +139,7 @@ Rectangle {
         else beginConnectedInstall()
     }
     // Continue on the board step only once there is nothing left to do there
-    readonly property bool showsContinue: stage !== 1 || phase === "verified" || connectedMatch === 1
+    readonly property bool showsContinue: stage !== 1 || phase === "verified" || phase === "unconfirmed" || connectedMatch === 1   // -- WP QD11 -- unconfirmed
 
     component InfoRow: Row {
         property string icon: ""
@@ -231,7 +242,7 @@ Rectangle {
                 height: 210
                 InstallStateCard {
                     anchors.fill: parent
-                    visible: wiz.phase !== "writing"
+                    visible: wiz.phase !== "writing" && wiz.phase !== "question"   // -- WP QD11 -- question
                     icon: wiz.card.icon || ""
                     tint: isMacOS ? wiz.card.tint || MacColors.accent : wiz.card.tint || "#3a96ff"
                     spin: wiz.card.spin === true
@@ -244,6 +255,11 @@ Rectangle {
                         primary: wiz.card.actionPrimary === true
                         onClicked: wiz.cardAction()
                     }
+                }
+                // -- WP QD11 --
+                FirmwareQuestion {
+                    anchors.fill: parent
+                    visible: wiz.phase === "question"
                 }
                 InstallWritingCard {
                     anchors.fill: parent

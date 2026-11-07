@@ -52,6 +52,7 @@ Spinner 1.0 Spinner.qml
 LabelValueRow 1.0 LabelValueRow.qml
 StepStrip 1.0 StepStrip.qml
 InstallStateCard 1.0 InstallStateCard.qml
+FirmwareQuestion 1.0 FirmwareQuestion.qml
 InstallWritingCard 1.0 InstallWritingCard.qml
 AppButton 1.0 AppButton.qml
 DashboardLayoutPopup 1.0 DashboardLayoutPopup.qml

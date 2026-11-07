@@ -464,6 +464,8 @@ public:
     // USB device doesn't take over from it. An explicit selectDevice still works.
     // On the way down, a device the session left closed goes from the UI.
     void setHubSession(bool active);
+    // -- WP QD11 -- The firmware updater: a hub's device can't reach this machine's USB
+    bool hubSession() const { return m_hubSession; }
 
     // Magnitude curve access for C++ BodePlotItem (app ids)
     void getMagnitudeCurve(int ch, double *out);
