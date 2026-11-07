@@ -277,6 +277,58 @@ class LinkEngineFakeHubTest {
         assertEquals(token, tokens.token(h.id))
     }
 
+    // -- WP AN4 --
+
+    @Test
+    fun wpAn4AFirstDialThatFailedConnectsOnTheNextNetworkEdge() = runBlocking<Unit> {
+        val h = hub()
+        h.fault("refuse 503")
+        connect(hubOf(h))
+        await<LinkSessionState.Failed>()
+        h.fault("refuse ok")
+        withContext(main) { engine.networkAvailable() }
+        await<LinkSessionState.Connected>()
+        assertTrue(bridge.connected)
+    }
+
+    @Test
+    fun wpAn4AHubThatMovedIsFollowedThroughTheCoresSessionKeepingTheMirror() = runBlocking<Unit> {
+        val old = hub()
+        connect(hubOf(old))
+        val first = await<LinkSessionState.Connected>()
+        val serial = bridge.selectedSerial
+        val second = hub() // same hub id as the fake's default, at another port
+        assertEquals(old.id, second.id)
+        old.stop()
+        await<LinkSessionState.Reconnecting>()
+        assertFalse(bridge.writesAllowed.value)
+
+        withContext(main) { engine.hubSeen(hubOf(second)) }
+        val back = await<LinkSessionState.Connected>(30_000)
+        assertEquals(second.port, back.hub.port)
+        assertEquals(first.device.serial, back.device.serial)
+        assertEquals(serial, bridge.selectedSerial)
+        withTimeout(5_000) { while (!bridge.writesAllowed.value) delay(10) }
+    }
+
+    @Test
+    fun wpAn4AnAddressAnotherHubAnswersAtDoesNotEndTheReconnect() = runBlocking<Unit> {
+        val h = hub()
+        connect(hubOf(h))
+        await<LinkSessionState.Connected>()
+        val real = hub()
+        val impostor = hub("--bridge") // another hub id than the one announced for it below
+        h.stop()
+        await<LinkSessionState.Reconnecting>()
+        withContext(main) { engine.hubSeen(hubOf(impostor, id = h.id)) }
+        delay(1_500) // the core has tried it, and it is not this hub
+        assertTrue(engine.state.value is LinkSessionState.Reconnecting)
+        assertEquals(LinkPhase.RECONNECTING, core.linkStatus().phase)
+
+        withContext(main) { engine.hubSeen(hubOf(real)) }
+        assertEquals(real.port, await<LinkSessionState.Connected>(30_000).hub.port)
+    }
+
     @Test
     fun wpAn3ARefusedTokenIsDeletedAndThePromptAppears() = runBlocking<Unit> {
         val h = hub("--auth", "fixed:123456")

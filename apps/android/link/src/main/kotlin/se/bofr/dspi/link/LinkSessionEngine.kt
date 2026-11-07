@@ -4,9 +4,10 @@
 // `linkStatus().phase` and adds what only an app knows: the stored tokens, the
 // board the user wants, the PIN prompt, the foreground service.
 //
-// It has no retry loop, queues no write and never redials by itself. A first
-// dial that fails is the user's to repeat: there is no session yet, so nothing
-// would stop a retry, and the core's own backoff starts only once it has one.
+// It has no retry loop and queues no write. A first dial that fails has no session
+// and so no backoff in the core: it is repeated once for each thing that happened
+// (the user's tap, a network coming up, the hub announced again; WP AN4), never on
+// a timer. So a hub that stays away costs nothing.
 //
 // Ported from DSPi-Console release/v1.1.6 `Link/NetworkTransport.swift`, whose
 // differences stay: the pairing prompt is a non-modal state the UI shows
@@ -17,6 +18,7 @@ package se.bofr.dspi.link
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -57,11 +59,18 @@ sealed interface LinkSessionState {
      * The core lost the hub or the board and is reconnecting; the next try is at
      * [retryAtMs]. The mirror stays readable and writes are refused. [text] is the
      * core's wording for it (`link_phase_text`), [reason] the core's `close_reason`.
+     * [parked]: out of sight for so long that the foreground service was let go.
      */
-    data class Reconnecting(override val hub: LinkHub, val reason: String, val retryAtMs: Long, val attempt: Int, val text: String) :
-        LinkSessionState
+    data class Reconnecting(
+        override val hub: LinkHub,
+        val reason: String,
+        val retryAtMs: Long,
+        val attempt: Int,
+        val text: String,
+        val parked: Boolean = false
+    ) : LinkSessionState
 
-    /** Ended and not retried (no first connection, a protocol error, refused); the user connects again by hand. */
+    /** Ended and not retried on a timer (no first connection, a protocol error, refused): see [LinkSessionEngine.networkAvailable]. */
     data class Failed(override val hub: LinkHub, val reason: String) : LinkSessionState
 }
 
@@ -96,7 +105,7 @@ class LinkSessionEngine(
     private val service: LinkServiceControl = LinkServiceControl.NONE,
     private val clock: () -> Long = System::currentTimeMillis,
     private val log: (String) -> Unit = {}
-) {
+) : LinkNetworkTarget {
     private val _state = MutableStateFlow<LinkSessionState>(LinkSessionState.Idle)
     val state: StateFlow<LinkSessionState> = _state.asStateFlow()
 
@@ -121,6 +130,14 @@ class LinkSessionEngine(
     /** Bumped for every connect and teardown: whatever an older one was doing stops. */
     private var generation = 0
     private var teardown: Job? = null
+
+    // -- WP AN4 --
+
+    /** Something changed while a first dial was running: if that dial fails, one more. */
+    private var redialAfterDial = false
+    private var uiVisible = true
+    private var parked = false
+    private var parkTimer: Job? = null
 
     /** One dial at a time: `linkConnect` replaces any session, so the last to finish would win. */
     private val dialLock = Mutex()
@@ -162,6 +179,8 @@ class LinkSessionEngine(
         refusalHandled = false
         val gen = ++generation
         sessionLive = false
+        redialAfterDial = false // this dial starts after whatever happened
+        unpark()
         _state.value = LinkSessionState.Connecting(target)
         scope.launch { dial(target, gen) }
     }
@@ -201,6 +220,101 @@ class LinkSessionEngine(
         if (_state.value is LinkSessionState.Reconnecting) scope.launch { ops.retryNow() }
     }
 
+    // -- WP AN4 --
+
+    /**
+     * A network came up: the core's backoff is cut short, and a session that has
+     * ended gets one more dial. One per call; there is no timer behind it.
+     */
+    override fun networkAvailable() {
+        when (_state.value) {
+            is LinkSessionState.Reconnecting -> retryNow()
+            is LinkSessionState.Failed -> redial()
+            is LinkSessionState.Connecting -> if (!sessionLive) redialAfterDial = true
+            else -> Unit
+        }
+    }
+
+    /** A network went: what is left may reach the hub. An ended session waits for one to come up. */
+    override fun networkLost() = retryNow()
+
+    /**
+     * DNS-SD announces the wanted hub ([found] has its id). At another address the
+     * core goes there (`link_set_url`, which the hub's id still guards); an ended
+     * session gets one more dial, there. Writes are not involved: they failed already.
+     */
+    override fun hubSeen(found: LinkHub) {
+        val wanted = hub ?: return
+        val shown = _state.value
+        if (!found.id.equals(wanted.id, ignoreCase = true) && !found.id.equals(shown.hub?.id, ignoreCase = true)) return
+        val moved = found.host != wanted.host || found.port != wanted.port || found.path != wanted.path
+        val there = if (moved) wanted.copy(host = found.host, port = found.port, path = found.path) else wanted
+        when (shown) {
+            is LinkSessionState.Reconnecting -> {
+                if (moved) {
+                    hub = there
+                    _state.value = shown.copy(hub = shown.hub.copy(host = there.host, port = there.port, path = there.path))
+                    log("link: the hub moved")
+                    scope.launch { ops.setUrl(ops.wsUrl(there.host, there.port, there.path)) }
+                } else {
+                    retryNow()
+                }
+            }
+            is LinkSessionState.Failed -> {
+                hub = there
+                redial()
+            }
+            // The dial under way may still work. If it does not, one more at the new address.
+            is LinkSessionState.Connecting -> if (moved && !sessionLive) {
+                hub = there
+                redialAfterDial = true
+            }
+            else -> Unit
+        }
+    }
+
+    /**
+     * The UI went away or came back. Reconnecting for [RECONNECT_SERVICE_BOUND_MS]
+     * out of sight lets the service go; the session stays and the core keeps trying
+     * for as long as the system lets the process run. Coming back takes it up again.
+     */
+    fun setUiVisible(visible: Boolean) {
+        uiVisible = visible
+        if (!visible) {
+            armPark()
+            return
+        }
+        val wasParked = parked
+        unpark()
+        if (wasParked && attached != null) serviceRunning(true)
+        // The bound state is looked at again, as a service start refused in the background may now work
+        wake.trySend(Unit)
+    }
+
+    private fun redial() {
+        hub?.let { connect(it, wantedSerial) }
+    }
+
+    private fun armPark() {
+        if (uiVisible || parked || parkTimer?.isActive == true || _state.value !is LinkSessionState.Reconnecting) return
+        parkTimer = scope.launch {
+            delay(RECONNECT_SERVICE_BOUND_MS)
+            val s = _state.value as? LinkSessionState.Reconnecting ?: return@launch
+            parked = true
+            serviceRunning(false)
+            _state.value = s.copy(parked = true)
+            log("link: reconnecting for long out of sight, the service stops")
+        }
+    }
+
+    private fun unpark() {
+        parkTimer?.cancel()
+        parkTimer = null
+        if (!parked) return
+        parked = false
+        (_state.value as? LinkSessionState.Reconnecting)?.let { _state.value = it.copy(parked = false) }
+    }
+
     /** Leave REMOTE: end the session, reconnecting included, and forget the hub. Idempotent. */
     fun disconnect() {
         val had = hub != null || attached != null
@@ -221,6 +335,8 @@ class LinkSessionEngine(
     private fun forgetSession() {
         generation++
         sessionLive = false
+        redialAfterDial = false
+        unpark()
         hub = null
         wantedSerial = null
         _state.value = LinkSessionState.Idle
@@ -282,6 +398,7 @@ class LinkSessionEngine(
             if (gen == generation) {
                 _state.value = LinkSessionState.Failed(h, describe(e))
                 log("link: could not connect (${(e as? DspiException.Link)?.code ?: "error"})")
+                if (redialAfterDial) redial()
             }
             return null
         }
@@ -309,6 +426,7 @@ class LinkSessionEngine(
         if (gen != generation) return
         val h = hub ?: return
         st.role.takeIf { it.isNotEmpty() }?.let { role = it }
+        if (st.phase != LinkPhase.RECONNECTING) unpark()
         when (st.phase) {
             LinkPhase.BOUND -> bound(h, devices, gen)
             LinkPhase.CHOOSE_DEVICE -> choose(h, devices, gen)
@@ -323,8 +441,10 @@ class LinkSessionEngine(
                     st.closeReason,
                     clock() + st.reconnectInMs,
                     st.reconnectAttempt.toInt(),
-                    ops.phaseText(st.phase, st.pinSource).text
+                    ops.phaseText(st.phase, st.pinSource).text,
+                    parked
                 )
+                armPark()
             }
             LinkPhase.NEEDS_PAIRING -> needsPin(h, st)
             LinkPhase.CLOSED, LinkPhase.REFUSED, LinkPhase.IDLE -> ended(h, st)
@@ -442,8 +562,12 @@ class LinkSessionEngine(
 
     private fun serviceRunning(on: Boolean) {
         if (on == serviceOn) return
-        serviceOn = on
-        if (on) service.start() else service.stop()
+        serviceOn = on && service.start()
+        if (!serviceOn) {
+            // Refused (background, F10), or asked to stop. Refused: the next look at a bound state tries again.
+            if (on) log("link: the system refused the foreground service for now")
+            service.stop()
+        }
     }
 
     private suspend fun detachCurrent() {
@@ -475,6 +599,14 @@ class LinkSessionEngine(
         /** Close codes in `LinkStatus.closeCode` (spec 5). */
         const val CLOSE_PROTOCOL_ERROR = 4000
         const val CLOSE_REVOKED = 4002
+
+        /**
+         * WP AN4. Link is a remote control, nothing plays through it, so ten minutes
+         * covers a hub restarting or a walk out of Wi-Fi range. Longer, a hub that is
+         * away (a Mac asleep, overnight) would hold the process up with a dial every
+         * 30 s and a browse with the multicast lock, for nobody, under a notification.
+         */
+        const val RECONNECT_SERVICE_BOUND_MS = 10 * 60 * 1000L
     }
 }
 
