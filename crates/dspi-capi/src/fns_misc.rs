@@ -1061,6 +1061,33 @@ pub extern "C" fn dspi_set_crossfeed_pair_map(
     status(core, |c| c.set_crossfeed_pair_map(c_bytes(map, map_len)))
 }
 
+// -- WP CG17 --
+/// Whether `map` (`map_len` 4 bytes) is a pair map the firmware takes on a
+/// platform with `num_pairs` stereo pairs: the rule
+/// `dspi_set_crossfeed_pair_map` applies, for telling an editor as the pairs
+/// are picked. No device involved. False for a null map or another length.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_crossfeed_pair_map_valid(
+    map: *const u8,
+    map_len: u32,
+    num_pairs: u8,
+) -> bool {
+    dspi_core::crossfeed_pair_map_valid(c_bytes(map, map_len), num_pairs)
+}
+
+/// The K340's pair map (one DAC per ear) into `out`. `out_len` must be at
+/// least 4; a shorter or null buffer is false.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_crossfeed_k340_pair_map(out: *mut u8, out_len: u32) -> bool {
+    (out_len as usize) >= PAIR_MAP_LEN && copy_bytes(&dspi_core::PairMap::K340.0, out, PAIR_MAP_LEN)
+}
+
+/// The output pair mask that goes with the K340's pair map.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_crossfeed_k340_pair_mask() -> u8 {
+    dspi_core::PairMap::K340_MASK
+}
+
 /// The core voltage extension's status: JSON {ok, liveVreg, millivolts,
 /// storedSel, defaultVreg, autoRaised, autoDisabled, hangCount, trialActive,
 /// trialVreg, failedTrialVreg, failedTrialUptimeS, uptimeS}. Returns the
@@ -1703,3 +1730,8 @@ mod tests_wp_qd4;
 #[cfg(test)]
 #[path = "fns_misc/tests_wp_qd5.rs"]
 mod tests_wp_qd5;
+
+// -- WP CG17 --
+#[cfg(test)]
+#[path = "fns_misc/tests_wp_cg17.rs"]
+mod tests_wp_cg17;

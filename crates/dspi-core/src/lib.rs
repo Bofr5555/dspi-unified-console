@@ -133,6 +133,8 @@ pub use firmware_guard::*;
 pub use link_text::*;
 // -- WP HB0 --
 pub use hotplug::{BrokeredDevice, DeviceBroker};
+// -- WP CG17 --
+pub use dspi_proto::ext::PairMap;
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///

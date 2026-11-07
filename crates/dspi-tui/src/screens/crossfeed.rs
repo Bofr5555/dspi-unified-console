@@ -57,14 +57,6 @@ const CUSTOM: u8 = 3;
 /// `pair_map`'s place in `WireCrossfeedParams` (bulk_params.h:80).
 const PAIR_MAP_OFFSET: usize = 12;
 
-/// One DAC per ear, `CrossfeedPairMap.oneDACPerEar`: pair 1 is the woofers
-/// (left out 3, right out 1), pair 2 the tweeters (left out 4, right out 2).
-const K340_MAP: PairMap = PairMap([0x02, 0x13, 0, 0]);
-
-/// The mask that goes with [`K340_MAP`]: the factory mask covers pair 1 only,
-/// which would crossfeed the woofers alone.
-const K340_MASK: u8 = 0x03;
-
 /// The Console's "Outputs" menu, in [`MapChoice`]'s order.
 const MAP_CHOICES: [&str; 3] = [
     "Default (1/2, 3/4, ...)",
@@ -123,7 +115,7 @@ impl MapChoice {
         let map = map.normalized();
         if map == PairMap([0; PairMap::SIZE]) {
             Self::Default
-        } else if map == K340_MAP.normalized() {
+        } else if map == PairMap::K340.normalized() {
             Self::K340
         } else {
             Self::Custom
@@ -190,7 +182,7 @@ impl CrossfeedPanel {
     fn shows_offer(&self, state: &DeviceState) -> bool {
         self.offer_mask
             && MapChoice::of(&pair_map(state)) == MapChoice::K340
-            && state.crossfeed().output_pair_mask & K340_MASK != K340_MASK
+            && state.crossfeed().output_pair_mask & PairMap::K340_MASK != PairMap::K340_MASK
     }
 
     /// The device has gone: what was learned about it goes too, because the
@@ -277,7 +269,7 @@ impl CrossfeedPanel {
             ENABLE_BOTH => {
                 self.offer_mask = false;
                 self.body.focus = MAP_FOCUS;
-                let mask = state.crossfeed().output_pair_mask | K340_MASK;
+                let mask = state.crossfeed().output_pair_mask | PairMap::K340_MASK;
                 ScreenEvent::Command(format!("cf.outputs 0x{mask:X}"))
             }
             CANCEL => {
@@ -339,7 +331,7 @@ impl CrossfeedPanel {
             1 => {
                 self.draft = None;
                 let pairs: Vec<(u8, u8)> = (0..Self::map_pairs(state))
-                    .map(|p| K340_MAP.pair(p))
+                    .map(|p| PairMap::K340.pair(p))
                     .collect();
                 match validated(&pairs, Self::map_pairs(state)) {
                     Some(map) => write_map(TAG_MAP_K340, map),
@@ -717,28 +709,22 @@ fn pair_map(state: &DeviceState) -> PairMap {
 
 /// The map for explicit pairs (one per platform pair, pair 0 first) when the
 /// firmware would accept it: `CrossfeedPairMap.validated`, which is
-/// `crossfeed_map_valid` plus a check of the pairs themselves, since a pair on
+/// [`PairMap::is_valid`] plus a check of the pairs themselves, since a pair on
 /// output 1 twice would encode as 0x00, the default pair.
 fn validated(pairs: &[(u8, u8)], pair_count: usize) -> Option<PairMap> {
-    if pair_count == 0 || pair_count > PairMap::PAIRS || pairs.len() != pair_count {
+    if pair_count > PairMap::PAIRS || pairs.len() != pair_count {
         return None;
     }
-    let limit = pair_count.checked_mul(2)?;
-    let mut used = 0u32;
     let mut map = [0u8; PairMap::SIZE];
     for (byte, (l, r)) in map.iter_mut().zip(pairs) {
-        if l == r || usize::from(*l) >= limit || usize::from(*r) >= limit {
+        // A nibble each, or the encoding below would lose bits.
+        if l == r || *l > 0x0F || *r > 0x0F {
             return None;
         }
-        // Both are below eight, from `limit`.
-        let bits = (1u32 << *l) | (1u32 << *r);
-        if used & bits != 0 {
-            return None;
-        }
-        used |= bits;
         *byte = (*r << 4) | *l;
     }
-    Some(PairMap(map).normalized())
+    let map = PairMap(map);
+    map.is_valid(pair_count).then(|| map.normalized())
 }
 
 /// Send a whole map and confirm it: the firmware ACKs an invalid map and
@@ -1142,9 +1128,13 @@ mod tests {
             assert!(matches!(ev, ScreenEvent::Status(_)), "{ev:?}");
             assert_eq!(
                 read_pair_map(session.transport_mut()).unwrap().0,
-                K340_MAP.0
+                PairMap::K340.0
             );
-            assert_eq!(pair_map(&state).0, K340_MAP.0, "the row reads the image");
+            assert_eq!(
+                pair_map(&state).0,
+                PairMap::K340.0,
+                "the row reads the image"
+            );
             let f = testing::draw(&mut p, &state, 100, 60);
             assert!(f.contains("One DAC per ear (K340) ▾"), "{f}");
             assert!(f.contains("1: 3/1") && f.contains("2: 4/2"), "{f}");
@@ -1167,7 +1157,10 @@ mod tests {
         #[test]
         fn wp_tm1_the_k340_preset_offers_the_mask_and_only_a_press_writes_it() {
             let (mut p, mut session, mut state) = demo();
-            assert_eq!(state.crossfeed().output_pair_mask & K340_MASK, 0x01);
+            assert_eq!(
+                state.crossfeed().output_pair_mask & PairMap::K340_MASK,
+                0x01
+            );
             pick(&mut p, &mut session, &mut state, 1);
             let f = testing::draw(&mut p, &state, 100, 60);
             assert!(f.contains("Crossfeed the woofers and the tweeters?"), "{f}");
@@ -1180,7 +1173,7 @@ mod tests {
 
             pick(&mut p, &mut session, &mut state, 1);
             p.handle(key(KeyCode::Right), &state);
-            let mask = state.crossfeed().output_pair_mask | K340_MASK;
+            let mask = state.crossfeed().output_pair_mask | PairMap::K340_MASK;
             assert_eq!(
                 p.handle(key(KeyCode::Enter), &state),
                 ScreenEvent::Command(format!("cf.outputs 0x{mask:X}"))
@@ -1359,8 +1352,9 @@ mod tests {
             assert_eq!(p.has_map, Some(true));
         }
 
-        /// `validated` against the fake's copy of `crossfeed_map_valid`, on
-        /// every pairing of the first two pairs over all eight outputs.
+        /// `validated`'s encoding against the fake's answer on the wire, on
+        /// every pairing of the first two pairs over all eight outputs. Both
+        /// use [`PairMap::is_valid`], which dspi-proto holds to the firmware.
         #[test]
         fn wp_tm1_validation_agrees_with_the_firmware_model() {
             let (_p, mut session, _state) = demo();
@@ -1391,7 +1385,7 @@ mod tests {
             assert_eq!(validated(&[], 0), None);
             assert_eq!(
                 validated(&[(2, 0), (3, 1)], 2),
-                Some(K340_MAP),
+                Some(PairMap::K340),
                 "valid on RP2040 too"
             );
             assert_eq!(validated(&[(4, 0), (3, 1)], 2), None, "past two pairs");
@@ -1400,7 +1394,7 @@ mod tests {
         #[test]
         fn wp_tm1_an_explicit_default_byte_reads_as_default() {
             assert_eq!(MapChoice::of(&PairMap([0x10, 0, 0, 0])), MapChoice::Default);
-            assert_eq!(MapChoice::of(&K340_MAP), MapChoice::K340);
+            assert_eq!(MapChoice::of(&PairMap::K340), MapChoice::K340);
             assert_eq!(MapChoice::of(&PairMap([0x01, 0, 0, 0])), MapChoice::Custom);
         }
 
@@ -1442,8 +1436,12 @@ mod tests {
             press(&mut live, &mut session, KeyCode::Enter);
             press(&mut live, &mut session, KeyCode::Down);
             press(&mut live, &mut session, KeyCode::Enter);
-            assert_eq!(map(&mut session), K340_MAP.0);
-            assert_eq!(pair_map(&live.state).0, K340_MAP.0, "the runner refreshed");
+            assert_eq!(map(&mut session), PairMap::K340.0);
+            assert_eq!(
+                pair_map(&live.state).0,
+                PairMap::K340.0,
+                "the runner refreshed"
+            );
 
             // The offer has focus: Enable, through the shared grammar.
             let mask = live.state.crossfeed().output_pair_mask;
@@ -1451,7 +1449,7 @@ mod tests {
             press(&mut live, &mut session, KeyCode::Enter);
             assert_eq!(
                 live.state.crossfeed().output_pair_mask,
-                mask | K340_MASK,
+                mask | PairMap::K340_MASK,
                 "both pairs"
             );
 
