@@ -157,7 +157,7 @@ class DspiBridgeImpl(
         if (usable) return false
         if (token != null && op != null) ops.require(token, op, spend = false)
         val why = when {
-            !connected -> WritesNotAllowedException.NOT_CONNECTED
+            !connected || remoteInterrupted -> WritesNotAllowedException.NOT_CONNECTED
             remoteReadOnly && current.compat == COMPAT_OK -> WritesNotAllowedException.VIEWER
             else -> WritesNotAllowedException.FIRMWARE_MISMATCH
         }
@@ -822,13 +822,23 @@ class DspiBridgeImpl(
         }
 
     /** Connected to compatible firmware (Qt usable()), and not a viewer on a Link hub. */
-    internal val usable: Boolean get() = connected && current.compat == COMPAT_OK && !remoteReadOnly
+    internal val usable: Boolean get() = connected && current.compat == COMPAT_OK && !remoteReadOnly && !remoteInterrupted
 
     /** DSPi Link viewer role ([setRemoteReadOnly]); main thread. */
     @Volatile private var remoteReadOnly = false
 
     override fun setRemoteReadOnly(readOnly: Boolean) {
         remoteReadOnly = readOnly
+        refreshWritesAllowed()
+    }
+
+    // -- WP AN3 --
+    @Volatile private var remoteInterrupted = false
+
+    override fun setRemoteInterrupted(interrupted: Boolean) {
+        if (interrupted == remoteInterrupted) return
+        remoteInterrupted = interrupted
+        if (interrupted) _status.value = _status.value.copy(cpu0 = 0, cpu1 = 0, clipFlags = 0, peaks = BridgeStatus().peaks)
         refreshWritesAllowed()
     }
 

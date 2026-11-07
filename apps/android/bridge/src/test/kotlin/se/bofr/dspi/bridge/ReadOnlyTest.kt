@@ -334,7 +334,7 @@ class ReadOnlyTest {
         /** Members that read, are local to the app, manage the connection, or are exempt (enterBootloader). */
         val READ_MEMBERS =
             setOf(
-                "attachDevice", "detachDevice", "attachRemote", "setRemoteReadOnly",
+                "attachDevice", "detachDevice", "attachRemote", "setRemoteReadOnly", "setRemoteInterrupted",
                 "scanDevices", "selectDevice", "disconnectDevice", "reconnect", "rescan",
                 "setUiVisible", "beginOutputEdit", "canPaste", "canSetAllBypass", "copyChannel", "channelBands", "channelColor",
                 "channelDelayMS", "channelDescriptor", "channelExists", "channelGainOffset", "channelName", "channelVisible",
