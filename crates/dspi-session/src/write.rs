@@ -1631,6 +1631,7 @@ mod tests {
                 );
                 assert!(!s.journal.last().unwrap().undoable, "{}", d.path);
             }
+            #[cfg(feature = "undo")]
             assert!(!s.can_undo());
         }
 
