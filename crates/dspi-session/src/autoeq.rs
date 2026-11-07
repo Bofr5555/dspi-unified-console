@@ -439,76 +439,6 @@ pub trait Fetch: Send + Sync {
     fn get(&self, request: &FetchRequest) -> Result<FetchResponse, String>;
 }
 
-/// The Terminal's [`Fetch`]: shells out to `curl`, which every platform it runs
-/// on ships. An HTTP client crate would pull a TLS stack and a hundred transitive
-/// dependencies into a program whose whole point is to talk to a USB device.
-/// Nothing here runs unless the person asks for it.
-pub struct CurlFetch;
-
-impl Fetch for CurlFetch {
-    fn get(&self, request: &FetchRequest) -> Result<FetchResponse, String> {
-        let mut curl = std::process::Command::new("curl");
-        curl.args(["-sSL", "-D", "-", "--max-time", "30"])
-            .args(["-A", &request.user_agent]);
-        if let Some(accept) = &request.accept {
-            curl.args(["-H", &format!("Accept: {accept}")]);
-        }
-        let out = curl
-            .args(["--url", &request.url])
-            .output()
-            .map_err(|e| format!("could not run curl: {e}"))?;
-        if !out.status.success() {
-            let why = String::from_utf8_lossy(&out.stderr);
-            return Err(format!("could not reach the server: {}", why.trim()));
-        }
-        parse_curl_output(&out.stdout)
-    }
-}
-
-/// `curl -D -`'s output: one header block per redirect, then the body. The last
-/// block is the answer.
-fn parse_curl_output(mut rest: &[u8]) -> Result<FetchResponse, String> {
-    let mut response = None;
-    while rest.starts_with(b"HTTP/") {
-        let Some(end) = rest.windows(4).position(|w| w == b"\r\n\r\n") else {
-            return Err("curl's output had no end of headers".to_string());
-        };
-        let (head, tail) = rest.split_at(end);
-        response = Some(parse_http_head(&String::from_utf8_lossy(head))?);
-        rest = tail.get(4..).unwrap_or_default();
-    }
-    let mut response = response.ok_or("curl's output had no headers")?;
-    response.body = rest.to_vec();
-    Ok(response)
-}
-
-fn parse_http_head(head: &str) -> Result<FetchResponse, String> {
-    let mut lines = head.lines();
-    let status = lines
-        .next()
-        .and_then(|l| l.split_whitespace().nth(1))
-        .and_then(|s| s.parse().ok())
-        .ok_or("curl's output had no status")?;
-    let mut response = FetchResponse {
-        status,
-        ..Default::default()
-    };
-    for line in lines {
-        let Some((name, value)) = line.split_once(':') else {
-            continue;
-        };
-        let value = value.trim();
-        match name.trim().to_ascii_lowercase().as_str() {
-            // The HTTP-date form of Retry-After reads as absent.
-            "retry-after" => response.retry_after_s = value.parse().ok(),
-            "x-ratelimit-remaining" => response.rate_limit_remaining = value.parse().ok(),
-            "x-ratelimit-reset" => response.rate_limit_reset = value.parse().ok(),
-            _ => {}
-        }
-    }
-    Ok(response)
-}
-
 /// Why a fetch gave nothing usable.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum FetchError {
@@ -2236,31 +2166,6 @@ Filter 3: ON None
         let names: Vec<_> = std::fs::read_dir(&dir).unwrap().collect();
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(names.len(), 1, "the temporary file was removed");
-    }
-
-    #[test]
-    fn wp_cg6_curl_output_is_read_past_its_redirects() {
-        let raw = b"HTTP/1.1 302 Found\r\nLocation: x\r\n\r\n\
-            HTTP/2 403 \r\nretry-after: 60\r\nX-RateLimit-Remaining: 0\r\n\
-            x-ratelimit-reset: 1700000000\r\n\r\nbody\r\n\r\nmore";
-        let r = parse_curl_output(raw).unwrap();
-        assert_eq!(r.status, 403);
-        assert_eq!(r.retry_after_s, Some(60));
-        assert_eq!(r.rate_limit_remaining, Some(0));
-        assert_eq!(r.rate_limit_reset, Some(1_700_000_000));
-        assert_eq!(r.body, b"body\r\n\r\nmore");
-        // The date form of Retry-After reads as absent.
-        let r = parse_curl_output(b"HTTP/1.1 200 OK\r\nRetry-After: Wed, 21 Oct\r\n\r\n").unwrap();
-        assert_eq!((r.status, r.retry_after_s), (200, None));
-        assert!(r.body.is_empty());
-        for bad in [
-            &b""[..],
-            b"HTTP/1.1 200 OK\r\nno end",
-            b"HTTP/1.1\r\n\r\n",
-            b"garbage",
-        ] {
-            assert!(parse_curl_output(bad).is_err(), "{bad:?}");
-        }
     }
 
     #[test]

@@ -8,6 +8,8 @@
 //! `needs_pairing.window`, `needs_pairing.fixed`. Keys are never reused.
 //! The text says nothing about a particular hub; `close_reason` and the hub's
 //! name are the client's to add. No term in it differs by platform.
+//! The sentences themselves are in `dspi_session::link_words`, so the Terminal,
+//! which has no `dspi-core`, says the same thing; this module is their interface.
 //!
 //! **Onboarding data.** `assets/onboarding/whatsnew.json` and
 //! `getting_started.json`, built in. The functions return JSON resolved for the
@@ -40,6 +42,7 @@
 //! they are using a computer or a phone"). Say the thing without the noun. Only
 //! macOS keeps such words, because there the text is Weeb Labs' original.
 
+use dspi_session::link_words;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -310,34 +313,23 @@ fn render_getting_started(platform: Platform) -> String {
 }
 
 fn entry(phase: LinkPhase, fixed_pin: bool) -> LinkPhaseText {
-    let (key, text, action) = match phase {
-        LinkPhase::Idle => ("idle", "Not connected to a hub", None),
-        LinkPhase::NeedsPairing if fixed_pin => {
-            ("needs_pairing.fixed", "Enter the hub's PIN.", None)
-        }
-        LinkPhase::NeedsPairing => (
-            "needs_pairing.window",
-            "Enter the PIN shown on the hub. On a DSPi Console, open Settings > Networking \
-             and choose Allow a New Client to get one.",
-            None,
-        ),
-        LinkPhase::NoDevice => ("no_device", "Connected to hub, no DSPi found", None),
-        LinkPhase::ChooseDevice => ("choose_device", "Connected to hub, choose a DSPi", None),
-        LinkPhase::Bound => ("bound", "Connected", None),
-        LinkPhase::Reconnecting => (
-            "reconnecting",
-            "Connection lost, reconnecting",
-            Some(("reconnecting.disconnect", "Disconnect")),
-        ),
-        LinkPhase::Closed => ("closed", "The connection to the hub has ended", None),
-        LinkPhase::Refused => ("refused", "The hub refused this connection", None),
+    let words = match phase {
+        LinkPhase::Idle => link_words::IDLE,
+        LinkPhase::NeedsPairing if fixed_pin => link_words::NEEDS_PAIRING_FIXED,
+        LinkPhase::NeedsPairing => link_words::NEEDS_PAIRING_WINDOW,
+        LinkPhase::NoDevice => link_words::NO_DEVICE,
+        LinkPhase::ChooseDevice => link_words::CHOOSE_DEVICE,
+        LinkPhase::Bound => link_words::BOUND,
+        LinkPhase::Reconnecting => link_words::RECONNECTING,
+        LinkPhase::Closed => link_words::CLOSED,
+        LinkPhase::Refused => link_words::REFUSED,
     };
     LinkPhaseText {
-        key: key.to_owned(),
+        key: words.key.to_owned(),
         phase: link_phase_key(phase).to_owned(),
-        text: text.to_owned(),
-        action_key: action.map(|(k, _)| k.to_owned()),
-        action: action.map(|(_, a)| a.to_owned()),
+        text: words.text.to_owned(),
+        action_key: words.action.map(|a| a.key.to_owned()),
+        action: words.action.map(|a| a.text.to_owned()),
     }
 }
 

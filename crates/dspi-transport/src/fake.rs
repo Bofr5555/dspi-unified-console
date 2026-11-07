@@ -1339,6 +1339,11 @@ impl State {
             op::REQ_CLEAR_CLIPS => Some(vec![0; 4]),
             // -- WP CG12 --
             op::REQ_GET_BUFFER_STATS => self.get_buffer_stats(),
+            // -- WP TM16 --
+            // `REQ_RESET_BUFFER_STATS` (vendor_commands.c:3422-3430): an ACK.
+            // The fake's watermarks sit at the fill, and its rings have never
+            // been written to, so there is nothing for it to clear.
+            op::REQ_RESET_BUFFER_STATS => Some(vec![1]),
             op::REQ_GET_ALL_PARAMS => Some(self.image.clone()),
             op::REQ_GET_ALL_PARAMS_CHUNK => self.get_chunk(usize::from(value), want),
             // Legacy: input 0's preamp.
@@ -2944,6 +2949,20 @@ mod tests_wp_t4 {
             };
             assert_eq!(u16::from(p[4]), want);
         }
+    }
+}
+
+// -- WP TM16 --
+#[cfg(test)]
+mod tests_wp_tm16 {
+    use super::*;
+    use crate::Transport;
+
+    #[test]
+    fn wp_tm16_the_fake_acks_the_watermark_reset() {
+        let mut d = FakeDevice::demo();
+        let reply = d.control_in(op::REQ_RESET_BUFFER_STATS, 1, 1).unwrap();
+        assert_eq!(reply, [1]);
     }
 }
 

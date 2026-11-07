@@ -1,7 +1,8 @@
 //! The app-side settings file.
 //!
 //! Everything the Console keeps in `AppSettings` (its `@AppStorage` defaults)
-//! rather than on the device: the Graphing page and the volume-mode choice.
+//! rather than on the device: the Graphing page, the volume-mode choice and
+//! the Tube panel's layout.
 //! The device holds none of this, so it lives in a file of our own at
 //! `~/.config/dspi/config.toml` (or the platform equivalent `dirs` reports).
 //!
@@ -133,7 +134,8 @@ impl Spectrum {
     }
 }
 
-/// Which volume the sidebar's slider drives when the app starts.
+/// Which volume the sidebar's slider drives, as last chosen there or in
+/// Settings (`DSPi_ConsoleApp.swift:271`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum VolumeChoice {
@@ -163,6 +165,15 @@ pub struct Volume {
     pub mode: VolumeChoice,
 }
 
+// -- WP TM18 --
+/// The Tube panel's layout, which the Console also remembers
+/// (`TubeModellerView.swift:123`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct Tube {
+    pub view: crate::screens::tube::View,
+}
+
 /// Settings > Advanced, the app-side half.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -177,6 +188,8 @@ pub struct AppConfig {
     pub volume: Volume,
     pub advanced: Advanced,
     pub spectrum: Spectrum,
+    // -- WP TM18 --
+    pub tube: Tube,
     /// `console`, `amber`, `dark` or `mono`; `--theme` overrides it.
     #[serde(default)]
     pub theme: Option<String>,
@@ -269,6 +282,7 @@ mod tests {
         assert_eq!(c.graphing.min_hz, 15.0);
         assert_eq!(c.graphing.max_hz, 20_000.0);
         assert_eq!(c.volume.mode, VolumeChoice::User);
+        assert_eq!(c.tube.view, crate::screens::tube::View::Basic);
         let s = &c.spectrum;
         assert_eq!(s.strength_pct, 100);
         assert!(s.peak_hold && s.smoothing);
@@ -290,6 +304,7 @@ mod tests {
         c.advanced.show_debug_info = true;
         c.spectrum.transform_order = Some(9);
         c.spectrum.floor_db = -120;
+        c.tube.view = crate::screens::tube::View::Advanced;
         c.save_to(&path).expect("write");
         let back = AppConfig::load_from(&path);
         assert_eq!(back, c);
