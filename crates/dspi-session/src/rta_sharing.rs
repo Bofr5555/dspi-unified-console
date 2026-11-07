@@ -10,9 +10,12 @@
 //! the engine's push of it, so nothing is written over the other console.
 //! [`Sharing::take_control`], or the client's own choice changing, ends that.
 //!
-//! These are the rules `dspi-core` applies in its `rta.rs` (WP CG5) for a
-//! single-threaded caller: nothing runs while a poll does, so no reading can
-//! be overtaken by a change made during it.
+//! This is the one home of these rules. `dspi-core` applies them too (WP CG19),
+//! but polls over DSPi Link with its lock released, so a change can overtake a
+//! poll. It therefore uses the two halves of [`Sharing::tick`] directly:
+//! [`Sharing::begin_poll`] and [`Sharing::finish_poll`] around a poll through
+//! [`Held`], with the [`Sharing`] left free meanwhile. The epoch in [`PollShare`]
+//! keeps a reading taken before such a change from being applied after it.
 
 use dspi_transport::clock::Instant;
 
@@ -61,6 +64,36 @@ pub struct Sharing {
     /// Someone else chose what we want while we followed: the engine will
     /// push this, and must not, since the device already holds it.
     absorb: Option<RtaConfig>,
+    // -- WP CG19 --
+    /// Bumped by anything that changes ownership, so a readback taken before
+    /// the change is not applied after it.
+    epoch: u64,
+}
+
+// -- WP CG19 --
+/// The rules for one poll, and what the poll saw. Taken from
+/// [`Sharing::begin_poll`] and handed back to [`Sharing::finish_poll`], so the
+/// poll itself needs no access to the [`Sharing`].
+#[derive(Debug, Clone, Default)]
+pub struct PollShare {
+    /// Following: never write over the device's configuration.
+    hold: bool,
+    absorb: Option<RtaConfig>,
+    epoch: u64,
+    /// The configuration the device reported.
+    readback: Option<RtaConfig>,
+    /// A push really went out.
+    pushed: bool,
+    /// `absorb` was dropped instead of pushed.
+    absorbed: bool,
+}
+
+impl PollShare {
+    /// The device reported `config` during this poll. [`Held`] calls this for
+    /// every configuration read.
+    pub fn note_readback(&mut self, config: RtaConfig) {
+        self.readback = Some(config);
+    }
 }
 
 /// The same tap, channels and transform size. Exact: a device analysing more
@@ -70,9 +103,11 @@ fn same_choice(a: &RtaConfig, b: &RtaConfig) -> bool {
     a.tap == b.tap && a.channel_mask == b.channel_mask && a.fft_order == b.fft_order
 }
 
-/// Whether this device could hold `c`: the firmware validates what it applies
-/// (`config_valid`, rta.c), so anything else in an event or a readback is
-/// damage and must not reach the views.
+/// Whether this device could hold `c`: what the firmware reports has passed
+/// `config_valid` and been masked by `apply_config` (rta.c), so its tap and order
+/// are in range and its mask is non-empty and within `tap_valid_mask`, which is
+/// the tap's width in bits. Anything else in an event or a readback is damage
+/// and must not reach the views.
 fn followable(c: &RtaConfig, caps: &RtaCaps) -> bool {
     let width = match c.tap {
         TAP_INPUT => caps.input_channels,
@@ -93,18 +128,26 @@ impl Sharing {
         self.following
     }
 
+    // -- WP CG19 --
+    /// Whether the device held what was asked for since the last push.
+    pub fn agreed(&self) -> bool {
+        self.agreed
+    }
+
     /// A new connection: what the other consoles did belongs to the old one,
     /// and what we last asked for does not.
     pub fn reset(&mut self) {
         *self = Self {
             last_own: self.last_own,
+            epoch: self.epoch.wrapping_add(1),
             ..Self::default()
         };
     }
 
     /// Stop following; the engine then wants the client's own configuration
-    /// and pushes it. Does nothing while driving.
+    /// and pushes it. While driving this only outdates a poll in flight.
     pub fn take_control(&mut self) {
+        self.epoch = self.epoch.wrapping_add(1);
         if self.following.take().is_some() {
             self.agreed = false;
             self.absorb = None;
@@ -152,17 +195,35 @@ impl Sharing {
         if *id != EVT_RTA_CONFIG {
             return false;
         }
+        let source = bytes.get(RtaConfig::SIZE).copied().unwrap_or(0);
+        let own = dspi_transport::is_own_write(kind, source, note.origin, session, false);
+        self.note_config(bytes, own, note.origin.unwrap_or(0), caps);
+        true
+    }
+
+    // -- WP CG19 --
+    /// Take the payload of an `RTA_CONFIG` event: the configuration the device
+    /// just applied. `own`: the echo rule says we wrote it. `origin`: the session
+    /// the hub attributes it to, 0 when unknown. `caps` as in [`Self::note`].
+    /// Returns whether the event held a configuration this device could hold;
+    /// otherwise nothing changed.
+    pub fn note_config(
+        &mut self,
+        payload: &[u8],
+        own: bool,
+        origin: u16,
+        caps: Option<&RtaCaps>,
+    ) -> bool {
         let Some(caps) = caps else {
-            return true;
+            return false;
         };
-        let Some(config) = RtaConfig::decode(bytes)
+        let Some(config) = RtaConfig::decode(payload)
             .ok()
             .filter(|c| followable(c, caps))
         else {
-            return true;
+            return false;
         };
-        let source = bytes.get(RtaConfig::SIZE).copied().unwrap_or(0);
-        let own = dspi_transport::is_own_write(kind, source, note.origin, session, false);
+        self.epoch = self.epoch.wrapping_add(1);
         // While released this is judged against what we last asked for, so a
         // later request follows a change made in the meantime.
         if let Some(mine) = self.last_own {
@@ -170,10 +231,7 @@ impl Sharing {
                 // Our echo, or someone else choosing exactly what we want.
                 self.holds_ours(mine);
             } else if !own {
-                self.following = Some(Followed {
-                    config,
-                    origin: note.origin.unwrap_or(0),
-                });
+                self.following = Some(Followed { config, origin });
             }
             // An echo of ours that no longer matches is an older push,
             // superseded by one still in flight.
@@ -192,26 +250,41 @@ impl Sharing {
         now: Instant,
         budget: Budget,
     ) -> TickReport {
-        let mut held = Held {
-            t,
+        let mut share = self.begin_poll();
+        let report = engine.tick(&mut Held::new(t, &mut share), now, budget);
+        self.finish_poll(&share, engine.caps());
+        report
+    }
+
+    // -- WP CG19 --
+    /// What the poll about to start must do about pushes. The poll runs through
+    /// [`Held`]; anything may happen to this [`Sharing`] until
+    /// [`Self::finish_poll`].
+    pub fn begin_poll(&self) -> PollShare {
+        PollShare {
             hold: self.following.is_some(),
             absorb: self.absorb,
-            readback: None,
-            pushed: false,
-            absorbed: false,
-        };
-        let report = engine.tick(&mut held, now, budget);
-        let (readback, pushed, absorbed) = (held.readback, held.pushed, held.absorbed);
-        if pushed {
+            epoch: self.epoch,
+            ..PollShare::default()
+        }
+    }
+
+    // -- WP CG19 --
+    /// Judge what a finished poll saw. `caps` as in [`Self::note`].
+    pub fn finish_poll(&mut self, share: &PollShare, caps: Option<&RtaCaps>) {
+        if share.pushed {
             self.agreed = false;
         }
-        if absorbed {
+        if share.absorbed && self.absorb == share.absorb {
             self.absorb = None;
         }
-        if let (Some(read), Some(mine)) = (readback, self.last_own) {
-            self.judge_readback(read, mine, engine.caps());
+        // Anything that changed ownership mid-poll outranks this reading.
+        let Some(read) = share.readback.filter(|_| share.epoch == self.epoch) else {
+            return;
+        };
+        if let Some(mine) = self.last_own {
+            self.judge_readback(read, mine, caps);
         }
-        report
     }
 
     fn judge_readback(&mut self, read: RtaConfig, mine: RtaConfig, caps: Option<&RtaCaps>) {
@@ -236,13 +309,17 @@ impl Sharing {
 
 /// The transport as one poll sees it: drops the engine's push when the rules
 /// say the device must keep what it holds, and notes what it reports.
-struct Held<'a> {
+pub struct Held<'a> {
     t: &'a mut dyn Transport,
-    hold: bool,
-    absorb: Option<RtaConfig>,
-    readback: Option<RtaConfig>,
-    pushed: bool,
-    absorbed: bool,
+    share: &'a mut PollShare,
+}
+
+impl<'a> Held<'a> {
+    // -- WP CG19 --
+    /// `t` as one poll with `share` should see it.
+    pub fn new(t: &'a mut dyn Transport, share: &'a mut PollShare) -> Self {
+        Self { t, share }
+    }
 }
 
 impl Transport for Held<'_> {
@@ -252,7 +329,7 @@ impl Transport for Held<'_> {
             && let Ok(b) = &r
             && let Ok(config) = RtaConfig::decode(b)
         {
-            self.readback = Some(config);
+            self.share.note_readback(config);
         }
         r
     }
@@ -270,15 +347,15 @@ impl Transport for Held<'_> {
         if opcode != op::REQ_RTA_SET_CONFIG {
             return self.t.control_out(opcode, value, data);
         }
-        if self.hold {
+        if self.share.hold {
             return Ok(());
         }
-        if self.absorb.is_some() && RtaConfig::decode(data).ok() == self.absorb {
-            self.absorbed = true;
+        if self.share.absorb.is_some() && RtaConfig::decode(data).ok() == self.share.absorb {
+            self.share.absorbed = true;
             return Ok(());
         }
         let r = self.t.control_out(opcode, value, data);
-        self.pushed |= r.is_ok();
+        self.share.pushed |= r.is_ok();
         r
     }
 
@@ -588,5 +665,186 @@ mod tests_wp_tm5 {
         // an event is still judged against it.
         r.note(&event(&config(0b10), 9));
         assert!(r.sharing.following().is_some());
+    }
+}
+
+/// WP CG19: the rules as `dspi-core` drives them, a poll at a time with the
+/// `Sharing` free meanwhile, and the check against the firmware.
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg19 {
+    use super::*;
+
+    fn caps() -> RtaCaps {
+        RtaCaps {
+            input_channels: 2,
+            output_channels: 5,
+            order_min: 8,
+            order_max: 10,
+            ..RtaCaps::default()
+        }
+    }
+
+    fn config(mask: u16) -> RtaConfig {
+        RtaConfig {
+            tap: TAP_OUTPUT,
+            channel_mask: mask,
+            fft_order: 10,
+            avg_ms: 300,
+            peak_decay_db_s: 12,
+            flags: 0,
+        }
+    }
+
+    /// Driving 0b01 with the device agreeing.
+    fn agreed() -> Sharing {
+        let mut s = Sharing::default();
+        s.judge_own(Some(config(0b01)));
+        let mut p = s.begin_poll();
+        p.note_readback(config(0b01));
+        s.finish_poll(&p, Some(&caps()));
+        assert!(s.agreed());
+        s
+    }
+
+    fn event(s: &mut Sharing, mask: u16, origin: u16) -> bool {
+        s.note_config(&config(mask).encode(), false, origin, Some(&caps()))
+    }
+
+    /// `apply_config` and `config_valid` (rta.c) on the channel mask, for a
+    /// device with `width` channels at this tap: what a SET leaves in `rta.cfg`,
+    /// which is what events and readbacks report; `None` when it is refused.
+    fn firmware_applies(mask: u16, width: u8) -> Option<u16> {
+        let valid = ((1u32 << width) - 1) as u16;
+        (mask & valid != 0).then_some(mask & valid)
+    }
+
+    #[test]
+    fn wp_cg19_followable_is_what_the_firmware_can_report() {
+        for (input, output) in [(2, 5), (8, 9), (1, 16), (0, 3)] {
+            let caps = RtaCaps {
+                input_channels: input,
+                output_channels: output,
+                ..caps()
+            };
+            for (tap, width) in [(TAP_INPUT, input), (TAP_OUTPUT, output)] {
+                for mask in 0..=u16::MAX {
+                    let c = RtaConfig {
+                        tap,
+                        ..config(mask)
+                    };
+                    // Exactly the masks a SET can leave behind: the result of
+                    // applying them is itself, and is not refused.
+                    let reportable = firmware_applies(mask, width) == Some(mask);
+                    assert_eq!(followable(&c, &caps), reportable, "{tap} {width} {mask:#x}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn wp_cg19_tap_and_order_are_held_to_the_firmwares_range() {
+        for tap in 0..=u8::MAX {
+            let c = RtaConfig { tap, ..config(1) };
+            assert_eq!(
+                followable(&c, &caps()),
+                tap == TAP_INPUT || tap == TAP_OUTPUT,
+                "{tap}"
+            );
+        }
+        for fft_order in 0..=u8::MAX {
+            let c = RtaConfig {
+                fft_order,
+                ..config(1)
+            };
+            assert_eq!(
+                followable(&c, &caps()),
+                (8..=10).contains(&fft_order),
+                "{fft_order}"
+            );
+        }
+    }
+
+    #[test]
+    fn wp_cg19_a_reading_overtaken_by_a_change_is_dropped() {
+        // The reading says another host moved the device to 0b10.
+        let overtaken = |change: &dyn Fn(&mut Sharing)| {
+            let mut s = agreed();
+            let mut p = s.begin_poll();
+            p.note_readback(config(0b10));
+            change(&mut s);
+            let before = s.following();
+            s.finish_poll(&p, Some(&caps()));
+            assert_eq!(s.following(), before);
+        };
+        overtaken(&|s| s.take_control());
+        overtaken(&|s| s.judge_own(Some(config(0b100))));
+        overtaken(&|s| s.reset());
+        overtaken(&|s| assert!(event(s, 0b100, 9)));
+        overtaken(&|s| assert!(event(s, 0b01, 9)));
+
+        // Nothing happened meanwhile: it counts.
+        let mut s = agreed();
+        let mut p = s.begin_poll();
+        p.note_readback(config(0b10));
+        s.finish_poll(&p, Some(&caps()));
+        assert_eq!(s.following().map(|f| f.origin), Some(0));
+    }
+
+    #[test]
+    fn wp_cg19_what_changes_nothing_does_not_outdate_a_reading() {
+        let mut s = agreed();
+        let mut p = s.begin_poll();
+        p.note_readback(config(0b10));
+        // The same choice again, nothing asked for, and a damaged event.
+        s.judge_own(Some(config(0b01)));
+        s.judge_own(None);
+        assert!(!event(&mut s, 0, 9));
+        assert!(!s.note_config(&[3, 1], false, 9, Some(&caps())));
+        s.finish_poll(&p, Some(&caps()));
+        assert!(s.following().is_some());
+    }
+
+    #[test]
+    fn wp_cg19_a_reading_is_judged_after_a_release_in_flight() {
+        // Released while the poll ran: the device was still seen to have moved,
+        // as an event at that moment would have shown.
+        let mut s = agreed();
+        let mut p = s.begin_poll();
+        p.note_readback(config(0b10));
+        s.judge_own(None);
+        s.finish_poll(&p, Some(&caps()));
+        assert_eq!(s.following().unwrap().config.channel_mask, 0b10);
+    }
+
+    #[test]
+    fn wp_cg19_only_the_absorb_the_poll_acted_on_is_cleared() {
+        let mut s = agreed();
+        assert!(event(&mut s, 0b10, 9));
+        assert!(event(&mut s, 0b01, 9)); // absorb = 0b01
+        let mut p = s.begin_poll();
+        p.absorbed = true;
+        // A new choice, followed by someone choosing it, while the poll ran.
+        let next = config(0b100);
+        s.judge_own(Some(next));
+        assert!(event(&mut s, 0b10, 9));
+        assert!(event(&mut s, 0b100, 9));
+        s.finish_poll(&p, Some(&caps()));
+        assert_eq!(s.absorb, Some(next));
+        // The poll that really dropped it clears it.
+        let mut p = s.begin_poll();
+        p.absorbed = true;
+        s.finish_poll(&p, Some(&caps()));
+        assert_eq!(s.absorb, None);
+    }
+
+    #[test]
+    fn wp_cg19_unknown_caps_decide_nothing() {
+        let mut s = agreed();
+        assert!(!s.note_config(&config(0b10).encode(), false, 9, None));
+        let mut p = s.begin_poll();
+        p.note_readback(config(0b10));
+        s.finish_poll(&p, None);
+        assert_eq!(s.following(), None);
     }
 }
