@@ -125,6 +125,9 @@ pub struct ShellModel {
     // -- WP TM5 --
     /// The live spectrum behind the curves, while `f` has it on.
     pub spectrum: Option<crate::graph::SpectrumOverlay>,
+    // -- WP TM6 --
+    /// The third-octave bars above the page, while `F` has them on.
+    pub bars: Option<crate::widgets::BarPicture>,
     /// The name of the graphed channel, for the pane title.
     pub graph_channel: Option<String>,
     pub cursor_hz: Option<f64>,
@@ -209,6 +212,8 @@ impl ShellModel {
             curves: Vec::new(),
             // -- WP TM5 --
             spectrum: None,
+            // -- WP TM6 --
+            bars: None,
             graph_channel: None,
             cursor_hz: None,
             marker_hz: None,

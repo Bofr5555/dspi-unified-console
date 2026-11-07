@@ -983,6 +983,8 @@ impl Live {
         self.shared.borrow_mut().graph = m.graph.clone();
         // -- WP TM5 --
         m.spectrum = screens::spectrum::overlay_picture(&self.shared, s, t, Instant::now());
+        // -- WP TM6 --
+        m.bars = screens::spectrum::bars_picture(&self.shared, s, t, Instant::now());
     }
 
     // -- WP TM12 --
@@ -2086,6 +2088,8 @@ impl Live {
             // -- WP TM5 --
             ShellEvent::SpectrumOverlay => self.toggle_spectrum_overlay(session),
             ShellEvent::TakeControl => self.take_analyser_control(),
+            // -- WP TM6 --
+            ShellEvent::SpectrumBars => self.toggle_spectrum_bars(session),
             ShellEvent::GraphZoom(delta) => self.shell.model.graph.zoom(delta),
             ShellEvent::GraphPhase => {
                 self.shell.model.graph.show_phase = !self.shell.model.graph.show_phase;
@@ -3320,24 +3324,63 @@ impl Live {
     // -- WP TM5 --
     /// `f`: the live spectrum on the response graph.
     fn toggle_spectrum_overlay(&mut self, session: &mut Session) {
-        if !self.shared.borrow().spectrum.engine.supported() {
-            self.connect_analyser(session);
-        }
-        if !self.shared.borrow().spectrum.engine.supported() {
-            self.note("This firmware has no spectrum analyser.".to_string());
+        if !self.analyser_ready(session) {
             return;
         }
-        use dspi_session::rta::{TAP_INPUT, TAP_OUTPUT};
-        let page = match self.shell.model.selection {
-            Selection::Overview => None,
-            Selection::Input(i) => Some((TAP_INPUT, i as u8)),
-            Selection::Output(o) => Some((TAP_OUTPUT, o as u8)),
-        };
+        let page = self.analyser_page();
         let on = self.shared.borrow_mut().spectrum.toggle_overlay(page);
         self.note(format!(
             "Spectrum on the graph {}",
             if on { "on" } else { "off" }
         ));
+    }
+
+    /// Whether the analyser can be used, connecting it if it has not been;
+    /// says so when it cannot.
+    fn analyser_ready(&mut self, session: &mut Session) -> bool {
+        if !self.shared.borrow().spectrum.engine.supported() {
+            self.connect_analyser(session);
+        }
+        let ready = self.shared.borrow().spectrum.engine.supported();
+        if !ready {
+            self.note("This firmware has no spectrum analyser.".to_string());
+        }
+        ready
+    }
+
+    /// The page's channel, as the analyser taps it.
+    fn analyser_page(&self) -> Option<(u8, u8)> {
+        use dspi_session::rta::{TAP_INPUT, TAP_OUTPUT};
+        match self.shell.model.selection {
+            Selection::Overview => None,
+            Selection::Input(i) => Some((TAP_INPUT, i as u8)),
+            Selection::Output(o) => Some((TAP_OUTPUT, o as u8)),
+        }
+    }
+
+    // -- WP TM6 --
+    /// `F`: the third-octave bars above the page.
+    fn toggle_spectrum_bars(&mut self, session: &mut Session) {
+        if !self.analyser_ready(session) {
+            return;
+        }
+        let page = self.analyser_page();
+        let on = self.shared.borrow_mut().spectrum.toggle_bars(page);
+        let n = self.bars_channels();
+        self.note(match (on, self.shell.bars_fit(n)) {
+            (false, _) => "Spectrum bars off".to_string(),
+            (true, true) => "Spectrum bars on".to_string(),
+            (true, false) => "Spectrum bars on, but there is no room: = shrinks the graph".into(),
+        });
+    }
+
+    // -- WP TM6 --
+    /// How many channels the bars draw.
+    fn bars_channels(&self) -> usize {
+        let app = self.shared.borrow();
+        screens::spectrum::selection(&self.state, &app.spectrum)
+            .channels
+            .len()
     }
 
     // -- WP TM5 --
@@ -3358,6 +3401,9 @@ impl Live {
         // -- WP TM5 --
         let shown = self.shell.graph_on_screen();
         self.shared.borrow_mut().spectrum.set_overlay_shown(shown);
+        // -- WP TM6 --
+        let shown = self.shell.bars_on_screen(self.bars_channels());
+        self.shared.borrow_mut().spectrum.set_bars_shown(shown);
         if self.input_pending {
             return;
         }
@@ -6934,6 +6980,41 @@ mod tests_wp_tm5 {
     fn device_mask(hub: &FakeHub) -> u16 {
         let c = hub.rta_config();
         u16::from_le_bytes([c[2], c[3]])
+    }
+
+    // -- WP TM6 --
+    #[test]
+    fn wp_tm6_capital_f_shows_the_bars_and_runs_the_analyser_on_the_fake_hub() {
+        let hub = hub();
+        let mut a = Console::on(&hub, "bars-a");
+        a.choose(&[0, 1]);
+        settle(&mut [&mut a]);
+        assert_eq!(a.wanted_mask(), None, "nothing watches yet");
+
+        a.press('F');
+        until("the analyser to run", &mut [&mut a], |c| {
+            c[0].wanted_mask() == Some(0b11) && c[0].live.shell.model.bars.is_some()
+        });
+        until("the device to take it", &mut [&mut a], |_| {
+            device_mask(&hub) == 0b11
+        });
+        let p = a.live.shell.model.bars.clone().unwrap();
+        assert_eq!(p.channels.len(), 2);
+
+        // A tool covers the page: the bars stop watching and the analyser stops.
+        a.press('L');
+        until("the bars to give way", &mut [&mut a], |c| {
+            c[0].live.shell.model.bars.is_none()
+        });
+        a.press('L');
+        until("the bars to return", &mut [&mut a], |c| {
+            c[0].live.shell.model.bars.is_some()
+        });
+
+        a.press('F');
+        until("the bars to go", &mut [&mut a], |c| {
+            c[0].wanted_mask().is_none() && c[0].live.shell.model.bars.is_none()
+        });
     }
 
     #[test]

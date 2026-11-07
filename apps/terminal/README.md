@@ -86,6 +86,7 @@ Everywhere:
 | `Ctrl-Z` `Ctrl-Y` | Undo, redo |
 | `= g p . + - h l` | Graph height, pop-out, phase, linked partner, zoom, cursor |
 | `f t` | The live spectrum on the graph; take the analyser back from another console |
+| `F` | The analyser's third-octave bars above the page |
 | `b` `c` | Bypass Master EQ, clear clip latches |
 | `?` | Help for whatever has focus |
 | `q` | Quit, with the unsaved-changes prompt |
