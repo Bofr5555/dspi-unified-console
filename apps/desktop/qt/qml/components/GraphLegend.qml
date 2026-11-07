@@ -37,7 +37,7 @@ Item {
 
         // Live inputs beyond the first pair
         Repeater {
-            model: Math.max(0, bridge.liveInputCount() - 2)
+            model: Math.max(0, hostAudio.inputCount - 2)   // -- WP QD18 --
             LegendPill {
                 eqChannel: bridge.inputAppId(index + 2)
                 label: bridge.channelDescriptor(eqChannel)

@@ -356,6 +356,8 @@ void SmokeDriver::testLink() {
         check("QD6: and tells the controllers first", changing >= 2);
         QObject::disconnect(counting);
         check("QD6: it is writable", b->writable());
+        // -- WP QD18 --
+        testHostAudioOnHub();
         // Nothing here starts the analyser: binding does, and a drop starts it again
         const auto wait = [this](int ms, const std::function<bool()> &done) { return waitFor(ms, done); };
         RtaRequest request = {};

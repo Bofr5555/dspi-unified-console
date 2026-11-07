@@ -107,6 +107,9 @@ private:
     // -- WP QD27 --
     void testAutoEqUpdate();
     void testAutoEqHttp();
+    // -- WP QD18 --
+    void testHostAudio();
+    void testHostAudioOnHub();
 
     // Whether a bypass toggle repaints the open channel's graph editor. Leaves
     // bypass as it found it. NotRun fills `why`.
