@@ -93,6 +93,9 @@ void SmokeDriver::run() {
     testWindows();
     // -- WP QD30 --
     testPopoverAnchor();
+    // -- WP QD17 -- Before the passes that right-click text fields: Qt's text context
+    // menu keeps its Select All / Copy / Paste keys once opened (QD17 report)
+    testShortcuts();
     testSettingsPages();
     testBypassRepaint();
     testSweep();
@@ -128,8 +131,14 @@ void SmokeDriver::run() {
     testReadOnly();
     // -- WP QD8 --
     testLink();
+    // -- WP QD10 --
+    testLinkFault();
+    // -- WP QD19 --
+    testRtaFollowing();
     // -- WP HB6 --
     testHub();
+    // -- WP QD14 --
+    testNetworking();
     // -- WP QD27 --
     testAutoEqUpdate();
     testAutoEqHttp();
@@ -137,6 +146,8 @@ void SmokeDriver::run() {
     testHostAudio();
     // -- WP QD11 --
     testFirmware();
+    // -- WP QD17 --
+    testShownInputCount();
     testIdleAndCost();
     // -- WP QD12 -- Last: an accepted close takes the window's surface away
     testTray();

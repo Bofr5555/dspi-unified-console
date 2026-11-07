@@ -100,6 +100,8 @@ private:
     void readOnlyClickAround(QQuickWindow *window, const char *where, QQuickItem *scope = nullptr);
     // -- WP QD8 --
     void testLink();
+    // -- WP QD10 --
+    void testLinkFault();
     // -- WP HB6 --
     void testHub();
     // -- WP QD7 --
@@ -123,6 +125,13 @@ private:
     void testFirmware();
     // -- WP QD28 --
     void testVregCalibration();
+    // -- WP QD14 --
+    void testNetworking();
+    // -- WP QD19 --
+    void testRtaFollowing();
+    // -- WP QD17 --
+    void testShortcuts();
+    void testShownInputCount();
 
     // Whether a bypass toggle repaints the open channel's graph editor. Leaves
     // bypass as it found it. NotRun fills `why`.

@@ -52,6 +52,13 @@ class RtaController : public QObject
     // Lowest band with a level, in Hz (0 = none missing)
     Q_PROPERTY(int lowestShadedHz READ lowestShadedHz NOTIFY telemetryChanged)
 
+    // -- WP QD19 -- Another console drives the device's analyser (DSPi Link):
+    // the device's tap and channels, which this console then shows
+    Q_PROPERTY(bool following READ following NOTIFY ownershipChanged)
+    Q_PROPERTY(int followedOrigin READ followedOrigin NOTIFY ownershipChanged)
+    Q_PROPERTY(int followedTap READ followedTap NOTIFY ownershipChanged)
+    Q_PROPERTY(QVariantList followedChannels READ followedChannels NOTIFY ownershipChanged)
+
 public:
     explicit RtaController(DSPiBridge *bridge, QObject *parent = nullptr);
     ~RtaController() override;
@@ -86,6 +93,14 @@ public:
     int sampleRate() const { return m_snap.sample_rate; }
     int lowestShadedHz() const;
 
+    // -- WP QD19 --
+    bool following() const { return m_owner.following; }
+    int followedOrigin() const { return m_owner.origin; }
+    int followedTap() const { return m_owner.tap; }
+    QVariantList followedChannels() const;
+    // Push this console's own request again; the other console then follows
+    Q_INVOKABLE void takeControl();
+
     // A view's interest: tap, channel mask, and whether it draws FFT bins.
     // Returns an id for update/release.
     int subscribe(int tap, int mask, bool wantsBins);
@@ -107,6 +122,7 @@ signals:
     void optionsChanged();
     void frameChanged();
     void telemetryChanged();
+    void ownershipChanged();   // -- WP QD19 --
 
 private slots:
     void onWake();
@@ -126,6 +142,7 @@ private:
     int m_nextId = 1;
     QAtomicInt m_wakePending = 0;
     RtaRequest m_sent {};
+    RtaOwnership m_owner {};   // -- WP QD19 --
     int m_fftOrder = 10;
     int m_avgMs = 300;
     int m_peakDecay = 12;

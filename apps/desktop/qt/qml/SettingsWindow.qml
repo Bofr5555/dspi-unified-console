@@ -50,7 +50,10 @@ AppWindow {
             { id: "about", title: "About", icon: isMacOS ? "gear" : "info", tint: isMacOS ? "#646971" : "#8e8e93",
               source: "settings/pages/AboutPage.qml", keywords: "version links github discord patreon ko-fi youtube" },
             { id: "advanced", title: "Advanced", icon: isMacOS ? "gears" : "wrench", tint: isMacOS ? "#727880" : "#636366",
-              source: "settings/pages/AdvancedPage.qml", keywords: "channel names reset device serial firmware" }
+              source: "settings/pages/AdvancedPage.qml", keywords: "channel names reset device serial firmware" },
+            // -- WP QD14 --
+            { id: "networking", title: "Networking", icon: "signal", tint: "#4a7499",
+              source: "settings/pages/NetworkingPage.qml", keywords: "share sharing hub link network pairing pair code pin clients roles revoke port tray background lan" }
         ]},
         { title: "Display", pages: [
             { id: "graphing", title: "Graphing", icon: isMacOS ? "ecg" : "chart", tint: isMacOS ? "#587a89" : "#30b0c7",

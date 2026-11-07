@@ -44,6 +44,31 @@ void RtaController::onWake() {
     dspi_rta_get_snapshot(m_core, &m_snap);
     if (m_snap.version != version) emit frameChanged();
     if (m_snap.telemetry_version != telemetry) emit telemetryChanged();
+    // -- WP QD19 --
+    RtaOwnership owner {};
+    dspi_rta_get_ownership(m_core, &owner);
+    // Field by field: the struct has padding
+    if (owner.following != m_owner.following || owner.origin != m_owner.origin || owner.tap != m_owner.tap
+        || owner.mask != m_owner.mask || owner.fft_order != m_owner.fft_order) {
+        m_owner = owner;
+        emit ownershipChanged();
+    }
+}
+
+// -- WP QD19 --
+QVariantList RtaController::followedChannels() const {
+    QVariantList l;
+    if (!m_owner.following) return l;
+    for (int c = 0; c < 16; c++)
+        if (m_owner.mask >> c & 1) l.append(c);
+    return l;
+}
+
+void RtaController::takeControl() {
+    if (!m_owner.following) return;
+    dspi_rta_take_control(m_core);
+    // The core drives at once; the callback brings the rest
+    onWake();
 }
 
 int RtaController::lowestShadedHz() const {

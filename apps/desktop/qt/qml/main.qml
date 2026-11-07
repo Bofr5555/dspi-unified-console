@@ -131,6 +131,8 @@ ApplicationWindow {
     Binding { target: rta; property: "fftOrder"; value: root.rtaFftOrder }
     Binding { target: rta; property: "avgMs"; value: root.rtaAvgMs }
     Binding { target: rta; property: "peakDecay"; value: root.rtaPeakDecay }
+    // -- WP QD17 -- The bridge counts the inputs the strips show (pairs, analyser, files)
+    Binding { target: bridge; property: "shownInputCount"; value: hostAudio.inputCount }
 
     readonly property bool onDashboard: selection === "overview"
     readonly property bool rtaShowGraph: onDashboard ? rtaDashboardShowGraph : rtaChannelShowGraph
@@ -183,6 +185,9 @@ ApplicationWindow {
             // Clearing a page's spectrum keeps the next pages clear too
             rtaChannelPagesShowSpectrum = rtaParse(src).channels.length > 0
         }
+        // -- WP QD19 -- A choice here takes the analyser back from another
+        // console, even one that leaves the selection as it was
+        if (rta.following) rta.takeControl()
     }
     function rtaToggle(ch) {
         var sel = rtaSelection, chans = sel.channels.slice(), i = chans.indexOf(ch)
@@ -1059,7 +1064,11 @@ ApplicationWindow {
     // open a window work from any window, as menu shortcuts do on macOS (so
     // Ctrl+Shift+M also closes the Matrix from its own window); the rest act
     // on the main window and stay with it
-    Shortcut { enabled: !isMacOS; sequences: [StandardKey.Quit]; context: Qt.ApplicationShortcut; onActivated: root.close() }
+    // -- WP QD17 -- Every Mac shortcut has its Ctrl one here (the table in
+    // smoke/SmokeDriverShortcuts.cpp). Quit is Ctrl+Q on Windows too, which has no
+    // standard Quit key; Minimise to Menu Bar (Cmd+Opt+M) hides to the tray
+    Shortcut { enabled: !isMacOS; sequence: "Ctrl+Q"; context: Qt.ApplicationShortcut; onActivated: root.close() }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Alt+M"; enabled: !isMacOS; onActivated: tray.minimise() }
     Shortcut { sequence: "Ctrl+S"; enabled: !isMacOS && !root.showWizard && bridge.writable; onActivated: commitDialog.open() }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+M"; enabled: !isMacOS && !root.showWizard; onActivated: matrixWindow.visible = !matrixWindow.visible }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+L"; enabled: !isMacOS && !root.showWizard; onActivated: root.openToolWindow("loudness") }

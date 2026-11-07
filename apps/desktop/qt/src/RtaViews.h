@@ -41,6 +41,11 @@ class RtaViewBase : public QQuickPaintedItem
     Q_PROPERTY(qreal ceilingDb MEMBER m_ceilingDb WRITE setCeilingDb NOTIFY styleChanged)
     Q_PROPERTY(bool showPeak MEMBER m_showPeak WRITE setShowPeak NOTIFY styleChanged)
     Q_PROPERTY(bool smoothing MEMBER m_smoothing WRITE setSmoothing NOTIFY styleChanged)
+    // -- WP QD19 -- What to ask the device for, when it is not what is drawn:
+    // { tap, channels }, or null for the drawn tap and channels. While another
+    // console drives the analyser, a view draws its channels but keeps asking
+    // for the page's own, so that only a change of the page's own is a choice.
+    Q_PROPERTY(QVariant request READ request WRITE setRequest NOTIFY sourceChanged)
 
 public:
     explicit RtaViewBase(QQuickItem *parent = nullptr);
@@ -56,6 +61,8 @@ public:
     void setCeilingDb(qreal v);
     void setShowPeak(bool v);
     void setSmoothing(bool v);
+    QVariant request() const { return m_request; }
+    void setRequest(const QVariant &r);
 
 signals:
     void controllerChanged();
@@ -67,6 +74,8 @@ protected:
     // The channels shown (indices at the tap) and whether bins are drawn
     virtual int channelMask() const = 0;
     virtual bool wantsBins() const { return false; }
+    // Whether it draws bins for one channel asked for (WP QD19)
+    virtual bool binsForOne() const { return false; }
     // Take the controller's latest frame as the smoothing target
     virtual void takeFrame() = 0;
     // Advance smoothing; true while anything still moves
@@ -90,6 +99,7 @@ private:
 
     int m_sub = 0;
     QTimer m_tick;
+    QVariant m_request;   // -- WP QD19 --
 };
 
 // The spectrum on the response graph: a filled curve per channel on its own
@@ -127,6 +137,7 @@ public:
 protected:
     int channelMask() const override;
     bool wantsBins() const override { return m_channels.size() == 1; }
+    bool binsForOne() const override { return true; }
     void takeFrame() override;
     bool stepSmoothing(double fallTau) override;
 

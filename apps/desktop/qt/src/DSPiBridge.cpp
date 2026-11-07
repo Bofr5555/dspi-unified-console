@@ -1106,7 +1106,9 @@ void DSPiBridge::installUdevRule() {
 void DSPiBridge::selectDevice(const QString &serial) {
     QByteArray utf8 = serial.toUtf8();
     emit deviceChanging();
-    const bool demo = m_demo && serial == QLatin1String(kDemoSerial);
+    // -- WP QD17 -- No USB DSPi has the demo's serial: it is selected from --demo's list,
+    // or by a rescan of the demo however it was opened
+    const bool demo = serial == QLatin1String(kDemoSerial);
     const bool opened = demo ? (m_demoWire ? dspi_demo_open_wire(m_core, uint8_t(m_demoWire)) : dspi_open_demo(m_core))
                              : dspi_select_device(m_core, utf8.constData());
     if (!opened) {
@@ -1189,12 +1191,15 @@ void DSPiBridge::disconnectDevice() {
 
 void DSPiBridge::rescan() {
     const QString previous = m_selectedSerial;
+    // -- WP QD17 -- The open device is reopened, the demo too (Swift's reconnect): a
+    // rescan never ends the demo, which is not on the list unless the app runs with --demo
+    const bool demoOpen = connected() && previous == QLatin1String(kDemoSerial);
     if (connected()) disconnectDevice();
     const QStringList serials = listSerials();
     m_availableSerials = serials;
     emit devicesChanged();
     updateInaccessible();
-    if (serials.contains(previous)) selectDevice(previous);
+    if (demoOpen || serials.contains(previous)) selectDevice(previous);
     else if (!serials.isEmpty()) selectDevice(serials.first());
 }
 
@@ -1209,7 +1214,16 @@ void DSPiBridge::reconnect() {
 // ── Input pair links ──
 
 int DSPiBridge::liveInputCount() const {
+    // -- WP QD17 -- What the strips show: the host's format holds them while the stream idles
+    if (m_shownInputs > 0) return qMin<int>(state()->num_input_channels, m_shownInputs);
     return qMin<int>(state()->num_input_channels, qMax<int>(2, m_status.active_input_channels));
+}
+
+void DSPiBridge::setShownInputCount(int n) {
+    n = qMax(0, n);
+    if (n == m_shownInputs) return;
+    m_shownInputs = n;
+    emit statusChanged();   // the pairs' and the analyser's views re-read on it
 }
 
 int DSPiBridge::pairIndex(int ch) const {
