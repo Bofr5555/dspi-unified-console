@@ -120,6 +120,8 @@ mod features;
 // -- WP CG16 --
 mod surfaces;
 pub use surfaces::{SurfaceSeed, surface_seed};
+// -- WP QD6 --
+mod wire_images;
 
 use crate::{
     DeviceDescriptor, NotificationSource, Result, Transport, TransportCaps, TransportError,
@@ -284,6 +286,18 @@ impl FakeDevice {
     /// [`FakeDevice::demo`] on firmware without control surfaces.
     pub fn demo_without_surfaces() -> Self {
         Self::demo_with(false)
+    }
+
+    // -- WP QD6 --
+    /// The demo device as firmware of wire format `wire`
+    /// ([`Capture::demo_as_wire`]), or `None` for a format without a fixture.
+    pub fn demo_as_wire(wire: u8) -> Option<Self> {
+        let options = FakeOptions {
+            extensions: true,
+            surfaces: true,
+            ..FakeOptions::default()
+        };
+        Some(Self::new(Capture::demo_as_wire(wire)?, options))
     }
 
     fn demo_with(surfaces: bool) -> Self {
@@ -1320,6 +1334,9 @@ impl State {
                 .to_vec(),
             ),
             op::REQ_GET_STATUS => Some(self.get_status(value)),
+            // -- WP QD6 -- The firmware answers with the flags it cleared; the capture
+            // has none latched that this models
+            op::REQ_CLEAR_CLIPS => Some(vec![0; 4]),
             // -- WP CG12 --
             op::REQ_GET_BUFFER_STATS => self.get_buffer_stats(),
             op::REQ_GET_ALL_PARAMS => Some(self.image.clone()),

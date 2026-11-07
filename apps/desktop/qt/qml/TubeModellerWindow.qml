@@ -8,6 +8,8 @@ import "components"
 // output stage. Basic and Advanced views, after the macOS Console.
 AppWindow {
     id: win
+    // -- WP QD6 -- The picker is off on read-only firmware, and every setting shows
+    readonly property bool showAdvanced: prefs.advanced || (bridge.connected && !bridge.writable)
     fitHeight: header.height + flick.contentHeight
     title: "Tube Modeller"
     visible: false
@@ -196,7 +198,7 @@ AppWindow {
         anchors.top: header.bottom
         anchors.bottom: parent.bottom
         width: parent.width
-        contentHeight: (prefs.advanced ? advanced.height : basic.height) + 32
+        contentHeight: (win.showAdvanced ? advanced.height : basic.height) + 32
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         ScrollBar.vertical: ScrollBar {}
@@ -206,7 +208,7 @@ AppWindow {
         // ── Basic: showcase and the tube shelf ──
         Row {
             id: basic
-            visible: !prefs.advanced
+            visible: !win.showAdvanced
             x: 16
             y: 16
             spacing: 20
@@ -328,7 +330,7 @@ AppWindow {
         // ── Advanced: transfer curve and every parameter ──
         Row {
             id: advanced
-            visible: prefs.advanced
+            visible: win.showAdvanced
             x: 16
             y: 16
             spacing: 20

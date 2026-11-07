@@ -57,6 +57,8 @@ ExtController::ExtController(DSPiBridge *bridge, QObject *parent)
     connect(m_bridge, &DSPiBridge::devicesChanged, this, &ExtController::syncStatus);
     // Not every batch changes the state the bridge shows, and the map isn't in it
     connect(m_bridge, &DSPiBridge::notificationsArrived, this, &ExtController::refreshSoon);
+    // -- WP QD6 -- Before the next device opens, not after: stateChanged comes too late
+    connect(m_bridge, &DSPiBridge::deviceChanging, this, [this]() { m_generation++; });
     syncStatus();
 }
 
@@ -115,6 +117,7 @@ bool ExtController::pairsValid(const QVariantList &pairs) const {
 }
 
 bool ExtController::applyPairs(const QVariantList &pairs) {
+    if (!m_bridge->writable()) return false;   // -- WP QD6 --
     bool ok = false;
     const QByteArray map = pairsToMap(pairs, &ok);
     if (!m_hasPairMap || !ok || !mapValid(map, m_pairCount)) {
@@ -126,6 +129,7 @@ bool ExtController::applyPairs(const QVariantList &pairs) {
 }
 
 bool ExtController::applyPreset(const QString &name) {
+    if (!m_bridge->writable()) return false;   // -- WP QD6 --
     if (m_hasPairMap && name == QLatin1String("default")) applyMap(defaultMap());
     else if (m_hasPairMap && name == QLatin1String("k340")) applyMap(k340Map());
     else return false;

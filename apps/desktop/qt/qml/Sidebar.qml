@@ -186,28 +186,29 @@ Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     icon: "headphones"; tip: "Headphone Crossfeed (right-click for settings)"
                     lit: bridge.crossfeedEnabled
-                    onClicked: bridge.setCrossfeed(!bridge.crossfeedEnabled)
+                    onClicked: if (bridge.writable) bridge.setCrossfeed(!bridge.crossfeedEnabled)
                     onRightClicked: crossfeedWindow.visible = true
                 }
                 QuickButton {
                     anchors.verticalCenter: parent.verticalCenter
                     icon: "loudness"; tip: "Loudness Compensation (right-click for settings)"
                     lit: bridge.loudnessEnabled
-                    onClicked: bridge.setLoudness(!bridge.loudnessEnabled)
+                    onClicked: if (bridge.writable) bridge.setLoudness(!bridge.loudnessEnabled)
                     onRightClicked: loudnessWindow.visible = true
                 }
                 QuickButton {
                     anchors.verticalCenter: parent.verticalCenter
                     icon: "waveform"; tip: "Volume Leveller (right-click for settings)"
                     lit: bridge.levellerEnabled
-                    onClicked: bridge.setLevellerEnabled(!bridge.levellerEnabled)
+                    onClicked: if (bridge.writable) bridge.setLevellerEnabled(!bridge.levellerEnabled)
                     onRightClicked: levellerWindow.visible = true
                 }
                 QuickButton {
                     anchors.verticalCenter: parent.verticalCenter
+                    visible: { bridge.wireFeatures; return bridge.firmwareHas("psybass") }   // -- WP QD6 --
                     icon: "bassclef"; tip: "Psychoacoustic Bass (right-click for settings)"
                     lit: bridge.psybassEnabled
-                    onClicked: bridge.setPsybassEnabled(!bridge.psybassEnabled)
+                    onClicked: if (bridge.writable) bridge.setPsybassEnabled(!bridge.psybassEnabled)
                     onRightClicked: psybassWindow.visible = true
                 }
                 QuickButton {
@@ -227,7 +228,7 @@ Rectangle {
                     icon: "xmark"; tip: "Bypass Master EQ"
                     lit: bridge.bypass
                     litColor: "#ff9f0a"
-                    onClicked: bridge.setBypass(!bridge.bypass)
+                    onClicked: if (bridge.writable) bridge.setBypass(!bridge.bypass)
                 }
             }
 
@@ -256,7 +257,7 @@ Rectangle {
                         id: presetPicker
                         width: parent.width - presetRow.reveal * (presetSave.width + 2)
                         label: "Preset"
-                        enabled: bridge.connected
+                        enabled: bridge.writable   // -- WP QD6 --
                         readonly property var slots: {
                             bridge.presetOccupied; bridge.activePresetSlot
                             var o = []
@@ -315,7 +316,7 @@ Rectangle {
                     width: parent.width
                     objectName: "sourcePicker"   // -- WP QD4 -- for the smoke driver
                     label: "Source"
-                    enabled: bridge.connected
+                    enabled: bridge.writable   // -- WP QD6 --
                     // -- WP QD4 -- The user's name for a source, when it has one
                     readonly property var sources: bridge.inputSources.map(function (src) {
                         return { value: src.id, text: (typeof deviceNames !== "undefined" && deviceNames.sourceNames[src.id]) || src.name }
@@ -409,7 +410,7 @@ Rectangle {
                     // to -10, 0.5 dB to -40, 1 dB to -128 = mute)
                     from: 0
                     to: 1
-                    enabled: bridge.connected
+                    enabled: bridge.writable   // -- WP QD6 --
                     value: posAt(volumeSettings.showMaster ? bridge.masterVolumeDB : bridge.userVolumeDB)
 
                     readonly property real masterUnits: 248

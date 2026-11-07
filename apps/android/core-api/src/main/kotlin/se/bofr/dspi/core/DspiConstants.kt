@@ -693,6 +693,26 @@ object DspiConstants {
      * Firmware is newer than this core understands.
      */
     const val COMPAT_FIRMWARE_TOO_NEW: Int = 3
+    /**
+     * `dspi_wire_features`: psychoacoustic bass (V23).
+     */
+    const val WIRE_FEAT_PSYBASS: Int = 1 shl 6
+    /**
+     * `dspi_wire_features`: stereo upmixer (V25).
+     */
+    const val WIRE_FEAT_UPMIX: Int = 1 shl 8
+    /**
+     * `dspi_wire_features`: subharmonic synthesizer (V29).
+     */
+    const val WIRE_FEAT_SUBHARM: Int = 1 shl 11
+    /**
+     * `dspi_wire_features`: tube modeller (V31).
+     */
+    const val WIRE_FEAT_TUBE: Int = 1 shl 13
+    /**
+     * `dspi_wire_features`: output limiter (V32).
+     */
+    const val WIRE_FEAT_LIMITER: Int = 1 shl 14
 
     // ── types.rs ──
     /**

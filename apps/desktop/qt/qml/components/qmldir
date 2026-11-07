@@ -45,6 +45,7 @@ PeqShapeChooser 1.0 PeqShapeChooser.qml
 GraphOptionsPopup 1.0 GraphOptionsPopup.qml
 SpectrumBarStrip 1.0 SpectrumBarStrip.qml
 PopoverWindow 1.0 PopoverWindow.qml
+ReadOnlyBanner 1.0 ReadOnlyBanner.qml
 SiggenGlyph 1.0 SiggenGlyph.qml
 CascadeMenu 1.0 CascadeMenu.qml
 Spinner 1.0 Spinner.qml

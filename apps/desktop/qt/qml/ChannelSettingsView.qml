@@ -127,6 +127,7 @@ Rectangle {
 
         // ── Routing preview: inputs 1 and 2 into this output ──
         Column {
+            enabled: bridge.writable   // -- WP QD6 --
             Layout.alignment: Qt.AlignVCenter
             Layout.leftMargin: 14
             Layout.rightMargin: 14
@@ -217,6 +218,7 @@ Rectangle {
         // ── Gain ──
         LevelSection {
             id: gainSection
+            enabled: bridge.writable   // -- WP QD6 --
             label: "GAIN"; unit: "dB"; decimals: 1
             from: -60; to: 12; stepSize: 0.1      // the firmware's output gain range
             value: gainDB
@@ -230,6 +232,7 @@ Rectangle {
         // ── Delay ──
         LevelSection {
             id: delaySection
+            enabled: bridge.writable   // -- WP QD6 --
             // As on Windows: the slider and wheel step whole ms, typing
             // takes up to 0.0001 ms
             label: "DELAY"; unit: "ms"; decimals: 2; maxDecimals: 4; fieldWidth: 60
@@ -260,6 +263,7 @@ Rectangle {
                 }
                 MouseArea {
                     id: muteMouse
+                    enabled: bridge.writable   // -- WP QD6 --
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
@@ -267,7 +271,11 @@ Rectangle {
                 }
             }
 
-            LimiterButton { outputIndex: settingsRoot.outputIndex; height: 26 }
+            LimiterButton {
+                outputIndex: settingsRoot.outputIndex
+                height: 26
+                visible: { bridge.wireFeatures; return bridge.firmwareHas("limiter") }   // -- WP QD6 --
+            }
         }
     }
 }

@@ -27,7 +27,7 @@ name="DSPi-Console-$version-macos"
 libs=()
 for a in $archs; do
     t=$a-apple-darwin; [ "$a" = arm64 ] && t=aarch64-apple-darwin
-    (cd "$repo" && cargo build --release -p dspi-capi --target "$t")
+    (cd "$repo" && cargo build --release -p dspi-capi --features link,midir,mdns --target "$t")
     libs+=("$target/$t/release/libdspi_capi.a")
 done
 mkdir -p "$target/universal-apple-darwin/release"

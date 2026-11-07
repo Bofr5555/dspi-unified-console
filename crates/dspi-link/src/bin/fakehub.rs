@@ -93,7 +93,7 @@ fn main() {
             "--name" => cfg.name = val(),
             "--max-sessions" => cfg.max_sessions = Some(val().parse().expect("--max-sessions N")),
             "--no-board" => cfg.board_attached = false,
-            "--rta" => cfg.rta = true, // -- WP AN3 --
+            "--rta" => cfg.rta = true, // -- WP AN3 / QD8 --
             other => panic!("unknown argument {other}"),
         }
     }

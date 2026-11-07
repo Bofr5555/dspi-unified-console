@@ -24,6 +24,8 @@
         <file>qml/components/Spinner.qml</file>
         <file>qml/components/DashboardLayoutPopup.qml</file>
         <file>qml/components/AppButton.qml</file>
+        <!-- WP QD8 -->
+        <file>qml/components/LinkBanner.qml</file>
         <file>qml/components/InstallWritingCard.qml</file>
         <file>qml/components/InstallStateCard.qml</file>
         <file>qml/components/StepStrip.qml</file>
@@ -197,6 +199,7 @@
         <file>qml/components/PeqShapeChooser.qml</file>
         <file>qml/components/GraphOptionsPopup.qml</file>
         <file>qml/components/PopoverWindow.qml</file>
+        <file>qml/components/ReadOnlyBanner.qml</file>
         <file>qml/components/SiggenGlyph.qml</file>
         <file>qml/components/SpectrumBarStrip.qml</file>
         <file>qml/components/qmldir</file>

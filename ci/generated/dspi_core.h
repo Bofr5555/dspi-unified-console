@@ -2118,6 +2118,31 @@
 #define COMPAT_FIRMWARE_TOO_NEW 3
 
 /**
+ * `dspi_wire_features`: psychoacoustic bass (V23).
+ */
+#define WIRE_FEAT_PSYBASS (1 << 6)
+
+/**
+ * `dspi_wire_features`: stereo upmixer (V25).
+ */
+#define WIRE_FEAT_UPMIX (1 << 8)
+
+/**
+ * `dspi_wire_features`: subharmonic synthesizer (V29).
+ */
+#define WIRE_FEAT_SUBHARM (1 << 11)
+
+/**
+ * `dspi_wire_features`: tube modeller (V31).
+ */
+#define WIRE_FEAT_TUBE (1 << 13)
+
+/**
+ * `dspi_wire_features`: output limiter (V32).
+ */
+#define WIRE_FEAT_LIMITER (1 << 14)
+
+/**
  * Filter types (firmware config.h `enum FilterType`). Value space: 0..13 PEQ
  * types, 14..31 reserved, 32..63 crossover types (only valid in crossover
  * bands), 64+ reserved.
@@ -4671,6 +4696,23 @@ bool dspi_demo_latency_timing(struct FfiCore *core, uint8_t mode, uint8_t reads,
  * or `u32::MAX` on anything else.
  */
 uint32_t dspi_demo_latency_sets(struct FfiCore *core);
+
+/**
+ * The demo device as firmware of wire format `wire` (17, 26, 31 or 33), for
+ * read-only tests. Replaces any open device. False for any other format.
+ */
+bool dspi_demo_open_wire(struct FfiCore *core, uint8_t wire);
+
+/**
+ * How many writes this core has refused because the connection is read-only.
+ */
+uint32_t dspi_read_only_refusals(struct FfiCore *core);
+
+/**
+ * The `WIRE_FEAT_*` bits the connected firmware's wire format carries: all of
+ * them on V32 and newer, none with no device or below V16.
+ */
+uint32_t dspi_wire_features(struct FfiCore *core);
 
 /**
  * The output latency's status: JSON {ok, raw, fields: [{name, value}]}.

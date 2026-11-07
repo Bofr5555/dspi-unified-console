@@ -47,7 +47,8 @@ void CsController::setWatchDisplay(bool on) {
 
 // A new device (or none): read its configuration once the window has drawn
 void CsController::onDeviceChanged() {
-    const bool usable = m_bridge->connected() && m_bridge->compat() == COMPAT_OK;
+    // -- WP QD6 -- Read-only firmware shows its surfaces too; the pages' controls are off
+    const bool usable = m_bridge->connected();
     const QString serial = usable ? m_bridge->selectedSerial() : QString();
     if (serial == m_serial) return;
     m_serial = serial;
