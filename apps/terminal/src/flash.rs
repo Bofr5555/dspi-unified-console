@@ -18,6 +18,9 @@
 //!   ([`firmware_guard_board_in_bootloader`]), even with a DSPi on the bus, since
 //!   that DSPi need not be the board behind the drive. With `--device` naming a
 //!   unit it is refused outright, as the file would not go where it was sent.
+//! - **The demo device is not a board.** With `--demo` a drive is a board nobody
+//!   can ask, like any mounted one, and since it may be a real path, the demo
+//!   neither stands in for the board nor claims it came back.
 //! - **USB only.** The drive has to appear here: a hub's device mounts on the
 //!   hub's machine, and a MIDI port does not say which board is behind it.
 //! - **It works read-only.** The device is opened through the same guard as
@@ -124,6 +127,21 @@ impl Request {
         }
     }
 
+    /// A refusal or failure: the words for a person, and for `--json` the same
+    /// words as the one report on standard output. Every way out of this command
+    /// reports once, so a script always has something to parse. Returns `code`.
+    fn fail(&self, code: u8, message: &str) -> u8 {
+        eprintln!("dspi: {message}");
+        self.json_failure(message);
+        code
+    }
+
+    fn json_failure(&self, message: &str) {
+        if self.json {
+            println!("{}", json!({ "flashed": false, "error": message }));
+        }
+    }
+
     /// The command's result on standard output.
     fn result(&self, text: &str, value: Value) {
         if self.json {
@@ -155,15 +173,12 @@ struct RealWorld {
     chosen: Option<PathBuf>,
     /// The demo device has no bootloader, so it must never find a real one.
     demo: bool,
-    /// The chip `--drive` is taken for; `flash_to_drive` holds it to the file
-    /// on the drive just before writing.
-    platform: i8,
 }
 
 impl World for RealWorld {
     fn drives(&mut self) -> Vec<BootloaderDrive> {
         match &self.chosen {
-            Some(path) => drive_at(path, self.platform).into_iter().collect(),
+            Some(path) => drive_at(path).into_iter().collect(),
             None if self.demo => Vec::new(),
             None => bootloader_drives(),
         }
@@ -200,20 +215,61 @@ fn without_line_ending(line: &str) -> &str {
     line.strip_suffix('\r').unwrap_or(line)
 }
 
-/// A drive named on the command line, if its identity file is there. What the
-/// file says is judged by `flash_to_drive`, before any byte goes out.
-fn drive_at(path: &Path, platform: i8) -> Option<BootloaderDrive> {
+/// What `Uf2Info::platform` and `BootloaderDrive::platform` use for "not an
+/// RP2040 or RP2350".
+const PLATFORM_UNKNOWN: i8 = -1;
+
+/// A drive named on the command line, if its identity file is there. A file that
+/// names no boot ROM gives [`PLATFORM_UNKNOWN`], so it is refused rather than
+/// taken for a drive still on its way.
+fn drive_at(path: &Path) -> Option<BootloaderDrive> {
     let mut info = Vec::new();
     std::fs::File::open(path.join(INFO_FILE))
         .ok()?
         .take(4096)
         .read_to_end(&mut info)
         .ok()?;
+    let info = String::from_utf8_lossy(&info).into_owned();
     Some(BootloaderDrive {
         path: path.to_string_lossy().into_owned(),
-        platform,
-        info: String::from_utf8_lossy(&info).into_owned(),
+        platform: info_platform(&info).unwrap_or(PLATFORM_UNKNOWN),
+        info,
     })
+}
+
+/// The chip of a boot ROM's `INFO_UF2.TXT`: the rule of the core's private
+/// `firmware::info_platform`, which judges the same file again just before
+/// writing, so this one can refuse before any question and can only ever be the
+/// earlier of two refusals. A test holds the two together.
+fn info_platform(info: &str) -> Option<i8> {
+    let mut lines = info.lines().map(str::trim);
+    if !lines.next()?.starts_with("UF2 Bootloader") {
+        return None;
+    }
+    let (mut board, mut model) = (None, None);
+    for (key, value) in lines.filter_map(|l| l.split_once(':')) {
+        match key.trim() {
+            "Board-ID" => board = Some(value.trim()),
+            "Model" => model = Some(value.trim()),
+            _ => {}
+        }
+    }
+    let by_board = board.map(|b| match b {
+        "RPI-RP2" => Some(0),
+        "RP2350" => Some(1),
+        _ => None,
+    });
+    let by_model = model.map(|m| match m {
+        "Raspberry Pi RP2" => Some(0),
+        "Raspberry Pi RP2350" => Some(1),
+        _ => None,
+    });
+    match (by_board, by_model) {
+        (Some(b), Some(m)) if b == m => b,
+        (Some(b), None) => b,
+        (None, Some(m)) => m,
+        _ => None,
+    }
 }
 
 /// `dspi flash [FILE]`. `flags` start with the word `flash`.
@@ -221,12 +277,16 @@ pub fn cmd_flash(target: &Target, flags: &[&str]) -> u8 {
     let req = match Request::parse(flags.get(1..).unwrap_or_default()) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("dspi: {e}");
-            return exit::USAGE;
+            // No request to ask, and a script still wants its report.
+            let req = Request {
+                json: flags.contains(&"--json"),
+                ..Request::default()
+            };
+            return req.fail(exit::USAGE, &e);
         }
     };
     let image = match &req.file {
-        Some(file) => match read_image(file) {
+        Some(file) => match read_image(&req, file) {
             Ok(i) => Some(i),
             Err(code) => return code,
         },
@@ -235,7 +295,6 @@ pub fn cmd_flash(target: &Target, flags: &[&str]) -> u8 {
     let mut world = RealWorld {
         chosen: req.drive.clone(),
         demo: matches!(target, Target::Demo),
-        platform: image.as_ref().map_or(1, |i| i.info.platform),
     };
     run(target, &req, image.as_ref(), &mut world)
 }
@@ -247,22 +306,21 @@ struct Image {
     name: String,
 }
 
-fn read_image(file: &Path) -> Result<Image, u8> {
+fn read_image(req: &Request, file: &Path) -> Result<Image, u8> {
     let name = printable(&file.display().to_string());
     let mut bytes = Vec::new();
     let read = std::fs::File::open(file)
         .and_then(|f| f.take(MAX_FILE.saturating_add(1)).read_to_end(&mut bytes));
     if let Err(e) = read {
-        eprintln!("dspi: could not read {name}: {e}");
-        return Err(exit::USAGE);
+        return Err(req.fail(exit::USAGE, &format!("could not read {name}: {e}")));
     }
     let info = uf2_inspect(bytes.clone());
     if !info.valid {
-        eprintln!(
-            "dspi: {name} is not a firmware file: {}",
-            printable(&info.problem)
-        );
-        return Err(exit::USAGE);
+        let problem = printable(&info.problem);
+        return Err(req.fail(
+            exit::USAGE,
+            &format!("{name} is not a firmware file: {problem}"),
+        ));
     }
     Ok(Image { bytes, info, name })
 }
@@ -280,42 +338,63 @@ fn flow(
     image: Option<&Image>,
     world: &mut dyn World,
 ) -> Result<(), u8> {
-    match target {
-        Target::Usb { .. } => {}
-        Target::Demo if req.drive.is_some() => {}
-        Target::Demo => {
-            eprintln!(
-                "dspi: the demo device has no bootloader drive; name a test one with --drive"
-            );
-            return Err(exit::USAGE);
-        }
-        Target::Midi { .. } | Target::Link(_) => {
-            eprintln!(
-                "dspi: flash needs the board on this machine's USB, since its bootloader drive \
-                 has to appear here. {} cannot promise that",
+    if let Target::Midi { .. } | Target::Link(_) = target {
+        return Err(req.fail(
+            exit::USAGE,
+            &format!(
+                "flash needs the board on this machine's USB, since its bootloader drive has to \
+                 appear here. {} cannot promise that",
                 target.via()
-            );
-            return Err(exit::USAGE);
-        }
+            ),
+        ));
+    }
+    let demo = matches!(target, Target::Demo);
+    if demo && req.drive.is_none() {
+        return Err(req.fail(
+            exit::USAGE,
+            "the demo device has no bootloader drive; name a test one with --drive",
+        ));
     }
 
     let mounted = world.drives();
     if mounted.len() > 1 {
-        eprintln!(
-            "dspi: {} bootloader drives are mounted ({}); say which with --drive",
-            mounted.len(),
-            drive_list(&mounted)
-        );
-        return Err(exit::USAGE);
+        return Err(req.fail(
+            exit::USAGE,
+            &format!(
+                "{} bootloader drives are mounted ({}); say which with --drive",
+                mounted.len(),
+                drive_list(&mounted)
+            ),
+        ));
+    }
+    if demo && mounted.is_empty() {
+        // The demo device never reboots, so no drive is on its way.
+        return Err(req.fail(
+            exit::USAGE,
+            "the demo device has no bootloader, and no drive is mounted at --drive",
+        ));
+    }
+    if let Some(drive) = mounted.first()
+        && drive.platform == PLATFORM_UNKNOWN
+    {
+        return Err(req.fail(
+            exit::USAGE,
+            &format!(
+                "{} is not the drive of an RP2040 or RP2350 bootloader. Nothing was changed",
+                printable(&drive.path)
+            ),
+        ));
     }
     if let (Some(drive), Target::Usb { serial: Some(s) }) = (mounted.first(), target) {
-        eprintln!(
-            "dspi: a bootloader drive is already mounted at {}, and nothing says it is {}. Flash \
-             it without --device, or eject it first",
-            printable(&drive.path),
-            printable(s)
-        );
-        return Err(exit::USAGE);
+        return Err(req.fail(
+            exit::USAGE,
+            &format!(
+                "a bootloader drive is already mounted at {}, and nothing says it is {}. Flash \
+                 it without --device, or eject it first",
+                printable(&drive.path),
+                printable(s)
+            ),
+        ));
     }
     match (image, mounted.first()) {
         (Some(image), Some(drive)) => onto_mounted(target, req, image, drive, world),
@@ -324,7 +403,7 @@ fn flow(
             let path = printable(&drive.path);
             req.result(
                 &format!("A board is already in its bootloader, at {path}."),
-                json!({ "drive": path, "entered": false }),
+                json!({ "flashed": false, "drive": path, "entered": false }),
             );
             Ok(())
         }
@@ -366,10 +445,12 @@ enum OpenOutcome {
     Probe(DspiError),
 }
 
-fn open_for_flash(target: &Target, world: &mut dyn World) -> Result<Device, u8> {
+fn open_for_flash(req: &Request, target: &Target, world: &mut dyn World) -> Result<Device, u8> {
     open_device(target, world).map_err(|outcome| match outcome {
         OpenOutcome::Open(e) => {
             let absent = e.is_no_device();
+            let message = e.to_string();
+            // Says it on standard error, and picks the exit code.
             let code = super::fail_open(e);
             if absent {
                 eprintln!(
@@ -377,15 +458,16 @@ fn open_for_flash(target: &Target, world: &mut dyn World) -> Result<Device, u8> 
                      nothing was changed"
                 );
             }
+            req.json_failure(&message);
             code
         }
-        OpenOutcome::Probe(e) => {
-            eprintln!(
-                "dspi: could not talk to the board: {e}. Holding BOOTSEL while plugging it in \
-                 mounts its bootloader drive without its firmware's help"
-            );
-            exit::TRANSPORT
-        }
+        OpenOutcome::Probe(e) => req.fail(
+            exit::TRANSPORT,
+            &format!(
+                "could not talk to the board: {e}. Holding BOOTSEL while plugging it in mounts \
+                 its bootloader drive without its firmware's help"
+            ),
+        ),
     })
 }
 
@@ -406,24 +488,28 @@ fn chip(platform: i8) -> String {
 /// Before a reboot that would leave the board waiting for a file it cannot
 /// take. A chip this build does not know (the STM32H723 has no UF2 bootloader)
 /// is refused too.
-fn check_chip(state: &DspState, image: &Image) -> Result<(), u8> {
+fn check_chip(req: &Request, state: &DspState, image: &Image) -> Result<(), u8> {
     let board = Platform::from_id(state.platform_id);
     if let Platform::Unknown(_) = board {
-        eprintln!(
-            "dspi: this board reports {}, which has no UF2 bootloader this build knows of. \
-             Nothing was changed",
-            board.name()
-        );
-        return Err(exit::USAGE);
+        return Err(req.fail(
+            exit::USAGE,
+            &format!(
+                "this board reports {}, which has no UF2 bootloader this build knows of. Nothing \
+                 was changed",
+                board.name()
+            ),
+        ));
     }
     if i16::from(state.platform_id) != i16::from(image.info.platform) {
-        eprintln!(
-            "dspi: {} is firmware for the {}, and this board is an {}. Nothing was changed",
-            image.name,
-            chip(image.info.platform),
-            board.name()
-        );
-        return Err(exit::USAGE);
+        return Err(req.fail(
+            exit::USAGE,
+            &format!(
+                "{} is firmware for the {}, and this board is an {}. Nothing was changed",
+                image.name,
+                chip(image.info.platform),
+                board.name()
+            ),
+        ));
     }
     Ok(())
 }
@@ -462,9 +548,13 @@ fn yes(answer: Option<String>) -> bool {
 
 /// Report a guard refusal in both forms: `--json` readers get it too.
 fn refuse(req: &Request, verdict: &FirmwareGuardVerdict, why: &str) -> u8 {
-    eprintln!("dspi: {why}. Nothing was changed");
+    let message = format!("{why}. Nothing was changed");
+    eprintln!("dspi: {message}");
     if req.json {
-        println!("{}", json!({ "flashed": false, "guard": verdict }));
+        println!(
+            "{}",
+            json!({ "flashed": false, "error": message, "guard": verdict })
+        );
     }
     exit::REJECTED
 }
@@ -495,8 +585,7 @@ fn gate(
     let mut questions: u32 = 0;
     while !verdict.allowed {
         if verdict.decision == FirmwareGuardDecision::Refused {
-            eprintln!("dspi: {}", printable(&verdict.message));
-            return Err(exit::USAGE);
+            return Err(req.fail(exit::USAGE, &printable(&verdict.message)));
         }
         eprintln!("dspi: {}", printable(&verdict.message));
         if !req.accept_risk {
@@ -566,14 +655,15 @@ fn onto_mounted(
 ) -> Result<(), u8> {
     let path = printable(&drive.path);
     if drive.platform != image.info.platform {
-        eprintln!(
-            "dspi: {} is firmware for the {}, and the board at {path} is an {}. Nothing was \
-             changed",
-            image.name,
-            chip(image.info.platform),
-            chip(drive.platform)
-        );
-        return Err(exit::USAGE);
+        return Err(req.fail(
+            exit::USAGE,
+            &format!(
+                "{} is firmware for the {}, and the board at {path} is an {}. Nothing was changed",
+                image.name,
+                chip(image.info.platform),
+                chip(drive.platform)
+            ),
+        ));
     }
     describe_image(req, image);
     req.note(&format!(
@@ -584,11 +674,25 @@ fn onto_mounted(
         firmware_guard_board_in_bootloader()
     })?;
     // Anything on the bus already is not the board that is about to arrive.
-    let back = match target {
-        Target::Usb { .. } => Back::New(world.serials().into_iter().collect()),
-        other => Back::Known(other.clone()),
-    };
+    let back = Back::New(world.serials().into_iter().collect());
     write(req, image, drive, &passed)?;
+    if matches!(target, Target::Demo) {
+        // A real path may just have been written, and no board can say it took.
+        req.result(
+            &format!("Written to {path}; no board to confirm with (demo)."),
+            json!({
+                "flashed": true,
+                "drive": path,
+                "demo": true,
+                "imageVersion": printable(&image.info.firmware_version),
+                "running": null,
+                "confirmed": false,
+                "board": passed.board,
+                "guard": passed.verdict,
+            }),
+        );
+        return Ok(());
+    }
     confirm(target, req, image, drive, &passed, &back, world)
 }
 
@@ -599,8 +703,8 @@ fn onto_device(
     image: &Image,
     world: &mut dyn World,
 ) -> Result<(), u8> {
-    let device = open_for_flash(target, world)?;
-    check_chip(&device.state, image)?;
+    let device = open_for_flash(req, target, world)?;
+    check_chip(req, &device.state, image)?;
     describe_image(req, image);
     req.note(&format!("Board: running {}.", running(&device.state)));
     req.note(
@@ -638,12 +742,12 @@ fn enter_bootloader(device: &Device) {
 
 /// `dspi flash` with no file: the board in its bootloader, for what comes next.
 fn reboot_only(target: &Target, req: &Request, world: &mut dyn World) -> Result<(), u8> {
-    let device = open_for_flash(target, world)?;
+    let device = open_for_flash(req, target, world)?;
     req.note(&format!("Board: running {}.", running(&device.state)));
     if req.dry_run {
         req.result(
             "This would reboot the board into its bootloader. Nothing was changed.",
-            json!({ "entered": false, "dryRun": true }),
+            json!({ "flashed": false, "entered": false, "dryRun": true }),
         );
         return Ok(());
     }
@@ -652,8 +756,7 @@ fn reboot_only(target: &Target, req: &Request, world: &mut dyn World) -> Result<
          dspi export backup.dspipreset",
     );
     if !req.force && !yes(world.ask("Reboot this board into its bootloader? [y/N] ")) {
-        eprintln!("dspi: not confirmed. Nothing was changed");
-        return Err(exit::REJECTED);
+        return Err(req.fail(exit::REJECTED, "not confirmed. Nothing was changed"));
     }
     enter_bootloader(&device);
     let drive = wait_for_drive(req, world)?;
@@ -663,7 +766,7 @@ fn reboot_only(target: &Target, req: &Request, world: &mut dyn World) -> Result<
             "The board is in its bootloader, at {path}. dspi flash FILE installs an image; it \
              will ask about core voltage, as a board there cannot say what it needs."
         ),
-        json!({ "drive": path, "entered": true }),
+        json!({ "flashed": false, "drive": path, "entered": true }),
     );
     Ok(())
 }
@@ -673,25 +776,26 @@ fn wait_for_drive(req: &Request, world: &mut dyn World) -> Result<BootloaderDriv
     for _ in 0..POLLS {
         let mut drives = world.drives();
         if drives.len() > 1 {
-            eprintln!(
-                "dspi: {} bootloader drives appeared ({}), and nothing says which is this board. \
-                 Nothing was written; flash the right one with --drive",
-                drives.len(),
-                drive_list(&drives)
-            );
-            return Err(exit::USAGE);
+            return Err(req.fail(
+                exit::USAGE,
+                &format!(
+                    "{} bootloader drives appeared ({}), and nothing says which is this board. \
+                     Nothing was written; flash the right one with --drive",
+                    drives.len(),
+                    drive_list(&drives)
+                ),
+            ));
         }
         if let Some(drive) = drives.pop() {
             return Ok(drive);
         }
         world.pause();
     }
-    eprintln!(
-        "dspi: no bootloader drive appeared. Nothing was written. Look for it in your file \
-         manager and pass it with --drive, or unplug the board and hold BOOTSEL while plugging \
-         it back in"
-    );
-    Err(exit::TRANSPORT)
+    Err(req.fail(
+        exit::TRANSPORT,
+        "no bootloader drive appeared. Nothing was written. Look for it in your file manager and \
+         pass it with --drive, or unplug the board and hold BOOTSEL while plugging it back in",
+    ))
 }
 
 /// Through the guard, with the board record the answers were given against.
@@ -709,12 +813,14 @@ fn write(req: &Request, image: &Image, drive: &BootloaderDrive, passed: &Passed)
             DspiError::InvalidArgument { .. } => exit::USAGE,
             _ => exit::TRANSPORT,
         };
-        eprintln!(
-            "dspi: {e}. The board stays in its bootloader at {}; dspi flash FILE tries again, \
-             and will ask about core voltage, as a board there cannot say what it needs",
-            printable(&drive.path)
-        );
-        code
+        req.fail(
+            code,
+            &format!(
+                "{e}. The board stays in its bootloader at {}; dspi flash FILE tries again, and \
+                 will ask about core voltage, as a board there cannot say what it needs",
+                printable(&drive.path)
+            ),
+        )
     })
 }
 

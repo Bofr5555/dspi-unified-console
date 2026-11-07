@@ -217,24 +217,13 @@ impl Fake {
     }
 }
 
-fn info_platform(info: &str) -> i8 {
-    if info.contains("RP2350") { 1 } else { 0 }
-}
-
 impl World for Fake {
     fn drives(&mut self) -> Vec<BootloaderDrive> {
         let b = self.board.lock().unwrap();
-        let mut out = Vec::new();
-        for path in std::iter::once(&b.drive).chain(b.extra_drive.iter()) {
-            if let Ok(info) = std::fs::read_to_string(path.join("INFO_UF2.TXT")) {
-                out.push(BootloaderDrive {
-                    path: path.to_string_lossy().into_owned(),
-                    platform: info_platform(&info),
-                    info,
-                });
-            }
-        }
-        out
+        std::iter::once(&b.drive)
+            .chain(b.extra_drive.iter())
+            .filter_map(|path| drive_at(path))
+            .collect()
     }
 
     fn open(&mut self, target: &Target) -> Result<Box<dyn Transport>, OpenError> {
@@ -632,7 +621,6 @@ fn wp_tm3_only_usb_can_flash() {
     let world = &mut RealWorld {
         chosen: None,
         demo: true,
-        platform: 1,
     };
     assert_eq!(world.drives(), vec![]);
 }
@@ -788,6 +776,106 @@ fn wp_tm3_a_flag_it_does_not_know_stops_it() {
     assert_eq!(parsed.drive, Some(PathBuf::from("/x")));
     assert_eq!(parsed.file, Some(PathBuf::from("a.uf2")));
     assert!(parsed.force && parsed.json && !parsed.accept_risk);
+}
+
+#[test]
+fn wp_tm3_the_demo_device_does_not_stand_in_for_the_board() {
+    let demo = |w: &mut Fake, image: &Image, args: &[&str]| {
+        let mut all = vec!["--drive", "fake"];
+        all.extend_from_slice(args);
+        run(&Target::Demo, &req(&all), Some(image), w)
+    };
+    let accept = ["--force", "--accept-core-voltage-risk"];
+
+    // An image that would be clear on the demo's own 1.20 V: asked all the same.
+    let mut w = Fake::new("demo_force").at_risk().already_mounted();
+    assert_eq!(demo(&mut w, &stamped("1200"), &["--force"]), exit::REJECTED);
+    assert_eq!(w.written(), None);
+    assert!(w.asked.is_empty());
+
+    let mut w = Fake::new("demo_phrase")
+        .already_mounted()
+        .answers(&[PHRASE]);
+    let image = stamped("1200");
+    assert_eq!(demo(&mut w, &image, &accept), exit::OK);
+    assert_eq!(w.written().as_deref(), Some(image.bytes.as_slice()));
+
+    // A raising image still takes the word.
+    let mut w = Fake::new("demo_word").already_mounted().answers(&[PHRASE]);
+    assert_eq!(demo(&mut w, &stamped("1250"), &accept), exit::REJECTED);
+    assert_eq!(w.written(), None);
+
+    // No device is opened, and with no drive there is nothing to wait for.
+    let mut w = Fake::new("demo_nothing");
+    assert_eq!(demo(&mut w, &plain(), &accept), exit::USAGE);
+    assert_eq!(w.board.lock().unwrap().opened, 0);
+    nothing_done(&w);
+    assert_eq!(w.pauses, 0);
+}
+
+#[test]
+fn wp_tm3_a_mounted_drive_of_the_wrong_chip_is_refused_before_any_question() {
+    let rp2040 = file(support::image(RP2040, DEMO_VERSION, None));
+    for args in [&["--accept-core-voltage-risk"][..], &["--dry-run"]] {
+        let mut w = Fake::new("chip_first").already_mounted().answers(&[PHRASE]);
+        assert_eq!(flash(&mut w, &rp2040, args), exit::USAGE, "{args:?}");
+        assert!(w.asked.is_empty(), "{args:?}: {:?}", w.asked);
+        assert_eq!(w.written(), None);
+    }
+}
+
+#[test]
+fn wp_tm3_a_file_that_names_no_boot_rom_is_not_a_drive_on_its_way() {
+    let mut w = Fake::new("not_boot_rom").answers(&[PHRASE]);
+    mount(&w.drive(), "UF2 Bootloader v1.0\nModel: Some Other Board\n");
+    let args = ["--force", "--accept-core-voltage-risk"];
+    assert_eq!(flash(&mut w, &plain(), &args), exit::USAGE);
+    nothing_done(&w);
+    assert!(w.asked.is_empty());
+}
+
+/// The copy of the core's rule has to agree with the core, which judges the same
+/// file again before writing: this asks the core about each one.
+#[test]
+fn wp_tm3_the_drive_rule_agrees_with_the_core() {
+    let dir = scratch("info_rule");
+    let stock = FirmwareGuardBoard {
+        required_mv: 1150,
+        source: dspi_core::FirmwareGuardBoardSource::ExtCoreVreg,
+    };
+    let write = |drive: &BootloaderDrive, family| {
+        let image = support::image(family, DEMO_VERSION, None);
+        let done = flash_to_drive_guarded(image, drive.clone(), stock.clone(), String::new());
+        done.is_ok()
+    };
+    let cases = [
+        (RP2350_INFO, 1),
+        (RP2040_INFO, 0),
+        ("UF2 Bootloader v1\nBoard-ID: RP2350\n", 1),
+        ("UF2 Bootloader v1\nModel: Raspberry Pi RP2\n", 0),
+        ("UF2 Bootloader v1\r\nBoard-ID: RP2350\r\n", 1),
+        (
+            "UF2 Bootloader v1\nModel: Raspberry Pi RP2\nBoard-ID: RP2350\n",
+            PLATFORM_UNKNOWN,
+        ),
+        ("UF2 Bootloader v1\nBoard-ID: Other\n", PLATFORM_UNKNOWN),
+        ("UF2 Bootloader v1\n", PLATFORM_UNKNOWN),
+        ("Model: Raspberry Pi RP2350\n", PLATFORM_UNKNOWN),
+        ("", PLATFORM_UNKNOWN),
+    ];
+    for (i, (info, platform)) in cases.into_iter().enumerate() {
+        let path = dir.join(i.to_string());
+        mount(&path, info);
+        let drive = drive_at(&path).unwrap();
+        assert_eq!(drive.platform, platform, "{info:?}");
+        // The core takes the drive for the chip this says, and for no other.
+        let at = |p| BootloaderDrive {
+            platform: p,
+            ..drive.clone()
+        };
+        assert_eq!(write(&at(1), RP2350), platform == 1, "{info:?}");
+        assert_eq!(write(&at(0), RP2040), platform == 0, "{info:?}");
+    }
 }
 
 #[test]
