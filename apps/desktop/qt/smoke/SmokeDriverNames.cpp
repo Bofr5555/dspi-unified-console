@@ -166,12 +166,29 @@ void SmokeDriver::testNames() {
     spin(100);
     check("QD4: revert drops it, unsent", textOf(i2s) == QLatin1String("Tape") && !dirty() && liveSource(2) == QLatin1String("Tape"));
 
+    // ── The Source menu ──
+    QQuickItem *picker = nullptr;
+    if (auto *main = qobject_cast<QQuickWindow *>(root())) picker = findItem(main->contentItem(), QStringLiteral("sourcePicker"));
+    check("QD4: the Source menu", picker != nullptr);
+    if (!picker) { names->setWriteHook(nullptr); return; }
+    const auto menuText = [picker](int source) {
+        for (const QVariant &v : picker->property("options").toList())
+            if (v.toMap().value("value").toInt() == source) return v.toMap().value("text").toString();
+        return QStringLiteral("<no such option>");
+    };
+    b->setInputSource(2);
+    check("QD4: a saved rename shows in the Source menu", menuText(2) == QLatin1String("Tape") && menuText(0) == QLatin1String("Mac"));
+    check("QD4: the menu shows it as the current source", waitFor(1000, [&]() { return picker->property("valueText").toString() == QLatin1String("Tape"); }));
+    check("QD4: an unnamed source keeps its built-in name", menuText(1).startsWith(QLatin1String("S/PDIF")));
+
     // ── Another client, on a source ──
     const QByteArray deck("Deck"), none("");
     check("QD4: source rename elsewhere is accepted", dspi_demo_rename_elsewhere(core, 2, deck.constData()));
     check("QD4: another client's source rename reaches the row", waitFor(2000, [&]() { return textOf(i2s) == QLatin1String("Deck"); }));
+    check("QD4: and the Source menu", menuText(2) == QLatin1String("Deck") && picker->property("valueText").toString() == QLatin1String("Deck"));
     check("QD4: source rename elsewhere, cleared", dspi_demo_rename_elsewhere(core, 2, none.constData()));
     check("QD4: another client's clear reaches the row", waitFor(2000, [&]() { return textOf(i2s).isEmpty(); }));
+    check("QD4: the Source menu goes back to the built-in name", menuText(2) == QLatin1String("I2S") && picker->property("valueText").toString() == QLatin1String("I2S"));
 
     // ── A refused write ──
     names->setWriteHook([]() { return false; });

@@ -255,7 +255,7 @@ SettingsPage {
         visible: deviceNames.sourceNamesSupported
         title: "Source Names"
         enabled: bridge.connected
-        footnote: "Stored on the device and shown on its front panel. An empty name uses the built-in one. Held until you click Save."
+        footnote: "Stored on the device and shown in the sidebar and on its front panel. An empty name uses the built-in one. Held until you click Save."
         Repeater {
             model: JSON.parse(page.sourceList)
             SettingsNameRow {

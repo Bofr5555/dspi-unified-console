@@ -4,7 +4,10 @@
 use std::time::{Duration, Instant};
 
 use dspi_proto::generated::opcodes as op;
-use dspi_transport::{Capture, FakeOptions};
+use dspi_transport::{
+    Capture, DeviceDescriptor, FakeDevice, FakeOptions, NotificationSource, Transport,
+    TransportCaps,
+};
 
 use super::*;
 use crate::consts::NOTIFY_NAMES;
@@ -122,4 +125,80 @@ fn wp_qd4_without_a_device_the_getter_and_a_rename_fail() {
     let core = DspiCore::new();
     assert!(core.demo_rename_elsewhere(I2S, "x".into()).is_err());
     assert!(core.cached_device_name().is_err());
+}
+
+/// A simulated device that reports itself as a real transport.
+struct RealKind {
+    dev: FakeDevice,
+    kind: TransportKind,
+    outs: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl Transport for RealKind {
+    fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
+        self.dev.control_in(opcode, value, len)
+    }
+    fn control_in_upto(
+        &mut self,
+        opcode: u8,
+        value: u16,
+        max_len: u16,
+    ) -> dspi_transport::Result<Vec<u8>> {
+        self.dev.control_in_upto(opcode, value, max_len)
+    }
+    fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> dspi_transport::Result<()> {
+        self.outs.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.dev.control_out(opcode, value, data)
+    }
+    fn descriptor(&self) -> &DeviceDescriptor {
+        self.dev.descriptor()
+    }
+    fn max_transfer(&self) -> usize {
+        self.dev.max_transfer()
+    }
+    fn notifications(&self) -> Option<Box<dyn NotificationSource>> {
+        self.dev.notifications()
+    }
+    fn caps(&self) -> TransportCaps {
+        TransportCaps {
+            kind: self.kind,
+            ..self.dev.caps()
+        }
+    }
+}
+
+#[test]
+fn wp_qd4_a_real_transport_kind_refuses_the_demo_rename_with_no_traffic() {
+    for kind in [TransportKind::Usb, TransportKind::Midi, TransportKind::Link] {
+        let outs = std::sync::Arc::<std::sync::atomic::AtomicUsize>::default();
+        let core = DspiCore::new();
+        core.attach_probed(
+            Box::new(RealKind {
+                dev: FakeDevice::demo(),
+                kind,
+                outs: outs.clone(),
+            }),
+            "QD4".into(),
+            0,
+        )
+        .unwrap();
+        core.fetch_all().unwrap();
+        let before = outs.load(std::sync::atomic::Ordering::SeqCst);
+        for target in [I2S, DEVICE] {
+            assert!(
+                matches!(
+                    core.demo_rename_elsewhere(target, "Nope".into()),
+                    Err(DspiError::Unsupported)
+                ),
+                "{kind:?}"
+            );
+        }
+        assert_eq!(
+            outs.load(std::sync::atomic::Ordering::SeqCst),
+            before,
+            "{kind:?} sent something"
+        );
+        assert_eq!(core.get_input_source_name(I2S).unwrap(), "");
+        assert_eq!(core.get_device_name().unwrap(), "DSPi Demo");
+    }
 }
