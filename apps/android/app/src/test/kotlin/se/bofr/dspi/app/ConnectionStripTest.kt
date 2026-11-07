@@ -6,6 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.LinkDevice
+import se.bofr.dspi.core.LinkPhase
 import se.bofr.dspi.link.LinkHub
 import se.bofr.dspi.link.LinkSessionState
 import se.bofr.dspi.usb.UsbIds
@@ -57,9 +58,11 @@ class ConnectionStripTest {
         assertEquals("Living room via Studio Mac · view only", of(LinkSessionState.Connected(hub, dev, "viewer")).text)
         assertEquals(DspiException.LOCKED_MESSAGE, of(LinkSessionState.Connected(hub, dev, "control"), lock = true).text)
         assertTrue(of(LinkSessionState.Connecting(hub)).text.startsWith("Connecting to Studio Mac"))
-        assertTrue(of(LinkSessionState.NeedsPin(hub, "window")).text.contains("needs pairing"))
+        assertEquals("Enter the hub's PIN. · Studio Mac", of(LinkSessionState.NeedsPin(hub, "fixed")).text)
         val r = of(LinkSessionState.Reconnecting(hub, "hub shutting down", 0, 1, "Connection lost, reconnecting"))
-        assertEquals("Connection lost, reconnecting (hub shutting down)", r.text)
+        assertEquals("Connection lost, reconnecting", r.text)
+        assertEquals("Studio Mac: hub shutting down", r.detail)
+        assertTrue(r.lost)
         assertEquals(listOf(RemoteAction.RETRY, RemoteAction.DISCONNECT), r.actions)
         assertEquals(listOf(RemoteAction.CONNECT, RemoteAction.DISCONNECT), of(LinkSessionState.Failed(hub, "revoked")).actions)
         assertTrue(of(LinkSessionState.WaitingForDevice(hub, "0123456789ABCDEF")).text.contains("89ABCDEF"))
@@ -74,6 +77,44 @@ class ConnectionStripTest {
             assertTrue(strip.text, strip.text.contains("\"Always open\""))
             assertTrue(strip.text, strip.text.endsWith("Tick \"Always open\" in Android's dialog and it will not ask again."))
             for (noun in listOf("phone", "tablet", "computer")) assertFalse(strip.text, strip.text.lowercase().contains(noun))
+        }
+    }
+
+    // -- WP AN5 --
+    @Test
+    fun wpAn5TheCoresWordingByPhase() {
+        fun of(s: LinkSessionState) = remoteStrip(s)
+        assertEquals("Not connected to a hub", of(LinkSessionState.Idle).text)
+        assertEquals("Connected to hub, no DSPi found · Studio Mac", of(LinkSessionState.WaitingForDevice(hub, "")).text)
+        assertEquals("Connected to hub, choose a DSPi · Studio Mac", of(LinkSessionState.ChooseDevice(hub, listOf(dev, dev))).text)
+        assertTrue(of(LinkSessionState.NeedsPin(hub, "window")).text.startsWith("Enter the PIN shown on the hub."))
+        assertTrue(of(LinkSessionState.NeedsPin(hub, "")).text.startsWith("Enter the PIN shown on the hub."))
+        // Only a lost connection is the banner
+        val states = listOf(
+            LinkSessionState.Idle,
+            LinkSessionState.Connecting(hub),
+            LinkSessionState.NeedsPin(hub, "window"),
+            LinkSessionState.ChooseDevice(hub, listOf(dev)),
+            LinkSessionState.WaitingForDevice(hub, ""),
+            LinkSessionState.Connected(hub, dev, "admin"),
+            LinkSessionState.Failed(hub, "x")
+        )
+        states.forEach { assertFalse(it.toString(), of(it).lost) }
+        assertEquals("Studio Mac", of(LinkSessionState.Reconnecting(hub, "", 0, 1, "lost")).detail)
+    }
+
+    @Test
+    fun wpAn5TheWayOutIsCalledWhatTheCoreCallsIt() {
+        assertEquals(LinkWording.CORE.of(LinkPhase.RECONNECTING, "").action, RemoteAction.DISCONNECT.label)
+        assertEquals("reconnecting.disconnect", LinkWording.CORE.of(LinkPhase.RECONNECTING, "").actionKey)
+    }
+
+    @Test
+    fun wpAn5WrongPinHintBySource() {
+        assertEquals("Check the hub's PIN and try again.", wrongPinHint("fixed"))
+        for (source in listOf("window", "")) assertTrue(wrongPinHint(source).contains("get a new one"))
+        for (source in listOf("window", "fixed")) {
+            for (noun in listOf("phone", "tablet", "computer")) assertFalse(wrongPinHint(source).lowercase().contains(noun))
         }
     }
 }
