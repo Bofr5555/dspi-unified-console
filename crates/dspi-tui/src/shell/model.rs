@@ -97,6 +97,10 @@ pub struct ShellModel {
     /// stock firmware.
     pub ext: String,
     pub connected: bool,
+    // -- WP TM8 --
+    /// A hub is being reconnected to: the status line says so, and the last
+    /// known values stay on show.
+    pub link_lost: bool,
     /// Every attached device, by display name; more than one enables the
     /// picker.
     pub devices: Vec<String>,
@@ -118,6 +122,9 @@ pub struct ShellModel {
     /// What the graph draws: the graphed channel last, its linked partner
     /// first in grey when shown (DESIGN 12.2). Empty in the overview.
     pub curves: Vec<GraphCurve>,
+    // -- WP TM5 --
+    /// The live spectrum behind the curves, while `f` has it on.
+    pub spectrum: Option<crate::graph::SpectrumOverlay>,
     /// The name of the graphed channel, for the pane title.
     pub graph_channel: Option<String>,
     pub cursor_hz: Option<f64>,
@@ -183,6 +190,8 @@ impl ShellModel {
             via: String::new(),
             ext: String::new(),
             connected: false,
+            // -- WP TM8 --
+            link_lost: false,
             devices: Vec::new(),
             preset_label: "Empty".into(),
             preset_dirty: false,
@@ -198,6 +207,8 @@ impl ShellModel {
             graph: GraphSettings::default(),
             graph_height: GraphHeight::Medium,
             curves: Vec::new(),
+            // -- WP TM5 --
+            spectrum: None,
             graph_channel: None,
             cursor_hz: None,
             marker_hz: None,

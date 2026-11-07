@@ -176,7 +176,8 @@ impl Overview {
     /// since they would only repeat the last device's channels
     /// (`DashboardView.swift:86-91`).
     pub fn cells(&mut self, state: &DeviceState) -> Vec<Cell> {
-        if !state.connected {
+        // -- WP TM8 -- A lost hub's mirror stays readable.
+        if !state.mirror_readable() {
             return Vec::new();
         }
         let ni = state.caps.num_inputs as usize;

@@ -12,7 +12,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use dspi_session::DeviceState;
-use dspi_session::autoeq::{Database, Entry};
+use dspi_session::autoeq::{Database, Entry, RebuildSummary};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -23,6 +23,32 @@ use crate::shell::{Screen, ScreenEvent};
 use crate::theme::{ChannelRole, Glyphs, Theme};
 use crate::widgets::text::{fit_left, truncate};
 use crate::widgets::{KeyHelp, SectionHeader};
+
+// -- WP TM12 --
+/// What a finished rebuild came to, a line each, for the Terminal's report and
+/// `dspi autoeq rebuild`: what was written, and what is missing from it.
+pub fn rebuild_report(summary: &RebuildSummary) -> Vec<String> {
+    fn count(n: usize, one: &str, many: &str) -> String {
+        format!("{n} {}", if n == 1 { one } else { many })
+    }
+    let mut lines = vec![format!("Entries: {}", summary.entries)];
+    if summary.failed_profiles > 0 {
+        lines.push(format!(
+            "{} could not be downloaded.",
+            count(summary.failed_profiles, "profile", "profiles")
+        ));
+    }
+    if summary.failed_listings > 0 {
+        lines.push(format!(
+            "{} could not be listed, so whatever they hold is missing.",
+            count(summary.failed_listings, "folder", "folders")
+        ));
+    }
+    if lines.len() > 1 {
+        lines.push("Rebuild again to try for these.".to_string());
+    }
+    lines
+}
 
 const KEYS: &[KeyHelp] = &[
     KeyHelp::new("/", "Search"),

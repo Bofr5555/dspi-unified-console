@@ -1,25 +1,34 @@
-// Port of DSPi-Console release/v1.1.6 `Link/NetworkTransport.swift` (the
-// app-side policy around one hub's LinkClient): bind by serial, pair when the
-// hub asks (keeping a PIN typed after the hub's 30 s auth deadline for the
-// next connection), store the token by hub id, reconnect with backoff 1, 2,
-// 4 ... 30 s (spec 5), and keep the chosen device across reconnects.
-// Android differences: the pairing prompt is a non-modal state the UI shows
-// ([LinkSessionState.NeedsPin]); a device list with several boards asks the
-// user ([LinkSessionState.ChooseDevice]) instead of macOS's device menu; no
-// reconnect after close codes 4000 (protocol error) and 4002 (revoked: the
-// token is dropped and the user pairs again).
+// App-side policy around the core's Link session (WP AN3). The core keeps the
+// session up by itself (WP C15): it reconnects with backoff, re-attaches the
+// bound board and refreshes the mirror. This engine dials once, follows
+// `linkStatus().phase` and adds what only an app knows: the stored tokens, the
+// board the user wants, the PIN prompt, the foreground service.
+//
+// It has no retry loop, queues no write and never redials by itself. A first
+// dial that fails is the user's to repeat: there is no session yet, so nothing
+// would stop a retry, and the core's own backoff starts only once it has one.
+//
+// Ported from DSPi-Console release/v1.1.6 `Link/NetworkTransport.swift`, whose
+// differences stay: the pairing prompt is a non-modal state the UI shows
+// ([LinkSessionState.NeedsPin]), and a list of several boards asks the user
+// ([LinkSessionState.ChooseDevice]) instead of macOS's device menu.
 package se.bofr.dspi.link
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.LinkDevice
+import se.bofr.dspi.core.LinkHello
 import se.bofr.dspi.core.LinkListener
+import se.bofr.dspi.core.LinkPhase
+import se.bofr.dspi.core.LinkStatus
 
 /** Where the REMOTE connection stands. */
 sealed interface LinkSessionState {
@@ -44,10 +53,15 @@ sealed interface LinkSessionState {
     /** Controlling [device] through [hub]; [role] `viewer`, `control` or `admin`. */
     data class Connected(override val hub: LinkHub, val device: LinkDevice, val role: String) : LinkSessionState
 
-    /** Lost (or could not reach) the hub; the next attempt is at [retryAtMs]. */
-    data class Reconnecting(override val hub: LinkHub, val reason: String, val retryAtMs: Long, val attempt: Int) : LinkSessionState
+    /**
+     * The core lost the hub or the board and is reconnecting; the next try is at
+     * [retryAtMs]. The mirror stays readable and writes are refused. [text] is the
+     * core's wording for it (`link_phase_text`), [reason] the core's `close_reason`.
+     */
+    data class Reconnecting(override val hub: LinkHub, val reason: String, val retryAtMs: Long, val attempt: Int, val text: String) :
+        LinkSessionState
 
-    /** Gave up (access revoked, protocol error); the user connects again by hand. */
+    /** Ended and not retried (no first connection, a protocol error, refused); the user connects again by hand. */
     data class Failed(override val hub: LinkHub, val reason: String) : LinkSessionState
 }
 
@@ -67,8 +81,11 @@ interface LinkServiceControl {
 }
 
 /**
- * One REMOTE connection's policy. Main thread only (all calls and state).
+ * One REMOTE stack's policy. Main thread only (all calls and state).
  * [clientName] is read at every connect (Settings may change it).
+ *
+ * The listener goes on the core once, here, and stays for the core's life: a
+ * listener's callback must not call `setLinkListener`, and nothing else needs to.
  */
 class LinkSessionEngine(
     private val ops: LinkCoreOps,
@@ -90,44 +107,81 @@ class LinkSessionEngine(
     private var wantedSerial: String? = null
     private var attached: LinkDevice? = null
     private var role = "admin"
-    private var attempt = 0
 
-    /** A PIN typed after the session closed under the prompt: sent on the next hello. */
-    private var pendingPin: String? = null
+    /** The bridge was told the session is interrupted ([LinkCoreOps.setInterrupted]). */
+    private var interrupted = false
+    private var serviceOn = false
 
-    /** The session under the PIN prompt is gone (auth deadline): reconnect before pairing. */
-    private var promptSessionDead = false
+    /** A session of ours exists. Not during a dial, when the core's status still describes the one before it. */
+    private var sessionLive = false
 
-    /** Bumped for every session and teardown: callbacks of an older one do nothing. */
+    /** This refusal's token is gone already; a late status must not delete the one a pairing stored since. */
+    private var refusalHandled = false
+
+    /** Bumped for every connect and teardown: whatever an older one was doing stops. */
     private var generation = 0
-    private var job: Job? = null
+    private var teardown: Job? = null
+
+    /** One dial at a time: `linkConnect` replaces any session, so the last to finish would win. */
+    private val dialLock = Mutex()
+
+    /** "Look at the core's status again". Conflated: one look covers any number of events. */
+    private val wake = Channel<Unit>(Channel.CONFLATED)
 
     val attachedSerial: String? get() = attached?.serial
+
+    init {
+        ops.setListener(
+            object : LinkListener {
+                override fun onLinkDevicesChanged() {
+                    wake.trySend(Unit)
+                }
+
+                override fun onLinkClosed(code: Int, reason: String) {
+                    wake.trySend(Unit)
+                }
+
+                override fun onLinkStatusChanged() {
+                    wake.trySend(Unit)
+                }
+
+                override fun onLinkTokenIssued(hubId: String, token: String) {
+                    scope.launch { storeToken(hubId, token) }
+                }
+            }
+        )
+        // Follows one event at a time, so an attach never overlaps the next look
+        scope.launch { for (w in wake) follow() }
+    }
 
     /** Connect to [target] (a user tap), optionally to board [serial]. */
     fun connect(target: LinkHub, serial: String? = null) {
         val sameHub = hub?.id == target.id
         hub = target
         wantedSerial = serial ?: wantedSerial.takeIf { sameHub }
-        attempt = 0
-        pendingPin = null
-        scope.launch {
-            detachCurrent()
-            start()
-        }
+        refusalHandled = false
+        val gen = ++generation
+        sessionLive = false
+        _state.value = LinkSessionState.Connecting(target)
+        scope.launch { dial(target, gen) }
     }
 
-    /** The user typed a PIN in the prompt. */
+    /** The user typed a PIN in the prompt. `linkPair` dials again if the hub has dropped the socket meanwhile. */
     fun submitPin(pin: String) {
         val s = _state.value as? LinkSessionState.NeedsPin ?: return
         _state.value = s.copy(busy = true, error = "")
-        if (promptSessionDead) {
-            pendingPin = pin
-            start()
-            return
-        }
         val gen = generation
-        job = scope.launch { pair(s.hub, s.pinSource, pin, gen) }
+        scope.launch {
+            val token = try {
+                ops.pair(pin)
+            } catch (e: DspiException) {
+                if (gen == generation) _state.value = s.copy(busy = false, error = pairingError(e))
+                return@launch
+            }
+            if (gen != generation) return@launch
+            if (token.isNotEmpty()) tokens.setToken(s.hub.id, s.hub.name, token)
+            wake.trySend(Unit)
+        }
     }
 
     /** The user cancelled the prompt: give the connection up (macOS). */
@@ -138,64 +192,55 @@ class LinkSessionEngine(
     fun chooseDevice(device: LinkDevice) {
         val s = _state.value as? LinkSessionState.ChooseDevice ?: return
         wantedSerial = device.serial
-        val gen = generation
-        job = scope.launch { attach(s.hub, device, gen) }
+        _state.value = LinkSessionState.Connecting(s.hub)
+        wake.trySend(Unit)
     }
 
-    /** Try now instead of waiting out the backoff (app back in front, network back). */
+    /** Try now instead of waiting out the core's backoff (app back in front, network back, the Retry button). */
     fun retryNow() {
-        if (_state.value is LinkSessionState.Reconnecting) start()
+        if (_state.value is LinkSessionState.Reconnecting) scope.launch { ops.retryNow() }
     }
 
-    /** Leave REMOTE: close the session and forget the hub. Idempotent. */
+    /** Leave REMOTE: end the session, reconnecting included, and forget the hub. Idempotent. */
     fun disconnect() {
-        generation++
-        job?.cancel()
-        job = null
-        val had = hub != null
-        hub = null
-        wantedSerial = null
-        pendingPin = null
-        promptSessionDead = false
-        _state.value = LinkSessionState.Idle
-        if (!had && attached == null) return
-        scope.launch {
-            detachCurrent()
-            ops.setListener(null)
-            runCatching { ops.close() }
-        }
+        val had = hub != null || attached != null
+        forgetSession()
+        if (had) teardown = scope.launch { closeSession() }
     }
 
-    /** [disconnect], then wait for the device to be detached and the session closed (stack teardown). */
+    /** [disconnect], then wait for the session to be closed and the device detached (stack teardown). */
     suspend fun close() {
-        generation++
-        job?.cancel()
-        job = null
-        hub = null
-        wantedSerial = null
-        _state.value = LinkSessionState.Idle
-        detachCurrent()
-        ops.setListener(null)
-        runCatching { ops.close() }
+        forgetSession()
+        teardown?.join()
+        closeSession()
     }
 
     /** Forget the token stored for [hubId] (Settings › Networking). */
     fun forget(hubId: String) = tokens.remove(hubId)
 
-    // ── Session ───────────────────────────────────────────────────────
-
-    private fun start() {
-        val h = hub ?: return
-        val gen = ++generation
-        promptSessionDead = false
-        job?.cancel()
-        job = scope.launch { runSession(h, gen) }
+    private fun forgetSession() {
+        generation++
+        sessionLive = false
+        hub = null
+        wantedSerial = null
+        _state.value = LinkSessionState.Idle
     }
 
-    private suspend fun runSession(target: LinkHub, gen: Int) {
-        _state.value = LinkSessionState.Connecting(target)
+    /** `linkClose` first: it ends a command stuck on a stalled link, which the detach would queue behind. */
+    private suspend fun closeSession() {
+        ops.close()
+        detachCurrent()
+    }
+
+    // ── The dial ──────────────────────────────────────────────────────
+
+    private suspend fun dial(target: LinkHub, gen: Int): Unit = dialLock.withLock {
+        // A `linkClose` still on its way would end the session this dial opens
+        teardown?.join()
+        if (gen != generation) return@withLock
+        detachCurrent()
         var h = target
-        if (h.isManual && h.id.startsWith("manual:")) {
+        if (h.isManual && h.id.startsWith(MANUAL_ID_PREFIX)) {
             // A typed address: its info document names the hub (for the token) and its path
             runCatching { ops.fetchInfo(h.host, h.port) }.getOrNull()?.let { i ->
                 h =
@@ -209,73 +254,102 @@ class LinkSessionEngine(
                         path = i.wsPath
                     )
             }
-            if (gen != generation) return
+            if (gen != generation) return@withLock
         }
-        ops.setListener(listenerFor(gen))
-        val token = tokens.token(h.id).orEmpty()
+        val known = !h.id.startsWith(MANUAL_ID_PREFIX)
+        val first = open(h, gen, if (known) h.id else "") ?: return@withLock
+        val named = merge(h, first)
+        // Only the hello named this hub: dial once more, now that its token can go to it alone
+        val second = if (!known && first.needsPairing && tokens.token(named.id) != null) {
+            open(named, gen, named.id) ?: return@withLock
+        } else {
+            first
+        }
+        val final = merge(named, second)
+        hub = final
+        log("link: connected to ${final.name} (${final.kind}, auth ${second.auth}, 1.${second.protoMinor})")
+        if (second.tokenRefused) refuseToken(final)
+        sessionLive = true
+        wake.trySend(Unit)
+    }
+
+    /** `linkConnect`, or null when it failed or was overtaken. Never leaves a session behind it for nobody. */
+    private suspend fun open(h: LinkHub, gen: Int, expectedHubId: String): LinkHello? {
+        val token = if (expectedHubId.isEmpty()) "" else tokens.token(expectedHubId).orEmpty()
         val hello = try {
-            ops.connect(ops.wsUrl(h.host, h.port, h.path), clientName(), appVersion, token)
+            ops.connect(ops.wsUrl(h.host, h.port, h.path), clientName(), appVersion, token, expectedHubId)
         } catch (e: DspiException) {
-            if (gen == generation) retryLater(h, describe(e))
-            return
+            if (gen == generation) {
+                _state.value = LinkSessionState.Failed(h, describe(e))
+                log("link: could not connect (${(e as? DspiException.Link)?.code ?: "error"})")
+            }
+            return null
         }
+        if (gen != generation) {
+            ops.close()
+            return null
+        }
+        return hello
+    }
+
+    private fun merge(h: LinkHub, hello: LinkHello) = h.copy(
+        id = hello.hubId.ifEmpty { h.id },
+        name = hello.hubName.ifEmpty { h.name },
+        kind = hello.hubKind.ifEmpty { h.kind },
+        auth = hello.auth.ifEmpty { h.auth }
+    )
+
+    // ── Following the core ────────────────────────────────────────────
+
+    private suspend fun follow() {
+        if (!sessionLive || hub == null) return
+        val gen = generation
+        val st = ops.status()
+        val devices = ops.devices()
         if (gen != generation) return
-        h = h.copy(
-            id = hello.hubId.ifEmpty { h.id },
-            name = hello.hubName.ifEmpty { h.name },
-            kind = hello.hubKind.ifEmpty { h.kind },
-            auth = hello.auth.ifEmpty { h.auth }
-        )
-        hub = h
-        log("link: connected to ${h.name} (${h.kind}, auth ${hello.auth}, 1.${hello.protoMinor})")
-        if (hello.needsPairing) {
-            val stored = tokens.token(h.id)
-            if (token.isEmpty() && stored != null) {
-                // Only the hello named this hub: dial again with its token
-                start()
+        val h = hub ?: return
+        st.role.takeIf { it.isNotEmpty() }?.let { role = it }
+        when (st.phase) {
+            LinkPhase.BOUND -> bound(h, devices, gen)
+            LinkPhase.CHOOSE_DEVICE -> choose(h, devices, gen)
+            LinkPhase.NO_DEVICE -> {
+                markInterrupted()
+                _state.value = LinkSessionState.WaitingForDevice(h, wantedSerial.orEmpty())
+            }
+            LinkPhase.RECONNECTING -> {
+                markInterrupted()
+                _state.value = LinkSessionState.Reconnecting(
+                    h,
+                    st.closeReason,
+                    clock() + st.reconnectInMs,
+                    st.reconnectAttempt.toInt(),
+                    ops.phaseText(st.phase, st.pinSource).text
+                )
+            }
+            LinkPhase.NEEDS_PAIRING -> needsPin(h, st)
+            LinkPhase.CLOSED, LinkPhase.REFUSED, LinkPhase.IDLE -> ended(h, st)
+        }
+    }
+
+    private suspend fun bound(h: LinkHub, devices: List<LinkDevice>, gen: Int) {
+        val current = attached ?: return
+        val d = devices.firstOrNull { it.serial == current.serial } ?: current
+        attached = d
+        ops.setReadOnly(role == VIEWER)
+        if (interrupted) {
+            // The core has re-attached and refreshed the mirror; its analyser worker ended with the old connection.
+            if (!ops.deviceOpen()) {
+                // A status poll saw the connection between the core's close and open, and the bridge let go of it
+                attach(h, d, gen)
                 return
             }
-            if (token.isNotEmpty()) tokens.remove(h.id) // refused: pair again
-            val pin = pendingPin
-            pendingPin = null
-            if (pin != null) {
-                _state.value = LinkSessionState.NeedsPin(h, hello.pinSource, busy = true)
-                pair(h, hello.pinSource, pin, gen)
-            } else {
-                _state.value = LinkSessionState.NeedsPin(h, hello.pinSource)
-            }
-            return
-        }
-        afterAuth(h, gen)
-    }
-
-    private suspend fun pair(h: LinkHub, pinSource: String, pin: String, gen: Int) {
-        val token = try {
-            ops.pair(pin)
-        } catch (e: DspiException) {
+            ops.restartAnalyser()
             if (gen != generation) return
-            if (e is DspiException.Disconnected || (e is DspiException.Link && e.code == "closed")) {
-                // The hub's auth deadline closed the socket: send the PIN on the next connection
-                pendingPin = pin
-                start()
-            } else {
-                _state.value = LinkSessionState.NeedsPin(h, pinSource, error = pairingError(e))
-            }
-            return
+            ops.setInterrupted(false)
+            interrupted = false
         }
-        if (gen != generation) return
-        if (token.isNotEmpty()) tokens.setToken(h.id, h.name, token)
-        afterAuth(h, gen)
-    }
-
-    private suspend fun afterAuth(h: LinkHub, gen: Int) {
-        attempt = 0
-        val st = runCatching { ops.status() }.getOrNull()
-        val devices = runCatching { ops.devices() }.getOrDefault(emptyList())
-        if (gen != generation) return
-        role = st?.role?.ifEmpty { "admin" } ?: "admin"
-        ops.setReadOnly(role == "viewer")
-        choose(h, devices, gen)
+        serviceRunning(true)
+        _state.value = LinkSessionState.Connected(h, d, role)
     }
 
     private suspend fun choose(h: LinkHub, devices: List<LinkDevice>, gen: Int) {
@@ -297,98 +371,89 @@ class LinkSessionEngine(
     private suspend fun attach(h: LinkHub, d: LinkDevice, gen: Int) {
         _state.value = LinkSessionState.Connecting(h)
         wantedSerial = d.serial
+        ops.setReadOnly(role == VIEWER)
         val ok = ops.attach(d.handle, d.serial)
         if (gen != generation) {
             if (ok) ops.detach(d.serial)
             return
         }
         if (!ok) {
-            retryLater(h, "Could not open the DSPi on ${h.name}.")
+            _state.value = LinkSessionState.Failed(h, "Could not open the DSPi on ${h.name}.")
             return
         }
         attached = d
-        service.start()
-        _state.value = LinkSessionState.Connected(h, d, role)
+        ops.setInterrupted(false)
+        interrupted = false
+        wake.trySend(Unit)
+    }
+
+    private fun needsPin(h: LinkHub, st: LinkStatus) {
+        if (st.tokenRefused && !refusalHandled) refuseToken(h)
+        if (!st.tokenRefused) refusalHandled = false
+        // Nobody reconnects without the user now, so no service for it. The core re-attaches after the pairing.
+        serviceRunning(false)
+        markInterrupted()
+        val shown = _state.value as? LinkSessionState.NeedsPin
+        val source = st.pinSource.ifEmpty { "window" }
+        _state.value = when {
+            shown != null && shown.hub.id == h.id -> shown.copy(hub = h, pinSource = source)
+            st.closeCode == CLOSE_REVOKED -> LinkSessionState.NeedsPin(
+                h,
+                source,
+                error = "Access to ${h.name} was revoked. Pair again to reconnect."
+            )
+            else -> LinkSessionState.NeedsPin(h, source)
+        }
+    }
+
+    private suspend fun ended(h: LinkHub, st: LinkStatus) {
+        detachCurrent()
+        val text = ops.phaseText(st.phase, st.pinSource).text
+        _state.value = LinkSessionState.Failed(
+            h,
+            when {
+                st.closeCode == CLOSE_PROTOCOL_ERROR -> "The hub reported a protocol error."
+                st.closeReason.isNotEmpty() -> "$text: ${st.closeReason}"
+                else -> text
+            }
+        )
+    }
+
+    /** The one place a stored token goes away by itself: the hub said it is bad. */
+    private fun refuseToken(h: LinkHub) {
+        refusalHandled = true
+        tokens.remove(h.id)
+        log("link: the hub refused the stored token")
+    }
+
+    private fun storeToken(hubId: String, token: String) {
+        if (token.isEmpty()) return
+        val name = hub?.takeIf { it.id.equals(hubId, ignoreCase = true) }?.name
+            ?: tokens.paired().firstOrNull { it.hubId.equals(hubId, ignoreCase = true) }?.name
+            ?: hubId
+        tokens.setToken(hubId, name, token)
+    }
+
+    private fun markInterrupted() {
+        if (attached == null || interrupted) return
+        interrupted = true
+        ops.setInterrupted(true)
+    }
+
+    private fun serviceRunning(on: Boolean) {
+        if (on == serviceOn) return
+        serviceOn = on
+        if (on) service.start() else service.stop()
     }
 
     private suspend fun detachCurrent() {
+        serviceRunning(false)
+        ops.setReadOnly(false)
+        ops.setInterrupted(false)
+        interrupted = false
         val d = attached ?: return
         attached = null
         runCatching { ops.detach(d.serial) }
-        ops.setReadOnly(false)
-        service.stop()
-    }
-
-    private fun retryLater(h: LinkHub, reason: String) {
-        val delayMs = minOf(30_000L, 1_000L shl attempt.coerceAtMost(5))
-        attempt++
-        val gen = ++generation
-        _state.value = LinkSessionState.Reconnecting(h, reason, clock() + delayMs, attempt)
-        log("link: $reason; retry in ${delayMs / 1000} s")
-        job = scope.launch {
-            delay(delayMs)
-            if (gen == generation) start()
-        }
-    }
-
-    // ── Session events (LinkListener, on the Link reader thread) ───────
-
-    private fun listenerFor(gen: Int) = object : LinkListener {
-        override fun onLinkDevicesChanged() {
-            scope.launch { devicesChanged(gen) }
-        }
-
-        override fun onLinkClosed(code: Int, reason: String) {
-            scope.launch { closed(gen, code, reason) }
-        }
-    }
-
-    private suspend fun devicesChanged(gen: Int) {
-        if (gen != generation) return
-        val h = hub ?: return
-        val devices = runCatching { ops.devices() }.getOrDefault(emptyList())
-        if (gen != generation) return
-        when (val s = _state.value) {
-            is LinkSessionState.Connected -> {
-                val now = devices.firstOrNull { it.serial == s.device.serial }
-                if (now == null || (now.state != "online" && now.state.isNotEmpty())) {
-                    // Unplugged from the hub, or updating: wait for it to come back
-                    detachCurrent()
-                    _state.value = LinkSessionState.WaitingForDevice(h, s.device.serial)
-                } else if (now != s.device) {
-                    if (now.handle != s.device.handle) {
-                        // Re-attached under a new handle (spec 2): bind again
-                        detachCurrent()
-                        attach(h, now, gen)
-                    } else {
-                        _state.value = s.copy(device = now)
-                    }
-                }
-            }
-            is LinkSessionState.WaitingForDevice, is LinkSessionState.ChooseDevice -> choose(h, devices, gen)
-            else -> {}
-        }
-    }
-
-    private suspend fun closed(gen: Int, code: Int, reason: String) {
-        if (gen != generation) return
-        val h = hub ?: return
-        if (_state.value is LinkSessionState.NeedsPin) {
-            // Keep the prompt; the PIN goes over a new connection (macOS pendingPIN)
-            promptSessionDead = true
-            return
-        }
-        generation++
-        job?.cancel()
-        detachCurrent()
-        when (code) {
-            4000 -> _state.value = LinkSessionState.Failed(h, "The hub reported a protocol error.")
-            4002 -> {
-                tokens.remove(h.id)
-                _state.value = LinkSessionState.Failed(h, "${h.name} revoked this phone's access. Pair again to reconnect.")
-            }
-            else -> retryLater(h, reason.ifEmpty { "connection lost" })
-        }
     }
 
     private fun describe(e: DspiException): String = when (e) {
@@ -398,9 +463,18 @@ class LinkSessionEngine(
 
     /** macOS NetworkTransport: "Pairing failed: …". */
     private fun pairingError(e: DspiException): String = when {
-        e is DspiException.Link && e.code == "denied" -> "Pairing failed: the hub did not accept that code."
+        e is DspiException.Link && e.code == "wrong_pin" -> "Pairing failed: the hub did not accept that code."
         e is DspiException.Link && e.code == "rate_limited" -> "Pairing failed: too many attempts. Wait a minute and try again."
         else -> "Pairing failed: ${describe(e)}"
+    }
+
+    private companion object {
+        const val MANUAL_ID_PREFIX = "manual:"
+        const val VIEWER = "viewer"
+
+        /** Close codes in `LinkStatus.closeCode` (spec 5). */
+        const val CLOSE_PROTOCOL_ERROR = 4000
+        const val CLOSE_REVOKED = 4002
     }
 }
 

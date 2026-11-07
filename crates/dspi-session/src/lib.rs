@@ -11,6 +11,8 @@ pub mod ext;
 pub mod ext_state;
 mod fast;
 pub mod filterfile;
+// -- WP TM8 --
+pub mod link_words;
 pub mod notify;
 pub mod pins;
 pub mod preset_file;
@@ -19,6 +21,8 @@ pub mod readout;
 // -- WP CG12 --
 pub mod ring_health;
 pub mod rta;
+// -- WP TM5 --
+pub mod rta_sharing;
 pub mod runtime;
 pub mod state;
 pub mod surfaces;
