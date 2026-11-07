@@ -2,6 +2,9 @@
     <qresource prefix="/">
         <file>qml/main.qml</file>
         <file>qml/BannerHost.qml</file>
+        <!-- WP QD9 -->
+        <file>qml/DevicesPopup.qml</file>
+        <file>qml/PairingDialog.qml</file>
         <file>qml/style/ToolTip.qml</file>
         <file>qml/style/qmldir</file>
         <file>qml/Sidebar.qml</file>
@@ -157,6 +160,9 @@
         <file>qml/settings/pages/AuxOutputsPage.qml</file>
         <!-- WP QD14 -->
         <file>qml/settings/pages/NetworkingPage.qml</file>
+        <!-- WP QD16 -->
+        <file>qml/settings/pages/UpdatesPage.qml</file>
+        <file>qml/components/UpdateBanner.qml</file>
         <file>qml/components/CascadeMenu.qml</file>
         <file>qml/settings/cs/CsApplyRow.qml</file>
         <file>qml/settings/cs/CsBadge.qml</file>

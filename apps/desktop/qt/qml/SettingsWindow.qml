@@ -53,7 +53,10 @@ AppWindow {
               source: "settings/pages/AdvancedPage.qml", keywords: "channel names reset device serial firmware" },
             // -- WP QD14 --
             { id: "networking", title: "Networking", icon: "signal", tint: "#4a7499",
-              source: "settings/pages/NetworkingPage.qml", keywords: "share sharing hub link network pairing pair code pin clients roles revoke port tray background lan" }
+              source: "settings/pages/NetworkingPage.qml", keywords: "share sharing hub link network pairing pair code pin clients roles revoke port tray background lan" },
+            // -- WP QD16 --
+            { id: "updates", title: "Updates", icon: "arrow-down-circle", tint: "#2f7bd9", needs: "updates",
+              source: "settings/pages/UpdatesPage.qml", keywords: "update updates new version release check automatic notes privacy" }
         ]},
         { title: "Display", pages: [
             { id: "graphing", title: "Graphing", icon: isMacOS ? "ecg" : "chart", tint: isMacOS ? "#587a89" : "#30b0c7",
@@ -100,6 +103,7 @@ AppWindow {
         case "groups": return controlSurfaces.hasGroups
         case "macros": return controlSurfaces.hasMacros
         case "aux": return controlSurfaces.hasAux
+        case "updates": return typeof appUpdater !== "undefined"   // -- WP QD16 --
         default: return true
         }
     }

@@ -102,6 +102,8 @@ private:
     void testLink();
     // -- WP QD10 --
     void testLinkFault();
+    // -- WP QD9 --
+    void testDevices();
     // -- WP HB6 --
     void testHub();
     // -- WP QD7 --
@@ -132,6 +134,11 @@ private:
     // -- WP QD17 --
     void testShortcuts();
     void testShownInputCount();
+    // -- WP QD13 --
+    void testSystemIntegration();
+    // -- WP QD16 --
+    void testUpdates();
+    void testNoUpdates();
 
     // Whether a bypass toggle repaints the open channel's graph editor. Leaves
     // bypass as it found it. NotRun fills `why`.

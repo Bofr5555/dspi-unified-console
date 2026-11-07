@@ -104,6 +104,14 @@ class DataStoreAppSettingsStoreTest {
         val st = DataStoreAppSettingsStore(store, scope, FakeLegacy(fail = false))
         assertTrue(st.settings.value.onboardingSetupDone)
         assertEquals(true, store.value.value[AppSettingsFields.ONBOARDING_SETUP_DONE])
+
+        // -- WP AN36 -- settings only in the interim files (a build from before the consolidation): review c4a F1
+        val legacyOnly = FakeStore()
+        val files = FakeLegacy(fail = false, files = listOf(emptyMap(), mapOf("dashboardCardsPerRow" to 2)))
+        val upgraded = DataStoreAppSettingsStore(legacyOnly, scope, files)
+        assertTrue("imported", files.deleted)
+        assertTrue(upgraded.settings.value.onboardingSetupDone)
+        assertEquals(true, legacyOnly.value.value[AppSettingsFields.ONBOARDING_SETUP_DONE])
     }
 
     @Test

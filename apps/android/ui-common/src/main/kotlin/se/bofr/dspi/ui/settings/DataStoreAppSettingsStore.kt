@@ -85,10 +85,12 @@ class DataStoreAppSettingsStore(
                 null
             }
             // -- WP AN19 -- decided on what was there before this start's own writes
-            val onboardingSeed = prefs?.let { AppSettingsFields.onboardingSeed(it) }
+            var onboardingSeed = prefs?.let { AppSettingsFields.onboardingSeed(it) }
             if (prefs != null && legacy != null && prefs[AppSettingsFields.LEGACY_IMPORTED] != true) {
                 // Delete the interim files only once they were read and the import was written (C2).
                 val files = runCatching { legacy.read() }.onFailure { log("reading the interim preference files failed", it) }.getOrNull()
+                // -- WP AN36 -- settings only in the interim files are prior use too (review c4a F1)
+                if (onboardingSeed == false && files?.any { it.isNotEmpty() } == true) onboardingSeed = true
                 if (files != null) {
                     runCatching { store.edit { AppSettingsFields.importLegacy(it, files) } }
                         .onSuccess {
