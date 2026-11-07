@@ -206,6 +206,12 @@ impl Hub {
     pub fn start(mut config: HubConfig) -> Result<Self, HubError> {
         let network = config.network.take();
         let bus = config.bus.take();
+        // -- WP HB1 -- A networked hub given no id has the one in its store.
+        if let Some(network) = network.as_ref().filter(|_| config.hub_id.is_empty()) {
+            config.hub_id = crate::store::HubStore::load(&network.store_dir)?
+                .hub_id()
+                .to_owned();
+        }
         let (sup_tx, sup_rx) = mpsc::channel();
         let (ev_tx, ev_rx) = mpsc::channel();
         let inner = Arc::new(HubInner {
@@ -339,6 +345,34 @@ impl Hub {
         inner.emit(HubEvent::Stopped);
         let _ = inner.events.send(EventMsg::Stop);
         let _ = t.events.join();
+    }
+}
+
+// -- WP HB1 --
+impl Hub {
+    /// The network side, for a binding's pairing window and client list. `None` for an
+    /// in-process hub, and once stopped.
+    pub fn network(&self) -> Option<crate::server::NetworkControl> {
+        guard(&self.threads)
+            .as_ref()
+            .and_then(|t| t.server.as_ref())
+            .map(Server::control)
+    }
+}
+
+// -- WP HB1 --
+impl HubHandle {
+    /// The live device at `handle`.
+    pub(crate) fn device(&self, handle: u8) -> Option<Arc<DeviceShared>> {
+        guard(&self.inner.state)
+            .attached
+            .get(&handle)
+            .map(|a| Arc::clone(&a.shared))
+    }
+
+    /// The hub's command table.
+    pub(crate) fn policy(&self) -> Arc<Policy> {
+        Arc::clone(&self.inner.policy)
     }
 }
 

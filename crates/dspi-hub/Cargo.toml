@@ -39,6 +39,22 @@ serde_json.workspace = true
 # Bus enumeration with the vendor id, which `dspi_transport::list_devices` does
 # not report and `dspi-core` needs to tell legacy firmware. Same version as there.
 nusb = { version = "0.2", optional = true }
+# -- WP HB1 --
+# The server's WebSocket, and socket options std lacks (dual-stack bind): at
+# dspi-link's pins, since the two share a `Pipe`.
+tungstenite = { version = "=0.30.0", default-features = false, features = ["handshake"] }
+socket2 = "=0.6.1"
+# The HTTP request head before the upgrade. Already in the graph through tungstenite.
+httparse = "1"
+# The machine's addresses: what counts as the hub itself for the Origin check, and
+# which peers are on its network. Same pin as mdns-sd's, which brings it in anyway.
+if-addrs = "=0.15.0"
+# Tokens are stored as their SHA-256 (spec 6.2). Same family as tungstenite's sha1.
+sha2 = "0.11"
+# The OS's CSPRNG for tokens, PINs and the hub id. Already in the graph through rand.
+getrandom = "0.4"
+# base64url for tokens and hex for their hashes. Already in the graph through dspi-link.
+data-encoding = "2"
 
 [dev-dependencies]
 dspi-transport = { path = "../dspi-transport", default-features = false, features = ["link"] }
