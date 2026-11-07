@@ -43,7 +43,7 @@ enum class RemoteAction(val label: String) {
 
 // -- WP AN29 --
 /** Android keeps a USB grant only until unplug; the "Always open" tick is what persists it. */
-const val USB_ALWAYS_OPEN_HINT = "Tick \"Always open\" in Android's dialog to skip this prompt next time."
+const val USB_ALWAYS_OPEN_HINT = "Tick \"Always open\" in Android's dialog and it will not ask again."
 
 fun connectionStrip(
     mode: AppMode,

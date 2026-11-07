@@ -72,6 +72,7 @@ class ConnectionStripTest {
         val pending = connectionStrip(AppMode.DEVICE, UsbSessionState.PermissionPending("", dialogShown = true), false)
         for (strip in listOf(required, pending)) {
             assertTrue(strip.text, strip.text.contains("\"Always open\""))
+            assertTrue(strip.text, strip.text.endsWith("Tick \"Always open\" in Android's dialog and it will not ask again."))
             for (noun in listOf("phone", "tablet", "computer")) assertFalse(strip.text, strip.text.lowercase().contains(noun))
         }
     }
