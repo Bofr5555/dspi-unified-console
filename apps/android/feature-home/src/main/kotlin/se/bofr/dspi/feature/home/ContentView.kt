@@ -272,12 +272,12 @@ private fun SidebarChannels(bridge: DspiBridge, selection: SidebarSelection, onS
     val c = DspiTheme.colors
     val s = bridge.observeState()
     val connected = bridge.observeStatus { it.connected }
-    val active = bridge.observeStatus { it.activeInputChannels }
     val curves by bridge.magnitudesRevision.collectAsStateWithLifecycle()
     val status = bridge.statusState()
     var renaming by rememberSaveable { mutableStateOf<Int?>(null) }
     var menuFor by rememberSaveable { mutableStateOf<Int?>(null) }
-    val numInputs = if (active >= 0) bridge.liveInputCount() else 0
+    // -- WP AN35 -- the host's format, as macOS effectiveInputChannels
+    val numInputs = stripInputCount(bridge)
     val rowHeight = HomeModel.sidebarRowHeight(numInputs)
     // Curve visibility lives in the bridge; magnitudesChanged announces a toggle.
     val visible = remember(curves) { (0 until ChannelMap.APP_CHANNEL_COUNT).map { bridge.channelVisible(it) } }
@@ -294,7 +294,7 @@ private fun SidebarChannels(bridge: DspiBridge, selection: SidebarSelection, onS
         SectionHeader("INPUTS")
         for (i in 0 until numInputs) {
             val ch = bridge.inputAppId(i)
-            val partner = bridge.linkedPartner(ch)
+            val partner = if (HostStrips.linked(i, numInputs, bridge.inputLinks)) bridge.pairPartner(ch) else -1
             val rowSelected = selection == SidebarSelection.Input(ch) || (partner >= 0 && selection == SidebarSelection.Input(partner))
             ChannelRow(
                 bridge = bridge,

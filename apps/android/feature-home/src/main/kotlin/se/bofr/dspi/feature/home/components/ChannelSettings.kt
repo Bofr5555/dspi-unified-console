@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -38,6 +37,7 @@ import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.feature.home.HomeModel
 import se.bofr.dspi.feature.home.observeState
 import se.bofr.dspi.feature.home.observeStatus
+import se.bofr.dspi.feature.home.stripInputCount
 import se.bofr.dspi.ui.ChannelPalette
 import se.bofr.dspi.ui.CustomSlider
 import se.bofr.dspi.ui.DspiIcons
@@ -243,9 +243,8 @@ private fun MuteLimiterColumn(bridge: DspiBridge, outputIndex: Int, isMuted: Boo
 @Composable
 fun InputRoutingPanel(bridge: DspiBridge, outputIndex: Int, modifier: Modifier = Modifier) {
     val s = bridge.observeState()
-    // liveInputCount() follows the polled active-input count.
-    val active = bridge.observeStatus { it.activeInputChannels }
-    val inputs = remember(active, s.numInputChannels) { minOf(bridge.liveInputCount(), HomeModel.BASE_MATRIX_INPUTS) }
+    // -- WP AN35 -- the strips laid out: the host's format, the polled active-input count
+    val inputs = minOf(stripInputCount(bridge), HomeModel.BASE_MATRIX_INPUTS)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         for (input in 0 until inputs) {
             InputRoutingRow(bridge, input, outputIndex, s.matrixRouting, s.matrixGain, s.matrixInvert)
