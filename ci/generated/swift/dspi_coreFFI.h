@@ -293,6 +293,20 @@ typedef void (*UniffiCallbackInterfaceHostTransportMethod2)(uint64_t, RustBuffer
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_TRANSPORT_METHOD3
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_TRANSPORT_METHOD3
+typedef void (*UniffiCallbackInterfaceHostTransportMethod3)(uint64_t, RustBuffer, uint32_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_TRANSPORT_METHOD4
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_TRANSPORT_METHOD4
+typedef void (*UniffiCallbackInterfaceHostTransportMethod4)(uint64_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LINK_LISTENER_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LINK_LISTENER_METHOD0
 typedef void (*UniffiCallbackInterfaceLinkListenerMethod0)(uint64_t, void* _Nonnull, 
@@ -365,6 +379,8 @@ typedef struct UniffiVTableCallbackInterfaceHostTransport {
     UniffiCallbackInterfaceHostTransportMethod0 _Nonnull controlIn;
     UniffiCallbackInterfaceHostTransportMethod1 _Nonnull controlOut;
     UniffiCallbackInterfaceHostTransportMethod2 _Nonnull kind;
+    UniffiCallbackInterfaceHostTransportMethod3 _Nonnull lock;
+    UniffiCallbackInterfaceHostTransportMethod4 _Nonnull unlock;
     UniffiCallbackInterfaceFree _Nonnull uniffiFree;
 } UniffiVTableCallbackInterfaceHostTransport;
 
@@ -1568,6 +1584,16 @@ void uniffi_dspi_core_fn_method_hosttransport_control_out(void*_Nonnull ptr, uin
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_HOSTTRANSPORT_KIND
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_HOSTTRANSPORT_KIND
 RustBuffer uniffi_dspi_core_fn_method_hosttransport_kind(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_HOSTTRANSPORT_LOCK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_HOSTTRANSPORT_LOCK
+void uniffi_dspi_core_fn_method_hosttransport_lock(void*_Nonnull ptr, RustBuffer reason, uint32_t timeout_ms, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_HOSTTRANSPORT_UNLOCK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_HOSTTRANSPORT_UNLOCK
+void uniffi_dspi_core_fn_method_hosttransport_unlock(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_LINKLISTENER
@@ -3619,6 +3645,18 @@ uint16_t uniffi_dspi_core_checksum_method_hosttransport_control_out(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HOSTTRANSPORT_KIND
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HOSTTRANSPORT_KIND
 uint16_t uniffi_dspi_core_checksum_method_hosttransport_kind(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HOSTTRANSPORT_LOCK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HOSTTRANSPORT_LOCK
+uint16_t uniffi_dspi_core_checksum_method_hosttransport_lock(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HOSTTRANSPORT_UNLOCK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HOSTTRANSPORT_UNLOCK
+uint16_t uniffi_dspi_core_checksum_method_hosttransport_unlock(void
     
 );
 #endif

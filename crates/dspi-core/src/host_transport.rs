@@ -68,6 +68,10 @@ pub enum HostTransportKind {
 /// transport's own timeout (about 1 s for a control transfer). A call that
 /// returns after [`HANG_LIMIT`] (10 s) ends the connection.
 ///
+/// The core's lock is held during every call: an implementation must not
+/// call the core from inside one, except [`DspiCore::host_notify`], or the
+/// core deadlocks.
+///
 /// Errors: [`DspiError::Disconnected`] when the device is gone (the
 /// connection then ends); [`DspiError::Refused`] or
 /// [`DspiError::Unsupported`] when the device stalled the request;
@@ -84,6 +88,20 @@ pub trait HostTransport: Send + Sync {
     fn control_out(&self, opcode: u8, value: u16, data: Vec<u8>) -> Result<()>;
     /// What kind of link this is. Read once, at [`DspiCore::open_host`].
     fn kind(&self) -> HostTransportKind;
+    // -- WP CG26 -- (review c4i finding 2: the hub's device lock, WP CG24)
+    /// Take the hub's device lock around a multi-step flow (a preset load, an
+    /// IR learn, a firmware install): other sessions are refused until
+    /// [`HostTransport::unlock`] or until `timeout_ms` (the lease, at most
+    /// 60 s; not a wait) runs out. A link without locks (USB, MIDI, a fake
+    /// device) succeeds at once. The core asks once per flow; its own flows
+    /// nest inside a held lock without asking again.
+    ///
+    /// Errors: [`DspiError::Locked`] while another session holds it; others
+    /// as for a transfer.
+    fn lock(&self, reason: String, timeout_ms: u32) -> Result<()>;
+    /// Give back the lock [`HostTransport::lock`] took. Also called when the
+    /// connection closes with the lock still held.
+    fn unlock(&self);
 }
 
 /// The sending side of the open host connection's notification feed.
@@ -112,7 +130,8 @@ impl DspiCore {
     /// session whose write caused it, 0 for a change at the device; `None`
     /// over USB and MIDI). From any thread; never blocks beyond a short lock.
     /// Ignored without an open host connection, for an empty packet, and
-    /// after the connection ended.
+    /// after the connection ended. Packets fed while a later `open_host`
+    /// connects go to the new connection: stop feeding the old device first.
     pub fn host_notify(&self, packet: Vec<u8>, origin: Option<u16>) {
         if packet.is_empty() {
             return;
@@ -153,6 +172,9 @@ struct Adapter {
     /// Kept so the stream ends only with the transport, never because the
     /// core replaced its sending half.
     _feed: mpsc::Sender<Attributed>,
+    // -- WP CG26 --
+    /// The host's device lock is held: given back when the transport drops.
+    locked: bool,
 }
 
 impl Adapter {
@@ -175,6 +197,7 @@ impl Adapter {
             gone: Arc::new(AtomicBool::new(false)),
             notifications: Mutex::new(Some(rx)),
             _feed: feed.clone(),
+            locked: false,
         };
         (adapter, feed)
     }
@@ -182,7 +205,7 @@ impl Adapter {
     /// Make one host call: refused at once once the host is gone, and the
     /// end of the connection when it fails with `Disconnected` or comes back
     /// too late.
-    fn call<T>(&self, opcode: u8, f: impl FnOnce(&dyn HostTransport) -> Result<T>) -> TResult<T> {
+    fn call<T>(&self, op: Op, f: impl FnOnce(&dyn HostTransport) -> Result<T>) -> TResult<T> {
         if self.gone.load(Ordering::Acquire) {
             return Err(TransportError::Disconnected);
         }
@@ -190,14 +213,14 @@ impl Adapter {
         let r = f(&*self.host);
         if started.elapsed() > self.hang_limit {
             log::warn!(
-                "the host took {:?} over opcode 0x{opcode:02X}; taken as unplugged",
+                "the host took {:?} over {op}; taken as unplugged",
                 started.elapsed()
             );
             self.gone.store(true, Ordering::Release);
             return Err(TransportError::Disconnected);
         }
         r.map_err(|e| {
-            let e = host_error(e, opcode);
+            let e = host_error(e, op);
             if matches!(e, TransportError::Disconnected) {
                 self.gone.store(true, Ordering::Release);
             }
@@ -206,7 +229,7 @@ impl Adapter {
     }
 
     fn read(&self, opcode: u8, value: u16, len: u16, exact: bool) -> TResult<Vec<u8>> {
-        let reply = self.call(opcode, |h| h.control_in(opcode, value, len))?;
+        let reply = self.call(Op::Transfer(opcode), |h| h.control_in(opcode, value, len))?;
         let wanted = usize::from(len);
         if reply.len() > wanted {
             return Err(TransportError::Malformed(format!(
@@ -227,15 +250,36 @@ impl Adapter {
 
 type TResult<T> = dspi_transport::Result<T>;
 
-/// A host's error as the transport error the layers above expect.
-fn host_error(e: DspiError, opcode: u8) -> TransportError {
-    match e {
-        DspiError::Disconnected => TransportError::Disconnected,
-        DspiError::Refused { .. } | DspiError::Unsupported => TransportError::Stalled { opcode },
-        DspiError::Locked => TransportError::Locked,
-        DspiError::Denied => TransportError::Denied(e.to_string()),
-        DspiError::Transfer { msg } => TransportError::Remote(msg),
-        other => TransportError::Remote(other.to_string()),
+/// What a host call is for, for its error and its log line.
+#[derive(Debug, Clone, Copy)]
+enum Op {
+    /// A control transfer with this opcode.
+    Transfer(u8),
+    /// `lock` or `unlock`.
+    Lock,
+}
+
+impl std::fmt::Display for Op {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Op::Transfer(opcode) => write!(f, "opcode 0x{opcode:02X}"),
+            Op::Lock => f.write_str("the device lock"),
+        }
+    }
+}
+
+/// A host's error as the transport error the layers above expect. A
+/// refusal of a transfer is a stall; of the lock, an error with its words.
+fn host_error(e: DspiError, op: Op) -> TransportError {
+    match (e, op) {
+        (DspiError::Disconnected, _) => TransportError::Disconnected,
+        (DspiError::Refused { .. } | DspiError::Unsupported, Op::Transfer(opcode)) => {
+            TransportError::Stalled { opcode }
+        }
+        (DspiError::Locked, _) => TransportError::Locked,
+        (e @ DspiError::Denied, _) => TransportError::Denied(e.to_string()),
+        (DspiError::Transfer { msg }, _) => TransportError::Remote(msg),
+        (other, _) => TransportError::Remote(other.to_string()),
     }
 }
 
@@ -249,7 +293,9 @@ impl Transport for Adapter {
     }
 
     fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> TResult<()> {
-        self.call(opcode, |h| h.control_out(opcode, value, data.to_vec()))
+        self.call(Op::Transfer(opcode), |h| {
+            h.control_out(opcode, value, data.to_vec())
+        })
     }
 
     fn descriptor(&self) -> &DeviceDescriptor {
@@ -298,6 +344,33 @@ impl Transport for Adapter {
             HostTransportKind::Link { session } => Some(session),
             _ => None,
         }
+    }
+
+    // -- WP CG26 --
+    fn lock(&mut self, reason: &str, timeout: Duration) -> TResult<()> {
+        let timeout_ms = u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX);
+        self.call(Op::Lock, |h| h.lock(reason.to_owned(), timeout_ms))?;
+        self.locked = true;
+        Ok(())
+    }
+
+    fn unlock(&mut self) {
+        if std::mem::take(&mut self.locked) {
+            let _ = self.call(Op::Lock, |h| {
+                h.unlock();
+                Ok(())
+            });
+        }
+    }
+}
+
+// -- WP CG26 --
+impl Drop for Adapter {
+    /// A connection closed with the hub's lock held gives it back, so other
+    /// sessions are not refused until its lease runs out. Not to a host that
+    /// is gone.
+    fn drop(&mut self) {
+        Transport::unlock(self);
     }
 }
 

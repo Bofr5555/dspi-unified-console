@@ -672,6 +672,12 @@ internal interface UniffiCallbackInterfaceHostTransportMethod1 : com.sun.jna.Cal
 internal interface UniffiCallbackInterfaceHostTransportMethod2 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
 }
+internal interface UniffiCallbackInterfaceHostTransportMethod3 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`reason`: RustBuffer.ByValue,`timeoutMs`: Int,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceHostTransportMethod4 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
 internal interface UniffiCallbackInterfaceLinkListenerMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
@@ -728,24 +734,30 @@ internal open class UniffiVTableCallbackInterfaceDeviceEvents(
     }
 
 }
-@Structure.FieldOrder("controlIn", "controlOut", "kind", "uniffiFree")
+@Structure.FieldOrder("controlIn", "controlOut", "kind", "lock", "unlock", "uniffiFree")
 internal open class UniffiVTableCallbackInterfaceHostTransport(
     @JvmField internal var `controlIn`: UniffiCallbackInterfaceHostTransportMethod0? = null,
     @JvmField internal var `controlOut`: UniffiCallbackInterfaceHostTransportMethod1? = null,
     @JvmField internal var `kind`: UniffiCallbackInterfaceHostTransportMethod2? = null,
+    @JvmField internal var `lock`: UniffiCallbackInterfaceHostTransportMethod3? = null,
+    @JvmField internal var `unlock`: UniffiCallbackInterfaceHostTransportMethod4? = null,
     @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
 ) : Structure() {
     class UniffiByValue(
         `controlIn`: UniffiCallbackInterfaceHostTransportMethod0? = null,
         `controlOut`: UniffiCallbackInterfaceHostTransportMethod1? = null,
         `kind`: UniffiCallbackInterfaceHostTransportMethod2? = null,
+        `lock`: UniffiCallbackInterfaceHostTransportMethod3? = null,
+        `unlock`: UniffiCallbackInterfaceHostTransportMethod4? = null,
         `uniffiFree`: UniffiCallbackInterfaceFree? = null,
-    ): UniffiVTableCallbackInterfaceHostTransport(`controlIn`,`controlOut`,`kind`,`uniffiFree`,), Structure.ByValue
+    ): UniffiVTableCallbackInterfaceHostTransport(`controlIn`,`controlOut`,`kind`,`lock`,`unlock`,`uniffiFree`,), Structure.ByValue
 
    internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceHostTransport) {
         `controlIn` = other.`controlIn`
         `controlOut` = other.`controlOut`
         `kind` = other.`kind`
+        `lock` = other.`lock`
+        `unlock` = other.`unlock`
         `uniffiFree` = other.`uniffiFree`
     }
 
@@ -823,6 +835,10 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
     }
 
 }
+
+
+
+
 
 
 
@@ -1941,6 +1957,10 @@ fun uniffi_dspi_core_checksum_method_hosttransport_control_out(
 ): Short
 fun uniffi_dspi_core_checksum_method_hosttransport_kind(
 ): Short
+fun uniffi_dspi_core_checksum_method_hosttransport_lock(
+): Short
+fun uniffi_dspi_core_checksum_method_hosttransport_unlock(
+): Short
 fun uniffi_dspi_core_checksum_method_linklistener_on_link_devices_changed(
 ): Short
 fun uniffi_dspi_core_checksum_method_linklistener_on_link_closed(
@@ -2485,6 +2505,10 @@ fun uniffi_dspi_core_fn_method_hosttransport_control_out(`ptr`: Pointer,`opcode`
 ): Unit
 fun uniffi_dspi_core_fn_method_hosttransport_kind(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_hosttransport_lock(`ptr`: Pointer,`reason`: RustBuffer.ByValue,`timeoutMs`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_hosttransport_unlock(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_clone_linklistener(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Pointer
 fun uniffi_dspi_core_fn_free_linklistener(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -3079,7 +3103,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_get_state() != 32151.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_host_notify() != 47004.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_host_notify() != 19114.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices() != 62282.toShort()) {
@@ -3464,6 +3488,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_hosttransport_kind() != 14425.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_hosttransport_lock() != 7609.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_hosttransport_unlock() != 61429.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_linklistener_on_link_devices_changed() != 16214.toShort()) {
@@ -5999,7 +6029,8 @@ public interface DspiCoreInterface {
      * session whose write caused it, 0 for a change at the device; `None`
      * over USB and MIDI). From any thread; never blocks beyond a short lock.
      * Ignored without an open host connection, for an empty packet, and
-     * after the connection ended.
+     * after the connection ended. Packets fed while a later `open_host`
+     * connects go to the new connection: stop feeding the old device first.
      */
     fun `hostNotify`(`packet`: kotlin.ByteArray, `origin`: kotlin.UShort?)
     
@@ -9389,7 +9420,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * session whose write caused it, 0 for a change at the device; `None`
      * over USB and MIDI). From any thread; never blocks beyond a short lock.
      * Ignored without an open host connection, for an empty packet, and
-     * after the connection ended.
+     * after the connection ended. Packets fed while a later `open_host`
+     * connects go to the new connection: stop feeding the old device first.
      */override fun `hostNotify`(`packet`: kotlin.ByteArray, `origin`: kotlin.UShort?)
         = 
     callWithPointer {
@@ -12183,6 +12215,10 @@ public object FfiConverterTypeDspiCore: FfiConverter<DspiCore, Pointer> {
  * transport's own timeout (about 1 s for a control transfer). A call that
  * returns after [`HANG_LIMIT`] (10 s) ends the connection.
  *
+ * The core's lock is held during every call: an implementation must not
+ * call the core from inside one, except [`DspiCore::host_notify`], or the
+ * core deadlocks.
+ *
  * Errors: [`DspiError::Disconnected`] when the device is gone (the
  * connection then ends); [`DspiError::Refused`] or
  * [`DspiError::Unsupported`] when the device stalled the request;
@@ -12209,6 +12245,25 @@ public interface HostTransport {
      */
     fun `kind`(): HostTransportKind
     
+    /**
+     * Take the hub's device lock around a multi-step flow (a preset load, an
+     * IR learn, a firmware install): other sessions are refused until
+     * [`HostTransport::unlock`] or until `timeout_ms` (the lease, at most
+     * 60 s; not a wait) runs out. A link without locks (USB, MIDI, a fake
+     * device) succeeds at once. The core asks once per flow; its own flows
+     * nest inside a held lock without asking again.
+     *
+     * Errors: [`DspiError::Locked`] while another session holds it; others
+     * as for a transfer.
+     */
+    fun `lock`(`reason`: kotlin.String, `timeoutMs`: kotlin.UInt)
+    
+    /**
+     * Give back the lock [`HostTransport::lock`] took. Also called when the
+     * connection closes with the lock still held.
+     */
+    fun `unlock`()
+    
     companion object
 }
 
@@ -12221,6 +12276,10 @@ public interface HostTransport {
  * sees no overlap. Each call must not block for long: bound it by the
  * transport's own timeout (about 1 s for a control transfer). A call that
  * returns after [`HANG_LIMIT`] (10 s) ends the connection.
+ *
+ * The core's lock is held during every call: an implementation must not
+ * call the core from inside one, except [`DspiCore::host_notify`], or the
+ * core deadlocks.
  *
  * Errors: [`DspiError::Disconnected`] when the device is gone (the
  * connection then ends); [`DspiError::Refused`] or
@@ -12360,6 +12419,44 @@ open class HostTransportImpl: Disposable, AutoCloseable, HostTransport
     
 
     
+    /**
+     * Take the hub's device lock around a multi-step flow (a preset load, an
+     * IR learn, a firmware install): other sessions are refused until
+     * [`HostTransport::unlock`] or until `timeout_ms` (the lease, at most
+     * 60 s; not a wait) runs out. A link without locks (USB, MIDI, a fake
+     * device) succeeds at once. The core asks once per flow; its own flows
+     * nest inside a held lock without asking again.
+     *
+     * Errors: [`DspiError::Locked`] while another session holds it; others
+     * as for a transfer.
+     */
+    @Throws(DspiException::class)override fun `lock`(`reason`: kotlin.String, `timeoutMs`: kotlin.UInt)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_hosttransport_lock(
+        it, FfiConverterString.lower(`reason`),FfiConverterUInt.lower(`timeoutMs`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Give back the lock [`HostTransport::lock`] took. Also called when the
+     * connection closes with the lock still held.
+     */override fun `unlock`()
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_hosttransport_unlock(
+        it, _status)
+}
+    }
+    
+    
+
+    
 
     
     
@@ -12419,6 +12516,35 @@ internal object uniffiCallbackInterfaceHostTransport {
             uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
         }
     }
+    internal object `lock`: UniffiCallbackInterfaceHostTransportMethod3 {
+        override fun callback(`uniffiHandle`: Long,`reason`: RustBuffer.ByValue,`timeoutMs`: Int,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeHostTransport.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`lock`(
+                    FfiConverterString.lift(`reason`),
+                    FfiConverterUInt.lift(`timeoutMs`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCallWithError(
+                uniffiCallStatus,
+                makeCall,
+                writeReturn,
+                { e: DspiException -> FfiConverterTypeDspiError.lower(e) }
+            )
+        }
+    }
+    internal object `unlock`: UniffiCallbackInterfaceHostTransportMethod4 {
+        override fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeHostTransport.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`unlock`(
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
 
     internal object uniffiFree: UniffiCallbackInterfaceFree {
         override fun callback(handle: Long) {
@@ -12430,6 +12556,8 @@ internal object uniffiCallbackInterfaceHostTransport {
         `controlIn`,
         `controlOut`,
         `kind`,
+        `lock`,
+        `unlock`,
         uniffiFree,
     )
 
