@@ -1,4 +1,5 @@
 #include "SmokeDriver.h"
+#include "DemoDevice.h"
 
 #include "AutoEqLibrary.h"
 #include "ConfigFiles.h"
@@ -183,7 +184,7 @@ void SmokeDriver::testState() {
     section("state");
     auto *b = m_.bridge;
     check("connected to the demo device", b->connected());
-    check("demo serial selected", b->selectedSerial() == QLatin1String("DEMO0000DSPI0001"));
+    check("demo serial selected", b->selectedSerial() == QLatin1String(DemoDevice::kSerial));
     check("demo serial listed", b->availableSerials().contains(b->selectedSerial()));
     check("compatible", b->compat() == COMPAT_OK);
     check("RP2350", b->platformName() == QLatin1String("RP2350"));
@@ -995,7 +996,7 @@ void SmokeDriver::testReconnect() {
     check("the scan reselects the demo", b->connected());
     b->disconnectDevice();
     b->rescan();
-    check("rescan finds the demo", b->connected() && b->selectedSerial() == QLatin1String("DEMO0000DSPI0001"));
+    check("rescan finds the demo", b->connected() && b->selectedSerial() == QLatin1String(DemoDevice::kSerial));
     check("factory reset", b->factoryReset() == 0);
     spin(200);
     check("after the reset", b->connected());

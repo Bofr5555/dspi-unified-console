@@ -952,18 +952,27 @@ pub fn flash_to_drive(image: Vec<u8>, drive: BootloaderDrive) -> Result<()> {
             dest.display()
         ))
     })?;
-    file.write_all(&image)
-        .map_err(|e| io(format!("writing the firmware failed: {e}")))?;
-    match file.sync_all() {
+    finish_write(&mut file, File::sync_all, &image, root, &drive.path)
+}
+
+/// Write and sync. An error with the drive gone is the board taking the last
+/// block and rebooting, the normal ending, whichever of the two it hit (a
+/// sync-mounted drive hits it in the write). Indistinguishable from a pulled
+/// cable, so it is only assumed: the caller confirms by the board coming back.
+fn finish_write<W: Write>(
+    w: &mut W,
+    sync: impl FnOnce(&W) -> std::io::Result<()>,
+    image: &[u8],
+    root: &Path,
+    drive: &str,
+) -> Result<()> {
+    match w.write_all(image).and_then(|()| sync(w)) {
         Ok(()) => Ok(()),
-        // The board took the last block and rebooted: the normal ending.
-        // Indistinguishable from a pulled cable; the caller confirms.
         Err(e) if read_info(root).is_none() => {
             log::warn!(
-                "flash_to_drive: {} bytes written to {}, drive gone during sync ({e}); \
-                 assuming the board rebooted, the caller must confirm",
+                "flash_to_drive: writing {} bytes to {drive} ended with the drive gone ({e}); \
+                 assumed the board rebooted, the caller must confirm by the board coming back",
                 image.len(),
-                drive.path
             );
             Ok(())
         }
@@ -1544,6 +1553,82 @@ garbage line
         let d = FakeDrive::new("flash-ok-2350", Some(INFO_RP2350));
         flash_to_drive(rp2350_image(), d.record(1)).unwrap();
         assert_eq!(d.written().unwrap(), rp2350_image());
+    }
+
+    /// A drive that fails after `room` bytes, going away first if `gone`.
+    struct DyingDrive<'a> {
+        info: &'a Path,
+        room: usize,
+        gone: bool,
+    }
+
+    impl Write for DyingDrive<'_> {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            if self.room == 0 {
+                if self.gone {
+                    std::fs::remove_file(self.info)?;
+                }
+                return Err(std::io::Error::other("the drive failed"));
+            }
+            let n = buf.len().min(self.room);
+            self.room -= n;
+            Ok(n)
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn wp_qd11_a_drive_gone_during_the_write_is_assumed_rebooted() {
+        let image = rp2040_image();
+        let room = image.len() / 2;
+        let d = FakeDrive::new("gone-in-write", Some(INFO_RP2040));
+        let info = d.0.join(INFO_FILE);
+        let mut w = DyingDrive {
+            info: &info,
+            room,
+            gone: true,
+        };
+        finish_write(&mut w, |_| Ok(()), &image, &d.0, "drive").unwrap();
+        assert!(!info.exists());
+    }
+
+    #[test]
+    fn wp_qd11_a_failed_write_with_the_drive_still_there_is_an_error() {
+        let image = rp2040_image();
+        let room = image.len() / 2;
+        let d = FakeDrive::new("fail-in-write", Some(INFO_RP2040));
+        let info = d.0.join(INFO_FILE);
+        let mut w = DyingDrive {
+            info: &info,
+            room,
+            gone: false,
+        };
+        let err = finish_write(&mut w, |_| Ok(()), &image, &d.0, "drive").unwrap_err();
+        assert!(matches!(err, DspiError::Io { .. }), "{err:?}");
+    }
+
+    #[test]
+    fn wp_qd11_a_sync_error_goes_the_same_way() {
+        let image = rp2040_image();
+        let d = FakeDrive::new("sync", Some(INFO_RP2040));
+        let info = d.0.join(INFO_FILE);
+        let failed = || Err(std::io::Error::other("sync failed"));
+        let mut w = DyingDrive {
+            info: &info,
+            room: image.len(),
+            gone: false,
+        };
+        let err = finish_write(&mut w, |_| failed(), &image, &d.0, "drive").unwrap_err();
+        assert!(matches!(err, DspiError::Io { .. }), "{err:?}");
+        std::fs::remove_file(&info).unwrap();
+        let mut w = DyingDrive {
+            info: &info,
+            room: image.len(),
+            gone: false,
+        };
+        finish_write(&mut w, |_| failed(), &image, &d.0, "drive").unwrap();
     }
 
     #[test]

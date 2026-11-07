@@ -2,6 +2,7 @@
 // app, without --demo (run.sh, DSPI_SMOKE_DEMO_ENTRY), since only that starts with
 // nothing connected and the demo not on the device list. testDemoLabel is on --demo.
 #include "SmokeDriver.h"
+#include "DemoDevice.h"
 
 #include "DSPiBridge.h"
 #include "DemoController.h"
@@ -17,7 +18,7 @@
 #include <QRegularExpression>
 
 namespace {
-const char *const kDemoSerial = "DEMO0000DSPI0001";
+const char *const kDemoSerial = DemoDevice::kSerial;
 
 QQuickItem *findItem(QQuickItem *from, const QString &name) {
     if (from->objectName() == name) return from;

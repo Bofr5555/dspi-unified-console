@@ -1,4 +1,5 @@
 #include "HostAudioFormat.h"
+#include "DemoDevice.h"
 #include "DSPiBridge.h"
 #include "Registrar.h"
 
@@ -16,7 +17,7 @@ namespace {
 // The USB product string is "Weeb Labs DSPi"
 const QLatin1String kToken("DSPi");
 // DSPiBridge's demo device, which no audio system knows of
-const QLatin1String kDemoSerial("DEMO0000DSPI0001");
+const QLatin1String kDemoSerial(DemoDevice::kSerial);
 // How long changes gather before one read: a playing stream changes often
 constexpr int kSettleMs = 500;
 constexpr int kMatrixInputs = 2;

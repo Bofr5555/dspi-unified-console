@@ -1,4 +1,5 @@
 #include "DemoController.h"
+#include "DemoDevice.h"
 
 #include "DSPiBridge.h"
 #include "LinkController.h"
@@ -13,7 +14,7 @@ static const Registrar::Controller<DemoController> demoRegistered("demo");
 static const Registrar::Banner demoBanner("qrc:/qml/components/DemoBanner.qml", -10);
 
 // FakeDevice::demo's serial, as in DSPiBridge.cpp
-static const char *const kDemoSerial = "DEMO0000DSPI0001";
+static const char *const kDemoSerial = DemoDevice::kSerial;
 
 DemoController::DemoController(DSPiBridge *bridge, QObject *parent)
     : QObject(parent), m_bridge(bridge)

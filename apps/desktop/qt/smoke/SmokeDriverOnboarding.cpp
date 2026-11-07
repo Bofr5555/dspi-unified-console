@@ -123,7 +123,8 @@ void SmokeDriver::testOnboarding() {
         return e.evaluate().toString();
     };
     bool cardsOk = true;
-    for (const char *phase : { "idle", "waitingForBoard", "waitingForVolume", "ready", "waitingForDevice", "verified", "failed" }) {
+    for (const char *phase : { "idle", "waitingForBoard", "waitingForVolume", "ready", "waitingForDevice", "verified", "failed",
+                               /* -- WP QD11 -- */ "checking", "waitingForDrive", "unconfirmed" }) {
         for (const char *confirmed : { "false", "true" }) {
             for (int match = 0; match <= 3; match++) {
                 for (const char *mundane : { "false", "true" }) {
@@ -133,7 +134,7 @@ void SmokeDriver::testOnboarding() {
                     const QString title = card.value(QLatin1String("title")).toString();
                     // "failed" fills in the reason, empty until a run fails
                     const QString body = card.value(QLatin1String("text")).toString();
-                    if (title.isEmpty() || (body.isEmpty() && QLatin1String(phase) != QLatin1String("failed"))
+                    if (title.isEmpty() || (body.isEmpty() && QLatin1String(phase) != QLatin1String("failed") && QLatin1String(phase) != QLatin1String("unconfirmed"))
                         || !resolved(title) || !resolved(body)) {
                         printf("smoke:   bad card: %s -> %s\n", qPrintable(js), qPrintable(eval(js)));
                         cardsOk = false;
@@ -144,7 +145,7 @@ void SmokeDriver::testOnboarding() {
     }
     check("every card has its words", cardsOk);
     bool headersOk = true;
-    for (const char *phase : { "idle", "writing", "waitingForDevice", "verified", "failed" }) {
+    for (const char *phase : { "idle", "writing", "waitingForDevice", "verified", "failed", /* -- WP QD11 -- */ "question", "unconfirmed" }) {
         for (int match = 0; match <= 3; match++) {
             const QString js = QStringLiteral("JSON.stringify(headerFor('%1', %2))").arg(QLatin1String(phase)).arg(match);
             const QJsonObject header = QJsonDocument::fromJson(eval(js).toUtf8()).object();

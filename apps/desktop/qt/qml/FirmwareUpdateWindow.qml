@@ -60,7 +60,7 @@ AppWindow {
             if (confirmed) return { icon: "search", spin: true, title: "Looking for the board",
                 text: "Waiting for it to appear in bootloader mode. If nothing happens after a few seconds, unplug the board, hold BOOTSEL, and plug it back in." }
             if (connected && !firmware.canReboot) return { icon: "plug", tint: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5), title: "Can't restart this device",
-                text: firmware.rebootBlocked + " A board already in bootloader mode can still be updated: hold BOOTSEL while plugging it in." }
+                text: firmware.rebootBlocked + (firmware.writeBlocked === "" ? " A board already in bootloader mode can still be updated: hold BOOTSEL while plugging it in." : "") }
             if (connected) return { icon: "check-circle", tint: isMacOS ? MacColors.accent : "#3a96ff", title: "Ready when you are",
                 text: "Click " + primaryTitle + " to begin. The device will restart into bootloader mode, and audio will stop until the update finishes. Nothing is written without this click." }
             return { icon: "plug", tint: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5), title: "Connect a board",
@@ -69,6 +69,7 @@ AppWindow {
             return { icon: "drive", spin: true, title: firmware.chipName + " found",
                 text: "The board is in bootloader mode. Waiting for its " + firmware.volumeName + " drive to mount - this usually takes a second or two." }
         case "ready":
+            if (firmware.writeBlocked !== "") return { icon: "plug", tint: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5), title: "The demo is open", text: firmware.writeBlocked }
             if (confirmed) return { icon: "drive", spin: true, title: "Preparing to write",
                 text: "Opening the " + firmware.chipName + "'s " + firmware.volumeName + " drive." }
             return { icon: "drive", tint: isMacOS ? MacColors.green : "#32d74b", title: firmware.chipName + " ready",
@@ -328,7 +329,7 @@ AppWindow {
                     primary: true
                     // A device that can't be restarted from here leaves only a drive to write
                     enabled: !win.confirmed && !firmware.imageLoading && firmware.imageProblem === ""
-                             && (!win.connected || firmware.canReboot || win.phase === "ready")
+                             && (!win.connected || firmware.canReboot || (win.phase === "ready" && firmware.writeBlocked === ""))
                     onClicked: win.start()
                 }
             }

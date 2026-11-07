@@ -4779,8 +4779,9 @@ uint32_t dspi_bootloader_drives(char *buf, uint32_t len);
  * `platform` comes from `dspi_bootloader_drives` (0 RP2040, 1 RP2350). The
  * image and the drive are checked before any byte goes out. Replies in JSON
  * {ok} or {ok, code, error}, and returns the length needed. `ok` means only
- * that every byte reached the drive: confirm with
- * `dspi_firmware_version_matches` once the DSPi is back.
+ * that the write ended, or that the drive went away during it, assumed to be
+ * the board rebooting: confirm with `dspi_firmware_version_matches` once the
+ * DSPi is back.
  */
 uint32_t dspi_flash_to_drive(const uint8_t *image,
                              uint32_t image_len,

@@ -89,9 +89,9 @@ Rectangle {
     // Which header the board step shows
     function headerFor(phase, match) {
         switch (phase) {
-        // -- WP QD11 -- (merge: literal, not yet in the shared board words)
-        case "unconfirmed": return "Firmware written"
-        case "question": return "One question first"
+        // -- WP QD11 --
+        case "unconfirmed": return byId(boardWords.headers, "board.unconfirmed")
+        case "question": return byId(boardWords.headers, "board.question")
         case "verified": return byId(boardWords.headers, "board.verified")
         case "failed": return byId(boardWords.headers, "board.failed")
         case "writing": case "waitingForDevice": return byId(boardWords.headers, "board.installing")
@@ -123,13 +123,13 @@ Rectangle {
             if (match === 2) return cardWords("card.update_available", { icon: "arrow-up", actionPrimary: true })
             if (match === 3) return cardWords("card.downgrade", { icon: "arrow-down-circle", tint: orange, actionPrimary: false })
             return cardWords("card.waiting", { spin: true })
-        // -- WP QD11 -- (merge: literal, not yet in the shared board words)
+        // -- WP QD11 --
         case "checking":
-            return { spin: true, title: "Checking", text: "Looking at the firmware and the board. Nothing has changed yet." }
+            return cardWords("card.checking", { spin: true })
         case "waitingForDrive":
-            return { spin: true, title: "Restarting into bootloader mode", text: "Waiting for the board's drive to appear." }
+            return cardWords("card.waiting_for_drive", { spin: true })
         case "unconfirmed":
-            return { icon: "question-circle", tint: orange, title: "Written, not confirmed", text: firmware.failure }
+            return cardWords("card.unconfirmed", { icon: "question-circle", tint: orange })
         case "waitingForVolume":
             return cardWords("card.volume_wait", { spin: true })
         case "ready":

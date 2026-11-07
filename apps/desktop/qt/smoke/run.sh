@@ -42,7 +42,9 @@ grep -q '^smoke: [0-9]* checks' "$out/log.txt" || { echo "no summary line: the d
 # repeated after 30 s into "... (and N more)", a different line each time, and
 # holds the rest back, so a dspi-capi failure polled through a run never counts
 # here: its evidence is the N in the log.
-noisy=$(grep -E '^\[.*WARN' "$out/log.txt" | sed -E 's/^\[[^ ]* *//' | sort | uniq -c | sort -rn | awk '$1 > 5')
+# -- WP QD11 -- The guard logs each accepted typed answer on purpose, and the updater's
+# tests answer many times over: that is not a call failing at the poll rate.
+noisy=$(grep -E '^\[.*WARN' "$out/log.txt" | grep -v 'risk accepted by typed confirmation' | sed -E 's/^\[[^ ]* *//' | sort | uniq -c | sort -rn | awk '$1 > 5')
 if [ -n "$noisy" ]; then
     echo "repeated core warnings:" >&2
     echo "$noisy" >&2
