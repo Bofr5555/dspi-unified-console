@@ -19500,6 +19500,18 @@ fileprivate struct FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRus
     }
 }
 /**
+ * The About table as a JSON document, wording still a draft (`draft`):
+ * `{draft, credit_lines: [{id, text}], makers: [{id, name, url, made}],
+ * links: [{id, title, detail, url}], credits: [{id, name, what, url?}]}`.
+ * `id`s are stable keys, as above. Show it as it is; it holds no legal text.
+ */
+public func aboutJson() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_about_json($0
+    )
+})
+}
+/**
  * The database at `db_path`: for the "Update Database" dialog. Reads the file.
  * Never fails: a file it cannot read is reported in
  * [`AutoEqDatabaseInfo::problem`].
@@ -19908,6 +19920,9 @@ private let initializationResult: InitializationResult = {
     let scaffolding_contract_version = ffi_dspi_core_uniffi_contract_version()
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_about_json() != 49109) {
+        return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_autoeq_database_info() != 16465) {
         return InitializationResult.apiChecksumMismatch

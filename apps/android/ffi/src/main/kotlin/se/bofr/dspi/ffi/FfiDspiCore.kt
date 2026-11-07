@@ -513,6 +513,8 @@ class FfiDspiCore : DspiCoreApi {
     override fun onboardingWhatsNewJson(): String = se.bofr.dspi.ffi.uniffi.onboardingWhatsNewJson()
 
     override fun onboardingGettingStartedJson(): String = se.bofr.dspi.ffi.uniffi.onboardingGettingStartedJson()
+
+    override fun aboutJson(): String = se.bofr.dspi.ffi.uniffi.aboutJson()
 }
 
 internal class FfiAutoEqRebuild(private val inner: se.bofr.dspi.ffi.uniffi.AutoEqRebuild) : AutoEqRebuild {

@@ -457,4 +457,6 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun onboardingWhatsNewJson(): String = throw NotImplementedError("onboarding_whats_new_json")
 
     override fun onboardingGettingStartedJson(): String = throw NotImplementedError("onboarding_getting_started_json")
+
+    override fun aboutJson(): String = throw NotImplementedError("about_json")
 }

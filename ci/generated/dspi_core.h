@@ -4982,6 +4982,14 @@ uint32_t dspi_onboarding_whats_new_json(char *buf,
 uint32_t dspi_onboarding_getting_started_json(char *buf, uint32_t len);
 
 /**
+ * The About table, as a JSON document with no `ok` wrapper: {draft, credit_lines:
+ * [{id, text}], makers: [{id, name, url, made}], links: [{id, title, detail, url}],
+ * credits: [{id, name, what, url?}]}. The wording is a draft while `draft` is true.
+ * Returns the bytes needed including the NUL, 0 for a panic.
+ */
+uint32_t dspi_about_json(char *buf, uint32_t len);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in

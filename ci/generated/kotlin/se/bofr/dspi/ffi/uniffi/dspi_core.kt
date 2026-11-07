@@ -1354,6 +1354,8 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1369,7 +1371,9 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 // when the library is loaded.
 internal interface IntegrityCheckingUniffiLib : Library {
     // Integrity check functions only
-    fun uniffi_dspi_core_checksum_func_autoeq_database_info(
+    fun uniffi_dspi_core_checksum_func_about_json(
+): Short
+fun uniffi_dspi_core_checksum_func_autoeq_database_info(
 ): Short
 fun uniffi_dspi_core_checksum_func_autoeq_import(
 ): Short
@@ -2374,6 +2378,8 @@ fun uniffi_dspi_core_fn_init_callback_vtable_rtalistener(`vtable`: UniffiVTableC
 ): Unit
 fun uniffi_dspi_core_fn_method_rtalistener_on_frame(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_func_about_json(uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_autoeq_database_info(`dbPath`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_autoeq_import(`dbPath`: RustBuffer.ByValue,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -2558,6 +2564,9 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 }
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
+    if (lib.uniffi_dspi_core_checksum_func_about_json() != 49109.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_func_autoeq_database_info() != 16465.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -19372,6 +19381,21 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
         }
     }
 }
+        /**
+         * The About table as a JSON document, wording still a draft (`draft`):
+         * `{draft, credit_lines: [{id, text}], makers: [{id, name, url, made}],
+         * links: [{id, title, detail, url}], credits: [{id, name, what, url?}]}`.
+         * `id`s are stable keys, as above. Show it as it is; it holds no legal text.
+         */ fun `aboutJson`(): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_about_json(
+        _status)
+}
+    )
+    }
+    
+
         /**
          * The database at `db_path`: for the "Update Database" dialog. Reads the file.
          * Never fails: a file it cannot read is reported in
