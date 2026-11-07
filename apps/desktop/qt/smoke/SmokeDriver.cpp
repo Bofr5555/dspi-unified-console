@@ -398,7 +398,12 @@ void SmokeDriver::testRta() {
     spin(200);
     QObject::disconnect(c);
     rta->release(id);
-    check("stops when released", waitFor(3000, [rta]() { return !rta->running(); }));
+    // -- WP CG22 -- The main window's spectrum strip holds its own subscription (output tap), so the
+    // analyser may keep running for it; what must go is ours: stopped, or no longer on the input tap
+    const bool released = waitFor(3000, [rta]() { return !rta->running() || rta->snapshot().tap != RTA_TAP_INPUT; });
+    if (released && rta->running())
+        printf("smoke: rta after release: another view's request, tap %d, %d channels\n", int(rta->snapshot().tap), int(rta->snapshot().count));
+    check("stops when released, or runs only for another view", released);
 }
 
 void SmokeDriver::testControlSurfaces() {

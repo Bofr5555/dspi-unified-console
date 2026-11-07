@@ -311,15 +311,22 @@ fn wp_q2b_disconnected_calls_fail() {
 #[test]
 fn wp_q2b_siggen_and_stats_on_the_demo_device() {
     let h = demo();
-    // The demo device has no generator: true with `supported` false, and
-    // the rest are failures that leave the records alone.
+    // -- WP CG22 -- The demo device has a generator.
     let mut caps = Box::<SiggenCaps>::default();
     assert!(dspi_siggen_fetch_caps(h, &mut *caps));
+    assert!(caps.supported);
+    // Firmware without one (an older demo): true with `supported` false, and
+    // the rest are failures that leave the records alone.
+    let old = handle();
+    assert!(dspi_demo_open_wire(old, 31));
+    let mut caps = Box::<SiggenCaps>::default();
+    assert!(dspi_siggen_fetch_caps(old, &mut *caps));
     assert!(!caps.supported);
     let cfg = SiggenConfig::default();
     let mut out = cfg;
-    assert!(!dspi_siggen_get_config(h, &mut out));
+    assert!(!dspi_siggen_get_config(old, &mut out));
     assert_eq!(out, cfg);
+    free(old);
     // The fake stalls what it does not model: either way, `out` holds a
     // record only on true.
     let mut stats = BufferStats::default();
@@ -446,7 +453,9 @@ extern "C" fn count_wake(user_data: *mut c_void) {
 
 #[test]
 fn wp_q2b_rta_on_a_device_without_an_analyser() {
-    let h = demo();
+    // -- WP CG22 -- The demo device has an analyser now; an older demo has none.
+    let h = handle();
+    assert!(dspi_demo_open_wire(h, 31));
     let wakes = Box::leak(Box::new(AtomicU32::new(0)));
     let user = std::ptr::from_ref(wakes).cast_mut().cast::<c_void>();
     dspi_rta_set_callback(h, Some(count_wake), user);
@@ -462,7 +471,7 @@ fn wp_q2b_rta_on_a_device_without_an_analyser() {
         ..Default::default()
     };
     dspi_rta_get_caps(h, &mut caps);
-    assert!(!caps.supported, "the demo device has no analyser");
+    assert!(!caps.supported, "this firmware has no analyser");
     let mut snapshot = Box::<RtaSnapshot>::default();
     dspi_rta_get_snapshot(h, &mut *snapshot);
     dspi_rta_set_callback(h, None, null_mut());
