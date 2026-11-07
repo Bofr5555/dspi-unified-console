@@ -4243,6 +4243,26 @@ uint8_t dspi_save_output_config(struct FfiCore *core);
 bool dspi_enter_bootloader(struct FfiCore *core);
 
 /**
+ * Hold the device lock across a flow of several calls, for at most
+ * `timeout_ms` (capped at 60 000), until `dspi_device_lock_release`: another
+ * DSPi Link session's commands answer locked meanwhile. Blocking over Link:
+ * call it off the UI thread. Replies in JSON {ok} or {ok, code, error}
+ * (`locked` when another session holds it) and returns the length needed. A
+ * retry with a larger buffer is harmless: an acquire while held keeps the lock.
+ */
+uint32_t dspi_device_lock_acquire(struct FfiCore *core,
+                                  const char *reason,
+                                  uint32_t timeout_ms,
+                                  char *buf,
+                                  uint32_t len);
+
+/**
+ * Release the device lock held past a call (`dspi_device_lock_acquire`, an IR
+ * learn, `dspi_enter_bootloader`). Idempotent; never blocks.
+ */
+void dspi_device_lock_release(struct FfiCore *core);
+
+/**
  * Core 1 mode (0 = idle, 1 = PDM, 2 = EQ worker), -1 on error.
  */
 int8_t dspi_fetch_core1_mode(struct FfiCore *core);

@@ -346,6 +346,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun presetChanges(): List<String> = throw NotImplementedError("preset_changes")
 
+    override fun deviceLockAcquire(reason: String, timeoutMs: Long): Unit = throw NotImplementedError("device_lock_acquire")
+
+    override fun deviceLockRelease(): Unit = throw NotImplementedError("device_lock_release")
+
     override fun rawGet(opcode: Int, value: Int, len: Int): List<Int> = throw NotImplementedError("raw_get")
 
     override fun rawSet(opcode: Int, value: Int, data: List<Int>): Unit = throw NotImplementedError("raw_set")
