@@ -91,6 +91,8 @@ void SmokeDriver::run() {
     testCsRefusals();
     // -- WP CG16 --
     testCsPages();
+    // -- WP QD2 --
+    testPairMap();
     testIdleAndCost();
     m_failures += g_qmlErrors;
     printf("smoke: %d checks, %d failures (%d QML errors)\n", m_checks, m_failures, g_qmlErrors);
