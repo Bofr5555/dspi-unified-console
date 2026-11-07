@@ -1,5 +1,5 @@
 {
- "repo_commit": "3778c72",
+ "repo_commit": "8d79dfb",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -365,6 +365,7 @@
    "crates/dspi-session/src/write.rs",
    "crates/dspi-transport/src/fake.rs",
    "crates/dspi-transport/src/fake/features.rs",
+   "crates/dspi-transport/src/fake/surfaces.rs",
    "crates/dspi-transport/src/lib.rs",
    "crates/dspi-transport/src/link.rs",
    "crates/dspi-transport/src/midi.rs",
