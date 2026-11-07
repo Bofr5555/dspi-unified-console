@@ -18,7 +18,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import se.bofr.dspi.core.FillBand
 import se.bofr.dspi.core.OutputFill
@@ -32,7 +31,7 @@ import se.bofr.dspi.feature.analysis.StatsView
 import se.bofr.dspi.feature.analysis.statsFillTag
 
 /** AN25: System Statistics over a real demo session. */
-@RunWith(RobolectricTestRunner::class)
+@RunWith(DspiRobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w900dp-h3000dp-land-mdpi")
 class OutputRingHealthAn25Test {
     @get:Rule val rule = createComposeRule()

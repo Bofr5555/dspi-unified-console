@@ -20,7 +20,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import se.bofr.dspi.link.LinkHub
 import se.bofr.dspi.usb.UsbIds
@@ -30,7 +29,7 @@ import se.bofr.dspi.usb.UsbSessionState
  * WP AN7: the strip's "Devices" menu, with a DSPi open on USB: USB, a hub, DSPi
  * Link… and demo in one list; demo is one tap away; "DSPi Link…" opens the dialog.
  */
-@RunWith(RobolectricTestRunner::class)
+@RunWith(DspiRobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w400dp-h800dp-port-mdpi")
 class DeviceListAn7UiTest {
     @get:Rule val rule = createComposeRule()

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -76,7 +77,7 @@ private fun PeqBandHudPreview() {
             val bridge = rememberFakeBridge()
             GraphView(bridge, channels = setOf(2), editable = true)
             // Select the first band so its chip shows.
-            remember { selection.setSelected(listOf(0)) }
+            SideEffect { selection.setSelected(listOf(0)) }
         }
     }
 }
