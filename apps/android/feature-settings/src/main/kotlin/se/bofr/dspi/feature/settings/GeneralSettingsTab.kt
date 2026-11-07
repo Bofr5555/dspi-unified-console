@@ -107,7 +107,9 @@ private fun AboutPage(onOpenLicenses: () -> Unit) {
         }
         if (about.links.isNotEmpty()) {
             item {
-                SettingsSection("Links & Support") {
+                // WP CG29: the heading and note are the table's; they say whose links these are.
+                SettingsSection(about.linksTitle) {
+                    about.linksNote?.let { FormCaption(it) }
                     FormCaption(
                         "DSPi Firmware and Console are free, open-source software that I develop in my spare time. " +
                             "Contributions of any kind - code, feedback, funding, or otherwise - are always immensely appreciated."

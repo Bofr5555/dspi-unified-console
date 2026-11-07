@@ -18,6 +18,8 @@
       "made": ["The unified console", "The core merge", "The Android console", "The Rust Link client"]
     }
   ],
+  "links_title": "Weeb Labs: links and support",
+  "links_note": "Weeb Labs' channels for DSPi, its firmware and the original DSPi Consoles. This console is made by Bofr5555, not Weeb Labs.",
   "links": [
     { "id": "youtube", "title": "YouTube", "detail": "Builds, demos and how-tos", "url": "https://youtube.com/weeblabs" },
     { "id": "github", "title": "GitHub", "detail": "DSPi firmware and the Consoles", "url": "https://github.com/weeblabs" },

@@ -54,14 +54,17 @@ SettingsPage {
         }
     }
 
+    // The links section's heading and note are the table's (WP CG29): they say whose
+    // links these are. The note sits above the rows, as it must be read before them.
     Repeater {
         model: [
-            { title: "Made by", rows: aboutInfo.makers },
-            { title: "Links", rows: aboutInfo.links },
-            { title: "Credits", rows: aboutInfo.credits }
+            { title: "Made by", note: "", rows: aboutInfo.makers },
+            { title: aboutInfo.linksTitle, note: aboutInfo.linksNote, rows: aboutInfo.links },
+            { title: "Credits", note: "", rows: aboutInfo.credits }
         ]
         SettingsSection {
             title: modelData.title
+            note: modelData.note
             visible: modelData.rows.length > 0
             Repeater {
                 model: modelData.rows

@@ -23,6 +23,9 @@ internal data class AboutCredit(val name: String, val what: String?, val url: St
 internal data class AboutInfo(
     val creditLines: List<String> = emptyList(),
     val makers: List<AboutMaker> = emptyList(),
+    // WP CG29: the links section's heading and note, which say whose links they are.
+    val linksTitle: String? = null,
+    val linksNote: String? = null,
     val links: List<AboutLink> = emptyList(),
     val credits: List<AboutCredit> = emptyList()
 )
@@ -40,6 +43,8 @@ internal fun parseAbout(json: String): AboutInfo {
                 AboutMaker(name, m.text("url"), m.list("made").orEmpty().filterIsInstance<String>().filter { it.isNotBlank() })
             }
         },
+        linksTitle = root.text("links_title"),
+        linksNote = root.text("links_note"),
         links = root.entries("links").mapNotNull { l ->
             l.text("title")?.let { AboutLink(l.str("id").orEmpty(), it, l.text("detail"), l.text("url")) }
         },
