@@ -624,6 +624,7 @@ dependencies = [
 name = "dspi-hub"
 version = "2.0.0-dev"
 dependencies = [
+ "data-encoding",
  "dspi-core",
  "dspi-link",
  "dspi-proto",
@@ -633,6 +634,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "tungstenite",
 ]
 
 [[package]]

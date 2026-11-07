@@ -39,9 +39,17 @@ serde_json.workspace = true
 # Bus enumeration with the vendor id, which `dspi_transport::list_devices` does
 # not report and `dspi-core` needs to tell legacy firmware. Same version as there.
 nusb = { version = "0.2", optional = true }
+# -- WP HB3 --
+# base64 for `device.snapshot`'s `bulk_b64`; the same crate `dspi-link` reads it with.
+data-encoding = "2"
 
 [dev-dependencies]
 dspi-transport = { path = "../dspi-transport", default-features = false, features = ["link"] }
+# -- WP HB3 --
+# tests/wp_hb3_meter_feed.rs: C15's own client, in `DspiCore`, over a small test server
+# until HB1's is there. Same pin as dspi-link.
+dspi-core = { workspace = true, features = ["link"] }
+tungstenite = { version = "=0.30.0", default-features = false, features = ["handshake"] }
 
 [[test]]
 name = "wp_hb0_app_path"
