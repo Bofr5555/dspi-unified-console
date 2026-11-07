@@ -92,6 +92,32 @@ QVariantList clockDiagRows(const QJsonObject &reply) {
     if (has("fb_q16")) row("USB Feedback", QString::number(num("fb_q16") / 65536.0, 'f', 4) + " samples/frame");
     return rows;
 }
+
+// -- WP QD29 --
+// A JSON read, or what the smoke driver gave instead. Runs on the worker.
+QJsonObject readJson(const std::function<QByteArray()> &hook, uint32_t (*read)(FfiCore *, char *, uint32_t), FfiCore *core) {
+    if (hook) return QJsonDocument::fromJson(hook()).object();
+    QByteArray buf(4096, '\0');
+    const uint32_t needed = read(core, buf.data(), uint32_t(buf.size()));
+    if (needed == 0 || needed > uint32_t(buf.size())) return {};
+    return QJsonDocument::fromJson(buf.left(int(needed - 1))).object();
+}
+
+// A fill row's levels. The trace reads `fill` too, where 0xFF means absent;
+// firmware without the ring's scale can pass 100, so the value is held below that.
+QVariantList outputFillRows(const QJsonArray &fills) {
+    QVariantList rows;
+    for (const QJsonValue &v : fills) {
+        const QJsonObject o = v.toObject();
+        rows.append(QVariantMap {
+            { "fill", qBound(0, qRound(o.value(QLatin1String("fillPct")).toDouble()), StatsController::Absent - 1) },
+            { "min", o.value(QLatin1String("minPct")).toInt() },
+            { "max", o.value(QLatin1String("maxPct")).toInt() },
+            { "band", o.value(QLatin1String("band")).toString() },
+        });
+    }
+    return rows;
+}
 }
 
 StatsController::StatsController(DSPiBridge *bridge, QObject *parent)
@@ -129,6 +155,10 @@ void StatsController::onDeviceChanged() {
     emit buffersChanged();
     m_generation++;
     setClockDiag({});
+    // -- WP QD29 --
+    setRingHealth({});
+    m_outputFills.clear();
+    m_outputFillsAnswered = false;
     if (!serial.isEmpty()) {
         if (m_seenDevice) m_reconnects++;
         m_seenDevice = true;
@@ -250,6 +280,7 @@ void StatsController::pollSlow() {
 
     if (m != m_info) { m_info = m; emit infoChanged(); }
     pollClockDiag();
+    pollRingHealth();   // -- WP QD29 --
 }
 
 // -- WP QD5 --
@@ -285,17 +316,72 @@ void StatsController::setClockDiag(const QVariantList &rows) {
     emit clockDiagChanged();
 }
 
+// -- WP QD29 -- Seven transfers: the slow rate. A failed read says nothing about the
+// rings, so it keeps the last values; only {"value":null} means no such status.
+void StatsController::pollRingHealth() {
+    if (m_ringHealthBusy) return;
+    m_ringHealthBusy = true;
+    const unsigned generation = m_generation;
+    m_worker.start(QRunnable::create([this, core = m_core, hook = m_ringHealthHook, generation]() {
+        const QJsonObject o = readJson(hook, dspi_fetch_ring_health, core);
+        const bool answered = o.value(QLatin1String("ok")).toBool();
+        QVariantMap health;
+        if (answered && o.contains(QLatin1String("targetFrames"))) {
+            health = o.toVariantMap();
+            health.remove(QStringLiteral("ok"));
+            if (o.value(QLatin1String("lowestFill")).isNull()) health.remove(QStringLiteral("lowestFill"));
+        }
+        QMetaObject::invokeMethod(this, [this, answered, health, generation]() {
+            m_ringHealthBusy = false;
+            if (answered && m_generation == generation) setRingHealth(health);
+        }, Qt::QueuedConnection);
+    }));
+}
+
+void StatsController::setRingHealth(const QVariantMap &health) {
+    if (health == m_ringHealth) return;
+    m_ringHealth = health;
+    emit ringHealthChanged();
+}
+
+// Two transfers. pollFast merges the result on its next tick. A failed read keeps the
+// last fills; with none yet, the rows show the buffer read's own numbers.
+void StatsController::pollOutputFills() {
+    if (m_outputFillsBusy) return;
+    m_outputFillsBusy = true;
+    const unsigned generation = m_generation;
+    m_worker.start(QRunnable::create([this, core = m_core, hook = m_outputFillsHook, generation]() {
+        const QJsonObject o = readJson(hook, dspi_fetch_output_fills, core);
+        const bool ok = o.value(QLatin1String("ok")).toBool();
+        const QVariantList rows = ok ? outputFillRows(o.value(QLatin1String("value")).toArray()) : QVariantList();
+        QMetaObject::invokeMethod(this, [this, ok, rows, generation]() {
+            m_outputFillsBusy = false;
+            if (m_generation != generation) return;
+            m_outputFillsAnswered = true;
+            if (ok) m_outputFills = rows;
+        }, Qt::QueuedConnection);
+    }));
+}
+
 void StatsController::pollFast() {
     if (m_serial.isEmpty()) {
         if (!m_buffers.isEmpty()) { m_buffers.clear(); emit buffersChanged(); }
         return;
     }
+    // -- WP QD29 -- No rows until the first reply: at the lowest latency the buffer
+    // read's own percentages read as an empty ring.
+    pollOutputFills();
+    if (!m_outputFillsAnswered) return;
+
     BufferStats b {};
     if (!dspi_fetch_buffer_stats(m_core, &b)) return;
+    const auto liveFill = [this, &b](int i) {   // -- WP QD29 --
+        return i < m_outputFills.size() ? quint8(m_outputFills[i].toMap().value("fill").toInt()) : b.spdif[i].fill_pct;
+    };
 
     // History: one sample per poll and series, newest at the end
     quint8 sample[SeriesCount];
-    for (int i = 0; i < 4; i++) sample[i] = i < b.num_spdif ? b.spdif[i].fill_pct : Absent;
+    for (int i = 0; i < 4; i++) sample[i] = i < b.num_spdif ? liveFill(i) : Absent;
     sample[PdmDma] = b.pdm_active ? b.pdm.dma_fill_pct : Absent;
     sample[PdmRing] = b.pdm_active ? b.pdm.ring_fill_pct : Absent;
     for (int s = 0; s < SeriesCount; s++) {
@@ -308,8 +394,11 @@ void StatsController::pollFast() {
     m["pdmActive"] = b.pdm_active;
     m["streaming"] = b.streaming;
     QVariantList rows;
-    for (int i = 0; i < b.num_spdif; i++)
-        rows.append(QVariantMap{ { "fill", b.spdif[i].fill_pct }, { "min", b.spdif[i].min_pct }, { "max", b.spdif[i].max_pct } });
+    for (int i = 0; i < b.num_spdif; i++) {
+        // -- WP QD29 --
+        if (i < m_outputFills.size()) rows.append(m_outputFills[i]);
+        else rows.append(QVariantMap{ { "fill", b.spdif[i].fill_pct }, { "min", b.spdif[i].min_pct }, { "max", b.spdif[i].max_pct } });
+    }
     m["spdif"] = rows;
     m["pdmDma"] = QVariantMap{ { "fill", b.pdm.dma_fill_pct }, { "min", b.pdm.dma_min_pct }, { "max", b.pdm.dma_max_pct } };
     m["pdmRing"] = QVariantMap{ { "fill", b.pdm.ring_fill_pct }, { "min", b.pdm.ring_min_pct }, { "max", b.pdm.ring_max_pct } };
@@ -321,6 +410,7 @@ void StatsController::pollFast() {
 void StatsController::resetWatermarks() {
     if (!m_serial.isEmpty() && m_bridge->writable()) dspi_reset_buffer_stats(m_core);   // -- WP QD6 --
     pollFast();
+    if (!m_serial.isEmpty()) pollRingHealth();  // -- WP QD29 -- Its watermarks reset too
 }
 
 // ── BufferTraceItem ──
