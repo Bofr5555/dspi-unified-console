@@ -2690,10 +2690,10 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_close_fd() != 20694.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_config_export() != 25628.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_config_export() != 43963.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_config_import() != 62376.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_config_import() != 51763.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_copy_preset() != 46555.toShort()) {
@@ -2858,10 +2858,10 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_upmix_status() != 65322.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_filters_export() != 47170.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_filters_export() != 47242.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_filters_import() != 39069.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_filters_import() != 52068.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_filters_inspect() != 49082.toShort()) {
@@ -4872,11 +4872,16 @@ public interface DspiCoreInterface {
     fun `closeFd`()
     
     /**
-     * The device configuration (the mirror; defaults while disconnected)
-     * as a `.dspipreset` document: schema 1, pretty-printed JSON with
-     * sorted keys. `name` and `app_version` go into `meta`; `links` = the
-     * app's input-pair link mask (bit p = pair p), which the firmware does
-     * not hold. Never fails.
+     * The device configuration (the mirror) as a `.dspipreset` document:
+     * schema 1, pretty-printed JSON with sorted keys. `name` and `app_version`
+     * go into `meta`; `links` = the app's input-pair link mask (bit p = pair
+     * p), which the firmware does not hold.
+     *
+     * A read-only device of an older wire format exports what that format
+     * carries, and the keys it lacks are left out. There is nothing to export
+     * without a device's state: [`crate::DspiError::Disconnected`] with no
+     * device, [`crate::DspiError::Unsupported`] for firmware whose image cannot
+     * be mapped, and [`crate::DspiError::Transfer`] when it has not been read.
      */
     fun `configExport`(`name`: kotlin.String, `appVersion`: kotlin.String, `links`: kotlin.UByte): kotlin.String
     
@@ -4889,11 +4894,13 @@ public interface DspiCoreInterface {
      * `ok` false with `error` for a file that is not a document of this
      * schema, or when the device could not be written (disconnected,
      * read-only firmware, transfer failure; the mirror is then left as it
-     * was). On success `lines` is the report for the user, `clean` is false
-     * when channels or settings were left out, `links` the input-pair link
-     * mask to restore (null when the document has none) and
-     * `hardwareWritten` whether I/O was written outside a preset (save the
-     * output config to keep it).
+     * was). A setting the document holds no value for keeps the device's
+     * value, an `eq` or `crossover` with no entries leaves that bank alone,
+     * and `leftAlone` names them by JSON key. On success `lines` is the report
+     * for the user, `clean` is false when channels or settings were left out,
+     * `links` the input-pair link mask to restore (null when the document has
+     * none) and `hardwareWritten` whether I/O was written outside a preset
+     * (save the output config to keep it).
      */
     fun `configImport`(`text`: kotlin.String, `options`: kotlin.UInt): kotlin.String
     
@@ -5516,14 +5523,16 @@ public interface DspiCoreInterface {
      * Every channel's filters as a filter text file (format 2): the first
      * `inputs` live inputs with their preamp and PEQ bands, then every
      * output with its PEQ and crossover bands and enable state. Reads the
-     * mirror; never fails.
+     * mirror; refused as [`DspiCore::config_export`] is when it holds no
+     * device's state.
      */
     fun `filtersExport`(`inputs`: kotlin.UByte): kotlin.String
     
     /**
      * Apply a filter file to the channels in `wires` (wire indices; other
      * channels in the file are ignored) through the band, preamp and
-     * output-enable setters. Returns JSON `{ok, error, lines}`: `ok` false
+     * output-enable setters. A section with no lines for a bank leaves that
+     * bank alone, and the report says so. Returns JSON `{ok, error, lines}`: `ok` false
      * with `error` when the file is over [`MAX_FILE_BYTES`] or the device
      * could not be written (disconnected, read-only firmware, transfer
      * failure; channels written before a failure stay written).
@@ -7248,15 +7257,21 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
-     * The device configuration (the mirror; defaults while disconnected)
-     * as a `.dspipreset` document: schema 1, pretty-printed JSON with
-     * sorted keys. `name` and `app_version` go into `meta`; `links` = the
-     * app's input-pair link mask (bit p = pair p), which the firmware does
-     * not hold. Never fails.
-     */override fun `configExport`(`name`: kotlin.String, `appVersion`: kotlin.String, `links`: kotlin.UByte): kotlin.String {
+     * The device configuration (the mirror) as a `.dspipreset` document:
+     * schema 1, pretty-printed JSON with sorted keys. `name` and `app_version`
+     * go into `meta`; `links` = the app's input-pair link mask (bit p = pair
+     * p), which the firmware does not hold.
+     *
+     * A read-only device of an older wire format exports what that format
+     * carries, and the keys it lacks are left out. There is nothing to export
+     * without a device's state: [`crate::DspiError::Disconnected`] with no
+     * device, [`crate::DspiError::Unsupported`] for firmware whose image cannot
+     * be mapped, and [`crate::DspiError::Transfer`] when it has not been read.
+     */
+    @Throws(DspiException::class)override fun `configExport`(`name`: kotlin.String, `appVersion`: kotlin.String, `links`: kotlin.UByte): kotlin.String {
             return FfiConverterString.lift(
     callWithPointer {
-    uniffiRustCall() { _status ->
+    uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_config_export(
         it, FfiConverterString.lower(`name`),FfiConverterString.lower(`appVersion`),FfiConverterUByte.lower(`links`),_status)
 }
@@ -7275,11 +7290,13 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * `ok` false with `error` for a file that is not a document of this
      * schema, or when the device could not be written (disconnected,
      * read-only firmware, transfer failure; the mirror is then left as it
-     * was). On success `lines` is the report for the user, `clean` is false
-     * when channels or settings were left out, `links` the input-pair link
-     * mask to restore (null when the document has none) and
-     * `hardwareWritten` whether I/O was written outside a preset (save the
-     * output config to keep it).
+     * was). A setting the document holds no value for keeps the device's
+     * value, an `eq` or `crossover` with no entries leaves that bank alone,
+     * and `leftAlone` names them by JSON key. On success `lines` is the report
+     * for the user, `clean` is false when channels or settings were left out,
+     * `links` the input-pair link mask to restore (null when the document has
+     * none) and `hardwareWritten` whether I/O was written outside a preset
+     * (save the output config to keep it).
      */override fun `configImport`(`text`: kotlin.String, `options`: kotlin.UInt): kotlin.String {
             return FfiConverterString.lift(
     callWithPointer {
@@ -8476,11 +8493,13 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * Every channel's filters as a filter text file (format 2): the first
      * `inputs` live inputs with their preamp and PEQ bands, then every
      * output with its PEQ and crossover bands and enable state. Reads the
-     * mirror; never fails.
-     */override fun `filtersExport`(`inputs`: kotlin.UByte): kotlin.String {
+     * mirror; refused as [`DspiCore::config_export`] is when it holds no
+     * device's state.
+     */
+    @Throws(DspiException::class)override fun `filtersExport`(`inputs`: kotlin.UByte): kotlin.String {
             return FfiConverterString.lift(
     callWithPointer {
-    uniffiRustCall() { _status ->
+    uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_filters_export(
         it, FfiConverterUByte.lower(`inputs`),_status)
 }
@@ -8493,7 +8512,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     /**
      * Apply a filter file to the channels in `wires` (wire indices; other
      * channels in the file are ignored) through the band, preamp and
-     * output-enable setters. Returns JSON `{ok, error, lines}`: `ok` false
+     * output-enable setters. A section with no lines for a bank leaves that
+     * bank alone, and the report says so. Returns JSON `{ok, error, lines}`: `ok` false
      * with `error` when the file is over [`MAX_FILE_BYTES`] or the device
      * could not be written (disconnected, read-only firmware, transfer
      * failure; channels written before a failure stay written).

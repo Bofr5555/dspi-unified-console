@@ -26,6 +26,8 @@ pub use mock::MockTransport;
 // -- WP CG3 --
 #[cfg(feature = "usb")]
 pub use usb::{UsbTransport, list_devices};
+// -- WP WB1 --
+pub mod clock;
 // Work-package sections: add re-exports only inside your own section.
 // -- WP T1 --
 // -- WP T2 --
@@ -354,7 +356,7 @@ pub fn with_busy_retry<T>(
             Err(e) => return Err(e),
         }
         if i < BUSY_RETRIES {
-            std::thread::sleep(BUSY_BACKOFF);
+            clock::sleep(BUSY_BACKOFF);
         }
     }
     // Exhausted: a timeout is reported with the retries spent, so an outer

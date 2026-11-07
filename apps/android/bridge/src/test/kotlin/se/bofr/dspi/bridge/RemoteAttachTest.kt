@@ -53,6 +53,30 @@ class RemoteAttachTest {
     }
 
     @Test
+    fun wpAn3AnInterruptedSessionKeepsTheMirrorAndRefusesWrites() = runTest {
+        val core = linked()
+        val b = newBridge(core)
+        b.attachRemote(0, core.serial)
+        runCurrent()
+        val events = collectEvents(b)
+        val masterBefore = b.masterVolumeDB
+        b.setRemoteInterrupted(true)
+        assertTrue("the device stays selected", b.connected)
+        assertEquals(core.serial, b.selectedSerial)
+        assertEquals(masterBefore, b.masterVolumeDB)
+        assertFalse(b.writesAllowed.value)
+        val mark = core.callCount("setUserMute")
+        b.setUserMute(true)
+        runCurrent()
+        assertEquals("nothing reaches the core, nothing is queued", mark, core.callCount("setUserMute"))
+        assertEquals(WritesNotAllowedException.NOT_CONNECTED, events.filterIsInstance<BridgeEvent.CommandFailed>().last().error.message)
+        b.setRemoteInterrupted(false)
+        assertTrue(b.writesAllowed.value)
+        runCurrent()
+        assertEquals("not replayed", mark, core.callCount("setUserMute"))
+    }
+
+    @Test
     fun attachFailsCleanlyWithoutASession() = runTest {
         val core = FakeDspiCore().apply { closeFd() }
         val b = newBridge(core)

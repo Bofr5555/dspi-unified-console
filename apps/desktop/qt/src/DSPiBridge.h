@@ -49,6 +49,11 @@ class DSPiBridge : public QObject
     Q_PROPERTY(QString firmwareVersion READ firmwareVersion NOTIFY stateChanged)
     Q_PROPERTY(int compat READ compat NOTIFY stateChanged)
     Q_PROPERTY(QString compatMessage READ compatMessage NOTIFY stateChanged)
+    // Connected to firmware this Console may write to. Every control that changes
+    // the device is off otherwise; reads, clearing clips and the bootloader go on.
+    Q_PROPERTY(bool writable READ writable NOTIFY writableChanged)
+    // WIRE_FEAT_* of the connected firmware's wire format; all of them with no device
+    Q_PROPERTY(int wireFeatures READ wireFeatures NOTIFY stateChanged)
     Q_PROPERTY(float maxDelayMs READ maxDelayMs NOTIFY stateChanged)
 
     // Global
@@ -146,6 +151,11 @@ public:
     QString firmwareVersion() const;
     int compat() const;
     QString compatMessage() const;
+    bool writable() const { return m_writable; }
+    int wireFeatures() const;
+    // A feature of this firmware's wire format: psybass, upmix, subharm, tube or
+    // limiter. Features firmware lacks are hidden.
+    Q_INVOKABLE bool firmwareHas(const QString &feature) const;
     float maxDelayMs() const;
 
     float preampDB() const;
@@ -191,7 +201,7 @@ public:
     bool levellerLookahead() const { return state()->leveller_lookahead; }
     int levellerDetectorMask() const { return state()->leveller_detector_mask; }
     int levellerApplyMask() const { return state()->leveller_apply_mask; }
-    bool upmixSupported() const { return usable() && state()->platform_id == 1; }
+    bool upmixSupported() const { return connected() && state()->platform_id == 1 && firmwareHas(QStringLiteral("upmix")); }
     QVariantList upmixParams() const { return floatList(state()->upmix, UPMIX_PARAM_COUNT); }
     QVariantList subharmParams() const { return floatList(state()->subharm, SUBHARM_PARAM_COUNT); }
     bool subharmSolo() const { return state()->subharm_solo; }
@@ -432,6 +442,10 @@ public:
     Q_INVOKABLE bool canPaste() const;
     Q_INVOKABLE void pasteChannel(int ch);
 
+    // Open the demo device as firmware of this wire format from now on (0 is its
+    // own, V32). For the read-only tests: selectDevice uses it.
+    void setDemoWire(int wire) { m_demoWire = wire; }
+
     // The core, for the spectrum analyser controller
     FfiCore *core() const { return m_core; }
 
@@ -439,8 +453,17 @@ public:
     uint8_t inputLinks() const { return m_links; }
     void restoreInputLinks(uint8_t links);
     void markHardwareUnsaved();
-    // Everything changed outside the setters: redraw from the core's state
+    // Everything changed outside the setters: redraw from the core's state. Also
+    // for after a Link reconnect, which reads the device again by itself.
     void refreshAll();
+
+    // A device somebody else opened and read on this core (a Link device): show it,
+    // as selectDevice shows what it opens. No traffic.
+    void adoptDevice(const QString &serial);
+    // A hub session is up, bound or still choosing: scans keep to themselves, so a
+    // USB device doesn't take over from it. An explicit selectDevice still works.
+    // On the way down, a device the session left closed goes from the UI.
+    void setHubSession(bool active);
 
     // Magnitude curve access for C++ BodePlotItem (app ids)
     void getMagnitudeCurve(int ch, double *out);
@@ -465,6 +488,10 @@ public:
     Q_INVOKABLE void setChannelVisible(int ch, bool visible);
 
 signals:
+    // About to open, reopen or drop a device, before any of it happens. A
+    // controller with writes queued stops them here: the next device gets none.
+    void deviceChanging();
+    void writableChanged();
     void stateChanged();
     void statusChanged();
     void devicesChanged();
@@ -498,6 +525,12 @@ private:
     QStringList m_availableSerials;
     int m_inaccessible = 0;
     bool m_demo = false;
+    int m_demoWire = 0;
+    bool m_writable = false;
+    void updateWritable();
+    bool m_hubSession = false;
+    void resetForDevice(const QString &serial);
+    void showOpenedDevice();
     QStringList listSerials();
     void updateInaccessible();
     QTimer *m_statusTimer = nullptr;

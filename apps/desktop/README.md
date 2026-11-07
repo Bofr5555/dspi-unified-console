@@ -214,23 +214,23 @@ lists below are for Qt 5:
 ```
 # Fedora
 sudo dnf install cmake gcc-c++ qt5-qtbase-devel qt5-qtdeclarative-devel \
-    qt5-qtquickcontrols2-devel qt5-qtsvg qt5-qtwayland kf5-kwindowsystem-devel
+    qt5-qtquickcontrols2-devel qt5-qtsvg qt5-qtwayland kf5-kwindowsystem-devel alsa-lib-devel
 
 # Debian / Ubuntu
 sudo apt install build-essential cmake pkg-config qtbase5-dev \
-    qtdeclarative5-dev qtquickcontrols2-5-dev libqt5svg5 qtwayland5 libkf5windowsystem-dev \
+    qtdeclarative5-dev qtquickcontrols2-5-dev libqt5svg5 qtwayland5 libkf5windowsystem-dev libasound2-dev \
     qml-module-qtquick2 qml-module-qtquick-window2 qml-module-qtquick-layouts \
     qml-module-qtquick-controls2 qml-module-qtquick-templates2 qml-module-qt-labs-settings \
     qml-module-qt-labs-platform
 
 # Arch
-sudo pacman -S cmake qt5-base qt5-declarative qt5-quickcontrols2 qt5-svg qt5-wayland kwindowsystem5
+sudo pacman -S cmake qt5-base qt5-declarative qt5-quickcontrols2 qt5-svg qt5-wayland kwindowsystem5 alsa-lib
 ```
 
 Then, from the repository root:
 
 ```
-cargo build --release -p dspi-capi            # Rust core and crates/dspi-capi/include/dspi_core.h
+cargo build --release -p dspi-capi --features link,midir,mdns            # Rust core and crates/dspi-capi/include/dspi_core.h
 cmake -S apps/desktop/qt -B apps/desktop/qt/build -DCMAKE_BUILD_TYPE=Release
 cmake --build apps/desktop/qt/build -j"$(nproc)"
 ./apps/desktop/qt/build/DSPiConsole           # --demo runs on a simulated device

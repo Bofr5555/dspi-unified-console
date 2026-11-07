@@ -31,7 +31,9 @@
 //! Owned by WP C7 (docs/core-merge/PLAN.md).
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use dspi_transport::clock::Instant;
 
 use dspi_proto::generated::{self as g, notify as nfy};
 use dspi_session::notify::{Event, Notification, Source};
@@ -250,7 +252,7 @@ impl DspiCore {
         let spawned = std::thread::Builder::new()
             .name("dspi-refresh-retry".into())
             .spawn(move || {
-                std::thread::sleep(delay);
+                dspi_transport::clock::sleep(delay);
                 listeners.notify.call(|l| l.on_notifications());
             });
         if let Err(e) = spawned {

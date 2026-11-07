@@ -53,7 +53,7 @@ Rectangle {
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         onClicked: {
             if (mouse.button === Qt.RightButton) rowRoot.openContextMenu(mouse.x, mouse.y)
-            else if (mouse.modifiers & Qt.AltModifier) rowRoot.startRename()
+            else if (mouse.modifiers & Qt.AltModifier) { if (bridge.writable) rowRoot.startRename() }   // -- WP QD6 --
             else rowRoot.clicked()
         }
     }
@@ -142,13 +142,13 @@ Rectangle {
 
     function openContextMenu(px, py) {
         contextMenu.items = [
-            { key: "rename", text: "Rename", icon: "pencil", shortcut: "Alt+Click" },
+            { key: "rename", text: "Rename", icon: "pencil", shortcut: "Alt+Click", enabled: bridge.writable },
             { separator: true },
             { key: "copy", text: "Copy Parameters", icon: "copy" },
-            { key: "paste", text: "Paste Parameters", icon: "paste", enabled: bridge.canPaste() }
+            { key: "paste", text: "Paste Parameters", icon: "paste", enabled: bridge.canPaste() && bridge.writable }
         ]
         // Outputs: play their channel number (the signal generator's Channel ID)
-        if (!bridge.isInputChannel(channelIndex) && bridge.connected && siggen.supported) {
+        if (!bridge.isInputChannel(channelIndex) && bridge.writable && siggen.supported) {
             contextMenu.items = contextMenu.items.concat([
                 { separator: true },
                 { key: "identify", text: "Identify", icon: "identify" }

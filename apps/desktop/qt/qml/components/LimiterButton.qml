@@ -45,7 +45,7 @@ Rectangle {
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         onClicked: {
             if (mouse.button === Qt.RightButton) btn.openSettings()
-            else bridge.setLimiterEnabled(btn.outputIndex, !btn.enabled_)
+            else if (bridge.writable) bridge.setLimiterEnabled(btn.outputIndex, !btn.enabled_)   // -- WP QD6 --
         }
         ToolTip.visible: containsMouse && !popup.visible
         ToolTip.delay: 600
@@ -125,6 +125,7 @@ Rectangle {
         }
 
         contentItem: Column {
+            enabled: bridge.writable   // -- WP QD6 -- read-only firmware: its values, not its controls
             spacing: 10
 
             // Header: icon, title + status, on/off

@@ -16,7 +16,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use dspi_transport::clock::Instant;
 
 use dspi_transport::NotificationSource;
 
@@ -724,7 +726,7 @@ impl Notifications {
                         // A stall or a transient error: give the bus a
                         // moment rather than spinning.
                         Err(_) => {
-                            std::thread::sleep(Duration::from_millis(50));
+                            dspi_transport::clock::sleep(Duration::from_millis(50));
                             continue;
                         }
                     };

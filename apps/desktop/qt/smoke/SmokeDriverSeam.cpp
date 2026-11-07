@@ -112,7 +112,8 @@ void SmokeDriver::testSeam() {
     check("QD0: QML sees the controller", qmlType("seamProbe") == QLatin1String("object"));
     check("QD0: QML can test for one not there", qmlType("noSuchController") == QLatin1String("undefined"));
     check("QD0: banners sorted by order",
-          context->contextProperty(QStringLiteral("registeredBanners")).toStringList()
+          // -- WP QD8 -- Other WPs' banners register too: these two's order is the test
+          context->contextProperty(QStringLiteral("registeredBanners")).toStringList().filter(QStringLiteral("/smoke/SeamProbe"))
               == QStringList({ QStringLiteral("qrc:/smoke/SeamProbeTopBanner.qml"), QStringLiteral("qrc:/smoke/SeamProbeBanner.qml") }));
 
     auto *host = root()->findChild<QQuickItem *>(QStringLiteral("bannerHost"));

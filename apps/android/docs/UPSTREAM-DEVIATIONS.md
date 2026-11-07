@@ -1004,10 +1004,11 @@ Reference: DSPi-Console `release/v1.1.6` (`9a42965`) `Link/` and
 7. **Pairing prompt** is a non-modal dialog (engine state) instead of
    `NSAlert.runModal()`; wording: macOS `PairingPrompt` for a Console hub's
    window PIN, spec 6.2 for the others ("Enter the PIN shown on the hub.",
-   "Enter the hub's PIN."). A PIN typed after the hub's 30 s deadline goes
-   over the next connection, as on macOS (`pendingPIN`).
-8. **No reconnect after 4000 / 4002**; 4002 also drops the stored token
-   (macOS reconnects and then prompts).
+   "Enter the hub's PIN."). A PIN typed after the hub's 30 s deadline dials
+   again inside `link_pair`, as macOS's `pendingPIN` does in effect.
+8. **After 4002** the core asks for a PIN at once and the stored token goes,
+   with no reconnect first (macOS reconnects and then prompts). After 4000
+   the session ends.
 9. **Viewer role** makes the whole bridge read-only (G1 style, "view only"
    in the strip) instead of greying controls per `policy.denied` row. A
    `control` session that sends a config-class command gets DENIED from the

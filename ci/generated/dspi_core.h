@@ -2118,6 +2118,31 @@
 #define COMPAT_FIRMWARE_TOO_NEW 3
 
 /**
+ * `dspi_wire_features`: psychoacoustic bass (V23).
+ */
+#define WIRE_FEAT_PSYBASS (1 << 6)
+
+/**
+ * `dspi_wire_features`: stereo upmixer (V25).
+ */
+#define WIRE_FEAT_UPMIX (1 << 8)
+
+/**
+ * `dspi_wire_features`: subharmonic synthesizer (V29).
+ */
+#define WIRE_FEAT_SUBHARM (1 << 11)
+
+/**
+ * `dspi_wire_features`: tube modeller (V31).
+ */
+#define WIRE_FEAT_TUBE (1 << 13)
+
+/**
+ * `dspi_wire_features`: output limiter (V32).
+ */
+#define WIRE_FEAT_LIMITER (1 << 14)
+
+/**
  * Filter types (firmware config.h `enum FilterType`). Value space: 0..13 PEQ
  * types, 14..31 reserved, 32..63 crossover types (only valid in crossover
  * bands), 64+ reserved.
@@ -4445,6 +4470,10 @@ void dspi_monitor_clear(struct FfiCore *core);
 /**
  * The device's configuration as a `.dspipreset` document. `links` = the
  * app's input-pair link mask. Returns the length needed.
+ *
+ * With no device's state to export, the text is instead the JSON failure reply
+ * `{"ok":false,"code":<kind>,"error":<sentence>}`: a document has no `ok` key.
+ * Check before writing it to a file.
  */
 uint32_t dspi_config_export(struct FfiCore *core,
                             const char *name,
@@ -4475,7 +4504,9 @@ uint32_t dspi_config_import(struct FfiCore *core,
                             uint32_t len);
 
 /**
- * Every channel's filters as a text file (`inputs` = live inputs to write).
+ * Every channel's filters as a text file (`inputs` = live inputs to write),
+ * or the JSON failure reply as [`dspi_config_export`] gives it: a filter file
+ * starts with `#`.
  */
 uint32_t dspi_filters_export(struct FfiCore *core, uint8_t inputs, char *buf, uint32_t len);
 
@@ -4565,6 +4596,25 @@ bool dspi_fetch_crossfeed_pair_map(struct FfiCore *core, uint8_t *out, uint32_t 
 uint8_t dspi_set_crossfeed_pair_map(struct FfiCore *core, const uint8_t *map, uint32_t map_len);
 
 /**
+ * Whether `map` (`map_len` 4 bytes) is a pair map the firmware takes on a
+ * platform with `num_pairs` stereo pairs: the rule
+ * `dspi_set_crossfeed_pair_map` applies, for telling an editor as the pairs
+ * are picked. No device involved. False for a null map or another length.
+ */
+bool dspi_crossfeed_pair_map_valid(const uint8_t *map, uint32_t map_len, uint8_t num_pairs);
+
+/**
+ * The K340's pair map (one DAC per ear) into `out`. `out_len` must be at
+ * least 4; a shorter or null buffer is false.
+ */
+bool dspi_crossfeed_k340_pair_map(uint8_t *out, uint32_t out_len);
+
+/**
+ * The output pair mask that goes with the K340's pair map.
+ */
+uint8_t dspi_crossfeed_k340_pair_mask(void);
+
+/**
  * The core voltage extension's status: JSON {ok, liveVreg, millivolts,
  * storedSel, defaultVreg, autoRaised, autoDisabled, hangCount, trialActive,
  * trialVreg, failedTrialVreg, failedTrialUptimeS, uptimeS}. Returns the
@@ -4646,6 +4696,23 @@ bool dspi_demo_latency_timing(struct FfiCore *core, uint8_t mode, uint8_t reads,
  * or `u32::MAX` on anything else.
  */
 uint32_t dspi_demo_latency_sets(struct FfiCore *core);
+
+/**
+ * The demo device as firmware of wire format `wire` (17, 26, 31 or 33), for
+ * read-only tests. Replaces any open device. False for any other format.
+ */
+bool dspi_demo_open_wire(struct FfiCore *core, uint8_t wire);
+
+/**
+ * How many writes this core has refused because the connection is read-only.
+ */
+uint32_t dspi_read_only_refusals(struct FfiCore *core);
+
+/**
+ * The `WIRE_FEAT_*` bits the connected firmware's wire format carries: all of
+ * them on V32 and newer, none with no device or below V16.
+ */
+uint32_t dspi_wire_features(struct FfiCore *core);
 
 /**
  * The output latency's status: JSON {ok, raw, fields: [{name, value}]}.

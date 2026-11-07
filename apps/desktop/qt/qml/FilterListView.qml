@@ -194,14 +194,14 @@ Item {
                 MacSegment {
                     label: "Enable All"
                     last: false
-                    dim: { filterListRoot.rev; return !bridge.canSetAllBypass(filterListRoot.channelId, false, xo) }
+                    dim: { filterListRoot.rev; return !bridge.writable || !bridge.canSetAllBypass(filterListRoot.channelId, false, xo) }
                     onClicked: bridge.setAllBandsBypass(filterListRoot.channelId, false, xo)
                 }
                 MacSegmentRule {}
                 MacSegment {
                     label: "Bypass All"
                     first: false
-                    dim: { filterListRoot.rev; return !bridge.canSetAllBypass(filterListRoot.channelId, true, xo) }
+                    dim: { filterListRoot.rev; return !bridge.writable || !bridge.canSetAllBypass(filterListRoot.channelId, true, xo) }
                     onClicked: {
                         if (xo) xoBypassDialog.open()
                         else bridge.setAllBandsBypass(filterListRoot.channelId, true, false)
@@ -216,7 +216,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 8
                 MacPill {
-                    MacSegment { label: "Clear All"; hoverFill: false; onClicked: clearDialog.open() }
+                    MacSegment { label: "Clear All"; hoverFill: false; dim: !bridge.writable; onClicked: clearDialog.open() }
                 }
                 MacPill {
                     // Both segments as wide as the wider title
@@ -296,6 +296,7 @@ Item {
             Column {
                 id: bands
                 width: parent.width
+                enabled: bridge.writable   // -- WP QD6 -- the list above it still scrolls
 
                 Repeater {
                     model: xo ? 0 : 10
@@ -353,12 +354,12 @@ Item {
 
                 FooterButton {
                     label: "Enable All"
-                    dim: { filterListRoot.rev; return !bridge.canSetAllBypass(filterListRoot.channelId, false, xo) }
+                    dim: { filterListRoot.rev; return !bridge.writable || !bridge.canSetAllBypass(filterListRoot.channelId, false, xo) }
                     onClicked: bridge.setAllBandsBypass(filterListRoot.channelId, false, xo)
                 }
                 FooterButton {
                     label: "Bypass All"
-                    dim: { filterListRoot.rev; return !bridge.canSetAllBypass(filterListRoot.channelId, true, xo) }
+                    dim: { filterListRoot.rev; return !bridge.writable || !bridge.canSetAllBypass(filterListRoot.channelId, true, xo) }
                     onClicked: {
                         if (xo) xoBypassDialog.open()
                         else bridge.setAllBandsBypass(filterListRoot.channelId, true, false)
@@ -367,6 +368,7 @@ Item {
                 FooterButton {
                     visible: isOutput
                     label: "Clear All"
+                    dim: !bridge.writable   // -- WP QD6 --
                     onClicked: clearDialog.open()
                 }
             }

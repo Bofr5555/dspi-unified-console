@@ -22,7 +22,7 @@
 //!
 //! Owned by WP C2 (docs/core-merge/PLAN.md).
 
-use std::time::Instant;
+use dspi_transport::clock::Instant;
 
 use dspi_proto::generated::opcodes as op;
 use dspi_proto::wire::WireError;
@@ -657,6 +657,8 @@ fn check_apply_allowed(inner: &mut Inner) -> Result<()> {
         COMPAT_FIRMWARE_TOO_OLD | COMPAT_FIRMWARE_TOO_NEW
     ) || matches!(wire, Some(WireRead::Older | WireRead::Newer))
     {
+        // -- WP QD6 --
+        inner.read_only_refusals = inner.read_only_refusals.saturating_add(1);
         return Err(DspiError::ReadOnly);
     }
     if !inner.state.bulk_valid || wire.is_none() {

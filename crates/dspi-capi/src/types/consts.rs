@@ -976,6 +976,18 @@ pub const COMPAT_FIRMWARE_TOO_OLD: u8 = 2;
 /// Firmware is newer than this core understands.
 pub const COMPAT_FIRMWARE_TOO_NEW: u8 = 3;
 
+// -- WP QD6 --
+/// `dspi_wire_features`: psychoacoustic bass (V23).
+pub const WIRE_FEAT_PSYBASS: u32 = 1 << 6;
+/// `dspi_wire_features`: stereo upmixer (V25).
+pub const WIRE_FEAT_UPMIX: u32 = 1 << 8;
+/// `dspi_wire_features`: subharmonic synthesizer (V29).
+pub const WIRE_FEAT_SUBHARM: u32 = 1 << 11;
+/// `dspi_wire_features`: tube modeller (V31).
+pub const WIRE_FEAT_TUBE: u32 = 1 << 13;
+/// `dspi_wire_features`: output limiter (V32).
+pub const WIRE_FEAT_LIMITER: u32 = 1 << 14;
+
 // ── types.rs ───────────────────────────────────────────────────────
 
 /// Filter types (firmware config.h `enum FilterType`). Value space: 0..13 PEQ

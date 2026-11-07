@@ -9,6 +9,8 @@ import "components"
 // left shows the speakers the current engines feed.
 AppWindow {
     id: win
+    // -- WP QD6 -- The picker is off on read-only firmware, and every setting shows
+    readonly property bool showAdvanced: prefs.advanced || (bridge.connected && !bridge.writable)
     fitHeight: header.height + flick.contentHeight
     title: "Stereo Upmixer"
     visible: false
@@ -225,7 +227,7 @@ AppWindow {
         anchors.top: header.bottom
         anchors.bottom: parent.bottom
         width: parent.width
-        contentHeight: (!win.supported ? unsupported.height : prefs.advanced ? advanced.height : basic.height) + 32
+        contentHeight: (!win.supported ? unsupported.height : win.showAdvanced ? advanced.height : basic.height) + 32
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         ScrollBar.vertical: ScrollBar {}
@@ -261,7 +263,7 @@ AppWindow {
         // ── Basic: the soundstage and the main controls ──
         Row {
             id: basic
-            visible: win.supported && !prefs.advanced
+            visible: win.supported && !win.showAdvanced
             x: 16
             y: 16
             spacing: 20
@@ -377,7 +379,7 @@ AppWindow {
         // ── Advanced: soundstage, live readings and every setting ──
         Row {
             id: advanced
-            visible: win.supported && prefs.advanced
+            visible: win.supported && win.showAdvanced
             x: 16
             y: 16
             spacing: 20

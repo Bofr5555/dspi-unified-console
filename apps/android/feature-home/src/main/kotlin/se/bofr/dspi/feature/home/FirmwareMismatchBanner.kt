@@ -38,7 +38,8 @@ fun FirmwareMismatchBanner(bridge: DspiBridge, onUpdate: () -> Unit, modifier: M
     val connected = bridge.observeStatus { it.connected }
     val hidden by HomeSession.bannerHidden
     val compat = if (connected) bridge.compat else 0
-    val message = HomeModel.firmwareBannerMessage(compat, bridge.firmwareVersion, HomeModel.EXPECTED_FIRMWARE)
+    // -- WP AN2 --
+    val message = if (connected) HomeModel.firmwareBannerMessage(bridge) else null
     AnimatedVisibility(visible = message != null && !hidden, modifier = modifier) {
         Column(Modifier.fillMaxWidth().background(c.orange.copy(alpha = 0.12f).compositeOver(c.windowBackground))) {
             Row(

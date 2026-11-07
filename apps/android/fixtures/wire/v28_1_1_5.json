@@ -1,0 +1,17 @@
+{
+  "bulkRaw": [
+    32
+  ],
+  "bulkValid": false,
+  "compat": 2,
+  "formatVersion": 28,
+  "fwBeta": 0,
+  "fwMajor": 1,
+  "fwMinor": 1,
+  "fwPatch": 5,
+  "masterVolumeDb": -20.0,
+  "numChannels": 17,
+  "numInputChannels": 8,
+  "numOutputChannels": 9,
+  "platformId": 1
+}

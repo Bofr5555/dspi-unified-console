@@ -120,11 +120,11 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun coreVregOp(op: Int, value: Int, word: String?) = call { core.coreVregOp(op.toUByte(), value.toUByte(), word) }
 
-    override fun configExport(name: String, appVersion: String, links: Int): String = core.configExport(name, appVersion, links.toUByte())
+    override fun configExport(name: String, appVersion: String, links: Int): String = call { core.configExport(name, appVersion, links.toUByte()) }
 
     override fun configImport(text: String, options: Long): String = core.configImport(text, options.toUInt())
 
-    override fun filtersExport(inputs: Int): String = core.filtersExport(inputs.toUByte())
+    override fun filtersExport(inputs: Int): String = call { core.filtersExport(inputs.toUByte()) }
 
     override fun filtersInspect(text: String, inputs: Int): String = core.filtersInspect(text, inputs.toUByte())
 

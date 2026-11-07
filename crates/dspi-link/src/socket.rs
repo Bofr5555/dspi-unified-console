@@ -119,7 +119,7 @@ impl Default for TcpConnector {
 
 /// A `TcpStream` that, once `buffered`, collects writes and puts them on the
 /// wire whole on `flush`, under the lock shared by both halves.
-struct Pipe {
+pub struct Pipe {
     tcp: TcpStream,
     buffered: bool,
     out: Vec<u8>,
@@ -406,6 +406,47 @@ impl WsReceiver for TcpReceiver {
                 Err(e) => return WsRecv::Closed { code: self.close_code, reason: e.to_string() },
             }
         }
+    }
+}
+
+// -- WP HB1 --
+/// The two halves of a WebSocket a hub accepted, for its reader and its writer
+/// threads: the same split as [`TcpConnector`]'s, with role server. The hub has read
+/// and answered the upgrade itself, so this starts on the WebSocket's first byte.
+/// `tail` is what arrived behind the upgrade request. `max_frame` limits a frame and
+/// a message from the peer, checked before anything is buffered for it.
+pub fn split_server(tcp: TcpStream, tail: Vec<u8>, max_frame: usize) -> io::Result<(WebSocket<Pipe>, WebSocket<Pipe>)> {
+    let write_half = tcp.try_clone()?;
+    let wlock = Arc::new(Mutex::new(()));
+    let broken = Arc::new(AtomicBool::new(false));
+    let pipe = |tcp, wlock, broken| Pipe { tcp, buffered: true, out: Vec::new(), wlock, broken, deadline: None };
+    let config = WebSocketConfig::default()
+        .max_message_size(Some(max_frame))
+        .max_frame_size(Some(max_frame))
+        .read_buffer_size(SERVER_READ_BUFFER);
+    let reader = WebSocket::from_partially_read(
+        pipe(tcp, Arc::clone(&wlock), Arc::clone(&broken)),
+        tail,
+        Role::Server,
+        Some(config),
+    );
+    let writer = WebSocket::from_raw_socket(pipe(write_half, wlock, broken), Role::Server, Some(config));
+    Ok((reader, writer))
+}
+
+/// Per socket and half, so an unauthenticated socket costs little.
+const SERVER_READ_BUFFER: usize = 16 * 1024;
+
+impl Pipe {
+    /// A write failed part way, so nothing more can be sent on this stream. A read
+    /// timeout means nothing while this is set: it may be that write's timeout.
+    pub fn is_broken(&self) -> bool {
+        self.broken.load(Ordering::SeqCst)
+    }
+
+    /// The socket under it, to read what is left after the WebSocket has closed.
+    pub fn tcp_mut(&mut self) -> &mut TcpStream {
+        &mut self.tcp
     }
 }
 

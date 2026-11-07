@@ -23,28 +23,19 @@ void decodePair(const QByteArray &map, int p, int *left, int *right) {
     *right = b == 0 ? 2 * p + 1 : b >> 4;
 }
 
-// crossfeed_pair_map_valid in dspi-core, for telling the editor as the pairs are
-// picked: the C ABI doesn't have it. The core checks again on every write, and
-// the smoke driver holds the two to the same answers.
+// The core's rule, for telling the editor as the pairs are picked
 bool mapValid(const QByteArray &map, int pairs) {
-    unsigned used = 0;
-    for (int p = 0; p < map.size(); p++) {
-        if (p >= pairs) {
-            if (map.at(p) != 0) return false;
-            continue;
-        }
-        int left, right;
-        decodePair(map, p, &left, &right);
-        if (left >= 2 * pairs || right >= 2 * pairs || left == right) return false;
-        const unsigned bits = (1u << left) | (1u << right);
-        if (used & bits) return false;
-        used |= bits;
-    }
-    return true;
+    return dspi_crossfeed_pair_map_valid(reinterpret_cast<const uint8_t *>(map.constData()), uint32_t(map.size()), uint8_t(pairs));
 }
 
 QByteArray defaultMap() { return QByteArray(4, '\0'); }
-QByteArray k340Map() { return QByteArray::fromHex("02130000"); }   // woofers 3/1, tweeters 4/2
+
+// One DAC per ear: woofers 3/1, tweeters 4/2
+QByteArray k340Map() {
+    QByteArray map = defaultMap();
+    dspi_crossfeed_k340_pair_map(reinterpret_cast<uint8_t *>(map.data()), uint32_t(map.size()));
+    return map;
+}
 
 // Explicit default bytes as 0, as the device reports them
 QByteArray normalized(QByteArray map) {
@@ -66,6 +57,8 @@ ExtController::ExtController(DSPiBridge *bridge, QObject *parent)
     connect(m_bridge, &DSPiBridge::devicesChanged, this, &ExtController::syncStatus);
     // Not every batch changes the state the bridge shows, and the map isn't in it
     connect(m_bridge, &DSPiBridge::notificationsArrived, this, &ExtController::refreshSoon);
+    // -- WP QD6 -- Before the next device opens, not after: stateChanged comes too late
+    connect(m_bridge, &DSPiBridge::deviceChanging, this, [this]() { m_generation++; });
     syncStatus();
 }
 
@@ -124,6 +117,7 @@ bool ExtController::pairsValid(const QVariantList &pairs) const {
 }
 
 bool ExtController::applyPairs(const QVariantList &pairs) {
+    if (!m_bridge->writable()) return false;   // -- WP QD6 --
     bool ok = false;
     const QByteArray map = pairsToMap(pairs, &ok);
     if (!m_hasPairMap || !ok || !mapValid(map, m_pairCount)) {
@@ -135,6 +129,7 @@ bool ExtController::applyPairs(const QVariantList &pairs) {
 }
 
 bool ExtController::applyPreset(const QString &name) {
+    if (!m_bridge->writable()) return false;   // -- WP QD6 --
     if (m_hasPairMap && name == QLatin1String("default")) applyMap(defaultMap());
     else if (m_hasPairMap && name == QLatin1String("k340")) applyMap(k340Map());
     else return false;

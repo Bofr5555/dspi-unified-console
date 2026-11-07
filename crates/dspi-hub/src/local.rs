@@ -279,7 +279,7 @@ mod tests_wp_hb0 {
         assert_eq!(a.origin, Some(NO_ORIGIN));
         assert!(matches!(
             crate::relay::packet_source(&a.packet),
-            Some((src, true)) if u16::from(src) == nfy::PARAM_SRC_UNKNOWN
+            Some((src, crate::relay::PacketKind::Bulk)) if u16::from(src) == nfy::PARAM_SRC_UNKNOWN
         ));
     }
 

@@ -50,6 +50,10 @@ pub use error::HubError;
 pub use hub::{Hub, HubConfig, HubEvent, HubHandle, HubListener};
 pub use local::LocalTransport;
 pub use registry::{DeviceIdentity, DeviceState, RegisteredDevice};
+// -- WP HB3 --
+pub use polls::{MAX_TRANSFERS_PER_SEC, POLL_BUDGET_BPS, POLL_MAX_HZ, PollRefused};
+pub use registry::NameStore;
 pub use server::NetworkConfig;
 pub use session::{Completion, LOCAL_SESSION_ID, Outbound, Outbox, Pop, Role, Session, SessionId};
+pub use snapshot::SnapshotRefused;
 pub use usb::{BusDevice, DeviceBus};
