@@ -84,6 +84,9 @@ fun wrongPinHint(pinSource: String): String = if (pinSource == FIXED_PIN) {
 /** Test tag of the PIN prompt's hint after a PIN was turned down. */
 internal const val WRONG_PIN_HINT_TAG = "wrong-pin-hint"
 
+/** `link_pair`'s code for a PIN the hub turned down; only then is the hint shown (WP AN36). */
+private const val WRONG_PIN = "wrong_pin"
+
 @Composable
 private fun PinDialog(s: LinkSessionState.NeedsPin, wording: LinkWording, onPin: (String) -> Unit, onCancel: () -> Unit) {
     var pin by remember(s.hub.id) { mutableStateOf("") }
@@ -108,7 +111,7 @@ private fun PinDialog(s: LinkSessionState.NeedsPin, wording: LinkWording, onPin:
 
 /**
  * The PIN prompt's body: CG10's text by `pin_source`, the field, the hub's answer and,
- * when that answer is to the user's own [tried] PIN, what to try next. Apart from the
+ * when that answer turned the user's own [tried] PIN down, what to try next. Apart from the
  * dialog so it is tested without a dialog window.
  */
 @Composable
@@ -129,7 +132,7 @@ internal fun PinPromptBody(s: LinkSessionState.NeedsPin, wording: LinkWording, p
         if (s.busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
         if (s.error.isNotEmpty()) {
             Text(s.error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            if (tried && !s.busy) {
+            if (tried && !s.busy && s.errorCode == WRONG_PIN) {
                 Text(
                     wrongPinHint(s.pinSource),
                     Modifier.testTag(WRONG_PIN_HINT_TAG),

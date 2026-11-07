@@ -281,6 +281,7 @@ class LinkSessionEngineTest {
         s.engine.submitPin("1")
         runCurrent()
         assertEquals("Pairing failed: no answer", (s.engine.state.value as LinkSessionState.NeedsPin).error)
+        assertEquals("timeout", (s.engine.state.value as LinkSessionState.NeedsPin).errorCode)
         s.ops.events!!.onLinkTokenIssued("hub-1", "late")
         s.ops.status = status(LinkPhase.CHOOSE_DEVICE)
         s.ops.events!!.onLinkStatusChanged()

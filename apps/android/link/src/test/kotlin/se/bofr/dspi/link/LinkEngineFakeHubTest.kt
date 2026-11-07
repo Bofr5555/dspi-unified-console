@@ -148,6 +148,7 @@ class LinkEngineFakeHubTest {
             engine.state.first { it is LinkSessionState.NeedsPin && it.error.isNotEmpty() }
         } as LinkSessionState.NeedsPin
         assertEquals("Pairing failed: the hub did not accept that code.", again.error)
+        assertEquals("wrong_pin", again.errorCode)
         assertFalse(again.busy)
         assertNull(tokens.token(h.id))
 
