@@ -4565,6 +4565,25 @@ bool dspi_fetch_crossfeed_pair_map(struct FfiCore *core, uint8_t *out, uint32_t 
 uint8_t dspi_set_crossfeed_pair_map(struct FfiCore *core, const uint8_t *map, uint32_t map_len);
 
 /**
+ * Whether `map` (`map_len` 4 bytes) is a pair map the firmware takes on a
+ * platform with `num_pairs` stereo pairs: the rule
+ * `dspi_set_crossfeed_pair_map` applies, for telling an editor as the pairs
+ * are picked. No device involved. False for a null map or another length.
+ */
+bool dspi_crossfeed_pair_map_valid(const uint8_t *map, uint32_t map_len, uint8_t num_pairs);
+
+/**
+ * The K340's pair map (one DAC per ear) into `out`. `out_len` must be at
+ * least 4; a shorter or null buffer is false.
+ */
+bool dspi_crossfeed_k340_pair_map(uint8_t *out, uint32_t out_len);
+
+/**
+ * The output pair mask that goes with the K340's pair map.
+ */
+uint8_t dspi_crossfeed_k340_pair_mask(void);
+
+/**
  * The core voltage extension's status: JSON {ok, liveVreg, millivolts,
  * storedSel, defaultVreg, autoRaised, autoDisabled, hangCount, trialActive,
  * trialVreg, failedTrialVreg, failedTrialUptimeS, uptimeS}. Returns the

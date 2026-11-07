@@ -50,6 +50,13 @@ impl PairMap {
     /// How many pairs the firmware has: valid indices for [`PairMap::pair`]
     /// are `0..PAIRS`.
     pub const PAIRS: usize = Self::SIZE;
+    /// One DAC per ear (the K340), `crossfeed_map.h`'s example: pair 0 is the
+    /// woofers (left out 2, right out 0), pair 1 the tweeters (left 3, right 1).
+    /// Valid on two pairs and on four.
+    pub const K340: PairMap = PairMap([0x02, 0x13, 0, 0]);
+    /// The output pair mask that goes with [`PairMap::K340`]: both of its
+    /// pairs. The factory mask covers pair 0 only.
+    pub const K340_MASK: u8 = 0x03;
 
     /// The outputs of pair `p`, as `(left, right)`.
     ///
@@ -66,6 +73,43 @@ impl PairMap {
                 (left, left.saturating_add(1))
             }
         }
+    }
+
+    /// Whether the firmware accepts this map on a platform with `num_pairs`
+    /// stereo pairs (4 on RP2350, 2 on RP2040): `crossfeed_map_valid` in
+    /// crossfeed_map.h. Each of the first `num_pairs` pairs takes two different
+    /// outputs below `2 * num_pairs`, which leaves out the PDM sub; no output is
+    /// in two pairs; bytes past `num_pairs` are 0. A `num_pairs` of 0 or above
+    /// [`PairMap::PAIRS`] is invalid.
+    ///
+    /// This is the only copy of the rule; every client asks here or through
+    /// `dspi_core::crossfeed_pair_map_valid`.
+    pub fn is_valid(&self, num_pairs: usize) -> bool {
+        if num_pairs == 0 || num_pairs > Self::PAIRS {
+            return false;
+        }
+        // At most four pairs, so at most eight outputs.
+        let outputs = num_pairs.saturating_mul(2);
+        let mut used = 0u16;
+        for (p, b) in self.0.iter().enumerate() {
+            if p >= num_pairs {
+                if *b != 0 {
+                    return false;
+                }
+                continue;
+            }
+            let (l, r) = self.pair(p);
+            if usize::from(l) >= outputs || usize::from(r) >= outputs || l == r {
+                return false;
+            }
+            // Both are below eight, from `outputs`.
+            let bits = (1u16 << l) | (1u16 << r);
+            if used & bits != 0 {
+                return false;
+            }
+            used |= bits;
+        }
+        true
     }
 
     /// The firmware's normal form: an explicit default byte reads back as 0.
@@ -263,6 +307,83 @@ impl VregOp {
             VregOp::Auto(on) => [3, on as u8],
             VregOp::Clear => [4, 0],
         }
+    }
+}
+
+/// WP CG17: the one pair-map rule, held to the firmware's.
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg17 {
+    use super::*;
+
+    const fn map(a: u8, b: u8, c: u8, d: u8) -> PairMap {
+        PairMap([a, b, c, d])
+    }
+
+    /// firmware/tests/test_crossfeed_map.c's cases.
+    #[test]
+    fn wp_cg17_the_firmware_test_vectors() {
+        let cases = [
+            (map(0, 0, 0, 0), 4, true),
+            (map(0, 0, 0, 0), 2, true),
+            (PairMap::K340, 4, true),
+            (PairMap::K340, 2, true),
+            (map(0x11, 0, 0, 0), 4, false),
+            (map(0x02, 0, 0, 0), 4, false),
+            (map(0x10, 0x20, 0, 0), 4, false),
+            (map(0x40, 0, 0, 0), 2, false),
+            (map(0x01, 0x42, 0, 0), 2, false),
+            (map(0x80, 0, 0, 0), 4, false),
+            (map(0xF0, 0, 0, 0), 4, false),
+            (map(0x76, 0x54, 0x32, 0x10), 4, true),
+            (map(0, 0, 0x54, 0), 2, false),
+            (map(0, 0, 0, 0), 0, false),
+            (map(0, 0, 0, 0), 5, false),
+            (map(0, 0, 0, 0), usize::MAX, false),
+        ];
+        for (m, pairs, want) in cases {
+            assert_eq!(m.is_valid(pairs), want, "{:02x?} on {pairs}", m.0);
+        }
+    }
+
+    #[test]
+    fn wp_cg17_the_k340_map_is_already_normal_and_its_mask_is_its_pairs() {
+        assert_eq!(PairMap::K340.normalized(), PairMap::K340);
+        assert_eq!(PairMap::K340.0, 0x0000_1302u32.to_le_bytes());
+        assert_eq!(PairMap::K340_MASK, 0b11);
+    }
+
+    /// `is_valid` and `normalized` against `crossfeed_map_valid` and
+    /// `crossfeed_map_normalize`, compiled from DSPi-bofr 04122d3: every first
+    /// two bytes, eight values each for the other two, 0 to 5 pairs. The C ran
+    /// the same loop, and these are its printed count and FNV-1a hash.
+    #[test]
+    fn wp_cg17_agrees_with_the_compiled_firmware_rule() {
+        const REST: [u8; 8] = [0, 0x10, 0x32, 0x54, 0x76, 0x02, 0x13, 0x45];
+        let mut hash = 0xcbf2_9ce4_8422_2325u64;
+        let mut valid = 0u64;
+        for pairs in 0..=5 {
+            for a in 0..=255u8 {
+                for b in 0..=255u8 {
+                    for c in REST {
+                        for d in REST {
+                            let m = map(a, b, c, d);
+                            let out = if m.is_valid(pairs) {
+                                valid += 1;
+                                m.normalized().0
+                            } else {
+                                [0xFF; 4]
+                            };
+                            for byte in out {
+                                hash = (hash ^ u64::from(byte)).wrapping_mul(0x100_0000_01b3);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(valid, 1347);
+        assert_eq!(hash, 0x092b_7d00_4f6f_9884);
     }
 }
 

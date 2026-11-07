@@ -228,39 +228,12 @@ impl CrossfeedBlock {
             *b = (*v).clamp(0, 255) as u8;
         }
         let map = PairMap(bytes);
-        Some(if pair_map_valid(&map, pairs) {
+        Some(if map.is_valid(usize::from(pairs)) {
             map.normalized()
         } else {
             PairMap([0; PairMap::SIZE])
         })
     }
-}
-
-/// The firmware's `crossfeed_map_valid`, as `isValid(pairCount:)`
-/// (ExtensionChannel.swift:156-171).
-fn pair_map_valid(map: &PairMap, pairs: u8) -> bool {
-    if pairs == 0 || pairs as usize > PairMap::PAIRS {
-        return false;
-    }
-    let mut used = 0u32;
-    for p in 0..PairMap::PAIRS {
-        if p >= pairs as usize {
-            if map.0[p] != 0 {
-                return false;
-            }
-            continue;
-        }
-        let (l, r) = map.pair(p);
-        if l >= 2 * pairs || r >= 2 * pairs || l == r {
-            return false;
-        }
-        let bits = (1u32 << l) | (1u32 << r);
-        if used & bits != 0 {
-            return false;
-        }
-        used |= bits;
-    }
-    true
 }
 
 /// The volume leveller (PresetDocument.swift:187-210).

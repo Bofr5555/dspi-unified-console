@@ -107,6 +107,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
+use dspi_proto::ext::PairMap;
 use dspi_proto::generated::{
     self, ext as gext, filter, notify as nfy, opcodes as op, status as st, wire as w,
 };
@@ -235,9 +236,6 @@ struct Shared {
 /// Packets held for the notification endpoint; the oldest goes first when
 /// nobody reads.
 const MAX_QUEUE: usize = 1024;
-
-/// `CROSSFEED_MAP_PAIRS` (crossfeed_map.h): the pair map's width.
-const MAP_PAIRS: usize = 4;
 
 /// Live PEQ bands per channel: `MAX_BANDS` (12) is the storage depth and
 /// "only bands 0..9 are active today" (config.h:880). Not a define, so not
@@ -1843,16 +1841,16 @@ impl State {
     fn set_ext(&mut self, value: u16, data: &[u8]) -> bool {
         match value {
             gext::EXT_CROSSFEED_PAIR_MAP => {
-                let Ok(map) = <[u8; MAP_PAIRS]>::try_from(data) else {
+                let Ok(map) = <[u8; PairMap::SIZE]>::try_from(data).map(PairMap) else {
                     return false;
                 };
                 // `NUM_SPDIF_INSTANCES`: the stereo outputs, without the PDM sub.
                 let pairs = usize::from(self.num_outputs().checked_div(2).unwrap_or(0));
                 // An invalid map is acknowledged and ignored.
-                if let Some(norm) = pair_map_normalized(map, pairs.min(MAP_PAIRS))
+                if map.is_valid(pairs.min(PairMap::PAIRS))
                     && let Some(off) = self.locate("crossfeed", 0, 0, X_PAIR_MAP)
                 {
-                    self.write(off, &norm, nfy::PARAM_SRC_HOST_SET as u8);
+                    self.write(off, &map.normalized().0, nfy::PARAM_SRC_HOST_SET as u8);
                 }
                 true
             }
@@ -2020,44 +2018,6 @@ impl Vreg {
         };
         v.max(self.default_vreg).clamp(0x0C, 0x0F)
     }
-}
-
-/// `crossfeed_map_valid` then `crossfeed_map_normalize` (crossfeed_map.h):
-/// each of the first `pairs` pairs takes two distinct stereo outputs below
-/// `2 * pairs`, no output is in two pairs, and bytes past `pairs` are 0.
-/// `None` for an invalid map.
-fn pair_map_normalized(map: [u8; MAP_PAIRS], pairs: usize) -> Option<[u8; MAP_PAIRS]> {
-    if pairs == 0 {
-        return None;
-    }
-    let limit = pairs.checked_mul(2)?;
-    let mut used = 0u32;
-    let mut out = [0u8; MAP_PAIRS];
-    for (p, (b, o)) in map.iter().zip(out.iter_mut()).enumerate() {
-        if p >= pairs {
-            if *b != 0 {
-                return None;
-            }
-            continue;
-        }
-        let dl = p.checked_mul(2)?;
-        let dr = dl.checked_add(1)?;
-        let (l, r) = match *b {
-            0 => (dl, dr),
-            b => (usize::from(b & 0x0F), usize::from(b.checked_shr(4)?)),
-        };
-        if l >= limit || r >= limit || l == r {
-            return None;
-        }
-        let bit = |i: usize| 1u32.checked_shl(u32::try_from(i).ok()?);
-        let bits = bit(l)? | bit(r)?;
-        if used & bits != 0 {
-            return None;
-        }
-        used |= bits;
-        *o = if (l, r) == (dl, dr) { 0 } else { *b };
-    }
-    Some(out)
 }
 
 /// Copy a name the firmware's way: at most `NAME_LEN - 1` bytes, NUL padded.
@@ -2611,8 +2571,10 @@ mod tests_wp_t4 {
                 .is_err()
         );
         // Five outputs (RP2040): two pairs, so pairs 2 and 3 stay default.
-        assert_eq!(pair_map_normalized([0, 0, 0x54, 0], 2), None);
-        assert_eq!(pair_map_normalized([0x10, 0x32, 0, 0], 2), Some([0; 4]));
+        assert!(!PairMap([0, 0, 0x54, 0]).is_valid(2));
+        let explicit = PairMap([0x10, 0x32, 0, 0]);
+        assert!(explicit.is_valid(2));
+        assert_eq!(explicit.normalized().0, [0; 4]);
     }
 
     #[test]
