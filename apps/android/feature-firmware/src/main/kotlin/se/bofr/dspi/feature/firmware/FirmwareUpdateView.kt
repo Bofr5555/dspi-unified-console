@@ -262,7 +262,7 @@ private fun SourcePicker(model: FirmwareUpdateModel, onChooseFile: () -> Unit) {
         ChoiceRow(
             selected = local != null,
             enabled = enabled,
-            title = "A .uf2 file on this phone",
+            title = "A local .uf2 file",
             detail = local?.let { l -> l.image.name + (l.image.chip?.let { " — for the ${it.displayName}" } ?: "") }
                 ?: "For example a custom DSPi build",
             onClick = onChooseFile
@@ -307,7 +307,7 @@ private fun WriteMethodPicker(model: FirmwareUpdateModel, onChooseDrive: () -> U
             enabled = enabled,
             title = "The board's drive",
             detail =
-            model.driveVolume?.let { "Drive: ${it.name}" } ?: "Copies the file to the RP2350 or RPI-RP2 drive, if this phone shows it",
+            model.driveVolume?.let { "Drive: ${it.name}" } ?: "Copies the file to the RP2350 or RPI-RP2 drive, if it shows up here",
             onClick = { if (model.driveVolume == null) onChooseDrive() else model.useDrive() }
         )
     }
