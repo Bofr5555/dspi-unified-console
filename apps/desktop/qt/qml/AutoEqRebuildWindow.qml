@@ -24,8 +24,10 @@ AppWindow {
         spacing: 10
         Row {
             spacing: 10
-            Spinner { visible: autoeq.rebuilding; size: 18; anchors.verticalCenter: parent.verticalCenter }
+            Spinner { id: spinner; visible: autoeq.rebuilding; size: 18; anchors.verticalCenter: parent.verticalCenter }
             Text {
+                width: win.width - 32 - spinner.width - 10
+                elide: Text.ElideRight
                 text: autoeq.rebuildStatus || "Connecting to GitHub..."
                 font.pixelSize: 13
                 color: isMacOS ? MacColors.secondaryLabel : "white"

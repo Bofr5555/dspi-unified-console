@@ -104,6 +104,9 @@ private:
     void testAbout();
     // -- WP QD32 --
     void testOnboarding();
+    // -- WP QD27 --
+    void testAutoEqUpdate();
+    void testAutoEqHttp();
 
     // Whether a bypass toggle repaints the open channel's graph editor. Leaves
     // bypass as it found it. NotRun fills `why`.
