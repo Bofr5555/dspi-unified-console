@@ -834,50 +834,6 @@ fn wp_tm3_a_file_that_names_no_boot_rom_is_not_a_drive_on_its_way() {
     assert!(w.asked.is_empty());
 }
 
-/// The copy of the core's rule has to agree with the core, which judges the same
-/// file again before writing: this asks the core about each one.
-#[test]
-fn wp_tm3_the_drive_rule_agrees_with_the_core() {
-    let dir = scratch("info_rule");
-    let stock = FirmwareGuardBoard {
-        required_mv: 1150,
-        source: dspi_core::FirmwareGuardBoardSource::ExtCoreVreg,
-    };
-    let write = |drive: &BootloaderDrive, family| {
-        let image = support::image(family, DEMO_VERSION, None);
-        let done = flash_to_drive_guarded(image, drive.clone(), stock.clone(), String::new());
-        done.is_ok()
-    };
-    let cases = [
-        (RP2350_INFO, 1),
-        (RP2040_INFO, 0),
-        ("UF2 Bootloader v1\nBoard-ID: RP2350\n", 1),
-        ("UF2 Bootloader v1\nModel: Raspberry Pi RP2\n", 0),
-        ("UF2 Bootloader v1\r\nBoard-ID: RP2350\r\n", 1),
-        (
-            "UF2 Bootloader v1\nModel: Raspberry Pi RP2\nBoard-ID: RP2350\n",
-            PLATFORM_UNKNOWN,
-        ),
-        ("UF2 Bootloader v1\nBoard-ID: Other\n", PLATFORM_UNKNOWN),
-        ("UF2 Bootloader v1\n", PLATFORM_UNKNOWN),
-        ("Model: Raspberry Pi RP2350\n", PLATFORM_UNKNOWN),
-        ("", PLATFORM_UNKNOWN),
-    ];
-    for (i, (info, platform)) in cases.into_iter().enumerate() {
-        let path = dir.join(i.to_string());
-        mount(&path, info);
-        let drive = drive_at(&path).unwrap();
-        assert_eq!(drive.platform, platform, "{info:?}");
-        // The core takes the drive for the chip this says, and for no other.
-        let at = |p| BootloaderDrive {
-            platform: p,
-            ..drive.clone()
-        };
-        assert_eq!(write(&at(1), RP2350), platform == 1, "{info:?}");
-        assert_eq!(write(&at(0), RP2040), platform == 0, "{info:?}");
-    }
-}
-
 #[test]
 fn wp_tm3_only_the_line_ending_comes_off_an_answer() {
     assert_eq!(without_line_ending("x\n"), "x");

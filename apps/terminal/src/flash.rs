@@ -52,7 +52,7 @@ use std::time::Duration;
 use dspi_core::{
     BootloaderDrive, DspState, DspiCore, DspiError, FirmwareGuardBoard, FirmwareGuardDecision,
     FirmwareGuardVerdict, Uf2Info, bootloader_drives, firmware_guard_board_in_bootloader,
-    firmware_guard_check, flash_to_drive_guarded, uf2_inspect,
+    firmware_guard_check, flash_to_drive_guarded, info_platform, uf2_inspect,
 };
 use dspi_proto::Platform;
 use dspi_proto::packets::FirmwareVersion;
@@ -235,41 +235,6 @@ fn drive_at(path: &Path) -> Option<BootloaderDrive> {
         platform: info_platform(&info).unwrap_or(PLATFORM_UNKNOWN),
         info,
     })
-}
-
-/// The chip of a boot ROM's `INFO_UF2.TXT`: the rule of the core's private
-/// `firmware::info_platform`, which judges the same file again just before
-/// writing, so this one can refuse before any question and can only ever be the
-/// earlier of two refusals. A test holds the two together.
-fn info_platform(info: &str) -> Option<i8> {
-    let mut lines = info.lines().map(str::trim);
-    if !lines.next()?.starts_with("UF2 Bootloader") {
-        return None;
-    }
-    let (mut board, mut model) = (None, None);
-    for (key, value) in lines.filter_map(|l| l.split_once(':')) {
-        match key.trim() {
-            "Board-ID" => board = Some(value.trim()),
-            "Model" => model = Some(value.trim()),
-            _ => {}
-        }
-    }
-    let by_board = board.map(|b| match b {
-        "RPI-RP2" => Some(0),
-        "RP2350" => Some(1),
-        _ => None,
-    });
-    let by_model = model.map(|m| match m {
-        "Raspberry Pi RP2" => Some(0),
-        "Raspberry Pi RP2350" => Some(1),
-        _ => None,
-    });
-    match (by_board, by_model) {
-        (Some(b), Some(m)) if b == m => b,
-        (Some(b), None) => b,
-        (None, Some(m)) => m,
-        _ => None,
-    }
 }
 
 /// `dspi flash [FILE]`. `flags` start with the word `flash`.
