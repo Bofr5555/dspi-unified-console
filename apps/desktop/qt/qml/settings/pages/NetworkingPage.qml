@@ -358,6 +358,27 @@ SettingsPage {
             checked: tray.startMinimised
             onToggled: tray.startMinimised = checked
         }
-        // Open at login and keeping awake while sharing are QD13's rows
+        // -- WP QD13 -- Open at login, and keeping awake while sharing (`system`)
+        SettingsSwitchRow {
+            objectName: "networkingOpenAtLogin"
+            visible: system.loginSupported
+            title: "Open at login"
+            checked: system.openAtLogin
+            onToggled: system.openAtLogin = checked
+        }
+        SettingsSwitchRow {
+            objectName: "networkingKeepAwake"
+            visible: system.keepAwakeSupported
+            title: "Keep awake while sharing"
+            detail: "Idle sleep waits while devices are shared; the screen can still turn off."
+            checked: system.keepAwake
+            onToggled: system.keepAwake = checked
+        }
+    }
+    // -- WP QD13 --
+    SettingsStatusLine {
+        objectName: "networkingSystemError"
+        text: system.loginError !== "" ? system.loginError : system.awakeError
+        error: true
     }
 }
