@@ -15,6 +15,8 @@ namespace {
 
 // How long changes gather before one re-read; a slider's commits come in bursts
 constexpr int kRefreshDelayMs = 150;
+// -- WP QD3 -- How often the core voltage status is read while its page shows
+constexpr int kCoreVregPollMs = 1000;
 
 // Byte p is pair p: 0 is the default pairing (2p, 2p+1), else (right << 4) | left
 void decodePair(const QByteArray &map, int p, int *left, int *right) {
@@ -29,6 +31,18 @@ bool mapValid(const QByteArray &map, int pairs) {
 }
 
 QByteArray defaultMap() { return QByteArray(4, '\0'); }
+
+// -- WP QD3 -- A read of the device: on the worker, never the GUI thread
+QByteArray fetchCoreVreg(FfiCore *core) {
+    QByteArray reply(512, '\0');
+    uint32_t needed = dspi_fetch_core_vreg(core, reply.data(), uint32_t(reply.size()));
+    if (needed > uint32_t(reply.size())) {
+        reply.resize(int(needed));
+        needed = dspi_fetch_core_vreg(core, reply.data(), uint32_t(reply.size()));
+    }
+    reply.truncate(needed > 0 ? int(needed) - 1 : 0);
+    return reply;
+}
 
 // One DAC per ear: woofers 3/1, tweeters 4/2
 QByteArray k340Map() {
@@ -59,6 +73,9 @@ ExtController::ExtController(DSPiBridge *bridge, QObject *parent)
     connect(m_bridge, &DSPiBridge::notificationsArrived, this, &ExtController::refreshSoon);
     // -- WP QD6 -- Before the next device opens, not after: stateChanged comes too late
     connect(m_bridge, &DSPiBridge::deviceChanging, this, [this]() { m_generation++; });
+    // -- WP QD3 --
+    m_coreVregTimer.setInterval(kCoreVregPollMs);
+    connect(&m_coreVregTimer, &QTimer::timeout, this, &ExtController::refreshCoreVreg);
     syncStatus();
 }
 
@@ -214,6 +231,7 @@ void ExtController::setStatusOverride(const QByteArray &json) {
 // nothing else says a device came or went.
 void ExtController::syncStatus() {
     bool has = false;
+    bool hasVreg = false;   // -- WP QD3 --
     if (m_bridge->connected()) {
         QByteArray reply = m_statusOverride;
         if (reply.isEmpty()) {
@@ -227,12 +245,14 @@ void ExtController::syncStatus() {
         }
         const QJsonObject status = QJsonDocument::fromJson(reply).object();
         has = status.value(QStringLiteral("ok")).toBool() && status.value(QStringLiteral("hasPairMap")).toBool();
+        // -- WP QD3 --
+        hasVreg = status.value(QStringLiteral("ok")).toBool() && status.value(QStringLiteral("hasCoreVreg")).toBool();
     }
 
     const QString serial = m_bridge->selectedSerial();
     const int count = qBound(1, m_bridge->numOutputChannels() / 2, kMapLen);
     const bool sameDevice = serial == m_serial;
-    if (sameDevice && has == m_hasPairMap && count == m_pairCount) {
+    if (sameDevice && has == m_hasPairMap && count == m_pairCount && hasVreg == m_hasCoreVreg) {
         refreshSoon();
         return;
     }
@@ -245,6 +265,68 @@ void ExtController::syncStatus() {
     const bool appeared = has && (!m_hasPairMap || !sameDevice);
     m_hasPairMap = has;
     m_pairCount = count;
+    // -- WP QD3 -- Nothing of a device that's gone stays on show
+    const bool vregAppeared = hasVreg && (!m_hasCoreVreg || !sameDevice);
+    if (!sameDevice || !hasVreg) clearCoreVreg();
+    m_hasCoreVreg = hasVreg;
     emit changed();
     if (appeared) refresh();
+    // -- WP QD3 --
+    syncCoreVregTimer();
+    if (vregAppeared && m_coreVregWatching) refreshCoreVreg();
+}
+
+// -- WP QD3 --
+void ExtController::setCoreVregWatching(bool on) {
+    if (on == m_coreVregWatching) return;
+    m_coreVregWatching = on;
+    emit coreVregWatchingChanged();
+    syncCoreVregTimer();
+    if (on) refreshCoreVreg();
+}
+
+void ExtController::syncCoreVregTimer() {
+    if (m_coreVregWatching && m_hasCoreVreg) {
+        if (!m_coreVregTimer.isActive()) m_coreVregTimer.start();
+    } else {
+        m_coreVregTimer.stop();
+    }
+}
+
+// One read at a time, in line with the writes on the worker. A reply from before a
+// change of device is dropped, and the new device read in its place.
+void ExtController::refreshCoreVreg() {
+    if (!m_hasCoreVreg || m_coreVregPending) return;
+    m_coreVregPending = true;
+    FfiCore *core = m_core;
+    const quint64 generation = m_generation;
+    const QByteArray standIn = m_coreVregOverride;
+    m_worker.start([this, core, generation, standIn]() {
+        const QByteArray reply = standIn.isEmpty() ? fetchCoreVreg(core) : standIn;
+        QMetaObject::invokeMethod(this, [this, generation, reply]() {
+            m_coreVregPending = false;
+            if (generation != m_generation) {
+                if (m_coreVregWatching) refreshCoreVreg();
+            } else if (m_hasCoreVreg) {
+                setCoreVregReply(reply);
+            }
+        }, Qt::QueuedConnection);
+    });
+}
+
+void ExtController::setCoreVregReply(const QByteArray &reply) {
+    QVariantMap status = QJsonDocument::fromJson(reply).object().toVariantMap();
+    const bool ok = status.take(QStringLiteral("ok")).toBool();
+    if (!ok) status.clear();
+    if (status == m_coreVreg && m_coreVregFailed == !ok) return;
+    m_coreVreg = status;
+    m_coreVregFailed = !ok;
+    emit coreVregChanged();
+}
+
+void ExtController::clearCoreVreg() {
+    if (m_coreVreg.isEmpty() && !m_coreVregFailed) return;
+    m_coreVreg.clear();
+    m_coreVregFailed = false;
+    emit coreVregChanged();
 }

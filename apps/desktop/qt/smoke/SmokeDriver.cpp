@@ -103,6 +103,8 @@ void SmokeDriver::run() {
     testCsPages();
     // -- WP QD2 --
     testPairMap();
+    // -- WP QD3 --
+    testCoreVoltage();
     // -- WP QD6 --
     testReadOnly();
     // -- WP QD8 --
