@@ -88,10 +88,12 @@ class AppNetworkingControllerTest {
         override fun close() {}
     }
 
+    private lateinit var modes: AppModeController
+
     private fun TestScope.setup(): Triple<AppNetworkingController, Browser, MutableList<Remote>> {
         val scope = CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler))
         val remotes = mutableListOf<Remote>()
-        val modes = AppModeController(
+        modes = AppModeController(
             bridge,
             MutableStateFlow<UsbSessionState>(UsbSessionState.NoDevice),
             MutableStateFlow<List<DspiUsbDevice>>(emptyList()),
@@ -116,6 +118,40 @@ class AppNetworkingControllerTest {
             }
         )
         return Triple(c, browser, remotes)
+    }
+
+    // -- WP AN4 --
+    private val reconnecting = LinkSessionState.Reconnecting(LinkHub.manual("10.0.0.2", 11915), "", 0, 1, "lost")
+
+    @Test
+    fun wpAn4TheSessionBrowsesWhileReconnectingUntilParkedAndOnlyIfAllowed() = runTest {
+        val (c, b, remotes) = setup()
+        c.setEnabled(true)
+        c.addManual("10.0.0.2")
+        c.connect(c.hubs.value.first().id)
+        assertEquals("the page is not on screen", 0, b.started)
+        val stops = b.stopped
+        remotes[0].state.value = reconnecting
+        assertEquals("looking for the hub though the page is not on screen", 1, b.started)
+        remotes[0].state.value = reconnecting.copy(parked = true)
+        assertEquals(stops + 1, b.stopped)
+        remotes[0].state.value = reconnecting
+        assertEquals(2, b.started)
+        c.setFindAutomatically(false)
+        assertEquals("the user said no DNS-SD", stops + 2, b.stopped)
+    }
+
+    @Test
+    fun wpAn4AHiddenAppDoesNotBrowseForAFailedDial() = runTest {
+        val (c, b, remotes) = setup()
+        c.setEnabled(true)
+        c.addManual("10.0.0.2")
+        c.connect(c.hubs.value.first().id)
+        remotes[0].state.value = LinkSessionState.Failed(LinkHub.manual("10.0.0.2", 11915), "no route")
+        assertEquals(1, b.started)
+        val stops = b.stopped
+        modes.setUiVisible(false)
+        assertEquals(stops + 1, b.stopped)
     }
 
     @Test

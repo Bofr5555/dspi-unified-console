@@ -35,6 +35,9 @@ interface LinkCoreOps {
     /** Cut the core's backoff short. A no-op unless reconnecting. */
     suspend fun retryNow()
 
+    /** The hub answers at [url] now: the core reconnects there, at once if reconnecting. */
+    suspend fun setUrl(url: String)
+
     /** Bind the bridge to a device of the open session ([DspiBridge.attachRemote]). */
     suspend fun attach(handle: Long, serial: String): Boolean
 
@@ -90,6 +93,8 @@ class BridgeLinkCoreOps(
     override suspend fun close() = withContext(network) { core.linkClose() }
 
     override suspend fun retryNow() = withContext(network) { core.linkRetryNow() }
+
+    override suspend fun setUrl(url: String) = withContext(network) { core.linkSetUrl(url) }
 
     override suspend fun attach(handle: Long, serial: String): Boolean = bridge.attachRemote(handle, serial)
 
