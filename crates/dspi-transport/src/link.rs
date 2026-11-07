@@ -109,7 +109,7 @@ fn busy_window(
             };
         }
         if i < BUSY_RETRIES {
-            std::thread::sleep(backoff);
+            crate::clock::sleep(backoff);
         }
     }
     Err(TransportError::TimedOut {

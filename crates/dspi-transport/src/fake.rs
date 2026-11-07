@@ -105,7 +105,9 @@
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use crate::clock::Instant;
 
 use dspi_proto::ext::PairMap;
 use dspi_proto::generated::{

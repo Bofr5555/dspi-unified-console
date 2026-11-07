@@ -3,7 +3,8 @@
 # (ci/run.sh), never on tmpfs.
 #
 #   ci/check.sh                       full gate (reviewer/merger): fmt, clippy,
-#                                     tests, Windows GNU cross-build, licences, deny
+#                                     tests, Windows GNU cross-build, wasm-core,
+#                                     licences, deny
 #   ci/check.sh --crate dspi-core     scoped (WP agents): fmt, clippy and tests
 #   ci/check.sh --crate a --crate b   of the named packages only
 #   ci/check.sh --step NAME ...       one or more optional steps:
@@ -18,6 +19,11 @@
 #                                     throwaway key, in its Gradle container
 #                                     (apps/android/tools/ci.sh release)
 #       wasm                          dspi-proto for wasm32-unknown-unknown
+#       wasm-core                     dspi-session and dspi-core for wasm32-unknown-
+#                                     unknown, cargo check only, without `usb`; their
+#                                     library code may not call std's clock or sleep
+#                                     (ci/wasm-clippy, use dspi_transport::clock).
+#                                     Nothing is run: docs/core-merge/WEB-STUDY.md 11
 #       qt                            the Qt 6 desktop app (crates/dspi-capi,
 #                                     library dspi_capi)
 #       qt5                           the same against Qt 5.15
@@ -75,14 +81,15 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --crate) crates+=("$2"); shift 2 ;;
     --step) steps+=("$2"); shift 2 ;;
-    --all) steps=(fetch fmt clippy test windows-gnu licences deny windows-msvc android android-aab wasm qt qt5 qt-offscreen qt5-offscreen terminal qt-windows proptest kotlin swift ios-check drift); shift ;;
+    --all) steps=(fetch fmt clippy test windows-gnu licences deny windows-msvc android android-aab wasm wasm-core qt qt5 qt-offscreen qt5-offscreen terminal qt-windows proptest kotlin swift ios-check drift); shift ;;
     --all-clients) exec ci/matrix.sh ;;
     -h|--help) sed -n "2,/^set -euo/p" "$0" | sed '$d'; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
   esac
 done
 if [ ${#crates[@]} -eq 0 ] && [ ${#steps[@]} -eq 0 ]; then
-  steps=(fmt clippy test windows-gnu licences deny)
+  # -- WP WB1 -- wasm-core
+  steps=(fmt clippy test windows-gnu wasm-core licences deny)
 fi
 
 ok() { printf '\n== %s: OK\n' "$1"; }
@@ -110,6 +117,15 @@ for s in "${steps[@]}"; do
     android)
       DSPI_PROFILE=cross $RUN "cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 --platform 26 build -p dspi-core --features link && cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 --platform 26 build -p dspi-ffi" ;;
     wasm) DSPI_PROFILE=cross $RUN "cargo build -p dspi-proto --target wasm32-unknown-unknown" ;;
+    wasm-core)
+      # -- WP WB1 -- dspi-session twice: with every default but `usb`, and as dspi-core
+      # uses it. Only --lib is linted, so tests keep std's clock.
+      DSPI_PROFILE=cross $RUN "set -e
+        t='--target wasm32-unknown-unknown --locked'
+        cargo check -p dspi-session --no-default-features --features serde,bundled-autoeq,undo \$t
+        cargo check -p dspi-session -p dspi-core --no-default-features \$t
+        CLIPPY_CONF_DIR=ci/wasm-clippy cargo clippy -p dspi-transport -p dspi-session -p dspi-core \\
+          --no-default-features --lib \$t -- -A clippy::all -D clippy::disallowed_methods -D warnings" ;;
     qt)
       # The build directory's name moved with the core: /work/build-desktop-qt6
       # may still cache the old core's paths.

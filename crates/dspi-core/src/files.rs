@@ -50,13 +50,14 @@
 //! Owned by WP C13 (docs/core-merge/PLAN.md).
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 
 use dspi_proto::generated::{limiter, wire::WIRE_FORMAT_VERSION};
 use dspi_proto::wire::BulkPacket;
 use dspi_proto::wire_compat::{self, WireRead, feat};
 use dspi_proto::xover;
 use dspi_session::preset_file::{self, ApplyOptions, PresetDocument};
+use dspi_transport::clock::system_time;
 use serde_json::{Map, Value, json};
 
 use crate::connect::apply_all_params_locked;
@@ -177,7 +178,7 @@ fn clip_name(name: &str) -> String {
 
 /// ISO-8601 UTC for now (whole seconds), without a date library.
 fn utc_now() -> String {
-    let secs = SystemTime::now()
+    let secs = system_time()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
@@ -2163,7 +2164,7 @@ impl DspiCore {
     /// mirror; refused as [`DspiCore::config_export`] is when it holds no
     /// device's state.
     pub fn filters_export(&self, inputs: u8) -> Result<String> {
-        let now = SystemTime::now()
+        let now = system_time()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);

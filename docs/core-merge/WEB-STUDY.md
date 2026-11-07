@@ -263,6 +263,46 @@ Corrections for the plan's coordinator, none applied:
 
 **Reproducing.** Spikes are in `~/.cache/dspi-build/work/wp-wb0/`, not committed: `rust/` (patched copy, with `crates/spike-*` and a git history of the patches), `web/` (the harness), `run-browser.sh`, `mixed.mjs`, `mixedff.mjs`, `qtbuild.sh`, `shot.sh`, `shots/`, `images/` (Containerfiles for `localhost/dspi-wb0-{browser,ff,qtwasm}:1`). Downloads came from Fedora's repositories, npm through the lockfiles, `download.qt.io` through aqtinstall 3.3.0, emsdk at the 4.0.7 tag's commit, and rustup.
 
+## 11. State after WB1
+
+*Added by WP WB1, which the owner's "don't make the code more difficult to port to the web than necessary" asked for. Sections 1 to 10 are the study as written at `9a157a9`; this section is the current state. No web client, UI or hosting came with it, and none is scheduled.*
+
+**What the tree does now.**
+
+| Area | State |
+|---|---|
+| Time | `dspi_transport::clock`: `Instant`, `sleep`, `system_time`. Natively they are `std`'s own, a re-export and two forwarding functions, so desktop timing is unchanged. On `wasm32-unknown-unknown` they call three imports from the page: `dspi.dspi_now_ms`, `dspi.dspi_unix_ms`, `dspi.dspi_sleep_ms` |
+| Call sites | All library code in `dspi-transport`, `dspi-session` and `dspi-core`, including the six `SystemTime::now` sites. Test modules keep `std` |
+| `nusb` | CG3's `usb` feature already keeps it out, so a wasm build passes `--no-default-features`, as the iOS build does. The manifests needed only a comment. Default features still fail on wasm, because `nusb` has no backend there |
+| Gate | `ci/check.sh --step wasm-core`, in the default gate, `--all` and the matrix. It runs `cargo check` on `dspi-session` and `dspi-core`, and a clippy pass (`ci/wasm-clippy/clippy.toml`) that refuses `Instant::now`, `SystemTime::now` and `thread::sleep` in their library code and `dspi-transport`'s |
+
+**The gate is compile-only by design.** It runs nothing. Passing means the core still builds for the web and its time goes through the seam, not that a web build works.
+
+One manual run, not in the gate: the study's `spike-core` harness on the WB1 tree, in headless Chromium 156 under JSPI, with no device. Connect over a Promise transport (45 transfers), a write with read-back, `filters_export`, `system_time` against `Date.now()` and a 30 ms `clock::sleep` all worked. The peek during a suspended call still trapped, as section 2 says, and `open_demo` still failed cleanly. Firefox and the rest of the core were not run. The copy is in `~/.cache/dspi-build/work/wp-wb1/runtime/`, not committed.
+
+**The 10 thread sites stay**, unchanged. `thread::Builder::spawn` returns an error on this target and each site handles it. Only the notification reader's failure was run; the others were read. Library code only:
+
+| File | Site | What it does |
+|---|---|---|
+| `dspi-session/src/notify.rs` | `Builder::spawn` in `start_with_waker` | Notification reader |
+| `dspi-session/src/autoeq.rs` | `Builder::spawn` in `rebuild_to` | Database rebuild in the background |
+| `dspi-session/src/autoeq.rs` | `thread::scope`, `Builder::spawn_scoped` | Fetch workers, with a fallback when no thread starts |
+| `dspi-core/src/notify.rs` | `Builder::spawn` in `wake_notify_after` | Wakes the app for a due refresh retry |
+| `dspi-core/src/rta.rs` | `Builder::spawn` in `RtaWorker::spawn` | RTA worker |
+| `dspi-core/src/link.rs` | two `Builder::spawn` | Link close and supervisor. Feature `link` only |
+| `dspi-transport/src/midi.rs` | `Builder::spawn` | MIDI port watcher. Feature `midir` only |
+
+**The runtime gap: what a web build still needs**, all of it already sized in section 8 as route 2's WB1, 7–10 units:
+
+- **Notifications.** `open_demo`, and any transport that has a notification source, fails on connect with "cannot start the notification reader". The core needs a way to have packets pushed in, with no thread.
+- **Timers.** JavaScript timers in place of the `dspi-core` spawn sites above.
+- **Waits on another thread** compile, but nothing there can wake them, and they were not run: `Condvar::wait_timeout` (`dspi-core/src/rta.rs`, `dspi-transport/src/midi.rs`, `fake.rs`), `recv_timeout` (`dspi-session/src/notify.rs`, `dspi-core/src/link.rs`, `dspi-transport/src/link.rs`), `park_timeout` (`midi.rs`). `clock` does not cover these. `FakeDevice` reaches one only when a notification read has a nonzero timeout.
+- **`std::fs`** returns errors on this target, so whatever uses files needs a replacement: `dspi-session`'s `autoeq.rs` and `preset_file.rs`, and `dspi-core`'s `autoeq.rs`, `curves.rs`, `firmware.rs` and `firmware_guard.rs`, among others.
+- **Link.** `dspi-core --features link` does not build for wasm: `getrandom` fails to compile, reached through `dspi-link`, `tungstenite` and `rand`. `dspi-link` also has its own `Clock` over `std::time::Instant`, which the seam does not reach, and `dspi-core/src/link.rs` needs the two to be one type. The study's route remains a transport calling `@dspi/link` in JavaScript.
+- **The binding**: the serial queue and its guard from section 2, the three clock imports, and the transports. Nothing in the tree provides these.
+
+New code keeps this from growing under the rule in `PLAN-CLIENTS.md` section 1. The gate enforces the time half of it; it does not count threads.
+
 ## Sources
 
 - [JSPI support table, web-features](https://web-platform-dx.github.io/web-features-explorer/features/wasm-jspi); [Firefox intent to ship JSPI](https://groups.google.com/a/mozilla.org/g/dev-platform/c/8cOxM-dWaNs)
