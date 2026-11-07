@@ -57,7 +57,7 @@ fun RemoteDialogs(
             onDismissRequest = { onUsbAnswer(false) },
             title = { Text("A DSPi is connected over USB") },
             text = {
-                Text("This phone is controlling ${state.hub?.name ?: "a hub"}'s DSPi over the network. Switch to the DSPi on USB?")
+                Text("You are controlling ${state.hub?.name ?: "a hub"}'s DSPi over the network. Switch to the DSPi on USB?")
             },
             confirmButton = { TextButton(onClick = { onUsbAnswer(true) }) { Text("Use USB") } },
             dismissButton = { TextButton(onClick = { onUsbAnswer(false) }) { Text("Stay on the Network") } }
@@ -91,7 +91,7 @@ private fun PinDialog(s: LinkSessionState.NeedsPin, onPin: (String) -> Unit, onC
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "The PIN and this phone's access token cross your network unencrypted. Pair only on a network you trust.",
+                    "The PIN and the access token cross your network unencrypted. Pair only on a network you trust.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

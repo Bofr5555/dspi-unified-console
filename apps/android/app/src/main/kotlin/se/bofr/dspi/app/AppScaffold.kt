@@ -151,8 +151,8 @@ internal fun FirmwareRoute(
         // DSPi Link: the board's bootloader is on the hub's USB, not this phone's (no fw.install client)
         remote -> FirmwareNotice(
             back,
-            "This DSPi is connected through DSPi Link. Update its firmware on the computer it is plugged into " +
-                "(DSPi Console), or connect it to this phone over USB."
+            "This DSPi is connected through DSPi Link. Update its firmware in the DSPi Console it is plugged into, " +
+                "or connect it over USB."
         )
         // The firmware update path stays usable read-only (G1: enterBootloader is the one write the bridge allows)
         else -> WritesExempt { FirmwareUpdateView(bridge, go, back, bootloaderLocator = bootloaderLocator) }

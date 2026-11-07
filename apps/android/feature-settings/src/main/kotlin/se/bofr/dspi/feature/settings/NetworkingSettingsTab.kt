@@ -51,7 +51,7 @@ fun NetworkingSettingsTab(controller: NetworkingController) = WritesExempt {
         item {
             SettingsSection(
                 "DSPi Link",
-                footer = "Control a DSPi plugged into a Mac running DSPi Console, or wired to a DSPi bridge, from this phone. " +
+                footer = "Control a DSPi on a hub (DSPi Console or a DSPi bridge) from here. " +
                     "DSPi Link traffic is not encrypted: use it only on networks you trust. To reach a hub from elsewhere, use a VPN " +
                     "such as Tailscale."
             ) {
@@ -65,7 +65,7 @@ fun NetworkingSettingsTab(controller: NetworkingController) = WritesExempt {
         }
         if (!s.enabled) return@SettingsForm
         item {
-            SettingsSection("This Phone", footer = "Hubs list this name among their clients.") {
+            SettingsSection("Local", footer = "Hubs list this name among their clients.") {
                 var draft by remember(s.clientName) { mutableStateOf(s.clientName) }
                 OutlinedTextField(
                     value = draft,
@@ -81,7 +81,7 @@ fun NetworkingSettingsTab(controller: NetworkingController) = WritesExempt {
             }
         }
         item {
-            SettingsSection("Other Hubs", footer = "Tap a hub to control its DSPi from this phone.") {
+            SettingsSection("Other Hubs", footer = "Tap a hub to control its DSPi from here.") {
                 FormSwitchRow("Find hubs automatically", null, s.findAutomatically) { controller.setFindAutomatically(it) }
                 if (s.findAutomatically && s.browseError != null) {
                     FormCaption("⚠ ${s.browseError}", MacColors.orange)
