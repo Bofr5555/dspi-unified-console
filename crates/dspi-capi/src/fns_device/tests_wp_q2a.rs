@@ -245,7 +245,7 @@ fn wp_q2a_no_callback_fires_after_free_begins() {
         c.core.set_hotplug_callback(Some(late.clone()));
         c.core.rta_start();
     });
-    // The worker's own first wake (the demo has no analyser, so it is its last)
+    // The worker's own first wake (nothing is requested, so it is its last)
     // comes before `freeing`: only the teardown can count.
     std::thread::sleep(std::time::Duration::from_millis(300));
     late.freeing.store(true, Ordering::SeqCst);
