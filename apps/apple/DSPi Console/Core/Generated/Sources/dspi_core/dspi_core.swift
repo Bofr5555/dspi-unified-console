@@ -1361,6 +1361,13 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func configImport(text: String, options: UInt32)  -> String
     
     /**
+     * The open connection's generation: unique per connection and never
+     * reused while the process runs, so it changes on every reopen and on
+     * a Link re-bind. 0 when nothing is open.
+     */
+    func connectionGeneration()  -> UInt64
+    
+    /**
      * Copy the live state into preset `dest`, then save it back to
      * `source` so `source` stays the active slot (as the macOS Console
      * does). **Writes flash twice.**
@@ -2340,6 +2347,22 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * [`DspiCore::process_notifications`] drains the queue. Never fails.
      */
     func monitorRead(afterId: UInt64)  -> MonitorBatch
+    
+    /**
+     * The notifications kept since the last drain, oldest first. The tap
+     * keeps the last 512; when older ones were dropped, the oldest returned
+     * has `lost` set. Empty while the tap is off. Never fails.
+     */
+    func notifyTapDrain()  -> [RawNotification]
+    
+    /**
+     * Start or stop the notification tap. While on, every notification
+     * [`process_notifications`](Self::process_notifications) drains is also
+     * kept for [`notify_tap_drain`](Self::notify_tap_drain), in the order
+     * the mirror applied them. Off by default; turning it off forgets what
+     * it held. Never fails.
+     */
+    func notifyTapSet(enabled: Bool) 
     
     /**
      * Open the built-in demo device (`dspi_transport::FakeDevice::demo`):
@@ -3774,6 +3797,18 @@ open func configImport(text: String, options: UInt32) -> String  {
     uniffi_dspi_core_fn_method_dspicore_config_import(self.uniffiClonePointer(),
         FfiConverterString.lower(text),
         FfiConverterUInt32.lower(options),$0
+    )
+})
+}
+    
+    /**
+     * The open connection's generation: unique per connection and never
+     * reused while the process runs, so it changes on every reopen and on
+     * a Link re-bind. 0 when nothing is open.
+     */
+open func connectionGeneration() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_connection_generation(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -5228,6 +5263,32 @@ open func monitorRead(afterId: UInt64) -> MonitorBatch  {
         FfiConverterUInt64.lower(afterId),$0
     )
 })
+}
+    
+    /**
+     * The notifications kept since the last drain, oldest first. The tap
+     * keeps the last 512; when older ones were dropped, the oldest returned
+     * has `lost` set. Empty while the tap is off. Never fails.
+     */
+open func notifyTapDrain() -> [RawNotification]  {
+    return try!  FfiConverterSequenceTypeRawNotification.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_notify_tap_drain(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Start or stop the notification tap. While on, every notification
+     * [`process_notifications`](Self::process_notifications) drains is also
+     * kept for [`notify_tap_drain`](Self::notify_tap_drain), in the order
+     * the mirror applied them. Off by default; turning it off forgets what
+     * it held. Never fails.
+     */
+open func notifyTapSet(enabled: Bool)  {try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_notify_tap_set(self.uniffiClonePointer(),
+        FfiConverterBool.lower(enabled),$0
+    )
+}
 }
     
     /**
@@ -14400,6 +14461,149 @@ public func FfiConverterTypePresetDirectory_lower(_ value: PresetDirectory) -> R
 
 
 /**
+ * One notification as the tap saw it (WP CG23).
+ */
+public struct RawNotification {
+    /**
+     * The packet in the firmware's v2 layout (`notify.h`), or the 8-byte v1
+     * volume packet. Rebuilt from the decoded event, with the flags and the
+     * padding zero as the firmware sends them: byte for byte what the
+     * device sent for every event this build knows. A packet the reader
+     * could not decode is kept as it came.
+     */
+    public var packet: Data
+    /**
+     * The link's attribution: the DSPi Link session id of the writer, 0
+     * for the device itself; `None` over USB and MIDI.
+     */
+    public var origin: UInt16?
+    /**
+     * The echo filter's verdict: the echo of a write of this core's own.
+     * Only a `PARAM_CHANGED` or a `BULK_INVALIDATED` can be one; every
+     * other event is `false`.
+     */
+    public var own: Bool
+    /**
+     * Something before this entry is missing: the tap's ring overflowed,
+     * or the reader saw a gap in the device's sequence numbers.
+     */
+    public var lost: Bool
+    /**
+     * When the reader received it, ms since the Unix epoch.
+     */
+    public var receivedMs: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The packet in the firmware's v2 layout (`notify.h`), or the 8-byte v1
+         * volume packet. Rebuilt from the decoded event, with the flags and the
+         * padding zero as the firmware sends them: byte for byte what the
+         * device sent for every event this build knows. A packet the reader
+         * could not decode is kept as it came.
+         */packet: Data, 
+        /**
+         * The link's attribution: the DSPi Link session id of the writer, 0
+         * for the device itself; `None` over USB and MIDI.
+         */origin: UInt16?, 
+        /**
+         * The echo filter's verdict: the echo of a write of this core's own.
+         * Only a `PARAM_CHANGED` or a `BULK_INVALIDATED` can be one; every
+         * other event is `false`.
+         */own: Bool, 
+        /**
+         * Something before this entry is missing: the tap's ring overflowed,
+         * or the reader saw a gap in the device's sequence numbers.
+         */lost: Bool, 
+        /**
+         * When the reader received it, ms since the Unix epoch.
+         */receivedMs: Int64) {
+        self.packet = packet
+        self.origin = origin
+        self.own = own
+        self.lost = lost
+        self.receivedMs = receivedMs
+    }
+}
+
+#if compiler(>=6)
+extension RawNotification: Sendable {}
+#endif
+
+
+extension RawNotification: Equatable, Hashable {
+    public static func ==(lhs: RawNotification, rhs: RawNotification) -> Bool {
+        if lhs.packet != rhs.packet {
+            return false
+        }
+        if lhs.origin != rhs.origin {
+            return false
+        }
+        if lhs.own != rhs.own {
+            return false
+        }
+        if lhs.lost != rhs.lost {
+            return false
+        }
+        if lhs.receivedMs != rhs.receivedMs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(packet)
+        hasher.combine(origin)
+        hasher.combine(own)
+        hasher.combine(lost)
+        hasher.combine(receivedMs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRawNotification: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RawNotification {
+        return
+            try RawNotification(
+                packet: FfiConverterData.read(from: &buf), 
+                origin: FfiConverterOptionUInt16.read(from: &buf), 
+                own: FfiConverterBool.read(from: &buf), 
+                lost: FfiConverterBool.read(from: &buf), 
+                receivedMs: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RawNotification, into buf: inout [UInt8]) {
+        FfiConverterData.write(value.packet, into: &buf)
+        FfiConverterOptionUInt16.write(value.origin, into: &buf)
+        FfiConverterBool.write(value.own, into: &buf)
+        FfiConverterBool.write(value.lost, into: &buf)
+        FfiConverterInt64.write(value.receivedMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRawNotification_lift(_ buf: RustBuffer) throws -> RawNotification {
+    return try FfiConverterTypeRawNotification.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRawNotification_lower(_ value: RawNotification) -> RustBuffer {
+    return FfiConverterTypeRawNotification.lower(value)
+}
+
+
+/**
  * The output rings' counters and watermarks (`fetch_ring_health`). The
  * underrun, refused and over-budget counts are cumulative; the rest clear on
  * `reset_buffer_stats`.
@@ -19046,6 +19250,30 @@ extension VregDemoEvent: Equatable, Hashable {}
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionUInt16: FfiConverterRustBuffer {
+    typealias SwiftType = UInt16?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterUInt16.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterUInt16.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionUInt32: FfiConverterRustBuffer {
     typealias SwiftType = UInt32?
 
@@ -19678,6 +19906,31 @@ fileprivate struct FfiConverterSequenceTypePinUse: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypePinUse.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeRawNotification: FfiConverterRustBuffer {
+    typealias SwiftType = [RawNotification]
+
+    public static func write(_ value: [RawNotification], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeRawNotification.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [RawNotification] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [RawNotification]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeRawNotification.read(from: &buf))
         }
         return seq
     }
@@ -20438,6 +20691,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_config_import() != 51763) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_connection_generation() != 50111) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_copy_preset() != 46555) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -20700,6 +20956,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_monitor_read() != 5658) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_notify_tap_drain() != 2545) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_notify_tap_set() != 10210) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_open_demo() != 35962) {

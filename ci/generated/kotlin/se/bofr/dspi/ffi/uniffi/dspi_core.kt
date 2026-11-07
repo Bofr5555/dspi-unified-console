@@ -1374,6 +1374,12 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1476,6 +1482,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_close_fd(
 fun uniffi_dspi_core_checksum_method_dspicore_config_export(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_config_import(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_connection_generation(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_copy_preset(
 ): Short
@@ -1652,6 +1660,10 @@ fun uniffi_dspi_core_checksum_method_dspicore_max_delay_ms(
 fun uniffi_dspi_core_checksum_method_dspicore_monitor_clear(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_monitor_read(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_notify_tap_drain(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_notify_tap_set(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_open_demo(
 ): Short
@@ -1994,6 +2006,8 @@ fun uniffi_dspi_core_fn_method_dspicore_config_export(`ptr`: Pointer,`name`: Rus
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_config_import(`ptr`: Pointer,`text`: RustBuffer.ByValue,`options`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_connection_generation(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Long
 fun uniffi_dspi_core_fn_method_dspicore_copy_preset(`ptr`: Pointer,`source`: Byte,`dest`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_close(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2170,6 +2184,10 @@ fun uniffi_dspi_core_fn_method_dspicore_monitor_clear(`ptr`: Pointer,uniffi_out_
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_monitor_read(`ptr`: Pointer,`afterId`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_notify_tap_drain(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_notify_tap_set(`ptr`: Pointer,`enabled`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_open_demo(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_open_fd(`ptr`: Pointer,`fd`: Int,`serial`: RustBuffer.ByValue,`vid`: Short,uniffi_out_err: UniffiRustCallStatus, 
@@ -2750,6 +2768,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_config_import() != 51763.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_connection_generation() != 50111.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_copy_preset() != 46555.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3012,6 +3033,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_monitor_read() != 5658.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_notify_tap_drain() != 2545.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_notify_tap_set() != 10210.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_open_demo() != 35962.toShort()) {
@@ -4986,6 +5013,13 @@ public interface DspiCoreInterface {
     fun `configImport`(`text`: kotlin.String, `options`: kotlin.UInt): kotlin.String
     
     /**
+     * The open connection's generation: unique per connection and never
+     * reused while the process runs, so it changes on every reopen and on
+     * a Link re-bind. 0 when nothing is open.
+     */
+    fun `connectionGeneration`(): kotlin.ULong
+    
+    /**
      * Copy the live state into preset `dest`, then save it back to
      * `source` so `source` stays the active slot (as the macOS Console
      * does). **Writes flash twice.**
@@ -5965,6 +5999,22 @@ public interface DspiCoreInterface {
      * [`DspiCore::process_notifications`] drains the queue. Never fails.
      */
     fun `monitorRead`(`afterId`: kotlin.ULong): MonitorBatch
+    
+    /**
+     * The notifications kept since the last drain, oldest first. The tap
+     * keeps the last 512; when older ones were dropped, the oldest returned
+     * has `lost` set. Empty while the tap is off. Never fails.
+     */
+    fun `notifyTapDrain`(): List<RawNotification>
+    
+    /**
+     * Start or stop the notification tap. While on, every notification
+     * [`process_notifications`](Self::process_notifications) drains is also
+     * kept for [`notify_tap_drain`](Self::notify_tap_drain), in the order
+     * the mirror applied them. Off by default; turning it off forgets what
+     * it held. Never fails.
+     */
+    fun `notifyTapSet`(`enabled`: kotlin.Boolean)
     
     /**
      * Open the built-in demo device (`dspi_transport::FakeDevice::demo`):
@@ -7473,6 +7523,23 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_config_import(
         it, FfiConverterString.lower(`text`),FfiConverterUInt.lower(`options`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The open connection's generation: unique per connection and never
+     * reused while the process runs, so it changes on every reopen and on
+     * a Link re-bind. 0 when nothing is open.
+     */override fun `connectionGeneration`(): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_connection_generation(
+        it, _status)
 }
     }
     )
@@ -9369,6 +9436,41 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     }
     )
     }
+    
+
+    
+    /**
+     * The notifications kept since the last drain, oldest first. The tap
+     * keeps the last 512; when older ones were dropped, the oldest returned
+     * has `lost` set. Empty while the tap is off. Never fails.
+     */override fun `notifyTapDrain`(): List<RawNotification> {
+            return FfiConverterSequenceTypeRawNotification.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_notify_tap_drain(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Start or stop the notification tap. While on, every notification
+     * [`process_notifications`](Self::process_notifications) drains is also
+     * kept for [`notify_tap_drain`](Self::notify_tap_drain), in the order
+     * the mirror applied them. Off by default; turning it off forgets what
+     * it held. Never fails.
+     */override fun `notifyTapSet`(`enabled`: kotlin.Boolean)
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_notify_tap_set(
+        it, FfiConverterBoolean.lower(`enabled`),_status)
+}
+    }
+    
     
 
     
@@ -16332,6 +16434,76 @@ public object FfiConverterTypePresetDirectory: FfiConverterRustBuffer<PresetDire
 
 
 /**
+ * One notification as the tap saw it (WP CG23).
+ */
+data class RawNotification (
+    /**
+     * The packet in the firmware's v2 layout (`notify.h`), or the 8-byte v1
+     * volume packet. Rebuilt from the decoded event, with the flags and the
+     * padding zero as the firmware sends them: byte for byte what the
+     * device sent for every event this build knows. A packet the reader
+     * could not decode is kept as it came.
+     */
+    var `packet`: kotlin.ByteArray, 
+    /**
+     * The link's attribution: the DSPi Link session id of the writer, 0
+     * for the device itself; `None` over USB and MIDI.
+     */
+    var `origin`: kotlin.UShort?, 
+    /**
+     * The echo filter's verdict: the echo of a write of this core's own.
+     * Only a `PARAM_CHANGED` or a `BULK_INVALIDATED` can be one; every
+     * other event is `false`.
+     */
+    var `own`: kotlin.Boolean, 
+    /**
+     * Something before this entry is missing: the tap's ring overflowed,
+     * or the reader saw a gap in the device's sequence numbers.
+     */
+    var `lost`: kotlin.Boolean, 
+    /**
+     * When the reader received it, ms since the Unix epoch.
+     */
+    var `receivedMs`: kotlin.Long
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRawNotification: FfiConverterRustBuffer<RawNotification> {
+    override fun read(buf: ByteBuffer): RawNotification {
+        return RawNotification(
+            FfiConverterByteArray.read(buf),
+            FfiConverterOptionalUShort.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterLong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: RawNotification) = (
+            FfiConverterByteArray.allocationSize(value.`packet`) +
+            FfiConverterOptionalUShort.allocationSize(value.`origin`) +
+            FfiConverterBoolean.allocationSize(value.`own`) +
+            FfiConverterBoolean.allocationSize(value.`lost`) +
+            FfiConverterLong.allocationSize(value.`receivedMs`)
+    )
+
+    override fun write(value: RawNotification, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`packet`, buf)
+            FfiConverterOptionalUShort.write(value.`origin`, buf)
+            FfiConverterBoolean.write(value.`own`, buf)
+            FfiConverterBoolean.write(value.`lost`, buf)
+            FfiConverterLong.write(value.`receivedMs`, buf)
+    }
+}
+
+
+
+/**
  * The output rings' counters and watermarks (`fetch_ring_health`). The
  * underrun, refused and over-budget counts are cumulative; the rest clear on
  * `reset_buffer_stats`.
@@ -18850,6 +19022,38 @@ public object FfiConverterTypeVregDemoEvent: FfiConverterRustBuffer<VregDemoEven
 /**
  * @suppress
  */
+public object FfiConverterOptionalUShort: FfiConverterRustBuffer<kotlin.UShort?> {
+    override fun read(buf: ByteBuffer): kotlin.UShort? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterUShort.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.UShort?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterUShort.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.UShort?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterUShort.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalUInt: FfiConverterRustBuffer<kotlin.UInt?> {
     override fun read(buf: ByteBuffer): kotlin.UInt? {
         if (buf.get().toInt() == 0) {
@@ -19608,6 +19812,34 @@ public object FfiConverterSequenceTypePinUse: FfiConverterRustBuffer<List<PinUse
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypePinUse.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeRawNotification: FfiConverterRustBuffer<List<RawNotification>> {
+    override fun read(buf: ByteBuffer): List<RawNotification> {
+        val len = buf.getInt()
+        return List<RawNotification>(len) {
+            FfiConverterTypeRawNotification.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<RawNotification>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeRawNotification.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<RawNotification>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeRawNotification.write(it, buf)
         }
     }
 }

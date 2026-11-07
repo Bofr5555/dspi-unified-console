@@ -325,6 +325,8 @@ fn apply_queued(inner: &mut Inner, r: &mut NotifyResult) -> FollowUp {
     for note in &notes {
         inner.monitor.record(note);
         let own = conn.echo.classify_notification(kind, session, note);
+        // -- WP CG23 --
+        inner.notify_tap.record(note, own);
         if note.lost {
             follow.refresh = true;
             // -- WP CG13 --

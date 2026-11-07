@@ -406,6 +406,12 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun rawSet(opcode: Int, value: Int, data: List<Int>) = call { core.rawSet(opcode.toUByte(), value.toUShort(), ByteArray(data.size) { data[it].toByte() }) }
 
+    override fun notifyTapSet(enabled: Boolean) = core.notifyTapSet(enabled)
+
+    override fun notifyTapDrain(): List<RawNotification> = core.notifyTapDrain().map { it.toDomain() }
+
+    override fun connectionGeneration(): Long = core.connectionGeneration().toLong()
+
     override fun rtaSetListener(listener: RtaListener?) = core.rtaSetListener(listener?.let { wrapRtaListener(it) })
 
     override fun rtaStart() = core.rtaStart()
@@ -1869,6 +1875,24 @@ internal fun LinkPhaseText.toFfi() =
         text = text,
         actionKey = actionKey,
         action = action,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.RawNotification.toDomain() =
+    RawNotification(
+        packet = packet.map { it.toInt() and 0xFF },
+        origin = origin?.let { it.toInt() },
+        own = own,
+        lost = lost,
+        receivedMs = receivedMs,
+    )
+
+internal fun RawNotification.toFfi() =
+    se.bofr.dspi.ffi.uniffi.RawNotification(
+        packet = ByteArray(packet.size) { packet[it].toByte() },
+        origin = origin?.let { it.toUShort() },
+        own = own,
+        lost = lost,
+        receivedMs = receivedMs,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.VregChoice.toDomain() =

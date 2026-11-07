@@ -23,8 +23,13 @@
 //! - **Nothing is retried or queued.** One call is one transfer; a failure is
 //!   the caller's to see, as for any write on a lost link (`PLAN-CLIENTS.md` §1).
 
+use std::collections::VecDeque;
+use std::time::UNIX_EPOCH;
+
 use dspi_proto::generated::{ALL_OPCODES, opcodes as op};
+use dspi_session::notify::{Event, Notification, PROTOCOL_VERSION, evt};
 use dspi_transport::TransportError;
+use dspi_transport::clock::{self, Instant};
 
 use crate::{DspiCore, DspiError, Result};
 
@@ -120,6 +125,221 @@ impl DspiCore {
             .control_out(opcode, value, &data)
             .map_err(refusal)
     }
+}
+
+// -- WP CG23 --
+// The raw notification tap and the connection generation, for a binding that
+// still hands its own code the packets (`docs/SWIFT-SEAMS.md` §6: the Swift
+// console's `InterruptMonitor` and `onX` hooks, until SW14 moves them to
+// `monitor_read`).
+
+/// One notification as the tap saw it (WP CG23).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RawNotification {
+    /// The packet in the firmware's v2 layout (`notify.h`), or the 8-byte v1
+    /// volume packet. Rebuilt from the decoded event, with the flags and the
+    /// padding zero as the firmware sends them: byte for byte what the
+    /// device sent for every event this build knows. A packet the reader
+    /// could not decode is kept as it came.
+    pub packet: Vec<u8>,
+    /// The link's attribution: the DSPi Link session id of the writer, 0
+    /// for the device itself; `None` over USB and MIDI.
+    pub origin: Option<u16>,
+    /// The echo filter's verdict: the echo of a write of this core's own.
+    /// Only a `PARAM_CHANGED` or a `BULK_INVALIDATED` can be one; every
+    /// other event is `false`.
+    pub own: bool,
+    /// Something before this entry is missing: the tap's ring overflowed,
+    /// or the reader saw a gap in the device's sequence numbers.
+    pub lost: bool,
+    /// When the reader received it, ms since the Unix epoch.
+    pub received_ms: i64,
+}
+
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
+    /// Start or stop the notification tap. While on, every notification
+    /// [`process_notifications`](Self::process_notifications) drains is also
+    /// kept for [`notify_tap_drain`](Self::notify_tap_drain), in the order
+    /// the mirror applied them. Off by default; turning it off forgets what
+    /// it held. Never fails.
+    pub fn notify_tap_set(&self, enabled: bool) {
+        self.lock().notify_tap.set(enabled);
+    }
+
+    /// The notifications kept since the last drain, oldest first. The tap
+    /// keeps the last 512; when older ones were dropped, the oldest returned
+    /// has `lost` set. Empty while the tap is off. Never fails.
+    pub fn notify_tap_drain(&self) -> Vec<RawNotification> {
+        self.lock().notify_tap.drain()
+    }
+
+    /// The open connection's generation: unique per connection and never
+    /// reused while the process runs, so it changes on every reopen and on
+    /// a Link re-bind. 0 when nothing is open.
+    pub fn connection_generation(&self) -> u64 {
+        self.lock().conn.as_ref().map_or(0, |c| c.generation)
+    }
+}
+
+impl DspiCore {
+    /// Set `lost` on the next entry the tap keeps: a binding that drained
+    /// entries and could not deliver them (the C ABI's too-small buffer)
+    /// says so. Not exported to UniFFI.
+    #[doc(hidden)]
+    pub fn notify_tap_note_dropped(&self) {
+        self.lock().notify_tap.dropped = true;
+    }
+}
+
+/// The tap's ring (WP CG23), behind the core lock.
+#[derive(Default)]
+pub(crate) struct NotifyTap {
+    on: bool,
+    ring: VecDeque<RawNotification>,
+    /// Entries were dropped since the last one kept.
+    dropped: bool,
+}
+
+impl NotifyTap {
+    /// The most entries kept; the oldest go first.
+    pub(crate) const LIMIT: usize = 512;
+
+    fn set(&mut self, on: bool) {
+        self.on = on;
+        if !on {
+            self.ring = VecDeque::new();
+            self.dropped = false;
+        }
+    }
+
+    fn drain(&mut self) -> Vec<RawNotification> {
+        self.ring.drain(..).collect()
+    }
+
+    /// Keep `note`, with the echo filter's verdict `own`. Nothing when off.
+    pub(crate) fn record(&mut self, note: &Notification, own: bool) {
+        if !self.on {
+            return;
+        }
+        if self.ring.len() >= Self::LIMIT {
+            self.ring.pop_front();
+            if let Some(first) = self.ring.front_mut() {
+                first.lost = true;
+            }
+        }
+        let lost = note.lost || std::mem::take(&mut self.dropped);
+        self.ring.push_back(RawNotification {
+            packet: packet(note),
+            origin: note.origin,
+            own,
+            lost,
+            received_ms: epoch_ms(note.received),
+        });
+    }
+}
+
+/// `note`'s packet in the firmware's layout (`notify.h:24-112`).
+fn packet(note: &Notification) -> Vec<u8> {
+    let v2 = |id: u8, body: &[u8]| {
+        let mut p = vec![PROTOCOL_VERSION, id, 0, note.seq];
+        p.extend_from_slice(body);
+        p
+    };
+    match &note.event {
+        Event::Idle => vec![evt::IDLE],
+        Event::MasterVolume(db) => {
+            let mut p = vec![evt::MASTER_VOLUME, 0, 0, 0];
+            p.extend_from_slice(&db.to_le_bytes());
+            p
+        }
+        Event::ParamChanged {
+            offset,
+            source,
+            bytes,
+        } => {
+            // The decoder took `bytes` from the packet's own size field.
+            let size = u16::try_from(bytes.len()).unwrap_or(u16::MAX);
+            let mut body = Vec::with_capacity(bytes.len().saturating_add(8));
+            body.extend_from_slice(&offset.to_le_bytes());
+            body.extend_from_slice(&size.to_le_bytes());
+            body.extend_from_slice(&[source.raw(), 0, 0, 0]);
+            body.extend_from_slice(bytes);
+            v2(evt::PARAM_CHANGED, &body)
+        }
+        Event::BulkInvalidated { source } => v2(evt::BULK_INVALIDATED, &[source.raw(), 0, 0, 0]),
+        Event::PresetLoaded { slot } => v2(evt::PRESET_LOADED, &[*slot, 0, 0, 0]),
+        Event::InputFormat { channels } => v2(evt::INPUT_FORMAT, &[*channels, 0, 0, 0]),
+        Event::SiggenState {
+            state,
+            reason,
+            signal_type,
+            channel,
+        } => v2(
+            evt::SIGGEN_STATE,
+            &[*state, *reason, *signal_type, *channel],
+        ),
+        Event::AdatState {
+            enabled,
+            active,
+            pin,
+        } => v2(
+            evt::ADAT_STATE,
+            &[u8::from(*enabled), u8::from(*active), *pin, 0],
+        ),
+        Event::I2sSlaveState { state, rate_hz } => {
+            let r = rate_hz.to_le_bytes();
+            v2(evt::I2S_SLAVE_STATE, &[*state, r[0], r[1], r[2], r[3]])
+        }
+        Event::IrLearn {
+            state,
+            protocol,
+            code,
+        } => {
+            let c = code.to_le_bytes();
+            v2(
+                evt::CS_IR_LEARN,
+                &[*state, *protocol, 0, 0, c[0], c[1], c[2], c[3]],
+            )
+        }
+        Event::AdatInputState {
+            state,
+            rate_hz,
+            clock_mode,
+        } => {
+            let r = rate_hz.to_le_bytes();
+            v2(
+                evt::ADAT_INPUT_STATE,
+                &[*state, r[0], r[1], r[2], r[3], *clock_mode],
+            )
+        }
+        Event::CsAux {
+            slot,
+            state,
+            level_q8,
+            source,
+        } => {
+            let l = level_q8.to_le_bytes();
+            v2(evt::CS_AUX, &[*slot, *state, l[0], l[1], source.raw()])
+        }
+        // The reader's stand-in for a packet it could not decode holds that
+        // packet whole (`dspi_session::notify::Notifications::start`).
+        Event::Unknown { id: 0xFF, bytes } if note.lost && note.seq == 0 => bytes.clone(),
+        Event::Unknown { id, bytes } => v2(*id, bytes),
+    }
+}
+
+/// `at` as ms since the Unix epoch (0 if the clock is before it), as the
+/// monitor stamps its lines.
+fn epoch_ms(at: Instant) -> i64 {
+    let age = Instant::now().saturating_duration_since(at);
+    clock::system_time()
+        .checked_sub(age)
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .and_then(|d| i64::try_from(d.as_millis()).ok())
+        .unwrap_or(0)
 }
 
 /// [`DspiError::InvalidArgument`] for the opcodes only the core may send:
@@ -595,3 +815,9 @@ mod tests_wp_cg4 {
         assert_eq!(read, volume(-17.0));
     }
 }
+
+// -- WP CG23 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+#[path = "raw/tests_wp_cg23.rs"]
+mod tests_wp_cg23;

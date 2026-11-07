@@ -499,6 +499,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_config_export(void*_Nonnull ptr, 
 RustBuffer uniffi_dspi_core_fn_method_dspicore_config_import(void*_Nonnull ptr, RustBuffer text, uint32_t options, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONNECTION_GENERATION
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONNECTION_GENERATION
+uint64_t uniffi_dspi_core_fn_method_dspicore_connection_generation(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_COPY_PRESET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_COPY_PRESET
 void uniffi_dspi_core_fn_method_dspicore_copy_preset(void*_Nonnull ptr, uint8_t source, uint8_t dest, RustCallStatus *_Nonnull out_status
@@ -937,6 +942,16 @@ void uniffi_dspi_core_fn_method_dspicore_monitor_clear(void*_Nonnull ptr, RustCa
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MONITOR_READ
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MONITOR_READ
 RustBuffer uniffi_dspi_core_fn_method_dspicore_monitor_read(void*_Nonnull ptr, uint64_t after_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_NOTIFY_TAP_DRAIN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_NOTIFY_TAP_DRAIN
+RustBuffer uniffi_dspi_core_fn_method_dspicore_notify_tap_drain(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_NOTIFY_TAP_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_NOTIFY_TAP_SET
+void uniffi_dspi_core_fn_method_dspicore_notify_tap_set(void*_Nonnull ptr, int8_t enabled, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_DEMO
@@ -2296,6 +2311,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_config_import(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONNECTION_GENERATION
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONNECTION_GENERATION
+uint16_t uniffi_dspi_core_checksum_method_dspicore_connection_generation(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_COPY_PRESET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_COPY_PRESET
 uint16_t uniffi_dspi_core_checksum_method_dspicore_copy_preset(void
@@ -2821,6 +2842,18 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_monitor_clear(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MONITOR_READ
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MONITOR_READ
 uint16_t uniffi_dspi_core_checksum_method_dspicore_monitor_read(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_NOTIFY_TAP_DRAIN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_NOTIFY_TAP_DRAIN
+uint16_t uniffi_dspi_core_checksum_method_dspicore_notify_tap_drain(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_NOTIFY_TAP_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_NOTIFY_TAP_SET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_notify_tap_set(void
     
 );
 #endif
