@@ -48,7 +48,8 @@ interface LinkCoreOps {
  */
 class BridgeLinkCoreOps(private val core: DspiCoreApi, private val bridge: DspiBridge, private val ffi: CoroutineDispatcher) : LinkCoreOps {
     override suspend fun connect(url: String, clientName: String, appVersion: String, token: String): LinkHello =
-        withContext(ffi) { core.linkConnect(url, clientName, appVersion, token) }
+        // -- WP AN1 -- "": no expected hub id yet, the old behaviour. AN3 passes the stored id.
+        withContext(ffi) { core.linkConnect(url, clientName, appVersion, token, "") }
 
     override suspend fun pair(pin: String): String = withContext(ffi) { core.linkPair(pin) }
 

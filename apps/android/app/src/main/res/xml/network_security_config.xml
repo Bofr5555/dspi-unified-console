@@ -2,7 +2,7 @@
 <!--
   DSPi Link (opt-in, off by default) talks plain ws:// and http:// to a hub on
   the local network (DSPi-Link spec 6.4: no hub implements TLS). That traffic
-  is opened by the Rust core (rust/dspi-link, std::net sockets), which
+  is opened by the Rust core (crates/dspi-link, std::net sockets), which
   Android's NetworkSecurityPolicy does not govern; nothing in the Java/Kotlin
   layer makes HTTP or WebSocket connections at all. So this config permits no
   cleartext anywhere: should a Java/Kotlin library ever try a cleartext

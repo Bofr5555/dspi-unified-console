@@ -386,8 +386,8 @@ none has run against a K340 yet.
 7. **AUR `PKGBUILD`** builds from the upstream DSPi-Console-Linux
    repository's layout. It needs a new source URL and paths if the
    monorepo becomes the source.
-8. **Build images:** `ci/run.sh`'s images rest on `dspi-qtport:4` and
-   `dspi-termport-xwin:1`, whose Containerfiles are not in this repository.
+8. **Build images:** done. `ci/container/build-images.sh` builds every image
+   `ci/run.sh` uses from its committed Containerfile.
 9. Windows: shadow, Snap Layouts, signing (see 3).
 10. `Qt.labs.settings` deprecation on Qt 6.11 (runtime note only).
 

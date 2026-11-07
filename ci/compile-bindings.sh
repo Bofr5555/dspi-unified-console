@@ -7,7 +7,9 @@
 # editing this script. It must have crates/<namespace>/uniffi.toml.
 #
 #   kotlin  every namespace's .kt in one kotlinc run, as one Gradle module would.
-#           Two namespaces in one package clash here.
+#           Two namespaces in one package clash here. With them the Android
+#           contract and its adapter (apps/android core-api, FfiDspiCore.kt): both
+#           are pure JVM, and a binding that changed under them fails here.
 #   swift   each namespace as its own module against its FFI header, then linked
 #           against the library, so a symbol the binding calls must exist.
 set -euo pipefail
@@ -38,6 +40,8 @@ case "$lang" in
     mapfile -t sources < <(find "$out/src" -name '*.kt' | sort)
     [ ${#sources[@]} -eq ${#namespaces[@]} ] || {
       echo "${#namespaces[@]} namespaces, ${#sources[@]} Kotlin files" >&2; exit 1; }
+    # -- WP AN1 --
+    mapfile -t -O "${#sources[@]}" sources < <(find apps/android/core-api/src/main/kotlin apps/android/ffi/src/main/kotlin -name '*.kt' | sort)
     JAVA_HOME=/opt/jdk JAVA_OPTS=-Xmx3g /opt/kotlinc/bin/kotlinc -nowarn \
       -cp /opt/kotlin-libs/jna.jar:/opt/kotlin-libs/coroutines.jar \
       -d "$out/build/bindings.jar" "${sources[@]}"

@@ -8,21 +8,21 @@ Three layers must agree on the vendor requests (REQ_* opcodes):
             firmware repository, so the `#define REQ_*` lines are kept in
             fixtures/firmware_req_opcodes.txt, extracted read-only with
             `git show <sha>:<config_h>` by `--refresh-firmware <clone>`.
-  core      `pub const REQ_*` in protocol.rs of the core dspi-ffi builds:
-            rust/.staged/dspi-core/core (pinned submodule + patches) when
-            staged, else third_party/DSPi-Console-Linux/core.
-  ffi       the opcodes the core's code reaches from the functions
-            rust/dspi-ffi calls (a name-based call graph over the core's
-            non-test items: fns, consts and statics; worker threads are
-            reached through the calls that start them).
+  core      `#define REQ_*` of crates/dspi-proto/firmware/config.h, the vendored
+            header dspi-proto generates its opcode constants from.
+  ffi       the opcodes the core's code reaches from what dspi-core exports
+            through UniFFI, the surface tools/gen_kotlin_contract.py reads (a
+            name-based call graph over the non-test items of dspi-core,
+            dspi-session, dspi-proto and dspi-transport: fns, consts and statics;
+            worker threads are reached through the calls that start them).
 
 Limitation of the call graph: it works on names, not types. Items with the
 same name in different impls (`parse`, `default`, `new`, `start`, ...) are
 merged into one node, and any identifier in a body that names an item is an
 edge. It therefore over-approximates reachability: it reliably catches an
-opcode whose only path from dspi-ffi was removed, but "reachable" does not
+opcode whose only path from the exported surface was removed, but "reachable" does not
 prove a specific path exists (e.g. RTA 0x08-0x0F show up as reachable from
-several roots). `-v` lists the merged names and each opcode's dspi-ffi callers.
+several roots). `-v` lists the merged names and the exported functions reaching each opcode.
 
 Policy (coordinator decision D6): the TAG pin (tag_sha, the firmware the
 reference UI ships) is the failing check; the release-branch head
@@ -31,12 +31,12 @@ reference UI ships) is the failing check; the release-branch head
 Fails (exit 1) on:
   - a firmware opcode at the tag pin missing from the core, or a value
     mismatch, unless listed in FIRMWARE_NOT_IN_CORE;
-  - an opcode the core uses that dspi-ffi cannot reach, unless listed in
-    UNREACHABLE_FROM_FFI;
+  - an opcode the core uses that the exported surface cannot reach, unless
+    listed in UNREACHABLE_FROM_FFI;
   - a firmware snapshot without the pinned shas, or a stale allowlist entry
     (the gap it excuses is gone).
-Opcodes the core defines but never uses are reported, not failed: dspi-ffi
-cannot expose what the core does not implement (that is upstream's gap).
+Opcodes the core defines but never uses are reported, not failed: the bindings
+cannot expose what the core does not implement.
 
 Usage:
   python3 tools/opcode_coverage.py                       # the CI check
@@ -54,31 +54,32 @@ from collections import defaultdict, deque
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-# The staged copy (pinned core + third_party/patches, tools/stage-core.sh) is
-# what dspi-ffi builds against; fall back to the submodule when not staged.
-# Patch 0002 adds REQ_EXTENSION (0x00, extension channel of Bofr5555/DSPi bofr-main): it shows
-# as "core-only" when staged and is absent from the unstaged submodule.
-_STAGED = ROOT / "rust/.staged/dspi-core/core/src"
-CORE_SRC = _STAGED if (_STAGED / "protocol.rs").is_file() else ROOT / "third_party/DSPi-Console-Linux/core/src"
-PROTOCOL = CORE_SRC / "protocol.rs"
-FFI_SRC = ROOT / "rust/dspi-ffi/src"
+TOP = ROOT.parent.parent
+PROTOCOL = TOP / "crates/dspi-proto/firmware/config.h"
+# dspi-transport's fake and mock devices answer opcodes rather than send them.
+CORE_FILES = [
+    f
+    for crate in ("dspi-core", "dspi-session", "dspi-proto", "dspi-transport")
+    for f in sorted((TOP / "crates" / crate / "src").glob("*.rs"))
+    if f.name not in ("fake.rs", "mock.rs")
+]
 REFERENCE = ROOT / "tools/REFERENCE.toml"
 SNAPSHOT = ROOT / "fixtures/firmware_req_opcodes.txt"
 
-# bmRequestType values that share the REQ_ prefix; not vendor requests.
-NOT_OPCODES = {"REQ_TYPE_IN", "REQ_TYPE_OUT"}
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gen_kotlin_contract import parse_surface  # noqa: E402
 
-# Firmware opcodes the pinned core does not define. Each entry must still be
+# Firmware opcodes the core does not define. Each entry must still be
 # a gap (the check fails when the core catches up, so the entry gets removed).
 FIRMWARE_NOT_IN_CORE = {
-    "REQ_GET_CLOCK_DIAG": "0x82, missing from protocol.rs upstream (PLAN §4); report to DSPi-Console-Linux",
-    "REQ_OUTPUT_LATENCY": "0x03, added on release/v1.1.6 after beta5 (branch head); core 4683a2c predates it",
+    n: "0x54-0x57: channel gain and mute at the pins; release/v1.1.6 final reuses them for input-source and device names "
+    "(what the core vendors), and the core sends those only when the device reports the feature"
+    for n in ("REQ_SET_CHANNEL_GAIN", "REQ_GET_CHANNEL_GAIN", "REQ_SET_CHANNEL_MUTE", "REQ_GET_CHANNEL_MUTE")
 }
 
-# Opcodes the core uses that dspi-ffi deliberately does not reach.
-UNREACHABLE_FROM_FFI = {
-    "REQ_GET_EQ_PARAM": "only in DspiCore::fetch_filter, which has no dspi_* C wrapper (filters come from the bulk image)",
-}
+# Opcodes the core uses that the exported surface deliberately does not reach.
+UNREACHABLE_FROM_FFI: dict[str, str] = {}
 
 
 # ── firmware ─────────────────────────────────────────────────────────────
@@ -131,21 +132,18 @@ def firmware_snapshot() -> dict[str, dict[str, int]]:
 # ── core ─────────────────────────────────────────────────────────────────
 
 def core_opcodes() -> dict[str, int]:
-    rx = re.compile(r"^pub const (REQ_[A-Z0-9_]+): u8 = (0x[0-9A-Fa-f]+|\d+);", re.M)
-    return {n: int(v, 0) for n, v in rx.findall(PROTOCOL.read_text()) if n not in NOT_OPCODES}
+    return {n: int(v, 0) for n, v in FW_RX.findall(PROTOCOL.read_text())}
 
 
 def core_aliases(core: dict[str, int]) -> dict[str, str]:
     """{name used in core code: protocol.rs name}. Some modules declare private
-    aliases (cs.rs: `const REQ_SET_GROUP: u8 = 0x20;` for REQ_SET_CS_GROUP)."""
+    aliases (`const REQ_SET_GROUP: u8 = 0x20;` for REQ_SET_CS_GROUP)."""
     by_value = defaultdict(list)
     for n, v in core.items():
         by_value[v].append(n)
     rx = re.compile(r"^\s*(?:pub(?:\([a-z]+\))?\s+)?const (REQ_[A-Z0-9_]+): u8 = (0x[0-9A-Fa-f]+|\d+);", re.M)
     alias = {n: n for n in core}
-    for f in sorted(CORE_SRC.glob("*.rs")):
-        if f == PROTOCOL:
-            continue
+    for f in CORE_FILES:
         for n, v in rx.findall(f.read_text()):
             canon = by_value.get(int(v, 0), [])
             if n not in core and len(canon) == 1:
@@ -154,13 +152,26 @@ def core_aliases(core: dict[str, int]) -> dict[str, str]:
 
 
 def strip(text: str) -> str:
-    """Drop test modules, comments and string/char literal contents."""
-    if (i := text.find("#[cfg(test)]")) >= 0:
-        text = text[:i]
+    """Drop comments, string/char literal contents and test modules."""
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     text = re.sub(r"//[^\n]*", "", text)
     text = re.sub(r'"(?:\\.|[^"\\])*"', '""', text)
-    return re.sub(r"'(?:\\.|[^'\\])'", "' '", text)
+    text = re.sub(r"'(?:\\.|[^'\\])'", "' '", text)
+    rx = re.compile(r"#\[cfg\(test\)\]\s*(?:#\[[^\]]*\]\s*)*mod\s+\w+\s*([;{])")
+    while m := rx.search(text):
+        end = m.end() if m.group(1) == ";" else block_extent(text, m.end() - 1)
+        text = text[:m.start()] + text[end:]
+    return text
+
+
+def block_extent(text: str, open_brace: int) -> int:
+    """The offset just past the `}` matching the `{` at `open_brace`."""
+    depth = 0
+    for i in range(open_brace, len(text)):
+        depth += {"{": 1, "}": -1}.get(text[i], 0)
+        if depth == 0:
+            return i + 1
+    return len(text)
 
 
 def item_extent(text: str, start: int, kind: str) -> int:
@@ -195,7 +206,7 @@ ITEM_RX = re.compile(r"(?<![*'])\b(fn|const|static)\s+([A-Za-z_]\w*)")  # not `*
 def core_items() -> dict[str, list[str]]:
     """{item name: [bodies]} (names collide across impls; bodies are merged)."""
     items: dict[str, list[str]] = defaultdict(list)
-    for f in sorted(CORE_SRC.glob("*.rs")):
+    for f in CORE_FILES:
         text = strip(f.read_text())
         for m in ITEM_RX.finditer(text):
             kind, name = m.groups()
@@ -217,22 +228,10 @@ def call_graph(items: dict[str, list[str]], alias: dict[str, str]):
 
 
 def ffi_roots(names: set[str]) -> dict[str, set[str]]:
-    """{core item: {dspi-ffi functions calling it}}."""
-    roots: dict[str, set[str]] = defaultdict(set)
-    for f in sorted(FFI_SRC.glob("*.rs")):
-        text = strip(f.read_text())
-        for m in ITEM_RX.finditer(text):
-            kind, fname = m.groups()
-            if kind != "fn":
-                continue
-            # Only the body: the definition's own name is not a call.
-            body = text[m.end():item_extent(text, m.end(), kind)]
-            body = body[body.find("{"):] if "{" in body else ""
-            calls = re.findall(r"\b([A-Za-z_]\w*)\s*(?:\(|::<)", body) + re.findall(r"::([A-Za-z_]\w*)\b", body)
-            for tok in calls:
-                if tok in names:
-                    roots[tok].add(fname)
-    return roots
+    """{core item: {the exported functions it is}}: the graph starts at the surface."""
+    surf = parse_surface()
+    exported = surf.methods + surf.free + [f for o in surf.objects.values() for f in o.methods]
+    return {f.name: {f.name} for f in exported if f.name in names}
 
 
 def reachable(roots, edges) -> dict[str, set[str]]:
@@ -257,7 +256,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--refresh-firmware", type=Path, metavar="CLONE",
                     help="re-extract fixtures/firmware_req_opcodes.txt from a local firmware clone (host)")
-    ap.add_argument("-v", "--verbose", action="store_true", help="list every opcode and the dspi-ffi callers")
+    ap.add_argument("-v", "--verbose", action="store_true", help="list every opcode and the exported functions reaching it")
     a = ap.parse_args()
     if a.refresh_firmware:
         return refresh_firmware(a.refresh_firmware.expanduser())
@@ -308,12 +307,12 @@ def main() -> int:
         if n not in UNREACHABLE_FROM_FFI:
             users = sorted(i for i, o in ops.items() if n in o)
             errors.append(f"{n}=0x{core[n]:02X} is used by the core ({', '.join(users)}) "
-                          "but no dspi-ffi method reaches it")
+                          "but nothing exported reaches it")
     for n in sorted(set(UNREACHABLE_FROM_FFI) - set(unreachable)):
         errors.append(f"allowlist UNREACHABLE_FROM_FFI[{n}] is stale: remove it")
     unused = sorted(set(core) - used_by_core, key=lambda n: core[n])
-    print(f"opcode_coverage: core source {CORE_SRC.relative_to(ROOT)}")
-    print(f"opcode_coverage: core uses {len(used_by_core)} of {len(core)} opcodes; dspi-ffi reaches "
+    print(f"opcode_coverage: core opcodes from {PROTOCOL.relative_to(TOP)}")
+    print(f"opcode_coverage: core uses {len(used_by_core)} of {len(core)} opcodes; the exported surface reaches "
           f"{len(used_by_core & set(callers))} through {len(roots)} core entry points")
     if unused:
         print(f"opcode_coverage: {len(unused)} opcodes defined but unused by the core (info; mostly per-item GETs "

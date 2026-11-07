@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # The core-merge image plus cargo-deny (tag localhost/dspi-coremerge-deny:<n>).
-# ci/check.sh --step deny builds it when it is missing. Separate from the main
-# image so that adding a licence check does not bump the tag every WP builds on.
-FROM localhost/dspi-coremerge:3
+# ci/container/build-images.sh builds it; ci/check.sh --step deny does too when it is
+# missing. Separate from the main image so that adding a licence check does not bump
+# the tag every WP builds on.
+ARG BASE_IMAGE
+FROM $BASE_IMAGE
 USER root
 RUN CARGO_HOME=/var/tmp/cargo-deny-home CARGO_TARGET_DIR=/var/tmp/cargo-deny-target \
     cargo install --locked --version 0.20.2 --root /usr/local cargo-deny \

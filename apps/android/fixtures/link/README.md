@@ -7,9 +7,9 @@ MIT licence (`LICENSE.DSPi-Link`, Copyright (c) 2026 Weeb Labs).
 
 | Directory | Upstream path | Used by |
 |---|---|---|
-| `frames/` | `fixtures/frames/` (`frames.json` + `*.bin`) | `rust/dspi-link/tests/fixtures.rs` (decode + byte-exact re-encode) |
-| `messages/` | `fixtures/messages/*.json` | `rust/dspi-link/tests/fixtures.rs` (parse, request shapes) |
-| `device/` | `fixtures/device/` (`bulk_v32.bin`, `platform.bin`, `status_wvalue9.bin`, `capture.json`) | the fake hub's simulated device (`rust/dspi-link/src/fakehub.rs`), capture checks |
+| `frames/` | `fixtures/frames/` (`frames.json` + `*.bin`) | `crates/dspi-link/tests/fixtures.rs` (decode + byte-exact re-encode) |
+| `messages/` | `fixtures/messages/*.json` | `crates/dspi-link/tests/fixtures.rs` (parse, request shapes) |
+| `device/` | `fixtures/device/` (`bulk_v32.bin`, `platform.bin`, `status_wvalue9.bin`, `capture.json`) | the fake hub's simulated device (`crates/dspi-link/src/fakehub.rs`), capture checks |
 | `policy/commands.json` | `policy/commands.json` | the fake hub's role classes (viewer/control/admin) |
 
 `device/bulk_v32.bin` and `device/platform.bin` are byte-identical to

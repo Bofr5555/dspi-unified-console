@@ -44,6 +44,8 @@
 
 use std::sync::Arc;
 
+use dspi_transport::{Transport, TransportKind};
+
 use crate::callbacks::DeviceEvents;
 use crate::records::DeviceInfo;
 use crate::rta::RtaWorker;
@@ -54,9 +56,43 @@ use crate::{Connection, DspiCore, Inner, Result, device, state};
 /// are 5 s, long enough for a first-time WinUSB bind.
 pub(crate) const RECONNECT_ATTEMPTS: u8 = 10;
 
+/// Something that owns this process's USB devices instead of the core: a Link hub
+/// (WP HB0, docs/core-merge/HUB.md section 4).
+///
+/// While one is set ([`DspiCore::set_device_broker`]), [`DspiCore::select_device`],
+/// [`DspiCore::scan_devices`] and [`DspiCore::poll_hotplug`] go through it, and the
+/// core never enumerates or claims USB itself. The core calls these with its lock
+/// released. They may block for a moment, and must not call back into this core.
+pub trait DeviceBroker: Send + Sync {
+    /// The devices it can open now, in serial order.
+    fn devices(&self) -> Vec<DeviceInfo>;
+
+    /// Devices it sees but could not open: permission, driver, another program.
+    fn inaccessible(&self) -> u32;
+
+    /// A transport to this device, already following its notifications. Errors:
+    /// [`crate::DspiError::Disconnected`] if it has no such device now.
+    fn open(&self, serial: &str) -> Result<BrokeredDevice>;
+}
+
+/// What [`DeviceBroker::open`] gives.
+pub struct BrokeredDevice {
+    /// The way to the device.
+    pub transport: Box<dyn Transport>,
+    /// Its USB vendor id (`DspiCore::open_transport`'s `vid`): the real one, so a
+    /// legacy unit reads as legacy and the serial is reconnected on a replug. 0 for
+    /// a device that is not on USB.
+    pub vid: u16,
+}
+
 /// The hotplug poll's state, behind the `Inner` lock.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub(crate) struct HotplugState {
+    // -- WP HB0 --
+    /// Who owns the USB devices, if not the core.
+    pub(crate) broker: Option<Arc<dyn DeviceBroker>>,
+    /// The generation of the connection the broker gave, if it is still the open one.
+    pub(crate) brokered: Option<u64>,
     /// Serials the last poll saw, sorted; `None` before the first poll,
     /// which then diffs against the picker's last scan (`Inner::devices`).
     last: Option<Vec<String>>,
@@ -142,6 +178,51 @@ impl DspiCore {
 }
 
 impl DspiCore {
+    /// Hand USB over to `broker` (`Some`), or take it back (`None`): WP HB0.
+    ///
+    /// A connection that cannot stay is closed: a direct USB one, which holds the
+    /// interface the broker needs, or one the old broker gave. Its serial is returned
+    /// for the caller to open again with [`DspiCore::select_device`] once the new
+    /// owner has the device; the core does not do it itself, since only the caller
+    /// knows when that is. Demo, MIDI and Link connections are not affected. Blocks
+    /// while closing: off the UI thread.
+    pub fn set_device_broker(&self, broker: Option<Arc<dyn DeviceBroker>>) -> Option<String> {
+        let closing = {
+            let mut inner = self.lock();
+            inner.hotplug.broker = broker;
+            let brokered = inner.hotplug.brokered.take();
+            inner
+                .conn
+                .as_ref()
+                .filter(|c| c.caps.kind == TransportKind::Usb || Some(c.generation) == brokered)
+                .map(|c| c.serial.clone())
+        };
+        if closing.is_some() {
+            self.close_connection();
+        }
+        closing
+    }
+
+    /// The current broker.
+    pub(crate) fn broker(&self) -> Option<Arc<dyn DeviceBroker>> {
+        self.lock().hotplug.broker.clone()
+    }
+
+    /// [`DspiCore::select_device`] through a broker.
+    pub(crate) fn select_brokered(&self, broker: &dyn DeviceBroker, serial: String) -> Result<()> {
+        self.lock().selected = Some(serial.clone());
+        self.close_connection();
+        let opened = broker.open(&serial)?;
+        self.attach_probed(opened.transport, serial.clone(), opened.vid)?;
+        let mut inner = self.lock();
+        inner.hotplug.brokered = inner
+            .conn
+            .as_ref()
+            .filter(|c| c.serial == serial)
+            .map(|c| c.generation);
+        Ok(())
+    }
+
     /// [`DspiCore::poll_hotplug`] with the enumeration and the reopen
     /// supplied (tests use a fake bus).
     pub(crate) fn poll_with(
@@ -701,5 +782,212 @@ mod tests_wp_c1b {
         core.poll_hotplug();
         assert!(events.take().is_empty());
         assert!(!core.is_connected());
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_hb0 {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Mutex, mpsc};
+    use std::time::Duration;
+
+    use dspi_transport::{DeviceDescriptor, FakeDevice, FakeRemote, TransportCaps};
+
+    use super::*;
+    use crate::DspiError;
+
+    const VID: u16 = 0x2E8B;
+
+    /// A broker with a device list a test edits, handing out demo devices.
+    #[derive(Default)]
+    struct FakeBroker {
+        listed: Mutex<Vec<String>>,
+        remote: Mutex<Option<FakeRemote>>,
+        opens: AtomicUsize,
+    }
+
+    impl DeviceBroker for FakeBroker {
+        fn devices(&self) -> Vec<DeviceInfo> {
+            self.listed
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|s| DeviceInfo {
+                    serial: s.clone(),
+                    location_id: 7,
+                })
+                .collect()
+        }
+        fn inaccessible(&self) -> u32 {
+            3
+        }
+        fn open(&self, serial: &str) -> Result<BrokeredDevice> {
+            if !self.listed.lock().unwrap().iter().any(|s| s == serial) {
+                return Err(DspiError::Disconnected);
+            }
+            self.opens.fetch_add(1, Ordering::SeqCst);
+            let dev = FakeDevice::demo();
+            *self.remote.lock().unwrap() = Some(dev.remote());
+            Ok(BrokeredDevice {
+                transport: Box::new(dev),
+                vid: VID,
+            })
+        }
+    }
+
+    fn with_broker(serials: &[&str]) -> (Arc<DspiCore>, Arc<FakeBroker>) {
+        let broker = Arc::new(FakeBroker::default());
+        *broker.listed.lock().unwrap() = serials.iter().map(|s| (*s).into()).collect();
+        let core = DspiCore::new();
+        assert_eq!(core.set_device_broker(Some(broker.clone())), None);
+        (core, broker)
+    }
+
+    fn serial_of(core: &DspiCore) -> Option<String> {
+        core.lock().conn.as_ref().map(|c| c.serial.clone())
+    }
+
+    #[test]
+    fn wp_hb0_select_and_scan_go_through_the_broker() {
+        let (core, broker) = with_broker(&["A", "B"]);
+        let found = core.scan_devices();
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].location_id, 7);
+        assert_eq!(core.inaccessible_devices(), 3);
+        core.select_device("B".into()).unwrap();
+        assert_eq!(serial_of(&core).as_deref(), Some("B"));
+        assert_eq!(broker.opens.load(Ordering::SeqCst), 1);
+        assert_eq!(core.lock().conn.as_ref().unwrap().vid, VID);
+        assert_eq!(
+            core.select_device("nope".into()),
+            Err(DspiError::Disconnected)
+        );
+    }
+
+    #[test]
+    fn wp_hb0_a_replug_reopens_through_the_broker() {
+        let (core, broker) = with_broker(&["A"]);
+        core.scan_devices();
+        core.select_device("A".into()).unwrap();
+        core.poll_hotplug();
+        assert_eq!(broker.opens.load(Ordering::SeqCst), 1, "still there");
+
+        broker.listed.lock().unwrap().clear();
+        broker.remote.lock().unwrap().as_ref().unwrap().disconnect();
+        while !core
+            .lock()
+            .conn
+            .as_ref()
+            .unwrap()
+            .notifications
+            .as_ref()
+            .unwrap()
+            .is_disconnected()
+        {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        core.poll_hotplug();
+        assert!(!core.is_connected(), "gone with the device");
+
+        broker.listed.lock().unwrap().push("A".into());
+        core.poll_hotplug();
+        assert_eq!(serial_of(&core).as_deref(), Some("A"));
+        assert_eq!(broker.opens.load(Ordering::SeqCst), 2);
+    }
+
+    /// USB-like: it holds the interface, so the broker's owner could not claim it.
+    struct DirectUsb(FakeDevice);
+
+    impl Transport for DirectUsb {
+        fn control_in(&mut self, o: u8, v: u16, l: u16) -> dspi_transport::Result<Vec<u8>> {
+            self.0.control_in(o, v, l)
+        }
+        fn control_in_upto(&mut self, o: u8, v: u16, l: u16) -> dspi_transport::Result<Vec<u8>> {
+            self.0.control_in_upto(o, v, l)
+        }
+        fn control_out(&mut self, o: u8, v: u16, d: &[u8]) -> dspi_transport::Result<()> {
+            self.0.control_out(o, v, d)
+        }
+        fn descriptor(&self) -> &DeviceDescriptor {
+            self.0.descriptor()
+        }
+        fn notifications(&self) -> Option<Box<dyn dspi_transport::NotificationSource>> {
+            self.0.notifications()
+        }
+        fn caps(&self) -> TransportCaps {
+            TransportCaps::USB
+        }
+    }
+
+    #[test]
+    fn wp_hb0_a_broker_takes_over_from_a_direct_usb_connection() {
+        let core = DspiCore::new();
+        core.open_transport(Box::new(DirectUsb(FakeDevice::demo())), "A".into(), VID)
+            .unwrap();
+        let broker = Arc::new(FakeBroker::default());
+        broker.listed.lock().unwrap().push("A".into());
+        let closed = core.set_device_broker(Some(broker));
+        assert_eq!(closed.as_deref(), Some("A"));
+        assert!(!core.is_connected(), "the interface is free for the owner");
+        core.select_device("A".into()).unwrap();
+        assert!(core.is_connected());
+    }
+
+    #[test]
+    fn wp_hb0_a_demo_connection_does_not_care_about_the_broker() {
+        let core = DspiCore::new();
+        core.open_demo().unwrap();
+        let broker = Arc::new(FakeBroker::default());
+        assert_eq!(core.set_device_broker(Some(broker)), None);
+        assert!(core.is_connected());
+        assert_eq!(core.set_device_broker(None), None);
+        assert!(core.is_connected());
+    }
+
+    #[test]
+    fn wp_hb0_taking_usb_back_closes_what_the_broker_gave() {
+        let (core, _broker) = with_broker(&["A"]);
+        core.select_device("A".into()).unwrap();
+        assert_eq!(core.set_device_broker(None).as_deref(), Some("A"));
+        assert!(!core.is_connected());
+    }
+
+    /// The core's lock is free while a broker runs: one that takes its time does not
+    /// stall the core's readers, and a device list arriving late changes nothing.
+    #[test]
+    fn wp_hb0_the_core_lock_is_free_while_the_broker_opens() {
+        struct Slow {
+            entered: Mutex<mpsc::Sender<()>>,
+            release: Mutex<mpsc::Receiver<()>>,
+        }
+        impl DeviceBroker for Slow {
+            fn devices(&self) -> Vec<DeviceInfo> {
+                Vec::new()
+            }
+            fn inaccessible(&self) -> u32 {
+                0
+            }
+            fn open(&self, _: &str) -> Result<BrokeredDevice> {
+                self.entered.lock().unwrap().send(()).unwrap();
+                self.release.lock().unwrap().recv().unwrap();
+                Err(DspiError::Disconnected)
+            }
+        }
+        let (entered_tx, entered) = mpsc::channel();
+        let (release, release_rx) = mpsc::channel();
+        let core = DspiCore::new();
+        core.set_device_broker(Some(Arc::new(Slow {
+            entered: Mutex::new(entered_tx),
+            release: Mutex::new(release_rx),
+        })));
+        let opener = {
+            let core = Arc::clone(&core);
+            std::thread::spawn(move || core.select_device("A".into()))
+        };
+        entered.recv().unwrap();
+        assert!(!core.is_connected(), "this would hang with the lock held");
+        release.send(()).unwrap();
+        assert_eq!(opener.join().unwrap(), Err(DspiError::Disconnected));
     }
 }

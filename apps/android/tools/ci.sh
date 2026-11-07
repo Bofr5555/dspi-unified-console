@@ -15,6 +15,14 @@ if [[ "${DSPI_IN_CONTAINER:-}" != 1 ]]; then
   exec "$here/dev.sh" "$here/ci.sh" "$@"
 fi
 cd "$ROOT"
+# The Rust workspace, at the monorepo's top (crates/).
+WORKSPACE="$(cd "$ROOT/../.." && pwd)"
+# dev.sh sets it; set it too for a run started inside the container by hand.
+export TMPDIR="${TMPDIR:-/cache/target/tmp}"
+mkdir -p "$TMPDIR"
+# What the Android library is made of; only these are this script's business, the
+# repo's own gate (ci/check.sh) covers the rest of the workspace.
+RUST_CRATES=(-p dspi-ffi -p dspi-core -p dspi-link -p dspi-proto -p dspi-session -p dspi-transport)
 
 GRADLE=(./gradlew --no-daemon --console=plain -q)
 WRAPPER_JAR_SHA256="7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172" # gradle-8.14.3-wrapper.jar.sha256
@@ -39,46 +47,40 @@ pkg_supply() {
 }
 
 pkg_contract() {
-  step "contract: generated Kotlin is up to date with rust/dspi-ffi"
+  step "contract: generated Kotlin is up to date with crates/dspi-core"
   python3 tools/gen_kotlin_contract.py --check
   step "contract: :core-api"
   jvm_module :core-api
 }
 
 pkg_ffi() {
-  step "ffi: stage core"
-  tools/stage-core.sh
+  step "ffi: fetch every target's crates (dspi-core's mDNS test reads the tree offline)"
+  (cd "$WORKSPACE" && cargo fetch --locked)
   step "ffi: rustfmt / clippy / tests"
-  (cd rust && cargo fmt --check -p dspi-ffi -p dspi-link -p uniffi-bindgen)
-  (cd rust && cargo clippy --locked -p dspi-ffi --all-targets -- -D warnings)
-  (cd rust && cargo test --locked -p dspi-ffi)
-  step "ffi: staged (pinned + patched) core unit tests"
-  # --lib: the patches' tests (e.g. 0002 crossfeed pair map) live in dspi-core;
-  # the upstream doctest in core/src/filterfile.rs fails on the pinned core too.
-  (cd rust && cargo test --locked -p dspi-core --lib)
+  (cd "$WORKSPACE" && cargo fmt --check "${RUST_CRATES[@]}")
+  (cd "$WORKSPACE" && cargo clippy --locked -p dspi-ffi --all-targets -- -D warnings)
+  (cd "$WORKSPACE" && cargo test --locked -p dspi-ffi)
+  step "ffi: the core's own tests, with the features the Android library builds it with"
+  (cd "$WORKSPACE" && cargo test --locked -p dspi-core --features link,uniffi)
   step "ffi: cross-compile for every shipped ABI (arm64-v8a, armeabi-v7a, x86_64)"
-  (cd rust && cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -P 26 build --locked -p dspi-ffi)
+  (cd "$WORKSPACE" && cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -P 26 build --locked -p dspi-ffi)
   step "ffi: generated Kotlin contract up to date"
   python3 tools/gen_kotlin_contract.py --check
   step "ffi: opcode coverage"
   python3 tools/opcode_coverage.py
-  step "ffi: :ffi module (UniFFI bindings + jniLibs + adapter)"
+  step "ffi: :ffi module (UniFFI bindings + jniLibs + adapter, compiled and run on the JVM)"
   android_module :ffi
 }
 
 pkg_usb() { step "usb: :usb"; android_module :usb; }
 
-# DSPi Link: the Rust client (fixtures + fake-hub integration), the core over
-# Link (dspi-ffi tests/link_fakehub.rs, also run by ffi) and the Android :link module.
+# DSPi Link: the Rust client (fixtures + fake-hub integration; the core over Link
+# is in dspi-core's tests, run by ffi) and the Android :link module.
 pkg_link() {
-  step "link: stage core"
-  tools/stage-core.sh
   step "link: dspi-link rustfmt / clippy / tests (fixtures, fake hub)"
-  (cd rust && cargo fmt --check -p dspi-link)
-  (cd rust && cargo clippy --locked -p dspi-link --features fake-hub --all-targets -- -D warnings)
-  (cd rust && cargo test --locked -p dspi-link --features fake-hub)
-  step "link: the core over Link against the fake hub"
-  (cd rust && cargo test --locked -p dspi-ffi --test link_fakehub)
+  (cd "$WORKSPACE" && cargo fmt --check -p dspi-link)
+  (cd "$WORKSPACE" && cargo clippy --locked -p dspi-link --features fake-hub --all-targets -- -D warnings)
+  (cd "$WORKSPACE" && cargo test --locked -p dspi-link --features fake-hub)
   step "link: :link"
   android_module :link
 }
@@ -163,7 +165,7 @@ PY
 # never be mistaken for an upload candidate.
 pkg_release() {
   local tmp aab out=app/build/outputs/bundle/release
-  tmp="$(mktemp -d)"
+  tmp="$(mktemp -d -p "$TMPDIR")"
   # EXIT, not RETURN: set -e leaves without running RETURN traps.
   # shellcheck disable=SC2064
   trap "rm -rf '$tmp' '$ROOT/$out'" EXIT
