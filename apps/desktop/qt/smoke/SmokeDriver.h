@@ -100,6 +100,8 @@ private:
     void runDemoEntry();
     void testDemoEntry();
     void testDemoLabel();
+    // -- WP QD33 --
+    void testAbout();
 
     // Whether a bypass toggle repaints the open channel's graph editor. Leaves
     // bypass as it found it. NotRun fills `why`.
