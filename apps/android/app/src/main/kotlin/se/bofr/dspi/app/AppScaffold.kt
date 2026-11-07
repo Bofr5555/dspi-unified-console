@@ -49,6 +49,8 @@ import se.bofr.dspi.ui.DspiRoutes
 import se.bofr.dspi.ui.LocalDemoMode
 import se.bofr.dspi.ui.LocalWritesAllowed
 import se.bofr.dspi.ui.WritesExempt
+import se.bofr.dspi.ui.link.LinkBanner
+import se.bofr.dspi.ui.link.LinkBannerAction
 import se.bofr.dspi.usb.BootloaderLocator
 
 /** Test tag of the connection strip, the top of the app. */
@@ -177,6 +179,11 @@ private fun ConnectionStripBar(
     onConnectNetwork: () -> Unit
 ) {
     if (strip is ConnectionStrip.Hidden) return
+    // -- WP AN5 -- the owner's lost-connection banner; this bar is above every route, so it is on every screen
+    if (strip is ConnectionStrip.Remote && strip.lost) {
+        LinkBanner(strip.text, strip.detail, strip.actions.map { a -> LinkBannerAction(a.label) { onRemoteAction(a) } })
+        return
+    }
     // Demo and REMOTE stand out, so neither is taken for the USB unit
     val demo = strip is ConnectionStrip.Demo || strip is ConnectionStrip.Remote
     val colors = MaterialTheme.colorScheme

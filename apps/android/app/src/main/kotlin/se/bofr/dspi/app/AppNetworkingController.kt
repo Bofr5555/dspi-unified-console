@@ -26,6 +26,7 @@ import se.bofr.dspi.ui.link.PairedHubRow
  * (macOS `HubBrowser.parseAddress`). Browsing runs only while DSPi Link is
  * on, "Find hubs automatically" is on and the page is on screen, or the session
  * needs its hub found again ([AppModeController.browseForSession], WP AN4).
+ * The connection line says what the strip says, in CG10's wording ([wording], WP AN5).
  */
 class AppNetworkingController(
     private val settings: LinkSettingsStore,
@@ -34,7 +35,8 @@ class AppNetworkingController(
     private val modes: AppModeController,
     private val scope: CoroutineScope,
     private val defaultClientName: String,
-    private val parseAddress: (String) -> Pair<String, Int>?
+    private val parseAddress: (String) -> Pair<String, Int>?,
+    private val wording: LinkWording = LinkWording.CORE
 ) : NetworkingController {
     private val visible = MutableStateFlow(false)
     private val pairedRevision = MutableStateFlow(0)
@@ -91,9 +93,9 @@ class AppNetworkingController(
     private fun status(s: LinkSessionState): String = when (s) {
         LinkSessionState.Idle -> ""
         is LinkSessionState.Connected -> "${s.device.name.ifEmpty { "DSPi" }} via ${s.hub.name}"
-        is LinkSessionState.Reconnecting -> "Reconnecting to ${s.hub.name}…"
-        is LinkSessionState.Failed -> s.reason
-        else -> "Connecting to ${s.hub?.name.orEmpty()}…"
+        is LinkSessionState.Connecting -> "Connecting to ${s.hub.name}…"
+        // -- WP AN5 -- every other state as the strip says it, so the two never disagree
+        else -> remoteStrip(s, wording = wording).let { if (it.detail.isEmpty()) it.text else "${it.text} · ${it.detail}" }
     }
 
     override fun setEnabled(enabled: Boolean) {
