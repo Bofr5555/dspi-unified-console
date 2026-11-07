@@ -96,3 +96,35 @@ master-volume mode is with-preset. Hardware I/O (pins, clocks, inputs, the
 limiters inside each output entry) is opt-in. The input source goes last.
 `global.inputPairLinked` is app state; the Terminal applies it to its own pair
 links.
+
+## Keys a document does not hold
+
+A value in a Terminal export is one the device reported. A read that fails (the
+device is gone, a timeout, a short reply) fails the export and writes no file;
+files are written beside the target and renamed over it, so an old export
+survives whole. A read the device refuses (a stall, or a link's `Denied`) means
+it does not report that setting: on a read-only device the value comes from the
+bulk image mapped onto this build's layout, if that image's wire format carries
+it, and otherwise the key is left out and the export warns, naming the keys. A
+block left with no keys is left out whole. An EQ or crossover bank is whole or
+absent, because a shorter one flattens the bands it leaves out; list positions
+in `inputPreampsDb` and the `io` lists stop at the first unreported entry.
+`schemaVersion`, `meta` and `channels` are always written.
+
+On import the Terminal leaves an omitted key alone and reports it (`Left as they
+are`, `leftAlone` under `--json`). It warns when `meta.wireFormatVersion` is below
+this build's, since an export from such firmware by a build before this rule can
+hold 0 dB or off for settings nobody set. The other importers read an omitted key
+differently, and take the same files without error:
+
+| Omitted | Terminal | Qt (`dspi_core::files`) | Mac Console |
+|---|---|---|---|
+| A `global` key | left alone | left alone | written as its default (0 dB, off, USB) |
+| Whole `loudness`, `crossfeed`, `leveller` | left alone | left alone | written as defaults |
+| A key inside one of those blocks | left alone | mostly written as its default (a few keep the device's) | written as its default |
+| A channel's `gainDb`, `muted`, `enabled`, `delayMs` | left alone | written as a default | written as a default |
+| A channel's `eq` or `crossover` | left alone | flattened | left alone |
+
+So a file that left keys out is safest imported by the Terminal. The Mac's
+reader accepts any document with a `schemaVersion` and `channels`
+(PresetDocument.swift:627, 729-744), and Qt's the same.

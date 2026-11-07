@@ -1263,9 +1263,11 @@ pub fn export_config(
         .file_stem()
         .and_then(|s| s.to_str())
         .map(|s| s.to_string());
-    let mut doc = preset_file::capture(session, name);
+    // -- WP TM21 --
+    let mut doc =
+        preset_file::capture(session, name).map_err(|e| format!("Nothing was written: {e}"))?;
     doc.global.input_pair_linked = linked_pairs.to_vec();
-    std::fs::write(&path, preset_file::write(&doc))
+    preset_file::save_file(&path, &preset_file::write(&doc))
         .map_err(|e| format!("Failed to write file: {e}"))?;
 
     // The Console counts the bands that do something, not the empty slots that
@@ -1273,12 +1275,18 @@ pub fn export_config(
     let active = |b: &Vec<preset_file::BandBlock>| b.iter().filter(|b| b.r#type != 0).count();
     let bands: usize = doc.channels.iter().map(|c| active(&c.eq)).sum();
     let xover: usize = doc.channels.iter().map(|c| active(&c.crossover)).sum();
-    Ok(format!(
+    let mut done = format!(
         "Configuration exported.  {} channels, {bands} active EQ bands, {xover} crossover \
          bands, {} crosspoints.",
         doc.channels.len(),
         doc.matrix.len()
-    ))
+    );
+    // -- WP TM21 --
+    let shown = path.display().to_string();
+    if let Some(w) = crate::shell::read_only::export_warning(&doc, &shown) {
+        done.push_str(&format!("  Note: {w}"));
+    }
+    Ok(done)
 }
 
 pub fn read_config(path: &str) -> Result<preset_file::PresetDocument, String> {

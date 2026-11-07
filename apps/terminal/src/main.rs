@@ -2515,8 +2515,10 @@ mod tests_wp_tm4 {
         assert!(std::fs::metadata(path).is_ok(), "it wrote the file");
         let _ = std::fs::remove_file(path);
 
-        let demo = Target::Demo.open_session(&prompt_pin).unwrap();
-        assert_eq!(read_only::export_warning(demo.capabilities(), "x"), None);
+        // -- WP TM21 --
+        let mut demo = Target::Demo.open_session(&prompt_pin).unwrap();
+        let doc = dspi_session::preset_file::capture(&mut demo, None).unwrap();
+        assert_eq!(read_only::export_warning(&doc, "x"), None);
     }
 
     #[test]

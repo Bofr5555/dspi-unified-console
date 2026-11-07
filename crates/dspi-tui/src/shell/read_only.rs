@@ -26,6 +26,7 @@ use std::time::Duration;
 use dspi_proto::generated::opcodes as op;
 use dspi_proto::generated::wire::WIRE_FORMAT_VERSION;
 use dspi_proto::packets::FirmwareVersion;
+use dspi_session::preset_file::{self, PresetDocument};
 use dspi_session::surfaces::learn;
 use dspi_session::{Capabilities, compat, notify, probe};
 use dspi_transport::{
@@ -223,20 +224,19 @@ pub fn banner(caps: &Capabilities) -> Option<String> {
     })
 }
 
-/// What to tell someone exporting a whole-device document from this device.
-///
-/// `preset_file::capture` asks for each setting in turn and takes a refused
-/// read as zero or off. An older firmware refuses whatever it does not have, so
-/// the file holds values nobody set (0 dB master volume, say), and importing it
-/// elsewhere applies them. `None` when writable.
-pub fn export_warning(caps: &Capabilities, path: &str) -> Option<String> {
-    is_read_only(caps).then(|| {
+/// What to tell someone exporting a whole-device document that leaves settings
+/// out, because the device would not report them and no image holds them. This
+/// build leaves such a key alone on import. The other importers do not: the Mac
+/// Console sets each to its default, and Qt's does for the keys of a channel or
+/// a block it does have. `None` when the document holds everything.
+pub fn export_warning(doc: &PresetDocument, path: &str) -> Option<String> {
+    let left = preset_file::omitted_settings(doc);
+    (!left.is_empty()).then(|| {
         format!(
-            "this device is read-only (firmware {}, wire V{}). Any setting its firmware does \
-             not report is saved in {} as zero or off, which is not a value you set. Check \
-             the file before importing it on another device.",
-            printable(&caps.firmware),
-            caps.wire_format,
+            "this device does not report {}, so {} leaves them out. Importing it here leaves \
+             those settings as they are; DSPi Console on a Mac or on Linux or Windows may set \
+             them to its defaults instead.",
+            left.join(", "),
             printable(path),
         )
     })
@@ -927,7 +927,9 @@ mod tests_wp_tm4 {
 
         // A preset document's whole apply, hardware I/O included.
         assert_refused("preset_file::apply", |s| {
-            let doc = preset_file::capture(s, None);
+            let Ok(doc) = preset_file::capture(s, None) else {
+                return;
+            };
             let _ = preset_file::apply(
                 s,
                 &doc,
@@ -1330,58 +1332,88 @@ mod tests_wp_tm4 {
         ));
     }
 
-    /// Why export warns: settings an older firmware refuses come out as zero,
-    /// whatever the device's image says, and an import then applies them.
-    #[test]
-    fn wp_tm4_a_preset_export_from_old_firmware_holds_values_nobody_set() {
-        let mut image = image_as(17);
-        let master = off("master_volume");
-        image[master..master + 4].copy_from_slice(&(-12.0f32).to_le_bytes());
-        // Unlike `device`: an opcode it has no answer for stalls, as firmware
-        // does. Over MIDI a stall is final, which spares the test USB's retries.
-        struct Midi(MockTransport);
-        impl Transport for Midi {
-            fn control_in(&mut self, o: u8, v: u16, l: u16) -> Result<Vec<u8>> {
-                self.0.control_in(o, v, l)
-            }
-            fn control_in_upto(&mut self, o: u8, v: u16, l: u16) -> Result<Vec<u8>> {
-                self.0.control_in_upto(o, v, l)
-            }
-            fn control_out(&mut self, o: u8, v: u16, d: &[u8]) -> Result<()> {
-                self.0.control_out(o, v, d)
-            }
-            fn descriptor(&self) -> &DeviceDescriptor {
-                self.0.descriptor()
-            }
-            fn max_transfer(&self) -> usize {
-                8192
-            }
-            fn caps(&self) -> TransportCaps {
-                TransportCaps {
-                    chunked_bulk: false,
-                    kind: dspi_transport::TransportKind::Midi,
-                    ..TransportCaps::USB
-                }
+    /// Unlike `device`: an opcode with no answer stalls, as firmware does. Over
+    /// MIDI a stall is final, which spares a test USB's retries.
+    struct Midi(MockTransport);
+    impl Transport for Midi {
+        fn control_in(&mut self, o: u8, v: u16, l: u16) -> Result<Vec<u8>> {
+            self.0.control_in(o, v, l)
+        }
+        fn control_in_upto(&mut self, o: u8, v: u16, l: u16) -> Result<Vec<u8>> {
+            self.0.control_in_upto(o, v, l)
+        }
+        fn control_out(&mut self, o: u8, v: u16, d: &[u8]) -> Result<()> {
+            self.0.control_out(o, v, d)
+        }
+        fn descriptor(&self) -> &DeviceDescriptor {
+            self.0.descriptor()
+        }
+        fn max_transfer(&self) -> usize {
+            8192
+        }
+        fn caps(&self) -> TransportCaps {
+            TransportCaps {
+                chunked_bulk: false,
+                kind: dspi_transport::TransportKind::Midi,
+                ..TransportCaps::USB
             }
         }
+    }
+
+    /// A device of this image that refuses every read but the bulk one.
+    fn refusing(image: Vec<u8>) -> connect::Connected {
         let platform = FakeDevice::demo()
             .control_in_upto(op::REQ_GET_PLATFORM, 0, 7)
             .unwrap();
         let old = MockTransport::new()
             .data(op::REQ_GET_PLATFORM, platform)
             .data(op::REQ_GET_ALL_PARAMS, image);
-        let mut c = connected_on(Box::new(Midi(old))).unwrap();
-        assert_eq!(c.state.caps.wire_format, 17);
-        let doc = preset_file::capture(&mut c.session, None);
-        assert_eq!(doc.global.master_volume_db, 0.0, "not the device's -12");
-        assert_eq!(doc.global.user_volume_db, 0.0);
-        assert_eq!(doc.meta.wire_format_version, 17, "the file does say V17");
+        connected_on(Box::new(Midi(old))).unwrap()
+    }
 
-        // Imported on a writable device, those are real writes: output gains
-        // on a plain import, and with `--volume` the user volume, at 0 dB.
+    /// Old firmware refuses what it has no getter for. The value comes from the
+    /// image instead of coming out as zero, and what no image of that age holds
+    /// is left out: importing it then writes the device's real values and nothing
+    /// else (WP TM21; TM4 found the export holding 0 dB for a -12 dB master).
+    #[test]
+    fn wp_tm21_a_preset_export_from_old_firmware_takes_the_image_or_omits() {
+        let mut image = image_as(17);
+        // Older images have every section from the preamp on four bytes earlier
+        // than the V32 offsets `off` gives (`wire_compat`).
+        let master = off("master_volume") - 4;
+        image[master..master + 4].copy_from_slice(&(-12.0f32).to_le_bytes());
+        let user = off("user_volume") - 4;
+        image[user..user + 4].copy_from_slice(&(-9.0f32).to_le_bytes());
+        let outputs = off("outputs");
+        image[outputs + 4..outputs + 8].copy_from_slice(&(-3.0f32).to_le_bytes());
+        let mut c = refusing(image);
+        assert_eq!(c.state.caps.wire_format, 17);
+
+        let doc = preset_file::capture(&mut c.session, None).unwrap();
+        assert_eq!(doc.global.master_volume_db, Some(-12.0), "the device's");
+        assert_eq!(doc.global.user_volume_db, Some(-9.0), "the device's");
+        let first = doc.channels.iter().find(|c| c.is_output).unwrap();
+        assert_eq!(first.gain_db, Some(-3.0), "the device's");
+        assert_eq!(doc.meta.wire_format_version, 17);
+        assert!(!doc.matrix.is_empty(), "the image holds the matrix");
+        assert!(!first.eq.is_empty(), "and the bands");
+        // V18, V19 and V20 added these, so a V17 image holds zeros there.
+        assert_eq!(doc.leveller.detector_mask, None);
+        assert_eq!(doc.loudness.output_mask, None);
+        assert_eq!(doc.crossfeed.output_pair_mask, None);
+        // And no image holds this.
+        assert_eq!(doc.meta.master_volume_mode, None);
+
+        // The warning is down to what is still true.
+        let warning = export_warning(&doc, "x.dspipreset").unwrap();
+        assert!(warning.contains("x.dspipreset"), "{warning}");
+        assert!(warning.contains("leveller.detectorMask"), "{warning}");
+        assert!(!warning.contains("masterVolumeDb"), "{warning}");
+
+        // Imported on a writable device: the real values, and no invented mask.
         let (mock, log) = device(demo_image());
         let mut target = session_on(Box::new(mock)).unwrap();
-        let _ = preset_file::apply(
+        let report = preset_file::apply(
             &mut target,
             &doc,
             ApplyOptions {
@@ -1391,20 +1423,78 @@ mod tests_wp_tm4 {
             },
         );
         let log = log.lock().unwrap();
-        for opcode in [op::REQ_SET_OUTPUT_GAIN, op::REQ_SET_USER_VOLUME] {
-            let sent = log
-                .iter()
-                .find(|e| e.direction == Direction::Out && e.opcode == opcode)
-                .unwrap_or_else(|| panic!("the import sets 0x{opcode:02X}"));
-            assert_eq!(sent.payload, 0.0f32.to_le_bytes(), "0x{opcode:02X}");
-        }
-
-        let warning = export_warning(&c.state.caps, "x.dspipreset").unwrap();
-        assert!(
-            warning.contains("V17") && warning.contains("x.dspipreset"),
-            "{warning}"
+        let sent = |opcode: u8| {
+            log.iter()
+                .filter(|e| e.direction == Direction::Out && e.opcode == opcode)
+                .map(|e| e.payload.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            sent(op::REQ_SET_OUTPUT_GAIN).first().unwrap(),
+            &(-3.0f32).to_le_bytes().to_vec()
         );
-        assert_eq!(export_warning(&fixture::caps(), "x.dspipreset"), None);
+        assert_eq!(
+            sent(op::REQ_SET_USER_VOLUME),
+            vec![(-9.0f32).to_le_bytes().to_vec()]
+        );
+        for opcode in [
+            op::REQ_SET_LOUDNESS_MASK,
+            op::REQ_SET_CROSSFEED_OUTPUTS,
+            op::REQ_SET_LEVELLER_MASKS,
+        ] {
+            assert_eq!(sent(opcode), Vec::<Vec<u8>>::new(), "0x{opcode:02X}");
+        }
+        assert!(
+            report
+                .left_alone
+                .contains(&"loudness.outputMask".to_string())
+        );
+        let lines = report.lines(false).join(" ");
+        assert!(lines.contains("V17"), "the old format is named: {lines}");
+    }
+
+    /// A format that does carry what V17 lacks gives it up: the firmware answered
+    /// the feature probe, then refused the read, and V31's image has the mask.
+    #[test]
+    fn wp_tm21_a_later_image_gives_up_what_an_older_one_cannot() {
+        let image = image_as(31);
+        let want = normalize(&image).unwrap();
+        let platform = FakeDevice::demo()
+            .control_in_upto(op::REQ_GET_PLATFORM, 0, 7)
+            .unwrap();
+        let once = Reply::Sequence(vec![Reply::Data(vec![0xFF, 0xFF]), Reply::Stall]);
+        let mock = MockTransport::new()
+            .data(op::REQ_GET_PLATFORM, platform)
+            .data(op::REQ_GET_ALL_PARAMS, image)
+            .reply(op::REQ_GET_LOUDNESS_MASK, once);
+        let mut c = connected_on(Box::new(Midi(mock))).unwrap();
+        let state = DeviceState::new(c.state.caps.clone(), want.packet);
+        let mask = i32::from(state.global().loudness_output_mask);
+        let doc = preset_file::capture(&mut c.session, None).unwrap();
+        assert_eq!(doc.loudness.output_mask, Some(mask));
+    }
+
+    /// A lost device is not "does not report it", on this route either.
+    #[test]
+    fn wp_tm21_a_lost_device_fails_a_read_only_export() {
+        let platform = FakeDevice::demo()
+            .control_in_upto(op::REQ_GET_PLATFORM, 0, 7)
+            .unwrap();
+        let mock = MockTransport::new()
+            .data(op::REQ_GET_PLATFORM, platform)
+            .data(op::REQ_GET_ALL_PARAMS, image_as(17))
+            .reply(op::REQ_GET_OUTPUT_GAIN, Reply::Disconnect);
+        let mut c = connected_on(Box::new(Midi(mock))).unwrap();
+        let e = preset_file::capture(&mut c.session, None).unwrap_err();
+        assert!(e.what.contains("out.gain"), "{e}");
+    }
+
+    /// A device that reports everything leaves nothing to warn about.
+    #[test]
+    fn wp_tm21_nothing_omitted_nothing_to_warn_about() {
+        let mut demo = session_on(Box::new(FakeDevice::demo())).unwrap();
+        let doc = preset_file::capture(&mut demo, None).unwrap();
+        assert_eq!(export_warning(&doc, "x.dspipreset"), None);
     }
 
     /// The state a read-only connection hands the interface keeps its image.
