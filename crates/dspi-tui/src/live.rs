@@ -901,6 +901,8 @@ impl Live {
         m.curves = curves;
         m.graph_channel = graphed.map(|ch| screens::channel_name(s, ch));
         self.shared.borrow_mut().graph = m.graph.clone();
+        // -- WP TM5 --
+        m.spectrum = screens::spectrum::overlay_picture(&self.shared, s, t, Instant::now());
     }
 
     fn note(&mut self, text: impl Into<String>) {
@@ -1971,6 +1973,9 @@ impl Live {
                     }
                 }
             }
+            // -- WP TM5 --
+            ShellEvent::SpectrumOverlay => self.toggle_spectrum_overlay(session),
+            ShellEvent::TakeControl => self.take_analyser_control(),
             ShellEvent::GraphZoom(delta) => self.shell.model.graph.zoom(delta),
             ShellEvent::GraphPhase => {
                 self.shell.model.graph.show_phase = !self.shell.model.graph.show_phase;
@@ -2928,6 +2933,13 @@ impl Live {
         // and the log has to keep running while the panel is closed so
         // opening it shows what just happened.
         self.shared.borrow_mut().log.push(at, note);
+        // -- WP TM5 --
+        self.shared.borrow_mut().spectrum.note(
+            note,
+            self.link_kind,
+            self.link_session,
+            &self.state,
+        );
         // The source byte alone does not say whose a change is: that depends on
         // the link (PLAN §1.2).
         let own = self
@@ -3123,6 +3135,8 @@ impl Live {
             .iter()
             .any(|f| f.name == "spectrum_analyser" && !f.present);
         let mut app = self.shared.borrow_mut();
+        // -- WP TM5 --
+        app.spectrum.new_connection();
         let engine = &mut app.spectrum.engine;
         if absent {
             engine.disconnect();
@@ -3131,17 +3145,57 @@ impl Live {
         }
     }
 
+    // -- WP TM5 --
+    /// `f`: the live spectrum on the response graph.
+    fn toggle_spectrum_overlay(&mut self, session: &mut Session) {
+        if !self.shared.borrow().spectrum.engine.supported() {
+            self.connect_analyser(session);
+        }
+        if !self.shared.borrow().spectrum.engine.supported() {
+            self.note("This firmware has no spectrum analyser.".to_string());
+            return;
+        }
+        use dspi_session::rta::{TAP_INPUT, TAP_OUTPUT};
+        let page = match self.shell.model.selection {
+            Selection::Overview => None,
+            Selection::Input(i) => Some((TAP_INPUT, i as u8)),
+            Selection::Output(o) => Some((TAP_OUTPUT, o as u8)),
+        };
+        let on = self.shared.borrow_mut().spectrum.toggle_overlay(page);
+        self.note(format!(
+            "Spectrum on the graph {}",
+            if on { "on" } else { "off" }
+        ));
+    }
+
+    // -- WP TM5 --
+    /// `t`: push this console's analyser configuration over the one being
+    /// followed. Does nothing while driving.
+    fn take_analyser_control(&mut self) {
+        let mut app = self.shared.borrow_mut();
+        if app.spectrum.sharing.following().is_some() {
+            app.spectrum.sharing.take_control();
+            drop(app);
+            self.note("Took control of the analyser".to_string());
+        }
+    }
+
     /// One analyser poll, inside its budget, after the meters so they are
     /// never late for it. Skipped outright when a key is waiting.
     fn tick_analyser(&mut self, session: &mut Session, now: Instant) {
+        // -- WP TM5 --
+        let shown = self.shell.graph_on_screen();
+        self.shared.borrow_mut().spectrum.set_overlay_shown(shown);
         if self.input_pending {
             return;
         }
         let report = {
             let mut app = self.shared.borrow_mut();
-            let engine = &mut app.spectrum.engine;
+            // -- WP TM5 --
+            let spectrum = &mut app.spectrum;
+            spectrum.sync(&self.state);
             session
-                .with_transport(|t| Ok(engine.tick(t, now, dspi_session::rta::Budget::default())))
+                .with_transport(|t| Ok(spectrum.tick(t, now)))
                 .unwrap_or_default()
         };
         if report.disconnected {
@@ -5854,5 +5908,302 @@ mod tests_wp_tm19 {
         l.run_commands(&mut s, "vol.user -11\nvol.user -12");
         assert!(l.dialog.is_none());
         assert_eq!(s.read("vol.user", &[]).unwrap(), Value::Float(-12.0));
+    }
+}
+
+// -- WP TM5 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_tm5 {
+    use std::thread::sleep;
+
+    use dspi_link::fakehub::{FakeHub, HubConfig, req};
+    use ratatui::style::Modifier;
+
+    use super::*;
+    use crate::shell::connect::{LinkTarget, test_dir};
+    use crate::theme::{ColorDepth, Glyphs};
+    use crate::widgets::testing::key;
+    use ratatui::buffer::Buffer;
+
+    fn hub() -> FakeHub {
+        FakeHub::start(HubConfig {
+            rta: true,
+            ..HubConfig::default()
+        })
+        .unwrap()
+    }
+
+    /// A terminal on `hub`, as `dspi --link` starts one.
+    struct Console {
+        live: Live,
+        session: Session,
+    }
+
+    impl Console {
+        fn on(hub: &FakeHub, name: &str) -> Self {
+            let dir = test_dir().join(format!("tm5-{}-{name}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let mut link = LinkTarget::parse(&hub.addr().to_string()).unwrap();
+            link.tokens = Some(dir.join("tokens.toml"));
+            let target = Target::Link(link);
+            let c = target.connect(&|_: &str, _: &str| None).unwrap();
+            let serial = c.state.caps.serial.clone();
+            let mut live = Live::new(
+                c.state,
+                Theme::console(ColorDepth::TrueColor, Glyphs::Braille),
+                Performance::lite(),
+                Box::new(ConsoleScreens::new()),
+            );
+            let mut session = c.session;
+            live.set_connection(&target.pinned(&serial), &c.ext);
+            live.arm_notifications(&mut session);
+            live.connect_analyser(&mut session);
+            Self { live, session }
+        }
+
+        fn tick(&mut self) {
+            let notes = self.live.notes.take();
+            self.live.tick(&mut self.session, notes.as_ref());
+            self.live.notes = notes;
+            // As the run loop does: a frame between ticks.
+            let area = ratatui::layout::Rect::new(0, 0, 140, 45);
+            self.live.draw(area, &mut Buffer::empty(area));
+        }
+
+        fn press(&mut self, c: char) {
+            let k = key(KeyCode::Char(c));
+            self.live.handle_key(&mut self.session, k);
+        }
+
+        fn sid(&mut self) -> u16 {
+            self.session
+                .with_transport(|t| Ok(t.session_id()))
+                .unwrap()
+                .unwrap()
+        }
+
+        fn wanted_mask(&self) -> Option<u16> {
+            let app = self.live.shared.borrow();
+            app.spectrum.engine.wanted().map(|w| w.channel_mask)
+        }
+
+        fn following(&self) -> Option<u16> {
+            let app = self.live.shared.borrow();
+            app.spectrum.sharing.following().map(|f| f.origin)
+        }
+
+        /// Choose outputs as the panel's chips do.
+        fn choose(&mut self, channels: &[u8]) {
+            self.live.shared.borrow_mut().spectrum.selection =
+                Some(crate::screens::spectrum::Selection::new(
+                    dspi_session::rta::TAP_OUTPUT,
+                    channels.to_vec(),
+                ));
+        }
+    }
+
+    fn until(
+        what: &str,
+        consoles: &mut [&mut Console],
+        mut f: impl FnMut(&[&mut Console]) -> bool,
+    ) {
+        for _ in 0..800 {
+            for c in consoles.iter_mut() {
+                c.tick();
+            }
+            if f(consoles) {
+                return;
+            }
+            sleep(Duration::from_millis(5));
+        }
+        panic!("timed out waiting for {what}");
+    }
+
+    fn settle(consoles: &mut [&mut Console]) {
+        for _ in 0..30 {
+            for c in consoles.iter_mut() {
+                c.tick();
+            }
+            sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn pushes(hub: &FakeHub, sid: u16) -> usize {
+        hub.log()
+            .iter()
+            .filter(|e| {
+                e.0 == sid && e.1 == dspi_link::frames::Dir::Set as u8 && e.2 == req::RTA_SET_CONFIG
+            })
+            .count()
+    }
+
+    fn device_mask(hub: &FakeHub) -> u16 {
+        let c = hub.rta_config();
+        u16::from_le_bytes([c[2], c[3]])
+    }
+
+    #[test]
+    fn wp_tm5_following_and_the_take_control_key_on_the_fake_hub() {
+        let hub = hub();
+        let mut a = Console::on(&hub, "follow-a");
+        let sid_a = a.sid();
+        a.choose(&[0]);
+        a.press('A'); // the panel
+        until("a's push", &mut [&mut a], |_| device_mask(&hub) == 0b01);
+        // Our own echo arrives and changes nothing.
+        settle(&mut [&mut a]);
+        assert_eq!(a.following(), None);
+
+        // Another session: a follows, with the origin, and polls what it set.
+        let mut b = Console::on(&hub, "follow-b");
+        let sid_b = b.sid();
+        b.choose(&[1]);
+        b.press('A');
+        until("a following", &mut [&mut a, &mut b], |c| {
+            c[0].following().is_some()
+        });
+        assert_eq!(a.following(), Some(sid_b));
+        until("a's picture", &mut [&mut a, &mut b], |c| {
+            c[0].wanted_mask() == Some(0b10)
+        });
+        // A follower never pushes, and the driver stays the driver.
+        let n = pushes(&hub, sid_a);
+        settle(&mut [&mut a, &mut b]);
+        assert_eq!(pushes(&hub, sid_a), n, "a follower does not push");
+        assert_eq!(b.following(), None);
+        assert_eq!(device_mask(&hub), 0b10);
+
+        // The key: a pushes its own again, and b follows now.
+        a.press('t');
+        assert_eq!(a.following(), None);
+        until("a's push again", &mut [&mut a, &mut b], |_| {
+            device_mask(&hub) == 0b01
+        });
+        until("b following", &mut [&mut a, &mut b], |c| {
+            c[1].following().is_some()
+        });
+        assert_eq!(b.following(), Some(sid_a));
+        settle(&mut [&mut a, &mut b]);
+        assert_eq!(a.following(), None, "ours does not switch state");
+        assert_eq!(device_mask(&hub), 0b01, "no fight");
+    }
+
+    #[test]
+    fn wp_tm5_the_overlay_draws_on_the_channel_graph_on_the_fake_hub() {
+        let hub = hub();
+        let mut a = Console::on(&hub, "overlay");
+        let sid = a.sid();
+        settle(&mut [&mut a]);
+        assert_eq!(pushes(&hub, sid), 0, "off until asked for");
+
+        a.live
+            .handle_event(&mut a.session, ShellEvent::Select(Selection::Output(1)));
+        a.press('f');
+        until("frames", &mut [&mut a], |c| {
+            c[0].live.shell.model.spectrum.as_ref().is_some_and(|o| {
+                o.curves
+                    .iter()
+                    .any(|g| g.magnitude.iter().any(|v| v.is_finite()))
+            })
+        });
+        assert_eq!(device_mask(&hub), 0b10, "the graphed channel");
+        let area = ratatui::layout::Rect::new(0, 0, 140, 45);
+        let mut buf = Buffer::empty(area);
+        a.live.draw(area, &mut buf);
+        let dim_braille = buf.content().iter().any(|c| {
+            c.modifier.contains(Modifier::DIM)
+                && c.symbol()
+                    .chars()
+                    .next()
+                    .is_some_and(|ch| ('\u{2800}'..='\u{28FF}').contains(&ch))
+        });
+        assert!(dim_braille, "the spectrum is on the graph");
+
+        // Back in the overview the graph is gone, so the analyser stops.
+        a.live
+            .handle_event(&mut a.session, ShellEvent::Select(Selection::Overview));
+        until("released", &mut [&mut a], |c| {
+            c[0].live.shell.model.spectrum.is_none() && c[0].wanted_mask().is_none()
+        });
+        a.press('f');
+        settle(&mut [&mut a]);
+        assert!(a.live.shell.model.spectrum.is_none());
+    }
+
+    #[test]
+    fn wp_tm5_the_overlay_comes_back_after_a_reconnect_with_its_graph() {
+        let hub = hub();
+        let mut a = Console::on(&hub, "reconnect-overlay");
+        let first = a.sid();
+        a.live
+            .handle_event(&mut a.session, ShellEvent::Select(Selection::Output(0)));
+        a.press('f');
+        until("the overlay's push", &mut [&mut a], |_| {
+            pushes(&hub, first) > 0
+        });
+
+        hub.close_all(1001);
+        until("the loss", &mut [&mut a], |c| !c[0].live.state.connected);
+        for _ in 0..1000 {
+            a.live.advance_reconnect(&mut a.session);
+            if a.live.state.connected {
+                break;
+            }
+            sleep(Duration::from_millis(5));
+        }
+        assert!(a.live.state.connected, "came back");
+        let second = a.sid();
+        // Losing the device left the channel page, and the graph with it.
+        settle(&mut [&mut a]);
+        assert_eq!(pushes(&hub, second), 0, "nothing on screen to feed");
+
+        // Its page again, with no `f`: it was on, so it runs.
+        a.live
+            .handle_event(&mut a.session, ShellEvent::Select(Selection::Output(0)));
+        until("the analyser back", &mut [&mut a], |c| {
+            pushes(&hub, second) > 0 && c[0].live.shell.model.spectrum.is_some()
+        });
+    }
+
+    #[test]
+    fn wp_tm5_a_reconnect_starts_the_analyser_again_and_forgets_who_was_followed() {
+        let hub = hub();
+        let mut a = Console::on(&hub, "reconnect-a");
+        let first = a.sid();
+        a.choose(&[0]);
+        a.press('A');
+        until("a's push", &mut [&mut a], |_| pushes(&hub, first) > 0);
+        let mut b = Console::on(&hub, "reconnect-b");
+        b.choose(&[1]);
+        b.press('A');
+        until("a following", &mut [&mut a, &mut b], |c| {
+            c[0].following().is_some()
+        });
+        drop(b);
+
+        hub.close_all(1001);
+        until("the loss", &mut [&mut a], |c| !c[0].live.state.connected);
+        for _ in 0..1000 {
+            a.live.advance_reconnect(&mut a.session);
+            if a.live.state.connected {
+                break;
+            }
+            sleep(Duration::from_millis(5));
+        }
+        assert!(a.live.state.connected, "came back");
+        let second = a.sid();
+        assert_ne!(first, second);
+        assert_eq!(a.following(), None, "that belonged to the old connection");
+
+        // Nobody touched anything: it was running, so it runs.
+        until("the analyser back", &mut [&mut a], |_| {
+            pushes(&hub, second) > 0
+                && hub
+                    .log()
+                    .iter()
+                    .any(|e| e.0 == second && e.2 == req::RTA_GET_BANDS)
+        });
+        assert_eq!(device_mask(&hub), 0b01, "our own choice");
     }
 }

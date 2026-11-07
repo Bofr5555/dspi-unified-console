@@ -9,24 +9,38 @@
 //!
 //! The engine that talks to the device ([`dspi_session::rta::RtaEngine`])
 //! lives in the shared state, not here: the runner ticks it inside its own
-//! loop and budget, and a later overlay or strip subscribes to the same
-//! engine. The panel subscribes while it is open and has a channel chosen,
-//! and releases on close, which is what makes the device stop the analyser.
+//! loop and budget. [`SpectrumState`] holds one subscription for everything
+//! that draws the selection: this panel while it is open and the overlay on
+//! the response graph while that is on screen. Nothing drawing, or no channel
+//! chosen, releases it, which is what makes the device stop the analyser.
+//!
+//! The device has one analyser and other consoles may be using it. The
+//! Terminal does not link `dspi-core`, so it reaches the following state
+//! through [`dspi_session::rta_sharing::Sharing`], which holds the same rules
+//! for a client that drives the engine itself. While following, [`selection`]
+//! is what the device analyses and every display draws that; a choice made
+//! here, or Take control, ends it.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use crossterm::event::KeyEvent;
 use dspi_proto::dsp;
+use dspi_proto::packets::RtaConfig;
 use dspi_session::DeviceState;
-use dspi_session::rta::{Bins, Request, RtaEngine, TAP_INPUT, TAP_OUTPUT, ViewId};
+use dspi_session::notify::{Event, Notification};
+use dspi_session::rta::{
+    Bins, Budget, Request, RtaEngine, TAP_INPUT, TAP_OUTPUT, TickReport, ViewId,
+};
+use dspi_session::rta_sharing::{Followed, Sharing};
+use dspi_transport::{Transport, TransportKind};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 
 use super::Shared;
 use super::panel::{self, Body, ChipSpec, Row};
-use crate::graph::{Graph, GraphCurve, GraphSettings};
+use crate::graph::{Graph, GraphCurve, GraphSettings, SpectrumOverlay};
 use crate::settings::config::Spectrum as Settings;
 use crate::shell::{Screen, ScreenEvent};
 use crate::theme::{ChannelRole, Glyphs, Theme};
@@ -49,14 +63,150 @@ pub struct SpectrumState {
     /// The side not showing, as it was left, so switching back restores it
     /// (`switchingSides`, SpectrumAnalyserView.swift:674-688).
     pub other_side: Option<Selection>,
+    /// Driving the device's analyser, or following another console.
+    pub sharing: Sharing,
+    /// The one subscription for everything that draws the selection.
+    view: Option<ViewId>,
+    panel_open: bool,
+    /// The spectrum on the response graph: `f`, off until asked for, since the
+    /// analyser is the one feature that adds continuous traffic.
+    overlay: bool,
+    /// The response graph is on screen, which is when the overlay watches.
+    overlay_shown: bool,
+    overlay_glide: Glide,
 }
 
 impl SpectrumState {
     /// Take the Settings page's values, pushing the device's half on the
-    /// next tick.
+    /// next tick. A change takes the analyser back from a console being
+    /// followed, when something here is watching.
     pub fn adopt_settings(&mut self, s: &Settings) {
         self.settings = s.clone();
-        self.engine.set_options(s.engine_options());
+        if self.sharing.following().is_none() {
+            self.engine.set_options(s.engine_options());
+        }
+    }
+
+    fn watching(&self) -> bool {
+        self.panel_open || (self.overlay && self.overlay_shown)
+    }
+
+    /// What this console asks of the device; `None` while nothing here
+    /// watches, the selection is empty or the caps are unknown.
+    fn own_config(&self, state: &DeviceState) -> Option<RtaConfig> {
+        let caps = self.engine.caps()?;
+        if !self.watching() || !state.connected {
+            return None;
+        }
+        let sel = own_selection(state, self);
+        let fft_order = self
+            .settings
+            .transform_order
+            .filter(|o| (caps.order_min..=caps.order_max).contains(o))
+            .unwrap_or(caps.order_default);
+        (sel.mask() != 0).then_some(RtaConfig {
+            tap: sel.tap,
+            channel_mask: sel.mask(),
+            fft_order,
+            avg_ms: self.settings.averaging_ms,
+            peak_decay_db_s: self.settings.peak_decay_db_s,
+            flags: 0,
+        })
+    }
+
+    /// Keep the engine in step with what is drawn: the sharing rules judge
+    /// this console's choice, and the engine then polls the device's
+    /// configuration while following and this console's otherwise. Runs
+    /// before every poll and after every choice.
+    pub fn sync(&mut self, state: &DeviceState) {
+        self.sharing.judge_own(self.own_config(state));
+        self.engine.set_options(match self.sharing.following() {
+            Some(f) => f.options(),
+            None => self.settings.engine_options(),
+        });
+        let sel = selection(state, self);
+        if !self.watching()
+            || sel.channels.is_empty()
+            || !self.engine.supported()
+            || !state.connected
+        {
+            self.release();
+            return;
+        }
+        let request = Request {
+            tap: sel.tap,
+            mask: sel.mask(),
+            wants_bins: sel.channels.len() == 1,
+        };
+        match self.view {
+            Some(id) => self.engine.update(id, request),
+            None => self.view = Some(self.engine.subscribe(request)),
+        }
+    }
+
+    fn release(&mut self) {
+        if let Some(id) = self.view.take() {
+            self.engine.release(id);
+        }
+    }
+
+    /// One poll, under the sharing rules. The caller has just called
+    /// [`Self::sync`].
+    pub fn tick(&mut self, t: &mut dyn Transport, now: Instant) -> TickReport {
+        self.sharing
+            .tick(&mut self.engine, t, now, Budget::default())
+    }
+
+    /// Take a notification, if it says who holds the analyser.
+    pub fn note(
+        &mut self,
+        note: &Notification,
+        kind: TransportKind,
+        session: Option<u16>,
+        state: &DeviceState,
+    ) {
+        if matches!(note.event, Event::Unknown { .. }) {
+            self.sharing.judge_own(self.own_config(state));
+            self.sharing.note(note, kind, session, self.engine.caps());
+        }
+    }
+
+    /// Another device, or the same one back: the following state belongs to
+    /// the connection. What watches stays, so the next poll starts the
+    /// analyser again.
+    pub fn new_connection(&mut self) {
+        self.sharing.reset();
+    }
+
+    /// Whether the response graph is on screen, from the runner.
+    pub fn set_overlay_shown(&mut self, shown: bool) {
+        self.overlay_shown = shown;
+    }
+
+    /// `f`: show or hide the spectrum on the response graph, and say which.
+    /// With no channel chosen yet, showing it starts from the graphed
+    /// channel, `page` (its tap, its channel at that tap).
+    pub fn toggle_overlay(&mut self, page: Option<(u8, u8)>) -> bool {
+        self.overlay = !self.overlay;
+        if self.overlay
+            && self
+                .selection
+                .as_ref()
+                .is_none_or(|c| c.channels.is_empty())
+            && let Some((tap, channel)) = page
+        {
+            self.selection = Some(Selection::new(tap, vec![channel]));
+        }
+        self.overlay
+    }
+}
+
+/// The words for following, naming the session when the hub does
+/// (SpectrumAnalyserView.swift:1995).
+fn following_words(f: &Followed) -> String {
+    match f.origin {
+        0 => "Following another console".into(),
+        o => format!("Following another console (session {o})"),
     }
 }
 
@@ -144,11 +294,29 @@ pub fn channels(state: &DeviceState, engine: &RtaEngine, tap: u8) -> Vec<u8> {
     }
 }
 
-/// The selection on show: the chosen one, limited to channels live on this
+/// The selection on show: this console's, and while it follows another one
+/// the device's tap and channels, so every display draws what the analyser is
+/// doing (`effectiveSelection`, SpectrumAnalyser.swift:456). A display hidden
+/// here stays hidden.
+pub fn selection(state: &DeviceState, s: &SpectrumState) -> Selection {
+    let own = own_selection(state, s);
+    match s.sharing.following() {
+        Some(f) if !own.channels.is_empty() => {
+            let mask = f.config.channel_mask;
+            Selection::new(
+                f.config.tap,
+                (0..16).filter(|c| mask >> c & 1 != 0).collect(),
+            )
+        }
+        _ => own,
+    }
+}
+
+/// This console's selection: the chosen one, limited to channels live on this
 /// device. Never chosen, or every chosen channel gone, falls back to the
 /// first enabled output and then input 1; a chosen empty selection stays
 /// empty (`dashboardRtaSelection`, SpectrumAnalyserView.swift:710-724).
-pub fn selection(state: &DeviceState, s: &SpectrumState) -> Selection {
+fn own_selection(state: &DeviceState, s: &SpectrumState) -> Selection {
     if let Some(chosen) = &s.selection {
         if chosen.channels.is_empty() {
             return chosen.clone();
@@ -294,7 +462,7 @@ pub fn blend(bands: &[f64], bins: &Bins, centres: &[u16], bass_bands: usize) -> 
 /// The fall is slower than the rise, and a peak cap never eases upward. A
 /// new identity (another channel, another band count) snaps rather than
 /// sliding across from the old picture.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 struct Glide {
     series: HashMap<(u8, u8, u8), (Vec<f64>, Instant)>,
 }
@@ -360,6 +528,9 @@ pub enum Mode {
 
 const MODES: [&str; 3] = ["Curves", "Bars", "Both"];
 
+/// SpectrumAnalyserView.swift:1046.
+const TAKE_CONTROL: &str = "Take control";
+
 const KEYS: &[KeyHelp] = &[
     KeyHelp::new("↑ ↓", "Move"),
     KeyHelp::new("← →", "Choose"),
@@ -378,12 +549,137 @@ struct Trace {
     peak_curve: Option<Vec<f64>>,
 }
 
+/// Every chosen channel's picture, glided when Smoothing is on.
+fn traces(
+    s: &SpectrumState,
+    state: &DeviceState,
+    theme: &Theme,
+    glide: &mut Glide,
+    now: Instant,
+) -> Vec<Trace> {
+    let engine = &s.engine;
+    let sel = selection(state, s);
+    let single = sel.channels.len() == 1;
+    let populated = |i: usize| engine.band_populated(i);
+    let fall = fall_tau(engine.refresh_interval());
+    let rise = fall.mul_f64(0.4);
+    let mut out = Vec::new();
+    for ch in &sel.channels {
+        let Some(frame) = engine.frame(sel.tap, *ch) else {
+            out.push(Trace {
+                color: channel_color(state, theme, sel.tap, *ch),
+                name: channel_label(state, sel.tap, *ch),
+                avg: Vec::new(),
+                peak: None,
+                curve: Vec::new(),
+                peak_curve: None,
+            });
+            continue;
+        };
+        let avg: Vec<f64> = frame
+            .avg_levels()
+            .iter()
+            .map(|v| engine.level_db(*v))
+            .collect();
+        let peak: Vec<f64> = frame
+            .peak_levels()
+            .iter()
+            .map(|v| engine.level_db(*v))
+            .collect();
+        let (avg, peak) = if s.settings.smoothing {
+            (
+                glide.step((sel.tap, *ch, 0), avg, now, rise, fall),
+                glide.step((sel.tap, *ch, 1), peak, now, Duration::ZERO, fall),
+            )
+        } else {
+            (avg, peak)
+        };
+        let bands = band_curve(&avg, engine.centres(), &populated);
+        let curve = match engine.bins(sel.tap, *ch).filter(|_| single) {
+            Some(bins) => {
+                let blended = blend(&bands, bins, engine.centres(), engine.bass_bands());
+                if s.settings.smoothing {
+                    glide.step((sel.tap, *ch, 2), blended, now, rise, fall)
+                } else {
+                    blended
+                }
+            }
+            None => bands,
+        };
+        let peak_on = s.settings.peak_hold;
+        out.push(Trace {
+            color: channel_color(state, theme, sel.tap, *ch),
+            name: channel_label(state, sel.tap, *ch),
+            peak_curve: peak_on.then(|| band_curve(&peak, engine.centres(), &populated)),
+            peak: peak_on.then_some(peak),
+            avg,
+            curve,
+        });
+    }
+    out
+}
+
+/// The traces as the graph takes them: peak contours first, in grey, so every
+/// channel's own curve sits on top of them.
+fn graph_curves(traces: &[Trace], theme: &Theme) -> Vec<GraphCurve> {
+    let mut curves: Vec<GraphCurve> = traces
+        .iter()
+        .filter_map(|t| t.peak_curve.as_ref())
+        .map(|p| GraphCurve {
+            descriptor: String::new(),
+            color: theme.dim,
+            magnitude: p.clone(),
+            phase: None,
+            selected: false,
+        })
+        .collect();
+    curves.extend(
+        traces
+            .iter()
+            .filter(|t| !t.curve.is_empty())
+            .map(|t| GraphCurve {
+                descriptor: t.name.clone(),
+                color: t.color,
+                magnitude: t.curve.clone(),
+                phase: None,
+                selected: true,
+            }),
+    );
+    curves
+}
+
+/// What the response graph draws behind its curves; `None` while the overlay
+/// is off or has nothing to show (`GraphSpectrumOverlay.swift`).
+pub fn overlay_picture(
+    shared: &Shared,
+    state: &DeviceState,
+    theme: &Theme,
+    now: Instant,
+) -> Option<SpectrumOverlay> {
+    let mut app = shared.try_borrow_mut().ok()?;
+    let s = &mut app.spectrum;
+    if !(s.overlay && s.overlay_shown && state.connected && s.engine.supported()) {
+        return None;
+    }
+    let mut glide = std::mem::take(&mut s.overlay_glide);
+    let picture = traces(s, state, theme, &mut glide, now);
+    s.overlay_glide = glide;
+    Some(SpectrumOverlay {
+        floor_db: s.settings.floor_db as f64,
+        ceiling_db: s.settings.ceiling_db as f64,
+        curves: graph_curves(&picture, theme),
+        note: s
+            .sharing
+            .following()
+            .map(|f| format!("{}  t takes control", following_words(&f))),
+    })
+}
+
 pub struct SpectrumPanel {
     shared: Shared,
     body: Body,
     chip: usize,
     mode: Mode,
-    view: Option<ViewId>,
     glide: Glide,
 }
 
@@ -394,7 +690,6 @@ impl SpectrumPanel {
             body: Body::headless(),
             chip: 0,
             mode: Mode::Curves,
-            view: None,
             glide: Glide::default(),
         }
     }
@@ -417,23 +712,8 @@ impl SpectrumPanel {
         let Ok(mut app) = self.shared.try_borrow_mut() else {
             return;
         };
-        let sel = selection(state, &app.spectrum);
-        let engine = &mut app.spectrum.engine;
-        if sel.channels.is_empty() || !engine.supported() || !state.connected {
-            if let Some(id) = self.view.take() {
-                engine.release(id);
-            }
-            return;
-        }
-        let request = Request {
-            tap: sel.tap,
-            mask: sel.mask(),
-            wants_bins: sel.channels.len() == 1,
-        };
-        match self.view {
-            Some(id) => engine.update(id, request),
-            None => self.view = Some(engine.subscribe(request)),
-        }
+        app.spectrum.panel_open = true;
+        app.spectrum.sync(state);
     }
 
     fn supported(&self, state: &DeviceState) -> bool {
@@ -444,12 +724,20 @@ impl SpectrumPanel {
         let app = self.shared.borrow();
         let sel = selection(state, &app.spectrum);
         let available = channels(state, &app.spectrum.engine, sel.tap);
-        let mut rows = vec![Row::Segmented {
+        let mut rows = Vec::new();
+        if let Some(f) = app.spectrum.sharing.following() {
+            rows.push(Row::Buttons {
+                label: following_words(&f),
+                buttons: vec![TAKE_CONTROL.into()],
+                cursor: 0,
+            });
+        }
+        rows.push(Row::Segmented {
             label: "Spectrum".into(),
             choices: vec!["Inputs".into(), "Outputs".into()],
             selected: usize::from(sel.tap == TAP_OUTPUT),
             enabled: true,
-        }];
+        });
         if available.is_empty() {
             rows.push(Row::Caption(
                 if sel.tap == TAP_INPUT {
@@ -501,6 +789,7 @@ impl SpectrumPanel {
         let mut app = self.shared.borrow_mut();
         let sel = selection(state, &app.spectrum);
         let available = channels(state, &app.spectrum.engine, sel.tap);
+        let own = own_selection(state, &app.spectrum);
         let s = &mut app.spectrum;
         match (row, action) {
             (Row::Segmented { label, .. }, Action::Selected(i)) if label == "Display" => {
@@ -508,100 +797,47 @@ impl SpectrumPanel {
             }
             (Row::Segmented { .. }, Action::Selected(i)) => {
                 // Choosing a side brings back what was checked there when it
-                // was last left, or nothing.
+                // was last left, or nothing. The side on show may be another
+                // console's: what is put away is this console's.
                 let tap = if i == 0 { TAP_INPUT } else { TAP_OUTPUT };
                 if tap != sel.tap {
-                    let restored = s
-                        .other_side
-                        .take()
-                        .filter(|o| o.tap == tap)
-                        .unwrap_or_else(|| Selection::new(tap, Vec::new()));
-                    s.other_side = Some(s.selection.take().unwrap_or(sel));
-                    s.selection = Some(restored);
+                    if tap != own.tap {
+                        let restored = s
+                            .other_side
+                            .take()
+                            .filter(|o| o.tap == tap)
+                            .unwrap_or_else(|| Selection::new(tap, Vec::new()));
+                        s.other_side = Some(s.selection.take().unwrap_or(own));
+                        s.selection = Some(restored);
+                    }
+                    s.sharing.take_control();
                     self.chip = 0;
                 }
             }
             (Row::Chips { .. }, Action::Selected(i)) => self.chip = i,
             (Row::Chips { .. }, Action::Chip(i, _)) => {
                 if let Some(ch) = available.get(i) {
+                    // A choice made here takes the analyser back even when it
+                    // leaves this console's selection as it was (`userChose`,
+                    // SpectrumAnalyserView.swift:929-932).
                     s.selection = Some(sel.toggling(*ch));
+                    s.sharing.take_control();
                 }
+            }
+            (Row::Buttons { buttons, .. }, Action::Button(_))
+                if buttons.first().is_some_and(|b| b == TAKE_CONTROL) =>
+            {
+                s.sharing.take_control();
             }
             (Row::Buttons { buttons, .. }, Action::Button(_)) if !buttons.is_empty() => {
                 s.selection = Some(Selection::new(sel.tap, Vec::new()));
+                s.sharing.take_control();
             }
             _ => {}
         }
         drop(app);
         self.sync(state);
         ScreenEvent::Handled
-    }
-
-    /// Every chosen channel's picture, glided when Smoothing is on.
-    fn traces(&mut self, state: &DeviceState, theme: &Theme, now: Instant) -> Vec<Trace> {
-        let app = self.shared.borrow();
-        let s = &app.spectrum;
-        let engine = &s.engine;
-        let sel = selection(state, s);
-        let single = sel.channels.len() == 1;
-        let populated = |i: usize| engine.band_populated(i);
-        let fall = fall_tau(engine.refresh_interval());
-        let rise = fall.mul_f64(0.4);
-        let mut out = Vec::new();
-        for ch in &sel.channels {
-            let Some(frame) = engine.frame(sel.tap, *ch) else {
-                out.push(Trace {
-                    color: channel_color(state, theme, sel.tap, *ch),
-                    name: channel_label(state, sel.tap, *ch),
-                    avg: Vec::new(),
-                    peak: None,
-                    curve: Vec::new(),
-                    peak_curve: None,
-                });
-                continue;
-            };
-            let avg: Vec<f64> = frame
-                .avg_levels()
-                .iter()
-                .map(|v| engine.level_db(*v))
-                .collect();
-            let peak: Vec<f64> = frame
-                .peak_levels()
-                .iter()
-                .map(|v| engine.level_db(*v))
-                .collect();
-            let (avg, peak) = if s.settings.smoothing {
-                (
-                    self.glide.step((sel.tap, *ch, 0), avg, now, rise, fall),
-                    self.glide
-                        .step((sel.tap, *ch, 1), peak, now, Duration::ZERO, fall),
-                )
-            } else {
-                (avg, peak)
-            };
-            let bands = band_curve(&avg, engine.centres(), &populated);
-            let curve = match engine.bins(sel.tap, *ch).filter(|_| single) {
-                Some(bins) => {
-                    let blended = blend(&bands, bins, engine.centres(), engine.bass_bands());
-                    if s.settings.smoothing {
-                        self.glide.step((sel.tap, *ch, 2), blended, now, rise, fall)
-                    } else {
-                        blended
-                    }
-                }
-                None => bands,
-            };
-            let peak_on = s.settings.peak_hold;
-            out.push(Trace {
-                color: channel_color(state, theme, sel.tap, *ch),
-                name: channel_label(state, sel.tap, *ch),
-                peak_curve: peak_on.then(|| band_curve(&peak, engine.centres(), &populated)),
-                peak: peak_on.then_some(peak),
-                avg,
-                curve,
-            });
-        }
-        out
     }
 
     fn draw_curves(&self, area: Rect, buf: &mut Buffer, theme: &Theme, traces: &[Trace]) {
@@ -621,31 +857,7 @@ impl SpectrumPanel {
             grid: app.graph.grid,
             ..GraphSettings::default()
         };
-        // Peak contours first, in grey, so every channel's own curve sits on
-        // top of them.
-        let mut curves: Vec<GraphCurve> = traces
-            .iter()
-            .filter_map(|t| t.peak_curve.as_ref())
-            .map(|p| GraphCurve {
-                descriptor: String::new(),
-                color: theme.dim,
-                magnitude: p.clone(),
-                phase: None,
-                selected: false,
-            })
-            .collect();
-        curves.extend(
-            traces
-                .iter()
-                .filter(|t| !t.curve.is_empty())
-                .map(|t| GraphCurve {
-                    descriptor: t.name.clone(),
-                    color: t.color,
-                    magnitude: t.curve.clone(),
-                    phase: None,
-                    selected: true,
-                }),
-        );
+        let curves = graph_curves(traces, theme);
         let graph = Graph::new(&curves, &settings, theme);
         let plot = graph.plot_area(area);
         ratatui::widgets::Widget::render(graph, area, buf);
@@ -783,11 +995,14 @@ impl SpectrumPanel {
         let low_band = (shows_bars && running && engine.fft_order() < caps.order_max)
             .then(|| engine.lowest_measurable_centre())
             .flatten();
-        let (notice, style) = if engine.rejected() {
+        let following = app.spectrum.sharing.following();
+        let (notice, style) = if engine.rejected() && following.is_none() {
             (
                 "Device refused this configuration".to_string(),
                 theme.warning_style(),
             )
+        } else if let Some(f) = following {
+            (following_words(&f), theme.label())
         } else if let Some(hz) = low_band {
             (
                 format!(
@@ -866,10 +1081,11 @@ impl Drop for SpectrumPanel {
     /// Closing the panel releases its subscription; when it was the last,
     /// the engine stops the device on the next tick.
     fn drop(&mut self) {
-        if let Some(id) = self.view.take()
-            && let Ok(mut app) = self.shared.try_borrow_mut()
-        {
-            app.spectrum.engine.release(id);
+        if let Ok(mut app) = self.shared.try_borrow_mut() {
+            app.spectrum.panel_open = false;
+            if !app.spectrum.watching() {
+                app.spectrum.release();
+            }
         }
     }
 }
@@ -1058,7 +1274,10 @@ impl Screen for SpectrumPanel {
                  something is watching it.",
             );
         } else {
-            let traces = self.traces(state, theme, Instant::now());
+            let traces = {
+                let app = self.shared.borrow();
+                traces(&app.spectrum, state, theme, &mut self.glide, Instant::now())
+            };
             match self.mode {
                 Mode::Curves => self.draw_curves(display, buf, theme, &traces),
                 Mode::Bars => self.draw_bars(display, buf, theme, &traces),
@@ -1598,6 +1817,181 @@ mod tests {
         )[0];
         assert!(up > -60.0 && up < 0.0);
         assert!((up - -60.0).abs() > (down - 0.0).abs(), "{up} {down}");
+    }
+
+    /// Another console's configuration, as `Sharing` hears of it.
+    fn follow(shared: &Shared, mask: u16, origin: u16) {
+        let mut app = shared.borrow_mut();
+        let mut bytes = RtaConfig {
+            tap: TAP_INPUT,
+            channel_mask: mask,
+            fft_order: 10,
+            avg_ms: 300,
+            peak_decay_db_s: 12,
+            flags: 0,
+        }
+        .encode()
+        .to_vec();
+        bytes.push(1);
+        let note = Notification {
+            seq: 1,
+            event: Event::Unknown {
+                id: dspi_proto::generated::notify::NOTIFY_EVT_RTA_CONFIG as u8,
+                bytes,
+            },
+            lost: false,
+            origin: Some(origin),
+            received: Instant::now(),
+        };
+        let s = &mut app.spectrum;
+        let caps = s.engine.caps().copied();
+        s.sharing
+            .note(&note, TransportKind::Link, Some(1), caps.as_ref());
+    }
+
+    #[test]
+    fn wp_tm5_following_shows_the_devices_channels_and_says_so() {
+        let state = testing::state();
+        let shared = shared_with(TAP_OUTPUT, &[0]);
+        let mut p = SpectrumPanel::new(shared.clone());
+        p.sync(&state);
+        follow(&shared, 0b0110, 9);
+        p.sync(&state);
+        let w = shared.borrow().spectrum.engine.wanted().unwrap();
+        assert_eq!((w.tap, w.channel_mask), (TAP_INPUT, 0b0110), "polls theirs");
+        let sel = selection(&state, &shared.borrow().spectrum);
+        assert_eq!(sel, Selection::new(TAP_INPUT, vec![1, 2]));
+        // The registered choice is still ours.
+        assert_eq!(
+            shared.borrow().spectrum.selection.as_ref().unwrap().tap,
+            TAP_OUTPUT
+        );
+        let out = frame_of(&shared, &state, 100, 30);
+        assert!(
+            out.contains("Following another console (session 9)"),
+            "{out}"
+        );
+        assert!(out.contains("Take control"), "{out}");
+    }
+
+    #[test]
+    fn wp_tm5_the_take_control_row_and_a_chip_both_take_it_back() {
+        let state = testing::state();
+        let shared = shared_with(TAP_OUTPUT, &[0]);
+        let mut p = SpectrumPanel::new(shared.clone());
+        p.sync(&state);
+        let following = || shared.borrow().spectrum.sharing.following().is_some();
+
+        follow(&shared, 0b0110, 9);
+        p.sync(&state);
+        assert!(following());
+        p.body.focus = 1;
+        p.handle(key(KeyCode::Enter), &state);
+        assert!(!following());
+        let w = shared.borrow().spectrum.engine.wanted().unwrap();
+        assert_eq!((w.tap, w.channel_mask), (TAP_OUTPUT, 1), "ours again");
+
+        // A chip toggles what is on show, and makes that our choice.
+        follow(&shared, 0b0110, 9);
+        p.sync(&state);
+        assert!(following());
+        p.body.focus = 3;
+        p.chip = 3;
+        p.handle(key(KeyCode::Char(' ')), &state);
+        assert!(!following());
+        let w = shared.borrow().spectrum.engine.wanted().unwrap();
+        assert_eq!((w.tap, w.channel_mask), (TAP_INPUT, 0b1110));
+
+        // The side switch, to this console's own side.
+        shared.borrow_mut().spectrum.selection = Some(Selection::new(TAP_OUTPUT, vec![0]));
+        p.sync(&state);
+        follow(&shared, 0b0110, 9);
+        p.sync(&state);
+        p.body.focus = 2;
+        p.handle(key(KeyCode::Right), &state);
+        assert!(!following());
+        let w = shared.borrow().spectrum.engine.wanted().unwrap();
+        assert_eq!((w.tap, w.channel_mask), (TAP_OUTPUT, 1), "kept as it was");
+    }
+
+    #[test]
+    fn wp_tm5_a_display_hidden_here_stays_hidden_while_following() {
+        let state = testing::state();
+        let shared = shared_with(TAP_OUTPUT, &[]);
+        let mut p = SpectrumPanel::new(shared.clone());
+        p.sync(&state);
+        follow(&shared, 0b0110, 9);
+        p.sync(&state);
+        assert!(
+            selection(&state, &shared.borrow().spectrum)
+                .channels
+                .is_empty()
+        );
+        assert!(!shared.borrow().spectrum.engine.watching());
+    }
+
+    #[test]
+    fn wp_tm5_the_overlay_watches_only_while_on_screen_and_outlives_the_panel() {
+        let state = testing::state();
+        let theme = Theme::console(crate::theme::ColorDepth::TrueColor, Glyphs::Braille);
+        let shared = shared_with(TAP_OUTPUT, &[0]);
+        let picture = || overlay_picture(&shared, &state, &theme, Instant::now());
+        let sync = |shown: bool| {
+            let mut app = shared.borrow_mut();
+            app.spectrum.set_overlay_shown(shown);
+            app.spectrum.sync(&state);
+        };
+        let watching = || shared.borrow().spectrum.engine.watching();
+
+        sync(true);
+        assert!(!watching() && picture().is_none(), "off until asked for");
+
+        assert!(shared.borrow_mut().spectrum.toggle_overlay(None));
+        sync(false);
+        assert!(!watching() && picture().is_none(), "the graph is covered");
+
+        sync(true);
+        assert!(watching());
+        let o = picture().unwrap();
+        assert_eq!((o.floor_db, o.ceiling_db), (-90.0, 6.0));
+        assert!(
+            o.curves
+                .iter()
+                .any(|c| c.descriptor == channel_name_of(&state, TAP_OUTPUT, 0))
+        );
+        assert_eq!(o.note, None);
+
+        // One subscription between them: closing the panel keeps it.
+        let mut p = SpectrumPanel::new(shared.clone());
+        p.sync(&state);
+        drop(p);
+        assert!(watching());
+
+        follow(&shared, 0b0110, 9);
+        sync(true);
+        let note = picture().unwrap().note.unwrap();
+        assert!(
+            note.contains("(session 9)") && note.contains("t takes control"),
+            "{note}"
+        );
+
+        assert!(!shared.borrow_mut().spectrum.toggle_overlay(None));
+        sync(true);
+        assert!(!watching() && picture().is_none());
+    }
+
+    #[test]
+    fn wp_tm5_the_overlay_starts_from_the_graphed_channel_when_none_was_chosen() {
+        let mut s = SpectrumState::default();
+        s.toggle_overlay(Some((TAP_INPUT, 2)));
+        assert_eq!(s.selection, Some(Selection::new(TAP_INPUT, vec![2])));
+        s.toggle_overlay(Some((TAP_INPUT, 3)));
+        s.toggle_overlay(Some((TAP_INPUT, 3)));
+        assert_eq!(
+            s.selection,
+            Some(Selection::new(TAP_INPUT, vec![2])),
+            "a choice stays"
+        );
     }
 
     #[test]

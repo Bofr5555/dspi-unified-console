@@ -168,6 +168,11 @@ pub enum ShellEvent {
     GraphPopout,
     /// `.`: show or hide the linked partner's curve under the selected one.
     GraphPartner,
+    // -- WP TM5 --
+    /// `f`: the live spectrum on the response graph.
+    SpectrumOverlay,
+    /// `t`: take the analyser back from the console being followed.
+    TakeControl,
     Rename(usize),
     CopyParams(usize),
     PasteParams(usize),
@@ -219,6 +224,8 @@ const GLOBAL_KEYS: &[KeyHelp] = &[
     KeyHelp::new("Ctrl-Z Ctrl-Y", "Undo, redo"),
     KeyHelp::new(";", "Page commands"),
     KeyHelp::new("= g p . + -", "Graph height, pop-out, phase, partner, zoom"),
+    // -- WP TM5 --
+    KeyHelp::new("f t", "Spectrum on the graph, take control of the analyser"),
     KeyHelp::new("b c", "Bypass master EQ, clear clips"),
     KeyHelp::new("q", "Quit"),
 ];
@@ -491,6 +498,9 @@ impl Shell {
             KeyCode::Char('g') => out.push(ShellEvent::GraphPopout),
             KeyCode::Char('p') => out.push(ShellEvent::GraphPhase),
             KeyCode::Char('.') => out.push(ShellEvent::GraphPartner),
+            // -- WP TM5 --
+            KeyCode::Char('f') => out.push(ShellEvent::SpectrumOverlay),
+            KeyCode::Char('t') => out.push(ShellEvent::TakeControl),
             KeyCode::Char('+') => out.push(ShellEvent::GraphZoom(-10.0)),
             KeyCode::Char('-') => out.push(ShellEvent::GraphZoom(10.0)),
             KeyCode::Char('h') => out.push(self.cursor_step(-1)),
@@ -1194,9 +1204,19 @@ impl Shell {
             .title_style(if focused { t.focused() } else { t.section() })
     }
 
+    // -- WP TM5 --
+    /// Whether the response graph is being drawn: what the spectrum overlay
+    /// watches for, since nothing else makes the analyser worth running.
+    pub fn graph_on_screen(&self) -> bool {
+        self.settings.is_none()
+            && self.tool.is_none()
+            && (self.graph_popout || self.graph_height() != GraphHeight::Hidden)
+    }
+
     fn draw_graph(&self, graph_area: Rect, buf: &mut Buffer, t: &Theme) {
         let m = &self.model;
         Graph::new(&m.curves, &m.graph, t)
+            .spectrum(m.spectrum.as_ref()) // -- WP TM5 --
             .cursor(m.cursor_hz)
             .marker(m.marker_hz)
             .render(graph_area, buf);
