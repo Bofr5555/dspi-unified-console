@@ -58,7 +58,7 @@ use super::{FakeRemote, LIVE_BANDS, State};
 /// fire and a learn arm or cancel stall. It lets a client's demo show the refusals
 /// the firmware has no other way to give. A host checks for
 /// [`TransportKind::Fake`](crate::TransportKind::Fake) first.
-pub const EXT_FAKE_CS_SIM: u16 = 0xFFF1;
+pub const EXT_FAKE_CS_SIM: u16 = 0xFFF3;
 
 const SUCCESS: u8 = st::PIN_CONFIG_SUCCESS as u8;
 const INVALID_PIN: u8 = st::PIN_CONFIG_INVALID_PIN as u8;
