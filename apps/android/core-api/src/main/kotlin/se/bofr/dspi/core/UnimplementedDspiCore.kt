@@ -60,7 +60,7 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun fetchCoreVreg(): CoreVregInfo = throw NotImplementedError("fetch_core_vreg")
 
-    override fun coreVregOp(op: Int, value: Int): Unit = throw NotImplementedError("core_vreg_op")
+    override fun coreVregOp(op: Int, value: Int, word: String?): Unit = throw NotImplementedError("core_vreg_op")
 
     override fun configExport(name: String, appVersion: String, links: Int): String = throw NotImplementedError("config_export")
 
@@ -348,6 +348,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun fetchStat(which: Int): Long = throw NotImplementedError("fetch_stat")
 
+    override fun fetchRingHealth(): RingHealth? = throw NotImplementedError("fetch_ring_health")
+
+    override fun fetchOutputFills(): List<OutputFill> = throw NotImplementedError("fetch_output_fills")
+
     override fun fetchBufferStats(): BufferStats = throw NotImplementedError("fetch_buffer_stats")
 
     override fun resetBufferStats(): Unit = throw NotImplementedError("reset_buffer_stats")
@@ -357,6 +361,32 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun fetchSpdifRxChannelStatus(): List<Int> = throw NotImplementedError("fetch_spdif_rx_channel_status")
 
     override fun fetchSpdifRxPin(index: Int): Int = throw NotImplementedError("fetch_spdif_rx_pin")
+
+    override fun coreVregCalView(): VregCalView = throw NotImplementedError("core_vreg_cal_view")
+
+    override fun coreVregCalPoll(): VregCalView = throw NotImplementedError("core_vreg_cal_poll")
+
+    override fun coreVregCalOpen(): Unit = throw NotImplementedError("core_vreg_cal_open")
+
+    override fun coreVregCalClose(): Unit = throw NotImplementedError("core_vreg_cal_close")
+
+    override fun coreVregCalStart(target: Int, soakS: Long, typed: String?): Unit = throw NotImplementedError("core_vreg_cal_start")
+
+    override fun coreVregCalKeep(soakS: Long): Unit = throw NotImplementedError("core_vreg_cal_keep")
+
+    override fun coreVregCalCommit(typed: String?): Unit = throw NotImplementedError("core_vreg_cal_commit")
+
+    override fun coreVregTrialEnd(): Unit = throw NotImplementedError("core_vreg_trial_end")
+
+    override fun coreVregManualSet(value: Int, typed: String?): Unit = throw NotImplementedError("core_vreg_manual_set")
+
+    override fun coreVregManualTrial(value: Int, typed: String?): Unit = throw NotImplementedError("core_vreg_manual_trial")
+
+    override fun coreVregManualAuto(on: Boolean): Unit = throw NotImplementedError("core_vreg_manual_auto")
+
+    override fun coreVregManualClear(): Unit = throw NotImplementedError("core_vreg_manual_clear")
+
+    override fun coreVregDemoEvent(event: VregDemoEvent, seconds: Long): Unit = throw NotImplementedError("core_vreg_demo_event")
 
     override fun autoeqDatabaseInfo(dbPath: String): AutoEqDatabaseInfo = throw NotImplementedError("autoeq_database_info")
 
@@ -407,4 +437,12 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun linkWsUrl(host: String, port: Int, path: String): String = throw NotImplementedError("link_ws_url")
 
     override fun linkFetchInfo(host: String, port: Int): LinkInfo = throw NotImplementedError("link_fetch_info")
+
+    override fun linkPhaseText(phase: LinkPhase, pinSource: String): LinkPhaseText = throw NotImplementedError("link_phase_text")
+
+    override fun linkPhaseTexts(): List<LinkPhaseText> = throw NotImplementedError("link_phase_texts")
+
+    override fun onboardingWhatsNewJson(): String = throw NotImplementedError("onboarding_whats_new_json")
+
+    override fun onboardingGettingStartedJson(): String = throw NotImplementedError("onboarding_getting_started_json")
 }

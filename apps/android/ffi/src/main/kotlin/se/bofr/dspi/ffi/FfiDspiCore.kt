@@ -116,7 +116,7 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun fetchCoreVreg(): CoreVregInfo = call { core.fetchCoreVreg().toDomain() }
 
-    override fun coreVregOp(op: Int, value: Int) = call { core.coreVregOp(op.toUByte(), value.toUByte()) }
+    override fun coreVregOp(op: Int, value: Int, word: String?) = call { core.coreVregOp(op.toUByte(), value.toUByte(), word) }
 
     override fun configExport(name: String, appVersion: String, links: Int): String = core.configExport(name, appVersion, links.toUByte())
 
@@ -404,6 +404,10 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun fetchStat(which: Int): Long = call { core.fetchStat(which.toUShort()).toLong() }
 
+    override fun fetchRingHealth(): RingHealth? = call { core.fetchRingHealth()?.let { it.toDomain() } }
+
+    override fun fetchOutputFills(): List<OutputFill> = call { core.fetchOutputFills().map { it.toDomain() } }
+
     override fun fetchBufferStats(): BufferStats = call { core.fetchBufferStats().toDomain() }
 
     override fun resetBufferStats() = call { core.resetBufferStats() }
@@ -413,6 +417,32 @@ class FfiDspiCore : DspiCoreApi {
     override fun fetchSpdifRxChannelStatus(): List<Int> = call { core.fetchSpdifRxChannelStatus().map { it.toInt() and 0xFF } }
 
     override fun fetchSpdifRxPin(index: Int): Int = call { core.fetchSpdifRxPin(index.toUByte()).toInt() }
+
+    override fun coreVregCalView(): VregCalView = core.coreVregCalView().toDomain()
+
+    override fun coreVregCalPoll(): VregCalView = core.coreVregCalPoll().toDomain()
+
+    override fun coreVregCalOpen() = call { core.coreVregCalOpen() }
+
+    override fun coreVregCalClose() = call { core.coreVregCalClose() }
+
+    override fun coreVregCalStart(target: Int, soakS: Long, typed: String?) = call { core.coreVregCalStart(target.toUByte(), soakS.toUInt(), typed) }
+
+    override fun coreVregCalKeep(soakS: Long) = call { core.coreVregCalKeep(soakS.toUInt()) }
+
+    override fun coreVregCalCommit(typed: String?) = call { core.coreVregCalCommit(typed) }
+
+    override fun coreVregTrialEnd() = call { core.coreVregTrialEnd() }
+
+    override fun coreVregManualSet(value: Int, typed: String?) = call { core.coreVregManualSet(value.toUByte(), typed) }
+
+    override fun coreVregManualTrial(value: Int, typed: String?) = call { core.coreVregManualTrial(value.toUByte(), typed) }
+
+    override fun coreVregManualAuto(on: Boolean) = call { core.coreVregManualAuto(on) }
+
+    override fun coreVregManualClear() = call { core.coreVregManualClear() }
+
+    override fun coreVregDemoEvent(event: VregDemoEvent, seconds: Long) = call { core.coreVregDemoEvent(event.toFfi(), seconds.toUInt()) }
 
     override fun autoeqDatabaseInfo(dbPath: String): AutoEqDatabaseInfo = se.bofr.dspi.ffi.uniffi.autoeqDatabaseInfo(dbPath).toDomain()
 
@@ -463,6 +493,14 @@ class FfiDspiCore : DspiCoreApi {
     override fun linkWsUrl(host: String, port: Int, path: String): String = se.bofr.dspi.ffi.uniffi.linkWsUrl(host, port.toUShort(), path)
 
     override fun linkFetchInfo(host: String, port: Int): LinkInfo = call { se.bofr.dspi.ffi.uniffi.linkFetchInfo(host, port.toUShort()).toDomain() }
+
+    override fun linkPhaseText(phase: LinkPhase, pinSource: String): LinkPhaseText = se.bofr.dspi.ffi.uniffi.linkPhaseText(phase.toFfi(), pinSource).toDomain()
+
+    override fun linkPhaseTexts(): List<LinkPhaseText> = se.bofr.dspi.ffi.uniffi.linkPhaseTexts().map { it.toDomain() }
+
+    override fun onboardingWhatsNewJson(): String = se.bofr.dspi.ffi.uniffi.onboardingWhatsNewJson()
+
+    override fun onboardingGettingStartedJson(): String = se.bofr.dspi.ffi.uniffi.onboardingGettingStartedJson()
 }
 
 internal class FfiAutoEqRebuild(private val inner: se.bofr.dspi.ffi.uniffi.AutoEqRebuild) : AutoEqRebuild {
@@ -489,6 +527,7 @@ internal fun FfiException.toDomain(): DspiException =
         is FfiException.Io -> DspiException.Io(msg)
         is FfiException.AutoEq -> DspiException.AutoEq(code, msg, retryAfterS?.let { it.toLong() })
         is FfiException.FirmwareGuardBlocked -> DspiException.FirmwareGuardBlocked(msg)
+        is FfiException.OvervoltWordRequired -> DspiException.OvervoltWordRequired(msg)
     }
 
 internal fun DspiException.toFfi(): FfiException =
@@ -505,6 +544,7 @@ internal fun DspiException.toFfi(): FfiException =
         is DspiException.Io -> FfiException.Io(msg)
         is DspiException.AutoEq -> FfiException.AutoEq(code, msg, retryAfterS?.let { it.toUInt() })
         is DspiException.FirmwareGuardBlocked -> FfiException.FirmwareGuardBlocked(msg)
+        is DspiException.OvervoltWordRequired -> FfiException.OvervoltWordRequired(msg)
     }
 
 // ── Record mapping (UniFFI <-> domain) ──
@@ -1597,6 +1637,48 @@ internal fun OutputLatencyOption.toFfi() =
         effectiveUs = effectiveUs.toUShort(),
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.RingHealth.toDomain() =
+    RingHealth(
+        targetFrames = targetFrames.toInt(),
+        targetUs = targetUs.toInt(),
+        batchFrames = batchFrames.toInt(),
+        underrunEpisodes = underrunEpisodes.toLong(),
+        refusedBlocks = refusedBlocks.toLong(),
+        lowestFill = lowestFill?.let { it.toLong() },
+        worstInputGapUs = worstInputGapUs.toLong(),
+        worstUsbGapUs = worstUsbGapUs.toLong(),
+        overBudgetSteps = overBudgetSteps.toLong(),
+    )
+
+internal fun RingHealth.toFfi() =
+    se.bofr.dspi.ffi.uniffi.RingHealth(
+        targetFrames = targetFrames.toUShort(),
+        targetUs = targetUs.toUShort(),
+        batchFrames = batchFrames.toUShort(),
+        underrunEpisodes = underrunEpisodes.toUInt(),
+        refusedBlocks = refusedBlocks.toUInt(),
+        lowestFill = lowestFill?.let { it.toUInt() },
+        worstInputGapUs = worstInputGapUs.toUInt(),
+        worstUsbGapUs = worstUsbGapUs.toUInt(),
+        overBudgetSteps = overBudgetSteps.toUInt(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.OutputFill.toDomain() =
+    OutputFill(
+        fillPct = fillPct,
+        minPct = minPct.toInt(),
+        maxPct = maxPct.toInt(),
+        band = band.toDomain(),
+    )
+
+internal fun OutputFill.toFfi() =
+    se.bofr.dspi.ffi.uniffi.OutputFill(
+        fillPct = fillPct,
+        minPct = minPct.toUByte(),
+        maxPct = maxPct.toUByte(),
+        band = band.toFfi(),
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.RtaOwnership.toDomain() =
     RtaOwnership(
         following = following,
@@ -1727,6 +1809,100 @@ internal fun FirmwareGuardVerdict.toFfi() =
         requiredMv = requiredMv.toUShort(),
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.LinkPhaseText.toDomain() =
+    LinkPhaseText(
+        key = key,
+        phase = phase,
+        text = text,
+        actionKey = actionKey,
+        action = action,
+    )
+
+internal fun LinkPhaseText.toFfi() =
+    se.bofr.dspi.ffi.uniffi.LinkPhaseText(
+        key = key,
+        phase = phase,
+        text = text,
+        actionKey = actionKey,
+        action = action,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.VregChoice.toDomain() =
+    VregChoice(
+        code = code.toInt(),
+        millivolts = millivolts.toInt(),
+        needsWord = needsWord,
+        saveNeedsWord = saveNeedsWord,
+    )
+
+internal fun VregChoice.toFfi() =
+    se.bofr.dspi.ffi.uniffi.VregChoice(
+        code = code.toUByte(),
+        millivolts = millivolts.toUShort(),
+        needsWord = needsWord,
+        saveNeedsWord = saveNeedsWord,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.VregCalView.toDomain() =
+    VregCalView(
+        available = available,
+        phase = phase.toDomain(),
+        messageKey = messageKey,
+        message = message,
+        warning = warning,
+        soakNote = soakNote,
+        choices = choices.map { it.toDomain() },
+        confirmationWord = confirmationWord,
+        commitNeedsWord = commitNeedsWord,
+        defaultSoakS = defaultSoakS.toLong(),
+        minSoakS = minSoakS.toLong(),
+        targetVreg = targetVreg.toInt(),
+        soakS = soakS.toLong(),
+        elapsedS = elapsedS.toLong(),
+        failedVreg = failedVreg.toInt(),
+        ranS = ranS?.let { it.toLong() },
+        uptimeAtHangS = uptimeAtHangS.toLong(),
+        nextVreg = nextVreg.toInt(),
+        hardwareProblem = hardwareProblem,
+        unknownReason = unknownReason,
+        linkLost = linkLost,
+        canStart = canStart,
+        canKeep = canKeep,
+        canCommit = canCommit,
+        status = status?.let { it.toDomain() },
+        lastError = lastError,
+    )
+
+internal fun VregCalView.toFfi() =
+    se.bofr.dspi.ffi.uniffi.VregCalView(
+        available = available,
+        phase = phase.toFfi(),
+        messageKey = messageKey,
+        message = message,
+        warning = warning,
+        soakNote = soakNote,
+        choices = choices.map { it.toFfi() },
+        confirmationWord = confirmationWord,
+        commitNeedsWord = commitNeedsWord,
+        defaultSoakS = defaultSoakS.toUInt(),
+        minSoakS = minSoakS.toUInt(),
+        targetVreg = targetVreg.toUByte(),
+        soakS = soakS.toUInt(),
+        elapsedS = elapsedS.toUInt(),
+        failedVreg = failedVreg.toUByte(),
+        ranS = ranS?.let { it.toUInt() },
+        uptimeAtHangS = uptimeAtHangS.toUInt(),
+        nextVreg = nextVreg.toUByte(),
+        hardwareProblem = hardwareProblem,
+        unknownReason = unknownReason,
+        linkLost = linkLost,
+        canStart = canStart,
+        canKeep = canKeep,
+        canCommit = canCommit,
+        status = status?.let { it.toFfi() },
+        lastError = lastError,
+    )
+
 // ── Enum mapping ──
 
 internal fun se.bofr.dspi.ffi.uniffi.LinkPhase.toDomain(): LinkPhase =
@@ -1751,6 +1927,20 @@ internal fun LinkPhase.toFfi(): se.bofr.dspi.ffi.uniffi.LinkPhase =
         LinkPhase.RECONNECTING -> se.bofr.dspi.ffi.uniffi.LinkPhase.RECONNECTING
         LinkPhase.CLOSED -> se.bofr.dspi.ffi.uniffi.LinkPhase.CLOSED
         LinkPhase.REFUSED -> se.bofr.dspi.ffi.uniffi.LinkPhase.REFUSED
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.FillBand.toDomain(): FillBand =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.FillBand.GOOD -> FillBand.GOOD
+        se.bofr.dspi.ffi.uniffi.FillBand.WARN -> FillBand.WARN
+        se.bofr.dspi.ffi.uniffi.FillBand.BAD -> FillBand.BAD
+    }
+
+internal fun FillBand.toFfi(): se.bofr.dspi.ffi.uniffi.FillBand =
+    when (this) {
+        FillBand.GOOD -> se.bofr.dspi.ffi.uniffi.FillBand.GOOD
+        FillBand.WARN -> se.bofr.dspi.ffi.uniffi.FillBand.WARN
+        FillBand.BAD -> se.bofr.dspi.ffi.uniffi.FillBand.BAD
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.FirmwareGuardBoardSource.toDomain(): FirmwareGuardBoardSource =
@@ -1794,6 +1984,7 @@ internal fun se.bofr.dspi.ffi.uniffi.FirmwareGuardReason.toDomain(): FirmwareGua
         se.bofr.dspi.ffi.uniffi.FirmwareGuardReason.IMAGE_UNKNOWN -> FirmwareGuardReason.IMAGE_UNKNOWN
         se.bofr.dspi.ffi.uniffi.FirmwareGuardReason.IMAGE_LOWER -> FirmwareGuardReason.IMAGE_LOWER
         se.bofr.dspi.ffi.uniffi.FirmwareGuardReason.BOARD_UNKNOWN -> FirmwareGuardReason.BOARD_UNKNOWN
+        se.bofr.dspi.ffi.uniffi.FirmwareGuardReason.OVERVOLT -> FirmwareGuardReason.OVERVOLT
     }
 
 internal fun FirmwareGuardReason.toFfi(): se.bofr.dspi.ffi.uniffi.FirmwareGuardReason =
@@ -1803,4 +1994,59 @@ internal fun FirmwareGuardReason.toFfi(): se.bofr.dspi.ffi.uniffi.FirmwareGuardR
         FirmwareGuardReason.IMAGE_UNKNOWN -> se.bofr.dspi.ffi.uniffi.FirmwareGuardReason.IMAGE_UNKNOWN
         FirmwareGuardReason.IMAGE_LOWER -> se.bofr.dspi.ffi.uniffi.FirmwareGuardReason.IMAGE_LOWER
         FirmwareGuardReason.BOARD_UNKNOWN -> se.bofr.dspi.ffi.uniffi.FirmwareGuardReason.BOARD_UNKNOWN
+        FirmwareGuardReason.OVERVOLT -> se.bofr.dspi.ffi.uniffi.FirmwareGuardReason.OVERVOLT
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.VregCalPhase.toDomain(): VregCalPhase =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.VregCalPhase.IDLE -> VregCalPhase.IDLE
+        se.bofr.dspi.ffi.uniffi.VregCalPhase.REVIEW -> VregCalPhase.REVIEW
+        se.bofr.dspi.ffi.uniffi.VregCalPhase.CLEARING -> VregCalPhase.CLEARING
+        se.bofr.dspi.ffi.uniffi.VregCalPhase.STARTING_TRIAL -> VregCalPhase.STARTING_TRIAL
+        se.bofr.dspi.ffi.uniffi.VregCalPhase.SOAKING -> VregCalPhase.SOAKING
+        se.bofr.dspi.ffi.uniffi.VregCalPhase.PASSED -> VregCalPhase.PASSED
+        se.bofr.dspi.ffi.uniffi.VregCalPhase.FAILED -> VregCalPhase.FAILED
+        se.bofr.dspi.ffi.uniffi.VregCalPhase.UNKNOWN -> VregCalPhase.UNKNOWN
+        se.bofr.dspi.ffi.uniffi.VregCalPhase.TRIAL_FOUND -> VregCalPhase.TRIAL_FOUND
+        se.bofr.dspi.ffi.uniffi.VregCalPhase.TRIAL_LEFT_RUNNING -> VregCalPhase.TRIAL_LEFT_RUNNING
+        se.bofr.dspi.ffi.uniffi.VregCalPhase.ENDING -> VregCalPhase.ENDING
+        se.bofr.dspi.ffi.uniffi.VregCalPhase.ENDED -> VregCalPhase.ENDED
+        se.bofr.dspi.ffi.uniffi.VregCalPhase.COMMITTING -> VregCalPhase.COMMITTING
+        se.bofr.dspi.ffi.uniffi.VregCalPhase.COMMITTED -> VregCalPhase.COMMITTED
+        se.bofr.dspi.ffi.uniffi.VregCalPhase.VERIFY_FAILED -> VregCalPhase.VERIFY_FAILED
+    }
+
+internal fun VregCalPhase.toFfi(): se.bofr.dspi.ffi.uniffi.VregCalPhase =
+    when (this) {
+        VregCalPhase.IDLE -> se.bofr.dspi.ffi.uniffi.VregCalPhase.IDLE
+        VregCalPhase.REVIEW -> se.bofr.dspi.ffi.uniffi.VregCalPhase.REVIEW
+        VregCalPhase.CLEARING -> se.bofr.dspi.ffi.uniffi.VregCalPhase.CLEARING
+        VregCalPhase.STARTING_TRIAL -> se.bofr.dspi.ffi.uniffi.VregCalPhase.STARTING_TRIAL
+        VregCalPhase.SOAKING -> se.bofr.dspi.ffi.uniffi.VregCalPhase.SOAKING
+        VregCalPhase.PASSED -> se.bofr.dspi.ffi.uniffi.VregCalPhase.PASSED
+        VregCalPhase.FAILED -> se.bofr.dspi.ffi.uniffi.VregCalPhase.FAILED
+        VregCalPhase.UNKNOWN -> se.bofr.dspi.ffi.uniffi.VregCalPhase.UNKNOWN
+        VregCalPhase.TRIAL_FOUND -> se.bofr.dspi.ffi.uniffi.VregCalPhase.TRIAL_FOUND
+        VregCalPhase.TRIAL_LEFT_RUNNING -> se.bofr.dspi.ffi.uniffi.VregCalPhase.TRIAL_LEFT_RUNNING
+        VregCalPhase.ENDING -> se.bofr.dspi.ffi.uniffi.VregCalPhase.ENDING
+        VregCalPhase.ENDED -> se.bofr.dspi.ffi.uniffi.VregCalPhase.ENDED
+        VregCalPhase.COMMITTING -> se.bofr.dspi.ffi.uniffi.VregCalPhase.COMMITTING
+        VregCalPhase.COMMITTED -> se.bofr.dspi.ffi.uniffi.VregCalPhase.COMMITTED
+        VregCalPhase.VERIFY_FAILED -> se.bofr.dspi.ffi.uniffi.VregCalPhase.VERIFY_FAILED
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.VregDemoEvent.toDomain(): VregDemoEvent =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.VregDemoEvent.HANG -> VregDemoEvent.HANG
+        se.bofr.dspi.ffi.uniffi.VregDemoEvent.REBOOT -> VregDemoEvent.REBOOT
+        se.bofr.dspi.ffi.uniffi.VregDemoEvent.POWER_CYCLE -> VregDemoEvent.POWER_CYCLE
+        se.bofr.dspi.ffi.uniffi.VregDemoEvent.ADVANCE_UPTIME -> VregDemoEvent.ADVANCE_UPTIME
+    }
+
+internal fun VregDemoEvent.toFfi(): se.bofr.dspi.ffi.uniffi.VregDemoEvent =
+    when (this) {
+        VregDemoEvent.HANG -> se.bofr.dspi.ffi.uniffi.VregDemoEvent.HANG
+        VregDemoEvent.REBOOT -> se.bofr.dspi.ffi.uniffi.VregDemoEvent.REBOOT
+        VregDemoEvent.POWER_CYCLE -> se.bofr.dspi.ffi.uniffi.VregDemoEvent.POWER_CYCLE
+        VregDemoEvent.ADVANCE_UPTIME -> se.bofr.dspi.ffi.uniffi.VregDemoEvent.ADVANCE_UPTIME
     }

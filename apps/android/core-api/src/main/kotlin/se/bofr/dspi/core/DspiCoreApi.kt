@@ -38,8 +38,8 @@ interface DspiCoreApi : AutoCloseable {
      * [`DspiCore::apply_all_params`]) returns [`DspiError::ReadOnly`].
      *
      * The optional per-item reads (presets, Core 1 mode, subharm solo, DAC
-     * mute, control interfaces) leave their defaults when the firmware does
-     * not answer them.
+     * mute, control interfaces, input source names) leave their defaults
+     * when the firmware does not answer them.
      *
      * Right after a connect that already decoded this connect's image
      * (`Connection::fresh_image`, set by `attach_probed`), the platform and
@@ -270,6 +270,8 @@ interface DspiCoreApi : AutoCloseable {
      * the bus; transfer errors (no permission, busy) from opening it or from
      * the connect sequence. [`DspiError::Unsupported`] on Android (use
      * [`DspiCore::open_fd`]) and in a build without the `usb` feature (iOS).
+     * With a [`crate::DeviceBroker`] set, the broker opens it instead, on any
+     * platform.
      */
     @Throws(DspiException::class)
     fun selectDevice(serial: String)
@@ -365,13 +367,19 @@ interface DspiCoreApi : AutoCloseable {
      * of TRIAL_END and CLEAR is ignored (sent as 0). Read the status back
      * with [`DspiCore::fetch_core_vreg`].
      *
-     * Errors: `Disconnected`; `ReadOnly` on a read-only connection;
+     * WP CG14: a SET or TRIAL reads the unit's status first and goes through
+     * `dspi_session::overvolt`: a raise above 1.20 V from what it reports now
+     * needs `word`, exactly `OVERVOLT`, or nothing is written. This is the
+     * one path to 1.30 V; the GUIs' flow stops at 1.25 V (`core_vreg_cal_*`).
+     *
+     * Errors: `OvervoltWordRequired` as above; `Disconnected`; `ReadOnly` on
+     * a read-only connection;
      * `Unsupported` when the device has no usable core-voltage extension;
      * `Refused { status: EXT_WRITE_REFUSED }` when the device stalls the
      * request anyway; `Denied`, `Locked` or `Transfer` from the link.
      */
     @Throws(DspiException::class)
-    fun coreVregOp(op: Int, value: Int)
+    fun coreVregOp(op: Int, value: Int, word: String?)
 
     /**
      * The device configuration (the mirror; defaults while disconnected)
@@ -1191,7 +1199,8 @@ interface DspiCoreApi : AutoCloseable {
      *
      * Without a device, or with nothing queued, it returns an empty
      * result. Never fails and never panics on device data. Blocks only
-     * for a re-read (one bulk read and the directory read).
+     * for a re-read (one bulk read and the directory read, plus the input
+     * source names after a lost packet).
      */
     fun processNotifications(): NotifyResult
 
@@ -1889,7 +1898,9 @@ interface DspiCoreApi : AutoCloseable {
      * only in WITH_PRESET master-volume mode, the hardware wiring and the
      * limiters only in WITH_PRESET output-config mode, both judged by the
      * live mode. The user volume and the DAC mute are no preset change, as
-     * on macOS. Empty before any baseline. Never fails.
+     * on macOS. An input source goes by the user's name when it has one,
+     * from the connection's cache, so this does no I/O. Empty before any
+     * baseline. Never fails.
      */
     fun presetChanges(): List<String>
 
@@ -1932,7 +1943,8 @@ interface DspiCoreApi : AutoCloseable {
      * transfer with the core's lock held: call it off the UI thread.
      *
      * Errors: [`DspiError::InvalidArgument`] for `REQ_SET_ALL_PARAMS`, the
-     * chunk opcodes, or more than 65535 bytes of `data` (nothing is sent);
+     * chunk opcodes, an `EXT_CORE_VREG` request, or more than 65535 bytes of
+     * `data` (nothing is sent);
      * [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a read-only
      * connection (nothing is sent); [`DspiError::Refused`] with status 0
      * when the device stalls; [`DspiError::Denied`], [`DspiError::Locked`]
@@ -2096,6 +2108,30 @@ interface DspiCoreApi : AutoCloseable {
     fun fetchStat(which: Int): Long
 
     /**
+     * The output rings' health (Output Ring Health in the Stats window), or
+     * `None` on firmware without `REQ_OUTPUT_LATENCY` or with a short reply to
+     * it: show no section then. Seven transfers.
+     *
+     * Errors: [`DspiError::Disconnected`]; a transfer failure, or a stall or a
+     * short reply on a counter, as [`DspiError::Transfer`]. A counter that
+     * cannot be read fails the call rather than reading as 0.
+     */
+    @Throws(DspiException::class)
+    fun fetchRingHealth(): RingHealth?
+
+    /**
+     * The live outputs' fill for the Stats rows: to frame resolution, on the
+     * ring's own scale, with the band around the live latency target. Firmware
+     * without `REQ_OUTPUT_LATENCY` keeps its fixed scale and fixed bands. Two
+     * transfers. Use this rather than [`BufferStats`]' percentages, whose
+     * 48-frame steps read as an empty ring at the lowest latency.
+     *
+     * Errors: as for [`DspiCore::fetch_buffer_stats`].
+     */
+    @Throws(DspiException::class)
+    fun fetchOutputFills(): List<OutputFill>
+
+    /**
      * The buffer fill levels (%) and their watermarks
      * (`REQ_GET_BUFFER_STATS`, 44 bytes). `spdif` has 4 entries; the first
      * `num_spdif` (at most 4) are live.
@@ -2151,6 +2187,122 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun fetchSpdifRxPin(index: Int): Int
+
+    /**
+     * The calibration flow as it stands, from memory: no traffic. It waits
+     * for a poll or request in flight, so a slow link can hold it up as long
+     * as that read: call it off the UI thread too.
+     */
+    fun coreVregCalView(): VregCalView
+
+    /**
+     * Read the device and advance the flow; never fails, the view says.
+     * Call on every connect and about once a second while the page shows.
+     * The only write that can go out is the next step of a run the user
+     * started; never a `SET`, and none after the connection changed. Blocks
+     * for a read: call it off the UI thread.
+     */
+    fun coreVregCalPoll(): VregCalView
+
+    /**
+     * Open the flow: the user reached it, from Advanced. Shows the warning
+     * and what is on record; sends no write.
+     *
+     * `Disconnected`; `Unsupported` without a usable `EXT_CORE_VREG`;
+     * `Denied` after a hub refused a write on this connection; `ReadOnly`;
+     * `InvalidArgument` during a run.
+     */
+    @Throws(DspiException::class)
+    fun coreVregCalOpen()
+
+    /**
+     * Close the flow: the user left. No traffic. `InvalidArgument` during a
+     * run, which goes on until ended.
+     */
+    @Throws(DspiException::class)
+    fun coreVregCalClose()
+
+    /**
+     * Start a run: the current record is cleared, `target` goes on trial
+     * once the device shows that, and the soak counts for `soak_s` seconds.
+     * `typed` is what the user typed when the view says this needs the word.
+     *
+     * `OvervoltWordRequired`, with no write, if it does and that is not
+     * exactly the word. `InvalidArgument`, with no write, for a voltage
+     * outside the build default to 1.25 V, a soak under the minimum, a trial
+     * already running, or the wrong phase. `Disconnected`,
+     * `Unsupported`, `ReadOnly`; `Refused`, `Denied`, `Locked`, `Transfer` for
+     * the write, which is not retried.
+     */
+    @Throws(DspiException::class)
+    fun coreVregCalStart(target: Int, soakS: Long, typed: String?)
+
+    /**
+     * Keep a trial found on the device: the soak counts from now, for
+     * `soak_s` seconds. A trial outside the flow's range is left alone and
+     * cannot pass. Sends nothing. Errors as for opening.
+     */
+    @Throws(DspiException::class)
+    fun coreVregCalKeep(soakS: Long)
+
+    /**
+     * Save the voltage that passed, with a `SET`: the one explicit step from
+     * a pass to flash. The status is read first, so a hang since the last
+     * poll takes the pass back. Read back by later polls: `Committed` or
+     * `VerifyFailed`. `typed` is the word when the view's `commit_needs_word`
+     * says so, even if it was typed for the trial. A refusal leaves the flow in
+     * `Passed`, with the trial running. Errors as for starting.
+     */
+    @Throws(DspiException::class)
+    fun coreVregCalCommit(typed: String?)
+
+    /**
+     * End a trial, or abort a run, with `TRIAL_END`, at any time but while a
+     * save is being read back. Works without a fresh status, so a run can be
+     * aborted while reads are failing. `Disconnected` and `ReadOnly` change
+     * nothing. A write that fails otherwise is not retried: later polls end
+     * in `Ended`, or in `VerifyFailed`, from which it can be asked for again.
+     */
+    @Throws(DspiException::class)
+    fun coreVregTrialEnd()
+
+    /**
+     * Manual `SET` from the Advanced page. `value` 0 is the reset to the
+     * build default; anything else has the flow's limits and confirmation.
+     * Read back by later polls, as a commit. Errors as for starting.
+     */
+    @Throws(DspiException::class)
+    fun coreVregManualSet(value: Int, typed: String?)
+
+    /**
+     * Manual `TRIAL`, with the flow's limits and confirmation. It shows as a
+     * found trial on the next poll. Errors as for starting.
+     */
+    @Throws(DspiException::class)
+    fun coreVregManualTrial(value: Int, typed: String?)
+
+    /**
+     * Manual `AUTO`: the firmware's automatic raising after repeated hangs.
+     * Errors as for starting.
+     */
+    @Throws(DspiException::class)
+    fun coreVregManualAuto(on: Boolean)
+
+    /**
+     * Manual `CLEAR`: forget the hang count and the last trial failure.
+     * `InvalidArgument` during a run, whose result it would erase. Errors
+     * otherwise as for starting.
+     */
+    @Throws(DspiException::class)
+    fun coreVregManualClear()
+
+    /**
+     * Play an event on the demo device, for clients' tests and demo mode.
+     * `seconds` is for [`VregDemoEvent::AdvanceUptime`]. `Unsupported`, with
+     * no traffic, on anything but a simulated device.
+     */
+    @Throws(DspiException::class)
+    fun coreVregDemoEvent(event: VregDemoEvent, seconds: Long)
 
     /**
      * The database at `db_path`: for the "Update Database" dialog. Reads the file.
@@ -2426,4 +2578,35 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun linkFetchInfo(host: String, port: Int): LinkInfo
+
+    /**
+     * The wording of `phase`. `pin_source` is [`crate::LinkStatus::pin_source`]:
+     * it matters only to [`LinkPhase::NeedsPairing`], and anything but `fixed`
+     * means `window`, as a hub that does not say does (spec 7.2).
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun linkPhaseText(phase: LinkPhase, pinSource: String): LinkPhaseText
+
+    /**
+     * The whole wording table: every key once, for a client's translation files.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun linkPhaseTexts(): List<LinkPhaseText>
+
+    /**
+     * The release notes for this build's platform: see the module docs.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun onboardingWhatsNewJson(): String
+
+    /**
+     * The Getting Started wizard's data for this build's platform: see the module
+     * docs.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun onboardingGettingStartedJson(): String
 }

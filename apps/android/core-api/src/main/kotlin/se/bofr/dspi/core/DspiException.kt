@@ -62,6 +62,12 @@ sealed class DspiException(message: String) : Exception(message) {
     /** The firmware guard stopped an image that can leave the board at too low a core voltage; nothing was written. */
     class FirmwareGuardBlocked(val msg: String) : DspiException(msg)
 
+    /**
+     * WP CG14: this raises the core voltage above 1.20 V from what the unit
+     * reports now, and the word `OVERVOLT` was not given. Nothing was written.
+     */
+    class OvervoltWordRequired(val msg: String) : DspiException(msg)
+
     companion object {
         /** macOS `DeviceLock.lockedMessage`. */
         const val LOCKED_MESSAGE = "Another console is applying changes"

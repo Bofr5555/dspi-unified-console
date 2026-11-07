@@ -7,6 +7,7 @@ import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.SiggenConfig
 import se.bofr.dspi.core.UartConfig
+import se.bofr.dspi.core.VregDemoEvent
 
 /**
  * G1: wraps the core so that no device WRITE / command can reach USB while
@@ -51,9 +52,52 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.setOutputLatency(id)
     }
 
-    override fun coreVregOp(op: Int, value: Int) {
+    override fun coreVregOp(op: Int, value: Int, word: String?) {
         guard("coreVregOp")
-        return inner.coreVregOp(op, value)
+        return inner.coreVregOp(op, value, word)
+    }
+
+    // Review w1d (integration with CG11, CG14): the calibration flow's writes.
+    // The core's own poll writes only the next step of a run that start began,
+    // and start is guarded, so the poll passes through.
+    override fun coreVregCalStart(target: Int, soakS: Long, typed: String?) {
+        guard("coreVregCalStart")
+        return inner.coreVregCalStart(target, soakS, typed)
+    }
+
+    override fun coreVregCalCommit(typed: String?) {
+        guard("coreVregCalCommit")
+        return inner.coreVregCalCommit(typed)
+    }
+
+    override fun coreVregTrialEnd() {
+        guard("coreVregTrialEnd")
+        return inner.coreVregTrialEnd()
+    }
+
+    override fun coreVregManualSet(value: Int, typed: String?) {
+        guard("coreVregManualSet")
+        return inner.coreVregManualSet(value, typed)
+    }
+
+    override fun coreVregManualTrial(value: Int, typed: String?) {
+        guard("coreVregManualTrial")
+        return inner.coreVregManualTrial(value, typed)
+    }
+
+    override fun coreVregManualAuto(on: Boolean) {
+        guard("coreVregManualAuto")
+        return inner.coreVregManualAuto(on)
+    }
+
+    override fun coreVregManualClear() {
+        guard("coreVregManualClear")
+        return inner.coreVregManualClear()
+    }
+
+    override fun coreVregDemoEvent(event: VregDemoEvent, seconds: Long) {
+        guard("coreVregDemoEvent")
+        return inner.coreVregDemoEvent(event, seconds)
     }
 
     override fun rawSet(opcode: Int, value: Int, data: List<Int>) {
@@ -591,7 +635,16 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "setInputSourceName",
             "setOutputLatency",
             "coreVregOp",
-            "rawSet"
+            "rawSet",
+            // Review w1d (CG11, CG14): the calibration flow's device writes
+            "coreVregCalStart",
+            "coreVregCalCommit",
+            "coreVregTrialEnd",
+            "coreVregManualSet",
+            "coreVregManualTrial",
+            "coreVregManualAuto",
+            "coreVregManualClear",
+            "coreVregDemoEvent"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -706,7 +759,22 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "linkSetUrl",
             "rawGet",
             "rtaGetOwnership",
-            "rtaTakeControl"
+            "rtaTakeControl",
+            // Review w1d (CG10, CG11, CG12, CG13, CG14): reads, the flow's
+            // local state (open, close, keep and the view send nothing; the
+            // poll only continues a run that the guarded start began) and
+            // stateless text.
+            "fetchRingHealth",
+            "fetchOutputFills",
+            "coreVregCalView",
+            "coreVregCalPoll",
+            "coreVregCalOpen",
+            "coreVregCalClose",
+            "coreVregCalKeep",
+            "linkPhaseText",
+            "linkPhaseTexts",
+            "onboardingWhatsNewJson",
+            "onboardingGettingStartedJson"
         )
 
         /** Control-surface operations that only read the device (`cs.rs` "refresh", "refreshStatus"). */

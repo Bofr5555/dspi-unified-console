@@ -1764,6 +1764,77 @@ data class OutputLatencyOption(
 )
 
 /**
+ * The output rings' counters and watermarks (`fetch_ring_health`). The
+ * underrun, refused and over-budget counts are cumulative; the rest clear on
+ * `reset_buffer_stats`.
+ */
+data class RingHealth(
+    /**
+     * How full the rings are kept, frames (Fill Target).
+     */
+    val targetFrames: Int,
+    /**
+     * The same as a time, µs.
+     */
+    val targetUs: Int,
+    /**
+     * Frames a stream input delivers per call; the fill swings by about this.
+     */
+    val batchFrames: Int,
+    /**
+     * Times the outputs ran dry while a source owed audio. A host that pauses
+     * its stream does not count.
+     */
+    val underrunEpisodes: Long,
+    /**
+     * Audio blocks dropped because the rings had no room.
+     */
+    val refusedBlocks: Long,
+    /**
+     * The emptiest a ring got just before a write, frames; none before the
+     * first write.
+     */
+    val lowestFill: Long?,
+    /**
+     * Longest wait between input deliveries, µs.
+     */
+    val worstInputGapUs: Long,
+    /**
+     * Longest gap between audio-carrying USB packets, µs.
+     */
+    val worstUsbGapUs: Long,
+    /**
+     * Background steps that overran their main-loop budget.
+     */
+    val overBudgetSteps: Long,
+)
+
+/**
+ * One output's fill, scaled and judged (`fetch_output_fills`).
+ */
+data class OutputFill(
+    /**
+     * Fill to frame resolution, %: of the ring where the firmware has the
+     * latency setting (at most 100), else of the firmware's fixed scale (which
+     * can pass 100).
+     */
+    val fillPct: Double,
+    /**
+     * Lowest fill since the last reset, % on the same scale.
+     */
+    val minPct: Int,
+    /**
+     * Highest fill since the last reset, % on the same scale.
+     */
+    val maxPct: Int,
+    /**
+     * The band of `fill_pct`, around the live latency target where there is
+     * one.
+     */
+    val band: FillBand,
+)
+
+/**
  * Who chose the analyser configuration the device holds
  * (`rta_get_ownership`). The last console to push one drives it, and every
  * other console follows.
@@ -1952,8 +2023,9 @@ data class FirmwareGuardVerdict(
      */
     val message: String,
     /**
-     * What to ask the user to type when a risk is involved, else "". Compared
-     * exactly: case and spaces count.
+     * What to ask the user to type when a risk is involved, else "": the
+     * phrase, or for [`FirmwareGuardReason::Overvolt`] the word. Compared
+     * exactly: case and spaces count, and the one does not stand for the other.
      */
     val confirmationPhrase: String,
     /**
@@ -1964,6 +2036,181 @@ data class FirmwareGuardVerdict(
      * The board record's `required_mv`, as given.
      */
     val requiredMv: Int,
+)
+
+/**
+ * What to tell the user about a [`LinkPhase`].
+ */
+data class LinkPhaseText(
+    /**
+     * Stable key of `text`, for localising: `no_device`, `needs_pairing.fixed`.
+     */
+    val key: String,
+    /**
+     * The phase's name ([`link_phase_key`]), also for an entry split by
+     * `pin_source`.
+     */
+    val phase: String,
+    /**
+     * The English.
+     */
+    val text: String,
+    /**
+     * Stable key of `action`, if the phase has a button of its own.
+     */
+    val actionKey: String?,
+    /**
+     * The English of that button.
+     * [`LinkPhase::Reconnecting`] has one, which calls `link_close`: the owner's
+     * rule is that a lost connection always offers the way out.
+     */
+    val action: String?,
+)
+
+/**
+ * A voltage the flow offers on the connected device.
+ */
+data class VregChoice(
+    /**
+     * VREG code.
+     */
+    val code: Int,
+    /**
+     * The voltage, mV.
+     */
+    val millivolts: Int,
+    /**
+     * A trial of it would raise this unit above 1.20 V now, so `OVERVOLT`
+     * must be typed.
+     */
+    val needsWord: Boolean,
+    /**
+     * The same for a save (`core_vreg_manual_set`), which does not count a
+     * running trial as current.
+     */
+    val saveNeedsWord: Boolean,
+)
+
+/**
+ * The flow as a client shows it.
+ */
+data class VregCalView(
+    /**
+     * The connection can use the flow: `EXT_CORE_VREG` present, writable,
+     * and not refused by a hub. While false with phase `Idle`, hide the
+     * flow. While false in another phase the device is away: show the phase.
+     */
+    val available: Boolean,
+    /**
+     * Where the flow is.
+     */
+    val phase: VregCalPhase,
+    /**
+     * A stable key for `message`, for clients that localise.
+     */
+    val messageKey: String,
+    /**
+     * The state or result, stated plainly in English.
+     */
+    val message: String,
+    /**
+     * The warning to show before the flow, with the datasheet limits.
+     */
+    val warning: String,
+    /**
+     * What a soak does and does not show.
+     */
+    val soakNote: String,
+    /**
+     * The voltages offered, lowest first. Empty on a build default the flow
+     * does not cover, or before a first status.
+     */
+    val choices: List<VregChoice>,
+    /**
+     * What to type when `needs_word` or `commit_needs_word`: `OVERVOLT`,
+     * exactly.
+     */
+    val confirmationWord: String,
+    /**
+     * `core_vreg_cal_commit` needs the word now, while `phase` is `Passed`.
+     * Saving a trial above 1.20 V that is not already stored asks for it, even
+     * though it was typed to start the trial: going from RAM to flash is an
+     * upward change of its own. Ask again; do not reuse the earlier answer.
+     */
+    val commitNeedsWord: Boolean,
+    /**
+     * The soak to suggest, seconds.
+     */
+    val defaultSoakS: Long,
+    /**
+     * The shortest soak accepted, seconds.
+     */
+    val minSoakS: Long,
+    /**
+     * The run's or found trial's voltage; 0 if none.
+     */
+    val targetVreg: Int,
+    /**
+     * The soak asked for, seconds; 0 if none.
+     */
+    val soakS: Long,
+    /**
+     * Seconds of soak counted so far.
+     */
+    val elapsedS: Long,
+    /**
+     * The failure shown or on record: its voltage; 0 if none.
+     */
+    val failedVreg: Int,
+    /**
+     * Seconds the failed trial ran, if this host saw it start and the record
+     * still has the time.
+     */
+    val ranS: Long?,
+    /**
+     * The device's uptime when that trial hung; 0 if the record lost it. Its
+     * whole run, so at most an upper bound on the trial.
+     */
+    val uptimeAtHangS: Long,
+    /**
+     * The next voltage up to offer after that failure; 0 if none.
+     */
+    val nextVreg: Int,
+    /**
+     * Nothing above that failure to try: a hardware problem.
+     */
+    val hardwareProblem: Boolean,
+    /**
+     * Why the result is unknown (`record_gone`, `not_started`,
+     * `trial_changed`); `None` unless `phase` is `Unknown`.
+     */
+    val unknownReason: String?,
+    /**
+     * The device stopped answering since the last status: a hang in
+     * progress, or a dropped link. The result is still open.
+     */
+    val linkLost: Boolean,
+    /**
+     * `core_vreg_cal_start` applies now.
+     */
+    val canStart: Boolean,
+    /**
+     * `core_vreg_cal_keep` applies now.
+     */
+    val canKeep: Boolean,
+    /**
+     * `core_vreg_cal_commit` applies now.
+     */
+    val canCommit: Boolean,
+    /**
+     * The last status read from the device.
+     */
+    val status: CoreVregInfo?,
+    /**
+     * Why the last call or read failed, in a sentence; `None` once one
+     * succeeded.
+     */
+    val lastError: String?,
 )
 
 /**
@@ -2015,6 +2262,25 @@ enum class LinkPhase {
      * until something changes on the hub: see `close_reason`.
      */
     REFUSED,
+}
+
+/**
+ * How an output's fill reads ([`OutputFill::band`]). The Console shows these
+ * green, yellow and red.
+ */
+enum class FillBand {
+    /**
+     * Within the expected swing.
+     */
+    GOOD,
+    /**
+     * Outside the expected swing.
+     */
+    WARN,
+    /**
+     * Empty, or too full to take a write.
+     */
+    BAD,
 }
 
 /**
@@ -2089,6 +2355,99 @@ enum class FirmwareGuardReason {
      * The board's needs are not known.
      */
     BOARD_UNKNOWN,
+    /**
+     * WP CG14: the image runs above 1.20 V and above the board's current
+     * voltage. Its `confirmation_phrase` is the word `OVERVOLT`.
+     */
+    OVERVOLT,
+}
+
+/**
+ * Where a run is: [`VregCalView::phase`]. The details are in the view.
+ */
+enum class VregCalPhase {
+    /**
+     * The flow is not open.
+     */
+    IDLE,
+    /**
+     * Open: show the warning and what the device has on record.
+     */
+    REVIEW,
+    /**
+     * Clearing the device's record before the trial.
+     */
+    CLEARING,
+    /**
+     * The trial was sent and is not seen running yet.
+     */
+    STARTING_TRIAL,
+    /**
+     * The trial runs; the soak is counting. Abort is available.
+     */
+    SOAKING,
+    /**
+     * Passed: the trial still runs and nothing is saved. Commit or end.
+     */
+    PASSED,
+    /**
+     * The trial hung: `failed_vreg`, `ran_s`, `next_vreg`, `hardware_problem`.
+     */
+    FAILED,
+    /**
+     * The result cannot be known: run again.
+     */
+    UNKNOWN,
+    /**
+     * A trial nobody here started is running: end or keep.
+     */
+    TRIAL_FOUND,
+    /**
+     * A kept trial outside the flow's range: left alone, cannot pass.
+     */
+    TRIAL_LEFT_RUNNING,
+    /**
+     * Ending the trial.
+     */
+    ENDING,
+    /**
+     * The trial ended.
+     */
+    ENDED,
+    /**
+     * Saving: waiting to read the voltage back.
+     */
+    COMMITTING,
+    /**
+     * Saved and read back.
+     */
+    COMMITTED,
+    /**
+     * A save or an end did not show in time. Nothing was retried.
+     */
+    VERIFY_FAILED,
+}
+
+/**
+ * What can happen to the demo device: [`DspiCore::core_vreg_demo_event`].
+ */
+enum class VregDemoEvent {
+    /**
+     * The watchdog fires.
+     */
+    HANG,
+    /**
+     * A requested reboot: no failure on record.
+     */
+    REBOOT,
+    /**
+     * Power lost: every record gone.
+     */
+    POWER_CYCLE,
+    /**
+     * `seconds` pass on the device's clock.
+     */
+    ADVANCE_UPTIME,
 }
 
 /**
