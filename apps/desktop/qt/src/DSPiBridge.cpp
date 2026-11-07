@@ -1163,6 +1163,7 @@ void DSPiBridge::adoptDevice(const QString &serial) {
 void DSPiBridge::setHubSession(bool active) {
     if (active == m_hubSession) return;
     m_hubSession = active;
+    emit hubSessionChanged();   // -- WP QD37 --
     if (!active && !connected() && !m_selectedSerial.isEmpty()) {
         m_selectedSerial.clear();
         markAllDirty();

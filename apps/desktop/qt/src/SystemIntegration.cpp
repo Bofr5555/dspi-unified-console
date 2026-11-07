@@ -371,8 +371,12 @@ void SystemIntegration::setLoginItem(std::unique_ptr<LoginItem> item) {
     // helps nobody. Another copy that is still there is the user's choice, and stays.
     if (m_login && m_login->isOn() && !m_login->matches(programPath())) {
         const QString recorded = m_login->program();
+        // -- WP QD37 -- (review c4s2 N1) This very program spelled otherwise (unquoted,
+        // a symlink) is this copy: nothing to say and nothing to rewrite
+        const QString canonical = QFileInfo(recorded).canonicalFilePath();
+        const bool thisCopy = !canonical.isEmpty() && canonical == QFileInfo(programPath()).canonicalFilePath();
         if (recorded.isEmpty() || !QFileInfo(recorded).isFile()) m_loginError = m_login->set(true, programPath());
-        else m_loginOther = recorded;
+        else if (!thisCopy) m_loginOther = recorded;
     }
     emit loginChanged();
 }

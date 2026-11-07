@@ -76,6 +76,7 @@ Item {
 
     Row {
         id: status
+        objectName: "cpuStatus"   // -- WP QD37 -- the smoke driver reads statusTip
         anchors.right: parent.right
         anchors.rightMargin: 16
         anchors.bottom: parent.bottom
@@ -116,7 +117,13 @@ Item {
 
         ToolTip.visible: statusHover.containsMouse
         ToolTip.delay: 500
-        ToolTip.text: cpuRoot.connected
+        ToolTip.text: statusTip
+        // -- WP QD37 -- (review c4o N1) During a hub session a right-click does nothing
+        // (bridge.rescan) and devices are chosen in Device > Devices…
+        readonly property string statusTip: bridge.hubSession
+                      ? (cpuRoot.connected ? "Connected through a hub · Serial " + bridge.selectedSerial : "On a hub, no device chosen yet.")
+                        + "\nChoose devices in Device > Devices…"
+                      : cpuRoot.connected
                       ? "Connected · Serial " + bridge.selectedSerial
                         + (bridge.availableSerials.length > 1 ? "\nClick to switch device. Right-click to reconnect." : "\nRight-click to reconnect.")
                       : cpuRoot.noAccess ? ("A DSPi is connected, but this app isn't allowed to open it.\n" + (isLinux ? "Click to install its udev rule." : "Click for help."))

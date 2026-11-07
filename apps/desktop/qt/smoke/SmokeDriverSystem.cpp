@@ -207,6 +207,26 @@ void SmokeDriver::testSystemIntegration() {
     system->setLoginItem(makeXdgLoginItem(autostart));
     check("QD13b: a bare name not on PATH is pointed here", pointsHere() && system->loginOtherProgram().isEmpty());
 
+    // -- WP QD37 -- (review c4s2 N1) This program spelled otherwise is this copy: not
+    // "another copy", and left as written
+    if (!program.contains(QLatin1Char(' '))) {
+        writeEntry(program);
+        before = fileText(entry);
+        system->setLoginItem(makeXdgLoginItem(autostart));
+        check("QD37: an unquoted entry for this program is this copy", fileText(entry) == before && system->openAtLogin()
+              && system->loginOtherProgram().isEmpty() && system->loginError().isEmpty());
+    }
+    const QString link = QDir(m_out).filePath(QStringLiteral("qd37-link/dspi console"));
+    QDir().mkpath(QFileInfo(link).path());
+    QFile::remove(link);
+    check("QD37: a symlink to this program", QFile::link(program, link));
+    writeEntry(QLatin1Char('"') + link + QStringLiteral("\" --hidden"));
+    before = fileText(entry);
+    system->setLoginItem(makeXdgLoginItem(autostart));
+    check("QD37: an entry through a symlink to this program is this copy", fileText(entry) == before && system->openAtLogin()
+          && system->loginOtherProgram().isEmpty() && system->loginError().isEmpty());
+    QFile::remove(link);
+
     // The Run key the same way, in an INI file
     {
         const QString runIni = QDir(m_out).filePath(QStringLiteral("qd13b-run.ini"));

@@ -139,6 +139,8 @@ class DSPiBridge : public QObject
     // inputCount here), so pairs, the analyser and filter files count the same inputs
     // as the sidebar. 0 until set: then the device's report, as before.
     Q_PROPERTY(int shownInputCount READ shownInputCount WRITE setShownInputCount NOTIFY statusChanged)
+    // -- WP QD37 -- A hub session is up (setHubSession): rescan and reconnect do nothing
+    Q_PROPERTY(bool hubSession READ hubSession NOTIFY hubSessionChanged)
 
 public:
     // Demo also offers the built-in demo device, and opens it first (--demo)
@@ -513,6 +515,7 @@ signals:
     void statusChanged();
     void devicesChanged();
     void inaccessibleDevicesChanged();
+    void hubSessionChanged();   // -- WP QD37 --
     void udevRuleInstalled(bool ok, const QString &message);
     // The signal generator started or stopped (on the device or elsewhere)
     void siggenNotified();

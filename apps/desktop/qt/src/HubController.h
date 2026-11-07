@@ -65,9 +65,10 @@ class HubController : public TrayHub
     Q_PROPERTY(QString lastError READ lastError NOTIFY stateChanged)
     Q_PROPERTY(QString lastNote READ lastNote NOTIFY stateChanged)
 
-    // Other hubs: browsing runs while `watching` (the page shows) and lookForHubs
+    // Other hubs: browsing runs while `watching` (a page or list that shows them
+    // holds a watch) and lookForHubs
     Q_PROPERTY(bool lookForHubs READ lookForHubs WRITE setLookForHubs NOTIFY browseChanged)
-    Q_PROPERTY(bool watching READ watching WRITE setWatching NOTIFY browseChanged)
+    Q_PROPERTY(bool watching READ watching NOTIFY browseChanged)
     Q_PROPERTY(bool browsing READ browsing NOTIFY browseChanged)
     // [{id, name, kind, auth, deviceCount, host, port, url, ...}] as dspi_link_browse_hubs
     Q_PROPERTY(QVariantList hubs READ hubs NOTIFY browseChanged)
@@ -95,8 +96,12 @@ public:
     QString lastNote() const { return m_lastNote; }
     bool lookForHubs() const { return m_lookForHubs; }
     void setLookForHubs(bool on);
-    bool watching() const { return m_watching; }
-    void setWatching(bool on);
+    // -- WP QD37 -- A count of watches (c4q N3): Settings > Networking and the Devices
+    // list each hold one, and browsing stops when the last is let go. Balanced
+    // calls; an unwatch with none held does nothing.
+    bool watching() const { return m_watchers > 0; }
+    Q_INVOKABLE void watch();
+    Q_INVOKABLE void unwatch();
     bool browsing() const { return m_browsing; }
     QVariantList hubs() const { return m_hubs; }
     QString browseError() const { return m_browseError; }
@@ -171,7 +176,7 @@ private:
     QString m_lastError, m_lastNote;
 
     bool m_lookForHubs = true;
-    bool m_watching = false;
+    int m_watchers = 0;
     bool m_browsing = false;
     QString m_browseOwnId;              // the id browsing was started with
     QVariantList m_hubs;

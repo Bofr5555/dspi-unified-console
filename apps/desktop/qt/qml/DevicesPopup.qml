@@ -18,6 +18,9 @@ Popup {
 
     // main.qml's device switch for a USB serial: it asks about unsaved changes first
     property var switchTo: function (serial) { bridge.selectDevice(serial) }
+    // -- WP QD37 -- The same switch once guard has asked (c4q N2): leaving the hub
+    // takes a moment, and the bridge stays dirty until it has, so it must not ask again
+    property var openUsb: function (serial) { bridge.selectDevice(serial) }
     // Any other switch, with the same question: guard(action) runs action or not
     property var guard: function (action) { action() }
 
@@ -33,7 +36,7 @@ Popup {
     // A local device: the hub goes first, which owns the connection while it is up
     function chooseUsb(serial) {
         if (serial === bridge.selectedSerial && !sessionUp) return
-        if (sessionUp) guard(function () { linkSession.closeSession(); pop.switchTo(serial) })
+        if (sessionUp) guard(function () { linkSession.closeSession(); pop.openUsb(serial) })
         else switchTo(serial)
     }
     function chooseDemo() {
@@ -57,11 +60,11 @@ Popup {
         guard(function () { if (linkSession.connectToAddress(typed)) addressField.text = "" })
     }
 
-    // Browsing runs while this shows, as on Settings > Networking: what that had
-    // before comes back on close
-    property bool watchedBefore: false
-    onAboutToShow: { watchedBefore = hub.watching; hub.watching = true }
-    onClosed: hub.watching = watchedBefore
+    // Browsing runs while this shows, as on Settings > Networking. -- WP QD37 -- Each
+    // holds its own watch (c4q N3), so closing the two in either order is right
+    property bool watchHeld: false
+    onAboutToShow: if (!watchHeld) { watchHeld = true; hub.watch() }
+    onClosed: if (watchHeld) { watchHeld = false; hub.unwatch() }
 
     parent: Overlay.overlay
     anchors.centerIn: parent
