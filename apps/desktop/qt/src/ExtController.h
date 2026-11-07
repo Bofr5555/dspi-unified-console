@@ -7,7 +7,9 @@
 #include <QThreadPool>
 #include <QTimer>
 #include <QVariantList>
+#include <atomic>
 #include <functional>
+#include <utility>
 
 extern "C" {
 #include "dspi_core.h"
@@ -65,6 +67,9 @@ public:
     // Stands in for the core's dspi_ext_status reply; empty goes back to the core.
     // The demo device always has the channel, and the smoke driver needs one without.
     void setStatusOverride(const QByteArray &json);
+    // For the smoke driver: runs on the worker before each write, to hold it there.
+    // False refuses that write, as the device would. Set it with no write under way.
+    void setWriteHook(std::function<bool()> hook) { m_writeHook = std::move(hook); }
 
 signals:
     void changed();
@@ -91,7 +96,9 @@ private:
     QByteArray m_statusOverride;
     QByteArray m_map;
     QString m_lastError;
-    quint64 m_generation = 0;   // bumped when the device changes: older results are dropped
+    // Bumped when the device changes: older writes don't go out, older results are dropped
+    std::atomic<quint64> m_generation { 0 };
+    std::function<bool()> m_writeHook;
     int m_pairCount = 1;
     int m_writes = 0;
     bool m_hasPairMap = false;

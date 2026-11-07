@@ -5,14 +5,24 @@
 #include "DSPiBridge.h"
 #include "ExtController.h"
 
+#include <QCoreApplication>
 #include <QImage>
+#include <QMouseEvent>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QThread>
 #include <QVariant>
 #include <QVariantMap>
+#include <atomic>
 #include <cstdio>
+
+static void sendMouse(QQuickWindow *w, QEvent::Type type, const QPointF &local, Qt::MouseButton button = Qt::NoButton) {
+    const Qt::MouseButtons held = type == QEvent::MouseButtonPress ? Qt::MouseButtons(Qt::LeftButton) : Qt::MouseButtons(Qt::NoButton);
+    QMouseEvent e(type, local, local, QPointF(w->mapToGlobal(local.toPoint())), button, held, Qt::NoModifier);
+    QCoreApplication::sendEvent(w, &e);
+}
 
 static QQuickItem *findItem(QQuickItem *in, const QString &name) {
     if (in->objectName() == name) return in;
@@ -72,6 +82,20 @@ void SmokeDriver::testPairMap() {
         check("QD2: the row's menu", box != nullptr);
         if (box) QMetaObject::invokeMethod(box, "activated", Q_ARG(int, output));
     };
+    // The whole button shows, within the window's edges
+    const auto applyInWindow = [&]() {
+        const QRectF r = applyButton->mapRectToScene(QRectF(0, 0, applyButton->width(), applyButton->height()));
+        return applyButton->isVisible() && r.top() >= 0 && r.left() >= 0 && r.bottom() <= win->height() && r.right() <= win->width();
+    };
+    // A real click on the real button: true when it landed where the button is
+    const auto clickApply = [&]() {
+        if (!applyInWindow()) return false;
+        const QPointF at = applyButton->mapToScene(QPointF(applyButton->width() / 2, applyButton->height() / 2));
+        sendMouse(win, QEvent::MouseMove, at);
+        sendMouse(win, QEvent::MouseButtonPress, at, Qt::LeftButton);
+        sendMouse(win, QEvent::MouseButtonRelease, at, Qt::LeftButton);
+        return true;
+    };
     const auto choice = [ext](const char *want) { return ext->choice() == QLatin1String(want); };
 
     win->show();
@@ -114,11 +138,25 @@ void SmokeDriver::testPairMap() {
     setOutput(3, "right", 0);
     spin(50);
     check("QD2: a valid draft can be applied", win->property("draftValid").toBool() && applyButton->isEnabled());
+    check("QD2: Apply is inside the window", waitFor(1500, applyInWindow));
+    spin(400);      // the refit and the scroll settled
+    printf("smoke: QD2 editor open: window %d of fit %d\n", win->height(), int(win->property("fitHeight").toDouble()));
+    check("QD2: Apply stays inside the window", applyInWindow());
     win->grabWindow().save(m_out + QStringLiteral("/window-crossfeed-editor.png"));
-    QMetaObject::invokeMethod(win, "applyDraft");
+    // A window the editor doesn't fit: scrolled to Apply, which is how a short screen goes
+    const int fullHeight = win->height();
+    win->setHeight(win->minimumHeight());
+    spin(100);
+    check("QD2: a short window hides Apply", !applyInWindow());
+    QMetaObject::invokeMethod(win, "revealPairEditor");
+    spin(100);
+    check("QD2: scrolled to Apply in a short window", applyInWindow());
+    win->grabWindow().save(m_out + QStringLiteral("/window-crossfeed-editor-short.png"));
+    check("QD2: the Apply button takes a click", clickApply());
     check("QD2: Custom: the editor closes", waitFor(1000, [&]() { return !editor->isVisible(); }));
     printf("smoke: QD2 custom map on the device: %s\n", device().constData());
     check("QD2: Custom: read back", device() == "17000006");
+    win->setHeight(fullHeight);
     check("QD2: Custom: shown as custom", choice("custom") && ext->lastError().isEmpty());
     const QVariantList custom = ext->pairs();
     check("QD2: Custom: pairs shown", custom.size() == 4 && custom.at(0) == pairsOf({ { 7, 1 } }).at(0) && custom.at(3) == pairsOf({ { 6, 0 } }).at(0));
@@ -130,6 +168,11 @@ void SmokeDriver::testPairMap() {
     setOutput(1, "left", 3);    // pair 2 on one output twice
     spin(50);
     check("QD2: the same output twice: told at once", !win->property("draftValid").toBool() && warning->isVisible() && !applyButton->isEnabled());
+    spin(100);
+    check("QD2: the same output twice: Apply is in the window, off", applyInWindow() && !applyButton->isEnabled());
+    clickApply();
+    spin(200);
+    check("QD2: the same output twice: the click does nothing", editor->isVisible() && !ext->busy());
     QMetaObject::invokeMethod(win, "applyDraft");
     spin(200);
     check("QD2: the same output twice: refused, editor open", editor->isVisible() && !ext->lastError().isEmpty());
@@ -216,6 +259,26 @@ void SmokeDriver::testPairMap() {
     b->rescan();
     check("QD2: connected again", b->connected());
     check("QD2: the new device's map", waitFor(1000, [&]() { return ext->hasPairMap() && ext->choice() == QLatin1String("default") && controls->isVisible(); }) && device() == "00000000");
+
+    // An Apply behind a slow job, then a change of device: it never reaches the new one
+    std::atomic<bool> gate { false };
+    std::atomic<int> reached { 0 };
+    ext->setWriteHook([&]() {
+        reached++;
+        while (!gate) QThread::msleep(2);
+        return true;
+    });
+    check("QD2: an Apply holds on the worker", ext->applyPreset(QStringLiteral("k340")) && waitFor(2000, [&]() { return reached.load() == 1; }));
+    check("QD2: a second Apply queues behind it", ext->applyPreset(QStringLiteral("k340")) && ext->busy());
+    b->disconnectDevice();
+    b->rescan();
+    check("QD2: a fresh device while they wait", b->connected() && device() == "00000000");
+    gate = true;
+    check("QD2: both Applies end", waitFor(2000, [&]() { return !ext->busy(); }));
+    spin(100);
+    check("QD2: both ran past the hold", reached.load() == 2);
+    check("QD2: no write reached the new device", device() == "00000000" && ext->choice() == QLatin1String("default"));
+    ext->setWriteHook(nullptr);
 
     // The dimmed rows: a preset's own values from the window's table, Custom's live
     const auto opacity = [params]() { return params->opacity(); };
