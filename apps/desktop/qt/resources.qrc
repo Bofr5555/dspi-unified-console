@@ -29,6 +29,7 @@
         <file>qml/components/DemoBanner.qml</file>
         <file>qml/components/InstallWritingCard.qml</file>
         <file>qml/components/InstallStateCard.qml</file>
+        <file>qml/components/FirmwareQuestion.qml</file>
         <file>qml/components/StepStrip.qml</file>
         <file>qml/components/LabelValueRow.qml</file>
         <file>qml/FirmwareUpdateWindow.qml</file>
@@ -82,8 +83,8 @@
         <file>icons/check-circle.svg</file>
         <file>icons/question-circle.svg</file>
         <file>icons/arrow-down-circle.svg</file>
-        <file>firmware/DSPi-RP2040-v1.1.6-beta4.uf2</file>
-        <file>firmware/DSPi-RP2350-v1.1.6-beta4.uf2</file>
+        <file>firmware/DSPi-RP2040-v1.1.6.uf2</file>
+        <file>firmware/DSPi-RP2350-v1.1.6.uf2</file>
         <file>icons/cs-button.svg</file>
         <file>icons/cs-switch.svg</file>
         <file>icons/cs-pot.svg</file>

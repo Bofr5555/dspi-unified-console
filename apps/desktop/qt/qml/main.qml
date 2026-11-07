@@ -668,6 +668,8 @@ ApplicationWindow {
     function openToolWindow(name) {
         // -- WP QD6 -- Features this firmware lacks are hidden (the menu leaves them out)
         if (["psybass", "subharm", "tube", "upmix"].indexOf(name) >= 0 && !bridge.firmwareHas(name)) return
+        // -- WP QD11 -- A board with no UF2 bootloader has nothing to update with
+        if (name === "firmware" && !firmware.supported) return
         if (name.indexOf("url:") === 0) { Qt.openUrlExternally(name.substring(4)); return }
         if (name === "gettingStarted") { setupRequested = true; return }
         var w = { matrix: matrixWindow, loudness: loudnessWindow, crossfeed: crossfeedWindow,

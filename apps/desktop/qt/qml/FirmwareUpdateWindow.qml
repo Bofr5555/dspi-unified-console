@@ -1,18 +1,21 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Window 2.15
+import Qt.labs.platform 1.1 as Platform
 import "components"
 
 // Firmware Update (Tools menu, the version banner): installs the firmware
-// bundled with this Console onto the connected DSPi or a board already in
-// BOOTSEL. The user confirms once; the updater does the rest - restart into
-// the bootloader, write, wait for the device, check the version it reports.
+// bundled with this Console, or a .uf2 of the user's, onto the connected DSPi or a
+// board already in BOOTSEL. The user confirms once; the updater does the rest:
+// check the file and the chip, ask the firmware guard (a core-voltage risk takes a
+// typed answer), restart into the bootloader, write, wait for the device, check the
+// version it reports. All of it works on a read-only device.
 AppWindow {
     id: win
     title: "Firmware Update"
     visible: false
     width: 460
-    height: 470 + titlebarHeight
+    height: 510 + titlebarHeight
     minimumWidth: width
     maximumWidth: width
     minimumHeight: height
@@ -25,25 +28,24 @@ AppWindow {
     property bool rebootRequested: false
     readonly property string phase: firmware.state
     readonly property bool connected: bridge.connected
-    readonly property bool newer: firmware.match === 3
-    readonly property string bundled: firmware.expectedVersion || "unknown"
-    readonly property string primaryTitle: newer ? "Downgrade" : "Update Firmware"
-    readonly property int step: phase === "writing" ? 1 : phase === "waitingForDevice" ? 2 : phase === "verified" ? 3 : 0
+    readonly property bool custom: firmware.imageCustom
+    readonly property bool newer: !custom && firmware.match === 3
+    readonly property string bundled: firmware.imageVersion || "unknown"
+    readonly property string primaryTitle: custom ? "Install File" : newer ? "Downgrade" : "Update Firmware"
+    readonly property int step: phase === "writing" ? 1 : phase === "waitingForDevice" ? 2 : phase === "verified" || phase === "unconfirmed" ? 3 : 0
+    // Under way or being asked: the buttons below have nothing to add
+    readonly property bool engaged: ["checking", "question", "waitingForDrive", "writing", "waitingForDevice"].indexOf(phase) >= 0
 
     // Every open starts over at detection
     onVisibleChanged: {
-        if (visible) { confirmed = false; rebootRequested = false; firmware.reset(); firmware.beginWatching() }
+        if (visible) { confirmed = false; rebootRequested = false; firmware.reset(); firmware.useBundledImage(); firmware.beginWatching() }
         else firmware.stopWatching()
     }
 
     function start() {
         confirmed = true
+        // The updater restarts the device, after the guard has had its say
         firmware.installWhenReady()
-        if (connected && !rebootRequested) {
-            rebootRequested = true
-            // The device drops off the bus answering this
-            firmware.enterBootloader()
-        }
     }
     function resetRun() {
         confirmed = false
@@ -57,6 +59,8 @@ AppWindow {
         case "idle": case "waitingForBoard":
             if (confirmed) return { icon: "search", spin: true, title: "Looking for the board",
                 text: "Waiting for it to appear in bootloader mode. If nothing happens after a few seconds, unplug the board, hold BOOTSEL, and plug it back in." }
+            if (connected && !firmware.canReboot) return { icon: "plug", tint: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5), title: "Can't restart this device",
+                text: firmware.rebootBlocked + " A board already in bootloader mode can still be updated: hold BOOTSEL while plugging it in." }
             if (connected) return { icon: "check-circle", tint: isMacOS ? MacColors.accent : "#3a96ff", title: "Ready when you are",
                 text: "Click " + primaryTitle + " to begin. The device will restart into bootloader mode, and audio will stop until the update finishes. Nothing is written without this click." }
             return { icon: "plug", tint: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5), title: "Connect a board",
@@ -69,12 +73,20 @@ AppWindow {
                 text: "Opening the " + firmware.chipName + "'s " + firmware.volumeName + " drive." }
             return { icon: "drive", tint: isMacOS ? MacColors.green : "#32d74b", title: firmware.chipName + " ready",
                 text: "The board is in bootloader mode and ready to receive firmware " + bundled + ". Click " + primaryTitle + " to begin." }
+        case "checking":
+            return { icon: "search", spin: true, title: "Checking",
+                text: "Looking at the file and the board. Nothing has changed yet." }
+        case "waitingForDrive":
+            return { icon: "drive", spin: true, title: "Restarting into bootloader mode",
+                text: "Waiting for the board's drive to appear. Audio stops until the update finishes." }
         case "waitingForDevice":
             return { icon: "revert", spin: true, title: "Firmware written",
                 text: "The board is restarting with its new firmware. This can take up to half a minute; leave it plugged in." }
         case "verified":
             return { icon: "check-circle", tint: isMacOS ? MacColors.green : "#32d74b", size: 36, title: "Update complete",
                 text: "The device is back and confirmed running firmware " + firmware.verifiedVersion + "." }
+        case "unconfirmed":
+            return { icon: "question-circle", tint: isMacOS ? MacColors.orange : "#ff9f0a", title: "Written, not confirmed", text: firmware.failure }
         case "failed":
             return { icon: firmware.failureMundane ? "question-circle" : "warning", tint: isMacOS ? MacColors.orange : "#ff9f0a",
                 title: firmware.failureMundane ? "Not quite ready" : "The update did not complete", text: firmware.failure }
@@ -84,7 +96,7 @@ AppWindow {
     }
     readonly property bool showBootselHint: ((phase === "idle" || phase === "waitingForBoard") && (confirmed || !connected))
                                             || (phase === "failed" && firmware.noBoardFailure)
-    readonly property bool showManualHint: connected && !confirmed && (phase === "idle" || phase === "waitingForBoard")
+    readonly property bool showManualHint: firmware.canReboot && !confirmed && (phase === "idle" || phase === "waitingForBoard")
 
     component Panel: Rectangle {
         radius: 8
@@ -138,8 +150,38 @@ AppWindow {
                         y: 10
                         width: parent.width - 24
                         spacing: 6
-                        LabelValueRow { label: "This Console"; value: win.bundled }
+                        LabelValueRow { label: "Will install"; value: win.bundled + (win.custom ? "  (" + firmware.imageName + ")" : "") }
                         LabelValueRow { label: "Connected device"; value: firmware.deviceVersion || "None"; secondary: !firmware.deviceVersion }
+                        // A .uf2 of one's own, checked as soon as it is chosen
+                        Text {
+                            objectName: "firmwareChooseFile"
+                            visible: !win.engaged && win.phase !== "verified"
+                            text: firmware.imageLoading ? "Reading the file…"
+                                  : win.custom || firmware.imageProblem !== "" ? "Use this Console's firmware instead" : "Install a .uf2 file instead…"
+                            font.pixelSize: 11
+                            font.underline: fileMouse.containsMouse
+                            color: isMacOS ? MacColors.link : "#3a96ff"
+                            MouseArea {
+                                id: fileMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (win.custom || firmware.imageProblem !== "") firmware.useBundledImage()
+                                    else uf2Dialog.open()
+                                }
+                            }
+                        }
+                        Text {
+                            objectName: "firmwareImageProblem"
+                            visible: firmware.imageProblem !== ""
+                            width: versions.width
+                            wrapMode: Text.WordWrap
+                            textFormat: Text.PlainText
+                            text: firmware.imageProblem
+                            font.pixelSize: 11
+                            color: isMacOS ? MacColors.orange : "#ff9f0a"
+                        }
                         Row {
                             visible: win.newer
                             spacing: 6
@@ -170,13 +212,18 @@ AppWindow {
                     height: body.parent.height - body.y - y - (hints.visible ? hints.height + body.spacing : 0) - 14
                     InstallStateCard {
                         anchors.fill: parent
-                        visible: win.phase !== "writing"
+                        visible: win.phase !== "writing" && win.phase !== "question"
                         icon: win.card.icon
                         tint: isMacOS ? (win.card.tint || MacColors.accent) : win.card.tint || "#3a96ff"
                         spin: win.card.spin === true
                         iconSize: win.card.size || 28
                         title: win.card.title
                         text: win.card.text
+                    }
+                    FirmwareQuestion {
+                        objectName: "firmwareQuestion"
+                        anchors.fill: parent
+                        visible: win.phase === "question"
                     }
                     InstallWritingCard {
                         anchors.fill: parent
@@ -239,19 +286,20 @@ AppWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 8
                 AppButton {
-                    visible: win.phase === "verified"
+                    visible: win.phase === "verified" || win.phase === "unconfirmed"
                     text: "Update Another Board"
                     onClicked: win.resetRun()
                 }
                 AppButton {
-                    visible: win.phase !== "verified"
+                    visible: win.phase !== "verified" && win.phase !== "unconfirmed"
                     text: "Cancel"
                     onClicked: win.close()
                 }
                 // A UF2 write leaves presets alone, but a format change between
                 // versions can make them unreadable: offer a backup first
                 AppButton {
-                    visible: win.phase !== "verified" && win.connected && !win.confirmed
+                    objectName: "firmwareExport"
+                    visible: win.phase !== "verified" && win.phase !== "unconfirmed" && win.connected && !win.confirmed
                     text: "Export Configuration…"
                     onClicked: win.exportRequested()
                 }
@@ -262,7 +310,7 @@ AppWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 8
                 AppButton {
-                    visible: win.phase === "verified"
+                    visible: win.phase === "verified" || win.phase === "unconfirmed"
                     text: "Done"
                     primary: true
                     onClicked: win.close()
@@ -274,14 +322,25 @@ AppWindow {
                     onClicked: win.resetRun()
                 }
                 AppButton {
-                    visible: win.phase !== "verified" && win.phase !== "failed" && win.phase !== "writing" && win.phase !== "waitingForDevice"
+                    objectName: "firmwareInstall"
+                    visible: !win.engaged && win.phase !== "verified" && win.phase !== "unconfirmed" && win.phase !== "failed"
                     text: win.primaryTitle
                     primary: true
-                    enabled: !win.confirmed
+                    // A device that can't be restarted from here leaves only a drive to write
+                    enabled: !win.confirmed && !firmware.imageLoading && firmware.imageProblem === ""
+                             && (!win.connected || firmware.canReboot || win.phase === "ready")
                     onClicked: win.start()
                 }
             }
         }
+    }
+
+    Platform.FileDialog {
+        id: uf2Dialog
+        title: "Choose a Firmware File"
+        fileMode: Platform.FileDialog.OpenFile
+        nameFilters: ["Firmware (*.uf2)", "All files (*)"]
+        onAccepted: firmware.chooseImage(file)
     }
 
     Shortcut { sequence: "Escape"; enabled: win.phase !== "writing" && win.phase !== "waitingForDevice"; onActivated: win.close() }

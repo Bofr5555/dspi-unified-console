@@ -125,6 +125,8 @@ void SmokeDriver::run() {
     testAutoEqHttp();
     // -- WP QD18 --
     testHostAudio();
+    // -- WP QD11 --
+    testFirmware();
     testIdleAndCost();
     // -- WP QD12 -- Last: an accepted close takes the window's surface away
     testTray();

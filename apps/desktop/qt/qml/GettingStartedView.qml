@@ -68,6 +68,7 @@ Rectangle {
         confirmed = false
         rebootRequested = false
         firmware.reset()
+        firmware.useBundledImage()   // -- WP QD11 -- A file chosen in Firmware Update is not this wizard's
     }
     // Onto a board already in BOOTSEL
     function beginInstall() {
@@ -77,8 +78,8 @@ Rectangle {
     // Onto the DSPi already connected: restart it into the bootloader first
     function beginConnectedInstall() {
         confirmed = true
+        // -- WP QD11 -- The updater restarts the device, after the firmware guard
         firmware.installWhenReady()
-        if (!rebootRequested) { rebootRequested = true; firmware.enterBootloader() }
     }
     function advance() {
         if (stage < stages.length - 1) stage++
@@ -88,6 +89,9 @@ Rectangle {
     // Which header the board step shows
     function headerFor(phase, match) {
         switch (phase) {
+        // -- WP QD11 -- (merge: literal, not yet in the shared board words)
+        case "unconfirmed": return "Firmware written"
+        case "question": return "One question first"
         case "verified": return byId(boardWords.headers, "board.verified")
         case "failed": return byId(boardWords.headers, "board.failed")
         case "writing": case "waitingForDevice": return byId(boardWords.headers, "board.installing")
@@ -119,6 +123,13 @@ Rectangle {
             if (match === 2) return cardWords("card.update_available", { icon: "arrow-up", actionPrimary: true })
             if (match === 3) return cardWords("card.downgrade", { icon: "arrow-down-circle", tint: orange, actionPrimary: false })
             return cardWords("card.waiting", { spin: true })
+        // -- WP QD11 -- (merge: literal, not yet in the shared board words)
+        case "checking":
+            return { spin: true, title: "Checking", text: "Looking at the firmware and the board. Nothing has changed yet." }
+        case "waitingForDrive":
+            return { spin: true, title: "Restarting into bootloader mode", text: "Waiting for the board's drive to appear." }
+        case "unconfirmed":
+            return { icon: "question-circle", tint: orange, title: "Written, not confirmed", text: firmware.failure }
         case "waitingForVolume":
             return cardWords("card.volume_wait", { spin: true })
         case "ready":
@@ -142,7 +153,7 @@ Rectangle {
         else beginConnectedInstall()
     }
     // Continue on the board step only once there is nothing left to do there
-    readonly property bool showsContinue: stage !== 1 || phase === "verified" || connectedMatch === 1
+    readonly property bool showsContinue: stage !== 1 || phase === "verified" || phase === "unconfirmed" || connectedMatch === 1   // -- WP QD11 -- unconfirmed
 
     component InfoRow: Row {
         property string icon: ""
@@ -245,7 +256,7 @@ Rectangle {
                 height: 210
                 InstallStateCard {
                     anchors.fill: parent
-                    visible: wiz.phase !== "writing"
+                    visible: wiz.phase !== "writing" && wiz.phase !== "question"   // -- WP QD11 -- question
                     icon: wiz.card.icon || ""
                     tint: isMacOS ? wiz.card.tint || MacColors.accent : wiz.card.tint || "#3a96ff"
                     spin: wiz.card.spin === true
@@ -258,6 +269,11 @@ Rectangle {
                         primary: wiz.card.actionPrimary === true
                         onClicked: wiz.cardAction()
                     }
+                }
+                // -- WP QD11 --
+                FirmwareQuestion {
+                    anchors.fill: parent
+                    visible: wiz.phase === "question"
                 }
                 InstallWritingCard {
                     anchors.fill: parent

@@ -1327,8 +1327,8 @@ mod tests_wp_cg8 {
     fn wp_cg8_bundled_stock_images_are_unknown_and_blocked_on_a_k340() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps");
         for rel in [
-            "desktop/qt/firmware/DSPi-RP2040-v1.1.6-beta4.uf2",
-            "desktop/qt/firmware/DSPi-RP2350-v1.1.6-beta4.uf2",
+            "desktop/qt/firmware/DSPi-RP2040-v1.1.6.uf2",
+            "desktop/qt/firmware/DSPi-RP2350-v1.1.6.uf2",
             "android/feature-firmware/src/main/assets/firmware/DSPi-RP2040-v1.1.6-beta5.uf2",
             "android/feature-firmware/src/main/assets/firmware/DSPi-RP2350-v1.1.6-beta5.uf2",
         ] {
