@@ -30,6 +30,10 @@ dspi-proto.workspace = true
 dspi-transport = { path = "../dspi-transport", default-features = false, features = ["link"] }
 # The frame types and codec the hub shares with the client.
 dspi-link.workspace = true
+# -- WP HB2 --
+# `overvolt`, the owner's voltage rule, and the status read it goes by: one rule, the one
+# the clients run. Without default features: none of what they add is used here.
+dspi-session = { path = "../dspi-session", default-features = false }
 dspi-core = { workspace = true, optional = true }
 thiserror.workspace = true
 log.workspace = true
@@ -42,6 +46,8 @@ nusb = { version = "0.2", optional = true }
 
 [dev-dependencies]
 dspi-transport = { path = "../dspi-transport", default-features = false, features = ["link"] }
+# -- WP HB2 --
+proptest = "1"
 
 [[test]]
 name = "wp_hb0_app_path"

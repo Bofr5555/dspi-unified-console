@@ -21,6 +21,7 @@ use crate::advertise::Advertiser;
 use crate::device::{self, Attachment, DeviceShared, SupMsg};
 use crate::error::HubError;
 use crate::local::LocalTransport;
+use crate::lock::LockRefusal;
 use crate::policy::Policy;
 use crate::registry::{DeviceState, OFFLINE_GRACE, RegisteredDevice, Registry, RegistryEvent};
 use crate::relay::{Relay, Scope};
@@ -460,6 +461,7 @@ impl HubHandle {
             d.router.session_closed(id);
             d.polls.session_closed(id);
         }
+        self.inner.sync_locks();
         self.inner.emit(HubEvent::SessionClosed { id });
     }
 
@@ -476,17 +478,39 @@ impl HubHandle {
         }
     }
 
-    /// Take the lock of the device at `handle` for a session (spec 7.7). False if
-    /// another session holds it or there is no such device.
+    // -- WP HB2 --
+    /// Take the lock of the device at `handle` for a session (spec 7.7). False if it is
+    /// refused: [`HubHandle::lock_request`].
     pub fn lock_acquire(&self, session: &Session, handle: u8, timeout: Duration) -> bool {
+        self.lock_request(session, handle, timeout).is_ok()
+    }
+
+    /// Take or renew the lock of the device at `handle`, and how long it was granted
+    /// for (`crate::lock`). `device.changed` follows. [`crate::lock::handle_message`] is
+    /// this as a message.
+    pub fn lock_request(
+        &self,
+        session: &Session,
+        handle: u8,
+        timeout: Duration,
+    ) -> Result<Duration, LockRefusal> {
+        if session.role() == Role::Viewer {
+            return Err(LockRefusal::Denied);
+        }
         let device = guard(&self.inner.state)
             .attached
             .get(&handle)
-            .map(|a| Arc::clone(&a.shared));
-        device.is_some_and(|d| d.router.lock_acquire(session.id(), timeout, Instant::now()))
+            .map(|a| Arc::clone(&a.shared))
+            .ok_or(LockRefusal::NoDevice)?;
+        let granted = device
+            .router
+            .lock_grant(session.id(), timeout, Instant::now())
+            .ok_or(LockRefusal::Locked)?;
+        self.inner.sync_locks();
+        Ok(granted)
     }
 
-    /// Release a session's lock of the device at `handle`.
+    /// Release a session's lock of the device at `handle`. `device.changed` follows.
     pub fn lock_release(&self, session: &Session, handle: u8) {
         let device = guard(&self.inner.state)
             .attached
@@ -494,7 +518,13 @@ impl HubHandle {
             .map(|a| Arc::clone(&a.shared));
         if let Some(d) = device {
             d.router.lock_release(session.id());
+            self.inner.sync_locks();
         }
+    }
+
+    /// `policy.denied` for a role (spec 7.3).
+    pub fn denied(&self, role: Role) -> Vec<[u16; 2]> {
+        self.inner.policy.denied(role)
     }
 
     /// The app's way to the online device with this serial, for
@@ -753,6 +783,35 @@ impl HubInner {
         let events = guard(&self.state).registry.reap(Instant::now());
         for event in events {
             self.publish(event);
+        }
+        self.sync_locks();
+    }
+
+    // -- WP HB2 --
+    /// Bring the registry's `locked_by` up to what the routers say, and tell network
+    /// sessions what changed. Called where a lock changes, and on the supervisor's tick,
+    /// which is how a lock that timed out and the app's own locks are noticed. L1 and L2
+    /// in turn, never nested. Not an embedder event: the device has not come or gone.
+    fn sync_locks(&self) {
+        let devices: Vec<Arc<DeviceShared>> = guard(&self.state)
+            .attached
+            .values()
+            .map(|a| Arc::clone(&a.shared))
+            .collect();
+        let now = Instant::now();
+        let holders: Vec<(u8, Option<SessionId>)> = devices
+            .iter()
+            .map(|d| (d.handle, d.router.lock_holder(now)))
+            .collect();
+        let events: Vec<RegistryEvent> = {
+            let mut st = guard(&self.state);
+            holders
+                .into_iter()
+                .filter_map(|(handle, by)| st.registry.set_locked_by(handle, by))
+                .collect()
+        };
+        for event in events {
+            self.relay.broadcast_event(&event.to_json());
         }
     }
 }
