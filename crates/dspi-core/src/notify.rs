@@ -330,6 +330,17 @@ fn apply_queued(inner: &mut Inner, r: &mut NotifyResult) -> FollowUp {
             // -- WP CG13 --
             conn.source_names_stale = true;
         }
+        // -- WP CG21 -- The fill target follows the source, the rate and the preset
+        if note.lost
+            || matches!(
+                note.event,
+                Event::BulkInvalidated { .. }
+                    | Event::PresetLoaded { .. }
+                    | Event::InputFormat { .. }
+            )
+        {
+            conn.ring_target.invalidate();
+        }
         match &note.event {
             Event::ParamChanged { offset, bytes, .. } => {
                 if !patchable {

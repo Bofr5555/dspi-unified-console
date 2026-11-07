@@ -795,6 +795,7 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // stateless text.
             "fetchRingHealth",
             "fetchOutputFills",
+            "fetchStatsTick", // WP CG21: one read
             "coreVregCalView",
             "coreVregCalPoll",
             "coreVregCalOpen",

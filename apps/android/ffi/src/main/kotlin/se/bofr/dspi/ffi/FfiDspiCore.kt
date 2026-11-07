@@ -424,6 +424,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun fetchOutputFills(): List<OutputFill> = call { core.fetchOutputFills().map { it.toDomain() } }
 
+    override fun fetchStatsTick(): StatsTick = call { core.fetchStatsTick().toDomain() }
+
     override fun fetchBufferStats(): BufferStats = call { core.fetchBufferStats().toDomain() }
 
     override fun resetBufferStats() = call { core.resetBufferStats() }
@@ -1695,6 +1697,18 @@ internal fun OutputFill.toFfi() =
         minPct = minPct.toUByte(),
         maxPct = maxPct.toUByte(),
         band = band.toFfi(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.StatsTick.toDomain() =
+    StatsTick(
+        buffers = buffers.toDomain(),
+        fills = fills?.let { it.map { it.toDomain() } },
+    )
+
+internal fun StatsTick.toFfi() =
+    se.bofr.dspi.ffi.uniffi.StatsTick(
+        buffers = buffers.toFfi(),
+        fills = fills?.let { it.map { it.toFfi() } },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.RtaOwnership.toDomain() =

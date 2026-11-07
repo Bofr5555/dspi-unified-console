@@ -1360,6 +1360,8 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1564,6 +1566,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_fetch_spdif_rx_pin(
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_spdif_rx_status(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_stat(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_fetch_stats_tick(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_status(
 ): Short
@@ -2068,6 +2072,8 @@ fun uniffi_dspi_core_fn_method_dspicore_fetch_spdif_rx_status(`ptr`: Pointer,uni
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_stat(`ptr`: Pointer,`which`: Short,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
+fun uniffi_dspi_core_fn_method_dspicore_fetch_stats_tick(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_subharm_headroom(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2859,6 +2865,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_stat() != 25516.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_stats_tick() != 21250.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_status() != 58511.toShort()) {
@@ -5494,6 +5503,24 @@ public interface DspiCoreInterface {
      * or short reply as [`DspiError::Transfer`].
      */
     fun `fetchStat`(`which`: kotlin.UShort): kotlin.UInt
+    
+    /**
+     * The Stats window's fast poll: the buffer fill levels and the live
+     * outputs' fill, as [`DspiCore::fetch_buffer_stats`] and
+     * [`DspiCore::fetch_output_fills`] give them, from one transfer.
+     *
+     * The fill target is kept on the connection. It is read again, for one more
+     * transfer on the tick after, when this core changed the latency, when a
+     * notification says the settings moved (a preset, a bulk write, a format
+     * change, a lost packet), and after a Link re-attach. The firmware does not
+     * notify a latency change, so another client's reaches this through
+     * [`DspiCore::fetch_ring_health`]: call that on the slow cadence alongside.
+     * While a change has yet to apply the target is read each tick.
+     *
+     * Errors: as for [`DspiCore::fetch_buffer_stats`]. A failed read of the
+     * target is not an error: `fills` is `None`.
+     */
+    fun `fetchStatsTick`(): StatsTick
     
     /**
      * Read the meter block (`REQ_GET_STATUS` sub-query 9): the peak of each
@@ -8438,6 +8465,35 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_stat(
         it, FfiConverterUShort.lower(`which`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The Stats window's fast poll: the buffer fill levels and the live
+     * outputs' fill, as [`DspiCore::fetch_buffer_stats`] and
+     * [`DspiCore::fetch_output_fills`] give them, from one transfer.
+     *
+     * The fill target is kept on the connection. It is read again, for one more
+     * transfer on the tick after, when this core changed the latency, when a
+     * notification says the settings moved (a preset, a bulk write, a format
+     * change, a lost packet), and after a Link re-attach. The firmware does not
+     * notify a latency change, so another client's reaches this through
+     * [`DspiCore::fetch_ring_health`]: call that on the slow cadence alongside.
+     * While a change has yet to apply the target is read each tick.
+     *
+     * Errors: as for [`DspiCore::fetch_buffer_stats`]. A failed read of the
+     * target is not an error: `fills` is `None`.
+     */
+    @Throws(DspiException::class)override fun `fetchStatsTick`(): StatsTick {
+            return FfiConverterTypeStatsTick.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_stats_tick(
+        it, _status)
 }
     }
     )
@@ -17137,6 +17193,48 @@ public object FfiConverterTypeSpdifRxStatus: FfiConverterRustBuffer<SpdifRxStatu
 
 
 /**
+ * One sample of the Stats window's fast poll (`fetch_stats_tick`).
+ */
+data class StatsTick (
+    /**
+     * The buffer fill levels and their watermarks.
+     */
+    var `buffers`: BufferStats, 
+    /**
+     * The live outputs' fill, from the same read. `None` when the fill target
+     * could not be read: keep the last fills.
+     */
+    var `fills`: List<OutputFill>?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeStatsTick: FfiConverterRustBuffer<StatsTick> {
+    override fun read(buf: ByteBuffer): StatsTick {
+        return StatsTick(
+            FfiConverterTypeBufferStats.read(buf),
+            FfiConverterOptionalSequenceTypeOutputFill.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: StatsTick) = (
+            FfiConverterTypeBufferStats.allocationSize(value.`buffers`) +
+            FfiConverterOptionalSequenceTypeOutputFill.allocationSize(value.`fills`)
+    )
+
+    override fun write(value: StatsTick, buf: ByteBuffer) {
+            FfiConverterTypeBufferStats.write(value.`buffers`, buf)
+            FfiConverterOptionalSequenceTypeOutputFill.write(value.`fills`, buf)
+    }
+}
+
+
+
+/**
  * `types.rs` `SystemStatus` (REQ_GET_STATUS wValue 9), polled every 60 ms.
  */
 data class SystemStatus (
@@ -18792,6 +18890,38 @@ public object FfiConverterOptionalTypeRingHealth: FfiConverterRustBuffer<RingHea
         } else {
             buf.put(1)
             FfiConverterTypeRingHealth.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalSequenceTypeOutputFill: FfiConverterRustBuffer<List<OutputFill>?> {
+    override fun read(buf: ByteBuffer): List<OutputFill>? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterSequenceTypeOutputFill.read(buf)
+    }
+
+    override fun allocationSize(value: List<OutputFill>?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterSequenceTypeOutputFill.allocationSize(value)
+        }
+    }
+
+    override fun write(value: List<OutputFill>?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterSequenceTypeOutputFill.write(value, buf)
         }
     }
 }

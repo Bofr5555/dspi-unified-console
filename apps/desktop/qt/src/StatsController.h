@@ -17,6 +17,7 @@ extern "C" {
 }
 
 class DSPiBridge;
+class QJsonObject;
 
 // System Statistics: device counters every 2 s and buffer fill levels every
 // 60 ms (with a 15 s history for the traces), polled only while the window
@@ -62,6 +63,8 @@ public:
     // -- WP QD29 -- The same for the ring reads, to reach what the demo never says:
     // no status, a failed transfer, a fill outside the good band.
     void setRingHealthHook(std::function<QByteArray()> hook) { m_ringHealthHook = std::move(hook); }
+    // -- WP CG21 -- Runs after the tick's read and stands in for its fills, in
+    // dspi_fetch_output_fills' JSON; {"ok":false} is a fill target that couldn't be read.
     void setOutputFillsHook(std::function<QByteArray()> hook) { m_outputFillsHook = std::move(hook); }
 
     // Oldest first; Absent where the buffer wasn't running
@@ -85,7 +88,7 @@ private:
     void setClockDiag(const QVariantList &rows);
     // -- WP QD29 --
     void pollRingHealth();
-    void pollOutputFills();
+    void applyBuffers(const QJsonObject &b);    // -- WP CG21 --
     void setRingHealth(const QVariantMap &health);
 
     DSPiBridge *m_bridge;
@@ -113,8 +116,7 @@ private:
     // -- WP QD29 --
     QVariantMap m_ringHealth;
     QVariantList m_outputFills;                 // {fill, min, max, band}, per live output
-    bool m_ringHealthBusy = false, m_outputFillsBusy = false;
-    bool m_outputFillsAnswered = false;         // the rows wait for this device's first reply
+    bool m_ringHealthBusy = false, m_statsTickBusy = false;
     std::function<QByteArray()> m_ringHealthHook, m_outputFillsHook;
     QThreadPool m_worker;                       // one thread, joined by the destructor
 };

@@ -62,6 +62,7 @@ import se.bofr.dspi.core.SiggenStatus
 import se.bofr.dspi.core.SiggenTypeInfo
 import se.bofr.dspi.core.SpdifBufferStats
 import se.bofr.dspi.core.SpdifRxStatus
+import se.bofr.dspi.core.StatsTick
 import se.bofr.dspi.core.SystemStatus
 import se.bofr.dspi.core.UartConfig
 import se.bofr.dspi.core.UnimplementedDspiCore
@@ -1351,10 +1352,12 @@ open class FakeDspiCore(
 
     private var bufferSeq = 0
 
-    override fun fetchBufferStats(): BufferStats = op("fetchBufferStats") {
+    override fun fetchBufferStats(): BufferStats = op("fetchBufferStats") { nextBufferStats() }
+
+    private fun nextBufferStats(): BufferStats {
         bufferSeq++
         val fill = 50 + (bufferSeq % 7) - 3
-        BufferStats(
+        return BufferStats(
             numSpdif = 4,
             pdmActive = s.outputEnabled.getOrElse(s.numOutputChannels - 1) { false },
             streaming = true,
@@ -1385,11 +1388,16 @@ open class FakeDspiCore(
         )
     }
 
-    override fun fetchOutputFills(): List<OutputFill> = op("fetchOutputFills") {
+    override fun fetchOutputFills(): List<OutputFill> = op("fetchOutputFills") { nextOutputFills() }
+
+    private fun nextOutputFills(): List<OutputFill> {
         ringFillSeq++
         val frames = 96 + ((ringFillSeq % 7) - 3) * 8
-        List(4) { OutputFill(fillPct = frames * 100.0 / 512, minPct = 14, maxPct = 24, band = FillBand.GOOD) }
+        return List(4) { OutputFill(fillPct = frames * 100.0 / 512, minPct = 14, maxPct = 24, band = FillBand.GOOD) }
     }
+
+    // -- WP CG21 --
+    override fun fetchStatsTick(): StatsTick = op("fetchStatsTick") { StatsTick(buffers = nextBufferStats(), fills = nextOutputFills()) }
 
     override fun fetchSpdifRxStatus(): SpdifRxStatus = op("fetchSpdifRxStatus") {
         SpdifRxStatus(

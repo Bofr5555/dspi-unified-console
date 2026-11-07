@@ -1356,6 +1356,16 @@ pub extern "C" fn dspi_fetch_output_fills(core: *mut FfiCore, buf: *mut c_char, 
     text(core, buf, len, |c| json_reply(c.fetch_output_fills()))
 }
 
+// -- WP CG21 --
+/// The Stats window's fast poll, one transfer: JSON {ok, buffers: {numSpdif,
+/// pdmActive, streaming, sequence, spdif: [{free, prepared, playing, fillPct,
+/// minPct, maxPct}], pdm: {...}}, fills: [as dspi_fetch_output_fills] or null}.
+/// Null fills mean keep the last ones. Returns the length needed.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_fetch_stats_tick(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
+    text(core, buf, len, |c| json_reply(c.fetch_stats_tick()))
+}
+
 // ── Added: firmware ───────────────────────────────────────────────────
 
 /// Check a `.uf2` image: JSON {ok, valid, problem, familyId, platform,

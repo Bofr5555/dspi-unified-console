@@ -625,7 +625,10 @@ class StatsControllerImpl internal constructor(private val bridge: DspiBridgeImp
         pollRingHealth()
     }
 
-    /** Seven transfers, so on the slow cadence. A failed read keeps the last values; null is firmware without it. */
+    /**
+     * Seven transfers, so on the slow cadence. It also brings another client's latency change to
+     * the fast poll (CG21). A failed read keeps the last values; null is firmware without it.
+     */
     private suspend fun pollRingHealth() {
         val s = serial
         if (s.isEmpty()) return
@@ -636,17 +639,13 @@ class StatsControllerImpl internal constructor(private val bridge: DspiBridgeImp
     private suspend fun pollFast() {
         val s = serial
         if (s.isEmpty()) return
-        val (b, fills) =
-            bridge.onFfi {
-                val stats = runCatching { bridge.get { bridge.core.fetchBufferStats() } }.getOrNull()
-                val outputs = stats?.let { runCatching { bridge.get { bridge.core.fetchOutputFills() } }.getOrNull() }
-                stats to outputs
-            }
-        if (b == null || s != serial) return
+        // -- WP CG21 -- One transfer: the core keeps the fill target
+        val tick = bridge.onFfi { runCatching { bridge.get { bridge.core.fetchStatsTick() } }.getOrNull() }
+        if (tick == null || s != serial) return
         // Fills first: whoever sees the new sample also sees its fills
-        if (fills != null) _outputFills.value = fills
+        tick.fills?.let { _outputFills.value = it }
         // Every sample moves the traces
-        _buffers.value = b
+        _buffers.value = tick.buffers
     }
 
     /** Ungated (D1). */
