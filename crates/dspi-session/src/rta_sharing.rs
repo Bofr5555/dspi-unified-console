@@ -14,7 +14,7 @@
 //! single-threaded caller: nothing runs while a poll does, so no reading can
 //! be overtaken by a change made during it.
 
-use std::time::Instant;
+use dspi_transport::clock::Instant;
 
 use dspi_proto::generated::notify as nfy;
 use dspi_proto::generated::opcodes as op;
