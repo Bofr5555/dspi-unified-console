@@ -88,6 +88,8 @@ void SmokeDriver::run() {
     testBypassRepaint();
     testSweep();
     testReconnect();
+    // -- WP QD33 --
+    testAbout();
     // -- WP QD4 --
     testNames();
     // -- WP QD5 --
