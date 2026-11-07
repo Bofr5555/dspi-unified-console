@@ -3056,6 +3056,28 @@ impl FilterDocument {
         }
     }
 
+    /// What this document leaves out because the device would not report it, as
+    /// `header: what` for each channel. Empty when it holds everything.
+    pub fn unreported(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for c in &self.channels {
+            let mut missing = Vec::new();
+            if !c.is_output && c.preamp_db.is_none() {
+                missing.push("preamp");
+            }
+            if c.peq.is_empty() {
+                missing.push("EQ");
+            }
+            if c.is_output && c.crossover.is_empty() {
+                missing.push("crossover");
+            }
+            if !missing.is_empty() {
+                out.push(format!("{}: {}", c.header, missing.join(", ")));
+            }
+        }
+        out
+    }
+
     /// As a text file.
     pub fn to_text(&self) -> crate::filterfile::FilterFile {
         let band = |b: &BandBlock| dspi_proto::dsp::Band {
@@ -3083,9 +3105,14 @@ impl FilterDocument {
     }
 }
 
-/// Read every channel's filters from the device.
-pub fn capture_filters(session: &mut Session) -> FilterDocument {
+/// Read every channel's filters from the device, by [`capture`]'s rule: a failed
+/// read fails it with [`CaptureError`], and a refused one falls back on a
+/// read-only device's mapped image. A bank is whole or absent, since a position
+/// in it is a band, and an import leaves an absent bank alone
+/// ([`FilterDocument::unreported`] lists them).
+pub fn capture_filters(session: &mut Session) -> Result<FilterDocument, CaptureError> {
     let caps = session.capabilities().clone();
+    let mut r = Reader::new(session);
     let mut channels = Vec::with_capacity(caps.channels.len());
     for c in &caps.channels {
         let index = if c.is_output {
@@ -3104,31 +3131,25 @@ pub fn capture_filters(session: &mut Session) -> FilterDocument {
             ..Default::default()
         };
         if !c.is_output {
-            channel.preamp_db = session
-                .read("pre", &[c.index])
-                .ok()
-                .and_then(|v| v.as_f32());
+            channel.preamp_db = r.f32("pre", &[c.index])?;
         }
-        for b in 0..caps.max_bands {
-            if let Ok(p) = session.read_band(c.index, b) {
-                channel.peq.push(band_block(&p));
-            }
-        }
+        channel.peq = r.bank(c.index, 0, caps.max_bands, DeviceState::band)?;
         if c.is_output {
-            for b in CROSSOVER_FIRST_BAND..CROSSOVER_FIRST_BAND + CROSSOVER_BANDS {
-                if let Ok(p) = session.read_band(c.index, b) {
-                    channel.crossover.push(band_block(&p));
-                }
-            }
+            channel.crossover = r.bank(
+                c.index,
+                CROSSOVER_FIRST_BAND,
+                CROSSOVER_BANDS,
+                DeviceState::xover_band,
+            )?;
         }
         channels.push(channel);
     }
-    FilterDocument {
+    Ok(FilterDocument {
         kind: FILTER_DOCUMENT_KIND.into(),
         format_version: crate::filterfile::FORMAT_VERSION,
         saved_utc: Some(utc_now()),
         channels,
-    }
+    })
 }
 
 /// What a filter import did.
@@ -6681,5 +6702,71 @@ mod wp_tm21_tests {
         let mode = std::fs::metadata(&real).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o640);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn wp_tm21_a_failed_read_fails_a_filter_capture() {
+        for opcode in [op::REQ_GET_PREAMP_CH, op::REQ_GET_EQ_PARAM] {
+            let (mut s, _) = device(|m| m.reply(opcode, Reply::Disconnect));
+            let e = capture_filters(&mut s).expect_err("a lost device");
+            assert!(matches!(e.source, TransportError::Disconnected), "{e}");
+        }
+        // Partway through a bank: the second band's third transfer.
+        let mut replies = vec![Reply::Data(vec![0; 4]); 7];
+        replies.push(Reply::Disconnect);
+        let (mut s, _) = device(|m| m.reply(op::REQ_GET_EQ_PARAM, Reply::Sequence(replies)));
+        assert!(capture_filters(&mut s).is_err());
+    }
+
+    /// The defect: a band that goes unreported used to close up the list, so the
+    /// next band landed in its place on import.
+    #[test]
+    fn wp_tm21_a_refused_band_leaves_the_filter_bank_absent_not_shorter() {
+        let mut replies = vec![Reply::Data(vec![0; 4]); 7];
+        replies.push(Reply::Stall);
+        let (mut s, log) = device(|m| m.reply(op::REQ_GET_EQ_PARAM, Reply::Sequence(replies)));
+        let doc = capture_filters(&mut s).unwrap();
+        assert!(doc.channels.iter().all(|c| c.peq.is_empty()), "{doc:?}");
+        let left = doc.unreported();
+        assert!(left.iter().any(|l| l.contains("EQ")), "{left:?}");
+
+        // And an import leaves such a bank alone.
+        let before = log.lock().unwrap().len();
+        let mut report = FilterReport::default();
+        apply_filter_channel(&mut s, 0, &doc.channels[0], &mut report);
+        assert_eq!(report.bands_applied, 0);
+        let sent = log.lock().unwrap()[before..]
+            .iter()
+            .filter(|e| e.opcode == op::REQ_SET_EQ_PARAM)
+            .count();
+        assert_eq!(sent, 0);
+    }
+
+    #[test]
+    fn wp_tm21_a_refused_preamp_or_crossover_is_only_that_one_absent() {
+        let (mut s, _) = device(|m| m.reply(op::REQ_GET_PREAMP_CH, Reply::Stall));
+        let doc = capture_filters(&mut s).unwrap();
+        let input = doc.channels.iter().find(|c| !c.is_output).unwrap();
+        assert_eq!(input.preamp_db, None);
+        assert_eq!(input.peq.len(), 2, "the bands are all there");
+        let output = doc.channels.iter().find(|c| c.is_output).unwrap();
+        assert_eq!(output.peq.len(), 2);
+        assert_eq!(output.crossover.len(), CROSSOVER_BANDS as usize);
+        assert_eq!(
+            doc.unreported(),
+            vec![
+                format!("{}: preamp", doc.channels[0].header),
+                format!("{}: preamp", doc.channels[1].header),
+            ]
+        );
+    }
+
+    #[test]
+    fn wp_tm21_a_device_that_reports_everything_leaves_no_filters_out() {
+        let (mut s, _) = device(|m| m);
+        assert_eq!(
+            capture_filters(&mut s).unwrap().unreported(),
+            Vec::<String>::new()
+        );
     }
 }

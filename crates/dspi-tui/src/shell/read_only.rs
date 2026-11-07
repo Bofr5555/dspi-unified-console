@@ -1474,6 +1474,43 @@ mod tests_wp_tm4 {
         assert_eq!(doc.loudness.output_mask, Some(mask));
     }
 
+    /// A filter export refused every read takes each bank whole from the image,
+    /// band for band in its place.
+    #[test]
+    fn wp_tm21_a_filter_export_from_old_firmware_takes_the_image() {
+        let image = image_as(17);
+        let want = normalize(&image).unwrap();
+        let mut c = refusing(image);
+        let doc = preset_file::capture_filters(&mut c.session).unwrap();
+        assert_eq!(doc.unreported(), Vec::<String>::new());
+        for (ch, got) in c.state.caps.channels.iter().zip(&doc.channels) {
+            assert_eq!(
+                got.peq.len(),
+                usize::from(c.state.caps.max_bands),
+                "{}",
+                ch.name
+            );
+            for (b, block) in got.peq.iter().enumerate() {
+                let band = want.packet.band(ch.index, b as u8).unwrap();
+                assert_eq!(block.freq_hz, band.freq, "{} band {b}", ch.name);
+                assert_eq!(block.gain, band.gain_db, "{} band {b}", ch.name);
+            }
+        }
+    }
+
+    #[test]
+    fn wp_tm21_a_lost_device_fails_a_read_only_filter_export() {
+        let platform = FakeDevice::demo()
+            .control_in_upto(op::REQ_GET_PLATFORM, 0, 7)
+            .unwrap();
+        let mock = MockTransport::new()
+            .data(op::REQ_GET_PLATFORM, platform)
+            .data(op::REQ_GET_ALL_PARAMS, image_as(17))
+            .reply(op::REQ_GET_EQ_PARAM, Reply::Disconnect);
+        let mut c = connected_on(Box::new(Midi(mock))).unwrap();
+        assert!(preset_file::capture_filters(&mut c.session).is_err());
+    }
+
     /// A lost device is not "does not report it", on this route either.
     #[test]
     fn wp_tm21_a_lost_device_fails_a_read_only_export() {

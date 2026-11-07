@@ -111,6 +111,11 @@ absent, because a shorter one flattens the bands it leaves out; list positions
 in `inputPreampsDb` and the `io` lists stop at the first unreported entry.
 `schemaVersion`, `meta` and `channels` are always written.
 
+A filter export (text or JSON) follows the same rule: a failed read writes no
+file, and a refused one takes the image, or else leaves that channel's preamp or
+whole bank out, with a warning naming them. A filter import leaves an absent bank
+alone.
+
 On import the Terminal leaves an omitted key alone and reports it (`Left as they
 are`, `leftAlone` under `--json`). It warns when `meta.wireFormatVersion` is below
 this build's, since an export from such firmware by a build before this rule can

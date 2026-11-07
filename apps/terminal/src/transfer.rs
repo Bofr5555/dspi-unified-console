@@ -235,10 +235,23 @@ fn export_text(
         }
         return Ok((preset_file::write(&doc), (line, fields)));
     }
-    let doc = preset_file::capture_filters(session);
+    let doc = preset_file::capture_filters(session)?;
     let bands: usize = doc.channels.iter().map(|c| c.peq.len()).sum();
     let line = format!("{} channels, {bands} bands", doc.channels.len());
-    let fields = json!({ "channels": doc.channels.len(), "bands": bands, "read_only": read_only });
+    let mut fields =
+        json!({ "channels": doc.channels.len(), "bands": bands, "read_only": read_only });
+    // -- WP TM21 --
+    let left = doc.unreported();
+    if !left.is_empty() {
+        let shown = if path == "-" { "the document" } else { path };
+        let w = format!(
+            "this device did not report these, so {shown} leaves them out and an import \
+             leaves them alone: {}",
+            left.join("; ")
+        );
+        eprintln!("dspi: warning: {w}");
+        fields["warning"] = json!(w);
+    }
     let text = if format == Format::FiltersJson {
         doc.write()
     } else {
@@ -974,7 +987,7 @@ mod wp_tm10_tests {
         let mut s = plain_demo();
         let mac = preset_file::parse(MAC).unwrap();
         preset_file::apply(&mut s, &mac, preset_file::ApplyOptions::default());
-        let mut doc = preset_file::capture_filters(&mut s);
+        let mut doc = preset_file::capture_filters(&mut s).unwrap();
         // A Linkwitz Transform, the one band that uses `qp`.
         doc.channels[0].peq[1] = preset_file::BandBlock {
             r#type: 11,
@@ -1005,7 +1018,7 @@ mod wp_tm10_tests {
         assert_eq!(report.preamps_applied, 8);
         assert_eq!(report.crossover_bands_applied, 9 * 4);
         assert_eq!(
-            preset_file::capture_filters(&mut clean).channels,
+            preset_file::capture_filters(&mut clean).unwrap().channels,
             doc.channels
         );
     }
@@ -1015,7 +1028,7 @@ mod wp_tm10_tests {
         let mut s = plain_demo();
         let mac = preset_file::parse(MAC).unwrap();
         preset_file::apply(&mut s, &mac, preset_file::ApplyOptions::default());
-        let doc = preset_file::capture_filters(&mut s);
+        let doc = preset_file::capture_filters(&mut s).unwrap();
         let text = filterfile::write(&doc.to_text(), "now");
 
         let parsed = FilterDocument::from_text(&filterfile::parse(&text).unwrap());
@@ -1023,7 +1036,7 @@ mod wp_tm10_tests {
         let (report, _, skipped) = apply_filters(&mut clean, &parsed, false);
         assert!(skipped.is_empty(), "{skipped:?}");
         assert_eq!(report.refused, 0);
-        let out = preset_file::capture_filters(&mut clean);
+        let out = preset_file::capture_filters(&mut clean).unwrap();
         for (a, b) in doc.channels.iter().zip(&out.channels) {
             assert_eq!(a.preamp_db, b.preamp_db, "{}", a.header);
             let used = |v: &[preset_file::BandBlock]| {
@@ -1351,6 +1364,24 @@ mod tests_wp_tm4 {
         );
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "the old export");
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn wp_tm21_a_failed_read_writes_no_filter_file_and_keeps_the_old_one() {
+        let eq = dspi_proto::generated::opcodes::REQ_GET_EQ_PARAM;
+        for format in [Format::Filters, Format::FiltersJson] {
+            let path = scratch(&format!("filters_none_{}", format.name()));
+            let mut s = dying_device(eq);
+            assert_eq!(run_export(&mut s, &path, format, true), exit::TRANSPORT);
+            assert!(std::fs::metadata(&path).is_err(), "no file at all");
+
+            let path = scratch(&format!("filters_old_{}", format.name()));
+            std::fs::write(&path, "the old export").unwrap();
+            let mut s = dying_device(eq);
+            assert_eq!(run_export(&mut s, &path, format, true), exit::TRANSPORT);
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "the old export");
+            let _ = std::fs::remove_file(&path);
+        }
     }
 
     /// An export that left keys out still goes into Qt's importer, whose reader
