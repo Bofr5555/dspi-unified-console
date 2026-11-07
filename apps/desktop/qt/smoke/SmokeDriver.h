@@ -102,6 +102,8 @@ private:
     void testLink();
     // -- WP QD10 --
     void testLinkFault();
+    // -- WP QD9 --
+    void testDevices();
     // -- WP HB6 --
     void testHub();
     // -- WP QD7 --

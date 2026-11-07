@@ -58,6 +58,8 @@ Popup {
     //          enabled: false } or { sep: true }
     readonly property var groups: [
         { text: "Device", icon: "chip", items: [
+            { icon: "link", text: "Devices…", window: "devices" },   // -- WP QD9 --
+            { sep: true },
             { icon: "save", text: "Commit Parameters", shortcut: "Ctrl+S", action: "commit" },
             { icon: "revert", text: "Revert to Saved", action: "revert" },
             { sep: true },
