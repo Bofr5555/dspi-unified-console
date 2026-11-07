@@ -100,6 +100,11 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.coreVregDemoEvent(event, seconds)
     }
 
+    override fun csDemoBusy(on: Boolean) {
+        guard("csDemoBusy")
+        return inner.csDemoBusy(on)
+    }
+
     override fun rawSet(opcode: Int, value: Int, data: List<Int>) {
         guard("rawSet")
         return inner.rawSet(opcode, value, data)
@@ -644,7 +649,8 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "coreVregManualTrial",
             "coreVregManualAuto",
             "coreVregManualClear",
-            "coreVregDemoEvent"
+            "coreVregDemoEvent",
+            "csDemoBusy"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */

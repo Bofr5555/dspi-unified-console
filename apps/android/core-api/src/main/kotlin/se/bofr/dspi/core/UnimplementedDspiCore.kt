@@ -387,6 +387,7 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun coreVregManualClear(): Unit = throw NotImplementedError("core_vreg_manual_clear")
 
     override fun coreVregDemoEvent(event: VregDemoEvent, seconds: Long): Unit = throw NotImplementedError("core_vreg_demo_event")
+    override fun csDemoBusy(on: Boolean): Unit = throw NotImplementedError("cs_demo_busy")
 
     override fun autoeqDatabaseInfo(dbPath: String): AutoEqDatabaseInfo = throw NotImplementedError("autoeq_database_info")
 

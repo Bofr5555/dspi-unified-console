@@ -2305,6 +2305,15 @@ interface DspiCoreApi : AutoCloseable {
     fun coreVregDemoEvent(event: VregDemoEvent, seconds: Long)
 
     /**
+     * On the demo device only: hold it in a running revert, or let it finish.
+     * While held, a control-surface write settles busy, and the save, the
+     * revert, a macro fire and a learn are refused. `Unsupported`, with no
+     * traffic, on anything but a simulated device.
+     */
+    @Throws(DspiException::class)
+    fun csDemoBusy(on: Boolean)
+
+    /**
      * The database at `db_path`: for the "Update Database" dialog. Reads the file.
      * Never fails: a file it cannot read is reported in
      * [`AutoEqDatabaseInfo::problem`].

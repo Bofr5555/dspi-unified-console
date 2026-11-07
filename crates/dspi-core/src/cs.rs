@@ -1032,6 +1032,7 @@ fn save_or_revert(inner: &mut Inner, cs: &mut CsState, save: bool) -> Result<Val
 }
 
 // -- WP CG16 --
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// On the demo device only: hold it in a running revert, or let it finish.
     /// While held it gives the refusals a real device has no steady way to show:

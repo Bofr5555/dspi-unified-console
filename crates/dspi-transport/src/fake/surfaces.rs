@@ -16,8 +16,10 @@
 //!
 //! - **Nothing is deferred.** A SET is applied before the transfer returns, so a
 //!   host never reads `CS_STATUS_PENDING`, and the single-deep handoff's `BUSY`
-//!   does not arise on its own. [`EXT_FAKE_CS_SIM`] holds the device in the state
-//!   that does refuse, a revert running.
+//!   does not arise on its own. [`EXT_FAKE_CS_SIM`](super::EXT_FAKE_CS_SIM) holds the device in the state
+//!   that does refuse, a revert running. There a SET settles `BUSY` at once, where
+//!   the firmware leaves it `PENDING` until the revert ends (main.c) and answers
+//!   `BUSY` to a second one of its kind.
 //! - **Pins.** A pin is checked against the other bindings and for being a GPIO
 //!   at all, as an RP2350 has them. The audio and control-interface claims are not
 //!   modelled (`ctrl_iface_check_pin`), as the rest of the fake accepts any pin. The
@@ -49,16 +51,6 @@ use dspi_proto::packets::{
 };
 
 use super::{FakeRemote, LIVE_BANDS, State};
-
-/// `REQ_EXTENSION` OUT sub-command only a [`FakeDevice`](super::FakeDevice)
-/// answers, as [`EXT_FAKE_VREG_SIM`](super::EXT_FAKE_VREG_SIM): one byte, nonzero
-/// to hold the device in a running revert (`control_surfaces_busy`), zero to let
-/// it finish. While held, a deferred SET settles `CS_STATUS_BUSY`, an aux SET
-/// changes nothing and leaves the status alone, and the save, the revert, a macro
-/// fire and a learn arm or cancel stall. It lets a client's demo show the refusals
-/// the firmware has no other way to give. A host checks for
-/// [`TransportKind::Fake`](crate::TransportKind::Fake) first.
-pub const EXT_FAKE_CS_SIM: u16 = 0xFFF3;
 
 const SUCCESS: u8 = st::PIN_CONFIG_SUCCESS as u8;
 const INVALID_PIN: u8 = st::PIN_CONFIG_INVALID_PIN as u8;
@@ -294,9 +286,9 @@ fn seed_nouns() -> Vec<CsNounDesc> {
         ),
         (
             g::CS_NOUN_OUTPUT_GAIN,
-            continuous(cont | ind, -15360, 5120, db, T_OUTPUT, 8),
+            continuous(cont | ind, -15360, 5120, db, T_OUTPUT, 9),
         ),
-        (g::CS_NOUN_OUTPUT_MUTE, flag(boolean, T_OUTPUT, 8)),
+        (g::CS_NOUN_OUTPUT_MUTE, flag(boolean, T_OUTPUT, 9)),
         (
             g::CS_NOUN_FILTER_FREQ,
             continuous(cont, 20, 20000, cs_unit::HZ, T_BAND, 17),
@@ -335,19 +327,19 @@ fn seed_nouns() -> Vec<CsNounDesc> {
             g::CS_NOUN_AUX_LEVEL,
             continuous(cont_rw, 0, 25600, pct, T_AUX, 16),
         ),
-        (g::CS_NOUN_LIMITER, flag(bool_rw, T_OUTPUT, 8)),
+        (g::CS_NOUN_LIMITER, flag(bool_rw, T_OUTPUT, 9)),
         (
             g::CS_NOUN_LIMITER_THRESHOLD,
-            continuous(cont_rw, -7680, 0, db, T_OUTPUT, 8),
+            continuous(cont_rw, -7680, 0, db, T_OUTPUT, 9),
         ),
         (
             g::CS_NOUN_LIMITER_RELEASE,
-            continuous(cont_rw, 10, 1000, cs_unit::MS_LOG, T_OUTPUT, 8),
+            continuous(cont_rw, 10, 1000, cs_unit::MS_LOG, T_OUTPUT, 9),
         ),
-        (g::CS_NOUN_LIMITER_LINK, choice(5, 0, enum_rw, T_OUTPUT, 8)),
+        (g::CS_NOUN_LIMITER_LINK, choice(5, 0, enum_rw, T_OUTPUT, 9)),
         (
             g::CS_NOUN_LIMITER_GR,
-            continuous(ind, 0, 7680, db, T_OUTPUT, 8),
+            continuous(ind, 0, 7680, db, T_OUTPUT, 9),
         ),
     ];
     let mut v = vec![CsNounDesc::default(); 79];
@@ -636,9 +628,10 @@ pub(super) struct Surfaces {
     macro_run: u8,
     macro_step: u8,
     shown_page: u8,
-    /// A running revert (`control_surfaces_busy`): [`EXT_FAKE_CS_SIM`].
+    /// A running revert (`control_surfaces_busy`): [`EXT_FAKE_CS_SIM`](super::EXT_FAKE_CS_SIM).
     busy: bool,
-    /// The live control-interface I2C instance, set before each SET applies.
+    /// The live control-interface I2C instance, set before each request: a
+    /// display checks it on a SET and on a revert.
     i2c_instance: Option<u8>,
 }
 
@@ -691,6 +684,13 @@ impl Surfaces {
             s.seed_aux(slot);
         }
         s
+    }
+
+    /// `cs_display_live_instance`: the I2C block a live display holds.
+    pub(super) fn display_instance(&self) -> Option<u8> {
+        self.slots()
+            .find(|(s, b)| b.component == TY_DISPLAY && self.is_active(*s))
+            .map(|(_, b)| (b.gpio[0] >> 1) & 1)
     }
 
     pub(super) fn set_busy(&mut self, on: bool) {
@@ -1297,40 +1297,86 @@ impl Surfaces {
             self.seed_aux(slot);
         }
         if old != ty && (is_aux(old) || is_aux(ty)) {
-            self.revalidate_references();
+            self.revalidate_aux(slot);
         }
         SUCCESS
     }
 
-    /// Bindings and commands that address a group or an aux slot go down when it
-    /// stops being valid and come back when it does again, and macros are
-    /// re-counted (`cs_revalidate_grouped_slot`, `cs_revalidate_aux_dependents`).
-    fn revalidate_references(&mut self) {
+    /// One binding pointing at what was just edited: a live one goes down if its
+    /// target stopped being valid, keeping its status otherwise only for an aux
+    /// target; one that is down gets the full check, pins included, and comes
+    /// back only if it passes (`cs_revalidate_grouped_slot`).
+    fn recheck(&mut self, slot: u8, b: &CsBinding, target_status: u8, keep_status: bool) {
+        let i = usize::from(slot);
+        if self.is_active(slot) {
+            if target_status != SUCCESS {
+                self.set_active(slot, false);
+                put(&mut self.slot_status, i, target_status);
+            } else if !keep_status {
+                put(&mut self.slot_status, i, SUCCESS);
+            }
+            return;
+        }
+        let st = self.check_binding(b, 0, slot);
+        self.set_active(slot, st == SUCCESS);
+        put(&mut self.slot_status, i, st);
+    }
+
+    /// After a group edit: only what names this group
+    /// (`control_surfaces_apply_group`).
+    fn revalidate_group(&mut self, group: u8) {
         for slot in 0..self.header.max_bindings {
             let Some(b) = self.live.bindings.get(usize::from(slot)).cloned() else {
                 continue;
             };
-            let refers = b.flags & FLAG_GROUP != 0 || matches!(b.noun, N_AUX | N_AUX_LEVEL);
-            if b.is_empty() || matches!(b.component, TY_IR | TY_DISPLAY) || !refers {
+            if matches!(b.component, TY_NONE | TY_IR)
+                || b.flags & FLAG_GROUP == 0
+                || b.target != group
+            {
                 continue;
             }
-            if is_aux(b.component) {
-                continue;
-            }
-            let st = if self.is_active(slot) {
-                if b.flags & FLAG_GROUP != 0 {
-                    self.check_group_ref(b.noun, b.target, b.index)
-                } else {
-                    self.check_target(b.noun, b.target, b.index)
-                }
-            } else {
-                self.check_binding(&b, 0, slot)
-            };
-            self.set_active(slot, st == SUCCESS);
-            put(&mut self.slot_status, usize::from(slot), st);
+            let st = self.check_group_ref(b.noun, b.target, b.index);
+            self.recheck(slot, &b, st, false);
         }
-        self.recount_ir();
+        self.recheck_ir(|c| c.flags & FLAG_GROUP != 0 && c.target == group);
         self.recount_macros();
+    }
+
+    /// After an aux slot appeared, vanished or changed kind: only what addresses
+    /// this slot (`cs_revalidate_aux_dependents`).
+    fn revalidate_aux(&mut self, aux_slot: u8) {
+        for slot in 0..self.header.max_bindings {
+            let Some(b) = self.live.bindings.get(usize::from(slot)).cloned() else {
+                continue;
+            };
+            if slot == aux_slot
+                || matches!(b.component, TY_NONE | TY_IR | TY_DISPLAY)
+                || is_aux(b.component)
+                || !matches!(b.noun, N_AUX | N_AUX_LEVEL)
+                || b.flags & FLAG_GROUP != 0
+                || b.target != aux_slot
+            {
+                continue;
+            }
+            let st = self.check_target(b.noun, b.target, b.index);
+            self.recheck(slot, &b, st, true);
+        }
+        self.recheck_ir(|c| {
+            matches!(c.noun, N_AUX | N_AUX_LEVEL)
+                && c.flags & FLAG_GROUP == 0
+                && c.target == aux_slot
+        });
+        self.recount_macros();
+    }
+
+    fn recheck_ir(&mut self, names_it: impl Fn(&IrCommand) -> bool) {
+        for sub in 0..self.live.ir.len() {
+            let st = match self.live.ir.get(sub) {
+                Some(c) if !c.is_empty() && names_it(c) => self.check_ir(c, &c.encode()),
+                _ => continue,
+            };
+            put(&mut self.ir_status, sub, st);
+        }
     }
 
     fn recount_ir(&mut self) {
@@ -1560,7 +1606,7 @@ impl Surfaces {
         }
         put(&mut self.live.groups, i, group);
         put(&mut self.group_status, i, SUCCESS);
-        self.revalidate_references();
+        self.revalidate_group(u8::try_from(i).unwrap_or(u8::MAX));
         SUCCESS
     }
 
@@ -1779,7 +1825,7 @@ impl Surfaces {
 
     /// `REQ_CS_SAVE`: `control_surfaces_aux_prepare_save`, then the store. The
     /// firmware's refusal is a request still queued, which reads as a stall here
-    /// while [`EXT_FAKE_CS_SIM`] holds the device.
+    /// while [`EXT_FAKE_CS_SIM`](super::EXT_FAKE_CS_SIM) holds the device.
     fn save_or_revert(&mut self, save: bool) -> Option<Vec<u8>> {
         if self.busy {
             (self.last_status, self.last_slot) = (BUSY, TAG_SAVE);
@@ -1937,7 +1983,10 @@ impl Surfaces {
 impl State {
     /// [`Surfaces::get`], when this device has them.
     pub(super) fn get_surface(&mut self, opcode: u8, value: u16) -> Option<Option<Vec<u8>>> {
-        self.surfaces.as_mut()?.get(opcode, value)
+        let i2c = self.i2c_ctrl_live_instance();
+        let surfaces = self.surfaces.as_mut()?;
+        surfaces.i2c_instance = i2c;
+        surfaces.get(opcode, value)
     }
 
     /// [`Surfaces::set`], when this device has them, with the aux change's
@@ -1991,6 +2040,7 @@ impl FakeRemote {
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_cg16 {
+    use super::super::EXT_FAKE_CS_SIM;
     use super::super::{Capture, FakeDevice, FakeOptions};
     use super::*;
     use crate::{Transport, TransportError};
@@ -2749,6 +2799,167 @@ mod tests_wp_cg16 {
             .unwrap();
         assert_eq!(status(&mut d).slot_status[5], INVALID_GROUP);
         assert_eq!(status(&mut d).active_mask & (1 << 5), 0);
+    }
+
+    /// Review w1e's sequence: `control_surfaces_apply_group` re-checks only what
+    /// names the edited group, so an unrelated one leaves slot 5 down.
+    #[test]
+    fn wp_cg16_only_the_edited_groups_bindings_are_rechecked() {
+        let mut d = FakeDevice::demo();
+        let group = |d: &mut FakeDevice, i: u16, g: &CsGroup| {
+            d.control_out(op::REQ_SET_CS_GROUP, i, &g.encode()).unwrap();
+            assert_eq!(status(d).last_status, SUCCESS);
+        };
+        let outputs = CsGroup {
+            target_kind: T_OUTPUT,
+            member_mask: 0b11,
+            name: String::new(),
+        };
+        let down = |d: &mut FakeDevice, slot: usize| {
+            let st = status(d);
+            (st.active_mask & (1 << slot) == 0, st.slot_status[slot])
+        };
+        group(&mut d, 1, &outputs);
+        let grouped = CsBinding {
+            noun: g::CS_NOUN_OUTPUT_MUTE as u8,
+            flags: FLAG_GROUP,
+            target: 1,
+            ..button(20)
+        };
+        assert_eq!(set(&mut d, 5, &grouped), SUCCESS);
+        group(&mut d, 1, &CsGroup::default());
+        assert_eq!(down(&mut d, 5), (true, INVALID_GROUP));
+        assert_eq!(set(&mut d, 6, &led(20)), SUCCESS, "its pin was released");
+        group(&mut d, 1, &outputs);
+        assert_eq!(down(&mut d, 5), (true, PIN_IN_USE));
+        assert_eq!(set(&mut d, 6, &CsBinding::default()), SUCCESS);
+        group(&mut d, 2, &outputs);
+        assert_eq!(down(&mut d, 5), (true, PIN_IN_USE), "another group's edit");
+        group(&mut d, 1, &outputs);
+        assert_eq!(down(&mut d, 5), (false, SUCCESS), "its own group's edit");
+    }
+
+    /// `cs_revalidate_aux_dependents`, the same for an aux slot.
+    #[test]
+    fn wp_cg16_only_the_edited_aux_slots_controls_are_rechecked() {
+        let mut d = FakeDevice::demo();
+        let on_slot_10 = binding(&mut d, 12);
+        assert_eq!(set(&mut d, 10, &CsBinding::default()), SUCCESS);
+        assert_eq!(status(&mut d).slot_status[12], INVALID_AUX);
+        let other = CsBinding {
+            component: TY_AUX_OUT,
+            gpio: [20, GPIO_UNUSED],
+            ..Default::default()
+        };
+        assert_eq!(set(&mut d, 9, &other), SUCCESS);
+        let st = status(&mut d);
+        assert_eq!(st.slot_status[12], INVALID_AUX, "another slot's edit");
+        assert_eq!(st.active_mask & (1 << 12), 0);
+        assert_eq!(binding(&mut d, 12), on_slot_10);
+        let aux = CsBinding {
+            gpio: [27, GPIO_UNUSED],
+            ..other
+        };
+        assert_eq!(set(&mut d, 10, &aux), SUCCESS);
+        assert_eq!(status(&mut d).slot_status[12], SUCCESS);
+    }
+
+    /// `NUM_OUTPUT_CHANNELS` is 9 (8 S/PDIF and the PDM): the last is a target, on
+    /// its own and as a group's member, and the next is not.
+    #[test]
+    fn wp_cg16_every_output_noun_reaches_the_ninth_output() {
+        let seed = surface_seed();
+        for noun in [
+            g::CS_NOUN_OUTPUT_GAIN,
+            g::CS_NOUN_OUTPUT_MUTE,
+            g::CS_NOUN_LIMITER,
+            g::CS_NOUN_LIMITER_THRESHOLD,
+            g::CS_NOUN_LIMITER_RELEASE,
+            g::CS_NOUN_LIMITER_LINK,
+            g::CS_NOUN_LIMITER_GR,
+        ] {
+            assert_eq!(seed.nouns[usize::from(noun)].target_count, 9, "noun {noun}");
+        }
+        let mut d = FakeDevice::demo();
+        let mute = CsBinding {
+            noun: g::CS_NOUN_OUTPUT_MUTE as u8,
+            ..button(5)
+        };
+        assert_eq!(
+            set(
+                &mut d,
+                5,
+                &CsBinding {
+                    target: 8,
+                    ..mute.clone()
+                }
+            ),
+            SUCCESS
+        );
+        assert_eq!(
+            set(
+                &mut d,
+                5,
+                &CsBinding {
+                    target: 9,
+                    ..mute.clone()
+                }
+            ),
+            INVALID_TARGET
+        );
+
+        let last_only = CsGroup {
+            target_kind: T_OUTPUT,
+            member_mask: 1 << 8,
+            name: String::new(),
+        };
+        d.control_out(op::REQ_SET_CS_GROUP, 1, &last_only.encode())
+            .unwrap();
+        assert_eq!(status(&mut d).last_status, SUCCESS);
+        let grouped = CsBinding {
+            flags: FLAG_GROUP,
+            target: 1,
+            ..mute
+        };
+        assert_eq!(set(&mut d, 5, &grouped), SUCCESS);
+    }
+
+    /// A revert checks the stored display against the I2C block as it is now
+    /// (`cs_validate_display_container`). The control interface can only have
+    /// taken that block while the display was off it (`i2c_ctrl_validate`).
+    #[test]
+    fn wp_cg16_a_revert_checks_the_display_against_the_live_i2c() {
+        let mut d = FakeDevice::demo();
+        let i2c1 = dspi_proto::packets::I2cCtrlConfig {
+            enabled: true,
+            sda_pin: 6,
+            scl_pin: 7,
+            address: 0x42,
+        };
+        let i2c = |d: &mut FakeDevice| {
+            let b = d.control_in(op::REQ_GET_I2C_CONFIG, 0, 8).unwrap();
+            dspi_proto::packets::I2cCtrlConfig::decode(&b)
+                .unwrap()
+                .enabled
+        };
+        // The display holds I2C1 (GPIO 2 and 3), so the interface is refused.
+        assert!(
+            d.control_out(op::REQ_SET_I2C_CONFIG, 0, &i2c1.encode())
+                .is_err()
+        );
+        assert!(!i2c(&mut d));
+
+        // Off the block, the interface gets it, and the stored display comes back
+        // down, kept in its slot.
+        assert_eq!(set(&mut d, 4, &CsBinding::default()), SUCCESS);
+        d.control_out(op::REQ_SET_I2C_CONFIG, 0, &i2c1.encode())
+            .unwrap();
+        assert!(i2c(&mut d));
+        d.control_in(op::REQ_CS_REVERT, 0, 1).unwrap();
+        let st = status(&mut d);
+        assert_eq!(st.active_mask & (1 << 4), 0);
+        assert_eq!(st.slot_status[4], I2C_IN_USE);
+        assert_eq!(binding(&mut d, 4).component, TY_DISPLAY);
     }
 
     #[test]

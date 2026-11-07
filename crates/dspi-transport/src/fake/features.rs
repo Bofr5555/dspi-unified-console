@@ -1036,6 +1036,14 @@ impl State {
                 if let Some(b) = data.get(..I2cCtrlConfig::SIZE)
                     && let Ok(cfg) = <[u8; I2cCtrlConfig::SIZE]>::try_from(b)
                 {
+                    // -- WP CG16 -- `i2c_ctrl_validate`: not the block a live
+                    // display holds.
+                    let display = self.surfaces.as_ref().and_then(|s| s.display_instance());
+                    let clash = I2cCtrlConfig::decode(&cfg)
+                        .is_ok_and(|c| c.enabled && display == Some((c.sda_pin >> 1) & 1));
+                    if clash {
+                        return Some(false);
+                    }
                     self.extras.i2c = cfg;
                 }
                 true
