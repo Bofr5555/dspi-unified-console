@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.util.concurrent.atomic.AtomicInteger
@@ -58,6 +59,7 @@ import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.core.DspiConstants
 import se.bofr.dspi.core.RtaCapsInfo
 import se.bofr.dspi.core.RtaChannelFrame
+import se.bofr.dspi.core.RtaOwnership
 import se.bofr.dspi.core.RtaSnapshot
 import se.bofr.dspi.ui.settings.AppSettings
 
@@ -494,10 +496,27 @@ internal val blurAvailable: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSI
 
 private val overlayIds = AtomicInteger(0x6A00)
 
+// -- WP AN34 --
+/** Test tag of the graph's spectrum overlay, naming the selection it draws ("out:0", "in:0,1"). */
+fun graphSpectrumTag(drawn: RtaChannelSelection): String = "graphSpectrum:${drawn.storageKey}"
+
+/**
+ * Swift `RtaEngine.effectiveSelection` (feature-analysis has the same for
+ * its views): the device's tap and channels while another console drives,
+ * null while this console does.
+ */
+fun followedSelection(ownership: RtaOwnership?): RtaChannelSelection? {
+    if (ownership == null || !ownership.following) return null
+    return RtaChannelSelection(ownership.tap, (0 until DspiConstants.RTA_MAX_CHANNELS).filter { (ownership.mask shr it) and 1 == 1 })
+}
+
 /**
  * The live spectrum for [selection] (channels at its tap), drawn as a
  * translucent fill under the curves in each channel's colour. Registers with
- * the analyser while shown; the analyser stops when nothing shows it.
+ * the analyser while shown; the analyser stops when nothing shows it. While
+ * another console drives the analyser it draws the device's channels but
+ * keeps registering [selection], so following never takes control (AN34,
+ * GraphSpectrumOverlay.swift:90).
  *
  * Three stacked layers in macOS order: fills, the glow (blurred, API 31+),
  * then edges and peak contours. The first layer builds the frame's paths in
@@ -522,11 +541,14 @@ fun GraphSpectrumOverlay(
     // Read in the draw phase only: an analyser frame redraws the Canvas, nothing recomposes.
     val snapshot = rta.snapshot.collectAsStateWithLifecycle()
     val stateRev by bridge.stateRevision.collectAsStateWithLifecycle()
+    val ownership by rta.ownership.collectAsStateWithLifecycle()
     val c = caps ?: return
     if (!c.supported) return
-    val channels = selection.channels
+    // Swift `drawn(own:followed:)`: drawing only, the registration above stays ours
+    val drawn = followedSelection(ownership) ?: selection
+    val channels = drawn.channels
     if (channels.isEmpty()) return
-    val colours = remember(selection, stateRev) { channels.map { rtaColour(bridge, selection.tap, it) } }
+    val colours = remember(drawn, stateRev) { channels.map { rtaColour(bridge, drawn.tap, it) } }
     val cache = remember { SpectrumRenderCache() }
     // Interpolate at the display rate while Smoothing is on (macOS TimelineView(.animation)).
     val frameNanos = remember { mutableLongStateOf(0L) }
@@ -537,13 +559,13 @@ fun GraphSpectrumOverlay(
         }
     }
     val opacity = settings.rtaGraphOpacity.toFloat()
-    Box(modifier) {
+    Box(modifier.testTag(graphSpectrumTag(drawn))) {
         // Layer 1: build the frame, draw the fills.
         Canvas(Modifier.fillMaxSize()) {
             frameNanos.longValue
             cache.drawn.clear()
             val snap = snapshot.value ?: return@Canvas
-            if (snap.tap != selection.tap) return@Canvas
+            if (snap.tap != drawn.tap) return@Canvas
             val d = density
             val wDp = size.width / d
             val hDp = size.height / d

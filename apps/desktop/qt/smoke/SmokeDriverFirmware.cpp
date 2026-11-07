@@ -276,8 +276,16 @@ void SmokeDriver::testFirmware() {
     expect(QStringLiteral("the demo device is not a board: no banner"), fw->match() == 1);
     expect(QStringLiteral("and it can't be rebooted"), !fw->canReboot() && !fw->rebootBlocked().isEmpty());
     fw->setTestSeam(seam);
-    expect(QStringLiteral("another version shows the banner"), fw->match() == 2);
+    // -- WP CG27 -- the demo runs the bundled release, so an older one stands in
+    expect(QStringLiteral("the demo runs the bundled version: no banner even as a board"), running == "1.1.6" && fw->match() == 1);
     expect(QStringLiteral("the core compares, build stamp included"), dspi_firmware_version_matches(core, (running + "-20-g04122d3").constData()) == 1);
+    b->setDemoWire(31);
+    b->selectDevice(demo);
+    spin(100);
+    expect(QStringLiteral("another version shows the banner"), versionOf(dspi_get_state(core)) == "1.1.6-beta3" && fw->match() == 2);
+    b->setDemoWire(0);
+    b->selectDevice(demo);
+    spin(100);
 
     // ── Wrong chip: refused before any question, read or reboot ──
     start(wrongChip);
@@ -499,7 +507,8 @@ void SmokeDriver::testFirmware() {
     drive = newDrive();
     bus->mount(drive);
     expect(QStringLiteral("the RP2350 image goes on the drive"), waitFor(3000, [&]() { return onDrive(drive) == bundled(1); }));
-    expect(QStringLiteral("1.1.6 written and an older version back did not take"), waitState("failed", 5000) && fw->failure().contains(QLatin1String("did not take")));
+    // -- WP CG27 -- the demo runs the bundled 1.1.6, so it comes back confirmed
+    expect(QStringLiteral("1.1.6 written and 1.1.6 back is confirmed"), waitState("verified", 5000) && fw->verifiedVersion().startsWith(QLatin1String("1.1.6")));
 
     start();
     drive = newDrive(0);
