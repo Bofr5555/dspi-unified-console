@@ -26,6 +26,10 @@ else()
     find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Quick QuickControls2 Qml Network)
 endif()
 message(STATUS "Building against Qt ${QT_VERSION}")
+# -- WP QD8 -- Linux keeps Link tokens through the Secret Service, over D-Bus
+if(UNIX AND NOT APPLE)
+    find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS DBus)
+endif()
 
 # The Rust core (dspi-core). Build it first with cargo; these say where its
 # header and library are. DSPI_RUST_TARGET is the cargo --target triple when
@@ -72,6 +76,9 @@ set(DSPI_APP_SOURCES
     src/WindowEffects.cpp
     # -- WP QD2 --
     src/ExtController.cpp
+    # -- WP QD8 --
+    src/LinkController.cpp
+    src/TokenStore.cpp
     resources.qrc
 )
 add_executable(DSPiConsole ${DSPI_APP_SOURCES})
@@ -79,12 +86,12 @@ add_executable(DSPiConsole ${DSPI_APP_SOURCES})
 # The app with its offscreen test driver (ci/check.sh --step qt-offscreen).
 option(DSPI_SMOKE "Also build DSPiConsoleSmoke, the app with its test driver" OFF)
 if(DSPI_SMOKE)
-    add_executable(DSPiConsoleSmoke ${DSPI_APP_SOURCES} smoke/SmokeDriver.cpp smoke/SmokeDriverHw.cpp smoke/SmokeDriverReplug.cpp smoke/SmokeDriverSeam.cpp smoke/SmokeDriverExt.cpp smoke/SmokeDriverNames.cpp smoke/SmokeDriverLatency.cpp smoke/SmokeDriverReadOnly.cpp smoke/SmokeDriver.h smoke/smoke.qrc)
+    add_executable(DSPiConsoleSmoke ${DSPI_APP_SOURCES} smoke/SmokeDriver.cpp smoke/SmokeDriverHw.cpp smoke/SmokeDriverReplug.cpp smoke/SmokeDriverSeam.cpp smoke/SmokeDriverExt.cpp smoke/SmokeDriverNames.cpp smoke/SmokeDriverLatency.cpp smoke/SmokeDriverLink.cpp smoke/SmokeDriverReadOnly.cpp smoke/SmokeDriver.h smoke/smoke.qrc)
     target_include_directories(DSPiConsoleSmoke PRIVATE ${DSPI_CORE_DIR}/include src/ smoke/)
     target_compile_definitions(DSPiConsoleSmoke PRIVATE DSPI_SMOKE)
     target_link_libraries(DSPiConsoleSmoke PRIVATE
-        Qt::Core Qt::Gui Qt::Widgets Qt::Quick Qt::QuickControls2 Qt::Qml Qt::Network
-        ${DSPI_CORE_LIBDIR}/lib${DSPI_CORE_LIB}.a pthread dl m)
+        Qt::Core Qt::Gui Qt::Widgets Qt::Quick Qt::QuickControls2 Qt::Qml Qt::Network Qt::DBus
+        ${DSPI_CORE_LIBDIR}/lib${DSPI_CORE_LIB}.a pthread dl m asound)
 endif()
 
 target_include_directories(DSPiConsole PRIVATE
@@ -104,6 +111,8 @@ if(WIN32)
     set_target_properties(DSPiConsole PROPERTIES WIN32_EXECUTABLE ON)
     # Windows 11 rounded corners for the frameless windows (WindowEffects)
     target_link_libraries(DSPiConsole PRIVATE dwmapi)
+    # -- WP QD8 -- Link tokens in Credential Manager
+    target_link_libraries(DSPiConsole PRIVATE advapi32)
 
     # Windows: the core is a DLL (dspi_capi.dll) next to the exe, linked
     # through cargo's import library
@@ -144,9 +153,12 @@ if(APPLE)
     find_library(OBJC objc)
     target_link_libraries(DSPiConsole PRIVATE ${IOKIT} ${CF} ${SEC} ${OBJC}
         "-framework SystemConfiguration")
+    # -- WP QD8 -- The core's MIDI ports (midir)
+    target_link_libraries(DSPiConsole PRIVATE "-framework CoreMIDI" "-framework CoreAudio")
 elseif(UNIX)
-    # Linux: the core talks to usbfs itself (nusb); it needs only these
-    target_link_libraries(DSPiConsole PRIVATE pthread dl m)
+    # Linux: the core talks to usbfs itself (nusb); it needs only these, and ALSA
+    # for its MIDI ports (midir). -- WP QD8 --
+    target_link_libraries(DSPiConsole PRIVATE pthread dl m asound Qt::DBus)
 
     # Optional: KDE blur-behind support
     # KF5 with Qt 5, KF6 with Qt 6

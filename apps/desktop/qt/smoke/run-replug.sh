@@ -26,7 +26,7 @@ if [ "$count" != 1 ]; then
     exit 2
 fi
 
-ci/run.sh "cargo build --release -p dspi-capi && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt6-smoke --target DSPiConsoleSmoke"
+ci/run.sh "cargo build --release -p dspi-capi --features link,midir,mdns && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt6-smoke --target DSPiConsoleSmoke"
 
 # The node changes on every replug, so the whole of /dev/bus/usb (one devtmpfs, so
 # new nodes show up; `dev` because a volume is nodev by default) and real sysfs
