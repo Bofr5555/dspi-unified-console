@@ -3,15 +3,19 @@
 //! Every section is the Console's, in the Console's order, with its labels and
 //! its value strings. What is on screen is a projection of
 //! [`actions::Stats`](crate::actions::Stats), which the runner refreshes every
-//! two seconds while this panel is open; the panel itself never talks to the
-//! device, so a stale reading is visibly stale rather than silently invented.
+//! two seconds while this panel is open, so a stale reading is visibly stale
+//! rather than silently invented. The exception is Output Ring Health and the
+//! fills scaled to it, which the panel's own poll reads through
+//! [`dspi_session::ring_health`] on that same cadence (WP TM16).
 //!
 //! A section whose read stalled is not drawn at all, which is how the Console
 //! hides ADAT on an RP2040 and the S/PDIF section on firmware without it:
 //! absent features are removed, not disabled.
 
 use crossterm::event::{KeyCode, KeyEvent};
-use dspi_session::DeviceState;
+use dspi_session::ring_health::{self, FillBand, OutputFill, RingHealth};
+use dspi_session::{DeviceState, Session};
+use dspi_transport::Transport;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -102,15 +106,21 @@ pub enum Row {
         over: Option<u32>,
         under: Option<u32>,
     },
-    /// A fill percentage with its min-max watermarks and the last few
-    /// readings as a sparkline, oldest first.
+    /// A fill percentage in its colour, with its min-max watermarks and the
+    /// last few readings as a sparkline, oldest first, each in its colour.
     Fill {
         label: String,
         pct: u8,
         min: u8,
         max: u8,
-        kind: FillKind,
-        history: Vec<Option<u8>>,
+        tone: StatusTone,
+        history: Vec<Option<(u8, StatusTone)>>,
+    },
+    /// `Label ......... value`, the value in `tone` once it has left zero.
+    Count {
+        label: String,
+        value: u32,
+        tone: StatusTone,
     },
     /// A row of little state dots: Audio Streaming, PDM Active.
     Flags(Vec<(String, bool)>),
@@ -180,14 +190,164 @@ fn source_name(s: dspi_proto::enums::InputSource) -> &'static str {
     }
 }
 
+/// How the panel's one-second poll reaches the ring reads: every second poll,
+/// the two seconds of the Console's `pollTimer` and of [`FOOTER`]. One pass is
+/// nine transfers, seven of them [`ring_health::read_ring_health`].
+const RING_READ_EVERY: u32 = 2;
+
+/// `formatLatencyMs`: "0.67 ms", "4 ms".
+fn latency_ms(us: u16) -> String {
+    if us.is_multiple_of(1000) {
+        format!("{} ms", us / 1000)
+    } else {
+        format!("{:.2} ms", f64::from(us) / 1000.0)
+    }
+}
+
+/// `formatGapUs`: microseconds below 10 ms, milliseconds above.
+fn gap_text(us: u32) -> String {
+    if us < 10_000 {
+        format!("{us} µs")
+    } else {
+        format!("{:.1} ms", f64::from(us) / 1000.0)
+    }
+}
+
+fn band_tone(band: FillBand) -> StatusTone {
+    match band {
+        FillBand::Good => StatusTone::Ok,
+        FillBand::Warn => StatusTone::Warning,
+        FillBand::Bad => StatusTone::Danger,
+    }
+}
+
+/// A fill as a whole percentage, the way a row shows it. The firmware's scale
+/// can pass 100 (`OutputFill::fill_pct`); the cast saturates at `u8::MAX`.
+fn whole_pct(pct: f64) -> u8 {
+    pct.round() as u8
+}
+
+/// The rings' state as the panel last read it. A failed read leaves it alone;
+/// firmware that says it has no such status hides the section.
+#[derive(Debug, Default)]
+struct RingReadings {
+    /// `None` hides the section.
+    health: Option<RingHealth>,
+    /// The live outputs' fills, on the ring's scale and judged by its target.
+    fills: Vec<OutputFill>,
+    /// The fills of the last few reads, oldest first, one series per output.
+    /// `None` is a read where that output was not live or no reading came back.
+    history: [Vec<Option<(u8, StatusTone)>>; 4],
+}
+
+impl RingReadings {
+    fn refresh(&mut self, t: &mut dyn Transport) {
+        if let Ok(health) = ring_health::read_ring_health(t) {
+            self.health = health;
+        }
+        let read = ring_health::read_output_fills(t);
+        if let Ok(fills) = &read {
+            self.fills.clone_from(fills);
+        }
+        let fresh = read.as_deref().unwrap_or_default();
+        for (i, series) in self.history.iter_mut().enumerate() {
+            series.push(
+                fresh
+                    .get(i)
+                    .map(|f| (whole_pct(f.fill_pct), band_tone(f.band))),
+            );
+            if series.len() > FillHistory::LEN {
+                series.remove(0);
+            }
+        }
+    }
+}
+
 pub struct StatsPanel {
     shared: Shared,
     first: usize,
+    ring: RingReadings,
+    /// Polls until the next ring read; 0 means the next poll reads.
+    ring_wait: u32,
+    /// Whose readings `ring` holds: another device's or firmware's must not
+    /// stay on screen under this one's name.
+    ring_device: Option<(String, String)>,
 }
 
 impl StatsPanel {
     pub fn new(shared: Shared) -> Self {
-        Self { shared, first: 0 }
+        Self {
+            shared,
+            first: 0,
+            ring: RingReadings::default(),
+            ring_wait: 0,
+            ring_device: None,
+        }
+    }
+
+    /// The Console's `ringHealthSection`, `StatsView.swift:1080-1106`.
+    fn ring_section(health: &RingHealth) -> Vec<Row> {
+        let count = |label: &str, value, tone| Row::Count {
+            label: label.into(),
+            value,
+            tone,
+        };
+        vec![
+            Row::Blank,
+            Row::section("Output Ring Health"),
+            Row::info(
+                "Fill Target",
+                format!(
+                    "{} frames ({})",
+                    health.target.target_frames,
+                    latency_ms(health.target.target_us)
+                ),
+            ),
+            count(
+                "Underrun Episodes",
+                health.underrun_episodes,
+                StatusTone::Danger,
+            ),
+            count("Refused Blocks", health.refused_blocks, StatusTone::Warning),
+            Row::info(
+                "Lowest Fill",
+                health
+                    .lowest_fill
+                    .map_or_else(|| "-".into(), |f| format!("{f} frames")),
+            ),
+            Row::info("Worst Input Gap", gap_text(health.worst_input_gap_us)),
+            Row::info("Worst USB Gap", gap_text(health.worst_usb_gap_us)),
+            count(
+                "Over-Budget Steps",
+                health.over_budget_steps,
+                StatusTone::Warning,
+            ),
+        ]
+    }
+
+    /// One output's row: the ring-scaled reading once the panel has one, and
+    /// until then the buffer read's own numbers on the firmware's scale.
+    fn output_row(&self, i: usize, b: &dspi_proto::packets::BufferStatsPacket, s: &Stats) -> Row {
+        let label = format!("Out {}/{}", i * 2 + 1, i * 2 + 2);
+        if let Some(f) = self.ring.fills.get(i) {
+            return Row::Fill {
+                label,
+                pct: whole_pct(f.fill_pct),
+                min: f.min_pct,
+                max: f.max_pct,
+                tone: band_tone(f.band),
+                history: self.ring.history[i].clone(),
+            };
+        }
+        let f = &b.spdif[i];
+        fill_row(
+            label,
+            f.consumer_fill_pct,
+            f.consumer_min_fill_pct,
+            f.consumer_max_fill_pct,
+            FillKind::Spdif,
+            &s.fill_history.series[i],
+        )
     }
 
     /// The panel's three columns, as the Console lays them out
@@ -271,6 +431,12 @@ impl StatsPanel {
             under: Some(s.spdif_under),
         });
 
+        // Between the two as in the Console (`StatsView.swift:835-838`), and
+        // only on firmware that answers the status.
+        if let Some(health) = &self.ring.health {
+            a.extend(Self::ring_section(health));
+        }
+
         a.push(Row::Blank);
         a.push(Row::section("PDM (Subwoofer)"));
         a.push(Row::Counters {
@@ -322,33 +488,25 @@ impl StatsPanel {
                 ("PDM Active".into(), b.pdm_active()),
             ]));
             for i in 0..(b.num_spdif as usize).min(4) {
-                let f = &b.spdif[i];
-                mid.push(Row::Fill {
-                    label: format!("Out {}/{}", i * 2 + 1, i * 2 + 2),
-                    pct: f.consumer_fill_pct,
-                    min: f.consumer_min_fill_pct,
-                    max: f.consumer_max_fill_pct,
-                    kind: FillKind::Spdif,
-                    history: s.fill_history.series[i].clone(),
-                });
+                mid.push(self.output_row(i, b, s));
             }
             if b.pdm_active() {
-                mid.push(Row::Fill {
-                    label: "PDM DMA".into(),
-                    pct: b.pdm.dma_fill_pct,
-                    min: b.pdm.dma_min_fill_pct,
-                    max: b.pdm.dma_max_fill_pct,
-                    kind: FillKind::PdmDma,
-                    history: s.fill_history.series[FillHistory::PDM_DMA].clone(),
-                });
-                mid.push(Row::Fill {
-                    label: "PDM Ring".into(),
-                    pct: b.pdm.ring_fill_pct,
-                    min: b.pdm.ring_min_fill_pct,
-                    max: b.pdm.ring_max_fill_pct,
-                    kind: FillKind::PdmRing,
-                    history: s.fill_history.series[FillHistory::PDM_RING].clone(),
-                });
+                mid.push(fill_row(
+                    "PDM DMA".into(),
+                    b.pdm.dma_fill_pct,
+                    b.pdm.dma_min_fill_pct,
+                    b.pdm.dma_max_fill_pct,
+                    FillKind::PdmDma,
+                    &s.fill_history.series[FillHistory::PDM_DMA],
+                ));
+                mid.push(fill_row(
+                    "PDM Ring".into(),
+                    b.pdm.ring_fill_pct,
+                    b.pdm.ring_min_fill_pct,
+                    b.pdm.ring_max_fill_pct,
+                    FillKind::PdmRing,
+                    &s.fill_history.series[FillHistory::PDM_RING],
+                ));
             }
         }
 
@@ -540,6 +698,28 @@ impl StatsPanel {
     }
 }
 
+/// A fill row judged by a fixed table.
+fn fill_row(
+    label: String,
+    pct: u8,
+    min: u8,
+    max: u8,
+    kind: FillKind,
+    history: &[Option<u8>],
+) -> Row {
+    Row::Fill {
+        label,
+        pct,
+        min,
+        max,
+        tone: kind.tone(pct),
+        history: history
+            .iter()
+            .map(|v| v.map(|v| (v, kind.tone(v))))
+            .collect(),
+    }
+}
+
 /// A reading from 0 to 100 % in eight steps.
 const SPARK: [&str; 8] = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
 const SPARK_ASCII: [&str; 8] = ["_", ".", ",", "-", "~", "=", "*", "#"];
@@ -611,38 +791,54 @@ fn polls_text(polls: Option<u32>) -> String {
     }
 }
 
-fn draw_row(area: Rect, buf: &mut Buffer, theme: &Theme, row: &Row) {
+/// `Label ......... value`: the leader is what keeps a long column of pairs
+/// readable at a glance. A value too long for a narrow column (a development
+/// build's describe) gives way to its label.
+fn draw_pair(area: Rect, buf: &mut Buffer, theme: &Theme, label: &str, value: &str, style: Style) {
     let w = area.width as usize;
+    let value = &truncate(value, w.saturating_sub(label.chars().count() + 4).max(1));
+    let used = label.chars().count() + value.chars().count() + 4;
+    buf.set_string(
+        area.x + 1,
+        area.y,
+        truncate(label, w.saturating_sub(2)),
+        theme.value(),
+    );
+    if w > used {
+        let dots = "·".repeat(w - used);
+        buf.set_string(
+            area.x + 2 + label.chars().count() as u16,
+            area.y,
+            &dots,
+            theme.label(),
+        );
+    }
+    buf.set_string(
+        area.x + area.width - value.chars().count() as u16 - 1,
+        area.y,
+        value,
+        style,
+    );
+}
+
+fn draw_row(area: Rect, buf: &mut Buffer, theme: &Theme, row: &Row) {
+    let tone_color = |tone: StatusTone| match tone {
+        StatusTone::Ok => theme.ok,
+        StatusTone::Warning => theme.warning,
+        StatusTone::Danger => theme.danger,
+        StatusTone::Neutral => theme.dim,
+    };
     match row {
         Row::Blank => {}
         Row::Section(title) => SectionHeader::new(title, theme).render(area, buf),
-        Row::Info { label, value } => {
-            // `Label ......... value`: the leader is what keeps a long column
-            // of pairs readable at a glance. A value too long for a narrow
-            // column (a development build's describe) gives way to its label.
-            let value = &truncate(value, w.saturating_sub(label.chars().count() + 4).max(1));
-            let used = label.chars().count() + value.chars().count() + 4;
-            buf.set_string(
-                area.x + 1,
-                area.y,
-                truncate(label, w.saturating_sub(2)),
-                theme.value(),
-            );
-            if w > used {
-                let dots = "·".repeat(w - used);
-                buf.set_string(
-                    area.x + 2 + label.chars().count() as u16,
-                    area.y,
-                    &dots,
-                    theme.label(),
-                );
-            }
-            buf.set_string(
-                area.x + area.width - value.chars().count() as u16 - 1,
-                area.y,
-                value,
-                theme.value(),
-            );
+        Row::Info { label, value } => draw_pair(area, buf, theme, label, value, theme.value()),
+        Row::Count { label, value, tone } => {
+            let style = if *value > 0 {
+                Style::default().fg(tone_color(*tone))
+            } else {
+                theme.value()
+            };
+            draw_pair(area, buf, theme, label, &value.to_string(), style);
         }
         Row::Pill { label, text, tone } => {
             buf.set_string(area.x + 1, area.y, label, theme.value());
@@ -685,24 +881,18 @@ fn draw_row(area: Rect, buf: &mut Buffer, theme: &Theme, row: &Row) {
             pct,
             min,
             max,
-            kind,
+            tone,
             history,
         } => {
             // The Console's row: name, then the history, then the watermarks
             // (lowest and highest since the last reset) and the reading in
             // its threshold colour (`StatsView.swift`, `BufferFillRow`).
-            let tone_color = |v: u8| match kind.tone(v) {
-                StatusTone::Ok => theme.ok,
-                StatusTone::Warning => theme.warning,
-                StatusTone::Danger => theme.danger,
-                StatusTone::Neutral => theme.dim,
-            };
             let marks = format!("{min}-{max}%");
             let reading = format!("{pct:>3}%");
             buf.set_string(area.x + 1, area.y, fit_left(label, 9), theme.value());
             let right = area.x + area.width - 1;
             let rx = right.saturating_sub(reading.chars().count() as u16);
-            buf.set_string(rx, area.y, &reading, Style::default().fg(tone_color(*pct)));
+            buf.set_string(rx, area.y, &reading, Style::default().fg(tone_color(*tone)));
             let mx = rx.saturating_sub(marks.chars().count() as u16 + 2);
             buf.set_string(mx, area.y, &marks, theme.label());
             // One cell per two-second reading, newest on the right, each in
@@ -711,7 +901,7 @@ fn draw_row(area: Rect, buf: &mut Buffer, theme: &Theme, row: &Row) {
             let room = mx.saturating_sub(sx + 1) as usize;
             let shown = &history[history.len().saturating_sub(room.min(FillHistory::LEN))..];
             for (i, v) in shown.iter().enumerate() {
-                let Some(v) = v else { continue };
+                let Some((v, tone)) = v else { continue };
                 let level = (*v as usize * 7 + 50) / 100;
                 let sym = if theme.glyphs == Glyphs::Ascii {
                     SPARK_ASCII[level.min(7)]
@@ -720,7 +910,7 @@ fn draw_row(area: Rect, buf: &mut Buffer, theme: &Theme, row: &Row) {
                 };
                 buf[(sx + i as u16, area.y)]
                     .set_symbol(sym)
-                    .set_style(Style::default().fg(tone_color(*v)));
+                    .set_style(Style::default().fg(tone_color(*tone)));
             }
         }
         Row::Flags(flags) => {
@@ -852,6 +1042,28 @@ impl Screen for StatsPanel {
         }
     }
 
+    /// Read the rings on the two-second cadence. A connection to another
+    /// device or firmware starts again, at once.
+    fn poll(&mut self, session: &mut Session, state: &DeviceState) {
+        if !state.connected {
+            return;
+        }
+        let same = self.ring_device.as_ref().is_some_and(|(serial, firmware)| {
+            *serial == state.caps.serial && *firmware == state.caps.firmware
+        });
+        if !same {
+            self.ring = RingReadings::default();
+            self.ring_wait = 0;
+            self.ring_device = Some((state.caps.serial.clone(), state.caps.firmware.clone()));
+        }
+        if self.ring_wait > 0 {
+            self.ring_wait -= 1;
+            return;
+        }
+        self.ring_wait = RING_READ_EVERY - 1;
+        self.ring.refresh(session.transport_mut());
+    }
+
     fn handle(&mut self, key: KeyEvent, _state: &DeviceState) -> ScreenEvent {
         match key.code {
             KeyCode::Up => {
@@ -876,7 +1088,11 @@ impl Screen for StatsPanel {
             }
             // `diag.buffers.reset` is a trigger, so it goes through the same
             // command path as everything else and lands on the echo line.
-            KeyCode::Char('r') => ScreenEvent::Command("diag.buffers.reset".into()),
+            KeyCode::Char('r') => {
+                // Show the cleared watermarks on the next poll, not a cycle on.
+                self.ring_wait = 0;
+                ScreenEvent::Command("diag.buffers.reset".into())
+            }
             _ => ScreenEvent::Unhandled,
         }
     }
@@ -1226,6 +1442,472 @@ mod tests {
                 .lines()
                 .any(|l| l.contains("DEVICE INFORMATION") && l.contains("S/PDIF INPUT"));
             assert_eq!(beside, w == 120, "{w}x{h}:\n{f}");
+        }
+    }
+
+    mod wp_tm16 {
+        use super::*;
+        use crate::live::{ConsoleScreens, Live};
+        use crate::perf::Performance;
+        use crate::shell::Screen;
+        use crate::theme::ColorDepth;
+        use dspi_proto::generated::opcodes as op;
+        use dspi_session::ring_health::RingTarget;
+        use dspi_transport::{
+            DeviceDescriptor, FakeDevice, MockTransport, Result as TransportResult, TransportError,
+        };
+        use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+        use std::sync::{Arc, Mutex};
+
+        /// What a test can do to a live link from outside it.
+        #[derive(Clone, Default)]
+        struct Knobs {
+            /// Every transfer fails, as a dropped link does.
+            down: Arc<AtomicBool>,
+            /// `REQ_OUTPUT_LATENCY` stalls, as older firmware does.
+            no_status: Arc<AtomicBool>,
+            /// Transfers that reached the device.
+            transfers: Arc<AtomicU32>,
+            /// `REQ_RESET_BUFFER_STATS` requests that reached the device.
+            resets: Arc<AtomicU32>,
+            /// Replaces `REQ_GET_BUFFER_STATS`.
+            buffer_stats: Arc<Mutex<Option<Vec<u8>>>>,
+        }
+
+        struct Link {
+            fake: FakeDevice,
+            knobs: Knobs,
+        }
+
+        impl Transport for Link {
+            fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> TransportResult<Vec<u8>> {
+                self.knobs.transfers.fetch_add(1, Ordering::SeqCst);
+                if self.knobs.down.load(Ordering::SeqCst) {
+                    return Err(TransportError::Disconnected);
+                }
+                if opcode == op::REQ_RESET_BUFFER_STATS {
+                    self.knobs.resets.fetch_add(1, Ordering::SeqCst);
+                }
+                if opcode == op::REQ_OUTPUT_LATENCY && self.knobs.no_status.load(Ordering::SeqCst) {
+                    return Err(TransportError::Stalled { opcode });
+                }
+                if opcode == op::REQ_GET_BUFFER_STATS
+                    && let Some(raw) = self.knobs.buffer_stats.lock().unwrap().clone()
+                {
+                    return Ok(raw);
+                }
+                self.fake.control_in(opcode, value, len)
+            }
+            fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> TransportResult<()> {
+                self.fake.control_out(opcode, value, data)
+            }
+            fn descriptor(&self) -> &DeviceDescriptor {
+                self.fake.descriptor()
+            }
+        }
+
+        fn open(knobs: &Knobs) -> (Session, DeviceState) {
+            let mut t: Box<dyn Transport> = Box::new(Link {
+                fake: FakeDevice::demo(),
+                knobs: knobs.clone(),
+            });
+            let caps = dspi_session::probe(t.as_mut()).unwrap();
+            let mut session = Session::new(t, caps.clone()).unwrap();
+            let bulk = session.snapshot().unwrap();
+            (session, DeviceState::new(caps, bulk))
+        }
+
+        /// A panel on the demo device, its stats read and its rings polled once.
+        fn demo(knobs: &Knobs) -> (StatsPanel, Session, DeviceState) {
+            let (mut session, state) = open(knobs);
+            let shared = shared();
+            let stats = crate::actions::read_stats(&mut session, &state, &Stats::default());
+            shared.borrow_mut().stats = stats;
+            let mut p = StatsPanel::new(shared);
+            p.poll(&mut session, &state);
+            (p, session, state)
+        }
+
+        fn rows(p: &StatsPanel, state: &DeviceState) -> Vec<Row> {
+            p.rows(state, &p.shared.borrow().stats.clone())
+        }
+
+        fn value(rows: &[Row], want: &str) -> Option<String> {
+            rows.iter().find_map(|r| match r {
+                Row::Info { label, value } if label == want => Some(value.clone()),
+                Row::Count { label, value, .. } if label == want => Some(value.to_string()),
+                _ => None,
+            })
+        }
+
+        fn fill(rows: &[Row], want: &str) -> (u8, u8, u8, StatusTone) {
+            rows.iter()
+                .find_map(|r| match r {
+                    Row::Fill {
+                        label,
+                        pct,
+                        min,
+                        max,
+                        tone,
+                        ..
+                    } if label == want => Some((*pct, *min, *max, *tone)),
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("no fill row {want}: {rows:?}"))
+        }
+
+        /// `BufferStatsPacket` with two live outputs at these 0.01% values of
+        /// the firmware's 768-frame scale.
+        fn buffer_stats(centi: [u16; 2]) -> Vec<u8> {
+            let mut raw = vec![0u8; dspi_proto::packets::BufferStatsPacket::SIZE];
+            raw[0] = 2;
+            for (i, c) in centi.iter().enumerate() {
+                let e = &mut raw[4 + i * 8..4 + (i + 1) * 8];
+                let pct = (c / 100) as u8;
+                (e[3], e[4], e[5]) = (pct, pct, pct);
+                e[6..8].copy_from_slice(&c.to_le_bytes());
+            }
+            raw
+        }
+
+        fn health() -> RingHealth {
+            RingHealth {
+                target: RingTarget {
+                    target_frames: 96,
+                    target_us: 2000,
+                    batch_frames: 48,
+                },
+                underrun_episodes: 3,
+                refused_blocks: 4,
+                lowest_fill: Some(17),
+                worst_input_gap_us: 9_999,
+                worst_usb_gap_us: 12_345,
+                over_budget_steps: 5,
+            }
+        }
+
+        #[test]
+        fn wp_tm16_the_section_renders_on_the_demo_device() {
+            let knobs = Knobs::default();
+            let (mut p, _session, state) = demo(&knobs);
+            let f = testing::draw(&mut p, &state, 100, 90);
+            for want in [
+                "OUTPUT RING HEALTH",
+                "Fill Target",
+                "Underrun Episodes",
+                "Refused Blocks",
+                "Lowest Fill",
+                "Worst Input Gap",
+                "Worst USB Gap",
+                "Over-Budget Steps",
+            ] {
+                assert!(f.contains(want), "missing {want}:\n{f}");
+            }
+            let rows = rows(&p, &state);
+            let frames = p.ring.health.unwrap().target.target_frames;
+            assert!(
+                value(&rows, "Fill Target")
+                    .unwrap()
+                    .starts_with(&format!("{frames} frames (")),
+                "{rows:?}"
+            );
+            // The demo's rings have not been written to yet.
+            assert_eq!(value(&rows, "Lowest Fill").unwrap(), "-");
+            assert_eq!(value(&rows, "Worst USB Gap").unwrap(), "0 µs");
+            // Between Audio Output and PDM, as in the Console.
+            let at = |t: &str| rows.iter().position(|r| *r == Row::section(t)).unwrap();
+            assert!(at("Audio Output") < at("Output Ring Health"));
+            assert!(at("Output Ring Health") < at("PDM (Subwoofer)"));
+        }
+
+        /// The demo's rings sit at their target. At 2 ms, the firmware's scale
+        /// and the fixed table read that as drifting; on the ring's scale,
+        /// against the target, it is where it should be.
+        #[test]
+        fn wp_tm16_the_demo_device_fills_are_ring_scaled_and_judged_by_the_target() {
+            let knobs = Knobs::default();
+            let (mut session, state) = open(&knobs);
+            session
+                .transport_mut()
+                .control_out(op::REQ_OUTPUT_LATENCY, 0, &[3])
+                .unwrap();
+            let shared = shared();
+            let stats = crate::actions::read_stats(&mut session, &state, &Stats::default());
+            shared.borrow_mut().stats = stats;
+            let mut p = StatsPanel::new(shared);
+            p.poll(&mut session, &state);
+
+            let target = p.ring.health.unwrap().target;
+            let rows_now = rows(&p, &state);
+            let (pct, min, max, tone) = fill(&rows_now, "Out 1/2");
+            let want = f64::from(target.target_frames) / 512.0 * 100.0;
+            assert_eq!(pct, want.round() as u8, "{rows_now:?}");
+            // 96 frames is two 48-frame buckets of 16: 12% of the firmware's
+            // scale, 18% of the ring's.
+            assert_eq!((min, max), (18, 18), "{rows_now:?}");
+            assert_eq!(tone, StatusTone::Ok);
+            let raw = p.shared.borrow().stats.buffers.clone().unwrap();
+            let raw_pct = raw.spdif[0].consumer_fill_pct;
+            assert_eq!(raw_pct, 12);
+            assert_eq!(FillKind::Spdif.tone(raw_pct), StatusTone::Warning);
+
+            // The ring's bands, to the frame: 447 is the last that can still
+            // take a write, 448 is not.
+            let frames = |n: u32| (n * 10_000 / 768) as u16;
+            *knobs.buffer_stats.lock().unwrap() = Some(buffer_stats([
+                frames(u32::from(target.target_frames)),
+                frames(447),
+            ]));
+            p.ring_wait = 0;
+            p.poll(&mut session, &state);
+            let now = rows(&p, &state);
+            assert_eq!(fill(&now, "Out 1/2").3, StatusTone::Ok);
+            assert_eq!(fill(&now, "Out 3/4").3, StatusTone::Warning);
+            *knobs.buffer_stats.lock().unwrap() = Some(buffer_stats([0, frames(448)]));
+            p.ring_wait = 0;
+            p.poll(&mut session, &state);
+            let now = rows(&p, &state);
+            assert_eq!(fill(&now, "Out 1/2").3, StatusTone::Danger, "empty");
+            assert_eq!(
+                fill(&now, "Out 3/4").3,
+                StatusTone::Danger,
+                "no room to write"
+            );
+        }
+
+        /// A low target must be judged to the frame: the row's whole percent
+        /// and the coarse bucket would both say otherwise.
+        #[test]
+        fn wp_tm16_the_row_takes_the_sessions_band_not_its_rounded_percent() {
+            let f = OutputFill {
+                fill_pct: 0.4,
+                min_pct: 0,
+                max_pct: 1,
+                band: FillBand::Good,
+            };
+            assert_eq!(whole_pct(f.fill_pct), 0);
+            let mut p = StatsPanel::new(shared());
+            p.ring.fills = vec![f];
+            let b = stats().buffers.unwrap();
+            let Row::Fill { tone, .. } = p.output_row(0, &b, &stats()) else {
+                panic!("a fill row");
+            };
+            assert_eq!(tone, StatusTone::Ok);
+        }
+
+        #[test]
+        fn wp_tm16_firmware_without_the_status_hides_the_section() {
+            let knobs = Knobs::default();
+            knobs.no_status.store(true, Ordering::SeqCst);
+            let (mut p, _session, state) = demo(&knobs);
+            assert_eq!(p.ring.health, None);
+            let f = testing::draw(&mut p, &state, 100, 90);
+            assert!(!f.contains("OUTPUT RING HEALTH"), "{f}");
+            assert!(!f.contains("Fill Target"), "{f}");
+            // The fills stay, on the firmware's scale and the fixed table.
+            let rows = rows(&p, &state);
+            let raw = p.shared.borrow().stats.buffers.clone().unwrap();
+            let (pct, _, _, tone) = fill(&rows, "Out 1/2");
+            assert_eq!(pct, raw.spdif[0].consumer_fill_pct);
+            assert_eq!(tone, FillKind::Spdif.tone(pct));
+        }
+
+        #[test]
+        fn wp_tm16_a_status_that_goes_away_hides_the_section() {
+            let knobs = Knobs::default();
+            let (mut p, mut session, state) = demo(&knobs);
+            assert!(p.ring.health.is_some());
+            knobs.no_status.store(true, Ordering::SeqCst);
+            p.ring_wait = 0;
+            p.poll(&mut session, &state);
+            assert_eq!(p.ring.health, None);
+        }
+
+        #[test]
+        fn wp_tm16_a_transfer_error_keeps_the_last_values() {
+            let knobs = Knobs::default();
+            let (mut p, mut session, state) = demo(&knobs);
+            let before = (p.ring.health, p.ring.fills.clone());
+            assert!(before.0.is_some() && !before.1.is_empty());
+            knobs.down.store(true, Ordering::SeqCst);
+            p.ring_wait = 0;
+            p.poll(&mut session, &state);
+            assert_eq!((p.ring.health, p.ring.fills.clone()), before);
+            // The sparkline does not invent the reading it did not get.
+            assert_eq!(p.ring.history[0].last(), Some(&None));
+            let f = testing::draw(&mut p, &state, 100, 90);
+            assert!(f.contains("OUTPUT RING HEALTH"), "{f}");
+        }
+
+        #[test]
+        fn wp_tm16_a_counter_that_fails_keeps_the_last_values_too() {
+            // The read as a whole failed: not zeros, which would read as healthy.
+            let mut p = StatsPanel::new(shared());
+            p.ring.health = Some(health());
+            let latency = vec![3, 3, 0xD0, 0x07, 96, 0, 48, 0, 0, 7, 0, 0];
+            let mut t = MockTransport::new().data(op::REQ_OUTPUT_LATENCY, latency);
+            p.ring.refresh(&mut t);
+            assert_eq!(p.ring.health, Some(health()));
+        }
+
+        #[test]
+        fn wp_tm16_the_rings_are_read_every_second_poll() {
+            let knobs = Knobs::default();
+            let (mut p, mut session, state) = demo(&knobs);
+            let sent = |k: &Knobs| k.transfers.swap(0, Ordering::SeqCst);
+            sent(&knobs);
+            p.poll(&mut session, &state);
+            assert_eq!(sent(&knobs), 0, "a second after a read");
+            p.poll(&mut session, &state);
+            assert_eq!(sent(&knobs), 9, "seven for health, two for the fills");
+            p.poll(&mut session, &state);
+            assert_eq!(sent(&knobs), 0);
+            let mut gone = state.clone();
+            gone.connected = false;
+            p.poll(&mut session, &gone);
+            p.poll(&mut session, &gone);
+            assert_eq!(sent(&knobs), 0, "nothing while disconnected");
+        }
+
+        #[test]
+        fn wp_tm16_r_brings_the_next_read_forward() {
+            let knobs = Knobs::default();
+            let (mut p, mut session, state) = demo(&knobs);
+            assert_eq!(
+                p.handle(key(KeyCode::Char('r')), &state),
+                ScreenEvent::Command("diag.buffers.reset".into())
+            );
+            knobs.transfers.store(0, Ordering::SeqCst);
+            p.poll(&mut session, &state);
+            assert_eq!(knobs.transfers.load(Ordering::SeqCst), 9);
+        }
+
+        /// One device's numbers must not stay under another one's name.
+        #[test]
+        fn wp_tm16_another_device_starts_again_at_once() {
+            let knobs = Knobs::default();
+            let (mut p, mut session, state) = demo(&knobs);
+            assert!(p.ring.health.is_some());
+            knobs.no_status.store(true, Ordering::SeqCst);
+            knobs.down.store(true, Ordering::SeqCst);
+            let mut other = state.clone();
+            other.caps.serial = "another".into();
+            p.poll(&mut session, &other);
+            assert_eq!(p.ring.health, None, "even when its first read fails");
+            assert!(p.ring.fills.is_empty());
+        }
+
+        #[test]
+        fn wp_tm16_the_keys_reset_runs_on_the_demo_device() {
+            let knobs = Knobs::default();
+            let (mut session, state) = open(&knobs);
+            let theme = Theme::console(ColorDepth::TrueColor, Glyphs::Braille);
+            let mut live = Live::new(
+                state,
+                theme,
+                Performance::default(),
+                Box::new(ConsoleScreens::new()),
+            );
+            assert!(live.show(&mut session, "stats"));
+            live.handle_key(&mut session, key(KeyCode::Char('r')));
+            assert_eq!(knobs.resets.load(Ordering::SeqCst), 1);
+            let model = &live.shell.model;
+            let said = format!("{} {:?}", model.echo, model.status);
+            assert!(said.contains("diag.buffers.reset"), "{said}");
+            let said = said.to_lowercase();
+            assert!(!said.contains("stall") && !said.contains("fail"), "{said}");
+        }
+
+        #[test]
+        fn wp_tm16_values_read_as_in_the_console() {
+            let rows = StatsPanel::ring_section(&health());
+            assert_eq!(value(&rows, "Fill Target").unwrap(), "96 frames (2 ms)");
+            assert_eq!(value(&rows, "Lowest Fill").unwrap(), "17 frames");
+            assert_eq!(value(&rows, "Worst Input Gap").unwrap(), "9999 µs");
+            assert_eq!(value(&rows, "Worst USB Gap").unwrap(), "12.3 ms");
+            assert_eq!(latency_ms(667), "0.67 ms");
+            let none = RingHealth {
+                lowest_fill: None,
+                ..health()
+            };
+            let rows = StatsPanel::ring_section(&none);
+            assert_eq!(value(&rows, "Lowest Fill").unwrap(), "-");
+        }
+
+        /// The Console's `valueColor`s: a count stays plain at zero.
+        #[test]
+        fn wp_tm16_counts_turn_their_colour_once_they_leave_zero() {
+            let theme = Theme::console(ColorDepth::TrueColor, Glyphs::Braille);
+            let colour = |value, tone| {
+                let area = Rect::new(0, 0, 40, 1);
+                let mut buf = Buffer::empty(area);
+                let row = Row::Count {
+                    label: "Underrun Episodes".into(),
+                    value,
+                    tone,
+                };
+                draw_row(area, &mut buf, &theme, &row);
+                buf[(38, 0)].fg
+            };
+            assert_eq!(colour(3, StatusTone::Danger), theme.danger);
+            assert_eq!(colour(3, StatusTone::Warning), theme.warning);
+            assert_eq!(colour(0, StatusTone::Danger), theme.value().fg.unwrap());
+            let tone_of = |want: &str| {
+                StatsPanel::ring_section(&health())
+                    .iter()
+                    .find_map(|r| match r {
+                        Row::Count { label, tone, .. } if label == want => Some(*tone),
+                        _ => None,
+                    })
+                    .unwrap()
+            };
+            assert_eq!(tone_of("Underrun Episodes"), StatusTone::Danger);
+            assert_eq!(tone_of("Refused Blocks"), StatusTone::Warning);
+            assert_eq!(tone_of("Over-Budget Steps"), StatusTone::Warning);
+        }
+
+        #[test]
+        fn wp_tm16_the_history_keeps_the_last_reads_in_their_colours() {
+            let knobs = Knobs::default();
+            let (mut p, mut session, state) = demo(&knobs);
+            for _ in 0..(FillHistory::LEN + 3) {
+                p.ring_wait = 0;
+                p.poll(&mut session, &state);
+            }
+            assert_eq!(p.ring.history[0].len(), FillHistory::LEN);
+            let f = p.ring.fills[0];
+            assert_eq!(
+                p.ring.history[0].last(),
+                Some(&Some((whole_pct(f.fill_pct), StatusTone::Ok)))
+            );
+            let rows = rows(&p, &state);
+            let shown = rows.iter().find_map(|r| match r {
+                Row::Fill { label, history, .. } if label == "Out 1/2" => Some(history.clone()),
+                _ => None,
+            });
+            assert_eq!(shown.unwrap(), p.ring.history[0]);
+        }
+
+        #[test]
+        fn wp_tm16_frames_at_both_sizes_and_when_narrow() {
+            let shared = shared();
+            shared.borrow_mut().stats = stats();
+            let state = testing::state();
+            let panel = |shared: &crate::screens::Shared| {
+                let mut p = StatsPanel::new(shared.clone());
+                p.ring.health = Some(health());
+                p
+            };
+            for (w, h) in [(120u16, 40u16), (80, 24)] {
+                let f = testing::frame(Tool::Stats, Box::new(panel(&shared)), &state, w, h);
+                assert_eq!(f.lines().count(), h as usize, "{w}x{h}");
+                // At 80x24 the section is further down the one column.
+                assert_eq!(f.contains("OUTPUT RING HEALTH"), w == 120, "{w}x{h}:\n{f}");
+            }
+            for w in [20u16, 37, 60, 73, 110, 200] {
+                let mut p = panel(&shared);
+                testing::draw(&mut p, &state, w, 60);
+            }
         }
     }
 
