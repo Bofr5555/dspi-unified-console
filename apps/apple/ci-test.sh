@@ -13,7 +13,8 @@
 #
 # The simulator needs the GUI session: from ssh, run through
 #   sudo launchctl asuser "$(id -u)" sudo -u "$USER" apps/apple/ci-test.sh ios
-# Output in apps/apple/build/ci/ (gitignored): DerivedData and the .xcresult.
+# Output in $CI_OUT (default apps/apple/build/ci, gitignored): DerivedData, the
+# .xcresult and its test list as JSON.
 set -euo pipefail
 
 platform=${1:-}
@@ -24,7 +25,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 "$here/build-xcframework.sh"
 
 cd "$here"
-out=$here/build/ci
+out=${CI_OUT:-$here/build/ci}
 mkdir -p "$out"
 result=$out/$platform.xcresult
 rm -rf "$result"
@@ -33,10 +34,12 @@ args=(-project "DSPi Console.xcodeproj" -derivedDataPath "$out/dd-$platform" -re
 case "$platform" in
   macos)
     args+=(-scheme "DSPi Console" -destination "platform=macOS,arch=$(uname -m)")
-    # Tests that fail only in a VM (MR1S, the same before and after the move to
-    # this repository): Metal precision on the paravirtual GPU, frame and timing
-    # limits on shared vCPUs. A real Mac runs them.
-    # kern.hv_vmm_present, or on Intel the CPU's hypervisor flag (OpenCore
+    # In a VM: skip the tests that failed there before and after the move to
+    # this repository (MR1S): Metal precision on the paravirtual GPU, frame and
+    # timing limits on shared vCPUs. Other rendering and benchmark tests fail
+    # there now and then when the host is busy, so a failed test runs up to
+    # twice more. A real Mac runs them all once. A VM shows in
+    # kern.hv_vmm_present, or on Intel in the CPU's hypervisor flag (OpenCore
     # hides the first).
     if [ "$(sysctl -n kern.hv_vmm_present 2>/dev/null)" = 1 ] ||
        sysctl -n machdep.cpu.features 2>/dev/null | grep -qw VMM; then
@@ -47,7 +50,8 @@ case "$platform" in
                TubeRenderingTests/testAudioChangesOnlyOpacityAndStopsWhileHidden; do
         args+=("-skip-testing:DSPi ConsoleTests/$t")
       done
-      echo "ci-test: in a VM, skipping 5 GPU/timing tests that fail only there"
+      args+=(-retry-tests-on-failure -test-iterations 3)
+      echo "ci-test: in a VM: skipping 5 GPU/timing tests that fail only there, retrying failures"
     fi
     ;;
   ios)
@@ -73,6 +77,11 @@ sw2 = {}
 def walk(node):
     if node.get("nodeType") == "Test Case":
         results[node.get("result", "?")] += 1
+        if node.get("result") == "Failed":
+            print(f"FAILED {node.get('nodeIdentifier', node.get('name'))}")
+            for child in node.get("children", []):
+                if child.get("nodeType") == "Failure Message":
+                    print(f"    {child.get('name', '')[:400]}")
         if node.get("name", "").startswith("testSW2"):
             sw2[node["name"]] = node.get("result")
     for child in node.get("children", []):

@@ -9,8 +9,9 @@
 # ci/matrix.sh prints the row as "not run". One heavy job at a time in the VM:
 # a lock directory there makes a second run wait for the first.
 #
-# DSPI_MACVM (default macvm) is the ssh host; the guest keeps the tree, cargo's
-# target dir and the lock under ~/work/matrix.
+# DSPI_MACVM (default macvm) is the ssh host; the guest keeps the tree (src),
+# cargo's target dir, Xcode's output and results (out) and the lock under
+# ~/work/matrix.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 platform=${1:-}
@@ -39,7 +40,7 @@ git ls-files -z --cached --others --exclude-standard |
     rm -rf ~/work/matrix/src && mkdir -p ~/work/matrix/src && tar -xf - -C ~/work/matrix/src || { rm -rf ~/work/matrix/lock; exit 1; }
     sudo launchctl asuser \"\$(id -u)\" sudo -u \"\$(id -un)\" env \\
       PATH=\"\$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin\" HOME=\"\$HOME\" \\
-      CARGO_TARGET_DIR=\"\$HOME/work/matrix/target\" \\
+      CARGO_TARGET_DIR=\"\$HOME/work/matrix/target\" CI_OUT=\"\$HOME/work/matrix/out\" \\
       nice -n 10 \"\$HOME/work/matrix/src/apps/apple/ci-test.sh\" $platform </dev/null
     rc=\$?
     rm -rf ~/work/matrix/lock
