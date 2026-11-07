@@ -138,6 +138,8 @@ fn main() -> ExitCode {
             return ExitCode::from(exit::USAGE);
         }
     };
+    // -- WP TM26 -- `dspi --dry-run set ...` is `dspi set ... --dry-run`.
+    let flags = command_first(flags);
     // -- WP TM11 -- Before a PIN is read or a `--hub` looked for: a hub runs here.
     if flags.first() == Some(&"hub")
         && let Some(code) = hub::refuse_target(&target)
@@ -258,6 +260,42 @@ fn is_command_word(word: &str) -> bool {
     TERMINAL_VERBS.contains(&word)
         || dspi_cmd::VERBS.iter().any(|(n, _)| *n == word)
         || by_path(word).is_some()
+}
+
+// -- WP TM26 --
+/// Switches that take no value and mean the same wherever they stand. Before
+/// the command, they used to be read as the command itself, which opened the
+/// interface (hw-1 D1).
+const LEADING_SWITCHES: &[&str] = &["--json", "--quiet", "--dry-run", "--force", "--keep-going"];
+
+/// The flags with the command first, as the dispatch reads them: leading
+/// [`LEADING_SWITCHES`] move behind the first word that is not one, when that
+/// word is a command or a flag that acts as one (`--version`). Anything else
+/// stays as it was, so `dspi --json` alone still opens the interface.
+fn command_first(flags: Vec<&str>) -> Vec<&str> {
+    const FLAG_COMMANDS: &[&str] = &[
+        "--help",
+        "-h",
+        "--version",
+        "-V",
+        "--doctor",
+        "--install-udev",
+    ];
+    let lead = flags
+        .iter()
+        .take_while(|f| LEADING_SWITCHES.contains(f))
+        .count();
+    let Some(word) = flags.get(lead).copied() else {
+        return flags;
+    };
+    if lead == 0 || (word.starts_with('-') && !FLAG_COMMANDS.contains(&word)) {
+        return flags;
+    }
+    let mut out = Vec::with_capacity(flags.len());
+    out.push(word);
+    out.extend_from_slice(&flags[..lead]);
+    out.extend_from_slice(&flags[lead + 1..]);
+    out
 }
 
 /// Take the flags that say where the device is, leaving everything else in
@@ -850,6 +888,18 @@ fn cmd_screenshot(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
 }
 
 fn cmd_tui(target: &Target, flags: &[&str], palette: dspi_tui::theme::Palette) -> u8 {
+    // -- WP TM26 -- Without a terminal there is no interface to draw, and
+    // ratatui would panic trying (hw-1 D1).
+    {
+        use std::io::IsTerminal;
+        if let Some(why) = no_terminal(
+            std::io::stdin().is_terminal(),
+            std::io::stdout().is_terminal(),
+        ) {
+            eprintln!("dspi: {why}");
+            return exit::USAGE;
+        }
+    }
     let lite = flags.contains(&"--lite");
     let no_animation = flags.contains(&"--no-animation");
 
@@ -875,6 +925,22 @@ fn cmd_tui(target: &Target, flags: &[&str], palette: dspi_tui::theme::Palette) -
     let reached = c.link.clone().map_or_else(|| target.clone(), Target::Link);
     let link = Some((&reached, &c.ext));
     run_tui(&mut c.session, c.state, link, lite, no_animation, palette)
+}
+
+// -- WP TM26 --
+/// Why the interface cannot open, when standard input or output is not a
+/// terminal.
+fn no_terminal(stdin_is_terminal: bool, stdout_is_terminal: bool) -> Option<String> {
+    let which = match (stdin_is_terminal, stdout_is_terminal) {
+        (true, true) => return None,
+        (false, true) => "standard input is",
+        (true, false) => "standard output is",
+        (false, false) => "standard input and output are",
+    };
+    Some(format!(
+        "the interface needs a terminal, and {which} not one; \
+         give a command to run instead (see `dspi --help`)"
+    ))
 }
 
 fn run_tui(
@@ -2150,6 +2216,7 @@ fn write_exit(e: &dspi_session::WriteError) -> u8 {
         W::Value(_)
         | W::UnknownParam(_)
         | W::ReadOnly { .. }
+        | W::WriteOnly { .. }
         | W::WrongArity { .. }
         | W::BadTarget(..)
         | W::PlatformRange { .. }
@@ -2466,6 +2533,50 @@ vol.user -18
         );
         assert_eq!(strip_comment("vol.user -18 # loud").trim(), "vol.user -18");
         assert_eq!(strip_comment("# nothing here").trim(), "");
+    }
+
+    // -- WP TM26 -- hw-1 D1.
+    #[test]
+    fn tm26_leading_switches_move_behind_the_command() {
+        let f = |a: &[&'static str]| command_first(a.to_vec());
+        assert_eq!(
+            f(&["--dry-run", "set", "ch.delay", "i2s.1.l", "5"]),
+            ["set", "--dry-run", "ch.delay", "i2s.1.l", "5"]
+        );
+        assert_eq!(
+            f(&["--json", "--quiet", "get", "vol.user"]),
+            ["get", "--json", "--quiet", "vol.user"]
+        );
+        assert_eq!(f(&["--json", "--version"]), ["--version", "--json"]);
+        // Nothing to move, or no command to move it behind.
+        assert_eq!(
+            f(&["get", "--json", "vol.user"]),
+            ["get", "--json", "vol.user"]
+        );
+        assert_eq!(f(&["--json"]), ["--json"]);
+        assert_eq!(f(&["--json", "--lite"]), ["--json", "--lite"]);
+        assert!(f(&[]).is_empty());
+        // The command is found where the dispatch looks, and its arguments are
+        // still the positional ones.
+        let moved = f(&["--dry-run", "set", "vol.user", "-18"]);
+        assert_eq!(moved.first(), Some(&"set"));
+        assert_eq!(positional_all(&moved), ["set", "vol.user", "-18"]);
+    }
+
+    #[test]
+    fn tm26_the_interface_refuses_without_a_terminal() {
+        assert_eq!(no_terminal(true, true), None);
+        for (i, o, which) in [
+            (false, true, "standard input is not"),
+            (true, false, "standard output is not"),
+            (false, false, "standard input and output are not"),
+        ] {
+            let why = no_terminal(i, o).unwrap();
+            assert!(
+                why.contains(which) && why.contains("needs a terminal"),
+                "{why}"
+            );
+        }
     }
 
     #[test]

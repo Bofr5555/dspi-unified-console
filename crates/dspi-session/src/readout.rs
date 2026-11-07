@@ -175,7 +175,7 @@ impl Session {
         };
         let get = d
             .get
-            .ok_or_else(|| WriteError::ReadOnly { path: path.into() })?;
+            .ok_or_else(|| WriteError::WriteOnly { path: path.into() })?;
         self.check_indices(d, indices)?;
         let wvalue = crate::write::read_wvalue_for(d, indices);
 
