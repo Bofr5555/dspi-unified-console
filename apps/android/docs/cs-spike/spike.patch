@@ -1,0 +1,672 @@
+diff --git a/apps/android/app/build.gradle.kts b/apps/android/app/build.gradle.kts
+index 0baa78e..04078f5 100644
+--- a/apps/android/app/build.gradle.kts
++++ b/apps/android/app/build.gradle.kts
+@@ -109,6 +109,8 @@ dependencies {
+     debugImplementation(platform(libs.compose.bom))
+     debugImplementation(libs.compose.ui.test.manifest)
+     robolectricRuntime(libs.robolectric.android.all)
++    // AN8 spike: the real core on the JVM, as :ffi's FfiLiveDemoTest
++    testImplementation(libs.jna)
+ }
+ 
+ tasks.withType<Test>().configureEach {
+@@ -116,6 +118,12 @@ tasks.withType<Test>().configureEach {
+     inputs.files(runtime)
+     systemProperty("robolectric.offline", "true")
+     doFirst { systemProperty("robolectric.dependency.dir", runtime.singleFile.parentFile.path) }
++    // AN8 spike: the host build of libdspi_ffi
++    dependsOn(":ffi:cargoBuildHost")
++    val cargoTarget = providers.environmentVariable("CARGO_TARGET_DIR").getOrElse(rootProject.layout.projectDirectory.dir("../../target").asFile.path)
++    systemProperty("jna.library.path", "$cargoTarget/debug")
++    systemProperty("java.library.path", "$cargoTarget/debug")
++    testLogging.showStandardStreams = true
+ }
+ 
+ // Fail early and clearly instead of producing an unsigned / wrongly signed release.
+diff --git a/apps/android/app/src/test/kotlin/se/bofr/dspi/app/cs/CsSpikeAn8Test.kt b/apps/android/app/src/test/kotlin/se/bofr/dspi/app/cs/CsSpikeAn8Test.kt
+new file mode 100644
+index 0000000..c7e3d27
+--- /dev/null
++++ b/apps/android/app/src/test/kotlin/se/bofr/dspi/app/cs/CsSpikeAn8Test.kt
+@@ -0,0 +1,640 @@
++package se.bofr.dspi.app.cs
++
++import android.app.Application
++import android.graphics.Bitmap
++import android.graphics.Canvas
++import android.view.View
++import androidx.compose.foundation.clickable
++import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.foundation.layout.Box
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.fillMaxSize
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.layout.width
++import androidx.compose.foundation.lazy.LazyColumn
++import androidx.compose.foundation.rememberScrollState
++import androidx.compose.foundation.verticalScroll
++import androidx.compose.material3.Button
++import androidx.compose.material3.Card
++import androidx.compose.material3.CardDefaults
++import androidx.compose.material3.HorizontalDivider
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.Surface
++import androidx.compose.material3.Switch
++import androidx.compose.material3.Text
++import androidx.compose.material3.TextButton
++import androidx.compose.material3.darkColorScheme
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.collectAsState
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.rememberCoroutineScope
++import androidx.compose.runtime.setValue
++import androidx.compose.ui.Alignment
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.graphics.Color
++import androidx.compose.ui.layout.onSizeChanged
++import androidx.compose.ui.platform.LocalDensity
++import androidx.compose.ui.platform.LocalView
++import androidx.compose.ui.platform.testTag
++import androidx.compose.ui.test.getBoundsInRoot
++import androidx.compose.ui.test.junit4.createComposeRule
++import androidx.compose.ui.test.onNodeWithTag
++import androidx.compose.ui.test.onNodeWithText
++import androidx.compose.ui.test.performClick
++import androidx.compose.ui.test.performScrollTo
++import androidx.compose.ui.text.style.TextOverflow
++import androidx.compose.ui.unit.Density
++import androidx.compose.ui.unit.dp
++import java.io.File
++import java.io.FileOutputStream
++import java.util.concurrent.Executors
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.SupervisorJob
++import kotlinx.coroutines.asCoroutineDispatcher
++import kotlinx.coroutines.cancel
++import kotlinx.coroutines.launch
++import org.json.JSONArray
++import org.json.JSONObject
++import org.junit.After
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertTrue
++import org.junit.Rule
++import org.junit.Test
++import org.junit.runner.RunWith
++import org.robolectric.RobolectricTestRunner
++import org.robolectric.annotation.Config
++import org.robolectric.annotation.GraphicsMode
++import org.robolectric.Shadows.shadowOf
++import se.bofr.dspi.bridge.DspiBridge
++import se.bofr.dspi.bridge.DspiBridgeImpl
++import se.bofr.dspi.bridge.InMemoryLinkStore
++import se.bofr.dspi.core.DeviceInfo
++import se.bofr.dspi.core.DspiCoreApi
++import se.bofr.dspi.feature.settings.SettingsCategory
++import se.bofr.dspi.feature.settings.SettingsView
++import se.bofr.dspi.fake.FakeDspiCore
++import se.bofr.dspi.ffi.FfiDspiCore
++import se.bofr.dspi.ui.settings.InMemoryAppSettingsStore
++
++/*
++ * AN8 spike, not for merging. The real core's demo device (FakeDevice, CG16) behind
++ * the real bridge, under a phone-sized prototype. Prints "AN8 ..." lines the report quotes.
++ */
++
++private const val SERIAL = "AN8DEMO"
++
++/** The real core on its demo device, presented to the bridge as "the one device". */
++private class DemoFfi(private val real: FfiDspiCore) : DspiCoreApi by real {
++    override fun scanDevices() = listOf(DeviceInfo(SERIAL, 1))
++
++    override fun selectDevice(serial: String) = Unit
++
++    override fun rtaStart() = Unit
++}
++
++/** Option B of the report: the Kotlin demo for everything, the real demo device for control surfaces. */
++private class Hybrid(private val fake: FakeDspiCore, private val real: FfiDspiCore) : DspiCoreApi by fake {
++    override fun csFetch() = real.csFetch()
++
++    override fun csSnapshot() = real.csSnapshot()
++
++    override fun csApply(op: String) = real.csApply(op)
++
++    override fun csPinUses() = real.csPinUses()
++}
++
++private fun say(s: String) = println("AN8 $s")
++
++private val OUT: String get() = File("build/an8shots").apply { mkdirs() }.path
++
++// ── A spike's model: the snapshot as is, and the few rules a row list needs ──
++
++private const val BUTTON = 1
++private const val SWITCH = 2
++private const val POT = 3
++private const val ENCODER = 4
++private const val LED = 5
++private const val LED_PWM = 6
++private const val IR = 7
++private const val DISPLAY = 8
++private const val AUX_OUT = 9
++private const val AUX_PWM = 10
++private val TYPE_NAMES = listOf(
++    "None", "Push Button", "Toggle Switch", "Potentiometer / Fader", "Rotary Encoder", "Indicator LED", "Dimmable LED", "IR Remote",
++    "Display", "On/Off Output", "Dimmable Output"
++)
++private const val KIND_BOOL = 1
++private const val KIND_ENUM = 2
++
++private class Snap(json: String) {
++    val o = JSONObject(json)
++    val supported = o.optBoolean("supported")
++    val types: JSONArray get() = o.getJSONArray("types")
++    val nouns: JSONArray get() = o.getJSONArray("nouns")
++    val bindings: JSONArray get() = o.getJSONArray("bindings")
++    val names: JSONArray get() = o.getJSONArray("names")
++
++    fun validNouns(t: Int): List<Int> =
++        (0 until nouns.length()).filter { nouns.getJSONObject(it).getInt("actions") and types.getJSONObject(t).getInt("actions") != 0 }
++
++    fun validActions(t: Int, n: Int): List<Int> {
++        val eff = types.getJSONObject(t).getInt("actions") and nouns.getJSONObject(n).getInt("actions")
++        return (0 until 16).filter { eff shr it and 1 == 1 }
++    }
++}
++
++/** One row a binding's editor shows, as `CsRecordEditor.qml` and Swift's `slotSection` decide it. */
++private data class R(val title: String, val detail: String, val value: String = "", val toggle: Boolean = false)
++
++private fun rowsFor(s: Snap, t: Int, n: Int, action: Int): List<R> {
++    val nd = s.nouns.getJSONObject(n)
++    val kind = nd.getInt("kind")
++    val out = ArrayList<R>()
++    out += R("Name", "A label for this control.", "Volume Knob")
++    out += R("Controls", "The device function this control drives.", "Filter Frequency")
++    if (nd.getInt("targetKind") != 0) out += R("Channel or Group", "Which channel, or named set of channels, this control affects.", "Output 1")
++    if (nd.getInt("targetKind") == 3) out += R("Band", "Which filter band this control affects.", "Band 1")
++    if (s.validActions(t, n).size > 1) out += R("Behavior", "How this control drives the function.", "Increase")
++    if (t == BUTTON) out += R("Gesture", "Which press gesture triggers this. Bind several to one button GPIO for multiple functions.", "Press")
++    out += R(if (t == ENCODER) "GPIO A" else "GPIO", "Wire between this GPIO and GND.", "GPIO 10")
++    if (t == ENCODER) out += R("GPIO B", "Wire between this GPIO and GND.", "GPIO 11")
++    if (kind == 0) {
++        if (action == 5) out += R("Set To", "The value a press sets.", "0.0 dB")
++        out += R("Step Size", "How far each detent moves.", "1.0 dB")
++        if (t == POT || t == LED_PWM) {
++            out += R("Limit Range", "Confine the knob to part of the range.", toggle = true)
++            out += R("Minimum", "The low end.", "-60.0 dB")
++            out += R("Maximum", "The high end.", "0.0 dB")
++        }
++    } else {
++        if (action == 5) out += R("Set To", "The value a press sets.", "On")
++        if (kind == KIND_ENUM) out += R("Step Size", "How many positions each press moves.", "1")
++        if (kind == KIND_ENUM) out += R("Wrap Around", "Step past the last position back to the first.", toggle = true)
++    }
++    if (t == LED || t == LED_PWM) {
++        out += R("Turn-On Delay", "Wait before the LED lights.", "0 s")
++        out += R("Turn-Off Delay", "Hold the LED after the condition ends.", "0 s")
++    }
++    if (t == LED_PWM) out += R("Brightness Limit", "Ceiling for this LED.", "100 %")
++    if (t == POT || t == ENCODER) out += R("Reverse Direction", "Clockwise decreases the value.", toggle = true)
++    if (t == ENCODER) out += R("Acceleration", "Fast spins move in larger steps; slow spins stay fine.", toggle = true)
++    if (t == BUTTON) out += R("Repeat While Held", "After holding ~0.4 s the press repeats automatically.", toggle = true)
++    out += R("Active-Low", "The wiring pulls this pin low when active.", toggle = true)
++    return out
++}
++
++private fun auxRows(pwm: Boolean): List<R> = buildList {
++    add(R("On", "Switching an output is instant and never writes to flash.", toggle = true))
++    if (pwm) add(R("Level", "A dimmable output follows its switch and its level.", "50 %"))
++    add(R("Name", "A label.", "Lamp"))
++    add(R("GPIO", "A 3.3 V pin good for a few milliamps.", "GPIO 22"))
++    add(R("Active-Low Output", "For relay and opto-isolator boards that switch when the pin goes low.", toggle = true))
++    if (pwm) {
++        add(R("Frequency", "PWM rate.", "1 kHz"))
++        add(R("Fade", "Time to fade.", "0.2 s"))
++        add(R("Lowest Level", "A floor for the level.", "0 %"))
++    }
++    add(R("Turn-On Delay", "Wait before the output turns on.", "0 s"))
++    add(R("Turn-Off Delay", "Hold the output after it is switched off.", "0 s"))
++    add(R("At Power-On", "Off, on, or as last saved.", "Off"))
++    if (pwm) add(R("Power-On Level", "Level at power-on.", "50 %"))
++    add(R("Driven By", "Controls using this output.", "1 control"))
++}
++
++private fun displayRows(): List<R> = buildList {
++    add(R("Name", "A label.", "Display"))
++    add(R("SDA", "Even GPIO of an I2C pair.", "GPIO 4"))
++    add(R("SCL", "Odd GPIO of an I2C pair.", "GPIO 5"))
++    add(R("Model", "The panel's controller.", "SSD1306 128x64"))
++    add(R("Address", "The panel's I2C address.", "0x3C"))
++    add(R("Status", "What the device reports.", "Ready"))
++    add(R("Mode", "How pages change.", "Manual"))
++    add(R("Home Page", "The page it returns to.", "Page 1"))
++    add(R("Dwell", "Seconds per page when cycling.", "5 s"))
++    add(R("Overlay Hold", "How long a change stays on screen.", "2 s"))
++    add(R("Brightness", "The panel's contrast.", "80 %"))
++    add(R("Edit Timeout", "Leave edit mode after this long.", "10 s"))
++    add(R("Rotate 180°", "Upside-down mounting.", toggle = true))
++    add(R("Dim When Idle", "Save the panel.", toggle = true))
++    repeat(4) { add(R("Page ${it + 1}", "Volume on Output ${it + 1}", "Edit")) }
++}
++
++private fun macroStepRows(): List<R> = listOf(
++    R("Change", "Which function this step changes.", "Preset"),
++    R("How", "What this step does to it.", "Set value"),
++    R("Channel or Group", "Which channel, or named set of channels.", "Output 1"),
++    R("Set To", "The value.", "Preset 2"),
++    R("Wait Before", "Seconds before this step runs.", "0 s")
++)
++
++// ── The prototype's widgets: SettingRow's own insets and styles ──
++
++@Composable
++private fun Row1(r: R, onClick: (() -> Unit)? = null) {
++    Row(
++        Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = 16.dp, vertical = 10.dp),
++        verticalAlignment = Alignment.CenterVertically
++    ) {
++        Column(Modifier.weight(1f)) {
++            Text(r.title, style = MaterialTheme.typography.bodyLarge)
++            Text(r.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++        }
++        Spacer(Modifier.width(12.dp))
++        if (r.toggle) Switch(false, {}) else if (r.value.isNotEmpty()) Text(r.value, color = MaterialTheme.colorScheme.primary)
++    }
++}
++
++@Composable
++private fun Rows(rows: List<R>, click: (R) -> Unit = {}) {
++    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer), modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
++        Column(Modifier.padding(vertical = 4.dp)) {
++            rows.forEachIndexed { i, r ->
++                if (i > 0) HorizontalDivider(Modifier.padding(start = 16.dp))
++                Row1(r) { click(r) }
++            }
++        }
++    }
++}
++
++/** A measured scroller: reports its content's height in dp. */
++@Composable
++private fun MeasuredColumn(onHeight: (Float) -> Unit, content: @Composable () -> Unit) {
++    val d = LocalDensity.current
++    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
++        Column(Modifier.fillMaxWidth().onSizeChanged { onHeight(with(d) { it.height.toDp().value }) }) { content() }
++    }
++}
++
++// ── The prototype itself: list, editor page, picker page ──
++
++private sealed interface Screen {
++    data object List : Screen
++
++    data class Edit(val slot: Int) : Screen
++
++    data class Pick(val slot: Int) : Screen
++}
++
++@Composable
++private fun CsPhone(bridge: DspiBridge) {
++    val json by bridge.cs.model.collectAsState()
++    var screen by remember { mutableStateOf<Screen>(Screen.List) }
++    val scope = rememberCoroutineScope()
++    var draft by remember { mutableStateOf<JSONObject?>(null) }
++    var error by remember { mutableStateOf<String?>(null) }
++    if (json.isEmpty()) {
++        Text("Reading...")
++        return
++    }
++    val s = Snap(json)
++    if (!s.supported) {
++        Text("No control surfaces")
++        return
++    }
++    when (val sc = screen) {
++        Screen.List -> LazyColumn(Modifier.fillMaxSize().testTag("list")) {
++            (0 until s.bindings.length()).filter { s.bindings.getJSONObject(it).getInt("type") != 0 }.forEach { slot ->
++                val b = s.bindings.getJSONObject(slot)
++                item {
++                    Row1(R(s.names.optString(slot).ifEmpty { TYPE_NAMES[b.getInt("type")] }, "${TYPE_NAMES[b.getInt("type")]} · GPIO ${b.getInt("gpio0")}", "Active")) {
++                        draft = JSONObject(b.toString())
++                        error = null
++                        screen = Screen.Edit(slot)
++                    }
++                }
++            }
++            item {
++                TextButton(onClick = {
++                    val free = (0 until s.bindings.length()).first { s.bindings.getJSONObject(it).getInt("type") == 0 }
++                    draft = JSONObject(mapOf("type" to BUTTON, "noun" to 2, "action" to 4, "gpio0" to 5, "gpio1" to 255, "value" to 1))
++                    error = null
++                    screen = Screen.Edit(free)
++                }) { Text("Add a control") }
++            }
++        }
++        is Screen.Edit -> Column(Modifier.fillMaxSize().testTag("editor")) {
++            val b = draft!!
++            Row(verticalAlignment = Alignment.CenterVertically) {
++                TextButton(onClick = { screen = Screen.List }) { Text("‹ Controls") }
++                Text("Slot ${sc.slot + 1}")
++            }
++            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
++                error?.let { Text(it, color = Color(0xFFFF453A), modifier = Modifier.padding(16.dp).testTag("error")) }
++                Row1(R("Controls", "The device function this control drives.", "noun ${b.getInt("noun")}")) { screen = Screen.Pick(sc.slot) }
++                Row1(R("GPIO", "Wire between this GPIO and GND.", "GPIO ${b.getInt("gpio0")}")) {
++                    b.put("gpio0", 16) // the spike's "pick a pin": a pin the demo's button already holds
++                    draft = JSONObject(b.toString())
++                }
++            }
++            Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.End) {
++                Button(onClick = {
++                    scope.launch {
++                        val r = JSONObject(bridge.cs.apply(JSONObject(mapOf("op" to "binding", "index" to sc.slot, "binding" to b)).toString()))
++                        if (r.optBoolean("ok")) screen = Screen.List else error = r.optString("error").ifEmpty { bridge.cs.statusMessage(r.optInt("status", 255)) }
++                    }
++                }) { Text("Apply") }
++            }
++        }
++        is Screen.Pick -> LazyColumn(Modifier.fillMaxSize().testTag("picker")) {
++            val b = draft!!
++            s.validNouns(b.getInt("type")).forEach { n ->
++                item {
++                    Row1(R("Noun $n", s.validActions(b.getInt("type"), n).size.toString() + " actions")) {
++                        b.put("noun", n)
++                        b.put("action", s.validActions(b.getInt("type"), n).first())
++                        draft = JSONObject(b.toString())
++                        screen = Screen.Edit(sc.slot)
++                    }
++                }
++            }
++        }
++    }
++}
++
++// ── The tests ──
++
++@RunWith(RobolectricTestRunner::class)
++@Config(sdk = [35], application = Application::class, qualifiers = "w360dp-h640dp-port-mdpi")
++@GraphicsMode(GraphicsMode.Mode.NATIVE)
++class CsSpikeAn8Test {
++    @get:Rule val rule = createComposeRule()
++
++    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
++    private val ffi = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
++    private val real = FfiDspiCore().apply { openDemo() }
++    private lateinit var view: View
++
++    private var bridgeMade = false
++
++    private val bridge: DspiBridgeImpl by lazy {
++        bridgeMade = true
++        DspiBridgeImpl(DemoFfi(real), scope, ffi = ffi, main = Dispatchers.Main.immediate, linkStore = InMemoryLinkStore(), appVersion = "an8").also { it.scanDevices() }
++    }
++
++    @After
++    fun stop() {
++        rule.runOnUiThread { if (bridgeMade) runCatching { bridge.close() } }
++        scope.cancel()
++        ffi.close()
++        shadowOf(android.os.Looper.getMainLooper()).idle()
++        runCatching { real.close() }
++    }
++
++    private fun theme(content: @Composable () -> Unit) = rule.setContent {
++        view = LocalView.current
++        MaterialTheme(colorScheme = darkColorScheme()) { Surface(Modifier.fillMaxSize()) { content() } }
++    }
++
++    private fun shot(name: String) {
++        if (OUT.isEmpty()) return
++        rule.runOnUiThread {
++            val root = view.rootView
++            val bmp = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
++            root.draw(Canvas(bmp))
++            FileOutputStream(File(OUT, "$name.png")).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
++        }
++    }
++
++    /** The bridge posts to the main looper, which nothing else pumps here; the FFI thread runs in real time. */
++    private fun pump(what: String, until: () -> Boolean) {
++        val end = System.currentTimeMillis() + 15_000
++        while (!until()) {
++            check(System.currentTimeMillis() < end) { "timed out: $what" }
++            shadowOf(android.os.Looper.getMainLooper()).idle()
++            Thread.sleep(10)
++        }
++    }
++
++    private fun settle() {
++        repeat(30) {
++            shadowOf(android.os.Looper.getMainLooper()).idle()
++            rule.mainClock.advanceTimeBy(100)
++            Thread.sleep(5)
++        }
++    }
++
++    private fun waitConnected() {
++        bridge
++        pump("connected") { bridge.status.value.connected }
++    }
++
++    private fun waitLoaded() {
++        waitConnected()
++        rule.mainClock.autoAdvance = false
++        pump("loaded") { bridge.cs.loaded.value }
++    }
++
++    /** The real core's shape and cost, no UI. */
++    @Test
++    fun an8SnapshotOfTheRealDemo() {
++        val t0 = System.nanoTime()
++        real.csFetch()
++        val t1 = System.nanoTime()
++        val json = real.csSnapshot()
++        val t2 = System.nanoTime()
++        val s = Snap(json)
++        val t3 = System.nanoTime()
++        say("snapshot bytes=${json.length} fetchMs=${(t1 - t0) / 1_000_000} snapshotMs=${(t2 - t1) / 1_000_000} parseMs=${(t3 - t2) / 1_000_000}")
++        val avail = (0 until s.nouns.length()).count { s.nouns.getJSONObject(it).getInt("actions") != 0 }
++        say("nouns described=${s.nouns.length()} available=$avail types=${s.types.length()} caps=${s.o.getInt("capsVersion")}")
++        for (t in 1..10) {
++            val v = s.validNouns(t)
++            val acts = v.map { s.validActions(t, it).size }
++            say("type ${TYPE_NAMES[t]}: validNouns=${v.size} maxActions=${acts.maxOrNull() ?: 0}")
++        }
++        val b = s.bindings
++        for (i in 0 until b.length()) if (b.getJSONObject(i).getInt("type") != 0) say("slot $i '${s.names.optString(i)}' ${b.getJSONObject(i)}")
++        val gs = s.o.getJSONArray("groups")
++        (0 until gs.length()).filter { gs.getJSONObject(it).getLong("memberMask") != 0L }.forEach { say("group $it ${gs.getJSONObject(it)}") }
++        val ms = s.o.getJSONArray("macros")
++        (0 until ms.length()).filter { ms.getJSONObject(it).getJSONArray("steps").length() > 0 }.forEach { say("macro $it ${ms.getJSONObject(it)}") }
++        say("ir configured=" + (0 until s.o.getJSONArray("ir").length()).count { s.o.getJSONArray("ir").getJSONObject(it).getInt("protocol") != 0 })
++        say("display=" + s.o.getJSONObject("display").getJSONObject("config"))
++        // A refused op, in the reply shape AN9 has to show
++        say("clash " + real.csApply("""{"op":"binding","index":5,"binding":{"type":1,"noun":2,"action":4,"gpio0":16,"gpio1":255,"value":1}}"""))
++        say("bad   " + real.csApply("""{"op":"binding","index":99,"binding":{}}"""))
++        say("learn " + real.csApply("""{"op":"learnArm"}"""))
++    }
++
++    /** IR through FFI: how far a client gets on the demo. */
++    @Test
++    fun an8LearnThroughTheFfi() {
++        real.csFetch()
++        val s = Snap(real.csSnapshot())
++        val hasIr = (0 until s.bindings.length()).firstOrNull { s.bindings.getJSONObject(it).getInt("type") == IR }
++        val slot = hasIr ?: (0 until s.bindings.length()).first { s.bindings.getJSONObject(it).getInt("type") == 0 }
++        if (hasIr == null) say("add receiver " + real.csApply("""{"op":"binding","index":$slot,"binding":{"type":7,"gpio0":6,"gpio1":255}}"""))
++        say("arm " + real.csApply("""{"op":"learnArm"}"""))
++        say("read " + real.csApply("""{"op":"learnRead"}"""))
++        say("cancel " + real.csApply("""{"op":"learnCancel"}"""))
++        say("read " + real.csApply("""{"op":"learnRead"}"""))
++    }
++
++    /** Groups, macros, display, aux, and the busy refusal. */
++    @Test
++    fun an8OtherOpsThroughTheFfi() {
++        real.csFetch()
++        say("group " + real.csApply("""{"op":"group","index":3,"group":{"targetKind":2,"memberMask":3,"name":"Mains"}}"""))
++        say("group empty " + real.csApply("""{"op":"group","index":3,"group":{"targetKind":2,"memberMask":0,"name":"X"}}"""))
++        say("macro " + real.csApply("""{"op":"macro","index":3,"macro":{"name":"M","steps":[{"noun":2,"action":5,"value":1},{"noun":2,"action":5,"value":0},{"noun":2,"action":5,"value":1}]}}"""))
++        say("fire " + real.csApply("""{"op":"macroFire","index":3}"""))
++        repeat(3) {
++            real.csApply("""{"op":"refreshStatus"}""")
++            say("macroRunning " + JSONObject(real.csSnapshot()).getJSONObject("ext"))
++        }
++        say("aux on non-aux " + real.csApply("""{"op":"auxState","index":0,"on":1}"""))
++        real.csDemoBusy(true)
++        say("busy write " + real.csApply("""{"op":"name","index":0,"name":"x"}"""))
++        say("busy save " + real.csApply("""{"op":"save"}"""))
++        real.csDemoBusy(false)
++        say("dirty " + JSONObject(real.csSnapshot()).getJSONObject("status").getBoolean("dirty"))
++    }
++
++    /** The app's existing view-and-run page on the real demo, with the real chrome. */
++    @Test
++    fun an8TheExistingPageOnTheRealDemo() {
++        waitLoaded()
++        var lazyOk = false
++        theme { SettingsView(bridge, InMemoryAppSettingsStore(), {}, {}, initialPage = SettingsCategory.CONTROL_SURFACES); lazyOk = true }
++        settle()
++        assertTrue(lazyOk)
++        rule.onNodeWithText("Volume Knob").assertExists()
++        shot("existing-controls")
++    }
++
++    /** The prototype: add, pick, apply, refuse, through the real bridge and core. */
++    @Test
++    fun an8PrototypeFlow() {
++        waitLoaded()
++        theme { CsPhone(bridge) }
++        settle()
++        rule.onNodeWithText("Volume Knob").assertExists()
++        shot("proto-list")
++        rule.onNodeWithText("Add a control").performScrollTo().performClick()
++        settle()
++        rule.onNodeWithTag("editor").assertExists()
++        // A pin the demo's mute button holds: the device refuses, the page says why
++        rule.onNodeWithText("GPIO 5").performClick()
++        settle()
++        rule.onNodeWithText("Apply").performClick()
++        pump("refusal") {
++            rule.mainClock.advanceTimeBy(50)
++            runCatching { rule.onNodeWithTag("error").assertExists() }.isSuccess
++        }
++        rule.onNodeWithText("Another button already uses this GPIO and gesture").assertExists()
++        shot("proto-refused")
++        say("refusal shown through the bridge: pin clash")
++        rule.onNodeWithText("Controls").performClick()
++        settle()
++        rule.onNodeWithTag("picker").assertExists()
++        shot("proto-picker")
++        rule.onNodeWithText("Noun 6").performScrollTo().performClick()
++        settle()
++        rule.onNodeWithText("GPIO 16").performClick() // the spike's pin button only ever picks 16
++        settle()
++    }
++
++    /** The whole app's scaffold on the real demo (option A of the report). */
++    @Test
++    fun an8TheAppScaffoldOnTheRealDemo() {
++        waitLoaded()
++        theme { se.bofr.dspi.app.AppScaffold(bridge, se.bofr.dspi.app.ConnectionStrip.Demo, onEnterDemo = {}, onExitDemo = {}, onRequestPermission = {}) }
++        settle()
++        rule.onNodeWithText("Exit demo").assertExists()
++        shot("scaffold-rust-demo")
++        say("scaffold on the real demo: rendered; state outputs=" + real.getState().numOutputChannels)
++    }
++
++    /** Option B: the Kotlin demo with control surfaces from the real one. */
++    @Test
++    fun an8HybridDemo() {
++        val fake = FakeDspiCore.demo()
++        val b = DspiBridgeImpl(Hybrid(fake, real), scope, ffi = ffi, main = Dispatchers.Main.immediate, linkStore = InMemoryLinkStore(), appVersion = "an8")
++        b.scanDevices()
++        pump("hybrid connected") { b.status.value.connected }
++        rule.mainClock.autoAdvance = false
++        pump("hybrid loaded") { b.cs.loaded.value }
++        theme { SettingsView(b, InMemoryAppSettingsStore(), {}, {}, initialPage = SettingsCategory.CONTROL_SURFACES) }
++        settle()
++        rule.onNodeWithText("Volume Knob").assertExists()
++        say("hybrid: real surfaces on the Kotlin demo; pin owners=" + b.pinOwners().size)
++        rule.runOnUiThread { b.close() }
++    }
++
++    /** Heights of the desktop's rows laid out at this width, for the screen map. */
++    private fun measure(name: String, content: @Composable () -> Unit): Float {
++        var h = 0f
++        rule.mainClock.autoAdvance = false
++        theme { MeasuredColumn({ h = it }) { content() } }
++        settle()
++        return h.also { say("height $name = ${"%.0f".format(it)} dp") }
++    }
++
++    private val small = 640f
++
++    private fun snapNow(): Snap {
++        real.csFetch()
++        return Snap(real.csSnapshot())
++    }
++
++    @Test fun an8EditorMuteButton() { val s = snapNow(); measure("button/mute/toggle") { Rows(rowsFor(s, BUTTON, 2, 4)) } }
++
++    @Test fun an8EditorPot() { val s = snapNow(); measure("pot/output gain") { Rows(rowsFor(s, POT, 17, 0)) } }
++
++    @Test fun an8EditorEncoderFilterGain() {
++        val s = snapNow()
++        measure("encoder/filter gain") { Rows(rowsFor(s, ENCODER, 21, 1)) }
++        shot("editor-encoder")
++    }
++
++    @Test fun an8EditorLed() { val s = snapNow(); measure("dimmable led/level") { Rows(rowsFor(s, LED_PWM, 28, 11)) } }
++
++    @Test fun an8EditorAux() { measure("aux pwm") { Rows(auxRows(true)) } }
++
++    @Test fun an8EditorDisplay() { measure("display, 4 pages") { Rows(displayRows()) } }
++
++    @Test fun an8EditorMacroInline() { measure("macro, 8 steps inline") { repeat(8) { Rows(macroStepRows()) } } }
++
++    @Test fun an8EditorMacroOneStep() { measure("macro step page") { Rows(macroStepRows()) } }
++
++    @Test fun an8EditorIrInline() {
++        // The desktop nests each remote button's whole editor inside the receiver's card
++        val s = snapNow()
++        measure("ir receiver, 4 remote buttons open") { repeat(4) { Rows(rowsFor(s, BUTTON, 21, 2)) } }
++    }
++
++    @Test fun an8LargeFontEncoder() {
++        val s = snapNow()
++        var h = 0f
++        rule.mainClock.autoAdvance = false
++        rule.setContent {
++            androidx.compose.runtime.CompositionLocalProvider(LocalDensity provides Density(1f, 1.5f)) {
++                MaterialTheme { MeasuredColumn({ h = it }) { Rows(rowsFor(s, ENCODER, 21, 1)) } }
++            }
++        }
++        settle()
++        say("height encoder/filter gain fontScale1.5 = ${"%.0f".format(h)} dp")
++    }
++
++    @Test
++    fun an8Chrome() {
++        waitLoaded()
++        rule.runOnUiThread { bridge.cs.sendOnly("""{"op":"name","index":0,"name":"Dirty"}""") }
++        pump("dirty") { real.csSnapshot().contains("\"dirty\":true") }
++        rule.runOnUiThread { scope.launch { bridge.cs.apply("""{"op":"refreshStatus"}""") } }
++        pump("unsaved") { bridge.cs.unsaved.value }
++        theme { SettingsView(bridge, InMemoryAppSettingsStore(), {}, {}, initialPage = SettingsCategory.CONTROL_SURFACES) }
++        settle()
++        val save = rule.onNodeWithText("Save").getBoundsInRoot()
++        say("save bar top=${save.top} bottom=${save.bottom} of 640")
++        val back = rule.onNodeWithText("‹ Back").getBoundsInRoot()
++        say("header bottom=${back.bottom}")
++        shot("existing-dirty")
++    }
++}
