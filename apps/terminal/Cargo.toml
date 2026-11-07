@@ -27,8 +27,14 @@ dspi-link.workspace = true
 # Documents must cross to the code Qt runs: the tests export and import through it.
 [dev-dependencies]
 dspi-core = { workspace = true }
+# -- WP TM9 --
+# `dspi link scan` and `--hub` are tested on a fake network, with no multicast.
+dspi-link = { workspace = true, features = ["fake-hub"] }
 
 [features]
-default = ["midi"]
+default = ["midi", "mdns"]
 # `--midi`, through midir (ALSA headers on Linux).
 midi = ["dspi-tui/midi"]
+# -- WP TM9 --
+# `dspi link scan`, `--hub`, and finding a hub that moved while reconnecting.
+mdns = ["dspi-tui/mdns"]

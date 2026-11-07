@@ -2610,6 +2610,8 @@ impl Live {
                 *session = c.session;
                 self.adopt(session, c.state);
                 if let Some(target) = self.target.clone() {
+                    // -- WP TM9 -- A hub may have come back at another address.
+                    let target = c.link.clone().map_or(target, Target::Link);
                     self.set_connection(&target, &c.ext);
                 }
                 self.arm_notifications(session);
@@ -3573,6 +3575,34 @@ mod tests_wp_r1 {
         let status = l.shell.model.status.clone().unwrap_or_default();
         assert!(status.contains("Reconnected"), "{status:?}");
         assert!(status.contains("pairing token"), "{status:?}");
+    }
+
+    // -- WP TM9 --
+    /// What a reconnect reached is what the next one starts from.
+    #[test]
+    fn wp_tm9_the_interface_keeps_the_target_a_reconnect_reached() {
+        use dspi_link::fakehub::{FakeHub, HubConfig};
+        let hub = FakeHub::start(HubConfig::default()).unwrap();
+        let mut link = connect::LinkTarget::parse(&hub.addr().to_string()).unwrap();
+        let tokens = connect::test_dir().join(format!("live-tm9-{}.toml", std::process::id()));
+        link.tokens = Some(tokens);
+        assert_eq!(link.hub_id, None);
+
+        let (mut l, mut s, _r) = on_demo();
+        l.state.caps.serial = HubConfig::default().serial;
+        l.set_connection(&Target::Link(link), &ExtState::default());
+        l.state.connected = false;
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !l.state.connected && Instant::now() < deadline {
+            l.advance_reconnect(&mut s);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(l.state.connected, "the device came back");
+        let Some(Target::Link(kept)) = &l.target else {
+            panic!("still a hub");
+        };
+        assert_eq!(kept.hub_id, Some(HubConfig::default().hub_id));
+        assert_eq!(kept.device, Some(HubConfig::default().serial));
     }
 
     /// PLAN §1.7: a device's text cannot reach the terminal raw, because every

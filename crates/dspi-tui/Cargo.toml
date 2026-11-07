@@ -27,10 +27,14 @@ dspi-link.workspace = true
 thiserror.workspace = true
 
 [features]
-default = ["midi"]
+default = ["midi", "mdns"]
 # `--midi`: desktop MIDI ports through midir. Off, the build needs no ALSA
 # headers on Linux and `--midi` says it is unavailable.
 midi = ["dspi-transport/midir"]
+# -- WP TM9 --
+# `--hub`, and looking for a lost hub at new addresses, through dspi-link's mDNS.
+# Off, a hub is reached by its address only.
+mdns = ["dspi-link/mdns"]
 
 [dev-dependencies]
 # -- WP R1 --

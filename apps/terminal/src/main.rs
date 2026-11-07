@@ -92,6 +92,8 @@ mod stdio {
 
 // -- WP TM10 --
 mod doctor;
+// -- WP TM9 --
+mod link;
 mod transfer;
 
 use std::process::ExitCode;
@@ -136,6 +138,11 @@ fn main() -> ExitCode {
             eprintln!("dspi: {e}");
             return ExitCode::from(exit::USAGE);
         }
+    };
+    // -- WP TM9 --
+    let target = match dspi_tui::shell::connect::locate_hub(target, &link::Person) {
+        Ok(t) => t,
+        Err(e) => return ExitCode::from(fail_open(e)),
     };
     let target = &target;
 
@@ -197,6 +204,8 @@ fn main() -> ExitCode {
         Some("export") => transfer::cmd_export(target, &flags, json),
         Some("import") => transfer::cmd_import(target, &flags, json),
         Some("cs") => transfer::cmd_cs(target, &flags, json),
+        // -- WP TM9 --
+        Some("link") => link::run(&flags, json),
         Some("dump") => cmd_dump(target, json),
         Some("watch") => cmd_watch(target, json),
         // No arguments opens the interface; arguments run one command and exit.
@@ -223,6 +232,8 @@ fn is_command_word(word: &str) -> bool {
         "watch",
         // -- WP TM10 --
         "cs",
+        // -- WP TM9 --
+        "link",
     ];
     TERMINAL_VERBS.contains(&word)
         || dspi_cmd::VERBS.iter().any(|(n, _)| *n == word)
@@ -238,6 +249,8 @@ fn parse_target<'a>(flags: &[&'a str]) -> Result<(Target, Vec<&'a str>), String>
     let mut midi: Option<Option<String>> = None;
     let mut link: Option<String> = None;
     let mut pin = None;
+    // -- WP TM9 --
+    let mut hub: Option<Option<String>> = None;
 
     let mut it = flags.iter().copied().peekable();
     while let Some(f) = it.next() {
@@ -259,6 +272,15 @@ fn parse_target<'a>(flags: &[&'a str]) -> Result<(Target, Vec<&'a str>), String>
             "--device" => device = Some(value("a serial")?),
             "--pin" => pin = Some(value("the hub's PIN")?),
             "--link" => link = Some(value("a hub address, HOST[:PORT]")?),
+            // -- WP TM9 --
+            "--hub" => {
+                hub = Some(match inline {
+                    Some(v) => Some(v.to_owned()),
+                    None => it
+                        .next_if(|w| !w.starts_with('-') && !is_command_word(w))
+                        .map(str::to_owned),
+                });
+            }
             "--demo" if inline.is_none() => demo = true,
             "--midi" => {
                 midi = Some(match inline {
@@ -272,15 +294,16 @@ fn parse_target<'a>(flags: &[&'a str]) -> Result<(Target, Vec<&'a str>), String>
         }
     }
 
-    let chosen = [demo, midi.is_some(), link.is_some()]
+    // -- WP TM9 -- `hub` here and below.
+    let chosen = [demo, midi.is_some(), link.is_some(), hub.is_some()]
         .iter()
         .filter(|c| **c)
         .count();
     if chosen > 1 {
-        return Err("choose one of --demo, --midi and --link".into());
+        return Err("choose one of --demo, --midi, --link and --hub".into());
     }
-    if pin.is_some() && link.is_none() {
-        return Err("--pin only means something with --link".into());
+    if pin.is_some() && link.is_none() && hub.is_none() {
+        return Err("--pin only means something with --link or --hub".into());
     }
     if device.is_some() && (demo || midi.is_some()) {
         return Err("--device selects a USB device or a hub's device; \
@@ -291,6 +314,12 @@ fn parse_target<'a>(flags: &[&'a str]) -> Result<(Target, Vec<&'a str>), String>
         Target::Demo
     } else if let Some(port) = midi {
         Target::Midi { port }
+    } else if let Some(wanted) = hub {
+        Target::Link(LinkTarget {
+            device,
+            pin,
+            ..LinkTarget::find(wanted)
+        })
     } else if let Some(address) = link {
         let parsed = LinkTarget::parse(&address)
             .ok_or_else(|| format!("`{address}` is not a hub address; try HOST[:PORT]"))?;
@@ -395,6 +424,8 @@ USAGE:
     dspi watch               print the device's notifications as they arrive
     dspi list                list every connected DSPi
                              (--midi: the MIDI ports; --link: the hub's devices)
+    dspi link scan           list the DSPi Link hubs on this network
+                             (--timeout <seconds> to listen longer, --json)
     dspi params              list every parameter this build knows
     dspi get <path> [i..]    read one parameter
     dspi set <path> [i..] v  write one parameter, and confirm it
@@ -456,6 +487,10 @@ OPTIONS:
     --midi [PORT]            connect over USB MIDI; PORT is part of the port's
                              name (--midi=PORT if it could be read as a command)
     --link <host[:port]>     connect through a DSPi Link hub
+    --hub [NAME]             the same, finding the hub on this network; NAME is
+                             part of its name, its id or its address (--hub=NAME
+                             if it could be read as a command). Several hubs and
+                             no NAME: asks, or fails if there is nobody to ask
     --pin <pin>              the hub's PIN, when pairing without a terminal.
                              On the command line it shows in `ps` and in shell
                              history: for scripts, use `--pin -` (one line of
@@ -798,7 +833,9 @@ fn cmd_tui(target: &Target, flags: &[&str], palette: dspi_tui::theme::Palette) -
         Ok(c) => c,
         Err(e) => return fail_open(e),
     };
-    let link = Some((target, &c.ext));
+    // -- WP TM9 -- The target as reached: with the hub's id, for a reconnect.
+    let reached = c.link.clone().map_or_else(|| target.clone(), Target::Link);
+    let link = Some((&reached, &c.ext));
     run_tui(&mut c.session, c.state, link, lite, no_animation, palette)
 }
 
@@ -2110,6 +2147,11 @@ fn open(target: &Target) -> Result<Box<dyn Transport>, OpenError> {
 fn fail_open(e: OpenError) -> u8 {
     match e {
         OpenError::Transport(t) => fail(t),
+        // -- WP TM9 --
+        other @ OpenError::NoHub { .. } => {
+            eprintln!("dspi: {other}");
+            exit::NO_DEVICE
+        }
         // A hub without the device is a device that is not there; everything
         // else about opening is a transport failure.
         other => {
@@ -2218,6 +2260,46 @@ mod tests_wp_r1 {
         ] {
             assert!(parse_target(flags).is_err(), "{flags:?}");
         }
+    }
+
+    // -- WP TM9 --
+    #[test]
+    fn wp_tm9_hub_takes_an_optional_name_as_midi_takes_a_port() {
+        let wanted = |flags: &[&'static str]| {
+            let (t, rest) = parsed(flags);
+            let Target::Link(l) = t else {
+                panic!("a hub target");
+            };
+            (l.find.unwrap().wanted, rest.len())
+        };
+        assert_eq!(wanted(&["--hub"]), (None, 0));
+        assert_eq!(wanted(&["--hub", "dump"]), (None, 1));
+        assert_eq!(wanted(&["--hub", "--lite"]), (None, 1));
+        assert_eq!(wanted(&["--hub", "Studio"]), (Some("Studio".into()), 0));
+        assert_eq!(
+            wanted(&["--hub", "Studio", "dump"]),
+            (Some("Studio".into()), 1)
+        );
+        assert_eq!(wanted(&["--hub=dump"]), (Some("dump".into()), 0));
+        let Target::Link(l) = parsed(&["--hub", "--device", "X", "--pin", "1"]).0 else {
+            panic!("a hub target");
+        };
+        assert_eq!(
+            (l.device.as_deref(), l.pin.as_deref()),
+            (Some("X"), Some("1"))
+        );
+        for flags in [
+            &["--hub", "--demo"][..],
+            &["--hub", "--midi"],
+            &["--hub", "--link", "host"],
+        ] {
+            assert!(parse_target(flags).is_err(), "{flags:?}");
+        }
+    }
+
+    #[test]
+    fn wp_tm9_link_is_a_command_word_not_a_port_or_a_hub_name() {
+        assert!(is_command_word("link"));
     }
 
     #[test]
