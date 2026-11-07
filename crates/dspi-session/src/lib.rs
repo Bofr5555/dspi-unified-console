@@ -9,6 +9,8 @@ pub mod autoeq;
 pub mod clipboard;
 pub mod compat;
 pub mod cs_model;
+// -- WP CG20 --
+pub mod cs_rows;
 pub mod ext;
 pub mod ext_state;
 mod fast;

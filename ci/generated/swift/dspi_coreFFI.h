@@ -584,9 +584,34 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_cs_apply(void*_Nonnull ptr, RustB
 void uniffi_dspi_core_fn_method_dspicore_cs_demo_busy(void*_Nonnull ptr, int8_t on, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_DEMO_LEARN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_DEMO_LEARN
+int8_t uniffi_dspi_core_fn_method_dspicore_cs_demo_learn(void*_Nonnull ptr, uint8_t protocol, uint32_t code, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_DESCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_DESCRIBE
+RustBuffer uniffi_dspi_core_fn_method_dspicore_cs_describe(void*_Nonnull ptr, RustBuffer kind, uint32_t slot, RustBuffer draft, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_EDIT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_EDIT
+RustBuffer uniffi_dspi_core_fn_method_dspicore_cs_edit(void*_Nonnull ptr, RustBuffer kind, uint32_t slot, RustBuffer draft, RustBuffer change, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_FETCH
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_FETCH
 void uniffi_dspi_core_fn_method_dspicore_cs_fetch(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_NEW_BINDING
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_NEW_BINDING
+RustBuffer uniffi_dspi_core_fn_method_dspicore_cs_new_binding(void*_Nonnull ptr, uint32_t slot, uint8_t component, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_NEW_RECORD
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_NEW_RECORD
+RustBuffer uniffi_dspi_core_fn_method_dspicore_cs_new_record(void*_Nonnull ptr, RustBuffer kind, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_PIN_USES
@@ -597,6 +622,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_cs_pin_uses(void*_Nonnull ptr, Ru
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_SNAPSHOT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_SNAPSHOT
 RustBuffer uniffi_dspi_core_fn_method_dspicore_cs_snapshot(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_STATUS_TEXT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_STATUS_TEXT
+RustBuffer uniffi_dspi_core_fn_method_dspicore_cs_status_text(void*_Nonnull ptr, uint8_t code, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DELETE_PRESET
@@ -2363,9 +2393,39 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_cs_demo_busy(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_DEMO_LEARN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_DEMO_LEARN
+uint16_t uniffi_dspi_core_checksum_method_dspicore_cs_demo_learn(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_DESCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_DESCRIBE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_cs_describe(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_EDIT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_EDIT
+uint16_t uniffi_dspi_core_checksum_method_dspicore_cs_edit(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_FETCH
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_FETCH
 uint16_t uniffi_dspi_core_checksum_method_dspicore_cs_fetch(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_NEW_BINDING
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_NEW_BINDING
+uint16_t uniffi_dspi_core_checksum_method_dspicore_cs_new_binding(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_NEW_RECORD
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_NEW_RECORD
+uint16_t uniffi_dspi_core_checksum_method_dspicore_cs_new_record(void
     
 );
 #endif
@@ -2378,6 +2438,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_cs_pin_uses(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_SNAPSHOT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_SNAPSHOT
 uint16_t uniffi_dspi_core_checksum_method_dspicore_cs_snapshot(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_STATUS_TEXT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_STATUS_TEXT
+uint16_t uniffi_dspi_core_checksum_method_dspicore_cs_status_text(void
     
 );
 #endif

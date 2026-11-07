@@ -21,6 +21,7 @@ use dspi_proto::generated::opcodes as op;
 use dspi_proto::packets::{CtrlIfaceStatus, DacHwMuteConfig, I2cCtrlConfig, UartCtrlConfig};
 use dspi_proto::wire::InputConfig;
 
+use crate::DeviceState;
 use crate::surfaces;
 use crate::write::{Session, WriteError};
 
@@ -380,6 +381,104 @@ impl PinMap {
             }
         }
     }
+}
+
+// -- WP CG20 --
+/// The claims the bulk snapshot alone proves: physical outputs, the I2S
+/// clocks, the audio inputs, the ADAT output and the DAC mute.
+///
+/// The rules are the firmware's, those of [`PinMap::build`], so the two cannot
+/// disagree about whether a pin is held: a disabled feature holds nothing, the
+/// slave clock pair is claimed only in split mode, and LRCLK is always BCK + 1.
+pub fn claims_from_state(state: &DeviceState) -> Vec<PinClaim> {
+    let mut claims: Vec<PinClaim> = Vec::new();
+    let mut claim = |gpio: u8, role: PinRole, owner: &str| {
+        if !claims.iter().any(|c: &PinClaim| c.gpio == gpio) {
+            claims.push(PinClaim {
+                gpio,
+                role,
+                owner: owner.to_string(),
+            });
+        }
+    };
+
+    let pins = state.output_pins();
+    let slots = pins.len().saturating_sub(1);
+    for (i, gpio) in pins.iter().enumerate() {
+        if i < slots {
+            claim(*gpio, PinRole::Output, &format!("Output {}", i + 1));
+        } else {
+            claim(*gpio, PinRole::Output, "Subwoofer");
+        }
+    }
+
+    let i2s = state.i2s();
+    claim(i2s.bck_pin, PinRole::Clock, "I2S BCK");
+    claim(i2s.bck_pin.wrapping_add(1), PinRole::Clock, "I2S LRCLK");
+    if i2s.clock_pin_mode == Some(1) && i2s.bck_pin_slave != 0 {
+        claim(i2s.bck_pin_slave, PinRole::Clock, "I2S Slave BCK");
+        claim(
+            i2s.bck_pin_slave.wrapping_add(1),
+            PinRole::Clock,
+            "I2S Slave LRCLK",
+        );
+    }
+    if i2s.mck_enabled {
+        claim(i2s.mck_pin, PinRole::Clock, "I2S MCK");
+    }
+
+    if let Some(input) = state.input_config() {
+        let ext = input.spdif_rx_enabled_ext.unwrap_or(0);
+        claim(
+            input.spdif_rx_pin,
+            PinRole::Input,
+            if ext != 0 { "S/PDIF 1 RX" } else { "S/PDIF RX" },
+        );
+        for (i, pin) in input.spdif_rx_pin_ext.iter().enumerate() {
+            if ext & (1u8 << i) != 0
+                && let Some(g) = pin
+            {
+                claim(*g, PinRole::Input, &format!("S/PDIF {} RX", i + 2));
+            }
+        }
+        let pairs = input.i2s_input_channels.unwrap_or(2).max(2) as usize / 2;
+        let multi = pairs > 1;
+        let label = |pair: usize| {
+            if multi {
+                format!("I2S RX {}", pair + 1)
+            } else {
+                "I2S RX".to_string()
+            }
+        };
+        if pairs >= 1 {
+            claim(input.i2s_rx_pin, PinRole::Input, &label(0));
+        }
+        for (i, pin) in input.i2s_rx_pin_ext.iter().enumerate() {
+            if i + 1 < pairs
+                && let Some(g) = pin
+            {
+                claim(*g, PinRole::Input, &label(i + 1));
+            }
+        }
+        if input.adat_input_enabled == Some(true)
+            && let Some(pin) = input.adat_input_pin
+        {
+            claim(pin, PinRole::Input, "ADAT Input");
+        }
+    }
+
+    let (adat_on, adat_pin) = state.adat_output();
+    if adat_on {
+        claim(adat_pin, PinRole::Output, "ADAT Output");
+    }
+
+    let dac = state.dac_hw_mute();
+    if dac.enabled && dac.pin != dspi_proto::packets::DacHwMuteConfig::PIN_NONE {
+        claim(dac.pin, PinRole::Utility, "DAC Mute");
+    }
+
+    claims.sort_by_key(|c| c.gpio);
+    claims
 }
 
 #[cfg(test)]

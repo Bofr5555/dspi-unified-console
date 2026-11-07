@@ -1342,6 +1342,8 @@ pub fn enum_value_label(cx: &dyn CsContext, cs: &CsData, n: u8, value: i32) -> S
         .get(value.max(0) as usize)
         .map(|s| (*s).to_string())
         .unwrap_or_else(|| format!("Type {value}")),
+        // -- WP CG20 -- The wire counts pages from 0; every picker counts from 1.
+        noun::DISPLAY_PAGE => format!("Page {}", value.saturating_add(1)),
         _ => value.to_string(),
     }
 }
@@ -1435,7 +1437,7 @@ pub fn valid_actions(cs: &CsData, t: u8, n: u8) -> Vec<u8> {
 
 /// The actions a binding may take with its gesture. Hold-to-engage owns the
 /// hold, so the firmware takes `MOMENTARY` only on a button's short press
-/// (control_surfaces.c:1729-1734); a long or double press never offers it.
+/// (control_surfaces.c:1736-1741); a long or double press never offers it.
 pub fn binding_actions(cs: &CsData, t: u8, n: u8, event: u8) -> Vec<u8> {
     let mut acts = valid_actions(cs, t, n);
     if t == ty::BUTTON && event != evt::PRESS {
@@ -1445,7 +1447,7 @@ pub fn binding_actions(cs: &CsData, t: u8, n: u8, event: u8) -> Vec<u8> {
 }
 
 /// The gestures a button binding may use with its action: a momentary one
-/// only the short press (control_surfaces.c:1729-1734).
+/// only the short press (control_surfaces.c:1736-1741).
 pub fn binding_gestures(b: &CsBinding) -> Vec<u8> {
     if b.action == act::MOMENTARY {
         vec![evt::PRESS]
@@ -1457,7 +1459,7 @@ pub fn binding_gestures(b: &CsBinding) -> Vec<u8> {
 /// Whether the firmware takes hold-to-repeat on this binding: a button whose
 /// short press steps up or down. Set anywhere else, the whole binding is
 /// refused, as `INVALID_EVENT` on another gesture and `INVALID_VALUE` on
-/// another action (control_surfaces.c:1729-1741).
+/// another action (control_surfaces.c:1736-1745).
 pub fn repeat_allowed(b: &CsBinding) -> bool {
     b.component == ty::BUTTON
         && (b.action == act::INC || b.action == act::DEC)
@@ -1845,7 +1847,13 @@ pub fn target_choices(
 /// The addresses a picker lists. An aux binding whose output has since gone
 /// keeps its own address on the list, as a stale group does, so the picker
 /// never retargets it behind the user's back.
-fn picker_addresses(cs: &CsData, n: u8, own: Option<usize>, target: u8, grouped: bool) -> Vec<u8> {
+pub(crate) fn picker_addresses(
+    cs: &CsData,
+    n: u8,
+    own: Option<usize>,
+    target: u8,
+    grouped: bool,
+) -> Vec<u8> {
     let mut a = target_addresses(cs, n, own);
     let is_aux = cs
         .noun_desc(n)
@@ -2295,6 +2303,83 @@ pub fn switch_aux_kind(b: &CsBinding, t: u8) -> CsBinding {
         nb.extras &= !aux_extras::LINEAR;
     }
     nb
+}
+
+// -- WP CG20 --
+/// Reset a remote button's value and step for its action and noun kind,
+/// leaving the learned protocol, code, target and band alone.
+///
+/// The addressing stays as it was: a command on a group stays on that group,
+/// as a binding's does ([`sanitize_group_flags`]). The Console clears every
+/// flag here, which turns `target` from group N into channel N without a
+/// word. The other two flags are kept only where the firmware takes them:
+/// REPEAT on INC and DEC (control_surfaces.c:1847-1849), WRAP where it means
+/// something, on an enum INC or DEC.
+pub fn default_ir_operands(cs: &CsData, c: &IrCommand) -> IrCommand {
+    let mut c = c.clone();
+    let nd = cs.noun_desc(c.noun).copied().unwrap_or_default();
+    let k = operand_kind(cs, c.noun);
+    c.value = 0;
+    c.step = 0;
+    let steps = c.action == act::INC || c.action == act::DEC;
+    if !steps {
+        c.flags &= !flag::REPEAT;
+    }
+    if !(steps && k == kind::ENUM) {
+        c.flags &= !flag::WRAP;
+    }
+    if c.flags & flag::GROUP != 0 {
+        let usable = compatible_groups(cs, c.noun);
+        if c.action == act::TRIGGER || usable.is_empty() {
+            // No group fits any more: back to the noun's first address
+            // rather than reading the group index as a channel.
+            c.flags &= !flag::GROUP;
+            c.target = target_addresses(cs, c.noun, None)
+                .first()
+                .copied()
+                .unwrap_or(0);
+        } else if !usable.contains(&c.target) {
+            c.target = usable.first().copied().unwrap_or(0);
+        }
+    }
+    match c.action {
+        act::INC | act::DEC => {
+            if k == kind::ENUM {
+                c.step = 1;
+            }
+        }
+        act::SET | act::MOMENTARY => {
+            if k == kind::CONTINUOUS {
+                c.value = nd.max_q;
+            } else if k == kind::BOOL {
+                c.value = 1;
+            }
+        }
+        _ => {}
+    }
+    c
+}
+
+/// A remote button on another function: it starts on the noun's first address
+/// (an aux noun needs an aux output, never slot 0 by default), and any group went
+/// with the old noun.
+pub fn set_ir_noun(cs: &CsData, c: &IrCommand, n: u8) -> IrCommand {
+    let mut cmd = c.clone();
+    cmd.noun = n;
+    cmd.index = 0;
+    cmd.flags &= !flag::GROUP;
+    cmd.target = if cs
+        .noun_desc(n)
+        .is_some_and(|d| d.target_kind == target::AUX)
+    {
+        target_addresses(cs, n, None).first().copied().unwrap_or(0)
+    } else {
+        0
+    };
+    if !valid_actions(cs, ty::IR, n).contains(&cmd.action) {
+        cmd.action = default_action(cs, ty::IR, n);
+    }
+    default_ir_operands(cs, &cmd)
 }
 
 // ---------------------------------------------------------------------------

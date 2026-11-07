@@ -67,6 +67,8 @@ pub mod state;
 
 mod connect;
 mod cs;
+// -- WP CG20 --
+mod cs_rules;
 mod curves;
 mod device;
 mod ext;

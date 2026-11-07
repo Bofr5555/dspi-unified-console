@@ -29,7 +29,7 @@
 //!   ignores its delays, so a host's poll sees it run and end. A display's page
 //!   moves on one per `REQ_GET_CS_DISPLAY_STATUS` read in a cycling mode, and
 //!   `CS_DMODE_CYCLE_ALL` cycles the configured pages only. IR learning stays armed
-//!   until [`FakeRemote::cs_learned`] or a cancel; there is no 10 s timeout.
+//!   until [`FakeRemote::cs_learned`], [`EXT_FAKE_CS_LEARN`](super::EXT_FAKE_CS_LEARN) or a cancel; there is no 10 s timeout.
 //! - **Tables.** [`surface_seed`]'s noun table is caps v20's and fills in the
 //!   nouns the demo shows. The others read as unavailable on this platform (no
 //!   actions), so a binding on one is `CS_STATUS_INVALID_ACTION`. Every PEQ channel
@@ -2012,8 +2012,19 @@ impl FakeRemote {
     /// The remote button a test pressed while learning: the learn ends `DONE`
     /// and notifies, as `cs_tick_ir` does. False when nothing was armed.
     pub fn cs_learned(&self, protocol: u8, code: u32) -> bool {
-        let mut s = self.shared.lock();
-        let done = s
+        let done = self.shared.lock().cs_learned(protocol, code);
+        if done {
+            self.shared.wake.notify_all();
+        }
+        done
+    }
+}
+
+impl State {
+    // -- WP CG20 --
+    /// [`FakeRemote::cs_learned`], for the demo device's fake-only code too.
+    pub(super) fn cs_learned(&mut self, protocol: u8, code: u32) -> bool {
+        let done = self
             .surfaces
             .as_mut()
             .is_some_and(|x| x.learned(protocol, code));
@@ -2029,9 +2040,7 @@ impl FakeRemote {
                 0,
             ];
             p.extend_from_slice(&code.to_le_bytes());
-            s.push(p);
-            drop(s);
-            self.shared.wake.notify_all();
+            self.push(p);
         }
         done
     }
@@ -3104,6 +3113,30 @@ mod tests_wp_cg16 {
         assert!(stalled(d.control_in(op::REQ_CS_IR_LEARN, 1, 1)));
         let st = status(&mut d);
         assert_eq!((st.last_status, st.last_slot), (NO_IR, TAG_SAVE));
+    }
+
+    // -- WP CG20 --
+    /// `EXT_FAKE_CS_LEARN`: a client's demo finishes a learn; nothing armed stalls.
+    #[test]
+    fn wp_cg20_the_fake_only_code_finishes_a_learn() {
+        use super::super::EXT_FAKE_CS_LEARN;
+        let mut d = FakeDevice::demo();
+        let key = [1u8, 4, 3, 2, 1];
+        assert!(
+            d.control_out(op::REQ_EXTENSION, EXT_FAKE_CS_LEARN, &key)
+                .is_err()
+        );
+        d.control_in(op::REQ_CS_IR_LEARN, 1, 1).unwrap();
+        d.control_out(op::REQ_EXTENSION, EXT_FAKE_CS_LEARN, &key)
+            .unwrap();
+        let got = d.control_in(op::REQ_CS_IR_LEARN, 2, 8).unwrap();
+        assert_eq!(got[0], g::CS_IR_LEARN_DONE as u8);
+        assert_eq!(got[1], 1);
+        assert_eq!(&got[4..8], &[4, 3, 2, 1]);
+        assert!(
+            d.control_out(op::REQ_EXTENSION, EXT_FAKE_CS_LEARN, &[1])
+                .is_err()
+        );
     }
 
     /// `EXT_FAKE_CS_SIM`: every refusal a revert in progress gives.

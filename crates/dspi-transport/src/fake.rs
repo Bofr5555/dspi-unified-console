@@ -489,6 +489,13 @@ pub const EXT_FAKE_OUTPUT_SAVE_SIM: u16 = 0xFFF4;
 /// [`EXT_FAKE_OUTPUT_SAVE_SIM`]'s byte for a stall: a device that doesn't answer.
 pub const OUTPUT_SAVE_STALL: u8 = 0xFF;
 
+// -- WP CG20 --
+/// `REQ_EXTENSION` OUT sub-command only a [`FakeDevice`] answers, as
+/// [`EXT_FAKE_VREG_SIM`] (WP CG20): `[protocol, code as u32 LE]`, the remote button an
+/// armed learn was waiting for ([`FakeRemote::cs_learned`], for a client's demo
+/// device). Stalls with nothing armed.
+pub const EXT_FAKE_CS_LEARN: u16 = 0xFFF5;
+
 /// Every fake-only `REQ_EXTENSION` sub-command.
 pub const FAKE_ONLY_EXTENSIONS: &[u16] = &[
     EXT_FAKE_VREG_SIM,
@@ -497,6 +504,8 @@ pub const FAKE_ONLY_EXTENSIONS: &[u16] = &[
     EXT_FAKE_CS_SIM,
     // -- WP QD31 --
     EXT_FAKE_OUTPUT_SAVE_SIM,
+    // -- WP CG20 --
+    EXT_FAKE_CS_LEARN,
 ];
 
 /// What can happen to a simulated device's core-voltage state (WP CG11).
@@ -1920,6 +1929,13 @@ impl State {
                 ([on], Some(s)) => {
                     s.set_busy(*on != 0);
                     true
+                }
+                _ => false,
+            },
+            // -- WP CG20 --
+            EXT_FAKE_CS_LEARN => match *data {
+                [protocol, a, b, c, d] => {
+                    self.cs_learned(protocol, u32::from_le_bytes([a, b, c, d]))
                 }
                 _ => false,
             },
