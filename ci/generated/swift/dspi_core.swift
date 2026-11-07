@@ -1991,6 +1991,24 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func fetchStat(which: UInt16) throws  -> UInt32
     
     /**
+     * The Stats window's fast poll: the buffer fill levels and the live
+     * outputs' fill, as [`DspiCore::fetch_buffer_stats`] and
+     * [`DspiCore::fetch_output_fills`] give them, from one transfer.
+     *
+     * The fill target is kept on the connection. It is read again, for one more
+     * transfer on the tick after, when this core changed the latency, when a
+     * notification says the settings moved (a preset, a bulk write, a format
+     * change, a lost packet), and after a Link re-attach. The firmware does not
+     * notify a latency change, so another client's reaches this through
+     * [`DspiCore::fetch_ring_health`]: call that on the slow cadence alongside.
+     * While a change has yet to apply the target is read each tick.
+     *
+     * Errors: as for [`DspiCore::fetch_buffer_stats`]. A failed read of the
+     * target is not an error: `fills` is `None`.
+     */
+    func fetchStatsTick() throws  -> StatsTick
+    
+    /**
      * Read the meter block (`REQ_GET_STATUS` sub-query 9): the peak of each
      * live wire channel (0..1), both cores' loads (%), the sticky clip
      * flags (bit per wire channel) and the live input count.
@@ -4689,6 +4707,29 @@ open func fetchStat(which: UInt16)throws  -> UInt32  {
     return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_fetch_stat(self.uniffiClonePointer(),
         FfiConverterUInt16.lower(which),$0
+    )
+})
+}
+    
+    /**
+     * The Stats window's fast poll: the buffer fill levels and the live
+     * outputs' fill, as [`DspiCore::fetch_buffer_stats`] and
+     * [`DspiCore::fetch_output_fills`] give them, from one transfer.
+     *
+     * The fill target is kept on the connection. It is read again, for one more
+     * transfer on the tick after, when this core changed the latency, when a
+     * notification says the settings moved (a preset, a bulk write, a format
+     * change, a lost packet), and after a Link re-attach. The firmware does not
+     * notify a latency change, so another client's reaches this through
+     * [`DspiCore::fetch_ring_health`]: call that on the slow cadence alongside.
+     * While a change has yet to apply the target is read each tick.
+     *
+     * Errors: as for [`DspiCore::fetch_buffer_stats`]. A failed read of the
+     * target is not an error: `fills` is `None`.
+     */
+open func fetchStatsTick()throws  -> StatsTick  {
+    return try  FfiConverterTypeStatsTick_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_stats_tick(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -16574,6 +16615,93 @@ public func FfiConverterTypeSpdifRxStatus_lower(_ value: SpdifRxStatus) -> RustB
 
 
 /**
+ * One sample of the Stats window's fast poll (`fetch_stats_tick`).
+ */
+public struct StatsTick {
+    /**
+     * The buffer fill levels and their watermarks.
+     */
+    public var buffers: BufferStats
+    /**
+     * The live outputs' fill, from the same read. `None` when the fill target
+     * could not be read: keep the last fills.
+     */
+    public var fills: [OutputFill]?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The buffer fill levels and their watermarks.
+         */buffers: BufferStats, 
+        /**
+         * The live outputs' fill, from the same read. `None` when the fill target
+         * could not be read: keep the last fills.
+         */fills: [OutputFill]?) {
+        self.buffers = buffers
+        self.fills = fills
+    }
+}
+
+#if compiler(>=6)
+extension StatsTick: Sendable {}
+#endif
+
+
+extension StatsTick: Equatable, Hashable {
+    public static func ==(lhs: StatsTick, rhs: StatsTick) -> Bool {
+        if lhs.buffers != rhs.buffers {
+            return false
+        }
+        if lhs.fills != rhs.fills {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(buffers)
+        hasher.combine(fills)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeStatsTick: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> StatsTick {
+        return
+            try StatsTick(
+                buffers: FfiConverterTypeBufferStats.read(from: &buf), 
+                fills: FfiConverterOptionSequenceTypeOutputFill.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: StatsTick, into buf: inout [UInt8]) {
+        FfiConverterTypeBufferStats.write(value.buffers, into: &buf)
+        FfiConverterOptionSequenceTypeOutputFill.write(value.fills, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeStatsTick_lift(_ buf: RustBuffer) throws -> StatsTick {
+    return try FfiConverterTypeStatsTick.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeStatsTick_lower(_ value: StatsTick) -> RustBuffer {
+    return FfiConverterTypeStatsTick.lower(value)
+}
+
+
+/**
  * `types.rs` `SystemStatus` (REQ_GET_STATUS wValue 9), polled every 60 ms.
  */
 public struct SystemStatus {
@@ -19116,6 +19244,30 @@ fileprivate struct FfiConverterOptionTypeRingHealth: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionSequenceTypeOutputFill: FfiConverterRustBuffer {
+    typealias SwiftType = [OutputFill]?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterSequenceTypeOutputFill.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterSequenceTypeOutputFill.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceUInt16: FfiConverterRustBuffer {
     typealias SwiftType = [UInt16]
 
@@ -20437,6 +20589,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_stat() != 25516) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_stats_tick() != 21250) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_status() != 58511) {

@@ -4,7 +4,7 @@
 // StatsController (2 s counters, 60 ms buffer fills) and its fetch* calls the
 // way DSPi-Console-Linux:qt/qml/StatsWindow.qml @ 4683a2c does. Output ring
 // health and the ring-scaled fills follow the reference's StatsView.swift
-// through the core's fetchRingHealth and fetchOutputFills (AN25).
+// through the core's fetchRingHealth (AN25) and fetchStatsTick (CG21).
 // Deviations (docs/UPSTREAM-DEVIATIONS.md, ANALYSIS): one column on phones.
 package se.bofr.dspi.feature.analysis
 

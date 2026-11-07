@@ -4762,6 +4762,14 @@ uint32_t dspi_fetch_ring_health(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_fetch_output_fills(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * The Stats window's fast poll, one transfer: JSON {ok, buffers: {numSpdif,
+ * pdmActive, streaming, sequence, spdif: [{free, prepared, playing, fillPct,
+ * minPct, maxPct}], pdm: {...}}, fills: [as dspi_fetch_output_fills] or null}.
+ * Null fills mean keep the last ones. Returns the length needed.
+ */
+uint32_t dspi_fetch_stats_tick(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * Check a `.uf2` image: JSON {ok, valid, problem, familyId, platform,
  * numBlocks, payloadBytes, firmwareVersion}. `valid` is false for a null or
  * malformed image. Returns the length needed.

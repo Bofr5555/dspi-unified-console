@@ -6,6 +6,7 @@
 #include "StatsController.h"
 
 #include <QColor>
+#include <QElapsedTimer>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QThread>
@@ -108,8 +109,10 @@ void SmokeDriver::testRingHealth() {
                    R"("lowestFill":17,"worstInputGapUs":812,"worstUsbGapUs":12500,"overBudgetSteps":1})";
         }
     });
+    std::atomic<int> tickReads { 0 };       // -- WP CG21 --
     st->setOutputFillsHook([&]() -> QByteArray {
         if (QThread::currentThread() == ui) offUiThread = false;
+        tickReads++;
         switch (fills.load()) {
         case kFillsWarn: return R"({"ok":true,"value":[{"fillPct":70.4,"minPct":12,"maxPct":71,"band":"warn"}]})";
         case kFillsBad: return R"({"ok":true,"value":[{"fillPct":0.0,"minPct":0,"maxPct":71,"band":"bad"}]})";
@@ -159,6 +162,18 @@ void SmokeDriver::testRingHealth() {
     check("QD29: a failed fill read keeps the last", spdifRow(0).value("fill").toInt() == 6 && fillColor() == green);
     const QVariantList outputs = st->buffers().value("spdif").toList();
     check("QD29: outputs past the reply keep the buffer read's numbers", outputs.size() > 1 && !outputs[1].toMap().contains("band"));
+
+    // -- WP CG21 -- A tick is one call, whose fills the hook stands in for, and it stays
+    // off the UI thread. The transfers it costs are counted on the fake hub (dspi-core).
+    fills = kFillsGood;
+    const int ticksBefore = tickReads;
+    QElapsedTimer ticking;
+    ticking.start();
+    spin(600);
+    const int ticks = tickReads - ticksBefore;
+    printf("smoke: CG21: %d reads in %lld ms\n", ticks, (long long)ticking.elapsed());
+    check("CG21: at most one read per 60 ms tick", ticks >= 1 && ticks <= int(ticking.elapsed() / 60) + 1);
+    check("CG21: the reads ran off the UI thread", offUiThread.load());
 
     // ── A change of device leaves nothing behind ──
     fills = kFillsGood;

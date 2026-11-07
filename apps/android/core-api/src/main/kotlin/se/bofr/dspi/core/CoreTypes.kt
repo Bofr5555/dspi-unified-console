@@ -1835,6 +1835,21 @@ data class OutputFill(
 )
 
 /**
+ * One sample of the Stats window's fast poll (`fetch_stats_tick`).
+ */
+data class StatsTick(
+    /**
+     * The buffer fill levels and their watermarks.
+     */
+    val buffers: BufferStats,
+    /**
+     * The live outputs' fill, from the same read. `None` when the fill target
+     * could not be read: keep the last fills.
+     */
+    val fills: List<OutputFill>?,
+)
+
+/**
  * Who chose the analyser configuration the device holds
  * (`rta_get_ownership`). The last console to push one drives it, and every
  * other console follows.

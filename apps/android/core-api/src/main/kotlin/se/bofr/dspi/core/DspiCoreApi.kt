@@ -2278,6 +2278,25 @@ interface DspiCoreApi : AutoCloseable {
     fun fetchOutputFills(): List<OutputFill>
 
     /**
+     * The Stats window's fast poll: the buffer fill levels and the live
+     * outputs' fill, as [`DspiCore::fetch_buffer_stats`] and
+     * [`DspiCore::fetch_output_fills`] give them, from one transfer.
+     *
+     * The fill target is kept on the connection. It is read again, for one more
+     * transfer on the tick after, when this core changed the latency, when a
+     * notification says the settings moved (a preset, a bulk write, a format
+     * change, a lost packet), and after a Link re-attach. The firmware does not
+     * notify a latency change, so another client's reaches this through
+     * [`DspiCore::fetch_ring_health`]: call that on the slow cadence alongside.
+     * While a change has yet to apply the target is read each tick.
+     *
+     * Errors: as for [`DspiCore::fetch_buffer_stats`]. A failed read of the
+     * target is not an error: `fills` is `None`.
+     */
+    @Throws(DspiException::class)
+    fun fetchStatsTick(): StatsTick
+
+    /**
      * The buffer fill levels (%) and their watermarks
      * (`REQ_GET_BUFFER_STATS`, 44 bytes). `spdif` has 4 entries; the first
      * `num_spdif` (at most 4) are live.

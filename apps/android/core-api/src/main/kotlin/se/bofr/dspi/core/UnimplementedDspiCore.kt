@@ -380,6 +380,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun fetchOutputFills(): List<OutputFill> = throw NotImplementedError("fetch_output_fills")
 
+    override fun fetchStatsTick(): StatsTick = throw NotImplementedError("fetch_stats_tick")
+
     override fun fetchBufferStats(): BufferStats = throw NotImplementedError("fetch_buffer_stats")
 
     override fun resetBufferStats(): Unit = throw NotImplementedError("reset_buffer_stats")

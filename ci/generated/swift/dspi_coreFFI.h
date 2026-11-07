@@ -784,6 +784,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_spdif_rx_status(void*_Nonnu
 uint32_t uniffi_dspi_core_fn_method_dspicore_fetch_stat(void*_Nonnull ptr, uint16_t which, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_STATS_TICK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_STATS_TICK
+RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_stats_tick(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_STATUS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_STATUS
 RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_status(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -2630,6 +2635,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_spdif_rx_status(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_STAT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_STAT
 uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_stat(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_STATS_TICK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_STATS_TICK
+uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_stats_tick(void
     
 );
 #endif

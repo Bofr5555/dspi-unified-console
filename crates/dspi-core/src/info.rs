@@ -270,6 +270,8 @@ impl DspiCore {
     pub fn set_output_latency(&self, id: u8) -> Result<()> {
         let mut inner = self.lock();
         let mut w = inner.writable_conn()?;
+        // -- WP CG21 -- Before the send: a send that fails may still have landed
+        w.conn().ring_target.invalidate();
         w.session()?.send("out.latency", &[], Value::Choice(id))?;
         Ok(())
     }

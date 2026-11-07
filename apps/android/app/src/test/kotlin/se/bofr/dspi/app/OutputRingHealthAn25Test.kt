@@ -23,6 +23,7 @@ import org.robolectric.annotation.Config
 import se.bofr.dspi.core.FillBand
 import se.bofr.dspi.core.OutputFill
 import se.bofr.dspi.core.RingHealth
+import se.bofr.dspi.core.StatsTick
 import se.bofr.dspi.fake.FakeDspiCore
 import se.bofr.dspi.feature.analysis.BufferFillThresholds
 import se.bofr.dspi.feature.analysis.FillHealth
@@ -81,11 +82,13 @@ class OutputRingHealthAn25Test {
     fun an25TheCoresBandsColourTheRows() {
         show(
             object : FakeDspiCore() {
-                override fun fetchOutputFills(): List<OutputFill> = listOf(
-                    OutputFill(18.75, 14, 23, FillBand.GOOD),
-                    OutputFill(3.0, 1, 23, FillBand.WARN),
-                    OutputFill(0.0, 0, 23, FillBand.BAD),
-                    OutputFill(95.0, 14, 96, FillBand.BAD)
+                override fun fetchStatsTick(): StatsTick = super.fetchStatsTick().copy(
+                    fills = listOf(
+                        OutputFill(18.75, 14, 23, FillBand.GOOD),
+                        OutputFill(3.0, 1, 23, FillBand.WARN),
+                        OutputFill(0.0, 0, 23, FillBand.BAD),
+                        OutputFill(95.0, 14, 96, FillBand.BAD)
+                    )
                 )
             }
         )
@@ -106,7 +109,7 @@ class OutputRingHealthAn25Test {
                     return null
                 }
 
-                override fun fetchOutputFills(): List<OutputFill> = emptyList()
+                override fun fetchStatsTick(): StatsTick = super.fetchStatsTick().copy(fills = emptyList())
             }
         )
         // Past the answer itself: it cannot have been missed

@@ -101,3 +101,35 @@ fn wp_cg12_functions_are_in_the_header() {
         header.contains("dspi_fetch_output_fills(struct FfiCore *core, char *buf, uint32_t len)")
     );
 }
+
+// -- WP CG21 --
+#[test]
+fn wp_cg21_stats_tick_on_the_demo_device() {
+    let h = demo();
+    let reply = read_json(|b, l| dspi_fetch_stats_tick(h, b, l));
+    assert_eq!(reply["ok"], true, "{reply}");
+    assert_eq!(reply["buffers"]["numSpdif"], 4);
+    assert_eq!(reply["buffers"]["spdif"].as_array().unwrap().len(), 4);
+    assert!(reply["buffers"]["pdm"]["dmaFillPct"].is_number(), "{reply}");
+    assert!(reply["buffers"]["spdif"][0]["fillPct"].is_number());
+    let fills = reply["fills"].as_array().unwrap();
+    assert_eq!(fills.len(), 4);
+    assert_eq!(fills[0]["band"], "good");
+    drop(unsafe { Box::from_raw(h) });
+}
+
+#[test]
+fn wp_cg21_stats_tick_without_a_handle_and_its_reply_shapes() {
+    let mut b = [7u8; 16];
+    let t = b.as_mut_ptr().cast::<c_char>();
+    assert_eq!(dspi_fetch_stats_tick(null_mut::<FfiCore>(), t, 16), 0);
+
+    let v: serde_json::Value =
+        serde_json::from_str(&json_reply(Ok(dspi_core::StatsTick::default()))).unwrap();
+    assert_eq!(v["ok"], true);
+    assert!(
+        v["fills"].is_null(),
+        "null, not absent: keep the last fills"
+    );
+    assert!(v.get("value").is_none());
+}

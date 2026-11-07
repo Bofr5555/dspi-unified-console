@@ -679,7 +679,8 @@ pub struct SiggenCaps {
 
 /// One S/PDIF output's buffers.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SpdifBufferStats {
     /// Free ring space, 48-frame buckets, 0..16.
     pub free: u8,
@@ -697,7 +698,8 @@ pub struct SpdifBufferStats {
 
 /// The PDM output's buffers.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PdmBufferStats {
     /// DMA buffer fill, %.
     pub dma_fill_pct: u8,
@@ -715,7 +717,8 @@ pub struct PdmBufferStats {
 
 /// Buffer fill levels and watermarks (`fetch_buffer_stats`).
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BufferStats {
     /// Live entries of `spdif`, at most 4.
     pub num_spdif: u8,
@@ -1214,6 +1217,19 @@ pub struct OutputFill {
     /// The band of `fill_pct`, around the live latency target where there is
     /// one.
     pub band: FillBand,
+}
+
+// -- WP CG21 --
+/// One sample of the Stats window's fast poll (`fetch_stats_tick`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatsTick {
+    /// The buffer fill levels and their watermarks.
+    pub buffers: BufferStats,
+    /// The live outputs' fill, from the same read. `None` when the fill target
+    /// could not be read: keep the last fills.
+    pub fills: Option<Vec<OutputFill>>,
 }
 
 // -- WP F1 --
