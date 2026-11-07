@@ -9,6 +9,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.bridge.DspiBridgeImpl
+import se.bofr.dspi.feature.onboarding.OnboardingSource
 import se.bofr.dspi.ffi.FfiDspiCore
 import se.bofr.dspi.link.LinkNetworkFollower
 import se.bofr.dspi.link.LinkNetworkMonitor
@@ -85,6 +86,11 @@ class DspiApplication : Application() {
     lateinit var aboutJson: () -> String
         private set
 
+    // -- WP AN19 --
+    /** Getting Started and What's New, from the device stack's core in every mode. */
+    lateinit var onboarding: OnboardingSource
+        private set
+
     /** The main window's selection (macOS activeEqChannel / isOverviewMode). */
     val appState = AppState()
 
@@ -101,6 +107,7 @@ class DspiApplication : Application() {
         val linkStore = DataStoreLinkStore(dspiBridgeStore, appScope)
         val deviceCore = FfiDspiCore()
         aboutJson = deviceCore::aboutJson
+        onboarding = OnboardingSource(deviceCore::onboardingWhatsNewJson, deviceCore::onboardingGettingStartedJson) // -- WP AN19 --
         bridge = DspiBridgeImpl(deviceCore, appScope, linkStore = linkStore, appVersion = version)
         val services = SharedServiceControl(AndroidServiceControl(this))
         val usb = AndroidUsbSession(this, bridge, appScope, service = services.client("usb"))

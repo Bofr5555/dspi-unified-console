@@ -195,4 +195,20 @@ class AppNetworkingControllerTest {
         c.setEnabled(false) // turning Link off leaves REMOTE
         assertFalse(c.state.value.connected)
     }
+
+    // -- WP AN5 --
+    @Test
+    fun wpAn5StatusSaysWhatTheStripSays() = runTest {
+        val (c, _, remotes) = setup()
+        c.setEnabled(true)
+        c.addManual("10.0.0.2")
+        c.connect(c.hubs.value.first().id)
+        val hub = LinkHub.manual("10.0.0.2", 11915)
+        remotes[0].state.value = LinkSessionState.WaitingForDevice(hub, "")
+        assertEquals("Connected to hub, no DSPi found · ${hub.name}", c.state.value.status)
+        remotes[0].state.value = LinkSessionState.NeedsPin(hub, "fixed")
+        assertEquals("Enter the hub's PIN. · ${hub.name}", c.state.value.status)
+        remotes[0].state.value = LinkSessionState.Reconnecting(hub, "hub shutting down", 0, 1, "Connection lost, reconnecting")
+        assertEquals("Connection lost, reconnecting · ${hub.name}: hub shutting down", c.state.value.status)
+    }
 }

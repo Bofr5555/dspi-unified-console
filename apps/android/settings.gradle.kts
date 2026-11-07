@@ -36,5 +36,7 @@ include(":feature-presets")
 include(":feature-settings")
 include(":feature-analysis")
 include(":feature-firmware")
+// -- WP AN19 --
+include(":feature-onboarding")
 
 include(":app")

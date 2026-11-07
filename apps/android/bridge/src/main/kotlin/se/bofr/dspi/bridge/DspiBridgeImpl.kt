@@ -235,6 +235,9 @@ class DspiBridgeImpl(
     // -- WP AN6 --
     override val deviceSettings: DeviceSettingsImpl
 
+    // -- WP AN23 --
+    override val coreVoltageCalibration: CoreVoltageCalibrationImpl
+
     private var uiVisible = true
     private var pollJob: Job? = null
     private var hotplugJob: Job? = null
@@ -257,6 +260,7 @@ class DspiBridgeImpl(
         monitor = MonitorModelImpl(this)
         configFiles = ConfigFilesImpl(this)
         deviceSettings = DeviceSettingsImpl(this)
+        coreVoltageCalibration = CoreVoltageCalibrationImpl(this) // -- WP AN23 --
         updateTimers()
         // As the Qt constructor: pick up a device the core can already see
         // (desktop libusb, the fake in demo mode; on Android the list is
@@ -273,6 +277,7 @@ class DspiBridgeImpl(
         siggen.close()
         stats.close()
         cs.close()
+        coreVoltageCalibration.close() // -- WP AN23 --
         core.setNotifyListener(null)
         core.setHotplugCallback(null)
     }

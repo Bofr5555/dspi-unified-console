@@ -41,6 +41,7 @@ import se.bofr.dspi.feature.graph.GraphScreen
 import se.bofr.dspi.feature.home.ChannelScreen
 import se.bofr.dspi.feature.home.HomeScreen
 import se.bofr.dspi.feature.matrix.MatrixMixerView
+import se.bofr.dspi.feature.onboarding.OnboardingSource
 import se.bofr.dspi.feature.presets.PresetsScreen
 import se.bofr.dspi.feature.settings.SettingsScreen
 import se.bofr.dspi.feature.tools.OutputLimiterView
@@ -49,6 +50,8 @@ import se.bofr.dspi.ui.DspiRoutes
 import se.bofr.dspi.ui.LocalDemoMode
 import se.bofr.dspi.ui.LocalWritesAllowed
 import se.bofr.dspi.ui.WritesExempt
+import se.bofr.dspi.ui.link.LinkBanner
+import se.bofr.dspi.ui.link.LinkBannerAction
 import se.bofr.dspi.usb.BootloaderLocator
 
 /** Test tag of the connection strip, the top of the app. */
@@ -81,6 +84,8 @@ fun AppScaffold(
     bootloaderLocator: BootloaderLocator? = null,
     onRemoteAction: (RemoteAction) -> Unit = {},
     onConnectNetwork: () -> Unit = {},
+    // -- WP AN19 -- the core's onboarding data; null: no first-run pages (tests)
+    onboarding: OnboardingSource? = null,
     overlay: @Composable () -> Unit = {}
 ) {
     // The IME stays out, as with the Scaffold's default insets
@@ -88,7 +93,10 @@ fun AppScaffold(
         Column(Modifier.fillMaxSize().padding(padding)) {
             ConnectionStripBar(strip, onEnterDemo, onExitDemo, onRequestPermission, onRemoteAction, onConnectNetwork)
             key(bridge) {
-                CompositionLocalProvider(LocalDemoMode provides (strip is ConnectionStrip.Demo)) {
+                CompositionLocalProvider(
+                    LocalDemoMode provides (strip is ConnectionStrip.Demo),
+                    LocalOnboarding provides onboarding // -- WP AN19 --
+                ) {
                     DspiNavHost(bridge, bootloaderLocator, remote = strip is ConnectionStrip.Remote)
                 }
             }
@@ -127,7 +135,11 @@ private fun DspiRoutesHost(bridge: DspiBridge, bootloaderLocator: BootloaderLoca
         screen(nav, DspiRoutes.SETTINGS) { _, go, back -> SettingsScreen(bridge, go, back) }
         screen(nav, DspiRoutes.ANALYSIS) { _, go, back -> AnalysisScreen(bridge, go, back) }
         screen(nav, DspiRoutes.FIRMWARE) { _, go, back -> FirmwareRoute(bridge, go, back, bootloaderLocator, remote) }
+        // -- WP AN19 --
+        screen(nav, DspiRoutes.GETTING_STARTED) { _, go, back -> GettingStartedRoute(bridge, go, back) }
+        screen(nav, DspiRoutes.WHATS_NEW) { _, _, back -> WhatsNewRoute(back) }
     }
+    OnboardingAtLaunch(nav) // -- WP AN19 --
 }
 
 @Composable
@@ -177,6 +189,11 @@ private fun ConnectionStripBar(
     onConnectNetwork: () -> Unit
 ) {
     if (strip is ConnectionStrip.Hidden) return
+    // -- WP AN5 -- the owner's lost-connection banner; this bar is above every route, so it is on every screen
+    if (strip is ConnectionStrip.Remote && strip.lost) {
+        LinkBanner(strip.text, strip.detail, strip.actions.map { a -> LinkBannerAction(a.label) { onRemoteAction(a) } })
+        return
+    }
     // Demo and REMOTE stand out, so neither is taken for the USB unit
     val demo = strip is ConnectionStrip.Demo || strip is ConnectionStrip.Remote
     val colors = MaterialTheme.colorScheme

@@ -963,6 +963,9 @@ interface DspiBridge {
     // -- WP AN6 --
     val deviceSettings: DeviceSettings
 
+    // -- WP AN23 --
+    val coreVoltageCalibration: CoreVoltageCalibration
+
     /** Token issuer for the GATED members (D5). Same instance for the bridge's lifetime. */
     val dangerousOps: DangerousOps
 
