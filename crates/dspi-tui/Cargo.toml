@@ -25,6 +25,14 @@ serde = { workspace = true, features = ["derive"] }
 dspi-link.workspace = true
 # OpenError, as the other crates' typed errors.
 thiserror.workspace = true
+# -- WP TM12 --
+# The AutoEQ rebuild's HTTPS (autoeq_fetch.rs), which was a `curl` process. Blocking,
+# which is what the session's fetch is, so no async runtime as reqwest would need.
+# rustls with ring, so nothing links the system's OpenSSL and the Windows build
+# cross-compiles; no gzip, since the fetch has no use for it; socks-proxy costs
+# no crate and keeps what `curl` honoured in ALL_PROXY. Only this crate and
+# dspi-term see it: the core, the session and the mobile libraries do not.
+ureq = { version = "3.5", default-features = false, features = ["rustls", "socks-proxy"] }
 
 [features]
 default = ["midi"]
@@ -39,3 +47,7 @@ dspi-link = { workspace = true, features = ["fake-hub"] }
 # -- WP TM4 --
 # Holds the read-only opcode table to the Link policy fixture (shell/read_only.rs).
 serde_json.workspace = true
+# -- WP TM12 --
+# A TLS server on loopback, for the tests of what the fetch trusts. Already in the
+# graph through ureq.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }

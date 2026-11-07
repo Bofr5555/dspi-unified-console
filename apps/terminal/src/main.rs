@@ -90,6 +90,8 @@ mod stdio {
     }
 }
 
+// -- WP TM12 --
+mod autoeq_update;
 // -- WP TM10 --
 mod doctor;
 mod transfer;
@@ -435,6 +437,11 @@ USAGE:
                              --word OVERVOLT in a script; --force does not count
     dspi autoeq search <q>   find a headphone correction profile
     dspi autoeq apply <id>   apply one to the input channels
+    dspi autoeq rebuild --yes
+                             download every profile from GitHub again
+    dspi autoeq update <url> replace the database with a download
+    dspi autoeq import <f>   replace the database with a file
+    dspi autoeq reset        go back to the built-in database
     dspi -f <script>         run one command per line, `#` starts a comment
     dspi < script            the same, from standard input
     dspi --install-udev      install the Linux udev rule (needs root)
@@ -1016,6 +1023,11 @@ fn section_offset(name: &str) -> usize {
 fn cmd_autoeq(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
     use dspi_session::autoeq;
 
+    // -- WP TM12 -- Before the load: a database that will not load is what these mend.
+    if let Some(code) = autoeq_update::run(args, flags) {
+        return code;
+    }
+
     let db = match autoeq::load() {
         Ok(d) => d,
         Err(e) => {
@@ -1180,6 +1192,11 @@ fn cmd_autoeq(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
             );
             println!("\n  dspi autoeq search <words>");
             println!("  dspi autoeq apply <id> [channel]");
+            // -- WP TM12 --
+            println!("  dspi autoeq rebuild --yes");
+            println!("  dspi autoeq update <https url>");
+            println!("  dspi autoeq import <file>");
+            println!("  dspi autoeq reset");
             exit::OK
         }
     }

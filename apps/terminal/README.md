@@ -128,6 +128,7 @@ dspi cs import surfaces.json --save
 dspi -f evening.dspi              # a script, one command per line
 
 dspi autoeq search hd600          # headphone corrections
+dspi autoeq rebuild --yes         # download the profiles from GitHub again
 dspi undo                         # put back what the last change replaced
 dspi raw 0x87 41                  # any opcode, hex-dumped
 dspi completions zsh              # shell completion
