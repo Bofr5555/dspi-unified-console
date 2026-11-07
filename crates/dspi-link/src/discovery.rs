@@ -318,6 +318,36 @@ impl HubAdvert {
     }
 }
 
+// -- WP HB5 --
+/// The `.local` host name a hub with this id advertises, without the trailing dot,
+/// for its `Origin` check. `None` when the id has nothing to build a name from. Derived
+/// from the hub id since std cannot read the machine's name; it only has to be unique.
+pub fn mdns_host_name(hub_id: &str) -> Option<String> {
+    let id: String = hub_id.chars().filter(char::is_ascii_alphanumeric).take(12).collect();
+    (!id.is_empty()).then(|| format!("dspi-{id}.local"))
+}
+
+/// Where a responder speaks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AdvertiseScope {
+    /// Every interface: what a hub on the network does.
+    #[default]
+    AllInterfaces,
+    /// The IPv4 loopback interface and nothing else: tests, and a hub that listens only
+    /// there, whose address would mean nothing to anyone else.
+    LoopbackOnly,
+}
+
+/// The names a responder holds right now. Another machine holding a name makes the
+/// responder take a new one (RFC 6762 section 9), so these can differ from what was asked.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AdvertisedNames {
+    /// The instance name, without the service type: `Studio (2)`.
+    pub instance: String,
+    /// The `.local` host name, without the trailing dot: `dspi-0123456789ab-2.local`.
+    pub host: String,
+}
+
 /// What a [`BrowseSource`] reports.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SourceEvent {
@@ -658,10 +688,11 @@ mod mdns {
     use std::thread;
     use std::time::Duration;
 
-    use mdns_sd::{ResolvedService, ServiceDaemon, ServiceEvent, ServiceInfo};
+    use mdns_sd::{DaemonEvent, IfKind, RRType, Receiver, ResolvedService, ServiceDaemon, ServiceEvent, ServiceInfo};
 
     use super::{
-        BrowseSession, BrowseSource, DiscoveryError, HubAdvert, ServiceRecord, SourceEvent, SourceSink, SERVICE_TYPE,
+        instance_label, mdns_host_name, AdvertiseScope, AdvertisedNames, BrowseSession, BrowseSource, DiscoveryError,
+        HubAdvert, ServiceRecord, SourceEvent, SourceSink, SERVICE_TYPE,
     };
 
     /// How long [`BrowseSession::verify`] gives a hub to answer.
@@ -758,12 +789,27 @@ mod mdns {
     /// The service to register for `advert`. The host name is derived from the
     /// hub id, since std cannot read the machine's; it only has to be unique.
     pub(super) fn service_info(advert: &HubAdvert) -> Result<ServiceInfo, DiscoveryError> {
-        let id: String = advert.hub_id.chars().filter(char::is_ascii_alphanumeric).take(12).collect();
-        if id.is_empty() {
+        service_info_rev(advert, None)
+    }
+
+    // -- WP HB5 --
+    /// The TXT key that makes each announcement a record of its own.
+    pub(super) const REVISION_KEY: &str = "rev";
+
+    /// [`service_info`], with `rev=` when given. mdns-sd's browser takes data it has
+    /// cached before for no change, though it may since have shown other data: so a
+    /// count that goes 1, 2, 1 stays at 2 for anyone browsing with it. A key that differs
+    /// every time keeps each announcement new. Spec 3.1: unknown keys are ignored.
+    pub(super) fn service_info_rev(advert: &HubAdvert, revision: Option<u32>) -> Result<ServiceInfo, DiscoveryError> {
+        let Some(host) = mdns_host_name(&advert.hub_id) else {
             return Err(DiscoveryError::Advert("no hub id".to_owned()));
+        };
+        let host = format!("{host}.");
+        let mut txt = advert.txt();
+        // -- WP HB5 --
+        if let Some(revision) = revision {
+            txt.push((REVISION_KEY.to_owned(), revision.to_string()));
         }
-        let host = format!("dspi-{id}.local.");
-        let txt = advert.txt();
         let props: Vec<(&str, &str)> = txt.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
         ServiceInfo::new(SERVICE_TYPE, &advert.name, &host, "", advert.port, props.as_slice())
             .map(ServiceInfo::enable_addr_auto)
@@ -775,25 +821,91 @@ mod mdns {
     pub struct MdnsAdvertiser {
         daemon: ServiceDaemon,
         fullname: String,
+        // -- WP HB5 --
+        /// What the daemon says about name conflicts, read by [`Self::names`].
+        monitor: Receiver<DaemonEvent>,
+        names: AdvertisedNames,
+        /// `rev=` of the next registration.
+        revision: u32,
+    }
+
+    fn names_of(info: &ServiceInfo) -> AdvertisedNames {
+        AdvertisedNames {
+            instance: instance_label(info.get_fullname()),
+            host: info.get_hostname().trim_end_matches('.').to_owned(),
+        }
     }
 
     impl MdnsAdvertiser {
         /// Register `advert` on every interface.
         pub fn start(advert: &HubAdvert) -> Result<Self, DiscoveryError> {
-            let info = service_info(advert)?;
+            Self::start_on(advert, AdvertiseScope::AllInterfaces)
+        }
+
+        // -- WP HB5 --
+        /// Register `advert` in `scope`. The monitor and the interface selection are in
+        /// the daemon's queue ahead of the registration, so no conflict goes unheard and
+        /// a loopback responder announces nothing anywhere else.
+        pub fn start_on(advert: &HubAdvert, scope: AdvertiseScope) -> Result<Self, DiscoveryError> {
+            let info = service_info_rev(advert, Some(1))?;
             let daemon = ServiceDaemon::new().map_err(network)?;
+            let monitor = daemon.monitor().map_err(network)?;
+            if scope == AdvertiseScope::LoopbackOnly {
+                daemon.disable_interface(IfKind::All).map_err(network)?;
+                daemon.enable_interface(IfKind::LoopbackV4).map_err(network)?;
+            }
             let fullname = info.get_fullname().to_owned();
+            let names = names_of(&info);
             daemon.register(info).map_err(network)?;
-            Ok(Self { daemon, fullname })
+            Ok(Self { daemon, fullname, monitor, names, revision: 1 })
+        }
+
+        /// The names held now, after what the daemon has said so far. Read this often
+        /// enough to keep up: its queue is bounded, and it also carries every multicast
+        /// answer. On a machine with several interfaces a conflict is per interface, and
+        /// this has the latest. Never blocks.
+        pub fn names(&mut self) -> AdvertisedNames {
+            while let Ok(event) = self.monitor.try_recv() {
+                let DaemonEvent::NameChange(change) = event else {
+                    continue;
+                };
+                match change.rr_type {
+                    RRType::A | RRType::AAAA => {
+                        log::info!("mDNS: host name taken, now {}", change.new_name);
+                        change.new_name.trim_end_matches('.').clone_into(&mut self.names.host);
+                    }
+                    // What is left over from a name this has since given up says nothing.
+                    _ if change.original.eq_ignore_ascii_case(&self.fullname) => {
+                        log::info!("mDNS: instance name taken, now {}", change.new_name);
+                        self.names.instance = instance_label(&change.new_name);
+                    }
+                    _ => {}
+                }
+            }
+            self.names.clone()
         }
 
         /// Announce changed data (devices came or went), keeping the registration.
         /// A new name replaces the old one, with a goodbye for that.
         pub fn update(&mut self, advert: &HubAdvert) -> Result<(), DiscoveryError> {
-            let info = service_info(advert)?;
+            // -- WP HB5 -- A new name is probed, and the responder must not hear its own
+            // records under the old one, sent as it renamed itself, as another's: so the
+            // revision moves only with new data under the same name.
+            let same_name = service_info(advert)?.get_fullname() == self.fullname;
+            if same_name {
+                self.revision = self.revision.wrapping_add(1);
+            }
+            let mut info = service_info_rev(advert, Some(self.revision))?;
             if info.get_fullname() != self.fullname {
                 self.goodbye();
                 info.get_fullname().clone_into(&mut self.fullname);
+                // -- WP HB5 --
+                self.names.instance = names_of(&info).instance;
+            } else {
+                // -- WP HB5 -- New data under a name already held is announced, not
+                // probed (RFC 6762 section 8.4). A probe would also hear this responder's
+                // own late answer with the old data, take it for a conflict and rename.
+                info.set_requires_probe(false);
             }
             self.daemon.register(info).map_err(network)
         }
@@ -808,7 +920,11 @@ mod mdns {
     impl Drop for MdnsAdvertiser {
         fn drop(&mut self) {
             self.goodbye();
-            let _ = self.daemon.shutdown();
+            // -- WP HB5 -- Waits for the daemon's thread to end: a hub's stop promises
+            // nothing is left running, and the same wait is what the goodbye gets above.
+            if let Ok(done) = self.daemon.shutdown() {
+                let _ = done.recv_timeout(GOODBYE_WAIT);
+            }
         }
     }
 }

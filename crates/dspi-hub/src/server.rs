@@ -33,6 +33,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, PoisonError, TryLockE
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
+use dspi_link::discovery::AdvertiseScope;
 use dspi_link::frames::{CmdResponse, Frame, NotifyFrame, PollFrame, kind};
 use dspi_link::messages::{PROTO_MAJOR, PROTO_MINOR, PollSpec};
 use dspi_link::socket::{Pipe, split_server};
@@ -140,9 +141,40 @@ pub struct NetworkConfig {
     pub mdns_name: Option<String>,
     /// What one socket may cost.
     pub limits: ServerLimits,
+    // -- WP HB5 --
+    /// Whether and where the hub says it is there.
+    pub advertise: Advertise,
+}
+
+// -- WP HB5 --
+/// Whether and where a hub advertises itself (spec 3.1). Needs feature `mdns`; a build
+/// without it advertises nothing, whatever this says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Advertise {
+    /// On every interface. A hub bound to loopback stays silent, as nobody else could
+    /// reach it, so a hub in a test cannot reach the network by this.
+    #[default]
+    Lan,
+    /// On the loopback interface alone, whatever the hub is bound to. For tests.
+    LoopbackOnly,
+    /// Not at all: reachable by a typed address.
+    Off,
 }
 
 impl NetworkConfig {
+    // -- WP HB5 --
+    /// Where this configuration advertises. `None` for not at all.
+    pub(crate) fn advertise_scope(&self) -> Option<AdvertiseScope> {
+        if !crate::advertise::AVAILABLE {
+            return None;
+        }
+        match self.advertise {
+            Advertise::Lan => (!self.bind.is_loopback()).then_some(AdvertiseScope::AllInterfaces),
+            Advertise::LoopbackOnly => Some(AdvertiseScope::LoopbackOnly),
+            Advertise::Off => None,
+        }
+    }
+
     /// The defaults: the standard port, PIN pairing, no web UI.
     pub fn new(store_dir: PathBuf) -> Self {
         Self {
@@ -153,6 +185,8 @@ impl NetworkConfig {
             bind: IpAddr::V6(Ipv6Addr::UNSPECIFIED),
             mdns_name: None,
             limits: ServerLimits::default(),
+            // -- WP HB5 --
+            advertise: Advertise::default(),
         }
     }
 }
@@ -787,7 +821,12 @@ fn serve(shared: &Arc<Shared>, id: u64, mut tcp: TcpStream, peer: IpAddr, opened
         .flatten();
     match asset {
         Some(asset) => {
-            let headers = [("Content-Type", asset.content_type)];
+            // -- WP HB5 -- A hub's update changes these under the same paths.
+            let headers = [
+                ("Content-Type", asset.content_type),
+                ("X-Content-Type-Options", "nosniff"),
+                ("Cache-Control", "no-cache"),
+            ];
             // The peer's slot is held until its time runs out, however big the file.
             let until = after(opened, shared.limits.auth_timeout);
             respond(shared, &mut tcp, "200 OK", &headers, asset.body, until);
@@ -840,10 +879,13 @@ fn check_upgrade(
         None => true,
         // No page to be the origin of, so nothing a browser sends can be right.
         Some(_) if !shared.web => false,
-        Some(_) => origin_allowed(
-            origin,
-            &OwnNames::current(shared.port, shared.mdns_name.as_deref()),
-        ),
+        // -- WP HB5 -- The name the responder holds now: after a conflict the old one is
+        // somebody else's. The configured one until it runs, and after.
+        Some(_) => {
+            let advertised = shared.hub.advertised().map(|names| names.host);
+            let name = advertised.as_deref().or(shared.mdns_name.as_deref());
+            origin_allowed(origin, &OwnNames::current(shared.port, name))
+        }
     };
     if !allowed {
         log::debug!("hub: refused a WebSocket from a foreign origin");

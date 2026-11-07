@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::thread::{self, JoinHandle, ThreadId};
 use std::time::{Duration, Instant};
 
+use dspi_link::discovery::{AdvertiseScope, AdvertisedNames, HubAdvert};
 use dspi_link::frames::CmdRequest;
 use dspi_link::messages::{PollGrant, PollSpec, Snapshot};
 use dspi_link::{Dir, status};
@@ -191,6 +192,11 @@ pub(crate) struct HubInner {
     /// to copy the names, and it is never taken under L1.
     names_saving: Mutex<()>,
     warm_snapshots: bool,
+    // -- WP HB5 --
+    /// The responder while sharing. Above L1: L1 is taken under it, so that the last
+    /// update has the latest devices, and it is never taken under L1. Not held across
+    /// the goodbye in [`Hub::stop`].
+    advertiser: Mutex<Option<Advertiser>>,
 }
 
 /// A cheap, clonable way to the hub, for the server and the app's broker. It keeps
@@ -205,9 +211,6 @@ struct Threads {
     supervisor: JoinHandle<()>,
     events: JoinHandle<()>,
     server: Option<Server>,
-    /// HB5 sets it after the server has bound. Dropped first in [`Hub::stop`], on the
-    /// caller's thread: its goodbye can take a second.
-    advertiser: Option<Advertiser>,
 }
 
 /// A running hub. Stops when dropped.
@@ -279,6 +282,8 @@ impl Hub {
             names,
             names_saving: Mutex::new(()),
             warm_snapshots: config.warm_snapshots || network.is_some(),
+            // -- WP HB5 --
+            advertiser: Mutex::new(None),
         });
         let io = |e: std::io::Error| HubError::Io(format!("cannot start a hub thread: {e}"));
         let events = {
@@ -316,14 +321,23 @@ impl Hub {
                 supervisor,
                 events,
                 server: None,
-                advertiser: None,
             })),
         };
-        if let (Some(network), Some(auth)) = (network, auth) {
+        if let (Some(mut network), Some(auth)) = (network, auth) {
+            // -- WP HB5 -- Before the server starts, which copies it for its `Origin` check.
+            let scope = network.advertise_scope();
+            if scope.is_some() && network.mdns_name.is_none() {
+                network.mdns_name = dspi_link::discovery::mdns_host_name(hub.hub_id());
+            }
             // `hub` is dropped on failure, which stops what started above.
             let server = Server::start(hub.handle.clone(), &network, auth)?;
+            let port = server.port();
             if let Some(t) = guard(&hub.threads).as_mut() {
                 t.server = Some(server);
+            }
+            // -- WP HB5 --
+            if let Some(scope) = scope {
+                hub.handle.inner.start_advertising(&network, port, scope);
             }
         }
         Ok(hub)
@@ -357,9 +371,8 @@ impl Hub {
         }
         // 1. Off the network: goodbye, no new connections. 2. Everyone gets their close.
         // 3. Connections go.
-        {
-            let _goodbye = t.advertiser;
-        }
+        let goodbye = guard(&inner.advertiser).take();
+        drop(goodbye);
         if let Some(server) = &t.server {
             server.stop_accepting();
         }
@@ -442,6 +455,15 @@ impl HubHandle {
     /// Every device the hub knows, online or inside its grace, by handle.
     pub fn devices(&self) -> Vec<RegisteredDevice> {
         guard(&self.inner.state).registry.devices()
+    }
+
+    // -- WP HB5 --
+    /// The names the hub is advertised under, which a conflict on the network can have
+    /// changed from what was asked. `None` when it is not advertised.
+    pub fn advertised(&self) -> Option<AdvertisedNames> {
+        guard(&self.inner.advertiser)
+            .as_mut()
+            .map(Advertiser::names)
     }
 
     /// Devices on the bus the hub could not open at its last scan.
@@ -784,10 +806,11 @@ impl HubInner {
     }
 
     /// Publish a registry change, with `state` released: the `device.*` message to
-    /// network sessions (spec 7.4), and the embedder's event. HB5's advertiser update
-    /// goes here too.
+    /// network sessions (spec 7.4), the embedder's event, and the advertisement.
     fn publish(&self, event: RegistryEvent) {
         self.relay.broadcast_event(&event.to_json());
+        // -- WP HB5 --
+        self.readvertise();
         let hub_event = match event {
             RegistryEvent::Added(d) => HubEvent::DeviceOnline {
                 handle: d.handle,
@@ -806,6 +829,74 @@ impl HubInner {
             RegistryEvent::Removed { handle, serial } => HubEvent::DeviceRemoved { handle, serial },
         };
         self.emit(hub_event);
+    }
+
+    // -- WP HB5 --
+    /// What the record says about the devices shared now: those online.
+    fn advertised_devices(&self) -> (u32, Vec<String>) {
+        let serials: Vec<String> = guard(&self.state)
+            .registry
+            .devices()
+            .into_iter()
+            .filter(|d| d.state == DeviceState::Online)
+            .map(|d| d.identity.serial)
+            .collect();
+        let count = u32::try_from(serials.len()).unwrap_or(u32::MAX);
+        (count, serials)
+    }
+
+    /// A hub that cannot advertise goes on serving: it can still be reached by a typed
+    /// address, and a machine with no multicast is not a reason to refuse to share.
+    /// The device list is read under the lock [`Self::readvertise`] takes, so a device
+    /// attaching meanwhile is in this record or updates it.
+    fn start_advertising(&self, network: &NetworkConfig, port: u16, scope: AdvertiseScope) {
+        let mut slot = guard(&self.advertiser);
+        let (device_count, serials) = self.advertised_devices();
+        let advert = HubAdvert {
+            name: self.name.clone(),
+            port,
+            hub_id: self.hub_id.clone(),
+            kind: "console".to_owned(),
+            auth: network.access.wire_name().to_owned(),
+            device_count,
+            serials,
+            web: network.web,
+            path: None,
+        };
+        match Advertiser::start(&advert, scope) {
+            Ok(advertiser) => *slot = Some(advertiser),
+            Err(e) => log::warn!("hub: not advertised: {e}"),
+        }
+        // Wakes the supervisor from its tick, for the quick look that follows a start.
+        drop(slot);
+        let _ = self.sup.send(SupMsg::AdvertisingStarted);
+    }
+
+    /// With `state` released. Costs a comparison unless the record changed.
+    fn readvertise(&self) {
+        let mut slot = guard(&self.advertiser);
+        let Some(advertiser) = slot.as_mut() else {
+            return;
+        };
+        let (device_count, serials) = self.advertised_devices();
+        let advert = HubAdvert {
+            device_count,
+            serials,
+            ..advertiser.current().clone()
+        };
+        if let Err(e) = advertiser.update(&advert) {
+            log::warn!("hub: advertisement not updated: {e}");
+        }
+    }
+
+    /// On the supervisor's tick: conflicts dealt with and held changes sent, and the
+    /// responder's bounded queue read before it fills. Returns how soon to come back,
+    /// if sooner than the tick.
+    fn keep_up_with_the_responder(&self) -> Option<Duration> {
+        let mut slot = guard(&self.advertiser);
+        let advertiser = slot.as_mut()?;
+        advertiser.names();
+        advertiser.poll_wait()
     }
 
     /// Read the identity, then register and start it. On the caller's thread, with no
@@ -1052,8 +1143,11 @@ fn supervisor_loop(
 ) {
     let mut retry = BTreeMap::new();
     let mut next_scan = Instant::now();
+    // -- WP HB5 --
+    let mut responder_wait = None;
     loop {
         let wait = next_scan.saturating_duration_since(Instant::now());
+        let wait = responder_wait.map_or(wait, |sooner: Duration| wait.min(sooner));
         match rx.recv_timeout(wait) {
             Ok(SupMsg::Lost { handle, generation }) => {
                 if inner.detach(handle, Some(generation)) {
@@ -1085,8 +1179,17 @@ fn supervisor_loop(
                     inner.save_names();
                 }
             }
+            // -- WP HB5 --
+            Ok(SupMsg::AdvertisingStarted) => {
+                responder_wait = inner.keep_up_with_the_responder();
+            }
             Ok(SupMsg::Stop) | Err(RecvTimeoutError::Disconnected) => return,
             Err(RecvTimeoutError::Timeout) => {
+                // -- WP HB5 --
+                responder_wait = inner.keep_up_with_the_responder();
+                if Instant::now() < next_scan {
+                    continue;
+                }
                 if let Some(bus) = bus.as_deref_mut().filter(|_| scanning) {
                     inner.scan_bus(bus, &mut retry, false);
                 }
