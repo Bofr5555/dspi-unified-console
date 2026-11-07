@@ -756,28 +756,86 @@ void SmokeDriver::testFirmware() {
         };
         return with;
     };
-    // Rebooted before the cancel arrived: on with the install, not idle with a board
-    // sitting in its bootloader
-    start(good);
+    // Rebooted before the cancel arrived: a Cancel never ends in a write
+    const auto cancelAfterReboot = [&]() {
+        start(good);
+        auto h = std::make_shared<Hold>();
+        fw->setTestSeam(held(seam, h));
+        mark();
+        fw->installWhenReady();
+        expect(QStringLiteral("a reboot in flight"), waitFor(3000, [&]() { return bool(h->in); }));
+        fw->stopWatching();
+        fw->reset();
+        expect(QStringLiteral("cancel waits for the job"), fw->state() == QLatin1String("checking"));
+        h->release = true;
+        expect(QStringLiteral("cancel after the reboot says so"), waitState("inBootloader") && fw->bootloaderRequests() == enters + 1
+               && fw->failure().contains(QLatin1String("nothing was written")) && fw->failure().contains(QLatin1String("unplug it")));
+        fw->setTestSeam(seam);
+    };
+    cancelAfterReboot();
     auto hold = std::make_shared<Hold>();
-    fw->setTestSeam(held(seam, hold));
-    mark();
-    fw->installWhenReady();
-    expect(QStringLiteral("a reboot in flight"), waitFor(3000, [&]() { return bool(hold->in); }));
-    fw->stopWatching();
-    fw->reset();
-    expect(QStringLiteral("cancel waits for the job"), fw->state() == QLatin1String("checking"));
-    hold->release = true;
-    expect(QStringLiteral("cancel after the reboot still reaches the drive wait"), waitState("waitingForDrive") && fw->bootloaderRequests() == enters + 1);
-    fw->setTestSeam(seam);
+    spin(50);
+    expect(QStringLiteral("the window comes back to say it"), win->isVisible());
+    expect(QStringLiteral("with Install usable"), install->isVisible() && install->isEnabled());
+    spin(100);
+    win->grabWindow().save(m_out + QStringLiteral("/window-firmware-in-bootloader.png"));
     board();
     drive = newDrive();
     bus->mount(drive);
-    expect(QStringLiteral("and finishes"), waitFor(3000, [&]() { return onDrive(drive) == goodBytes; }) && waitState("verified", 5000));
+    spin(1400);
+    expect(QStringLiteral("the drive arriving writes nothing"), fw->state() == QLatin1String("inBootloader") && empty(drive));
+    expect(QStringLiteral("nor does reset or a close and reopen"), [&]() {
+        fw->reset();
+        win->setVisible(false);
+        spin(50);
+        win->setVisible(true);
+        spin(100);
+        return fw->state() == QLatin1String("inBootloader") && empty(drive);
+    }());
+    reads = fw->boardReads();
+    enters = fw->bootloaderRequests();
+    clickItem(install);
+    expect(QStringLiteral("Install again asks, as of a board nobody can ask"), waitState("question") && fw->questionPhrase() == QLatin1String(kPhrase));
+    expect(QStringLiteral("without reading a device or another reboot"), fw->boardReads() == reads && noReboot() && empty(drive));
+    fw->answer(QString::fromLatin1(kPhrase));
+    expect(QStringLiteral("only then is it written"), waitFor(3000, [&]() { return onDrive(drive) == goodBytes; }));
+    waitState("failed", 5000);
+    win->setVisible(false);
+    spin(50);
+
+    // Install again before the drive is there: no reboot of what is connected
+    cancelAfterReboot();
+    enters = fw->bootloaderRequests();
+    fw->installWhenReady();
+    spin(400);
+    expect(QStringLiteral("armed again with no drive: no second reboot"), noReboot() && fw->state() == QLatin1String("inBootloader"));
+    drive = newDrive();
+    bus->mount(drive);
+    expect(QStringLiteral("and the drive gets its question"), waitState("question", 3000) && empty(drive));
+    win->setVisible(false);
+    spin(50);
+    fw->reset();
+    bus->clear();
+
+    // Unplugged, it goes back to looking
+    cancelAfterReboot();
+    drive = newDrive();
+    bus->mount(drive);
+    spin(1300);
+    expect(QStringLiteral("still parked with the drive there"), fw->state() == QLatin1String("inBootloader"));
+    bus->clear();
+    expect(QStringLiteral("unplugging ends it"), waitState("waitingForBoard", 3000) && fw->failure().isEmpty());
+    win->setVisible(false);
+    spin(50);
+
+    // A board that never arrives doesn't hold it for ever
+    cancelAfterReboot();
+    expect(QStringLiteral("nor does a drive that never comes"), waitState("waitingForBoard", 4000));
+    win->setVisible(false);
+    spin(50);
 
     // Not rebooted: the cancel stands
     start(unstamped);
-    hold = std::make_shared<Hold>();
     fw->setTestSeam(held(seam, hold));
     mark();
     fw->installWhenReady();

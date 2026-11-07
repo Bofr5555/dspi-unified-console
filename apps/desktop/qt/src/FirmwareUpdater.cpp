@@ -266,6 +266,8 @@ void FirmwareUpdater::stopWatching() {
     // The job may have rebooted the board already: gateDone decides
     if (m_state == QLatin1String("checking")) { m_cancelPending = true; return; }
     m_scanTimer.stop();
+    // Still so when reopened, but a close takes back an Install pressed again
+    if (m_state == QLatin1String("inBootloader")) { m_armed = false; return; }
     if (m_installing && (m_state == QLatin1String("failed") || m_state == QLatin1String("verified") || m_state == QLatin1String("unconfirmed"))) return;
     // Whatever waited on a question or a drive ends here. Nothing is written.
     m_generation++;
@@ -336,7 +338,10 @@ void FirmwareUpdater::scanDone(const Scan &scan) {
     if (!m_bridge->connected()) m_sawGone = true;
 
     const int boards = qMax(scan.boards, int(scan.drives.size()));
-    if (boards > 1) {
+    const bool parked = m_state == QLatin1String("inBootloader");
+    if (parked && boards > 0) m_parkedSeen = true;
+    // Nothing happens to a parked board until Install is pressed again
+    if (boards > 1 && !(parked && !m_armed)) {
         m_volumeWait.invalidate();
         fail(awaiting
              ? QString("%1 boards are in bootloader mode, and nothing says which is this one. Nothing was written. Disconnect all but the one you want to update.").arg(boards)
@@ -371,6 +376,26 @@ void FirmwareUpdater::scanDone(const Scan &scan) {
         if (m_driveClock.elapsed() >= limit)
             fail("No bootloader drive appeared. Nothing was written. Look for it in your file manager, or unplug the board and hold BOOTSEL while plugging it back in.", true, true);
         return;
+    }
+
+    if (parked) {
+        if (boards > 0) {
+            if (m_armed && !scan.drives.isEmpty()) {
+                m_drive = scan.drives.first();
+                beginMounted(m_drive);
+            } else {
+                askUdisks(scan);
+            }
+            return;
+        }
+        int limit = kDriveWaitMs;
+#ifdef DSPI_SMOKE
+        if (m_seam.driveWaitMs) limit = m_seam.driveWaitMs;
+#endif
+        // Unplugged, or it never arrived: back to looking
+        if (!m_parkedSeen && m_driveClock.elapsed() < limit) return;
+        m_failure.clear();
+        emit stateChanged();
     }
 
     if (!scan.drives.isEmpty()) {
@@ -419,7 +444,8 @@ void FirmwareUpdater::installWhenReady() {
     m_armed = true;
     // Only a device connected at this click is what the click was about. One that
     // turns up later is not rebooted on the strength of it.
-    m_armedForDevice = connectedNow();
+    // Nor is a device while a board that was sent to its bootloader is on its way.
+    m_armedForDevice = connectedNow() && m_state != QLatin1String("inBootloader");
     // A fresh look: a drive mounted a moment ago decides which board is being asked
     if (!m_scanTimer.isActive()) m_scanTimer.start();
     requestScan();
@@ -428,6 +454,7 @@ void FirmwareUpdater::installWhenReady() {
 void FirmwareUpdater::reset() {
     if (m_state == QLatin1String("writing") || m_state == QLatin1String("waitingForDevice")) return;
     if (m_state == QLatin1String("checking")) { m_cancelPending = true; return; }
+    if (m_state == QLatin1String("inBootloader")) { if (m_watching) requestScan(); return; }
     m_generation++;
     m_installing = false;
     m_armed = false;
@@ -677,12 +704,33 @@ void FirmwareUpdater::runGate(const QString &typed) {
 void FirmwareUpdater::gateDone(const GateResult &r, const QString &typed) {
     const bool cancelled = m_cancelPending;
     m_cancelPending = false;
-    // A cancel that came in time. One that came after the reboot can't take it back,
-    // and the way to a working board from there is to carry on.
-    if (cancelled && !r.entered) {
-        m_state = "idle";
-        reset();
-        if (!m_watching) m_scanTimer.stop();
+    if (cancelled) {
+        // In time: as if nothing was asked
+        if (!r.entered) {
+            m_state = "idle";
+            reset();
+            if (!m_watching) m_scanTimer.stop();
+            return;
+        }
+        // The reboot can't be taken back, and a Cancel never ends in a write
+        m_installing = false;
+        m_armed = false;
+        m_armedForDevice = false;
+        m_path = Path::None;
+        m_image = Image();
+        m_typed.clear();
+        m_questionMessage.clear();
+        m_questionPhrase.clear();
+        m_answerWrong = false;
+        emit questionChanged();
+        m_failure = "The board is in its bootloader and nothing was written. Install again, or unplug it to go back to the old firmware.";
+        m_failureMundane = true;
+        m_parkedSeen = false;
+        m_driveClock.start();
+        m_scanTimer.setInterval(kScanMs);
+        m_scanTimer.start();
+        m_state = "inBootloader";
+        emit stateChanged();
         return;
     }
     if (!r.failure.isEmpty()) {

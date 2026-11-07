@@ -69,6 +69,9 @@ class FirmwareUpdater : public QObject
     // idle, waitingForBoard, waitingForVolume, ready: detection
     // checking, question: file, chip and guard; the typed answer
     // waitingForDrive, writing, waitingForDevice: under way
+    // inBootloader: a Cancel came after the reboot went out, so nothing was written.
+    //   Install is open again, and treats the waiting drive as mounted. Holds until
+    //   then, or until the board leaves.
     // verified, unconfirmed, failed: outcomes. `unconfirmed` is written and back, by
     // an image that names no version, so that it took can't be said.
     Q_PROPERTY(QString state READ state NOTIFY stateChanged)
@@ -270,8 +273,9 @@ private:
     bool m_rescan = false;
     unsigned m_generation = 0;   // a result from before a reset or close is dropped
     // Cancelled while a gate job runs, which may already have rebooted the board:
-    // its result decides
+    // its result decides. A Cancel never ends in a write.
     bool m_cancelPending = false;
+    bool m_parkedSeen = false;   // inBootloader: the board has shown up on the bus
 
 #ifdef DSPI_SMOKE
     TestSeam m_seam;

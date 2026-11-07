@@ -44,7 +44,7 @@ grep -q '^smoke: [0-9]* checks' "$out/log.txt" || { echo "no summary line: the d
 # here: its evidence is the N in the log.
 # -- WP QD11 -- The guard logs each accepted typed answer on purpose, and the updater's
 # tests answer many times over: that is not a call failing at the poll rate.
-noisy=$(grep -E '^\[.*WARN' "$out/log.txt" | grep -v 'risk accepted by typed confirmation' | sed -E 's/^\[[^ ]* *//' | sort | uniq -c | sort -rn | awk '$1 > 5')
+noisy=$(grep -E '^\[.*WARN' "$out/log.txt" | grep -vE '^\[WARN  dspi_core::firmware_guard\] firmware guard: risk accepted by typed confirmation: ' | sed -E 's/^\[[^ ]* *//' | sort | uniq -c | sort -rn | awk '$1 > 5')
 if [ -n "$noisy" ]; then
     echo "repeated core warnings:" >&2
     echo "$noisy" >&2

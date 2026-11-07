@@ -38,8 +38,21 @@ AppWindow {
 
     // Every open starts over at detection
     onVisibleChanged: {
-        if (visible) { confirmed = false; rebootRequested = false; firmware.reset(); firmware.useBundledImage(); firmware.beginWatching() }
+        // A board left in its bootloader by a late Cancel stays the subject
+        if (visible) {
+            confirmed = false
+            rebootRequested = false
+            if (phase !== "inBootloader") { firmware.reset(); firmware.useBundledImage() }
+            firmware.beginWatching()
+        }
         else firmware.stopWatching()
+    }
+
+    // Cancel usually closes this window, and this is what it has to say about that
+    onPhaseChanged: {
+        if (phase !== "inBootloader") return
+        confirmed = false
+        if (!visible) { visible = true; raise() }
     }
 
     function start() {
@@ -74,6 +87,9 @@ AppWindow {
                 text: "Opening the " + firmware.chipName + "'s " + firmware.volumeName + " drive." }
             return { icon: "drive", tint: isMacOS ? MacColors.green : "#32d74b", title: firmware.chipName + " ready",
                 text: "The board is in bootloader mode and ready to receive firmware " + bundled + ". Click " + primaryTitle + " to begin." }
+        case "inBootloader":
+            if (confirmed) return { icon: "drive", spin: true, title: "Waiting for the drive", text: "Waiting for the board's drive to appear." }
+            return { icon: "drive", tint: isMacOS ? MacColors.orange : "#ff9f0a", title: "Nothing was written", text: firmware.failure }
         case "checking":
             return { icon: "search", spin: true, title: "Checking",
                 text: "Looking at the file and the board. Nothing has changed yet." }
@@ -329,7 +345,7 @@ AppWindow {
                     primary: true
                     // A device that can't be restarted from here leaves only a drive to write
                     enabled: !win.confirmed && !firmware.imageLoading && firmware.imageProblem === ""
-                             && (!win.connected || firmware.canReboot || (win.phase === "ready" && firmware.writeBlocked === ""))
+                             && (!win.connected || firmware.canReboot || ((win.phase === "ready" || win.phase === "inBootloader") && firmware.writeBlocked === ""))
                     onClicked: win.start()
                 }
             }
