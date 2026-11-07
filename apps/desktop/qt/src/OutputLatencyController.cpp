@@ -8,6 +8,7 @@
 #include <QJsonObject>
 #include <QRunnable>
 #include <QThread>
+#include <QTimer>
 
 static const Registrar::Controller<OutputLatencyController> latencyRegistered("outputLatency");
 
@@ -16,6 +17,8 @@ namespace {
 // reads can't stretch it
 constexpr int kPollMs = 100;
 constexpr int kSettleMs = 4000;
+// One more look after a wait ran out: a slow flash write may finish just after
+constexpr int kRecheckMs = 3000;
 constexpr int kDefaultId = 5;   // OUTPUT_LATENCY_DEFAULT
 
 template <class F>
@@ -144,9 +147,11 @@ void OutputLatencyController::install(const Reading &reading) {
     m_supported = true;
     m_requested = reading.status.requested;
     if (reading.haveOptions) m_options = reading.options;
-    if (m_held && m_draft == m_requested) m_held = false;   // It landed after the wait ended
+    const bool settled = m_held && m_draft == m_requested;  // It landed after the wait ended
+    if (settled) m_held = false;
     emit storedChanged();
     emit shownChanged();
+    if (settled) emit draftSettled();
 }
 
 QVariantList OutputLatencyController::choices() const {
@@ -242,9 +247,15 @@ void OutputLatencyController::applied(Outcome outcome, const Reading &reading) {
     case Outcome::NotSent:
         emit saveFailed(QStringLiteral("The device did not take the latency."));
         break;
-    case Outcome::NotYetApplied:
+    case Outcome::NotYetApplied: {
         emit saveFailed(QStringLiteral("The device has not applied the latency yet."));
+        // A read only, once. If it hasn't landed by then, the draft and message stay.
+        const unsigned generation = m_generation;
+        QTimer::singleShot(kRecheckMs, this, [this, generation]() {
+            if (m_generation == generation && m_held && !m_applying) refresh();
+        });
         break;
+    }
     case Outcome::Kept:
         emit saveFailed(QStringLiteral("The device kept the previous latency."));
         break;

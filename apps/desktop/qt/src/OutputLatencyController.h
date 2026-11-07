@@ -24,6 +24,7 @@ class DSPiBridge;
 // the old id with `pending` set. So apply() watches `pending` on the worker, and
 // the draft stays on the row until the device reports the new id: the row never
 // shows the old value in between. The wait is bounded and the request goes once.
+// One read follows a wait that ran out, in case the device applied it just after.
 class OutputLatencyController : public QObject
 {
     Q_OBJECT
@@ -65,6 +66,8 @@ signals:
     void applyingChanged();
     // The device did not take a save; the draft stays
     void saveFailed(const QString &reason);
+    // A read found the device now holds the draft, so saveFailed no longer stands
+    void draftSettled();
 
 private:
     struct Option {
