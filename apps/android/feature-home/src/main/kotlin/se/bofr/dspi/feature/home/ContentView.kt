@@ -142,7 +142,7 @@ fun ContentView(bridge: DspiBridge, onNavigate: (String) -> Unit, modifier: Modi
                     }
                     VerticalRule()
                     Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())) {
-                        GraphHeader(bridge, onNavigate)
+                        GraphHeader(bridge, onNavigate, onTools = { onNavigate(DspiRoutes.TOOLS) })
                         val selectedChannel = graphChannels(bridge, selection).firstOrNull()
                         val graphSelection = remember(selectedChannel) { PeqGraphSelection() }
                         val tabState = rememberSaveable(selectedChannel) { mutableStateOf(OutputChannelTab.PEQ) }
@@ -174,7 +174,7 @@ fun ContentView(bridge: DspiBridge, onNavigate: (String) -> Unit, modifier: Modi
                 }
             } else {
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                    GraphHeader(bridge, onNavigate)
+                    GraphHeader(bridge, onNavigate, onTools = { onNavigate(DspiRoutes.TOOLS) })
                     GraphView(bridge, Modifier.fillMaxWidth().padding(horizontal = 16.dp))
                     GraphResizeHandle(Modifier.padding(horizontal = 16.dp))
                     Column(Modifier.background(c.sidebar)) {
@@ -203,14 +203,28 @@ private fun graphChannels(bridge: DspiBridge, selection: SidebarSelection): Set<
     is SidebarSelection.Output -> setOf(2 + selection.index)
 }
 
-/** "Filter Response" + pop-out (GraphScreen) on the left, the connection status on the right. */
+/**
+ * "Filter Response" + pop-out (GraphScreen) on the left, the connection status on the right.
+ * On Home, [onTools] puts the Tools menu button first (AN31: the Windows console's top-left
+ * menu, the macOS Tools menu), the one tap-only way to the tools that have no strip icon.
+ */
 @Composable
-internal fun GraphHeader(bridge: DspiBridge, onNavigate: (String) -> Unit, title: String = "Filter Response") {
+internal fun GraphHeader(
+    bridge: DspiBridge,
+    onNavigate: (String) -> Unit,
+    title: String = "Filter Response",
+    onTools: (() -> Unit)? = null
+) {
     val c = DspiTheme.colors
     Row(
-        Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+        Modifier.fillMaxWidth().padding(start = if (onTools != null) 4.dp else 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (onTools != null) {
+            IconButton(onClick = onTools, modifier = Modifier.size(44.dp)) {
+                Icon(DspiIcons.menu, contentDescription = TOOLS_MENU_LABEL, tint = c.label, modifier = Modifier.size(22.dp))
+            }
+        }
         Text(title, style = DspiType.headline, color = c.label)
         IconButton(onClick = { onNavigate(DspiRoutes.GRAPH) }, modifier = Modifier.size(36.dp)) {
             Icon(
@@ -366,10 +380,13 @@ private fun ChannelContextMenu(
     }
 }
 
+/** Accessibility label of Home's Tools menu button. */
+internal const val TOOLS_MENU_LABEL = "Tools menu"
+
 /**
  * The sidebar's bottom panel: quick-access icons, Preset / Source / volume,
- * and the CPU meters. A long-press on a tool icon opens its page (macOS:
- * right-click opens the tool window).
+ * and the CPU meters. A long-press on a tool icon opens that tool's own page
+ * (macOS: right-click opens the tool window); the full list is the Tools menu button.
  */
 @Composable
 private fun SidebarBottomPanel(bridge: DspiBridge, vm: HomeViewModel, prefs: AppSettingsStore, onNavigate: (String) -> Unit) {
@@ -388,7 +405,7 @@ private fun SidebarBottomPanel(bridge: DspiBridge, vm: HomeViewModel, prefs: App
                 "Headphone Crossfeed",
                 { bridge.setCrossfeed(!s.crossfeedEnabled) },
                 enabled = canWrite,
-                onLongClick = { onNavigate(DspiRoutes.TOOLS) }
+                onLongClick = { onNavigate(DspiRoutes.tool("crossfeed")) }
             )
             SidebarIconButton(
                 DspiIcons.loudness,
@@ -396,7 +413,7 @@ private fun SidebarBottomPanel(bridge: DspiBridge, vm: HomeViewModel, prefs: App
                 "Loudness Compensation",
                 { bridge.setLoudness(!s.loudnessEnabled) },
                 enabled = canWrite,
-                onLongClick = { onNavigate(DspiRoutes.TOOLS) }
+                onLongClick = { onNavigate(DspiRoutes.tool("loudness")) }
             )
             SidebarIconButton(
                 DspiIcons.waveform,
@@ -404,7 +421,7 @@ private fun SidebarBottomPanel(bridge: DspiBridge, vm: HomeViewModel, prefs: App
                 "Volume Leveller",
                 { bridge.setLevellerEnabled(!s.levellerEnabled) },
                 enabled = canWrite,
-                onLongClick = { onNavigate(DspiRoutes.TOOLS) }
+                onLongClick = { onNavigate(DspiRoutes.tool("leveller")) }
             )
             SidebarIconButton(
                 DspiIcons.bassClef,
@@ -412,7 +429,7 @@ private fun SidebarBottomPanel(bridge: DspiBridge, vm: HomeViewModel, prefs: App
                 "Psychoacoustic Bass",
                 { bridge.setPsybassEnabled(!s.psybassEnabled) },
                 enabled = canWrite,
-                onLongClick = { onNavigate(DspiRoutes.TOOLS) }
+                onLongClick = { onNavigate(DspiRoutes.tool("psybass")) }
             )
             SidebarIconButton(DspiIcons.info, false, "Stats for Nerbs", { onNavigate(DspiRoutes.ANALYSIS) })
             SidebarIconButton(DspiIcons.gear, false, "Settings", { onNavigate(DspiRoutes.SETTINGS) })

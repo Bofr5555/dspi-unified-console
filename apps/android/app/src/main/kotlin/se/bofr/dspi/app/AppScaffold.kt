@@ -111,6 +111,10 @@ private fun DspiRoutesHost(bridge: DspiBridge, bootloaderLocator: BootloaderLoca
         screen(nav, DspiRoutes.GRAPH) { _, go, back -> GraphScreen(bridge, go, back) }
         screen(nav, DspiRoutes.MATRIX) { _, go, back -> MatrixMixerView(bridge, go, back) }
         screen(nav, DspiRoutes.TOOLS) { _, go, back -> ToolsScreen(bridge, go, back) }
+        // -- WP AN31 -- a quick-strip long-press opens that tool's page directly
+        screen(nav, DspiRoutes.TOOL, listOf(navArgument("tool") { type = NavType.StringType })) { entry, go, back ->
+            ToolsScreen(bridge, go, back, open = entry.arguments?.getString("tool"))
+        }
         screen(nav, DspiRoutes.LIMITER, listOf(navArgument("out") { type = NavType.IntType })) { entry, go, back ->
             OutputLimiterView(bridge, entry.arguments?.getInt("out") ?: 0, go, back)
         }

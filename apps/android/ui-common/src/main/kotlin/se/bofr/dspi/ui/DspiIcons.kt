@@ -201,6 +201,16 @@ object DspiIcons {
         }
     }
 
+    // -- WP AN31 --
+    /** The Tools menu button (the Windows console's top-left hamburger). */
+    val menu: ImageVector by lazy {
+        icon("menu") {
+            line(4f, 7f, 20f, 7f)
+            line(4f, 12f, 20f, 12f)
+            line(4f, 17f, 20f, 17f)
+        }
+    }
+
     val more: ImageVector by lazy {
         icon("more") {
             circle(5f, 12f, 1.3f, filled = true)
