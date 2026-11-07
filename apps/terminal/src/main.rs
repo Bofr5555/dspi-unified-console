@@ -97,6 +97,8 @@ mod doctor;
 // -- WP TM9 --
 mod link;
 mod transfer;
+// -- WP TM3 --
+mod flash;
 
 use std::process::ExitCode;
 
@@ -208,6 +210,8 @@ fn main() -> ExitCode {
         Some("cs") => transfer::cmd_cs(target, &flags, json),
         // -- WP TM9 --
         Some("link") => link::run(&flags, json),
+        // -- WP TM3 --
+        Some("flash") => flash::cmd_flash(target, &flags),
         Some("dump") => cmd_dump(target, json),
         Some("watch") => cmd_watch(target, json),
         // No arguments opens the interface; arguments run one command and exit.
@@ -236,6 +240,8 @@ fn is_command_word(word: &str) -> bool {
         "cs",
         // -- WP TM9 --
         "link",
+        // -- WP TM3 --
+        "flash",
     ];
     TERMINAL_VERBS.contains(&word)
         || dspi_cmd::VERBS.iter().any(|(n, _)| *n == word)
@@ -447,6 +453,13 @@ USAGE:
     dspi cs export <file|->  write the control-surface configuration
     dspi cs import <file|->  apply one, live; bindings move pins, so only here
                              (--dry-run to report only, --save to store it)
+    dspi flash [file]        install a .uf2 on this machine's USB-connected
+                             board; with no file, only reboot it into its
+                             bootloader. Asks first, or --force (--drive PATH
+                             to name the drive, --dry-run to report only).
+                             An image that risks the board's core voltage also
+                             needs --accept-core-voltage-risk and the answer
+                             it asks for typed; --force does not count
     dspi completions <shell> generate shell completions
     dspi doctor              diagnose connection problems
     dspi undo                put back the value the last change replaced

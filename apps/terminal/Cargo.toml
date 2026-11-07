@@ -22,11 +22,14 @@ serde_json.workspace = true
 # -- WP R1 --
 # `dspi doctor --link` reads the hub's info endpoint.
 dspi-link.workspace = true
+# -- WP TM3 --
+# `dspi flash`: the UF2 check, the drive and the firmware guard. Nothing else in
+# the terminal uses it.
+dspi-core = { workspace = true }
 
 # -- WP TM10 --
 # Documents must cross to the code Qt runs: the tests export and import through it.
 [dev-dependencies]
-dspi-core = { workspace = true }
 # -- WP TM9 --
 # `dspi link scan` and `--hub` are tested on a fake network, with no multicast.
 dspi-link = { workspace = true, features = ["fake-hub"] }

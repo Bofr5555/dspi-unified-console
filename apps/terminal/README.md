@@ -135,6 +135,23 @@ dspi raw 0x87 41                  # any opcode, hex-dumped
 dspi completions zsh              # shell completion
 ```
 
+### Firmware
+
+```sh
+dspi export backup.dspipreset     # first: updating can reset settings
+dspi flash DSPi.uf2               # check, reboot to bootloader, write, confirm
+dspi flash                        # only reboot into the bootloader
+dspi flash DSPi.uf2 --dry-run     # what would happen; changes nothing
+```
+
+The board has to be on this machine's USB, and read-only devices can update too.
+Some boards hang on firmware that runs at a lower core voltage than they need, so
+`flash` reads the board and the image first. If they do not match, or the image
+raises the voltage above 1.20 V, or the board is already in its bootloader and
+cannot say, it stops. `--force` skips the ordinary "are you sure" and nothing
+else: only `--accept-core-voltage-risk` plus typing the answer it asks for gets
+past this. Success means the board came back running the image's version.
+
 Every command takes `--json` for machine-readable output, `--dry-run` to change
 nothing, `--quiet`, and `--device <serial>` to pick a unit. Exit codes
 distinguish bad input (1) from no device (2) from a write the device refused
