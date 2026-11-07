@@ -2563,7 +2563,7 @@
   ],
   "meta": {
     "appVersion": "1.0",
-    "firmwareVersion": "1.1.6-beta4",
+    "firmwareVersion": "1.1.6",
     "inputChannelCount": 8,
     "masterVolumeMode": 0,
     "name": "Qt reference",
