@@ -40,6 +40,16 @@ static QVariantMap coreApply(const std::function<uint32_t(char *, uint32_t)> &ca
     return jsonMap(buf);
 }
 
+// An export the core refused is its JSON failure reply, not a file to write: a
+// configuration document has no "ok" key and a filter file is not JSON. No text
+// at all is the same to the caller.
+static bool exportRefused(const QByteArray &text, QVariantMap &result) {
+    const QVariantMap reply = jsonMap(text);
+    if (!text.isEmpty() && (!reply.contains("ok") || reply.value("ok").toBool())) return false;
+    result = { { "ok", false }, { "error", reply.value("error", "No device connected.") } };
+    return true;
+}
+
 ConfigFiles::ConfigFiles(DSPiBridge *bridge, QObject *parent) : QObject(parent), m_bridge(bridge) {}
 
 bool ConfigFiles::readFile(const QUrl &file, QByteArray &out, QString &error) {
@@ -71,6 +81,8 @@ QVariantMap ConfigFiles::exportConfiguration(const QUrl &file) {
     QByteArray text = coreText([&](char *buf, uint32_t len) {
         return dspi_config_export(m_bridge->core(), name.constData(), version.constData(), links, buf, len);
     });
+    QVariantMap refused;
+    if (exportRefused(text, refused)) return refused;
     QString error;
     if (!writeFile(file, text, error)) return { { "ok", false }, { "error", error } };
 
@@ -128,6 +140,8 @@ QVariantMap ConfigFiles::exportFilters(const QUrl &file) {
     QByteArray text = coreText([&](char *buf, uint32_t len) {
         return dspi_filters_export(m_bridge->core(), inputs, buf, len);
     });
+    QVariantMap refused;
+    if (exportRefused(text, refused)) return refused;
     QString error;
     if (!writeFile(file, text, error)) return { { "ok", false }, { "error", error } };
     return { { "ok", true } };

@@ -883,3 +883,20 @@ fn wp_cg5_ownership_and_take_control_are_exported() {
     );
     assert!(header.contains("void dspi_rta_take_control(struct FfiCore *core);"));
 }
+
+// -- WP CG18 --
+/// An export with no device's state is the JSON failure reply, not a document.
+#[test]
+fn wp_cg18_an_export_without_a_device_is_refused_in_json() {
+    let h = handle();
+    let name = CString::new("x").unwrap();
+    let reply = read_text(|b, l| dspi_config_export(h, name.as_ptr(), name.as_ptr(), 0, b, l));
+    let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
+    assert_eq!(v["ok"], false, "{reply}");
+    assert_eq!(v["code"], "disconnected", "{reply}");
+    assert!(v["error"].as_str().unwrap().contains("not connected"));
+    let reply = read_text(|b, l| dspi_filters_export(h, 2, b, l));
+    let v: serde_json::Value = serde_json::from_str(&reply).unwrap();
+    assert_eq!(v["code"], "disconnected", "{reply}");
+    free(h);
+}

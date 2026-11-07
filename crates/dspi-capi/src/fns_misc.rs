@@ -849,8 +849,17 @@ pub extern "C" fn dspi_monitor_clear(core: *mut FfiCore) {
 
 // ── Configuration and filter files ────────────────────────────────────
 
+/// An export's text, or its refusal as the JSON failure reply (module docs).
+fn export_text(r: Result<String>) -> String {
+    r.unwrap_or_else(|e| json_reply::<()>(Err(e)))
+}
+
 /// The device's configuration as a `.dspipreset` document. `links` = the
 /// app's input-pair link mask. Returns the length needed.
+///
+/// With no device's state to export, the text is instead the JSON failure reply
+/// `{"ok":false,"code":<kind>,"error":<sentence>}`: a document has no `ok` key.
+/// Check before writing it to a file.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_config_export(
     core: *mut FfiCore,
@@ -861,7 +870,7 @@ pub extern "C" fn dspi_config_export(
     len: u32,
 ) -> u32 {
     text(core, buf, len, |c| {
-        c.config_export(c_text(name), c_text(app_version), links)
+        export_text(c.config_export(c_text(name), c_text(app_version), links))
     })
 }
 
@@ -892,7 +901,9 @@ pub extern "C" fn dspi_config_import(
     self::text(core, buf, len, |c| c.config_import(c_text(text), options))
 }
 
-/// Every channel's filters as a text file (`inputs` = live inputs to write).
+/// Every channel's filters as a text file (`inputs` = live inputs to write),
+/// or the JSON failure reply as [`dspi_config_export`] gives it: a filter file
+/// starts with `#`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_filters_export(
     core: *mut FfiCore,
@@ -900,7 +911,7 @@ pub extern "C" fn dspi_filters_export(
     buf: *mut c_char,
     len: u32,
 ) -> u32 {
-    text(core, buf, len, |c| c.filters_export(inputs))
+    text(core, buf, len, |c| export_text(c.filters_export(inputs)))
 }
 
 /// What a filter file holds, for the channel picker (JSON).

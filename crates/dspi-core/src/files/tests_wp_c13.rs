@@ -45,6 +45,7 @@ fn rp2350() -> DspState {
     s.num_output_channels = 9;
     s.num_channels = 17;
     s.num_pin_outputs = 5;
+    s.format_version = 32;
     s
 }
 
@@ -596,15 +597,19 @@ fn wp_c13_the_dspi_fixture() {
     assert_eq!(plan.writes.len(), 2);
     let master_l = &plan.writes[0];
     assert_eq!(master_l.wire, 0);
-    assert_eq!(master_l.filters[0].filter_type, 2);
-    assert_eq!(master_l.filters[0].freq, 105.0);
-    assert_eq!(master_l.filters[0].gain, 8.8);
-    assert_eq!(master_l.filters[1], pk(64.0, -6.2, 0.30));
-    assert_eq!(master_l.filters[9], pk(118.0, 0.4, 1.98));
+    assert_eq!(master_l.filters.as_ref().unwrap()[0].filter_type, 2);
+    assert_eq!(master_l.filters.as_ref().unwrap()[0].freq, 105.0);
+    assert_eq!(master_l.filters.as_ref().unwrap()[0].gain, 8.8);
+    assert_eq!(master_l.filters.as_ref().unwrap()[1], pk(64.0, -6.2, 0.30));
+    assert_eq!(master_l.filters.as_ref().unwrap()[9], pk(118.0, 0.4, 1.98));
     assert!(master_l.xover.is_none() && master_l.preamp.is_none());
     let out_l = &plan.writes[1];
-    assert_eq!((out_l.wire, out_l.filters[0].filter_type), (8, 5));
-    assert_eq!(out_l.xover.as_ref().unwrap().len(), MAX_XOVER_BANDS);
+    assert_eq!(
+        (out_l.wire, out_l.filters.as_ref().unwrap()[0].filter_type),
+        (8, 5)
+    );
+    // No crossover lines in this file: the bank is not the file's (WP CG18).
+    assert!(out_l.xover.is_none());
     assert_eq!(out_l.enable, None);
 }
 
@@ -616,12 +621,16 @@ fn wp_c13_the_macos_fixture() {
     let plan = plan_filters(&s, MACOS_FILTERS, &(0..17).collect::<Vec<_>>());
     let fl = &plan.writes[0];
     assert_eq!(fl.preamp, Some(-5.3));
-    assert!(fl.filters[2].bypass);
-    assert_eq!(fl.filters[3], flat(), "OFF keeps its slot");
+    assert!(fl.filters.as_ref().unwrap()[2].bypass);
+    assert_eq!(
+        fl.filters.as_ref().unwrap()[3],
+        flat(),
+        "OFF keeps its slot"
+    );
     let out0 = plan.writes.iter().find(|w| w.wire == 8).unwrap();
     assert_eq!(out0.enable, Some((0, true)));
-    assert_eq!(out0.filters[0].filter_type, 13);
-    let lt = out0.filters[1];
+    assert_eq!(out0.filters.as_ref().unwrap()[0].filter_type, 13);
+    let lt = out0.filters.as_ref().unwrap()[1];
     assert_eq!(
         (lt.filter_type, lt.freq, lt.q, lt.gain, lt.qp),
         (11, 40.0, 0.5, 28.0, 0.71)
@@ -637,13 +646,14 @@ fn wp_c13_the_windows_fixture() {
     let plan = plan_filters(&s, WINDOWS_FILTERS, &(0..17).collect::<Vec<_>>());
     let master_l = &plan.writes[0];
     assert_eq!(master_l.preamp, Some(-6.5));
-    assert_eq!(master_l.filters[0], pk(105.0, 8.8, 0.7));
+    assert_eq!(master_l.filters.as_ref().unwrap()[0], pk(105.0, 8.8, 0.7));
     assert_eq!(
-        master_l.filters[1].freq, 1234.5,
+        master_l.filters.as_ref().unwrap()[1].freq,
+        1234.5,
         "grouping and decimal comma"
     );
-    assert_eq!(master_l.filters[2].filter_type, 6);
-    assert!(master_l.filters[2].bypass, "BYP");
+    assert_eq!(master_l.filters.as_ref().unwrap()[2].filter_type, 6);
+    assert!(master_l.filters.as_ref().unwrap()[2].bypass, "BYP");
     let spdif1_l = plan.writes.iter().find(|w| w.wire == 8).unwrap();
     let x = spdif1_l.xover.as_ref().unwrap();
     assert_eq!(x[0].filter_type, crossover_type("LR", 4, true).unwrap());
@@ -667,9 +677,9 @@ fn wp_c13_the_rew_fixture() {
     assert_eq!(plan.writes.len(), 3, "wire 200 is not on the device");
     let w0 = &plan.writes[0];
     assert_eq!(w0.preamp, Some(-6.5));
-    assert_eq!(w0.filters[0], pk(31.5, -4.2, 3.5));
-    assert_eq!(w0.filters[2].filter_type, 2);
-    assert_eq!(w0.filters[4], flat());
+    assert_eq!(w0.filters.as_ref().unwrap()[0], pk(31.5, -4.2, 3.5));
+    assert_eq!(w0.filters.as_ref().unwrap()[2].filter_type, 2);
+    assert_eq!(w0.filters.as_ref().unwrap()[4], flat());
     assert_eq!(plan.writes[2].preamp, None, "outputs have no preamp");
     let lines = filter_report(plan.writes.len(), &plan.notes);
     assert_eq!(lines[0], "Applied filters to 3 channels.");
@@ -687,7 +697,7 @@ fn wp_c13_rew_with_too_many_filters() {
         .map(|i| format!("Filter {i}: ON PK Fc {} Hz Gain -1 dB Q 1\n", i * 100))
         .collect();
     let plan = plan_filters(&rp2350(), &text, &[0]);
-    assert_eq!(plan.writes[0].filters[9].freq, 1000.0);
+    assert_eq!(plan.writes[0].filters.as_ref().unwrap()[9].freq, 1000.0);
     assert_eq!(
         plan.notes,
         ["The file has 14 filters; only the first 10 were used."]
@@ -730,7 +740,7 @@ fn wp_c13_filters_export_round_trips() {
     assert!(plan.notes.is_empty());
     for w in &plan.writes {
         let i = usize::from(w.wire);
-        assert_eq!(w.filters, s.filters[i], "wire {i}");
+        assert_eq!(w.filters.as_ref(), Some(&s.filters[i]), "wire {i}");
         if i >= 8 {
             assert_eq!(w.xover.as_ref().unwrap(), &s.xover[i], "wire {i}");
             assert_eq!(w.enable, Some(((i - 8) as u8, s.output_enabled[i - 8])));
@@ -744,10 +754,10 @@ fn wp_c13_filters_export_round_trips() {
 fn wp_c13_inputs_get_no_crossovers_or_linkwitz() {
     let text = "# DSPi Console Filter Settings\n[Input 0: A]\nFilter 1: ON LT Fc 40 Hz Q 0.5 Fp 28 Hz Qp 0.7\nFilter 2: ON LR4LP Fc 100 Hz\nXover 1: ON LR4LP Fc 100 Hz\n[Output 0: B]\nFilter 1: ON LT Fc 40 Hz Q 0.5 Fp 28 Hz Qp 0.7\nXover 1: ON PK Fc 100 Hz\n";
     let plan = plan_filters(&rp2350(), text, &[0, 8]);
-    assert_eq!(plan.writes[0].filters[0], flat());
-    assert_eq!(plan.writes[0].filters[1], flat());
+    assert_eq!(plan.writes[0].filters.as_ref().unwrap()[0], flat());
+    assert_eq!(plan.writes[0].filters.as_ref().unwrap()[1], flat());
     assert!(plan.writes[0].xover.is_none());
-    assert_eq!(plan.writes[1].filters[0].filter_type, 11);
+    assert_eq!(plan.writes[1].filters.as_ref().unwrap()[0].filter_type, 11);
     assert_eq!(plan.writes[1].xover.as_ref().unwrap()[0], flat());
 }
 
@@ -813,13 +823,12 @@ fn wp_c13_imports_need_a_writable_device() {
 
 #[test]
 fn wp_c13_exports_and_inspects_read_the_mirror() {
-    let core = DspiCore::new();
-    core.lock().state = capture();
-    let doc = core.config_export("Mine".into(), "2.0".into(), 1);
+    let core = demo_core();
+    let doc = core.config_export("Mine".into(), "2.0".into(), 1).unwrap();
     let v = parse_config(&doc).unwrap();
     assert_eq!(v["meta"]["appVersion"], "2.0");
     assert_eq!(v["meta"]["outputChannelCount"], 9);
-    let text = core.filters_export(8);
+    let text = core.filters_export(8).unwrap();
     assert_eq!(text.matches("[Input ").count(), 8);
     assert_eq!(text.matches("[Output ").count(), 9);
     let v = json_of(&core.filters_inspect(text, 8));
@@ -843,7 +852,7 @@ fn demo_core() -> std::sync::Arc<DspiCore> {
 #[test]
 fn wp_c13_config_import_writes_the_demo_device() {
     let core = demo_core();
-    let doc = core.config_export("Demo".into(), "test".into(), 0);
+    let doc = core.config_export("Demo".into(), "test".into(), 0).unwrap();
     // Edit the document, import it, and read the device back.
     let mut v = parse_config(&doc).unwrap();
     v["channels"][0]["eq"][0] = json!({"type": 1, "freqHz": 321.0, "q": 2.0, "gain": -4.5});
@@ -916,7 +925,7 @@ fn wp_c13_file_integers_never_wrap() {
     assert_eq!(s.loudness_output_mask, old.loudness_output_mask);
     assert_eq!(
         (s.leveller_detector_mask, s.leveller_apply_mask),
-        (0xFF, 0xFF)
+        (old.leveller_detector_mask, old.leveller_apply_mask)
     );
     assert_eq!(
         s.output_pins[..3],
@@ -928,8 +937,11 @@ fn wp_c13_file_integers_never_wrap() {
         (s.i2s_bck_pin, s.mck_pin, s.adat_out_pin),
         (old.i2s_bck_pin, old.mck_pin, old.adat_out_pin)
     );
-    assert_eq!(s.spdif_inputs_enabled, 0x01, "513 is out of range: none");
-    assert_eq!((s.dac_mute_pin, s.dac_mute_hold_ms), (old.dac_mute_pin, 0));
+    assert_eq!(s.spdif_inputs_enabled, 0x01, "513 is out of range: kept");
+    assert_eq!(
+        (s.dac_mute_pin, s.dac_mute_hold_ms),
+        (old.dac_mute_pin, old.dac_mute_hold_ms)
+    );
     assert_eq!(s.dac_mute_release_ms, 20);
 }
 
@@ -1090,10 +1102,12 @@ proptest! {
         prop_assert!(v["channels"].is_array());
         let plan = plan_filters(&s, &text, &chosen);
         for w in &plan.writes {
-            prop_assert_eq!(w.filters.len(), BANDS_PER_CHANNEL);
+            if let Some(f) = &w.filters {
+                prop_assert_eq!(f.len(), BANDS_PER_CHANNEL);
+                prop_assert!(f.iter().all(|p| p.filter_type <= FILTER_PEQ_LAST));
+            }
             prop_assert!(chosen.contains(&w.wire));
             prop_assert!(usize::from(w.wire) < usize::from(n_in) + usize::from(n_out));
-            prop_assert!(w.filters.iter().all(|p| p.filter_type <= FILTER_PEQ_LAST));
             if let Some(x) = &w.xover {
                 prop_assert!(x.iter().all(|p| p.filter_type == 0 || is_crossover(p.filter_type)));
             }
