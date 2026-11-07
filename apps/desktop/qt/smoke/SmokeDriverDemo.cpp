@@ -135,9 +135,14 @@ void SmokeDriver::testDemoEntry() {
     spin(1300);
     check("QD7: no scan brings it back", !b->connected() && !d->active());
     check("QD7: open again", d->enter() && b->connected() && b->writable() && labelled());
+    // -- WP QD17 -- A rescan reopens the open device, the demo too (Swift's reconnect)
     b->rescan();
-    check("QD7: a rescan is the way out too, and leaves nothing behind",
-          !b->connected() && b->selectedSerial().isEmpty() && !b->writable() && b->connectionError().isEmpty() && d->offered());
+    check("QD17: a rescan keeps the demo", b->connected() && b->selectedSerial() == QLatin1String(kDemoSerial)
+                                               && b->writable() && b->connectionError().isEmpty());
+    check("QD17: still labelled, still leavable", waitFor(1000, labelled) && d->active() && d->leavable() && leave->isVisible());
+    check("QD7: leaving leaves nothing behind",
+          d->leave() && !b->connected() && b->selectedSerial().isEmpty() && !b->writable() && b->connectionError().isEmpty()
+              && waitFor(1000, [&]() { return d->offered(); }));
 
     section("QD7: beside a hub session");
     QProcess hub;

@@ -135,6 +135,11 @@ class DSPiBridge : public QObject
     // Core1
     Q_PROPERTY(int core1Mode READ core1Mode NOTIFY stateChanged)
 
+    // -- WP QD17 -- How many input strips the app shows (main.qml binds hostAudio's
+    // inputCount here), so pairs, the analyser and filter files count the same inputs
+    // as the sidebar. 0 until set: then the device's report, as before.
+    Q_PROPERTY(int shownInputCount READ shownInputCount WRITE setShownInputCount NOTIFY statusChanged)
+
 public:
     // Demo also offers the built-in demo device, and opens it first (--demo)
     enum class Mode { Hardware, Demo };
@@ -411,6 +416,8 @@ public:
     // preamp and filter edits. Every pair starts unlinked; links are
     // remembered per device and pause while fewer inputs are live.
     Q_INVOKABLE int liveInputCount() const;
+    int shownInputCount() const { return m_shownInputs; }   // -- WP QD17 --
+    void setShownInputCount(int n);
     Q_INVOKABLE int pairPartner(int ch) const;     // the other input of ch's pair, or -1
     Q_INVOKABLE bool pairAvailable(int ch) const;  // both inputs of the pair are live
     Q_INVOKABLE bool isInputLinked(int ch) const;  // link set and pair live
@@ -535,6 +542,7 @@ private:
     int m_inaccessible = 0;
     bool m_demo = false;
     int m_demoWire = 0;
+    int m_shownInputs = 0;   // -- WP QD17 --
     bool m_writable = false;
     void updateWritable();
     bool m_hubSession = false;
