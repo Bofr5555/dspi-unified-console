@@ -33,7 +33,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import se.bofr.dspi.bridge.DspiBridge
@@ -57,7 +56,7 @@ import se.bofr.dspi.ui.settings.InMemoryAppSettingsStore
  * WP AN17: the analyser bar strip and the following state on the real core's
  * demo device (host build of libdspi_ffi over JNA), through the real bridge.
  */
-@RunWith(RobolectricTestRunner::class)
+@RunWith(DspiRobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w400dp-h1200dp-port-mdpi")
 class SpectrumBarStripAn17Test {
     @get:Rule val rule = createComposeRule()

@@ -19,7 +19,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import se.bofr.dspi.core.LinkDevice
 import se.bofr.dspi.core.LinkPhase
@@ -32,7 +31,7 @@ import se.bofr.dspi.usb.UsbSessionState
  * WP AN5: the Link UI for every [LinkPhase], on the real core's wording (CG10).
  * The strip and banner in AppScaffold over a demo bridge, and the PIN prompt.
  */
-@RunWith(RobolectricTestRunner::class)
+@RunWith(DspiRobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w400dp-h800dp-port-mdpi")
 class LinkUiAn5Test {
     @get:Rule val rule = createComposeRule()

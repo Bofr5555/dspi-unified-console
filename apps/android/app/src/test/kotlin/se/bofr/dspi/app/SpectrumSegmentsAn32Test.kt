@@ -24,7 +24,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
@@ -40,7 +39,7 @@ import se.bofr.dspi.ui.LocalDemoMode
 // Native graphics: the legacy shadows measure text by character count, not by the font. The fake
 // core, not the real one: the FFI library loads once per JVM, in the other tests' (legacy) sandbox.
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@RunWith(RobolectricTestRunner::class)
+@RunWith(DspiRobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w360dp-h740dp-port-mdpi")
 class SpectrumSegmentsAn32Test {
     @get:Rule val rule = createComposeRule()

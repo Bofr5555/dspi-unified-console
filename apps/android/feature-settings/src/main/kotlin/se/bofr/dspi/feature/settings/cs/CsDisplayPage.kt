@@ -96,8 +96,6 @@ internal fun CsDisplayStack(
     val drafts = remember(bridge) { CsDrafts.of(bridge) }
     val busy by coordinator.csBusy.collectAsState()
     val b = cs.bindings[slot]
-    val scope = rememberCoroutineScope()
-    val refreshStatus: () -> Unit = { scope.launch { bridge.cs.apply(CsDisplay.REFRESH_STATUS) } }
 
     when (route) {
         CsDisplayRoute.Hub -> CsDisplayHub(bridge, coordinator, cs, display, slot, connected, onClose, go)
@@ -113,7 +111,7 @@ internal fun CsDisplayStack(
         CsDisplayRoute.Settings -> {
             val editor = remember(drafts) { drafts.editor(CsDisplay.KIND_DISPLAY, 0, display.config, "") }
             LaunchedEffect(editor, display.config) { editor.sync(display.config, "") }
-            CsDisplayRecordPage(editor, "Display Settings", connected, busy, onApplied = refreshStatus, onClose = {
+            CsDisplayRecordPage(editor, "Display Settings", connected, busy, onClose = {
                 go(CsDisplayRoute.Hub)
             })
         }
@@ -132,14 +130,9 @@ internal fun CsDisplayStack(
                 "Page ${i + 1}",
                 connected,
                 busy,
-                onApplied = refreshStatus,
                 onClose = { go(CsDisplayRoute.Hub) },
                 onRemove = {
-                    val removing = coordinator.csOp(CsDisplay.clearPageOp(i))
-                    scope.launch {
-                        removing.join()
-                        refreshStatus()
-                    }
+                    coordinator.csOp(CsDisplay.clearPageOp(i))
                     drafts.drop(CsDisplay.KIND_PAGE, i)
                     go(CsDisplayRoute.Hub)
                 }
@@ -295,7 +288,6 @@ private suspend fun csAddDisplayPage(bridge: DspiBridge, coordinator: SettingsSa
     } finally {
         coordinator.endCsOperation()
     }
-    if (error == null) bridge.cs.apply(CsDisplay.REFRESH_STATUS)
     if (error == null) drafts.drop(CsDisplay.KIND_PAGE, index)
     return error
 }
@@ -310,7 +302,6 @@ private fun CsDisplayRecordPage(
     title: String,
     connected: Boolean,
     busy: Boolean,
-    onApplied: () -> Unit,
     onClose: () -> Unit,
     onRemove: (() -> Unit)? = null
 ) {
@@ -378,9 +369,7 @@ private fun CsDisplayRecordPage(
             OutlinedButton(onClick = { editor.revert() }, enabled = can && st.dirty, modifier = Modifier.testTag("cs.revert")) {
                 Text("Revert")
             }
-            Button(onClick = {
-                editor.apply { if (it) onApplied() }
-            }, enabled = can && st.dirty, modifier = Modifier.testTag("cs.apply")) { Text("Apply") }
+            Button(onClick = { editor.apply() }, enabled = can && st.dirty, modifier = Modifier.testTag("cs.apply")) { Text("Apply") }
         }
     }
 
