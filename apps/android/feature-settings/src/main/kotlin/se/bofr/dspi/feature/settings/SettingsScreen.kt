@@ -215,7 +215,7 @@ private fun SettingsDetail(
     val canWrite = writesAllowed()
     when (page) {
         SettingsCategory.OVERVIEW -> PinOverviewTab(bridge, coordinator, onOpen)
-        SettingsCategory.GENERAL -> WritesExempt { GeneralSettingsTab() }
+        SettingsCategory.GENERAL -> WritesExempt { GeneralSettingsTab(onNavigate) } // -- WP AN19 -- Help rows
         SettingsCategory.ADVANCED -> WritesExempt { AdvancedSettingsTab(bridge, appSettings, canWrite) }
         SettingsCategory.GRAPHING -> WritesExempt { GraphingSettingsTab(appSettings) }
         SettingsCategory.SPECTRUM -> WritesExempt { SpectrumSettingsTab(bridge, appSettings) }

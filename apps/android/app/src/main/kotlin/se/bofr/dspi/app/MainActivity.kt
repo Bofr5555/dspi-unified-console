@@ -89,6 +89,7 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         onConnectNetwork = { networkingOpen = true },
+                        onboarding = app.onboarding, // -- WP AN19 --
                         overlay = {
                             RemoteDialogs(
                                 state = remote,

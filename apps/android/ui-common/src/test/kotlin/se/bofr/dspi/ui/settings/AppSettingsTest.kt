@@ -65,7 +65,10 @@ class AppSettingsTest {
             "rtaChannelPagesShowSpectrum", "rtaGraphOpacity", "rtaFloorDB", "rtaCeilingDB", "rtaShowPeakHold",
             "rtaSmoothingOn", "rtaFftOrder", "rtaAvgMs", "rtaPeakDecayDBs", "sidebarVolumeMode", "settingsSelectedTab",
             // TubeModellerView.swift
-            "tubeModellerAdvanced"
+            "tubeModellerAdvanced",
+            // -- WP AN19 -- Qt's setup flag; macOS WhatsNew.lastShownKey
+            "onboarding.setupDone",
+            "whatsNew.lastShownVersion"
         )
         assertEquals(macOs, AppSettingsFields.keyNames)
     }

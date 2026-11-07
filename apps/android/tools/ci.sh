@@ -110,6 +110,7 @@ pkg_settings() {
 pkg_licenses() { step "licenses"; python3 tools/gen_third_party_licenses.py --check; }
 pkg_analysis() { feature analysis; }
 pkg_firmware() { feature firmware; }
+pkg_onboarding() { feature onboarding; } # -- WP AN19 --
 
 pkg_app() { step "app: :app"; android_module :app; apk_fixtures; release_deps; }
 
@@ -121,7 +122,8 @@ has_fake_core_in() { # :module configuration -> 0 if :fake-core is on that class
 }
 
 RELEASE_ANDROID_MODULES=(:app :ffi :usb :link :ui-common :feature-home :feature-graph :feature-matrix :feature-tools
-  :feature-presets :feature-settings :feature-analysis :feature-firmware)
+  :feature-presets :feature-settings :feature-analysis :feature-firmware
+  :feature-onboarding) # -- WP AN19 --
 RELEASE_JVM_MODULES=(:core-api :bridge)
 
 release_deps() {
@@ -241,7 +243,7 @@ PY
   bundletool get-size total --apks="$tmp/split.apks" --dimensions=ABI | sed 's/^/    /'
 }
 
-PACKAGES=(supply contract ffi link usb bridge home graph matrix tools presets settings analysis firmware app release)
+PACKAGES=(supply contract ffi link usb bridge home graph matrix tools presets settings analysis firmware onboarding app release) # onboarding: WP AN19
 
 case "${1:-}" in
   ""|-h|--help|list)

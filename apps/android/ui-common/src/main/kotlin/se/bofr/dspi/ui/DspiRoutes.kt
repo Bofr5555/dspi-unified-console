@@ -46,4 +46,11 @@ object DspiRoutes {
 
     /** :feature-firmware — FirmwareUpdateView. */
     const val FIRMWARE = "firmware"
+
+    // -- WP AN19 --
+    /** :feature-onboarding — the Getting Started wizard: on first run, and again from Settings > About > Help. */
+    const val GETTING_STARTED = "getting-started"
+
+    /** :feature-onboarding — the release notes: once after an update, and from Settings > About > Help. */
+    const val WHATS_NEW = "whats-new"
 }

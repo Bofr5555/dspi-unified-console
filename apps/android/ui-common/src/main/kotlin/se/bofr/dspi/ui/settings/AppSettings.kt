@@ -77,7 +77,15 @@ data class AppSettings(
     /** Settings page shown last (macOS SettingsView "settingsSelectedTab"). */
     val settingsSelectedTab: String = "general",
     /** Tube Modeller Basic/Advanced (macOS TubeModellerView "tubeModellerAdvanced"). */
-    val tubeModellerAdvanced: Boolean = false
+    val tubeModellerAdvanced: Boolean = false,
+    // -- WP AN19 --
+    /**
+     * Getting Started was finished or skipped (Qt "onboarding/setupDone"). Someone
+     * who used the app before this existed starts with it set (DataStoreAppSettingsStore).
+     */
+    val onboardingSetupDone: Boolean = false,
+    /** The release whose notes were last shown (macOS "whatsNew.lastShownVersion"); "" = never. */
+    val whatsNewLastShownVersion: String = ""
 ) {
     /** The smoothing amount the views use (the old Light setting when on). */
     val rtaSmoothing: Double get() = if (rtaSmoothingOn) RTA_SMOOTHING_AMOUNT else 0.0
@@ -139,8 +147,15 @@ interface AppSettingsStore {
     /** Apply [transform] and persist the fields it changed. */
     fun update(transform: (AppSettings) -> AppSettings)
 
+    // -- WP AN19 --
+    /** True once [settings] holds the stored values rather than the defaults; a first-run decision waits for it. */
+    val settingsLoaded: StateFlow<Boolean> get() = ALWAYS_LOADED
+
     companion object
 }
+
+// -- WP AN19 --
+private val ALWAYS_LOADED: StateFlow<Boolean> = MutableStateFlow(true).asStateFlow()
 
 /** Non-persistent store (previews, tests). */
 class InMemoryAppSettingsStore(initial: AppSettings = AppSettings()) : AppSettingsStore {

@@ -91,6 +91,7 @@ dependencies {
     implementation(project(":feature-settings"))
     implementation(project(":feature-analysis"))
     implementation(project(":feature-firmware"))
+    implementation(project(":feature-onboarding")) // -- WP AN19 --
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
