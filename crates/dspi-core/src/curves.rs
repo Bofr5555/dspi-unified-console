@@ -28,6 +28,7 @@ use std::f64::consts::PI;
 
 use dspi_proto::FilterType;
 use dspi_proto::dsp::{self, Band, Coeffs};
+use dspi_proto::ext::PairMap;
 use dspi_proto::xover::{self, Family};
 
 use crate::records::{CoreInfo, FilterParams};
@@ -123,39 +124,8 @@ pub fn curve_freq(i: u32) -> f64 {
 /// of 0 or above 4, is invalid (false), never a panic.
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn crossfeed_pair_map_valid(map: Vec<u8>, num_pairs: u8) -> bool {
-    let Ok(map) = <[u8; 4]>::try_from(map.as_slice()) else {
-        return false;
-    };
-    if num_pairs == 0 || num_pairs > 4 {
-        return false;
-    }
-    // num_pairs <= 4, so there are at most 8 outputs, every output below is
-    // < 8 once checked, and every shift is in range for a u16.
-    let outputs = num_pairs.saturating_mul(2);
-    let mut used = 0u16;
-    for (p, b) in (0u8..).zip(map) {
-        if p >= num_pairs {
-            if b != 0 {
-                return false;
-            }
-            continue;
-        }
-        let (l, r) = if b == 0 {
-            let l = p.saturating_mul(2);
-            (l, l.saturating_add(1))
-        } else {
-            (b & 0x0F, b >> 4)
-        };
-        if l >= outputs || r >= outputs || l == r {
-            return false;
-        }
-        let bits = (1u16 << l) | (1u16 << r);
-        if used & bits != 0 {
-            return false;
-        }
-        used |= bits;
-    }
-    true
+    <[u8; 4]>::try_from(map.as_slice())
+        .is_ok_and(|map| PairMap(map).is_valid(usize::from(num_pairs)))
 }
 
 /// Version facts of the linked core: this crate's version, the wire format

@@ -20,6 +20,10 @@
 //!   knows at run time (`{chip}`, `{version}`), for it to fill in.
 //! - What was already read and when to show it is each client's own state.
 //!
+//! **About data** (WP CG15). `assets/about.json`, through [`about_json`]: who made
+//! what, the links and the credits. The Terminal reads the same file through
+//! `dspi_session::about`, without this renderer, so the file holds no placeholder.
+//!
 //! **The syntax in the assets**, resolved here and nowhere else:
 //! - `[[term]]`: a word that differs by platform. See [`term`].
 //! - `[[shortcut:Shift+D]]`: " (Cmd+Shift+D)" or " (Ctrl+Shift+D)", and nothing on
@@ -126,6 +130,22 @@ pub fn onboarding_whats_new_json() -> String {
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn onboarding_getting_started_json() -> String {
     render_getting_started(Platform::COMPILED)
+}
+
+// -- WP CG15 --
+/// The About table as a JSON document, wording still a draft (`draft`):
+/// `{draft, credit_lines: [{id, text}], makers: [{id, name, url, made}],
+/// links: [{id, title, detail, url}], credits: [{id, name, what, url?}]}`.
+/// `id`s are stable keys, as above. Show it as it is; it holds no legal text.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn about_json() -> String {
+    render_about(Platform::COMPILED)
+}
+
+fn render_about(platform: Platform) -> String {
+    render_asset(dspi_session::about::ABOUT_JSON, platform)
+        .and_then(|v| serde_json::to_string_pretty(&v).ok())
+        .unwrap_or_else(|| "{}".to_owned())
 }
 
 /// What the wording in the assets depends on.
@@ -772,5 +792,176 @@ mod tests_wp_cg10 {
         let ios = all_text(Platform::Ios);
         assert!(ios.contains("use DSPi Console on macOS, Windows or Linux"));
         assert!(!ios.contains("right here"));
+    }
+}
+
+// -- WP CG15 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg15 {
+    use std::collections::BTreeSet;
+
+    use serde_json::Value;
+
+    use super::*;
+
+    const ALL: [Platform; 5] = [
+        Platform::MacOs,
+        Platform::Windows,
+        Platform::Linux,
+        Platform::Android,
+        Platform::Ios,
+    ];
+
+    /// What credits may be taken from.
+    const SOURCES: [&str; 3] = [
+        include_str!("../../../NOTICE.md"),
+        include_str!("../../../docs/licensing/ios-inventory-notes.md"),
+        include_str!("../../../docs/licensing/IOS-INVENTORY.md"),
+    ];
+
+    fn sourced(what: &str) -> bool {
+        SOURCES.iter().any(|s| s.contains(what))
+    }
+
+    fn table() -> Value {
+        serde_json::from_str(&about_json()).unwrap()
+    }
+
+    fn strings(v: &Value, out: &mut Vec<String>) {
+        match v {
+            Value::String(s) => out.push(s.clone()),
+            Value::Array(a) => a.iter().for_each(|x| strings(x, out)),
+            Value::Object(o) => o.values().for_each(|x| strings(x, out)),
+            _ => {}
+        }
+    }
+
+    fn items<'a>(doc: &'a Value, list: &str) -> &'a Vec<Value> {
+        doc[list].as_array().unwrap()
+    }
+
+    #[test]
+    fn wp_cg15_is_a_draft_with_the_starting_words() {
+        let doc = table();
+        assert_eq!(doc["draft"], true, "only the owner's approval changes this");
+        let lines: Vec<&str> = items(&doc, "credit_lines")
+            .iter()
+            .map(|l| l["text"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            lines,
+            ["Made with love by Weeb Labs", "Unified console by Bofr5555"]
+        );
+    }
+
+    /// The Terminal reads the file without the renderer, so what it reads and what
+    /// the core serves must be the same on every platform. If this fails, a
+    /// placeholder went in: the Terminal's route (`dspi_session::about`) has to learn
+    /// it first.
+    #[test]
+    fn wp_cg15_the_terminal_and_the_core_read_the_same_table() {
+        let raw: Value = serde_json::from_str(dspi_session::about::ABOUT_JSON).unwrap();
+        for platform in ALL {
+            let rendered: Value = serde_json::from_str(&render_about(platform)).unwrap();
+            assert_eq!(rendered, raw, "{platform:?}");
+        }
+        assert!(!dspi_session::about::ABOUT_JSON.contains("[["));
+        dspi_session::about::about().unwrap();
+    }
+
+    #[test]
+    fn wp_cg15_who_made_what() {
+        let doc = table();
+        let makers = items(&doc, "makers");
+        let made = |name: &str| -> Vec<String> {
+            let maker = makers.iter().find(|m| m["name"] == name).unwrap();
+            let mut out = Vec::new();
+            strings(&maker["made"], &mut out);
+            out
+        };
+        for part in ["DSPi", "The DSPi firmware", "The DSPi Consoles"] {
+            assert!(made("Weeb Labs").iter().any(|m| m == part), "{part}");
+        }
+        for part in [
+            "The unified console",
+            "The core merge",
+            "The Android console",
+        ] {
+            assert!(made("Bofr5555").iter().any(|m| m == part), "{part}");
+        }
+    }
+
+    #[test]
+    fn wp_cg15_every_credit_is_sourced() {
+        let doc = table();
+        let credits = items(&doc, "credits");
+        for name in ["Jonathan Rosser", "AutoEq"] {
+            assert!(credits.iter().any(|c| c["name"] == name), "{name}");
+        }
+        for credit in credits.iter().chain(items(&doc, "makers")) {
+            let name = credit["name"].as_str().unwrap();
+            assert!(sourced(name), "{name} is in no source");
+            if let Some(url) = credit.get("url") {
+                assert!(sourced(url.as_str().unwrap()), "{url} is in no source");
+            }
+        }
+        let autoeq = credits.iter().find(|c| c["name"] == "AutoEq").unwrap();
+        let what = autoeq["what"].as_str().unwrap();
+        for part in ["Jaakko Pasanen", "crinacle", "oratory1990", "headphone.com"] {
+            assert!(what.contains(part) && sourced(part), "{part}");
+        }
+    }
+
+    #[test]
+    fn wp_cg15_ids_are_unique_and_links_are_https() {
+        let doc = table();
+        for list in ["credit_lines", "makers", "links", "credits"] {
+            let mut ids = BTreeSet::new();
+            for item in items(&doc, list) {
+                assert!(ids.insert(item["id"].as_str().unwrap().to_owned()));
+            }
+        }
+        for link in items(&doc, "links") {
+            assert!(link["url"].as_str().unwrap().starts_with("https://"));
+            assert!(!link["title"].as_str().unwrap().is_empty());
+            assert!(!link["detail"].as_str().unwrap().is_empty());
+        }
+    }
+
+    /// Owner's rules: no agent writes legal text, and no text names what the user
+    /// is holding.
+    #[test]
+    fn wp_cg15_no_legal_text_and_no_host_nouns() {
+        const LEGAL: [&str; 7] = [
+            "licen",
+            concat!("copy", "right"), // split: the licence inventory scans this file
+            "gpl",
+            "warrant",
+            "liab",
+            "rights",
+            "(c)",
+        ];
+        const HOST: [&str; 7] = [
+            "computer",
+            "computers",
+            "phone",
+            "phones",
+            "tablet",
+            "tablets",
+            "desktop",
+        ];
+        let mut all = Vec::new();
+        strings(&table(), &mut all);
+        assert!(all.len() > 20);
+        for s in all {
+            let lower = s.to_lowercase();
+            for word in LEGAL {
+                assert!(!lower.contains(word), "{s}");
+            }
+            for word in lower.split(|c: char| !c.is_alphanumeric()) {
+                assert!(word != "mit" && !HOST.contains(&word), "{s}");
+            }
+        }
     }
 }

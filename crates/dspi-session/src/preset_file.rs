@@ -29,9 +29,10 @@
 //! a setting: **a key the document does not hold is a setting it does not
 //! speak for.** Every scalar is an `Option`; [`capture`] omits what the device
 //! will not report rather than writing a zero, and [`apply`] leaves an omitted
-//! key alone and says so ([`ApplyReport::left_alone`]). The Console and Qt's
-//! importer fill a missing key with a default instead, so they are not bound by
-//! this; `docs/terminal/preset-format.md` says where they differ.
+//! key alone and says so ([`ApplyReport::left_alone`]). Qt's importer
+//! (`dspi_core::files`, WP CG18) does the same, naming keys through [`omitted`].
+//! The Console fills a missing key with a default instead;
+//! `docs/terminal/preset-format.md` says where they differ.
 
 use serde::{Deserialize, Serialize};
 
@@ -65,8 +66,8 @@ pub struct PresetDocument {
     pub meta: Meta,
     #[serde(default)]
     pub global: GlobalBlock,
-    // A block with nothing in it is left out whole: Qt's importer keeps the
-    // device's values for an absent block, and defaults the keys of a present one.
+    // A block with nothing in it is left out whole, which the Mac Console reads
+    // no worse than one with no keys.
     #[serde(default, skip_serializing_if = "says_nothing")]
     pub loudness: LoudnessBlock,
     #[serde(default, skip_serializing_if = "says_nothing")]
@@ -228,39 +229,12 @@ impl CrossfeedBlock {
             *b = (*v).clamp(0, 255) as u8;
         }
         let map = PairMap(bytes);
-        Some(if pair_map_valid(&map, pairs) {
+        Some(if map.is_valid(usize::from(pairs)) {
             map.normalized()
         } else {
             PairMap([0; PairMap::SIZE])
         })
     }
-}
-
-/// The firmware's `crossfeed_map_valid`, as `isValid(pairCount:)`
-/// (ExtensionChannel.swift:156-171).
-fn pair_map_valid(map: &PairMap, pairs: u8) -> bool {
-    if pairs == 0 || pairs as usize > PairMap::PAIRS {
-        return false;
-    }
-    let mut used = 0u32;
-    for p in 0..PairMap::PAIRS {
-        if p >= pairs as usize {
-            if map.0[p] != 0 {
-                return false;
-            }
-            continue;
-        }
-        let (l, r) = map.pair(p);
-        if l >= 2 * pairs || r >= 2 * pairs || l == r {
-            return false;
-        }
-        let bits = (1u32 << l) | (1u32 << r);
-        if used & bits != 0 {
-            return false;
-        }
-        used |= bits;
-    }
-    true
 }
 
 /// The volume leveller (PresetDocument.swift:187-210).
@@ -1151,7 +1125,7 @@ macro_rules! omitted_keys {
 /// [`omitted_settings`], for the parts of a document these options apply. The
 /// `io` block is not listed: its keys depend on the source board's features, so
 /// an absent one says nothing, and [`apply_io`] always left those alone.
-fn omitted(doc: &PresetDocument, options: ApplyOptions) -> Vec<String> {
+pub fn omitted(doc: &PresetDocument, options: ApplyOptions) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let g = &doc.global;
     if options.audio_processing {
@@ -2845,7 +2819,7 @@ pub fn capture(
 /// (`ISO8601DateFormatter`, PresetDocumentTransfer.swift:25), such as
 /// `2026-09-30T10:00:00Z`.
 fn utc_now() -> String {
-    let secs = std::time::SystemTime::now()
+    let secs = dspi_transport::clock::system_time()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);

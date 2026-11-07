@@ -22,7 +22,7 @@
 //!
 //! Owned by WP C2 (docs/core-merge/PLAN.md).
 
-use std::time::Instant;
+use dspi_transport::clock::Instant;
 
 use dspi_proto::generated::opcodes as op;
 use dspi_proto::wire::WireError;

@@ -1,5 +1,5 @@
 {
- "repo_commit": "3778c72",
+ "repo_commit": "9857424",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -288,6 +288,7 @@
    }
   },
   "files": [
+   "assets/about.json",
    "assets/onboarding/getting_started.json",
    "assets/onboarding/whatsnew.json",
    "crates/dspi-core/src/autoeq.rs",
@@ -340,6 +341,7 @@
    "crates/dspi-proto/src/wire.rs",
    "crates/dspi-proto/src/wire_compat.rs",
    "crates/dspi-proto/src/xover.rs",
+   "crates/dspi-session/src/about.rs",
    "crates/dspi-session/src/autoeq.rs",
    "crates/dspi-session/src/clipboard.rs",
    "crates/dspi-session/src/compat.rs",
@@ -363,8 +365,11 @@
    "crates/dspi-session/src/tube.rs",
    "crates/dspi-session/src/vreg_calibrate.rs",
    "crates/dspi-session/src/write.rs",
+   "crates/dspi-transport/src/clock.rs",
    "crates/dspi-transport/src/fake.rs",
    "crates/dspi-transport/src/fake/features.rs",
+   "crates/dspi-transport/src/fake/surfaces.rs",
+   "crates/dspi-transport/src/fake/wire_images.rs",
    "crates/dspi-transport/src/lib.rs",
    "crates/dspi-transport/src/link.rs",
    "crates/dspi-transport/src/midi.rs",

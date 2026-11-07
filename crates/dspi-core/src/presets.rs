@@ -19,8 +19,9 @@
 //!
 //! Owned by WP C5 (docs/core-merge/PLAN.md).
 
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use dspi_transport::clock::Instant;
 
 use dspi_proto::enums::FilterType;
 use dspi_proto::generated::opcodes as op;
@@ -506,7 +507,7 @@ impl DspiCore {
                 .set_as_read(op::REQ_FACTORY_RESET, 0)?;
             error::status(code)?;
         }
-        thread::sleep(FACTORY_RESET_SETTLE);
+        dspi_transport::clock::sleep(FACTORY_RESET_SETTLE);
         // Ends with the baseline.
         self.fetch_all()
     }
@@ -588,7 +589,7 @@ fn wait_for(conn: &mut Connection, mut done: impl FnMut(&mut Connection) -> Resu
         if start.elapsed() >= DEFERRED_TIMEOUT {
             return false;
         }
-        thread::sleep(POLL_INTERVAL);
+        dspi_transport::clock::sleep(POLL_INTERVAL);
     }
 }
 

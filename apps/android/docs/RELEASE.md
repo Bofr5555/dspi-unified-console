@@ -254,7 +254,7 @@ From targetSdk 35 to 36:
 - **Edge-to-edge:** enforced since targetSdk 35; 36 removes the
   `windowOptOutEdgeToEdgeEnforcement` opt-out. The app never used the opt-out;
   `AppScaffold` is a Material 3 `Scaffold`, which applies the system bar
-  insets. No change.
+  and display cutout insets (AN27: no title bar; `NoTitleBarAn27Test`). No change.
 - **Predictive back:** on by default at 36. The app already sets
   `enableOnBackInvokedCallback="true"` and every back path goes through the
   `OnBackPressedDispatcher` (NavHost, `BackHandler`s); nothing overrides

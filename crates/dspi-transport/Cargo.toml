@@ -24,8 +24,8 @@ log.workspace = true
 [features]
 # -- WP CG3 --
 default = ["usb"]
-# The USB backend (`usb` module, `UsbTransport`), over nusb. Off for iOS, where
-# nusb has no backend and does not compile.
+# The USB backend (`usb` module, `UsbTransport`), over nusb. Off for iOS and for
+# wasm32-unknown-unknown (WP WB1), where nusb has no backend and does not compile.
 usb = ["dep:nusb"]
 # DSPi Link transport (WP T5).
 link = ["dep:dspi-link"]

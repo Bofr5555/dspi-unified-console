@@ -75,7 +75,9 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use dspi_transport::clock::Instant;
 
 use dspi_link::clock::{Clock, SystemClock};
 use dspi_link::frames::PollFrame;

@@ -44,7 +44,7 @@ impl NotificationSource for MockNotifications {
                 // returns the one-byte idle packet, unless the caller's
                 // timeout runs out first, which reads as silence.
                 Some(pace) => {
-                    std::thread::sleep(pace.min(timeout));
+                    crate::clock::sleep(pace.min(timeout));
                     if pace <= timeout {
                         Ok(vec![0])
                     } else {
@@ -54,7 +54,7 @@ impl NotificationSource for MockNotifications {
                 // A real endpoint blocks for the timeout; give the reader
                 // thread the same pause so tests do not spin a core.
                 None => {
-                    std::thread::sleep(Duration::from_millis(5));
+                    crate::clock::sleep(Duration::from_millis(5));
                     Ok(Vec::new())
                 }
             },

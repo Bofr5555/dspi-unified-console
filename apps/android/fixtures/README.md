@@ -45,3 +45,17 @@ ci/run.sh 'DSPI_WRITE_ANDROID_FIXTURE=1 cargo test --locked -p dspi-core --test 
 `[firmware]`, extracted read-only with `git show`. `tools/opcode_coverage.py`
 checks against it (CI has no access to the firmware repository); refresh with
 `python3 tools/opcode_coverage.py --refresh-firmware ~/prog/DSPi` on the host.
+
+## Firmware cases (`wire/`, WP AN2)
+
+What the core reports for each firmware the app has to tell apart, one small
+`DspState` per file: only the fields the banner and read-only tests read, and
+`bulkRaw` cut to the image's first byte (it says whether an image was decoded).
+They are not on any classpath and not in the APK. Written and checked by
+`crates/dspi-core/tests/wp_an2_read_only_firmware.rs`, which regenerates them
+with `DSPI_WRITE_ANDROID_FIXTURE=1`.
+
+The older images behind them are the V32 capture converted by inverting
+`wire_compat`'s mapping, not captures from units on that firmware. `stock_final_v32`
+and `k340_v32` are the capture with the final's version reply (1.1.6, beta 0);
+the K340 case also answers the extension channel and has a crossfeed pair map.

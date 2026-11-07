@@ -392,12 +392,18 @@ interface DspiCoreApi : AutoCloseable {
     fun coreVregOp(op: Int, value: Int, word: String?)
 
     /**
-     * The device configuration (the mirror; defaults while disconnected)
-     * as a `.dspipreset` document: schema 1, pretty-printed JSON with
-     * sorted keys. `name` and `app_version` go into `meta`; `links` = the
-     * app's input-pair link mask (bit p = pair p), which the firmware does
-     * not hold. Never fails.
+     * The device configuration (the mirror) as a `.dspipreset` document:
+     * schema 1, pretty-printed JSON with sorted keys. `name` and `app_version`
+     * go into `meta`; `links` = the app's input-pair link mask (bit p = pair
+     * p), which the firmware does not hold.
+     *
+     * A read-only device of an older wire format exports what that format
+     * carries, and the keys it lacks are left out. There is nothing to export
+     * without a device's state: [`crate::DspiError::Disconnected`] with no
+     * device, [`crate::DspiError::Unsupported`] for firmware whose image cannot
+     * be mapped, and [`crate::DspiError::Transfer`] when it has not been read.
      */
+    @Throws(DspiException::class)
     fun configExport(name: String, appVersion: String, links: Int): String
 
     /**
@@ -409,11 +415,13 @@ interface DspiCoreApi : AutoCloseable {
      * `ok` false with `error` for a file that is not a document of this
      * schema, or when the device could not be written (disconnected,
      * read-only firmware, transfer failure; the mirror is then left as it
-     * was). On success `lines` is the report for the user, `clean` is false
-     * when channels or settings were left out, `links` the input-pair link
-     * mask to restore (null when the document has none) and
-     * `hardwareWritten` whether I/O was written outside a preset (save the
-     * output config to keep it).
+     * was). A setting the document holds no value for keeps the device's
+     * value, an `eq` or `crossover` with no entries leaves that bank alone,
+     * and `leftAlone` names them by JSON key. On success `lines` is the report
+     * for the user, `clean` is false when channels or settings were left out,
+     * `links` the input-pair link mask to restore (null when the document has
+     * none) and `hardwareWritten` whether I/O was written outside a preset
+     * (save the output config to keep it).
      */
     fun configImport(text: String, options: Long): String
 
@@ -421,8 +429,10 @@ interface DspiCoreApi : AutoCloseable {
      * Every channel's filters as a filter text file (format 2): the first
      * `inputs` live inputs with their preamp and PEQ bands, then every
      * output with its PEQ and crossover bands and enable state. Reads the
-     * mirror; never fails.
+     * mirror; refused as [`DspiCore::config_export`] is when it holds no
+     * device's state.
      */
+    @Throws(DspiException::class)
     fun filtersExport(inputs: Int): String
 
     /**
@@ -441,7 +451,8 @@ interface DspiCoreApi : AutoCloseable {
     /**
      * Apply a filter file to the channels in `wires` (wire indices; other
      * channels in the file are ignored) through the band, preamp and
-     * output-enable setters. Returns JSON `{ok, error, lines}`: `ok` false
+     * output-enable setters. A section with no lines for a bank leaves that
+     * bank alone, and the report says so. Returns JSON `{ok, error, lines}`: `ok` false
      * with `error` when the file is over [`MAX_FILE_BYTES`] or the device
      * could not be written (disconnected, read-only firmware, transfer
      * failure; channels written before a failure stay written).
@@ -2671,4 +2682,14 @@ interface DspiCoreApi : AutoCloseable {
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun onboardingGettingStartedJson(): String
+
+    /**
+     * The About table as a JSON document, wording still a draft (`draft`):
+     * `{draft, credit_lines: [{id, text}], makers: [{id, name, url, made}],
+     * links: [{id, title, detail, url}], credits: [{id, name, what, url?}]}`.
+     * `id`s are stable keys, as above. Show it as it is; it holds no legal text.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun aboutJson(): String
 }
