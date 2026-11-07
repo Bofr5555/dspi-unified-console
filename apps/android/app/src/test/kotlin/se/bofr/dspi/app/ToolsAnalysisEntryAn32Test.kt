@@ -30,10 +30,14 @@ import se.bofr.dspi.feature.analysis.AnalysisRoute
  * first one. The whole app (AppScaffold and its NavHost) over a real demo bridge, taps only.
  * A tall window, so nothing needs scrolling: performScrollTo animates, and hangs on the paused clock
  * (as ToolsEntryAn31Test).
+ *
+ * Named to run after the analyser tests, as ToolsEntryAn31Test does: run before them in the same
+ * JVM, opening the analysis pages leaves their demo cores' analyser caps unseen (a latent test
+ * isolation fault on main; it reproduces with ToolsEntryAn31Test moved first).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w400dp-h800dp-port-mdpi")
-class AnalysisEntryAn32Test {
+class ToolsAnalysisEntryAn32Test {
     @get:Rule val rule = createComposeRule()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
