@@ -340,6 +340,35 @@ pub extern "C" fn dspi_enter_bootloader(core: *mut FfiCore) -> bool {
     flag(core, |c| c.enter_bootloader())
 }
 
+// -- WP CG24 --
+/// Hold the device lock across a flow of several calls, for at most
+/// `timeout_ms` (capped at 60 000), until `dspi_device_lock_release`: another
+/// DSPi Link session's commands answer locked meanwhile. Blocking over Link:
+/// call it off the UI thread. Replies in JSON {ok} or {ok, code, error}
+/// (`locked` when another session holds it) and returns the length needed. A
+/// retry with a larger buffer is harmless: an acquire while held keeps the lock.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_device_lock_acquire(
+    core: *mut FfiCore,
+    reason: *const c_char,
+    timeout_ms: u32,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        let done = c.device_lock_acquire(c_text(reason), timeout_ms);
+        json_reply(done.map(|()| serde_json::json!({})))
+    })
+}
+
+/// Release the lock `dspi_device_lock_acquire` took, and only that one: an IR
+/// learn's lock ends with its read, cancel or window, `dspi_enter_bootloader`'s
+/// when the device leaves or after 60 s. Idempotent; never blocks.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_device_lock_release(core: *mut FfiCore) {
+    with_core(core, (), |h| h.core.device_lock_release());
+}
+
 /// Core 1 mode (0 = idle, 1 = PDM, 2 = EQ worker), -1 on error.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_core1_mode(core: *mut FfiCore) -> i8 {
@@ -1918,6 +1947,10 @@ mod tests_wp_cg17;
 #[path = "fns_misc/tests_wp_qd6.rs"]
 mod tests_wp_qd6;
 
+// -- WP CG24 --
+#[cfg(test)]
+#[path = "fns_misc/tests_wp_cg24.rs"]
+mod tests_wp_cg24;
 // -- WP CG23 --
 #[cfg(test)]
 #[path = "fns_misc/tests_wp_cg23.rs"]

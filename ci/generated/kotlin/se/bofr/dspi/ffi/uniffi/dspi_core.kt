@@ -1424,6 +1424,10 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1590,6 +1594,10 @@ fun uniffi_dspi_core_checksum_method_dspicore_demo_latency_timing(
 fun uniffi_dspi_core_checksum_method_dspicore_demo_output_save_status(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_demo_rename_elsewhere(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_device_lock_acquire(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_device_lock_release(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_disconnect(
 ): Short
@@ -2124,6 +2132,10 @@ fun uniffi_dspi_core_fn_method_dspicore_demo_latency_timing(`ptr`: Pointer,`mode
 fun uniffi_dspi_core_fn_method_dspicore_demo_output_save_status(`ptr`: Pointer,`status`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_demo_rename_elsewhere(`ptr`: Pointer,`target`: Byte,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_device_lock_acquire(`ptr`: Pointer,`reason`: RustBuffer.ByValue,`timeoutMs`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_device_lock_release(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_disconnect(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -2887,7 +2899,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_trial_end() != 31305.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_cs_apply() != 3367.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_cs_apply() != 37925.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_cs_demo_busy() != 31960.toShort()) {
@@ -2935,10 +2947,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_demo_rename_elsewhere() != 20262.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_device_lock_acquire() != 11345.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_device_lock_release() != 21651.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_disconnect() != 29066.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 33850.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 19680.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_ext_status() != 10163.toShort()) {
@@ -5268,6 +5286,15 @@ public interface DspiCoreInterface {
      * read-only connection (nothing is sent), firmware without control
      * surfaces, no device, or a transfer failure. `save` writes flash: the
      * bridge gates it (DangerousOps).
+     *
+     * `learnArm` holds the device lock for the 15 s learn window (WP CG24),
+     * so another DSPi Link session gets `locked` meanwhile (and a refused
+     * lock is `{ok: false}` with nothing sent). A `learnRead` whose `state`
+     * is no longer ARMED, a failed `learnRead`, `learnCancel`, the window's
+     * end or the connection's close releases it;
+     * [`DspiCore::device_lock_release`] does not. Inside a lock taken with
+     * [`DspiCore::device_lock_acquire`] a learn takes no lock of its own and
+     * lasts only as long as that one.
      */
     fun `csApply`(`op`: kotlin.String): kotlin.String
     
@@ -5423,6 +5450,45 @@ public interface DspiCoreInterface {
     fun `demoRenameElsewhere`(`target`: kotlin.UByte, `name`: kotlin.String)
     
     /**
+     * Hold the device lock across a flow of several calls, so another
+     * session's commands answer `Locked` until [`DspiCore::device_lock_release`]
+     * (DSPi Link spec 7.7; Swift's `acquireDeviceLock`). It lasts at most
+     * `timeout_ms`, capped at 60 000 (the hub's cap): after that the hub and
+     * the core count it as released. The core's own locked flows
+     * (`save_preset`, `load_preset`, `save_output_config`, ...) run inside it
+     * without asking the hub again. It is given back when the connection
+     * closes or is replaced, a Link re-bind included. On USB, MIDI and the
+     * demo device it succeeds at once, as their flows do. Blocking over
+     * Link: call it off the UI thread.
+     *
+     * One lock, one timeout: the first holder's. A call while the lock is
+     * already held keeps it as it is (no second request to the hub, the
+     * same remaining time) and makes it the caller's, so
+     * [`DspiCore::device_lock_release`] ends it and an IR learn's end no
+     * longer does. Likewise an IR learn (`cs_apply` `learnArm`) or
+     * [`DspiCore::enter_bootloader`] inside a caller's lock takes nothing of
+     * its own: it lasts as long as the caller's lock, not 15 s or 60 s. So
+     * do not wrap a learn in a short caller lock; to end a firmware install
+     * whose restart never happened, take the caller's lock (60 000 ms)
+     * before `enter_bootloader` and release it afterwards.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a `timeout_ms` of 0;
+     * [`DspiError::Disconnected`] with no device, or when the connection
+     * changed while the hub was asked; [`DspiError::Locked`] when another
+     * session holds it; [`DspiError::Denied`] for a viewer.
+     */
+    fun `deviceLockAcquire`(`reason`: kotlin.String, `timeoutMs`: kotlin.UInt)
+    
+    /**
+     * Release the lock [`DspiCore::device_lock_acquire`] took, and only
+     * that one (Swift releases only what it took): an IR learn's lock ends
+     * with its read, cancel or window, and `enter_bootloader`'s when the
+     * device leaves or after 60 s. Idempotent, and never blocks. A closed
+     * or replaced connection gives back every holder's lock.
+     */
+    fun `deviceLockRelease`()
+    
+    /**
      * Close the open device, whatever its transport, and reset the mirror
      * to its defaults. The selected serial is kept, so a replugged device
      * reconnects (WP C1b). Blocks until the notification reader has stopped
@@ -5431,9 +5497,9 @@ public interface DspiCoreInterface {
     fun `disconnect`()
     
     /**
-     * Reboots the device into its USB bootloader (it disappears). Always Ok,
-     * as in the core: the transfer result is ignored because the device
-     * drops off the bus (also Ok without a device). Allowed on a read-only
+     * Reboots the device into its USB bootloader (it disappears). Ok
+     * whatever the transfer gives, as in the old core: the device drops off
+     * the bus (also Ok without a device). Allowed on a read-only
      * connection, so a firmware too old or too new for this build can be
      * updated.
      *
@@ -5444,6 +5510,19 @@ public interface DspiCoreInterface {
      * confirms success: open it again and check the new version with
      * [`DspiCore::firmware_version_matches`]; a timeout there is the
      * failure.
+     *
+     * The device lock is taken first and held across the restart (WP CG24),
+     * so no other DSPi Link session writes to a device about to vanish; the
+     * hub drops it when the device leaves, and the connection's close gives
+     * it back; otherwise it lasts 60 s. [`DspiCore::device_lock_release`]
+     * does not end it: an install that must end it early (a restart that
+     * never happened) takes the caller's lock first
+     * ([`DspiCore::device_lock_acquire`]), inside which this takes nothing
+     * of its own, and releases that. A refused lock sends nothing.
+     *
+     * Errors: [`DspiError::Locked`] / [`DspiError::Denied`] when the Link
+     * hub refuses its lock; [`DspiError::Disconnected`] when the connection
+     * changed while the hub was asked.
      */
     fun `enterBootloader`()
     
@@ -7965,6 +8044,15 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * read-only connection (nothing is sent), firmware without control
      * surfaces, no device, or a transfer failure. `save` writes flash: the
      * bridge gates it (DangerousOps).
+     *
+     * `learnArm` holds the device lock for the 15 s learn window (WP CG24),
+     * so another DSPi Link session gets `locked` meanwhile (and a refused
+     * lock is `{ok: false}` with nothing sent). A `learnRead` whose `state`
+     * is no longer ARMED, a failed `learnRead`, `learnCancel`, the window's
+     * end or the connection's close releases it;
+     * [`DspiCore::device_lock_release`] does not. Inside a lock taken with
+     * [`DspiCore::device_lock_acquire`] a learn takes no lock of its own and
+     * lasts only as long as that one.
      */override fun `csApply`(`op`: kotlin.String): kotlin.String {
             return FfiConverterString.lift(
     callWithPointer {
@@ -8282,6 +8370,64 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Hold the device lock across a flow of several calls, so another
+     * session's commands answer `Locked` until [`DspiCore::device_lock_release`]
+     * (DSPi Link spec 7.7; Swift's `acquireDeviceLock`). It lasts at most
+     * `timeout_ms`, capped at 60 000 (the hub's cap): after that the hub and
+     * the core count it as released. The core's own locked flows
+     * (`save_preset`, `load_preset`, `save_output_config`, ...) run inside it
+     * without asking the hub again. It is given back when the connection
+     * closes or is replaced, a Link re-bind included. On USB, MIDI and the
+     * demo device it succeeds at once, as their flows do. Blocking over
+     * Link: call it off the UI thread.
+     *
+     * One lock, one timeout: the first holder's. A call while the lock is
+     * already held keeps it as it is (no second request to the hub, the
+     * same remaining time) and makes it the caller's, so
+     * [`DspiCore::device_lock_release`] ends it and an IR learn's end no
+     * longer does. Likewise an IR learn (`cs_apply` `learnArm`) or
+     * [`DspiCore::enter_bootloader`] inside a caller's lock takes nothing of
+     * its own: it lasts as long as the caller's lock, not 15 s or 60 s. So
+     * do not wrap a learn in a short caller lock; to end a firmware install
+     * whose restart never happened, take the caller's lock (60 000 ms)
+     * before `enter_bootloader` and release it afterwards.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a `timeout_ms` of 0;
+     * [`DspiError::Disconnected`] with no device, or when the connection
+     * changed while the hub was asked; [`DspiError::Locked`] when another
+     * session holds it; [`DspiError::Denied`] for a viewer.
+     */
+    @Throws(DspiException::class)override fun `deviceLockAcquire`(`reason`: kotlin.String, `timeoutMs`: kotlin.UInt)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_device_lock_acquire(
+        it, FfiConverterString.lower(`reason`),FfiConverterUInt.lower(`timeoutMs`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Release the lock [`DspiCore::device_lock_acquire`] took, and only
+     * that one (Swift releases only what it took): an IR learn's lock ends
+     * with its read, cancel or window, and `enter_bootloader`'s when the
+     * device leaves or after 60 s. Idempotent, and never blocks. A closed
+     * or replaced connection gives back every holder's lock.
+     */override fun `deviceLockRelease`()
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_device_lock_release(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
      * Close the open device, whatever its transport, and reset the mirror
      * to its defaults. The selected serial is kept, so a replugged device
      * reconnects (WP C1b). Blocks until the notification reader has stopped
@@ -8299,9 +8445,9 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
-     * Reboots the device into its USB bootloader (it disappears). Always Ok,
-     * as in the core: the transfer result is ignored because the device
-     * drops off the bus (also Ok without a device). Allowed on a read-only
+     * Reboots the device into its USB bootloader (it disappears). Ok
+     * whatever the transfer gives, as in the old core: the device drops off
+     * the bus (also Ok without a device). Allowed on a read-only
      * connection, so a firmware too old or too new for this build can be
      * updated.
      *
@@ -8312,6 +8458,19 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * confirms success: open it again and check the new version with
      * [`DspiCore::firmware_version_matches`]; a timeout there is the
      * failure.
+     *
+     * The device lock is taken first and held across the restart (WP CG24),
+     * so no other DSPi Link session writes to a device about to vanish; the
+     * hub drops it when the device leaves, and the connection's close gives
+     * it back; otherwise it lasts 60 s. [`DspiCore::device_lock_release`]
+     * does not end it: an install that must end it early (a restart that
+     * never happened) takes the caller's lock first
+     * ([`DspiCore::device_lock_acquire`]), inside which this takes nothing
+     * of its own, and releases that. A refused lock sends nothing.
+     *
+     * Errors: [`DspiError::Locked`] / [`DspiError::Denied`] when the Link
+     * hub refuses its lock; [`DspiError::Disconnected`] when the connection
+     * changed while the hub was asked.
      */
     @Throws(DspiException::class)override fun `enterBootloader`()
         = 

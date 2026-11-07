@@ -690,6 +690,16 @@ void uniffi_dspi_core_fn_method_dspicore_demo_output_save_status(void*_Nonnull p
 void uniffi_dspi_core_fn_method_dspicore_demo_rename_elsewhere(void*_Nonnull ptr, uint8_t target, RustBuffer name, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DEVICE_LOCK_ACQUIRE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DEVICE_LOCK_ACQUIRE
+void uniffi_dspi_core_fn_method_dspicore_device_lock_acquire(void*_Nonnull ptr, RustBuffer reason, uint32_t timeout_ms, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DEVICE_LOCK_RELEASE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DEVICE_LOCK_RELEASE
+void uniffi_dspi_core_fn_method_dspicore_device_lock_release(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DISCONNECT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DISCONNECT
 void uniffi_dspi_core_fn_method_dspicore_disconnect(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -2571,6 +2581,18 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_demo_output_save_status(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEMO_RENAME_ELSEWHERE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEMO_RENAME_ELSEWHERE
 uint16_t uniffi_dspi_core_checksum_method_dspicore_demo_rename_elsewhere(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEVICE_LOCK_ACQUIRE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEVICE_LOCK_ACQUIRE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_device_lock_acquire(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEVICE_LOCK_RELEASE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEVICE_LOCK_RELEASE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_device_lock_release(void
     
 );
 #endif
