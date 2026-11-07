@@ -21,7 +21,10 @@ JSON line. No npm download: Node runs upstream's `.ts` source with
 tree hash. The Swift run takes the VM's matrix lock (`~/work/matrix/lock`, as
 `ci/macvm.sh`) for its build and run, and reaches the hub through `ssh -R` to a port
 published on the host's loopback only. `swift/Shims.swift` stands in for three app
-names the client's files mention and the run never reaches.
+names the client's files mention and the run never reaches. Like `ci/macvm.sh`,
+`run-clients.sh swift` exits 3 before it builds anything when the VM cannot run the
+client (no ssh, or nobody logged in to its GUI). `ci/check.sh --step conformance-ts`
+runs the TypeScript client; its Node image is `NODE` in `ci/container/images.conf`.
 
 ## The scenarios
 
