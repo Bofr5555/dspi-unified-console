@@ -25,6 +25,7 @@ import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.ui.DspiIcons
 import se.bofr.dspi.ui.DspiTheme
 import se.bofr.dspi.ui.HorizontalRule
+import se.bofr.dspi.ui.LocalDemoMode
 
 /**
  * The firmware warning across the top of the window: shown while the
@@ -39,7 +40,7 @@ fun FirmwareMismatchBanner(bridge: DspiBridge, onUpdate: () -> Unit, modifier: M
     val hidden by HomeSession.bannerHidden
     val compat = if (connected) bridge.compat else 0
     // -- WP AN2 --
-    val message = if (connected) HomeModel.firmwareBannerMessage(bridge) else null
+    val message = if (connected) HomeModel.firmwareBannerMessage(bridge, demo = LocalDemoMode.current) else null
     AnimatedVisibility(visible = message != null && !hidden, modifier = modifier) {
         Column(Modifier.fillMaxWidth().background(c.orange.copy(alpha = 0.12f).compositeOver(c.windowBackground))) {
             Row(
@@ -49,7 +50,7 @@ fun FirmwareMismatchBanner(bridge: DspiBridge, onUpdate: () -> Unit, modifier: M
             ) {
                 Icon(DspiIcons.warning, null, tint = c.orange, modifier = Modifier.size(20.dp))
                 Text(message.orEmpty(), color = c.label, modifier = Modifier.weight(1f))
-                TextButton(onClick = onUpdate) { Text(HomeModel.firmwareBannerButton(compat)) }
+                TextButton(onClick = onUpdate) { Text(HomeModel.firmwareBannerButton(compat, bridge.firmwareVersion)) }
                 TextButton(onClick = { HomeSession.bannerHidden.value = true }) { Text("Hide") }
             }
             HorizontalRule(Modifier.fillMaxWidth())

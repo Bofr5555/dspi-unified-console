@@ -14,11 +14,20 @@ import androidx.compose.ui.unit.dp
 import se.bofr.dspi.fake.demoDspState
 import se.bofr.dspi.ui.DspiTheme
 
+/** Previews never write; the guard answers as the core would for a stock image on a known board. */
+private object PreviewGuard : FirmwareGuarding {
+    override suspend fun recordRunningBoard() = Unit
+
+    override fun forgetBoard() = Unit
+
+    override fun check(image: ByteArray, typed: String) = se.bofr.dspi.bridge.CoreTools.blocked("Previews do not write.")
+}
+
 private object PreviewWriter : FirmwareWriter {
     override fun isReady(board: BootloaderBoard) = true
     override fun hasAccess(board: BootloaderBoard) = true
     override suspend fun obtainAccess(board: BootloaderBoard) = BoardAccess.GRANTED
-    override suspend fun write(board: BootloaderBoard, image: FirmwareImage, uf2: Uf2Image, progress: (Double) -> Unit) = Unit
+    override suspend fun write(board: BootloaderBoard, image: FirmwareImage, uf2: Uf2Image, clearance: GuardClearance, progress: (Double) -> Unit) = Unit
 }
 
 private val previewBoard = BootloaderBoard(BootloaderBoard.Chip.RP2350, "/dev/bus/usb/001/005")
@@ -35,9 +44,9 @@ private fun PreviewScreen(
 ) {
     val scope = rememberCoroutineScope()
     val model = remember {
-        val image = FirmwareImage(BootloaderBoard.Chip.RP2350, "DSPi-RP2350-v1.1.6-beta5.uf2", FirmwareVersion.expected, ByteArray(0), true)
+        val image = FirmwareImage(BootloaderBoard.Chip.RP2350, "DSPi-RP2350-v1.1.6.uf2", FirmwareVersion.expected, ByteArray(0), true)
         FirmwareUpdateModel(
-            FirmwareInstaller(FakeBootloaderLocator(listOf(previewBoard)), StubPreviewVerifier, PreviewWriter, { image }, scope),
+            FirmwareInstaller(FakeBootloaderLocator(listOf(previewBoard)), StubPreviewVerifier, PreviewWriter, { image }, PreviewGuard, scope),
             bundled = { image },
             picobootWriter = PreviewWriter
         ).apply {

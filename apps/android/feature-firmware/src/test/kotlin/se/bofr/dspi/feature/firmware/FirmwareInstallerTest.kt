@@ -32,12 +32,14 @@ class FirmwareInstallerTest {
         verifier: FirmwareVerifying = StubVerifier(null),
         writer: FirmwareWriter = FakeWriter(),
         image: FirmwareImage? = this@FirmwareInstallerTest.image,
-        locator: FakeBootloaderLocator = FakeBootloaderLocator(boards)
+        locator: FakeBootloaderLocator = FakeBootloaderLocator(boards),
+        guard: FirmwareGuarding = FakeGuard()
     ) = FirmwareInstaller(
         locator,
         verifier,
         writer,
         { chip -> image ?: throw FirmwareInstallError.ImageMissing(chip.displayName) },
+        guard,
         this,
         StandardTestDispatcher(testScheduler)
     )
@@ -221,6 +223,7 @@ class FirmwareInstallerTest {
             StubVerifier(null),
             FakeWriter(),
             { throw FirmwareInstallError.BundledImageStale("1.1.6", "1.1.7") },
+            FakeGuard(),
             this
         )
         i.install(rp2350)

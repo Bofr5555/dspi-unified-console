@@ -963,6 +963,10 @@ interface DspiBridge {
     // -- WP AN6 --
     val deviceSettings: DeviceSettings
 
+    // -- WP AN18 --
+    /** The firmware guard (CG8) and the AutoEQ update (CG6). Test doubles get [CoreTools.Unavailable]. */
+    val coreTools: CoreTools get() = CoreTools.Unavailable
+
     /** Token issuer for the GATED members (D5). Same instance for the bridge's lifetime. */
     val dangerousOps: DangerousOps
 

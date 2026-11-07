@@ -1,5 +1,8 @@
 package se.bofr.dspi.feature.firmware
 
+import se.bofr.dspi.core.FirmwareGuardDecision
+import se.bofr.dspi.core.FirmwareGuardReason
+import se.bofr.dspi.core.FirmwareGuardVerdict
 import android.content.Context
 import android.hardware.usb.UsbDevice
 import java.io.File
@@ -93,10 +96,48 @@ class FakeWriter(
         return accessAnswer
     }
 
-    override suspend fun write(board: BootloaderBoard, image: FirmwareImage, uf2: Uf2Image, progress: (Double) -> Unit) {
+    override suspend fun write(board: BootloaderBoard, image: FirmwareImage, uf2: Uf2Image, clearance: GuardClearance, progress: (Double) -> Unit) {
+        clearance.requireCovers(image)
         for (i in 1..progressSteps) progress(i.toDouble() / progressSteps)
         failure?.let { throw it }
         written += board to image
+    }
+}
+
+// -- WP AN18 -- the firmware guard
+
+fun guardVerdict(
+    allowed: Boolean = true,
+    decision: FirmwareGuardDecision = FirmwareGuardDecision.CLEAR,
+    reason: FirmwareGuardReason = FirmwareGuardReason.NO_RISK,
+    message: String = "",
+    phrase: String = ""
+) = FirmwareGuardVerdict(allowed, decision, reason, message, phrase, imageMv = 0, requiredMv = 1150)
+
+/** A clearance for [image], as the installer makes after an allowing verdict. */
+fun clearance(image: FirmwareImage) = GuardClearance(image.bytes, guardVerdict())
+
+/** Writes [image] with a clearance for it: what the installer does once the guard allowed it. */
+suspend fun FirmwareWriter.writeCleared(board: BootloaderBoard, image: FirmwareImage, uf2: Uf2Image, progress: (Double) -> Unit) =
+    write(board, image, uf2, clearance(image), progress)
+
+/** Answers with [verdict] for what was typed; records every question. */
+class FakeGuard(var verdict: (typed: String) -> FirmwareGuardVerdict = { guardVerdict() }) : FirmwareGuarding {
+    val checks = mutableListOf<String>()
+    var boardReads = 0
+    var forgotten = 0
+
+    override suspend fun recordRunningBoard() {
+        boardReads++
+    }
+
+    override fun forgetBoard() {
+        forgotten++
+    }
+
+    override fun check(image: ByteArray, typed: String): FirmwareGuardVerdict {
+        checks += typed
+        return verdict(typed)
     }
 }
 

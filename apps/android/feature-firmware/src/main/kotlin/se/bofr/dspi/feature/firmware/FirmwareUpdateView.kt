@@ -10,7 +10,9 @@
 // without installing" acts on the tap as on macOS (E1); the session lives in
 // a ViewModel (E9, FirmwareUpdateViewModel.kt); a local
 // .uf2 is a first-class source; the write path is PICOBOOT with the board's
-// drive (SAF) as the fallback; "Export Configuration..." opens PRESETS.
+// drive (SAF) as the fallback. WP AN18: "Export Configuration..." saves the
+// device's configuration from here, before anything is written; CG8's guard
+// asks for its confirmation phrase in the status card.
 package se.bofr.dspi.feature.firmware
 
 import android.net.Uri
@@ -32,6 +34,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,6 +42,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -86,6 +91,7 @@ fun FirmwareUpdateView(
         },
         onFilePicked = session::readLocalFile,
         onDrivePicked = session::useDrive,
+        onExport = session::exportConfiguration,
         onNavigate = onNavigate,
         onBack = onBack,
         modifier = modifier
@@ -114,7 +120,8 @@ enum class UpdateStep(val label: String) {
     companion object {
         fun of(state: FirmwareInstallState): UpdateStep = when (state) {
             FirmwareInstallState.Idle, FirmwareInstallState.WaitingForBoard, is FirmwareInstallState.WaitingForVolume,
-            is FirmwareInstallState.Ready, is FirmwareInstallState.WaitingForPermission -> PREPARE
+            is FirmwareInstallState.Ready, is FirmwareInstallState.WaitingForPermission,
+            is FirmwareInstallState.NeedsConfirmation -> PREPARE
             is FirmwareInstallState.Writing -> WRITE
             FirmwareInstallState.WaitingForDevice -> VERIFY
             is FirmwareInstallState.Verified -> DONE
@@ -130,6 +137,7 @@ enum class UpdateStep(val label: String) {
  * documents go to [onFilePicked] / [onDrivePicked], which run on the
  * session's (app) scope.
  */
+@Suppress("UNUSED_PARAMETER") // onNavigate: kept for callers; export no longer leaves the screen (WP AN18)
 @Composable
 fun FirmwareUpdateView(
     model: FirmwareUpdateModel,
@@ -139,7 +147,9 @@ fun FirmwareUpdateView(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     onFilePicked: (Uri) -> Unit = {},
-    onDrivePicked: (Uri) -> Unit = {}
+    onDrivePicked: (Uri) -> Unit = {},
+    // -- WP AN18 -- export first: the document's name, then where it goes
+    onExport: (Uri) -> Unit = {}
 ) {
     val state by model.installer.state.collectAsState()
     LaunchedEffect(state) { model.observe(state) }
@@ -149,6 +159,9 @@ fun FirmwareUpdateView(
     }
     val pickDrive = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
         if (uri != null) onDrivePicked(uri)
+    }
+    val pickExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(ConfigurationBackup.MIME_TYPE)) { uri: Uri? ->
+        if (uri != null) onExport(uri)
     }
 
     val primaryTitle = primaryTitle(model, device)
@@ -182,9 +195,19 @@ fun FirmwareUpdateView(
             device,
             primaryTitle,
             onStart = { model.confirmingUpdate = true },
-            onNavigate = onNavigate,
+            onExport = { pickExport.launch(ConfigurationBackup.FILE_NAME) },
             onClose = onBack,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+        )
+    }
+
+    // -- WP AN18 --
+    model.exportMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { model.exportMessage = null },
+            confirmButton = { TextButton(onClick = { model.exportMessage = null }) { Text("OK") } },
+            title = { Text("Export Configuration") },
+            text = { Text(message) }
         )
     }
 
@@ -411,7 +434,39 @@ private fun StatusCard(
             iconSize = 36.dp
         )
         is FirmwareInstallState.Failed -> InstallFailureCard(state.error)
+        // -- WP AN18 --
+        is FirmwareInstallState.NeedsConfirmation -> GuardConfirmationCard(state, onConfirm = model.installer::confirm)
     }
+}
+
+/** CG8's question: the guard's message, and the phrase to type before anything is written. */
+@Composable
+private fun GuardConfirmationCard(state: FirmwareInstallState.NeedsConfirmation, onConfirm: (String) -> Unit) {
+    var typed by rememberSaveable(state) { mutableStateOf("") }
+    InstallStateCard(
+        InstallIcon.WARNING,
+        Orange,
+        "Check before writing",
+        state.message,
+        accessory = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("To go ahead, type: ${state.phrase}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                OutlinedTextField(
+                    value = typed,
+                    onValueChange = { typed = it },
+                    singleLine = true,
+                    isError = state.wrongAnswer,
+                    supportingText = if (state.wrongAnswer) {
+                        { Text("That does not match. Type it exactly, with the same capitals and spaces.") }
+                    } else {
+                        null
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Button(onClick = { onConfirm(typed) }, enabled = typed.isNotEmpty()) { Text("Write Firmware") }
+            }
+        }
+    )
 }
 
 // MARK: Hints
@@ -444,7 +499,7 @@ private fun ButtonRow(
     device: FirmwareDeviceInfo,
     primaryTitle: String,
     onStart: () -> Unit,
-    onNavigate: (String) -> Unit,
+    onExport: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -459,12 +514,13 @@ private fun ButtonRow(
             // Presets are not written by the installer, but a wire-format
             // change can leave them unreadable: offered, not forced.
             if (device.connected && !model.confirmed) {
-                TextButton(onClick = { onNavigate(DspiRoutes.PRESETS) }) { Text("Export Configuration...") }
+                TextButton(onClick = onExport) { Text("Export Configuration...") }
             }
             Spacer(Modifier.weight(1f))
             when (state) {
                 is FirmwareInstallState.Failed -> Button(onClick = { model.resetRun() }) { Text("Try Again") }
-                is FirmwareInstallState.Writing, FirmwareInstallState.WaitingForDevice, is FirmwareInstallState.WaitingForPermission -> Unit
+                is FirmwareInstallState.Writing, FirmwareInstallState.WaitingForDevice, is FirmwareInstallState.WaitingForPermission,
+                is FirmwareInstallState.NeedsConfirmation -> Unit
                 else -> Button(onClick = onStart, enabled = !model.confirmed) { Text(primaryTitle) }
             }
         }

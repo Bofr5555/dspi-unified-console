@@ -8,6 +8,7 @@ package se.bofr.dspi.feature.firmware
 
 import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
@@ -58,8 +59,11 @@ internal class FirmwareInstallSession private constructor(context: Context, val 
     )
     private val bundled: (BootloaderBoard.Chip) -> FirmwareImage = { BundledFirmware.image(appContext, it) }
 
+    // -- WP AN18 -- CG8's guard on both write paths
+    private val guard = CoreFirmwareGuard(bridge.coreTools)
+
     val model = FirmwareUpdateModel(
-        installer = FirmwareInstaller(locating, BridgeFirmwareVerifier(bridge), picoboot, bundled, scope),
+        installer = FirmwareInstaller(locating, BridgeFirmwareVerifier(bridge), picoboot, bundled, guard, scope),
         bundled = bundled,
         picobootWriter = picoboot
     )
@@ -104,6 +108,24 @@ internal class FirmwareInstallSession private constructor(context: Context, val 
         scope.launch {
             val volume = withContext(Dispatchers.IO) { runCatching { SafUf2Volume(appContext, tree) }.getOrNull() }
             if (volume != null) model.useDrive(volume)
+        }
+    }
+
+    /** WP AN18: Export Configuration... to the document the user created. */
+    fun exportConfiguration(uri: Uri) {
+        scope.launch {
+            val resolver = appContext.contentResolver
+            val displayName = withContext(Dispatchers.IO) {
+                runCatching {
+                    resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null }
+                }.getOrNull()
+            }
+            model.exportMessage = ConfigurationBackup.export(bridge.configFiles, displayName) { text ->
+                withContext(Dispatchers.IO) {
+                    val out = resolver.openOutputStream(uri, "wt") ?: throw java.io.IOException("the file could not be opened")
+                    out.use { it.write(text.toByteArray(Charsets.UTF_8)) }
+                }
+            }
         }
     }
 

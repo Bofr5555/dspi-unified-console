@@ -9,11 +9,14 @@
 // [FirmwareInstallState.WaitingForPermission]; the image may be a local file
 // (version unknown → only the device's return is verified); UF2 contents are
 // validated against the board before anything is written.
+// WP AN18: every write passes CG8's firmware guard first ([FirmwareGuarding]);
+// a writer takes only an image the guard cleared ([GuardClearance]).
 package se.bofr.dspi.feature.firmware
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -23,7 +26,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import se.bofr.dspi.bridge.CoreTools
 import se.bofr.dspi.bridge.DspiBridge
+import se.bofr.dspi.core.FirmwareGuardBoard
+import se.bofr.dspi.core.FirmwareGuardDecision
+import se.bofr.dspi.core.FirmwareGuardVerdict
 
 // MARK: - Images
 
@@ -87,6 +94,9 @@ sealed class FirmwareInstallError : Exception() {
     /** The drive the user picked is not the board's. */
     data class WrongVolume(val expected: String) : FirmwareInstallError()
 
+    /** CG8's firmware guard refused the image ([detail] is its message). WP AN18. */
+    data class GuardBlocked(val detail: String) : FirmwareInstallError()
+
     /** One sentence fit to show a user. */
     override val message: String
         get() = when (this) {
@@ -105,6 +115,7 @@ sealed class FirmwareInstallError : Exception() {
             is WrongBoardFamily -> "This firmware is for the $image, but the board is an $board. Nothing was written."
             is InvalidImage -> "This is not a firmware file the board can take: $detail. Nothing was written."
             is WrongVolume -> "That is not the board's drive. Choose the drive named $expected."
+            is GuardBlocked -> "${detail.ifEmpty { "The firmware guard refused this image." }} Nothing was written."
         }
 
     /** FirmwareInstallUI.swift `isMundane`: detection-side stumbles read as ordinary. */
@@ -140,6 +151,55 @@ class BridgeFirmwareVerifier(private val deviceVersion: () -> FirmwareVersion?) 
     }
 }
 
+// MARK: - Guard (WP AN18)
+
+/**
+ * CG8's firmware guard as the installer asks it. The board record is taken
+ * from the running device before it reboots into BOOTSEL; a board already in
+ * BOOTSEL cannot be asked, so its record is unknown and the guard asks the user.
+ */
+interface FirmwareGuarding {
+    /** Reads the running board's record (before `enterBootloader`). Main thread; suspends for the read. */
+    suspend fun recordRunningBoard()
+
+    /** Drops the record: the next board is one nobody asked. */
+    fun forgetBoard()
+
+    /** The verdict on writing [image]; [typed] is the user's answer, "" if none. Called on the IO dispatcher. */
+    fun check(image: ByteArray, typed: String): FirmwareGuardVerdict
+}
+
+/** [FirmwareGuarding] over the core ([DspiBridge.coreTools]). */
+class CoreFirmwareGuard(private val tools: CoreTools) : FirmwareGuarding {
+    @Volatile private var board: FirmwareGuardBoard? = null
+
+    override suspend fun recordRunningBoard() {
+        board = tools.firmwareGuardBoard()
+    }
+
+    override fun forgetBoard() {
+        board = null
+    }
+
+    override fun check(image: ByteArray, typed: String): FirmwareGuardVerdict =
+        tools.firmwareGuardCheck(image, board ?: tools.firmwareGuardBoardInBootloader(), typed)
+}
+
+/**
+ * The guard's permission for one image. Only [FirmwareInstaller] makes one,
+ * from a verdict that allows it; a [FirmwareWriter] writes nothing it does not
+ * cover ([requireCovers]).
+ */
+class GuardClearance internal constructor(private val image: ByteArray, val verdict: FirmwareGuardVerdict) {
+    /** Whether this clearance is for [other], the very bytes the guard checked. */
+    fun covers(other: FirmwareImage): Boolean = verdict.allowed && other.bytes === image
+
+    /** Throws [FirmwareInstallError.GuardBlocked] unless [covers]. */
+    fun requireCovers(other: FirmwareImage) {
+        if (!covers(other)) throw FirmwareInstallError.GuardBlocked("The firmware guard did not clear this image.")
+    }
+}
+
 // MARK: - Writers
 
 /** How [FirmwareWriter.obtainAccess] ended. */
@@ -158,9 +218,10 @@ interface FirmwareWriter {
 
     /**
      * Writes [image] ([uf2] is its parsed form) and returns once the board
-     * has been told to (or is about to) reboot. Throws [FirmwareInstallError].
+     * has been told to (or is about to) reboot. Throws [FirmwareInstallError];
+     * writes nothing unless [clearance] covers [image].
      */
-    suspend fun write(board: BootloaderBoard, image: FirmwareImage, uf2: Uf2Image, progress: (Double) -> Unit)
+    suspend fun write(board: BootloaderBoard, image: FirmwareImage, uf2: Uf2Image, clearance: GuardClearance, progress: (Double) -> Unit)
 }
 
 // MARK: - Installer
@@ -179,6 +240,17 @@ sealed class FirmwareInstallState {
 
     /** Android: the system USB permission dialog for the board is up. */
     data class WaitingForPermission(val chip: BootloaderBoard.Chip) : FirmwareInstallState()
+
+    /**
+     * WP AN18: the firmware guard needs [phrase] typed before it allows the
+     * write ([message] says why). [wrongAnswer]: what was typed did not match.
+     */
+    data class NeedsConfirmation(
+        val chip: BootloaderBoard.Chip,
+        val message: String,
+        val phrase: String,
+        val wrongAnswer: Boolean
+    ) : FirmwareInstallState()
 
     /** Writing, with the fraction of the image sent so far. */
     data class Writing(val fraction: Double) : FirmwareInstallState()
@@ -200,6 +272,8 @@ class FirmwareInstaller(
     private val verifier: FirmwareVerifying,
     writer: FirmwareWriter,
     imageProvider: (BootloaderBoard.Chip) -> FirmwareImage,
+    /** CG8's guard: asked before every write, with no way around it (WP AN18). */
+    private val guard: FirmwareGuarding,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher = Dispatchers.IO
 ) {
@@ -213,6 +287,11 @@ class FirmwareInstaller(
     private var armed = false
 
     private var job: Job? = null
+
+    /** What waits for the guard's confirmation phrase. */
+    private class Pending(val board: BootloaderBoard, val image: FirmwareImage, val uf2: Uf2Image, val writer: FirmwareWriter)
+
+    private var pending: Pending? = null
 
     /** Where writes go; changeable only while nothing is installing. */
     var writer: FirmwareWriter = writer
@@ -268,6 +347,8 @@ class FirmwareInstaller(
         }
         installing = false
         armed = false
+        pending = null
+        guard.forgetBoard()
         applyBoards(locator.currentBoards())
     }
 
@@ -295,6 +376,25 @@ class FirmwareInstaller(
     fun installWhenReady() {
         armed = true
         (_state.value as? FirmwareInstallState.Ready)?.let { install(it.board) }
+    }
+
+    /**
+     * Reads the running board's record for the guard, then [then] (the reboot
+     * into BOOTSEL): the board must be asked while it can still answer.
+     */
+    fun recordBoardThen(then: () -> Unit) {
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            guard.recordRunningBoard()
+            then()
+        }
+    }
+
+    /** The user typed [typed] in answer to [FirmwareInstallState.NeedsConfirmation]: ask the guard again. */
+    fun confirm(typed: String) {
+        if (_state.value !is FirmwareInstallState.NeedsConfirmation) return
+        val p = pending ?: return
+        pending = null
+        job = scope.launch { guardThenWrite(p.board, p.image, p.uf2, p.writer, typed) }
     }
 
     /** Abandons a committed update before anything is written. */
@@ -328,38 +428,56 @@ class FirmwareInstaller(
         uf2.targetError(board.chip)?.let { return fail(it) }
 
         val writer = this.writer
-        job = scope.launch {
-            if (!writer.hasAccess(board)) {
-                publish(FirmwareInstallState.WaitingForPermission(board.chip))
-                when (writer.obtainAccess(board)) {
-                    BoardAccess.GRANTED -> Unit
-                    BoardAccess.DENIED -> return@launch fail(FirmwareInstallError.PermissionDenied)
-                    BoardAccess.GONE -> return@launch fail(FirmwareInstallError.NoBoardFound)
-                }
-            }
+        job = scope.launch { guardThenWrite(board, image, uf2, writer, typed = "") }
+    }
 
-            publish(FirmwareInstallState.Writing(0.0))
-            try {
-                withContext(io) { writer.write(board, image, uf2) { f -> _state.value = FirmwareInstallState.Writing(f) } }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: FirmwareInstallError) {
-                return@launch fail(e)
-            } catch (e: Exception) {
-                return@launch fail(FirmwareInstallError.WriteFailed(e.message ?: e.toString()))
-            }
-
-            publish(FirmwareInstallState.WaitingForDevice)
-
-            // The copy returning proves nothing: success is the device coming
-            // back and telling us it is running what we wrote.
-            val reported = verifier.awaitDeviceVersion(VERIFY_TIMEOUT_MS) ?: return@launch fail(FirmwareInstallError.DeviceDidNotReturn)
-            val expected = image.version
-            if (expected != null && reported != expected) {
-                return@launch fail(FirmwareInstallError.VersionMismatch(expected.description, reported.description))
-            }
-            publish(FirmwareInstallState.Verified(reported))
+    /** The guard, then the permission, the write and the verification. Nothing is written unless the guard allows it. */
+    private suspend fun guardThenWrite(board: BootloaderBoard, image: FirmwareImage, uf2: Uf2Image, writer: FirmwareWriter, typed: String) {
+        val verdict = try {
+            withContext(io) { guard.check(image.bytes, typed) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return fail(FirmwareInstallError.GuardBlocked("The firmware guard could not check this image."))
         }
+        if (!verdict.allowed) {
+            if (verdict.decision == FirmwareGuardDecision.NEEDS_CONFIRMATION && verdict.confirmationPhrase.isNotEmpty()) {
+                pending = Pending(board, image, uf2, writer)
+                return publish(FirmwareInstallState.NeedsConfirmation(board.chip, verdict.message, verdict.confirmationPhrase, typed.isNotEmpty()))
+            }
+            return fail(FirmwareInstallError.GuardBlocked(verdict.message))
+        }
+        val clearance = GuardClearance(image.bytes, verdict)
+        if (!writer.hasAccess(board)) {
+            publish(FirmwareInstallState.WaitingForPermission(board.chip))
+            when (writer.obtainAccess(board)) {
+                BoardAccess.GRANTED -> Unit
+                BoardAccess.DENIED -> return fail(FirmwareInstallError.PermissionDenied)
+                BoardAccess.GONE -> return fail(FirmwareInstallError.NoBoardFound)
+            }
+        }
+
+        publish(FirmwareInstallState.Writing(0.0))
+        try {
+            withContext(io) { writer.write(board, image, uf2, clearance) { f -> _state.value = FirmwareInstallState.Writing(f) } }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: FirmwareInstallError) {
+            return fail(e)
+        } catch (e: Exception) {
+            return fail(FirmwareInstallError.WriteFailed(e.message ?: e.toString()))
+        }
+
+        publish(FirmwareInstallState.WaitingForDevice)
+
+        // The copy returning proves nothing: success is the device coming
+        // back and telling us it is running what we wrote.
+        val reported = verifier.awaitDeviceVersion(VERIFY_TIMEOUT_MS) ?: return fail(FirmwareInstallError.DeviceDidNotReturn)
+        val expected = image.version
+        if (expected != null && reported != expected) {
+            return fail(FirmwareInstallError.VersionMismatch(expected.description, reported.description))
+        }
+        publish(FirmwareInstallState.Verified(reported))
     }
 
     /** Test hook (`setStateForTesting`). */
