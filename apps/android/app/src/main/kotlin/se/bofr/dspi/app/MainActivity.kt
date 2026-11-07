@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filter
 import se.bofr.dspi.bridge.BridgeEvent
 import se.bofr.dspi.core.DspiException
+import se.bofr.dspi.feature.settings.LocalAboutJson
 import se.bofr.dspi.ui.DspiTheme
 import se.bofr.dspi.ui.link.LocalNetworking
 import se.bofr.dspi.ui.settings.LocalAppSettings
@@ -70,7 +71,8 @@ class MainActivity : ComponentActivity() {
                 CompositionLocalProvider(
                     LocalAppSettings provides app.appSettings,
                     LocalAppState provides app.appState,
-                    LocalNetworking provides app.networking
+                    LocalNetworking provides app.networking,
+                    LocalAboutJson provides app.aboutJson
                 ) {
                     AppScaffold(
                         bridge = bridge,

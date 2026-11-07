@@ -79,6 +79,9 @@ class DspiApplication : Application() {
     lateinit var linkTokens: LinkTokenStore
         private set
     lateinit var networking: AppNetworkingController
+
+    /** WP AN26: the About table, from the real core in every mode (demo's core is a fake). */
+    lateinit var aboutJson: () -> String
         private set
 
     /** The main window's selection (macOS activeEqChannel / isOverviewMode). */
@@ -96,6 +99,7 @@ class DspiApplication : Application() {
         val version = appVersion()
         val linkStore = DataStoreLinkStore(dspiBridgeStore, appScope)
         val deviceCore = FfiDspiCore()
+        aboutJson = deviceCore::aboutJson
         bridge = DspiBridgeImpl(deviceCore, appScope, linkStore = linkStore, appVersion = version)
         val services = SharedServiceControl(AndroidServiceControl(this))
         val usb = AndroidUsbSession(this, bridge, appScope, service = services.client("usb"))
