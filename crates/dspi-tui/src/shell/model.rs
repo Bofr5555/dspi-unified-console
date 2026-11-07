@@ -97,6 +97,10 @@ pub struct ShellModel {
     /// stock firmware.
     pub ext: String,
     pub connected: bool,
+    // -- WP TM8 --
+    /// A hub is being reconnected to: the status line says so, and the last
+    /// known values stay on show.
+    pub link_lost: bool,
     /// Every attached device, by display name; more than one enables the
     /// picker.
     pub devices: Vec<String>,
@@ -183,6 +187,8 @@ impl ShellModel {
             via: String::new(),
             ext: String::new(),
             connected: false,
+            // -- WP TM8 --
+            link_lost: false,
             devices: Vec::new(),
             preset_label: "Empty".into(),
             preset_dirty: false,
