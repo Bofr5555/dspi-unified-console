@@ -57,6 +57,7 @@ import kotlin.math.roundToInt
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.core.DspiConstants
 import se.bofr.dspi.core.RtaCapsInfo
+import se.bofr.dspi.core.RtaChannelFrame
 import se.bofr.dspi.core.RtaSnapshot
 import se.bofr.dspi.ui.settings.AppSettings
 
@@ -211,8 +212,10 @@ class RtaCurveBuilder {
     /**
      * The third-octave picture: `levels[i]` (dB) at band centre i, from
      * [firstBand] (bands below it hold no FFT bin at this size) up to the slot
-     * count. One band either side of the visible range is kept so the curve
-     * runs off the plot edges. Writes [outX]/[outY]; returns the count.
+     * count, leaving out the bands [populated] (the core's band mask, bit i =
+     * band i) has no reading for (macOS `RtaRenderCache.visibleBands`). One
+     * band either side of the visible range is kept so the curve runs off the
+     * plot edges. Writes [outX]/[outY]; returns the count.
      */
     fun bandPoints(
         centres: List<Int>,
@@ -220,6 +223,7 @@ class RtaCurveBuilder {
         nLevels: Int,
         nBands: Int,
         firstBand: Int,
+        populated: Long,
         outX: FloatArray,
         outY: FloatArray
     ): Int {
@@ -232,6 +236,7 @@ class RtaCurveBuilder {
         // A slot the frame carries no level for reads the floor (macOS fills
         // `levels` with `scale.floorDB` before copying the frame in).
         for (i in max(firstBand, 0) until min(slots, centres.size)) {
+            if ((populated shr i) and 1L == 0L) continue
             val hz = centres[i].toDouble()
             val px = centreX[i]
             val py = y(if (i < nLevels) levels[i] else scale.floorDB).toFloat()
@@ -418,7 +423,7 @@ fun columnPath(path: Path, ys: FloatArray, columns: Int): Int {
 }
 
 /** One channel's buffers, smoothers and paths, kept across frames. */
-private class ChannelTrace {
+internal class ChannelTrace {
     val avg = RtaBarSmoother()
     val peak = RtaBarSmoother()
     val bins = RtaBarSmoother()
@@ -445,7 +450,7 @@ private class ChannelTrace {
 }
 
 /** Everything a spectrum overlay draws with, keyed on its geometry. */
-private class SpectrumRenderCache {
+internal class SpectrumRenderCache {
     val builder = RtaCurveBuilder()
     val traces = HashMap<Int, ChannelTrace>()
 
@@ -656,7 +661,20 @@ private inline fun DrawScope.drawByStartGroup(cache: SpectrumRenderCache, hDp: F
     }
 }
 
-private fun buildTrace(
+/**
+ * The frame of channel [ch] in [snap]: the core packs the analysed channels'
+ * frames into `frames[0 until count]` in channel order, so a frame is found by
+ * its channel, never by index (feature-analysis `rtaFrame`).
+ */
+internal fun rtaOverlayFrame(snap: RtaSnapshot, ch: Int): RtaChannelFrame? {
+    val frames = snap.frames
+    for (i in 0 until min(snap.count, frames.size)) {
+        if (frames[i].channel == ch) return frames[i]
+    }
+    return null
+}
+
+internal fun buildTrace(
     cache: SpectrumRenderCache,
     t: ChannelTrace,
     caps: RtaCapsInfo,
@@ -672,15 +690,14 @@ private fun buildTrace(
     t.hasCurve = false
     t.hasPeak = false
     t.start = Float.POSITIVE_INFINITY
-    val populated = (snap.populated shr ch) and 1L == 1L
-    val frame = if (populated) snap.frames.getOrNull(ch) else null
+    val frame = rtaOverlayFrame(snap, ch)
     var nBands = 0
     if (frame != null) {
         val n = min(frame.avgDb.size, t.levels.size)
         for (i in 0 until n) t.levels[i] = frame.avgDb[i].toDouble()
         val slots = if (frame.nBands > 0) frame.nBands else n
         val lv = if (tau > 0) t.avg.step(now, t.levels, n, (ch shl 8) or slots, tau * 0.4, tau) else t.levels
-        nBands = b.bandPoints(caps.centres, lv, n, frame.nBands, snap.firstBand, t.bandX, t.bandY)
+        nBands = b.bandPoints(caps.centres, lv, n, frame.nBands, snap.firstBand, snap.populated, t.bandX, t.bandY)
     }
     val cy = cache.columnY
     var dense = false
@@ -726,7 +743,7 @@ private fun buildTrace(
         val slots = if (frame.nBands > 0) frame.nBands else n
         // A peak cap that eased upward would stop being a peak.
         val lv = if (tau > 0) t.peak.step(now, t.levels, n, (ch shl 8) or slots, 0.0, tau) else t.levels
-        val np = b.bandPoints(caps.centres, lv, n, frame.nBands, snap.firstBand, t.peakX, t.peakY)
+        val np = b.bandPoints(caps.centres, lv, n, frame.nBands, snap.firstBand, snap.populated, t.peakX, t.peakY)
         if (np > 1) {
             smoothPath(t.peakPath, t.peakX, t.peakY, np, hDp)
             t.hasPeak = true
