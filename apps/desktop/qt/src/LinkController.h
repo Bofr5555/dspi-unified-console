@@ -93,6 +93,12 @@ public:
     Q_INVOKABLE void retryNow();
     Q_INVOKABLE void dismissTokenWarning();
 
+    // Reads the core's state; no traffic. The core's events call this.
+    Q_INVOKABLE void refreshStatus();
+    // For the smoke driver: runs on the worker when a dial returns that nobody wants
+    // any more, with its session up, just before it is closed
+    void setStaleDialHook(std::function<void()> hook) { m_staleDialHook = std::move(hook); }
+
 signals:
     void statusChanged();
     void busyChanged();
@@ -114,7 +120,6 @@ private:
     void post(unsigned generation, std::function<void()> job);
     void setError(const QString &code, const QString &text);
     void applyHello(const QJsonObject &hello);
-    void refreshStatus();
     void refreshDevices();
     void saveToken(const QString &hubId, const QString &token);
     void setBusy(int delta);
@@ -139,6 +144,7 @@ private:
     QString m_lastSavedToken;
     bool m_refusalHandled = false;
     bool m_analyserWanted = false;           // ran on this session: start it after a loss
+    std::function<void()> m_staleDialHook;
     QThreadPool m_worker;                    // one thread, joined by the destructor
 };
 

@@ -2157,6 +2157,27 @@ mod tests_wp_cg5 {
             .collect()
     }
 
+    /// -- WP QD8b -- `version` moves when the picture does, not on each poll: under a
+    /// constant signal a client cannot read "still polling" from it. A test sees
+    /// polling by changing what the hub's bands read.
+    #[test]
+    fn wp_qd8b_a_constant_signal_keeps_the_version_a_new_level_moves_it() {
+        let hub = hub();
+        let (a, _) = console(&hub, "a", 0b0001);
+        until("a's picture", &[&a], || {
+            channels(&a.rta_get_snapshot()) == [0]
+        });
+        settle(&[&a]);
+        let first = a.rta_get_snapshot();
+        settle(&[&a]);
+        assert_eq!(a.rta_get_snapshot().version, first.version);
+        hub.set_rta_level(100);
+        until("the new level", &[&a], || {
+            let now = a.rta_get_snapshot();
+            now.version != first.version && now.frames[0].avg_db[0] != first.frames[0].avg_db[0]
+        });
+    }
+
     #[test]
     fn wp_cg5_another_session_switches_state_ours_does_not_and_take_control_works() {
         let hub = hub();

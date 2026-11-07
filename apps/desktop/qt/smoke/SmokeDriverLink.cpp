@@ -26,6 +26,7 @@
 #include <QQuickWindow>
 #include <QRegularExpression>
 #include <QThreadPool>
+#include <QtNumeric>
 #include <atomic>
 #include <map>
 #include <memory>
@@ -51,10 +52,13 @@ public:
         url = QStringLiteral("ws://%1/dspi/v1").arg(address);
         return true;
     }
-    void fault(const char *command) {
-        m_proc.write(command);
-        m_proc.write("\n");
-        m_proc.waitForBytesWritten(1000);
+    // True once the hub says the fault has taken effect (-- WP QD8b --)
+    bool fault(const QByteArray &command) {
+        m_proc.write(command + "\n");
+        if (!m_proc.waitForBytesWritten(5000)) return false;
+        while (!m_proc.canReadLine())
+            if (!m_proc.waitForReadyRead(10000)) return false;
+        return m_proc.readLine().trimmed() == "ok";
     }
     void kill() {
         m_proc.kill();
@@ -76,14 +80,26 @@ QQuickItem *findItem(QQuickItem *from, const QString &name) {
     return nullptr;
 }
 
-// A snapshot that keeps changing: the worker is polling.
-bool analyserPolls(FfiCore *core, const std::function<bool(int, const std::function<bool()> &)> &waitFor) {
-    RtaSnapshot first;
-    dspi_rta_get_snapshot(core, &first);
-    return waitFor(5000, [&] {
-        RtaSnapshot now;
-        dspi_rta_get_snapshot(core, &now);
-        return now.version != first.version;
+// -- WP QD8b -- The analyser is polling: the hub's bands change, and the snapshot
+// shows it. Comparing snapshot versions over time cannot say: the version moves only
+// when the picture does, and the fake hub's signal is constant, so a version read
+// after the first picture never moves again, whatever the worker does. Only the wait
+// is a timeout here, for a worker that has really stopped.
+bool analyserFollowsHub(FfiCore *core, FakeHubProcess &hub,
+                        const std::function<bool(int, const std::function<bool()> &)> &waitFor) {
+    static int nextLevel = 100;
+    constexpr int kWaitMs = 20000;
+    auto snapshot = std::make_unique<RtaSnapshot>();
+    const auto level = [&] {
+        dspi_rta_get_snapshot(core, snapshot.get());
+        return snapshot->count > 0 ? snapshot->frames[0].avg_db[0] : qQNaN();
+    };
+    if (!waitFor(kWaitMs, [&] { return !qIsNaN(level()); })) return false;
+    const float before = level();
+    if (!hub.fault(QByteArray("rta-level ") + QByteArray::number(nextLevel++))) return false;
+    return waitFor(kWaitMs, [&] {
+        const float now = level();
+        return !qIsNaN(now) && now != before;
     });
 }
 
@@ -261,20 +277,17 @@ void SmokeDriver::testLink() {
     }
     {
         // rate_limited says nothing about the token
-        hub.fault("token rate_limited");
-        spin(300);
+        check("QD8: the hub takes token rate_limited", hub.fault("token rate_limited"));
         Run run(file);
         LinkController &l = *run.link;
         l.connectToHub(hub.url, hub.id);
         check("QD8: rate_limited", settled(l) && l.errorCode() == QLatin1String("rate_limited"));
         check("QD8: rate_limited keeps the token", storedIn(file, hub.id) == firstToken);
-        hub.fault("token internal");
-        spin(300);
+        check("QD8: the hub takes token internal", hub.fault("token internal"));
         l.connectToHub(hub.url, hub.id);
         check("QD8: another failure", settled(l) && !l.errorCode().isEmpty());
         check("QD8: another failure keeps the token", storedIn(file, hub.id) == firstToken);
-        hub.fault("token ok");
-        spin(300);
+        check("QD8: the hub takes token ok", hub.fault("token ok"));
         l.connectToHub(hub.url, hub.id);
         check("QD8: after the limit the same token works", settled(l) && l.errorCode().isEmpty());
         check("QD8: after the limit, no PIN", waitFor(3000, [&] { return l.phase() == QLatin1String("choose_device"); }));
@@ -292,7 +305,7 @@ void SmokeDriver::testLink() {
         l.bindDevice(device.value(QStringLiteral("handle")).toInt(), device.value(QStringLiteral("serial")).toString());
         check("QD8: bound and read", settled(l) && bound == 1 && waitFor(3000, [&] { return l.phase() == QLatin1String("bound"); }));
         check("QD8: the mirror holds it", dspi_is_connected(run.core));
-        hub.fault("drop");
+        check("QD8: the hub takes drop", hub.fault("drop"));
         check("QD8: a drop reads as reconnecting, then bound again",
               waitFor(15000, [&] { return back == 1 && l.phase() == QLatin1String("bound"); }));
         check("QD8: the mirror came back", dspi_is_connected(run.core));
@@ -300,8 +313,7 @@ void SmokeDriver::testLink() {
     }
     {
         // A way out during a first dial: the session it makes is thrown away
-        hub.fault("stall");
-        spin(300);
+        check("QD8: the hub takes stall", hub.fault("stall"));
         Run run(file);
         LinkController &l = *run.link;
         l.connectToHub(hub.url, hub.id);
@@ -310,8 +322,18 @@ void SmokeDriver::testLink() {
         t.start();
         l.closeSession();
         check("QD8: closing during a dial does not wait", t.elapsed() < 1000 && l.phase() == QLatin1String("idle"));
-        hub.fault("unstall");
+        // -- WP QD8b -- The race: while that session is up, an event from it shows
+        // its phase here. Its close is quiet, so nothing else would correct that.
+        QString phaseMeanwhile;
+        l.setStaleDialHook([&] {
+            QMetaObject::invokeMethod(&l, [&] {
+                l.refreshStatus();
+                phaseMeanwhile = l.phase();
+            }, Qt::BlockingQueuedConnection);
+        });
+        check("QD8: the hub takes unstall", hub.fault("unstall"));
         check("QD8: the dial ends", settled(l));
+        check("QD8: the thrown-away session was up for a moment", !phaseMeanwhile.isEmpty() && phaseMeanwhile != QLatin1String("idle"));
         check("QD8: its session is gone", waitFor(3000, [&] { return l.phase() == QLatin1String("idle"); }));
     }
     {
@@ -366,17 +388,17 @@ void SmokeDriver::testLink() {
         dspi_rta_set_request(b->core(), &request);
         RtaCapsInfo caps;
         check("QD6: binding probes the analyser", waitFor(5000, [&] { dspi_rta_get_caps(b->core(), &caps); return caps.supported; }));
-        check("QD8: the analyser runs", analyserPolls(b->core(), wait));
+        check("QD8: the analyser runs", analyserFollowsHub(b->core(), open, wait));
         int states = 0, back = 0;
         const QMetaObject::Connection stateCount = QObject::connect(b, &DSPiBridge::stateChanged, b, [&] { states++; });
         const QMetaObject::Connection backCount = QObject::connect(app, &LinkController::reconnected, b, [&] { back++; });
-        open.fault("drop");
+        check("QD8: the hub takes drop", open.fault("drop"));
         check("QD6: a drop comes back bound", waitFor(15000, [&] { return back == 1 && app->phase() == QLatin1String("bound"); }));
         check("QD6: a reconnect redraws", states > 0);
         QObject::disconnect(stateCount);
         QObject::disconnect(backCount);
         check("QD8: the analyser's probe came back", settled(*app) && waitFor(5000, [&] { dspi_rta_get_caps(b->core(), &caps); return caps.supported; }));
-        check("QD8: and it polls again", analyserPolls(b->core(), wait));
+        check("QD8: and it polls again", analyserFollowsHub(b->core(), open, wait));
         check("QD6: still the hub's device", b->selectedSerial() == hubSerial);
         open.kill();   // gone, not back in a moment
         check("QD8: banner at once", waitFor(2000, [&] { return app->phase() == QLatin1String("reconnecting") && row && row->isVisible(); }));
