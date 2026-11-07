@@ -182,104 +182,138 @@ void StatsController::updateTimers() {
     else { m_slow.stop(); m_fast.stop(); }
 }
 
-void StatsController::pollSlow() {
+// -- WP QD34 -- The counters as the worker read them; the starvation delta and
+// the LG section's memory are worked out on the UI thread.
+struct StatsController::SlowRead {
     QVariantMap m;
+    bool haveTotal = false;
+    quint32 total = 0;
+    QVariantList per;
+    QVariantMap lg;
+};
+
+// Some twenty transfers, on the worker. A read still running skips this one.
+void StatsController::pollSlow() {
     if (m_serial.isEmpty()) {
         if (!m_info.isEmpty()) { m_info.clear(); emit infoChanged(); }
         return;
     }
-    auto stat = [this](uint16_t which) -> QVariant {
-        uint32_t v = 0;
-        return dspi_fetch_stat(m_core, which, &v) ? QVariant(qulonglong(v)) : QVariant();
-    };
-    QVariant clock = stat(STAT_CLOCK_HZ), mv = stat(STAT_CORE_MV), rate = stat(STAT_SAMPLE_RATE), temp = stat(STAT_TEMPERATURE);
-    if (clock.isValid()) m["clockMHz"] = clock.toDouble() / 1e6;
-    if (mv.isValid()) m["coreVolts"] = mv.toDouble() / 1000.0;
-    if (rate.isValid()) m["sampleKHz"] = rate.toDouble() / 1000.0;
-    if (temp.isValid()) m["tempC"] = qint16(quint16(temp.toULongLong() & 0xFFFF)) / 100.0;
-    m["usbRingOver"] = stat(STAT_USB_RING_OVERRUNS);
-    m["spdifOver"] = stat(STAT_SPDIF_OVERRUNS);
-    m["spdifUnder"] = stat(STAT_SPDIF_UNDERRUNS);
-    m["pdmRingOver"] = stat(STAT_PDM_RING_OVERRUNS);
-    m["pdmRingUnder"] = stat(STAT_PDM_RING_UNDERRUNS);
-    m["pdmDmaOver"] = stat(STAT_PDM_DMA_OVERRUNS);
-    m["pdmDmaUnder"] = stat(STAT_PDM_DMA_UNDERRUNS);
+    if (!m_slowBusy) {
+        m_slowBusy = true;
+        const unsigned generation = m_generation;
+        const bool rp2350 = m_bridge->platformName() == "RP2350";   // reads the state: UI thread only
+        DSPiBridge *bridge = m_bridge;
+        m_worker.start(QRunnable::create([this, core = m_core, bridge, rp2350, hook = m_slowReadHook, generation]() {
+            if (hook) hook();
+            SlowRead r;
+            QVariantMap &m = r.m;
+            auto stat = [core](uint16_t which) -> QVariant {
+                uint32_t v = 0;
+                return dspi_fetch_stat(core, which, &v) ? QVariant(qulonglong(v)) : QVariant();
+            };
+            QVariant clock = stat(STAT_CLOCK_HZ), mv = stat(STAT_CORE_MV), rate = stat(STAT_SAMPLE_RATE), temp = stat(STAT_TEMPERATURE);
+            if (clock.isValid()) m["clockMHz"] = clock.toDouble() / 1e6;
+            if (mv.isValid()) m["coreVolts"] = mv.toDouble() / 1000.0;
+            if (rate.isValid()) m["sampleKHz"] = rate.toDouble() / 1000.0;
+            if (temp.isValid()) m["tempC"] = qint16(quint16(temp.toULongLong() & 0xFFFF)) / 100.0;
+            m["usbRingOver"] = stat(STAT_USB_RING_OVERRUNS);
+            m["spdifOver"] = stat(STAT_SPDIF_OVERRUNS);
+            m["spdifUnder"] = stat(STAT_SPDIF_UNDERRUNS);
+            m["pdmRingOver"] = stat(STAT_PDM_RING_OVERRUNS);
+            m["pdmRingUnder"] = stat(STAT_PDM_RING_UNDERRUNS);
+            m["pdmDmaOver"] = stat(STAT_PDM_DMA_OVERRUNS);
+            m["pdmDmaUnder"] = stat(STAT_PDM_DMA_UNDERRUNS);
 
+            // S/PDIF DMA starvation
+            uint32_t total = 0;
+            if (dspi_fetch_stat(core, STAT_STARVATION_TOTAL, &total)) {
+                r.haveTotal = true;
+                r.total = total;
+                for (int i = 0; i < 4; i++) {
+                    uint32_t v = 0;
+                    r.per.append(total > 0 && dspi_fetch_stat(core, STAT_STARVATION_FIRST + i, &v) ? qulonglong(v) : 0ull);
+                }
+            }
+
+            // S/PDIF receiver
+            SpdifRxStatus rx {};
+            if (dspi_fetch_spdif_rx_status(core, &rx)) {
+                QVariantMap s;
+                s["state"] = rx.state;
+                s["source"] = inputSourceName(rx.input_source);
+                s["locked"] = rx.state == 2;
+                s["rateKHz"] = rx.state == 2 ? rx.sample_rate / 1000.0 : 0.0;
+                s["lockCount"] = rx.lock_count;
+                s["lossCount"] = rx.loss_count;
+                s["parityErrors"] = qulonglong(rx.parity_errors);
+                s["fifoPct"] = rx.fifo_fill_pct;
+                s["libState"] = rx.lib_state;
+                s["stableCallbacks"] = rx.stable_callbacks;
+                s["lostCallbacks"] = rx.lost_callbacks;
+                int index = rx.input_source == 1 ? 0 : (rx.input_source >= 4 && rx.input_source <= 6) ? rx.input_source - 3 : 0;
+                quint8 pin = 0;
+                if (dspi_fetch_spdif_rx_pin(core, quint8(index), &pin) && pin) s["pin"] = pin;
+                quint8 cs[24];
+                if (rx.state == 2 && dspi_fetch_spdif_rx_channel_status(core, cs)) {
+                    s["consumer"] = (cs[0] & 0x01) == 0;
+                    s["pcm"] = (cs[0] & 0x02) == 0;
+                    s["copyPermitted"] = (cs[0] & 0x04) != 0;
+                    s["category"] = categoryName(cs[1]);
+                    s["wordLength"] = wordLengthName(cs[4]);
+                }
+                m["spdifRx"] = s;
+            }
+
+            // These two touch only the core handle, not the bridge's state: safe here
+            r.lg = bridge->fetchLgStatus();
+            // ADAT bulk output (RP2350)
+            if (rp2350) {
+                QVariantMap adat = bridge->fetchAdatOutStatus();
+                if (!adat.isEmpty()) m["adatOut"] = adat;
+            }
+
+            // I2S input as clock slave
+            InputLockStatus i2s {};
+            if (dspi_fetch_input_lock(core, 0, &i2s) && i2s.clock_mode == 1) {
+                m["i2sSlave"] = QVariantMap{
+                    { "state", i2s.state }, { "detectedKHz", i2s.detected_rate / 1000.0 },
+                    { "measuredKHz", i2s.measured_hz / 1000.0 }, { "lockCount", i2s.lock_count }, { "lossCount", i2s.loss_count },
+                };
+            }
+            QMetaObject::invokeMethod(this, [this, r, generation]() {
+                m_slowBusy = false;
+                if (m_generation == generation && !m_serial.isEmpty()) applySlow(r);
+            }, Qt::QueuedConnection);
+        }));
+    }
+    pollClockDiag();
+    pollRingHealth();   // -- WP QD29 --
+}
+
+void StatsController::applySlow(const SlowRead &r) {
+    QVariantMap m = r.m;
     // S/PDIF DMA starvation: the delta since the last poll, and when
-    uint32_t total = 0;
-    if (dspi_fetch_stat(m_core, STAT_STARVATION_TOTAL, &total)) {
+    if (r.haveTotal) {
         quint32 delta = 0;
-        if (m_haveStarvation) delta = total >= m_starvationTotal ? total - m_starvationTotal : total;   // reset counts as new
-        m_starvationTotal = total;
+        if (m_haveStarvation) delta = r.total >= m_starvationTotal ? r.total - m_starvationTotal : r.total;   // reset counts as new
+        m_starvationTotal = r.total;
         m_haveStarvation = true;
         if (delta > 0) {
             m_previousEvent = m_lastEvent;
             m_lastEvent = QDateTime::currentMSecsSinceEpoch();
         }
-        QVariantList per;
-        for (int i = 0; i < 4; i++) {
-            uint32_t v = 0;
-            per.append(total > 0 && dspi_fetch_stat(m_core, STAT_STARVATION_FIRST + i, &v) ? qulonglong(v) : 0ull);
-        }
-        m["starvationTotal"] = qulonglong(total);
+        m["starvationTotal"] = qulonglong(r.total);
         m["starvationDelta"] = qulonglong(delta);
-        m["starvationPer"] = per;
+        m["starvationPer"] = r.per;
     }
     m["lastEventMs"] = m_lastEvent;
     m["previousEventMs"] = m_previousEvent;
 
-    // S/PDIF receiver
-    SpdifRxStatus rx {};
-    if (dspi_fetch_spdif_rx_status(m_core, &rx)) {
-        QVariantMap s;
-        s["state"] = rx.state;
-        s["source"] = inputSourceName(rx.input_source);
-        s["locked"] = rx.state == 2;
-        s["rateKHz"] = rx.state == 2 ? rx.sample_rate / 1000.0 : 0.0;
-        s["lockCount"] = rx.lock_count;
-        s["lossCount"] = rx.loss_count;
-        s["parityErrors"] = qulonglong(rx.parity_errors);
-        s["fifoPct"] = rx.fifo_fill_pct;
-        s["libState"] = rx.lib_state;
-        s["stableCallbacks"] = rx.stable_callbacks;
-        s["lostCallbacks"] = rx.lost_callbacks;
-        int index = rx.input_source == 1 ? 0 : (rx.input_source >= 4 && rx.input_source <= 6) ? rx.input_source - 3 : 0;
-        quint8 pin = 0;
-        if (dspi_fetch_spdif_rx_pin(m_core, quint8(index), &pin) && pin) s["pin"] = pin;
-        quint8 cs[24];
-        if (rx.state == 2 && dspi_fetch_spdif_rx_channel_status(m_core, cs)) {
-            s["consumer"] = (cs[0] & 0x01) == 0;
-            s["pcm"] = (cs[0] & 0x02) == 0;
-            s["copyPermitted"] = (cs[0] & 0x04) != 0;
-            s["category"] = categoryName(cs[1]);
-            s["wordLength"] = wordLengthName(cs[4]);
-        }
-        m["spdifRx"] = s;
-    }
-
     // LG Sound Sync (shown once the device has answered)
-    QVariantMap lg = m_bridge->fetchLgStatus();
-    if (!lg.isEmpty()) m_lgSupported = true;
-    if (m_lgSupported && !lg.isEmpty()) m["lg"] = lg;
-
-    // ADAT bulk output (RP2350)
-    if (m_bridge->platformName() == "RP2350") {
-        QVariantMap adat = m_bridge->fetchAdatOutStatus();
-        if (!adat.isEmpty()) m["adatOut"] = adat;
-    }
-
-    // I2S input as clock slave
-    InputLockStatus i2s {};
-    if (dspi_fetch_input_lock(m_core, 0, &i2s) && i2s.clock_mode == 1) {
-        m["i2sSlave"] = QVariantMap{
-            { "state", i2s.state }, { "detectedKHz", i2s.detected_rate / 1000.0 },
-            { "measuredKHz", i2s.measured_hz / 1000.0 }, { "lockCount", i2s.lock_count }, { "lossCount", i2s.loss_count },
-        };
-    }
+    if (!r.lg.isEmpty()) m_lgSupported = true;
+    if (m_lgSupported && !r.lg.isEmpty()) m["lg"] = r.lg;
 
     if (m != m_info) { m_info = m; emit infoChanged(); }
-    pollClockDiag();
-    pollRingHealth();   // -- WP QD29 --
 }
 
 // -- WP QD5 --

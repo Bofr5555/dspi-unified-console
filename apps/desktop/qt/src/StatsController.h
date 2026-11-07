@@ -21,7 +21,7 @@ class QJsonObject;
 
 // System Statistics: device counters every 2 s and buffer fill levels every
 // 60 ms (with a 15 s history for the traces), polled only while the window
-// is open. infoChanged and buffersChanged fire only when a value changed.
+// is open, all read off the UI thread. infoChanged and buffersChanged fire only when a value changed.
 // Clock diagnostics come every 2 s, off the UI thread. Firmware without them
 // stalls the request, which leaves clockDiag empty and hides the section.
 // Output ring health comes every 2 s and the outputs' fills every 60 ms, both off
@@ -66,6 +66,8 @@ public:
     // -- WP CG21 -- Runs after the tick's read and stands in for its fills, in
     // dspi_fetch_output_fills' JSON; {"ok":false} is a fill target that couldn't be read.
     void setOutputFillsHook(std::function<QByteArray()> hook) { m_outputFillsHook = std::move(hook); }
+    // -- WP QD34 -- Runs on the worker before the 2 s counter reads.
+    void setSlowReadHook(std::function<void()> hook) { m_slowReadHook = std::move(hook); }
 
     // Oldest first; Absent where the buffer wasn't running
     const std::array<quint8, HistoryLength> &history(int series) const { return m_history[series]; }
@@ -81,6 +83,8 @@ signals:
 
 private:
     void pollSlow();
+    struct SlowRead;                            // -- WP QD34 --
+    void applySlow(const SlowRead &r);
     void pollFast();
     void updateTimers();
     void onDeviceChanged();
@@ -119,6 +123,9 @@ private:
     bool m_ringHealthBusy = false, m_statsTickBusy = false;
     std::function<QByteArray()> m_ringHealthHook, m_outputFillsHook;
     QThreadPool m_worker;                       // one thread, joined by the destructor
+    // -- WP QD34 --
+    bool m_slowBusy = false;
+    std::function<void()> m_slowReadHook;
 };
 
 // One buffer's fill over the last 15 s: the watermark band, a 50 % guide

@@ -9,6 +9,7 @@
 #include <QFile>
 #include <QProcess>
 #include <QTemporaryFile>
+#include <QRunnable>   // -- WP QD34 --
 #include <cstring>
 #include <cmath>
 
@@ -55,6 +56,7 @@ DSPiBridge::DSPiBridge(Mode mode, QObject *parent)
         m_channelVisible[i] = (i < 2);
 
     memset(&m_status, 0, sizeof(m_status));
+    m_pollWorker.setMaxThreadCount(1);   // -- WP QD34 --
 
     // Status timer (60ms)
     m_statusTimer = new QTimer(this);
@@ -83,6 +85,7 @@ DSPiBridge::~DSPiBridge()
 {
     if (m_statusTimer) m_statusTimer->stop();
     if (m_hotplugTimer) m_hotplugTimer->stop();
+    m_pollWorker.waitForDone();   // -- WP QD34 -- a read in flight still holds the core
     if (m_core) dspi_core_free(m_core);
 }
 
@@ -227,45 +230,68 @@ void DSPiBridge::processNotifications()
 
 // ── Timers ──
 
+// -- WP QD34 -- What a status read brings back from the worker
+struct DSPiBridge::StatusRead {
+    bool ok = false, limiterOk = false;
+    SystemStatus status = {};
+    float gr[MAX_OUTPUTS] = {};
+};
+
+// The reads run on m_pollWorker; a tick still reading skips this one.
 void DSPiBridge::pollStatus()
 {
     // Read-only firmware keeps its meters. Clearing a clip below is allowed there.
-    if (!connected()) return;
-    SystemStatus newStatus;
-    if (dspi_fetch_status(m_core, &newStatus)) {
-        // Clip flags are sticky on the device. Latch each clip here with a
-        // timestamp and read-then-clear the device flags, so a clip marker
-        // clears itself 10 s after the last clip (as on the macOS Console).
-        qint64 now = QDateTime::currentMSecsSinceEpoch();
-        if (newStatus.clip_flags) {
-            for (int w = 0; w < MAX_CHANNELS; w++)
-                if ((newStatus.clip_flags >> w) & 1u) m_lastClipMs[w] = now;
-            dspi_clear_clips(m_core);
-        }
-        uint32_t latched = 0;
-        for (int w = 0; w < MAX_CHANNELS; w++)
-            if (m_lastClipMs[w] && now - m_lastClipMs[w] < 10000) latched |= (1u << w);
-        newStatus.clip_flags = latched;
+    if (!connected() || m_statusBusy) return;
+    bool anyLimiter = false;
+    for (int o = 0; o < state()->num_output_channels; o++)
+        anyLimiter |= state()->limiter_enabled[o];
+    // Its meter request came with the limiter
+    anyLimiter = anyLimiter && firmwareHas(QStringLiteral("limiter"));
+    const bool readLimiter = anyLimiter && (++m_pollTick % 4) == 0;
+    m_statusBusy = true;
+    const unsigned generation = m_statusGeneration, clipEpoch = m_clipEpoch;
+    m_pollWorker.start(QRunnable::create([this, core = m_core, hook = m_statusReadHook, anyLimiter, readLimiter, generation, clipEpoch]() {
+        if (hook) hook();
+        StatusRead r;
+        r.ok = dspi_fetch_status(core, &r.status);
+        // Clip flags are sticky on the device: read-then-clear, latched in applyStatus
+        if (r.ok && r.status.clip_flags) dspi_clear_clips(core);
+        if (r.ok && readLimiter) r.limiterOk = dspi_fetch_limiter_meter(core, r.gr);
+        QMetaObject::invokeMethod(this, [this, r, anyLimiter, readLimiter, generation, clipEpoch]() {
+            m_statusBusy = false;
+            if (!r.ok || generation != m_statusGeneration || !connected()) return;
+            StatusRead read = r;
+            if (clipEpoch != m_clipEpoch) read.status.clip_flags = 0;   // read before clearClips
+            applyStatus(read, anyLimiter, readLimiter);
+        }, Qt::QueuedConnection);
+    }));
+}
 
-        bool changed = memcmp(&m_status, &newStatus, sizeof(SystemStatus)) != 0;
-        m_status = newStatus;
+void DSPiBridge::applyStatus(const StatusRead &r, bool anyLimiter, bool readLimiter)
+{
+    SystemStatus newStatus = r.status;
+    // Latch each clip here with a timestamp, so a clip marker clears itself
+    // 10 s after the last clip (as on the macOS Console).
+    qint64 now = QDateTime::currentMSecsSinceEpoch();
+    for (int w = 0; w < MAX_CHANNELS; w++)
+        if ((newStatus.clip_flags >> w) & 1u) m_lastClipMs[w] = now;
+    uint32_t latched = 0;
+    for (int w = 0; w < MAX_CHANNELS; w++)
+        if (m_lastClipMs[w] && now - m_lastClipMs[w] < 10000) latched |= (1u << w);
+    newStatus.clip_flags = latched;
 
-        bool anyLimiter = false;
-        for (int o = 0; o < state()->num_output_channels; o++)
-            anyLimiter |= state()->limiter_enabled[o];
-        // Its meter request came with the limiter
-        anyLimiter = anyLimiter && firmwareHas(QStringLiteral("limiter"));
-        if (anyLimiter && (++m_pollTick % 4) == 0) {
-            float gr[MAX_OUTPUTS];
-            if (dspi_fetch_limiter_meter(m_core, gr) && memcmp(gr, m_limiterGR, sizeof(gr)) != 0) {
-                memcpy(m_limiterGR, gr, sizeof(gr));
-                changed = true;
-            }
-        } else if (!anyLimiter) {
-            memset(m_limiterGR, 0, sizeof(m_limiterGR));
+    bool changed = memcmp(&m_status, &newStatus, sizeof(SystemStatus)) != 0;
+    m_status = newStatus;
+
+    if (readLimiter) {
+        if (r.limiterOk && memcmp(r.gr, m_limiterGR, sizeof(r.gr)) != 0) {
+            memcpy(m_limiterGR, r.gr, sizeof(r.gr));
+            changed = true;
         }
-        if (changed) emit statusChanged();
+    } else if (!anyLimiter) {
+        memset(m_limiterGR, 0, sizeof(m_limiterGR));
     }
+    if (changed) emit statusChanged();
 }
 
 void DSPiBridge::pollHotplug()
@@ -972,6 +998,7 @@ void DSPiBridge::clearClips() {
     dspi_clear_clips(m_core);
     memset(m_lastClipMs, 0, sizeof(m_lastClipMs));
     m_status.clip_flags = 0;
+    m_clipEpoch++;   // -- WP QD34 --
     emit statusChanged();
 }
 
@@ -1110,6 +1137,7 @@ void DSPiBridge::resetForDevice(const QString &serial) {
     m_connectionError.clear();
     m_selectedSerial = serial;
     m_hardwareUnsaved = false;
+    m_statusGeneration++;   // -- WP QD34 --
     memset(&m_status, 0, sizeof(m_status));
     memset(m_limiterGR, 0, sizeof(m_limiterGR));
     memset(m_lastClipMs, 0, sizeof(m_lastClipMs));
