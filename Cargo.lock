@@ -589,6 +589,7 @@ version = "2.0.0-dev"
 dependencies = [
  "cbindgen",
  "dspi-core",
+ "dspi-hub",
  "dspi-link",
  "dspi-proto",
  "dspi-transport",
@@ -650,6 +651,7 @@ dependencies = [
  "httparse",
  "if-addrs",
  "log",
+ "mdns-sd",
  "nusb",
  "proptest",
  "serde",

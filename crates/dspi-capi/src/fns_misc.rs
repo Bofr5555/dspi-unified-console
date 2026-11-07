@@ -1356,6 +1356,16 @@ pub extern "C" fn dspi_fetch_output_fills(core: *mut FfiCore, buf: *mut c_char, 
     text(core, buf, len, |c| json_reply(c.fetch_output_fills()))
 }
 
+// -- WP CG21 --
+/// The Stats window's fast poll, one transfer: JSON {ok, buffers: {numSpdif,
+/// pdmActive, streaming, sequence, spdif: [{free, prepared, playing, fillPct,
+/// minPct, maxPct}], pdm: {...}}, fills: [as dspi_fetch_output_fills] or null}.
+/// Null fills mean keep the last ones. Returns the length needed.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_fetch_stats_tick(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
+    text(core, buf, len, |c| json_reply(c.fetch_stats_tick()))
+}
+
 // ── Added: firmware ───────────────────────────────────────────────────
 
 /// Check a `.uf2` image: JSON {ok, valid, problem, familyId, platform,
@@ -1549,6 +1559,88 @@ pub extern "C" fn dspi_core_vreg_demo_event(core: *mut FfiCore, event: u8, secon
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_cs_demo_busy(core: *mut FfiCore, on: bool) -> u8 {
     status(core, |c| c.cs_demo_busy(on))
+}
+
+// -- WP CG20 --
+/// What a page shows for one control-surface record, as JSON: `dspi_core`'s
+/// `cs_describe`. `kind` is `binding`, `ir`, `step`, `page`, `display` or `group`;
+/// `draft` is the record's JSON. No device I/O. Returns the bytes needed including
+/// the NUL; call again with a larger buffer if that exceeds `len`.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_cs_describe(
+    core: *mut FfiCore,
+    kind: *const c_char,
+    slot: u32,
+    draft: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        c.cs_describe(c_text(kind), slot, c_text(draft))
+    })
+}
+
+/// The record after one row's value changed, as JSON `{ok, draft}`: `dspi_core`'s
+/// `cs_edit`. `change` is `{id, value}`. No device I/O. Sized as [`dspi_cs_describe`].
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_cs_edit(
+    core: *mut FfiCore,
+    kind: *const c_char,
+    slot: u32,
+    draft: *const c_char,
+    change: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        c.cs_edit(c_text(kind), slot, c_text(draft), c_text(change))
+    })
+}
+
+/// A fresh binding of a component type in `slot`, on free pins, as JSON `{ok, draft}`.
+/// No device I/O. Sized as [`dspi_cs_describe`].
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_cs_new_binding(
+    core: *mut FfiCore,
+    slot: u32,
+    component: u8,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| c.cs_new_binding(slot, component))
+}
+
+/// A fresh `ir`, `step` or `page` record, as JSON `{ok, draft}`. No device I/O. Sized
+/// as [`dspi_cs_describe`].
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_cs_new_record(
+    core: *mut FfiCore,
+    kind: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| c.cs_new_record(c_text(kind)))
+}
+
+/// A control-surface or pin-configuration status code as a sentence, empty for
+/// success. Sized as [`dspi_cs_describe`].
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_cs_status_text(
+    core: *mut FfiCore,
+    code: u8,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| c.cs_status_text(code))
+}
+
+/// On the demo device only: the remote button an armed learn waits for was pressed.
+/// True when a learn took it; false with nothing armed, or on any other device.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_cs_demo_learn(core: *mut FfiCore, protocol: u8, code: u32) -> bool {
+    with_core(core, false, |h| {
+        h.core.cs_demo_learn(protocol, code).unwrap_or(false)
+    })
 }
 
 #[cfg(test)]

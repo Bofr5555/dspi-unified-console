@@ -69,7 +69,8 @@ before anything else.**
      `Writable`); a plain `Connection` is for reads.
    - Thread rules (§1.2): never join a thread or call a listener while
      holding the `Inner` lock.
-   - Property tests are functions named `proptest_*` (§1.9).
+   - Property tests are functions named `proptest_*` (§1.9); commit the
+     `proptest-regressions/` seed files a failure writes, with the fix.
    - Doc comments on every public item in `dspi-core`/`dspi-capi`.
    - Tests carry your WP id in the module or test name.
    - Add a dependency only with a stated reason.

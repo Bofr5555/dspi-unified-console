@@ -2318,6 +2318,69 @@
 #define LINK_EVENT_TOKEN_ISSUED 3
 
 /**
+ * The smallest buffer `dspi_hub_start` and `dspi_hub_begin_pairing` act on.
+ */
+#define HUB_REPLY_MIN 4096
+
+/**
+ * A new client pairs with a PIN, then presents a token. The default to offer.
+ */
+#define HUB_ACCESS_PIN 0
+
+/**
+ * Every connection is an admin. Only when the user asks for it.
+ */
+#define HUB_ACCESS_OPEN 1
+
+/**
+ * `dspi_hub_start` option: find and claim USB devices. Without it the hub serves what
+ * `dspi_hub_attach_demo` gives it.
+ */
+#define HUB_OPT_USB 1
+
+/**
+ * `dspi_hub_start` option: an app holds or will hold devices, so nothing is scanned or
+ * claimed until `dspi_hub_attach_app`. Always pass it when an app will attach.
+ */
+#define HUB_OPT_APP 2
+
+/**
+ * `dspi_hub_start` option: listen on loopback only. For tests.
+ */
+#define HUB_OPT_LOOPBACK 4
+
+/**
+ * A device came online. `code` is its handle, `text` its serial.
+ */
+#define HUB_EVENT_DEVICE_ONLINE 0
+
+/**
+ * A device went offline, keeping its handle for a while. `code` and `text` as above.
+ */
+#define HUB_EVENT_DEVICE_OFFLINE 1
+
+/**
+ * A device's handle was given up. `code` and `text` as above.
+ */
+#define HUB_EVENT_DEVICE_REMOVED 2
+
+/**
+ * A client's session opened, which is also how a finished pairing shows: read the
+ * client list and the status again. `code` is the session, `text` "".
+ */
+#define HUB_EVENT_SESSION_OPENED 3
+
+/**
+ * A client's session closed. `code` is the session, `text` "".
+ */
+#define HUB_EVENT_SESSION_CLOSED 4
+
+/**
+ * The hub has stopped: the last event of a run. `code` is -1, `text` "".
+ */
+#define HUB_EVENT_STOPPED 5
+
+/**
  * Where a fetch callback puts its answer. Valid only during the callback.
  */
 typedef struct AutoEqFetchSink AutoEqFetchSink;
@@ -2332,6 +2395,12 @@ typedef struct AutoEqRebuildHandle AutoEqRebuildHandle;
  * `dspi_core_new` and freed by `dspi_core_free`.
  */
 typedef struct FfiCore FfiCore;
+
+/**
+ * The handle behind the C ABI's `struct FfiHub *`: created by `dspi_hub_new` and freed
+ * by `dspi_hub_free`.
+ */
+typedef struct FfiHub FfiHub;
 
 /**
  * Information about a discovered DSPi device.
@@ -3656,6 +3725,18 @@ typedef void (*LinkEventCallback)(uint8_t event,
                                   void *user_data);
 
 /**
+ * A hub event: `event` is a `HUB_EVENT_*`. `text` is never null, and is valid during
+ * the call only.
+ *
+ * Called on the hub's event thread, one at a time, with no hub lock held. It may read:
+ * `dspi_hub_status`, `dspi_hub_devices`, `dspi_hub_clients`. Anything else on the hub is
+ * refused from here (`false`, -1 or code `in_callback`), since it would block or wait for
+ * this very thread: post it to the app's own thread and return. Blocking here holds up
+ * every later event, and `dspi_hub_stop`.
+ */
+typedef void (*HubEventCallback)(uint8_t event, int32_t code, const char *text, void *user_data);
+
+/**
  * Create a core instance. Free it with `dspi_core_free`. Null if creating it
  * panicked.
  */
@@ -4762,6 +4843,14 @@ uint32_t dspi_fetch_ring_health(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_fetch_output_fills(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * The Stats window's fast poll, one transfer: JSON {ok, buffers: {numSpdif,
+ * pdmActive, streaming, sequence, spdif: [{free, prepared, playing, fillPct,
+ * minPct, maxPct}], pdm: {...}}, fills: [as dspi_fetch_output_fills] or null}.
+ * Null fills mean keep the last ones. Returns the length needed.
+ */
+uint32_t dspi_fetch_stats_tick(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * Check a `.uf2` image: JSON {ok, valid, problem, familyId, platform,
  * numBlocks, payloadBytes, firmwareVersion}. `valid` is false for a null or
  * malformed image. Returns the length needed.
@@ -4879,6 +4968,59 @@ uint8_t dspi_core_vreg_demo_event(struct FfiCore *core, uint8_t event, uint32_t 
  * macro fire and a learn are refused. 0 when done.
  */
 uint8_t dspi_cs_demo_busy(struct FfiCore *core, bool on);
+
+/**
+ * What a page shows for one control-surface record, as JSON: `dspi_core`'s
+ * `cs_describe`. `kind` is `binding`, `ir`, `step`, `page`, `display` or `group`;
+ * `draft` is the record's JSON. No device I/O. Returns the bytes needed including
+ * the NUL; call again with a larger buffer if that exceeds `len`.
+ */
+uint32_t dspi_cs_describe(struct FfiCore *core,
+                          const char *kind,
+                          uint32_t slot,
+                          const char *draft,
+                          char *buf,
+                          uint32_t len);
+
+/**
+ * The record after one row's value changed, as JSON `{ok, draft}`: `dspi_core`'s
+ * `cs_edit`. `change` is `{id, value}`. No device I/O. Sized as [`dspi_cs_describe`].
+ */
+uint32_t dspi_cs_edit(struct FfiCore *core,
+                      const char *kind,
+                      uint32_t slot,
+                      const char *draft,
+                      const char *change,
+                      char *buf,
+                      uint32_t len);
+
+/**
+ * A fresh binding of a component type in `slot`, on free pins, as JSON `{ok, draft}`.
+ * No device I/O. Sized as [`dspi_cs_describe`].
+ */
+uint32_t dspi_cs_new_binding(struct FfiCore *core,
+                             uint32_t slot,
+                             uint8_t component,
+                             char *buf,
+                             uint32_t len);
+
+/**
+ * A fresh `ir`, `step` or `page` record, as JSON `{ok, draft}`. No device I/O. Sized
+ * as [`dspi_cs_describe`].
+ */
+uint32_t dspi_cs_new_record(struct FfiCore *core, const char *kind, char *buf, uint32_t len);
+
+/**
+ * A control-surface or pin-configuration status code as a sentence, empty for
+ * success. Sized as [`dspi_cs_describe`].
+ */
+uint32_t dspi_cs_status_text(struct FfiCore *core, uint8_t code, char *buf, uint32_t len);
+
+/**
+ * On the demo device only: the remote button an armed learn waits for was pressed.
+ * True when a learn took it; false with nothing armed, or on any other device.
+ */
+bool dspi_cs_demo_learn(struct FfiCore *core, uint8_t protocol, uint32_t code);
 
 /**
  * What the open board needs, read from the device now: JSON {ok, requiredMv,
@@ -5261,5 +5403,154 @@ uint32_t dspi_midi_ports(char *buf, uint32_t len);
  * choice of several, or when the device does not answer.
  */
 bool dspi_open_midi(struct FfiCore *core, const char *name);
+
+/**
+ * Create a hub's handle, with no hub running. Free it with `dspi_hub_free`. Null if
+ * creating it panicked.
+ */
+struct FfiHub *dspi_hub_new(void);
+
+/**
+ * Stop a running hub and destroy the handle. Null is ignored. Blocks as
+ * `dspi_hub_stop` does. The last callback, `HUB_EVENT_STOPPED`, has returned by the time
+ * this does, so `user_data` may go then. Refused from inside the callback, with a log
+ * line: the handle stays valid and nothing is freed.
+ */
+void dspi_hub_free(struct FfiHub *hub);
+
+/**
+ * Register the events callback, which stays for later runs; NULL clears it. Replacing or
+ * clearing waits for a call in progress on another thread, so `user_data` may go right
+ * after it returns. False for a null handle, and when called from inside the callback,
+ * where it would wait for itself.
+ */
+bool dspi_hub_set_listener(struct FfiHub *hub, void (*callback)(uint8_t event,
+                                                                int32_t code,
+                                                                const char *text,
+                                                                void *user_data), void *user_data);
+
+/**
+ * What the store in `store_dir` holds, with or without a hub on it: JSON {ok, exists,
+ * hubId, name, access, defaultPort, tokensRevokedIfPin, tokensRevokedIfOpen, clients:
+ * [{cid, name, role, created, lastSeen, online}]}. Creates nothing and changes nothing.
+ *
+ * `access` is the mode it last ran in (`pin`, `none`) and null before the first start;
+ * `name` is null if never named; `hubId` is null when `exists` is false. A store that
+ * cannot be parsed reads as not existing: the next start sets it aside.
+ *
+ * **`tokensRevokedIfPin` and `tokensRevokedIfOpen`** are how many paired clients a start
+ * in that mode would forget, and must pair again. Warn the user when it is not 0, since
+ * it cannot be undone. `created` and `lastSeen` are seconds since the epoch, `lastSeen`
+ * may be null, and `online` is false here. Returns the length needed; 0 for a panic.
+ */
+uint32_t dspi_hub_saved_settings(const char *store_dir, char *buf, uint32_t len);
+
+/**
+ * Start the hub: its threads and its socket, then, with `HUB_OPT_USB` and without
+ * `HUB_OPT_APP`, the first bus scan. Replies JSON {ok, hubId, name, port, access,
+ * tokensRevoked}. Blocks. If it fails, nothing is left running.
+ *
+ * `name`: "" takes the stored one or a default; another is cleaned and stored.
+ * `store_dir` is the hub's own directory, created if need be: its id, clients and device names. Two hubs must not
+ * share one. `port` 0 lets the OS choose, and the reply says which. `access` is a
+ * `HUB_ACCESS_*`, and `options` are `HUB_OPT_*`.
+ *
+ * **A change of `access` from the store's last run revokes every token.** `tokensRevoked`
+ * says how many; `dspi_hub_saved_settings` says so beforehand. Code `running` if a hub
+ * already is: stop it first. A port in use is code `io`.
+ *
+ * Returns the length needed; see the module's rule on short buffers.
+ */
+uint32_t dspi_hub_start(struct FfiHub *hub,
+                        const char *name,
+                        const char *store_dir,
+                        uint16_t port,
+                        uint8_t access,
+                        uint32_t options,
+                        char *buf,
+                        uint32_t len);
+
+/**
+ * Stop the hub. Clients are told (close code 4003), queued commands are answered, every
+ * thread is joined and the devices are let go when this returns. An app on it gets its
+ * direct path back, and its device reopened. Blocks up to a few seconds. True also when
+ * no hub was running; a concurrent caller waits for the first. False for a null handle,
+ * and from inside the callback, which it would have to wait for.
+ */
+bool dspi_hub_stop(struct FfiHub *hub);
+
+/**
+ * Put the app's core on the running hub, so that its USB devices come through it. The
+ * device it holds is closed, claimed by the hub and reopened, so the mirror is read
+ * afresh, and a flow in progress on it fails, as with an unplug. A demo, MIDI or Link
+ * connection stays as it is. Starts the bus's scans. Blocks. False for a null handle, no
+ * hub running, a second app, or inside the callback, with a log line.
+ *
+ * `dspi_hub_stop` undoes it. Stop the hub before `dspi_core_free`.
+ */
+bool dspi_hub_attach_app(struct FfiHub *hub, struct FfiCore *core);
+
+/**
+ * Give the running hub a demo device to serve, for trying sharing with no hardware.
+ * Blocks for its identity reads. Returns its handle, or -1 for a null handle, no hub
+ * running, a demo device already attached, or inside the callback, with a log line.
+ */
+int32_t dspi_hub_attach_demo(struct FfiHub *hub);
+
+/**
+ * Where the hub stands: JSON {ok, running}, and while it runs {hubId, name, port, access,
+ * connections, inaccessible, tokensRevoked, pairingOpen, pairingExpiresInMs}. `access` is
+ * `pin` or `none`, as clients see it. `connections` counts sockets, signed in or not.
+ * `inaccessible` is devices on the bus that could not be opened at the last scan: another
+ * program, or a permission. `tokensRevoked` is what this run's start cost. Quick, and
+ * allowed in the callback. Returns the length needed.
+ */
+uint32_t dspi_hub_status(struct FfiHub *hub, char *buf, uint32_t len);
+
+/**
+ * The hub's devices, online and in their grace: JSON {ok, value: [{handle, serial, name,
+ * fw, fwBeta, platform, outputs, state, link, lockedBy}]}, empty with no hub running.
+ * Quick, and allowed in the callback. Returns the length needed.
+ */
+uint32_t dspi_hub_devices(struct FfiHub *hub, char *buf, uint32_t len);
+
+/**
+ * The paired clients: JSON {ok, value: [{cid, name, role, created, lastSeen, online}]}.
+ * `role` is `viewer`, `control` or `admin`; `created` and `lastSeen` are seconds since the
+ * epoch, `lastSeen` may be null; `online` means it has a session now. Code `not_running`
+ * with no hub: `dspi_hub_saved_settings` lists them then. An open hub lists none, as its
+ * clients do not pair. Quick, and allowed in the callback. Returns the length needed.
+ */
+uint32_t dspi_hub_clients(struct FfiHub *hub, char *buf, uint32_t len);
+
+/**
+ * Open the pairing window, replacing an open one, whose PIN then stops working: JSON
+ * {ok, pin, expiresInMs}. Show the PIN to the user and to nobody else, with the time it
+ * has left. A client's right PIN ends the window (`HUB_EVENT_SESSION_OPENED`), and so do
+ * five wrong ones. Code `not_running`, or `open_access` if this hub admits anyone anyway,
+ * or `io` if the system has no random numbers. Returns the length needed; see the
+ * module's rule on short buffers.
+ */
+uint32_t dspi_hub_begin_pairing(struct FfiHub *hub, char *buf, uint32_t len);
+
+/**
+ * Close the pairing window, if one is open. False for a null handle, no hub running, or
+ * inside the callback.
+ */
+bool dspi_hub_cancel_pairing(struct FfiHub *hub);
+
+/**
+ * Forget a paired client: its token stops working and its connections close at once with
+ * code 4002, which clients do not reconnect from. It would have to pair again. Writes the
+ * store. False for a null handle, no hub running, no such client, or inside the callback.
+ */
+bool dspi_hub_revoke(struct FfiHub *hub, uint32_t cid);
+
+/**
+ * Change a paired client's role, `viewer`, `control` or `admin`: its next command is
+ * judged by the new one. Writes the store. False for a null handle, no hub running, no
+ * such client, another role, or inside the callback.
+ */
+bool dspi_hub_set_role(struct FfiHub *hub, uint32_t cid, const char *role);
 
 #endif  /* DSPI_CORE_H */

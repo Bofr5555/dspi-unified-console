@@ -24,7 +24,8 @@ import se.bofr.dspi.ui.link.PairedHubRow
  * settings, the DNS-SD browser, the token store and the mode controller.
  * Main thread. [parseAddress] is the core's `link_parse_address`
  * (macOS `HubBrowser.parseAddress`). Browsing runs only while DSPi Link is
- * on, "Find hubs automatically" is on and the page is on screen.
+ * on, "Find hubs automatically" is on and the page is on screen, or the session
+ * needs its hub found again ([AppModeController.browseForSession], WP AN4).
  */
 class AppNetworkingController(
     private val settings: LinkSettingsStore,
@@ -68,7 +69,9 @@ class AppNetworkingController(
 
     init {
         scope.launch {
-            combine(settings.settings, visible) { s, v -> s.enabled && s.findAutomatically && v }.distinctUntilChanged().collect { on ->
+            combine(settings.settings, visible, modes.browseForSession) { s, v, forSession ->
+                s.enabled && s.findAutomatically && (v || forSession)
+            }.distinctUntilChanged().collect { on ->
                 if (on) browser.start() else browser.stop()
             }
         }

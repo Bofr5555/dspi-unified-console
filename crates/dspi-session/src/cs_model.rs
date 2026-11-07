@@ -1342,6 +1342,8 @@ pub fn enum_value_label(cx: &dyn CsContext, cs: &CsData, n: u8, value: i32) -> S
         .get(value.max(0) as usize)
         .map(|s| (*s).to_string())
         .unwrap_or_else(|| format!("Type {value}")),
+        // -- WP CG20 -- The wire counts pages from 0; every picker counts from 1.
+        noun::DISPLAY_PAGE => format!("Page {}", value.saturating_add(1)),
         _ => value.to_string(),
     }
 }
@@ -1435,7 +1437,7 @@ pub fn valid_actions(cs: &CsData, t: u8, n: u8) -> Vec<u8> {
 
 /// The actions a binding may take with its gesture. Hold-to-engage owns the
 /// hold, so the firmware takes `MOMENTARY` only on a button's short press
-/// (control_surfaces.c:1729-1734); a long or double press never offers it.
+/// (control_surfaces.c:1736-1741); a long or double press never offers it.
 pub fn binding_actions(cs: &CsData, t: u8, n: u8, event: u8) -> Vec<u8> {
     let mut acts = valid_actions(cs, t, n);
     if t == ty::BUTTON && event != evt::PRESS {
@@ -1445,7 +1447,7 @@ pub fn binding_actions(cs: &CsData, t: u8, n: u8, event: u8) -> Vec<u8> {
 }
 
 /// The gestures a button binding may use with its action: a momentary one
-/// only the short press (control_surfaces.c:1729-1734).
+/// only the short press (control_surfaces.c:1736-1741).
 pub fn binding_gestures(b: &CsBinding) -> Vec<u8> {
     if b.action == act::MOMENTARY {
         vec![evt::PRESS]
@@ -1457,7 +1459,7 @@ pub fn binding_gestures(b: &CsBinding) -> Vec<u8> {
 /// Whether the firmware takes hold-to-repeat on this binding: a button whose
 /// short press steps up or down. Set anywhere else, the whole binding is
 /// refused, as `INVALID_EVENT` on another gesture and `INVALID_VALUE` on
-/// another action (control_surfaces.c:1729-1741).
+/// another action (control_surfaces.c:1736-1745).
 pub fn repeat_allowed(b: &CsBinding) -> bool {
     b.component == ty::BUTTON
         && (b.action == act::INC || b.action == act::DEC)
@@ -1845,7 +1847,13 @@ pub fn target_choices(
 /// The addresses a picker lists. An aux binding whose output has since gone
 /// keeps its own address on the list, as a stale group does, so the picker
 /// never retargets it behind the user's back.
-fn picker_addresses(cs: &CsData, n: u8, own: Option<usize>, target: u8, grouped: bool) -> Vec<u8> {
+pub(crate) fn picker_addresses(
+    cs: &CsData,
+    n: u8,
+    own: Option<usize>,
+    target: u8,
+    grouped: bool,
+) -> Vec<u8> {
     let mut a = target_addresses(cs, n, own);
     let is_aux = cs
         .noun_desc(n)
@@ -2104,14 +2112,67 @@ pub fn pin_candidates(
             }
             // A button may share a GPIO whose only other owners are buttons:
             // one binding per gesture (survey-firmware 3.3).
-            b.component == ty::BUTTON && button_shareable(cs, *p, slot)
+            b.component == ty::BUTTON && button_shareable(cs, *p, slot, &binding_gestures(b))
         })
+        // -- WP CG20 --
+        .filter(|p| *p == current || !pwm_blocked(cx, cs, slot, b.component, *p))
         .collect()
 }
 
-/// True when every live binding on this pin other than `excluding` is a button.
-fn button_shareable(cs: &CsData, pin: u8, excluding: usize) -> bool {
+// -- WP CG20 --
+/// The PWM slice and channel `gpio` drives, as `pwm_gpio_to_slice_num` and
+/// `pwm_gpio_to_channel` say: RP2350's GPIOs from 32 on reach slices 8 to 11.
+fn pwm_output(platform: dspi_proto::Platform, gpio: u8) -> (u8, u8) {
+    let slice = match platform {
+        dspi_proto::Platform::Rp2350 if gpio >= 32 => 8 | ((gpio >> 1) & 3),
+        _ => (gpio >> 1) & 7,
+    };
+    (slice, gpio & 1)
+}
+
+/// Who keeps a PWM binding of type `t` in `slot` off `gpio`, when the firmware
+/// refuses it with `CS_STATUS_PWM_CONFLICT` (control_surfaces.c:1789-1808): the
+/// soft VCXO's slice (`SOFT_VCXO_PWM_SLICE`, config.h: 7 on RP2040, GPIOs 14,
+/// 15, 30 and 31; 8 on RP2350, which no bondable GPIO reaches), or another live
+/// PWM binding on the same slice and channel. `None` for other types.
+pub fn pwm_owner(cx: &dyn CsContext, cs: &CsData, slot: usize, t: u8, gpio: u8) -> Option<String> {
+    if !is_pwm(t) {
+        return None;
+    }
+    let platform = cx.state().caps.platform;
+    let out = pwm_output(platform, gpio);
+    let vcxo = if platform == dspi_proto::Platform::Rp2350 {
+        8
+    } else {
+        7
+    };
+    if out.0 == vcxo {
+        return Some("Clock trim (PWM)".to_string());
+    }
+    cs.bindings
+        .iter()
+        .enumerate()
+        .find(|(s, o)| {
+            *s != slot
+                && u8::try_from(*s).is_ok_and(|n| cs.status.is_slot_active(n))
+                && is_pwm(o.component)
+                && pwm_output(platform, o.gpio[0]) == out
+        })
+        .map(|(s, _)| format!("{} (same PWM output)", slot_owner(s)))
+}
+
+/// True when [`pwm_owner`] names someone.
+pub fn pwm_blocked(cx: &dyn CsContext, cs: &CsData, slot: usize, t: u8, gpio: u8) -> bool {
+    pwm_owner(cx, cs, slot, t, gpio).is_some()
+}
+
+/// True when every live binding on this pin other than `excluding` is a button,
+/// and one of `gestures` is still free there (-- WP CG20 --): a Hold button has
+/// the short press alone, so a pin whose short press is taken has no room for
+/// it (control_surfaces.c:1374, `CS_STATUS_EVENT_IN_USE`).
+fn button_shareable(cs: &CsData, pin: u8, excluding: usize, gestures: &[u8]) -> bool {
     let mut saw_button = false;
+    let mut taken = Vec::new();
     for (s, b) in cs.bindings.iter().enumerate() {
         if s == excluding || !cs.status.is_slot_active(s as u8) {
             continue;
@@ -2123,8 +2184,9 @@ fn button_shareable(cs: &CsData, pin: u8, excluding: usize) -> bool {
             return false;
         }
         saw_button = true;
+        taken.push(b.event);
     }
-    saw_button
+    saw_button && gestures.iter().any(|e| !taken.contains(e))
 }
 
 /// Legal SDA pins for the display: the mux pairs GPIOs so bit 0 picks SDA
@@ -2185,6 +2247,8 @@ pub fn make_binding(
         let base: Vec<u8> = if adc { ADC_PINS.to_vec() } else { all_pins(cx) };
         base.into_iter()
             .filter(|p| cx.pin_owner(*p, &owner).is_none())
+            // -- WP CG20 --
+            .filter(|p| !pwm_blocked(cx, cs, slot, t, *p))
             .collect()
     };
     // The IR receiver is a container: it carries only its pin and sense; noun,
@@ -2295,6 +2359,83 @@ pub fn switch_aux_kind(b: &CsBinding, t: u8) -> CsBinding {
         nb.extras &= !aux_extras::LINEAR;
     }
     nb
+}
+
+// -- WP CG20 --
+/// Reset a remote button's value and step for its action and noun kind,
+/// leaving the learned protocol, code, target and band alone.
+///
+/// The addressing stays as it was: a command on a group stays on that group,
+/// as a binding's does ([`sanitize_group_flags`]). The Console clears every
+/// flag here, which turns `target` from group N into channel N without a
+/// word. The other two flags are kept only where the firmware takes them:
+/// REPEAT on INC and DEC (control_surfaces.c:1847-1849), WRAP where it means
+/// something, on an enum INC or DEC.
+pub fn default_ir_operands(cs: &CsData, c: &IrCommand) -> IrCommand {
+    let mut c = c.clone();
+    let nd = cs.noun_desc(c.noun).copied().unwrap_or_default();
+    let k = operand_kind(cs, c.noun);
+    c.value = 0;
+    c.step = 0;
+    let steps = c.action == act::INC || c.action == act::DEC;
+    if !steps {
+        c.flags &= !flag::REPEAT;
+    }
+    if !(steps && k == kind::ENUM) {
+        c.flags &= !flag::WRAP;
+    }
+    if c.flags & flag::GROUP != 0 {
+        let usable = compatible_groups(cs, c.noun);
+        if c.action == act::TRIGGER || usable.is_empty() {
+            // No group fits any more: back to the noun's first address
+            // rather than reading the group index as a channel.
+            c.flags &= !flag::GROUP;
+            c.target = target_addresses(cs, c.noun, None)
+                .first()
+                .copied()
+                .unwrap_or(0);
+        } else if !usable.contains(&c.target) {
+            c.target = usable.first().copied().unwrap_or(0);
+        }
+    }
+    match c.action {
+        act::INC | act::DEC => {
+            if k == kind::ENUM {
+                c.step = 1;
+            }
+        }
+        act::SET | act::MOMENTARY => {
+            if k == kind::CONTINUOUS {
+                c.value = nd.max_q;
+            } else if k == kind::BOOL {
+                c.value = 1;
+            }
+        }
+        _ => {}
+    }
+    c
+}
+
+/// A remote button on another function: it starts on the noun's first address
+/// (an aux noun needs an aux output, never slot 0 by default), and any group went
+/// with the old noun.
+pub fn set_ir_noun(cs: &CsData, c: &IrCommand, n: u8) -> IrCommand {
+    let mut cmd = c.clone();
+    cmd.noun = n;
+    cmd.index = 0;
+    cmd.flags &= !flag::GROUP;
+    cmd.target = if cs
+        .noun_desc(n)
+        .is_some_and(|d| d.target_kind == target::AUX)
+    {
+        target_addresses(cs, n, None).first().copied().unwrap_or(0)
+    } else {
+        0
+    };
+    if !valid_actions(cs, ty::IR, n).contains(&cmd.action) {
+        cmd.action = default_action(cs, ty::IR, n);
+    }
+    default_ir_operands(cs, &cmd)
 }
 
 // ---------------------------------------------------------------------------

@@ -79,8 +79,6 @@ val robolectricRuntime: Configuration by configurations.creating
 
 dependencies {
     implementation(project(":bridge"))
-    // E8: the one release-time :fake-core user (demo mode); tools/ci.sh release-deps allows only :app
-    implementation(project(":fake-core"))
     implementation(project(":ffi"))
     implementation(project(":usb"))
     implementation(project(":link"))
@@ -101,6 +99,10 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.datastore.preferences)
 
+    // Demo mode runs on the real core (AN28); the Kotlin fake is for tests only
+    testImplementation(project(":fake-core"))
+    // AN28: the real core on the JVM, as :ffi's FfiLiveDemoTest (the host's libjnidispatch)
+    testImplementation("${libs.jna.get().module}:${libs.versions.jna.get()}")
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(platform(libs.compose.bom))
     testImplementation(libs.compose.ui.test.junit4)
@@ -116,6 +118,12 @@ tasks.withType<Test>().configureEach {
     inputs.files(runtime)
     systemProperty("robolectric.offline", "true")
     doFirst { systemProperty("robolectric.dependency.dir", runtime.singleFile.parentFile.path) }
+    // AN28: demo mode on the JVM needs the host build of libdspi_ffi
+    dependsOn(":ffi:cargoBuildHost")
+    val workspaceTarget = rootProject.layout.projectDirectory.dir("../../target").asFile.path
+    val cargoTarget = providers.environmentVariable("CARGO_TARGET_DIR").getOrElse(workspaceTarget)
+    systemProperty("jna.library.path", "$cargoTarget/debug")
+    systemProperty("java.library.path", "$cargoTarget/debug")
 }
 
 // Fail early and clearly instead of producing an unsigned / wrongly signed release.

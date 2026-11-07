@@ -6,6 +6,8 @@
 //! widgets follow is `docs/plan/DESIGN.md` section 6.
 //!
 
+// -- WP TM6 --
+pub mod bar_strip;
 pub mod card;
 pub mod chips;
 pub mod dialog;
@@ -22,6 +24,8 @@ pub mod table;
 pub mod text;
 pub mod toggle;
 
+// -- WP TM6 --
+pub use bar_strip::{BarChannel, BarPicture, BarStrip};
 pub use card::Card;
 pub use chips::{ChipRow, ChipState};
 pub use dialog::{Button, Dialog, DialogKind, DialogOutcome};

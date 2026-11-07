@@ -22,6 +22,7 @@
 #include <QMetaMethod>
 #include <QQmlApplicationEngine>
 // -- WP QD1 --
+#include <QJsonDocument>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlExpression>
@@ -113,6 +114,8 @@ void SmokeDriver::run() {
     testCsRefusals();
     // -- WP CG16 --
     testCsPages();
+    // -- WP CG20 --
+    testCsRules();
     // -- WP QD2 --
     testPairMap();
     // -- WP QD3 --
@@ -121,6 +124,8 @@ void SmokeDriver::run() {
     testReadOnly();
     // -- WP QD8 --
     testLink();
+    // -- WP HB6 --
+    testHub();
     // -- WP QD27 --
     testAutoEqUpdate();
     testAutoEqHttp();
@@ -605,7 +610,10 @@ void SmokeDriver::testCsRefusals() {
     // Another device: the old reason doesn't follow it
     b->rescan();
     check("QD1: back on the demo", b->connected());
-    check("QD1: a new device drops the old reason", cs->statusMessage(0xFF) == generic);
+    // -- WP CG20 -- `generic` is the core's text for an unknown code now, no longer
+    // the controller's own words for a failure without a reason, which 0xFF falls back to
+    check("QD1: a new device drops the old reason",
+          cs->statusMessage(0xFF) == QStringLiteral("Failed to apply the binding"));
 
     testCsCallerRefusals();
     testSaveBarRefusal();
@@ -1155,6 +1163,8 @@ void SmokeDriver::testCsPages() {
     check("CG16: the view and the button's card", view && card);
     if (!view || !card) return;
     expand(card);
+    // -- WP CG20 -- The editor's rows, as the core describes them
+    settings->grabWindow().save(m_out + QStringLiteral("/cs-button-open.png"));
     inScope(view, QStringLiteral("(function () { var d = cs.copy(drafts[1]); d.gpio0 = 10; setDraft(1, d) })()"));
     spin(100);
     QQuickItem *apply = buttonOf(card, QStringLiteral("Apply"), "text");
@@ -1258,4 +1268,102 @@ void SmokeDriver::testCsPages() {
     b->rescan();
     check("CG16: back on a fresh demo", b->connected());
     spin(100);
+}
+
+// -- WP CG20 --
+// The editor's rows are the core's. A button on Hold offers the short press alone, and a
+// long press offers no Hold, which is what the firmware takes (control_surfaces.c:1736-1741).
+void SmokeDriver::testCsRules() {
+    section("control surfaces: the rules come from the core (CG20)");
+    m_.bridge->rescan();
+    spin(250);
+    check("CG20: on the demo", m_.bridge->connected());
+    QQmlComponent c(m_.engine);
+    c.setData(R"qml(
+import QtQuick 2.15
+import "../cs"
+Item {
+    width: 600; height: 900
+    CsHelper { id: h }
+    CsRecordEditor { id: ed; cs: h; mode: "binding"; slot: 7; rec: h.emptyBinding(); onEdited: function (r) { ed.rec = r } }
+    function offered(id) { return h.pickOptions(h.rowOf(ed.d, id)).filter(function (o) { return o.header === undefined }).map(function (o) { return o.value }) }
+    function pickers() {
+        var out = {}
+        function walk(item) {
+            for (var i = 0; i < item.children.length; i++) {
+                var k = item.children[i]
+                if (k.title !== undefined && k.options !== undefined && k.visible) out[k.title] = k.options.length
+                walk(k)
+            }
+        }
+        walk(ed)
+        return out
+    }
+    function run() {
+        var out = {}
+        ed.rec = h.makeBinding(h.typeButton, 7)
+        // A function that takes Hold
+        var nouns = offered("noun"), found = false
+        var cats = h.pickCategories(h.rowOf(ed.d, "noun"))
+        for (var c = 0; c < cats.length && !found; c++) {
+            for (var i = 0; i < cats[c].options.length && !found; i++) {
+                var r = h.edit("binding", 7, ed.rec, "noun", cats[c].options[i].value)
+                var row = h.rowOf(h.describe("binding", 7, r), "action")
+                if (row && row.options.some(function (o) { return o.value === h.actMomentary })) { ed.rec = r; found = true }
+            }
+        }
+        out.foundHold = found
+        ed.change("action", h.actMomentary)
+        out.holdAction = ed.rec.action === h.actMomentary
+        out.holdGestures = offered("event")
+        out.holdPicker = pickers()["Gesture"]
+        var refused = h.copy(ed.rec); refused.event = h.eventLong
+        out.refusedStatus = controlSurfaces.apply({ op: "binding", index: 7, binding: refused }).status
+        // What the row would not offer, the edit won't do
+        var before = ed.rec.event
+        ed.change("event", h.eventLong)
+        out.gestureStayed = ed.rec.event === before
+        ed.change("action", h.actToggle)
+        ed.change("event", h.eventLong)
+        out.longEvent = ed.rec.event === h.eventLong
+        out.longActions = offered("action")
+        out.longOffersHold = out.longActions.indexOf(h.actMomentary) >= 0
+        out.longGestures = offered("event").length
+        out.applied = controlSurfaces.apply({ op: "binding", index: 7, binding: ed.rec }).ok === true
+        out.status = controlSurfaces.statusMessage(0x18)
+        out.summary = h.verbPhrase(ed.rec)
+        // The noun names are the core's, in the snapshot
+        out.clipOnLed = h.nounName(8, h.typeLed)
+        out.clipOnButton = h.nounName(8, h.typeButton)
+        out.volume = h.nounName(0, h.typeEncoder)
+        out.unknownNoun = h.nounName(250, h.typeButton)
+        controlSurfaces.apply({ op: "binding", index: 7, binding: h.emptyBinding() })
+        return out
+    }
+}
+)qml", QUrl(QStringLiteral("qrc:/qml/settings/pages/cg20-probe.qml")));
+    QScopedPointer<QObject> o(c.create(m_.engine->rootContext()));
+    if (!o) {
+        check("CG20: the probe loads", false);
+        printf("smoke: %s\n", qPrintable(c.errorString()));
+        return;
+    }
+    QVariant out;
+    QMetaObject::invokeMethod(o.data(), "run", Q_RETURN_ARG(QVariant, out));
+    const QVariantMap r = out.toMap();
+    printf("smoke: CG20 %s\n", QJsonDocument::fromVariant(r).toJson(QJsonDocument::Compact).constData());
+    check("CG20: the demo has a function that takes Hold", r.value("foundHold").toBool() && r.value("holdAction").toBool());
+    check("CG20: Hold offers the short press alone", r.value("holdGestures").toList() == QVariantList{ 0 });
+    check("CG20: and the drawn picker has one entry", r.value("holdPicker").toInt() == 1);
+    check("CG20: the device does refuse Hold on a long press", r.value("refusedStatus").toInt() == 0x18);
+    check("CG20: an edit will not make one", r.value("gestureStayed").toBool());
+    check("CG20: a long press offers no Hold", r.value("longEvent").toBool() && !r.value("longOffersHold").toBool());
+    check("CG20: and all three gestures", r.value("longGestures").toInt() == 3);
+    check("CG20: what is offered applies", r.value("applied").toBool());
+    check("CG20: status text from the core", !r.value("status").toString().isEmpty());
+    check("CG20: the summary comes from the core", !r.value("summary").toString().isEmpty());
+    check("CG20: noun names from the snapshot, an LED's", r.value("clipOnLed").toString() == "Clipping");
+    check("CG20: and a control's", r.value("clipOnButton").toString() == "Clear Clipping");
+    check("CG20: a plain one", r.value("volume").toString() == "Volume");
+    check("CG20: one the device lacks", r.value("unknownNoun").toString() == "Parameter 250");
 }

@@ -45,6 +45,9 @@ const PLATFORM_LEN: u16 = {
 /// What the workers and readers tell the hub's supervisor.
 #[derive(Debug)]
 pub(crate) enum SupMsg {
+    // -- WP HB5 --
+    /// The responder has started: look at it soon.
+    AdvertisingStarted,
     /// This attachment's device is gone.
     Lost { handle: u8, generation: u64 },
     /// Scan the bus now and answer.

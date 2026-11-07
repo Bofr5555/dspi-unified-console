@@ -420,8 +420,12 @@ impl DspiCore {
     /// cannot be read fails the call rather than reading as 0.
     pub fn fetch_ring_health(&self) -> Result<Option<RingHealth>> {
         let mut inner = self.lock();
-        let health = ring_health::read_ring_health(inner.conn()?.transport())?;
-        Ok(health.map(ring_health_record))
+        let conn = inner.conn()?;
+        // -- WP CG21 -- The re-read that brings in another client's latency change
+        let mut cache = conn.ring_target;
+        let health = ring_health::read_ring_health_cached(conn.transport(), &mut cache);
+        conn.ring_target = cache;
+        Ok(health?.map(ring_health_record))
     }
 
     /// The live outputs' fill for the Stats rows: to frame resolution, on the
@@ -435,6 +439,41 @@ impl DspiCore {
         let mut inner = self.lock();
         let fills = ring_health::read_output_fills(inner.conn()?.transport())?;
         Ok(fills.into_iter().map(output_fill_record).collect())
+    }
+
+    // -- WP CG21 --
+    /// The Stats window's fast poll: the buffer fill levels and the live
+    /// outputs' fill, as [`DspiCore::fetch_buffer_stats`] and
+    /// [`DspiCore::fetch_output_fills`] give them, from one transfer.
+    ///
+    /// The fill target is kept on the connection. It is read again, for one more
+    /// transfer on the tick after, when this core changed the latency, when a
+    /// notification says the settings moved (a preset, a bulk write, a format
+    /// change, a lost packet), and after a Link re-attach. The firmware does not
+    /// notify a latency change, so another client's reaches this through
+    /// [`DspiCore::fetch_ring_health`]: call that on the slow cadence alongside.
+    /// While a change has yet to apply the target is read each tick.
+    ///
+    /// Errors: as for [`DspiCore::fetch_buffer_stats`]. A failed read of the
+    /// target is not an error: `fills` is `None`.
+    pub fn fetch_stats_tick(&self) -> Result<StatsTick> {
+        let mut inner = self.lock();
+        let conn = inner.conn()?;
+        let raw = conn.get(op::REQ_GET_BUFFER_STATS, 0, len16(BufferStatsPacket::SIZE))?;
+        let packet = BufferStatsPacket::decode(&raw).map_err(|e| malformed("buffer stats", e))?;
+        let mut cache = conn.ring_target;
+        let target = cache.target(conn.transport());
+        conn.ring_target = cache;
+        let fills = target.ok().map(|target| {
+            ring_health::decode_output_fills(&raw, target.as_ref())
+                .into_iter()
+                .map(output_fill_record)
+                .collect()
+        });
+        Ok(StatsTick {
+            buffers: buffer_stats(packet),
+            fills,
+        })
     }
 
     /// The buffer fill levels (%) and their watermarks
@@ -1179,5 +1218,139 @@ mod tests_wp_cg12 {
             assert_eq!(fill.min_pct, fill.max_pct);
             assert!(fill.min_pct > 0);
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg21 {
+    use std::sync::Arc;
+
+    use dspi_transport::mock::Reply;
+    use dspi_transport::{MockTransport, TransportError};
+
+    use super::*;
+
+    fn core_on(t: MockTransport) -> Arc<DspiCore> {
+        let core = DspiCore::new();
+        core.attach(Box::new(t), "MOCK".into(), 0);
+        core
+    }
+
+    fn latency() -> Vec<u8> {
+        vec![3, 3, 0xD0, 0x07, 96, 0, 48, 0, 0, 7, 0, 0]
+    }
+
+    /// One live output at 12.5% of the firmware's fixed scale.
+    fn buffers() -> Vec<u8> {
+        let mut raw = vec![0u8; BufferStatsPacket::SIZE];
+        raw[0] = 1;
+        raw[7..12].copy_from_slice(&[12, 6, 25, 0xE2, 0x04]);
+        raw
+    }
+
+    #[test]
+    fn wp_cg21_buffers_and_fills_agree_with_the_two_reads() {
+        let t = MockTransport::new()
+            .data(op::REQ_OUTPUT_LATENCY, latency())
+            .data(op::REQ_GET_BUFFER_STATS, buffers());
+        let core = core_on(t);
+        let tick = core.fetch_stats_tick().unwrap();
+        assert_eq!(tick.buffers, core.fetch_buffer_stats().unwrap());
+        assert_eq!(tick.fills.unwrap(), core.fetch_output_fills().unwrap());
+    }
+
+    #[test]
+    fn wp_cg21_a_change_of_device_starts_over() {
+        let core = core_on(
+            MockTransport::new()
+                .data(op::REQ_OUTPUT_LATENCY, latency())
+                .data(op::REQ_GET_BUFFER_STATS, buffers()),
+        );
+        let scaled = core.fetch_stats_tick().unwrap().fills.unwrap();
+        assert_eq!(scaled[0].min_pct, 9, "on the ring's scale");
+
+        // Older firmware: no status, so the fixed scale
+        core.attach(
+            Box::new(MockTransport::new().data(op::REQ_GET_BUFFER_STATS, buffers())),
+            "OTHER".into(),
+            0,
+        );
+        let fixed = core.fetch_stats_tick().unwrap().fills.unwrap();
+        assert_eq!(fixed[0].min_pct, 6, "the old target stayed behind");
+    }
+
+    #[test]
+    fn wp_cg21_a_failed_target_read_leaves_the_fills_out() {
+        let t = MockTransport::new()
+            .reply(
+                op::REQ_OUTPUT_LATENCY,
+                Reply::Error(TransportError::TimedOut {
+                    opcode: 3,
+                    retries: 0,
+                }),
+            )
+            .data(op::REQ_GET_BUFFER_STATS, buffers());
+        let tick = core_on(t).fetch_stats_tick().unwrap();
+        assert_eq!(tick.buffers.num_spdif, 1);
+        assert_eq!(tick.fills, None);
+    }
+
+    #[test]
+    fn wp_cg21_a_failed_buffer_read_fails_the_tick_and_sends_nothing_more() {
+        let t = MockTransport::new()
+            .data(op::REQ_OUTPUT_LATENCY, latency())
+            .data(op::REQ_GET_BUFFER_STATS, vec![0u8; 3]);
+        let log = t.log_handle();
+        assert!(matches!(
+            core_on(t).fetch_stats_tick(),
+            Err(DspiError::Transfer { .. })
+        ));
+        assert!(
+            log.lock()
+                .unwrap()
+                .iter()
+                .all(|x| x.opcode != op::REQ_OUTPUT_LATENCY)
+        );
+    }
+
+    #[test]
+    fn wp_cg21_without_a_device() {
+        assert_eq!(
+            DspiCore::new().fetch_stats_tick(),
+            Err(DspiError::Disconnected)
+        );
+    }
+
+    #[test]
+    fn wp_cg21_a_raw_latency_write_invalidates() {
+        let core = DspiCore::new();
+        core.open_demo().unwrap();
+        core.fetch_stats_tick().unwrap();
+        let fills = |core: &DspiCore| core.fetch_stats_tick().unwrap().fills.unwrap();
+        assert_eq!(fills(&core)[0].band, FillBand::Good);
+        // 8 ms: the demo's rings follow it, which at the old target reads as too full
+        core.raw_set(op::REQ_OUTPUT_LATENCY, 0, vec![7]).unwrap();
+        assert_eq!(fills(&core)[0].band, FillBand::Good);
+    }
+
+    #[test]
+    fn wp_cg21_an_own_write_is_judged_by_the_new_target_once_applied() {
+        let core = DspiCore::new();
+        core.open_demo().unwrap();
+        let before = core.fetch_ring_health().unwrap().unwrap().target_frames;
+        assert_eq!(
+            core.fetch_stats_tick().unwrap().fills.unwrap()[0].band,
+            FillBand::Good
+        );
+        core.demo_latency_timing(1, 3, 0).unwrap();
+        core.set_output_latency(7).unwrap();
+        let mut last = None;
+        for _ in 0..8 {
+            last = core.fetch_stats_tick().unwrap().fills;
+        }
+        let after = core.fetch_ring_health().unwrap().unwrap().target_frames;
+        assert!(after > before, "{before} -> {after}");
+        assert_eq!(last.unwrap()[0].band, FillBand::Good);
     }
 }

@@ -246,6 +246,24 @@ class ReadOnlyTest {
         assertEquals(0, b.guardedCore.trips)
     }
 
+    // -- WP CG20 --
+    @Test
+    fun theCoreReadOpsPassARefusedGuard() = runTest {
+        val core = tooOld()
+        val b = newBridge(core)
+        attach(b, core)
+        for (op in listOf("refresh", "refreshStatus", "displayStatus", "auxRead", "learnRead")) {
+            b.cs.apply("""{"op":"$op"}""")
+        }
+        runCurrent()
+        assertEquals(5, core.callCount("csApply"))
+        assertEquals(0, b.guardedCore.trips)
+        // A write among them is still stopped, in whatever shape it comes.
+        assertTrue(WriteGuardedCore.isCsRead("""{"op":"learnRead"}"""))
+        assertFalse(WriteGuardedCore.isCsRead("""{"op":"learnArm"}"""))
+        assertFalse(WriteGuardedCore.isCsRead("""{"op":"learnRead","x":{"op":"save"}}"""))
+    }
+
     @Test
     fun writesAllowedFollowsConnectionAndCompat() = runTest {
         val core = FakeDspiCore()

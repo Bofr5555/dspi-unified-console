@@ -2097,3 +2097,9 @@ pub fn link_fetch_info(host: String, port: u16) -> Result<LinkInfo> {
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "link/tests_wp_c15.rs"]
 mod tests_wp_c15;
+
+// -- WP CG21 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+#[path = "link/tests_wp_cg21.rs"]
+mod tests_wp_cg21;

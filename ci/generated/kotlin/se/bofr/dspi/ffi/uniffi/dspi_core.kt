@@ -1360,6 +1360,20 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1497,11 +1511,23 @@ fun uniffi_dspi_core_checksum_method_dspicore_cs_apply(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_cs_demo_busy(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_cs_demo_learn(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_cs_describe(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_cs_edit(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_cs_fetch(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_cs_new_binding(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_cs_new_record(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_cs_pin_uses(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_cs_snapshot(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_cs_status_text(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_delete_preset(
 ): Short
@@ -1564,6 +1590,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_fetch_spdif_rx_pin(
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_spdif_rx_status(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_stat(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_fetch_stats_tick(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_status(
 ): Short
@@ -2000,11 +2028,23 @@ fun uniffi_dspi_core_fn_method_dspicore_cs_apply(`ptr`: Pointer,`op`: RustBuffer
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_cs_demo_busy(`ptr`: Pointer,`on`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_cs_demo_learn(`ptr`: Pointer,`protocol`: Byte,`code`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+fun uniffi_dspi_core_fn_method_dspicore_cs_describe(`ptr`: Pointer,`kind`: RustBuffer.ByValue,`slot`: Int,`draft`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_cs_edit(`ptr`: Pointer,`kind`: RustBuffer.ByValue,`slot`: Int,`draft`: RustBuffer.ByValue,`change`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_cs_fetch(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_cs_new_binding(`ptr`: Pointer,`slot`: Int,`component`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_cs_new_record(`ptr`: Pointer,`kind`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_cs_pin_uses(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_cs_snapshot(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_cs_status_text(`ptr`: Pointer,`code`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_delete_preset(`ptr`: Pointer,`slot`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -2068,6 +2108,8 @@ fun uniffi_dspi_core_fn_method_dspicore_fetch_spdif_rx_status(`ptr`: Pointer,uni
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_stat(`ptr`: Pointer,`which`: Short,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
+fun uniffi_dspi_core_fn_method_dspicore_fetch_stats_tick(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_subharm_headroom(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2759,13 +2801,31 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_cs_demo_busy() != 31960.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_cs_demo_learn() != 38061.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_cs_describe() != 2511.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_cs_edit() != 65116.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_cs_fetch() != 19147.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_cs_new_binding() != 60717.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_cs_new_record() != 35845.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_cs_pin_uses() != 61537.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_cs_snapshot() != 43337.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_cs_status_text() != 13025.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_delete_preset() != 21426.toShort()) {
@@ -2859,6 +2919,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_stat() != 25516.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_stats_tick() != 21250.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_status() != 58511.toShort()) {
@@ -5098,6 +5161,44 @@ public interface DspiCoreInterface {
     fun `csDemoBusy`(`on`: kotlin.Boolean)
     
     /**
+     * On the demo device only: the remote button a learn is waiting for was
+     * pressed. The learn ends with this protocol and code and notifies, as on a
+     * real receiver. False when nothing was armed. As
+     * [`cs_demo_busy`](Self::cs_demo_busy), it answers [`DspiError::Unsupported`]
+     * on any other device.
+     */
+    fun `csDemoLearn`(`protocol`: kotlin.UByte, `code`: kotlin.UInt): kotlin.Boolean
+    
+    /**
+     * What a page shows for one record, from the last [`DspiCore::cs_fetch`]:
+     * `{ok, title, summary, rows}`. `kind` is `binding`, `ir`, `step`, `page`,
+     * `display` or `group`; `slot` is the record's index; `draft` is the record as
+     * in [`DspiCore::cs_snapshot`].
+     *
+     * Each row has `id`, `title`, `detail` and `kind`. A `pick` has `value`, `text`
+     * and `options` of `{value, text, section?, owner?, disabled?}`; a `number`
+     * has `value`, `min`, `max`, `step`, `unit` and `decimals`, in natural units; a
+     * `toggle` has `on` and `enabled`; a `note` has `warning`, and its words in
+     * `detail`. `dspi_session::cs_rows` lists the ids.
+     *
+     * No device I/O. `{ok: false, error}` on a bad draft, an index the device does
+     * not have, no device, or before the first fetch. Never fails otherwise.
+     */
+    fun `csDescribe`(`kind`: kotlin.String, `slot`: kotlin.UInt, `draft`: kotlin.String): kotlin.String
+    
+    /**
+     * The record after one row's value changed: `{ok, draft}`. `change` is
+     * `{id, value}`: the row's id, and an option's value, a number in natural units,
+     * or a boolean. The edit resets what the change leaves meaningless, so the
+     * record stays one the firmware takes.
+     *
+     * No device I/O: nothing changes on the device until the record goes to
+     * [`DspiCore::cs_apply`]. `{ok: false, error}` when the row or the value is not
+     * one [`DspiCore::cs_describe`] offers for this record, or as `cs_describe`.
+     */
+    fun `csEdit`(`kind`: kotlin.String, `slot`: kotlin.UInt, `draft`: kotlin.String, `change`: kotlin.String): kotlin.String
+    
+    /**
      * Read the whole control-surface configuration from the device:
      * capabilities, bindings and names, IR commands, groups, macros, the
      * display and the aux outputs (about seventy round trips).
@@ -5110,6 +5211,19 @@ public interface DspiCoreInterface {
      * failure (lost device, timeout) as its typed error.
      */
     fun `csFetch`()
+    
+    /**
+     * A fresh binding of type `component` in `slot`, on free pins: `{ok, draft}`.
+     * No device I/O. `{ok: false, error}` as [`DspiCore::cs_describe`].
+     */
+    fun `csNewBinding`(`slot`: kotlin.UInt, `component`: kotlin.UByte): kotlin.String
+    
+    /**
+     * A fresh record of `kind`, `ir`, `step` or `page`: `{ok, draft}`. A step and a
+     * page are ready to apply; a remote button needs its code from a learn first.
+     * No device I/O. `{ok: false, error}` as [`DspiCore::cs_describe`].
+     */
+    fun `csNewRecord`(`kind`: kotlin.String): kotlin.String
     
     /**
      * GPIOs held by live control-surface bindings, as (pin, slot): a
@@ -5129,6 +5243,12 @@ public interface DspiCoreInterface {
      * or on firmware without control surfaces. Never fails.
      */
     fun `csSnapshot`(): kotlin.String
+    
+    /**
+     * A control-surface or pin-configuration status code as a sentence; empty for
+     * success. Needs no device.
+     */
+    fun `csStatusText`(`code`: kotlin.UByte): kotlin.String
     
     /**
      * Delete preset `slot` (0..10) and its name. **Writes flash.**
@@ -5494,6 +5614,24 @@ public interface DspiCoreInterface {
      * or short reply as [`DspiError::Transfer`].
      */
     fun `fetchStat`(`which`: kotlin.UShort): kotlin.UInt
+    
+    /**
+     * The Stats window's fast poll: the buffer fill levels and the live
+     * outputs' fill, as [`DspiCore::fetch_buffer_stats`] and
+     * [`DspiCore::fetch_output_fills`] give them, from one transfer.
+     *
+     * The fill target is kept on the connection. It is read again, for one more
+     * transfer on the tick after, when this core changed the latency, when a
+     * notification says the settings moved (a preset, a bulk write, a format
+     * change, a lost packet), and after a Link re-attach. The firmware does not
+     * notify a latency change, so another client's reaches this through
+     * [`DspiCore::fetch_ring_health`]: call that on the slow cadence alongside.
+     * While a change has yet to apply the target is read each tick.
+     *
+     * Errors: as for [`DspiCore::fetch_buffer_stats`]. A failed read of the
+     * target is not an error: `fills` is `None`.
+     */
+    fun `fetchStatsTick`(): StatsTick
     
     /**
      * Read the meter block (`REQ_GET_STATUS` sub-query 9): the peak of each
@@ -7688,6 +7826,75 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * On the demo device only: the remote button a learn is waiting for was
+     * pressed. The learn ends with this protocol and code and notifies, as on a
+     * real receiver. False when nothing was armed. As
+     * [`cs_demo_busy`](Self::cs_demo_busy), it answers [`DspiError::Unsupported`]
+     * on any other device.
+     */
+    @Throws(DspiException::class)override fun `csDemoLearn`(`protocol`: kotlin.UByte, `code`: kotlin.UInt): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_cs_demo_learn(
+        it, FfiConverterUByte.lower(`protocol`),FfiConverterUInt.lower(`code`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * What a page shows for one record, from the last [`DspiCore::cs_fetch`]:
+     * `{ok, title, summary, rows}`. `kind` is `binding`, `ir`, `step`, `page`,
+     * `display` or `group`; `slot` is the record's index; `draft` is the record as
+     * in [`DspiCore::cs_snapshot`].
+     *
+     * Each row has `id`, `title`, `detail` and `kind`. A `pick` has `value`, `text`
+     * and `options` of `{value, text, section?, owner?, disabled?}`; a `number`
+     * has `value`, `min`, `max`, `step`, `unit` and `decimals`, in natural units; a
+     * `toggle` has `on` and `enabled`; a `note` has `warning`, and its words in
+     * `detail`. `dspi_session::cs_rows` lists the ids.
+     *
+     * No device I/O. `{ok: false, error}` on a bad draft, an index the device does
+     * not have, no device, or before the first fetch. Never fails otherwise.
+     */override fun `csDescribe`(`kind`: kotlin.String, `slot`: kotlin.UInt, `draft`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_cs_describe(
+        it, FfiConverterString.lower(`kind`),FfiConverterUInt.lower(`slot`),FfiConverterString.lower(`draft`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The record after one row's value changed: `{ok, draft}`. `change` is
+     * `{id, value}`: the row's id, and an option's value, a number in natural units,
+     * or a boolean. The edit resets what the change leaves meaningless, so the
+     * record stays one the firmware takes.
+     *
+     * No device I/O: nothing changes on the device until the record goes to
+     * [`DspiCore::cs_apply`]. `{ok: false, error}` when the row or the value is not
+     * one [`DspiCore::cs_describe`] offers for this record, or as `cs_describe`.
+     */override fun `csEdit`(`kind`: kotlin.String, `slot`: kotlin.UInt, `draft`: kotlin.String, `change`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_cs_edit(
+        it, FfiConverterString.lower(`kind`),FfiConverterUInt.lower(`slot`),FfiConverterString.lower(`draft`),FfiConverterString.lower(`change`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Read the whole control-surface configuration from the device:
      * capabilities, bindings and names, IR commands, groups, macros, the
      * display and the aux outputs (about seventy round trips).
@@ -7708,6 +7915,39 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * A fresh binding of type `component` in `slot`, on free pins: `{ok, draft}`.
+     * No device I/O. `{ok: false, error}` as [`DspiCore::cs_describe`].
+     */override fun `csNewBinding`(`slot`: kotlin.UInt, `component`: kotlin.UByte): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_cs_new_binding(
+        it, FfiConverterUInt.lower(`slot`),FfiConverterUByte.lower(`component`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * A fresh record of `kind`, `ir`, `step` or `page`: `{ok, draft}`. A step and a
+     * page are ready to apply; a remote button needs its code from a learn first.
+     * No device I/O. `{ok: false, error}` as [`DspiCore::cs_describe`].
+     */override fun `csNewRecord`(`kind`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_cs_new_record(
+        it, FfiConverterString.lower(`kind`),_status)
+}
+    }
+    )
+    }
     
 
     
@@ -7743,6 +7983,22 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_cs_snapshot(
         it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * A control-surface or pin-configuration status code as a sentence; empty for
+     * success. Needs no device.
+     */override fun `csStatusText`(`code`: kotlin.UByte): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_cs_status_text(
+        it, FfiConverterUByte.lower(`code`),_status)
 }
     }
     )
@@ -8438,6 +8694,35 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_stat(
         it, FfiConverterUShort.lower(`which`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The Stats window's fast poll: the buffer fill levels and the live
+     * outputs' fill, as [`DspiCore::fetch_buffer_stats`] and
+     * [`DspiCore::fetch_output_fills`] give them, from one transfer.
+     *
+     * The fill target is kept on the connection. It is read again, for one more
+     * transfer on the tick after, when this core changed the latency, when a
+     * notification says the settings moved (a preset, a bulk write, a format
+     * change, a lost packet), and after a Link re-attach. The firmware does not
+     * notify a latency change, so another client's reaches this through
+     * [`DspiCore::fetch_ring_health`]: call that on the slow cadence alongside.
+     * While a change has yet to apply the target is read each tick.
+     *
+     * Errors: as for [`DspiCore::fetch_buffer_stats`]. A failed read of the
+     * target is not an error: `fills` is `None`.
+     */
+    @Throws(DspiException::class)override fun `fetchStatsTick`(): StatsTick {
+            return FfiConverterTypeStatsTick.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_stats_tick(
+        it, _status)
 }
     }
     )
@@ -17137,6 +17422,48 @@ public object FfiConverterTypeSpdifRxStatus: FfiConverterRustBuffer<SpdifRxStatu
 
 
 /**
+ * One sample of the Stats window's fast poll (`fetch_stats_tick`).
+ */
+data class StatsTick (
+    /**
+     * The buffer fill levels and their watermarks.
+     */
+    var `buffers`: BufferStats, 
+    /**
+     * The live outputs' fill, from the same read. `None` when the fill target
+     * could not be read: keep the last fills.
+     */
+    var `fills`: List<OutputFill>?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeStatsTick: FfiConverterRustBuffer<StatsTick> {
+    override fun read(buf: ByteBuffer): StatsTick {
+        return StatsTick(
+            FfiConverterTypeBufferStats.read(buf),
+            FfiConverterOptionalSequenceTypeOutputFill.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: StatsTick) = (
+            FfiConverterTypeBufferStats.allocationSize(value.`buffers`) +
+            FfiConverterOptionalSequenceTypeOutputFill.allocationSize(value.`fills`)
+    )
+
+    override fun write(value: StatsTick, buf: ByteBuffer) {
+            FfiConverterTypeBufferStats.write(value.`buffers`, buf)
+            FfiConverterOptionalSequenceTypeOutputFill.write(value.`fills`, buf)
+    }
+}
+
+
+
+/**
  * `types.rs` `SystemStatus` (REQ_GET_STATUS wValue 9), polled every 60 ms.
  */
 data class SystemStatus (
@@ -18792,6 +19119,38 @@ public object FfiConverterOptionalTypeRingHealth: FfiConverterRustBuffer<RingHea
         } else {
             buf.put(1)
             FfiConverterTypeRingHealth.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalSequenceTypeOutputFill: FfiConverterRustBuffer<List<OutputFill>?> {
+    override fun read(buf: ByteBuffer): List<OutputFill>? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterSequenceTypeOutputFill.read(buf)
+    }
+
+    override fun allocationSize(value: List<OutputFill>?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterSequenceTypeOutputFill.allocationSize(value)
+        }
+    }
+
+    override fun write(value: List<OutputFill>?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterSequenceTypeOutputFill.write(value, buf)
         }
     }
 }

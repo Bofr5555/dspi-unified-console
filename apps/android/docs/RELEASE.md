@@ -177,7 +177,9 @@ Answers specific to this app. Verify each against the build you upload
   third-party SDKs (no analytics, crash reporting or ads). "Is all of the user
   data collected by your app encrypted in transit?": not applicable (none is
   collected); the DSPi Link protocol itself is plaintext on the LAN, which the
-  privacy policy states. "Users can request deletion" → not applicable
+  privacy policy states. Re-checked for WP AN4, which binds the process to Wi-Fi
+  while a Link session exists and the Wi-Fi has no validated internet: same data,
+  same hub, no new permission, so this answer stands. "Users can request deletion" → not applicable
   (uninstall deletes everything, `allowBackup="false"`).
   *Owner decision D8 (2026-11-06): answer "No" as above.* The
   conservative alternative, kept for reference if Play support disagrees: declare "Device

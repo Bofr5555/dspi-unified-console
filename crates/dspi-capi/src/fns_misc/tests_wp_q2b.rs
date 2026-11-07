@@ -900,3 +900,59 @@ fn wp_cg18_an_export_without_a_device_is_refused_in_json() {
     assert_eq!(v["code"], "disconnected", "{reply}");
     free(h);
 }
+
+// -- WP CG20 --
+#[test]
+fn wp_cg20_the_rules_through_the_c_functions() {
+    let h = demo();
+    assert!(dspi_cs_fetch(h));
+    let d = read_json(|b, l| dspi_cs_new_binding(h, 7, 1, b, l));
+    assert_eq!(d["ok"], true);
+    let draft = CString::new(d["draft"].to_string()).unwrap();
+    let kind = CString::new("binding").unwrap();
+    let rows = read_json(|b, l| dspi_cs_describe(h, kind.as_ptr(), 7, draft.as_ptr(), b, l));
+    assert_eq!(rows["ok"], true);
+    assert!(
+        rows["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["id"] == "event")
+    );
+    let change = CString::new(r#"{"id":"event","value":1}"#).unwrap();
+    let edited =
+        read_json(|b, l| dspi_cs_edit(h, kind.as_ptr(), 7, draft.as_ptr(), change.as_ptr(), b, l));
+    assert_eq!(edited["draft"]["event"], 1);
+    let step = CString::new("step").unwrap();
+    assert_eq!(
+        read_json(|b, l| dspi_cs_new_record(h, step.as_ptr(), b, l))["ok"],
+        true
+    );
+    assert_eq!(read_text(|b, l| dspi_cs_status_text(h, 0, b, l)), "");
+    assert!(!read_text(|b, l| dspi_cs_status_text(h, 0x18, b, l)).is_empty());
+
+    // A learn finishes on the demo device.
+    assert!(!dspi_cs_demo_learn(h, 1, 5), "nothing armed");
+    let arm = CString::new(r#"{"op":"learnArm"}"#).unwrap();
+    assert_eq!(
+        read_json(|b, l| dspi_cs_apply(h, arm.as_ptr(), b, l))["ok"],
+        true
+    );
+    assert!(dspi_cs_demo_learn(h, 1, 5));
+    let learn = CString::new(r#"{"op":"learnRead"}"#).unwrap();
+    let read = read_json(|b, l| dspi_cs_apply(h, learn.as_ptr(), b, l));
+    assert_eq!(
+        (read["state"].as_u64(), read["code"].as_u64()),
+        (Some(2), Some(5))
+    );
+    free(h);
+
+    // Null: the same failure values as every text function.
+    let t: *mut c_char = std::ptr::null_mut();
+    assert_eq!(dspi_cs_describe(null_mut(), null(), 0, null(), t, 0), 0);
+    assert_eq!(dspi_cs_edit(null_mut(), null(), 0, null(), null(), t, 0), 0);
+    assert_eq!(dspi_cs_new_binding(null_mut(), 0, 0, t, 0), 0);
+    assert_eq!(dspi_cs_new_record(null_mut(), null(), t, 0), 0);
+    assert_eq!(dspi_cs_status_text(null_mut(), 0, t, 0), 0);
+    assert!(!dspi_cs_demo_learn(null_mut(), 0, 0));
+}

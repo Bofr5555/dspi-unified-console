@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.link.LinkHub
 import se.bofr.dspi.link.LinkSessionState
+import se.bofr.dspi.link.linkBrowseWanted
 import se.bofr.dspi.usb.DspiUsbDevice
 import se.bofr.dspi.usb.UsbSessionState
 
@@ -20,14 +21,14 @@ enum class AppMode {
     /** The real stack: FfiDspiCore behind DspiBridgeImpl, fed by AndroidUsbSession. */
     DEVICE,
 
-    /** "Demo (no device)": FakeDspiCore.demo() behind its own DspiBridgeImpl; no USB at all. */
+    /** "Demo (no device)": the real core's demo device behind its own DspiBridgeImpl; no USB at all. */
     DEMO,
 
     /** DSPi Link client: a DSPi on a hub (Mac Console, ESP32 bridge), its own core + bridge ([RemoteSession]). */
     REMOTE
 }
 
-/** A running demo stack; [close] tears it down completely (scope, FFI thread, fake core). */
+/** A running demo stack; [close] tears it down completely (scope, FFI thread, core). */
 interface DemoSession {
     val bridge: DspiBridge
 
@@ -92,6 +93,13 @@ class AppModeController(
     /** The REMOTE session's state (Idle outside REMOTE). */
     val remoteState: StateFlow<LinkSessionState> = _remoteState.asStateFlow()
 
+    // -- WP AN4 --
+    private val uiShown = MutableStateFlow(true)
+
+    /** The session needs DNS-SD now, whatever the Networking page does ([linkBrowseWanted]). */
+    val browseForSession: StateFlow<Boolean> =
+        combine(_remoteState, uiShown, ::linkBrowseWanted).stateIn(scope, SharingStarted.Eagerly, false)
+
     /** The REMOTE stack while it exists (dialogs act on it). */
     val remoteSession: RemoteSession? get() = remote
 
@@ -118,6 +126,7 @@ class AppModeController(
         val r = remote ?: remoteFactory().also { r ->
             remote = r
             r.bridge.setUiVisible(uiVisible)
+            r.setUiVisible(uiVisible)
             remoteWatch = scope.launch {
                 var active = false
                 r.state.collect { st ->
@@ -184,6 +193,8 @@ class AppModeController(
         forwardUiVisible(visible)
         demo?.bridge?.setUiVisible(visible)
         remote?.bridge?.setUiVisible(visible)
+        remote?.setUiVisible(visible)
+        uiShown.value = visible
         if (visible) remote?.retryNow()
     }
 }

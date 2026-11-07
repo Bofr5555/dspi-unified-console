@@ -18,7 +18,7 @@ Record for each item: pass / fail, phone, hub, firmware, and the numbers asked f
 
 - [ ] Fresh install: Settings › Networking shows "Control DSPi devices over the network" **off**; the strip under the top bar has no "Network…" button; nothing on the network (`adb shell dumpsys connectivity` / router: no traffic from the app; no `_dspi._tcp` queries).
 - [ ] Play/Settings › App info lists the network permissions; no other new permission.
-- [ ] Turn it on: the trusted-network notice is shown; "Find hubs automatically" browses only while the page is open (leave the page: queries stop).
+- [ ] Turn it on: the trusted-network notice is shown; "Find hubs automatically" browses only while the page is open, or while a session looks for its hub (section 6); leave the page with no session: queries stop.
 - [ ] `adb logcat` never shows a PIN or a token.
 - [ ] Client name: blank → the hub's client list shows the phone model (`Build.MODEL`); a custom name shows instead.
 
@@ -64,3 +64,24 @@ Record for each item: pass / fail, phone, hub, firmware, and the numbers asked f
 | Slider drag feel (1–5) | | |
 | Reconnect after hub restart | | |
 | Battery: 30 min background REMOTE, % | | |
+
+## 6. Network handling (WP AN4; agents had no phone, so none of this has run on one)
+
+- [ ] Hub off, tap it: "failed". Wait 2 min: no dial in the hub's log, no retry on a timer. Turn phone Wi-Fi off and on: exactly one dial per return.
+- [ ] Failed with the app in front and the hub starts: DNS-SD sees it, one dial, connected.
+- [ ] Change the hub's DHCP lease during a session (F5): connection lost, then connected at the new address with no PIN, board and settings kept. Also after power-cycling an ESP32 bridge that gets a new address: if the phone does not find it until the app is brought to the front, record that (NsdManager may not report a known name again).
+- [ ] Wi-Fi without internet, mobile data on (F10): the hub connects; `adb shell dumpsys connectivity` shows Wi-Fi not validated; the app's sockets go over Wi-Fi. Then a Wi-Fi with internet: the binding is gone (no `bind` warning in logcat `DspiLink`).
+- [ ] Reconnecting with the screen off, hub stopped: after 10 min the notification goes, logcat says the service stops, `_dspi._tcp` queries stop. Bring the app to the front: notification back, "reconnecting" still shown, the hub reconnects when started.
+- [ ] Same, hub restarted after the notification went, app still in the background: when it reconnects, no crash; the notification comes back when the app is next in front.
+- [ ] Battery: `adb shell dumpsys batterystats` over a night with a hub that stays away, no multicast lock held after the first 10 min (`dumpsys wifi`).
+
+### F10's items, as decided (`LINK-HUB-FINDINGS.md`)
+
+| Item | Decision | Why |
+|---|---|---|
+| Board flaps on the bridge | No work: handled | The core reports `NoDevice` and re-attaches; the engine does not detach or dial (`wpAn4ABoardFlapOnABridgeIsNoReconnect`). A real bridge is still section 5 of the findings. |
+| Service refused in the background | **Used** | `start()`'s result now counts: a refusal releases the shared service's hold, and the next look at a bound state tries again, at the latest when the app comes to the front. |
+| WifiLock | **Rejected** | Without a wake lock the CPU sleeps regardless, so it would not keep the socket answering; with one it is the battery cost this client should not have for a remote control. A hub's 30 s limit is one more reconnect, which the core does. Also AOSP's `WifiServiceImpl` asks for `WAKE_LOCK` on acquire (from memory, not checked against a device), which `tools/ci.sh release` would refuse, unlike the plan's note. |
+| Wi-Fi without internet | **Used** | `bindProcessToNetwork` while a session exists and no local network is validated (`LinkNetworkEdges`). Lifted otherwise, so other traffic is untouched. Not bound with validated Wi-Fi. Data safety re-checked in `RELEASE.md`: the answer stands. |
+| Partial write on the reader | No work: fixed | `socket.rs`: a failed flush marks the pipe broken and nothing more goes out; `dspi-link` tests that. |
+| Command slots | **Rejected** | `RATE_LIMITED` fails the write and the user sees it. Retrying would be the write queue the owner's rule forbids. |

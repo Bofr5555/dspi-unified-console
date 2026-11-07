@@ -89,6 +89,9 @@ pub mod req {
     pub const RTA_GET_BANDS: u8 = 0x0B;
     pub const RTA_GET_STATUS: u8 = 0x0D;
     pub const RTA_CONTROL: u8 = 0x0E;
+    // -- WP CG21 --
+    pub const OUTPUT_LATENCY: u8 = 0x03;
+    pub const GET_BUFFER_STATS: u8 = 0xB0;
 }
 
 /// Bulk offset of the master volume in wire V32 (core `OFF_MASTER_VOLUME`).
@@ -153,6 +156,8 @@ pub struct HubConfig {
     /// -- WP CG5 -- The device has an analyser. False: every RTA opcode is a
     /// STALL, as on firmware without one.
     pub rta: bool,
+    /// -- WP CG21 -- Answer `OUTPUT_LATENCY` and `GET_BUFFER_STATS`.
+    pub stats: bool,
 }
 
 impl Default for HubConfig {
@@ -184,7 +189,8 @@ impl Default for HubConfig {
             board_removal_hold: Duration::from_secs(60),
             poll_budget_bps: 200_000,
             clock: Arc::new(SystemClock),
-            rta: false, // -- WP CG5 --
+            rta: false,   // -- WP CG5 --
+            stats: false, // -- WP CG21 --
         }
     }
 }
@@ -297,10 +303,49 @@ struct FailureRecord {
     locked_until: Option<Instant>,
 }
 
+/// -- WP CG21 -- The output rings: what a Stats tick reads.
+#[derive(Debug, Clone, Copy)]
+struct FakeRing {
+    requested: u8,
+    target_frames: u16,
+    pending: bool,
+}
+
+impl Default for FakeRing {
+    fn default() -> Self {
+        Self { requested: 3, target_frames: 96, pending: false }
+    }
+}
+
+impl FakeRing {
+    /// `OutputLatencyStatus` (config.h), 12 bytes.
+    fn status(&self) -> Vec<u8> {
+        let mut s = vec![0u8; 12];
+        s[0] = self.requested;
+        s[1] = self.requested;
+        s[2..4].copy_from_slice(&2000u16.to_le_bytes());
+        s[4..6].copy_from_slice(&self.target_frames.to_le_bytes());
+        s[6..8].copy_from_slice(&48u16.to_le_bytes());
+        s[8] = u8::from(self.pending);
+        s[9] = 7;
+        s
+    }
+
+    /// `BufferStatsPacket`, 44 bytes: one output at 96 of 768 frames.
+    fn buffer_stats() -> Vec<u8> {
+        let mut b = vec![0u8; 44];
+        b[0] = 1;
+        b[4 + 3..4 + 6].copy_from_slice(&[12, 6, 25]);
+        b[4 + 6..4 + 8].copy_from_slice(&1250u16.to_le_bytes());
+        b
+    }
+}
+
 struct State {
     cfg: HubConfig,
     image: Vec<u8>,
-    rta: FakeRta, // -- WP CG5 --
+    rta: FakeRta,   // -- WP CG5 --
+    ring: FakeRing, // -- WP CG21 --
     fw_seq: u8,
     next_session: u16,
     sessions: HashMap<u16, SessionRec>,
@@ -541,6 +586,14 @@ impl State {
         match (dir, b_request) {
             // -- WP CG5 --
             (_, 0x08..=0x0F) if self.cfg.rta => self.rta_device(sid, dir, b_request, w_value, payload),
+            // -- WP CG21 --
+            (Dir::Get, req::OUTPUT_LATENCY) if self.cfg.stats => (status::OK, self.ring.status()),
+            (Dir::Set, req::OUTPUT_LATENCY) if self.cfg.stats => {
+                self.ring.requested = payload.first().copied().unwrap_or(1);
+                self.ring.target_frames = u16::from(self.ring.requested) * 64;
+                (status::OK, Vec::new())
+            }
+            (Dir::Get, req::GET_BUFFER_STATS) if self.cfg.stats => (status::OK, FakeRing::buffer_stats()),
             (Dir::Get, req::GET_PLATFORM) => (status::OK, PLATFORM.to_vec()),
             (Dir::Get, req::GET_SERIAL) => (status::OK, self.cfg.serial.as_bytes().to_vec()),
             (Dir::Get, req::GET_STATUS) => (status::OK, STATUS_WVALUE9.to_vec()),
@@ -793,7 +846,8 @@ impl FakeHub {
         let board_attached = cfg.board_attached;
         let state = Arc::new(Mutex::new(State {
             image: cfg.image.clone(),
-            rta: FakeRta::default(), // -- WP CG5 --
+            rta: FakeRta::default(),   // -- WP CG5 --
+            ring: FakeRing::default(), // -- WP CG21 --
             cfg,
             faults: Faults::default(),
             failures: HashMap::new(),
@@ -861,6 +915,14 @@ impl FakeHub {
         let o = off as usize;
         s.image[o..o + value.len()].copy_from_slice(value);
         s.param_changed(off, value, source, origin);
+    }
+
+    /// -- WP CG21 -- The ring target changed elsewhere (another console), which
+    /// the firmware does not notify. `pending`: the change has yet to apply.
+    pub fn set_ring_target(&self, frames: u16, pending: bool) {
+        let mut s = lock(&self.state);
+        s.ring.target_frames = frames;
+        s.ring.pending = pending;
     }
 
     /// -- WP CG5 -- The analyser configuration the device holds (12 bytes).

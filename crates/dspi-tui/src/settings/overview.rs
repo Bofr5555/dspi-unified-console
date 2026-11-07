@@ -18,111 +18,17 @@
 //! in the CLI, `dspi ext vreg`.
 
 use dspi_proto::ext::{CoreVregStatus, vreg_mv};
+use dspi_session::Session;
 use dspi_session::ext::read_core_vreg as read_status;
 use dspi_session::ext_state::ExtState;
 use dspi_session::pins::{PinClaim, PinRole as ClaimRole, valid_pins};
-use dspi_session::{DeviceState, Session};
 
 use crate::widgets::{Action, KeyHelp, PinCell, PinRole};
 
 use super::{Cx, PageEvent, Row, SettingsPage};
 
-/// The claims the bulk snapshot alone proves: physical outputs, the I2S
-/// clocks, the audio inputs, the ADAT output and the DAC mute.
-///
-/// The rules are the firmware's, copied from `pins.rs` so the two cannot
-/// disagree about whether a pin is held: a disabled feature holds nothing, the
-/// slave clock pair is claimed only in split mode, and LRCLK is always BCK + 1.
-pub fn claims_from_state(state: &DeviceState) -> Vec<PinClaim> {
-    let mut claims: Vec<PinClaim> = Vec::new();
-    let mut claim = |gpio: u8, role: ClaimRole, owner: &str| {
-        if !claims.iter().any(|c: &PinClaim| c.gpio == gpio) {
-            claims.push(PinClaim {
-                gpio,
-                role,
-                owner: owner.to_string(),
-            });
-        }
-    };
-
-    let pins = state.output_pins();
-    let slots = pins.len().saturating_sub(1);
-    for (i, gpio) in pins.iter().enumerate() {
-        if i < slots {
-            claim(*gpio, ClaimRole::Output, &format!("Output {}", i + 1));
-        } else {
-            claim(*gpio, ClaimRole::Output, "Subwoofer");
-        }
-    }
-
-    let i2s = state.i2s();
-    claim(i2s.bck_pin, ClaimRole::Clock, "I2S BCK");
-    claim(i2s.bck_pin.wrapping_add(1), ClaimRole::Clock, "I2S LRCLK");
-    if i2s.clock_pin_mode == Some(1) && i2s.bck_pin_slave != 0 {
-        claim(i2s.bck_pin_slave, ClaimRole::Clock, "I2S Slave BCK");
-        claim(
-            i2s.bck_pin_slave.wrapping_add(1),
-            ClaimRole::Clock,
-            "I2S Slave LRCLK",
-        );
-    }
-    if i2s.mck_enabled {
-        claim(i2s.mck_pin, ClaimRole::Clock, "I2S MCK");
-    }
-
-    if let Some(input) = state.input_config() {
-        let ext = input.spdif_rx_enabled_ext.unwrap_or(0);
-        claim(
-            input.spdif_rx_pin,
-            ClaimRole::Input,
-            if ext != 0 { "S/PDIF 1 RX" } else { "S/PDIF RX" },
-        );
-        for (i, pin) in input.spdif_rx_pin_ext.iter().enumerate() {
-            if ext & (1u8 << i) != 0
-                && let Some(g) = pin
-            {
-                claim(*g, ClaimRole::Input, &format!("S/PDIF {} RX", i + 2));
-            }
-        }
-        let pairs = input.i2s_input_channels.unwrap_or(2).max(2) as usize / 2;
-        let multi = pairs > 1;
-        let label = |pair: usize| {
-            if multi {
-                format!("I2S RX {}", pair + 1)
-            } else {
-                "I2S RX".to_string()
-            }
-        };
-        if pairs >= 1 {
-            claim(input.i2s_rx_pin, ClaimRole::Input, &label(0));
-        }
-        for (i, pin) in input.i2s_rx_pin_ext.iter().enumerate() {
-            if i + 1 < pairs
-                && let Some(g) = pin
-            {
-                claim(*g, ClaimRole::Input, &label(i + 1));
-            }
-        }
-        if input.adat_input_enabled == Some(true)
-            && let Some(pin) = input.adat_input_pin
-        {
-            claim(pin, ClaimRole::Input, "ADAT Input");
-        }
-    }
-
-    let (adat_on, adat_pin) = state.adat_output();
-    if adat_on {
-        claim(adat_pin, ClaimRole::Output, "ADAT Output");
-    }
-
-    let dac = state.dac_hw_mute();
-    if dac.enabled && dac.pin != dspi_proto::packets::DacHwMuteConfig::PIN_NONE {
-        claim(dac.pin, ClaimRole::Utility, "DAC Mute");
-    }
-
-    claims.sort_by_key(|c| c.gpio);
-    claims
-}
+// -- WP CG20 -- Moved to the session, where the core's pin pickers use it too.
+pub use dspi_session::pins::claims_from_state;
 
 /// The core-voltage status when Settings opens: `EXT_LIST`, then the read if
 /// it is listed. `None` on stock firmware, which stalls the list, and for a
@@ -461,12 +367,15 @@ mod tests {
 
     /// A real session on a fake device, with Settings open on `page` and the
     /// data read the way the runner reads it.
-    fn on_device(fake: FakeDevice, page: Page) -> (SettingsScreen, DeviceState, Session) {
+    fn on_device(
+        fake: FakeDevice,
+        page: Page,
+    ) -> (SettingsScreen, dspi_session::DeviceState, Session) {
         let mut t: Box<dyn Transport> = Box::new(fake);
         let caps = dspi_session::probe(t.as_mut()).unwrap();
         let mut session = Session::new(t, caps.clone()).unwrap();
         let bulk = session.snapshot().unwrap();
-        let st = DeviceState::new(caps, bulk);
+        let st = dspi_session::DeviceState::new(caps, bulk);
         let read = SettingsData::read(&mut session);
         let s = SettingsScreen::new(&st, read, AppConfig::default())
             .config_path(scratch("tm2"))

@@ -55,6 +55,11 @@ pub mod status {
     /// Not an auxiliary output, or a level for an on/off one
     /// (control_surfaces.h:714-715).
     pub const INVALID_AUX: u8 = 0x26;
+    // -- WP CG20 --
+    /// A gesture this binding may not use (control_surfaces.c:1736-1741).
+    pub const INVALID_EVENT: u8 = 0x18;
+    /// The PWM output of this pin is taken (control_surfaces.c:1796-1810).
+    pub const PWM_CONFLICT: u8 = 0x19;
 }
 
 /// The highest auxiliary output level, 100 % in 8.8: the SET clamps there

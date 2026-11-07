@@ -31,6 +31,9 @@ interface HubBrowser {
     fun start()
 
     fun stop()
+
+    /** Forget what is known and look afresh, if browsing is on (WP AN4). */
+    fun refresh() {}
 }
 
 class NsdHubBrowser(context: Context, private val scope: CoroutineScope) : HubBrowser {
@@ -52,7 +55,11 @@ class NsdHubBrowser(context: Context, private val scope: CoroutineScope) : HubBr
     private var resolving = false
     private var listener: NsdManager.DiscoveryListener? = null
 
+    /** [start] was called and [stop] was not; a failed start is still wanted. */
+    private var wanted = false
+
     override fun start() {
+        wanted = true
         if (listener != null || nsd == null) return
         // Some Wi-Fi drivers drop multicast while the screen is off unless a lock is held
         multicast = runCatching {
@@ -62,14 +69,17 @@ class NsdHubBrowser(context: Context, private val scope: CoroutineScope) : HubBr
             }
         }.getOrNull()
         val l = object : NsdManager.DiscoveryListener {
-            override fun onDiscoveryStarted(serviceType: String) = post {
+            // A listener replaced by refresh() may still report: only the current one counts
+            private fun current(block: () -> Unit) = post { if (listener === this) block() }
+
+            override fun onDiscoveryStarted(serviceType: String) = current {
                 _browsing.value = true
                 _error.value = null
             }
 
-            override fun onDiscoveryStopped(serviceType: String) = post { _browsing.value = false }
+            override fun onDiscoveryStopped(serviceType: String) = current { _browsing.value = false }
 
-            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) = post {
+            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) = current {
                 _browsing.value = false
                 _error.value = "Could not look for hubs (error $errorCode)."
                 listener = null
@@ -77,12 +87,12 @@ class NsdHubBrowser(context: Context, private val scope: CoroutineScope) : HubBr
 
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) = Unit
 
-            override fun onServiceFound(info: NsdServiceInfo) = post {
+            override fun onServiceFound(info: NsdServiceInfo) = current {
                 queue.addLast(info)
                 resolveNext()
             }
 
-            override fun onServiceLost(info: NsdServiceInfo) = post {
+            override fun onServiceLost(info: NsdServiceInfo) = current {
                 found.remove(info.serviceName)
                 publish()
             }
@@ -98,6 +108,7 @@ class NsdHubBrowser(context: Context, private val scope: CoroutineScope) : HubBr
     }
 
     override fun stop() {
+        wanted = false
         listener?.let { runCatching { nsd?.stopServiceDiscovery(it) } }
         listener = null
         runCatching { multicast?.release() }
@@ -106,6 +117,12 @@ class NsdHubBrowser(context: Context, private val scope: CoroutineScope) : HubBr
         found.clear()
         publish()
         _browsing.value = false
+    }
+
+    override fun refresh() {
+        if (!wanted) return
+        stop()
+        start()
     }
 
     private fun post(block: () -> Unit) {

@@ -17,6 +17,12 @@
 //!
 //! The reference's `wIndex` 2 on the status request is the vendor interface,
 //! which the USB transport always sends; other links have no such field.
+//!
+//! A client that polls fills fast keeps the target in a [`RingTargetCache`] and
+//! decodes each `REQ_GET_BUFFER_STATS` it reads with [`decode_output_fills`]
+//! (WP CG21). The firmware sends no notification for a latency change, so
+//! [`read_ring_health_cached`], on the slow cadence, is what brings another
+//! client's change in.
 
 #![warn(
     clippy::unwrap_used,
@@ -124,12 +130,87 @@ pub struct OutputFill {
     pub band: FillBand,
 }
 
+/// The fill target as last read, so a fast poll need not read it every time
+/// (WP CG21). Keep one per connection.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RingTargetCache {
+    /// The settled answer: `Some(None)` is firmware without the status. `None`
+    /// means the next [`target`](Self::target) reads.
+    settled: Option<Option<RingTarget>>,
+    /// This connection's firmware has answered the status. A stall after that is
+    /// the flash write of a latency change, not older firmware.
+    has_status: bool,
+}
+
+impl RingTargetCache {
+    /// Forget the target: it may have changed. The next
+    /// [`target`](Self::target) reads.
+    pub const fn invalidate(&mut self) {
+        self.settled = None;
+    }
+
+    /// The target, read only when none is settled.
+    ///
+    /// # Errors
+    /// As for [`refresh`](Self::refresh).
+    pub fn target(&mut self, t: &mut dyn Transport) -> Result<Option<RingTarget>> {
+        match self.settled {
+            Some(known) => Ok(known),
+            None => self.refresh(t),
+        }
+    }
+
+    /// Read the target. An answer that can still change is used but not kept: a
+    /// status with `pending` set still shows the old target, and a stall from
+    /// firmware that has answered before is its flash write. A failed read keeps
+    /// what was settled.
+    ///
+    /// # Errors
+    /// The transport's, except a stall or a short reply.
+    pub fn refresh(&mut self, t: &mut dyn Transport) -> Result<Option<RingTarget>> {
+        let status = read_latency_status(t)?;
+        match status {
+            Some((target, pending)) => {
+                self.has_status = true;
+                self.settled = (!pending).then_some(Some(target));
+                Ok(Some(target))
+            }
+            None => {
+                self.settled = (!self.has_status).then_some(None);
+                Ok(None)
+            }
+        }
+    }
+}
+
 /// Read the rings' health, or `None` on firmware without the status.
 ///
 /// # Errors
 /// The transport's, including a stall or short reply on a counter.
 pub fn read_ring_health(t: &mut dyn Transport) -> Result<Option<RingHealth>> {
-    let Some(target) = read_ring_target(t)? else {
+    let target = read_ring_target(t)?;
+    read_ring_counters(t, target)
+}
+
+/// [`read_ring_health`], leaving the target it read in `cache`, whatever the
+/// counters do.
+///
+/// # Errors
+/// As for [`read_ring_health`].
+pub fn read_ring_health_cached(
+    t: &mut dyn Transport,
+    cache: &mut RingTargetCache,
+) -> Result<Option<RingHealth>> {
+    let target = cache.refresh(t)?;
+    read_ring_counters(t, target)
+}
+
+/// The counters behind a target just read; `None` without one.
+fn read_ring_counters(
+    t: &mut dyn Transport,
+    target: Option<RingTarget>,
+) -> Result<Option<RingHealth>> {
+    let Some(target) = target else {
         return Ok(None);
     };
     Ok(Some(RingHealth {
@@ -148,6 +229,11 @@ pub fn read_ring_health(t: &mut dyn Transport) -> Result<Option<RingHealth>> {
 /// # Errors
 /// The transport's, except a stall or a short reply.
 pub fn read_ring_target(t: &mut dyn Transport) -> Result<Option<RingTarget>> {
+    Ok(read_latency_status(t)?.map(|(target, _)| target))
+}
+
+/// The target and `pending`, or `None` on firmware without the status.
+fn read_latency_status(t: &mut dyn Transport) -> Result<Option<(RingTarget, bool)>> {
     match t.control_in(
         op::REQ_OUTPUT_LATENCY,
         LATENCY_GET_STATUS,
@@ -209,24 +295,39 @@ pub fn fill_band(target: Option<&RingTarget>, fill_pct: f64) -> FillBand {
     }
 }
 
-/// `OutputLatencyStatus` (config.h): the three fields a fill is judged by.
-fn decode_target(raw: &[u8]) -> Option<RingTarget> {
+/// `OutputLatencyStatus` (config.h): the three fields a fill is judged by, and
+/// `pending`.
+fn decode_target(raw: &[u8]) -> Option<(RingTarget, bool)> {
     let status: &[u8; LATENCY_STATUS_LEN as usize] = raw
         .get(..usize::from(LATENCY_STATUS_LEN))?
         .try_into()
         .ok()?;
-    let &[_, _, us0, us1, target0, target1, batch0, batch1, ..] = status;
-    Some(RingTarget {
+    let &[
+        _,
+        _,
+        us0,
+        us1,
+        target0,
+        target1,
+        batch0,
+        batch1,
+        pending,
+        ..,
+    ] = status;
+    let target = RingTarget {
         target_frames: u16::from_le_bytes([target0, target1]),
         target_us: u16::from_le_bytes([us0, us1]),
         batch_frames: u16::from_le_bytes([batch0, batch1]),
-    })
+    };
+    Some((target, pending != 0))
 }
 
 /// The live entries of a `BufferStatsPacket`. Read here rather than through the
 /// packet's codec for bytes 6-7, the fill in 0.01%: the percentages move in
 /// 6.25% steps (48 frames), which reads as an empty ring at a 32-frame target.
-fn decode_output_fills(raw: &[u8], target: Option<&RingTarget>) -> Vec<OutputFill> {
+/// `raw` is a `REQ_GET_BUFFER_STATS` reply; `target` is `None` on firmware without
+/// the status.
+pub fn decode_output_fills(raw: &[u8], target: Option<&RingTarget>) -> Vec<OutputFill> {
     let live = raw.first().map_or(0, |n| (*n).min(BUFFER_SPDIF_COUNT));
     raw.get(BUFFER_SPDIF_AT..)
         .unwrap_or_default()
@@ -557,5 +658,116 @@ mod tests_wp_cg12 {
             }
             let _ = decode_target(&raw);
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg21 {
+    use std::sync::{Arc, Mutex};
+
+    use dspi_transport::MockTransport;
+    use dspi_transport::mock::{Exchange, Reply};
+
+    use super::*;
+
+    /// `OutputLatencyStatus` with this target and `pending`.
+    fn status(target: u8, pending: u8) -> Reply {
+        Reply::Data(vec![3, 3, 0xD0, 0x07, target, 0, 48, 0, pending, 7, 0, 0])
+    }
+
+    fn reads(log: &Arc<Mutex<Vec<Exchange>>>) -> usize {
+        log.lock().unwrap().len()
+    }
+
+    #[test]
+    fn wp_cg21_a_settled_target_is_read_once_until_invalidated() {
+        let mut t = MockTransport::new().reply(
+            op::REQ_OUTPUT_LATENCY,
+            Reply::Sequence(vec![status(96, 0), status(32, 0)]),
+        );
+        let log = t.log_handle();
+        let mut cache = RingTargetCache::default();
+        for _ in 0..5 {
+            let target = cache.target(&mut t).unwrap().unwrap();
+            assert_eq!(target.target_frames, 96);
+        }
+        assert_eq!(reads(&log), 1);
+
+        cache.invalidate();
+        assert_eq!(cache.target(&mut t).unwrap().unwrap().target_frames, 32);
+        assert_eq!(cache.target(&mut t).unwrap().unwrap().target_frames, 32);
+        assert_eq!(reads(&log), 2);
+    }
+
+    #[test]
+    fn wp_cg21_firmware_without_the_status_is_asked_once() {
+        let mut t = MockTransport::new();
+        let log = t.log_handle();
+        let mut cache = RingTargetCache::default();
+        for _ in 0..5 {
+            assert_eq!(cache.target(&mut t).unwrap(), None);
+        }
+        assert_eq!(reads(&log), 1);
+    }
+
+    #[test]
+    fn wp_cg21_a_pending_change_is_not_kept() {
+        let mut t = MockTransport::new().reply(
+            op::REQ_OUTPUT_LATENCY,
+            Reply::Sequence(vec![status(96, 1), status(96, 1), status(32, 0)]),
+        );
+        let log = t.log_handle();
+        let mut cache = RingTargetCache::default();
+        assert_eq!(cache.target(&mut t).unwrap().unwrap().target_frames, 96);
+        assert_eq!(cache.target(&mut t).unwrap().unwrap().target_frames, 96);
+        assert_eq!(cache.target(&mut t).unwrap().unwrap().target_frames, 32);
+        assert_eq!(cache.target(&mut t).unwrap().unwrap().target_frames, 32);
+        assert_eq!(reads(&log), 3);
+    }
+
+    #[test]
+    fn wp_cg21_a_stall_after_an_answer_is_the_flash_write_not_old_firmware() {
+        let mut t = MockTransport::new().reply(
+            op::REQ_OUTPUT_LATENCY,
+            Reply::Sequence(vec![status(96, 0), Reply::Stall, status(32, 0)]),
+        );
+        let log = t.log_handle();
+        let mut cache = RingTargetCache::default();
+        assert!(cache.target(&mut t).unwrap().is_some());
+        cache.invalidate();
+        assert_eq!(cache.target(&mut t).unwrap(), None);
+        assert_eq!(cache.target(&mut t).unwrap().unwrap().target_frames, 32);
+        assert_eq!(cache.target(&mut t).unwrap().unwrap().target_frames, 32);
+        assert_eq!(reads(&log), 3);
+    }
+
+    #[test]
+    fn wp_cg21_a_failed_read_keeps_what_was_settled() {
+        let mut t = MockTransport::new().reply(
+            op::REQ_OUTPUT_LATENCY,
+            Reply::Sequence(vec![status(96, 0), Reply::Disconnect]),
+        );
+        let mut cache = RingTargetCache::default();
+        assert!(cache.target(&mut t).unwrap().is_some());
+        assert!(matches!(
+            cache.refresh(&mut t),
+            Err(TransportError::Disconnected)
+        ));
+        assert_eq!(cache.target(&mut t).unwrap().unwrap().target_frames, 96);
+    }
+
+    #[test]
+    fn wp_cg21_the_health_read_refreshes_the_cache_even_when_a_counter_fails() {
+        let mut t = MockTransport::new()
+            .reply(
+                op::REQ_OUTPUT_LATENCY,
+                Reply::Sequence(vec![status(96, 0), status(32, 0)]),
+            )
+            .reply(op::REQ_GET_STATUS, Reply::Stall);
+        let mut cache = RingTargetCache::default();
+        assert!(cache.target(&mut t).unwrap().is_some());
+        assert!(read_ring_health_cached(&mut t, &mut cache).is_err());
+        assert_eq!(cache.target(&mut t).unwrap().unwrap().target_frames, 32);
     }
 }

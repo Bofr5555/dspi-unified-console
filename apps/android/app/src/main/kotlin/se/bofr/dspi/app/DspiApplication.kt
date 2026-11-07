@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.bridge.DspiBridgeImpl
 import se.bofr.dspi.ffi.FfiDspiCore
+import se.bofr.dspi.link.LinkNetworkFollower
 import se.bofr.dspi.link.LinkNetworkMonitor
 import se.bofr.dspi.link.LinkSettingsStore
 import se.bofr.dspi.link.LinkTokenStore
@@ -40,7 +41,7 @@ import se.bofr.dspi.usb.UsbSession
  * `LinkStore.load` never waits for the disk.
  * The USB session is started here, not per Activity (UsbSession.start KDoc),
  * so the device stays open across Activity recreation while the foreground
- * service runs. Demo mode builds a separate fake stack on demand
+ * service runs. Demo mode builds a separate stack on demand
  * ([AppModeController]).
  *
  * DSPi Link (REMOTE, opt-in, off by default): [linkSettings], the
@@ -80,7 +81,7 @@ class DspiApplication : Application() {
         private set
     lateinit var networking: AppNetworkingController
 
-    /** WP AN26: the About table, from the real core in every mode (demo's core is a fake). */
+    /** WP AN26: the About table, from the device stack's core in every mode. */
     lateinit var aboutJson: () -> String
         private set
 
@@ -106,6 +107,9 @@ class DspiApplication : Application() {
         session = usb
         linkSettings = PrefsLinkSettingsStore(this)
         linkTokens = keystoreLinkTokenStore(this)
+        // -- WP AN4 -- before the REMOTE stack's factory, which marks a session active before its first dial
+        lateinit var linkFollower: LinkNetworkFollower
+        val network = LinkNetworkMonitor(this, onAvailable = { linkFollower.networkAvailable() }, onLost = { linkFollower.networkLost() })
         val clientName = { linkSettings.settings.value.clientName.ifBlank { Build.MODEL.orEmpty().ifBlank { "Android" } } }
         modes = AppModeController(
             deviceBridge = bridge,
@@ -115,6 +119,7 @@ class DspiApplication : Application() {
             demoFactory = { startDemoSession(appScope, version, log = { Log.i(TAG, it) }) },
             forwardUiVisible = usb::setUiVisible,
             remoteFactory = {
+                network.setSessionActive(true)
                 startRemoteSession(
                     appScope,
                     version,
@@ -123,26 +128,32 @@ class DspiApplication : Application() {
                     clientName,
                     services.linkClient(),
                     linkStore,
-                    log = { Log.i(TAG, it) }
+                    log = { Log.i(TAG, it) },
+                    onClose = { network.setSessionActive(false) }
                 )
             }
         )
         // The notification acts on the unit on screen (device, demo or REMOTE)
         ConnectionServiceLink.controls = SwitchingNotificationControls(modes.bridge, appScope)
+        val hubBrowser = NsdHubBrowser(this, appScope)
         networking = AppNetworkingController(
             linkSettings,
-            NsdHubBrowser(this, appScope),
+            hubBrowser,
             linkTokens,
             modes,
             appScope,
             Build.MODEL.orEmpty(),
             parseAddress = { t -> runCatching { deviceCore.linkParseAddress(t) }.getOrNull()?.let { it.host to it.port } }
         )
-        val network = LinkNetworkMonitor(this) { appScope.launch { modes.remoteSession?.retryNow() } }
+        linkFollower = LinkNetworkFollower(hubBrowser, modes.remoteState) { modes.remoteSession?.networkTarget }
+        appScope.launch { linkFollower.follow() }
         appScope.launch { linkSettings.settings.collect { if (it.enabled) network.start() else network.stop() } }
         usbGate = UsbStartGate(appScope) { linkStore.awaitLoaded() }
         usbGate.run { usb.start(this) }
-        UiVisibilityTracker(appScope) { modes.setUiVisible(it) }.install(this)
+        UiVisibilityTracker(appScope) {
+            modes.setUiVisible(it)
+            if (it) linkFollower.uiShown()
+        }.install(this)
         appSettings = DataStoreAppSettingsStore.of(this)
         bindRtaOptions(appScope, appSettings.settings, modes.bridge)
     }

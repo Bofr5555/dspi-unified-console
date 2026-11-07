@@ -294,9 +294,10 @@ Reference: macOS `MatrixMixerView.swift` (+ the matrix helpers of
 ## APP
 
 1. **Demo mode** ("Demo (no device)"): no official client has one. Offered
-   only while no DSPi is attached; runs `FakeDspiCore.demo()` (V32 capture)
-   behind its own `DspiBridgeImpl`, never through the USB session, is
-   labelled in the title and in a strip under it, and ends by itself as soon
+   only while no DSPi is attached; runs the real core on its demo device (AN28)
+   behind its own `DspiBridgeImpl`, never through the USB session, touches no
+   device (`DemoCore`; the firmware page is a notice), is labelled in the
+   connection strip, and ends by itself as soon
    as a DSPi appears. Its input-pair links are not persisted.
 2. **Input-pair links** are kept in a Preferences DataStore
    (`dspi_bridge`, key `inputLinks/<serial>`) instead of QSettings, same keys

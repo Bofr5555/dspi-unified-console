@@ -81,15 +81,15 @@ class ControllersTest {
         b.setUiVisible(false)
         attach(b, core)
         advanceTimeBy(5_000)
-        assertEquals(0, core.callCount("fetchBufferStats"))
+        assertEquals(0, core.callCount("fetchStatsTick"))
         b.stats.watching = true
         advanceTimeBy(600)
-        assertTrue(core.callCount("fetchBufferStats") >= 10)
+        assertTrue(core.callCount("fetchStatsTick") >= 10)
         assertEquals(150_000_000L, b.stats.info.value[DspiConstants.STAT_CLOCK_HZ])
         b.stats.watching = false
-        val n = core.callCount("fetchBufferStats")
+        val n = core.callCount("fetchStatsTick")
         advanceTimeBy(5_000)
-        assertEquals(n, core.callCount("fetchBufferStats"))
+        assertEquals(n, core.callCount("fetchStatsTick"))
         // Reconnects after the first connection are counted
         b.detachDevice(core.serial)
         attach(b, core)

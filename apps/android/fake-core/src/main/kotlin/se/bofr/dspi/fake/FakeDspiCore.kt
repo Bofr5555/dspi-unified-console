@@ -62,6 +62,7 @@ import se.bofr.dspi.core.SiggenStatus
 import se.bofr.dspi.core.SiggenTypeInfo
 import se.bofr.dspi.core.SpdifBufferStats
 import se.bofr.dspi.core.SpdifRxStatus
+import se.bofr.dspi.core.StatsTick
 import se.bofr.dspi.core.SystemStatus
 import se.bofr.dspi.core.UartConfig
 import se.bofr.dspi.core.UnimplementedDspiCore
@@ -69,8 +70,8 @@ import se.bofr.dspi.core.UpmixStatus
 import se.bofr.dspi.core.WireFeat
 
 /**
- * Hardware-free, stateful [se.bofr.dspi.core.DspiCoreApi] for demo mode and
- * tests. It models what the real core does to its `DspState` for every
+ * Hardware-free, stateful [se.bofr.dspi.core.DspiCoreApi] for tests and
+ * previews. It models what the real core does to its `DspState` for every
  * setter (`DSPi-Console-Linux:core/src/commands.rs`, `preset.rs` @ 4683a2c:
  * clamping, quantising, the crossfeed preset table, tube type rows,
  * Core 1 conflicts, pin refusals), keeps presets and an unsaved-changes
@@ -1351,10 +1352,12 @@ open class FakeDspiCore(
 
     private var bufferSeq = 0
 
-    override fun fetchBufferStats(): BufferStats = op("fetchBufferStats") {
+    override fun fetchBufferStats(): BufferStats = op("fetchBufferStats") { nextBufferStats() }
+
+    private fun nextBufferStats(): BufferStats {
         bufferSeq++
         val fill = 50 + (bufferSeq % 7) - 3
-        BufferStats(
+        return BufferStats(
             numSpdif = 4,
             pdmActive = s.outputEnabled.getOrElse(s.numOutputChannels - 1) { false },
             streaming = true,
@@ -1385,11 +1388,16 @@ open class FakeDspiCore(
         )
     }
 
-    override fun fetchOutputFills(): List<OutputFill> = op("fetchOutputFills") {
+    override fun fetchOutputFills(): List<OutputFill> = op("fetchOutputFills") { nextOutputFills() }
+
+    private fun nextOutputFills(): List<OutputFill> {
         ringFillSeq++
         val frames = 96 + ((ringFillSeq % 7) - 3) * 8
-        List(4) { OutputFill(fillPct = frames * 100.0 / 512, minPct = 14, maxPct = 24, band = FillBand.GOOD) }
+        return List(4) { OutputFill(fillPct = frames * 100.0 / 512, minPct = 14, maxPct = 24, band = FillBand.GOOD) }
     }
+
+    // -- WP CG21 --
+    override fun fetchStatsTick(): StatsTick = op("fetchStatsTick") { StatsTick(buffers = nextBufferStats(), fills = nextOutputFills()) }
 
     override fun fetchSpdifRxStatus(): SpdifRxStatus = op("fetchSpdifRxStatus") {
         SpdifRxStatus(
@@ -1643,7 +1651,7 @@ open class FakeDspiCore(
             FakeDspiCore::class.java.getResourceAsStream(path)?.use { it.readBytes().toString(Charsets.UTF_8) }
         }
 
-        /** Demo mode: the seeded device with an animated analyser. */
+        /** The seeded device with an animated analyser (the app's demo mode before AN28, now tests and previews). */
         fun demo(): FakeDspiCore = seeded(animate = true).also { it.coreVregSupported = true }
 
         // -- WP AN6 --

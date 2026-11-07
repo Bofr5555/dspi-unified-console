@@ -9,7 +9,7 @@ package se.bofr.dspi.core
  * Android leaves out). Its doc comments, repeated below, are the semantics.
  *
  * Implementations: `FfiDspiCore` (:ffi, the real core over UniFFI) and
- * `FakeDspiCore` (:fake-core, demo mode and tests).
+ * `FakeDspiCore` (:fake-core, tests and previews).
  *
  * Threading: every method may block on USB (≤ 1 s). Callers (the bridge) use
  * ONE serial background dispatcher; never call from the main thread.
@@ -223,6 +223,64 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun csDemoBusy(on: Boolean)
+
+    /**
+     * What a page shows for one record, from the last [`DspiCore::cs_fetch`]:
+     * `{ok, title, summary, rows}`. `kind` is `binding`, `ir`, `step`, `page`,
+     * `display` or `group`; `slot` is the record's index; `draft` is the record as
+     * in [`DspiCore::cs_snapshot`].
+     *
+     * Each row has `id`, `title`, `detail` and `kind`. A `pick` has `value`, `text`
+     * and `options` of `{value, text, section?, owner?, disabled?}`; a `number`
+     * has `value`, `min`, `max`, `step`, `unit` and `decimals`, in natural units; a
+     * `toggle` has `on` and `enabled`; a `note` has `warning`, and its words in
+     * `detail`. `dspi_session::cs_rows` lists the ids.
+     *
+     * No device I/O. `{ok: false, error}` on a bad draft, an index the device does
+     * not have, no device, or before the first fetch. Never fails otherwise.
+     */
+    fun csDescribe(kind: String, slot: Long, draft: String): String
+
+    /**
+     * The record after one row's value changed: `{ok, draft}`. `change` is
+     * `{id, value}`: the row's id, and an option's value, a number in natural units,
+     * or a boolean. The edit resets what the change leaves meaningless, so the
+     * record stays one the firmware takes.
+     *
+     * No device I/O: nothing changes on the device until the record goes to
+     * [`DspiCore::cs_apply`]. `{ok: false, error}` when the row or the value is not
+     * one [`DspiCore::cs_describe`] offers for this record, or as `cs_describe`.
+     */
+    fun csEdit(kind: String, slot: Long, draft: String, change: String): String
+
+    /**
+     * A fresh binding of type `component` in `slot`, on free pins: `{ok, draft}`.
+     * No device I/O. `{ok: false, error}` as [`DspiCore::cs_describe`].
+     */
+    fun csNewBinding(slot: Long, component: Int): String
+
+    /**
+     * A fresh record of `kind`, `ir`, `step` or `page`: `{ok, draft}`. A step and a
+     * page are ready to apply; a remote button needs its code from a learn first.
+     * No device I/O. `{ok: false, error}` as [`DspiCore::cs_describe`].
+     */
+    fun csNewRecord(kind: String): String
+
+    /**
+     * A control-surface or pin-configuration status code as a sentence; empty for
+     * success. Needs no device.
+     */
+    fun csStatusText(code: Int): String
+
+    /**
+     * On the demo device only: the remote button a learn is waiting for was
+     * pressed. The learn ends with this protocol and code and notifies, as on a
+     * real receiver. False when nothing was armed. As
+     * [`cs_demo_busy`](Self::cs_demo_busy), it answers [`DspiError::Unsupported`]
+     * on any other device.
+     */
+    @Throws(DspiException::class)
+    fun csDemoLearn(protocol: Int, code: Long): Boolean
 
     /**
      * Adopt a USB device the platform already opened: Android's
@@ -2218,6 +2276,25 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun fetchOutputFills(): List<OutputFill>
+
+    /**
+     * The Stats window's fast poll: the buffer fill levels and the live
+     * outputs' fill, as [`DspiCore::fetch_buffer_stats`] and
+     * [`DspiCore::fetch_output_fills`] give them, from one transfer.
+     *
+     * The fill target is kept on the connection. It is read again, for one more
+     * transfer on the tick after, when this core changed the latency, when a
+     * notification says the settings moved (a preset, a bulk write, a format
+     * change, a lost packet), and after a Link re-attach. The firmware does not
+     * notify a latency change, so another client's reaches this through
+     * [`DspiCore::fetch_ring_health`]: call that on the slow cadence alongside.
+     * While a change has yet to apply the target is read each tick.
+     *
+     * Errors: as for [`DspiCore::fetch_buffer_stats`]. A failed read of the
+     * target is not an error: `fills` is `None`.
+     */
+    @Throws(DspiException::class)
+    fun fetchStatsTick(): StatsTick
 
     /**
      * The buffer fill levels (%) and their watermarks

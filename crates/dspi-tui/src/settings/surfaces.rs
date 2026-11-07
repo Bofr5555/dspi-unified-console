@@ -63,13 +63,8 @@ pub const FOOTER: &str = "Wire push buttons, toggle switches, potentiometers, ro
                           reboot, or Revert to discard them.";
 
 /// The warning the Console puts under a binding that carries a delay.
-pub const DELAY_WARNING: &str = "Applying, reverting, or rebooting briefly releases the pin and \
-                                 restarts the timing from off. Driving an amplifier trigger, that \
-                                 is a power cycle.";
-
-/// The warning shown when editing is gated and nothing can lift the gate.
-pub const EDIT_GATE_WARNING: &str = "Nothing can arm editing, so a Browse/Adjust control can only \
-                                     browse pages. Bind a button or remote key to Allow Editing.";
+// -- WP CG20 --
+pub use dspi_session::cs_rows::{DELAY_WARNING, EDIT_GATE_WARNING};
 
 pub const LEARN_WAITING: &str = "Waiting for a button...";
 pub const LEARN_PROMPT: &str = "Point the remote at the receiver and press the button to learn.";
@@ -2528,29 +2523,7 @@ impl SettingsPage for SurfacesPage {
                 if let Some((_, n)) = nouns.get(c).copied()
                     && n != self.ir_drafts[sub].noun
                 {
-                    let mut cmd = self.ir_drafts[sub].clone();
-                    cmd.noun = n;
-                    // A new noun starts on its first channel, as the Console
-                    // starts it; the group, if any, went with the old noun.
-                    cmd.target = 0;
-                    cmd.index = 0;
-                    cmd.flags &= !m::flag::GROUP;
-                    // An aux noun needs an aux output, never slot 0 by default.
-                    if self
-                        .live
-                        .noun_desc(n)
-                        .is_some_and(|d| d.target_kind == m::target::AUX)
-                    {
-                        cmd.target = m::target_addresses(&self.live, n, None)
-                            .first()
-                            .copied()
-                            .unwrap_or(0);
-                    }
-                    let acts = m::valid_actions(&self.live, m::ty::IR, n);
-                    if !acts.contains(&cmd.action) {
-                        cmd.action = m::default_action(&self.live, m::ty::IR, n);
-                    }
-                    self.ir_drafts[sub] = default_ir_operands(&self.live, &cmd);
+                    self.ir_drafts[sub] = m::set_ir_noun(&self.live, &self.ir_drafts[sub], n);
                 }
                 PageEvent::Handled
             }
@@ -2990,59 +2963,8 @@ fn set_flag(flags: &mut u8, mask: u8, on: bool) {
     }
 }
 
-/// Reset a remote button's value and step for its action and noun kind,
-/// leaving the learned protocol, code, target and band alone.
-///
-/// The addressing stays as it was: a command on a group stays on that group,
-/// as a binding's does ([`m::sanitize_group_flags`]). The Console clears every
-/// flag here, which turns `target` from group N into channel N without a
-/// word. The other two flags are kept only where the firmware takes them:
-/// REPEAT on INC and DEC (control_surfaces.c:1837-1839), WRAP where it means
-/// something, on an enum INC or DEC.
-pub fn default_ir_operands(cs: &CsData, c: &IrCommand) -> IrCommand {
-    let mut c = c.clone();
-    let nd = cs.noun_desc(c.noun).copied().unwrap_or_default();
-    let k = m::operand_kind(cs, c.noun);
-    c.value = 0;
-    c.step = 0;
-    let steps = c.action == m::act::INC || c.action == m::act::DEC;
-    if !steps {
-        c.flags &= !m::flag::REPEAT;
-    }
-    if !(steps && k == m::kind::ENUM) {
-        c.flags &= !m::flag::WRAP;
-    }
-    if c.flags & m::flag::GROUP != 0 {
-        let usable = m::compatible_groups(cs, c.noun);
-        if c.action == m::act::TRIGGER || usable.is_empty() {
-            // No group fits any more: back to the noun's first address
-            // rather than reading the group index as a channel.
-            c.flags &= !m::flag::GROUP;
-            c.target = m::target_addresses(cs, c.noun, None)
-                .first()
-                .copied()
-                .unwrap_or(0);
-        } else if !usable.contains(&c.target) {
-            c.target = usable[0];
-        }
-    }
-    match c.action {
-        m::act::INC | m::act::DEC => {
-            if k == m::kind::ENUM {
-                c.step = 1;
-            }
-        }
-        m::act::SET | m::act::MOMENTARY => {
-            if k == m::kind::CONTINUOUS {
-                c.value = nd.max_q;
-            } else if k == m::kind::BOOL {
-                c.value = 1;
-            }
-        }
-        _ => {}
-    }
-    c
-}
+// -- WP CG20 -- Moved to the session, where every client shares it.
+pub use dspi_session::cs_model::default_ir_operands;
 
 #[cfg(test)]
 mod tests {

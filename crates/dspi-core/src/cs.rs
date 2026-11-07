@@ -124,7 +124,7 @@ impl ConfigKey {
 
 impl CsState {
     /// The data, if it was read from the connection with this serial.
-    fn data_for(&self, serial: &str) -> Option<&CsData> {
+    pub(crate) fn data_for(&self, serial: &str) -> Option<&CsData> {
         if self.owner.as_deref() == Some(serial) {
             self.data.as_ref()
         } else {
@@ -365,7 +365,7 @@ fn ensure_fetched(inner: &mut Inner, cs: &mut CsState) -> Result<()> {
 // JSON in: the editor's operations (untrusted)
 // ---------------------------------------------------------------------------
 
-fn invalid(msg: impl Into<String>) -> DspiError {
+pub(crate) fn invalid(msg: impl Into<String>) -> DspiError {
     DspiError::InvalidArgument { msg: msg.into() }
 }
 
@@ -427,7 +427,7 @@ fn index(op: &Value, limit: usize, what: &str) -> Result<u8> {
     }
 }
 
-fn binding_from_json(v: &Value) -> Result<CsBinding> {
+pub(crate) fn binding_from_json(v: &Value) -> Result<CsBinding> {
     Ok(CsBinding {
         component: num(v, "type", 0)?,
         noun: num(v, "noun", 0)?,
@@ -448,7 +448,7 @@ fn binding_from_json(v: &Value) -> Result<CsBinding> {
     })
 }
 
-fn ir_from_json(v: &Value) -> Result<IrCommand> {
+pub(crate) fn ir_from_json(v: &Value) -> Result<IrCommand> {
     Ok(IrCommand {
         noun: num(v, "noun", 0)?,
         action: num(v, "action", 0)?,
@@ -462,7 +462,7 @@ fn ir_from_json(v: &Value) -> Result<IrCommand> {
     })
 }
 
-fn group_from_json(v: &Value) -> Result<CsGroup> {
+pub(crate) fn group_from_json(v: &Value) -> Result<CsGroup> {
     Ok(CsGroup {
         target_kind: num(v, "targetKind", 0)?,
         member_mask: num(v, "memberMask", 0)?,
@@ -470,7 +470,7 @@ fn group_from_json(v: &Value) -> Result<CsGroup> {
     })
 }
 
-fn step_from_json(v: &Value) -> Result<CsMacroStep> {
+pub(crate) fn step_from_json(v: &Value) -> Result<CsMacroStep> {
     Ok(CsMacroStep {
         noun: num(v, "noun", 0)?,
         action: num(v, "action", 0)?,
@@ -483,7 +483,7 @@ fn step_from_json(v: &Value) -> Result<CsMacroStep> {
     })
 }
 
-fn display_cfg_from_json(v: &Value) -> Result<CsDisplayCfg> {
+pub(crate) fn display_cfg_from_json(v: &Value) -> Result<CsDisplayCfg> {
     Ok(CsDisplayCfg {
         mode: num(v, "mode", 0)?,
         home_page: num(v, "homePage", 0)?,
@@ -495,7 +495,7 @@ fn display_cfg_from_json(v: &Value) -> Result<CsDisplayCfg> {
     })
 }
 
-fn page_from_json(v: &Value) -> Result<CsDisplayPage> {
+pub(crate) fn page_from_json(v: &Value) -> Result<CsDisplayPage> {
     Ok(CsDisplayPage {
         noun: num(v, "noun", 0)?,
         target: num(v, "target", 0)?,
@@ -508,7 +508,7 @@ fn page_from_json(v: &Value) -> Result<CsDisplayPage> {
 // JSON out: the old core's shapes
 // ---------------------------------------------------------------------------
 
-fn binding_json(b: &CsBinding) -> Value {
+pub(crate) fn binding_json(b: &CsBinding) -> Value {
     let [gpio0, gpio1] = b.gpio;
     json!({ "type": b.component, "noun": b.noun, "action": b.action, "flags": b.flags,
             "gpio0": gpio0, "gpio1": gpio1, "event": b.event, "target": b.target,
@@ -517,13 +517,13 @@ fn binding_json(b: &CsBinding) -> Value {
             "offDelay": b.off_delay, "extras": b.extras })
 }
 
-fn ir_json(c: &IrCommand) -> Value {
+pub(crate) fn ir_json(c: &IrCommand) -> Value {
     json!({ "noun": c.noun, "action": c.action, "flags": c.flags, "target": c.target,
             "index": c.index, "protocol": c.protocol, "value": c.value, "step": c.step,
             "code": c.code })
 }
 
-fn step_json(s: &CsMacroStep) -> Value {
+pub(crate) fn step_json(s: &CsMacroStep) -> Value {
     json!({ "noun": s.noun, "action": s.action, "flags": s.flags, "target": s.target,
             "index": s.index, "value": s.value, "step": s.step, "preDelay": s.pre_delay })
 }
@@ -574,10 +574,15 @@ fn snapshot(cs: &CsState, d: &CsData) -> Value {
         "types": d.caps.types.iter()
             .map(|t| json!({ "actions": t.actions, "pins": t.pin_count, "pinClass": t.pin_class }))
             .collect::<Vec<_>>(),
-        "nouns": d.nouns.iter().map(|n| json!({ "kind": n.kind, "enumCount": n.enum_count,
+        // -- WP CG20 -- `name` as an indicator shows it, `controlName` as a control
+        // acts on it (cs_model::noun_name): the clients' noun tables come from here.
+        "nouns": (0..=u8::MAX).zip(d.nouns.iter()).map(|(i, n)| json!({ "kind": n.kind,
+            "enumCount": n.enum_count,
             "actions": n.actions, "min": n.min_q, "max": n.max_q, "unit": n.unit,
             "targetKind": n.target_kind, "targetCount": n.target_count,
-            "deferred": n.dflags & 1 != 0 })).collect::<Vec<_>>(),
+            "deferred": n.dflags & 1 != 0,
+            "name": cs_model::noun_name(i, ty::LED),
+            "controlName": cs_model::noun_name(i, ty::BUTTON) })).collect::<Vec<_>>(),
         "maxIr": d.caps.max_ir_commands, "maxGroups": d.caps.max_groups,
         "maxMacros": d.caps.max_macros, "maxSteps": d.caps.max_macro_steps,
         "status": status_json(cs, &d.status),
@@ -615,7 +620,7 @@ fn applied() -> Value {
 /// The reply for a failed operation: a refusal keeps the device's status
 /// code (the old core's `{ok: false, status}`), anything else is
 /// `{ok: false, error}`.
-fn failure(e: &DspiError) -> Value {
+pub(crate) fn failure(e: &DspiError) -> Value {
     match e {
         DspiError::Refused { status } => json!({ "ok": false, "status": status }),
         other => json!({ "ok": false, "error": other.to_string() }),
@@ -1490,6 +1495,14 @@ mod tests_wp_c14 {
         assert_eq!(s["nouns"].as_array().unwrap().len(), 79);
         assert_eq!(s["nouns"][0]["min"], -60 * 256);
         assert_eq!(s["nouns"][0]["deferred"], false);
+        // -- WP CG20 -- The names, for the clients' labels.
+        assert_eq!(s["nouns"][0]["name"], "Volume");
+        let clip = usize::from(noun::CLIP);
+        assert_eq!(s["nouns"][clip]["name"], "Clipping");
+        assert_eq!(s["nouns"][clip]["controlName"], "Clear Clipping");
+        let mac = usize::from(noun::MACRO);
+        assert_eq!(s["nouns"][mac]["name"], "Running Macro");
+        assert_eq!(s["nouns"][mac]["controlName"], "Macro");
         let b0 = &s["bindings"][0];
         assert_eq!(b0["type"], ty::ENCODER);
         assert_eq!(

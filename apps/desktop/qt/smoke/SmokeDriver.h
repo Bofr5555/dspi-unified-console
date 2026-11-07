@@ -85,6 +85,8 @@ private:
     void testSaveBarRefusal();
     // -- WP CG16 --
     void testCsPages();
+    // -- WP CG20 --
+    void testCsRules();
     // -- WP QD2 --
     void testPairMap();
     // -- WP QD3 --
@@ -96,6 +98,8 @@ private:
     void readOnlyClickAround(QQuickWindow *window, const char *where, QQuickItem *scope = nullptr);
     // -- WP QD8 --
     void testLink();
+    // -- WP HB6 --
+    void testHub();
     // -- WP QD7 --
     void runDemoEntry();
     void testDemoEntry();

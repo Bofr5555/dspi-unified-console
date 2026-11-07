@@ -67,6 +67,8 @@ pub mod state;
 
 mod connect;
 mod cs;
+// -- WP CG20 --
+mod cs_rules;
 mod curves;
 mod device;
 mod ext;
@@ -253,6 +255,10 @@ pub(crate) struct Connection {
     // -- WP QD4 --
     /// The device's name, "" for unnamed, kept as `source_names` is.
     pub(crate) device_name: String,
+    // -- WP CG21 --
+    /// The fill target `fetch_stats_tick` judges by. On the connection, so a
+    /// change of device starts over.
+    pub(crate) ring_target: dspi_session::ring_health::RingTargetCache,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -340,6 +346,8 @@ impl Connection {
             source_names_stale: false,
             // -- WP QD4 --
             device_name: String::new(),
+            // -- WP CG21 --
+            ring_target: Default::default(),
         }
     }
 

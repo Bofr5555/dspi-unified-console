@@ -158,7 +158,6 @@ void StatsController::onDeviceChanged() {
     // -- WP QD29 --
     setRingHealth({});
     m_outputFills.clear();
-    m_outputFillsAnswered = false;
     if (!serial.isEmpty()) {
         if (m_seenDevice) m_reconnects++;
         m_seenDevice = true;
@@ -344,64 +343,76 @@ void StatsController::setRingHealth(const QVariantMap &health) {
     emit ringHealthChanged();
 }
 
-// Two transfers. pollFast merges the result on its next tick. A failed read keeps the
-// last fills; with none yet, the rows show the buffer read's own numbers.
-void StatsController::pollOutputFills() {
-    if (m_outputFillsBusy) return;
-    m_outputFillsBusy = true;
-    const unsigned generation = m_generation;
-    m_worker.start(QRunnable::create([this, core = m_core, hook = m_outputFillsHook, generation]() {
-        const QJsonObject o = readJson(hook, dspi_fetch_output_fills, core);
-        const bool ok = o.value(QLatin1String("ok")).toBool();
-        const QVariantList rows = ok ? outputFillRows(o.value(QLatin1String("value")).toArray()) : QVariantList();
-        QMetaObject::invokeMethod(this, [this, ok, rows, generation]() {
-            m_outputFillsBusy = false;
-            if (m_generation != generation) return;
-            m_outputFillsAnswered = true;
-            if (ok) m_outputFills = rows;
-        }, Qt::QueuedConnection);
-    }));
-}
-
+// -- WP CG21 -- One transfer per tick: the core keeps the fill target, and the 2 s
+// health read keeps it current. A tick still reading skips this one. Null fills keep
+// the last ones; with none yet, the rows show the buffer read's own numbers.
 void StatsController::pollFast() {
     if (m_serial.isEmpty()) {
         if (!m_buffers.isEmpty()) { m_buffers.clear(); emit buffersChanged(); }
         return;
     }
-    // -- WP QD29 -- No rows until the first reply: at the lowest latency the buffer
-    // read's own percentages read as an empty ring.
-    pollOutputFills();
-    if (!m_outputFillsAnswered) return;
+    if (m_statsTickBusy) return;
+    m_statsTickBusy = true;
+    const unsigned generation = m_generation;
+    m_worker.start(QRunnable::create([this, core = m_core, hook = m_outputFillsHook, generation]() {
+        QJsonObject o = readJson({}, dspi_fetch_stats_tick, core);
+        if (hook && o.value(QLatin1String("ok")).toBool()) {
+            const QJsonObject h = QJsonDocument::fromJson(hook()).object();
+            o.insert(QStringLiteral("fills"), h.value(QLatin1String("ok")).toBool() ? h.value(QLatin1String("value")) : QJsonValue());
+        }
+        const bool ok = o.value(QLatin1String("ok")).toBool();
+        const bool hasFills = o.value(QLatin1String("fills")).isArray();
+        const QVariantList rows = hasFills ? outputFillRows(o.value(QLatin1String("fills")).toArray()) : QVariantList();
+        const QJsonObject buffers = o.value(QLatin1String("buffers")).toObject();
+        QMetaObject::invokeMethod(this, [this, ok, hasFills, rows, buffers, generation]() {
+            m_statsTickBusy = false;
+            if (m_generation != generation || !ok) return;
+            if (hasFills) m_outputFills = rows;
+            applyBuffers(buffers);
+        }, Qt::QueuedConnection);
+    }));
+}
 
-    BufferStats b {};
-    if (!dspi_fetch_buffer_stats(m_core, &b)) return;
-    const auto liveFill = [this, &b](int i) {   // -- WP QD29 --
-        return i < m_outputFills.size() ? quint8(m_outputFills[i].toMap().value("fill").toInt()) : b.spdif[i].fill_pct;
+void StatsController::applyBuffers(const QJsonObject &b) {
+    const int numSpdif = b.value(QLatin1String("numSpdif")).toInt();
+    const bool pdmActive = b.value(QLatin1String("pdmActive")).toBool();
+    const QJsonArray spdif = b.value(QLatin1String("spdif")).toArray();
+    const QJsonObject pdm = b.value(QLatin1String("pdm")).toObject();
+    const auto pct = [](const QJsonObject &o, const char *name) { return o.value(QLatin1String(name)).toInt(); };
+    const auto levels = [&pdm, &pct](const char *fill, const char *min, const char *max) {
+        return QVariantMap{ { "fill", pct(pdm, fill) }, { "min", pct(pdm, min) }, { "max", pct(pdm, max) } };
+    };
+    const auto liveFill = [this, &spdif, &pct](int i) {   // -- WP QD29 --
+        return i < m_outputFills.size() ? quint8(m_outputFills[i].toMap().value("fill").toInt())
+                                        : quint8(pct(spdif[i].toObject(), "fillPct"));
     };
 
     // History: one sample per poll and series, newest at the end
     quint8 sample[SeriesCount];
-    for (int i = 0; i < 4; i++) sample[i] = i < b.num_spdif ? liveFill(i) : Absent;
-    sample[PdmDma] = b.pdm_active ? b.pdm.dma_fill_pct : Absent;
-    sample[PdmRing] = b.pdm_active ? b.pdm.ring_fill_pct : Absent;
+    for (int i = 0; i < 4; i++) sample[i] = i < numSpdif ? liveFill(i) : Absent;
+    sample[PdmDma] = pdmActive ? quint8(pct(pdm, "dmaFillPct")) : Absent;
+    sample[PdmRing] = pdmActive ? quint8(pct(pdm, "ringFillPct")) : Absent;
     for (int s = 0; s < SeriesCount; s++) {
         std::rotate(m_history[s].begin(), m_history[s].begin() + 1, m_history[s].end());
         m_history[s].back() = sample[s];
     }
 
     QVariantMap m;
-    m["numSpdif"] = b.num_spdif;
-    m["pdmActive"] = b.pdm_active;
-    m["streaming"] = b.streaming;
+    m["numSpdif"] = numSpdif;
+    m["pdmActive"] = pdmActive;
+    m["streaming"] = b.value(QLatin1String("streaming")).toBool();
     QVariantList rows;
-    for (int i = 0; i < b.num_spdif; i++) {
+    for (int i = 0; i < numSpdif; i++) {
         // -- WP QD29 --
         if (i < m_outputFills.size()) rows.append(m_outputFills[i]);
-        else rows.append(QVariantMap{ { "fill", b.spdif[i].fill_pct }, { "min", b.spdif[i].min_pct }, { "max", b.spdif[i].max_pct } });
+        else {
+            const QJsonObject o = spdif[i].toObject();
+            rows.append(QVariantMap{ { "fill", pct(o, "fillPct") }, { "min", pct(o, "minPct") }, { "max", pct(o, "maxPct") } });
+        }
     }
     m["spdif"] = rows;
-    m["pdmDma"] = QVariantMap{ { "fill", b.pdm.dma_fill_pct }, { "min", b.pdm.dma_min_pct }, { "max", b.pdm.dma_max_pct } };
-    m["pdmRing"] = QVariantMap{ { "fill", b.pdm.ring_fill_pct }, { "min", b.pdm.ring_min_pct }, { "max", b.pdm.ring_max_pct } };
+    m["pdmDma"] = levels("dmaFillPct", "dmaMinPct", "dmaMaxPct");
+    m["pdmRing"] = levels("ringFillPct", "ringMinPct", "ringMaxPct");
     m_buffers = m;
     // Every sample moves the traces
     emit buffersChanged();

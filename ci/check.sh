@@ -75,9 +75,12 @@ RUN=ci/run.sh
 # library needs for CG1's and CG2's code to exist in it.
 # shellcheck source=container/images.conf
 . ci/container/images.conf
-CAPI_FEATURES=link,midir,mdns
+# -- WP HB6 -- hub: the smoke driver starts one (SmokeDriverHub.cpp)
+CAPI_FEATURES=link,midir,mdns,hub
 # -- WP QD8 -- The smoke driver's Link test talks to this binary.
 FAKEHUB="cargo build --release -p dspi-link --features fake-hub --bin dspi-link-fakehub"
+# -- WP HB6 -- The Terminal, as the smoke driver's client of a demo hub
+TERMINAL="cargo build --release --locked -p dspi-term"
 # -- WP CG9 -- The image with kotlinc and swiftc. Other steps keep ci/run.sh's.
 crates=()
 steps=()
@@ -144,9 +147,9 @@ for s in "${steps[@]}"; do
     qt5)
       $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && cmake -S apps/desktop/qt -B /work/build-desktop-qt5 -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=5 -DDSPI_CARGO_TARGET_DIR=/target && cmake --build /work/build-desktop-qt5" ;;
     qt-offscreen)
-      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt6-smoke --target DSPiConsoleSmoke && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub apps/desktop/qt/smoke/run.sh /work/build-desktop-qt6-smoke/DSPiConsoleSmoke /work/smoke-out && DSPI_SMOKE_HW=dry apps/desktop/qt/smoke/run.sh /work/build-desktop-qt6-smoke/DSPiConsoleSmoke /work/smoke-out-hw-dry" ;;
+      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && $TERMINAL && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt6-smoke --target DSPiConsoleSmoke && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub DSPI_SMOKE_TERMINAL=/target/release/dspi apps/desktop/qt/smoke/run.sh /work/build-desktop-qt6-smoke/DSPiConsoleSmoke /work/smoke-out && DSPI_SMOKE_HW=dry apps/desktop/qt/smoke/run.sh /work/build-desktop-qt6-smoke/DSPiConsoleSmoke /work/smoke-out-hw-dry" ;;
     qt5-offscreen)
-      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && cmake -S apps/desktop/qt -B /work/build-desktop-qt5-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=5 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt5-smoke --target DSPiConsoleSmoke && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub apps/desktop/qt/smoke/run.sh /work/build-desktop-qt5-smoke/DSPiConsoleSmoke /work/smoke-out-qt5" ;;
+      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && $TERMINAL && cmake -S apps/desktop/qt -B /work/build-desktop-qt5-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=5 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt5-smoke --target DSPiConsoleSmoke && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub DSPI_SMOKE_TERMINAL=/target/release/dspi apps/desktop/qt/smoke/run.sh /work/build-desktop-qt5-smoke/DSPiConsoleSmoke /work/smoke-out-qt5" ;;
     qt-windows)
       $RUN "BUILD_DIR=/work/build-desktop-win64 apps/desktop/packaging/windows/build-windows.sh /work/dist-windows" ;;
     proptest)

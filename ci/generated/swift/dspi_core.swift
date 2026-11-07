@@ -1536,6 +1536,44 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func csDemoBusy(on: Bool) throws 
     
     /**
+     * On the demo device only: the remote button a learn is waiting for was
+     * pressed. The learn ends with this protocol and code and notifies, as on a
+     * real receiver. False when nothing was armed. As
+     * [`cs_demo_busy`](Self::cs_demo_busy), it answers [`DspiError::Unsupported`]
+     * on any other device.
+     */
+    func csDemoLearn(`protocol`: UInt8, code: UInt32) throws  -> Bool
+    
+    /**
+     * What a page shows for one record, from the last [`DspiCore::cs_fetch`]:
+     * `{ok, title, summary, rows}`. `kind` is `binding`, `ir`, `step`, `page`,
+     * `display` or `group`; `slot` is the record's index; `draft` is the record as
+     * in [`DspiCore::cs_snapshot`].
+     *
+     * Each row has `id`, `title`, `detail` and `kind`. A `pick` has `value`, `text`
+     * and `options` of `{value, text, section?, owner?, disabled?}`; a `number`
+     * has `value`, `min`, `max`, `step`, `unit` and `decimals`, in natural units; a
+     * `toggle` has `on` and `enabled`; a `note` has `warning`, and its words in
+     * `detail`. `dspi_session::cs_rows` lists the ids.
+     *
+     * No device I/O. `{ok: false, error}` on a bad draft, an index the device does
+     * not have, no device, or before the first fetch. Never fails otherwise.
+     */
+    func csDescribe(kind: String, slot: UInt32, draft: String)  -> String
+    
+    /**
+     * The record after one row's value changed: `{ok, draft}`. `change` is
+     * `{id, value}`: the row's id, and an option's value, a number in natural units,
+     * or a boolean. The edit resets what the change leaves meaningless, so the
+     * record stays one the firmware takes.
+     *
+     * No device I/O: nothing changes on the device until the record goes to
+     * [`DspiCore::cs_apply`]. `{ok: false, error}` when the row or the value is not
+     * one [`DspiCore::cs_describe`] offers for this record, or as `cs_describe`.
+     */
+    func csEdit(kind: String, slot: UInt32, draft: String, change: String)  -> String
+    
+    /**
      * Read the whole control-surface configuration from the device:
      * capabilities, bindings and names, IR commands, groups, macros, the
      * display and the aux outputs (about seventy round trips).
@@ -1548,6 +1586,19 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * failure (lost device, timeout) as its typed error.
      */
     func csFetch() throws 
+    
+    /**
+     * A fresh binding of type `component` in `slot`, on free pins: `{ok, draft}`.
+     * No device I/O. `{ok: false, error}` as [`DspiCore::cs_describe`].
+     */
+    func csNewBinding(slot: UInt32, component: UInt8)  -> String
+    
+    /**
+     * A fresh record of `kind`, `ir`, `step` or `page`: `{ok, draft}`. A step and a
+     * page are ready to apply; a remote button needs its code from a learn first.
+     * No device I/O. `{ok: false, error}` as [`DspiCore::cs_describe`].
+     */
+    func csNewRecord(kind: String)  -> String
     
     /**
      * GPIOs held by live control-surface bindings, as (pin, slot): a
@@ -1567,6 +1618,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * or on firmware without control surfaces. Never fails.
      */
     func csSnapshot()  -> String
+    
+    /**
+     * A control-surface or pin-configuration status code as a sentence; empty for
+     * success. Needs no device.
+     */
+    func csStatusText(code: UInt8)  -> String
     
     /**
      * Delete preset `slot` (0..10) and its name. **Writes flash.**
@@ -1932,6 +1989,24 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * or short reply as [`DspiError::Transfer`].
      */
     func fetchStat(which: UInt16) throws  -> UInt32
+    
+    /**
+     * The Stats window's fast poll: the buffer fill levels and the live
+     * outputs' fill, as [`DspiCore::fetch_buffer_stats`] and
+     * [`DspiCore::fetch_output_fills`] give them, from one transfer.
+     *
+     * The fill target is kept on the connection. It is read again, for one more
+     * transfer on the tick after, when this core changed the latency, when a
+     * notification says the settings moved (a preset, a bulk write, a format
+     * change, a lost packet), and after a Link re-attach. The firmware does not
+     * notify a latency change, so another client's reaches this through
+     * [`DspiCore::fetch_ring_health`]: call that on the slow cadence alongside.
+     * While a change has yet to apply the target is read each tick.
+     *
+     * Errors: as for [`DspiCore::fetch_buffer_stats`]. A failed read of the
+     * target is not an error: `fills` is `None`.
+     */
+    func fetchStatsTick() throws  -> StatsTick
     
     /**
      * Read the meter block (`REQ_GET_STATUS` sub-query 9): the peak of each
@@ -3969,6 +4044,68 @@ open func csDemoBusy(on: Bool)throws   {try rustCallWithError(FfiConverterTypeDs
 }
     
     /**
+     * On the demo device only: the remote button a learn is waiting for was
+     * pressed. The learn ends with this protocol and code and notifies, as on a
+     * real receiver. False when nothing was armed. As
+     * [`cs_demo_busy`](Self::cs_demo_busy), it answers [`DspiError::Unsupported`]
+     * on any other device.
+     */
+open func csDemoLearn(`protocol`: UInt8, code: UInt32)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_cs_demo_learn(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(`protocol`),
+        FfiConverterUInt32.lower(code),$0
+    )
+})
+}
+    
+    /**
+     * What a page shows for one record, from the last [`DspiCore::cs_fetch`]:
+     * `{ok, title, summary, rows}`. `kind` is `binding`, `ir`, `step`, `page`,
+     * `display` or `group`; `slot` is the record's index; `draft` is the record as
+     * in [`DspiCore::cs_snapshot`].
+     *
+     * Each row has `id`, `title`, `detail` and `kind`. A `pick` has `value`, `text`
+     * and `options` of `{value, text, section?, owner?, disabled?}`; a `number`
+     * has `value`, `min`, `max`, `step`, `unit` and `decimals`, in natural units; a
+     * `toggle` has `on` and `enabled`; a `note` has `warning`, and its words in
+     * `detail`. `dspi_session::cs_rows` lists the ids.
+     *
+     * No device I/O. `{ok: false, error}` on a bad draft, an index the device does
+     * not have, no device, or before the first fetch. Never fails otherwise.
+     */
+open func csDescribe(kind: String, slot: UInt32, draft: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_cs_describe(self.uniffiClonePointer(),
+        FfiConverterString.lower(kind),
+        FfiConverterUInt32.lower(slot),
+        FfiConverterString.lower(draft),$0
+    )
+})
+}
+    
+    /**
+     * The record after one row's value changed: `{ok, draft}`. `change` is
+     * `{id, value}`: the row's id, and an option's value, a number in natural units,
+     * or a boolean. The edit resets what the change leaves meaningless, so the
+     * record stays one the firmware takes.
+     *
+     * No device I/O: nothing changes on the device until the record goes to
+     * [`DspiCore::cs_apply`]. `{ok: false, error}` when the row or the value is not
+     * one [`DspiCore::cs_describe`] offers for this record, or as `cs_describe`.
+     */
+open func csEdit(kind: String, slot: UInt32, draft: String, change: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_cs_edit(self.uniffiClonePointer(),
+        FfiConverterString.lower(kind),
+        FfiConverterUInt32.lower(slot),
+        FfiConverterString.lower(draft),
+        FfiConverterString.lower(change),$0
+    )
+})
+}
+    
+    /**
      * Read the whole control-surface configuration from the device:
      * capabilities, bindings and names, IR commands, groups, macros, the
      * display and the aux outputs (about seventy round trips).
@@ -3984,6 +4121,32 @@ open func csFetch()throws   {try rustCallWithError(FfiConverterTypeDspiError_lif
     uniffi_dspi_core_fn_method_dspicore_cs_fetch(self.uniffiClonePointer(),$0
     )
 }
+}
+    
+    /**
+     * A fresh binding of type `component` in `slot`, on free pins: `{ok, draft}`.
+     * No device I/O. `{ok: false, error}` as [`DspiCore::cs_describe`].
+     */
+open func csNewBinding(slot: UInt32, component: UInt8) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_cs_new_binding(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(slot),
+        FfiConverterUInt8.lower(component),$0
+    )
+})
+}
+    
+    /**
+     * A fresh record of `kind`, `ir`, `step` or `page`: `{ok, draft}`. A step and a
+     * page are ready to apply; a remote button needs its code from a learn first.
+     * No device I/O. `{ok: false, error}` as [`DspiCore::cs_describe`].
+     */
+open func csNewRecord(kind: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_cs_new_record(self.uniffiClonePointer(),
+        FfiConverterString.lower(kind),$0
+    )
+})
 }
     
     /**
@@ -4011,6 +4174,18 @@ open func csPinUses() -> [PinUse]  {
 open func csSnapshot() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_cs_snapshot(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * A control-surface or pin-configuration status code as a sentence; empty for
+     * success. Needs no device.
+     */
+open func csStatusText(code: UInt8) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_cs_status_text(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(code),$0
     )
 })
 }
@@ -4532,6 +4707,29 @@ open func fetchStat(which: UInt16)throws  -> UInt32  {
     return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_fetch_stat(self.uniffiClonePointer(),
         FfiConverterUInt16.lower(which),$0
+    )
+})
+}
+    
+    /**
+     * The Stats window's fast poll: the buffer fill levels and the live
+     * outputs' fill, as [`DspiCore::fetch_buffer_stats`] and
+     * [`DspiCore::fetch_output_fills`] give them, from one transfer.
+     *
+     * The fill target is kept on the connection. It is read again, for one more
+     * transfer on the tick after, when this core changed the latency, when a
+     * notification says the settings moved (a preset, a bulk write, a format
+     * change, a lost packet), and after a Link re-attach. The firmware does not
+     * notify a latency change, so another client's reaches this through
+     * [`DspiCore::fetch_ring_health`]: call that on the slow cadence alongside.
+     * While a change has yet to apply the target is read each tick.
+     *
+     * Errors: as for [`DspiCore::fetch_buffer_stats`]. A failed read of the
+     * target is not an error: `fills` is `None`.
+     */
+open func fetchStatsTick()throws  -> StatsTick  {
+    return try  FfiConverterTypeStatsTick_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_stats_tick(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -16417,6 +16615,93 @@ public func FfiConverterTypeSpdifRxStatus_lower(_ value: SpdifRxStatus) -> RustB
 
 
 /**
+ * One sample of the Stats window's fast poll (`fetch_stats_tick`).
+ */
+public struct StatsTick {
+    /**
+     * The buffer fill levels and their watermarks.
+     */
+    public var buffers: BufferStats
+    /**
+     * The live outputs' fill, from the same read. `None` when the fill target
+     * could not be read: keep the last fills.
+     */
+    public var fills: [OutputFill]?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The buffer fill levels and their watermarks.
+         */buffers: BufferStats, 
+        /**
+         * The live outputs' fill, from the same read. `None` when the fill target
+         * could not be read: keep the last fills.
+         */fills: [OutputFill]?) {
+        self.buffers = buffers
+        self.fills = fills
+    }
+}
+
+#if compiler(>=6)
+extension StatsTick: Sendable {}
+#endif
+
+
+extension StatsTick: Equatable, Hashable {
+    public static func ==(lhs: StatsTick, rhs: StatsTick) -> Bool {
+        if lhs.buffers != rhs.buffers {
+            return false
+        }
+        if lhs.fills != rhs.fills {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(buffers)
+        hasher.combine(fills)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeStatsTick: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> StatsTick {
+        return
+            try StatsTick(
+                buffers: FfiConverterTypeBufferStats.read(from: &buf), 
+                fills: FfiConverterOptionSequenceTypeOutputFill.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: StatsTick, into buf: inout [UInt8]) {
+        FfiConverterTypeBufferStats.write(value.buffers, into: &buf)
+        FfiConverterOptionSequenceTypeOutputFill.write(value.fills, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeStatsTick_lift(_ buf: RustBuffer) throws -> StatsTick {
+    return try FfiConverterTypeStatsTick.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeStatsTick_lower(_ value: StatsTick) -> RustBuffer {
+    return FfiConverterTypeStatsTick.lower(value)
+}
+
+
+/**
  * `types.rs` `SystemStatus` (REQ_GET_STATUS wValue 9), polled every 60 ms.
  */
 public struct SystemStatus {
@@ -18959,6 +19244,30 @@ fileprivate struct FfiConverterOptionTypeRingHealth: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionSequenceTypeOutputFill: FfiConverterRustBuffer {
+    typealias SwiftType = [OutputFill]?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterSequenceTypeOutputFill.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterSequenceTypeOutputFill.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceUInt16: FfiConverterRustBuffer {
     typealias SwiftType = [UInt16]
 
@@ -20162,13 +20471,31 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_cs_demo_busy() != 31960) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_cs_demo_learn() != 38061) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_cs_describe() != 2511) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_cs_edit() != 65116) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_cs_fetch() != 19147) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_cs_new_binding() != 60717) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_cs_new_record() != 35845) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_cs_pin_uses() != 61537) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_cs_snapshot() != 43337) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_cs_status_text() != 13025) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_delete_preset() != 21426) {
@@ -20262,6 +20589,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_stat() != 25516) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_stats_tick() != 21250) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_status() != 58511) {

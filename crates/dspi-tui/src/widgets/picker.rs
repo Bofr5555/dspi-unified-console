@@ -10,6 +10,7 @@ use ratatui::widgets::{Clear, Widget};
 use super::Action;
 use super::text::{fit_left, truncate, wrap};
 use crate::theme::Theme;
+use unicode_width::UnicodeWidthStr;
 
 pub struct PickerRow<'a> {
     pub label: &'a str,
@@ -92,22 +93,29 @@ impl Widget for PickerRow<'_> {
             if self.focused { "▸" } else { " " },
             t.focused(),
         );
+        // In columns, and never wider than the row: the value gives way only when
+        // it alone is wider than the row (-- WP TM23 --, review c3a F2).
+        let value = truncate(&value, usize::from(area.width).saturating_sub(1));
         let label = truncate(
             self.label,
-            (area.width as usize).saturating_sub(value.len() + 3),
+            usize::from(area.width).saturating_sub(value.width() + 3),
         );
-        buf.set_string(
+        buf.set_stringn(
             area.x + 1,
             area.y,
             &label,
+            label.width(),
             if self.enabled {
                 if self.focused { t.focused() } else { t.value() }
             } else {
                 t.label()
             },
         );
-        let vx = area.x + area.width - value.chars().count() as u16;
-        buf.set_string(vx, area.y, &value, value_style);
+        let vx = area
+            .x
+            .saturating_add(area.width)
+            .saturating_sub(value.width() as u16);
+        buf.set_stringn(vx, area.y, &value, value.width(), value_style);
         if let Some(c) = self.caption
             && area.height >= 2
         {
@@ -171,7 +179,7 @@ impl Widget for Segmented<'_> {
             if self.focused { "▸" } else { " " },
             t.focused(),
         );
-        let total: usize = self.choices.iter().map(|c| c.len() + 2).sum::<usize>()
+        let total: usize = self.choices.iter().map(|c| c.width() + 2).sum::<usize>()
             + self.choices.len().saturating_sub(1);
         let label_w = (area.width as usize).saturating_sub(total + 3);
         buf.set_string(
@@ -186,7 +194,12 @@ impl Widget for Segmented<'_> {
                 t.value()
             },
         );
-        let mut x = area.x + area.width - total as u16;
+        // Choices wider than the row start after the focus mark and are cut at
+        // its right edge (-- WP TM23 --, review c3a F2).
+        let right = area.x.saturating_add(area.width);
+        let mut x = right
+            .saturating_sub(u16::try_from(total).unwrap_or(u16::MAX))
+            .max(area.x.saturating_add(1));
         for (i, c) in self.choices.iter().enumerate() {
             let text = format!(" {c} ");
             let style = if i == self.selected && self.enabled {
@@ -197,9 +210,15 @@ impl Widget for Segmented<'_> {
             } else {
                 t.label()
             };
-            buf.set_string(x, area.y, &text, style);
-            x += text.len() as u16;
-            if i + 1 < self.choices.len() {
+            buf.set_stringn(
+                x,
+                area.y,
+                &text,
+                usize::from(right.saturating_sub(x)),
+                style,
+            );
+            x = x.saturating_add(text.width() as u16);
+            if i + 1 < self.choices.len() && x < right {
                 buf.set_string(x, area.y, "│", t.chrome_style());
                 x += 1;
             }
@@ -526,6 +545,48 @@ mod tests {
         p.handle(key(KeyCode::Char('i')));
         assert_eq!(p.visible(), vec![2]);
         assert_eq!(p.cursor, 2);
+    }
+
+    /// Draws `w` into a row `width` columns wide with three spare columns on
+    /// each side, checks nothing landed there, and returns the row.
+    fn row_in_margins(w: impl Widget, width: u16) -> String {
+        let mut buf = Buffer::empty(Rect::new(0, 0, width + 6, 1));
+        w.render(Rect::new(3, 0, width, 1), &mut buf);
+        for x in (0..3).chain(3 + width..width + 6) {
+            assert_eq!(buf[(x, 0)].symbol(), " ", "column {x} at width {width}");
+        }
+        (3..3 + width).map(|x| buf[(x, 0)].symbol()).collect()
+    }
+
+    #[test]
+    fn wp_tm23_a_picker_narrower_than_its_value_stays_in_its_row() {
+        // Review c3a F2: 12..(value width) columns underflowed and panicked.
+        let t = Theme::console(ColorDepth::TrueColor, Glyphs::Braille);
+        let long = ["A rather long choice name", "寬字符寬字符寬字符寬字符"];
+        for width in 0..=40u16 {
+            for i in 0..long.len() {
+                row_in_margins(PickerRow::new("Label", &long, i, &t), width);
+                row_in_margins(PickerRow::new("Label", &long, i, &t).focused(true), width);
+            }
+        }
+        // A wide value ends in the row's last column, by columns not characters
+        // (寬 takes two cells; the one it covers reads as a space here).
+        let r = row_in_margins(PickerRow::new("Name", &["寬"], 0, &t), 20);
+        assert_eq!(r, " Name         ‹ 寬  ›");
+    }
+
+    #[test]
+    fn wp_tm23_a_segmented_row_wider_than_its_row_is_cut_at_the_edge() {
+        let t = Theme::console(ColorDepth::TrueColor, Glyphs::Braille);
+        let many = ["One", "Two", "Three", "Four", "寬字符"];
+        for width in 0..=40u16 {
+            for i in 0..many.len() {
+                row_in_margins(Segmented::new("Label", &many, i, &t), width);
+            }
+        }
+        // Where it fits, it is where it always was.
+        let r = row_in_margins(Segmented::new("Speed", SPEEDS, 1, &t), 40);
+        assert!(r.ends_with(" Slow │ Medium │ Fast "), "{r}");
     }
 
     #[test]

@@ -92,6 +92,18 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun csDemoBusy(on: Boolean) = call { core.csDemoBusy(on) }
 
+    override fun csDescribe(kind: String, slot: Long, draft: String): String = core.csDescribe(kind, slot.toUInt(), draft)
+
+    override fun csEdit(kind: String, slot: Long, draft: String, change: String): String = core.csEdit(kind, slot.toUInt(), draft, change)
+
+    override fun csNewBinding(slot: Long, component: Int): String = core.csNewBinding(slot.toUInt(), component.toUByte())
+
+    override fun csNewRecord(kind: String): String = core.csNewRecord(kind)
+
+    override fun csStatusText(code: Int): String = core.csStatusText(code.toUByte())
+
+    override fun csDemoLearn(protocol: Int, code: Long): Boolean = call { core.csDemoLearn(protocol.toUByte(), code.toUInt()) }
+
     override fun openFd(fd: Int, serial: String, vid: Int) = call { core.openFd(fd, serial, vid.toUShort()) }
 
     override fun closeFd() = core.closeFd()
@@ -423,6 +435,8 @@ class FfiDspiCore : DspiCoreApi {
     override fun fetchRingHealth(): RingHealth? = call { core.fetchRingHealth()?.let { it.toDomain() } }
 
     override fun fetchOutputFills(): List<OutputFill> = call { core.fetchOutputFills().map { it.toDomain() } }
+
+    override fun fetchStatsTick(): StatsTick = call { core.fetchStatsTick().toDomain() }
 
     override fun fetchBufferStats(): BufferStats = call { core.fetchBufferStats().toDomain() }
 
@@ -1695,6 +1709,18 @@ internal fun OutputFill.toFfi() =
         minPct = minPct.toUByte(),
         maxPct = maxPct.toUByte(),
         band = band.toFfi(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.StatsTick.toDomain() =
+    StatsTick(
+        buffers = buffers.toDomain(),
+        fills = fills?.let { it.map { it.toDomain() } },
+    )
+
+internal fun StatsTick.toFfi() =
+    se.bofr.dspi.ffi.uniffi.StatsTick(
+        buffers = buffers.toFfi(),
+        fills = fills?.let { it.map { it.toFfi() } },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.RtaOwnership.toDomain() =

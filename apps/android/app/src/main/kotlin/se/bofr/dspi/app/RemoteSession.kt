@@ -18,6 +18,7 @@ import se.bofr.dspi.core.DspiCoreApi
 import se.bofr.dspi.core.LinkDevice
 import se.bofr.dspi.link.BridgeLinkCoreOps
 import se.bofr.dspi.link.LinkHub
+import se.bofr.dspi.link.LinkNetworkTarget
 import se.bofr.dspi.link.LinkServiceControl
 import se.bofr.dspi.link.LinkSessionEngine
 import se.bofr.dspi.link.LinkSessionState
@@ -41,6 +42,14 @@ interface RemoteSession {
     /** Leave the hub (the engine goes Idle; the app then leaves REMOTE). */
     fun disconnect()
 
+    // -- WP AN4 --
+
+    /** Who hears about the network and DNS-SD; null when nobody does. */
+    val networkTarget: LinkNetworkTarget? get() = null
+
+    /** The UI went away or came back (the bound on the service while reconnecting). */
+    fun setUiVisible(visible: Boolean) {}
+
     /** Tear the stack down (detach, close the session, stop the thread, free the core). */
     fun close()
 }
@@ -60,7 +69,8 @@ fun startRemoteSession(
     service: LinkServiceControl,
     linkStore: LinkStore,
     main: CoroutineDispatcher = Dispatchers.Main.immediate,
-    log: (String) -> Unit = {}
+    log: (String) -> Unit = {},
+    onClose: () -> Unit = {}
 ): RemoteSession {
     val ffi: ExecutorCoroutineDispatcher = Executors.newSingleThreadExecutor { r ->
         Thread(r, "dspi-link-ffi").apply { isDaemon = true }
@@ -85,7 +95,12 @@ fun startRemoteSession(
 
         override fun disconnect() = engine.disconnect()
 
+        override val networkTarget: LinkNetworkTarget = engine
+
+        override fun setUiVisible(visible: Boolean) = engine.setUiVisible(visible)
+
         override fun close() {
+            onClose()
             parent.launch(main) {
                 runCatching { engine.close() }
                 runCatching { remoteBridge.close() }

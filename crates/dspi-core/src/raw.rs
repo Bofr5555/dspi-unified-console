@@ -112,6 +112,10 @@ impl DspiCore {
         // Raw on the Writable, so a stall stays a refusal.
         let conn = w.conn();
         conn.fresh_image = false;
+        // -- WP CG21 --
+        if opcode == op::REQ_OUTPUT_LATENCY {
+            conn.ring_target.invalidate();
+        }
         conn.transport()
             .control_out(opcode, value, &data)
             .map_err(refusal)

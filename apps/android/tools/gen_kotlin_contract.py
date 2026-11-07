@@ -553,7 +553,7 @@ package se.bofr.dspi.core
  * Android leaves out). Its doc comments, repeated below, are the semantics.
  *
  * Implementations: `FfiDspiCore` (:ffi, the real core over UniFFI) and
- * `FakeDspiCore` (:fake-core, demo mode and tests).
+ * `FakeDspiCore` (:fake-core, tests and previews).
  *
  * Threading: every method may block on USB (≤ 1 s). Callers (the bridge) use
  * ONE serial background dispatcher; never call from the main thread.

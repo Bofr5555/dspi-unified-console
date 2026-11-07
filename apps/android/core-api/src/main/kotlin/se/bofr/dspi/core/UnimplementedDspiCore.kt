@@ -36,6 +36,18 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun csDemoBusy(on: Boolean): Unit = throw NotImplementedError("cs_demo_busy")
 
+    override fun csDescribe(kind: String, slot: Long, draft: String): String = throw NotImplementedError("cs_describe")
+
+    override fun csEdit(kind: String, slot: Long, draft: String, change: String): String = throw NotImplementedError("cs_edit")
+
+    override fun csNewBinding(slot: Long, component: Int): String = throw NotImplementedError("cs_new_binding")
+
+    override fun csNewRecord(kind: String): String = throw NotImplementedError("cs_new_record")
+
+    override fun csStatusText(code: Int): String = throw NotImplementedError("cs_status_text")
+
+    override fun csDemoLearn(protocol: Int, code: Long): Boolean = throw NotImplementedError("cs_demo_learn")
+
     override fun openFd(fd: Int, serial: String, vid: Int): Unit = throw NotImplementedError("open_fd")
 
     override fun closeFd(): Unit = throw NotImplementedError("close_fd")
@@ -367,6 +379,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun fetchRingHealth(): RingHealth? = throw NotImplementedError("fetch_ring_health")
 
     override fun fetchOutputFills(): List<OutputFill> = throw NotImplementedError("fetch_output_fills")
+
+    override fun fetchStatsTick(): StatsTick = throw NotImplementedError("fetch_stats_tick")
 
     override fun fetchBufferStats(): BufferStats = throw NotImplementedError("fetch_buffer_stats")
 

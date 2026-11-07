@@ -31,13 +31,20 @@ env_logger = { version = "0.11", default-features = false }
 # dspi_open_midi opens a midir_port; already a dependency of dspi-core, and its
 # `midir` feature comes through dspi-core/midir.
 dspi-transport.workspace = true
+# -- WP HB6 --
+# The hub the dspi_hub_* functions start, with the app as its local session.
+dspi-hub = { workspace = true, features = ["app"], optional = true }
 
 [features]
 link = ["dspi-core/link"]
 midir = ["dspi-core/midir"]
 # -- WP CG2 --
 # Finding hubs on the network. Off, the dspi_link_browse_* functions refuse.
-mdns = ["dspi-core/mdns"]
+mdns = ["dspi-core/mdns", "dspi-hub?/mdns"]
+# -- WP HB6 --
+# Sharing this machine's devices: the dspi_hub_* functions. `app` puts the app's own
+# core on the hub, which is what a console does while sharing.
+hub = ["dep:dspi-hub"]
 
 [dev-dependencies]
 # -- WP Q1 --
