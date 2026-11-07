@@ -33,11 +33,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -162,11 +164,48 @@ class SpectrumSelectionState internal constructor(
     }
 }
 
+// -- WP AN37 --
+/**
+ * A channel page's spectrum channels (macOS `rtaPageSelection` and
+ * `rtaPageOtherSide`), held by the page so the graph's gear and the page's
+ * bar strip read one selection, as both read `vm.rtaSelection` on macOS.
+ * One per page opened, starting on the page's own channel (macOS
+ * `resetRtaPageSelection`). Provide it through [LocalSpectrumPageSelection].
+ */
+@Stable
+class SpectrumPageSelection internal constructor(val eqCh: Int, start: RtaChannelSelection) {
+    internal val page = mutableStateOf(start)
+    internal val pageOther = mutableStateOf<RtaChannelSelection?>(null)
+
+    /** The page's selection as the gear left it (snapshot-observable); restrict it to the live channels to draw. */
+    val selection: RtaChannelSelection get() = page.value
+}
+
+/** The channel page's spectrum selection; a GraphView showing that page's channel uses it instead of its own. */
+val LocalSpectrumPageSelection = staticCompositionLocalOf<SpectrumPageSelection?> { null }
+
+/** A new [SpectrumPageSelection] for [eqCh]'s page, kept while the page shows that channel. */
 @Composable
-internal fun rememberSpectrumSelection(bridge: DspiBridge, store: AppSettingsStore, activeEq: Int?): SpectrumSelectionState {
+fun rememberSpectrumPageSelection(bridge: DspiBridge, eqCh: Int): SpectrumPageSelection {
+    val store = LocalAppSettings.current
+    return remember(bridge, eqCh) {
+        SpectrumPageSelection(eqCh, SpectrumSelectionState.pageStart(bridge, eqCh, store.settings.value.rtaChannelPagesShowSpectrum))
+    }
+}
+
+@Composable
+internal fun rememberSpectrumSelection(
+    bridge: DspiBridge,
+    store: AppSettingsStore,
+    activeEq: Int?,
+    shared: SpectrumPageSelection? = null
+): SpectrumSelectionState {
+    // AN37: the page's own holder when it provides one, so its bar strip reads the same selection
+    val held = shared?.takeIf { it.eqCh == activeEq }
     // A channel page starts on its own channel each time one opens.
     val page =
-        remember(activeEq) {
+        remember(activeEq, held) {
+            if (held != null) return@remember held.page
             val start =
                 if (activeEq != null) {
                     SpectrumSelectionState.pageStart(bridge, activeEq, store.settings.value.rtaChannelPagesShowSpectrum)
@@ -175,7 +214,7 @@ internal fun rememberSpectrumSelection(bridge: DspiBridge, store: AppSettingsSto
                 }
             mutableStateOf(start)
         }
-    val pageOther = remember(activeEq) { mutableStateOf<RtaChannelSelection?>(null) }
+    val pageOther = remember(activeEq, held) { held?.pageOther ?: mutableStateOf<RtaChannelSelection?>(null) }
     // A snapshot State mirroring the store, so `value` is observable from any composition.
     val settings = store.settings.collectAsStateWithLifecycle()
     // One object per page; `value` is observable, callers cache it with their device inputs (caps, stateRevision) as keys.
