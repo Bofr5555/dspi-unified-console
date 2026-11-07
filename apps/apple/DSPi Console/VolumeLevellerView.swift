@@ -1,0 +1,318 @@
+import SwiftUI
+
+// MARK: - Volume Leveller Window Controller
+
+#if os(macOS)
+class VolumeLevellerWindowController: NSObject, ObservableObject {
+    private var window: NSWindow?
+    @Published var isVisible: Bool = false
+
+    func show(vm: DSPViewModel) {
+        if window == nil {
+            let view = VolumeLevellerView(vm: vm, leveller: vm.leveller).onboardingHint("leveller")
+
+            window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 380, height: 540),
+                styleMask: [.titled, .closable],
+                backing: .buffered,
+                defer: false
+            )
+            window?.title = "Volume Leveller"
+            let hosting = NSHostingView(rootView: view)
+            // The window's size limits are set here, not derived from the
+            // tree: left at its defaults the hosting view re-measures the
+            // whole tree for them on every display cycle, which is most of
+            // what a meter reading or a drag used to cost in this window.
+            hosting.sizingOptions = []
+            window?.contentView = hosting
+            window?.contentMinSize = NSSize(width: 380, height: 400)
+            window?.isReleasedWhenClosed = false
+            window?.delegate = self
+        }
+
+        window?.center()
+        window?.makeKeyAndOrderFront(nil)
+        isVisible = true
+    }
+
+    func hide() {
+        window?.orderOut(nil)
+        isVisible = false
+    }
+}
+
+extension VolumeLevellerWindowController: NSWindowDelegate {
+    func windowWillClose(_ notification: Notification) {
+        isVisible = false
+    }
+}
+#else
+class VolumeLevellerWindowController: IOSToolWindowController {
+    func show(vm: DSPViewModel) {
+        present(title: "Volume Leveller") { VolumeLevellerView(vm: vm, leveller: vm.leveller).onboardingHint("leveller") }
+    }
+}
+#endif
+
+// MARK: - Volume Leveller View
+
+struct VolumeLevellerView: View {
+    @ObservedObject var vm: DSPViewModel
+    /// Observed separately from `vm` so a slider drag invalidates this
+    /// window and nothing else; see ToolParameters.swift.
+    @ObservedObject var leveller: LevellerParameters
+
+    /// Number of input channels to expose in the mask grid (live layout, 2-8).
+    private var channelCount: Int { min(max(vm.effectiveInputChannels, 2), 8) }
+
+    /// Channel masks are only meaningful with more than two active inputs on a
+    /// multichannel-capable device; the section is hidden for stereo.
+    private var showMasks: Bool {
+        vm.numInputChannels > BASE_MATRIX_INPUTS && channelCount > 2
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            headerSection
+
+            Divider()
+
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Parameters
+                    parameterSection
+                        .padding(.horizontal, 16)
+                        .padding(.top, 16)
+                }
+            }
+        }
+        .frame(width: 380, height: 540)
+    }
+
+    // MARK: - Header
+
+    private var headerSection: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "waveform.path.ecg")
+                .font(.system(size: 22))
+                .foregroundColor(.accentColor)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Volume Leveller")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Upward Dynamic Range Compression")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            Toggle("", isOn: Binding(
+                get: { vm.levellerEnabled },
+                set: { vm.setLeveller($0) }
+            ))
+            .toggleStyle(.switch)
+            .disabled(!vm.isDeviceConnected)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
+    // MARK: - Parameter Section
+
+    private var parameterSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if showMasks {
+                channelSection
+                Divider()
+            }
+
+            Text("PARAMETERS")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.secondary)
+
+            ParameterRow(
+                title: "Amount",
+                unit: "%",
+                value: leveller.amount,
+                range: 0...100,
+                scrollStep: 0.1,
+                maxDecimals: 1,
+                isEnabled: vm.isDeviceConnected,
+                caption: "Compression strength. Higher values reduce dynamic range more aggressively.",
+                live: { vm.sendFloatParamToDevice(REQ_SET_LEVELLER_AMOUNT, min(100, max(0, $0))) },
+                set: { vm.setLevellerAmount(min(100, max(0, $0))) }
+            )
+
+            Divider()
+
+            // Speed
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Speed")
+                    .font(.system(size: 12, weight: .medium))
+
+                Picker("", selection: Binding(
+                    get: { leveller.speed },
+                    set: { vm.setLevellerSpeed($0) }
+                )) {
+                    Text("Slow").tag(0)
+                    Text("Medium").tag(1)
+                    Text("Fast").tag(2)
+                }
+                .pickerStyle(.segmented)
+                .disabled(!vm.isDeviceConnected)
+
+                Text(speedDescription)
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider()
+
+            ParameterRow(
+                title: "Max Gain",
+                unit: "dB",
+                value: leveller.maxGainDB,
+                range: 0...35,
+                scrollStep: 0.1,
+                maxDecimals: 1,
+                isEnabled: vm.isDeviceConnected,
+                caption: "Maximum boost for quiet passages. Higher values risk amplifying noise.",
+                live: { vm.sendFloatParamToDevice(REQ_SET_LEVELLER_MAXGAIN, min(35, max(0, $0))) },
+                set: { vm.setLevellerMaxGain(min(35, max(0, $0))) }
+            )
+
+            Divider()
+
+            ParameterRow(
+                title: "Gate Threshold",
+                unit: "dB",
+                value: leveller.gateDB,
+                range: -96...0,
+                scrollStep: 0.1,
+                maxDecimals: 1,
+                isEnabled: vm.isDeviceConnected,
+                caption: "Silence gate. Signals below this level are not boosted, preventing noise amplification.",
+                live: { vm.sendFloatParamToDevice(REQ_SET_LEVELLER_GATE, min(0, max(-96, $0))) },
+                set: { vm.setLevellerGate(min(0, max(-96, $0))) }
+            )
+
+            Divider()
+
+            // Lookahead
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Lookahead")
+                        .font(.system(size: 12, weight: .medium))
+                    Text("Adds 5ms latency. Improves transient handling.")
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: Binding(
+                    get: { leveller.lookahead },
+                    set: { vm.setLevellerLookahead($0) }
+                ))
+                .toggleStyle(.switch)
+                .disabled(!vm.isDeviceConnected)
+            }
+        }
+    }
+
+    // MARK: - Channels
+
+    private var channelSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("CHANNELS")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Menu {
+                    Button("All channels (Night mode)") {
+                        vm.setLevellerMasks(detector: 0xFF, apply: 0xFF)
+                    }
+                    Button("Center only (Dialog boost)") {
+                        vm.setLevellerMasks(detector: 0x04, apply: 0x04)
+                    }
+                    Button("Front L / R only") {
+                        vm.setLevellerMasks(detector: 0x03, apply: 0x03)
+                    }
+                } label: {
+                    Text("Presets")
+                        .font(.system(size: 11))
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .disabled(!vm.isDeviceConnected)
+            }
+
+            maskRow(
+                label: "Detector",
+                hint: "sets the shared gain",
+                isOn: { leveller.detectorMask & (1 << $0) != 0 },
+                toggle: { vm.setLevellerDetectorChannel($0, enabled: $1) }
+            )
+
+            maskRow(
+                label: "Apply",
+                hint: "receives the gain",
+                isOn: { leveller.applyMask & (1 << $0) != 0 },
+                toggle: { vm.setLevellerApplyChannel($0, enabled: $1) }
+            )
+        }
+    }
+
+    private func maskRow(label: String, hint: String,
+                         isOn: @escaping (Int) -> Bool,
+                         toggle: @escaping (Int, Bool) -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(label)
+                    .font(.system(size: 12, weight: .medium))
+                Text(hint)
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+            }
+
+            HStack(spacing: 6) {
+                ForEach(0..<channelCount, id: \.self) { ch in
+                    channelChip(ch: ch, on: isOn(ch)) { toggle(ch, !isOn(ch)) }
+                }
+            }
+        }
+    }
+
+    private func channelChip(ch: Int, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text("\(ch + 1)")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .frame(maxWidth: .infinity, minHeight: 26)
+                .foregroundColor(on ? .white : .primary.opacity(0.6))
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(on ? Color.accentColor : Color.secondary.opacity(0.12))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.primary.opacity(on ? 0 : 0.08), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .help(ch < vm.channelNames.count ? vm.channelNames[ch] : "Ch \(ch + 1)")
+        .disabled(!vm.isDeviceConnected)
+        .animation(.easeInOut(duration: 0.12), value: on)
+    }
+
+    private var speedDescription: String {
+        switch leveller.speed {
+        case 0: return "Slow \u{2014} Gentle response for music and wide dynamic range content."
+        case 2: return "Fast \u{2014} Tight response for speech, dialogue, and podcasts."
+        default: return "Medium \u{2014} Balanced response for general purpose use."
+        }
+    }
+}

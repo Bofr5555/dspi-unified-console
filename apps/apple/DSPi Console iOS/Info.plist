@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  Keys of the iOS app that have no INFOPLIST_KEY_ build setting.  Merged into
+  the generated Info.plist (GENERATE_INFOPLIST_FILE = YES).  Kept outside the
+  synchronized "DSPi Console" folder so it is not copied into either app as a
+  resource.
+-->
+<dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_dspi._tcp</string>
+	</array>
+	<!-- DSPi Link hubs speak plain ws:// on the local network (spec 4); TLS is
+	     optional and no hub has it yet.  Local networking only. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+</dict>
+</plist>

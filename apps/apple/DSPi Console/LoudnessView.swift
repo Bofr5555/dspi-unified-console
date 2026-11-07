@@ -1,0 +1,553 @@
+import SwiftUI
+import Combine
+
+// MARK: - ISO 226 Data
+
+struct IsoData {
+    let f: Float
+    let af: Float
+    let lu: Float
+    let tf: Float
+}
+
+private let isoTable: [IsoData] = [
+    IsoData(f: 20, af: 0.532, lu: -31.6, tf: 78.5),
+    IsoData(f: 25, af: 0.506, lu: -27.2, tf: 68.7),
+    IsoData(f: 31.5, af: 0.480, lu: -23.0, tf: 59.5),
+    IsoData(f: 40, af: 0.455, lu: -19.1, tf: 51.1),
+    IsoData(f: 50, af: 0.432, lu: -15.9, tf: 44.0),
+    IsoData(f: 63, af: 0.409, lu: -13.0, tf: 37.5),
+    IsoData(f: 80, af: 0.387, lu: -10.3, tf: 31.5),
+    IsoData(f: 100, af: 0.367, lu: -8.1, tf: 26.5),
+    IsoData(f: 125, af: 0.349, lu: -6.2, tf: 22.1),
+    IsoData(f: 160, af: 0.330, lu: -4.5, tf: 17.9),
+    IsoData(f: 200, af: 0.315, lu: -3.1, tf: 14.4),
+    IsoData(f: 250, af: 0.301, lu: -2.0, tf: 11.4),
+    IsoData(f: 315, af: 0.288, lu: -1.1, tf: 8.6),
+    IsoData(f: 400, af: 0.276, lu: -0.4, tf: 6.2),
+    IsoData(f: 500, af: 0.267, lu: 0.0, tf: 4.4),
+    IsoData(f: 630, af: 0.259, lu: 0.3, tf: 3.0),
+    IsoData(f: 800, af: 0.253, lu: 0.5, tf: 2.2),
+    IsoData(f: 1000, af: 0.250, lu: 0.0, tf: 2.4),
+    IsoData(f: 1250, af: 0.246, lu: -2.7, tf: 3.5),
+    IsoData(f: 1600, af: 0.244, lu: -4.1, tf: 1.7),
+    IsoData(f: 2000, af: 0.243, lu: -1.0, tf: -1.3),
+    IsoData(f: 2500, af: 0.243, lu: 1.7, tf: -4.2),
+    IsoData(f: 3150, af: 0.243, lu: 2.5, tf: -6.0),
+    IsoData(f: 4000, af: 0.242, lu: 1.2, tf: -5.4),
+    IsoData(f: 5000, af: 0.242, lu: -2.1, tf: -1.5),
+    IsoData(f: 6300, af: 0.245, lu: -7.1, tf: 6.0),
+    IsoData(f: 8000, af: 0.254, lu: -11.2, tf: 12.6),
+    IsoData(f: 10000, af: 0.271, lu: -10.7, tf: 13.9),
+    IsoData(f: 12500, af: 0.301, lu: -3.1, tf: 12.3),
+    IsoData(f: 16000, af: 0.310, lu: -2.0, tf: 17.0)
+]
+
+// MARK: - Loudness Window Controller
+
+#if os(macOS)
+class LoudnessWindowController: NSObject, ObservableObject {
+    private var window: NSWindow?
+    @Published var isVisible: Bool = false
+
+    func show(vm: DSPViewModel) {
+        if window == nil {
+            let view = LoudnessView(vm: vm, loudness: vm.loudness).onboardingHint("loudness")
+
+            window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 780, height: 400),
+                styleMask: [.titled, .closable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            window?.title = "Loudness Compensation"
+            let hosting = NSHostingView(rootView: view)
+            // The window's size limits are set here, not derived from the
+            // tree: left at its defaults the hosting view re-measures the
+            // whole tree for them on every display cycle, which is most of
+            // what a meter reading or a drag used to cost in this window.
+            hosting.sizingOptions = []
+            window?.contentView = hosting
+            window?.isReleasedWhenClosed = false
+            window?.delegate = self
+            window?.contentMinSize = NSSize(width: 740, height: 390)
+        }
+
+        window?.center()
+        window?.makeKeyAndOrderFront(nil)
+        isVisible = true
+    }
+
+    func hide() {
+        window?.orderOut(nil)
+        isVisible = false
+    }
+}
+
+extension LoudnessWindowController: NSWindowDelegate {
+    func windowWillClose(_ notification: Notification) {
+        isVisible = false
+    }
+}
+#else
+class LoudnessWindowController: IOSToolWindowController {
+    func show(vm: DSPViewModel) {
+        present(title: "Loudness Compensation") { LoudnessView(vm: vm, loudness: vm.loudness).onboardingHint("loudness") }
+    }
+}
+#endif
+
+// MARK: - ISO 226:2003 Computation (for visualization only)
+
+private func iso226SPL(tf: Float, af: Float, lu: Float, phon: Float) -> Float {
+    // Threshold term: (0.4 * 10^((Tf+Lu)/10 - 9))^af
+    let B = 0.4 * powf(10.0, (tf + lu) / 10.0 - 9.0)
+    let threshold = powf(B, af)
+    // Af = phon-dependent term + threshold
+    var Af = 4.47e-3 * (powf(10.0, 0.025 * phon) - 1.15) + threshold
+    if Af < 1e-10 { Af = 1e-10 }
+    return (10.0 / af) * log10f(Af) - lu + 94.0
+}
+
+private func loudnessCompensationDB(
+    tf: Float, af: Float, lu: Float,
+    refSPL: Float, effectivePhon: Float, intensity: Float
+) -> Float {
+    if effectivePhon >= refSPL { return 0 }
+    let splRef = iso226SPL(tf: tf, af: af, lu: lu, phon: refSPL)
+    let splEff = iso226SPL(tf: tf, af: af, lu: lu, phon: effectivePhon)
+    let flat = effectivePhon - refSPL
+    let freq = splEff - splRef
+    return (freq - flat) * (intensity / 100.0)
+}
+
+// MARK: - Loudness View
+
+struct LoudnessView: View {
+    @ObservedObject var vm: DSPViewModel
+    /// Observed separately from `vm` so a slider drag invalidates this
+    /// window and nothing else; see ToolParameters.swift.
+    @ObservedObject var loudness: LoudnessParameters
+    /// What the curve follows during a drag; see `GraphLive`.
+    @State private var graphLive = GraphLive<LoudnessGraphKey>()
+
+    /// Output channels exposed in the mask grid (5 on RP2040, 9 on RP2350).
+    private var outputCount: Int { vm.numOutputChannels }
+
+    /// The per-output mask (cmds 0xFA/0xFB) shipped in wire format V19; hide the
+    /// selector on older firmware, which compensates every output unconditionally.
+    private var showMask: Bool { vm.firmwareSupportsLoudnessMask }
+
+    /// Display name for output channel `out` (unified channel index chOut1 + out).
+    private func outputName(_ out: Int) -> String {
+        let idx = vm.chOut1 + out
+        return idx < vm.channelNames.count ? vm.channelNames[idx] : "Out \(out + 1)"
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            headerSection
+
+            Divider()
+
+            // Two columns of the sections the other tool windows stack. The
+            // curve has the left column to itself and grows to the height of
+            // the parameters and outputs beside it, so the columns always end
+            // together.
+            HStack(alignment: .top, spacing: 0) {
+                compensationGraph
+                    .toolColumn()
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 14) {
+                    parameterSection
+                    if showMask {
+                        Divider()
+                        channelSection
+                    }
+                }
+                .toolColumn()
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 16)
+        }
+        .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    // MARK: - Header
+
+    private var headerSection: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "ear.fill")
+                .font(.system(size: 22))
+                .foregroundColor(.accentColor)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Loudness Compensation")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("ISO 226:2003 Fletcher-Munson")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            Toggle("", isOn: Binding(
+                get: { vm.loudnessEnabled },
+                set: { vm.setLoudness($0) }
+            ))
+            .toggleStyle(.switch)
+            .disabled(!vm.isDeviceConnected)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
+
+
+    // MARK: - Compensation Graph
+
+    private var compensationGraph: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("COMPENSATION CURVE")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.secondary)
+
+            ZStack {
+                // Background
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(NSColor.controlBackgroundColor).opacity(0.6))
+
+                // Grid + curve
+                // In its own hosting view, so following a drag re-lays out the
+                // graph alone rather than the whole window.
+                LiveGraphHost(flexibleHeight: true) {
+                    LoudnessGraphPane(
+                        base: .init(refSPL: loudness.refSPL, intensity: loudness.intensity),
+                        isEnabled: vm.loudnessEnabled, live: graphLive)
+                    .padding(8)
+                }
+            }
+            .frame(minHeight: 160, maxHeight: .infinity)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+            )
+        }
+    }
+
+    // MARK: - Parameter Section
+
+    private var parameterSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("PARAMETERS")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.secondary)
+
+            ParameterRow(
+                title: "Reference SPL",
+                unit: "dB",
+                value: loudness.refSPL,
+                range: 40...100,
+                scrollStep: 0.1,
+                maxDecimals: 1,
+                isEnabled: vm.isDeviceConnected,
+                caption: "SPL at 1 kHz when USB volume is 0 dB. Lower = more compensation per dB of volume reduction.",
+                live: { v in vm.sendFloatParamToDevice(REQ_SET_LOUDNESS_REF, v); graphLive.set(.refSPL, v) },
+                set: { vm.setLoudnessRef($0) }
+            )
+
+            Divider()
+
+            ParameterRow(
+                title: "Intensity",
+                unit: "%",
+                value: loudness.intensity,
+                range: 0...200,
+                scrollStep: 0.1,
+                maxDecimals: 1,
+                isEnabled: vm.isDeviceConnected,
+                caption: "Scales the ISO 226 compensation. 100% = standard curve. 0% = bypassed. >100% = exaggerated.",
+                live: { v in vm.sendFloatParamToDevice(REQ_SET_LOUDNESS_INTENSITY, v); graphLive.set(.intensity, v) },
+                set: { vm.setLoudnessIntensity($0) }
+            )
+        }
+    }
+
+    // MARK: - Output Channels
+
+    private var channelSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("OUTPUTS")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Menu {
+                    Button("All outputs") {
+                        vm.setLoudnessMask(LOUDNESS_DEFAULT_OUTPUT_MASK)
+                    }
+                    Button("Slot 1 only (Headphones)") {
+                        vm.setLoudnessMask(0x0003)
+                    }
+                    Button("None") {
+                        vm.setLoudnessMask(0x0000)
+                    }
+                } label: {
+                    Text("Presets")
+                        .font(.system(size: 11))
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .disabled(!vm.isDeviceConnected)
+            }
+
+            Text("Compensate only the outputs feeding your low-level listening chain. Keep bass-managed pairs (mains + sub) together so the crossover stays coherent.")
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 6) {
+                ForEach(0..<outputCount, id: \.self) { out in
+                    channelChip(
+                        out: out,
+                        on: loudness.outputMask & (UInt16(1) << out) != 0
+                    ) {
+                        vm.setLoudnessOutputChannel(out, enabled: loudness.outputMask & (UInt16(1) << out) == 0)
+                    }
+                }
+            }
+        }
+    }
+
+    private func channelChip(out: Int, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text("\(out + 1)")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .frame(maxWidth: .infinity, minHeight: 26)
+                .foregroundColor(on ? .white : .primary.opacity(0.6))
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(on ? Color.accentColor : Color.secondary.opacity(0.12))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.primary.opacity(on ? 0 : 0.08), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .help(outputName(out))
+        .disabled(!vm.isDeviceConnected)
+        .animation(.easeInOut(duration: 0.12), value: on)
+    }
+}
+
+// MARK: - Info Row
+
+private struct InfoRow: View {
+    let volume: String
+    let description: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(volume)
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundColor(.accentColor)
+                .frame(width: 50, alignment: .trailing)
+            Text(description)
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+        }
+    }
+}
+
+// MARK: - Compensation Curve Visualization
+
+enum LoudnessGraphKey: Hashable { case refSPL, intensity }
+
+/// The compensation curve, resolving live overrides over the committed values.
+/// Lives in a `LiveGraphHost`, so a live update costs the layout of this view alone.
+private struct LoudnessGraphPane: View {
+    struct Base: Equatable { var refSPL, intensity: Float }
+    let base: Base
+    let isEnabled: Bool
+    @ObservedObject var live: GraphLive<LoudnessGraphKey>
+
+    var body: some View {
+        CompensationCurveView(
+            refSPL: live[.refSPL, or: base.refSPL],
+            intensity: live[.intensity, or: base.intensity],
+            isEnabled: isEnabled
+        )
+        .onChange(of: base) { _ in live.clear() }
+    }
+}
+
+private struct CompensationCurveView: View {
+    let refSPL: Float
+    let intensity: Float
+    let isEnabled: Bool
+
+    // Fixed visualization volume to show representative curve
+    private let visualizationVolumeDB: Float = -40.0
+    private let minFreq: CGFloat = 20.0
+    private let maxFreq: CGFloat = 20000.0
+    
+    private func computeCurve() -> [CGPoint] {
+        var effectivePhon = refSPL + visualizationVolumeDB
+        // Clamping logic
+        if effectivePhon < 20 { effectivePhon = 20 }
+        if effectivePhon > refSPL { effectivePhon = refSPL }
+        
+        return isoTable.map { data in
+            let gain = loudnessCompensationDB(
+                tf: data.tf, af: data.af, lu: data.lu,
+                refSPL: refSPL, effectivePhon: effectivePhon,
+                intensity: intensity
+            )
+            return CGPoint(x: CGFloat(data.f), y: CGFloat(gain))
+        }
+    }
+    
+    // Logarithmic X mapping
+    private func xPos(_ freq: CGFloat, w: CGFloat) -> CGFloat {
+        let logMin = log10(minFreq)
+        let logMax = log10(maxFreq)
+        let logVal = log10(freq)
+        return CGFloat((logVal - logMin) / (logMax - logMin)) * w
+    }
+
+    // Dynamic Linear Y mapping
+    private func yPos(_ gain: CGFloat, h: CGFloat, domainMin: CGFloat, domainMax: CGFloat) -> CGFloat {
+        let range = domainMax - domainMin
+        let normalized = (gain - domainMin) / range
+        return h - (normalized * h)
+    }
+
+    var body: some View {
+        let points = computeCurve()
+        
+        // Calculate dynamic domain to center the curve
+        let gains = points.map { $0.y }
+        let minGain = gains.min() ?? 0
+        let maxGain = gains.max() ?? 0
+        
+        // Minimum visual range of 10dB to prevent extreme zoom on flat lines
+        let dataRange = maxGain - minGain
+        let minVisualRange: CGFloat = 10.0
+        let visualRange = max(dataRange, minVisualRange)
+        
+        // Add 20% padding above and below
+        let padding = visualRange * 0.2
+        let domainMin = minGain - padding
+        let domainMax = maxGain + padding
+
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+
+            ZStack {
+                // Grid
+                drawGrid(w: w, h: h, domainMin: domainMin, domainMax: domainMax)
+                
+                // Labels
+                drawLabels(w: w, h: h, domainMin: domainMin, domainMax: domainMax)
+
+                if isEnabled {
+                    // Draw Curve
+                    Path { path in
+                        for (i, p) in points.enumerated() {
+                            let x = xPos(p.x, w: w)
+                            let y = yPos(p.y, h: h, domainMin: domainMin, domainMax: domainMax)
+                            
+                            if i == 0 {
+                                path.move(to: CGPoint(x: x, y: y))
+                            } else {
+                                path.addLine(to: CGPoint(x: x, y: y))
+                            }
+                        }
+                    }
+                    .stroke(
+                        Color.accentColor,
+                        style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)
+                    )
+                    
+                    // Info Badge
+                    HStack(spacing: 4) {
+                        Text("Curve at -40dB")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.accentColor.opacity(0.8))
+                    .cornerRadius(4)
+                    .position(x: w - 40, y: 15)
+                    
+                } else {
+                    Text("Disabled")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary.opacity(0.5))
+                        .position(x: w / 2, y: h / 2)
+                }
+            }
+            .clipped()
+        }
+    }
+
+    private func drawGrid(w: CGFloat, h: CGFloat, domainMin: CGFloat, domainMax: CGFloat) -> some View {
+        Path { path in
+            // Horizontal lines (Gain) - find "nice" steps
+            let range = domainMax - domainMin
+            let step: CGFloat = range > 40 ? 10 : 5
+            
+            // Find first multiple of step greater than domainMin
+            let start = ceil(domainMin / step) * step
+            
+            var current = start
+            while current <= domainMax {
+                let y = yPos(current, h: h, domainMin: domainMin, domainMax: domainMax)
+                path.move(to: CGPoint(x: 0, y: y))
+                path.addLine(to: CGPoint(x: w, y: y))
+                current += step
+            }
+            
+            // Vertical lines (Frequency)
+            // 100, 1k, 10k
+            for f in [100.0, 1000.0, 10000.0] {
+                let x = xPos(CGFloat(f), w: w)
+                path.move(to: CGPoint(x: x, y: 0))
+                path.addLine(to: CGPoint(x: x, y: h))
+            }
+        }
+        .stroke(Color.gray.opacity(0.15), lineWidth: 0.5)
+    }
+    
+    private func drawLabels(w: CGFloat, h: CGFloat, domainMin: CGFloat, domainMax: CGFloat) -> some View {
+        ZStack {
+            // Frequency Labels
+            ForEach([100, 1000, 10000], id: \.self) { f in
+                Text(f == 1000 ? "1k" : (f == 10000 ? "10k" : "\(f)"))
+                    .font(.system(size: 7, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.6))
+                    .position(x: xPos(CGFloat(f), w: w), y: h - 5)
+            }
+            
+            // Gain Labels
+            let range = domainMax - domainMin
+            let step: CGFloat = range > 40 ? 10 : 5
+            let start = ceil(domainMin / step) * step
+            
+            // Generate valid steps manually
+            let steps = stride(from: start, through: domainMax, by: Double(step)).map { CGFloat($0) }
+            
+            ForEach(steps, id: \.self) { gain in
+                Text("\(Int(gain))")
+                    .font(.system(size: 7, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.6))
+                    .position(x: 10, y: yPos(gain, h: h, domainMin: domainMin, domainMax: domainMax))
+            }
+        }
+    }
+}

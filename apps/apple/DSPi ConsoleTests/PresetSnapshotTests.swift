@@ -1,0 +1,228 @@
+import XCTest
+@testable import DSPi_Console
+
+/// Pure-logic tests for unsaved-change detection (`PresetSnapshot.diff`). Builds
+/// two snapshots that differ in exactly one dimension and asserts the diff
+/// reports it (and reports nothing when they are identical). No hardware.
+final class PresetSnapshotTests: XCTestCase {
+
+    private let names = ["USB L", "USB R", "Out L", "Out R", "Sub"]
+
+    /// Builds a neutral snapshot; pass only the field(s) under test. Every
+    /// `PresetSnapshot` field is `let` with no default, so this factory carries
+    /// the defaults once for all tests.
+    private func makeSnapshot(
+        preampDB: [Float] = [0, 0],
+        masterVolumeDB: Float = 0,
+        masterVolumeMode: Int = 0,
+        outputConfigMode: Int = 0,
+        platformName: String = "RP2350",
+        bypass: Bool = false,
+        channelFilters: [Int: [SnapshotFilterParams]] = [:],
+        crossoverFilters: [Int: [SnapshotFilterParams]] = [:],
+        channelNames: [String] = ["USB L", "USB R", "Out L", "Out R", "Sub"],
+        outputPins: [UInt8] = [6, 7, 8, 9, 10],
+        outputSlotTypes: [UInt8] = [0, 0, 0, 0],
+        spdifRxPin: UInt8 = 11,
+        adatEnabled: Bool? = nil,
+        adatPin: UInt8? = nil,
+        limiterOutputs: [LimiterOutputSettings] = LimiterParameters().outputs
+    ) -> PresetSnapshot {
+        PresetSnapshot(
+            preampDB: preampDB,
+            masterVolumeDB: masterVolumeDB,
+            masterVolumeMode: masterVolumeMode,
+            outputConfigMode: outputConfigMode,
+            platformName: platformName,
+            bypass: bypass,
+            loudnessEnabled: false,
+            loudnessOutputMask: LOUDNESS_DEFAULT_OUTPUT_MASK,
+            loudnessRefSPL: 80,
+            loudnessIntensity: 0,
+            crossfeedEnabled: false,
+            crossfeedPreset: 0,
+            crossfeedFreq: 700,
+            crossfeedFeed: 0,
+            crossfeedITD: false,
+            crossfeedOutputMask: CROSSFEED_DEFAULT_OUTPUT_MASK,
+            psybassEnabled: false,
+            psybassOutputMask: PSYBASS_DEFAULT_OUTPUT_MASK,
+            psybassCutoffHz: 80,
+            psybassHarmonicsDB: 0,
+            psybassDriveDB: 6,
+            psybassCharacterPct: 50,
+            psybassOriginalDB: 0,
+            subharmEnabled: false,
+            subharmOutputMask: SUBHARM_DEFAULT_OUTPUT_MASK,
+            subharmLowDB: 0,
+            subharmHighDB: 0,
+            subharmTopDB: SUBHARM_LEVEL_MIN,
+            subharmBoostDB: 0,
+            subharmSelectMode: SUBHARM_SELECT_ALL,
+            subharmSelectDepthPct: 100,
+            subharmSelectHoldMs: 150,
+            subharmCeilingDB: 0,
+            subharmLinkPairs: true,
+            tubeEnabled: false,
+            tubeOutputMask: TUBE_DEFAULT_OUTPUT_MASK,
+            tubeType: TUBE_DEFAULT_TUBE_TYPE,
+            tubeDriveDB: TUBE_DEFAULT_DRIVE_DB,
+            tubeBiasPct: TUBE_DEFAULT_BIAS_PCT,
+            tubeAsymDB: TUBE_DEFAULT_ASYM_DB,
+            tubeHardnessPct: TUBE_DEFAULT_HARDNESS_PCT,
+            tubeSagPct: TUBE_DEFAULT_SAG_PCT,
+            tubeRectifier: TUBE_DEFAULT_RECTIFIER,
+            tubeXfmrEnabled: false,
+            tubeXfmrDamping: TUBE_DEFAULT_XFMR_DAMPING,
+            tubeXfmrResHz: TUBE_DEFAULT_XFMR_RES_HZ,
+            tubeMixPct: 100,
+            tubeTrimDB: 0,
+            limiterOutputs: limiterOutputs,
+            upmixEnabled: false,
+            upmixCenterMode: UPMIX_CENTER_MODE_ADAPTIVE,
+            upmixSurroundMode: UPMIX_SURROUND_MODE_ADAPTIVE,
+            upmixStrengthPct: 100,
+            upmixCenterWidthPct: 25,
+            upmixThresholdPct: 30,
+            upmixAttackMs: 10,
+            upmixReleaseMs: 100,
+            upmixDetectorHpfHz: 200,
+            upmixSurroundDelayMs: 12,
+            upmixSurroundHpfHz: 300,
+            upmixSurroundLpfHz: 7000,
+            upmixDecorrPct: 90,
+            upmixPresenceDB: 0,
+            levellerEnabled: false,
+            levellerAmount: 0,
+            levellerSpeed: 0,
+            levellerMaxGainDB: 0,
+            levellerLookahead: false,
+            levellerGateDB: -96,
+            levellerDetectorMask: 0xFF,
+            levellerApplyMask: 0xFF,
+            channelDelays: [:],
+            matrixRouting: [],
+            matrixGain: [],
+            matrixInvert: [],
+            outputEnabled: [true, true, true, true, true],
+            outputMuted: [false, false, false, false, false],
+            outputGainDB: [0, 0, 0, 0, 0],
+            outputDelayMS: [0, 0, 0, 0, 0],
+            channelFilters: channelFilters,
+            crossoverFilters: crossoverFilters,
+            channelNames: channelNames,
+            outputPins: outputPins,
+            outputSlotTypes: outputSlotTypes,
+            i2sBckPin: 6,
+            mckEnabled: false,
+            mckPin: 21,
+            mckMultiplier: 128,
+            spdifRxPin: spdifRxPin,
+            inputSource: nil,
+            i2sRxPins: nil,
+            i2sInputChannels: nil,
+            i2sInputRate: nil,
+            i2sClockMode: nil,
+            lgSoundSyncEnabled: nil,
+            adatEnabled: adatEnabled,
+            adatPin: adatPin
+        )
+    }
+
+    private func band(_ type: FilterType, _ freq: Float, _ q: Float = 0.707, _ gain: Float = 0) -> SnapshotFilterParams {
+        SnapshotFilterParams(from: FilterParams(type: type, freq: freq, q: q, gain: gain))
+    }
+
+    func testIdenticalSnapshotsAreClean() {
+        let s = makeSnapshot(channelFilters: [0: [band(.peaking, 1000, 1, 3)]])
+        let diff = PresetSnapshot.diff(from: s, to: s, channelNames: names)
+        XCTAssertFalse(diff.hasChanges, "identical snapshots must produce no changes")
+    }
+
+    func testEQBandChangeIsDetected() {
+        let old = makeSnapshot(channelFilters: [0: [band(.peaking, 1000, 1, 0)]])
+        let new = makeSnapshot(channelFilters: [0: [band(.peaking, 1000, 1, 6)]])
+        let diff = PresetSnapshot.diff(from: old, to: new, channelNames: names)
+        XCTAssertTrue(diff.hasChanges, "a changed EQ gain must be detected")
+        XCTAssertTrue(diff.changes.contains { $0.category.contains("EQ") },
+                      "the change should be categorized under EQ: \(diff.changes.map(\.category))")
+    }
+
+    func testCrossoverBandChangeIsDetected() {
+        // V16/RP2350: crossover is output-only; outputs start at channel 8 (chOut1).
+        let old = makeSnapshot(crossoverFilters: [8: [band(.lr4_lp, 1000)]])
+        let new = makeSnapshot(crossoverFilters: [8: [band(.lr4_lp, 1200)]])
+        let diff = PresetSnapshot.diff(from: old, to: new, channelNames: names)
+        XCTAssertTrue(diff.hasChanges, "a changed crossover frequency must be detected")
+        XCTAssertTrue(diff.changes.contains { $0.category.contains("Crossover") },
+                      "the change should be categorized under Crossover: \(diff.changes.map(\.category))")
+    }
+
+    func testUserRenameIsDetected() {
+        let old = makeSnapshot(channelNames: ["USB L", "USB R", "Out L", "Out R", "Sub"])
+        let new = makeSnapshot(channelNames: ["USB L", "USB R", "Living Room Mains", "Out R", "Sub"])
+        let diff = PresetSnapshot.diff(from: old, to: new, channelNames: names)
+        XCTAssertTrue(diff.hasChanges, "renaming a channel to a custom value must be detected")
+    }
+
+    func testMasterVolumeChangeGatedByMode() {
+        // In WITH_PRESET mode a master-volume change counts toward dirtiness.
+        let old = makeSnapshot(masterVolumeDB: 0, masterVolumeMode: MASTER_VOLUME_MODE_WITH_PRESET)
+        let new = makeSnapshot(masterVolumeDB: -10, masterVolumeMode: MASTER_VOLUME_MODE_WITH_PRESET)
+        XCTAssertTrue(PresetSnapshot.diff(from: old, to: new, channelNames: names).hasChanges,
+                      "master volume change should be dirty in WITH_PRESET mode")
+
+        // In INDEPENDENT mode the same change must NOT dirty the preset.
+        let oldI = makeSnapshot(masterVolumeDB: 0, masterVolumeMode: MASTER_VOLUME_MODE_INDEPENDENT)
+        let newI = makeSnapshot(masterVolumeDB: -10, masterVolumeMode: MASTER_VOLUME_MODE_INDEPENDENT)
+        XCTAssertFalse(PresetSnapshot.diff(from: oldI, to: newI, channelNames: names).hasChanges,
+                       "master volume change should be ignored in INDEPENDENT mode")
+    }
+
+    /// The limiter follows output_config_mode like the pins: it dirties the
+    /// preset only in WITH_PRESET mode, one line per changed setting.
+    func testLimiterChangeGatedByOutputConfigMode() {
+        // RP2040, so output 1 is unified channel 3 ("Out R") in `names`.
+        var outs = LimiterParameters().outputs
+        outs[1].enabled = true
+        outs[1].thresholdDB = -3
+
+        let withPreset = OUTPUT_CONFIG_MODE_WITH_PRESET
+        let old = makeSnapshot(outputConfigMode: withPreset, platformName: "RP2040")
+        let new = makeSnapshot(outputConfigMode: withPreset, platformName: "RP2040", limiterOutputs: outs)
+        let diff = PresetSnapshot.diff(from: old, to: new, channelNames: names)
+        XCTAssertEqual(diff.changes.filter { $0.category == "Limiter" }.count, 2)
+        XCTAssertTrue(diff.changes.allSatisfy { $0.description.hasPrefix("Out R limiter") },
+                      "\(diff.changes.map(\.description))")
+
+        let independent = OUTPUT_CONFIG_MODE_INDEPENDENT
+        let oldI = makeSnapshot(outputConfigMode: independent, platformName: "RP2040")
+        let newI = makeSnapshot(outputConfigMode: independent, platformName: "RP2040", limiterOutputs: outs)
+        XCTAssertFalse(PresetSnapshot.diff(from: oldI, to: newI, channelNames: names).hasChanges,
+                       "a limiter change must not dirty the preset in INDEPENDENT mode")
+    }
+
+    func testAdatChangeGatedByOutputConfigMode() {
+        // ADAT config is part of the IO block: in WITH_PRESET mode an
+        // enable/pin change dirties the preset; in INDEPENDENT mode it doesn't
+        // (it lives in the device directory, saved via Save Output Config).
+        let old = makeSnapshot(outputConfigMode: OUTPUT_CONFIG_MODE_WITH_PRESET,
+                               adatEnabled: false, adatPin: 12)
+        let newEnabled = makeSnapshot(outputConfigMode: OUTPUT_CONFIG_MODE_WITH_PRESET,
+                                      adatEnabled: true, adatPin: 12)
+        XCTAssertTrue(PresetSnapshot.diff(from: old, to: newEnabled, channelNames: names).hasChanges,
+                      "ADAT enable change should be dirty in WITH_PRESET mode")
+
+        let newPin = makeSnapshot(outputConfigMode: OUTPUT_CONFIG_MODE_WITH_PRESET,
+                                  adatEnabled: false, adatPin: 13)
+        XCTAssertTrue(PresetSnapshot.diff(from: old, to: newPin, channelNames: names).hasChanges,
+                      "ADAT pin change should be dirty in WITH_PRESET mode")
+
+        let oldI = makeSnapshot(outputConfigMode: OUTPUT_CONFIG_MODE_INDEPENDENT,
+                                adatEnabled: false, adatPin: 12)
+        let newI = makeSnapshot(outputConfigMode: OUTPUT_CONFIG_MODE_INDEPENDENT,
+                                adatEnabled: true, adatPin: 13)
+        XCTAssertFalse(PresetSnapshot.diff(from: oldI, to: newI, channelNames: names).hasChanges,
+                       "ADAT change should be ignored in INDEPENDENT mode")
+    }
+}
