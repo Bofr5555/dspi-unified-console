@@ -35,6 +35,8 @@ use crate::graph::Graph;
 use crate::theme::{Glyphs, Theme};
 use crate::widgets::text::{fit_left, truncate};
 use crate::widgets::{Action, Dialog, HelpOverlay, KeyHelp, PopupList};
+// -- WP TM6 --
+use crate::widgets::{BarStrip, bar_strip};
 
 /// The Console's tool windows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -171,6 +173,9 @@ pub enum ShellEvent {
     // -- WP TM5 --
     /// `f`: the live spectrum on the response graph.
     SpectrumOverlay,
+    // -- WP TM6 --
+    /// `F`: the third-octave bars above the page.
+    SpectrumBars,
     /// `t`: take the analyser back from the console being followed.
     TakeControl,
     Rename(usize),
@@ -247,9 +252,18 @@ const GLOBAL_KEYS: &[KeyHelp] = &[
     KeyHelp::new("= g p . + -", "Graph height, pop-out, phase, partner, zoom"),
     // -- WP TM5 --
     KeyHelp::new("f t", "Spectrum on the graph, take control of the analyser"),
+    // -- WP TM6 --
+    KeyHelp::new("F", "Spectrum bars above the page"),
     KeyHelp::new("b c", "Bypass master EQ, clear clips"),
     KeyHelp::new("q", "Quit"),
 ];
+
+// -- WP TM6 --
+/// What the bars may take of `rows` of detail, which always keeps six rows, as
+/// it does from the graph (`layout::compute`).
+fn bars_room(rows: u16) -> u16 {
+    rows.saturating_sub(6)
+}
 
 const SIDEBAR_KEYS: &[KeyHelp] = &[
     KeyHelp::new("↑ ↓", "Select a channel"),
@@ -522,6 +536,8 @@ impl Shell {
             // -- WP TM5 --
             KeyCode::Char('f') => out.push(ShellEvent::SpectrumOverlay),
             KeyCode::Char('t') => out.push(ShellEvent::TakeControl),
+            // -- WP TM6 --
+            KeyCode::Char('F') => out.push(ShellEvent::SpectrumBars),
             KeyCode::Char('+') => out.push(ShellEvent::GraphZoom(-10.0)),
             KeyCode::Char('-') => out.push(ShellEvent::GraphZoom(10.0)),
             KeyCode::Char('h') => out.push(self.cursor_step(-1)),
@@ -1216,6 +1232,19 @@ impl Shell {
             );
             detail = Rect::new(detail.x, detail.y + 1, detail.width, detail.height - 1);
         }
+        // -- WP TM6 --
+        if let Some(p) = &self.model.bars
+            && let Some(l) = p.layout(detail.width, bars_room(detail.height))
+        {
+            let strip = Rect::new(detail.x, detail.y, detail.width, l.height);
+            BarStrip::new(p, t).render(strip, buf);
+            detail = Rect::new(
+                detail.x,
+                detail.y + l.height,
+                detail.width,
+                detail.height - l.height,
+            );
+        }
         self.detail.draw(detail, buf, t, state, detail_focused);
     }
 
@@ -1244,6 +1273,28 @@ impl Shell {
         self.settings.is_none()
             && self.tool.is_none()
             && (self.graph_popout || self.graph_height() != GraphHeight::Hidden)
+    }
+
+    // -- WP TM6 --
+    /// Whether `channels` channels' bars fit above the detail in the last
+    /// frame's layout.
+    pub fn bars_fit(&self, channels: usize) -> bool {
+        self.regions.as_ref().is_some_and(|r| {
+            let rule = u16::from(r.graph.height > 0 && r.detail.height > 1);
+            let rows = r.detail.height.saturating_sub(rule);
+            bar_strip::layout_for(channels, r.detail.width, bars_room(rows)).is_some()
+        })
+    }
+
+    // -- WP TM6 --
+    /// Whether the bars are being drawn: what the strip watches for. A tool
+    /// or Settings covers the page, and the pop-out gives the pane to the
+    /// graph.
+    pub fn bars_on_screen(&self, channels: usize) -> bool {
+        self.settings.is_none()
+            && self.tool.is_none()
+            && !self.graph_popout
+            && self.bars_fit(channels)
     }
 
     fn draw_graph(&self, graph_area: Rect, buf: &mut Buffer, t: &Theme) {
@@ -1907,6 +1958,96 @@ mod tests {
                 }
             }
         }
+    }
+
+    // -- WP TM6 --
+    fn bars(names: &[&str]) -> crate::widgets::BarPicture {
+        crate::widgets::BarPicture {
+            floor_db: -90.0,
+            ceiling_db: 6.0,
+            centres: vec![100, 1000, 10_000],
+            populated: vec![true; 33],
+            channels: names
+                .iter()
+                .map(|n| crate::widgets::BarChannel {
+                    color: ratatui::style::Color::Cyan,
+                    name: (*n).into(),
+                    levels: vec![-20.0; 33],
+                    peaks: None,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn wp_tm6_the_strip_sits_above_the_detail_and_leaves_it_six_rows() {
+        for (w, h) in [(80u16, 24u16), (120, 40), (200, 60)] {
+            let (mut s, mut term) = shell(w, h);
+            s.model.selection = Selection::Output(0);
+            s.model.bars = Some(bars(&["Strip A", "Strip B"]));
+            let f = frame(&mut s, &mut term);
+            assert!(
+                f.contains("Strip A") && f.contains("Strip B"),
+                "{w}x{h}\n{f}"
+            );
+            assert!(f.chars().any(|c| ('\u{2801}'..='\u{28FF}').contains(&c)));
+            assert!(f.contains("Input page"), "the detail still draws:\n{f}");
+            let line = |needle: &str| f.lines().position(|l| l.contains(needle)).unwrap();
+            assert!(line("Strip A") < line("Input page"), "{f}");
+            assert!(s.bars_fit(2));
+        }
+    }
+
+    #[test]
+    fn wp_tm6_the_strip_also_sits_above_the_overview_and_draws_in_ascii() {
+        let theme = Theme::mono(Glyphs::Ascii);
+        let mut model = fixture::rp2350(&theme);
+        model.selection = Selection::Overview;
+        model.bars = Some(bars(&["Strip A"]));
+        let mut s = Shell::new(model, theme, Box::new(Placeholder::new("FL", "Input page")));
+        let mut term = Terminal::new(TestBackend::new(120, 40)).unwrap();
+        let f = frame(&mut s, &mut term);
+        assert!(f.contains("* Strip A") && f.contains('#'), "{f}");
+        let strip: String = f
+            .lines()
+            .skip(2)
+            .take(6)
+            .flat_map(|l| l.chars().skip(29).take(90))
+            .collect();
+        assert!(strip.is_ascii(), "{f}");
+    }
+
+    #[test]
+    fn wp_tm6_the_strip_gives_way_where_it_has_no_place() {
+        let (mut s, mut term) = shell(80, 24);
+        s.model.selection = Selection::Output(0);
+        assert!(!s.bars_fit(1), "no frame drawn yet");
+        s.model.bars = Some(bars(&["Strip A"]));
+        frame(&mut s, &mut term);
+        assert!(s.bars_on_screen(1));
+
+        // Eight channels want more than an 80x24 detail has, and = helps.
+        assert!(!s.bars_fit(8));
+        s.model.bars = Some(bars(&["A", "B", "C", "D", "E", "F", "G", "Strip H"]));
+        assert!(!frame(&mut s, &mut term).contains("Strip H"));
+        s.model.graph_height = GraphHeight::Hidden;
+        assert!(frame(&mut s, &mut term).contains("Strip H"));
+        assert!(s.bars_on_screen(8));
+
+        // The pop-out gives the pane to the graph.
+        s.graph_popout = true;
+        assert!(!frame(&mut s, &mut term).contains("Strip H"));
+        assert!(!s.bars_on_screen(8));
+    }
+
+    #[test]
+    fn wp_tm6_capital_f_asks_for_the_bars() {
+        let (mut s, _) = shell(120, 40);
+        let out = s.handle(
+            crate::widgets::testing::shift(KeyCode::Char('F')),
+            &fixture::state(),
+        );
+        assert_eq!(out, vec![ShellEvent::SpectrumBars]);
     }
 
     #[test]

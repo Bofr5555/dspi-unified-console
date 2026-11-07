@@ -10,9 +10,9 @@
 //! The engine that talks to the device ([`dspi_session::rta::RtaEngine`])
 //! lives in the shared state, not here: the runner ticks it inside its own
 //! loop and budget. [`SpectrumState`] holds one subscription for everything
-//! that draws the selection: this panel while it is open and the overlay on
-//! the response graph while that is on screen. Nothing drawing, or no channel
-//! chosen, releases it, which is what makes the device stop the analyser.
+//! that draws the selection: this panel while it is open, the overlay on the
+//! response graph while that is on screen, and the bar strip above the page
+//! while that is. Nothing drawing, or no channel chosen, releases it, which is what makes the device stop the analyser.
 //!
 //! The device has one analyser and other consoles may be using it. The
 //! Terminal does not link `dspi-core`, so it reaches the following state
@@ -44,8 +44,9 @@ use crate::graph::{Graph, GraphCurve, GraphSettings, SpectrumOverlay};
 use crate::settings::config::Spectrum as Settings;
 use crate::shell::{Screen, ScreenEvent};
 use crate::theme::{ChannelRole, Glyphs, Theme};
+use crate::widgets::bar_strip;
 use crate::widgets::text::{fit_centre, truncate, wrap};
-use crate::widgets::{Action, ChipState, KeyHelp};
+use crate::widgets::{Action, BarChannel, BarPicture, ChipState, KeyHelp};
 
 // ---------------------------------------------------------------------------
 // What the panels share
@@ -74,6 +75,12 @@ pub struct SpectrumState {
     /// The response graph is on screen, which is when the overlay watches.
     overlay_shown: bool,
     overlay_glide: Glide,
+    // -- WP TM6 --
+    /// The bars above the page: `F`, off until asked for like the overlay.
+    bars: bool,
+    /// The strip has room on screen, which is when it watches.
+    bars_shown: bool,
+    bars_glide: Glide,
 }
 
 impl SpectrumState {
@@ -88,7 +95,7 @@ impl SpectrumState {
     }
 
     fn watching(&self) -> bool {
-        self.panel_open || (self.overlay && self.overlay_shown)
+        self.panel_open || (self.overlay && self.overlay_shown) || (self.bars && self.bars_shown) // -- WP TM6 --
     }
 
     /// What this console asks of the device; `None` while nothing here
@@ -188,16 +195,38 @@ impl SpectrumState {
     /// channel, `page` (its tap, its channel at that tap).
     pub fn toggle_overlay(&mut self, page: Option<(u8, u8)>) -> bool {
         self.overlay = !self.overlay;
-        if self.overlay
-            && self
-                .selection
-                .as_ref()
-                .is_none_or(|c| c.channels.is_empty())
+        if self.overlay {
+            self.start_from(page);
+        }
+        self.overlay
+    }
+
+    /// With no channel chosen yet, a display starts from the page's channel.
+    fn start_from(&mut self, page: Option<(u8, u8)>) {
+        if self
+            .selection
+            .as_ref()
+            .is_none_or(|c| c.channels.is_empty())
             && let Some((tap, channel)) = page
         {
             self.selection = Some(Selection::new(tap, vec![channel]));
         }
-        self.overlay
+    }
+
+    // -- WP TM6 --
+    /// Whether the bar strip has room on screen, from the runner.
+    pub fn set_bars_shown(&mut self, shown: bool) {
+        self.bars_shown = shown;
+    }
+
+    /// `F`: show or hide the bars above the page, and say which. Starts as
+    /// the overlay does.
+    pub fn toggle_bars(&mut self, page: Option<(u8, u8)>) -> bool {
+        self.bars = !self.bars;
+        if self.bars {
+            self.start_from(page);
+        }
+        self.bars
     }
 }
 
@@ -675,6 +704,45 @@ pub fn overlay_picture(
     })
 }
 
+// -- WP TM6 --
+/// What the bar strip above the page draws; `None` while it is off, covered,
+/// or has no channel to show (`SpectrumBarStrip`, SpectrumAnalyserView.swift:
+/// 1446-1447). Following shows the device's channels, as every display does.
+pub fn bars_picture(
+    shared: &Shared,
+    state: &DeviceState,
+    theme: &Theme,
+    now: Instant,
+) -> Option<BarPicture> {
+    let mut app = shared.try_borrow_mut().ok()?;
+    let s = &mut app.spectrum;
+    if !(s.bars && s.bars_shown && state.connected && s.engine.supported()) {
+        return None;
+    }
+    let mut glide = std::mem::take(&mut s.bars_glide);
+    let picture = traces(s, state, theme, &mut glide, now);
+    s.bars_glide = glide;
+    if picture.is_empty() {
+        return None;
+    }
+    let bands = picture.iter().map(|t| t.avg.len()).max().unwrap_or(0);
+    Some(BarPicture {
+        floor_db: s.settings.floor_db as f64,
+        ceiling_db: s.settings.ceiling_db as f64,
+        centres: s.engine.centres().to_vec(),
+        populated: (0..bands).map(|b| s.engine.band_populated(b)).collect(),
+        channels: picture
+            .into_iter()
+            .map(|t| BarChannel {
+                color: t.color,
+                name: t.name,
+                levels: t.avg,
+                peaks: t.peak,
+            })
+            .collect(),
+    })
+}
+
 pub struct SpectrumPanel {
     shared: Shared,
     body: Body,
@@ -1090,9 +1158,8 @@ impl Drop for SpectrumPanel {
     }
 }
 
-/// One channel's third-octave bars: a title, equal-width bars on the
-/// device's own band centres, the peak hold as a cap, and shading where the
-/// transform has no bin (`RtaBandsView`, SpectrumAnalyserView.swift:236-420).
+/// One channel's bars, the same as the strip's cells but in blocks on any
+/// terminal that has them: a panel has the room to want their finer height.
 fn draw_bar_cell(
     area: Rect,
     buf: &mut Buffer,
@@ -1101,111 +1168,29 @@ fn draw_bar_cell(
     s: &SpectrumState,
     labels: bool,
 ) {
-    if area.height < 2 || area.width < 4 {
-        return;
-    }
-    let ascii = theme.glyphs == Glyphs::Ascii;
-    buf.set_string(
-        area.x,
-        area.y,
-        if ascii { "*" } else { "●" },
-        Style::default().fg(t.color),
+    let populated = |b: usize| s.engine.band_populated(b);
+    bar_strip::draw_cell(
+        area,
+        buf,
+        theme,
+        &bar_strip::Cell {
+            color: t.color,
+            name: &t.name,
+            levels: &t.avg,
+            peaks: t.peak.as_deref(),
+        },
+        &bar_strip::Scale {
+            floor_db: s.settings.floor_db as f64,
+            ceiling_db: s.settings.ceiling_db as f64,
+            centres: s.engine.centres(),
+            populated: &populated,
+        },
+        match theme.glyphs {
+            Glyphs::Ascii => Glyphs::Ascii,
+            _ => Glyphs::Blocks,
+        },
+        labels,
     );
-    buf.set_string(
-        area.x + 2,
-        area.y,
-        truncate(&t.name, area.width.saturating_sub(3) as usize),
-        theme.section(),
-    );
-    let plot_h = area.height - 1 - u16::from(labels);
-    let plot = Rect::new(area.x, area.y + 1, area.width, plot_h);
-    let n = t.avg.len();
-    if n == 0 || plot_h == 0 {
-        return;
-    }
-    let (floor, ceil) = (s.settings.floor_db as f64, s.settings.ceiling_db as f64);
-    let norm = |db: f64| ((db - floor) / (ceil - floor).max(1.0)).clamp(0.0, 1.0);
-    let engine = &s.engine;
-    let w = plot.width as usize;
-    // A wide cell spreads the bands across its width, band b from column
-    // b w / n; with two columns a band or more, every bar is the same width
-    // with a gap after it, and with fewer the bars touch rather than gap at
-    // random. A narrow cell shows in each column the loudest band that lands
-    // in it, so a tone is kept rather than averaged away.
-    let first_col = |b: usize| (b * w).div_ceil(n);
-    let bar_w = if w / n >= 2 { w / n - 1 } else { w };
-    const BLOCKS: [&str; 8] = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
-    for x in 0..w {
-        let (b0, b1) = if w >= n {
-            let b = x * n / w;
-            if x - first_col(b) >= bar_w {
-                continue;
-            }
-            (b, b + 1)
-        } else {
-            (x * n / w, ((x + 1) * n / w).max(x * n / w + 1))
-        };
-        let bands = b0..b1.min(n);
-        let shaded = bands.clone().all(|b| !engine.band_populated(b));
-        let px = plot.x + x as u16;
-        if shaded {
-            for y in 0..plot_h {
-                buf[(px, plot.y + y)]
-                    .set_symbol(if ascii { "." } else { "░" })
-                    .set_style(Style::default().fg(theme.chrome_faint));
-            }
-            continue;
-        }
-        let level = bands.clone().map(|b| t.avg[b]).fold(f64::MIN, f64::max);
-        let eighths = (norm(level) * plot_h as f64 * 8.0).round() as u16;
-        for r in 0..plot_h {
-            let fill = eighths.saturating_sub(r * 8).min(8);
-            if fill == 0 {
-                break;
-            }
-            let sym = match (ascii, fill) {
-                (true, 4..) => "#",
-                (true, _) => continue,
-                (false, _) => BLOCKS[(fill - 1) as usize],
-            };
-            buf[(px, plot.y + plot_h - 1 - r)]
-                .set_symbol(sym)
-                .set_style(Style::default().fg(t.color));
-        }
-        if let Some(peak) = &t.peak {
-            let p = bands
-                .map(|b| peak.get(b).copied().unwrap_or(f64::MIN))
-                .fold(f64::MIN, f64::max);
-            let row = ((norm(p) * plot_h as f64).ceil() as u16).min(plot_h);
-            // A cap only where it clears the bar.
-            if row > 0 && row * 8 > eighths + 4 {
-                buf[(px, plot.y + plot_h - row)]
-                    .set_symbol(if ascii { "-" } else { "▔" })
-                    .set_style(Style::default().fg(t.color));
-            }
-        }
-    }
-    if labels {
-        let y = plot.y + plot_h;
-        let centres = engine.centres();
-        let mut last_end = 0u16;
-        for (hz, label) in [(100u16, "100"), (1000, "1k"), (10_000, "10k")] {
-            let Some(b) = centres.iter().position(|c| *c == hz).filter(|b| *b < n) else {
-                continue;
-            };
-            let x = if w / n >= 2 {
-                first_col(b) + bar_w / 2
-            } else {
-                first_col(b)
-            } as u16;
-            let start = plot.x + x.saturating_sub(label.len() as u16 / 2);
-            if start < last_end || start + label.len() as u16 > plot.x + plot.width {
-                continue;
-            }
-            buf.set_string(start, y, label, theme.label());
-            last_end = start + label.len() as u16 + 1;
-        }
-    }
 }
 
 impl Screen for SpectrumPanel {
@@ -1987,6 +1972,105 @@ mod tests {
         assert_eq!(s.selection, Some(Selection::new(TAP_INPUT, vec![2])));
         s.toggle_overlay(Some((TAP_INPUT, 3)));
         s.toggle_overlay(Some((TAP_INPUT, 3)));
+        assert_eq!(
+            s.selection,
+            Some(Selection::new(TAP_INPUT, vec![2])),
+            "a choice stays"
+        );
+    }
+
+    // -- WP TM6 --
+    #[test]
+    fn wp_tm6_the_strip_watches_only_while_on_screen_and_shares_the_subscription() {
+        let state = testing::state();
+        let theme = Theme::console(crate::theme::ColorDepth::TrueColor, Glyphs::Braille);
+        let shared = shared_with(TAP_OUTPUT, &[0, 2]);
+        let picture = || bars_picture(&shared, &state, &theme, Instant::now());
+        let sync = |shown: bool| {
+            let mut app = shared.borrow_mut();
+            app.spectrum.set_bars_shown(shown);
+            app.spectrum.sync(&state);
+        };
+        let watching = || shared.borrow().spectrum.engine.watching();
+
+        sync(true);
+        assert!(!watching() && picture().is_none(), "off until asked for");
+
+        assert!(shared.borrow_mut().spectrum.toggle_bars(None));
+        sync(false);
+        assert!(!watching() && picture().is_none(), "no room on screen");
+
+        sync(true);
+        assert!(watching());
+        let p = picture().unwrap();
+        assert_eq!((p.floor_db, p.ceiling_db), (-90.0, 6.0));
+        assert_eq!(p.channels.len(), 2);
+        assert_eq!(p.channels[1].name, channel_name_of(&state, TAP_OUTPUT, 2));
+        assert_eq!(p.channels[0].levels.len(), 34, "the device's bands");
+        assert!(p.channels[0].peaks.is_some(), "Peak Hold is on by default");
+        assert_eq!(p.populated.len(), 34);
+
+        // The channels are the device's, and one subscription serves all.
+        let want = shared.borrow().spectrum.engine.wanted().unwrap();
+        assert_eq!(want.channel_mask, 0b101);
+        assert!(shared.borrow_mut().spectrum.toggle_overlay(None));
+        shared.borrow_mut().spectrum.set_overlay_shown(true);
+        let mut panel = SpectrumPanel::new(shared.clone());
+        panel.sync(&state);
+        drop(panel);
+        assert!(!shared.borrow_mut().spectrum.toggle_overlay(None));
+        sync(true);
+        assert!(watching(), "the strip keeps it");
+
+        // Peak Hold off is honoured.
+        {
+            let mut app = shared.borrow_mut();
+            let mut settings = app.spectrum.settings.clone();
+            settings.peak_hold = false;
+            app.spectrum.adopt_settings(&settings);
+        }
+        assert!(picture().unwrap().channels[0].peaks.is_none());
+
+        assert!(!shared.borrow_mut().spectrum.toggle_bars(None));
+        sync(true);
+        assert!(!watching() && picture().is_none());
+    }
+
+    #[test]
+    fn wp_tm6_following_draws_the_devices_channels_and_a_hidden_strip_stays_hidden() {
+        let state = testing::state();
+        let theme = Theme::console(crate::theme::ColorDepth::TrueColor, Glyphs::Braille);
+        let shared = shared_with(TAP_OUTPUT, &[0]);
+        {
+            let mut app = shared.borrow_mut();
+            app.spectrum.toggle_bars(None);
+            app.spectrum.set_bars_shown(true);
+            app.spectrum.sync(&state);
+        }
+        follow(&shared, 0b0110, 9);
+        let p = bars_picture(&shared, &state, &theme, Instant::now()).unwrap();
+        let names: Vec<_> = p.channels.iter().map(|c| c.name.clone()).collect();
+        assert_eq!(
+            names,
+            [1, 2].map(|c| channel_name_of(&state, TAP_INPUT, c)),
+            "the device's channels, not this console's"
+        );
+
+        shared.borrow_mut().spectrum.selection = Some(Selection::new(TAP_OUTPUT, vec![]));
+        assert_eq!(
+            bars_picture(&shared, &state, &theme, Instant::now()),
+            None,
+            "a display hidden here stays hidden"
+        );
+    }
+
+    #[test]
+    fn wp_tm6_the_bars_start_from_the_page_when_none_was_chosen() {
+        let mut s = SpectrumState::default();
+        s.toggle_bars(Some((TAP_INPUT, 2)));
+        assert_eq!(s.selection, Some(Selection::new(TAP_INPUT, vec![2])));
+        s.toggle_bars(Some((TAP_INPUT, 3)));
+        s.toggle_bars(Some((TAP_INPUT, 3)));
         assert_eq!(
             s.selection,
             Some(Selection::new(TAP_INPUT, vec![2])),

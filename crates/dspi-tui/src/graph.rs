@@ -300,8 +300,9 @@ impl<'a> Graph<'a> {
     }
 }
 
-const BRAILLE_DOTS: [[u16; 2]; 4] = [[0x01, 0x08], [0x02, 0x10], [0x04, 0x20], [0x40, 0x80]];
-const BRAILLE_BASE: u16 = 0x2800;
+pub(crate) const BRAILLE_DOTS: [[u16; 2]; 4] =
+    [[0x01, 0x08], [0x02, 0x10], [0x04, 0x20], [0x40, 0x80]];
+pub(crate) const BRAILLE_BASE: u16 = 0x2800;
 
 impl Widget for Graph<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
