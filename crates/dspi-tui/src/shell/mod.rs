@@ -11,6 +11,8 @@ pub mod connect;
 pub mod fixture;
 pub mod layout;
 pub mod model;
+// -- WP TM4 --
+pub mod read_only;
 pub mod screen;
 pub mod sidebar;
 
@@ -892,7 +894,8 @@ impl Shell {
         if self.settings.is_some() {
             self.draw_settings(&regions, buf, &t, state);
         } else {
-            self.draw_title(regions.title, buf, &t);
+            // -- WP TM4 --
+            self.draw_title(regions.title, buf, &t, state);
             self.draw_sidebar(&regions, buf, &t);
             self.draw_pane(&regions, buf, &t, state);
             self.draw_echo(regions.echo, buf, &t, state);
@@ -942,12 +945,18 @@ impl Shell {
         self.regions = Some(regions);
     }
 
-    fn draw_title(&self, area: Rect, buf: &mut Buffer, t: &Theme) {
+    fn draw_title(&self, area: Rect, buf: &mut Buffer, t: &Theme, state: &DeviceState) {
         let m = &self.model;
-        let mut left = format!(
-            " DSPi  {} · fw {} · {}",
-            m.platform, m.firmware, m.serial_short
-        );
+        // -- WP TM4 --
+        // A read-only device's banner takes the left of the title row: it
+        // names the firmware, and no screen can scroll it away.
+        let banner = read_only::banner(&state.caps).map(|b| format!(" {b}"));
+        let mut left = banner.clone().unwrap_or_else(|| {
+            format!(
+                " DSPi  {} · fw {} · {}",
+                m.platform, m.firmware, m.serial_short
+            )
+        });
         let dot = match (m.connected, t.glyphs) {
             (true, Glyphs::Ascii) => "*",
             (false, Glyphs::Ascii) => "x",
@@ -970,7 +979,8 @@ impl Shell {
         // The link and the extension channel, as far as they fit: the
         // connection state on the right matters more.
         for extra in [&m.via, &m.ext] {
-            if !extra.is_empty()
+            if banner.is_none()
+                && !extra.is_empty()
                 && area.width > rw + left.chars().count() as u16 + extra.chars().count() as u16 + 5
             {
                 left.push_str(" · ");
@@ -981,7 +991,11 @@ impl Shell {
             area.x,
             area.y,
             truncate(&left, area.width as usize),
-            t.title(),
+            if banner.is_some() {
+                t.warning_style()
+            } else {
+                t.title()
+            },
         );
         if area.width > rw + left.chars().count() as u16 + 2 {
             let x = area.x + area.width - rw;
@@ -1198,6 +1212,17 @@ impl Shell {
             back,
             t.label(),
         );
+        // -- WP TM4 --
+        // Settings has the whole screen, so the banner goes between its ends.
+        if let Some(b) = read_only::banner(&state.caps) {
+            let room = (r.title.width as usize).saturating_sub(title.len() + back.len() + 2);
+            buf.set_string(
+                r.title.x + title.len() as u16 + 1,
+                r.title.y,
+                truncate(&b, room),
+                t.warning_style(),
+            );
+        }
         let body = Rect::new(
             r.title.x,
             r.title.y + 1,

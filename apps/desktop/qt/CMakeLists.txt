@@ -61,6 +61,8 @@ set(DSPI_APP_SOURCES
     src/PointerTracker.cpp
     src/SiggenController.cpp
     src/CsController.cpp
+    src/NamesController.cpp # -- WP QD4 --
+    src/OutputLatencyController.cpp # -- WP QD5 --
     src/FirmwareUpdater.cpp
     src/AutoEqLibrary.cpp
     src/StatsController.cpp
@@ -68,6 +70,8 @@ set(DSPI_APP_SOURCES
     src/ConfigFiles.cpp
     src/MeterItem.cpp
     src/WindowEffects.cpp
+    # -- WP QD2 --
+    src/ExtController.cpp
     resources.qrc
 )
 add_executable(DSPiConsole ${DSPI_APP_SOURCES})
@@ -75,7 +79,7 @@ add_executable(DSPiConsole ${DSPI_APP_SOURCES})
 # The app with its offscreen test driver (ci/check.sh --step qt-offscreen).
 option(DSPI_SMOKE "Also build DSPiConsoleSmoke, the app with its test driver" OFF)
 if(DSPI_SMOKE)
-    add_executable(DSPiConsoleSmoke ${DSPI_APP_SOURCES} smoke/SmokeDriver.cpp smoke/SmokeDriverHw.cpp smoke/SmokeDriverReplug.cpp smoke/SmokeDriverSeam.cpp smoke/SmokeDriver.h smoke/smoke.qrc)
+    add_executable(DSPiConsoleSmoke ${DSPI_APP_SOURCES} smoke/SmokeDriver.cpp smoke/SmokeDriverHw.cpp smoke/SmokeDriverReplug.cpp smoke/SmokeDriverSeam.cpp smoke/SmokeDriverExt.cpp smoke/SmokeDriverNames.cpp smoke/SmokeDriverLatency.cpp smoke/SmokeDriver.h smoke/smoke.qrc)
     target_include_directories(DSPiConsoleSmoke PRIVATE ${DSPI_CORE_DIR}/include src/ smoke/)
     target_compile_definitions(DSPiConsoleSmoke PRIVATE DSPI_SMOKE)
     target_link_libraries(DSPiConsoleSmoke PRIVATE

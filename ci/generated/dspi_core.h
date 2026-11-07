@@ -4611,6 +4611,43 @@ bool dspi_get_device_name(struct FfiCore *core, char *out_buf, uint32_t buf_len)
 bool dspi_set_device_name(struct FfiCore *core, const char *name);
 
 /**
+ * The name of input source `source` as last known ("" when unnamed), cut to
+ * fit `out_buf`, with no traffic: for showing names, which connect has read
+ * and notifications keep current. 32 bytes always fit. False on firmware
+ * without source names, and for a source past the table.
+ */
+bool dspi_cached_input_source_name(struct FfiCore *core,
+                                   uint8_t source,
+                                   char *out_buf,
+                                   uint32_t buf_len);
+
+/**
+ * The device's name as last known, as [`dspi_cached_input_source_name`]. False
+ * on firmware without device names.
+ */
+bool dspi_cached_device_name(struct FfiCore *core, char *out_buf, uint32_t buf_len);
+
+/**
+ * On the demo device only: someone else renames input source `target`, or the
+ * device for 0xFF. "" clears the name. False on anything else.
+ */
+bool dspi_demo_rename_elsewhere(struct FfiCore *core, uint8_t target, const char *name);
+
+/**
+ * On the demo device only: how an output-latency request lands. `mode` 0 at
+ * once, 1 after `reads` status reads, 2 never, 3 dropped after `reads` status
+ * reads; `blackout` status reads stall first while one is pending. False on
+ * anything else.
+ */
+bool dspi_demo_latency_timing(struct FfiCore *core, uint8_t mode, uint8_t reads, uint8_t blackout);
+
+/**
+ * On the demo device only: how many output-latency requests it has received,
+ * or `u32::MAX` on anything else.
+ */
+uint32_t dspi_demo_latency_sets(struct FfiCore *core);
+
+/**
  * The output latency's status: JSON {ok, raw, fields: [{name, value}]}.
  * Returns the length needed.
  */
@@ -4760,6 +4797,13 @@ uint8_t dspi_core_vreg_manual_clear(struct FfiCore *core);
  * 3 `seconds` passing on the device's clock.
  */
 uint8_t dspi_core_vreg_demo_event(struct FfiCore *core, uint8_t event, uint32_t seconds);
+
+/**
+ * On the demo device only: hold it in a running revert (`on`), or let it finish.
+ * While held, control-surface writes settle busy, and the save, the revert, a
+ * macro fire and a learn are refused. 0 when done.
+ */
+uint8_t dspi_cs_demo_busy(struct FfiCore *core, bool on);
 
 /**
  * What the open board needs, read from the device now: JSON {ok, requiredMv,

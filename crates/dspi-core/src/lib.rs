@@ -244,6 +244,9 @@ pub(crate) struct Connection {
     /// A lost notification may have been a rename: the next re-read after
     /// notifications reads the names too.
     pub(crate) source_names_stale: bool,
+    // -- WP QD4 --
+    /// The device's name, "" for unnamed, kept as `source_names` is.
+    pub(crate) device_name: String,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -329,6 +332,8 @@ impl Connection {
             // -- WP CG13 --
             source_names: info::SourceNames::default(),
             source_names_stale: false,
+            // -- WP QD4 --
+            device_name: String::new(),
         }
     }
 

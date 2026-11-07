@@ -1263,6 +1263,27 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func applyAllParams() throws 
     
     /**
+     * The device's name as last known, with no traffic, kept as
+     * [`DspiCore::cached_input_source_name`] keeps source names. "" when
+     * unnamed. Errors: `Unsupported` on firmware without device names;
+     * `Disconnected`.
+     */
+    func cachedDeviceName() throws  -> String
+    
+    /**
+     * The name of input source `source` as last known, with no traffic: read
+     * on connect, kept current by notifications (from any client) and by
+     * [`DspiCore::set_input_source_name`], and read again after a lost
+     * notification. "" when unnamed. For a client's rows, which would
+     * otherwise read over the wire what connect has just read.
+     *
+     * Errors: `Unsupported` on firmware without source names; `InvalidArgument`
+     * for a source past the table; `Disconnected` without a device or before
+     * it was probed.
+     */
+    func cachedInputSourceName(source: UInt8) throws  -> String
+    
+    /**
      * The live state now matches the active preset: remember its image as
      * the baseline for [`DspiCore::preset_dirty`] and
      * [`DspiCore::preset_changes`]. Without a device, or before an image
@@ -1499,6 +1520,15 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func csApply(op: String)  -> String
     
     /**
+     * On the demo device only: hold it in a running revert, or let it finish.
+     * While held it gives the refusals a real device has no steady way to show:
+     * a write settles busy, and the save, the revert, a macro fire and a learn
+     * are refused. As [`core_vreg_demo_event`](Self::core_vreg_demo_event), it
+     * answers [`DspiError::Unsupported`] on any other device.
+     */
+    func csDemoBusy(on: Bool) throws 
+    
+    /**
      * Read the whole control-surface configuration from the device:
      * capabilities, bindings and names, IR commands, groups, macros, the
      * display and the aux outputs (about seventy round trips).
@@ -1548,6 +1578,32 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * the re-read fails.
      */
     func deletePreset(slot: UInt8) throws 
+    
+    /**
+     * How many output-latency requests the demo device has received, for
+     * clients' tests that a wait never sends one again. `Unsupported`, with no
+     * traffic, on anything but a simulated device.
+     */
+    func demoLatencySets() throws  -> UInt32
+    
+    /**
+     * Set how the demo device applies an output-latency request, for clients'
+     * tests: `mode` 0 at once (and a request held so far applies on the next
+     * status read), 1 after `reads` status reads, 2 never, 3 dropped after
+     * `reads` status reads. `blackout` status reads stall first while one is
+     * pending, as the firmware's flash window does. `Unsupported`, with no
+     * traffic, on anything but a simulated device; `InvalidArgument` for
+     * another `mode`.
+     */
+    func demoLatencyTiming(mode: UInt8, reads: UInt8, blackout: UInt8) throws 
+    
+    /**
+     * Have someone else rename something on the demo device, for clients'
+     * tests and demo mode: `target` is an input source, or 0xFF for the device
+     * itself. The rename arrives as a notification that is not this client's
+     * own. `Unsupported`, with no traffic, on anything but a simulated device.
+     */
+    func demoRenameElsewhere(target: UInt8, name: String) throws 
     
     /**
      * Close the open device, whatever its transport, and reset the mirror
@@ -3483,6 +3539,38 @@ open func applyAllParams()throws   {try rustCallWithError(FfiConverterTypeDspiEr
 }
     
     /**
+     * The device's name as last known, with no traffic, kept as
+     * [`DspiCore::cached_input_source_name`] keeps source names. "" when
+     * unnamed. Errors: `Unsupported` on firmware without device names;
+     * `Disconnected`.
+     */
+open func cachedDeviceName()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_cached_device_name(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The name of input source `source` as last known, with no traffic: read
+     * on connect, kept current by notifications (from any client) and by
+     * [`DspiCore::set_input_source_name`], and read again after a lost
+     * notification. "" when unnamed. For a client's rows, which would
+     * otherwise read over the wire what connect has just read.
+     *
+     * Errors: `Unsupported` on firmware without source names; `InvalidArgument`
+     * for a source past the table; `Disconnected` without a device or before
+     * it was probed.
+     */
+open func cachedInputSourceName(source: UInt8)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_cached_input_source_name(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(source),$0
+    )
+})
+}
+    
+    /**
      * The live state now matches the active preset: remember its image as
      * the baseline for [`DspiCore::preset_dirty`] and
      * [`DspiCore::preset_changes`]. Without a device, or before an image
@@ -3837,6 +3925,20 @@ open func csApply(op: String) -> String  {
 }
     
     /**
+     * On the demo device only: hold it in a running revert, or let it finish.
+     * While held it gives the refusals a real device has no steady way to show:
+     * a write settles busy, and the save, the revert, a macro fire and a learn
+     * are refused. As [`core_vreg_demo_event`](Self::core_vreg_demo_event), it
+     * answers [`DspiError::Unsupported`] on any other device.
+     */
+open func csDemoBusy(on: Bool)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_cs_demo_busy(self.uniffiClonePointer(),
+        FfiConverterBool.lower(on),$0
+    )
+}
+}
+    
+    /**
      * Read the whole control-surface configuration from the device:
      * capabilities, bindings and names, IR commands, groups, macros, the
      * display and the aux outputs (about seventy round trips).
@@ -3902,6 +4004,50 @@ open func csSnapshot() -> String  {
 open func deletePreset(slot: UInt8)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_delete_preset(self.uniffiClonePointer(),
         FfiConverterUInt8.lower(slot),$0
+    )
+}
+}
+    
+    /**
+     * How many output-latency requests the demo device has received, for
+     * clients' tests that a wait never sends one again. `Unsupported`, with no
+     * traffic, on anything but a simulated device.
+     */
+open func demoLatencySets()throws  -> UInt32  {
+    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_demo_latency_sets(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Set how the demo device applies an output-latency request, for clients'
+     * tests: `mode` 0 at once (and a request held so far applies on the next
+     * status read), 1 after `reads` status reads, 2 never, 3 dropped after
+     * `reads` status reads. `blackout` status reads stall first while one is
+     * pending, as the firmware's flash window does. `Unsupported`, with no
+     * traffic, on anything but a simulated device; `InvalidArgument` for
+     * another `mode`.
+     */
+open func demoLatencyTiming(mode: UInt8, reads: UInt8, blackout: UInt8)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_demo_latency_timing(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(mode),
+        FfiConverterUInt8.lower(reads),
+        FfiConverterUInt8.lower(blackout),$0
+    )
+}
+}
+    
+    /**
+     * Have someone else rename something on the demo device, for clients'
+     * tests and demo mode: `target` is an input source, or 0xFF for the device
+     * itself. The rename arrives as a notification that is not this client's
+     * own. `Unsupported`, with no traffic, on anything but a simulated device.
+     */
+open func demoRenameElsewhere(target: UInt8, name: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_demo_rename_elsewhere(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(target),
+        FfiConverterString.lower(name),$0
     )
 }
 }
@@ -19868,6 +20014,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_apply_all_params() != 8407) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_cached_device_name() != 27756) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_cached_input_source_name() != 3222) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_capture_baseline() != 12643) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -19934,6 +20086,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_cs_apply() != 3367) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_cs_demo_busy() != 31960) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_cs_fetch() != 19147) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -19944,6 +20099,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_delete_preset() != 21426) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_demo_latency_sets() != 20471) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_demo_latency_timing() != 50542) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_demo_rename_elsewhere() != 20262) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_disconnect() != 29066) {

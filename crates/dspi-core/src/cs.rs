@@ -281,6 +281,28 @@ fn read_aux_into(s: &mut Surfaces<'_>, d: &CsData, aux: &mut CsAuxStates) {
     }
 }
 
+// -- WP CG16 --
+/// Whether an aux SET the status has no complaint about took. During a revert
+/// the firmware acknowledges it, changes nothing and leaves the status alone
+/// (vendor_commands.c, `REQ_SET_CS_AUX_STATE`), so only the output's own state
+/// tells: not as asked is `BUSY`. `aux` becomes what the device holds, either way.
+fn confirm_aux(
+    session: &mut Session,
+    aux: &mut CsAuxStates,
+    took: impl FnOnce(&CsAuxStates) -> bool,
+) -> Result<()> {
+    let live = with_surfaces(session, |s| s.read_aux_states())?.map_err(surface_error)?;
+    let ok = took(&live);
+    *aux = live;
+    if ok {
+        Ok(())
+    } else {
+        Err(DspiError::Refused {
+            status: cs_status::BUSY,
+        })
+    }
+}
+
 /// Read the whole configuration into `cs`, for the open connection. Reads
 /// only: a read-only connection may be fetched.
 fn fetch_into(inner: &mut Inner, cs: &mut CsState) -> Result<()> {
@@ -797,7 +819,11 @@ fn write_op(inner: &mut Inner, cs: &mut CsState, kind: &str, op: &Value) -> Resu
             let name = text(op, "name")?;
             let session = w.session()?;
             let r = cs_model::apply(session, |s| s.write_name(slot, name));
-            with_surfaces(session, |s| read_binding_into(s, d, slot))?;
+            with_surfaces(session, |s| {
+                read_binding_into(s, d, slot);
+                // -- WP CG16 -- A name alone makes the device dirty too
+                read_status_into(s, d);
+            })?;
             r.map_err(apply_error)?;
         }
         "ir" => {
@@ -949,11 +975,9 @@ fn write_op(inner: &mut Inner, cs: &mut CsState, kind: &str, op: &Value) -> Resu
         "auxState" => {
             let slot = index(op, CsAuxStates::SLOTS, "aux slot")?;
             let on = num::<i64>(op, "on", 0)? != 0;
-            cs_model::apply_code(w.session()?, |s| s.set_aux_state(slot, on))
-                .map_err(apply_error)?;
-            if let Some(x) = aux.state.get_mut(usize::from(slot)) {
-                *x = u8::from(on);
-            }
+            let session = w.session()?;
+            cs_model::apply_code(session, |s| s.set_aux_state(slot, on)).map_err(apply_error)?;
+            confirm_aux(session, aux, |a| a.is_on(usize::from(slot)) == on)?;
         }
         "auxLevel" => {
             let slot = index(op, CsAuxStates::SLOTS, "aux slot")?;
@@ -965,11 +989,11 @@ fn write_op(inner: &mut Inner, cs: &mut CsState, kind: &str, op: &Value) -> Resu
             };
             // Clamped to 0..=100 first, so the 8.8 value fits a u16.
             let q8 = ((percent.clamp(0.0, 100.0) * 256.0).round() as u16).min(AUX_LEVEL_MAX_Q8);
-            cs_model::apply_code(w.session()?, |s| s.set_aux_level(slot, q8))
-                .map_err(apply_error)?;
-            if let Some(x) = aux.level_q8.get_mut(usize::from(slot)) {
-                *x = q8;
-            }
+            let session = w.session()?;
+            cs_model::apply_code(session, |s| s.set_aux_level(slot, q8)).map_err(apply_error)?;
+            confirm_aux(session, aux, |a| {
+                a.level_q8.get(usize::from(slot)).copied() == Some(q8)
+            })?;
         }
         other => return Err(invalid(format!("unknown operation {other}"))),
     }
@@ -1005,6 +1029,31 @@ fn save_or_revert(inner: &mut Inner, cs: &mut CsState, save: bool) -> Result<Val
         cs.mark_clean();
     }
     settled(st)
+}
+
+// -- WP CG16 --
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
+    /// On the demo device only: hold it in a running revert, or let it finish.
+    /// While held it gives the refusals a real device has no steady way to show:
+    /// a write settles busy, and the save, the revert, a macro fire and a learn
+    /// are refused. As [`core_vreg_demo_event`](Self::core_vreg_demo_event), it
+    /// answers [`DspiError::Unsupported`] on any other device.
+    pub fn cs_demo_busy(&self, on: bool) -> Result<()> {
+        let mut inner = self.lock();
+        let mut w = inner.writable_conn()?;
+        if w.conn().caps.kind != dspi_transport::TransportKind::Fake {
+            return Err(DspiError::Unsupported);
+        }
+        w.conn()
+            .transport()
+            .control_out(
+                dspi_proto::generated::opcodes::REQ_EXTENSION,
+                dspi_transport::fake::EXT_FAKE_CS_SIM,
+                &[u8::from(on)],
+            )
+            .map_err(DspiError::from)
+    }
 }
 
 #[cfg(test)]
@@ -2050,8 +2099,13 @@ mod tests_wp_c14 {
     #[test]
     fn wp_c14_firmware_without_control_surfaces_is_unsupported() {
         let core = DspiCore::new();
-        core.attach_probed(Box::new(FakeDevice::demo()), "DEMO".into(), 0)
-            .unwrap();
+        // -- WP CG16 -- `demo()` has surfaces now
+        core.attach_probed(
+            Box::new(FakeDevice::demo_without_surfaces()),
+            "DEMO".into(),
+            0,
+        )
+        .unwrap();
         core.cs_fetch().unwrap();
         assert_eq!(snap(&core), json!({ "supported": false }));
         let r = apply(&core, json!({ "op": "binding", "index": 0 }));
@@ -2144,5 +2198,204 @@ mod tests_wp_c14 {
             let _ = page_from_json(&v);
             let _ = index(&v, 16, "slot");
         }
+    }
+}
+
+/// WP CG16: the core on the demo device itself, not this file's `Sim`.
+#[cfg(test)]
+mod tests_wp_cg16 {
+    use std::sync::Arc;
+
+    use dspi_transport::{
+        DeviceDescriptor, FakeDevice, NotificationSource, Result as TResult, Transport,
+    };
+    use serde_json::{Value, json};
+
+    use crate::{DspiCore, DspiError};
+
+    fn demo() -> Arc<DspiCore> {
+        let core = DspiCore::new();
+        core.open_demo().unwrap();
+        core.cs_fetch().unwrap();
+        core
+    }
+
+    fn apply(core: &DspiCore, op: Value) -> Value {
+        serde_json::from_str(&core.cs_apply(op.to_string())).unwrap()
+    }
+
+    fn snapshot(core: &DspiCore) -> Value {
+        serde_json::from_str(&core.cs_snapshot()).unwrap()
+    }
+
+    fn button(pin: u8) -> Value {
+        json!({ "type": 1, "noun": 2, "action": 4, "gpio0": pin, "gpio1": 255, "value": 1 })
+    }
+
+    #[test]
+    fn wp_cg16_open_demo_has_a_configuration_to_edit() {
+        let core = demo();
+        let s = snapshot(&core);
+        assert_eq!(s["supported"], true);
+        assert_eq!(s["bindings"][0]["type"], 4);
+        assert_eq!(s["names"][0], "Volume Knob");
+        assert_eq!(s["status"]["dirty"], false);
+
+        let done = apply(
+            &core,
+            json!({ "op": "binding", "index": 5, "binding": button(5) }),
+        );
+        assert_eq!(done, json!({ "ok": true, "status": 0 }));
+        assert_eq!(snapshot(&core)["status"]["dirty"], true);
+        assert_eq!(apply(&core, json!({ "op": "revert" }))["ok"], true);
+        let s = snapshot(&core);
+        assert_eq!(s["status"]["dirty"], false);
+        assert_eq!(s["bindings"][5]["type"], 0);
+    }
+
+    #[test]
+    fn wp_cg16_a_refusal_is_the_devices_status_code() {
+        let core = demo();
+        for (pin, status) in [(16, 0x1A), (10, 0x02), (24, 0x01)] {
+            let r = apply(
+                &core,
+                json!({ "op": "binding", "index": 5, "binding": button(pin) }),
+            );
+            assert_eq!(r, json!({ "ok": false, "status": status }), "pin {pin}");
+        }
+        assert_eq!(snapshot(&core)["bindings"][5]["type"], 0);
+        assert_eq!(
+            apply(&core, json!({ "op": "auxState", "index": 0, "on": 1 }))["status"],
+            0x26
+        );
+        assert_eq!(
+            apply(&core, json!({ "op": "binding", "index": 3, "binding": {} }))["ok"],
+            true
+        );
+        assert_eq!(apply(&core, json!({ "op": "learnArm" }))["status"], 0x1E);
+    }
+
+    #[test]
+    fn wp_cg16_a_macro_runs_to_its_end() {
+        let core = demo();
+        assert_eq!(
+            apply(&core, json!({ "op": "macroFire", "index": 0 }))["ok"],
+            true
+        );
+        let running = |c: &DspiCore| {
+            apply(c, json!({ "op": "refreshStatus" }));
+            snapshot(c)["ext"]["macroRunning"].as_u64().unwrap()
+        };
+        let mut seen = vec![];
+        for _ in 0..4 {
+            seen.push(running(&core));
+        }
+        assert_eq!(*seen.last().unwrap(), 0xFF, "{seen:?}");
+    }
+
+    #[test]
+    fn wp_cg16_a_held_demo_refuses_and_lets_go() {
+        let core = demo();
+        core.cs_demo_busy(true).unwrap();
+        for op in ["save", "revert"] {
+            assert_eq!(
+                apply(&core, json!({ "op": op })),
+                json!({ "ok": false, "status": 0x1B }),
+                "{op}"
+            );
+        }
+        let r = apply(&core, json!({ "op": "macroFire", "index": 0 }));
+        assert_eq!(r["ok"], false);
+        let r = apply(
+            &core,
+            json!({ "op": "binding", "index": 5, "binding": button(5) }),
+        );
+        assert_eq!(r, json!({ "ok": false, "status": 0x1B }));
+        core.cs_demo_busy(false).unwrap();
+        assert_eq!(apply(&core, json!({ "op": "save" }))["ok"], true);
+    }
+
+    #[test]
+    fn wp_cg16_a_name_alone_is_unsaved_and_undoing_it_is_not() {
+        let core = demo();
+        assert_eq!(snapshot(&core)["status"]["dirty"], false);
+        let named = apply(&core, json!({ "op": "name", "index": 5, "name": "Mine" }));
+        assert_eq!(named, json!({ "ok": true, "status": 0 }));
+        let s = snapshot(&core);
+        assert_eq!(s["names"][5], "Mine");
+        assert_eq!(s["status"]["dirty"], true);
+        assert_eq!(s["status"]["lastSlot"], 5);
+
+        apply(&core, json!({ "op": "name", "index": 5, "name": "" }));
+        assert_eq!(snapshot(&core)["status"]["dirty"], false);
+    }
+
+    /// The firmware ACKs an aux SET during a revert and changes nothing, with no
+    /// status to say so.
+    #[test]
+    fn wp_cg16_an_aux_write_during_a_revert_is_refused_and_not_recorded() {
+        let core = demo();
+        let live = |c: &DspiCore| {
+            let s = snapshot(c);
+            (s["auxState"][10].clone(), s["auxLevel"][11].clone())
+        };
+        let before = live(&core);
+        assert_eq!(before, (json!(0), json!(12800)));
+        let state = json!({ "op": "auxState", "index": 10, "on": 1 });
+        let level = json!({ "op": "auxLevel", "index": 11, "percent": 25 });
+
+        core.cs_demo_busy(true).unwrap();
+        for op in [&state, &level] {
+            assert_eq!(
+                apply(&core, op.clone()),
+                json!({ "ok": false, "status": 0x1B }),
+                "{op}"
+            );
+            assert_eq!(live(&core), before, "{op}");
+        }
+
+        core.cs_demo_busy(false).unwrap();
+        for op in [&state, &level] {
+            assert_eq!(apply(&core, op.clone())["ok"], true, "{op}");
+        }
+        assert_eq!(live(&core), (json!(1), json!(25 * 256)));
+    }
+
+    #[test]
+    fn wp_cg16_the_hold_is_for_the_demo_device_only() {
+        assert!(matches!(
+            DspiCore::new().cs_demo_busy(true),
+            Err(DspiError::Disconnected)
+        ));
+
+        /// The demo device, reporting itself as USB.
+        struct Usb(FakeDevice);
+        impl Transport for Usb {
+            fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> TResult<Vec<u8>> {
+                self.0.control_in(opcode, value, len)
+            }
+            fn control_in_upto(&mut self, opcode: u8, value: u16, len: u16) -> TResult<Vec<u8>> {
+                self.0.control_in_upto(opcode, value, len)
+            }
+            fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> TResult<()> {
+                self.0.control_out(opcode, value, data)
+            }
+            fn descriptor(&self) -> &DeviceDescriptor {
+                self.0.descriptor()
+            }
+            fn max_transfer(&self) -> usize {
+                self.0.max_transfer()
+            }
+            fn notifications(&self) -> Option<Box<dyn NotificationSource>> {
+                self.0.notifications()
+            }
+        }
+        let core = DspiCore::new();
+        core.attach_probed(Box::new(Usb(FakeDevice::demo())), "REAL".into(), 0)
+            .unwrap();
+        assert!(matches!(
+            core.cs_demo_busy(true),
+            Err(DspiError::Unsupported)
+        ));
     }
 }

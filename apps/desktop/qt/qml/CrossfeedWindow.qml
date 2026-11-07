@@ -5,7 +5,8 @@ import "components"
 
 // Crossfeed: BS2B headphone crossfeed. Laid out as on the macOS Console:
 // response and presets on the left, parameters, ITD and output pairs on the
-// right.
+// right. On firmware with the pair map (`ext`, src/ExtController.h) the output
+// pairs section also says which two outputs each pair processes.
 AppWindow {
     id: win
     fitHeight: header.height + flick.contentHeight
@@ -30,11 +31,87 @@ AppWindow {
     // Stereo output pairs (S/PDIF instances); the mono PDM sub is never crossfed
     readonly property int pairCount: Math.max(1, Math.floor(bridge.numOutputChannels / 2))
 
+    // The pair map section: hidden when the firmware stalls the extension channel
+    readonly property bool pairMapShown: ext.hasPairMap && bridge.connected
+    readonly property var pairChoices: [
+        { key: "default", text: "Default (1/2, 3/4, …)" },
+        { key: "k340", text: "One DAC per ear (K340)" },
+        { key: "custom", text: "Custom…" }]
+    property bool editingPairs: false
+    property bool offerK340Mask: false
+    property bool applyingDraft: false
+    property var pairDraft: []           // one { left, right } per pair
+    property var outputLabels: []        // the editor's menus, taken when it opens
+    readonly property bool draftValid: ext.pairsValid(pairDraft)
+    readonly property bool k340MaskOffered: offerK340Mask && ext.choice === "k340"
+        && (bridge.crossfeedOutputPairMask & ext.k340PairMask) !== ext.k340PairMask
+
+    onVisibleChanged: ext.watching = visible
+    onPairMapShownChanged: if (!pairMapShown) { editingPairs = false; offerK340Mask = false }
+    // The editor is taller than the window that opened without it. Where the screen
+    // can't fit it all, Apply is scrolled to: the scroll bar only shows on a scroll.
+    onEditingPairsChanged: if (editingPairs) { refitAnimated(); revealEditorTimer.restart() }
+    onDraftValidChanged: if (editingPairs) Qt.callLater(revealPairEditor)   // the warning pushes Apply down
+
+    function revealPairEditor() {
+        if (!editingPairs) return
+        var bottom = pairEditor.mapToItem(flick.contentItem, 0, pairEditor.height).y + 8
+        var most = Math.max(0, flick.contentHeight - flick.height)
+        if (bottom > flick.contentY + flick.height)
+            flick.contentY = Math.min(bottom - flick.height, most)
+    }
+    Timer {
+        id: revealEditorTimer
+        interval: 320   // after the refit: AppWindow's settle and animation
+        onTriggered: win.revealPairEditor()
+    }
+
+    function outputName(o) { return bridge.channelName(o + 2) || "Out " + (o + 1) }
+
     function pairNames() {
         var n = []
-        for (var p = 0; p < pairCount; p++)
-            n.push(bridge.channelName(2 * p + 2) + " / " + bridge.channelName(2 * p + 3))
+        var pairs = pairMapShown ? ext.pairs : []
+        for (var p = 0; p < pairCount; p++) {
+            var left = p < pairs.length ? pairs[p].left : 2 * p
+            var right = p < pairs.length ? pairs[p].right : 2 * p + 1
+            n.push(outputName(left) + " / " + outputName(right))
+        }
         return n
+    }
+
+    function pickPairChoice(key) {
+        ext.clearError()
+        if (key === "custom") {
+            var labels = []
+            for (var o = 0; o < 2 * ext.pairCount; o++) labels.push((o + 1) + " — " + outputName(o))
+            outputLabels = labels
+            pairDraft = ext.pairs
+            editingPairs = true
+            return
+        }
+        offerK340Mask = key === "k340"
+        ext.applyPreset(key)
+    }
+    function setDraftOutput(pair, side, output) {
+        var draft = []
+        for (var p = 0; p < pairDraft.length; p++)
+            draft.push({ left: pairDraft[p].left, right: pairDraft[p].right })
+        draft[pair][side] = output
+        pairDraft = draft
+    }
+    function applyDraft() { applyingDraft = ext.applyPairs(pairDraft) }
+    function cancelDraft() { ext.clearError(); editingPairs = false }
+    function enableK340Mask() {
+        bridge.setCrossfeedOutputPairMask(bridge.crossfeedOutputPairMask | ext.k340PairMask)
+        offerK340Mask = false
+    }
+
+    Connections {
+        target: ext
+        function onApplyFinished(ok) {
+            if (win.applyingDraft && ok) win.editingPairs = false
+            win.applyingDraft = false
+        }
     }
 
     component SectionLabel: Text {
@@ -277,12 +354,14 @@ AppWindow {
 
                 // Dimmed unless Custom; editing switches to Custom
                 Column {
+                    objectName: "crossfeedParams"
                     width: parent.width
                     spacing: 12
                     opacity: isMacOS ? (win.isCustom ? 1.0 : 0.5) : win.isCustom ? 1.0 : 0.55
 
                     ParamRow {
                         id: freqRow
+                        objectName: "crossfeedFreqRow"
                         label: "Cutoff Frequency"; unit: "Hz"; from: 500; to: 2000; stepSize: 10; decimals: 0
                         value: win.shownFreq
                         caption: "Simulates head shadow lowpass cutoff. Lower = more bass crossfeed. Typical: 650–700 Hz."
@@ -296,6 +375,7 @@ AppWindow {
                     Divider {}
                     ParamRow {
                         id: feedRow
+                        objectName: "crossfeedFeedRow"
                         label: "Feed Level"; unit: "dB"; from: 0; to: 15; stepSize: 0.1; decimals: 1
                         value: win.shownFeed
                         caption: "Crossfeed attenuation below the direct signal. Higher = more crossfeed. Typical: 4.5–9.5 dB."
@@ -369,7 +449,186 @@ AppWindow {
                     text: "Crossfeed only the stereo output pairs feeding headphones. Speaker pairs stay bit-accurate. The mono sub is never crossfed."
                 }
 
+                // ── Pair map ──
+                Column {
+                    objectName: "pairMapControls"
+                    visible: win.pairMapShown
+                    width: parent.width
+                    spacing: 8
+
+                    Item {
+                        width: parent.width
+                        height: 20
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Outputs"
+                            font.pixelSize: 13
+                            color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9)
+                        }
+                        MenuLink {
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            menu: pairMapMenu
+                            text: ext.choice === "k340" ? win.pairChoices[1].text
+                                : ext.choice === "default" ? win.pairChoices[0].text : "Custom"
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 11
+                        color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
+                        text: "Which two outputs each pair crossfeeds. An output can belong to one pair only."
+                    }
+
+                    // After the K340 preset, on a tap only: the factory mask
+                    // crossfeeds pair 1 alone, the woofers
+                    Column {
+                        objectName: "k340MaskOffer"
+                        visible: win.k340MaskOffered
+                        width: parent.width
+                        spacing: 6
+                        Text {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            font.pixelSize: 11
+                            color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
+                            text: "Crossfeed the woofers and the tweeters?"
+                        }
+                        Row {
+                            spacing: 8
+                            AppButton { text: "Not Now"; onClicked: win.offerK340Mask = false }
+                            AppButton { text: "Enable Pairs 1 and 2"; onClicked: win.enableK340Mask() }
+                        }
+                    }
+
+                    // The custom editor
+                    Rectangle {
+                        id: pairEditor
+                        objectName: "pairMapEditor"
+                        visible: win.editingPairs
+                        width: parent.width
+                        height: editor.height + 16
+                        radius: 6
+                        color: isMacOS ? MacColors.opacity(MacColors.secondaryLabel, 0.08) : Qt.rgba(1, 1, 1, 0.04)
+                        Column {
+                            id: editor
+                            x: 8
+                            y: 8
+                            width: parent.width - 16
+                            spacing: 6
+                            Repeater {
+                                model: win.editingPairs ? win.pairDraft.length : 0
+                                Row {
+                                    readonly property int pair: index
+                                    spacing: 6
+                                    Text {
+                                        width: 46
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "Pair " + (parent.pair + 1)
+                                        font.pixelSize: 12
+                                        color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9)
+                                    }
+                                    StyledComboBox {
+                                        objectName: "pairLeft" + parent.pair
+                                        width: 92
+                                        model: win.outputLabels
+                                        currentIndex: win.pairDraft[parent.pair].left
+                                        displayText: "Out " + (currentIndex + 1)
+                                        onActivated: win.setDraftOutput(parent.pair, "left", index)
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "↔"
+                                        font.pixelSize: 12
+                                        color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
+                                    }
+                                    StyledComboBox {
+                                        objectName: "pairRight" + parent.pair
+                                        width: 92
+                                        model: win.outputLabels
+                                        currentIndex: win.pairDraft[parent.pair].right
+                                        displayText: "Out " + (currentIndex + 1)
+                                        onActivated: win.setDraftOutput(parent.pair, "right", index)
+                                    }
+                                }
+                            }
+                            Text {
+                                objectName: "pairMapDraftWarning"
+                                visible: !win.draftValid
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                font.pixelSize: 11
+                                color: isMacOS ? MacColors.orange : "#ff9f0a"
+                                text: "Each pair needs two different outputs, and no output can be in two pairs."
+                            }
+                            Row {
+                                anchors.right: parent.right
+                                spacing: 8
+                                AppButton { text: "Cancel"; onClicked: win.cancelDraft() }
+                                AppButton {
+                                    objectName: "pairMapApply"
+                                    text: "Apply"
+                                    primary: true
+                                    enabled: win.draftValid && !ext.busy
+                                    onClicked: win.applyDraft()
+                                }
+                            }
+                        }
+                    }
+
+                    Text {
+                        objectName: "pairMapError"
+                        visible: text !== ""
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 11
+                        color: isMacOS ? MacColors.orange : "#ff9f0a"
+                        text: ext.lastError
+                    }
+
+                    // One chip per pair, named by the outputs it processes
+                    Grid {
+                        id: pairChips
+                        objectName: "pairMapChips"
+                        width: parent.width
+                        columns: 2
+                        spacing: 6
+                        Repeater {
+                            model: win.pairMapShown ? ext.pairs : []
+                            Rectangle {
+                                readonly property bool isOn: (bridge.crossfeedOutputPairMask >> index) & 1
+                                width: (pairChips.width - pairChips.spacing) / 2
+                                height: 26
+                                radius: 6
+                                color: isMacOS ? (isOn ? MacColors.accent : MacColors.opacity(MacColors.secondaryLabel, 0.12)) : isOn ? "#0a7cff" : pairChipMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.07)
+                                border.color: isMacOS ? (isOn ? "transparent" : MacColors.opacity(MacColors.label, 0.08)) : isOn ? "transparent" : Qt.rgba(1, 1, 1, 0.12)
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: (index + 1) + ": Out " + (modelData.left + 1) + " / Out " + (modelData.right + 1)
+                                    font.pixelSize: 12
+                                    font.weight: Font.DemiBold
+                                    color: isMacOS ? (parent.isOn ? "white" : MacColors.opacity(MacColors.label, 0.6)) : parent.isOn ? "white" : Qt.rgba(1, 1, 1, 0.5)
+                                }
+                                MouseArea {
+                                    id: pairChipMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: bridge.setCrossfeedOutputPairMask(bridge.crossfeedOutputPairMask ^ (1 << index))
+                                    ToolTip.visible: containsMouse
+                                    ToolTip.delay: 500
+                                    ToolTip.text: win.outputName(modelData.left) + " / " + win.outputName(modelData.right)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 ChannelChips {
+                    objectName: "plainPairChips"
+                    visible: !win.pairMapShown
                     width: parent.width
                     count: win.pairCount
                     mask: bridge.crossfeedOutputPairMask
@@ -378,6 +637,14 @@ AppWindow {
                 }
             }
         }
+    }
+
+    ActionMenu {
+        id: pairMapMenu
+        objectName: "pairMapMenu"
+        parent: Overlay.overlay
+        items: win.pairChoices
+        onTriggered: win.pickPairChoice(key)
     }
 
     ActionMenu {

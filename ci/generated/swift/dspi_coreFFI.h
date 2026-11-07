@@ -459,6 +459,16 @@ void*_Nonnull uniffi_dspi_core_fn_constructor_dspicore_new(RustCallStatus *_Nonn
 void uniffi_dspi_core_fn_method_dspicore_apply_all_params(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CACHED_DEVICE_NAME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CACHED_DEVICE_NAME
+RustBuffer uniffi_dspi_core_fn_method_dspicore_cached_device_name(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CACHED_INPUT_SOURCE_NAME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CACHED_INPUT_SOURCE_NAME
+RustBuffer uniffi_dspi_core_fn_method_dspicore_cached_input_source_name(void*_Nonnull ptr, uint8_t source, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CAPTURE_BASELINE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CAPTURE_BASELINE
 void uniffi_dspi_core_fn_method_dspicore_capture_baseline(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -569,6 +579,11 @@ void uniffi_dspi_core_fn_method_dspicore_core_vreg_trial_end(void*_Nonnull ptr, 
 RustBuffer uniffi_dspi_core_fn_method_dspicore_cs_apply(void*_Nonnull ptr, RustBuffer op, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_DEMO_BUSY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_DEMO_BUSY
+void uniffi_dspi_core_fn_method_dspicore_cs_demo_busy(void*_Nonnull ptr, int8_t on, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_FETCH
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_FETCH
 void uniffi_dspi_core_fn_method_dspicore_cs_fetch(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -587,6 +602,21 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_cs_snapshot(void*_Nonnull ptr, Ru
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DELETE_PRESET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DELETE_PRESET
 void uniffi_dspi_core_fn_method_dspicore_delete_preset(void*_Nonnull ptr, uint8_t slot, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DEMO_LATENCY_SETS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DEMO_LATENCY_SETS
+uint32_t uniffi_dspi_core_fn_method_dspicore_demo_latency_sets(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DEMO_LATENCY_TIMING
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DEMO_LATENCY_TIMING
+void uniffi_dspi_core_fn_method_dspicore_demo_latency_timing(void*_Nonnull ptr, uint8_t mode, uint8_t reads, uint8_t blackout, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DEMO_RENAME_ELSEWHERE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DEMO_RENAME_ELSEWHERE
+void uniffi_dspi_core_fn_method_dspicore_demo_rename_elsewhere(void*_Nonnull ptr, uint8_t target, RustBuffer name, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DISCONNECT
@@ -2161,6 +2191,18 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_apply_all_params(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CACHED_DEVICE_NAME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CACHED_DEVICE_NAME
+uint16_t uniffi_dspi_core_checksum_method_dspicore_cached_device_name(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CACHED_INPUT_SOURCE_NAME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CACHED_INPUT_SOURCE_NAME
+uint16_t uniffi_dspi_core_checksum_method_dspicore_cached_input_source_name(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CAPTURE_BASELINE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CAPTURE_BASELINE
 uint16_t uniffi_dspi_core_checksum_method_dspicore_capture_baseline(void
@@ -2293,6 +2335,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_cs_apply(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_DEMO_BUSY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_DEMO_BUSY
+uint16_t uniffi_dspi_core_checksum_method_dspicore_cs_demo_busy(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_FETCH
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CS_FETCH
 uint16_t uniffi_dspi_core_checksum_method_dspicore_cs_fetch(void
@@ -2314,6 +2362,24 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_cs_snapshot(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DELETE_PRESET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DELETE_PRESET
 uint16_t uniffi_dspi_core_checksum_method_dspicore_delete_preset(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEMO_LATENCY_SETS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEMO_LATENCY_SETS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_demo_latency_sets(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEMO_LATENCY_TIMING
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEMO_LATENCY_TIMING
+uint16_t uniffi_dspi_core_checksum_method_dspicore_demo_latency_timing(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEMO_RENAME_ELSEWHERE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEMO_RENAME_ELSEWHERE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_demo_rename_elsewhere(void
     
 );
 #endif

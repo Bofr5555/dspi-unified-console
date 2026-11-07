@@ -215,6 +215,16 @@ interface DspiCoreApi : AutoCloseable {
     fun csPinUses(): List<PinUse>
 
     /**
+     * On the demo device only: hold it in a running revert, or let it finish.
+     * While held it gives the refusals a real device has no steady way to show:
+     * a write settles busy, and the save, the revert, a macro fire and a learn
+     * are refused. As [`core_vreg_demo_event`](Self::core_vreg_demo_event), it
+     * answers [`DspiError::Unsupported`] on any other device.
+     */
+    @Throws(DspiException::class)
+    fun csDemoBusy(on: Boolean)
+
+    /**
      * Adopt a USB device the platform already opened: Android's
      * `UsbDeviceConnection.getFileDescriptor()`. The core `dup(2)`s the fd
      * and owns the duplicate, so the app keeps (and later closes) its own;
@@ -969,6 +979,58 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun setDeviceName(name: String)
+
+    /**
+     * The name of input source `source` as last known, with no traffic: read
+     * on connect, kept current by notifications (from any client) and by
+     * [`DspiCore::set_input_source_name`], and read again after a lost
+     * notification. "" when unnamed. For a client's rows, which would
+     * otherwise read over the wire what connect has just read.
+     *
+     * Errors: `Unsupported` on firmware without source names; `InvalidArgument`
+     * for a source past the table; `Disconnected` without a device or before
+     * it was probed.
+     */
+    @Throws(DspiException::class)
+    fun cachedInputSourceName(source: Int): String
+
+    /**
+     * The device's name as last known, with no traffic, kept as
+     * [`DspiCore::cached_input_source_name`] keeps source names. "" when
+     * unnamed. Errors: `Unsupported` on firmware without device names;
+     * `Disconnected`.
+     */
+    @Throws(DspiException::class)
+    fun cachedDeviceName(): String
+
+    /**
+     * Have someone else rename something on the demo device, for clients'
+     * tests and demo mode: `target` is an input source, or 0xFF for the device
+     * itself. The rename arrives as a notification that is not this client's
+     * own. `Unsupported`, with no traffic, on anything but a simulated device.
+     */
+    @Throws(DspiException::class)
+    fun demoRenameElsewhere(target: Int, name: String)
+
+    /**
+     * Set how the demo device applies an output-latency request, for clients'
+     * tests: `mode` 0 at once (and a request held so far applies on the next
+     * status read), 1 after `reads` status reads, 2 never, 3 dropped after
+     * `reads` status reads. `blackout` status reads stall first while one is
+     * pending, as the firmware's flash window does. `Unsupported`, with no
+     * traffic, on anything but a simulated device; `InvalidArgument` for
+     * another `mode`.
+     */
+    @Throws(DspiException::class)
+    fun demoLatencyTiming(mode: Int, reads: Int, blackout: Int)
+
+    /**
+     * How many output-latency requests the demo device has received, for
+     * clients' tests that a wait never sends one again. `Unsupported`, with no
+     * traffic, on anything but a simulated device.
+     */
+    @Throws(DspiException::class)
+    fun demoLatencySets(): Long
 
     /**
      * `REQ_OUTPUT_LATENCY` status (`wValue` 0, 12 bytes): the requested
