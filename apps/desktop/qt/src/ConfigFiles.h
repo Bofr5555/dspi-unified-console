@@ -34,6 +34,13 @@ public:
     // reply too long, which real files don't reach.
     void setApplyReplyCapacity(int bytes) { m_applyCapacity = bytes; }
 
+    // Whether an export's text is the core's refusal, its JSON failure reply, and
+    // not a file to write: a configuration document has no "ok" key and a filter
+    // file is not JSON. No text at all counts as one. `result` is then the reply for
+    // QML. Public for the smoke driver: the bridge checks for a device first, so
+    // only firmware whose image can't be mapped reaches this, and the demo has none.
+    static bool exportRefused(const QByteArray &text, QVariantMap &result);
+
 private:
     bool readFile(const QUrl &file, QByteArray &out, QString &error);
     bool writeFile(const QUrl &file, const QByteArray &data, QString &error);

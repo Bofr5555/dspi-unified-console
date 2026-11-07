@@ -143,6 +143,14 @@ class FakeDspiCoreTest {
     }
 
     @Test
+    fun exportsAreRefusedWithoutADevice() {
+        val core = FakeDspiCore()
+        core.disconnect()
+        assertTrue(runCatching { core.configExport("Test", "0.1", 0) }.exceptionOrNull() is DspiException.Disconnected)
+        assertTrue(runCatching { core.filtersExport(2) }.exceptionOrNull() is DspiException.Disconnected)
+    }
+
+    @Test
     fun filterFilesRoundTrip() {
         val core = FakeDspiCore()
         val text = core.filtersExport(2)

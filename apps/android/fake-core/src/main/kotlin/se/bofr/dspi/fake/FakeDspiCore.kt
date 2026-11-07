@@ -1264,8 +1264,14 @@ open class FakeDspiCore(
 
     // ═══ Configuration / filter files ════════════════════════════════════
 
-    override fun configExport(name: String, appVersion: String, links: Int): String = op("configExport", name, device = false) {
+    override fun configExport(name: String, appVersion: String, links: Int): String = op("configExport", name) {
+        requireStateRead()
         FakeFiles.exportConfig(s, name, appVersion, links)
+    }
+
+    /** As the core: an image it couldn't map left the mirror at its defaults (`bulk_raw` zero), with nothing to export. */
+    private fun requireStateRead() {
+        if (s.compat != DspiConstants.COMPAT_OK && s.bulkRaw.firstOrNull()?.toInt() == 0) throw DspiException.Unsupported()
     }
 
     override fun configImport(text: String, options: Long): String = op("configImport", "$options", device = false) {
@@ -1274,7 +1280,10 @@ open class FakeDspiCore(
         result
     }
 
-    override fun filtersExport(inputs: Int): String = op("filtersExport", "$inputs", device = false) { FakeFiles.exportFilters(s, inputs) }
+    override fun filtersExport(inputs: Int): String = op("filtersExport", "$inputs") {
+        requireStateRead()
+        FakeFiles.exportFilters(s, inputs)
+    }
 
     override fun filtersInspect(text: String, inputs: Int): String = op("filtersInspect", "$inputs", device = false) {
         FakeFiles.inspectFilters(s, text, inputs)

@@ -14,8 +14,9 @@
 //!   report reads as a zero. Channels carry the Windows
 //!   Console's channel id and, additively, the input / output index; the
 //!   index wins when present. The crossfeed block carries the K340 fork's
-//!   `pairMap` (Android patch 0002): always exported, imported only when
-//!   present, and an invalid map falls back to the default pairing.
+//!   `pairMap` (Android patch 0002): exported when the device reports one,
+//!   imported only when present, and an invalid map falls back to the default
+//!   pairing.
 //! - **Filter text files** (format 2, after the macOS Console): a header,
 //!   then one section per channel with its preamp (inputs), PEQ bands and
 //!   crossover bands. The band grammar is a superset of REW's, so REW and
@@ -418,8 +419,24 @@ fn reported_pins(pins: &[u8], ext: &[Option<u8>]) -> Vec<u8> {
 /// A value in the document is one the device reported. The mirror comes from
 /// the image mapped onto the V32 layout, which holds a zero or a default for
 /// whatever the device's wire format lacks, so `s.format_version` decides per
-/// key, by the same `feat::*` the session's capture uses.
-fn export_config(s: &DspState, name: &str, app_version: &str, links: u8) -> String {
+/// key, through `wire_compat::features`. `pair_map` is the fork's map when the
+/// device reported one over the extension channel; no format says that.
+///
+/// The session's capture has its own gates, since it asks the device and keeps
+/// what it answers, where this has only the mirror. They agree on the masks and
+/// the feature blocks' format bits and differ here: `has(<feature>)` (firmware
+/// version as well as format) against the format alone for the feature blocks,
+/// the masks and the limiter; `qp` left out below V22 (capture writes 0.707);
+/// `i2sBckPinSlave` written from V21 (capture never writes it); `spdifEnabledExt`
+/// by format (capture: `spdif_multi_input`); the ADAT keys by format, so on RP2040
+/// too (capture: the board's feature). See `docs/terminal/preset-format.md`.
+fn export_config(
+    s: &DspState,
+    name: &str,
+    app_version: &str,
+    links: u8,
+    pair_map: Option<&[u8]>,
+) -> String {
     let features = wire_compat::features(s.format_version);
     let since = |bit: u32| features & bit != 0;
     let rp2350 = is_rp2350(s);
@@ -513,16 +530,17 @@ fn export_config(s: &DspState, name: &str, app_version: &str, links: u8) -> Stri
     let mut crossfeed = json!({
         "enabled": s.crossfeed_enabled, "preset": s.crossfeed_preset, "freqHz": s.crossfeed_freq,
         "feedDb": s.crossfeed_feed, "itd": s.crossfeed_itd, "outputPairMask": s.crossfeed_output_pair_mask,
-        "pairMap": s.crossfeed_pair_map,
     });
     gate(
         &mut crossfeed,
         since(feat::CROSSFEED_MASK),
         &["outputPairMask"],
     );
-    // The K340 fork's map sits in bytes reserved before V32. No older format
-    // can hold one, and a written zero would reset a device's own map.
-    gate(&mut crossfeed, since(feat::LIMITER), &["pairMap"]);
+    // Stock firmware has none, and the zeros its image holds there would reset
+    // the map of a device that does.
+    if let (Some(map), Some(o)) = (pair_map, crossfeed.as_object_mut()) {
+        o.insert("pairMap".into(), json!(map));
+    }
     doc.insert("crossfeed".into(), crossfeed);
     let mut leveller = json!({
         "enabled": s.leveller_enabled, "speed": s.leveller_speed, "lookahead": s.leveller_lookahead,
@@ -1986,7 +2004,18 @@ impl DspiCore {
     pub fn config_export(&self, name: String, app_version: String, links: u8) -> Result<String> {
         let mut inner = self.lock();
         check_state_read(&mut inner)?;
-        Ok(export_config(&inner.state, &name, &app_version, links))
+        let reported = inner.conn()?.ext.pair_map;
+        let s = &inner.state;
+        // The mirror follows the device's image at this build's format, and the
+        // connection's copy is the only one an older format's image can't zero.
+        let map = reported.map(|m| {
+            if u16::from(s.format_version) < WIRE_FORMAT_VERSION {
+                m.0.to_vec()
+            } else {
+                s.crossfeed_pair_map.clone()
+            }
+        });
+        Ok(export_config(s, &name, &app_version, links, map.as_deref()))
     }
 
     /// Apply a `.dspipreset` document to the device. `options`: bit

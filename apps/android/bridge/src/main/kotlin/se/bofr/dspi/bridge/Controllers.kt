@@ -148,7 +148,11 @@ interface MonitorModel {
  * file URLs: the UI does SAF reads/writes. Results are the core's JSON.
  */
 interface ConfigFiles {
-    /** The `.dspipreset` document text. */
+    /**
+     * The `.dspipreset` document text. Empty with no device; the JSON
+     * `{"ok":false,"error":...}` when the core refuses, which is not a file to
+     * write (a document has no `ok` key).
+     */
     suspend fun exportConfiguration(name: String): String
 
     /** JSON {ok, error, name, platform, firmware, savedUtc, crossPlatform} (Qt adds crossPlatform). */
@@ -157,6 +161,7 @@ interface ConfigFiles {
     /** GATED [DangerousOp.CONFIG_IMPORT] (bulk apply + pin writes). JSON {ok, error, lines, clean, links, hardwareWritten}. */
     suspend fun importConfiguration(token: ConfirmationToken, text: String, volumes: Boolean, hardware: Boolean): String
 
+    /** The filter file text, or as [exportConfiguration] when there is none. */
     suspend fun exportFilters(): String
 
     /** JSON for the channel picker. */

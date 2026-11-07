@@ -8,6 +8,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.ui.alert.AlertHost
 import se.bofr.dspi.ui.alert.AlertResponse
 
@@ -56,6 +57,23 @@ class FileMenuActionsTest {
         val f = FileMenuActions(b, this, host)
         assertFalse(f.canExportConfiguration())
         assertEquals("No device connected.", host.alert.value!!.informativeText)
+    }
+
+    /** WP CG18: a refusal is an alert, not a file and not a crash. */
+    @Test
+    fun aRefusedExportIsReportedAndGivesNoDocument() = runTest {
+        val core = presetFake()
+        val b = attached(core)
+        val host = AlertHost()
+        val f = FileMenuActions(b, this, host)
+        core.failNext("configExport") { DspiException.Unsupported() }
+        assertNull(f.configurationDocument("x.dspipreset"))
+        assertEquals("Error", host.alert.value!!.messageText)
+        assertTrue(host.alert.value!!.informativeText.contains("not supported by the connected firmware"))
+        host.press("OK")
+        core.failNext("filtersExport") { DspiException.Unsupported() }
+        assertNull(f.filtersDocument())
+        assertTrue(host.alert.value!!.informativeText.contains("not supported by the connected firmware"))
     }
 
     @Test
