@@ -12,6 +12,7 @@
 #include "LinkFakeHub.h"
 
 #include <QCoreApplication>
+#include <QJSValue>
 #include <QJsonDocument>
 #include <QKeyEvent>
 #include <QJsonObject>
@@ -272,16 +273,28 @@ void SmokeDriver::testDevices() {
         check("QD37: bound", settled() && waitFor(5000, [&] { return phaseIs("bound") && b->connected(); }));
         printf("smoke: QD37 status tooltip on the hub: '%s'\n", qPrintable(tip().replace(QLatin1Char('\n'), QLatin1String(" | "))));
         check("QD37: the tooltip says it is a hub's device and offers no right-click",
-              tip().contains(QLatin1String("through a hub")) && tip().contains(QLatin1String("Devices…"))
+              tip().contains(QLatin1String("through a hub")) && tip().contains(QStringLiteral("Device > Devices"))
                   && !tip().contains(QLatin1String("Right-click")));
         b->setFilter(0, 0, 1, b->filterFreq(0, 0) + 17.0f, 1.0f, 0.9f);
         check("QD37: unsaved changes on the hub's device", waitFor(2000, [&] { return b->presetDirty(); }));
+        // Here the bridge drops the hub's device as the session closes, so a second
+        // ask would find nothing unsaved; on a slower close it would not. So count the
+        // calls into both of main.qml's asking paths, guard and switchTo, as well as
+        // the questions shown.
+        QJSValue counter = m_.engine->evaluate(QStringLiteral(
+            "(function (pop) { var n = { calls: 0, guard: pop.guard, switchTo: pop.switchTo };"
+            " pop.guard = function (a) { n.calls++; n.guard(a) };"
+            " pop.switchTo = function (s) { n.calls++; n.switchTo(s) }; return n })"));
+        QJSValue calls = counter.call({ m_.engine->newQObject(popup) });
         int asks = 0;
-        QMetaObject::invokeMethod(popup, "chooseUsb", Q_ARG(QVariant, QStringLiteral(DemoDevice::kSerial)));
+        QMetaObject::invokeMethod(popup, "chooseUsb", Q_ARG(QVariant, QString::fromLatin1(DemoDevice::kSerial)));
         if (waitFor(1000, answerUnsaved)) asks++;
         while (waitFor(1500, answerUnsaved)) asks++;
-        printf("smoke: QD37 unsaved-changes asks on a USB pick during a hub session: %d\n", asks);
-        check("QD37: a USB pick during a hub session asks once", asks == 1);
+        const int asked = calls.property(QStringLiteral("calls")).toInt();
+        m_.engine->evaluate(QStringLiteral("(function (pop, n) { pop.guard = n.guard; pop.switchTo = n.switchTo })"))
+            .call({ m_.engine->newQObject(popup), calls });
+        printf("smoke: QD37 USB pick during a hub session: %d asking calls, %d questions shown\n", asked, asks);
+        check("QD37: a USB pick during a hub session asks once", asked == 1 && asks == 1);
         check("QD37: and leaves the hub for the USB device", waitFor(5000, [&] {
             return phaseIs("idle") && !b->hubSession() && b->connected() && b->selectedSerial() == QLatin1String(DemoDevice::kSerial);
         }));

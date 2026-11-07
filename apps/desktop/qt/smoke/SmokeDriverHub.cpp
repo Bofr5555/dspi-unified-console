@@ -5,6 +5,7 @@
 
 #include "HubController.h"   // -- WP QD37 --
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -125,7 +126,12 @@ void SmokeDriver::testHub() {
             const auto closePage = [&] {
                 QMetaObject::invokeMethod(settings, "navigate", Q_ARG(QVariant, QStringLiteral("about")));
                 settings->setVisible(false);
-                return waitFor(2000, [&] { return findItem(settings->contentItem(), QStringLiteral("networkingPage")) == nullptr; });
+                // Gone for good, its dialog too: QD14's checks find the page's objects by name
+                return waitFor(2000, [&] {
+                    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+                    return findItem(settings->contentItem(), QStringLiteral("networkingPage")) == nullptr
+                           && !settings->findChild<QObject *>(QStringLiteral("networkingAccessDialog"));
+                });
             };
             check("QD37: nothing watches to start with", !hubs->watching());
             check("QD37: Settings, then the list, open", openPage() && openList() && hubs->watching());

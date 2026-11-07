@@ -220,7 +220,7 @@ void SmokeDriver::testSystemIntegration() {
     QDir().mkpath(QFileInfo(link).path());
     QFile::remove(link);
     check("QD37: a symlink to this program", QFile::link(program, link));
-    writeEntry(QLatin1Char('"') + link + QStringLiteral("" --hidden"));
+    writeEntry(QLatin1Char('"') + link + QStringLiteral("\" --hidden"));
     before = fileText(entry);
     system->setLoginItem(makeXdgLoginItem(autostart));
     check("QD37: an entry through a symlink to this program is this copy", fileText(entry) == before && system->openAtLogin()
