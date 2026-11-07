@@ -69,8 +69,8 @@ import se.bofr.dspi.core.UpmixStatus
 import se.bofr.dspi.core.WireFeat
 
 /**
- * Hardware-free, stateful [se.bofr.dspi.core.DspiCoreApi] for demo mode and
- * tests. It models what the real core does to its `DspState` for every
+ * Hardware-free, stateful [se.bofr.dspi.core.DspiCoreApi] for tests and
+ * previews. It models what the real core does to its `DspState` for every
  * setter (`DSPi-Console-Linux:core/src/commands.rs`, `preset.rs` @ 4683a2c:
  * clamping, quantising, the crossfeed preset table, tube type rows,
  * Core 1 conflicts, pin refusals), keeps presets and an unsaved-changes
@@ -1643,7 +1643,7 @@ open class FakeDspiCore(
             FakeDspiCore::class.java.getResourceAsStream(path)?.use { it.readBytes().toString(Charsets.UTF_8) }
         }
 
-        /** Demo mode: the seeded device with an animated analyser. */
+        /** The seeded device with an animated analyser (the app's demo mode before AN28, now tests and previews). */
         fun demo(): FakeDspiCore = seeded(animate = true).also { it.coreVregSupported = true }
 
         // -- WP AN6 --
