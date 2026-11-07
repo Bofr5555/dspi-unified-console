@@ -13,6 +13,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
@@ -158,7 +159,10 @@ class DemoScreensAn28Test {
         assertShows("presets", "Presets & Files", "1: Demo", "Export Device Configuration")
     }
 
+    // A tall window, so every tool row is on screen without scrolling: AN31 put two rows above the
+    // tools, and performScrollTo animates and hangs on the paused clock (as ToolsEntryAn31Test).
     @Test
+    @Config(qualifiers = "w400dp-h1600dp-port-mdpi")
     fun an28EveryToolRendersOnTheRealDemo() {
         start()
         val show = host()
@@ -174,7 +178,9 @@ class DemoScreensAn28Test {
         for ((tool, inside) in tools) {
             show { ToolsScreen(bridge, {}, {}) }
             assertShows("tools list", tool)
-            rule.onNodeWithText(tool).performClick()
+            rule.onNodeWithText(tool).assertIsDisplayed().performClick()
+            // The click's state write reaches composition through an apply notification; send it
+            rule.runOnUiThread { Snapshot.sendApplyNotifications() }
             settle()
             assertShows(tool, "‹ Tools", inside)
         }
