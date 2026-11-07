@@ -557,10 +557,33 @@ mod tests_wp_cg20 {
         assert!(edit(&core, "binding", slot, &led, "gpio0", held as f64)["error"].is_string());
     }
 
-    /// What no picker sees coming, on any client today, and the firmware words
-    /// clearly: a PWM slice clash, and a shared button pin with the same gesture.
+    /// Whatever is offered applies: the PWM slice rule is the core's too now.
     fn acceptable(r: &Value) -> bool {
-        r["ok"] == true || r["status"] == st::PWM_CONFLICT || r["status"] == 0x1A
+        r["ok"] == true
+    }
+
+    /// `proptest!` for the walks, with at most `max` cases. Every applied edit
+    /// waits out the Console's 20 ms status poll, also on the demo device, so a
+    /// case costs 0.2 s to 3 s and the gate's `PROPTEST_CASES=20000` would keep
+    /// each walk busy for hours: the macro takes that count as it is.
+    /// `PROPTEST_CASES` still sets the count up to `max`, which each walk sizes
+    /// to about 45 s in release; a plain `cargo test` runs 12. Failures persist
+    /// to `proptest-regressions/cs_rules.txt` as the macro's do.
+    fn walk_cases<S: Strategy>(
+        name: &'static str,
+        max: u32,
+        strategy: S,
+        test: impl Fn(S::Value) -> std::result::Result<(), TestCaseError>,
+    ) {
+        let mut config =
+            proptest::test_runner::contextualize_config(ProptestConfig::with_cases(12));
+        config.cases = config.cases.min(max);
+        config.source_file = Some(file!());
+        config.test_name = Some(name);
+        let mut runner = proptest::test_runner::TestRunner::new(config);
+        if let Err(e) = runner.run(&strategy, test) {
+            panic!("{e}\n{runner}");
+        }
     }
 
     /// Choose a value for a row from `seed`. None for a row that takes no edit.
@@ -618,91 +641,196 @@ mod tests_wp_cg20 {
         }
     }
 
+    #[test]
+    fn proptest_cg20_every_offered_binding_edit_applies() {
+        let strategy = (
+            prop::sample::select(vec![
+                ty::BUTTON,
+                ty::SWITCH,
+                ty::POT,
+                ty::ENCODER,
+                ty::LED,
+                ty::LED_PWM,
+                ty::AUX_OUT,
+                ty::AUX_PWM,
+            ]),
+            proptest::collection::vec(any::<u64>(), 1..40),
+        );
+        walk_cases(
+            "proptest_cg20_every_offered_binding_edit_applies",
+            100, // 0.44 s a case
+            strategy,
+            |(t, seeds)| {
+                let core = demo();
+                // The demo holds all three ADC pins: free one, so a new pot has a pin.
+                let off = apply(
+                    &core,
+                    json!({ "op": "binding", "index": 2, "binding": { "type": 0 } }),
+                );
+                prop_assert_eq!(&off["ok"], true);
+                let slot = free_slot(&core);
+                let live = snapshot(&core);
+                // The demo already holds its one receiver and display, so the
+                // types drawn leave them out: a reject per draw would pass
+                // proptest's 1024-reject limit long before 20000 cases.
+                let has = |ty: u8| {
+                    live["bindings"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|b| b["type"] == ty)
+                };
+                prop_assert!(has(ty::IR) && has(ty::DISPLAY));
+                let b = parse(core.cs_new_binding(slot, t))["draft"].clone();
+                let first = apply(
+                    &core,
+                    json!({ "op": "binding", "index": slot, "binding": b }),
+                );
+                prop_assert!(acceptable(&first), "{first}");
+                walk(
+                    &core,
+                    "binding",
+                    slot,
+                    b,
+                    &seeds,
+                    &|d: &Value| json!({ "op": "binding", "index": slot, "binding": d }),
+                );
+                Ok(())
+            },
+        );
+    }
+
+    #[test]
+    fn proptest_cg20_every_offered_step_edit_applies() {
+        let strategy = proptest::collection::vec(any::<u64>(), 1..30);
+        walk_cases(
+            "proptest_cg20_every_offered_step_edit_applies",
+            15, // 3 s a case: a macro is several deferred writes
+            strategy,
+            |seeds| {
+                let core = demo();
+                let st = parse(core.cs_new_record("step".into()))["draft"].clone();
+                let group_free = snapshot(&core)["macros"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .position(|m| m["steps"].as_array().unwrap().is_empty())
+                    .unwrap();
+                walk(
+                    &core,
+                    "step",
+                    0,
+                    st,
+                    &seeds,
+                    &|d: &Value| json!({ "op": "macro", "index": group_free, "macro": { "name": "t", "steps": [d] } }),
+                );
+                Ok(())
+            },
+        );
+    }
+
+    #[test]
+    fn proptest_cg20_every_offered_page_edit_applies() {
+        let strategy = proptest::collection::vec(any::<u64>(), 1..30);
+        walk_cases(
+            "proptest_cg20_every_offered_page_edit_applies",
+            220, // 0.2 s a case
+            strategy,
+            |seeds| {
+                let core = demo();
+                let p = parse(core.cs_new_record("page".into()))["draft"].clone();
+                walk(
+                    &core,
+                    "page",
+                    3,
+                    p,
+                    &seeds,
+                    &|d: &Value| json!({ "op": "displayPage", "index": 3, "page": d }),
+                );
+                Ok(())
+            },
+        );
+    }
+
+    #[test]
+    fn proptest_cg20_every_offered_display_edit_applies() {
+        let strategy = proptest::collection::vec(any::<u64>(), 1..30);
+        walk_cases(
+            "proptest_cg20_every_offered_display_edit_applies",
+            140, // 0.32 s a case
+            strategy,
+            |seeds| {
+                let core = demo();
+                let c = snapshot(&core)["display"]["config"].clone();
+                walk(
+                    &core,
+                    "display",
+                    0,
+                    c,
+                    &seeds,
+                    &|d: &Value| json!({ "op": "displayConfig", "config": d }),
+                );
+                Ok(())
+            },
+        );
+    }
+
+    #[test]
+    fn proptest_cg20_every_offered_remote_button_edit_applies() {
+        let strategy = proptest::collection::vec(any::<u64>(), 1..30);
+        walk_cases(
+            "proptest_cg20_every_offered_remote_button_edit_applies",
+            220, // 0.2 s a case
+            strategy,
+            |seeds| {
+                let core = demo();
+                let mut c = parse(core.cs_new_record("ir".into()))["draft"].clone();
+                c["protocol"] = json!(1);
+                c["code"] = json!(0x1234);
+                walk(
+                    &core,
+                    "ir",
+                    5,
+                    c,
+                    &seeds,
+                    &|d: &Value| json!({ "op": "ir", "index": 5, "command": d }),
+                );
+                Ok(())
+            },
+        );
+    }
+
+    #[test]
+    fn proptest_cg20_every_offered_group_edit_applies() {
+        let strategy = proptest::collection::vec(any::<u64>(), 1..30);
+        walk_cases(
+            "proptest_cg20_every_offered_group_edit_applies",
+            220, // 0.2 s a case
+            strategy,
+            |seeds| {
+                let core = demo();
+                let free = snapshot(&core)["groups"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .position(|g| g["memberMask"] == 0)
+                    .unwrap();
+                let g = json!({ "targetKind": 2, "memberMask": 0, "name": "t" });
+                walk(
+                    &core,
+                    "group",
+                    free as u32,
+                    g,
+                    &seeds,
+                    &|d: &Value| json!({ "op": "group", "index": free, "group": d }),
+                );
+                Ok(())
+            },
+        );
+    }
+
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(12))]
-
-        #[test]
-        fn proptest_cg20_every_offered_binding_edit_applies(
-            t in 1u8..=10,
-            seeds in proptest::collection::vec(any::<u64>(), 1..40),
-        ) {
-            let core = demo();
-            // The demo holds all three ADC pins: free one, so a new pot has a pin.
-            let off = apply(&core, json!({ "op": "binding", "index": 2, "binding": { "type": 0 } }));
-            prop_assert_eq!(&off["ok"], true);
-            let slot = free_slot(&core);
-            let live = snapshot(&core);
-            // The demo already holds its one receiver and display.
-            let has = |ty: u8| live["bindings"].as_array().unwrap().iter().any(|b| b["type"] == ty);
-            prop_assume!(!(t == ty::IR && has(ty::IR)) && !(t == ty::DISPLAY && has(ty::DISPLAY)));
-            let b = parse(core.cs_new_binding(slot, t))["draft"].clone();
-            let first = apply(&core, json!({ "op": "binding", "index": slot, "binding": b }));
-            prop_assert!(acceptable(&first), "{first}");
-            walk(&core, "binding", slot, b, &seeds, &|d: &Value| {
-                json!({ "op": "binding", "index": slot, "binding": d })
-            });
-        }
-
-        #[test]
-        fn proptest_cg20_every_offered_step_edit_applies(
-            seeds in proptest::collection::vec(any::<u64>(), 1..30),
-        ) {
-            let core = demo();
-            let st = parse(core.cs_new_record("step".into()))["draft"].clone();
-            let group_free = snapshot(&core)["macros"].as_array().unwrap().iter()
-                .position(|m| m["steps"].as_array().unwrap().is_empty()).unwrap();
-            walk(&core, "step", 0, st, &seeds, &|d: &Value| {
-                json!({ "op": "macro", "index": group_free, "macro": { "name": "t", "steps": [d] } })
-            });
-        }
-
-        #[test]
-        fn proptest_cg20_every_offered_page_edit_applies(
-            seeds in proptest::collection::vec(any::<u64>(), 1..30),
-        ) {
-            let core = demo();
-            let p = parse(core.cs_new_record("page".into()))["draft"].clone();
-            walk(&core, "page", 3, p, &seeds, &|d: &Value| {
-                json!({ "op": "displayPage", "index": 3, "page": d })
-            });
-        }
-
-        #[test]
-        fn proptest_cg20_every_offered_display_edit_applies(
-            seeds in proptest::collection::vec(any::<u64>(), 1..30),
-        ) {
-            let core = demo();
-            let c = snapshot(&core)["display"]["config"].clone();
-            walk(&core, "display", 0, c, &seeds, &|d: &Value| {
-                json!({ "op": "displayConfig", "config": d })
-            });
-        }
-
-        #[test]
-        fn proptest_cg20_every_offered_remote_button_edit_applies(
-            seeds in proptest::collection::vec(any::<u64>(), 1..30),
-        ) {
-            let core = demo();
-            let mut c = parse(core.cs_new_record("ir".into()))["draft"].clone();
-            c["protocol"] = json!(1);
-            c["code"] = json!(0x1234);
-            walk(&core, "ir", 5, c, &seeds, &|d: &Value| {
-                json!({ "op": "ir", "index": 5, "command": d })
-            });
-        }
-
-        #[test]
-        fn proptest_cg20_every_offered_group_edit_applies(
-            seeds in proptest::collection::vec(any::<u64>(), 1..30),
-        ) {
-            let core = demo();
-            let free = snapshot(&core)["groups"].as_array().unwrap().iter()
-                .position(|g| g["memberMask"] == 0).unwrap();
-            let g = json!({ "targetKind": 2, "memberMask": 0, "name": "t" });
-            walk(&core, "group", free as u32, g, &seeds, &|d: &Value| {
-                json!({ "op": "group", "index": free, "group": d })
-            });
-        }
 
         /// Any text, through every export: JSON back, never a panic.
         #[test]

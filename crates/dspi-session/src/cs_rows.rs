@@ -47,10 +47,11 @@ use crate::cs_model::{
     group_menu_label, group_summary, i2c_sda_candidates, invert_detail, invert_title,
     ir_verb_phrase, is_aux, is_indicator, kind, macro_step_actions, macro_step_nouns,
     macro_step_summary, make_binding, noun, noun_menu_label, noun_name, noun_range, noun_unit,
-    operand_kind, page_bar_allowed, picker_addresses, pin_candidates, pin_detail, repeat_allowed,
-    sanitize_repeat, set_ir_noun, set_noun_in, slot_owner, switch_aux_kind, target,
-    target_addresses, target_label, target_noun, ty, type_name, unit_decimals, unit_is_log,
-    unit_min_step, unit_scroll_step, unit_symbol, valid_actions, valid_nouns, verb_phrase,
+    operand_kind, page_bar_allowed, picker_addresses, pin_candidates, pin_detail, pwm_blocked,
+    pwm_owner, repeat_allowed, sanitize_repeat, set_ir_noun, set_noun_in, slot_owner,
+    switch_aux_kind, target, target_addresses, target_label, target_noun, ty, type_name,
+    unit_decimals, unit_is_log, unit_min_step, unit_scroll_step, unit_symbol, valid_actions,
+    valid_nouns, verb_phrase,
 };
 use crate::surfaces::{
     AUX_LEVEL_MAX_Q8, CsBinding, CsDisplayCfg, CsDisplayPage, CsGroup, CsMacroStep, GPIO_UNUSED,
@@ -824,7 +825,10 @@ fn pin_row(
         cx.valid_pins()
     };
     for p in all {
-        let who = cx.pin_owner(p, &owner);
+        // -- WP CG20 -- A pin kept off only by its PWM slice names that holder.
+        let who = cx
+            .pin_owner(p, &owner)
+            .or_else(|| pwm_owner(cx, cs, slot, b.component, p));
         options.push(Choice {
             owner: who,
             disabled: !offered.contains(&p),
@@ -1865,7 +1869,14 @@ fn edit_binding(
             let t = as_u8(picked, b.component);
             if t != b.component {
                 n = if is_aux(b.component) && is_aux(t) {
-                    switch_aux_kind(b, t)
+                    // -- WP CG20 -- An output turned dimmable keeps its pin
+                    // unless that pin's PWM slice is taken: then a fresh pin.
+                    let s = switch_aux_kind(b, t);
+                    if pwm_blocked(cx, cs, slot, t, s.gpio[0]) {
+                        make_binding(cx, cs, &with_draft(cs, slot, b), slot, t)
+                    } else {
+                        s
+                    }
                 } else {
                     make_binding(cx, cs, &with_draft(cs, slot, b), slot, t)
                 };
@@ -2411,5 +2422,165 @@ mod tests_wp_cg20 {
             .unwrap();
         assert_eq!(noun["kind"], "pick");
         assert!(noun["options"][0]["section"].is_string());
+    }
+
+    /// The claims the core's context holds: every live binding's pins.
+    fn live_claims(cs: &CsData) -> Vec<crate::pins::PinClaim> {
+        cs.bindings
+            .iter()
+            .enumerate()
+            .filter(|(s, b)| cs.status.is_slot_active(*s as u8) && !b.is_empty())
+            .flat_map(|(s, b)| {
+                b.pins().into_iter().map(move |gpio| crate::pins::PinClaim {
+                    gpio,
+                    role: crate::pins::PinRole::Output,
+                    owner: slot_owner(s),
+                })
+            })
+            .collect()
+    }
+
+    fn pin_choice(d: &Description, gpio: i32) -> Choice {
+        match &row(d, "gpio0").unwrap().body {
+            RowBody::Pick { options, .. } => {
+                options.iter().rfind(|o| o.value == gpio).cloned().unwrap()
+            }
+            _ => panic!("a pick"),
+        }
+    }
+
+    /// Review c3a F0, found at 20000 cases: a Hold button has the short press
+    /// alone, so it is not offered a button pin whose short press is taken (the
+    /// demo's buttons on GPIO 16 and 19); the device answers EVENT_IN_USE.
+    #[test]
+    fn cg20_a_hold_button_is_not_offered_a_taken_short_press() {
+        let (cs, st) = fixture();
+        let claims = live_claims(&cs);
+        let c = StaticContext {
+            claims: &claims,
+            ..cx(&st)
+        };
+        let hold = momentary_button(&cs);
+        let d = describe(&c, &cs, 5, &Draft::Binding(hold.clone()));
+        let offered = options(row(&d, "gpio0").unwrap());
+        assert!(
+            !offered.contains(&16) && !offered.contains(&19),
+            "{offered:?}"
+        );
+        assert!(edit(&c, &cs, 5, &Draft::Binding(hold.clone()), "gpio0", 16.0).is_err());
+
+        // A toggle may share it, on a gesture of its own.
+        let toggle = CsBinding {
+            action: act::TOGGLE,
+            ..hold
+        };
+        let Draft::Binding(on16) =
+            edit(&c, &cs, 5, &Draft::Binding(toggle), "gpio0", 16.0).unwrap()
+        else {
+            panic!("a binding");
+        };
+        assert_ne!(on16.event, evt::PRESS);
+    }
+
+    /// Review c3a F1: a PWM output is not offered a GPIO on the PWM slice and
+    /// channel another live PWM binding drives (the demo's dimmable output on
+    /// GPIO 28 is slice 6 channel A, as GPIO 12 is), nor on RP2040 the soft
+    /// VCXO's slice 7 (GPIO 14 and 15). The device answers PWM_CONFLICT.
+    #[test]
+    fn cg20_a_pwm_output_is_not_offered_a_taken_pwm_slice() {
+        let (cs, mut st) = fixture();
+        let claims = live_claims(&cs);
+        for t in [ty::LED_PWM, ty::AUX_PWM] {
+            let c = StaticContext {
+                claims: &claims,
+                ..cx(&st)
+            };
+            let b = make_binding(&c, &cs, &cs.bindings, 5, t);
+            assert_ne!(b.gpio[0], 12, "a fresh one avoids it too");
+            let d = describe(&c, &cs, 5, &Draft::Binding(b.clone()));
+            let offered = options(row(&d, "gpio0").unwrap());
+            assert!(!offered.contains(&12), "{offered:?}");
+            assert!(offered.contains(&13), "channel B is free: {offered:?}");
+            assert!(offered.contains(&14), "RP2350's soft VCXO has no GPIO");
+            let twelve = pin_choice(&d, 12);
+            assert!(twelve.disabled);
+            assert_eq!(
+                twelve.owner.as_deref(),
+                Some("Control Surface 12 (same PWM output)")
+            );
+            assert!(edit(&c, &cs, 5, &Draft::Binding(b), "gpio0", 12.0).is_err());
+        }
+        // A plain LED has no slice to share.
+        let c = StaticContext {
+            claims: &claims,
+            ..cx(&st)
+        };
+        let led = make_binding(&c, &cs, &cs.bindings, 5, ty::LED);
+        let d = describe(&c, &cs, 5, &Draft::Binding(led));
+        assert!(options(row(&d, "gpio0").unwrap()).contains(&12));
+
+        st.caps.platform = dspi_proto::Platform::Rp2040;
+        let c = StaticContext {
+            claims: &claims,
+            ..cx(&st)
+        };
+        let b = make_binding(&c, &cs, &cs.bindings, 5, ty::LED_PWM);
+        let d = describe(&c, &cs, 5, &Draft::Binding(b));
+        let offered = options(row(&d, "gpio0").unwrap());
+        assert!(!offered.contains(&14), "{offered:?}");
+        assert_eq!(
+            pin_choice(&d, 14).owner.as_deref(),
+            Some("Clock trim (PWM)")
+        );
+        assert!(offered.contains(&13), "{offered:?}");
+    }
+
+    /// An on/off output turned dimmable leaves a pin whose slice is taken.
+    #[test]
+    fn cg20_an_output_turned_dimmable_leaves_a_taken_slice() {
+        let (cs, st) = fixture();
+        let claims = live_claims(&cs);
+        let c = StaticContext {
+            claims: &claims,
+            ..cx(&st)
+        };
+        let out = CsBinding {
+            component: ty::AUX_OUT,
+            gpio: [12, GPIO_UNUSED],
+            ..Default::default()
+        };
+        let Draft::Binding(pwm) = edit(
+            &c,
+            &cs,
+            5,
+            &Draft::Binding(out.clone()),
+            "type",
+            f64::from(ty::AUX_PWM),
+        )
+        .unwrap() else {
+            panic!("a binding");
+        };
+        assert_eq!(pwm.component, ty::AUX_PWM);
+        assert!(
+            !pwm_blocked(&c, &cs, 5, ty::AUX_PWM, pwm.gpio[0]),
+            "{pwm:?}"
+        );
+        // Where the slice is free, the pin stays.
+        let out13 = CsBinding {
+            gpio: [13, GPIO_UNUSED],
+            ..out
+        };
+        let Draft::Binding(pwm) = edit(
+            &c,
+            &cs,
+            5,
+            &Draft::Binding(out13),
+            "type",
+            f64::from(ty::AUX_PWM),
+        )
+        .unwrap() else {
+            panic!("a binding");
+        };
+        assert_eq!(pwm.gpio[0], 13);
     }
 }

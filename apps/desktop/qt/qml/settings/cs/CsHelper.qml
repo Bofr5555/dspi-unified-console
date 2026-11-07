@@ -74,14 +74,6 @@ QtObject {
     readonly property int dpageBar: 0x08
 
     // Nouns used by name in the rules below
-    readonly property int nounMasterVolume: 1
-    readonly property int nounPreset: 6
-    readonly property int nounClip: 8
-    readonly property int nounFilterBypass: 24
-    readonly property int nounDacMuteTest: 26
-    readonly property int nounClipCh: 27
-    readonly property int nounPresetReload: 48
-    readonly property int nounMacro: 52
     readonly property int nounDisplayEdit: 55
     readonly property int nounPageValue: 56
     readonly property int nounAux: 68
@@ -205,38 +197,13 @@ QtObject {
         }
     }
 
-    readonly property var nounNames: ({
-        0: "Volume", 1: "Master Volume", 2: "Mute", 3: "Loudness", 4: "Crossfeed", 5: "Volume Leveller",
-        6: "Preset", 7: "Input Source", 8: "Clipping", 9: "EQ Bypass", 10: "LG Sound Sync",
-        11: "Crossfeed Preset", 12: "Crossfeed ITD", 13: "Leveller Amount", 14: "Leveller Speed",
-        15: "Leveller Lookahead", 16: "Input Preamp", 17: "Output Gain", 18: "Output Mute", 19: "Output Enable",
-        20: "Filter Frequency", 21: "Filter Gain", 22: "Filter Q", 23: "Filter Type", 24: "Filter Bypass",
-        25: "Signal Generator", 26: "DAC Mute Test", 27: "Channel Clipping", 28: "Channel Level",
-        29: "S/PDIF Lock", 30: "Sample Rate", 31: "USB Streaming", 32: "ADAT Active", 33: "LG Source Present",
-        34: "LG Muted", 35: "Upmixer", 36: "Upmixer Centre Mode", 37: "Upmixer Surround Mode",
-        38: "Upmixer Strength", 39: "Upmixer Width", 40: "Upmixer Presence", 41: "Psychoacoustic Bass",
-        42: "Psych Bass Cutoff Frequency", 43: "Psych Bass Harmonics", 44: "Psych Bass Drive",
-        45: "Psych Bass Character", 46: "Psych Bass Original Level", 47: "Output Delay", 48: "Preset Reload",
-        49: "Loudness Reference SPL", 50: "Loudness Intensity", 51: "Input Signal Level", 52: "Macro",
-        53: "CPU Load", 54: "Show Page", 55: "Allow Editing", 56: "Browse/Adjust",
-        57: "Subharmonic Synthesizer", 58: "Subharm 24-36 Hz Level", 59: "Subharm 36-56 Hz Level",
-        60: "Subharm LF Boost", 61: "Subharm 56-80 Hz Level", 62: "Subharm Selectivity",
-        63: "Subharm Selectivity Depth", 64: "Subharm Selectivity Hold", 65: "Subharm Sub Ceiling",
-        66: "Subharm Pair Link", 67: "Subharm Solo", 68: "Aux Switch", 69: "Aux Level",
-        70: "Tube Modeller", 71: "Tube Drive", 72: "Tube Type", 73: "Tube Mix",
-        74: "Output Limiter", 75: "Limiter Threshold", 76: "Limiter Release", 77: "Limiter Link Group",
-        78: "Limiter Gain Reduction"
-    })
-    // A few read differently on a control than on an LED: a button clears
-    // clipping, an LED shows it
+    // -- WP CG20 -- The core's names (cs_model::noun_name, in the snapshot): a few
+    // read differently on a control than on an LED, a button clears clipping and
+    // an LED shows it
     function nounName(n, type) {
-        if (!isIndicatorType(type)) {
-            if (n === nounClip) return "Clear Clipping"
-            if (n === nounDacMuteTest) return "Test DAC Mute"
-            if (n === nounPresetReload) return "Reload Preset"
-        }
-        if (n === nounMacro) return isIndicatorType(type) ? "Running Macro" : "Macro"
-        return nounNames[n] !== undefined ? nounNames[n] : "Parameter " + n
+        var nd = nounDesc(n)
+        if (!nd || nd.name === undefined) return "Parameter " + n
+        return isIndicatorType(type) ? nd.name : nd.controlName
     }
 
     function actionName(a, noun) {

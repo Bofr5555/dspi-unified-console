@@ -2112,14 +2112,67 @@ pub fn pin_candidates(
             }
             // A button may share a GPIO whose only other owners are buttons:
             // one binding per gesture (survey-firmware 3.3).
-            b.component == ty::BUTTON && button_shareable(cs, *p, slot)
+            b.component == ty::BUTTON && button_shareable(cs, *p, slot, &binding_gestures(b))
         })
+        // -- WP CG20 --
+        .filter(|p| *p == current || !pwm_blocked(cx, cs, slot, b.component, *p))
         .collect()
 }
 
-/// True when every live binding on this pin other than `excluding` is a button.
-fn button_shareable(cs: &CsData, pin: u8, excluding: usize) -> bool {
+// -- WP CG20 --
+/// The PWM slice and channel `gpio` drives, as `pwm_gpio_to_slice_num` and
+/// `pwm_gpio_to_channel` say: RP2350's GPIOs from 32 on reach slices 8 to 11.
+fn pwm_output(platform: dspi_proto::Platform, gpio: u8) -> (u8, u8) {
+    let slice = match platform {
+        dspi_proto::Platform::Rp2350 if gpio >= 32 => 8 | ((gpio >> 1) & 3),
+        _ => (gpio >> 1) & 7,
+    };
+    (slice, gpio & 1)
+}
+
+/// Who keeps a PWM binding of type `t` in `slot` off `gpio`, when the firmware
+/// refuses it with `CS_STATUS_PWM_CONFLICT` (control_surfaces.c:1789-1808): the
+/// soft VCXO's slice (`SOFT_VCXO_PWM_SLICE`, config.h: 7 on RP2040, GPIOs 14,
+/// 15, 30 and 31; 8 on RP2350, which no bondable GPIO reaches), or another live
+/// PWM binding on the same slice and channel. `None` for other types.
+pub fn pwm_owner(cx: &dyn CsContext, cs: &CsData, slot: usize, t: u8, gpio: u8) -> Option<String> {
+    if !is_pwm(t) {
+        return None;
+    }
+    let platform = cx.state().caps.platform;
+    let out = pwm_output(platform, gpio);
+    let vcxo = if platform == dspi_proto::Platform::Rp2350 {
+        8
+    } else {
+        7
+    };
+    if out.0 == vcxo {
+        return Some("Clock trim (PWM)".to_string());
+    }
+    cs.bindings
+        .iter()
+        .enumerate()
+        .find(|(s, o)| {
+            *s != slot
+                && u8::try_from(*s).is_ok_and(|n| cs.status.is_slot_active(n))
+                && is_pwm(o.component)
+                && pwm_output(platform, o.gpio[0]) == out
+        })
+        .map(|(s, _)| format!("{} (same PWM output)", slot_owner(s)))
+}
+
+/// True when [`pwm_owner`] names someone.
+pub fn pwm_blocked(cx: &dyn CsContext, cs: &CsData, slot: usize, t: u8, gpio: u8) -> bool {
+    pwm_owner(cx, cs, slot, t, gpio).is_some()
+}
+
+/// True when every live binding on this pin other than `excluding` is a button,
+/// and one of `gestures` is still free there (-- WP CG20 --): a Hold button has
+/// the short press alone, so a pin whose short press is taken has no room for
+/// it (control_surfaces.c:1374, `CS_STATUS_EVENT_IN_USE`).
+fn button_shareable(cs: &CsData, pin: u8, excluding: usize, gestures: &[u8]) -> bool {
     let mut saw_button = false;
+    let mut taken = Vec::new();
     for (s, b) in cs.bindings.iter().enumerate() {
         if s == excluding || !cs.status.is_slot_active(s as u8) {
             continue;
@@ -2131,8 +2184,9 @@ fn button_shareable(cs: &CsData, pin: u8, excluding: usize) -> bool {
             return false;
         }
         saw_button = true;
+        taken.push(b.event);
     }
-    saw_button
+    saw_button && gestures.iter().any(|e| !taken.contains(e))
 }
 
 /// Legal SDA pins for the display: the mux pairs GPIOs so bit 0 picks SDA
@@ -2193,6 +2247,8 @@ pub fn make_binding(
         let base: Vec<u8> = if adc { ADC_PINS.to_vec() } else { all_pins(cx) };
         base.into_iter()
             .filter(|p| cx.pin_owner(*p, &owner).is_none())
+            // -- WP CG20 --
+            .filter(|p| !pwm_blocked(cx, cs, slot, t, *p))
             .collect()
     };
     // The IR receiver is a container: it carries only its pin and sense; noun,
