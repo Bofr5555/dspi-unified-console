@@ -111,7 +111,7 @@ private fun AboutPage(onOpenLicenses: () -> Unit) {
                 SettingsSection(about.linksTitle) {
                     about.linksNote?.let { FormCaption(it) }
                     FormCaption(
-                        "DSPi Firmware and Console are free, open-source software that I develop in my spare time. " +
+                        "DSPi Firmware and Console are free, open-source software that I (Weeb Labs) develop in my spare time. " +
                             "Contributions of any kind - code, feedback, funding, or otherwise - are always immensely appreciated."
                     )
                     about.links.forEach { link ->

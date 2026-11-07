@@ -23,7 +23,7 @@ use super::{Cx, PageEvent, Row, SettingsPage};
 
 /// The Console's paragraph above the links.
 pub const SUPPORT: &str = "DSPi Firmware and Console are free, open-source software that I \
-                           develop in my spare time. Contributions of any kind - code, \
+                           (Weeb Labs) develop in my spare time. Contributions of any kind - code, \
                            feedback, funding, or otherwise - are always immensely appreciated.";
 
 /// Said in place of the table if it cannot be read, which a test in `dspi-session`
