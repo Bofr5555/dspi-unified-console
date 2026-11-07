@@ -31,15 +31,15 @@ Sizes are relative units, for comparing WPs. Measured in the core merge: a size-
 |---|---|---|---|
 | MR: one repo, one build | 3 | 2.5 | `main` |
 | LC, HO: licence inventory, handover | 2 | 1.75 | `main`; HO1 late |
-| CG: core gaps | 21 | 13.75 | `main` |
+| CG: core gaps | 28 | 16.75 | `main` |
 | HB: Rust Link hub | 7 | 12 | `main` |
-| QD: Qt (Linux, Windows) | 32 | 23.75 | `main`, CG, HB for the hub page |
+| QD: Qt (Linux, Windows) | 33 | 24.25 | `main`, CG, HB for the hub page |
 | TM: Terminal | 23 | 11.75 | `main`, CG, HB for `dspi hub` |
-| AN: Android | 24 | 25.75–29.75 | `main`, MR1, CG9 |
-| SW: Swift (macOS and iOS) | 29 | 32.75–43.25 | `main`, MR1, CG3, CG4 |
+| AN: Android | 29 | 28–32 | `main`, MR1, CG9 |
+| SW: Swift (macOS and iOS) | 29 | 35.25–39.75 (SW8–SW14 re-sized by SW3) | `main`, MR1, CG3, CG4 |
 | WB: web | 2 + stubs | 2.75 (study, WB1) | `main` |
 | XC: audit, cross-client tests | 7 | 3.75 | hub hardware, K340 |
-| **Total** | **155** | **about 121–136**, not counting the web build | |
+| **Total** | **168** | **about 129–138**, not counting the web build | |
 
 **M0, the first milestone, is about 12–14 days after `main`** (section 0.3). The
 largest unknowns are Swift domain replacement, the Android control-surface editor
@@ -49,25 +49,28 @@ and the web build (section 9).
 
 ## Status (2026-11-07)
 
-*From `git log main` at `0185343` (reviews c3a and c3b merged), the `wp/*` branches, `work/clients-wave0.md`, `work/clients-wave1.md` and
-`work/HANDOVER.md`. A commit hash is the merge that brought the WP into `main`. **DONE**: merged. **PARTIAL**: merged,
-but a part moved to the WP named. **IN REVIEW**: finished, in a review branch. **IN PROGRESS**: on its branch,
-not finished. **TODO**: not started. **MOVED**: moved to later work, folded elsewhere or a deferred stub. **[HW]**: a
-device step is still owed. `?`: the sources disagree or are unclear.*
+*From `git log main` at `d2dbed6` (reviews up to c4g merged), `release/android-0.12`, the `wp/*` branches, the review
+reports under `work/review-c4*` and `work/HANDOVER.md`. A commit hash is the merge that brought the WP into `main`
+(or into the branch named). **DONE**: merged. **PARTIAL**: merged, but a part moved to the WP named. **IN REVIEW**:
+finished on its branch, waiting for or in review. **IN PROGRESS**: on its branch, not finished. **TODO**: not started.
+**MOVED**: moved to later work, folded elsewhere or a deferred stub. **[HW]**: a device step is still owed. `?`: the
+sources disagree or are unclear.*
 
 **Next up:**
-1. QD34 (polling off the UI thread).
-2. TM24 (Terminal control surfaces on `cs_rows`).
-3. Wave 3: QD9, QD10, QD13, QD14, QD16, QD17, QD19, QD28; AN5, AN7, AN9–AN14, AN17–AN19, AN23; TM11, TM13; HB7;
-   MR1 (Swift half), SW1, SW2 on `macvm`. M0 (owner review) at its end.
+1. Review QD10, QD14 and QD19 (finished, not yet reviewed), with QD17 when it finishes.
+2. CG23, CG24, CG25 (running), then CG26; then SW4 on `macvm`. M0 (owner review) needs SW4.
+3. Follow-ups from today's reviews: CG27, CG28; AN34, then AN35; AN36 after `release/android-0.12` merges back
+   into `main` (AN32, AN33).
+4. The rest of wave 3: QD9, QD13, QD16; TM13 [HW]; HB7. QD35 is the owner's Qt hand checks.
 
-**Android release on the unified core today** needs the phone test (AN13); CG22 is done.
+**Android release on the unified core today** is `release/android-0.12` (from c70171a plus AN32 and AN33). It needs
+the phone test (AN13).
 
-**MR: one repo, one build**: 3 WPs: 2 DONE, 1 PARTIAL.
+**MR: one repo, one build**: 3 WPs: 3 DONE.
 
 | ID | Title | Status | Merged in / branch | Next or blocker |
 |---|---|---|---|---|
-| MR1 | Import with history | PARTIAL | 72c9056 (Android half) | Swift half not started: wave 3 per handover (section 7 says wave 2), on macvm |
+| MR1 | Import with history | DONE | 72c9056 (Android half), 3002a24 (Swift half, review c4s) |  |
 | MR2 | One entry point | DONE | 7ea8a55 |  |
 | MR3 | Container user | DONE | b4e18a2 |  |
 
@@ -75,10 +78,10 @@ device step is still owed. `?`: the sources disagree or are unclear.*
 
 | ID | Title | Status | Merged in / branch | Next or blocker |
 |---|---|---|---|---|
-| LC1 | Licence inventory, iOS first | DONE | 37be568 | Re-run after each SW wave |
 | HO1 | Handover pack | TODO |  | Late: before R-Mac and R-iOS |
+| LC1 | Licence inventory, iOS first | DONE | 37be568 | Re-run after each SW wave |
 
-**CG: core gaps**: 22 WPs: 19 DONE, 2 PARTIAL, 1 TODO.
+**CG: core gaps**: 28 WPs: 20 DONE, 2 PARTIAL, 3 IN PROGRESS, 3 TODO.
 
 | ID | Title | Status | Merged in / branch | Next or blocker |
 |---|---|---|---|---|
@@ -104,6 +107,12 @@ device step is still owed. `?`: the sources disagree or are unclear.*
 | CG20 | Control-surface editing rules in the core | DONE | d458d79, fixups 4c90fce | Unblocks TM24, AN9 |
 | CG21 | One read per Stats tick | DONE | 8b80fa2 | Unblocks QD34 |
 | CG22 | Analyser and signal generator in the Rust fake device | DONE | f4569d2, fixups 110b09e | Unblocks the Android release (AN13) |
+| CG23 | Raw notification tap and connection generation | IN PROGRESS | wp/CG23 | Running |
+| CG24 | A device lock held across a flow | IN PROGRESS | wp/CG24 | Running |
+| CG25 | Stream-state events in `NotifyResult` | IN PROGRESS | wp/CG25 | Running |
+| CG26 | Host-supplied transport | TODO |  | After CG23; then SW4 |
+| CG27 | Final firmware version on the demo device | TODO |  | Wave 3 |
+| CG28 | Re-read the control-surface status after a display write | TODO |  | Wave 3 |
 
 **HB: Rust Link hub**: 8 WPs: 6 DONE, 1 TODO, 1 MOVED.
 
@@ -116,9 +125,9 @@ device step is still owed. `?`: the sources disagree or are unclear.*
 | HB4 |  | MOVED |  | Later work |
 | HB5 | Advertising and web UI | DONE | 1e0aaa0 | Upstream web bundle held; TXT key `rev`: owner |
 | HB6 | C ABI for the hub | DONE | 46eba1f | [HW] HUB_OPT_USB, attach_app |
-| HB7 | Conformance | TODO |  | Wave 3 per handover; section 7 says wave 4; [HW] |
+| HB7 | Conformance | TODO |  | Wave 3; [HW] |
 
-**QD: Qt (Linux, Windows)**: 34 WPs: 18 DONE, 14 TODO, 2 MOVED.
+**QD: Qt (Linux, Windows)**: 35 WPs: 20 DONE, 3 IN REVIEW, 1 IN PROGRESS, 9 TODO, 2 MOVED.
 
 | ID | Title | Status | Merged in / branch | Next or blocker |
 |---|---|---|---|---|
@@ -130,18 +139,18 @@ device step is still owed. `?`: the sources disagree or are unclear.*
 | QD5 | Output latency, clock diagnostics, C0/C1 bars | DONE | fcf5c7a |  |
 | QD6 | Read-only mode | DONE | 4ea4256 |  |
 | QD7 | Demo mode | DONE | 4e85688 |  |
-| QD8 | Link controller and token store | DONE | 334772d (in wp/QD6); flake fix QD8b 8333d8e | Keyring checks on a real desktop, winvm, macOS: coordinator |
+| QD8 | Link controller and token store | DONE | 334772d (in wp/QD6); flake fix QD8b 8333d8e | Keyring checks on a real desktop, winvm, macOS: QD35 |
 | QD9 | Device list, discovery, PIN prompt | TODO |  | Wave 3 |
-| QD10 | Lost-connection banner | TODO |  | Wave 3; owes the fake-hub fault test |
+| QD10 | Lost-connection banner | IN REVIEW | wp/QD10 2b10116 | Finished, not yet reviewed |
 | QD11 | Firmware updater | DONE | 0086e8b | [HW] run list in its report |
-| QD12 | Tray | DONE | 7213cdc | [HW] owner hand check on a real tray; winvm later |
+| QD12 | Tray | DONE | 7213cdc | [HW] tray hand check: QD35 |
 | QD13 | Open at login and keep awake | TODO |  | Wave 3 |
-| QD14 | Networking page | TODO |  | Wave 3 per handover; section 7 says wave 4 |
+| QD14 | Networking page | IN REVIEW | wp/QD14 7c97439 | Finished, not yet reviewed |
 | QD15 |  | MOVED |  | Later work: coach marks |
 | QD16 | App self-update | TODO |  | Wave 3 |
-| QD17 | Shortcuts | TODO |  | Wave 3 |
-| QD18 | Host audio format | DONE | b56142b | [HW] owner runs: PipeWire 8 ch, Windows sound settings |
-| QD19 | Analyser over Link | TODO |  | Wave 3 |
+| QD17 | Shortcuts | IN PROGRESS | wp/QD17 | Running |
+| QD18 | Host audio format | DONE | b56142b | [HW] PipeWire 8 ch, Windows sound settings: QD35 |
+| QD19 | Analyser over Link | IN REVIEW | wp/QD19 cb0b41f | Finished, not yet reviewed |
 | QD20 |  | MOVED |  | Folded into `docs/PARITY.md` rows (XC0, HO1) |
 | QD21 | Packaging | TODO |  | Wave 4 |
 | QD22 | Accessibility | TODO |  | Last wave |
@@ -149,15 +158,16 @@ device step is still owed. `?`: the sources disagree or are unclear.*
 | QD24 | Hardware pass, Linux | TODO |  | [HW] wave 5 |
 | QD25 | Windows | TODO |  | [HW] wave 5 |
 | QD27 | AutoEQ on the core | DONE | 1eac03c |  |
-| QD28 | Advanced core voltage | TODO |  | Wave 3 |
+| QD28 | Advanced core voltage | DONE | 0d88cee, fixup QD28b 6d36ab3 |  |
 | QD29 | Output ring health | DONE | b4f2e29 |  |
-| QD30 | Popover cursor on the graph gear | DONE | 253aadf | Owner retest on KDE Wayland and X11 |
+| QD30 | Popover cursor on the graph gear | DONE | 253aadf | Owner retest on KDE Wayland and X11: QD35 |
 | QD31 | Save bar reports setter failures | DONE | e17573c |  |
 | QD32 | Qt on the shared wording | DONE | faf3035 |  |
 | QD33 | Qt About page (in CG15) | DONE | 028d27f |  |
-| QD34 | Polling off the UI thread | TODO |  | Next up |
+| QD34 | Polling off the UI thread | DONE | 86a5528 |  |
+| QD35 | Qt hand checks | TODO |  | [HW][OWNER] hand checks |
 
-**TM: Terminal**: 24 WPs: 21 DONE, 3 TODO.
+**TM: Terminal**: 24 WPs: 23 DONE, 1 TODO.
 
 | ID | Title | Status | Merged in / branch | Next or blocker |
 |---|---|---|---|---|
@@ -171,9 +181,9 @@ device step is still owed. `?`: the sources disagree or are unclear.*
 | TM8 | Lost-link status line | DONE | 7674f12 |  |
 | TM9 | Find hubs | DONE | 3fe84cd |  |
 | TM10 | JSON import and export | DONE | 7fdab0a, fixup 3072918 | Real Mac export as fixture: coordinator |
-| TM11 | `dspi hub` | TODO |  | Wave 3 per handover; section 7 says wave 4 |
+| TM11 | `dspi hub` | DONE | 053da66, fixup TM11b 516bea6 |  |
 | TM12 | AutoEQ update | DONE | 1050ea0 |  |
-| TM13 | K340 hardware pass | TODO |  | Wave 3 per handover; section 7 says wave 4; [HW] |
+| TM13 | K340 hardware pass | TODO |  | Wave 3; [HW] |
 | TM14 | No tmpfs in tests | DONE | fcfdb58 (earlier commit; no WP merge) |  |
 | TM15 | Closed pipes | DONE | ea55e5b |  |
 | TM16 | Output ring health | DONE | 95d7f9d |  |
@@ -184,9 +194,9 @@ device step is still owed. `?`: the sources disagree or are unclear.*
 | TM21 | Preset capture must not invent values | DONE | 32b9902 |  |
 | TM22 | Terminal About page (in CG15) | DONE | e73b67b |  |
 | TM23 | Settings page drawing | DONE | f2bdb9d, fixup f2f1d3c |  |
-| TM24 | Terminal control surfaces on `cs_rows` | TODO |  | Next up |
+| TM24 | Terminal control surfaces on `cs_rows` | DONE | 10f897d |  |
 
-**AN: Android**: 30 WPs: 12 DONE, 1 PARTIAL, 17 TODO.
+**AN: Android**: 35 WPs: 23 DONE, 2 PARTIAL, 10 TODO.
 
 | ID | Title | Status | Merged in / branch | Next or blocker |
 |---|---|---|---|---|
@@ -194,41 +204,46 @@ device step is still owed. `?`: the sources disagree or are unclear.*
 | AN2 | Read-only on older firmware | PARTIAL | 5f8e640 | Phone proof moved to AN13 (TODO) |
 | AN3 | Link engine on the core's supervisor | DONE | 4901541 |  |
 | AN4 | Network handling | DONE | 6fdf46a |  |
-| AN5 | Link UI | TODO |  | Wave 3 |
+| AN5 | Link UI | DONE | 3b1798e | Hint fixup: AN36 |
 | AN6 | Settings rows | DONE | d016f5f |  |
-| AN7 | One device list | TODO |  | Wave 3 |
+| AN7 | One device list | DONE | 3ac4399 | Settings drafts on a device switch: small follow-up (review c4f) |
 | AN8 | Control-surface spike | DONE | 57f3665 | Its follow-ups are CG20 and AN28 |
-| AN9 | CS bindings | TODO |  | Wave 3 per handover; section 7 says wave 4; after CG20 |
-| AN10 | IR learn | TODO |  | Wave 3 per handover; section 7 says wave 4; [HW] |
-| AN11 | Display pages | TODO |  | Wave 3 per handover; section 7 says wave 4; [HW] |
-| AN12 | Groups, macros, aux | TODO |  | Wave 3 per handover; section 7 says wave 4 |
+| AN9 | CS bindings | DONE | 2e3267e |  |
+| AN10 | IR learn | DONE | 2f30f66 | [HW] IR learn on the K340 with a receiver and a remote |
+| AN11 | Display pages | DONE | 5ec67f2 | [HW] real panels; core status re-read: CG28 |
+| AN12 | Groups, macros, aux | DONE | 0863194, fixup 8377d99 |  |
 | AN13 | Phone test | TODO |  | [HW][OWNER] phone test; needed for the Android release |
 | AN14 | First new-core update | TODO |  | [OWNER] first new-core update |
 | AN15 | R8 | TODO |  | [HW] wave 5 |
 | AN16 | Edge-to-edge | TODO |  | [HW] wave 5 |
-| AN17 | Analyser bar strip and following | TODO |  | Wave 3 |
-| AN18 | Small floor items | TODO |  | Wave 3 |
-| AN19 | Getting Started and What's New | TODO |  | Wave 3 |
+| AN17 | Analyser bar strip and following | DONE | 33b78a4 | Placing the strip on screens: AN34 |
+| AN18 | Small floor items | PARTIAL | d417832, fixups 6e946a7 | Shortcuts and host channel count moved to AN35 |
+| AN19 | Getting Started and What's New | DONE | 13c7dbe | Seed fixup: AN36 |
 | AN20 | Accessibility | TODO |  | Last wave; [HW] TalkBack pass |
 | AN21 | Localisation plumbing | TODO |  | Last wave |
 | AN22 | Second update | TODO |  | [OWNER] second update |
-| AN23 | Advanced core voltage | TODO |  | Wave 3 |
+| AN23 | Advanced core voltage | DONE | f5f890a |  |
 | AN25 | Output ring health | DONE | e179945 |  |
 | AN26 | Android About page (in CG15) | DONE | 1667bc7 | Attribution line from NOTICE before any release: owner |
 | AN27 | No title bar | DONE | 83793fb | Check on the first phone build |
 | AN28 | Demo mode on the real core | DONE | 26142ed, merge fix 0185343 | Lost analyser and signal generator: CG22 |
-| AN29 | USB prompt once, not at every plug-in | DONE | 1d66ead, nit e2a11a9 | [HW] tick "Always open", re-plug 3 times |
-| AN30 | Graph spectrum overlay draws the selected channel | DONE | 9522048 |  |
-| AN31 | A visible way into Tools | DONE | ee8b74e |  |
+| AN29 | USB prompt once, not at every plug-in | DONE | 1d66ead, nit e2a11a9 (on `main`) | [HW] tick "Always open", re-plug 3 times |
+| AN30 | Graph spectrum overlay draws the selected channel | DONE | 9522048 (on `main`) |  |
+| AN31 | A visible way into Tools | DONE | ee8b74e (on `main`) |  |
+| AN32 | Release fixes for Android 0.12.0 | DONE | 0617b52 on `release/android-0.12` | Not on `main` until the release branch merges back |
+| AN33 | No host-device nouns in the Android texts | DONE | 4535dda on `release/android-0.12` | Not on `main` until the release branch merges back |
+| AN34 | The analyser bar strip on screen | TODO |  | Wave 3 |
+| AN35 | AN18's remaining items | TODO |  | After AN34 |
+| AN36 | AN19 and AN5 fixups | TODO |  | After AN33 reaches `main` |
 
-**SW: Swift (macOS and iOS)**: 31 WPs: 30 TODO, 1 MOVED.
+**SW: Swift (macOS and iOS)**: 31 WPs: 3 DONE, 27 TODO, 1 MOVED.
 
 | ID | Title | Status | Merged in / branch | Next or blocker |
 |---|---|---|---|---|
-| SW1 | XCFramework | TODO |  | Wave 3 per handover (section 7 says wave 2), macvm |
-| SW2 | Swift package and compile test | TODO |  | After SW1, macvm |
-| SW3 | Seam map | TODO |  |  |
-| SW4 | `CoreBackedTransport` | TODO |  |  |
+| SW1 | XCFramework | DONE | f2febd0 (review c4e) |  |
+| SW2 | Swift package and compile test | DONE | f2febd0 (review c4e) |  |
+| SW3 | Seam map | DONE | 5226f0d | Its core WPs: CG23–CG26 |
+| SW4 | `CoreBackedTransport` | TODO |  | After CG23, CG26; macvm |
 | SW5 | CoreMIDI through the core | TODO |  | [HW] |
 | SW6 | Link through the core | TODO |  | [HW] |
 | SW7 | Banner and errors | TODO |  |  |
@@ -289,7 +304,7 @@ Target layout: `crates/`, `apps/desktop`, `apps/terminal`, `apps/android`,
 `apps/apple`. **Owner decided: monorepo** ("yes"). This replaces the earlier "separate branch of the
 Console fork" rule.
 
-**MR1: Import with history.** [PARTIAL 72c9056] Size 0.75. Two halves.
+**MR1: Import with history.** [DONE 72c9056] Size 0.75. Two halves.
 - **Android half (wave 0):** `dspi-android` to `apps/android` by a subdirectory rewrite
   and an unrelated-histories merge. History is small (155 commits, 64 MB `.git`). Done
   before AN1, which then uses the crates by path and removes `rust/`, `third_party/`
@@ -735,6 +750,18 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (section 9).
 
 **CG22: Analyser and signal generator in the Rust fake device.** [DONE f4569d2] Size 0.5. From AN28: the Android demo now runs on the real core's demo device and lost the spectrum analyser and signal generator the Kotlin fake had. **Owns:** `crates/dspi-transport/src/fake*` (analyser frames and signal-generator state), their tests. **Implements:** the fake device answers the RTA and signal-generator requests like firmware V3 (bass bank 10-200 Hz plus FFT bands, packed frames), deterministic under the `clock` seam; the signal generator never starts by itself. **Done when:** core tests read RTA frames and drive the signal generator against the fake; the Android demo shows both again. Before the first Play update on the new core. **Deps:** AN28, CG20.
 
+**CG23: Raw notification tap and connection generation.** [IN PROGRESS] Size 0.5. From SW3 (`docs/SWIFT-SEAMS.md` section 6). **Owns:** `crates/dspi-core/src/raw.rs`, extended; one recording line in `notify.rs` beside `inner.monitor.record`. **Implements:** `notify_tap_set(enabled)` and `notify_tap_drain()`, giving each packet verbatim with `origin`, `own` (the echo filter's verdict) and `received_ms`, recorded where `process_notifications` drains so the mirror and the tap see one order; a bounded ring (512) that sets `lost` on overflow, off by default; `connection_generation()`. `CoreBackedTransport` needs it for `InterruptMonitor` and the `onX` callbacks; `NotifyResult` carries only flags. Retires when SW14 moves `InterruptMonitor` to `monitorRead` (SW-M4 removes it). **Done when:** on `FakeDevice` our own write's echo has `own = true` and a GPIO change `own = false`; a fake-hub test gives another session's origin; overflow sets `lost`; the generation changes on reopen and Link re-bind and never repeats. **Deps:** CG4.
+
+**CG24: A device lock held across a flow.** [IN PROGRESS] Size 0.5. From SW3. **Owns:** the lock section of `crates/dspi-core/src/presets.rs`; `learnArm`, `learnRead`, `learnCancel` in `cs.rs`; `enter_bootloader` (`hardware.rs`). **Implements:** `device_lock_acquire(reason, timeout_ms)` and `device_lock_release()` with Swift's semantics, held in `Inner` and checked against the connection generation; the core's own locked flows nest inside it; USB, MIDI and the demo device succeed at once. `learnArm` holds the lock for the 15 s learn window until a final `learnRead`, `learnCancel` or the timeout; `enter_bootloader` takes it. Covers the four Swift functions with no core path (IR learn arm and end, bootloader for install and its release); the same gap affects QD11 and AN18. **Done when:** in a fake-hub test another session's write gets `Locked` during a learn window and the bootloader restart; the lock is released on each exit and on disconnect; a nested `save_preset` does not deadlock; it is never held after its connection changes. **Deps:** CG20.
+
+**CG25: Stream-state events in `NotifyResult`.** [IN PROGRESS] Size 0.25. From SW3. **Owns:** `crates/dspi-core/src/notify.rs`, one flag in `consts.rs`. **Implements:** `NOTIFY_STREAMS` (bit 11) for `AdatState`, `I2sSlaveState` and `AdatInputState`, which the session decodes and the core drops today; the mirror follows `ADAT_STATE`'s `enabled` and `pin`, as the Mac does; a client re-reads ADAT out status or input lock on the flag. **Done when:** each event on `FakeDevice` sets the flag and the ADAT fields follow; Qt and Android are unchanged (a new bit they ignore). **Deps:** `main`.
+
+**CG26: Host-supplied transport.** [TODO] Size 0.75. From SW3. **Owns:** a new `crates/dspi-core/src/host_transport.rs`. **Implements:** a UniFFI foreign trait `HostTransport` (`control_in`, `control_out`, `kind`) adapted to `dspi_transport::Transport`; `open_host(transport, serial)` through `open_transport`; `host_notify(packet, origin)` feeding that connection's notification reader; trait calls come on `coreQueue`'s thread and must not block for long. It lets the Mac's core reach the local device through the Swift hub's session 1 until SW-M3 (option A, section 5.4), and lets SW4's tests run with Swift's `FakeTransport` underneath. Retires at SW-M3, once the domain WPs have ported their byte tests. **Done when:** a scripted host transport gives the same `fetch_all` mirror as `FakeDevice`; writes go out in order; notifications reach the mirror; a transport that errors or hangs ends in `Disconnected` or `Transfer`, never a panic. **Deps:** CG23.
+
+**CG27: Final firmware version on the demo device.** [TODO] Size 0.25. From review c4c. **Owns:** `DEMO_FW_BETA` in `crates/dspi-transport/src/fake.rs`, the tests and fixtures that expect beta 4. **Implements:** the demo device reports final 1.1.6 (`DEMO_FW_BETA = 0`), not 1.1.6-beta4, which is older than the bundled images, so no client shows a stale-firmware banner on the demo. Android hides the banner in demo mode today; Qt and the Terminal do not. **Done when:** a core test reads the final version from the demo device; Qt's and the Terminal's demo runs show no firmware banner. **Deps:** CG22.
+
+**CG28: Re-read the control-surface status after a display write.** [TODO] Size 0.25. From review c4f (AN11's finding). **Owns:** the `displayConfig` and `displayPage` arms of `write_op` in `crates/dspi-core/src/cs.rs`. **Implements:** both arms re-read the CS status (`read_status_into`) as well as the display, so `status.dirty` and every client's save bar follow at once; AN11's extra `refreshStatus` can then go. **Done when:** a core test on `FakeDevice` shows `status.dirty` set straight after a display write, with no other read. **Deps:** CG20.
+
 ### 4.2 HB: the Rust Link hub
 
 In scope on Qt regardless (owner), and used by Terminal and, later, the Mac. No OS or UI code in the crate, so a sideload Android build needs only a binding; no work is added for that now.
@@ -797,7 +824,7 @@ Q3 makes it run on the core. macOS leaves this track, with Swift as the working 
 
 **QD9: Device list, discovery, PIN prompt.** [TODO] Size 1.5. **Owns:** `qml/DevicesPopup.qml`, `qml/PairingDialog.qml`. **Implements:** one list of USB, demo and hubs; non-blocking PIN prompt; every `LinkPhase`, CG10's text. **Done when:** runs offscreen against the fake hub. **Deps:** QD8, CG2, CG10.
 
-**QD10: Lost-connection banner.** [TODO] Size 0.5. **Owns:** `qml/components/LinkBanner.qml`. **Done when:** in a fake-hub fault test: banner at once, mirror readable, a write fails and is not sent later, abort works during a dial, analyser restarts. **Deps:** QD8, CG10.
+**QD10: Lost-connection banner.** [IN REVIEW] Size 0.5. **Owns:** `qml/components/LinkBanner.qml`. **Done when:** in a fake-hub fault test: banner at once, mirror readable, a write fails and is not sent later, abort works during a dial, analyser restarts. **Deps:** QD8, CG10.
 
 **QD11: Firmware updater.** [DONE 0086e8b] Size 1. **Owns:** `src/FirmwareUpdater.{h,cpp}`, `qml/FirmwareUpdateWindow.qml`, `firmware/`. **Implements:** images per OD4; custom `.uf2` with `uf2_inspect`; CG8's guard; `firmware_version_matches` replacing `FwVersion` compare; export configuration first; hidden on STM32H723. **Done when:** offscreen tests cover wrong-chip file, guard and fake bootloader drive. **No real flash here. Deps:** CG8.
 
@@ -805,13 +832,15 @@ Q3 makes it run on the core. macOS leaves this track, with Swift as the working 
 
 **QD13: Open at login and keep awake.** [TODO] Size 0.5. **Owns:** `src/SystemIntegration.{h,cpp}`. **Implements:** XDG autostart and Windows Run key; sleep inhibit while sharing. **Done when:** unit tests check the written entry and the inhibit call; each is verified on its OS. **Deps:** QD12.
 
-**QD14: Networking page.** [TODO] Size 1.5. **Owns:** `qml/settings/pages/NetworkingPage.qml`, `src/HubController.{h,cpp}`. **Implements:** `NetworkingSettingsView.swift`: share toggle, hub name, access (PIN by default), port, paired clients, roles, revoke, pairing code with expiry, other hubs, background options. Connects QD12's two hub menu items. Says a PIN crosses the network in plain text without TLS. **Done when:** offscreen on a demo hub, and a real client pairs. **Deps:** HB6, QD8.
+**QD14: Networking page.** [IN REVIEW] Size 1.5. **Owns:** `qml/settings/pages/NetworkingPage.qml`, `src/HubController.{h,cpp}`. **Implements:** `NetworkingSettingsView.swift`: share toggle, hub name, access (PIN by default), port, paired clients, roles, revoke, pairing code with expiry, other hubs, background options. Connects QD12's two hub menu items. Says a PIN crosses the network in plain text without TLS. **Done when:** offscreen on a demo hub, and a real client pairs. **Deps:** HB6, QD8.
 
 **QD31: Save bar reports setter failures.** [DONE e17573c] Size 0.25. From QD1. **Owns:** `SettingsContext.save`'s bridge setters. A failed setter above the control-surface step must not read as saved. **Deps:** QD1.
 
 **QD32: Qt on the shared wording.** [DONE faf3035] Size 0.25. From CG10. **Owns:** `apps/desktop/qt/whatsnew.json`, strings in `GettingStartedView.qml`. Re-points to CG10's data, and checks its menu paths against Qt's. **Deps:** CG10.
 
-**QD34: Polling off the UI thread.** [TODO] Size 0.5. From QD6. **Owns:** `StatsController::pollSlow` and `pollFast`, `DSPiBridge::pollStatus`. **Implements:** blocking reads move to a worker; the smoke tests that rely on synchronous results change with them. **Deps:** QD6.
+**QD34: Polling off the UI thread.** [DONE 86a5528] Size 0.5. From QD6. **Owns:** `StatsController::pollSlow` and `pollFast`, `DSPiBridge::pollStatus`. **Implements:** blocking reads move to a worker; the smoke tests that rely on synchronous results change with them. **Deps:** QD6.
+
+**QD35: Qt hand checks.** [TODO] Size 0.5. **[HW][OWNER][COORD]**. From the wave-2 log ("QD35 hand items"). **Owns:** a hand-check section in `docs/core-merge/HW-QT.md`. **Implements:** the checks the Qt WPs left for a person at a real desktop: QD12's tray (host desktop, then `winvm`); QD18's channel count (PipeWire at 8 channels, Windows sound settings, no audio played); QD30's popover cursor on KDE Wayland and X11; QD8's keyring on a real desktop, `winvm` and macOS. QD11's hardware run list stays with QD24 and QD25. **Done when:** each item is recorded pass or fail with the OS and date, and each fail has a WP. **Deps:** QD8, QD12, QD18, QD30.
 
 **QD30: Popover cursor on the graph gear.** [DONE 253aadf] Size 0.25. **Owns:** `qml/components/PopoverWindow.qml`. **Implements:** owner's report on KDE Wayland: with a `PopoverWindow` open (graph gear; check the spectrum strip's too), the pointer over the gear doesn't return to the hand until wiggled, because the popup holds a grab. **Done when:** the cursor stays right without a wiggle and a click on the gear closes the popover once, on Wayland and X11; the owner retests. **Deps:** `main`.
 
@@ -821,11 +850,11 @@ Q3 makes it run on the core. macOS leaves this track, with Swift as the working 
 
 **QD16: App self-update.** [TODO] Size 1. **Owns:** `src/AppUpdater.{h,cpp}`. **Implements:** check our releases, compare, show notes, open the page. **The check is opt-in, with a privacy line saying what is sent.** In-place install only after OD8. **Done when:** tested on a local feed; off in distro packages. **Deps:** QD0.
 
-**QD17: Shortcuts.** [TODO] Size 0.5. **Owns:** shortcuts in `qml/main.qml`, `qml/SignalGeneratorWindow.qml`. **Reference:** the list in `DSPi_ConsoleApp.swift` around lines 11700–12100. **Done when:** every Mac shortcut has a Ctrl equivalent, in a test table. **Deps:** QD0.
+**QD17: Shortcuts.** [IN PROGRESS] Size 0.5. **Owns:** shortcuts in `qml/main.qml`, `qml/SignalGeneratorWindow.qml`. **Reference:** the list in `DSPi_ConsoleApp.swift` around lines 11700–12100. **Done when:** every Mac shortcut has a Ctrl equivalent, in a test table. **Deps:** QD0.
 
 **QD18: Host audio format.** [DONE b56142b] Size 1. **Owns:** `src/HostAudioFormat*.{h,cpp}`. **Implements:** idle channel count by WASAPI and by PipeWire or ALSA, falling back to the device's report (reference `HostAudioFormatMonitor.swift`). **Done when:** a fake backend tests the fallback; each OS is checked once. **Deps:** QD0.
 
-**QD19: Analyser over Link.** [TODO] Size 0.25. **Owns:** `qml/SpectrumAnalyserWindow.qml`. **Done when:** following state and Take control work on the fake hub. **Deps:** CG5, QD8.
+**QD19: Analyser over Link.** [IN REVIEW] Size 0.25. **Owns:** `qml/SpectrumAnalyserWindow.qml`. **Done when:** following state and Take control work on the fake hub. **Deps:** CG5, QD8.
 
 **QD20:** [MOVED] folded into `docs/PARITY.md` rows (XC0, HO1).
 
@@ -839,7 +868,7 @@ Q3 makes it run on the core. macOS leaves this track, with Swift as the working 
 
 **QD27: AutoEQ on the core.** [DONE 1eac03c] Size 0.5. **Owns:** `src/AutoEqLibrary.{h,cpp}` (453 lines), `qml/AutoEqRebuildWindow.qml`. **Implements:** re-point at CG6, with Qt supplying the fetch; remove the duplicated logic. **Done when:** existing behaviour passes against a scripted fetch. **Deps:** CG6.
 
-**QD28: Advanced core voltage.** [TODO] Size 1. **Owns:** `qml/settings/pages/CoreVoltagePage.qml`, reachable from `AdvancedPage.qml`, a `VregController`. **Implements:** thin UI over CG11: status, manual ops, the calibration flow, CG11's warnings. **Done when:** offscreen on the demo device with simulated hangs, every state shows; no path reaches a write without the confirmation; not reachable outside Advanced. **Deps:** CG11, QD3.
+**QD28: Advanced core voltage.** [DONE 0d88cee] Size 1. **Owns:** `qml/settings/pages/CoreVoltagePage.qml`, reachable from `AdvancedPage.qml`, a `VregController`. **Implements:** thin UI over CG11: status, manual ops, the calibration flow, CG11's warnings. **Done when:** offscreen on the demo device with simulated hangs, every state shows; no path reaches a write without the confirmation; not reachable outside Advanced. **Deps:** CG11, QD3.
 
 ### 5.2 Terminal (`apps/terminal`, `crates/dspi-tui`, `crates/dspi-cmd`)
 
@@ -869,7 +898,7 @@ Owner decided: it skips what needs a graphical UI (on-graph editing, onboarding)
 - **Gaps (R1's check):** format is chosen by extension only, so `dspi export x.json` writes the filter text; no `-` for stdin or stdout; `--json` has no effect on import or export; filter banks have no JSON form; the preset document has no control-surface block and appears to lack the pair map (compare `dspi_core::files` and `config_import`); `import_preset`'s doc is stale; Save Master Volume and Save Output Configuration to be checked.
 - **Done when:** round-trip with Qt's and the Mac's documents in the shared fixtures; `dspi cs export|import` work on the demo device. **Deps:** `main`.
 
-**TM11: `dspi hub`.** [TODO] Size 1. **Owns:** `apps/terminal/src/hub.rs`, `apps/terminal/packaging/service/`. **Implements:** a headless hub with pairing, clients and roles as CLI commands, and sleep inhibit. Owner: "include some placeholder systemd service / windows background / mac eq". So three documented placeholders with install notes: a systemd user unit, a Windows scheduled task (with a note on a service wrapper), and a launchd plist. **PIN pairing stays the default in all three.** **Done when:** a Link client connects; `systemd-analyze verify` passes in a container, `plutil -lint` in `macvm`, and the task imports in `winvm`. **Deps:** HB6.
+**TM11: `dspi hub`.** [DONE 053da66] Size 1. **Owns:** `apps/terminal/src/hub.rs`, `apps/terminal/packaging/service/`. **Implements:** a headless hub with pairing, clients and roles as CLI commands, and sleep inhibit. Owner: "include some placeholder systemd service / windows background / mac eq". So three documented placeholders with install notes: a systemd user unit, a Windows scheduled task (with a note on a service wrapper), and a launchd plist. **PIN pairing stays the default in all three.** **Done when:** a Link client connects; `systemd-analyze verify` passes in a container, `plutil -lint` in `macvm`, and the task imports in `winvm`. **Deps:** HB6.
 
 **TM12: AutoEQ update.** [DONE 1050ea0] Size 0.25. **Owns:** `screens/autoeq.rs`, `crates/dspi-cmd` command. **Implements:** CG6, removing the `curl` call. **Done when:** update, rebuild and reset work on a scripted fetch, with no external process. **Deps:** CG6.
 
@@ -885,7 +914,7 @@ Owner decided: it skips what needs a graphical UI (on-graph editing, onboarding)
 
 **TM23: Settings page drawing.** [DONE f2bdb9d] Size 0.25. From TM22, confirmed by review. **Owns:** `draw_page` and `Row::Pair` in `settings/mod.rs`. A multi-line row straddling the top redraws from its first line; `Row::Pair` aligns by characters, not columns. **Deps:** `main`.
 
-**TM24: Terminal control surfaces on `cs_rows`.** [TODO] Size 0.5. From CG20. **Owns:** the Terminal's control-surface page. **Implements:** the Terminal asks the core's `cs_rows` editing rules instead of its own copy. **Done when:** tests show the Terminal offers exactly what `cs_rows` allows (no Hold where the firmware refuses it). **Deps:** CG20.
+**TM24: Terminal control surfaces on `cs_rows`.** [DONE 10f897d] Size 0.5. From CG20. **Owns:** the Terminal's control-surface page. **Implements:** the Terminal asks the core's `cs_rows` editing rules instead of its own copy. **Done when:** tests show the Terminal offers exactly what `cs_rows` allows (no Hold where the firmware refuses it). **Deps:** CG20.
 
 **TM14: No tmpfs in tests.** [DONE fcfdb58] Done: fcfdb58 had already done it. Size 0.25. **Owns:** tests in `crates/dspi-tui/src/{actions.rs,settings/config.rs,settings/mod.rs}`. **Implements:** five `temp_dir()` uses move to a target-dir path. **Done when:** none remain, and tests pass. **Deps:** `main`.
 
@@ -927,6 +956,16 @@ The swap is contained: UI talks to the `core-api` interface, and only `ffi` sees
 
 **AN31: A visible way into Tools.** [DONE ee8b74e] Size 0.5. From the same user report: the effects not on the strip (Tube Modeller, Subharmonic, Upmixer) are reachable only by an unexplained long-press on four strip icons. The Windows console's top-left menu is the Mac's Tools menu (`DSPi_ConsoleApp.swift` `CommandMenu("Tools")`). **Owns:** `feature-home/.../ContentView.kt` (`SidebarBottomPanel` and the Home top row), the entry in `feature-tools/.../ToolsScreen.kt`. **Implements:** a menu button on Home (no title bar: AN27) opening the Tools hub with the Mac Tools menu's items; a long-press on a strip icon opens that icon's own tool page, as the Mac's right-click does, not the hub. **Done when:** a Compose test reaches Tube Modeller, Subharmonic and Upmixer from Home with taps only; a long-press on crossfeed opens the crossfeed page; `docs/PARITY.md` M60 notes it. In the first update on the new core. **Deps:** AN27.
 
+**AN32: Release fixes for Android 0.12.0.** [DONE 0617b52] Size 0.5. From the 0.12.0 release check. **On `release/android-0.12` only, not yet on `main`.** **Owns:** version and Play notes, `DspiRoutes.kt` (`ANALYSIS_PAGE`), graph axis labels, the analyser's pickers. **Implements:** version 0.12.0 (versionCode 12); each Tools analysis item opens its own page; overlapping axis labels left out; analyser pickers on two rows below 600 dp. **Done when:** `AnalysisEntryAn32Test`, `SpectrumSegmentsAn32Test`, `GraphAxisLabelsAn32Test` pass. **Deps:** AN31.
+
+**AN33: No host-device nouns in the Android texts.** [DONE 4535dda] Size 0.25. From review c4a (O1). **On `release/android-0.12` only, not yet on `main`.** **Owns:** the Link prompts, the Networking page ("This Phone" becomes "Local"), the remote-firmware notice, the firmware updater, the Play listing. **Implements:** the owner's rule that user-visible text never names the host device. **Done when:** `NoHostNounsAn33Test` scans every string literal, `res/values*` and the Play texts. **Deps:** AN5.
+
+**AN34: The analyser bar strip on screen.** [TODO] Size 0.5. From review c4c: AN17's strip is not reachable in the app (M22). **Owns:** `feature-home/.../ContentView.kt`, `ChannelScreen.kt`, `feature-home/build.gradle.kts` (depends on `:feature-analysis`), an "RTA Bars" toggle in `feature-graph/.../GraphOptions.kt`, the graph overlay. **Implements:** AN17's strip placed at the call sites its report lists; the overlay draws `drawn(own, followed)`. **Done when:** a Compose test on the demo device shows the strip on Home and the channel screen after the toggle; a followed selection is drawn without taking control (fake hub); M22 in `docs/PARITY.md` is user-visible. **Deps:** AN17, AN7.
+
+**AN35: AN18's remaining items.** [TODO] Size 0.75. From review c4c (AN18 partial by scope). **Owns:** key handling in `AppScaffold.kt`, the strip layout in `feature-home` (`ContentView.kt`, `InputChannelHeader.kt`, `ChannelSettings.kt`). **Implements:** the hardware shortcuts (M24, about 30, Space, M45's channel clipboard keys) beside AN18's `PeqKeyMap.kt`; `HostAudioFormat`'s channel count wired into the strip layout and refreshed on `AudioDeviceCallback` (M25). **Done when:** a test table covers every shortcut; a test with a fake `HostAudioFormat` shows the strip follow the count. **Deps:** AN18, AN34 (same files).
+
+**AN36: AN19 and AN5 fixups.** [TODO] Size 0.25. From review c4a (F1, N1). **Owns:** the seed in `ui-common/.../DataStoreAppSettingsStore.kt`; the hint in `app/.../LinkDialogs.kt`; an error code on `NeedsPin` in `link/.../LinkSessionEngine.kt`. **Implements:** the onboarding seed computed after the one-time import of the legacy settings files, so a user with only those files skips Getting Started; the wrong-PIN hint shown only for `wrong_pin`, not for `rate_limited` or other errors. **Done when:** `wpAn19_someoneWhoUsedTheAppBeforeSkipsSetup` covers the legacy-only case; a test shows the hint for `wrong_pin` and not for `rate_limited`. **Deps:** AN5, AN19; after AN33 reaches `main` (same dialog texts).
+
 **AN2: Read-only on older firmware.** [PARTIAL 5f8e640] Size 0.5. **Owns:** `feature-home/.../HomeModel.kt`, `README.md`. **Implements:** V17–V31 now decode; `WriteGuardedCore` stays; fixes the README claim. The banner still fires on the wire format only: **the first Play update must show no version banner on a K340 or on stock final firmware** (the comparison is AN18's). **Done when:** fixture tests; banner per `WIRE-FORMAT-COMPAT.md` §4.4. **Deps:** AN1.
 
 **AN3: Link engine on the core's supervisor.** [DONE 4901541] Size 1. **Owns:** `link/.../{LinkSessionEngine,LinkCoreOps}.kt`.
@@ -935,15 +974,15 @@ The swap is contained: UI talks to the `core-api` interface, and only `ffi` sees
 
 **AN4: Network handling.** [DONE 6fdf46a] Size 1. **Owns:** `link/.../{LinkNetworkMonitor,NsdHubBrowser,LinkSettings}.kt`. **Implements:** `onLost` and network change call `link_retry_now`; browse while reconnecting and re-resolve via `link_set_url` (F5); test F10's items. `WifiLock` needs no new permission; **re-check Data safety if sockets get bound to Wi-Fi.** **Done when:** unit tests with a fake monitor; F10 items recorded as used or rejected. **Deps:** AN3.
 
-**AN5: Link UI.** [TODO] Size 1. **Owns:** `ui-common/.../LinkBanner.kt`, `app/.../{LinkDialogs,AppNetworkingController,ConnectionStrip}.kt`. **Implements:** owner's banner on every screen; wrong-PIN by `pin_source`; "no DSPi found" (F9), CG10's text. **Done when:** Compose tests per `LinkPhase`. **Deps:** AN3, CG10.
+**AN5: Link UI.** [DONE 3b1798e] Size 1. **Owns:** `ui-common/.../LinkBanner.kt`, `app/.../{LinkDialogs,AppNetworkingController,ConnectionStrip}.kt`. **Implements:** owner's banner on every screen; wrong-PIN by `pin_source`; "no DSPi found" (F9), CG10's text. **Done when:** Compose tests per `LinkPhase`. **Deps:** AN3, CG10.
 
 **AN6: Settings rows.** [DONE d016f5f] Size 1. **Owns:** `feature-settings/.../{GeneralSettingsTab,PinOverviewTab}.kt`, source picker in `feature-home`. **Implements:** core voltage status, device name, input-source names, output latency. **Done when:** demo tests round-trip; hidden when absent. **Deps:** AN1.
 
-**AN7: One device list.** [TODO] Size 1. **Owns:** `app/.../{AppMode,EntryNavigator,UsbStartGate}.kt`. **Implements:** a user's device switch calls `withUnsavedChanges` first (M42). **Done when:** USB, Link and demo in one list; demo reachable with a DSPi attached; a test shows a switch with a dirty preset asks first. **Deps:** AN3.
+**AN7: One device list.** [DONE 3ac4399] Size 1. **Owns:** `app/.../{AppMode,EntryNavigator,UsbStartGate}.kt`. **Implements:** a user's device switch calls `withUnsavedChanges` first (M42). **Done when:** USB, Link and demo in one list; demo reachable with a DSPi attached; a test shows a switch with a dirty preset asks first. **Deps:** AN3.
 
 **AN8: Control-surface spike.** [DONE 57f3665] Size 0.5. **Owns:** a report. **Implements:** a phone layout against Swift's 5 270-line tab and Qt's `settings/cs` and pages. Sets AN9–AN12's sizes. **Done when:** a reviewed screen map exists. **Deps:** AN1.
 
-**AN9: CS bindings.** [TODO] Size 2–4. **AN10: IR learn.** [TODO] Size 1. **AN11: Display pages.** [TODO] Size 1–2. **AN12: Groups, macros, aux.** [TODO] Size 1.5–2.5. **Owns:** one file set each under `feature-settings/.../cs/`. **Implements:** `cs_snapshot`, `cs_apply`, `cs_pin_uses`. **Done when:** runs on the demo device (`FakeDevice`'s CS support looks minimal: check, and extend); IR and display need **[HW]**; an `error` reply is shown. **Deps:** AN8.
+**AN9: CS bindings.** [DONE 2e3267e] Size 2–4. **AN10: IR learn.** [DONE 2f30f66] Size 1. **AN11: Display pages.** [DONE 5ec67f2] Size 1–2. **AN12: Groups, macros, aux.** [DONE 0863194] Size 1.5–2.5. **Owns:** one file set each under `feature-settings/.../cs/`. **Implements:** `cs_snapshot`, `cs_apply`, `cs_pin_uses`. **Done when:** runs on the demo device (`FakeDevice`'s CS support looks minimal: check, and extend); IR and display need **[HW]**; an `error` reply is shown. **Deps:** AN8.
 
 **AN13: Phone test.** [TODO] Size 1. **[HW][OWNER][COORD]**. **Owns:** `docs/HIL-NEW-CORE.md`. **Requires** the owner's adb port. **Done when:** the earlier HIL set passes on the nusb `from_fd` path (unproven on hardware): USB, notifications, old firmware, Link with a Mac hub, 45 s background, no secrets in logcat. Side by side with `applicationIdSuffix ".hil"`: never uninstall the Play build. **Deps:** AN1, AN2, AN3; USB half needs nothing more; Link half needs XC2 or XC4, or is deferred to AN22 (see the fast lane).
 
@@ -953,17 +992,17 @@ The swap is contained: UI talks to the `core-api` interface, and only `ffi` sees
 
 **AN16: Edge-to-edge.** [TODO] Size 1. **Owns:** `app/.../MainActivity.kt`, insets. **Done when:** every route checked on the phone **[HW]**. Own release. **Deps:** AN14.
 
-**AN17: Analyser bar strip and following.** [TODO] Size 0.75. **Owns:** a bar-strip file and overlay state in `feature-analysis/`. **Done when:** Compose tests on the demo device; following and Take control work on the fake hub. **Deps:** AN1, CG5.
+**AN17: Analyser bar strip and following.** [DONE 33b78a4] Size 0.75. **Owns:** a bar-strip file and overlay state in `feature-analysis/`. **Done when:** Compose tests on the demo device; following and Take control work on the fake hub. **Deps:** AN1, CG5.
 
-**AN18: Small floor items.** [TODO] Size 1.25. **Owns:** `feature-firmware/`, the version comparison in `feature-home/.../{HomeModel,FirmwareMismatchBanner}.kt`, AutoEQ update UI, a host-format reader, `feature-tools/` generator lifetime, graph keyboard map. **Implements:** images per OD4; **CG8's guard called on Android's Kotlin flashing path, PICOBOOT included**; export first; CG6's update with a Kotlin fetch; `AudioManager` channel count; generator keeps running off-screen; hardware shortcuts; the mismatch banner compares firmware versions like the Mac (`DSPViewModel.swift:2099-2106`), arriving with the updated images (M41). **Firmware built with our extension channel counts as acceptable:** the K340's `bofr-main` build reports a matching version plus a build stamp, so it must not get a false "update" prompt. **Done when:** a unit test proves the flash path cannot skip the guard; a test shows the banner for another version on the same wire format, and none for a matching version with a build stamp; each item has a test. **Deps:** AN1, CG6, CG8.
+**AN18: Small floor items.** [PARTIAL d417832] Size 1.25. **Owns:** `feature-firmware/`, the version comparison in `feature-home/.../{HomeModel,FirmwareMismatchBanner}.kt`, AutoEQ update UI, a host-format reader, `feature-tools/` generator lifetime, graph keyboard map. **Implements:** images per OD4; **CG8's guard called on Android's Kotlin flashing path, PICOBOOT included**; export first; CG6's update with a Kotlin fetch; `AudioManager` channel count; generator keeps running off-screen; hardware shortcuts; the mismatch banner compares firmware versions like the Mac (`DSPViewModel.swift:2099-2106`), arriving with the updated images (M41). **Firmware built with our extension channel counts as acceptable:** the K340's `bofr-main` build reports a matching version plus a build stamp, so it must not get a false "update" prompt. **Done when:** a unit test proves the flash path cannot skip the guard; a test shows the banner for another version on the same wire format, and none for a matching version with a build stamp; each item has a test. **Deps:** AN1, CG6, CG8.
 
-**AN19: Getting Started and What's New.** [TODO] Size 1. **Owns:** `feature-onboarding/`. **Done when:** first run shows once; replay from Help; data from CG10. **Deps:** CG10.
+**AN19: Getting Started and What's New.** [DONE 13c7dbe] Size 1. **Owns:** `feature-onboarding/`. **Done when:** first run shows once; replay from Help; data from CG10. **Deps:** CG10.
 
 **AN20: Accessibility.** [TODO] Size 2. **Owns:** semantics across `feature-*`. **Done when:** a TalkBack pass on graph, matrix and meters **[HW]**. **AN21: Localisation plumbing.** [TODO] Size 1.75. **Owns:** `strings.xml` across modules, **English only for now** (owner). **Done when:** a pseudo-locale run shows no hard-coded string. Both alone in the last wave. **Deps:** other AN UI WPs.
 
 **AN22: Second update.** [TODO] Size 0.25. **[OWNER]**. **Owns:** version, notes. **Implements:** AN4–AN6, and AN13's Link half if it was deferred. **Done when:** a phone re-test passes **[HW]**, and an AAB is ready. **Deps:** AN4, AN5, AN6, AN14.
 
-**AN23: Advanced core voltage.** [TODO] Size 1. **Owns:** `feature-settings/.../CoreVoltageScreen.kt`, reached from `AdvancedSettingsTab.kt`. **Implements:** thin UI over CG11. The soak survives the screen going off or the process dying, by re-reading `trial_active`. **Done when:** Compose tests on the demo device with simulated hangs; not reachable outside Advanced. **Deps:** CG11, AN6.
+**AN23: Advanced core voltage.** [DONE f5f890a] Size 1. **Owns:** `feature-settings/.../CoreVoltageScreen.kt`, reached from `AdvancedSettingsTab.kt`. **Implements:** thin UI over CG11. The soak survives the screen going off or the process dying, by re-reading `trial_active`. **Done when:** Compose tests on the demo device with simulated hangs; not reachable outside Advanced. **Deps:** CG11, AN6.
 
 **AN25: Output ring health.** [DONE e179945] Size 0.25. **Owns:** the section in `feature-analysis/.../StatsView.kt`, the stats controller in `bridge/`. **Done when:** a Compose test shows the section and ring-scaled thresholds on the demo device; hidden when absent. **Deps:** CG12, AN1.
 
@@ -990,13 +1029,13 @@ Owner: **SwiftUI on macOS and iOS over the Rust core; Swift keeps UI only**, wit
 - **File formats.** `.dspipreset`, `PresetSnapshot` and the crossfeed extension have Swift codecs that must match the core's: shared fixtures.
 - **Upstream merges** get harder as `Commands.swift` goes: SW-U1.
 
-**SW1: XCFramework.** [TODO] Size 1. **Owns:** `apps/apple/build-xcframework.sh`. **Implements:** in the VM, add `aarch64-apple-ios`, `aarch64-apple-ios-sim`, `x86_64-apple-ios` (the VM is Intel) and the macOS slices. `usb` off for iOS, on for macOS. Library size recorded. **Done when:** it links in the Simulator and on macOS. **Deps:** CG3, MR1.
+**SW1: XCFramework.** [DONE f2febd0] Size 1. **Owns:** `apps/apple/build-xcframework.sh`. **Implements:** in the VM, add `aarch64-apple-ios`, `aarch64-apple-ios-sim`, `x86_64-apple-ios` (the VM is Intel) and the macOS slices. `usb` off for iOS, on for macOS. Library size recorded. **Done when:** it links in the Simulator and on macOS. **Deps:** CG3, MR1.
 
-**SW2: Swift package and compile test.** [TODO] Size 1. **Owns:** `DSPi Console/Core/Generated/`, Xcode project lines. **Implements:** bindings into the app; `init_logging`; one run per namespace. Adds the macOS and iOS rows to MR2's matrix. **Done when:** a test calls `core_info()` and opens the demo device on both targets, and both rows run in the matrix. **Deps:** SW1, CG9, MR2.
+**SW2: Swift package and compile test.** [DONE f2febd0] Size 1. **Owns:** `DSPi Console/Core/Generated/`, Xcode project lines. **Implements:** bindings into the app; `init_logging`; one run per namespace. Adds the macOS and iOS rows to MR2's matrix. **Done when:** a test calls `core_info()` and opens the demo device on both targets, and both rows run in the matrix. **Deps:** SW1, CG9, MR2.
 
-**SW3: Seam map.** [TODO] Size 0.5. **Owns:** `docs/SWIFT-SEAMS.md`. **Implements:** each wire-using function mapped to a core method; those with none become core WPs; thread and mirror decisions; re-sizes SW8–SW14. **Done when:** Fable has reviewed it. **Deps:** SW2.
+**SW3: Seam map.** [DONE 5226f0d] Size 0.5. **Owns:** `docs/SWIFT-SEAMS.md`. **Implements:** each wire-using function mapped to a core method; those with none become core WPs; thread and mirror decisions; re-sizes SW8–SW14. **Done when:** Fable has reviewed it. **Deps:** SW2.
 
-**SW4: `CoreBackedTransport`.** [TODO] Size 1.5. **Owns:** `DSPi Console/Core/CoreBackedTransport.swift`. **Implements:** `DeviceTransport` over CG4 and the core's notifications; the core's `FakeDevice` under demo mode. **Done when:** existing `FakeTransportTests` and wire tests pass behind a launch flag on both targets. **Deps:** SW3, CG4.
+**SW4: `CoreBackedTransport`.** [TODO] Size 1.5. **Owns:** `DSPi Console/Core/CoreBackedTransport.swift`. **Implements:** `DeviceTransport` over CG4 and the core's notifications; the core's `FakeDevice` under demo mode. **Done when:** existing `FakeTransportTests` and wire tests pass behind a launch flag on both targets. **Deps:** SW3, CG4, CG23, CG26.
 
 **SW5: CoreMIDI through the core.** [TODO] Size 1. **Owns:** `MIDI/CoreMidiPipe.swift`, reducing `MIDI/MIDITransport.swift` to I/O. **Implements:** `MidiSender`, `MidiInputHandle` with `close_port`, the relay port. **Done when:** `midi_vectors.json` passes; relay run **[HW]** on the K340. **Deps:** SW4.
 
@@ -1004,18 +1043,18 @@ Owner: **SwiftUI on macOS and iOS over the Rust core; Swift keeps UI only**, wit
 
 **SW7: Banner and errors.** [TODO] Size 0.5. **Owns:** `Core/LinkBannerView.swift`. **Done when:** the owner's rule holds in a fake-hub run; CG10's wording. **Deps:** SW6, CG10.
 
-**SW8: Reads and the mirror.** [TODO] Size 3–5. **SW-V1 and OD3 follow it.** **Owns:** `Commands.swift` "Bulk Parameter Transfer" and "Notification → State Mirroring" (about 840 lines). **Implements:** view-model state from `DspState`, notifications from the core, older firmware read-only. **Done when:** every view shows correct values on the demo device and fixtures; no echo flicker. **Deps:** SW4.
+**SW8: Reads and the mirror.** [TODO] Size 3–3.5 (SW3). **SW-V1 and OD3 follow it.** **Owns:** `Commands.swift` "Bulk Parameter Transfer" and "Notification → State Mirroring" (about 840 lines). **Implements:** view-model state from `DspState`, notifications from the core, older firmware read-only. **Done when:** every view shows correct values on the demo device and fixtures; no echo flicker. **Deps:** SW4.
 
-Then one WP per domain. Each **owns** its `Commands.swift` sections and wire use in its views; **done when** wire tests are ported, the domain has no `transport.` calls, and both targets work on the demo device. SW3 re-sizes them.
+Then one WP per domain. Each **owns** its `Commands.swift` sections and wire use in its views; **done when** wire tests are ported, the domain has no `transport.` calls, and both targets work on the demo device. Sizes and deps from SW3's re-sizing (`docs/SWIFT-SEAMS.md` section 7); CG23–CG26 add 2.0.
 
 | WP | Domain | Size |
 |---|---|---|
-| SW9 [TODO] | Volume, EQ, crossover, outputs, matrix, slider fast path | 1.5–2.5 |
-| SW10 [TODO] | Effects (loudness to upmixer) | 1.5–2.5 |
-| SW11 [TODO] | Pins, I2S, ADAT, inputs, UART/I2C, names | 1.5–2 |
-| SW12 [TODO] | Control surfaces | 1.5–3 |
-| SW13 [TODO] | Presets, `PresetDocument`, `PresetSnapshot` | 1.5–3 |
-| SW14 [TODO] | Analyser (following state), Stats, signal generator, monitor | 1.5–3 |
+| SW9 [TODO] | Volume, EQ, crossover, outputs, matrix, slider fast path | 2–2.5 |
+| SW10 [TODO] | Effects (loudness to upmixer) | 1.5–2 |
+| SW11 [TODO] | Pins, I2S, ADAT, inputs, UART/I2C, names. Also needs CG25 | 2 |
+| SW12 [TODO] | Control surfaces. Also needs CG24 | 2–2.5 |
+| SW13 [TODO] | Presets, `PresetDocument`, `PresetSnapshot` | 2–2.5 |
+| SW14 [TODO] | Analyser (following state), Stats, signal generator, monitor | 2–2.5 |
 
 **SW15: Simulator and relay test.** [TODO] Size 1. **[HW][COORD]**. **SW16: Real iPhone or iPad.** [TODO] Size 0.5. **[HW][OWNER]**: no device has ever run this app. **Owns:** `docs/SWIFT-HW.md`. **Done when:** USB-C MIDI, Link, background and return pass. **Deps:** SW5, SW6, SW14.
 
@@ -1039,7 +1078,7 @@ Then one WP per domain. Each **owns** its `Commands.swift` sections and wire use
 
 **SW-M1: USB through the core.** [TODO] Size 1–1.5. **Owns:** `Core/CoreUsb.swift`; reduces `USBDevice.swift` and `USBNotificationReader.swift`. **Implements:** `nusb`'s `macos_iokit` through CG3's `usb` feature, including hot-plug. **Done when:** a demo run and a mock test pass; the macOS target has no IOKit vendor path left outside the hub. **Deps:** SW4.
 
-**SW-M2: Firmware through the core.** [TODO] Size 0.5–1. **Owns:** `FirmwareInstaller.swift`, `BootloaderLocator.swift`, reduced to UI over C11's `firmware.rs` and CG8's guard. **Done when:** `FirmwareInstallerTests` pass; a fake drive test; guard cannot be skipped. **No real flash here. Deps:** SW-M1, CG8.
+**SW-M2: Firmware through the core.** [TODO] Size 0.5–1. **Owns:** `FirmwareInstaller.swift`, `BootloaderLocator.swift`, reduced to UI over C11's `firmware.rs` and CG8's guard. **Done when:** `FirmwareInstallerTests` pass; a fake drive test; guard cannot be skipped. **No real flash here. Deps:** SW-M1, CG8, CG24.
 
 **SW-M3: Hub over `dspi-hub`.** [TODO] Size 1–2. **Owns:** a UniFFI wrapper for the hub, `NetworkingSettingsView.swift` re-pointed; Swift hub files removed at the end. **Owner decided: "once it comes into the other versions it should come in here as well".** It does not block R-Mac. The Swift hub stays as the reference harness until HB7 passes, then retires. **Done when:** HB7's Swift client passes against the wrapper from the Mac app. **Deps:** HB7, SW-M1.
 
@@ -1130,9 +1169,9 @@ Every wave needs `core-merge` on `main`. Within a wave no two WPs own the same f
 | 0 | XC0, XC1, XC2, XC3; MR1 (Android half); LC1; CG9 | `main`; XC1 the owner's go-ahead |
 | 1 | MR2; AN1; CG1–CG8, CG10–CG12; HB0; WB0; QD0 first, then QD1, QD2, QD4, then QD5; QD30; TM1, TM2, TM4, TM7, TM10, TM14, TM15, TM17 | wave 0 |
 | 2 | WB1; **HB1–HB3 after HB0's review**; MR1 (Swift half), then SW1, then SW2; SW-U1 after MR1; QD3, QD6, QD7, QD8, QD11, QD12, QD18, QD27, QD29; TM3, TM5, TM8, TM9, TM12, TM16, TM18; AN2, AN3, AN6, AN8, AN25 | wave 1 |
-| 3 | HB5, HB6; SW3 then SW4; QD9, QD10, QD13, QD16, QD17, QD19, QD28; TM6; AN4, AN5, AN7, AN13 then AN14, AN17, AN18, AN19, AN23 | wave 2; **M0 at its end** |
+| 3 | HB5, HB6; SW3, then CG23–CG26, then SW4; CG27, CG28; AN34 then AN35, AN36; QD9, QD10, QD13, QD16, QD17, QD19, QD28; TM6; AN4, AN5, AN7, AN13 then AN14, AN17, AN18, AN19, AN23 | wave 2; **M0 at its end** |
 | 4 | HB7; SW5, SW6 then SW7, SW-M1 then SW-M2, SW17–SW20, SW23; QD14, QD21; TM11, TM13; AN9–AN12, AN22 | wave 3 |
-| 5 | SW8 then SW-V1 **(then OD3)**; QD24, QD25; AN15, AN16; XC4, XC5, XC6 | wave 4 |
+| 5 | SW8 then SW-V1 **(then OD3)**; QD24, QD25, QD35; AN15, AN16; XC4, XC5, XC6 | wave 4 |
 | 6 | SW9–SW14; SW-M3 after HB7 | the owner's call at OD3 |
 | 7 | QD22 then QD23; AN20, AN21; SW15, SW16, SW22, SW-M4, SW-M5; HO1 | everything else in that client |
 
