@@ -143,6 +143,36 @@ interface MonitorModel {
     fun allText(): String
 }
 
+// -- WP AN6 --
+
+/**
+ * Device settings kept outside the bulk image: its name, the input-source
+ * names, the output latency, and the core-voltage status. Absent features stay
+ * unsupported, so their rows stay hidden. Main thread.
+ */
+interface DeviceSettings {
+    /** Current on every connect and notification, with no traffic. */
+    val names: StateFlow<DeviceNames>
+    val latency: StateFlow<OutputLatencyState>
+    val coreVoltage: StateFlow<CoreVoltageState>
+
+    /** Re-read the latency status and table (they move with the source and the rate). */
+    suspend fun refreshLatency()
+
+    suspend fun refreshCoreVoltage()
+
+    /** "" clears the name. False (and [BridgeEvent.CommandFailed]) when it did not go out. */
+    suspend fun setDeviceName(name: String): Boolean
+
+    suspend fun setSourceName(source: Int, name: String): Boolean
+
+    /** Writes once, then waits for the device to finish applying (macOS 40 x 100 ms). */
+    suspend fun setOutputLatency(id: Int): LatencyApply
+
+    /** The source picker's explicit rename: runs in the bridge's scope, and drops an unsaved edit of that source. */
+    fun renameSource(source: Int, name: String)
+}
+
 /**
  * ConfigFiles.h — .dspipreset and filter text files. Android passes text, not
  * file URLs: the UI does SAF reads/writes. Results are the core's JSON.

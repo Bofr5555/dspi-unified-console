@@ -24,15 +24,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,7 +51,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import se.bofr.dspi.bridge.ChannelMap
 import se.bofr.dspi.bridge.DangerousOp
+import se.bofr.dspi.bridge.DeviceNames
 import se.bofr.dspi.bridge.DspiBridge
+import se.bofr.dspi.bridge.InputSourceOption
 import se.bofr.dspi.feature.graph.GraphResizeHandle
 import se.bofr.dspi.feature.graph.GraphView
 import se.bofr.dspi.feature.graph.LocalPeqGraphSelection
@@ -439,6 +445,10 @@ private fun SourceRow(bridge: DspiBridge, connected: Boolean) {
     val c = DspiTheme.colors
     // Observed HERE: called with unchanged args, this row is skipped when the parent recomposes (H1).
     val s = bridge.observeState()
+    // -- WP AN6 -- the names are part of what bridge.inputSources returns
+    val names by bridge.deviceSettings.names.collectAsState()
+    var renaming by remember { mutableStateOf<InputSourceOption?>(null) }
+    val canRename = connected && names.sourcesSupported && writesAllowed()
     val sources = bridge.inputSources
     // macOS hides the picker when the firmware reports no usable source.
     val current = sources.firstOrNull { it.id == s.inputSource } ?: return
@@ -450,6 +460,7 @@ private fun SourceRow(bridge: DspiBridge, connected: Boolean) {
             selection = current,
             titleForItem = { it.name },
             enabled = connected,
+            onLongClick = if (canRename) ({ renaming = current }) else null,
             onSelect = { src ->
                 if (src.id != bridge.inputSource) {
                     bridge.setInputSource(bridge.dangerousOps.confirm(DangerousOp.HARDWARE_APPLY), src.id)
@@ -457,6 +468,39 @@ private fun SourceRow(bridge: DspiBridge, connected: Boolean) {
             }
         )
     }
+    renaming?.let { src ->
+        SourceRenameDialog(src, names.source(src.id), onDismiss = { renaming = null }) { name ->
+            bridge.deviceSettings.renameSource(src.id, name)
+            renaming = null
+        }
+    }
+}
+
+/** macOS `showSourceRename`: long press on the picker, an empty name uses the built-in one. */
+@Composable
+private fun SourceRenameDialog(source: InputSourceOption, stored: String, onDismiss: () -> Unit, onRename: (String) -> Unit) {
+    var text by remember(source.id) { mutableStateOf(stored) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename Source") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = DeviceNames.clean(it) },
+                    placeholder = { Text(source.builtIn) },
+                    singleLine = true
+                )
+                Text(
+                    "Leave empty to use \u201C${source.builtIn}\u201D.",
+                    style = DspiType.caption2,
+                    color = DspiTheme.colors.secondaryLabel
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onRename(text) }) { Text("Rename") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 /**

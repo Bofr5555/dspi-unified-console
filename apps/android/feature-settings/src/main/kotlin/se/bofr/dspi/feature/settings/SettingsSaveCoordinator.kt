@@ -23,7 +23,9 @@ import kotlinx.coroutines.sync.withLock
 import se.bofr.dspi.bridge.ConfirmationToken
 import se.bofr.dspi.bridge.DangerousOp
 import se.bofr.dspi.bridge.DangerousOpNotConfirmed
+import se.bofr.dspi.bridge.DeviceNames
 import se.bofr.dspi.bridge.DspiBridge
+import se.bofr.dspi.bridge.LatencyApply
 import se.bofr.dspi.core.DspState
 import se.bofr.dspi.core.PresetStatus
 import se.bofr.dspi.ui.json.Json
@@ -70,6 +72,115 @@ class SettingsSaveCoordinator(
 
     val hardwareChanges = HardwareChanges(bridge)
 
+    // -- WP AN6 -- Device name, source names and latency: staged like category B (macOS `deviceNameEdit`,
+    // `sourceNameEdits`, `draft.outputLatencyId`). Snapshot state for the same reason as storedDraft.
+    private data class SourceEdit(val text: String, val stamp: Int)
+
+    private val deviceNameEdit = mutableStateOf<String?>(null)
+    private val sourceEdits = mutableStateOf<Map<Int, SourceEdit>>(emptyMap())
+    private val latencyEdit = mutableStateOf<Int?>(null)
+    private val settings get() = bridge.deviceSettings
+
+    /** A picker's explicit rename supersedes the edit (macOS `commitSourceRename`). */
+    private fun liveSourceEdit(source: Int): String? =
+        sourceEdits.value[source]?.takeIf { it.stamp == settings.names.value.stamp(source) }?.text
+
+    fun deviceNameText(): String = deviceNameEdit.value ?: settings.names.value.device
+
+    fun sourceNameText(source: Int): String = liveSourceEdit(source) ?: settings.names.value.source(source)
+
+    fun latencyShown(): Int = latencyEdit.value ?: settings.latency.value.requestedId
+
+    fun editDeviceName(text: String) {
+        val clean = DeviceNames.clean(text)
+        deviceNameEdit.value = clean.takeIf { it != settings.names.value.device }
+        _lastResult.value = null
+    }
+
+    fun editSourceName(source: Int, text: String) {
+        val names = settings.names.value
+        val clean = DeviceNames.clean(text)
+        sourceEdits.value =
+            if (clean ==
+                names.source(source)
+            ) {
+                sourceEdits.value - source
+            } else {
+                sourceEdits.value + (source to SourceEdit(clean, names.stamp(source)))
+            }
+        _lastResult.value = null
+    }
+
+    fun editLatency(id: Int) {
+        latencyEdit.value = id.takeIf { it != settings.latency.value.requestedId }
+        _lastResult.value = null
+    }
+
+    fun pendingDeviceName(): String? {
+        val names = settings.names.value
+        return deviceNameEdit.value?.trim()?.takeIf { names.deviceSupported && it != names.device }
+    }
+
+    fun pendingSourceName(source: Int): String? {
+        val names = settings.names.value
+        return liveSourceEdit(source)?.trim()?.takeIf { names.sourcesSupported && it != names.source(source) }
+    }
+
+    fun pendingLatency(): Int? {
+        val latency = settings.latency.value
+        return latencyEdit.value?.takeIf { latency.supported && it != latency.requestedId }
+    }
+
+    private fun pendingSources(): Map<Int, String> =
+        sourceEdits.value.keys.mapNotNull { src -> pendingSourceName(src)?.let { src to it } }.toMap()
+
+    /** The Global Parameters page has a staged row (its sidebar dot). */
+    fun globalRowsDirty(): Boolean = pendingDeviceName() != null || pendingLatency() != null
+
+    /** The Inputs page has a staged name (its sidebar dot). */
+    fun sourceNamesDirty(): Boolean = pendingSources().isNotEmpty()
+
+    /** Any of the three is staged. */
+    fun deviceDraftDirty(): Boolean = globalRowsDirty() || sourceNamesDirty()
+
+    private fun clearDeviceDrafts() {
+        deviceNameEdit.value = null
+        sourceEdits.value = emptyMap()
+        latencyEdit.value = null
+    }
+
+    private fun sourceTitle(source: Int) = bridge.inputSources.firstOrNull { it.id == source }?.builtIn ?: "Source $source"
+
+    /** The staged writes, in macOS's order (latency, sources, device); what failed goes in [messages]. */
+    private suspend fun saveDeviceDrafts(messages: MutableList<String>, stillCurrent: () -> Boolean) {
+        pendingLatency()?.let { id ->
+            when (settings.setOutputLatency(id)) {
+                LatencyApply.APPLIED -> if (latencyEdit.value == id) latencyEdit.value = null
+                LatencyApply.NOT_SENT -> messages += "The device did not take the latency."
+                LatencyApply.NOT_YET_APPLIED -> messages += "The device has not applied the latency yet."
+                LatencyApply.KEPT -> messages += "The device kept the previous latency."
+            }
+        }
+        var refused = false
+        for ((source, name) in pendingSources()) {
+            if (!stillCurrent()) return
+            if (settings.setSourceName(source, name)) {
+                if (pendingSourceName(source) == null) sourceEdits.value = sourceEdits.value - source
+            } else {
+                refused = true
+            }
+        }
+        pendingDeviceName()?.let { name ->
+            if (!stillCurrent()) return
+            if (settings.setDeviceName(name)) {
+                if (pendingDeviceName() == null) deviceNameEdit.value = null
+            } else {
+                refused = true
+            }
+        }
+        if (refused) messages += "The device did not take the name."
+    }
+
     // ── Category C: control surfaces ──
     private var csOpsInFlight = 0
     private val _csBusy = MutableStateFlow(false)
@@ -111,10 +222,11 @@ class SettingsSaveCoordinator(
 
     fun csDirty(): Boolean = bridge.cs.supported.value && bridge.cs.unsaved.value
 
-    fun hasPendingChanges(state: DspState = bridge.state.value): Boolean = globalDirty(state) || outputDirty() || csDirty()
+    fun hasPendingChanges(state: DspState = bridge.state.value): Boolean =
+        globalDirty(state) || outputDirty() || csDirty() || deviceDraftDirty()
 
     /** Only the control-surfaces preview is pending. */
-    fun csOnly(state: DspState = bridge.state.value): Boolean = csDirty() && !globalDirty(state) && !outputDirty()
+    fun csOnly(state: DspState = bridge.state.value): Boolean = csDirty() && !globalDirty(state) && !outputDirty() && !deviceDraftDirty()
 
     fun deviceSnapshot(state: DspState = bridge.state.value): OutputConfigSnapshot =
         OutputConfigSnapshot.from(state, bridge.platformName, bridge.hardwareCaps)
@@ -261,6 +373,9 @@ class SettingsSaveCoordinator(
             }
             if (d.dacHwMuteConfig != s.dacHwMuteConfig) out += "External mute control"
         }
+        pendingLatency()?.let { out += "Latency" }
+        pendingDeviceName()?.let { out += "Device name: ${it.ifEmpty { "(none)" }}" }
+        pendingSources().forEach { (source, name) -> out += "${sourceTitle(source)} name: ${name.ifEmpty { "(built-in)" }}" }
         if (outputDirty()) out += "Input and output configuration (live now, not yet saved to flash)"
         if (csDirty()) out += "Control surfaces (live now, not yet saved)"
         return out
@@ -291,7 +406,8 @@ class SettingsSaveCoordinator(
             val doGlobal = globalDirty(state)
             val doOutput = outputToken != null && outputDirty()
             val doCs = csToken != null && csDirty()
-            if (!doGlobal && !doOutput && !doCs) return null
+            val doDrafts = deviceDraftDirty()
+            if (!doGlobal && !doOutput && !doCs && !doDrafts) return null
             // macOS stillCurrent(): the transport generation, bumped on every open and close
             val generation = bridge.deviceGeneration.value
             fun stillCurrent() = bridge.deviceGeneration.value == generation
@@ -316,6 +432,7 @@ class SettingsSaveCoordinator(
                         bridge.setDacMute(m.enabled, m.activeLow, m.pin, m.holdMs, m.releaseMs)
                     }
                 }
+                if (doDrafts && stillCurrent()) saveDeviceDrafts(messages, ::stillCurrent)
                 if (doOutput && stillCurrent()) {
                     if (bridge.saveOutputConfig(outputToken!!) != PresetStatus.OK) {
                         messages += "Output configuration could not be saved to flash"
@@ -345,6 +462,7 @@ class SettingsSaveCoordinator(
     suspend fun revert(token: ConfirmationToken?) {
         try {
             if (globalDirty()) setUserEdited(false)
+            clearDeviceDrafts()
             _lastResult.value = null
             if (csDirty()) revertControlSurfaces()
             if (token != null && outputDirty()) bridge.revertOutputConfig(token)
@@ -405,6 +523,7 @@ class SettingsSaveCoordinator(
         lastDeviceSerial = serial
         if (last != null && last != serial) {
             setUserEdited(false)
+            clearDeviceDrafts()
             _lastResult.value = null
             _hardwareStatus.value = null
             _csStatus.value = null

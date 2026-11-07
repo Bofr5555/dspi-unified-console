@@ -60,7 +60,10 @@ fun HardwareSettingsTab(page: HardwarePage, bridge: DspiBridge, coordinator: Set
         when (page) {
             HardwarePage.OUTPUTS -> outputsPage(device, pins, edits, coordinator, connected)
             HardwarePage.I2S -> if (!device.isStm32) i2sPage(sampleRateHz, device, pins, edits, coordinator, connected)
-            HardwarePage.SPDIF -> inputsPage(bridge, device, pins, edits, coordinator, connected) { confirmClockMode = it }
+            HardwarePage.SPDIF -> {
+                inputsPage(bridge, device, pins, edits, coordinator, connected) { confirmClockMode = it }
+                item { SourceNamesSection(bridge, device, coordinator, connected) } // -- WP AN6 --
+            }
         }
         item { StatusLine(status?.first, status?.second ?: false) }
     }

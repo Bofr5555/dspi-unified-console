@@ -43,6 +43,7 @@ fun PinOverviewTab(bridge: DspiBridge, coordinator: SettingsSaveCoordinator, onO
     val conflicts = device.pinConflicts()
 
     SettingsForm {
+        item { CoreVoltageSection(bridge, connected) } // -- WP AN6 --
         if (!connected) {
             item {
                 SettingsSection(null) {
