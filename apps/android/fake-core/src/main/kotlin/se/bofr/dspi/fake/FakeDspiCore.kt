@@ -25,8 +25,8 @@ import se.bofr.dspi.core.DspiConstants.MAX_PRESETS
 import se.bofr.dspi.core.DspiConstants.MAX_XOVER_BANDS
 import se.bofr.dspi.core.DspiConstants.XOVER_BAND_BASE
 import se.bofr.dspi.core.DspiException
-import se.bofr.dspi.core.FillBand
 import se.bofr.dspi.core.ExtStatus
+import se.bofr.dspi.core.FillBand
 import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.InputLockStatus
