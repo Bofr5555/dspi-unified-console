@@ -30,7 +30,7 @@ node=${nodes[0]}
 echo "device node: $node"
 
 # The build has no device: the usual container
-ci/run.sh "cargo build --release -p dspi-capi --features link,midir,mdns && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt6-smoke --target DSPiConsoleSmoke"
+ci/run.sh "cargo build --release -p dspi-capi --features link,midir,mdns,hub && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt6-smoke --target DSPiConsoleSmoke"
 
 # The run: real sysfs (ci/run.sh hides it), the one node, no network. No keep-id:
 # the container's root is the host user the node's ACL names.

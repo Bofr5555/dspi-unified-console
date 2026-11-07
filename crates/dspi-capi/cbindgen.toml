@@ -34,4 +34,6 @@ include = [
     "NotifyCallback",
     # -- WP CG1 --
     "LinkEventCallback",
+    # -- WP HB6 --
+    "HubEventCallback",
 ]

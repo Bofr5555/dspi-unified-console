@@ -57,3 +57,9 @@ pub use server::NetworkConfig;
 pub use session::{Completion, LOCAL_SESSION_ID, Outbound, Outbox, Pop, Role, Session, SessionId};
 pub use snapshot::SnapshotRefused;
 pub use usb::{BusDevice, DeviceBus};
+// -- WP HB6 --
+pub use auth::{PairedClient, SavedHub};
+pub use dspi_link::DEFAULT_PORT;
+pub use server::NetworkControl;
+#[cfg(all(feature = "usb", not(target_os = "android")))]
+pub use usb::UsbBus;

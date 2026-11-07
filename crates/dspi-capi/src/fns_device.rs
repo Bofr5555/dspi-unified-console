@@ -238,7 +238,8 @@ pub extern "C" fn dspi_core_new() -> *mut FfiCore {
     guard(ptr::null_mut(), || {
         // As the old core: stderr, level from RUST_LOG, errors by default.
         // A second core (or a host's own logger) keeps the logger it has.
-        let _ = env_logger::try_init();
+        // -- WP HB6 -- No secrets at any level: see `logger_builder`.
+        crate::init_logger();
         let core = DspiCore::new();
         let state = DspState::from(&core.get_state());
         Box::into_raw(Box::new(FfiCore {
