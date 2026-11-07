@@ -643,6 +643,7 @@ const RTA_VERSION: u8 = 3; // rta.h:28
 const RTA_INPUTS: u32 = 2;
 const RTA_OUTPUTS: u32 = 4;
 const RTA_BANDS: usize = 37; // rta.h, RTA_MAX_BANDS
+const RTA_LEVEL: u8 = 200; // -- WP QD8b --
 const RTA_CENTRES: [u16; RTA_BANDS] = [
     16, 20, 25, 31, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500,
     3150, 4000, 5000, 6300, 8000, 10000, 12500, 16000, 20000, 25000, 31500, 40000, 50000, 63000,
@@ -651,6 +652,8 @@ const RTA_CENTRES: [u16; RTA_BANDS] = [
 struct FakeRta {
     config: [u8; 12],
     running: bool,
+    /// -- WP QD8b -- What each band reads, as the frame's `avg` byte.
+    level: u8,
 }
 
 impl Default for FakeRta {
@@ -658,7 +661,7 @@ impl Default for FakeRta {
         // Output tap, channel 0, 1024 points, 300 ms, 12 dB/s.
         let mut config = [RTA_VERSION, 1, 1, 0, 10, 0, 0, 0, 12, 0, 0, 0];
         config[6..8].copy_from_slice(&300u16.to_le_bytes());
-        Self { config, running: false }
+        Self { config, running: false, level: RTA_LEVEL }
     }
 }
 
@@ -702,11 +705,11 @@ impl FakeRta {
     }
 
     /// `RtaBandFrame`, 82 bytes (rta.h:90-99): 34 bands at the FFT's table.
-    fn band_frame(channel: u8) -> Vec<u8> {
+    fn band_frame(channel: u8, level: u8) -> Vec<u8> {
         let mut f = vec![RTA_VERSION, channel, 1, 34];
         f.extend_from_slice(&10u16.to_le_bytes());
         f.extend_from_slice(&[0, 0]);
-        f.extend_from_slice(&[200; RTA_BANDS]);
+        f.extend_from_slice(&[level; RTA_BANDS]);
         f.extend_from_slice(&[243; RTA_BANDS]);
         f
     }
@@ -756,12 +759,16 @@ impl State {
                     return (status::ERROR, Vec::new());
                 }
                 self.rta.running = true;
-                (status::OK, FakeRta::band_frame(w_value as u8))
+                (status::OK, FakeRta::band_frame(w_value as u8, self.rta.level))
             }
             (Dir::Get, req::RTA_GET_BANDS_ALL) => {
                 self.rta.running = true;
                 let mask = self.rta.mask();
-                (status::OK, (0..16u8).filter(|c| mask >> c & 1 != 0).flat_map(FakeRta::band_frame).collect())
+                let level = self.rta.level;
+                (
+                    status::OK,
+                    (0..16u8).filter(|c| mask >> c & 1 != 0).flat_map(|c| FakeRta::band_frame(c, level)).collect(),
+                )
             }
             (Dir::Get, req::RTA_GET_STATUS) => (status::OK, self.rta.status()),
             // The configuration survives STOP.
@@ -998,6 +1005,13 @@ impl FakeHub {
     /// removal. Pairing works throughout (`hub.c`).
     pub fn set_board_present(&self, present: bool) {
         lock(&self.state).set_board(present);
+    }
+
+    /// -- WP QD8b -- What the analyser's bands read from now on. A client's snapshot
+    /// version moves only when the picture does, and a constant signal draws one
+    /// picture: this is how a test sees that a client still polls.
+    pub fn set_rta_level(&self, level: u8) {
+        lock(&self.state).rta.level = level;
     }
 
     /// Open a new PIN window (Mac hub: the user presses the button again).

@@ -18,6 +18,9 @@
 //!   dup on | dup off         send every frame twice
 //!   board on | board off     attach or remove the board
 //!   window                   open a new PIN window (a window PIN pairs one client)
+//!   rta-level N              what the analyser's bands read from now on (0-255)
+//!
+//! Each command is answered on stdout once it has taken effect: `ok`, or `unknown`.
 //!   revoke                   revoke every token (the hub closes with 4002)
 //!   close CODE               close every session with this code
 //!
@@ -58,6 +61,11 @@ fn fault(hub: &FakeHub, line: &str) -> bool {
         ["board", "on"] => hub.set_board_present(true),
         ["board", "off"] => hub.set_board_present(false),
         ["window"] => hub.reopen_window(),
+        // -- WP QD8b --
+        ["rta-level", level] => match level.parse() {
+            Ok(l) => hub.set_rta_level(l),
+            Err(_) => return false,
+        },
         // -- WP AN3 --
         ["revoke"] => hub.revoke_all(),
         ["close", code] => match code.parse() {
@@ -107,8 +115,15 @@ fn main() {
         cfg.auth
     );
     for line in std::io::stdin().lock().lines().map_while(Result::ok) {
-        if !line.trim().is_empty() && !fault(&hub, &line) {
+        if line.trim().is_empty() {
+            continue;
+        }
+        // -- WP QD8b -- The answer is what lets a script stop guessing how long a fault takes.
+        if fault(&hub, &line) {
+            println!("ok");
+        } else {
             eprintln!("unknown fault: {line}");
+            println!("unknown");
         }
     }
     // stdin closed (run in the background): keep serving
