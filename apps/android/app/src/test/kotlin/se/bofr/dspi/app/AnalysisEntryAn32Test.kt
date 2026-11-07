@@ -49,7 +49,7 @@ class AnalysisEntryAn32Test {
     private fun showHome() {
         val bridge = startDemoSession(scope, "test").also { session = it }.bridge
         rule.mainClock.autoAdvance = false
-        rule.setContent { AppScaffold(bridge, ConnectionStrip.Demo, onEnterDemo = {}, onExitDemo = {}, onRequestPermission = {}) }
+        rule.setContent { AppScaffold(bridge, ConnectionStrip.Demo, onExitDemo = {}, onRequestPermission = {}) }
         settle()
     }
 
