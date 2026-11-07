@@ -1,0 +1,644 @@
+//
+//  LinkServer.swift
+//  DSPi Console
+//
+//  The NIO adapter that puts a WebSocket + HTTP front end on one LinkHub.  It
+//  owns no protocol logic: every connection becomes one LinkSessionHandler and
+//  this file only moves bytes between that handler and a socket.  HTTP/1 is the
+//  entry point; GET /dspi/v1/info answers discovery (spec 3.2) and GET /dspi/v1
+//  with the WebSocket headers upgrades to the protocol (spec 4).  See spec
+//  sections 3, 4 and 5.
+//
+
+import Foundation
+import NIOCore
+import NIOPosix
+import NIOHTTP1
+import NIOWebSocket
+import NIOFoundationCompat
+
+/// Per-connection limits.  Internal so tests can shorten the deadlines.
+struct LinkServerTuning {
+    /// NIO marks a child channel unwritable above `writeBufferHigh` buffered
+    /// bytes and writable again below `writeBufferLow`.
+    var writeBufferLow = 64 * 1024
+    var writeBufferHigh = 256 * 1024
+    /// A connection that stays unwritable this long has stopped reading and
+    /// is closed, so its backlog cannot grow without bound.
+    var stallDeadline: TimeInterval = 10
+    /// The hub pings this often and closes a connection that has sent
+    /// nothing, pongs included, for `idleDeadline` (spec 4).
+    var pingInterval: TimeInterval = 10
+    var idleDeadline: TimeInterval = 30
+}
+
+private extension TimeAmount {
+    static func interval(_ t: TimeInterval) -> TimeAmount { .nanoseconds(Int64(t * 1_000_000_000)) }
+}
+
+final class LinkServer {
+    private let hub: LinkHub
+    private let auth: LinkAuthStore
+    private let policy: LinkPolicy
+
+    private var group: MultiThreadedEventLoopGroup?
+    private var channel: NIOCore.Channel?
+    private let lock = NSLock()
+    /// Read at start; set it before then.
+    var tuning = LinkServerTuning()
+
+    init(hub: LinkHub, auth: LinkAuthStore, policy: LinkPolicy) {
+        self.hub = hub
+        self.auth = auth
+        self.policy = policy
+    }
+
+    var isRunning: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return channel != nil
+    }
+
+    /// The port actually bound.  With `start(port: 0)` the OS picks one; read
+    /// this to learn it (used by tests and by the discovery advertiser).
+    var boundPort: Int? {
+        lock.lock(); defer { lock.unlock() }
+        return channel?.localAddress?.port
+    }
+
+    // MARK: - Lifecycle
+
+    func start(port: Int) throws {
+        lock.lock(); defer { lock.unlock() }
+        guard channel == nil else { return }   // already running; start is idempotent
+
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        let hub = self.hub, auth = self.auth, policy = self.policy, tuning = self.tuning
+
+        // A factory, since options accumulate on a bootstrap and the IPv4
+        // fallback must not inherit the IPv6-only option.
+        let makeBootstrap = { ServerBootstrap(group: group)
+            .serverChannelOption(ChannelOptions.backlog, value: 256)
+            .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
+            .childChannelInitializer { channel in
+                // Refuse anything that is not on the local network before a
+                // single byte of protocol runs.  The hub is LAN-only (spec 6.4).
+                if let addr = channel.remoteAddress, !LinkServer.isLocalPeer(addr) {
+                    return channel.close()
+                }
+                let httpHandler = LinkHTTPHandler(hub: hub, auth: auth)
+                let upgrader = NIOWebSocketServerUpgrader(
+                    maxFrameSize: LinkSessionHandler.maxFrame,
+                    automaticErrorHandling: true,
+                    shouldUpgrade: { channel, head in
+                        LinkServer.shouldUpgrade(channel: channel, head: head)
+                    },
+                    upgradePipelineHandler: { channel, _ in
+                        channel.pipeline.addHandler(
+                            LinkWebSocketHandler(hub: hub, auth: auth, policy: policy, tuning: tuning))
+                    })
+                let upgradeConfig: NIOHTTPServerUpgradeConfiguration = (
+                    upgraders: [upgrader],
+                    completionHandler: { context in
+                        // The HTTP handler is done once the socket is a WebSocket.
+                        context.channel.pipeline.removeHandler(httpHandler, promise: nil)
+                    })
+                return channel.pipeline
+                    .configureHTTPServerPipeline(withServerUpgrade: upgradeConfig)
+                    .flatMap { channel.pipeline.addHandler(httpHandler) }
+            }
+            .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
+            .childChannelOption(ChannelOptions.writeBufferWaterMark,
+                                value: WriteBufferWaterMark(low: tuning.writeBufferLow,
+                                                            high: tuning.writeBufferHigh))
+        }
+
+        do {
+            // Dual-stack "::" so IPv6 peers (Bonjour advertises AAAA) reach
+            // us too; IPv4 then arrives as ::ffff:a.b.c.d, which the peer
+            // gate unwraps.  A host without IPv6 falls back to IPv4 only.
+            let dualStack = ChannelOptions.Types.SocketOption(level: .ipv6, name: .ipv6_v6only)
+            let ch: NIOCore.Channel
+            do {
+                ch = try makeBootstrap().serverChannelOption(dualStack, value: 0)
+                    .bind(host: "::", port: port).wait()
+            } catch {
+                ch = try makeBootstrap().bind(host: "0.0.0.0", port: port).wait()
+            }
+            self.group = group
+            self.channel = ch
+        } catch {
+            try? group.syncShutdownGracefully()
+            throw error
+        }
+    }
+
+    func stop() {
+        lock.lock()
+        let ch = channel
+        let grp = group
+        channel = nil
+        group = nil
+        lock.unlock()
+
+        try? ch?.close().wait()
+        try? grp?.syncShutdownGracefully()
+    }
+
+    // MARK: - Upgrade decision
+
+    /// Decide whether a GET can become a WebSocket.  Only /dspi/v1 that requests
+    /// the `dspi-link-1` sub-protocol upgrades, and the reply echoes it (spec 4).
+    /// Anything else declines (nil) and falls through to the HTTP handler, which
+    /// answers 400/404.
+    private static func shouldUpgrade(channel: NIOCore.Channel, head: HTTPRequestHead)
+        -> EventLoopFuture<HTTPHeaders?> {
+        let path = head.uri.split(separator: "?", maxSplits: 1).first.map(String.init) ?? head.uri
+        guard path == "/dspi/v1" else {
+            return channel.eventLoop.makeSucceededFuture(nil)
+        }
+        let requested = head.headers[canonicalForm: "sec-websocket-protocol"]
+        guard requested.contains(where: { $0.caseInsensitiveCompare("dspi-link-1") == .orderedSame }) else {
+            return channel.eventLoop.makeSucceededFuture(nil)
+        }
+        var headers = HTTPHeaders()
+        headers.add(name: "Sec-WebSocket-Protocol", value: "dspi-link-1")
+        return channel.eventLoop.makeSucceededFuture(headers)
+    }
+
+    // MARK: - Peer locality
+
+    /// True for loopback, private, link-local and CGNAT peers only.  A UNIX-domain or
+    /// address-less peer counts as local; a routable public address does not.
+    static func isLocalPeer(_ address: SocketAddress) -> Bool {
+        guard let ip = address.ipAddress else { return true }
+        return isLocalIP(ip) || isOnLink(ip, subnets: localSubnets())
+    }
+
+    /// One interface address and its netmask, as raw bytes (4 or 16).
+    struct Subnet: Equatable {
+        let address: [UInt8]
+        let mask: [UInt8]
+    }
+
+    /// True when the peer shares a subnet with one of this Mac's interfaces.
+    /// A home network with ISP IPv6 hands every machine a public address, so
+    /// a client on the same LAN arrives from one that isLocalIP rejects.
+    static func isOnLink(_ raw: String, subnets: [Subnet]) -> Bool {
+        guard let peer = ipBytes(raw) else { return false }
+        return subnets.contains { net in
+            // An all-zero mask (a default route) would match the whole internet.
+            net.address.count == peer.count && net.mask.contains { $0 != 0 }
+                && zip(zip(peer, net.address), net.mask).allSatisfy { ($0.0 & $1) == ($0.1 & $1) }
+        }
+    }
+
+    /// The address as bytes, zone ID dropped; an IPv4-mapped IPv6 address
+    /// comes back as its 4 IPv4 bytes so it compares against IPv4 subnets.
+    static func ipBytes(_ raw: String) -> [UInt8]? {
+        let ip = raw.components(separatedBy: "%")[0]
+        var v4 = in_addr()
+        if inet_pton(AF_INET, ip, &v4) == 1 {
+            return withUnsafeBytes(of: &v4) { Array($0) }
+        }
+        var v6 = in6_addr()
+        guard inet_pton(AF_INET6, ip, &v6) == 1 else { return nil }
+        let bytes = withUnsafeBytes(of: &v6) { Array($0) }
+        if bytes[0..<10].allSatisfy({ $0 == 0 }), bytes[10] == 0xff, bytes[11] == 0xff {
+            return Array(bytes[12...])
+        }
+        return bytes
+    }
+
+    /// The subnets of every interface that is up, read fresh per connection
+    /// so a DHCP or router-advertisement change is picked up.
+    static func localSubnets() -> [Subnet] {
+        var head: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&head) == 0, let first = head else { return [] }
+        defer { freeifaddrs(head) }
+        var subnets: [Subnet] = []
+        for ptr in sequence(first: first, next: { $0.pointee.ifa_next }) {
+            let ifa = ptr.pointee
+            guard (ifa.ifa_flags & UInt32(IFF_UP)) != 0,
+                  let addr = ifa.ifa_addr, let mask = ifa.ifa_netmask else { continue }
+            switch Int32(addr.pointee.sa_family) {
+            case AF_INET:
+                let a = addr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { p in
+                    withUnsafeBytes(of: p.pointee.sin_addr) { Array($0) } }
+                let m = mask.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { p in
+                    withUnsafeBytes(of: p.pointee.sin_addr) { Array($0) } }
+                subnets.append(Subnet(address: a, mask: m))
+            case AF_INET6:
+                let a = addr.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { p in
+                    withUnsafeBytes(of: p.pointee.sin6_addr) { Array($0) } }
+                let m = mask.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { p in
+                    withUnsafeBytes(of: p.pointee.sin6_addr) { Array($0) } }
+                subnets.append(Subnet(address: a, mask: m))
+            default:
+                continue
+            }
+        }
+        return subnets
+    }
+
+    static func isLocalIP(_ raw: String) -> Bool {
+        var ip = raw.lowercased()
+        if let pct = ip.firstIndex(of: "%") { ip = String(ip[..<pct]) }   // drop zone id
+        // IPv4-mapped IPv6 (::ffff:192.168.0.1) is judged on its IPv4 part.
+        if ip.hasPrefix("::ffff:"), ip.contains(".") {
+            return isLocalIPv4(String(ip.dropFirst("::ffff:".count)))
+        }
+        if ip.contains(":") {
+            if ip == "::1" { return true }                                 // loopback
+            if ip.hasPrefix("fe8") || ip.hasPrefix("fe9")
+                || ip.hasPrefix("fea") || ip.hasPrefix("feb") { return true } // fe80::/10
+            if ip.hasPrefix("fc") || ip.hasPrefix("fd") { return true }    // fc00::/7 ULA
+            return false
+        }
+        return isLocalIPv4(ip)
+    }
+
+    private static func isLocalIPv4(_ ip: String) -> Bool {
+        let p = ip.split(separator: ".").compactMap { Int($0) }
+        guard p.count == 4 else { return false }
+        switch (p[0], p[1]) {
+        case (127, _):                     return true   // 127.0.0.0/8 loopback
+        case (10, _):                      return true   // 10.0.0.0/8
+        case (172, 16...31):               return true   // 172.16.0.0/12
+        case (192, 168):                   return true   // 192.168.0.0/16
+        case (169, 254):                   return true   // 169.254.0.0/16 link-local
+        // 100.64.0.0/10 CGNAT: where a Tailscale peer arrives from, which
+        // spec 6.4 recommends for remote access.
+        case (100, 64...127):              return true
+        default:                           return false
+        }
+    }
+}
+
+// MARK: - HTTP handler
+
+/// Serves the two plain-HTTP endpoints on the port.  A GET that reaches here
+/// was not upgraded, so /dspi/v1 answers 400 (upgrade required) and everything
+/// but /dspi/v1/info is 404.
+private final class LinkHTTPHandler: ChannelInboundHandler, RemovableChannelHandler {
+    typealias InboundIn = HTTPServerRequestPart
+    typealias OutboundOut = HTTPServerResponsePart
+
+    private let hub: LinkHub
+    private let auth: LinkAuthStore
+    private var head: HTTPRequestHead?
+
+    init(hub: LinkHub, auth: LinkAuthStore) {
+        self.hub = hub
+        self.auth = auth
+    }
+
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        switch unwrapInboundIn(data) {
+        case .head(let head): self.head = head
+        case .body: break
+        case .end:
+            guard let head = self.head else { return }
+            self.head = nil
+            route(context: context, head: head)
+        }
+    }
+
+    private func route(context: ChannelHandlerContext, head: HTTPRequestHead) {
+        let path = head.uri.split(separator: "?", maxSplits: 1).first.map(String.init) ?? head.uri
+        if head.method == .GET, path == "/dspi/v1/info" {
+            respond(context: context, status: .ok, body: infoJSON(),
+                    extraHeaders: [("Content-Type", "application/json"),
+                                   ("Access-Control-Allow-Origin", "*")])
+        } else if path == "/dspi/v1" {
+            respond(context: context, status: .badRequest, body: nil)
+        } else if head.method == .GET, let (body, type) = LinkWebBundle.file(for: path) {
+            respond(context: context, status: .ok, body: body,
+                    extraHeaders: [("Content-Type", type), ("Cache-Control", "no-cache")])
+        } else {
+            respond(context: context, status: .notFound, body: nil)
+        }
+    }
+
+    /// The discovery document of spec 3.2.
+    private func infoJSON() -> Data {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+        let devices = hub.registry.devices.map { ["serial": $0.info.serial, "name": $0.name] }
+        let info: [String: Any] = [
+            "proto": ["major": LinkProtoVersion().major, "minor": LinkProtoVersion().minor],
+            "hub": ["id": auth.hubID.uuidString.lowercased(),
+                    "name": auth.hubName, "kind": "console", "version": version],
+            "auth": auth.authMode.rawValue,
+            "tls": false,
+            "ws": "/dspi/v1",
+            "web": LinkWebBundle.isPresent,
+            "devices": devices,
+        ]
+        return (try? JSONSerialization.data(withJSONObject: info)) ?? Data("{}".utf8)
+    }
+
+    private func respond(context: ChannelHandlerContext, status: HTTPResponseStatus,
+                         body: Data?, extraHeaders: [(String, String)] = []) {
+        var headers = HTTPHeaders()
+        headers.add(name: "Content-Length", value: String(body?.count ?? 0))
+        for (k, v) in extraHeaders { headers.add(name: k, value: v) }
+        headers.add(name: "Connection", value: "close")
+        let responseHead = HTTPResponseHead(version: .http1_1, status: status, headers: headers)
+        context.write(wrapOutboundOut(.head(responseHead)), promise: nil)
+        if let body = body {
+            var buf = context.channel.allocator.buffer(capacity: body.count)
+            buf.writeBytes(body)
+            context.write(wrapOutboundOut(.body(.byteBuffer(buf))), promise: nil)
+        }
+        context.writeAndFlush(wrapOutboundOut(.end(nil))).whenComplete { _ in
+            context.close(promise: nil)
+        }
+    }
+}
+
+// MARK: - WebSocket handler
+
+/// One of these per upgraded connection.  It owns a LinkSessionHandler, decodes
+/// inbound frames into text/binary the handler understands, reassembles
+/// fragmented messages, answers pings, and writes the handler's outbound frames
+/// back.  The handler is not thread-safe, so every call into it runs on this
+/// channel's event loop; the emit closure hops back onto the loop because the
+/// hub delivers notifications on arbitrary queues.
+private final class LinkWebSocketHandler: ChannelInboundHandler {
+    typealias InboundIn = WebSocketFrame
+    typealias OutboundOut = WebSocketFrame
+
+    private let hub: LinkHub
+    private let auth: LinkAuthStore
+    private let policy: LinkPolicy
+    private let tuning: LinkServerTuning
+
+    private var session: LinkSessionHandler?
+    private var channel: NIOCore.Channel?
+
+    /// Set when a NOTIFY or RESYNC was shed while unwritable: the handle for
+    /// the one RESYNC owed once the socket drains.
+    private var owedResyncHandle: UInt8?
+    private var stallTimer: Scheduled<Void>?
+
+    // Fragmented-message reassembly (spec 4: one message may span frames).
+    private var fragmentOpcode: WebSocketOpcode?
+    private var fragmentBuffer: ByteBuffer?
+
+    private var keepalive: RepeatedTask?
+    private var authTimeout: Scheduled<Void>?
+    /// When the peer last sent any frame.  TCP alone may take hours to
+    /// notice a vanished peer, so the keepalive tick checks this.
+    private var lastInbound = NIODeadline.now()
+
+    private static let authDeadline: TimeAmount = .seconds(30)
+
+    init(hub: LinkHub, auth: LinkAuthStore, policy: LinkPolicy, tuning: LinkServerTuning) {
+        self.hub = hub
+        self.auth = auth
+        self.policy = policy
+        self.tuning = tuning
+    }
+
+    func handlerAdded(context: ChannelHandlerContext) {
+        let channel = context.channel
+        let eventLoop = context.eventLoop
+        self.channel = channel
+        let peer = channel.remoteAddress?.ipAddress ?? "?"
+
+        let onLoop: (@escaping () -> Void) -> Void = { block in
+            if eventLoop.inEventLoop { block() } else { eventLoop.execute(block) }
+        }
+        self.session = LinkSessionHandler(hub: hub, auth: auth, policy: policy, peer: peer,
+                                          perform: onLoop) { [weak self] outbound in
+            onLoop { self?.send(outbound) }
+        }
+
+        // Keepalive: ping every 10 s and close with 1001 a peer that has sent
+        // nothing for 30 s, pongs included (spec 4).
+        let interval = TimeAmount.interval(tuning.pingInterval)
+        let idle = TimeAmount.interval(tuning.idleDeadline)
+        keepalive = eventLoop.scheduleRepeatedTask(initialDelay: interval, delay: interval) { [weak self] _ in
+            guard let self = self else { return }
+            if NIODeadline.now() - self.lastInbound >= idle {
+                self.abort(code: 1001)
+            } else {
+                self.sendPing()
+            }
+        }
+        // Close an unauthenticated connection after 30 s (spec 5, close 4001).
+        authTimeout = eventLoop.scheduleTask(in: Self.authDeadline) { [weak self] in
+            guard let self = self, let session = self.session, !session.isAuthenticated else { return }
+            self.send(.close(4001))
+        }
+    }
+
+    func channelInactive(context: ChannelHandlerContext) {
+        teardown()
+        context.fireChannelInactive()
+    }
+
+    func handlerRemoved(context: ChannelHandlerContext) {
+        teardown()
+    }
+
+    private func teardown() {
+        keepalive?.cancel()
+        keepalive = nil
+        authTimeout?.cancel()
+        authTimeout = nil
+        stallTimer?.cancel()
+        stallTimer = nil
+        session?.connectionClosed()
+        session = nil
+        channel = nil
+    }
+
+    // MARK: Backpressure
+
+    func channelWritabilityChanged(context: ChannelHandlerContext) {
+        if context.channel.isWritable {
+            stallTimer?.cancel()
+            stallTimer = nil
+            if let handle = owedResyncHandle {
+                owedResyncHandle = nil
+                send(.binary(LinkFrame.resync(LinkResyncFrame(handle: handle, reason: 0)).encode()))
+            }
+        } else if stallTimer == nil {
+            let deadline = TimeAmount.milliseconds(Int64(tuning.stallDeadline * 1000))
+            stallTimer = context.eventLoop.scheduleTask(in: deadline) { [weak self] in
+                self?.abort(code: 1011)
+            }
+        }
+        context.fireChannelWritabilityChanged()
+    }
+
+    /// True when an unwritable channel should shed this frame.  POLL is
+    /// superseded by the next one; NOTIFY and RESYNC are replaced by one
+    /// RESYNC later.  CMD responses (bounded by max_inflight) still queue.
+    private func shed(_ data: Data, on channel: NIOCore.Channel) -> Bool {
+        guard !channel.isWritable, let type = data.first else { return false }
+        switch type {
+        case LinkFrameType.poll.rawValue:
+            return true
+        case LinkFrameType.notify.rawValue, LinkFrameType.resync.rawValue:
+            owedResyncHandle = data.count > 4 ? data[data.startIndex + 4] : 0
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Close without waiting on the close frame's write: a peer that is not
+    /// reading would never let it complete.
+    private func abort(code: UInt16) {
+        guard let channel = channel else { return }
+        var buf = channel.allocator.buffer(capacity: 2)
+        buf.writeInteger(code, endianness: .big)
+        channel.writeAndFlush(WebSocketFrame(fin: true, opcode: .connectionClose, data: buf), promise: nil)
+        channel.close(promise: nil)
+    }
+
+    // MARK: Inbound
+
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        let frame = unwrapInboundIn(data)
+        lastInbound = .now()
+        switch frame.opcode {
+        case .connectionClose:
+            // Echo a normal close and let the channel go.
+            var payload = context.channel.allocator.buffer(capacity: 2)
+            payload.writeInteger(UInt16(1000), endianness: .big)
+            let close = WebSocketFrame(fin: true, opcode: .connectionClose, data: payload)
+            context.writeAndFlush(wrapOutboundOut(close)).whenComplete { _ in
+                context.close(promise: nil)
+            }
+        case .ping:
+            let pong = WebSocketFrame(fin: true, opcode: .pong, data: frame.unmaskedData)
+            context.writeAndFlush(wrapOutboundOut(pong), promise: nil)
+        case .pong:
+            break   // keepalive answered; lastInbound is already updated
+        case .text:
+            deliver(opcode: .text, frame: frame)
+        case .binary:
+            deliver(opcode: .binary, frame: frame)
+        case .continuation:
+            continueFragment(frame)
+        default:
+            break
+        }
+    }
+
+    /// A text or binary frame.  If it is final it is one whole message; if not
+    /// it opens a fragmented message closed by continuation frames.  The
+    /// reassembled message is bounded at the advertised max_frame; a peer that
+    /// exceeds it, authenticated or not, is closed rather than buffered.
+    private func deliver(opcode: WebSocketOpcode, frame: WebSocketFrame) {
+        if frame.fin {
+            dispatch(opcode: opcode, data: Data(frame.unmaskedData.readableBytesView))
+        } else {
+            fragmentOpcode = opcode
+            fragmentBuffer = frame.unmaskedData
+            if fragmentBuffer!.readableBytes > LinkSessionHandler.maxFrame { overflow() }
+        }
+    }
+
+    private func continueFragment(_ frame: WebSocketFrame) {
+        guard let opcode = fragmentOpcode, var buffer = fragmentBuffer else { return }
+        var more = frame.unmaskedData
+        guard buffer.readableBytes + more.readableBytes <= LinkSessionHandler.maxFrame else {
+            return overflow()
+        }
+        buffer.writeBuffer(&more)
+        fragmentBuffer = buffer
+        if frame.fin {
+            dispatch(opcode: opcode, data: Data(buffer.readableBytesView))
+            fragmentOpcode = nil
+            fragmentBuffer = nil
+        }
+    }
+
+    private func overflow() {
+        fragmentOpcode = nil
+        fragmentBuffer = nil
+        send(.close(4000))
+    }
+
+    private func dispatch(opcode: WebSocketOpcode, data: Data) {
+        switch opcode {
+        case .text:   session?.receiveText(data)
+        case .binary: session?.receiveBinary(data)
+        default:      break
+        }
+    }
+
+    // MARK: Outbound
+
+    private func send(_ outbound: LinkOutbound) {
+        guard let channel = channel else { return }
+        switch outbound {
+        case .text(let data):
+            var buf = channel.allocator.buffer(capacity: data.count)
+            buf.writeBytes(data)
+            channel.writeAndFlush(WebSocketFrame(fin: true, opcode: .text, data: buf), promise: nil)
+        case .binary(let data):
+            if shed(data, on: channel) { return }
+            var buf = channel.allocator.buffer(capacity: data.count)
+            buf.writeBytes(data)
+            channel.writeAndFlush(WebSocketFrame(fin: true, opcode: .binary, data: buf), promise: nil)
+        case .close(let code):
+            var buf = channel.allocator.buffer(capacity: 2)
+            buf.writeInteger(code, endianness: .big)
+            let frame = WebSocketFrame(fin: true, opcode: .connectionClose, data: buf)
+            channel.writeAndFlush(frame).whenComplete { _ in channel.close(promise: nil) }
+        }
+    }
+
+    private func sendPing() {
+        guard let channel = channel else { return }
+        let frame = WebSocketFrame(fin: true, opcode: .ping, data: channel.allocator.buffer(capacity: 0))
+        channel.writeAndFlush(frame, promise: nil)
+    }
+}
+
+// The network service starts and stops this server; the protocol lets the
+// service build and test without NIO present.
+extension LinkServer: LinkServing {}
+
+
+// MARK: - Web bundle
+
+/// The browser UI the hub serves at `/`: the built `dspi-link-js` web app,
+/// shipped inside the app bundle as a `Web` folder.  Files are looked up by
+/// name within that folder only, and only for the types a static site is
+/// made of, so nothing else in the app bundle is reachable over HTTP.
+enum LinkWebBundle {
+    private static let allowedTypes: [String: String] = [
+        "html": "text/html; charset=utf-8", "js": "text/javascript; charset=utf-8",
+        "css": "text/css; charset=utf-8", "json": "application/json",
+        "svg": "image/svg+xml", "png": "image/png", "ico": "image/x-icon",
+        "woff2": "font/woff2", "map": "application/json", "webmanifest": "application/manifest+json",
+    ]
+
+    static var isPresent: Bool { file(for: "/") != nil }
+
+    /// Resolve a request path to a bundled file and its content type.  `/`
+    /// and any path without an extension serve index.html (the app routes on
+    /// the client).  Path components are validated so `..` cannot escape.
+    /// `bundle` is injectable for tests.
+    static func file(for path: String, in bundle: Bundle = .main) -> (Data, String)? {
+        var name = path.hasPrefix("/") ? String(path.dropFirst()) : path
+        if name.isEmpty || !name.contains(".") { name = "index.html" }
+        let parts = name.split(separator: "/").map(String.init)
+        guard !parts.contains(".."), !parts.contains(where: { $0.hasPrefix(".") }) else { return nil }
+        let ext = (name as NSString).pathExtension.lowercased()
+        guard let type = allowedTypes[ext] else { return nil }
+        let base = (name as NSString).deletingPathExtension
+        // Folder reference layout first (Web/assets/x.js), then the flattened
+        // layout a synchronized group produces (x.js at the resource root).
+        let sub = parts.count > 1 ? "Web/" + parts.dropLast().joined(separator: "/") : "Web"
+        let url = bundle.url(forResource: (base as NSString).lastPathComponent, withExtension: ext, subdirectory: sub)
+            ?? bundle.url(forResource: (base as NSString).lastPathComponent, withExtension: ext)
+        guard let url = url, let data = try? Data(contentsOf: url) else { return nil }
+        return (data, type)
+    }
+}

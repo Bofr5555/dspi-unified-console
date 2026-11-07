@@ -1,0 +1,3160 @@
+import SwiftUI
+import Combine
+
+#if os(macOS)
+// MARK: - Right Click Handler
+
+/// Invisible overlay that intercepts right-clicks while passing left-clicks through
+struct RightClickHandler: NSViewRepresentable {
+    let action: () -> Void
+
+    func makeNSView(context: Context) -> RightClickNSView {
+        let view = RightClickNSView()
+        view.action = action
+        return view
+    }
+
+    func updateNSView(_ nsView: RightClickNSView, context: Context) {
+        nsView.action = action
+    }
+
+    class RightClickNSView: NSView {
+        var action: (() -> Void)?
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            if let event = NSApp.currentEvent, event.type == .rightMouseDown {
+                return self
+            }
+            return nil
+        }
+
+        override func rightMouseDown(with event: NSEvent) {
+            action?()
+        }
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+            return true
+        }
+    }
+}
+
+extension View {
+    func onRightClick(perform action: @escaping () -> Void) -> some View {
+        self.overlay(RightClickHandler(action: action))
+    }
+    func onOptionClick(perform action: @escaping () -> Void) -> some View {
+        self.overlay(OptionClickHandler(action: action))
+    }
+}
+
+// MARK: - Option Click Handler
+
+/// Invisible overlay that intercepts option-clicks while passing other clicks through
+struct OptionClickHandler: NSViewRepresentable {
+    let action: () -> Void
+
+    func makeNSView(context: Context) -> OptionClickNSView {
+        let view = OptionClickNSView()
+        view.action = action
+        return view
+    }
+
+    func updateNSView(_ nsView: OptionClickNSView, context: Context) {
+        nsView.action = action
+    }
+
+    class OptionClickNSView: NSView {
+        var action: (() -> Void)?
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            if let event = NSApp.currentEvent, event.type == .leftMouseDown,
+               event.modifierFlags.contains(.option) {
+                return self
+            }
+            return nil
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            action?()
+        }
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+            return true
+        }
+    }
+}
+#else
+extension View {
+    /// Touch has no secondary click; a long press stands in for it (the
+    /// Android port's gesture table does the same).  Simultaneous, so a tap on
+    /// the same control still reaches its button.
+    func onRightClick(perform action: @escaping () -> Void) -> some View {
+        self.simultaneousGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in action() })
+    }
+    /// Option-click has no touch equivalent yet (compact layout, A3).
+    func onOptionClick(perform action: @escaping () -> Void) -> some View { self }
+}
+#endif
+
+// MARK: - Meter Components
+
+/// A level bar drawn by one Core Animation layer.
+///
+/// As a SwiftUI shape with `.animation`, every 60 ms poll re-evaluated the
+/// bar's row, and each 60 ms glide was replaced just as it finished, so SwiftUI
+/// kept animating and laying the window out on every display frame.  Core
+/// Animation runs the same glide in the render server: a new level costs one
+/// layer change on the main thread.
+#if os(macOS)
+final class MeterBarNSView: NSView {
+    private let bar = CALayer()
+    private let clip = CALayer()
+    private var level: CGFloat = 0
+    private var clipping = false
+
+    /// The red marker at the right-hand end while the channel has clipped.
+    private static let clipZoneWidth: CGFloat = 3
+
+    var color: NSColor = .controlAccentColor {
+        didSet { if color != oldValue { applyColors() } }
+    }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        for sublayer in [bar, clip] {
+            sublayer.anchorPoint = .zero
+            sublayer.cornerRadius = 2
+            layer?.addSublayer(sublayer)
+        }
+        // The layers carry their own behaviour, so setting a level needs no
+        // transaction of its own: every bar changed in a run-loop pass joins
+        // the one implicit commit at its end.  An explicit transaction per
+        // poll was measured committing on top of that one, not instead of it.
+        bar.actions = ["bounds": Self.glide]
+        clip.actions = ["hidden": NSNull()]
+        clip.isHidden = true
+        applyColors()
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    /// The row around the bar owns every click.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    private var meterWidth: CGFloat { max(0, bounds.width - Self.clipZoneWidth) }
+
+    /// The 60 ms linear glide between polls.
+    private static let glide: CABasicAnimation = {
+        let animation = CABasicAnimation()
+        animation.duration = 0.06
+        animation.timingFunction = CAMediaTimingFunction(name: .linear)
+        return animation
+    }()
+
+    func set(level newLevel: Float, clipping newClipping: Bool) {
+        let clamped = CGFloat(max(0, min(1, newLevel)))
+        if clamped != level {
+            level = clamped
+            bar.bounds.size.width = level * meterWidth
+        }
+        if newClipping != clipping {
+            clipping = newClipping
+            clip.isHidden = !clipping
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        bar.frame = CGRect(x: 0, y: 0, width: level * meterWidth, height: bounds.height)
+        clip.frame = CGRect(x: meterWidth, y: 0, width: Self.clipZoneWidth, height: bounds.height)
+        CATransaction.commit()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyColors()
+    }
+
+    private func applyColors() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            bar.backgroundColor = color.cgColor
+            clip.backgroundColor = NSColor.systemRed.cgColor
+        }
+        CATransaction.commit()
+    }
+}
+#else
+/// The same layer-backed meter bar on UIKit.  Same layers, same 60 ms glide;
+/// only the view plumbing (layout, trait changes) differs.
+final class MeterBarNSView: UIView {
+    private let bar = CALayer()
+    private let clip = CALayer()
+    private var level: CGFloat = 0
+    private var clipping = false
+    private static let clipZoneWidth: CGFloat = 3
+
+    var color: UIColor = .tintColor {
+        didSet { if color != oldValue { applyColors() } }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        for sublayer in [bar, clip] {
+            sublayer.anchorPoint = .zero
+            sublayer.cornerRadius = 2
+            layer.addSublayer(sublayer)
+        }
+        bar.actions = ["bounds": Self.glide]
+        clip.actions = ["hidden": NSNull()]
+        clip.isHidden = true
+        applyColors()
+        // Layer colours are resolved, so re-resolve on a light/dark change.
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: MeterBarNSView, _: UITraitCollection) in
+            view.applyColors()
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    private var meterWidth: CGFloat { max(0, bounds.width - Self.clipZoneWidth) }
+
+    private static let glide: CABasicAnimation = {
+        let animation = CABasicAnimation()
+        animation.duration = 0.06
+        animation.timingFunction = CAMediaTimingFunction(name: .linear)
+        return animation
+    }()
+
+    func set(level newLevel: Float, clipping newClipping: Bool) {
+        let clamped = CGFloat(max(0, min(1, newLevel)))
+        if clamped != level {
+            level = clamped
+            bar.bounds.size.width = level * meterWidth
+        }
+        if newClipping != clipping {
+            clipping = newClipping
+            clip.isHidden = !clipping
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        bar.frame = CGRect(x: 0, y: 0, width: level * meterWidth, height: bounds.height)
+        clip.frame = CGRect(x: meterWidth, y: 0, width: Self.clipZoneWidth, height: bounds.height)
+        CATransaction.commit()
+    }
+
+    private func applyColors() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        bar.backgroundColor = color.resolvedColor(with: traitCollection).cgColor
+        clip.backgroundColor = UIColor.systemRed.resolvedColor(with: traitCollection).cgColor
+        CATransaction.commit()
+    }
+}
+#endif
+
+/// A meter bar for a level the caller supplies, where the surrounding view
+/// updates anyway (the Subharmonic Synth window's own meter timer).
+struct HorizontalMeterBar: View {
+    var level: Float        // 0.0 to 1.0
+    var color: Color
+    var isMuted: Bool = false
+    var isClipping: Bool = false
+
+    var body: some View {
+        MeterBarLevel(level: level, color: color, clipping: isClipping)
+            .frame(height: 6)
+            .opacity(isMuted ? 0.4 : 1.0)
+    }
+}
+
+#if os(macOS)
+private struct MeterBarLevel: NSViewRepresentable {
+    let level: Float
+    let color: Color
+    let clipping: Bool
+
+    func makeNSView(context: Context) -> MeterBarNSView { MeterBarNSView() }
+
+    func updateNSView(_ view: MeterBarNSView, context: Context) {
+        view.color = NSColor(color)
+        view.set(level: level, clipping: clipping)
+    }
+}
+#else
+private struct MeterBarLevel: UIViewRepresentable {
+    let level: Float
+    let color: Color
+    let clipping: Bool
+
+    func makeUIView(context: Context) -> MeterBarNSView { MeterBarNSView() }
+
+    func updateUIView(_ view: MeterBarNSView, context: Context) {
+        view.color = UIColor(color)
+        view.set(level: level, clipping: clipping)
+    }
+}
+#endif
+
+/// A sidebar channel meter that follows `DSPMeterModel` itself.  Its row does
+/// not observe the meters, so a status poll moves this layer and re-evaluates
+/// no SwiftUI view at all.
+struct ChannelMeterBar: View {
+    let meters: DSPMeterModel
+    let channel: Int
+    let color: Color
+    var isMuted: Bool = false
+
+    var body: some View {
+        LiveMeterBar(meters: meters, channel: channel, color: color)
+            .frame(height: 6)
+            .opacity(isMuted ? 0.4 : 1.0)
+    }
+}
+
+private struct LiveMeterBar {
+    let meters: DSPMeterModel
+    let channel: Int
+    let color: Color
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    #if os(macOS)
+    func makeNSView(context: Context) -> MeterBarNSView {
+        let view = MeterBarNSView()
+        updateNSView(view, context: context)
+        return view
+    }
+
+    func updateNSView(_ view: MeterBarNSView, context: Context) {
+        view.color = NSColor(color)
+        context.coordinator.follow(meters, channel: channel, view: view)
+    }
+
+    static func dismantleNSView(_ view: MeterBarNSView, coordinator: Coordinator) {
+        coordinator.subscription = nil
+    }
+    #else
+    func makeUIView(context: Context) -> MeterBarNSView {
+        let view = MeterBarNSView()
+        updateUIView(view, context: context)
+        return view
+    }
+
+    func updateUIView(_ view: MeterBarNSView, context: Context) {
+        view.color = UIColor(color)
+        context.coordinator.follow(meters, channel: channel, view: view)
+    }
+
+    static func dismantleUIView(_ view: MeterBarNSView, coordinator: Coordinator) {
+        coordinator.subscription = nil
+    }
+    #endif
+
+    final class Coordinator {
+        var subscription: AnyCancellable?
+        private weak var meters: DSPMeterModel?
+        private var channel = -1
+
+        func follow(_ meters: DSPMeterModel, channel: Int, view: MeterBarNSView) {
+            guard meters !== self.meters || channel != self.channel else { return }
+            self.meters = meters
+            self.channel = channel
+            // @Published delivers the new value before storing it, so the
+            // level is read from the event rather than from the model.
+            subscription = meters.$status.sink { [weak view] status in
+                let level = channel < status.peaks.count ? status.peaks[channel] : 0
+                let clipping = channel < 32 && status.clipLatched & (UInt32(1) << UInt32(channel)) != 0
+                view?.set(level: level, clipping: clipping)
+            }
+        }
+    }
+}
+#if os(macOS)
+extension LiveMeterBar: NSViewRepresentable {}
+#else
+extension LiveMeterBar: UIViewRepresentable {}
+#endif
+
+/// The Subharmonic Synth's per-output sub meter, following `SubharmMeter`
+/// itself as `LiveMeterBar` follows `DSPMeterModel`: the chip that owns it
+/// does not observe the meter, so a reading moves this layer and re-evaluates
+/// no SwiftUI view at all. (Observed through SwiftUI, a reading cost the
+/// layout of the whole chip row, about 10 ms, ten times a second.)
+struct SubharmLiveMeterBar {
+    let meter: SubharmMeter
+    let channel: Int
+    /// A masked-off output is never metered by the firmware; its rail stays
+    /// empty rather than showing a stale reading.
+    let enabled: Bool
+    let color: Color
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    #if os(macOS)
+    func makeNSView(context: Context) -> MeterBarNSView {
+        let view = MeterBarNSView()
+        updateNSView(view, context: context)
+        return view
+    }
+
+    func updateNSView(_ view: MeterBarNSView, context: Context) {
+        view.color = NSColor(color)
+        context.coordinator.follow(meter, channel: channel, enabled: enabled, view: view)
+    }
+
+    static func dismantleNSView(_ view: MeterBarNSView, coordinator: Coordinator) {
+        coordinator.subscription = nil
+    }
+    #else
+    func makeUIView(context: Context) -> MeterBarNSView {
+        let view = MeterBarNSView()
+        updateUIView(view, context: context)
+        return view
+    }
+
+    func updateUIView(_ view: MeterBarNSView, context: Context) {
+        view.color = UIColor(color)
+        context.coordinator.follow(meter, channel: channel, enabled: enabled, view: view)
+    }
+
+    static func dismantleUIView(_ view: MeterBarNSView, coordinator: Coordinator) {
+        coordinator.subscription = nil
+    }
+    #endif
+
+    final class Coordinator {
+        var subscription: AnyCancellable?
+        private weak var meter: SubharmMeter?
+        private var channel = -1
+        private var enabled = false
+
+        func follow(_ meter: SubharmMeter, channel: Int, enabled: Bool, view: MeterBarNSView) {
+            guard meter !== self.meter || channel != self.channel || enabled != self.enabled else { return }
+            self.meter = meter
+            self.channel = channel
+            self.enabled = enabled
+            guard enabled else {
+                subscription = nil
+                view.set(level: 0, clipping: false)
+                return
+            }
+            // @Published delivers the new value before storing it, so the
+            // level is read from the event rather than from the model.
+            subscription = meter.$levels.sink { [weak view] levels in
+                view?.set(level: channel < levels.count ? levels[channel] : 0, clipping: false)
+            }
+        }
+    }
+}
+#if os(macOS)
+extension SubharmLiveMeterBar: NSViewRepresentable {}
+#else
+extension SubharmLiveMeterBar: UIViewRepresentable {}
+#endif
+
+struct CpuMeter: View {
+    var core: Int
+    var load: Int
+    var body: some View {
+        HStack(spacing: 4) {
+            Text("C\(core):").font(.caption2).foregroundColor(.secondary)
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2).fill(Color.gray.opacity(0.3))
+                RoundedRectangle(cornerRadius: 2).fill(load > 90 ? Color.red : Color.blue)
+                    .frame(width: CGFloat(load) * 0.4) // Max 40px width
+            }
+            .frame(width: 40, height: 6)
+            Text("\(load)%").font(.caption2).monospacedDigit()
+        }
+    }
+}
+
+// Observes the meter model directly: DSPViewModel does not republish when
+// `meters.status` changes, so observing the view model froze the readings.
+struct CpuSection: View {
+    @ObservedObject var meters: DSPMeterModel
+    var body: some View {
+        HStack {
+            CpuMeter(core: 0, load: meters.status.cpu0)
+            Spacer()
+            CpuMeter(core: 1, load: meters.status.cpu1)
+        }
+    }
+}
+
+// Connection state dot + device picker.  Extracted from ContentView's
+// graph header so it can also live in the sidebar status row.  Right-click
+// the picker to force a USB reconnect.
+struct ConnectionStatusIndicator: View {
+    @ObservedObject var vm: DSPViewModel
+    @ObservedObject private var lockNotice = DeviceLock.notice
+    var body: some View {
+        HStack(spacing: 6) {
+
+            Circle()
+                .fill(vm.isDeviceConnected ? Color.green : Color.red)
+                .frame(width: 6, height: 6)
+                .help(vm.isDeviceConnected
+                      ? "Connected"
+                      : (vm.connectionError ?? "Not connected. Right-click the device name to retry."))
+
+            if vm.availableDevices.isEmpty {
+                Text("No Devices").font(.caption).foregroundColor(.red)
+            } else {
+                // The popup falls back to showing the first device when none is
+                // selected; it must stay clickable then, even as the only one,
+                // or a device shown there can never actually be chosen.  It
+                // also stays clickable while the shown device is not
+                // connected, since picking it again is how a retry is asked for.
+                let pickable = vm.availableDevices.count > 1
+                    || !vm.isDeviceConnected
+                    || !(vm.selectedDevice.map { vm.availableDevices.contains($0) } ?? false)
+                BorderlessPopUpButton(
+                    items: vm.availableDevices,
+                    titleForItem: { vm.deviceTitle($0) },
+                    selection: Binding(
+                        get: {
+                            if let selected = vm.selectedDevice,
+                               vm.availableDevices.contains(selected) {
+                                return selected
+                            }
+                            return vm.availableDevices.first ?? DSPiDevice(serial: "", locationID: 0)
+                        },
+                        set: { vm.switchToDevice($0) }
+                    ),
+                    font: .systemFont(ofSize: NSFont.smallSystemFontSize),
+                    enabled: pickable,
+                    showsHoverBorder: false,
+                    onRightClick: { vm.transport.reconnect() }
+                )
+                .overlay(alignment: .trailing) {
+                    if pickable {
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .offset(y: 1)
+                            .padding(.trailing, 4)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .fixedSize()
+                .allowsHitTesting(pickable)
+            }
+
+            // A command or flow refused with LOCKED (spec 7.7) shows here for a
+            // few seconds, rather than through every command's own error path.
+            if let message = lockNotice.message {
+                Label(message, systemImage: "lock.fill")
+                    .font(.caption2)
+                    .foregroundColor(.orange)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(message)
+            }
+        }
+    }
+}
+
+// Compact dB readout / editor sized to match CpuMeter.  Plain TextField
+// rather than ValueField so the font matches the surrounding caption2
+// status row.  Commits on Return / blur, falls back to the live value
+// when the entered text isn't a number.  "−∞" is shown at -128 dB (mute);
+// to leave mute, the user types a number.
+// MARK: - Sidebar Volume Mode + Master Volume Taper
+//
+// Mode for the sidebar volume slider.  `auto` preserves the input-source-
+// driven host/user split; `master` drives masterVolumeDB directly.
+// Persisted as a String via @AppStorage in AppSettings so a user's choice
+// survives relaunches.
+enum SidebarVolumeMode: String { case auto, master }
+
+// Piecewise-linear master volume taper used by MasterModeSection (the
+// sidebar slider in master mode).  Encodes the firmware's per-region
+// step sizes:
+//   0 to -10 dB:   0.1 dB steps over 100 units (~40% of throw)
+//  -10 to -40 dB:  0.5 dB steps over  60 units (~24% of throw)
+//  -40 to -128 dB: 1.0 dB steps over  88 units (~36% of throw)
+// Slider position 1.0 = 0 dB; 0.0 = -128 dB (mute, displayed as "−∞").
+enum MasterVolumeTaper {
+    static let totalUnits: Float = 248
+    static let break1: Float = 1.0 - 100 / totalUnits   // pos at -10 dB
+    static let break2: Float = break1 - 60 / totalUnits // pos at -40 dB
+
+    static func sliderToDB(_ pos: Float) -> Float {
+        if pos <= 0 { return -128 }
+        if pos >= 1 { return 0 }
+        if pos > break1 {
+            return -(1.0 - pos) * totalUnits * 0.1
+        } else if pos > break2 {
+            return -10 - (break1 - pos) * totalUnits * 0.5
+        } else {
+            return -40 - (break2 - pos) * totalUnits * 1.0
+        }
+    }
+
+    static func dbToSlider(_ db: Float) -> Float {
+        if db <= -128 { return 0 }
+        if db >= 0 { return 1 }
+        if db > -10 {
+            return 1.0 - (-db / 0.1) / totalUnits
+        } else if db > -40 {
+            return break1 - ((-db - 10) / 0.5) / totalUnits
+        } else {
+            return break2 - ((-db - 40) / 1.0) / totalUnits
+        }
+    }
+
+    /// Snap a dB value to the closest step the firmware actually applies
+    /// in each region (0.1 / 0.5 / 1.0 dB).  Used by the readout so the
+    /// number on screen matches what the device acts on.
+    static func displayValue(_ db: Float) -> Float {
+        if db <= -128 { return -128 }
+        let rounded: Float
+        if db > -10 { rounded = (db * 10).rounded() / 10 }
+        else if db > -40 { rounded = (db * 2).rounded() / 2 }
+        else { rounded = db.rounded() }
+        return rounded == -0.0 ? 0.0 : rounded
+    }
+
+    /// Pretty-print: "−∞" at -128 (mute), otherwise "%.1f dB" with trailing
+    /// ".0" stripped (e.g. "0", "-12", "-7.5").
+    static func format(_ db: Float) -> String {
+        if db <= -128 { return "−∞" }
+        let v = displayValue(db)
+        let s = String(format: "%.1f", v)
+        return s.hasSuffix(".0") ? String(s.dropLast(2)) : s
+    }
+}
+
+// MARK: - Volume Mode Selector
+//
+// Compact popup label used as the section heading on the sidebar volume
+// slider.  Renders as e.g. "User Volume ▾" (the input-source-driven host/
+// user path) or "Master Volume ▾" (master attenuator); clicking opens a
+// menu with those two choices.  The `inputSource` parameter is retained
+// for callers but no longer reflected in the menu — the user-facing label
+// reads "User Volume" regardless of whether the underlying path is the
+// CoreAudio host slider (USB) or REQ_SET_USER_VOLUME (SPDIF/I2S).
+struct VolumeModeSelector: View {
+    @Binding var modeRaw: String
+    /// Retained for API compatibility with callers; not used in the menu.
+    let inputSource: Int
+
+    private var mode: SidebarVolumeMode {
+        SidebarVolumeMode(rawValue: modeRaw) ?? .auto
+    }
+
+    private var headingText: String {
+        switch mode {
+        case .auto:   return "User Volume"
+        case .master: return "Master Volume"
+        }
+    }
+
+    var body: some View {
+        Menu {
+            Button {
+                modeRaw = SidebarVolumeMode.auto.rawValue
+            } label: {
+                if mode == .auto {
+                    Label("User Volume", systemImage: "checkmark")
+                } else {
+                    Text("User Volume")
+                }
+            }
+            Button {
+                modeRaw = SidebarVolumeMode.master.rawValue
+            } label: {
+                if mode == .master {
+                    Label("Master Volume", systemImage: "checkmark")
+                } else {
+                    Text("Master Volume")
+                }
+            }
+        } label: {
+            // The chevron is part of the text string rather than a
+            // sibling Image — `.menuStyle(.borderlessButton)` on macOS
+            // injects its own indicator and shuffles HStack siblings,
+            // so the only reliable way to place a chevron on the right
+            // is to bake it into the title.  `.menuIndicator(.hidden)`
+            // suppresses the system one.  Concatenated Texts keep the
+            // label at caption2 (matching "Source" and other sidebar
+            // labels) while bumping the chevron larger.
+            (Text(headingText).font(.caption2)
+             + Text(" ▾").font(.system(size: 11, weight: .bold)))
+                .foregroundColor(.secondary)
+                .contentShape(Rectangle())
+        }
+        // `.button` menu style + `.plain` button style strips the
+        // ~8pt horizontal padding that `.borderlessButton` adds, so
+        // the label sits flush left with sibling sidebar labels like
+        // "Source".
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+    }
+}
+
+struct MuteableLabel: View {
+    let text: String
+    let isMuted: Bool
+    var width: CGFloat = 8
+    let onToggle: () -> Void
+
+    var body: some View {
+        Button(action: onToggle) {
+            Text(text)
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundColor(.secondary)
+                .opacity(isMuted ? 0.3 : 1.0)
+        }
+        .buttonStyle(.plain)
+        .frame(width: width, alignment: .leading)
+        .help(isMuted ? "Click to unmute" : "Click to mute")
+    }
+}
+
+// MARK: - Sidebar Rows
+
+/// Sidebar descriptor badge that doubles as the graph curve's visibility toggle:
+/// coloured when the curve is drawn, greyed out when it is hidden.  The tap
+/// target is padded well beyond the capsule so the pill can be hit without
+/// tripping the row's channel-selection gesture.
+struct ChannelVisibilityPill: View {
+    let descriptor: String
+    let color: Color
+    let isVisible: Bool
+    let onToggle: () -> Void
+
+    var body: some View {
+        Button(action: {
+            withAnimation(.easeInOut(duration: 0.1)) { onToggle() }
+        }) {
+            Text(descriptor)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(isVisible ? color : .secondary)
+                .frame(minWidth: 32)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                // The shown state carries most of its weight in the outline, so
+                // the stroke runs much hotter than the fill - a tint strong
+                // enough to read on the dark sidebar would otherwise close on
+                // the label's own color and mush the two together.
+                .background(Capsule().fill(isVisible ? color.opacity(0.20)
+                                                     : Color.gray.opacity(0.12)))
+                .overlay(Capsule().stroke(isVisible ? color.opacity(0.60)
+                                                    : Color.gray.opacity(0.35),
+                                          lineWidth: 1))
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.leading, 10)
+                .padding(.trailing, 8)
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(isVisible ? "Hide \(descriptor) on the graph"
+                        : "Show \(descriptor) on the graph")
+    }
+}
+
+struct ChannelRow: View {
+    let channelIndex: Int   // unified input EQ channel index (0..chOut1-1)
+    let color: Color
+    let descriptor: String
+    let isSelected: Bool
+    let name: String
+    /// Handed to the meter bar, which follows it; the row itself does not observe it.
+    let meters: DSPMeterModel
+    let isRenaming: Bool
+    @Binding var renameText: String
+    /// Row height, tightened by the sidebar when input channels are crowded.
+    var rowHeight: CGFloat = 28
+    let onCommitRename: () -> Void
+    /// Graph-curve visibility for this channel, toggled by the descriptor pill.
+    let isCurveVisible: Bool
+    let onToggleCurve: () -> Void
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 0) {
+            if isSelected {
+                Rectangle().fill(Color.accentColor).frame(width: 3).padding(.vertical, 4)
+            } else {
+                Rectangle().fill(Color.clear).frame(width: 3).padding(.vertical, 4)
+            }
+
+            if isRenaming {
+                TextField("", text: $renameText)
+                    .textFieldStyle(.plain)
+                    .font(.body)
+                    .focused($isFocused)
+                    .onSubmit { onCommitRename() }
+                    .padding(.leading, 8)
+                    .frame(width: 80, alignment: .leading)
+            } else {
+                Text(name)
+                    .font(.body)
+                    .foregroundColor(isSelected ? .primary : .primary.opacity(0.9))
+                    .padding(.leading, 8)
+                    .frame(width: 80, alignment: .leading)
+            }
+
+            ChannelMeterBar(meters: meters, channel: channelIndex, color: color)
+            .padding(.leading, 4)
+
+            ChannelVisibilityPill(descriptor: descriptor,
+                                  color: color,
+                                  isVisible: isCurveVisible,
+                                  onToggle: onToggleCurve)
+        }
+        .frame(height: rowHeight)
+        .contentShape(Rectangle())
+        .background(isSelected ? Color.primary.opacity(0.05) : Color.clear)
+        .onChange(of: isRenaming) { renaming in
+            if renaming {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    isFocused = true
+                }
+            }
+        }
+        .onChange(of: isFocused) { focused in
+            if !focused && isRenaming { onCommitRename() }
+        }
+    }
+}
+
+struct OutputRow: View {
+    let output: MatrixOutput
+    let isSelected: Bool
+    let name: String
+    let isMuted: Bool
+    /// Handed to the meter bar, which follows it; the row itself does not observe it.
+    let meters: DSPMeterModel
+    let isRenaming: Bool
+    @Binding var renameText: String
+    /// Row height, tightened by the sidebar when input channels are crowded.
+    var rowHeight: CGFloat = 28
+    let onCommitRename: () -> Void
+    /// Unified EQ/channel index for this output (output index + chOut1).
+    let chIdx: Int
+    /// Graph-curve visibility for this channel, toggled by the descriptor pill.
+    let isCurveVisible: Bool
+    let onToggleCurve: () -> Void
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 0) {
+            if isSelected {
+                Rectangle().fill(Color.accentColor).frame(width: 3).padding(.vertical, 4)
+            } else {
+                Rectangle().fill(Color.clear).frame(width: 3).padding(.vertical, 4)
+            }
+
+            if isRenaming {
+                TextField("", text: $renameText)
+                    .textFieldStyle(.plain)
+                    .font(.body)
+                    .focused($isFocused)
+                    .onSubmit { onCommitRename() }
+                    .padding(.leading, 8)
+                    .frame(width: 80, alignment: .leading)
+            } else {
+                Text(name)
+                    .font(.body)
+                    .foregroundColor(isSelected ? .primary : .primary.opacity(0.9))
+                    .padding(.leading, 8)
+                    .frame(width: 80, alignment: .leading)
+            }
+
+            ChannelMeterBar(meters: meters, channel: chIdx, color: output.color, isMuted: isMuted)
+            .padding(.leading, 4)
+
+            ChannelVisibilityPill(descriptor: output.descriptor,
+                                  color: output.color,
+                                  isVisible: isCurveVisible,
+                                  onToggle: onToggleCurve)
+        }
+        .frame(height: rowHeight)
+        .contentShape(Rectangle())
+        .background(isSelected ? Color.primary.opacity(0.05) : Color.clear)
+        .onChange(of: isRenaming) { renaming in
+            if renaming {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    isFocused = true
+                }
+            }
+        }
+        .onChange(of: isFocused) { focused in
+            if !focused && isRenaming { onCommitRename() }
+        }
+    }
+}
+
+// MARK: - Channel Settings
+
+/// Header row for the output channel page.  Layout from left to right:
+///   1. Input routing preview — up to two USB input rows with
+///      a connected indicator, the input's name, the per-crosspoint gain, and a
+///      phase-invert toggle.  Clicking the indicator/name connects/disconnects
+///      that input from the current output; gain & invert are clickable to edit.
+///   2. Output GAIN slider.
+///   3. Output DELAY slider.
+///   4. Output MUTE toggle.
+///
+/// All four panels share the same rounded container and divider visual style.
+struct ChannelSettingsView: View {
+    @ObservedObject var vm: DSPViewModel
+    let outputIndex: Int
+    @Binding var gainDB: Float
+    @Binding var delayMS: Float
+    @Binding var isMuted: Bool
+    var maxDelay: Float = 85
+    var onGainDrag: ((Float) -> Void)? = nil
+    var onDelayDrag: ((Float) -> Void)? = nil
+
+    @State private var localGain: Float = 0
+    @State private var localDelay: Float = 0
+    @State private var isDraggingGain = false
+    @State private var isDraggingDelay = false
+    @State private var showLimiterSettings = false
+
+    /// Height of each icon's slot when mute shares the column with the
+    /// limiter.  Also the click target, so it is kept generous.
+    private let iconSlot: CGFloat = 22
+
+    /// A click toggles the limiter and a right-click opens the settings
+    /// popover, as the sidebar module icons do.  In its own hosting view because the icon follows the meter,
+    /// polled at about 16 Hz, and a reading must not re-lay out the page.
+    private var limiterCell: some View {
+        LiveGraphHost(flexibleHeight: true) {
+            OutputLimiterCell(
+                limiter: vm.limiter,
+                meter: vm.limiter.meter,
+                output: outputIndex,
+                isConnected: vm.isDeviceConnected,
+                onToggle: {
+                    let on = outputIndex < vm.limiter.outputs.count && vm.limiter.outputs[outputIndex].enabled
+                    // Part of the output configuration in independent mode.
+                    SettingsSaveCoordinator.shared.beginOutputEdit()
+                    vm.setLimiterEnabled(output: outputIndex, !on)
+                },
+                onSettings: { showLimiterSettings = true })
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .popover(isPresented: $showLimiterSettings, arrowEdge: .bottom) {
+            OutputLimiterSettings(vm: vm, limiter: vm.limiter, output: outputIndex)
+        }
+        .onAppear { vm.limiter.watchers += 1 }
+        .onDisappear { vm.limiter.watchers -= 1 }
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            // INPUT ROUTING PREVIEW
+            InputRoutingPanel(vm: vm, outputIndex: outputIndex)
+                .padding(.vertical, 8)
+                .padding(.leading, 12)
+                .padding(.trailing, 12)
+                .fixedSize(horizontal: true, vertical: false)
+
+            Divider()
+
+            // GAIN — label + value on top row, slider full width below
+            VStack(spacing: 4) {
+                HStack {
+                    Text("GAIN")
+                        .font(.caption).fontWeight(.bold).foregroundColor(.secondary)
+                    Spacer()
+                    ValueField(label: "dB", value: localGain, width: 60) {
+                        localGain = $0
+                        gainDB = $0
+                    }
+                }
+
+                Slider(value: $localGain, in: -60...10) { editing in
+                    isDraggingGain = editing
+                    if !editing { gainDB = localGain }
+                }
+                .controlSize(.small)
+                .frame(height: 24)
+                .onChange(of: localGain) { val in
+                    if isDraggingGain { onGainDrag?(val) }
+                }
+                .onAppear { localGain = gainDB }
+                .onChange(of: gainDB) { val in if !isDraggingGain { localGain = val } }
+                .onRightClick { localGain = 0; gainDB = 0 }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+
+            Divider()
+
+            // DELAY — same layout as GAIN
+            VStack(spacing: 4) {
+                HStack {
+                    Text("DELAY")
+                        .font(.caption).fontWeight(.bold).foregroundColor(.secondary)
+                    Spacer()
+                    ValueField(label: "ms", value: localDelay, width: 60) {
+                        localDelay = $0
+                        delayMS = $0
+                    }
+                }
+
+                Slider(value: $localDelay, in: 0...maxDelay) { editing in
+                    isDraggingDelay = editing
+                    if !editing { delayMS = localDelay }
+                }
+                .controlSize(.small)
+                .frame(height: 24)
+                .onChange(of: localDelay) { val in
+                    if isDraggingDelay { onDelayDrag?(val) }
+                }
+                .onAppear { localDelay = delayMS }
+                .onChange(of: delayMS) { val in if !isDraggingDelay { localDelay = val } }
+                .onRightClick { localDelay = 0; delayMS = 0 }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+
+            Divider()
+
+            // MUTE over the output limiter, so the limiter costs the page no
+            // vertical space.  The two icons sit in equal fixed-height slots
+            // with equal gaps above, between and below them; centring each in
+            // half the column left twice the gap between them.  The icons'
+            // colours carry the state; a tinted half would read as a divider.
+            // Without limiter firmware, mute keeps the whole column and its
+            // tint as before.
+            VStack(spacing: 0) {
+                let split = vm.firmwareSupportsLimiter
+                if split { Spacer(minLength: 0) }
+                // Without the split it fills the height and centres its icon,
+                // otherwise the top-aligned HStack would pin it to the top.
+                Toggle(isOn: $isMuted) {
+                    Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                        .font(split ? .title3 : .title2)
+                        .foregroundColor(isMuted ? .red : .secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                }
+                .toggleStyle(.button)
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+                .frame(height: split ? iconSlot : nil)
+                .frame(maxHeight: split ? nil : .infinity)
+                .offset(y: split ? 1 : 0)
+
+                if split {
+                    Spacer(minLength: 0)
+                    // Equal slots do not give equal gaps between the ink: the
+                    // gauge sits low in its slot (the dial is open at the
+                    // bottom) and is taller than the speaker.  This offset and
+                    // the speaker's 1 pt, measured from a render, even
+                    // the three gaps to within half a point.
+                    limiterCell
+                        .frame(height: iconSlot)
+                        .offset(y: -2)
+                    Spacer(minLength: 0)
+                }
+            }
+            .frame(width: 60)
+            .background(isMuted && !vm.firmwareSupportsLimiter ? Color.red.opacity(0.1) : Color.clear)
+        }
+        .frame(height: 68)
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+        .cornerRadius(10)
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+    }
+}
+
+// MARK: - Input Routing Panel
+
+/// Shows the matrix routing for a single output column: up to two USB input rows
+/// with a connect indicator, name, per-crosspoint gain, and invert toggle. The
+/// full set of inputs remains available in the matrix mixer.
+private struct InputRoutingPanel: View {
+    @ObservedObject var vm: DSPViewModel
+    let outputIndex: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(0..<min(vm.numMatrixInputs, BASE_MATRIX_INPUTS), id: \.self) { input in
+                InputRoutingRow(vm: vm, input: input, output: outputIndex)
+            }
+        }
+    }
+}
+
+/// A single input → output crosspoint row.  Designed to match the screenshot:
+/// `[●] Name   0.00 dB   INV` with active state in the input's color and
+/// disconnected state desaturated.
+private struct InputRoutingRow: View {
+    @ObservedObject var vm: DSPViewModel
+    let input: Int
+    let output: Int
+
+    @State private var localGain: Float = 0
+    @State private var isHoveringRow = false
+
+    private var connected: Bool { vm.matrixRouting[input][output] }
+    private var inverted: Bool { vm.matrixInvert[input][output] }
+    private var liveGain: Float { vm.matrixGain[input][output] }
+    private var inputColor: Color { MatrixInput.color(for: input) }
+    private var name: String { vm.inputChannelName(input) }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            // Connect indicator + tappable name
+            Button(action: toggleConnect) {
+                HStack(spacing: 6) {
+                    Image(systemName: connected ? "circle.fill" : "circle")
+                        .font(.system(size: 9))
+                        .foregroundColor(connected ? inputColor : .secondary.opacity(0.55))
+                    Text(name)
+                        .font(.system(size: 11, weight: connected ? .semibold : .regular))
+                        .foregroundColor(connected ? inputColor : .secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+            .buttonStyle(.plain)
+            .fixedSize()
+            .help(connected ? "Disconnect from \(outputName())" : "Connect to \(outputName())")
+
+            // Crosspoint gain — clickable / scrollable.  Greyed when disconnected
+            // but still editable so the user can pre-set a value before connecting.
+            ValueField(label: "dB", value: localGain, width: 44, scrollStep: 0.5, maxDecimals: 2) { v in
+                localGain = v
+                vm.setMatrixRoute(input: input, output: output,
+                                  enabled: connected, gain: v, invert: inverted)
+            }
+            .opacity(connected ? 1.0 : 0.55)
+            .onAppear { localGain = liveGain }
+            .onChange(of: liveGain) { val in localGain = val }
+            .onRightClick {
+                localGain = 0
+                vm.setMatrixRoute(input: input, output: output,
+                                  enabled: connected, gain: 0, invert: inverted)
+            }
+
+            // Phase invert.  Same orange-on / muted-off treatment as the matrix mixer.
+            Button(action: toggleInvert) {
+                Text("INV")
+                    .font(.system(size: 9, weight: inverted ? .bold : .medium))
+                    .foregroundColor(
+                        inverted ? .orange : .secondary.opacity(connected ? 0.45 : 0.3)
+                    )
+            }
+            .buttonStyle(.plain)
+            .help(inverted ? "Phase inverted" : "Normal phase")
+            .disabled(!connected)
+        }
+        // No fixed height — the ValueField needs body-sized vertical space to
+        // receive clicks reliably, and clamping the row chops its hit area.
+        .contentShape(Rectangle())
+        .onHover { isHoveringRow = $0 }
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(isHoveringRow ? Color.primary.opacity(0.04) : Color.clear)
+        )
+    }
+
+    private func outputName() -> String {
+        let eqCh = vm.eqChannel(forOutput: output)  // channelNames index for this output
+        if vm.channelNames.indices.contains(eqCh) {
+            let trimmed = vm.channelNames[eqCh].trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "Out \(output + 1)" : trimmed
+        }
+        return "Out \(output + 1)"
+    }
+
+    private func toggleConnect() {
+        vm.setMatrixRoute(input: input, output: output,
+                          enabled: !connected, gain: liveGain, invert: inverted)
+    }
+
+    private func toggleInvert() {
+        vm.setMatrixRoute(input: input, output: output,
+                          enabled: connected, gain: liveGain, invert: !inverted)
+    }
+}
+
+// MARK: - Per-Channel Preamp Control
+
+// MARK: - Input Pair Link Alert
+
+/// What the user chose when asked how to reconcile a mismatched pair.
+enum InputLinkChoice {
+    /// Copy this channel's filters and trim onto its partner, then link.
+    case keep(Int)
+    case cancel
+}
+
+enum InputLinkAlerts {
+    /// Ask which channel's settings to keep before linking a pair that doesn't
+    /// already match.  `pageChannel` is the input whose page the Link button
+    /// was clicked on, and it's offered first so the default keeps the tuning
+    /// the user is actually looking at.
+    #if os(macOS)
+    static func showMismatchAlert(pageChannel: Int, partner: Int,
+                                  bandsDiffer: Bool, preampDiffers: Bool) -> InputLinkChoice {
+        let alert = NSAlert()
+        configureMismatchAlert(alert, pageChannel: pageChannel, partner: partner,
+                               bandsDiffer: bandsDiffer, preampDiffers: preampDiffers)
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:  return .keep(pageChannel)
+        case .alertSecondButtonReturn: return .keep(partner)
+        default:                       return .cancel
+        }
+    }
+    #else
+    /// iOS: UIKit has no modal run loop, so the choice arrives in `completion`.
+    static func showMismatchAlert(pageChannel: Int, partner: Int,
+                                  bandsDiffer: Bool, preampDiffers: Bool,
+                                  completion: @escaping (InputLinkChoice) -> Void) {
+        let alert = PlatformAlert()
+        configureMismatchAlert(alert, pageChannel: pageChannel, partner: partner,
+                               bandsDiffer: bandsDiffer, preampDiffers: preampDiffers)
+        alert.present { response in
+            switch response {
+            case 0:  completion(.keep(pageChannel))
+            case 1:  completion(.keep(partner))
+            default: completion(.cancel)
+            }
+        }
+    }
+    #endif
+
+    #if os(macOS)
+    private typealias Alert = NSAlert
+    #else
+    private typealias Alert = PlatformAlert
+    #endif
+
+    private static func configureMismatchAlert(_ alert: Alert, pageChannel: Int, partner: Int,
+                                               bandsDiffer: Bool, preampDiffers: Bool) {
+        let pageLabel = "IN\(pageChannel + 1)"
+        let partnerLabel = "IN\(partner + 1)"
+        let differences: String
+        switch (bandsDiffer, preampDiffers) {
+        case (true, true):  differences = "different filters and input trims"
+        case (true, false): differences = "different filters"
+        default:            differences = "different input trims"
+        }
+
+        alert.messageText = "Inputs \(pageChannel + 1) and \(partner + 1) don't match"
+        alert.informativeText = """
+            These inputs have \(differences). Linking mirrors future edits across \
+            both channels, but it cannot merge settings that already differ.
+
+            Choose which channel's filters and trim to copy onto the other. This \
+            overwrites the other channel and cannot be undone.
+            """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Keep \(pageLabel)")
+        alert.addButton(withTitle: "Keep \(partnerLabel)")
+        alert.addButton(withTitle: "Cancel")
+    }
+}
+
+// MARK: - Input Channel Header
+//
+// Top-of-page header for input channel pages.  Combines:
+//   • Link button - toggles this channel's adjacent pair (1/2, 3/4, 5/6, 7/8)
+//     in `vm.linkedInputPairs`, which (a) synchronizes the preamp dB values
+//     across both halves and (b) mirrors subsequent PEQ filter edits between
+//     them (mirroring is wired at the call site that dispatches filter updates).
+//   • Preamp slider with inline label and dB value field.
+//   • Clear PEQ button - resets all bands on this channel, and on its partner
+//     when the pair is linked.
+struct InputChannelHeader: View {
+    let channel: Int  // input channel index (0 = L, 1 = R, 2..7 = surround)
+    @ObservedObject var vm: DSPViewModel
+    let onClearPEQ: () -> Void
+
+    @State private var localPreamp: Float = 0
+    @State private var isDragging = false
+
+    /// Adjacent pair this input belongs to, and the channel it pairs with.
+    private var pair: Int { channel / 2 }
+    private var partner: Int { channel ^ 1 }
+    /// A pair can only be linked while both of its channels are live.
+    private var pairAvailable: Bool { max(channel, partner) < vm.numMatrixInputs }
+    private var linked: Bool { vm.linkedPartner(of: channel) != nil }
+    /// "Link 1/2", "Link 3/4", … keyed to the sidebar's IN1..IN8 numbering.
+    private var pairLabel: String { "\(min(channel, partner) + 1)/\(max(channel, partner) + 1)" }
+
+    // Fixed label widths keep both pills the same size whatever their state:
+    // the link icon swaps glyphs and the clear label gains the pair number.
+    // Sized to the widest variants ("Link 3/4" 39.7pt, "Clear 7/8 PEQ" 68.0pt
+    // at caption/medium) plus a little slack.
+    private let linkIconWidth: CGFloat = 14
+    private let linkLabelWidth: CGFloat = 42
+    private let clearLabelWidth: CGFloat = 70
+
+    var body: some View {
+        // Three sections separated by Dividers, mirroring the output channel
+        // card's section-with-divider pattern.  Each section adds its own
+        // 12-pt horizontal / 8-pt vertical padding so dividers extend the
+        // full card height.
+        HStack(spacing: 0) {
+            // LINK section (hidden when this input's partner isn't live)
+            if pairAvailable {
+                Button(action: toggleLink) {
+                    HStack(spacing: 6) {
+                        Image(systemName: linked ? "link" : "link.badge.plus")
+                            .font(.caption).fontWeight(.medium)
+                            .frame(width: linkIconWidth)
+                        Text("Link \(pairLabel)")
+                            .font(.caption).fontWeight(.medium)
+                            .fixedSize()
+                            .frame(width: linkLabelWidth)
+                    }
+                    .foregroundColor(linked ? .accentColor : .secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(linked ? Color.accentColor.opacity(0.18) : Color.clear)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(
+                                linked ? Color.accentColor.opacity(0.45) : Color.gray.opacity(0.3),
+                                lineWidth: 1
+                            )
+                    )
+                }
+                .buttonStyle(.plain)
+                .help(linked ? "Unlink \(pairLabel) (preamp & PEQ stay independent)"
+                             : "Link \(pairLabel) (preamp & PEQ edits mirrored)")
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+
+                Divider()
+            }
+
+            // PREAMP section — label, slider, value.  Inner HStack uses 6-pt
+            // spacing to tighten the slider→value gap.  Spacers on either
+            // side of the content keep the preamp visually centered within
+            // this section's full available width.
+            HStack(spacing: 12) {
+                Spacer()
+
+                Text("Preamp")
+                    .font(.caption).fontWeight(.medium).foregroundColor(.secondary)
+                    .fixedSize()
+
+                HStack(spacing: 6) {
+                    Slider(value: $localPreamp, in: -60...10) { editing in
+                        isDragging = editing
+                        if !editing { vm.setPreampChannel(channel: channel, db: localPreamp) }
+                    }
+                    .controlSize(.small)
+                    .frame(height: 24)
+                    .onChange(of: localPreamp) { val in
+                        if isDragging {
+                            vm.sendPreampChannelToDevice(channel: channel, db: val)
+                            if let mirror = vm.linkedPartner(of: channel) {
+                                // Update the partner's @Published value so its
+                                // sidebar peak meter / cards reflect the mirrored value
+                                // immediately during drag.
+                                let rounded = (val * 10).rounded() / 10
+                                vm.preampDB[mirror] = rounded == -0.0 ? 0.0 : rounded
+                            }
+                        }
+                    }
+                    .onAppear { localPreamp = vm.preampDB[channel] }
+                    .onChange(of: vm.preampDB) { newArr in
+                        if !isDragging { localPreamp = newArr[channel] }
+                    }
+                    .onRightClick {
+                        localPreamp = 0
+                        vm.setPreampChannel(channel: channel, db: 0)
+                    }
+
+                    // Value field is sized to comfortably fit "-60.0" (the slider's
+                    // most negative value) plus the "dB" label without slack.
+                    ValueField(label: "dB", value: localPreamp, width: 44) { v in
+                        localPreamp = v
+                        vm.setPreampChannel(channel: channel, db: v)
+                    }
+                }
+                .frame(maxWidth: 320)
+
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+
+            Divider()
+
+            // CLEAR PEQ section
+            Button(action: onClearPEQ) {
+                Text(linked ? "Clear \(pairLabel) PEQ" : "Clear PEQ")
+                    .font(.caption).fontWeight(.medium)
+                    .fixedSize()
+                    .frame(width: clearLabelWidth)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.clear)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                    )
+            }
+            .buttonStyle(.plain)
+            .help(linked ? "Reset all PEQ bands on both channels of the linked pair"
+                         : "Reset all PEQ bands on this input")
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+        .frame(height: 56)
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+        .cornerRadius(10)
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+    }
+
+    private func toggleLink() {
+        guard pairAvailable else { return }
+
+        if vm.isInputPairLinked(pair) {
+            vm.setInputPairLinked(pair, false)
+            vm.refreshLinkedVisibility()
+            return
+        }
+
+        // Linking only mirrors future edits, so a pair that already differs
+        // has to be reconciled here - otherwise "linked" would quietly mean
+        // "still mismatched on every band nobody happens to touch".  Matching
+        // channels link with no prompt at all.
+        let mismatch = vm.inputPairMismatch(channel, partner)
+        if mismatch.bands || mismatch.preamp {
+            #if os(macOS)
+            let choice = InputLinkAlerts.showMismatchAlert(
+                pageChannel: channel, partner: partner,
+                bandsDiffer: mismatch.bands, preampDiffers: mismatch.preamp)
+            completeLink(after: choice)
+            #else
+            InputLinkAlerts.showMismatchAlert(
+                pageChannel: channel, partner: partner,
+                bandsDiffer: mismatch.bands, preampDiffers: mismatch.preamp) { choice in
+                completeLink(after: choice)
+            }
+            #endif
+            return
+        }
+        completeLink(after: nil)
+    }
+
+    /// The rest of `toggleLink` once any mismatch has been resolved (`nil`
+    /// when the pair already matched).
+    private func completeLink(after choice: InputLinkChoice?) {
+        switch choice {
+        case .cancel:
+            return
+        case .keep(let keeper):
+            vm.syncInputPair(from: keeper, to: keeper == channel ? partner : channel)
+        case nil:
+            break
+        }
+
+        vm.setInputPairLinked(pair, true)
+        // Re-evaluate which curves are shown on the graph so toggling link
+        // while this input is selected updates immediately.
+        vm.refreshLinkedVisibility()
+    }
+}
+
+// MARK: - Per-Channel Preamp Control (legacy)
+
+struct PreampControlView: View {
+    let channel: Int  // 0 = L, 1 = R
+    @ObservedObject var vm: DSPViewModel
+
+    @State private var localPreamp: Float = 0
+    @State private var isDragging = false
+
+    private var linked: Bool { vm.linkedPartner(of: channel) != nil }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Label("Preamp", systemImage: "dial.low.fill")
+                            .font(.caption).fontWeight(.bold).foregroundColor(.secondary)
+
+                        Button(action: {
+                            let nowLinked = !vm.isInputPairLinked(channel / 2)
+                            vm.setInputPairLinked(channel / 2, nowLinked)
+                            if nowLinked {
+                                // Sync other channel to this channel's value
+                                vm.setPreampChannel(channel: channel ^ 1, db: vm.preampDB[channel])
+                            }
+                        }) {
+                            Image(systemName: linked ? "link" : "link.badge.plus")
+                                .font(.caption2)
+                                .foregroundColor(linked ? .accentColor : .secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help(linked ? "Unlink L/R preamp" : "Link L/R preamp")
+                    }
+                    ValueField(label: "dB", value: localPreamp, width: 60) {
+                        localPreamp = $0
+                        vm.setPreampChannel(channel: channel, db: $0)
+                    }
+                }
+                .frame(width: 100, alignment: .leading)
+
+                Slider(value: $localPreamp, in: -60...10) { editing in
+                    isDragging = editing
+                    if !editing {
+                        vm.setPreampChannel(channel: channel, db: localPreamp)
+                    }
+                }
+                .onChange(of: localPreamp) { val in
+                    if isDragging {
+                        vm.sendPreampChannelToDevice(channel: channel, db: val)
+                        if let mirror = vm.linkedPartner(of: channel) {
+                            // Update other channel's @Published value so its view updates
+                            let rounded = (val * 10).rounded() / 10
+                            vm.preampDB[mirror] = rounded == -0.0 ? 0.0 : rounded
+                        }
+                    }
+                }
+                .onAppear { localPreamp = vm.preampDB[channel] }
+                .onChange(of: vm.preampDB) { newArr in
+                    if !isDragging { localPreamp = newArr[channel] }
+                }
+                .onRightClick {
+                    localPreamp = 0
+                    vm.setPreampChannel(channel: channel, db: 0)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity)
+        }
+        .frame(height: 60)
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+        .cornerRadius(10)
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+    }
+}
+
+// MARK: - Filter List
+
+/// Optional tab entry rendered in FilterListView's header row.
+/// This keeps the band-list mode selector local to the list without spending
+/// another horizontal row.
+struct FilterListTab {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+}
+
+/// Compact pill button used in FilterListView's header row.  Matches the
+/// caption-font / small-padding / outlined-rect treatment shared with the
+/// Link L/R button and the matrix INV toggle elsewhere in the UI.
+private struct FilterListHeaderButton: View {
+    let title: String
+    let tint: Color
+    let action: () -> Void
+    var help: String? = nil
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption).fontWeight(.medium)
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .help(help ?? "")
+    }
+}
+
+/// Split-pill control with two pure actions — "Enable All" and "Bypass
+/// All".  No stored toggle state; each half is a one-shot action that
+/// applies to every band.  A half is disabled (and dimmed) when its
+/// action would be a no-op, giving passive feedback about the list's
+/// current uniformity without turning the control itself into a toggle.
+private struct BypassAllControls: View {
+    let allBypassed: Bool
+    let allEnabled: Bool
+    let onEnableAll: () -> Void
+    let onBypassAll: () -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            BypassActionHalf(
+                title: "Enable All",
+                isDisabled: allEnabled,
+                action: onEnableAll
+            )
+            Rectangle()
+                .fill(Color.gray.opacity(0.3))
+                .frame(width: 1, height: 16)
+            BypassActionHalf(
+                title: "Bypass All",
+                isDisabled: allBypassed,
+                action: onBypassAll
+            )
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+        )
+    }
+}
+
+private struct BypassActionHalf: View {
+    let title: String
+    let isDisabled: Bool
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption).fontWeight(.medium)
+                .foregroundColor(.secondary)
+                .opacity(isDisabled ? 0.4 : 1.0)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(
+                    Rectangle()
+                        .fill(hovered && !isDisabled ? Color.gray.opacity(0.22) : Color.clear)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .onHover { hovered = $0 }
+        .help(isDisabled ? "" : title)
+    }
+}
+
+struct FilterListTabToggle: View {
+    let tabs: [FilterListTab]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(tabs.indices, id: \.self) { i in
+                if i > 0 {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 1, height: 16)
+                }
+                let tab = tabs[i]
+                Button(action: { if !tab.isSelected { tab.action() } }) {
+                    ZStack {
+                        // Reserve width to the widest tab title so each
+                        // segment is the same width regardless of label.
+                        ForEach(tabs.indices, id: \.self) { j in
+                            Text(tabs[j].title)
+                                .font(.caption).fontWeight(.medium)
+                                .opacity(0)
+                        }
+                        Text(tab.title)
+                            .font(.caption).fontWeight(.medium)
+                            .foregroundColor(tab.isSelected ? .primary : .secondary)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(
+                        Rectangle()
+                            .fill(tab.isSelected ? Color.gray.opacity(0.22) : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(tab.isSelected ? "Currently showing \(tab.title) bands" : "Switch to \(tab.title) bands")
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+        )
+    }
+}
+
+struct FilterListView: View {
+    let bands: [FilterParams]
+    let channelId: Int
+    /// Filter types offered in the per-band type picker.  Defaults to all
+    /// types; callers gate this on firmware capability (e.g. notch requires
+    /// firmware 1.1.4+).
+    var availableTypes: [FilterType] = FilterType.allCases
+    /// True when the connected firmware supports per-band bypass (>= 1.1.4).
+    var bypassSupported: Bool = false
+    /// Optional tabs rendered at the top of the card (above the column header).
+    /// Empty by default so existing call sites are unaffected.
+    var tabs: [FilterListTab] = []
+    /// When true the row layout swaps the GAIN column for an ORDER column and
+    /// the TYPE picker collapses to family + LP/HP — used by the XO tab where
+    /// gain is meaningless and crossover order is the meaningful axis.
+    var isCrossoverMode: Bool = false
+    let onUpdate: (Int, FilterParams) -> Void
+    /// Toggle bypass on a single band.  Cheaper than re-sending the full
+    /// EqParamPacket via onUpdate and avoids racing with in-flight edits.
+    var onBypassToggle: ((Int, Bool) -> Void)? = nil
+    var onClear: (() -> Void)? = nil
+    /// Set on PEQ lists whose bands are edited on the response graph: rows
+    /// then carry their band's graph colour, light up with its dot, select it
+    /// on a click of the number, and follow a graph drag live.
+    var graphSelection: PeqGraphSelection? = nil
+    var liveReadouts: PeqLiveReadouts? = nil
+
+    var body: some View {
+        // ScrollView contains the full list of rows.  Header and footer are
+        // attached as safeAreaInset views so they stay pinned at the top
+        // and bottom while the row content scrolls UNDERNEATH them — that
+        // lets us use `.ultraThinMaterial` for a true translucent vibrancy
+        // effect that picks up the row colors moving behind.
+        ScrollView {
+            // Rows are ids for the reader, so selecting a band on the graph
+            // can bring its row into view.
+            ScrollViewReader { proxy in
+                LazyVStack(spacing: 1) {
+                    ForEach(0..<bands.count, id: \.self) { index in
+                        FilterRowView(
+                            index: index,
+                            params: bands[index],
+                            availableTypes: availableTypes,
+                            bypassSupported: bypassSupported,
+                            isCrossoverMode: isCrossoverMode,
+                            onChange: { onUpdate(index, $0) },
+                            onBypassToggle: { newVal in
+                                onBypassToggle?(index, newVal)
+                            },
+                            graphSelection: graphSelection,
+                            liveReadouts: index < PeqLiveReadouts.bands ? liveReadouts : nil,
+                            isBandActive: { bands.indices.contains($0) && bands[$0].type != .flat }
+                        )
+                    }
+                }
+                .background {
+                    if let graphSelection {
+                        PeqRowScrollFollower(selection: graphSelection, proxy: proxy, rows: bands.count)
+                    }
+                }
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            HStack(spacing: 12) {
+                if bypassSupported {
+                    Spacer().frame(width: 18)
+                }
+                Text("#").font(.caption).fontWeight(.bold).foregroundColor(.secondary).frame(width: 24, alignment: .leading)
+                Text(isCrossoverMode ? "FAMILY" : "TYPE").font(.caption).fontWeight(.bold).foregroundColor(.secondary).padding(.leading, 8).frame(width: isCrossoverMode ? 110 : 140, alignment: .leading).padding(.leading, -15)
+                if isCrossoverMode {
+                    Text("TYPE").font(.caption).fontWeight(.bold).foregroundColor(.secondary).padding(.leading, 8).frame(width: 84, alignment: .leading).padding(.leading, 23)
+                    Text("SLOPE").font(.caption).fontWeight(.bold).foregroundColor(.secondary).padding(.leading, 7).frame(width: 80, alignment: .leading).padding(.leading, 25)
+                    Text("FREQ").font(.caption).fontWeight(.bold).foregroundColor(.secondary).frame(width: 104, alignment: .center).padding(.leading, -3)
+                } else {
+                    Text("FREQ").font(.caption).fontWeight(.bold).foregroundColor(.secondary).frame(width: 104, alignment: .center)
+                    Text("GAIN").font(.caption).fontWeight(.bold).foregroundColor(.secondary).frame(width: 84, alignment: .center)
+                    Text("WIDTH").font(.caption).fontWeight(.bold).foregroundColor(.secondary).frame(width: 74, alignment: .center)
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(height: 16)
+            .padding(.leading, 16)
+            .padding(.trailing, 8)
+            .padding(.vertical, 8)
+            .background(
+                ZStack {
+                    Color(NSColor.controlBackgroundColor)
+                    Color.black.opacity(0.01)
+                }
+            )
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if onClear != nil || !tabs.isEmpty || (bypassSupported && onBypassToggle != nil) {
+                HStack(spacing: 0) {
+                    if bypassSupported, let onBypassToggle = onBypassToggle {
+                        // Off bands (type == .flat) have no audio effect, so
+                        // their bypass flag is meaningless — exclude them from
+                        // both the disable logic and the click action.  When
+                        // every band is Off, `actionable` is empty and
+                        // allSatisfy returns true for both predicates, which
+                        // greys out both halves of the control.
+                        let actionable = bands.filter { $0.type != .flat }
+                        BypassAllControls(
+                            allBypassed: actionable.allSatisfy { $0.bypass },
+                            allEnabled: actionable.allSatisfy { !$0.bypass },
+                            onEnableAll: {
+                                for i in bands.indices where bands[i].type != .flat {
+                                    onBypassToggle(i, false)
+                                }
+                            },
+                            onBypassAll: {
+                                let doBypassAll = {
+                                    for i in bands.indices where bands[i].type != .flat {
+                                        onBypassToggle(i, true)
+                                    }
+                                }
+                                // Bypassing a crossover removes the high/low-pass
+                                // protection, sending full-range audio to the
+                                // drivers — which can destroy a tweeter.  Require
+                                // explicit confirmation on the XO tab.  Re-enabling
+                                // is safe, so onEnableAll stays unprompted.
+                                if isCrossoverMode {
+                                    #if os(macOS)
+                                    let alert = NSAlert()
+                                    #else
+                                    let alert = PlatformAlert()
+                                    #endif
+                                    alert.messageText = "Bypass this output's crossovers?"
+                                    alert.informativeText = "This sends full-range audio to this output with no crossover protection, which can damage unprotected drivers such as tweeters. Continue only if you are sure."
+                                    alert.alertStyle = .critical
+                                    alert.addButton(withTitle: "Bypass All")
+                                    alert.addButton(withTitle: "Cancel")
+                                    #if os(macOS)
+                                    if alert.runModal() == .alertFirstButtonReturn {
+                                        doBypassAll()
+                                    }
+                                    #else
+                                    alert.present { if $0 == 0 { doBypassAll() } }
+                                    #endif
+                                } else {
+                                    doBypassAll()
+                                }
+                            }
+                        )
+                        .fixedSize()
+                    }
+                    Spacer(minLength: 0)
+                    HStack(spacing: 8) {
+                        if let onClear = onClear {
+                            FilterListHeaderButton(
+                                title: "Clear All",
+                                tint: .secondary,
+                                action: {
+                                    #if os(macOS)
+                                    let alert = NSAlert()
+                                    #else
+                                    let alert = PlatformAlert()
+                                    #endif
+                                    alert.messageText = "Clear All Bands?"
+                                    alert.informativeText = "Every band in this list will be reset to its default (flat) state. This cannot be undone."
+                                    alert.alertStyle = .warning
+                                    alert.addButton(withTitle: "Clear All")
+                                    alert.addButton(withTitle: "Cancel")
+                                    #if os(macOS)
+                                    if alert.runModal() == .alertFirstButtonReturn {
+                                        onClear()
+                                    }
+                                    #else
+                                    alert.present { if $0 == 0 { onClear() } }
+                                    #endif
+                                },
+                                help: "Reset all bands"
+                            )
+                        }
+                        if !tabs.isEmpty {
+                            FilterListTabToggle(tabs: tabs)
+                        }
+                    }
+                    .fixedSize()
+                }
+                .padding(.leading, 16)
+                .padding(.trailing, 8)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial)
+            }
+        }
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+        .cornerRadius(10)
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+        .padding(.horizontal)
+        .padding(.bottom)
+        // The whole card, not one row: the rows are lazy, so a row's anchor
+        // would only resolve while it happened to be scrolled into view.
+        .onboardingAnchor("basics.add-filter")
+    }
+}
+
+// MARK: - NSViewRepresentable Components
+
+#if os(macOS)
+private class PaddedPopUpButtonCell: NSPopUpButtonCell {
+    override func drawTitle(_ title: NSAttributedString, withFrame frame: NSRect, in controlView: NSView) -> NSRect {
+        super.drawTitle(title, withFrame: frame.offsetBy(dx: 0, dy: 1), in: controlView)
+    }
+}
+
+/// A menu item that runs a closure.
+final class ClosureMenuItem: NSMenuItem {
+    private let handler: () -> Void
+    init(title: String, handler: @escaping () -> Void) {
+        self.handler = handler
+        super.init(title: title, action: #selector(run), keyEquivalent: "")
+        target = self
+    }
+    required init(coder: NSCoder) { fatalError() }
+    @objc private func run() { handler() }
+}
+
+private class PaddedPopUpButton: NSPopUpButton {
+    var trailingPadding: CGFloat = 14
+    var onRightClick: (() -> Void)?
+    // Without it a right-click falls through to NSView and pops the item list.
+    var contextMenu: (() -> NSMenu?)?
+    override class var cellClass: AnyClass? {
+        get { PaddedPopUpButtonCell.self }
+        set {}
+    }
+    override var intrinsicContentSize: NSSize {
+        var size = super.intrinsicContentSize
+        size.width += trailingPadding
+        return size
+    }
+    override func rightMouseDown(with event: NSEvent) {
+        if let menu = contextMenu?() {
+            NSMenu.popUpContextMenu(menu, with: event, for: self)
+        } else if let onRightClick = onRightClick {
+            onRightClick()
+        } else {
+            super.rightMouseDown(with: event)
+        }
+    }
+}
+
+struct BorderlessPopUpButton<T: Hashable>: NSViewRepresentable {
+    let items: [T]
+    let titleForItem: (T) -> String
+    @Binding var selection: T
+
+    var font: NSFont?
+    var enabled: Bool = true
+    var showsHoverBorder: Bool = true
+    var onRightClick: (() -> Void)? = nil
+    var contextMenu: (() -> NSMenu?)? = nil
+
+    func makeNSView(context: Context) -> NSPopUpButton {
+        let button = PaddedPopUpButton(frame: .zero, pullsDown: false)
+        button.isBordered = showsHoverBorder
+        button.showsBorderOnlyWhileMouseInside = showsHoverBorder
+        button.onRightClick = onRightClick
+        button.contextMenu = contextMenu
+        (button.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
+        if let font = font { button.font = font }
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.selectionChanged(_:))
+        return button
+    }
+
+    func updateNSView(_ button: NSPopUpButton, context: Context) {
+        // Update coordinator's reference to current parent (fixes stale binding issue)
+        context.coordinator.parent = self
+
+        if let font = font { button.font = font }
+        button.isBordered = showsHoverBorder && enabled
+        button.showsBorderOnlyWhileMouseInside = showsHoverBorder && enabled
+        (button as? PaddedPopUpButton)?.onRightClick = onRightClick
+        (button as? PaddedPopUpButton)?.contextMenu = contextMenu
+
+        // Only rebuild menu if items changed (avoids swallowing clicks during polling updates)
+        let currentTitles = (0..<(button.menu?.numberOfItems ?? 0)).map { button.menu?.item(at: $0)?.title ?? "" }
+        let newTitles = items.map { titleForItem($0) }
+        if currentTitles != newTitles {
+            button.menu?.removeAllItems()
+            for (index, item) in items.enumerated() {
+                let menuItem = NSMenuItem(title: titleForItem(item), action: nil, keyEquivalent: "")
+                menuItem.tag = index
+                button.menu?.addItem(menuItem)
+            }
+        }
+
+        // Reconcile selection in two passes.
+        //
+        // (1) Sync NSPopUpButton's internal selection tracking via
+        //     selectItem(withTag:).  This updates the button-face display
+        //     and AppKit's notion of "the selected item" for key nav /
+        //     accessibility.  The indexOfSelectedItem short-circuit avoids
+        //     redundant work during rapid @Published-driven re-renders.
+        //
+        // (2) Explicitly normalize every NSMenuItem.state.  Defends against
+        //     the case where AppKit's internal _selectedItem pointer has
+        //     desynced from the actual .state fields — which can leave a
+        //     stale .on on the previously-clicked item, manifesting as
+        //     MULTIPLE CHECKMARKS in the popup.
+        //
+        //     Reproducible trigger: rapidly clicking through presets,
+        //     especially empty ones.  Multiple unoccupied slots share the
+        //     title "Empty" (presetDropdownLabel), and AppKit's selectItem
+        //     machinery clears state on whatever it THINKS was previously
+        //     selected — if that internal pointer references an item that
+        //     was displaced by a menu rebuild, or if a native click and a
+        //     selectItem call disagree about "previous", stale .on bits
+        //     accumulate on prior items.  Explicitly walking the menu and
+        //     setting state from the authoritative `selection` binding
+        //     guarantees exactly one .on regardless of AppKit bookkeeping.
+        if let targetIndex = items.firstIndex(of: selection) {
+            if button.indexOfSelectedItem != targetIndex {
+                button.selectItem(withTag: targetIndex)
+            }
+            if let menu = button.menu {
+                for i in 0..<menu.numberOfItems {
+                    if let menuItem = menu.item(at: i) {
+                        let shouldBeOn = (menuItem.tag == targetIndex)
+                        let desired: NSControl.StateValue = shouldBeOn ? .on : .off
+                        if menuItem.state != desired {
+                            menuItem.state = desired
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    class Coordinator: NSObject {
+        var parent: BorderlessPopUpButton
+
+        init(_ parent: BorderlessPopUpButton) {
+            self.parent = parent
+        }
+
+        @objc func selectionChanged(_ sender: NSPopUpButton) {
+            let index = sender.indexOfSelectedItem
+            if index >= 0 && index < parent.items.count {
+                parent.selection = parent.items[index]
+            }
+        }
+    }
+}
+#else
+/// iOS: the same pop-up as a SwiftUI `Menu` around a `Picker`, which gives
+/// the native checkmarked list on touch.  Long press stands in for the
+/// right-click hook.
+struct BorderlessPopUpButton<T: Hashable>: View {
+    let items: [T]
+    let titleForItem: (T) -> String
+    @Binding var selection: T
+
+    var font: NSFont?
+    var enabled: Bool = true
+    var showsHoverBorder: Bool = true
+    var onRightClick: (() -> Void)? = nil
+    /// The right-click menu (iOS: the long-press context menu).
+    var contextMenu: (() -> NSMenu?)? = nil
+
+    var body: some View {
+        let picker = Menu {
+            Picker("", selection: $selection) {
+                ForEach(items, id: \.self) { item in
+                    Text(titleForItem(item)).tag(item)
+                }
+            }
+        } label: {
+            Text(titleForItem(selection))
+                .font(font.map { Font($0) } ?? .body)
+                .lineLimit(1)
+                .foregroundColor(enabled ? .primary : .secondary)
+        }
+        .disabled(!enabled)
+        if let contextMenu = contextMenu {
+            picker.contextMenu {
+                if let menu = contextMenu() {
+                    ForEach(menu.items.indices, id: \.self) { i in
+                        Button(menu.items[i].title) { menu.items[i].run() }
+                    }
+                }
+            }
+        } else {
+            picker.onRightClick { onRightClick?() }
+        }
+    }
+}
+#endif
+
+// MARK: - Filter Row
+
+struct FilterRowView: View {
+    let index: Int
+    var params: FilterParams
+    /// Filter types offered in the type picker.  Caller gates this on
+    /// firmware capability — e.g. notch requires firmware 1.1.4+.
+    var availableTypes: [FilterType] = FilterType.allCases
+    /// True when the connected firmware supports per-band bypass (>= 1.1.4).
+    /// When false the bypass checkbox is hidden so users don't try to use
+    /// a non-functional control.
+    var bypassSupported: Bool = false
+    /// When true the row renders the XO-tab layout: a shape (family+LP/HP)
+    /// picker, a separate order picker, freq, and an empty width column.
+    var isCrossoverMode: Bool = false
+    var onChange: (FilterParams) -> Void
+    /// Toggle just the bypass flag without re-sending freq/Q/gain.  When
+    /// nil, the checkbox is rendered but its action no-ops; callers should
+    /// always wire this when bypassSupported is true.
+    var onBypassToggle: ((Bool) -> Void)? = nil
+    var graphSelection: PeqGraphSelection? = nil
+    var liveReadouts: PeqLiveReadouts? = nil
+    /// Which rows of the list hold a band, for a Shift-click's run.
+    var isBandActive: (Int) -> Bool = { _ in true }
+
+    /// Presentation state for the Linkwitz Transform parameter popover.  LT has
+    /// four parameters (f0, Q0, fp, Qp) that don't fit the shared 3-column row,
+    /// so they live in a popover opened from a compact button instead of
+    /// widening the table.
+    @State private var showLinkwitzPanel = false
+
+    /// Working copy of the LT parameters while the popover is open.  Edits stage
+    /// here instead of reaching the device keystroke by keystroke: a Linkwitz
+    /// Transform trades headroom for bass extension, and a mistyped fp is tens
+    /// of dB of boost into a driver.  Staging lets the panel show the resulting
+    /// DC boost first and makes the commit deliberate.  nil while closed.
+    ///
+    /// There's no separate baseline - `params` is by definition what's applied,
+    /// so Revert is "draft = params" and dirty is "draft != params".
+    @State private var linkwitzDraft: FilterParams? = nil
+
+    var isActive: Bool { params.type != .flat }
+    var isBypassed: Bool { params.bypass }
+
+    private var indexColor: Color {
+        guard isActive, !isBypassed else { return .secondary.opacity(0.5) }
+        if graphSelection != nil, !bypassSupported { return PeqBandPalette.color(index) }
+        return .primary
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Bypass checkbox (firmware 1.1.4+).  Filled disc only when the
+            // band is both armed (filter type != Off) and not bypassed; an
+            // "Off" band renders the same hollow ring as a bypassed one
+            // since its audio contribution is the same.
+            if bypassSupported {
+                BypassCheckbox(
+                    isActive: isActive && !isBypassed,
+                    isEnabled: isActive,
+                    color: graphSelection != nil && isActive ? PeqBandPalette.color(index) : nil,
+                    onToggle: { onBypassToggle?(!isBypassed) }
+                )
+                .frame(width: 18, height: 18)
+            }
+
+            // Index.  The bypass control carries the band's graph colour;
+            // without one (firmware before per-band bypass) the number does.
+            Text("\(index + 1)")
+                .font(.system(.body))
+                .foregroundColor(indexColor)
+                .frame(width: 24, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard let graphSelection, isActive else { return }
+                #if os(macOS)
+                let mods = NSEvent.modifierFlags
+                graphSelection.listClick(index, command: mods.contains(.command),
+                                         shift: mods.contains(.shift), isActive: isBandActive)
+                #else
+                graphSelection.listClick(index, command: false, shift: false, isActive: isBandActive)
+                #endif
+            }
+
+            if isCrossoverMode {
+                crossoverRowContent
+            } else {
+                peqRowContent
+            }
+
+            Spacer()
+        }
+        .frame(height: 24) // Fixed height to prevent jumping
+        .padding(.vertical, 6)
+        .padding(.horizontal, 16)
+        .background(
+            ZStack {
+                if index % 2 == 0 { Color.white.opacity(0.03) }
+                if let graphSelection {
+                    PeqRowHighlight(selection: graphSelection, band: index, isActive: isActive)
+                }
+            }
+        )
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            guard let graphSelection else { return }
+            if hovering, isActive {
+                graphSelection.listHovered = index
+            } else if graphSelection.listHovered == index {
+                graphSelection.listHovered = nil
+            }
+        }
+    }
+
+    // MARK: PEQ-tab row layout
+
+    @ViewBuilder
+    private var peqRowContent: some View {
+        // Type Selector - a hierarchical menu.  Top level is the filter shape;
+        // shapes with multiple orders (shelves, all-pass) open a submenu of
+        // their order variants (e.g. "Low Shelf" ▸ "6 dB" / "12 dB").  The
+        // button face shows the full name of the selected type.
+        // Type name picker (left-click opens the shape menu).
+        typeNameMenu
+
+        // Controls
+        if isActive {
+            if params.type.isLinkwitzTransform {
+                linkwitzControls
+                    .opacity(isBypassed ? 0.45 : 1.0)
+            } else {
+                HStack(spacing: 12) {
+                    // Freq
+                    ValueField(label: "Hz", value: params.freq, width: 80, scrollStep: 10, minValue: 10,
+                               liveReadout: liveReadouts?.freq[index]) {
+                        var p = params; p.freq = $0; onChange(p)
+                    }
+
+                    // Gain
+                    if params.type.usesGain {
+                        ValueField(label: "dB", value: params.gain, width: 60, maxDecimals: 3,
+                                   liveReadout: liveReadouts?.gain[index]) {
+                            var p = params; p.gain = $0; onChange(p)
+                        }
+                    } else {
+                        Spacer().frame(width: 60 + 24) // Placeholder
+                    }
+
+                    // Q (hidden for crossover and first-order PEQ types — firmware
+                    // ignores Q on those).
+                    if params.type.usesQ {
+                        ValueField(label: "Q", value: params.q, width: 50, minValue: 0.1, maxDecimals: 3, stripTrailingZeros: true,
+                                   liveReadout: liveReadouts?.q[index]) {
+                            var p = params; p.q = $0; onChange(p)
+                        }
+                    } else {
+                        Spacer().frame(width: 50 + 24)
+                    }
+                }
+                .opacity(isBypassed ? 0.45 : 1.0)
+            }
+        }
+    }
+
+    /// Implied DC boost of a Linkwitz Transform, `40 x log10(f0/fp)` dB.
+    /// Positive when fp < f0 (bass extension).  Real low-frequency gain that
+    /// consumes driver excursion and amp headroom - surfaced so the user can
+    /// apply a matching preamp cut.  See peq_filters.md §3.3.
+    ///
+    /// Takes the band explicitly so the popover can show the boost the *draft*
+    /// would produce, before it's applied.
+    private func linkwitzDCBoostDB(_ p: FilterParams) -> Float {
+        guard p.gain > 0, p.freq > 0 else { return 0 }
+        return 40 * log10(p.freq / p.gain)
+    }
+
+    /// The LT values the popover is editing: the draft once open, otherwise the
+    /// applied band.
+    private var linkwitzEditing: FilterParams { linkwitzDraft ?? params }
+
+    /// True when the draft holds edits that haven't been applied to the device.
+    ///
+    /// Compared with tolerances, not exactly, because applying quantises:
+    /// `setFilter` rounds the gain field (fp, in Hz for LT) to 0.001, and qp
+    /// goes over the wire as `round(qp x 512)`.  An exact comparison would
+    /// leave the panel permanently dirty after applying a value the round trip
+    /// can't reproduce exactly.
+    private var linkwitzDirty: Bool {
+        guard let d = linkwitzDraft else { return false }
+        return abs(d.freq - params.freq) >= 0.05
+            || abs(d.q - params.q) >= 0.0005
+            || abs(d.gain - params.gain) >= 0.05
+            || abs(d.qp - params.qp) >= 1.0 / 512.0
+    }
+
+    /// Stage one LT field edit into the draft without touching the device.
+    private func editLinkwitz(_ mutate: (inout FilterParams) -> Void) {
+        var d = linkwitzEditing
+        mutate(&d)
+        linkwitzDraft = d
+    }
+
+    /// The filter-type name picker (a hierarchical Menu).  Extracted so the
+    /// Linkwitz Transform row can hang a right-click gesture and popover off it
+    /// without duplicating the styling.
+    @ViewBuilder
+    private var typeNameMenu: some View {
+        Menu {
+            peqTypeMenuItems
+        } label: {
+            Text(params.type.name)
+                .font(.system(size: 13))
+                .lineLimit(1)
+                .foregroundColor(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        // `.button` style + `.plain` strips the ~8pt padding `.borderlessButton`
+        // adds so the label sits flush-left under the TYPE header; the chevron
+        // is an overlay (not an HStack sibling, which borderless menus shuffle).
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .frame(width: 140, height: 20, alignment: .leading)
+        .overlay(alignment: .trailing) {
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundColor(.secondary)
+                .padding(.trailing, 4)
+                .allowsHitTesting(false)
+        }
+        .padding(.leading, -15)
+        .opacity(isBypassed || !isActive ? 0.45 : 1.0)
+    }
+
+    /// LT row controls: a single config icon in the Freq column that opens the
+    /// parameter popover.  No numeric columns, so the table stays clean.
+    @ViewBuilder
+    private var linkwitzControls: some View {
+        HStack(spacing: 12) {
+            Button {
+                showLinkwitzPanel = true
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .frame(width: 80 + 24, alignment: .center)
+            .help("Edit Linkwitz Transform parameters (f0, Q0, fp, Qp)")
+            .popover(isPresented: $showLinkwitzPanel, arrowEdge: .bottom) {
+                linkwitzPopover
+            }
+        }
+    }
+
+    /// The Linkwitz Transform parameter panel: driver alignment (f0, Q0) mapped
+    /// to a target alignment (fp, Qp), with the implied DC boost called out.
+    @ViewBuilder
+    private var linkwitzPopover: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Linkwitz Transform")
+                    .font(.headline)
+                Text("Re-align a sealed woofer's rolloff from the driver's (f0, Q0) to a target (fp, Qp).")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
+                GridRow {
+                    Text("Driver").font(.caption.weight(.semibold)).foregroundColor(.secondary)
+                    linkwitzField(label: "f0", unit: "Hz", value: linkwitzEditing.freq, width: 64, scrollStep: 1, minValue: 10, decimals: 1) { v in
+                        editLinkwitz { $0.freq = v }
+                    }
+                    linkwitzField(label: "Q0", unit: "", value: linkwitzEditing.q, width: 56, scrollStep: 0.01, minValue: 0.1, decimals: 3) { v in
+                        editLinkwitz { $0.q = v }
+                    }
+                }
+                GridRow {
+                    Text("Target").font(.caption.weight(.semibold)).foregroundColor(.secondary)
+                    linkwitzField(label: "fp", unit: "Hz", value: linkwitzEditing.gain, width: 64, scrollStep: 1, minValue: 10, decimals: 1) { v in
+                        editLinkwitz { $0.gain = v }
+                    }
+                    linkwitzField(label: "Qp", unit: "", value: linkwitzEditing.qp, width: 56, scrollStep: 0.01, minValue: 0.1, decimals: 3) { v in
+                        editLinkwitz { $0.qp = v }
+                    }
+                }
+            }
+
+            Divider()
+
+            let boost = linkwitzDCBoostDB(linkwitzEditing)
+            HStack(spacing: 6) {
+                Text("DC boost")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text(String(format: "%+.1f dB", boost))
+                    .font(.callout.monospacedDigit().weight(.semibold))
+                    .foregroundColor(boost > 15 ? .orange : .primary)
+                if boost > 15 {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+            }
+            Text("Real low-frequency gain (40 x log10(f0/fp)). It uses driver excursion and amp headroom - reduce preamp or master volume to match.")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Divider()
+
+            HStack(spacing: 8) {
+                Text(linkwitzDirty ? "Not applied yet" : "Applied")
+                    .font(.caption)
+                    .foregroundColor(linkwitzDirty ? .orange : .secondary)
+
+                Spacer()
+
+                Button("Revert") { linkwitzDraft = params }
+                    .disabled(!linkwitzDirty)
+                Button("Apply") {
+                    if let d = linkwitzDraft { onChange(d) }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!linkwitzDirty)
+            }
+        }
+        .padding(16)
+        .frame(width: 300)
+        // Seed the draft from the applied band each time the panel opens, and
+        // drop it on close so unapplied edits are discarded rather than
+        // lingering into the next visit.
+        .onAppear { linkwitzDraft = params }
+        .onDisappear { linkwitzDraft = nil }
+    }
+
+    /// A labelled numeric field for the LT popover: caption label, the value
+    /// field, then an optional unit - fixed widths so the two rows align.
+    @ViewBuilder
+    private func linkwitzField(label: String, unit: String, value: Float, width: CGFloat,
+                               scrollStep: Float, minValue: Float, decimals: Int,
+                               onCommit: @escaping (Float) -> Void) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .font(.caption.monospacedDigit())
+                .foregroundColor(.secondary)
+                .frame(width: 20, alignment: .leading)
+            ValueField(label: unit, value: value, width: width, scrollStep: scrollStep,
+                       minValue: minValue, maxDecimals: decimals, stripTrailingZeros: true, onCommit: onCommit)
+        }
+    }
+
+    /// A shape in the PEQ type menu and its order variants (gentler first).
+    /// Single-variant shapes render as a plain item; multi-variant shapes
+    /// (shelves, cuts, all-pass) render as a submenu of their `orderLabel`s.
+    private struct PEQMenuGroup { let name: String; let variants: [FilterType] }
+
+    private static let peqMenuGroups: [PEQMenuGroup] = [
+        PEQMenuGroup(name: "Off",        variants: [.flat]),
+        PEQMenuGroup(name: "Peaking",    variants: [.peaking]),
+        PEQMenuGroup(name: "Low Shelf",  variants: [.lowShelf1, .lowShelf]),
+        PEQMenuGroup(name: "High Shelf", variants: [.highShelf1, .highShelf]),
+        PEQMenuGroup(name: "High Cut",   variants: [.lowPass1, .lowPass]),
+        PEQMenuGroup(name: "Low Cut",    variants: [.highPass1, .highPass]),
+        PEQMenuGroup(name: "Notch",      variants: [.notch]),
+        PEQMenuGroup(name: "All Pass",   variants: [.allPass1, .allPass]),
+        PEQMenuGroup(name: "Linkwitz Transform", variants: [.linkwitzTransform]),
+    ]
+
+    @ViewBuilder
+    private var peqTypeMenuItems: some View {
+        ForEach(Self.peqMenuGroups, id: \.name) { group in
+            // Gate each shape's variants on firmware capability via the
+            // caller-supplied `availableTypes`.
+            let avail = group.variants.filter { availableTypes.contains($0) }
+            if avail.count == 1 {
+                peqTypeButton(avail[0], title: group.name)
+            } else if avail.count > 1 {
+                Menu(group.name) {
+                    ForEach(avail, id: \.self) { type in
+                        peqTypeButton(type, title: type.orderLabel ?? type.name)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func peqTypeButton(_ type: FilterType, title: String) -> some View {
+        Button {
+            // `retyped` sanitizes the fields the Linkwitz Transform repurposes,
+            // so a leftover dB gain can't land in the band as an fp of a few Hz
+            // (and a huge DC boost) the moment the type changes.
+            onChange(params.retyped(to: type))
+        } label: {
+            if params.type == type {
+                Label(title, systemImage: "checkmark")
+            } else {
+                Text(title)
+            }
+        }
+    }
+
+    // MARK: XO-tab row layout
+
+    private var currentFamilyOption: CrossoverFamilyOption {
+        CrossoverFamilyOption(from: params.type)
+    }
+
+    private var currentLowPass: Bool {
+        params.type.crossoverIsLowPass ?? true
+    }
+
+    /// Family options offered in the XO TYPE picker — Off plus the unique
+    /// crossover families present in `availableTypes`.
+    private var availableFamilies: [CrossoverFamilyOption] {
+        var seen = Set<CrossoverFamilyOption>()
+        var out: [CrossoverFamilyOption] = [.off]
+        seen.insert(.off)
+        for t in availableTypes {
+            let opt = CrossoverFamilyOption(from: t)
+            if seen.insert(opt).inserted { out.append(opt) }
+        }
+        return out
+    }
+
+    private var availableOrdersForFamily: [Int] {
+        currentFamilyOption.family?.availableOrders ?? []
+    }
+
+    @ViewBuilder
+    private var crossoverRowContent: some View {
+        // TYPE picker — full family name only (LP/HP lives in its own column).
+        BorderlessPopUpButton(
+            items: availableFamilies,
+            titleForItem: { $0.label },
+            selection: Binding(
+                get: { currentFamilyOption },
+                set: { applyFamily($0) }
+            )
+        )
+        .frame(width: 110, height: 20)
+        .overlay(alignment: .trailing) {
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundColor(.secondary)
+                .padding(.trailing, 4)
+                .allowsHitTesting(false)
+        }
+        .padding(.leading, -15)
+        .opacity(isBypassed || !isActive ? 0.45 : 1.0)
+
+        if isActive {
+            HStack(spacing: 12) {
+                // LP/HP picker — splits direction out of TYPE so each axis
+                // is independently selectable.
+                BorderlessPopUpButton(
+                    items: [true, false],
+                    titleForItem: { $0 ? "Low Pass" : "High Pass" },
+                    selection: Binding(
+                        get: { currentLowPass },
+                        set: { applyLowPass($0) }
+                    )
+                )
+                .frame(width: 84, height: 20)
+                .overlay(alignment: .trailing) {
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(.secondary)
+                        .padding(.trailing, 4)
+                        .allowsHitTesting(false)
+                }
+                .padding(.leading, 23)
+
+                // Slope picker — order shown as its dB/octave equivalent
+                // (order × 6).  Internal data model is still order; only
+                // the label changes for user-facing clarity.
+                BorderlessPopUpButton(
+                    items: availableOrdersForFamily,
+                    titleForItem: { "\($0 * 6) dB/oct" },
+                    selection: Binding(
+                        get: { params.type.crossoverOrder },
+                        set: { applyOrder($0) }
+                    )
+                )
+                .frame(width: 80, height: 20)
+                .overlay(alignment: .trailing) {
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(.secondary)
+                        .padding(.trailing, 4)
+                        .allowsHitTesting(false)
+                }
+                .padding(.leading, 25)
+
+                // Freq
+                ValueField(label: "Hz", value: params.freq, width: 80, scrollStep: 10, minValue: 10) {
+                    var p = params; p.freq = $0; onChange(p)
+                }
+                .padding(.leading, -3)
+            }
+            .opacity(isBypassed ? 0.45 : 1.0)
+        }
+    }
+
+    private func applyFamily(_ option: CrossoverFamilyOption) {
+        var p = params
+        switch option {
+        case .off:
+            p.type = .flat
+        case .family(let family):
+            // Preserve current order if valid for the new family, else
+            // snap to the closest available.  Preserve current LP/HP
+            // (defaults to LP when transitioning from Off).
+            let orders = family.availableOrders
+            let currentOrder = params.type.crossoverOrder
+            let order = orders.contains(currentOrder)
+                ? currentOrder
+                : (orders.min(by: { abs($0 - currentOrder) < abs($1 - currentOrder) }) ?? orders.first ?? 2)
+            let lp = params.type.crossoverIsLowPass ?? true
+            guard let newType = family.filterType(order: order, lowPass: lp) else { return }
+            p.type = newType
+        }
+        onChange(p)
+    }
+
+    private func applyLowPass(_ lowPass: Bool) {
+        guard let family = currentFamilyOption.family,
+              let newType = family.filterType(order: params.type.crossoverOrder, lowPass: lowPass) else { return }
+        var p = params
+        p.type = newType
+        onChange(p)
+    }
+
+    private func applyOrder(_ order: Int) {
+        guard let family = currentFamilyOption.family,
+              let newType = family.filterType(order: order, lowPass: currentLowPass) else { return }
+        var p = params
+        p.type = newType
+        onChange(p)
+    }
+}
+
+/// User-facing TYPE option on the XO tab — the crossover family name
+/// (Linkwitz-Riley, Butterworth, Bessel) plus an "Off" sentinel.  LP/HP
+/// and order are selected in separate columns.
+fileprivate enum CrossoverFamilyOption: Hashable {
+    case off
+    case family(CrossoverFamily)
+
+    init(from type: FilterType) {
+        if type == .flat {
+            self = .off
+        } else if let f = type.crossoverFamily {
+            self = .family(f)
+        } else {
+            self = .off
+        }
+    }
+
+    var family: CrossoverFamily? {
+        if case .family(let f) = self { return f }
+        return nil
+    }
+
+    var label: String {
+        switch self {
+        case .off: return "Off"
+        case .family(let f): return f.name
+        }
+    }
+}
+
+// MARK: - Bypass Checkbox
+
+/// Stylish round indicator used for per-band bypass.  Filled accent dot
+/// when the band is active; hollow ring with a slash when bypassed.
+/// Dimmed when the band is "Off" (filter type = flat) so the control
+/// reads as inert until a real filter is selected.
+struct BypassCheckbox: View {
+    let isActive: Bool
+    let isEnabled: Bool
+    /// The band's graph colour, when the graph edits it; grey otherwise.
+    var color: Color? = nil
+    let onToggle: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: onToggle) {
+            ZStack {
+                // Active: solid fill.  Inactive: hollow ring on a near-clear
+                // disc so the hit area still covers the interior.  A band
+                // colour tints both, so a bypassed band keeps its identity.
+                Circle()
+                    .fill(isActive ? (color ?? Color(white: 0.5)) : Color.white.opacity(0.001))
+                    .frame(width: 12, height: 12)
+
+                Circle()
+                    .strokeBorder(
+                        isActive
+                            ? (color ?? Color(white: 0.5))
+                            : (color?.opacity(0.6) ?? Color.secondary.opacity(0.55)),
+                        lineWidth: 1.2
+                    )
+                    .frame(width: 12, height: 12)
+            }
+            .frame(width: 18, height: 18)        // larger hit area than the visible 12×12
+            .contentShape(Rectangle())
+            .scaleEffect(hovered && isEnabled ? 1.1 : 1.0)
+            .animation(.easeInOut(duration: 0.12), value: hovered)
+            .animation(.easeInOut(duration: 0.18), value: isActive)
+            .opacity(isEnabled ? 1.0 : 0.35)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .onHover { hovered = $0 }
+        .help(isActive ? "Bypass this band" : "Re-enable this band")
+    }
+}
+
+// MARK: - Value Field
+
+struct ValueField: View {
+    let label: String
+    let value: Float
+    let width: CGFloat
+    var scrollStep: Float = 0.1
+    var minValue: Float? = nil
+    var maxDecimals: Int = 1
+    /// Width of the trailing unit label.  The default suits the one- and
+    /// two-character symbols this field was built for (dB, Hz, %, s); a longer
+    /// one (min) needs more room or it truncates.
+    var labelWidth: CGFloat = 20
+    /// When true, an all-zero decimal portion is dropped entirely (e.g.
+    /// "1.000" → "1") instead of being collapsed to a single trailing zero.
+    /// Useful for Q where "1.0" reads as awkward but mid-precision values
+    /// like "0.707" must still show full precision.
+    var stripTrailingZeros: Bool = false
+    var displayOverride: String? = nil
+    /// Set by a `ParameterRow` for the duration of a slider drag. The field
+    /// then shows the readout's text through an AppKit label that the drag
+    /// updates directly, so a value arriving per mouse event costs no SwiftUI
+    /// update, and therefore no layout, at all. See `ParameterRow`.
+    var liveReadout: LiveValueReadout? = nil
+    let onCommit: (Float) -> Void
+    @State private var text: String = ""
+    @FocusState private var isFocused: Bool
+
+    private func format(_ v: Float) -> String {
+        Self.format(v, maxDecimals: maxDecimals, stripTrailingZeros: stripTrailingZeros)
+    }
+
+    static func format(_ v: Float, maxDecimals: Int, stripTrailingZeros: Bool) -> String {
+        let full = String(format: "%.\(maxDecimals)f", v)
+        // Trim trailing zeros from the decimal portion.
+        let parts = full.split(separator: ".", maxSplits: 1)
+        guard parts.count == 2 else { return full }
+        let decimals = String(parts[1])
+        let trimmed = decimals.replacingOccurrences(of: "0+$", with: "", options: .regularExpression)
+        if trimmed.isEmpty {
+            return stripTrailingZeros ? String(parts[0]) : "\(parts[0]).0"
+        }
+        return "\(parts[0]).\(trimmed)"
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ZStack(alignment: .trailing) {
+                Text(text + " ")
+                    .font(.system(.body).monospacedDigit())
+                    .opacity(0)
+                    .padding(4)
+
+                TextField("", text: $text)
+                    .textFieldStyle(.plain)
+                    .font(.system(.body).monospacedDigit())
+                    .foregroundColor(isFocused ? .accentColor : .primary)
+                    .tint(.accentColor)
+                    .multilineTextAlignment(.trailing)
+                    .padding(4)
+                    .frame(width: width) // Enforce fixed width
+                    .focused($isFocused)
+                    .onSubmit { if let v = Float(text) { onCommit(v) } else { text = format(value) } }
+                    .onChange(of: isFocused) { focused in if !focused { if let v = Float(text) { onCommit(v) } else { text = format(value) } } }
+
+                // Always present but hidden until a drag begins, and shown and
+                // hidden again purely in AppKit, so grabbing a slider changes
+                // nothing SwiftUI has to lay out. Same padding and width as the
+                // field, so the digits sit where the field's do.
+                if let liveReadout {
+                    LiveValueLabel(readout: liveReadout)
+                        .padding(4)
+                        .frame(width: width)
+                        .allowsHitTesting(false)
+                }
+            }
+            .fixedSize(horizontal: true, vertical: false)
+
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(width: labelWidth, alignment: .leading)
+        }
+        .overlay(
+            ValueFieldScrollHandler(value: value, step: scrollStep, minValue: minValue, onCommit: onCommit)
+        )
+        .onAppear { text = (!isFocused && displayOverride != nil) ? displayOverride! : format(value) }
+        .onChange(of: value) { newValue in
+            if !isFocused, let override = displayOverride { text = override } else { text = format(newValue) }
+        }
+        .onChange(of: displayOverride) { override in
+            if !isFocused, let override { text = override } else { text = format(value) }
+        }
+    }
+}
+
+// MARK: - Live Value Readout
+
+/// The channel between a slider drag and the AppKit label that shows its
+/// value. A plain class, deliberately not observable: writing to it changes
+/// nothing SwiftUI can see, which is the whole point. Begin and end are AppKit
+/// operations too, so the grab and the drag cost SwiftUI nothing; only the
+/// commit on release goes through the view model.
+#if os(macOS)
+final class LiveValueReadout {
+    var format: (Float) -> String = { String($0) }
+    fileprivate weak var label: LiveValueLabelView?
+    /// SwiftUI's own text field for the same value, hidden for the drag so the
+    /// two never overprint.
+    private weak var covered: NSView?
+
+    func beginLive(showing value: Float) {
+        guard let label else { return }
+        covered = Self.textField(overlapping: label)
+        covered?.isHidden = true
+        label.stringValue = format(value)
+        label.isHidden = false
+    }
+
+    func show(_ value: Float) {
+        label?.stringValue = format(value)
+    }
+
+    func endLive() {
+        label?.isHidden = true
+        covered?.isHidden = false
+        covered = nil
+    }
+
+    /// SwiftUI hosts a `TextField` as a platform `NSTextField` somewhere under
+    /// the same hosting view; find the one whose frame the label sits on.
+    private static func textField(overlapping label: NSView) -> NSView? {
+        guard let root = label.window?.contentView else { return nil }
+        let target = label.convert(label.bounds, to: nil)
+        func search(_ view: NSView) -> NSView? {
+            for sub in view.subviews {
+                if sub !== label, sub is NSTextField, !sub.isHidden,
+                   sub.convert(sub.bounds, to: nil).intersects(target) {
+                    return sub
+                }
+                if let found = search(sub) { return found }
+            }
+            return nil
+        }
+        return search(root)
+    }
+}
+
+/// The label itself: an `NSTextField` so its glyphs, padding and baseline are
+/// the ones SwiftUI's `TextField` draws with underneath. Its height is frozen
+/// once from the font, so it matches the field's and a new string can never
+/// start an Auto Layout pass or a SwiftUI re-layout; the width comes from the
+/// frame around it. (Reporting no intrinsic size at all left SwiftUI to hand
+/// it whatever height the row proposed, which stretched every row.)
+final class LiveValueLabelView: NSTextField {
+    private var frozenHeight: CGFloat = 0
+
+    /// Measure once, with a representative string, then never again.
+    func freezeHeight() {
+        let saved = stringValue
+        stringValue = "-000.0"
+        frozenHeight = super.intrinsicContentSize.height
+        stringValue = saved
+    }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: frozenHeight)
+    }
+    override func invalidateIntrinsicContentSize() {}
+}
+
+private struct LiveValueLabel: NSViewRepresentable {
+    let readout: LiveValueReadout
+
+    func makeNSView(context: Context) -> LiveValueLabelView {
+        let label = LiveValueLabelView(labelWithString: "")
+        label.isHidden = true
+        label.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        label.alignment = .right
+        label.lineBreakMode = .byClipping
+        label.textColor = .labelColor
+        label.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        label.freezeHeight()
+        return label
+    }
+
+    func updateNSView(_ label: LiveValueLabelView, context: Context) {
+        readout.label = label
+    }
+}
+#else
+final class LiveValueReadout {
+    var format: (Float) -> String = { String($0) }
+    fileprivate weak var label: LiveValueLabelView?
+
+    func beginLive(showing value: Float) {
+        guard let label else { return }
+        label.text = format(value)
+        label.isHidden = false
+    }
+
+    func show(_ value: Float) {
+        label?.text = format(value)
+    }
+
+    func endLive() {
+        label?.isHidden = true
+    }
+}
+
+/// iOS: an opaque `UILabel` drawn over the field for the drag.
+final class LiveValueLabelView: UILabel {}
+
+private struct LiveValueLabel: UIViewRepresentable {
+    let readout: LiveValueReadout
+
+    func makeUIView(context: Context) -> LiveValueLabelView {
+        let label = LiveValueLabelView()
+        label.isHidden = true
+        label.font = UIFont.monospacedDigitSystemFont(ofSize: UIFont.labelFontSize, weight: .regular)
+        label.textAlignment = .right
+        label.lineBreakMode = .byClipping
+        label.textColor = .label
+        label.backgroundColor = .secondarySystemBackground
+        label.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return label
+    }
+
+    func updateUIView(_ label: LiveValueLabelView, context: Context) {
+        readout.label = label
+    }
+}
+
+#endif
+
+// MARK: - Tool Window Column
+
+extension View {
+    /// One column of a two-column tool window: an equal share of the width,
+    /// content pinned to the top so section labels line up across columns.
+    func toolColumn() -> some View {
+        self
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+}
+
+// MARK: - Value Field Scroll Handler
+
+#if os(macOS)
+struct ValueFieldScrollHandler: NSViewRepresentable {
+    let value: Float
+    let step: Float
+    let minValue: Float?
+    let onCommit: (Float) -> Void
+
+    func makeNSView(context: Context) -> ValueFieldScrollNSView {
+        let view = ValueFieldScrollNSView()
+        view.value = value
+        view.step = step
+        view.minValue = minValue
+        view.onCommit = onCommit
+        return view
+    }
+
+    func updateNSView(_ nsView: ValueFieldScrollNSView, context: Context) {
+        nsView.value = value
+        nsView.step = step
+        nsView.minValue = minValue
+        nsView.onCommit = onCommit
+    }
+}
+
+class ValueFieldScrollNSView: NSView {
+    var value: Float = 0
+    var step: Float = 0.1
+    var minValue: Float?
+    var onCommit: ((Float) -> Void)?
+
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    /// Be transparent to mouse clicks so the underlying SwiftUI `TextField`
+    /// gets focus when the user clicks on the value (enabling click-to-edit).
+    /// Only claim the hit target for a Cmd-held scrollWheel - matches the
+    /// `RightClickHandler` pattern used elsewhere in this file.  Cmd rather
+    /// than Ctrl because Ctrl-scroll is macOS's accessibility zoom gesture,
+    /// which the system swallows before the app sees it.
+    ///
+    /// Refusing an unmodified scroll is what keeps a filter list scrollable:
+    /// declining the hit lets the event fall through to the enclosing
+    /// ScrollView, so a cursor resting over a value can't turn a scroll
+    /// through the bands into an edit of one.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if let event = NSApp.currentEvent, event.type == .scrollWheel,
+           event.modifierFlags.contains(.command) {
+            return self
+        }
+        return nil
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        // A gesture that starts Cmd-held keeps being routed here after the
+        // key is released, so re-check rather than trusting the hit test, and
+        // hand the rest of the gesture back to the scroll view.
+        guard event.modifierFlags.contains(.command) else {
+            super.scrollWheel(with: event)
+            return
+        }
+
+        let delta = Double(event.scrollingDeltaY)
+        guard abs(delta) > 0.01 else { return }
+
+        let direction: Float = delta > 0 ? 1 : -1
+        let newValue = value + direction * step
+        onCommit?(minValue.map { max(newValue, $0) } ?? newValue)
+    }
+}
+#else
+/// Cmd-scroll to nudge a value has no touch equivalent; the field is edited
+/// by typing.  A transparent placeholder keeps the call sites unchanged.
+struct ValueFieldScrollHandler: View {
+    let value: Float
+    let step: Float
+    let minValue: Float?
+    let onCommit: (Float) -> Void
+
+    var body: some View { Color.clear.allowsHitTesting(false) }
+}
+#endif
+
+// MARK: - Sidebar Icon Button
+
+struct SidebarIconButton: View {
+    let icon: String
+    /// Optional custom glyph rendered with the "Apple Symbols" font instead of
+    /// an SF Symbol. Used for glyphs SF Symbols lacks (e.g. the bass clef).
+    var glyph: String? = nil
+    /// Point size for the custom `glyph` (SF Symbols use a fixed 14).
+    var glyphSize: CGFloat = 16
+    /// Vertical nudge for the custom `glyph`, to correct fonts with uneven
+    /// bearings (positive moves down).
+    var glyphYOffset: CGFloat = 0
+    let isActive: Bool
+    let tooltip: String
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Group {
+                if let glyph {
+                    Text(glyph)
+                        .font(.custom("Apple Symbols", size: glyphSize))
+                        .offset(y: glyphYOffset)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 14))
+                }
+            }
+            .foregroundColor(isActive ? .white : isHovered ? .white.opacity(0.7) : .secondary.opacity(0.6))
+            .animation(.easeInOut(duration: 0.2), value: isHovered)
+        }
+        .buttonStyle(.plain)
+        .help(tooltip)
+        .frame(maxWidth: .infinity)
+        .onHover { isHovered = $0 }
+    }
+}
+
+
+/// A band row's tint while its band is selected or hovered on the graph.  Its
+/// own small observer, so a selection change redraws this background and not
+/// the row.
+struct PeqRowHighlight: View {
+    @ObservedObject var selection: PeqGraphSelection
+    let band: Int
+    let isActive: Bool
+
+    var body: some View {
+        let selected = isActive && selection.selected.contains(band)
+        let hovered = isActive && selection.graphHovered == band
+        let color = PeqBandPalette.color(band)
+        HStack(spacing: 0) {
+            color.frame(width: 2).opacity(selected ? 1 : 0)
+            color.opacity(selected ? 0.13 : (hovered ? 0.07 : 0))
+        }
+        .animation(.easeOut(duration: 0.12), value: selected)
+        .animation(.easeOut(duration: 0.12), value: hovered)
+        .allowsHitTesting(false)
+    }
+}
+
+
+/// Scrolls the band list just far enough to show a band newly selected on
+/// the graph (not in the list itself), or one the pointer rests on there; a row already in view does
+/// not move.  Its own small observer, so a selection change redraws this and
+/// not the list.
+private struct PeqRowScrollFollower: View {
+    @ObservedObject var selection: PeqGraphSelection
+    let proxy: ScrollViewProxy
+    let rows: Int
+    @State private var previous: Set<Int> = []
+
+    var body: some View {
+        Color.clear
+            .onAppear { previous = selection.selected }
+            .onChange(of: selection.selected) { selected in
+                // With several new at once (a marquee), the first in the list.
+                let added = selected.subtracting(previous).sorted()
+                previous = selected
+                if selected == selection.madeByList { return }
+                selection.madeByList = nil
+                guard let band = added.first, band < rows else { return }
+                reveal(band)
+            }
+            .onReceive(selection.revealRow) { band in
+                guard band < rows else { return }
+                reveal(band)
+            }
+    }
+
+    private func reveal(_ band: Int) {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            // A nil anchor scrolls the least needed to show the row.
+            proxy.scrollTo(band, anchor: nil)
+        }
+    }
+}

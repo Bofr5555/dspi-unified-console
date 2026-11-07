@@ -1,0 +1,749 @@
+import SwiftUI
+import Accelerate
+
+// MARK: - Graph Animation Support
+
+struct AnimatableVector: VectorArithmetic {
+    var values: [Double]
+
+    static var zero = AnimatableVector(values: [])
+
+    var magnitudeSquared: Double {
+        guard !values.isEmpty else { return 0 }
+        var result: Double = 0
+        vDSP_dotprD(values, 1, values, 1, &result, vDSP_Length(values.count))
+        return result
+    }
+
+    static func - (lhs: AnimatableVector, rhs: AnimatableVector) -> AnimatableVector {
+        let lc = lhs.values.count, rc = rhs.values.count
+        let count = max(lc, rc)
+        guard count > 0 else { return .zero }
+        var result = [Double](repeating: 0, count: count)
+        if lc == rc {
+            vDSP_vsubD(rhs.values, 1, lhs.values, 1, &result, 1, vDSP_Length(count))
+        } else {
+            for i in 0..<count {
+                result[i] = (i < lc ? lhs.values[i] : 0) - (i < rc ? rhs.values[i] : 0)
+            }
+        }
+        return AnimatableVector(values: result)
+    }
+
+    static func + (lhs: AnimatableVector, rhs: AnimatableVector) -> AnimatableVector {
+        let lc = lhs.values.count, rc = rhs.values.count
+        let count = max(lc, rc)
+        guard count > 0 else { return .zero }
+        var result = [Double](repeating: 0, count: count)
+        if lc == rc {
+            vDSP_vaddD(lhs.values, 1, rhs.values, 1, &result, 1, vDSP_Length(count))
+        } else {
+            for i in 0..<count {
+                result[i] = (i < lc ? lhs.values[i] : 0) + (i < rc ? rhs.values[i] : 0)
+            }
+        }
+        return AnimatableVector(values: result)
+    }
+
+    mutating func scale(by rhs: Double) {
+        guard !values.isEmpty else { return }
+        var scalar = rhs
+        vDSP_vsmulD(values, 1, &scalar, &values, 1, vDSP_Length(values.count))
+    }
+}
+
+struct BodeLineShape: Shape {
+    var magnitudes: [Double] // 201 points (log-spaced 10Hz-20kHz)
+    var dbTop: Float = 25.0
+    var dbBottom: Float = -25.0
+    var minFreq: Float = 20.0
+    var maxFreq: Float = 20000.0
+
+    var animatableData: AnimatableVector {
+        get { AnimatableVector(values: magnitudes) }
+        set { magnitudes = newValue.values }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        guard !magnitudes.isEmpty else { return path }
+
+        let width = rect.width
+        let height = rect.height
+        let dbSpan = dbTop - dbBottom
+
+        // Data frequency range (always 10Hz-20kHz, 201 log-spaced points)
+        let dataLogMin = log10(Float(10.0))
+        let dataLogMax = log10(Float(20000.0))
+        let viewLogMin = log10(minFreq)
+        let viewLogMax = log10(maxFreq)
+        let viewLogSpan = viewLogMax - viewLogMin
+
+        let count = magnitudes.count
+        for i in 0..<count {
+            // Frequency of this data point
+            let dataLog = dataLogMin + Float(i) / Float(count - 1) * (dataLogMax - dataLogMin)
+            // Map to view x position
+            let x = CGFloat((dataLog - viewLogMin) / viewLogSpan) * width
+            // Map dB to y position
+            let db = Float(magnitudes[i])
+            let normalized = (db - dbBottom) / dbSpan
+            let y = height - CGFloat(normalized) * height
+
+            if i == 0 {
+                path.move(to: CGPoint(x: x, y: y))
+            } else {
+                path.addLine(to: CGPoint(x: x, y: y))
+            }
+        }
+
+        return path
+    }
+}
+
+// MARK: - Graph View
+
+struct BodePlotView: View {
+    @ObservedObject var vm: DSPViewModel
+    /// Output gains mid-drag, which move the curves without the model publishing.
+    @ObservedObject private var gainPreview: OutputGainPreview
+    var isPopOut: Bool = false
+    @Binding var visibilityOverride: [Int: Bool]
+    @ObservedObject private var settings = AppSettings.shared
+    @EnvironmentObject var graphWindowController: GraphWindowController
+    @State private var isHovered = false
+    @State private var optionsOpen = false
+
+    init(vm: DSPViewModel, isPopOut: Bool = false, visibilityOverride: Binding<[Int: Bool]> = .constant([:])) {
+        self.vm = vm
+        self.gainPreview = vm.outputGainPreview
+        self.isPopOut = isPopOut
+        self._visibilityOverride = visibilityOverride
+    }
+
+    var minFreq: Float { Float(settings.graphMinFreq) }
+    var maxFreq: Float { Float(settings.graphMaxFreq) }
+    var dbTop: Float { Float(settings.graphDBCenter + settings.graphDBRange / 2.0) }
+    var dbBottom: Float { Float(settings.graphDBCenter - settings.graphDBRange / 2.0) }
+
+    // Phase axis scales with the vertical (dB) zoom, centered at 0°:
+    // ±180° at the default 50 dB range, proportionally tighter/wider otherwise.
+    var phaseTop: Float { Float(180.0 * settings.graphDBRange / 50.0) }
+    var phaseBottom: Float { -phaseTop }
+
+    // Grid Helper
+    func xPos(_ freq: Float, width: CGFloat) -> CGFloat {
+        let logMin = log10(minFreq)
+        let logMax = log10(maxFreq)
+        let logVal = log10(freq)
+        return CGFloat((logVal - logMin) / (logMax - logMin)) * width
+    }
+
+    func yPos(_ db: Float, height: CGFloat) -> CGFloat {
+        let normalized = (db - dbBottom) / (dbTop - dbBottom)
+        return height - (CGFloat(normalized) * height)
+    }
+
+    // Color for a given EQ channel index.  Shared with the spectrum drawn
+    // behind the curves, so a channel is one colour in both pictures.
+    func colorForEQChannel(_ eqCh: Int) -> Color {
+        eqCurveColor(eqCh: eqCh, chOut1: vm.chOut1)
+    }
+
+    struct ChannelEntry {
+        let eqCh: Int
+        let color: Color
+        let isActive: Bool
+    }
+
+    // Whether this instance uses independent visibility
+    private var useOverride: Bool {
+        isPopOut && !settings.popoutGraphFollowsSelection && !visibilityOverride.isEmpty
+    }
+
+    /// Visible channels sharing one identical curve, drawn as a single line.
+    /// Identified by its channels rather than its values: keyed by values, a
+    /// line whose curve changes (a gain drag, a filter edit) became a new view
+    /// on every step instead of animating the one already drawn.
+    struct CurveGroup {
+        let id: [Int]
+        let mags: [Double]
+        let entries: [ChannelEntry]
+    }
+
+    /// The channel whose bands are edited on the graph, or nil.  That
+    /// channel's curve, dots and band shapes are drawn by the GPU editor
+    /// overlay, so the SwiftUI curves leave it out.  None on the XO tab,
+    /// where PEQ bands are not what the page lists.
+    var editedChannel: Int? {
+        guard PeqGraphEditorView.isAvailable, vm.isDeviceReady, !useOverride,
+              let ch = vm.activeEqChannel, vm.channelVisibility[ch] == true,
+              !(vm.crossoverTabShown && ch >= vm.chOut1) else { return nil }
+        return ch
+    }
+
+    var editorConfig: PeqGraphEditorConfig {
+        var c = PeqGraphEditorConfig()
+        c.minFreq = Double(minFreq)
+        c.maxFreq = Double(maxFreq)
+        c.dbTop = Double(dbTop)
+        c.dbBottom = Double(dbBottom)
+        guard let ch = editedChannel else { return c }
+        c.channel = ch
+        c.bands = vm.channelData[ch] ?? []
+        if ch >= vm.chOut1 {
+            let output = ch - vm.chOut1
+            c.statics = vm.xoverData[ch] ?? []
+            c.offsetDB = gainPreview.gains[output] ?? vm.outputGainDB[output]
+        }
+        c.flat = vm.bypass && ch < BASE_MATRIX_INPUTS
+        #if os(macOS)
+        let rgb = NSColor(colorForEQChannel(ch)).usingColorSpace(.sRGB) ?? .white
+        c.curveColor = SIMD4(Float(rgb.redComponent), Float(rgb.greenComponent), Float(rgb.blueComponent), 1)
+        #else
+        c.curveColor = RtaMetalBarPanel.rgba(colorForEQChannel(ch))
+        c.curveColor.w = 1
+        #endif
+        c.lineWidth = Float(settings.graphLineWidth)
+        c.glow = settings.showGraphGlow
+        c.availableTypes = availableFilterTypes(vm: vm, includeLinkwitz: false)
+        c.bypassSupported = vm.firmwareSupportsBandBypass
+        c.showFrequencyReadout = settings.showFrequencyReadout
+        c.showLevelReadout = settings.showLevelReadout
+        return c
+    }
+
+    // Group visible channels by identical magnitudes
+    func groupedChannels() -> [CurveGroup] {
+        // No curves without a device: the cached magnitudes are the previous
+        // device's.  The grid and axes stay, so the graph pane keeps its
+        // place rather than closing.
+        guard vm.isDeviceReady else { return [] }
+        var groups: [[Double]: [ChannelEntry]] = [:]
+        let activeEq = vm.activeEqChannel
+        let edited = editedChannel
+        let followsSelection = !isPopOut || settings.popoutGraphFollowsSelection
+        for eqCh in 0..<vm.numChannels where eqCh != edited {
+            let visible: Bool
+            if useOverride {
+                visible = visibilityOverride[eqCh] ?? false
+            } else {
+                visible = vm.channelVisibility[eqCh] == true
+            }
+            if visible {
+                var mags = vm.cachedMagnitudes[eqCh] ?? Array(repeating: 0.0, count: 201)
+                // Apply output gain as constant offset (output channels only)
+                if eqCh >= vm.chOut1 {
+                    let output = eqCh - vm.chOut1
+                    // A gain mid-drag lives in the preview until the release.
+                    let gain = Double(gainPreview.gains[output] ?? vm.outputGainDB[output])
+                    if gain != 0 { mags = mags.map { $0 + gain } }
+                }
+                let isActive = !followsSelection || activeEq == nil || eqCh == activeEq
+                let entry = ChannelEntry(eqCh: eqCh, color: colorForEQChannel(eqCh), isActive: isActive)
+                if groups[mags] != nil {
+                    groups[mags]!.append(entry)
+                } else {
+                    groups[mags] = [entry]
+                }
+            }
+        }
+        return groups
+            .map { CurveGroup(id: $0.value.map(\.eqCh), mags: $0.key, entries: $0.value) }
+            .sorted { ($0.id.first ?? 0) < ($1.id.first ?? 0) }
+    }
+
+    var body: some View {
+        let groups = groupedChannels()
+
+        ZStack {
+            // Static Grid & Labels
+            Canvas { context, size in
+                let minF = minFreq
+                let maxF = maxFreq
+                let dTop = dbTop
+                let dBot = dbBottom
+                let dbSpan = dTop - dBot
+                // The user's grid opacity scales each line's own strength, so
+                // major, minor and 0 dB lines keep their relative weights.
+                let grid = settings.graphGridOpacity
+                func gridColor(_ alpha: Double) -> GraphicsContext.Shading { .color(.white.opacity(min(alpha * grid, 1))) }
+
+                // Frequency gridlines
+                if settings.showFrequencyGrid {
+                    let majorFreqs: [Float] = [100, 1000, 10000]
+                    let minorFreqs: [Float] = [20, 30, 40, 50, 60, 70, 80, 90,
+                                               200, 300, 400, 500, 600, 700, 800, 900,
+                                               2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000,
+                                               20000]
+                    let majorPath = Path { path in
+                        for f in majorFreqs where f >= minF && f <= maxF {
+                            let x = xPos(f, width: size.width)
+                            path.move(to: CGPoint(x: x, y: 0))
+                            path.addLine(to: CGPoint(x: x, y: size.height))
+                        }
+                    }
+                    context.stroke(majorPath, with: gridColor(0.15))
+
+                    let minorPath = Path { path in
+                        for f in minorFreqs where f >= minF && f <= maxF && !majorFreqs.contains(f) {
+                            let x = xPos(f, width: size.width)
+                            path.move(to: CGPoint(x: x, y: 0))
+                            path.addLine(to: CGPoint(x: x, y: size.height))
+                        }
+                    }
+                    context.stroke(minorPath, with: gridColor(0.06))
+                }
+
+                // dB gridlines
+                if settings.showDBGrid {
+                    let step: Float = dbSpan <= 12 ? 1 : (dbSpan <= 30 ? 3 : (dbSpan <= 60 ? 5 : 10))
+                    let startDB = (dBot / step).rounded(.up) * step
+                    let dbPath = Path { path in
+                        var db = startDB
+                        while db <= dTop {
+                            if abs(db) > 0.01 { // skip 0dB, drawn separately
+                                let y = yPos(db, height: size.height)
+                                path.move(to: CGPoint(x: 0, y: y))
+                                path.addLine(to: CGPoint(x: size.width, y: y))
+                            }
+                            db += step
+                        }
+                    }
+                    context.stroke(dbPath, with: gridColor(0.1))
+
+                    // 0dB reference line
+                    if dBot <= 0 && dTop >= 0 {
+                        let zeroY = yPos(0, height: size.height)
+                        var zeroPath = Path()
+                        zeroPath.move(to: CGPoint(x: 0, y: zeroY))
+                        zeroPath.addLine(to: CGPoint(x: size.width, y: zeroY))
+                        context.stroke(zeroPath, with: gridColor(0.3), lineWidth: 1)
+                    }
+                }
+
+            }
+
+            // Live spectrum, behind the curves and above the grid.
+            if settings.rtaShows(.graph, onDashboard: vm.activeEqChannel == nil) {
+                GraphSpectrumOverlay(vm: vm, engine: vm.rta,
+                                     minFreq: minFreq, maxFreq: maxFreq)
+            }
+
+            // Animated Lines - grouped by identical curves
+            ForEach(groups, id: \.id) { group in
+                let mags = group.mags
+                let entries = group.entries
+                let lineWidth = settings.graphLineWidth
+                let anyActive = entries.contains { $0.isActive }
+                let dashPattern: [CGFloat] = anyActive ? [] : [6, 4]
+                let style = StrokeStyle(lineWidth: lineWidth, dash: dashPattern)
+                if entries.count == 1 {
+                    // Single channel
+                    ZStack {
+                        if settings.showGraphGlow && anyActive {
+                            BodeLineShape(magnitudes: mags, dbTop: dbTop, dbBottom: dbBottom, minFreq: minFreq, maxFreq: maxFreq)
+                                .stroke(entries[0].color.opacity(0.3), lineWidth: lineWidth * 4)
+                                .blur(radius: 6)
+                            BodeLineShape(magnitudes: mags, dbTop: dbTop, dbBottom: dbBottom, minFreq: minFreq, maxFreq: maxFreq)
+                                .stroke(entries[0].color.opacity(0.6), lineWidth: lineWidth * 2)
+                                .blur(radius: 3)
+                        }
+                        BodeLineShape(magnitudes: mags, dbTop: dbTop, dbBottom: dbBottom, minFreq: minFreq, maxFreq: maxFreq)
+                            .stroke(entries[0].color, style: style)
+                    }
+                    .animation(.spring(response: 0.2, dampingFraction: 0.8), value: mags)
+                } else {
+                    // Multiple overlapping channels - gradient
+                    let colors = entries.map { $0.color }
+                    let gradient = LinearGradient(
+                        stops: gradientStops(for: colors),
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    ZStack {
+                        if settings.showGraphGlow && anyActive {
+                            BodeLineShape(magnitudes: mags, dbTop: dbTop, dbBottom: dbBottom, minFreq: minFreq, maxFreq: maxFreq)
+                                .stroke(gradient, lineWidth: lineWidth * 5)
+                                .blur(radius: 8)
+                                .opacity(0.07)
+                            BodeLineShape(magnitudes: mags, dbTop: dbTop, dbBottom: dbBottom, minFreq: minFreq, maxFreq: maxFreq)
+                                .stroke(gradient, lineWidth: lineWidth * 2.5)
+                                .blur(radius: 5)
+                                .opacity(0.07)
+                        }
+                        BodeLineShape(magnitudes: mags, dbTop: dbTop, dbBottom: dbBottom, minFreq: minFreq, maxFreq: maxFreq)
+                            .stroke(gradient, style: StrokeStyle(lineWidth: lineWidth * 1.25, dash: dashPattern))
+                    }
+                    .animation(.spring(response: 0.2, dampingFraction: 0.8), value: mags)
+                }
+            }
+
+            // Phase response of the selected channel - dotted, light-gray,
+            // mapped to a -180...+180 degree axis (labeled on the right).
+            if settings.showPhase,
+               vm.isDeviceReady,
+               let activeCh = vm.activeEqChannel,
+               let phases = (settings.phaseUnwrapped ? vm.cachedPhasesUnwrapped[activeCh] : vm.cachedPhases[activeCh]),
+               (useOverride ? (visibilityOverride[activeCh] ?? false) : (vm.channelVisibility[activeCh] == true)) {
+                let lw = settings.graphLineWidth
+                BodeLineShape(magnitudes: phases, dbTop: phaseTop, dbBottom: phaseBottom, minFreq: minFreq, maxFreq: maxFreq)
+                    .stroke(Color(white: 0.93),
+                            style: StrokeStyle(lineWidth: lw * 0.9, lineCap: .round, dash: [0.1, lw * 3]))
+                    .animation(.spring(response: 0.2, dampingFraction: 0.8), value: phases)
+            }
+        }
+        // Curves and the phase trace fade with the device rather than
+        // vanishing between frames; the grid underneath never changes, so
+        // only the data animates.
+        .animation(.easeInOut(duration: 0.3), value: vm.isDeviceReady)
+        // The card colour of the band list and channel header below it (and
+        // of the list's darker rows), so the graph reads as one of the cards.
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+        .cornerRadius(8)
+        .clipped()
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1), lineWidth: 1))
+        .overlay(
+            Canvas { context, size in
+                let minF = minFreq
+                let maxF = maxFreq
+                let dTop = dbTop
+                let dBot = dbBottom
+                let dbSpan = dTop - dBot
+
+                if settings.showFrequencyLabels {
+                    let labelFreqs: [(Float, String)] = [
+                        (20, "20"), (50, "50"), (100, "100"), (200, "200"), (500, "500"),
+                        (1000, "1k"), (2000, "2k"), (5000, "5k"), (10000, "10k"), (20000, "20k")
+                    ]
+                    for (f, label) in labelFreqs where f >= minF && f <= maxF {
+                        let x = xPos(f, width: size.width)
+                        let text = Text(label).font(.system(size: 9, weight: .medium)).foregroundColor(.white.opacity(0.4))
+                        context.draw(context.resolve(text), at: CGPoint(x: x, y: size.height - 2), anchor: .bottom)
+                    }
+                }
+
+                if settings.showDBLabels {
+                    let step: Float = dbSpan <= 12 ? 1 : (dbSpan <= 30 ? 3 : (dbSpan <= 60 ? 5 : 10))
+                    let startDB = (dBot / step).rounded(.up) * step
+                    var db = startDB
+                    while db <= dTop {
+                        let y = yPos(db, height: size.height)
+                        let label = db >= 0 ? String(format: "+%g", db) : String(format: "%g", db)
+                        let text = Text(label).font(.system(size: 9, weight: .medium)).foregroundColor(.white.opacity(0.4))
+                        context.draw(context.resolve(text), at: CGPoint(x: 4, y: y), anchor: .leading)
+                        db += step
+                    }
+                }
+
+                // Phase axis labels (right side), in degrees - scaled with the
+                // vertical zoom to match the phase curve's axis.
+                if settings.showPhase {
+                    let pTop = phaseTop
+                    let phaseTicks: [Float] = [pTop, pTop / 2, 0, -pTop / 2, -pTop]
+                    for p in phaseTicks {
+                        let normalized = (p - phaseBottom) / (phaseTop - phaseBottom)
+                        let y = size.height - CGFloat(normalized) * size.height
+                        let label = p == 0 ? "0°" : String(format: "%+d°", Int(p.rounded()))
+                        let text = Text(label).font(.system(size: 9, weight: .medium)).foregroundColor(Color(white: 0.93).opacity(0.55))
+                        context.draw(context.resolve(text), at: CGPoint(x: size.width - 4, y: y), anchor: .trailing)
+                    }
+                }
+            }
+            .allowsHitTesting(false)
+        )
+        // Band editing, and the edited channel's curve, on the GPU.  Also
+        // owns the dB zoom strip at the left edge.
+        .overlay(
+            PeqGraphEditorOverlay(vm: vm, config: editorConfig)
+        )
+        .overlay(alignment: .topTrailing) {
+            // The pop-out window gets the gear too, without the pop-out row:
+            // with the graph popped out it is the only place the panel can live.
+            // An open popover keeps the gear, or it would vanish from under it.
+            if (isHovered || optionsOpen) && (isPopOut || !graphWindowController.isVisible) {
+                GraphOptionsButton(vm: vm, engine: vm.rta, isOpen: $optionsOpen,
+                                   onPopOut: isPopOut ? nil : { graphWindowController.show(vm: vm) })
+                    .padding(6)
+                    .transition(.opacity)
+            }
+        }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hovering
+            }
+        }
+    }
+
+    // Create smooth gradient stops for overlapping channels
+    func gradientStops(for colors: [Color]) -> [Gradient.Stop] {
+        guard !colors.isEmpty else { return [] }
+        guard colors.count > 1 else {
+            return [.init(color: colors[0], location: 0.0),
+                    .init(color: colors[0], location: 1.0)]
+        }
+
+        var stops: [Gradient.Stop] = []
+        let count = colors.count
+        let transitionWidth: Double = count == 2 ? 0.4 : (count == 3 ? 0.25 : 0.15)
+        let segmentWidth = 1.0 / Double(count)
+
+        for (index, color) in colors.enumerated() {
+            let segmentCenter = (Double(index) + 0.5) * segmentWidth
+            let solidStart = segmentCenter - (segmentWidth - transitionWidth) / 2
+            let solidEnd = segmentCenter + (segmentWidth - transitionWidth) / 2
+            let clampedStart = max(0.0, solidStart)
+            let clampedEnd = min(1.0, solidEnd)
+
+            if index == 0 {
+                stops.append(.init(color: color, location: 0.0))
+            }
+            stops.append(.init(color: color, location: clampedStart))
+            stops.append(.init(color: color, location: clampedEnd))
+            if index == count - 1 {
+                stops.append(.init(color: color, location: 1.0))
+            }
+        }
+
+        return stops.sorted { $0.location < $1.location }
+    }
+}
+
+// MARK: - Graph Resize Handle
+
+struct GraphResizeHandle: View {
+    /// Drag-strip height.  The main window keeps it slim now that no legend
+    /// row follows the graph; the pop-out window can afford the taller default.
+    var height: CGFloat = 20
+
+    var body: some View {
+        GraphResizeHandleRepresentable()
+            .frame(height: height)
+            .padding(.horizontal)
+    }
+}
+
+#if os(macOS)
+/// A vertical drag strip that resizes whatever height setting it is given.
+/// Defaults to the response graph's; the spectrum bar strip uses its own.
+struct GraphResizeHandleRepresentable: NSViewRepresentable {
+    var value: ReferenceWritableKeyPath<AppSettings, Double> = \.graphHeight
+    var range: ClosedRange<Double> = 200...350
+    /// How far the edge moves per unit of the setting.  Above 1 when the
+    /// setting sizes several stacked rows, so the edge still tracks the cursor.
+    var pointsPerUnit: Double = 1
+
+    func makeNSView(context: Context) -> GraphResizeNSView {
+        let view = GraphResizeNSView()
+        updateNSView(view, context: context)
+        return view
+    }
+
+    func updateNSView(_ nsView: GraphResizeNSView, context: Context) {
+        nsView.value = value
+        nsView.range = range
+        nsView.pointsPerUnit = pointsPerUnit
+    }
+}
+
+class GraphResizeNSView: NSView {
+    var value: ReferenceWritableKeyPath<AppSettings, Double> = \.graphHeight
+    var range: ClosedRange<Double> = 200...350
+    var pointsPerUnit: Double = 1
+    private var dragStartHeight: Double = 0
+    private var dragStartY: CGFloat = 0
+    private var isDragging = false
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .resizeUpDown)
+    }
+
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func mouseDown(with event: NSEvent) {
+        dragStartY = NSEvent.mouseLocation.y
+        dragStartHeight = AppSettings.shared[keyPath: value]
+        isDragging = true
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard isDragging else { return }
+        let currentY = NSEvent.mouseLocation.y
+        let delta = Double(currentY - dragStartY)
+        let newHeight = dragStartHeight - delta / max(pointsPerUnit, 0.01)
+        AppSettings.shared[keyPath: value] = min(max(newHeight, range.lowerBound), range.upperBound)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        isDragging = false
+    }
+}
+#else
+/// iOS: the same drag strip as a SwiftUI drag gesture.
+struct GraphResizeHandleRepresentable: View {
+    var value: ReferenceWritableKeyPath<AppSettings, Double> = \.graphHeight
+    var range: ClosedRange<Double> = 200...350
+    var pointsPerUnit: Double = 1
+    @State private var dragStartHeight: Double?
+
+    var body: some View {
+        Capsule()
+            .fill(Color.secondary.opacity(0.35))
+            .frame(width: 36, height: 4)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 2)
+                    .onChanged { drag in
+                        let start = dragStartHeight ?? AppSettings.shared[keyPath: value]
+                        dragStartHeight = start
+                        // Screen y grows downward here, so dragging down grows the graph.
+                        let newHeight = start + Double(drag.translation.height) / max(pointsPerUnit, 0.01)
+                        AppSettings.shared[keyPath: value] = min(max(newHeight, range.lowerBound), range.upperBound)
+                    }
+                    .onEnded { _ in dragStartHeight = nil }
+            )
+    }
+}
+#endif
+
+// MARK: - Graph Legend
+
+struct GraphLegend: View {
+    @ObservedObject var vm: DSPViewModel
+    @Binding var visibilityOverride: [Int: Bool]
+
+    init(vm: DSPViewModel, visibilityOverride: Binding<[Int: Bool]> = .constant([:])) {
+        self.vm = vm
+        self._visibilityOverride = visibilityOverride
+    }
+
+    private var useOverride: Bool { !visibilityOverride.isEmpty }
+
+    private func legendPill(eqCh: Int, name: String, color: Color) -> some View {
+        let isVisible = useOverride ? (visibilityOverride[eqCh] ?? false) : (vm.channelVisibility[eqCh] ?? true)
+        return Button(action: {
+            withAnimation(.easeInOut(duration: 0.1)) {
+                if useOverride {
+                    visibilityOverride[eqCh] = !isVisible
+                } else {
+                    vm.channelVisibility[eqCh] = !isVisible
+                }
+            }
+        }) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(isVisible ? color : Color.gray.opacity(0.5))
+                    .frame(width: 6, height: 6)
+                Text(name)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(isVisible ? .primary : .secondary)
+                    .frame(minWidth: 30)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(isVisible ? color.opacity(0.15) : Color.gray.opacity(0.1))
+            )
+            .overlay(
+                Capsule().stroke(
+                    isVisible ? color.opacity(0.5) : Color.clear,
+                    lineWidth: 1
+                )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    var body: some View {
+        // Wrap pills onto additional rows instead of stretching horizontally,
+        // so a high channel count never forces the graph pane (and window)
+        // wider.  FlowLayout reports a minimum width of only its widest pill.
+        FlowLayout(spacing: 8, lineSpacing: 6) {
+            // Active input channels
+            ForEach(Array(0..<vm.numMatrixInputs), id: \.self) { ch in
+                legendPill(eqCh: ch, name: "IN\(ch + 1)", color: MatrixInput.color(for: ch))
+            }
+
+            // Enabled outputs (dynamic)
+            ForEach(MatrixOutput.visible(for: vm.platformName, slotTypes: vm.outputSlotTypes).filter { vm.outputEnabled[$0.index] }, id: \.index) { out in
+                legendPill(eqCh: vm.eqChannel(forOutput: out.index), name: out.descriptor, color: out.color)
+            }
+        }
+        .padding(.top, 6)
+        .padding(.bottom, 2)
+        // Faded rather than removed without a device: removal would reflow
+        // the layout, and a pure crossfade is wanted.  Invisible pills are
+        // also inert.
+        .opacity(vm.isDeviceReady ? 1 : 0)
+        .allowsHitTesting(vm.isDeviceReady)
+        .animation(.easeInOut(duration: 0.3), value: vm.isDeviceReady)
+    }
+}
+
+/// Simple wrapping flow layout: lays subviews left-to-right, wrapping to a new
+/// row when the proposed width is exceeded.  Reports a minimum width equal to
+/// its widest subview, so it never inflates the enclosing view's minimum size.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+    var lineSpacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+
+        var rowWidth: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var totalHeight: CGFloat = 0
+        var maxRowWidth: CGFloat = 0
+
+        for size in sizes {
+            // Start a new row when this subview would overflow the current one.
+            if rowWidth > 0 && rowWidth + spacing + size.width > maxWidth {
+                totalHeight += rowHeight + lineSpacing
+                maxRowWidth = max(maxRowWidth, rowWidth)
+                rowWidth = size.width
+                rowHeight = size.height
+            } else {
+                rowWidth += (rowWidth > 0 ? spacing : 0) + size.width
+                rowHeight = max(rowHeight, size.height)
+            }
+        }
+        totalHeight += rowHeight
+        maxRowWidth = max(maxRowWidth, rowWidth)
+
+        // Report the actual used width (bounded by the proposal) so alignment
+        // in the parent stays tight rather than claiming the full proposal.
+        let width = maxWidth.isFinite ? min(maxRowWidth, maxWidth) : maxRowWidth
+        return CGSize(width: width, height: totalHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
+        let maxWidth = bounds.width
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+
+        for (index, subview) in subviews.enumerated() {
+            let size = sizes[index]
+            // Wrap to the next row on overflow.
+            if x > bounds.minX && x + size.width > bounds.minX + maxWidth {
+                x = bounds.minX
+                y += rowHeight + lineSpacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), anchor: .topLeading,
+                          proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+    }
+}
