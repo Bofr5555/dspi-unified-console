@@ -25,6 +25,8 @@ use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+// -- WP TM9 --
+use dspi_link::discovery::{BrowseOptions, BrowseSource, BrowsedHub, HubBrowser};
 use dspi_link::socket::TcpConnector;
 use dspi_link::{
     AuthState, ConnectOptions, LinkClient, LinkError, LinkEvents, RetryAdvice, SessionConfig,
@@ -93,6 +95,22 @@ pub struct LinkTarget {
     pub pin: Option<String>,
     /// The token file; `None` is the default in the config directory.
     pub tokens: Option<PathBuf>,
+    // -- WP TM9 --
+    /// The WebSocket path a hub announced; `None` is the default one.
+    pub path: Option<String>,
+    /// The hub's id, once known. A hub with another id at this address is not
+    /// this hub, and a reconnect can look for this one elsewhere (F5).
+    pub hub_id: Option<String>,
+    /// `--hub`: still to be found on the network; see [`locate_hub`].
+    pub find: Option<HubQuery>,
+}
+
+// -- WP TM9 --
+/// `--hub [NAME]`: which hub on the network is meant.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HubQuery {
+    /// Part of a hub's name, its id or its address; `None` is whichever is there.
+    pub wanted: Option<String>,
 }
 
 impl LinkTarget {
@@ -106,11 +124,48 @@ impl LinkTarget {
             device: None,
             pin: None,
             tokens: None,
+            path: None,
+            hub_id: None,
+            find: None,
         })
     }
 
+    // -- WP TM9 --
+    /// A hub still to be found: `--hub`. [`locate_hub`] gives it an address.
+    pub fn find(wanted: Option<String>) -> Self {
+        Self {
+            host: String::new(),
+            port: 0,
+            device: None,
+            pin: None,
+            tokens: None,
+            path: None,
+            hub_id: None,
+            find: Some(HubQuery { wanted }),
+        }
+    }
+
+    /// The same device, at where `hub` announces itself now.
+    fn at(&self, hub: &BrowsedHub) -> Self {
+        Self {
+            host: hub.host.clone(),
+            port: hub.port,
+            path: Some(hub.path.clone()),
+            hub_id: Some(hub.id.clone()),
+            find: None,
+            ..self.clone()
+        }
+    }
+
+    /// Whether `hub_id`, from a hub's hello, is not the hub this target means.
+    fn is_other_hub(&self, hub_id: &str) -> bool {
+        self.hub_id
+            .as_deref()
+            .is_some_and(|mine| !mine.eq_ignore_ascii_case(hub_id))
+    }
+
     fn ws_url(&self) -> String {
-        dspi_link::address::ws_url(&self.host, self.port, None)
+        dspi_link::address::ws_url(&self.host, self.port, self.path.as_deref())
     }
 
     fn address(&self) -> String {
@@ -147,6 +202,22 @@ pub enum OpenError {
     },
     #[error("this build of dspi has no MIDI support")]
     NoMidi,
+    // -- WP TM9 --
+    #[error("this build of dspi cannot look for hubs on the network; use --link HOST[:PORT]")]
+    NoMdns,
+    /// Looking for hubs did not work; the network, not the hubs.
+    #[error("could not look for hubs: {0}")]
+    Browse(String),
+    /// Nothing on the network answers to this.
+    #[error("{}", match .wanted {
+        Some(w) => format!("no DSPi Link hub matching `{w}` found on this network"),
+        None => "no DSPi Link hub found on this network".to_owned(),
+    })]
+    NoHub { wanted: Option<String> },
+    /// Another hub answered at this address, which its DHCP lease can do. Nothing
+    /// was sent to it.
+    #[error("{address} is now {found}, not the hub this session was using")]
+    WrongHub { address: String, found: String },
     #[error("the device reported an impossible channel map")]
     ChannelMap,
 }
@@ -180,6 +251,22 @@ impl OpenError {
         matches!(
             self,
             Self::Transport(TransportError::NotFound | TransportError::SerialNotFound(_))
+                // -- WP TM9 --
+                | Self::NoHub { .. }
+        )
+    }
+
+    // -- WP TM9 --
+    /// Nothing that is this hub answered at the address dialled, so the address
+    /// may be the thing that is out of date.
+    fn is_dial_failure(&self) -> bool {
+        matches!(
+            self,
+            Self::WrongHub { .. }
+                | Self::Link {
+                    source: LinkError::Io(_) | LinkError::Timeout | LinkError::Handshake(_),
+                    ..
+                }
         )
     }
 }
@@ -205,6 +292,12 @@ pub trait Prompt {
     fn warn(&self, message: &str) {
         eprintln!("dspi: warning: {message}");
     }
+
+    // -- WP TM9 --
+    /// Which of these hubs; `None` when there is nobody to ask, or no answer.
+    fn pick(&self, _choices: &[String]) -> Option<usize> {
+        None
+    }
 }
 
 impl<F: Fn(&str, &str) -> Option<String>> Prompt for F {
@@ -226,6 +319,10 @@ pub struct Connected {
     pub session: Session,
     pub state: DeviceState,
     pub ext: ExtState,
+    // -- WP TM9 --
+    /// Over Link, the target as it was reached: at the address that answered,
+    /// knowing the hub's id. Keep this one, not the one that was asked for.
+    pub link: Option<LinkTarget>,
 }
 
 // -- WP TM4 --
@@ -278,6 +375,7 @@ pub fn connected_on(t: Box<dyn Transport>) -> Result<Connected, OpenError> {
         session,
         state: DeviceState::new(caps, image.packet),
         ext,
+        link: None,
     })
 }
 
@@ -335,6 +433,13 @@ impl Target {
 
     /// Open, probe and read the whole state: enough for the interface.
     pub fn connect(&self, pin: PinPrompt<'_>) -> Result<Connected, OpenError> {
+        // -- WP TM9 --
+        if let Self::Link(l) = self {
+            let (t, reached) = open_link_reached(l, pin)?;
+            let mut c = connected_on(t)?;
+            c.link = Some(reached);
+            return Ok(c);
+        }
         connected_on(self.open(pin)?)
     }
 
@@ -430,8 +535,31 @@ impl Target {
     }
 }
 
-/// The one of `items` that `wanted` means. Exact matches (of a key or a whole
+/// The ones of `items` that `wanted` means. Exact matches (of a key or a whole
 /// name) beat partial ones, so a name that contains another still works.
+fn matching<'a, T>(
+    items: &'a [T],
+    wanted: Option<&str>,
+    keys: impl Fn(&T) -> Vec<&str>,
+) -> Vec<&'a T> {
+    let Some(w) = wanted else {
+        return items.iter().collect();
+    };
+    let w = w.to_lowercase();
+    let exact: Vec<&T> = items
+        .iter()
+        .filter(|i| keys(i).iter().any(|k| k.to_lowercase() == w))
+        .collect();
+    if !exact.is_empty() {
+        return exact;
+    }
+    items
+        .iter()
+        .filter(|i| keys(i).iter().any(|k| k.to_lowercase().contains(&w)))
+        .collect()
+}
+
+/// The one of `items` that `wanted` means, by [`matching`].
 fn choose<'a, T>(
     items: &'a [T],
     wanted: Option<&str>,
@@ -440,25 +568,7 @@ fn choose<'a, T>(
     what: &'static str,
     flag: &'static str,
 ) -> Result<&'a T, OpenError> {
-    let matches: Vec<&T> = match wanted {
-        None => items.iter().collect(),
-        Some(w) => {
-            let w = w.to_lowercase();
-            let exact: Vec<&T> = items
-                .iter()
-                .filter(|i| keys(i).iter().any(|k| k.to_lowercase() == w))
-                .collect();
-            if exact.is_empty() {
-                items
-                    .iter()
-                    .filter(|i| keys(i).iter().any(|k| k.to_lowercase().contains(&w)))
-                    .collect()
-            } else {
-                exact
-            }
-        }
-    };
-    match matches.as_slice() {
+    match matching(items, wanted, keys).as_slice() {
         [] => Err(match wanted {
             Some(w) => TransportError::SerialNotFound(w.to_owned()),
             None => TransportError::NotFound,
@@ -526,8 +636,17 @@ fn link_error(l: &LinkTarget, source: LinkError) -> OpenError {
 pub fn link_client(l: &LinkTarget, pin: PinPrompt<'_>) -> Result<LinkClient, OpenError> {
     let store = l.token_store();
     let lookup = store.clone();
+    // -- WP TM9 --
+    // An address that went to another hub gets no token, not even its own.
+    let asked = l.clone();
     let cfg = SessionConfig {
-        token_for: Some(Arc::new(move |hub_id: &str| lookup.get(hub_id))),
+        token_for: Some(Arc::new(move |hub_id: &str| {
+            if asked.is_other_hub(hub_id) {
+                None
+            } else {
+                lookup.get(hub_id)
+            }
+        })),
         ..SessionConfig::default()
     };
     let opts = ConnectOptions {
@@ -549,6 +668,15 @@ pub fn link_client(l: &LinkTarget, pin: PinPrompt<'_>) -> Result<LinkClient, Ope
         &cfg,
     )
     .map_err(|e| link_error(l, e))?;
+    // -- WP TM9 --
+    if l.is_other_hub(&client.hello().hub.id) {
+        let found = hub_name(&client, l);
+        client.close();
+        return Err(OpenError::WrongHub {
+            address: l.address(),
+            found,
+        });
+    }
     let pin_source = match auth {
         AuthState::Ready => return Ok(client),
         AuthState::NeedsPairing { pin_source } => pin_source,
@@ -648,9 +776,22 @@ fn hub_name(client: &LinkClient, l: &LinkTarget) -> String {
 }
 
 fn open_link(l: &LinkTarget, pin: PinPrompt<'_>) -> Result<Box<dyn Transport>, OpenError> {
+    open_link_reached(l, pin).map(|(t, _)| t)
+}
+
+/// The link, and `l` knowing the id of the hub it reached.
+fn open_link_reached(
+    l: &LinkTarget,
+    pin: PinPrompt<'_>,
+) -> Result<(Box<dyn Transport>, LinkTarget), OpenError> {
     let client = link_client(l, pin)?;
+    let id = client.hello().hub.id.clone();
+    let reached = LinkTarget {
+        hub_id: (!id.is_empty()).then_some(id),
+        ..l.clone()
+    };
     match bind_link_device(l, &client) {
-        Ok(t) => Ok(t),
+        Ok(t) => Ok((t, reached)),
         Err(e) => {
             client.close();
             Err(e)
@@ -893,7 +1034,10 @@ pub enum Reconnect {
     GaveUp(OpenError),
 }
 
+#[cfg(test)]
 type Opener = dyn Fn() -> Result<Connected, OpenError> + Send + Sync;
+/// One attempt; a hub found at another address is dialled there.
+type Dialer = dyn Fn(Option<&BrowsedHub>) -> Result<Connected, OpenError> + Send + Sync;
 
 /// A reconnect's [`Prompt`]: nobody to ask, and its warnings are kept for the
 /// interface, because a thread must not write to the terminal it draws on.
@@ -914,7 +1058,10 @@ impl Prompt for Collect {
 
 /// Tries to get a lost device back, on a thread of its own, at a sensible pace.
 pub struct Reconnector {
-    open: Arc<Opener>,
+    // -- WP TM9 --
+    open: Arc<Dialer>,
+    /// Looks for a lost hub at new addresses.
+    finder: Option<HubFinder>,
     /// Failures in a row, for the back-off.
     attempt: u32,
     /// A hub's errors set the pace; a local look stays at [`RETRY_LOCAL`].
@@ -927,13 +1074,34 @@ pub struct Reconnector {
 impl Reconnector {
     /// For `target`: nobody is asked for a PIN, since nobody may be looking.
     pub fn new(target: Target) -> Self {
+        Self::browsing(target, browse_source().ok())
+    }
+
+    // -- WP TM9 --
+    /// [`Reconnector::new`], looking for a lost hub on `source`. Without a
+    /// source or a hub id it only ever dials the address it has.
+    fn browsing(target: Target, source: Option<Arc<dyn BrowseSource>>) -> Self {
         let follows_advice = matches!(target, Target::Link(_));
+        let finder = match (&target, source) {
+            (Target::Link(l), Some(source)) => l
+                .hub_id
+                .clone()
+                .map(|id| HubFinder::new(id, source, l.ws_url())),
+            _ => None,
+        };
         let warnings = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&warnings);
-        let open = move || target.connect(&Collect(Arc::clone(&sink)));
+        let open = move |moved: Option<&BrowsedHub>| {
+            let prompt = Collect(Arc::clone(&sink));
+            match (&target, moved) {
+                (Target::Link(l), Some(hub)) => Target::Link(l.at(hub)).connect(&prompt),
+                _ => target.connect(&prompt),
+            }
+        };
         Self {
             warnings,
-            ..Self::with_opener(Arc::new(open), follows_advice)
+            finder,
+            ..Self::with_dialer(Arc::new(open), follows_advice)
         }
     }
 
@@ -944,15 +1112,28 @@ impl Reconnector {
         std::mem::take(&mut *self.warnings.lock().unwrap_or_else(PoisonError::into_inner))
     }
 
+    #[cfg(test)]
     fn with_opener(open: Arc<Opener>, follows_advice: bool) -> Self {
+        Self::with_dialer(Arc::new(move |_| open()), follows_advice)
+    }
+
+    fn with_dialer(open: Arc<Dialer>, follows_advice: bool) -> Self {
         Self {
             open,
+            finder: None,
             attempt: 0,
             follows_advice,
             next_try: None,
             running: None,
             warnings: Arc::default(),
         }
+    }
+
+    // -- WP TM8 --
+    /// Whether an attempt is under way, for a test to catch one.
+    #[cfg(test)]
+    pub(crate) fn dialling(&self) -> bool {
+        self.running.is_some()
     }
 
     /// Call as often as you like: it never blocks. The first attempt goes out
@@ -965,13 +1146,21 @@ impl Reconnector {
                     self.running = None;
                     self.attempt = 0;
                     self.next_try = None;
+                    // -- WP TM9 --
+                    self.stop_browsing();
                     return Reconnect::Connected(Box::new(c));
                 }
                 Ok(Err(e)) => {
                     self.running = None;
                     let Some(delay) = e.retry_advice().delay(self.attempt) else {
+                        // -- WP TM9 --
+                        self.stop_browsing();
                         return Reconnect::GaveUp(e);
                     };
+                    // -- WP TM9 --
+                    if let Some(finder) = &mut self.finder {
+                        finder.attempt_ended(e.is_dial_failure());
+                    }
                     self.back_off(now, delay);
                     return Reconnect::Waiting;
                 }
@@ -983,16 +1172,20 @@ impl Reconnector {
                 }
             }
         }
-        if self.next_try.is_some_and(|t| now < t) {
+        // -- WP TM9 --
+        // A hub that turned up elsewhere is the news the back-off was waiting for.
+        let moved = self.finder.as_ref().is_some_and(HubFinder::has_moved);
+        if self.next_try.is_some_and(|t| now < t) && !moved {
             return Reconnect::Waiting;
         }
+        let found = self.finder.as_mut().and_then(HubFinder::next_dial);
         let (tx, rx) = mpsc::channel();
         let open = Arc::clone(&self.open);
         let started = std::thread::Builder::new()
             .name("dspi-reconnect".into())
             .spawn(move || {
                 // The receiver may be gone: a late result then closes itself.
-                let _ = tx.send(open());
+                let _ = tx.send(open(found.as_ref()));
             });
         match started {
             Ok(_) => self.running = Some(rx),
@@ -1009,6 +1202,200 @@ impl Reconnector {
         };
         self.next_try = now.checked_add(delay);
         self.attempt = self.attempt.saturating_add(1);
+    }
+
+    // -- WP TM9 --
+    fn stop_browsing(&mut self) {
+        if let Some(finder) = &mut self.finder {
+            finder.stop();
+        }
+    }
+}
+
+// -- WP TM9 --
+/// How long a look at the network lasts. Long enough for the hubs on a LAN to
+/// answer one query (RFC 6762 lets them wait half a second), so a person does
+/// not get a list with one missing.
+pub const SCAN_WINDOW: Duration = Duration::from_secs(2);
+/// How often [`scan_hubs`] looks at what has been heard.
+const SCAN_TICK: Duration = Duration::from_millis(50);
+
+/// The network's hubs, as this build can see them. Tests in this crate never
+/// get the real one, so none of them depends on multicast.
+#[cfg(all(feature = "mdns", not(test)))]
+pub fn browse_source() -> Result<Arc<dyn BrowseSource>, OpenError> {
+    Ok(Arc::new(dspi_link::discovery::MdnsSource))
+}
+
+/// The network's hubs, as this build can see them: not at all.
+#[cfg(not(all(feature = "mdns", not(test))))]
+pub fn browse_source() -> Result<Arc<dyn BrowseSource>, OpenError> {
+    Err(OpenError::NoMdns)
+}
+
+/// Listen to `source` for `window`, or until `enough` says so, and say which
+/// hubs were heard, sorted by name. Blocks: this is for before the interface
+/// starts. An error only when browsing failed and nothing was heard.
+pub fn scan_hubs(
+    source: Arc<dyn BrowseSource>,
+    window: Duration,
+    enough: impl Fn(&[BrowsedHub]) -> bool,
+) -> Result<Vec<BrowsedHub>, OpenError> {
+    let browser = HubBrowser::start(source, None, BrowseOptions::default())
+        .map_err(|e| OpenError::Browse(printable(&e.to_string())))?;
+    let deadline = Instant::now().checked_add(window);
+    loop {
+        let heard = browser.snapshot();
+        let over = deadline.is_none_or(|d| Instant::now() >= d);
+        if over || enough(&heard.hubs) {
+            return match heard.error {
+                Some(why) if heard.hubs.is_empty() => Err(OpenError::Browse(printable(&why))),
+                _ => Ok(heard.hubs),
+            };
+        }
+        std::thread::sleep(SCAN_TICK);
+    }
+}
+
+/// A hub's address as `--link` takes it.
+pub fn hub_address(hub: &BrowsedHub) -> String {
+    if hub.host.contains(':') {
+        format!("[{}]:{}", hub.host, hub.port)
+    } else {
+        format!("{}:{}", hub.host, hub.port)
+    }
+}
+
+/// The one of `hubs` that `wanted` means. Several are for `prompt` to choose
+/// from; with nobody to ask, the error names them.
+fn pick_hub<'a>(
+    hubs: &'a [BrowsedHub],
+    wanted: Option<&str>,
+    prompt: PinPrompt<'_>,
+) -> Result<&'a BrowsedHub, OpenError> {
+    let found: Vec<&BrowsedHub> = matching(hubs, wanted, |h| {
+        vec![h.id.as_str(), h.name.as_str(), h.host.as_str()]
+    });
+    match found.as_slice() {
+        [] => Err(OpenError::NoHub {
+            wanted: wanted.map(printable),
+        }),
+        [one] => Ok(one),
+        many => {
+            let names: Vec<String> = many
+                .iter()
+                .map(|h| format!("{} at {}", printable(&h.name), hub_address(h)))
+                .collect();
+            prompt
+                .pick(&names)
+                .and_then(|i| many.get(i).copied())
+                .ok_or(OpenError::Ambiguous {
+                    what: "hubs",
+                    flag: "--hub <name>",
+                    names,
+                })
+        }
+    }
+}
+
+/// Give a `--hub` target an address: look at the network and pick. Any other
+/// target comes straight back, with nothing looked at.
+pub fn locate_hub(target: Target, prompt: PinPrompt<'_>) -> Result<Target, OpenError> {
+    match &target {
+        Target::Link(l) if l.find.is_some() => {
+            locate_on(l, browse_source()?, SCAN_WINDOW, prompt).map(Target::Link)
+        }
+        _ => Ok(target),
+    }
+}
+
+fn locate_on(
+    l: &LinkTarget,
+    source: Arc<dyn BrowseSource>,
+    window: Duration,
+    prompt: PinPrompt<'_>,
+) -> Result<LinkTarget, OpenError> {
+    let wanted = l.find.as_ref().and_then(|q| q.wanted.as_deref());
+    // A name asked for by its whole self needs no waiting for the others; with
+    // no name, stopping at the first would be choosing for the person.
+    let hubs = scan_hubs(source, window, |heard| {
+        wanted.is_some_and(|w| {
+            heard
+                .iter()
+                .any(|h| h.id.eq_ignore_ascii_case(w) || h.name.eq_ignore_ascii_case(w))
+        })
+    })?;
+    Ok(l.at(pick_hub(&hubs, wanted, prompt)?))
+}
+
+/// A browse for one lost hub, kept running only while it is lost (F5): a hub
+/// with a new DHCP lease announces its id from the new address.
+struct HubFinder {
+    hub_id: String,
+    source: Arc<dyn BrowseSource>,
+    browser: Option<HubBrowser>,
+    /// The address the target came with: dialled while the hub is not heard.
+    known_url: String,
+    /// What the last attempt dialled.
+    dialled_url: String,
+    /// The last attempt found nothing that is this hub there.
+    dial_failed: bool,
+}
+
+impl HubFinder {
+    fn new(hub_id: String, source: Arc<dyn BrowseSource>, known_url: String) -> Self {
+        Self {
+            hub_id,
+            source,
+            browser: None,
+            dialled_url: known_url.clone(),
+            known_url,
+            dial_failed: false,
+        }
+    }
+
+    fn current(&self) -> Option<BrowsedHub> {
+        self.browser.as_ref()?.resolve(&self.hub_id)
+    }
+
+    /// Is announced somewhere other than where dialling just failed.
+    fn has_moved(&self) -> bool {
+        self.dial_failed
+            && self
+                .current()
+                .is_some_and(|hub| hub.url != self.dialled_url)
+    }
+
+    /// Where the next attempt should go: `None` is the address the target has.
+    /// Starts the browse on the first call, which only starts a thread. If that
+    /// fails the attempt goes ahead without, and the next call tries again.
+    fn next_dial(&mut self) -> Option<BrowsedHub> {
+        if self.browser.is_none() {
+            self.browser =
+                HubBrowser::start(Arc::clone(&self.source), None, BrowseOptions::default()).ok();
+        }
+        let found = self.current();
+        found
+            .as_ref()
+            .map_or(&self.known_url, |hub| &hub.url)
+            .clone_into(&mut self.dialled_url);
+        found
+    }
+
+    /// After a failed attempt. A hub that lost power says no goodbye, and its
+    /// old address would be offered for 75 minutes unless the network is asked.
+    fn attempt_ended(&mut self, dial_failed: bool) {
+        self.dial_failed = dial_failed;
+        if let (true, Some(browser)) = (dial_failed, &self.browser) {
+            browser.verify(&self.hub_id);
+        }
+    }
+
+    /// Waits for the browser's thread, which only ever waits on its channel and
+    /// on the setup of sockets: not long enough for the interface to notice.
+    fn stop(&mut self) {
+        self.browser = None;
+        self.dial_failed = false;
     }
 }
 
@@ -1715,5 +2102,368 @@ mod tests_wp_r1 {
         assert_eq!(s.get("b").as_deref(), Some("two"));
         std::fs::write(&path, "not [ toml").unwrap();
         assert_eq!(s.get("a"), None, "a bad file reads as no tokens");
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_tm9 {
+    use super::*;
+    use dspi_link::discovery::{FakeAdvertiser, HubAdvert};
+    use dspi_link::fakehub::{Auth, FakeHub, HubConfig};
+    use std::net::{IpAddr, Ipv4Addr, TcpListener};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::thread::sleep;
+
+    const WINDOW: Duration = Duration::from_millis(150);
+    const LOCAL: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
+
+    fn tokens(name: &str) -> PathBuf {
+        let dir = test_dir().join(format!("tm9-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("tokens.toml")
+    }
+
+    fn advert(name: &str, id: &str, port: u16) -> HubAdvert {
+        HubAdvert {
+            name: name.into(),
+            port,
+            hub_id: id.into(),
+            kind: "console".into(),
+            auth: "none".into(),
+            device_count: 1,
+            ..HubAdvert::default()
+        }
+    }
+
+    /// A port nothing listens on: a hub's old address.
+    fn dead_port() -> u16 {
+        let listener = TcpListener::bind((LOCAL, 0)).unwrap();
+        listener.local_addr().unwrap().port()
+    }
+
+    /// `id`'s hub, last known at `port` of this machine.
+    fn known_at(port: u16, id: Option<&str>, name: &str) -> LinkTarget {
+        LinkTarget {
+            hub_id: id.map(str::to_owned),
+            tokens: Some(tokens(name)),
+            ..LinkTarget::parse(&format!("127.0.0.1:{port}")).unwrap()
+        }
+    }
+
+    fn eventually(what: &str, mut done: impl FnMut() -> bool) {
+        for _ in 0..500 {
+            if done() {
+                return;
+            }
+            sleep(Duration::from_millis(10));
+        }
+        panic!("{what}");
+    }
+
+    /// Polls at one frozen moment, so nothing here is the back-off running out.
+    fn poll_to_end(r: &mut Reconnector, at: Instant) -> Reconnect {
+        for _ in 0..500 {
+            match r.poll(at) {
+                Reconnect::Waiting => sleep(Duration::from_millis(10)),
+                ended => return ended,
+            }
+        }
+        panic!("the attempt never ended");
+    }
+
+    /// F5: dial, fail, ask the network, hear the hub elsewhere, dial there.
+    #[test]
+    fn wp_tm9_a_hub_with_a_new_address_is_found_by_its_id_without_waiting() {
+        let hub = FakeHub::start(HubConfig::default()).unwrap();
+        let id = HubConfig::default().hub_id;
+        let stale = dead_port();
+        let net = FakeAdvertiser::new();
+        // Lost power: still listed, at the address that has stopped answering.
+        net.announce(&advert("Studio", &id, stale), &[LOCAL]);
+        let target = Target::Link(known_at(stale, Some(&id), "moved"));
+        let mut r = Reconnector::browsing(target, Some(Arc::new(net.clone())));
+        assert_eq!(net.opens(), 0, "no browse before anything is lost");
+
+        let t0 = Instant::now();
+        assert!(matches!(r.poll(t0), Reconnect::Waiting));
+        eventually("the failed dial never asked the network", || {
+            assert!(matches!(r.poll(t0), Reconnect::Waiting));
+            !net.verified().is_empty()
+        });
+        assert_eq!(net.verified(), [FakeAdvertiser::instance("Studio")]);
+        assert_eq!(net.open_now(), 1, "the browse runs while reconnecting");
+
+        // The back-off (a second) has a long way to go at this frozen moment.
+        let moved = hub.addr().port();
+        net.announce(&advert("Studio", &id, moved), &[LOCAL]);
+        let Reconnect::Connected(c) = poll_to_end(&mut r, t0) else {
+            panic!("did not connect");
+        };
+        let reached = c.link.clone().unwrap();
+        assert_eq!(reached.port, moved, "the target learns the new address");
+        assert_eq!(reached.hub_id.as_deref(), Some(id.as_str()));
+        assert_eq!(hub.sessions().len(), 1);
+        eventually("the browse outlived the reconnect", || net.open_now() == 0);
+    }
+
+    #[test]
+    fn wp_tm9_a_hub_gone_from_the_list_is_dialled_at_the_address_it_had() {
+        let hub = FakeHub::start(HubConfig::default()).unwrap();
+        let net = FakeAdvertiser::new();
+        let id = HubConfig::default().hub_id;
+        let target = Target::Link(known_at(hub.addr().port(), Some(&id), "same"));
+        let mut r = Reconnector::browsing(target, Some(Arc::new(net.clone())));
+        let Reconnect::Connected(c) = poll_to_end(&mut r, Instant::now()) else {
+            panic!("did not connect");
+        };
+        assert_eq!(c.link.unwrap().port, hub.addr().port());
+    }
+
+    #[test]
+    fn wp_tm9_without_a_hub_id_or_off_a_hub_nothing_browses() {
+        let net = FakeAdvertiser::new();
+        let source = || -> Option<Arc<dyn BrowseSource>> { Some(Arc::new(net.clone())) };
+        let typed = Target::Link(known_at(dead_port(), None, "noid"));
+        let mut r = Reconnector::browsing(typed, source());
+        assert!(matches!(r.poll(Instant::now()), Reconnect::Waiting));
+        let mut r2 = Reconnector::browsing(Target::Demo, source());
+        assert!(matches!(
+            poll_to_end(&mut r2, Instant::now()),
+            Reconnect::Connected(_)
+        ));
+        assert_eq!(net.opens(), 0);
+        drop(r);
+    }
+
+    #[test]
+    fn wp_tm9_a_person_being_needed_ends_the_browse_too() {
+        let hub = FakeHub::start(HubConfig {
+            auth: Auth::Window("1234".into()),
+            ..HubConfig::default()
+        })
+        .unwrap();
+        let id = HubConfig::default().hub_id;
+        let net = FakeAdvertiser::new();
+        let target = Target::Link(known_at(hub.addr().port(), Some(&id), "pin"));
+        let mut r = Reconnector::browsing(target, Some(Arc::new(net.clone())));
+        let Reconnect::GaveUp(e) = poll_to_end(&mut r, Instant::now()) else {
+            panic!("did not give up");
+        };
+        assert!(matches!(e, OpenError::NeedsPin { .. }), "{e}");
+        assert_eq!(net.opens(), 1);
+        eventually("the browse outlived giving up", || net.open_now() == 0);
+    }
+
+    /// A DHCP lease can hand a hub's old address to another hub.
+    #[test]
+    fn wp_tm9_another_hub_at_the_address_is_refused_unasked_and_tried_again() {
+        let other = FakeHub::start(HubConfig {
+            auth: Auth::Window("1234".into()),
+            ..HubConfig::default()
+        })
+        .unwrap();
+        let asked = AtomicUsize::new(0);
+        let prompt = |_: &str, _: &str| {
+            asked.fetch_add(1, Ordering::SeqCst);
+            Some("1234".to_string())
+        };
+        let mine = known_at(other.addr().port(), Some("another-hub"), "other");
+        let tokens = mine.tokens.clone().unwrap();
+        let Err(e) = Target::Link(mine).connect(&prompt) else {
+            panic!("adopted another hub");
+        };
+        assert!(matches!(e, OpenError::WrongHub { .. }), "{e}");
+        assert!(!e.is_final(), "the right one may yet appear");
+        assert!(e.is_dial_failure());
+        assert_eq!(asked.load(Ordering::SeqCst), 0, "no PIN went to it");
+        assert!(!tokens.exists(), "and no token came back");
+        eventually("the session stayed open", || other.sessions().is_empty());
+    }
+
+    #[test]
+    fn wp_tm9_a_hub_id_is_compared_without_case() {
+        let hub = FakeHub::start(HubConfig::default()).unwrap();
+        let id = HubConfig::default().hub_id.to_uppercase();
+        let l = known_at(hub.addr().port(), Some(&id), "case");
+        assert!(Target::Link(l).connect(&no_prompt).is_ok());
+    }
+
+    #[test]
+    fn wp_tm9_a_typed_address_learns_its_hubs_id_on_connecting() {
+        let hub = FakeHub::start(HubConfig::default()).unwrap();
+        let l = known_at(hub.addr().port(), None, "learn");
+        let c = Target::Link(l.clone()).connect(&no_prompt).unwrap();
+        let reached = c.link.unwrap();
+        assert_eq!(reached.hub_id, Some(HubConfig::default().hub_id));
+        assert_eq!((reached.host, reached.port), (l.host, l.port));
+        assert!(Target::Demo.connect(&no_prompt).unwrap().link.is_none());
+    }
+
+    /// Answers a choice as told.
+    struct Picks(Option<usize>);
+
+    impl Prompt for Picks {
+        fn pin(&self, _hub: &str, _pin_source: &str) -> Option<String> {
+            None
+        }
+
+        fn pick(&self, _choices: &[String]) -> Option<usize> {
+            self.0
+        }
+    }
+
+    fn two_hubs() -> FakeAdvertiser {
+        let net = FakeAdvertiser::new();
+        net.announce(
+            &advert("Studio Mac", "aaaa", 4848),
+            &["192.168.1.20".parse().unwrap()],
+        );
+        net.announce(
+            &advert("Attic", "bbbb", 4849),
+            &["192.168.1.30".parse().unwrap()],
+        );
+        net
+    }
+
+    fn locate(
+        net: &FakeAdvertiser,
+        wanted: Option<&str>,
+        prompt: PinPrompt<'_>,
+    ) -> Result<LinkTarget, OpenError> {
+        let l = LinkTarget::find(wanted.map(str::to_owned));
+        locate_on(&l, Arc::new(net.clone()), WINDOW, prompt)
+    }
+
+    #[test]
+    fn wp_tm9_the_only_hub_needs_no_name_and_brings_what_it_announced() {
+        let net = FakeAdvertiser::new();
+        net.announce(
+            &HubAdvert {
+                path: Some("/other/path".into()),
+                ..advert("Studio", "AAAA", 4848)
+            },
+            &["192.168.1.20".parse().unwrap()],
+        );
+        let device = LinkTarget {
+            device: Some("SERIAL".into()),
+            pin: Some("1234".into()),
+            ..LinkTarget::find(None)
+        };
+        let l = locate_on(&device, Arc::new(net), WINDOW, &no_prompt).unwrap();
+        assert_eq!((l.host.as_str(), l.port), ("192.168.1.20", 4848));
+        assert_eq!(l.hub_id.as_deref(), Some("aaaa"));
+        assert_eq!(l.ws_url(), "ws://192.168.1.20:4848/other/path");
+        assert_eq!(l.find, None, "it has been found");
+        assert_eq!(l.device.as_deref(), Some("SERIAL"), "the flags stay");
+        assert_eq!(l.pin.as_deref(), Some("1234"));
+    }
+
+    #[test]
+    fn wp_tm9_several_hubs_are_for_a_person_to_pick_or_for_the_error_to_name() {
+        let net = two_hubs();
+        // Sorted by name, and the answer is an index into that.
+        let l = locate(&net, None, &Picks(Some(1))).unwrap();
+        assert_eq!(l.hub_id.as_deref(), Some("aaaa"));
+        let l = locate(&net, None, &Picks(Some(0))).unwrap();
+        assert_eq!(l.hub_id.as_deref(), Some("bbbb"));
+        for nobody in [Picks(None), Picks(Some(2))] {
+            let Err(e) = locate(&net, None, &nobody) else {
+                panic!("chose for the person");
+            };
+            let OpenError::Ambiguous { names, flag, .. } = &e else {
+                panic!("{e}");
+            };
+            assert_eq!(*flag, "--hub <name>");
+            assert_eq!(
+                names,
+                &[
+                    "Attic at 192.168.1.30:4849",
+                    "Studio Mac at 192.168.1.20:4848"
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn wp_tm9_a_hub_is_named_by_part_of_its_name_its_id_or_its_address() {
+        let net = two_hubs();
+        for (wanted, id) in [
+            ("mac", "aaaa"),
+            ("STUDIO MAC", "aaaa"),
+            ("bbbb", "bbbb"),
+            ("192.168.1.30", "bbbb"),
+        ] {
+            let l = locate(&net, Some(wanted), &no_prompt).unwrap();
+            assert_eq!(l.hub_id.as_deref(), Some(id), "{wanted}");
+        }
+        // Both have this in their address.
+        assert!(matches!(
+            locate(&net, Some("192.168"), &no_prompt),
+            Err(OpenError::Ambiguous { .. })
+        ));
+    }
+
+    #[test]
+    fn wp_tm9_no_such_hub_counts_as_no_device() {
+        for (net, wanted) in [(two_hubs(), Some("cellar")), (FakeAdvertiser::new(), None)] {
+            let Err(e) = locate(&net, wanted, &no_prompt) else {
+                panic!("found a hub");
+            };
+            assert!(matches!(e, OpenError::NoHub { .. }), "{e}");
+            assert!(e.is_no_device());
+        }
+    }
+
+    #[test]
+    fn wp_tm9_a_whole_name_ends_the_wait_but_no_name_never_does() {
+        let net = two_hubs();
+        let source: Arc<dyn BrowseSource> = Arc::new(net);
+        let long = Duration::from_secs(30);
+        let l = LinkTarget::find(Some("Attic".into()));
+        let t0 = Instant::now();
+        locate_on(&l, Arc::clone(&source), long, &no_prompt).unwrap();
+        assert!(t0.elapsed() < long / 3, "{:?}", t0.elapsed());
+        // With no name, the whole window: the other hub may be a moment away.
+        let t0 = Instant::now();
+        let hubs = scan_hubs(source, WINDOW, |_| false).unwrap();
+        assert!(t0.elapsed() >= WINDOW);
+        assert_eq!(hubs.len(), 2);
+    }
+
+    #[test]
+    fn wp_tm9_browsing_that_fails_says_so_rather_than_finding_nothing() {
+        let net = FakeAdvertiser::new();
+        net.fail_next_opens(&["no interface"]);
+        let Err(e) = locate(&net, None, &no_prompt) else {
+            panic!("found a hub");
+        };
+        assert!(matches!(e, OpenError::Browse(_)), "{e}");
+        assert!(e.to_string().contains("no interface"), "{e}");
+        assert!(!e.is_no_device());
+    }
+
+    #[test]
+    fn wp_tm9_a_found_hub_connects_and_a_target_with_an_address_is_left_alone() {
+        let hub = FakeHub::start(HubConfig::default()).unwrap();
+        let id = HubConfig::default().hub_id;
+        let net = FakeAdvertiser::new();
+        net.announce(&advert("Studio", &id, hub.addr().port()), &[LOCAL]);
+        let asked = LinkTarget {
+            tokens: Some(tokens("found")),
+            ..LinkTarget::find(None)
+        };
+        let l = locate_on(&asked, Arc::new(net), WINDOW, &no_prompt).unwrap();
+        assert!(Target::Link(l).connect(&no_prompt).is_ok());
+
+        let typed = Target::Link(LinkTarget::parse("hub").unwrap());
+        assert_eq!(locate_hub(typed.clone(), &no_prompt).unwrap(), typed);
+        assert_eq!(locate_hub(Target::Demo, &no_prompt).unwrap(), Target::Demo);
+        // In this crate's tests, as in a build without mDNS.
+        let Err(e) = locate_hub(Target::Link(LinkTarget::find(None)), &no_prompt) else {
+            panic!("reached a real network from a test");
+        };
+        assert!(matches!(e, OpenError::NoMdns), "{e}");
     }
 }

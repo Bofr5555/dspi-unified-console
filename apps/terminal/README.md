@@ -85,6 +85,7 @@ Everywhere:
 | `Ctrl-S` | Commit Parameters to the active preset |
 | `Ctrl-Z` `Ctrl-Y` | Undo, redo |
 | `= g p . + - h l` | Graph height, pop-out, phase, linked partner, zoom, cursor |
+| `f t` | The live spectrum on the graph; take the analyser back from another console |
 | `b` `c` | Bypass Master EQ, clear clip latches |
 | `?` | Help for whatever has focus |
 | `q` | Quit, with the unsaved-changes prompt |
@@ -128,6 +129,7 @@ dspi cs import surfaces.json --save
 dspi -f evening.dspi              # a script, one command per line
 
 dspi autoeq search hd600          # headphone corrections
+dspi autoeq rebuild --yes         # download the profiles from GitHub again
 dspi undo                         # put back what the last change replaced
 dspi raw 0x87 41                  # any opcode, hex-dumped
 dspi completions zsh              # shell completion

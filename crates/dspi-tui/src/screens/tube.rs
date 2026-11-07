@@ -119,18 +119,17 @@ const CURVE_STEPS: usize = 240;
 const SHELF_COLUMNS: usize = 4;
 
 /// Which of the Console's two layouts the panel shows.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum View {
     /// The tube, the two controls most people need, and where it applies.
+    /// What the panel opens in until a choice is saved, the Console's default
+    /// (`TubeModellerView.swift:123`).
+    #[default]
     Basic,
     /// Every parameter.
     Advanced,
 }
-
-/// What the panel opens in, the Console's default
-/// (`TubeModellerView.swift:123`). The Console also remembers the choice; here
-/// the panel is rebuilt on every open and has nowhere to keep it yet.
-const DEFAULT_VIEW: View = View::Basic;
 
 const KEYS: &[KeyHelp] = &[
     KeyHelp::new("↑ ↓", "Move"),
@@ -360,11 +359,16 @@ enum Pending {
     Type,
 }
 
+type ViewHook = Box<dyn Fn(View) -> std::io::Result<()>>;
+
 pub struct TubePanel {
     body: Body,
     chip: usize,
     pending: Option<Pending>,
     view: View,
+    /// Told the new layout on every switch, since the panel is rebuilt on each
+    /// open and the choice has to outlive it.
+    on_view: Option<ViewHook>,
     /// The cursor inside each group of the Basic shelf.
     shelf: [usize; TYPE_GROUPS.len()],
 }
@@ -377,7 +381,7 @@ impl Default for TubePanel {
 
 impl TubePanel {
     pub fn new() -> Self {
-        Self::with_view(DEFAULT_VIEW)
+        Self::with_view(View::default())
     }
 
     pub fn with_view(view: View) -> Self {
@@ -386,8 +390,20 @@ impl TubePanel {
             chip: 0,
             pending: None,
             view,
+            on_view: None,
             shelf: [0; TYPE_GROUPS.len()],
         }
+    }
+
+    /// Hear about every switch of layout, to keep the choice.
+    pub fn on_view(mut self, f: impl Fn(View) -> std::io::Result<()> + 'static) -> Self {
+        self.on_view = Some(Box::new(f));
+        self
+    }
+
+    /// The layout on show.
+    pub fn view(&self) -> View {
+        self.view
     }
 
     /// Switch layouts. Nothing is written; the two share a device state and
@@ -1103,7 +1119,10 @@ impl Screen for TubePanel {
         // typed.
         if key.code == KeyCode::Char('a') && self.body.edit.is_none() {
             self.toggle_view();
-            return ScreenEvent::Handled;
+            return match self.on_view.as_ref().map(|f| f(self.view)) {
+                Some(Err(e)) => ScreenEvent::Status(format!("Could not save settings: {e}")),
+                _ => ScreenEvent::Handled,
+            };
         }
         let rows = self.rows(state, panel::key_theme());
         self.body.clamp(&rows);
@@ -2050,6 +2069,39 @@ mod tests {
         fn tm7_the_panel_lists_the_toggle_key() {
             let p = TubePanel::with_view(View::Basic);
             assert!(p.keys().iter().any(|k| k.key == "a"));
+        }
+    }
+
+    // -- WP TM18 --
+    mod tm18 {
+        use super::*;
+        use std::cell::Cell;
+        use std::rc::Rc;
+
+        #[test]
+        fn tm18_a_switch_of_layout_is_reported_and_readable() {
+            let seen = Rc::new(Cell::new(None));
+            let sink = seen.clone();
+            let mut p = TubePanel::with_view(View::Basic).on_view(move |v| {
+                sink.set(Some(v));
+                Ok(())
+            });
+            let s = state(true);
+            assert_eq!(p.handle(key(KeyCode::Char('a')), &s), ScreenEvent::Handled);
+            assert_eq!(seen.get(), Some(View::Advanced));
+            assert_eq!(p.view(), View::Advanced);
+        }
+
+        #[test]
+        fn tm18_a_layout_that_cannot_be_saved_says_so_and_still_switches() {
+            let mut p = TubePanel::with_view(View::Basic)
+                .on_view(|_| Err(std::io::Error::other("read-only")));
+            let s = state(true);
+            assert_eq!(
+                p.handle(key(KeyCode::Char('a')), &s),
+                ScreenEvent::Status("Could not save settings: read-only".into())
+            );
+            assert_eq!(p.view(), View::Advanced);
         }
     }
 }

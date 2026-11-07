@@ -135,6 +135,11 @@ pub const VERBS: &[(&str, &str)] = &[
     ("undo", "Put back the value the last change replaced"),
     ("redo", "Re-apply the change undo reversed"),
     ("raw", "Issue any vendor opcode directly"),
+    // -- WP TM12 -- Runs in the binary; here so completions offer it.
+    (
+        "autoeq",
+        "Find or apply a headphone profile, or update the database",
+    ),
 ];
 
 /// Parse a token list into a command.

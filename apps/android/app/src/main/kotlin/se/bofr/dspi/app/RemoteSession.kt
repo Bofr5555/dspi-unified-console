@@ -49,7 +49,7 @@ interface RemoteSession {
  * The REMOTE stack, built like the demo stack ([startDemoSession]): [core]
  * (the real FfiDspiCore in the app) behind its own [DspiBridgeImpl] on its own
  * FFI thread, so a USB unit and a remote unit are never mixed; the Link
- * session runs on the same core and thread ([BridgeLinkCoreOps]).
+ * session runs on the same core, its dials off that thread ([BridgeLinkCoreOps]).
  */
 fun startRemoteSession(
     parent: CoroutineScope,

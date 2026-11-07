@@ -1193,6 +1193,10 @@ pub struct DeviceState {
     /// False once the transport or the notification reader reports the
     /// device gone. The shell's dot and dimming follow this.
     pub connected: bool,
+    // -- WP TM8 --
+    /// The connection is gone and the last known values stay on show: a hub
+    /// being reconnected to. See [`Self::mirror_readable`].
+    pub mirror_held: bool,
 }
 
 impl DeviceState {
@@ -1228,9 +1232,18 @@ impl DeviceState {
             upmix_status: None,
             stale: false,
             connected: true,
+            // -- WP TM8 --
+            mirror_held: false,
         };
         s.mark_saved();
         s
+    }
+
+    // -- WP TM8 --
+    /// Whether these values are worth showing: the device is here, or the
+    /// mirror is held for its return. Writing still needs [`Self::connected`].
+    pub fn mirror_readable(&self) -> bool {
+        self.connected || self.mirror_held
     }
 
     /// Replace the shadow after a full read.

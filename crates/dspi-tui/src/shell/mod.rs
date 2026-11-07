@@ -17,7 +17,7 @@ pub mod screen;
 pub mod sidebar;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use dspi_session::DeviceState;
+use dspi_session::{DeviceState, link_words};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
@@ -168,6 +168,11 @@ pub enum ShellEvent {
     GraphPopout,
     /// `.`: show or hide the linked partner's curve under the selected one.
     GraphPartner,
+    // -- WP TM5 --
+    /// `f`: the live spectrum on the response graph.
+    SpectrumOverlay,
+    /// `t`: take the analyser back from the console being followed.
+    TakeControl,
     Rename(usize),
     CopyParams(usize),
     PasteParams(usize),
@@ -208,6 +213,27 @@ pub struct Shell {
     pub regions: Option<Regions>,
 }
 
+// -- WP TM8 --
+/// The name of [`is_disconnect_key`] on the status line, the one place it means
+/// anything.
+const DISCONNECT_KEY: &str = "Ctrl-X";
+
+/// The key that ends a reconnect. Only the application knows whether one is
+/// running, and it must work over any dialog, so the shell does not act on it.
+pub fn is_disconnect_key(key: KeyEvent) -> bool {
+    key.code == KeyCode::Char('x') && key.modifiers.contains(KeyModifiers::CONTROL)
+}
+
+/// The owner's rule for a lost Link connection (PLAN-CLIENTS section 1), in the
+/// wording every client shares.
+fn link_lost_line() -> String {
+    let lost = link_words::RECONNECTING;
+    match lost.action {
+        Some(a) => format!("{} · {DISCONNECT_KEY} {}", lost.text, a.text),
+        None => lost.text.to_string(),
+    }
+}
+
 const GLOBAL_KEYS: &[KeyHelp] = &[
     KeyHelp::new("Tab", "Next region"),
     KeyHelp::new("Ctrl-P", "Search everything"),
@@ -219,6 +245,8 @@ const GLOBAL_KEYS: &[KeyHelp] = &[
     KeyHelp::new("Ctrl-Z Ctrl-Y", "Undo, redo"),
     KeyHelp::new(";", "Page commands"),
     KeyHelp::new("= g p . + -", "Graph height, pop-out, phase, partner, zoom"),
+    // -- WP TM5 --
+    KeyHelp::new("f t", "Spectrum on the graph, take control of the analyser"),
     KeyHelp::new("b c", "Bypass master EQ, clear clips"),
     KeyHelp::new("q", "Quit"),
 ];
@@ -491,6 +519,9 @@ impl Shell {
             KeyCode::Char('g') => out.push(ShellEvent::GraphPopout),
             KeyCode::Char('p') => out.push(ShellEvent::GraphPhase),
             KeyCode::Char('.') => out.push(ShellEvent::GraphPartner),
+            // -- WP TM5 --
+            KeyCode::Char('f') => out.push(ShellEvent::SpectrumOverlay),
+            KeyCode::Char('t') => out.push(ShellEvent::TakeControl),
             KeyCode::Char('+') => out.push(ShellEvent::GraphZoom(-10.0)),
             KeyCode::Char('-') => out.push(ShellEvent::GraphZoom(10.0)),
             KeyCode::Char('h') => out.push(self.cursor_step(-1)),
@@ -720,7 +751,9 @@ impl Shell {
     /// Without a device the grid has no cells, and the overview shows the
     /// graph's empty grid instead, as the Console keeps its graph pane.
     fn graph_height(&self) -> GraphHeight {
-        let grid = self.model.selection == Selection::Overview && self.model.connected;
+        // -- WP TM8 -- (a held mirror keeps its grid)
+        let grid = self.model.selection == Selection::Overview
+            && (self.model.connected || self.model.link_lost);
         if grid || self.tool.is_some() {
             GraphHeight::Hidden
         } else {
@@ -950,7 +983,8 @@ impl Shell {
         // -- WP TM4 --
         // A read-only device's banner takes the left of the title row: it
         // names the firmware, and no screen can scroll it away.
-        let banner = read_only::banner(&state.caps).map(|b| format!(" {b}"));
+        // -- WP TM8 -- A lost link matters more: nothing can be written at all.
+        let banner = self.banner(state).map(|b| format!(" {b}"));
         let mut left = banner.clone().unwrap_or_else(|| {
             format!(
                 " DSPi  {} · fw {} · {}",
@@ -1017,6 +1051,15 @@ impl Shell {
                 },
             );
         }
+    }
+
+    // -- WP TM8 --
+    /// What the title row has to say above all else, on every screen.
+    fn banner(&self, state: &DeviceState) -> Option<String> {
+        if self.model.link_lost {
+            return Some(link_lost_line());
+        }
+        read_only::banner(&state.caps)
     }
 
     fn block(&self, title: &str, focused: bool, t: &Theme) -> Block<'static> {
@@ -1194,9 +1237,19 @@ impl Shell {
             .title_style(if focused { t.focused() } else { t.section() })
     }
 
+    // -- WP TM5 --
+    /// Whether the response graph is being drawn: what the spectrum overlay
+    /// watches for, since nothing else makes the analyser worth running.
+    pub fn graph_on_screen(&self) -> bool {
+        self.settings.is_none()
+            && self.tool.is_none()
+            && (self.graph_popout || self.graph_height() != GraphHeight::Hidden)
+    }
+
     fn draw_graph(&self, graph_area: Rect, buf: &mut Buffer, t: &Theme) {
         let m = &self.model;
         Graph::new(&m.curves, &m.graph, t)
+            .spectrum(m.spectrum.as_ref()) // -- WP TM5 --
             .cursor(m.cursor_hz)
             .marker(m.marker_hz)
             .render(graph_area, buf);
@@ -1214,7 +1267,7 @@ impl Shell {
         );
         // -- WP TM4 --
         // Settings has the whole screen, so the banner goes between its ends.
-        if let Some(b) = read_only::banner(&state.caps) {
+        if let Some(b) = self.banner(state) {
             let room = (r.title.width as usize).saturating_sub(title.len() + back.len() + 2);
             buf.set_string(
                 r.title.x + title.len() as u16 + 1,

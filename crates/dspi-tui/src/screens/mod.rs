@@ -408,17 +408,32 @@ pub fn band_command(
     out
 }
 
-/// The Console's Identify, as commands: the channel-ID blip melody on one
-/// output, so a listener can tell which speaker is which.
+// -- WP TM18 --
+/// The Console's Identify, as commands (`Commands.swift:3688-3704`): the
+/// channel-ID blip melody on one output at -12 dB, two passes and then idle,
+/// so a listener can tell which speaker is which.
+///
+/// The output is clamped to the generator's valid-channel mask, or left as it
+/// is when the probe has no mask to go by. The firmware walks a channel-ID
+/// signal whatever the flags say (`siggen.c:1088-1089`), so no flag is sent.
 ///
 /// `None` when the firmware has no signal generator to play it with, which is
-/// the same gate the sidebar's `i` applies.
+/// the same gate the sidebar's `i` applies, or when this is not an output the
+/// generator can drive.
 pub fn identify_command(state: &DeviceState, output: usize) -> Option<String> {
-    panel::has_feature(state, "test_signals").then(|| {
+    if !panel::has_feature(state, "test_signals") {
+        return None;
+    }
+    let bit = 1u16.checked_shl(u32::try_from(output).ok()?)?;
+    let valid = match &state.caps.siggen {
+        Some(c) if c.valid_channel_mask != 0 => c.valid_channel_mask,
+        _ => bit,
+    };
+    let mask = bit & valid;
+    (mask != 0).then(|| {
         format!(
-            "sig.config type=channel-id channels=0x{:X} invert=0x0 level=-20 duration=0 \
-             repeat=1 gap=0 flags=walk p1=120\nsig.control start",
-            1u16 << output
+            "sig.config type=channel-id channels=0x{mask:X} invert=0x0 level=-12 duration=0 \
+             repeat=2 gap=0 p1=120\nsig.control start"
         )
     })
 }
@@ -439,6 +454,68 @@ pub(crate) mod tests {
     use super::*;
     use crate::shell::{Shell, fixture};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    /// What Identify asks the generator for, as the command parser reads it.
+    fn tm18_identify_config(
+        state: &DeviceState,
+        output: usize,
+    ) -> dspi_proto::packets::SiggenConfig {
+        let cmds = identify_command(state, output).expect("identify offered");
+        let lines: Vec<&str> = cmds.lines().collect();
+        assert_eq!(lines.len(), 2, "{cmds}");
+        assert_eq!(lines[1], "sig.control start");
+        let fields: Vec<(&str, &str)> = lines[0]
+            .split_whitespace()
+            .skip(1)
+            .map(|f| f.split_once('=').expect("key=value"))
+            .collect();
+        dspi_proto::packets::SiggenConfig::from_fields(&fields).expect("parses")
+    }
+
+    #[test]
+    fn tm18_identify_is_the_consoles_two_passes_at_minus_12() {
+        let state = panel::testing::state();
+        let c = tm18_identify_config(&state, 2);
+        assert_eq!(c.signal_type, 14, "SIGGEN_CHANNEL_ID");
+        assert_eq!(c.channel_mask, 0x4, "the third output alone");
+        assert_eq!(c.level_db, -12.0);
+        assert_eq!(c.repeat_count, 2);
+        assert_eq!(c.p1, 120.0, "120 ms blips");
+        assert_eq!(
+            (c.invert_mask, c.flags, c.duration_ms, c.gap_ms),
+            (0, 0, 0, 0)
+        );
+    }
+
+    #[test]
+    fn tm18_identify_is_clamped_to_the_valid_channel_mask() {
+        let mut state = panel::testing::state();
+        // 0x1FF: the ninth output is the last the generator can drive.
+        assert_eq!(tm18_identify_config(&state, 8).channel_mask, 0x100);
+        assert_eq!(identify_command(&state, 9), None);
+        // Past the mask's sixteen bits is refused rather than shifted away.
+        assert_eq!(identify_command(&state, 16), None);
+        assert_eq!(identify_command(&state, usize::MAX), None);
+        // A mask with a hole in it is what the generator said, so it holds.
+        if let Some(c) = state.caps.siggen.as_mut() {
+            c.valid_channel_mask = 0b101;
+        }
+        assert_eq!(identify_command(&state, 1), None);
+        assert_eq!(tm18_identify_config(&state, 2).channel_mask, 0b100);
+        // No mask yet: the raw bit, as the Console falls back before its first
+        // caps fetch.
+        if let Some(c) = state.caps.siggen.as_mut() {
+            c.valid_channel_mask = 0;
+        }
+        assert_eq!(tm18_identify_config(&state, 12).channel_mask, 1 << 12);
+        state.caps.siggen = None;
+        assert_eq!(tm18_identify_config(&state, 12).channel_mask, 1 << 12);
+    }
+
+    #[test]
+    fn tm18_identify_needs_a_generator() {
+        assert_eq!(identify_command(&fixture::state(), 0), None);
+    }
 
     /// Turn a key-line token into the key events it stands for, so a screen
     /// can prove that every key it advertises is bound. The shell has the same

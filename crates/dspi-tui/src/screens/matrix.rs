@@ -1939,7 +1939,7 @@ mod tests {
             ScreenEvent::Command(c) => {
                 assert!(c.starts_with("sig.config type=channel-id"), "{c}");
                 assert!(c.contains("channels=0x4"), "the third output: {c}");
-                assert!(c.contains("flags=walk") && c.contains("p1=120"), "{c}");
+                assert!(c.contains("p1=120"), "{c}");
                 assert!(c.ends_with("sig.control start"), "{c}");
             }
             other => panic!("{other:?}"),

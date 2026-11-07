@@ -95,7 +95,8 @@ fun remoteStrip(s: LinkSessionState, lockNotice: Boolean = false): ConnectionStr
             ConnectionStrip.Remote(text, listOf(d))
         }
         is LinkSessionState.Reconnecting -> ConnectionStrip.Remote(
-            "Lost ${s.hub.name}: ${s.reason}. Reconnecting…",
+            // -- WP AN3 -- the owner's rule, in the core's wording; AN5 builds the banner on this
+            if (s.reason.isEmpty()) s.text else "${s.text} (${s.reason})",
             listOf(RemoteAction.RETRY, d)
         )
         is LinkSessionState.Failed -> ConnectionStrip.Remote(s.reason, listOf(RemoteAction.CONNECT, d))
