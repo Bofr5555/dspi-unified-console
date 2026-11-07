@@ -64,6 +64,9 @@ data-encoding = "2"
 dspi-transport = { path = "../dspi-transport", default-features = false, features = ["link"] }
 # -- WP HB2 --
 proptest = "1"
+# -- WP HB3 --
+# tests/wp_hb3_meter_feed.rs: C15's own client, in `DspiCore`, over the real server.
+dspi-core = { workspace = true, features = ["link"] }
 
 [[test]]
 name = "wp_hb0_app_path"

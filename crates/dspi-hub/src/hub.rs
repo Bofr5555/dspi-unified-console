@@ -14,7 +14,9 @@ use std::thread::{self, JoinHandle, ThreadId};
 use std::time::{Duration, Instant};
 
 use dspi_link::frames::CmdRequest;
-use dspi_link::status;
+use dspi_link::messages::{PollGrant, PollSpec, Snapshot};
+use dspi_link::{Dir, status};
+use dspi_proto::generated::opcodes as op;
 use dspi_transport::{Transport, TransportError};
 
 use crate::advertise::Advertiser;
@@ -23,14 +25,19 @@ use crate::error::HubError;
 use crate::local::LocalTransport;
 use crate::lock::LockRefusal;
 use crate::policy::Policy;
-use crate::registry::{DeviceState, OFFLINE_GRACE, RegisteredDevice, Registry, RegistryEvent};
+use crate::polls::PollRefused;
+use crate::registry::{
+    DeviceState, NameStore, OFFLINE_GRACE, RegisteredDevice, Registry, RegistryEvent,
+    board_name_from, board_name_payload,
+};
 use crate::relay::{Relay, Scope};
 use crate::router::Router;
 use crate::server::{NetworkConfig, Server};
 use crate::session::{
     CLOSE_SHUTTING_DOWN, Completion, FIRST_REMOTE_SESSION_ID, INTERNAL_SESSION_ID,
-    LOCAL_SESSION_ID, NO_ORIGIN, Outbox, Role, Session, SessionId,
+    LOCAL_SESSION_ID, NO_ORIGIN, Outbox, Role, Session, SessionCtx, SessionId,
 };
+use crate::snapshot::SnapshotRefused;
 use crate::usb::DeviceBus;
 
 /// `limits.max_inflight` (spec 7.2).
@@ -48,6 +55,9 @@ const IDENTITY_DELAYS: [Duration; 3] = [
 ];
 /// How long [`HubHandle::scan_now`] waits for the supervisor.
 const SCAN_NOW_TIMEOUT: Duration = Duration::from_secs(10);
+// -- WP HB3 --
+/// How long `device.snapshot` waits for the image. Well inside a client's own 15 s.
+pub const SNAPSHOT_WAIT: Duration = Duration::from_secs(3);
 
 /// What a hub is started with.
 pub struct HubConfig {
@@ -68,6 +78,12 @@ pub struct HubConfig {
     /// connection and called [`HubHandle::scan_now`], so the hub never depends on the OS
     /// refusing a second claim. A headless hub keeps it.
     pub initial_scan: bool,
+    // -- WP HB3 --
+    /// Where hub-stored device names persist. `None`: for this run only.
+    pub names: Option<Arc<dyn NameStore>>,
+    /// Read each device's image as it attaches, so the first `device.snapshot` needs no
+    /// read. Always on with [`HubConfig::network`]; an in-process hub has nobody to ask.
+    pub warm_snapshots: bool,
 }
 
 impl HubConfig {
@@ -81,6 +97,9 @@ impl HubConfig {
             offline_grace: OFFLINE_GRACE,
             scan_interval: SCAN_INTERVAL,
             initial_scan: true,
+            // -- WP HB3 --
+            names: None,
+            warm_snapshots: false,
         }
     }
 }
@@ -166,6 +185,12 @@ pub(crate) struct HubInner {
     /// Whether an `AppLink` holds the local session.
     #[cfg(feature = "app")]
     pub(crate) app_attached: AtomicBool,
+    // -- WP HB3 --
+    names: Option<Arc<dyn NameStore>>,
+    /// Keeps saves in the order of the changes. Above L1: L1 is taken under it, briefly,
+    /// to copy the names, and it is never taken under L1.
+    names_saving: Mutex<()>,
+    warm_snapshots: bool,
 }
 
 /// A cheap, clonable way to the hub, for the server and the app's broker. It keeps
@@ -213,6 +238,9 @@ impl Hub {
                 .hub_id()
                 .to_owned();
         }
+        // -- WP HB3 --
+        let names = config.names.take();
+        let stored = names.as_ref().map(|n| n.load()).unwrap_or_default();
         let (sup_tx, sup_rx) = mpsc::channel();
         let (ev_tx, ev_rx) = mpsc::channel();
         let inner = Arc::new(HubInner {
@@ -220,7 +248,7 @@ impl Hub {
             hub_id: config.hub_id,
             policy: Arc::new(Policy::embedded()),
             state: Mutex::new(State {
-                registry: Registry::new(config.offline_grace),
+                registry: Registry::with_names(config.offline_grace, stored),
                 attached: BTreeMap::new(),
                 sessions: BTreeMap::new(),
                 next_session: FIRST_REMOTE_SESSION_ID,
@@ -236,6 +264,10 @@ impl Hub {
             inaccessible: AtomicU32::new(0),
             #[cfg(feature = "app")]
             app_attached: AtomicBool::new(false),
+            // -- WP HB3 --
+            names,
+            names_saving: Mutex::new(()),
+            warm_snapshots: config.warm_snapshots || network.is_some(),
         });
         let io = |e: std::io::Error| HubError::Io(format!("cannot start a hub thread: {e}"));
         let events = {
@@ -595,6 +627,118 @@ impl HubHandle {
     }
 }
 
+// -- WP HB3 --
+impl HubHandle {
+    fn device_at(&self, handle: u8) -> Option<Arc<DeviceShared>> {
+        guard(&self.inner.state)
+            .attached
+            .get(&handle)
+            .map(|a| Arc::clone(&a.shared))
+    }
+
+    /// `poll.subscribe` (spec 7.6): what each slot was granted. Frames go to the
+    /// session's outbox. A subscription ends with the session, with
+    /// [`HubHandle::poll_unsubscribe`], or when the device goes offline, when the client
+    /// subscribes again if it still wants the feed.
+    pub fn poll_subscribe(
+        &self,
+        session: &Session,
+        handle: u8,
+        specs: &[PollSpec],
+    ) -> Result<Vec<PollGrant>, PollRefused> {
+        self.device_at(handle)
+            .ok_or(PollRefused::NoDevice)?
+            .poll_subscribe(session, &self.inner.policy, specs)
+    }
+
+    /// `poll.unsubscribe`. A slot or a device that is not there is nothing to do.
+    pub fn poll_unsubscribe(&self, session: &Session, handle: u8, slots: &[u8]) {
+        if let Some(d) = self.device_at(handle) {
+            d.polls.unsubscribe(session.id(), slots, Instant::now());
+        }
+    }
+
+    /// `device.snapshot` (spec 7.5). Served from the cache; one with nothing cached yet,
+    /// or just after the device invalidated it, waits for the read, up to
+    /// [`SNAPSHOT_WAIT`]. So this blocks: on a connection's reader, never a hub thread.
+    pub fn snapshot(&self, handle: u8) -> Result<Snapshot, SnapshotRefused> {
+        self.device_at(handle)
+            .ok_or(SnapshotRefused::NoDevice)?
+            .snapshot_wait(SNAPSHOT_WAIT)
+            .ok_or(SnapshotRefused::Busy)
+    }
+
+    /// `device.rename` (spec 7.4). `done` gets the Link status, once. It runs on the
+    /// device's worker or this thread, so it must not block.
+    ///
+    /// A board that stores names is written as this session, so locks and the in-flight
+    /// limit apply as to a `cmd`: `OK` means it accepted the write, and `device.changed`
+    /// follows its notification. For older firmware the hub keeps the name, emits
+    /// `device.changed` itself, and offline will do. `DENIED` for a viewer, `NO_DEVICE`
+    /// for an unknown handle or a board that stores names and is not attached.
+    pub fn rename(
+        &self,
+        session: &Session,
+        handle: u8,
+        name: &str,
+        done: impl FnOnce(u8) + Send + 'static,
+    ) {
+        if session.role() == Role::Viewer {
+            return done(status::DENIED);
+        }
+        let inner = &self.inner;
+        let (known, stores_names, device, event) = {
+            let mut st = guard(&inner.state);
+            let stores_names = st
+                .registry
+                .by_handle(handle)
+                .map(|d| d.identity.board_name.is_some());
+            let device = st.attached.get(&handle).map(|a| Arc::clone(&a.shared));
+            let event = match stores_names {
+                Some(false) => st.registry.rename(handle, name),
+                _ => None,
+            };
+            (
+                stores_names.is_some(),
+                stores_names == Some(true),
+                device,
+                event,
+            )
+        };
+        if !known {
+            return done(status::NO_DEVICE);
+        }
+        if !stores_names {
+            inner.save_names();
+            if let Some(event) = event {
+                inner.publish(event);
+            }
+            return done(status::OK);
+        }
+        let Some(device) = device else {
+            return done(status::NO_DEVICE);
+        };
+        let req = name_write(handle, &board_name_from(name));
+        let answer = Completion::new(req.tag, move |r| done(r.status));
+        device.submit(session.ctx(), req, answer, None);
+    }
+}
+
+/// The write of a board's name.
+fn name_write(handle: u8, name: &str) -> CmdRequest {
+    let payload = board_name_payload(name);
+    CmdRequest {
+        tag: 0,
+        handle,
+        dir: Dir::Set,
+        b_request: op::REQ_SET_DEVICE_NAME,
+        w_value: 0,
+        w_index: dspi_proto::VENDOR_INTERFACE,
+        w_length: u16::try_from(payload.len()).unwrap_or(u16::MAX),
+        payload,
+    }
+}
+
 /// The next free id, skipping the reserved ones and those still open.
 fn next_session_id(st: &mut State) -> SessionId {
     loop {
@@ -608,6 +752,38 @@ fn next_session_id(st: &mut State) -> SessionId {
 }
 
 impl HubInner {
+    // -- WP HB3 --
+    /// Save the stored names, with L1 released. A failure is logged: the name holds for
+    /// this run.
+    fn save_names(&self) {
+        let Some(store) = &self.names else {
+            return;
+        };
+        let _in_order = guard(&self.names_saving);
+        let names = guard(&self.state).registry.stored_names().clone();
+        if let Err(e) = store.save(&names) {
+            log::warn!("hub: device names not saved: {e}");
+        }
+    }
+
+    /// Write a stored name to the board that lacks one, as the hub's own session. Once
+    /// accepted the entry goes, on the supervisor (`Completion`s must not block).
+    fn adopt_name(&self, device: &DeviceShared, serial: String, name: &str) {
+        let ctx = SessionCtx {
+            id: INTERNAL_SESSION_ID,
+            role: Role::Admin,
+            exempt_inflight: true,
+        };
+        let req = name_write(device.handle, name);
+        let sup = self.sup.clone();
+        let answer = Completion::new(req.tag, move |r| {
+            if r.status == status::OK {
+                let _ = sup.send(SupMsg::NameAdopted { serial });
+            }
+        });
+        device.submit(ctx, req, answer, None);
+    }
+
     fn emit(&self, event: HubEvent) {
         let _ = self.events.send(EventMsg::Event(event));
     }
@@ -670,7 +846,7 @@ impl HubInner {
         // Taken before the transport moves to its worker.
         let source = transport.notifications();
 
-        let (handle, event, returning) = {
+        let (handle, event, returning, adopt, names_changed, shared) = {
             let mut st = guard(&self.state);
             if self.stopping.load(Ordering::SeqCst) {
                 return Err(HubError::Stopped);
@@ -697,8 +873,11 @@ impl HubInner {
                 Arc::clone(&self.relay),
                 self.sup.clone(),
             );
+            // -- WP HB3 --
+            let shared;
             match attachment {
                 Ok(a) => {
+                    shared = Arc::clone(&a.shared);
                     st.attached.insert(online.handle, a);
                 }
                 Err(e) => {
@@ -706,11 +885,28 @@ impl HubInner {
                     return Err(HubError::Io(format!("cannot start a device thread: {e}")));
                 }
             }
-            (online.handle, online.event, online.returning)
+            (
+                online.handle,
+                online.event,
+                online.returning,
+                online.adopt,
+                online.names_changed,
+                shared,
+            )
         };
         self.publish(event);
         if returning {
             self.relay.resync_all(handle, 1);
+        }
+        // -- WP HB3 --
+        if names_changed {
+            self.save_names();
+        }
+        if self.warm_snapshots {
+            shared.warm_snapshot();
+        }
+        if let Some(name) = adopt {
+            self.adopt_name(&shared, serial.clone(), &name);
         }
         log::info!("hub: device {serial} attached at handle {handle}");
         Ok(handle)
@@ -875,6 +1071,24 @@ fn supervisor_loop(
                     inner.scan_bus(bus, &mut retry, true);
                 }
                 let _ = done.send(());
+            }
+            // -- WP HB3 --
+            Ok(SupMsg::BoardName { serial, name }) => {
+                let named = guard(&inner.state)
+                    .registry
+                    .board_name_stored(&serial, &name);
+                if named.names_changed {
+                    inner.save_names();
+                }
+                if let Some(event) = named.event {
+                    inner.publish(event);
+                }
+            }
+            Ok(SupMsg::NameAdopted { serial }) => {
+                let retired = guard(&inner.state).registry.adoption_accepted(&serial);
+                if retired {
+                    inner.save_names();
+                }
             }
             Ok(SupMsg::Stop) | Err(RecvTimeoutError::Disconnected) => return,
             Err(RecvTimeoutError::Timeout) => {

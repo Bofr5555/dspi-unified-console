@@ -12,6 +12,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use dspi_link::frames::CmdRequest;
+use dspi_link::messages::{PollGrant, PollSpec, Snapshot};
 use dspi_link::{Dir, status};
 use dspi_proto::generated::opcodes as op;
 use dspi_proto::packets::PlatformInfo;
@@ -19,11 +20,12 @@ use dspi_transport::{
     NotificationSource, Transport, TransportError, TransportKind, with_busy_retry,
 };
 
-use crate::polls::Polls;
-use crate::registry::DeviceIdentity;
+use crate::policy::Policy;
+use crate::polls::{PollRefused, Polls};
+use crate::registry::{self, DeviceIdentity};
 use crate::relay::{self, Relay};
 use crate::router::{ExecTicket, ExecUnit, Router};
-use crate::session::{Completion, NO_ORIGIN, SessionCtx};
+use crate::session::{Completion, NO_ORIGIN, Session, SessionCtx};
 use crate::snapshot::SnapshotCache;
 
 /// How long the reader blocks on the device before looking at its stop flag.
@@ -47,6 +49,11 @@ pub(crate) enum SupMsg {
     Lost { handle: u8, generation: u64 },
     /// Scan the bus now and answer.
     ScanNow(Sender<()>),
+    // -- WP HB3 --
+    /// The board stored a name (`NOTIFY_EVT_DEVICE_NAME`).
+    BoardName { serial: String, name: String },
+    /// The board accepted the stored name the hub wrote to it.
+    NameAdopted { serial: String },
     /// End the supervisor.
     Stop,
 }
@@ -67,6 +74,9 @@ enum Job {
     Cmd(CmdJob),
     /// Read the image into the snapshot cache. At most one queued per device.
     SnapshotRead,
+    // -- WP HB3 --
+    /// Look at the polls again: the worker may be asleep with none, or till a later one.
+    Wake,
     Stop,
 }
 
@@ -118,6 +128,43 @@ impl DeviceShared {
         }
     }
 
+    // -- WP HB3 --
+    /// `poll.subscribe` on this device, waking the worker to it. Coalesced: however
+    /// fast a client subscribes, one wake is queued.
+    pub(crate) fn poll_subscribe(
+        &self,
+        session: &Session,
+        policy: &Policy,
+        specs: &[PollSpec],
+    ) -> Result<Vec<PollGrant>, PollRefused> {
+        let granted = self.polls.subscribe(
+            self.handle,
+            session.id(),
+            session.outbox(),
+            policy,
+            specs,
+            Instant::now(),
+        )?;
+        if self.polls.take_wake() {
+            let _ = self.tx.send(Job::Wake);
+        }
+        Ok(granted)
+    }
+
+    /// Read the image now, so the first `device.snapshot` finds it.
+    pub(crate) fn warm_snapshot(&self) {
+        if self.snapshot.ask() {
+            self.queue_snapshot_read();
+        }
+    }
+
+    /// The image for `device.snapshot`, read first if need be. Blocks for that, at most
+    /// `timeout`: on a connection's reader, never a device thread.
+    pub(crate) fn snapshot_wait(&self, timeout: Duration) -> Option<Snapshot> {
+        self.warm_snapshot();
+        self.snapshot.wait(self.handle, timeout)
+    }
+
     /// The device's serial.
     pub(crate) fn serial(&self) -> String {
         self.identity
@@ -162,6 +209,10 @@ impl Attachment {
             stopping: AtomicBool::new(false),
             snapshot_read_queued: AtomicBool::new(false),
         });
+        // -- WP HB3 --
+        if source.is_none() {
+            shared.snapshot.distrust();
+        }
         let reader_stop = Arc::new(AtomicBool::new(false));
         let reader = match source {
             Some(source) => {
@@ -214,6 +265,8 @@ impl Attachment {
         }
         let _ = self.shared.tx.send(Job::Stop);
         let _ = self.worker.join();
+        // -- WP HB3 --
+        self.shared.snapshot.close();
     }
 }
 
@@ -252,26 +305,47 @@ fn worker_loop(
             None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
         };
         match next {
-            Ok(Job::Cmd(job)) => run_command(&mut *transport, shared, &sup, &mut busy, job),
+            Ok(Job::Cmd(job)) => {
+                // -- WP HB3 --
+                if is_chunk(job.req.b_request) {
+                    shared.polls.hold_for_chunks(Instant::now());
+                }
+                run_command(&mut *transport, shared, &sup, &mut busy, job);
+            }
             Ok(Job::SnapshotRead) => read_snapshot(&mut *transport, shared),
+            Ok(Job::Wake) | Err(RecvTimeoutError::Timeout) => {}
             Ok(Job::Stop) | Err(RecvTimeoutError::Disconnected) => return,
-            Err(RecvTimeoutError::Timeout) => {}
         }
         for job in shared.polls.take_due(Instant::now()) {
-            let reply = transport.control_in_upto(job.req, job.val, job.len).ok();
-            shared.polls.finished(&job, reply);
+            let reply = transport.control_in_upto(job.req, job.val, job.len);
+            if matches!(reply, Err(TransportError::Disconnected)) {
+                let _ = sup.send(SupMsg::Lost {
+                    handle: shared.handle,
+                    generation: shared.generation,
+                });
+            }
+            shared.polls.finished(&job, reply, Instant::now());
         }
     }
 }
 
+/// A client's own bulk chunk: part of a session any other vendor request would tear.
+fn is_chunk(opcode: u8) -> bool {
+    opcode == op::REQ_GET_ALL_PARAMS_CHUNK || opcode == op::REQ_SET_ALL_PARAMS_CHUNK
+}
+
 /// The queued re-read: in the device's order, needing no role or inflight slot. Lock
-/// or not, a read changes nothing a lock protects, and a failed one leaves the old
-/// image, which HB3's cache has invalidated already.
+/// or not, a read changes nothing a lock protects, and a failed one leaves no image,
+/// since the cache dropped it when it asked.
 fn read_snapshot(t: &mut dyn Transport, shared: &DeviceShared) {
     shared.snapshot_read_queued.store(false, Ordering::SeqCst);
     if shared.stopping.load(Ordering::SeqCst) {
+        // -- WP HB3 --
+        shared.snapshot.read_failed();
         return;
     }
+    // -- WP HB3 --
+    shared.snapshot.read_started();
     let read = if t.caps().chunked_bulk {
         read_chunked(t, u16::MAX)
     } else {
@@ -279,7 +353,11 @@ fn read_snapshot(t: &mut dyn Transport, shared: &DeviceShared) {
     };
     match read {
         Ok(image) => shared.snapshot.set_bulk(image),
-        Err(e) => log::debug!("device {}: snapshot read: {e}", shared.handle),
+        Err(e) => {
+            log::debug!("device {}: snapshot read: {e}", shared.handle);
+            // -- WP HB3 --
+            shared.snapshot.read_failed();
+        }
     }
 }
 
@@ -481,7 +559,20 @@ fn reader_loop(
 ) {
     while !stop.load(Ordering::Relaxed) {
         match source.read(READ_TIMEOUT) {
-            Ok(packet) => ingest(&packet, kind, shared, relay),
+            Ok(packet) => {
+                ingest(&packet, kind, shared, relay);
+                // -- WP HB3 --
+                // The supervisor takes it: the registry's lock and the name store are
+                // no places for the reader. The packet has gone out first.
+                if relay::is_relayable(&packet)
+                    && let Some(name) = registry::board_name_event(&packet)
+                {
+                    let _ = sup.send(SupMsg::BoardName {
+                        serial: shared.serial(),
+                        name,
+                    });
+                }
+            }
             Err(TransportError::Disconnected) => {
                 let _ = sup.send(SupMsg::Lost {
                     handle: shared.handle,
@@ -532,8 +623,29 @@ pub(crate) fn read_identity(
         firmware: info.firmware(),
         firmware_beta: info.version.beta(),
         outputs: info.num_output_channels,
-        board_name: None,
+        // -- WP HB3 --
+        board_name: read_board_name(t)?,
     })
+}
+
+// -- WP HB3 --
+/// `REQ_GET_DEVICE_NAME`: firmware that stores a name answers 32 bytes. A stall or
+/// anything shorter is firmware that cannot (it may be a legacy gain or mute on that
+/// opcode), so a `0x56` must never reach it. A second try for a read that failed some
+/// other way, as a board that can store a name must not pass for one that cannot.
+fn read_board_name(t: &mut dyn Transport) -> Result<Option<String>, TransportError> {
+    const LEN: u16 = 32;
+    for _ in 0..2 {
+        match t.control_in_upto(op::REQ_GET_DEVICE_NAME, 0, LEN) {
+            Ok(reply) if reply.len() == usize::from(LEN) => {
+                return Ok(Some(registry::decode_board_name(&reply)));
+            }
+            Ok(_) | Err(TransportError::Stalled { .. }) => return Ok(None),
+            Err(e @ TransportError::Disconnected) => return Err(e),
+            Err(e) => log::debug!("device name read: {e}"),
+        }
+    }
+    Ok(None)
 }
 
 #[cfg(test)]
@@ -804,5 +916,68 @@ mod tests_wp_hb0 {
         };
         assert_eq!(origin(out.pop(Duration::ZERO)), NO_ORIGIN, "a knob");
         assert_eq!(origin(out.pop(Duration::ZERO)), 9, "the session's write");
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_hb3 {
+    use dspi_transport::mock::{MockTransport, Reply};
+
+    use super::*;
+
+    fn mock(reply: Reply) -> MockTransport {
+        MockTransport::new().reply(op::REQ_GET_DEVICE_NAME, reply)
+    }
+
+    #[test]
+    fn wp_hb3_32_bytes_is_a_board_that_stores_names() {
+        let mut field = b"Den".to_vec();
+        field.resize(32, 0);
+        let mut m = mock(Reply::Data(field));
+        assert_eq!(read_board_name(&mut m).unwrap().as_deref(), Some("Den"));
+        let mut m = mock(Reply::Data(vec![0; 32]));
+        assert_eq!(
+            read_board_name(&mut m).unwrap().as_deref(),
+            Some(""),
+            "unnamed"
+        );
+    }
+
+    /// A stall or a short reply is the firmware's answer, so one read.
+    #[test]
+    fn wp_hb3_anything_else_is_firmware_that_cannot() {
+        for reply in [
+            Reply::Stall,
+            Reply::Data(vec![1; 4]),
+            Reply::Data(Vec::new()),
+        ] {
+            let mut m = mock(reply);
+            assert!(matches!(read_board_name(&mut m), Ok(None)));
+            assert_eq!(m.log().len(), 1);
+        }
+    }
+
+    #[test]
+    fn wp_hb3_a_failed_name_read_is_tried_once_more() {
+        let timeout = TransportError::TimedOut {
+            opcode: op::REQ_GET_DEVICE_NAME,
+            retries: 0,
+        };
+        let mut m = mock(Reply::Sequence(vec![
+            Reply::Error(timeout.clone()),
+            Reply::Data(vec![0; 32]),
+        ]));
+        assert_eq!(read_board_name(&mut m).unwrap().as_deref(), Some(""));
+
+        let mut m = mock(Reply::Error(timeout));
+        assert!(matches!(read_board_name(&mut m), Ok(None)));
+        assert_eq!(m.log().len(), 2);
+
+        let mut m = mock(Reply::Disconnect);
+        assert!(matches!(
+            read_board_name(&mut m),
+            Err(TransportError::Disconnected)
+        ));
     }
 }

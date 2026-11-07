@@ -1,15 +1,23 @@
 //! Devices by handle and serial (spec 7.4). Owned by WP HB3.
 //!
 //! Pure: the caller passes the clock, and every change returns its event so the
-//! caller publishes it with the hub's lock released. HB0 has handles, states, the
-//! offline grace and the `device.*` messages. HB3 adds names and their store, and the
-//! board name's adoption.
+//! caller publishes it with the hub's lock released, and saves the stored names the
+//! same way (the disk is no place for the hub's lock).
+//!
+//! **Names (spec 7.4).** A board's own name wins, then the hub-stored name, then a
+//! default from the serial, applied each time the device comes online. A board that can
+//! store a name has it written there, and only its `NOTIFY_EVT_DEVICE_NAME` changes the
+//! name here, so a rename from any source is seen. A stored name for an unnamed board
+//! that can hold one is written to it once, and goes as soon as the board accepts that,
+//! or reports a name of its own, or notifies at all: a later clear is never undone.
 
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
+use dspi_proto::generated::notify as nfy;
 use serde_json::{Value, json};
 
+use crate::error::HubError;
 use crate::session::SessionId;
 
 /// How long a device that dropped keeps its handle (Swift hub; spec 8.2 asks for
@@ -17,6 +25,61 @@ use crate::session::SessionId;
 pub const OFFLINE_GRACE: Duration = Duration::from_secs(60);
 /// Handles are 0..=254; 255 is reserved (spec 2).
 const MAX_HANDLE: u8 = 254;
+/// Where a `NOTIFY_EVT_DEVICE_NAME`'s name begins.
+const BOARD_NAME_FIELD: usize = 8;
+
+/// The longest name a board stores (`DEVICE_NAME_LEN` less its NUL).
+const BOARD_NAME_MAX: usize = 31;
+/// The longest name kept for a board that cannot store one, in characters. A client's
+/// say-so, kept on disk and listed in UIs.
+const STORED_NAME_MAX: usize = 64;
+
+/// Where hub-stored device names persist (WP HB1's store), by serial. Both calls come
+/// with no hub lock held, one at a time.
+pub trait NameStore: Send + Sync {
+    /// The names kept from last time. Called once, at start.
+    fn load(&self) -> BTreeMap<String, String>;
+    /// Replace the names kept. A failure costs them at the next start, not this run.
+    fn save(&self, names: &BTreeMap<String, String>) -> Result<(), HubError>;
+}
+
+/// A name as the board can store it: printable ASCII with the gaps left by dropped
+/// characters closed, ends trimmed, at most 31 characters. "" clears (spec 7.4).
+pub fn board_name_from(name: &str) -> String {
+    let ascii: String = name
+        .chars()
+        .filter(|c| c.is_ascii() && !c.is_ascii_control())
+        .collect();
+    let joined = ascii.split_whitespace().collect::<Vec<_>>().join(" ");
+    let cut: String = joined.chars().take(BOARD_NAME_MAX).collect();
+    cut.trim_end().to_owned()
+}
+
+/// What goes on the wire for a board name: the 32-byte field, NUL-padded, so "" clears.
+pub(crate) fn board_name_payload(name: &str) -> Vec<u8> {
+    let mut field = name.as_bytes().to_vec();
+    field.resize(BOARD_NAME_MAX.saturating_add(1), 0);
+    field
+}
+
+/// The name in a device-name field: UTF-8, up to the first NUL, at most 31 bytes.
+pub(crate) fn decode_board_name(field: &[u8]) -> String {
+    let field = field.get(..field.len().min(BOARD_NAME_MAX)).unwrap_or(&[]);
+    let end = field.iter().position(|b| *b == 0).unwrap_or(field.len());
+    String::from_utf8_lossy(field.get(..end).unwrap_or(&[])).into_owned()
+}
+
+/// The name a `NOTIFY_EVT_DEVICE_NAME` carries: `[2, evt, 0, seq, id, src, 0, 0,
+/// name(32)]`. `None` for any other packet, or one too short to hold the field.
+pub(crate) fn board_name_event(packet: &[u8]) -> Option<String> {
+    if packet.get(1).copied() != Some(nfy::NOTIFY_EVT_DEVICE_NAME as u8) {
+        return None;
+    }
+    let end = BOARD_NAME_FIELD
+        .saturating_add(BOARD_NAME_MAX)
+        .saturating_add(1);
+    packet.get(BOARD_NAME_FIELD..end).map(decode_board_name)
+}
 
 /// What the hub publishes about a device.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,7 +99,7 @@ pub struct DeviceIdentity {
     /// Output channels.
     pub outputs: u8,
     /// The board's own name: `None` if the firmware cannot store one, empty if
-    /// unnamed. HB3 reads it.
+    /// unnamed.
     pub board_name: Option<String>,
 }
 
@@ -131,6 +194,19 @@ pub struct Online {
     pub returning: bool,
     /// The event to publish.
     pub event: RegistryEvent,
+    /// A stored name to write to this unnamed board, once.
+    pub adopt: Option<String>,
+    /// The stored names changed, so save them.
+    pub names_changed: bool,
+}
+
+/// What [`Registry::board_name_stored`] did.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct BoardNamed {
+    /// The event to publish, if the name changed.
+    pub event: Option<RegistryEvent>,
+    /// The stored names changed, so save them.
+    pub names_changed: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -144,6 +220,8 @@ struct Entry {
 pub struct Registry {
     grace: Duration,
     by_serial: BTreeMap<String, Entry>,
+    /// Hub-stored names, by serial. They outlive a device's entry.
+    stored: BTreeMap<String, String>,
 }
 
 impl Registry {
@@ -152,25 +230,65 @@ impl Registry {
         Self {
             grace,
             by_serial: BTreeMap::new(),
+            stored: BTreeMap::new(),
         }
+    }
+
+    /// A registry that starts with these stored names.
+    pub fn with_names(grace: Duration, stored: BTreeMap<String, String>) -> Self {
+        Self {
+            stored,
+            ..Self::new(grace)
+        }
+    }
+
+    /// The stored names, to save.
+    pub fn stored_names(&self) -> &BTreeMap<String, String> {
+        &self.stored
+    }
+
+    /// Apply the order of spec 7.4 as `identity` comes online: its name, the stored
+    /// name to write to it, and whether a stored entry retired.
+    fn resolve(&mut self, identity: &DeviceIdentity) -> (String, Option<String>, bool) {
+        if let Some(board) = identity.board_name.as_deref().filter(|n| !n.is_empty()) {
+            let retired = self.stored.remove(&identity.serial).is_some();
+            return (board.to_owned(), None, retired);
+        }
+        let stored = self.stored.get(&identity.serial);
+        let adopt = stored
+            .filter(|_| identity.board_name.is_some())
+            .map(|name| board_name_from(name))
+            .filter(|name| !name.is_empty());
+        let name = stored
+            .cloned()
+            .unwrap_or_else(|| default_name(&identity.serial));
+        (name, adopt, false)
     }
 
     /// The device is present. `None` when no handle is free.
     pub fn online(&mut self, identity: DeviceIdentity) -> Option<Online> {
+        let known = self.by_serial.contains_key(&identity.serial);
+        if !known {
+            self.free_handle()?;
+        }
+        let (name, adopt, names_changed) = self.resolve(&identity);
         if let Some(entry) = self.by_serial.get_mut(&identity.serial) {
             entry.offline_since = None;
+            entry.device.name = name;
             entry.device.identity = identity;
             entry.device.state = DeviceState::Online;
             return Some(Online {
                 handle: entry.device.handle,
                 returning: true,
                 event: RegistryEvent::Changed(entry.device.clone()),
+                adopt,
+                names_changed,
             });
         }
         let handle = self.free_handle()?;
         let device = RegisteredDevice {
             handle,
-            name: default_name(&identity.serial),
+            name,
             identity,
             state: DeviceState::Online,
             locked_by: None,
@@ -186,6 +304,8 @@ impl Registry {
             handle,
             returning: false,
             event: RegistryEvent::Added(device),
+            adopt,
+            names_changed,
         })
     }
 
@@ -240,10 +360,70 @@ impl Registry {
         Some(RegistryEvent::Changed(entry.device.clone()))
     }
 
-    /// `device.rename` (spec 7.4).
+    /// `device.rename` for a board that cannot store a name (spec 7.4): the name is
+    /// kept here, and "" goes back to the default. A board that can is written instead
+    /// ([`crate::HubHandle::rename`]), which this must not be used for: the board's own
+    /// name would override this the next time it comes online. `None` for no such
+    /// handle. The stored names changed, so save them.
     pub fn rename(&mut self, handle: u8, name: &str) -> Option<RegistryEvent> {
-        let _ = (handle, name);
-        todo!("WP HB3")
+        let entry = self
+            .by_serial
+            .values_mut()
+            .find(|e| e.device.handle == handle)?;
+        let serial = entry.device.identity.serial.clone();
+        let clean: String = name
+            .chars()
+            .filter(|c| !c.is_control())
+            .take(STORED_NAME_MAX)
+            .collect();
+        let clean = clean.trim();
+        if clean.is_empty() {
+            entry.device.name = default_name(&serial);
+            self.stored.remove(&serial);
+        } else {
+            entry.device.name = clean.to_owned();
+            self.stored.insert(serial, clean.to_owned());
+        }
+        Some(RegistryEvent::Changed(entry.device.clone()))
+    }
+
+    /// The board stored a name (`NOTIFY_EVT_DEVICE_NAME`), whoever asked. On such a
+    /// board this is the only thing that sets the name, and it retires the stored entry
+    /// so a later clear is never undone.
+    pub fn board_name_stored(&mut self, serial: &str, name: &str) -> BoardNamed {
+        let names_changed = self.stored.remove(serial).is_some();
+        let Some(entry) = self.by_serial.get_mut(serial) else {
+            return BoardNamed {
+                event: None,
+                names_changed,
+            };
+        };
+        entry.device.identity.board_name = Some(name.to_owned());
+        let resolved = if name.is_empty() {
+            default_name(serial)
+        } else {
+            name.to_owned()
+        };
+        let changed = entry.device.name != resolved;
+        entry.device.name = resolved;
+        BoardNamed {
+            event: changed.then(|| RegistryEvent::Changed(entry.device.clone())),
+            names_changed,
+        }
+    }
+
+    /// The board accepted the stored name's write, so that entry is done with, even if
+    /// the notification that follows is lost. Whether the stored names changed.
+    pub fn adoption_accepted(&mut self, serial: &str) -> bool {
+        self.stored.remove(serial).is_some()
+    }
+
+    /// The device with this handle.
+    pub fn by_handle(&self, handle: u8) -> Option<&RegisteredDevice> {
+        self.by_serial
+            .values()
+            .map(|e| &e.device)
+            .find(|d| d.handle == handle)
     }
 
     /// Every device, by handle.
@@ -393,5 +573,204 @@ mod tests_wp_hb0 {
     fn wp_hb0_a_serial_of_any_length_gets_a_name() {
         assert_eq!(default_name("E6614C311B8B4E3A"), "DSPi 8B4E3A");
         assert_eq!(default_name("ab"), "DSPi ab");
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_hb3 {
+    use super::*;
+
+    const GRACE: Duration = Duration::from_secs(60);
+
+    fn identity(serial: &str, board: Option<&str>) -> DeviceIdentity {
+        DeviceIdentity {
+            serial: serial.into(),
+            vid: 0,
+            location_id: 0,
+            platform: 1,
+            firmware: "1.1.7".into(),
+            firmware_beta: Some(0),
+            outputs: 9,
+            board_name: board.map(str::to_owned),
+        }
+    }
+
+    fn stored(serial: &str, name: &str) -> Registry {
+        Registry::with_names(
+            GRACE,
+            BTreeMap::from([(serial.to_owned(), name.to_owned())]),
+        )
+    }
+
+    fn name_of(r: &Registry, serial: &str) -> String {
+        r.by_serial(serial).unwrap().name.clone()
+    }
+
+    #[test]
+    fn wp_hb3_the_board_name_beats_the_stored_name_and_retires_it() {
+        let mut r = stored("A", "Kept");
+        let on = r.online(identity("A", Some("Board"))).unwrap();
+        assert_eq!(name_of(&r, "A"), "Board");
+        assert!(on.names_changed);
+        assert_eq!(on.adopt, None);
+        assert!(r.stored_names().is_empty());
+    }
+
+    #[test]
+    fn wp_hb3_older_firmware_shows_the_stored_name_and_never_adopts() {
+        let mut r = stored("A", "Kept");
+        let on = r.online(identity("A", None)).unwrap();
+        assert_eq!(name_of(&r, "A"), "Kept");
+        assert_eq!((on.adopt, on.names_changed), (None, false));
+        assert_eq!(r.stored_names().len(), 1);
+    }
+
+    #[test]
+    fn wp_hb3_an_unnamed_board_adopts_the_stored_name_as_it_can_hold_it() {
+        let mut r = stored("A", " Vardagsrum  Köket ");
+        let on = r.online(identity("A", Some(""))).unwrap();
+        assert_eq!(on.adopt.as_deref(), Some("Vardagsrum Kket"));
+        // Until the board has it, the stored name shows, and stays.
+        assert_eq!(name_of(&r, "A"), " Vardagsrum  Köket ");
+        assert_eq!(r.stored_names().len(), 1);
+        assert!(r.adoption_accepted("A"));
+        assert!(!r.adoption_accepted("A"));
+        // Not adopted again when it returns, even if the board stayed unnamed.
+        r.offline("A", Instant::now()).unwrap();
+        let on = r.online(identity("A", Some(""))).unwrap();
+        assert_eq!(on.adopt, None);
+    }
+
+    #[test]
+    fn wp_hb3_a_stored_name_the_board_cannot_hold_is_not_written() {
+        let mut r = stored("A", "Köö");
+        assert_eq!(
+            r.online(identity("A", Some(""))).unwrap().adopt.as_deref(),
+            Some("K")
+        );
+        let mut r = stored("A", "ÅÄÖ");
+        assert_eq!(r.online(identity("A", Some(""))).unwrap().adopt, None);
+    }
+
+    #[test]
+    fn wp_hb3_the_default_comes_last() {
+        let mut r = Registry::new(GRACE);
+        r.online(identity("E6614C311B8B4E3A", Some(""))).unwrap();
+        assert_eq!(name_of(&r, "E6614C311B8B4E3A"), "DSPi 8B4E3A");
+    }
+
+    #[test]
+    fn wp_hb3_the_name_is_resolved_each_time_it_comes_online() {
+        let t = Instant::now();
+        let mut r = Registry::new(GRACE);
+        r.online(identity("A", Some("One"))).unwrap();
+        r.offline("A", t).unwrap();
+        // Renamed on another computer while away.
+        let back = r.online(identity("A", Some("Two"))).unwrap();
+        assert!(back.returning);
+        let RegistryEvent::Changed(d) = back.event else {
+            panic!();
+        };
+        assert_eq!(d.name, "Two");
+    }
+
+    #[test]
+    fn wp_hb3_a_rename_keeps_older_firmwares_name_and_clears_it() {
+        let t = Instant::now();
+        let mut r = Registry::new(GRACE);
+        let on = r.online(identity("A", None)).unwrap();
+        let RegistryEvent::Changed(d) = r.rename(on.handle, "Hall\n ").unwrap() else {
+            panic!();
+        };
+        assert_eq!(d.name, "Hall");
+        assert_eq!(r.stored_names()["A"], "Hall");
+        // It comes back with it, past the grace too.
+        r.offline("A", t).unwrap();
+        r.reap(t + GRACE);
+        assert!(r.by_serial("A").is_none());
+        r.online(identity("A", None)).unwrap();
+        assert_eq!(name_of(&r, "A"), "Hall");
+        let h = r.by_serial("A").unwrap().handle;
+        r.rename(h, "   ").unwrap();
+        assert_eq!(name_of(&r, "A"), "DSPi A");
+        assert!(r.stored_names().is_empty());
+        assert_eq!(r.rename(200, "x"), None);
+        let long = "x".repeat(1000);
+        r.rename(h, &long).unwrap();
+        assert_eq!(name_of(&r, "A").chars().count(), STORED_NAME_MAX);
+    }
+
+    #[test]
+    fn wp_hb3_the_boards_notification_sets_the_name_and_retires_the_entry() {
+        let mut r = stored("A", "Kept");
+        r.online(identity("A", Some(""))).unwrap();
+        let named = r.board_name_stored("A", "Den");
+        assert!(named.names_changed);
+        assert!(matches!(named.event, Some(RegistryEvent::Changed(ref d)) if d.name == "Den"));
+        assert!(r.stored_names().is_empty());
+        assert_eq!(r.board_name_stored("A", "Den").event, None, "no change");
+        // A clear is a clear: the default, and no stored name comes back.
+        assert_eq!(
+            name_of(
+                &{
+                    r.board_name_stored("A", "");
+                    r
+                },
+                "A"
+            ),
+            "DSPi A"
+        );
+        // Older firmware that turns out to name itself is a board from now on.
+        let mut r = Registry::new(GRACE);
+        r.online(identity("B", None)).unwrap();
+        r.board_name_stored("B", "New");
+        assert_eq!(
+            r.by_serial("B").unwrap().identity.board_name.as_deref(),
+            Some("New")
+        );
+        assert_eq!(r.board_name_stored("gone", "x"), BoardNamed::default());
+    }
+
+    #[test]
+    fn wp_hb3_names_reduce_as_the_spec_says() {
+        for (given, want) in [
+            ("Living room", "Living room"),
+            ("  Den  ", "Den"),
+            ("A\tB", "AB"),
+            ("Kö k", "K k"),
+            ("Å Ä Ö x", "x"),
+            ("", ""),
+            ("Å", ""),
+        ] {
+            assert_eq!(board_name_from(given), want, "{given:?}");
+        }
+        let long = board_name_from(&"y".repeat(40));
+        assert_eq!(long.len(), 31);
+        // A cut that lands on a space does not leave it at the end.
+        let spaced = format!("{} z", "w".repeat(30));
+        assert_eq!(board_name_from(&spaced), "w".repeat(30));
+    }
+
+    #[test]
+    fn wp_hb3_the_wire_field_is_32_bytes_and_empty_clears() {
+        let p = board_name_payload("Den");
+        assert_eq!(p.len(), 32);
+        assert_eq!(&p[..4], b"Den\0");
+        assert_eq!(board_name_payload(""), [0; 32]);
+        assert_eq!(decode_board_name(&p), "Den");
+        assert_eq!(decode_board_name(&[b'a'; 32]).len(), 31);
+        assert_eq!(decode_board_name(&[]), "");
+    }
+
+    #[test]
+    fn wp_hb3_only_a_whole_name_event_is_read() {
+        let mut p = vec![2, nfy::NOTIFY_EVT_DEVICE_NAME as u8, 0, 0, 0, 0, 0, 0];
+        p.extend_from_slice(&board_name_payload("Den"));
+        assert_eq!(board_name_event(&p).as_deref(), Some("Den"));
+        assert_eq!(board_name_event(&p[..39]), None, "too short");
+        p[1] = nfy::NOTIFY_EVT_INPUT_SOURCE_NAME as u8;
+        assert_eq!(board_name_event(&p), None, "a source's name");
+        assert_eq!(board_name_event(&[]), None);
     }
 }
