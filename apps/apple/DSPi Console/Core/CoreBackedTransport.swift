@@ -32,6 +32,7 @@ import Foundation
 import Combine
 import os
 import dspi_core
+import dspi_constants
 
 final class CoreBackedTransport: DeviceTransport {
 
@@ -293,14 +294,10 @@ final class CoreBackedTransport: DeviceTransport {
             localGeneration &+= 1
         }
         stateLock.unlock()
-        if result.flags & CoreBackedTransport.notifyDisconnected != 0 || connected != isConnected {
+        if result.flags & DspiConstants.NOTIFY_DISCONNECTED != 0 || connected != isConnected {
             DispatchQueue.main.async { self.publishConnected(connected) }
         }
     }
-
-    /// `NOTIFY_DISCONNECTED` (`crates/dspi-core/src/consts.rs`); UniFFI
-    /// exports no constants.
-    static let notifyDisconnected: UInt32 = 1 << 9
 
     // MARK: - SET (host to device)
 
