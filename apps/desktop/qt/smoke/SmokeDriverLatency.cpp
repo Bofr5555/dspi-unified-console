@@ -336,7 +336,8 @@ void SmokeDriver::testClockDiagAndCpuBars() {
     QQuickItem *section = c0->parentItem();
     section->setProperty("cpu0", 25);
     section->setProperty("cpu1", 75);
-    spin(50);
+    // Read at once: the bars have no animation, and waiting lets a status poll
+    // write the bridge's real load over these two.
     printf("smoke: QD5 bars: C0 %s (%g of %g px), C1 %s (%g of %g px), section %g wide\n",
            qPrintable(c0->property("valueText").toString()), c0->property("fillWidth").toReal(), c0->property("trackWidth").toReal(),
            qPrintable(c1->property("valueText").toString()), c1->property("fillWidth").toReal(), c1->property("trackWidth").toReal(), section->width());
