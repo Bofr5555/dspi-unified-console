@@ -151,8 +151,12 @@ void ExtController::applyMap(const QByteArray &map) {
     const quint64 generation = m_generation;
     const auto wrote = std::make_shared<bool>(false);
     QByteArray bytes = map;
-    onWorker([core, bytes, wrote](uint8_t *out) {
-        *wrote = dspi_set_crossfeed_pair_map(core, reinterpret_cast<const uint8_t *>(bytes.constData()), kMapLen) == 0;
+    onWorker([this, core, bytes, wrote, generation](uint8_t *out) {
+        const bool hookOk = !m_writeHook || m_writeHook();
+        // A changed device gets none of the old one's map, however long this waited
+        if (m_generation != generation) return false;
+        if (hookOk)
+            *wrote = dspi_set_crossfeed_pair_map(core, reinterpret_cast<const uint8_t *>(bytes.constData()), kMapLen) == 0;
         return dspi_fetch_crossfeed_pair_map(core, out, kMapLen);
     }, [this, wrote, generation](bool read, const QByteArray &now) {
         m_writes--;

@@ -48,6 +48,23 @@ AppWindow {
 
     onVisibleChanged: ext.watching = visible
     onPairMapShownChanged: if (!pairMapShown) { editingPairs = false; offerK340Mask = false }
+    // The editor is taller than the window that opened without it. Where the screen
+    // can't fit it all, Apply is scrolled to: the scroll bar only shows on a scroll.
+    onEditingPairsChanged: if (editingPairs) { refitAnimated(); revealEditorTimer.restart() }
+    onDraftValidChanged: if (editingPairs) Qt.callLater(revealPairEditor)   // the warning pushes Apply down
+
+    function revealPairEditor() {
+        if (!editingPairs) return
+        var bottom = pairEditor.mapToItem(flick.contentItem, 0, pairEditor.height).y + 8
+        var most = Math.max(0, flick.contentHeight - flick.height)
+        if (bottom > flick.contentY + flick.height)
+            flick.contentY = Math.min(bottom - flick.height, most)
+    }
+    Timer {
+        id: revealEditorTimer
+        interval: 320   // after the refit: AppWindow's settle and animation
+        onTriggered: win.revealPairEditor()
+    }
 
     function outputName(o) { return bridge.channelName(o + 2) || "Out " + (o + 1) }
 
@@ -488,6 +505,7 @@ AppWindow {
 
                     // The custom editor
                     Rectangle {
+                        id: pairEditor
                         objectName: "pairMapEditor"
                         visible: win.editingPairs
                         width: parent.width
