@@ -29,9 +29,9 @@ Sizes are relative units, for comparing WPs. Measured in the core merge: a size-
 
 | Track | WPs | Size (units) | Depends on |
 |---|---|---|---|
-| MR: one repo, one build | 2 | 2.25 | `main` |
+| MR: one repo, one build | 3 | 2.5 | `main` |
 | LC, HO: licence inventory, handover | 2 | 1.75 | `main`; HO1 late |
-| CG: core gaps | 16 | 10.75 | `main` |
+| CG: core gaps | 18 | 11.75 | `main` |
 | HB: Rust Link hub | 7 | 12 | `main` |
 | QD: Qt (Linux, Windows) | 31 | 23.25 | `main`, CG, HB for the hub page |
 | TM: Terminal | 22 | 11.5 | `main`, CG, HB for `dspi hub` |
@@ -39,7 +39,7 @@ Sizes are relative units, for comparing WPs. Measured in the core merge: a size-
 | SW: Swift (macOS and iOS) | 29 | 32.75–43.25 | `main`, MR1, CG3, CG4 |
 | WB: web | 2 + stubs | 2.75 (study, WB1) | `main` |
 | XC: audit, cross-client tests | 7 | 3.75 | hub hardware, K340 |
-| **Total** | **146** | **about 121–136**, not counting the web build | |
+| **Total** | **149** | **about 121–136**, not counting the web build | |
 
 **M0, the first milestone, is about 12–14 days after `main`** (section 0.3). The
 largest unknowns are Swift domain replacement, the Android control-surface editor
@@ -101,6 +101,8 @@ review.
 - **Done when:** a run from a clean checkout gives the matrix with every non-Apple row, and the macOS and iOS
   rows reading "not run"; an edited generated file fails it; **every image builds from its committed Containerfile with an empty podman and download cache.** **The full matrix is M0's gate.**
 - **Deps:** MR1, CG9.
+
+**MR3: Container user.** Size 0.25. From MR2. **Owns:** `ci/run.sh`, the images' `USER`. Files written under `--userns=keep-id` belong to uid 524288 on the host, so worktree cleanup needs `podman unshare`. **Needs** a chown of the shared caches while nothing is building, so it runs between waves. Also adds `gen_kotlin_contract.py --check` to the root gate.
 
 **What stays on the host:** the Arm firmware toolchain only (existing exception). Everything
 else runs in podman or a VM, with verified downloads.
@@ -486,6 +488,10 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (section 9).
 **CG15: Creator info for every About screen.** Size 0.25. Owner: "Make sure to properly update the about screen with creator info." **Owns:** `assets/about.json`, an accessor beside CG10's in `crates/dspi-core/src/link_text.rs`, with the same placeholders. **Implements:** one table of who made what, the links and the credit line, so no client carries its own copy: Weeb Labs for DSPi, the firmware and the Consoles; the owner for the unified console, the core merge and the Android app; credits from `NOTICE.md` and `docs/licensing/`. The wording is the owner's to approve and stays a draft until they do; no agent writes legal text here. The Terminal doesn't link `dspi-core`, so TM22 takes the data another way without a second copy. **Done when:** exported to C and UniFFI, every client's page shows it. **Clients, 0.25 each, wave 2 or their About WP:** QD33 (`AboutPage.qml`), TM22 (`settings/about.rs`), AN26 (`GeneralSettingsTab.kt`), SW24 (the Mac's and iOS's About). **Deps:** CG10.
 
 **CG16: Control surfaces on the demo device.** Size 0.75. From review w1b. **Owns:** a control-surface model in `crates/dspi-transport/src/fake/`, moved from `apps/terminal/src/cs_demo.rs`, which goes. **Implements:** the record store and refusal rules (`NO_SUCH_SLOT`, `NO_SUCH_TYPE`, pin clash) checked against the firmware, so every client's demo has surfaces and QD1's, TM's and AN9's pages can be exercised. Existing tests that assert a stall (T4) change with it. **Done when:** `dspi cs` works without the wrapper; the Qt control-surface pages render on the demo device in the offscreen pass; the unexercised items in QD1's report are covered. **Deps:** TM10.
+
+**CG17: One pair-map validity.** Size 0.25. From TM1 and QD2. **Owns:** `PairMap::is_valid` and K340 constants in `crates/dspi-proto/src/ext.rs`, `dspi_crossfeed_pair_map_valid`. **Implements:** replaces the copies in `screens/crossfeed.rs`, the core, the fake and `ExtController.cpp`. **Deps:** QD2.
+
+**CG18: Core config export and import must not invent values.** Size 0.75. From TM21. **Owns:** `crates/dspi-core/src/files.rs`, `config_import`. **Implements:** `config_export` writes zeros for sections an old format lacks, because the mirror comes from `decode_bulk`, and exports `default_state` while disconnected. Gate per key on `format_version`; refuse when disconnected. Import leaves omitted keys alone rather than defaulting them, and an absent `eq`, `crossover` or filter bank is not flattened (`channel_write`). Documents from the Mac and Terminal keep their meaning. **Done when:** round-trip tests on V17 and V32 fixtures, and the importer table in `docs/terminal/preset-format.md` loses its Qt row's exceptions. **Deps:** TM21.
 
 ### 4.2 HB: the Rust Link hub
 
