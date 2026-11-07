@@ -11,6 +11,10 @@
 # device through the generated bindings), passed. Under XCTest the app opens no
 # real device (DSPi Console/TestHostGuard.swift).
 #
+# WP SW4: then the transport tests (FakeTransportTests, the wire tests) run
+# again behind the launch flag, with the Rust core carrying every request
+# (CoreBackedTransport over the Swift FakeTransport); they must all pass.
+#
 # The simulator needs the GUI session: from ssh, run through
 #   sudo launchctl asuser "$(id -u)" sudo -u "$USER" apps/apple/ci-test.sh ios
 # Output in $CI_OUT (default apps/apple/build/ci, gitignored): DerivedData, the
@@ -30,10 +34,20 @@ mkdir -p "$out"
 rm -rf "$out/$platform".xcresult "$out/$platform"-*.xcresult "$out/$platform"*-tests.json
 args=(-project "DSPi Console.xcodeproj" -derivedDataPath "$out/dd-$platform")
 alone=()   # test classes run in a pass of their own, after the others
+# -- WP SW4 -- The transport tests again behind the launch flag
+# (DSPI_CORE_TRANSPORT=1): the Rust core carries every request, over the
+# Swift FakeTransport (CG26). The wire tests only in the macOS bundle are
+# added below.
+bundle="DSPi ConsoleTests"
+core_pass=(CoreBackedTransportSW4Tests FakeTransportTests ExtensionChannelWireTests
+           ExtensionChannelViewModelTests ExtensionChannelPresetTests OutputLatencyWireTests)
 
 case "$platform" in
   macos)
     args+=(-scheme "DSPi Console" -destination "platform=macOS,arch=$(uname -m)")
+    core_pass+=(AdatWireTests ControlSurfacesWireTests I2sClockPinModeWireTests I2sSlaveWireTests
+                LimiterWireTests PsybassWireTests RtaWireTests SiggenWireTests SpdifInputWireTests
+                SubharmWireTests TubeWireTests UpmixerWireTests)   # -- WP SW4 --
     # In a VM: skip the tests that failed there before and after the move to
     # this repository (MR1S): Metal precision on the paravirtual GPU, frame and
     # timing limits on shared vCPUs. Other rendering and benchmark tests fail
@@ -63,6 +77,7 @@ case "$platform" in
     [ -n "$sim" ] || { echo "ci-test: no iPhone simulator available" >&2; exit 1; }
     echo "simulator: $sim"
     args+=(-scheme "DSPi Console iOS" -destination "id=${sim%% *}")
+    bundle="DSPi Console iOSTests"   # -- WP SW4 --
     ;;
 esac
 
@@ -82,6 +97,49 @@ for t in ${alone[@]+"${alone[@]}"}; do
   xcrun xcresulttool get test-results tests --path "$out/$platform-$name.xcresult" >"$out/$platform-$name-tests.json"
   reports+=("$out/$platform-$name-tests.json")
 done
+
+# -- WP SW4 --
+echo "-- xcodebuild test-without-building, the transport tests through the core (DSPI_CORE_TRANSPORT=1)"
+# Without a test from the build above (it failed), the products are stale.
+grep -q '"Test Case"' "$out/$platform-tests.json" || { echo "ci-test: no build to test" >&2; status=1; }
+only=()
+for c in "${core_pass[@]}"; do only+=("-only-testing:$bundle/$c"); done
+TEST_RUNNER_DSPI_CORE_TRANSPORT=1 xcodebuild test-without-building -quiet "${args[@]}" "${only[@]}" \
+  -resultBundlePath "$out/$platform-core.xcresult" || status=$?
+xcrun xcresulttool get test-results tests --path "$out/$platform-core.xcresult" >"$out/$platform-core-tests.json"
+python3 - "$out/$platform-core-tests.json" <<'EOF' || status=1
+import json, sys
+from collections import Counter
+results, classes = Counter(), Counter()
+flag = "did not run"
+def walk(node, cls=None):
+    global flag
+    if node.get("nodeType") == "Test Suite":
+        cls = node.get("name")
+    if node.get("nodeType") == "Test Case":
+        results[node.get("result", "?")] += 1
+        if node.get("result") == "Passed":
+            classes[cls] += 1
+        if node.get("name", "").startswith("testSW4LaunchFlagPutsTheCoreUnderTheTests"):
+            flag = node.get("result")
+        if node.get("result") == "Failed":
+            print(f"FAILED (core) {node.get('nodeIdentifier', node.get('name'))}")
+            def messages(n):
+                for c in n.get("children", []):
+                    if c.get("nodeType") == "Failure Message":
+                        print(f"    {c.get('name', '')[:400]}")
+                    messages(c)
+            messages(node)
+    for child in node.get("children", []):
+        walk(child, cls)
+for node in json.load(open(sys.argv[1])).get("testNodes", []):
+    walk(node)
+print("tests through the core: " + ", ".join(f"{n} {r.lower()}" for r, n in sorted(results.items())))
+print("  passed per class: " + ", ".join(f"{c} {n}" for c, n in sorted(classes.items())))
+print(f"  the flag reached the tests (testSW4LaunchFlagPutsTheCoreUnderTheTests): {flag}")
+need = ["CoreBackedTransportSW4Tests", "FakeTransportTests", "ExtensionChannelViewModelTests"]
+sys.exit(0 if results["Failed"] == 0 and flag == "Passed" and all(classes[c] > 0 for c in need) else 1)
+EOF
 
 # The totals, and WP SW2's tests by name: a run without them does not count.
 python3 - "${reports[@]}" <<'EOF' || status=1

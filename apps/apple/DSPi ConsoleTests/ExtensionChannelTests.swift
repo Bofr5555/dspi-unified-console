@@ -244,7 +244,8 @@ final class ExtensionChannelViewModelTests: XCTestCase {
 
     private func fakeVM(extensions: Bool = true) -> (FakeTransport, DSPViewModel) {
         let fake = FakeTransport(autoSelect: false, extensions: extensions)
-        let vm = DSPViewModel(transport: fake)
+        // -- WP SW4 -- through the core behind the launch flag
+        let vm = DSPViewModel(transport: CoreTransportUnderTest.over(fake))
         fake.selectDevice(FakeTransport.demoDevice)
         return (fake, vm)
     }
@@ -279,7 +280,8 @@ final class ExtensionChannelViewModelTests: XCTestCase {
 
     func testRefreshDoesNotProbeAgainButAReconnectDoes() {
         let fake = FakeTransport(autoSelect: false)
-        let counter = CountingTransport(fake)
+        // -- WP SW4 -- counts the console's reads, not the core's own
+        let counter = CountingTransport(CoreTransportUnderTest.over(fake))
         let vm = DSPViewModel(transport: counter)
         // The connect path's own fetch probes once.
         fake.selectDevice(FakeTransport.demoDevice)
@@ -366,7 +368,8 @@ final class ExtensionChannelViewModelTests: XCTestCase {
     /// runs and the probe below is the only one.
     private func probe(_ results: [Result<Data, LinkStatus>]) -> (ScriptedProbeTransport, DSPViewModel) {
         let fake = FakeTransport(autoSelect: false)
-        let t = ScriptedProbeTransport(fake, listResults: results)
+        // -- WP SW4 --
+        let t = ScriptedProbeTransport(CoreTransportUnderTest.over(fake), listResults: results)
         let vm = DSPViewModel(transport: t)
         let done = expectation(description: "probe")
         DispatchQueue.global().async {
@@ -523,7 +526,8 @@ final class ExtensionChannelPresetTests: XCTestCase {
     func testCaptureWritesTheMapOnlyFromADeviceWithIt() throws {
         for extensions in [true, false] {
             let fake = FakeTransport(autoSelect: false, extensions: extensions)
-            let vm = DSPViewModel(transport: fake)
+            // -- WP SW4 --
+            let vm = DSPViewModel(transport: CoreTransportUnderTest.over(fake))
             fake.selectDevice(FakeTransport.demoDevice)
             fake.sendControlRequest(request: REQ_EXTENSION, value: EXT_CROSSFEED_PAIR_MAP, index: EXT_WINDEX,
                                     data: CrossfeedPairMap.oneDACPerEar.data)
@@ -611,4 +615,9 @@ class ForwardingTransport: DeviceTransport {
     func addNotificationObserver(_ handler: @escaping (LinkNotification) -> Void) -> AnyCancellable {
         inner.addNotificationObserver(handler)
     }
+    // -- WP SW4 -- the lock too, so a subclass can override it
+    func acquireDeviceLock(reason: String, timeout: TimeInterval) -> Bool {
+        inner.acquireDeviceLock(reason: reason, timeout: timeout)
+    }
+    func releaseDeviceLock() { inner.releaseDeviceLock() }
 }
