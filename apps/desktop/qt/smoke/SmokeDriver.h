@@ -75,6 +75,8 @@ private:
     // -- WP QD5 --
     void testOutputLatency();
     void testClockDiagAndCpuBars();
+    // -- WP QD31 --
+    void testSaveBarSetters();
     // -- WP QD1 --
     void testCsRefusals();
     void testCsCallerRefusals();

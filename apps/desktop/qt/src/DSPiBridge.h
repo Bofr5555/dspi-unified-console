@@ -267,7 +267,7 @@ public:
     Q_INVOKABLE void setBypass(bool en);
 
     Q_INVOKABLE void setMasterVolume(float db, bool sendOnly = false);
-    Q_INVOKABLE void setMasterVolumeMode(int mode);
+    Q_INVOKABLE bool setMasterVolumeMode(int mode);   // -- WP QD31 -- false if not written
     Q_INVOKABLE int saveMasterVolume();
     Q_INVOKABLE void setUserVolume(float db, bool sendOnly = false);
     Q_INVOKABLE void setUserMute(bool muted);
@@ -299,7 +299,7 @@ public:
     Q_INVOKABLE void setOutputDelay(int output, float ms);
     Q_INVOKABLE void sendOutputDelayToDevice(int output, float ms);
     Q_INVOKABLE int setOutputPin(int output, int pin);
-    Q_INVOKABLE void setOutputConfigMode(int mode);
+    Q_INVOKABLE bool setOutputConfigMode(int mode);   // -- WP QD31 -- false if not written
     Q_INVOKABLE int saveOutputConfig();
 
     Q_INVOKABLE void setChannelName(int ch, const QString &name);
@@ -320,7 +320,7 @@ public:
     Q_INVOKABLE int deletePreset(int slot);
     Q_INVOKABLE int copyPreset(int fromSlot, int toSlot);
     Q_INVOKABLE void setPresetName(int slot, const QString &name);
-    Q_INVOKABLE void setPresetStartup(int mode, int slot);
+    Q_INVOKABLE bool setPresetStartup(int mode, int slot);   // -- WP QD31 -- false if not written
 
     Q_INVOKABLE int saveParams();
     Q_INVOKABLE int loadParams();
@@ -375,8 +375,9 @@ public:
     Q_INVOKABLE void setInputRate(int index);
     Q_INVOKABLE void setI2sClockMode(int mode);
     Q_INVOKABLE void setLgSoundSync(bool enabled);
-    // DAC mute: applied by the device later; dacMuteApplied reports the outcome
-    Q_INVOKABLE void setDacMute(bool enabled, bool activeLow, int pin, int holdMs, int releaseMs);
+    // DAC mute: applied by the device later; dacMuteApplied reports the outcome.
+    // -- WP QD31 -- false if not sent, and dacMuteApplied(false) has fired
+    Q_INVOKABLE bool setDacMute(bool enabled, bool activeLow, int pin, int holdMs, int releaseMs);
     Q_INVOKABLE int testDacMute();
     // Control interfaces: ctrlIfaceApplied(which 0 = UART / 1 = I2C, status)
     Q_INVOKABLE void setUart(bool enabled, int txPin, int rxPin, bool notify, int baud);

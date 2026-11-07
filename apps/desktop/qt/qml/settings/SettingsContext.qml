@@ -32,12 +32,13 @@ QtObject {
     readonly property bool namesDirty: bridge.connected && deviceNames.dirty
     // -- WP QD5 -- The latency, whose draft the controller holds
     readonly property bool latencyDirty: bridge.connected && outputLatency.dirty
-    readonly property bool draftDirty: namesDirty || latencyDirty || (edited && bridge.connected && (
-        startupMode !== bridge.presetStartupMode
+    // -- WP QD31 -- The bridge's settings differ from the device's
+    readonly property bool settingsDiffer: startupMode !== bridge.presetStartupMode
         || (startupMode === 0 && defaultSlot !== bridge.presetDefaultSlot)
         || masterVolumeMode !== bridge.masterVolumeMode
         || outputConfigMode !== bridge.outputConfigMode
-        || dacDirty))
+        || dacDirty
+    readonly property bool draftDirty: namesDirty || latencyDirty || (edited && bridge.connected && settingsDiffer)
     // Hardware edits in independent mode are RAM-only until the output
     // config is saved; they share the save bar (but cannot be reverted)
     readonly property bool hardwareDirty: bridge.connected && bridge.hardwareUnsaved
@@ -85,19 +86,47 @@ QtObject {
         return st === 0
     }
 
+    // -- WP QD31 -- A PRESET_* status as the reason an output config save failed
+    function outputConfigStatusText(code) {
+        switch (code) {
+        case 4: return "the device could not write its flash"
+        case 255: return "the device did not respond"
+        default: return "the device reported error " + code
+        }
+    }
+
     function save() {
         saveError = ""   // -- WP QD1 --
         if (!bridge.writable) return   // -- WP QD6 --
-        if (startupMode !== bridge.presetStartupMode || defaultSlot !== bridge.presetDefaultSlot)
-            bridge.setPresetStartup(startupMode, defaultSlot)
-        if (masterVolumeMode !== bridge.masterVolumeMode)
-            bridge.setMasterVolumeMode(masterVolumeMode)
-        if (outputConfigMode !== bridge.outputConfigMode)
-            bridge.setOutputConfigMode(outputConfigMode)
-        if (dacDirty)
-            bridge.setDacMute(dacEnabled, dacActiveLow, dacPin, dacHoldMs, dacReleaseMs)
-        if (hardwareDirty)
-            bridge.saveOutputConfig()
+        // -- WP QD31 -- Stop at the first refusal, as for the control surfaces below: the draft
+        // stays, with the reason on the bar. What went through already now matches the device.
+        if (startupMode !== bridge.presetStartupMode || defaultSlot !== bridge.presetDefaultSlot) {
+            if (!bridge.setPresetStartup(startupMode, defaultSlot)) {
+                saveError = "Not saved: the device did not accept the startup preset"
+                return
+            }
+        }
+        if (masterVolumeMode !== bridge.masterVolumeMode && !bridge.setMasterVolumeMode(masterVolumeMode)) {
+            saveError = "Not saved: the device did not accept the master volume mode"
+            return
+        }
+        if (outputConfigMode !== bridge.outputConfigMode && !bridge.setOutputConfigMode(outputConfigMode)) {
+            saveError = "Not saved: the device did not accept the output config mode"
+            return
+        }
+        var dacSent = false
+        if (dacDirty) {
+            if (!bridge.setDacMute(dacEnabled, dacActiveLow, dacPin, dacHoldMs, dacReleaseMs))
+                return   // dacWatch gave the reason
+            dacSent = true
+        }
+        if (hardwareDirty) {
+            var st = bridge.saveOutputConfig()
+            if (st !== 0) {
+                saveError = "Not saved: " + outputConfigStatusText(st)
+                return
+            }
+        }
         // -- WP QD1 -- A refused save must never look saved: the draft stays
         if (csDirty && !saveControlSurfaces())
             return
@@ -107,7 +136,8 @@ QtObject {
         // -- WP QD5 -- Last, as on the Mac: it restarts the outputs. See latencyWatch.
         if (latencyDirty)
             outputLatency.save()
-        edited = false
+        // -- WP QD31 -- A DAC mute sent isn't saved yet: dacWatch ends the draft on the read-back
+        if (!dacSent) edited = false
     }
 
     // ── Pins ──
@@ -173,6 +203,18 @@ QtObject {
     property Connections bridgeWatch: Connections {
         target: bridge
         function onStateChanged() { if (!ctx.edited) ctx.load() }
+    }
+    // -- WP QD31 -- The device's verdict on a DAC mute, which it applies in its main loop
+    property Connections dacWatch: Connections {
+        target: bridge
+        function onDacMuteApplied(accepted) {
+            if (!accepted) {
+                if (ctx.dirty) ctx.saveError = "Not saved: the device did not keep the DAC mute settings"
+            } else if (ctx.edited && !ctx.settingsDiffer) {
+                ctx.edited = false
+                ctx.load()
+            }
+        }
     }
     // -- WP QD4 --
     property Connections namesWatch: Connections {
