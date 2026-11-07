@@ -109,13 +109,6 @@ object CsDisplay {
 
     val STATUS_READ: String = Json.write(linkedMapOf("op" to "displayStatus"))
 
-    /**
-     * Read after a display write: the core re-reads the display then, not the
-     * surfaces' status, so without it the unsaved flag (the save bar) would lag
-     * until the next status read.
-     */
-    val REFRESH_STATUS: String = Json.write(linkedMapOf("op" to "refreshStatus"))
-
     /** The panel state's words, and whether they warn. */
     fun stateText(s: CsDisplayStatus): Pair<String, Boolean> = when (s.init) {
         STATE_LIVE -> "Running" to false

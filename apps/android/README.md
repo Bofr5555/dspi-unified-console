@@ -10,32 +10,19 @@ The app is a faithful port of the official clients rather than a re-implementati
   the crates under it), which comes from Weeb Labs' DSPi-Terminal and consoles and is shared with the
   other clients. The app opens the device from the file descriptor Android hands it, and uses the
   optional crossfeed pair map (see below).
-- **Behaviour, wording and layout:** the macOS DSPi Console (v1.1.6-beta5) is the reference, page by
+- **Behaviour, wording and layout:** the macOS DSPi Console (1.1.6) is the reference, page by
   page; the Qt bridge (`DSPiBridge.cpp`) is ported 1:1 as `DspiBridge`. Every deliberate difference is
   listed in [`docs/UPSTREAM-DEVIATIONS.md`](docs/UPSTREAM-DEVIATIONS.md).
 
-> Status: **closed test on Google Play** (0.12.0, with DSPi Link). Testers wanted — see [Join the Google Play test](#join-the-google-play-test).
+It is one of the clients in the `dspi-unified-console` repository; the root
+[`README.md`](../../README.md) has the project, the status of each client and the credits.
 
-## Join the Google Play test
+> Status: version **0.12.0** (versionCode 12, tag `android-v0.12.0`), with DSPi Link. It is distributed
+> through Google Play as "DSPi Console for Android" (app ID `se.bofr.dspi_console_android`).
 
-**DSPi Console for Android** is in a closed test on Google Play. Google requires **at least 12 testers
-to stay opted in for 14 days** before the app can be published to everyone, so every tester helps.
-
-1. **Join the tester group** with the same Google account you use for the Play Store on your phone:
-   <https://groups.google.com/a/bofr.se/g/dspi-console-android-testers> (click **Join group**).
-2. **Opt in to the test:** <https://play.google.com/apps/testing/se.bofr.dspi_console_android>
-3. **Install "DSPi Console for Android"** from the Play Store link on that page.
-4. **Stay opted in for at least 14 days** (leaving and rejoining restarts the count).
-
-What you need: an Android phone or tablet with Android 8.0 or newer. **No DSPi required** — the app
-has a Demo mode, so every screen can be tried without hardware. With a DSPi: firmware **v1.1.6** for
-full features (see [Requirements](#requirements) for older firmware) and a USB-C/OTG cable or adapter.
-
-If the Play Store says the app is not available, check that the group, the opt-in page and the
-Play Store all use the same Google account.
-
-Feedback — bugs, crashes, anything that behaves differently from the desktop console — is very
-welcome in [Issues](../../issues) or on the DSPi Discord.
+What you need: an Android phone or tablet with Android 8.0 or newer. **No DSPi required**: the app has a
+Demo mode, so every screen can be tried without hardware. With a DSPi: firmware **v1.1.6** for full
+features (see [Requirements](#requirements) for older firmware) and a USB-C/OTG cable or adapter.
 
 ## Features
 
@@ -44,12 +31,13 @@ crossovers, delays, gains, input routing · matrix mixer · loudness, crossfeed,
 psychoacoustic bass, subharmonic synth, tube modeller, upmixer, output limiters · presets with the
 official Unsaved Changes flow, import/export, filter files, AutoEQ · settings with the Save / Revert
 bar (pins, outputs, I2S, inputs, global parameters, control interfaces, control surfaces) · test
-signals, spectrum analyser, statistics, interrupt monitor · firmware installer (bundled official
-v1.1.6-beta5 or a local `.uf2`) · demo mode without a device.
+signals, spectrum analyser, statistics, interrupt monitor · firmware installer (the bundled 1.1.6
+images or a local `.uf2`) · demo mode without a device.
 
-DSPi Link (optional, off by default; Settings › Networking): control a DSPi plugged into a Mac
-running DSPi Console, or wired to a DSPi ESP32 bridge, over the local network — hub discovery or
-address entry, PIN pairing, reconnect. The protocol is plaintext: trusted networks only.
+DSPi Link (optional, off by default; Settings › Networking): control a DSPi through a DSPi Link hub
+on the local network, such as DSPi Console on a Mac, this repository's `dspi hub` or Qt app, or a DSPi
+ESP32 bridge — hub discovery or address entry, PIN pairing, reconnect. The protocol is plaintext:
+trusted networks only.
 
 Android specifics: auto-launch on plug-in, a foreground-service notification with volume / mute /
 next preset, and the app claims only the DSPi's vendor control interface, so audio keeps playing
@@ -71,10 +59,10 @@ next preset, and the app claims only the DSPi's vendor control interface, so aud
 
 ## Installing without Google Play
 
-Each [release](../../releases) has a universal `.apk` (arm64, armv7, x86_64) of the same version as
-on Google Play, with a `.sha256` file next to it. Sideload it (allow installs from your browser or
-file manager). It is signed with the developer's upload key, not Google Play's key, so it cannot
-update a Play install and Play cannot update it: to switch between the two, uninstall first.
+A universal `.apk` (arm64, armv7, x86_64) can be made from a release bundle with `bundletool
+build-apks --mode=universal` ([`docs/RELEASE.md`](docs/RELEASE.md), section 4). It is signed with the
+developer's upload key, not Google Play's key, so it cannot update a Play install and Play cannot update
+it: to switch between the two, uninstall first.
 
 ## Fork-only extra: crossfeed output pairs
 
@@ -91,6 +79,10 @@ the firmware's extension channel, opcode 0x00); the app then shows a
 All toolchains run in a podman container (JDK 21, Android SDK/NDK, Rust + cargo-ndk, UniFFI), built
 from [`container/Containerfile`](container/Containerfile) with every download pinned and checksum-
 verified ([`docs/SUPPLY-CHAIN.md`](docs/SUPPLY-CHAIN.md)). Nothing is installed on the host.
+
+From the repository root, `ci/check.sh --step android` builds the core libraries, `--step
+android-tests` runs the app's tests and `--step android-aab` builds a bundle (see the root `README.md`).
+By hand:
 
 ```bash
 # from a checkout of this repository

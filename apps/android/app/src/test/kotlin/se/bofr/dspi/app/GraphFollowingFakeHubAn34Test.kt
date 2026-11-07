@@ -32,7 +32,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import se.bofr.dspi.bridge.DspiBridgeImpl
@@ -53,7 +52,7 @@ import se.bofr.dspi.ui.settings.LocalAppSettings
  * (`--rta`) as a process: A shows the graph on the main looper, B is headless
  * on its own threads. Real sockets, no USB.
  */
-@RunWith(RobolectricTestRunner::class)
+@RunWith(DspiRobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w400dp-h1200dp-port-mdpi")
 class GraphFollowingFakeHubAn34Test {
     @get:Rule val rule = createComposeRule()

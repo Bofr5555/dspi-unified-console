@@ -1,20 +1,28 @@
 # DSPi Terminal
 
 Cross-platform terminal control for [DSPi](https://github.com/WeebLabs/DSPi)
-audio processors: the DSPi Console's layout and every one of its controls,
-in a full-screen terminal interface, plus a scriptable one-shot CLI.
+audio processors: the DSPi Console's layout and controls in a full-screen
+terminal interface, plus a scriptable one-shot CLI. The command is `dspi`
+(package `dspi-term`).
 
-**Status: Console-parity work in progress on the `console-parity` branch.**
-The plan, the design and the surveys it rests on are in
-[`docs/plan/`](docs/plan/). `docs/plan/PLAN.md` carries the coverage matrix
-that says which Console feature lives where, and `docs/plan/PLAN-beta4.md`
-what the move to firmware and Console 1.1.6 beta 4 added and what is still
-open.
+It is one of the clients in this repository. It came from Weeb Labs'
+DSPi-Terminal (see the root [`README.md`](../../README.md), Credits) and uses the
+repository's session crates directly (`crates/dspi-proto`, `dspi-transport`,
+`dspi-session`, `dspi-cmd`, `dspi-tui`), with `dspi-core` for `dspi flash` and
+`dspi-hub` for `dspi hub`.
+
+**Status:** the terminal's work packages are done except its hardware pass on a
+real board (TM13 in
+[`docs/core-merge/PLAN-CLIENTS.md`](../../docs/core-merge/PLAN-CLIENTS.md)). It is
+tested against the simulated device, mocks and a fake hub. What it lacks against
+the macOS Console is in [`docs/PARITY.md`](../../docs/PARITY.md), section 5. The
+plan and surveys it was built from, before the merge, are in
+[`docs/terminal/plan/`](../../docs/terminal/plan/).
 
 ## The interface
 
 ```
- DSPi  RP2350 · fw 1.1.6 beta 4 · A1B2C3D4              ● Connected   Preset 3: Living Room *
+ DSPi  RP2350 · fw 1.1.6 · A1B2C3D4                     ● Connected   Preset 3: Living Room *
 ╭────────────────────╮╭ Filter Response · FL ─────────────────────────────────────────── ⤢ g ╮
 │ INPUTS             ││+20                  ┆                    ┆        ┆           ┆      │
 │▍▪FL     ▓▓▓▓▓▓▏ IN1││                     ┆                    ┆        ┆           ┆      │
@@ -48,8 +56,8 @@ whose curves are identical, each with a one-line summary. The output page
 carries the output limiter beside Mute, with its threshold, release, link
 group and gain reduction. The Console's tool windows are panels that
 replace the right pane: the Matrix Mixer, the DSP panels (Loudness,
-Crossfeed, Volume Leveller, Psychoacoustic Bass, Stereo Upmixer, and
-beta4's Subharmonic Synthesizer and Tube Modeller), the Signal Generator,
+Crossfeed, Volume Leveller, Psychoacoustic Bass, Stereo Upmixer,
+Subharmonic Synthesizer and Tube Modeller), the Signal Generator,
 the Spectrum Analyser, Stats, the Interrupt Monitor and AutoEQ. Settings
 replaces the screen, with the Console's pages, including Display > Spectrum
 Analyser and Control > Auxiliary Outputs for relays, LEDs and dimmers on
@@ -96,18 +104,27 @@ anything done in the interface can be pasted into a script.
 
 ## Building
 
+From the repository root:
+
 ```sh
-cargo build --release
-cargo test --workspace
+cargo build --release -p dspi-term     # the binary is target/release/dspi
+cargo test -p dspi-term
 ```
 
-Requires Rust 1.90 or newer. There is no C toolchain dependency: USB access goes
-through `nusb`, which talks WinUSB, IOKit and usbfs directly.
+In this repository every toolchain runs in a container: `ci/check.sh --step
+terminal` builds the release binary, and `ci/check.sh --crate dspi-term` runs
+its format check, clippy and tests (the root `README.md` has the rest).
+
+Requires Rust 1.90 or newer. USB goes through `nusb`, which talks WinUSB, IOKit
+and usbfs directly, so USB needs no C library. The default features add `--midi`
+(through `midir`, which needs the ALSA development files on Linux) and finding
+hubs on the network (mDNS); `--no-default-features` builds without both.
 
 ## One-shot commands
 
 ```sh
 dspi                              # open the interface
+dspi --demo                       # the same, on the built-in simulated device
 dspi doctor                       # why can't it see my device?
 dspi dump                         # the whole device state
 dspi watch                        # notifications as they arrive
@@ -156,7 +173,35 @@ past this. Success means the board came back running the image's version.
 Every command takes `--json` for machine-readable output, `--dry-run` to change
 nothing, `--quiet`, and `--device <serial>` to pick a unit. Exit codes
 distinguish bad input (1) from no device (2) from a write the device refused
-(3) from a transport failure (4).
+(3) from a transport failure (4). `dspi --help` lists every command and option.
+
+### Other ways to reach a device
+
+Without a flag, `dspi` uses a DSPi on this machine's USB. These choose another
+link, for the interface and for every command:
+
+```sh
+dspi --demo dump                  # the built-in simulated device
+dspi --midi list                  # the MIDI ports; --midi [PORT] connects over USB MIDI
+dspi link scan                    # the DSPi Link hubs on this network
+dspi --hub dump                   # a device behind a hub found on this network
+dspi --link host:port dump        # a device behind a hub at that address
+```
+
+A hub asks for its PIN the first time; `--pin -` or the `DSPI_PIN` environment
+variable gives it to a script. Link traffic, the PIN included, is plain text, so
+use it on a network you trust.
+
+### Sharing devices: `dspi hub`
+
+```sh
+dspi hub                          # share this machine's devices on the network
+dspi hub --help                   # pairing, clients and roles
+```
+
+The hub pairs clients by PIN. Example service files for systemd, launchd and the
+Windows task scheduler are in [`packaging/service/`](packaging/service/), with
+install notes.
 
 ## Device access
 
@@ -164,25 +209,29 @@ distinguish bad input (1) from no device (2) from a write the device refused
   WinUSB binds automatically.
 - **macOS**: nothing to install. The vendor interface is *exclusive*, so DSPi
   Console and this tool cannot hold the device at the same time.
-- **Linux and Raspberry Pi**: `sudo dspi --install-udev`, then unplug and
-  replug the device.
+- **Linux and Raspberry Pi**: `sudo dspi --install-udev`, then
+  `sudo udevadm control --reload`, then unplug and replug the device.
 
-See [`docs/platforms.md`](docs/platforms.md) for what has been verified where.
+See [`docs/terminal/platforms.md`](../../docs/terminal/platforms.md) for what
+has been verified where.
 
 ## Protocol source of truth
 
 The firmware headers in `crates/dspi-proto/firmware/` are vendored from
-`Bofr5555/DSPi` at `bofr-main` @ `af001ec` (Weeb Labs firmware 1.1.6 final
-plus the fork's extension channel; wire format V32, 247 vendor opcodes,
-control-surface caps v22) and parsed at build
-time to generate every opcode and constant and the wire image's section
+`Bofr5555/DSPi` branch `bofr-main` (Weeb Labs firmware 1.1.6 final plus the
+fork's extension channel; wire format V32). The exact commit and the file list
+are in `crates/dspi-proto/firmware/PROVENANCE.toml`. The headers are parsed at
+build time to generate every opcode and constant and the wire image's section
 offsets. What the generator cannot lift from a `#define` (the packet
 structs, which the build does not parse, and the tube type table, which
 lives only in `tube.c`) is a hand table with a comment citing its source
 line, and tests check it against the headers or the firmware source. A
 coverage test fails if an opcode has neither a registry row nor a written
 reason for leaving it out. To move to a newer firmware, follow
-[`docs/firmware-bump.md`](docs/firmware-bump.md).
+[`docs/terminal/firmware-bump.md`](../../docs/terminal/firmware-bump.md).
+
+Firmware on another wire format connects read-only: the interface shows a
+banner and no write leaves.
 
 The device pushes its own changes over a notification endpoint, so a knob on
 a control surface, a remote, or the operating system's volume slider shows up
@@ -190,4 +239,5 @@ in the interface without a refresh, with a note saying who changed it.
 
 ## Licence
 
-GPL-3.0-or-later, matching the DSPi firmware and Console.
+The workspace's licence field is GPL-3.0-or-later. What is settled and what is
+still open is in the root [`README.md`](../../README.md), Licensing.

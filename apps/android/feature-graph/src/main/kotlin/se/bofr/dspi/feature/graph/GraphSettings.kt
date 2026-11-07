@@ -5,11 +5,10 @@
 package se.bofr.dspi.feature.graph
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.core.DspiConstants
 import se.bofr.dspi.ui.settings.AppSettings
@@ -88,9 +87,8 @@ class RtaChannelSelection(val tap: Int, channels: List<Int>) {
  */
 @Composable
 internal fun DspiBridge.observeLiveInputs(): Int {
-    val flow =
-        remember(this) {
-            status.map { it.activeInputChannels }.distinctUntilChanged()
-        }
-    return flow.collectAsStateWithLifecycle(status.value.activeInputChannels).value
+    // -- WP AN39 -- derived from the collected status, so a poll recomposes the reader only when the count changes,
+    // without reading StateFlow.value in composition
+    val s = status.collectAsStateWithLifecycle()
+    return remember(s) { derivedStateOf { s.value.activeInputChannels } }.value
 }

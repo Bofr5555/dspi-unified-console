@@ -53,8 +53,8 @@ class DemoSessionTest {
         val parent = CoroutineScope(SupervisorJob() + main)
         val usbState = MutableStateFlow<UsbSessionState>(UsbSessionState.NoDevice)
         val cores = CopyOnWriteArrayList<FakeDspiCore>()
-        // Any bridge works as the "device" one. Not the real core: this class runs outside Robolectric, and the
-        // JVM loads the library for one classloader only (DemoScreensAn28Test has it in Robolectric's)
+        // Any bridge works as the "device" one; the fake is enough (WP AN38: the real core would work here too,
+        // DspiRobolectricTestRunner keeps it out of the sandbox, see DemoCoresInSequenceAn38Test)
         val device = startDemoSession(parent, "device stand-in", main = main, core = FakeDspiCore.demo())
         try {
             val modes = withContext(main) {

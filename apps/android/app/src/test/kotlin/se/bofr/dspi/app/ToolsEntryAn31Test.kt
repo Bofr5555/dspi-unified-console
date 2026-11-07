@@ -26,7 +26,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import se.bofr.dspi.feature.tools.ToolRoute
 import se.bofr.dspi.feature.tools.ToolsScreen
@@ -39,7 +38,7 @@ import se.bofr.dspi.ui.DspiRoutes
  * quick-strip icon opens that icon's own tool page (macOS right-click), not the list.
  * A tall window, so nothing needs scrolling: performScrollTo animates, and hangs on the paused clock.
  */
-@RunWith(RobolectricTestRunner::class)
+@RunWith(DspiRobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w400dp-h1600dp-port-mdpi")
 class ToolsEntryAn31Test {
     @get:Rule val rule = createComposeRule()

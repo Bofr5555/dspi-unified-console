@@ -34,7 +34,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import se.bofr.dspi.bridge.DspiBridge
@@ -52,7 +51,7 @@ import se.bofr.dspi.ui.settings.InMemoryAppSettingsStore
  * clock. The demo is a K340 build: default 1.20 V, so the flow offers 1.20 and
  * 1.25 V, and 1.25 V needs `OVERVOLT`.
  */
-@RunWith(RobolectricTestRunner::class)
+@RunWith(DspiRobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w400dp-h2400dp-port-mdpi")
 class CoreVoltageAn23Test {
     @get:Rule val rule = createComposeRule()

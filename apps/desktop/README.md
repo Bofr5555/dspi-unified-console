@@ -1,6 +1,6 @@
-# DSPi Console for Linux
+# DSPi Console for Linux and Windows
 
-A Linux control application for the [DSPi audio processor](https://github.com/WeebLabs/DSPi), open source DSP
+A Linux and Windows control application for the [DSPi audio processor](https://github.com/WeebLabs/DSPi), open source DSP
 firmware that turns a Raspberry Pi Pico (RP2040) or Pico 2 (RP2350) into a multi-output USB audio interface with
 an onboard signal processor.
 
@@ -8,14 +8,17 @@ DSPi Console controls the whole device: parametric equalisation, active crossove
 loudness compensation, headphone crossfeed, dynamics, bass enhancement, stereo upmixing, a limiter on every
 output, physical control surfaces and hardware configuration, all applied live over USB with no reflashing.
 
-It is a Qt 6 or 5.15 / QML interface on a Rust core, and follows the design and behaviour of
-[DSPi Console for macOS](https://github.com/WeebLabs/DSPi-Console).
+It is a Qt 6 or 5.15 / QML interface on this repository's Rust core, and follows the design and behaviour of
+[DSPi Console for macOS](https://github.com/WeebLabs/DSPi-Console). It grew from Weeb Labs'
+[DSPi Console for Linux](https://github.com/WeebLabs/DSPi-Console-Linux) and is one of the clients in the
+`dspi-unified-console` repository; the root [`README.md`](../../README.md) has the project, its status and the
+credits. This repository is not an official Weeb Labs repository and has no public releases yet.
 
 ---
 
 ## Contents
 
-- [Match Console and firmware versions](#match-console-and-firmware-versions)
+- [Firmware versions](#firmware-versions)
 - [Installing](#installing)
 - [Getting started](#getting-started)
 - [Features](#features)
@@ -23,35 +26,37 @@ It is a Qt 6 or 5.15 / QML interface on a Rust core, and follows the design and 
 - [Troubleshooting](#troubleshooting)
 - [Building from source](#building-from-source)
 - [Project structure](#project-structure)
-- [Related projects](#related-projects)
+- [Upstream projects](#upstream-projects)
 
 ---
 
-## Match Console and firmware versions
+## Firmware versions
 
-**Run Console and firmware at exactly the same version, including any beta or hotfix suffix.** They share a USB
-control protocol that changes with each release. With mismatched versions, features disappear (Console hides
-anything the firmware doesn't report), and settings may be written to the wrong place.
+Console has full control of firmware on wire format V32, which is DSPi firmware 1.1.6. A device on any other
+format connects **read-only**: a banner says so, controls are disabled and nothing is written to it. Firmware
+Update stays available, with the bundled 1.1.6 images for RP2040 and RP2350 boards.
 
-Each release of Console carries the matching firmware for RP2040 and RP2350 boards and installs it from
-**Firmware Update** in the menu. A banner appears when the connected device runs a different version.
+The extension channel of Bofr5555's firmware fork (crossfeed output pairs, core voltage) is used where the
+firmware has it; on stock Weeb Labs firmware those controls are hidden.
 
 ---
 
 ## Installing
 
-Download the latest release from the [Releases page](https://github.com/WeebLabs/DSPi-Console-Linux/releases).
-All builds are for 64-bit x86 and work on X11 and Wayland.
+There are no published downloads of this app yet. The packages are built from this repository (see
+[Release builds](#release-builds)):
 
-| Distribution | Download |
-|---|---|
-| Ubuntu 22.04+, Debian 12+, Linux Mint 21+, Pop!_OS | `dspi-console_<version>_amd64.deb` |
-| Fedora 42+ | `dspi-console-<version>-1.x86_64.rpm` |
-| Arch, Manjaro, EndeavourOS | The `dspi-console` package from the AUR |
-| Anything else (glibc 2.35+) | The AppImage, or the `.tar.gz` with an installer |
+| System | Package | Built by |
+|---|---|---|
+| Ubuntu 22.04+, Debian 12+ | `dspi-console_<version>_amd64.deb` | `packaging/linux/build-release.sh` |
+| Fedora 42+ | `dspi-console-<version>-1.x86_64.rpm` | `packaging/linux/build-release.sh` |
+| Other x86_64 Linux (glibc 2.35+) | the AppImage, or the `.tar.gz` with an installer | `packaging/linux/build-release.sh` |
+| Arch | `packaging/arch/PKGBUILD` | `makepkg` |
+| Windows x86_64 | a folder that runs as is, a `.zip` of it, and a per-user installer | `packaging/windows/build-windows.sh` |
 
-The packages install the udev rule for you, add DSPi Console to the application menu, and use your
-distribution's Qt and KDE libraries. Settings are kept in `~/.config/DSPi` whichever way you install.
+The Linux builds are for 64-bit x86 and work on X11 and Wayland. The `.deb` and `.rpm` install the udev rule,
+add DSPi Console to the application menu and use your distribution's Qt and KDE libraries. Settings are kept
+in `~/.config/DSPi` on Linux and in an INI file in the roaming AppData folder on Windows.
 
 ### Ubuntu, Debian and Mint
 
@@ -59,7 +64,7 @@ distribution's Qt and KDE libraries. Settings are kept in `~/.config/DSPi` which
 sudo apt install ./dspi-console_<version>_amd64.deb
 ```
 
-Double-clicking the file in a file manager also works. Remove it with `sudo apt remove dspi-console`.
+Remove it with `sudo apt remove dspi-console`.
 
 ### Fedora
 
@@ -69,16 +74,11 @@ sudo dnf install ./dspi-console-<version>-1.x86_64.rpm
 
 Remove it with `sudo dnf remove dspi-console`.
 
-### Arch
-
-Install `dspi-console` from the AUR with your AUR helper, for example `yay -S dspi-console`. It builds from
-source, so it needs a few minutes the first time.
-
 ### AppImage with the installer
 
 ```
-tar -xzf DSPi-Console-<version>-linux-x86_64.tar.gz
-cd DSPi-Console-<version>
+tar -xzf DSPi-Console-v<version>-linux-x86_64.tar.gz
+cd DSPi-Console-v<version>
 ./install.sh
 ```
 
@@ -89,16 +89,23 @@ everything.
 ### Running the AppImage directly
 
 ```
-chmod +x DSPi-Console-<version>-x86_64.AppImage
-./DSPi-Console-<version>-x86_64.AppImage
+chmod +x DSPi-Console-v<version>-x86_64.AppImage
+./DSPi-Console-v<version>-x86_64.AppImage
 ```
 
 This way the udev rule has to be installed by hand, once (below).
 
+### Windows
+
+Run `DSPi-Console-<version>-windows-x86_64-setup.exe`, or unpack the `.zip` and start `DSPiConsole.exe`.
+Windows needs no driver: the firmware carries the descriptors that make Windows bind its WinUSB driver itself.
+This has not yet been checked on real Windows with a device (work package QD25 in
+`docs/core-merge/PLAN-CLIENTS.md`).
+
 ### The udev rule
 
 Linux only lets root open USB devices unless a udev rule says otherwise. The packages and the installer handle
-this; to do it by hand, use `70-dspi.rules` from the release:
+this; to do it by hand, use `70-dspi.rules` (in the release archive, and in `packaging/linux/`):
 
 ```
 sudo cp 70-dspi.rules /etc/udev/rules.d/
@@ -116,7 +123,9 @@ On first launch a **Getting Started** wizard takes a new board from a blank Pico
 Skip it if your board already runs DSPi; it can be run again from **Help** in the menu.
 
 Console connects to the DSPi automatically. With several connected, click the device name in the sidebar
-footer to pick one; right-click it to rescan for a device plugged in later.
+footer to pick one; right-click it to rescan for a device plugged in later. With no DSPi, **Open Demo** offers a
+simulated one, and `--demo` starts on it. **Devices…** in the menu lists the DSPis on USB, the demo, and DSPi
+Link hubs found on the network or typed in by address.
 
 **Changes are applied live but not saved.** Press **Ctrl+S** (Commit Parameters) to store them in the active
 preset on the device. The menu also offers Revert to Saved and Factory Reset. Console
@@ -146,6 +155,12 @@ tracks unsaved changes and asks before switching presets or devices, or quitting
   spare GPIOs, with channel groups, macros and auxiliary outputs (Settings > Control).
 - **Tools:** signal generator, Stats for Nerds and an interrupt monitor.
 - **Firmware Update** for RP2040 and RP2350, with a configuration export offered first.
+- **DSPi Link** (Settings > Networking): control a DSPi through a hub on the local network, with PIN pairing,
+  or share this machine's DSPis as a hub. Link traffic, the PIN included, is plain text: use it on a network
+  you trust.
+- **Tray icon**, close to tray, open at login, and keeping the machine awake while sharing.
+- **Update check**, off until you turn it on. A build with `-DDSPI_UPDATE_CHECK=OFF` leaves it out, as the
+  Arch package does.
 
 ---
 
@@ -170,9 +185,11 @@ tracks unsaved changes and asks before switching presets or devices, or quitting
 | Ctrl+Shift+U | Stereo Upmixer |
 | Ctrl+Shift+T | Stats for Nerds |
 | Ctrl+Shift+I | Interrupt Monitor |
+| Ctrl+Alt+M | Minimise to the tray |
 | Ctrl+Q | Quit |
 
-Right-click a slider or level field to reset it to its default.
+Right-click a slider or level field to reset it to its default. Each macOS shortcut and its key here is in the
+table at the top of `qt/smoke/SmokeDriverShortcuts.cpp`, which the smoke test presses.
 
 ---
 
@@ -197,14 +214,23 @@ instead; Firmware Update finds it.
 **Changes are lost after a power cycle.** Changes are live until saved: press Ctrl+S.
 
 **No blurred sidebar.** The translucent, blurred sidebar needs KDE Plasma (KWin) with its blur effect on.
-Elsewhere the sidebar is solid; everything else is the same.
+Elsewhere the sidebar is solid; everything else is the same. On Wayland the KDE effects also need
+`kwayland-integration` (the KF5 KWindowSystem Wayland plugin).
+
+**The system volume doesn't reach the DSPi.** With PipeWire this needs the DSPi card profile from the firmware
+repository (`tools/linux-pipewire-card-profile`). Without it PipeWire may pick the IEC958 profile with software
+volume, and the DSPi never sees a change.
+
+**QML warnings don't show in a log.** Fedora's Qt logs to the systemd journal when standard error is not a
+terminal. Run with `QT_FORCE_STDERR_LOGGING=1`.
 
 ---
 
 ## Building from source
 
-This app now lives in the `dspi-unified-console` monorepo, and its Rust core is `crates/dspi-capi` over
-`crates/dspi-core` at the repository root. The root `README.md` has every build, including the containers.
+This app's Rust core is `crates/dspi-capi` over `crates/dspi-core` at the repository root. The root `README.md`
+has every build, including the containers this project uses (`ci/check.sh --step qt`, `--step qt-offscreen`,
+`--step qt-windows`); the steps below are for building on your own machine.
 
 Install a Rust toolchain ([rustup](https://rustup.rs)), CMake, a C++17 compiler and Qt 6 or Qt 5.15 with Qt Quick
 Controls 2. CMake prefers Qt 6; `-DDSPI_QT_MAJOR=5` forces Qt 5. KF5 or KF6 WindowSystem is optional and enables
@@ -242,7 +268,11 @@ The QML, firmware images and AutoEQ database are compiled into the binary.
 
 `packaging/linux/build-release.sh` builds the AppImage, the release archive, the `.deb` and the `.rpm` into
 `dist/`. Each is built in a podman container of the oldest distribution it supports (Ubuntu 22.04 and
-Fedora 42). `cmake --install` lays out a system install, and the AUR package is in `packaging/arch/`.
+Fedora 42). `cmake --install` lays out a system install, and the Arch package is in `packaging/arch/`.
+
+`packaging/windows/build-windows.sh` cross-compiles the Windows build on Linux (the core with cargo, the app
+with MinGW Qt 6) in the container from `packaging/windows/Containerfile`, and makes the folder, the `.zip` and
+the installer.
 
 ---
 
@@ -256,22 +286,23 @@ Fedora 42). `cmake --install` lays out a system install, and the AUR package is 
 | `qt/firmware/` | The bundled DSPi firmware images. |
 | `qt/autoeq/` | The bundled AutoEQ headphone database. |
 | `packaging/linux/` | Release builds (AppImage, .deb, .rpm), udev rule, desktop entry, AppStream data and installer. |
-| `packaging/arch/` | The AUR package. |
-| `Documentation/` | Core specification and the macOS parity plan. |
+| `packaging/arch/` | The Arch package. |
+| `packaging/windows/` | The Windows build, `.zip` and installer. |
+| `qt/smoke/` | The smoke driver: the app run offscreen on the demo device, a fake hub and fakes of the platform. |
+| `Documentation/` | `core_spec.md`, the old core's API from before wire format V32, kept for history; it does not describe `dspi-capi`. |
+
+What the app lacks against the macOS Console is in [`docs/PARITY.md`](../../docs/PARITY.md), section 5.
 
 ---
 
-## Related projects
+## Upstream projects
 
 - [DSPi](https://github.com/WeebLabs/DSPi): the firmware, with the hardware documentation, signal chain
   reference and USB control protocol specification.
-- [DSPi Console for macOS](https://github.com/WeebLabs/DSPi-Console): the macOS application.
-- [DSPi Console for Windows](https://github.com/WeebLabs/DSPi-Console-Windows): the Windows application.
-- [dspictl](https://github.com/WeebLabs/dspictl): command-line control, for scripting and automation.
-- [DSPiCliRemote](https://github.com/WeebLabs/DSPiCliRemote): web- and application-based remote control.
-
-The [official Discord server](https://discord.gg/RCyqxAQ5xS) is the best place for development updates,
-discussion and help.
+- [DSPi Console for macOS](https://github.com/WeebLabs/DSPi-Console): the reference for behaviour and look.
+- [DSPi Console for Windows](https://github.com/WeebLabs/DSPi-Console-Windows): the Windows application, in C#.
+- [DSPi Console for Linux](https://github.com/WeebLabs/DSPi-Console-Linux): the Linux application this app grew
+  from.
 
 ### Acknowledgements
 

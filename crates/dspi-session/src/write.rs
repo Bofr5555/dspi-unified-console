@@ -55,6 +55,10 @@ pub enum WriteError {
     #[error("`{path}` cannot be changed; it is read-only")]
     ReadOnly { path: String },
 
+    // -- WP TM26 -- An action has a SET and no GET: reading it is the mistake.
+    #[error("`{path}` cannot be read; it is an action (write-only), so `set` it instead")]
+    WriteOnly { path: String },
+
     #[error("`{path}` needs {want} index(es), got {got}")]
     WrongArity {
         path: String,
@@ -373,7 +377,9 @@ impl Session {
         match d.dir {
             Dir::Out => {
                 let payload = repr.encode(&value)?;
-                self.transport.control_out(set, wvalue, &payload)?;
+                self.transport
+                    .control_out(set, wvalue, &payload)
+                    .map_err(|e| self.explain_aux_stall(d, indices, e))?;
             }
             // Mutating commands on the IN path. Not a mistake: they carry their
             // parameters in wValue and answer with a status byte.
@@ -531,7 +537,7 @@ impl Session {
         let d = by_path(path).ok_or_else(|| WriteError::UnknownParam(path.into()))?;
         let get = d
             .get
-            .ok_or_else(|| WriteError::ReadOnly { path: path.into() })?;
+            .ok_or_else(|| WriteError::WriteOnly { path: path.into() })?;
 
         self.check_indices(d, indices)?;
         // "Every output" exists only for a write; the device stalls a read of
@@ -560,7 +566,8 @@ impl Session {
             kind,
             || self.transport.control_in(get, wvalue, len as u16),
             get,
-        )?;
+        )
+        .map_err(|e| self.explain_aux_stall(d, indices, e))?;
 
         // A crosspoint reads back in the words the grammar writes it:
         // `on -6.0 dB inv`, `off`.
@@ -580,6 +587,55 @@ impl Session {
         }
 
         Ok(decode_read(d, &bytes))
+    }
+
+    // -- WP TM26 --
+    /// The firmware stalls `cs.aux` and `cs.aux.level` on a slot that holds no
+    /// auxiliary output of the right kind (control_surfaces.h:284-285), which
+    /// reads as a fault. Ask the slot's binding what it holds, and say so when
+    /// that explains the stall. Any other stall, or a binding that cannot be
+    /// read, is passed on as it was.
+    fn explain_aux_stall(
+        &mut self,
+        d: &ParamDesc,
+        indices: &[u8],
+        e: TransportError,
+    ) -> WriteError {
+        use crate::cs_model::ty;
+        use dspi_proto::packets::CsBinding;
+        let (TransportError::Stalled { .. }, Some(&slot)) = (&e, indices.first()) else {
+            return e.into();
+        };
+        let level = match d.path {
+            "cs.aux" => false,
+            "cs.aux.level" => true,
+            _ => return e.into(),
+        };
+        let binding = self
+            .transport
+            .control_in(
+                op::REQ_GET_CS_BINDING,
+                u16::from(slot),
+                CsBinding::SIZE as u16,
+            )
+            .ok()
+            .and_then(|b| CsBinding::decode(&b).ok());
+        let Some(b) = binding else {
+            return e.into();
+        };
+        let why = match b.component {
+            ty::AUX_PWM => return e.into(),
+            ty::AUX_OUT if !level => return e.into(),
+            ty::AUX_OUT => {
+                format!("slot {slot} holds an on/off auxiliary output, which has no level")
+            }
+            ty::NONE => format!("slot {slot} is empty; it holds no auxiliary output"),
+            _ => format!("slot {slot} holds no auxiliary output"),
+        };
+        WriteError::Unavailable {
+            path: d.path.into(),
+            why,
+        }
     }
 
     /// Confirm a write landed, for the parameters where the status byte is not
@@ -1676,6 +1732,82 @@ mod tests {
             .write("dev.serial", &[], Value::Text("x".into()))
             .unwrap_err();
         assert!(e.to_string().contains("read-only"), "{e}");
+    }
+
+    // -- WP TM26 -- hw-1 D2: `dspi get rta.control` said "read-only".
+    #[test]
+    fn tm26_reading_an_action_says_write_only() {
+        let t = MockTransport::new();
+        let mut s = session(t, &[]);
+        let e = s.read("rta.control", &[]).unwrap_err();
+        assert!(matches!(e, WriteError::WriteOnly { .. }), "{e:?}");
+        let text = e.to_string();
+        assert!(text.contains("write-only"), "{text}");
+        assert!(!text.contains("read-only"), "{text}");
+        let e = s.read_whole("rta.control", &[]).err();
+        assert!(
+            e.as_ref()
+                .is_none_or(|e| matches!(e, WriteError::WriteOnly { .. })),
+            "{e:?}"
+        );
+    }
+
+    // -- WP TM26 -- hw-1 M1: `cs.aux 0` stalled on a slot with no aux output.
+    fn tm26_with_binding(component: u8) -> Session {
+        use dspi_proto::packets::CsBinding;
+        let b = CsBinding {
+            component,
+            ..CsBinding::default()
+        };
+        // The aux opcodes stall, as on the K340.
+        let t = MockTransport::new()
+            .data(op::REQ_GET_CS_BINDING, b.encode().to_vec())
+            .reply(op::REQ_SET_CS_AUX_STATE, Reply::Stall);
+        session(t, &[])
+    }
+
+    #[test]
+    fn tm26_aux_stall_on_an_empty_slot_says_so() {
+        use crate::cs_model::ty;
+        let mut s = tm26_with_binding(ty::NONE);
+        for path in ["cs.aux", "cs.aux.level"] {
+            let e = s.read(path, &[0]).unwrap_err();
+            assert!(matches!(e, WriteError::Unavailable { .. }), "{e:?}");
+            assert!(e.to_string().contains("slot 0 is empty"), "{e}");
+        }
+        let e = s.write("cs.aux", &[0], Value::Bool(true)).unwrap_err();
+        assert!(e.to_string().contains("no auxiliary output"), "{e}");
+
+        let mut s = tm26_with_binding(ty::BUTTON);
+        let e = s.read("cs.aux", &[0]).unwrap_err();
+        assert!(
+            e.to_string().contains("slot 0 holds no auxiliary output"),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn tm26_aux_level_on_an_on_off_output_says_it_has_no_level() {
+        use crate::cs_model::ty;
+        let mut s = tm26_with_binding(ty::AUX_OUT);
+        let e = s.read("cs.aux.level", &[0]).unwrap_err();
+        assert!(e.to_string().contains("on/off auxiliary output"), "{e}");
+        // An on/off output that stalls its state is a real stall, passed on.
+        let e = s.read("cs.aux", &[0]).unwrap_err();
+        assert!(
+            matches!(e, WriteError::Transport(TransportError::Stalled { .. })),
+            "{e:?}"
+        );
+    }
+
+    #[test]
+    fn tm26_aux_stall_with_an_unreadable_binding_stays_a_stall() {
+        let mut s = session(MockTransport::new(), &[]);
+        let e = s.read("cs.aux", &[0]).unwrap_err();
+        assert!(
+            matches!(e, WriteError::Transport(TransportError::Stalled { .. })),
+            "{e:?}"
+        );
     }
 
     #[test]
