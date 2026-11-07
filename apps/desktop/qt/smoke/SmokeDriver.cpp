@@ -97,6 +97,8 @@ void SmokeDriver::run() {
     // -- WP QD5 --
     testOutputLatency();
     testClockDiagAndCpuBars();
+    // -- WP QD29 --
+    testRingHealth();
     // -- WP QD1 --
     testCsRefusals();
     // -- WP CG16 --

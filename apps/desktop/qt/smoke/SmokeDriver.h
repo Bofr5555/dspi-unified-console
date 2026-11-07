@@ -75,6 +75,8 @@ private:
     // -- WP QD5 --
     void testOutputLatency();
     void testClockDiagAndCpuBars();
+    // -- WP QD29 --
+    void testRingHealth();
     // -- WP QD1 --
     void testCsRefusals();
     void testCsCallerRefusals();

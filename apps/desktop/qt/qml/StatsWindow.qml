@@ -9,13 +9,13 @@ import "components"
 // audio output and PDM over/underrun counters, S/PDIF DMA starvation, live
 // buffer fill levels with a 15 s trace, and (when they apply) the S/PDIF
 // input, LG Sound Sync, ADAT output and I2S slave clock. Polled only while
-// the window is open: counters every 2 s, buffers every 60 ms.
+// the window is open: counters and ring health every 2 s, buffers every 60 ms.
 AppWindow {
     id: win
     title: "System Statistics"
     visible: false
     width: 960
-    height: 660 + titlebarHeight
+    height: 780 + titlebarHeight    // -- WP QD29 -- Column 1 with ring health and PDM, unscrolled
     minimumWidth: 900
     minimumHeight: 480 + titlebarHeight
 
@@ -25,6 +25,7 @@ AppWindow {
     readonly property string dash: "-"
     readonly property var info: stats.info
     readonly property var buf: stats.buffers
+    readonly property var ring: stats.ringHealth    // -- WP QD29 --
     readonly property bool live: bridge.connected && info.clockMHz !== undefined
     readonly property real columnWidth: (width - 2) / 3
     readonly property var outputTypes: bridge.hardware.outputTypes || []
@@ -44,6 +45,9 @@ AppWindow {
         return h > 0 ? h + "h " + two(m) + "m " + two(r) + "s" : m + "m " + two(r) + "s"
     }
     function num(v) { return v === undefined || v === null ? dash : String(v) }
+    // -- WP QD29 -- formatLatencyMs and formatGapUs on the Mac
+    function latencyMs(us) { return us % 1000 === 0 ? (us / 1000) + " ms" : (us / 1000).toFixed(2) + " ms" }
+    function gapText(us) { return us < 10000 ? us + " µs" : (us / 1000).toFixed(1) + " ms" }
 
     // Colours: macOS dark system colours
     readonly property color green: isMacOS ? MacColors.green : "#32d74b"
@@ -79,6 +83,15 @@ AppWindow {
             font.weight: Font.Bold
             color: isMacOS ? (/^Time /.test(parent.title) ? MacColors.secondaryLabel : parent.valueColor) : parent.valueColor
         }
+    }
+    // -- WP QD29 -- An InfoRow that explains itself, with the plain colour for a count at 0
+    component RingRow: InfoRow {
+        property string tip: ""
+        readonly property color plain: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9)
+        MouseArea { id: ringHover; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
+        ToolTip.visible: ringHover.containsMouse
+        ToolTip.delay: 600
+        ToolTip.text: tip
     }
     // Title left, a state dot and its name right
     component StateRow: Item {
@@ -145,10 +158,12 @@ AppWindow {
         property color tint: "white"
         property bool hollow: false
         property int series: 0
-        property var levels: ({})        // {fill, min, max}
+        property var levels: ({})        // {fill, min, max}, and for an output its band from the core
         property int kind: 0             // 0 S/PDIF, 1 PDM DMA, 2 PDM ring
         readonly property int fill: levels.fill !== undefined ? levels.fill : 0
-        readonly property color fillColor: kind === 0 ? (fill === 0 || fill === 100 ? win.red : fill < 25 || fill > 75 ? win.yellow : win.green)
+        // -- WP QD29 -- The band is judged by the live latency target; without a band, the fixed ones
+        readonly property color fillColor: levels.band === "good" ? win.green : levels.band === "warn" ? win.yellow : levels.band === "bad" ? win.red
+                                         : kind === 0 ? (fill === 0 || fill === 100 ? win.red : fill < 25 || fill > 75 ? win.yellow : win.green)
                                          : kind === 1 ? (fill > 50 ? win.red : fill < 5 || fill > 30 ? win.yellow : win.green)
                                          : (fill > 50 ? win.red : fill > 20 ? win.yellow : win.green)
         width: parent ? parent.width : 0
@@ -255,6 +270,63 @@ AppWindow {
                     CounterRow { title: "USB Ring"; subtitle: "ISR → Main Loop"; over: win.info.usbRingOver; hasUnder: false }
                     CounterRow { title: "Buffer Pool"; subtitle: "USB → DMA"; over: win.info.spdifOver; under: win.info.spdifUnder }
                 }
+                // -- WP QD29 -- Output ring health, on firmware that reports it
+                Column {
+                    objectName: "ringHealthSection"
+                    visible: win.ring.targetFrames !== undefined
+                    width: parent.inner
+                    spacing: 4
+                    Item { width: 1; height: 8 }
+                    SectionLabel { text: "OUTPUT RING HEALTH" }
+                    Column {
+                        width: parent.width
+                        RingRow {
+                            objectName: "ringFillTarget"
+                            title: "Fill Target"
+                            value: win.ring.targetFrames + " frames (" + win.latencyMs(win.ring.targetUs) + ")"
+                            tip: "How full the output rings are kept, set by Latency in Settings"
+                        }
+                        RingRow {
+                            objectName: "ringUnderruns"
+                            title: "Underrun Episodes"
+                            value: win.num(win.ring.underrunEpisodes)
+                            valueColor: win.ring.underrunEpisodes > 0 ? win.red : plain
+                            tip: "Times the outputs ran dry while a source owed audio. A host that pauses its stream does not count."
+                        }
+                        RingRow {
+                            objectName: "ringRefused"
+                            title: "Refused Blocks"
+                            value: win.num(win.ring.refusedBlocks)
+                            valueColor: win.ring.refusedBlocks > 0 ? win.orange : plain
+                            tip: "Audio blocks dropped because the rings had no room for them"
+                        }
+                        RingRow {
+                            objectName: "ringLowestFill"
+                            title: "Lowest Fill"
+                            value: win.ring.lowestFill !== undefined ? win.ring.lowestFill + " frames" : win.dash
+                            tip: "The emptiest any output ring got just before new audio arrived, since the watermarks were reset. Near zero means the margin is thin."
+                        }
+                        RingRow {
+                            objectName: "ringInputGap"
+                            title: "Worst Input Gap"
+                            value: win.gapText(win.ring.worstInputGapUs)
+                            tip: "Longest wait between input deliveries since the watermarks were reset"
+                        }
+                        RingRow {
+                            objectName: "ringUsbGap"
+                            title: "Worst USB Gap"
+                            value: win.gapText(win.ring.worstUsbGapUs)
+                            tip: "Longest gap between USB audio packets since the watermarks were reset. Long gaps are the host pausing its stream."
+                        }
+                        RingRow {
+                            objectName: "ringOverBudget"
+                            title: "Over-Budget Steps"
+                            value: win.num(win.ring.overBudgetSteps)
+                            valueColor: win.ring.overBudgetSteps > 0 ? win.orange : plain
+                            tip: "Background tasks that ran past their time slice in the device's main loop"
+                        }
+                    }
+                }
                 Item { width: 1; height: 8 }
                 SectionLabel { text: "PDM (SUBWOOFER)" }
                 Column {
@@ -356,6 +428,7 @@ AppWindow {
                             series: index
                             levels: (win.buf.spdif || [])[index] || ({})
                             kind: 0
+                            objectName: "outputFillRow" + index
                         }
                     }
                     BufferRow {
