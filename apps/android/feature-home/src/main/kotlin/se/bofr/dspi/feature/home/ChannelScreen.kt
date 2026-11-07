@@ -33,7 +33,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import se.bofr.dspi.bridge.DspiBridge
+import se.bofr.dspi.core.DspiConstants
+import se.bofr.dspi.feature.analysis.RtaChannelSelection
+import se.bofr.dspi.feature.analysis.SpectrumBarStrip
 import se.bofr.dspi.feature.graph.GraphResizeHandle
 import se.bofr.dspi.feature.graph.GraphView
 import se.bofr.dspi.feature.graph.LocalPeqGraphSelection
@@ -43,6 +47,7 @@ import se.bofr.dspi.ui.DspiIcons
 import se.bofr.dspi.ui.DspiRoutes
 import se.bofr.dspi.ui.DspiTheme
 import se.bofr.dspi.ui.DspiType
+import se.bofr.dspi.ui.settings.LocalAppSettings
 import se.bofr.dspi.ui.state.LocalAppState
 
 /**
@@ -107,6 +112,7 @@ fun ChannelScreen(bridge: DspiBridge, ch: Int, onNavigate: (String) -> Unit, onB
             GraphView(bridge, Modifier.fillMaxWidth().padding(horizontal = 16.dp), channels = setOf(ch), editable = editable)
             GraphResizeHandle(Modifier.padding(horizontal = 16.dp))
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                ChannelBarStrip(bridge, ch, onNavigate)
                 if (input >= 0) {
                     InputChannelDetail(bridge, ch)
                 } else {
@@ -116,4 +122,31 @@ fun ChannelScreen(bridge: DspiBridge, ch: Int, onNavigate: (String) -> Unit, onB
         }
         Spacer(Modifier.height(16.dp))
     }
+}
+
+// -- WP AN34 --
+/**
+ * A channel page's analyser selection: its own channel at its tap, empty
+ * when channel pages don't show their spectrum (macOS page start, as the
+ * graph's gear), or when the analyser has no index for it.
+ */
+internal fun channelPageRtaSelection(bridge: DspiBridge, ch: Int, showSpectrum: Boolean): RtaChannelSelection {
+    val tap = if (bridge.isInputChannel(ch)) DspiConstants.RTA_TAP_INPUT else DspiConstants.RTA_TAP_OUTPUT
+    val index = bridge.rta.tapIndex(ch)
+    return RtaChannelSelection.of(tap, if (showSpectrum && index >= 0) listOf(index) else emptyList())
+}
+
+/**
+ * The bar strip above a channel's filters (macOS ContentView.swift:984, 1025):
+ * shown when the page has RTA Bars on; "Open Analyser" goes to the analyser.
+ */
+@Composable
+internal fun ChannelBarStrip(bridge: DspiBridge, ch: Int, onNavigate: (String) -> Unit, modifier: Modifier = Modifier) {
+    val settings by LocalAppSettings.current.settings.collectAsStateWithLifecycle()
+    val revision by bridge.stateRevision.collectAsStateWithLifecycle()
+    val own =
+        remember(ch, revision, settings.rtaChannelPagesShowSpectrum) {
+            channelPageRtaSelection(bridge, ch, settings.rtaChannelPagesShowSpectrum)
+        }
+    SpectrumBarStrip(bridge, modifier, own = own, onOpenAnalyser = { onNavigate(DspiRoutes.ANALYSIS) })
 }

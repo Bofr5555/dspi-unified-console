@@ -143,13 +143,14 @@ const DEMO_PLATFORM: &[u8] = include_bytes!("../../../tests/fixtures/link/device
 const DEMO_BULK: &[u8] = include_bytes!("../../../tests/fixtures/link/device/bulk_v32.bin");
 const DEMO_STATUS: &[u8] = include_bytes!("../../../tests/fixtures/link/device/status_wvalue9.bin");
 
-/// The beta the demo says it runs, in `GET_PLATFORM`'s seventh byte: 4, the
-/// release the consoles target (`setApplicationVersion` in the Qt app, whose
-/// bundled firmware is beta 4), so a demo never shows a "newer firmware" banner.
-/// The capture is beta 5, but this is no fiction about the image: tag v1.1.6-beta4
-/// has `FW_VERSION_BETA` 4 and `WIRE_FORMAT_VERSION` 32 with the same 6136 bytes.
-/// Beta 5's one opcode (`REQ_GET_CLOCK_DIAG`) is not modelled here anyway.
-const DEMO_FW_BETA: u8 = 4;
+/// The beta the demo says it runs, in `GET_PLATFORM`'s seventh byte: 0, the
+/// final 1.1.6 the consoles target and bundle (`setApplicationVersion` in the
+/// Qt app, the `DSPi-*-v1.1.6.uf2` images), so a demo never shows a firmware
+/// banner (WP CG27). The capture is beta 5, but this is no fiction about the
+/// image: v1.1.6 has `FW_VERSION_BETA` 0 and `WIRE_FORMAT_VERSION` 32 with the
+/// same 6136 bytes. Beta 5's one opcode (`REQ_GET_CLOCK_DIAG`) is not modelled
+/// here anyway.
+const DEMO_FW_BETA: u8 = 0;
 
 /// The serial every fake reports (`GET_SERIAL` and the descriptor).
 const SERIAL: &str = "DEMO0000DSPI0001";

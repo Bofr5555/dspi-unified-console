@@ -752,6 +752,10 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "maxDelayMs",
             "monitorClear",
             "monitorRead",
+            // -- WP CG23 -- The tap and the generation: local state, no device I/O.
+            "notifyTapSet",
+            "notifyTapDrain",
+            "connectionGeneration",
             "openFd",
             "pollHotplug",
             "preampMaxDb",
@@ -820,7 +824,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "onboardingWhatsNewJson",
             "onboardingGettingStartedJson",
             // WP CG15: stateless text.
-            "aboutJson"
+            "aboutJson",
+            // -- WP CG24 -- The device lock across a flow: no device write
+            // (the firmware-update path, as enterBootloader; the writes
+            // inside it are guarded one by one).
+            "deviceLockAcquire",
+            "deviceLockRelease"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

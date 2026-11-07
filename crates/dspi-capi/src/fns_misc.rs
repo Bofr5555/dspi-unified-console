@@ -340,6 +340,35 @@ pub extern "C" fn dspi_enter_bootloader(core: *mut FfiCore) -> bool {
     flag(core, |c| c.enter_bootloader())
 }
 
+// -- WP CG24 --
+/// Hold the device lock across a flow of several calls, for at most
+/// `timeout_ms` (capped at 60 000), until `dspi_device_lock_release`: another
+/// DSPi Link session's commands answer locked meanwhile. Blocking over Link:
+/// call it off the UI thread. Replies in JSON {ok} or {ok, code, error}
+/// (`locked` when another session holds it) and returns the length needed. A
+/// retry with a larger buffer is harmless: an acquire while held keeps the lock.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_device_lock_acquire(
+    core: *mut FfiCore,
+    reason: *const c_char,
+    timeout_ms: u32,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        let done = c.device_lock_acquire(c_text(reason), timeout_ms);
+        json_reply(done.map(|()| serde_json::json!({})))
+    })
+}
+
+/// Release the lock `dspi_device_lock_acquire` took, and only that one: an IR
+/// learn's lock ends with its read, cancel or window, `dspi_enter_bootloader`'s
+/// when the device leaves or after 60 s. Idempotent; never blocks.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_device_lock_release(core: *mut FfiCore) {
+    with_core(core, (), |h| h.core.device_lock_release());
+}
+
 /// Core 1 mode (0 = idle, 1 = PDM, 2 = EQ worker), -1 on error.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_core1_mode(core: *mut FfiCore) -> i8 {
@@ -1366,6 +1395,42 @@ pub extern "C" fn dspi_fetch_stats_tick(core: *mut FfiCore, buf: *mut c_char, le
     text(core, buf, len, |c| json_reply(c.fetch_stats_tick()))
 }
 
+// -- WP CG23 --
+/// Start (true) or stop the raw notification tap. Off by default; stopping
+/// forgets what it held.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_notify_tap_set(core: *mut FfiCore, enabled: bool) {
+    with_core(core, (), |h| h.core.notify_tap_set(enabled));
+}
+
+// -- WP CG23 --
+/// The notifications the tap kept since the last drain, oldest first: JSON
+/// {ok, value: [{packet: [bytes], origin: session id or null, own, lost,
+/// receivedMs}]}. Returns the length needed. **Drains**, like the
+/// device-changing text functions: a reply too long for `buf` is not
+/// written and its entries are gone, so the next entry kept has `lost` set.
+/// A full ring (512 entries) fits in 256 KiB.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_notify_tap_drain(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
+    with_core(core, 0, |h| {
+        let entries = h.core.notify_tap_drain();
+        let any = !entries.is_empty();
+        let needed = copy_text(&json_reply(Ok(entries)), buf, len);
+        if any && (buf.is_null() || needed > len) {
+            h.core.notify_tap_note_dropped();
+        }
+        needed
+    })
+}
+
+// -- WP CG23 --
+/// The open connection's generation: unique per connection, never reused
+/// while the process runs. 0 when nothing is open.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_connection_generation(core: *mut FfiCore) -> u64 {
+    with_core(core, 0, |h| h.core.connection_generation())
+}
+
 // ── Added: firmware ───────────────────────────────────────────────────
 
 /// Check a `.uf2` image: JSON {ok, valid, problem, familyId, platform,
@@ -1881,3 +1946,12 @@ mod tests_wp_cg17;
 #[cfg(test)]
 #[path = "fns_misc/tests_wp_qd6.rs"]
 mod tests_wp_qd6;
+
+// -- WP CG24 --
+#[cfg(test)]
+#[path = "fns_misc/tests_wp_cg24.rs"]
+mod tests_wp_cg24;
+// -- WP CG23 --
+#[cfg(test)]
+#[path = "fns_misc/tests_wp_cg23.rs"]
+mod tests_wp_cg23;

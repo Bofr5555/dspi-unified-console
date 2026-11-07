@@ -54,6 +54,7 @@ import se.bofr.dspi.bridge.DangerousOp
 import se.bofr.dspi.bridge.DeviceNames
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.bridge.InputSourceOption
+import se.bofr.dspi.feature.analysis.SpectrumBarStrip
 import se.bofr.dspi.feature.graph.GraphResizeHandle
 import se.bofr.dspi.feature.graph.GraphView
 import se.bofr.dspi.feature.graph.LocalPeqGraphSelection
@@ -157,16 +158,32 @@ fun ContentView(bridge: DspiBridge, onNavigate: (String) -> Unit, modifier: Modi
                                 editable = editable
                             )
                             GraphResizeHandle(Modifier.padding(horizontal = 16.dp))
+                            // -- WP AN34 -- the bar strip above the cards or the channel's details (macOS DashboardView.swift:66,
+                            // ContentView.swift:984, 1025)
                             when (val sel = selection) {
-                                SidebarSelection.Overview -> DashboardOverview(bridge, prefs)
-                                is SidebarSelection.Input -> InputChannelDetail(bridge, sel.ch, Modifier.padding(horizontal = 16.dp))
-                                is SidebarSelection.Output -> OutputChannelDetail(
-                                    bridge,
-                                    sel.index,
-                                    onNavigate,
-                                    Modifier.padding(horizontal = 16.dp),
-                                    tabState = tabState
-                                )
+                                SidebarSelection.Overview -> {
+                                    DashboardBarStrip(bridge, onNavigate, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                                    DashboardOverview(bridge, prefs)
+                                }
+                                is SidebarSelection.Input -> {
+                                    ChannelBarStrip(bridge, sel.ch, onNavigate, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                                    InputChannelDetail(bridge, sel.ch, Modifier.padding(horizontal = 16.dp))
+                                }
+                                is SidebarSelection.Output -> {
+                                    ChannelBarStrip(
+                                        bridge,
+                                        2 + sel.index,
+                                        onNavigate,
+                                        Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                    )
+                                    OutputChannelDetail(
+                                        bridge,
+                                        sel.index,
+                                        onNavigate,
+                                        Modifier.padding(horizontal = 16.dp),
+                                        tabState = tabState
+                                    )
+                                }
                             }
                         }
                         Spacer(Modifier.height(16.dp))
@@ -188,6 +205,7 @@ fun ContentView(bridge: DspiBridge, onNavigate: (String) -> Unit, modifier: Modi
                         SidebarBottomPanel(bridge, homeVm, prefs, onNavigate)
                     }
                     Spacer(Modifier.height(18.dp))
+                    DashboardBarStrip(bridge, onNavigate, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) // -- WP AN34 --
                     DashboardOverview(bridge, prefs)
                     Spacer(Modifier.height(16.dp))
                 }
@@ -195,6 +213,12 @@ fun ContentView(bridge: DspiBridge, onNavigate: (String) -> Unit, modifier: Modi
         }
     }
 }
+
+// -- WP AN34 --
+/** The dashboard's bar strip: the channels checked in the graph's gear, when the dashboard has RTA Bars on. */
+@Composable
+private fun DashboardBarStrip(bridge: DspiBridge, onNavigate: (String) -> Unit, modifier: Modifier = Modifier) =
+    SpectrumBarStrip(bridge, modifier, onOpenAnalyser = { onNavigate(DspiRoutes.ANALYSIS) })
 
 /** The curves the embedded graph shows: all visible ones on the overview, the selected channel (+ linked partner) otherwise. */
 private fun graphChannels(bridge: DspiBridge, selection: SidebarSelection): Set<Int> = when (selection) {

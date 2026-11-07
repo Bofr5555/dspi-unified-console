@@ -2083,6 +2083,40 @@ data class LinkPhaseText(
 )
 
 /**
+ * One notification as the tap saw it (WP CG23).
+ */
+data class RawNotification(
+    /**
+     * The packet in the firmware's v2 layout (`notify.h`), or the 8-byte v1
+     * volume packet. Rebuilt from the decoded event, with the flags and the
+     * padding zero as the firmware sends them: byte for byte what the
+     * device sent for every event this build knows. A packet the reader
+     * could not decode is kept as it came.
+     */
+    val packet: List<Int>,
+    /**
+     * The link's attribution: the DSPi Link session id of the writer, 0
+     * for the device itself; `None` over USB and MIDI.
+     */
+    val origin: Int?,
+    /**
+     * The echo filter's verdict: the echo of a write of this core's own.
+     * Only a `PARAM_CHANGED` or a `BULK_INVALIDATED` can be one; every
+     * other event is `false`.
+     */
+    val own: Boolean,
+    /**
+     * Something before this entry is missing: the tap's ring overflowed,
+     * or the reader saw a gap in the device's sequence numbers.
+     */
+    val lost: Boolean,
+    /**
+     * When the reader received it, ms since the Unix epoch.
+     */
+    val receivedMs: Long,
+)
+
+/**
  * A voltage the flow offers on the connected device.
  */
 data class VregChoice(

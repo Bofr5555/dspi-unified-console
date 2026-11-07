@@ -78,6 +78,8 @@ mod firmware;
 mod firmware_guard;
 mod hardware;
 mod hotplug;
+// -- WP CG26 --
+mod host_transport;
 mod info;
 #[cfg(feature = "link")]
 pub mod link;
@@ -137,6 +139,10 @@ pub use link_text::*;
 pub use hotplug::{BrokeredDevice, DeviceBroker};
 // -- WP CG17 --
 pub use dspi_proto::ext::PairMap;
+// -- WP CG23 --
+pub use raw::RawNotification;
+// -- WP CG26 --
+pub use host_transport::{HostTransport, HostTransportKind};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -160,6 +166,9 @@ pub struct DspiCore {
     /// The running hub browse.
     #[cfg(feature = "mdns")]
     pub(crate) browse: link_browse::BrowseSlot,
+    // -- WP CG26 --
+    /// Where `host_notify` sends: the newest `open_host` connection's feed.
+    pub(crate) host_feed: host_transport::FeedSlot,
 }
 
 /// Everything behind the lock.
@@ -195,6 +204,9 @@ pub(crate) struct Inner {
     /// (WP C1b). Kept apart from `devices`, which the picker's scan
     /// filters to the openable units.
     pub(crate) hotplug: hotplug::HotplugState,
+    // -- WP CG23 --
+    /// The raw notification tap (`raw.rs`).
+    pub(crate) notify_tap: raw::NotifyTap,
 }
 
 /// An open device.
@@ -259,6 +271,11 @@ pub(crate) struct Connection {
     /// The fill target `fetch_stats_tick` judges by. On the connection, so a
     /// change of device starts over.
     pub(crate) ring_target: dspi_session::ring_health::RingTargetCache,
+    // -- WP CG24 --
+    /// The device lock held past one call (`device_lock_acquire`, an IR
+    /// learn window, the bootloader restart). On the connection, so it goes
+    /// with it: a closed or replaced connection gives it back.
+    pub(crate) held_lock: Option<presets::HeldLock>,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -348,6 +365,8 @@ impl Connection {
             device_name: String::new(),
             // -- WP CG21 --
             ring_target: Default::default(),
+            // -- WP CG24 --
+            held_lock: None,
         }
     }
 
@@ -457,6 +476,8 @@ impl Inner {
             link: None,
             // -- WP C1b --
             hotplug: hotplug::HotplugState::default(),
+            // -- WP CG23 --
+            notify_tap: raw::NotifyTap::default(),
         }
     }
 
@@ -545,6 +566,8 @@ impl DspiCore {
             // -- WP CG2 --
             #[cfg(feature = "mdns")]
             browse: link_browse::BrowseSlot::default(),
+            // -- WP CG26 --
+            host_feed: host_transport::FeedSlot::default(),
         })
     }
 }

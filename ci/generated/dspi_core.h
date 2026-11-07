@@ -4243,6 +4243,27 @@ uint8_t dspi_save_output_config(struct FfiCore *core);
 bool dspi_enter_bootloader(struct FfiCore *core);
 
 /**
+ * Hold the device lock across a flow of several calls, for at most
+ * `timeout_ms` (capped at 60 000), until `dspi_device_lock_release`: another
+ * DSPi Link session's commands answer locked meanwhile. Blocking over Link:
+ * call it off the UI thread. Replies in JSON {ok} or {ok, code, error}
+ * (`locked` when another session holds it) and returns the length needed. A
+ * retry with a larger buffer is harmless: an acquire while held keeps the lock.
+ */
+uint32_t dspi_device_lock_acquire(struct FfiCore *core,
+                                  const char *reason,
+                                  uint32_t timeout_ms,
+                                  char *buf,
+                                  uint32_t len);
+
+/**
+ * Release the lock `dspi_device_lock_acquire` took, and only that one: an IR
+ * learn's lock ends with its read, cancel or window, `dspi_enter_bootloader`'s
+ * when the device leaves or after 60 s. Idempotent; never blocks.
+ */
+void dspi_device_lock_release(struct FfiCore *core);
+
+/**
  * Core 1 mode (0 = idle, 1 = PDM, 2 = EQ worker), -1 on error.
  */
 int8_t dspi_fetch_core1_mode(struct FfiCore *core);
@@ -4849,6 +4870,28 @@ uint32_t dspi_fetch_output_fills(struct FfiCore *core, char *buf, uint32_t len);
  * Null fills mean keep the last ones. Returns the length needed.
  */
 uint32_t dspi_fetch_stats_tick(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Start (true) or stop the raw notification tap. Off by default; stopping
+ * forgets what it held.
+ */
+void dspi_notify_tap_set(struct FfiCore *core, bool enabled);
+
+/**
+ * The notifications the tap kept since the last drain, oldest first: JSON
+ * {ok, value: [{packet: [bytes], origin: session id or null, own, lost,
+ * receivedMs}]}. Returns the length needed. **Drains**, like the
+ * device-changing text functions: a reply too long for `buf` is not
+ * written and its entries are gone, so the next entry kept has `lost` set.
+ * A full ring (512 entries) fits in 256 KiB.
+ */
+uint32_t dspi_notify_tap_drain(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The open connection's generation: unique per connection, never reused
+ * while the process runs. 0 when nothing is open.
+ */
+uint64_t dspi_connection_generation(struct FfiCore *core);
 
 /**
  * Check a `.uf2` image: JSON {ok, valid, problem, familyId, platform,

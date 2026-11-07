@@ -22,7 +22,7 @@ use support::{RP2040, RP2040_INFO, RP2350, RP2350_INFO, mount};
 const PHRASE: &str = "I ACCEPT THE CORE VOLTAGE RISK";
 const WORD: &str = "OVERVOLT";
 /// What the demo device reports.
-const DEMO_VERSION: &str = "1.1.6-beta4";
+const DEMO_VERSION: &str = "1.1.6";
 /// `EXT_CORE_VREG` selection codes.
 const V1_15: u8 = 0x0C;
 const V1_20: u8 = 0x0D;

@@ -866,6 +866,13 @@ object DspiConstants {
      * Reported once.
      */
     const val NOTIFY_STALE: Int = 1 shl 10
+    /**
+     * `process_notifications`: an audio stream's state changed (ADAT out, I2S
+     * clock slave, ADAT in). Re-read `fetch_adat_out_status` or
+     * `fetch_input_lock(0|1)`. The mirror already follows ADAT out's `enabled`
+     * and `pin` (with `NOTIFY_STATE` when they changed).
+     */
+    const val NOTIFY_STREAMS: Int = 1 shl 11
 
     // ── firmware config.h (not in the core; FIRMWARE_CONSTS) ──
     /** Preset startup mode: load the specified default slot (macOS "Specified Default"). */
