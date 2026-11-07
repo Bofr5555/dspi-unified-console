@@ -12,7 +12,9 @@
 #                              writes it (the header itself is gitignored)
 #   ci/generated/kotlin/       UniFFI's Kotlin, one run per namespace
 #   ci/generated/swift/        UniFFI's Swift, one run per namespace
-#   apps/android core-api, ffi the Android contract: its own generator's --check
+#   apps/android core-api, ffi the Android contract (CoreTypes, DspiCoreApi, FfiDspiCore,
+#                              UnimplementedDspiCore, DspiConstants), read from crates/
+#                              by apps/android/tools/gen_kotlin_contract.py --check
 #
 # ci/generated/ is the committed copy of output that the builds regenerate for
 # themselves. When SW2 commits bindings into the Swift app, add that copy here.

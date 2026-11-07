@@ -7,7 +7,7 @@
 #   ci/matrix.sh --list         print the row ids
 #
 # Runs from a clean checkout: missing images are built from their committed
-# Containerfiles, the Rust cache is filled and the Android submodule initialised.
+# Containerfiles, the Rust cache is filled.
 # A failing row does not stop the others. Exits 0 only if no row ran and failed;
 # "not run" rows are the VM's and do not fail the run.
 #

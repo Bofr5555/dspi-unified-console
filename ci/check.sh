@@ -87,10 +87,6 @@ fi
 
 ok() { printf '\n== %s: OK\n' "$1"; }
 
-# -- WP MR2 -- The Android app's core is this submodule until AN1. Git runs on the
-# host; both users below only read the checkout.
-android_core() { git submodule update --init -- apps/android/third_party/DSPi-Console-Linux; }
-
 if [ ${#crates[@]} -gt 0 ]; then
   p=(); for c in "${crates[@]}"; do p+=(-p "$c"); done
   $RUN "cargo fmt ${p[*]} --check"; ok "fmt ${crates[*]}"
@@ -109,8 +105,7 @@ for s in "${steps[@]}"; do
     windows-msvc)
       DSPI_PROFILE=cross $RUN "cargo xwin build -p dspi-core -p dspi-capi -p dspi-term --features dspi-core/link,dspi-core/midir,dspi-capi/link,dspi-capi/midir,dspi-capi/mdns --target x86_64-pc-windows-msvc" ;;
     android-aab)
-      # -- WP MR2 --
-      android_core
+      # -- WP MR2 -- Since AN1 the app builds on crates/ by path: no submodule.
       apps/android/tools/ci.sh release ;;
     android)
       DSPI_PROFILE=cross $RUN "cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 --platform 26 build -p dspi-core --features link && cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 --platform 26 build -p dspi-ffi" ;;
@@ -141,7 +136,6 @@ for s in "${steps[@]}"; do
       DSPI_IMAGE=$DENY $RUN "cargo deny --workspace --all-features --locked check licenses bans sources" ;;
     drift)
       # -- WP MR2 --
-      android_core
       $RUN "ci/drift.sh check" ;;
     ios-check)
       # -- WP CG3 --
