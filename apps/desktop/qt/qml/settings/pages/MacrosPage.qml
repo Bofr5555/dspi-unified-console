@@ -167,7 +167,8 @@ SettingsPage {
                         bare: true
                         icon: card.isRunning ? "stop" : "play"
                         tip: card.isRunning ? "Stop this macro" : "Run this macro now"
-                        enabled: cs.connected && (card.isRunning || (page.live[card.m] && page.live[card.m].steps.length > 0))
+                        // -- WP CG16 -- Not undefined while the model empties at a device change
+                        enabled: cs.connected && (card.isRunning || !!(page.live[card.m] && page.live[card.m].steps.length > 0))
                         onClicked: page.runOrStop(card.m, card.isRunning)   // -- WP QD1 --
                     }
                 }

@@ -120,6 +120,7 @@
         <file>qml/UpmixerWindow.qml</file>
         <file>qml/components/AppMenu.qml</file>
         <file>qml/settings/SettingsPinRow.qml</file>
+        <file>qml/settings/SettingsNameRow.qml</file>
         <file>qml/settings/SettingsSegmentedRow.qml</file>
         <file>qml/settings/SettingsStatusLine.qml</file>
         <file>qml/settings/qmldir</file>

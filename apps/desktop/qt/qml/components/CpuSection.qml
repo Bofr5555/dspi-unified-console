@@ -1,76 +1,85 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 
-// Sidebar footer: load of the busier core on the left, connection status on the right.
+// Sidebar footer: the load of each core above, connection status below.
 Item {
     id: cpuRoot
-    height: 36
+    height: 54
 
     property int cpu0: 0
     property int cpu1: 0
-    readonly property int load: Math.max(cpu0, cpu1)
     readonly property bool connected: bridge.connected
     // A DSPi is plugged in but this user may not open it (no udev rule)
     readonly property bool noAccess: !connected && bridge.availableSerials.length === 0 && bridge.inaccessibleDevices > 0
 
-    // Space left of the status for label, bar (28-44 px) and value; the bar gives
-    // up width first, then the name drops its "DSPi" prefix.
-    readonly property real fixedLeft: 16 + cpuLabel.width + 8 + 6 + cpuValue.width + 12 + 16
     readonly property string serialTail: bridge.selectedSerial.slice(-8)
     readonly property string fullName: bridge.selectedSerial.length >= 8 ? "DSPi (" + serialTail + ")" : "DSPi"
-    TextMetrics { id: fullNameMetrics; font.pixelSize: 11; text: cpuRoot.fullName }
 
-    Text {
-        id: cpuLabel
-        anchors.left: parent.left
-        anchors.leftMargin: 16
-        anchors.verticalCenter: parent.verticalCenter
-        text: "CPU"
-        font.pixelSize: 11
-        font.weight: Font.Bold
-        font.letterSpacing: 0.4
-        color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
-    }
-
-    Rectangle {
-        id: track
-        anchors.left: cpuLabel.right
-        anchors.leftMargin: 8
-        anchors.verticalCenter: parent.verticalCenter
-        width: Math.max(28, Math.min(44, cpuRoot.width - cpuRoot.fixedLeft - status.width))
-        height: 4
-        radius: 2
-        color: isMacOS ? MacColors.opacity(MacColors.gray, 0.3) : Qt.rgba(1, 1, 1, 0.12)
-
+    // One core: its name, a bar (at most 40 px, as on the Mac) and its load
+    component CoreMeter: Row {
+        id: meter
+        property int core: 0
+        property int load: 0
+        readonly property real trackWidth: track.width
+        readonly property real fillWidth: fill.visible ? fill.width : 0
+        readonly property string valueText: value.text
+        spacing: 5
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: "C" + meter.core + ":"
+            font.pixelSize: 10
+            color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
+        }
         Rectangle {
-            visible: cpuRoot.connected
-            width: parent.width * Math.min(1, Math.max(0, cpuRoot.load / 100))
-            height: parent.height
+            id: track
+            anchors.verticalCenter: parent.verticalCenter
+            width: cpuRoot.barWidth
+            height: 6
             radius: 2
-            color: isMacOS ? (cpuRoot.load > 90 ? MacColors.red : MacColors.blue) : cpuRoot.load > 80 ? "#ff9f0a" : "#0a7cff"
+            color: isMacOS ? MacColors.opacity(MacColors.gray, 0.3) : Qt.rgba(1, 1, 1, 0.12)
+            Rectangle {
+                id: fill
+                visible: cpuRoot.connected
+                width: parent.width * Math.min(1, Math.max(0, meter.load / 100))
+                height: parent.height
+                radius: 2
+                color: isMacOS ? (meter.load > 90 ? MacColors.red : MacColors.blue) : meter.load > 80 ? "#ff9f0a" : "#0a7cff"
+            }
+        }
+        Text {
+            id: value
+            anchors.verticalCenter: parent.verticalCenter
+            width: 28
+            text: cpuRoot.connected ? meter.load + "%" : "—"
+            font.pixelSize: 10
+            color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.65)
         }
     }
+    // Two meters side by side, what's left after their labels, values and margins
+    readonly property real barWidth: Math.max(20, Math.min(40, (width - 32 - 12) / 2 - 56))
 
-    Text {
-        id: cpuValue
-        anchors.left: track.right
-        anchors.leftMargin: 6
-        anchors.verticalCenter: parent.verticalCenter
-        width: 28
-        text: cpuRoot.connected ? cpuRoot.load + "%" : "—"
-        font.pixelSize: 11
-        color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.65)
-
-        ToolTip.visible: cpuHover.containsMouse && cpuRoot.connected
-        ToolTip.text: "Core 0: " + cpuRoot.cpu0 + "%   Core 1: " + cpuRoot.cpu1 + "%"
-        MouseArea { id: cpuHover; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true }
+    CoreMeter {
+        objectName: "cpuCore0"
+        x: 16
+        y: 8
+        core: 0
+        load: cpuRoot.cpu0
+    }
+    CoreMeter {
+        objectName: "cpuCore1"
+        anchors.right: parent.right
+        anchors.rightMargin: 16
+        y: 8
+        core: 1
+        load: cpuRoot.cpu1
     }
 
     Row {
         id: status
         anchors.right: parent.right
         anchors.rightMargin: 16
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 8
         spacing: 6
 
         // Status dot with a faint halo when connected
@@ -98,8 +107,7 @@ Item {
                 if (!cpuRoot.connected)
                     return bridge.availableSerials.length > 0 ? "Disconnected"
                          : cpuRoot.noAccess ? "No Permission" : "No Devices"
-                var room = cpuRoot.width - cpuRoot.fixedLeft - 28 - 18
-                return fullNameMetrics.advanceWidth <= room || cpuRoot.serialTail === "" ? cpuRoot.fullName : cpuRoot.serialTail
+                return cpuRoot.fullName
             }
             font.pixelSize: 11
             color: isMacOS ? (!cpuRoot.connected && bridge.availableSerials.length === 0 ? MacColors.red : MacColors.label) : cpuRoot.connected ? Qt.rgba(1, 1, 1, 0.65)

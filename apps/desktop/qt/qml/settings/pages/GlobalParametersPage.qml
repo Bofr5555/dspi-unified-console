@@ -37,6 +37,23 @@ SettingsPage {
         return o
     }
 
+    // -- WP QD4 --
+    SettingsSection {
+        visible: deviceNames.deviceNameSupported
+        title: "Device Name"
+        enabled: bridge.connected
+        footnote: "Stored on the device, so it keeps this name wherever it is connected. Shown on its front panel and by DSPi Link hubs."
+        SettingsNameRow {
+            title: "Name"
+            detail: bridge.selectedSerial !== "" ? "Serial " + bridge.selectedSerial : ""
+            fieldName: "deviceNameField"
+            clearTip: "Remove the name"
+            value: deviceNames.deviceText
+            pending: { deviceNames.deviceText; return deviceNames.devicePending() }
+            onEdited: function (text) { deviceNames.editDevice(text) }
+        }
+    }
+
     SettingsSection {
         title: "Startup Preset"
         enabled: bridge.connected
@@ -80,6 +97,24 @@ SettingsPage {
             options: [{ text: "Independent", value: 0 }, { text: "With Preset", value: 1 }]
             value: ctx ? ctx.outputConfigMode : 1
             onChosen: ctx.edit("outputConfigMode", value)
+        }
+    }
+
+    // -- WP QD5 --
+    onVisibleChanged: if (visible) outputLatency.refresh()
+    Component.onCompleted: outputLatency.refresh()
+    SettingsSection {
+        visible: outputLatency.supported && outputLatency.choices.length > 0
+        title: "Latency"
+        enabled: bridge.connected && !outputLatency.applying
+        footnote: outputLatency.caption
+        SettingsChoiceRow {
+            objectName: "latencyRow"
+            title: "Target"
+            detail: outputLatency.applying ? "Applying…" : ""
+            options: outputLatency.choices
+            value: outputLatency.shownId
+            onChosen: { ctx.saveError = ""; outputLatency.edit(value) }
         }
     }
 

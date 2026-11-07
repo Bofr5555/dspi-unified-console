@@ -30,8 +30,17 @@ use dspi_link::{
     AuthState, ConnectOptions, LinkClient, LinkError, LinkEvents, RetryAdvice, SessionConfig,
 };
 use dspi_proto::generated::ext as ext_ids;
+// -- WP TM4 --
+use dspi_proto::generated::opcodes as op;
+use dspi_proto::generated::wire::WIRE_FORMAT_VERSION;
+use dspi_proto::packets::PlatformInfo;
+use dspi_proto::wire_compat::Normalized;
+use dspi_session::compat;
 use dspi_session::ext_state::ExtState;
-use dspi_session::{DeviceState, Session, Source, probe};
+use dspi_session::probe::probe_any_with_image;
+use dspi_session::{Capabilities, DeviceState, Session, Source, WriteError};
+
+use super::read_only::{BulkReads, ReadOnlyTransport};
 use dspi_transport::{
     DeviceDescriptor, FakeDevice, LinkTransport, Transport, TransportError, TransportKind,
     UsbTransport,
@@ -140,9 +149,6 @@ pub enum OpenError {
     NoMidi,
     #[error("the device reported an impossible channel map")]
     ChannelMap,
-    /// The first read of the whole device state failed.
-    #[error("could not read the device state: {0}")]
-    Snapshot(TransportError),
 }
 
 impl OpenError {
@@ -156,8 +162,7 @@ impl OpenError {
             | Self::NoMidi
             | Self::ChannelMap
             | Self::Ambiguous { .. }
-            | Self::Transport(TransportError::Incompatible(_))
-            | Self::Snapshot(TransportError::Incompatible(_)) => RetryAdvice::Stop,
+            | Self::Transport(TransportError::Incompatible(_)) => RetryAdvice::Stop,
             Self::Link { source, .. } => source.retry_advice(),
             _ => RetryAdvice::Retry {
                 min_delay: Duration::ZERO,
@@ -223,6 +228,86 @@ pub struct Connected {
     pub ext: ExtState,
 }
 
+// -- WP TM4 --
+/// Probe `t` whatever its wire format, and guard it if that is not this
+/// build's: the one place a link becomes a device, so no route around it. The
+/// image is the probe's own, so a connect reads it once (two seconds over MIDI).
+fn probed(
+    mut t: Box<dyn Transport>,
+) -> Result<(Box<dyn Transport>, Capabilities, Normalized), OpenError> {
+    let (caps, image) = probe_any_with_image(t.as_mut()).map_err(|e| match e {
+        // The session's words serve every app; this one knows its name.
+        TransportError::Incompatible(why) => {
+            TransportError::Incompatible(why.replace("this application", "DSPi Terminal"))
+        }
+        e => e,
+    })?;
+    if image.is_writable() {
+        return Ok((t, caps, image));
+    }
+    let guarded = ReadOnlyTransport::new(
+        t,
+        BulkReads::Mapped,
+        Some(&caps.firmware_version),
+        Some(caps.wire_format),
+    );
+    Ok((Box::new(guarded), caps, image))
+}
+
+/// [`Target::open_session`] on a link already open.
+pub fn session_on(t: Box<dyn Transport>) -> Result<Session, OpenError> {
+    let (t, caps, _) = probed(t)?;
+    Session::new(t, caps).ok_or(OpenError::ChannelMap)
+}
+
+/// [`Target::connect`] on a link already open.
+pub fn connected_on(t: Box<dyn Transport>) -> Result<Connected, OpenError> {
+    let (mut t, caps, image) = probed(t)?;
+    // A stall or a refusal is already "absent" in the probe. What is left
+    // is the link failing, which only matters if the link is gone: the
+    // extension channel is never a reason to turn a device away.
+    let ext = match ExtState::probe(t.as_mut()) {
+        Ok(e) => e,
+        Err(TransportError::Disconnected) => {
+            return Err(TransportError::Disconnected.into());
+        }
+        Err(_) => ExtState::default(),
+    };
+    let session = Session::new(t, caps.clone()).ok_or(OpenError::ChannelMap)?;
+    Ok(Connected {
+        session,
+        state: DeviceState::new(caps, image.packet),
+        ext,
+    })
+}
+
+/// [`Target::open_raw`] on a link already open. Fails closed: a device whose
+/// wire format cannot be read may be anything, so it is not written to either.
+/// Only a lost link is an error; `dspi raw` is how such a device gets looked at.
+pub fn guard_raw(mut t: Box<dyn Transport>) -> Result<Box<dyn Transport>, OpenError> {
+    let wire = match compat::read_bulk_bytes(t.as_mut()) {
+        Ok(image) => image.first().copied(),
+        Err(WriteError::Transport(TransportError::Disconnected)) => {
+            return Err(TransportError::Disconnected.into());
+        }
+        Err(_) => None,
+    };
+    if wire.map(u16::from) == Some(WIRE_FORMAT_VERSION) {
+        return Ok(t);
+    }
+    let firmware = t
+        .control_in_upto(op::REQ_GET_PLATFORM, 0, PlatformInfo::REQUEST_LEN as u16)
+        .ok()
+        .and_then(|reply| PlatformInfo::decode(&reply).ok())
+        .map(|info| info.version);
+    Ok(Box::new(ReadOnlyTransport::new(
+        t,
+        BulkReads::AsIs,
+        firmware.as_ref(),
+        wire,
+    )))
+}
+
 /// One device a target can see, for `dspi list`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Listed {
@@ -245,37 +330,20 @@ impl Target {
 
     /// Open and probe: enough for a one-shot command.
     pub fn open_session(&self, pin: PinPrompt<'_>) -> Result<Session, OpenError> {
-        let mut t = self.open(pin)?;
-        let caps = probe(t.as_mut())?;
-        Session::new(t, caps).ok_or(OpenError::ChannelMap)
+        session_on(self.open(pin)?)
     }
 
     /// Open, probe and read the whole state: enough for the interface.
     pub fn connect(&self, pin: PinPrompt<'_>) -> Result<Connected, OpenError> {
-        let mut t = self.open(pin)?;
-        let caps = probe(t.as_mut())?;
-        // A stall or a refusal is already "absent" in the probe. What is left
-        // is the link failing, which only matters if the link is gone: the
-        // extension channel is never a reason to turn a device away.
-        let ext = match ExtState::probe(t.as_mut()) {
-            Ok(e) => e,
-            Err(TransportError::Disconnected) => {
-                return Err(TransportError::Disconnected.into());
-            }
-            Err(_) => ExtState::default(),
-        };
-        let mut session = Session::new(t, caps.clone()).ok_or(OpenError::ChannelMap)?;
-        let bulk = session.snapshot().map_err(|e| {
-            OpenError::Snapshot(match e {
-                dspi_session::WriteError::Transport(t) => t,
-                other => TransportError::Remote(other.to_string()),
-            })
-        })?;
-        Ok(Connected {
-            session,
-            state: DeviceState::new(caps, bulk),
-            ext,
-        })
+        connected_on(self.open(pin)?)
+    }
+
+    // -- WP TM4 --
+    /// Open a link for `dspi raw`, which asks for transfers by number and has
+    /// no use for a probe: guarded against writes like everything else, but its
+    /// bulk reads answer the device's own bytes.
+    pub fn open_raw(&self, pin: PinPrompt<'_>) -> Result<Box<dyn Transport>, OpenError> {
+        guard_raw(self.open(pin)?)
     }
 
     /// The same target, held to the device it found: a reconnect must not pick
@@ -1599,14 +1667,13 @@ mod tests_wp_r1 {
                 names: Vec::new(),
             },
             OpenError::Transport(TransportError::Incompatible("old".into())),
-            OpenError::Snapshot(TransportError::Incompatible("old".into())),
         ];
         for e in &stop {
             assert!(e.is_final(), "{e}");
         }
         let retry = [
             OpenError::Transport(TransportError::NotFound),
-            OpenError::Snapshot(TransportError::Disconnected),
+            OpenError::Transport(TransportError::Disconnected),
         ];
         for e in &retry {
             assert!(!e.is_final(), "{e}");

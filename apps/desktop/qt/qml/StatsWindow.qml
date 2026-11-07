@@ -391,9 +391,10 @@ AppWindow {
                 readonly property var lg: win.info.lg
                 readonly property var adat: win.info.adatOut
                 readonly property var i2s: win.info.i2sSlave
+                readonly property var clockRows: stats.clockDiag
 
                 Text {
-                    visible: !parent.rx && !parent.lg && !parent.adat && !parent.i2s
+                    visible: !parent.rx && !parent.lg && !parent.adat && !parent.i2s && parent.clockRows.length === 0
                     width: parent.inner
                     wrapMode: Text.WordWrap
                     topPadding: 4
@@ -491,6 +492,19 @@ AppWindow {
                     InfoRow { title: "Measured Rate"; value: (parent.s.measuredKHz || 0) > 0 ? parent.s.measuredKHz.toFixed(1) + " kHz" : win.dash }
                     InfoRow { title: "Lock Count"; value: win.num(parent.s.lockCount) }
                     InfoRow { title: "Loss Count"; value: win.num(parent.s.lossCount) }
+                    Item { width: 1; height: 8 }
+                }
+
+                // -- WP QD5 -- Clock diagnostics, on firmware built with them
+                Column {
+                    objectName: "clockDiagSection"
+                    visible: parent.clockRows.length > 0
+                    width: parent.inner
+                    SectionLabel { text: "CLOCK DIAGNOSTICS" }
+                    Repeater {
+                        model: stats.clockDiag
+                        InfoRow { title: modelData.title; value: modelData.value }
+                    }
                 }
             }
         }

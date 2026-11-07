@@ -50,6 +50,16 @@ use super::{FakeRemote, Field, Index, Scalar, State, Store, scalar};
 pub(super) const L_ENABLED: Field = ("enabled", 0, 1);
 pub(super) const L_SPEED: Field = ("speed", 1, 1);
 pub(super) const L_LOOKAHEAD: Field = ("lookahead", 2, 1);
+// -- WP CG16 --
+impl State {
+    /// `i2c_ctrl_live_instance`: which I2C block the control interface holds. A
+    /// display may not take it.
+    pub(super) fn i2c_ctrl_live_instance(&self) -> Option<u8> {
+        let cfg = I2cCtrlConfig::decode(&self.extras.i2c).ok()?;
+        cfg.enabled.then_some((cfg.sda_pin >> 1) & 1)
+    }
+}
+
 #[cfg(test)]
 pub(super) const L_RESERVED: Field = ("reserved", 3, 1);
 pub(super) const L_AMOUNT: Field = ("amount", 4, 4);
@@ -610,6 +620,33 @@ impl FakeRemote {
 }
 
 impl State {
+    // -- WP QD5 --
+    /// [`super::EXT_FAKE_LATENCY_TIMING`]'s OUT path. False refuses it.
+    pub(super) fn latency_timing(&mut self, data: &[u8]) -> bool {
+        let &[mode, reads, blackout] = data else {
+            return false;
+        };
+        let (reads, hold, refuse) = match mode {
+            0 => (None, false, false),
+            1 => (Some(u32::from(reads)), false, false),
+            2 => (Some(0), true, false),
+            3 => (Some(u32::from(reads)), false, true),
+            _ => return false,
+        };
+        let a = &mut self.extras.latency_apply;
+        a.reads = reads;
+        a.hold = hold;
+        a.refuse = refuse;
+        a.blackout = u32::from(blackout);
+        true
+    }
+
+    // -- WP QD5 --
+    /// How many latency SETs arrived.
+    pub(super) fn latency_sets(&self) -> u32 {
+        self.extras.latency_apply.sets
+    }
+
     /// `REQ_OUTPUT_LATENCY`'s OUT path for a known id.
     fn latency_set(&mut self, id: u8) {
         let a = &mut self.extras.latency_apply;
@@ -1212,19 +1249,47 @@ impl State {
         self.name_event(nfy::NOTIFY_EVT_INPUT_SOURCE_NAME, src, &name);
     }
 
+    // -- WP QD4 --
+    /// Store a name as if someone else had set it: announced with a source
+    /// that is no host's own. False for a source the device does not have, or
+    /// an empty name field.
+    pub(super) fn rename_elsewhere(&mut self, target: u8, data: &[u8]) -> bool {
+        if data.is_empty() {
+            return false;
+        }
+        if target == super::RENAME_ELSEWHERE_DEVICE {
+            put_name(&mut self.extras.device_name, data);
+            let name = self.extras.device_name;
+            self.name_event_from(
+                nfy::NOTIFY_EVT_DEVICE_NAME,
+                0,
+                nfy::PARAM_SRC_GPIO as u8,
+                &name,
+            );
+            return true;
+        }
+        let Some(n) = self.extras.source_names.get_mut(usize::from(target)) else {
+            return false;
+        };
+        put_name(n, data);
+        let name = *n;
+        self.name_event_from(
+            nfy::NOTIFY_EVT_INPUT_SOURCE_NAME,
+            target,
+            nfy::PARAM_SRC_GPIO as u8,
+            &name,
+        );
+        true
+    }
+
     /// `[2, evt, 0, seq, id, src, 0, 0, name(32)]` (notify.h:94-104). Sent on
     /// every store, changed or not.
     fn name_event(&mut self, evt: u16, id: u8, name: &[u8; NAME_LEN]) {
-        let mut p = vec![
-            nfy::NOTIFY_V2_VERSION as u8,
-            evt as u8,
-            0,
-            0,
-            id,
-            nfy::PARAM_SRC_HOST_SET as u8,
-            0,
-            0,
-        ];
+        self.name_event_from(evt, id, nfy::PARAM_SRC_HOST_SET as u8, name);
+    }
+
+    fn name_event_from(&mut self, evt: u16, id: u8, src: u8, name: &[u8; NAME_LEN]) {
+        let mut p = vec![nfy::NOTIFY_V2_VERSION as u8, evt as u8, 0, 0, id, src, 0, 0];
         p.extend_from_slice(name);
         self.push(p);
     }

@@ -65,12 +65,14 @@
 //!   `core_vreg_boot_apply` treats them. It can also hold requests in the
 //!   firmware's one staging slot until its main loop runs
 //!   ([`FakeRemote::vreg_stage_requests`]).
+//! - **Control surfaces** (with [`FakeOptions::surfaces`], `fake/surfaces.rs`,
+//!   WP CG16): the record store, the firmware's refusal rules, save and revert,
+//!   aux outputs, macros, IR learning and the display status. Off, they stall.
 //! - **Everything else stalls**, in both directions, by default: a fake
 //!   that stalls makes a missing model visible. The firmware ACKs every
 //!   unhandled OUT request on USB except `REQ_EXTENSION`;
 //!   [`FakeOptions::ack_unknown_sets`] does the same. Not modelled at all
-//!   (GETs stall): control surfaces (`0x04-0x07`, `0x20-0x2B`, `0x84-0x8F`
-//!   and the rest of `REQ_*_CS_*`), the signal generator (`0xA4-0xA8`), the
+//!   (GETs stall): the signal generator (`0xA4-0xA8`), the
 //!   spectrum analyser (`0x08-0x0F`), subharm meter/headroom/solo, the
 //!   band-bypass read (`REQ_GET_BAND_BYPASS`), pin SETs (output pins,
 //!   BCK, MCK, S/PDIF/I2S/ADAT RX pins) and output-pin GETs, the I2S
@@ -112,6 +114,9 @@ use dspi_proto::packets::BuildInfo;
 use dspi_proto::wire::{BulkPacket, WireHeader};
 
 mod features;
+// -- WP CG16 --
+mod surfaces;
+pub use surfaces::{EXT_FAKE_CS_SIM, SurfaceSeed, surface_seed};
 
 use crate::{
     DeviceDescriptor, NotificationSource, Result, Transport, TransportCaps, TransportError,
@@ -194,6 +199,11 @@ pub struct FakeOptions {
     /// `BULK_SET` and the sub-command is not listed. The flag is only
     /// discoverable with [`FakeOptions::extensions`] on.
     pub bulk_source: bool,
+    // -- WP CG16 --
+    /// Answer the control-surface requests from a model holding the demo's
+    /// configuration (`fake/surfaces.rs`). Off is firmware without the feature:
+    /// they stall, and a host finds no surfaces. [`FakeDevice::demo`] has it on.
+    pub surfaces: bool,
 }
 
 /// `wLength` is 16 bits.
@@ -265,10 +275,21 @@ impl FakeDevice {
     }
 
     /// The built-in demo device: the RP2350 capture bundled with this crate,
-    /// with the extension channel on.
+    /// with the extension channel and control surfaces on.
     pub fn demo() -> Self {
+        Self::demo_with(true)
+    }
+
+    // -- WP CG16 --
+    /// [`FakeDevice::demo`] on firmware without control surfaces.
+    pub fn demo_without_surfaces() -> Self {
+        Self::demo_with(false)
+    }
+
+    fn demo_with(surfaces: bool) -> Self {
         let options = FakeOptions {
             extensions: true,
+            surfaces,
             ..FakeOptions::default()
         };
         let dev = Self::new(Capture::demo(), options);
@@ -412,6 +433,25 @@ impl FakeRemote {
 /// device mode play hangs without a [`FakeRemote`] (QD28, AN23, SW23). A host
 /// checks for [`TransportKind::Fake`] before sending it.
 pub const EXT_FAKE_VREG_SIM: u16 = 0xFFF0;
+
+// -- WP QD4 --
+/// `REQ_EXTENSION` OUT sub-command only a [`FakeDevice`] answers, as
+/// [`EXT_FAKE_VREG_SIM`]: `[target, name..]`, stored and announced as a rename
+/// by someone else (AN6, QD4, SW, TM17). `target` is an input source, or
+/// [`RENAME_ELSEWHERE_DEVICE`] for the device.
+pub const EXT_FAKE_RENAME_ELSEWHERE: u16 = 0xFFF1;
+/// The device itself as the target of [`EXT_FAKE_RENAME_ELSEWHERE`].
+pub const RENAME_ELSEWHERE_DEVICE: u8 = 0xFF;
+
+// -- WP QD5 --
+/// `REQ_EXTENSION` sub-command only a [`FakeDevice`] answers, as
+/// [`EXT_FAKE_VREG_SIM`], so a client can reach the firmware's deferred
+/// output-latency apply without a [`FakeRemote`]. OUT `[mode, reads, blackout]`
+/// sets how the next SET lands: mode 0 at once (a SET held so far applies on the
+/// next status read), 1 after `reads` status reads, 2 never, 3 dropped after
+/// `reads` status reads. `blackout` status reads stall first while a SET is
+/// pending. IN: the SETs received so far, a little-endian `u32`.
+pub const EXT_FAKE_LATENCY_TIMING: u16 = 0xFFF2;
 
 /// What can happen to a simulated device's core-voltage state (WP CG11).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -939,6 +979,9 @@ struct State {
     // -- WP CG12 --
     /// `BufferStatsPacket.sequence`: counts the reads, wrapping.
     buffer_stats_sequence: u16,
+    // -- WP CG16 --
+    /// `None`: this firmware has no control surfaces.
+    surfaces: Option<surfaces::Surfaces>,
     queue: VecDeque<Vec<u8>>,
     seq: u8,
     started: Instant,
@@ -963,6 +1006,8 @@ impl State {
             *slot = Some(capture.bulk.clone());
         }
         let mut s = Self {
+            // -- WP CG16 --
+            surfaces: options.surfaces.then(surfaces::Surfaces::new),
             platform: capture.platform,
             factory: capture.bulk.clone(),
             image: capture.bulk,
@@ -1225,6 +1270,10 @@ impl State {
     fn get(&mut self, opcode: u8, value: u16, want: usize) -> Result<Vec<u8>> {
         if opcode != op::REQ_GET_ALL_PARAMS_CHUNK {
             self.chunked = Chunked::None;
+        }
+        // -- WP CG16 --
+        if let Some(r) = self.get_surface(opcode, value) {
+            return r.ok_or(TransportError::Stalled { opcode });
         }
         if let Some(r) = self.get_feature(opcode, value) {
             return r.ok_or(TransportError::Stalled { opcode });
@@ -1549,6 +1598,8 @@ impl State {
                 .locate("crossfeed", 0, 0, X_PAIR_MAP)
                 .and_then(|o| self.bytes(o, X_PAIR_MAP.2)),
             gext::EXT_CORE_VREG => Some(self.vreg_status()),
+            // -- WP QD5 --
+            EXT_FAKE_LATENCY_TIMING => Some(self.latency_sets().to_le_bytes().to_vec()),
             _ => None,
         }
     }
@@ -1578,7 +1629,10 @@ impl State {
         if opcode != op::REQ_SET_ALL_PARAMS_CHUNK {
             self.chunked = Chunked::None;
         }
-        let ok = if let Some(ok) = self.set_feature(opcode, value, data) {
+        // -- WP CG16 --
+        let ok = if let Some(ok) = self.set_surface(opcode, value, data) {
+            ok
+        } else if let Some(ok) = self.set_feature(opcode, value, data) {
             ok
         } else if let Some(s) = all_scalars().find(|s| s.set == opcode) {
             if let (Some(off), Some(bytes)) = (self.scalar_at(s, value), data.get(..s.field.2))
@@ -1794,6 +1848,21 @@ impl State {
                 }
                 None => false,
             },
+            // -- WP CG16 --
+            EXT_FAKE_CS_SIM => match (data, self.surfaces.as_mut()) {
+                ([on], Some(s)) => {
+                    s.set_busy(*on != 0);
+                    true
+                }
+                _ => false,
+            },
+            // -- WP QD4 --
+            EXT_FAKE_RENAME_ELSEWHERE => match data.split_first() {
+                Some((&target, name)) => self.rename_elsewhere(target, name),
+                None => false,
+            },
+            // -- WP QD5 --
+            EXT_FAKE_LATENCY_TIMING => self.latency_timing(data),
             _ => false,
         }
     }
@@ -2639,12 +2708,15 @@ mod tests_wp_t4 {
         }
     }
 
+    /// WP CG16: control surfaces, this test's example until then, have a model
+    /// now. The signal generator is still unmodelled, and firmware without
+    /// surfaces still stalls theirs (`tests_wp_cg16` in `fake/surfaces.rs`).
     #[test]
     fn wp_t4_unknown_requests_stall() {
         let mut d = FakeDevice::demo();
         assert!(matches!(
-            d.control_in(op::REQ_GET_CS_CAPS, 0xFFFF, 4),
-            Err(TransportError::Stalled { opcode }) if opcode == op::REQ_GET_CS_CAPS
+            d.control_in(op::REQ_SIGGEN_GET_STATUS, 0, 4),
+            Err(TransportError::Stalled { opcode }) if opcode == op::REQ_SIGGEN_GET_STATUS
         ));
         assert!(matches!(
             d.control_out(op::REQ_FACTORY_RESET, 0, &[]),

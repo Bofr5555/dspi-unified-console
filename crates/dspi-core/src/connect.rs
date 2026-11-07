@@ -356,6 +356,8 @@ fn read_per_item(conn: &mut Connection, s: &mut DspState) {
     }
     // -- WP CG13 --
     crate::info::read_source_names(conn);
+    // -- WP QD4 --
+    crate::info::read_device_name(conn);
 }
 
 /// `COMPAT_*` for a device wire format other than V32's (0: unknown, old).

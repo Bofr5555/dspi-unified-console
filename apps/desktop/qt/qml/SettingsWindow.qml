@@ -62,13 +62,13 @@ AppWindow {
             { id: "overview", title: "Overview", icon: isMacOS ? "chip-fill" : "pins", tint: isMacOS ? "#627080" : "#636366", needsDevice: true,
               source: "settings/pages/OverviewPage.qml", keywords: "gpio pins map assignments in use free" },
             { id: "inputs", title: "Inputs", icon: "input", tint: "#04856f", needsDevice: true,
-              source: "settings/pages/InputsPage.qml", keywords: "spdif toslink receiver i2s adat clock slave master lock channels lg sound sync tv" },
+              source: "settings/pages/InputsPage.qml", keywords: "spdif toslink receiver i2s adat clock slave master lock channels lg sound sync tv name rename" },
             { id: "outputs", title: "Outputs", icon: isMacOS ? "connector" : "output", tint: isMacOS ? "#0278c7" : "#34c759", needsDevice: true,
               source: "settings/pages/OutputsPage.qml", keywords: "pins gpio spdif i2s pdm sub adat optical type reset" },
             { id: "i2s", title: "I2S Configuration", icon: isMacOS ? "waveform" : "clock", tint: "#ba3822", needsDevice: true,
               source: "settings/pages/I2SPage.qml", keywords: "bck lrclk bit clock mck master clock multiplier sample rate split unified" },
             { id: "global", title: "Global Parameters", icon: isMacOS ? "drive" : "globe", tint: isMacOS ? "#807701" : "#ff9f0a", needsDevice: true,
-              source: "settings/pages/GlobalParametersPage.qml", keywords: "startup default preset master volume hardware independent dac mute amplifier pop" }
+              source: "settings/pages/GlobalParametersPage.qml", keywords: "startup default preset master volume hardware independent dac mute amplifier pop name rename latency delay jitter" }
         ]},
         { title: "Control", pages: [
             { id: "surfaces", title: "Control Surfaces", icon: isMacOS ? "dial" : "cs-pot", tint: "#8354a0", needsDevice: true, needs: "cs",
