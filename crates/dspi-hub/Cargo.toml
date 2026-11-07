@@ -56,3 +56,8 @@ required-features = ["app"]
 [[test]]
 name = "wp_hb0_connect_time"
 required-features = ["app"]
+
+# -- WP HB2 --
+[[test]]
+name = "wp_hb2_app_vreg"
+required-features = ["app"]

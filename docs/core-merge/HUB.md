@@ -328,7 +328,7 @@ another handle.
 | `fw_install` cap | not advertised | Console hubs | **not advertised** | `PLAN-CLIENTS` section 2, #2; HB1 must leave it out of `caps` |
 | Foreign `Origin` | not checked at this ref | refused | refused (HB1) | Spec 4 |
 | `0x00` | unlisted, so `config` | | `config`, reads are not writes | Section 13 |
-| `EXT_CORE_VREG` raises | passed | not said | **refused** | Owner's rule, section 13 |
+| `EXT_CORE_VREG` raises from the network | passed | not said | **refused** | Owner's rule, section 13 |
 | Holding a lock | renew for ever | "when its session closes or the timeout elapses" | also one budget per device | Section 6 |
 | A closed session's queued commands | run | not said | answered unrun | Section 6 |
 | `RTA_CONFIG` attribution | any recent writer | the session whose `REQ_RTA_SET_CONFIG` it answers | as the spec | Section 4's reasoning: a follower must not take a change for its own |
@@ -525,19 +525,26 @@ A direction the table does not list for a code is `config` too, as in the Swift 
 **The voltage rule. Provisional, for the owner to confirm.** The owner's rule (`PLAN-CLIENTS`
 CG14, `dspi_session::overvolt`): a target above 1200 mV and above the unit's current voltage needs
 the typed word `OVERVOLT`, an unreadable current counting as needing it, with no host-side record.
-It is judged in the client's core, so a raw `EXT_CORE_VREG` through a hub would skip it, and a hub
-cannot type a word for anyone. The hub therefore **refuses every write the rule would ask a word
-for**:
+It is judged in the client's core, so a raw `EXT_CORE_VREG` from a remote client would skip it, and a
+hub cannot type a word for anyone. The hub therefore **refuses every write the rule would ask a word
+for from a network session**:
 
 - **The same rule, the same read.** `overvolt::op_needs_word` on `dspi_session::ext::read_core_vreg`,
   read on the worker, immediately before the write, in the same turn of the queue, so no other
   session's command lands between. The firmware's request is deferred to its main loop, so the status
   can miss a request sent just before. That can only hide a pending change, never a raise past what
   the unit had: it is the same limit every client has.
-- **For every role, and for the app.** A viewer or control client is refused by role first; an admin
-  here. `LocalTransport` goes through the same queue, so while sharing is on, the app's own raise is
-  refused too, with the word typed, because the hub cannot see a word. With sharing off the app has no
-  hub in the path and the rule is the client's as usual.
+- **For every role on the network.** A viewer or control client is refused by role first; an admin
+  here.
+- **Not for the app's session (`LOCAL_SESSION_ID`).** Someone at the machine who typed the word must not
+  be refused because sharing happens to be on. This is safe because the session is this process's own
+  core, whose `core_vreg_op` is the only path that encodes these requests: it judges the word itself,
+  on a status read through this same queue, and `raw_set` refuses them, as do the C ABI's calls, which go
+  through the core. So the app behaves the same with sharing on or off
+  (`tests/wp_hb2_app_vreg.rs`). The limit: `HubHandle::open_local` is public Rust, so code linked into
+  the same process could send raw bytes. That is the embedder's own trust boundary, not a remote one.
+  One thing differs from the worker's read: another session's command can land between the core's read
+  and its write. No other session can raise the voltage, so that cannot make the judgement wrong upward.
 - **The answer is `DENIED`**, with no device write. Not `BLOCKED`: the spec gives that to a device
   refusing a command on its transport, and `map_status` reads it as a stall, "this build lacks it",
   whereas the core reads `Denied` as refused and says so.
@@ -551,9 +558,9 @@ for**:
 `policy.denied` cannot express this: it depends on the unit. A client finds out by the answer, and
 CG11's flow then hides itself until the next connection (`dspi-core/src/vreg.rs`).
 
-So a raise past 1.20 V is not possible through a hub, on any client, until the owner says otherwise.
-Stopping sharing is the way to do one from the app. Exempting the app's session, whose core has
-judged the word, would be one condition in `before_exec` (`s.id != LOCAL_SESSION_ID`).
+So a raise past 1.20 V is not possible from a remote client until the owner says otherwise, and
+remains possible, with the word, from the app on the machine. Both halves are provisional, pending
+the owner.
 
 **A write is never replayed.** `run_command` makes one call and answers what it got: a stall,
 a timeout, a bus error or a lost device alike. The only repeats are parameter reads inside a busy

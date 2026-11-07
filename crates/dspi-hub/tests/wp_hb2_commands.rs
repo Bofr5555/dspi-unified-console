@@ -605,19 +605,30 @@ fn wp_hb2_the_voltage_is_read_at_that_moment_in_the_queue() {
     );
 }
 
-/// What the app's core does with the word typed is no way around it either: the hub
-/// cannot tell a word from no word (HUB.md section 13, for the owner to decide).
+/// The app's word is judged on its side, by the same code its core calls, and the hub
+/// lets the result through. The same raise from a network admin stays refused.
+/// `tests/wp_hb2_app_vreg.rs` has this through a real `DspiCore`.
 #[test]
-fn wp_hb2_the_app_is_refused_like_anyone_else() {
+fn wp_hb2_the_app_is_judged_by_its_own_word_and_a_network_admin_stays_refused() {
     let r = rig_at(V120);
+    let admin = Client::open(&r, Role::Admin);
     let mut app = r.hub.open_local(&r.serial).unwrap();
-    let refused = sx::core_vreg_op(&mut app, VregOp::Set(V125), Some(WORD));
+
+    let refused = sx::core_vreg_op(&mut app, VregOp::Set(V125), None);
     assert!(
-        matches!(refused, Err(ExtError::Transport(TransportError::Denied(_)))),
+        matches!(refused, Err(ExtError::WordRequired { .. })),
         "{refused:?}"
     );
     assert!(r.wire.outs().is_empty());
-    sx::core_vreg_op(&mut app, VregOp::TrialEnd, None).unwrap();
+
+    assert_eq!(admin.vreg(VregOp::Set(V125)), status::DENIED);
+    assert!(r.wire.outs().is_empty());
+
+    sx::core_vreg_op(&mut app, VregOp::Set(V125), Some(WORD)).unwrap();
+    assert_eq!(r.wire.outs().len(), 1);
+    assert_eq!(admin.vreg_status().stored_sel, V125);
+
+    assert_eq!(admin.vreg(VregOp::Set(V130)), status::DENIED);
     assert_eq!(r.wire.outs().len(), 1);
 }
 

@@ -32,7 +32,7 @@ use dspi_session::overvolt;
 use crate::lock::LockTable;
 use crate::policy::{self, Policy};
 use crate::relay::PacketKind;
-use crate::session::{NO_ORIGIN, SessionCtx, SessionId};
+use crate::session::{LOCAL_SESSION_ID, NO_ORIGIN, SessionCtx, SessionId};
 
 /// How long after a write a notification is attributed to it (spec 8.3).
 pub const ATTRIBUTION_WINDOW: Duration = Duration::from_millis(500);
@@ -236,9 +236,10 @@ impl Router {
     /// - **An analyser STOP others still depend on**: `OK` and the device's `01` (spec
     ///   7.15). Decided here, so a band read queued ahead of a STOP counts as watching.
     /// - **A voltage raise the owner's rule would ask a word for** (`overvolt`, WP CG14),
-    ///   for every role and the app alike: `DENIED`. The rule is judged in a client's core,
-    ///   so a raw `EXT_CORE_VREG` sent through a hub would skip it, and a hub cannot type
-    ///   a word for anyone. The unit's voltage is read here, at that moment, in the same
+    ///   from a network session of any role: `DENIED`. The rule is judged in a client's
+    ///   core, so a raw `EXT_CORE_VREG` from a remote client would skip it, and a hub cannot
+    ///   type a word for anyone. The app's session is not judged here: its core already
+    ///   has. The unit's voltage is read here, at that moment, in the same
     ///   turn of the queue as the write, so nothing lands between. `DENIED` rather than
     ///   `BLOCKED`: a client reads `BLOCKED` as a stall, that is, "this build lacks it"
     ///   (`map_status`). HUB.md section 13.
@@ -258,7 +259,18 @@ impl Router {
         if self.stop_is_swallowed(s, req, now, unit.others_poll) {
             return Err((status::OK, vec![RTA_ACK]));
         }
-        if let Some(request) = policy::core_vreg_write(req) {
+        // The app's session is exempt, and this is safe: it is this process's own core, and
+        // that core's `core_vreg_op` is the only path that encodes these requests. It
+        // judges the word itself, on a status read through this same queue, and `raw_set`
+        // refuses them. Someone at the machine who typed the word is not refused because
+        // sharing happens to be on, and with no word the request never gets this far. No
+        // network session can have this id (`next_session_id`).
+        let judged = if s.id == LOCAL_SESSION_ID {
+            None
+        } else {
+            policy::core_vreg_write(req)
+        };
+        if let Some(request) = judged {
             let refused = match request {
                 Some(request) => overvolt::op_needs_word(request, (unit.read_vreg)().as_ref()),
                 None => true,
@@ -923,6 +935,40 @@ mod tests_wp_hb2 {
             let (answer, reads) = judge(Role::Admin, bad, Some(status_at(0x0F, 0, 0x0F)));
             assert_eq!(answer, DENIED, "{bad:?}");
             assert_eq!(reads, 0, "{bad:?}");
+        }
+    }
+
+    /// The app's core has judged the word by the time its request gets here. Only its
+    /// id is exempt, whatever a network session's role, and it costs no second read.
+    #[test]
+    fn wp_hb2_only_the_apps_session_skips_the_voltage_rule() {
+        let (r, t) = (router(), Instant::now());
+        let req = cmd(
+            Dir::Set,
+            op::REQ_EXTENSION,
+            g::EXT_CORE_VREG,
+            VregOp::Set(0x0F).encode().to_vec(),
+        );
+        let answer = |id: SessionId, role: Role| {
+            r.before_exec(
+                &ctx(id, role),
+                &req,
+                t,
+                ExecUnit {
+                    others_poll: &|_, _| false,
+                    read_vreg: &mut || {
+                        assert_ne!(id, LOCAL_SESSION_ID, "no second read for the app");
+                        Some(status_at(0x0D, 0, 0x0D))
+                    },
+                },
+            )
+            .map(|_| ())
+        };
+        assert_eq!(answer(LOCAL_SESSION_ID, Role::Admin), Ok(()));
+        for id in [crate::session::FIRST_REMOTE_SESSION_ID, 3, 0xFFFE] {
+            for role in [Role::Viewer, Role::Control, Role::Admin] {
+                assert_eq!(answer(id, role), DENIED, "{id} {role:?}");
+            }
         }
     }
 
