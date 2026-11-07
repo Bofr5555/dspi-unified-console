@@ -11,7 +11,9 @@ import "components"
 // the device analyses. The status bar reports the device's analyser.
 // -- WP QD19 -- While another console drives the device's analyser (DSPi
 // Link), the window shows the device's tap and channels, says so in the status
-// bar, and offers Take control.
+// bar, and offers Take control. Its views always ask for the page's own
+// selection (`request`; hidden channels too, as above), so only a change there
+// takes the analyser back.
 AppWindow {
     id: win
     title: "Spectrum Analyser"
@@ -215,6 +217,7 @@ AppWindow {
                         visible: active
                         tap: win.sel.tap
                         channels: win.sel.channels
+                        request: win.ownSel
                         hidden: win.hiddenChannels
                         colors: channels.map(function (c) { return win.colorOf(c) })
                         bottomInset: 12
@@ -260,6 +263,7 @@ AppWindow {
                                 active: win.shown && win.mode !== 0
                                 tap: win.sel.tap
                                 channel: modelData
+                                request: win.ownSel
                                 color: win.colorOf(modelData)
                                 levelLabels: true
                                 floorDb: grid.floorDb

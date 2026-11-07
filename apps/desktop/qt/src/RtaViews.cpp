@@ -4,6 +4,7 @@
 #include <QPainterPath>
 #include <QLinearGradient>
 #include <QFontMetricsF>
+#include <QtAlgorithms>
 #include <cmath>
 #include <limits>
 #ifdef Q_OS_MACOS
@@ -99,6 +100,14 @@ void RtaViewBase::setFloorDb(qreal v) { if (v != m_floorDb) { m_floorDb = v; emi
 void RtaViewBase::setCeilingDb(qreal v) { if (v != m_ceilingDb) { m_ceilingDb = v; emit styleChanged(); update(); } }
 void RtaViewBase::setShowPeak(bool v) { if (v != m_showPeak) { m_showPeak = v; emit styleChanged(); update(); } }
 void RtaViewBase::setSmoothing(bool v) { if (v != m_smoothing) { m_smoothing = v; emit styleChanged(); } }
+void RtaViewBase::setRequest(const QVariant &r) {
+    // null and undefined from QML both mean "what is drawn"
+    const QVariant v = r.isValid() && !r.isNull() ? r : QVariant();
+    if (v == m_request) return;
+    m_request = v;
+    emit sourceChanged();
+    resubscribe();
+}
 
 void RtaViewBase::itemChange(ItemChange change, const ItemChangeData &value) {
     QQuickPaintedItem::itemChange(change, value);
@@ -106,12 +115,22 @@ void RtaViewBase::itemChange(ItemChange change, const ItemChangeData &value) {
 }
 
 // Subscribed only while shown: hidden views cost the device nothing
+// -- WP QD19 -- With a request, it asks for that instead of what it draws
 void RtaViewBase::resubscribe() {
-    const int mask = channelMask();
+    int tap = m_tap, mask = channelMask();
+    bool bins = wantsBins();
+    if (m_request.isValid()) {
+        const QVariantMap r = m_request.toMap();
+        tap = r.value(QStringLiteral("tap")).toInt();
+        mask = 0;
+        for (const QVariant &c : r.value(QStringLiteral("channels")).toList())
+            if (c.toInt() >= 0 && c.toInt() < 16) mask |= 1 << c.toInt();
+        bins = binsForOne() && qPopulationCount(uint(mask)) == 1;
+    }
     const bool want = m_rta && m_active && isVisible() && mask;
     if (want) {
-        if (m_sub) m_rta->update(m_sub, m_tap, mask, wantsBins());
-        else m_sub = m_rta->subscribe(m_tap, mask, wantsBins());
+        if (m_sub) m_rta->update(m_sub, tap, mask, bins);
+        else m_sub = m_rta->subscribe(tap, mask, bins);
     } else if (m_sub) {
         if (m_rta) m_rta->release(m_sub);
         m_sub = 0;

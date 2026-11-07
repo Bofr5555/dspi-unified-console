@@ -154,6 +154,77 @@ void SmokeDriver::testRtaFollowing() {
     check("QD19: a new choice there: the app follows again",
           waitFor(10000, [&] { return rta->following() && ints(rta->followedChannels()) == QList<int>({ 0 }); }));
 
+    // -- Review c4h F1 -- The page's own choice while following: the gear on the
+    // response graph, on a channel page with its overlay and bars off, so the
+    // window is the only view holding the page's selection. It draws the other
+    // console's channels but asks for the page's own, so the choice reaches the
+    // device and takes the analyser back.
+    QObject *main = root();
+    const QVariant savedSelection = main->property("selection");
+    const QVariant savedGraph = main->property("rtaChannelShowGraph");
+    const QVariant savedBars = main->property("rtaChannelShowBars");
+    const QVariant savedSource = main->property("rtaPageSource");
+    const QVariant savedPages = main->property("rtaChannelPagesShowSpectrum");
+    main->setProperty("rtaChannelShowGraph", false);
+    main->setProperty("rtaChannelShowBars", false);
+    QMetaObject::invokeMethod(main, "selectChannel", Q_ARG(QVariant, 0));
+    // A page with another selection is a choice too (spec §5), so the other
+    // console chooses again to drive
+    spin(300);
+    theirs.mask = 0b11;
+    dspi_rta_set_request(otherCore, &theirs);
+    check("QD19: on a channel page, following", waitFor(10000, [&] { return rta->following(); }));
+    spin(1000);
+    check("QD19: and still following", rta->following());
+    const auto ownNow = [&] { return win->property("ownSel").toMap(); };
+    const int pageTap = ownNow().value(QStringLiteral("tap")).toInt();
+    QVariant avail;
+    QMetaObject::invokeMethod(main, "rtaAvailableAt", Q_RETURN_ARG(QVariant, avail), Q_ARG(QVariant, pageTap));
+    const QList<int> before = ints(ownNow().value(QStringLiteral("channels")).toList());
+    int add = -1;
+    for (int c : ints(avail.toList()))
+        if (!before.contains(c)) { add = c; break; }
+    check("QD19: a channel to add with the gear", add >= 0);
+    QMetaObject::invokeMethod(main, "rtaToggle", Q_ARG(QVariant, add));
+    const QList<int> chosen = ints(ownNow().value(QStringLiteral("channels")).toList());
+    int chosenMask = 0;
+    for (int c : chosen) chosenMask |= 1 << c;
+    printf("smoke: QD19 gear: page tap %d, %d channels -> %d channels\n", pageTap, int(before.size()), int(chosen.size()));
+    check("QD19: the gear changed the page's selection", chosen.contains(add));
+    check("QD19: a gear choice while following takes control", waitFor(2500, [&] { return !rta->following(); }));
+    const auto otherHolds = [&](int tap, int mask) {
+        RtaOwnership o {};
+        dspi_rta_get_ownership(otherCore, &o);
+        return o.following && o.tap == tap && o.mask == mask;
+    };
+    check("QD19: the device gets the page's choice, and the other console follows it",
+          waitFor(10000, [&] { return otherHolds(pageTap, chosenMask); }));
+
+    // Choosing what is already chosen is a choice too (spec §5)
+    theirs.mask = 0b10;
+    dspi_rta_set_request(otherCore, &theirs);
+    check("QD19: the app follows once more", waitFor(10000, [&] { return rta->following(); }));
+    spin(1000);   // the other console's push settles first (as the no-fight checks)
+    QVariant key;
+    QMetaObject::invokeMethod(main, "rtaKey", Q_RETURN_ARG(QVariant, key), Q_ARG(QVariant, pageTap),
+                              Q_ARG(QVariant, ownNow().value(QStringLiteral("channels"))));
+    QMetaObject::invokeMethod(main, "rtaSetSource", Q_ARG(QVariant, key));
+    check("QD19: re-choosing the same selection takes control", !rta->following());
+    const bool held = waitFor(10000, [&] { return otherHolds(pageTap, chosenMask); });
+    if (!held) {
+        RtaOwnership o {};
+        dspi_rta_get_ownership(otherCore, &o);
+        printf("smoke: QD19 re-chose %s; the other console: following %d tap %d mask %d (want tap %d mask %d)\n",
+               qPrintable(key.toString()), int(o.following), int(o.tap), int(o.mask), pageTap, chosenMask);
+    }
+    check("QD19: and the other console follows the page's selection", held);
+    main->setProperty("rtaPageSource", savedSource);
+    main->setProperty("rtaChannelPagesShowSpectrum", savedPages);
+    main->setProperty("rtaChannelShowGraph", savedGraph);
+    main->setProperty("rtaChannelShowBars", savedBars);
+    if (savedSelection.toString() == QLatin1String("overview")) QMetaObject::invokeMethod(main, "selectOverview");
+    else main->setProperty("selection", savedSelection);
+
     other->closeSession();
     other.reset();
     dspi_core_free(otherCore);

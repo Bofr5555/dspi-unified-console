@@ -131,10 +131,7 @@ private:
     static void wakeCallback(void *userData);
     void pushRequest();
 
-    // passive: added while following, showing the other console's channels
-    // (WP QD19), so not part of the request
-    struct Sub { int tap; int mask; bool bins; quint64 seq; bool passive; };
-    bool showsFollowed(int tap, int mask) const;   // -- WP QD19 --
+    struct Sub { int tap; int mask; bool bins; quint64 seq; };
 
     DSPiBridge *m_bridge;
     FfiCore *m_core;
@@ -146,7 +143,6 @@ private:
     QAtomicInt m_wakePending = 0;
     RtaRequest m_sent {};
     RtaOwnership m_owner {};   // -- WP QD19 --
-    RtaRequest m_chosen {};    // the last request sent with something in it
     int m_fftOrder = 10;
     int m_avgMs = 300;
     int m_peakDecay = 12;
