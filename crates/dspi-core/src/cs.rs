@@ -281,6 +281,28 @@ fn read_aux_into(s: &mut Surfaces<'_>, d: &CsData, aux: &mut CsAuxStates) {
     }
 }
 
+// -- WP CG16 --
+/// Whether an aux SET the status has no complaint about took. During a revert
+/// the firmware acknowledges it, changes nothing and leaves the status alone
+/// (vendor_commands.c, `REQ_SET_CS_AUX_STATE`), so only the output's own state
+/// tells: not as asked is `BUSY`. `aux` becomes what the device holds, either way.
+fn confirm_aux(
+    session: &mut Session,
+    aux: &mut CsAuxStates,
+    took: impl FnOnce(&CsAuxStates) -> bool,
+) -> Result<()> {
+    let live = with_surfaces(session, |s| s.read_aux_states())?.map_err(surface_error)?;
+    let ok = took(&live);
+    *aux = live;
+    if ok {
+        Ok(())
+    } else {
+        Err(DspiError::Refused {
+            status: cs_status::BUSY,
+        })
+    }
+}
+
 /// Read the whole configuration into `cs`, for the open connection. Reads
 /// only: a read-only connection may be fetched.
 fn fetch_into(inner: &mut Inner, cs: &mut CsState) -> Result<()> {
@@ -797,7 +819,11 @@ fn write_op(inner: &mut Inner, cs: &mut CsState, kind: &str, op: &Value) -> Resu
             let name = text(op, "name")?;
             let session = w.session()?;
             let r = cs_model::apply(session, |s| s.write_name(slot, name));
-            with_surfaces(session, |s| read_binding_into(s, d, slot))?;
+            with_surfaces(session, |s| {
+                read_binding_into(s, d, slot);
+                // -- WP CG16 -- A name alone makes the device dirty too
+                read_status_into(s, d);
+            })?;
             r.map_err(apply_error)?;
         }
         "ir" => {
@@ -949,11 +975,9 @@ fn write_op(inner: &mut Inner, cs: &mut CsState, kind: &str, op: &Value) -> Resu
         "auxState" => {
             let slot = index(op, CsAuxStates::SLOTS, "aux slot")?;
             let on = num::<i64>(op, "on", 0)? != 0;
-            cs_model::apply_code(w.session()?, |s| s.set_aux_state(slot, on))
-                .map_err(apply_error)?;
-            if let Some(x) = aux.state.get_mut(usize::from(slot)) {
-                *x = u8::from(on);
-            }
+            let session = w.session()?;
+            cs_model::apply_code(session, |s| s.set_aux_state(slot, on)).map_err(apply_error)?;
+            confirm_aux(session, aux, |a| a.is_on(usize::from(slot)) == on)?;
         }
         "auxLevel" => {
             let slot = index(op, CsAuxStates::SLOTS, "aux slot")?;
@@ -965,11 +989,11 @@ fn write_op(inner: &mut Inner, cs: &mut CsState, kind: &str, op: &Value) -> Resu
             };
             // Clamped to 0..=100 first, so the 8.8 value fits a u16.
             let q8 = ((percent.clamp(0.0, 100.0) * 256.0).round() as u16).min(AUX_LEVEL_MAX_Q8);
-            cs_model::apply_code(w.session()?, |s| s.set_aux_level(slot, q8))
-                .map_err(apply_error)?;
-            if let Some(x) = aux.level_q8.get_mut(usize::from(slot)) {
-                *x = q8;
-            }
+            let session = w.session()?;
+            cs_model::apply_code(session, |s| s.set_aux_level(slot, q8)).map_err(apply_error)?;
+            confirm_aux(session, aux, |a| {
+                a.level_q8.get(usize::from(slot)).copied() == Some(q8)
+            })?;
         }
         other => return Err(invalid(format!("unknown operation {other}"))),
     }
@@ -2288,6 +2312,52 @@ mod tests_wp_cg16 {
         assert_eq!(r, json!({ "ok": false, "status": 0x1B }));
         core.cs_demo_busy(false).unwrap();
         assert_eq!(apply(&core, json!({ "op": "save" }))["ok"], true);
+    }
+
+    #[test]
+    fn wp_cg16_a_name_alone_is_unsaved_and_undoing_it_is_not() {
+        let core = demo();
+        assert_eq!(snapshot(&core)["status"]["dirty"], false);
+        let named = apply(&core, json!({ "op": "name", "index": 5, "name": "Mine" }));
+        assert_eq!(named, json!({ "ok": true, "status": 0 }));
+        let s = snapshot(&core);
+        assert_eq!(s["names"][5], "Mine");
+        assert_eq!(s["status"]["dirty"], true);
+        assert_eq!(s["status"]["lastSlot"], 5);
+
+        apply(&core, json!({ "op": "name", "index": 5, "name": "" }));
+        assert_eq!(snapshot(&core)["status"]["dirty"], false);
+    }
+
+    /// The firmware ACKs an aux SET during a revert and changes nothing, with no
+    /// status to say so.
+    #[test]
+    fn wp_cg16_an_aux_write_during_a_revert_is_refused_and_not_recorded() {
+        let core = demo();
+        let live = |c: &DspiCore| {
+            let s = snapshot(c);
+            (s["auxState"][10].clone(), s["auxLevel"][11].clone())
+        };
+        let before = live(&core);
+        assert_eq!(before, (json!(0), json!(12800)));
+        let state = json!({ "op": "auxState", "index": 10, "on": 1 });
+        let level = json!({ "op": "auxLevel", "index": 11, "percent": 25 });
+
+        core.cs_demo_busy(true).unwrap();
+        for op in [&state, &level] {
+            assert_eq!(
+                apply(&core, op.clone()),
+                json!({ "ok": false, "status": 0x1B }),
+                "{op}"
+            );
+            assert_eq!(live(&core), before, "{op}");
+        }
+
+        core.cs_demo_busy(false).unwrap();
+        for op in [&state, &level] {
+            assert_eq!(apply(&core, op.clone())["ok"], true, "{op}");
+        }
+        assert_eq!(live(&core), (json!(1), json!(25 * 256)));
     }
 
     #[test]

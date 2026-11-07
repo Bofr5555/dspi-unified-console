@@ -1108,7 +1108,12 @@ void SmokeDriver::testCsPages() {
     clickRemove(held);
     check("CG16: a refused remove keeps the control", binding(0).value("type").toInt() == 4 && cardOf(0) != nullptr);
     check("CG16: the card says why", inScope(view, QStringLiteral("refusals[0]")).toString() == cs->statusMessage(0x1B));
+    const int offBefore = cs->auxLive().value(QStringLiteral("state")).toList().value(10).toInt();
+    check("CG16: an aux switch during a revert is refused", cs->apply({ { "op", "auxState" }, { "index", 10 }, { "on", offBefore ? 0 : 1 } }).value("status").toInt() == 0x1B);
+    check("CG16: and not recorded", cs->auxLive().value(QStringLiteral("state")).toList().value(10).toInt() == offBefore);
     dspi_cs_demo_busy(b->core(), false);
+    check("CG16: a name alone makes it unsaved", cs->apply({ { "op", "name" }, { "index", 5 }, { "name", "Held" } }).value("ok").toBool() && cs->unsaved());
+    check("CG16: and undoing it does not", cs->apply({ { "op", "name" }, { "index", 5 }, { "name", "" } }).value("ok").toBool() && !cs->unsaved());
     const QVariantMap edit { { "type", 1 }, { "noun", 2 }, { "action", 4 }, { "gpio0", 5 }, { "gpio1", 255 }, { "value", 1 } };
     check("CG16: an edit makes it unsaved", cs->apply({ { "op", "binding" }, { "index", 5 }, { "binding", edit } }).value("ok").toBool() && cs->unsaved());
     spin(50);
