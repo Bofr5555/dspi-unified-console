@@ -1289,7 +1289,8 @@ mod tests_wp_c1 {
         );
         assert_eq!(
             (s.fw_major, s.fw_minor, s.fw_patch, s.fw_beta),
-            (1, 1, 6, 4)
+            (1, 1, 6, 0),
+            "the demo runs final 1.1.6 (WP CG27)"
         );
         assert_eq!(s.platform_id, 1);
         assert_eq!(s.platform_id, want.platform_id);
