@@ -61,7 +61,9 @@ void SmokeDriver::start() {
     const bool hardware = !qEnvironmentVariableIsEmpty("DSPI_SMOKE_HW");
     const bool replug = qEnvironmentVariable("DSPI_SMOKE_HW") == QLatin1String("replug");
     QTimer::singleShot(200, this, [this, hardware, replug]() {
-        if (replug) runReplug();
+        // -- WP QD7 --
+        if (!qEnvironmentVariableIsEmpty("DSPI_SMOKE_DEMO_ENTRY")) runDemoEntry();
+        else if (replug) runReplug();
         else if (hardware) runHardware();
         else run();
     });
@@ -79,6 +81,8 @@ void SmokeDriver::run() {
     testSiggenAndStats();
     testFiles();
     testImportAppliesOnce();
+    // -- WP QD7 --
+    testDemoLabel();
     testSeam();
     testAutoEq();
     testWindows();
@@ -104,6 +108,15 @@ void SmokeDriver::run() {
     // -- WP QD8 --
     testLink();
     testIdleAndCost();
+    m_failures += g_qmlErrors;
+    printf("smoke: %d checks, %d failures (%d QML errors)\n", m_checks, m_failures, g_qmlErrors);
+    fflush(stdout);
+    QCoreApplication::exit(m_failures ? 1 : 0);
+}
+
+// -- WP QD7 -- A run of its own, on an app started without --demo (run.sh)
+void SmokeDriver::runDemoEntry() {
+    testDemoEntry();
     m_failures += g_qmlErrors;
     printf("smoke: %d checks, %d failures (%d QML errors)\n", m_checks, m_failures, g_qmlErrors);
     fflush(stdout);

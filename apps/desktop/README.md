@@ -233,7 +233,7 @@ Then, from the repository root:
 cargo build --release -p dspi-capi --features link,midir,mdns            # Rust core and crates/dspi-capi/include/dspi_core.h
 cmake -S apps/desktop/qt -B apps/desktop/qt/build -DCMAKE_BUILD_TYPE=Release
 cmake --build apps/desktop/qt/build -j"$(nproc)"
-./apps/desktop/qt/build/DSPiConsole           # --demo runs on a simulated device
+./apps/desktop/qt/build/DSPiConsole           # with no DSPi, Open Demo offers a simulated one; --demo starts on it
 ```
 
 The QML, firmware images and AutoEQ database are compiled into the binary.
