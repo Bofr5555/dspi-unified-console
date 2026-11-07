@@ -57,12 +57,11 @@ device step is still owed. `?`: the sources disagree or are unclear.*
 
 **Next up:**
 1. QD34 (polling off the UI thread).
-2. CG22 (analyser and signal generator in the Rust fake device).
-3. TM24 (Terminal control surfaces on `cs_rows`).
-4. Wave 3: QD9, QD10, QD13, QD14, QD16, QD17, QD19, QD28; AN5, AN7, AN9–AN14, AN17–AN19, AN23; TM11, TM13; HB7;
+2. TM24 (Terminal control surfaces on `cs_rows`).
+3. Wave 3: QD9, QD10, QD13, QD14, QD16, QD17, QD19, QD28; AN5, AN7, AN9–AN14, AN17–AN19, AN23; TM11, TM13; HB7;
    MR1 (Swift half), SW1, SW2 on `macvm`. M0 (owner review) at its end.
 
-**Android release on the unified core today** needs CG22 and the phone test (AN13).
+**Android release on the unified core today** needs the phone test (AN13); CG22 is done.
 
 **MR: one repo, one build**: 3 WPs: 2 DONE, 1 PARTIAL.
 
@@ -104,7 +103,7 @@ device step is still owed. `?`: the sources disagree or are unclear.*
 | CG19 | One home for the analyser's sharing rules | DONE | 902ccf9 |  |
 | CG20 | Control-surface editing rules in the core | DONE | d458d79, fixups 4c90fce | Unblocks TM24, AN9 |
 | CG21 | One read per Stats tick | DONE | 8b80fa2 | Unblocks QD34 |
-| CG22 | Analyser and signal generator in the Rust fake device | TODO |  | Next up; needed for the Android release |
+| CG22 | Analyser and signal generator in the Rust fake device | DONE | f4569d2, fixups 110b09e | Unblocks the Android release (AN13) |
 
 **HB: Rust Link hub**: 8 WPs: 6 DONE, 1 TODO, 1 MOVED.
 
@@ -734,7 +733,7 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (section 9).
 
 **CG21: One read per Stats tick.** [DONE 8b80fa2] Size 0.25. From review w2e. **Owns:** `crates/dspi-session/src/ring_health.rs`, the fill export. **Implements:** a tick reads `REQ_GET_BUFFER_STATS` once and derives fills from a cached ring target, invalidated on device change and on a latency write, as the Mac's one transfer per 60 ms. Android and Qt call it. **Deps:** AN25, QD29.
 
-**CG22: Analyser and signal generator in the Rust fake device.** [TODO] Size 0.5. From AN28: the Android demo now runs on the real core's demo device and lost the spectrum analyser and signal generator the Kotlin fake had. **Owns:** `crates/dspi-transport/src/fake*` (analyser frames and signal-generator state), their tests. **Implements:** the fake device answers the RTA and signal-generator requests like firmware V3 (bass bank 10-200 Hz plus FFT bands, packed frames), deterministic under the `clock` seam; the signal generator never starts by itself. **Done when:** core tests read RTA frames and drive the signal generator against the fake; the Android demo shows both again. Before the first Play update on the new core. **Deps:** AN28, CG20.
+**CG22: Analyser and signal generator in the Rust fake device.** [DONE f4569d2] Size 0.5. From AN28: the Android demo now runs on the real core's demo device and lost the spectrum analyser and signal generator the Kotlin fake had. **Owns:** `crates/dspi-transport/src/fake*` (analyser frames and signal-generator state), their tests. **Implements:** the fake device answers the RTA and signal-generator requests like firmware V3 (bass bank 10-200 Hz plus FFT bands, packed frames), deterministic under the `clock` seam; the signal generator never starts by itself. **Done when:** core tests read RTA frames and drive the signal generator against the fake; the Android demo shows both again. Before the first Play update on the new core. **Deps:** AN28, CG20.
 
 ### 4.2 HB: the Rust Link hub
 
