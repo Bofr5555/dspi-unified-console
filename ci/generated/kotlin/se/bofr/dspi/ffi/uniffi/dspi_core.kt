@@ -17814,6 +17814,12 @@ data class VregCalView (
      */
     var `commitNeedsWord`: kotlin.Boolean, 
     /**
+     * `core_vreg_manual_set(0, ..)`, the reset to the build default, needs the
+     * word now: the unit's current voltage cannot be read from the last
+     * status, so nobody can say the reset does not raise it (WP QD28b).
+     */
+    var `resetNeedsWord`: kotlin.Boolean, 
+    /**
      * The soak to suggest, seconds.
      */
     var `defaultSoakS`: kotlin.UInt, 
@@ -17906,6 +17912,7 @@ public object FfiConverterTypeVregCalView: FfiConverterRustBuffer<VregCalView> {
             FfiConverterSequenceTypeVregChoice.read(buf),
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
             FfiConverterUInt.read(buf),
             FfiConverterUInt.read(buf),
             FfiConverterUByte.read(buf),
@@ -17936,6 +17943,7 @@ public object FfiConverterTypeVregCalView: FfiConverterRustBuffer<VregCalView> {
             FfiConverterSequenceTypeVregChoice.allocationSize(value.`choices`) +
             FfiConverterString.allocationSize(value.`confirmationWord`) +
             FfiConverterBoolean.allocationSize(value.`commitNeedsWord`) +
+            FfiConverterBoolean.allocationSize(value.`resetNeedsWord`) +
             FfiConverterUInt.allocationSize(value.`defaultSoakS`) +
             FfiConverterUInt.allocationSize(value.`minSoakS`) +
             FfiConverterUByte.allocationSize(value.`targetVreg`) +
@@ -17965,6 +17973,7 @@ public object FfiConverterTypeVregCalView: FfiConverterRustBuffer<VregCalView> {
             FfiConverterSequenceTypeVregChoice.write(value.`choices`, buf)
             FfiConverterString.write(value.`confirmationWord`, buf)
             FfiConverterBoolean.write(value.`commitNeedsWord`, buf)
+            FfiConverterBoolean.write(value.`resetNeedsWord`, buf)
             FfiConverterUInt.write(value.`defaultSoakS`, buf)
             FfiConverterUInt.write(value.`minSoakS`, buf)
             FfiConverterUByte.write(value.`targetVreg`, buf)

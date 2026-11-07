@@ -17367,6 +17367,12 @@ public struct VregCalView {
      */
     public var commitNeedsWord: Bool
     /**
+     * `core_vreg_manual_set(0, ..)`, the reset to the build default, needs the
+     * word now: the unit's current voltage cannot be read from the last
+     * status, so nobody can say the reset does not raise it (WP QD28b).
+     */
+    public var resetNeedsWord: Bool
+    /**
      * The soak to suggest, seconds.
      */
     public var defaultSoakS: UInt32
@@ -17478,6 +17484,11 @@ public struct VregCalView {
          * upward change of its own. Ask again; do not reuse the earlier answer.
          */commitNeedsWord: Bool, 
         /**
+         * `core_vreg_manual_set(0, ..)`, the reset to the build default, needs the
+         * word now: the unit's current voltage cannot be read from the last
+         * status, so nobody can say the reset does not raise it (WP QD28b).
+         */resetNeedsWord: Bool, 
+        /**
          * The soak to suggest, seconds.
          */defaultSoakS: UInt32, 
         /**
@@ -17542,6 +17553,7 @@ public struct VregCalView {
         self.choices = choices
         self.confirmationWord = confirmationWord
         self.commitNeedsWord = commitNeedsWord
+        self.resetNeedsWord = resetNeedsWord
         self.defaultSoakS = defaultSoakS
         self.minSoakS = minSoakS
         self.targetVreg = targetVreg
@@ -17594,6 +17606,9 @@ extension VregCalView: Equatable, Hashable {
             return false
         }
         if lhs.commitNeedsWord != rhs.commitNeedsWord {
+            return false
+        }
+        if lhs.resetNeedsWord != rhs.resetNeedsWord {
             return false
         }
         if lhs.defaultSoakS != rhs.defaultSoakS {
@@ -17660,6 +17675,7 @@ extension VregCalView: Equatable, Hashable {
         hasher.combine(choices)
         hasher.combine(confirmationWord)
         hasher.combine(commitNeedsWord)
+        hasher.combine(resetNeedsWord)
         hasher.combine(defaultSoakS)
         hasher.combine(minSoakS)
         hasher.combine(targetVreg)
@@ -17698,6 +17714,7 @@ public struct FfiConverterTypeVregCalView: FfiConverterRustBuffer {
                 choices: FfiConverterSequenceTypeVregChoice.read(from: &buf), 
                 confirmationWord: FfiConverterString.read(from: &buf), 
                 commitNeedsWord: FfiConverterBool.read(from: &buf), 
+                resetNeedsWord: FfiConverterBool.read(from: &buf), 
                 defaultSoakS: FfiConverterUInt32.read(from: &buf), 
                 minSoakS: FfiConverterUInt32.read(from: &buf), 
                 targetVreg: FfiConverterUInt8.read(from: &buf), 
@@ -17728,6 +17745,7 @@ public struct FfiConverterTypeVregCalView: FfiConverterRustBuffer {
         FfiConverterSequenceTypeVregChoice.write(value.choices, into: &buf)
         FfiConverterString.write(value.confirmationWord, into: &buf)
         FfiConverterBool.write(value.commitNeedsWord, into: &buf)
+        FfiConverterBool.write(value.resetNeedsWord, into: &buf)
         FfiConverterUInt32.write(value.defaultSoakS, into: &buf)
         FfiConverterUInt32.write(value.minSoakS, into: &buf)
         FfiConverterUInt8.write(value.targetVreg, into: &buf)

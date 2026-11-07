@@ -219,6 +219,9 @@ void SmokeDriver::testVregCalibration() {
     pollNow();
     check("QD28: saved and read back", at("committed") && deviceInt("storedSel") == k125 && value("vregStored") == QLatin1String("1.25 V"));
     grab("committed");
+    // -- WP QD28b --
+    check("QD28b: the core's view says whether a reset needs the word", vreg->view().contains(QStringLiteral("resetNeedsWord"))
+                                                                         && !vreg->view().value(QStringLiteral("resetNeedsWord")).toBool());
     check("QD28: reset", press("vregReset") && confirmShows() && !vreg->pending().value(QStringLiteral("needsWord")).toBool()
                              && press("vregConfirmButton") && waitFor(1000, idle));
     pollNow();
@@ -331,6 +334,24 @@ void SmokeDriver::testVregCalibration() {
     vreg->setViewOverride(QJsonDocument(QJsonObject::fromVariantMap(failed)).toJson(QJsonDocument::Compact));
     check("QD28: not confirmed", at("verify_failed") && title("vregMessage").startsWith(QLatin1String("The device did not read back")));
     grab("verify-failed");
+    // -- WP QD28b -- A unit whose current voltage can't be read: the core asks for the
+    // word even for the reset, and so does the card. The demo device always reads, so
+    // the core's view stands in for it (the core's own test reads such a status).
+    QVariantMap unreadable = vreg->view();
+    unreadable.insert(QStringLiteral("ok"), true);
+    QVariantMap badStatus = unreadable.value(QStringLiteral("status")).toMap();
+    badStatus.insert(QStringLiteral("liveVreg"), 0xFF);
+    badStatus.insert(QStringLiteral("millivolts"), 0);
+    unreadable.insert(QStringLiteral("status"), badStatus);
+    unreadable.insert(QStringLiteral("resetNeedsWord"), true);
+    vreg->setViewOverride(QJsonDocument(QJsonObject::fromVariantMap(unreadable)).toJson(QJsonDocument::Compact));
+    spin(50);
+    check("QD28b: unreadable: reset asks for the word", press("vregReset") && confirmShows()
+                                                            && vreg->pending().value(QStringLiteral("needsWord")).toBool());
+    check("QD28b: unreadable: the word field shows", shows("vregWord"));
+    check("QD28b: unreadable: Confirm waits for it", item("vregConfirmButton") && !item("vregConfirmButton")->isEnabled());
+    grab("reset-unreadable");
+    check("QD28b: unreadable: cancelled, nothing sent", press("vregCancel") && !confirmShows() && deviceInt("storedSel") == k120);
     vreg->setViewOverride(QByteArray());
     pollNow();
     check("QD28: back to the core's view", at("ended"));
