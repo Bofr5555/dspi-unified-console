@@ -83,6 +83,8 @@ private:
     void testCsPages();
     // -- WP QD2 --
     void testPairMap();
+    // -- WP QD3 --
+    void testCoreVoltage();
     // -- WP QD6 --
     void testReadOnly();
     void testDeviceChanging();

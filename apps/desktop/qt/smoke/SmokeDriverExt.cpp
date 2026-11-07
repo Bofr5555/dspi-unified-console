@@ -7,6 +7,8 @@
 
 #include <QCoreApplication>
 #include <QImage>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMouseEvent>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -304,4 +306,130 @@ void SmokeDriver::testPairMap() {
     win->setVisible(false);
     spin(50);
     check("QD2: stops watching when closed", !ext->watching());
+}
+
+// -- WP QD3 --
+// Core voltage on Settings > Overview: the status as the device has it, live while the
+// page shows and silent otherwise, and nothing of it on firmware without the extension.
+void SmokeDriver::testCoreVoltage() {
+    section("QD3: core voltage status");
+    auto *b = m_.bridge;
+    auto *ext = qobject_cast<ExtController *>(
+        m_.engine->rootContext()->contextProperty(QStringLiteral("ext")).value<QObject *>());
+    QQuickWindow *settings = nullptr;
+    for (QQuickWindow *w : root()->findChildren<QQuickWindow *>())
+        if (w->property("currentPage").isValid() && w->metaObject()->indexOfMethod("navigate(QVariant)") >= 0) settings = w;
+    check("QD3: controller and window", ext && settings);
+    if (!ext || !settings) return;
+    const auto navigate = [&](const char *id) {
+        QMetaObject::invokeMethod(settings, "navigate", Q_ARG(QVariant, QString::fromLatin1(id)));
+        spin(100);
+    };
+    // Looked up each time: the page is built anew on each visit
+    const auto item = [&](const char *name) { return findItem(settings->contentItem(), QString::fromLatin1(name)); };
+    const auto shows = [&](const char *name) { QQuickItem *i = item(name); return i && i->isVisible(); };
+    const auto row = [&](const char *name) { QQuickItem *i = item(name); return i ? i->property("value").toString() : QStringLiteral("<no row>"); };
+    // What the device says, read past the controller
+    const auto device = [b]() {
+        QByteArray reply(512, '\0');
+        const uint32_t n = dspi_fetch_core_vreg(b->core(), reply.data(), uint32_t(reply.size()));
+        reply.truncate(n > 0 ? int(n) - 1 : 0);
+        return QJsonDocument::fromJson(reply).object();
+    };
+    const auto waiting = [&]() { return row("coreVregRunning") == QStringLiteral("Reading…") && !shows("coreVregStored"); };
+    const auto refused = [&]() { return row("coreVregRunning") == QStringLiteral("The device did not answer") && !shows("coreVregStored"); };
+    const auto mv = [](int value) { return QString::number(value / 1000.0, 'f', 2) + QStringLiteral(" V"); };
+    const auto rowShowsDevice = [&]() {
+        const QJsonObject d = device();
+        return row("coreVregRunning") == mv(d.value(QStringLiteral("millivolts")).toInt())
+            && row("coreVregHangs") == QString::number(d.value(QStringLiteral("hangCount")).toInt());
+    };
+
+    settings->setVisible(true);
+    navigate("overview");
+    check("QD3: the demo device lists it", ext->hasCoreVreg());
+    check("QD3: watching while the page shows", ext->coreVregWatching());
+    check("QD3: the section shows", shows("coreVoltageSection"));
+    check("QD3: the first read arrives", waitFor(2000, [&]() { return shows("coreVregStored") && row("coreVregRunning").endsWith(QLatin1String(" V")); }));
+    const QJsonObject first = device();
+    printf("smoke: QD3 running at %d mV, row %s, stored %d, default %d\n", first.value(QStringLiteral("millivolts")).toInt(),
+           qPrintable(row("coreVregRunning")), first.value(QStringLiteral("storedSel")).toInt(), first.value(QStringLiteral("defaultVreg")).toInt());
+    check("QD3: live mV and hang count are the device's", first.value(QStringLiteral("millivolts")).toInt() > 0 && rowShowsDevice());
+    check("QD3: no hangs yet", row("coreVregHangs") == QLatin1String("0"));
+    check("QD3: the other rows", row("coreVregStored") == QLatin1String("Build default") && row("coreVregDefault") == mv(first.value(QStringLiteral("millivolts")).toInt())
+                                     && row("coreVregAuto") == QLatin1String("On") && row("coreVregFailedTrial") == QLatin1String("None")
+                                     && !shows("coreVregTrial") && !row("coreVregUptime").isEmpty());
+    settings->grabWindow().save(m_out + QStringLiteral("/settings-overview-core-voltage.png"));
+
+    // Live: the device's uptime and hang count move, and the rows follow unasked
+    check("QD3: time passing on the device", dspi_core_vreg_demo_event(b->core(), 3, 3700) == 0);
+    check("QD3: uptime follows", waitFor(2500, [&]() { return row("coreVregUptime").startsWith(QLatin1String("1 h")); }));
+    check("QD3: a hang", dspi_core_vreg_demo_event(b->core(), 0, 0) == 0);
+    check("QD3: the hang count follows", waitFor(2500, [&]() { return row("coreVregHangs") == QLatin1String("1"); }));
+    check("QD3: a second hang", dspi_core_vreg_demo_event(b->core(), 0, 0) == 0);
+    check("QD3: the raise follows", waitFor(2500, [&]() { return row("coreVregStored").endsWith(QLatin1String(", raised by the device")) && rowShowsDevice(); }));
+    printf("smoke: QD3 after two hangs: running %s, stored %s, hangs %s\n", qPrintable(row("coreVregRunning")), qPrintable(row("coreVregStored")), qPrintable(row("coreVregHangs")));
+    settings->grabWindow().save(m_out + QStringLiteral("/settings-overview-core-voltage-raised.png"));
+
+    // Reads stop with the window shut and with the page left
+    settings->setVisible(false);
+    spin(100);
+    check("QD3: a shut window stops the reads", !ext->coreVregWatching());
+    const QVariantMap frozen = ext->coreVreg();
+    dspi_core_vreg_demo_event(b->core(), 3, 100);
+    spin(1500);
+    check("QD3: nothing read while shut", ext->coreVreg() == frozen);
+    settings->setVisible(true);
+    check("QD3: reopening reads at once", waitFor(800, [&]() { return ext->coreVreg() != frozen; }) && ext->coreVregWatching());
+    navigate("about");
+    check("QD3: leaving the page stops the reads", !ext->coreVregWatching());
+    const QVariantMap left = ext->coreVreg();
+    dspi_core_vreg_demo_event(b->core(), 3, 100);
+    spin(1500);
+    check("QD3: nothing read off the page", ext->coreVreg() == left);
+    navigate("overview");
+    check("QD3: back on the page", ext->coreVregWatching() && waitFor(800, [&]() { return ext->coreVreg() != left; }));
+
+    // A failed read shows no old values as if they were live; the next good one mends it
+    ext->setCoreVregOverride(R"({"ok":false,"code":1,"message":"stalled"})");
+    check("QD3: a failed read says so", waitFor(2500, refused) && ext->coreVregFailed());
+    ext->setCoreVregOverride(QByteArray());
+    check("QD3: and recovers", waitFor(2500, [&]() { return shows("coreVregStored") && !ext->coreVregFailed(); }));
+
+    // Reads stay off the GUI thread: with the worker held the window still runs, and a
+    // change of device shows nothing of the old one, then the new one's own status
+    check("QD3: the old device was raised", row("coreVregStored") != QLatin1String("Build default"));
+    std::atomic<bool> gate { false };
+    std::atomic<bool> held { false };
+    ext->setWriteHook([&]() {
+        held = true;
+        while (!gate) QThread::msleep(2);
+        return true;
+    });
+    check("QD3: the worker held", ext->applyPreset(QStringLiteral("default")) && waitFor(2000, [&]() { return held.load(); }));
+    spin(1200);     // a poll comes due behind the hold, and the GUI thread runs on
+    b->disconnectDevice();
+    check("QD3: no device: nothing kept", !ext->hasCoreVreg() && !shows("coreVoltageSection") && ext->coreVreg().isEmpty());
+    b->rescan();
+    check("QD3: a fresh device", b->connected());
+    navigate("overview");   // the window leaves the page when the device goes
+    check("QD3: nothing of the old device while the read waits", shows("coreVoltageSection") && waiting());
+    gate = true;
+    check("QD3: the fresh device's status", waitFor(2500, [&]() { return shows("coreVregStored") && row("coreVregStored") == QLatin1String("Build default") && row("coreVregHangs") == QLatin1String("0"); }));
+    check("QD3: the write behind the hold ended", waitFor(1000, [&]() { return !ext->busy(); }));
+    ext->setWriteHook(nullptr);
+
+    // Stock firmware's connect probe finds nothing: no section, no reads
+    ext->setStatusOverride(R"({"ok":true,"supported":[],"hasPairMap":false,"hasCoreVreg":false})");
+    spin(50);
+    check("QD3: stock: hidden", !ext->hasCoreVreg() && !shows("coreVoltageSection") && ext->coreVreg().isEmpty());
+    check("QD3: stock: the page stays", b->connected() && item("coreVoltageSection") != nullptr);
+    settings->grabWindow().save(m_out + QStringLiteral("/settings-overview-stock.png"));
+    spin(1500);
+    check("QD3: stock: no reads", ext->coreVreg().isEmpty() && !ext->coreVregFailed());
+    ext->setStatusOverride(QByteArray());
+    check("QD3: extension back: shown and read", waitFor(2500, [&]() { return ext->hasCoreVreg() && shows("coreVregStored"); }));
+
+    settings->setVisible(false);
+    spin(50);
 }
