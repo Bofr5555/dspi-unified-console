@@ -1429,6 +1429,11 @@ void uniffi_dspi_core_fn_method_dspicore_siggen_set_config(void*_Nonnull ptr, Ru
 void uniffi_dspi_core_fn_method_dspicore_test_dac_mute(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_WIRE_FEATURES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_WIRE_FEATURES
+uint32_t uniffi_dspi_core_fn_method_dspicore_wire_features(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_LINKLISTENER
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_LINKLISTENER
 void*_Nonnull uniffi_dspi_core_fn_clone_linklistener(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -3364,6 +3369,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_siggen_set_config(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_TEST_DAC_MUTE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_TEST_DAC_MUTE
 uint16_t uniffi_dspi_core_checksum_method_dspicore_test_dac_mute(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_WIRE_FEATURES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_WIRE_FEATURES
+uint16_t uniffi_dspi_core_checksum_method_dspicore_wire_features(void
     
 );
 #endif

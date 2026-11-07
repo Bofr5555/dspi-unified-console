@@ -52,6 +52,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun isConnected(): Boolean = throw NotImplementedError("is_connected")
 
+    override fun wireFeatures(): Long = throw NotImplementedError("wire_features")
+
     override fun openDemo(): Unit = throw NotImplementedError("open_demo")
 
     override fun setCrossfeedPairMap(map: List<Int>): Unit = throw NotImplementedError("set_crossfeed_pair_map")
