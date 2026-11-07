@@ -4,11 +4,10 @@ WP HB0, `crates/dspi-hub`. HB1, HB2, HB3, HB5 and HB6 build on this
 (`PLAN-CLIENTS.md` section 4.2). Spec: DSPi-Link `spec/dspi_link_protocol_spec.md`
 1.2, cited below as "spec". References: the Swift hub, the ESP32 hub, `fakehub.rs`.
 
-**What runs today (HB0).** An in-process hub with no socket: bus scanning, device
-workers and readers, fan-out with attribution, the app's session, stop, unplug and
-slow-consumer behaviour. `tests/wp_hb0_app_path.rs` drives `DspiCore` through it on
-the demo device. Everything else is a `todo!("WP HBn")` behind the interfaces in
-section 9, with named stubs in `tests/wp_hb_later.rs`.
+**What runs today (HB0 to HB3).** The app's session as before (`tests/wp_hb0_app_path.rs`), and now the
+network side: the server, pairing, roles, commands, notifications, polls, snapshots and names, over real
+sockets (`tests/wp_hb1_server.rs`, `tests/wp_hb1_vreg_wire.rs`, `tests/wp_hb3_meter_feed.rs`). Advertising
+and the web bundle are still HB5's `todo!`s, with named stubs in `tests/wp_hb_later.rs`.
 
 ## 1. Decisions in one place
 
@@ -20,7 +19,8 @@ section 9, with named stubs in `tests/wp_hb_later.rs`.
 - **One thread owns each transport.** Nobody else can reach it, so ordering, chunk
   sessions and "no lock across a transfer" follow from the structure, not from care.
 - **The hub knows nothing of `dspi-core` unless asked.** `dspi-hub` depends on proto,
-  transport and link. Feature `app` adds the bridge to `DspiCore`, for Qt. A headless
+  transport and link, and on `dspi-session` without its default features, for the voltage
+  rule (section 13). Feature `app` adds the bridge to `DspiCore`, for Qt. A headless
   `dspi hub` does not link the embedder API.
 - **PIN pairing is the default, open access is opt-in** (`AccessMode::default()`).
   This departs from spec 6.1 ("hubs default to `none`"), by owner's decision. A client
@@ -36,6 +36,7 @@ section 9, with named stubs in `tests/wp_hb_later.rs`.
 | `hub-events` | 1 | calling the `HubListener` | its channel | `EventMsg::Stop`, last of all |
 | `hub-accept` (HB1) | 1 | the listening socket | `accept` | `stop_accepting` |
 | `hub-conn-rx-<id>`, `hub-conn-tx-<id>` (HB1) | 2 per connection | the read half; the session's outbox and the write half | the socket; `Outbox::pop` | the outbox closes, or the peer goes |
+| `hub-refuse-<id>` (HB1) | 0–4, short-lived | a socket past the limits | its request, 1 s at most | it has answered 503 |
 | the responder's own (HB5) | inside `MdnsAdvertiser` | | | dropped |
 | the app's (not ours) | | core's reader, `poll_hotplug` caller | | |
 
@@ -187,7 +188,8 @@ it later answers `TIMEOUT` without touching the device, so a write the app was t
 out does not land afterwards (`wp_hb0_a_write_whose_caller_timed_out_never_lands`). One
 already inside the device cannot be recalled: spec 8.1's "may or may not have executed".
 **A timed-out write over the hub is never retried**, by the hub or the core. A network
-client's deadline is its own and unseen, so its queued command still runs.
+client's deadline is its own and unseen, so its queued command still runs, as long as its
+session is open (section 13).
 
 ## 5. Starting and stopping
 
@@ -245,13 +247,30 @@ A publisher pushes to an `Outbox` and never blocks, so a slow reader costs only 
 
 A vanished client holds its session (and its lock) until the 30 s dead-peer limit (HB1)
 calls `close_session`; or until the lock's own timeout, whichever is first (spec 7.7).
-Commands from others are refused `LOCKED` meanwhile, as the spec expects.
+Commands from others are refused `LOCKED` meanwhile, as the spec expects
+(`wp_hb2_a_vanished_clients_lock_is_released_by_timeout`). The registry and `device.changed`
+learn of a timeout on the supervisor's tick.
 
 Inbound: a client that outruns `max_inflight` gets `RATE_LIMITED`, without the device
 being touched (`wp_hb0_max_inflight_answers_rate_limited_without_the_device`).
 
 The queue itself is an unbounded channel by design, since admission bounds it: 8 per
-session times the session limit, the app adds 1.
+session times the session limit, the app adds 1. What a session left queued does not run
+once it has closed, or reconnecting would get round that bound.
+
+**What one hostile client can and cannot do** (`tests/wp_hb2_commands.rs`):
+
+| It tries | What happens |
+|---|---|
+| A flood of commands | 8 in the queue, the rest `RATE_LIMITED` without the device. Another session's command waits for what was queued ahead of it and no more: order is arrival order, there is no priority to game |
+| Reconnecting to get more of the queue | Its queued commands are answered `NO_DEVICE` unrun when the session closes |
+| Slow commands | Each is bounded by the transport's timeout. Worst, a write and a stalling read in turn: about 600 ms per pair, 8 in flight |
+| Not reading | Costs only itself (the table above) |
+| Renewing a lock for ever, or handing it to a second session | One budget per device: at most 120 s locked at a stretch, whoever holds it, then at least 30 s with no lock for anyone (`lock.rs`) |
+| Filling the attribution queue | At worst a client's echo looks foreign, which costs that client a re-read. It cannot make anyone skip a re-read they need (section 4) |
+
+An admin can still do what an admin can do: reset the device, for one. These limits keep a
+session from shutting the others out, not from misusing its role.
 
 The app can be slow too, and gets the same outbox. Its reader only moves packets to
 the core's bounded queue, which has its own `lost` rule.
@@ -308,7 +327,15 @@ another handle.
 | Timed-out app write | still runs later | | **skipped while queued; never retried** | Section 4 |
 | `fw_install` cap | not advertised | Console hubs | **not advertised** | `PLAN-CLIENTS` section 2, #2; HB1 must leave it out of `caps` |
 | Foreign `Origin` | not checked at this ref | refused | refused (HB1) | Spec 4 |
-| `0x00` | unlisted, so `config` | | `config`, reads are not writes | HB2 documents |
+| A second authentication on a session | a new session replaces it | not said | **`bad_request`**, the session stands (open access: the usual `ok`, same session) | A writer per session has one outbox, and nothing here re-authenticates |
+| No `dspi-link-1` at the upgrade | not checked | may refuse | **400**, as the bridge | Everything here sends it |
+| Connections | no connection limit | | 16 sockets of any kind, 4 unauthenticated per address (/64 on IPv6); 503 past them | HUB section 9 |
+| A token's hash | of the decoded bytes | of the token | of the token as presented | No decoding branch before the comparison; nothing shares the store |
+| `0x00` | unlisted, so `config` | | `config`, reads are not writes | Section 13 |
+| `EXT_CORE_VREG` raises from the network | passed | not said | **refused** | Owner's rule, section 13 |
+| Holding a lock | renew for ever | "when its session closes or the timeout elapses" | also one budget per device | Section 6 |
+| A closed session's queued commands | run | not said | answered unrun | Section 6 |
+| `RTA_CONFIG` attribution | any recent writer | the session whose `REQ_RTA_SET_CONFIG` it answers | as the spec | Section 4's reasoning: a follower must not take a change for its own |
 
 Record further differences from HB7's runs here.
 
@@ -362,25 +389,35 @@ place where the app's path needs them; each file's header says what is left.
   CSPRNG for tokens and PINs. `dspi_link::messages` lacks `Serialize` on hub-side
   replies: ask for it, or keep hub-side writers in `server.rs`.
 
-**HB2, `router.rs`, `policy.rs`, `lock.rs`, `relay.rs`.**
-- `Policy::allows` and `denied` for non-admin roles are the `todo!`s.
-- `Router`: add the `TOO_LARGE` limit in `admit` (for network sessions only; the app has
-  no wire limit), and the analyser's STOP arbitration. `before_exec` already returns
-  `Result<ExecTicket, (status, payload)>` and `run_command` answers an `Err` without the
-  device, on the worker, in queue order (spec 7.15); so this needs no edit in `device.rs`.
-  `Polls::others_poll` gives the polled half.
-- **Open point, `EXT_CORE_VREG`.** The confirmation-word rule (`OVERVOLT`, CG14) lives in the
-  client core, so a client can send a raw `EXT_CORE_VREG` raise through `cmd` and skip it.
-  **Provisional default, until the owner says otherwise: the hub refuses (`DENIED`) a raise the
-  rule would ask for**, that is a target above 1200 mV and above the unit's current voltage,
-  an unreadable current counting as needing it. A hub cannot type a word for anyone. So a raise
-  past 1200 mV is not possible through a hub for now; lowering, and raises the rule would not
-  ask about, pass for admins as usual. The firmware is the same either way. Not implemented in
-  HB0; HB2 implements the default, and asks the owner.
-- Lock messages, and telling the registry its holder (`locked_by`) under L1 after L2 is
-  released, never nested the other way.
+**HB1 as built, for HB5, HB6 and HB7.** The header of `server.rs` has the table of what a hostile
+socket can cost.
+- `Hub::network()` gives a `NetworkControl`: `port`, `auth` (`begin_pairing`, `clients`), and `revoke`
+  and `set_role`, which reach live sessions. Use those two, not `AuthStore`'s: alone they leave the
+  session open. `begin_pairing` returns a `Result`, since a PIN without random numbers is worse than none.
+- **One owner of the store.** `Hub::start` opens it once into an `AuthStore`, which `Server::start` is
+  handed, and `StoredNames` is HB3's `NameStore` through it. Clients and device names share a file, so two
+  writers would each put back what the other changed.
+- `NetworkConfig` adds `bind` (tests use loopback), `mdns_name` (**HB5 sets it**, or a page opened at the
+  `.local` name is refused) and `limits`.
+- `hub.stats` and `hub.rename` answer `unsupported` to an admin: not in this WP's entry. `name` in the
+  store has no caller yet, and `HubHandle::name` is fixed at start.
+- Switching `NetworkConfig::access` between starts revokes every token (spec 6.2).
+- Residual, accepted: a host with many IPv4 addresses (or IPv6 prefixes) can hold every slot for up to
+  30 s at a time, as the per-address cap is its only defence there. Those already authenticated are
+  untouched. The 10 s stall's close 1011 usually cannot be sent, as the failed write may have cut a
+  frame in two: the socket just closes.
+- Close order: close frame, half-close, up to `close_grace` for the peer's reply, so what the peer has sent
+  does not turn the close into a reset that loses the frame.
+
+**HB2, `router.rs`, `policy.rs`, `lock.rs`, `relay.rs`.** Done; section 13. What others need:
+- HB1: `lock::handle_message(&hub, &session, &json)` answers `lock.acquire` and `lock.release`
+  and is `None` for anything else. `HubHandle::denied(role)` is `policy.denied`.
+  `router::MAX_PAYLOAD` is `limits.max_payload`, `hub::MAX_INFLIGHT` is `limits.max_inflight`.
+  Also advertise cap `lock`.
+- HB3: `Polls::next_due` must be `None` exactly when nothing is subscribed, as its doc says:
+  the worker asks `others_poll` only otherwise.
 - Keep: admission on the submitter's thread, execution order only from the worker's
-  queue, the scalar and bulk split.
+  queue, the split of attribution by what a packet can answer.
 
 **HB3, `registry.rs`, `snapshot.rs`, `polls.rs`.**
 - `RegistryEvent::to_json` and its broadcast in `HubInner::publish` are done (HB0). HB3
@@ -394,6 +431,26 @@ place where the app's path needs them; each file's header says what is left.
   ask). The worker reads it in queue order and calls `set_bulk`. No edit in `device.rs`.
 - `Polls`: fill the scheduler. `next_due`, `take_due`, `finished` already run on the worker.
   `PollJob` carries the session's `Arc<Outbox>`, so `finished` calls `push_poll` directly.
+
+<!-- WP HB3 -->
+**HB3 as built, for HB1 and HB6.** The headers of `polls.rs` and `snapshot.rs` have the reasons.
+- **Call these, not `device.polls` or `device.snapshot`:** `HubHandle::poll_subscribe`,
+  `poll_unsubscribe`, `snapshot` and `rename`. `poll_subscribe` wakes a worker asleep with no polls.
+  `PollRefused::code` and `SnapshotRefused::code` are the `err` codes. `POLL_MAX_HZ` and
+  `POLL_BUDGET_BPS` are the `hello.limits`.
+- **A `PollJob` is one group's read, not one subscriber's**, so the outboxes sit on the
+  subscribers and `finished` fans out. `take_due` gives at most one, so a command waits for one
+  read at most. `finished` takes the transport's `Result`, for `poll.error`'s code.
+- **One budget per device, shared:** 200 000 B/s and 320 reads/s, the group costing once. The
+  reads limit is enforced at `take_due` too, so subscribing in a loop cannot exceed it.
+- **Polls stand back from a client's own `0xA2`/`0xA3`** for 500 ms, since any other request
+  tears down its chunk session. A snapshot read does not (it is rare, and a torn client restarts).
+- **Names:** `HubConfig::names` is a `NameStore`, which a networked hub gets from its store (`StoredNames`) unless given another. A stored name is
+  saved with L1 released; `names_saving` sits above L1 and only keeps saves in order. A board's
+  `NOTIFY_EVT_DEVICE_NAME` goes from the reader to the supervisor (`SupMsg::BoardName`), since
+  the reader must not take L1 or touch a disk.
+- **Snapshot:** warm from attach on a networked hub, cold on an in-process one. `status_b64` and
+  the device object's `inputs` and `wire_version` are left out, which the spec allows.
 
 **HB5, `advertise.rs`, `web.rs`.** `Advertiser` wraps `MdnsAdvertiser` behind feature `mdns`.
 Start it after the server binds, with the bound port, into `Threads::advertiser`. Update it
@@ -483,3 +540,79 @@ Things worth attacking, as the author sees them:
    firmware does not look at it.
 6. Section 4's busy window is narrower than "the opcodes the direct path wraps": those opcodes
    alone made a connect take 4.2 s, so a write must also have just run.
+
+## 13. Commands, roles and the voltage rule
+
+**Where things are decided.** On the submitter's thread, without the device (`Router::admit`):
+size (`TOO_LARGE`), role (`DENIED`), lock (`LOCKED`), then `max_inflight` (`RATE_LIMITED`). On the
+worker, in queue order, with the device available (`Router::before_exec`): a closed session's
+leftovers, the analyser's STOP (spec 7.15) and the voltage rule. The worker passes what they need
+as `ExecUnit`, so `before_exec` takes no router lock across a transfer.
+
+**How `0x00` is classed, for client authors.** `REQ_EXTENSION` is not in upstream's table
+(`policy/commands.json`), and spec section 10 rule 7 makes an unlisted command `config`. So:
+
+- **Admin only, both directions, for every sub-command**, reads included. `EXT_LIST`,
+  `EXT_NOTIFY_FEATURES` and the voltage status are no exception.
+- A viewer or control client is answered `DENIED`. Treat a refused read as "this device has no
+  extension channel" (`dspi-core/src/ext.rs` does), and hide the features behind it.
+- `policy.denied` lists `[0, 0]` and `[0, 1]` for those roles, although upstream's list has no
+  unlisted codes, so a client can grey the controls out first.
+- The IN side only reads (`ext_handle_get` in the firmware), so a read of `0x00` is not a write:
+  it takes no attribution and opens no busy window (`Policy::mutates`).
+- This is what the table says today, not a judgement of each sub-command. If control users should
+  have the crossfeed pair map, say, that needs a per-sub-command class, which the table's format
+  does not have.
+
+A direction the table does not list for a code is `config` too, as in the Swift hub.
+
+**The voltage rule. Provisional, for the owner to confirm.** The owner's rule (`PLAN-CLIENTS`
+CG14, `dspi_session::overvolt`): a target above 1200 mV and above the unit's current voltage needs
+the typed word `OVERVOLT`, an unreadable current counting as needing it, with no host-side record.
+It is judged in the client's core, so a raw `EXT_CORE_VREG` from a remote client would skip it, and a
+hub cannot type a word for anyone. The hub therefore **refuses every write the rule would ask a word
+for from a network session**:
+
+- **The same rule, the same read.** `overvolt::op_needs_word` on `dspi_session::ext::read_core_vreg`,
+  read on the worker, immediately before the write, in the same turn of the queue, so no other
+  session's command lands between. The firmware's request is deferred to its main loop, so the status
+  can miss a request sent just before. That can only hide a pending change, never a raise past what
+  the unit had: it is the same limit every client has.
+- **For every role on the network.** A viewer or control client is refused by role first; an admin
+  here.
+- **Not for the app's session (`LOCAL_SESSION_ID`).** Someone at the machine who typed the word must not
+  be refused because sharing happens to be on. This is safe because the session is this process's own
+  core, whose `core_vreg_op` is the only path that encodes these requests: it judges the word itself,
+  on a status read through this same queue, and `raw_set` refuses them, as do the C ABI's calls, which go
+  through the core. So the app behaves the same with sharing on or off
+  (`tests/wp_hb2_app_vreg.rs`). The limit: `HubHandle::open_local` is public Rust, so code linked into
+  the same process could send raw bytes. That is the embedder's own trust boundary, not a remote one.
+  One thing differs from the worker's read: another session's command can land between the core's read
+  and its write. No other session can raise the voltage, so that cannot make the judgement wrong upward.
+- **The answer is `DENIED`**, with no device write. Not `BLOCKED`: the spec gives that to a device
+  refusing a command on its transport, and `map_status` reads it as a stall, "this build lacks it",
+  whereas the core reads `Denied` as refused and says so.
+- **What it can't judge, it refuses.** A payload of the wrong length or an op it does not know: the
+  firmware refuses those too, and a later build might not. `wValue` is compared whole, as the firmware
+  does, so `0x0102` is not this command.
+- **What still passes, for an admin:** anything at or below 1200 mV, a level or lower target,
+  `TRIAL_END`, `AUTO`, `CLEAR`, and `SET 0` on a readable unit. `AUTO` lets the firmware raise by
+  itself after repeated hangs, which the rule does not ask about (CG14).
+
+`policy.denied` cannot express this: it depends on the unit. A client finds out by the answer, and
+CG11's flow then hides itself until the next connection (`dspi-core/src/vreg.rs`).
+
+So a raise past 1.20 V is not possible from a remote client until the owner says otherwise, and
+remains possible, with the word, from the app on the machine. Both halves are provisional, pending
+the owner.
+
+**A write is never replayed.** `run_command` makes one call and answers what it got: a stall,
+a timeout, a bus error or a lost device alike. The only repeats are parameter reads inside a busy
+window, and `Policy::retries_stall` refuses anything that mutates (`wp_hb2_a_failed_write_is_never_replayed`,
+`wp_hb2_a_write_as_read_is_not_retried_and_a_parameter_read_is`). A queued write dropped with its device
+answers `NO_DEVICE` and does not land on the board that comes back
+(`wp_hb2_a_write_queued_when_the_device_left_does_not_land_on_its_return`).
+
+**Locks.** Spec 7.7, plus the budget (section 6). `device.changed` carries `locked_by` as the
+router has it, set under L1 with L2 released, whenever a lock changes through the hub and on the
+supervisor's tick, which is how a timeout and the app's own lock show. It is not an embedder event.

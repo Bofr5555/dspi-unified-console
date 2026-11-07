@@ -17,6 +17,18 @@ const PROTOCOL_V2: u8 = 2;
 const EVT_IDLE: u8 = nfy::NOTIFY_EVT_IDLE as u8;
 const EVT_PARAM_CHANGED: u8 = nfy::NOTIFY_EVT_PARAM_CHANGED as u8;
 const EVT_BULK_INVALIDATED: u8 = nfy::NOTIFY_EVT_BULK_INVALIDATED as u8;
+const EVT_RTA_CONFIG: u8 = nfy::NOTIFY_EVT_RTA_CONFIG as u8;
+
+/// Which writes a notification can answer (`Router::consume_attribution`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PacketKind {
+    /// `PARAM_CHANGED`: a scalar write.
+    Scalar,
+    /// `BULK_INVALIDATED`: a bulk write.
+    Bulk,
+    /// `RTA_CONFIG`: a `REQ_RTA_SET_CONFIG` (spec 7.15).
+    RtaConfig,
+}
 
 /// Whether a device packet is relayed: "every non-idle packet", and never a v1
 /// legacy one, since every v1 event has a v2 twin (spec 8.3).
@@ -24,12 +36,13 @@ pub fn is_relayable(packet: &[u8]) -> bool {
     matches!(packet, [PROTOCOL_V2, event, _, _, ..] if *event != EVT_IDLE)
 }
 
-/// What a packet says about its origin: its raw `ParamSource`, and whether it is a
-/// `BULK_INVALIDATED`. `None` for events that carry no source.
-pub fn packet_source(packet: &[u8]) -> Option<(u8, bool)> {
+/// What a packet says about its origin: its raw `ParamSource`, and which writes it
+/// can answer. `None` for events that carry no source.
+pub fn packet_source(packet: &[u8]) -> Option<(u8, PacketKind)> {
     match *packet.get(1)? {
-        EVT_PARAM_CHANGED => Some((*packet.get(8)?, false)),
-        EVT_BULK_INVALIDATED => Some((*packet.get(4)?, true)),
+        EVT_PARAM_CHANGED => Some((*packet.get(8)?, PacketKind::Scalar)),
+        EVT_BULK_INVALIDATED => Some((*packet.get(4)?, PacketKind::Bulk)),
+        EVT_RTA_CONFIG => Some((*packet.get(16)?, PacketKind::RtaConfig)),
         _ => None,
     }
 }
@@ -178,12 +191,12 @@ mod tests_wp_hb0 {
     #[test]
     fn wp_hb0_the_source_is_read_safely() {
         let mut p = vec![2, EVT_PARAM_CHANGED, 0, 1, 0, 0, 4, 0, 7];
-        assert_eq!(packet_source(&p), Some((7, false)));
+        assert_eq!(packet_source(&p), Some((7, PacketKind::Scalar)));
         p.truncate(8);
         assert_eq!(packet_source(&p), None, "short");
         assert_eq!(
             packet_source(&[2, EVT_BULK_INVALIDATED, 0, 1, 3]),
-            Some((3, true))
+            Some((3, PacketKind::Bulk))
         );
         assert_eq!(packet_source(&[2]), None);
         assert_eq!(packet_source(&[2, EVT_IDLE, 0, 1, 3]), None);
@@ -225,5 +238,108 @@ mod tests_wp_hb0 {
         assert_eq!(b.pop(NOW), Pop::Idle, "another device's");
         assert!(matches!(net.pop(NOW), Pop::Item(Outbound::Notify { .. })));
         assert!(!net.is_closed());
+    }
+}
+
+#[cfg(test)]
+mod tests_wp_hb2 {
+    use std::time::Duration;
+
+    use super::*;
+    use crate::session::Pop;
+
+    const NOW: Duration = Duration::ZERO;
+
+    /// Spec 7.15: the source byte of `RTA_CONFIG` is at offset 16.
+    #[test]
+    fn wp_hb2_an_analyser_configuration_carries_its_source() {
+        let mut p = vec![0; 17];
+        p[0] = PROTOCOL_V2;
+        p[1] = EVT_RTA_CONFIG;
+        p[16] = nfy::PARAM_SRC_HOST_SET as u8;
+        assert_eq!(
+            packet_source(&p),
+            Some((nfy::PARAM_SRC_HOST_SET as u8, PacketKind::RtaConfig))
+        );
+        p.truncate(16);
+        assert_eq!(packet_source(&p), None, "short");
+    }
+
+    /// Everyone gets a packet with the same `origin`, the writer too: dropping an own
+    /// echo is the client's business, and only it knows its session.
+    #[test]
+    fn wp_hb2_the_writer_is_not_skipped_and_each_session_counts_its_own_sequence() {
+        let relay = Relay::default();
+        let (a, b) = (Arc::new(Outbox::new()), Arc::new(Outbox::new()));
+        relay.add(2, Scope::AllDevices, Arc::clone(&a));
+        relay.add(3, Scope::AllDevices, Arc::clone(&b));
+        relay.publish_notify(0, 2, &[2, EVT_PARAM_CHANGED, 0, 0]);
+        relay.remove_session(3);
+        relay.publish_notify(0, 3, &[2, EVT_PARAM_CHANGED, 0, 1]);
+        let next = |o: &Outbox| match o.pop(NOW) {
+            Pop::Item(Outbound::Notify { seq, origin, .. }) => (seq, origin),
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(next(&a), (0, 2));
+        assert_eq!(next(&b), (0, 2));
+        assert_eq!(next(&a), (1, 3));
+        assert_eq!(b.pop(NOW), Pop::Idle, "a closed session hears nothing more");
+    }
+
+    /// A client that stops reading loses only its own notifications, and is told to
+    /// re-read that device once it has caught up.
+    #[test]
+    fn wp_hb2_a_slow_client_costs_only_itself_and_gets_a_resync() {
+        let relay = Relay::default();
+        let (slow, fast) = (
+            Arc::new(Outbox::with_capacity(4, 16)),
+            Arc::new(Outbox::with_capacity(4, 16)),
+        );
+        relay.add(2, Scope::AllDevices, Arc::clone(&slow));
+        relay.add(3, Scope::AllDevices, Arc::clone(&fast));
+        for i in 0u16..100 {
+            relay.publish_notify(7, 0, &[2, EVT_PARAM_CHANGED, 0, i as u8]);
+            assert!(
+                matches!(fast.pop(NOW), Pop::Item(Outbound::Notify { seq, .. }) if seq == i),
+                "the reader of its own queue misses nothing"
+            );
+        }
+        let mut items = Vec::new();
+        while let Pop::Item(item) = slow.pop(NOW) {
+            items.push(item);
+        }
+        assert_eq!(items.len(), 5, "what fits, and one RESYNC");
+        assert!(
+            matches!(items[0], Outbound::Notify { seq: 96, .. }),
+            "a gap shows"
+        );
+        assert_eq!(
+            items[4],
+            Outbound::Resync {
+                handle: 7,
+                reason: 0
+            }
+        );
+    }
+
+    #[test]
+    fn wp_hb2_a_reattached_device_resyncs_those_who_follow_it() {
+        let relay = Relay::default();
+        let (net, app, other) = (
+            Arc::new(Outbox::new()),
+            Arc::new(Outbox::new()),
+            Arc::new(Outbox::new()),
+        );
+        relay.add(2, Scope::AllDevices, Arc::clone(&net));
+        relay.add(1, Scope::Attachment(5), Arc::clone(&app));
+        relay.add(1, Scope::Attachment(6), Arc::clone(&other));
+        relay.resync_all(5, 1);
+        let resync = Pop::Item(Outbound::Resync {
+            handle: 5,
+            reason: 1,
+        });
+        assert_eq!(net.pop(NOW), resync);
+        assert_eq!(app.pop(NOW), resync);
+        assert_eq!(other.pop(NOW), Pop::Idle);
     }
 }
