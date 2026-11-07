@@ -24,6 +24,8 @@ use dspi_session::preset_file::{
     FilterReport, MAX_DOCUMENT_BYTES,
 };
 use dspi_tui::shell::connect::Target;
+// -- WP TM4 --
+use dspi_tui::shell::read_only;
 use serde_json::json;
 
 use crate::{connect, exit, positional, resolve_channel};
@@ -146,7 +148,9 @@ fn write_document(path: &str, text: &str) -> Result<(), String> {
             _ => Ok(()),
         };
     }
-    std::fs::write(path, text).map_err(|e| format!("could not write {path}: {e}"))
+    // -- WP TM21 --
+    preset_file::save_file(std::path::Path::new(path), text)
+        .map_err(|e| format!("could not write {path}: {e}"))
 }
 
 /// One line of a command's own report, to standard output unless that holds the
@@ -182,8 +186,19 @@ pub(crate) fn cmd_export(target: &Target, flags: &[&str], json: bool) -> u8 {
         Ok(s) => s,
         Err(c) => return c,
     };
-    let (text, summary) = export_text(&mut session, path, format);
-    finish_export(path, format.name(), &text, summary, json)
+    // -- WP TM21 --
+    run_export(&mut session, path, format, json)
+}
+
+/// Capture, then write. A failed read ends the export before any file is touched.
+fn run_export(session: &mut Session, path: &str, format: Format, json: bool) -> u8 {
+    match export_text(session, path, format) {
+        Ok((text, summary)) => finish_export(path, format.name(), &text, summary, json),
+        Err(e) => {
+            eprintln!("dspi: export failed, nothing was written: {e}");
+            exit::TRANSPORT
+        }
+    }
 }
 
 /// A document's text, and what to say about it: a line and its JSON fields.
@@ -191,32 +206,58 @@ fn export_text(
     session: &mut Session,
     path: &str,
     format: Format,
-) -> (String, (String, serde_json::Value)) {
+) -> Result<(String, (String, serde_json::Value)), preset_file::CaptureError> {
+    // -- WP TM4 --
+    let read_only = read_only::is_read_only(session.capabilities());
     if format == Format::Preset {
         let name = (path != "-")
             .then(|| std::path::Path::new(path).file_stem())
             .flatten()
             .and_then(|s| s.to_str())
             .map(str::to_string);
-        let doc = preset_file::capture(session, name);
+        let doc = preset_file::capture(session, name)?;
         let line = format!(
             "{} channels, {} crosspoints",
             doc.channels.len(),
             doc.matrix.len()
         );
-        let fields = json!({ "channels": doc.channels.len(), "crosspoints": doc.matrix.len() });
-        return (preset_file::write(&doc), (line, fields));
+        let mut fields = json!({
+            "channels": doc.channels.len(),
+            "crosspoints": doc.matrix.len(),
+            // -- WP TM4 --
+            "read_only": read_only,
+        });
+        // -- WP TM21 --
+        let shown = if path == "-" { "the document" } else { path };
+        if let Some(w) = read_only::export_warning(&doc, shown) {
+            eprintln!("dspi: warning: {w}");
+            fields["warning"] = json!(w);
+        }
+        return Ok((preset_file::write(&doc), (line, fields)));
     }
-    let doc = preset_file::capture_filters(session);
+    let doc = preset_file::capture_filters(session)?;
     let bands: usize = doc.channels.iter().map(|c| c.peq.len()).sum();
     let line = format!("{} channels, {bands} bands", doc.channels.len());
-    let fields = json!({ "channels": doc.channels.len(), "bands": bands });
+    let mut fields =
+        json!({ "channels": doc.channels.len(), "bands": bands, "read_only": read_only });
+    // -- WP TM21 --
+    let left = doc.unreported();
+    if !left.is_empty() {
+        let shown = if path == "-" { "the document" } else { path };
+        let w = format!(
+            "this device did not report these, so {shown} leaves them out and an import \
+             leaves them alone: {}",
+            left.join("; ")
+        );
+        eprintln!("dspi: warning: {w}");
+        fields["warning"] = json!(w);
+    }
     let text = if format == Format::FiltersJson {
         doc.write()
     } else {
         filterfile::write(&doc.to_text(), doc.saved_utc.as_deref().unwrap_or(""))
     };
-    (text, (line, fields))
+    Ok((text, (line, fields)))
 }
 
 /// Write the text and report on it.
@@ -361,6 +402,8 @@ fn import_preset(target: &Target, text: &str, path: &str, flags: &[&str], json: 
                 "crossoverBands": report.crossover_bands_applied,
                 "crosspoints": report.crosspoints_applied,
                 "missing": report.missing_channels, "skipped": report.skipped,
+                // -- WP TM21 --
+                "leftAlone": report.left_alone, "warnings": report.warnings,
                 "clean": report.is_clean(), "lines": lines,
             })
             .to_string(),
@@ -729,7 +772,7 @@ mod wp_tm10_tests {
     fn wp_tm10_the_mac_document_applies_and_comes_back_out() {
         let doc = preset_file::parse(MAC).unwrap();
         let mut s = plain_demo();
-        let before = preset_file::capture(&mut s, None);
+        let before = preset_file::capture(&mut s, None).unwrap();
         assert_ne!(
             before.channels, doc.channels,
             "the fixture must move something"
@@ -747,7 +790,7 @@ mod wp_tm10_tests {
         assert!(report.missing_channels.is_empty(), "{report:?}");
         assert_bands(&mut s, &doc);
 
-        let out = preset_file::capture(&mut s, doc.meta.name.clone());
+        let out = preset_file::capture(&mut s, doc.meta.name.clone()).unwrap();
         for (a, b) in doc.channels.iter().zip(&out.channels) {
             assert_eq!(a.channel_id, b.channel_id);
             assert_eq!(a.input_index, b.input_index);
@@ -779,7 +822,7 @@ mod wp_tm10_tests {
         s.dry_run = true;
         preset_file::apply(&mut s, &doc, preset_file::ApplyOptions::default());
         s.dry_run = false;
-        let out = preset_file::capture(&mut s, None);
+        let out = preset_file::capture(&mut s, None).unwrap();
         assert_eq!(out.crossfeed.pair_map, Some(vec![0, 0, 0, 0]));
     }
 
@@ -788,8 +831,10 @@ mod wp_tm10_tests {
     #[test]
     fn wp_tm10_the_terminal_and_qt_export_the_same_document() {
         let mut s = plain_demo();
-        let ours: serde_json::Value =
-            serde_json::from_str(&preset_file::write(&preset_file::capture(&mut s, None))).unwrap();
+        let ours: serde_json::Value = serde_json::from_str(&preset_file::write(
+            &preset_file::capture(&mut s, None).unwrap(),
+        ))
+        .unwrap();
         let qt: serde_json::Value = serde_json::from_str(QT).unwrap();
         let mut diffs = Vec::new();
         compare(&qt, &ours, "", &mut diffs);
@@ -884,7 +929,7 @@ mod wp_tm10_tests {
         let mac = preset_file::parse(MAC).unwrap();
         let mut s = plain_demo();
         preset_file::apply(&mut s, &mac, preset_file::ApplyOptions::default());
-        let text = preset_file::write(&preset_file::capture(&mut s, Some("x".into())));
+        let text = preset_file::write(&preset_file::capture(&mut s, Some("x".into())).unwrap());
 
         let core = qt_core();
         let reply: serde_json::Value = serde_json::from_str(&core.config_import(text, 0)).unwrap();
@@ -934,7 +979,7 @@ mod wp_tm10_tests {
         let mut s = plain_demo();
         let mac = preset_file::parse(MAC).unwrap();
         preset_file::apply(&mut s, &mac, preset_file::ApplyOptions::default());
-        let mut doc = preset_file::capture_filters(&mut s);
+        let mut doc = preset_file::capture_filters(&mut s).unwrap();
         // A Linkwitz Transform, the one band that uses `qp`.
         doc.channels[0].peq[1] = preset_file::BandBlock {
             r#type: 11,
@@ -965,7 +1010,7 @@ mod wp_tm10_tests {
         assert_eq!(report.preamps_applied, 8);
         assert_eq!(report.crossover_bands_applied, 9 * 4);
         assert_eq!(
-            preset_file::capture_filters(&mut clean).channels,
+            preset_file::capture_filters(&mut clean).unwrap().channels,
             doc.channels
         );
     }
@@ -975,7 +1020,7 @@ mod wp_tm10_tests {
         let mut s = plain_demo();
         let mac = preset_file::parse(MAC).unwrap();
         preset_file::apply(&mut s, &mac, preset_file::ApplyOptions::default());
-        let doc = preset_file::capture_filters(&mut s);
+        let doc = preset_file::capture_filters(&mut s).unwrap();
         let text = filterfile::write(&doc.to_text(), "now");
 
         let parsed = FilterDocument::from_text(&filterfile::parse(&text).unwrap());
@@ -983,7 +1028,7 @@ mod wp_tm10_tests {
         let (report, _, skipped) = apply_filters(&mut clean, &parsed, false);
         assert!(skipped.is_empty(), "{skipped:?}");
         assert_eq!(report.refused, 0);
-        let out = preset_file::capture_filters(&mut clean);
+        let out = preset_file::capture_filters(&mut clean).unwrap();
         for (a, b) in doc.channels.iter().zip(&out.channels) {
             assert_eq!(a.preamp_db, b.preamp_db, "{}", a.header);
             let used = |v: &[preset_file::BandBlock]| {
@@ -1181,5 +1226,200 @@ mod wp_tm10_tests {
             doc["names"].as_array().unwrap(),
             &snap["names"].as_array().unwrap()[..doc["names"].as_array().unwrap().len()]
         );
+    }
+}
+
+// -- WP TM4 --
+#[cfg(test)]
+mod tests_wp_tm4 {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use dspi_transport::{DeviceDescriptor, Result, Transport, TransportCaps};
+    use dspi_tui::shell::read_only::{BulkReads, ReadOnlyTransport, allows_in};
+
+    use super::*;
+
+    /// Counts what reaches the device that a read-only device must not see.
+    struct Spy(dspi_transport::FakeDevice, Arc<AtomicUsize>);
+
+    impl Spy {
+        fn note(&self, opcode: u8, value: u16) {
+            if !allows_in(opcode, value) {
+                self.1.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    }
+
+    impl Transport for Spy {
+        fn control_in(&mut self, o: u8, v: u16, l: u16) -> Result<Vec<u8>> {
+            self.note(o, v);
+            self.0.control_in(o, v, l)
+        }
+        fn control_in_upto(&mut self, o: u8, v: u16, l: u16) -> Result<Vec<u8>> {
+            self.note(o, v);
+            self.0.control_in_upto(o, v, l)
+        }
+        fn control_out(&mut self, o: u8, v: u16, d: &[u8]) -> Result<()> {
+            self.1.fetch_add(1, Ordering::Relaxed);
+            self.0.control_out(o, v, d)
+        }
+        fn descriptor(&self) -> &DeviceDescriptor {
+            self.0.descriptor()
+        }
+        fn caps(&self) -> TransportCaps {
+            self.0.caps()
+        }
+    }
+
+    /// `dspi cs import --save`, which writes through `Surfaces`: it does write
+    /// on this build's format, and sends nothing on another.
+    #[test]
+    fn wp_tm4_cs_import_sends_nothing_to_a_read_only_device() {
+        let mut demo = Target::Demo
+            .open_session(&dspi_tui::shell::connect::no_prompt)
+            .unwrap();
+        let mut doc = preset_file::capture_control_surfaces(&mut demo).unwrap();
+        // Review w1e: the CG16 model follows the firmware's `cs_validate_group`
+        // rule 0x14, so an empty group must be all zero, not just kind 0.
+        doc.groups.iter_mut().for_each(|g| {
+            g.target_kind = 0;
+            g.member_mask = 0;
+            g.name.clear();
+        });
+        let caps = demo.capabilities().clone();
+
+        let writes = Arc::new(AtomicUsize::new(0));
+        let spy = Spy(dspi_transport::FakeDevice::demo(), Arc::clone(&writes));
+        let mut session = Session::new(Box::new(spy), caps.clone()).unwrap();
+        assert_eq!(run_cs_import(&mut session, &doc, true, true), exit::OK);
+        assert!(
+            writes.load(Ordering::Relaxed) > 0,
+            "the control wrote nothing"
+        );
+
+        let mut old = caps;
+        old.wire_format = 17;
+        let writes = Arc::new(AtomicUsize::new(0));
+        let spy = Spy(dspi_transport::FakeDevice::demo(), Arc::clone(&writes));
+        let guarded = ReadOnlyTransport::new(Box::new(spy), BulkReads::Mapped, None, Some(17));
+        let mut session = Session::new(Box::new(guarded), old).unwrap();
+        assert_ne!(run_cs_import(&mut session, &doc, true, true), exit::OK);
+        assert_eq!(writes.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn wp_tm4_a_preset_export_says_read_only() {
+        let (mut session, _) = crate::tests_wp_tm4::newer_device();
+        let (_, (_, fields)) = export_text(&mut session, "x.dspipreset", Format::Preset).unwrap();
+        assert_eq!(fields["read_only"], json!(true));
+    }
+
+    // -- WP TM21 --
+    /// A link that goes away partway: reads work, then one does not.
+    fn dying_device(opcode: u8) -> Session {
+        use dspi_transport::MockTransport;
+        use dspi_transport::mock::Reply;
+        let good = Target::Demo
+            .open_session(&dspi_tui::shell::connect::no_prompt)
+            .unwrap();
+        let caps = good.capabilities().clone();
+        let mock = MockTransport::new()
+            .reply(
+                dspi_proto::generated::opcodes::REQ_GET_ALL_PARAMS_CHUNK,
+                Reply::Stall,
+            )
+            .reply(opcode, Reply::Disconnect)
+            .answering_everything(vec![0u8; 64]);
+        Session::new(Box::new(mock), caps).unwrap()
+    }
+
+    fn scratch(name: &str) -> String {
+        std::env::current_exe()
+            .unwrap()
+            .with_file_name(format!("wp_tm21_{name}_{}", std::process::id()))
+            .to_str()
+            .unwrap()
+            .to_string()
+    }
+
+    #[test]
+    fn wp_tm21_a_failed_read_writes_no_file_and_keeps_the_old_one() {
+        let gain = dspi_proto::generated::opcodes::REQ_GET_OUTPUT_GAIN;
+
+        let path = scratch("none.dspipreset");
+        let mut s = dying_device(gain);
+        assert_eq!(
+            run_export(&mut s, &path, Format::Preset, true),
+            exit::TRANSPORT
+        );
+        assert!(std::fs::metadata(&path).is_err(), "no file at all");
+
+        let path = scratch("old.dspipreset");
+        std::fs::write(&path, "the old export").unwrap();
+        let mut s = dying_device(gain);
+        assert_eq!(
+            run_export(&mut s, &path, Format::Preset, true),
+            exit::TRANSPORT
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "the old export");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn wp_tm21_a_failed_read_writes_no_filter_file_and_keeps_the_old_one() {
+        let eq = dspi_proto::generated::opcodes::REQ_GET_EQ_PARAM;
+        for format in [Format::Filters, Format::FiltersJson] {
+            let path = scratch(&format!("filters_none_{}", format.name()));
+            let mut s = dying_device(eq);
+            assert_eq!(run_export(&mut s, &path, format, true), exit::TRANSPORT);
+            assert!(std::fs::metadata(&path).is_err(), "no file at all");
+
+            let path = scratch(&format!("filters_old_{}", format.name()));
+            std::fs::write(&path, "the old export").unwrap();
+            let mut s = dying_device(eq);
+            assert_eq!(run_export(&mut s, &path, format, true), exit::TRANSPORT);
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "the old export");
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+
+    /// An export that left keys out still goes into Qt's importer, whose reader
+    /// is lenient about every key inside a document (`dspi_core::files`).
+    #[test]
+    fn wp_tm21_qts_importer_takes_a_document_with_keys_left_out() {
+        let core = dspi_core::DspiCore::new();
+        core.open_demo().unwrap();
+        let mut demo = Target::Demo
+            .open_session(&dspi_tui::shell::connect::no_prompt)
+            .unwrap();
+        let mut doc = preset_file::capture(&mut demo, None).unwrap();
+        doc.global.master_volume_db = None;
+        doc.loudness = Default::default();
+        for c in &mut doc.channels {
+            c.gain_db = None;
+        }
+        let text = preset_file::write(&doc);
+        assert!(!text.contains("masterVolumeDb") && !text.contains("loudness"));
+        let reply: serde_json::Value = serde_json::from_str(&core.config_import(text, 1)).unwrap();
+        assert_eq!(reply["ok"], true, "{reply}");
+    }
+
+    #[test]
+    fn wp_tm4_a_filter_export_invents_nothing_so_only_says_read_only() {
+        let (mut session, _) = crate::tests_wp_tm4::newer_device();
+        let (_, (_, fields)) = export_text(&mut session, "x.txt", Format::Filters).unwrap();
+        assert_eq!(fields["read_only"], json!(true));
+        assert!(fields.get("warning").is_none());
+    }
+
+    #[test]
+    fn wp_tm4_a_writable_devices_export_says_so() {
+        let mut session = Target::Demo
+            .open_session(&dspi_tui::shell::connect::no_prompt)
+            .unwrap();
+        let (_, (_, fields)) = export_text(&mut session, "x.dspipreset", Format::Preset).unwrap();
+        assert_eq!(fields["read_only"], json!(false));
+        assert!(fields.get("warning").is_none());
     }
 }

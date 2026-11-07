@@ -87,10 +87,17 @@ void SmokeDriver::run() {
     testBypassRepaint();
     testSweep();
     testReconnect();
+    // -- WP QD4 --
+    testNames();
+    // -- WP QD5 --
+    testOutputLatency();
+    testClockDiagAndCpuBars();
     // -- WP QD1 --
     testCsRefusals();
     // -- WP CG16 --
     testCsPages();
+    // -- WP QD2 --
+    testPairMap();
     testIdleAndCost();
     m_failures += g_qmlErrors;
     printf("smoke: %d checks, %d failures (%d QML errors)\n", m_checks, m_failures, g_qmlErrors);

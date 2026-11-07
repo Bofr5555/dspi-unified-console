@@ -70,12 +70,19 @@ private:
     void testBypassRepaint();
     // -- WP QD30 --
     void testPopoverAnchor();
+    // -- WP QD4 --
+    void testNames();
+    // -- WP QD5 --
+    void testOutputLatency();
+    void testClockDiagAndCpuBars();
     // -- WP QD1 --
     void testCsRefusals();
     void testCsCallerRefusals();
     void testSaveBarRefusal();
     // -- WP CG16 --
     void testCsPages();
+    // -- WP QD2 --
+    void testPairMap();
 
     // Whether a bypass toggle repaints the open channel's graph editor. Leaves
     // bypass as it found it. NotRun fills `why`.

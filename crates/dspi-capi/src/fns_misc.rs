@@ -1151,6 +1151,85 @@ pub extern "C" fn dspi_set_device_name(core: *mut FfiCore, name: *const c_char) 
     flag(core, |c| c.set_device_name(name.to_owned()))
 }
 
+// -- WP QD4 --
+/// The name of input source `source` as last known ("" when unnamed), cut to
+/// fit `out_buf`, with no traffic: for showing names, which connect has read
+/// and notifications keep current. 32 bytes always fit. False on firmware
+/// without source names, and for a source past the table.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_cached_input_source_name(
+    core: *mut FfiCore,
+    source: u8,
+    out_buf: *mut c_char,
+    buf_len: u32,
+) -> bool {
+    if out_buf.is_null() || buf_len == 0 {
+        return false;
+    }
+    with_core(core, false, |h| {
+        h.core
+            .cached_input_source_name(source)
+            .is_ok_and(|n| copy_out(&n, out_buf, buf_len))
+    })
+}
+
+/// The device's name as last known, as [`dspi_cached_input_source_name`]. False
+/// on firmware without device names.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_cached_device_name(
+    core: *mut FfiCore,
+    out_buf: *mut c_char,
+    buf_len: u32,
+) -> bool {
+    if out_buf.is_null() || buf_len == 0 {
+        return false;
+    }
+    with_core(core, false, |h| {
+        h.core
+            .cached_device_name()
+            .is_ok_and(|n| copy_out(&n, out_buf, buf_len))
+    })
+}
+
+/// On the demo device only: someone else renames input source `target`, or the
+/// device for 0xFF. "" clears the name. False on anything else.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_demo_rename_elsewhere(
+    core: *mut FfiCore,
+    target: u8,
+    name: *const c_char,
+) -> bool {
+    let Some(name) = c_str(name) else {
+        return false;
+    };
+    flag(core, |c| c.demo_rename_elsewhere(target, name.to_owned()))
+}
+
+// -- WP QD5 --
+/// On the demo device only: how an output-latency request lands. `mode` 0 at
+/// once, 1 after `reads` status reads, 2 never, 3 dropped after `reads` status
+/// reads; `blackout` status reads stall first while one is pending. False on
+/// anything else.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_demo_latency_timing(
+    core: *mut FfiCore,
+    mode: u8,
+    reads: u8,
+    blackout: u8,
+) -> bool {
+    flag(core, |c| c.demo_latency_timing(mode, reads, blackout))
+}
+
+// -- WP QD5 --
+/// On the demo device only: how many output-latency requests it has received,
+/// or `u32::MAX` on anything else.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_demo_latency_sets(core: *mut FfiCore) -> u32 {
+    with_core(core, u32::MAX, |h| {
+        h.core.demo_latency_sets().unwrap_or(u32::MAX)
+    })
+}
+
 // ── Added: diagnostics ────────────────────────────────────────────────
 
 /// The output latency's status: JSON {ok, raw, fields: [{name, value}]}.
@@ -1613,3 +1692,14 @@ mod tests_wp_q2b;
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "fns_misc/tests_wp_cg12.rs"]
 mod tests_wp_cg12;
+
+// -- WP QD4 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+#[path = "fns_misc/tests_wp_qd4.rs"]
+mod tests_wp_qd4;
+
+// -- WP QD5 --
+#[cfg(test)]
+#[path = "fns_misc/tests_wp_qd5.rs"]
+mod tests_wp_qd5;

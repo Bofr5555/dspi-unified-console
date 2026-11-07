@@ -434,6 +434,25 @@ impl FakeRemote {
 /// checks for [`TransportKind::Fake`] before sending it.
 pub const EXT_FAKE_VREG_SIM: u16 = 0xFFF0;
 
+// -- WP QD4 --
+/// `REQ_EXTENSION` OUT sub-command only a [`FakeDevice`] answers, as
+/// [`EXT_FAKE_VREG_SIM`]: `[target, name..]`, stored and announced as a rename
+/// by someone else (AN6, QD4, SW, TM17). `target` is an input source, or
+/// [`RENAME_ELSEWHERE_DEVICE`] for the device.
+pub const EXT_FAKE_RENAME_ELSEWHERE: u16 = 0xFFF1;
+/// The device itself as the target of [`EXT_FAKE_RENAME_ELSEWHERE`].
+pub const RENAME_ELSEWHERE_DEVICE: u8 = 0xFF;
+
+// -- WP QD5 --
+/// `REQ_EXTENSION` sub-command only a [`FakeDevice`] answers, as
+/// [`EXT_FAKE_VREG_SIM`], so a client can reach the firmware's deferred
+/// output-latency apply without a [`FakeRemote`]. OUT `[mode, reads, blackout]`
+/// sets how the next SET lands: mode 0 at once (a SET held so far applies on the
+/// next status read), 1 after `reads` status reads, 2 never, 3 dropped after
+/// `reads` status reads. `blackout` status reads stall first while a SET is
+/// pending. IN: the SETs received so far, a little-endian `u32`.
+pub const EXT_FAKE_LATENCY_TIMING: u16 = 0xFFF2;
+
 /// What can happen to a simulated device's core-voltage state (WP CG11).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VregSim {
@@ -1579,6 +1598,8 @@ impl State {
                 .locate("crossfeed", 0, 0, X_PAIR_MAP)
                 .and_then(|o| self.bytes(o, X_PAIR_MAP.2)),
             gext::EXT_CORE_VREG => Some(self.vreg_status()),
+            // -- WP QD5 --
+            EXT_FAKE_LATENCY_TIMING => Some(self.latency_sets().to_le_bytes().to_vec()),
             _ => None,
         }
     }
@@ -1835,6 +1856,13 @@ impl State {
                 }
                 _ => false,
             },
+            // -- WP QD4 --
+            EXT_FAKE_RENAME_ELSEWHERE => match data.split_first() {
+                Some((&target, name)) => self.rename_elsewhere(target, name),
+                None => false,
+            },
+            // -- WP QD5 --
+            EXT_FAKE_LATENCY_TIMING => self.latency_timing(data),
             _ => false,
         }
     }

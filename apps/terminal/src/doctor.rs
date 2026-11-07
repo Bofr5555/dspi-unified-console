@@ -8,8 +8,11 @@
 
 use dspi_link::LinkError;
 use dspi_proto::{USB_PID, USB_VID};
-use dspi_transport::{TransportError, UsbTransport, list_devices};
+use dspi_session::{Capabilities, probe_any};
+use dspi_transport::{Transport, TransportError, UsbTransport, list_devices};
 use dspi_tui::shell::connect::{self, LinkTarget, OpenError, Target};
+// -- WP TM4 --
+use dspi_tui::shell::read_only;
 
 /// Where the Linux rule belongs.
 const UDEV_PATH: &str = "/etc/udev/rules.d/70-dspi.rules";
@@ -140,22 +143,7 @@ fn usb_checks() -> Vec<Status> {
         match UsbTransport::open_serial(&d.serial) {
             Ok(mut t) => {
                 out.push(Status::Ok(format!("{}: interface claimed", d.short_name())));
-                match dspi_session::probe(&mut t) {
-                    Ok(caps) => out.push(Status::Ok(format!(
-                        "{}: {} firmware {}, wire V{}, {} channels",
-                        d.short_name(),
-                        caps.platform.name(),
-                        caps.firmware,
-                        caps.wire_format,
-                        caps.num_channels
-                    ))),
-                    Err(e) => out.push(Status::Fail(
-                        format!("{}: opened but would not answer: {e}", d.short_name()),
-                        "The device enumerated but is not responding to vendor \
-                         commands. Try unplugging and replugging it."
-                            .into(),
-                    )),
-                }
+                out.push(probe_status(&d.short_name(), &mut t));
             }
             Err(TransportError::PermissionDenied) => {
                 out.push(Status::Fail(
@@ -184,20 +172,48 @@ fn midi_ports_found(ports: &[String]) -> Status {
     ))
 }
 
+/// What a device opened and answered, in one line.
+// -- WP TM4 --
+fn device_status(name: &str, caps: &Capabilities) -> Status {
+    let line = format!(
+        "{name}: {} firmware {}, wire V{}, {} channels",
+        caps.platform.name(),
+        connect::printable(&caps.firmware),
+        caps.wire_format,
+        caps.num_channels
+    );
+    match read_only::banner(caps) {
+        Some(banner) => Status::Warn(format!("{line}. {banner}")),
+        None => Status::Ok(line),
+    }
+}
+
+/// Ask an open device what it is, whatever its wire format: firmware of another
+/// format is answering perfectly well, and is shown read-only.
+// -- WP TM4 --
+fn probe_status(name: &str, t: &mut dyn Transport) -> Status {
+    match probe_any(t) {
+        Ok((caps, _)) => device_status(name, &caps),
+        // It answered, in a format this build cannot map: a replug will not help.
+        Err(TransportError::Incompatible(why)) => Status::Fail(
+            format!("{name}: {why}"),
+            "Update the firmware or this application, whichever is older.".into(),
+        ),
+        Err(e) => Status::Fail(
+            format!("{name}: opened but would not answer: {e}"),
+            "The device enumerated but is not responding to vendor \
+             commands. Try unplugging and replugging it."
+                .into(),
+        ),
+    }
+}
+
 /// Opened and asked, as the USB check does: seeing a device proves little.
 fn open_check(target: &Target, name: &str) -> Status {
     let opened = target.open_session(&connect::no_prompt);
     match opened {
-        Ok(s) => {
-            let caps = s.capabilities();
-            Status::Ok(format!(
-                "{name}: {} firmware {}, wire V{}, {} channels",
-                caps.platform.name(),
-                connect::printable(&caps.firmware),
-                caps.wire_format,
-                caps.num_channels
-            ))
-        }
+        // -- WP TM4 --
+        Ok(s) => device_status(name, s.capabilities()),
         Err(e @ OpenError::NeedsPin { .. }) => Status::Warn(e.to_string()),
         Err(e) => Status::Fail(format!("{name}: {e}"), open_fix(&e).into()),
     }
@@ -332,5 +348,66 @@ pub fn install_udev() -> u8 {
             eprintln!("dspi: could not write {UDEV_PATH}: {e}");
             1
         }
+    }
+}
+
+// -- WP TM4 --
+#[cfg(test)]
+mod tests_wp_tm4 {
+    use dspi_proto::generated::opcodes as op;
+    use dspi_transport::mock::Reply;
+    use dspi_transport::{FakeDevice, MockTransport};
+
+    use super::*;
+
+    /// The demo device's answers, with its image claiming this wire format.
+    fn device_of_wire(wire: u8) -> MockTransport {
+        let mut demo = FakeDevice::demo();
+        let platform = demo.control_in_upto(op::REQ_GET_PLATFORM, 0, 7).unwrap();
+        let mut image = demo.remote().image();
+        if wire != 32 {
+            image.extend_from_slice(&[0; 16]);
+            let len = image.len() as u16;
+            image[6..8].copy_from_slice(&len.to_le_bytes());
+        }
+        image[0] = wire;
+        MockTransport::new()
+            .data(op::REQ_GET_PLATFORM, platform)
+            .window(op::REQ_GET_ALL_PARAMS_CHUNK, image)
+    }
+
+    #[test]
+    fn wp_tm4_another_wire_format_is_reported_read_only() {
+        let Status::Warn(m) = probe_status("dev", &mut device_of_wire(33)) else {
+            panic!("not a note");
+        };
+        assert!(m.contains("READ-ONLY") && m.contains("wire V33"), "{m}");
+        assert!(!m.contains("would not answer"), "{m}");
+    }
+
+    #[test]
+    fn wp_tm4_this_builds_format_is_simply_ok() {
+        let Status::Ok(m) = probe_status("dev", &mut device_of_wire(32)) else {
+            panic!("not ok");
+        };
+        assert!(m.contains("wire V32") && !m.contains("READ-ONLY"), "{m}");
+    }
+
+    #[test]
+    fn wp_tm4_an_unmappable_format_is_not_called_silent() {
+        let Status::Fail(m, fix) = probe_status("dev", &mut device_of_wire(15)) else {
+            panic!("not a failure");
+        };
+        assert!(!m.contains("would not answer"), "{m}");
+        assert!(fix.contains("Update"), "{fix}");
+    }
+
+    #[test]
+    fn wp_tm4_a_device_that_does_not_answer_still_says_so() {
+        let mut t = MockTransport::new().reply(op::REQ_GET_PLATFORM, Reply::Disconnect);
+        let Status::Fail(m, _) = probe_status("dev", &mut t) else {
+            panic!("not a failure");
+        };
+        assert!(m.contains("would not answer"), "{m}");
     }
 }
