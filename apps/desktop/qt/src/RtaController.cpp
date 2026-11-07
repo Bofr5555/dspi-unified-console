@@ -44,6 +44,33 @@ void RtaController::onWake() {
     dspi_rta_get_snapshot(m_core, &m_snap);
     if (m_snap.version != version) emit frameChanged();
     if (m_snap.telemetry_version != telemetry) emit telemetryChanged();
+    // -- WP QD19 --
+    RtaOwnership owner;
+    dspi_rta_get_ownership(m_core, &owner);
+    if (std::memcmp(&owner, &m_owner, sizeof(owner)) != 0) {
+        m_owner = owner;
+        // Driving again: what passive views show is what they ask for
+        if (!m_owner.following)
+            for (Sub &s : m_subs) s.passive = false;
+        emit ownershipChanged();
+        pushRequest();
+    }
+}
+
+// -- WP QD19 --
+QVariantList RtaController::followedChannels() const {
+    QVariantList l;
+    if (!m_owner.following) return l;
+    for (int c = 0; c < 16; c++)
+        if (m_owner.mask >> c & 1) l.append(c);
+    return l;
+}
+
+void RtaController::takeControl() {
+    if (!m_owner.following) return;
+    dspi_rta_take_control(m_core);
+    // The core drives at once; the callback brings the rest
+    onWake();
 }
 
 int RtaController::lowestShadedHz() const {
@@ -60,9 +87,18 @@ void RtaController::setFftOrder(int v) { if (v != m_fftOrder) { m_fftOrder = v; 
 void RtaController::setAvgMs(int v) { if (v != m_avgMs) { m_avgMs = v; emit optionsChanged(); pushRequest(); } }
 void RtaController::setPeakDecay(int v) { if (v != m_peakDecay) { m_peakDecay = v; emit optionsChanged(); pushRequest(); } }
 
+// -- WP QD19 -- While following, a view that asks only for what the device
+// already analyses is showing the other console's channels, not choosing: a
+// request is a choice, and the core takes the analyser back for a new one. Such
+// a view keeps the request it had (a new one adds nothing) until it asks for
+// something else.
+bool RtaController::showsFollowed(int tap, int mask) const {
+    return m_owner.following && mask && tap == m_owner.tap && (mask & ~int(m_owner.mask)) == 0;
+}
+
 int RtaController::subscribe(int tap, int mask, bool wantsBins) {
     int id = m_nextId++;
-    m_subs.insert(id, { tap, mask, wantsBins, ++m_seq });
+    m_subs.insert(id, { tap, mask, wantsBins, ++m_seq, showsFollowed(tap, mask) });
     pushRequest();
     return id;
 }
@@ -70,9 +106,10 @@ int RtaController::subscribe(int tap, int mask, bool wantsBins) {
 void RtaController::update(int id, int tap, int mask, bool wantsBins) {
     auto it = m_subs.find(id);
     if (it == m_subs.end()) return;
+    if (showsFollowed(tap, mask)) return;   // -- WP QD19 --
     // An unchanged request keeps its place, so it doesn't take the tap
     if (it->tap == tap && it->mask == mask && it->bins == wantsBins) return;
-    *it = { tap, mask, wantsBins, ++m_seq };
+    *it = { tap, mask, wantsBins, ++m_seq, false };
     pushRequest();
 }
 
@@ -83,28 +120,41 @@ void RtaController::release(int id) {
 // The newest subscription picks the tap; every subscription at that tap adds
 // its channels, except that one drawing bins gets its own channel alone (the
 // device keeps bins for the last channel it transformed).
+//
+// -- WP QD19 -- Passive views are left out. When only they ask for anything,
+// the last request with a choice in it goes again: the core reads it as no new
+// choice and keeps showing the other console's channels.
 void RtaController::pushRequest() {
-    RtaRequest r {};
-    const Sub *primary = nullptr;
-    for (const Sub &s : m_subs)
-        if (s.mask && (!primary || s.seq > primary->seq)) primary = &s;
-    if (primary && m_caps.supported) {
+    const auto build = [this](bool withPassive) {
+        RtaRequest r {};
+        const auto counts = [withPassive](const Sub &s) { return withPassive || !s.passive; };
+        const Sub *primary = nullptr;
+        for (const Sub &s : m_subs)
+            if (s.mask && counts(s) && (!primary || s.seq > primary->seq)) primary = &s;
+        if (!primary || !m_caps.supported) return r;
         r.tap = uint8_t(primary->tap);
         if (primary->bins) {
             r.mask = uint16_t(primary->mask);
         } else {
             for (const Sub &s : m_subs)
-                if (s.tap == primary->tap) r.mask |= uint16_t(s.mask);
+                if (s.tap == primary->tap && counts(s)) r.mask |= uint16_t(s.mask);
         }
         // Bins for one channel, if any view there draws them (whichever
         // view subscribed last)
         if (qPopulationCount(r.mask) == 1)
             for (const Sub &s : m_subs)
-                if (s.tap == primary->tap && s.bins && s.mask == r.mask) r.wants_bins = true;
+                if (s.tap == primary->tap && s.bins && s.mask == r.mask && counts(s)) r.wants_bins = true;
         r.fft_order = uint8_t(qBound<int>(m_caps.order_min, m_fftOrder, m_caps.order_max));
         r.avg_ms = uint16_t(qBound(0, m_avgMs, 10000));
         r.peak_decay_db_s = uint8_t(qBound(0, m_peakDecay, 100));
+        return r;
+    };
+    RtaRequest r = build(false);
+    if (!r.mask && m_owner.following) {
+        r = build(true);
+        if (r.mask && m_chosen.mask) r = m_chosen;
     }
+    if (r.mask) m_chosen = r;
     if (std::memcmp(&r, &m_sent, sizeof(r)) == 0) return;
     m_sent = r;
     dspi_rta_set_request(m_core, &r);

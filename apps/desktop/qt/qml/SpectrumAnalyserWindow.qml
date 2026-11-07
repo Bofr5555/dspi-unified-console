@@ -9,6 +9,9 @@ import "components"
 // the channels the current page selects (the graph's gear picks them) as
 // curves, bars or both; channels can be hidden here without changing what
 // the device analyses. The status bar reports the device's analyser.
+// -- WP QD19 -- While another console drives the device's analyser (DSPi
+// Link), the window shows the device's tap and channels, says so in the status
+// bar, and offers Take control.
 AppWindow {
     id: win
     title: "Spectrum Analyser"
@@ -19,7 +22,8 @@ AppWindow {
     minimumHeight: 420 + titlebarHeight
 
     property var app                      // main window
-    readonly property var sel: app ? app.rtaSelection : ({ tap: 1, channels: [] })
+    readonly property var ownSel: app ? app.rtaSelection : ({ tap: 1, channels: [] })
+    readonly property var sel: rta.following ? ({ tap: rta.followedTap, channels: rta.followedChannels }) : ownSel
     readonly property bool shown: visible && visibility !== Window.Minimized
     // 0 curves, 1 bars, 2 both; follows the page's switches each time it opens
     property int mode: 0
@@ -293,11 +297,41 @@ AppWindow {
                           + Math.round(rta.refreshMs) + " ms"
                 }
                 Stat { text: rta.framesPerSecond + " frames/s" }
-                Stat { text: "transform " + rta.transformUs + " µs" }
-                Stat { text: "main loop " + rta.mainLoopPercent.toFixed(1) + "%" }
-                Stat { text: "bass " + (rta.bassSaturated ? "≥" : "") + rta.bassPercent.toFixed(2) + "%" }
+                // -- WP QD19 -- The load figures make room for the following line
+                Stat { text: "transform " + rta.transformUs + " µs"; visible: rta.running && !rta.following }
+                Stat { text: "main loop " + rta.mainLoopPercent.toFixed(1) + "%"; visible: rta.running && !rta.following }
+                Stat { text: "bass " + (rta.bassSaturated ? "≥" : "") + rta.bassPercent.toFixed(2) + "%"; visible: rta.running && !rta.following }
                 Item { Layout.fillWidth: true }
+                // -- WP QD19 --
+                Row {
+                    visible: rta.following
+                    spacing: 10
+                    Text {
+                        objectName: "rtaFollowingText"
+                        text: "Following another console"
+                        font.pixelSize: 11
+                        color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.55)
+                    }
+                    Text {
+                        id: takeControl
+                        objectName: "rtaTakeControl"
+                        signal clicked()
+                        text: "Take control"
+                        font.pixelSize: 11
+                        font.underline: takeMouse.containsMouse
+                        color: isMacOS ? MacColors.accent : "#0a7cff"
+                        onClicked: rta.takeControl()
+                        MouseArea {
+                            id: takeMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: takeControl.clicked()
+                        }
+                    }
+                }
                 Text {
+                    visible: !rta.following
                     readonly property bool shaded: win.mode !== 0 && rta.running && rta.appliedOrder < rta.orderMax && rta.lowestShadedHz > 0
                     font.pixelSize: 11
                     elide: Text.ElideLeft

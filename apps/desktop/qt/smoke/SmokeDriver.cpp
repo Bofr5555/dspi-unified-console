@@ -130,6 +130,8 @@ void SmokeDriver::run() {
     testLink();
     // -- WP QD10 --
     testLinkFault();
+    // -- WP QD19 --
+    testRtaFollowing();
     // -- WP HB6 --
     testHub();
     // -- WP QD14 --
