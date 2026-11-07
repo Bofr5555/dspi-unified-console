@@ -70,6 +70,13 @@ pub trait Screens {
         AppConfig::default()
     }
 
+    // -- WP TM18 --
+    /// Change the app-side settings file from outside Settings, for the
+    /// choices the Console remembers where they are made.
+    fn update_config(&self, _change: &mut dyn FnMut(&mut AppConfig)) -> std::io::Result<()> {
+        Ok(())
+    }
+
     /// Read what Settings needs that `DeviceState` does not carry. Called just
     /// before the page opens, so a change made elsewhere is on screen.
     fn refresh_settings(&self, _session: &mut Session) {}
@@ -89,6 +96,25 @@ pub struct ConsoleScreens {
     /// The app-side settings file, read at start and replaced by every
     /// change Settings saves, so the page reopens on what was last chosen.
     pub config: std::rc::Rc<std::cell::RefCell<AppConfig>>,
+    // -- WP TM18 --
+    /// Where that file is, when it is not the platform's own location.
+    config_path: Option<std::path::PathBuf>,
+}
+
+// -- WP TM18 --
+/// Change the settings, then write them out to `path` or the platform's own
+/// location.
+fn update_config(
+    config: &std::cell::RefCell<AppConfig>,
+    path: Option<&std::path::Path>,
+    change: &mut dyn FnMut(&mut AppConfig),
+) -> std::io::Result<()> {
+    let mut c = config.borrow_mut();
+    change(&mut c);
+    match path {
+        Some(p) => c.save_to(p),
+        None => c.save().map(|_| ()),
+    }
 }
 
 impl Default for ConsoleScreens {
@@ -99,7 +125,17 @@ impl Default for ConsoleScreens {
 
 impl ConsoleScreens {
     pub fn new() -> Self {
-        let config = AppConfig::load();
+        Self::with_config(AppConfig::load(), None)
+    }
+
+    // -- WP TM18 --
+    /// The same, with the settings file at `path` rather than the platform's
+    /// own location.
+    pub fn with_config_path(path: std::path::PathBuf) -> Self {
+        Self::with_config(AppConfig::load_from(&path), Some(path))
+    }
+
+    fn with_config(config: AppConfig, config_path: Option<std::path::PathBuf>) -> Self {
         let shared = screens::shared();
         // The analyser's settings live with the engine, so a change on the
         // Settings page reaches it without a restart.
@@ -111,6 +147,7 @@ impl ConsoleScreens {
             shared,
             settings: std::rc::Rc::new(std::cell::RefCell::new(SettingsData::default())),
             config: std::rc::Rc::new(std::cell::RefCell::new(config)),
+            config_path,
         }
     }
 }
@@ -136,7 +173,17 @@ impl Screens for ConsoleScreens {
             Tool::Stats => Box::new(StatsPanel::new(self.shared.clone())),
             Tool::Monitor => Box::new(MonitorPanel::new(self.shared.clone())),
             Tool::AutoEq => Box::new(AutoEqPanel::new(self.shared.clone())),
-            Tool::Tube => Box::new(crate::screens::TubePanel::new()),
+            // -- WP TM18 --
+            Tool::Tube => {
+                let config = self.config.clone();
+                let path = self.config_path.clone();
+                let view = config.borrow().tube.view;
+                Box::new(
+                    crate::screens::TubePanel::with_view(view).on_view(move |view| {
+                        update_config(&config, path.as_deref(), &mut |c| c.tube.view = view)
+                    }),
+                )
+            }
             Tool::Subharm => Box::new(SubharmPanel::new()),
             Tool::Spectrum => Box::new(SpectrumPanel::open(self.shared.clone(), state)),
         }
@@ -147,14 +194,17 @@ impl Screens for ConsoleScreens {
         config.spectrum = self.shared.borrow().spectrum.settings.clone();
         let shared = self.shared.clone();
         let kept = self.config.clone();
-        Box::new(
-            SettingsScreen::new(state, self.settings.borrow().clone(), config).on_config(
-                move |c: &AppConfig| {
-                    shared.borrow_mut().spectrum.adopt_settings(&c.spectrum);
-                    *kept.borrow_mut() = c.clone();
-                },
-            ),
-        )
+        let screen = SettingsScreen::new(state, self.settings.borrow().clone(), config).on_config(
+            move |c: &AppConfig| {
+                shared.borrow_mut().spectrum.adopt_settings(&c.spectrum);
+                *kept.borrow_mut() = c.clone();
+            },
+        );
+        // -- WP TM18 --
+        Box::new(match &self.config_path {
+            Some(p) => screen.config_path(p.clone()),
+            None => screen,
+        })
     }
 
     fn shared(&self) -> Option<Shared> {
@@ -163,6 +213,11 @@ impl Screens for ConsoleScreens {
 
     fn config(&self) -> AppConfig {
         self.config.borrow().clone()
+    }
+
+    // -- WP TM18 --
+    fn update_config(&self, change: &mut dyn FnMut(&mut AppConfig)) -> std::io::Result<()> {
+        update_config(&self.config, self.config_path.as_deref(), change)
     }
 
     fn refresh_settings(&self, session: &mut Session) {
@@ -417,6 +472,14 @@ struct BlockLine {
 
 /// Whether a parameter's write is confirmed first, the way every destructive
 /// button in the Console is.
+// -- WP TM18 --
+fn volume_mode_of(choice: crate::settings::config::VolumeChoice) -> VolumeMode {
+    match choice {
+        crate::settings::config::VolumeChoice::Master => VolumeMode::Master,
+        crate::settings::config::VolumeChoice::User => VolumeMode::User,
+    }
+}
+
 fn needs_confirming(desc: &dspi_proto::registry::ParamDesc) -> bool {
     matches!(
         desc.hazard,
@@ -651,6 +714,9 @@ pub struct Live {
     /// The Graphing settings the graph was last built from, so a change
     /// saved in Settings reaches the graph without a restart.
     graphing: crate::settings::config::Graphing,
+    // -- WP TM18 --
+    /// The volume mode last read from the settings, to notice a new one.
+    volume_choice: crate::settings::config::VolumeChoice,
     gate: WriteGate,
     /// A stopped clock for the write gate, so a test can hold a key at a
     /// chosen rate.
@@ -676,10 +742,7 @@ impl Live {
         let mut model = ShellModel::empty();
         model.selection = Selection::Overview;
         model.graph = crate::graph::GraphSettings::from_config(&config.graphing);
-        model.volume_mode = match config.volume.mode {
-            crate::settings::config::VolumeChoice::Master => VolumeMode::Master,
-            crate::settings::config::VolumeChoice::User => VolumeMode::User,
-        };
+        model.volume_mode = volume_mode_of(config.volume.mode);
         let detail = screens.detail(&state, Selection::Overview);
         let shared = screens.shared().unwrap_or_else(screens::shared);
         let shell = Shell::new(model, theme, detail);
@@ -720,6 +783,7 @@ impl Live {
             switch_to: None,
             input_pending: false,
             graphing: config.graphing.clone(),
+            volume_choice: config.volume.mode,
             gate: WriteGate::default(),
             clock: None,
         };
@@ -1908,11 +1972,19 @@ impl Live {
                 let muted = self.state.user_volume().1;
                 self.set(session, "vol.mute", &[], Value::Bool(!muted));
             }
+            // -- WP TM18 --
             ShellEvent::VolumeModeToggle => {
-                self.shell.model.volume_mode = match self.shell.model.volume_mode {
-                    VolumeMode::User => VolumeMode::Master,
-                    VolumeMode::Master => VolumeMode::User,
+                use crate::settings::config::VolumeChoice;
+                let choice = match self.shell.model.volume_mode {
+                    VolumeMode::User => VolumeChoice::Master,
+                    VolumeMode::Master => VolumeChoice::User,
                 };
+                self.shell.model.volume_mode = volume_mode_of(choice);
+                let saved = self.screens.update_config(&mut |c| c.volume.mode = choice);
+                if let Err(e) = saved {
+                    self.note(format!("Could not save settings: {e}"));
+                }
+                self.volume_choice = self.screens.config().volume.mode;
                 self.sync_model();
             }
             ShellEvent::Command(c) => self.run_screen_commands(session, &c),
@@ -2702,6 +2774,18 @@ impl Live {
             self.handle_event(session, ev);
         }
         self.adopt_graphing();
+        self.adopt_volume_choice();
+    }
+
+    // -- WP TM18 --
+    /// Follow the volume mode when Settings has saved a new one.
+    fn adopt_volume_choice(&mut self) {
+        let choice = self.screens.config().volume.mode;
+        if choice != self.volume_choice {
+            self.volume_choice = choice;
+            self.shell.model.volume_mode = volume_mode_of(choice);
+            self.sync_model();
+        }
     }
 
     /// Rebuild the graph's settings when Settings > Graphing has saved a
@@ -5311,6 +5395,167 @@ mod tests {
             .collect();
         assert_eq!(offs, vec![vec![0]]);
         assert_eq!(l.state.subharm_solo, Some(false));
+    }
+
+    // -- WP TM18 --
+    /// A runner with its settings file at `path`, on a device that answers
+    /// everything and has a signal generator. Every call is a fresh start of
+    /// the app as far as the settings go.
+    fn tm18_start(path: &std::path::Path) -> (Live, Session, LogHandle) {
+        let mut caps = caps();
+        caps.features.push(dspi_session::probe::Feature {
+            name: "test_signals".into(),
+            present: true,
+            evidence: "mock".into(),
+        });
+        caps.siggen = Some(dspi_session::probe::SiggenCaps {
+            version: 1,
+            type_count: 15,
+            output_channels: 9,
+            multitone_max: 16,
+            valid_channel_mask: 0x1FF,
+            types: Vec::new(),
+        });
+        let mock = MockTransport::new()
+            .window(op::REQ_GET_ALL_PARAMS_CHUNK, packet())
+            .answering_everything(vec![0; 64]);
+        let log = mock.log_handle();
+        let session = Session::new(Box::new(mock), caps.clone()).unwrap();
+        let state = DeviceState::new(
+            caps,
+            dspi_proto::wire::BulkPacket::decode(packet()).unwrap(),
+        );
+        let live = Live::new(
+            state,
+            Theme::console(ColorDepth::TrueColor, Glyphs::Braille),
+            Performance::lite(),
+            Box::new(ConsoleScreens::with_config_path(path.to_path_buf())),
+        );
+        (live, session, log)
+    }
+
+    #[test]
+    fn tm18_the_volume_mode_is_back_after_a_restart() {
+        use crate::settings::config::VolumeChoice;
+        let dir = crate::test_dir("tm18-volume");
+        let path = dir.join("config.toml");
+        let (mut l, mut s, _) = tm18_start(&path);
+        assert_eq!(l.shell.model.volume_mode, VolumeMode::User, "the default");
+        l.handle_event(&mut s, ShellEvent::VolumeModeToggle);
+        assert_eq!(l.shell.model.volume_mode, VolumeMode::Master);
+        assert_eq!(
+            AppConfig::load_from(&path).volume.mode,
+            VolumeChoice::Master
+        );
+        drop(l);
+
+        let (mut l, mut s, _) = tm18_start(&path);
+        assert_eq!(l.shell.model.volume_mode, VolumeMode::Master, "restored");
+        l.handle_event(&mut s, ShellEvent::VolumeModeToggle);
+        drop(l);
+        let (l, _, _) = tm18_start(&path);
+        assert_eq!(l.shell.model.volume_mode, VolumeMode::User, "and back");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The mode stays changed for this run when the file cannot be written,
+    /// and says so.
+    #[test]
+    fn tm18_a_volume_mode_that_cannot_be_saved_says_so() {
+        let dir = crate::test_dir("tm18-volume-blocked");
+        std::fs::create_dir_all(&dir).unwrap();
+        let blocker = dir.join("a-file");
+        std::fs::write(&blocker, "").unwrap();
+        let (mut l, mut s, _) = tm18_start(&blocker.join("config.toml"));
+        l.handle_event(&mut s, ShellEvent::VolumeModeToggle);
+        l.adopt_volume_choice();
+        assert_eq!(l.shell.model.volume_mode, VolumeMode::Master);
+        let status = l.shell.model.status.clone().unwrap_or_default();
+        assert!(status.contains("Could not save settings"), "{status}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Settings and the sidebar's button hold one choice.
+    #[test]
+    fn tm18_a_mode_saved_in_settings_reaches_the_sidebar() {
+        use crate::settings::config::VolumeChoice;
+        let dir = crate::test_dir("tm18-volume-settings");
+        let screens = ConsoleScreens::with_config_path(dir.join("config.toml"));
+        let config = screens.config.clone();
+        let state = DeviceState::new(
+            caps(),
+            dspi_proto::wire::BulkPacket::decode(packet()).unwrap(),
+        );
+        let theme = Theme::console(ColorDepth::TrueColor, Glyphs::Braille);
+        let mut l = Live::new(state, theme, Performance::lite(), Box::new(screens));
+        config.borrow_mut().volume.mode = VolumeChoice::Master;
+        l.adopt_volume_choice();
+        assert_eq!(l.shell.model.volume_mode, VolumeMode::Master);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A factory that keeps no settings does not undo the button.
+    #[test]
+    fn tm18_the_mode_holds_without_a_settings_file() {
+        let (mut l, mut s, _) = live();
+        l.handle_event(&mut s, ShellEvent::VolumeModeToggle);
+        l.adopt_volume_choice();
+        assert_eq!(l.shell.model.volume_mode, VolumeMode::Master);
+    }
+
+    #[test]
+    fn tm18_the_tube_layout_is_back_after_a_restart() {
+        use crate::screens::panel::testing;
+        use crate::shell::fixture;
+        let dir = crate::test_dir("tm18-tube");
+        let path = dir.join("config.toml");
+        let mut state = fixture::state();
+        fixture::tube(&mut state, true);
+        let advanced = testing::draw(
+            &mut crate::screens::TubePanel::with_view(crate::screens::tube::View::Advanced),
+            &state,
+            100,
+            60,
+        );
+        let opened = |path: &std::path::Path| {
+            ConsoleScreens::with_config_path(path.to_path_buf()).tool(&state, Tool::Tube)
+        };
+        let mut panel = opened(&path);
+        assert_ne!(testing::draw(panel.as_mut(), &state, 100, 60), advanced);
+        assert_eq!(
+            panel.handle(key(KeyCode::Char('a')), &state),
+            crate::shell::ScreenEvent::Handled
+        );
+        drop(panel);
+        let mut panel = opened(&path);
+        assert_eq!(testing::draw(panel.as_mut(), &state, 100, 60), advanced);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The sidebar's `i` puts the Console's Identify on the wire: the stage
+    /// and then the start, for the output the row names.
+    #[test]
+    fn tm18_identify_reaches_the_wire() {
+        let dir = crate::test_dir("tm18-identify");
+        let (mut l, mut s, log) = tm18_start(&dir.join("config.toml"));
+        let row = l.state.caps.num_inputs as usize + 1;
+        l.handle_event(&mut s, ShellEvent::Identify(row));
+        let log = log.lock().unwrap();
+        let written: Vec<_> = log
+            .iter()
+            .filter(|e| matches!(e.opcode, op::REQ_SIGGEN_SET_CONFIG | op::REQ_SIGGEN_CONTROL))
+            .collect();
+        assert_eq!(written.len(), 2, "{written:?}");
+        let c = dspi_proto::packets::SiggenConfig::decode(&written[0].payload).unwrap();
+        assert_eq!(written[0].opcode, op::REQ_SIGGEN_SET_CONFIG);
+        assert_eq!((c.signal_type, c.channel_mask), (14, 0x2));
+        assert_eq!((c.level_db, c.repeat_count), (-12.0, 2));
+        // A write the firmware takes as a read, with its value in wValue.
+        assert_eq!(
+            (written[1].opcode, written[1].value),
+            (op::REQ_SIGGEN_CONTROL, 1)
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 

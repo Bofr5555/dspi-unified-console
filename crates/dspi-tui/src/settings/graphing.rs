@@ -300,7 +300,8 @@ impl GraphingPage {
                         .collect(),
                     selected: self.config.volume.mode.index(),
                     caption: Some(
-                        "Which volume the sidebar's slider drives when the app starts.".into(),
+                        "Which volume the sidebar's slider drives. Its mode button sets this too."
+                            .into(),
                     ),
                     enabled: true,
                 },
