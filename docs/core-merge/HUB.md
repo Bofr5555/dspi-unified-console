@@ -395,6 +395,26 @@ place where the app's path needs them; each file's header says what is left.
 - `Polls`: fill the scheduler. `next_due`, `take_due`, `finished` already run on the worker.
   `PollJob` carries the session's `Arc<Outbox>`, so `finished` calls `push_poll` directly.
 
+<!-- WP HB3 -->
+**HB3 as built, for HB1 and HB6.** The headers of `polls.rs` and `snapshot.rs` have the reasons.
+- **Call these, not `device.polls` or `device.snapshot`:** `HubHandle::poll_subscribe`,
+  `poll_unsubscribe`, `snapshot` and `rename`. `poll_subscribe` wakes a worker asleep with no polls.
+  `PollRefused::code` and `SnapshotRefused::code` are the `err` codes. `POLL_MAX_HZ` and
+  `POLL_BUDGET_BPS` are the `hello.limits`.
+- **A `PollJob` is one group's read, not one subscriber's**, so the outboxes sit on the
+  subscribers and `finished` fans out. `take_due` gives at most one, so a command waits for one
+  read at most. `finished` takes the transport's `Result`, for `poll.error`'s code.
+- **One budget per device, shared:** 200 000 B/s and 320 reads/s, the group costing once. The
+  reads limit is enforced at `take_due` too, so subscribing in a loop cannot exceed it.
+- **Polls stand back from a client's own `0xA2`/`0xA3`** for 500 ms, since any other request
+  tears down its chunk session. A snapshot read does not (it is rare, and a torn client restarts).
+- **Names:** `HubConfig::names` is a `NameStore`, for HB1's store to implement. A stored name is
+  saved with L1 released; `names_saving` sits above L1 and only keeps saves in order. A board's
+  `NOTIFY_EVT_DEVICE_NAME` goes from the reader to the supervisor (`SupMsg::BoardName`), since
+  the reader must not take L1 or touch a disk.
+- **Snapshot:** warm from attach on a networked hub, cold on an in-process one. `status_b64` and
+  the device object's `inputs` and `wire_version` are left out, which the spec allows.
+
 **HB5, `advertise.rs`, `web.rs`.** `Advertiser` wraps `MdnsAdvertiser` behind feature `mdns`.
 Start it after the server binds, with the bound port, into `Threads::advertiser`. Update it
 from `HubInner::publish`. `Hub::stop` already drops it first, on the caller's thread, since
