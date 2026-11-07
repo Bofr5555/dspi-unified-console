@@ -404,7 +404,7 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (`PLAN-CLIENTS.md`
 | # | Feature | Qt | Terminal | Android | iOS |
 |---|---|---|---|---|---|
 | M21 | HUD chip, marquee, pull from curve, shape menu | have | skip | have | SW19 |
-| M22 | Analyser bar strip | have | TM6 | AN17 | have |
+| M22 | Analyser bar strip | have | TM6 | have: AN17 strip, placed by AN34 on Home and channel pages (gear: RTA Bars) | have |
 | M23 | Analyser overlay on the graph | have | TM5 | have | have |
 | M24 | About 30 shortcuts, Space for the generator, graph keys | QD17 | have (own mnemonics) | AN18 | SW20 |
 | M25 | Host audio format (idle channel count, `DSPViewModel.swift:1947-1951`) | QD18 | skip: the device report collapses when idle, and it has no host API | AN18 | SW20 |
