@@ -292,21 +292,11 @@ void SmokeDriver::testLink() {
         l.bindDevice(device.value(QStringLiteral("handle")).toInt(), device.value(QStringLiteral("serial")).toString());
         check("QD8: bound and read", settled(l) && bound == 1 && waitFor(3000, [&] { return l.phase() == QLatin1String("bound"); }));
         check("QD8: the mirror holds it", dspi_is_connected(run.core));
-        const auto wait = [this](int ms, const std::function<bool()> &done) { return waitFor(ms, done); };
-        RtaRequest request = {};
-        request.tap = RTA_TAP_INPUT;
-        request.mask = 1;
-        dspi_rta_set_request(run.core, &request);
-        dspi_rta_start(run.core);
-        RtaCapsInfo caps;
-        check("QD8: the analyser runs", waitFor(5000, [&] { dspi_rta_get_caps(run.core, &caps); return caps.supported; }) && analyserPolls(run.core, wait));
         hub.fault("drop");
         check("QD8: a drop reads as reconnecting, then bound again",
               waitFor(15000, [&] { return back == 1 && l.phase() == QLatin1String("bound"); }));
         check("QD8: the mirror came back", dspi_is_connected(run.core));
-        check("QD8: the session is still up after the analyser's restart", settled(l) && l.errorCode().isEmpty());
-        check("QD8: the analyser's probe came back", waitFor(5000, [&] { dspi_rta_get_caps(run.core, &caps); return caps.supported; }));
-        check("QD8: and it polls again", analyserPolls(run.core, wait));
+        check("QD8: the session is still up", settled(l) && l.errorCode().isEmpty());
     }
     {
         // A way out during a first dial: the session it makes is thrown away
@@ -340,7 +330,7 @@ void SmokeDriver::testLink() {
         m_.engine->rootContext()->contextProperty(QStringLiteral("linkSession")).value<QObject *>());
     check("QD8: registered as linkSession", app != nullptr);
     FakeHubProcess open;
-    if (app && open.start({ "--auth", "none" })) {
+    if (app && open.start({ "--rta", "--auth", "none" })) {
         // A Repeater's items are found through the visual tree
         auto *host = root()->findChild<QQuickItem *>(QStringLiteral("bannerHost"));
         auto *abort = host ? findItem(host, QStringLiteral("linkLostAbort")) : nullptr;
@@ -366,11 +356,26 @@ void SmokeDriver::testLink() {
         check("QD6: and tells the controllers first", changing >= 2);
         QObject::disconnect(counting);
         check("QD6: it is writable", b->writable());
-        int states = 0;
+        // Nothing here starts the analyser: binding does, and a drop starts it again
+        const auto wait = [this](int ms, const std::function<bool()> &done) { return waitFor(ms, done); };
+        RtaRequest request = {};
+        request.tap = RTA_TAP_INPUT;
+        request.mask = 1;
+        dspi_rta_set_request(b->core(), &request);
+        RtaCapsInfo caps;
+        check("QD6: binding probes the analyser", waitFor(5000, [&] { dspi_rta_get_caps(b->core(), &caps); return caps.supported; }));
+        check("QD8: the analyser runs", analyserPolls(b->core(), wait));
+        int states = 0, back = 0;
         const QMetaObject::Connection stateCount = QObject::connect(b, &DSPiBridge::stateChanged, b, [&] { states++; });
-        emit app->reconnected();
+        const QMetaObject::Connection backCount = QObject::connect(app, &LinkController::reconnected, b, [&] { back++; });
+        open.fault("drop");
+        check("QD6: a drop comes back bound", waitFor(15000, [&] { return back == 1 && app->phase() == QLatin1String("bound"); }));
         check("QD6: a reconnect redraws", states > 0);
         QObject::disconnect(stateCount);
+        QObject::disconnect(backCount);
+        check("QD8: the analyser's probe came back", settled(*app) && waitFor(5000, [&] { dspi_rta_get_caps(b->core(), &caps); return caps.supported; }));
+        check("QD8: and it polls again", analyserPolls(b->core(), wait));
+        check("QD6: still the hub's device", b->selectedSerial() == hubSerial);
         open.kill();   // gone, not back in a moment
         check("QD8: banner at once", waitFor(2000, [&] { return app->phase() == QLatin1String("reconnecting") && row && row->isVisible(); }));
         spin(800);

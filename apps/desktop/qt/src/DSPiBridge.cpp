@@ -1116,6 +1116,7 @@ void DSPiBridge::adoptDevice(const QString &serial) {
     emit deviceChanging();
     resetForDevice(serial);
     if (state()->compat != COMPAT_OK && state()->compat != COMPAT_UNKNOWN) qWarning() << "DSPi:" << compatMessage();
+    if (usable()) dspi_rta_start(m_core);     // probes for the spectrum analyser, as selectDevice does
     showOpenedDevice();
 }
 

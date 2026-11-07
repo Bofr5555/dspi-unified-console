@@ -670,6 +670,7 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "cachedInputSourceName",
             "cachedDeviceName",
             "demoLatencySets",
+            "wireFeatures",
             // DSPi Link session management (no device writes; the hub's
             // role check and the bridge's remote read-only flag gate writes)
             "linkConnect",

@@ -303,6 +303,12 @@ interface DspiCoreApi : AutoCloseable {
     fun isConnected(): Boolean
 
     /**
+     * The `wire_compat::feat` bits the connected firmware's wire format carries:
+     * every known bit on V32 and newer, none with no device or below V16.
+     */
+    fun wireFeatures(): Long
+
+    /**
      * Open the built-in demo device (`dspi_transport::FakeDevice::demo`):
      * a simulated RP2350 that answers reads and writes and notifies.
      * Replaces any open device.

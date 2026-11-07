@@ -460,6 +460,13 @@ impl DspiCore {
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
+    // -- WP QD6 --
+    /// The `wire_compat::feat` bits the connected firmware's wire format carries:
+    /// every known bit on V32 and newer, none with no device or below V16.
+    pub fn wire_features(&self) -> u32 {
+        dspi_proto::wire_compat::features(self.lock().state.format_version)
+    }
+
     /// Open the built-in demo device (`dspi_transport::FakeDevice::demo`):
     /// a simulated RP2350 that answers reads and writes and notifies.
     /// Replaces any open device.
@@ -497,12 +504,6 @@ impl DspiCore {
     /// A client's read-only mode keeps this from moving.
     pub fn read_only_refusals(&self) -> u32 {
         self.lock().read_only_refusals
-    }
-
-    /// The `wire_compat::feat` bits the connected firmware's wire format carries:
-    /// every known bit on V32 and newer, none with no device or below V16.
-    pub fn wire_features(&self) -> u32 {
-        dspi_proto::wire_compat::features(self.lock().state.format_version)
     }
 }
 

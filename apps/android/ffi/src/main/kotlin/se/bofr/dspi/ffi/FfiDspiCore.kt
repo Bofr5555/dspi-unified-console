@@ -108,6 +108,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun isConnected(): Boolean = core.isConnected()
 
+    override fun wireFeatures(): Long = core.wireFeatures().toLong()
+
     override fun openDemo() = call { core.openDemo() }
 
     override fun setCrossfeedPairMap(map: List<Int>) = call { core.setCrossfeedPairMap(ByteArray(map.size) { map[it].toByte() }) }

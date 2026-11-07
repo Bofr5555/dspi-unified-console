@@ -1356,6 +1356,8 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1830,6 +1832,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_siggen_get_status(
 fun uniffi_dspi_core_checksum_method_dspicore_siggen_set_config(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_test_dac_mute(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_wire_features(
 ): Short
 fun uniffi_dspi_core_checksum_method_linklistener_on_link_devices_changed(
 ): Short
@@ -2330,6 +2334,8 @@ fun uniffi_dspi_core_fn_method_dspicore_siggen_set_config(`ptr`: Pointer,`config
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_test_dac_mute(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_wire_features(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Int
 fun uniffi_dspi_core_fn_clone_linklistener(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Pointer
 fun uniffi_dspi_core_fn_free_linklistener(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -3252,6 +3258,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_test_dac_mute() != 36228.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_wire_features() != 30561.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_linklistener_on_link_devices_changed() != 16214.toShort()) {
@@ -6991,6 +7000,12 @@ public interface DspiCoreInterface {
      * [`DspiError::Disconnected`] or a transfer error.
      */
     fun `testDacMute`()
+    
+    /**
+     * The `wire_compat::feat` bits the connected firmware's wire format carries:
+     * every known bit on V32 and newer, none with no device or below V16.
+     */
+    fun `wireFeatures`(): kotlin.UInt
     
     companion object
 }
@@ -11281,6 +11296,22 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * The `wire_compat::feat` bits the connected firmware's wire format carries:
+     * every known bit on V32 and newer, none with no device or below V16.
+     */override fun `wireFeatures`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_wire_features(
+        it, _status)
+}
+    }
+    )
+    }
     
 
     

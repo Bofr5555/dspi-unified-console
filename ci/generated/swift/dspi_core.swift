@@ -3448,6 +3448,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      */
     func testDacMute() throws 
     
+    /**
+     * The `wire_compat::feat` bits the connected firmware's wire format carries:
+     * every known bit on V32 and newer, none with no device or below V16.
+     */
+    func wireFeatures()  -> UInt32
+    
 }
 /**
  * The embedder API. Create one per app with [`DspiCore::new`].
@@ -6758,6 +6764,17 @@ open func testDacMute()throws   {try rustCallWithError(FfiConverterTypeDspiError
     uniffi_dspi_core_fn_method_dspicore_test_dac_mute(self.uniffiClonePointer(),$0
     )
 }
+}
+    
+    /**
+     * The `wire_compat::feat` bits the connected firmware's wire format carries:
+     * every known bit on V32 and newer, none with no device or below V16.
+     */
+open func wireFeatures() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_wire_features(self.uniffiClonePointer(),$0
+    )
+})
 }
     
 
@@ -20627,6 +20644,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_test_dac_mute() != 36228) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_wire_features() != 30561) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_linklistener_on_link_devices_changed() != 16214) {

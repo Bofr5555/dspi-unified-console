@@ -25,6 +25,11 @@ const NOT_EXPORTED: &[&str] = &[
     "link_browse_resolve",
     "link_browse_reresolve",
     "link_browse_verify",
+    // -- WP QD6 --
+    // The Qt smoke driver's read-only fixtures, through the C ABI. Android has its own
+    // read-only fixtures (bridge ReadOnlyTest), and its write guard counts refusals.
+    "open_demo_wire",
+    "read_only_refusals",
 ];
 
 /// `crates/dspi-core/src/link.rs`, exported by WP C15.
