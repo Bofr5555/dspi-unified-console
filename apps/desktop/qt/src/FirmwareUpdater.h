@@ -40,12 +40,14 @@ struct FwVersion {
 //   asked about: if the re-read shows another, that takes its own.
 // - A drive that was already mounted belongs to a board nobody can ask, even with a
 //   DSPi connected, as that DSPi need not be the board behind the drive.
-// - Two boards in their bootloaders are refused; nothing says which is which.
+// - Two boards in their bootloaders are refused; nothing says which is which. That
+//   is looked at again on every pass of the guard, so after each answer too.
 // - The bytes go out only through dspi_flash_to_drive_guarded. Writing is not
 //   success: only the board coming back with the image's version is.
 // - The reboot needs the board on this machine's USB, so a hub's device can't be
 //   sent there. It works on a read-only device, on purpose: other firmware is when
-//   a board most needs this. The demo device is not a board.
+//   a board most needs this. The demo device is not a board, and while it is the
+//   open device nothing goes to any drive: the app says nothing reaches a real one.
 //
 // Bus, drive and device work runs on one worker thread, never on the UI thread.
 class FirmwareUpdater : public QObject
@@ -61,10 +63,15 @@ class FirmwareUpdater : public QObject
     Q_PROPERTY(bool canReboot READ canReboot NOTIFY deviceChanged)
     // Why it can't, for a device that is connected
     Q_PROPERTY(QString rebootBlocked READ rebootBlocked NOTIFY deviceChanged)
+    // Why nothing may go to any drive now: the demo is the open device
+    Q_PROPERTY(QString writeBlocked READ writeBlocked NOTIFY deviceChanged)
 
     // idle, waitingForBoard, waitingForVolume, ready: detection
     // checking, question: file, chip and guard; the typed answer
     // waitingForDrive, writing, waitingForDevice: under way
+    // inBootloader: a Cancel came after the reboot went out, so nothing was written.
+    //   Install is open again, and treats the waiting drive as mounted. Holds until
+    //   then, or until the board leaves.
     // verified, unconfirmed, failed: outcomes. `unconfirmed` is written and back, by
     // an image that names no version, so that it took can't be said.
     Q_PROPERTY(QString state READ state NOTIFY stateChanged)
@@ -102,6 +109,7 @@ public:
     bool supported() const;
     bool canReboot() const { return connectedNow() && rebootBlocked().isEmpty(); }
     QString rebootBlocked() const;
+    QString writeBlocked() const;
     QString state() const { return m_state; }
     double progress() const { return m_progress; }
     QString chipName() const;
@@ -162,6 +170,7 @@ public:
         int driveWaitMs = 0;                    // 0: as in the app
         int verifyWaitMs = 0;
         int platform = -1;                      // the board's, as if it reported this
+        std::function<void()> gateHook;         // on the worker, at the end of a gate job
     };
     void setTestSeam(const TestSeam &seam);
     void clearTestSeam();
@@ -188,6 +197,7 @@ private:
     };
     struct GateResult {
         QString failure;
+        bool failureMundane = false;
         Image image;
         bool boardGone = false;
         int requiredMv = 0;
@@ -195,6 +205,7 @@ private:
         QString decision;
         QString message;
         QString phrase;
+        bool entered = false;   // the reboot went out: there is no taking it back
     };
     enum class Path { None, Device, Mounted };
 
@@ -261,6 +272,10 @@ private:
     bool m_scanBusy = false;
     bool m_rescan = false;
     unsigned m_generation = 0;   // a result from before a reset or close is dropped
+    // Cancelled while a gate job runs, which may already have rebooted the board:
+    // its result decides. A Cancel never ends in a write.
+    bool m_cancelPending = false;
+    bool m_parkedSeen = false;   // inBootloader: the board has shown up on the bus
 
 #ifdef DSPI_SMOKE
     TestSeam m_seam;

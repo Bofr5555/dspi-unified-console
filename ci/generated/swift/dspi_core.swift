@@ -19796,10 +19796,11 @@ public func firmwareGuardCheck(image: Data, board: FirmwareGuardBoard, typedConf
  * `write_all` and one `sync_all`.
  *
  * The board reboots into the new firmware as it takes the last block, so
- * the sync can fail because the drive has gone: that (sync failed and the
- * drive's `INFO_UF2.TXT` is no longer readable) counts as success, logged
- * at warn level. It cannot be told apart from a cable pulled mid-write, so
- * `Ok` means only "every byte was handed to the drive". **The caller must
+ * the write or the sync can fail because the drive has gone: that (either
+ * failed and the drive's `INFO_UF2.TXT` is no longer readable) counts as
+ * success, logged at warn level. It cannot be told apart from a cable pulled mid-write, so
+ * `Ok` means only "the write ended, or the drive went away during it, assumed
+ * to be the board rebooting". **The caller must
  * confirm success** by waiting for the DSPi to re-enumerate and report the
  * image's version (`Uf2Info::firmware_version`); a timeout there is the
  * failure.
@@ -20032,7 +20033,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_firmware_guard_check() != 22496) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_func_flash_to_drive() != 59170) {
+    if (uniffi_dspi_core_checksum_func_flash_to_drive() != 53083) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_flash_to_drive_guarded() != 25249) {

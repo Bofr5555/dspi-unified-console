@@ -27,8 +27,9 @@
 //!   `dspi raw` ([`Target::open_raw`]), which lets the bootloader request through
 //!   on purpose: another wire format, or an image that cannot be read at all, is
 //!   when a board most needs this.
-//! - **Writing is not success.** [`flash_to_drive_guarded`] returning means every
-//!   byte was handed over, which a pulled cable looks like too. Only the board
+//! - **Writing is not success.** [`flash_to_drive_guarded`] returning means the
+//!   write ended, or the drive went away during it, which is assumed to be the
+//!   board rebooting and which a pulled cable looks like too. Only the board
 //!   coming back with the image's version is success.
 //!
 //! The device side goes through [`DspiCore`], the one owner of the guard's board
@@ -889,7 +890,7 @@ fn confirm(
         };
     }
     eprintln!(
-        "dspi: every byte was handed to the drive, but {why}, so this is not confirmed. Check \
+        "dspi: the write ended, but {why}, so this is not confirmed. Check \
          it with dspi list. If the drive is still there the image did not take"
     );
     if req.json {

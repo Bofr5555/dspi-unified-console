@@ -2,6 +2,7 @@
 // control off, nothing written, reads going on, the way out still there. And a
 // write queued for one device never reaches the next.
 #include "SmokeDriver.h"
+#include "DemoDevice.h"
 
 #include "DSPiBridge.h"
 #include "ExtController.h"
@@ -25,7 +26,7 @@
 #include <functional>
 
 namespace {
-const char *const kDemoSerial = "DEMO0000DSPI0001";
+const char *const kDemoSerial = DemoDevice::kSerial;
 const char *const kToolWindows[] = { "matrixWindow", "loudnessWindow", "crossfeedWindow", "levellerWindow", "psybassWindow",
                                      "subharmWindow", "tubeWindow", "upmixWindow", "siggenWindow", "autoeqWindow" };
 

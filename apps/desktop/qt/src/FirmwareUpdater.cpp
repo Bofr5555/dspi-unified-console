@@ -1,5 +1,6 @@
 #include "FirmwareUpdater.h"
 #include "DSPiBridge.h"
+#include "DemoDevice.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -11,6 +12,7 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QRunnable>
+#include <algorithm>
 
 extern "C" {
 #include "dspi_core.h"
@@ -33,7 +35,6 @@ constexpr int kSelectRetryMs = 2000;
 constexpr int kMaxQuestions = 3;
 // A UF2 of a whole RP2350 flash window is 64 MiB; uf2_inspect refuses more with a reason
 constexpr qint64 kMaxFile = 65 * 1024 * 1024;
-const char kDemoSerial[] = "DEMO0000DSPI0001";
 
 constexpr int kRp2040 = 0;
 constexpr int kRp2350 = 1;
@@ -157,7 +158,7 @@ bool FirmwareUpdater::isDemoDevice() const {
 #ifdef DSPI_SMOKE
     if (m_seam.demoIsBoard) return false;
 #endif
-    return m_bridge->selectedSerial() == QLatin1String(kDemoSerial);
+    return m_bridge->selectedSerial() == QLatin1String(DemoDevice::kSerial);
 }
 
 static FwVersion deviceFw(DSPiBridge *bridge) {
@@ -200,8 +201,13 @@ QString FirmwareUpdater::rebootBlocked() const {
     if (!supported()) return "This board has no UF2 bootloader.";
     if (m_bridge->hubSession())
         return "This device is on a hub. Its bootloader drive would appear on the hub's machine, so update it there.";
-    if (isDemoDevice()) return "The demo device has no bootloader.";
+    if (isDemoDevice()) return writeBlocked();
     return QString();
+}
+
+QString FirmwareUpdater::writeBlocked() const {
+    if (!isDemoDevice()) return QString();
+    return "The demo is open, so nothing is written to a real board. Use Leave Demo in the banner, or start the app without --demo, and try again.";
 }
 
 QString FirmwareUpdater::chipName() const {
@@ -257,7 +263,11 @@ void FirmwareUpdater::stopWatching() {
     m_watching = false;
     // A write finishes, and its outcome holds until reset()
     if (m_state == QLatin1String("writing") || m_state == QLatin1String("waitingForDevice")) return;
+    // The job may have rebooted the board already: gateDone decides
+    if (m_state == QLatin1String("checking")) { m_cancelPending = true; return; }
     m_scanTimer.stop();
+    // Still so when reopened, but a close takes back an Install pressed again
+    if (m_state == QLatin1String("inBootloader")) { m_armed = false; return; }
     if (m_installing && (m_state == QLatin1String("failed") || m_state == QLatin1String("verified") || m_state == QLatin1String("unconfirmed"))) return;
     // Whatever waited on a question or a drive ends here. Nothing is written.
     m_generation++;
@@ -328,7 +338,10 @@ void FirmwareUpdater::scanDone(const Scan &scan) {
     if (!m_bridge->connected()) m_sawGone = true;
 
     const int boards = qMax(scan.boards, int(scan.drives.size()));
-    if (boards > 1) {
+    const bool parked = m_state == QLatin1String("inBootloader");
+    if (parked && boards > 0) m_parkedSeen = true;
+    // Nothing happens to a parked board until Install is pressed again
+    if (boards > 1 && !(parked && !m_armed)) {
         m_volumeWait.invalidate();
         fail(awaiting
              ? QString("%1 boards are in bootloader mode, and nothing says which is this one. Nothing was written. Disconnect all but the one you want to update.").arg(boards)
@@ -365,6 +378,26 @@ void FirmwareUpdater::scanDone(const Scan &scan) {
         return;
     }
 
+    if (parked) {
+        if (boards > 0) {
+            if (m_armed && !scan.drives.isEmpty()) {
+                m_drive = scan.drives.first();
+                beginMounted(m_drive);
+            } else {
+                askUdisks(scan);
+            }
+            return;
+        }
+        int limit = kDriveWaitMs;
+#ifdef DSPI_SMOKE
+        if (m_seam.driveWaitMs) limit = m_seam.driveWaitMs;
+#endif
+        // Unplugged, or it never arrived: back to looking
+        if (!m_parkedSeen && m_driveClock.elapsed() < limit) return;
+        m_failure.clear();
+        emit stateChanged();
+    }
+
     if (!scan.drives.isEmpty()) {
         m_drive = scan.drives.first();
         m_volumeWait.invalidate();
@@ -395,7 +428,7 @@ void FirmwareUpdater::scanDone(const Scan &scan) {
 // The drive appears a moment after the board; most Linux desktops don't mount it
 // on their own, so ask udisks once it shows up
 void FirmwareUpdater::askUdisks(const Scan &scan) {
-    if (scan.device.isEmpty() || m_mountTried == scan.device) return;
+    if (scan.device.isEmpty() || m_mountTried == scan.device || !writeBlocked().isEmpty()) return;
     m_mountTried = scan.device;
     auto *p = new QProcess(this);
     connect(p, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this, p](int, QProcess::ExitStatus) {
@@ -411,7 +444,8 @@ void FirmwareUpdater::installWhenReady() {
     m_armed = true;
     // Only a device connected at this click is what the click was about. One that
     // turns up later is not rebooted on the strength of it.
-    m_armedForDevice = connectedNow();
+    // Nor is a device while a board that was sent to its bootloader is on its way.
+    m_armedForDevice = connectedNow() && m_state != QLatin1String("inBootloader");
     // A fresh look: a drive mounted a moment ago decides which board is being asked
     if (!m_scanTimer.isActive()) m_scanTimer.start();
     requestScan();
@@ -419,6 +453,8 @@ void FirmwareUpdater::installWhenReady() {
 
 void FirmwareUpdater::reset() {
     if (m_state == QLatin1String("writing") || m_state == QLatin1String("waitingForDevice")) return;
+    if (m_state == QLatin1String("checking")) { m_cancelPending = true; return; }
+    if (m_state == QLatin1String("inBootloader")) { if (m_watching) requestScan(); return; }
     m_generation++;
     m_installing = false;
     m_armed = false;
@@ -549,6 +585,10 @@ void FirmwareUpdater::beginMounted(const Drive &drive) {
     m_boardPlatform = drive.platform;
     m_questions = 0;
     m_image = Image();
+    if (!writeBlocked().isEmpty()) {
+        fail(writeBlocked() + " Nothing was changed.", true);
+        return;
+    }
     if (drive.platform != kRp2040 && drive.platform != kRp2350) {
         fail(QString("%1 is not the drive of an RP2040 or RP2350 bootloader. Nothing was changed.").arg(drive.path), false);
         return;
@@ -568,10 +608,16 @@ void FirmwareUpdater::runGate(const QString &typed) {
     const Image custom = m_custom;
     const QString expected = m_expectedRaw;
     const QByteArray answerBytes = typed.toUtf8();
+    const QString drivePath = m_drive.path;
     FfiCore *core = m_bridge->core();
 #ifdef DSPI_SMOKE
     int *reads = &m_boardReads;
     int *enters = &m_bootloaderRequests;
+    const std::function<Scan()> seamScan = m_seam.scan;
+    const std::function<void()> gateHook = m_seam.gateHook;
+#else
+    const std::function<Scan()> seamScan;
+    const std::function<void()> gateHook;
 #endif
     m_worker.start(QRunnable::create([=]() {
         GateResult r;
@@ -595,6 +641,21 @@ void FirmwareUpdater::runGate(const QString &typed) {
         if (r.failure.isEmpty() && image.platform != platform) {
             r.failure = QString("%1 is firmware for the %2, and this board is an %3. Nothing was changed.")
                             .arg(image.name, chipOf(image.platform), chipOf(platform));
+        }
+        // What is on the bus now, not what was there when a question was first asked
+        if (r.failure.isEmpty()) {
+            const Scan scan = seamScan ? seamScan() : runScan();
+            const int boards = qMax(scan.boards, int(scan.drives.size()));
+            r.failureMundane = true;
+            if (device && boards > 0) {
+                r.failure = "A board has appeared in bootloader mode, and with this one there would be two. Nothing was changed. Disconnect it and try again.";
+            } else if (!device && boards > 1) {
+                r.failure = QString("%1 boards are in bootloader mode. Nothing was changed. Disconnect all but the one you want to update.").arg(boards);
+            } else if (!device && std::none_of(scan.drives.cbegin(), scan.drives.cend(), [&drivePath](const Drive &d) { return d.path == drivePath; })) {
+                r.failure = QString("The drive at %1 has gone. Nothing was changed.").arg(drivePath);
+            } else {
+                r.failureMundane = false;
+            }
         }
         if (r.failure.isEmpty()) {
             r.image = image;
@@ -629,9 +690,11 @@ void FirmwareUpdater::runGate(const QString &typed) {
                     // No answer to wait for, and a failure looks like success: only
                     // the drive arriving says, and without one nothing gets written
                     dspi_enter_bootloader(core);
+                    r.entered = true;
                 }
             }
         }
+        if (gateHook) gateHook();
         QMetaObject::invokeMethod(this, [this, generation, r, typed]() {
             if (generation == m_generation) gateDone(r, typed);
         }, Qt::QueuedConnection);
@@ -639,8 +702,39 @@ void FirmwareUpdater::runGate(const QString &typed) {
 }
 
 void FirmwareUpdater::gateDone(const GateResult &r, const QString &typed) {
+    const bool cancelled = m_cancelPending;
+    m_cancelPending = false;
+    if (cancelled) {
+        // In time: as if nothing was asked
+        if (!r.entered) {
+            m_state = "idle";
+            reset();
+            if (!m_watching) m_scanTimer.stop();
+            return;
+        }
+        // The reboot can't be taken back, and a Cancel never ends in a write
+        m_installing = false;
+        m_armed = false;
+        m_armedForDevice = false;
+        m_path = Path::None;
+        m_image = Image();
+        m_typed.clear();
+        m_questionMessage.clear();
+        m_questionPhrase.clear();
+        m_answerWrong = false;
+        emit questionChanged();
+        m_failure = "The board is in its bootloader and nothing was written. Install again, or unplug it to go back to the old firmware.";
+        m_failureMundane = true;
+        m_parkedSeen = false;
+        m_driveClock.start();
+        m_scanTimer.setInterval(kScanMs);
+        m_scanTimer.start();
+        m_state = "inBootloader";
+        emit stateChanged();
+        return;
+    }
     if (!r.failure.isEmpty()) {
-        fail(r.failure, false);
+        fail(r.failure, r.failureMundane);
         return;
     }
     if (r.boardGone) {
@@ -697,6 +791,11 @@ void FirmwareUpdater::startWrite(const Drive &drive) {
     m_scanTimer.stop();
     m_scanTimer.setInterval(kScanMs);
     m_drive = drive;
+    // The demo may have been opened since the last check
+    if (!writeBlocked().isEmpty()) {
+        fail(writeBlocked() + " Nothing was written.", true);
+        return;
+    }
     if (m_path == Path::Mounted) m_before = serialsNow();
     m_progress = -1;
     emit progressChanged();
@@ -755,6 +854,16 @@ bool FirmwareUpdater::bringBack(const QString &serial) {
 void FirmwareUpdater::verifyTick() {
     if (!m_bridge->connected()) m_sawGone = true;
 
+    // A hub session keeps the app off USB devices, so the board can't be opened
+    if (m_bridge->hubSession()) {
+        m_verifyTimer.stop();
+        m_failure = "The firmware was written to the drive, but a hub session is open, so the board can't be opened here to confirm it. Leave the hub session and check the version it reports.";
+        m_failureMundane = false;
+        m_state = "unconfirmed";
+        emit stateChanged();
+        return;
+    }
+
     QString error;
     bool judge = false;
     if (m_path == Path::Device) {
@@ -800,7 +909,7 @@ void FirmwareUpdater::verifyTick() {
 #endif
     if (!error.isEmpty() || m_verifyClock.elapsed() > limit) {
         m_verifyTimer.stop();
-        fail(QString("Every byte was handed to the drive, but %1, so this is not confirmed. Unplug the board, plug it back in, and check whether it works. If the drive is still there the image did not take.")
+        fail(QString("The write ended, but %1, so this is not confirmed. Unplug the board, plug it back in, and check whether it works. If the drive is still there the image did not take.")
                  .arg(error.isEmpty() ? QString("the board did not come back") : error), false);
     }
 }

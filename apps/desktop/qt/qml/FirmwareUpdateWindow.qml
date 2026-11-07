@@ -38,8 +38,21 @@ AppWindow {
 
     // Every open starts over at detection
     onVisibleChanged: {
-        if (visible) { confirmed = false; rebootRequested = false; firmware.reset(); firmware.useBundledImage(); firmware.beginWatching() }
+        // A board left in its bootloader by a late Cancel stays the subject
+        if (visible) {
+            confirmed = false
+            rebootRequested = false
+            if (phase !== "inBootloader") { firmware.reset(); firmware.useBundledImage() }
+            firmware.beginWatching()
+        }
         else firmware.stopWatching()
+    }
+
+    // Cancel usually closes this window, and this is what it has to say about that
+    onPhaseChanged: {
+        if (phase !== "inBootloader") return
+        confirmed = false
+        if (!visible) { visible = true; raise() }
     }
 
     function start() {
@@ -60,7 +73,7 @@ AppWindow {
             if (confirmed) return { icon: "search", spin: true, title: "Looking for the board",
                 text: "Waiting for it to appear in bootloader mode. If nothing happens after a few seconds, unplug the board, hold BOOTSEL, and plug it back in." }
             if (connected && !firmware.canReboot) return { icon: "plug", tint: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5), title: "Can't restart this device",
-                text: firmware.rebootBlocked + " A board already in bootloader mode can still be updated: hold BOOTSEL while plugging it in." }
+                text: firmware.rebootBlocked + (firmware.writeBlocked === "" ? " A board already in bootloader mode can still be updated: hold BOOTSEL while plugging it in." : "") }
             if (connected) return { icon: "check-circle", tint: isMacOS ? MacColors.accent : "#3a96ff", title: "Ready when you are",
                 text: "Click " + primaryTitle + " to begin. The device will restart into bootloader mode, and audio will stop until the update finishes. Nothing is written without this click." }
             return { icon: "plug", tint: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5), title: "Connect a board",
@@ -69,10 +82,14 @@ AppWindow {
             return { icon: "drive", spin: true, title: firmware.chipName + " found",
                 text: "The board is in bootloader mode. Waiting for its " + firmware.volumeName + " drive to mount - this usually takes a second or two." }
         case "ready":
+            if (firmware.writeBlocked !== "") return { icon: "plug", tint: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5), title: "The demo is open", text: firmware.writeBlocked }
             if (confirmed) return { icon: "drive", spin: true, title: "Preparing to write",
                 text: "Opening the " + firmware.chipName + "'s " + firmware.volumeName + " drive." }
             return { icon: "drive", tint: isMacOS ? MacColors.green : "#32d74b", title: firmware.chipName + " ready",
                 text: "The board is in bootloader mode and ready to receive firmware " + bundled + ". Click " + primaryTitle + " to begin." }
+        case "inBootloader":
+            if (confirmed) return { icon: "drive", spin: true, title: "Waiting for the drive", text: "Waiting for the board's drive to appear." }
+            return { icon: "drive", tint: isMacOS ? MacColors.orange : "#ff9f0a", title: "Nothing was written", text: firmware.failure }
         case "checking":
             return { icon: "search", spin: true, title: "Checking",
                 text: "Looking at the file and the board. Nothing has changed yet." }
@@ -328,7 +345,7 @@ AppWindow {
                     primary: true
                     // A device that can't be restarted from here leaves only a drive to write
                     enabled: !win.confirmed && !firmware.imageLoading && firmware.imageProblem === ""
-                             && (!win.connected || firmware.canReboot || win.phase === "ready")
+                             && (!win.connected || firmware.canReboot || ((win.phase === "ready" || win.phase === "inBootloader") && firmware.writeBlocked === ""))
                     onClicked: win.start()
                 }
             }

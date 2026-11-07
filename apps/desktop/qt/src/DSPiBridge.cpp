@@ -1,4 +1,5 @@
 #include "DSPiBridge.h"
+#include "DemoDevice.h"
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QDebug>
@@ -37,7 +38,7 @@ static const char *kOutputColors[MAX_OUTPUTS - 1] = {
 static const char *kPdmColor = "#BA87F2";
 
 // FakeDevice::demo's serial; dspi_open_demo opens it whatever the USB bus holds
-static const char *const kDemoSerial = "DEMO0000DSPI0001";
+static const char *const kDemoSerial = DemoDevice::kSerial;
 
 DSPiBridge::DSPiBridge(Mode mode, QObject *parent)
     : QObject(parent), m_demo(mode == Mode::Demo)

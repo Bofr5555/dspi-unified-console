@@ -1387,8 +1387,9 @@ pub extern "C" fn dspi_bootloader_drives(buf: *mut c_char, len: u32) -> u32 {
 /// `platform` comes from `dspi_bootloader_drives` (0 RP2040, 1 RP2350). The
 /// image and the drive are checked before any byte goes out. Replies in JSON
 /// {ok} or {ok, code, error}, and returns the length needed. `ok` means only
-/// that every byte reached the drive: confirm with
-/// `dspi_firmware_version_matches` once the DSPi is back.
+/// that the write ended, or that the drive went away during it, assumed to be
+/// the board rebooting: confirm with `dspi_firmware_version_matches` once the
+/// DSPi is back.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_flash_to_drive(
     image: *const u8,

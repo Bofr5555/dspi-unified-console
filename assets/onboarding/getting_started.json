@@ -86,6 +86,24 @@
           "blurb": "Console ships the firmware it expects, so nothing needs a download. Keep the Pico plugged in until it checks back in."
         },
         {
+          "id": "board.question",
+          "when": "windows_or_linux",
+          "title": "One question first",
+          "blurb": "The firmware guard has a question about this board's core voltage. Nothing has changed yet."
+        },
+        {
+          "id": "board.in_bootloader",
+          "when": "windows_or_linux",
+          "title": "Nothing was written",
+          "blurb": "The update was cancelled after the board had already restarted."
+        },
+        {
+          "id": "board.unconfirmed",
+          "when": "windows_or_linux",
+          "title": "Firmware written",
+          "blurb": "The firmware went to the board, but whether it took could not be confirmed. The card below says why."
+        },
+        {
           "id": "board.verified",
           "title": "Your device has been prepared",
           "blurb": "The device has successfully restarted and DSPi Firmware is correctly installed."
@@ -154,6 +172,31 @@
           "title": "This would be a downgrade",
           "text": "Your DSPi is running firmware {device_version}, which is newer than this Console expects ({bundled_version}). A newer Console is the better fix, but you can downgrade the device to match this one.",
           "action": "Downgrade Firmware"
+        },
+        {
+          "id": "card.checking",
+          "when": "windows_or_linux",
+          "title": "Checking",
+          "text": "Looking at the firmware and the board. Nothing has changed yet."
+        },
+        {
+          "id": "card.waiting_for_drive",
+          "when": "windows_or_linux",
+          "title": "Restarting into bootloader mode",
+          "text": "Waiting for the board's drive to appear."
+        },
+        {
+          "id": "card.in_bootloader",
+          "when": "windows_or_linux",
+          "title": "Nothing was written",
+          "text": "{failure}",
+          "action": "Install DSPi Firmware"
+        },
+        {
+          "id": "card.unconfirmed",
+          "when": "windows_or_linux",
+          "title": "Written, not confirmed",
+          "text": "{failure}"
         },
         {
           "id": "card.failed_mundane",

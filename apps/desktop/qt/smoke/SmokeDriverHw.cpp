@@ -9,6 +9,7 @@
 // sound. DSPI_SMOKE_HW=dry runs the same pass on the demo device.
 
 #include "SmokeDriver.h"
+#include "DemoDevice.h"
 
 #include "CsController.h"
 #include "DSPiBridge.h"
@@ -27,7 +28,7 @@
 #include <cstdio>
 #include <cstring>
 
-static const char *const kDemoSerial = "DEMO0000DSPI0001";
+static const char *const kDemoSerial = DemoDevice::kSerial;
 
 // ── Reporting ──
 
