@@ -652,7 +652,8 @@ fn read_info(root: &Path) -> Option<String> {
 /// lines (RP2040: `RPI-RP2` / `Raspberry Pi RP2`; RP2350: `RP2350` /
 /// `Raspberry Pi RP2350`). `None` for anything else, including another
 /// vendor's UF2 bootloader and a file whose two lines disagree.
-fn info_platform(info: &str) -> Option<i8> {
+// -- WP TM3 -- Public for the Terminal's `--drive`; not in UniFFI or the C ABI.
+pub fn info_platform(info: &str) -> Option<i8> {
     let mut lines = info.lines().map(str::trim);
     if !lines.next()?.starts_with("UF2 Bootloader") {
         return None;
