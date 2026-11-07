@@ -1,8 +1,8 @@
 // WP QD31: a bridge setter that fails in SettingsContext.save() doesn't read as
 // saved, on the real settings window and the demo device. The device's own
-// refusals are what the core rejects (a mode out of range), the stall on the
-// output config save, which the demo doesn't model, and a DAC mute read-back that
-// differs from what was sent.
+// refusals are what the core rejects (a mode out of range), the demo's output
+// config save told how to answer, and a DAC mute read-back that differs from what
+// was sent.
 #include "SmokeDriver.h"
 
 #include "DSPiBridge.h"
@@ -88,12 +88,18 @@ void SmokeDriver::testSaveBarSetters() {
     check("QD31: and leaves them unsaved", b->hardwareUnsaved());
 
     // ── The output config save itself ──
+    check("QD31: the demo's save fails on its flash", dspi_demo_output_save_status(b->core(), 4));
     save();
-    check("QD31: output config save: the bar says so", barSays("did not respond"));
+    check("QD31: output config save: the bar says flash", barSays("flash"));
     check("QD31: output config save: still dirty", dirty() && b->hardwareUnsaved());
-    check("QD31: a mode that goes through ends them", b->setOutputConfigMode(1) && !b->hardwareUnsaved());
-    check("QD31: and the reason", !dirty() && reason().isEmpty());
-    check("QD31: output config mode restored", b->setOutputConfigMode(output) && b->outputConfigMode() == output);
+    check("QD31: the demo's save stalls", dspi_demo_output_save_status(b->core(), 0xFF));
+    save();
+    check("QD31: output config save: the bar says no response", barSays("did not respond"));
+    check("QD31: output config save: still dirty after a stall", dirty() && b->hardwareUnsaved());
+    check("QD31: the demo's save goes through again", dspi_demo_output_save_status(b->core(), 0));
+    save();
+    check("QD31: output config save: through Save, it is saved", clean() && !b->hardwareUnsaved());
+    check("QD31: output config mode untouched", b->outputConfigMode() == output);
 
     // ── The DAC mute: the device has the last word, some time after the Save ──
     const QVariantMap before = b->hardware();

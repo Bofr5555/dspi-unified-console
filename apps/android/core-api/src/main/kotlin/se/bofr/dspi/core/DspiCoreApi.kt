@@ -545,6 +545,15 @@ interface DspiCoreApi : AutoCloseable {
     fun saveOutputConfig()
 
     /**
+     * On the demo device only, for clients' tests: how
+     * [`save_output_config`](Self::save_output_config) answers from now on. 0 goes
+     * through, 0xFF stalls, another byte is that status. `Unsupported`, with no
+     * traffic, on anything but a simulated device.
+     */
+    @Throws(DspiException::class)
+    fun demoOutputSaveStatus(status: Int)
+
+    /**
      * The bus of output slot `slot` (a stereo pair, 0..4): 0 = S/PDIF,
      * 1 = I2S. The firmware switches later through a muted pipeline reset.
      *

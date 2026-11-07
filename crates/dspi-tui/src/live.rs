@@ -6318,9 +6318,10 @@ mod tests_wp_tm19 {
             len: u16,
         ) -> dspi_transport::Result<Vec<u8>> {
             self.1.see(opcode)?;
-            // The fake has no flash behind these two; the real device answers
+            // -- WP QD31 -- The fake answers the output config save itself now.
+            // The fake has no flash behind this one; the real device answers
             // FLASH_OK once it has written (vendor_commands).
-            if matches!(opcode, op::REQ_SAVE_OUTPUT_CONFIG | op::REQ_CS_SAVE) {
+            if opcode == op::REQ_CS_SAVE {
                 return Ok(vec![0; usize::from(len)]);
             }
             self.0.control_in(opcode, value, len)
