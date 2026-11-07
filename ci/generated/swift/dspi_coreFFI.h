@@ -674,6 +674,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_lg_status(void*_Nonnull ptr
 RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_limiter_meter(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_OUTPUT_FILLS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_OUTPUT_FILLS
+RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_output_fills(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_OUTPUT_LATENCY
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_OUTPUT_LATENCY
 RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_output_latency(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -687,6 +692,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_output_latency_options(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_OUTPUT_PIN
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_OUTPUT_PIN
 uint8_t uniffi_dspi_core_fn_method_dspicore_fetch_output_pin(void*_Nonnull ptr, uint8_t slot, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_RING_HEALTH
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_RING_HEALTH
+RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_ring_health(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_SPDIF_RX_CHANNEL_STATUS
@@ -2409,6 +2419,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_limiter_meter(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_OUTPUT_FILLS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_OUTPUT_FILLS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_output_fills(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_OUTPUT_LATENCY
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_OUTPUT_LATENCY
 uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_output_latency(void
@@ -2424,6 +2440,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_output_latency_options(
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_OUTPUT_PIN
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_OUTPUT_PIN
 uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_output_pin(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_RING_HEALTH
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_RING_HEALTH
+uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_ring_health(void
     
 );
 #endif

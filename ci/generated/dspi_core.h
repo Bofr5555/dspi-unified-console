@@ -4635,6 +4635,22 @@ bool dspi_set_output_latency(struct FfiCore *core, uint8_t id);
 uint32_t dspi_fetch_clock_diag(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * The output rings' health: JSON {ok, targetFrames, targetUs, batchFrames,
+ * underrunEpisodes, refusedBlocks, lowestFill, worstInputGapUs, worstUsbGapUs,
+ * overBudgetSteps}, with `lowestFill` null before the first write. On firmware
+ * without the status, {"ok":true,"value":null}: show no section. Returns the
+ * length needed.
+ */
+uint32_t dspi_fetch_ring_health(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The live outputs' fill, on the ring's scale where the firmware has one:
+ * JSON {ok, value: [{fillPct, minPct, maxPct, band}]}, `band` being "good",
+ * "warn" or "bad". Returns the length needed.
+ */
+uint32_t dspi_fetch_output_fills(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * Check a `.uf2` image: JSON {ok, valid, problem, familyId, platform,
  * numBlocks, payloadBytes, firmwareVersion}. `valid` is false for a null or
  * malformed image. Returns the length needed.

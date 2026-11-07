@@ -1338,6 +1338,10 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1509,11 +1513,15 @@ fun uniffi_dspi_core_checksum_method_dspicore_fetch_lg_status(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_limiter_meter(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_fetch_output_fills(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_output_latency(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_output_latency_options(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_output_pin(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_fetch_ring_health(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_spdif_rx_channel_status(
 ): Short
@@ -1992,12 +2000,16 @@ fun uniffi_dspi_core_fn_method_dspicore_fetch_lg_status(`ptr`: Pointer,uniffi_ou
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_limiter_meter(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_fetch_output_fills(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_output_latency(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_output_latency_options(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_output_pin(`ptr`: Pointer,`slot`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
+fun uniffi_dspi_core_fn_method_dspicore_fetch_ring_health(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_spdif_rx_channel_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_spdif_rx_pin(`ptr`: Pointer,`index`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -2744,6 +2756,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_limiter_meter() != 57932.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_output_fills() != 8756.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_output_latency() != 56235.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -2751,6 +2766,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_output_pin() != 64350.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_ring_health() != 1712.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_spdif_rx_channel_status() != 43337.toShort()) {
@@ -2927,7 +2945,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_scan_devices() != 33045.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_select_device() != 30406.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_select_device() != 4728.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_adat_input_clock_mode() != 11207.toShort()) {
@@ -5229,6 +5247,17 @@ public interface DspiCoreInterface {
     fun `fetchLimiterMeter`(): List<kotlin.Float>
     
     /**
+     * The live outputs' fill for the Stats rows: to frame resolution, on the
+     * ring's own scale, with the band around the live latency target. Firmware
+     * without `REQ_OUTPUT_LATENCY` keeps its fixed scale and fixed bands. Two
+     * transfers. Use this rather than [`BufferStats`]' percentages, whose
+     * 48-frame steps read as an empty ring at the lowest latency.
+     *
+     * Errors: as for [`DspiCore::fetch_buffer_stats`].
+     */
+    fun `fetchOutputFills`(): List<OutputFill>
+    
+    /**
      * `REQ_OUTPUT_LATENCY` status (`wValue` 0, 12 bytes): the requested
      * and the effective option (a stream-only option requested while USB is
      * the source falls back to the first option without that flag), the
@@ -5259,6 +5288,17 @@ public interface DspiCoreInterface {
      * have); [`DspiError::Disconnected`].
      */
     fun `fetchOutputPin`(`slot`: kotlin.UByte): kotlin.UByte
+    
+    /**
+     * The output rings' health (Output Ring Health in the Stats window), or
+     * `None` on firmware without `REQ_OUTPUT_LATENCY` or with a short reply to
+     * it: show no section then. Seven transfers.
+     *
+     * Errors: [`DspiError::Disconnected`]; a transfer failure, or a stall or a
+     * short reply on a counter, as [`DspiError::Transfer`]. A counter that
+     * cannot be read fails the call rather than reading as 0.
+     */
+    fun `fetchRingHealth`(): RingHealth?
     
     /**
      * 24 bytes of IEC 60958 channel status of the locked S/PDIF input.
@@ -5970,6 +6010,8 @@ public interface DspiCoreInterface {
      * the bus; transfer errors (no permission, busy) from opening it or from
      * the connect sequence. [`DspiError::Unsupported`] on Android (use
      * [`DspiCore::open_fd`]) and in a build without the `usb` feature (iOS).
+     * With a [`crate::DeviceBroker`] set, the broker opens it instead, on any
+     * platform.
      */
     fun `selectDevice`(`serial`: kotlin.String)
     
@@ -7903,6 +7945,28 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * The live outputs' fill for the Stats rows: to frame resolution, on the
+     * ring's own scale, with the band around the live latency target. Firmware
+     * without `REQ_OUTPUT_LATENCY` keeps its fixed scale and fixed bands. Two
+     * transfers. Use this rather than [`BufferStats`]' percentages, whose
+     * 48-frame steps read as an empty ring at the lowest latency.
+     *
+     * Errors: as for [`DspiCore::fetch_buffer_stats`].
+     */
+    @Throws(DspiException::class)override fun `fetchOutputFills`(): List<OutputFill> {
+            return FfiConverterSequenceTypeOutputFill.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_output_fills(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * `REQ_OUTPUT_LATENCY` status (`wValue` 0, 12 bytes): the requested
      * and the effective option (a stream-only option requested while USB is
      * the source falls back to the first option without that flag), the
@@ -7960,6 +8024,28 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_output_pin(
         it, FfiConverterUByte.lower(`slot`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The output rings' health (Output Ring Health in the Stats window), or
+     * `None` on firmware without `REQ_OUTPUT_LATENCY` or with a short reply to
+     * it: show no section then. Seven transfers.
+     *
+     * Errors: [`DspiError::Disconnected`]; a transfer failure, or a stall or a
+     * short reply on a counter, as [`DspiError::Transfer`]. A counter that
+     * cannot be read fails the call rather than reading as 0.
+     */
+    @Throws(DspiException::class)override fun `fetchRingHealth`(): RingHealth? {
+            return FfiConverterOptionalTypeRingHealth.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_ring_health(
+        it, _status)
 }
     }
     )
@@ -9265,6 +9351,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * the bus; transfer errors (no permission, busy) from opening it or from
      * the connect sequence. [`DspiError::Unsupported`] on Android (use
      * [`DspiCore::open_fd`]) and in a build without the `usb` feature (iOS).
+     * With a [`crate::DeviceBroker`] set, the broker opens it instead, on any
+     * platform.
      */
     @Throws(DspiException::class)override fun `selectDevice`(`serial`: kotlin.String)
         = 
@@ -15285,6 +15373,64 @@ public object FfiConverterTypeNotifyResult: FfiConverterRustBuffer<NotifyResult>
 
 
 /**
+ * One output's fill, scaled and judged (`fetch_output_fills`).
+ */
+data class OutputFill (
+    /**
+     * Fill to frame resolution, %: of the ring where the firmware has the
+     * latency setting (at most 100), else of the firmware's fixed scale (which
+     * can pass 100).
+     */
+    var `fillPct`: kotlin.Double, 
+    /**
+     * Lowest fill since the last reset, % on the same scale.
+     */
+    var `minPct`: kotlin.UByte, 
+    /**
+     * Highest fill since the last reset, % on the same scale.
+     */
+    var `maxPct`: kotlin.UByte, 
+    /**
+     * The band of `fill_pct`, around the live latency target where there is
+     * one.
+     */
+    var `band`: FillBand
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeOutputFill: FfiConverterRustBuffer<OutputFill> {
+    override fun read(buf: ByteBuffer): OutputFill {
+        return OutputFill(
+            FfiConverterDouble.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterTypeFillBand.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: OutputFill) = (
+            FfiConverterDouble.allocationSize(value.`fillPct`) +
+            FfiConverterUByte.allocationSize(value.`minPct`) +
+            FfiConverterUByte.allocationSize(value.`maxPct`) +
+            FfiConverterTypeFillBand.allocationSize(value.`band`)
+    )
+
+    override fun write(value: OutputFill, buf: ByteBuffer) {
+            FfiConverterDouble.write(value.`fillPct`, buf)
+            FfiConverterUByte.write(value.`minPct`, buf)
+            FfiConverterUByte.write(value.`maxPct`, buf)
+            FfiConverterTypeFillBand.write(value.`band`, buf)
+    }
+}
+
+
+
+/**
  * `REQ_OUTPUT_LATENCY` status (config.h; 12 bytes). Field meanings as in
  * the firmware's `OutputLatencyStatus`.
  */
@@ -15571,6 +15717,100 @@ public object FfiConverterTypePresetDirectory: FfiConverterRustBuffer<PresetDire
             FfiConverterUByte.write(value.`lastActive`, buf)
             FfiConverterUByte.write(value.`outputConfigMode`, buf)
             FfiConverterUByte.write(value.`masterVolumeMode`, buf)
+    }
+}
+
+
+
+/**
+ * The output rings' counters and watermarks (`fetch_ring_health`). The
+ * underrun, refused and over-budget counts are cumulative; the rest clear on
+ * `reset_buffer_stats`.
+ */
+data class RingHealth (
+    /**
+     * How full the rings are kept, frames (Fill Target).
+     */
+    var `targetFrames`: kotlin.UShort, 
+    /**
+     * The same as a time, µs.
+     */
+    var `targetUs`: kotlin.UShort, 
+    /**
+     * Frames a stream input delivers per call; the fill swings by about this.
+     */
+    var `batchFrames`: kotlin.UShort, 
+    /**
+     * Times the outputs ran dry while a source owed audio. A host that pauses
+     * its stream does not count.
+     */
+    var `underrunEpisodes`: kotlin.UInt, 
+    /**
+     * Audio blocks dropped because the rings had no room.
+     */
+    var `refusedBlocks`: kotlin.UInt, 
+    /**
+     * The emptiest a ring got just before a write, frames; none before the
+     * first write.
+     */
+    var `lowestFill`: kotlin.UInt?, 
+    /**
+     * Longest wait between input deliveries, µs.
+     */
+    var `worstInputGapUs`: kotlin.UInt, 
+    /**
+     * Longest gap between audio-carrying USB packets, µs.
+     */
+    var `worstUsbGapUs`: kotlin.UInt, 
+    /**
+     * Background steps that overran their main-loop budget.
+     */
+    var `overBudgetSteps`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRingHealth: FfiConverterRustBuffer<RingHealth> {
+    override fun read(buf: ByteBuffer): RingHealth {
+        return RingHealth(
+            FfiConverterUShort.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: RingHealth) = (
+            FfiConverterUShort.allocationSize(value.`targetFrames`) +
+            FfiConverterUShort.allocationSize(value.`targetUs`) +
+            FfiConverterUShort.allocationSize(value.`batchFrames`) +
+            FfiConverterUInt.allocationSize(value.`underrunEpisodes`) +
+            FfiConverterUInt.allocationSize(value.`refusedBlocks`) +
+            FfiConverterOptionalUInt.allocationSize(value.`lowestFill`) +
+            FfiConverterUInt.allocationSize(value.`worstInputGapUs`) +
+            FfiConverterUInt.allocationSize(value.`worstUsbGapUs`) +
+            FfiConverterUInt.allocationSize(value.`overBudgetSteps`)
+    )
+
+    override fun write(value: RingHealth, buf: ByteBuffer) {
+            FfiConverterUShort.write(value.`targetFrames`, buf)
+            FfiConverterUShort.write(value.`targetUs`, buf)
+            FfiConverterUShort.write(value.`batchFrames`, buf)
+            FfiConverterUInt.write(value.`underrunEpisodes`, buf)
+            FfiConverterUInt.write(value.`refusedBlocks`, buf)
+            FfiConverterOptionalUInt.write(value.`lowestFill`, buf)
+            FfiConverterUInt.write(value.`worstInputGapUs`, buf)
+            FfiConverterUInt.write(value.`worstUsbGapUs`, buf)
+            FfiConverterUInt.write(value.`overBudgetSteps`, buf)
     }
 }
 
@@ -17535,6 +17775,50 @@ public object FfiConverterTypeDspiError : FfiConverterRustBuffer<DspiException> 
 
 
 /**
+ * How an output's fill reads ([`OutputFill::band`]). The Console shows these
+ * green, yellow and red.
+ */
+
+enum class FillBand {
+    
+    /**
+     * Within the expected swing.
+     */
+    GOOD,
+    /**
+     * Outside the expected swing.
+     */
+    WARN,
+    /**
+     * Empty, or too full to take a write.
+     */
+    BAD;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFillBand: FfiConverterRustBuffer<FillBand> {
+    override fun read(buf: ByteBuffer) = try {
+        FillBand.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: FillBand) = 4UL
+
+    override fun write(value: FillBand, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * Where a [`FirmwareGuardBoard`]'s voltage came from.
  */
 
@@ -18162,6 +18446,38 @@ public object FfiConverterOptionalTypeCoreVregInfo: FfiConverterRustBuffer<CoreV
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeRingHealth: FfiConverterRustBuffer<RingHealth?> {
+    override fun read(buf: ByteBuffer): RingHealth? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeRingHealth.read(buf)
+    }
+
+    override fun allocationSize(value: RingHealth?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeRingHealth.allocationSize(value)
+        }
+    }
+
+    override fun write(value: RingHealth?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeRingHealth.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceUShort: FfiConverterRustBuffer<List<kotlin.UShort>> {
     override fun read(buf: ByteBuffer): List<kotlin.UShort> {
         val len = buf.getInt()
@@ -18516,6 +18832,34 @@ public object FfiConverterSequenceTypeNamedValue: FfiConverterRustBuffer<List<Na
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeNamedValue.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeOutputFill: FfiConverterRustBuffer<List<OutputFill>> {
+    override fun read(buf: ByteBuffer): List<OutputFill> {
+        val len = buf.getInt()
+        return List<OutputFill>(len) {
+            FfiConverterTypeOutputFill.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<OutputFill>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeOutputFill.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<OutputFill>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeOutputFill.write(it, buf)
         }
     }
 }

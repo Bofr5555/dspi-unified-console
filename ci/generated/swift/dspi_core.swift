@@ -1766,6 +1766,17 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func fetchLimiterMeter() throws  -> [Float]
     
     /**
+     * The live outputs' fill for the Stats rows: to frame resolution, on the
+     * ring's own scale, with the band around the live latency target. Firmware
+     * without `REQ_OUTPUT_LATENCY` keeps its fixed scale and fixed bands. Two
+     * transfers. Use this rather than [`BufferStats`]' percentages, whose
+     * 48-frame steps read as an empty ring at the lowest latency.
+     *
+     * Errors: as for [`DspiCore::fetch_buffer_stats`].
+     */
+    func fetchOutputFills() throws  -> [OutputFill]
+    
+    /**
      * `REQ_OUTPUT_LATENCY` status (`wValue` 0, 12 bytes): the requested
      * and the effective option (a stream-only option requested while USB is
      * the source falls back to the first option without that flag), the
@@ -1796,6 +1807,17 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * have); [`DspiError::Disconnected`].
      */
     func fetchOutputPin(slot: UInt8) throws  -> UInt8
+    
+    /**
+     * The output rings' health (Output Ring Health in the Stats window), or
+     * `None` on firmware without `REQ_OUTPUT_LATENCY` or with a short reply to
+     * it: show no section then. Seven transfers.
+     *
+     * Errors: [`DspiError::Disconnected`]; a transfer failure, or a stall or a
+     * short reply on a counter, as [`DspiError::Transfer`]. A counter that
+     * cannot be read fails the call rather than reading as 0.
+     */
+    func fetchRingHealth() throws  -> RingHealth?
     
     /**
      * 24 bytes of IEC 60958 channel status of the locked S/PDIF input.
@@ -2507,6 +2529,8 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * the bus; transfer errors (no permission, busy) from opening it or from
      * the connect sequence. [`DspiError::Unsupported`] on Android (use
      * [`DspiCore::open_fd`]) and in a build without the `usb` feature (iOS).
+     * With a [`crate::DeviceBroker`] set, the broker opens it instead, on any
+     * platform.
      */
     func selectDevice(serial: String) throws 
     
@@ -4179,6 +4203,22 @@ open func fetchLimiterMeter()throws  -> [Float]  {
 }
     
     /**
+     * The live outputs' fill for the Stats rows: to frame resolution, on the
+     * ring's own scale, with the band around the live latency target. Firmware
+     * without `REQ_OUTPUT_LATENCY` keeps its fixed scale and fixed bands. Two
+     * transfers. Use this rather than [`BufferStats`]' percentages, whose
+     * 48-frame steps read as an empty ring at the lowest latency.
+     *
+     * Errors: as for [`DspiCore::fetch_buffer_stats`].
+     */
+open func fetchOutputFills()throws  -> [OutputFill]  {
+    return try  FfiConverterSequenceTypeOutputFill.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_output_fills(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * `REQ_OUTPUT_LATENCY` status (`wValue` 0, 12 bytes): the requested
      * and the effective option (a stream-only option requested while USB is
      * the source falls back to the first option without that flag), the
@@ -4222,6 +4262,22 @@ open func fetchOutputPin(slot: UInt8)throws  -> UInt8  {
     return try  FfiConverterUInt8.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_fetch_output_pin(self.uniffiClonePointer(),
         FfiConverterUInt8.lower(slot),$0
+    )
+})
+}
+    
+    /**
+     * The output rings' health (Output Ring Health in the Stats window), or
+     * `None` on firmware without `REQ_OUTPUT_LATENCY` or with a short reply to
+     * it: show no section then. Seven transfers.
+     *
+     * Errors: [`DspiError::Disconnected`]; a transfer failure, or a stall or a
+     * short reply on a counter, as [`DspiError::Transfer`]. A counter that
+     * cannot be read fails the call rather than reading as 0.
+     */
+open func fetchRingHealth()throws  -> RingHealth?  {
+    return try  FfiConverterOptionTypeRingHealth.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_ring_health(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -5239,6 +5295,8 @@ open func scanDevices() -> [DeviceInfo]  {
      * the bus; transfer errors (no permission, busy) from opening it or from
      * the connect sequence. [`DspiError::Unsupported`] on Android (use
      * [`DspiCore::open_fd`]) and in a build without the `usb` feature (iOS).
+     * With a [`crate::DeviceBroker`] set, the broker opens it instead, on any
+     * platform.
      */
 open func selectDevice(serial: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_select_device(self.uniffiClonePointer(),
@@ -13226,6 +13284,125 @@ public func FfiConverterTypeNotifyResult_lower(_ value: NotifyResult) -> RustBuf
 
 
 /**
+ * One output's fill, scaled and judged (`fetch_output_fills`).
+ */
+public struct OutputFill {
+    /**
+     * Fill to frame resolution, %: of the ring where the firmware has the
+     * latency setting (at most 100), else of the firmware's fixed scale (which
+     * can pass 100).
+     */
+    public var fillPct: Double
+    /**
+     * Lowest fill since the last reset, % on the same scale.
+     */
+    public var minPct: UInt8
+    /**
+     * Highest fill since the last reset, % on the same scale.
+     */
+    public var maxPct: UInt8
+    /**
+     * The band of `fill_pct`, around the live latency target where there is
+     * one.
+     */
+    public var band: FillBand
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Fill to frame resolution, %: of the ring where the firmware has the
+         * latency setting (at most 100), else of the firmware's fixed scale (which
+         * can pass 100).
+         */fillPct: Double, 
+        /**
+         * Lowest fill since the last reset, % on the same scale.
+         */minPct: UInt8, 
+        /**
+         * Highest fill since the last reset, % on the same scale.
+         */maxPct: UInt8, 
+        /**
+         * The band of `fill_pct`, around the live latency target where there is
+         * one.
+         */band: FillBand) {
+        self.fillPct = fillPct
+        self.minPct = minPct
+        self.maxPct = maxPct
+        self.band = band
+    }
+}
+
+#if compiler(>=6)
+extension OutputFill: Sendable {}
+#endif
+
+
+extension OutputFill: Equatable, Hashable {
+    public static func ==(lhs: OutputFill, rhs: OutputFill) -> Bool {
+        if lhs.fillPct != rhs.fillPct {
+            return false
+        }
+        if lhs.minPct != rhs.minPct {
+            return false
+        }
+        if lhs.maxPct != rhs.maxPct {
+            return false
+        }
+        if lhs.band != rhs.band {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(fillPct)
+        hasher.combine(minPct)
+        hasher.combine(maxPct)
+        hasher.combine(band)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeOutputFill: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> OutputFill {
+        return
+            try OutputFill(
+                fillPct: FfiConverterDouble.read(from: &buf), 
+                minPct: FfiConverterUInt8.read(from: &buf), 
+                maxPct: FfiConverterUInt8.read(from: &buf), 
+                band: FfiConverterTypeFillBand.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: OutputFill, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.fillPct, into: &buf)
+        FfiConverterUInt8.write(value.minPct, into: &buf)
+        FfiConverterUInt8.write(value.maxPct, into: &buf)
+        FfiConverterTypeFillBand.write(value.band, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOutputFill_lift(_ buf: RustBuffer) throws -> OutputFill {
+    return try FfiConverterTypeOutputFill.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOutputFill_lower(_ value: OutputFill) -> RustBuffer {
+    return FfiConverterTypeOutputFill.lower(value)
+}
+
+
+/**
  * `REQ_OUTPUT_LATENCY` status (config.h; 12 bytes). Field meanings as in
  * the firmware's `OutputLatencyStatus`.
  */
@@ -13819,6 +13996,195 @@ public func FfiConverterTypePresetDirectory_lift(_ buf: RustBuffer) throws -> Pr
 #endif
 public func FfiConverterTypePresetDirectory_lower(_ value: PresetDirectory) -> RustBuffer {
     return FfiConverterTypePresetDirectory.lower(value)
+}
+
+
+/**
+ * The output rings' counters and watermarks (`fetch_ring_health`). The
+ * underrun, refused and over-budget counts are cumulative; the rest clear on
+ * `reset_buffer_stats`.
+ */
+public struct RingHealth {
+    /**
+     * How full the rings are kept, frames (Fill Target).
+     */
+    public var targetFrames: UInt16
+    /**
+     * The same as a time, µs.
+     */
+    public var targetUs: UInt16
+    /**
+     * Frames a stream input delivers per call; the fill swings by about this.
+     */
+    public var batchFrames: UInt16
+    /**
+     * Times the outputs ran dry while a source owed audio. A host that pauses
+     * its stream does not count.
+     */
+    public var underrunEpisodes: UInt32
+    /**
+     * Audio blocks dropped because the rings had no room.
+     */
+    public var refusedBlocks: UInt32
+    /**
+     * The emptiest a ring got just before a write, frames; none before the
+     * first write.
+     */
+    public var lowestFill: UInt32?
+    /**
+     * Longest wait between input deliveries, µs.
+     */
+    public var worstInputGapUs: UInt32
+    /**
+     * Longest gap between audio-carrying USB packets, µs.
+     */
+    public var worstUsbGapUs: UInt32
+    /**
+     * Background steps that overran their main-loop budget.
+     */
+    public var overBudgetSteps: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * How full the rings are kept, frames (Fill Target).
+         */targetFrames: UInt16, 
+        /**
+         * The same as a time, µs.
+         */targetUs: UInt16, 
+        /**
+         * Frames a stream input delivers per call; the fill swings by about this.
+         */batchFrames: UInt16, 
+        /**
+         * Times the outputs ran dry while a source owed audio. A host that pauses
+         * its stream does not count.
+         */underrunEpisodes: UInt32, 
+        /**
+         * Audio blocks dropped because the rings had no room.
+         */refusedBlocks: UInt32, 
+        /**
+         * The emptiest a ring got just before a write, frames; none before the
+         * first write.
+         */lowestFill: UInt32?, 
+        /**
+         * Longest wait between input deliveries, µs.
+         */worstInputGapUs: UInt32, 
+        /**
+         * Longest gap between audio-carrying USB packets, µs.
+         */worstUsbGapUs: UInt32, 
+        /**
+         * Background steps that overran their main-loop budget.
+         */overBudgetSteps: UInt32) {
+        self.targetFrames = targetFrames
+        self.targetUs = targetUs
+        self.batchFrames = batchFrames
+        self.underrunEpisodes = underrunEpisodes
+        self.refusedBlocks = refusedBlocks
+        self.lowestFill = lowestFill
+        self.worstInputGapUs = worstInputGapUs
+        self.worstUsbGapUs = worstUsbGapUs
+        self.overBudgetSteps = overBudgetSteps
+    }
+}
+
+#if compiler(>=6)
+extension RingHealth: Sendable {}
+#endif
+
+
+extension RingHealth: Equatable, Hashable {
+    public static func ==(lhs: RingHealth, rhs: RingHealth) -> Bool {
+        if lhs.targetFrames != rhs.targetFrames {
+            return false
+        }
+        if lhs.targetUs != rhs.targetUs {
+            return false
+        }
+        if lhs.batchFrames != rhs.batchFrames {
+            return false
+        }
+        if lhs.underrunEpisodes != rhs.underrunEpisodes {
+            return false
+        }
+        if lhs.refusedBlocks != rhs.refusedBlocks {
+            return false
+        }
+        if lhs.lowestFill != rhs.lowestFill {
+            return false
+        }
+        if lhs.worstInputGapUs != rhs.worstInputGapUs {
+            return false
+        }
+        if lhs.worstUsbGapUs != rhs.worstUsbGapUs {
+            return false
+        }
+        if lhs.overBudgetSteps != rhs.overBudgetSteps {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(targetFrames)
+        hasher.combine(targetUs)
+        hasher.combine(batchFrames)
+        hasher.combine(underrunEpisodes)
+        hasher.combine(refusedBlocks)
+        hasher.combine(lowestFill)
+        hasher.combine(worstInputGapUs)
+        hasher.combine(worstUsbGapUs)
+        hasher.combine(overBudgetSteps)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRingHealth: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RingHealth {
+        return
+            try RingHealth(
+                targetFrames: FfiConverterUInt16.read(from: &buf), 
+                targetUs: FfiConverterUInt16.read(from: &buf), 
+                batchFrames: FfiConverterUInt16.read(from: &buf), 
+                underrunEpisodes: FfiConverterUInt32.read(from: &buf), 
+                refusedBlocks: FfiConverterUInt32.read(from: &buf), 
+                lowestFill: FfiConverterOptionUInt32.read(from: &buf), 
+                worstInputGapUs: FfiConverterUInt32.read(from: &buf), 
+                worstUsbGapUs: FfiConverterUInt32.read(from: &buf), 
+                overBudgetSteps: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RingHealth, into buf: inout [UInt8]) {
+        FfiConverterUInt16.write(value.targetFrames, into: &buf)
+        FfiConverterUInt16.write(value.targetUs, into: &buf)
+        FfiConverterUInt16.write(value.batchFrames, into: &buf)
+        FfiConverterUInt32.write(value.underrunEpisodes, into: &buf)
+        FfiConverterUInt32.write(value.refusedBlocks, into: &buf)
+        FfiConverterOptionUInt32.write(value.lowestFill, into: &buf)
+        FfiConverterUInt32.write(value.worstInputGapUs, into: &buf)
+        FfiConverterUInt32.write(value.worstUsbGapUs, into: &buf)
+        FfiConverterUInt32.write(value.overBudgetSteps, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRingHealth_lift(_ buf: RustBuffer) throws -> RingHealth {
+    return try FfiConverterTypeRingHealth.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRingHealth_lower(_ value: RingHealth) -> RustBuffer {
+    return FfiConverterTypeRingHealth.lower(value)
 }
 
 
@@ -17297,6 +17663,96 @@ extension DspiError: Foundation.LocalizedError {
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * How an output's fill reads ([`OutputFill::band`]). The Console shows these
+ * green, yellow and red.
+ */
+
+public enum FillBand {
+    
+    /**
+     * Within the expected swing.
+     */
+    case good
+    /**
+     * Outside the expected swing.
+     */
+    case warn
+    /**
+     * Empty, or too full to take a write.
+     */
+    case bad
+}
+
+
+#if compiler(>=6)
+extension FillBand: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFillBand: FfiConverterRustBuffer {
+    typealias SwiftType = FillBand
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FillBand {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .good
+        
+        case 2: return .warn
+        
+        case 3: return .bad
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FillBand, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .good:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .warn:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .bad:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFillBand_lift(_ buf: RustBuffer) throws -> FillBand {
+    return try FfiConverterTypeFillBand.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFillBand_lower(_ value: FillBand) -> RustBuffer {
+    return FfiConverterTypeFillBand.lower(value)
+}
+
+
+extension FillBand: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * Where a [`FirmwareGuardBoard`]'s voltage came from.
  */
 
@@ -18277,6 +18733,30 @@ fileprivate struct FfiConverterOptionTypeCoreVregInfo: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeRingHealth: FfiConverterRustBuffer {
+    typealias SwiftType = RingHealth?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeRingHealth.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeRingHealth.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceUInt16: FfiConverterRustBuffer {
     typealias SwiftType = [UInt16]
 
@@ -18594,6 +19074,31 @@ fileprivate struct FfiConverterSequenceTypeNamedValue: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeNamedValue.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeOutputFill: FfiConverterRustBuffer {
+    typealias SwiftType = [OutputFill]
+
+    public static func write(_ value: [OutputFill], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeOutputFill.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [OutputFill] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [OutputFill]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeOutputFill.read(from: &buf))
         }
         return seq
     }
@@ -19492,6 +19997,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_limiter_meter() != 57932) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_output_fills() != 8756) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_output_latency() != 56235) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -19499,6 +20007,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_output_pin() != 64350) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_ring_health() != 1712) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_spdif_rx_channel_status() != 43337) {
@@ -19675,7 +20186,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_scan_devices() != 33045) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_select_device() != 30406) {
+    if (uniffi_dspi_core_checksum_method_dspicore_select_device() != 4728) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_adat_input_clock_mode() != 11207) {
