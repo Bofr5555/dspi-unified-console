@@ -19,6 +19,10 @@
 #   apps/apple/.../Core/Generated/Sources/<ns>/<ns>.swift
 #                              the Swift app's copy of ci/generated/swift (WP SW2),
 #                              one package module per namespace
+#   ci/generated/swift/DspiConstants.swift
+#                              the core's constants for Swift (WP SW25,
+#                              apps/apple/Tools/gen_swift_constants.py); the app's
+#                              copy is the package module dspi_constants
 #
 # ci/generated/ is the committed copy of output that the builds regenerate for
 # themselves.
@@ -52,6 +56,9 @@ for lang in kotlin swift; do
   done
 done
 
+# -- WP SW25 --
+python3 apps/apple/Tools/gen_swift_constants.py "$out/swift/DspiConstants.swift"
+
 status=0
 if [ "$mode" = write ]; then
   rm -rf "$committed"
@@ -74,11 +81,20 @@ if [ "$mode" = write ]; then
     mkdir -p "$app/$ns"
     cp "$out/swift/$ns.swift" "$app/$ns/"
   done
+  # -- WP SW25 -- and the constants' module
+  mkdir -p "$app/dspi_constants"
+  cp "$out/swift/DspiConstants.swift" "$app/dspi_constants/"
   echo "drift: wrote $app"
 else
   have=$(cd "$app" && ls | sort | tr '\n' ' ')
-  if [ "$have" != "${namespaces[*]} " ]; then
-    echo "drift: $app has modules [ $have] for namespaces [ ${namespaces[*]} ]" >&2
+  want=$(printf '%s\n' "${namespaces[@]}" dspi_constants | sort | tr '\n' ' ') # -- WP SW25 --
+  if [ "$have" != "$want" ]; then
+    echo "drift: $app has modules [ $have] for [ $want]" >&2
+    status=1
+  fi
+  # -- WP SW25 --
+  if ! diff -q "$out/swift/DspiConstants.swift" "$app/dspi_constants/DspiConstants.swift"; then
+    echo "drift: $app/dspi_constants/DspiConstants.swift differs from what the sources generate" >&2
     status=1
   fi
   for ns in "${namespaces[@]}"; do

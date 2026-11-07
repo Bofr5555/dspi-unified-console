@@ -58,5 +58,15 @@ case "$lang" in
         -o "$out/build/lib$ns.so" "$out/src/$ns.swift"
     done
     echo "compiled and linked ${#namespaces[@]} Swift modules: ${namespaces[*]}"
+    # -- WP SW25 -- The generated constants (the committed copy, which the drift
+    # step holds to the sources), as the app's package module, and a check that
+    # their types and values reach a user of the module.
+    consts="apps/apple/DSPi Console/Core/Generated/Sources/dspi_constants/DspiConstants.swift"
+    /opt/swift/bin/swiftc -swift-version 5 -parse-as-library -module-name dspi_constants \
+      -emit-library -use-ld=lld -emit-module -emit-module-path "$out/build/dspi_constants.swiftmodule" \
+      -o "$out/build/libdspi_constants.so" "$consts"
+    /opt/swift/bin/swiftc -swift-version 5 -use-ld=lld -I "$out/build" -L "$out/build" -ldspi_constants \
+      -o "$out/build/constants_check_sw25" ci/swift/constants_check_sw25.swift
+    LD_LIBRARY_PATH="$out/build" "$out/build/constants_check_sw25"
     ;;
 esac
