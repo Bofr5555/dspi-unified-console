@@ -40,10 +40,7 @@ static QVariantMap coreApply(const std::function<uint32_t(char *, uint32_t)> &ca
     return jsonMap(buf);
 }
 
-// An export the core refused is its JSON failure reply, not a file to write: a
-// configuration document has no "ok" key and a filter file is not JSON. No text
-// at all is the same to the caller.
-static bool exportRefused(const QByteArray &text, QVariantMap &result) {
+bool ConfigFiles::exportRefused(const QByteArray &text, QVariantMap &result) {
     const QVariantMap reply = jsonMap(text);
     if (!text.isEmpty() && (!reply.contains("ok") || reply.value("ok").toBool())) return false;
     result = { { "ok", false }, { "error", reply.value("error", "No device connected.") } };

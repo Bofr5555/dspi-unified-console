@@ -909,7 +909,14 @@ class ConfigFilesImpl internal constructor(private val bridge: DspiBridgeImpl) :
     override suspend fun exportConfiguration(name: String): String {
         if (!bridge.connected) return ""
         val links = bridge.inputLinks
-        return bridge.onFfi { bridge.core.configExport(name, bridge.appVersion, links) }
+        return exportOrRefusal { bridge.core.configExport(name, bridge.appVersion, links) }
+    }
+
+    /** The core refuses an export with no device's state (firmware whose image it can't map): [ConfigFiles]'s failure reply. */
+    private suspend fun exportOrRefusal(export: () -> String): String = try {
+        bridge.onFfi { export() }
+    } catch (e: DspiException) {
+        Json.write(mapOf("ok" to false, "error" to "This device's settings could not be exported: ${e.message}."))
     }
 
     /** {ok, error, name, platform, firmware, savedUtc, crossPlatform}; stateless (no USB). */
@@ -950,7 +957,7 @@ class ConfigFilesImpl internal constructor(private val bridge: DspiBridgeImpl) :
     override suspend fun exportFilters(): String {
         if (!bridge.connected) return ""
         val inputs = bridge.liveInputCount()
-        return bridge.onFfi { bridge.core.filtersExport(inputs) }
+        return exportOrRefusal { bridge.core.filtersExport(inputs) }
     }
 
     /** {ok, error, kind, channels: [{wire, label, bands, checked}], filters, preamp}. */

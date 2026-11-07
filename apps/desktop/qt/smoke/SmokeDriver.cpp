@@ -14,6 +14,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QEventLoop>
 #include <QFileInfo>
 #include <QImage>
@@ -447,6 +448,28 @@ void SmokeDriver::testFiles() {
     b->setFilter(0, 0, 1, 777.0f, 1.0f, 0.9f);
     r = cf->exportFilters(filters);
     check("filter export", r.value("ok").toBool());
+
+    // -- WP CG18 -- What the core gives with no device's state, and what it gives
+    // with one, through the check that stands before the file is written.
+    {
+        FfiCore *idle = dspi_core_new();
+        QByteArray reply(4096, '\0');
+        const auto text = [&reply](uint32_t needed) {
+            return reply.left(int(qMax<uint32_t>(1, needed) - 1));
+        };
+        QVariantMap refused;
+        const QByteArray noConfig = text(dspi_config_export(idle, "x", "1", 0, reply.data(), uint32_t(reply.size())));
+        check("CG18: a refused config export is seen", ConfigFiles::exportRefused(noConfig, refused));
+        check("CG18: and is reported", !refused.value("ok").toBool() && refused.value("error").toString().contains("not connected"));
+        const QByteArray noFilters = text(dspi_filters_export(idle, 2, reply.data(), uint32_t(reply.size())));
+        check("CG18: a refused filter export is seen", ConfigFiles::exportRefused(noFilters, refused));
+        check("CG18: no text is refused", ConfigFiles::exportRefused(QByteArray(), refused));
+        dspi_core_free(idle);
+        QFile doc(config.toLocalFile());
+        check("CG18: a document is not refused", doc.open(QIODevice::ReadOnly) && !ConfigFiles::exportRefused(doc.readAll(), refused));
+        QFile list(filters.toLocalFile());
+        check("CG18: a filter file is not refused", list.open(QIODevice::ReadOnly) && !ConfigFiles::exportRefused(list.readAll(), refused));
+    }
     r = cf->inspectFilters(filters);
     check("filter inspect", r.value("ok").toBool());
     b->setFilter(0, 0, 1, 333.0f, 1.0f, 0.9f);

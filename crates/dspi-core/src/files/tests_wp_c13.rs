@@ -236,7 +236,7 @@ fn wp_c13_rp2040_skips_the_upmixer() {
 #[test]
 fn wp_c13_export_round_trips_the_capture() {
     let s = capture();
-    let text = export_config(&s, "Capture", "0.1", 0b0101);
+    let text = export_config(&s, "Capture", "0.1", 0b0101, Some(&s.crossfeed_pair_map));
     let v = parse_config(&text).unwrap();
     assert_eq!(v["meta"]["name"], "Capture");
     assert_eq!(v["meta"]["platform"], "RP2350");
@@ -299,7 +299,7 @@ fn wp_c13_export_round_trips_an_edited_state() {
     s.fw_minor = 1;
     s.fw_patch = 6;
     s.fw_beta = 5;
-    let text = export_config(&s, "K340", "0.1", 0);
+    let text = export_config(&s, "K340", "0.1", 0, Some(&s.crossfeed_pair_map));
     let v = parse_config(&text).unwrap();
     assert_eq!(v["meta"]["firmwareVersion"], "1.1.6-beta5");
     assert_eq!(v["crossfeed"]["pairMap"], json!([2, 19, 0, 0]));
@@ -360,7 +360,7 @@ fn wp_c13_pair_map_import() {
 #[test]
 fn wp_c13_export_keeps_the_old_core_shape() {
     // The keys the Qt app, the Consoles and the Android app read.
-    let v = parse_config(&export_config(&capture(), "", "", 0)).unwrap();
+    let v = parse_config(&export_config(&capture(), "", "", 0, Some(&[0; 4]))).unwrap();
     let keys = |x: &Value| x.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
     assert_eq!(
         keys(&v),
@@ -455,7 +455,7 @@ fn wp_c13_export_keeps_the_old_core_shape() {
     assert_eq!(keys(&v["tube"]).len(), 14);
     assert!(v["io"]["dacHwMute"].is_null());
     // RP2040: no upmixer block.
-    let v = parse_config(&export_config(&default_state(), "", "", 0)).unwrap();
+    let v = parse_config(&export_config(&default_state(), "", "", 0, None)).unwrap();
     assert!(v["upmix"].is_null());
     assert_eq!(v["channels"][6]["channelId"], 6, "no PDM id on RP2040");
 }
@@ -1080,7 +1080,7 @@ proptest! {
         s.num_output_channels = n_out;
         let b = build_config(&s, &doc, options);
         let _ = config_report(&b);
-        let _ = export_config(&b.state, "x", "y", 0xFF);
+        let _ = export_config(&b.state, "x", "y", 0xFF, None);
         let _ = config_inspect(doc.to_string());
     }
 

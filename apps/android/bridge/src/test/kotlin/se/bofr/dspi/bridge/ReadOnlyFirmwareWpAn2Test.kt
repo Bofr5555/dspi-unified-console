@@ -56,6 +56,26 @@ class ReadOnlyFirmwareWpAn2Test {
         }
     }
 
+    /** WP CG18: the core refuses, and the caller gets a reply rather than an exception. */
+    @Test
+    fun wpCg18AnUnmappedImageRefusesExportsWithAReason() = runTest {
+        for (name in listOf("v15_unmapped", "v34_unmapped")) {
+            val core = fixture(name)
+            val b = newBridge(core)
+            attach(b, core)
+            assertTrue(name, b.connected)
+            for (reply in listOf(b.configFiles.exportConfiguration("x"), b.configFiles.exportFilters())) {
+                assertTrue(reply, reply.contains("\"ok\":false"))
+                assertTrue(reply, reply.contains("not supported by the connected firmware"))
+            }
+        }
+        // A mapped older image still exports.
+        val core = fixture("v17_1_1_5_beta3")
+        val b = newBridge(core)
+        attach(b, core)
+        assertFalse(b.configFiles.exportConfiguration("x").contains("\"ok\":false"))
+    }
+
     @Test
     fun wpAn2V32FirmwareIsWritable() = runTest {
         for (name in listOf("stock_final_v32", "k340_v32")) {

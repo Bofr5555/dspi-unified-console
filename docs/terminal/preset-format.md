@@ -139,7 +139,13 @@ value of the wrong type, which counts as omitted; the Terminal refuses that file
 
 Qt's export follows the same rule from its mirror: the device's wire format decides
 each key (`dspi_proto::wire_compat::features`), so an older device's document has no
-key its format lacks. With no device's state to export, it writes no file: the core
+key its format lacks, and `crossfeed.pairMap` is written only when the device reports
+a map over the extension channel. Capture asks the device and keeps what it answers,
+which a mirror cannot, so the two gates are not one table: they agree on the masks
+and blocks by format, and capture also needs the firmware's feature flag. Otherwise
+Qt leaves `qp` out below V22 (capture writes 0.707), writes `i2sBckPinSlave` from V21
+(capture never does), and goes by format alone for `spdifEnabledExt` and the ADAT
+keys, so RP2040 carries the latter. With no device's state to export, it writes no file: the core
 returns a typed error (`Disconnected`, `Unsupported` for an image it cannot map,
 `Transfer` before the image is read). A filter import in Qt leaves a bank alone when
 its section has no lines for that bank; an `OFF` line is a flat band and counts as a

@@ -43,10 +43,15 @@ class FileMenuActions(private val bridge: DspiBridge, private val scope: Corouti
     }
 
     /** The `.dspipreset` text named after the chosen file ([displayName]), null (after an alert) on failure. */
-    suspend fun configurationDocument(displayName: String?): String? {
-        val text = bridge.configFiles.exportConfiguration(PresetDocumentFiles.configurationName(displayName))
-        if (text.isEmpty()) {
-            host.showError("No device connected.")
+    suspend fun configurationDocument(displayName: String?): String? =
+        exported(bridge.configFiles.exportConfiguration(PresetDocumentFiles.configurationName(displayName)))
+
+    /** An export's text, or null after an alert when it isn't a file to write ([ConfigFiles.exportConfiguration]). */
+    private fun exported(text: String): String? {
+        val reply = if (text.startsWith("{")) Json.parseObject(text) else null
+        val refused = reply?.containsKey("ok") == true && reply.bool("ok") != true
+        if (text.isEmpty() || refused) {
+            host.showError(reply?.str("error")?.ifEmpty { null } ?: "No device connected.")
             return null
         }
         return text
@@ -142,15 +147,8 @@ class FileMenuActions(private val bridge: DspiBridge, private val scope: Corouti
 
     // ═══ Filter files ═════════════════════════════════════════════════════
 
-    /** The filter file text, null (after an alert) when there is no device. */
-    suspend fun filtersDocument(): String? {
-        val text = if (bridge.connected) bridge.configFiles.exportFilters() else ""
-        if (text.isEmpty()) {
-            host.showError("No device connected.")
-            return null
-        }
-        return text
-    }
+    /** The filter file text, null (after an alert) when there is none to write. */
+    suspend fun filtersDocument(): String? = exported(if (bridge.connected) bridge.configFiles.exportFilters() else "")
 
     fun filtersExported() = host.showSuccess("Filters exported successfully")
 

@@ -256,7 +256,7 @@ fn has(v: &Value, block: &str, key: &str) -> bool {
 
 #[test]
 fn wp_cg18_each_key_is_exported_from_the_format_that_carries_it() {
-    let keys: [(&str, &str, u8); 25] = [
+    let keys: [(&str, &str, u8); 24] = [
         ("io", "adatEnabled", 17),
         ("io", "adatPin", 17),
         ("leveller", "detectorMask", 18),
@@ -280,13 +280,12 @@ fn wp_cg18_each_key_is_exported_from_the_format_that_carries_it() {
         ("subharm", "ceilingDb", 30),
         ("subharm", "linkPairs", 30),
         ("tube", "driveDb", 31),
-        ("crossfeed", "pairMap", 32),
         ("crossfeed", "enabled", 16),
     ];
     let mut s = capture();
     for wire in 16u8..=33 {
         s.format_version = wire;
-        let v = json_of(&export_config(&s, "x", "1", 0));
+        let v = json_of(&export_config(&s, "x", "1", 0, None));
         for (block, key, since) in keys {
             assert_eq!(
                 has(&v, block, key),
@@ -317,7 +316,10 @@ fn wp_cg18_round_trip_from_v17() {
     }
     assert!(v["upmix"].is_null());
     assert!(!has(&v, "loudness", "outputMask"));
-    assert!(!has(&v, "crossfeed", "pairMap"));
+    assert!(
+        !has(&v, "crossfeed", "pairMap"),
+        "no extension channel here"
+    );
     assert!(!has(&v, "leveller", "applyMask"));
     for gone in [
         "i2sClockMode",
@@ -406,7 +408,66 @@ fn wp_cg18_a_v31_device_exports_everything_but_the_limiter() {
     assert!(v.get("tube").is_some());
     assert!(has(&v, "subharm", "ceilingDb"));
     assert!(v["channels"][8].get("limiter").is_none());
-    assert!(!has(&v, "crossfeed", "pairMap"));
+}
+
+/// A stock V32 device has no pair map. Its image's zeros must not travel, or the
+/// document resets the map of a K340 it is imported on.
+#[test]
+fn wp_cg18_a_device_with_no_pair_map_exports_none() {
+    let opts = FakeOptions {
+        extensions: false,
+        ..FakeOptions::default()
+    };
+    let stock = DspiCore::new();
+    stock
+        .attach_probed(
+            Box::new(FakeDevice::new(Capture::demo(), opts)),
+            "STOCK".into(),
+            0,
+        )
+        .unwrap();
+    stock.fetch_all().unwrap();
+    assert!(!stock.ext_status().unwrap().has_pair_map);
+    let text = stock.config_export("x".into(), "1".into(), 0).unwrap();
+    assert!(!has(&json_of(&text), "crossfeed", "pairMap"));
+    // The same on Terminal terms: no key, nothing named as left out by either.
+    assert!(
+        preset_file::parse(&text)
+            .unwrap()
+            .crossfeed
+            .pair_map
+            .is_none()
+    );
+
+    let k340 = demo();
+    assert!(k340.ext_status().unwrap().has_pair_map);
+    let custom = vec![0x02, 0x13, 0, 0];
+    k340.set_crossfeed_pair_map(custom.clone()).unwrap();
+    let mine = k340.config_export("x".into(), "1".into(), 0).unwrap();
+    assert_eq!(json_of(&mine)["crossfeed"]["pairMap"], json!(custom));
+    let r = json_of(&k340.config_import(text, 0));
+    assert_eq!(r["ok"], true, "{r}");
+    assert_eq!(k340.get_state().crossfeed_pair_map, custom);
+}
+
+/// An older image cannot hold the map, so the connection's copy is what goes out.
+#[test]
+fn wp_cg18_an_older_formats_map_comes_from_the_extension_channel() {
+    let core = DspiCore::new();
+    let cap = Capture {
+        platform: Capture::demo().platform,
+        bulk: v17_image(),
+    };
+    core.attach(
+        Box::new(FakeDevice::new(cap, FakeOptions::default())),
+        "OLD".into(),
+        0,
+    );
+    core.fetch_all().unwrap();
+    let map = dspi_proto::ext::PairMap([0x02, 0x13, 0, 0]);
+    core.lock().conn().unwrap().ext.pair_map = Some(map);
+    let v = json_of(&core.config_export("x".into(), "1".into(), 0).unwrap());
+    assert_eq!(v["crossfeed"]["pairMap"], json!(map.0));
 }
 
 // ── Nothing to export ──
