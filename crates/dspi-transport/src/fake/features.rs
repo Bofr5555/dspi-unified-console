@@ -610,6 +610,33 @@ impl FakeRemote {
 }
 
 impl State {
+    // -- WP QD5 --
+    /// [`super::EXT_FAKE_LATENCY_TIMING`]'s OUT path. False refuses it.
+    pub(super) fn latency_timing(&mut self, data: &[u8]) -> bool {
+        let &[mode, reads, blackout] = data else {
+            return false;
+        };
+        let (reads, hold, refuse) = match mode {
+            0 => (None, false, false),
+            1 => (Some(u32::from(reads)), false, false),
+            2 => (Some(0), true, false),
+            3 => (Some(u32::from(reads)), false, true),
+            _ => return false,
+        };
+        let a = &mut self.extras.latency_apply;
+        a.reads = reads;
+        a.hold = hold;
+        a.refuse = refuse;
+        a.blackout = u32::from(blackout);
+        true
+    }
+
+    // -- WP QD5 --
+    /// How many latency SETs arrived.
+    pub(super) fn latency_sets(&self) -> u32 {
+        self.extras.latency_apply.sets
+    }
+
     /// `REQ_OUTPUT_LATENCY`'s OUT path for a known id.
     fn latency_set(&mut self, id: u8) {
         let a = &mut self.extras.latency_apply;

@@ -1205,6 +1205,31 @@ pub extern "C" fn dspi_demo_rename_elsewhere(
     flag(core, |c| c.demo_rename_elsewhere(target, name.to_owned()))
 }
 
+// -- WP QD5 --
+/// On the demo device only: how an output-latency request lands. `mode` 0 at
+/// once, 1 after `reads` status reads, 2 never, 3 dropped after `reads` status
+/// reads; `blackout` status reads stall first while one is pending. False on
+/// anything else.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_demo_latency_timing(
+    core: *mut FfiCore,
+    mode: u8,
+    reads: u8,
+    blackout: u8,
+) -> bool {
+    flag(core, |c| c.demo_latency_timing(mode, reads, blackout))
+}
+
+// -- WP QD5 --
+/// On the demo device only: how many output-latency requests it has received,
+/// or `u32::MAX` on anything else.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_demo_latency_sets(core: *mut FfiCore) -> u32 {
+    with_core(core, u32::MAX, |h| {
+        h.core.demo_latency_sets().unwrap_or(u32::MAX)
+    })
+}
+
 // ── Added: diagnostics ────────────────────────────────────────────────
 
 /// The output latency's status: JSON {ok, raw, fields: [{name, value}]}.
@@ -1664,3 +1689,8 @@ mod tests_wp_cg12;
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "fns_misc/tests_wp_qd4.rs"]
 mod tests_wp_qd4;
+
+// -- WP QD5 --
+#[cfg(test)]
+#[path = "fns_misc/tests_wp_qd5.rs"]
+mod tests_wp_qd5;

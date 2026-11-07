@@ -24,6 +24,8 @@ use dspi_transport::TransportError;
 // -- WP QD4 --
 use dspi_transport::TransportKind;
 use dspi_transport::fake::EXT_FAKE_RENAME_ELSEWHERE;
+// -- WP QD5 --
+use dspi_transport::fake::EXT_FAKE_LATENCY_TIMING;
 
 use crate::consts::CHANNEL_NAME_LEN;
 use crate::records::*;
@@ -167,6 +169,51 @@ impl DspiCore {
             .transport()
             .control_out(op::REQ_EXTENSION, EXT_FAKE_RENAME_ELSEWHERE, &payload)
             .map_err(DspiError::from)
+    }
+
+    // -- WP QD5 --
+    /// Set how the demo device applies an output-latency request, for clients'
+    /// tests: `mode` 0 at once (and a request held so far applies on the next
+    /// status read), 1 after `reads` status reads, 2 never, 3 dropped after
+    /// `reads` status reads. `blackout` status reads stall first while one is
+    /// pending, as the firmware's flash window does. `Unsupported`, with no
+    /// traffic, on anything but a simulated device; `InvalidArgument` for
+    /// another `mode`.
+    pub fn demo_latency_timing(&self, mode: u8, reads: u8, blackout: u8) -> Result<()> {
+        if mode > 3 {
+            return Err(DspiError::InvalidArgument {
+                msg: format!("latency timing mode {mode}"),
+            });
+        }
+        let mut inner = self.lock();
+        let mut w = inner.writable_conn()?;
+        if w.conn().caps.kind != TransportKind::Fake {
+            return Err(DspiError::Unsupported);
+        }
+        w.conn()
+            .transport()
+            .control_out(
+                op::REQ_EXTENSION,
+                EXT_FAKE_LATENCY_TIMING,
+                &[mode, reads, blackout],
+            )
+            .map_err(DspiError::from)
+    }
+
+    // -- WP QD5 --
+    /// How many output-latency requests the demo device has received, for
+    /// clients' tests that a wait never sends one again. `Unsupported`, with no
+    /// traffic, on anything but a simulated device.
+    pub fn demo_latency_sets(&self) -> Result<u32> {
+        let mut inner = self.lock();
+        let conn = inner.conn()?;
+        if conn.caps.kind != TransportKind::Fake {
+            return Err(DspiError::Unsupported);
+        }
+        let raw = conn
+            .transport()
+            .control_in(op::REQ_EXTENSION, EXT_FAKE_LATENCY_TIMING, 4)?;
+        Ok(Cursor(&raw).u32().unwrap_or(0))
     }
 
     /// `REQ_OUTPUT_LATENCY` status (`wValue` 0, 12 bytes): the requested
@@ -607,3 +654,8 @@ mod tests_wp_cg13;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_qd4;
+
+// -- WP QD5 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_qd5;
