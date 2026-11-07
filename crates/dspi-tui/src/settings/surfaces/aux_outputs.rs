@@ -162,7 +162,7 @@ impl SurfacesPage {
             ));
         }
 
-        rows.extend(self.delay_rows(slot));
+        rows.extend(self.delay_rows(cx, slot));
 
         // Power-on behaviour, carried in `extras` and, for a dimmable output,
         // the boot level in `value` (`auxBootRows`, :3265-3308).
@@ -547,8 +547,12 @@ mod tests {
         let a = page(&d);
         assert_eq!(a.visible(), vec![10, 11]);
         assert_eq!(a.addable_types(), vec![m::ty::AUX_OUT, m::ty::AUX_PWM]);
-        assert_eq!(a.type_options(10), vec![m::ty::AUX_OUT, m::ty::AUX_PWM]);
-        assert!(!p.type_options(12).contains(&m::ty::AUX_OUT));
+        // -- WP TM24 -- The type picker is the core's.
+        let types = |p: &SurfacesPage, s: usize| {
+            dspi_session::cs_rows::type_options(&p.live, s, &p.drafts[s])
+        };
+        assert_eq!(types(&a, 10), vec![m::ty::AUX_OUT, m::ty::AUX_PWM]);
+        assert!(!types(&p, 12).contains(&m::ty::AUX_OUT));
     }
 
     #[test]
