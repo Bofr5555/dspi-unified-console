@@ -41,6 +41,10 @@ enum class RemoteAction(val label: String) {
     DISCONNECT("Disconnect")
 }
 
+// -- WP AN29 --
+/** Android keeps a USB grant only until unplug; the "Always open" tick is what persists it. */
+const val USB_ALWAYS_OPEN_HINT = "Tick \"Always open\" in Android's dialog to skip this prompt next time."
+
 fun connectionStrip(
     mode: AppMode,
     state: UsbSessionState,
@@ -53,10 +57,11 @@ fun connectionStrip(
     mode == AppMode.REMOTE -> remoteStrip(remote, lockNotice)
     else -> when (state) {
         UsbSessionState.NoDevice -> ConnectionStrip.NoDevice(demoAvailable, networkAvailable)
-        is UsbSessionState.PermissionRequired -> ConnectionStrip.NeedsPermission("A DSPi is connected. Allow USB access to use it.")
+        is UsbSessionState.PermissionRequired ->
+            ConnectionStrip.NeedsPermission("A DSPi is connected. Allow USB access to use it. $USB_ALWAYS_OPEN_HINT")
         is UsbSessionState.PermissionDenied -> ConnectionStrip.NeedsPermission("USB access to the DSPi was denied.")
         // queued prompts are shown by the session as soon as a UI is visible: no second request
-        is UsbSessionState.PermissionPending -> ConnectionStrip.Info("Waiting for USB permission…")
+        is UsbSessionState.PermissionPending -> ConnectionStrip.Info("Waiting for USB permission… $USB_ALWAYS_OPEN_HINT")
         is UsbSessionState.Failed -> ConnectionStrip.Info("Could not open the DSPi: ${state.reason}")
         is UsbSessionState.Open -> ConnectionStrip.Hidden
     }

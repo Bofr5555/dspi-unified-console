@@ -1,6 +1,7 @@
 package se.bofr.dspi.app
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import se.bofr.dspi.core.DspiException
@@ -62,5 +63,16 @@ class ConnectionStripTest {
         assertEquals(listOf(RemoteAction.RETRY, RemoteAction.DISCONNECT), r.actions)
         assertEquals(listOf(RemoteAction.CONNECT, RemoteAction.DISCONNECT), of(LinkSessionState.Failed(hub, "revoked")).actions)
         assertTrue(of(LinkSessionState.WaitingForDevice(hub, "0123456789ABCDEF")).text.contains("89ABCDEF"))
+    }
+
+    // -- WP AN29 --
+    @Test
+    fun an29PermissionStripsTellAboutAlwaysOpenWithoutDeviceNouns() {
+        val required = connectionStrip(AppMode.DEVICE, UsbSessionState.PermissionRequired(""), false)
+        val pending = connectionStrip(AppMode.DEVICE, UsbSessionState.PermissionPending("", dialogShown = true), false)
+        for (strip in listOf(required, pending)) {
+            assertTrue(strip.text, strip.text.contains("\"Always open\""))
+            for (noun in listOf("phone", "tablet", "computer")) assertFalse(strip.text, strip.text.lowercase().contains(noun))
+        }
     }
 }

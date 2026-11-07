@@ -40,6 +40,8 @@ import kotlinx.coroutines.withContext
  * - a denial is remembered per device until an explicit [requestPermission]
  *   or the device detaches; permission dialogs only appear while a UI is
  *   visible (otherwise they are queued: `PermissionPending(dialogShown = false)`).
+ * - an ATTACHED broadcast never opens a dialog of its own: the system's
+ *   "Open with" dialog is the prompt, else [UsbSessionState.PermissionRequired].
  */
 class UsbSessionEngine(
     private val host: UsbHost,
@@ -205,7 +207,10 @@ class UsbSessionEngine(
             is Event.GraceExpired -> {
                 val d = e.device
                 if (opened == null && autoConnect && present(d) && !host.hasPermission(d)) {
-                    connectBest(askPermission = uiVisible)
+                    // -- WP AN29 -- never our own dialog here: it would cover the
+                    // system's "Open with" dialog and its "Always open" tick, the
+                    // only grant that survives a re-plug. Settle on PermissionRequired.
+                    connectBest(askPermission = false)
                 }
             }
 
