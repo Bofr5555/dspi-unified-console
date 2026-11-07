@@ -4,7 +4,7 @@
 #
 #   ci/check.sh                       full gate (reviewer/merger): fmt, clippy,
 #                                     tests, Windows GNU cross-build, wasm-core,
-#                                     licences, deny
+#                                     Android contract, licences, deny
 #   ci/check.sh --crate dspi-core     scoped (WP agents): fmt, clippy and tests
 #   ci/check.sh --crate a --crate b   of the named packages only
 #   ci/check.sh --step NAME ...       one or more optional steps:
@@ -18,6 +18,11 @@
 #       android-aab                   the Android app's signed release bundle, with a
 #                                     throwaway key, in its Gradle container
 #                                     (apps/android/tools/ci.sh release)
+#       android-tests                 every Android package but release: contract,
+#                                     Rust, ktlint, module tests, assemble, in the
+#                                     Gradle container (apps/android/tools/ci.sh tests)
+#       android-contract              the Android contract matches crates/
+#                                     (gen_kotlin_contract.py --check)
 #       wasm                          dspi-proto for wasm32-unknown-unknown
 #       wasm-core                     dspi-session and dspi-core for wasm32-unknown-
 #                                     unknown, cargo check only, without `usb`; their
@@ -80,7 +85,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --crate) crates+=("$2"); shift 2 ;;
     --step) steps+=("$2"); shift 2 ;;
-    --all) steps=(fetch fmt clippy test windows-gnu licences deny windows-msvc android android-aab wasm wasm-core qt qt5 qt-offscreen qt5-offscreen terminal qt-windows proptest kotlin swift ios-check drift); shift ;;
+    --all) steps=(fetch fmt clippy test windows-gnu android-contract licences deny windows-msvc android android-tests android-aab wasm wasm-core qt qt5 qt-offscreen qt5-offscreen terminal qt-windows proptest kotlin swift ios-check drift); shift ;;
     --all-clients) exec ci/matrix.sh ;;
     -h|--help) sed -n "2,/^set -euo/p" "$0" | sed '$d'; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
@@ -88,7 +93,8 @@ while [ $# -gt 0 ]; do
 done
 if [ ${#crates[@]} -eq 0 ] && [ ${#steps[@]} -eq 0 ]; then
   # -- WP WB1 -- wasm-core
-  steps=(fmt clippy test windows-gnu wasm-core licences deny)
+  # -- WP MR3 -- android-contract
+  steps=(fmt clippy test windows-gnu wasm-core android-contract licences deny)
 fi
 
 ok() { printf '\n== %s: OK\n' "$1"; }
@@ -113,6 +119,12 @@ for s in "${steps[@]}"; do
     android-aab)
       # -- WP MR2 -- Since AN1 the app builds on crates/ by path: no submodule.
       apps/android/tools/ci.sh release ;;
+    android-tests)
+      # -- WP MR3 -- WriteGuardedCore's classification test (ReadOnlyTest) and the like.
+      apps/android/tools/ci.sh tests ;;
+    android-contract)
+      # -- WP MR3 --
+      $RUN "cd apps/android && python3 tools/gen_kotlin_contract.py --check" ;;
     android)
       DSPI_PROFILE=cross $RUN "cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 --platform 26 build -p dspi-core --features link && cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 --platform 26 build -p dspi-ffi" ;;
     wasm) DSPI_PROFILE=cross $RUN "cargo build -p dspi-proto --target wasm32-unknown-unknown" ;;

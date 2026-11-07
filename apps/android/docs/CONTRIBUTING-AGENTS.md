@@ -34,18 +34,18 @@ tools/ci.sh <package>             # your package's checks (re-execs itself in th
 ```
 
 What `dev.sh` does:
-- Runs `localhost/dspi-android-build:<IMAGE_TAG>` with rootless podman and `--userns=keep-id`. Files you create are owned by the host user.
+- Runs `localhost/dspi-android-build:<IMAGE_TAG>` with rootless podman, with the host user as the image's user. Files you create are owned by the host user.
 - Uses `--cap-drop=all`, `no-new-privileges`, and **no devices**.
 - Bind-mounts the checkout (or worktree) at its host path, plus the main repository's `.git` when you are in a worktree.
 - Keeps caches in named volumes:
   - `dspi-android-cargo` (crates registry),
-  - `dspi-android-gradle` (Gradle home),
-  - `dspi-android-target-<hash of checkout path>` (one Rust target dir per worktree, so parallel agents don't thrash each other's builds).
+  - `dspi-android-gradle` (shared Gradle wrapper and downloaded dependencies, read-only for builds),
+  - `dspi-android-target-<hash of checkout path>` (one Rust target dir and one Gradle home per worktree, so parallel agents don't thrash each other's builds or collide on Gradle's locks).
 
 Inside the container these are set:
 - `ANDROID_HOME`, `ANDROID_NDK_HOME` (r27c)
 - `JAVA_HOME` (Temurin 21)
-- `CARGO_HOME=/cache/cargo`, `CARGO_TARGET_DIR=/cache/target`, `GRADLE_USER_HOME=/cache/gradle`
+- `CARGO_HOME=/cache/cargo`, `CARGO_TARGET_DIR=/cache/target`, `GRADLE_USER_HOME=/cache/target/gradle-home`, `GRADLE_RO_DEP_CACHE=/cache/gradle/caches`
 - `DSPI_IN_CONTAINER=1`
 
 The Rust toolchain is pinned by `rust-toolchain.toml` (1.99.1) and already baked into the image.

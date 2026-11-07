@@ -16,9 +16,15 @@
 # Never uses tmpfs (/tmp, /dev/shm, a session scratchpad): everything lives
 # under ~/.cache/dspi-build (override with DSPI_BUILD_CACHE):
 #   target/<branch>[-cross]/  CARGO_TARGET_DIR per branch (/target)
-#   cargo-home/               shared registry and git caches
+#   cargo-home/               CARGO_HOME (/cache/cargo): shared registry and git caches
 #   xwin-cache/               the MSVC CRT/SDK (cross profile)
 #   work/<branch>/            scratch (/work; HOME and TMPDIR live there)
+#
+# Runs as the host user, not as the images' USER root: under --userns=keep-id
+# root is uid 524288 on the host, and its files need `podman unshare` to remove.
+# Caches written before this (WP MR3) are fixed once, with nothing building, by
+#   podman unshare find ~/.cache/dspi-build -xdev \( -uid 1 -o -gid 1 \) -exec chown -h 0:0 {} +
+#
 # SRC overrides the source tree (default: this worktree). DSPI_JOBS caps
 # cargo's parallel jobs per container (default 4; several WPs build at once). No USB devices are
 # visible in the container.
@@ -39,25 +45,24 @@ podman image exists "$image" || {
   echo "ci/run.sh: no image $image. Build it: ci/container/build-images.sh" >&2
   exit 2
 }
-mkdir -p "$B/cargo-home/registry" "$B/cargo-home/git" "$B/work/$branch/home" \
+mkdir -p "$B/cargo-home" "$B/work/$branch/home" \
          "$B/work/$branch/tmp" "$B/work/empty" "$B/xwin-cache"
-common=(--rm -i --userns=keep-id
+common=(--rm -i --userns=keep-id --user "$(id -u):$(id -g)"
   -v "$here":/src:z -v "$B/work/$branch":/work:z
   -v "$B/work/empty":/sys/bus/usb/devices:ro,z
+  -v "$B/cargo-home":/cache/cargo:z -e CARGO_HOME=/cache/cargo
   -e HOME=/work/home -e TMPDIR=/work/tmp -e CARGO_BUILD_JOBS="${DSPI_JOBS:-4}" -w /src)
 case "$profile" in
   default)
     mkdir -p "$B/target/$branch"
     exec podman run "${common[@]}" -v "$B/target/$branch":/target:z \
-      -v "$B/cargo-home/registry":/opt/cargo/registry:z -v "$B/cargo-home/git":/opt/cargo/git:z \
       -e CARGO_TARGET_DIR=/target \
       "$image" bash -c "$*" ;;
   cross)
-    mkdir -p "$B/target/$branch-cross" "$B/cargo-home-cross"
+    mkdir -p "$B/target/$branch-cross"
     exec podman run "${common[@]}" -v "$B/target/$branch-cross":/target:z \
-      -v "$B/cargo-home/registry":/cache/cargo/registry:z -v "$B/cargo-home/git":/cache/cargo/git:z \
       -v "$B/xwin-cache":/xwin:z \
-      -e CARGO_HOME=/cache/cargo -e CARGO_TARGET_DIR=/target -e RUSTUP_HOME=/opt/rustup \
+      -e CARGO_TARGET_DIR=/target -e RUSTUP_HOME=/opt/rustup \
       -e XWIN_CACHE_DIR=/xwin -e ANDROID_NDK_HOME=/opt/android-sdk/ndk/27.2.12479018 \
       -e ANDROID_HOME=/opt/android-sdk \
       -e PATH=/opt/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \

@@ -3,7 +3,7 @@
 # This is M0's gate (docs/core-merge/PLAN-CLIENTS.md, section 0.2).
 #
 #   ci/matrix.sh                run every row (ci/check.sh --all-clients is the same)
-#   ci/matrix.sh --only a,b     only the rows with these ids
+#   ci/matrix.sh --only a,b     only the rows with these ids; an unknown id fails
 #   ci/matrix.sh --list         print the row ids
 #
 # Runs from a clean checkout: missing images are built from their committed
@@ -35,6 +35,8 @@ rows=(
   "windows-gnu|Windows workspace (GNU)|container|windows-gnu"
   "windows-terminal|Windows core and Terminal (MSVC)|xwin, container|windows-msvc"
   "android-libs|Android core libraries, three ABIs|cross container|android"
+  # -- WP MR3 --
+  "android-tests|Android modules: contract, lint, unit tests, assemble|Gradle container|android-tests"
   "android-aab|Android AAB|Gradle container|android-aab"
   "wasm|wasm check|cross container|wasm"
   # -- WP WB1 --
@@ -56,6 +58,17 @@ case "${1:-}" in
   -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
   *) echo "unknown argument $1" >&2; exit 2 ;;
 esac
+
+# -- WP MR3 -- A mistyped id must not pass by running nothing.
+if [ -n "$only" ]; then
+  IFS=, read -ra wanted <<<"$2"
+  [ ${#wanted[@]} -gt 0 ] || { echo "--only: no row ids in '$2'" >&2; exit 2; }
+  for w in "${wanted[@]}"; do
+    found=""
+    for r in "${rows[@]}"; do [ "${r%%|*}" != "$w" ] || found=1; done
+    [ -n "$found" ] || { echo "--only: unknown row id '$w' (ci/matrix.sh --list)" >&2; exit 2; }
+  done
+fi
 
 commit=$(git rev-parse --short=12 HEAD)
 state=""

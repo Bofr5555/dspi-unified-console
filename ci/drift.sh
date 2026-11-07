@@ -52,8 +52,6 @@ status=0
 if [ "$mode" = write ]; then
   rm -rf "$committed"
   cp -r "$out" "$committed"
-  # The images run as root in the container: leave the files to the checkout's owner.
-  chown -R --reference=ci "$committed"
   echo "drift: wrote $committed"
 elif ! diff -ru "$committed" "$out" >"$out.diff"; then
   head -n 40 "$out.diff"
