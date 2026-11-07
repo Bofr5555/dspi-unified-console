@@ -75,7 +75,9 @@ class AboutInfoAn26Test {
 
     @Test
     fun wpAn26ThePageCarriesNoCopyOfTheTable() {
+        // CG29b (owner): the support paragraph names its speaker; that is not a copy of the table
         val page = File("src/main/kotlin/se/bofr/dspi/feature/settings/GeneralSettingsTab.kt").readText()
+            .replace("that I (Weeb Labs) develop", "")
         for (word in listOf("Weeb Labs", "Bofr5555", "weeblabs", "discord.gg", "ko-fi.com")) {
             assertFalse(word, page.contains(word))
         }
