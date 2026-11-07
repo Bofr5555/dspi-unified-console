@@ -15,9 +15,10 @@ Top-level keys: `schemaVersion` (1; a larger number is refused), `meta`,
 `tube`, `channels`, `matrix`, `io`. `psybass`, `upmix`, `subharm` and `tube`
 are absent when the source device lacked the feature, which is different from
 present and disabled. Values are the firmware's raw wire numbers (filter
-types, masks, modes, pins), never names. Every reader is lenient: a missing
-key takes the Console's default, which is the firmware's (for example
-`loudness.outputMask` 0xFFFF and `crossfeed.outputPairMask` 0x01), never zero.
+types, masks, modes, pins), never names. Every reader is lenient about a missing
+key. The Mac Console gives it the Console's default, which is the firmware's (for
+example `loudness.outputMask` 0xFFFF and `crossfeed.outputPairMask` 0x01), never
+zero; the Terminal and Qt leave that setting as it is (see the table at the end).
 
 `meta` carries `name`, `savedUtc` (ISO-8601 UTC), `appVersion`, `platform`
 (`RP2040` or `RP2350`), `firmwareVersion`, `wireFormatVersion`,
@@ -116,20 +117,30 @@ file, and a refused one takes the image, or else leaves that channel's preamp or
 whole bank out, with a warning naming them. A filter import leaves an absent bank
 alone.
 
-On import the Terminal leaves an omitted key alone and reports it (`Left as they
-are`, `leftAlone` under `--json`). It warns when `meta.wireFormatVersion` is below
-this build's, since an export from such firmware by a build before this rule can
-hold 0 dB or off for settings nobody set. The other importers read an omitted key
-differently, and take the same files without error:
+On import the Terminal and Qt (`dspi_core::files`) leave an omitted key alone and
+report it (`Left as they are`, and `leftAlone` under the Terminal's `--json` and in
+the core's import reply). Both warn when `meta.wireFormatVersion` is below this
+build's, since an export from such firmware by a build before this rule can hold
+0 dB or off for settings nobody set. The Mac Console reads an omitted key
+differently, and takes the same files without error:
 
-| Omitted | Terminal | Qt (`dspi_core::files`) | Mac Console |
-|---|---|---|---|
-| A `global` key | left alone | left alone | written as its default (0 dB, off, USB) |
-| Whole `loudness`, `crossfeed`, `leveller` | left alone | left alone | written as defaults |
-| A key inside one of those blocks | left alone | mostly written as its default (a few keep the device's) | written as its default |
-| A channel's `gainDb`, `muted`, `enabled`, `delayMs` | left alone | written as a default | written as a default |
-| A channel's `eq` or `crossover` | left alone | flattened | left alone |
+| Omitted | Terminal and Qt | Mac Console |
+|---|---|---|
+| A `global` key | left alone | written as its default (0 dB, off, USB) |
+| Whole `loudness`, `crossfeed`, `leveller` | left alone | written as defaults |
+| A key inside one of those blocks | left alone | written as its default |
+| A channel's `gainDb`, `muted`, `enabled`, `delayMs` | left alone | written as a default |
+| A channel's `eq` or `crossover` | left alone | left alone |
 
-So a file that left keys out is safest imported by the Terminal. The Mac's
+So a file that left keys out is safest imported by the Terminal or Qt. The Mac's
 reader accepts any document with a `schemaVersion` and `channels`
-(PresetDocument.swift:627, 729-744), and Qt's the same.
+(PresetDocument.swift:627, 729-744), and Qt's the same. Qt's reader also takes a
+value of the wrong type, which counts as omitted; the Terminal refuses that file.
+
+Qt's export follows the same rule from its mirror: the device's wire format decides
+each key (`dspi_proto::wire_compat::features`), so an older device's document has no
+key its format lacks. With no device's state to export, it writes no file: the core
+returns a typed error (`Disconnected`, `Unsupported` for an image it cannot map,
+`Transfer` before the image is read). A filter import in Qt leaves a bank alone when
+its section has no lines for that bank; an `OFF` line is a flat band and counts as a
+line.

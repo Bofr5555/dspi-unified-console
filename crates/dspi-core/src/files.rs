@@ -7,8 +7,11 @@
 //!   a preset slot covers (EQ and crossovers, delays, gains, routing, the DSP
 //!   features) and, in its own `io` block, the board's wiring. Values are
 //!   stored raw, as the firmware holds them, and every field is read
-//!   leniently (a missing or mistyped field takes its default), so files from
-//!   either Console and from older builds load. Channels carry the Windows
+//!   leniently, so files from either Console and from older builds load. A
+//!   setting with a missing or mistyped key is one the file does not speak for:
+//!   the device keeps its value and the report names it (WP CG18). An export
+//!   writes only what the device's wire format carries, so nothing it could not
+//!   report reads as a zero. Channels carry the Windows
 //!   Console's channel id and, additively, the input / output index; the
 //!   index wins when present. The crossfeed block carries the K340 fork's
 //!   `pairMap` (Android patch 0002): always exported, imported only when
@@ -33,8 +36,7 @@
 //! or text over [`MAX_FILE_BYTES`] is refused before parsing; the filter
 //! parser keeps at most one channel's worth of bands per section and only
 //! sections for channels a device can have, so nothing in a file sizes an
-//! allocation beyond its own length. Non-finite numbers take the field's
-//! default.
+//! allocation beyond its own length. A non-finite number counts as missing.
 //!
 //! # Writing
 //!
@@ -42,15 +44,19 @@
 //! SET ([`DspiCore::apply_all_params`]); the hardware I/O fields that changed
 //! are also sent one by one, since the firmware's bulk SET leaves pins and
 //! limiters alone when the output config is device-global. A filter import
-//! writes band by band through the parameter setters, as the old core did.
+//! writes band by band through the parameter setters, as the old core did; a
+//! section with no lines for a bank leaves that bank alone.
 //!
 //! Owned by WP C13 (docs/core-merge/PLAN.md).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use dspi_proto::generated::limiter;
+use dspi_proto::generated::{limiter, wire::WIRE_FORMAT_VERSION};
+use dspi_proto::wire::BulkPacket;
+use dspi_proto::wire_compat::{self, WireRead, feat};
 use dspi_proto::xover;
+use dspi_session::preset_file::{self, ApplyOptions, PresetDocument};
 use serde_json::{Map, Value, json};
 
 use crate::connect::apply_all_params_locked;
@@ -308,23 +314,39 @@ fn fit<T: TryFrom<i64>>(x: i64, def: T) -> T {
     T::try_from(x).unwrap_or(def)
 }
 
-/// An integer array, at most `max` entries (the rest is never read).
-fn ints(v: &Value, key: &str, max: usize) -> Option<Vec<i64>> {
+/// An integer field limited to `lo..=hi`; missing or mistyped = `current`,
+/// which is not limited, because the document does not speak for it.
+fn int_in(v: &Value, key: &str, lo: i64, hi: i64, current: u8) -> u8 {
     v.get(key)
-        .and_then(Value::as_array)
-        .map(|a| a.iter().take(max).map(|x| as_int(x).unwrap_or(0)).collect())
+        .and_then(as_int)
+        .map_or(current, |x| fit(x.clamp(lo, hi), current))
 }
 
-/// A float array, at most `max` entries; a non-number or non-finite entry
-/// is 0.
-fn floats(v: &Value, key: &str, max: usize) -> Option<Vec<f32>> {
+/// A float field limited to `lo..=hi`; missing, mistyped or not finite =
+/// `current`, not limited.
+fn f_in(v: &Value, key: &str, lo: f32, hi: f32, current: f32) -> f32 {
+    v.get(key)
+        .and_then(Value::as_f64)
+        .map(|x| x as f32)
+        .filter(|x| x.is_finite())
+        .map_or(current, |x| x.clamp(lo, hi))
+}
+
+/// An integer array, at most `max` entries (the rest is never read); `None`
+/// for an entry that is not a number, so that position stays as it is.
+fn ints(v: &Value, key: &str, max: usize) -> Option<Vec<Option<i64>>> {
+    v.get(key)
+        .and_then(Value::as_array)
+        .map(|a| a.iter().take(max).map(as_int).collect())
+}
+
+/// A float array, at most `max` entries; `None` for a non-number or
+/// non-finite entry, so that position stays as it is.
+fn floats(v: &Value, key: &str, max: usize) -> Option<Vec<Option<f32>>> {
     v.get(key).and_then(Value::as_array).map(|a| {
         a.iter()
             .take(max)
-            .map(|x| {
-                let f = x.as_f64().unwrap_or(0.0) as f32;
-                if f.is_finite() { f } else { 0.0 }
-            })
+            .map(|x| x.as_f64().map(|f| f as f32).filter(|f| f.is_finite()))
             .collect()
     })
 }
@@ -372,9 +394,33 @@ fn band_from(v: &Value, xover: bool) -> (FilterParams, bool) {
 
 // ── Export ──
 
+/// Take `keys` out of a block unless the device's wire format carries them.
+fn gate(block: &mut Value, carried: bool, keys: &[&str]) {
+    if !carried && let Some(o) = block.as_object_mut() {
+        for k in keys {
+            o.remove(*k);
+        }
+    }
+}
+
+/// How many of `pins` a device of an older format reported: an extension byte
+/// of 0 is "unset", which the mirror shows as the default pin, and a position
+/// in the list is an input, so the list stops at the first.
+fn reported_pins(pins: &[u8], ext: &[Option<u8>]) -> Vec<u8> {
+    let n = ext.iter().take_while(|p| p.is_some()).count();
+    pins.iter().take(n.saturating_add(1)).copied().collect()
+}
+
 /// The device's configuration as a document. `links` is the app's
 /// input-pair link mask (bit p = pair p), which the firmware does not hold.
+///
+/// A value in the document is one the device reported. The mirror comes from
+/// the image mapped onto the V32 layout, which holds a zero or a default for
+/// whatever the device's wire format lacks, so `s.format_version` decides per
+/// key, by the same `feat::*` the session's capture uses.
 fn export_config(s: &DspState, name: &str, app_version: &str, links: u8) -> String {
+    let features = wire_compat::features(s.format_version);
+    let since = |bit: u32| features & bit != 0;
     let rp2350 = is_rp2350(s);
     let n_in = usize::from(s.num_input_channels);
     let n_out = usize::from(s.num_output_channels);
@@ -383,7 +429,17 @@ fn export_config(s: &DspState, name: &str, app_version: &str, links: u8) -> Stri
         fw.push_str(&format!("-beta{}", s.fw_beta));
     }
 
-    let bands = |w: usize| row(&s.filters, w).iter().map(band_json).collect::<Vec<_>>();
+    // The Linkwitz Transform's target Q is in the band bytes from V22.
+    let band_list = |bank: &[FilterParams]| {
+        bank.iter()
+            .map(|p| {
+                let mut band = band_json(p);
+                gate(&mut band, since(feat::LINKWITZ), &["qp"]);
+                band
+            })
+            .collect::<Vec<_>>()
+    };
+    let bands = |w: usize| band_list(row(&s.filters, w));
     let mut channels = Vec::new();
     for i in 0..n_in {
         channels.push(json!({
@@ -395,7 +451,7 @@ fn export_config(s: &DspState, name: &str, app_version: &str, links: u8) -> Stri
     }
     for o in 0..n_out {
         let w = n_in.saturating_add(o);
-        channels.push(json!({
+        let mut channel = json!({
             "channelId": id_for_output(o, n_out, rp2350), "name": name_at(s, w), "isOutput": true,
             "eqChannel": w, "outputIndex": o,
             "delayMs": at(&s.channel_delays, w, 0.0), "gainDb": at(&s.output_gain_db, o, 0.0),
@@ -408,8 +464,10 @@ fn export_config(s: &DspState, name: &str, app_version: &str, links: u8) -> Stri
                 "linkGroup": at(&s.limiter_link_group, o, 0),
             },
             "eq": bands(w),
-            "crossover": row(&s.xover, w).iter().map(band_json).collect::<Vec<_>>(),
-        }));
+            "crossover": band_list(row(&s.xover, w)),
+        });
+        gate(&mut channel, since(feat::LIMITER), &["limiter"]);
+        channels.push(channel);
     }
     let mut matrix = Vec::new();
     for i in 0..n_in.min(MAX_INPUTS) {
@@ -445,41 +503,51 @@ fn export_config(s: &DspState, name: &str, app_version: &str, links: u8) -> Stri
             "inputPairLinked": linked,
         }),
     );
-    doc.insert(
-        "loudness".into(),
-        json!({
-            "enabled": s.loudness_enabled, "refSpl": s.loudness_ref_spl,
-            "intensityPct": s.loudness_intensity, "outputMask": s.loudness_output_mask,
-        }),
+    let mut loudness = json!({
+        "enabled": s.loudness_enabled, "refSpl": s.loudness_ref_spl,
+        "intensityPct": s.loudness_intensity, "outputMask": s.loudness_output_mask,
+    });
+    gate(&mut loudness, since(feat::LOUDNESS_MASK), &["outputMask"]);
+    doc.insert("loudness".into(), loudness);
+    let mut crossfeed = json!({
+        "enabled": s.crossfeed_enabled, "preset": s.crossfeed_preset, "freqHz": s.crossfeed_freq,
+        "feedDb": s.crossfeed_feed, "itd": s.crossfeed_itd, "outputPairMask": s.crossfeed_output_pair_mask,
+        "pairMap": s.crossfeed_pair_map,
+    });
+    gate(
+        &mut crossfeed,
+        since(feat::CROSSFEED_MASK),
+        &["outputPairMask"],
     );
-    doc.insert(
-        "crossfeed".into(),
-        json!({
-            "enabled": s.crossfeed_enabled, "preset": s.crossfeed_preset, "freqHz": s.crossfeed_freq,
-            "feedDb": s.crossfeed_feed, "itd": s.crossfeed_itd, "outputPairMask": s.crossfeed_output_pair_mask,
-            "pairMap": s.crossfeed_pair_map,
-        }),
+    // The K340 fork's map sits in bytes reserved before V32. No older format
+    // can hold one, and a written zero would reset a device's own map.
+    gate(&mut crossfeed, since(feat::LIMITER), &["pairMap"]);
+    doc.insert("crossfeed".into(), crossfeed);
+    let mut leveller = json!({
+        "enabled": s.leveller_enabled, "speed": s.leveller_speed, "lookahead": s.leveller_lookahead,
+        "amountPct": s.leveller_amount, "maxGainDb": s.leveller_max_gain_db, "gateDb": s.leveller_gate_db,
+        "detectorMask": s.leveller_detector_mask, "applyMask": s.leveller_apply_mask,
+    });
+    gate(
+        &mut leveller,
+        since(feat::LEVELLER_MASKS),
+        &["detectorMask", "applyMask"],
     );
-    doc.insert(
-        "leveller".into(),
-        json!({
-            "enabled": s.leveller_enabled, "speed": s.leveller_speed, "lookahead": s.leveller_lookahead,
-            "amountPct": s.leveller_amount, "maxGainDb": s.leveller_max_gain_db, "gateDb": s.leveller_gate_db,
-            "detectorMask": s.leveller_detector_mask, "applyMask": s.leveller_apply_mask,
-        }),
-    );
-    doc.insert(
-        "psybass".into(),
-        json!({
-            "enabled": s.psybass_enabled, "cutoffHz": s.psybass_cutoff_hz, "harmonicsDb": s.psybass_harmonics_db,
-            "driveDb": s.psybass_drive_db, "characterPct": s.psybass_character_pct,
-            "originalDb": s.psybass_original_db, "outputMask": s.psybass_output_mask,
-        }),
-    );
+    doc.insert("leveller".into(), leveller);
+    if since(feat::PSYBASS) {
+        doc.insert(
+            "psybass".into(),
+            json!({
+                "enabled": s.psybass_enabled, "cutoffHz": s.psybass_cutoff_hz, "harmonicsDb": s.psybass_harmonics_db,
+                "driveDb": s.psybass_drive_db, "characterPct": s.psybass_character_pct,
+                "originalDb": s.psybass_original_db, "outputMask": s.psybass_output_mask,
+            }),
+        );
+    }
     doc.insert(
         "upmix".into(),
-        if rp2350 {
-            json!({
+        if rp2350 && since(feat::UPMIX) {
+            let mut upmix = json!({
                 "enabled": u(UPMIX_PARAM_ENABLED) != 0.0,
                 "centerMode": u(UPMIX_PARAM_CENTER_MODE) as i64,
                 "surroundMode": u(UPMIX_PARAM_SURROUND_MODE) as i64,
@@ -489,29 +557,45 @@ fn export_config(s: &DspState, name: &str, app_version: &str, links: u8) -> Stri
                 "surroundDelayMs": u(UPMIX_PARAM_SURROUND_DELAY), "surroundHpfHz": u(UPMIX_PARAM_SURROUND_HPF),
                 "surroundLpfHz": u(UPMIX_PARAM_SURROUND_LPF), "decorrPct": u(UPMIX_PARAM_DECORRELATION),
                 "presenceDb": u(UPMIX_PARAM_PRESENCE),
-            })
+            });
+            gate(&mut upmix, since(feat::UPMIX_PRESENCE), &["presenceDb"]);
+            upmix
         } else {
             Value::Null
         },
     );
-    doc.insert(
-        "subharm".into(),
-        json!({
+    if since(feat::SUBHARM) {
+        let mut subharm = json!({
             "enabled": sh(SUBHARM_PARAM_ENABLED) != 0.0, "outputMask": sh(SUBHARM_PARAM_MASK) as i64,
             "lowDb": sh(SUBHARM_PARAM_LOW), "highDb": sh(SUBHARM_PARAM_HIGH), "topDb": sh(SUBHARM_PARAM_TOP),
             "boostDb": sh(SUBHARM_PARAM_BOOST), "selectMode": sh(SUBHARM_PARAM_SELECT) as i64,
             "selectDepthPct": sh(SUBHARM_PARAM_DEPTH), "selectHoldMs": sh(SUBHARM_PARAM_HOLD),
             "ceilingDb": sh(SUBHARM_PARAM_CEILING), "linkPairs": sh(SUBHARM_PARAM_LINK) != 0.0,
-        }),
-    );
-    doc.insert(
-        "tube".into(),
-        json!({
-            "enabled": t(0) != 0.0, "outputMask": t(1) as i64, "tubeType": t(2) as i64, "driveDb": t(3),
-            "biasPct": t(4), "asymDb": t(5), "hardnessPct": t(6), "sagPct": t(7), "rectifier": t(8) as i64,
-            "xfmrEnabled": t(9) != 0.0, "xfmrDamping": t(10), "xfmrResHz": t(11), "mixPct": t(12), "trimDb": t(13),
-        }),
-    );
+        });
+        gate(
+            &mut subharm,
+            since(feat::SUBHARM_EXT),
+            &[
+                "topDb",
+                "selectMode",
+                "selectDepthPct",
+                "selectHoldMs",
+                "ceilingDb",
+                "linkPairs",
+            ],
+        );
+        doc.insert("subharm".into(), subharm);
+    }
+    if since(feat::TUBE) {
+        doc.insert(
+            "tube".into(),
+            json!({
+                "enabled": t(0) != 0.0, "outputMask": t(1) as i64, "tubeType": t(2) as i64, "driveDb": t(3),
+                "biasPct": t(4), "asymDb": t(5), "hardnessPct": t(6), "sagPct": t(7), "rectifier": t(8) as i64,
+                "xfmrEnabled": t(9) != 0.0, "xfmrDamping": t(10), "xfmrResHz": t(11), "mixPct": t(12), "trimDb": t(13),
+            }),
+        );
+    }
     doc.insert("channels".into(), Value::Array(channels));
     doc.insert("matrix".into(), Value::Array(matrix));
     let rate_hz = [44_100u32, 48_000, 96_000]
@@ -534,6 +618,52 @@ fn export_config(s: &DspState, name: &str, app_version: &str, links: u8) -> Stri
         "adatInputEnabled": s.adat_input_enabled, "adatInputPin": s.adat_input_pin,
         "adatInputClockMode": s.adat_input_clock_mode, "dacHwMute": Value::Null,
     });
+    gate(
+        &mut io,
+        since(feat::I2S_CLOCK_MODE),
+        &[
+            "i2sClockMode",
+            "i2sClockPinMode",
+            "i2sBckPinSlave",
+            "spdifEnabledExt",
+        ],
+    );
+    gate(&mut io, since(feat::SPDIF_IN4), &["spdifRxPin4"]);
+    gate(&mut io, since(feat::ADAT_OUT), &["adatEnabled", "adatPin"]);
+    gate(
+        &mut io,
+        since(feat::ADAT_IN),
+        &["adatInputEnabled", "adatInputPin", "adatInputClockMode"],
+    );
+    // Only an older image can leave these unset. The mirror shows the default
+    // pin for an unset one, so its own bytes have to say.
+    if u16::from(s.format_version) < WIRE_FORMAT_VERSION
+        && let Some(o) = io.as_object_mut()
+    {
+        let input = BulkPacket::decode(s.bulk_raw.clone())
+            .ok()
+            .and_then(|p| p.input_config());
+        let none = [None; 3];
+        let (spdif, i2s) = input
+            .as_ref()
+            .map_or((none, none), |c| (c.spdif_rx_pin_ext, c.i2s_rx_pin_ext));
+        // Pins 2 and 3 from V21; the fourth is `spdifRxPin4`.
+        let spdif = spdif.get(..2).filter(|_| since(feat::I2S_CLOCK_MODE));
+        o.insert(
+            "spdifRxPins".into(),
+            json!(reported_pins(&s.spdif_rx_pins, spdif.unwrap_or(&[]))),
+        );
+        o.insert(
+            "i2sRxPins".into(),
+            json!(reported_pins(&s.i2s_rx_pins, &i2s)),
+        );
+        if input.as_ref().and_then(|c| c.i2s_input_channels).is_none() {
+            o.remove("i2sInputChannels");
+        }
+        if input.is_none_or(|c| c.spdif_rx_pin_ext.get(2).copied().flatten().is_none()) {
+            o.remove("spdifRxPin4");
+        }
+    }
     if s.dac_mute_supported
         && let Some(o) = io.as_object_mut()
     {
@@ -632,6 +762,14 @@ struct ConfigBuild {
     bands: usize,
     xover: usize,
     points: usize,
+    /// The JSON keys of what the document holds no value for, as the session
+    /// names them.
+    left_alone: Vec<String>,
+    /// A value of a type no reader expects, which reads as missing and which
+    /// [`preset_file::omitted`] therefore cannot name.
+    unreadable: bool,
+    /// [`preset_file::old_format_warning`].
+    warning: Option<String>,
 }
 
 /// Apply a parsed document to `old` (the mirror): the state to write and
@@ -641,6 +779,7 @@ fn build_config(old: &DspState, v: &Value, options: u32) -> ConfigBuild {
     let mut skipped = Skips::default();
     let links = build_global(&mut ns, v, options);
     build_features(&mut ns, v, &mut skipped);
+    let typed = serde_json::from_value::<PresetDocument>(v.clone()).ok();
     let mut b = ConfigBuild {
         state: ns,
         links,
@@ -650,6 +789,18 @@ fn build_config(old: &DspState, v: &Value, options: u32) -> ConfigBuild {
         bands: 0,
         xover: 0,
         points: 0,
+        left_alone: typed.as_ref().map_or_else(Vec::new, |d| {
+            preset_file::omitted(
+                d,
+                ApplyOptions {
+                    audio_processing: true,
+                    volume_levels: options & IMPORT_VOLUMES != 0,
+                    hardware_io: options & IMPORT_HARDWARE != 0,
+                },
+            )
+        }),
+        unreadable: typed.is_none(),
+        warning: typed.as_ref().and_then(preset_file::old_format_warning),
     };
     build_channels(&mut b, v, options & IMPORT_HARDWARE != 0);
     build_matrix(&mut b, v);
@@ -667,16 +818,18 @@ fn build_global(ns: &mut DspState, v: &Value, options: u32) -> Option<u8> {
     if let Some(pre) = floats(g, "inputPreampsDb", MAX_INPUTS) {
         let (lo, hi) = preamp_range(ns);
         for (i, db) in pre.iter().enumerate() {
-            put(&mut ns.input_preamp_db, i, db.clamp(lo, hi));
+            if let Some(db) = db {
+                put(&mut ns.input_preamp_db, i, db.clamp(lo, hi));
+            }
         }
         ns.preamp_db = at(&ns.input_preamp_db, 0, ns.preamp_db);
     }
     ns.bypass = flag(g, "bypass", ns.bypass);
-    ns.input_source = int(g, "inputSource", i64::from(ns.input_source)).clamp(0, 6) as u8;
+    ns.input_source = int_in(g, "inputSource", 0, 6, ns.input_source);
     ns.lg_sound_sync_enabled = flag(g, "lgSoundSyncEnabled", ns.lg_sound_sync_enabled);
     if options & IMPORT_VOLUMES != 0 {
-        ns.master_volume_db = f(g, "masterVolumeDb", ns.master_volume_db).clamp(-128.0, 0.0);
-        ns.user_volume_db = f(g, "userVolumeDb", ns.user_volume_db).clamp(-128.0, 0.0);
+        ns.master_volume_db = f_in(g, "masterVolumeDb", -128.0, 0.0, ns.master_volume_db);
+        ns.user_volume_db = f_in(g, "userVolumeDb", -128.0, 0.0, ns.user_volume_db);
     }
     g.get("inputPairLinked").and_then(Value::as_array).map(|a| {
         a.iter()
@@ -686,27 +839,28 @@ fn build_global(ns: &mut DspState, v: &Value, options: u32) -> Option<u8> {
     })
 }
 
-/// The DSP feature blocks.
+/// The DSP feature blocks. A key a block does not have keeps the device's value,
+/// the same as a block the document does not have.
 fn build_features(ns: &mut DspState, v: &Value, skipped: &mut Skips) {
     if let Some(b) = block(v, "loudness") {
-        ns.loudness_enabled = flag(b, "enabled", false);
-        ns.loudness_ref_spl = f(b, "refSpl", 83.0);
-        ns.loudness_intensity = f(b, "intensityPct", 100.0);
+        ns.loudness_enabled = flag(b, "enabled", ns.loudness_enabled);
+        ns.loudness_ref_spl = f(b, "refSpl", ns.loudness_ref_spl);
+        ns.loudness_intensity = f(b, "intensityPct", ns.loudness_intensity);
         ns.loudness_output_mask = int_as(b, "outputMask", ns.loudness_output_mask);
     }
     if let Some(b) = block(v, "crossfeed") {
-        ns.crossfeed_enabled = flag(b, "enabled", false);
-        ns.crossfeed_preset = int(b, "preset", 0).clamp(0, 3) as u8;
-        ns.crossfeed_freq = f(b, "freqHz", 700.0);
-        ns.crossfeed_feed = f(b, "feedDb", 4.5);
-        ns.crossfeed_itd = flag(b, "itd", true);
+        ns.crossfeed_enabled = flag(b, "enabled", ns.crossfeed_enabled);
+        ns.crossfeed_preset = int_in(b, "preset", 0, 3, ns.crossfeed_preset);
+        ns.crossfeed_freq = f(b, "freqHz", ns.crossfeed_freq);
+        ns.crossfeed_feed = f(b, "feedDb", ns.crossfeed_feed);
+        ns.crossfeed_itd = flag(b, "itd", ns.crossfeed_itd);
         ns.crossfeed_output_pair_mask = int_as(b, "outputPairMask", ns.crossfeed_output_pair_mask);
         // K340 fork: absent (other clients) keeps the current map; an
         // invalid one (e.g. from a wider platform) falls back to default.
         if let Some(m) = ints(b, "pairMap", CROSSFEED_MAP_PAIRS) {
             let mut map = vec![0u8; CROSSFEED_MAP_PAIRS];
             for (dst, x) in map.iter_mut().zip(&m) {
-                *dst = (*x).clamp(0, 255) as u8;
+                *dst = x.unwrap_or(0).clamp(0, 255) as u8;
             }
             ns.crossfeed_pair_map =
                 if crate::crossfeed_pair_map_valid(map.clone(), crate::ext::crossfeed_pairs(ns)) {
@@ -717,29 +871,30 @@ fn build_features(ns: &mut DspState, v: &Value, skipped: &mut Skips) {
         }
     }
     if let Some(b) = block(v, "leveller") {
-        ns.leveller_enabled = flag(b, "enabled", false);
-        ns.leveller_speed = int(b, "speed", 0).clamp(0, 2) as u8;
-        ns.leveller_lookahead = flag(b, "lookahead", true);
-        ns.leveller_amount = f(b, "amountPct", 50.0);
-        ns.leveller_max_gain_db = f(b, "maxGainDb", 15.0);
-        ns.leveller_gate_db = f(b, "gateDb", -96.0);
-        ns.leveller_detector_mask = int_as(b, "detectorMask", 0xFF);
-        ns.leveller_apply_mask = int_as(b, "applyMask", 0xFF);
+        ns.leveller_enabled = flag(b, "enabled", ns.leveller_enabled);
+        ns.leveller_speed = int_in(b, "speed", 0, 2, ns.leveller_speed);
+        ns.leveller_lookahead = flag(b, "lookahead", ns.leveller_lookahead);
+        ns.leveller_amount = f(b, "amountPct", ns.leveller_amount);
+        ns.leveller_max_gain_db = f(b, "maxGainDb", ns.leveller_max_gain_db);
+        ns.leveller_gate_db = f(b, "gateDb", ns.leveller_gate_db);
+        ns.leveller_detector_mask = int_as(b, "detectorMask", ns.leveller_detector_mask);
+        ns.leveller_apply_mask = int_as(b, "applyMask", ns.leveller_apply_mask);
     }
     if let Some(b) = block(v, "psybass") {
-        ns.psybass_enabled = flag(b, "enabled", false);
-        ns.psybass_cutoff_hz = f(b, "cutoffHz", 80.0);
-        ns.psybass_harmonics_db = f(b, "harmonicsDb", 0.0);
-        ns.psybass_drive_db = f(b, "driveDb", 6.0);
-        ns.psybass_character_pct = f(b, "characterPct", 50.0);
-        ns.psybass_original_db = f(b, "originalDb", 0.0);
+        ns.psybass_enabled = flag(b, "enabled", ns.psybass_enabled);
+        ns.psybass_cutoff_hz = f(b, "cutoffHz", ns.psybass_cutoff_hz);
+        ns.psybass_harmonics_db = f(b, "harmonicsDb", ns.psybass_harmonics_db);
+        ns.psybass_drive_db = f(b, "driveDb", ns.psybass_drive_db);
+        ns.psybass_character_pct = f(b, "characterPct", ns.psybass_character_pct);
+        ns.psybass_original_db = f(b, "originalDb", ns.psybass_original_db);
         ns.psybass_output_mask = int_as(b, "outputMask", ns.psybass_output_mask);
     }
     let k = usize::from;
     if let Some(b) = block(v, "upmix") {
         if is_rp2350(ns) {
             let u = &mut ns.upmix;
-            put(u, 0, f32::from(u8::from(flag(b, "enabled", false))));
+            let on = flag(b, "enabled", at(u, 0, 0.0) != 0.0);
+            put(u, 0, f32::from(u8::from(on)));
             for (id, key) in [
                 (UPMIX_PARAM_CENTER_MODE, "centerMode"),
                 (UPMIX_PARAM_SURROUND_MODE, "surroundMode"),
@@ -769,11 +924,8 @@ fn build_features(ns: &mut DspState, v: &Value, skipped: &mut Skips) {
     }
     if let Some(b) = block(v, "subharm") {
         let s = &mut ns.subharm;
-        put(
-            s,
-            k(SUBHARM_PARAM_ENABLED),
-            f32::from(u8::from(flag(b, "enabled", false))),
-        );
+        let on = flag(b, "enabled", at(s, k(SUBHARM_PARAM_ENABLED), 0.0) != 0.0);
+        put(s, k(SUBHARM_PARAM_ENABLED), f32::from(u8::from(on)));
         for (id, key) in [
             (SUBHARM_PARAM_MASK, "outputMask"),
             (SUBHARM_PARAM_SELECT, "selectMode"),
@@ -793,21 +945,21 @@ fn build_features(ns: &mut DspState, v: &Value, skipped: &mut Skips) {
             let x = f(b, key, at(s, k(id), 0.0));
             put(s, k(id), x);
         }
-        put(
-            s,
-            k(SUBHARM_PARAM_LINK),
-            f32::from(u8::from(flag(b, "linkPairs", true))),
-        );
+        let link = flag(b, "linkPairs", at(s, k(SUBHARM_PARAM_LINK), 0.0) != 0.0);
+        put(s, k(SUBHARM_PARAM_LINK), f32::from(u8::from(link)));
     }
     if let Some(b) = block(v, "tube") {
         let t = &mut ns.tube;
-        put(t, 0, f32::from(u8::from(flag(b, "enabled", false))));
+        let on = flag(b, "enabled", at(t, 0, 0.0) != 0.0);
+        put(t, 0, f32::from(u8::from(on)));
         let mask = int(b, "outputMask", at(t, 1, 0.0) as i64) as f32;
         put(t, 1, mask);
-        let kind = int(b, "tubeType", at(t, 2, 0.0) as i64).clamp(0, 16) as f32;
-        put(t, 2, kind);
-        let rect = int(b, "rectifier", at(t, 8, 0.0) as i64).clamp(0, 3) as f32;
-        put(t, 8, rect);
+        if let Some(x) = b.get("tubeType").and_then(as_int) {
+            put(t, 2, x.clamp(0, 16) as f32);
+        }
+        if let Some(x) = b.get("rectifier").and_then(as_int) {
+            put(t, 8, x.clamp(0, 3) as f32);
+        }
         let xfmr = flag(b, "xfmrEnabled", at(t, 9, 0.0) != 0.0);
         put(t, 9, f32::from(u8::from(xfmr)));
         for (i, key) in [
@@ -865,14 +1017,21 @@ fn build_channels(b: &mut ConfigBuild, v: &Value, hardware: bool) {
         if let Some(name) = text(c, "name") {
             put(&mut ns.channel_names, w, clip_name(&name));
         }
-        let delay = f(c, "delayMs", 0.0).clamp(0.0, max_delay);
+        let delay = f_in(c, "delayMs", 0.0, max_delay, at(&ns.channel_delays, w, 0.0));
         put(&mut ns.channel_delays, w, delay);
+        // A bank with entries replaces the channel's, the rest going flat; one
+        // with none leaves it alone, as the Mac Console and the Terminal do.
         let bands = array(c, "eq");
         if bands.len() > BANDS_PER_CHANNEL {
             b.skipped
                 .add(format!("EQ bands beyond {BANDS_PER_CHANNEL} per channel"));
         }
-        for k in 0..BANDS_PER_CHANNEL {
+        let filled = if bands.is_empty() {
+            0
+        } else {
+            BANDS_PER_CHANNEL
+        };
+        for k in 0..filled {
             let (p, ok) = bands.get(k).map_or((flat(), true), |x| band_from(x, false));
             if !ok {
                 b.skipped
@@ -891,16 +1050,23 @@ fn build_channels(b: &mut ConfigBuild, v: &Value, hardware: bool) {
         let Some(ChannelRef::Output(o)) = r else {
             continue;
         };
-        let gain = f(c, "gainDb", 0.0).clamp(-60.0, 12.0);
+        let gain = f_in(c, "gainDb", -60.0, 12.0, at(&ns.output_gain_db, o, 0.0));
         put(&mut ns.output_gain_db, o, gain);
-        put(&mut ns.output_muted, o, flag(c, "muted", false));
-        put(&mut ns.output_enabled, o, flag(c, "enabled", true));
-        if c.get("outputDelayMs").is_some() {
-            let d = f(c, "outputDelayMs", 0.0).clamp(0.0, max_delay);
-            put(&mut ns.output_delay_ms, o, d);
-        }
+        let muted = flag(c, "muted", at(&ns.output_muted, o, false));
+        put(&mut ns.output_muted, o, muted);
+        let enabled = flag(c, "enabled", at(&ns.output_enabled, o, false));
+        put(&mut ns.output_enabled, o, enabled);
+        let d = f_in(
+            c,
+            "outputDelayMs",
+            0.0,
+            max_delay,
+            at(&ns.output_delay_ms, o, 0.0),
+        );
+        put(&mut ns.output_delay_ms, o, d);
         let xs = array(c, "crossover");
-        for k in 0..MAX_XOVER_BANDS {
+        let filled = if xs.is_empty() { 0 } else { MAX_XOVER_BANDS };
+        for k in 0..filled {
             let (p, ok) = xs.get(k).map_or((flat(), true), |x| band_from(x, true));
             if !ok {
                 b.skipped
@@ -912,12 +1078,15 @@ fn build_channels(b: &mut ConfigBuild, v: &Value, hardware: bool) {
             put2(&mut ns.xover, w, k, p);
         }
         if hardware && let Some(l) = block(c, "limiter") {
-            put(&mut ns.limiter_enabled, o, flag(l, "enabled", false));
-            let th = f(l, "thresholdDb", at(&ns.limiter_threshold_db, o, 0.0));
-            put(&mut ns.limiter_threshold_db, o, th.clamp(-30.0, 0.0));
-            let rel = f(l, "releaseMs", at(&ns.limiter_release_ms, o, 100.0));
-            put(&mut ns.limiter_release_ms, o, rel.clamp(10.0, 1000.0));
-            let group = int(l, "linkGroup", 0).clamp(0, 4) as u8;
+            let on = flag(l, "enabled", at(&ns.limiter_enabled, o, false));
+            put(&mut ns.limiter_enabled, o, on);
+            let th = at(&ns.limiter_threshold_db, o, 0.0);
+            let th = f_in(l, "thresholdDb", -30.0, 0.0, th);
+            put(&mut ns.limiter_threshold_db, o, th);
+            let rel = at(&ns.limiter_release_ms, o, 100.0);
+            let rel = f_in(l, "releaseMs", 10.0, 1000.0, rel);
+            put(&mut ns.limiter_release_ms, o, rel);
+            let group = int_in(l, "linkGroup", 0, 4, at(&ns.limiter_link_group, o, 0));
             put(&mut ns.limiter_link_group, o, group);
         }
     }
@@ -938,10 +1107,12 @@ fn build_matrix(b: &mut ConfigBuild, v: &Value) {
         if i >= n_in || o >= n_out {
             continue;
         }
-        let on = flag(x, "enabled", false);
+        let on = flag(x, "enabled", at2(&ns.matrix_routing, i, o, false));
         put2(&mut ns.matrix_routing, i, o, on);
-        put2(&mut ns.matrix_invert, i, o, flag(x, "invert", false));
-        put2(&mut ns.matrix_gain, i, o, f(x, "gainDb", 0.0));
+        let invert = flag(x, "invert", at2(&ns.matrix_invert, i, o, false));
+        put2(&mut ns.matrix_invert, i, o, invert);
+        let gain = f(x, "gainDb", at2(&ns.matrix_gain, i, o, 0.0));
+        put2(&mut ns.matrix_gain, i, o, gain);
         if on {
             b.points = b.points.saturating_add(1);
         }
@@ -953,64 +1124,72 @@ fn build_io(ns: &mut DspState, io: &Value) {
     let byte = |key: &str, def: u8| int_as(io, key, def);
     if let Some(pins) = ints(io, "outputPins", MAX_PHYSICAL_OUTPUTS) {
         for (k, p) in pins.iter().enumerate() {
-            let x = fit(*p, at(&ns.output_pins, k, 0));
-            put(&mut ns.output_pins, k, x);
+            if let Some(p) = p {
+                let x = fit(*p, at(&ns.output_pins, k, 0));
+                put(&mut ns.output_pins, k, x);
+            }
         }
     }
     if let Some(types) = ints(io, "outputSlotTypes", 4) {
         for (k, t) in types.iter().enumerate() {
-            put(&mut ns.output_types, k, (*t).clamp(0, 1) as u8);
+            if let Some(t) = t {
+                put(&mut ns.output_types, k, (*t).clamp(0, 1) as u8);
+            }
         }
     }
     ns.i2s_bck_pin = byte("i2sBckPin", ns.i2s_bck_pin);
     ns.mck_enabled = flag(io, "mckEnabled", ns.mck_enabled);
     ns.mck_pin = byte("mckPin", ns.mck_pin);
-    ns.mck_multiplier = u8::from(int(io, "mckMultiplier", 128) == 256);
-    ns.i2s_clock_mode = int(io, "i2sClockMode", i64::from(ns.i2s_clock_mode)).clamp(0, 1) as u8;
-    ns.i2s_clock_pin_mode =
-        int(io, "i2sClockPinMode", i64::from(ns.i2s_clock_pin_mode)).clamp(0, 1) as u8;
+    if let Some(m) = io.get("mckMultiplier").and_then(as_int) {
+        ns.mck_multiplier = u8::from(m == 256);
+    }
+    ns.i2s_clock_mode = int_in(io, "i2sClockMode", 0, 1, ns.i2s_clock_mode);
+    ns.i2s_clock_pin_mode = int_in(io, "i2sClockPinMode", 0, 1, ns.i2s_clock_pin_mode);
     ns.i2s_bck_pin_slave = byte("i2sBckPinSlave", ns.i2s_bck_pin_slave);
     if let Some(rx) = ints(io, "spdifRxPins", 3) {
         for (k, p) in rx.iter().enumerate() {
-            let x = fit(*p, at(&ns.spdif_rx_pins, k, 0));
-            put(&mut ns.spdif_rx_pins, k, x);
+            if let Some(p) = p {
+                let x = fit(*p, at(&ns.spdif_rx_pins, k, 0));
+                put(&mut ns.spdif_rx_pins, k, x);
+            }
         }
     }
     let pin4 = byte("spdifRxPin4", at(&ns.spdif_rx_pins, 3, 0));
     put(&mut ns.spdif_rx_pins, 3, pin4);
     // S/PDIF input 1 (bit 0) is always on.
-    let ext = fit::<u8>(int(io, "spdifEnabledExt", 0), 0) & 0x07;
-    ns.spdif_inputs_enabled = 0x01 | ext.saturating_mul(2);
+    let ext = io.get("spdifEnabledExt").and_then(as_int);
+    if let Some(ext) = ext.and_then(|x| u8::try_from(x).ok()) {
+        ns.spdif_inputs_enabled = 0x01 | (ext & 0x07).saturating_mul(2);
+    }
     if let Some(rx) = ints(io, "i2sRxPins", 4) {
         for (k, p) in rx.iter().enumerate() {
-            let x = fit(*p, at(&ns.i2s_rx_pins, k, 0));
-            put(&mut ns.i2s_rx_pins, k, x);
+            if let Some(p) = p {
+                let x = fit(*p, at(&ns.i2s_rx_pins, k, 0));
+                put(&mut ns.i2s_rx_pins, k, x);
+            }
         }
     }
     ns.i2s_input_channels = byte("i2sInputChannels", ns.i2s_input_channels);
-    ns.i2s_input_rate = match int(io, "i2sInputRateHz", 48_000) {
-        44_100 => 0,
-        96_000 => 2,
-        _ => 1,
+    // No other rate exists, so anything else says nothing.
+    ns.i2s_input_rate = match io.get("i2sInputRateHz").and_then(as_int) {
+        Some(44_100) => 0,
+        Some(48_000) => 1,
+        Some(96_000) => 2,
+        _ => ns.i2s_input_rate,
     };
     if is_rp2350(ns) {
         ns.adat_out_enabled = flag(io, "adatEnabled", ns.adat_out_enabled);
         ns.adat_out_pin = byte("adatPin", ns.adat_out_pin);
         ns.adat_input_enabled = flag(io, "adatInputEnabled", ns.adat_input_enabled);
         ns.adat_input_pin = byte("adatInputPin", ns.adat_input_pin);
-        ns.adat_input_clock_mode = int(
-            io,
-            "adatInputClockMode",
-            i64::from(ns.adat_input_clock_mode),
-        )
-        .clamp(0, 1) as u8;
+        ns.adat_input_clock_mode = int_in(io, "adatInputClockMode", 0, 1, ns.adat_input_clock_mode);
     }
     if let (Some(d), true) = (block(io, "dacHwMute"), ns.dac_mute_supported) {
-        ns.dac_mute_enabled = flag(d, "enabled", false);
-        ns.dac_mute_active_low = flag(d, "activeLow", true);
+        ns.dac_mute_enabled = flag(d, "enabled", ns.dac_mute_enabled);
+        ns.dac_mute_active_low = flag(d, "activeLow", ns.dac_mute_active_low);
         ns.dac_mute_pin = int_as(d, "pin", ns.dac_mute_pin);
-        ns.dac_mute_hold_ms = int_as(d, "holdMs", 0);
-        ns.dac_mute_release_ms = int_as(d, "releaseMs", 0);
+        ns.dac_mute_hold_ms = int_as(d, "holdMs", ns.dac_mute_hold_ms);
+        ns.dac_mute_release_ms = int_as(d, "releaseMs", ns.dac_mute_release_ms);
     }
 }
 
@@ -1033,7 +1212,22 @@ fn config_report(b: &ConfigBuild) -> (Vec<String>, bool) {
     if !b.skipped.0.is_empty() {
         lines.push(format!("Skipped: {}.", b.skipped.0.join("; ")));
     }
-    let clean = b.missing.is_empty() && b.skipped.0.is_empty();
+    if !b.left_alone.is_empty() {
+        lines.push(format!(
+            "Left as they are, because the file holds no value for them: {}.",
+            b.left_alone.join(", ")
+        ));
+    }
+    if b.unreadable {
+        lines.push(
+            "Left as they are: any setting whose value in the file could not be read.".into(),
+        );
+    }
+    if let Some(w) = &b.warning {
+        lines.push(format!("Warning: {w}"));
+    }
+    let clean =
+        b.missing.is_empty() && b.skipped.0.is_empty() && b.left_alone.is_empty() && !b.unreadable;
     lines.push(NOT_STORED.into());
     (lines, clean)
 }
@@ -1563,15 +1757,29 @@ fn inspect_filters(s: &DspState, text: &str, inputs: usize) -> Value {
 #[derive(Debug, Clone, PartialEq)]
 struct ChannelWrite {
     wire: u8,
-    /// Every PEQ band (`BANDS_PER_CHANNEL`), flat where the file has none.
-    filters: Vec<FilterParams>,
-    /// Every crossover band (`MAX_XOVER_BANDS`), outputs only.
+    /// Every PEQ band (`BANDS_PER_CHANNEL`), flat past the file's last; `None`
+    /// when the file holds no bank for this channel, which is then left alone.
+    filters: Option<Vec<FilterParams>>,
+    /// Every crossover band (`MAX_XOVER_BANDS`), outputs only, on the same rule.
     xover: Option<Vec<FilterParams>>,
     /// Inputs only.
     preamp: Option<f32>,
     /// (output index, enabled), outputs only.
     enable: Option<(u8, bool)>,
 }
+
+impl ChannelWrite {
+    /// Nothing in the file applies to this channel.
+    fn is_empty(&self) -> bool {
+        self.filters.is_none()
+            && self.xover.is_none()
+            && self.preamp.is_none()
+            && self.enable.is_none()
+    }
+}
+
+const NO_EQ_BANK: &str = "Channels with no EQ bands in the file kept theirs.";
+const NO_XOVER_BANK: &str = "Outputs with no crossover bands in the file kept theirs.";
 
 /// A filter import, planned (nothing sent yet).
 #[derive(Debug, Default)]
@@ -1588,7 +1796,9 @@ impl FilterPlan {
     }
 }
 
-/// The bands, preamp and enable state written to wire channel `w`.
+/// The bands, preamp and enable state written to wire channel `w`. An empty
+/// bank is one the file does not hold, not a flat one: an `OFF` line holds a
+/// flat band.
 fn channel_write(
     w: usize,
     n_in: usize,
@@ -1599,19 +1809,21 @@ fn channel_write(
 ) -> Option<ChannelWrite> {
     let wire = u8::try_from(w).ok()?;
     let is_input = w < n_in;
-    let filters = (0..BANDS_PER_CHANNEL)
-        .map(|b| {
-            let p = filters.get(b).copied().unwrap_or_else(flat);
-            if p.filter_type > FILTER_PEQ_LAST
-                || (p.filter_type == FILTER_LINKWITZ_TRANSFORM && is_input)
-            {
-                flat()
-            } else {
-                p
-            }
-        })
-        .collect();
-    let xover = xover.filter(|_| !is_input).map(|x| {
+    let filters = (!filters.is_empty()).then(|| {
+        (0..BANDS_PER_CHANNEL)
+            .map(|b| {
+                let p = filters.get(b).copied().unwrap_or_else(flat);
+                if p.filter_type > FILTER_PEQ_LAST
+                    || (p.filter_type == FILTER_LINKWITZ_TRANSFORM && is_input)
+                {
+                    flat()
+                } else {
+                    p
+                }
+            })
+            .collect()
+    });
+    let xover = xover.filter(|x| !is_input && !x.is_empty()).map(|x| {
         (0..MAX_XOVER_BANDS)
             .map(|b| {
                 let p = x.get(b).copied().unwrap_or_else(flat);
@@ -1660,9 +1872,16 @@ fn plan_filters(s: &DspState, text: &str, chosen: &[u8]) -> FilterPlan {
                         "Only the first {BANDS_PER_CHANNEL} bands of a channel were used."
                     ));
                 }
+                if sec.filters.is_empty() {
+                    plan.note(NO_EQ_BANK.into());
+                }
+                if sec.xover.is_empty() && w >= n_in {
+                    plan.note(NO_XOVER_BANK.into());
+                }
                 let xover = Some(sec.xover.as_slice());
                 if let Some(cw) =
                     channel_write(w, n_in, &sec.filters, xover, sec.preamp, sec.enable)
+                    && !cw.is_empty()
                 {
                     plan.writes.push(cw);
                 }
@@ -1688,10 +1907,14 @@ fn plan_filters(s: &DspState, text: &str, chosen: &[u8]) -> FilterPlan {
             if preamp.is_some() && chosen.iter().all(|&w| usize::from(w) >= n_in) {
                 plan.note("The preamp applies to inputs only, so it was not used.".into());
             }
+            if filters.is_empty() {
+                plan.note(NO_EQ_BANK.into());
+            }
             for &w in chosen {
                 let w = usize::from(w);
                 if w < n_in.saturating_add(n_out)
                     && let Some(cw) = channel_write(w, n_in, &filters, None, preamp, None)
+                    && !cw.is_empty()
                 {
                     plan.writes.push(cw);
                 }
@@ -1725,18 +1948,44 @@ struct ImportReport {
     clean: bool,
     links: Option<u8>,
     hardware_written: bool,
+    left_alone: Vec<String>,
+}
+
+/// Whether the mirror holds a device's state, which an export needs. A read-only
+/// device's mapped image counts; a connection whose image was never read or could
+/// not be mapped holds only `default_state`.
+fn check_state_read(inner: &mut crate::Inner) -> Result<()> {
+    let wire: Option<WireRead> = inner.conn()?.wire;
+    if wire.is_some() {
+        return Ok(());
+    }
+    if matches!(
+        inner.state.compat,
+        COMPAT_FIRMWARE_TOO_OLD | COMPAT_FIRMWARE_TOO_NEW
+    ) {
+        return Err(crate::DspiError::Unsupported);
+    }
+    Err(crate::DspiError::Transfer {
+        msg: "the device's state has not been read".into(),
+    })
 }
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
-    /// The device configuration (the mirror; defaults while disconnected)
-    /// as a `.dspipreset` document: schema 1, pretty-printed JSON with
-    /// sorted keys. `name` and `app_version` go into `meta`; `links` = the
-    /// app's input-pair link mask (bit p = pair p), which the firmware does
-    /// not hold. Never fails.
-    pub fn config_export(&self, name: String, app_version: String, links: u8) -> String {
-        let inner = self.lock();
-        export_config(&inner.state, &name, &app_version, links)
+    /// The device configuration (the mirror) as a `.dspipreset` document:
+    /// schema 1, pretty-printed JSON with sorted keys. `name` and `app_version`
+    /// go into `meta`; `links` = the app's input-pair link mask (bit p = pair
+    /// p), which the firmware does not hold.
+    ///
+    /// A read-only device of an older wire format exports what that format
+    /// carries, and the keys it lacks are left out. There is nothing to export
+    /// without a device's state: [`crate::DspiError::Disconnected`] with no
+    /// device, [`crate::DspiError::Unsupported`] for firmware whose image cannot
+    /// be mapped, and [`crate::DspiError::Transfer`] when it has not been read.
+    pub fn config_export(&self, name: String, app_version: String, links: u8) -> Result<String> {
+        let mut inner = self.lock();
+        check_state_read(&mut inner)?;
+        Ok(export_config(&inner.state, &name, &app_version, links))
     }
 
     /// Apply a `.dspipreset` document to the device. `options`: bit
@@ -1747,18 +1996,20 @@ impl DspiCore {
     /// `ok` false with `error` for a file that is not a document of this
     /// schema, or when the device could not be written (disconnected,
     /// read-only firmware, transfer failure; the mirror is then left as it
-    /// was). On success `lines` is the report for the user, `clean` is false
-    /// when channels or settings were left out, `links` the input-pair link
-    /// mask to restore (null when the document has none) and
-    /// `hardwareWritten` whether I/O was written outside a preset (save the
-    /// output config to keep it).
+    /// was). A setting the document holds no value for keeps the device's
+    /// value, an `eq` or `crossover` with no entries leaves that bank alone,
+    /// and `leftAlone` names them by JSON key. On success `lines` is the report
+    /// for the user, `clean` is false when channels or settings were left out,
+    /// `links` the input-pair link mask to restore (null when the document has
+    /// none) and `hardwareWritten` whether I/O was written outside a preset
+    /// (save the output config to keep it).
     pub fn config_import(&self, text: String, options: u32) -> String {
         let out = match parse_config(&text) {
             Err(e) => json!({ "ok": false, "error": e }),
             Ok(v) => match self.import_config(&v, options) {
                 Ok(r) => json!({
                     "ok": true, "lines": r.lines, "clean": r.clean, "links": r.links,
-                    "hardwareWritten": r.hardware_written,
+                    "hardwareWritten": r.hardware_written, "leftAlone": r.left_alone,
                 }),
                 Err(e) => write_failed(&e),
             },
@@ -1810,6 +2061,7 @@ impl DspiCore {
             clean,
             links: built.links,
             hardware_written,
+            left_alone: built.left_alone,
         })
     }
 
@@ -1908,14 +2160,16 @@ impl DspiCore {
     /// Every channel's filters as a filter text file (format 2): the first
     /// `inputs` live inputs with their preamp and PEQ bands, then every
     /// output with its PEQ and crossover bands and enable state. Reads the
-    /// mirror; never fails.
-    pub fn filters_export(&self, inputs: u8) -> String {
+    /// mirror; refused as [`DspiCore::config_export`] is when it holds no
+    /// device's state.
+    pub fn filters_export(&self, inputs: u8) -> Result<String> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        let inner = self.lock();
-        export_filters(&inner.state, usize::from(inputs), now)
+        let mut inner = self.lock();
+        check_state_read(&mut inner)?;
+        Ok(export_filters(&inner.state, usize::from(inputs), now))
     }
 
     /// What a filter file holds, for the channel picker, as JSON.
@@ -1935,7 +2189,8 @@ impl DspiCore {
 
     /// Apply a filter file to the channels in `wires` (wire indices; other
     /// channels in the file are ignored) through the band, preamp and
-    /// output-enable setters. Returns JSON `{ok, error, lines}`: `ok` false
+    /// output-enable setters. A section with no lines for a bank leaves that
+    /// bank alone, and the report says so. Returns JSON `{ok, error, lines}`: `ok` false
     /// with `error` when the file is over [`MAX_FILE_BYTES`] or the device
     /// could not be written (disconnected, read-only firmware, transfer
     /// failure; channels written before a failure stay written).
@@ -1973,8 +2228,10 @@ impl DspiCore {
     /// Write one channel; `Some(note)` when the device kept the output in
     /// another enable state than the file asks for.
     fn write_channel(&self, w: &ChannelWrite) -> Result<Option<String>> {
-        for (b, p) in (0u8..).zip(&w.filters) {
-            self.set_filter(w.wire, b, *p)?;
+        if let Some(f) = &w.filters {
+            for (b, p) in (0u8..).zip(f) {
+                self.set_filter(w.wire, b, *p)?;
+            }
         }
         if let Some(x) = &w.xover {
             for (b, p) in (0u8..).zip(x) {
@@ -2001,3 +2258,7 @@ impl DspiCore {
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_c13;
+
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg18;

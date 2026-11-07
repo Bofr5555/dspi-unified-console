@@ -909,7 +909,9 @@ mod wp_tm10_tests {
     /// cannot go stale. `DSPI_TM10_REGEN=1` rewrites it.
     #[test]
     fn wp_tm10_the_qt_fixture_is_what_qts_core_writes() {
-        let written = qt_core().config_export("Qt reference".into(), "1.0".into(), 0b0101);
+        let written = qt_core()
+            .config_export("Qt reference".into(), "1.0".into(), 0b0101)
+            .unwrap();
         if std::env::var_os("DSPI_TM10_REGEN").is_some() {
             let path = concat!(
                 env!("CARGO_MANIFEST_DIR"),
@@ -936,7 +938,8 @@ mod wp_tm10_tests {
         assert_eq!(reply["ok"], true, "{reply}");
 
         // Qt -> Terminal: the same tuning, and the pair map.
-        let back = preset_file::parse(&core.config_export("y".into(), "1.0".into(), 0)).unwrap();
+        let back =
+            preset_file::parse(&core.config_export("y".into(), "1.0".into(), 0).unwrap()).unwrap();
         for (a, b) in mac.channels.iter().zip(&back.channels) {
             assert_eq!(a.eq, b.eq, "{}", a.name);
             assert_eq!(a.crossover, b.crossover, "{}", a.name);
@@ -953,7 +956,8 @@ mod wp_tm10_tests {
             serde_json::from_str(&core.config_import(MAC.into(), 0)).unwrap();
         assert_eq!(reply["ok"], true, "{reply}");
         assert_eq!(reply["links"], 1, "{reply}");
-        let back = preset_file::parse(&core.config_export("y".into(), "1.0".into(), 0)).unwrap();
+        let back =
+            preset_file::parse(&core.config_export("y".into(), "1.0".into(), 0).unwrap()).unwrap();
         let mac = preset_file::parse(MAC).unwrap();
         for (a, b) in mac.channels.iter().zip(&back.channels) {
             assert_eq!(a.eq, b.eq, "{}", a.name);
