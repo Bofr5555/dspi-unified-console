@@ -30,7 +30,9 @@ QtObject {
     }
     // -- WP QD4 -- Source and device names, whose drafts the controller holds
     readonly property bool namesDirty: bridge.connected && deviceNames.dirty
-    readonly property bool draftDirty: namesDirty || (edited && bridge.connected && (
+    // -- WP QD5 -- The latency, whose draft the controller holds
+    readonly property bool latencyDirty: bridge.connected && outputLatency.dirty
+    readonly property bool draftDirty: namesDirty || latencyDirty || (edited && bridge.connected && (
         startupMode !== bridge.presetStartupMode
         || (startupMode === 0 && defaultSlot !== bridge.presetDefaultSlot)
         || masterVolumeMode !== bridge.masterVolumeMode
@@ -99,6 +101,9 @@ QtObject {
         // -- WP QD4 -- The controller keeps a refused name's draft; see namesWatch
         if (namesDirty)
             deviceNames.save()
+        // -- WP QD5 -- Last, as on the Mac: it restarts the outputs. See latencyWatch.
+        if (latencyDirty)
+            outputLatency.save()
         edited = false
     }
 
@@ -157,6 +162,7 @@ QtObject {
         // -- WP QD1 -- A refused revert must not look reverted: the draft stays
         if (csDirty && !revertControlSurfaces()) return
         deviceNames.revert()   // -- WP QD4 --
+        outputLatency.revert()   // -- WP QD5 --
         load()
     }
 
@@ -168,6 +174,11 @@ QtObject {
     // -- WP QD4 --
     property Connections namesWatch: Connections {
         target: deviceNames
+        function onSaveFailed(reason) { ctx.saveError = "Not saved: " + reason }
+    }
+    // -- WP QD5 --
+    property Connections latencyWatch: Connections {
+        target: outputLatency
         function onSaveFailed(reason) { ctx.saveError = "Not saved: " + reason }
     }
     Component.onCompleted: load()

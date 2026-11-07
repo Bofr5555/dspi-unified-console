@@ -68,7 +68,7 @@ AppWindow {
             { id: "i2s", title: "I2S Configuration", icon: isMacOS ? "waveform" : "clock", tint: "#ba3822", needsDevice: true,
               source: "settings/pages/I2SPage.qml", keywords: "bck lrclk bit clock mck master clock multiplier sample rate split unified" },
             { id: "global", title: "Global Parameters", icon: isMacOS ? "drive" : "globe", tint: isMacOS ? "#807701" : "#ff9f0a", needsDevice: true,
-              source: "settings/pages/GlobalParametersPage.qml", keywords: "startup default preset master volume hardware independent dac mute amplifier pop name rename" }
+              source: "settings/pages/GlobalParametersPage.qml", keywords: "startup default preset master volume hardware independent dac mute amplifier pop name rename latency delay jitter" }
         ]},
         { title: "Control", pages: [
             { id: "surfaces", title: "Control Surfaces", icon: isMacOS ? "dial" : "cs-pot", tint: "#8354a0", needsDevice: true, needs: "cs",

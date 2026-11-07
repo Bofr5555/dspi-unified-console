@@ -100,6 +100,24 @@ SettingsPage {
         }
     }
 
+    // -- WP QD5 --
+    onVisibleChanged: if (visible) outputLatency.refresh()
+    Component.onCompleted: outputLatency.refresh()
+    SettingsSection {
+        visible: outputLatency.supported && outputLatency.choices.length > 0
+        title: "Latency"
+        enabled: bridge.connected && !outputLatency.applying
+        footnote: outputLatency.caption
+        SettingsChoiceRow {
+            objectName: "latencyRow"
+            title: "Target"
+            detail: outputLatency.applying ? "Applying…" : ""
+            options: outputLatency.choices
+            value: outputLatency.shownId
+            onChosen: { ctx.saveError = ""; outputLatency.edit(value) }
+        }
+    }
+
     SettingsSection {
         visible: page.hw.dacMuteSupported === true
         title: "External Mute Control"
