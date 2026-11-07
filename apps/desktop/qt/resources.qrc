@@ -141,6 +141,8 @@
         <file>qml/settings/SettingsValueRow.qml</file>
         <file>qml/settings/pages/AboutPage.qml</file>
         <file>qml/settings/pages/AdvancedPage.qml</file>
+        <!-- WP QD28 -->
+        <file>qml/settings/pages/CoreVoltagePage.qml</file>
         <file>qml/settings/pages/GlobalParametersPage.qml</file>
         <file>qml/settings/pages/GraphingPage.qml</file>
         <file>qml/settings/pages/SpectrumPage.qml</file>

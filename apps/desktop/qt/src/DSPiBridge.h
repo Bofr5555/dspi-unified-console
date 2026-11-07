@@ -9,6 +9,8 @@
 #include <QVector>
 #include <QString>
 #include <QStringList>
+#include <QThreadPool>   // -- WP QD34 --
+#include <functional>
 
 extern "C" {
 #include "dspi_core.h"
@@ -450,6 +452,10 @@ public:
     // The core, for the spectrum analyser controller
     FfiCore *core() const { return m_core; }
 
+    // -- WP QD34 -- For the smoke driver: runs on the status worker before each
+    // status read, to show the read is off the GUI thread and may be slow.
+    void setStatusReadHook(std::function<void()> hook) { m_statusReadHook = std::move(hook); }
+
     // For configuration and filter file imports
     uint8_t inputLinks() const { return m_links; }
     void restoreInputLinks(uint8_t links);
@@ -578,6 +584,14 @@ private:
     float m_limiterGR[MAX_OUTPUTS] = {};
     qint64 m_lastClipMs[MAX_CHANNELS] = {};      // per wire channel, 0 = never
     int m_pollTick = 0;
+    // -- WP QD34 -- The status reads run on m_pollWorker, one at a time. A reply from
+    // before a device change, or clip flags read before clearClips, are dropped.
+    struct StatusRead;
+    void applyStatus(const StatusRead &r, bool anyLimiter, bool readLimiter);
+    QThreadPool m_pollWorker;
+    bool m_statusBusy = false;
+    unsigned m_statusGeneration = 0, m_clipEpoch = 0;
+    std::function<void()> m_statusReadHook;
 
     struct ChannelClip {
         bool valid = false;

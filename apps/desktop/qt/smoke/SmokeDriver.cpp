@@ -108,6 +108,8 @@ void SmokeDriver::run() {
     testClockDiagAndCpuBars();
     // -- WP QD29 --
     testRingHealth();
+    // -- WP QD34 --
+    testPollingOffUiThread();
     // -- WP QD31 --
     testSaveBarSetters();
     // -- WP QD1 --
@@ -120,6 +122,8 @@ void SmokeDriver::run() {
     testPairMap();
     // -- WP QD3 --
     testCoreVoltage();
+    // -- WP QD28 --
+    testVregCalibration();
     // -- WP QD6 --
     testReadOnly();
     // -- WP QD8 --

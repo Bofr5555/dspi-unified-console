@@ -1,0 +1,34 @@
+# DSPi Link hub as a systemd user service: shares this machine's DSPi devices on the
+# network while you are logged in. A placeholder to adapt (WP TM11): see README.md.
+#
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   cp dspi-hub.service ~/.config/systemd/user/
+#   (edit ExecStart if dspi is not in /usr/local/bin)
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now dspi-hub
+# To keep it running after you log out: loginctl enable-linger "$USER"
+#
+# PIN pairing is the default: do not add --open here. To pair a client, stop the
+# service, run `dspi hub` in a terminal, type `pair`, and start the service again
+# when the client has paired. The token it was given survives restarts.
+
+[Unit]
+Description=DSPi Link hub (sharing DSPi devices on the network)
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/dspi hub
+# `dspi hub` takes a logind sleep lock while it runs (systemd-inhibit). Add
+# --no-keep-awake to let the machine sleep.
+Restart=on-failure
+RestartSec=5
+# Warnings and the hub's own lines go to the journal: journalctl --user -u dspi-hub
+Environment=RUST_LOG=warn
+# SIGTERM stops sharing cleanly: clients are told, USB devices let go.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

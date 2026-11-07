@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  DSPi Link hub as a launchd agent: shares this Mac's DSPi devices on the network
+  while you are logged in. A placeholder to adapt (WP TM11): see README.md.
+
+  Install:
+    cp se.bofr.dspi.hub.plist ~/Library/LaunchAgents/
+    (edit the dspi path, and USERNAME in the log paths)
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/se.bofr.dspi.hub.plist
+  Remove:
+    launchctl bootout gui/$(id -u)/se.bofr.dspi.hub
+
+  PIN pairing is the default: do not add the open option here. To pair a client,
+  bootout the agent, run `dspi hub` in Terminal, type `pair`, and bootstrap it
+  again when the client has paired. `dspi hub` keeps the Mac awake while it runs
+  (caffeinate); to let it sleep, add the no-keep-awake option (README.md).
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>se.bofr.dspi.hub</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/dspi</string>
+        <string>hub</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <!-- Restart after a failure, not after a clean stop. -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <!-- launchd sends SIGTERM; the hub stops cleanly within this. -->
+    <key>ExitTimeOut</key>
+    <integer>20</integer>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>RUST_LOG</key>
+        <string>warn</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/Users/USERNAME/Library/Logs/dspi-hub.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/USERNAME/Library/Logs/dspi-hub.log</string>
+</dict>
+</plist>

@@ -77,6 +77,8 @@ private:
     void testClockDiagAndCpuBars();
     // -- WP QD29 --
     void testRingHealth();
+    // -- WP QD34 --
+    void testPollingOffUiThread();
     // -- WP QD31 --
     void testSaveBarSetters();
     // -- WP QD1 --
@@ -119,6 +121,8 @@ private:
     void runTrayLaunch(const QString &mode);
     // -- WP QD11 --
     void testFirmware();
+    // -- WP QD28 --
+    void testVregCalibration();
 
     // Whether a bypass toggle repaints the open channel's graph editor. Leaves
     // bypass as it found it. NotRun fills `why`.
