@@ -41,8 +41,14 @@ use dspi_transport::TransportError;
 
 use crate::consts::FW_BETA_EARLY;
 use crate::error::status;
+use crate::presets::Holder;
 use crate::records::*;
 use crate::{Connection, DspiCore, DspiError, Inner, Result, connect, state};
+
+// -- WP CG24 --
+/// How long `enter_bootloader` holds the device lock at most: the hub's cap.
+const BOOTLOADER_HOLD: std::time::Duration = std::time::Duration::from_secs(60);
+const BOOTLOADER_REASON: &str = "Installing firmware";
 
 /// `PIN_RESET_TO_DEFAULT` (config.h): a pin setter's "the platform default".
 const PIN_RESET_TO_DEFAULT: u8 = 0xFF;
@@ -867,9 +873,9 @@ impl DspiCore {
 
     // ── Bootloader, Core 1 ────────────────────────────────────────────
 
-    /// Reboots the device into its USB bootloader (it disappears). Always Ok,
-    /// as in the core: the transfer result is ignored because the device
-    /// drops off the bus (also Ok without a device). Allowed on a read-only
+    /// Reboots the device into its USB bootloader (it disappears). Ok
+    /// whatever the transfer gives, as in the old core: the device drops off
+    /// the bus (also Ok without a device). Allowed on a read-only
     /// connection, so a firmware too old or too new for this build can be
     /// updated.
     ///
@@ -880,13 +886,39 @@ impl DspiCore {
     /// confirms success: open it again and check the new version with
     /// [`DspiCore::firmware_version_matches`]; a timeout there is the
     /// failure.
+    ///
+    /// The device lock is taken first and held across the restart (WP CG24),
+    /// so no other DSPi Link session writes to a device about to vanish; the
+    /// hub drops it when the device leaves. The connection's close gives it
+    /// back, and [`DspiCore::device_lock_release`] ends it when the install
+    /// ends otherwise (a restart that never happened); at most 60 s. A
+    /// refused lock sends nothing.
+    ///
+    /// Errors: [`DspiError::Locked`] / [`DspiError::Denied`] when the Link
+    /// hub refuses its lock; [`DspiError::Disconnected`] when the connection
+    /// changed while the hub was asked.
     pub fn enter_bootloader(&self) -> Result<()> {
-        let mut guard = self.lock();
-        if let Some(conn) = guard.conn.as_mut()
-            && let Err(e) = conn.get_upto(op::REQ_ENTER_BOOTLOADER, 0, 1)
-        {
-            log::debug!("enter_bootloader: {e} (expected while the device reboots)");
+        // -- WP CG24 --
+        if self.lock().conn.is_none() {
+            return Ok(());
         }
+        let lock = self.take_device_lock(BOOTLOADER_REASON, BOOTLOADER_HOLD, false)?;
+        let current = {
+            let mut guard = self.lock();
+            let current = lock.is_current(&guard);
+            if current
+                && let Some(conn) = guard.conn.as_mut()
+                && let Err(e) = conn.get_upto(op::REQ_ENTER_BOOTLOADER, 0, 1)
+            {
+                log::debug!("enter_bootloader: {e} (expected while the device reboots)");
+            }
+            current
+        };
+        if !current {
+            self.release_device_lock(lock);
+            return Err(DspiError::Disconnected);
+        }
+        self.hold_device_lock(lock, BOOTLOADER_HOLD, Holder::Bootloader);
         Ok(())
     }
 
@@ -1762,7 +1794,10 @@ mod tests_wp_c6 {
         core.enter_bootloader().unwrap();
         assert_eq!(
             entries(&log),
-            vec![format!("in {:02X} 0", op::REQ_ENTER_BOOTLOADER)]
+            vec![
+                "lock Installing firmware".into(),
+                format!("in {:02X} 0", op::REQ_ENTER_BOOTLOADER)
+            ]
         );
     }
 
@@ -1792,10 +1827,33 @@ mod tests_wp_c6 {
         assert_eq!(core.enter_bootloader(), Ok(()));
         assert_eq!(
             entries(&log),
-            vec![format!("in {:02X} 0", op::REQ_ENTER_BOOTLOADER)]
+            vec![
+                "lock Installing firmware".into(),
+                format!("in {:02X} 0", op::REQ_ENTER_BOOTLOADER)
+            ]
         );
         let (core, _, _) = rig(&[(op::REQ_ENTER_BOOTLOADER, Some(vec![1]))]);
         assert_eq!(core.enter_bootloader(), Ok(()));
+    }
+
+    // -- WP CG24 --
+    #[test]
+    fn wp_cg24_the_bootloader_restart_holds_the_device_lock() {
+        let (core, _, log) = rig(&[]);
+        core.enter_bootloader().unwrap();
+        assert_eq!(
+            core.held_lock_holder(),
+            Some(crate::presets::Holder::Bootloader)
+        );
+        // The install ends without a restart.
+        core.device_lock_release();
+        assert_eq!(core.held_lock_holder(), None);
+        assert_eq!(entries(&log).last().map(String::as_str), Some("unlock"));
+        // A refused lock sends nothing.
+        let (core, _, log) = rig_on(FakeDevice::demo(), &[], true);
+        assert_eq!(core.enter_bootloader(), Err(DspiError::Locked));
+        assert_eq!(entries(&log), ["lock Installing firmware"]);
+        assert_eq!(core.held_lock_holder(), None);
     }
 
     #[test]

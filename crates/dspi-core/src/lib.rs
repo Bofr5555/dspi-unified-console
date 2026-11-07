@@ -259,6 +259,11 @@ pub(crate) struct Connection {
     /// The fill target `fetch_stats_tick` judges by. On the connection, so a
     /// change of device starts over.
     pub(crate) ring_target: dspi_session::ring_health::RingTargetCache,
+    // -- WP CG24 --
+    /// The device lock held past one call (`device_lock_acquire`, an IR
+    /// learn window, the bootloader restart). On the connection, so it goes
+    /// with it: a closed or replaced connection gives it back.
+    pub(crate) held_lock: Option<presets::HeldLock>,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -348,6 +353,8 @@ impl Connection {
             device_name: String::new(),
             // -- WP CG21 --
             ring_target: Default::default(),
+            // -- WP CG24 --
+            held_lock: None,
         }
     }
 

@@ -402,6 +402,10 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun presetChanges(): List<String> = core.presetChanges()
 
+    override fun deviceLockAcquire(reason: String, timeoutMs: Long) = call { core.deviceLockAcquire(reason, timeoutMs.toUInt()) }
+
+    override fun deviceLockRelease() = core.deviceLockRelease()
+
     override fun rawGet(opcode: Int, value: Int, len: Int): List<Int> = call { core.rawGet(opcode.toUByte(), value.toUShort(), len.toUShort()).map { it.toInt() and 0xFF } }
 
     override fun rawSet(opcode: Int, value: Int, data: List<Int>) = call { core.rawSet(opcode.toUByte(), value.toUShort(), ByteArray(data.size) { data[it].toByte() }) }

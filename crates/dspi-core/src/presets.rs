@@ -53,7 +53,83 @@ const LOCK_TIMEOUT: Duration = Duration::from_secs(60);
 pub(crate) struct DeviceLock {
     generation: u64,
     side: Option<std::sync::Arc<dyn crate::SideChannel>>,
+    /// Taken inside a held lock ([`HeldLock`], WP CG24): nothing was asked
+    /// of the hub, so nothing is given back.
+    nested: bool,
 }
+
+/// What holds a [`HeldLock`] (WP CG24).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Holder {
+    /// `device_lock_acquire`.
+    Caller,
+    /// An armed IR learn (`cs_apply` `learnArm`).
+    Learn,
+    /// `enter_bootloader`, until the device leaves.
+    Bootloader,
+}
+
+/// A device lock held past the call that took it, on
+/// [`crate::Connection::held_lock`] (WP CG24). The core's own flows nest
+/// inside it without asking the hub again. Dropped with its connection, it
+/// gives a Link lock back.
+pub(crate) struct HeldLock {
+    /// `None` once given back.
+    lock: Option<DeviceLock>,
+    /// The core counts it as released from then on; the hub was given the
+    /// same timeout.
+    until: Instant,
+    pub(crate) holder: Holder,
+}
+
+impl HeldLock {
+    fn expired(&self) -> bool {
+        Instant::now() >= self.until
+    }
+
+    /// Give it back under the core's lock. A transport's own lock is
+    /// released here; a side channel is returned, to be released with the
+    /// core's lock released ([`crate::SideChannel`]).
+    fn give_back(
+        mut self,
+        conn: &mut Connection,
+    ) -> Option<std::sync::Arc<dyn crate::SideChannel>> {
+        let lock = self.lock.take()?;
+        match lock.side {
+            Some(side) => Some(side),
+            None => {
+                if conn.generation == lock.generation {
+                    conn.transport().unlock();
+                }
+                None
+            }
+        }
+    }
+}
+
+impl Drop for HeldLock {
+    /// Only for a connection closed with the lock still held: its transport
+    /// goes with it, but a Link side channel outlives it.
+    fn drop(&mut self) {
+        if let Some(DeviceLock {
+            side: Some(side), ..
+        }) = self.lock.take()
+        {
+            side.unlock();
+        }
+    }
+}
+
+/// Take an expired held lock off `conn`, given back as [`HeldLock::give_back`]
+/// does.
+fn drop_expired(conn: &mut Connection) -> Option<std::sync::Arc<dyn crate::SideChannel>> {
+    let held = conn.held_lock.take_if(|h| h.expired())?;
+    held.give_back(conn)
+}
+
+/// The longest a caller may hold the device lock: hubs cap it at 60 s
+/// (spec 7.7).
+const HELD_MAX: Duration = Duration::from_secs(60);
 
 impl DeviceLock {
     /// Whether the connection the lock was taken on is still the open one.
@@ -357,6 +433,56 @@ impl DspiCore {
     }
 }
 
+// -- WP CG24 --
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
+    /// Hold the device lock across a flow of several calls, so another
+    /// session's commands answer `Locked` until [`DspiCore::device_lock_release`]
+    /// (DSPi Link spec 7.7; Swift's `acquireDeviceLock`). It lasts at most
+    /// `timeout_ms`, capped at 60 000 (the hub's cap): after that the hub and
+    /// the core count it as released. The core's own locked flows
+    /// (`save_preset`, `load_preset`, `save_output_config`, ...) run inside it
+    /// without asking the hub again. It is given back when the connection
+    /// closes or is replaced, a Link re-bind included. On USB, MIDI and the
+    /// demo device it succeeds at once, as their flows do. Blocking over
+    /// Link: call it off the UI thread.
+    ///
+    /// A call while the lock is already held keeps it as it is (no second
+    /// request, the same timeout) and makes it the caller's: an IR learn or
+    /// a firmware install no longer ends it.
+    ///
+    /// Errors: [`DspiError::InvalidArgument`] for a `timeout_ms` of 0;
+    /// [`DspiError::Disconnected`] with no device, or when the connection
+    /// changed while the hub was asked; [`DspiError::Locked`] when another
+    /// session holds it; [`DspiError::Denied`] for a viewer.
+    pub fn device_lock_acquire(&self, reason: String, timeout_ms: u32) -> Result<()> {
+        if timeout_ms == 0 {
+            return Err(DspiError::InvalidArgument {
+                msg: "a device lock needs a timeout".into(),
+            });
+        }
+        let hold = Duration::from_millis(u64::from(timeout_ms)).min(HELD_MAX);
+        let lock = self.take_device_lock(&reason, hold, false)?;
+        if lock.nested {
+            let mut guard = self.lock();
+            if let Some(held) = guard.conn.as_mut().and_then(|c| c.held_lock.as_mut()) {
+                held.holder = Holder::Caller;
+            }
+            return Ok(());
+        }
+        self.hold_device_lock(lock, hold, Holder::Caller);
+        Ok(())
+    }
+
+    /// Release the device lock held past a call, whatever took it
+    /// ([`DspiCore::device_lock_acquire`], an IR learn, `enter_bootloader`).
+    /// Idempotent, and never blocks. A lock of a connection since closed
+    /// went with it.
+    pub fn device_lock_release(&self) {
+        self.end_held_lock(None);
+    }
+}
+
 impl DspiCore {
     // ── Flows ─────────────────────────────────────────────────────────
 
@@ -393,20 +519,52 @@ impl DspiCore {
     /// lock: a no-op on USB, MIDI and the demo device. (A `LinkTransport`
     /// handed to `open_transport` directly would wait there; the core's own
     /// `link_select_device` never does.)
+    ///
+    /// Inside a held lock ([`HeldLock`], WP CG24) the lock is nested: the hub
+    /// is not asked again and the release gives nothing back.
     pub(crate) fn acquire_device_lock(&self, reason: &str) -> Result<DeviceLock> {
-        let (generation, side) = {
+        self.take_device_lock(reason, LOCK_TIMEOUT, true)
+    }
+
+    /// [`DspiCore::acquire_device_lock`] for `timeout` (what the hub is
+    /// told), and only on a writable connection when `writable`.
+    pub(crate) fn take_device_lock(
+        &self,
+        reason: &str,
+        timeout: Duration,
+        writable: bool,
+    ) -> Result<DeviceLock> {
+        let (generation, side, expired) = {
             let mut guard = self.lock();
-            let mut w = guard.writable_conn()?;
-            let conn = w.conn();
+            if writable {
+                guard.writable_conn()?;
+            }
+            let conn = guard.conn()?;
+            // -- WP CG24 --
+            let expired = drop_expired(conn);
+            if conn.held_lock.is_some() {
+                return Ok(DeviceLock {
+                    generation: conn.generation,
+                    side: None,
+                    nested: true,
+                });
+            }
             let side = conn.side.clone();
             if side.is_none() {
-                conn.transport().lock(reason, LOCK_TIMEOUT)?;
+                conn.transport().lock(reason, timeout)?;
             }
-            (conn.generation, side)
+            (conn.generation, side, expired)
         };
-        let lock = DeviceLock { generation, side };
+        if let Some(old) = expired {
+            old.unlock();
+        }
+        let lock = DeviceLock {
+            generation,
+            side,
+            nested: false,
+        };
         if let Some(side) = &lock.side {
-            side.lock(reason, LOCK_TIMEOUT)?;
+            side.lock(reason, timeout)?;
             if !lock.is_current(&self.lock()) {
                 self.release_device_lock(lock);
                 return Err(DspiError::Disconnected);
@@ -426,8 +584,11 @@ impl DspiCore {
 
     /// Release a device lock on the connection that took it. If that
     /// connection was replaced mid-flow, the new one is left alone: its lock
-    /// is not ours to release.
+    /// is not ours to release. A nested lock gives nothing back.
     pub(crate) fn release_device_lock(&self, lock: DeviceLock) {
+        if lock.nested {
+            return;
+        }
         match lock.side {
             Some(side) => side.unlock(),
             None => {
@@ -441,6 +602,77 @@ impl DspiCore {
                 }
             }
         }
+    }
+
+    // -- WP CG24 --
+
+    /// Keep `lock` held past this call for `holder`, for at most `hold`
+    /// (what the hub was told when it was taken). A nested lock is already
+    /// inside a held one and is dropped; so is a lock whose connection has
+    /// gone, or one that lost a race with another holder.
+    pub(crate) fn hold_device_lock(&self, lock: DeviceLock, hold: Duration, holder: Holder) {
+        if lock.nested {
+            return;
+        }
+        let refused = {
+            let mut guard = self.lock();
+            match guard
+                .conn
+                .as_mut()
+                .filter(|c| c.generation == lock.generation && c.held_lock.is_none())
+            {
+                Some(conn) => {
+                    conn.held_lock = Some(HeldLock {
+                        lock: Some(lock),
+                        // `hold` is at most 60 s: never past the clock's end.
+                        until: Instant::now()
+                            .checked_add(hold)
+                            .unwrap_or_else(Instant::now),
+                        holder,
+                    });
+                    None
+                }
+                None => Some(lock),
+            }
+        };
+        if let Some(lock) = refused {
+            self.release_device_lock(lock);
+        }
+    }
+
+    /// Give back the held lock if `holder` matches (any holder for `None`).
+    /// Never blocks: a Link release is fire and forget.
+    pub(crate) fn end_held_lock(&self, holder: Option<Holder>) {
+        let side = {
+            let mut guard = self.lock();
+            let Some(conn) = guard.conn.as_mut() else {
+                return;
+            };
+            let held = conn
+                .held_lock
+                .take_if(|h| holder.is_none_or(|w| h.holder == w));
+            held.and_then(|h| h.give_back(conn))
+        };
+        if let Some(side) = side {
+            side.unlock();
+        }
+    }
+
+    /// Make the held lock's time up, as if its timeout had passed.
+    #[cfg(test)]
+    pub(crate) fn expire_held_lock(&self) {
+        if let Some(h) = self.lock().conn.as_mut().and_then(|c| c.held_lock.as_mut()) {
+            h.until = Instant::now();
+        }
+    }
+
+    /// The holder of the device lock this core holds past a call, `None`
+    /// when it holds none (or its time is up).
+    #[cfg(test)]
+    pub(crate) fn held_lock_holder(&self) -> Option<Holder> {
+        let mut guard = self.lock();
+        let held = guard.conn.as_mut()?.held_lock.as_ref()?;
+        (!held.expired()).then_some(held.holder)
     }
 
     /// `load_preset` once the device lock is held.
@@ -2307,6 +2539,93 @@ mod tests_wp_c5 {
         assert_eq!(val(3.0), "3");
         assert_eq!(val(3.25), "3.2");
         assert_eq!(db(-3.0), "-3.0 dB");
+    }
+
+    // -- WP CG24 --
+
+    fn locks(log: &Log) -> Vec<String> {
+        entries(log)
+            .into_iter()
+            .filter(|e| e.starts_with("lock") || e == "unlock")
+            .collect()
+    }
+
+    #[test]
+    fn wp_cg24_flows_inside_a_held_lock_ask_nothing_more() {
+        let (core, _remote, log) = open(Spy::demo());
+        // On USB and the demo device it succeeds at once.
+        core.device_lock_acquire("Install".into(), 5000).unwrap();
+        assert_eq!(core.held_lock_holder(), Some(Holder::Caller));
+        // Neither deadlocks nor gives the lock back.
+        core.save_preset(3).unwrap();
+        core.load_preset(3).unwrap();
+        core.save_output_config().unwrap();
+        assert_eq!(locks(&log), ["lock Install 5"]);
+        assert_eq!(core.held_lock_holder(), Some(Holder::Caller));
+        core.device_lock_release();
+        core.device_lock_release();
+        assert_eq!(locks(&log), ["lock Install 5", "unlock"]);
+        assert_eq!(core.held_lock_holder(), None);
+        // Flows lock for themselves again.
+        log.lock().unwrap().clear();
+        core.save_preset(2).unwrap();
+        bracketed(&log, "Saving preset");
+    }
+
+    #[test]
+    fn wp_cg24_the_timeout_is_capped_and_zero_is_refused() {
+        let (core, _remote, log) = open(Spy::demo());
+        assert!(matches!(
+            core.device_lock_acquire("x".into(), 0),
+            Err(DspiError::InvalidArgument { .. })
+        ));
+        core.device_lock_acquire("Long".into(), u32::MAX).unwrap();
+        assert_eq!(locks(&log), ["lock Long 60"]);
+        core.device_lock_release();
+        assert_eq!(
+            DspiCore::new().device_lock_acquire("x".into(), 10),
+            Err(DspiError::Disconnected)
+        );
+        DspiCore::new().device_lock_release();
+    }
+
+    #[test]
+    fn wp_cg24_a_refused_lock_holds_nothing() {
+        let mut spy = Spy::demo();
+        spy.refuse_lock = Some(TransportError::Locked);
+        let (core, _remote, _log) = open(spy);
+        assert_eq!(
+            core.device_lock_acquire("x".into(), 1000),
+            Err(DspiError::Locked)
+        );
+        assert_eq!(core.held_lock_holder(), None);
+    }
+
+    #[test]
+    fn wp_cg24_an_expired_lock_is_given_back_before_the_next_flow() {
+        let (core, _remote, log) = open(Spy::demo());
+        core.device_lock_acquire("Short".into(), 5000).unwrap();
+        core.expire_held_lock();
+        assert_eq!(core.held_lock_holder(), None);
+        log.lock().unwrap().clear();
+        core.save_preset(2).unwrap();
+        assert_eq!(locks(&log), ["unlock", "lock Saving preset 60", "unlock"]);
+    }
+
+    #[test]
+    fn wp_cg24_a_new_connection_holds_nothing() {
+        let (core, _remote, _log) = open(Spy::demo());
+        core.device_lock_acquire("Flow".into(), 5000).unwrap();
+        let spy = Spy::demo();
+        let new_log = Arc::clone(&spy.log);
+        core.attach_probed(Box::new(spy), "DEMO".into(), 0).unwrap();
+        assert_eq!(core.held_lock_holder(), None);
+        new_log.lock().unwrap().clear();
+        core.save_preset(2).unwrap();
+        bracketed(&new_log, "Saving preset");
+        // A release now has nothing to give back.
+        core.device_lock_release();
+        assert_eq!(locks(&new_log), ["lock Saving preset 60", "unlock"]);
     }
 }
 

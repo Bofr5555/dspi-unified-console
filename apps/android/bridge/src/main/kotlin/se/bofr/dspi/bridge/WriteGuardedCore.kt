@@ -820,7 +820,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "onboardingWhatsNewJson",
             "onboardingGettingStartedJson",
             // WP CG15: stateless text.
-            "aboutJson"
+            "aboutJson",
+            // -- WP CG24 -- The device lock across a flow: no device write
+            // (the firmware-update path, as enterBootloader; the writes
+            // inside it are guarded one by one).
+            "deviceLockAcquire",
+            "deviceLockRelease"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */
