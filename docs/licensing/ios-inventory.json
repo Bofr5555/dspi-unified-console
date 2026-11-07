@@ -1,5 +1,5 @@
 {
- "repo_commit": "2515c92",
+ "repo_commit": "2cc7332",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -351,6 +351,7 @@
    "crates/dspi-session/src/fast.rs",
    "crates/dspi-session/src/filterfile.rs",
    "crates/dspi-session/src/lib.rs",
+   "crates/dspi-session/src/link_words.rs",
    "crates/dspi-session/src/notify.rs",
    "crates/dspi-session/src/overvolt.rs",
    "crates/dspi-session/src/pins.rs",
@@ -359,6 +360,7 @@
    "crates/dspi-session/src/readout.rs",
    "crates/dspi-session/src/ring_health.rs",
    "crates/dspi-session/src/rta.rs",
+   "crates/dspi-session/src/rta_sharing.rs",
    "crates/dspi-session/src/runtime.rs",
    "crates/dspi-session/src/state.rs",
    "crates/dspi-session/src/surfaces.rs",
