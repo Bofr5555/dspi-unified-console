@@ -3,6 +3,7 @@ import "../"
 import "../../components"
 
 SettingsPage {
+    writesToDevice: false   // -- WP QD6 --
     title: "About"
 
     // App identity

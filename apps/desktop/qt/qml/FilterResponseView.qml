@@ -121,6 +121,7 @@ Column {
             // Drag, select and create the open channel's bands on the graph
             PeqEditorItem {
                 id: editor
+                enabled: bridge.writable   // -- WP QD6 --
                 anchors.fill: parent
                 channel: filterResponseRoot.follows && !root.crossoverTabOpen ? root.openChannelId : -1
                 showGlow: root.graphShowGlow

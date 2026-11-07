@@ -1230,6 +1230,29 @@ pub extern "C" fn dspi_demo_latency_sets(core: *mut FfiCore) -> u32 {
     })
 }
 
+// -- WP QD6 --
+/// The demo device as firmware of wire format `wire` (17, 26, 31 or 33), for
+/// read-only tests. Replaces any open device. False for any other format.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_demo_open_wire(core: *mut FfiCore, wire: u8) -> bool {
+    flag(core, |c| c.open_demo_wire(wire))
+}
+
+// -- WP QD6 --
+/// How many writes this core has refused because the connection is read-only.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_read_only_refusals(core: *mut FfiCore) -> u32 {
+    with_core(core, 0, |h| h.core.read_only_refusals())
+}
+
+// -- WP QD6 --
+/// The `WIRE_FEAT_*` bits the connected firmware's wire format carries: all of
+/// them on V32 and newer, none with no device or below V16.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_wire_features(core: *mut FfiCore) -> u32 {
+    with_core(core, 0, |h| h.core.wire_features())
+}
+
 // ── Added: diagnostics ────────────────────────────────────────────────
 
 /// The output latency's status: JSON {ok, raw, fields: [{name, value}]}.
@@ -1703,3 +1726,8 @@ mod tests_wp_qd4;
 #[cfg(test)]
 #[path = "fns_misc/tests_wp_qd5.rs"]
 mod tests_wp_qd5;
+
+// -- WP QD6 --
+#[cfg(test)]
+#[path = "fns_misc/tests_wp_qd6.rs"]
+mod tests_wp_qd6;

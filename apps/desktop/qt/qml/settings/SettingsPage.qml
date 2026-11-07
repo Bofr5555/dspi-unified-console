@@ -10,6 +10,10 @@ Flickable {
     property string subtitle: ""
     property var ctx                       // SettingsContext, set by the window
     default property alias content: body.data
+    // -- WP QD6 -- False on a page of this app's own settings or of readings: such a
+    // page stays live on firmware that's read-only. Elsewhere the page shows and
+    // scrolls, and its controls are off.
+    property bool writesToDevice: true
 
     contentWidth: width
     contentHeight: column.height + (isMacOS ? 20 : 36)
@@ -41,6 +45,7 @@ Flickable {
         Column {
             id: body
             width: parent.width
+            enabled: !page.writesToDevice || bridge.writable
             spacing: isMacOS ? 11 : 18
         }
     }

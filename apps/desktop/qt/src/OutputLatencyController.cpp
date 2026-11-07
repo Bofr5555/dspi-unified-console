@@ -47,6 +47,8 @@ OutputLatencyController::OutputLatencyController(DSPiBridge *bridge, QObject *pa
     m_worker.setMaxThreadCount(1);
     connect(m_bridge, &DSPiBridge::devicesChanged, this, &OutputLatencyController::sync);
     connect(m_bridge, &DSPiBridge::stateChanged, this, &OutputLatencyController::sync);
+    // -- WP QD6 -- Before the next device opens, not after: stateChanged comes too late
+    connect(m_bridge, &DSPiBridge::deviceChanging, this, [this]() { m_generation++; });
     sync();
 }
 
@@ -182,7 +184,7 @@ QString OutputLatencyController::caption() const {
 }
 
 void OutputLatencyController::edit(int id) {
-    if (m_applying || !optionFor(id)) return;
+    if (m_applying || !optionFor(id) || !m_bridge->writable()) return;   // -- WP QD6 --
     m_held = id != m_requested;
     m_draft = m_held ? id : 0;
     emit shownChanged();
@@ -196,7 +198,7 @@ void OutputLatencyController::revert() {
 }
 
 void OutputLatencyController::save() {
-    if (m_applying || !dirty() || !m_bridge->connected()) return;
+    if (m_applying || !dirty() || !m_bridge->writable()) return;   // -- WP QD6 --
     m_applying = true;
     emit applyingChanged();
     apply(m_draft);

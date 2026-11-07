@@ -45,6 +45,9 @@ DSPiBridge::DSPiBridge(Mode mode, QObject *parent)
     m_core = dspi_core_new();
     // Every state change may make the preset dirty or clean again
     connect(this, &DSPiBridge::stateChanged, this, &DSPiBridge::updatePresetDirty);
+    // Ahead of every outside listener, which then sees it current
+    connect(this, &DSPiBridge::stateChanged, this, &DSPiBridge::updateWritable);
+    connect(this, &DSPiBridge::statusChanged, this, &DSPiBridge::updateWritable);
 
     // Only the first input pair is visible on the graph by default
     for (int i = 0; i < kAppChannelCount; i++)
@@ -161,12 +164,13 @@ void DSPiBridge::hotplugCallback(uint8_t event, const char *serial, void *userDa
             emit self->deviceArrived(ser);
             // The core reconnects a returning device by itself, but its state
             // has to be read again, so (re)select whenever nothing is selected.
-            if (self->m_selectedSerial.isEmpty() || !self->connected())
+            if (!self->m_hubSession && (self->m_selectedSerial.isEmpty() || !self->connected()))
                 self->selectDevice(ser);
         }, Qt::QueuedConnection);
     } else {
         QMetaObject::invokeMethod(self, [self, ser]() {
             if (self->m_selectedSerial == ser) {
+                emit self->deviceChanging();
                 dspi_disconnect(self->m_core);
                 self->m_selectedSerial.clear();
                 self->markAllDirty();
@@ -224,7 +228,8 @@ void DSPiBridge::processNotifications()
 
 void DSPiBridge::pollStatus()
 {
-    if (!usable()) return;
+    // Read-only firmware keeps its meters. Clearing a clip below is allowed there.
+    if (!connected()) return;
     SystemStatus newStatus;
     if (dspi_fetch_status(m_core, &newStatus)) {
         // Clip flags are sticky on the device. Latch each clip here with a
@@ -247,6 +252,8 @@ void DSPiBridge::pollStatus()
         bool anyLimiter = false;
         for (int o = 0; o < state()->num_output_channels; o++)
             anyLimiter |= state()->limiter_enabled[o];
+        // Its meter request came with the limiter
+        anyLimiter = anyLimiter && firmwareHas(QStringLiteral("limiter"));
         if (anyLimiter && (++m_pollTick % 4) == 0) {
             float gr[MAX_OUTPUTS];
             if (dspi_fetch_limiter_meter(m_core, gr) && memcmp(gr, m_limiterGR, sizeof(gr)) != 0) {
@@ -298,14 +305,38 @@ int DSPiBridge::compat() const { return connected() ? state()->compat : COMPAT_U
 QString DSPiBridge::compatMessage() const {
     switch (compat()) {
     case COMPAT_FIRMWARE_TOO_OLD:
-        return QString("This DSPi runs firmware %1, which is too old for this Console. "
-                       "Update it to firmware 1.1.6.").arg(firmwareVersion().isEmpty() ? "older than 1.1.6" : firmwareVersion());
+        return QString("This DSPi runs firmware %1, which is too old for this Console. Its settings are shown "
+                       "read-only; features it lacks are hidden. Update it to firmware 1.1.6.")
+            .arg(firmwareVersion().isEmpty() ? "older than 1.1.6" : firmwareVersion());
     case COMPAT_FIRMWARE_TOO_NEW:
-        return QString("This DSPi runs firmware %1, which is newer than this Console understands. "
-                       "Update the Console.").arg(firmwareVersion());
+        return QString("This DSPi runs firmware %1, which is newer than this Console understands. Its settings are "
+                       "shown read-only, and some of its features may not be shown. Update the Console.")
+            .arg(firmwareVersion());
     default:
         return "";
     }
+}
+
+void DSPiBridge::updateWritable() {
+    const bool now = usable();
+    if (now == m_writable) return;
+    m_writable = now;
+    emit writableChanged();
+}
+
+int DSPiBridge::wireFeatures() const {
+    const int all = WIRE_FEAT_PSYBASS | WIRE_FEAT_UPMIX | WIRE_FEAT_SUBHARM | WIRE_FEAT_TUBE | WIRE_FEAT_LIMITER;
+    return connected() ? int(dspi_wire_features(m_core)) & all : all;
+}
+
+bool DSPiBridge::firmwareHas(const QString &feature) const {
+    int bit = 0;
+    if (feature == QLatin1String("psybass")) bit = WIRE_FEAT_PSYBASS;
+    else if (feature == QLatin1String("upmix")) bit = WIRE_FEAT_UPMIX;
+    else if (feature == QLatin1String("subharm")) bit = WIRE_FEAT_SUBHARM;
+    else if (feature == QLatin1String("tube")) bit = WIRE_FEAT_TUBE;
+    else if (feature == QLatin1String("limiter")) bit = WIRE_FEAT_LIMITER;
+    return (wireFeatures() & bit) != 0;
 }
 
 float DSPiBridge::maxDelayMs() const { return dspi_max_delay_ms(m_core); }
@@ -989,7 +1020,7 @@ void DSPiBridge::scanDevices() {
     }
 
     updateInaccessible();
-    if (!connected() && !m_availableSerials.isEmpty())
+    if (!connected() && !m_hubSession && !m_availableSerials.isEmpty())
         selectDevice(m_availableSerials.first());
 }
 
@@ -1043,9 +1074,10 @@ void DSPiBridge::installUdevRule() {
 
 void DSPiBridge::selectDevice(const QString &serial) {
     QByteArray utf8 = serial.toUtf8();
-    const bool opened = m_demo && serial == QLatin1String(kDemoSerial)
-                            ? dspi_open_demo(m_core)
-                            : dspi_select_device(m_core, utf8.constData());
+    emit deviceChanging();
+    const bool demo = m_demo && serial == QLatin1String(kDemoSerial);
+    const bool opened = demo ? (m_demoWire ? dspi_demo_open_wire(m_core, uint8_t(m_demoWire)) : dspi_open_demo(m_core))
+                             : dspi_select_device(m_core, utf8.constData());
     if (!opened) {
 #ifdef Q_OS_LINUX
         m_connectionError = QString("Could not open DSPi %1. Check that its udev rule is installed and that no other "
@@ -1057,14 +1089,7 @@ void DSPiBridge::selectDevice(const QString &serial) {
         emit statusChanged();
         return;
     }
-    m_connectionError.clear();
-
-    m_selectedSerial = serial;
-    m_hardwareUnsaved = false;
-    memset(&m_status, 0, sizeof(m_status));
-    memset(m_limiterGR, 0, sizeof(m_limiterGR));
-    memset(m_lastClipMs, 0, sizeof(m_lastClipMs));
-    loadLinks();
+    resetForDevice(serial);
     if (!dspi_fetch_all(m_core)) {
         qWarning() << "DSPi: could not read device state for" << serial;
         m_connectionError = "Connected, but the device's settings could not be read. Right-click the device name to retry.";
@@ -1074,6 +1099,38 @@ void DSPiBridge::selectDevice(const QString &serial) {
     else
         dspi_capture_baseline(m_core);
     if (usable()) dspi_rta_start(m_core);     // probes for the spectrum analyser
+    showOpenedDevice();
+}
+
+void DSPiBridge::resetForDevice(const QString &serial) {
+    m_connectionError.clear();
+    m_selectedSerial = serial;
+    m_hardwareUnsaved = false;
+    memset(&m_status, 0, sizeof(m_status));
+    memset(m_limiterGR, 0, sizeof(m_limiterGR));
+    memset(m_lastClipMs, 0, sizeof(m_lastClipMs));
+    loadLinks();
+}
+
+void DSPiBridge::adoptDevice(const QString &serial) {
+    emit deviceChanging();
+    resetForDevice(serial);
+    if (state()->compat != COMPAT_OK && state()->compat != COMPAT_UNKNOWN) qWarning() << "DSPi:" << compatMessage();
+    showOpenedDevice();
+}
+
+void DSPiBridge::setHubSession(bool active) {
+    if (active == m_hubSession) return;
+    m_hubSession = active;
+    if (!active && !connected() && !m_selectedSerial.isEmpty()) {
+        m_selectedSerial.clear();
+        markAllDirty();
+        emit stateChanged();
+        emit statusChanged();
+    }
+}
+
+void DSPiBridge::showOpenedDevice() {
     markAllDirty();
 
     // Show the first input pair and every enabled output on the graph
@@ -1089,6 +1146,7 @@ void DSPiBridge::selectDevice(const QString &serial) {
 }
 
 void DSPiBridge::disconnectDevice() {
+    emit deviceChanging();
     dspi_disconnect(m_core);
     m_selectedSerial.clear();
     markAllDirty();
@@ -1172,7 +1230,7 @@ void DSPiBridge::copyInputSettings(int from, int to) {
 
 void DSPiBridge::setInputLinked(int ch, bool linked, int keepCh) {
     int p = pairIndex(ch);
-    if (p < 0) return;
+    if (p < 0 || !m_writable) return;
     if (linked && keepCh >= 0 && (keepCh == ch || keepCh == pairPartner(ch)))
         copyInputSettings(keepCh, keepCh == ch ? pairPartner(ch) : ch);
     if (linked) m_links |= (1 << p);
@@ -1523,13 +1581,13 @@ QVariantMap DSPiBridge::fetchUpmixStatus() {
 
 QVariant DSPiBridge::fetchSubharmHeadroom() {
     float db = 0;
-    if (!usable() || !dspi_fetch_subharm_headroom(m_core, &db)) return QVariant();
+    if (!connected() || !dspi_fetch_subharm_headroom(m_core, &db)) return QVariant();
     return db;
 }
 
 QVariantList DSPiBridge::fetchSubharmMeter() {
     float m[MAX_OUTPUTS] = {};
-    if (!usable() || !dspi_fetch_subharm_meter(m_core, m)) return QVariantList();
+    if (!connected() || !dspi_fetch_subharm_meter(m_core, m)) return QVariantList();
     return floatList(m, state()->num_output_channels);
 }
 
@@ -1738,7 +1796,7 @@ void DSPiBridge::setI2c(bool enabled, int sdaPin, int sclPin, int address) {
 }
 
 void DSPiBridge::refreshCtrlIfaces() {
-    if (!usable()) return;
+    if (!connected()) return;
     dspi_fetch_ctrl_ifaces(m_core);
     emit stateChanged();
 }
@@ -1746,7 +1804,7 @@ void DSPiBridge::refreshCtrlIfaces() {
 QVariantMap DSPiBridge::fetchInputLock(int which) {
     QVariantMap m;
     InputLockStatus st = {};
-    if (!usable() || !dspi_fetch_input_lock(m_core, which, &st)) return m;
+    if (!connected() || !dspi_fetch_input_lock(m_core, which, &st)) return m;
     m["state"] = int(st.state);
     m["clockMode"] = int(st.clock_mode);
     m["detectedRate"] = int(st.detected_rate);
@@ -1758,7 +1816,7 @@ QVariantMap DSPiBridge::fetchInputLock(int which) {
 QVariantMap DSPiBridge::fetchAdatOutStatus() {
     QVariantMap m;
     AdatOutStatus st = {};
-    if (!usable() || !dspi_fetch_adat_out_status(m_core, &st)) return m;
+    if (!connected() || !dspi_fetch_adat_out_status(m_core, &st)) return m;
     m["enabled"] = st.enabled;
     m["active"] = st.active;
     m["pin"] = int(st.pin);
@@ -1771,7 +1829,7 @@ QVariantMap DSPiBridge::fetchAdatOutStatus() {
 QVariantMap DSPiBridge::fetchLgStatus() {
     QVariantMap m;
     LgStatus st = {};
-    if (!usable() || !dspi_fetch_lg_status(m_core, &st)) return m;
+    if (!connected() || !dspi_fetch_lg_status(m_core, &st)) return m;
     m["enabled"] = st.enabled;
     m["present"] = st.present;
     m["volume"] = int(st.volume);
@@ -1779,4 +1837,4 @@ QVariantMap DSPiBridge::fetchLgStatus() {
     return m;
 }
 
-int DSPiBridge::fetchInputRate() { return usable() ? int(dspi_fetch_input_rate(m_core)) : 0; }
+int DSPiBridge::fetchInputRate() { return connected() ? int(dspi_fetch_input_rate(m_core)) : 0; }

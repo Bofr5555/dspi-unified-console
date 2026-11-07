@@ -160,6 +160,10 @@ pub struct DspiCore {
 
 /// Everything behind the lock.
 pub(crate) struct Inner {
+    // -- WP QD6 --
+    /// Writes refused because the connection is read-only: a client's read-only
+    /// mode should never have let one get this far.
+    pub(crate) read_only_refusals: u32,
     /// DSPis found by the last scan or hotplug poll.
     pub(crate) devices: Vec<DeviceInfo>,
     /// DSPis on the bus that could not be opened (permission, driver, busy).
@@ -428,6 +432,8 @@ impl Writable<'_> {
 impl Inner {
     fn new() -> Self {
         Self {
+            // -- WP QD6 --
+            read_only_refusals: 0,
             devices: Vec::new(),
             inaccessible: 0,
             selected: None,
@@ -452,12 +458,12 @@ impl Inner {
     /// The open connection as a [`Writable`], if its state may be written
     /// ([`DspiError::ReadOnly`] for another wire format).
     pub(crate) fn writable_conn(&mut self) -> Result<Writable<'_>> {
-        let c = self.conn()?;
-        if c.writable() {
-            Ok(Writable(c))
-        } else {
-            Err(DspiError::ReadOnly)
+        if !self.conn()?.writable() {
+            // -- WP QD6 --
+            self.read_only_refusals = self.read_only_refusals.saturating_add(1);
+            return Err(DspiError::ReadOnly);
         }
+        Ok(Writable(self.conn()?))
     }
 }
 

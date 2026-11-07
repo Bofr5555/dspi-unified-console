@@ -4,6 +4,7 @@ import "../../components"
 
 // Graph preferences live on the main window (and persist there).
 SettingsPage {
+    writesToDevice: false   // -- WP QD6 --
     id: page
     title: "Graphing"
     subtitle: "How the response graph looks. These are preferences on this computer and take effect immediately."

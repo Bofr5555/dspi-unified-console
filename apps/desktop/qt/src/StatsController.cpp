@@ -116,8 +116,8 @@ StatsController::~StatsController() {
 
 // Counts reconnections after the first connection this session
 void StatsController::onDeviceChanged() {
-    const bool usable = m_bridge->connected() && m_bridge->compat() == COMPAT_OK;
-    const QString serial = usable ? m_bridge->selectedSerial() : QString();
+    // -- WP QD6 -- Read-only firmware is still read
+    const QString serial = m_bridge->connected() ? m_bridge->selectedSerial() : QString();
     if (serial == m_serial) return;
     m_serial = serial;
     // Nothing carries over from the previous device
@@ -319,7 +319,7 @@ void StatsController::pollFast() {
 }
 
 void StatsController::resetWatermarks() {
-    if (!m_serial.isEmpty()) dspi_reset_buffer_stats(m_core);
+    if (!m_serial.isEmpty() && m_bridge->writable()) dspi_reset_buffer_stats(m_core);   // -- WP QD6 --
     pollFast();
 }
 

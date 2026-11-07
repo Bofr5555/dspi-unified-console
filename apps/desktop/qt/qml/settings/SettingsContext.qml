@@ -73,11 +73,13 @@ QtObject {
     // -- WP QD1 --
     // Write the control surfaces to flash; false (with the reason) if refused
     function saveControlSurfaces() {
+        if (!bridge.writable) return false   // -- WP QD6 --
         var st = controlSurfaces.save()
         saveError = st !== 0 ? "Not saved: " + controlSurfaces.statusMessage(st) : ""
         return st === 0
     }
     function revertControlSurfaces() {
+        if (!bridge.writable) return false   // -- WP QD6 --
         var st = controlSurfaces.revert()
         saveError = st !== 0 ? "Not reverted: " + controlSurfaces.statusMessage(st) : ""
         return st === 0
@@ -85,6 +87,7 @@ QtObject {
 
     function save() {
         saveError = ""   // -- WP QD1 --
+        if (!bridge.writable) return   // -- WP QD6 --
         if (startupMode !== bridge.presetStartupMode || defaultSlot !== bridge.presetDefaultSlot)
             bridge.setPresetStartup(startupMode, defaultSlot)
         if (masterVolumeMode !== bridge.masterVolumeMode)

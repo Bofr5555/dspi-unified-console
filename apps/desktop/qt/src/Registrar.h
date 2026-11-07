@@ -17,7 +17,10 @@ class DSPiBridge;
 //     static const Registrar::Banner hubBanner("qrc:/qml/components/HubBanner.qml");
 //
 // and add the .cpp to DSPI_APP_SOURCES (CMakeLists.txt) and the QML file to
-// resources.qrc, under a marker for your WP.
+// resources.qrc, under a marker for your WP. These registrations run as static
+// initialisers, so the .cpp must be listed directly in add_executable: from a
+// static library the linker would drop the object file, and with it the
+// registration.
 //
 // Controller:
 // - T's constructor is T(DSPiBridge *bridge, QObject *parent). QML sees the object

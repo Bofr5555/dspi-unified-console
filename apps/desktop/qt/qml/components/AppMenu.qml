@@ -79,11 +79,11 @@ Popup {
             { icon: "loudness", text: "Loudness Compensation", shortcut: "Ctrl+Shift+L", window: "loudness" },
             { icon: "headphones", text: "Headphone Crossfeed", shortcut: "Ctrl+Shift+X", window: "crossfeed" },
             { icon: "waveform", text: "Volume Leveller", shortcut: "Ctrl+Shift+V", window: "leveller" },
-            { icon: "bassclef", text: "Psychoacoustic Bass", shortcut: "Ctrl+Shift+P", window: "psybass" },
-            { icon: "subwave", text: "Subharmonic Synthesizer", shortcut: "Ctrl+Shift+S", window: "subharm" },
-            { icon: "tube", text: "Tube Modeller", shortcut: "Ctrl+Shift+D", window: "tube" },
-            { icon: "upmix", text: "Stereo Upmixer", shortcut: "Ctrl+Shift+U", window: "upmix" }
-        ]},
+            { icon: "bassclef", text: "Psychoacoustic Bass", shortcut: "Ctrl+Shift+P", window: "psybass", feature: true },
+            { icon: "subwave", text: "Subharmonic Synthesizer", shortcut: "Ctrl+Shift+S", window: "subharm", feature: true },
+            { icon: "tube", text: "Tube Modeller", shortcut: "Ctrl+Shift+D", window: "tube", feature: true },
+            { icon: "upmix", text: "Stereo Upmixer", shortcut: "Ctrl+Shift+U", window: "upmix", feature: true }
+        ].filter(function (r) { menu.firmwareFeatures; return !r.feature || bridge.firmwareHas(r.window) })},
         { text: "Tools", icon: "wrench", items: [
             { icon: "sliders", text: "Matrix Mixer", shortcut: "Ctrl+Shift+M", window: "matrix" },
             { sep: true },
@@ -113,10 +113,15 @@ Popup {
     }
     readonly property var settingsItem: ({ icon: "gear", text: "Settings", shortcut: "Ctrl+,", window: "settings" })
 
+    // -- WP QD6 -- Changes with the device: `groups` hides what its firmware lacks
+    readonly property int firmwareFeatures: bridge.wireFeatures
+    readonly property var writeActions: ["commit", "revert", "saveMasterVolume", "saveOutputConfig", "factoryReset", "importFilters", "importConfig"]
     function rowEnabled(r) {
         if (r.sep || r.enabled === false) return false
         if (restricted && !r.help && r.window !== "settings") return false
         if (r.window || r.always) return true
+        // -- WP QD6 -- Export and the firmware update stay; whatever writes doesn't
+        if (r.autoeq || writeActions.indexOf(r.action) >= 0) return bridge.writable
         return bridge.connected
     }
     function groupEnabled(g) {

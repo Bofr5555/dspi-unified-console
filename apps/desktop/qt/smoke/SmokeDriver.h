@@ -83,6 +83,11 @@ private:
     void testCsPages();
     // -- WP QD2 --
     void testPairMap();
+    // -- WP QD6 --
+    void testReadOnly();
+    void testDeviceChanging();
+    void testReadOnlyFixture(int wire);
+    void readOnlyClickAround(QQuickWindow *window, const char *where, QQuickItem *scope = nullptr);
 
     // Whether a bypass toggle repaints the open channel's graph editor. Leaves
     // bypass as it found it. NotRun fills `why`.

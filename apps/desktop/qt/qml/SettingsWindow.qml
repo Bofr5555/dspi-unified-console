@@ -337,7 +337,7 @@ AppWindow {
         anchors.left: sidebar.right
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        height: ctx.dirty ? 48 : 0
+        height: ctx.dirty && bridge.writable ? 48 : 0   // -- WP QD6 --
         visible: height > 0
         clip: true
         Behavior on height { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }

@@ -657,6 +657,8 @@ fn check_apply_allowed(inner: &mut Inner) -> Result<()> {
         COMPAT_FIRMWARE_TOO_OLD | COMPAT_FIRMWARE_TOO_NEW
     ) || matches!(wire, Some(WireRead::Older | WireRead::Newer))
     {
+        // -- WP QD6 --
+        inner.read_only_refusals = inner.read_only_refusals.saturating_add(1);
         return Err(DspiError::ReadOnly);
     }
     if !inner.state.bulk_valid || wire.is_none() {

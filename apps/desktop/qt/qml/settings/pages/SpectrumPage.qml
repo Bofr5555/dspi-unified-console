@@ -5,6 +5,7 @@ import "../"
 // (and persist there); the engine options are sent to the device whenever
 // the analyser runs and are not stored on it.
 SettingsPage {
+    writesToDevice: false   // -- WP QD6 --
     id: page
     title: "Spectrum Analyser"
     subtitle: "How the device's spectrum analyser looks and measures. Pick the channels with the gear on the response graph."

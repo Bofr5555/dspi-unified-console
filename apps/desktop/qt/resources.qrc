@@ -197,6 +197,7 @@
         <file>qml/components/PeqShapeChooser.qml</file>
         <file>qml/components/GraphOptionsPopup.qml</file>
         <file>qml/components/PopoverWindow.qml</file>
+        <file>qml/components/ReadOnlyBanner.qml</file>
         <file>qml/components/SiggenGlyph.qml</file>
         <file>qml/components/SpectrumBarStrip.qml</file>
         <file>qml/components/qmldir</file>
