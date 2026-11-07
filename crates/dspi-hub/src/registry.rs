@@ -225,6 +225,21 @@ impl Registry {
             .collect()
     }
 
+    // -- WP HB2 --
+    /// Who holds the lock of the online device at `handle`, as the router says. An
+    /// event if that changed. An offline device has none (see [`Registry::offline`]).
+    pub fn set_locked_by(&mut self, handle: u8, by: Option<SessionId>) -> Option<RegistryEvent> {
+        let entry = self
+            .by_serial
+            .values_mut()
+            .find(|e| e.device.handle == handle && e.device.state == DeviceState::Online)?;
+        if entry.device.locked_by == by {
+            return None;
+        }
+        entry.device.locked_by = by;
+        Some(RegistryEvent::Changed(entry.device.clone()))
+    }
+
     /// `device.rename` (spec 7.4).
     pub fn rename(&mut self, handle: u8, name: &str) -> Option<RegistryEvent> {
         let _ = (handle, name);

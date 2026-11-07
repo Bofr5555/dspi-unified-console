@@ -22,7 +22,7 @@ use dspi_transport::{
 use crate::polls::Polls;
 use crate::registry::DeviceIdentity;
 use crate::relay::{self, Relay};
-use crate::router::{ExecTicket, Router};
+use crate::router::{ExecTicket, ExecUnit, Router};
 use crate::session::{Completion, NO_ORIGIN, SessionCtx};
 use crate::snapshot::SnapshotCache;
 
@@ -329,7 +329,16 @@ fn run_command(
         done.answer(early, Vec::new());
         return;
     }
-    let ticket = match shared.router.before_exec(&ctx, req, now) {
+    // -- WP HB2 --
+    // Asking `others_poll` only with something subscribed: `Polls` says so without its
+    // lists being looked through for every STOP.
+    let unit = ExecUnit {
+        others_poll: &|codes, me| {
+            shared.polls.next_due().is_some() && shared.polls.others_poll(codes, me)
+        },
+        read_vreg: &mut || dspi_session::ext::read_core_vreg(&mut *t).ok(),
+    };
+    let ticket = match shared.router.before_exec(&ctx, req, now, unit) {
         Ok(ticket) => ticket,
         Err((answer, payload)) => {
             shared.router.after_exec(&ctx, ExecTicket::none(), true);
@@ -495,8 +504,8 @@ fn ingest(packet: &[u8], kind: TransportKind, shared: &DeviceShared, relay: &Rel
         return;
     }
     let origin = match relay::packet_source(packet) {
-        Some((source, bulk)) if relay::is_hub_path(kind, source) => {
-            shared.router.consume_attribution(bulk, Instant::now())
+        Some((source, answers)) if relay::is_hub_path(kind, source) => {
+            shared.router.consume_attribution(answers, Instant::now())
         }
         _ => NO_ORIGIN,
     };
@@ -742,9 +751,13 @@ mod tests_wp_hb0 {
         };
         let write = set(op::REQ_SET_MASTER_VOLUME, vec![0; 4]);
         shared.router.admit(&ctx, &write, Instant::now()).unwrap();
+        let unit = ExecUnit {
+            others_poll: &|_, _| false,
+            read_vreg: &mut || None,
+        };
         let t = shared
             .router
-            .before_exec(&ctx, &write, Instant::now())
+            .before_exec(&ctx, &write, Instant::now(), unit)
             .unwrap();
         shared.router.after_exec(&ctx, t, true);
 
