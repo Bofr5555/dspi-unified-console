@@ -179,7 +179,10 @@ QtObject {
     // -- WP QD5 --
     property Connections latencyWatch: Connections {
         target: outputLatency
-        function onSaveFailed(reason) { ctx.saveError = "Not saved: " + reason }
+        property string shownError: ""
+        function onSaveFailed(reason) { shownError = "Not saved: " + reason; ctx.saveError = shownError }
+        // Another draft may keep the save bar up; its own refusal stays
+        function onDraftSettled() { if (ctx.saveError === shownError) ctx.saveError = "" }
     }
     Component.onCompleted: load()
 }

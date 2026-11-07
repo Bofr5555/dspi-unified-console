@@ -173,11 +173,26 @@ void SmokeDriver::testOutputLatency() {
     spin(200);
     settings->grabWindow().save(m_out + QStringLiteral("/settings-latency-held.png"));
     settings->setHeight(shortHeight);
-    // It lands later: the next read takes the draft off the row, with no new write
+    // Still held at the one read after the wait: everything stays
+    spin(3500);
+    check("QD5: still pending at the re-read: the draft and message stay", shown() == 4 && dirty() && latency->requestedId() == 2 && reason->property("text").toString() == shownReason);
+    check("QD5: the re-read sent nothing", sets() == before + 1);
+    // Save again (the user's choice, so one more SET), and it lands after the wait.
+    // A name draft keeps the save bar up, so the message must go by itself.
+    latency->edit(4);
+    save();
+    check("QD5: the wait ends again", waitDone(6000));
+    spin(100);
+    check("QD5: the message is back", reason->property("text").toString() == shownReason && sets() == before + 2);
+    QObject *names = m_.engine->rootContext()->contextProperty(QStringLiteral("deviceNames")).value<QObject *>();
+    QMetaObject::invokeMethod(names, "editDevice", Q_ARG(QString, QStringLiteral("Draft")));
     check("QD5: demo timing, released", timing(kPrompt, 0, 0));
-    latency->refresh();
-    check("QD5: a late apply settles the row", waitFor(2000, [&]() { return !dirty(); }) && shown() == 4 && latency->requestedId() == 4);
-    check("QD5: and sent nothing", sets() == before + 1);
+    check("QD5: the re-read settles the row by itself", waitFor(4500, [&]() { return !latency->dirty(); }) && shown() == 4 && latency->requestedId() == 4);
+    spin(50);
+    check("QD5: and clears the message", reason->property("text").toString().isEmpty());
+    check("QD5: and sent nothing", sets() == before + 2);
+    QMetaObject::invokeMethod(names, "revert");
+    check("QD5: no draft left", waitFor(500, [&]() { return !dirty(); }));
 
     // ── Dropped: ACKed, nothing changes, nothing stays pending ──
     check("QD5: demo timing, dropped", timing(kDrop, 1, 0));
