@@ -29,6 +29,12 @@ object DspiRoutes {
 
     fun limiter(out: Int) = "tools/limiter/$out"
 
+    // -- WP AN31 --
+    /** :feature-tools — one tool page opened directly (macOS: right-click on a quick-strip icon); argument = tool id. */
+    const val TOOL = "tools/{tool}"
+
+    fun tool(id: String) = "tools/$id"
+
     /** :feature-presets — presets, unsaved changes, import/export, AutoEQ. */
     const val PRESETS = "presets"
 

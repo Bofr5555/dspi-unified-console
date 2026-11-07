@@ -25,6 +25,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -67,21 +68,34 @@ enum class ToolRoute(val route: String, val title: String, val subtitle: String)
 /**
  * Entry point of :feature-tools (route [DspiRoutes.TOOLS]). The signature is
  * the contract with :app — keep it. System back closes an open tool first.
+ *
+ * [open] (route [DspiRoutes.TOOL], AN31): a quick-strip long-press opens that
+ * tool's page alone, as the macOS right-click opens its window; back returns
+ * to where it came from, not to the list. An unknown id shows the list.
  */
 @Composable
-fun ToolsScreen(bridge: DspiBridge, onNavigate: (String) -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun ToolsScreen(bridge: DspiBridge, onNavigate: (String) -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier, open: String? = null) {
+    val direct = ToolRoute.of(open?.let(DspiRoutes::tool))
     var current by rememberSaveable { mutableStateOf<String?>(null) }
     val tool = ToolRoute.of(current)
     // System back while a tool is open closes the tool first (macOS: closing its window).
     BackHandler(enabled = tool != null) { current = null }
 
-    if (tool != null) {
-        Column(modifier.fillMaxSize()) {
-            TextButton(onClick = { current = null }, modifier = Modifier.padding(start = 4.dp)) { Text("‹ Tools") }
-            ToolContent(bridge, tool, Modifier.fillMaxSize())
-        }
-    } else {
-        ToolList(bridge, onOpen = { current = it.route }, onNavigate = onNavigate, modifier = modifier)
+    when {
+        direct != null -> ToolPage(bridge, direct, "‹ Back", onBack, modifier)
+        tool != null -> ToolPage(bridge, tool, "‹ Tools", { current = null }, modifier)
+        else -> ToolList(bridge, onOpen = { current = it.route }, onNavigate = onNavigate, modifier = modifier)
+    }
+}
+
+/** Test tag of an open tool's page. */
+fun toolPageTag(tool: ToolRoute) = "tool-page:${tool.route}"
+
+@Composable
+private fun ToolPage(bridge: DspiBridge, tool: ToolRoute, backLabel: String, onClose: () -> Unit, modifier: Modifier) {
+    Column(modifier.fillMaxSize().testTag(toolPageTag(tool))) {
+        TextButton(onClick = onClose, modifier = Modifier.padding(start = 4.dp)) { Text(backLabel) }
+        ToolContent(bridge, tool, Modifier.fillMaxSize())
     }
 }
 
@@ -104,6 +118,14 @@ private fun ToolList(bridge: DspiBridge, onOpen: (ToolRoute) -> Unit, onNavigate
     val st by bridge.state.collectAsState()
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Text("Tools", Modifier.padding(16.dp), fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+        // The macOS menu's first entries: Commit / Revert / Factory Reset live on the Presets page;
+        // Firmware Update is hidden on STM32H723, which has no USB bootloader path (AN31)
+        ListRow("Commit, Revert, Factory Reset", "Presets and the device's saved state", null) { onNavigate(DspiRoutes.PRESETS) }
+        HorizontalDivider()
+        if (bridge.platformName != "STM32H723") {
+            ListRow("Firmware Update", "Install new firmware on the DSPi", null) { onNavigate(DspiRoutes.FIRMWARE) }
+            HorizontalDivider()
+        }
         ListRow("Matrix Mixer", "Routing patch bay", null) { onNavigate(DspiRoutes.MATRIX) }
         HorizontalDivider()
         ToolRoute.entries.forEach { t ->

@@ -162,17 +162,57 @@ class UsbSessionEngineTest {
         assertFalse(log.calls.any { it.startsWith("requestPermission") })
     }
 
+    // -- WP AN29 -- the system's "Open with" dialog (with "Always open") is the only prompt on a plug-in.
     @Test
-    fun attachBroadcastWithoutPermissionAsksAfterGraceWhenVisible() = runTest {
+    fun an29AttachBroadcastWhileVisibleNeverAsksAfterGraceAndSettlesOnPermissionRequired() = runTest {
         val e = engine()
         settle()
         val d = host.plug("/dev/bus/usb/001/004", "E66138")
         e.onAttached(d, fromActivityIntent = false)
-        advanceTimeBy(UsbSessionEngine.ATTACH_INTENT_GRACE_MS - 1)
+        advanceTimeBy(UsbSessionEngine.ATTACH_INTENT_GRACE_MS + 1)
         runCurrent()
-        assertFalse(log.calls.any { it.startsWith("requestPermission") })
+        settle()
+        assertEquals(0, log.calls.count { it.startsWith("requestPermission") })
+        assertEquals(UsbSessionState.PermissionRequired(""), e.state.value)
+
+        // The strip's "Allow USB access" button still asks, once.
+        e.requestPermission()
         settle()
         assertEquals(listOf("requestPermission(/dev/bus/usb/001/004)"), log.calls)
+        assertEquals(UsbSessionState.PermissionPending("", dialogShown = true), e.state.value)
+    }
+
+    @Test
+    fun an29AttachActivityIntentWithPermissionConnectsWithoutDialog() = runTest {
+        val e = engine()
+        settle()
+        // "Always open" ticked: Android launches the app with implicit permission.
+        val d = host.plug("/dev/bus/usb/001/004", "E66138", permission = true)
+        e.onAttached(d, fromActivityIntent = true)
+        settle()
+        assertEquals(UsbSessionState.Open("E66138", UsbIds.DSPI_VID), e.state.value)
+        assertEquals(0, log.calls.count { it.startsWith("requestPermission") })
+    }
+
+    @Test
+    fun an29ColdStartWithDeviceAttachedAsksExactlyOnce() = runTest {
+        // Application.onCreate scans before any activity is visible.
+        visible = false
+        val d = host.plug("/dev/bus/usb/001/004", "E66138")
+        val e = engine()
+        e.scan(askPermission = true)
+        settle()
+        assertEquals(UsbSessionState.PermissionPending("", dialogShown = false), e.state.value)
+        assertTrue(log.calls.isEmpty())
+
+        e.setUiVisible(true)
+        settle()
+        // The broadcast for the same device and a second visibility change add no dialog.
+        e.onAttached(d, fromActivityIntent = false)
+        e.setUiVisible(true)
+        settle()
+        assertEquals(listOf("requestPermission(/dev/bus/usb/001/004)"), log.calls)
+        assertEquals(UsbSessionState.PermissionPending("", dialogShown = true), e.state.value)
     }
 
     @Test
