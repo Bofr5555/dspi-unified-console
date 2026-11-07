@@ -376,6 +376,8 @@ class ReadOnlyTest {
                 "cs.refresh", "cs.statusMessage", "configFiles.exportConfiguration", "configFiles.inspectConfiguration",
                 "configFiles.exportFilters", "configFiles.inspectFilters", "rta.update", "rta.release", "rta.appChannel",
                 "rta.tapOf", "rta.tapIndex", "rta.availableChannels", "monitor.clear", "monitor.allText",
+                // -- WP AN9 -- CG20's editing rules: no device I/O
+                "cs.describe", "cs.edit", "cs.newBinding", "cs.newRecord",
                 // `var watching`: polling while a view is open (reads only)
                 "siggen.setWatching", "stats.setWatching", "monitor.setWatching", "monitor.setPaused",
                 // analyser request parameters: part of the RTA subscription (a read)
