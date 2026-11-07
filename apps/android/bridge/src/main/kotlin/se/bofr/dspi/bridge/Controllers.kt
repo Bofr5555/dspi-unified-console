@@ -2,6 +2,8 @@ package se.bofr.dspi.bridge
 
 import kotlinx.coroutines.flow.StateFlow
 import se.bofr.dspi.core.BufferStats
+import se.bofr.dspi.core.OutputFill
+import se.bofr.dspi.core.RingHealth
 import se.bofr.dspi.core.RtaCapsInfo
 import se.bofr.dspi.core.RtaSnapshot
 import se.bofr.dspi.core.SiggenCaps
@@ -93,6 +95,20 @@ interface StatsController {
      */
     val info: StateFlow<Map<Int, Long>>
     val buffers: StateFlow<BufferStats?>
+
+    /**
+     * Output ring health, refreshed slowly while watching. Null on firmware
+     * without it or before the first read: show no section. A failed read keeps
+     * the last values.
+     */
+    val ringHealth: StateFlow<RingHealth?>
+
+    /**
+     * The live outputs' fills on the ring's scale, judged by the live target,
+     * refreshed with [buffers] and updated just before it. Empty before the
+     * first read. A failed read keeps the last values.
+     */
+    val outputFills: StateFlow<List<OutputFill>>
     val reconnects: StateFlow<Int>
 
     /** Ungated (D1). */
@@ -141,6 +157,36 @@ interface MonitorModel {
     fun clear()
 
     fun allText(): String
+}
+
+// -- WP AN6 --
+
+/**
+ * Device settings kept outside the bulk image: its name, the input-source
+ * names, the output latency, and the core-voltage status. Absent features stay
+ * unsupported, so their rows stay hidden. Main thread.
+ */
+interface DeviceSettings {
+    /** Current on every connect and notification, with no traffic. */
+    val names: StateFlow<DeviceNames>
+    val latency: StateFlow<OutputLatencyState>
+    val coreVoltage: StateFlow<CoreVoltageState>
+
+    /** Re-read the latency status and table (they move with the source and the rate). */
+    suspend fun refreshLatency()
+
+    suspend fun refreshCoreVoltage()
+
+    /** "" clears the name. False (and [BridgeEvent.CommandFailed]) when it did not go out. */
+    suspend fun setDeviceName(name: String): Boolean
+
+    suspend fun setSourceName(source: Int, name: String): Boolean
+
+    /** Writes once, then waits for the device to finish applying (macOS 40 x 100 ms). */
+    suspend fun setOutputLatency(id: Int): LatencyApply
+
+    /** The source picker's explicit rename: runs in the bridge's scope, and drops an unsaved edit of that source. */
+    fun renameSource(source: Int, name: String)
 }
 
 /**

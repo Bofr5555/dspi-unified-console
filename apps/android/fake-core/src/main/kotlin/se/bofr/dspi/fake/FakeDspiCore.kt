@@ -10,6 +10,7 @@ import se.bofr.dspi.core.AdatOutStatus
 import se.bofr.dspi.core.BootloaderCounts
 import se.bofr.dspi.core.BufferStats
 import se.bofr.dspi.core.CoreInfo
+import se.bofr.dspi.core.CoreVregInfo
 import se.bofr.dspi.core.DeviceEvents
 import se.bofr.dspi.core.DeviceInfo
 import se.bofr.dspi.core.DspState
@@ -24,6 +25,8 @@ import se.bofr.dspi.core.DspiConstants.MAX_PRESETS
 import se.bofr.dspi.core.DspiConstants.MAX_XOVER_BANDS
 import se.bofr.dspi.core.DspiConstants.XOVER_BAND_BASE
 import se.bofr.dspi.core.DspiException
+import se.bofr.dspi.core.ExtStatus
+import se.bofr.dspi.core.FillBand
 import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.InputLockStatus
@@ -37,11 +40,16 @@ import se.bofr.dspi.core.LinkPhase
 import se.bofr.dspi.core.LinkStatus
 import se.bofr.dspi.core.MonitorBatch
 import se.bofr.dspi.core.MonitorEntry
+import se.bofr.dspi.core.NamedValue
 import se.bofr.dspi.core.NotifyListener
 import se.bofr.dspi.core.NotifyResult
+import se.bofr.dspi.core.OutputFill
+import se.bofr.dspi.core.OutputLatency
+import se.bofr.dspi.core.OutputLatencyOption
 import se.bofr.dspi.core.PdmBufferStats
 import se.bofr.dspi.core.PinUse
 import se.bofr.dspi.core.PresetDirectory
+import se.bofr.dspi.core.RingHealth
 import se.bofr.dspi.core.RtaCapsInfo
 import se.bofr.dspi.core.RtaChannelFrame
 import se.bofr.dspi.core.RtaListener
@@ -58,6 +66,7 @@ import se.bofr.dspi.core.SystemStatus
 import se.bofr.dspi.core.UartConfig
 import se.bofr.dspi.core.UnimplementedDspiCore
 import se.bofr.dspi.core.UpmixStatus
+import se.bofr.dspi.core.WireFeat
 
 /**
  * Hardware-free, stateful [se.bofr.dspi.core.DspiCoreApi] for demo mode and
@@ -515,6 +524,114 @@ open class FakeDspiCore(
     override fun fetchCrossfeedPairMap(): List<Int> = op("fetchCrossfeedPairMap") {
         if (!crossfeedPairMapSupported) throw DspiException.Transfer("Pipe error")
         s.crossfeedPairMap
+    }
+
+    // -- WP AN6 -- What the core's demo device keeps outside the bulk image (fake/features.rs).
+
+    /** The firmware has source names / a device name (the core's connect probe). */
+    @Volatile var namesSupported: Boolean = true
+
+    /** The firmware answers `REQ_OUTPUT_LATENCY`. */
+    @Volatile var latencySupported: Boolean = true
+
+    /** The firmware lists `EXT_CORE_VREG` (the bofr fork; the demo device does too). */
+    @Volatile var coreVregSupported: Boolean = false
+
+    /** Status reads that still report a latency write as pending. */
+    @Volatile var latencyPendingReads: Int = 0
+
+    /** The device keeps its previous latency when asked to change it. */
+    @Volatile var latencyRefusesChange: Boolean = false
+
+    private val sourceNames = Array(SOURCE_NAME_SLOTS) { "" }
+
+    @Volatile private var deviceName = ""
+
+    @Volatile private var latencyId = LATENCY_DEFAULT_ID
+
+    override fun wireFeatures(): Long = if (connected) WireFeat.of(s.formatVersion) else 0L
+
+    private fun namedSource(source: Int): Int {
+        if (!connected) throw DspiException.Disconnected()
+        if (!namesSupported) throw DspiException.Unsupported()
+        if (source !in sourceNames.indices) bad("source")
+        return source
+    }
+
+    private fun storable(name: String): String {
+        if (name.toByteArray().size > 31 || name.contains('\u0000')) bad("name")
+        return name
+    }
+
+    /** Someone else renames the device (0xFF) or a source: stored, and announced as a notification. */
+    fun simulateRename(target: Int, name: String) {
+        if (target == 0xFF) deviceName = name else sourceNames[target] = name
+        simulateRemote(flags = 0, text = "NAME $target $name")
+    }
+
+    override fun cachedInputSourceName(source: Int): String = sourceNames[namedSource(source)]
+
+    override fun cachedDeviceName(): String {
+        namedSource(0)
+        return deviceName
+    }
+
+    override fun getInputSourceName(source: Int): String = op("getInputSourceName", "$source") { sourceNames[namedSource(source)] }
+
+    override fun getDeviceName(): String = op("getDeviceName") { cachedDeviceName() }
+
+    override fun setInputSourceName(source: Int, name: String) = op("setInputSourceName", "$source, $name") {
+        sourceNames[namedSource(source)] = storable(name)
+    }
+
+    override fun setDeviceName(name: String) = op("setDeviceName", name) {
+        namedSource(0)
+        deviceName = storable(name)
+    }
+
+    override fun demoRenameElsewhere(target: Int, name: String) = simulateRename(target, name)
+
+    override fun fetchOutputLatency(): OutputLatency = op("fetchOutputLatency") {
+        if (!latencySupported) throw DspiException.Unsupported()
+        val us = LATENCY_OPTIONS.first { it.id == latencyId }.us
+        val pending = latencyPendingReads > 0
+        if (pending) latencyPendingReads -= 1
+        OutputLatency(
+            raw = List(12) { 0 },
+            fields = listOf(
+                NamedValue("requested_id", "$latencyId"),
+                NamedValue("effective_id", "$latencyId"),
+                NamedValue("effective_us", "$us"),
+                NamedValue("pending", if (pending) "1" else "0"),
+                NamedValue("option_count", "${LATENCY_OPTIONS.size}")
+            )
+        )
+    }
+
+    override fun fetchOutputLatencyOptions(): List<OutputLatencyOption> = op("fetchOutputLatencyOptions") {
+        if (!latencySupported) throw DspiException.Unsupported()
+        LATENCY_OPTIONS.map { (id, streamOnly, us, batch) ->
+            // A stream-only option on USB runs the 2 ms fallback
+            val onUsb = streamOnly && s.inputSource == 0
+            OutputLatencyOption(id, streamOnly, available = !onUsb, us, batch, if (onUsb) 2000 else us)
+        }
+    }
+
+    override fun setOutputLatency(id: Int) = op("setOutputLatency", "$id") {
+        if (!latencySupported) throw DspiException.Unsupported()
+        if (LATENCY_OPTIONS.none { it.id == id }) bad("latency")
+        if (!latencyRefusesChange) latencyId = id
+    }
+
+    override fun extStatus(): ExtStatus =
+        ExtStatus(if (coreVregSupported) listOf(2) else emptyList(), crossfeedPairMapSupported, coreVregSupported)
+
+    override fun fetchCoreVreg(): CoreVregInfo = op("fetchCoreVreg") {
+        if (!coreVregSupported) throw DspiException.Unsupported()
+        CoreVregInfo(
+            liveVreg = 0x0D, millivolts = 1200, storedSel = 0x0D, defaultVreg = 0x0C, autoRaised = false, autoDisabled = false,
+            hangCount = 0, trialActive = false, trialVreg = 0, failedTrialVreg = 0, failedTrialUptimeS = 0, uptimeS = 3_725
+        )
     }
 
     override fun setLevellerEnabled(enabled: Boolean) = set("setLevellerEnabled", "$enabled") { it.copy(levellerEnabled = enabled) }
@@ -1249,6 +1366,31 @@ open class FakeDspiCore(
 
     override fun resetBufferStats() = op("resetBufferStats") {}
 
+    // -- WP AN25 --
+    // A demo's picture, not measured behaviour: the 2 ms target, the rings swinging
+    // around it and always inside its band.
+    private var ringFillSeq = 0
+
+    override fun fetchRingHealth(): RingHealth? = op("fetchRingHealth") {
+        RingHealth(
+            targetFrames = 96,
+            targetUs = 2000,
+            batchFrames = 48,
+            underrunEpisodes = 0,
+            refusedBlocks = 0,
+            lowestFill = 72,
+            worstInputGapUs = 1000,
+            worstUsbGapUs = 1000,
+            overBudgetSteps = 0
+        )
+    }
+
+    override fun fetchOutputFills(): List<OutputFill> = op("fetchOutputFills") {
+        ringFillSeq++
+        val frames = 96 + ((ringFillSeq % 7) - 3) * 8
+        List(4) { OutputFill(fillPct = frames * 100.0 / 512, minPct = 14, maxPct = 24, band = FillBand.GOOD) }
+    }
+
     override fun fetchSpdifRxStatus(): SpdifRxStatus = op("fetchSpdifRxStatus") {
         SpdifRxStatus(
             state = 0, inputSource = s.inputSource, lockCount = 0, lossCount = 0, sampleRate = 0, parityErrors = 0,
@@ -1502,7 +1644,24 @@ open class FakeDspiCore(
         }
 
         /** Demo mode: the seeded device with an animated analyser. */
-        fun demo(): FakeDspiCore = seeded(animate = true)
+        fun demo(): FakeDspiCore = seeded(animate = true).also { it.coreVregSupported = true }
+
+        // -- WP AN6 --
+        private const val SOURCE_NAME_SLOTS = 7
+        private const val LATENCY_DEFAULT_ID = 5
+
+        /** `output_latency_options[]`: id, stream only, latency_us, batch_us. */
+        private val LATENCY_OPTIONS = listOf(
+            LatencyRow(1, true, 667, 333),
+            LatencyRow(2, true, 1000, 333),
+            LatencyRow(3, false, 2000, 1000),
+            LatencyRow(4, false, 3000, 1000),
+            LatencyRow(5, false, 4000, 1000),
+            LatencyRow(6, false, 6000, 1000),
+            LatencyRow(7, false, 8000, 1000)
+        )
+
+        private data class LatencyRow(val id: Int, val streamOnly: Boolean, val us: Int, val batch: Int)
 
         /** `DspState::default()` values with the device's identity: what a factory reset leaves. */
         fun factoryOf(s: DspState): DspState = defaultDspState().copy(

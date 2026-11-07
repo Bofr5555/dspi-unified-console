@@ -948,6 +948,10 @@ pub(crate) trait SettingsPage {
     fn act(&mut self, index: usize, action: Action, cx: &Cx<'_>) -> PageEvent;
     fn cursor(&self) -> usize;
     fn set_cursor(&mut self, i: usize);
+    // -- WP TM22 --
+    /// The columns the page is about to be drawn in, for a page whose rows depend
+    /// on them.
+    fn set_width(&mut self, _width: u16) {}
     fn keys(&self) -> &'static [KeyHelp] {
         PAGE_KEYS
     }
@@ -1430,7 +1434,7 @@ impl SettingsScreen {
     pub fn new(state: &DeviceState, data: SettingsData, config: AppConfig) -> Self {
         let mut s = Self {
             pages: Pages {
-                about: about::AboutPage,
+                about: about::AboutPage::default(),
                 advanced: advanced::AdvancedPage::default(),
                 graphing: graphing::GraphingPage::new(config.clone()),
                 spectrum: spectrum::SpectrumPage::default(),
@@ -1925,6 +1929,8 @@ impl SettingsScreen {
 
     /// Draw the page's rows, scrolled so the cursor is visible.
     fn draw_page(&mut self, area: Rect, buf: &mut Buffer, theme: &Theme, state: &DeviceState) {
+        // -- WP TM22 --
+        self.current().set_width(area.width);
         let cx = self.cx(state);
         let rows = self.current_ref().rows(&cx);
         let cursor = self.current_ref().cursor();

@@ -14,6 +14,7 @@ import se.bofr.dspi.core.FirmwareGuardBoardSource
 import se.bofr.dspi.core.LinkListener
 import se.bofr.dspi.core.LinkPhase
 import se.bofr.dspi.core.NotifyListener
+import se.bofr.dspi.core.WireFeat
 
 /**
  * WP AN1: the generated adapter against the real library, built for the host
@@ -41,6 +42,50 @@ class FfiLiveDemoTest {
             val status = core.fetchStatus()
             assertFalse(status.stale)
             assertTrue(status.ageMs >= 0)
+        }
+    }
+
+    /** WP AN6: the Settings rows' calls round-trip on the core's demo device. */
+    @Test
+    fun wpAn6SettingsRowsRoundTripOnTheDemoDevice() {
+        demo().use { core ->
+            assertEquals(WireFeat.ALL, core.wireFeatures())
+
+            core.setDeviceName("Bench")
+            assertEquals("Bench", core.cachedDeviceName())
+            assertEquals("Bench", core.getDeviceName())
+            core.setInputSourceName(1, "Turntable")
+            assertEquals("Turntable", core.cachedInputSourceName(1))
+            assertEquals("Turntable", core.getInputSourceName(1))
+            core.setInputSourceName(1, "")
+            assertEquals("", core.cachedInputSourceName(1))
+
+            // A rename made elsewhere reaches the cache through notifications
+            core.demoRenameElsewhere(0xFF, "Elsewhere")
+            val deadline = System.currentTimeMillis() + 5_000
+            while (core.cachedDeviceName() != "Elsewhere" && System.currentTimeMillis() < deadline) {
+                core.processNotifications()
+                Thread.sleep(20)
+            }
+            assertEquals("Elsewhere", core.cachedDeviceName())
+
+            val options = core.fetchOutputLatencyOptions()
+            assertTrue(options.isNotEmpty())
+            val target = options.first { it.id != 5 && !it.streamOnly }.id
+            core.setOutputLatency(target)
+            var requested = -1
+            val settled = System.currentTimeMillis() + 5_000
+            while (requested != target && System.currentTimeMillis() < settled) {
+                val fields = runCatching { core.fetchOutputLatency().fields }.getOrDefault(emptyList())
+                if (fields.firstOrNull { it.name == "pending" }?.value == "0") {
+                    requested = fields.first { it.name == "requested_id" }.value.toInt()
+                }
+                Thread.sleep(20)
+            }
+            assertEquals(target, requested)
+
+            assertTrue(core.extStatus().hasCoreVreg)
+            assertTrue(core.fetchCoreVreg().liveVreg != 0)
         }
     }
 

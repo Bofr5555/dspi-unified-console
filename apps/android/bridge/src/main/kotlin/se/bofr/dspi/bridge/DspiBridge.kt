@@ -264,7 +264,7 @@ interface DspiBridge {
     val psybassOriginal: Float
     val psybassOutputMask: Int
 
-    /** RP2350 and compatible firmware. */
+    /** RP2350 and a wire format with the upmixer (V25+, read-only firmware included). */
     val upmixSupported: Boolean
 
     /** By `UPMIX_PARAM_*` id. */
@@ -959,6 +959,9 @@ interface DspiBridge {
     val cs: CsController
     val monitor: MonitorModel
     val configFiles: ConfigFiles
+
+    // -- WP AN6 --
+    val deviceSettings: DeviceSettings
 
     /** Token issuer for the GATED members (D5). Same instance for the bridge's lifetime. */
     val dangerousOps: DangerousOps

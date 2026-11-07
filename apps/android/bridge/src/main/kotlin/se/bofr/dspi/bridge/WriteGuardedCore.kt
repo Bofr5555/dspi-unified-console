@@ -396,10 +396,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.factoryReset()
     }
 
-    override fun clearClips() {
-        guard("clearClips")
-        return inner.clearClips()
-    }
+    // -- WP AN6 -- Meter housekeeping, which the core allows on a read-only connection: the status
+    // poll needs it, or the sticky flags would hold a clip marker on forever.
+    override fun clearClips() = inner.clearClips()
 
     override fun setUpmixParam(id: Int, value: Float) {
         guard("setUpmixParam")
@@ -618,7 +617,6 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "saveParams",
             "loadParams",
             "factoryReset",
-            "clearClips",
             "setUpmixParam",
             "setSubharmParam",
             "setSubharmSolo",
@@ -679,6 +677,7 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "cachedDeviceName",
             "demoLatencySets",
             "wireFeatures",
+            "clearClips",
             // DSPi Link session management (no device writes; the hub's
             // role check and the bridge's remote read-only flag gate writes)
             "linkConnect",

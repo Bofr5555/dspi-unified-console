@@ -64,8 +64,11 @@ object ToolFirmware {
 
     fun supportsLimiter(v: Int) = v >= 32
 
-    /** V26 and RP2350 (platformId 1) only. */
-    fun supportsUpmixer(v: Int, platformId: Int) = v >= 26 && platformId == 1
+    /** V25 and RP2350 (platformId 1) only (`bulk_params.h`; WP AN6, was V26 as on macOS). */
+    fun supportsUpmixer(v: Int, platformId: Int) = v >= 25 && platformId == 1
+
+    /** The presence byte and `UPMIX_PARAM_PRESENCE` arrived in V26. */
+    fun supportsUpmixerPresence(v: Int) = v >= 26
 }
 
 // ═══ Loudness ═══════════════════════════════════════════════════════════

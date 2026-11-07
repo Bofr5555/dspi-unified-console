@@ -1,5 +1,6 @@
 // Port of DSPi-Console-b5:DSPi Console/DSPi_ConsoleApp.swift `GeneralSettingsTab` ("About").
-// Android additions: the port credit and the Licence section (LicensesView, NOTICE.md).
+// Android addition: the Licence section (LicensesView, NOTICE.md).
+// Who made what, the links and the credits are the core's About table (AboutInfo.kt, WP AN26).
 package se.bofr.dspi.feature.settings
 
 import androidx.activity.compose.BackHandler
@@ -21,17 +22,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** The support links, as on macOS (title, URL, brand colour). */
-internal val SUPPORT_LINKS = listOf(
-    Triple("YouTube", "https://youtube.com/weeblabs", Color.Red),
-    Triple("GitHub", "https://github.com/weeblabs", Color(0xFFB8B8B8)),
-    Triple("Discord", "https://discord.gg/RCyqxAQ5xS", Color(0xFF5865F2)),
-    Triple("Patreon", "https://patreon.com/weeblabs", Color(0xFFFF9500)),
-    Triple("Ko-fi", "https://ko-fi.com/weeblabs", Color(0xFF719EBC))
+/** Brand colours of the links in the About table, by stable id, as on macOS. Words and URLs are the table's. */
+private val LINK_COLORS = mapOf(
+    "youtube" to Color.Red,
+    "github" to Color(0xFFB8B8B8),
+    "discord" to Color(0xFF5865F2),
+    "patreon" to Color(0xFFFF9500),
+    "ko_fi" to Color(0xFF719EBC)
 )
+
+/** A row's click for [url]; null, so the row isn't clickable, when the table gives none. */
+private fun UriHandler.opener(url: String?): (() -> Unit)? {
+    if (url == null) return null
+    return { runCatching { openUri(url) } }
+}
 
 /** The About page's own sub-pages: null = About, [LICENSES] = overview, else a bundled text's asset name. */
 private const val LICENSES = "licenses"
@@ -57,6 +65,8 @@ private fun AboutPage(onOpenLicenses: () -> Unit) {
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "—"
     }
+    val readAbout = LocalAboutJson.current
+    val about = remember(readAbout) { runCatching { parseAbout(readAbout()) }.getOrDefault(AboutInfo()) }
     SettingsForm {
         item {
             SettingsSection(null) {
@@ -75,29 +85,46 @@ private fun AboutPage(onOpenLicenses: () -> Unit) {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(
-                            "Made with love by Weeb Labs",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            "Android port by Bofr5555",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        about.creditLines.forEach { line ->
+                            Text(
+                                line,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
         }
-        item {
-            SettingsSection("Links & Support") {
-                FormCaption(
-                    "DSPi Firmware and Console are free, open-source software that I develop in my spare time. " +
-                        "Contributions of any kind - code, feedback, funding, or otherwise - are always immensely appreciated."
-                )
-                SUPPORT_LINKS.forEach { (title, url, color) ->
-                    SettingRow(title, null, onClick = { runCatching { uri.openUri(url) } }) {
-                        Text("●", color = color)
+        if (about.makers.isNotEmpty()) {
+            item {
+                SettingsSection("Made by") {
+                    about.makers.forEach { maker ->
+                        SettingRow(maker.name, maker.made.joinToString(", "), onClick = uri.opener(maker.url))
+                    }
+                }
+            }
+        }
+        if (about.links.isNotEmpty()) {
+            item {
+                SettingsSection("Links & Support") {
+                    FormCaption(
+                        "DSPi Firmware and Console are free, open-source software that I develop in my spare time. " +
+                            "Contributions of any kind - code, feedback, funding, or otherwise - are always immensely appreciated."
+                    )
+                    about.links.forEach { link ->
+                        SettingRow(link.title, link.detail, onClick = uri.opener(link.url)) {
+                            Text("●", color = LINK_COLORS[link.id] ?: MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+        if (about.credits.isNotEmpty()) {
+            item {
+                SettingsSection("Credits") {
+                    about.credits.forEach { credit ->
+                        SettingRow(credit.name, credit.what, onClick = uri.opener(credit.url))
                     }
                 }
             }

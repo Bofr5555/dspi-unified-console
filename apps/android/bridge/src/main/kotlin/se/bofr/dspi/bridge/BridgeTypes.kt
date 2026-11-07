@@ -34,8 +34,52 @@ data class DeviceListState(
     val inaccessibleDevices: Int = 0
 )
 
-/** Firmware InputSource id + display name ("USB", "S/PDIF 1", "I2S", "ADAT"). */
-data class InputSourceOption(val id: Int, val name: String)
+/**
+ * Firmware InputSource id + display name: the user's name when the device has
+ * one, else [builtIn] ("USB", "S/PDIF 1", "I2S", "ADAT").
+ */
+data class InputSourceOption(val id: Int, val name: String, val builtIn: String = name)
+
+// -- WP AN6 --
+
+/** The names kept on the device, as the core last knew them (no traffic to read). */
+data class DeviceNames(
+    val deviceSupported: Boolean = false,
+    val device: String = "",
+    val sourcesSupported: Boolean = false,
+    /** By firmware InputSource id, "" = unnamed. */
+    val sources: List<String> = emptyList(),
+    /** By source id: explicit renames from the source picker, which supersede an unsaved Settings edit. */
+    val renameStamps: List<Int> = emptyList()
+) {
+    fun source(id: Int): String = sources.getOrElse(id) { "" }
+
+    fun stamp(id: Int): Int = renameStamps.getOrElse(id) { 0 }
+
+    companion object {
+        /** 0..=INPUT_SOURCE_MAX. */
+        const val SOURCE_SLOTS = 7
+        private const val MAX_NAME = 31
+
+        /** What the device can store and its front panel can draw: printable ASCII, 31 characters. */
+        fun clean(text: String): String = text.filter { it.code in 32..126 }.take(MAX_NAME)
+    }
+}
+
+/** `REQ_OUTPUT_LATENCY`: unsupported until a read has answered. */
+data class OutputLatencyState(
+    val supported: Boolean = false,
+    /** The stored option. */
+    val requestedId: Int = 0,
+    val pending: Boolean = false,
+    val options: List<se.bofr.dspi.core.OutputLatencyOption> = emptyList()
+)
+
+/** How a latency write ended; the device applies it from its main loop. */
+enum class LatencyApply { APPLIED, NOT_SENT, NOT_YET_APPLIED, KEPT }
+
+/** `EXT_CORE_VREG`, listed by firmware with the extension channel only. */
+data class CoreVoltageState(val supported: Boolean = false, val status: se.bofr.dspi.core.CoreVregInfo? = null)
 
 /**
  * A claimed GPIO. [owner] and [role] are the Qt `pinOwners()` label and role
@@ -211,17 +255,17 @@ data class HardwareCaps(
     /**
      * BRIDGE-3: macOS `inputSourceSupported` — the input-source menu (HOME),
      * the S/PDIF Input settings page and the S/PDIF RX pin claims. macOS sets
-     * it whenever a V21+ bulk image parses (`Commands.swift` bulk apply) and
-     * then re-probes REQ_GET_INPUT_SOURCE 0xE1 (false on a STALL); the core
-     * has no 0xE1 probe, so here it is true exactly while the V32 image is
-     * usable (every RP2040/RP2350 firmware that writes V32 answers 0xE1).
+     * it whenever a bulk image parses (`Commands.swift` bulk apply) and then
+     * re-probes REQ_GET_INPUT_SOURCE 0xE1 (false on a STALL); the core has no
+     * 0xE1 probe, so here it is true for every image the core can map (V16+
+     * all carry the input section), read-only ones included.
      */
     val inputSourceSupported: Boolean = false,
     /**
      * BRIDGE-3: macOS `lgSoundSyncSupported` (separate flag on macOS, set by
      * the same bulk parse — V8+ — or a successful REQ_GET_LG_SOUND_SYNC_ENABLE 0xE7 read): the LG Sound
-     * Sync toggle and the LG rows of the statistics view. True while the V32
-     * image is usable.
+     * Sync toggle and the LG rows of the statistics view. True for every image
+     * the core can map (V16+).
      */
     val lgSoundSyncSupported: Boolean = false,
     /**

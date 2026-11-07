@@ -17,6 +17,8 @@ import kotlinx.coroutines.launch
 import se.bofr.dspi.core.BufferStats
 import se.bofr.dspi.core.DspiConstants
 import se.bofr.dspi.core.DspiException
+import se.bofr.dspi.core.OutputFill
+import se.bofr.dspi.core.RingHealth
 import se.bofr.dspi.core.RtaCapsInfo
 import se.bofr.dspi.core.RtaListener
 import se.bofr.dspi.core.RtaRequest
@@ -529,16 +531,20 @@ class SiggenControllerImpl internal constructor(private val bridge: DspiBridgeIm
 // ═══════════════════════════════════════════════════════════════════════
 
 /**
- * System Statistics: device counters every 2 s and buffer fill levels every
- * 60 ms, polled only while [watching]. [info] holds the STAT_* counters (the
- * receiver/LG/ADAT readings are on the bridge's fetch* calls).
+ * System Statistics: device counters and ring health every 2 s, buffer fill
+ * levels every 60 ms, polled only while [watching]. [info] holds the STAT_*
+ * counters (the receiver/LG/ADAT readings are on the bridge's fetch* calls).
  */
 class StatsControllerImpl internal constructor(private val bridge: DspiBridgeImpl) : StatsController {
     private val _info = MutableStateFlow<Map<Int, Long>>(emptyMap())
     private val _buffers = MutableStateFlow<BufferStats?>(null)
+    private val _ringHealth = MutableStateFlow<RingHealth?>(null)
+    private val _outputFills = MutableStateFlow<List<OutputFill>>(emptyList())
     private val _reconnects = MutableStateFlow(0)
     override val info: StateFlow<Map<Int, Long>> = _info.asStateFlow()
     override val buffers: StateFlow<BufferStats?> = _buffers.asStateFlow()
+    override val ringHealth: StateFlow<RingHealth?> = _ringHealth.asStateFlow()
+    override val outputFills: StateFlow<List<OutputFill>> = _outputFills.asStateFlow()
     override val reconnects: StateFlow<Int> = _reconnects.asStateFlow()
 
     private var serial = ""
@@ -570,6 +576,8 @@ class StatsControllerImpl internal constructor(private val bridge: DspiBridgeImp
         serial = s
         _buffers.value = null
         _info.value = emptyMap()
+        _ringHealth.value = null
+        _outputFills.value = emptyList()
         if (s.isNotEmpty()) {
             if (seenDevice) _reconnects.value += 1
             seenDevice = true
@@ -614,11 +622,29 @@ class StatsControllerImpl internal constructor(private val bridge: DspiBridgeImp
                 }.toMap()
             }
         if (m != _info.value) _info.value = m
+        pollRingHealth()
+    }
+
+    /** Seven transfers, so on the slow cadence. A failed read keeps the last values; null is firmware without it. */
+    private suspend fun pollRingHealth() {
+        val s = serial
+        if (s.isEmpty()) return
+        val read = bridge.onFfi { runCatching { bridge.get { bridge.core.fetchRingHealth() } } }
+        if (s == serial) read.onSuccess { _ringHealth.value = it }
     }
 
     private suspend fun pollFast() {
-        if (serial.isEmpty()) return
-        val b = bridge.onFfi { runCatching { bridge.get { bridge.core.fetchBufferStats() } }.getOrNull() } ?: return
+        val s = serial
+        if (s.isEmpty()) return
+        val (b, fills) =
+            bridge.onFfi {
+                val stats = runCatching { bridge.get { bridge.core.fetchBufferStats() } }.getOrNull()
+                val outputs = stats?.let { runCatching { bridge.get { bridge.core.fetchOutputFills() } }.getOrNull() }
+                stats to outputs
+            }
+        if (b == null || s != serial) return
+        // Fills first: whoever sees the new sample also sees its fills
+        if (fills != null) _outputFills.value = fills
         // Every sample moves the traces
         _buffers.value = b
     }
@@ -629,6 +655,8 @@ class StatsControllerImpl internal constructor(private val bridge: DspiBridgeImp
         bridge.scope.launch(bridge.main) {
             if (serial.isNotEmpty()) bridge.onFfi { runCatching { bridge.core.resetBufferStats() } }
             pollFast()
+            // Its lowest fill and gaps are watermarks too
+            pollRingHealth()
         }
     }
 

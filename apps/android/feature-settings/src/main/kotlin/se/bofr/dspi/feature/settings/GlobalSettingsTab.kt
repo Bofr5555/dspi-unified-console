@@ -67,7 +67,12 @@ fun GlobalSettingsTab(bridge: DspiBridge, coordinator: SettingsSaveCoordinator) 
         return "${slot + 1}: $name"
     }
 
+    // -- WP AN6 -- which latency options run as themselves depends on the input source
+    val generation by bridge.deviceGeneration.collectAsState()
+    LaunchedEffect(generation, connected, state.inputSource) { bridge.deviceSettings.refreshLatency() }
+
     SettingsForm {
+        item { DeviceNameSection(bridge, coordinator, connected) }
         item {
             SettingsSection("Startup Preset") {
                 ChoiceRow(
@@ -198,6 +203,7 @@ fun GlobalSettingsTab(bridge: DspiBridge, coordinator: SettingsSaveCoordinator) 
                 }
             }
         }
+        item { LatencySection(bridge, coordinator, connected) }
         item {
             SettingsSection("Master Volume") {
                 ChoiceRow(

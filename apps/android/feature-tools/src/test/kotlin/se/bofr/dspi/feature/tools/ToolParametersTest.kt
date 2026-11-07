@@ -57,7 +57,11 @@ class ToolParametersTest {
         assertFalse(ToolFirmware.supportsLimiter(31))
         assertTrue(ToolFirmware.supportsUpmixer(32, 1))
         assertFalse(ToolFirmware.supportsUpmixer(32, 0))
-        assertFalse(ToolFirmware.supportsUpmixer(25, 1))
+        // WP AN6: the firmware's upmixer is V25, its presence control V26
+        assertTrue(ToolFirmware.supportsUpmixer(25, 1))
+        assertFalse(ToolFirmware.supportsUpmixer(24, 1))
+        assertFalse(ToolFirmware.supportsUpmixerPresence(25))
+        assertTrue(ToolFirmware.supportsUpmixerPresence(26))
     }
 
     // ── Defaults agree with the core's tables (protocol.rs via FakeTables) ──

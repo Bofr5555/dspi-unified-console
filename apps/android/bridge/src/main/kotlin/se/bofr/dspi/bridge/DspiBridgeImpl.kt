@@ -48,6 +48,7 @@ import se.bofr.dspi.core.PinConfigStatus
 import se.bofr.dspi.core.PresetStatus
 import se.bofr.dspi.core.UartConfig
 import se.bofr.dspi.core.UpmixStatus
+import se.bofr.dspi.core.WireFeat
 import se.bofr.dspi.core.statusOf
 
 /**
@@ -231,6 +232,9 @@ class DspiBridgeImpl(
     override val monitor: MonitorModelImpl
     override val configFiles: ConfigFilesImpl
 
+    // -- WP AN6 --
+    override val deviceSettings: DeviceSettingsImpl
+
     private var uiVisible = true
     private var pollJob: Job? = null
     private var hotplugJob: Job? = null
@@ -252,6 +256,7 @@ class DspiBridgeImpl(
         cs = CsControllerImpl(this)
         monitor = MonitorModelImpl(this)
         configFiles = ConfigFilesImpl(this)
+        deviceSettings = DeviceSettingsImpl(this)
         updateTimers()
         // As the Qt constructor: pick up a device the core can already see
         // (desktop libusb, the fake in demo mode; on Android the list is
@@ -329,6 +334,7 @@ class DspiBridgeImpl(
     /** FFI: the state after a change, the preset-dirty flag and the curves that changed. */
     private fun snapshot(all: Boolean = false): Snapshot {
         val st = core.getState()
+        features = runCatching { core.wireFeatures() }.getOrDefault(0L)
         val usable = core.isConnected() && st.compat == COMPAT_OK
         val dirty = usable && runCatching { core.presetDirty() }.getOrDefault(false)
         val ids = if (all) (0 until ChannelMap.APP_CHANNEL_COUNT).toSet() else pendingDirty.toSet()
@@ -338,6 +344,9 @@ class DspiBridgeImpl(
         val dl = runCatching { core.maxDelayMs() }.getOrDefault(if (st.platformId == 1) 42f else 21f)
         return Snapshot(st, dirty, ids.associateWith { rawCurve(st, m, it) }, all, pre, dl)
     }
+
+    /** -- WP AN6 -- `core.wireFeatures()` as of the last snapshot: [hardwareCaps] is read on the main thread. */
+    @Volatile private var features = 0L
 
     private fun bandsOf(st: DspState, m: ChannelMap, appCh: Int): List<FilterParams> {
         val w = m.wire(appCh)
@@ -625,6 +634,7 @@ class DspiBridgeImpl(
                 }
                 r to snapshot(all = refreshed)
             }
+        deviceSettings.refreshNames() // -- WP AN6 -- no traffic; name events raise no state flag
         emit(BridgeEvent.NotificationsArrived)
         notificationHooks.forEach { it() }
         val flags = r.flags
@@ -686,7 +696,8 @@ class DspiBridgeImpl(
 
     /** DSPiBridge::pollStatus: peaks, CPU, clip latch, limiter meter (every 4th tick). */
     private suspend fun pollStatus() {
-        if (!usable) return
+        // -- WP AN6 -- Qt keeps reading on read-only firmware and as a viewer; only a dropped link pauses it
+        if (!connected || remoteInterrupted) return
         val m = map
         val anyLimiter = (0 until current.numOutputChannels).any { current.limiterEnabled[it] }
         val prev = _status.value
@@ -815,9 +826,10 @@ class DspiBridgeImpl(
         get() = when (compat) {
             DspiConstants.COMPAT_FIRMWARE_TOO_OLD ->
                 "This DSPi runs firmware ${firmwareVersion.ifEmpty { "older than 1.1.6" }}, which is too old for this Console. " +
-                    "Update it to firmware 1.1.6."
+                    "Its settings are shown read-only; features it lacks are hidden. Update it to firmware 1.1.6."
             DspiConstants.COMPAT_FIRMWARE_TOO_NEW ->
-                "This DSPi runs firmware $firmwareVersion, which is newer than this Console understands. Update the Console."
+                "This DSPi runs firmware $firmwareVersion, which is newer than this Console understands. Its settings are " +
+                    "shown read-only, and some of its features may not be shown. Update the Console."
             else -> ""
         }
 
@@ -887,11 +899,13 @@ class DspiBridgeImpl(
         get() {
             // Firmware InputSource: 0 USB, 1 S/PDIF 1, 2 I2S, 3 ADAT, 4-6 S/PDIF 2-4.
             val s = current
+            val names = deviceSettings.names.value
+            fun option(id: Int, builtIn: String) = InputSourceOption(id, names.source(id).ifEmpty { builtIn }, builtIn)
             val extraSpdif = (s.spdifInputsEnabled and 1.inv()) != 0
-            val list = mutableListOf(InputSourceOption(0, "USB"), InputSourceOption(1, if (extraSpdif) "S/PDIF 1" else "S/PDIF"))
-            for (k in 1 until 4) if (s.spdifInputsEnabled and (1 shl k) != 0) list += InputSourceOption(3 + k, "S/PDIF ${k + 1}")
-            list += InputSourceOption(2, "I2S")
-            if (s.platformId == 1 && s.adatInputEnabled && s.adatInputPin != 0xFF) list += InputSourceOption(3, "ADAT")
+            val list = mutableListOf(option(0, "USB"), option(1, if (extraSpdif) "S/PDIF 1" else "S/PDIF"))
+            for (k in 1 until 4) if (s.spdifInputsEnabled and (1 shl k) != 0) list += option(3 + k, "S/PDIF ${k + 1}")
+            list += option(2, "I2S")
+            if (s.platformId == 1 && s.adatInputEnabled && s.adatInputPin != 0xFF) list += option(3, "ADAT")
             return list
         }
 
@@ -911,7 +925,12 @@ class DspiBridgeImpl(
     override val psybassCharacter: Float get() = current.psybassCharacterPct
     override val psybassOriginal: Float get() = current.psybassOriginalDb
     override val psybassOutputMask: Int get() = current.psybassOutputMask
-    override val upmixSupported: Boolean get() = usable && current.platformId == 1
+
+    /**
+     * -- WP AN6 -- Follows the firmware: `bulk_params.h` adds the upmixer in V25, and V26 only its
+     * presence byte, so the feature is V25 and the Presence control V26.
+     */
+    override val upmixSupported: Boolean get() = connected && current.platformId == 1 && features and WireFeat.UPMIX != 0L
     override val upmixParams: List<Float> get() = current.upmix
     override val subharmParams: List<Float> get() = current.subharm
     override val subharmSolo: Boolean get() = current.subharmSolo
@@ -1772,6 +1791,7 @@ class DspiBridgeImpl(
     private fun setDisconnected() {
         bumpGeneration()
         crossfeedPairMapSupported = false
+        deviceSettings.clear()
         _status.value = _status.value.copy(connected = false, cpu0 = 0, cpu1 = 0, clipFlags = 0, peaks = BridgeStatus().peaks)
         refreshWritesAllowed()
         _devices.value = _devices.value.copy(selectedSerial = "")
@@ -2302,22 +2322,29 @@ class DspiBridgeImpl(
 
     override val hardwareCaps: HardwareCaps
         get() {
-            if (!usable) return HardwareCaps()
+            // -- WP AN6 -- What the image of the connected firmware carries. A read-only image shows its
+            // options too (Qt, macOS's V21+ rule made per feature); every write stays refused.
+            if (!connected) return HardwareCaps()
             val rp2350 = current.platformId == 1
-            val v32 = current.formatVersion >= DspiConstants.WIRE_FORMAT_VERSION
+            val mapped = current.formatVersion >= DspiConstants.MIN_WIRE_FORMAT_VERSION
+            val f = features
+            val i2sClock = f and WireFeat.I2S_CLOCK_MODE != 0L
             return HardwareCaps(
-                // macOS bulk apply: V21+ image -> inputSourceSupported / lgSoundSyncSupported
-                inputSourceSupported = v32,
-                lgSoundSyncSupported = v32,
-                multiSpdifSupported = v32,
-                spdifInputCount = if (v32) 4 else 1,
-                i2sInputSupported = v32,
-                i2sMultichannelInput = v32 && rp2350,
-                i2sClockModeSupported = v32,
-                i2sClockPinModeSupported = v32,
-                adatOutSupported = rp2350,
-                adatInputSupported = rp2350,
-                limiterSupported = v32,
+                inputSourceSupported = mapped,
+                lgSoundSyncSupported = mapped,
+                multiSpdifSupported = i2sClock,
+                spdifInputCount = when {
+                    f and WireFeat.SPDIF_IN4 != 0L -> 4
+                    i2sClock -> 3
+                    else -> 1
+                },
+                i2sInputSupported = mapped,
+                i2sMultichannelInput = mapped && rp2350,
+                i2sClockModeSupported = i2sClock,
+                i2sClockPinModeSupported = i2sClock,
+                adatOutSupported = rp2350 && f and WireFeat.ADAT_OUT != 0L,
+                adatInputSupported = rp2350 && f and WireFeat.ADAT_IN != 0L,
+                limiterSupported = f and WireFeat.LIMITER != 0L,
                 crossfeedPairMapSupported = crossfeedPairMapSupported,
                 crossfeedPairCount = CrossfeedPairs.pairCount(current.numOutputChannels)
             )
