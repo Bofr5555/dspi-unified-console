@@ -17,7 +17,6 @@
         <file>qml/AutoEqBrowserWindow.qml</file>
         <file>qml/WhatsNewWindow.qml</file>
         <file>qml/GettingStartedView.qml</file>
-        <file>whatsnew.json</file>
         <file>dspi-console.svg</file>
         <file alias="70-dspi.rules">../packaging/linux/70-dspi.rules</file>
         <file>autoeq/autoeq_database.json</file>

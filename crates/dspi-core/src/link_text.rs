@@ -184,6 +184,8 @@ impl Platform {
             "macos" => Some(self == Self::MacOs),
             "not_macos" => Some(self != Self::MacOs),
             "desktop" => Some(!mobile),
+            // -- WP QD32 -- Where the Qt Console is the app.
+            "windows_or_linux" => Some(matches!(self, Self::Windows | Self::Linux)),
             "mobile" => Some(mobile),
             // iOS has no route to the bootloader (SW18).
             "can_install_firmware" => Some(self != Self::Ios),
@@ -200,6 +202,9 @@ fn term(name: &str, platform: Platform) -> Option<&'static str> {
         // The settings page that holds outputs and pins.
         ("hardware_page", MacOs | Android | Ios) => "Hardware",
         ("hardware_page", Windows | Linux) => "Outputs",
+        // -- WP QD32 -- The menu that holds the effect windows. Qt's has its own.
+        ("effects_menu", MacOs | Android | Ios) => "Tools",
+        ("effects_menu", Windows | Linux) => "Effects",
         // Only in `desktop` lines: mobile systems have no such choice.
         ("sound_settings", MacOs) => "macOS Sound settings",
         ("sound_settings", Windows) => "Windows Sound settings",
@@ -937,5 +942,175 @@ mod tests_wp_cg15 {
                 assert!(word != "mit" && !HOST.contains(&word), "{s}");
             }
         }
+    }
+}
+
+// -- WP QD32 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_qd32 {
+    use serde_json::Value;
+
+    use super::*;
+
+    const APP_MENU: &str = include_str!("../../../apps/desktop/qt/qml/components/AppMenu.qml");
+    const SETTINGS: &str = include_str!("../../../apps/desktop/qt/qml/SettingsWindow.qml");
+    const INPUTS_PAGE: &str =
+        include_str!("../../../apps/desktop/qt/qml/settings/pages/InputsPage.qml");
+    const GLOBAL_PAGE: &str =
+        include_str!("../../../apps/desktop/qt/qml/settings/pages/GlobalParametersPage.qml");
+    const SIDEBAR: &str = include_str!("../../../apps/desktop/qt/qml/Sidebar.qml");
+
+    /// Named in the notes, and not in Qt until QD14 adds it.
+    const PENDING_PAGES: [&str; 1] = ["Networking"];
+
+    fn release_text(platform: Platform) -> String {
+        let doc: Value = serde_json::from_str(&render_whats_new(platform)).unwrap();
+        doc.as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|r| {
+                let items = r["items"].as_array().unwrap().iter();
+                items
+                    .chain([&r["headline"]])
+                    .map(|t| t.as_str().unwrap().to_owned())
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Every `text: "..."` in a slice of QML.
+    fn quoted_after<'a>(qml: &'a str, field: &str) -> Vec<&'a str> {
+        qml.split(field)
+            .skip(1)
+            .filter_map(|rest| rest.split('"').next())
+            .collect()
+    }
+
+    /// The labels of an `AppMenu.qml` group, without the ellipsis.
+    fn menu_items(group: &str) -> Vec<String> {
+        let start = format!("{{ text: \"{group}\", icon");
+        let body = APP_MENU.split(&start).nth(1).expect(group);
+        let body = body.split("\n        ]").next().unwrap();
+        quoted_after(body, "text: \"")
+            .into_iter()
+            .map(|t| t.trim_end_matches('\u{2026}').to_owned())
+            .collect()
+    }
+
+    /// What follows each `root > ` in `text`.
+    fn after<'a>(text: &'a str, root: &str) -> Vec<&'a str> {
+        let marker = format!("{root} > ");
+        text.split(&marker).skip(1).collect()
+    }
+
+    #[test]
+    fn wp_qd32_every_menu_path_exists_in_qt() {
+        for platform in [Platform::Windows, Platform::Linux] {
+            let text = release_text(platform);
+            let mut seen = 0;
+            for group in ["Tools", "Effects", "Device"] {
+                let items = menu_items(group);
+                assert!(!items.is_empty(), "{group}");
+                for rest in after(&text, group) {
+                    assert!(
+                        items.iter().any(|i| rest.starts_with(i.as_str())),
+                        "{group} > {rest}"
+                    );
+                    seen += 1;
+                }
+            }
+            let pages = quoted_after(SETTINGS, "title: \"");
+            for rest in after(&text, "Settings") {
+                assert!(
+                    pages
+                        .iter()
+                        .chain(&PENDING_PAGES)
+                        .any(|p| rest.starts_with(p)),
+                    "Settings > {rest}"
+                );
+                seen += 1;
+            }
+            assert!(seen >= 8, "{platform:?}: only {seen} paths");
+        }
+    }
+
+    #[test]
+    fn wp_qd32_sections_named_in_the_notes_are_on_qts_pages() {
+        let text = release_text(Platform::Linux);
+        assert!(text.contains("Settings > Inputs > Source Names"));
+        assert!(INPUTS_PAGE.contains("title: \"Source Names\""));
+        assert!(text.contains("Settings > Global Parameters > Device Name"));
+        assert!(GLOBAL_PAGE.contains("title: \"Device Name\""));
+        assert!(text.contains("Settings > Global Parameters has a Latency section"));
+        assert!(GLOBAL_PAGE.contains("title: \"Latency\""));
+    }
+
+    /// Qt's source picker has no right-click: the sidebar connects no
+    /// `onContextMenuRequested` to it. When it gets one, the condition can widen.
+    #[test]
+    fn wp_qd32_the_source_picker_right_click_is_macos_only() {
+        let picker = SIDEBAR
+            .split("objectName: \"sourcePicker\"")
+            .nth(1)
+            .unwrap();
+        let picker = picker.split("onChosen:").next().unwrap();
+        assert!(!picker.contains("onContextMenuRequested"));
+        const LINE: &str = "right-click the source picker";
+        assert!(release_text(Platform::MacOs).contains(LINE));
+        for platform in [
+            Platform::Windows,
+            Platform::Linux,
+            Platform::Android,
+            Platform::Ios,
+        ] {
+            assert!(!release_text(platform).contains(LINE), "{platform:?}");
+        }
+    }
+
+    #[test]
+    fn wp_qd32_effects_are_under_effects_only_in_qt() {
+        for (name, keys) in [
+            ("Tube Modeller", "Shift+D"),
+            ("Subharmonic Synthesizer", "Shift+S"),
+        ] {
+            let qt = format!("Effects > {name} (Ctrl+{keys})");
+            let mac = format!("Tools > {name} (Cmd+{keys})");
+            let mobile = format!("Tools > {name}.");
+            assert!(release_text(Platform::Linux).contains(&qt));
+            assert!(release_text(Platform::Windows).contains(&qt));
+            assert!(release_text(Platform::MacOs).contains(&mac));
+            assert!(release_text(Platform::Android).contains(&mobile));
+            assert!(release_text(Platform::Ios).contains(&mobile));
+        }
+        // The analyser really is in Tools, in Qt as well.
+        assert!(release_text(Platform::Linux).contains("Tools > Spectrum Analyser (Ctrl+Shift+A)"));
+    }
+
+    /// Qt's own release notes: what the other platforms' text does not say. The
+    /// rest of its old entry is in the shared lines.
+    #[test]
+    fn wp_qd32_qts_entry_shows_on_windows_and_linux_only() {
+        const QT_ONLY: [&str; 5] = [
+            "The graph can also show phase.",
+            "Control Surfaces wire buttons, knobs, encoders",
+            ".dspipreset) shared with the other Consoles",
+            "Stats for Nerds and Interrupt Monitor have been rebuilt",
+            "Find it under Device > Firmware Update.",
+        ];
+        for line in QT_ONLY {
+            assert!(release_text(Platform::Windows).contains(line), "{line}");
+            assert!(release_text(Platform::Linux).contains(line), "{line}");
+            for platform in [Platform::MacOs, Platform::Android, Platform::Ios] {
+                assert!(
+                    !release_text(platform).contains(line),
+                    "{platform:?}: {line}"
+                );
+            }
+        }
+        // One release per version, so its notes stay under one heading.
+        let doc: Value = serde_json::from_str(&render_whats_new(Platform::Linux)).unwrap();
+        let beta4 = doc.as_array().unwrap().iter();
+        assert_eq!(beta4.filter(|r| r["version"] == "1.1.6-beta4").count(), 1);
     }
 }

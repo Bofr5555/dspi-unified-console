@@ -7,6 +7,9 @@ Rectangle {
     property real progress: 0
     property string boardName: ""
     property string version: ""
+    // -- WP QD32 -- The wizard's come from the core
+    property string title: "Writing firmware"
+    property string note: "Near the end the board restarts itself and its drive disappears. That is normal - do not unplug it."
 
     radius: 8
     color: isMacOS ? MacColors.opacity(MacColors.controlBackground, 0.6) : Qt.rgba(1, 1, 1, 0.045)
@@ -20,7 +23,7 @@ Rectangle {
         Item {
             width: parent.width
             height: 18
-            Text { text: "Writing firmware"; font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? MacColors.label : "white" }
+            Text { text: card.title; font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? MacColors.label : "white" }
             Text {
                 anchors.right: parent.right
                 text: Math.round(card.progress * 100) + "%"
@@ -51,7 +54,7 @@ Rectangle {
         Text {
             width: card.width - 28 - 19
             wrapMode: Text.WordWrap
-            text: "Near the end the board restarts itself and its drive disappears. That is normal - do not unplug it."
+            text: card.note
             font.pixelSize: 11
             color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
         }
