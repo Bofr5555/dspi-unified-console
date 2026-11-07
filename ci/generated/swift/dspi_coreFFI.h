@@ -614,6 +614,11 @@ uint32_t uniffi_dspi_core_fn_method_dspicore_demo_latency_sets(void*_Nonnull ptr
 void uniffi_dspi_core_fn_method_dspicore_demo_latency_timing(void*_Nonnull ptr, uint8_t mode, uint8_t reads, uint8_t blackout, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DEMO_OUTPUT_SAVE_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DEMO_OUTPUT_SAVE_STATUS
+void uniffi_dspi_core_fn_method_dspicore_demo_output_save_status(void*_Nonnull ptr, uint8_t status, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DEMO_RENAME_ELSEWHERE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DEMO_RENAME_ELSEWHERE
 void uniffi_dspi_core_fn_method_dspicore_demo_rename_elsewhere(void*_Nonnull ptr, uint8_t target, RustBuffer name, RustCallStatus *_Nonnull out_status
@@ -2391,6 +2396,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_demo_latency_sets(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEMO_LATENCY_TIMING
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEMO_LATENCY_TIMING
 uint16_t uniffi_dspi_core_checksum_method_dspicore_demo_latency_timing(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEMO_OUTPUT_SAVE_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEMO_OUTPUT_SAVE_STATUS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_demo_output_save_status(void
     
 );
 #endif

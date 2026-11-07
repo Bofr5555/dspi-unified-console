@@ -4698,6 +4698,13 @@ bool dspi_demo_latency_timing(struct FfiCore *core, uint8_t mode, uint8_t reads,
 uint32_t dspi_demo_latency_sets(struct FfiCore *core);
 
 /**
+ * On the demo device only: how `dspi_save_output_config` answers from now on.
+ * 0 goes through, 0xFF stalls, another byte is that `PRESET_*` status. False on
+ * anything else.
+ */
+bool dspi_demo_output_save_status(struct FfiCore *core, uint8_t status);
+
+/**
  * The demo device as firmware of wire format `wire` (17, 26, 31 or 33), for
  * read-only tests. Replaces any open device. False for any other format.
  */

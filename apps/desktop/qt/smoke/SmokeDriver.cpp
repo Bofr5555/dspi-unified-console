@@ -99,6 +99,8 @@ void SmokeDriver::run() {
     testClockDiagAndCpuBars();
     // -- WP QD29 --
     testRingHealth();
+    // -- WP QD31 --
+    testSaveBarSetters();
     // -- WP QD1 --
     testCsRefusals();
     // -- WP CG16 --

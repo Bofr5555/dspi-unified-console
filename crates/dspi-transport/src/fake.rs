@@ -479,12 +479,24 @@ pub const EXT_FAKE_LATENCY_TIMING: u16 = 0xFFF2;
 /// firmware has no other way to give.
 pub const EXT_FAKE_CS_SIM: u16 = 0xFFF3;
 
+// -- WP QD31 --
+/// `REQ_EXTENSION` OUT sub-command only a [`FakeDevice`] answers, as
+/// [`EXT_FAKE_VREG_SIM`] (WP QD31): one byte, how `REQ_SAVE_OUTPUT_CONFIG` answers
+/// from now on. 0 is `PRESET_OK`, as the firmware always does; [`OUTPUT_SAVE_STALL`]
+/// stalls; another byte is that status. It lets a client's demo show a failed save,
+/// which the firmware's deferred flash write doesn't report on this request.
+pub const EXT_FAKE_OUTPUT_SAVE_SIM: u16 = 0xFFF4;
+/// [`EXT_FAKE_OUTPUT_SAVE_SIM`]'s byte for a stall: a device that doesn't answer.
+pub const OUTPUT_SAVE_STALL: u8 = 0xFF;
+
 /// Every fake-only `REQ_EXTENSION` sub-command.
 pub const FAKE_ONLY_EXTENSIONS: &[u16] = &[
     EXT_FAKE_VREG_SIM,
     EXT_FAKE_RENAME_ELSEWHERE,
     EXT_FAKE_LATENCY_TIMING,
     EXT_FAKE_CS_SIM,
+    // -- WP QD31 --
+    EXT_FAKE_OUTPUT_SAVE_SIM,
 ];
 
 /// What can happen to a simulated device's core-voltage state (WP CG11).
@@ -1016,6 +1028,9 @@ struct State {
     // -- WP CG16 --
     /// `None`: this firmware has no control surfaces.
     surfaces: Option<surfaces::Surfaces>,
+    // -- WP QD31 --
+    /// [`EXT_FAKE_OUTPUT_SAVE_SIM`]'s byte.
+    output_save_sim: u8,
     queue: VecDeque<Vec<u8>>,
     seq: u8,
     started: Instant,
@@ -1066,6 +1081,8 @@ impl State {
                 stage_requests: false,
                 staged: None,
             },
+            // -- WP QD31 --
+            output_save_sim: st::PRESET_OK as u8,
             queue: VecDeque::new(),
             seq: 0,
             started: Instant::now(),
@@ -1374,6 +1391,14 @@ impl State {
             op::REQ_PRESET_LOAD => Some(vec![self.preset_load(value)]),
             op::REQ_PRESET_DELETE => Some(vec![self.preset_delete(value)]),
             op::REQ_SAVE_PARAMS => Some(vec![self.save_params()]),
+            // -- WP QD31 --
+            // Write-as-read: PRESET_OK at once, the flash write deferred to the main
+            // loop (vendor_commands.c, `case REQ_SAVE_OUTPUT_CONFIG`). There is no
+            // flash behind it here: nothing a client reads changes.
+            op::REQ_SAVE_OUTPUT_CONFIG => match self.output_save_sim {
+                OUTPUT_SAVE_STALL => None,
+                status => Some(vec![status]),
+            },
             op::REQ_FACTORY_RESET => Some(vec![self.factory_reset()]),
             // No PDM/EQ-worker interlock is modelled: never a conflict.
             op::REQ_GET_CORE1_CONFLICT => Some(vec![0]),
@@ -1905,6 +1930,14 @@ impl State {
             },
             // -- WP QD5 --
             EXT_FAKE_LATENCY_TIMING => self.latency_timing(data),
+            // -- WP QD31 --
+            EXT_FAKE_OUTPUT_SAVE_SIM => match *data {
+                [byte] => {
+                    self.output_save_sim = byte;
+                    true
+                }
+                _ => false,
+            },
             _ => false,
         }
     }
@@ -3138,6 +3171,36 @@ mod tests_wp_cg11 {
 #[cfg(test)]
 mod tests_wp_cg16_extensions {
     use super::*;
+
+    // -- WP QD31 --
+    #[test]
+    fn wp_qd31_the_output_config_save_answers_as_the_firmware_and_the_sim_says() {
+        let mut d = FakeDevice::demo();
+        let save = |d: &mut FakeDevice| d.control_in(op::REQ_SAVE_OUTPUT_CONFIG, 0, 1);
+        assert_eq!(save(&mut d).unwrap(), [st::PRESET_OK as u8]);
+        d.control_out(
+            op::REQ_EXTENSION,
+            EXT_FAKE_OUTPUT_SAVE_SIM,
+            &[st::PRESET_ERR_FLASH_WRITE as u8],
+        )
+        .unwrap();
+        assert_eq!(save(&mut d).unwrap(), [st::PRESET_ERR_FLASH_WRITE as u8]);
+        d.control_out(
+            op::REQ_EXTENSION,
+            EXT_FAKE_OUTPUT_SAVE_SIM,
+            &[OUTPUT_SAVE_STALL],
+        )
+        .unwrap();
+        assert!(matches!(save(&mut d), Err(TransportError::Stalled { .. })));
+        d.control_out(op::REQ_EXTENSION, EXT_FAKE_OUTPUT_SAVE_SIM, &[0])
+            .unwrap();
+        assert_eq!(save(&mut d).unwrap(), [st::PRESET_OK as u8]);
+        // One byte, or it is refused
+        assert!(
+            d.control_out(op::REQ_EXTENSION, EXT_FAKE_OUTPUT_SAVE_SIM, &[])
+                .is_err()
+        );
+    }
 
     #[test]
     fn wp_cg16_fake_only_extension_codes_are_unique() {

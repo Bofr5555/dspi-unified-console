@@ -1358,6 +1358,8 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1506,6 +1508,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_delete_preset(
 fun uniffi_dspi_core_checksum_method_dspicore_demo_latency_sets(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_demo_latency_timing(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_demo_output_save_status(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_demo_rename_elsewhere(
 ): Short
@@ -2007,6 +2011,8 @@ fun uniffi_dspi_core_fn_method_dspicore_delete_preset(`ptr`: Pointer,`slot`: Byt
 fun uniffi_dspi_core_fn_method_dspicore_demo_latency_sets(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
 fun uniffi_dspi_core_fn_method_dspicore_demo_latency_timing(`ptr`: Pointer,`mode`: Byte,`reads`: Byte,`blackout`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_demo_output_save_status(`ptr`: Pointer,`status`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_demo_rename_elsewhere(`ptr`: Pointer,`target`: Byte,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -2769,6 +2775,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_demo_latency_timing() != 50542.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_demo_output_save_status() != 4211.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_demo_rename_elsewhere() != 20262.toShort()) {
@@ -5156,6 +5165,14 @@ public interface DspiCoreInterface {
      * another `mode`.
      */
     fun `demoLatencyTiming`(`mode`: kotlin.UByte, `reads`: kotlin.UByte, `blackout`: kotlin.UByte)
+    
+    /**
+     * On the demo device only, for clients' tests: how
+     * [`save_output_config`](Self::save_output_config) answers from now on. 0 goes
+     * through, 0xFF stalls, another byte is that status. `Unsupported`, with no
+     * traffic, on anything but a simulated device.
+     */
+    fun `demoOutputSaveStatus`(`status`: kotlin.UByte)
     
     /**
      * Have someone else rename something on the demo device, for clients'
@@ -7794,6 +7811,24 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_demo_latency_timing(
         it, FfiConverterUByte.lower(`mode`),FfiConverterUByte.lower(`reads`),FfiConverterUByte.lower(`blackout`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * On the demo device only, for clients' tests: how
+     * [`save_output_config`](Self::save_output_config) answers from now on. 0 goes
+     * through, 0xFF stalls, another byte is that status. `Unsupported`, with no
+     * traffic, on anything but a simulated device.
+     */
+    @Throws(DspiException::class)override fun `demoOutputSaveStatus`(`status`: kotlin.UByte)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_demo_output_save_status(
+        it, FfiConverterUByte.lower(`status`),_status)
 }
     }
     

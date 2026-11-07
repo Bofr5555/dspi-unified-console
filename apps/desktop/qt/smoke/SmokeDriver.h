@@ -77,6 +77,8 @@ private:
     void testClockDiagAndCpuBars();
     // -- WP QD29 --
     void testRingHealth();
+    // -- WP QD31 --
+    void testSaveBarSetters();
     // -- WP QD1 --
     void testCsRefusals();
     void testCsCallerRefusals();
