@@ -79,6 +79,10 @@ set(DSPI_APP_SOURCES
     # -- WP QD8 --
     src/LinkController.cpp
     src/TokenStore.cpp
+    # -- WP QD18 --
+    src/HostAudioFormat.cpp
+    src/HostAudioFormatLinux.cpp
+    src/HostAudioFormatWindows.cpp
     resources.qrc
 )
 add_executable(DSPiConsole ${DSPI_APP_SOURCES})
@@ -86,7 +90,7 @@ add_executable(DSPiConsole ${DSPI_APP_SOURCES})
 # The app with its offscreen test driver (ci/check.sh --step qt-offscreen).
 option(DSPI_SMOKE "Also build DSPiConsoleSmoke, the app with its test driver" OFF)
 if(DSPI_SMOKE)
-    add_executable(DSPiConsoleSmoke ${DSPI_APP_SOURCES} smoke/SmokeDriver.cpp smoke/SmokeDriverHw.cpp smoke/SmokeDriverReplug.cpp smoke/SmokeDriverSeam.cpp smoke/SmokeDriverExt.cpp smoke/SmokeDriverNames.cpp smoke/SmokeDriverLatency.cpp smoke/SmokeDriverLink.cpp smoke/SmokeDriverReadOnly.cpp smoke/SmokeDriver.h smoke/smoke.qrc)
+    add_executable(DSPiConsoleSmoke ${DSPI_APP_SOURCES} smoke/SmokeDriver.cpp smoke/SmokeDriverHw.cpp smoke/SmokeDriverReplug.cpp smoke/SmokeDriverSeam.cpp smoke/SmokeDriverExt.cpp smoke/SmokeDriverNames.cpp smoke/SmokeDriverLatency.cpp smoke/SmokeDriverLink.cpp smoke/SmokeDriverReadOnly.cpp smoke/SmokeDriverHostAudio.cpp smoke/SmokeDriver.h smoke/smoke.qrc)
     target_include_directories(DSPiConsoleSmoke PRIVATE ${DSPI_CORE_DIR}/include src/ smoke/)
     target_compile_definitions(DSPiConsoleSmoke PRIVATE DSPI_SMOKE)
     target_link_libraries(DSPiConsoleSmoke PRIVATE
@@ -113,6 +117,8 @@ if(WIN32)
     target_link_libraries(DSPiConsole PRIVATE dwmapi)
     # -- WP QD8 -- Link tokens in Credential Manager
     target_link_libraries(DSPiConsole PRIVATE advapi32)
+    # -- WP QD18 -- The audio endpoints' format (MMDevice, COM)
+    target_link_libraries(DSPiConsole PRIVATE ole32)
 
     # Windows: the core is a DLL (dspi_capi.dll) next to the exe, linked
     # through cargo's import library

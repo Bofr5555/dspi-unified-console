@@ -103,6 +103,8 @@ void SmokeDriver::run() {
     testReadOnly();
     // -- WP QD8 --
     testLink();
+    // -- WP QD18 --
+    testHostAudio();
     testIdleAndCost();
     m_failures += g_qmlErrors;
     printf("smoke: %d checks, %d failures (%d QML errors)\n", m_checks, m_failures, g_qmlErrors);

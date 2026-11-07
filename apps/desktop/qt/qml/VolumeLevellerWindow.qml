@@ -14,7 +14,8 @@ AppWindow {
     minimumWidth: 340
     minimumHeight: 320 + titlebarHeight
 
-    readonly property int inputCount: Math.min(bridge.numInputChannels, Math.max(2, bridge.activeInputChannels))
+    // -- WP QD18 --
+    readonly property int inputCount: hostAudio.inputCount
     readonly property var speedCaptions: [
         "Slow — Gentle response for music and wide dynamic range content.",
         "Medium — Balanced response for general purpose use.",

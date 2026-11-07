@@ -25,10 +25,11 @@ AppWindow {
     // On a stereo input the upmixer's Centre / Surround outputs are source
     // rows 3-5 (3 only with surround off); otherwise the inputs carrying
     // audio right now (at least the stereo pair)
+    // -- WP QD18 -- hostAudio holds the inputs in use while the host idles
     readonly property bool upmixRows: bridge.upmixSupported && bridge.upmixParams[0] > 0
-                                      && Math.max(2, bridge.activeInputChannels) === 2
+                                      && hostAudio.inputCount === 2
     readonly property int inputCount: upmixRows ? (bridge.upmixParams[2] === 0 ? 3 : 5)
-                                    : Math.min(bridge.numInputChannels, Math.max(2, bridge.activeInputChannels))
+                                    : hostAudio.inputCount
     readonly property bool multichannel: !upmixRows && inputCount > 2
     readonly property int pdm: numOut - 1
     readonly property int gridWidth: labelWidth + numOut * colWidth + 12

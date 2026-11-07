@@ -24,7 +24,7 @@ Column {
     Component.onCompleted: {
         if (!popOut) return
         var l = []
-        for (var i = 0; i < bridge.liveInputCount(); i++) l.push(bridge.inputAppId(i))
+        for (var i = 0; i < hostAudio.inputCount; i++) l.push(bridge.inputAppId(i))   // -- WP QD18 --
         for (var o = 0; o < bridge.numOutputChannels; o++) if (bridge.outputEnabled(o)) l.push(o + 2)
         popOutChannels = l
     }

@@ -90,6 +90,9 @@ private:
     void readOnlyClickAround(QQuickWindow *window, const char *where, QQuickItem *scope = nullptr);
     // -- WP QD8 --
     void testLink();
+    // -- WP QD18 --
+    void testHostAudio();
+    void testHostAudioOnHub();
 
     // Whether a bypass toggle repaints the open channel's graph editor. Leaves
     // bypass as it found it. NotRun fills `why`.
