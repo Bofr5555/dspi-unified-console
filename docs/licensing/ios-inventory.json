@@ -1,5 +1,5 @@
 {
- "repo_commit": "eb2b6fe",
+ "repo_commit": "08fe0e0a",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -296,6 +296,7 @@
    "crates/dspi-core/src/connect.rs",
    "crates/dspi-core/src/consts.rs",
    "crates/dspi-core/src/cs.rs",
+   "crates/dspi-core/src/cs_rules.rs",
    "crates/dspi-core/src/curves.rs",
    "crates/dspi-core/src/device.rs",
    "crates/dspi-core/src/error.rs",
@@ -346,6 +347,7 @@
    "crates/dspi-session/src/clipboard.rs",
    "crates/dspi-session/src/compat.rs",
    "crates/dspi-session/src/cs_model.rs",
+   "crates/dspi-session/src/cs_rows.rs",
    "crates/dspi-session/src/ext.rs",
    "crates/dspi-session/src/ext_state.rs",
    "crates/dspi-session/src/fast.rs",
@@ -369,6 +371,7 @@
    "crates/dspi-session/src/write.rs",
    "crates/dspi-transport/src/clock.rs",
    "crates/dspi-transport/src/fake.rs",
+   "crates/dspi-transport/src/fake/analysis.rs",
    "crates/dspi-transport/src/fake/features.rs",
    "crates/dspi-transport/src/fake/surfaces.rs",
    "crates/dspi-transport/src/fake/wire_images.rs",
@@ -401,7 +404,7 @@
    "Weeb Labs",
    "owner (bofr)"
   ],
-  "commit": "48cf7c521b66a820db5a113904d5de9528a36302",
+  "commit": "08fe0e0a814f4c3c55838f47c54e2883a59a74f3",
   "files": [
    "DSPi Console iOS/Info.plist",
    "DSPi Console/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -494,6 +497,7 @@
    "DSPi Console/SpectrumAnalyserView.swift",
    "DSPi Console/StatsView.swift",
    "DSPi Console/SubharmonicSynthView.swift",
+   "DSPi Console/TestHostGuard.swift",
    "DSPi Console/TestSignalsView.swift",
    "DSPi Console/ToolParameters.swift",
    "DSPi Console/TubeIllustration.swift",
@@ -509,7 +513,11 @@
    "DSPi Console/iOS/PeqTouchEditor.swift",
    "DSPi Console/iOS/iOSCompat.swift"
   ],
-  "frameworks": [],
-  "products": []
+  "frameworks": [
+   "DSPiCoreBindings"
+  ],
+  "products": [
+   "DSPiCoreBindings"
+  ]
  }
 }
