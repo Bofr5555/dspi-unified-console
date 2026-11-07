@@ -785,6 +785,32 @@ fn wp_cg14_an_unreadable_unit_needs_the_word_above_1v20() {
     }
 }
 
+// -- WP QD28b --
+#[test]
+fn wp_qd28b_the_view_says_when_a_reset_needs_the_word() {
+    let r = Rig::new();
+    let v = r.poll();
+    assert!(
+        v.available && !v.reset_needs_word,
+        "a readable unit resets freely"
+    );
+    // A status whose fields are not voltages: the current voltage is unknown
+    *r.wire.status.lock().unwrap() = Some(vec![0xFF; 16]);
+    let v = r.poll();
+    assert!(v.available && v.status.is_some());
+    assert!(
+        v.reset_needs_word,
+        "the view asks for the word, as the rule does"
+    );
+    assert!(no_word(r.core.core_vreg_manual_set(0, None)));
+    assert!(r.sent().is_empty(), "nothing written without it");
+    r.core.core_vreg_manual_set(0, word()).unwrap();
+    assert_eq!(r.sent(), vec![(SET, 0)]);
+    // Readable again: no word
+    *r.wire.status.lock().unwrap() = None;
+    assert!(!r.poll().reset_needs_word);
+}
+
 #[test]
 fn wp_cg14_a_refusal_costs_only_the_status_read_and_no_host_record_helps() {
     let r = unit_at(0x0E);
