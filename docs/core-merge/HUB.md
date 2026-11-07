@@ -463,6 +463,24 @@ as a C callback, `HubHandle::devices`, `AuthStore`'s methods, `AppLink::attach` 
 UI thread. A `dspi_hub_*` listener must not call `dspi_hub_stop`, and must not own the last
 reference to the hub (section 3). Set `initial_scan: false` when an app is to attach.
 
+<!-- WP HB6 -->
+**HB6 as built, for QD14, TM11 and SW-M3.** The header of `fns_hub.rs` is the contract; the feature is `dspi-capi/hub`.
+- **`FfiHub` is a handle that outlives each run,** with `Hub` in one slot and nowhere else. A read and the listener hold a
+  `HubHandle` or a `NetworkControl`, whose drop cannot stop a hub, so `hub-events` never owns one. There is no `Arc<Hub>`. A
+  stop takes `Hub` out of the slot before it waits, as the listener may be reading.
+- **In the callback only `dspi_hub_status`, `_devices` and `_clients` work.** The rest answer `false`, -1 or `in_callback`.
+- **Settings apply at a start.** A running hub has its name, port and access for life: stop and start to change them.
+- **A change of access mode revokes every token** (section 9): `dspi_hub_saved_settings` gives `tokensRevokedIfPin` and
+  `tokensRevokedIfOpen` beforehand, by the rule `AuthStore::new` applies, and the start's `tokensRevoked` says what it cost. QD14
+  must warn when the number for the chosen mode is not 0.
+- **Start does not scan.** Nothing is claimed until the port is bound and the listener is in place, whatever the options.
+  With an app: `HUB_OPT_APP`, then `dspi_hub_attach_app`.
+- **Logs.** The library's logger holds `tungstenite` at debug, since its trace level prints whole frames, PINs and tokens
+  included. A host that installs its own logger, or a binary with its own (`dspi hub`), must do the same.
+- **Not offered yet:** the web bundle and `mdns_name`, HB5's. Add them to `config_for` and as options when HB5 lands.
+- **QD14 has to add `hub`** to the `dspi-capi` feature lists that build the plain app: `apps/desktop/packaging/*`, the Arch
+  `PKGBUILD`, `ci/github-actions-build.yml` and the `windows-msvc` step. The smoke builds have it.
+
 **TM11.** `dspi-hub` without `app`. **SW-M3.** A UniFFI wrapper over the same; `DeviceBroker`
 is a plain Rust trait today and needs no export if the wrapper's `AppLink` stays in Rust.
 
