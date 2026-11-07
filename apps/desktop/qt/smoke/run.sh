@@ -51,7 +51,7 @@ fi
 # quit: starting hidden is decided before main.qml loads, and Qt's own quit path
 # only runs once. The driver fails by exit code, 3 if the app did not quit.
 if [ -z "${DSPI_SMOKE_HW:-}" ]; then
-    for mode in hidden hidden-quit no-tray; do
+    for mode in hidden hidden-quit app-quit no-tray; do
         printf '[onboarding]\nsetupDone=true\n[tray]\nshowInTray=true\nstartMinimised=true\n' > "$HOME/.config/DSPi/DSPi Console.conf"
         probe=1; [ "$mode" = no-tray ] && probe=0
         DSPI_SMOKE_TRAY=$mode DSPI_SMOKE_TRAY_PROBE=$probe timeout 60 "$app" --demo > "$out/log-tray-$mode.txt" 2>&1

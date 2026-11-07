@@ -315,12 +315,14 @@ void SmokeDriver::runTrayLaunch(const QString &mode) {
         check("QD12: start minimised: says Open", itemText(tray, "trayOpen") == QLatin1String("Open DSPi Console"));
         check("QD12: start minimised: the device is up all the same", waitFor(3000, [&]() { return m_.bridge->connected(); }));
     }
-    if (mode == QLatin1String("hidden")) {
+    if (mode == QLatin1String("hidden") || mode == QLatin1String("app-quit")) {
         item(tray, "trayOpen")->trigger();
         check("QD12: Open from a cold start shows the window", waitFor(1000, [&]() { return main->isVisible(); }) && !tray->windowHidden());
         spin(200);
-        main->close();
-        check("QD12: then close hides it", !main->isVisible() && tray->windowHidden());
+        if (mode == QLatin1String("hidden")) {
+            main->close();
+            check("QD12: then close hides it", !main->isVisible() && tray->windowHidden());
+        }
     }
     printf("smoke: tray launch %s: %d checks, %d failures, quitting\n", qPrintable(mode), m_checks, m_failures + qmlErrors());
     fflush(stdout);
@@ -334,5 +336,7 @@ void SmokeDriver::runTrayLaunch(const QString &mode) {
         QCoreApplication::exit(3);
     });
     if (mode == QLatin1String("no-tray")) main->close();
+    // A quit from outside the window, as a session ending is, with the window showing
+    else if (mode == QLatin1String("app-quit")) QCoreApplication::quit();
     else item(tray, "trayQuit")->trigger();
 }

@@ -94,7 +94,7 @@ void TrayController::attachMainWindow(QWindow *window)
 
 void TrayController::setHub(TrayHub *hub)
 {
-    if (s_hub && s_hub != hub) s_hub->disconnect(s_instance);
+    if (s_instance && s_hub && s_hub != hub) s_hub->disconnect(s_instance);
     s_hub = hub;
     if (!s_instance) return;
     if (hub) {
@@ -309,7 +309,8 @@ bool TrayController::eventFilter(QObject *watched, QEvent *event)
 {
     switch (event->type()) {
     case QEvent::Quit:
-        // On its way out: Qt 6 closes each window first, and a refusal cancels the quit
+        // On its way out. Qt's documentation lets a window's refusal cancel a quit,
+        // though 6.11 and 5.15 were not seen to: a quit is never turned into a hide
         if (watched == QCoreApplication::instance()) m_quitting = true;
         break;
     case QEvent::Shortcut: {
