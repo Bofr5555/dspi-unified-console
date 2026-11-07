@@ -40,7 +40,7 @@ import se.bofr.dspi.usb.UsbSession
  * `LinkStore.load` never waits for the disk.
  * The USB session is started here, not per Activity (UsbSession.start KDoc),
  * so the device stays open across Activity recreation while the foreground
- * service runs. Demo mode builds a separate fake stack on demand
+ * service runs. Demo mode builds a separate stack on demand
  * ([AppModeController]).
  *
  * DSPi Link (REMOTE, opt-in, off by default): [linkSettings], the
@@ -80,7 +80,7 @@ class DspiApplication : Application() {
         private set
     lateinit var networking: AppNetworkingController
 
-    /** WP AN26: the About table, from the real core in every mode (demo's core is a fake). */
+    /** WP AN26: the About table, from the device stack's core in every mode. */
     lateinit var aboutJson: () -> String
         private set
 

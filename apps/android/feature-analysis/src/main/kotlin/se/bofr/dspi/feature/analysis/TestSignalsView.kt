@@ -60,6 +60,7 @@ import se.bofr.dspi.core.SiggenCaps
 import se.bofr.dspi.core.SiggenConfig
 import se.bofr.dspi.core.SiggenStatus
 import se.bofr.dspi.ui.Caption
+import se.bofr.dspi.ui.LocalDemoMode
 import se.bofr.dspi.ui.MacColors
 import se.bofr.dspi.ui.SectionLabel
 import se.bofr.dspi.ui.SegmentedPicker
@@ -206,7 +207,11 @@ fun TestSignalsContent(state: TestSignalsUiState, actions: TestSignalsActions, m
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Notice(
                     "Signal generator not available",
-                    "The connected firmware does not include the onboard test signal generator. Update the DSPi firmware to use this tool."
+                    if (LocalDemoMode.current) {
+                        "The demo device has no signal generator. Connect a DSPi to use this tool."
+                    } else {
+                        "The connected firmware does not include the onboard test signal generator. Update the DSPi firmware to use this tool."
+                    }
                 )
             }
         } else {

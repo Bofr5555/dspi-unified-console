@@ -20,14 +20,14 @@ enum class AppMode {
     /** The real stack: FfiDspiCore behind DspiBridgeImpl, fed by AndroidUsbSession. */
     DEVICE,
 
-    /** "Demo (no device)": FakeDspiCore.demo() behind its own DspiBridgeImpl; no USB at all. */
+    /** "Demo (no device)": the real core's demo device behind its own DspiBridgeImpl; no USB at all. */
     DEMO,
 
     /** DSPi Link client: a DSPi on a hub (Mac Console, ESP32 bridge), its own core + bridge ([RemoteSession]). */
     REMOTE
 }
 
-/** A running demo stack; [close] tears it down completely (scope, FFI thread, fake core). */
+/** A running demo stack; [close] tears it down completely (scope, FFI thread, core). */
 interface DemoSession {
     val bridge: DspiBridge
 

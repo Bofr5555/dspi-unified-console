@@ -6,6 +6,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import kotlin.math.roundToInt
 import se.bofr.dspi.bridge.DspiBridge
+import se.bofr.dspi.ui.LocalDemoMode
 import se.bofr.dspi.ui.MacColors
 import se.bofr.dspi.ui.settings.AppSettings
 import se.bofr.dspi.ui.settings.AppSettingsStore
@@ -73,7 +74,10 @@ fun SpectrumSettingsTab(bridge: DspiBridge, appSettings: AppSettingsStore) {
             }
         }
         item {
+            val demo = LocalDemoMode.current
             val footer = when {
+                connected && caps != null && !supported && demo ->
+                    "The demo device has no spectrum analyser, so these settings have nothing to apply to until a DSPi is connected."
                 connected && caps != null && !supported ->
                     "The connected firmware has no spectrum analyser, so these settings have nothing to apply to until it is updated."
                 supported ->
