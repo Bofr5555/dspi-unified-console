@@ -75,6 +75,11 @@ internal fun CsSlotEditor(
         LaunchedEffect(slot) { onClose() }
         return
     }
+    // -- WP AN11 -- a display opens its own page (S6): wiring, panel state, settings and pages
+    if (b.type == CsModel.TYPE_DISPLAY) {
+        CsDisplayStack(bridge, coordinator, cs, slot, connected, onClose)
+        return
+    }
     val busy by coordinator.csBusy.collectAsState()
     val editor = remember(drafts, slot) { drafts.editor(CsRules.KIND_BINDING, slot, draftOf(b), cs.slotName(slot)) }
     // The device's copy moved (an Apply re-read, a revert): an untouched draft follows it

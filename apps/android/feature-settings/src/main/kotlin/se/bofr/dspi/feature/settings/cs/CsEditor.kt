@@ -124,7 +124,12 @@ class CsEditor internal constructor(
             var error: String? = null
             try {
                 if (s.draft != s.saved) {
-                    val op = CsRules.bindingOp(slot, s.draft)
+                    // -- WP AN11 -- a display page or the display settings have their own operation
+                    val op = if (kind == CsDisplay.KIND_PAGE || kind == CsDisplay.KIND_DISPLAY) {
+                        CsDisplay.op(kind, slot, s.draft)
+                    } else {
+                        CsRules.bindingOp(slot, s.draft)
+                    }
                     error =
                         if (op == null) "The draft is not a record" else CsRules.applyError(bridge.cs.apply(op), bridge.cs::statusMessage)
                 }
