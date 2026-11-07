@@ -19,6 +19,8 @@ pub mod readout;
 // -- WP CG12 --
 pub mod ring_health;
 pub mod rta;
+// -- WP TM5 --
+pub mod rta_sharing;
 pub mod runtime;
 pub mod state;
 pub mod surfaces;
