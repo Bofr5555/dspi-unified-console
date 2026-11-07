@@ -321,25 +321,11 @@ fun PeqGraphEditorView(
                 .focusRequester(focus)
                 .focusable()
                 .onKeyEvent { e ->
-                    var m = PeqMods.NONE
-                    if (e.isCtrlPressed || e.isMetaPressed) m = m or PeqMods.CTRL
-                    if (e.isAltPressed) m = m or PeqMods.ALT
-                    if (e.isShiftPressed) m = m or PeqMods.SHIFT
+                    // -- WP AN18 -- the map is PeqKeyMap's (tested)
+                    val m = PeqKeyMap.modsOf(e.isCtrlPressed, e.isMetaPressed, e.isAltPressed, e.isShiftPressed)
                     editor.modifiersChanged(m)
                     if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
-                    val key =
-                        when (e.key) {
-                            Key.Delete, Key.Backspace -> PeqKey.DELETE
-                            Key.Escape -> PeqKey.ESCAPE
-                            Key.Tab -> PeqKey.TAB
-                            Key.DirectionLeft -> PeqKey.LEFT
-                            Key.DirectionRight -> PeqKey.RIGHT
-                            Key.DirectionUp -> PeqKey.UP
-                            Key.DirectionDown -> PeqKey.DOWN
-                            Key.A -> PeqKey.A
-                            else -> PeqKey.OTHER
-                        }
-                    editor.keyDown(key, m)
+                    editor.keyDown(PeqKeyMap.keyOf(e.key), m)
                 }.pointerInput(editor, gestures) {
                     var lastClickAt: PeqPoint? = null
                     var lastClickMs = 0L

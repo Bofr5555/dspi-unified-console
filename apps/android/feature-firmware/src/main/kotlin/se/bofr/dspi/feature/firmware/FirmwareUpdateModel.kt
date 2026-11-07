@@ -35,6 +35,9 @@ class FirmwareUpdateModel(
     /** The Update confirmation is open (kept here so it survives rotation, E9). */
     var confirmingUpdate by mutableStateOf(false)
 
+    /** WP AN18: what Export Configuration... came to, shown until dismissed. */
+    var exportMessage by mutableStateOf<String?>(null)
+
     /** Chip of the board most recently seen, so the writing card can name it. */
     var lastSeenChip by mutableStateOf<BootloaderBoard.Chip?>(null)
 
@@ -109,14 +112,15 @@ class FirmwareUpdateModel(
     /**
      * macOS `start()`: commits to the update. The installer writes as soon as a
      * board is ready; [enterBootloader] restarts a connected device into
-     * BOOTSEL (called once, with the user's ENTER_BOOTLOADER confirmation).
+     * BOOTSEL (called once, with the user's ENTER_BOOTLOADER confirmation),
+     * after the firmware guard has read what the running board needs (WP AN18).
      */
     fun start(deviceConnected: Boolean, enterBootloader: () -> Unit) {
         confirmed = true
         installer.installWhenReady()
         if (!deviceConnected || rebootRequested) return
         rebootRequested = true
-        enterBootloader()
+        installer.recordBoardThen(enterBootloader)
     }
 
     /** macOS `resetRun()`: Try Again and Update Another Board. */
@@ -132,6 +136,7 @@ class FirmwareUpdateModel(
             is FirmwareInstallState.Ready -> lastSeenChip = state.board.chip
             is FirmwareInstallState.WaitingForVolume -> lastSeenChip = state.chip
             is FirmwareInstallState.WaitingForPermission -> lastSeenChip = state.chip
+            is FirmwareInstallState.NeedsConfirmation -> lastSeenChip = state.chip
             else -> Unit
         }
     }

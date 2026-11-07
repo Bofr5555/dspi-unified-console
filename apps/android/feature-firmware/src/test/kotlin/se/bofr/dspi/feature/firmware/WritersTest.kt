@@ -27,7 +27,7 @@ class WritersTest {
     @Test fun copiesTheWholeFileInChunksWithProgress() = runTest {
         val vol = volume()
         val fractions = mutableListOf<Double>()
-        DriveFirmwareWriter(vol).write(rp2350, firmwareImage(bytes), Uf2Image.parse(bytes)) { fractions += it }
+        DriveFirmwareWriter(vol).writeCleared(rp2350, firmwareImage(bytes), Uf2Image.parse(bytes)) { fractions += it }
         val out = File(vol.dir, "DSPi-RP2350-v1.1.7.uf2")
         assertArrayEquals(bytes, out.readBytes())
         assertEquals(bytes.size / FirmwareInstaller.WRITE_CHUNK_SIZE, fractions.size)
@@ -67,7 +67,7 @@ class WritersTest {
 
     @Test fun refusesADriveThatIsNotTheBoards() = runTest {
         val e = runCatching {
-            DriveFirmwareWriter(volume("Photos")).write(rp2350, firmwareImage(bytes), Uf2Image.parse(bytes)) {}
+            DriveFirmwareWriter(volume("Photos")).writeCleared(rp2350, firmwareImage(bytes), Uf2Image.parse(bytes)) {}
         }.exceptionOrNull()
         assertEquals(FirmwareInstallError.WrongVolume("RP2350"), e)
     }

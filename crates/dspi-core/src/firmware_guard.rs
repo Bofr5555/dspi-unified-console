@@ -1329,8 +1329,8 @@ mod tests_wp_cg8 {
         for rel in [
             "desktop/qt/firmware/DSPi-RP2040-v1.1.6.uf2",
             "desktop/qt/firmware/DSPi-RP2350-v1.1.6.uf2",
-            "android/feature-firmware/src/main/assets/firmware/DSPi-RP2040-v1.1.6-beta5.uf2",
-            "android/feature-firmware/src/main/assets/firmware/DSPi-RP2350-v1.1.6-beta5.uf2",
+            "android/feature-firmware/src/main/assets/firmware/DSPi-RP2040-v1.1.6.uf2",
+            "android/feature-firmware/src/main/assets/firmware/DSPi-RP2350-v1.1.6.uf2",
         ] {
             let image = std::fs::read(root.join(rel)).unwrap();
             let info = uf2_inspect(image.clone());

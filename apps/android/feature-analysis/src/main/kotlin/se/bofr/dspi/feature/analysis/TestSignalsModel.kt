@@ -4,6 +4,7 @@
 // semantics). UI-free so it is JVM-tested; TestSignalsView.kt draws it.
 package se.bofr.dspi.feature.analysis
 
+import se.bofr.dspi.bridge.SiggenController
 import se.bofr.dspi.core.DspiConstants
 import se.bofr.dspi.core.SiggenCaps
 import se.bofr.dspi.core.SiggenConfig
@@ -353,4 +354,25 @@ fun formatFieldValue(v: Float, decimals: Int): String {
     var s = cFixed(v.toDouble(), decimals)
     if (s.contains('.')) s = s.trimEnd('0').trimEnd('.')
     return if (s == "-0") "0" else s
+}
+
+// -- WP AN18 --
+
+/**
+ * The generator's lifetime against the Test Signals page, as on macOS: it runs
+ * on the device until Stop, a set duration or a fault ends it, whether or not
+ * the page is on screen. Leaving the page only stops polling its status;
+ * coming back polls again, so a generator still running shows as running,
+ * with Stop.
+ */
+object SiggenLifetime {
+    /** The page came on screen. */
+    fun shown(siggen: SiggenController) {
+        siggen.watching = true
+    }
+
+    /** The page left the screen (any reason, a rotation included): nothing is sent to the device. */
+    fun hidden(siggen: SiggenController) {
+        siggen.watching = false
+    }
 }

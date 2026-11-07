@@ -179,7 +179,7 @@ class PicobootTest {
         val writer = PicobootFirmwareWriter(perms) { device }
         val bytes = TestUf2.image(4)
         perms.attached = false // the board has left by the time the error is examined
-        val e = runCatching { writer.write(board, firmwareImage(bytes), Uf2Image.parse(bytes)) {} }.exceptionOrNull()
+        val e = runCatching { writer.writeCleared(board, firmwareImage(bytes), Uf2Image.parse(bytes)) {} }.exceptionOrNull()
         assertEquals(FirmwareInstallError.WriteFailed("the board was disconnected."), e)
         assertTrue(device.closed)
     }
@@ -187,19 +187,19 @@ class PicobootTest {
     @Test fun writerWithoutAnInterfaceFails() = kotlinx.coroutines.test.runTest {
         val writer = PicobootFirmwareWriter(Perms()) { null }
         val bytes = TestUf2.image(1)
-        val e = runCatching { writer.write(board, firmwareImage(bytes), Uf2Image.parse(bytes)) {} }.exceptionOrNull()
+        val e = runCatching { writer.writeCleared(board, firmwareImage(bytes), Uf2Image.parse(bytes)) {} }.exceptionOrNull()
         assertEquals(FirmwareInstallError.WriteFailed("could not open the board's USB interface."), e)
     }
 
     @Test fun writerSucceedsAndDropsExclusivityOnlyOnFailure() = kotlinx.coroutines.test.runTest {
         val device = FakePicobootDevice()
         val bytes = TestUf2.image(4)
-        PicobootFirmwareWriter(Perms()) { device }.write(board, firmwareImage(bytes), Uf2Image.parse(bytes)) {}
+        PicobootFirmwareWriter(Perms()) { device }.writeCleared(board, firmwareImage(bytes), Uf2Image.parse(bytes)) {}
         assertEquals(1, device.resets)
         assertTrue(device.closed)
 
         val failing = FakePicobootDevice(intArrayOf(3, -1, 0, 0))
-        runCatching { PicobootFirmwareWriter(Perms()) { failing }.write(board, firmwareImage(bytes), Uf2Image.parse(bytes)) {} }
+        runCatching { PicobootFirmwareWriter(Perms()) { failing }.writeCleared(board, firmwareImage(bytes), Uf2Image.parse(bytes)) {} }
         assertEquals(2, failing.resets) // initial reset + abandon()
         assertEquals(0, failing.exclusive)
     }

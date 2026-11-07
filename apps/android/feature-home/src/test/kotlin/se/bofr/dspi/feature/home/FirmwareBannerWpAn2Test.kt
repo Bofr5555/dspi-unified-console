@@ -36,7 +36,7 @@ class FirmwareBannerWpAn2Test {
         return HomeModel.firmwareBannerMessage(b)
     }
 
-    private fun older(version: String) = "This device runs firmware $version; DSPi Console expects 1.1.6-beta5. " +
+    private fun older(version: String) = "This device runs firmware $version; DSPi Console expects 1.1.6. " +
         "Features that firmware does not have are hidden. $readOnly"
 
     @Test
@@ -58,23 +58,25 @@ class FirmwareBannerWpAn2Test {
     @Test
     fun wpAn2NewerDecodedFirmware() = runTest {
         assertEquals(
-            "This device runs firmware 1.1.7, which is newer than DSPi Console 1.1.6-beta5. Some of its features may not be shown. $readOnly",
+            "This device runs firmware 1.1.7, which is newer than DSPi Console 1.1.6. Some of its features may not be shown. $readOnly",
             banner("v33_mock")
         )
     }
 
     @Test
     fun wpAn2AFormatItCannotMapDoesNotClaimSettingsAreShown() = runTest {
-        assertEquals("This device runs firmware 1.1.4; DSPi Console expects 1.1.6-beta5. $unread", banner("v15_unmapped"))
+        assertEquals("This device runs firmware 1.1.4; DSPi Console expects 1.1.6. $unread", banner("v15_unmapped"))
         assertEquals(
-            "This device runs firmware 1.1.8, which is newer than DSPi Console 1.1.6-beta5. $unread",
+            "This device runs firmware 1.1.8, which is newer than DSPi Console 1.1.6. $unread",
             banner("v34_unmapped")
         )
     }
 
+    // WP AN18 compares versions on this wire format too (FirmwareBannerWpAn18Test):
+    // only a matching or unreadable version stays silent.
     @Test
-    fun wpAn2TheVersionAloneNeverFiresIt() {
-        for (version in listOf("1.1.6", "1.1.6-beta4", "1.1.6-beta5", "1.1.7", "1.1.5", "")) {
+    fun wpAn2AMatchingVersionNeverFiresIt() {
+        for (version in listOf("1.1.6", "")) {
             assertNull(version, HomeModel.firmwareBannerMessage(DspiConstants.COMPAT_OK, version, HomeModel.EXPECTED_FIRMWARE))
         }
     }

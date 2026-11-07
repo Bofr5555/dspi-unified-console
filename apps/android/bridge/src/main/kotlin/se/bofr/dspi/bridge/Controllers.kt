@@ -1,10 +1,13 @@
 package se.bofr.dspi.bridge
 
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import se.bofr.dspi.core.BufferStats
 import se.bofr.dspi.core.OutputFill
 import se.bofr.dspi.core.RingHealth
 import se.bofr.dspi.core.RtaCapsInfo
+import se.bofr.dspi.core.RtaOwnership
 import se.bofr.dspi.core.RtaSnapshot
 import se.bofr.dspi.core.SiggenCaps
 import se.bofr.dspi.core.SiggenConfig
@@ -39,7 +42,21 @@ interface RtaController {
     fun tapIndex(appChannel: Int): Int
 
     fun availableChannels(tap: Int): List<Int>
+
+    // -- WP AN17 --
+    /**
+     * Who drives the device's analyser (CG5 `rta_get_ownership`): `following`
+     * while another console's configuration is on the device. Null before the
+     * first read, and on a core without one.
+     */
+    val ownership: StateFlow<RtaOwnership?> get() = NO_RTA_OWNERSHIP
+
+    /** Stop following another console; this console's request goes out again (CG5 `rta_take_control`). */
+    fun takeControl() {}
 }
+
+// -- WP AN17 -- the default for controllers that never follow (test doubles)
+private val NO_RTA_OWNERSHIP: StateFlow<RtaOwnership?> = MutableStateFlow<RtaOwnership?>(null).asStateFlow()
 
 /** SiggenController.h — signal generator. */
 interface SiggenController {
@@ -143,6 +160,21 @@ interface CsController {
     suspend fun revert(): Int
 
     fun statusMessage(code: Int): String
+
+    // -- WP AN9 -- CG20's editing rules: no device I/O, run on the FFI thread.
+    // Each answers the core's JSON, `{ok: false, error}` when it refuses.
+
+    /** What a page shows for one record: `{ok, title, summary, rows}` (`DspiCoreApi.csDescribe`). */
+    suspend fun describe(kind: String, slot: Int, draft: String): String
+
+    /** The record after one row's change `{id, value}`: `{ok, draft}` (`DspiCoreApi.csEdit`). */
+    suspend fun edit(kind: String, slot: Int, draft: String, change: String): String
+
+    /** A fresh binding of [component] in [slot], on free pins: `{ok, draft}`. */
+    suspend fun newBinding(slot: Int, component: Int): String
+
+    /** A fresh `ir`, `step` or `page` record: `{ok, draft}`. */
+    suspend fun newRecord(kind: String): String
 }
 
 /** One line of the Interrupt Monitor. */

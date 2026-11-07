@@ -71,6 +71,7 @@ import kotlin.math.min
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import se.bofr.dspi.bridge.DspiBridge
+import se.bofr.dspi.bridge.RtaController
 import se.bofr.dspi.core.DspiConstants
 import se.bofr.dspi.core.RtaCapsInfo
 import se.bofr.dspi.core.RtaSnapshot
@@ -84,8 +85,14 @@ import se.bofr.dspi.ui.settings.AppSettings
 import se.bofr.dspi.ui.settings.AppSettingsStore
 import se.bofr.dspi.ui.settings.LocalAppSettings
 
+/** Shown while another console drives the analyser (Swift `RtaFollowingRow`). */
+const val RTA_FOLLOWING_TEXT = "Following another console"
+
+/** Stops following (Swift `engine.takeControl()`). */
+const val RTA_TAKE_CONTROL_TEXT = "Take control"
+
 /** Subscription ids for the bridge's RtaController (views share one analyser). */
-private val rtaSubscriptionIds = AtomicInteger(0x5A_0000)
+internal val rtaSubscriptionIds = AtomicInteger(0x5A_0000)
 
 /** What the analyser page shows, apart from the frames themselves. */
 data class SpectrumUiState(
@@ -95,7 +102,11 @@ data class SpectrumUiState(
     /** Channels that can be analysed at the selection's tap now. */
     val available: List<Int>,
     val mode: RtaDisplayMode,
-    val prefs: RtaPreferences
+    val prefs: RtaPreferences,
+    /** What is drawn: the device's channels while following another console, else [selection] (AN17). */
+    val drawn: RtaChannelSelection = selection,
+    /** Another console drives the analyser (CG5 ownership). */
+    val following: Boolean = false
 ) {
     val supported: Boolean get() = connected && caps?.supported == true
 }
@@ -122,14 +133,20 @@ fun SpectrumAnalyserView(bridge: DspiBridge, modifier: Modifier = Modifier, stor
     var chosenMode by rememberSaveable { mutableStateOf<RtaDisplayMode?>(null) }
     val mode = chosenMode ?: rtaInitialMode(prefs.dashboardShowGraph, prefs.dashboardShowBars)
     val selection = RtaChannelSelection.resolve(RtaChannelSelection.fromStorageKey(selectionKey)) { rta.availableChannels(it) }
+    // While another console drives, draw the device's channels; keep subscribing with our own (AN17)
+    val ownership by rta.ownership.collectAsState()
+    val followed = RtaChannelSelection.followed(ownership)
+    val drawn = RtaChannelSelection.drawn(selection, followed)
     val state =
         SpectrumUiState(
             connected = bridgeStatus.connected,
             caps = caps,
             selection = selection,
-            available = rta.availableChannels(selection.tap),
+            available = rta.availableChannels(drawn.tap),
             mode = mode,
-            prefs = prefs
+            prefs = prefs,
+            drawn = drawn,
+            following = followed != null
         )
 
     // Watch while on screen (Swift RtaWatch): the newest request picks the tap
@@ -149,23 +166,7 @@ fun SpectrumAnalyserView(bridge: DspiBridge, modifier: Modifier = Modifier, stor
     DisposableEffect(rta) { onDispose { rta.release(subscriptionId) } }
 
     // Frames: adopt each snapshot, then glide at the display rate until settled
-    val render = remember { RtaRenderState() }
-    val tick = remember { mutableLongStateOf(0L) }
-    val channels = remember(selection) { selection.channels.toIntArray() }
-    LaunchedEffect(render, visible, selection, mode, prefs) {
-        if (!visible) return@LaunchedEffect
-        val stepper: (Long) -> Boolean = render::step
-        rta.snapshot.collectLatest { snap ->
-            val tau = rtaFallTau(rtaChannelRefreshInterval(snap, prefs.fftOrder), prefs.smoothing)
-            render.take(snap, rta.caps.value, selection.tap, channels, mode != RtaDisplayMode.BARS, tau)
-            tick.longValue++
-            while (tau > 0) {
-                val moving = withFrameNanos(stepper)
-                tick.longValue++
-                if (!moving) break
-            }
-        }
-    }
+    val (render, tick) = rememberRtaFrames(rta, visible, drawn, mode != RtaDisplayMode.BARS, prefs)
 
     // The side, mode and channel choices only pick what to read: usable read-only (G1)
     WritesExempt {
@@ -184,12 +185,53 @@ fun SpectrumAnalyserView(bridge: DspiBridge, modifier: Modifier = Modifier, stor
                 }
             },
             // The edits compute from the store's latest value, not the composed selection (audit A2).
-            onSide = { tap -> store.update { s -> spectrumSideSwitched(s, tap) { rta.availableChannels(it) } } },
-            onToggle = { ch -> store.update { s -> spectrumChannelToggled(s, ch) { rta.availableChannels(it) } } },
+            // Swift `userChose`: a choice made here takes the analyser back while following
+            onSide = { tap ->
+                store.update { s -> spectrumSideSwitched(s, tap) { rta.availableChannels(it) } }
+                if (rta.ownership.value?.following == true) rta.takeControl()
+            },
+            onToggle = { ch ->
+                store.update { s -> spectrumChannelToggled(s, ch) { rta.availableChannels(it) } }
+                if (rta.ownership.value?.following == true) rta.takeControl()
+            },
             onMode = { chosenMode = it },
+            onTakeControl = { rta.takeControl() },
             modifier = modifier
         )
     }
+}
+
+/**
+ * The analyser frames for [drawn] while [active]: adopt each snapshot, then
+ * glide at the display rate until settled. [curves]: the curves are drawn
+ * (bins for a single channel). Shared by the analyser page and the bar strip.
+ */
+@Composable
+internal fun rememberRtaFrames(
+    rta: RtaController,
+    active: Boolean,
+    drawn: RtaChannelSelection,
+    curves: Boolean,
+    prefs: RtaPreferences
+): Pair<RtaRenderState, LongState> {
+    val render = remember { RtaRenderState() }
+    val tick = remember { mutableLongStateOf(0L) }
+    val channels = remember(drawn) { drawn.channels.toIntArray() }
+    LaunchedEffect(render, active, drawn, curves, prefs) {
+        if (!active) return@LaunchedEffect
+        val stepper: (Long) -> Boolean = render::step
+        rta.snapshot.collectLatest { snap ->
+            val tau = rtaFallTau(rtaChannelRefreshInterval(snap, prefs.fftOrder), prefs.smoothing)
+            render.take(snap, rta.caps.value, drawn.tap, channels, curves, tau)
+            tick.longValue++
+            while (tau > 0) {
+                val moving = withFrameNanos(stepper)
+                tick.longValue++
+                if (!moving) break
+            }
+        }
+    }
+    return render to tick
 }
 
 /** A channel chip: toggle [ch] in the stored dashboard selection of [s] (atomic inside `store.update`). */
@@ -218,7 +260,8 @@ fun SpectrumAnalyserContent(
     onSide: (Int) -> Unit,
     onToggle: (Int) -> Unit,
     onMode: (RtaDisplayMode) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onTakeControl: () -> Unit = {}
 ) {
     Column(modifier.fillMaxSize()) {
         if (!state.supported) {
@@ -236,7 +279,7 @@ fun SpectrumAnalyserContent(
             }
             return@Column
         }
-        val sel = state.selection
+        val sel = state.drawn
         SpectrumHeader(state, channelName, channelColor, onSide, onToggle, onMode)
         HorizontalDivider()
         Box(
@@ -265,7 +308,7 @@ fun SpectrumAnalyserContent(
             }
         }
         HorizontalDivider()
-        RtaStatusBar(state, snapshot, showsBars = !sel.isEmpty && state.mode != RtaDisplayMode.CURVES)
+        RtaStatusBar(state, snapshot, showsBars = !sel.isEmpty && state.mode != RtaDisplayMode.CURVES, onTakeControl = onTakeControl)
     }
 }
 
@@ -280,7 +323,8 @@ private fun SpectrumHeader(
     onToggle: (Int) -> Unit,
     onMode: (RtaDisplayMode) -> Unit
 ) {
-    val sel = state.selection
+    // The device's side and channels while following, so the chips say what is analysed (Swift `displayed`)
+    val sel = state.drawn
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SegmentedPicker(
@@ -336,7 +380,7 @@ private fun RtaBarsGrid(
     channelName: (Int, Int) -> String,
     modifier: Modifier
 ) {
-    val sel = state.selection
+    val sel = state.drawn
     BoxWithConstraints(modifier) {
         // A phone is too narrow for two readable cells side by side
         val preferred = if (maxWidth < 600.dp) 1 else state.prefs.barColumns
@@ -380,7 +424,7 @@ private val axisStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 
 
 /** One channel's third-octave bars (RtaBandsView + RtaBandGrid with labels). */
 @Composable
-private fun RtaBandsCanvas(
+internal fun RtaBandsCanvas(
     render: RtaRenderState,
     slot: Int,
     color: Color,
@@ -581,7 +625,7 @@ private fun buildPaths(cols: RtaCurveColumns, scale: RtaScale, bottom: Float, li
 
 /** Swift `RtaStatusBar`: running, refresh, frames/s, transform, loads, and the one hint that applies. */
 @Composable
-private fun RtaStatusBar(state: SpectrumUiState, snapshot: StateFlow<RtaSnapshot?>, showsBars: Boolean) {
+private fun RtaStatusBar(state: SpectrumUiState, snapshot: StateFlow<RtaSnapshot?>, showsBars: Boolean, onTakeControl: () -> Unit) {
     // The only reader of the per-frame snapshot outside the canvases: its changes recompose this line alone
     val s = snapshot.collectAsState().value
     val running = s?.running == true
@@ -611,6 +655,18 @@ private fun RtaStatusBar(state: SpectrumUiState, snapshot: StateFlow<RtaSnapshot
         }
         when {
             s?.configRejected == true -> Text("Device refused this configuration", style = style.copy(color = MacColors.orange))
+            // -- AN17 -- Swift RtaStatusBar: the hub does not name other sessions yet, so neither does this
+            state.following -> {
+                Text(RTA_FOLLOWING_TEXT, style = style)
+                Text(
+                    RTA_TAKE_CONTROL_TEXT,
+                    style = style.copy(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable(onClick = onTakeControl)
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                )
+            }
             lowest != null ->
                 Text(
                     "shaded bands below ${rtaShortHz(lowest)} Hz need a larger transform size in Settings",

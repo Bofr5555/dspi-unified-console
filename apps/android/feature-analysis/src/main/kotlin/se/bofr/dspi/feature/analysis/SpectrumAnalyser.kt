@@ -21,6 +21,7 @@ import kotlin.math.roundToInt
 import se.bofr.dspi.core.DspiConstants
 import se.bofr.dspi.core.RtaCapsInfo
 import se.bofr.dspi.core.RtaChannelFrame
+import se.bofr.dspi.core.RtaOwnership
 import se.bofr.dspi.core.RtaSnapshot
 
 /**
@@ -245,6 +246,23 @@ data class RtaChannelSelection(val tap: Int, val channels: List<Int>) {
         val NONE = RtaChannelSelection(DspiConstants.RTA_TAP_OUTPUT, emptyList())
 
         /**
+         * Swift `drawn(own:followed:)`: what a spectrum display draws, the
+         * device's channels while another console drives, otherwise the
+         * page's own. Drawing only: views keep subscribing with [own], so
+         * showing a followed selection never takes control (AN17).
+         */
+        fun drawn(own: RtaChannelSelection, followed: RtaChannelSelection?): RtaChannelSelection = followed ?: own
+
+        /**
+         * Swift `RtaEngine.effectiveSelection`: the device's tap and channels
+         * while following another console, null while this console drives (AN17).
+         */
+        fun followed(ownership: RtaOwnership?): RtaChannelSelection? {
+            if (ownership == null || !ownership.following) return null
+            return of(ownership.tap, (0 until DspiConstants.RTA_MAX_CHANNELS).filter { (ownership.mask shr it) and 1 == 1 })
+        }
+
+        /**
          * Moving to the other side: the side being left is remembered, the
          * side being entered comes back as it was left (empty if never used).
          */
@@ -320,6 +338,29 @@ fun rtaVisibleChannels(selection: RtaChannelSelection, hidden: Set<Int>): List<I
 
 /** Swift `bars(...)`: columns used for [count] cells (1...4, never more than the cells). */
 fun rtaBarColumns(count: Int, preferred: Int): Int = min(max(count, 1), min(max(preferred, 1), 4))
+
+/** Limits for the dragged height of a single-channel bar strip cell (Swift `barHeightRange`). */
+val RTA_BAR_HEIGHT_RANGE: ClosedFloatingPointRange<Double> = 64.0..240.0
+
+/**
+ * Swift `SpectrumBarStrip.cellHeight(single:)`: one bar strip cell's bars plus
+ * its label row, in dp. Several channels keep three quarters of a lone
+ * channel's height, so one drag resizes both.
+ */
+fun rtaBarStripCellHeight(preference: Double, single: Boolean): Float {
+    val h = (if (preference.isNaN()) RTA_BAR_HEIGHT_RANGE.start else preference).coerceIn(RTA_BAR_HEIGHT_RANGE)
+    return (if (single) h else (h * 0.75).roundToInt().toDouble()).toFloat()
+}
+
+/**
+ * The bar strip's drag: [dragDp] moves the card's bottom edge, which grows by
+ * every row's cell height, so the preference moves by the drag shared out over
+ * the rows (Swift `pointsPerUnit`), within [RTA_BAR_HEIGHT_RANGE].
+ */
+fun rtaBarStripDraggedHeight(start: Double, dragDp: Float, rows: Int, single: Boolean): Double {
+    val perUnit = max(rows, 1) * (if (single) 1.0 else 0.75)
+    return (start + dragDp / perUnit).coerceIn(RTA_BAR_HEIGHT_RANGE)
+}
 
 /** A label placed on an axis: its text and centre x. */
 data class RtaAxisLabel(val text: String, val x: Float)

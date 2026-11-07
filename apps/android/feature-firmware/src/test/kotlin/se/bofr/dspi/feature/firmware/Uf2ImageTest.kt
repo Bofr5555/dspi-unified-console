@@ -142,12 +142,12 @@ class Uf2ImageTest {
 
     @Test fun bundledAssetsAreTheVerifiedOfficialRelease() {
         assertEquals(
-            "485d7164879bcae3b3dcd98b8de1db458c4933f025fb02630b98cb7f59210362",
-            sha256(Assets.read("DSPi-RP2040-v1.1.6-beta5.uf2"))
+            "69fca42f3d2b2de0859b19b4d9e7ff90b8633581a534ef979bef6175edc18dfe",
+            sha256(Assets.read("DSPi-RP2040-v1.1.6.uf2"))
         )
         assertEquals(
-            "0835f0af8ddfe6e70aa0dfb9a5a71760e1a122927b7a96c8a6f8e3bc7ef2d240",
-            sha256(Assets.read("DSPi-RP2350-v1.1.6-beta5.uf2"))
+            "475360d9f45fb333b351df4bffbab082f4acbc38367ef86dc39a8c7df958fb5b",
+            sha256(Assets.read("DSPi-RP2350-v1.1.6.uf2"))
         )
     }
 
@@ -161,22 +161,22 @@ class Uf2ImageTest {
             assertNull(uf2.targetError(chip))
             assertEquals(Uf2.FLASH_START, uf2.firstAddr)
         }
-        val rp2350 = Uf2Image.parse(Assets.read("DSPi-RP2350-v1.1.6-beta5.uf2"))
+        val rp2350 = Uf2Image.parse(Assets.read("DSPi-RP2350-v1.1.6.uf2"))
         assertTrue("the RP2350 release carries an E10 block", rp2350.skippedE10Block)
         assertEquals(Uf2.FAMILY_RP2350_ARM_S, rp2350.familyId)
-        assertEquals(1216, rp2350.pages.size)
-        val rp2040 = Uf2Image.parse(Assets.read("DSPi-RP2040-v1.1.6-beta5.uf2"))
+        assertEquals(1243, rp2350.pages.size)
+        val rp2040 = Uf2Image.parse(Assets.read("DSPi-RP2040-v1.1.6.uf2"))
         assertEquals(Uf2.FAMILY_RP2040, rp2040.familyId)
-        assertEquals(1079, rp2040.pages.size)
+        assertEquals(1106, rp2040.pages.size)
     }
 
     @Test fun staleOrMissingBundledImagesAreRefused() {
         assertThrows(FirmwareInstallError.ImageMissing::class.java) {
-            FirmwareImage.bundled(BootloaderBoard.Chip.RP2040, listOf("DSPi-RP2350-v1.1.6-beta5.uf2")) { ByteArray(0) }
+            FirmwareImage.bundled(BootloaderBoard.Chip.RP2040, listOf("DSPi-RP2350-v1.1.6.uf2")) { ByteArray(0) }
         }
         val e = assertThrows(FirmwareInstallError.BundledImageStale::class.java) {
             FirmwareImage.bundled(BootloaderBoard.Chip.RP2350, listOf("DSPi-RP2350-v1.1.5.uf2")) { ByteArray(0) }
         }
-        assertEquals(FirmwareInstallError.BundledImageStale("1.1.5", "1.1.6 beta 5"), e)
+        assertEquals(FirmwareInstallError.BundledImageStale("1.1.5", "1.1.6"), e)
     }
 }

@@ -20,7 +20,7 @@ class FirmwareUpdateModelTest {
 
     private fun TestScope.model(locator: FakeBootloaderLocator = FakeBootloaderLocator(), verifier: FirmwareVerifying = StubVerifier(v)) =
         FirmwareUpdateModel(
-            FirmwareInstaller(locator, verifier, picoboot, { bundledImage }, this, StandardTestDispatcher(testScheduler)),
+            FirmwareInstaller(locator, verifier, picoboot, { bundledImage }, FakeGuard(), this, StandardTestDispatcher(testScheduler)),
             bundled = { bundledImage },
             picobootWriter = picoboot
         )
@@ -144,7 +144,7 @@ class FirmwareUpdateModelTest {
         assertEquals("Downgrade", primaryTitle(m, newer))
         assertEquals("1.1.6 beta 4", runningNowLabel(older))
         assertEquals("Unknown (no DSPi connected)", runningNowLabel(FirmwareDeviceInfo(false, null)))
-        assertEquals("Official 1.1.6 beta 5", willInstallLabel(m))
+        assertEquals("Official 1.1.6", willInstallLabel(m))
         assertTrue(confirmationText(m, older).contains("restart into bootloader mode"))
         assertTrue(confirmationText(m, newer).contains("downgrade"))
         assertFalse(confirmationText(m, FirmwareDeviceInfo(false, null)).contains("restart"))

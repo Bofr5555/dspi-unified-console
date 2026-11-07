@@ -21,6 +21,7 @@ import se.bofr.dspi.core.OutputFill
 import se.bofr.dspi.core.RingHealth
 import se.bofr.dspi.core.RtaCapsInfo
 import se.bofr.dspi.core.RtaListener
+import se.bofr.dspi.core.RtaOwnership
 import se.bofr.dspi.core.RtaRequest
 import se.bofr.dspi.core.RtaSnapshot
 import se.bofr.dspi.core.SiggenCaps
@@ -45,6 +46,10 @@ class RtaControllerImpl internal constructor(private val bridge: DspiBridgeImpl)
     private val _snapshot = MutableStateFlow<RtaSnapshot?>(null)
     override val caps: StateFlow<RtaCapsInfo?> = _caps.asStateFlow()
     override val snapshot: StateFlow<RtaSnapshot?> = _snapshot.asStateFlow()
+
+    // -- WP AN17 --
+    private val _ownership = MutableStateFlow<RtaOwnership?>(null)
+    override val ownership: StateFlow<RtaOwnership?> = _ownership.asStateFlow()
 
     private data class Sub(val tap: Int, val mask: Int, val bins: Boolean, val seq: Long)
 
@@ -96,6 +101,9 @@ class RtaControllerImpl internal constructor(private val bridge: DspiBridgeImpl)
         wakePending.set(false)
         bridge.scope.launch(bridge.main) {
             val (caps, snap) = bridge.onFfi { bridge.core.rtaGetCaps() to bridge.core.rtaGetSnapshot() }
+            // -- WP AN17 -- the listener is woken when ownership changes too; a core without it never follows
+            val owner = bridge.onFfi { runCatching { bridge.core.rtaGetOwnership() }.getOrNull() }
+            if (owner != _ownership.value) _ownership.value = owner
             if (caps != _caps.value) {
                 _caps.value = caps
                 pushRequest()
@@ -115,6 +123,14 @@ class RtaControllerImpl internal constructor(private val bridge: DspiBridgeImpl)
 
     override fun release(id: Int) {
         if (subs.remove(id) != null) pushRequest()
+    }
+
+    // -- WP AN17 -- the core wakes the listener, and onWake reads the new ownership
+    override fun takeControl() {
+        bridge.scope.launch(bridge.ffi) {
+            runCatching { bridge.core.rtaTakeControl() }
+            if (wakePending.compareAndSet(false, true)) bridge.post { onWake() }
+        }
     }
 
     // The newest subscription picks the tap; every subscription at that tap adds
@@ -811,6 +827,21 @@ class CsControllerImpl internal constructor(private val bridge: DspiBridgeImpl) 
     override suspend fun revert(): Int {
         if (bridge.writeRefused("cs.revert")) return 0xFF
         return Json.parseObject(run("""{"op":"revert"}"""))?.int("status") ?: 0xFF
+    }
+
+    // -- WP AN9 -- CG20's rules read only what the core holds; a throw (no core) becomes a refusal
+    override suspend fun describe(kind: String, slot: Int, draft: String): String =
+        rules { bridge.core.csDescribe(kind, slot.toLong(), draft) }
+
+    override suspend fun edit(kind: String, slot: Int, draft: String, change: String): String =
+        rules { bridge.core.csEdit(kind, slot.toLong(), draft, change) }
+
+    override suspend fun newBinding(slot: Int, component: Int): String = rules { bridge.core.csNewBinding(slot.toLong(), component) }
+
+    override suspend fun newRecord(kind: String): String = rules { bridge.core.csNewRecord(kind) }
+
+    private suspend fun rules(call: () -> String): String = bridge.onFfi {
+        runCatching(call).getOrElse { Json.write(linkedMapOf("ok" to false, "error" to (it.message ?: "control surfaces unavailable"))) }
     }
 
     /** A PIN_CONFIG_* / CS status code as the macOS Console words it ("" = done). */

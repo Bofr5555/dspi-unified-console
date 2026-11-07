@@ -40,7 +40,7 @@ class FirmwareVersionTest {
         assertNull(FirmwareVersion(1, 1, 6, -1).tagSuffix)
     }
 
-    @Test fun expectedIsTheTrackedConsoleRelease() = assertEquals(FirmwareVersion(1, 1, 6, 5), FirmwareVersion.expected)
+    @Test fun expectedIsTheTrackedConsoleRelease() = assertEquals(FirmwareVersion(1, 1, 6), FirmwareVersion.expected)
 
     @Test fun readsVersionFromAssetName() {
         assertEquals(FirmwareVersion(1, 1, 7), FirmwareImage.versionFromAssetName("DSPi-RP2350-v1.1.7.uf2"))
