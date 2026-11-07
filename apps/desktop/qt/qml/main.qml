@@ -183,6 +183,9 @@ ApplicationWindow {
             // Clearing a page's spectrum keeps the next pages clear too
             rtaChannelPagesShowSpectrum = rtaParse(src).channels.length > 0
         }
+        // -- WP QD19 -- A choice here takes the analyser back from another
+        // console, even one that leaves the selection as it was
+        if (rta.following) rta.takeControl()
     }
     function rtaToggle(ch) {
         var sel = rtaSelection, chans = sel.channels.slice(), i = chans.indexOf(ch)
