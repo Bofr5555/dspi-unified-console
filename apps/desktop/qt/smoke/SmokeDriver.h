@@ -123,6 +123,8 @@ private:
     void testFirmware();
     // -- WP QD28 --
     void testVregCalibration();
+    // -- WP QD19 --
+    void testRtaFollowing();
 
     // Whether a bypass toggle repaints the open channel's graph editor. Leaves
     // bypass as it found it. NotRun fills `why`.
