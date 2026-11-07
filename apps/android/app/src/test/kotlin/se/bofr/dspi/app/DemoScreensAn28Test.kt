@@ -197,7 +197,7 @@ class DemoScreensAn28Test {
             SettingsCategory.GENERAL to "Licences",
             SettingsCategory.ADVANCED to "Channel Names",
             SettingsCategory.GRAPHING to "Graph Appearance",
-            SettingsCategory.SPECTRUM to "The demo device has no spectrum analyser",
+            SettingsCategory.SPECTRUM to "This device reports 120 dB of usable range",
             SettingsCategory.OVERVIEW to "Core Voltage",
             SettingsCategory.SPDIF_INPUT to "S/PDIF Input",
             SettingsCategory.OUTPUT_ASSIGNMENT to "Output 1",
@@ -214,17 +214,45 @@ class DemoScreensAn28Test {
         }
     }
 
+    /** Settle until [until], for what the FFI thread delivers in real time (the analyser, the generator's status). */
+    private fun settleUntil(what: String, until: () -> Boolean) {
+        val end = System.currentTimeMillis() + 15_000
+        while (!until()) {
+            check(System.currentTimeMillis() < end) { "timed out: $what" }
+            shadowOf(Looper.getMainLooper()).idle()
+            rule.runOnUiThread { Snapshot.sendApplyNotifications() }
+            rule.mainClock.advanceTimeBy(100)
+            Thread.sleep(10)
+        }
+    }
+
+    private fun onScreen(text: String) =
+        rule.onAllNodesWithText(text, substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+
+    /** WP CG22: the core's demo device has the generator and the analyser again, as the Kotlin demo had. */
     @Test
-    fun an28AnalysisRendersAndSaysWhatTheDemoDeviceLacks() {
+    @Config(qualifiers = "w400dp-h1600dp-port-mdpi")
+    fun cg22AnalysisShowsTheGeneratorAndTheAnalyserOnTheDemo() {
         start()
         val show = host()
         show { AnalysisScreen(bridge, {}, {}) }
-        assertShows("signal generator", "The demo device has no signal generator. Connect a DSPi to use this tool.")
-        assertAbsent("Update the DSPi firmware")
+        settleUntil("generator caps") { bridge.siggenSupported }
+        assertShows("signal generator", "Signal Generator", "OUTPUTS", "LEVEL", "Start")
+        assertAbsent("Signal generator not available")
+        assertEquals("the generator never starts by itself", 0, ffiCore.siggenGetStatus().state)
+        rule.onAllNodesWithText("All")[0].performClick()
+        settle()
+        rule.onNodeWithText("▶  Start").performClick()
+        settleUntil("playing") { ffiCore.siggenGetStatus().state != 0 }
+        settleUntil("the Stop button") { onScreen("Stop") }
+        rule.onNodeWithText("Stop").performClick()
+        settleUntil("stopped") { ffiCore.siggenGetStatus().state == 0 }
         rule.onAllNodesWithText("Spectrum Analyser")[0].performClick()
         settle()
-        assertShows("analyser", "The demo device has no spectrum analyser. Connect a DSPi to use it.")
-        assertAbsent("Update the firmware")
+        settleUntil("analyser frames") { onScreen("frames/s") }
+        assertShows("analyser", "Running", "frames/s")
+        assertAbsent("Spectrum analyser unavailable")
+        assertTrue("frames arrive", bridge.rta.snapshot.value?.running == true)
         rule.onAllNodesWithText("System Statistics")[0].performClick()
         settle()
         // The core's ring-health numbers and fill_band, which the Kotlin demo only imitated
