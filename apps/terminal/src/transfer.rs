@@ -1241,7 +1241,7 @@ mod tests_wp_tm4 {
     use super::*;
 
     /// Counts what reaches the device that a read-only device must not see.
-    struct Spy(crate::cs_demo::DemoSurfaces, Arc<AtomicUsize>);
+    struct Spy(dspi_transport::FakeDevice, Arc<AtomicUsize>);
 
     impl Spy {
         fn note(&self, opcode: u8, value: u16) {
@@ -1276,13 +1276,21 @@ mod tests_wp_tm4 {
     /// on this build's format, and sends nothing on another.
     #[test]
     fn wp_tm4_cs_import_sends_nothing_to_a_read_only_device() {
-        let mut demo = crate::cs_demo::session().unwrap();
+        let mut demo = Target::Demo
+            .open_session(&dspi_tui::shell::connect::no_prompt)
+            .unwrap();
         let mut doc = preset_file::capture_control_surfaces(&mut demo).unwrap();
-        doc.groups.iter_mut().for_each(|g| g.target_kind = 0);
+        // Review w1e: the CG16 model follows the firmware's `cs_validate_group`
+        // rule 0x14, so an empty group must be all zero, not just kind 0.
+        doc.groups.iter_mut().for_each(|g| {
+            g.target_kind = 0;
+            g.member_mask = 0;
+            g.name.clear();
+        });
         let caps = demo.capabilities().clone();
 
         let writes = Arc::new(AtomicUsize::new(0));
-        let spy = Spy(crate::cs_demo::device(), Arc::clone(&writes));
+        let spy = Spy(dspi_transport::FakeDevice::demo(), Arc::clone(&writes));
         let mut session = Session::new(Box::new(spy), caps.clone()).unwrap();
         assert_eq!(run_cs_import(&mut session, &doc, true, true), exit::OK);
         assert!(
@@ -1293,7 +1301,7 @@ mod tests_wp_tm4 {
         let mut old = caps;
         old.wire_format = 17;
         let writes = Arc::new(AtomicUsize::new(0));
-        let spy = Spy(crate::cs_demo::device(), Arc::clone(&writes));
+        let spy = Spy(dspi_transport::FakeDevice::demo(), Arc::clone(&writes));
         let guarded = ReadOnlyTransport::new(Box::new(spy), BulkReads::Mapped, None, Some(17));
         let mut session = Session::new(Box::new(guarded), old).unwrap();
         assert_ne!(run_cs_import(&mut session, &doc, true, true), exit::OK);
