@@ -51,7 +51,14 @@
 //!   and board names (with their `0x0F`/`0x10` notifications), the output
 //!   latency option and the UART/I2C control-interface configs. With these,
 //!   `dspi_session::probe` finds every feature but the signal generator and
-//!   the spectrum analyser.
+//!   the spectrum analyser, which the next item adds.
+//! - **Analysis** (with [`FakeOptions::analysis`], `fake/analysis.rs`, WP CG22):
+//!   the spectrum analyser (protocol V3: caps, config, band frames one at a
+//!   time and packed, the bin frame, status, control; auto-start on a read and
+//!   auto-off) and the signal generator (caps, config, control, status and its
+//!   notifications), with made-up but plausible levels that move with
+//!   [`crate::clock`]. The generator plays only when a host starts it. Off,
+//!   they stall.
 //! - **Presets:** directory, names, startup, active slot, save/load/delete
 //!   (in memory), the two persistence modes. A load sends `PRESET_LOADED`
 //!   and `BULK_INVALIDATED` (source `PRESET`) and keeps the live master
@@ -72,8 +79,7 @@
 //!   that stalls makes a missing model visible. The firmware ACKs every
 //!   unhandled OUT request on USB except `REQ_EXTENSION`;
 //!   [`FakeOptions::ack_unknown_sets`] does the same. Not modelled at all
-//!   (GETs stall): the signal generator (`0xA4-0xA8`), the
-//!   spectrum analyser (`0x08-0x0F`), subharm meter/headroom/solo, the
+//!   (GETs stall): subharm meter/headroom/solo, the
 //!   band-bypass read (`REQ_GET_BAND_BYPASS`), pin SETs (output pins,
 //!   BCK, MCK, S/PDIF/I2S/ADAT RX pins) and output-pin GETs, the I2S
 //!   clock-pin mode, the S/PDIF RX, ADAT and I2S-slave status reads, the
@@ -117,6 +123,8 @@ use dspi_proto::packets::BuildInfo;
 use dspi_proto::wire::{BulkPacket, WireHeader};
 
 mod features;
+// -- WP CG22 --
+mod analysis;
 // -- WP CG16 --
 mod surfaces;
 pub use surfaces::{SurfaceSeed, surface_seed};
@@ -209,6 +217,11 @@ pub struct FakeOptions {
     /// configuration (`fake/surfaces.rs`). Off is firmware without the feature:
     /// they stall, and a host finds no surfaces. [`FakeDevice::demo`] has it on.
     pub surfaces: bool,
+    // -- WP CG22 --
+    /// Answer the spectrum analyser and the signal generator from a model
+    /// (`fake/analysis.rs`). Off is firmware without them: they stall.
+    /// [`FakeDevice::demo`] has it on.
+    pub analysis: bool,
 }
 
 /// `wLength` is 16 bits.
@@ -304,6 +317,8 @@ impl FakeDevice {
         let options = FakeOptions {
             extensions: true,
             surfaces,
+            // -- WP CG22 --
+            analysis: true,
             ..FakeOptions::default()
         };
         let dev = Self::new(Capture::demo(), options);
@@ -1037,6 +1052,9 @@ struct State {
     // -- WP CG16 --
     /// `None`: this firmware has no control surfaces.
     surfaces: Option<surfaces::Surfaces>,
+    // -- WP CG22 --
+    /// `None`: this firmware has no analyser or generator.
+    analysis: Option<analysis::Analysis>,
     // -- WP QD31 --
     /// [`EXT_FAKE_OUTPUT_SAVE_SIM`]'s byte.
     output_save_sim: u8,
@@ -1066,6 +1084,8 @@ impl State {
         let mut s = Self {
             // -- WP CG16 --
             surfaces: options.surfaces.then(surfaces::Surfaces::new),
+            // -- WP CG22 --
+            analysis: options.analysis.then(analysis::Analysis::new),
             platform: capture.platform,
             factory: capture.bulk.clone(),
             image: capture.bulk,
@@ -1300,6 +1320,8 @@ impl State {
     fn factory_reset(&mut self) -> u8 {
         let factory = self.factory.clone();
         self.replace_body(&factory, &[]);
+        // -- WP CG22 --
+        self.analysis_on_preset();
         self.event(
             nfy::NOTIFY_EVT_BULK_INVALIDATED,
             nfy::PARAM_SRC_FACTORY as u8,
@@ -1333,6 +1355,10 @@ impl State {
         }
         // -- WP CG16 --
         if let Some(r) = self.get_surface(opcode, value) {
+            return r.ok_or(TransportError::Stalled { opcode });
+        }
+        // -- WP CG22 --
+        if let Some(r) = self.get_analysis(opcode, value) {
             return r.ok_or(TransportError::Stalled { opcode });
         }
         if let Some(r) = self.get_feature(opcode, value) {
@@ -1635,6 +1661,8 @@ impl State {
             };
             self.replace_body(&body, keep);
             self.presets.active = slot;
+            // -- WP CG22 --
+            self.analysis_on_preset();
             self.event(nfy::NOTIFY_EVT_PRESET_LOADED, slot);
             self.event(
                 nfy::NOTIFY_EVT_BULK_INVALIDATED,
@@ -1707,6 +1735,9 @@ impl State {
         }
         // -- WP CG16 --
         let ok = if let Some(ok) = self.set_surface(opcode, value, data) {
+            ok
+        // -- WP CG22 --
+        } else if let Some(ok) = self.set_analysis(opcode, data) {
             ok
         } else if let Some(ok) = self.set_feature(opcode, value, data) {
             ok
@@ -2764,11 +2795,12 @@ mod tests_wp_t4 {
     }
 
     /// WP CG16: control surfaces, this test's example until then, have a model
-    /// now. The signal generator is still unmodelled, and firmware without
-    /// surfaces still stalls theirs (`tests_wp_cg16` in `fake/surfaces.rs`).
+    /// now, and firmware without surfaces still stalls theirs (`tests_wp_cg16`
+    /// in `fake/surfaces.rs`). WP CG22: so has the signal generator, on the
+    /// demo; firmware without it stalls it.
     #[test]
     fn wp_t4_unknown_requests_stall() {
-        let mut d = FakeDevice::demo();
+        let mut d = FakeDevice::new(Capture::demo(), FakeOptions::default());
         assert!(matches!(
             d.control_in(op::REQ_SIGGEN_GET_STATUS, 0, 4),
             Err(TransportError::Stalled { opcode }) if opcode == op::REQ_SIGGEN_GET_STATUS

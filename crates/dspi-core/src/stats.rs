@@ -716,12 +716,18 @@ mod tests_wp_c10 {
         assert_eq!(core.siggen_fetch_caps(), Err(DspiError::Disconnected));
     }
 
-    /// The demo device does not model the generator (it stalls): the caps
-    /// say so, and nothing hangs.
+    /// Firmware without the generator (it stalls): the caps say so, and
+    /// nothing hangs. WP CG22: the demo device has one now, so this is the
+    /// demo's capture without the model.
     #[test]
-    fn wp_c10_the_demo_device_has_no_generator() {
+    fn wp_c10_a_device_without_a_generator_says_so() {
         let core = DspiCore::new();
-        core.attach_probed(Box::new(FakeDevice::demo()), "DEMO".into(), 0)
+        let options = dspi_transport::FakeOptions {
+            extensions: true,
+            ..Default::default()
+        };
+        let fake = FakeDevice::new(dspi_transport::Capture::demo(), options);
+        core.attach_probed(Box::new(fake), "DEMO".into(), 0)
             .unwrap();
         assert!(!core.siggen_fetch_caps().unwrap().supported);
         assert!(matches!(
