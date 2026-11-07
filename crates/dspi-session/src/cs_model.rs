@@ -2784,471 +2784,40 @@ pub fn macro_summary(m: &CsMacro, running: Option<u8>) -> String {
 #[allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 pub mod demo {
     use super::*;
-    use dspi_proto::packets::{CsTypeDesc, page_flags};
+    use dspi_transport::fake::surface_seed;
 
-    /// The v1.1.6 type table (control_surfaces.h), so every picker is exercised.
+    /// The capabilities [`FakeDevice::demo`](dspi_transport::FakeDevice::demo)
+    /// reports: the v1.1.6 type table, so every picker is exercised. The
+    /// configuration lives with the device (WP CG16).
     pub fn caps() -> ControlSurfaceCaps {
-        // Action masks per type, as the firmware publishes them.
-        let t = |actions: u16, pin_count: u8, pin_class: u8| CsTypeDesc {
-            actions,
-            pin_count,
-            pin_class,
-        };
-        let bit = act_bit;
-        let button = bit(act::INC)
-            | bit(act::DEC)
-            | bit(act::TOGGLE)
-            | bit(act::SET)
-            | bit(act::TRIGGER)
-            | bit(act::MOMENTARY);
+        let seed = surface_seed();
         ControlSurfaceCaps {
-            caps_version: 20,
-            max_bindings: 16,
-            type_count: 11,
-            noun_count: 79,
-            max_ir_commands: 16,
-            max_groups: 8,
-            max_macros: 8,
-            max_macro_steps: 8,
-            max_pages: 16,
+            caps_version: seed.header.caps_version,
+            max_bindings: seed.header.max_bindings,
+            type_count: seed.header.type_count,
+            noun_count: seed.header.noun_count,
+            max_ir_commands: seed.header.max_ir_commands,
+            max_groups: seed.header.max_groups,
+            max_macros: seed.header.max_macros,
+            max_macro_steps: seed.header.max_macro_steps,
+            max_pages: seed.max_pages,
             // `CS_DISP_MODEL_COUNT`, one past the last model (vendor_commands.c:3045).
-            display_models: 9,
-            types: vec![
-                t(0, 0, 0),
-                t(button, 1, 0),
-                t(bit(act::FOLLOW), 1, 0),
-                t(bit(act::ADJUST), 1, CsTypeDesc::PINCLASS_ADC),
-                t(bit(act::STEP), 2, 0),
-                t(bit(act::IND_EQUALS) | bit(act::IND_ABOVE), 1, 0),
-                t(
-                    bit(act::IND_EQUALS) | bit(act::IND_ABOVE) | bit(act::IND_LEVEL),
-                    1,
-                    0,
-                ),
-                t(button, 1, 0),
-                t(0, 2, 0),
-                // The two aux containers drive nothing themselves.
-                t(0, 1, 0),
-                t(0, 1, 0),
-            ],
+            display_models: seed.model_count,
+            types: seed.header.types,
         }
     }
 
-    /// A noun table shaped like the firmware's: available nouns with their
-    /// kinds, units, ranges and target spaces, and one deliberately absent.
+    /// The demo device's noun table.
     pub fn nouns() -> Vec<CsNounDesc> {
-        let bit = act_bit;
-        let cont = bit(act::ADJUST) | bit(act::STEP) | bit(act::INC) | bit(act::DEC);
-        let ind = bit(act::IND_ABOVE) | bit(act::IND_LEVEL);
-        let boolean = bit(act::TOGGLE) | bit(act::SET) | bit(act::FOLLOW) | bit(act::IND_EQUALS);
-        let enums = bit(act::STEP) | bit(act::INC) | bit(act::DEC) | bit(act::SET);
-        let mut v = vec![CsNounDesc::default(); 79];
-        let mut set = |n: u8, d: CsNounDesc| v[n as usize] = d;
-        set(
-            noun::USER_VOLUME,
-            CsNounDesc {
-                kind: kind::CONTINUOUS,
-                actions: cont | ind,
-                min_q: -60 * 256,
-                max_q: 0,
-                unit: unit::DB,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::MASTER_VOLUME,
-            CsNounDesc {
-                kind: kind::CONTINUOUS,
-                actions: cont | ind,
-                min_q: -80 * 256,
-                max_q: 0,
-                unit: unit::DB,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::USER_MUTE,
-            CsNounDesc {
-                kind: kind::BOOL,
-                actions: boolean,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::PRESET,
-            CsNounDesc {
-                kind: kind::ENUM,
-                enum_count: 10,
-                actions: enums | bit(act::IND_EQUALS),
-                max_q: 9,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::INPUT_SOURCE,
-            CsNounDesc {
-                kind: kind::ENUM,
-                enum_count: 4,
-                actions: enums,
-                max_q: 3,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::CLIP,
-            CsNounDesc {
-                kind: kind::BOOL,
-                actions: bit(act::TRIGGER) | bit(act::IND_EQUALS),
-                ..Default::default()
-            },
-        );
-        set(
-            noun::PREAMP,
-            CsNounDesc {
-                kind: kind::CONTINUOUS,
-                actions: cont,
-                min_q: -40 * 256,
-                max_q: 20 * 256,
-                unit: unit::DB,
-                target_kind: target::INPUT_CH,
-                target_count: 8,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::OUTPUT_GAIN,
-            CsNounDesc {
-                kind: kind::CONTINUOUS,
-                actions: cont | ind,
-                min_q: -60 * 256,
-                max_q: 20 * 256,
-                unit: unit::DB,
-                target_kind: target::OUTPUT_CH,
-                target_count: 8,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::OUTPUT_MUTE,
-            CsNounDesc {
-                kind: kind::BOOL,
-                actions: boolean,
-                target_kind: target::OUTPUT_CH,
-                target_count: 8,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::FILTER_FREQ,
-            CsNounDesc {
-                kind: kind::CONTINUOUS,
-                actions: cont,
-                min_q: 20,
-                max_q: 20000,
-                unit: unit::HZ,
-                target_kind: target::DSP_BAND,
-                target_count: 17,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::LEVEL,
-            CsNounDesc {
-                kind: kind::CONTINUOUS,
-                actions: ind,
-                min_q: -60 * 256,
-                max_q: 0,
-                unit: unit::DB,
-                target_kind: target::DSP_CH,
-                target_count: 17,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::MACRO,
-            CsNounDesc {
-                kind: kind::ENUM,
-                enum_count: 8,
-                actions: bit(act::SET) | bit(act::IND_EQUALS),
-                max_q: 7,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::CPU_LOAD,
-            CsNounDesc {
-                kind: kind::CONTINUOUS,
-                actions: ind,
-                max_q: 100 * 256,
-                unit: unit::PERCENT,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::DISPLAY_PAGE,
-            CsNounDesc {
-                kind: kind::ENUM,
-                enum_count: 16,
-                actions: enums | bit(act::IND_EQUALS),
-                max_q: 15,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::DISPLAY_EDIT,
-            CsNounDesc {
-                kind: kind::BOOL,
-                actions: boolean,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::PAGE_VALUE,
-            CsNounDesc {
-                kind: kind::ENUM,
-                enum_count: 1,
-                actions: bit(act::STEP) | bit(act::INC) | bit(act::DEC) | bit(act::TOGGLE),
-                ..Default::default()
-            },
-        );
-        // Caps v14 to v20, as control_surfaces_nouns.c publishes them: the
-        // subharm, tube and limiter families, the two aux nouns addressing
-        // binding slots, and the limiter's read-only gain reduction.
-        let q8 = |x: i16| x * 256;
-        // The firmware's CS_CONT_RW, CS_BOOL_RW and CS_ENUM_RW masks.
-        let cont_rw = cont | bit(act::SET) | ind;
-        let bool_rw = boolean | bit(act::MOMENTARY);
-        let enum_rw = enums | bit(act::IND_EQUALS);
-        set(
-            noun::SUBHARM,
-            CsNounDesc {
-                kind: kind::BOOL,
-                actions: bool_rw,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::SUBHARM_SELECT,
-            CsNounDesc {
-                kind: kind::ENUM,
-                enum_count: 3,
-                actions: enum_rw,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::TUBE_TYPE,
-            CsNounDesc {
-                kind: kind::ENUM,
-                enum_count: 17,
-                actions: enum_rw,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::AUX,
-            CsNounDesc {
-                kind: kind::BOOL,
-                actions: bool_rw,
-                target_kind: target::AUX,
-                target_count: 16,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::AUX_LEVEL,
-            CsNounDesc {
-                kind: kind::CONTINUOUS,
-                actions: cont_rw,
-                max_q: q8(100),
-                unit: unit::PERCENT,
-                target_kind: target::AUX,
-                target_count: 16,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::LIMITER,
-            CsNounDesc {
-                kind: kind::BOOL,
-                actions: bool_rw,
-                target_kind: target::OUTPUT_CH,
-                target_count: 8,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::LIMITER_THRESHOLD,
-            CsNounDesc {
-                kind: kind::CONTINUOUS,
-                actions: cont_rw,
-                min_q: q8(-30),
-                max_q: 0,
-                unit: unit::DB,
-                target_kind: target::OUTPUT_CH,
-                target_count: 8,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::LIMITER_RELEASE,
-            CsNounDesc {
-                kind: kind::CONTINUOUS,
-                actions: cont_rw,
-                min_q: 10,
-                max_q: 1000,
-                unit: unit::MS_LOG,
-                target_kind: target::OUTPUT_CH,
-                target_count: 8,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::LIMITER_LINK,
-            CsNounDesc {
-                kind: kind::ENUM,
-                enum_count: 5,
-                actions: enum_rw,
-                target_kind: target::OUTPUT_CH,
-                target_count: 8,
-                ..Default::default()
-            },
-        );
-        set(
-            noun::LIMITER_GR,
-            CsNounDesc {
-                kind: kind::CONTINUOUS,
-                actions: ind,
-                max_q: q8(30),
-                unit: unit::DB,
-                target_kind: target::OUTPUT_CH,
-                target_count: 8,
-                ..Default::default()
-            },
-        );
-        // ADAT_ACTIVE is left with a zero action mask: the firmware's way of
-        // saying the platform does not have it.
-        v
+        surface_seed().nouns
     }
 
-    /// A device holding one of nearly everything: an encoder, a button, a pot,
-    /// an LED, an IR receiver with a learned key, a display with two pages, two
-    /// groups and a macro.
+    /// The demo device's configuration: one of nearly everything, an encoder, a
+    /// button, a pot, an LED, an IR receiver with a learned key, a display with
+    /// two pages, two groups and a macro.
     pub fn data() -> CsData {
         let caps = caps();
-        let mut bindings = vec![CsBinding::default(); caps.max_bindings as usize];
-        bindings[0] = CsBinding {
-            component: ty::ENCODER,
-            noun: noun::USER_VOLUME,
-            action: act::STEP,
-            flags: flag::ACCEL,
-            gpio: [10, 11],
-            ..Default::default()
-        };
-        bindings[1] = CsBinding {
-            component: ty::BUTTON,
-            noun: noun::USER_MUTE,
-            action: act::TOGGLE,
-            gpio: [16, GPIO_UNUSED],
-            value: 1,
-            ..Default::default()
-        };
-        bindings[2] = CsBinding {
-            component: ty::POT,
-            noun: noun::OUTPUT_GAIN,
-            action: act::ADJUST,
-            gpio: [26, GPIO_UNUSED],
-            target: 1,
-            ..Default::default()
-        };
-        bindings[3] = CsBinding {
-            component: ty::IR,
-            gpio: [15, GPIO_UNUSED],
-            ..Default::default()
-        };
-        bindings[4] = CsBinding {
-            component: ty::DISPLAY,
-            gpio: [2, 3],
-            index: 6,
-            ..Default::default()
-        };
-        // Two auxiliary outputs and a button that switches the first. They
-        // sit high so the first free slot stays where it was.
-        bindings[10] = CsBinding {
-            component: ty::AUX_OUT,
-            gpio: [27, GPIO_UNUSED],
-            off_delay: encode_delay(60),
-            ..Default::default()
-        };
-        bindings[11] = CsBinding {
-            component: ty::AUX_PWM,
-            gpio: [28, GPIO_UNUSED],
-            base_bright: 80,
-            value: encode_value(50.0, unit::PERCENT),
-            extras: aux_extras::BOOT_ON,
-            ..Default::default()
-        };
-        bindings[12] = CsBinding {
-            component: ty::BUTTON,
-            noun: noun::AUX,
-            action: act::TOGGLE,
-            gpio: [19, GPIO_UNUSED],
-            target: 10,
-            value: 1,
-            ..Default::default()
-        };
-        let mut names = vec![String::new(); caps.max_bindings as usize];
-        names[0] = "Volume Knob".into();
-        names[10] = "Amp Trigger".into();
-        let mut ir = vec![IrCommand::default(); caps.max_ir_commands as usize];
-        ir[0] = IrCommand {
-            noun: noun::USER_VOLUME,
-            action: act::INC,
-            protocol: 1,
-            code: 0x20DF_40BF,
-            ..Default::default()
-        };
-        let mut groups = vec![CsGroup::default(); caps.max_groups as usize];
-        groups[0] = CsGroup {
-            target_kind: target::OUTPUT_CH,
-            member_mask: 0b0011,
-            name: "Front Pair".into(),
-        };
-        let mut macros = vec![CsMacro::default(); caps.max_macros as usize];
-        macros[0] = CsMacro {
-            name: "Night".into(),
-            step_count: 2,
-            steps: {
-                let mut s = vec![CsMacroStep::default(); caps.max_macro_steps as usize];
-                s[0] = CsMacroStep {
-                    noun: noun::INPUT_SOURCE,
-                    action: act::SET,
-                    value: 1,
-                    ..Default::default()
-                };
-                s[1] = CsMacroStep {
-                    noun: noun::PRESET,
-                    action: act::SET,
-                    value: 2,
-                    pre_delay: 50,
-                    ..Default::default()
-                };
-                s
-            },
-        };
-        let mut pages = vec![CsDisplayPage::default(); caps.max_pages as usize];
-        pages[0] = CsDisplayPage {
-            noun: noun::USER_VOLUME,
-            target: 0,
-            index: 0,
-            flags: page_flags::ACTIVE | page_flags::LARGE,
-        };
-        pages[1] = CsDisplayPage {
-            noun: noun::PRESET,
-            target: 0,
-            index: 0,
-            flags: page_flags::ACTIVE,
-        };
+        let seed = surface_seed();
         let status = CsStatusPacket {
             last_status: 0,
             last_slot: 0,
@@ -3261,24 +2830,16 @@ pub mod demo {
             ir_cmd_status: vec![0; caps.max_ir_commands as usize],
         };
         CsData {
-            nouns: nouns(),
-            bindings,
-            names,
-            ir,
-            groups,
-            macros,
-            display_cfg: CsDisplayCfg {
-                mode: 1,
-                home_page: 0,
-                dwell: 30,
-                overlay_hold: 20,
-                brightness: 0,
-                flags: dspi_proto::packets::display_flags::EDIT_GATED,
-                edit_timeout: 100,
-            },
+            nouns: seed.nouns,
+            bindings: seed.bindings,
+            names: seed.names,
+            ir: seed.ir,
+            groups: seed.groups,
+            macros: seed.macros,
+            display_cfg: seed.display_cfg,
             max_pages: caps.max_pages,
             model_count: caps.display_models,
-            pages,
+            pages: seed.pages,
             status,
             ext: CsExtStatusPacket {
                 max_groups: caps.max_groups,
@@ -4243,5 +3804,52 @@ mod tests_wp_s4 {
             control_i2c_sda: None,
             preset_names: &[],
         }
+    }
+}
+
+/// WP CG16: the fixture is the device.
+#[cfg(test)]
+mod tests_wp_cg16 {
+    use super::*;
+    use dspi_transport::FakeDevice;
+
+    fn session(device: FakeDevice) -> Session {
+        let mut t: Box<dyn dspi_transport::Transport> = Box::new(device);
+        let caps = crate::probe::probe(t.as_mut()).unwrap();
+        Session::new(t, caps).unwrap()
+    }
+
+    #[test]
+    fn wp_cg16_the_demo_device_reads_as_the_fixture_says() {
+        let mut s = session(FakeDevice::demo());
+        let want = demo::data();
+        let got = CsData::read(&mut s).unwrap();
+        assert_eq!(got.nouns, want.nouns);
+        assert_eq!(got.bindings, want.bindings);
+        assert_eq!(got.names, want.names);
+        assert_eq!(got.ir, want.ir);
+        assert_eq!(got.groups, want.groups);
+        for (got, want) in got.macros.iter().zip(&want.macros) {
+            assert_eq!(
+                (&got.name, got.active_steps()),
+                (&want.name, want.active_steps())
+            );
+        }
+        assert_eq!(got.display_cfg, want.display_cfg);
+        assert_eq!(got.pages, want.pages);
+        assert_eq!(got.status, want.status);
+        assert_eq!(got.ext, want.ext);
+        assert_eq!(got.display_status, want.display_status);
+        let (probed, caps) = (s.capabilities().cs.clone().unwrap(), demo::caps());
+        assert_eq!(probed.caps_version, caps.caps_version);
+        assert_eq!(probed.max_pages, caps.max_pages);
+        assert_eq!(probed.display_models, caps.display_models);
+        assert_eq!(probed.types, caps.types);
+    }
+
+    #[test]
+    fn wp_cg16_a_stock_device_has_no_surfaces() {
+        let s = session(FakeDevice::demo_without_surfaces());
+        assert!(s.capabilities().cs.is_none());
     }
 }

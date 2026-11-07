@@ -28,6 +28,10 @@
 #include <QQuickWindow>
 #include <QTimer>
 #include <QUrl>
+// -- WP CG16 --
+extern "C" {
+#include "dspi_core.h"
+}
 #include <QVariant>
 // -- WP QD30 --
 #include <QCursor>
@@ -85,6 +89,8 @@ void SmokeDriver::run() {
     testReconnect();
     // -- WP QD1 --
     testCsRefusals();
+    // -- WP CG16 --
+    testCsPages();
     testIdleAndCost();
     m_failures += g_qmlErrors;
     printf("smoke: %d checks, %d failures (%d QML errors)\n", m_checks, m_failures, g_qmlErrors);
@@ -353,16 +359,26 @@ void SmokeDriver::testControlSurfaces() {
     check("error reaches the status message", cs->statusMessage(0xFF) == bad.value("error").toString());
     const QVariantMap next = cs->apply({ { "op", "refreshStatus" } });
     check("the old error is gone", cs->statusMessage(0xFF) != bad.value("error").toString());
-    if (!cs->supported()) {
-        printf("smoke: NOT EXERCISED: the demo device has no control surfaces (fake.rs): model, bindings, save, learn\n");
-        check("refused with its reason", next.value("error").toString().contains(QLatin1String("not supported")));
-        check("save refused", cs->save() != 0);
-        return;
-    }
+    // -- WP CG16 -- The demo has surfaces, so the polls have something to follow
+    check("the demo device has surfaces", cs->supported());
     check("a good op", next.value("ok").toBool());
+    const QVariantMap slot0 = cs->model().value("bindings").toList().value(0).toMap();
+    check("CG16: the model has the demo's encoder", slot0.value("type").toInt() == 4);
+
+    // The display poll, once a second: the demo moves on a page per read
+    const QVariant firstPage = cs->displayState().value("page");
     cs->setWatchDisplay(true);
-    spin(1200);
+    check("CG16: the display poll runs", cs->watchDisplay());
+    check("CG16: the poll sees the page change", waitFor(2500, [cs, firstPage]() { return cs->displayState().value("page") != firstPage; }));
     cs->setWatchDisplay(false);
+    check("CG16: the display poll stops", !cs->watchDisplay());
+
+    // The macro poll: nothing is pushed, so it follows the run to its end
+    const auto running = [cs]() { return cs->model().value("ext").toMap().value("macroRunning").toInt(); };
+    check("CG16: a macro fires", cs->apply({ { "op", "macroFire" }, { "index", 0 } }).value("ok").toBool());
+    check("CG16: it is running", running() == 0);
+    check("CG16: the poll sees it end", waitFor(2000, [running]() { return running() == 0xFF; }));
+
     check("save", cs->save() == 0);
     check("revert", cs->revert() == 0);
 }
@@ -475,10 +491,10 @@ void SmokeDriver::testWindows() {
 }
 
 // -- WP QD1 --
-// A refused cs_apply shows its `error`. The demo device has no control surfaces,
-// so no card is ever drawn: this calls the real views' and the real save bar's
-// code from QML and reads the text they would show. A device status code, the
-// polls and the rendered cards need real surfaces, so they aren't exercised here.
+// A refused cs_apply shows its reason: this calls the real views' and the real
+// save bar's code from QML and reads the text they would show. The core's own
+// refusals have no device status, the demo held busy (dspi_cs_demo_busy) has one,
+// and a disconnected device reaches every caller. WP CG16 draws the cards.
 void SmokeDriver::testCsRefusals() {
     section("control surfaces: a refusal shows its error (QD1)");
     auto *cs = m_.cs;
@@ -499,10 +515,13 @@ void SmokeDriver::testCsRefusals() {
     printf("smoke: QD1 unknown op shows: %s\n", qPrintable(unknown));
     check("QD1: an unknown op shows the core's reason", unknown.contains(QLatin1String("no-such-op")));
     check("QD1: and not the generic text", unknown != generic);
+    // -- WP CG16 -- A save is refused by the device now, not for having no surfaces
+    check("CG16: the demo holds", dspi_cs_demo_busy(b->core(), true) == 0);
     const QString refused = shown(QStringLiteral("save"));
     printf("smoke: QD1 save shows: %s\n", qPrintable(refused));
-    check("QD1: a refused save shows the core's reason", !refused.isEmpty() && refused != generic);
-    check("QD1: the reply carries that reason", cs->apply({ { "op", "save" } }).value("error").toString() == refused);
+    check("QD1: a refused save shows the device's reason", refused == cs->statusMessage(0x1B) && refused != generic);
+    check("QD1: the reply carries that status", cs->apply({ { "op", "save" } }).value("status").toInt() == 0x1B);
+    check("CG16: the demo lets go", dspi_cs_demo_busy(b->core(), false) == 0);
 
     // No device: refused before the core, still with a reason
     b->disconnectDevice();
@@ -524,12 +543,13 @@ void SmokeDriver::testCsRefusals() {
 }
 
 // The callers that act on a reply: the real view and page, given a live slot,
-// remote button or macro by hand, as the demo's model is empty.
+// remote button or macro by hand. -- WP CG16 -- With no device the model is empty
+// and every caller is refused alike, which the demo itself no longer does.
 void SmokeDriver::testCsCallerRefusals() {
     section("control surfaces: each caller shows the reason (QD1)");
-    // Settle the model first: a change makes the view reseed from the (empty) model
-    m_.cs->apply({ { "op", "refreshStatus" } });
-    spin(50);
+    // No spin until the harness is done: the demo comes back by itself
+    m_.bridge->disconnectDevice();
+    check("CG16: disconnected for the harness", !m_.bridge->connected());
     QQmlComponent c(m_.engine);
     c.setData(R"qml(
 import QtQuick 2.15
@@ -604,7 +624,7 @@ Item {
     QMetaObject::invokeMethod(h, "run", Q_RETURN_ARG(QVariant, ret));
     const QVariantMap out = ret.toMap();
     const QString generic = m_.cs->statusMessage(0x7F);
-    // The demo refuses them all as firmware without control surfaces
+    // No device: refused alike, with this reason
     const QString reason = m_.cs->apply({ { "op", "macroFire" }, { "index", 0 } }).value("error").toString();
     printf("smoke: QD1 expected reason: %s\n", qPrintable(reason));
     check("QD1: the core gave a reason", !reason.isEmpty() && reason != generic);
@@ -622,10 +642,13 @@ Item {
     check("QD1: a refused aux switch reports it", out.value("auxStateCode").toInt() != 0);
     check("QD1: a refused aux level reports it", out.value("auxLevelCode").toInt() != 0);
     delete h;
+    m_.bridge->rescan();
+    check("CG16: back on the demo", m_.bridge->connected());
+    spin(100);
 }
 
-// The real settings window's context and save bar. On the demo csDirty is never
-// true, so save() itself doesn't reach this: its one branch calls this function.
+// The real settings window's context and save bar, with the device refusing.
+// -- WP CG16 -- save() and revert() themselves come by in testCsPages.
 void SmokeDriver::testSaveBarRefusal() {
     section("settings: a refused save (QD1)");
     QQuickWindow *settings = nullptr;
@@ -639,6 +662,7 @@ void SmokeDriver::testSaveBarRefusal() {
     const int mode = ctx->property("masterVolumeMode").toInt();
     QMetaObject::invokeMethod(ctx, "edit", Q_ARG(QVariant, QStringLiteral("masterVolumeMode")), Q_ARG(QVariant, mode ? 0 : 1));
     check("QD1: the draft is dirty", ctx->property("dirty").toBool() && ctx->property("edited").toBool());
+    dspi_cs_demo_busy(m_.bridge->core(), true);   // -- WP CG16 --
     QVariant saved;
     QMetaObject::invokeMethod(ctx, "saveControlSurfaces", Q_RETURN_ARG(QVariant, saved));
     spin(250);
@@ -657,6 +681,7 @@ void SmokeDriver::testSaveBarRefusal() {
     check("QD1: the revert is refused", !reverted.toBool());
     check("QD1: the bar says so", text->property("text").toString().startsWith(QLatin1String("Not reverted: ")));
     check("QD1: the draft stays", ctx->property("edited").toBool() && ctx->property("dirty").toBool());
+    dspi_cs_demo_busy(m_.bridge->core(), false);   // -- WP CG16 --
     QMetaObject::invokeMethod(ctx, "revert");
     spin(200);
     check("QD1: revert drops the draft and the reason", !ctx->property("dirty").toBool() && ctx->property("saveError").toString().isEmpty());
@@ -925,4 +950,243 @@ void SmokeDriver::testIdleAndCost() {
     }
     printf("smoke: stateChanged with the main window's bindings: %.1f ms\n", double(t.nsecsElapsed()) / 20.0 / 1e6);
     fflush(stdout);
+}
+
+// -- WP CG16 --
+// The control-surface pages as a person meets them on the demo device: drawn
+// cards, real clicks through to the device and back, the save bar's csDirty lines
+// and the slider that goes back when the device refuses.
+static QQuickItem *firstItem(QQuickItem *root, const std::function<bool(QQuickItem *)> &match) {
+    for (QQuickItem *c : root->childItems()) {
+        if (c->isVisible() && match(c)) return c;
+        if (QQuickItem *found = firstItem(c, match)) return found;
+    }
+    return nullptr;
+}
+
+static void collect(QQuickItem *root, const char *type, QList<QQuickItem *> *out) {
+    for (QQuickItem *c : root->childItems()) {
+        if (c->isVisible() && QLatin1String(c->metaObject()->className()).startsWith(QLatin1String(type))) out->append(c);
+        collect(c, type, out);
+    }
+}
+
+static QList<QQuickItem *> visibleOf(QQuickWindow *w, const char *type) {
+    QList<QQuickItem *> out;
+    collect(w->contentItem(), type, &out);
+    return out;
+}
+
+static QPointF centreOf(QQuickItem *item, double xPart = 0.5) {
+    return item->mapToScene(QPointF(item->width() * xPart, item->height() / 2));
+}
+
+// Run `code` in the scope of a real view, as its own bindings do
+static QVariant inScope(QObject *view, const QString &code) {
+    QQmlExpression e(qmlContext(view), view, code);
+    const QVariant v = e.evaluate();
+    if (e.hasError()) printf("smoke: CG16 %s: %s\n", qPrintable(code), qPrintable(e.error().toString()));
+    return v;
+}
+
+void SmokeDriver::testCsPages() {
+    section("control surfaces: the pages on the demo device (CG16)");
+    auto *cs = m_.cs;
+    auto *b = m_.bridge;
+    QQuickWindow *settings = nullptr;
+    for (QQuickWindow *w : root()->findChildren<QQuickWindow *>())
+        if (w->property("currentPage").isValid() && w->metaObject()->indexOfMethod("navigate(QVariant)") >= 0) settings = w;
+    QObject *ctx = settings ? settings->findChild<QObject *>(QStringLiteral("settingsContext")) : nullptr;
+    QObject *bar = settings ? settings->findChild<QObject *>(QStringLiteral("saveBarReason")) : nullptr;
+    check("CG16: the window, its context and the bar", ctx && bar);
+    if (!ctx || !bar) return;
+    settings->resize(1000, 1500);
+    settings->setVisible(true);
+    const auto open = [&](const char *id) {
+        QMetaObject::invokeMethod(settings, "navigate", Q_ARG(QVariant, QString::fromLatin1(id)));
+        spin(400);
+    };
+    const auto binding = [cs](int slot) { return cs->model().value("bindings").toList().value(slot).toMap(); };
+    const auto cardOf = [&](int slot) -> QQuickItem * {
+        for (QQuickItem *c : visibleOf(settings, "CsCard"))
+            if (c->property("slot").toInt() == slot && c->property("b").isValid()) return c;
+        return nullptr;
+    };
+    const auto buttonOf = [](QQuickItem *card, const QString &what, const char *prop) {
+        return firstItem(card, [&](QQuickItem *i) {
+            return QLatin1String(i->metaObject()->className()).startsWith(QLatin1String("CsButton")) && i->property(prop).toString() == what;
+        });
+    };
+    const auto viewOf = [&]() -> QQuickItem * {
+        const QList<QQuickItem *> views = visibleOf(settings, "CsControlsView");
+        return views.isEmpty() ? nullptr : views.first();
+    };
+    const auto expand = [&](QQuickItem *card) {
+        clickAt(settings, card->mapToScene(QPointF(16, 24)));
+        spin(250);
+    };
+
+    // Every page draws its cards from the device's records
+    open("surfaces");
+    check("CG16: the page has the controls' cards", visibleOf(settings, "CsCard").size() == 6);
+    settings->grabWindow().save(m_out + QStringLiteral("/cs-controls.png"));
+    open("groups");
+    check("CG16: a group's card", !visibleOf(settings, "CsCard").isEmpty());
+    settings->grabWindow().save(m_out + QStringLiteral("/cs-groups.png"));
+    open("macros");
+    check("CG16: a macro's card", !visibleOf(settings, "CsCard").isEmpty());
+    settings->grabWindow().save(m_out + QStringLiteral("/cs-macros.png"));
+    open("aux");
+    check("CG16: two outputs' cards", visibleOf(settings, "CsCard").size() == 2);
+    settings->grabWindow().save(m_out + QStringLiteral("/cs-aux.png"));
+
+    // A click opens a card
+    open("surfaces");
+    QQuickItem *card = cardOf(12);
+    check("CG16: the aux button's card", card != nullptr);
+    if (!card) return;
+    expand(card);
+    check("CG16: a click on its header opens it", card->property("expanded").toBool());
+    settings->grabWindow().save(m_out + QStringLiteral("/cs-card-open.png"));
+    expand(card);
+    check("CG16: another closes it", !card->property("expanded").toBool());
+
+    // A click removes a control; the bar's revert brings it back: csDirty in revert()
+    const auto clickRemove = [&](QQuickItem *c) {
+        QQuickItem *trash = buttonOf(c, QStringLiteral("trash"), "icon");
+        check("CG16: the card has its remove button", trash != nullptr);
+        if (trash) clickAt(settings, centreOf(trash));
+        spin(250);
+    };
+    clickRemove(card);
+    check("CG16: a click removes the control", binding(12).value("type").toInt() == 0);
+    check("CG16: the device is unsaved", cs->unsaved());
+    check("CG16: the bar knows", ctx->property("csDirty").toBool() && ctx->property("dirty").toBool());
+    QMetaObject::invokeMethod(ctx, "revert");
+    spin(250);
+    check("CG16: revert() restores it", binding(12).value("type").toInt() == 1);
+    check("CG16: and nothing is unsaved", !cs->unsaved() && !ctx->property("csDirty").toBool());
+    check("CG16: without a complaint", ctx->property("saveError").toString().isEmpty());
+
+    // The bar's save keeps it: csDirty in save()
+    card = cardOf(12);
+    if (!card) { check("CG16: the card came back", false); return; }
+    clickRemove(card);
+    check("CG16: removed again", binding(12).value("type").toInt() == 0 && cs->unsaved());
+    QMetaObject::invokeMethod(ctx, "save");
+    spin(250);
+    check("CG16: save() writes it", !cs->unsaved() && !ctx->property("edited").toBool());
+    QMetaObject::invokeMethod(ctx, "revert");
+    spin(250);
+    check("CG16: a revert keeps what was saved", binding(12).value("type").toInt() == 0);
+
+    // A status code reaches the card: Apply on a pin the encoder holds
+    QQuickItem *view = viewOf();
+    card = cardOf(1);
+    check("CG16: the view and the button's card", view && card);
+    if (!view || !card) return;
+    expand(card);
+    inScope(view, QStringLiteral("(function () { var d = cs.copy(drafts[1]); d.gpio0 = 10; setDraft(1, d) })()"));
+    spin(100);
+    QQuickItem *apply = buttonOf(card, QStringLiteral("Apply"), "text");
+    check("CG16: the card has its Apply", apply != nullptr);
+    if (apply) clickAt(settings, centreOf(apply));
+    spin(250);
+    const QString applied = inScope(view, QStringLiteral("messages[1]")).toString();
+    printf("smoke: CG16 Apply on a held pin shows: %s\n", qPrintable(applied));
+    check("CG16: Apply shows the device's refusal", applied == cs->statusMessage(0x02));
+    check("CG16: the device kept its binding", binding(1).value("gpio0").toInt() == 16);
+    inScope(view, QStringLiteral("seed()"));
+    spin(50);
+    expand(card);
+
+    // A device that is busy: the remove and the bar are refused, and say so
+    QQuickItem *held = cardOf(0);
+    check("CG16: the encoder's card", held != nullptr);
+    if (!held) return;
+    dspi_cs_demo_busy(b->core(), true);
+    clickRemove(held);
+    check("CG16: a refused remove keeps the control", binding(0).value("type").toInt() == 4 && cardOf(0) != nullptr);
+    check("CG16: the card says why", inScope(view, QStringLiteral("refusals[0]")).toString() == cs->statusMessage(0x1B));
+    const int offBefore = cs->auxLive().value(QStringLiteral("state")).toList().value(10).toInt();
+    check("CG16: an aux switch during a revert is refused", cs->apply({ { "op", "auxState" }, { "index", 10 }, { "on", offBefore ? 0 : 1 } }).value("status").toInt() == 0x1B);
+    check("CG16: and not recorded", cs->auxLive().value(QStringLiteral("state")).toList().value(10).toInt() == offBefore);
+    dspi_cs_demo_busy(b->core(), false);
+    check("CG16: a name alone makes it unsaved", cs->apply({ { "op", "name" }, { "index", 5 }, { "name", "Held" } }).value("ok").toBool() && cs->unsaved());
+    check("CG16: and undoing it does not", cs->apply({ { "op", "name" }, { "index", 5 }, { "name", "" } }).value("ok").toBool() && !cs->unsaved());
+    const QVariantMap edit { { "type", 1 }, { "noun", 2 }, { "action", 4 }, { "gpio0", 5 }, { "gpio1", 255 }, { "value", 1 } };
+    check("CG16: an edit makes it unsaved", cs->apply({ { "op", "binding" }, { "index", 5 }, { "binding", edit } }).value("ok").toBool() && cs->unsaved());
+    spin(50);
+    dspi_cs_demo_busy(b->core(), true);
+    QMetaObject::invokeMethod(ctx, "save");
+    spin(100);
+    check("CG16: save() is refused, and stays dirty", ctx->property("csDirty").toBool());
+    check("CG16: the bar says so", bar->property("text").toString().startsWith(QLatin1String("Not saved: ")));
+    QMetaObject::invokeMethod(ctx, "revert");
+    spin(100);
+    check("CG16: revert() is refused too", ctx->property("csDirty").toBool());
+    check("CG16: the bar says so", bar->property("text").toString().startsWith(QLatin1String("Not reverted: ")));
+    dspi_cs_demo_busy(b->core(), false);
+    QMetaObject::invokeMethod(ctx, "revert");
+    spin(250);
+    check("CG16: let go, the revert goes through", !cs->unsaved() && ctx->property("saveError").toString().isEmpty());
+
+    // The aux page: a real switch and real sliders
+    open("aux");
+    view = viewOf();
+    QQuickItem *dimmer = cardOf(11);
+    QQuickItem *trigger = cardOf(10);
+    check("CG16: both outputs' cards", view && dimmer && trigger);
+    if (!view || !dimmer || !trigger) return;
+    const auto live = [cs](const char *what, int slot) { return cs->auxLive().value(QLatin1String(what)).toList().value(slot).toInt(); };
+    const auto sliderIn = [](QQuickItem *c) {
+        return firstItem(c, [](QQuickItem *i) { return QLatin1String(i->metaObject()->className()).startsWith(QLatin1String("StyledSlider")); });
+    };
+    expand(dimmer);
+    QQuickItem *slider = sliderIn(dimmer);
+    check("CG16: the dimmable output has its slider", slider != nullptr);
+    if (slider) {
+        check("CG16: at the device's level", qAbs(slider->property("value").toDouble() - 50) < 1);
+        clickAt(settings, centreOf(slider, 0.8));
+        spin(200);
+        printf("smoke: CG16 slider %.1f, device %d\n", slider->property("value").toDouble(), live("level", 11));
+        check("CG16: a click moves the output", slider->property("value").toDouble() > 60 && live("level", 11) > 60 * 256);
+    }
+    expand(dimmer);
+
+    expand(trigger);
+    QQuickItem *toggle = firstItem(trigger, [](QQuickItem *i) { return QLatin1String(i->metaObject()->className()).contains(QLatin1String("Switch")) && i->property("checked").isValid() && i->metaObject()->indexOfSignal("toggled()") >= 0; });
+    check("CG16: the on/off output has its switch", toggle != nullptr);
+    if (toggle) {
+        clickAt(settings, centreOf(toggle));
+        spin(200);
+        check("CG16: a click switches it", live("state", 10) == 1 && toggle->property("checked").toBool());
+    }
+
+    // The slider that goes back: the draft says dimmable, the device on/off, so
+    // the device refuses the level
+    inScope(view, QStringLiteral("(function () { var d = cs.copy(drafts[10]); d.type = cs.typeAuxPwm; setDraft(10, d) })()"));
+    spin(250);
+    slider = sliderIn(trigger);
+    check("CG16: the draft shows a slider", slider != nullptr);
+    if (slider) {
+        const QPointF at = centreOf(slider, 0.8);
+        sendMouse(settings, QEvent::MouseMove, at);
+        sendMouse(settings, QEvent::MouseButtonPress, at, Qt::LeftButton);
+        spin(50);
+        check("CG16: the press moves the slider", slider->property("value").toDouble() > 60);
+        sendMouse(settings, QEvent::MouseButtonRelease, at, Qt::LeftButton);
+        spin(200);
+        check("CG16: refused, the slider goes back", slider->property("value").toDouble() < 1);
+        check("CG16: and the card says why", inScope(view, QStringLiteral("refusals[10]")).toString() == cs->statusMessage(0x26));
+    }
+    settings->grabWindow().save(m_out + QStringLiteral("/cs-aux-open.png"));
+    inScope(view, QStringLiteral("seed()"));
+    settings->setVisible(false);
+
+    // A fresh demo for what follows
+    b->disconnectDevice();
+    b->rescan();
+    check("CG16: back on a fresh demo", b->connected());
+    spin(100);
 }

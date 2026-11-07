@@ -91,7 +91,6 @@ mod stdio {
 }
 
 // -- WP TM10 --
-mod cs_demo;
 mod doctor;
 mod transfer;
 

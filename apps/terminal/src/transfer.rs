@@ -519,18 +519,6 @@ pub(crate) fn cmd_cs(target: &Target, flags: &[&str], json: bool) -> u8 {
     }
 }
 
-/// A session for control-surface work. The demo device gets simulated surfaces
-/// here ([`crate::cs_demo`]); everything else is what it says it is.
-fn connect_cs(target: &Target) -> Result<Session, u8> {
-    if *target != Target::Demo {
-        return connect(target);
-    }
-    crate::cs_demo::session().map_err(|e| {
-        eprintln!("dspi: {e}");
-        exit::TRANSPORT
-    })
-}
-
 fn cs_failure(e: &CsFileError) -> u8 {
     eprintln!("dspi: {e}");
     match e {
@@ -540,7 +528,7 @@ fn cs_failure(e: &CsFileError) -> u8 {
 }
 
 fn cs_export(target: &Target, path: &str, json: bool) -> u8 {
-    let mut session = match connect_cs(target) {
+    let mut session = match connect(target) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -573,7 +561,7 @@ fn cs_import(target: &Target, path: &str, flags: &[&str], json: bool) -> u8 {
         Ok(d) => d,
         Err(e) => return usage_error(&e.to_string()),
     };
-    let mut session = match connect_cs(target) {
+    let mut session = match connect(target) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -649,14 +637,18 @@ mod wp_tm10_tests {
     use super::*;
     use dspi_transport::FakeDevice;
 
+    fn session_on(device: FakeDevice) -> Session {
+        let mut t: Box<dyn dspi_transport::Transport> = Box::new(device);
+        let caps = dspi_session::probe::probe(t.as_mut()).unwrap();
+        Session::new(t, caps).unwrap()
+    }
+
     fn demo() -> Session {
-        crate::cs_demo::session().unwrap()
+        session_on(FakeDevice::demo())
     }
 
     fn plain_demo() -> Session {
-        let mut t: Box<dyn dspi_transport::Transport> = Box::new(FakeDevice::demo());
-        let caps = dspi_session::probe::probe(t.as_mut()).unwrap();
-        Session::new(t, caps).unwrap()
+        session_on(FakeDevice::demo_without_surfaces())
     }
 
     const QT: &str = include_str!("../../../tests/fixtures/preset/qt-core-v32.dspipreset");
@@ -1174,7 +1166,7 @@ mod wp_tm10_tests {
         .unwrap();
 
         let core = dspi_core::DspiCore::new();
-        core.open_transport(Box::new(crate::cs_demo::device()), "demo".into(), 0)
+        core.open_transport(Box::new(FakeDevice::demo()), "demo".into(), 0)
             .unwrap();
         core.cs_fetch().unwrap();
         let snap: serde_json::Value = serde_json::from_str(&core.cs_snapshot()).unwrap();
