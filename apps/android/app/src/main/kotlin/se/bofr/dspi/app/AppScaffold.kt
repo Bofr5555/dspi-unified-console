@@ -41,6 +41,7 @@ import se.bofr.dspi.feature.graph.GraphScreen
 import se.bofr.dspi.feature.home.ChannelScreen
 import se.bofr.dspi.feature.home.HomeScreen
 import se.bofr.dspi.feature.matrix.MatrixMixerView
+import se.bofr.dspi.feature.onboarding.OnboardingSource
 import se.bofr.dspi.feature.presets.PresetsScreen
 import se.bofr.dspi.feature.settings.SettingsScreen
 import se.bofr.dspi.feature.tools.OutputLimiterView
@@ -83,6 +84,8 @@ fun AppScaffold(
     bootloaderLocator: BootloaderLocator? = null,
     onRemoteAction: (RemoteAction) -> Unit = {},
     onConnectNetwork: () -> Unit = {},
+    // -- WP AN19 -- the core's onboarding data; null: no first-run pages (tests)
+    onboarding: OnboardingSource? = null,
     overlay: @Composable () -> Unit = {}
 ) {
     // The IME stays out, as with the Scaffold's default insets
@@ -90,7 +93,10 @@ fun AppScaffold(
         Column(Modifier.fillMaxSize().padding(padding)) {
             ConnectionStripBar(strip, onEnterDemo, onExitDemo, onRequestPermission, onRemoteAction, onConnectNetwork)
             key(bridge) {
-                CompositionLocalProvider(LocalDemoMode provides (strip is ConnectionStrip.Demo)) {
+                CompositionLocalProvider(
+                    LocalDemoMode provides (strip is ConnectionStrip.Demo),
+                    LocalOnboarding provides onboarding // -- WP AN19 --
+                ) {
                     DspiNavHost(bridge, bootloaderLocator, remote = strip is ConnectionStrip.Remote)
                 }
             }
@@ -129,7 +135,11 @@ private fun DspiRoutesHost(bridge: DspiBridge, bootloaderLocator: BootloaderLoca
         screen(nav, DspiRoutes.SETTINGS) { _, go, back -> SettingsScreen(bridge, go, back) }
         screen(nav, DspiRoutes.ANALYSIS) { _, go, back -> AnalysisScreen(bridge, go, back) }
         screen(nav, DspiRoutes.FIRMWARE) { _, go, back -> FirmwareRoute(bridge, go, back, bootloaderLocator, remote) }
+        // -- WP AN19 --
+        screen(nav, DspiRoutes.GETTING_STARTED) { _, go, back -> GettingStartedRoute(bridge, go, back) }
+        screen(nav, DspiRoutes.WHATS_NEW) { _, _, back -> WhatsNewRoute(back) }
     }
+    OnboardingAtLaunch(nav) // -- WP AN19 --
 }
 
 @Composable

@@ -80,4 +80,52 @@ class DataStoreAppSettingsStoreTest {
         DataStoreAppSettingsStore(FakeStore(failWrite = true), scope, legacy)
         assertFalse(legacy.deleted)
     }
+
+    // -- WP AN19 --
+    @Test
+    fun wpAn19_aNewInstallIsWalkedThroughSetup() = runTest {
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val store = FakeStore()
+        val st = DataStoreAppSettingsStore(store, scope, FakeLegacy(fail = false))
+        assertTrue(st.settingsLoaded.value)
+        assertFalse(st.settings.value.onboardingSetupDone)
+        assertEquals(
+            "recorded, so the next start does not read as an existing user",
+            false,
+            store.value.value[AppSettingsFields.ONBOARDING_SETUP_DONE]
+        )
+    }
+
+    @Test
+    fun wpAn19_someoneWhoUsedTheAppBeforeSkipsSetup() = runTest {
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val store = FakeStore()
+        store.updateData { p -> p.toMutablePreferences().also { it[AppSettingsFields.LEGACY_IMPORTED] = true } }
+        val st = DataStoreAppSettingsStore(store, scope, FakeLegacy(fail = false))
+        assertTrue(st.settings.value.onboardingSetupDone)
+        assertEquals(true, store.value.value[AppSettingsFields.ONBOARDING_SETUP_DONE])
+    }
+
+    @Test
+    fun wpAn19_aStoredAnswerIsKeptAndTheSeedSurvivesAFailedWrite() = runTest {
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val store = FakeStore()
+        store.updateData { p ->
+            p.toMutablePreferences().also {
+                it[AppSettingsFields.LEGACY_IMPORTED] = true
+                it[AppSettingsFields.ONBOARDING_SETUP_DONE] = false
+            }
+        }
+        assertFalse("mid-setup stays mid-setup", DataStoreAppSettingsStore(store, scope).settings.value.onboardingSetupDone)
+
+        val readOnly = FakeStore()
+        readOnly.updateData { p -> p.toMutablePreferences().also { it[AppSettingsFields.LEGACY_IMPORTED] = true } }
+        readOnly.failWrite = true
+        assertTrue("in memory for this run", DataStoreAppSettingsStore(readOnly, scope).settings.value.onboardingSetupDone)
+    }
+
+    @Test
+    fun wpAn19_inMemoryStoreIsLoadedAtOnce() {
+        assertTrue(InMemoryAppSettingsStore().settingsLoaded.value)
+    }
 }

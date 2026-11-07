@@ -68,6 +68,10 @@ class DataStoreAppSettingsStore(
 ) : AppSettingsStore {
     private val state = MutableStateFlow(AppSettings())
     override val settings: StateFlow<AppSettings> = state.asStateFlow()
+
+    // -- WP AN19 --
+    private val loadedState = MutableStateFlow(false)
+    override val settingsLoaded: StateFlow<Boolean> = loadedState.asStateFlow()
     private val lock = Any()
     private var loaded = false
 
@@ -80,6 +84,8 @@ class DataStoreAppSettingsStore(
                 log("reading the app settings failed; using the defaults", it)
                 null
             }
+            // -- WP AN19 -- decided on what was there before this start's own writes
+            val onboardingSeed = prefs?.let { AppSettingsFields.onboardingSeed(it) }
             if (prefs != null && legacy != null && prefs[AppSettingsFields.LEGACY_IMPORTED] != true) {
                 // Delete the interim files only once they were read and the import was written (C2).
                 val files = runCatching { legacy.read() }.onFailure { log("reading the interim preference files failed", it) }.getOrNull()
@@ -91,7 +97,14 @@ class DataStoreAppSettingsStore(
                         }.onFailure { log("importing the interim preference files failed", it) }
                 }
             }
+            // -- WP AN19 --
+            if (onboardingSeed != null) {
+                runCatching { store.edit { it[AppSettingsFields.ONBOARDING_SETUP_DONE] = onboardingSeed } }
+                    .onSuccess { prefs = it }
+                    .onFailure { log("recording the onboarding state failed", it) }
+            }
             val stored = AppSettingsFields.read(prefs ?: emptyPreferences())
+                .let { s -> if (onboardingSeed != null) s.copy(onboardingSetupDone = onboardingSeed) else s }
             val merged = synchronized(lock) {
                 loaded = true
                 early.fold(stored) { s, f -> f(s) }.also {
@@ -99,6 +112,7 @@ class DataStoreAppSettingsStore(
                     state.value = it
                 }
             }
+            loadedState.value = true // -- WP AN19 --
             if (merged != stored) write(stored, merged)
         }
     }
@@ -156,6 +170,17 @@ internal class SharedPreferencesLegacyFiles(private val context: Context) : Lega
 internal object AppSettingsFields {
     /** Not a macOS key: set once the interim local stores were imported. */
     val LEGACY_IMPORTED = booleanPreferencesKey("dspiLegacyPreferencesImported")
+
+    // -- WP AN19 --
+    /** Qt's key, not a macOS one (macOS keeps completed step ids). */
+    val ONBOARDING_SETUP_DONE = booleanPreferencesKey("onboarding.setupDone")
+
+    /**
+     * What [ONBOARDING_SETUP_DONE] starts as, from the store as this start found it; null when it
+     * is already set. Any key means the app ran before onboarding existed (every start leaves at
+     * least [LEGACY_IMPORTED]): that user is not walked through setup (macOS existing-user cohort).
+     */
+    fun onboardingSeed(first: Preferences): Boolean? = if (first[ONBOARDING_SETUP_DONE] != null) null else first.asMap().isNotEmpty()
 
     private class Field<T : Any>(
         val key: Preferences.Key<T>,
@@ -229,7 +254,10 @@ internal object AppSettingsFields {
         i("rtaPeakDecayDBs", { it.rtaPeakDecayDBs }, { copy(rtaPeakDecayDBs = it) }),
         s("sidebarVolumeMode", { it.sidebarVolumeMode }, { copy(sidebarVolumeMode = it) }),
         s("settingsSelectedTab", { it.settingsSelectedTab }, { copy(settingsSelectedTab = it) }),
-        b("tubeModellerAdvanced", { it.tubeModellerAdvanced }, { copy(tubeModellerAdvanced = it) })
+        b("tubeModellerAdvanced", { it.tubeModellerAdvanced }, { copy(tubeModellerAdvanced = it) }),
+        // -- WP AN19 --
+        b(ONBOARDING_SETUP_DONE.name, { it.onboardingSetupDone }, { copy(onboardingSetupDone = it) }),
+        s("whatsNew.lastShownVersion", { it.whatsNewLastShownVersion }, { copy(whatsNewLastShownVersion = it) })
     )
 
     /** The macOS key names, in declaration order (for tests). */

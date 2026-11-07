@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import se.bofr.dspi.ui.DspiRoutes
 
 /** Brand colours of the links in the About table, by stable id, as on macOS. Words and URLs are the table's. */
 private val LINK_COLORS = mapOf(
@@ -44,12 +45,13 @@ private fun UriHandler.opener(url: String?): (() -> Unit)? {
 /** The About page's own sub-pages: null = About, [LICENSES] = overview, else a bundled text's asset name. */
 private const val LICENSES = "licenses"
 
+/** [onNavigate] opens a top-level route (WP AN19: the Help rows). */
 @Composable
-fun GeneralSettingsTab() {
+fun GeneralSettingsTab(onNavigate: (String) -> Unit = {}) {
     var page by rememberSaveable { mutableStateOf<String?>(null) }
     BackHandler(enabled = page != null) { page = if (page == LICENSES) null else LICENSES }
     when (val p = page) {
-        null -> AboutPage(onOpenLicenses = { page = LICENSES })
+        null -> AboutPage(onOpenLicenses = { page = LICENSES }, onNavigate = onNavigate)
         LICENSES -> LicensesView(onOpenText = { page = it.asset })
         else -> {
             val text = (THIRD_PARTY.mapNotNull { it.text } + GPL3).firstOrNull { it.asset == p }
@@ -59,7 +61,7 @@ fun GeneralSettingsTab() {
 }
 
 @Composable
-private fun AboutPage(onOpenLicenses: () -> Unit) {
+private fun AboutPage(onOpenLicenses: () -> Unit, onNavigate: (String) -> Unit) {
     val context = LocalContext.current
     val uri = LocalUriHandler.current
     val version = remember {
@@ -127,6 +129,13 @@ private fun AboutPage(onOpenLicenses: () -> Unit) {
                         SettingRow(credit.name, credit.what, onClick = uri.opener(credit.url))
                     }
                 }
+            }
+        }
+        // -- WP AN19 -- Android has no Help menu: macOS Help > Getting Started and What's New live here
+        item {
+            SettingsSection("Help") {
+                SettingRow("Getting Started", onClick = { onNavigate(DspiRoutes.GETTING_STARTED) })
+                SettingRow("What's New", onClick = { onNavigate(DspiRoutes.WHATS_NEW) })
             }
         }
         item {
