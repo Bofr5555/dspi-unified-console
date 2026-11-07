@@ -3504,7 +3504,10 @@ pub fn run(mut live: Live, session: &mut Session) -> io::Result<()> {
     live.refresh_devices();
     let perf = live.perf;
     live.refresh_presets(session);
-    let mut terminal = ratatui::init();
+    // -- WP TM26 -- An error, not a panic, when there is no terminal to take
+    // over (hw-1 D1).
+    let mut terminal = ratatui::try_init()
+        .map_err(|e| io::Error::new(e.kind(), format!("cannot open the terminal: {e}")))?;
     let mut last_poll = Instant::now() - perf.meter_interval;
 
     let result = (|| -> io::Result<()> {

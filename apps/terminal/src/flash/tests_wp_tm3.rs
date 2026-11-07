@@ -96,6 +96,13 @@ impl Transport for Spy {
     fn caps(&self) -> TransportCaps {
         self.dev.caps()
     }
+    // -- WP TM25 -- A hub where another console holds the device.
+    fn lock(&mut self, _reason: &str, _timeout: std::time::Duration) -> TResult<()> {
+        if self.world.lock().unwrap().refuses_lock {
+            return Err(TransportError::Locked);
+        }
+        Ok(())
+    }
 }
 
 /// What happens to the board while a prompt waits.
@@ -118,6 +125,8 @@ struct Board {
     vreg_default: Option<u8>,
     /// The running device, for a test to change it during a prompt.
     remote: Option<FakeRemote>,
+    /// -- WP TM25 -- The device lock is refused, as by a hub.
+    refuses_lock: bool,
     opened: u32,
     extra_drive: Option<PathBuf>,
 }
@@ -157,6 +166,7 @@ impl Fake {
                 capture: Capture::demo(),
                 vreg_default: Some(V1_15),
                 remote: None,
+                refuses_lock: false,
                 opened: 0,
                 extra_drive: None,
             })),
@@ -177,6 +187,11 @@ impl Fake {
 
     fn vreg(self, code: u8) -> Self {
         self.board.lock().unwrap().vreg_default = Some(code);
+        self
+    }
+
+    fn refuses_lock(self) -> Self {
+        self.board.lock().unwrap().refuses_lock = true;
         self
     }
 
@@ -841,4 +856,45 @@ fn wp_tm3_only_the_line_ending_comes_off_an_answer() {
     assert_eq!(without_line_ending("x"), "x");
     assert_eq!(without_line_ending(" x \n"), " x ");
     assert_eq!(without_line_ending("x\n\n"), "x\n");
+}
+
+// -- WP TM25 --
+
+#[test]
+fn wp_tm25_a_refused_reboot_is_said_at_once() {
+    let force = Request {
+        force: true,
+        ..Request::default()
+    };
+    // Writable and read-only, with and without a file: nothing is sent, and
+    // nobody waits for a drive.
+    for wire in [None, Some(33)] {
+        let fake = |name: &str| {
+            let w = Fake::new(&format!("{name}_{wire:?}")).refuses_lock();
+            match wire {
+                Some(wire) => w.image(image_as(wire)),
+                None => w,
+            }
+        };
+        let mut w = fake("refused_flash");
+        assert_eq!(flash(&mut w, &plain(), &["--force"]), exit::TRANSPORT);
+        nothing_done(&w);
+        assert_eq!(w.pauses, 0, "{wire:?}: waited for a drive");
+
+        let mut w = fake("refused_reboot");
+        assert_eq!(run(&usb(), &force, None, &mut w), exit::TRANSPORT);
+        nothing_done(&w);
+        assert_eq!(w.pauses, 0, "{wire:?}: waited for a drive");
+    }
+
+    assert_eq!(
+        not_rebooted(&DspiError::Locked),
+        (
+            exit::TRANSPORT,
+            "the board was not rebooted: another console is applying changes. Nothing was \
+             changed"
+                .to_owned()
+        )
+    );
+    assert_eq!(not_rebooted(&DspiError::Denied).0, exit::REJECTED);
 }

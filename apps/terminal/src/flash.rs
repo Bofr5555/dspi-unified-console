@@ -692,7 +692,7 @@ fn onto_device(
         ));
     }
     let back = Back::Known(target.pinned(&device.serial));
-    enter_bootloader(&device);
+    enter_bootloader(req, &device)?;
     let drive = wait_for_drive(req, world)?;
     write(req, image, &drive, &passed)?;
     confirm(target, req, image, &drive, &passed, &back, world)
@@ -701,9 +701,29 @@ fn onto_device(
 /// The reboot, and the connection let go of so nothing holds the device while
 /// it leaves. There is no answer to wait for and a failure looks the same as
 /// success: only the drive arriving says, and without one nothing gets written.
-fn enter_bootloader(device: &Device) {
-    let _ = device.core.enter_bootloader();
+/// A reboot refused before it was sent (the device lock, WP CG24) is said at
+/// once instead of waiting for a drive that cannot come (WP TM25).
+fn enter_bootloader(req: &Request, device: &Device) -> Result<(), u8> {
+    let sent = device.core.enter_bootloader();
     device.core.disconnect();
+    sent.map_err(|e| {
+        let (code, message) = not_rebooted(&e);
+        req.fail(code, &message)
+    })
+}
+
+/// The exit code and the words for a reboot refused before it was sent.
+fn not_rebooted(e: &DspiError) -> (u8, String) {
+    // Like a read-only refusal, not worth a retry when denied; another
+    // console's lock or a lost link may pass later.
+    let code = match e {
+        DspiError::Denied | DspiError::ReadOnly => exit::REJECTED,
+        _ => exit::TRANSPORT,
+    };
+    (
+        code,
+        format!("the board was not rebooted: {e}. Nothing was changed"),
+    )
 }
 
 /// `dspi flash` with no file: the board in its bootloader, for what comes next.
@@ -724,7 +744,7 @@ fn reboot_only(target: &Target, req: &Request, world: &mut dyn World) -> Result<
     if !req.force && !yes(world.ask("Reboot this board into its bootloader? [y/N] ")) {
         return Err(req.fail(exit::REJECTED, "not confirmed. Nothing was changed"));
     }
-    enter_bootloader(&device);
+    enter_bootloader(req, &device)?;
     let drive = wait_for_drive(req, world)?;
     let path = printable(&drive.path);
     req.result(

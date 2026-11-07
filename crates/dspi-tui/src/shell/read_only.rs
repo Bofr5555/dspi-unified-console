@@ -394,12 +394,24 @@ impl Transport for ReadOnlyTransport {
     /// A hub's device lock holds other clients off, which is itself a change,
     /// and is taken only around a write. Refused first, so such a flow fails
     /// before its first step.
-    fn lock(&mut self, _reason: &str, _timeout: Duration) -> Result<()> {
+    ///
+    /// -- WP TM25 -- Except under [`BulkReads::AsIs`] (`dspi raw`, `dspi
+    /// flash`): the core above sees the device's own image, so it knows the
+    /// device is read-only and refuses a write's lock itself; the one it takes
+    /// there is the bootloader reboot's (WP CG24), which must still work.
+    fn lock(&mut self, reason: &str, timeout: Duration) -> Result<()> {
+        if self.bulk == BulkReads::AsIs {
+            return self.inner.lock(reason, timeout);
+        }
         Err(self.refuse())
     }
 
-    /// Nothing to release: [`Self::lock`] never took anything.
-    fn unlock(&mut self) {}
+    /// Only what [`Self::lock`] passed on.
+    fn unlock(&mut self) {
+        if self.bulk == BulkReads::AsIs {
+            self.inner.unlock();
+        }
+    }
 }
 
 /// A read-only device's notifications, with every `PARAM_CHANGED` turned into

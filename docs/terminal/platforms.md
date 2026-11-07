@@ -1,36 +1,45 @@
 # Platform support
 
-*Last verified 2026-07-27 against `release/v1.1.5` @ `9776c2f`; Windows and
-Linux x86_64 rows re-checked 2026-11-06 at `bofr-main` @ `af001ec`.*
+*The `dspi` terminal client (`apps/terminal/`, package `dspi-term`). Updated
+2026-11-07 for this repository at `fd3d6219`. The earlier version of this page
+described DSPi-Terminal before the merge; its runs are kept below, marked as
+such.*
 
 ## Status
 
-| Platform | Target triple | Type-checks | Linked | Tests run | Run on hardware |
-|---|---|---:|---:|---:|---:|
-| macOS (Apple silicon) | `aarch64-apple-darwin` | yes | yes | yes | **yes** |
-| macOS (Intel) | `x86_64-apple-darwin` | yes | no | no | no |
-| Linux x86_64 | `x86_64-unknown-linux-gnu` | yes | yes | yes | no |
-| Windows (MSVC) | `x86_64-pc-windows-msvc` | yes | yes (cargo-xwin) | no | no |
-| Windows (MinGW) | `x86_64-pc-windows-gnu` | yes | yes | yes, under Wine | no |
-| Linux, Raspberry Pi 3/4/5 | `aarch64-unknown-linux-gnu` | yes | no | no | no |
-| Linux, older Pi | `armv7-unknown-linux-gnueabihf` | yes | no | no | no |
+What this repository's checks do today, per target. The steps are in
+`ci/check.sh` and run in containers (`ci/run.sh`).
 
-Both Windows builds were cross-linked on Linux and smoke-tested under Wine 11
-with no device: `--help`, `--version`, `list` (and `--json`), `doctor`, and
-the interface itself on the example device (`dspi --fixture`) in a pty, which
-draws, takes keys and restores the screen on `q`. The whole test suite of the
-MinGW build passes under Wine. None of that touches USB, so WinUSB itself is
-still unverified on real Windows.
+| Platform | Target triple | Built by | Tests run | Hardware pass, this tree |
+|---|---|---|---|---|
+| Linux x86_64 | `x86_64-unknown-linux-gnu` | `--step terminal` (release binary, runs `--version`), `--step test` | yes, `--step test` | open (TM13, on the K340) |
+| Windows (MinGW) | `x86_64-pc-windows-gnu` | `--step windows-gnu` (the whole workspace) | no | no |
+| Windows (MSVC) | `x86_64-pc-windows-msvc` | `--step windows-msvc` (cargo-xwin, with `dspi-core` and `dspi-capi`) | no | no |
+| macOS | `aarch64-apple-darwin`, `x86_64-apple-darwin` | no step | no | no |
+| Linux, Raspberry Pi 3/4/5 | `aarch64-unknown-linux-gnu` | no step | no | no |
+| Linux, older Pi | `armv7-unknown-linux-gnueabihf` | no step | no | no |
 
-**Be careful reading that table.** Everything type-checks on every target, and
-the platform-specific *logic* is unit-tested for all of them, but only macOS on
-Apple silicon has actually been linked and run against a device. `cargo check`
-proves the code compiles; it does not prove it links, and it certainly does not
-prove the USB backend behaves. Treat the other rows as "expected to work,
-unverified" until someone runs `dspi doctor` on one.
+The terminal's hardware pass on this tree is work package TM13 in
+`docs/core-merge/PLAN-CLIENTS.md`, still open. Until it is done, treat every row
+as "expected to work, unverified", and run `dspi doctor` on the machine for the
+real answer.
 
-The remaining verification needs either the hardware or a cross-linking
-toolchain, neither of which was available here.
+### Earlier runs, before the merge
+
+These ran on DSPi-Terminal or on this repository's old core, not on the merged
+tree:
+
+- **macOS on Apple silicon**, 2026-07-27, against `release/v1.1.5`: linked, tests
+  run, and run against a device.
+- **macOS x86_64**, 2026-11-06, in a macOS VM with a DSPi passed through, read
+  commands only: `dspi list`, `dspi doctor`, `dspi ext list`, `dspi ext vreg`,
+  `dspi ext xfeed-map`, and the interface on `--fixture` in a pty. A universal
+  binary was made with `lipo`. Details: `docs/PORTABILITY.md`, section 9.
+- **Windows**, 2026-11-06, with the headers of firmware `bofr-main` `af001ec`:
+  both builds cross-linked on Linux and run under Wine 11 with no device: `--help`, `--version`, `list`, `doctor`, and the interface on
+  `--fixture` in a pty. The MinGW build's test suite passed under Wine. None of
+  that touches USB, so WinUSB itself is unverified on real Windows.
+- **Raspberry Pi targets** type-checked (`cargo check`) only.
 
 ## What each platform needs
 
@@ -76,6 +85,8 @@ sudo dspi --install-udev
 sudo udevadm control --reload
 ```
 
+The rule it writes is `xtask/70-dspi.rules`.
+
 then unplug and replug the device. The rule also covers the RP2 bootloader the
 device re-enumerates as during a firmware update; without that, an update appears
 to hang at exactly the wrong moment.
@@ -90,18 +101,24 @@ SSH, where the cost of a repaint is the link rather than the processor.
 
 ## Deliberately not assumed
 
-- No C toolchain anywhere. USB goes through `nusb`, which talks WinUSB, IOKit and
-  usbfs directly, so cross-compiling is a plain `cargo build --target`.
-- No `std::os::unix`, no hardcoded paths outside the Linux-only udev installer,
-  and no shelling out.
+- No C library for USB. USB goes through `nusb`, which talks WinUSB, IOKit and
+  usbfs directly. The default `midi` feature is the exception on Linux: `midir`
+  needs the ALSA development files there (`--no-default-features` drops it).
+- No hardcoded paths outside the Linux-only udev installer.
+- Few outside programs, each named here: `dspi hub` keeps the machine awake
+  through `systemd-inhibit` on Linux and `caffeinate` on macOS, and a filter-file
+  export stamps its header with `date`.
 - `NO_COLOR` is honoured, and `TERM=dumb` degrades to plain ASCII, so output
   captured to a file or a CI log stays readable.
 
 ## Verifying a platform
 
+From the repository root:
+
 ```sh
-cargo check --workspace --target <triple>   # compiles
-cargo test --workspace                      # logic, including other platforms
+ci/check.sh --step terminal                 # Linux release build, in the container
+ci/check.sh --crate dspi-term               # format, clippy and tests
+cargo check -p dspi-term --target <triple>  # compiles, for a target with no step
 dspi doctor                                 # the real answer, on the machine
 ```
 

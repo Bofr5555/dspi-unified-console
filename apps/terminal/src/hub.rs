@@ -382,14 +382,52 @@ fn clean_name(name: &str) -> Result<String, Failure> {
 /// The logger: standard error, `RUST_LOG`, warnings by default; `tungstenite` stops at
 /// debug, since its trace level prints every WebSocket message whole, and those carry
 /// PINs and tokens (HB6's `logger_builder`, for this binary's own logger).
-fn logger_builder(mut builder: env_logger::Builder) -> env_logger::Builder {
-    builder.filter_module("tungstenite", log::LevelFilter::Debug);
-    builder
+///
+/// -- WP TM26 -- A ceiling, not a level: `RUST_LOG` still decides, and tungstenite gets
+/// the lower of what it asks for and debug. A `filter_module("tungstenite", Debug)`
+/// raised it to debug at `RUST_LOG=info` (hw-1 M3).
+struct CappedLogger(env_logger::Logger);
+
+impl CappedLogger {
+    fn new(mut builder: env_logger::Builder) -> Self {
+        Self(builder.build())
+    }
+
+    fn filter(&self) -> log::LevelFilter {
+        self.0.filter()
+    }
+}
+
+/// tungstenite's own targets: the crate and its modules, not a crate that merely
+/// starts with the same letters.
+fn is_tungstenite(target: &str) -> bool {
+    target == "tungstenite" || target.starts_with("tungstenite::")
+}
+
+impl log::Log for CappedLogger {
+    fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+        !(is_tungstenite(metadata.target()) && metadata.level() > log::Level::Debug)
+            && self.0.enabled(metadata)
+    }
+
+    fn log(&self, record: &log::Record<'_>) {
+        if self.enabled(record.metadata()) {
+            self.0.log(record);
+        }
+    }
+
+    fn flush(&self) {
+        self.0.flush();
+    }
 }
 
 fn init_logger() {
     let env = env_logger::Env::default().default_filter_or("warn");
-    let _ = logger_builder(env_logger::Builder::from_env(env)).try_init();
+    let logger = CappedLogger::new(env_logger::Builder::from_env(env));
+    let max = logger.filter();
+    if log::set_boxed_logger(Box::new(logger)).is_ok() {
+        log::set_max_level(max);
+    }
 }
 
 /// The store's lock, held while a hub runs on it. Taking it creates the directory.
@@ -434,7 +472,8 @@ impl Drop for Running {
     }
 }
 
-/// Start sharing. Nothing is claimed until the port is bound and the listener is in.
+/// Start sharing. Nothing is claimed until the port is bound and the listener is in,
+/// and no client is let in until the device is (WP TM26).
 fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
     let lock = lock_store(&opts.store)?;
     let saved = SavedHub::peek(&opts.store)?;
@@ -462,6 +501,9 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
     if opts.loopback {
         network.bind = IpAddr::V4(Ipv4Addr::LOCALHOST);
     }
+    // -- WP TM26 -- The port is ours from here; clients wait until the device is in
+    // (hw-1 M2: they were told "No DSPi found" for the first 0.3 s).
+    network.hold_accepts = true;
     let mut config = HubConfig::in_process(&name);
     config.network = Some(network);
     // A scan only once the listener is in, below.
@@ -494,6 +536,9 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
     } else {
         running.handle.scan_now();
     }
+    // -- WP TM26 -- Attached, or found absent: either way, what a client sees now is
+    // the truth.
+    running.control.start_accepting();
     Ok(running)
 }
 
@@ -1233,28 +1278,64 @@ mod tests_wp_tm11 {
     }
 
     /// HB6's rule for this binary's own logger: `RUST_LOG=trace` gets everything
-    /// except tungstenite's frame dumps, PINs and tokens in them.
+    /// except tungstenite's frame dumps, PINs and tokens in them. -- WP TM26 -- And a
+    /// ceiling only: tungstenite never gets more than was asked for (hw-1 M3).
     #[test]
     fn wp_tm11_the_logger_holds_back_the_frame_dumps() {
         use log::{Level, Log, Metadata};
-        for asked in ["trace", "tungstenite=trace"] {
+        let logger_for = |asked: &str| {
             let mut b = env_logger::Builder::new();
             b.parse_filters(asked);
-            let logger = logger_builder(b).build();
-            let at = |target, level| {
-                logger.enabled(&Metadata::builder().target(target).level(level).build())
-            };
-            assert!(!at("tungstenite::protocol", Level::Trace), "{asked}");
-            assert!(at("tungstenite::protocol", Level::Debug), "{asked}");
+            CappedLogger::new(b)
+        };
+        let at = |logger: &CappedLogger, target, level| {
+            logger.enabled(&Metadata::builder().target(target).level(level).build())
+        };
+        for asked in [
+            "trace",
+            "tungstenite=trace",
+            "info,tungstenite::protocol=trace",
+        ] {
+            let logger = logger_for(asked);
+            assert!(
+                !at(&logger, "tungstenite::protocol", Level::Trace),
+                "{asked}"
+            );
+            assert!(
+                at(&logger, "tungstenite::protocol", Level::Debug),
+                "{asked}"
+            );
         }
-        let mut b = env_logger::Builder::new();
-        b.parse_filters("trace");
-        let logger = logger_builder(b).build();
-        let meta = Metadata::builder()
-            .target("dspi_hub::server")
-            .level(Level::Trace)
-            .build();
-        assert!(logger.enabled(&meta));
+        let logger = logger_for("trace");
+        assert!(at(&logger, "dspi_hub::server", Level::Trace));
+        assert!(
+            at(&logger, "tungstenite_like", Level::Trace),
+            "not tungstenite"
+        );
+        // -- WP TM26 -- Below debug, what was asked for stands.
+        for (asked, top) in [
+            ("info", Level::Info),
+            ("warn", Level::Warn),
+            ("error", Level::Error),
+            ("debug,tungstenite=warn", Level::Warn),
+        ] {
+            let logger = logger_for(asked);
+            for level in [
+                Level::Error,
+                Level::Warn,
+                Level::Info,
+                Level::Debug,
+                Level::Trace,
+            ] {
+                assert_eq!(
+                    at(&logger, "tungstenite::protocol", level),
+                    level <= top,
+                    "{asked}: tungstenite at {level}"
+                );
+            }
+        }
+        let logger = logger_for("off");
+        assert!(!at(&logger, "tungstenite::protocol", Level::Error));
     }
 
     #[test]
