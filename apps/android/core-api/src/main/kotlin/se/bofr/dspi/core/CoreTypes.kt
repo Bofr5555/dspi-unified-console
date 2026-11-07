@@ -2154,6 +2154,12 @@ data class VregCalView(
      */
     val commitNeedsWord: Boolean,
     /**
+     * `core_vreg_manual_set(0, ..)`, the reset to the build default, needs the
+     * word now: the unit's current voltage cannot be read from the last
+     * status, so nobody can say the reset does not raise it (WP QD28b).
+     */
+    val resetNeedsWord: Boolean,
+    /**
      * The soak to suggest, seconds.
      */
     val defaultSoakS: Long,

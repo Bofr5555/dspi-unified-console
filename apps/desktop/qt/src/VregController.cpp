@@ -229,6 +229,8 @@ bool VregController::request(const QString &action, int value, int soakS) {
                      : QStringLiteral("The trial runs in RAM only: a hang or a reboot returns the device to its saved voltage.");
     } else if (action == QLatin1String("reset")) {
         value = 0;
+        // -- WP QD28b -- The core's rule: an unreadable current voltage asks for the word
+        needsWord = m_view.value(QStringLiteral("resetNeedsWord")).toBool();
         title = QStringLiteral("Reset to the build default");
         detail = QStringLiteral("The device forgets the voltage saved on it and starts at its build default.");
     } else if (action == QLatin1String("auto")) {

@@ -23,6 +23,10 @@ ExecStart=/usr/local/bin/dspi hub
 # --no-keep-awake to let the machine sleep.
 Restart=on-failure
 RestartSec=5
+# A refused start does not mend itself: 1 is the command line or the store (another
+# hub holds it, or a change of access mode that needs --forget-clients), 4 the
+# machine (the port in use). Not restarted: read the journal.
+RestartPreventExitStatus=1 4
 # Warnings and the hub's own lines go to the journal: journalctl --user -u dspi-hub
 Environment=RUST_LOG=warn
 # SIGTERM stops sharing cleanly: clients are told, USB devices let go.

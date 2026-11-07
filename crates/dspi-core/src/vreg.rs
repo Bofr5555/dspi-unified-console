@@ -123,6 +123,10 @@ pub struct VregCalView {
     /// though it was typed to start the trial: going from RAM to flash is an
     /// upward change of its own. Ask again; do not reuse the earlier answer.
     pub commit_needs_word: bool,
+    /// `core_vreg_manual_set(0, ..)`, the reset to the build default, needs the
+    /// word now: the unit's current voltage cannot be read from the last
+    /// status, so nobody can say the reset does not raise it (WP QD28b).
+    pub reset_needs_word: bool,
     /// The soak to suggest, seconds.
     pub default_soak_s: u32,
     /// The shortest soak accepted, seconds.
@@ -262,6 +266,8 @@ impl CalState {
                 (Phase::Passed { run, .. }, Some(s)) => cal::save_needs_word(run.target, s),
                 _ => false,
             },
+            // -- WP QD28b -- The session's rule for `SET 0`, on the last status
+            reset_needs_word: overvolt::op_needs_word(VregOp::Set(0), self.status.as_ref()),
             default_soak_s: cal::DEFAULT_SOAK_S,
             min_soak_s: cal::MIN_SOAK_S,
             target_vreg,
