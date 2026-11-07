@@ -1,16 +1,6 @@
-# Upstream references this port tracks (PLAN-NATIVE-ANDROID.md §7 "Pins").
-# Update together with the submodule bump; see docs/PORT-MAP.md.
-
-[core]
-# Rust core reused as-is (git submodule third_party/DSPi-Console-Linux, crate core/).
-repo = "https://github.com/WeebLabs/DSPi-Console-Linux"
-ref = "main"
-describe = "v1.1.6-beta4-18-g4683a2c"
-sha = "4683a2ca4b41914edbab1b756397e29fec1e88d8"
-date = "2026-10-10"
-wire_format = 32
-firmware_tracked = "1.1.6-beta4"
-verified = "2026-11-01: submodule HEAD == this sha; `git describe --tags` == describe"
+# Upstream references this port tracks (docs/PORT-MAP.md). The core is no longer
+# pinned here: it is the monorepo's crates/; the firmware its headers came from is
+# in crates/dspi-proto/firmware/PROVENANCE.toml.
 
 [ui]
 # Behavioural + visual reference: macOS DSPi Console. UI is ported file-for-file from here.

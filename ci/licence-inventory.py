@@ -18,7 +18,7 @@ Facts for the owner and Weeb Labs (PLAN-CLIENTS.md 0.4, WP LC1). Not legal text.
 Runs on the host, standard library only, reads git read-only. Cargo runs in the
 container (ci/run.sh). The inputs:
 
-  Rust   `cargo tree -p dspi-ffi --target aarch64-apple-ios`, and the crates'
+  Rust   `cargo tree -p dspi-ffi --no-default-features --target aarch64-apple-ios`, and the crates'
          dep-info and build-script inputs for the file list.
   Swift  the iOS target's members in `DSPi Console.xcodeproj/project.pbxproj`.
          Looked for in --console, then $DSPI_CONSOLE_TREE, then apps/apple in
@@ -59,7 +59,7 @@ IOS_TARGET = "DSPi Console iOS"
 
 # The library the iOS app links, and the slice in an App Store binary. Change
 # these when CG3 and SW1 give the iOS build its own features.
-CARGO_SELECT = "-p dspi-ffi --target aarch64-apple-ios --locked"
+CARGO_SELECT = "-p dspi-ffi --no-default-features --target aarch64-apple-ios --locked"
 
 # The old core dspi-core was ported from: Weeb Labs' Console-Linux core, deleted
 # from the tree by WP Q3 and still in history here.
@@ -225,7 +225,7 @@ def collect_cargo() -> dict:
     tree = f"cargo tree {CARGO_SELECT} --prefix none --format {fmt}"
     out = in_container(
         f"{tree} -e normal,no-proc-macro; echo @@@; {tree} -e normal; echo @@@; "
-        "cargo check -p dspi-ffi --lib --locked --message-format=json"
+        f"cargo check {CARGO_SELECT} --lib --message-format=json"
     )
     linked_text, all_text, check_text = out.split("@@@\n")
     linked = parse_tree(linked_text)
@@ -278,7 +278,7 @@ def collect_cargo() -> dict:
 
 
 def platform_gated_modules(files: dict[str, list[str]]) -> list[str]:
-    """The file list comes from a Linux check, so a platform-gated `mod` would skew it."""
+    """The file list is one target's, so a platform-gated `mod` would skew it."""
     hits = []
     for paths in files.values():
         for rel in paths:
@@ -1062,8 +1062,8 @@ def build_full(args, snap: dict) -> dict:
                      "The owner and Weeb Labs should still read its source-availability and notice terms against the store build. "
                      "UniFFI's generated Swift (SW2) will also come from its templates.")
     if any(c["name"] == "nusb" for c in third):
-        flags.append("**`nusb` is in the iOS graph today and does not compile for iOS** (`cargo check --target aarch64-apple-ios` fails in it). "
-                     "CG3's `usb` feature is meant to take it out, so this list shrinks then.")
+        flags.append("**`nusb` is in the iOS graph and does not compile for iOS.** CG3's `usb` feature keeps it out; "
+                     "something has turned that feature on again (`ci/check.sh --step ios-check` fails too).")
     names = {c["name"] for c in third}
     if {"cargo_metadata", "uniffi_pipeline"} & names:
         flags.append("**Build-tool crates in the graph through `uniffi`:** `cargo_metadata`, `camino`, `semver` and `cargo-platform` come with its "

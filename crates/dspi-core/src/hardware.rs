@@ -1479,10 +1479,11 @@ mod tests_wp_c6 {
             notify: true,
             baud: 115_200,
         };
+        // I2C0: the demo's display holds I2C1 on GPIO 2 and 3 (WP CG16).
         let i2c = I2cConfig {
             enabled: true,
-            sda_pin: 2,
-            scl_pin: 3,
+            sda_pin: 12,
+            scl_pin: 13,
             address: 0x42,
         };
         core.set_uart(uart).unwrap();
@@ -1491,7 +1492,7 @@ mod tests_wp_c6 {
             entries(&log),
             vec![
                 format!("out {:02X} 0 0104050100c20100", op::REQ_SET_UART_CONFIG),
-                format!("out {:02X} 0 0102034200000000", op::REQ_SET_I2C_CONFIG),
+                format!("out {:02X} 0 010c0d4200000000", op::REQ_SET_I2C_CONFIG),
             ]
         );
         core.fetch_ctrl_ifaces().unwrap();

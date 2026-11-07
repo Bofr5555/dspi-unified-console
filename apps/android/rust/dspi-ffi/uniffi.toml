@@ -1,3 +1,0 @@
-[bindings.kotlin]
-package_name = "se.bofr.dspi.ffi.uniffi"
-cdylib_name = "dspi_ffi"

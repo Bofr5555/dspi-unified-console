@@ -116,7 +116,7 @@ use dspi_proto::wire::{BulkPacket, WireHeader};
 mod features;
 // -- WP CG16 --
 mod surfaces;
-pub use surfaces::{EXT_FAKE_CS_SIM, SurfaceSeed, surface_seed};
+pub use surfaces::{SurfaceSeed, surface_seed};
 
 use crate::{
     DeviceDescriptor, NotificationSource, Result, Transport, TransportCaps, TransportError,
@@ -428,30 +428,50 @@ impl FakeRemote {
     }
 }
 
+// -- WP CG16 --
+// Fake-only `REQ_EXTENSION` sub-commands. Every one is defined here and listed in
+// `FAKE_ONLY_EXTENSIONS`, and `wp_cg16_fake_only_extension_codes_are_unique` holds
+// them apart: the next one takes the next code.
+
 /// `REQ_EXTENSION` OUT sub-command only a [`FakeDevice`] answers, from the
-/// experimental range: a [`VregSim::encode`] payload. It lets a client's demo
-/// device mode play hangs without a [`FakeRemote`] (QD28, AN23, SW23). A host
+/// experimental range: a [`VregSim::encode`] payload (WP CG11). It lets a client's
+/// demo device mode play hangs without a [`FakeRemote`] (QD28, AN23, SW23). A host
 /// checks for [`TransportKind::Fake`] before sending it.
 pub const EXT_FAKE_VREG_SIM: u16 = 0xFFF0;
 
-// -- WP QD4 --
 /// `REQ_EXTENSION` OUT sub-command only a [`FakeDevice`] answers, as
-/// [`EXT_FAKE_VREG_SIM`]: `[target, name..]`, stored and announced as a rename
-/// by someone else (AN6, QD4, SW, TM17). `target` is an input source, or
+/// [`EXT_FAKE_VREG_SIM`] (WP QD4): `[target, name..]`, stored and announced as a
+/// rename by someone else (AN6, QD4, SW, TM17). `target` is an input source, or
 /// [`RENAME_ELSEWHERE_DEVICE`] for the device.
 pub const EXT_FAKE_RENAME_ELSEWHERE: u16 = 0xFFF1;
 /// The device itself as the target of [`EXT_FAKE_RENAME_ELSEWHERE`].
 pub const RENAME_ELSEWHERE_DEVICE: u8 = 0xFF;
 
-// -- WP QD5 --
 /// `REQ_EXTENSION` sub-command only a [`FakeDevice`] answers, as
-/// [`EXT_FAKE_VREG_SIM`], so a client can reach the firmware's deferred
+/// [`EXT_FAKE_VREG_SIM`] (WP QD5), so a client can reach the firmware's deferred
 /// output-latency apply without a [`FakeRemote`]. OUT `[mode, reads, blackout]`
 /// sets how the next SET lands: mode 0 at once (a SET held so far applies on the
 /// next status read), 1 after `reads` status reads, 2 never, 3 dropped after
 /// `reads` status reads. `blackout` status reads stall first while a SET is
 /// pending. IN: the SETs received so far, a little-endian `u32`.
 pub const EXT_FAKE_LATENCY_TIMING: u16 = 0xFFF2;
+
+/// `REQ_EXTENSION` OUT sub-command only a [`FakeDevice`] answers, as
+/// [`EXT_FAKE_VREG_SIM`] (WP CG16): one byte, nonzero to hold the device in a
+/// running revert (`control_surfaces_busy`), zero to let it finish. While held, a
+/// deferred control-surface SET settles `CS_STATUS_BUSY`, an aux SET changes
+/// nothing and leaves the status alone, and the save, the revert, a macro fire and
+/// a learn arm or cancel stall. It lets a client's demo show the refusals the
+/// firmware has no other way to give.
+pub const EXT_FAKE_CS_SIM: u16 = 0xFFF3;
+
+/// Every fake-only `REQ_EXTENSION` sub-command.
+pub const FAKE_ONLY_EXTENSIONS: &[u16] = &[
+    EXT_FAKE_VREG_SIM,
+    EXT_FAKE_RENAME_ELSEWHERE,
+    EXT_FAKE_LATENCY_TIMING,
+    EXT_FAKE_CS_SIM,
+];
 
 /// What can happen to a simulated device's core-voltage state (WP CG11).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3111,5 +3131,43 @@ mod tests_wp_cg11 {
             d.control_out(op::REQ_EXTENSION, gext::EXT_CORE_VREG, &[1, 0x10])
                 .is_err()
         );
+    }
+}
+
+/// WP CG16: the list of fake-only codes.
+#[cfg(test)]
+mod tests_wp_cg16_extensions {
+    use super::*;
+
+    #[test]
+    fn wp_cg16_fake_only_extension_codes_are_unique() {
+        let mut codes = FAKE_ONLY_EXTENSIONS.to_vec();
+        codes.sort_unstable();
+        codes.dedup();
+        assert_eq!(
+            codes.len(),
+            FAKE_ONLY_EXTENSIONS.len(),
+            "a code is used twice"
+        );
+        // The experimental range (config.h), and never one a device could list.
+        assert!(codes.iter().all(|c| *c >= 0x8000));
+        let mut d = FakeDevice::new(
+            Capture::demo(),
+            FakeOptions {
+                extensions: true,
+                bulk_source: true,
+                surfaces: true,
+                ..FakeOptions::default()
+            },
+        );
+        let list = d
+            .control_in_upto(op::REQ_EXTENSION, gext::EXT_LIST, 64)
+            .unwrap();
+        for code in codes {
+            assert!(
+                !list.chunks(2).any(|c| c == code.to_le_bytes().as_slice()),
+                "0x{code:04X} is listed"
+            );
+        }
     }
 }

@@ -102,8 +102,8 @@ tools/dev.sh keytool -list -v -keystore keystore/upload.jks -alias upload
    upload key. The build:
    - fails with a clear message if `keystore/upload.properties` or the keystore
      is missing (task `:app:checkUploadKey`);
-   - always compiles `libdspi_ffi.so` with the Rust **release** profile (LTO,
-     no debug info) for arm64-v8a, armeabi-v7a and x86_64, whatever
+   - always compiles `libdspi_ffi.so` with the workspace's Rust **release** profile
+     (no debug info) for arm64-v8a, armeabi-v7a and x86_64, whatever
      `dspi.rustProfile` says (that property only affects debug builds);
    - has R8 / minification **off**: UniFFI's bindings reach the native
      library through JNA reflection. Enabling R8 would need keep rules for JNA and the

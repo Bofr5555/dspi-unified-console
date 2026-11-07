@@ -3314,7 +3314,7 @@ mod tests {
         // A channel noun still counts its channels.
         assert_eq!(
             target_addresses(&cs, noun::OUTPUT_GAIN, None),
-            (0..8).collect::<Vec<u8>>()
+            (0..9).collect::<Vec<u8>>()
         );
         assert!(compatible_groups(&cs, noun::AUX).is_empty(), "no group");
         assert!(compatible_groups(&cs, noun::AUX_LEVEL).is_empty());

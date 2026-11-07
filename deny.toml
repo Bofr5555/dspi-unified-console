@@ -26,6 +26,7 @@ exceptions = [
     { crate = "dspi-cmd", allow = ["GPL-3.0-or-later"] },
     { crate = "dspi-core", allow = ["GPL-3.0-or-later"] },
     { crate = "dspi-ffi", allow = ["GPL-3.0-or-later"] },
+    { crate = "dspi-hub", allow = ["GPL-3.0-or-later"] },
     { crate = "dspi-link", allow = ["GPL-3.0-or-later"] },
     { crate = "dspi-proto", allow = ["GPL-3.0-or-later"] },
     { crate = "dspi-session", allow = ["GPL-3.0-or-later"] },
