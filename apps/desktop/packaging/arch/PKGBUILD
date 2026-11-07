@@ -27,7 +27,7 @@ prepare() {
 build() {
     cd "$pkgname"
     export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
-    cargo build --frozen --release -p dspi-capi --features link,midir,mdns
+    cargo build --frozen --release -p dspi-capi --features link,midir,mdns,hub
     cmake -S qt -B build -DCMAKE_BUILD_TYPE=None -DCMAKE_INSTALL_PREFIX=/usr
     cmake --build build
 }
