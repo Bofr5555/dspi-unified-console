@@ -60,8 +60,11 @@ void SmokeDriver::start() {
     g_previous = qInstallMessageHandler(messageHandler);
     const bool hardware = !qEnvironmentVariableIsEmpty("DSPI_SMOKE_HW");
     const bool replug = qEnvironmentVariable("DSPI_SMOKE_HW") == QLatin1String("replug");
-    QTimer::singleShot(200, this, [this, hardware, replug]() {
-        if (replug) runReplug();
+    // -- WP QD12 --
+    const QString trayLaunch = qEnvironmentVariable("DSPI_SMOKE_TRAY");
+    QTimer::singleShot(200, this, [this, hardware, replug, trayLaunch]() {
+        if (!trayLaunch.isEmpty()) runTrayLaunch(trayLaunch);
+        else if (replug) runReplug();
         else if (hardware) runHardware();
         else run();
     });
@@ -104,6 +107,8 @@ void SmokeDriver::run() {
     // -- WP QD8 --
     testLink();
     testIdleAndCost();
+    // -- WP QD12 -- Last: an accepted close takes the window's surface away
+    testTray();
     m_failures += g_qmlErrors;
     printf("smoke: %d checks, %d failures (%d QML errors)\n", m_checks, m_failures, g_qmlErrors);
     fflush(stdout);
