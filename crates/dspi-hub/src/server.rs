@@ -46,19 +46,13 @@ use tungstenite::{Message, WebSocket};
 use crate::auth::{AccessMode, AuthError, AuthStore, peer_key};
 use crate::error::HubError;
 use crate::hub::{HubHandle, MAX_INFLIGHT};
-use crate::policy::Policy;
+use crate::polls::{POLL_BUDGET_BPS, POLL_MAX_HZ};
+use crate::router::MAX_PAYLOAD;
 use crate::session::{CLOSE_REVOKED, CLOSE_SHUTTING_DOWN, Outbound, Outbox, Pop, Role, Session};
-use crate::store::{HubStore, parse_role, role_name, unix_seconds};
+use crate::store::{parse_role, role_name, unix_seconds};
 
 /// `limits.max_frame`: the largest WebSocket frame and message taken (spec 4).
 pub const MAX_FRAME: u32 = 65536;
-/// `limits.max_payload`: the largest command payload (spec 7.2). Enforced in
-/// `Router::admit`, WP HB2.
-pub const MAX_PAYLOAD: u32 = 8192;
-/// `limits.poll_max_hz`, as the Swift hub.
-pub const POLL_MAX_HZ: u32 = 20;
-/// `limits.poll_budget_bps`, as the Swift hub.
-pub const POLL_BUDGET_BPS: u32 = 200_000;
 /// The largest HTTP request head read. Past it the answer is 431.
 pub const MAX_HEAD: usize = 8192;
 /// Headers per request. Past it the answer is 400.
@@ -70,9 +64,6 @@ const INFO_PATH: &str = "/dspi/v1/info";
 /// Polling the listener, which has no portable way to be woken. A new client waits this
 /// long at most, and it leaves no way for `stop_accepting` to hang.
 const ACCEPT_TICK: Duration = Duration::from_millis(50);
-/// `timeout_ms` of a lock that names none (Swift's), and the cap (spec 7.7).
-const DEFAULT_LOCK_MS: u64 = 10_000;
-const MAX_LOCK_MS: u64 = 60_000;
 
 /// Close: protocol error (spec 5). A client does not reconnect.
 const CLOSE_PROTOCOL: u16 = 4000;
@@ -355,8 +346,7 @@ struct Table {
 
 struct Shared {
     hub: HubHandle,
-    auth: AuthStore,
-    policy: Arc<Policy>,
+    auth: Arc<AuthStore>,
     hub_id: String,
     web: bool,
     mdns_name: Option<String>,
@@ -1178,7 +1168,11 @@ impl Connection {
 
     fn on_text(&mut self, text: &str) {
         // Not JSON, or not one of ours: protocol error (spec 5), as Swift's.
-        let Ok(Value::Object(message)) = serde_json::from_str::<Value>(text) else {
+        let Ok(value) = serde_json::from_str::<Value>(text) else {
+            self.tx.close(CLOSE_PROTOCOL, "malformed message");
+            return;
+        };
+        let Some(message) = value.as_object() else {
             self.tx.close(CLOSE_PROTOCOL, "malformed message");
             return;
         };
@@ -1189,10 +1183,15 @@ impl Connection {
         let id = message.get("id").and_then(Value::as_u64);
         match t {
             "hello" => self.on_hello(),
-            "auth.token" => self.on_auth_token(id, &message),
-            "auth.pair" => self.on_auth_pair(id, &message),
+            "auth.token" => self.on_auth_token(id, message),
+            "auth.pair" => self.on_auth_pair(id, message),
             _ => match self.live_session() {
-                Some(session) => self.on_request(t, id, &message, &session),
+                Some(session) => {
+                    match crate::lock::handle_message(&self.shared.hub, &session, &value) {
+                        Some(answer) => self.reply(answer),
+                        None => self.on_request(t, id, message, &session),
+                    }
+                }
                 None if self.session.is_some() => {}
                 None => self.reply(err(id, "unauthenticated", None)),
             },
@@ -1371,16 +1370,13 @@ impl Connection {
             "device.snapshot" => self.snapshot(id, handle),
             "poll.subscribe" => self.poll_subscribe(id, handle, message, session),
             "poll.unsubscribe" => self.poll_unsubscribe(id, handle, message, session),
-            "lock.acquire" => self.lock_acquire(id, handle, message, session),
-            "lock.release" => match handle {
-                Some(handle) => {
-                    if let Some(handle) = handle {
-                        self.shared.hub.lock_release(session, handle);
-                    }
-                    ok(id, json!({}))
+            "device.rename" => {
+                // Answered by the device's worker, or at once.
+                if let Some(refused) = self.rename(id, handle, message, session) {
+                    self.reply(refused);
                 }
-                None => err(id, "bad_request", Some("no handle")),
-            },
+                return;
+            }
             "auth.list" if !admin => denied(),
             "auth.list" => ok(id, json!({"clients": self.client_list()})),
             "auth.revoke" | "auth.set_role" if !admin => denied(),
@@ -1389,30 +1385,27 @@ impl Connection {
                 None => return,
             },
             "auth.set_role" => self.auth_set_role(id, message),
-            // Nothing below exists yet: `device.rename` is HB3's to connect, `fw.install`
-            // is later work (PLAN-CLIENTS), and the hub messages are not in HB1's entry.
+            // `fw.install` is later work (PLAN-CLIENTS), and the hub messages are not in
+            // HB1's entry.
             "hub.stats" | "hub.rename" if !admin => denied(),
-            "device.rename" | "fw.install" | "hub.stats" | "hub.rename" => {
-                err(id, "unsupported", None)
-            }
+            "fw.install" | "hub.stats" | "hub.rename" => err(id, "unsupported", None),
             _ => err(id, "unknown_type", None),
         };
         self.reply(answer);
     }
 
+    /// Blocks for the image if nothing is cached, on this connection alone.
     fn snapshot(&self, id: Option<u64>, handle: Option<Option<u8>>) -> String {
         let Some(handle) = handle else {
             return err(id, "bad_request", Some("no handle"));
         };
-        let Some((handle, device)) = handle.and_then(|h| self.shared.hub.device(h).map(|d| (h, d)))
-        else {
+        let Some(handle) = handle else {
             return err(id, "no_device", None);
         };
-        match device.snapshot.get(handle).map(serde_json::to_value) {
-            Some(Ok(body)) => ok(id, body),
-            // Not cached yet: a client reads the device itself, or asks again.
-            None => err(id, "busy", None),
-            Some(Err(_)) => err(id, "internal", None),
+        match self.shared.hub.snapshot(handle).map(serde_json::to_value) {
+            Ok(Ok(body)) => ok(id, body),
+            Ok(Err(_)) => err(id, "internal", None),
+            Err(refused) => err(id, refused.code(), None),
         }
     }
 
@@ -1430,16 +1423,15 @@ impl Connection {
         let (Some(handle), Some(specs)) = (handle, specs) else {
             return err(id, "bad_request", Some("handle and polls are required"));
         };
-        let Some(device) = handle.and_then(|h| self.shared.hub.device(h)) else {
+        let Some(handle) = handle else {
             return err(id, "no_device", None);
         };
-        let granted =
-            device
-                .polls
-                .subscribe(session.id(), session.outbox(), session.role(), &specs);
-        match serde_json::to_value(granted) {
-            Ok(granted) => ok(id, json!({"granted": granted})),
-            Err(_) => err(id, "internal", None),
+        match self.shared.hub.poll_subscribe(session, handle, &specs) {
+            Ok(granted) => match serde_json::to_value(granted) {
+                Ok(granted) => ok(id, json!({"granted": granted})),
+                Err(_) => err(id, "internal", None),
+            },
+            Err(refused) => err(id, refused.code(), Some(&refused.to_string())),
         }
     }
 
@@ -1457,44 +1449,46 @@ impl Connection {
         let (Some(handle), Some(slots)) = (handle, slots) else {
             return err(id, "bad_request", Some("handle and slots are required"));
         };
-        if let Some(device) = handle.and_then(|h| self.shared.hub.device(h)) {
-            device.polls.unsubscribe(session.id(), &slots);
+        if let Some(handle) = handle {
+            self.shared.hub.poll_unsubscribe(session, handle, &slots);
         }
         ok(id, json!({}))
     }
 
-    fn lock_acquire(
+    /// `device.rename` (spec 7.4). `Some` when it is refused here; otherwise the answer
+    /// is queued when the hub has one.
+    fn rename(
         &self,
         id: Option<u64>,
         handle: Option<Option<u8>>,
         message: &Map<String, Value>,
         session: &Arc<Session>,
-    ) -> String {
-        // A viewer cannot write, so a lock would only block everyone else (spec 7.7).
-        if session.role() == Role::Viewer {
-            return err(id, "denied", Some("viewers cannot lock"));
-        }
+    ) -> Option<String> {
+        let name = message.get("name").and_then(Value::as_str);
+        let (Some(handle), Some(name)) = (handle, name) else {
+            return Some(err(id, "bad_request", Some("handle and name are required")));
+        };
         let Some(handle) = handle else {
-            return err(id, "bad_request", Some("no handle"));
+            return Some(err(id, "no_device", None));
         };
-        let requested = match message.get("timeout_ms") {
-            None | Some(Value::Null) => DEFAULT_LOCK_MS,
-            Some(value) => match value.as_u64() {
-                Some(ms) => ms,
-                // Negative, and anything else that is not a count of milliseconds.
-                None => return err(id, "bad_request", Some("bad timeout_ms")),
-            },
-        };
-        let granted = requested.min(MAX_LOCK_MS);
-        let Some(handle) = handle.filter(|h| self.shared.hub.device(*h).is_some()) else {
-            return err(id, "no_device", None);
-        };
-        let timeout = Duration::from_millis(granted);
-        if self.shared.hub.lock_acquire(session, handle, timeout) {
-            ok(id, json!({"timeout_ms": granted}))
-        } else {
-            err(id, "locked", None)
-        }
+        let outbox = Arc::clone(session.outbox());
+        self.shared
+            .hub
+            .rename(session, handle, name, move |answer| {
+                let text = match answer {
+                    status::OK => ok(id, json!({})),
+                    status::LOCKED => err(id, "locked", None),
+                    status::NO_DEVICE => err(id, "no_device", None),
+                    status::DENIED => err(id, "denied", None),
+                    // Past the in-flight limit, or a device that cannot take it now (spec 7.4).
+                    status::RATE_LIMITED | status::BUSY | status::BULK_LOCKED => {
+                        err(id, "busy", None)
+                    }
+                    _ => err(id, "internal", None),
+                };
+                outbox.push_reliable(Outbound::Event(text));
+            });
+        None
     }
 
     fn client_list(&self) -> Vec<Value> {
@@ -1605,12 +1599,7 @@ fn auth_err(id: Option<u64>, e: AuthError) -> String {
 /// The `ok` to `auth.token` and `auth.pair` (spec 7.3).
 fn auth_ok(shared: &Shared, id: Option<u64>, session: &Session, token: Option<&str>) -> String {
     let role = session.role();
-    // An admin is denied nothing, and that needs no table.
-    let denied = if role == Role::Admin {
-        Vec::new()
-    } else {
-        shared.policy.denied(role)
-    };
+    let denied = shared.hub.denied(role);
     let mut body = json!({
         "session": session.id(),
         "role": role_name(role),
@@ -1634,7 +1623,7 @@ impl Shared {
 
     /// The hub's `hello` (spec 7.2). `fw_install` is not in `caps`: HUB.md section 8.
     fn hello(&self) -> String {
-        let mut caps = vec!["cmd", "notify", "poll", "snapshot", "lock"];
+        let mut caps = vec!["cmd", "notify", "poll", "snapshot", "lock", "rename"];
         if self.web {
             caps.push("web");
         }
@@ -1722,25 +1711,22 @@ impl std::fmt::Debug for Server {
 
 impl Server {
     /// Bind and start accepting. Binds LAN interfaces only and refuses peers off the
-    /// local network (spec 6.4). A port in use is [`HubError::Io`].
-    pub fn start(hub: HubHandle, config: &NetworkConfig) -> Result<Self, HubError> {
-        let store = HubStore::load(&config.store_dir)?;
-        let hub_id = if hub.hub_id().is_empty() {
-            store.hub_id().to_owned()
-        } else {
-            hub.hub_id().to_owned()
-        };
-        let auth = AuthStore::new(store, config.access)?;
+    /// local network (spec 6.4). A port in use is [`HubError::Io`]. `auth` is the one
+    /// owner of the hub's store, which `Hub::start` opened to learn the hub's id.
+    pub fn start(
+        hub: HubHandle,
+        config: &NetworkConfig,
+        auth: Arc<AuthStore>,
+    ) -> Result<Self, HubError> {
+        let hub_id = hub.hub_id().to_owned();
         let listener = bind(config.bind, config.port)
             .map_err(|e| HubError::Io(format!("cannot listen on port {}: {e}", config.port)))?;
         let io = |e: io::Error| HubError::Io(format!("cannot set up the listener: {e}"));
         let port = listener.local_addr().map_err(io)?.port();
         listener.set_nonblocking(true).map_err(io)?;
-        let policy = hub.policy();
         let shared = Arc::new(Shared {
             hub,
             auth,
-            policy,
             hub_id,
             web: config.web,
             mdns_name: config.mdns_name.clone(),
@@ -1987,7 +1973,7 @@ mod tests_wp_hb1 {
     fn wp_hb1_times_are_iso8601_utc() {
         assert_eq!(iso8601(0), "1970-01-01T00:00:00Z");
         assert_eq!(iso8601(951_782_400), "2000-02-29T00:00:00Z");
-        assert_eq!(iso8601(1_792_391_720), "2026-10-18T06:35:20Z");
+        assert_eq!(iso8601(1_792_391_720), "2026-10-19T06:35:20Z");
         // Very far ahead: wrong in no way that panics.
         let _ = iso8601(u64::MAX);
     }

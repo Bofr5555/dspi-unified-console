@@ -272,25 +272,22 @@ impl HubStore {
         self.name = Some(name.to_owned());
     }
 
-    /// The name stored for a device (WP HB3).
-    pub fn device_name(&self, serial: &str) -> Option<&str> {
-        self.device_names.get(serial).map(String::as_str)
+    /// The names stored for devices, by serial.
+    pub fn device_names(&self) -> &BTreeMap<String, String> {
+        &self.device_names
     }
 
-    /// Store a device's name, or forget it with `None`, for [`Self::save`] (WP HB3).
-    /// False when the table is full and this is a new device. The name is cut to
-    /// a size a UI can show.
-    pub fn set_device_name(&mut self, serial: &str, name: Option<&str>) -> bool {
-        let Some(name) = name else {
-            self.device_names.remove(serial);
-            return true;
-        };
-        if self.device_names.len() >= MAX_DEVICE_NAMES && !self.device_names.contains_key(serial) {
-            return false;
-        }
-        let name = name.chars().take(MAX_DEVICE_NAME).collect();
-        self.device_names.insert(serial.to_owned(), name);
-        true
+    /// Replace the device names, for [`Self::save`]. Cut to a size a file and a UI can
+    /// hold: the serials come from what has been attached, and the names from clients.
+    pub fn set_device_names(&mut self, names: &BTreeMap<String, String>) {
+        self.device_names = names
+            .iter()
+            .take(MAX_DEVICE_NAMES)
+            .map(|(serial, name)| {
+                let name = name.chars().take(MAX_DEVICE_NAME).collect();
+                (serial.clone(), name)
+            })
+            .collect();
     }
 
     pub(crate) fn access(&self) -> Option<&str> {
@@ -395,12 +392,12 @@ pub(crate) mod tests_wp_hb1 {
         let cid = a.take_cid();
         a.clients_mut().push(client(cid));
         a.set_name("Studio");
-        assert!(a.set_device_name("E46", Some("Living room")));
+        a.set_device_names(&BTreeMap::from([("E46".into(), "Living room".into())]));
         a.save().unwrap();
         let mut b = HubStore::load(&dir).unwrap();
         assert_eq!(b.clients(), &[client(cid)]);
         assert_eq!(b.name(), Some("Studio"));
-        assert_eq!(b.device_name("E46"), Some("Living room"));
+        assert_eq!(b.device_names()["E46"], "Living room");
         b.clients_mut().clear();
         b.save().unwrap();
         assert!(HubStore::load(&dir).unwrap().take_cid() > cid);
@@ -484,14 +481,14 @@ pub(crate) mod tests_wp_hb1 {
     fn wp_hb1_device_names_are_capped() {
         let dir = scratch("caps");
         let mut s = HubStore::load(&dir).unwrap();
-        assert!(s.set_device_name("a", Some(&"x".repeat(1000))));
-        assert_eq!(s.device_name("a").unwrap().len(), MAX_DEVICE_NAME);
-        for n in 0..MAX_DEVICE_NAMES {
-            s.set_device_name(&format!("s{n}"), Some("n"));
-        }
-        assert!(!s.set_device_name("one more", Some("n")));
-        assert!(s.set_device_name("a", Some("still may rename")));
-        assert!(s.set_device_name("a", None));
-        assert_eq!(s.device_name("a"), None);
+        let mut names: BTreeMap<String, String> = (0..MAX_DEVICE_NAMES * 2)
+            .map(|n| (format!("s{n:05}"), "n".to_owned()))
+            .collect();
+        names.insert("a".into(), "x".repeat(1000));
+        s.set_device_names(&names);
+        assert_eq!(s.device_names().len(), MAX_DEVICE_NAMES);
+        names.retain(|k, _| k == "a");
+        s.set_device_names(&names);
+        assert_eq!(s.device_names()["a"].len(), MAX_DEVICE_NAME);
     }
 }

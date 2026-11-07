@@ -80,3 +80,8 @@ required-features = ["app"]
 [[test]]
 name = "wp_hb2_app_vreg"
 required-features = ["app"]
+
+# -- WP HB1 --
+[[test]]
+name = "wp_hb1_vreg_wire"
+required-features = ["app"]

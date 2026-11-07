@@ -1,210 +1,44 @@
-//! WP HB3's done criterion: C15's meter feed works against the hub's polls. The client
-//! here is the real one, `DspiCore` over Link. HB1's server is not in this branch, so a
-//! small server below carries Link frames to `HubHandle`'s interfaces and no further: it
-//! decides nothing, as every answer comes from the hub. Alone in its binary, since it
-//! measures transfers per second in real time.
+//! WP HB3's done criterion: C15's meter feed works against the hub's polls, end to end:
+//! the client is the real one, `DspiCore` over Link, and the server is the real one (HB1).
+//! Alone in its binary, since it measures transfers per second in real time.
 #![allow(clippy::arithmetic_side_effects, clippy::result_large_err)]
 
-use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::net::{IpAddr, Ipv4Addr};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use dspi_core::DspiCore;
-use dspi_hub::session::Pop;
-use dspi_hub::{
-    Completion, Hub, HubConfig, HubHandle, Outbound, POLL_BUDGET_BPS, POLL_MAX_HZ, Role,
-};
-use dspi_link::client::SUB_PROTOCOL;
-use dspi_link::frames::{Frame, NotifyFrame, PollFrame};
-use dspi_link::messages::PollSpec;
+use dspi_hub::{AccessMode, Hub, HubConfig, NetworkConfig};
 use dspi_proto::generated::opcodes as op;
 use dspi_transport::{
     DeviceDescriptor, FakeDevice, FakeRemote, NotificationSource, Transport, TransportCaps,
 };
-use serde_json::{Value, json};
-use tungstenite::handshake::server::{Request, Response};
-use tungstenite::{Error as WsError, Message, WebSocket};
 
 const WAIT: Duration = Duration::from_secs(20);
 
-// -- The stand-in for HB1's server ---------------------------------------------
-
-fn reply(id: &Value, mut body: Value) -> String {
-    body["t"] = json!("ok");
-    body["id"] = id.clone();
-    body.to_string()
-}
-
-fn refuse(id: &Value, code: &str) -> String {
-    json!({"t": "err", "id": id, "code": code}).to_string()
-}
-
-fn control(hub: &HubHandle, session: &dspi_hub::Session, text: &str) -> Option<String> {
-    let v: Value = serde_json::from_str(text).ok()?;
-    let id = v["id"].clone();
-    let handle = v["handle"].as_u64().unwrap_or(0) as u8;
-    Some(match v["t"].as_str()? {
-        "hello" => json!({
-            "t": "hello",
-            "proto": {"major": 1, "minor": 2},
-            "hub": {"id": "00000000-0000-4000-8000-000000000003", "name": hub.name(), "kind": "console", "version": "test"},
-            "auth": "none",
-            "caps": ["cmd", "notify", "poll", "snapshot"],
-            "limits": {"max_frame": 65536, "max_payload": 8192, "max_inflight": 8,
-                       "poll_max_hz": POLL_MAX_HZ, "poll_budget_bps": POLL_BUDGET_BPS},
-        })
-        .to_string(),
-        "auth.pair" => reply(
-            &id,
-            json!({"session": session.id(), "role": "admin", "policy": {"denied": []}}),
-        ),
-        "device.list" => {
-            let devices: Vec<Value> = hub.devices().iter().map(|d| d.to_json()).collect();
-            reply(&id, json!({"devices": devices}))
-        }
-        "poll.subscribe" => {
-            let specs: Vec<PollSpec> = serde_json::from_value(v["polls"].clone()).ok()?;
-            match hub.poll_subscribe(session, handle, &specs) {
-                Ok(granted) => reply(&id, json!({"granted": granted})),
-                Err(e) => refuse(&id, e.code()),
-            }
-        }
-        "poll.unsubscribe" => {
-            let slots: Vec<u8> = serde_json::from_value(v["slots"].clone()).ok()?;
-            hub.poll_unsubscribe(session, handle, &slots);
-            reply(&id, json!({}))
-        }
-        _ => refuse(&id, "unknown_type"),
+/// A hub on its real server, open access on loopback, as C15's client meets one. Its
+/// `ws://` URL, and the hub.
+fn hub_on_the_network() -> (Hub, String) {
+    static NEXT: AtomicU32 = AtomicU32::new(0);
+    // `ci/run.sh` points TMPDIR at the home volume, not tmpfs.
+    let dir = std::env::temp_dir().join("wp-hb3-feed").join(format!(
+        "{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::SeqCst)
+    ));
+    let hub = Hub::start(HubConfig {
+        network: Some(NetworkConfig {
+            port: 0,
+            access: AccessMode::Open,
+            bind: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            ..NetworkConfig::new(dir)
+        }),
+        ..HubConfig::in_process("test")
     })
-}
-
-fn pump(ws: &mut WebSocket<TcpStream>, session: &dspi_hub::Session, poll_seq: &mut u16) -> bool {
-    while let Pop::Item(item) = session.outbox().pop(Duration::ZERO) {
-        let msg = match item {
-            Outbound::Notify {
-                seq,
-                handle,
-                origin,
-                packet,
-            } => Frame::Notify(NotifyFrame {
-                seq,
-                handle,
-                origin,
-                packet: packet.to_vec(),
-            }),
-            Outbound::Resync { handle, reason } => Frame::Resync { handle, reason },
-            Outbound::Poll {
-                handle,
-                slot,
-                payload,
-            } => {
-                *poll_seq = poll_seq.wrapping_add(1);
-                Frame::Poll(PollFrame {
-                    seq: *poll_seq,
-                    handle,
-                    slot,
-                    payload,
-                })
-            }
-            Outbound::Response(r) => Frame::CmdResponse(r),
-            Outbound::Event(e) => {
-                if ws.send(Message::text(e)).is_err() {
-                    return false;
-                }
-                continue;
-            }
-            Outbound::Close { .. } => return false,
-        };
-        if ws.send(Message::binary(msg.encode())).is_err() {
-            return false;
-        }
-    }
-    true
-}
-
-fn connection(tcp: TcpStream, hub: &HubHandle, stop: &AtomicBool) {
-    let _ = tcp.set_nodelay(true);
-    let Ok(raw) = tcp.try_clone() else { return };
-    let Ok(mut ws) = tungstenite::accept_hdr(tcp, |req: &Request, mut resp: Response| {
-        if req.headers().contains_key("Sec-WebSocket-Protocol") {
-            resp.headers_mut()
-                .insert("Sec-WebSocket-Protocol", SUB_PROTOCOL.parse().unwrap());
-        }
-        Ok(resp)
-    }) else {
-        return;
-    };
-    let _ = raw.set_read_timeout(Some(Duration::from_millis(2)));
-    let session = hub.open_session(Role::Admin, None).unwrap();
-    let mut poll_seq = 0;
-    while !stop.load(Ordering::Relaxed) {
-        let answer = match ws.read() {
-            Ok(Message::Text(t)) => control(hub, &session, t.as_str()),
-            Ok(Message::Binary(b)) => {
-                if let Ok(Frame::CmdRequest(req)) = Frame::decode(&b) {
-                    let done = Completion::to_outbox(req.tag, Arc::clone(session.outbox()));
-                    hub.submit(&session, req, done);
-                }
-                None
-            }
-            Ok(_) => None,
-            Err(WsError::Io(e))
-                if matches!(
-                    e.kind(),
-                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                ) =>
-            {
-                None
-            }
-            Err(_) => break,
-        };
-        if let Some(a) = answer
-            && ws.send(Message::text(a)).is_err()
-        {
-            break;
-        }
-        if !pump(&mut ws, &session, &mut poll_seq) {
-            break;
-        }
-    }
-    hub.close_session(session.id());
-}
-
-struct Server {
-    url: String,
-    stop: Arc<AtomicBool>,
-}
-
-impl Drop for Server {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
-        // Wake the acceptor.
-        let _ = TcpStream::connect(
-            self.url
-                .trim_start_matches("ws://")
-                .trim_end_matches("/dspi/v1"),
-        );
-    }
-}
-
-fn serve(hub: &Hub) -> Server {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("ws://{}/dspi/v1", listener.local_addr().unwrap());
-    let stop = Arc::new(AtomicBool::new(false));
-    let handle = hub.handle();
-    let flag = Arc::clone(&stop);
-    std::thread::spawn(move || {
-        for tcp in listener.incoming() {
-            if flag.load(Ordering::Relaxed) {
-                return;
-            }
-            let Ok(tcp) = tcp else { return };
-            let (hub, flag) = (handle.clone(), Arc::clone(&flag));
-            std::thread::spawn(move || connection(tcp, &hub, &flag));
-        }
-    });
-    Server { url, stop }
+    .unwrap();
+    let port = hub.network().unwrap().port();
+    (hub, format!("ws://127.0.0.1:{port}/dspi/v1"))
 }
 
 // -- The device ------------------------------------------------------------------
@@ -322,19 +156,18 @@ fn rate(reads: &Mutex<usize>, cores: &[&DspiCore], for_: Duration) -> f64 {
 
 #[test]
 fn wp_hb3_the_meter_feed_works_against_polls() {
-    let hub = Hub::start(HubConfig::in_process("test")).unwrap();
+    let (hub, url) = hub_on_the_network();
     let (dev, remote, reads) = device("METER");
     hub.attach(Box::new(dev), 0).unwrap();
-    let server = serve(&hub);
     remote.set_status(block(&remote, 0x4000));
 
     // One client: its feed, at the rate it asked for, while it asks far faster.
-    let a = connect(&server.url);
+    let a = connect(&url);
     wait_until("the first client's meters", || first_peak(&a) > 0.0);
     let one = rate(&reads, &[&a], Duration::from_secs(2));
 
     // A second client: the same read, not another.
-    let b = connect(&server.url);
+    let b = connect(&url);
     wait_until("the second client's meters", || {
         let _ = a.fetch_status();
         first_peak(&b) > 0.0
@@ -389,12 +222,11 @@ fn first_peak_of(raw: u16) -> f32 {
 
 #[test]
 fn wp_hb3_the_meter_feed_comes_back_after_a_replug() {
-    let hub = Hub::start(HubConfig::in_process("test")).unwrap();
+    let (hub, url) = hub_on_the_network();
     let (dev, remote, _) = device("REPLUG");
     let handle = hub.attach(Box::new(dev), 0).unwrap();
-    let server = serve(&hub);
     remote.set_status(block(&remote, 0x4000));
-    let core = connect(&server.url);
+    let core = connect(&url);
     wait_until("meters", || first_peak(&core) > 0.0);
 
     remote.disconnect();

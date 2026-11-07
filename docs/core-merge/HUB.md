@@ -4,11 +4,10 @@ WP HB0, `crates/dspi-hub`. HB1, HB2, HB3, HB5 and HB6 build on this
 (`PLAN-CLIENTS.md` section 4.2). Spec: DSPi-Link `spec/dspi_link_protocol_spec.md`
 1.2, cited below as "spec". References: the Swift hub, the ESP32 hub, `fakehub.rs`.
 
-**What runs today (HB0).** An in-process hub with no socket: bus scanning, device
-workers and readers, fan-out with attribution, the app's session, stop, unplug and
-slow-consumer behaviour. `tests/wp_hb0_app_path.rs` drives `DspiCore` through it on
-the demo device. Everything else is a `todo!("WP HBn")` behind the interfaces in
-section 9, with named stubs in `tests/wp_hb_later.rs`.
+**What runs today (HB0 to HB3).** The app's session as before (`tests/wp_hb0_app_path.rs`), and now the
+network side: the server, pairing, roles, commands, notifications, polls, snapshots and names, over real
+sockets (`tests/wp_hb1_server.rs`, `tests/wp_hb1_vreg_wire.rs`, `tests/wp_hb3_meter_feed.rs`). Advertising
+and the web bundle are still HB5's `todo!`s, with named stubs in `tests/wp_hb_later.rs`.
 
 ## 1. Decisions in one place
 
@@ -37,6 +36,7 @@ section 9, with named stubs in `tests/wp_hb_later.rs`.
 | `hub-events` | 1 | calling the `HubListener` | its channel | `EventMsg::Stop`, last of all |
 | `hub-accept` (HB1) | 1 | the listening socket | `accept` | `stop_accepting` |
 | `hub-conn-rx-<id>`, `hub-conn-tx-<id>` (HB1) | 2 per connection | the read half; the session's outbox and the write half | the socket; `Outbox::pop` | the outbox closes, or the peer goes |
+| `hub-refuse-<id>` (HB1) | 0–4, short-lived | a socket past the limits | its request, 1 s at most | it has answered 503 |
 | the responder's own (HB5) | inside `MdnsAdvertiser` | | | dropped |
 | the app's (not ours) | | core's reader, `poll_hotplug` caller | | |
 
@@ -327,6 +327,10 @@ another handle.
 | Timed-out app write | still runs later | | **skipped while queued; never retried** | Section 4 |
 | `fw_install` cap | not advertised | Console hubs | **not advertised** | `PLAN-CLIENTS` section 2, #2; HB1 must leave it out of `caps` |
 | Foreign `Origin` | not checked at this ref | refused | refused (HB1) | Spec 4 |
+| A second authentication on a session | a new session replaces it | not said | **`bad_request`**, the session stands (open access: the usual `ok`, same session) | A writer per session has one outbox, and nothing here re-authenticates |
+| No `dspi-link-1` at the upgrade | not checked | may refuse | **400**, as the bridge | Everything here sends it |
+| Connections | no connection limit | | 16 sockets of any kind, 4 unauthenticated per address (/64 on IPv6); 503 past them | HUB section 9 |
+| A token's hash | of the decoded bytes | of the token | of the token as presented | No decoding branch before the comparison; nothing shares the store |
 | `0x00` | unlisted, so `config` | | `config`, reads are not writes | Section 13 |
 | `EXT_CORE_VREG` raises from the network | passed | not said | **refused** | Owner's rule, section 13 |
 | Holding a lock | renew for ever | "when its session closes or the timeout elapses" | also one budget per device | Section 6 |
@@ -385,6 +389,26 @@ place where the app's path needs them; each file's header says what is left.
   CSPRNG for tokens and PINs. `dspi_link::messages` lacks `Serialize` on hub-side
   replies: ask for it, or keep hub-side writers in `server.rs`.
 
+**HB1 as built, for HB5, HB6 and HB7.** The header of `server.rs` has the table of what a hostile
+socket can cost.
+- `Hub::network()` gives a `NetworkControl`: `port`, `auth` (`begin_pairing`, `clients`), and `revoke`
+  and `set_role`, which reach live sessions. Use those two, not `AuthStore`'s: alone they leave the
+  session open. `begin_pairing` returns a `Result`, since a PIN without random numbers is worse than none.
+- **One owner of the store.** `Hub::start` opens it once into an `AuthStore`, which `Server::start` is
+  handed, and `StoredNames` is HB3's `NameStore` through it. Clients and device names share a file, so two
+  writers would each put back what the other changed.
+- `NetworkConfig` adds `bind` (tests use loopback), `mdns_name` (**HB5 sets it**, or a page opened at the
+  `.local` name is refused) and `limits`.
+- `hub.stats` and `hub.rename` answer `unsupported` to an admin: not in this WP's entry. `name` in the
+  store has no caller yet, and `HubHandle::name` is fixed at start.
+- Switching `NetworkConfig::access` between starts revokes every token (spec 6.2).
+- Residual, accepted: a host with many IPv4 addresses (or IPv6 prefixes) can hold every slot for up to
+  30 s at a time, as the per-address cap is its only defence there. Those already authenticated are
+  untouched. The 10 s stall's close 1011 usually cannot be sent, as the failed write may have cut a
+  frame in two: the socket just closes.
+- Close order: close frame, half-close, up to `close_grace` for the peer's reply, so what the peer has sent
+  does not turn the close into a reset that loses the frame.
+
 **HB2, `router.rs`, `policy.rs`, `lock.rs`, `relay.rs`.** Done; section 13. What others need:
 - HB1: `lock::handle_message(&hub, &session, &json)` answers `lock.acquire` and `lock.release`
   and is `None` for anything else. `HubHandle::denied(role)` is `policy.denied`.
@@ -421,7 +445,7 @@ place where the app's path needs them; each file's header says what is left.
   reads limit is enforced at `take_due` too, so subscribing in a loop cannot exceed it.
 - **Polls stand back from a client's own `0xA2`/`0xA3`** for 500 ms, since any other request
   tears down its chunk session. A snapshot read does not (it is rare, and a torn client restarts).
-- **Names:** `HubConfig::names` is a `NameStore`, for HB1's store to implement. A stored name is
+- **Names:** `HubConfig::names` is a `NameStore`, which a networked hub gets from its store (`StoredNames`) unless given another. A stored name is
   saved with L1 released; `names_saving` sits above L1 and only keeps saves in order. A board's
   `NOTIFY_EVT_DEVICE_NAME` goes from the reader to the supervisor (`SupMsg::BoardName`), since
   the reader must not take L1 or touch a disk.

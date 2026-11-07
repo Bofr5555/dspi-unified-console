@@ -12,13 +12,14 @@ use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 use std::hint::black_box;
 use std::net::{IpAddr, Ipv6Addr};
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
 use data_encoding::BASE64URL_NOPAD;
 use sha2::{Digest, Sha256};
 
 use crate::error::HubError;
+use crate::registry::NameStore;
 use crate::session::Role;
 use crate::store::{HubStore, StoredClient, TokenHash, random_bytes, system_time, unix_seconds};
 
@@ -318,6 +319,11 @@ impl AuthStore {
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
+    /// `hid`, from the store.
+    pub fn hub_id(&self) -> String {
+        self.lock().store.hub_id().to_owned()
+    }
+
     /// The current mode.
     pub fn mode(&self) -> AccessMode {
         self.mode
@@ -512,6 +518,23 @@ impl AuthStore {
             log::error!("hub: role of client {cid} not stored: {e}");
         }
         true
+    }
+}
+
+/// Hub-stored device names (WP HB3's [`NameStore`]) in the hub's one store, through
+/// the [`AuthStore`] that owns it: clients and names share a file, so two writers would
+/// each put back what the other had just changed.
+pub(crate) struct StoredNames(pub(crate) Arc<AuthStore>);
+
+impl NameStore for StoredNames {
+    fn load(&self) -> BTreeMap<String, String> {
+        self.0.lock().store.device_names().clone()
+    }
+
+    fn save(&self, names: &BTreeMap<String, String>) -> Result<(), HubError> {
+        let mut s = self.0.lock();
+        s.store.set_device_names(names);
+        s.save()
     }
 }
 

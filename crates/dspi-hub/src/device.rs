@@ -408,12 +408,8 @@ fn run_command(
         return;
     }
     // -- WP HB2 --
-    // Asking `others_poll` only with something subscribed: `Polls` says so without its
-    // lists being looked through for every STOP.
     let unit = ExecUnit {
-        others_poll: &|codes, me| {
-            shared.polls.next_due().is_some() && shared.polls.others_poll(codes, me)
-        },
+        others_poll: &|codes, me| shared.polls.others_poll(codes, me),
         read_vreg: &mut || dspi_session::ext::read_core_vreg(&mut *t).ok(),
     };
     let ticket = match shared.router.before_exec(&ctx, req, now, unit) {

@@ -9,15 +9,16 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
-use dspi_hub::policy::Policy;
 use dspi_hub::server::{MAX_FRAME, MAX_HEAD, NetworkControl, ServerLimits};
 use dspi_hub::{AccessMode, Hub, HubConfig, NetworkConfig, Role};
 use dspi_link::frames::{CmdRequest, Frame, kind};
-use dspi_link::messages::Inbound;
+use dspi_link::messages::{Inbound, PollSpec};
 use dspi_link::socket::TcpConnector;
 use dspi_link::{AuthState, ConnectOptions, Dir, LinkClient, LinkError, status};
 use dspi_proto::generated::opcodes as op;
-use dspi_transport::FakeDevice;
+use dspi_transport::{
+    DeviceDescriptor, FakeDevice, NotificationSource, Transport, TransportCaps, TransportError,
+};
 use serde_json::{Value, json};
 use socket2::{Domain, SockAddr, Socket, Type};
 use tungstenite::protocol::Role as WsRole;
@@ -212,7 +213,10 @@ fn send(ws: &mut Ws, value: &Value) {
 }
 
 fn next_text(ws: &mut Ws, t: &[&str]) -> Value {
+    let start = Instant::now();
     loop {
+        // Pings keep a read from ever timing out.
+        assert!(start.elapsed() < WAIT, "no {t:?} in time");
         match ws.read().unwrap() {
             Message::Text(text) => {
                 let v: Value = serde_json::from_str(text.as_str()).unwrap();
@@ -245,6 +249,33 @@ fn close_code(ws: &mut Ws) -> Option<u16> {
             Err(_) => return None,
         }
     }
+}
+
+/// The close code on a stream a client has stopped answering: raw, since a client that
+/// answered its pings now would fail on the half-closed socket before reaching the close.
+fn raw_close_code(tcp: &mut TcpStream) -> Option<u16> {
+    let mut bytes = Vec::new();
+    let _ = tcp.read_to_end(&mut bytes);
+    let mut at = 0;
+    while at + 2 <= bytes.len() {
+        let opcode = bytes[at] & 0x0F;
+        let (len, header) = match bytes[at + 1] & 0x7F {
+            126 => (
+                u16::from_be_bytes([bytes[at + 2], bytes[at + 3]]) as usize,
+                4,
+            ),
+            127 => (usize::MAX / 2, 10),
+            short => (short as usize, 2),
+        };
+        if opcode == 8 {
+            return Some(u16::from_be_bytes([
+                bytes[at + header],
+                bytes[at + header + 1],
+            ]));
+        }
+        at += header + len;
+    }
+    None
 }
 
 fn is_closed_by_peer(tcp: &mut TcpStream) -> bool {
@@ -291,19 +322,6 @@ fn client(b: &Bench, token: Option<String>) -> Result<(LinkClient, AuthState), L
         &options("test client", token),
         None,
     )
-}
-
-/// `Policy::denied` and `allows` for non-admins are WP HB2's, in parallel with this WP.
-/// What needs them runs from the merge on, and says so until then.
-fn hb2_merged() -> bool {
-    let hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(|_| {}));
-    let merged = std::panic::catch_unwind(|| Policy::embedded().denied(Role::Viewer)).is_ok();
-    std::panic::set_hook(hook);
-    if !merged {
-        eprintln!("skipped: needs WP HB2's Policy::denied");
-    }
-    merged
 }
 
 fn fixture(name: &str) -> Value {
@@ -1207,7 +1225,7 @@ fn wp_hb1_bad_fields_are_answered_and_the_session_goes_on() {
         ),
         (
             json!({"t": "lock.acquire", "id": 1, "handle": 300}),
-            "no_device",
+            "bad_request",
         ),
         (
             json!({"t": "lock.acquire", "id": 1, "handle": 9}),
@@ -1264,8 +1282,8 @@ fn wp_hb1_bad_fields_are_answered_and_the_session_goes_on() {
         (json!({"t": "no.such.type", "id": 1}), "unknown_type"),
         (json!({"t": "fw.install", "id": 1}), "unsupported"),
         (
-            json!({"t": "device.rename", "id": 1, "handle": 0, "name": "x"}),
-            "unsupported",
+            json!({"t": "device.rename", "id": 1, "handle": 0}),
+            "bad_request",
         ),
     ] {
         let reply = request(&mut raw, message.clone());
@@ -1398,6 +1416,10 @@ fn wp_hb1_a_pre_auth_flood_from_one_address_does_not_fill_the_hub() {
     let limits = ServerLimits {
         max_connections: 8,
         max_preauth_per_peer: 3,
+        // Longer than it takes to open all those sockets on a loaded machine.
+        head_timeout: Duration::from_secs(3),
+        auth_timeout: Duration::from_secs(3),
+        dead_peer: Duration::from_secs(60),
         ..quick()
     };
     let b = bench(AccessMode::Pin, limits);
@@ -1410,7 +1432,9 @@ fn wp_hb1_a_pre_auth_flood_from_one_address_does_not_fill_the_hub() {
     std::thread::sleep(Duration::from_millis(100));
     assert_eq!(b.net.connections(), 4, "only its share, whatever it opens");
 
-    // A socket past the share, which sends its request, hears 503 and not a reset.
+    // A socket past the share, which sends its request, hears 503 and not a reset. Once
+    // the flood's own refusals are done: at most `max_refusing` at a time, then none.
+    std::thread::sleep(Duration::from_millis(400));
     let mut extra = connect_from(flooder, b.port);
     extra
         .write_all(request_text(b.port, &[]).as_bytes())
@@ -1748,12 +1772,8 @@ fn wp_hb1_a_role_change_applies_to_the_live_session() {
     b.hub.stop();
 }
 
-/// What needs HB2's table: the denial list in the auth reply.
 #[test]
 fn wp_hb1_a_role_below_admin_gets_its_denial_list() {
-    if !hb2_merged() {
-        return;
-    }
     let b = pin_hub();
     let mut raw = ws(b.port);
     let pair = json!({"t": "auth.pair", "id": 1, "pin": b.pin(), "name": "x", "role": "viewer"});
@@ -1847,7 +1867,7 @@ fn wp_hb1_a_silent_peer_closes_with_1001_and_gives_up_its_lock() {
         json!({"t": "lock.acquire", "id": 3, "handle": 0}),
     );
     assert_eq!(free["t"], "ok", "{free}");
-    assert_eq!(close_code(&mut gone), Some(1001));
+    assert_eq!(raw_close_code(gone.get_mut()), Some(1001));
     b.hub.stop();
 }
 
@@ -1866,7 +1886,7 @@ fn wp_hb1_slowloris_on_a_frame_after_auth_closes_with_1001() {
         }
         std::thread::sleep(Duration::from_millis(12));
     }
-    assert_eq!(close_code(&mut raw), Some(1001));
+    assert_eq!(raw_close_code(raw.get_mut()), Some(1001));
     b.wait_connections(0);
     b.hub.stop();
 }
@@ -2037,5 +2057,314 @@ fn wp_hb1_a_port_in_use_is_an_error_and_leaves_nothing_running() {
         ..HubConfig::in_process("second")
     });
     assert!(matches!(result, Err(dspi_hub::HubError::Io(_))));
+    b.hub.stop();
+}
+
+// ---- Over the wire: what HB2 and HB3 hang on this server ----
+
+/// A device on older firmware: the name read stalls.
+struct Older {
+    inner: FakeDevice,
+    descriptor: DeviceDescriptor,
+}
+
+impl Older {
+    fn new(serial: &str) -> Self {
+        Self {
+            inner: FakeDevice::demo(),
+            descriptor: DeviceDescriptor {
+                serial: serial.into(),
+                bus_id: "test".into(),
+                address: 1,
+            },
+        }
+    }
+}
+
+impl Transport for Older {
+    fn control_in(&mut self, o: u8, v: u16, l: u16) -> dspi_transport::Result<Vec<u8>> {
+        if o == op::REQ_GET_DEVICE_NAME {
+            return Err(TransportError::Stalled { opcode: o });
+        }
+        self.inner.control_in(o, v, l)
+    }
+    fn control_in_upto(&mut self, o: u8, v: u16, l: u16) -> dspi_transport::Result<Vec<u8>> {
+        if o == op::REQ_GET_DEVICE_NAME {
+            return Err(TransportError::Stalled { opcode: o });
+        }
+        self.inner.control_in_upto(o, v, l)
+    }
+    fn control_out(&mut self, o: u8, v: u16, d: &[u8]) -> dspi_transport::Result<()> {
+        self.inner.control_out(o, v, d)
+    }
+    fn descriptor(&self) -> &DeviceDescriptor {
+        &self.descriptor
+    }
+    fn max_transfer(&self) -> usize {
+        self.inner.max_transfer()
+    }
+    fn notifications(&self) -> Option<Box<dyn NotificationSource>> {
+        self.inner.notifications()
+    }
+    fn caps(&self) -> TransportCaps {
+        self.inner.caps()
+    }
+}
+
+fn paired_as(b: &Bench, role: &str) -> Ws {
+    let mut raw = ws(b.port);
+    let ok = request(
+        &mut raw,
+        json!({"t": "auth.pair", "id": 1, "pin": b.pin(), "name": role, "role": role}),
+    );
+    assert_eq!(ok["role"], role, "{ok}");
+    raw
+}
+
+/// Send a rename that will succeed. Its `ok` and its `device.changed` come in either
+/// order: the first is the board's answer, the other its notification. The new name.
+fn rename_ok(ws: &mut Ws, id: u64, handle: u8, name: &str) -> String {
+    send(
+        ws,
+        &json!({"t": "device.rename", "id": id, "handle": handle, "name": name}),
+    );
+    let (mut answered, mut changed) = (false, None);
+    while !answered || changed.is_none() {
+        let v = next_text(ws, &["ok", "err", "device.changed"]);
+        match v["t"].as_str().unwrap() {
+            "ok" => {
+                assert_eq!(v["id"], id, "{v}");
+                answered = true;
+            }
+            "device.changed" => changed = Some(v["device"]["name"].as_str().unwrap().to_owned()),
+            _ => panic!("{v}"),
+        }
+    }
+    changed.unwrap()
+}
+
+/// `device.rename` from a Control session, on a board that stores names: `ok`, then
+/// `device.changed` from its notification. A viewer may not; a lock holds it off.
+#[test]
+fn wp_hb1_a_control_session_renames_a_board_over_the_wire() {
+    let b = pin_hub();
+    let mut control = paired_as(&b, "control");
+    let hello_caps = hello(&mut control);
+    assert!(
+        hello_caps["caps"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("rename"))
+    );
+    assert_eq!(rename_ok(&mut control, 2, 0, "Living room"), "Living room");
+    assert_eq!(b.hub.devices()[0].name, "Living room");
+
+    let mut viewer = paired_as(&b, "viewer");
+    let refused = request(
+        &mut viewer,
+        json!({"t": "device.rename", "id": 3, "handle": 0, "name": "x"}),
+    );
+    assert_eq!(refused["code"], "denied", "{refused}");
+
+    let (mut admin, _) = b.admin();
+    let lock = request(
+        &mut admin,
+        json!({"t": "lock.acquire", "id": 4, "handle": 0}),
+    );
+    assert_eq!(lock["t"], "ok");
+    let refused = request(
+        &mut control,
+        json!({"t": "device.rename", "id": 5, "handle": 0, "name": "y"}),
+    );
+    assert_eq!(refused["code"], "locked", "{refused}");
+    let missing = request(
+        &mut admin,
+        json!({"t": "device.rename", "id": 6, "handle": 9, "name": "y"}),
+    );
+    assert_eq!(missing["code"], "no_device", "{missing}");
+    b.hub.stop();
+}
+
+/// Older firmware: the hub keeps the name, on disk in its one store. Clients and names
+/// share the file, so each must survive the other's saves, in both orders.
+#[test]
+fn wp_hb1_stored_names_and_clients_share_the_file_and_survive_a_restart() {
+    let dir = store_dir();
+    let start = || {
+        let hub = Hub::start(HubConfig {
+            network: Some(network(
+                dir.clone(),
+                AccessMode::Pin,
+                ServerLimits::default(),
+            )),
+            ..HubConfig::in_process("Test hub")
+        })
+        .unwrap();
+        let net = hub.network().unwrap();
+        let port = net.port();
+        Bench {
+            hub,
+            net,
+            port,
+            dir: dir.clone(),
+        }
+    };
+    let b = start();
+    let handle = b.hub.attach(Box::new(Older::new("OLD")), 0).unwrap();
+    let (mut first, first_token) = b.admin();
+    assert_eq!(rename_ok(&mut first, 2, handle, "Garage"), "Garage");
+    // A pairing after the rename, and a rename after that pairing.
+    let (mut second, second_token) = b.admin();
+    assert_eq!(rename_ok(&mut second, 3, handle, "Garage 2"), "Garage 2");
+    b.hub.stop();
+    let text = fs::read_to_string(b.dir.join("hub-store.json")).unwrap();
+    assert!(text.contains("Garage 2"), "{text}");
+
+    let b = start();
+    let handle = b.hub.attach(Box::new(Older::new("OLD")), 0).unwrap();
+    let device = b
+        .hub
+        .devices()
+        .into_iter()
+        .find(|d| d.handle == handle)
+        .unwrap();
+    assert_eq!(device.name, "Garage 2", "kept across the restart");
+    for token in [first_token, second_token] {
+        let (c, state) = client(&b, Some(token)).unwrap();
+        assert!(matches!(state, AuthState::Ready), "{state:?}");
+        c.close();
+    }
+    b.hub.stop();
+}
+
+/// Polls and the snapshot, from the client's own calls, through the server.
+#[test]
+fn wp_hb1_polls_and_the_snapshot_work_over_the_wire() {
+    let b = pin_hub();
+    let (c, _) = client(&b, None).unwrap();
+    c.pair(&b.pin(), "viewer").unwrap();
+    assert!(!c.denied().is_empty());
+    let snapshot = c.snapshot(0).unwrap();
+    assert!(!snapshot.bulk().unwrap().is_empty());
+    assert!(matches!(
+        c.snapshot(9),
+        Err(LinkError::Rejected { ref code, .. }) if code == "no_device"
+    ));
+    let polls = c.polls(0);
+    let spec = PollSpec {
+        slot: 1,
+        req: op::REQ_GET_PLATFORM,
+        val: 0,
+        idx: 2,
+        len: 7,
+        hz: 20,
+    };
+    let granted = c.poll_subscribe(0, &[spec]).unwrap();
+    assert_eq!(granted.len(), 1);
+    assert_eq!(granted[0].slot, 1);
+    let first = polls.recv_timeout(WAIT).unwrap();
+    let second = polls.recv_timeout(WAIT).unwrap();
+    assert_eq!(first.payload.len(), 7);
+    assert_eq!(
+        second.seq,
+        first.seq.wrapping_add(1),
+        "the writer's own sequence"
+    );
+    assert!(matches!(
+        c.poll_subscribe(9, &[spec]),
+        Err(LinkError::Rejected { ref code, .. }) if code == "no_device"
+    ));
+    let write = PollSpec {
+        req: op::REQ_SET_MASTER_VOLUME,
+        ..spec
+    };
+    assert!(matches!(
+        c.poll_subscribe(0, &[write]),
+        Err(LinkError::Rejected { ref code, .. }) if code == "denied"
+    ));
+    c.poll_unsubscribe(0, &[1]);
+    c.close();
+    b.hub.stop();
+}
+
+/// Role and payload limits, as `hello` advertises them, on real frames.
+#[test]
+fn wp_hb1_commands_are_judged_over_the_wire() {
+    let b = pin_hub();
+    let (viewer, _) = client(&b, None).unwrap();
+    viewer.pair(&b.pin(), "viewer").unwrap();
+    let read = viewer.command(0, Dir::Get, op::REQ_GET_PLATFORM, 0, 2, 7, &[]);
+    assert_eq!(read.status, status::OK);
+    let volume = 0.0f32.to_le_bytes();
+    let write = viewer.command(0, Dir::Set, op::REQ_SET_MASTER_VOLUME, 0, 2, 4, &volume);
+    assert_eq!(write.status, status::DENIED);
+
+    let (control, _) = client(&b, None).unwrap();
+    control.pair(&b.pin(), "control").unwrap();
+    let write = control.command(0, Dir::Set, op::REQ_SET_MASTER_VOLUME, 0, 2, 4, &volume);
+    assert_eq!(write.status, status::OK);
+    let big = vec![0u8; dspi_hub::router::MAX_PAYLOAD + 1];
+    let too_big = control.command(
+        0,
+        Dir::Set,
+        op::REQ_SET_ALL_PARAMS,
+        0,
+        2,
+        big.len() as u16,
+        &big,
+    );
+    assert_eq!(too_big.status, status::TOO_LARGE);
+    assert_eq!(
+        viewer.hello().limits.max_payload as usize,
+        dspi_hub::router::MAX_PAYLOAD
+    );
+    assert_eq!(
+        viewer.hello().limits.max_inflight,
+        dspi_hub::hub::MAX_INFLIGHT
+    );
+    assert_eq!(viewer.hello().limits.poll_max_hz, dspi_hub::POLL_MAX_HZ);
+    viewer.close();
+    control.close();
+    b.hub.stop();
+}
+
+/// The control messages HB2 and HB3 handle, with what a hostile admin can put in them.
+/// Answered, with no panic, and the session and the hub go on.
+#[test]
+fn wp_hb1_hostile_lock_poll_and_rename_messages_are_answered() {
+    let b = pin_hub();
+    let (mut raw, _) = b.admin();
+    let spec =
+        json!({"slot": 1, "req": op::REQ_GET_PLATFORM, "val": 0, "idx": 2, "len": 7, "hz": 20});
+    let many: Vec<Value> = std::iter::repeat_n(spec.clone(), 800).collect();
+    let huge_len =
+        json!({"slot": 2, "req": op::REQ_GET_PLATFORM, "val": 0, "idx": 2, "len": 65535, "hz": 20});
+    let huge_hz = json!({"slot": 3, "req": op::REQ_GET_PLATFORM, "val": 0, "idx": 2, "len": 7, "hz": 4294967295u32});
+    let zero_hz =
+        json!({"slot": 4, "req": op::REQ_GET_PLATFORM, "val": 0, "idx": 2, "len": 7, "hz": 0});
+    let long_name = "n\u{1b}\u{0}".repeat(4_000);
+    for message in [
+        json!({"t": "poll.subscribe", "id": 1, "handle": 0, "polls": many}),
+        json!({"t": "poll.subscribe", "id": 1, "handle": 0, "polls": [huge_len]}),
+        json!({"t": "poll.subscribe", "id": 1, "handle": 0, "polls": [huge_hz]}),
+        json!({"t": "poll.subscribe", "id": 1, "handle": 0, "polls": [zero_hz]}),
+        json!({"t": "poll.unsubscribe", "id": 1, "handle": 0, "slots": [1, 1, 255, 0]}),
+        json!({"t": "poll.unsubscribe", "id": 1, "handle": 200, "slots": [1]}),
+        json!({"t": "lock.acquire", "id": 1, "handle": 0, "timeout_ms": 1e308}),
+        json!({"t": "lock.acquire", "id": 1, "handle": 0, "timeout_ms": u64::MAX}),
+        json!({"t": "lock.acquire", "id": 1, "handle": 0, "timeout_ms": 0}),
+        json!({"t": "lock.release", "id": 1, "handle": 0}),
+        json!({"t": "lock.release", "id": 1, "handle": 200}),
+        json!({"t": "device.rename", "id": 1, "handle": 0, "name": long_name}),
+        json!({"t": "device.rename", "id": 1, "handle": 200, "name": "x"}),
+        json!({"t": "device.rename", "id": 1, "handle": 0, "name": 7}),
+    ] {
+        let reply = request(&mut raw, message.clone());
+        assert_eq!(reply["id"], 1, "{reply}");
+    }
+    assert_eq!(
+        request(&mut raw, json!({"t": "device.list", "id": 2}))["t"],
+        "ok"
+    );
     b.hub.stop();
 }

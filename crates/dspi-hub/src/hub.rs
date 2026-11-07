@@ -61,7 +61,7 @@ pub const SNAPSHOT_WAIT: Duration = Duration::from_secs(3);
 
 /// What a hub is started with.
 pub struct HubConfig {
-    /// `hid` (spec 7.2), a lowercase UUID. HB1 takes it from the store.
+    /// `hid` (spec 7.2), a lowercase UUID. Empty on a networked hub: the one in its store.
     pub hub_id: String,
     /// The hub's user-visible name.
     pub name: String,
@@ -232,12 +232,23 @@ impl Hub {
     pub fn start(mut config: HubConfig) -> Result<Self, HubError> {
         let network = config.network.take();
         let bus = config.bus.take();
-        // -- WP HB1 -- A networked hub given no id has the one in its store.
-        if let Some(network) = network.as_ref().filter(|_| config.hub_id.is_empty()) {
-            config.hub_id = crate::store::HubStore::load(&network.store_dir)?
-                .hub_id()
-                .to_owned();
-        }
+        // -- WP HB1 -- One owner of the store, since clients and device names share a
+        // file. A networked hub given no id has the one in it, and keeps its names there
+        // unless given another place.
+        let auth = match &network {
+            Some(network) => {
+                let store = crate::store::HubStore::load(&network.store_dir)?;
+                let auth = Arc::new(crate::auth::AuthStore::new(store, network.access)?);
+                if config.hub_id.is_empty() {
+                    config.hub_id = auth.hub_id();
+                }
+                if config.names.is_none() {
+                    config.names = Some(Arc::new(crate::auth::StoredNames(Arc::clone(&auth))));
+                }
+                Some(auth)
+            }
+            None => None,
+        };
         // -- WP HB3 --
         let names = config.names.take();
         let stored = names.as_ref().map(|n| n.load()).unwrap_or_default();
@@ -308,9 +319,9 @@ impl Hub {
                 advertiser: None,
             })),
         };
-        if let Some(network) = network {
+        if let (Some(network), Some(auth)) = (network, auth) {
             // `hub` is dropped on failure, which stops what started above.
-            let server = Server::start(hub.handle.clone(), &network)?;
+            let server = Server::start(hub.handle.clone(), &network, auth)?;
             if let Some(t) = guard(&hub.threads).as_mut() {
                 t.server = Some(server);
             }
@@ -390,22 +401,6 @@ impl Hub {
             .as_ref()
             .and_then(|t| t.server.as_ref())
             .map(Server::control)
-    }
-}
-
-// -- WP HB1 --
-impl HubHandle {
-    /// The live device at `handle`.
-    pub(crate) fn device(&self, handle: u8) -> Option<Arc<DeviceShared>> {
-        guard(&self.inner.state)
-            .attached
-            .get(&handle)
-            .map(|a| Arc::clone(&a.shared))
-    }
-
-    /// The hub's command table.
-    pub(crate) fn policy(&self) -> Arc<Policy> {
-        Arc::clone(&self.inner.policy)
     }
 }
 
