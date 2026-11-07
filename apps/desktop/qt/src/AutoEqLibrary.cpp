@@ -1,49 +1,103 @@
 #include "AutoEqLibrary.h"
 #include "DSPiBridge.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
-#include <QDir>
+#include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocale>
+#include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
-#include <QRegularExpression>
-#include <QSaveFile>
 #include <QSettings>
 #include <QStandardPaths>
-#include <algorithm>
+#include <QThread>
+
+extern "C" {
+#include "dspi_core.h"
+}
+
+// The core's fetch and what stays with it for as long as the core may call it
+struct AutoEqFetchContext {
+    AutoEqLibrary::Fetcher fetch;
+    std::atomic_bool stop{ false };
+};
 
 namespace {
-// The AutoEQ results folders and their priority when one headphone was
-// measured by several (lower wins), as on macOS
-struct Source { const char *folder; const char *name; int priority; };
-const Source kSources[] = {
-    { "oratory1990", "oratory1990", 1 },
-    { "crinacle", "crinacle", 2 },
-    { "Rtings", "rtings", 3 },
-    { "Innerfidelity", "innerfidelity", 3 },
-    { "Headphone.com Legacy", "headphone.com", 4 },
-};
-constexpr int kSourceCount = int(sizeof(kSources) / sizeof(kSources[0]));
 constexpr int kBands = 10;
-constexpr int kParallel = 20;
 const char *kFavoritesKey = "autoeq/favorites";
+constexpr int kPollMs = 100;
+constexpr qint64 kFetchTimeoutMs = 30000;       // as the Terminal's: a cancel waits for requests in flight
+constexpr int kFetchTickMs = 100;               // how soon a cancel reaches a request
+// Far past what the core accepts (64 MiB); it refuses, in its own words, what
+// reaches it over its limit
+constexpr qint64 kMaxBytes = 128 * 1024 * 1024;
 
-const QStringList kManufacturers = {
-    "AKG", "Audio-Technica", "Audeze", "Bang & Olufsen", "Beats", "Beyerdynamic",
-    "Bose", "Campfire Audio", "Dan Clark Audio", "Denon", "FiiO", "Final",
-    "Focal", "Grado", "HarmonicDyne", "HIFIMAN", "JBL", "Koss", "Massdrop",
-    "Meze", "Moondrop", "Philips", "Pioneer", "Sennheiser", "Shure", "Sony",
-    "SteelSeries", "STAX", "Tin HiFi", "V-MODA", "ZMF", "64 Audio", "7Hz",
-    "Anker", "Apple", "AFUL", "BLON", "CCA", "Dunu", "Empire Ears", "Etymotic",
-    "FatFreq", "Hidizs", "HiBy", "iBasso", "JVC", "KZ", "Letshuoer", "Linsoul",
-    "Noble Audio", "QKZ", "Samsung", "See Audio", "Simgot", "SoftEars",
-    "Tangzu", "Thieaudio", "Tinhifi", "Tripowin", "TRN", "Truthear",
-    "Unique Melody", "Westone", "Yanyin", "BGVP", "CCZ"
+class FunctionThread : public QThread {
+public:
+    explicit FunctionThread(const std::function<void()> &work) : m_work(work) {}
+    void run() override { m_work(); }
+private:
+    std::function<void()> m_work;
 };
+
+qint64 headerValue(const QNetworkReply *reply, const char *name) {
+    bool ok = false;
+    const qint64 v = reply->rawHeader(name).trimmed().toLongLong(&ok);  // a date is not a number: absent
+    return ok && v >= 0 ? v : -1;
+}
+
+// The server answered, and the whole answer came. A connection lost part way has
+// a status too, but its body is not the server's answer.
+bool isAnswer(const QNetworkReply *reply, int status) {
+    const QNetworkReply::NetworkError e = reply->error();
+    return status > 0 && (e == QNetworkReply::NoError || e >= QNetworkReply::ContentAccessDenied
+                          || e == QNetworkReply::ProtocolInvalidOperationError)
+        && e != QNetworkReply::ProtocolFailure;
+}
+
+void fetchCallback(void *userData, const char *url, const char *accept, const char *userAgent, AutoEqFetchSink *sink) {
+    const auto *context = static_cast<const AutoEqFetchContext *>(userData);
+    try {
+        const AutoEqFetchAnswer a = context->fetch(QByteArray(url), accept ? QByteArray(accept) : QByteArray(),
+                                                   QByteArray(userAgent), context->stop);
+        if (a.answered && a.body.size() <= kMaxBytes)
+            dspi_autoeq_fetch_respond(sink, quint16(qBound(0, a.status, 65535)),
+                                      reinterpret_cast<const uint8_t *>(a.body.constData()), uint32_t(a.body.size()),
+                                      a.retryAfterS, a.rateLimitRemaining, a.rateLimitReset);
+        else
+            dspi_autoeq_fetch_fail(sink, a.answered ? "The answer was too large." : a.failure.toUtf8().constData());
+    } catch (...) {     // Nothing may unwind into the core
+        dspi_autoeq_fetch_fail(sink, "The download failed.");
+    }
+}
+
+QJsonObject jsonOf(const QByteArray &text) { return QJsonDocument::fromJson(QByteArray(text.constData())).object(); }
+
+QString replyError(const QJsonObject &reply, const char *otherwise) {
+    const QString error = reply.value("error").toString();
+    return error.isEmpty() ? QString::fromLatin1(otherwise) : error;
+}
+
+QString countOf(int n, const char *one, const char *many) {
+    return QString("%1 %2").arg(n).arg(QString::fromLatin1(n == 1 ? one : many));
+}
+
+// A rebuild can succeed with parts missing, and this is how the person hears of it
+QString rebuiltMessage(const QJsonObject &p) {
+    const int profiles = p.value("failedProfiles").toInt();
+    const int listings = p.value("failedListings").toInt();
+    QString message = QString("Database rebuilt successfully!\nEntries: %1").arg(p.value("entries").toInt());
+    if (profiles > 0) message += "\n" + countOf(profiles, "profile", "profiles") + " could not be downloaded.";
+    if (listings > 0)
+        message += "\n" + countOf(listings, "folder", "folders") + " could not be listed, so whatever they hold is missing.";
+    if (profiles > 0 || listings > 0) message += "\nRebuild again to try for these.";
+    return message;
+}
 
 QString sourceDisplayName(const QString &s) {
     if (s == "crinacle") return "Crinacle";
@@ -62,7 +116,6 @@ int filterType(const QString &t) {
     return 0;
 }
 
-QString pathSegment(const QString &s) { return QString::fromUtf8(QUrl::toPercentEncoding(s)); }
 }
 
 // ── Model ──
@@ -107,8 +160,10 @@ void AutoEqModel::favoriteChanged(const QString &id) {
 // ── Library ──
 
 AutoEqLibrary::AutoEqLibrary(DSPiBridge *bridge, QObject *parent)
-    : QObject(parent), m_bridge(bridge)
+    : QObject(parent), m_bridge(bridge), m_fetcher(&AutoEqLibrary::httpGet)
 {
+    m_poll.setInterval(kPollMs);
+    connect(&m_poll, &QTimer::timeout, this, &AutoEqLibrary::pollRebuild);
     // Favourites keep their names, so the menu needs no database
     const QStringList saved = QSettings().value(kFavoritesKey).toStringList();
     for (const QString &item : saved) {
@@ -116,6 +171,14 @@ AutoEqLibrary::AutoEqLibrary(DSPiBridge *bridge, QObject *parent)
         const QString id = bar < 0 ? item : item.left(bar);
         m_favorites.insert(id);
         m_favoriteList.append(QVariantMap{ { "id", id }, { "name", bar < 0 ? id : item.mid(bar + 1) } });
+    }
+}
+
+AutoEqLibrary::~AutoEqLibrary() {
+    retireRebuild();
+    for (QThread *t : m_workers) {
+        t->wait();
+        delete t;
     }
 }
 
@@ -255,34 +318,72 @@ bool AutoEqLibrary::apply(const QString &id) {
 
 // ── Updating the database ──
 
-QVariantMap AutoEqLibrary::importFile(const QUrl &file) {
-    QFile f(file.toLocalFile());
-    if (!f.open(QIODevice::ReadOnly)) return { { "ok", false }, { "message", "The file could not be opened." } };
-    const QByteArray data = f.readAll();
-    QString error;
-    if (!readDatabase(data, &error)) {
-        // Leave the database as it was
-        m_loaded = false;
-        load();
-        return { { "ok", false }, { "message", error } };
-    }
-    QDir().mkpath(QFileInfo(userPath()).path());
-    QSaveFile out(userPath());
-    if (!out.open(QIODevice::WriteOnly) || out.write(data) != data.size() || !out.commit())
-        return { { "ok", false }, { "message", "The database could not be saved: " + out.errorString() } };
-    m_loaded = true;
-    m_error.clear();
-    filter();
-    emit databaseChanged();
-    return { { "ok", true }, { "message", QString("Database updated successfully.\nEntries: %1").arg(m_entries.size()) } };
+void AutoEqLibrary::runOffGui(const std::function<void()> &work, const std::function<void()> &done) {
+    auto *thread = new FunctionThread(work);
+    m_workers.append(thread);
+    connect(thread, &QThread::finished, this, [this, thread, done]() {
+        m_workers.removeAll(thread);
+        thread->deleteLater();
+        if (done) done();
+    });
+    thread->start();
 }
 
-QVariantMap AutoEqLibrary::resetToBuiltIn() {
-    if (hasUserDatabase() && !QFile::remove(userPath()))
-        return { { "ok", false }, { "message", "The updated database could not be removed." } };
-    m_loaded = false;
-    load();
-    return { { "ok", true }, { "message", QString("Reset to built-in database.\nEntries: %1").arg(m_entries.size()) } };
+void AutoEqLibrary::importFile(const QUrl &file) {
+    if (updateRunning()) {
+        QTimer::singleShot(0, this, [this]() { emit updateFinished(false, "Import Failed", "Another update of the database is running."); });
+        return;
+    }
+    m_updating = true;
+    const QString source = file.toLocalFile();
+    const QByteArray path = userPath().toUtf8();
+    auto reply = std::make_shared<QByteArray>();
+    auto opened = std::make_shared<bool>(false);
+    runOffGui([source, path, reply, opened]() {
+        QFile f(source);
+        *opened = f.open(QIODevice::ReadOnly);
+        if (!*opened) return;
+        const QByteArray data = f.read(kMaxBytes);
+        reply->fill('\0', AUTOEQ_REPLY_MIN);
+        dspi_autoeq_import(path.constData(), reinterpret_cast<const uint8_t *>(data.constData()), uint32_t(data.size()),
+                           reply->data(), AUTOEQ_REPLY_MIN);
+    }, [this, reply, opened]() {
+        m_updating = false;
+        if (!*opened) { emit updateFinished(false, "Import Failed", "The file could not be opened."); return; }
+        const QJsonObject r = jsonOf(*reply);
+        if (!r.value("ok").toBool()) { emit updateFinished(false, "Import Failed", replyError(r, "The database could not be imported.")); return; }
+        m_loaded = false;
+        load();
+        emit updateFinished(true, QString(), QString("Database updated successfully.\nEntries: %1").arg(m_entries.size()));
+    });
+}
+
+void AutoEqLibrary::resetToBuiltIn() {
+    if (updateRunning()) {
+        QTimer::singleShot(0, this, [this]() { emit updateFinished(false, "Reset Failed", "Another update of the database is running."); });
+        return;
+    }
+    m_updating = true;
+    const QByteArray path = userPath().toUtf8();
+    auto reply = std::make_shared<QByteArray>(int(AUTOEQ_REPLY_MIN), '\0');
+    runOffGui([path, reply]() {
+        dspi_autoeq_reset_to_builtin(path.constData(), reply->data(), AUTOEQ_REPLY_MIN);
+    }, [this, reply]() {
+        m_updating = false;
+        const QJsonObject r = jsonOf(*reply);
+        if (!r.value("ok").toBool()) { emit updateFinished(false, "Reset Failed", replyError(r, "The updated database could not be removed.")); return; }
+        m_loaded = false;
+        load();
+        emit updateFinished(true, QString(), QString("Reset to built-in database.\nEntries: %1").arg(m_entries.size()));
+    });
+}
+
+QString AutoEqLibrary::rebuildWarning() const {
+    const QByteArray path = userPath().toUtf8();
+    const uint32_t needed = dspi_autoeq_rebuild_warning(path.constData(), nullptr, 0);
+    QByteArray text(int(needed) + 1, '\0');
+    dspi_autoeq_rebuild_warning(path.constData(), text.data(), uint32_t(text.size()));
+    return QString::fromUtf8(text.constData());
 }
 
 void AutoEqLibrary::setRebuild(bool on, double progress, const QString &status) {
@@ -292,198 +393,122 @@ void AutoEqLibrary::setRebuild(bool on, double progress, const QString &status) 
     emit rebuildChanged();
 }
 
-// Downloads every profile from the AutoEQ project and builds a fresh
-// database: list each source's target folders and their headphone folders
-// through the GitHub API, then fetch each ParametricEQ.txt
 void AutoEqLibrary::startRebuild() {
     if (m_rebuilding) return;
-    m_listings.clear();
-    m_profiles.clear();
-    m_found.clear();
-    m_nextProfile = m_inFlight = m_done = 0;
-    for (int s = 0; s < kSourceCount; s++) m_listings.append({ s, QString() });
-    setRebuild(true, 0, "Discovering profiles...");
-    nextListing();
+    const auto refuse = [this](const QString &why) {
+        // After the caller has opened the progress window, which this closes
+        QTimer::singleShot(0, this, [this, why]() { emit rebuildFinished(false, "Rebuild failed: " + why); });
+    };
+    if (m_updating) { refuse("Another update of the database is running."); return; }
+    // Qt 5 sets up its network bearer on the first manager ever made, waiting on
+    // the main thread if that is another thread's. Do that here, so a fetch never
+    // has to.
+    { QNetworkAccessManager firstOnThisThread; }
+    auto context = std::make_shared<AutoEqFetchContext>();
+    context->fetch = m_fetcher;
+    m_handle = dspi_autoeq_rebuild_start(userPath().toUtf8().constData(), &fetchCallback, context.get());
+    if (!m_handle) { refuse("The database's location could not be used."); return; }
+    m_fetchContext = context;
+    setRebuild(true, 0, "Connecting to GitHub...");
+    m_poll.start();
 }
 
 void AutoEqLibrary::cancelRebuild() {
     if (!m_rebuilding) return;
-    m_rebuilding = false;
-    for (const QPointer<QNetworkReply> &r : m_replies) if (r) r->abort();
-    m_replies.clear();
+    retireRebuild();
     setRebuild(false, 0, QString());
 }
 
-void AutoEqLibrary::nextListing() {
-    if (!m_rebuilding) return;
-    if (m_listings.isEmpty()) {
-        if (m_profiles.isEmpty()) { failRebuild("Failed to download database"); return; }
-        m_status = QString("Downloading 0 / %1 profiles...").arg(m_profiles.size());
-        emit rebuildChanged();
-        pumpDownloads();
+void AutoEqLibrary::retireRebuild() {
+    m_poll.stop();
+    if (!m_handle) return;
+    AutoEqRebuildHandle *handle = m_handle;
+    const std::shared_ptr<AutoEqFetchContext> context = m_fetchContext;     // valid until the free has returned
+    m_handle = nullptr;
+    m_fetchContext.reset();
+    context->stop = true;
+    dspi_autoeq_rebuild_cancel(handle);
+    runOffGui([handle, context]() { dspi_autoeq_rebuild_free(handle); }, nullptr);
+}
+
+void AutoEqLibrary::pollRebuild() {
+    if (!m_handle) return;
+    QByteArray text(1024, '\0');
+    uint32_t needed = dspi_autoeq_rebuild_poll(m_handle, text.data(), uint32_t(text.size()));
+    if (needed > uint32_t(text.size())) {
+        text.fill('\0', int(needed));
+        needed = dspi_autoeq_rebuild_poll(m_handle, text.data(), uint32_t(text.size()));
+        if (needed > uint32_t(text.size())) return;     // Grew again: the next tick reads it
+    }
+    const QJsonObject p = jsonOf(text);
+    const QString status = p.value("status").toString();
+    const double fraction = p.value("fraction").toDouble();
+    if (!p.value("finished").toBool()) {
+        if (status != m_status || fraction != m_progress) setRebuild(true, fraction, status);
         return;
     }
-    const Listing l = m_listings.takeFirst();
-    QString path = "results/" + pathSegment(kSources[l.source].folder);
-    if (!l.target.isEmpty()) path += "/" + pathSegment(l.target);
-    QNetworkRequest req(QUrl("https://api.github.com/repos/jaakkopasanen/AutoEq/contents/" + path));
-    req.setRawHeader("Accept", "application/vnd.github.v3+json");
-    req.setHeader(QNetworkRequest::UserAgentHeader, "DSPi-Console-Linux");
-    QNetworkReply *reply = m_net.get(req);
-    m_replies.append(reply);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, l]() { listingDone(reply, l.source, l.target); });
+    retireRebuild();    // Over: nothing left to wait for
+    if (p.value("succeeded").toBool()) {
+        m_loaded = false;
+        load();
+        setRebuild(false, 1.0, status);
+        emit rebuildFinished(true, rebuiltMessage(p));
+    } else {
+        setRebuild(false, 0, QString());
+        if (p.value("code").toString() != "cancelled") emit rebuildFinished(false, "Rebuild failed: " + status);
+    }
 }
 
-void AutoEqLibrary::listingDone(QNetworkReply *reply, int source, const QString &target) {
-    reply->deleteLater();
-    if (!m_rebuilding) return;
-    // A folder that can't be listed is skipped, as on macOS
-    if (reply->error() == QNetworkReply::NoError) {
-        for (const QJsonValue &v : QJsonDocument::fromJson(reply->readAll()).array()) {
-            const QJsonObject o = v.toObject();
-            if (o.value("type").toString() != "dir") continue;
-            const QString name = o.value("name").toString();
-            if (target.isEmpty()) {
-                m_listings.append({ source, name });
-            } else {
-                const QString file = name + " ParametricEQ.txt";
-                const QUrl url("https://raw.githubusercontent.com/jaakkopasanen/AutoEq/master/results/"
-                               + pathSegment(kSources[source].folder) + "/" + pathSegment(target) + "/"
-                               + pathSegment(name) + "/" + pathSegment(file));
-                m_profiles.append({ source, target, name, url });
-            }
+// ── The core's HTTP GET ──
+
+AutoEqFetchAnswer AutoEqLibrary::httpGet(const QByteArray &url, const QByteArray &accept,
+                                         const QByteArray &userAgent, const std::atomic_bool &stop) {
+    AutoEqFetchAnswer answer;
+    {
+        QEventLoop loop;    // First: this gives a thread the core started an event dispatcher
+        QNetworkAccessManager net;
+        QNetworkRequest request(QUrl::fromEncoded(url));
+        // Follows redirects, and never from https to http. TLS verification is
+        // Qt's default, on: no certificate error is ever ignored here.
+        request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+        request.setRawHeader("User-Agent", userAgent);
+        if (!accept.isEmpty()) request.setRawHeader("Accept", accept);
+
+        QNetworkReply *reply = net.get(request);
+        QString stopped;
+        QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+        QObject::connect(reply, &QNetworkReply::downloadProgress, &loop, [&](qint64 received, qint64) {
+            if (received > kMaxBytes && stopped.isEmpty()) { stopped = "The answer was too large."; reply->abort(); }
+        });
+        QElapsedTimer elapsed;
+        elapsed.start();
+        QTimer tick;
+        tick.setInterval(kFetchTickMs);
+        QObject::connect(&tick, &QTimer::timeout, &loop, [&]() {
+            if (reply->isFinished() || !stopped.isEmpty()) return;
+            if (stop) stopped = "Cancelled.";
+            else if (elapsed.elapsed() > kFetchTimeoutMs) stopped = "The request timed out.";
+            else return;
+            reply->abort();
+        });
+        tick.start();
+        if (!reply->isFinished()) loop.exec();
+        tick.stop();
+
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if (stopped.isEmpty() && isAnswer(reply, status)) {
+            answer.answered = true;
+            answer.status = status;
+            answer.body = reply->readAll();
+            answer.retryAfterS = headerValue(reply, "Retry-After");
+            answer.rateLimitRemaining = headerValue(reply, "X-RateLimit-Remaining");
+            answer.rateLimitReset = headerValue(reply, "X-RateLimit-Reset");
+        } else {
+            answer.failure = stopped.isEmpty() ? reply->errorString() : stopped;
         }
-        if (!target.isEmpty()) {
-            m_status = QString("Found %1 profiles...").arg(m_profiles.size());
-            emit rebuildChanged();
-        }
+        delete reply;
     }
-    nextListing();
-}
-
-void AutoEqLibrary::pumpDownloads() {
-    while (m_rebuilding && m_inFlight < kParallel && m_nextProfile < m_profiles.size()) {
-        const int i = m_nextProfile++;
-        QNetworkRequest req(m_profiles[i].url);
-        req.setHeader(QNetworkRequest::UserAgentHeader, "DSPi-Console-Linux");
-        QNetworkReply *reply = m_net.get(req);
-        m_replies.append(reply);
-        m_inFlight++;
-        connect(reply, &QNetworkReply::finished, this, [this, reply, i]() { downloadDone(reply, i); });
-    }
-    if (m_rebuilding && m_inFlight == 0 && m_nextProfile >= m_profiles.size()) finishRebuild();
-}
-
-void AutoEqLibrary::downloadDone(QNetworkReply *reply, int index) {
-    reply->deleteLater();
-    if (!m_rebuilding) return;
-    m_inFlight--;
-    m_done++;
-    m_replies.removeAll(reply);
-    if (reply->error() == QNetworkReply::NoError) {
-        const Profile &p = m_profiles[index];
-        // Parse the ParametricEQ.txt: "Preamp: -6.2 dB" and
-        // "Filter 1: ON PK Fc 105 Hz Gain 5.5 dB Q 0.70"
-        AutoEqEntry e;
-        static const QHash<QString, QString> types = {
-            { "PK", "peaking" }, { "PEQ", "peaking" }, { "LSC", "lowShelf" }, { "LSB", "lowShelf" }, { "LS", "lowShelf" },
-            { "HSC", "highShelf" }, { "HSB", "highShelf" }, { "HS", "highShelf" }, { "LP", "lowPass" }, { "LPQ", "lowPass" },
-            { "HP", "highPass" }, { "HPQ", "highPass" } };
-        static const QRegularExpression number("-?\\d+\\.?\\d*");
-        static const QRegularExpression fc("Fc\\s+([\\d.]+)", QRegularExpression::CaseInsensitiveOption);
-        static const QRegularExpression gain("Gain\\s+(-?[\\d.]+)", QRegularExpression::CaseInsensitiveOption);
-        static const QRegularExpression q("\\sQ\\s+([\\d.]+)");
-        for (const QString &raw : QString::fromUtf8(reply->readAll()).split('\n')) {
-            const QString line = raw.trimmed();
-            if (line.startsWith("preamp:", Qt::CaseInsensitive)) {
-                const QRegularExpressionMatch m = number.match(line);
-                if (m.hasMatch()) e.preamp = m.captured(0).toDouble();
-                continue;
-            }
-            if (!line.contains("Filter") || !line.contains(':')) continue;
-            const QString upper = line.toUpper();
-            if (!upper.contains(" ON ")) continue;
-            QString type;
-            for (auto it = types.constBegin(); it != types.constEnd(); ++it)
-                if (upper.contains(" " + it.key() + " ")) { type = it.value(); break; }
-            if (type.isEmpty()) continue;
-            const QRegularExpressionMatch mf = fc.match(line), mg = gain.match(line), mq = q.match(line);
-            e.filters.append({ type, mf.hasMatch() ? mf.captured(1).toDouble() : 1000.0,
-                               mq.hasMatch() ? mq.captured(1).toDouble() : 0.707,
-                               mg.hasMatch() ? mg.captured(1).toDouble() : 0.0 });
-        }
-        if (!e.filters.isEmpty()) {
-            // Manufacturer from the known list, else the first word
-            QString manufacturer, model;
-            for (const QString &m : kManufacturers) {
-                if (p.headphone.compare(m, Qt::CaseInsensitive) == 0
-                    || p.headphone.startsWith(m + " ", Qt::CaseInsensitive)) {
-                    manufacturer = m;
-                    model = p.headphone.mid(m.size()).trimmed();
-                    if (model.isEmpty()) model = p.headphone;
-                    break;
-                }
-            }
-            if (manufacturer.isEmpty()) {
-                const int space = p.headphone.indexOf(' ');
-                manufacturer = space < 0 ? p.headphone : p.headphone.left(space);
-                model = space < 0 ? QString() : p.headphone.mid(space + 1);
-            }
-            const QString t = p.target.toLower();
-            e.formFactor = t.contains("in-ear") || t.contains("in_ear") || t.contains("iem") ? "in-ear"
-                         : t.contains("earbud") ? "earbud" : "over-ear";
-            e.manufacturer = manufacturer;
-            e.model = model;
-            e.source = kSources[p.source].name;
-            e.id = e.source + "/" + p.headphone;
-            const QString key = manufacturer.toLower() + "/" + model.toLower();
-            const int priority = kSources[p.source].priority;
-            auto it = m_found.find(key);
-            if (it == m_found.end() || priority < it->second) m_found.insert(key, { e, priority });
-        }
-    }
-    m_progress = double(m_done) / double(qMax(1, m_profiles.size()));
-    m_status = QString("Downloading %1 / %2 profiles...").arg(m_done).arg(m_profiles.size());
-    emit rebuildChanged();
-    pumpDownloads();
-}
-
-void AutoEqLibrary::finishRebuild() {
-    m_status = "Building database...";
-    emit rebuildChanged();
-    QVector<AutoEqEntry> entries;
-    for (const auto &v : m_found) entries.append(v.first);
-    std::sort(entries.begin(), entries.end(), [](const AutoEqEntry &a, const AutoEqEntry &b) {
-        const int c = QString::compare(a.manufacturer, b.manufacturer, Qt::CaseInsensitive);
-        return c != 0 ? c < 0 : QString::compare(a.model, b.model, Qt::CaseInsensitive) < 0;
-    });
-    QJsonArray list;
-    for (const AutoEqEntry &e : entries) {
-        QJsonArray filters;
-        for (const AutoEqEntry::Filter &f : e.filters)
-            filters.append(QJsonObject{ { "type", f.type }, { "freq", f.freq }, { "q", f.q }, { "gain", f.gain } });
-        list.append(QJsonObject{ { "id", e.id }, { "manufacturer", e.manufacturer }, { "model", e.model },
-                                 { "source", e.source }, { "formFactor", e.formFactor }, { "preamp", e.preamp },
-                                 { "filters", filters } });
-    }
-    const QByteArray data = QJsonDocument(QJsonObject{
-        { "version", 1 }, { "generatedAt", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs) },
-        { "entryCount", entries.size() }, { "entries", list } }).toJson(QJsonDocument::Indented);
-    QDir().mkpath(QFileInfo(userPath()).path());
-    QSaveFile out(userPath());
-    if (entries.isEmpty() || !out.open(QIODevice::WriteOnly) || out.write(data) != data.size() || !out.commit()) {
-        failRebuild(entries.isEmpty() ? "Failed to download database" : "The database could not be saved.");
-        return;
-    }
-    m_loaded = false;
-    load();
-    m_replies.clear();
-    setRebuild(false, 1.0, QString("Complete! %1 profiles.").arg(m_entries.size()));
-    emit rebuildFinished(true, QString("Database rebuilt successfully!\nEntries: %1").arg(m_entries.size()));
-}
-
-void AutoEqLibrary::failRebuild(const QString &message) {
-    m_replies.clear();
-    setRebuild(false, 0, QString());
-    emit rebuildFinished(false, "Rebuild failed: " + message);
+    // The manager leaves deleteLater()s behind, and this thread has no loop to come
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    return answer;
 }

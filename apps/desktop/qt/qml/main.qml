@@ -976,7 +976,7 @@ ApplicationWindow {
         onChosen: {
             if (key === "rebuild") autoeqRebuildConfirm.open()
             else if (key === "import") autoeqImportDialog.open()
-            else if (key === "reset") { var r = autoeq.resetToBuiltIn(); root.showFileResult(r.ok ? "AutoEQ Database" : "Reset Failed", [r.message], r.ok) }
+            else if (key === "reset") autoeq.resetToBuiltIn()
         }
     }
     AppDialog {
@@ -984,7 +984,7 @@ ApplicationWindow {
         icon: "warning"
         iconTint: "#ff9f0a"
         title: "Rebuild AutoEQ Database"
-        message: "You are about to rebuild the AutoEQ database by downloading all profiles from GitHub.\n\nThis requires an internet connection and may take several minutes.\n\nDo you wish to proceed?"
+        message: autoeq.rebuildWarning()   // -- WP QD27 --
         buttons: [{ key: "cancel", text: "Cancel" }, { key: "rebuild", text: "Rebuild", role: "primary" }]
         onChosen: if (key === "rebuild") { autoeq.startRebuild(); root.openToolWindow("autoeqRebuild") }
     }
@@ -994,6 +994,10 @@ ApplicationWindow {
             autoeqRebuildWindow.close()
             root.showFileResult(ok ? "AutoEQ Database" : "Rebuild Failed", [message], ok)
         }
+        // -- WP QD27 --
+        function onUpdateFinished(ok, failedTitle, message) {
+            root.showFileResult(ok ? "AutoEQ Database" : failedTitle, [message], ok)
+        }
     }
     Platform.FileDialog {
         id: autoeqImportDialog
@@ -1001,7 +1005,7 @@ ApplicationWindow {
         fileMode: Platform.FileDialog.OpenFile
         folder: root.documentsFolder
         nameFilters: ["AutoEQ database (*.json)", "All files (*)"]
-        onAccepted: { var r = autoeq.importFile(file); root.showFileResult(r.ok ? "AutoEQ Database" : "Import Failed", [r.message], r.ok) }
+        onAccepted: autoeq.importFile(file)
     }
 
     // ── Commit, Revert and Factory Reset (macOS wording) ──

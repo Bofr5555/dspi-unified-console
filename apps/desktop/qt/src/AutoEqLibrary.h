@@ -4,15 +4,29 @@
 #include <QAbstractListModel>
 #include <QHash>
 #include <QList>
-#include <QNetworkAccessManager>
-#include <QPointer>
 #include <QSet>
+#include <QTimer>
 #include <QUrl>
 #include <QVariantList>
 #include <QVector>
+#include <atomic>
+#include <functional>
+#include <memory>
 
 class DSPiBridge;
-class QNetworkReply;
+class QThread;
+struct AutoEqRebuildHandle;
+struct AutoEqFetchContext;
+
+// What one GET came to: the server's answer, whatever its status, or why there
+// was none
+struct AutoEqFetchAnswer {
+    bool answered = false;
+    int status = 0;
+    QByteArray body;
+    qint64 retryAfterS = -1, rateLimitRemaining = -1, rateLimitReset = -1;  // -1: no such header
+    QString failure;
+};
 
 // One AutoEQ headphone profile: a preamp and up to ten parametric filters
 struct AutoEqEntry {
@@ -45,7 +59,8 @@ private:
 // AutoEQ headphone profiles, as on macOS: the database bundled with Console
 // (or the user's updated copy), search, favourites, applying a profile to
 // inputs 1 and 2, and updating the database (import a file, rebuild from the
-// AutoEQ project on GitHub, or go back to the bundled one).
+// AutoEQ project on GitHub, or go back to the bundled one). Updating is the
+// core's (dspi_autoeq_*); this class supplies its HTTP GET and shows the result.
 class AutoEqLibrary : public QObject
 {
     Q_OBJECT
@@ -63,6 +78,21 @@ class AutoEqLibrary : public QObject
 
 public:
     explicit AutoEqLibrary(DSPiBridge *bridge, QObject *parent = nullptr);
+    ~AutoEqLibrary() override;
+
+    // The core's fetch: blocks its thread for one GET. Runs on the rebuild's
+    // threads, up to 20 at once. `accept` is empty when no such header is wanted;
+    // once `stop` is set the answer is no longer wanted.
+    using Fetcher = std::function<AutoEqFetchAnswer(const QByteArray &url, const QByteArray &accept,
+                                                    const QByteArray &userAgent, const std::atomic_bool &stop)>;
+    // The real one: a QNetworkAccessManager and an event loop of its own on the
+    // calling thread, which never waits on the GUI thread.
+    static AutoEqFetchAnswer httpGet(const QByteArray &url, const QByteArray &accept,
+                                     const QByteArray &userAgent, const std::atomic_bool &stop);
+#ifdef DSPI_SMOKE
+    void setFetcherForTest(const Fetcher &fetcher) { m_fetcher = fetcher; }
+    QString userPathForTest() const { return userPath(); }
+#endif
 
     QObject *results() { return &m_model; }
     QString query() const { return m_query; }
@@ -85,9 +115,11 @@ public:
     // Preamp and filters onto inputs 1 and 2; false without a device
     Q_INVOKABLE bool apply(const QString &id);
 
-    // {ok, message}
-    Q_INVOKABLE QVariantMap importFile(const QUrl &file);
-    Q_INVOKABLE QVariantMap resetToBuiltIn();
+    // These two change the file off the GUI thread and end in updateFinished
+    Q_INVOKABLE void importFile(const QUrl &file);
+    Q_INVOKABLE void resetToBuiltIn();
+    // What a rebuild reaches for and writes, to show before starting one
+    Q_INVOKABLE QString rebuildWarning() const;
     Q_INVOKABLE void startRebuild();
     Q_INVOKABLE void cancelRebuild();
 
@@ -97,19 +129,19 @@ signals:
     void favoritesChanged();
     void rebuildChanged();
     void rebuildFinished(bool ok, const QString &message);
+    void updateFinished(bool ok, const QString &failedTitle, const QString &message);
 
 private:
     bool readDatabase(const QByteArray &json, QString *error);
     void filter();
     QString userPath() const;
     void setRebuild(bool on, double progress, const QString &status);
-    // Rebuild steps
-    void nextListing();
-    void listingDone(QNetworkReply *reply, int source, const QString &target);
-    void pumpDownloads();
-    void downloadDone(QNetworkReply *reply, int profile);
-    void finishRebuild();
-    void failRebuild(const QString &message);
+    void pollRebuild();
+    // Cancel the rebuild in hand and free it off the GUI thread: freeing waits
+    // for the requests in flight
+    void retireRebuild();
+    void runOffGui(const std::function<void()> &work, const std::function<void()> &done);
+    bool updateRunning() const { return m_rebuilding || m_updating; }
 
     DSPiBridge *m_bridge;
     AutoEqModel m_model;
@@ -122,20 +154,16 @@ private:
     QSet<QString> m_favorites;
     QVariantList m_favoriteList;
 
-    // Rebuild from GitHub
-    QNetworkAccessManager m_net;
+    // Updating
+    Fetcher m_fetcher;
+    AutoEqRebuildHandle *m_handle = nullptr;
+    std::shared_ptr<AutoEqFetchContext> m_fetchContext;
+    QTimer m_poll;
+    QList<QThread *> m_workers;
     bool m_rebuilding = false;
+    bool m_updating = false;
     double m_progress = 0;
     QString m_status;
-    struct Listing { int source; QString target; };            // target empty = the source folder
-    struct Profile { int source; QString target, headphone; QUrl url; };
-    QList<Listing> m_listings;
-    QVector<Profile> m_profiles;
-    int m_nextProfile = 0;
-    int m_inFlight = 0;
-    int m_done = 0;
-    QHash<QString, QPair<AutoEqEntry, int>> m_found;         // manufacturer/model -> entry, priority
-    QList<QPointer<QNetworkReply>> m_replies;
 };
 
 #endif // AUTOEQLIBRARY_H
