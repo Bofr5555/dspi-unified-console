@@ -49,21 +49,20 @@ and the web build (section 9).
 
 ## Status (2026-11-07)
 
-*From `git log main` at `ec87133`, the `wp/*` and `review/c3a` branches, `work/clients-wave0.md`, `work/clients-wave1.md` and
+*From `git log main` at `0185343` (reviews c3a and c3b merged), the `wp/*` branches, `work/clients-wave0.md`, `work/clients-wave1.md` and
 `work/HANDOVER.md`. A commit hash is the merge that brought the WP into `main`. **DONE**: merged. **PARTIAL**: merged,
-but a part moved to the WP named. **IN REVIEW**: finished, in review c3a (`review/c3a`). **IN PROGRESS**: on its branch,
+but a part moved to the WP named. **IN REVIEW**: finished, in a review branch. **IN PROGRESS**: on its branch,
 not finished. **TODO**: not started. **MOVED**: moved to later work, folded elsewhere or a deferred stub. **[HW]**: a
 device step is still owed. `?`: the sources disagree or are unclear.*
 
 **Next up:**
-1. QD34 (polling off the UI thread), after review c3a merges CG21.
-2. CG22 (analyser and signal generator in the Rust fake device), after c3a merges CG20.
-3. TM24 (Terminal control surfaces on `cs_rows`), after CG20.
+1. QD34 (polling off the UI thread).
+2. CG22 (analyser and signal generator in the Rust fake device).
+3. TM24 (Terminal control surfaces on `cs_rows`).
 4. Wave 3: QD9, QD10, QD13, QD14, QD16, QD17, QD19, QD28; AN5, AN7, AN9–AN14, AN17–AN19, AN23; TM11, TM13; HB7;
    MR1 (Swift half), SW1, SW2 on `macvm`. M0 (owner review) at its end.
 
-**Android release on the unified core today** needs review c3a merged (AN4, AN28), AN29–AN31, CG22, and the phone
-test (AN13).
+**Android release on the unified core today** needs CG22 and the phone test (AN13).
 
 **MR: one repo, one build**: 3 WPs: 2 DONE, 1 PARTIAL.
 
@@ -80,7 +79,7 @@ test (AN13).
 | LC1 | Licence inventory, iOS first | DONE | 37be568 | Re-run after each SW wave |
 | HO1 | Handover pack | TODO |  | Late: before R-Mac and R-iOS |
 
-**CG: core gaps**: 22 WPs: 17 DONE, 2 PARTIAL, 2 IN REVIEW, 1 TODO.
+**CG: core gaps**: 22 WPs: 19 DONE, 2 PARTIAL, 1 TODO.
 
 | ID | Title | Status | Merged in / branch | Next or blocker |
 |---|---|---|---|---|
@@ -103,11 +102,11 @@ test (AN13).
 | CG17 | One pair-map validity | DONE | 1b5bc61 |  |
 | CG18 | Core config export and import must not invent values | DONE | 120fd62 |  |
 | CG19 | One home for the analyser's sharing rules | DONE | 902ccf9 |  |
-| CG20 | Control-surface editing rules in the core | IN REVIEW | wp/CG20 98507a3 | Review c3a; then TM24, AN9 |
-| CG21 | One read per Stats tick | IN REVIEW | wp/CG21 037c0ac | Review c3a; then QD34 |
-| CG22 | Analyser and signal generator in the Rust fake device | TODO |  | Next up, after c3a merges (shares fake.rs with CG20); needed for the Android release |
+| CG20 | Control-surface editing rules in the core | DONE | d458d79, fixups 4c90fce | Unblocks TM24, AN9 |
+| CG21 | One read per Stats tick | DONE | 8b80fa2 | Unblocks QD34 |
+| CG22 | Analyser and signal generator in the Rust fake device | TODO |  | Next up; needed for the Android release |
 
-**HB: Rust Link hub**: 8 WPs: 4 DONE, 2 IN REVIEW, 1 TODO, 1 MOVED.
+**HB: Rust Link hub**: 8 WPs: 6 DONE, 1 TODO, 1 MOVED.
 
 | ID | Title | Status | Merged in / branch | Next or blocker |
 |---|---|---|---|---|
@@ -116,8 +115,8 @@ test (AN13).
 | HB2 | Commands and notifications | DONE | be9c170 (in wp/HB1) | Network voltage refusal provisional: owner |
 | HB3 | Registry, snapshot, polls, rename | DONE | be9c170 (in wp/HB1) |  |
 | HB4 |  | MOVED |  | Later work |
-| HB5 | Advertising and web UI | IN REVIEW | wp/HB5 674de9f | Review c3a; upstream web bundle held; TXT key `rev`: owner |
-| HB6 | C ABI for the hub | IN REVIEW | wp/HB6 39879b8 | Review c3a; [HW] HUB_OPT_USB, attach_app |
+| HB5 | Advertising and web UI | DONE | 1e0aaa0 | Upstream web bundle held; TXT key `rev`: owner |
+| HB6 | C ABI for the hub | DONE | 46eba1f | [HW] HUB_OPT_USB, attach_app |
 | HB7 | Conformance | TODO |  | Wave 3 per handover; section 7 says wave 4; [HW] |
 
 **QD: Qt (Linux, Windows)**: 34 WPs: 18 DONE, 14 TODO, 2 MOVED.
@@ -157,9 +156,9 @@ test (AN13).
 | QD31 | Save bar reports setter failures | DONE | e17573c |  |
 | QD32 | Qt on the shared wording | DONE | faf3035 |  |
 | QD33 | Qt About page (in CG15) | DONE | 028d27f |  |
-| QD34 | Polling off the UI thread | TODO |  | Next up, after CG21 |
+| QD34 | Polling off the UI thread | TODO |  | Next up |
 
-**TM: Terminal**: 24 WPs: 19 DONE, 2 IN REVIEW, 3 TODO.
+**TM: Terminal**: 24 WPs: 21 DONE, 3 TODO.
 
 | ID | Title | Status | Merged in / branch | Next or blocker |
 |---|---|---|---|---|
@@ -168,7 +167,7 @@ test (AN13).
 | TM3 | Firmware flashing | DONE | 2e4fc7b | [HW] first real flash: coordinator, owner's go |
 | TM4 | Read-only fallback | DONE | 32b9902 (with wp/TM21) |  |
 | TM5 | Analyser overlay and following | DONE | 794a74d |  |
-| TM6 | Bar strip | IN REVIEW | wp/TM6 ded0673 | Review c3a |
+| TM6 | Bar strip | DONE | d8eab17 |  |
 | TM7 | Tube Basic/Advanced | DONE | b10479b |  |
 | TM8 | Lost-link status line | DONE | 7674f12 |  |
 | TM9 | Find hubs | DONE | 3fe84cd |  |
@@ -185,17 +184,17 @@ test (AN13).
 | TM20 | Tokenizer and latency confirm | DONE | cf7c622 |  |
 | TM21 | Preset capture must not invent values | DONE | 32b9902 |  |
 | TM22 | Terminal About page (in CG15) | DONE | e73b67b |  |
-| TM23 | Settings page drawing | IN REVIEW | wp/TM23 e03e3fa | Review c3a |
-| TM24 | Terminal control surfaces on `cs_rows` | TODO |  | Next up, after CG20 |
+| TM23 | Settings page drawing | DONE | f2bdb9d, fixup f2f1d3c |  |
+| TM24 | Terminal control surfaces on `cs_rows` | TODO |  | Next up |
 
-**AN: Android**: 30 WPs: 7 DONE, 1 PARTIAL, 2 IN REVIEW, 3 IN PROGRESS, 17 TODO.
+**AN: Android**: 30 WPs: 12 DONE, 1 PARTIAL, 17 TODO.
 
 | ID | Title | Status | Merged in / branch | Next or blocker |
 |---|---|---|---|---|
 | AN1 | New crates in place of `dspi-ffi` and the patched core | DONE | 3778c72 |  |
 | AN2 | Read-only on older firmware | PARTIAL | 5f8e640 | Phone proof moved to AN13 (TODO) |
 | AN3 | Link engine on the core's supervisor | DONE | 4901541 |  |
-| AN4 | Network handling | IN REVIEW | wp/AN4 07d360a | Review c3a; needed for the Android release |
+| AN4 | Network handling | DONE | 6fdf46a |  |
 | AN5 | Link UI | TODO |  | Wave 3 |
 | AN6 | Settings rows | DONE | d016f5f |  |
 | AN7 | One device list | TODO |  | Wave 3 |
@@ -218,10 +217,10 @@ test (AN13).
 | AN25 | Output ring health | DONE | e179945 |  |
 | AN26 | Android About page (in CG15) | DONE | 1667bc7 | Attribution line from NOTICE before any release: owner |
 | AN27 | No title bar | DONE | 83793fb | Check on the first phone build |
-| AN28 | Demo mode on the real core | IN REVIEW | wp/AN28 2067778 | Review c3a; lost analyser and signal generator: CG22 |
-| AN29 | USB prompt once, not at every plug-in | IN PROGRESS | wp/AN29 64d81bb | [HW] tick "Always open", re-plug 3 times |
-| AN30 | Graph spectrum overlay draws the selected channel | IN PROGRESS | wp/AN30 6e401e2 | lintDebug fails in untouched files: check main |
-| AN31 | A visible way into Tools | IN PROGRESS | wp/AN31 (uncommitted) | Running |
+| AN28 | Demo mode on the real core | DONE | 26142ed, merge fix 0185343 | Lost analyser and signal generator: CG22 |
+| AN29 | USB prompt once, not at every plug-in | DONE | 1d66ead, nit e2a11a9 | [HW] tick "Always open", re-plug 3 times |
+| AN30 | Graph spectrum overlay draws the selected channel | DONE | 9522048 |  |
+| AN31 | A visible way into Tools | DONE | ee8b74e |  |
 
 **SW: Swift (macOS and iOS)**: 31 WPs: 30 TODO, 1 MOVED.
 
@@ -731,9 +730,9 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (section 9).
 
 **CG19: One home for the analyser's sharing rules.** [DONE 902ccf9] Size 0.25. From TM5. **Owns:** `crates/dspi-core/src/rta.rs`. **Implements:** the core uses `dspi_session::rta_sharing`, keeping its epoch check. **Deps:** TM5, CG5.
 
-**CG20: Control-surface editing rules in the core.** [IN REVIEW c3a] Size 1.5. From AN8. **Owns:** an export of `dspi_session::cs_model`'s rules. **Implements:** the rules live in `cs_model`, `CsHelper.qml` and the Swift tab and have drifted: Qt offers Hold on a long or double press, which the firmware refuses (`control_surfaces.c:1736-1741`). Clients ask the core. **Before** AN9, SW12. AN sizes from AN8's spike: AN9 2-2.5, AN10 1, AN11 1, AN12 1.5-2, plus `cs_demo_learn` 0.25.
+**CG20: Control-surface editing rules in the core.** [DONE d458d79] Size 1.5. From AN8. **Owns:** an export of `dspi_session::cs_model`'s rules. **Implements:** the rules live in `cs_model`, `CsHelper.qml` and the Swift tab and have drifted: Qt offers Hold on a long or double press, which the firmware refuses (`control_surfaces.c:1736-1741`). Clients ask the core. **Before** AN9, SW12. AN sizes from AN8's spike: AN9 2-2.5, AN10 1, AN11 1, AN12 1.5-2, plus `cs_demo_learn` 0.25.
 
-**CG21: One read per Stats tick.** [IN REVIEW c3a] Size 0.25. From review w2e. **Owns:** `crates/dspi-session/src/ring_health.rs`, the fill export. **Implements:** a tick reads `REQ_GET_BUFFER_STATS` once and derives fills from a cached ring target, invalidated on device change and on a latency write, as the Mac's one transfer per 60 ms. Android and Qt call it. **Deps:** AN25, QD29.
+**CG21: One read per Stats tick.** [DONE 8b80fa2] Size 0.25. From review w2e. **Owns:** `crates/dspi-session/src/ring_health.rs`, the fill export. **Implements:** a tick reads `REQ_GET_BUFFER_STATS` once and derives fills from a cached ring target, invalidated on device change and on a latency write, as the Mac's one transfer per 60 ms. Android and Qt call it. **Deps:** AN25, QD29.
 
 **CG22: Analyser and signal generator in the Rust fake device.** [TODO] Size 0.5. From AN28: the Android demo now runs on the real core's demo device and lost the spectrum analyser and signal generator the Kotlin fake had. **Owns:** `crates/dspi-transport/src/fake*` (analyser frames and signal-generator state), their tests. **Implements:** the fake device answers the RTA and signal-generator requests like firmware V3 (bass bank 10-200 Hz plus FFT bands, packed frames), deterministic under the `clock` seam; the signal generator never starts by itself. **Done when:** core tests read RTA frames and drive the signal generator against the fake; the Android demo shows both again. Before the first Play update on the new core. **Deps:** AN28, CG20.
 
@@ -763,9 +762,9 @@ In scope on Qt regardless (owner), and used by Terminal and, later, the Mac. No 
 
 **HB4:** [MOVED] moved to later work: `fw.install`, which no hub implements.
 
-**HB5: Advertising and web UI.** [IN REVIEW c3a] Size 1. **Owns:** `crates/dspi-hub/src/{advertise,web}.rs`, bundled assets. **Implements:** Bonjour through CG2's library; the MIT DSPi-Link web bundle at a pinned tag, **on only while sharing and bound to the hub's port.** **Done when:** the bundle's version and hash are pinned, and a browser test reaches the demo device. **Deps:** HB1, CG2.
+**HB5: Advertising and web UI.** [DONE 1e0aaa0] Size 1. **Owns:** `crates/dspi-hub/src/{advertise,web}.rs`, bundled assets. **Implements:** Bonjour through CG2's library; the MIT DSPi-Link web bundle at a pinned tag, **on only while sharing and bound to the hub's port.** **Done when:** the bundle's version and hash are pinned, and a browser test reaches the demo device. **Deps:** HB1, CG2.
 
-**HB6: C ABI for the hub.** [IN REVIEW c3a] Size 1. **Owns:** `crates/dspi-capi/src/fns_hub.rs`. **Implements:** start, stop, settings, client list, role, revoke, pairing window, status listener. **Done when:** a Qt offscreen test starts a demo hub and the Terminal connects. **Deps:** HB1–HB3.
+**HB6: C ABI for the hub.** [DONE 46eba1f] Size 1. **Owns:** `crates/dspi-capi/src/fns_hub.rs`. **Implements:** start, stop, settings, client list, role, revoke, pairing window, status listener. **Done when:** a Qt offscreen test starts a demo hub and the Terminal connects. **Deps:** HB1–HB3.
 
 **HB7: Conformance.** [TODO] Size 1.5. **Owns:** `crates/dspi-hub/tests/conformance/`. **Implements:** our client, the TypeScript client and the Swift client (VM) against it; L1's faults; fixtures. **Done when:** all three pass, and differences from the Swift hub are recorded. **[HW]**: `macr` (XC1). **Deps:** HB1–HB6.
 
@@ -857,7 +856,7 @@ Owner decided: it skips what needs a graphical UI (on-graph editing, onboarding)
 
 **TM5: Analyser overlay and following.** [DONE 794a74d] Size 1. **Owns:** `graph.rs`, `screens/spectrum.rs`. **Done when:** curves on the graph; following state and a take-control key work on the fake hub. **Deps:** CG5.
 
-**TM6: Bar strip.** [IN REVIEW c3a] Size 0.5. **Owns:** `widgets/bar_strip.rs`. **Done when:** third-octave strip renders in ASCII and braille. **Deps:** TM5.
+**TM6: Bar strip.** [DONE d8eab17] Size 0.5. **Owns:** `widgets/bar_strip.rs`. **Done when:** third-octave strip renders in ASCII and braille. **Deps:** TM5.
 
 **TM7: Tube Basic/Advanced.** [DONE b10479b] Size 0.25. **Owns:** `screens/tube.rs`. **Done when:** a toggle with Swift's row set. **Deps:** `main`.
 
@@ -885,7 +884,7 @@ Owner decided: it skips what needs a graphical UI (on-graph editing, onboarding)
 
 **TM21: Preset capture must not invent values.** [DONE 32b9902] Size 0.5. From TM4. **Owns:** `capture` in `crates/dspi-session/src/preset_file.rs`. **Implements:** `capture` turns any refused or failed read into 0, false or a default, and an import then writes them: on old firmware a -12 dB master exported as 0 dB. A failed read fails the export; a refused read on a read-only device uses the mapped image or omits the key; import leaves omitted keys alone and warns on an old `meta.wire_format_version`. **Deps:** TM4, TM10.
 
-**TM23: Settings page drawing.** [IN REVIEW c3a] Size 0.25. From TM22, confirmed by review. **Owns:** `draw_page` and `Row::Pair` in `settings/mod.rs`. A multi-line row straddling the top redraws from its first line; `Row::Pair` aligns by characters, not columns. **Deps:** `main`.
+**TM23: Settings page drawing.** [DONE f2bdb9d] Size 0.25. From TM22, confirmed by review. **Owns:** `draw_page` and `Row::Pair` in `settings/mod.rs`. A multi-line row straddling the top redraws from its first line; `Row::Pair` aligns by characters, not columns. **Deps:** `main`.
 
 **TM24: Terminal control surfaces on `cs_rows`.** [TODO] Size 0.5. From CG20. **Owns:** the Terminal's control-surface page. **Implements:** the Terminal asks the core's `cs_rows` editing rules instead of its own copy. **Done when:** tests show the Terminal offers exactly what `cs_rows` allows (no Hold where the firmware refuses it). **Deps:** CG20.
 
@@ -921,13 +920,13 @@ The swap is contained: UI talks to the `core-api` interface, and only `ffi` sees
 
 **AN27: No title bar.** [DONE 83793fb] Size 0.25. Owner: the "big fat dspi banner on top of the Android app" is wordy, and "while a title bar makes sense on a computer it is less useful on a mobile device". **Owns:** `AppScaffold.kt:76`. **Implements:** remove the `TopAppBar`, which holds only the title; demo state stays visible through `ConnectionStripBar`; edge-to-edge insets still correct. Screens with their own back and title rows are unchanged. **Done when:** Home starts at the connection strip on the emulator or a Compose test, and demo mode still says so. Goes out with the first update after the new core. **Deps:** AN1. SW checks the same on iOS when SW15 reaches it.
 
-**AN28: Demo mode on the real core.** [IN REVIEW c3a] Size 0.5. From AN8. The app's demo runs on the Kotlin `FakeDspiCore`, so CG16's surfaces and the core's `fill_band` never reach it. Route the demo to the real core's demo device. **Deps:** AN1.
+**AN28: Demo mode on the real core.** [DONE 26142ed] Size 0.5. From AN8. The app's demo runs on the Kotlin `FakeDspiCore`, so CG16's surfaces and the core's `fill_band` never reach it. Route the demo to the real core's demo device. **Deps:** AN1.
 
-**AN29: USB prompt once, not at every plug-in.** [IN PROGRESS] Size 0.5. From a user report (`work/bug-android-1/REPORT.md`). Android keeps a USB grant only until the device is unplugged; only the "Always open" tick in the system dialog makes it stick, and USB access never shows in the permission manager. The app makes it worse: 1.5 s after an attach broadcast it opens its own `requestPermission` dialog over the system's "Open with" dialog (`UsbSessionEngine.kt` `GraceExpired`), so the tick is never seen. **Owns:** `usb/.../UsbSessionEngine.kt`, `usb/.../AndroidUsbSession.kt`, the permission hint string (added to `ConnectionStrip.kt` under a `// -- WP AN29 --` marker, since AN5 has not started). **Implements:** an attach broadcast while the UI is visible never opens the app's own dialog after the grace period; it settles on `PermissionRequired` (the existing "Allow USB access" button). Cold start keeps one request. The pending or required strip says that ticking "Always open" in Android's dialog stops the prompt; no host-device nouns. **Done when:** engine tests with the fake `UsbHost`: attach broadcast, UI visible, no activity intent within the grace gives zero `requestPermission` calls and `PermissionRequired`; attach activity intent with permission connects with no dialog; cold start with a device attached makes exactly one request. [HW] tick "Always open" once, re-plug 3 times: the app opens connected with no dialog. In the first update on the new core. **Deps:** AN1.
+**AN29: USB prompt once, not at every plug-in.** [DONE 1d66ead] Size 0.5. From a user report (`work/bug-android-1/REPORT.md`). Android keeps a USB grant only until the device is unplugged; only the "Always open" tick in the system dialog makes it stick, and USB access never shows in the permission manager. The app makes it worse: 1.5 s after an attach broadcast it opens its own `requestPermission` dialog over the system's "Open with" dialog (`UsbSessionEngine.kt` `GraceExpired`), so the tick is never seen. **Owns:** `usb/.../UsbSessionEngine.kt`, `usb/.../AndroidUsbSession.kt`, the permission hint string (added to `ConnectionStrip.kt` under a `// -- WP AN29 --` marker, since AN5 has not started). **Implements:** an attach broadcast while the UI is visible never opens the app's own dialog after the grace period; it settles on `PermissionRequired` (the existing "Allow USB access" button). Cold start keeps one request. The pending or required strip says that ticking "Always open" in Android's dialog stops the prompt; no host-device nouns. **Done when:** engine tests with the fake `UsbHost`: attach broadcast, UI visible, no activity intent within the grace gives zero `requestPermission` calls and `PermissionRequired`; attach activity intent with permission connects with no dialog; cold start with a device attached makes exactly one request. [HW] tick "Always open" once, re-plug 3 times: the app opens connected with no dialog. In the first update on the new core. **Deps:** AN1.
 
-**AN30: Graph spectrum overlay draws the selected channel.** [IN PROGRESS] Size 0.25. From the same user report ("the spectrum doesn't go below 200 Hz"). `GraphSpectrumOverlay.kt` `buildTrace` tests the band mask `populated` with a channel number and indexes the core's packed `frames` by channel number, so any single channel but the first draws its 10-200 Hz bass-bank bands from an empty frame at the floor. **Owns:** `feature-graph/.../GraphSpectrumOverlay.kt` and its tests. **Implements:** find the channel's frame among `frames[0 until count]` by `frame.channel`, as `feature-analysis` `rtaFrame` does; `bandPoints` leaves out unpopulated bands like the Mac's `RtaRenderCache.visibleBands`. **Done when:** tests on a packed snapshot: single channel 2 draws channel 2's levels with the columns below 200 Hz off the floor; selection [1,3] draws two curves from the right frames; order 8 at 48 kHz has no band point at 251, 316 or 501 Hz. In the first update on the new core. **Deps:** none.
+**AN30: Graph spectrum overlay draws the selected channel.** [DONE 9522048] Size 0.25. From the same user report ("the spectrum doesn't go below 200 Hz"). `GraphSpectrumOverlay.kt` `buildTrace` tests the band mask `populated` with a channel number and indexes the core's packed `frames` by channel number, so any single channel but the first draws its 10-200 Hz bass-bank bands from an empty frame at the floor. **Owns:** `feature-graph/.../GraphSpectrumOverlay.kt` and its tests. **Implements:** find the channel's frame among `frames[0 until count]` by `frame.channel`, as `feature-analysis` `rtaFrame` does; `bandPoints` leaves out unpopulated bands like the Mac's `RtaRenderCache.visibleBands`. **Done when:** tests on a packed snapshot: single channel 2 draws channel 2's levels with the columns below 200 Hz off the floor; selection [1,3] draws two curves from the right frames; order 8 at 48 kHz has no band point at 251, 316 or 501 Hz. In the first update on the new core. **Deps:** none.
 
-**AN31: A visible way into Tools.** [IN PROGRESS] Size 0.5. From the same user report: the effects not on the strip (Tube Modeller, Subharmonic, Upmixer) are reachable only by an unexplained long-press on four strip icons. The Windows console's top-left menu is the Mac's Tools menu (`DSPi_ConsoleApp.swift` `CommandMenu("Tools")`). **Owns:** `feature-home/.../ContentView.kt` (`SidebarBottomPanel` and the Home top row), the entry in `feature-tools/.../ToolsScreen.kt`. **Implements:** a menu button on Home (no title bar: AN27) opening the Tools hub with the Mac Tools menu's items; a long-press on a strip icon opens that icon's own tool page, as the Mac's right-click does, not the hub. **Done when:** a Compose test reaches Tube Modeller, Subharmonic and Upmixer from Home with taps only; a long-press on crossfeed opens the crossfeed page; `docs/PARITY.md` M60 notes it. In the first update on the new core. **Deps:** AN27.
+**AN31: A visible way into Tools.** [DONE ee8b74e] Size 0.5. From the same user report: the effects not on the strip (Tube Modeller, Subharmonic, Upmixer) are reachable only by an unexplained long-press on four strip icons. The Windows console's top-left menu is the Mac's Tools menu (`DSPi_ConsoleApp.swift` `CommandMenu("Tools")`). **Owns:** `feature-home/.../ContentView.kt` (`SidebarBottomPanel` and the Home top row), the entry in `feature-tools/.../ToolsScreen.kt`. **Implements:** a menu button on Home (no title bar: AN27) opening the Tools hub with the Mac Tools menu's items; a long-press on a strip icon opens that icon's own tool page, as the Mac's right-click does, not the hub. **Done when:** a Compose test reaches Tube Modeller, Subharmonic and Upmixer from Home with taps only; a long-press on crossfeed opens the crossfeed page; `docs/PARITY.md` M60 notes it. In the first update on the new core. **Deps:** AN27.
 
 **AN2: Read-only on older firmware.** [PARTIAL 5f8e640] Size 0.5. **Owns:** `feature-home/.../HomeModel.kt`, `README.md`. **Implements:** V17–V31 now decode; `WriteGuardedCore` stays; fixes the README claim. The banner still fires on the wire format only: **the first Play update must show no version banner on a K340 or on stock final firmware** (the comparison is AN18's). **Done when:** fixture tests; banner per `WIRE-FORMAT-COMPAT.md` §4.4. **Deps:** AN1.
 
@@ -935,7 +934,7 @@ The swap is contained: UI talks to the `core-api` interface, and only `ffi` sees
 - **Implements:** delete Android's own reconnect, backoff and token deletion, which would fight C15; follow `link_status`; implement `on_link_status_changed` and `on_link_token_issued`; delete a token only on `token_refused`; pass `expected_hub_id`; handle `wrong_hub`; remove `setListener` from inside callbacks (`LinkSessionEngine.kt:164,178,214`); `rta_start` again after a reconnect; dial off the serial FFI queue.
 - **Done when:** `link` tests are rewritten against the fake hub with L1's faults; `rate_limited` keeps the token. **Deps:** AN1.
 
-**AN4: Network handling.** [IN REVIEW c3a] Size 1. **Owns:** `link/.../{LinkNetworkMonitor,NsdHubBrowser,LinkSettings}.kt`. **Implements:** `onLost` and network change call `link_retry_now`; browse while reconnecting and re-resolve via `link_set_url` (F5); test F10's items. `WifiLock` needs no new permission; **re-check Data safety if sockets get bound to Wi-Fi.** **Done when:** unit tests with a fake monitor; F10 items recorded as used or rejected. **Deps:** AN3.
+**AN4: Network handling.** [DONE 6fdf46a] Size 1. **Owns:** `link/.../{LinkNetworkMonitor,NsdHubBrowser,LinkSettings}.kt`. **Implements:** `onLost` and network change call `link_retry_now`; browse while reconnecting and re-resolve via `link_set_url` (F5); test F10's items. `WifiLock` needs no new permission; **re-check Data safety if sockets get bound to Wi-Fi.** **Done when:** unit tests with a fake monitor; F10 items recorded as used or rejected. **Deps:** AN3.
 
 **AN5: Link UI.** [TODO] Size 1. **Owns:** `ui-common/.../LinkBanner.kt`, `app/.../{LinkDialogs,AppNetworkingController,ConnectionStrip}.kt`. **Implements:** owner's banner on every screen; wrong-PIN by `pin_source`; "no DSPi found" (F9), CG10's text. **Done when:** Compose tests per `LinkPhase`. **Deps:** AN3, CG10.
 
