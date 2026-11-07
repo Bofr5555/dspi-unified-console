@@ -100,6 +100,8 @@ private:
     void readOnlyClickAround(QQuickWindow *window, const char *where, QQuickItem *scope = nullptr);
     // -- WP QD8 --
     void testLink();
+    // -- WP QD10 --
+    void testLinkFault();
     // -- WP HB6 --
     void testHub();
     // -- WP QD7 --

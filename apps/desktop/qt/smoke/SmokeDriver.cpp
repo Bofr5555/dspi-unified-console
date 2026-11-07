@@ -128,6 +128,8 @@ void SmokeDriver::run() {
     testReadOnly();
     // -- WP QD8 --
     testLink();
+    // -- WP QD10 --
+    testLinkFault();
     // -- WP HB6 --
     testHub();
     // -- WP QD27 --
