@@ -125,6 +125,9 @@ tasks.withType<Test>().configureEach {
     val cargoTarget = providers.environmentVariable("CARGO_TARGET_DIR").getOrElse(workspaceTarget)
     systemProperty("jna.library.path", "$cargoTarget/debug")
     systemProperty("java.library.path", "$cargoTarget/debug")
+    // -- WP AN34 -- the graph overlay's following test runs crates/dspi-link's fake hub (as :feature-analysis' AN17 test)
+    dependsOn(":link:cargoBuildFakeHub")
+    systemProperty("dspi.fakehub", "$cargoTarget/debug/dspi-link-fakehub")
 }
 
 // Fail early and clearly instead of producing an unsigned / wrongly signed release.
