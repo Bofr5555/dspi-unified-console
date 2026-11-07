@@ -239,6 +239,38 @@ SettingsPage {
         }
     }
 
+    // -- WP QD4 --
+    // Compared as text: a new list would rebuild the rows, and a row being typed in
+    // would lose its focus at every state change.
+    readonly property string sourceList: JSON.stringify(bridge.inputSources)
+    function sourceDetail(id) {
+        if (id === 0) return "Audio over USB"
+        if (id === 2) return "External I2S device"
+        if (id === 3) return "Lightpipe on GPIO " + hw.adatInPin
+        var k = id === 1 ? 0 : id - 3
+        var pin = hw.spdifRxPins ? hw.spdifRxPins[k] : undefined
+        return pin !== undefined ? "Receiver on GPIO " + pin : "S/PDIF receiver"
+    }
+    SettingsSection {
+        visible: deviceNames.sourceNamesSupported
+        title: "Source Names"
+        enabled: bridge.connected
+        footnote: "Stored on the device and shown on its front panel. An empty name uses the built-in one. Held until you click Save."
+        Repeater {
+            model: JSON.parse(page.sourceList)
+            SettingsNameRow {
+                readonly property int source: modelData.id
+                title: modelData.name
+                detail: page.sourceDetail(source)
+                fieldName: "sourceNameField" + source
+                clearTip: "Use the built-in name"
+                value: deviceNames.sourceTexts[source] || ""
+                pending: { deviceNames.sourceTexts; return deviceNames.sourcePending(source) }
+                onEdited: function (text) { deviceNames.editSource(source, text) }
+            }
+        }
+    }
+
     // Outcome of the last change
     SettingsStatusLine { text: page.status; error: page.statusError }
 

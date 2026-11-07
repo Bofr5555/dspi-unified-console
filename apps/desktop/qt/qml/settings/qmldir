@@ -12,3 +12,4 @@ SettingsContext 1.0 SettingsContext.qml
 SettingsPinRow 1.0 SettingsPinRow.qml
 SettingsSegmentedRow 1.0 SettingsSegmentedRow.qml
 SettingsStatusLine 1.0 SettingsStatusLine.qml
+SettingsNameRow 1.0 SettingsNameRow.qml
