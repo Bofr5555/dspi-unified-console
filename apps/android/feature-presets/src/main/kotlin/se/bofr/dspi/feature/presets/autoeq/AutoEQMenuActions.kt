@@ -119,16 +119,17 @@ class AutoEQMenuActions(
         if (HttpAutoEqFetch.parse(address) == null) return host.showError("That is not an https:// address.")
         scope.launch {
             host.beginProgress("Downloading database...")
-            try {
-                val info = withContext(io) {
+            val info = try {
+                withContext(io) {
                     bridge.coreTools.autoeqUpdate(path, address.trim(), fetch).also { manager.reloadAfterUpdate() }
                 }
-                host.endProgress()
-                host.showSuccess("Database updated successfully.\nEntries: ${info.entryCount}")
             } catch (e: DspiException) {
+                return@launch host.showError("Failed to download database: ${downloadError(e)}")
+            } finally {
+                // Whatever ends the download, the overlay goes with it
                 host.endProgress()
-                host.showError("Failed to download database: ${downloadError(e)}")
             }
+            host.showSuccess("Database updated successfully.\nEntries: ${info.entryCount}")
         }
     }
 

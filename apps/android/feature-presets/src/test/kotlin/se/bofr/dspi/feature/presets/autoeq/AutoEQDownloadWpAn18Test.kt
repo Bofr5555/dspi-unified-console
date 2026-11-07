@@ -6,8 +6,11 @@ import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.file.Files
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -89,6 +92,21 @@ class AutoEQDownloadWpAn18Test {
         assertEquals("Failed to download database: The file is not an AutoEQ database.", host.alert.value!!.informativeText)
         assertEquals(2, m.entries.value.size)
         assertNull(host.progress.value)
+    }
+
+    @Test fun wpAn18AnUnexpectedFailureStillEndsTheProgress() = runTest {
+        val m = AutoEQManager({ THREE }, userFile(), InMemoryFavoritesStore()).also { it.loadDatabase() }
+        val b = bridge { _, _, _ -> throw IllegalStateException("not a DspiException") }
+        val host = AlertHost()
+        var escaped: Throwable? = null
+        val scope = CoroutineScope(
+            SupervisorJob() + StandardTestDispatcher(testScheduler) + CoroutineExceptionHandler { _, e -> escaped = e }
+        )
+        AutoEQMenuActions(m, b, scope, host, Dispatchers.Unconfined, fetch).downloadDatabase("https://example.test/x.json")
+        runCurrent()
+        assertTrue(escaped is IllegalStateException)
+        assertNull("the overlay is gone", host.progress.value)
+        assertEquals(2, m.entries.value.size)
     }
 
     @Test fun wpAn18OnlyHttpsIsTried() = runTest {
