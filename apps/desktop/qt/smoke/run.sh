@@ -53,3 +53,20 @@ fi
 if [ -z "${DSPI_SMOKE_HW:-}" ] && [ -z "${DSPI_SMOKE_DEMO_ENTRY:-}" ]; then
     DSPI_SMOKE_DEMO_ENTRY=1 "$0" "$app" "$out/demo-entry" || exit 1
 fi
+# -- WP QD12 -- Whole launches with the tray settings on, each ending in a real
+# quit: starting hidden is decided before main.qml loads, and Qt's own quit path
+# only runs once. The driver fails by exit code, 3 if the app did not quit.
+if [ -z "${DSPI_SMOKE_HW:-}" ] && [ -z "${DSPI_SMOKE_DEMO_ENTRY:-}" ]; then
+    for mode in hidden hidden-quit app-quit no-tray; do
+        printf '[onboarding]\nsetupDone=true\n[tray]\nshowInTray=true\nstartMinimised=true\n' > "$HOME/.config/DSPi/DSPi Console.conf"
+        probe=1; [ "$mode" = no-tray ] && probe=0
+        DSPI_SMOKE_TRAY=$mode DSPI_SMOKE_TRAY_PROBE=$probe timeout 60 "$app" --demo > "$out/log-tray-$mode.txt" 2>&1
+        code=$?
+        grep -E '^(smoke:|FAIL)' "$out/log-tray-$mode.txt"
+        if [ "$code" != 0 ]; then
+            echo "tray launch $mode exited with $code; the end of its log:" >&2
+            tail -30 "$out/log-tray-$mode.txt" >&2
+            exit 1
+        fi
+    done
+fi

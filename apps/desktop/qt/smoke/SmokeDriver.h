@@ -110,6 +110,9 @@ private:
     // -- WP QD18 --
     void testHostAudio();
     void testHostAudioOnHub();
+    // -- WP QD12 --
+    void testTray();
+    void runTrayLaunch(const QString &mode);
 
     // Whether a bypass toggle repaints the open channel's graph editor. Leaves
     // bypass as it found it. NotRun fills `why`.

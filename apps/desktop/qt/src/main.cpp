@@ -38,6 +38,8 @@
 #include "WindowEffects.h"
 #include "TextFocusReleaser.h"
 #include "Registrar.h"
+// -- WP QD12 --
+#include "TrayController.h"
 #ifdef DSPI_SMOKE
 #include "SmokeDriver.h"
 #endif
@@ -479,11 +481,16 @@ int main(int argc, char *argv[])
     engine.addImportPath("qrc:/qml");   // the "style" module
 #endif
 
+    // -- WP QD12 -- Over main.qml's `visible: true`, so a window starting in the tray never flashes
+    if (TrayController::startsHidden()) engine.setInitialProperties({ { QStringLiteral("visible"), false } });
+
     engine.load(QUrl(QStringLiteral("qrc:/qml/main.qml")));
     if (engine.rootObjects().isEmpty())
         return -1;
 
     auto *mainWindow = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
+    // -- WP QD12 --
+    TrayController::attachMainWindow(mainWindow);
     setupPlatformEffects(mainWindow);
 #ifndef Q_OS_MACOS
     // The sidebar is resizable; QML updates the strip as it changes
