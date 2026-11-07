@@ -24,6 +24,7 @@ import se.bofr.dspi.core.DspiConstants.MAX_PRESETS
 import se.bofr.dspi.core.DspiConstants.MAX_XOVER_BANDS
 import se.bofr.dspi.core.DspiConstants.XOVER_BAND_BASE
 import se.bofr.dspi.core.DspiException
+import se.bofr.dspi.core.FillBand
 import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.InputLockStatus
@@ -39,9 +40,11 @@ import se.bofr.dspi.core.MonitorBatch
 import se.bofr.dspi.core.MonitorEntry
 import se.bofr.dspi.core.NotifyListener
 import se.bofr.dspi.core.NotifyResult
+import se.bofr.dspi.core.OutputFill
 import se.bofr.dspi.core.PdmBufferStats
 import se.bofr.dspi.core.PinUse
 import se.bofr.dspi.core.PresetDirectory
+import se.bofr.dspi.core.RingHealth
 import se.bofr.dspi.core.RtaCapsInfo
 import se.bofr.dspi.core.RtaChannelFrame
 import se.bofr.dspi.core.RtaListener
@@ -1248,6 +1251,31 @@ open class FakeDspiCore(
     }
 
     override fun resetBufferStats() = op("resetBufferStats") {}
+
+    // -- WP AN25 --
+    // A demo's picture, not measured behaviour: the 2 ms target, the rings swinging
+    // around it and always inside its band.
+    private var ringFillSeq = 0
+
+    override fun fetchRingHealth(): RingHealth? = op("fetchRingHealth") {
+        RingHealth(
+            targetFrames = 96,
+            targetUs = 2000,
+            batchFrames = 48,
+            underrunEpisodes = 0,
+            refusedBlocks = 0,
+            lowestFill = 72,
+            worstInputGapUs = 1000,
+            worstUsbGapUs = 1000,
+            overBudgetSteps = 0
+        )
+    }
+
+    override fun fetchOutputFills(): List<OutputFill> = op("fetchOutputFills") {
+        ringFillSeq++
+        val frames = 96 + ((ringFillSeq % 7) - 3) * 8
+        List(4) { OutputFill(fillPct = frames * 100.0 / 512, minPct = 14, maxPct = 24, band = FillBand.GOOD) }
+    }
 
     override fun fetchSpdifRxStatus(): SpdifRxStatus = op("fetchSpdifRxStatus") {
         SpdifRxStatus(
