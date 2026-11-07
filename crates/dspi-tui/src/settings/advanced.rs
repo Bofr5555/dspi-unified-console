@@ -145,7 +145,7 @@ impl SettingsPage for AdvancedPage {
         let lines: Vec<String> = Self::factory_names(cx)
             .into_iter()
             .enumerate()
-            .map(|(c, name)| format!("ch.name {c} \"{name}\""))
+            .map(|(c, name)| format!("ch.name {c} {}", dspi_cmd::quote(&name)))
             .collect();
         PageEvent::Command(lines.join("\n"))
     }
@@ -191,7 +191,12 @@ mod tests {
                 assert_eq!(c.lines().count(), 17);
                 assert_eq!(c.lines().next().unwrap(), "ch.name 0 \"USB L\"");
                 assert_eq!(c.lines().nth(8).unwrap(), "ch.name 8 \"SPDIF 1 L\"");
-                assert_eq!(c.lines().last().unwrap(), "ch.name 16 \"PDM\"");
+                assert_eq!(c.lines().last().unwrap(), "ch.name 16 PDM");
+                // TM18: each line reads back as one name, however it is quoted.
+                assert_eq!(
+                    dspi_cmd::tokenize(c.lines().nth(8).unwrap()),
+                    ["ch.name", "8", "SPDIF 1 L"]
+                );
             }
             other => panic!("{other:?}"),
         }
