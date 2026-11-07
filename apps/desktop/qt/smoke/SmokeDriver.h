@@ -83,6 +83,8 @@ private:
     void testCsPages();
     // -- WP QD2 --
     void testPairMap();
+    // -- WP QD8 --
+    void testLink();
 
     // Whether a bypass toggle repaints the open channel's graph editor. Leaves
     // bypass as it found it. NotRun fills `why`.

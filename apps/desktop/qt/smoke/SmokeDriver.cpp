@@ -98,6 +98,8 @@ void SmokeDriver::run() {
     testCsPages();
     // -- WP QD2 --
     testPairMap();
+    // -- WP QD8 --
+    testLink();
     testIdleAndCost();
     m_failures += g_qmlErrors;
     printf("smoke: %d checks, %d failures (%d QML errors)\n", m_checks, m_failures, g_qmlErrors);
