@@ -6011,6 +6011,253 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// Undo and redo through the runner, reading what reaches the wire on a
+    /// device whose generator status follows what it was told.
+    mod tm18_generator_stays_put {
+        use super::*;
+        use dspi_transport::{DeviceDescriptor, NotificationSource, Result as TR, TransportCaps};
+        use std::sync::atomic::{AtomicU8, Ordering};
+        use std::sync::{Arc, Mutex};
+
+        const START: u16 = 1;
+        const STOP: u16 = 0;
+
+        struct Generator {
+            inner: MockTransport,
+            state: Arc<AtomicU8>,
+            controls: Arc<Mutex<Vec<u16>>>,
+        }
+
+        impl Generator {
+            fn status(&self) -> Vec<u8> {
+                dspi_proto::packets::SiggenStatus {
+                    state: self.state.load(Ordering::SeqCst),
+                    signal_type: 14,
+                    ..Default::default()
+                }
+                .encode()
+                .to_vec()
+            }
+        }
+
+        impl Transport for Generator {
+            fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> TR<Vec<u8>> {
+                if opcode == op::REQ_SIGGEN_CONTROL {
+                    self.controls.lock().unwrap().push(value);
+                    // Running, or fading out from a plain Stop.
+                    let state = match value {
+                        START => 2,
+                        STOP => 4,
+                        _ => 0,
+                    };
+                    self.state.store(state, Ordering::SeqCst);
+                    return Ok(vec![1; len as usize]);
+                }
+                if opcode == op::REQ_SIGGEN_GET_STATUS {
+                    let mut b = self.status();
+                    b.resize(len as usize, 0);
+                    return Ok(b);
+                }
+                self.inner.control_in(opcode, value, len)
+            }
+            fn control_in_upto(&mut self, opcode: u8, value: u16, len: u16) -> TR<Vec<u8>> {
+                if opcode == op::REQ_SIGGEN_GET_STATUS {
+                    return Ok(self.status());
+                }
+                self.inner.control_in_upto(opcode, value, len)
+            }
+            fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> TR<()> {
+                self.inner.control_out(opcode, value, data)
+            }
+            fn descriptor(&self) -> &DeviceDescriptor {
+                self.inner.descriptor()
+            }
+            fn max_transfer(&self) -> usize {
+                self.inner.max_transfer()
+            }
+            fn notifications(&self) -> Option<Box<dyn NotificationSource>> {
+                None
+            }
+            fn caps(&self) -> TransportCaps {
+                self.inner.caps()
+            }
+        }
+
+        struct Rig {
+            live: Live,
+            session: Session,
+            controls: Arc<Mutex<Vec<u16>>>,
+            log: LogHandle,
+            dir: std::path::PathBuf,
+        }
+
+        impl Rig {
+            fn start(name: &str) -> Self {
+                let dir = crate::test_dir(name);
+                let mut caps = caps();
+                caps.features.push(dspi_session::probe::Feature {
+                    name: "test_signals".into(),
+                    present: true,
+                    evidence: "mock".into(),
+                });
+                caps.siggen = Some(dspi_session::probe::SiggenCaps {
+                    version: 1,
+                    type_count: 15,
+                    output_channels: 9,
+                    multitone_max: 16,
+                    valid_channel_mask: 0x1FF,
+                    types: Vec::new(),
+                });
+                let mock = MockTransport::new()
+                    .window(op::REQ_GET_ALL_PARAMS_CHUNK, packet())
+                    .answering_everything(vec![0; 64]);
+                let log = mock.log_handle();
+                let controls = Arc::new(Mutex::new(Vec::new()));
+                let device = Generator {
+                    inner: mock,
+                    state: Arc::new(AtomicU8::new(0)),
+                    controls: controls.clone(),
+                };
+                let session = Session::new(Box::new(device), caps.clone()).unwrap();
+                let state = DeviceState::new(
+                    caps,
+                    dspi_proto::wire::BulkPacket::decode(packet()).unwrap(),
+                );
+                let live = Live::new(
+                    state,
+                    Theme::console(ColorDepth::TrueColor, Glyphs::Braille),
+                    Performance::lite(),
+                    Box::new(ConsoleScreens::with_config_path(dir.join("config.toml"))),
+                );
+                Self {
+                    live,
+                    session,
+                    controls,
+                    log,
+                    dir,
+                }
+            }
+            fn identify(&mut self) {
+                let row = self.live.state.caps.num_inputs as usize + 1;
+                self.live
+                    .handle_event(&mut self.session, ShellEvent::Identify(row));
+            }
+            fn run(&mut self, line: &str) {
+                self.live.run_command(&mut self.session, line);
+            }
+            fn command(&mut self, line: &str) {
+                self.live
+                    .handle_event(&mut self.session, ShellEvent::Command(line.into()));
+            }
+            fn controls(&self) -> Vec<u16> {
+                self.controls.lock().unwrap().clone()
+            }
+            fn configs(&self) -> usize {
+                self.log
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|e| e.opcode == op::REQ_SIGGEN_SET_CONFIG)
+                    .count()
+            }
+            fn volumes(&self) -> Vec<Vec<u8>> {
+                self.log
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|e| e.opcode == op::REQ_SET_USER_VOLUME)
+                    .map(|e| e.payload.clone())
+                    .collect()
+            }
+            fn status(&self) -> String {
+                self.live.shell.model.status.clone().unwrap_or_default()
+            }
+        }
+
+        impl Drop for Rig {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.dir);
+            }
+        }
+
+        #[test]
+        fn tm18_identify_stop_undo_sends_no_start() {
+            let mut r = Rig::start("tm18-gen-stop-undo");
+            r.identify();
+            r.run("sig.control stop");
+            r.run("undo");
+            assert_eq!(r.controls(), [START, STOP]);
+            assert_eq!(r.configs(), 1);
+            assert!(r.status().contains("cannot be undone"), "{}", r.status());
+        }
+
+        #[test]
+        fn tm18_identify_undo_redo_sends_no_start() {
+            let mut r = Rig::start("tm18-gen-undo-redo");
+            r.identify();
+            r.run("undo");
+            r.run("redo");
+            assert_eq!(r.controls(), [START]);
+            assert_eq!(r.configs(), 1);
+        }
+
+        #[test]
+        fn tm18_ctrl_z_and_ctrl_y_send_no_start() {
+            let mut r = Rig::start("tm18-gen-keys");
+            r.identify();
+            r.run("sig.control stop");
+            let press = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL);
+            for c in ['z', 'y', 'z', 'z', 'y'] {
+                r.live.handle_key(&mut r.session, press(c));
+            }
+            assert_eq!(r.controls(), [START, STOP]);
+        }
+
+        /// Undo goes past the generator to the edit before it, and redo brings
+        /// back only that edit.
+        #[test]
+        fn tm18_undo_after_a_sig_write_undoes_the_edit_before_it() {
+            let mut r = Rig::start("tm18-gen-edit");
+            r.run("vol.user -6");
+            let edit = (-6.0f32).to_le_bytes().to_vec();
+            assert_eq!(r.volumes(), std::slice::from_ref(&edit));
+            r.identify();
+            r.run("undo");
+            assert_eq!(r.volumes().len(), 2, "the edit was put back");
+            assert_ne!(r.volumes()[1], edit);
+            assert!(r.status().contains("sig.control"), "{}", r.status());
+            r.run("redo");
+            assert_eq!(r.volumes().last(), Some(&edit));
+            assert_eq!(r.controls(), [START]);
+        }
+
+        #[test]
+        fn tm18_stop_on_a_running_generator_is_not_called_refused() {
+            for (line, value) in [("sig.control stop", STOP), ("sig.control stop-now", 2)] {
+                let mut r = Rig::start("tm18-gen-stop");
+                r.identify();
+                r.live.shell.model.status = None;
+                r.run(line);
+                assert_eq!(r.controls(), [START, value]);
+                assert!(!r.status().contains("not applied"), "{}", r.status());
+            }
+        }
+
+        /// A Stop from a panel goes straight out, past a volume write the gate
+        /// is holding.
+        #[test]
+        fn tm18_stop_does_not_wait_on_the_write_gate() {
+            let mut r = Rig::start("tm18-gen-gate");
+            r.identify();
+            r.live.clock = Some(Instant::now());
+            r.command("vol.user -11");
+            r.command("vol.user -12");
+            assert_eq!(r.live.gate.held.len(), 1, "the second is held");
+            r.command("sig.control stop");
+            assert_eq!(r.controls(), [START, STOP]);
+        }
+    }
 }
 
 /// TM19: a Save of several flash writes through the real `Live`, on a demo
