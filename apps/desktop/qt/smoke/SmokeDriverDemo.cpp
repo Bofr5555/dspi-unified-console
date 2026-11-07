@@ -16,6 +16,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QRegularExpression>
+#include <cmath>
 
 namespace {
 const char *const kDemoSerial = DemoDevice::kSerial;
@@ -135,8 +136,12 @@ void SmokeDriver::testDemoEntry() {
     spin(1300);
     check("QD7: no scan brings it back", !b->connected() && !d->active());
     check("QD7: open again", d->enter() && b->connected() && b->writable() && labelled());
+    // -- WP QD36 -- An edit to the demo, which the rescan below keeps
+    b->setFilter(0, 2, 1, 1234.0f, 3.0f, 1.0f);
     // -- WP QD17 -- A rescan reopens the open device, the demo too (Swift's reconnect)
     b->rescan();
+    printf("smoke: QD36 band 3 after the rescan: %.1f Hz\n", b->filterFreq(0, 2));
+    check("QD36: a rescan keeps the demo's state (FakeTransport)", std::fabs(b->filterFreq(0, 2) - 1234.0f) < 0.5f);
     check("QD17: a rescan keeps the demo", b->connected() && b->selectedSerial() == QLatin1String(kDemoSerial)
                                                && b->writable() && b->connectionError().isEmpty());
     check("QD17: still labelled, still leavable", waitFor(1000, labelled) && d->active() && d->leavable() && leave->isVisible());

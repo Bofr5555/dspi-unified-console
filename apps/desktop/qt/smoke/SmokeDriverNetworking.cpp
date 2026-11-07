@@ -5,6 +5,7 @@
 #include "SmokeDriver.h"
 
 #include "DSPiBridge.h"
+#include "DemoDevice.h"
 #include "HubController.h"
 #include "TrayController.h"
 
@@ -127,7 +128,13 @@ void SmokeDriver::testNetworking() {
     const QJsonObject status = hubJson(hub->handle(), dspi_hub_status);
     check("QD14: the hub has the page's name", status.value("name").toString() == hub->hubName());
     const QString serial = hubJson(hub->handle(), dspi_hub_devices).value("value").toArray().at(0).toObject().value("serial").toString();
-    check("QD14: the demo shown here is on the hub", !serial.isEmpty());
+    // -- WP QD36 -- The hub shares a demo of its own (attach_demo), not the app's: the
+    // page says so, and the hub's one device is a demo
+    const QJsonArray hubDevices = hubJson(hub->handle(), dspi_hub_devices).value("value").toArray();
+    check("QD36: the hub shares its own demo device", hubDevices.size() == 1 && serial == QLatin1String(DemoDevice::kSerial));
+    QQuickItem *demoNote = item("networkingDemoNote");
+    check("QD36: the page says the hub's demo is its own", m_.bridge->selectedSerial() == QLatin1String(DemoDevice::kSerial)
+              && demoNote && demoNote->isVisible() && demoNote->property("detail").toString().contains(QLatin1String("separate demo device")));
     check("QD14: the tray sees it running", hub->trayState().running && hub->trayState().address == address);
     check("QD14: the hub knows its id, and browsing leaves it out", !hub->hubId().isEmpty());
 
