@@ -47,8 +47,12 @@ data class FirmwareVersion(val major: Int, val minor: Int, val patch: Int, val b
         /** The first release whose every build reports the beta ordinal. */
         private val FIRST_WITH_ORDINAL = Triple(1, 1, 6)
 
-        /** The DSPi Console release this port follows; its firmware is bundled. */
-        const val CONSOLE_VERSION = "1.1.6-beta5"
+        /**
+         * The firmware release bundled with this app (OD4: stock, built from a
+         * tag; WP AN18 moved it to v1.1.6, the release the macOS Console 1.1.6
+         * and the Qt app bundle). K340 owners flash their own `.uf2`, under CG8.
+         */
+        const val CONSOLE_VERSION = "1.1.6"
 
         /** The firmware version this Console expects a device to be running. */
         val expected: FirmwareVersion? = parse(CONSOLE_VERSION)

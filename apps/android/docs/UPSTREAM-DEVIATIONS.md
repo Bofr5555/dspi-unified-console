@@ -674,13 +674,10 @@ Reference: DSPi-Console (macOS) v1.1.6-beta5 `FirmwareUpdateView.swift`,
    nerbs" —, Interrupt Monitor) are internal sub-routes of `AnalysisScreen`,
    titled as the macOS windows: tabs on a phone, a side list on a tablet
    (≥ 840 dp). Only the page on screen polls or subscribes.
-2. **The Signal Generator stops when its page leaves the screen** (tab
-   change, leaving Analysis, the activity stopping: app in background, a call,
-   another app in front), with the normal fade (`SIGGEN_CTL_STOP`); not on a
-   configuration change (`isChangingConfigurations`). If a host recreates the
-   page without flagging a configuration change (some split-screen resizes),
-   that counts as leaving. macOS keeps playing after the window closes.
-   Starting stays one explicit tap on Start (ungated, D1); the start sequence
+2. **The Signal Generator keeps running off-screen**, as macOS keeps playing
+   after the window closes (WP AN18, the plan's floor; until then it stopped
+   when its page left the screen). Leaving the page stops only its status
+   poll; coming back shows it still running, with Stop. Starting stays one explicit tap on Start (ungated, D1); the start sequence
    runs in a process scope (E9), not the composition. Default draft = macOS
    (1 kHz sine, outputs 1–2, −20 dBFS). No Space-bar shortcut; "Click" became
    "Tap" in the outputs caption.

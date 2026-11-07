@@ -41,7 +41,6 @@ import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -155,15 +154,11 @@ fun TestSignalsView(bridge: DspiBridge, modifier: Modifier = Modifier) {
             writable = writesAllowed()
         )
 
-    val running by rememberUpdatedState(state.running)
+    // -- WP AN18 -- the generator keeps running off-screen, as on macOS (SiggenLifetime)
     WhileVisible(
         key = siggen,
-        onShow = { siggen.watching = true },
-        onHide = { configurationChange ->
-            siggen.watching = false
-            // Safety (ANALYSIS deviation): test signals never keep playing unattended
-            if (running && !configurationChange) siggen.stop()
-        }
+        onShow = { SiggenLifetime.shown(siggen) },
+        onHide = { SiggenLifetime.hidden(siggen) }
     )
 
     val actions =

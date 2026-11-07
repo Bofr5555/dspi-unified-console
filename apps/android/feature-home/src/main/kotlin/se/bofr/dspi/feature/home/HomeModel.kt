@@ -84,13 +84,15 @@ object HomeModel {
     }
 
     /**
-     * FirmwareMismatchBanner text (`WIRE-FORMAT-COMPAT.md` 4.4). The bridge
-     * reports compatibility, which is the wire format alone, not a match
-     * against a bundled firmware: every firmware on this app's wire format gets
-     * no banner, whichever version it reports (stock final, the K340's fork).
-     * Comparing versions is AN18's, with the updated images. [expected] is the
-     * firmware this Console targets; the last argument is [settingsRead] of the
-     * state: false when the banner must not say that settings are shown.
+     * FirmwareMismatchBanner text (`WIRE-FORMAT-COMPAT.md` 4.4). A wire format
+     * this app cannot write ([compat]) gets the read-only wording. On this
+     * app's wire format the versions are compared as the Mac does
+     * (`DSPViewModel.firmwareMatch`, WP AN18): any version other than
+     * [expected] gets the Mac's banner; a matching one, or one that cannot be
+     * read, gets none. A build stamp after the version (`1.1.6-16-g557bce7`,
+     * the K340's `bofr-main` build) is not a different version. [expected] is
+     * the firmware this Console bundles; the last argument is [settingsRead]
+     * of the state: false when the banner must not say that settings are shown.
      */
     fun firmwareBannerMessage(compat: Int, device: String, expected: String, settingsRead: Boolean = true): String? {
         val version = device.ifEmpty { "unknown" }
@@ -101,14 +103,65 @@ object HomeModel {
             DspiConstants.COMPAT_FIRMWARE_TOO_OLD ->
                 "This device runs firmware $version; DSPi Console expects $expected. " +
                     if (settingsRead) "$MISSING_FEATURES_NOTE $READ_ONLY_NOTE" else SETTINGS_UNREAD_NOTE
+            // -- WP AN18 --
+            DspiConstants.COMPAT_OK -> when (firmwareMatch(device, expected)) {
+                FirmwareOrder.NEWER ->
+                    "This device runs firmware $version, which is newer than DSPi Console $expected. " +
+                        "Some of its features may not be shown."
+                FirmwareOrder.OLDER -> "This device runs firmware $version; DSPi Console expects $expected."
+                FirmwareOrder.MATCH, null -> null
+            }
             else -> null
         }
     }
 
-    /** The banner for the connected device, what FirmwareMismatchBanner shows; null for none. */
-    fun firmwareBannerMessage(bridge: DspiBridge): String? = firmwareBannerMessage(
+    // -- WP AN18 --
+
+    /** How a device's firmware compares with the one this Console bundles (`FirmwareMatch`). */
+    enum class FirmwareOrder { MATCH, OLDER, NEWER }
+
+    /**
+     * `DSPViewModel.firmwareMatch` on the bridge's version strings ("1.1.6",
+     * "1.1.6-beta5", "1.1.6 early beta"); null when either cannot be read.
+     * Anything after the version and its beta (a `git describe` or other build
+     * stamp) is ignored.
+     */
+    fun firmwareMatch(device: String, expected: String): FirmwareOrder? {
+        val d = firmwareRank(device) ?: return null
+        val e = firmwareRank(expected) ?: return null
+        val c = compareValuesBy(d, e, { it[0] }, { it[1] }, { it[2] }, { it[3] })
+        return when {
+            c == 0 -> FirmwareOrder.MATCH
+            c < 0 -> FirmwareOrder.OLDER
+            else -> FirmwareOrder.NEWER
+        }
+    }
+
+    /**
+     * [major, minor, patch, betaRank]: a final release outranks its betas
+     * (256), an early beta sorts below beta 1 (0), as `FirmwareVersion` does.
+     */
+    private fun firmwareRank(text: String): List<Int>? {
+        val numeric = text.takeWhile { it.isDigit() || it == '.' }
+        val fields = numeric.split('.').filter { it.isNotEmpty() }.map { it.toIntOrNull() ?: return null }
+        val major = fields.firstOrNull() ?: return null
+        val rest = text.drop(numeric.length).lowercase().trimStart('-', '.', ' ')
+        val beta = when {
+            rest.startsWith("early beta") -> 0
+            rest.startsWith("beta") -> rest.drop(4).trimStart(' ').takeWhile { it.isDigit() }.toIntOrNull()?.coerceIn(1, 255) ?: 256
+            else -> 256
+        }
+        return listOf(major, fields.getOrElse(1) { 0 }, fields.getOrElse(2) { 0 }, beta)
+    }
+
+    /**
+     * The banner for the connected device, what FirmwareMismatchBanner shows;
+     * null for none. The demo device is no firmware to update: only its wire
+     * format can raise the banner there (WP AN18).
+     */
+    fun firmwareBannerMessage(bridge: DspiBridge, demo: Boolean = false): String? = firmwareBannerMessage(
         bridge.compat,
-        bridge.firmwareVersion,
+        if (demo && bridge.compat == DspiConstants.COMPAT_OK) EXPECTED_FIRMWARE else bridge.firmwareVersion,
         EXPECTED_FIRMWARE,
         settingsRead(bridge.state.value)
     )
@@ -134,10 +187,21 @@ object HomeModel {
         "This app cannot read that firmware's settings, so the values shown are defaults. Until the firmware matches, nothing can be changed."
 
     /** The banner button: "Details..." for newer firmware, "Update..." otherwise. */
-    fun firmwareBannerButton(compat: Int): String = if (compat == DspiConstants.COMPAT_FIRMWARE_TOO_NEW) "Details..." else "Update..."
+    fun firmwareBannerButton(compat: Int, device: String = "", expected: String = EXPECTED_FIRMWARE): String =
+        if (compat == DspiConstants.COMPAT_FIRMWARE_TOO_NEW ||
+            (compat == DspiConstants.COMPAT_OK && firmwareMatch(device, expected) == FirmwareOrder.NEWER) // -- WP AN18 --
+        ) {
+            "Details..."
+        } else {
+            "Update..."
+        }
 
-    /** The firmware this port targets (macOS v1.1.6-beta5 bundles release/v1.1.6 beta5). */
-    const val EXPECTED_FIRMWARE = "1.1.6-beta5"
+    /**
+     * The firmware this app bundles (`FirmwareVersion.CONSOLE_VERSION` of
+     * :feature-firmware, and its asset names; `FirmwareBannerWpAn18Test`
+     * checks they agree). WP AN18: v1.1.6, stock, per OD4.
+     */
+    const val EXPECTED_FIRMWARE = "1.1.6"
 }
 
 /** One dashboard card, in display order (`DashboardOverview.CardItem`). */

@@ -238,6 +238,9 @@ class DspiBridgeImpl(
     // -- WP AN23 --
     override val coreVoltageCalibration: CoreVoltageCalibrationImpl
 
+    // -- WP AN18 --
+    override val coreTools: CoreTools = CoreToolsImpl(this)
+
     private var uiVisible = true
     private var pollJob: Job? = null
     private var hotplugJob: Job? = null

@@ -160,6 +160,15 @@ class AutoEQManager(
 
     val hasUserDatabase: Boolean get() = userDatabaseFile?.exists() == true
 
+    /** Where an update puts the user copy; null without storage (WP AN18: the core's `autoeq_update` writes it). */
+    val userDatabasePath: String? get() = userDatabaseFile?.path
+
+    /** WP AN18: the core replaced the user copy; read it, and drop favourites it lacks. Blocking. */
+    fun reloadAfterUpdate() {
+        userDatabaseFile?.parentFile?.mkdirs()
+        loadDatabase()
+    }
+
     /** Tries the user-updated database first, then the bundled one; then the favourites. */
     @Synchronized
     fun loadDatabase() {
