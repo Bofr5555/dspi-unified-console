@@ -316,7 +316,8 @@ public:
     bool presetDirty() const { return m_presetDirty; }
     QString connectionError() const { return m_connectionError; }
     // Drop the connection, rescan USB and reconnect (the same device if it's
-    // still there)
+    // still there). The open demo stays open, and is read again with its state
+    // (WP QD36). Does nothing while a hub session is up (WP QD36), as reconnect().
     Q_INVOKABLE void rescan();
     // Install the udev rule through pkexec (asks for a password); answers
     // with udevRuleInstalled. The hot-plug poll then finds the device.
@@ -547,6 +548,8 @@ private:
     void updateWritable();
     bool m_hubSession = false;
     void resetForDevice(const QString &serial);
+    // -- WP QD36 -- selectDevice, or with keepDemo a read of the demo already open
+    void openDevice(const QString &serial, bool keepDemo);
     void showOpenedDevice();
     QStringList listSerials();
     void updateInaccessible();

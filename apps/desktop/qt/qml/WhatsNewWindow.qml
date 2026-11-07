@@ -118,5 +118,8 @@ AppWindow {
             onClicked: win.close()
         }
     }
-    Shortcut { sequences: ["Escape", "Return", "Enter"]; onActivated: win.close() }
+    // -- WP QD36 -- Only while this window has the focus: Qt 6 counts a hidden window as
+    // active when its transient parent is, and its Escape then matched the main
+    // window's keys ambiguously, so none of them ran (review c4h F5)
+    Shortcut { sequences: ["Escape", "Return", "Enter"]; enabled: win.activeFocusItem !== null; onActivated: win.close() }
 }

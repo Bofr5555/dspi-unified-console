@@ -1104,12 +1104,18 @@ void DSPiBridge::installUdevRule() {
 }
 
 void DSPiBridge::selectDevice(const QString &serial) {
+    openDevice(serial, false);
+}
+
+void DSPiBridge::openDevice(const QString &serial, bool keepDemo) {
     QByteArray utf8 = serial.toUtf8();
     emit deviceChanging();
     // -- WP QD17 -- No USB DSPi has the demo's serial: it is selected from --demo's list,
     // or by a rescan of the demo however it was opened
     const bool demo = serial == QLatin1String(kDemoSerial);
-    const bool opened = demo ? (m_demoWire ? dspi_demo_open_wire(m_core, uint8_t(m_demoWire)) : dspi_open_demo(m_core))
+    // -- WP QD36 -- A rescan keeps the open demo, as Swift's FakeTransport keeps its
+    // state across a reconnect: it is read again, not opened fresh
+    const bool opened = demo ? (keepDemo || (m_demoWire ? dspi_demo_open_wire(m_core, uint8_t(m_demoWire)) : dspi_open_demo(m_core)))
                              : dspi_select_device(m_core, utf8.constData());
     if (!opened) {
 #ifdef Q_OS_LINUX
@@ -1190,20 +1196,25 @@ void DSPiBridge::disconnectDevice() {
 }
 
 void DSPiBridge::rescan() {
+    // -- WP QD36 -- A hub session owns the device shown: a rescan would close it and open
+    // a local one (a hub's shared demo has the local demo's serial) under the session
+    if (m_hubSession) return;
     const QString previous = m_selectedSerial;
     // -- WP QD17 -- The open device is reopened, the demo too (Swift's reconnect): a
     // rescan never ends the demo, which is not on the list unless the app runs with --demo
     const bool demoOpen = connected() && previous == QLatin1String(kDemoSerial);
-    if (connected()) disconnectDevice();
+    if (connected() && !demoOpen) disconnectDevice();   // -- WP QD36 -- the demo stays open
     const QStringList serials = listSerials();
     m_availableSerials = serials;
     emit devicesChanged();
     updateInaccessible();
-    if (demoOpen || serials.contains(previous)) selectDevice(previous);
+    if (demoOpen) openDevice(previous, true);
+    else if (serials.contains(previous)) selectDevice(previous);
     else if (!serials.isEmpty()) selectDevice(serials.first());
 }
 
 void DSPiBridge::reconnect() {
+    if (m_hubSession) return;   // -- WP QD36 -- as rescan
     if (!m_selectedSerial.isEmpty()) {
         QString serial = m_selectedSerial;
         disconnectDevice();

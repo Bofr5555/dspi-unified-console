@@ -313,6 +313,16 @@ void SmokeDriver::testLink() {
         check("QD6: and tells the controllers first", changing >= 2);
         QObject::disconnect(counting);
         check("QD6: it is writable", b->writable());
+        // -- WP QD36 -- The device name's right-click (rescan) and reconnect leave the
+        // session's device alone: no local device opens under the bound session
+        int rescanned = 0;
+        const QMetaObject::Connection rescanCount = QObject::connect(b, &DSPiBridge::deviceChanging, b, [&] { rescanned++; });
+        b->rescan();
+        b->reconnect();
+        spin(200);
+        QObject::disconnect(rescanCount);
+        check("QD36: a rescan during a hub session keeps the bound device", rescanned == 0 && b->connected()
+                  && b->selectedSerial() == hubSerial && app->phase() == QLatin1String("bound") && b->writable());
         // -- WP QD18 --
         testHostAudioOnHub();
         // Nothing here starts the analyser: binding does, and a drop starts it again
