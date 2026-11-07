@@ -50,12 +50,14 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.toSize
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.math.BigDecimal
 import java.math.MathContext
@@ -634,36 +636,44 @@ private fun GraphLabels(settings: AppSettings, minF: Double, maxF: Double, dTop:
         fun xPos(f: Double) = ((log10(f) - log10(minF)) / (log10(maxF) - log10(minF)) * w).toFloat()
 
         fun yPos(db: Double, top: Double, bottom: Double) = (h - (db - bottom) / (top - bottom) * h).toFloat()
-        val pad = 4.dp.toPx()
-        if (settings.showFrequencyLabels) {
-            for (i in LABEL_FREQS.indices) {
-                val f = LABEL_FREQS[i]
-                val text = LABEL_TEXTS[i]
-                if (f < minF || f > maxF) continue
-                val r = measurer.measure(text, style)
-                val x = (xPos(f) - r.size.width / 2f).coerceIn(0f, max(w - r.size.width, 0f))
-                drawText(r, topLeft = Offset(x, h - 2.dp.toPx() - r.size.height))
+        // AN32: measured first, then placed so that no two labels overlap (GraphAxisLabels.kt)
+        val freqTexts = if (!settings.showFrequencyLabels) {
+            emptyList()
+        } else {
+            LABEL_FREQS.indices.filter { LABEL_FREQS[it] in minF..maxF }.map { i ->
+                measurer.measure(LABEL_TEXTS[i], style) to
+                    xPos(LABEL_FREQS[i])
             }
         }
-        if (settings.showDBLabels) {
+        val dbTexts = buildList {
+            if (!settings.showDBLabels) return@buildList
             val step = dbGridStep(dTop - dBot)
             var db = ceil(dBot / step) * step
             while (db <= dTop) {
-                val r = measurer.measure(dbLabel(db), style)
-                val y = (yPos(db, dTop, dBot) - r.size.height / 2f).coerceIn(0f, max(h - r.size.height, 0f))
-                drawText(r, topLeft = Offset(pad, y))
+                add(measurer.measure(dbLabel(db), style) to yPos(db, dTop, dBot))
                 db += step
             }
         }
         // Phase axis labels (right side), scaled with the vertical zoom.
-        if (settings.showPhase) {
+        val phaseTexts = buildList {
+            if (!settings.showPhase) return@buildList
             val pTop = settings.phaseTop
             for (p in listOf(pTop, pTop / 2, 0.0, -pTop / 2, -pTop)) {
                 val text = if (p == 0.0) "0°" else String.format(Locale.ROOT, "%+d°", p.roundToInt())
-                val r = measurer.measure(text, phaseStyle)
-                val y = (yPos(p, pTop, -pTop) - r.size.height / 2f).coerceIn(0f, max(h - r.size.height, 0f))
-                drawText(r, topLeft = Offset(w - pad - r.size.width, y))
+                add(measurer.measure(text, phaseStyle) to yPos(p, pTop, -pTop))
             }
+        }
+        fun labels(texts: List<Pair<TextLayoutResult, Float>>) = texts.map { (r, at) -> AxisLabel(r.size.toSize(), at) }
+        val layout = layoutAxisLabels(
+            AxisLabelInput(labels(freqTexts), labels(dbTexts), labels(phaseTexts)),
+            w,
+            h,
+            pad = 4.dp.toPx(),
+            bottom = 2.dp.toPx(),
+            gap = 2.dp.toPx()
+        )
+        for ((texts, rects) in listOf(freqTexts to layout.freq, dbTexts to layout.db, phaseTexts to layout.phase)) {
+            texts.zip(rects).forEach { (t, r) -> if (r != null) drawText(t.first, topLeft = r.topLeft) }
         }
     }
 }

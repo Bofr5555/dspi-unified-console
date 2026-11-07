@@ -44,6 +44,12 @@ object DspiRoutes {
     /** :feature-analysis — signal generator, spectrum analyser, stats, monitor. */
     const val ANALYSIS = "analysis"
 
+    // -- WP AN32 --
+    /** :feature-analysis — one page opened directly (macOS: its own Tools-menu window); argument = page id. */
+    const val ANALYSIS_PAGE = "analysis/{page}"
+
+    fun analysis(page: String) = "analysis/$page"
+
     /** :feature-firmware — FirmwareUpdateView. */
     const val FIRMWARE = "firmware"
 }

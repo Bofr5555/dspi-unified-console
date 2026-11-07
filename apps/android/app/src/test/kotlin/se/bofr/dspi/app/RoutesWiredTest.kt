@@ -10,7 +10,7 @@ class RoutesWiredTest {
         val routes =
             listOf(
                 DspiRoutes.HOME, DspiRoutes.CHANNEL, DspiRoutes.GRAPH, DspiRoutes.MATRIX, DspiRoutes.TOOLS,
-                DspiRoutes.LIMITER, DspiRoutes.TOOL,
+                DspiRoutes.LIMITER, DspiRoutes.TOOL, DspiRoutes.ANALYSIS_PAGE,
                 DspiRoutes.PRESETS, DspiRoutes.SETTINGS, DspiRoutes.ANALYSIS, DspiRoutes.FIRMWARE
             )
         assertEquals(routes.size, routes.toSet().size)

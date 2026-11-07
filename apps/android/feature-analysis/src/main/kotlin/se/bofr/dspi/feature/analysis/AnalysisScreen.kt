@@ -53,11 +53,19 @@ enum class AnalysisRoute(val route: String, val title: String) {
 /**
  * Entry point of :feature-analysis (route [DspiRoutes.ANALYSIS]).
  * The signature is the contract with :app — keep it. [onNavigate] is unused:
- * every page of this feature is an internal sub-route.
+ * every page of this feature is an internal sub-route. [open] is the page id
+ * of [DspiRoutes.ANALYSIS_PAGE] (AN32: the Tools menu opens each page); an
+ * unknown or missing id opens the first page.
  */
 @Composable
-fun AnalysisScreen(bridge: DspiBridge, onNavigate: (String) -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
-    var route by rememberSaveable { mutableStateOf(AnalysisRoute.TEST_SIGNALS.route) }
+fun AnalysisScreen(
+    bridge: DspiBridge,
+    onNavigate: (String) -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    open: String? = null
+) {
+    var route by rememberSaveable { mutableStateOf(AnalysisRoute.fromRoute(open?.let(DspiRoutes::analysis)).route) }
     AnalysisScaffold(
         selected = AnalysisRoute.fromRoute(route),
         onSelect = { route = it.route },
