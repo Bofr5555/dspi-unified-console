@@ -50,6 +50,16 @@ use super::{FakeRemote, Field, Index, Scalar, State, Store, scalar};
 pub(super) const L_ENABLED: Field = ("enabled", 0, 1);
 pub(super) const L_SPEED: Field = ("speed", 1, 1);
 pub(super) const L_LOOKAHEAD: Field = ("lookahead", 2, 1);
+// -- WP CG16 --
+impl State {
+    /// `i2c_ctrl_live_instance`: which I2C block the control interface holds. A
+    /// display may not take it.
+    pub(super) fn i2c_ctrl_live_instance(&self) -> Option<u8> {
+        let cfg = I2cCtrlConfig::decode(&self.extras.i2c).ok()?;
+        cfg.enabled.then_some((cfg.sda_pin >> 1) & 1)
+    }
+}
+
 #[cfg(test)]
 pub(super) const L_RESERVED: Field = ("reserved", 3, 1);
 pub(super) const L_AMOUNT: Field = ("amount", 4, 4);

@@ -1471,6 +1471,15 @@ pub extern "C" fn dspi_core_vreg_demo_event(core: *mut FfiCore, event: u8, secon
     status(core, |c| c.core_vreg_demo_event(event, seconds))
 }
 
+// -- WP CG16 --
+/// On the demo device only: hold it in a running revert (`on`), or let it finish.
+/// While held, control-surface writes settle busy, and the save, the revert, a
+/// macro fire and a learn are refused. 0 when done.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_cs_demo_busy(core: *mut FfiCore, on: bool) -> u8 {
+    status(core, |c| c.cs_demo_busy(on))
+}
+
 #[cfg(test)]
 #[path = "fns_misc/tests_wp_cg11.rs"]
 #[allow(clippy::arithmetic_side_effects)]
