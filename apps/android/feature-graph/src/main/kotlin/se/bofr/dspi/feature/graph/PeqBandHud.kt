@@ -187,9 +187,9 @@ fun PeqBandHud(editor: PeqGraphEditor, state: PeqHudState, onEditField: (PeqHudF
     val muted = Color.White.copy(alpha = 0.4f)
     PeqFrostedPanel(frame) {
         if (state.showsShapes && PeqShape.of(p.filterType) != null) {
-            val chooser = remember { PeqShapeChooserState() }
+            // -- WP AN39 -- a fresh chooser per band and type set (configure resets every field), not a mutating remember
+            val chooser = remember(band, state.availableTypes) { PeqShapeChooserState().apply { configure(state.availableTypes) } }
             var step by remember { mutableIntStateOf(0) }
-            remember(band, state.availableTypes) { chooser.configure(state.availableTypes) }
             PeqShapeChooser(
                 chooser = chooser,
                 // The band's own shape follows a type change made while the page is open: a
@@ -451,12 +451,10 @@ fun PeqShapeChooser(
 /** The Add Band card (macOS: Cmd-click; Android: long-press empty graph > Add Band…). */
 @Composable
 fun PeqAddBandCard(editor: PeqGraphEditor, origin: PeqPoint) {
-    val chooser = remember { PeqShapeChooserState() }
-    var step by remember { mutableIntStateOf(0) }
     val types = editor.availableTypes
-    remember(types, origin) {
-        chooser.configure(types)
-    }
+    // -- WP AN39 -- as the chip's shape page: a fresh chooser per key
+    val chooser = remember(types, origin) { PeqShapeChooserState().apply { configure(types) } }
+    var step by remember { mutableIntStateOf(0) }
     val size = PeqGraphEditor.Tuning.CARD_SIZE
     PeqFrostedPanel(PeqRect(origin.x, origin.y, size.width, size.height)) {
         PeqShapeChooser(
