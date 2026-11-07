@@ -13,6 +13,10 @@
 //! - **Identity:** `GET_PLATFORM` (the capture's reply), `GET_SERIAL`,
 //!   `GET_BUILD_INFO`, `GET_STATUS` (sub-query 9 is the meter block; the
 //!   others answer a `u32`, as the firmware does).
+//! - **Output rings (WP CG12):** `GET_BUFFER_STATS` in the firmware's layout,
+//!   with every live ring steady at the current latency target, which is a
+//!   demo's picture and not measured behaviour. Sub-query 28 (lowest fill)
+//!   stays at the firmware's start value, no write seen. Nothing streams.
 //! - **Bulk:** `0xA0`/`0xA1` single-shot and `0xA2`/`0xA3` chunked, with the
 //!   chunking spec's session rules (`bulk_params_chunking.md`): offset 0
 //!   starts a session, chunks are sequential, any other request tears the
@@ -55,7 +59,12 @@
 //! - **Extensions** (with [`FakeOptions::extensions`]): `EXT_LIST`, the pair
 //!   map (validated and normalised as `crossfeed_map.h`; a write lands in
 //!   the bulk image's `crossfeed.pair_map` and notifies) and the core-voltage
-//!   status and requests (`core_vreg.h`).
+//!   status and requests (`core_vreg.h`). WP CG11: a voltage is what
+//!   `core_vreg.c` would program, a `SET` ends a running trial, and
+//!   [`VregSim`] plays hangs, reboots and power cycles as
+//!   `core_vreg_boot_apply` treats them. It can also hold requests in the
+//!   firmware's one staging slot until its main loop runs
+//!   ([`FakeRemote::vreg_stage_requests`]).
 //! - **Everything else stalls**, in both directions, by default: a fake
 //!   that stalls makes a missing model visible. The firmware ACKs every
 //!   unhandled OUT request on USB except `REQ_EXTENSION`;
@@ -364,6 +373,87 @@ impl FakeRemote {
     pub fn disconnect(&self) {
         self.shared.lock().gone = true;
         self.shared.wake.notify_all();
+    }
+
+    // -- WP CG11 --
+
+    /// Play a hang, reboot, power cycle or passing time on the core-voltage
+    /// state.
+    pub fn vreg_sim(&self, sim: VregSim) {
+        self.shared.lock().vreg_sim(sim);
+    }
+
+    /// Set the build default (`DSPI_VREG_MV`) as a boot with it would: no
+    /// trial, nothing stored.
+    pub fn vreg_set_build_default(&self, code: u8) {
+        let mut s = self.shared.lock();
+        s.vreg.default_vreg = code;
+        s.vreg.stored_sel = 0;
+        s.vreg.trial = None;
+        s.vreg.live = code;
+    }
+
+    /// Hold core-voltage requests in the firmware's one staging slot until
+    /// [`FakeRemote::vreg_run_main_loop`], as the firmware does: the status
+    /// read right after a write shows the old state, and a second write
+    /// replaces a first that was not applied yet.
+    pub fn vreg_stage_requests(&self, on: bool) {
+        self.shared.lock().vreg.stage_requests = on;
+    }
+
+    /// The main loop applies the staged core-voltage request, if any.
+    pub fn vreg_run_main_loop(&self) {
+        self.shared.lock().vreg_run_main_loop();
+    }
+}
+
+/// `REQ_EXTENSION` OUT sub-command only a [`FakeDevice`] answers, from the
+/// experimental range: a [`VregSim::encode`] payload. It lets a client's demo
+/// device mode play hangs without a [`FakeRemote`] (QD28, AN23, SW23). A host
+/// checks for [`TransportKind::Fake`] before sending it.
+pub const EXT_FAKE_VREG_SIM: u16 = 0xFFF0;
+
+/// What can happen to a simulated device's core-voltage state (WP CG11).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VregSim {
+    /// The 8 s watchdog fires. A running trial is reported as failed, with
+    /// this run's whole uptime, as `core_vreg.c` does; otherwise the hang
+    /// counts, and two raise the stored voltage. Uptime restarts.
+    Hang,
+    /// A requested reboot (`watchdog_reboot`: USB reset, BOOTSEL). Back on
+    /// the persisted voltage with no failure recorded. The failed-trial code
+    /// survives; its uptime, kept in RAM, does not.
+    Reboot,
+    /// Power lost: the scratch registers go too, so every record is gone.
+    PowerCycle,
+    /// This many seconds pass on the device's clock.
+    Advance(u32),
+}
+
+impl VregSim {
+    /// The [`EXT_FAKE_VREG_SIM`] payload.
+    pub fn encode(self) -> [u8; 5] {
+        let (kind, secs) = match self {
+            VregSim::Hang => (0, 0),
+            VregSim::Reboot => (1, 0),
+            VregSim::PowerCycle => (2, 0),
+            VregSim::Advance(secs) => (3, secs),
+        };
+        let [a, b, c, d] = secs.to_le_bytes();
+        [kind, a, b, c, d]
+    }
+
+    fn decode(data: &[u8]) -> Option<Self> {
+        let [kind, a, b, c, d] = *data else {
+            return None;
+        };
+        match kind {
+            0 => Some(VregSim::Hang),
+            1 => Some(VregSim::Reboot),
+            2 => Some(VregSim::PowerCycle),
+            3 => Some(VregSim::Advance(u32::from_le_bytes([a, b, c, d]))),
+            _ => None,
+        }
     }
 }
 
@@ -808,6 +898,13 @@ struct Vreg {
     trial: Option<u8>,
     failed_trial: u8,
     failed_trial_uptime_s: u32,
+    // -- WP CG11 --
+    /// Seconds added to the real clock since the last boot ([`VregSim::Advance`]).
+    uptime_offset_s: u32,
+    /// Hold requests for the "main loop", as `core_vreg_req_*` does.
+    stage_requests: bool,
+    /// The one staging slot: a later request overwrites an unapplied one.
+    staged: Option<(u8, u8)>,
 }
 
 const NAME_LEN: usize = st::PRESET_NAME_LEN as usize;
@@ -839,6 +936,9 @@ struct State {
     /// The demo coverage's non-bulk state (names, latency, control
     /// interfaces).
     extras: features::Extras,
+    // -- WP CG12 --
+    /// `BufferStatsPacket.sequence`: counts the reads, wrapping.
+    buffer_stats_sequence: u16,
     queue: VecDeque<Vec<u8>>,
     seq: u8,
     started: Instant,
@@ -871,6 +971,8 @@ impl State {
             chunked: Chunked::None,
             presets,
             extras: features::Extras::new(),
+            // -- WP CG12 --
+            buffer_stats_sequence: 0,
             vreg: Vreg {
                 live: DEMO_VREG,
                 stored_sel: 0,
@@ -880,6 +982,10 @@ impl State {
                 trial: None,
                 failed_trial: 0,
                 failed_trial_uptime_s: 0,
+                // -- WP CG11 --
+                uptime_offset_s: 0,
+                stage_requests: false,
+                staged: None,
             },
             queue: VecDeque::new(),
             seq: 0,
@@ -1145,6 +1251,8 @@ impl State {
                 .to_vec(),
             ),
             op::REQ_GET_STATUS => Some(self.get_status(value)),
+            // -- WP CG12 --
+            op::REQ_GET_BUFFER_STATS => self.get_buffer_stats(),
             op::REQ_GET_ALL_PARAMS => Some(self.image.clone()),
             op::REQ_GET_ALL_PARAMS_CHUNK => self.get_chunk(usize::from(value), want),
             // Legacy: input 0's preamp.
@@ -1195,9 +1303,48 @@ impl State {
             15 => 48_000,
             16 => 3_500,
             23 => u32::from(self.status.last().copied().unwrap_or(0)),
+            // -- WP CG12 --
+            // `output_ring_min_prewrite` before its first write
+            // (audio_pipeline.c:1856, vendor_commands.c:2570).
+            28 => u32::MAX,
             _ => 0,
         };
         v.to_le_bytes().to_vec()
+    }
+
+    // -- WP CG12 --
+    /// `REQ_GET_BUFFER_STATS`: `BufferStatsPacket` (config.h:1165-1194), 44
+    /// bytes, filled as vendor_commands.c:3378-3405 does, from a fill at the
+    /// current target (`REQ_OUTPUT_LATENCY`). The bucket mapping is
+    /// `get_slot_consumer_stats` (audio_pipeline.c:1764-1783). The watermarks
+    /// sit at the fill. `dspi_proto`'s packet has no `fill_centi_pct`, so the
+    /// bytes are laid out here.
+    fn get_buffer_stats(&mut self) -> Option<Vec<u8>> {
+        /// `SLOT_FILL_FRAMES_PER_BUCKET`, `SLOT_FILL_MAX_BUCKETS`.
+        const BUCKET_FRAMES: u32 = 48;
+        const BUCKETS: u32 = 16;
+        let status = self.get_feature(op::REQ_OUTPUT_LATENCY, 0)??;
+        let fill = u32::from(u16::from_le_bytes([*status.get(4)?, *status.get(5)?]));
+        let buckets = (fill / BUCKET_FRAMES).min(BUCKETS);
+        let pct = u8::try_from(buckets.saturating_mul(100) / BUCKETS).ok()?;
+        let centi = u16::try_from((fill * 10_000 / (BUCKET_FRAMES * BUCKETS)).min(65_535)).ok()?;
+        let [centi0, centi1] = centi.to_le_bytes();
+        let prepared = u8::try_from(buckets).ok()?;
+        let free = u8::try_from(BUCKETS.saturating_sub(buckets)).ok()?;
+        let entry = [free, prepared, 1, pct, pct, pct, centi0, centi1];
+        // NUM_SPDIF_INSTANCES (config.h:804-807): 4 with 9 outputs, 2 with 5.
+        let live = usize::from((self.num_outputs() / 2).min(4));
+
+        let sequence = self.buffer_stats_sequence;
+        self.buffer_stats_sequence = sequence.wrapping_add(1);
+        // Not streaming, no PDM: flags 0, and the PDM entry stays zero.
+        let mut b = vec![u8::try_from(live).ok()?, 0];
+        b.extend(sequence.to_le_bytes());
+        for slot in 0..4 {
+            b.extend(if slot < live { entry } else { [0; 8] });
+        }
+        b.extend([0; 8]);
+        Some(b)
     }
 
     fn get_chunk(&mut self, off: usize, want: usize) -> Option<Vec<u8>> {
@@ -1409,7 +1556,7 @@ impl State {
     /// `CoreVregStatus`, 16 bytes (extension_channel_spec.md 2.3).
     fn vreg_status(&self) -> Vec<u8> {
         let v = &self.vreg;
-        let uptime = u32::try_from(self.started.elapsed().as_secs()).unwrap_or(u32::MAX);
+        let uptime = self.vreg_uptime_s();
         let mut b = vec![
             v.live,
             v.stored_sel,
@@ -1639,36 +1786,63 @@ impl State {
                 [code, v] => self.vreg_request(code, v),
                 _ => false,
             },
+            // -- WP CG11 --
+            EXT_FAKE_VREG_SIM => match VregSim::decode(data) {
+                Some(sim) => {
+                    self.vreg_sim(sim);
+                    true
+                }
+                None => false,
+            },
             _ => false,
         }
     }
 
-    /// `{op, value}` (extension_channel_spec.md 2.3). False refuses it.
+    /// `{op, value}` (extension_channel_spec.md 2.3). False refuses it
+    /// (`core_vreg_request_valid`); a valid one is applied at once, or staged
+    /// for the main loop with [`FakeRemote::vreg_stage_requests`].
     fn vreg_request(&mut self, code: u8, v: u8) -> bool {
+        let r = &mut self.vreg;
+        let valid = match code {
+            0 => v == 0 || (r.default_vreg..=0x0F).contains(&v),
+            1 => (0x0C..=0x0F).contains(&v),
+            2 | 4 => true,
+            3 => v <= 1,
+            _ => false,
+        };
+        if !valid {
+            return false;
+        }
+        if r.stage_requests {
+            r.staged = Some((code, v));
+        } else {
+            self.vreg_apply(code, v);
+        }
+        true
+    }
+
+    /// `core_vreg_apply_request`, for a request already validated.
+    fn vreg_apply(&mut self, code: u8, v: u8) {
         use dspi_proto::ext::CoreVregStatus as S;
         let r = &mut self.vreg;
         match code {
-            0 if v == 0 || (r.default_vreg..=0x0F).contains(&v) => {
+            0 => {
                 r.stored_sel = v;
                 r.flags &= !S::FLAG_AUTO_RAISED;
                 r.hang_count = 0;
-                if r.trial.is_none() {
-                    r.live = if v == 0 { r.default_vreg } else { v };
-                }
+                // An explicit choice ends a trial (`core_vreg.c`, OP_SET).
+                r.trial = None;
+                r.live = r.resolved();
             }
-            1 if (0x0C..=0x0F).contains(&v) => {
+            1 => {
                 r.trial = Some(v);
                 r.live = v;
             }
             2 => {
                 r.trial = None;
-                r.live = if r.stored_sel == 0 {
-                    r.default_vreg
-                } else {
-                    r.stored_sel
-                };
+                r.live = r.resolved();
             }
-            3 if v <= 1 => {
+            3 => {
                 if v == 0 {
                     r.flags |= S::FLAG_AUTO_DISABLED;
                 } else {
@@ -1680,9 +1854,82 @@ impl State {
                 r.failed_trial = 0;
                 r.failed_trial_uptime_s = 0;
             }
-            _ => return false,
+            _ => {}
         }
-        true
+    }
+
+    // -- WP CG11 --
+
+    fn vreg_uptime_s(&self) -> u32 {
+        u32::try_from(self.started.elapsed().as_secs())
+            .unwrap_or(u32::MAX)
+            .saturating_add(self.vreg.uptime_offset_s)
+    }
+
+    /// The firmware's main loop reaches the staged request, if any.
+    fn vreg_run_main_loop(&mut self) {
+        if let Some((code, v)) = self.vreg.staged.take() {
+            self.vreg_apply(code, v);
+        }
+    }
+
+    fn vreg_sim(&mut self, sim: VregSim) {
+        match sim {
+            VregSim::Advance(secs) => {
+                self.vreg.uptime_offset_s = self.vreg.uptime_offset_s.saturating_add(secs);
+            }
+            VregSim::Hang => self.vreg_boot(true, false),
+            VregSim::Reboot => self.vreg_boot(false, false),
+            VregSim::PowerCycle => self.vreg_boot(false, true),
+        }
+    }
+
+    /// `core_vreg_boot_apply` after a reset: `watchdog` for our own 8 s
+    /// watchdog firing, `power_on` when the scratch registers were lost.
+    fn vreg_boot(&mut self, watchdog: bool, power_on: bool) {
+        use dspi_proto::ext::CoreVregStatus as S;
+        let prev_uptime = self.vreg_uptime_s();
+        let r = &mut self.vreg;
+        let prev_trial = r.trial.take();
+        // RAM: lost on every reset. The staged request goes with it.
+        r.staged = None;
+        r.failed_trial_uptime_s = 0;
+        if power_on {
+            // SCRATCH0: the count and the failed-trial code live here.
+            r.hang_count = 0;
+            r.failed_trial = 0;
+        }
+        if watchdog {
+            if let Some(trial) = prev_trial {
+                r.failed_trial = trial;
+                r.failed_trial_uptime_s = prev_uptime;
+            } else {
+                r.hang_count = r.hang_count.saturating_add(1).min(0xF);
+            }
+        }
+        let mut v = r.resolved();
+        if r.flags & S::FLAG_AUTO_DISABLED == 0 && r.hang_count >= 2 && v < 0x0E {
+            v = v.saturating_add(1);
+            r.stored_sel = v;
+            r.flags |= S::FLAG_AUTO_RAISED;
+            // `core_vreg_persist` clears it once the raise is written.
+            r.hang_count = 0;
+        }
+        r.live = v;
+        r.uptime_offset_s = 0;
+        self.started = Instant::now();
+    }
+}
+
+impl Vreg {
+    /// `resolve()`: the voltage a stored selection runs at.
+    fn resolved(&self) -> u8 {
+        let v = if self.stored_sel == 0 {
+            self.default_vreg
+        } else {
+            self.stored_sel
+        };
+        v.max(self.default_vreg).clamp(0x0C, 0x0F)
     }
 }
 
@@ -2624,5 +2871,173 @@ mod tests_wp_t4 {
             };
             assert_eq!(u16::from(p[4]), want);
         }
+    }
+}
+
+// -- WP CG12 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg12 {
+    use dspi_proto::packets::BufferStatsPacket;
+
+    use super::*;
+    use crate::Transport;
+
+    fn stats(d: &mut FakeDevice) -> Vec<u8> {
+        d.control_in(op::REQ_GET_BUFFER_STATS, 0, 44).unwrap()
+    }
+
+    fn target(d: &mut FakeDevice) -> u16 {
+        let s = d.control_in(op::REQ_OUTPUT_LATENCY, 0, 12).unwrap();
+        u16::from_le_bytes([s[4], s[5]])
+    }
+
+    #[test]
+    fn wp_cg12_lowest_fill_starts_as_the_firmware_does() {
+        let mut d = FakeDevice::demo();
+        let v = d.control_in(op::REQ_GET_STATUS, 28, 4).unwrap();
+        assert_eq!(v, u32::MAX.to_le_bytes());
+    }
+
+    #[test]
+    fn wp_cg12_buffer_stats_have_the_firmware_layout() {
+        let mut d = FakeDevice::demo();
+        let frames = u32::from(target(&mut d));
+        let raw = stats(&mut d);
+        assert_eq!(raw.len(), BufferStatsPacket::SIZE);
+
+        let p = BufferStatsPacket::decode(&raw).unwrap();
+        assert_eq!(p.num_spdif, 4);
+        assert_eq!(p.flags, 0);
+        let buckets = (frames / 48) as u8;
+        let live = p.spdif[3];
+        assert_eq!(live.consumer_prepared, buckets);
+        assert_eq!(live.consumer_free, 16 - buckets);
+        assert_eq!(live.consumer_playing, 1);
+        assert_eq!(
+            u32::from(live.consumer_fill_pct),
+            u32::from(buckets) * 100 / 16
+        );
+        assert_eq!(live.consumer_min_fill_pct, live.consumer_fill_pct);
+        assert_eq!(live.consumer_max_fill_pct, live.consumer_fill_pct);
+        // fill_centi_pct, bytes 6-7 of the last entry: frames over 768.
+        let centi = u32::from(u16::from_le_bytes([raw[34], raw[35]]));
+        assert_eq!(centi, frames * 10_000 / 768);
+        assert_eq!(&raw[36..44], &[0; 8]);
+    }
+
+    #[test]
+    fn wp_cg12_the_sequence_counts_reads() {
+        let mut d = FakeDevice::demo();
+        let first = stats(&mut d);
+        let second = stats(&mut d);
+        let seq = |b: &[u8]| u16::from_le_bytes([b[2], b[3]]);
+        assert_eq!(seq(&second), seq(&first).wrapping_add(1));
+    }
+
+    #[test]
+    fn wp_cg12_the_fill_follows_the_latency_setting() {
+        let mut d = FakeDevice::demo();
+        let before = target(&mut d);
+        let centi = |d: &mut FakeDevice| {
+            let raw = stats(d);
+            u32::from(u16::from_le_bytes([raw[10], raw[11]]))
+        };
+        let was = centi(&mut d);
+        // 8 ms, the longest option, runs on every source.
+        d.control_out(op::REQ_OUTPUT_LATENCY, 0, &[7]).unwrap();
+        let after = target(&mut d);
+        assert_ne!(before, after);
+        assert_ne!(was, centi(&mut d));
+        assert_eq!(centi(&mut d), u32::from(after) * 10_000 / 768);
+    }
+}
+
+/// WP CG11: the simulation's own hook; its effects are tested through the core
+/// (`dspi-core`'s `vreg/tests_wp_cg11.rs`).
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg11 {
+    use super::*;
+
+    fn with_extensions() -> FakeDevice {
+        FakeDevice::new(
+            Capture::demo(),
+            FakeOptions {
+                extensions: true,
+                ..FakeOptions::default()
+            },
+        )
+    }
+
+    #[test]
+    fn wp_cg11_the_sim_payload_round_trips_and_a_bad_one_is_refused() {
+        for sim in [
+            VregSim::Hang,
+            VregSim::Reboot,
+            VregSim::PowerCycle,
+            VregSim::Advance(0x0102_0304),
+        ] {
+            assert_eq!(VregSim::decode(&sim.encode()), Some(sim));
+        }
+        assert_eq!(VregSim::decode(&[9, 0, 0, 0, 0]), None);
+        assert_eq!(VregSim::decode(&[0]), None);
+
+        let mut d = with_extensions();
+        assert!(matches!(
+            d.control_out(op::REQ_EXTENSION, EXT_FAKE_VREG_SIM, &[9, 0, 0, 0, 0]),
+            Err(TransportError::Stalled { .. })
+        ));
+    }
+
+    #[test]
+    fn wp_cg11_the_sim_is_not_listed_and_a_stock_device_stalls_it() {
+        let mut d = with_extensions();
+        let list = d
+            .control_in_upto(op::REQ_EXTENSION, gext::EXT_LIST, 64)
+            .unwrap();
+        assert!(
+            !list
+                .chunks(2)
+                .any(|c| c == EXT_FAKE_VREG_SIM.to_le_bytes().as_slice())
+        );
+        let mut stock = FakeDevice::new(Capture::demo(), FakeOptions::default());
+        assert!(matches!(
+            stock.control_out(
+                op::REQ_EXTENSION,
+                EXT_FAKE_VREG_SIM,
+                &VregSim::Hang.encode()
+            ),
+            Err(TransportError::Stalled { .. })
+        ));
+    }
+
+    #[test]
+    fn wp_cg11_staging_keeps_one_request_and_a_reset_loses_it() {
+        let d = with_extensions();
+        let r = d.remote();
+        r.vreg_stage_requests(true);
+        let mut d = d;
+        let status = |d: &mut FakeDevice| {
+            d.control_in(op::REQ_EXTENSION, gext::EXT_CORE_VREG, 16)
+                .unwrap()
+        };
+        d.control_out(op::REQ_EXTENSION, gext::EXT_CORE_VREG, &[1, 0x0E])
+            .unwrap();
+        d.control_out(op::REQ_EXTENSION, gext::EXT_CORE_VREG, &[1, 0x0F])
+            .unwrap();
+        assert_eq!(status(&mut d)[5], 0, "not applied yet");
+        r.vreg_run_main_loop();
+        assert_eq!(status(&mut d)[6], 0x0F, "the later request won");
+        d.control_out(op::REQ_EXTENSION, gext::EXT_CORE_VREG, &[2, 0])
+            .unwrap();
+        r.vreg_sim(VregSim::Reboot);
+        r.vreg_run_main_loop();
+        assert_eq!(status(&mut d)[5], 0);
+        // A refused request is not staged.
+        assert!(
+            d.control_out(op::REQ_EXTENSION, gext::EXT_CORE_VREG, &[1, 0x10])
+                .is_err()
+        );
     }
 }

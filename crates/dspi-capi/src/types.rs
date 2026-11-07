@@ -1213,6 +1213,36 @@ impl From<&r::NotifyResult> for NotifyResult {
     }
 }
 
+// -- WP CG5 --
+/// Who chose the analyser configuration the device holds.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RtaOwnership {
+    /// False: this console drives, and the rest is 0. True: it follows
+    /// someone else's configuration.
+    pub following: bool,
+    /// The session that pushed it; 0 when the writer is unknown.
+    pub origin: u16,
+    /// The device's tap: RTA_TAP_INPUT or RTA_TAP_OUTPUT.
+    pub tap: u8,
+    /// The device's channels.
+    pub mask: u16,
+    /// The device's FFT size as a power of two.
+    pub fft_order: u8,
+}
+
+impl From<&r::RtaOwnership> for RtaOwnership {
+    fn from(v: &r::RtaOwnership) -> Self {
+        Self {
+            following: v.following,
+            origin: v.origin,
+            tap: v.tap,
+            mask: v.mask,
+            fft_order: v.fft_order,
+        }
+    }
+}
+
 impl From<&r::RtaRequest> for RtaRequest {
     fn from(v: &r::RtaRequest) -> Self {
         Self {

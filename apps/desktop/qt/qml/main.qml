@@ -485,6 +485,13 @@ ApplicationWindow {
                     }
                 }
 
+                // What other work packages register (src/Registrar.h)
+                BannerHost {
+                    id: bannerHost
+                    width: parent.width - 32
+                    x: 16
+                }
+
                 // Graph section
                 FilterResponseView {
                     id: filterResponse
@@ -494,11 +501,13 @@ ApplicationWindow {
                 // Dynamic content
                 Loader {
                     id: contentLoader
+                    objectName: "contentLoader"
                     width: parent.width
                     // The column already starts below the titlebar
                     height: parent.height - filterResponse.height - 10
                             - (compatBanner.visible ? compatBanner.height + 10 : 0)
                             - (versionBanner.visible ? versionBanner.height + 10 : 0)
+                            - (bannerHost.visible ? bannerHost.height + 10 : 0)
 
                     sourceComponent: {
                         if (root.selection === "overview")

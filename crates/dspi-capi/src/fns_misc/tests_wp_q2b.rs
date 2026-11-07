@@ -74,7 +74,7 @@ fn wp_q2b_a_null_handle_gives_the_failure_value() {
         dspi_set_adat_input_clock_mode(n, 0),
         dspi_test_dac_mute(n),
         dspi_set_crossfeed_pair_map(n, p, 4),
-        dspi_core_vreg_op(n, 0, 0),
+        dspi_core_vreg_op(n, 0, 0, null()),
     ] {
         assert_eq!(v, 0xFF);
     }
@@ -558,7 +558,7 @@ fn wp_q2b_extension_channel_replies() {
     } else {
         assert_eq!(vreg["code"], "unsupported");
     }
-    assert_eq!(dspi_core_vreg_op(h, 99, 0), 0xFF);
+    assert_eq!(dspi_core_vreg_op(h, 99, 0, null()), 0xFF);
     free(h);
 }
 
@@ -853,4 +853,33 @@ fn wp_q2b_added_functions_are_in_the_header() {
     ] {
         assert!(new.contains_key(name), "{name} missing");
     }
+}
+
+// -- WP CG5 --
+#[test]
+fn wp_cg5_ownership_and_take_control_are_exported() {
+    let mut o = RtaOwnership {
+        following: true,
+        ..Default::default()
+    };
+    dspi_rta_get_ownership(null_mut(), &mut o);
+    assert!(!o.following, "the null handle reads as driving");
+    dspi_rta_take_control(null_mut());
+    let h = handle();
+    dspi_rta_get_ownership(h, null_mut());
+    o.following = true;
+    dspi_rta_get_ownership(h, &mut o);
+    assert_eq!(o, RtaOwnership::default());
+    dspi_rta_take_control(h);
+    free(h);
+    let header = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("include/dspi_core.h"),
+    )
+    .unwrap();
+    assert!(
+        header.contains(
+            "void dspi_rta_get_ownership(struct FfiCore *core, struct RtaOwnership *out);"
+        )
+    );
+    assert!(header.contains("void dspi_rta_take_control(struct FfiCore *core);"));
 }

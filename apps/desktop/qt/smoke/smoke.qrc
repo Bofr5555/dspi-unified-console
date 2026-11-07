@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/smoke">
+        <file>SeamProbeBanner.qml</file>
+        <file>SeamProbeTopBanner.qml</file>
+    </qresource>
+</RCC>

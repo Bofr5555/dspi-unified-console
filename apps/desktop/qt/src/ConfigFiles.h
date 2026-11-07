@@ -30,6 +30,10 @@ public:
     // The file last inspected, to the chosen channels (wire indices): {ok, error, lines}
     Q_INVOKABLE QVariantMap importFilters(const QVariantList &wires);
 
+    // The reply buffer of the two imports. The smoke driver shrinks it to get a
+    // reply too long, which real files don't reach.
+    void setApplyReplyCapacity(int bytes) { m_applyCapacity = bytes; }
+
 private:
     bool readFile(const QUrl &file, QByteArray &out, QString &error);
     bool writeFile(const QUrl &file, const QByteArray &data, QString &error);
@@ -37,6 +41,7 @@ private:
     DSPiBridge *m_bridge;
     QByteArray m_filterText;     // the file the channel picker is showing
     QByteArray m_configText;     // the configuration being imported
+    int m_applyCapacity = 64 * 1024;
 };
 
 #endif // CONFIGFILES_H

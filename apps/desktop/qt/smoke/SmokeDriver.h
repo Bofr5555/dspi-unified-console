@@ -59,6 +59,8 @@ private:
     void testControlSurfaces();
     void testSiggenAndStats();
     void testFiles();
+    void testImportAppliesOnce();
+    void testSeam();
     void testAutoEq();
     void testWindows();
     void testSettingsPages();
@@ -68,6 +70,10 @@ private:
     void testBypassRepaint();
     // -- WP QD30 --
     void testPopoverAnchor();
+    // -- WP QD1 --
+    void testCsRefusals();
+    void testCsCallerRefusals();
+    void testSaveBarRefusal();
 
     // Whether a bypass toggle repaints the open channel's graph editor. Leaves
     // bypass as it found it. NotRun fills `why`.

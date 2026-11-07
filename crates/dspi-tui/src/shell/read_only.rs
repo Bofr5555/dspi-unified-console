@@ -820,7 +820,12 @@ mod tests_wp_tm4 {
         });
         // Core voltage: `dspi ext vreg`, settings/overview.rs.
         assert_refused("ext::core_vreg_op", |s| {
-            let _ = ext::core_vreg_op(s.transport_mut(), ext::VregOp::Trial(0x0E));
+            // With the word, so only the guard stands between it and the wire.
+            let _ = ext::core_vreg_op(
+                s.transport_mut(),
+                ext::VregOp::Trial(0x0E),
+                Some("OVERVOLT"),
+            );
         });
 
         // Control surfaces, macros, groups, display, aux: screens and `cs`.
@@ -891,6 +896,14 @@ mod tests_wp_tm4 {
         });
         assert_refused("surfaces::revert", |s| {
             let _ = surfaces::revert(s.transport_mut());
+        });
+
+        // The model's own entry points: `dspi cs import --save`, the IR screen.
+        assert_refused("cs_model::apply", |s| {
+            let _ = dspi_session::cs_model::apply(s, |c| c.save());
+        });
+        assert_refused("cs_model::apply_learn", |s| {
+            let _ = dspi_session::cs_model::apply_learn(s, true);
         });
 
         // The analyser pushes its own configuration, and stops the device.

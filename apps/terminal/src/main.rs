@@ -4,7 +4,96 @@
 //! grammar arrive in later milestones; this binary exists now so that every
 //! layer below it is exercised against real hardware rather than only the mock.
 
+// -- WP TM15 --
+// All CLI output goes through these. They shadow std's macros of the same names
+// for everything below them in this file and in the modules declared below, so
+// a new `println!` is covered without anyone having to remember. Keep them above
+// every `mod` line: a macro_rules macro is only in scope after its definition.
+macro_rules! println {
+    () => { $crate::stdio::out(format_args!(""), true) };
+    ($($arg:tt)*) => { $crate::stdio::out(format_args!($($arg)*), true) };
+}
+macro_rules! print {
+    ($($arg:tt)*) => { $crate::stdio::out(format_args!($($arg)*), false) };
+}
+macro_rules! eprintln {
+    () => { $crate::stdio::err(format_args!(""), true) };
+    ($($arg:tt)*) => { $crate::stdio::err(format_args!($($arg)*), true) };
+}
+macro_rules! eprint {
+    ($($arg:tt)*) => { $crate::stdio::err(format_args!($($arg)*), false) };
+}
+
+/// Standard output and error that outlive whoever is reading them.
+///
+/// std's macros panic when a write fails, which `dspi dump | head -5` makes
+/// routine. Here a reader that has gone only ends the output: the command
+/// finishes and exits with the status it would have had, so a device change
+/// is never left half done by a closed pipe, and a refusal is still a refusal.
+/// A loop that prints until stopped must check [`reader_gone`] to end.
+mod stdio {
+    use std::fmt::Arguments;
+    use std::io::{ErrorKind, Write};
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static READER_GONE: AtomicBool = AtomicBool::new(false);
+
+    /// Has standard output's reader closed its end?
+    pub fn reader_gone() -> bool {
+        READER_GONE.load(Ordering::Relaxed)
+    }
+
+    fn write(out: &mut impl Write, args: Arguments<'_>, newline: bool) -> std::io::Result<()> {
+        out.write_fmt(args)?;
+        if newline {
+            out.write_all(b"\n")?;
+        }
+        Ok(())
+    }
+
+    /// Write to standard output. Any failure other than a closed reader, such
+    /// as a full disk, loses output someone wanted, so it ends the process and
+    /// is reported like any other failed write to a file.
+    pub fn out(args: Arguments<'_>, newline: bool) {
+        // The test harness only captures what std's own macros print.
+        if cfg!(test) {
+            std::print!("{args}{}", if newline { "\n" } else { "" });
+            return;
+        }
+        if reader_gone() {
+            return;
+        }
+        let result = write(&mut std::io::stdout().lock(), args, newline);
+        match result {
+            Ok(()) => {}
+            Err(e) if e.kind() == ErrorKind::BrokenPipe => {
+                READER_GONE.store(true, Ordering::Relaxed);
+            }
+            Err(e) => {
+                err(
+                    format_args!("dspi: could not write to standard output: {e}"),
+                    true,
+                );
+                std::process::exit(i32::from(super::exit::TRANSPORT));
+            }
+        }
+    }
+
+    /// Write to standard error. There is nowhere to report a failure of this,
+    /// and the command's exit status is what a script branches on, so it stands.
+    pub fn err(args: Arguments<'_>, newline: bool) {
+        if cfg!(test) {
+            std::eprint!("{args}{}", if newline { "\n" } else { "" });
+            return;
+        }
+        let _ = write(&mut std::io::stderr().lock(), args, newline);
+    }
+}
+
+// -- WP TM10 --
+mod cs_demo;
 mod doctor;
+mod transfer;
 
 use std::process::ExitCode;
 
@@ -96,12 +185,19 @@ fn main() -> ExitCode {
         Some("completions") => cmd_completions(&positional(&flags)),
         Some("doctor") | Some("--doctor") => doctor::run(target),
         Some("raw") => cmd_raw(target, &positional(&flags), json),
-        Some("ext") => cmd_ext(target, &positional(&flags), json),
+        Some("ext") => cmd_ext(
+            target,
+            &positional(&flags),
+            json,
+            flag_value(&flags, "--word"),
+        ),
         Some("autoeq") => cmd_autoeq(target, &positional(&flags), &flags),
         Some("--install-udev") => doctor::install_udev(),
         Some("screenshot") => cmd_screenshot(target, &positional(&flags), &flags),
-        Some("export") => cmd_export(target, &positional(&flags), json),
-        Some("import") => cmd_import(target, &positional(&flags), &flags),
+        // -- WP TM10 --
+        Some("export") => transfer::cmd_export(target, &flags, json),
+        Some("import") => transfer::cmd_import(target, &flags, json),
+        Some("cs") => transfer::cmd_cs(target, &flags, json),
         Some("dump") => cmd_dump(target, json),
         Some("watch") => cmd_watch(target, json),
         // No arguments opens the interface; arguments run one command and exit.
@@ -119,7 +215,16 @@ fn main() -> ExitCode {
 /// and parameter. `--midi=NAME` is there for a port that shares a name with one.
 fn is_command_word(word: &str) -> bool {
     /// What this binary adds to the shared grammar's verbs.
-    const TERMINAL_VERBS: &[&str] = &["ext", "autoeq", "screenshot", "export", "import", "watch"];
+    const TERMINAL_VERBS: &[&str] = &[
+        "ext",
+        "autoeq",
+        "screenshot",
+        "export",
+        "import",
+        "watch",
+        // -- WP TM10 --
+        "cs",
+    ];
     TERMINAL_VERBS.contains(&word)
         || dspi_cmd::VERBS.iter().any(|(n, _)| *n == word)
         || by_path(word).is_some()
@@ -297,10 +402,19 @@ USAGE:
     dspi <path> [i..] v      the same, without the `set`
     dspi eq <ch> <band> <type> [freq] [q] [gain]
                              set a whole filter band in one transfer
-    dspi export <file>       write all filters to a Console-compatible file
-    dspi import <file>       apply a filter file or .dspipreset
+    dspi export <file|->     write the device out; - is standard output.
+                             .dspipreset or .json: the whole-device document;
+                             otherwise, a Console-compatible filter file
+                             (--format preset|filters|filters-json to choose;
+                             `export - --json` is the whole-device document)
+    dspi import <file|->     apply a document; - is standard input. Goes by
+                             what the file holds, or --format
                              (--volume, --hardware to include those blocks)
                              (--map-legacy for pre-2026 channel names)
+                             (--dry-run to report only, --json for the report)
+    dspi cs export <file|->  write the control-surface configuration
+    dspi cs import <file|->  apply one, live; bindings move pins, so only here
+                             (--dry-run to report only, --save to store it)
     dspi completions <shell> generate shell completions
     dspi doctor              diagnose connection problems
     dspi undo                put back the value the last change replaced
@@ -316,7 +430,10 @@ USAGE:
     dspi ext vreg            read the core-voltage status
     dspi ext vreg set <V|default> | trial <V> | trial-end
              | auto on|off | clear
-                             core-voltage operations (V: 1.20, 1250, 0x0E)
+                             core-voltage operations (V: 1.20, 1250, 0x0E).
+                             Raising it above 1.20 V from what the unit reports
+                             now asks for the word OVERVOLT, or takes it from
+                             --word OVERVOLT in a script; --force does not count
     dspi autoeq search <q>   find a headphone correction profile
     dspi autoeq apply <id>   apply one to the input channels
     dspi -f <script>         run one command per line, `#` starts a comment
@@ -534,363 +651,6 @@ fn cmd_dump(target: &Target, json: bool) -> u8 {
     exit::OK
 }
 
-/// Render one frame of the interface to stdout.
-///
-/// Useful for documentation and for checking a layout at a size you do not have
-/// a terminal for, such as the 80x24 floor.
-/// Write every channel's filters to a Console-compatible file.
-fn cmd_export(target: &Target, args: &[&str], json: bool) -> u8 {
-    let Some(path) = args.first() else {
-        eprintln!("dspi: export needs a file name, e.g. `dspi export tuning.txt`");
-        return exit::USAGE;
-    };
-
-    // The extension picks the format: a filter bank, or a whole-device document.
-    if path.ends_with(dspi_session::preset_file::FILE_EXTENSION) {
-        return export_preset(target, path, json);
-    }
-
-    let mut session = match connect(target) {
-        Ok(s) => s,
-        Err(c) => return c,
-    };
-    let caps = session.capabilities().clone();
-
-    let mut file = dspi_session::filterfile::FilterFile {
-        format_version: dspi_session::filterfile::FORMAT_VERSION,
-        channels: Vec::new(),
-    };
-
-    for c in &caps.channels {
-        let mut bank = dspi_session::filterfile::ChannelBank {
-            header: format!(
-                "{} {}: {}",
-                if c.is_output { "Output" } else { "Input" },
-                if c.is_output {
-                    c.index - caps.num_inputs
-                } else {
-                    c.index
-                },
-                c.name
-            ),
-            index: Some(if c.is_output {
-                c.index - caps.num_inputs
-            } else {
-                c.index
-            }),
-            is_output: c.is_output,
-            ..Default::default()
-        };
-
-        if !c.is_output {
-            bank.preamp_db = session
-                .read("pre", &[c.index])
-                .ok()
-                .and_then(|v| v.as_f32());
-        }
-
-        for b in 0..caps.max_bands {
-            if let Ok(p) = session.read_band(c.index, b) {
-                bank.peq.push(dspi_proto::dsp::Band {
-                    filter_type: p.filter_type,
-                    freq: p.freq,
-                    q: p.q,
-                    gain_db: p.gain_db,
-                    bypass: p.bypass,
-                });
-            }
-        }
-        // Crossover bands live at wire indices 20-23 and only on outputs.
-        if c.is_output {
-            for b in 20..24 {
-                if let Ok(p) = session.read_band(c.index, b) {
-                    bank.crossover.push(dspi_proto::dsp::Band {
-                        filter_type: p.filter_type,
-                        freq: p.freq,
-                        q: p.q,
-                        gain_db: p.gain_db,
-                        bypass: p.bypass,
-                    });
-                }
-            }
-        }
-        file.channels.push(bank);
-    }
-
-    let stamp = std::process::Command::new("date")
-        .arg("+%Y-%m-%d %H:%M:%S")
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_string())
-        .unwrap_or_default();
-
-    let text = dspi_session::filterfile::write(&file, &stamp);
-    match std::fs::write(path, &text) {
-        Ok(()) => {
-            // -- WP TM4 --
-            // A band or preamp the device refuses is left out of this format,
-            // so nothing is invented and there is nothing to warn about.
-            let bands = file.channels.iter().map(|c| c.peq.len()).sum::<usize>();
-            if json {
-                let doc = export_json(&caps, path, file.channels.len(), None);
-                println!("{doc}");
-            } else {
-                println!(
-                    "Wrote {path}: {} channels, {bands} bands",
-                    file.channels.len()
-                );
-            }
-            exit::OK
-        }
-        Err(e) => {
-            eprintln!("dspi: could not write {path}: {e}");
-            exit::TRANSPORT
-        }
-    }
-}
-
-/// `dspi export --json`'s report.
-// -- WP TM4 --
-fn export_json(
-    caps: &dspi_session::Capabilities,
-    path: &str,
-    channels: usize,
-    warning: Option<&str>,
-) -> serde_json::Value {
-    let mut doc = serde_json::json!({
-        "ok": true,
-        "path": path,
-        "channels": channels,
-        "read_only": read_only::is_read_only(caps),
-    });
-    if let (Some(w), Some(o)) = (warning, doc.as_object_mut()) {
-        o.insert("warning".into(), serde_json::json!(w));
-    }
-    doc
-}
-
-/// Capture everything the device is doing into a `.dspipreset`.
-fn export_preset(target: &Target, path: &str, json: bool) -> u8 {
-    let mut session = match connect(target) {
-        Ok(s) => s,
-        Err(c) => return c,
-    };
-
-    let name = std::path::Path::new(path)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .map(|s| s.to_string());
-    let doc = dspi_session::preset_file::capture(&mut session, name);
-
-    match std::fs::write(path, dspi_session::preset_file::write(&doc)) {
-        Ok(()) => {
-            // -- WP TM4 --
-            let caps = session.capabilities();
-            let warning = read_only::export_warning(caps, path);
-            if let Some(w) = &warning {
-                eprintln!("dspi: warning: {w}");
-            }
-            if json {
-                let doc = export_json(caps, path, doc.channels.len(), warning.as_deref());
-                println!("{doc}");
-            } else {
-                println!(
-                    "Wrote {path}: {} channels, {} crosspoints",
-                    doc.channels.len(),
-                    doc.matrix.len()
-                );
-            }
-            exit::OK
-        }
-        Err(e) => {
-            eprintln!("dspi: could not write {path}: {e}");
-            exit::TRANSPORT
-        }
-    }
-}
-
-/// Read a filter file and apply it.
-///
-/// Applying goes band by band through the ordinary write path, so every value
-/// gets the same clamping, gating and readback as a typed command. Anything the
-/// file asks for that this device cannot do is reported rather than skipped
-/// quietly.
-fn cmd_import(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
-    let Some(path) = args.first() else {
-        eprintln!("dspi: import needs a file name");
-        return exit::USAGE;
-    };
-    let text = match std::fs::read_to_string(path) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("dspi: could not read {path}: {e}");
-            return exit::USAGE;
-        }
-    };
-    // A .dspipreset is a whole-device document rather than a filter bank, so it
-    // takes a different path; the extension picks, and a mis-typed name gets a
-    // clear answer rather than a confusing parse error.
-    if path.ends_with(dspi_session::preset_file::FILE_EXTENSION) {
-        return import_preset(target, &text, path, flags);
-    }
-
-    let file = match dspi_session::filterfile::parse(&text) {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("dspi: {e}");
-            return exit::USAGE;
-        }
-    };
-
-    let mut session = match connect(target) {
-        Ok(s) => s,
-        Err(c) => return c,
-    };
-    if flags.contains(&"--dry-run") {
-        session.dry_run = true;
-    }
-    let caps = session.capabilities().clone();
-
-    let map_legacy = flags.contains(&"--map-legacy");
-    let mut applied = 0usize;
-    let mut skipped: Vec<String> = Vec::new();
-    let mut mapped: Vec<String> = Vec::new();
-
-    for bank in &file.channels {
-        // A file written for a different device shape will name channels this
-        // one does not have; say so rather than silently dropping them.
-        let Some(channel) = resolve_channel(bank, &caps, map_legacy) else {
-            skipped.push(bank.header.clone());
-            continue;
-        };
-
-        if bank.index.is_none()
-            && !caps
-                .channels
-                .iter()
-                .any(|c| c.name.eq_ignore_ascii_case(bank.header.trim()))
-        {
-            mapped.push(format!(
-                "{} → {}",
-                bank.header,
-                caps.channels
-                    .get(channel as usize)
-                    .map(|c| c.name.as_str())
-                    .unwrap_or("?")
-            ));
-        }
-
-        for (i, b) in bank.peq.iter().enumerate() {
-            if i as u8 >= caps.max_bands {
-                break;
-            }
-            let packet = dspi_proto::value::EqParamPacket {
-                channel,
-                band: i as u8,
-                filter_type: b.filter_type,
-                bypass: b.bypass,
-                freq: b.freq,
-                q: b.q,
-                gain_db: b.gain_db,
-                qp: None,
-            };
-            if session.write_band(&packet).is_ok() {
-                applied += 1;
-            }
-        }
-    }
-
-    println!(
-        "{} {applied} bands from {path}",
-        if session.dry_run {
-            "Would apply"
-        } else {
-            "Applied"
-        }
-    );
-    if !mapped.is_empty() {
-        println!("Mapped older channel names: {}", mapped.join(", "));
-    }
-    if !skipped.is_empty() {
-        println!("Skipped, no matching channel: {}", skipped.join(", "));
-        if !map_legacy
-            && skipped
-                .iter()
-                .any(|s| legacy_channel(&s.to_ascii_lowercase(), &caps).is_some())
-        {
-            println!(
-                "  These look like pre-2026 channel names. Re-run with --map-legacy \
-                 to place them on the current channels."
-            );
-        }
-    }
-    exit::OK
-}
-
-/// Inspect a whole-device document and report what it would do.
-///
-/// Applying every block is still to come; reading, validating and reporting is
-/// what makes a file trustworthy before anyone acts on it, so that lands first.
-fn import_preset(target: &Target, text: &str, path: &str, flags: &[&str]) -> u8 {
-    use dspi_session::preset_file;
-
-    let doc = match preset_file::parse(text) {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("dspi: {e}");
-            return exit::USAGE;
-        }
-    };
-
-    println!(
-        "{path}: {}{}, {} channels",
-        doc.meta.name.as_deref().unwrap_or("unnamed"),
-        doc.meta
-            .platform
-            .as_deref()
-            .map(|p| format!(" from {p}"))
-            .unwrap_or_default(),
-        doc.channels.len()
-    );
-
-    let features: Vec<&str> = [
-        doc.psybass.is_some().then_some("psychoacoustic bass"),
-        doc.upmix.is_some().then_some("upmixer"),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
-    if !features.is_empty() {
-        println!("Carries: {}", features.join(", "));
-    }
-
-    let mut session = match connect(target) {
-        Ok(s) => s,
-        Err(c) => return c,
-    };
-    if flags.contains(&"--dry-run") {
-        session.dry_run = true;
-    }
-
-    // Volume and wiring are opt-in: they describe a room and a board, and
-    // changing either without being asked is the kind of surprise that loses
-    // trust in a tool.
-    let options = preset_file::ApplyOptions {
-        audio_processing: true,
-        volume_levels: flags.contains(&"--volume"),
-        hardware_io: flags.contains(&"--hardware"),
-    };
-
-    let report = preset_file::apply(&mut session, &doc, options);
-
-    println!();
-    for line in report.lines(session.dry_run) {
-        println!("{line}");
-    }
-    exit::OK
-}
-
 /// Match a file's channel section to a channel on this device.
 ///
 /// Index-keyed headers are authoritative. A name-keyed header is matched
@@ -952,6 +712,10 @@ fn legacy_channel(name: &str, caps: &dspi_session::Capabilities) -> Option<u8> {
     }
 }
 
+/// Render one frame of the interface to stdout.
+///
+/// Useful for documentation and for checking a layout at a size you do not have
+/// a terminal for, such as the 80x24 floor.
 fn cmd_screenshot(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
     let width: u16 = args.first().and_then(|a| a.parse().ok()).unwrap_or(120);
     let height: u16 = args.get(1).and_then(|a| a.parse().ok()).unwrap_or(40);
@@ -1116,6 +880,12 @@ fn cmd_watch(target: &Target, json: bool) -> u8 {
         .unwrap_or((dspi_transport::TransportCaps::USB.kind, None));
     let started = std::time::Instant::now();
     loop {
+        // -- WP TM15 --
+        // Nobody is reading and this never ends by itself. With a device that
+        // stays quiet, this is only noticed at the first print after the close.
+        if stdio::reader_gone() {
+            return exit::OK;
+        }
         if notes.is_disconnected() {
             eprintln!("dspi: device disconnected");
             return exit::TRANSPORT;
@@ -1426,7 +1196,7 @@ fn cmd_autoeq(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
 /// change the device.
 /// The fork's extension channel (REQ_EXTENSION 0x00). Firmware without it
 /// stalls every request, which is reported as "not supported", not a crash.
-fn cmd_ext(target: &Target, args: &[&str], json: bool) -> u8 {
+fn cmd_ext(target: &Target, args: &[&str], json: bool, word: Option<&str>) -> u8 {
     use dspi_session::ext::{self, ExtError, VregOp};
 
     // Parse before touching the device, so a typo costs no connect.
@@ -1508,7 +1278,7 @@ fn cmd_ext(target: &Target, args: &[&str], json: bool) -> u8 {
                             .join("\n")
                     }
                 }),
-                Do::VregOp(op) => ext::core_vreg_op(t, op).map(|()| {
+                Do::VregOp(op) => vreg_send(t, op, word, &mut prompt_overvolt_word).map(|()| {
                     if json {
                         "{\"ok\":true}".into()
                     } else {
@@ -1532,12 +1302,56 @@ fn cmd_ext(target: &Target, args: &[&str], json: bool) -> u8 {
             eprintln!("dspi: {e}");
             exit::REJECTED
         }
+        Err(e @ ExtError::WordRequired { .. }) => {
+            eprintln!("dspi: {e}");
+            eprintln!(
+                "      On a terminal it asks; in a script, pass --word {}. --force does not count.",
+                dspi_session::overvolt::WORD
+            );
+            exit::REJECTED
+        }
         Err(e @ ExtError::BadArgument(_)) => {
             eprintln!("dspi: {e}");
             exit::USAGE
         }
         Err(ExtError::Transport(e)) => fail(e),
     }
+}
+
+/// One core-voltage request (WP CG14). With `--word`, that is all it gets: a
+/// script must not end up at a prompt. Without, a refusal for the word asks
+/// through `ask`, once. `--force` plays no part.
+fn vreg_send(
+    t: &mut dyn dspi_transport::Transport,
+    op: dspi_session::ext::VregOp,
+    word: Option<&str>,
+    ask: &mut dyn FnMut() -> Option<String>,
+) -> Result<(), dspi_session::ext::ExtError> {
+    use dspi_session::ext::{self, ExtError};
+    match ext::core_vreg_op(t, op, word) {
+        Err(ExtError::WordRequired { code }) if word.is_none() => match ask() {
+            Some(typed) => ext::core_vreg_op(t, op, Some(&typed)),
+            None => Err(ExtError::WordRequired { code }),
+        },
+        other => other,
+    }
+}
+
+/// Ask for the word, when there is a person to ask. Only the line ending is
+/// taken off: the match is exact.
+fn prompt_overvolt_word() -> Option<String> {
+    use std::io::{IsTerminal, Write};
+    if !std::io::stdin().is_terminal() {
+        return None;
+    }
+    eprint!(
+        "This raises the core voltage above 1.20 V. Type {} to go ahead: ",
+        dspi_session::overvolt::WORD
+    );
+    std::io::stderr().flush().ok()?;
+    let mut line = String::new();
+    std::io::stdin().read_line(&mut line).ok()?;
+    Some(line.trim_end_matches(['\r', '\n']).to_owned())
 }
 
 fn map_text(m: &dspi_session::ext::PairMap, json: bool) -> String {
@@ -1645,6 +1459,12 @@ fn raw_out(target: &Target, args: &[&str], json: bool) -> u8 {
             return exit::USAGE;
         }
     };
+
+    // WP CG14: this path could not carry the confirmation word.
+    if dspi_session::overvolt::is_core_vreg_write(opcode as u8, value as u16) {
+        eprintln!("dspi: core-voltage requests go through `dspi ext vreg`, not `raw out`");
+        return exit::USAGE;
+    }
 
     // -- WP TM4 --
     let mut t = match target.open_raw(&prompt_pin) {
@@ -2198,7 +2018,7 @@ fn positional_all(flags: &[&str]) -> Vec<String> {
             skip = false;
             continue;
         }
-        if *f == "--device" {
+        if *f == "--device" || *f == "--word" {
             skip = true;
             continue;
         }
@@ -2219,7 +2039,7 @@ fn positional<'a>(flags: &'a [&'a str]) -> Vec<&'a str> {
             skip = false;
             continue;
         }
-        if *f == "--device" {
+        if *f == "--device" || *f == "--word" {
             skip = true;
             continue;
         }
@@ -2254,6 +2074,8 @@ fn write_exit(e: &dspi_session::WriteError) -> u8 {
         // thing a script needs to know about a silent rejection.
         W::Core1Conflict { .. } => exit::REJECTED,
         W::Transport(e) => transfer_exit(e),
+        // -- WP TM20 -- Sent, and the device never said it finished.
+        W::Unsettled { .. } => exit::TRANSPORT,
     }
 }
 
@@ -2628,7 +2450,7 @@ mod tests_wp_tm4 {
     use super::*;
 
     /// A device of a wire format newer than this build, and its transfer log.
-    fn newer_device() -> (Session, dspi_transport::mock::LogHandle) {
+    pub(crate) fn newer_device() -> (Session, dspi_transport::mock::LogHandle) {
         let mut demo = FakeDevice::demo();
         let platform = demo
             .control_in_upto(dspi_proto::generated::opcodes::REQ_GET_PLATFORM, 0, 7)
@@ -2682,29 +2504,19 @@ mod tests_wp_tm4 {
     }
 
     #[test]
-    fn wp_tm4_export_json_reports_read_only_and_the_warning() {
-        let (session, _) = newer_device();
-        let caps = session.capabilities();
-        let w = read_only::export_warning(caps, "x.dspipreset").unwrap();
-        let doc = export_json(caps, "x.dspipreset", 2, Some(&w));
-        assert_eq!(doc["read_only"], serde_json::json!(true));
-        assert_eq!(doc["warning"], serde_json::json!(w));
-    }
-
-    #[test]
     fn wp_tm4_export_on_a_writable_device_has_no_warning() {
         let dir = std::env::current_exe().unwrap();
         let path = dir.with_file_name("wp_tm4_export.dspipreset");
         let path = path.to_str().unwrap();
-        assert_eq!(export_preset(&Target::Demo, path, true), exit::OK);
+        assert_eq!(
+            transfer::cmd_export(&Target::Demo, &["export", path], true),
+            exit::OK
+        );
+        assert!(std::fs::metadata(path).is_ok(), "it wrote the file");
         let _ = std::fs::remove_file(path);
 
         let demo = Target::Demo.open_session(&prompt_pin).unwrap();
-        let caps = demo.capabilities();
-        assert_eq!(read_only::export_warning(caps, "x"), None);
-        let doc = export_json(caps, "x", 2, None);
-        assert_eq!(doc["read_only"], serde_json::json!(false));
-        assert!(doc.get("warning").is_none());
+        assert_eq!(read_only::export_warning(demo.capabilities(), "x"), None);
     }
 
     #[test]
@@ -2726,5 +2538,135 @@ mod tests_wp_tm4 {
             raw_out(&Target::Demo, &["0xD2", "0", "00", "00", "A0", "C1"], true),
             exit::OK
         );
+    }
+}
+
+/// WP CG14: `dspi ext vreg` against the fake, reading what reached it.
+#[cfg(test)]
+mod tests_wp_cg14 {
+    use super::*;
+    use dspi_session::ext::{self, ExtError, VregOp};
+    use dspi_transport::{Capture, FakeDevice, FakeOptions};
+
+    fn unit_at_1v25() -> FakeDevice {
+        let mut d = FakeDevice::new(
+            Capture::demo(),
+            FakeOptions {
+                extensions: true,
+                ..FakeOptions::default()
+            },
+        );
+        ext::core_vreg_op(&mut d, VregOp::Set(0x0E), Some("OVERVOLT")).unwrap();
+        d
+    }
+
+    fn stored(d: &mut FakeDevice) -> u8 {
+        ext::read_core_vreg(d).unwrap().stored_sel
+    }
+
+    /// A prompt that must not be reached, for a path that has no person.
+    fn no_prompt() -> Option<String> {
+        panic!("asked");
+    }
+
+    #[test]
+    fn wp_cg14_the_flag_carries_the_word_and_is_not_positional() {
+        let flags = ["ext", "vreg", "set", "1.30", "--word", "OVERVOLT"];
+        assert_eq!(flag_value(&flags, "--word"), Some("OVERVOLT"));
+        assert_eq!(positional(&flags), vec!["vreg", "set", "1.30"]);
+
+        let mut d = unit_at_1v25();
+        vreg_send(&mut d, VregOp::Set(0x0F), Some("OVERVOLT"), &mut no_prompt).unwrap();
+        assert_eq!(stored(&mut d), 0x0F);
+    }
+
+    #[test]
+    fn wp_cg14_a_wrong_flag_is_refused_and_does_not_prompt() {
+        for bad in ["overvolt", "OVERVOLT ", "--force", "yes"] {
+            let mut d = unit_at_1v25();
+            let r = vreg_send(&mut d, VregOp::Set(0x0F), Some(bad), &mut no_prompt);
+            assert!(
+                matches!(r, Err(ExtError::WordRequired { code: 0x0F })),
+                "{bad}"
+            );
+            assert_eq!(stored(&mut d), 0x0E);
+        }
+    }
+
+    #[test]
+    fn wp_cg14_force_alone_is_never_enough() {
+        // No terminal: nobody to ask, whatever the flags say.
+        let flags = ["ext", "vreg", "set", "1.30", "--force"];
+        assert!(force(&flags));
+        assert_eq!(flag_value(&flags, "--word"), None);
+        let mut d = unit_at_1v25();
+        let r = vreg_send(
+            &mut d,
+            VregOp::Set(0x0F),
+            flag_value(&flags, "--word"),
+            &mut || None,
+        );
+        assert!(matches!(r, Err(ExtError::WordRequired { .. })));
+        assert_eq!(stored(&mut d), 0x0E);
+    }
+
+    #[test]
+    fn wp_cg14_the_prompt_asks_once_and_must_match_exactly() {
+        let mut d = unit_at_1v25();
+        let mut asked = 0;
+        let r = vreg_send(&mut d, VregOp::Trial(0x0F), None, &mut || {
+            asked += 1;
+            Some("overvolt".into())
+        });
+        assert!(matches!(r, Err(ExtError::WordRequired { .. })));
+        assert_eq!(asked, 1);
+        assert!(!ext::read_core_vreg(&mut d).unwrap().trial_active);
+
+        vreg_send(&mut d, VregOp::Trial(0x0F), None, &mut || {
+            Some("OVERVOLT".into())
+        })
+        .unwrap();
+        assert_eq!(ext::read_core_vreg(&mut d).unwrap().trial_vreg, 0x0F);
+    }
+
+    #[test]
+    fn wp_cg14_raw_out_refuses_a_core_voltage_write_before_opening_anything() {
+        // A target that cannot open: a usage error, not "no device", shows the
+        // refusal came first. So nothing can have reached a device.
+        let nobody = Target::Usb {
+            serial: Some("CG14-NOT-THERE".into()),
+        };
+        for args in [
+            &["0", "2", "00", "0F"][..],
+            &["0x00", "0x0002", "01", "0F"],
+            // The same request, spelled to survive the casts to u8 and u16.
+            &["0x100", "2", "00", "0F"],
+            &["0", "0x10002", "00", "0F"],
+            &["0", "2"],
+        ] {
+            assert_eq!(raw_out(&nobody, args, false), exit::USAGE, "{args:?}");
+            assert_eq!(raw_out(&Target::Demo, args, false), exit::USAGE, "{args:?}");
+        }
+        // The check is that narrow: the same target opens for anything else,
+        // and the demo device takes another sub-command.
+        assert_eq!(
+            raw_out(&Target::Demo, &["0", "1", "00", "00", "00", "00"], false),
+            exit::OK
+        );
+        assert_ne!(
+            raw_out(&nobody, &["0", "1", "00", "00", "00", "00"], false),
+            exit::USAGE
+        );
+    }
+
+    #[test]
+    fn wp_cg14_lowering_and_level_never_ask() {
+        let mut d = unit_at_1v25();
+        vreg_send(&mut d, VregOp::Set(0x0E), None, &mut no_prompt).unwrap();
+        vreg_send(&mut d, VregOp::Set(0x0D), None, &mut || {
+            panic!("1.25 V is still stored: this is lowering")
+        })
+        .unwrap();
+        vreg_send(&mut d, VregOp::Clear, None, &mut no_prompt).unwrap();
     }
 }

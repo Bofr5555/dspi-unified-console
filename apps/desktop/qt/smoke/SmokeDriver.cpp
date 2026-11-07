@@ -19,6 +19,10 @@
 #include <QImage>
 #include <QMetaMethod>
 #include <QQmlApplicationEngine>
+// -- WP QD1 --
+#include <QQmlComponent>
+#include <QQmlContext>
+#include <QQmlExpression>
 #include <QQuickItemGrabResult>
 #include <QSharedPointer>
 #include <QQuickWindow>
@@ -69,6 +73,8 @@ void SmokeDriver::run() {
     testControlSurfaces();
     testSiggenAndStats();
     testFiles();
+    testImportAppliesOnce();
+    testSeam();
     testAutoEq();
     testWindows();
     // -- WP QD30 --
@@ -77,6 +83,8 @@ void SmokeDriver::run() {
     testBypassRepaint();
     testSweep();
     testReconnect();
+    // -- WP QD1 --
+    testCsRefusals();
     testIdleAndCost();
     m_failures += g_qmlErrors;
     printf("smoke: %d checks, %d failures (%d QML errors)\n", m_checks, m_failures, g_qmlErrors);
@@ -464,6 +472,195 @@ void SmokeDriver::testWindows() {
     for (const char *n : { "matrix", "loudness", "crossfeed", "leveller", "psybass", "subharm", "tube", "upmix", "stats",
                            "spectrum", "graph", "siggen", "monitor", "firmware", "whatsNew", "autoeq", "autoeqRebuild" })
         openAndGrab(n);
+}
+
+// -- WP QD1 --
+// A refused cs_apply shows its `error`. The demo device has no control surfaces,
+// so no card is ever drawn: this calls the real views' and the real save bar's
+// code from QML and reads the text they would show. A device status code, the
+// polls and the rendered cards need real surfaces, so they aren't exercised here.
+void SmokeDriver::testCsRefusals() {
+    section("control surfaces: a refusal shows its error (QD1)");
+    auto *cs = m_.cs;
+    auto *b = m_.bridge;
+    const auto shown = [this](const QString &op) {
+        QQmlExpression e(m_.engine->rootContext(), nullptr, QStringLiteral(
+            "(function() { var r = controlSurfaces.apply({ op: \"%1\" });"
+            " var st = r && r.status !== undefined ? r.status : 0xFF;"
+            " return st !== 0 ? controlSurfaces.statusMessage(st) : undefined })()").arg(op));
+        const QString text = e.evaluate().toString();
+        check("QD1: the expression evaluates", !e.hasError());
+        return text;
+    };
+    const QString generic = cs->statusMessage(0x7F);
+
+    // The core's refusal, with no device status
+    const QString unknown = shown(QStringLiteral("no-such-op"));
+    printf("smoke: QD1 unknown op shows: %s\n", qPrintable(unknown));
+    check("QD1: an unknown op shows the core's reason", unknown.contains(QLatin1String("no-such-op")));
+    check("QD1: and not the generic text", unknown != generic);
+    const QString refused = shown(QStringLiteral("save"));
+    printf("smoke: QD1 save shows: %s\n", qPrintable(refused));
+    check("QD1: a refused save shows the core's reason", !refused.isEmpty() && refused != generic);
+    check("QD1: the reply carries that reason", cs->apply({ { "op", "save" } }).value("error").toString() == refused);
+
+    // No device: refused before the core, still with a reason
+    b->disconnectDevice();
+    check("QD1: disconnected", !b->connected());
+    const QVariantMap none = cs->apply({ { "op", "save" } });
+    const QString gone = cs->statusMessage(0xFF);
+    printf("smoke: QD1 no device shows: %s\n", qPrintable(gone));
+    check("QD1: no device is refused", !none.value("ok").toBool() && none.value("error").toString() == gone);
+    check("QD1: no device gives its reason", !gone.isEmpty() && gone != generic);
+    check("QD1: the pages' expression shows it too", shown(QStringLiteral("save")) == gone);
+
+    // Another device: the old reason doesn't follow it
+    b->rescan();
+    check("QD1: back on the demo", b->connected());
+    check("QD1: a new device drops the old reason", cs->statusMessage(0xFF) == generic);
+
+    testCsCallerRefusals();
+    testSaveBarRefusal();
+}
+
+// The callers that act on a reply: the real view and page, given a live slot,
+// remote button or macro by hand, as the demo's model is empty.
+void SmokeDriver::testCsCallerRefusals() {
+    section("control surfaces: each caller shows the reason (QD1)");
+    // Settle the model first: a change makes the view reseed from the (empty) model
+    m_.cs->apply({ { "op", "refreshStatus" } });
+    spin(50);
+    QQmlComponent c(m_.engine);
+    c.setData(R"qml(
+import QtQuick 2.15
+import "../cs"
+import "../pages"
+Item {
+    CsHelper { id: h }
+    // The aux page: an LED slot isn't drawn there, as a card needs the model's tables
+    CsControlsView { id: v; cs: h; auxPage: true }
+    MacrosPage { id: p }
+    CsSwitchRow { id: sw; checked: false }
+    function switchIn(item) {
+        for (var i = 0; i < item.children.length; i++) {
+            var c = item.children[i]
+            if (c.toggled !== undefined && c.checked !== undefined) return c
+            var found = switchIn(c)
+            if (found) return found
+        }
+        return null
+    }
+    function run() {
+        var out = {}
+        var b = h.emptyBinding(); b.type = h.typeLed
+        v.live = [b]; v.drafts = [b]
+        v.removeControl(0)
+        out.remove = v.refusals[0]
+        out.removeKept = v.drafts[0].type === h.typeLed
+        v.seed()
+        v.liveIr = [{ protocol: 1 }]; v.irDrafts = [{ protocol: 1 }]
+        v.removeIrCommand(0)
+        out.removeIr = v.subMessages[0].text
+        out.removeIrKept = v.irDrafts[0].protocol === 1
+        v.seed()
+        v.startLearn(0)
+        out.learn = v.subMessages[0].text
+        out.learnIdle = v.learningSub === -1
+        v.seed()
+        v.learningSub = 0
+        v.cancelLearn()
+        out.cancelLearn = v.subMessages[0].text
+        v.seed()
+        v.learningSub = 0
+        v.checkLearn()
+        out.readLearn = v.subMessages[0].text
+        out.readLearnIdle = v.learningSub === -1
+        v.seed()
+        // What a click does; the row's `checked` is what the device holds
+        var t = switchIn(sw)
+        out.switchFound = t !== null
+        if (t) { t.checked = true; t.toggled(); out.switchBack = t.checked === false }
+        out.auxStateCode = v.setAuxState(0, 1)
+        out.auxState = v.refusals[0]
+        v.seed()
+        out.auxLevelCode = v.commitAuxLevel(0, 50)
+        out.auxLevel = v.refusals[0]
+        p.runOrStop(0, false)
+        out.macroFire = p.refusals[0]
+        p.seed()
+        p.runOrStop(0, true)
+        out.macroCancel = p.refusals[0]
+        return out
+    }
+}
+)qml", QUrl(QStringLiteral("qrc:/qml/settings/pages/QD1Harness.qml")));
+    QObject *h = c.create(m_.engine->rootContext());
+    check("QD1: the harness loads", h != nullptr);
+    if (!h) {
+        printf("smoke: QD1 harness: %s\n", qPrintable(c.errorString()));
+        return;
+    }
+    QVariant ret;
+    QMetaObject::invokeMethod(h, "run", Q_RETURN_ARG(QVariant, ret));
+    const QVariantMap out = ret.toMap();
+    const QString generic = m_.cs->statusMessage(0x7F);
+    // The demo refuses them all as firmware without control surfaces
+    const QString reason = m_.cs->apply({ { "op", "macroFire" }, { "index", 0 } }).value("error").toString();
+    printf("smoke: QD1 expected reason: %s\n", qPrintable(reason));
+    check("QD1: the core gave a reason", !reason.isEmpty() && reason != generic);
+    for (const char *k : { "remove", "removeIr", "learn", "cancelLearn", "readLearn", "auxState", "auxLevel", "macroFire", "macroCancel" }) {
+        const QString shown = out.value(QString::fromLatin1(k)).toString();
+        printf("smoke: QD1 %s shows: %s\n", k, qPrintable(shown));
+        check(QByteArray("QD1: shows the reason: ").append(k).constData(), shown == reason);
+    }
+    check("QD1: a refused remove keeps the control", out.value("removeKept").toBool());
+    check("QD1: a refused remove keeps the remote button", out.value("removeIrKept").toBool());
+    check("QD1: a refused learn doesn't start listening", out.value("learnIdle").toBool());
+    check("QD1: a refused read stops the learn", out.value("readLearnIdle").toBool());
+    check("QD1: the switch row has its switch", out.value("switchFound").toBool());
+    check("QD1: a clicked switch returns to the row's state", out.value("switchBack").toBool());
+    check("QD1: a refused aux switch reports it", out.value("auxStateCode").toInt() != 0);
+    check("QD1: a refused aux level reports it", out.value("auxLevelCode").toInt() != 0);
+    delete h;
+}
+
+// The real settings window's context and save bar. On the demo csDirty is never
+// true, so save() itself doesn't reach this: its one branch calls this function.
+void SmokeDriver::testSaveBarRefusal() {
+    section("settings: a refused save (QD1)");
+    QQuickWindow *settings = nullptr;
+    for (QQuickWindow *w : root()->findChildren<QQuickWindow *>())
+        if (w->property("currentPage").isValid() && w->metaObject()->indexOfMethod("navigate(QVariant)") >= 0) settings = w;
+    QObject *ctx = settings ? settings->findChild<QObject *>(QStringLiteral("settingsContext")) : nullptr;
+    QObject *text = settings ? settings->findChild<QObject *>(QStringLiteral("saveBarReason")) : nullptr;
+    check("QD1: the window, its context and the reason's text", ctx && text);
+    if (!ctx || !text) return;
+    settings->setVisible(true);
+    const int mode = ctx->property("masterVolumeMode").toInt();
+    QMetaObject::invokeMethod(ctx, "edit", Q_ARG(QVariant, QStringLiteral("masterVolumeMode")), Q_ARG(QVariant, mode ? 0 : 1));
+    check("QD1: the draft is dirty", ctx->property("dirty").toBool() && ctx->property("edited").toBool());
+    QVariant saved;
+    QMetaObject::invokeMethod(ctx, "saveControlSurfaces", Q_RETURN_ARG(QVariant, saved));
+    spin(250);
+    const QString reason = ctx->property("saveError").toString();
+    const QString shown = text->property("text").toString();
+    printf("smoke: QD1 save bar shows: %s\n", qPrintable(shown));
+    check("QD1: the save is refused", !saved.toBool());
+    check("QD1: it has the reason", !reason.isEmpty() && reason != m_.cs->statusMessage(0x7F));
+    check("QD1: the bar shows the reason", text->property("visible").toBool() && shown == reason && shown.startsWith(QLatin1String("Not saved: ")));
+    check("QD1: still edited, still dirty", ctx->property("edited").toBool() && ctx->property("dirty").toBool());
+    settings->grabWindow().save(m_out + QStringLiteral("/settings-save-refused.png"));
+    QVariant reverted;
+    QMetaObject::invokeMethod(ctx, "revertControlSurfaces", Q_RETURN_ARG(QVariant, reverted));
+    spin(50);
+    printf("smoke: QD1 save bar shows: %s\n", qPrintable(text->property("text").toString()));
+    check("QD1: the revert is refused", !reverted.toBool());
+    check("QD1: the bar says so", text->property("text").toString().startsWith(QLatin1String("Not reverted: ")));
+    check("QD1: the draft stays", ctx->property("edited").toBool() && ctx->property("dirty").toBool());
+    QMetaObject::invokeMethod(ctx, "revert");
+    spin(200);
+    check("QD1: revert drops the draft and the reason", !ctx->property("dirty").toBool() && ctx->property("saveError").toString().isEmpty());
+    settings->setVisible(false);
 }
 
 // -- WP QD30 --

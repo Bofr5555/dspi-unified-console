@@ -18,6 +18,11 @@ description = "DSPi Link client (protocol 1.2, 1.1 hubs): frames, control plane,
 [features]
 # The in-process fake hub used by the tests and the `dspi-link-fakehub` binary.
 fake-hub = []
+# -- WP CG2 --
+# Finding hubs and advertising one over mDNS (discovery.rs). Desktop only: the
+# Qt app and the Terminal have no system API to lean on, while Android and iOS
+# browse with NsdManager and NWBrowser, so their libraries leave it off.
+mdns = ["dep:mdns-sd"]
 
 [dependencies]
 # Sync WebSocket over std::net::TcpStream (RFC 6455), no TLS: the protocol is
@@ -33,6 +38,13 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 log = { workspace = true }
 thiserror = { workspace = true }
+# -- WP CG2 --
+# DNS-SD for `_dspi._tcp` (spec 3.1). Why this crate: no async runtime, pure Rust
+# (no Avahi or Bonjour to install on Linux or Windows), browser and responder in
+# one (HB5 reuses the latter), and it follows interface changes by itself. Writing
+# mDNS by hand is the alternative: a multi-interface RFC 6762 cache is not small.
+# Without `async` (we use its blocking receiver) and with `logging` (log crate).
+mdns-sd = { version = "=0.21.7", default-features = false, features = ["logging"], optional = true }
 
 [[bin]]
 name = "dspi-link-fakehub"

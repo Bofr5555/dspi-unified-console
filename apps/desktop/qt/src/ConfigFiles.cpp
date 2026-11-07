@@ -29,11 +29,13 @@ static QVariantMap jsonMap(const QByteArray &json) {
 }
 
 // The same for a call that changes the device: it applied whatever the buffer's
-// size, so it never runs twice. A reply that doesn't fit is a failure.
-static QVariantMap coreApply(const std::function<uint32_t(char *, uint32_t)> &call) {
-    QByteArray buf(64 * 1024, '\0');
+// size, so it never runs twice. A reply that doesn't fit is a failure, though the
+// device has changed, and the caller re-reads it.
+static QVariantMap coreApply(const std::function<uint32_t(char *, uint32_t)> &call, int capacity) {
+    QByteArray buf(capacity, '\0');
     const uint32_t needed = call(buf.data(), uint32_t(buf.size()));
-    if (needed > uint32_t(buf.size())) return { { "ok", false }, { "error", "Reply too long." } };
+    if (needed > uint32_t(buf.size()))
+        return { { "ok", false }, { "error", "The reply was too long to read, but the device may have changed." } };
     buf.truncate(int(qMax<uint32_t>(1, needed) - 1));
     return jsonMap(buf);
 }
@@ -108,7 +110,7 @@ QVariantMap ConfigFiles::importConfiguration(const QUrl &file, bool volumes, boo
     const uint32_t options = (volumes ? 1u : 0u) | (hardware ? 2u : 0u);
     QVariantMap r = coreApply([&](char *buf, uint32_t len) {
         return dspi_config_import(m_bridge->core(), m_configText.constData(), options, buf, len);
-    });
+    }, m_applyCapacity);
     m_configText.clear();
     if (r.value("ok").toBool()) {
         if (!r.value("links").isNull()) m_bridge->restoreInputLinks(uint8_t(r.value("links").toUInt()));
@@ -151,7 +153,7 @@ QVariantMap ConfigFiles::importFilters(const QVariantList &wires) {
     QVariantMap r = coreApply([&](char *buf, uint32_t len) {
         return dspi_filters_import(m_bridge->core(), m_filterText.constData(),
                                    reinterpret_cast<const uint8_t *>(chosen.constData()), uint32_t(chosen.size()), buf, len);
-    });
+    }, m_applyCapacity);
     m_bridge->refreshAll();
     return r;
 }

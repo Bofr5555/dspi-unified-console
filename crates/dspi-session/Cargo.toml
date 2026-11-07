@@ -9,7 +9,8 @@ repository.workspace = true
 
 [dependencies]
 dspi-proto.workspace = true
-dspi-transport.workspace = true
+# Without its default `usb`: this crate's own `usb` feature turns it on (WP CG3).
+dspi-transport = { path = "../dspi-transport", default-features = false }
 # For rendering an undone change back as the command that would repeat it
 # (feature `undo`).
 dspi-cmd = { workspace = true, optional = true }
@@ -25,7 +26,10 @@ dirs = "6.0.0"
 # -- WP S5 --
 
 [features]
-default = ["serde", "bundled-autoeq", "undo"]
+default = ["serde", "bundled-autoeq", "undo", "usb"]
+# -- WP CG3 --
+# Passed on to dspi-transport; this crate itself only uses it in `examples/timing`.
+usb = ["dspi-transport/usb"]
 # About 5 MB of the binary. Off for a build where that matters, such as an
 # armv7 Pi; a user-supplied database still works without it.
 bundled-autoeq = []
@@ -34,6 +38,11 @@ serde = ["dspi-proto/serde"]
 # of the Terminal's grammar. Off for the mobile libraries (WP F1), which carry
 # neither the grammar nor these methods.
 undo = ["dep:dspi-cmd"]
+
+# -- WP CG3 --
+[[example]]
+name = "timing"
+required-features = ["usb"]
 
 [dev-dependencies]
 proptest = "1"

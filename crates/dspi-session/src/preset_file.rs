@@ -185,6 +185,78 @@ pub struct CrossfeedBlock {
     pub itd: bool,
     /// Bit p: crossfeed runs on output pair p (bulk_params.h:76).
     pub output_pair_mask: i32,
+    /// The extension channel's `EXT_CROSSFEED_PAIR_MAP`, its four bytes
+    /// (PresetDocument.swift:172-178; `dspi_core::files` and the Android app
+    /// write the same key). Absent means the document does not say, which
+    /// leaves the device's map alone. A value that is not an integer array
+    /// reads as absent, as the Console reads it.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "lenient_pair_map"
+    )]
+    pub pair_map: Option<Vec<i32>>,
+}
+
+/// `pairMap`, tolerating anything that is not a list of integers
+/// (PresetDocument.swift:199).
+fn lenient_pair_map<'de, D>(d: D) -> Result<Option<Vec<i32>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(serde_json::from_value(v).unwrap_or(None))
+}
+
+impl CrossfeedBlock {
+    /// The map to apply, as the Console picks it
+    /// (`CrossfeedBlock.pairMap(pairCount:)`, PresetDocument.swift:185-189):
+    /// the normalized map when valid for `pairs` pairs, otherwise the default
+    /// (a file from a wider platform, or a hand edit). `None` when the document
+    /// carries no map.
+    pub fn pair_map_for(&self, pairs: u8) -> Option<PairMap> {
+        let raw = self.pair_map.as_ref()?;
+        if raw.len() > PairMap::SIZE {
+            return Some(PairMap([0; PairMap::SIZE]));
+        }
+        let mut bytes = [0u8; PairMap::SIZE];
+        for (b, v) in bytes.iter_mut().zip(raw) {
+            *b = (*v).clamp(0, 255) as u8;
+        }
+        let map = PairMap(bytes);
+        Some(if pair_map_valid(&map, pairs) {
+            map.normalized()
+        } else {
+            PairMap([0; PairMap::SIZE])
+        })
+    }
+}
+
+/// The firmware's `crossfeed_map_valid`, as `isValid(pairCount:)`
+/// (ExtensionChannel.swift:156-171).
+fn pair_map_valid(map: &PairMap, pairs: u8) -> bool {
+    if pairs == 0 || pairs as usize > PairMap::PAIRS {
+        return false;
+    }
+    let mut used = 0u32;
+    for p in 0..PairMap::PAIRS {
+        if p >= pairs as usize {
+            if map.0[p] != 0 {
+                return false;
+            }
+            continue;
+        }
+        let (l, r) = map.pair(p);
+        if l >= 2 * pairs || r >= 2 * pairs || l == r {
+            return false;
+        }
+        let bits = (1u32 << l) | (1u32 << r);
+        if used & bits != 0 {
+            return false;
+        }
+        used |= bits;
+    }
+    true
 }
 
 impl Default for CrossfeedBlock {
@@ -198,6 +270,7 @@ impl Default for CrossfeedBlock {
             // The firmware's pair 1 only (usb_audio.c:261, not vendored;
             // CROSSFEED_DEFAULT_OUTPUT_MASK, Constants.swift:50).
             output_pair_mask: 0x01,
+            pair_map: None,
         }
     }
 }
@@ -888,6 +961,7 @@ pub fn parse(text: &str) -> Result<PresetDocument, PresetFileError> {
     if text.trim().is_empty() {
         return Err(PresetFileError::Empty);
     }
+    let text = text.trim_start_matches('\u{feff}');
 
     let doc: PresetDocument =
         serde_json::from_str(text).map_err(|e| PresetFileError::Invalid(e.to_string()))?;
@@ -959,7 +1033,13 @@ pub fn place_channels(
 // Applying
 // ---------------------------------------------------------------------------
 
+use crate::cs_model::{ApplyError, CsData, apply as cs_apply};
+use crate::surfaces::{
+    CsBinding, CsDisplayCfg, CsDisplayPage, CsGroup, CsMacro, CsMacroHeaderWire, CsMacroStep,
+    CsStatusPacket, GPIO_UNUSED, IrCommand, Limits, Surfaces, explain_status,
+};
 use crate::{EnableOutcome, Outcome, Session};
+use dspi_proto::ext::PairMap;
 use dspi_proto::generated::status;
 use dspi_proto::value::{EqParamPacket, Value};
 
@@ -1190,6 +1270,8 @@ fn apply_volumes(session: &mut Session, doc: &PresetDocument, report: &mut Apply
 fn apply_features(session: &mut Session, doc: &PresetDocument, report: &mut ApplyReport) {
     let caps = session.capabilities().clone();
     let has = |name: &str| caps.features.iter().any(|f| f.name == name && f.present);
+    // Ahead of the crossfeed switch below, as the Console orders it.
+    apply_pair_map(session, doc, report);
     let mut set = |path: &str, v: Value, label: &str, report: &mut ApplyReport| {
         if let Err(e) = session.write(path, &[], v) {
             // An absent feature is information, not a failure: a document from a
@@ -2148,6 +2230,9 @@ pub fn capture(session: &mut Session, name: Option<String>) -> PresetDocument {
 
     // Before the document is built, because it needs the transport too.
     let io = capture_io(session);
+    // Only from a device that has the map (PresetDocumentTransfer.swift:57-59),
+    // so a stock device's document is unchanged.
+    let pair_map = read_pair_map(session).map(|m| m.0.iter().map(|b| *b as i32).collect());
 
     let defaults = (
         LoudnessBlock::default(),
@@ -2213,6 +2298,7 @@ pub fn capture(session: &mut Session, name: Option<String>) -> PresetDocument {
             } else {
                 defaults.1.output_pair_mask
             },
+            pair_map,
         },
         leveller: LevellerBlock {
             enabled: read_bool(session, "lev.on"),
@@ -2329,6 +2415,995 @@ fn band_block(p: &EqParamPacket) -> BandBlock {
         qp: p.qp.unwrap_or(0.707),
         bypass: p.bypass,
     }
+}
+
+// ---------------------------------------------------------------------------
+// WP TM10: the crossfeed pair map, filter banks as JSON, control surfaces
+// ---------------------------------------------------------------------------
+
+/// The largest document the Terminal reads, from a file or standard input.
+/// Same limit as `dspi_core::files::MAX_FILE_BYTES`: a full export of a
+/// 17-channel device is about 100 KB.
+pub const MAX_DOCUMENT_BYTES: usize = 4 << 20;
+
+/// The device's crossfeed pair map, or `None` on firmware without one.
+fn read_pair_map(session: &mut Session) -> Option<PairMap> {
+    session
+        .with_transport(|t| Ok(crate::ext::read_pair_map(t).ok()))
+        .ok()
+        .flatten()
+}
+
+/// Apply a document's pair map, as the Console does
+/// (PresetDocumentTransfer.swift:598-604): firmware without the map reports
+/// only a map that asks for something other than the default.
+fn apply_pair_map(session: &mut Session, doc: &PresetDocument, report: &mut ApplyReport) {
+    let pairs = (session.capabilities().num_outputs / 2).min(PairMap::PAIRS as u8);
+    let Some(map) = doc.crossfeed.pair_map_for(pairs) else {
+        return;
+    };
+    if read_pair_map(session).is_none() {
+        if map.normalized() != PairMap([0; PairMap::SIZE]) {
+            report.skip("Crossfeed output pairs (not supported by this firmware)");
+        }
+        return;
+    }
+    // This goes straight to the transport, so a dry run stops here itself.
+    if session.dry_run {
+        return;
+    }
+    let written = session.with_transport(|t| Ok(crate::ext::write_pair_map(t, map)));
+    if !matches!(written, Ok(Ok(_))) {
+        report.skip("Crossfeed output pairs (the device refused the map)");
+    }
+}
+
+/// Which document a text is, from its content.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocumentKind {
+    /// A `.dspipreset` whole-device document.
+    Preset,
+    /// A [`FilterDocument`].
+    FilterJson,
+    /// A [`ControlSurfaceDocument`].
+    ControlSurfaces,
+    /// Anything that is not a JSON object: a filter text file.
+    FilterText,
+}
+
+/// Look at a text and say what it is. The filter text grammar has no `{`
+/// lead, so a JSON object is never a filter file. An object naming no known
+/// `kind` is taken for a preset, whose parser then gives the real reason.
+pub fn sniff(text: &str) -> DocumentKind {
+    #[derive(Deserialize)]
+    struct Kind {
+        #[serde(default)]
+        kind: Option<String>,
+    }
+    let text = text.trim_start_matches('\u{feff}').trim_start();
+    if !text.starts_with('{') {
+        return DocumentKind::FilterText;
+    }
+    match serde_json::from_str::<Kind>(text).ok().and_then(|k| k.kind) {
+        Some(k) if k == FILTER_DOCUMENT_KIND => DocumentKind::FilterJson,
+        Some(k) if k == CS_DOCUMENT_KIND => DocumentKind::ControlSurfaces,
+        _ => DocumentKind::Preset,
+    }
+}
+
+/// `kind` of a [`FilterDocument`].
+pub const FILTER_DOCUMENT_KIND: &str = "dspi-filters";
+
+/// A filter file as JSON: the same content as the text format
+/// ([`crate::filterfile`]), one entry per section, with bands in the
+/// `.dspipreset` spelling ([`BandBlock`]). No other client writes this yet;
+/// it is the Terminal's scripting form of the text file.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilterDocument {
+    pub kind: String,
+    /// The text format's version ([`crate::filterfile::FORMAT_VERSION`]).
+    pub format_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub saved_utc: Option<String>,
+    #[serde(default)]
+    pub channels: Vec<FilterChannel>,
+}
+
+/// One channel's filters.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct FilterChannel {
+    /// The section header, as the text format has it.
+    pub header: String,
+    /// Input or output index, when the header gives one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index: Option<u8>,
+    pub is_output: bool,
+    /// Inputs only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preamp_db: Option<f32>,
+    pub peq: Vec<BandBlock>,
+    pub crossover: Vec<BandBlock>,
+}
+
+/// Parse a [`FilterDocument`], refusing the wrong `kind`, a newer format and
+/// an empty one.
+pub fn parse_filters(text: &str) -> Result<FilterDocument, PresetFileError> {
+    use crate::filterfile::FORMAT_VERSION;
+    if text.trim().is_empty() {
+        return Err(PresetFileError::Empty);
+    }
+    let doc: FilterDocument = serde_json::from_str(text.trim_start_matches('\u{feff}'))
+        .map_err(|e| PresetFileError::Invalid(e.to_string()))?;
+    if doc.kind != FILTER_DOCUMENT_KIND {
+        return Err(PresetFileError::Invalid(format!(
+            "kind `{}` is not `{FILTER_DOCUMENT_KIND}`",
+            doc.kind
+        )));
+    }
+    if doc.format_version > FORMAT_VERSION {
+        return Err(PresetFileError::FromTheFuture {
+            got: doc.format_version as i32,
+            supported: FORMAT_VERSION as i32,
+        });
+    }
+    if doc.channels.is_empty() {
+        return Err(PresetFileError::NoChannels);
+    }
+    Ok(doc)
+}
+
+impl FilterDocument {
+    /// The JSON text.
+    pub fn write(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_default()
+    }
+
+    /// From a parsed text file. The text carries no `qp`, so it is the default.
+    pub fn from_text(file: &crate::filterfile::FilterFile) -> Self {
+        let band = |b: &dspi_proto::dsp::Band| BandBlock {
+            r#type: b.filter_type.to_raw() as i32,
+            freq_hz: b.freq,
+            q: b.q,
+            gain: b.gain_db,
+            qp: BandBlock::default().qp,
+            bypass: b.bypass,
+        };
+        Self {
+            kind: FILTER_DOCUMENT_KIND.into(),
+            format_version: file.format_version,
+            saved_utc: None,
+            channels: file
+                .channels
+                .iter()
+                .map(|c| FilterChannel {
+                    header: c.header.clone(),
+                    index: c.index,
+                    is_output: c.is_output,
+                    preamp_db: c.preamp_db,
+                    peq: c.peq.iter().map(band).collect(),
+                    crossover: c.crossover.iter().map(band).collect(),
+                })
+                .collect(),
+        }
+    }
+
+    /// As a text file.
+    pub fn to_text(&self) -> crate::filterfile::FilterFile {
+        let band = |b: &BandBlock| dspi_proto::dsp::Band {
+            filter_type: dspi_proto::FilterType::from_raw(b.r#type.clamp(0, 255) as u8),
+            freq: b.freq_hz,
+            q: b.q,
+            gain_db: b.gain,
+            bypass: b.bypass,
+        };
+        crate::filterfile::FilterFile {
+            format_version: crate::filterfile::FORMAT_VERSION,
+            channels: self
+                .channels
+                .iter()
+                .map(|c| crate::filterfile::ChannelBank {
+                    header: c.header.clone(),
+                    index: c.index,
+                    is_output: c.is_output,
+                    preamp_db: c.preamp_db,
+                    peq: c.peq.iter().map(band).collect(),
+                    crossover: c.crossover.iter().map(band).collect(),
+                })
+                .collect(),
+        }
+    }
+}
+
+/// Read every channel's filters from the device.
+pub fn capture_filters(session: &mut Session) -> FilterDocument {
+    let caps = session.capabilities().clone();
+    let mut channels = Vec::with_capacity(caps.channels.len());
+    for c in &caps.channels {
+        let index = if c.is_output {
+            c.index.saturating_sub(caps.num_inputs)
+        } else {
+            c.index
+        };
+        let mut channel = FilterChannel {
+            header: format!(
+                "{} {index}: {}",
+                if c.is_output { "Output" } else { "Input" },
+                c.name
+            ),
+            index: Some(index),
+            is_output: c.is_output,
+            ..Default::default()
+        };
+        if !c.is_output {
+            channel.preamp_db = session
+                .read("pre", &[c.index])
+                .ok()
+                .and_then(|v| v.as_f32());
+        }
+        for b in 0..caps.max_bands {
+            if let Ok(p) = session.read_band(c.index, b) {
+                channel.peq.push(band_block(&p));
+            }
+        }
+        if c.is_output {
+            for b in CROSSOVER_FIRST_BAND..CROSSOVER_FIRST_BAND + CROSSOVER_BANDS {
+                if let Ok(p) = session.read_band(c.index, b) {
+                    channel.crossover.push(band_block(&p));
+                }
+            }
+        }
+        channels.push(channel);
+    }
+    FilterDocument {
+        kind: FILTER_DOCUMENT_KIND.into(),
+        format_version: crate::filterfile::FORMAT_VERSION,
+        saved_utc: Some(utc_now()),
+        channels,
+    }
+}
+
+/// What a filter import did.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FilterReport {
+    pub bands_applied: usize,
+    pub crossover_bands_applied: usize,
+    pub preamps_applied: usize,
+    /// Writes the device or the session refused.
+    pub refused: usize,
+    /// Bands past what this device has, and crossover bands on an input.
+    pub dropped: usize,
+}
+
+/// Apply one channel's filters to unified channel `channel`, through the
+/// ordinary write path (clamping, gating, readback, dry run).
+pub fn apply_filter_channel(
+    session: &mut Session,
+    channel: u8,
+    filters: &FilterChannel,
+    report: &mut FilterReport,
+) {
+    let caps = session.capabilities().clone();
+    let is_output = channel >= caps.num_inputs;
+    if let Some(db) = filters.preamp_db {
+        if is_output {
+            report.dropped += 1;
+        } else if session.write("pre", &[channel], Value::Float(db)).is_ok() {
+            report.preamps_applied += 1;
+        } else {
+            report.refused += 1;
+        }
+    }
+    for (i, b) in filters.peq.iter().enumerate() {
+        if i >= caps.max_bands as usize {
+            report.dropped += 1;
+        } else if apply_band(session, channel, i as u8, b).is_some() {
+            report.bands_applied += 1;
+        } else {
+            report.refused += 1;
+        }
+    }
+    for (i, b) in filters.crossover.iter().enumerate() {
+        if !is_output || i >= CROSSOVER_BANDS as usize {
+            report.dropped += 1;
+        } else if apply_band(session, channel, CROSSOVER_FIRST_BAND + i as u8, b).is_some() {
+            report.crossover_bands_applied += 1;
+        } else {
+            report.refused += 1;
+        }
+    }
+}
+
+// ------------------------------------------------------------ control surfaces
+
+/// `kind` of a [`ControlSurfaceDocument`].
+pub const CS_DOCUMENT_KIND: &str = "dspi-control-surfaces";
+
+/// Bumped when the control-surface document changes incompatibly.
+pub const CS_SCHEMA_VERSION: i32 = 1;
+
+/// A device's control-surface configuration: bindings and their names, IR
+/// commands, groups, macros and the display.
+///
+/// Neither the Mac nor Qt has a file for this, and `.dspipreset` has no such
+/// block in any client, so this is its own document rather than a block a
+/// preset import would act on: bindings claim GPIOs, and the Consoles would
+/// silently drop the block on the way through. The keys are those of
+/// `dspi_core`'s `cs_snapshot`, the subset that is configuration rather than
+/// capability or live status, so a future Qt or Swift importer can hand them to
+/// `cs_apply` as they are. Entries are by position: the first is slot 0.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControlSurfaceDocument {
+    pub kind: String,
+    pub schema_version: i32,
+    #[serde(default)]
+    pub meta: CsMeta,
+    #[serde(default)]
+    pub bindings: Vec<CsBindingBlock>,
+    #[serde(default)]
+    pub names: Vec<String>,
+    #[serde(default)]
+    pub ir: Vec<CsIrBlock>,
+    #[serde(default)]
+    pub groups: Vec<CsGroupBlock>,
+    #[serde(default)]
+    pub macros: Vec<CsMacroBlock>,
+    /// Absent on firmware without the display.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display: Option<CsDisplayBlock>,
+}
+
+/// Provenance, informational only.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CsMeta {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub saved_utc: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub platform: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub firmware_version: Option<String>,
+    pub caps_version: u8,
+}
+
+/// One binding slot, in `cs_snapshot`'s spelling. Pin numbers are a board's;
+/// that is why this document is only ever applied on request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CsBindingBlock {
+    pub r#type: u8,
+    pub noun: u8,
+    pub action: u8,
+    pub flags: u8,
+    pub gpio0: u8,
+    pub gpio1: u8,
+    pub event: u8,
+    pub target: u8,
+    pub index: u8,
+    pub base_bright: u8,
+    pub value: i16,
+    pub step: i16,
+    pub range_min: i16,
+    pub range_max: i16,
+    pub on_delay: u16,
+    pub off_delay: u16,
+    pub extras: u8,
+}
+
+impl Default for CsBindingBlock {
+    fn default() -> Self {
+        Self::from(&CsBinding {
+            gpio: [0, GPIO_UNUSED],
+            ..Default::default()
+        })
+    }
+}
+
+impl From<&CsBinding> for CsBindingBlock {
+    fn from(b: &CsBinding) -> Self {
+        Self {
+            r#type: b.component,
+            noun: b.noun,
+            action: b.action,
+            flags: b.flags,
+            gpio0: b.gpio[0],
+            gpio1: b.gpio[1],
+            event: b.event,
+            target: b.target,
+            index: b.index,
+            base_bright: b.base_bright,
+            value: b.value,
+            step: b.step,
+            range_min: b.range_min,
+            range_max: b.range_max,
+            on_delay: b.on_delay,
+            off_delay: b.off_delay,
+            extras: b.extras,
+        }
+    }
+}
+
+impl From<&CsBindingBlock> for CsBinding {
+    fn from(b: &CsBindingBlock) -> Self {
+        Self {
+            component: b.r#type,
+            noun: b.noun,
+            action: b.action,
+            flags: b.flags,
+            gpio: [b.gpio0, b.gpio1],
+            event: b.event,
+            target: b.target,
+            index: b.index,
+            base_bright: b.base_bright,
+            value: b.value,
+            step: b.step,
+            range_min: b.range_min,
+            range_max: b.range_max,
+            on_delay: b.on_delay,
+            off_delay: b.off_delay,
+            extras: b.extras,
+        }
+    }
+}
+
+/// One IR sub-slot.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CsIrBlock {
+    pub noun: u8,
+    pub action: u8,
+    pub flags: u8,
+    pub target: u8,
+    pub index: u8,
+    pub protocol: u8,
+    pub value: i16,
+    pub step: i16,
+    pub code: u32,
+}
+
+/// One channel group.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CsGroupBlock {
+    pub target_kind: u8,
+    pub member_mask: u32,
+    pub name: String,
+}
+
+/// One macro: its active steps only.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CsMacroBlock {
+    pub name: String,
+    pub steps: Vec<CsStepBlock>,
+}
+
+/// One macro step.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CsStepBlock {
+    pub noun: u8,
+    pub action: u8,
+    pub flags: u8,
+    pub target: u8,
+    pub index: u8,
+    pub value: i16,
+    pub step: i16,
+    pub pre_delay: u16,
+}
+
+/// The display's configuration and pages.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CsDisplayBlock {
+    pub config: CsDisplayConfigBlock,
+    pub pages: Vec<CsPageBlock>,
+}
+
+/// `REQ_SET_CS_DISPLAY_CFG`'s record.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CsDisplayConfigBlock {
+    pub mode: u8,
+    pub home_page: u8,
+    pub dwell: u16,
+    pub overlay_hold: u16,
+    pub brightness: u8,
+    pub flags: u8,
+    pub edit_timeout: u16,
+}
+
+/// One display page.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CsPageBlock {
+    pub noun: u8,
+    pub target: u8,
+    pub index: u8,
+    pub flags: u8,
+}
+
+fn ir_command(b: &CsIrBlock) -> IrCommand {
+    IrCommand {
+        noun: b.noun,
+        action: b.action,
+        flags: b.flags,
+        target: b.target,
+        index: b.index,
+        protocol: b.protocol,
+        value: b.value,
+        step: b.step,
+        code: b.code,
+    }
+}
+
+fn macro_step(b: &CsStepBlock) -> CsMacroStep {
+    CsMacroStep {
+        noun: b.noun,
+        action: b.action,
+        flags: b.flags,
+        target: b.target,
+        index: b.index,
+        value: b.value,
+        step: b.step,
+        pre_delay: b.pre_delay,
+    }
+}
+
+fn display_cfg(b: &CsDisplayConfigBlock) -> CsDisplayCfg {
+    CsDisplayCfg {
+        mode: b.mode,
+        home_page: b.home_page,
+        dwell: b.dwell,
+        overlay_hold: b.overlay_hold,
+        brightness: b.brightness,
+        flags: b.flags,
+        edit_timeout: b.edit_timeout,
+    }
+}
+
+/// Parse a [`ControlSurfaceDocument`], refusing the wrong `kind` and a newer
+/// schema. A number out of its field's range is a parse error, not a wrap.
+pub fn parse_control_surfaces(text: &str) -> Result<ControlSurfaceDocument, PresetFileError> {
+    if text.trim().is_empty() {
+        return Err(PresetFileError::Empty);
+    }
+    let doc: ControlSurfaceDocument = serde_json::from_str(text.trim_start_matches('\u{feff}'))
+        .map_err(|e| PresetFileError::Invalid(e.to_string()))?;
+    if doc.kind != CS_DOCUMENT_KIND {
+        return Err(PresetFileError::Invalid(format!(
+            "kind `{}` is not `{CS_DOCUMENT_KIND}`",
+            doc.kind
+        )));
+    }
+    if doc.schema_version <= 0 {
+        return Err(PresetFileError::Invalid(
+            "missing or invalid schemaVersion".into(),
+        ));
+    }
+    if doc.schema_version > CS_SCHEMA_VERSION {
+        return Err(PresetFileError::FromTheFuture {
+            got: doc.schema_version,
+            supported: CS_SCHEMA_VERSION,
+        });
+    }
+    Ok(doc)
+}
+
+impl ControlSurfaceDocument {
+    /// The JSON text.
+    pub fn write(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_default()
+    }
+}
+
+/// Why a control-surface document could not be read from or applied to a
+/// device at all. Per-record refusals are in [`CsApplyReport`] instead.
+#[derive(Debug, thiserror::Error)]
+pub enum CsFileError {
+    #[error("this device has no control surfaces")]
+    Unsupported,
+    #[error(transparent)]
+    Device(#[from] ApplyError),
+}
+
+/// Read the device's control-surface configuration.
+///
+/// # Errors
+/// [`CsFileError::Unsupported`] on firmware without control surfaces;
+/// [`CsFileError::Device`] when the link fails. [`CsData::read`] reads a
+/// missing part as empty, so a final status read tells that apart from a link
+/// that went away, rather than exporting a blank configuration.
+pub fn capture_control_surfaces(
+    session: &mut Session,
+) -> Result<ControlSurfaceDocument, CsFileError> {
+    let data = CsData::read(session).ok_or(CsFileError::Unsupported)?;
+    confirm_link(session)?;
+    let caps = session.capabilities();
+    let meta = CsMeta {
+        saved_utc: Some(utc_now()),
+        app_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+        platform: Some(caps.platform.name()),
+        firmware_version: Some(caps.firmware.clone()),
+        caps_version: data.caps.caps_version,
+    };
+    Ok(ControlSurfaceDocument {
+        kind: CS_DOCUMENT_KIND.into(),
+        schema_version: CS_SCHEMA_VERSION,
+        meta,
+        bindings: data.bindings.iter().map(CsBindingBlock::from).collect(),
+        names: data.names.clone(),
+        ir: data
+            .ir
+            .iter()
+            .map(|c| CsIrBlock {
+                noun: c.noun,
+                action: c.action,
+                flags: c.flags,
+                target: c.target,
+                index: c.index,
+                protocol: c.protocol,
+                value: c.value,
+                step: c.step,
+                code: c.code,
+            })
+            .collect(),
+        groups: data
+            .groups
+            .iter()
+            .map(|g| CsGroupBlock {
+                target_kind: g.target_kind,
+                member_mask: g.member_mask,
+                name: g.name.clone(),
+            })
+            .collect(),
+        macros: data.macros.iter().map(macro_block).collect(),
+        display: (data.max_pages > 0).then(|| CsDisplayBlock {
+            config: display_config_block(&data.display_cfg),
+            pages: data
+                .pages
+                .iter()
+                .map(|p| CsPageBlock {
+                    noun: p.noun,
+                    target: p.target,
+                    index: p.index,
+                    flags: p.flags,
+                })
+                .collect(),
+        }),
+    })
+}
+
+fn confirm_link(session: &mut Session) -> Result<(), ApplyError> {
+    let limits = session
+        .capabilities()
+        .cs
+        .as_ref()
+        .map(Limits::from)
+        .unwrap_or_default();
+    session
+        .with_transport(|t| Ok(Surfaces::new(t, limits).read_status()))?
+        .map(|_| ())
+        .map_err(ApplyError::from)
+}
+
+fn macro_block(m: &CsMacro) -> CsMacroBlock {
+    CsMacroBlock {
+        name: m.name.clone(),
+        steps: m
+            .active_steps()
+            .iter()
+            .map(|s| CsStepBlock {
+                noun: s.noun,
+                action: s.action,
+                flags: s.flags,
+                target: s.target,
+                index: s.index,
+                value: s.value,
+                step: s.step,
+                pre_delay: s.pre_delay,
+            })
+            .collect(),
+    }
+}
+
+fn display_config_block(c: &CsDisplayCfg) -> CsDisplayConfigBlock {
+    CsDisplayConfigBlock {
+        mode: c.mode,
+        home_page: c.home_page,
+        dwell: c.dwell,
+        overlay_hold: c.overlay_hold,
+        brightness: c.brightness,
+        flags: c.flags,
+        edit_timeout: c.edit_timeout,
+    }
+}
+
+/// What a control-surface import did. Only what differs from the device is
+/// written, so "unchanged" records cost no flash wear or SETs.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CsApplyReport {
+    pub bindings: usize,
+    pub names: usize,
+    pub ir: usize,
+    pub groups: usize,
+    pub macros: usize,
+    pub display_config: bool,
+    pub pages: usize,
+    /// Records the device refused, each with the device's reason.
+    pub refused: Vec<String>,
+    /// Records the device has no room for.
+    pub beyond: Vec<String>,
+    /// The link failed: the import stopped here, part applied.
+    pub failed: Option<String>,
+}
+
+impl CsApplyReport {
+    /// Whether the device took everything the document asked for.
+    pub fn is_clean(&self) -> bool {
+        self.refused.is_empty() && self.beyond.is_empty() && self.failed.is_none()
+    }
+
+    /// The report for the user. `saved` is whether the result went to flash.
+    pub fn lines(&self, dry_run: bool, saved: bool) -> Vec<String> {
+        let mut lines = vec![format!(
+            "{} {} bindings, {} names, {} IR commands, {} groups, {} macros, {} display pages{}.",
+            if dry_run { "Would change" } else { "Changed" },
+            self.bindings,
+            self.names,
+            self.ir,
+            self.groups,
+            self.macros,
+            self.pages,
+            if self.display_config {
+                ", the display configuration"
+            } else {
+                ""
+            }
+        )];
+        lines.extend(
+            self.beyond
+                .iter()
+                .map(|b| format!("Not on this device: {b}")),
+        );
+        lines.extend(self.refused.iter().map(|r| format!("Refused: {r}")));
+        if let Some(f) = &self.failed {
+            lines.push(format!("Stopped: {f}"));
+        }
+        if !dry_run {
+            lines.push(if saved {
+                "Saved to the device.".into()
+            } else {
+                "These changes are live but not stored on the device: `--save` stores them.".into()
+            });
+        }
+        lines
+    }
+}
+
+/// Apply a control-surface document, writing only what differs.
+///
+/// Order matters on the device: groups first, since a binding or macro may
+/// name one; then every binding that changes is cleared before any is set, so
+/// that two bindings exchanging pins do not refuse each other (status `0x1A`,
+/// and `0x02`). A slot the document does not list is left alone. Honours
+/// `session.dry_run`: the device is read and nothing is written.
+///
+/// # Errors
+/// [`CsFileError::Unsupported`] on firmware without control surfaces. A refused
+/// record or a failing link is in the report, with what got applied before it.
+pub fn apply_control_surfaces(
+    session: &mut Session,
+    doc: &ControlSurfaceDocument,
+) -> Result<CsApplyReport, CsFileError> {
+    let now = CsData::read(session).ok_or(CsFileError::Unsupported)?;
+    confirm_link(session)?;
+    let dry = session.dry_run;
+    let mut report = CsApplyReport::default();
+
+    // One write, `true` when the import may go on. Every outcome lands in the
+    // report; the link failing is the only thing that stops it.
+    fn send(
+        session: &mut Session,
+        dry: bool,
+        report: &mut CsApplyReport,
+        what: String,
+        f: impl FnOnce(&mut Surfaces<'_>) -> crate::surfaces::Result<CsStatusPacket>,
+    ) -> Option<bool> {
+        if dry {
+            return Some(true);
+        }
+        match cs_apply(session, f) {
+            Ok(()) => Some(true),
+            Err(ApplyError::Rejected { status }) => {
+                report
+                    .refused
+                    .push(format!("{what}: {}", explain_status(status)));
+                Some(false)
+            }
+            Err(e) => {
+                report.failed = Some(format!("{what}: {e}"));
+                None
+            }
+        }
+    }
+
+    let beyond = |report: &mut CsApplyReport, what: &str, have: usize, extra: usize| {
+        if extra > 0 {
+            report
+                .beyond
+                .push(format!("{extra} {what} (this device has {have})"));
+        }
+    };
+
+    // ---- groups
+    let groups = doc.groups.iter().take(now.groups.len());
+    let extra = doc.groups.iter().skip(now.groups.len());
+    let extra = extra.filter(|g| **g != CsGroupBlock::default()).count();
+    beyond(&mut report, "groups", now.groups.len(), extra);
+    for (i, (g, cur)) in groups.zip(&now.groups).enumerate() {
+        let want = CsGroup {
+            target_kind: g.target_kind,
+            member_mask: g.member_mask,
+            name: g.name.clone(),
+        };
+        if want != *cur {
+            let what = format!("group {}", i + 1);
+            match send(session, dry, &mut report, what, |s| {
+                s.write_group(i as u8, &want)
+            }) {
+                Some(true) => report.groups += 1,
+                Some(false) => {}
+                None => return Ok(report),
+            }
+        }
+    }
+
+    // ---- bindings: clear, then set
+    let wanted: Vec<CsBinding> = doc
+        .bindings
+        .iter()
+        .take(now.bindings.len())
+        .map(CsBinding::from)
+        .collect();
+    let extra = doc.bindings.iter().skip(now.bindings.len());
+    let extra = extra.filter(|b| b.r#type != 0).count();
+    beyond(&mut report, "bindings", now.bindings.len(), extra);
+    for (i, (want, cur)) in wanted.iter().zip(&now.bindings).enumerate() {
+        if want != cur && !cur.is_empty() {
+            let what = format!("clearing binding {}", i + 1);
+            match send(session, dry, &mut report, what, |s| {
+                s.write_binding(i as u8, &CsBinding::default())
+            }) {
+                Some(true) if want.is_empty() => report.bindings += 1,
+                Some(_) => {}
+                None => return Ok(report),
+            }
+        }
+    }
+    for (i, (want, cur)) in wanted.iter().zip(&now.bindings).enumerate() {
+        // An empty slot is empty whatever its other bytes hold.
+        if want == cur || want.is_empty() {
+            continue;
+        }
+        let what = format!("binding {}", i + 1);
+        match send(session, dry, &mut report, what, |s| {
+            s.write_binding(i as u8, want)
+        }) {
+            Some(true) => report.bindings += 1,
+            Some(false) => {}
+            None => return Ok(report),
+        }
+    }
+    for (i, (name, cur)) in doc.names.iter().zip(&now.names).enumerate() {
+        if name != cur {
+            let what = format!("name of binding {}", i + 1);
+            match send(session, dry, &mut report, what, |s| {
+                s.write_name(i as u8, name)
+            }) {
+                Some(true) => report.names += 1,
+                Some(false) => {}
+                None => return Ok(report),
+            }
+        }
+    }
+
+    // ---- IR
+    let extra = doc.ir.iter().skip(now.ir.len());
+    let extra = extra.filter(|c| c.protocol != 0).count();
+    beyond(&mut report, "IR commands", now.ir.len(), extra);
+    for (i, (c, cur)) in doc.ir.iter().zip(&now.ir).enumerate() {
+        let want = ir_command(c);
+        if want != *cur {
+            let what = format!("IR command {}", i + 1);
+            match send(session, dry, &mut report, what, |s| {
+                s.write_ir_command(i as u8, &want)
+            }) {
+                Some(true) => report.ir += 1,
+                Some(false) => {}
+                None => return Ok(report),
+            }
+        }
+    }
+
+    // ---- macros: padded, so steps past the new count are cleared
+    let extra = doc.macros.iter().skip(now.macros.len());
+    let extra = extra.filter(|m| **m != CsMacroBlock::default()).count();
+    beyond(&mut report, "macros", now.macros.len(), extra);
+    let max_steps = now.caps.max_macro_steps as usize;
+    for (i, (m, cur)) in doc.macros.iter().zip(&now.macros).enumerate() {
+        if m.steps.len() > max_steps {
+            beyond(
+                &mut report,
+                &format!("steps of macro {}", i + 1),
+                max_steps,
+                m.steps.len() - max_steps,
+            );
+        }
+        let kept = &m.steps[..m.steps.len().min(max_steps)];
+        let same = m.name == cur.name && kept == macro_block(cur).steps.as_slice();
+        if same {
+            continue;
+        }
+        let mut steps: Vec<CsMacroStep> = kept.iter().map(macro_step).collect();
+        let header = CsMacroHeaderWire {
+            name: m.name.clone(),
+            step_count: steps.len() as u8,
+        };
+        steps.resize(max_steps, CsMacroStep::default());
+        let what = format!("macro {}", i + 1);
+        match send(session, dry, &mut report, what, |s| {
+            s.write_macro(i as u8, &header, &steps)
+        }) {
+            Some(true) => report.macros += 1,
+            Some(false) => {}
+            None => return Ok(report),
+        }
+    }
+
+    // ---- the display
+    if let Some(display) = &doc.display {
+        if now.max_pages == 0 {
+            report.beyond.push("the display".into());
+        } else {
+            if display.config != display_config_block(&now.display_cfg) {
+                let cfg = display_cfg(&display.config);
+                match send(session, dry, &mut report, "display".into(), |s| {
+                    s.write_display_cfg(&cfg)
+                }) {
+                    Some(true) => report.display_config = true,
+                    Some(false) => {}
+                    None => return Ok(report),
+                }
+            }
+            let extra = display.pages.iter().skip(now.pages.len());
+            let extra = extra.filter(|p| **p != CsPageBlock::default()).count();
+            beyond(&mut report, "display pages", now.pages.len(), extra);
+            for (i, (p, cur)) in display.pages.iter().zip(&now.pages).enumerate() {
+                let want = CsDisplayPage {
+                    noun: p.noun,
+                    target: p.target,
+                    index: p.index,
+                    flags: p.flags,
+                };
+                if want != *cur {
+                    let what = format!("display page {}", i + 1);
+                    match send(session, dry, &mut report, what, |s| {
+                        s.write_display_page(i as u8, &want)
+                    }) {
+                        Some(true) => report.pages += 1,
+                        Some(false) => {}
+                        None => return Ok(report),
+                    }
+                }
+            }
+        }
+    }
+    Ok(report)
 }
 
 #[cfg(test)]
@@ -4465,5 +5540,179 @@ mod interop_tests {
         assert_eq!(iso8601(0), "1970-01-01T00:00:00Z");
         assert_eq!(iso8601(951_782_400), "2000-02-29T00:00:00Z");
         assert_eq!(iso8601(1_790_762_645), "2026-09-30T10:04:05Z");
+    }
+}
+
+#[cfg(test)]
+mod wp_tm10_tests {
+    use super::*;
+
+    const QT: &str = include_str!("../../../tests/fixtures/preset/qt-core-v32.dspipreset");
+    const MAC: &str = include_str!("../../../tests/fixtures/preset/mac-swift-v32.dspipreset");
+
+    /// Every key and value of `a` is in `b`. Numbers compare as `f32`, since
+    /// that is what the writers hold.
+    fn assert_kept(a: &serde_json::Value, b: &serde_json::Value, path: &str) {
+        use serde_json::Value as V;
+        match (a, b) {
+            (V::Object(x), V::Object(y)) => {
+                for (k, v) in x {
+                    if v.is_null() {
+                        continue;
+                    }
+                    let other = y.get(k);
+                    assert!(other.is_some(), "{path}.{k} was dropped");
+                    assert_kept(v, other.unwrap(), &format!("{path}.{k}"));
+                }
+            }
+            (V::Array(x), V::Array(y)) => {
+                assert_eq!(x.len(), y.len(), "{path} length");
+                for (i, (v, w)) in x.iter().zip(y).enumerate() {
+                    assert_kept(v, w, &format!("{path}[{i}]"));
+                }
+            }
+            (V::Number(x), V::Number(y)) => {
+                assert_eq!(
+                    x.as_f64().unwrap() as f32,
+                    y.as_f64().unwrap() as f32,
+                    "{path}"
+                );
+            }
+            _ => assert_eq!(a, b, "{path}"),
+        }
+    }
+
+    #[test]
+    fn wp_tm10_the_shared_documents_keep_every_key_through_this_parser() {
+        for (name, text) in [("qt", QT), ("mac", MAC)] {
+            let doc = parse(text).unwrap_or_else(|e| panic!("{name}: {e}"));
+            let again = write(&doc);
+            assert_eq!(parse(&again).unwrap(), doc, "{name}");
+            let a: serde_json::Value = serde_json::from_str(text).unwrap();
+            let b: serde_json::Value = serde_json::from_str(&again).unwrap();
+            assert_kept(&a, &b, name);
+        }
+    }
+
+    #[test]
+    fn wp_tm10_the_pair_map_is_read_as_the_console_reads_it() {
+        let block = |raw: &str| -> CrossfeedBlock {
+            let doc = format!(
+                r#"{{"schemaVersion":1,"crossfeed":{{"pairMap":{raw}}},"channels":[{{"channelId":0}}]}}"#
+            );
+            parse(&doc).unwrap().crossfeed
+        };
+        // K340's map, with explicit default bytes normalized away.
+        assert_eq!(
+            block("[2, 19, 84, 118]").pair_map_for(4),
+            Some(PairMap([0x02, 0x13, 0, 0]))
+        );
+        // Too wide for the part or duplicated outputs: the default, not an error.
+        assert_eq!(
+            block("[2, 19, 0, 0]").pair_map_for(1),
+            Some(PairMap([0; 4]))
+        );
+        assert_eq!(block("[2, 2, 0, 0]").pair_map_for(4), Some(PairMap([0; 4])));
+        assert_eq!(
+            block("[0, 0, 0, 0, 1]").pair_map_for(4),
+            Some(PairMap([0; 4]))
+        );
+        // Not a list reads as absent, and that leaves the device alone.
+        assert_eq!(block("\"nope\"").pair_map, None);
+        assert_eq!(block("null").pair_map_for(4), None);
+        assert_eq!(CrossfeedBlock::default().pair_map_for(4), None);
+    }
+
+    #[test]
+    fn wp_tm10_sniff_tells_the_documents_apart() {
+        assert_eq!(sniff(QT), DocumentKind::Preset);
+        assert_eq!(sniff(MAC), DocumentKind::Preset);
+        assert_eq!(
+            sniff("\u{feff} {\"schemaVersion\": 1}"),
+            DocumentKind::Preset
+        );
+        assert_eq!(sniff("{broken"), DocumentKind::Preset);
+        assert_eq!(
+            sniff(r#"{"kind": "dspi-filters", "channels": []}"#),
+            DocumentKind::FilterJson
+        );
+        assert_eq!(
+            sniff(r#"{"kind": "dspi-control-surfaces"}"#),
+            DocumentKind::ControlSurfaces
+        );
+        assert_eq!(
+            sniff("Filter 1: ON PK Fc 100 Hz Gain 3 dB Q 1"),
+            DocumentKind::FilterText
+        );
+        assert_eq!(sniff(""), DocumentKind::FilterText);
+    }
+
+    #[test]
+    fn wp_tm10_a_filter_document_round_trips_with_the_text_format() {
+        for text in [
+            include_str!("../../../tests/fixtures/DSPiFilters.txt"),
+            include_str!("../../../tests/fixtures/MacOSFilters.txt"),
+            include_str!("../../../tests/fixtures/WindowsFilters.txt"),
+            include_str!("../../../tests/fixtures/REWFilters.txt"),
+        ] {
+            let file = crate::filterfile::parse(text).unwrap();
+            let doc = FilterDocument::from_text(&file);
+            let again = parse_filters(&doc.write()).unwrap();
+            assert_eq!(again, doc);
+            let back = doc.to_text();
+            assert_eq!(back.channels, file.channels);
+            // And through the text writer, which is what `export` runs.
+            let text = crate::filterfile::write(&back, "now");
+            let reread = FilterDocument::from_text(&crate::filterfile::parse(&text).unwrap());
+            assert_eq!(reread.channels.len(), doc.channels.len());
+        }
+    }
+
+    #[test]
+    fn wp_tm10_bad_filter_documents_are_refused_with_a_reason() {
+        assert_eq!(parse_filters("  "), Err(PresetFileError::Empty));
+        assert!(matches!(
+            parse_filters(r#"{"kind":"x","formatVersion":2}"#),
+            Err(PresetFileError::Invalid(_))
+        ));
+        assert_eq!(
+            parse_filters(r#"{"kind":"dspi-filters","formatVersion":99,"channels":[{}]}"#),
+            Err(PresetFileError::FromTheFuture {
+                got: 99,
+                supported: 2
+            })
+        );
+        assert_eq!(
+            parse_filters(r#"{"kind":"dspi-filters","formatVersion":2}"#),
+            Err(PresetFileError::NoChannels)
+        );
+    }
+
+    #[test]
+    fn wp_tm10_bad_control_surface_documents_are_refused_with_a_reason() {
+        assert!(matches!(
+            parse_control_surfaces(r#"{"kind":"x","schemaVersion":1}"#),
+            Err(PresetFileError::Invalid(_))
+        ));
+        assert_eq!(
+            parse_control_surfaces(r#"{"kind":"dspi-control-surfaces","schemaVersion":2}"#),
+            Err(PresetFileError::FromTheFuture {
+                got: 2,
+                supported: 1
+            })
+        );
+        // A number out of its field's range does not wrap.
+        assert!(matches!(
+            parse_control_surfaces(
+                r#"{"kind":"dspi-control-surfaces","schemaVersion":1,"bindings":[{"noun":300}]}"#
+            ),
+            Err(PresetFileError::Invalid(_))
+        ));
+        // A partial binding keeps the second pin unused, not GPIO 0.
+        let doc = parse_control_surfaces(
+            r#"{"kind":"dspi-control-surfaces","schemaVersion":1,"bindings":[{"type":1,"gpio0":3}]}"#,
+        )
+        .unwrap();
+        assert_eq!(CsBinding::from(&doc.bindings[0]).gpio, [3, GPIO_UNUSED]);
     }
 }

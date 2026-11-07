@@ -11,7 +11,19 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// The public `DspiCore` methods a binding cannot carry: the argument is a Rust
 /// trait object. Everything else is exported.
-const NOT_EXPORTED: &[&str] = &["open_transport"];
+const NOT_EXPORTED: &[&str] = &[
+    "open_transport",
+    // -- WP CG2 --
+    // Behind feature `mdns`, which dspi-ffi leaves off: Android and iOS browse with
+    // their system APIs. core_methods() reads the source, so it sees them anyway.
+    "link_browse_start",
+    "link_browse_start_with",
+    "link_browse_stop",
+    "link_browse_snapshot",
+    "link_browse_resolve",
+    "link_browse_reresolve",
+    "link_browse_verify",
+];
 
 /// `crates/dspi-core/src/link.rs`, exported by WP C15.
 const LINK_METHODS: &[&str] = &[
@@ -269,5 +281,86 @@ fn wp_f1_link_api_is_exported() {
         "fun `linkFetchInfo`",
     ] {
         assert!(core.contains(f), "{f} is not exported");
+    }
+}
+
+// -- WP CG6 --
+#[test]
+fn wp_cg6_autoeq_upkeep_is_exported() {
+    let out = generate("kotlin");
+    let core = std::fs::read_to_string(find(&out, "dspi_core.kt")).unwrap();
+    for f in [
+        "fun `autoeqDatabaseInfo`",
+        "fun `autoeqImport`",
+        "fun `autoeqUpdate`",
+        "fun `autoeqResetToBuiltin`",
+        "fun `autoeqRebuildWarning`",
+        "fun `autoeqRebuildStart`",
+        "fun `poll`",
+        "fun `cancel`",
+        "interface AutoEqFetch",
+        "class AutoEqRebuildProgress",
+    ] {
+        assert!(core.contains(f), "{f} is not exported");
+    }
+    let swift = generate("swift");
+    let core = std::fs::read_to_string(find(&swift, "dspi_core.swift")).unwrap();
+    for f in ["func autoeqRebuildStart(", "protocol AutoEqFetch"] {
+        assert!(core.contains(f), "{f} is not exported");
+    }
+}
+
+// -- WP CG8 --
+#[test]
+fn wp_cg8_firmware_guard_is_exported() {
+    let kotlin = std::fs::read_to_string(find(&generate("kotlin"), "dspi_core.kt")).unwrap();
+    for item in [
+        "fun `firmwareGuardCheck`",
+        "fun `firmwareGuardBoard`",
+        "fun `firmwareGuardBoardInBootloader`",
+        "fun `flashToDriveGuarded`",
+        "data class FirmwareGuardBoard",
+        "data class FirmwareGuardVerdict",
+        "enum class FirmwareGuardDecision",
+        "enum class FirmwareGuardReason",
+        "enum class FirmwareGuardBoardSource",
+        "class FirmwareGuardBlocked",
+    ] {
+        assert!(kotlin.contains(item), "{item} is not in the Kotlin binding");
+    }
+    let swift = std::fs::read_to_string(find(&generate("swift"), "dspi_core.swift")).unwrap();
+    for item in [
+        "func firmwareGuardCheck(",
+        "func firmwareGuardBoard(",
+        "func firmwareGuardBoardInBootloader(",
+        "func flashToDriveGuarded(",
+        "struct FirmwareGuardVerdict",
+    ] {
+        assert!(swift.contains(item), "{item} is not in the Swift binding");
+    }
+}
+
+// -- WP CG10 --
+#[test]
+fn wp_cg10_wording_and_onboarding_are_exported() {
+    let kotlin = std::fs::read_to_string(find(&generate("kotlin"), "dspi_core.kt")).unwrap();
+    for item in [
+        "fun `linkPhaseText`",
+        "fun `linkPhaseTexts`",
+        "fun `onboardingWhatsNewJson`",
+        "fun `onboardingGettingStartedJson`",
+        "data class LinkPhaseText",
+    ] {
+        assert!(kotlin.contains(item), "{item} is not in the Kotlin binding");
+    }
+    let swift = std::fs::read_to_string(find(&generate("swift"), "dspi_core.swift")).unwrap();
+    for item in [
+        "func linkPhaseText(",
+        "func linkPhaseTexts(",
+        "func onboardingWhatsNewJson(",
+        "func onboardingGettingStartedJson(",
+        "struct LinkPhaseText",
+    ] {
+        assert!(swift.contains(item), "{item} is not in the Swift binding");
     }
 }

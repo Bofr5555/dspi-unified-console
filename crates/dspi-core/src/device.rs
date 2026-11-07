@@ -36,6 +36,7 @@ use crate::{Connection, DspiCore, DspiError, Result, rta, state};
 pub(crate) const LEGACY_USB_VID: u16 = 0x2E8A;
 
 /// Whether a USB device's ids name a DSPi (current or legacy VID).
+#[cfg(any(test, all(feature = "usb", not(target_os = "android"))))]
 pub(crate) fn is_dspi(vid: u16, pid: u16) -> bool {
     pid == dspi_proto::USB_PID && (vid == dspi_proto::USB_VID || vid == LEGACY_USB_VID)
 }
@@ -303,10 +304,10 @@ impl DspiCore {
     ///
     /// Errors: [`DspiError::InvalidArgument`] for a negative or unusable
     /// `fd`; [`DspiError::Disconnected`] if it is not a DSPi; transfer
-    /// errors from the connect sequence. Linux and Android only;
-    /// [`DspiError::Unsupported`] elsewhere.
+    /// errors from the connect sequence. Linux and Android only, with the
+    /// `usb` feature; [`DspiError::Unsupported`] elsewhere.
     pub fn open_fd(&self, fd: i32, serial: String, vid: u16) -> Result<()> {
-        #[cfg(any(target_os = "linux", target_os = "android"))]
+        #[cfg(all(feature = "usb", any(target_os = "linux", target_os = "android")))]
         {
             use std::os::fd::BorrowedFd;
             if fd < 0 {
@@ -330,7 +331,7 @@ impl DspiCore {
             let transport = dspi_transport::UsbTransport::from_fd(owned, &serial)?;
             self.attach_probed(Box::new(transport), serial, vid)
         }
-        #[cfg(not(any(target_os = "linux", target_os = "android")))]
+        #[cfg(not(all(feature = "usb", any(target_os = "linux", target_os = "android"))))]
         {
             let _ = (fd, serial, vid);
             Err(DspiError::Unsupported)
@@ -348,8 +349,8 @@ impl DspiCore {
     /// Enumerate DSPis on USB (nusb): VID `2E8B` or the legacy VID, PID
     /// `FEAA`, with a readable serial, in serial order. Updates
     /// [`DspiCore::inaccessible_devices`]. Empty on Android, where apps
-    /// cannot enumerate (use `open_fd`). Never fails: an enumeration error
-    /// gives an empty list.
+    /// cannot enumerate (use `open_fd`), and in a build without the `usb`
+    /// feature (iOS). Never fails: an enumeration error gives an empty list.
     pub fn scan_devices(&self) -> Vec<DeviceInfo> {
         // The device we hold is listed without being opened a second time.
         let ours = {
@@ -392,14 +393,14 @@ impl DspiCore {
     /// Errors: [`DspiError::Disconnected`] if no DSPi with that serial is on
     /// the bus; transfer errors (no permission, busy) from opening it or from
     /// the connect sequence. [`DspiError::Unsupported`] on Android (use
-    /// [`DspiCore::open_fd`]).
+    /// [`DspiCore::open_fd`]) and in a build without the `usb` feature (iOS).
     pub fn select_device(&self, serial: String) -> Result<()> {
-        #[cfg(target_os = "android")]
+        #[cfg(any(not(feature = "usb"), target_os = "android"))]
         {
             let _ = serial;
             Err(DspiError::Unsupported)
         }
-        #[cfg(not(target_os = "android"))]
+        #[cfg(all(feature = "usb", not(target_os = "android")))]
         {
             self.lock().selected = Some(serial.clone());
             // Close first: the device may be the one we hold, and a second
@@ -472,21 +473,23 @@ impl DspiCore {
     /// so a device another program holds is listed like any other and
     /// `inaccessible_devices` is not updated. For C1b's hotplug diffs, which
     /// run every half second; [`DspiCore::scan_devices`] is the picker's
-    /// scan. Does not touch `Inner`. Empty on Android.
+    /// scan. Does not touch `Inner`. Empty on Android and without the `usb`
+    /// feature.
     pub(crate) fn scan_quiet(&self) -> Vec<DeviceInfo> {
         usb::scan_quiet()
     }
 }
 
-/// USB enumeration through nusb.
+/// USB enumeration through nusb; empty on Android and without the `usb`
+/// feature (WP CG3).
 mod usb {
     use crate::records::DeviceInfo;
-    #[cfg(not(target_os = "android"))]
+    #[cfg(all(feature = "usb", not(target_os = "android")))]
     use std::sync::atomic::{AtomicBool, Ordering};
 
     /// Every DSPi on the bus, and how many could not be opened. `ours`
     /// (the device the core holds) is listed without opening it.
-    #[cfg(target_os = "android")]
+    #[cfg(any(not(feature = "usb"), target_os = "android"))]
     pub(super) fn scan(ours: Option<&str>) -> (Vec<DeviceInfo>, u32) {
         let _ = ours;
         (Vec::new(), 0)
@@ -496,7 +499,7 @@ mod usb {
     /// (the device the core holds) is listed without opening it. A device
     /// without a serial is skipped before any open: identity is what
     /// selection and reconnection are keyed on.
-    #[cfg(not(target_os = "android"))]
+    #[cfg(all(feature = "usb", not(target_os = "android")))]
     pub(super) fn scan(ours: Option<&str>) -> (Vec<DeviceInfo>, u32) {
         let mut found = Vec::new();
         let mut inaccessible: u32 = 0;
@@ -519,7 +522,7 @@ mod usb {
 
     /// Every DSPi with a serial on the bus, by enumeration only (nothing is
     /// opened), in serial order.
-    #[cfg(not(target_os = "android"))]
+    #[cfg(all(feature = "usb", not(target_os = "android")))]
     pub(super) fn scan_quiet() -> Vec<DeviceInfo> {
         let mut found: Vec<DeviceInfo> = dspis()
             .filter_map(|d| {
@@ -533,18 +536,18 @@ mod usb {
         found
     }
 
-    /// Nothing to enumerate on Android.
-    #[cfg(target_os = "android")]
+    /// Nothing to enumerate on Android, or without the `usb` feature.
+    #[cfg(any(not(feature = "usb"), target_os = "android"))]
     pub(super) fn scan_quiet() -> Vec<DeviceInfo> {
         Vec::new()
     }
 
     /// Enumeration failed last time (see [`dspis`]).
-    #[cfg(not(target_os = "android"))]
+    #[cfg(all(feature = "usb", not(target_os = "android")))]
     static LIST_FAILING: AtomicBool = AtomicBool::new(false);
 
     /// The DSPis on the bus (empty, logged, if enumeration fails).
-    #[cfg(not(target_os = "android"))]
+    #[cfg(all(feature = "usb", not(target_os = "android")))]
     fn dspis() -> impl Iterator<Item = nusb::DeviceInfo> {
         use nusb::MaybeFuture;
         let devices = match nusb::list_devices().wait() {
@@ -570,7 +573,7 @@ mod usb {
     }
 
     /// The device's serial, if it has a non-empty one.
-    #[cfg(not(target_os = "android"))]
+    #[cfg(all(feature = "usb", not(target_os = "android")))]
     fn serial_of(d: &nusb::DeviceInfo) -> Option<String> {
         d.serial_number()
             .filter(|s| !s.is_empty())
@@ -578,7 +581,7 @@ mod usb {
     }
 
     /// The vendor id the DSPi with this serial is on the bus under.
-    #[cfg(not(target_os = "android"))]
+    #[cfg(all(feature = "usb", not(target_os = "android")))]
     pub(super) fn vendor_of(serial: &str) -> Option<u16> {
         use nusb::MaybeFuture;
         nusb::list_devices()
@@ -594,7 +597,7 @@ mod usb {
     /// missing WinUSB binding or another program's claim shows. Any failure
     /// (permission, busy, no driver, or another error) counts: the device is
     /// on the bus but cannot be used.
-    #[cfg(not(target_os = "android"))]
+    #[cfg(all(feature = "usb", not(target_os = "android")))]
     fn accessible(d: &nusb::DeviceInfo) -> bool {
         use nusb::MaybeFuture;
         match d.open().wait() {
@@ -612,7 +615,7 @@ mod usb {
     /// The old core's `location_id`: IOKit's on macOS, else
     /// `address | bus << 8` (bus 0 when the platform's bus id is not a
     /// number).
-    #[cfg(not(target_os = "android"))]
+    #[cfg(all(feature = "usb", not(target_os = "android")))]
     fn location_id(d: &nusb::DeviceInfo) -> u32 {
         #[cfg(target_os = "macos")]
         {
@@ -627,7 +630,7 @@ mod usb {
 }
 
 /// The vendor interface number, as `claim_interface` takes it.
-#[cfg(windows)]
+#[cfg(all(feature = "usb", windows))]
 const VENDOR_IFACE: u8 = {
     assert!(dspi_proto::VENDOR_INTERFACE <= u8::MAX as u16);
     dspi_proto::VENDOR_INTERFACE as u8
@@ -934,7 +937,7 @@ mod tests_wp_c1 {
         let core = DspiCore::new();
         core.open_demo().unwrap();
         let r = core.select_device("NOPE".into());
-        if cfg!(target_os = "android") {
+        if cfg!(any(target_os = "android", not(feature = "usb"))) {
             assert_eq!(r, Err(DspiError::Unsupported));
         } else {
             assert_eq!(r, Err(DspiError::Disconnected));
@@ -951,7 +954,7 @@ mod tests_wp_c1 {
         assert!(!is_dspi(0x2E8A, 0x000F));
     }
 
-    #[cfg(any(target_os = "linux", target_os = "android"))]
+    #[cfg(all(feature = "usb", any(target_os = "linux", target_os = "android")))]
     #[test]
     fn wp_c1_open_fd_refuses_bad_descriptors() {
         use std::os::fd::AsRawFd;
@@ -969,6 +972,37 @@ mod tests_wp_c1 {
         // SAFETY: `file` owns `fd` and is alive.
         let again = unsafe { std::os::fd::BorrowedFd::borrow_raw(fd) }.try_clone_to_owned();
         assert!(again.is_ok(), "the caller's fd is still open");
+    }
+
+    /// Without the `usb` feature the USB entry points stay in the API (one
+    /// binding for every platform) and report that there is no USB.
+    #[cfg(not(feature = "usb"))]
+    #[test]
+    fn wp_cg3_without_usb_the_api_stays_and_refuses() {
+        let core = DspiCore::new();
+        assert!(core.scan_devices().is_empty());
+        assert!(core.scan_quiet().is_empty());
+        assert_eq!(core.inaccessible_devices(), 0);
+        assert!(matches!(
+            core.select_device("X".into()),
+            Err(DspiError::Unsupported)
+        ));
+        assert!(matches!(
+            core.open_fd(0, "X".into(), 0x2E8B),
+            Err(DspiError::Unsupported)
+        ));
+        assert!(!core.is_connected());
+        let counts = crate::bootloader_counts();
+        assert_eq!((counts.rp2040, counts.rp2350), (0, 0));
+    }
+
+    /// The other transports do not depend on the `usb` feature.
+    #[test]
+    fn wp_cg3_demo_device_opens_with_or_without_usb() {
+        let core = DspiCore::new();
+        core.open_demo().unwrap();
+        assert!(core.is_connected());
+        core.disconnect();
     }
 
     /// A DSPi on the far side of a MIDI pipe: decodes SysEx requests,

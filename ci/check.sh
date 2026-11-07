@@ -33,6 +33,11 @@
 #                                     fork on first use
 #       deny                          cargo-deny: licences and sources, whole
 #                                     workspace (deny.toml)
+#       ios-check                     dspi-ffi without `usb`: nusb is out of the iOS
+#                                     graph, clippy and tests pass with the feature
+#                                     off, and `cargo check` for aarch64-apple-ios
+#                                     (no link: no Apple SDK here; linking is SW1
+#                                     in macvm). Fails if the image has no iOS std
 #   ci/check.sh --all                 full gate plus every optional step
 #
 # Lint level: clippy's default set, warnings denied (-D warnings), plus the
@@ -50,7 +55,7 @@ while [ $# -gt 0 ]; do
     --crate) crates+=("$2"); shift 2 ;;
     --step) steps+=("$2"); shift 2 ;;
     --all) steps=(fmt clippy test windows-gnu licences deny windows-msvc android wasm qt qt5 qt-offscreen qt5-offscreen qt-windows proptest kotlin swift); shift ;;
-    -h|--help) sed -n "2,41p" "$0"; exit 0 ;;
+    -h|--help) sed -n "2,46p" "$0"; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -101,6 +106,26 @@ for s in "${steps[@]}"; do
       deny_image=localhost/dspi-coremerge-deny:1
       podman image exists "$deny_image" || podman build -q -t "$deny_image" -f ci/container/Containerfile.deny ci/container
       DSPI_IMAGE=$deny_image $RUN "cargo deny --workspace --all-features --locked check licenses bans sources" ;;
+    ios-check)
+      # -- WP CG3 --
+      $RUN 'set -euo pipefail
+        ios="-p dspi-ffi --no-default-features --target aarch64-apple-ios --locked"
+        if cargo tree $ios -e normal --prefix none | grep -E "^nusb "; then
+          echo "ios-check: nusb is in the iOS graph" >&2; exit 1
+        fi
+        echo "ios-check: nusb is not in the iOS graph"
+        cargo clippy -p dspi-transport -p dspi-session --no-default-features --all-targets --locked -- -D warnings
+        cargo clippy -p dspi-core --no-default-features --all-targets --locked -- -D warnings
+        cargo clippy -p dspi-core --no-default-features --features uniffi,link --all-targets --locked -- -D warnings
+        cargo clippy -p dspi-ffi --no-default-features --lib --tests --locked -- -D warnings
+        cargo test -p dspi-transport -p dspi-session --no-default-features --locked
+        cargo test -p dspi-core --no-default-features --features uniffi,link --locked
+        cargo test -p dspi-ffi --no-default-features --lib --locked
+        if ! rustup target list --installed | grep -qx aarch64-apple-ios; then
+          echo "ios-check: NOT RUN: this image has no rust-std for aarch64-apple-ios (rustup target add in ci/container/Containerfile)" >&2
+          exit 3
+        fi
+        cargo check $ios --lib' ;;
     *) echo "unknown step $s" >&2; exit 2 ;;
   esac
   ok "$s"
