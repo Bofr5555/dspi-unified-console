@@ -204,7 +204,16 @@ void LinkController::connectToHub(const QString &url, const QString &expectedHub
         // Left or replaced during the dial: this session is not wanted. The next
         // call's job runs after this one.
         if (m_generation.load() != generation) {
-            if (isOk(reply)) dspi_link_close(m_core);
+            if (isOk(reply)) {
+                if (m_staleDialHook) m_staleDialHook();
+                dspi_link_close(m_core);
+                // -- WP QD8b -- That close is quiet, and an event from the session it
+                // ended may have shown its phase on the UI thread meanwhile
+                QMetaObject::invokeMethod(this, [this] {
+                    refreshStatus();
+                    refreshDevices();
+                }, Qt::QueuedConnection);
+            }
             return;
         }
         QMetaObject::invokeMethod(this, [this, generation, reply] {
@@ -295,7 +304,6 @@ void LinkController::dismissTokenWarning() {
     emit tokenWarningChanged();
 }
 
-// Reads the core's state; no traffic
 void LinkController::refreshStatus() {
     const QJsonObject status = readReply([this](char *buf, uint32_t len) { return dspi_link_status(m_core, buf, len); });
     if (!isOk(status)) return;
