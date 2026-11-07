@@ -4,15 +4,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -20,6 +22,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NamedNavArgument
@@ -47,6 +50,9 @@ import se.bofr.dspi.ui.LocalWritesAllowed
 import se.bofr.dspi.ui.WritesExempt
 import se.bofr.dspi.usb.BootloaderLocator
 
+/** Test tag of the connection strip, the top of the app. */
+internal const val CONNECTION_STRIP_TAG = "connection-strip"
+
 /**
  * macOS window/menu structure -> one NavHost (PLAN §3.3 `ui/nav/AppScaffold.kt`).
  * Every route of [DspiRoutes] maps to exactly one feature entry composable.
@@ -58,8 +64,12 @@ import se.bofr.dspi.usb.BootloaderLocator
  * Compat banner: the contract exposes it on the bridge (`compat`,
  * `compatMessage`, refreshed with `state`), HOME draws it; the app adds
  * nothing but this strip for the USB/demo states the bridge cannot know.
+ *
+ * No title bar (AN27): the strip is the top of the app, and it is what says
+ * demo mode. With no topBar the Scaffold's content padding comes from its
+ * contentWindowInsets alone, so those keep the strip off the status bar. Screens
+ * handle no insets themselves, so the same padding keeps them off a landscape cutout.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppScaffold(
     bridge: DspiBridge,
@@ -72,9 +82,8 @@ fun AppScaffold(
     onConnectNetwork: () -> Unit = {},
     overlay: @Composable () -> Unit = {}
 ) {
-    Scaffold(
-        topBar = { TopAppBar(title = { Text(if (strip is ConnectionStrip.Demo) "DSPi — Demo (no device)" else "DSPi") }) }
-    ) { padding ->
+    // The IME stays out, as with the Scaffold's default insets
+    Scaffold(contentWindowInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout)) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             ConnectionStripBar(strip, onEnterDemo, onExitDemo, onRequestPermission, onRemoteAction, onConnectNetwork)
             key(bridge) { DspiNavHost(bridge, bootloaderLocator, remote = strip is ConnectionStrip.Remote) }
@@ -147,6 +156,7 @@ private fun ConnectionStripBar(
     val colors = MaterialTheme.colorScheme
     Row(
         Modifier
+            .testTag(CONNECTION_STRIP_TAG)
             .fillMaxWidth()
             .background(if (demo) colors.tertiaryContainer else colors.surfaceVariant)
             .padding(horizontal = 16.dp, vertical = 4.dp),

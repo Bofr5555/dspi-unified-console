@@ -65,8 +65,17 @@ android {
     }
     // JVM tests touch android.util.Log / android.os only through code paths
     // they don't assert on; the stubs return defaults instead of throwing.
-    testOptions { unitTests.isReturnDefaultValues = true }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+        // AN27: Robolectric reads the merged manifest and resources
+        unitTests.isIncludeAndroidResources = true
+    }
 }
+
+// AN27: the Android runtime Robolectric runs on. Left to itself it downloads this at
+// test time, past dependency verification, so Gradle resolves it (checksum-pinned)
+// and Robolectric stays offline.
+val robolectricRuntime: Configuration by configurations.creating
 
 dependencies {
     implementation(project(":bridge"))
@@ -93,6 +102,20 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
 
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
+    testImplementation(libs.robolectric)
+    // Declares the Activity createComposeRule() starts; debug builds only
+    debugImplementation(platform(libs.compose.bom))
+    debugImplementation(libs.compose.ui.test.manifest)
+    robolectricRuntime(libs.robolectric.android.all)
+}
+
+tasks.withType<Test>().configureEach {
+    val runtime = robolectricRuntime
+    inputs.files(runtime)
+    systemProperty("robolectric.offline", "true")
+    doFirst { systemProperty("robolectric.dependency.dir", runtime.singleFile.parentFile.path) }
 }
 
 // Fail early and clearly instead of producing an unsigned / wrongly signed release.
