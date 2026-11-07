@@ -149,6 +149,12 @@ void SmokeDriver::run() {
     // -- WP QD17 --
     testShownInputCount();
     testIdleAndCost();
+    // -- WP QD16 -- After the idle pass: its own checks leave nothing on offer
+#ifdef DSPI_UPDATE_CHECK
+    testUpdates();
+#else
+    testNoUpdates();
+#endif
     // -- WP QD12 -- Last: an accepted close takes the window's surface away
     testTray();
     m_failures += g_qmlErrors;
@@ -1386,4 +1392,17 @@ Item {
     check("CG20: and a control's", r.value("clipOnButton").toString() == "Clear Clipping");
     check("CG20: a plain one", r.value("volume").toString() == "Volume");
     check("CG20: one the device lacks", r.value("unknownNoun").toString() == "Parameter 250");
+}
+
+// -- WP QD16 -- A build with DSPI_UPDATE_CHECK=OFF (distro packages): no updater,
+// no Updates page
+void SmokeDriver::testNoUpdates() {
+    section("app updates left out (QD16)");
+    check("QD16: off: no updater", !m_.engine->rootContext()->contextProperty(QStringLiteral("appUpdater")).isValid());
+    QQuickWindow *settings = nullptr;
+    for (QQuickWindow *w : root()->findChildren<QQuickWindow *>())
+        if (w->property("currentPage").isValid() && w->metaObject()->indexOfMethod("navigate(QVariant)") >= 0) settings = w;
+    QVariant offered = true;
+    if (settings) QMetaObject::invokeMethod(settings, "featureAvailable", Q_RETURN_ARG(QVariant, offered), Q_ARG(QVariant, QStringLiteral("updates")));
+    check("QD16: off: no Updates page", settings && !offered.toBool());
 }

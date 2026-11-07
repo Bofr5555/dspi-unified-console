@@ -97,6 +97,15 @@ set(DSPI_APP_SOURCES
     src/HubController.cpp
     resources.qrc
 )
+# -- WP QD16 -- The check for a newer release (src/AppUpdater.cpp). Distro packages
+# update the app themselves: they build with -DDSPI_UPDATE_CHECK=OFF, which leaves
+# it out, page and all. The feed is a GitHub release list; empty until the owner
+# publishes one (OD1), and then the app says it has none and never checks.
+option(DSPI_UPDATE_CHECK "Build the opt-in check for a newer release (off for distro packages)" ON)
+set(DSPI_UPDATE_FEED_URL "" CACHE STRING "Release list the update check asks (GitHub releases API URL)")
+if(DSPI_UPDATE_CHECK)
+    list(APPEND DSPI_APP_SOURCES src/AppUpdater.cpp)
+endif()
 add_executable(DSPiConsole ${DSPI_APP_SOURCES})
 
 # The app with its offscreen test driver (ci/check.sh --step qt-offscreen).
@@ -105,6 +114,11 @@ if(DSPI_SMOKE)
     add_executable(DSPiConsoleSmoke ${DSPI_APP_SOURCES} smoke/SmokeDriver.cpp smoke/SmokeDriverHw.cpp smoke/SmokeDriverReplug.cpp smoke/SmokeDriverSeam.cpp smoke/SmokeDriverExt.cpp smoke/SmokeDriverNames.cpp smoke/SmokeDriverLatency.cpp smoke/SmokeDriverLink.cpp smoke/SmokeDriverLinkFault.cpp smoke/LinkFakeHub.h smoke/SmokeDriverReadOnly.cpp smoke/SmokeDriverDemo.cpp smoke/SmokeDriverRing.cpp smoke/SmokeDriverPoll.cpp smoke/SmokeDriverSaveBar.cpp smoke/SmokeDriverAbout.cpp smoke/SmokeDriverOnboarding.cpp smoke/SmokeDriverAutoEq.cpp smoke/SmokeDriverHostAudio.cpp smoke/SmokeDriverTray.cpp smoke/SmokeDriverFirmware.cpp smoke/SmokeDriverHub.cpp smoke/SmokeDriverVreg.cpp smoke/SmokeDriverShortcuts.cpp smoke/SmokeDriverRtaFollow.cpp smoke/SmokeDriverNetworking.cpp smoke/SmokeDriver.h smoke/smoke.qrc)
     target_include_directories(DSPiConsoleSmoke PRIVATE ${DSPI_CORE_DIR}/include src/ smoke/)
     target_compile_definitions(DSPiConsoleSmoke PRIVATE DSPI_SMOKE)
+    # -- WP QD16 --
+    if(DSPI_UPDATE_CHECK)
+        target_sources(DSPiConsoleSmoke PRIVATE smoke/SmokeDriverUpdates.cpp)
+        target_compile_definitions(DSPiConsoleSmoke PRIVATE DSPI_UPDATE_CHECK DSPI_UPDATE_FEED_URL="${DSPI_UPDATE_FEED_URL}")
+    endif()
     target_link_libraries(DSPiConsoleSmoke PRIVATE
         Qt::Core Qt::Gui Qt::Widgets Qt::Quick Qt::QuickControls2 Qt::Qml Qt::Network Qt::DBus
         ${DSPI_CORE_LIBDIR}/lib${DSPI_CORE_LIB}.a pthread dl m asound)
@@ -118,6 +132,10 @@ target_include_directories(DSPiConsole PRIVATE
 target_link_libraries(DSPiConsole PRIVATE
     Qt::Core Qt::Gui Qt::Widgets Qt::Quick Qt::QuickControls2 Qt::Qml Qt::Network
 )
+# -- WP QD16 --
+if(DSPI_UPDATE_CHECK)
+    target_compile_definitions(DSPiConsole PRIVATE DSPI_UPDATE_CHECK DSPI_UPDATE_FEED_URL="${DSPI_UPDATE_FEED_URL}")
+endif()
 
 if(WIN32)
     # A GUI app (no console window), with an icon and version information

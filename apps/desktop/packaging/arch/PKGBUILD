@@ -28,7 +28,8 @@ build() {
     cd "$pkgname"
     export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
     cargo build --frozen --release -p dspi-capi --features link,midir,mdns,hub
-    cmake -S qt -B build -DCMAKE_BUILD_TYPE=None -DCMAKE_INSTALL_PREFIX=/usr
+    # -- WP QD16 -- pacman updates the app: no check for releases of our own
+    cmake -S qt -B build -DCMAKE_BUILD_TYPE=None -DCMAKE_INSTALL_PREFIX=/usr -DDSPI_UPDATE_CHECK=OFF
     cmake --build build
 }
 
