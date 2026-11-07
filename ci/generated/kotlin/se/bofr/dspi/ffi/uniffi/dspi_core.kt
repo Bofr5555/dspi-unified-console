@@ -2564,7 +2564,7 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 }
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
-    if (lib.uniffi_dspi_core_checksum_func_about_json() != 49109.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_func_about_json() != 52111.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_autoeq_database_info() != 16465.toShort()) {
@@ -19402,7 +19402,8 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     }
 }
         /**
-         * The About table as a JSON document, wording still a draft (`draft`):
+         * The About table as a JSON document. `draft` is true until the owner approves
+         * the wording:
          * `{draft, credit_lines: [{id, text}], makers: [{id, name, url, made}],
          * links: [{id, title, detail, url}], credits: [{id, name, what, url?}]}`.
          * `id`s are stable keys, as above. Show it as it is; it holds no legal text.

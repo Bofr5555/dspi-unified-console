@@ -2684,7 +2684,8 @@ interface DspiCoreApi : AutoCloseable {
     fun onboardingGettingStartedJson(): String
 
     /**
-     * The About table as a JSON document, wording still a draft (`draft`):
+     * The About table as a JSON document. `draft` is true until the owner approves
+     * the wording:
      * `{draft, credit_lines: [{id, text}], makers: [{id, name, url, made}],
      * links: [{id, title, detail, url}], credits: [{id, name, what, url?}]}`.
      * `id`s are stable keys, as above. Show it as it is; it holds no legal text.
