@@ -1,0 +1,8 @@
+• Your DSPi asks for USB access once, not at every plug-in.
+• Channel graphs show the spectrum below 200 Hz on every channel.
+• A Tools menu on Home; each tool opens its own page.
+• No title bar, more room for controls.
+• Demo mode runs on the real engine, with the analyser and signal generator.
+• DSPi Link follows network changes and finds a hub that moved.
+• About credits everyone who made the app.
+• Graph labels no longer overlap; analyser buttons fit.

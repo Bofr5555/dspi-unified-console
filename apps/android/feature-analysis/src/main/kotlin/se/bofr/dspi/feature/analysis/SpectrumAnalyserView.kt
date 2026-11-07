@@ -282,15 +282,29 @@ private fun SpectrumHeader(
 ) {
     val sel = state.selection
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SegmentedPicker(
-                options = listOf(DspiConstants.RTA_TAP_INPUT, DspiConstants.RTA_TAP_OUTPUT),
-                selected = sel.tap,
-                label = { if (it == DspiConstants.RTA_TAP_INPUT) "Inputs" else "Outputs" },
-                onSelect = onSide,
-                modifier = Modifier.weight(1f)
-            )
-            SegmentedPicker(RtaDisplayMode.entries, state.mode, { it.label }, onMode, Modifier.weight(1f))
+        // AN32: side by side, five segments clip ("Curves" showed as "Curve" on a phone); one row each below 600 dp
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val sidePicker = @Composable { m: Modifier ->
+                SegmentedPicker(
+                    options = listOf(DspiConstants.RTA_TAP_INPUT, DspiConstants.RTA_TAP_OUTPUT),
+                    selected = sel.tap,
+                    label = { if (it == DspiConstants.RTA_TAP_INPUT) "Inputs" else "Outputs" },
+                    onSelect = onSide,
+                    modifier = m
+                )
+            }
+            val modePicker = @Composable { m: Modifier -> SegmentedPicker(RtaDisplayMode.entries, state.mode, { it.label }, onMode, m) }
+            if (maxWidth < 600.dp) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    sidePicker(Modifier.fillMaxWidth())
+                    modePicker(Modifier.fillMaxWidth())
+                }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    sidePicker(Modifier.weight(1f))
+                    modePicker(Modifier.weight(1f))
+                }
+            }
         }
         // The channels at this side: tap to analyse or drop one (the curves' legend too)
         Row(
