@@ -166,6 +166,26 @@ class ControlSurfacesDemoAn12Test {
         pump("page: $until") { exists(until) }
     }
 
+    /**
+     * Tap Apply once the open editor is settled: dirty and not working (a change
+     * marks the draft dirty before its describe round trip ends, and Apply is off
+     * until then), and the button drawn enabled. A tap before that is dropped by
+     * design (review c4f finding 1).
+     */
+    private fun tapApply(ready: () -> Boolean) {
+        pump("editor settled") { ready() }
+        pump("Apply enabled") { rule.onAllNodes(hasTestTag("cs.apply") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag("cs.apply").performClick()
+    }
+
+    private fun groupReady(g: Int): () -> Boolean = {
+        CsRecordDrafts.of(bridge).openGroup(g)?.state?.value?.let { it.dirty && !it.working } == true
+    }
+
+    private fun macroReady(m: Int): () -> Boolean = {
+        CsRecordDrafts.of(bridge).openMacro(m)?.state?.value?.let { it.dirty && !it.working } == true
+    }
+
     private fun click(tag: String) {
         scrollTo("cs.editor", tag)
         rule.onNodeWithTag(tag).performClick()
@@ -184,7 +204,7 @@ class ControlSurfacesDemoAn12Test {
         click(rowTag("member.2"))
         pump("draft has the member") { CsRecordDrafts.of(bridge).isGroupDirty(0) }
         assertEquals(before, model().groups[0])
-        rule.onNodeWithTag("cs.apply").performClick()
+        tapApply(groupReady(0))
         pump("applied") {
             check(!exists("cs.error")) { CsRecordDrafts.of(bridge).openGroup(0)?.state?.value.toString() }
             model().groups[0].memberMask == before.memberMask or 0b100
@@ -203,7 +223,7 @@ class ControlSurfacesDemoAn12Test {
         rule.onNodeWithTag("cs.apply").assert(isEnabled().not())
         click(rowTag("member.0"))
         pump("a member: Apply allowed") { !exists(rowTag("noMembers")) }
-        rule.onNodeWithTag("cs.apply").performClick()
+        tapApply(groupReady(1))
         pump("applied") { model().groups[1].configured }
         assertEquals("Group 2", model().groups[1].name)
         assertEquals(1L, model().groups[1].memberMask)
@@ -228,7 +248,7 @@ class ControlSurfacesDemoAn12Test {
         click(rowTag("member.3"))
         pump("dirty") { CsRecordDrafts.of(bridge).isGroupDirty(0) }
         executor.submit { ffiCore.csDemoBusy(true) }.get()
-        rule.onNodeWithTag("cs.apply").performClick()
+        tapApply(groupReady(0))
         pump("refusal shown") { exists("cs.error") }
         assertEquals(0b0011L, model().groups[0].memberMask)
         assertTrue("the draft is kept", CsRecordDrafts.of(bridge).isGroupDirty(0))
@@ -281,7 +301,7 @@ class ControlSurfacesDemoAn12Test {
         pump("dirty") { CsRecordDrafts.of(bridge).isMacroDirty(0) }
         assertEquals("nothing sent before Apply", before, macroNouns(0))
         val delayBefore = raw().list("macros")!!.let { (it[0] as Map<*, *>)["steps"] as List<*> }.map { (it as Map<*, *>)["preDelay"] }
-        rule.onNodeWithTag("cs.apply").performClick()
+        tapApply(macroReady(0))
         pump("applied") { macroNouns(0) == before.reversed() }
         val delayAfter = raw().list("macros")!!.let { (it[0] as Map<*, *>)["steps"] as List<*> }.map { (it as Map<*, *>)["preDelay"] }
         assertEquals("the delays moved with their steps", delayBefore.reversed(), delayAfter)
@@ -300,7 +320,7 @@ class ControlSurfacesDemoAn12Test {
         pump("delay in the draft") { (Json.parseObject(editor.state.value.draft.steps[2])?.int("preDelay") ?: 0) > 0 }
         rule.onNodeWithTag("cs.step.done").performClick()
         pump("macro page") { exists(stepTag(2)) }
-        rule.onNodeWithTag("cs.apply").performClick()
+        tapApply(macroReady(0))
         pump("three steps") { model().macros[0].steps.size == 3 }
         assertNotEquals(0, model().macros[0].steps[2].preDelay)
     }
@@ -311,7 +331,7 @@ class ControlSurfacesDemoAn12Test {
         open("cs.macro.0", stepTag(1))
         rule.onNodeWithTag("${stepTag(0)}.remove").performClick()
         pump("one step left") { !exists(stepTag(1)) }
-        rule.onNodeWithTag("cs.apply").performClick()
+        tapApply(macroReady(0))
         pump("applied") { model().macros[0].steps.size == 1 }
         click("cs.remove")
         pump("asks") { hasNodeText("cleared on the device") }
@@ -330,7 +350,7 @@ class ControlSurfacesDemoAn12Test {
         pump("step page") { exists(rowTag("preDelay")) }
         rule.onNodeWithTag("cs.step.done").performClick()
         pump("macro page") { exists(stepTag(0)) }
-        rule.onNodeWithTag("cs.apply").performClick()
+        tapApply(macroReady(1))
         pump("applied") { model().macros[1].configured && model().macros[1].steps.size == 1 }
         assertEquals("Macro 2", model().macros[1].name)
     }
