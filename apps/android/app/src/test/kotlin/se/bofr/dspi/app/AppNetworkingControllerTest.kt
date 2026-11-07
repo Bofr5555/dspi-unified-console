@@ -28,6 +28,7 @@ class AppNetworkingControllerTest {
         when (m.name) {
             "hashCode" -> System.identityHashCode(p)
             "equals" -> p === a!![0]
+            "getConnected" -> false // WP AN7: the switch gate asks; nothing unsaved
             else -> null
         }
     } as DspiBridge

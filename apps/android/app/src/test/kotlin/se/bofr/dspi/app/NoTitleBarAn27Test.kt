@@ -56,7 +56,7 @@ class NoTitleBarAn27Test {
         lateinit var view: View
         rule.setContent {
             view = LocalView.current
-            AppScaffold(bridge, strip, onEnterDemo = {}, onExitDemo = {}, onRequestPermission = {})
+            AppScaffold(bridge, strip, onExitDemo = {}, onRequestPermission = {})
         }
         rule.runOnUiThread { ViewCompat.dispatchApplyWindowInsets(view, insets) }
         // Past the NavHost's opening crossfade
@@ -88,7 +88,7 @@ class NoTitleBarAn27Test {
 
     @Test
     fun homeStartsAtTheStripDirectlyBelowTheStatusBar() {
-        show(ConnectionStrip.NoDevice(demoAvailable = true), insets(status = Insets.of(0, 48, 0, 0), nav = Insets.of(0, 0, 0, 24)))
+        show(ConnectionStrip.NoDevice, insets(status = Insets.of(0, 48, 0, 0), nav = Insets.of(0, 0, 0, 24)))
         val strip = stripBounds()
         assertEquals("no bar above the strip, and the strip clears the status bar", 48f, strip.top, 0f)
         assertEquals(0f, strip.left, 0f)
@@ -108,9 +108,10 @@ class NoTitleBarAn27Test {
     }
 
     @Test
-    fun withNoStripTheScreenItselfClearsTheStatusBar() {
-        show(ConnectionStrip.Hidden, insets(status = Insets.of(0, 48, 0, 0)))
-        rule.onNodeWithTag(CONNECTION_STRIP_TAG, useUnmergedTree = true).assertDoesNotExist()
+    fun withAnOpenUsbDspiTheSlimStripClearsTheStatusBar() {
+        // WP AN7: the strip stays with a DSPi open; it holds the device list
+        show(ConnectionStrip.Usb, insets(status = Insets.of(0, 48, 0, 0)))
+        assertEquals(48f, stripBounds().top, 0f)
         assertTrue("first text below the status bar", textEdges().first >= 48f)
     }
 

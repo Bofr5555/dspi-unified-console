@@ -109,10 +109,11 @@ class AppNetworkingController(
 
     override fun connect(hubId: String) {
         if (!settings.settings.value.enabled) return
-        hubs.value.firstOrNull { it.id == hubId }?.let { modes.enterRemote(it) }
+        // -- WP AN7 -- a user's switch: the Unsaved Changes flow first
+        hubs.value.firstOrNull { it.id == hubId }?.let { modes.switchTo(DeviceChoice.Hub(it)) }
     }
 
-    override fun disconnect() = modes.exitRemote()
+    override fun disconnect() = modes.switchTo(DeviceChoice.Usb) // -- WP AN7 --
 
     override fun isValidAddress(text: String): Boolean = parseAddress(text) != null
 

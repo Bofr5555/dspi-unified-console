@@ -3,6 +3,7 @@ package se.bofr.dspi.app
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.LinkPhase
 import se.bofr.dspi.core.LinkPhaseText
+import se.bofr.dspi.link.LinkHub
 import se.bofr.dspi.link.LinkSessionState
 import se.bofr.dspi.usb.UsbSessionState
 
@@ -10,16 +11,16 @@ import se.bofr.dspi.usb.UsbSessionState
 sealed interface ConnectionStrip {
     val text: String
 
-    /** Open device: the strip is hidden (HOME shows the connection and the compat banner). */
-    data object Hidden : ConnectionStrip {
-        override val text = ""
+    /**
+     * WP AN7: the USB DSPi is open. HOME shows the connection and the compat banner; the
+     * strip stays, slim, because it holds the device list (demo and DSPi Link with a DSPi attached).
+     */
+    data object Usb : ConnectionStrip {
+        override val text = "DSPi on USB"
     }
 
-    /**
-     * No DSPi attached; [demoAvailable] adds the "Demo (no device)" action,
-     * [networkAvailable] (DSPi Link on) "Connect over network".
-     */
-    data class NoDevice(val demoAvailable: Boolean, val networkAvailable: Boolean = false) : ConnectionStrip {
+    /** No DSPi attached; demo and DSPi Link are in the device list ([deviceList]). */
+    data object NoDevice : ConnectionStrip {
         override val text = "No DSPi connected. Plug one in over USB."
     }
 
@@ -87,24 +88,71 @@ const val FIXED_PIN = "fixed"
 fun connectionStrip(
     mode: AppMode,
     state: UsbSessionState,
-    demoAvailable: Boolean,
     remote: LinkSessionState = LinkSessionState.Idle,
-    networkAvailable: Boolean = false,
     lockNotice: Boolean = false,
     wording: LinkWording = LinkWording.CORE
 ): ConnectionStrip = when {
     mode == AppMode.DEMO -> ConnectionStrip.Demo
     mode == AppMode.REMOTE -> remoteStrip(remote, lockNotice, wording)
     else -> when (state) {
-        UsbSessionState.NoDevice -> ConnectionStrip.NoDevice(demoAvailable, networkAvailable)
+        UsbSessionState.NoDevice -> ConnectionStrip.NoDevice
         is UsbSessionState.PermissionRequired ->
             ConnectionStrip.NeedsPermission("A DSPi is connected. Allow USB access to use it. $USB_ALWAYS_OPEN_HINT")
         is UsbSessionState.PermissionDenied -> ConnectionStrip.NeedsPermission("USB access to the DSPi was denied.")
         // queued prompts are shown by the session as soon as a UI is visible: no second request
         is UsbSessionState.PermissionPending -> ConnectionStrip.Info("Waiting for USB permission… $USB_ALWAYS_OPEN_HINT")
         is UsbSessionState.Failed -> ConnectionStrip.Info("Could not open the DSPi: ${state.reason}")
-        is UsbSessionState.Open -> ConnectionStrip.Hidden
+        is UsbSessionState.Open -> ConnectionStrip.Usb
     }
+}
+
+// -- WP AN7 --
+/** One way to a DSPi in the strip's device list (M10). */
+sealed interface DeviceChoice {
+    /** The DSPi on this phone's USB (AppMode.DEVICE). */
+    data object Usb : DeviceChoice
+
+    /** A hub on the network (DSPi Link). */
+    data class Hub(val hub: LinkHub) : DeviceChoice
+
+    /** Opens the Networking dialog to find or type a hub; not a switch by itself. */
+    data object Network : DeviceChoice
+
+    /** The core's demo device, offered with or without a DSPi attached. */
+    data object Demo : DeviceChoice
+}
+
+data class DeviceRow(val choice: DeviceChoice, val label: String, val current: Boolean = false, val enabled: Boolean = true)
+
+/** Whether [remote] is on [hub]: by id, or by address for a typed hub (as Settings › Networking marks it). */
+fun onHub(remote: LinkSessionState, hub: LinkHub): Boolean = remote != LinkSessionState.Idle &&
+    remote.hub?.let { it.id == hub.id || (hub.isManual && it.host == hub.host && it.port == hub.port) } == true
+
+/**
+ * USB, DSPi Link and demo in one list, the current one marked. [hubs] are the hubs
+ * Networking knows (browsed and typed); they and "DSPi Link…" are listed only while
+ * DSPi Link is on ([linkEnabled]). USB with no DSPi on the bus is listed, but disabled.
+ */
+fun deviceList(
+    mode: AppMode,
+    usb: UsbSessionState,
+    remote: LinkSessionState = LinkSessionState.Idle,
+    hubs: List<LinkHub> = emptyList(),
+    linkEnabled: Boolean = false
+): List<DeviceRow> = buildList {
+    val usbLabel = when (usb) {
+        UsbSessionState.NoDevice -> "USB: no DSPi connected"
+        is UsbSessionState.Open -> "DSPi on USB"
+        else -> "DSPi on USB (not open)"
+    }
+    add(DeviceRow(DeviceChoice.Usb, usbLabel, current = mode == AppMode.DEVICE, enabled = usb != UsbSessionState.NoDevice))
+    if (linkEnabled) {
+        hubs.forEach { h ->
+            add(DeviceRow(DeviceChoice.Hub(h), "${h.name} (network)", current = mode == AppMode.REMOTE && onHub(remote, h)))
+        }
+        add(DeviceRow(DeviceChoice.Network, "DSPi Link…"))
+    }
+    add(DeviceRow(DeviceChoice.Demo, "Demo (no device)", current = mode == AppMode.DEMO))
 }
 
 /**
