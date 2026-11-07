@@ -354,6 +354,12 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun rawSet(opcode: Int, value: Int, data: List<Int>): Unit = throw NotImplementedError("raw_set")
 
+    override fun notifyTapSet(enabled: Boolean): Unit = throw NotImplementedError("notify_tap_set")
+
+    override fun notifyTapDrain(): List<RawNotification> = throw NotImplementedError("notify_tap_drain")
+
+    override fun connectionGeneration(): Long = throw NotImplementedError("connection_generation")
+
     override fun rtaSetListener(listener: RtaListener?): Unit = throw NotImplementedError("rta_set_listener")
 
     override fun rtaStart(): Unit = throw NotImplementedError("rta_start")

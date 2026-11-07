@@ -272,6 +272,27 @@ typedef void (*UniffiCallbackInterfaceDeviceEventsMethod1)(uint64_t, RustBuffer,
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_TRANSPORT_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_TRANSPORT_METHOD0
+typedef void (*UniffiCallbackInterfaceHostTransportMethod0)(uint64_t, uint8_t, uint16_t, uint16_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_TRANSPORT_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_TRANSPORT_METHOD1
+typedef void (*UniffiCallbackInterfaceHostTransportMethod1)(uint64_t, uint8_t, uint16_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_TRANSPORT_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_TRANSPORT_METHOD2
+typedef void (*UniffiCallbackInterfaceHostTransportMethod2)(uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LINK_LISTENER_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LINK_LISTENER_METHOD0
 typedef void (*UniffiCallbackInterfaceLinkListenerMethod0)(uint64_t, void* _Nonnull, 
@@ -336,6 +357,16 @@ typedef struct UniffiVTableCallbackInterfaceDeviceEvents {
     UniffiCallbackInterfaceDeviceEventsMethod1 _Nonnull onDeparted;
     UniffiCallbackInterfaceFree _Nonnull uniffiFree;
 } UniffiVTableCallbackInterfaceDeviceEvents;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_HOST_TRANSPORT
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_HOST_TRANSPORT
+typedef struct UniffiVTableCallbackInterfaceHostTransport {
+    UniffiCallbackInterfaceHostTransportMethod0 _Nonnull controlIn;
+    UniffiCallbackInterfaceHostTransportMethod1 _Nonnull controlOut;
+    UniffiCallbackInterfaceHostTransportMethod2 _Nonnull kind;
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+} UniffiVTableCallbackInterfaceHostTransport;
 
 #endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LINK_LISTENER
@@ -497,6 +528,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_config_export(void*_Nonnull ptr, 
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONFIG_IMPORT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONFIG_IMPORT
 RustBuffer uniffi_dspi_core_fn_method_dspicore_config_import(void*_Nonnull ptr, RustBuffer text, uint32_t options, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONNECTION_GENERATION
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONNECTION_GENERATION
+uint64_t uniffi_dspi_core_fn_method_dspicore_connection_generation(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_COPY_PRESET
@@ -874,6 +910,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_get_preset_name(void*_Nonnull ptr
 RustBuffer uniffi_dspi_core_fn_method_dspicore_get_state(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HOST_NOTIFY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HOST_NOTIFY
+void uniffi_dspi_core_fn_method_dspicore_host_notify(void*_Nonnull ptr, RustBuffer packet, RustBuffer origin, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INACCESSIBLE_DEVICES
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INACCESSIBLE_DEVICES
 uint32_t uniffi_dspi_core_fn_method_dspicore_inaccessible_devices(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -949,6 +990,16 @@ void uniffi_dspi_core_fn_method_dspicore_monitor_clear(void*_Nonnull ptr, RustCa
 RustBuffer uniffi_dspi_core_fn_method_dspicore_monitor_read(void*_Nonnull ptr, uint64_t after_id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_NOTIFY_TAP_DRAIN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_NOTIFY_TAP_DRAIN
+RustBuffer uniffi_dspi_core_fn_method_dspicore_notify_tap_drain(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_NOTIFY_TAP_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_NOTIFY_TAP_SET
+void uniffi_dspi_core_fn_method_dspicore_notify_tap_set(void*_Nonnull ptr, int8_t enabled, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_DEMO
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_DEMO
 void uniffi_dspi_core_fn_method_dspicore_open_demo(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -957,6 +1008,11 @@ void uniffi_dspi_core_fn_method_dspicore_open_demo(void*_Nonnull ptr, RustCallSt
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_FD
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_FD
 void uniffi_dspi_core_fn_method_dspicore_open_fd(void*_Nonnull ptr, int32_t fd, RustBuffer serial, uint16_t vid, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_HOST
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_HOST
+void uniffi_dspi_core_fn_method_dspicore_open_host(void*_Nonnull ptr, void*_Nonnull transport, RustBuffer serial, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_MIDI
@@ -1482,6 +1538,36 @@ void uniffi_dspi_core_fn_method_dspicore_test_dac_mute(void*_Nonnull ptr, RustCa
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_WIRE_FEATURES
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_WIRE_FEATURES
 uint32_t uniffi_dspi_core_fn_method_dspicore_wire_features(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_HOSTTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_HOSTTRANSPORT
+void*_Nonnull uniffi_dspi_core_fn_clone_hosttransport(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FREE_HOSTTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FREE_HOSTTRANSPORT
+void uniffi_dspi_core_fn_free_hosttransport(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_INIT_CALLBACK_VTABLE_HOSTTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_INIT_CALLBACK_VTABLE_HOSTTRANSPORT
+void uniffi_dspi_core_fn_init_callback_vtable_hosttransport(const UniffiVTableCallbackInterfaceHostTransport* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_HOSTTRANSPORT_CONTROL_IN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_HOSTTRANSPORT_CONTROL_IN
+RustBuffer uniffi_dspi_core_fn_method_hosttransport_control_in(void*_Nonnull ptr, uint8_t opcode, uint16_t value, uint16_t len, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_HOSTTRANSPORT_CONTROL_OUT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_HOSTTRANSPORT_CONTROL_OUT
+void uniffi_dspi_core_fn_method_hosttransport_control_out(void*_Nonnull ptr, uint8_t opcode, uint16_t value, RustBuffer data, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_HOSTTRANSPORT_KIND
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_HOSTTRANSPORT_KIND
+RustBuffer uniffi_dspi_core_fn_method_hosttransport_kind(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_LINKLISTENER
@@ -2306,6 +2392,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_config_import(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONNECTION_GENERATION
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONNECTION_GENERATION
+uint16_t uniffi_dspi_core_checksum_method_dspicore_connection_generation(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_COPY_PRESET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_COPY_PRESET
 uint16_t uniffi_dspi_core_checksum_method_dspicore_copy_preset(void
@@ -2756,6 +2848,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_get_state(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HOST_NOTIFY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HOST_NOTIFY
+uint16_t uniffi_dspi_core_checksum_method_dspicore_host_notify(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_INACCESSIBLE_DEVICES
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_INACCESSIBLE_DEVICES
 uint16_t uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices(void
@@ -2846,6 +2944,18 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_monitor_read(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_NOTIFY_TAP_DRAIN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_NOTIFY_TAP_DRAIN
+uint16_t uniffi_dspi_core_checksum_method_dspicore_notify_tap_drain(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_NOTIFY_TAP_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_NOTIFY_TAP_SET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_notify_tap_set(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_DEMO
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_DEMO
 uint16_t uniffi_dspi_core_checksum_method_dspicore_open_demo(void
@@ -2855,6 +2965,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_open_demo(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_FD
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_FD
 uint16_t uniffi_dspi_core_checksum_method_dspicore_open_fd(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_HOST
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_HOST
+uint16_t uniffi_dspi_core_checksum_method_dspicore_open_host(void
     
 );
 #endif
@@ -3485,6 +3601,24 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_test_dac_mute(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_WIRE_FEATURES
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_WIRE_FEATURES
 uint16_t uniffi_dspi_core_checksum_method_dspicore_wire_features(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HOSTTRANSPORT_CONTROL_IN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HOSTTRANSPORT_CONTROL_IN
+uint16_t uniffi_dspi_core_checksum_method_hosttransport_control_in(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HOSTTRANSPORT_CONTROL_OUT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HOSTTRANSPORT_CONTROL_OUT
+uint16_t uniffi_dspi_core_checksum_method_hosttransport_control_out(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HOSTTRANSPORT_KIND
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HOSTTRANSPORT_KIND
+uint16_t uniffi_dspi_core_checksum_method_hosttransport_kind(void
     
 );
 #endif

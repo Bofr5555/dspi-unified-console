@@ -4871,6 +4871,28 @@ uint32_t dspi_fetch_output_fills(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_fetch_stats_tick(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * Start (true) or stop the raw notification tap. Off by default; stopping
+ * forgets what it held.
+ */
+void dspi_notify_tap_set(struct FfiCore *core, bool enabled);
+
+/**
+ * The notifications the tap kept since the last drain, oldest first: JSON
+ * {ok, value: [{packet: [bytes], origin: session id or null, own, lost,
+ * receivedMs}]}. Returns the length needed. **Drains**, like the
+ * device-changing text functions: a reply too long for `buf` is not
+ * written and its entries are gone, so the next entry kept has `lost` set.
+ * A full ring (512 entries) fits in 256 KiB.
+ */
+uint32_t dspi_notify_tap_drain(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The open connection's generation: unique per connection, never reused
+ * while the process runs. 0 when nothing is open.
+ */
+uint64_t dspi_connection_generation(struct FfiCore *core);
+
+/**
  * Check a `.uf2` image: JSON {ok, valid, problem, familyId, platform,
  * numBlocks, payloadBytes, firmwareVersion}. `valid` is false for a null or
  * malformed image. Returns the length needed.

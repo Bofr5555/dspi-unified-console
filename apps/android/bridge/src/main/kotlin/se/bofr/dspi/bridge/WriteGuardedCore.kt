@@ -752,6 +752,10 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "maxDelayMs",
             "monitorClear",
             "monitorRead",
+            // -- WP CG23 -- The tap and the generation: local state, no device I/O.
+            "notifyTapSet",
+            "notifyTapDrain",
+            "connectionGeneration",
             "openFd",
             "pollHotplug",
             "preampMaxDb",

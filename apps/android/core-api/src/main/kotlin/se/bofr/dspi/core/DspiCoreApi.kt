@@ -2143,6 +2143,29 @@ interface DspiCoreApi : AutoCloseable {
     fun rawSet(opcode: Int, value: Int, data: List<Int>)
 
     /**
+     * Start or stop the notification tap. While on, every notification
+     * [`process_notifications`](Self::process_notifications) drains is also
+     * kept for [`notify_tap_drain`](Self::notify_tap_drain), in the order
+     * the mirror applied them. Off by default; turning it off forgets what
+     * it held. Never fails.
+     */
+    fun notifyTapSet(enabled: Boolean)
+
+    /**
+     * The notifications kept since the last drain, oldest first. The tap
+     * keeps the last 512; when older ones were dropped, the oldest returned
+     * has `lost` set. Empty while the tap is off. Never fails.
+     */
+    fun notifyTapDrain(): List<RawNotification>
+
+    /**
+     * The open connection's generation: unique per connection and never
+     * reused while the process runs, so it changes on every reopen and on
+     * a Link re-bind. 0 when nothing is open.
+     */
+    fun connectionGeneration(): Long
+
+    /**
      * Register (Some) or clear (None) the analyser wake-up listener. Once it
      * returns after None, no call is in progress (on another thread).
      * Replacing (Some -> Some) does not wait, and the old listener may then
