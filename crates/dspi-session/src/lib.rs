@@ -11,6 +11,8 @@ pub mod ext;
 pub mod ext_state;
 mod fast;
 pub mod filterfile;
+// -- WP TM8 --
+pub mod link_words;
 pub mod notify;
 pub mod pins;
 pub mod preset_file;
