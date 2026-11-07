@@ -150,17 +150,19 @@ fun UpmixerView(bridge: DspiBridge, modifier: Modifier = Modifier) {
                             "How much extracted centre stays in L/R. 0 = full removal (discrete centre); 100 = L/R untouched (expect " +
                                 "combing if a real centre speaker plays)."
                         )
-                        HorizontalDivider()
-                        paramRow(
-                            "Presence",
-                            "dB",
-                            upmix.presenceDB,
-                            -12f..12f,
-                            1,
-                            DspiConstants.UPMIX_PARAM_PRESENCE,
-                            "Voice presence bell at 3 kHz (Q 0.6). Positive brings voices forward, negative pushes them back " +
-                                "(Syn-style). Stored in 0.5 dB steps."
-                        )
+                        if (ToolFirmware.supportsUpmixerPresence(st.formatVersion)) {
+                            HorizontalDivider()
+                            paramRow(
+                                "Presence",
+                                "dB",
+                                upmix.presenceDB,
+                                -12f..12f,
+                                1,
+                                DspiConstants.UPMIX_PARAM_PRESENCE,
+                                "Voice presence bell at 3 kHz (Q 0.6). Positive brings voices forward, negative pushes them back " +
+                                    "(Syn-style). Stored in 0.5 dB steps."
+                            )
+                        }
                         // The Logician steering controls only, hidden in Sinner mode.
                         if (upmix.centreAdaptive) {
                             HorizontalDivider()
