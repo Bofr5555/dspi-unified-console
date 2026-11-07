@@ -152,8 +152,7 @@ impl Writer {
             .saturating_add(value.width())
             .saturating_add(2)
             <= usize::from(self.width);
-        // `Row::Pair` places its value by counting characters, not columns.
-        if fits && value.width() == value.chars().count() && !label.is_empty() {
+        if fits && !label.is_empty() {
             self.rows.push(Row::pair(label, value));
         } else {
             self.note(&label);
@@ -454,6 +453,13 @@ mod tests {
             assert!(rows.len() <= 2 * MAX_ROWS);
             assert_stays_inside(&rows, width);
         }
+    }
+
+    #[test]
+    fn wp_tm23_a_wide_value_that_fits_stays_on_its_line() {
+        let mut w = Writer::new(40);
+        w.pair("寬字符", "寬字符");
+        assert!(matches!(&w.rows[..], [Row::Pair(a, b)] if a == "寬字符" && b == "寬字符"));
     }
 
     #[test]

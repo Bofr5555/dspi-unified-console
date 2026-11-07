@@ -57,6 +57,7 @@ use crate::widgets::{
     Action, Banner, BannerKind, Dialog, DialogOutcome, KeyHelp, ParamRow, PickerRow, PinCell,
     PinGrid, PopupList, SaveBar, SectionHeader, StatusPill, StatusTone, ToggleRow,
 };
+use unicode_width::UnicodeWidthStr;
 
 pub use config::AppConfig;
 
@@ -681,18 +682,23 @@ impl Row {
                 };
                 b.body(body).render(area, buf);
             }
+            // -- WP TM23 --
             Row::Pair(label, value) => {
-                buf.set_string(
-                    area.x + 1,
-                    area.y,
-                    truncate(label, area.width as usize),
-                    theme.label(),
-                );
+                // All in columns: one column of margin, one between the two if both
+                // are there. When they cannot both fit, neither is cut below half of
+                // what there is unless the other leaves it more.
+                let gap = usize::from(!label.is_empty() && !value.is_empty());
+                let room = usize::from(area.width)
+                    .saturating_sub(1)
+                    .saturating_sub(gap);
+                let label = truncate(label, room.saturating_sub(value.width().min(room / 2)));
+                let value = truncate(value, room.saturating_sub(label.width()));
+                buf.set_stringn(area.x + 1, area.y, &label, label.width(), theme.label());
                 let vx = area
                     .x
                     .saturating_add(area.width)
-                    .saturating_sub(value.chars().count() as u16);
-                buf.set_string(vx, area.y, value, theme.value());
+                    .saturating_sub(value.width() as u16);
+                buf.set_stringn(vx, area.y, &value, value.width(), theme.value());
             }
             Row::Status(text, is_error) => {
                 let glyph = match (is_error, theme.glyphs) {
@@ -776,10 +782,11 @@ impl Row {
                 cursor,
                 enabled,
             } => {
-                buf.set_string(
+                buf.set_stringn(
                     area.x,
                     area.y,
                     if focused { "▸" } else { " " },
+                    usize::from(area.width),
                     theme.focused(),
                 );
                 let width: usize = buttons.iter().map(|b| b.chars().count() + 3).sum();
@@ -793,7 +800,9 @@ impl Row {
                         theme.label()
                     },
                 );
-                let mut x = area.x + area.width - width as u16;
+                // -- WP TM23 --
+                // Buttons wider than the pane start at its left and stop at its right.
+                let mut x = area.right().saturating_sub(width as u16).max(area.x);
                 for (i, b) in buttons.iter().enumerate() {
                     let text = format!(" {b} ");
                     let style = if !*enabled {
@@ -803,8 +812,9 @@ impl Row {
                     } else {
                         theme.focused()
                     };
-                    buf.set_string(x, area.y, &text, style);
-                    x += text.chars().count() as u16 + 1;
+                    let room = usize::from(area.right().saturating_sub(x));
+                    buf.set_stringn(x, area.y, &text, room, style);
+                    x = x.saturating_add(text.chars().count() as u16 + 1);
                 }
                 if let Some(c) = caption
                     && area.height >= 2
@@ -1946,25 +1956,57 @@ impl SettingsScreen {
             if top < self.page_scroll {
                 self.page_scroll = top;
             } else if bottom > self.page_scroll + area.height {
-                self.page_scroll = bottom.saturating_sub(area.height);
+                // -- WP TM23 --
+                // A row taller than the pane stays at its top, or the branch above
+                // would move it back on the next frame.
+                self.page_scroll = bottom.saturating_sub(area.height).min(top);
             }
         }
         let total: u16 = heights.iter().sum();
         self.page_scroll = self.page_scroll.min(total.saturating_sub(area.height));
 
-        let mut y = 0u16;
-        for (i, row) in rows.iter().enumerate() {
-            let h = heights[i];
-            if y + h > self.page_scroll && y < self.page_scroll + area.height {
-                let top = y.saturating_sub(self.page_scroll);
-                let visible = h.min(area.height.saturating_sub(top));
-                if visible > 0 {
-                    let r = Rect::new(area.x, area.y + top, area.width, visible);
-                    row.draw(r, buf, theme, focused && cursor_row == Some(i));
+        let focused_row = cursor_row.filter(|_| focused);
+        draw_rows(&rows, self.page_scroll, area, buf, theme, focused_row);
+    }
+}
+
+// -- WP TM23 --
+/// Draw stacked rows into `area`, the first `scroll` lines of the stack above it. A
+/// row draws at its full height on a buffer of its own, of which the lines on screen
+/// are copied, so what it shows of itself never depends on how much of it is on screen
+/// and nothing it draws can leave the page.
+fn draw_rows(
+    rows: &[Row],
+    scroll: u16,
+    area: Rect,
+    buf: &mut Buffer,
+    theme: &Theme,
+    focused_row: Option<usize>,
+) {
+    let mut y = 0u16;
+    for (i, row) in rows.iter().enumerate() {
+        let height = row.height(area.width);
+        let first = scroll.saturating_sub(y);
+        let top = y.saturating_sub(scroll);
+        let shown = height
+            .saturating_sub(first)
+            .min(area.height.saturating_sub(top));
+        if shown > 0 {
+            let whole = Rect::new(0, 0, area.width, height);
+            let mut own = Buffer::empty(whole);
+            row.draw(whole, &mut own, theme, focused_row == Some(i));
+            for line in 0..shown {
+                let to_y = area.y.saturating_add(top).saturating_add(line);
+                for x in 0..area.width {
+                    let from = own.cell((x, first.saturating_add(line)));
+                    let to = buf.cell_mut((area.x.saturating_add(x), to_y));
+                    if let (Some(from), Some(to)) = (from, to) {
+                        *to = from.clone();
+                    }
                 }
             }
-            y += h;
         }
+        y = y.saturating_add(height);
     }
 }
 
@@ -2983,6 +3025,309 @@ pub(crate) mod tests {
             assert_eq!(Row::Note(note).height(width), lines);
             assert!(lines > 4, "{page:?} needs more than the old cap");
         }
+    }
+
+    // -- WP TM23 --
+    /// What a pane of `width` by `height` holds with the stack scrolled by `scroll`.
+    fn pane(rows: &[Row], scroll: u16, width: u16, height: u16) -> Buffer {
+        let area = Rect::new(0, 0, width, height);
+        let mut buf = Buffer::empty(area);
+        draw_rows(rows, scroll, area, &mut buf, &theme(), Some(1));
+        buf
+    }
+
+    /// Every cell of `short` is the cell `scroll` lines down in `tall`.
+    fn assert_is_window(short: &Buffer, tall: &Buffer, scroll: u16, what: &str) {
+        for y in 0..short.area.height {
+            for x in 0..short.area.width {
+                assert_eq!(
+                    short[(x, y)],
+                    tall[(x, y + scroll)],
+                    "{what}: {x},{y} at scroll {scroll}"
+                );
+            }
+        }
+    }
+
+    fn line(buf: &Buffer, y: u16) -> String {
+        (0..buf.area.width)
+            .map(|x| buf[(x, y)].symbol())
+            .collect::<String>()
+            .trim_end()
+            .to_string()
+    }
+
+    /// Rows of more than one line, of every kind that has them, in wide characters.
+    fn tall_rows() -> Vec<Row> {
+        let wide = "寬字符 寬字符 寬字符 寬字符 寬字符 寬字符 寬字符 寬字符".to_string();
+        let caption = Some(wide.clone());
+        vec![
+            Row::note(wide.clone()),
+            Row::Toggle {
+                label: "寬字符".into(),
+                on: true,
+                caption: caption.clone(),
+                enabled: true,
+            },
+            Row::pair("寬字符", "寬字符"),
+            Row::Banner(BannerKind::Warning, "寬字符".into(), wide.clone()),
+            Row::Pill {
+                label: "寬字符".into(),
+                text: "Active".into(),
+                tone: StatusTone::Ok,
+                caption: caption.clone(),
+            },
+            Row::Number {
+                label: "寬字符".into(),
+                value: 1.0,
+                min: 0.0,
+                max: 2.0,
+                step: 0.5,
+                unit: "dB".into(),
+                decimals: 1,
+                caption: caption.clone(),
+                enabled: true,
+            },
+            Row::Buttons {
+                label: "寬字符".into(),
+                caption,
+                buttons: vec!["OK".into()],
+                cursor: 0,
+                enabled: true,
+            },
+            Row::note(wide),
+        ]
+    }
+
+    #[test]
+    fn wp_tm23_a_row_across_the_top_shows_the_lines_that_belong_there() {
+        let rows = [Row::note("寬字符一 寬字符二 寬字符三")];
+        let top = pane(&rows, 1, 12, 2);
+        // A wide character's second cell reads as a space.
+        assert_eq!(line(&top, 0).replace(' ', ""), "寬字符二");
+        assert_eq!(line(&top, 1).replace(' ', ""), "寬字符三");
+    }
+
+    #[test]
+    fn wp_tm23_any_scroll_is_a_window_on_the_whole_stack() {
+        let rows = tall_rows();
+        for width in [24u16, 25, 40] {
+            let total: u16 = rows.iter().map(|r| r.height(width)).sum();
+            let tall = pane(&rows, 0, width, total);
+            for height in [1u16, 2, 3, 7] {
+                for scroll in 0..total.saturating_sub(height) {
+                    let short = pane(&rows, scroll, width, height);
+                    assert_is_window(&short, &tall, scroll, &format!("{width}x{height}"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn wp_tm23_every_page_scrolls_as_a_window_on_its_full_height() {
+        for page in every_page() {
+            let (mut s, st) = screen(page);
+            s.focus = Focus::Page;
+            let width = 59;
+            s.current().set_width(width);
+            let cx = s.cx(&st);
+            let rows = s.current_ref().rows(&cx);
+            let total: u16 = rows.iter().map(|r| r.height(width)).sum();
+            let last = rows.iter().filter(|r| r.focusable()).count().max(1) - 1;
+            for cursor in [0, last / 2, last] {
+                s.current().set_cursor(cursor);
+                s.page_scroll = 0;
+                let area = Rect::new(0, 0, width, total);
+                let mut tall = Buffer::empty(area);
+                s.draw_page(area, &mut tall, &theme(), &st);
+                for scroll in 0..total {
+                    let area = Rect::new(0, 0, width, 6.min(total));
+                    let mut short = Buffer::empty(area);
+                    s.page_scroll = scroll;
+                    s.draw_page(area, &mut short, &theme(), &st);
+                    let what = format!("{page:?} cursor {cursor}");
+                    assert_is_window(&short, &tall, s.page_scroll, &what);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn wp_tm23_a_row_at_the_bottom_edge_is_not_redrawn_for_the_room() {
+        // A banner cut by the pane used to squeeze its body into the lines it had,
+        // ending in an ellipsis that was not in the text.
+        let rows = [Row::Banner(
+            BannerKind::Info,
+            "Title".into(),
+            "one two three four five six seven eight nine ten".into(),
+        )];
+        assert!(rows[0].height(20) > 2);
+        let cut = pane(&rows, 0, 20, 2);
+        assert!(!line(&cut, 1).contains('…'), "{}", line(&cut, 1));
+    }
+
+    #[test]
+    fn wp_tm23_a_buttons_caption_cannot_draw_below_the_page() {
+        let rows = [Row::Buttons {
+            label: "Label".into(),
+            caption: Some("one two three four five six seven eight nine ten".into()),
+            buttons: vec!["OK".into()],
+            cursor: 0,
+            enabled: true,
+        }];
+        assert!(rows[0].height(20) > 2);
+        let area = Rect::new(0, 1, 20, 2);
+        let mut buf = Buffer::empty(Rect::new(0, 0, 20, 8));
+        let before = buf.clone();
+        draw_rows(&rows, 0, area, &mut buf, &theme(), None);
+        for y in (0..1).chain(3..8) {
+            assert_eq!(line(&buf, y), line(&before, y), "line {y}");
+        }
+    }
+
+    #[test]
+    fn wp_tm23_a_word_too_wide_for_the_page_stops_at_its_edge() {
+        let rows = [Row::note("寬".repeat(40))];
+        let area = Rect::new(2, 0, 10, 1);
+        let mut buf = Buffer::empty(Rect::new(0, 0, 40, 1));
+        draw_rows(&rows, 0, area, &mut buf, &theme(), None);
+        for x in 12..40 {
+            assert_eq!(buf[(x, 0)].symbol(), " ", "column {x}");
+        }
+    }
+
+    #[test]
+    fn wp_tm23_buttons_wider_than_a_narrow_pane_stay_inside_it() {
+        let row = |caption: Option<&str>| Row::Buttons {
+            label: "Label".into(),
+            caption: caption.map(str::to_string),
+            buttons: vec!["Save".into(), "Revert".into()],
+            cursor: 0,
+            enabled: true,
+        };
+        for width in 0..24u16 {
+            let mut buf = Buffer::empty(Rect::new(0, 0, width + 6, 1));
+            row(None).draw(Rect::new(3, 0, width, 1), &mut buf, &theme(), true);
+            for x in (0..3).chain(3 + width..width + 6) {
+                assert_eq!(buf[(x, 0)].symbol(), " ", "column {x} at width {width}");
+            }
+            // And as the page draws it, caption included.
+            let caption = [row(Some("A caption"))];
+            let height = caption[0].height(width);
+            pane(&caption, 0, width, height);
+        }
+    }
+
+    #[test]
+    fn wp_tm23_a_focused_row_taller_than_the_pane_holds_still_at_its_top() {
+        let mut tall_rows_seen = 0;
+        for page in every_page() {
+            let (mut s, st) = screen(page);
+            s.focus = Focus::Page;
+            let width = 59;
+            s.current().set_width(width);
+            let cx = s.cx(&st);
+            let rows = s.current_ref().rows(&cx);
+            let focusable: Vec<usize> = (0..rows.len()).filter(|i| rows[*i].focusable()).collect();
+            for (cursor, at) in focusable.into_iter().enumerate() {
+                if rows[at].height(width) < 2 {
+                    continue;
+                }
+                tall_rows_seen += 1;
+                let top: u16 = rows[..at].iter().map(|r| r.height(width)).sum();
+                s.current().set_cursor(cursor);
+                // From above the row and from below it.
+                for start in [0, u16::MAX] {
+                    s.page_scroll = start;
+                    let area = Rect::new(0, 0, width, 1);
+                    for n in 0..3 {
+                        let mut buf = Buffer::empty(area);
+                        s.draw_page(area, &mut buf, &theme(), &st);
+                        assert_eq!(s.page_scroll, top, "{page:?} {cursor}, frame {n}");
+                    }
+                }
+            }
+        }
+        assert!(tall_rows_seen > 0);
+    }
+
+    /// One pair drawn in a pane inside a wider line, returning the line.
+    fn pair_line(label: &str, value: &str, width: u16) -> Buffer {
+        let mut buf = Buffer::empty(Rect::new(0, 0, width + 6, 1));
+        Row::pair(label, value).draw(Rect::new(3, 0, width, 1), &mut buf, &theme(), false);
+        for x in (0..3).chain(3 + width..width + 6) {
+            assert_eq!(buf[(x, 0)].symbol(), " ", "{label} {value} at {x}");
+        }
+        buf
+    }
+
+    #[test]
+    fn wp_tm23_a_pair_aligns_a_wide_value_by_columns() {
+        let buf = pair_line("Name", "寬字", 20);
+        // A wide character takes its cell and the one after, so the value's last
+        // two columns of the pane are 字 and the cell it covers.
+        assert_eq!(buf[(3 + 16, 0)].symbol(), "寬");
+        assert_eq!(buf[(3 + 18, 0)].symbol(), "字");
+        assert_eq!(buf[(3 + 15, 0)].symbol(), " ");
+        // Mixed with narrow text, it ends in the same column.
+        let buf = pair_line("Name", "a寬", 20);
+        assert_eq!(buf[(3 + 17, 0)].symbol(), "a");
+        assert_eq!(buf[(3 + 18, 0)].symbol(), "寬");
+        // And narrow text is where it always was.
+        let buf = pair_line("Name", "ab", 20);
+        assert_eq!(buf[(3 + 18, 0)].symbol(), "a");
+        assert_eq!(buf[(3 + 19, 0)].symbol(), "b");
+    }
+
+    #[test]
+    fn wp_tm23_a_pair_too_long_for_its_line_is_cut_not_overlapped() {
+        // A long value used to run back over the label and past the pane's left.
+        let long = "寬字符".repeat(20);
+        for width in 0..30u16 {
+            for (label, value) in [
+                (long.as_str(), long.as_str()),
+                ("Serial", long.as_str()),
+                (long.as_str(), "1.1.6"),
+                (long.as_str(), ""),
+                ("", long.as_str()),
+                ("寬", "寬"),
+            ] {
+                let buf = pair_line(label, value, width);
+                assert_eq!(buf[(3, 0)].symbol(), " ", "the margin at {width}");
+            }
+        }
+        // The short side stays whole and the long side gives way.
+        let line_of = |b: Buffer| line(&b, 0);
+        let f = line_of(pair_line("Serial", &long, 30));
+        assert!(f.contains("Serial"), "{f}");
+        assert!(f.ends_with('…'), "{f}");
+        let f = line_of(pair_line(&long, "1.1.6", 30));
+        assert!(f.contains('…') && f.ends_with(" 1.1.6"), "{f}");
+        // Two long sides share the line.
+        let f = line_of(pair_line(&long, &long, 30));
+        assert_eq!(f.matches('…').count(), 2, "{f}");
+    }
+
+    #[test]
+    fn wp_tm23_a_device_string_in_wide_characters_lines_up_when_scrolled_to_the_top() {
+        let (mut s, mut st) = screen(Page::About);
+        st.caps.serial = "寬字符".into();
+        let width = 40;
+        s.current().set_width(width);
+        let cx = s.cx(&st);
+        let rows = s.current_ref().rows(&cx);
+        let at = rows
+            .iter()
+            .position(|r| matches!(r, Row::Pair(l, _) if l == "Serial"))
+            .unwrap();
+        let scroll: u16 = rows[..at].iter().map(|r| r.height(width)).sum();
+        let area = Rect::new(0, 0, width, 4);
+        let mut buf = Buffer::empty(area);
+        s.page_scroll = scroll;
+        s.draw_page(area, &mut buf, &theme(), &st);
+        assert_eq!(s.page_scroll, scroll);
+        assert!(line(&buf, 0).contains("Serial"), "{}", line(&buf, 0));
+        assert_eq!(buf[(width - 2, 0)].symbol(), "符");
     }
 
     #[test]
