@@ -10,7 +10,8 @@
 # `@ctl <command>` for what only the hub's side can do; this script passes it on
 # through files (serve.rs) and answers with the hub's JSON line.
 #
-# ts:    Node from the official image, pinned by digest (NODE_IMAGE). The client is
+# ts:    Node from the official image, pinned by digest (NODE in
+#        ci/container/images.conf; NODE_IMAGE overrides it). The client is
 #        upstream's source at DSPI_LINK_COMMIT, taken from a clone (DSPI_LINK_REPO)
 #        with `git archive` and checked against its tree hash: no npm download. The
 #        two containers share one network namespace; nothing is published.
@@ -21,7 +22,9 @@
 #        the guest through `ssh -R`.
 #
 # Scratch and logs: ${DSPI_BUILD_CACHE:-~/.cache/dspi-build}/work/hb7-conformance/<client>/,
-# never tmpfs. Exit status: the client's (0 when every scenario passed).
+# never tmpfs. Exit status: the client's (0 when every scenario passed); 3 for
+# swift when the VM cannot run it (no ssh, or nobody logged in to its GUI), as
+# ci/macvm.sh.
 set -euo pipefail
 client=${1:-}
 case "$client" in ts|swift) ;; *) echo "usage: $0 ts|swift" >&2; exit 2 ;; esac
@@ -29,7 +32,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../../.." && pwd)
 . "$root/ci/container/images.conf"
 B=${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}
-NODE_IMAGE=${NODE_IMAGE:-docker.io/library/node:24-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20}
+NODE_IMAGE=${NODE_IMAGE:-$NODE}
 DSPI_LINK_REPO=${DSPI_LINK_REPO:-$B/work/consoles/DSPi-Link}
 DSPI_LINK_COMMIT=86f10e38dd760d01d4f589e4b606a5250b2d523d
 # git rev-parse 86f10e38:js/packages/dspi-link
@@ -40,6 +43,13 @@ rm -rf "$work" && mkdir -p "$work/conf/tmp"
 log=$work/run.log
 : >"$log"
 say() { echo "$*" | tee -a "$log"; }
+vm() { ssh -o ConnectTimeout=10 -o BatchMode=yes "$host" "$@"; }
+
+# -- WP HB8 -- 0. The VM can run the Swift client: checked before anything is built.
+if [ "$client" = swift ]; then
+  who=$(vm who </dev/null 2>&1) || { say "run-clients: $host is not reachable: $who"; exit 3; }
+  grep -qw console <<<"$who" || { say "run-clients: nobody is logged in to the GUI of $host"; exit 3; }
+fi
 
 # 1. The hub's binary.
 say "building the conformance test binary"
@@ -84,7 +94,6 @@ if [ "$client" = ts ]; then
     "$NODE_IMAGE" node --experimental-transform-types --no-warnings --import /ts/register.mjs /ts/conformance.ts)
 else
   port=$(podman port "$name" 11915/tcp | sed 's/.*://')
-  vm() { ssh -o ConnectTimeout=10 -o BatchMode=yes "$host" "$@"; }
   apple="$root/apps/apple/DSPi Console/Link"
   sources=(LinkClient.swift LinkClientProtocol.swift LinkFrames.swift LinkMessages.swift LinkRole.swift
     DeviceTransport.swift AuthStore.swift)
