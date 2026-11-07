@@ -19,8 +19,8 @@
 //!
 //! Layout: `types.rs` holds the `#[repr(C)]` records and their conversions
 //! from `dspi_core::records` (WP Q1); `fns_device.rs` (WP Q2a) and
-//! `fns_misc.rs` (WP Q2b) the functions, and `fns_browse.rs` (WP CG2) finding
-//! hubs; `build.rs` writes
+//! `fns_misc.rs` (WP Q2b) the functions, `fns_browse.rs` (WP CG2) finding
+//! hubs, and `fns_hub.rs` (WP HB6) being one; `build.rs` writes
 //! `include/dspi_core.h` with cbindgen (WP Q1).
 
 // The core-merge quality bar (docs/core-merge/PLAN.md §1.7, §1.8): no
@@ -44,6 +44,9 @@ pub mod types;
 // -- WP CG1 --
 #[cfg(any(feature = "link", feature = "midir"))]
 mod fns_link;
+// -- WP HB6 --
+#[cfg(feature = "hub")]
+mod fns_hub;
 
 /// Run `f`, turning a panic into `fail`. Every exported function goes
 /// through this.
@@ -53,6 +56,22 @@ pub(crate) fn guard<T>(fail: T, f: impl FnOnce() -> T) -> T {
         log::error!("dspi-capi: a call panicked; returning its failure value");
         fail
     })
+}
+
+// -- WP HB6 --
+/// The logger's filter for this library: `RUST_LOG`, except that `tungstenite` stops at
+/// debug. Its trace level prints every WebSocket message whole, and those carry PINs and
+/// tokens, so `RUST_LOG=trace` must not put them on stderr.
+pub(crate) fn logger_builder(mut builder: env_logger::Builder) -> env_logger::Builder {
+    builder.filter_module("tungstenite", log::LevelFilter::Debug);
+    builder
+}
+
+/// Install the logger: stderr, level from `RUST_LOG`, errors by default. A second core or
+/// hub, or a host's own logger, keeps the logger there is.
+pub(crate) fn init_logger() {
+    let env = env_logger::Env::default();
+    let _ = logger_builder(env_logger::Builder::from_env(env)).try_init();
 }
 
 /// The handle behind the C ABI's `struct FfiCore *`: created by

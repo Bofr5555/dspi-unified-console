@@ -169,6 +169,8 @@ struct Inner {
 #[derive(Debug)]
 pub struct AuthStore {
     mode: AccessMode,
+    // -- WP HB6 --
+    tokens_revoked: usize,
     inner: Mutex<Inner>,
 }
 
@@ -296,8 +298,10 @@ impl AuthStore {
     /// a mode different from the store's last one forgets the paired clients.
     pub fn new(mut store: HubStore, mode: AccessMode) -> Result<Self, HubError> {
         let word = mode.wire_name();
+        // -- WP HB6 --
+        let tokens_revoked = tokens_lost_by_switch(store.access(), store.clients().len(), mode);
         if store.access() != Some(word) {
-            if store.access().is_some() && !store.clients().is_empty() {
+            if tokens_revoked > 0 {
                 log::info!("hub: the access mode changed, every token is revoked");
                 store.clients_mut().clear();
             }
@@ -306,6 +310,7 @@ impl AuthStore {
         }
         Ok(Self {
             mode,
+            tokens_revoked,
             inner: Mutex::new(Inner {
                 store,
                 window: None,
@@ -518,6 +523,81 @@ impl AuthStore {
             log::error!("hub: role of client {cid} not stored: {e}");
         }
         true
+    }
+}
+
+// -- WP HB6 --
+/// How many tokens opening a store in `mode` forgets: all of them when the store last
+/// ran in another mode (spec 6.2). The one statement of the rule, for
+/// [`AuthStore::new`], which applies it, and [`SavedHub`], which warns of it.
+fn tokens_lost_by_switch(stored: Option<&str>, clients: usize, mode: AccessMode) -> usize {
+    match stored {
+        Some(word) if word != mode.wire_name() => clients,
+        _ => 0,
+    }
+}
+
+// -- WP HB6 --
+impl AuthStore {
+    /// Paired clients forgotten when this store opened, because the mode had changed.
+    /// A UI says so, as those clients must pair again.
+    pub fn tokens_revoked_at_start(&self) -> usize {
+        self.tokens_revoked
+    }
+
+    /// Keep the hub's name for the next start. A failed save is logged: the name in use
+    /// is the hub's own, fixed at its start.
+    pub fn set_name(&self, name: &str) {
+        let mut s = self.lock();
+        if s.store.name() == Some(name) {
+            return;
+        }
+        s.store.set_name(name);
+        if let Err(e) = s.save() {
+            log::error!("hub: name not stored: {e}");
+        }
+    }
+}
+
+// -- WP HB6 --
+/// What a hub's store holds, read with no hub running, for a settings page. Reading it
+/// changes nothing, and nothing in it is a secret.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SavedHub {
+    /// `hid`.
+    pub hub_id: String,
+    /// The hub's stored name, if it was ever given one.
+    pub name: Option<String>,
+    /// The access mode it last ran in, as [`AccessMode::wire_name`].
+    pub access: Option<String>,
+    /// The paired clients.
+    pub clients: Vec<PairedClient>,
+}
+
+impl SavedHub {
+    /// The store in `dir`; `None` if there is nothing usable (see [`HubStore::peek`]).
+    pub fn peek(dir: &std::path::Path) -> Result<Option<Self>, HubError> {
+        Ok(HubStore::peek(dir)?.map(|store| Self {
+            hub_id: store.hub_id().to_owned(),
+            name: store.name().map(str::to_owned),
+            access: store.access().map(str::to_owned),
+            clients: store
+                .clients()
+                .iter()
+                .map(|c| PairedClient {
+                    cid: c.cid,
+                    name: c.name.clone(),
+                    role: c.role,
+                    created: system_time(c.created),
+                    last_seen: c.last_seen.map(system_time),
+                })
+                .collect(),
+        }))
+    }
+
+    /// How many tokens starting in `mode` would revoke: what a UI warns of.
+    pub fn tokens_lost_starting_in(&self, mode: AccessMode) -> usize {
+        tokens_lost_by_switch(self.access.as_deref(), self.clients.len(), mode)
     }
 }
 

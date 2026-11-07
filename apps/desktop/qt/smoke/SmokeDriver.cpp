@@ -121,6 +121,8 @@ void SmokeDriver::run() {
     testReadOnly();
     // -- WP QD8 --
     testLink();
+    // -- WP HB6 --
+    testHub();
     // -- WP QD27 --
     testAutoEqUpdate();
     testAutoEqHttp();

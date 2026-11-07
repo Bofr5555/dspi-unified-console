@@ -221,6 +221,33 @@ impl HubStore {
         })
     }
 
+    // -- WP HB6 --
+    /// What [`Self::load`] would find, for a settings page with no hub running. Creates
+    /// nothing and moves nothing. `None`: no file, or one `load` would set aside, so
+    /// nobody is paired either way. [`HubError::Io`]: the file is there but cannot be read.
+    pub fn peek(dir: &Path) -> Result<Option<Self>, HubError> {
+        let path = dir.join(FILE_NAME);
+        let bytes = match read_limited(&path) {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(io_error("cannot read", &path, &e)),
+        };
+        let Ok(data) = decode(&bytes) else {
+            return Ok(None);
+        };
+        let clients: Vec<StoredClient> =
+            data.clients.into_iter().filter_map(stored_client).collect();
+        Ok(Some(Self {
+            dir: dir.to_owned(),
+            hub_id: data.hub_id,
+            name: data.name,
+            access: data.access,
+            next_cid: data.next_cid,
+            clients,
+            device_names: data.device_names,
+        }))
+    }
+
     /// Save, replacing the old file atomically.
     pub fn save(&self) -> Result<(), HubError> {
         let data = FileData {
