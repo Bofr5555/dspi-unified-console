@@ -813,6 +813,21 @@ class CsControllerImpl internal constructor(private val bridge: DspiBridgeImpl) 
         return Json.parseObject(run("""{"op":"revert"}"""))?.int("status") ?: 0xFF
     }
 
+    // -- WP AN9 -- CG20's rules read only what the core holds; a throw (no core) becomes a refusal
+    override suspend fun describe(kind: String, slot: Int, draft: String): String =
+        rules { bridge.core.csDescribe(kind, slot.toLong(), draft) }
+
+    override suspend fun edit(kind: String, slot: Int, draft: String, change: String): String =
+        rules { bridge.core.csEdit(kind, slot.toLong(), draft, change) }
+
+    override suspend fun newBinding(slot: Int, component: Int): String = rules { bridge.core.csNewBinding(slot.toLong(), component) }
+
+    override suspend fun newRecord(kind: String): String = rules { bridge.core.csNewRecord(kind) }
+
+    private suspend fun rules(call: () -> String): String = bridge.onFfi {
+        runCatching(call).getOrElse { Json.write(linkedMapOf("ok" to false, "error" to (it.message ?: "control surfaces unavailable"))) }
+    }
+
     /** A PIN_CONFIG_* / CS status code as the macOS Console words it ("" = done). */
     override fun statusMessage(code: Int): String = when (code) {
         0x00 -> ""
