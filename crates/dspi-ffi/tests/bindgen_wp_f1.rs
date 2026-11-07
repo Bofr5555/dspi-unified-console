@@ -30,6 +30,8 @@ const NOT_EXPORTED: &[&str] = &[
     // read-only fixtures (bridge ReadOnlyTest), and its write guard counts refusals.
     "open_demo_wire",
     "read_only_refusals",
+    // -- WP CG23 -- The C drain's too-small buffer; Rust-only (doc(hidden)).
+    "notify_tap_note_dropped",
 ];
 
 /// `crates/dspi-core/src/link.rs`, exported by WP C15.
