@@ -30,6 +30,9 @@ fn set_header(image: &mut [u8], wire: u8, length: usize) {
 
 /// The V32 image `v32` as firmware of wire format `wire` lays it out. `None` for
 /// a format without a fixture: V17, V26, V31 and V33 have one.
+// Every sum is a section offset from the generated table, under 7000, plus at most
+// 16, or minus 4 from the preamp's, at 4668: none can wrap.
+#[allow(clippy::arithmetic_side_effects)]
 fn image_as(v32: &[u8], wire: u8) -> Option<Vec<u8>> {
     if !matches!(wire, 17 | 26 | 31 | 33) {
         return None;
