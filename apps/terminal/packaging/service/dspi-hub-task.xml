@@ -49,6 +49,8 @@
     <!-- No time limit: it runs until logoff or until it is ended. -->
     <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
     <Priority>7</Priority>
+    <!-- At most 3 tries: a refused start (exit 1: another hub holds the store, or a
+         change of access mode; exit 4: the port in use) does not mend itself. -->
     <RestartOnFailure>
       <Interval>PT1M</Interval>
       <Count>3</Count>

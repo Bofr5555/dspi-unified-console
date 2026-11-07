@@ -55,6 +55,11 @@ refuses to do that unless it is also given `--forget-clients`.
   `systemd-inhibit` (a logind lock, gone when the hub ends). macOS: `caffeinate
   -i -w <pid>`. Windows: `SetThreadExecutionState`. If that is refused, it warns
   and shares anyway. `--no-keep-awake` turns it off.
+- **Restarts:** a refused start (exit 1: another hub holds the store, or a change
+  of access mode without `--forget-clients`; exit 4: the port is in use) is not
+  retried: the unit has `RestartPreventExitStatus=1 4`, the launchd agent does not
+  restart at all (launchd cannot tell a crash from a refusal), and the task tries
+  at most 3 times. The log says why.
 - **Stopping:** SIGTERM or Ctrl-C stops it cleanly. Clients are told and USB is
   released. A task ended from Task Scheduler is killed instead. That is safe, as
   the store is written atomically and the OS frees USB, but clients only see the

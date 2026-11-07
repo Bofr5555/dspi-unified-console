@@ -27,14 +27,10 @@
     </array>
     <key>RunAtLoad</key>
     <true/>
-    <!-- Restart after a failure, not after a clean stop. -->
-    <key>KeepAlive</key>
-    <dict>
-        <key>SuccessfulExit</key>
-        <false/>
-    </dict>
-    <key>ThrottleInterval</key>
-    <integer>10</integer>
+    <!-- Not restarted. launchd cannot tell a crash from a refused start (exit 1:
+         another hub holds the store, or a change of access mode; exit 4: the port in
+         use), which would be retried every few seconds for ever. Read the log, then
+         bootstrap it again. -->
     <!-- launchd sends SIGTERM; the hub stops cleanly within this. -->
     <key>ExitTimeOut</key>
     <integer>20</integer>
