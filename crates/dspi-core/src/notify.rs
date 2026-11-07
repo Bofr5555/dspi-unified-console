@@ -325,6 +325,8 @@ fn apply_queued(inner: &mut Inner, r: &mut NotifyResult) -> FollowUp {
     for note in &notes {
         inner.monitor.record(note);
         let own = conn.echo.classify_notification(kind, session, note);
+        // -- WP CG23 --
+        inner.notify_tap.record(note, own);
         if note.lost {
             follow.refresh = true;
             // -- WP CG13 --
@@ -416,15 +418,32 @@ fn apply_queued(inner: &mut Inner, r: &mut NotifyResult) -> FollowUp {
                 let own = is_own(kind, src, note, session);
                 inner.rta.note_config(bytes, own, note.origin.unwrap_or(0));
             }
+            // -- WP CG25 -- Stream states. The mirror follows ADAT out, as
+            // the Mac does; the rest are re-read by the client.
+            Event::AdatState { enabled, pin, .. } => {
+                // A started image would undo the change when it is decoded
+                // below: apply it first.
+                if let Some(img) = image.take()
+                    && let Err(e) = state::decode_bulk(&img, &mut inner.state)
+                {
+                    log::warn!("a parameter notification could not be applied: {e}");
+                    follow.refresh = true;
+                }
+                let s = &mut inner.state;
+                let pin = if *pin != 0 { *pin } else { s.adat_out_pin };
+                if (s.adat_out_enabled, s.adat_out_pin) != (*enabled, pin) {
+                    (s.adat_out_enabled, s.adat_out_pin) = (*enabled, pin);
+                    r.flags |= NOTIFY_STATE;
+                }
+                r.flags |= NOTIFY_STREAMS;
+            }
+            Event::I2sSlaveState { .. } | Event::AdatInputState { .. } => {
+                r.flags |= NOTIFY_STREAMS;
+            }
             // The v1 master volume is deduplicated against its v2 twin (the
             // `PARAM_CHANGED` that follows it); the link states and unknown
             // events are only logged.
-            Event::MasterVolume(_)
-            | Event::Idle
-            | Event::AdatState { .. }
-            | Event::I2sSlaveState { .. }
-            | Event::AdatInputState { .. }
-            | Event::Unknown { .. } => {}
+            Event::MasterVolume(_) | Event::Idle | Event::Unknown { .. } => {}
         }
     }
 
@@ -1339,5 +1358,138 @@ mod tests_wp_c7 {
         assert_eq!(patch(&mut img, usize::MAX, &[1]), None);
         assert_eq!(patch(&mut img, g::OFF_GLOBAL, &[1]), Some(true));
         assert_eq!(patch(&mut img, g::OFF_GLOBAL, &[1]), Some(false));
+    }
+}
+
+// -- WP CG25 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg25 {
+    use std::time::{Duration, Instant};
+
+    use dspi_transport::{FakeDevice, FakeRemote};
+
+    use super::*;
+
+    fn demo() -> (Arc<DspiCore>, FakeRemote) {
+        let dev = FakeDevice::demo();
+        let remote = dev.remote();
+        let core = DspiCore::new();
+        core.attach_probed(Box::new(dev), "DEMO".into(), 0).unwrap();
+        settle(&core);
+        (core, remote)
+    }
+
+    fn settle(core: &DspiCore) -> u32 {
+        let mut flags = 0;
+        let mut quiet = 0;
+        while quiet < 10 {
+            std::thread::sleep(Duration::from_millis(10));
+            let r = core.process_notifications();
+            quiet = if r == NotifyResult::default() {
+                quiet + 1
+            } else {
+                0
+            };
+            flags |= r.flags;
+        }
+        flags
+    }
+
+    /// Process until a flag in `want` shows up, then until quiet.
+    fn flags_after(core: &DspiCore, want: u32) -> u32 {
+        let start = Instant::now();
+        let mut flags = 0;
+        while flags & want == 0 {
+            assert!(start.elapsed() < Duration::from_secs(5), "timed out");
+            flags |= core.process_notifications().flags;
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        flags | settle(core)
+    }
+
+    fn ev(id: u16, payload: &[u8]) -> Vec<u8> {
+        let mut p = vec![2, id as u8, 0, 0];
+        p.extend_from_slice(payload);
+        p
+    }
+
+    fn adat(enabled: u8, active: u8, pin: u8) -> Vec<u8> {
+        ev(nfy::NOTIFY_EVT_ADAT_STATE, &[enabled, active, pin])
+    }
+
+    #[test]
+    fn wp_cg25_streams_is_a_new_bit() {
+        let old = [
+            NOTIFY_STATE,
+            NOTIFY_CURVES,
+            NOTIFY_REFRESHED,
+            NOTIFY_INPUT_FORMAT,
+            NOTIFY_PRESET,
+            NOTIFY_SIGGEN,
+            NOTIFY_CS_AUX,
+            NOTIFY_IR_LEARN,
+            NOTIFY_NAMES,
+            NOTIFY_DISCONNECTED,
+            NOTIFY_STALE,
+        ];
+        assert_eq!(NOTIFY_STREAMS, 1 << 11);
+        assert!(old.iter().all(|f| f & NOTIFY_STREAMS == 0));
+    }
+
+    #[test]
+    fn wp_cg25_adat_state_sets_the_flag_and_the_mirror_follows() {
+        let (core, remote) = demo();
+        let pin = core.get_state().adat_out_pin.wrapping_add(1).max(1);
+        remote.push(adat(1, 1, pin));
+        let f = flags_after(&core, NOTIFY_STREAMS);
+        assert_eq!(f & NOTIFY_STATE, NOTIFY_STATE, "the mirror changed");
+        let s = core.get_state();
+        assert!(s.adat_out_enabled);
+        assert_eq!(s.adat_out_pin, pin);
+
+        // Pin 0 leaves the pin alone (as the Mac does).
+        remote.push(adat(0, 0, 0));
+        flags_after(&core, NOTIFY_STREAMS);
+        let s = core.get_state();
+        assert!(!s.adat_out_enabled);
+        assert_eq!(s.adat_out_pin, pin);
+
+        // Nothing changed: the flag, but no state change.
+        remote.push(adat(0, 1, pin));
+        let f = flags_after(&core, NOTIFY_STREAMS);
+        assert_eq!(f & NOTIFY_STATE, 0);
+    }
+
+    #[test]
+    fn wp_cg25_i2s_slave_and_adat_input_set_the_flag() {
+        let (core, remote) = demo();
+        remote.push(ev(nfy::NOTIFY_EVT_I2S_SLAVE_STATE, &[3, 0x80, 0xBB, 0, 0]));
+        let f = flags_after(&core, NOTIFY_STREAMS);
+        assert_eq!(f & NOTIFY_STATE, 0, "not a mirrored field");
+        remote.push(ev(
+            nfy::NOTIFY_EVT_ADAT_INPUT_STATE,
+            &[3, 0x80, 0xBB, 0, 0, 1],
+        ));
+        let f = flags_after(&core, NOTIFY_STREAMS);
+        assert_eq!(f & NOTIFY_STATE, 0);
+    }
+
+    #[test]
+    fn wp_cg25_adat_state_survives_a_patch_in_the_same_drain() {
+        let (core, remote) = demo();
+        let pin = core.get_state().adat_out_pin.wrapping_add(1).max(1);
+        let src = nfy::PARAM_SRC_UAC1 as u8;
+        // Parameter, ADAT state, parameter: one image is started before the
+        // event and one after it, whatever the reader delivers per drain.
+        assert!(remote.poke(g::OFF_MASTER_VOLUME, &(-12.0f32).to_le_bytes(), src));
+        remote.push(adat(1, 1, pin));
+        assert!(remote.poke(g::OFF_MASTER_VOLUME, &(-6.0f32).to_le_bytes(), src));
+        std::thread::sleep(Duration::from_millis(50));
+        flags_after(&core, NOTIFY_STREAMS);
+        let s = core.get_state();
+        assert!(s.adat_out_enabled);
+        assert_eq!(s.adat_out_pin, pin);
+        assert_eq!(s.master_volume_db, -6.0);
     }
 }

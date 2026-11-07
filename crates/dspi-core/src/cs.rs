@@ -31,10 +31,11 @@ use dspi_session::cs_model::{self, ApplyError, CsData, aux_supported, ty};
 use dspi_session::surfaces::{
     AUX_LEVEL_MAX_Q8, CsAuxStates, CsBinding, CsDisplayCfg, CsDisplayPage, CsExtStatusPacket,
     CsGroup, CsMacroHeaderWire, CsMacroStep, CsStatusPacket, GPIO_UNUSED, IrCommand, IrLearnResult,
-    Limits, SurfaceError, Surfaces, status as cs_status,
+    Limits, SurfaceError, Surfaces, learn, status as cs_status,
 };
 use dspi_transport::TransportError;
 
+use crate::presets::Holder;
 use crate::records::PinUse;
 use crate::{DspiCore, DspiError, Inner, Result, Wire};
 
@@ -51,6 +52,11 @@ const MAX_IR: usize = 16;
 const STATUS_NO_IR: u8 = 0x1E;
 /// How long a macro write waits for the DSPi Link device lock.
 const LOCK_TIMEOUT: Duration = Duration::from_secs(60);
+// -- WP CG24 --
+/// How long an IR learn holds the device lock: the device's 10 s window plus
+/// the UI's polling margin (Swift's `irLearnLockTimeout`).
+pub(crate) const LEARN_WINDOW: Duration = Duration::from_secs(15);
+const LEARN_REASON: &str = "Learning an IR code";
 
 /// The control-surface editor's state (WP C14), on the session's CS model
 /// (WP S4): the last read of the device, kept between operations.
@@ -689,6 +695,15 @@ impl DspiCore {
     /// read-only connection (nothing is sent), firmware without control
     /// surfaces, no device, or a transfer failure. `save` writes flash: the
     /// bridge gates it (DangerousOps).
+    ///
+    /// `learnArm` holds the device lock for the 15 s learn window (WP CG24),
+    /// so another DSPi Link session gets `locked` meanwhile (and a refused
+    /// lock is `{ok: false}` with nothing sent). A `learnRead` whose `state`
+    /// is no longer ARMED, a failed `learnRead`, `learnCancel`, the window's
+    /// end or the connection's close releases it;
+    /// [`DspiCore::device_lock_release`] does not. Inside a lock taken with
+    /// [`DspiCore::device_lock_acquire`] a learn takes no lock of its own and
+    /// lasts only as long as that one.
     pub fn cs_apply(&self, op: String) -> String {
         let r = serde_json::from_str::<Value>(&op)
             .map_err(|e| invalid(format!("malformed operation: {e}")))
@@ -747,13 +762,59 @@ impl DspiCore {
         let kind = text(op, "op")?;
         match kind {
             "refresh" => self.cs_fetch().map(|()| json!({ "ok": true })),
-            "refreshStatus" | "displayStatus" | "auxRead" | "learnRead" => {
+            // -- WP CG24 --
+            "learnArm" | "learnRead" | "learnCancel" => self.learn_op(kind, op),
+            "refreshStatus" | "displayStatus" | "auxRead" => {
                 self.with_cs(|inner, cs| read_op(inner, cs, kind))
             }
             "binding" | "name" | "ir" | "group" | "macro" | "displayConfig" | "displayPage"
-            | "save" | "revert" | "learnArm" | "learnCancel" | "macroFire" | "macroCancel"
-            | "auxState" | "auxLevel" => self.with_cs(|inner, cs| write_op(inner, cs, kind, op)),
+            | "save" | "revert" | "macroFire" | "macroCancel" | "auxState" | "auxLevel" => {
+                self.with_cs(|inner, cs| write_op(inner, cs, kind, op))
+            }
             other => Err(invalid(format!("unknown operation {other}"))),
+        }
+    }
+
+    // -- WP CG24 --
+    /// The IR learn ops. The learn window holds the device lock
+    /// ([`LEARN_WINDOW`]), so another session cannot rewrite the IR setup
+    /// mid-learn (Swift's `csIrLearnArm`). A read that is no longer armed, a
+    /// cancel, the window's end or the connection's going releases it;
+    /// `device_lock_release` does not. A new arm starts a new window. Unlike
+    /// Swift, a failed read (`{ok: false}`) ends the window too: it has no
+    /// `state` of ARMED. Inside a caller's lock the learn takes nothing of
+    /// its own and ends nothing: the window is the caller's lock's.
+    fn learn_op(&self, kind: &str, op: &Value) -> Result<Value> {
+        match kind {
+            "learnArm" => {
+                self.end_held_lock(Some(Holder::Learn));
+                let lock = self.take_device_lock(LEARN_REASON, LEARN_WINDOW, true)?;
+                match self.with_cs(|inner, cs| write_op(inner, cs, kind, op)) {
+                    Ok(v) => {
+                        self.hold_device_lock(lock, LEARN_WINDOW, Holder::Learn);
+                        Ok(v)
+                    }
+                    Err(e) => {
+                        self.release_device_lock(lock);
+                        Err(e)
+                    }
+                }
+            }
+            "learnRead" => {
+                let r = self.with_cs(|inner, cs| read_op(inner, cs, kind));
+                if let Ok(v) = &r
+                    && v["state"].as_u64() != Some(u64::from(learn::ARMED))
+                {
+                    self.end_held_lock(Some(Holder::Learn));
+                }
+                r
+            }
+            // "learnCancel"
+            _ => {
+                let r = self.with_cs(|inner, cs| write_op(inner, cs, kind, op));
+                self.end_held_lock(Some(Holder::Learn));
+                r
+            }
         }
     }
 }
@@ -890,12 +951,19 @@ fn write_op(inner: &mut Inner, cs: &mut CsState, kind: &str, op: &Value) -> Resu
             steps.resize(max_steps, CsMacroStep::default());
             // The session first: nothing can fail between lock and unlock
             // but the write, whose result is kept.
+            // -- WP CG24 -- Inside a held device lock it is nested: the
+            // hub is not asked, and its unlock would end the holder's lock.
+            let held = w.conn().held_lock.is_some();
             let session = w.session()?;
-            session
-                .transport_mut()
-                .lock("control-surface macro", LOCK_TIMEOUT)?;
+            if !held {
+                session
+                    .transport_mut()
+                    .lock("control-surface macro", LOCK_TIMEOUT)?;
+            }
             let r = cs_model::apply(session, |s| s.write_macro(m_index, &header, &steps));
-            session.transport_mut().unlock();
+            if !held {
+                session.transport_mut().unlock();
+            }
             with_surfaces(session, |s| {
                 if let Ok(mc) = s.read_macro(m_index)
                     && let Some(x) = d.macros.get_mut(usize::from(m_index))
@@ -2235,6 +2303,204 @@ mod tests_wp_c14 {
             let _ = page_from_json(&v);
             let _ = index(&v, 16, "slot");
         }
+    }
+
+    // -- WP CG24 --
+
+    type LockLog = Arc<Mutex<Vec<&'static str>>>;
+
+    /// A CS device behind [`Locked`], fetched: the sim and the lock log.
+    fn locked_core() -> (Arc<DspiCore>, Arc<Mutex<Sim>>, LockLog) {
+        let locks = Arc::new(Mutex::new(Vec::new()));
+        let sim_ = Arc::new(Mutex::new(Sim::new()));
+        let dev = Locked {
+            dev: CsDevice {
+                fake: FakeDevice::demo(),
+                sim: Arc::clone(&sim_),
+            },
+            locks: Arc::clone(&locks),
+        };
+        let core = DspiCore::new();
+        core.attach_probed(Box::new(dev), "DEMO".into(), 0).unwrap();
+        core.cs_fetch().unwrap();
+        (core, sim_, locks)
+    }
+
+    fn lock_log(l: &LockLog) -> Vec<&'static str> {
+        l.lock().unwrap().clone()
+    }
+
+    #[test]
+    fn wp_cg24_the_learn_window_holds_the_lock_until_a_final_read() {
+        let (core, sim_, locks) = locked_core();
+        sim(&sim_).learn.state = surfaces::learn::ARMED;
+        assert_eq!(apply(&core, json!({ "op": "learnArm" }))["ok"], true);
+        assert_eq!(core.held_lock_holder(), Some(Holder::Learn));
+        // Still armed: still held.
+        assert_eq!(apply(&core, json!({ "op": "learnRead" }))["state"], 1);
+        assert_eq!(core.held_lock_holder(), Some(Holder::Learn));
+        assert_eq!(lock_log(&locks), ["lock"]);
+        // A result (or the device's own timeout) ends it.
+        sim(&sim_).learn.state = surfaces::learn::DONE;
+        assert_eq!(apply(&core, json!({ "op": "learnRead" }))["state"], 2);
+        assert_eq!(core.held_lock_holder(), None);
+        assert_eq!(lock_log(&locks), ["lock", "unlock"]);
+        // A read with nothing held gives nothing back.
+        apply(&core, json!({ "op": "learnRead" }));
+        assert_eq!(lock_log(&locks), ["lock", "unlock"]);
+    }
+
+    #[test]
+    fn wp_cg24_a_cancel_or_a_refused_arm_releases_it() {
+        let (core, sim_, locks) = locked_core();
+        sim(&sim_).learn.state = surfaces::learn::ARMED;
+        apply(&core, json!({ "op": "learnArm" }));
+        assert_eq!(
+            apply(&core, json!({ "op": "learnCancel" })),
+            json!({ "ok": true })
+        );
+        assert_eq!(core.held_lock_holder(), None);
+        assert_eq!(lock_log(&locks), ["lock", "unlock"]);
+        sim(&sim_).no_ir = true;
+        assert_eq!(
+            apply(&core, json!({ "op": "learnArm" })),
+            json!({ "ok": false, "status": STATUS_NO_IR })
+        );
+        assert_eq!(core.held_lock_holder(), None);
+        assert_eq!(lock_log(&locks), ["lock", "unlock", "lock", "unlock"]);
+    }
+
+    #[test]
+    fn wp_cg24_the_window_ends_on_its_own_and_a_new_arm_starts_another() {
+        let (core, sim_, locks) = locked_core();
+        sim(&sim_).learn.state = surfaces::learn::ARMED;
+        apply(&core, json!({ "op": "learnArm" }));
+        // Arming again restarts the window: the old lock goes first.
+        apply(&core, json!({ "op": "learnArm" }));
+        assert_eq!(lock_log(&locks), ["lock", "unlock", "lock"]);
+        core.expire_held_lock();
+        assert_eq!(core.held_lock_holder(), None);
+        // The expired lock is given back before a new one is taken.
+        apply(&core, json!({ "op": "learnArm" }));
+        assert_eq!(
+            lock_log(&locks),
+            ["lock", "unlock", "lock", "unlock", "lock"]
+        );
+    }
+
+    #[test]
+    fn wp_cg24_inside_a_callers_lock_learning_asks_nothing() {
+        let (core, sim_, locks) = locked_core();
+        core.device_lock_acquire("Flow".into(), 5000).unwrap();
+        sim(&sim_).learn.state = surfaces::learn::ARMED;
+        apply(&core, json!({ "op": "learnArm" }));
+        sim(&sim_).learn.state = surfaces::learn::DONE;
+        apply(&core, json!({ "op": "learnRead" }));
+        apply(&core, json!({ "op": "learnCancel" }));
+        // A macro write nests too.
+        let r = apply(
+            &core,
+            json!({ "op": "macro", "index": 1, "macro": { "name": "x", "steps": [] } }),
+        );
+        assert_eq!(r["ok"], true);
+        assert_eq!(core.held_lock_holder(), Some(Holder::Caller));
+        assert_eq!(lock_log(&locks), ["lock", "header"]);
+        core.device_lock_release();
+        assert_eq!(lock_log(&locks), ["lock", "header", "unlock"]);
+    }
+
+    #[test]
+    fn wp_cg24_the_callers_release_leaves_a_learn_window_alone() {
+        let (core, sim_, locks) = locked_core();
+        sim(&sim_).learn.state = surfaces::learn::ARMED;
+        apply(&core, json!({ "op": "learnArm" }));
+        core.device_lock_release();
+        assert_eq!(core.held_lock_holder(), Some(Holder::Learn));
+        assert_eq!(lock_log(&locks), ["lock"]);
+        apply(&core, json!({ "op": "learnCancel" }));
+        assert_eq!(core.held_lock_holder(), None);
+        assert_eq!(lock_log(&locks), ["lock", "unlock"]);
+        // An acquire during a window makes it the caller's: the release ends it.
+        apply(&core, json!({ "op": "learnArm" }));
+        core.device_lock_acquire("Flow".into(), 5000).unwrap();
+        assert_eq!(core.held_lock_holder(), Some(Holder::Caller));
+        apply(&core, json!({ "op": "learnCancel" }));
+        assert_eq!(core.held_lock_holder(), Some(Holder::Caller));
+        core.device_lock_release();
+        assert_eq!(core.held_lock_holder(), None);
+        assert_eq!(lock_log(&locks), ["lock", "unlock", "lock", "unlock"]);
+    }
+
+    #[test]
+    fn wp_cg24_a_closed_connection_ends_the_window() {
+        let (core, sim_, _locks) = locked_core();
+        sim(&sim_).learn.state = surfaces::learn::ARMED;
+        apply(&core, json!({ "op": "learnArm" }));
+        core.disconnect();
+        assert_eq!(core.held_lock_holder(), None);
+    }
+
+    /// The learn window on the fake hub. The hub has no control surfaces, so
+    /// the core learns on the sim and takes the lock through a Link session's
+    /// side channel, grafted onto its connection: the hub sees that session
+    /// hold the lock, and another session is refused.
+    #[cfg(feature = "link")]
+    #[test]
+    fn wp_cg24_another_session_is_locked_out_during_a_learn_window() {
+        use std::time::{Duration, Instant};
+
+        use dspi_link::fakehub::{FakeHub, HubConfig};
+
+        let wait = |what: &str, f: &dyn Fn() -> bool| {
+            let start = Instant::now();
+            while !f() {
+                assert!(start.elapsed() < Duration::from_secs(8), "{what}");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        };
+        let bound = |hub: &FakeHub| {
+            let core = DspiCore::new();
+            core.link_connect(
+                hub.url(),
+                "wp-cg24".into(),
+                "test".into(),
+                String::new(),
+                String::new(),
+            )
+            .unwrap();
+            wait("the device list", &|| !core.link_devices().is_empty());
+            let d = core.link_devices().remove(0);
+            core.link_select_device(d.handle, d.serial).unwrap();
+            core.fetch_all().unwrap();
+            core
+        };
+        let hub = FakeHub::start(HubConfig::default()).unwrap();
+        let (a, b) = (bound(&hub), bound(&hub));
+        let (core, sim_, _locks) = locked_core();
+        let side = a.lock().conn().unwrap().side.clone();
+        assert!(side.is_some());
+        core.lock().conn().unwrap().side = side;
+
+        sim(&sim_).learn.state = surfaces::learn::ARMED;
+        assert_eq!(apply(&core, json!({ "op": "learnArm" }))["ok"], true);
+        assert!(hub.lock_holder().is_some());
+        assert_eq!(b.set_master_volume(-6.0), Err(DspiError::Locked));
+        sim(&sim_).learn.state = surfaces::learn::DONE;
+        apply(&core, json!({ "op": "learnRead" }));
+        wait("the release", &|| hub.lock_holder().is_none());
+        b.set_master_volume(-6.0).unwrap();
+
+        // The cancel, and the connection's close, end it too.
+        sim(&sim_).learn.state = surfaces::learn::ARMED;
+        apply(&core, json!({ "op": "learnArm" }));
+        assert!(hub.lock_holder().is_some());
+        apply(&core, json!({ "op": "learnCancel" }));
+        wait("the release", &|| hub.lock_holder().is_none());
+        apply(&core, json!({ "op": "learnArm" }));
+        assert!(hub.lock_holder().is_some());
+        core.disconnect();
+        wait("the release", &|| hub.lock_holder().is_none());
+        b.set_master_volume(-6.0).unwrap();
     }
 }
 

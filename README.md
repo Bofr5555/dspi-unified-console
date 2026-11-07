@@ -1,296 +1,139 @@
 # dspi-unified-console
 
-One repository, and one Rust core, for the cross-platform DSPi consoles: the
-Qt desktop app (Linux, Windows, macOS), the `dspi` terminal client, and the
-library the Android and iOS apps are to link.
+One repository with one Rust core and every DSPi console client built on it:
+the Qt app for Windows and Linux, the Android app, the `dspi` terminal client,
+the Swift app for macOS and iOS (being moved onto the core), and a Rust DSPi Link
+hub.
+
 [DSPi](https://github.com/WeebLabs/DSPi) is Weeb Labs' open-source DSP firmware
-for the Raspberry Pi Pico.
+for the Raspberry Pi Pico and Pico 2. Weeb Labs also wrote the original DSPi
+Consoles (macOS in Swift, Windows in C#, Linux in Qt), DSPi-Terminal and DSPi
+Link. This repository grew from those: the core comes from DSPi-Terminal's crates
+and the Linux console's Rust core, the Qt app from DSPi-Console-Linux, the Swift
+app from a fork of the macOS DSPi Console, and the Android app and the Rust Link
+client from Bofr5555's Android console ([Credits](#credits)). The clients talk to
+stock Weeb Labs firmware, and to the extension channel of Bofr5555's firmware
+fork where it is present ([The core](#the-core)).
 
 The goal is one project, built from one base, for every client.
 This repository is **private** and is not an official
-Weeb Labs repository. The macOS Console
-([WeebLabs/DSPi-Console](https://github.com/WeebLabs/DSPi-Console), Swift)
-remains the reference for behaviour and look.
+Weeb Labs repository. The macOS DSPi Console remains the reference for behaviour
+and look ([`docs/PARITY.md`](docs/PARITY.md)).
 
-**Status (2026-11-06).** The two old Rust cores are merged into the crates
-below, and the Qt app runs on them. The merge is tested against a simulated
-device and a fake Link hub; **nothing has run on this core against real
-hardware**. See [What has and has not been run](#what-has-and-has-not-been-run).
+## Status
 
-- Design and work log: [`docs/core-merge/PLAN.md`](docs/core-merge/PLAN.md).
-- Everything still to do per client: `docs/core-merge/PLAN-CLIENTS.md` (on
-  branch `plan/clients`, merged later).
-- Platform notes and the parity table:
-  [`docs/PORTABILITY.md`](docs/PORTABILITY.md).
+Per client, from the status table in
+[`docs/core-merge/PLAN-CLIENTS.md`](docs/core-merge/PLAN-CLIENTS.md#status-2026-11-07)
+(2026-11-07; CG23 to CG27 and AN34 have merged into `main` since). Every client
+is tested against the simulated device, mocks and a fake hub; the hardware passes
+for each client are still owed (the `[HW]` items in the table).
+
+| Client | Where | Status |
+|---|---|---|
+| Core | `crates/` | Merged and in use by Qt, Android and the terminal. The core gaps the clients need are mostly done (CG1 to CG27); CG28 is open. |
+| Qt, Linux and Windows | `apps/desktop/` | On the core through the C ABI. Most of its track is merged; the lost-connection banner, networking page, analyser over Link and shortcuts are on their branches (QD10, QD14, QD19, QD17); the device list, packaging, accessibility and the hardware passes on Linux and Windows are open. The Windows build is cross-compiled from Linux. |
+| Android | `apps/android/` | On the core through UniFFI (AN1). Most of its track is merged. `release/android-0.12` is waiting for its hardware test (AN13); the follow-ups AN35 and AN36, accessibility and localisation are open. |
+| Terminal | `apps/terminal/` | Its track is done but for the hardware pass on the K340 (TM13). |
+| Swift, macOS and iOS | `apps/apple/` | In progress. The core builds as an XCFramework and the app's tests call it through the generated bindings (SW1, SW2); the seam map is done (SW3). The app itself still runs on its own Swift code: moving it onto the core starts with SW4. |
+| Link hub | `crates/dspi-hub/` | Server, pairing, roles, registry, advertising, web UI and a C ABI are merged (HB0 to HB6); `dspi hub` runs it from the terminal. Conformance (HB7) and hardware checks are open. |
+| Web | none | Deferred by the owner. CI checks that the core still builds for wasm32 (WB1); there is no web client. |
+
+What each client lacks against the macOS reference is in
+[`docs/PARITY.md`](docs/PARITY.md), section 5.
 
 ## Layout
 
-| Path | What | From |
+| Path | What |
+|---|---|
+| `crates/dspi-proto/` | Pure protocol, no I/O: constants generated from the firmware headers vendored in `firmware/`, the V32 bulk codec, read-only mapping of other wire formats, extension channel codecs, MIDI SysEx framing. |
+| `crates/dspi-transport/` | The `Transport` trait and its backends: USB (nusb), MIDI, Link, the demo device, a scripted mock. |
+| `crates/dspi-link/` | The DSPi Link client (WebSocket), with a fake hub for tests. |
+| `crates/dspi-session/` | Session logic: probe, device state, notifications, writes, analyser, control surfaces, presets, filter files, AutoEQ. |
+| `crates/dspi-core/` | The embedder API: one `DspiCore` object for a GUI or a binding, with the device manager, hotplug, hub discovery, Link sessions and firmware files. |
+| `crates/dspi-capi/` | C ABI over `dspi-core` for the Qt app (`include/dspi_core.h`, generated by its `build.rs`). |
+| `crates/dspi-ffi/` | UniFFI library over `dspi-core` for Kotlin and Swift. |
+| `crates/dspi-hub/` | The DSPi Link hub ([`docs/core-merge/HUB.md`](docs/core-merge/HUB.md)). |
+| `crates/dspi-cmd/`, `crates/dspi-tui/` | The terminal's command grammar and interface (ratatui). |
+| `apps/desktop/` | The Qt 6 (or 5.15) and QML app, CMake (`qt/`), and its packaging (`packaging/`). Its docs are in `Documentation/`. |
+| `apps/android/` | The Android app, Kotlin and Compose, Gradle. |
+| `apps/apple/` | The Swift app, one Xcode project with macOS and iOS targets. |
+| `apps/terminal/` | The `dspi` terminal client, a TUI and CLI (package `dspi-term`). |
+| `assets/` | Data shared by every client, `about.json` (the About pages) and `onboarding/`. |
+| `tests/fixtures/` | Filter-file fixtures and the DSPi Link fixtures (`link/`, from WeebLabs/DSPi-Link). |
+| `xtask/` | Developer tasks, and the udev rule they install. |
+| `docs/` | `core-merge/` (the core plan `PLAN.md`, the client plan `PLAN-CLIENTS.md`, the hub, the web study), `PARITY.md`, `PORTABILITY.md`, `SWIFT-SEAMS.md`, `licensing/`, `terminal/`. |
+| `ci/` | `check.sh` and `run.sh` (the checks and their container wrapper), `matrix.sh` (every client from one commit), the container files, and a **draft** GitHub Actions file that is not enabled. |
+
+## Building and testing
+
+Every toolchain runs in a container; nothing is installed on the host.
+`ci/run.sh 'COMMAND'` runs a command in the build container for this worktree,
+with its caches under `~/.cache/dspi-build`. `ci/check.sh` runs named checks
+through it. The images are listed in `ci/container/images.conf`, and
+`ci/container/build-images.sh` builds any that are missing.
+
+```
+ci/check.sh                               # the full gate: fmt, clippy, tests, Windows GNU, wasm-core, Android contract, licences, deny
+ci/check.sh --crate dspi-core             # fmt, clippy and tests of one crate
+ci/check.sh --step qt --step terminal     # named steps; the list is at the top of ci/check.sh
+ci/matrix.sh                              # build and test every client from one commit, and print the matrix
+```
+
+Per client:
+
+| Client | In a container | Entry point |
 |---|---|---|
-| `crates/dspi-proto/` | Pure protocol, no I/O: constants generated from the firmware headers vendored in `firmware/` (bofr-main `04122d3`), the V32 bulk codec, read-only mapping of other wire formats, extension channel codecs, MIDI SysEx framing. | DSPi-Terminal, extended |
-| `crates/dspi-transport/` | The `Transport` trait and its backends: USB (nusb), MIDI, Link, the demo device, a scripted mock. | DSPi-Terminal, extended |
-| `crates/dspi-link/` | DSPi Link client (WebSocket, protocol 1.2, accepts 1.1 hubs), with a fake hub for tests. | Bofr5555's Android console |
-| `crates/dspi-session/` | Session logic: probe, device state, notifications, writes, RTA engine, control surfaces and their editing model, presets, filter files, AutoEQ, channel clipboard. | DSPi-Terminal, extended |
-| `crates/dspi-core/` | The embedder API: one `DspiCore` object for a GUI or a binding, with typed errors, listeners, the device manager, hotplug, Link sessions and firmware files. | New; its model comes from DSPi-Console-Linux's core |
-| `crates/dspi-capi/` | C ABI over `dspi-core` for the Qt app. Library `dspi_capi`, header `include/dspi_core.h`, generated by its `build.rs`. | New; the old core's function names |
-| `crates/dspi-ffi/` | UniFFI library over `dspi-core` for Kotlin and Swift (`libdspi_ffi`). | New |
-| `crates/dspi-cmd/`, `crates/dspi-tui/` | The command grammar and the terminal interface (ratatui + crossterm). | DSPi-Terminal |
-| `apps/desktop/` | The desktop app: Qt 6 (or 5.15) and QML, CMake. `qt/` is the app, `packaging/` holds the Linux, Windows, macOS and AUR files. | WeebLabs/DSPi-Console-Linux |
-| `apps/terminal/` | The `dspi` terminal client, a TUI and CLI (package `dspi-term`). | WeebLabs/DSPi-Terminal `crates/dspi/` |
-| `tests/fixtures/` | Filter-file fixtures (Terminal) and the DSPi Link fixtures (`link/`, from WeebLabs/DSPi-Link). | |
-| `xtask/` | DSPi-Terminal's developer tasks, and the udev rule it installs. | DSPi-Terminal |
-| `docs/` | `core-merge/` (plan and brief), `PORTABILITY.md`, `terminal/` (DSPi-Terminal's docs). The desktop's docs are in `apps/desktop/Documentation/`. | |
-| `ci/` | `check.sh` and `run.sh`, the checks and their container wrapper. Also a **draft** GitHub Actions matrix, not enabled: GitHub only runs workflows under `.github/workflows/`. | |
+| Terminal | `ci/check.sh --step terminal` | `cargo build --release -p dspi-term`; `cargo run -p dspi-term -- --demo dump` runs on the simulated device |
+| Qt, Linux | `--step qt`, `qt5`; `qt-offscreen`, `qt5-offscreen` run the app with its smoke driver on the demo device | `cargo build --release -p dspi-capi`, then CMake on `apps/desktop/qt` ([`apps/desktop/README.md`](apps/desktop/README.md)); `DSPiConsole --demo` |
+| Qt, Windows | `--step qt-windows` (MinGW app, zip and installer); `--step windows-msvc` builds the core and terminal with MSVC | `apps/desktop/packaging/windows/build-windows.sh` |
+| Android | `--step android` (core libraries), `android-tests`, `android-aab` | `apps/android/tools/ci.sh` |
+| Swift, macOS and iOS | not in a container: `ci/macvm.sh macos` or `ios` runs it in the macOS VM | `apps/apple/build-xcframework.sh`, then `apps/apple/ci-test.sh macos` or `ios` |
+| Bindings | `--step kotlin`, `--step swift`, `--step drift` | `ci/compile-bindings.sh` |
+
+Other checks: `--step test`, `proptest`, `deny`, `licences`, `wasm`, `wasm-core`,
+`ios-check`. On Linux the workspace needs ALSA development files for MIDI; the
+Linux Qt app needs the udev rule in `apps/desktop/packaging/linux/` for USB access.
+`apps/desktop/packaging/macos/build-macos.sh` (Qt on macOS) is kept but not run on
+this tree; macOS is the Swift app's.
 
 ## The core
 
-**Who uses what.** Qt goes through `dspi-capi` to `dspi-core`. The Android and
-iOS apps are to go through `dspi-ffi` to `dspi-core`; they have not moved yet.
-The terminal uses `dspi-session` directly.
+Qt reaches `dspi-core` through the C ABI (`dspi-capi`); Android through UniFFI
+(`dspi-ffi`), as the Swift app will. The terminal uses the session crates
+directly, with `dspi-core` and `dspi-hub` for some commands.
 
-**Transports.**
+- **Wire format V32** (firmware 1.1.6) is read and written. Older formats, and
+  newer ones, connect read-only; an image that cannot be mapped still shows the
+  device and allows a firmware update.
+- **Stock Weeb Labs firmware needs nothing from us.** The extension channel of
+  Bofr5555's fork (`REQ_EXTENSION` 0x00: crossfeed pair map, core voltage, bulk
+  source tag) is probed once per connect; on stock firmware those calls return
+  `Unsupported`.
 
-| Transport | Code | Qt app today | Terminal today |
-|---|---|---|---|
-| USB vendor interface | `dspi_transport::usb`: nusb, pure Rust over usbfs, WinUSB and IOKit. `UsbTransport::from_fd` on Linux and Android. No libusb. | yes | yes |
-| USB MIDI (SysEx) | `dspi_transport::midi`: sans-IO `MidiClient` and a blocking `MidiTransport` over an app-supplied pipe; desktop ports through midir (feature `midir`). | no: not in the C ABI | `--midi` |
-| DSPi Link | `dspi_transport::link` (feature `link`), sessions in `dspi_core::link`. No hub discovery yet (no mDNS in any crate); you give an address. | no: not in the C ABI (client plan CG1) | `--link` |
-| Demo | `dspi_transport::fake`: a stateful simulated device. It has no spectrum analyser, control surfaces, signal generator or buffer statistics. | `--demo` | `--demo` |
-
-**C ABI.** 167 functions. The old core's names, signatures and `#[repr(C)]`
-records are kept (`tests/data/dspi_core_old.h` in the crate is the reference, and
-a test checks every old function is still exported), so the Qt code changed
-little. The rest are additions: extension channel, device and source names,
-output latency, clock diagnostics, firmware files, the demo device. The Qt UI
-does not call most of the additions yet (`docs/PORTABILITY.md`, section 11). The
-function reference is `apps/desktop/Documentation/core_spec.md`.
-
-**UniFFI.** `dspi-ffi` carries `dspi-core`'s exports (namespace `dspi_core`) and
-its own `init_logging` (namespace `dspi_ffi`), on UniFFI 0.29.5, always with Link
-on. Bindings come from the library, once per namespace:
-
-```
-cargo run -p dspi-ffi --features cli --bin uniffi-bindgen -- \
-    generate --library libdspi_ffi.so --crate dspi_core \
-    --config crates/dspi-core/uniffi.toml --language kotlin --out-dir out
-```
-
-Tests generate Kotlin and Swift (`crates/dspi-ffi/tests/bindgen_wp_f1.rs`). No
-app has been built on them yet.
-
-**Terminal flags.** `--demo`, `--midi [PORT]` and `--link HOST[:PORT]` work with
-every command and exclude one another. `--device SERIAL` picks a USB device or a
-hub's device. `--pin` pairs with a hub without a terminal (`--pin -` or
-`DSPI_PIN` for scripts). `--fixture` still opens the TUI on the static example
-device. `dspi --help` has the rest.
-
-**Link sessions.** `dspi_core` reports `LinkStatus.phase` (`LinkPhase`):
-
-| Phase | Meaning |
-|---|---|
-| `Idle` | no session |
-| `NeedsPairing` | the hub wants a PIN (never paired, or the token was refused or revoked); retries stop |
-| `NoDevice` | authenticated, but the hub offers no DSPi; binds by itself when one returns |
-| `ChooseDevice` | a DSPi is available, none is bound |
-| `Bound` | bound to a device |
-| `Reconnecting` | lost, or re-attaching; retried with backoff (1, 2, 4 ... 30 s), `reconnect_attempt` and `reconnect_in_ms` say how it goes |
-| `Closed` | ended and not retried (see `close_code`, `close_reason`) |
-| `Refused` | the hub refuses this client (a 4xx handshake) |
-
-The owner's rule for a lost connection, for every client: **show "connection
-lost, reconnecting" with a way to abort; the mirror stays readable; writes fail
-at once and are never replayed.** The core does its half. In `Reconnecting` the
-last known state stays, calls that need the device return `Disconnected`, nothing
-is queued, and `link_close` works from any thread. A client must not add its own
-retry loop or queue a write. The banners themselves are client work
-(`PLAN-CLIENTS.md`, M12). The terminal does not go through `dspi_core`: it has its
-own reconnector, which follows the same `dspi-link` retry advice.
-
-**Bulk echoes.** A client skips the re-read after its own bulk write and
-re-reads after anyone else's. `dspi_session::notify::EchoFilter` takes one of two
-modes at connect:
-
-| Firmware | Our echo | Basis |
-|---|---|---|
-| Reports `NOTIFY_FEAT_BULK_SOURCE` (`EXT_NOTIFY_FEATURES`) | source is our path and a SET of ours is outstanding | the firmware's tag; an unanswered SET expires after 5 s |
-| Older or stock, or the read was refused | `BULK_SET`, once, while our write is in flight or within 1 s of its OK reply | a time window, since these firmwares tag every bulk apply `BULK_SET` |
-
-Over Link neither applies: the origin session id decides. Details:
-`docs/core-merge/PLAN.md`, section 1.2.
-
-**Firmware requirements.**
-- **Wire format V32** (firmware 1.1.6) is read and written.
-- **V16 to V31, and newer formats,** connect read-only: older images are mapped
-  onto V32, newer ones keep their V32 prefix, and every setter returns `ReadOnly`.
-  An image that cannot be mapped still shows the device and its status and allows
-  a firmware update.
-- **Stock Weeb Labs firmware needs nothing from us.** Features of the
-  fork's extension channel (`REQ_EXTENSION` 0x00: crossfeed pair map, core voltage,
-  bulk source tag) are gated on `EXT_LIST`, probed once per connect. On stock it
-  stalls, the state is empty, and those calls return `Unsupported` with no traffic.
-- This is by design and by test (fake device, mock stalls). It has not been run
-  on real stock firmware on this tree.
-
-## Building
-
-The project's own builds run in containers; nothing is installed on the host.
-`ci/check.sh` runs each step below through `ci/run.sh`. Its images are listed in
-`ci/container/images.conf`, and `ci/container/build-images.sh` builds any that are
-missing from their committed Containerfiles. `ci/matrix.sh` does that too, then builds
-and tests every client from one commit and prints the result.
-
-`cargo` and `cmake` commands below run at the repository root and work the same
-with your own toolchain.
-
-### Rust
-
-```
-ci/check.sh --crate dspi-core             # fmt, clippy, tests of one crate
-ci/check.sh --step fmt --step clippy --step test    # the whole workspace
-ci/check.sh --step proptest               # property tests, 20000 cases each
-```
-
-Plain cargo: `cargo test --workspace --all-features`. On Linux the workspace
-needs ALSA development files for midir; libusb and libudev are no longer needed.
-
-### Terminal client
-
-```
-cargo build --release -p dspi-term        # target/release/dspi
-cargo run -p dspi-term -- --demo dump     # the simulated device, no hardware
-```
-
-Without ALSA headers: `--no-default-features` (then `--midi` says it is
-unavailable).
-
-### Desktop app, Linux
-
-```
-cargo build --release -p dspi-capi
-cmake -S apps/desktop/qt -B apps/desktop/qt/build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build apps/desktop/qt/build       # apps/desktop/qt/build/DSPiConsole
-apps/desktop/qt/build/DSPiConsole --demo  # the simulated device, no hardware
-```
-
-- In the container: `ci/check.sh --step qt`, or `--step qt5` for Qt 5.15.
-- `--step qt-offscreen` and `qt5-offscreen` run the real app with a test driver
-  (`apps/desktop/qt/smoke/`), offscreen, on the demo device.
-- CMake uses Qt 6 when it finds it, otherwise Qt 5.15. `-DDSPI_QT_MAJOR=5` or
-  `6` chooses. Fedora: `qt6-qtbase-devel`, `qt6-qtdeclarative-devel`;
-  `kf6-kwindowsystem-devel` is optional and adds KDE blur.
-- USB access on Linux needs the udev rule
-  (`apps/desktop/packaging/linux/70-dspi.rules`).
-- Release packages (AppImage, .deb, .rpm):
-  `apps/desktop/packaging/linux/build-release.sh`. Not run on this tree.
-
-### Desktop app, Windows x86_64 (cross-compiled on Linux)
-
-```
-ci/check.sh --step qt-windows
-```
-
-This runs `apps/desktop/packaging/windows/build-windows.sh` and produces, under
-the container's `/work/dist-windows` (`~/.cache/dspi-build/work/<branch>/`):
-- a folder that runs as is, holding `DSPiConsole.exe`, `dspi_capi.dll`, the Qt 6
-  MinGW DLLs, plugins and QML modules;
-- a `.zip` of that folder;
-- a per-user installer, `…-setup.exe`.
-
-The same script has its own image, not yet tried on this tree:
-
-```
-podman build -t dspi-windows apps/desktop/packaging/windows
-podman run --rm -v "$PWD":/src:Z -w /src dspi-windows apps/desktop/packaging/windows/build-windows.sh
-```
-
-USB uses WinUSB. DSPi firmware has MS OS 2.0 descriptors, so Windows binds the
-driver on its own and no Zadig step is needed.
-
-### Windows with MSVC
-
-```
-ci/check.sh --step windows-msvc
-```
-
-This builds `dspi-core`, `dspi-capi` (`dspi_capi.dll`) and `dspi-term` (`dspi.exe`)
-for `x86_64-pc-windows-msvc` with cargo-xwin, in a dev profile. **The Qt app has
-never been linked with MSVC.** That needs Qt's MSVC build on Windows; the draft job
-is in `ci/github-actions-build.yml`, untried.
-
-`cargo build --release -p dspi-term --target x86_64-pc-windows-gnu` builds the
-terminal for MinGW; `ci/check.sh --step windows-gnu` builds the whole workspace.
-
-### macOS (universal: Apple silicon and Intel)
-
-```
-QTDIR=~/Qt/6.11.2/macos apps/desktop/packaging/macos/build-macos.sh    # dist/DSPi Console.app, dist/DSPi-Console-…-macos.dmg
-cargo build --release -p dspi-term                                      # the terminal client
-```
-
-**Not run on this tree.** The script was run in a macOS VM on the old core, and
-Q3 changed it for `dspi_capi`. It needs Xcode, rustup with the `x86_64-apple-darwin`
-and `aarch64-apple-darwin` targets, CMake and Ninja, and Qt 6 for macOS from qt.io
-(its macOS build is universal). It makes an ad-hoc signed bundle and a .dmg; set
-`SIGN_ID` to a Developer ID identity for distribution. Notarisation is a separate
-step.
-
-### Android
-
-```
-ci/check.sh --step android
-```
-
-Builds `dspi-core` (with Link) and `dspi-ffi` for arm64, armv7 and x86_64 with
-cargo-ndk. The Android app itself is not in this repository yet.
-
-`ci/check.sh --step wasm` builds `dspi-proto` for wasm32; nothing more of a web
-build exists.
-
-## What has and has not been run
-
-**Run on the merged tree** (WP Q3's logs, Linux containers, no device):
-- the Qt 6 and Qt 5.15 app, built, and run offscreen on the demo device: state,
-  setters, routing, presets, notifications, files, every tool window and settings
-  page, a sweep of the bridge's calls with bad values, disconnect and reconnect
-  (127 checks on Qt 6, 110 on Qt 5, no failures);
-- the Windows MinGW app, zip and installer: built, **not started**;
-- `dspi_capi.dll` and `dspi.exe` with MSVC: built, not run;
-- the tests of the crates, against `FakeDevice`, `MockTransport`, mock stalls and
-  the fake hub. 2182 passed on the whole workspace at the wave 3 merge.
-
-**Not run on the merged tree:**
-- any real DSPi, over USB, MIDI or Link; any real hub or bridge; any real MIDI port;
-- `build-macos.sh`, or anything on macOS;
-- the Qt app linked with MSVC;
-- anything on real Windows or under Wine;
-- the Android or iOS apps on `dspi-ffi`;
-- the spectrum analyser, control surfaces, signal generator and buffer statistics
-  through Qt: the demo device does not model them, so the smoke driver prints
-  `NOT EXERCISED`.
-
-The old core's results (the macOS bundle, the Windows 11 run, read-only hardware
-checks) are in `docs/PORTABILITY.md` and do not carry over.
+The design of the core (transports, C ABI, UniFFI, Link sessions, echo handling)
+is in [`docs/core-merge/PLAN.md`](docs/core-merge/PLAN.md); platform notes are in
+[`docs/PORTABILITY.md`](docs/PORTABILITY.md).
 
 ## Credits
 
-Everything here builds on Weeb Labs' work:
-- [DSPi](https://github.com/WeebLabs/DSPi), the firmware;
-- the DSPi Consoles for macOS, Windows and Linux;
-- [DSPi-Terminal](https://github.com/WeebLabs/DSPi-Terminal).
+Everything here builds on Weeb Labs' work: DSPi, the DSPi firmware, the DSPi
+Consoles, DSPi-Terminal and DSPi-Link. The core merge, the Android console, the
+Rust Link client and the unified console are Bofr5555's. The full list, the
+same one every client's About page shows, is
+[`assets/about.json`](assets/about.json) (a draft until the owner approves it);
+third-party notices are in [`NOTICE.md`](NOTICE.md).
 
-The imports, with history:
+The imports, with history (each upstream's paths rewritten with
+`git filter-repo` and merged with `--allow-unrelated-histories`, so
+`git log --follow` works on any file):
 
-| Component | Upstream | Upstream commit imported | Our changes on top |
-|---|---|---|---|
-| `apps/desktop/` (and the old `crates/dspi-core-linux/`, since merged into `crates/dspi-core` and `dspi-capi` and deleted) | WeebLabs/DSPi-Console-Linux `main` | `4683a2c` (2026-10-10, "AUR package: build from the refreshed beta 4") | `portable` branch: Qt 6, Windows build and conventions, WinUSB wIndex, cargo-xwin fix |
-| `apps/terminal/`, `crates/dspi-{proto,transport,session,cmd,tui}`, `xtask/`, `tests/fixtures/*.txt` | WeebLabs/DSPi-Terminal `main` | `8389b20` (2026-09-30) | `portable` branch: firmware headers from Bofr5555/DSPi `bofr-main` (now `04122d3`: v1.1.6 final + extension channel), `dspi ext …`, `--fixture`, AutoEQ path; then the core merge |
-| `crates/dspi-link/`, `tests/fixtures/link/` | Bofr5555's Android console (`dspi-android`) `main` | `63492af` (last change to these paths `401ca8b`) | path changes, then the robustness work of the core merge |
-| `apps/android/` | Bofr5555's Android console (`dspi-android`) `main` | `63492af` | paths fixed for the new location; a ktlint fix. `apps/android/rust` and `third_party/` go when AN1 moves the app onto `crates/` |
-| `tests/fixtures/link/` (data) | WeebLabs/DSPi-Link | `86f10e3` (see its README) | none |
-
-The import method: each upstream was cloned locally, its paths were
-rewritten with `git filter-repo`, and it was merged with
-`--allow-unrelated-histories`. `git log --follow` works on any file.
+| Component | Upstream | Commit imported |
+|---|---|---|
+| `apps/desktop/`, and the old core since merged into `crates/dspi-core` and `dspi-capi` | WeebLabs/DSPi-Console-Linux `main` | `4683a2c` |
+| `apps/terminal/`, `crates/dspi-{proto,transport,session,cmd,tui}`, `xtask/`, `tests/fixtures/*.txt` | WeebLabs/DSPi-Terminal `main` | `8389b20` |
+| `crates/dspi-link/`, `apps/android/` | Bofr5555's Android console (`dspi-android`) `main` | `63492af` |
+| `apps/apple/` | Bofr5555's fork of the macOS DSPi Console, branch `ext-channel-116` | `48cf7c5` |
+| `tests/fixtures/link/` (data) | WeebLabs/DSPi-Link | `86f10e3` |
 
 ## Licensing
 

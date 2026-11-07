@@ -2103,3 +2103,8 @@ mod tests_wp_c15;
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "link/tests_wp_cg21.rs"]
 mod tests_wp_cg21;
+
+// -- WP CG24 --
+#[cfg(test)]
+#[path = "link/tests_wp_cg24.rs"]
+mod tests_wp_cg24;

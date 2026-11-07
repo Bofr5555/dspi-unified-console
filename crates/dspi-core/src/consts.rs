@@ -251,3 +251,9 @@ pub const IMPORT_HARDWARE: u32 = 2;
 /// Reported once.
 pub const NOTIFY_STALE: u32 = 1 << 10;
 // -- WP F1 --
+// -- WP CG25 --
+/// `process_notifications`: an audio stream's state changed (ADAT out, I2S
+/// clock slave, ADAT in). Re-read `fetch_adat_out_status` or
+/// `fetch_input_lock(0|1)`. The mirror already follows ADAT out's `enabled`
+/// and `pin` (with `NOTIFY_STATE` when they changed).
+pub const NOTIFY_STREAMS: u32 = 1 << 11;
