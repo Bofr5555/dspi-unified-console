@@ -379,7 +379,9 @@ class ReadOnlyTest {
                 // `var watching`: polling while a view is open (reads only)
                 "siggen.setWatching", "stats.setWatching", "monitor.setWatching", "monitor.setPaused",
                 // analyser request parameters: part of the RTA subscription (a read)
-                "rta.setFftOrder", "rta.setAvgMs", "rta.setPeakDecay"
+                "rta.setFftOrder", "rta.setAvgMs", "rta.setPeakDecay",
+                // -- WP AN17 -- rta_take_control re-pushes this console's own subscription (PASS_THROUGH in WriteGuardedCore)
+                "rta.takeControl"
             )
     }
 }
