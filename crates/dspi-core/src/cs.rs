@@ -574,10 +574,15 @@ fn snapshot(cs: &CsState, d: &CsData) -> Value {
         "types": d.caps.types.iter()
             .map(|t| json!({ "actions": t.actions, "pins": t.pin_count, "pinClass": t.pin_class }))
             .collect::<Vec<_>>(),
-        "nouns": d.nouns.iter().map(|n| json!({ "kind": n.kind, "enumCount": n.enum_count,
+        // -- WP CG20 -- `name` as an indicator shows it, `controlName` as a control
+        // acts on it (cs_model::noun_name): the clients' noun tables come from here.
+        "nouns": (0..=u8::MAX).zip(d.nouns.iter()).map(|(i, n)| json!({ "kind": n.kind,
+            "enumCount": n.enum_count,
             "actions": n.actions, "min": n.min_q, "max": n.max_q, "unit": n.unit,
             "targetKind": n.target_kind, "targetCount": n.target_count,
-            "deferred": n.dflags & 1 != 0 })).collect::<Vec<_>>(),
+            "deferred": n.dflags & 1 != 0,
+            "name": cs_model::noun_name(i, ty::LED),
+            "controlName": cs_model::noun_name(i, ty::BUTTON) })).collect::<Vec<_>>(),
         "maxIr": d.caps.max_ir_commands, "maxGroups": d.caps.max_groups,
         "maxMacros": d.caps.max_macros, "maxSteps": d.caps.max_macro_steps,
         "status": status_json(cs, &d.status),
@@ -1490,6 +1495,14 @@ mod tests_wp_c14 {
         assert_eq!(s["nouns"].as_array().unwrap().len(), 79);
         assert_eq!(s["nouns"][0]["min"], -60 * 256);
         assert_eq!(s["nouns"][0]["deferred"], false);
+        // -- WP CG20 -- The names, for the clients' labels.
+        assert_eq!(s["nouns"][0]["name"], "Volume");
+        let clip = usize::from(noun::CLIP);
+        assert_eq!(s["nouns"][clip]["name"], "Clipping");
+        assert_eq!(s["nouns"][clip]["controlName"], "Clear Clipping");
+        let mac = usize::from(noun::MACRO);
+        assert_eq!(s["nouns"][mac]["name"], "Running Macro");
+        assert_eq!(s["nouns"][mac]["controlName"], "Macro");
         let b0 = &s["bindings"][0];
         assert_eq!(b0["type"], ty::ENCODER);
         assert_eq!(

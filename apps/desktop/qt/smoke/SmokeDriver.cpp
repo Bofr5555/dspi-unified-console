@@ -608,7 +608,10 @@ void SmokeDriver::testCsRefusals() {
     // Another device: the old reason doesn't follow it
     b->rescan();
     check("QD1: back on the demo", b->connected());
-    check("QD1: a new device drops the old reason", cs->statusMessage(0xFF) != gone);
+    // -- WP CG20 -- `generic` is the core's text for an unknown code now, no longer
+    // the controller's own words for a failure without a reason, which 0xFF falls back to
+    check("QD1: a new device drops the old reason",
+          cs->statusMessage(0xFF) == QStringLiteral("Failed to apply the binding"));
 
     testCsCallerRefusals();
     testSaveBarRefusal();
@@ -1327,6 +1330,11 @@ Item {
         out.applied = controlSurfaces.apply({ op: "binding", index: 7, binding: ed.rec }).ok === true
         out.status = controlSurfaces.statusMessage(0x18)
         out.summary = h.verbPhrase(ed.rec)
+        // The noun names are the core's, in the snapshot
+        out.clipOnLed = h.nounName(8, h.typeLed)
+        out.clipOnButton = h.nounName(8, h.typeButton)
+        out.volume = h.nounName(0, h.typeEncoder)
+        out.unknownNoun = h.nounName(250, h.typeButton)
         controlSurfaces.apply({ op: "binding", index: 7, binding: h.emptyBinding() })
         return out
     }
@@ -1352,4 +1360,8 @@ Item {
     check("CG20: what is offered applies", r.value("applied").toBool());
     check("CG20: status text from the core", !r.value("status").toString().isEmpty());
     check("CG20: the summary comes from the core", !r.value("summary").toString().isEmpty());
+    check("CG20: noun names from the snapshot, an LED's", r.value("clipOnLed").toString() == "Clipping");
+    check("CG20: and a control's", r.value("clipOnButton").toString() == "Clear Clipping");
+    check("CG20: a plain one", r.value("volume").toString() == "Volume");
+    check("CG20: one the device lacks", r.value("unknownNoun").toString() == "Parameter 250");
 }
