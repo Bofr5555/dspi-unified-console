@@ -41,9 +41,8 @@ use crate::widgets::{Action, Button, Dialog, DialogOutcome, KeyHelp, PopupList, 
 use super::cs_model::{self as m, CsData};
 use super::cs_model::{target_choice, target_choices};
 use super::{Cx, PageEvent, Row, SettingsData, SettingsPage};
-use dspi_session::surfaces::{
-    CsBinding, CsDisplayCfg, CsDisplayPage, CsStatusPacket, GPIO_UNUSED, IrCommand,
-};
+use dspi_session::cs_rows::{self, Draft, RowBody};
+use dspi_session::surfaces::{CsBinding, CsDisplayCfg, CsDisplayPage, CsStatusPacket, IrCommand};
 
 pub const EMPTY_TITLE: &str = "No Controls Configured";
 pub const EMPTY_BODY: &str = "Wire a button, switch, knob, encoder, or LED to a spare GPIO and \
@@ -105,7 +104,6 @@ enum Item {
     SpanMin(usize),
     SpanMax(usize),
     StepSize(usize),
-    EnumStep(usize),
     Value(usize),
     Choice(usize),
     Bright(usize),
@@ -123,7 +121,6 @@ enum Item {
     IrValue(usize),
     IrChoice(usize),
     IrStep(usize),
-    IrEnumStep(usize),
     IrFlag(usize, u8),
     LearnCancel,
 
@@ -438,27 +435,6 @@ impl SurfacesPage {
             .collect()
     }
 
-    /// Types a slot may become: every type, minus a container another slot
-    /// already holds. An aux slot stays an aux output (of either kind) and a
-    /// control never becomes one, because the two live on different pages
-    /// (`typeMenuTypes`, DSPi_ConsoleApp.swift:3079-3084).
-    fn type_options(&self, slot: usize) -> Vec<u8> {
-        let aux = self.is_aux_slot(slot);
-        self.live
-            .real_types()
-            .into_iter()
-            .filter(|t| m::is_aux(*t) == aux)
-            .filter(|t| match *t {
-                m::ty::IR => {
-                    m::container_slot(&self.drafts, &self.live, m::ty::IR).is_none_or(|s| s == slot)
-                }
-                m::ty::DISPLAY => m::container_slot(&self.drafts, &self.live, m::ty::DISPLAY)
-                    .is_none_or(|s| s == slot),
-                _ => true,
-            })
-            .collect()
-    }
-
     fn ir_visible(&self) -> Vec<usize> {
         (0..self.ir_drafts.len())
             .filter(|s| self.ir_drafts[*s] != IrCommand::default() || !self.live.ir[*s].is_empty())
@@ -514,543 +490,97 @@ impl SurfacesPage {
     }
 
     // -------------------------------------------------------------- the rows
+    //
+    // -- WP TM24 -- A binding's and a remote button's rows, and what an edit
+    // makes of them, are the core's (`dspi_session::cs_rows`), so the Terminal
+    // offers exactly what the firmware takes. Only the drawing is here.
 
-    fn pin_rows(&self, cx: &Cx<'_>, slot: usize) -> Vec<(Option<Item>, Row)> {
-        let b = &self.drafts[slot];
-        let td = self
-            .live
-            .type_desc(b.component)
-            .copied()
-            .unwrap_or_default();
-        let two_pin = td.pin_count >= 2;
-        let mut rows = Vec::new();
-        let mut one = |item: Item, label: &str, detail: &str, is_second: bool| {
-            let pins = m::pin_candidates(cx, &self.live, &self.drafts, slot, is_second);
-            let current = if is_second { b.gpio[1] } else { b.gpio[0] };
-            // A free pin is just "GPIO n"; a claimed one that is still offered
-            // - a button sharing another button's GPIO, one gesture each -
-            // names its owner, so nothing is picked up by accident.
-            let owner = m::slot_owner(slot);
-            let mut choices: Vec<String> = pins
-                .iter()
-                .map(|p| match cx.data.owner_of(cx.state, *p, &owner) {
-                    Some(who) => format!("GPIO {p} ({who})"),
-                    None => format!("GPIO {p}"),
-                })
-                .collect();
-            let selected = match pins.iter().position(|p| *p == current) {
-                Some(i) => i,
-                None => {
-                    choices.insert(
-                        0,
-                        if current == GPIO_UNUSED {
-                            "None".into()
-                        } else {
-                            format!("GPIO {current}")
-                        },
-                    );
-                    0
-                }
-            };
-            rows.push((
-                Some(item),
-                Row::Pick {
-                    label: label.into(),
-                    choices,
-                    selected,
-                    caption: Some(detail.into()),
-                    enabled: true,
-                },
-            ));
-        };
-        if two_pin {
-            one(
-                Item::Pin(slot, false),
-                "GPIO A",
-                "Encoder channel A.",
-                false,
-            );
-            one(Item::Pin(slot, true), "GPIO B", "Encoder channel B.", true);
-        } else {
-            one(
-                Item::Pin(slot, false),
-                "GPIO",
-                m::pin_detail(b.component),
-                false,
-            );
-        }
-        rows
+    fn core_binding(&self, cx: &Cx<'_>, slot: usize) -> cs_rows::Description {
+        cs_rows::describe(
+            cx,
+            &self.live,
+            slot,
+            &Draft::Binding(self.drafts[slot].clone()),
+        )
     }
 
-    fn operand_rows(&self, cx: &Cx<'_>, slot: usize) -> Vec<(Option<Item>, Row)> {
-        let b = &self.drafts[slot];
-        let cs = &self.live;
-        let mut rows: Vec<(Option<Item>, Row)> = Vec::new();
-        let k = m::operand_kind(cs, b.noun);
-        let u = m::noun_unit(cs, b.noun);
-        let (lo, hi) = m::noun_range(cs, b.noun);
+    fn core_ir(&self, cx: &Cx<'_>, sub: usize) -> cs_rows::Description {
+        cs_rows::describe(cx, &self.live, sub, &Draft::Ir(self.ir_drafts[sub].clone()))
+    }
 
-        let span =
-            |rows: &mut Vec<(Option<Item>, Row)>, title: &str, lo_detail: &str, hi_detail: &str| {
-                let custom = b.range_min != 0 || b.range_max != 0;
-                rows.push((
-                    Some(Item::SpanOn(slot)),
-                    Row::Toggle {
-                        label: title.into(),
-                        on: custom,
-                        caption: Some(format!(
-                            "Map onto a portion of the {} to {} range.",
-                            m::fmt_unit(lo, u),
-                            m::fmt_unit(hi, u)
-                        )),
-                        enabled: true,
-                    },
-                ));
-                if custom {
-                    rows.push((
-                        Some(Item::SpanMin(slot)),
-                        Row::Number {
-                            label: "Minimum".into(),
-                            value: m::decode_value(b.range_min, u),
-                            min: lo,
-                            max: hi,
-                            step: m::unit_scroll_step(u),
-                            unit: m::unit_symbol(u).into(),
-                            decimals: m::unit_decimals(u),
-                            caption: Some(lo_detail.into()),
-                            enabled: true,
-                        },
-                    ));
-                    rows.push((
-                        Some(Item::SpanMax(slot)),
-                        Row::Number {
-                            label: "Maximum".into(),
-                            value: m::decode_value(b.range_max, u),
-                            min: lo,
-                            max: hi,
-                            step: m::unit_scroll_step(u),
-                            unit: m::unit_symbol(u).into(),
-                            decimals: m::unit_decimals(u),
-                            caption: Some(hi_detail.into()),
-                            enabled: true,
-                        },
-                    ));
-                }
-            };
+    /// The binding rows with these ids, in the core's order.
+    fn binding_rows(&self, cx: &Cx<'_>, slot: usize, ids: &[&str]) -> Vec<(Option<Item>, Row)> {
+        self.core_binding(cx, slot)
+            .rows
+            .iter()
+            .filter(|r| ids.contains(&r.id.as_str()))
+            .map(|r| (binding_item(slot, &r.id), shown(r)))
+            .collect()
+    }
 
-        let value_row = |rows: &mut Vec<(Option<Item>, Row)>, title: &str, detail: &str| {
-            // A threshold parked on the range floor compares true even in
-            // silence, so the LED never goes out. The floor is a legal value,
-            // so say what it does rather than refuse it.
-            let at_floor = b.action == m::act::IND_ABOVE
-                && b.value <= cs.noun_desc(b.noun).map(|d| d.min_q).unwrap_or(i16::MIN);
-            let range = format!("({} to {}).", m::fmt_unit(lo, u), m::fmt_unit(hi, u));
-            let caption = if at_floor {
-                format!(
-                    "{detail} {range} At the {} floor this is always true, so the LED stays lit.",
-                    m::fmt_unit(lo, u)
-                )
-            } else {
-                format!("{detail} {range}")
-            };
-            rows.push((
-                Some(Item::Value(slot)),
-                Row::Number {
-                    label: title.into(),
-                    value: m::decode_value(b.value, u),
-                    min: lo,
-                    max: hi,
-                    step: m::unit_scroll_step(u),
-                    unit: m::unit_symbol(u).into(),
-                    decimals: m::unit_decimals(u),
-                    caption: Some(caption),
-                    enabled: true,
-                },
-            ));
-        };
-
-        let choice_row = |rows: &mut Vec<(Option<Item>, Row)>, title: &str, detail: &str| {
-            if k == m::kind::BOOL {
-                rows.push((
-                    Some(Item::Choice(slot)),
-                    Row::Pick {
-                        label: title.into(),
-                        choices: vec![
-                            m::bool_label(b.noun, false).into(),
-                            m::bool_label(b.noun, true).into(),
-                        ],
-                        selected: usize::from(b.value != 0),
-                        caption: Some(detail.into()),
-                        enabled: true,
-                    },
-                ));
-            } else {
-                let count = cs
-                    .noun_desc(b.noun)
-                    .map(|d| d.enum_count.max(1))
-                    .unwrap_or(1);
-                rows.push((
-                    Some(Item::Choice(slot)),
-                    Row::Pick {
-                        label: title.into(),
-                        choices: (0..count)
-                            .map(|v| m::enum_value_label(cx, cs, b.noun, v as i32))
-                            .collect(),
-                        selected: (b.value.max(0) as usize).min(count as usize - 1),
-                        caption: Some(detail.into()),
-                        enabled: true,
-                    },
-                ));
-            }
-        };
-
-        let step_row = |rows: &mut Vec<(Option<Item>, Row)>| {
-            if k == m::kind::CONTINUOUS {
-                let is_log = m::unit_is_log(u);
-                let cur = if b.step == 0 {
-                    m::default_step(u)
-                } else {
-                    m::decode_step(b.step, u)
-                };
-                rows.push((
-                    Some(Item::StepSize(slot)),
-                    Row::Number {
-                        label: "Step Size".into(),
-                        value: cur,
-                        min: if is_log {
-                            1.0 / 48.0
-                        } else {
-                            m::unit_min_step(u)
-                        },
-                        max: (hi - lo).abs().max(1.0),
-                        step: if is_log {
-                            m::default_step(u)
-                        } else {
-                            m::unit_scroll_step(u)
-                        },
-                        unit: if is_log {
-                            "oct".into()
-                        } else {
-                            m::unit_symbol(u).into()
-                        },
-                        decimals: if is_log { 3 } else { m::unit_decimals(u) },
-                        caption: Some(
-                            if is_log {
-                                "Ratio per detent/press, in octaves."
-                            } else {
-                                "Amount added or removed per detent/press."
-                            }
-                            .into(),
-                        ),
-                        enabled: true,
-                    },
-                ));
-            } else if k == m::kind::ENUM {
-                let max = cs
-                    .noun_desc(b.noun)
-                    .map(|d| d.enum_count.max(2) - 1)
-                    .unwrap_or(1);
-                rows.push((
-                    Some(Item::EnumStep(slot)),
-                    Row::Number {
-                        label: "Step Size".into(),
-                        value: if b.step <= 0 { 1.0 } else { b.step as f64 },
-                        min: 1.0,
-                        max: max as f64,
-                        step: 1.0,
-                        unit: String::new(),
-                        decimals: 0,
-                        caption: Some("Positions advanced per detent/press.".into()),
-                        enabled: true,
-                    },
-                ));
-            }
-        };
-
-        match b.action {
-            m::act::ADJUST => {
-                if k == m::kind::CONTINUOUS {
-                    span(
-                        &mut rows,
-                        "Limit Range",
-                        "Level at the fully counter-clockwise position.",
-                        "Level at the fully clockwise position.",
-                    );
-                }
-            }
-            m::act::STEP | m::act::INC | m::act::DEC => step_row(&mut rows),
-            m::act::SET | m::act::MOMENTARY => {
-                let verb = if b.action == m::act::MOMENTARY {
-                    "Hold Value"
-                } else {
-                    "Set To"
-                };
-                match k {
-                    m::kind::CONTINUOUS => value_row(&mut rows, verb, "Level each press applies."),
-                    m::kind::BOOL => choice_row(&mut rows, verb, "The state a press applies."),
-                    m::kind::ENUM => choice_row(&mut rows, verb, "The selection a press applies."),
-                    _ => {}
-                }
-            }
-            m::act::IND_EQUALS => match k {
-                m::kind::BOOL => choice_row(
-                    &mut rows,
-                    "Light When",
-                    "Light the LED when the function is in this state.",
-                ),
-                m::kind::ENUM => {
-                    choice_row(&mut rows, "Light When", "Light the LED for this selection.")
-                }
-                _ => {}
-            },
-            m::act::IND_ABOVE => {
-                if k == m::kind::CONTINUOUS {
-                    value_row(
-                        &mut rows,
-                        "Light Above",
-                        "Light the LED once the value reaches this.",
-                    );
-                }
-            }
-            m::act::IND_LEVEL if k == m::kind::CONTINUOUS => {
-                span(
-                    &mut rows,
-                    "Brightness Range",
-                    "Value mapped to the LED fully off.",
-                    "Value mapped to the LED fully lit.",
-                );
-            }
-            _ => {}
-        }
-
-        // Condition timing rides alongside whichever operand row the indicator
-        // action drew: a brightness meter has no edge to time.
-        if m::delays_allowed(b.component, b.action) {
-            rows.extend(self.delay_rows(slot));
-        }
-
-        // The ceiling scales whatever duty the action worked out, so it belongs
-        // to the LED rather than to any one action.
-        if b.component == m::ty::LED_PWM {
-            rows.push((
-                Some(Item::Bright(slot)),
-                Row::Number {
-                    label: "Brightness Limit".into(),
-                    value: if b.base_bright == 0 {
-                        m::LED_BRIGHT_MAX as f64
-                    } else {
-                        b.base_bright as f64
-                    },
-                    min: 1.0,
-                    max: m::LED_BRIGHT_MAX as f64,
-                    step: 5.0,
-                    unit: "%".into(),
-                    decimals: 0,
-                    caption: Some(
-                        "Cap on how bright this LED gets, as a share of full. Everything below \
-                         the cap scales with it."
-                            .into(),
-                    ),
-                    enabled: true,
-                },
-            ));
-        }
-        rows
+    fn pin_rows(&self, cx: &Cx<'_>, slot: usize) -> Vec<(Option<Item>, Row)> {
+        self.binding_rows(cx, slot, &["gpio0", "gpio1"])
     }
 
     /// The turn-on and turn-off delays, the TON/TOF filter on an indicator's
     /// condition or an aux output's switch, and the warning a delay carries.
-    fn delay_rows(&self, slot: usize) -> Vec<(Option<Item>, Row)> {
-        let b = &self.drafts[slot];
-        let mut rows: Vec<(Option<Item>, Row)> = Vec::new();
-        let cap = format!(
-            "Up to {} min {} s.",
-            m::DELAY_MAX_SECONDS / 60,
-            m::DELAY_MAX_SECONDS % 60
-        );
-        rows.push((
-            Some(Item::OnDelay(slot)),
-            Row::Number {
-                label: "Turn-On Delay".into(),
-                value: m::decode_delay(b.on_delay) as f64,
-                min: 0.0,
-                max: m::DELAY_MAX_SECONDS as f64,
-                step: 1.0,
-                unit: "s".into(),
-                decimals: 0,
-                caption: Some(format!(
-                    "Hold off until the condition has been true this long. Any interruption \
-                         restarts the wait. {cap}"
-                )),
-                enabled: true,
-            },
-        ));
-        rows.push((
-            Some(Item::OffDelay(slot)),
-            Row::Number {
-                label: "Turn-Off Delay".into(),
-                value: m::decode_delay(b.off_delay) as f64,
-                min: 0.0,
-                max: m::DELAY_MAX_SECONDS as f64,
-                step: 1.0,
-                unit: "s".into(),
-                decimals: 0,
-                caption: Some(format!(
-                    "Stay lit until the condition has been false this long - long enough to \
-                         hold an amplifier trigger on through quiet passages. {cap}"
-                )),
-                enabled: true,
-            },
-        ));
-        if b.on_delay != 0 || b.off_delay != 0 {
-            rows.push((None, Row::note(DELAY_WARNING)));
-        }
-        rows
+    fn delay_rows(&self, cx: &Cx<'_>, slot: usize) -> Vec<(Option<Item>, Row)> {
+        self.binding_rows(cx, slot, &["onDelay", "offDelay", "delayNote"])
     }
 
-    fn flag_rows(&self, slot: usize) -> Vec<(Option<Item>, Row)> {
-        let b = &self.drafts[slot];
-        let cs = &self.live;
-        let k = m::operand_kind(cs, b.noun);
-        let is_enum_step =
-            k == m::kind::ENUM && matches!(b.action, m::act::STEP | m::act::INC | m::act::DEC);
-        let mut rows: Vec<(Option<Item>, Row)> = Vec::new();
-        let mut flag = |mask: u8, title: String, detail: String| {
-            rows.push((
-                Some(Item::Flag(slot, mask)),
-                Row::Toggle {
-                    label: title,
-                    on: b.flags & mask != 0,
-                    caption: Some(detail),
-                    enabled: true,
-                },
-            ));
-        };
-        if b.component == m::ty::POT || b.component == m::ty::ENCODER {
-            flag(
-                m::flag::REVERSE,
-                "Reverse Direction".into(),
-                if b.component == m::ty::POT {
-                    "Clockwise decreases the value.".into()
-                } else {
-                    "Clockwise steps down.".into()
-                },
-            );
-        }
-        if b.component == m::ty::ENCODER {
-            flag(
-                m::flag::ACCEL,
-                "Acceleration".into(),
-                "Fast spins move in larger steps; slow spins stay fine.".into(),
-            );
-        }
-        if is_enum_step {
-            flag(
-                m::flag::WRAP,
-                "Wrap Around".into(),
-                "Step past the last position back to the first.".into(),
-            );
-        }
-        if m::repeat_allowed(b) {
-            flag(
-                m::flag::REPEAT,
-                "Repeat While Held".into(),
-                "After holding ~0.4 s the press repeats automatically.".into(),
-            );
-        }
-        // Both group modifiers need GROUP, and each is legal for exactly one
-        // shape of control: ADJUST is the only action where the two link laws
-        // differ, and an any/all choice needs a boolean condition to combine.
-        if b.flags & m::flag::GROUP != 0 {
-            if b.action == m::act::ADJUST && k == m::kind::CONTINUOUS {
-                flag(
-                    m::flag::LINK_ABS,
-                    "Match Members Exactly".into(),
-                    "Drive every member to the same value. Off keeps the offsets between them, \
-                     moving the group's average to the knob."
-                        .into(),
-                );
-            }
-            if b.action == m::act::IND_EQUALS || b.action == m::act::IND_ABOVE {
-                flag(
-                    m::flag::GROUP_ALL,
-                    "Require Every Member".into(),
-                    "Light only when all members match. Off lights when any one does.".into(),
-                );
-            }
-        }
-        flag(
-            m::flag::INVERT,
-            m::invert_title(b.component).into(),
-            m::invert_detail(b.component).into(),
-        );
-        rows
+    /// Everything of a control's card below its component: the core's rows.
+    fn control_rows(&self, cx: &Cx<'_>, slot: usize) -> Vec<(Option<Item>, Row)> {
+        self.core_binding(cx, slot)
+            .rows
+            .iter()
+            .filter(|r| r.id != "type")
+            .map(|r| (binding_item(slot, &r.id), shown(r)))
+            .collect()
     }
 
-    fn target_rows(&self, cx: &Cx<'_>, slot: usize) -> Vec<(Option<Item>, Row)> {
-        let b = &self.drafts[slot];
-        let cs = &self.live;
-        let mut rows: Vec<(Option<Item>, Row)> = Vec::new();
-        let Some(nd) = cs.noun_desc(b.noun).copied() else {
-            return rows;
-        };
-        if !nd.is_targeted() {
-            return rows;
-        }
-        let grouped = b.flags & m::flag::GROUP != 0;
-        // TRIGGER is never groupable: the firmware has no targeted trigger.
-        let usable = if b.action == m::act::TRIGGER {
-            Vec::new()
-        } else {
-            m::compatible_groups(cs, b.noun)
-        };
-        let (choices, selected) =
-            target_choices(cx, cs, b.noun, Some(slot), &usable, b.target, grouped);
-        // An aux noun is not choosing a channel, so the row stops saying so
-        // (`targetRows`, DSPi_ConsoleApp.swift:4690-4693).
-        let alone = usable.is_empty() && !grouped;
-        rows.push((
-            Some(Item::Target(slot)),
-            Row::Pick {
-                label: if alone {
-                    m::target_noun(&nd).into()
-                } else {
-                    "Channel or Group".into()
-                },
-                choices,
-                selected,
-                caption: Some(if alone {
-                    format!(
-                        "Which {} this control affects.",
-                        m::target_noun(&nd).to_lowercase()
-                    )
-                } else {
-                    "Which channel, or named set of channels, this control affects.".into()
-                }),
-                enabled: true,
+    fn core_ir_rows(&self, cx: &Cx<'_>, sub: usize) -> Vec<(Option<Item>, Row)> {
+        self.core_ir(cx, sub)
+            .rows
+            .iter()
+            .map(|r| (ir_item(sub, &r.id), shown(r)))
+            .collect()
+    }
+
+    /// Apply `action` on a binding row through the core. `None` when the item
+    /// is not a core row.
+    fn edit_binding(&mut self, cx: &Cx<'_>, item: Item, action: &Action) -> Option<PageEvent> {
+        let (slot, id) = binding_id(item)?;
+        let d = self.core_binding(cx, slot);
+        let value = edit_value(d.rows.iter().find(|r| r.id == id)?, action)?;
+        let draft = Draft::Binding(self.drafts[slot].clone());
+        Some(
+            match cs_rows::edit(cx, &self.live, slot, &draft, id, value) {
+                Ok(Draft::Binding(b)) => {
+                    self.drafts[slot] = b;
+                    PageEvent::Handled
+                }
+                Ok(_) => PageEvent::Handled,
+                Err(e) => PageEvent::Status(e.to_string()),
             },
-        ));
-        if nd.has_band() {
-            let bands = m::band_options(cs, cx.state, b.noun, b.target, grouped);
-            rows.push((
-                Some(Item::Band(slot)),
-                Row::Pick {
-                    label: "Band".into(),
-                    choices: bands.iter().map(|x| m::band_name(*x)).collect(),
-                    selected: bands.iter().position(|x| *x == b.index).unwrap_or(0),
-                    caption: Some(
-                        if grouped {
-                            "Which filter band this control affects, on every member of the group."
-                        } else {
-                            "Which filter band this control affects."
-                        }
-                        .into(),
-                    ),
-                    enabled: true,
-                },
-            ));
-        }
-        rows
+        )
+    }
+
+    /// Apply `action` on a remote button's row through the core.
+    fn edit_ir(&mut self, cx: &Cx<'_>, item: Item, action: &Action) -> Option<PageEvent> {
+        let (sub, id) = ir_id(item)?;
+        let d = self.core_ir(cx, sub);
+        let value = edit_value(d.rows.iter().find(|r| r.id == id)?, action)?;
+        let draft = Draft::Ir(self.ir_drafts[sub].clone());
+        Some(
+            match cs_rows::edit(cx, &self.live, sub, &draft, id, value) {
+                Ok(Draft::Ir(c)) => {
+                    self.ir_drafts[sub] = c;
+                    PageEvent::Handled
+                }
+                Ok(_) => PageEvent::Handled,
+                Err(e) => PageEvent::Status(e.to_string()),
+            },
+        )
     }
 
     // ------------------------------------------------------------------- IR
@@ -1122,225 +652,7 @@ impl SurfacesPage {
             return rows;
         }
 
-        let nouns = m::noun_choices(cs, m::ty::IR);
-        rows.push((
-            Some(Item::IrNoun(sub)),
-            Row::Pick {
-                label: "Controls".into(),
-                choices: nouns
-                    .iter()
-                    .map(|(cat, n)| m::noun_choice_label(cat, *n, m::ty::IR))
-                    .collect(),
-                selected: nouns.iter().position(|(_, n)| *n == c.noun).unwrap_or(0),
-                caption: Some("The device function this remote button drives.".into()),
-                enabled: true,
-            },
-        ));
-
-        if let Some(nd) = cs.noun_desc(c.noun).copied()
-            && nd.is_targeted()
-        {
-            let grouped = c.flags & m::flag::GROUP != 0;
-            let usable = m::compatible_groups(cs, c.noun);
-            let (choices, selected) =
-                target_choices(cx, cs, c.noun, None, &usable, c.target, grouped);
-            rows.push((
-                Some(Item::IrTarget(sub)),
-                Row::Pick {
-                    label: if usable.is_empty() && !grouped {
-                        m::target_noun(&nd).into()
-                    } else {
-                        "Channel or Group".into()
-                    },
-                    choices,
-                    selected,
-                    caption: Some("Which channel, or named set of channels, this affects.".into()),
-                    enabled: true,
-                },
-            ));
-            if nd.has_band() {
-                let bands = m::band_options(cs, cx.state, c.noun, c.target, grouped);
-                rows.push((
-                    Some(Item::IrBand(sub)),
-                    Row::Pick {
-                        label: "Band".into(),
-                        choices: bands.iter().map(|x| m::band_name(*x)).collect(),
-                        selected: bands.iter().position(|x| *x == c.index).unwrap_or(0),
-                        caption: Some("Which filter band this affects.".into()),
-                        enabled: true,
-                    },
-                ));
-            }
-        }
-
-        let acts = m::valid_actions(cs, m::ty::IR, c.noun);
-        let k = m::operand_kind(cs, c.noun);
-        if acts.len() > 1 {
-            rows.push((
-                Some(Item::IrAction(sub)),
-                Row::Pick {
-                    label: "On Press".into(),
-                    choices: acts
-                        .iter()
-                        .map(|a| m::action_name(*a, c.noun, k == m::kind::ENUM))
-                        .collect(),
-                    selected: acts.iter().position(|a| *a == c.action).unwrap_or(0),
-                    caption: Some("What pressing the remote button does.".into()),
-                    enabled: true,
-                },
-            ));
-        }
-
-        let u = m::noun_unit(cs, c.noun);
-        let (lo, hi) = m::noun_range(cs, c.noun);
-        match c.action {
-            m::act::INC | m::act::DEC => {
-                if k == m::kind::CONTINUOUS {
-                    let is_log = m::unit_is_log(u);
-                    let cur = if c.step == 0 {
-                        m::default_step(u)
-                    } else {
-                        m::decode_step(c.step, u)
-                    };
-                    rows.push((
-                        Some(Item::IrStep(sub)),
-                        Row::Number {
-                            label: "Step Size".into(),
-                            value: cur,
-                            min: if is_log {
-                                1.0 / 48.0
-                            } else {
-                                m::unit_min_step(u)
-                            },
-                            max: (hi - lo).abs().max(1.0),
-                            step: if is_log {
-                                m::default_step(u)
-                            } else {
-                                m::unit_scroll_step(u)
-                            },
-                            unit: if is_log {
-                                "oct".into()
-                            } else {
-                                m::unit_symbol(u).into()
-                            },
-                            decimals: if is_log { 3 } else { m::unit_decimals(u) },
-                            caption: Some(
-                                if is_log {
-                                    "Ratio per press, in octaves."
-                                } else {
-                                    "Amount added or removed per press."
-                                }
-                                .into(),
-                            ),
-                            enabled: true,
-                        },
-                    ));
-                } else if k == m::kind::ENUM {
-                    let max = cs
-                        .noun_desc(c.noun)
-                        .map(|d| d.enum_count.max(2) - 1)
-                        .unwrap_or(1);
-                    rows.push((
-                        Some(Item::IrEnumStep(sub)),
-                        Row::Number {
-                            label: "Step Size".into(),
-                            value: if c.step <= 0 { 1.0 } else { c.step as f64 },
-                            min: 1.0,
-                            max: max as f64,
-                            step: 1.0,
-                            unit: String::new(),
-                            decimals: 0,
-                            caption: Some("Positions advanced per press.".into()),
-                            enabled: true,
-                        },
-                    ));
-                }
-            }
-            m::act::SET | m::act::MOMENTARY => {
-                let verb = if c.action == m::act::MOMENTARY {
-                    "Hold Value"
-                } else {
-                    "Set To"
-                };
-                match k {
-                    m::kind::CONTINUOUS => rows.push((
-                        Some(Item::IrValue(sub)),
-                        Row::Number {
-                            label: verb.into(),
-                            value: m::decode_value(c.value, u),
-                            min: lo,
-                            max: hi,
-                            step: m::unit_scroll_step(u),
-                            unit: m::unit_symbol(u).into(),
-                            decimals: m::unit_decimals(u),
-                            caption: Some(format!(
-                                "Level each press applies ({} to {}).",
-                                m::fmt_unit(lo, u),
-                                m::fmt_unit(hi, u)
-                            )),
-                            enabled: true,
-                        },
-                    )),
-                    m::kind::BOOL => rows.push((
-                        Some(Item::IrChoice(sub)),
-                        Row::Pick {
-                            label: verb.into(),
-                            choices: vec![
-                                m::bool_label(c.noun, false).into(),
-                                m::bool_label(c.noun, true).into(),
-                            ],
-                            selected: usize::from(c.value != 0),
-                            caption: Some("The state a press applies.".into()),
-                            enabled: true,
-                        },
-                    )),
-                    m::kind::ENUM => {
-                        let count = cs
-                            .noun_desc(c.noun)
-                            .map(|d| d.enum_count.max(1))
-                            .unwrap_or(1);
-                        rows.push((
-                            Some(Item::IrChoice(sub)),
-                            Row::Pick {
-                                label: verb.into(),
-                                choices: (0..count)
-                                    .map(|v| m::enum_value_label(cx, cs, c.noun, v as i32))
-                                    .collect(),
-                                selected: (c.value.max(0) as usize).min(count as usize - 1),
-                                caption: Some("The selection a press applies.".into()),
-                                enabled: true,
-                            },
-                        ));
-                    }
-                    _ => {}
-                }
-            }
-            _ => {}
-        }
-
-        // An IR command carries only WRAP and REPEAT.
-        if k == m::kind::ENUM && (c.action == m::act::INC || c.action == m::act::DEC) {
-            rows.push((
-                Some(Item::IrFlag(sub, m::flag::WRAP)),
-                Row::Toggle {
-                    label: "Wrap Around".into(),
-                    on: c.flags & m::flag::WRAP != 0,
-                    caption: Some("Step past the last position back to the first.".into()),
-                    enabled: true,
-                },
-            ));
-        }
-        if c.action == m::act::INC || c.action == m::act::DEC {
-            rows.push((
-                Some(Item::IrFlag(sub, m::flag::REPEAT)),
-                Row::Toggle {
-                    label: "Repeat While Held".into(),
-                    on: c.flags & m::flag::REPEAT != 0,
-                    caption: Some("Holding the remote button repeats the step.".into()),
-                    enabled: true,
-                },
-            ));
-        }
+        rows.extend(self.core_ir_rows(cx, sub));
         let _ = receiver_live;
         rows
     }
@@ -1816,96 +1128,16 @@ impl SurfacesPage {
                     Row::Status(m::inactive_reason(cs.status.slot_health(slot as u8)), true),
                 ));
             }
-            let types = self.type_options(slot);
-            rows.push((
-                Some(Item::Type(slot)),
-                Row::Pick {
-                    label: "Component".into(),
-                    choices: types.iter().map(|t| m::type_name(*t)).collect(),
-                    selected: types.iter().position(|t| *t == b.component).unwrap_or(0),
-                    caption: Some("What is wired to the GPIO.".into()),
-                    enabled: true,
-                },
-            ));
+            rows.extend(self.binding_rows(cx, slot, &["type"]));
             if b.component == m::ty::IR {
-                rows.extend(self.pin_rows(cx, slot));
-                rows.push((
-                    Some(Item::Flag(slot, m::flag::INVERT)),
-                    Row::Toggle {
-                        label: m::invert_title(m::ty::IR).into(),
-                        on: b.flags & m::flag::INVERT != 0,
-                        caption: Some(m::invert_detail(m::ty::IR).into()),
-                        enabled: true,
-                    },
-                ));
+                rows.extend(self.binding_rows(cx, slot, &["gpio0", "invert"]));
                 rows.extend(self.ir_section(cx, slot));
             } else if b.component == m::ty::DISPLAY {
                 rows.extend(self.display_rows(cx, slot));
             } else if m::is_aux(b.component) {
                 rows.extend(self.aux_rows(cx, slot));
             } else {
-                let nouns = m::noun_choices(cs, b.component);
-                rows.push((
-                    Some(Item::Noun(slot)),
-                    Row::Pick {
-                        label: "Controls".into(),
-                        choices: nouns
-                            .iter()
-                            .map(|(cat, n)| m::noun_choice_label(cat, *n, b.component))
-                            .collect(),
-                        selected: nouns.iter().position(|(_, n)| *n == b.noun).unwrap_or(0),
-                        caption: Some("The device function this control drives.".into()),
-                        enabled: true,
-                    },
-                ));
-                rows.extend(self.target_rows(cx, slot));
-                let acts = m::binding_actions(cs, b.component, b.noun, b.event);
-                if acts.len() > 1 {
-                    let (title, detail) = if m::is_indicator(b.component) {
-                        ("Indicates", "How the LED reflects the function.")
-                    } else if b.component == m::ty::BUTTON {
-                        ("On Press", "What a press does.")
-                    } else {
-                        ("Behavior", "How this control drives the function.")
-                    };
-                    let is_enum = m::operand_kind(cs, b.noun) == m::kind::ENUM;
-                    rows.push((
-                        Some(Item::ActionPick(slot)),
-                        Row::Pick {
-                            label: title.into(),
-                            choices: acts
-                                .iter()
-                                .map(|a| m::action_name(*a, b.noun, is_enum))
-                                .collect(),
-                            selected: acts.iter().position(|a| *a == b.action).unwrap_or(0),
-                            caption: Some(detail.into()),
-                            enabled: true,
-                        },
-                    ));
-                }
-                if b.component == m::ty::BUTTON {
-                    let gestures = m::binding_gestures(&b);
-                    rows.push((
-                        Some(Item::Event(slot)),
-                        Row::Pick {
-                            label: "Gesture".into(),
-                            choices: gestures
-                                .iter()
-                                .map(|e| m::EVENT_NAMES[*e as usize].to_string())
-                                .collect(),
-                            selected: gestures.iter().position(|e| *e == b.event).unwrap_or(0),
-                            caption: Some(
-                                "Which press gesture triggers this. Bind several to one button \
-                                 GPIO for multiple functions."
-                                    .into(),
-                            ),
-                            enabled: true,
-                        },
-                    ));
-                }
-                rows.extend(self.pin_rows(cx, slot));
-                rows.extend(self.operand_rows(cx, slot));
-                rows.extend(self.flag_rows(slot));
+                rows.extend(self.control_rows(cx, slot));
             }
         }
 
@@ -2150,6 +1382,12 @@ impl SettingsPage for SurfacesPage {
         if let Some(ev) = self.act_aux(item, &action) {
             return ev;
         }
+        if let Some(ev) = self
+            .edit_binding(cx, item, &action)
+            .or_else(|| self.edit_ir(cx, item, &action))
+        {
+            return ev;
+        }
         match (item, action) {
             // -------------------------------------------------- the card list
             (Item::Add, Action::Open) => {
@@ -2240,203 +1478,8 @@ impl SettingsPage for SurfacesPage {
             }
 
             // ------------------------------------------------- the binding
-            (Item::Type(slot), Action::Selected(c)) => {
-                let types = self.type_options(slot);
-                if let Some(t) = types.get(c).copied()
-                    && t != self.drafts[slot].component
-                {
-                    let old = &self.drafts[slot];
-                    self.drafts[slot] = if m::is_aux(old.component) && m::is_aux(t) {
-                        // The other kind of aux output keeps its wiring and
-                        // its power-on switch.
-                        m::switch_aux_kind(old, t)
-                    } else {
-                        m::make_binding(cx, &self.live, &self.drafts, slot, t)
-                    };
-                }
-                PageEvent::Handled
-            }
-            (Item::Noun(slot), Action::Selected(c)) => {
-                let nouns = m::noun_choices(&self.live, self.drafts[slot].component);
-                if let Some((_, n)) = nouns.get(c).copied()
-                    && n != self.drafts[slot].noun
-                {
-                    self.drafts[slot] =
-                        m::set_noun_in(&self.live, &self.drafts[slot], n, Some(slot));
-                }
-                PageEvent::Handled
-            }
-            (Item::ActionPick(slot), Action::Selected(c)) => {
-                let b = self.drafts[slot].clone();
-                let acts = m::binding_actions(&self.live, b.component, b.noun, b.event);
-                if let Some(a) = acts.get(c).copied()
-                    && a != b.action
-                {
-                    let mut nb = b;
-                    nb.action = a;
-                    self.drafts[slot] = m::default_operands(&self.live, &nb);
-                }
-                PageEvent::Handled
-            }
-            (Item::Event(slot), Action::Selected(c)) => {
-                let b = &mut self.drafts[slot];
-                if let Some(e) = m::binding_gestures(b).get(c).copied() {
-                    b.event = e;
-                    // Repeat While Held is a short-press flag; its row goes
-                    // with the gesture, so the flag must too.
-                    m::sanitize_repeat(b);
-                }
-                PageEvent::Handled
-            }
-            (Item::Target(slot), Action::Selected(c)) => {
-                let b = self.drafts[slot].clone();
-                let Some(nd) = self.live.noun_desc(b.noun).copied() else {
-                    return PageEvent::Handled;
-                };
-                let grouped = b.flags & m::flag::GROUP != 0;
-                let usable = if b.action == m::act::TRIGGER {
-                    Vec::new()
-                } else {
-                    m::compatible_groups(&self.live, b.noun)
-                };
-                let (is_group, t) = target_choice(
-                    &self.live,
-                    b.noun,
-                    Some(slot),
-                    &usable,
-                    b.target,
-                    grouped,
-                    c,
-                );
-                let mut nb = b;
-                if is_group {
-                    nb.flags |= m::flag::GROUP;
-                } else {
-                    // The two group modifiers exist only while the binding
-                    // addresses a group; left set, the whole binding is
-                    // rejected.
-                    nb.flags &= !(m::flag::GROUP | m::flag::LINK_ABS | m::flag::GROUP_ALL);
-                }
-                nb.target = t;
-                if nd.has_band() {
-                    let opts = m::band_options(&self.live, cx.state, nb.noun, nb.target, is_group);
-                    if !opts.contains(&nb.index) {
-                        nb.index = opts.first().copied().unwrap_or(0);
-                    }
-                }
-                self.drafts[slot] = nb;
-                PageEvent::Handled
-            }
-            (Item::Band(slot), Action::Selected(c)) => {
-                let b = &self.drafts[slot];
-                let bands = m::band_options(
-                    &self.live,
-                    cx.state,
-                    b.noun,
-                    b.target,
-                    b.flags & m::flag::GROUP != 0,
-                );
-                if let Some(x) = bands.get(c) {
-                    self.drafts[slot].index = *x;
-                }
-                PageEvent::Handled
-            }
-            (Item::Pin(slot, second), Action::Selected(c)) => {
-                let pins = m::pin_candidates(cx, &self.live, &self.drafts, slot, second);
-                let current = if second {
-                    self.drafts[slot].gpio[1]
-                } else {
-                    self.drafts[slot].gpio[0]
-                };
-                // The row keeps the current pin visible at the head when
-                // nothing else would offer it, so the index shifts by one.
-                let offset = usize::from(!pins.contains(&current));
-                if let Some(p) = pins.get(c.saturating_sub(offset)) {
-                    if second {
-                        self.drafts[slot].gpio[1] = *p;
-                    } else {
-                        self.drafts[slot].gpio[0] = *p;
-                    }
-                }
-                PageEvent::Handled
-            }
-            (Item::SpanOn(slot), Action::Toggled(on)) => {
-                let nd = self
-                    .live
-                    .noun_desc(self.drafts[slot].noun)
-                    .copied()
-                    .unwrap_or_default();
-                if on {
-                    self.drafts[slot].range_min = nd.min_q;
-                    self.drafts[slot].range_max = nd.max_q;
-                } else {
-                    self.drafts[slot].range_min = 0;
-                    self.drafts[slot].range_max = 0;
-                }
-                PageEvent::Handled
-            }
-            (Item::SpanMin(slot), Action::Changed(v) | Action::Committed(v)) => {
-                let u = m::noun_unit(&self.live, self.drafts[slot].noun);
-                let (lo, hi) = m::noun_range(&self.live, self.drafts[slot].noun);
-                self.drafts[slot].range_min = m::encode_value(v.clamp(lo, hi), u);
-                PageEvent::Handled
-            }
-            (Item::SpanMax(slot), Action::Changed(v) | Action::Committed(v)) => {
-                let u = m::noun_unit(&self.live, self.drafts[slot].noun);
-                let (lo, hi) = m::noun_range(&self.live, self.drafts[slot].noun);
-                self.drafts[slot].range_max = m::encode_value(v.clamp(lo, hi), u);
-                PageEvent::Handled
-            }
-            (Item::Value(slot), Action::Changed(v) | Action::Committed(v)) => {
-                let u = m::noun_unit(&self.live, self.drafts[slot].noun);
-                let (lo, hi) = m::noun_range(&self.live, self.drafts[slot].noun);
-                self.drafts[slot].value = m::encode_value(v.clamp(lo, hi), u);
-                PageEvent::Handled
-            }
-            (Item::StepSize(slot), Action::Changed(v) | Action::Committed(v)) => {
-                let u = m::noun_unit(&self.live, self.drafts[slot].noun);
-                let min = if m::unit_is_log(u) {
-                    1.0 / 48.0
-                } else {
-                    m::unit_min_step(u)
-                };
-                self.drafts[slot].step = m::encode_step(v.max(min), u);
-                PageEvent::Handled
-            }
-            (Item::EnumStep(slot), Action::Changed(v) | Action::Committed(v)) => {
-                self.drafts[slot].step = v.round().max(1.0) as i16;
-                PageEvent::Handled
-            }
-            (Item::Choice(slot), Action::Selected(c)) => {
-                let k = m::operand_kind(&self.live, self.drafts[slot].noun);
-                self.drafts[slot].value = if k == m::kind::BOOL {
-                    i16::from(c != 0)
-                } else {
-                    c as i16
-                };
-                PageEvent::Handled
-            }
-            (Item::Bright(slot), Action::Changed(v) | Action::Committed(v)) => {
-                self.drafts[slot].base_bright =
-                    v.round().clamp(1.0, m::LED_BRIGHT_MAX as f64) as u8;
-                PageEvent::Handled
-            }
-            (Item::OnDelay(slot), Action::Changed(v) | Action::Committed(v)) => {
-                self.drafts[slot].on_delay = m::encode_delay(v.max(0.0) as u32);
-                PageEvent::Handled
-            }
-            (Item::OffDelay(slot), Action::Changed(v) | Action::Committed(v)) => {
-                self.drafts[slot].off_delay = m::encode_delay(v.max(0.0) as u32);
-                PageEvent::Handled
-            }
-            (Item::Flag(slot, mask), Action::Toggled(on)) => {
-                if on {
-                    self.drafts[slot].flags |= mask;
-                } else {
-                    self.drafts[slot].flags &= !mask;
-                }
-                PageEvent::Handled
-            }
+            // -- WP TM24 -- Every binding row edits through the core: see
+            // `edit_binding` above `act`, called before this match.
 
             // ------------------------------------------------------------ IR
             (Item::IrAdd, Action::Open) => {
@@ -2518,104 +1561,6 @@ impl SettingsPage for SurfacesPage {
                     m::run_learn(session, "Learn cancelled", false)
                 }))
             }
-            (Item::IrNoun(sub), Action::Selected(c)) => {
-                let nouns = m::noun_choices(&self.live, m::ty::IR);
-                if let Some((_, n)) = nouns.get(c).copied()
-                    && n != self.ir_drafts[sub].noun
-                {
-                    self.ir_drafts[sub] = m::set_ir_noun(&self.live, &self.ir_drafts[sub], n);
-                }
-                PageEvent::Handled
-            }
-            (Item::IrAction(sub), Action::Selected(c)) => {
-                let acts = m::valid_actions(&self.live, m::ty::IR, self.ir_drafts[sub].noun);
-                if let Some(a) = acts.get(c).copied()
-                    && a != self.ir_drafts[sub].action
-                {
-                    let mut cmd = self.ir_drafts[sub].clone();
-                    cmd.action = a;
-                    self.ir_drafts[sub] = default_ir_operands(&self.live, &cmd);
-                }
-                PageEvent::Handled
-            }
-            (Item::IrTarget(sub), Action::Selected(c)) => {
-                let cmd = self.ir_drafts[sub].clone();
-                let Some(nd) = self.live.noun_desc(cmd.noun).copied() else {
-                    return PageEvent::Handled;
-                };
-                let grouped = cmd.flags & m::flag::GROUP != 0;
-                let usable = m::compatible_groups(&self.live, cmd.noun);
-                let (is_group, t) =
-                    target_choice(&self.live, cmd.noun, None, &usable, cmd.target, grouped, c);
-                let mut cmd = cmd;
-                if is_group {
-                    cmd.flags |= m::flag::GROUP;
-                } else {
-                    cmd.flags &= !m::flag::GROUP;
-                }
-                cmd.target = t;
-                if nd.has_band() {
-                    let opts =
-                        m::band_options(&self.live, cx.state, cmd.noun, cmd.target, is_group);
-                    if !opts.contains(&cmd.index) {
-                        cmd.index = opts.first().copied().unwrap_or(0);
-                    }
-                }
-                self.ir_drafts[sub] = cmd;
-                PageEvent::Handled
-            }
-            (Item::IrBand(sub), Action::Selected(c)) => {
-                let cmd = &self.ir_drafts[sub];
-                let bands = m::band_options(
-                    &self.live,
-                    cx.state,
-                    cmd.noun,
-                    cmd.target,
-                    cmd.flags & m::flag::GROUP != 0,
-                );
-                if let Some(x) = bands.get(c) {
-                    self.ir_drafts[sub].index = *x;
-                }
-                PageEvent::Handled
-            }
-            (Item::IrValue(sub), Action::Changed(v) | Action::Committed(v)) => {
-                let u = m::noun_unit(&self.live, self.ir_drafts[sub].noun);
-                let (lo, hi) = m::noun_range(&self.live, self.ir_drafts[sub].noun);
-                self.ir_drafts[sub].value = m::encode_value(v.clamp(lo, hi), u);
-                PageEvent::Handled
-            }
-            (Item::IrStep(sub), Action::Changed(v) | Action::Committed(v)) => {
-                let u = m::noun_unit(&self.live, self.ir_drafts[sub].noun);
-                let min = if m::unit_is_log(u) {
-                    1.0 / 48.0
-                } else {
-                    m::unit_min_step(u)
-                };
-                self.ir_drafts[sub].step = m::encode_step(v.max(min), u);
-                PageEvent::Handled
-            }
-            (Item::IrEnumStep(sub), Action::Changed(v) | Action::Committed(v)) => {
-                self.ir_drafts[sub].step = v.round().max(1.0) as i16;
-                PageEvent::Handled
-            }
-            (Item::IrChoice(sub), Action::Selected(c)) => {
-                let k = m::operand_kind(&self.live, self.ir_drafts[sub].noun);
-                self.ir_drafts[sub].value = if k == m::kind::BOOL {
-                    i16::from(c != 0)
-                } else {
-                    c as i16
-                };
-                PageEvent::Handled
-            }
-            (Item::IrFlag(sub, mask), Action::Toggled(on)) => {
-                if on {
-                    self.ir_drafts[sub].flags |= mask;
-                } else {
-                    self.ir_drafts[sub].flags &= !mask;
-                }
-                PageEvent::Handled
-            }
-
             // ------------------------------------------------------- display
             (Item::DispModel(slot), Action::Selected(c)) => {
                 let models = m::display_models(&self.live);
@@ -2945,6 +1890,189 @@ impl SettingsPage for SurfacesPage {
     }
 }
 
+// -- WP TM24 -- The core's row ids and the page's items.
+
+/// A binding flag's toggle and its row id.
+const FLAG_IDS: &[(u8, &str)] = &[
+    (m::flag::REVERSE, "reverse"),
+    (m::flag::ACCEL, "accel"),
+    (m::flag::WRAP, "wrap"),
+    (m::flag::REPEAT, "repeat"),
+    (m::flag::LINK_ABS, "linkAbs"),
+    (m::flag::GROUP_ALL, "groupAll"),
+    (m::flag::INVERT, "invert"),
+];
+
+fn flag_id(mask: u8) -> Option<&'static str> {
+    FLAG_IDS.iter().find(|(f, _)| *f == mask).map(|(_, id)| *id)
+}
+
+fn flag_of(id: &str) -> Option<u8> {
+    FLAG_IDS.iter().find(|(_, i)| *i == id).map(|(f, _)| *f)
+}
+
+/// The binding row an item edits.
+fn binding_id(item: Item) -> Option<(usize, &'static str)> {
+    Some(match item {
+        Item::Type(s) => (s, "type"),
+        Item::Noun(s) => (s, "noun"),
+        Item::ActionPick(s) => (s, "action"),
+        Item::Event(s) => (s, "event"),
+        Item::Target(s) => (s, "target"),
+        Item::Band(s) => (s, "band"),
+        Item::Pin(s, second) => (s, if second { "gpio1" } else { "gpio0" }),
+        Item::SpanOn(s) => (s, "spanOn"),
+        Item::SpanMin(s) => (s, "spanMin"),
+        Item::SpanMax(s) => (s, "spanMax"),
+        Item::StepSize(s) => (s, "step"),
+        Item::Value(s) => (s, "value"),
+        Item::Choice(s) => (s, "choice"),
+        Item::Bright(s) => (s, "bright"),
+        Item::OnDelay(s) => (s, "onDelay"),
+        Item::OffDelay(s) => (s, "offDelay"),
+        Item::Flag(s, mask) => (s, flag_id(mask)?),
+        _ => return None,
+    })
+}
+
+/// The item a binding row is focused as; `None` for words only.
+fn binding_item(slot: usize, id: &str) -> Option<Item> {
+    Some(match id {
+        "type" => Item::Type(slot),
+        "noun" => Item::Noun(slot),
+        "action" => Item::ActionPick(slot),
+        "event" => Item::Event(slot),
+        "target" => Item::Target(slot),
+        "band" => Item::Band(slot),
+        "gpio0" => Item::Pin(slot, false),
+        "gpio1" => Item::Pin(slot, true),
+        "spanOn" => Item::SpanOn(slot),
+        "spanMin" => Item::SpanMin(slot),
+        "spanMax" => Item::SpanMax(slot),
+        "step" => Item::StepSize(slot),
+        "value" => Item::Value(slot),
+        "choice" => Item::Choice(slot),
+        "bright" => Item::Bright(slot),
+        "onDelay" => Item::OnDelay(slot),
+        "offDelay" => Item::OffDelay(slot),
+        _ => Item::Flag(slot, flag_of(id)?),
+    })
+}
+
+/// The remote-button row an item edits.
+fn ir_id(item: Item) -> Option<(usize, &'static str)> {
+    Some(match item {
+        Item::IrNoun(s) => (s, "noun"),
+        Item::IrAction(s) => (s, "action"),
+        Item::IrTarget(s) => (s, "target"),
+        Item::IrBand(s) => (s, "band"),
+        Item::IrValue(s) => (s, "value"),
+        Item::IrChoice(s) => (s, "choice"),
+        Item::IrStep(s) => (s, "step"),
+        Item::IrFlag(s, m::flag::WRAP) => (s, "wrap"),
+        Item::IrFlag(s, m::flag::REPEAT) => (s, "repeat"),
+        _ => return None,
+    })
+}
+
+fn ir_item(sub: usize, id: &str) -> Option<Item> {
+    Some(match id {
+        "noun" => Item::IrNoun(sub),
+        "action" => Item::IrAction(sub),
+        "target" => Item::IrTarget(sub),
+        "band" => Item::IrBand(sub),
+        "value" => Item::IrValue(sub),
+        "choice" => Item::IrChoice(sub),
+        "step" => Item::IrStep(sub),
+        "wrap" => Item::IrFlag(sub, m::flag::WRAP),
+        "repeat" => Item::IrFlag(sub, m::flag::REPEAT),
+        _ => return None,
+    })
+}
+
+/// What a pick row offers: a disabled choice is shown by a GUI, and a
+/// terminal popup, which cannot dim a line, leaves it out.
+fn offered(r: &cs_rows::Row) -> Vec<&cs_rows::Choice> {
+    match &r.body {
+        RowBody::Pick { options, .. } => options.iter().filter(|o| !o.disabled).collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// A choice's words in a flat popup. The GUIs head each section; a terminal
+/// line carries its section instead: a group says so, and a function names
+/// its family when there is more than one.
+fn choice_text(r: &cs_rows::Row, o: &cs_rows::Choice, sectioned: bool) -> String {
+    let text = match (&o.section, r.id.as_str()) {
+        (Some(s), "target") if s == "Groups" => format!("Group: {}", o.text),
+        (Some(s), "noun") if sectioned => format!("{s} / {}", o.text),
+        _ => o.text.clone(),
+    };
+    match &o.owner {
+        // A pin another button holds, still offered: one gesture each.
+        Some(who) => format!("{text} ({who})"),
+        None => text,
+    }
+}
+
+/// A core row as the Terminal draws it.
+fn shown(r: &cs_rows::Row) -> Row {
+    let caption = (!r.detail.is_empty()).then(|| r.detail.clone());
+    match &r.body {
+        RowBody::Pick { value, .. } => {
+            let opts = offered(r);
+            let first = opts.first().and_then(|o| o.section.as_ref());
+            let sectioned = opts.iter().any(|o| o.section.as_ref() != first);
+            Row::Pick {
+                label: r.title.clone(),
+                choices: opts.iter().map(|o| choice_text(r, o, sectioned)).collect(),
+                selected: opts.iter().position(|o| o.value == *value).unwrap_or(0),
+                caption,
+                enabled: true,
+            }
+        }
+        RowBody::Number {
+            value,
+            min,
+            max,
+            step,
+            unit,
+            decimals,
+        } => Row::Number {
+            label: r.title.clone(),
+            value: *value,
+            min: *min,
+            max: *max,
+            step: *step,
+            unit: unit.clone(),
+            decimals: usize::from(*decimals),
+            caption,
+            enabled: true,
+        },
+        RowBody::Toggle { on, enabled } => Row::Toggle {
+            label: r.title.clone(),
+            on: *on,
+            caption,
+            enabled: *enabled,
+        },
+        RowBody::Note { warning: true } => Row::Status(r.detail.clone(), true),
+        RowBody::Note { warning: false } => Row::note(r.detail.clone()),
+    }
+}
+
+/// What `cs_rows::edit` takes for an action on a row: the picked choice's
+/// value, on or off, or the number.
+fn edit_value(r: &cs_rows::Row, action: &Action) -> Option<f64> {
+    match (&r.body, action) {
+        (RowBody::Pick { .. }, Action::Selected(c)) => {
+            offered(r).get(*c).map(|o| f64::from(o.value))
+        }
+        (RowBody::Toggle { .. }, Action::Toggled(on)) => Some(if *on { 1.0 } else { 0.0 }),
+        (RowBody::Number { .. }, Action::Changed(v) | Action::Committed(v)) => Some(*v),
+        _ => None,
+    }
+}
+
 /// Where a freshly picked noun starts: channel 0, or for an aux noun the first
 /// slot holding an aux output, since slot 0 rarely does and a page pointed at
 /// a slot without one is refused (control_surfaces.h:277-278).
@@ -2974,6 +2102,7 @@ mod tests {
     use crate::shell::{Screen, ScreenEvent};
     use crossterm::event::KeyCode;
     use dspi_session::DeviceState;
+    use dspi_session::surfaces::GPIO_UNUSED;
 
     fn screen(data: SettingsData) -> (SettingsScreen, DeviceState) {
         let st = m::demo::state();
@@ -4235,5 +3364,231 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    // -- WP TM24 -- The Terminal offers what `cs_rows` offers.
+
+    /// The core's rows for a control slot's draft, and the ids the page
+    /// draws as focusable rows.
+    fn tm24_ids(p: &SurfacesPage, c: &Cx<'_>, slot: usize) -> (Vec<String>, Vec<String>) {
+        let core: Vec<String> = p
+            .core_binding(c, slot)
+            .rows
+            .iter()
+            .filter(|r| !matches!(r.body, RowBody::Note { .. }))
+            .map(|r| r.id.clone())
+            .collect();
+        let drawn: Vec<String> = p
+            .build(c)
+            .into_iter()
+            .filter(|(_, r)| r.focusable())
+            .filter_map(|(i, _)| i.and_then(binding_id))
+            .filter(|(s, _)| *s == slot)
+            .map(|(_, id)| id.to_string())
+            .collect();
+        (core, drawn)
+    }
+
+    /// Every row of a control card, every choice of its pickers, and what
+    /// picking it makes of the draft are the core's; along the way a long or
+    /// double press never offers Hold, and Hold offers only the short press.
+    #[test]
+    fn tm24_every_control_offers_exactly_what_cs_rows_allows() {
+        let (mut p, mut d, st) = page();
+        let cfg = AppConfig::default();
+        // Let Hold exist on Mute, so the gesture rule has something to refuse.
+        d.cs.as_mut().expect("cs").nouns[m::noun::USER_MUTE as usize].actions |=
+            m::act_bit(m::act::MOMENTARY);
+        p.live = d.cs.clone().expect("cs");
+        let c = cx(&d, &st, &cfg);
+        let controls: Vec<usize> = p
+            .visible()
+            .into_iter()
+            .filter(|s| {
+                let t = p.drafts[*s].component;
+                t != m::ty::IR && t != m::ty::DISPLAY && !m::is_aux(t)
+            })
+            .collect();
+        assert!(controls.len() >= 3, "the demo has controls: {controls:?}");
+        let mut walked = 0;
+        let mut long_seen = false;
+        for slot in controls {
+            p.expanded.insert(slot);
+            let start = p.drafts[slot].clone();
+            let (core, drawn) = tm24_ids(&p, &c, slot);
+            assert_eq!(core, drawn, "slot {slot}: the rows are the core's");
+            for (id, choices) in p
+                .core_binding(&c, slot)
+                .rows
+                .iter()
+                .filter(|r| matches!(r.body, RowBody::Pick { .. }))
+                .map(|r| (r.id.clone(), offered(r).len()))
+                .collect::<Vec<_>>()
+            {
+                let item = binding_item(slot, &id).expect("a pick row has an item");
+                let Row::Pick { choices: shown, .. } = row_for(&p, &c, item) else {
+                    panic!("{id} is drawn as a pick");
+                };
+                assert_eq!(shown.len(), choices, "slot {slot} {id}");
+                for k in 0..choices {
+                    p.drafts[slot] = start.clone();
+                    let r = p
+                        .core_binding(&c, slot)
+                        .rows
+                        .into_iter()
+                        .find(|r| r.id == id)
+                        .expect("row");
+                    let value = f64::from(offered(&r)[k].value);
+                    let want = cs_rows::edit(
+                        &c,
+                        &p.live,
+                        slot,
+                        &Draft::Binding(start.clone()),
+                        &id,
+                        value,
+                    )
+                    .expect("an offered choice is taken");
+                    p.act(index_of(&p, &c, item), Action::Selected(k), &c);
+                    assert_eq!(Draft::Binding(p.drafts[slot].clone()), want, "{id} #{k}");
+                    walked += 1;
+
+                    // The firmware refuses Hold on any gesture but the short
+                    // press (control_surfaces.c:1736-1741).
+                    let b = &p.drafts[slot];
+                    if b.component == m::ty::BUTTON {
+                        let desc = p.core_binding(&c, slot);
+                        let picks = |id: &str| {
+                            desc.rows
+                                .iter()
+                                .find(|r| r.id == id)
+                                .map(|r| offered(r).iter().map(|o| o.value).collect::<Vec<_>>())
+                                .unwrap_or_default()
+                        };
+                        if b.event != m::evt::PRESS {
+                            long_seen = true;
+                            assert!(!picks("action").contains(&i32::from(m::act::MOMENTARY)));
+                            if let Some(Row::Pick { choices, .. }) = p
+                                .build(&c)
+                                .into_iter()
+                                .find(|(i, _)| *i == Some(Item::ActionPick(slot)))
+                                .map(|(_, r)| r)
+                            {
+                                assert!(!choices.iter().any(|t| t == "Hold"), "{choices:?}");
+                            }
+                        }
+                        if b.action == m::act::MOMENTARY {
+                            assert_eq!(picks("event"), vec![i32::from(m::evt::PRESS)]);
+                        }
+                    }
+                }
+                p.drafts[slot] = start.clone();
+            }
+        }
+        assert!(walked > 50, "walked {walked} choices");
+        assert!(long_seen, "a long or double press was walked");
+    }
+
+    /// A remote button's rows and choices are the core's too.
+    #[test]
+    fn tm24_a_remote_button_offers_exactly_what_cs_rows_allows() {
+        let (mut p, d, st) = page();
+        let cfg = AppConfig::default();
+        let c = cx(&d, &st, &cfg);
+        let ir = m::container_slot(&p.drafts, &p.live, m::ty::IR).expect("the demo has a receiver");
+        p.expanded.insert(ir);
+        let subs = p.ir_visible();
+        assert!(!subs.is_empty());
+        for sub in subs {
+            p.expanded_ir.insert(sub);
+            let core: Vec<String> = p
+                .core_ir(&c, sub)
+                .rows
+                .iter()
+                .filter(|r| !matches!(r.body, RowBody::Note { .. }))
+                .map(|r| r.id.clone())
+                .collect();
+            let drawn: Vec<String> = p
+                .build(&c)
+                .into_iter()
+                .filter_map(|(i, _)| i.and_then(ir_id))
+                .filter(|(s, _)| *s == sub)
+                .map(|(_, id)| id.to_string())
+                .collect();
+            assert_eq!(core, drawn, "remote button {sub}");
+            let start = p.ir_drafts[sub].clone();
+            let acts: Vec<i32> = p
+                .core_ir(&c, sub)
+                .rows
+                .iter()
+                .find(|r| r.id == "action")
+                .map(|r| offered(r).iter().map(|o| o.value).collect())
+                .unwrap_or_default();
+            for (k, a) in acts.iter().enumerate() {
+                p.ir_drafts[sub] = start.clone();
+                let want = cs_rows::edit(
+                    &c,
+                    &p.live,
+                    sub,
+                    &Draft::Ir(start.clone()),
+                    "action",
+                    f64::from(*a),
+                )
+                .expect("offered");
+                p.act(
+                    index_of(&p, &c, Item::IrAction(sub)),
+                    Action::Selected(k),
+                    &c,
+                );
+                assert_eq!(Draft::Ir(p.ir_drafts[sub].clone()), want);
+            }
+            p.ir_drafts[sub] = start;
+        }
+    }
+
+    /// Two buttons may share a GPIO, one gesture each, wired the same way
+    /// (control_surfaces.c:1364-1377): the Terminal's own copy offered every
+    /// gesture and its own sense toggle there, which the firmware refuses.
+    #[test]
+    fn tm24_a_shared_button_pin_offers_only_a_free_gesture() {
+        let (_, mut d, st) = page();
+        let cfg = AppConfig::default();
+        let cs = d.cs.as_mut().expect("cs");
+        let (slot, mate) = (0..cs.bindings.len())
+            .filter(|s| {
+                cs.bindings[*s].component == m::ty::BUTTON && cs.status.is_slot_active(*s as u8)
+            })
+            .map(|s| {
+                (
+                    s,
+                    cs.bindings
+                        .iter()
+                        .position(|b| b.is_empty())
+                        .expect("a free slot"),
+                )
+            })
+            .next()
+            .expect("a live button");
+        let mut other = cs.bindings[slot].clone();
+        other.event = m::evt::DOUBLE;
+        cs.bindings[mate] = other;
+        cs.status.active_mask |= 1 << mate;
+        let mut p = SurfacesPage::new(&d);
+        let c = cx(&d, &st, &cfg);
+        p.expanded.insert(slot);
+        p.drafts[slot].event = m::evt::PRESS;
+        let Row::Pick { choices, .. } = row_for(&p, &c, Item::Event(slot)) else {
+            panic!("gesture row");
+        };
+        assert!(!choices.iter().any(|t| t == "Double press"), "{choices:?}");
+        assert!(
+            !p.build(&c)
+                .iter()
+                .any(|(i, _)| *i == Some(Item::Flag(slot, m::flag::INVERT))),
+            "the shared pin sets the wiring"
+        );
+        assert!(p.build(&c).iter().any(|(_, r)| matches!(
+            r,
+            Row::Note(t) if t.contains("shared with another button")
+        )));
     }
 }
