@@ -9,9 +9,12 @@
 //! Only live parameters take part. A flash write, a pin move, a preset load and
 //! the bootloader jump are marked not undoable when they are journalled
 //! (`Hazard::Flash`, `Deferred`, `Reconfig`, `Irreversible`), because there is
-//! nothing to put back: they are confirmed before the fact instead. Those
-//! entries are stepped over and named, rather than silently swallowed, so the
-//! person who pressed undo learns why nothing moved.
+//! nothing to put back: they are confirmed before the fact instead. An audible
+//! write (`Hazard::Audible`) is not undoable either, since replaying one is an
+//! action of its own: undo must never start the signal generator. Those entries
+//! are stepped over and named, rather than silently swallowed, so the person
+//! who pressed undo learns why nothing moved. Only undoable entries reach the
+//! redo stack, so redo cannot send one either.
 //!
 //! Some writes move more than their own value: a tube type loads a voicing,
 //! a character edit drops the type to Custom, a limiter joining a link group

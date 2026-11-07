@@ -18,6 +18,7 @@
 
 use dspi_proto::FilterType;
 use dspi_proto::generated::opcodes as op;
+use dspi_proto::packets::SiggenStatus;
 use dspi_proto::registry::{
     ALL_OUTPUTS, Hazard, Kind, ParamDesc, Requires, Target, WValue, by_path,
 };
@@ -163,6 +164,18 @@ const TUBE_VOICING: [&str; 5] = [
 ];
 
 /// The settings a limiter link group shares (limiter.c:151-155).
+/// Whether undo and redo may ever send this parameter again.
+///
+/// Only one with no hazard. An audible one is an action rather than a value to
+/// put back: stepping back through `sig.control` would start a signal generator
+/// the person had stopped, and `cs.macro.fire` would fire a macro again.
+/// [`Session::undo`] steps over these and names them. The exception is what a
+/// reversible write moved as a side effect (see [`side_effects`]): a limiter
+/// link change puts `limit.on` back, which is state and starts nothing.
+fn is_reversible(d: &ParamDesc) -> bool {
+    matches!(d.hazard, Hazard::None)
+}
+
 const LIMITER_SHARED: [&str; 3] = ["limit.on", "limit.threshold", "limit.release"];
 
 /// The values a write to `path` at `indices` can change besides its own, in
@@ -321,9 +334,16 @@ impl Session {
             });
         }
 
-        let before = self.read(path, indices).ok();
+        // A write that cannot be reversed has no use for what it replaces, and
+        // reading it first would keep a Stop waiting on a busy device.
+        let reversible = is_reversible(d);
+        let before = if reversible {
+            self.read(path, indices).ok()
+        } else {
+            None
+        };
         // A replay is not an undo step, so what it moves need not be kept.
-        let companions = if self.replaying {
+        let companions = if self.replaying || !reversible {
             Vec::new()
         } else {
             self.read_companions(path, indices)
@@ -517,6 +537,9 @@ impl Session {
         if d.target == Target::OutputOrAll && indices.first() == Some(&ALL_OUTPUTS) {
             return Err(WriteError::BadTarget(ALL_OUTPUTS, "single output"));
         }
+        if d.path == SIG_CONTROL {
+            return self.read_siggen_state().map(siggen_control_of);
+        }
         let wvalue = self.build_read_wvalue(d, indices);
         let repr = d.repr();
         // EQ scalars always answer four bytes regardless of the field's
@@ -568,6 +591,9 @@ impl Session {
         if matches!(d.kind, Kind::Trigger) {
             return Ok(Outcome::Triggered);
         }
+        if d.path == SIG_CONTROL {
+            return Ok(self.confirm_siggen_control(sent));
+        }
         // A packet has no scalar readback: `read` fetches one byte of it,
         // which is not evidence either way. The typed helpers (surfaces.rs)
         // verify packets by their own status protocol.
@@ -602,6 +628,38 @@ impl Session {
                 actual,
             }),
             Err(e) => Err(e),
+        }
+    }
+
+    /// The generator's state, from `SiggenStatus` (siggen.h:110-120).
+    fn read_siggen_state(&mut self) -> Result<u8, WriteError> {
+        let kind = self.transport.caps().kind;
+        let get = op::REQ_SIGGEN_GET_STATUS;
+        let wanted = SiggenStatus::SIZE;
+        let bytes = with_busy_retry(
+            kind,
+            || self.transport.control_in(get, 0, wanted as u16),
+            get,
+        )?;
+        let status = SiggenStatus::decode(&bytes).map_err(|_| TransportError::ShortRead {
+            opcode: get,
+            got: bytes.len(),
+            wanted,
+        })?;
+        Ok(status.state)
+    }
+
+    /// Check a `sig.control` against the state it leaves (siggen.c:1240-1276).
+    /// The action has been sent by now, so a status that cannot be read is no
+    /// reason to report anything but that.
+    fn confirm_siggen_control(&mut self, sent: &Value) -> Outcome {
+        match self.read_siggen_state() {
+            Ok(state) if siggen_control_took(sent, state) => Outcome::Confirmed(sent.clone()),
+            Ok(state) => Outcome::Rejected {
+                sent: sent.clone(),
+                actual: siggen_control_of(state),
+            },
+            Err(_) => Outcome::Accepted,
         }
     }
 
@@ -687,7 +745,7 @@ impl Session {
             before,
             after,
             outcome,
-            undoable: matches!(d.hazard, Hazard::None | Hazard::Audible),
+            undoable: is_reversible(d),
             companions,
         };
         self.journal.push(entry.clone());
@@ -929,6 +987,36 @@ fn latency_poll_can_continue(e: &TransportError, stall_is_busy: bool) -> bool {
         | TransportError::ShortRead { .. }
         | TransportError::Usb(_) => true,
         _ => false,
+    }
+}
+
+/// Answers from `SiggenStatus` rather than from a scalar: see
+/// [`Session::read_siggen_state`].
+const SIG_CONTROL: &str = "sig.control";
+/// `SIGGEN_STATE_*` (siggen.h:102-106).
+const SIGGEN_STATE_IDLE: u8 = 0;
+const SIGGEN_STATE_FADE_OUT: u8 = 4;
+/// `sig.control`'s choices, which are `SIGGEN_CTL_*`.
+const SIGGEN_CTL_STOP: u8 = 0;
+const SIGGEN_CTL_START: u8 = 1;
+const SIGGEN_CTL_STOP_NOW: u8 = 2;
+
+/// The state as the `sig.control` choice it amounts to: fading out is stopping.
+fn siggen_control_of(state: u8) -> Value {
+    Value::Choice(match state {
+        SIGGEN_STATE_IDLE | SIGGEN_STATE_FADE_OUT => SIGGEN_CTL_STOP,
+        _ => SIGGEN_CTL_START,
+    })
+}
+
+/// Whether a state is what this action leaves. A plain Stop fades unless the
+/// generator is in its silent gap. A Start on a running generator fades that
+/// signal out first and relaunches, so any state but idle is a Start that took.
+fn siggen_control_took(sent: &Value, state: u8) -> bool {
+    match sent.as_u8() {
+        Some(SIGGEN_CTL_START) => state != SIGGEN_STATE_IDLE,
+        Some(SIGGEN_CTL_STOP_NOW) => state == SIGGEN_STATE_IDLE,
+        _ => matches!(state, SIGGEN_STATE_IDLE | SIGGEN_STATE_FADE_OUT),
     }
 }
 
@@ -1419,6 +1507,152 @@ mod tests {
         s.write("preset.name", &[0], Value::Text("Test".into()))
             .unwrap();
         assert!(!s.journal.last().unwrap().undoable);
+    }
+
+    // -- WP TM18 --
+    mod tm18_siggen {
+        use super::*;
+        use dspi_proto::registry::REGISTRY;
+        use dspi_transport::mock::{Direction, Reply};
+
+        fn with_status(state: u8) -> MockTransport {
+            let status = SiggenStatus {
+                state,
+                ..Default::default()
+            };
+            MockTransport::new()
+                .data(op::REQ_SIGGEN_CONTROL, vec![1])
+                .data(op::REQ_SIGGEN_GET_STATUS, status.encode().to_vec())
+        }
+
+        fn control(t: MockTransport, choice: u8) -> Outcome {
+            let mut s = session(t, &[("test_signals", true)]);
+            s.write("sig.control", &[], Value::Choice(choice)).unwrap()
+        }
+
+        /// The version byte comes first in the status and is always 1, which
+        /// is what made every readback say "start".
+        #[test]
+        fn tm18_the_readback_is_the_state_not_the_version() {
+            for (state, choice) in [(0, 0), (1, 1), (2, 1), (3, 1), (4, 0)] {
+                let mut s = session(with_status(state), &[("test_signals", true)]);
+                assert_eq!(
+                    s.read("sig.control", &[]).unwrap(),
+                    Value::Choice(choice),
+                    "state {state}"
+                );
+            }
+        }
+
+        #[test]
+        fn tm18_stop_confirms_while_the_signal_fades_or_once_idle() {
+            for state in [0, 4] {
+                assert_eq!(
+                    control(with_status(state), 0),
+                    Outcome::Confirmed(Value::Choice(0)),
+                    "state {state}"
+                );
+            }
+            assert_eq!(
+                control(with_status(0), 2),
+                Outcome::Confirmed(Value::Choice(2))
+            );
+        }
+
+        #[test]
+        fn tm18_a_stop_the_device_did_not_take_is_reported() {
+            for choice in [0, 2] {
+                assert_eq!(
+                    control(with_status(2), choice),
+                    Outcome::Rejected {
+                        sent: Value::Choice(choice),
+                        actual: Value::Choice(1),
+                    }
+                );
+            }
+        }
+
+        /// A Start on a running generator fades it out and relaunches
+        /// (siggen.c:1244-1250), so fading out is a Start that took.
+        #[test]
+        fn tm18_start_confirms_on_anything_but_idle() {
+            for state in [1, 2, 3, 4] {
+                assert_eq!(
+                    control(with_status(state), 1),
+                    Outcome::Confirmed(Value::Choice(1)),
+                    "state {state}"
+                );
+            }
+            assert_eq!(
+                control(with_status(0), 1),
+                Outcome::Rejected {
+                    sent: Value::Choice(1),
+                    actual: Value::Choice(0),
+                }
+            );
+        }
+
+        /// Stop goes out first, with nothing read ahead of it, and a status
+        /// that will not answer does not turn it into a failure.
+        #[test]
+        fn tm18_stop_is_not_held_up_by_the_status() {
+            for choice in [0, 2] {
+                let t = MockTransport::new()
+                    .data(op::REQ_SIGGEN_CONTROL, vec![1])
+                    .reply(op::REQ_SIGGEN_GET_STATUS, Reply::Stall);
+                let log = t.log_handle();
+                assert_eq!(control(t, choice), Outcome::Accepted);
+                let log = log.lock().unwrap();
+                let first = log.first().expect("something on the wire");
+                assert_eq!(first.opcode, op::REQ_SIGGEN_CONTROL);
+                assert_eq!(first.direction, Direction::In);
+                assert_eq!(first.value, choice as u16);
+            }
+        }
+
+        /// Every audible parameter, not only the generator's.
+        #[test]
+        fn tm18_nothing_audible_can_be_undone() {
+            let audible: Vec<_> = REGISTRY
+                .iter()
+                .filter(|d| d.hazard == Hazard::Audible)
+                .collect();
+            assert!(audible.iter().any(|d| d.path == "sig.config"));
+            assert!(audible.iter().any(|d| d.path == "sig.control"));
+            let mut s = session(MockTransport::new(), &[]);
+            for d in audible {
+                s.record(
+                    d,
+                    &[],
+                    Some(Value::Choice(1)),
+                    Vec::new(),
+                    Value::Choice(0),
+                    Outcome::Accepted,
+                );
+                assert!(!s.journal.last().unwrap().undoable, "{}", d.path);
+            }
+            assert!(!s.can_undo());
+        }
+
+        /// What a write moves besides itself is restored by undo, so the
+        /// generator must not be among it for any parameter. The one audible
+        /// companion is `limit.on` under a link change: that puts a limiter's
+        /// state back and starts nothing.
+        #[test]
+        fn tm18_undo_cannot_reach_the_generator_as_a_companion() {
+            for d in REGISTRY {
+                for at in [vec![0], vec![ALL_OUTPUTS], Vec::new()] {
+                    for (path, _) in side_effects(d.path, &at, 9) {
+                        let hazard = by_path(path).map(|c| c.hazard);
+                        assert!(
+                            hazard == Some(Hazard::None) || path == "limit.on",
+                            "{} moves {path}",
+                            d.path
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]
