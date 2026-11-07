@@ -955,6 +955,13 @@ impl Reconnector {
         }
     }
 
+    // -- WP TM8 --
+    /// Whether an attempt is under way, for a test to catch one.
+    #[cfg(test)]
+    pub(crate) fn dialling(&self) -> bool {
+        self.running.is_some()
+    }
+
     /// Call as often as you like: it never blocks. The first attempt goes out
     /// at once, later ones as the back-off allows.
     pub fn poll(&mut self, now: Instant) -> Reconnect {
