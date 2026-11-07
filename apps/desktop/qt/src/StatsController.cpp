@@ -2,6 +2,11 @@
 #include "DSPiBridge.h"
 
 #include <QDateTime>
+#include <QHash>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QRunnable>
 #include <QPainter>
 #include <QPainterPath>
 #ifdef Q_OS_MACOS
@@ -52,18 +57,61 @@ QString wordLengthName(quint8 b) {
     default: return "-";
     }
 }
+
+// -- WP QD5 --
+QString mhz(qint64 hz) { return QString::number(hz / 1e6, 'f', 3) + " MHz"; }
+QString ppm(qint64 centiPpm) {
+    return (centiPpm > 0 ? "+" : "") + QString::number(centiPpm / 100.0, 'f', 2) + " ppm";
+}
+
+// The packet is a bench instrument of some 90 fields (clock_diag.h); these answer
+// "is the clock steady, and is the loop tracking?". A field an older packet lacks
+// leaves its row out.
+QVariantList clockDiagRows(const QJsonObject &reply) {
+    QHash<QString, QString> f;
+    const QJsonArray fields = reply.value(QLatin1String("fields")).toArray();
+    for (const QJsonValue &v : fields) {
+        const QJsonObject o = v.toObject();
+        f.insert(o.value(QLatin1String("name")).toString(), o.value(QLatin1String("value")).toString());
+    }
+    QVariantList rows;
+    const auto row = [&rows](const QString &title, const QString &value) {
+        rows.append(QVariantMap { { "title", title }, { "value", value } });
+    };
+    const auto has = [&f](const char *name) { return f.contains(QLatin1String(name)); };
+    const auto num = [&f](const char *name) { return f.value(QLatin1String(name)).toLongLong(); };
+
+    if (has("pll_lock")) row("PLL", num("pll_lock") ? "Locked" : "Unlocked");
+    if (has("sysclk_last_hz")) row("System Clock", mhz(num("sysclk_last_hz")));
+    if (has("sysclk_min_hz") && has("sysclk_max_hz")) row("System Clock Range", mhz(num("sysclk_min_hz")) + " – " + mhz(num("sysclk_max_hz")));
+    if (has("vcxo_parked") && num("vcxo_parked")) row("VCXO Trim", "Parked");
+    else if (has("vcxo_last_cppm")) row("VCXO Trim", ppm(num("vcxo_last_cppm")));
+    if (has("vcxo_min_cppm") && has("vcxo_max_cppm")) row("VCXO Range", ppm(num("vcxo_min_cppm")) + " – " + ppm(num("vcxo_max_cppm")));
+    if (has("servo_total_cppm")) row("Servo Output", ppm(num("servo_total_cppm")));
+    if (has("loop_gapmax_us")) row("Longest Loop Gap", QString::number(num("loop_gapmax_us")) + " µs");
+    if (has("fb_q16")) row("USB Feedback", QString::number(num("fb_q16") / 65536.0, 'f', 4) + " samples/frame");
+    return rows;
+}
 }
 
 StatsController::StatsController(DSPiBridge *bridge, QObject *parent)
     : QObject(parent), m_bridge(bridge), m_core(bridge->core())
 {
     for (auto &h : m_history) h.fill(Absent);
+    m_worker.setMaxThreadCount(1);
     m_slow.setInterval(2000);
     m_fast.setInterval(60);
     connect(&m_slow, &QTimer::timeout, this, &StatsController::pollSlow);
     connect(&m_fast, &QTimer::timeout, this, &StatsController::pollFast);
     connect(m_bridge, &DSPiBridge::devicesChanged, this, &StatsController::onDeviceChanged);
+    // -- WP QD5 -- A disconnect comes as stateChanged only: no rows of a device that's gone
+    connect(m_bridge, &DSPiBridge::stateChanged, this, &StatsController::onDeviceChanged);
     onDeviceChanged();
+}
+
+StatsController::~StatsController() {
+    m_generation++;
+    m_worker.waitForDone();
 }
 
 // Counts reconnections after the first connection this session
@@ -79,6 +127,8 @@ void StatsController::onDeviceChanged() {
     for (auto &h : m_history) h.fill(Absent);
     m_buffers.clear();
     emit buffersChanged();
+    m_generation++;
+    setClockDiag({});
     if (!serial.isEmpty()) {
         if (m_seenDevice) m_reconnects++;
         m_seenDevice = true;
@@ -199,6 +249,40 @@ void StatsController::pollSlow() {
     }
 
     if (m != m_info) { m_info = m; emit infoChanged(); }
+    pollClockDiag();
+}
+
+// -- WP QD5 --
+void StatsController::pollClockDiag() {
+    if (m_clockDiagBusy) return;
+    m_clockDiagBusy = true;
+    const unsigned generation = m_generation;
+    FfiCore *core = m_core;
+    m_worker.start(QRunnable::create([this, core, generation]() {
+        QByteArray reply;
+        if (m_clockDiagHook) {
+            reply = m_clockDiagHook();
+        } else {
+            QByteArray buf(16 * 1024, '\0');
+            const uint32_t needed = dspi_fetch_clock_diag(core, buf.data(), uint32_t(buf.size()));
+            if (needed > 0 && needed <= uint32_t(buf.size())) reply = buf.left(int(needed - 1));
+        }
+        const QJsonObject o = QJsonDocument::fromJson(reply).object();
+        // A stall reads as not available: no section
+        QVariantList rows;
+        if (o.value(QLatin1String("ok")).toBool() && o.value(QLatin1String("available")).toBool())
+            rows = clockDiagRows(o);
+        QMetaObject::invokeMethod(this, [this, rows, generation]() {
+            m_clockDiagBusy = false;
+            if (m_generation == generation) setClockDiag(rows);
+        }, Qt::QueuedConnection);
+    }));
+}
+
+void StatsController::setClockDiag(const QVariantList &rows) {
+    if (rows == m_clockDiag) return;
+    m_clockDiag = rows;
+    emit clockDiagChanged();
 }
 
 void StatsController::pollFast() {

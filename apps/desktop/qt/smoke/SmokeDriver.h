@@ -70,6 +70,11 @@ private:
     void testBypassRepaint();
     // -- WP QD30 --
     void testPopoverAnchor();
+    // -- WP QD4 --
+    void testNames();
+    // -- WP QD5 --
+    void testOutputLatency();
+    void testClockDiagAndCpuBars();
     // -- WP QD1 --
     void testCsRefusals();
     void testCsCallerRefusals();

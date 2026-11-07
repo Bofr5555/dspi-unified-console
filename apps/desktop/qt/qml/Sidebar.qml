@@ -313,9 +313,13 @@ Rectangle {
 
                 SidebarPicker {
                     width: parent.width
+                    objectName: "sourcePicker"   // -- WP QD4 -- for the smoke driver
                     label: "Source"
                     enabled: bridge.connected
-                    readonly property var sources: bridge.inputSources.map(function (src) { return { value: src.id, text: src.name } })
+                    // -- WP QD4 -- The user's name for a source, when it has one
+                    readonly property var sources: bridge.inputSources.map(function (src) {
+                        return { value: src.id, text: (typeof deviceNames !== "undefined" && deviceNames.sourceNames[src.id]) || src.name }
+                    })
                     options: sources
                     currentValue: bridge.inputSource
                     valueText: {

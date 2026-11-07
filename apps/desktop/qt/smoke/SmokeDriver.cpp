@@ -87,6 +87,11 @@ void SmokeDriver::run() {
     testBypassRepaint();
     testSweep();
     testReconnect();
+    // -- WP QD4 --
+    testNames();
+    // -- WP QD5 --
+    testOutputLatency();
+    testClockDiagAndCpuBars();
     // -- WP QD1 --
     testCsRefusals();
     // -- WP CG16 --

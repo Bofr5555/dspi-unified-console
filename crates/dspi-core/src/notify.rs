@@ -232,6 +232,8 @@ impl DspiCore {
             // -- WP CG13 --
             if std::mem::take(&mut conn.source_names_stale) {
                 crate::info::read_source_names(conn);
+                // -- WP QD4 --
+                crate::info::read_device_name(conn);
             }
         }
         if rebaseline {
@@ -384,6 +386,9 @@ fn apply_queued(inner: &mut Inner, r: &mut NotifyResult) -> FollowUp {
                 // -- WP CG13 --
                 if *id == EVT_INPUT_SOURCE_NAME {
                     crate::info::note_source_name_event(conn, bytes);
+                } else {
+                    // -- WP QD4 --
+                    crate::info::note_device_name_event(conn, bytes);
                 }
                 if !is_own(kind, src, note, session) {
                     r.flags |= NOTIFY_NAMES;
