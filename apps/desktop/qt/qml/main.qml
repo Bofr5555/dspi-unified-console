@@ -677,6 +677,7 @@ ApplicationWindow {
         if (name === "firmware" && !firmware.supported) return
         if (name.indexOf("url:") === 0) { Qt.openUrlExternally(name.substring(4)); return }
         if (name === "gettingStarted") { setupRequested = true; return }
+        if (name === "devices") { devicesPopup.open(); return }   // -- WP QD9 --
         var w = { matrix: matrixWindow, loudness: loudnessWindow, crossfeed: crossfeedWindow,
                   leveller: levellerWindow, psybass: psybassWindow, subharm: subharmWindow,
                   tube: tubeWindow, upmix: upmixWindow, stats: statsWindow,
@@ -1092,4 +1093,12 @@ ApplicationWindow {
     SignalGeneratorWindow { id: siggenWindow; objectName: "siggenWindow"; writesToDevice: true }
     InterruptMonitorWindow { id: monitorWindow }
     SettingsWindow { id: settingsWindow }
+    // -- WP QD9 -- USB, the demo and hubs in one list (the Device menu's Devices…),
+    // and a hub's PIN prompt, which shows by itself whenever a hub asks
+    DevicesPopup {
+        id: devicesPopup
+        switchTo: root.switchDevice
+        guard: function (action) { root.withUnsaved(function (choice) { action() }) }
+    }
+    PairingDialog { }
 }

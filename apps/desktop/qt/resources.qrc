@@ -2,6 +2,9 @@
     <qresource prefix="/">
         <file>qml/main.qml</file>
         <file>qml/BannerHost.qml</file>
+        <!-- WP QD9 -->
+        <file>qml/DevicesPopup.qml</file>
+        <file>qml/PairingDialog.qml</file>
         <file>qml/style/ToolTip.qml</file>
         <file>qml/style/qmldir</file>
         <file>qml/Sidebar.qml</file>
