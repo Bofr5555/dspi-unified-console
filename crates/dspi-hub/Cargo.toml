@@ -94,3 +94,9 @@ required-features = ["app"]
 [[test]]
 name = "wp_hb5_advertise"
 required-features = ["mdns"]
+
+# -- WP HB7 --
+# tests/conformance/: three Link clients against the hub (README.md there).
+[[test]]
+name = "conformance"
+path = "tests/conformance/main.rs"
