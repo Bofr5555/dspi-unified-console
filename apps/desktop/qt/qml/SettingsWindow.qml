@@ -351,7 +351,7 @@ AppWindow {
     }
     Shortcut {
         sequences: ["Return", "Enter"]
-        enabled: ctx.dirty && !search.activeFocus
+        enabled: settingsWindow.activeFocusItem !== null && ctx.dirty && !search.activeFocus   // -- WP QD36 -- as Escape below
         onActivated: ctx.save()
     }
 
@@ -421,5 +421,8 @@ AppWindow {
     Shortcut { sequence: "Alt+Left"; onActivated: settingsWindow.goBack() }
     Shortcut { sequence: "Alt+Right"; onActivated: settingsWindow.goForward() }
     Shortcut { enabled: !isMacOS; sequences: [StandardKey.Find]; onActivated: search.forceActiveFocus() }
-    Shortcut { sequence: "Escape"; enabled: !search.activeFocus; onActivated: settingsWindow.close() }
+    // -- WP QD36 -- Only while this window has the focus: Qt 6 counts a hidden window as
+    // active when its transient parent is, and its Escape then matched the main
+    // window's keys ambiguously, so none of them ran (review c4h F5)
+    Shortcut { sequence: "Escape"; enabled: settingsWindow.activeFocusItem !== null && !search.activeFocus; onActivated: settingsWindow.close() }
 }

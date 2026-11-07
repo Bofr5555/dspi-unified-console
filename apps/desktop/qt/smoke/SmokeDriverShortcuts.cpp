@@ -256,13 +256,28 @@ void SmokeDriver::testShortcuts() {
         row("Right", "Right (graph)", waitFor(1000, [&]() { return b->filterFreq(0, band) > freq * 1.03f; }));
         key(Qt::Key_Up, Qt::NoModifier);
         row("Up", "Up (graph)", waitFor(1000, [&]() { return b->filterGain(0, band) != gain || b->filterQ(0, band) != q; }));
-        // Not a check: under Qt 6.11 the hidden Settings and What's New windows' Escape
-        // shortcuts match in the main window too, ambiguously, so Escape never reaches
-        // the graph (QD17 report; the fix is in those windows). Qt 5.15 delivers it.
+        // -- WP QD36 -- Under Qt 6.11 the hidden windows' Escape shortcuts matched in the
+        // main window too, ambiguously, and Escape never reached the graph; they now
+        // match only while their window is active
         key(Qt::Key_Escape, Qt::NoModifier);
-        printf("smoke: QD17 %-12s -> %-13s %s\n", "Escape", "Escape (graph)",
-               editor->selectedBands().isEmpty() ? "ok" : "KNOWN: taken by hidden windows' Escape shortcuts");
+        row("Escape", "Escape (graph)", editor->selectedBands().isEmpty());
         editor->deselectAll();
+    }
+    // -- WP QD36 -- With the focus, Settings still closes on its own Escape
+    QQuickWindow *settingsWin = nullptr;
+    for (QQuickWindow *w : root()->findChildren<QQuickWindow *>())
+        if (w->property("currentPage").isValid() && w->metaObject()->indexOfMethod("navigate(QVariant)") >= 0) settingsWin = w;
+    if (settingsWin) {
+        settingsWin->setVisible(true);
+        settingsWin->requestActivate();
+        const bool focused = waitFor(1000, [&]() { return QGuiApplication::focusWindow() == settingsWin; });
+        spin(50);
+        key(Qt::Key_Escape, Qt::NoModifier);
+        check("QD36: Escape closes Settings while it has the focus", focused && waitFor(1000, [&]() { return !settingsWin->isVisible(); }));
+        settingsWin->setVisible(false);
+        focusMain();
+    } else {
+        check("QD36: the Settings window", false);
     }
     QMetaObject::invokeMethod(root(), "selectOverview");
     spin(200);

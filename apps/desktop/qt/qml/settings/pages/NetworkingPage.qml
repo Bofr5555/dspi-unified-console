@@ -85,6 +85,14 @@ SettingsPage {
             checked: hub.sharing
             onToggled: hub.setSharing(checked)
         }
+        // -- WP QD36 -- Design choice (review c4h F4): the app's demo is not a USB device,
+        // so the hub shares a demo of its own, opened when sharing starts on the demo
+        SettingsRow {
+            objectName: "networkingDemoNote"
+            visible: demo.active
+            title: "The hub shares its own demo device"
+            detail: "Clients see a separate demo device, not the one shown here: changes made here don't show on theirs. It stays on the hub until sharing restarts."
+        }
         SettingsRow {
             visible: hub.running && hub.inaccessible > 0
             title: hub.inaccessible === 1 ? "1 device could not be opened" : hub.inaccessible + " devices could not be opened"
