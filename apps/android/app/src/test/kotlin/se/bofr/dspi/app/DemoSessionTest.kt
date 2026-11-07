@@ -18,32 +18,10 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import se.bofr.dspi.fake.DspStateJson
 import se.bofr.dspi.fake.FakeDspiCore
 import se.bofr.dspi.usb.UsbSessionState
 
 class DemoSessionTest {
-    @Test
-    fun demoCoreIsSeededFromTheV32Fixture() {
-        val fixture = FakeDspiCore.fixtureText()
-        assertNotNull("/dspstate_v32.json must be on the app's classpath (fake-core resources)", fixture)
-        val expected = DspStateJson.parse(fixture!!)
-        val core = FakeDspiCore.demo()
-        try {
-            // identity + a few values of the V32 capture (the fake may normalise derived fields)
-            val s = core.getState()
-            assertEquals(32, s.formatVersion)
-            assertEquals(expected.platformId, s.platformId)
-            assertEquals(expected.numChannels, s.numChannels)
-            assertEquals(expected.numOutputChannels, s.numOutputChannels)
-            assertEquals(listOf(expected.fwMajor, expected.fwMinor, expected.fwPatch), listOf(s.fwMajor, s.fwMinor, s.fwPatch))
-            assertEquals(expected.masterVolumeDb, s.masterVolumeDb, 0f)
-            assertEquals(expected.matrixRouting, s.matrixRouting)
-        } finally {
-            core.close()
-        }
-    }
-
     @Test
     fun demoBridgeConnectsToTheFakeWithoutUsbAndClosesCleanly() = runBlocking {
         val mainExecutor = Executors.newSingleThreadExecutor()
@@ -75,7 +53,9 @@ class DemoSessionTest {
         val parent = CoroutineScope(SupervisorJob() + main)
         val usbState = MutableStateFlow<UsbSessionState>(UsbSessionState.NoDevice)
         val cores = CopyOnWriteArrayList<FakeDspiCore>()
-        val device = startDemoSession(parent, "device stand-in", main = main) // any bridge works as the "device" one
+        // Any bridge works as the "device" one. Not the real core: this class runs outside Robolectric, and the
+        // JVM loads the library for one classloader only (DemoScreensAn28Test has it in Robolectric's)
+        val device = startDemoSession(parent, "device stand-in", main = main, core = FakeDspiCore.demo())
         try {
             val modes = withContext(main) {
                 AppModeController(

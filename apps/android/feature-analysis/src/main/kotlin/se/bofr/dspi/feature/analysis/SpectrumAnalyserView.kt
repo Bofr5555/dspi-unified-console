@@ -75,6 +75,7 @@ import se.bofr.dspi.core.DspiConstants
 import se.bofr.dspi.core.RtaCapsInfo
 import se.bofr.dspi.core.RtaSnapshot
 import se.bofr.dspi.ui.ChannelPalette
+import se.bofr.dspi.ui.LocalDemoMode
 import se.bofr.dspi.ui.MacColors
 import se.bofr.dspi.ui.SegmentedPicker
 import se.bofr.dspi.ui.WhileVisible
@@ -224,7 +225,9 @@ fun SpectrumAnalyserContent(
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Notice(
                     "Spectrum analyser unavailable",
-                    if (state.connected) {
+                    if (LocalDemoMode.current) {
+                        "The demo device has no spectrum analyser. Connect a DSPi to use it."
+                    } else if (state.connected) {
                         "The connected firmware does not provide a compatible analyser. Update the firmware to use it."
                     } else {
                         "Connect a DSPi to use the analyser."

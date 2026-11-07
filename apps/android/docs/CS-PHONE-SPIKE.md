@@ -98,6 +98,9 @@ move out of the Terminal to serve this, which is the part I am least sure of.
 
 ## 4. The demo device
 
+*AN28 took option A: demo mode now runs on the real core, so the hybrid below is not needed
+and `FakeDspiCore` is for tests only. The table is the spike's finding at the time.*
+
 Android's demo mode: `startDemoSession` uses `FakeDspiCore.demo()`, whose
 `csSnapshot` returns `"bindings": []`, no groups and no macros, and whose `csApply`
 accepts anything. AN9's "runs on the demo device" would prove nothing on it, and the
