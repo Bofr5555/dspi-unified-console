@@ -3262,6 +3262,31 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn wp_tm23_every_page_draws_at_every_small_size_with_any_row_focused() {
+        // Review c3a F2: a picker row at 12..(its value's width) columns
+        // underflowed, so Settings -> Global at 40 columns closed the Terminal.
+        for page in every_page() {
+            for w in 0..=60u16 {
+                for h in 0..=8u16 {
+                    let (mut s, st) = screen(page);
+                    s.focus = Focus::Page;
+                    let cx = s.cx(&st);
+                    let n = s
+                        .current_ref()
+                        .rows(&cx)
+                        .iter()
+                        .filter(|r| r.focusable())
+                        .count();
+                    for cursor in 0..n.max(1) {
+                        s.current().set_cursor(cursor);
+                        frame(&mut s, &st, w, h);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn wp_tm23_a_pair_aligns_a_wide_value_by_columns() {
         let buf = pair_line("Name", "寬字", 20);
         // A wide character takes its cell and the one after, so the value's last
