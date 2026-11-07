@@ -900,7 +900,23 @@ interface DspiBridge {
 
     // ═══ Input stereo-pair links (IN1/2, IN3/4, …) ═════════════════════
 
+    /**
+     * The input strips and the pairs that can link: [effectiveInputChannels]
+     * (macOS `numMatrixInputs`, which bounds `linkedPartner(of:)`), 0 without
+     * inputs. One count for the UI and the link mirror (WP AN35).
+     */
     fun liveInputCount(): Int
+
+    // -- WP AN35 --
+    /**
+     * The host's channel count for the DSPi (macOS HostAudioFormatMonitor;
+     * Android's USB output format), null when the host names none. On USB it
+     * stands in for the device's active count, which idles to stereo.
+     */
+    val hostInputChannels: StateFlow<Int?> get() = NO_HOST_INPUT_CHANNELS
+
+    /** Sets [hostInputChannels]; a change is a state change ([stateRevision]). Main thread. */
+    fun setHostInputChannels(count: Int?) {}
 
     fun pairPartner(ch: Int): Int
 
@@ -994,3 +1010,6 @@ private class DerivedWritesAllowed(private val b: DspiBridge) : StateFlow<Boolea
         awaitCancellation()
     }
 }
+
+// -- WP AN35 -- the default for bridges without a host format (test doubles)
+private val NO_HOST_INPUT_CHANNELS: StateFlow<Int?> = MutableStateFlow<Int?>(null).asStateFlow()

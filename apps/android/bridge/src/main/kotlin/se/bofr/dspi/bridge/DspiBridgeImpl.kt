@@ -95,6 +95,7 @@ class DspiBridgeImpl(
 
     private val _state = MutableStateFlow(current)
     private val _stateRevision = MutableStateFlow(0L)
+    private val _hostInputChannels = MutableStateFlow<Int?>(null) // -- WP AN35 --
 
     // B7: start disconnected; scanDevices()/attachDevice() publish the connection
     private val _status = MutableStateFlow(BridgeStatus())
@@ -106,6 +107,7 @@ class DspiBridgeImpl(
 
     override val state: StateFlow<DspState> = _state.asStateFlow()
     override val stateRevision: StateFlow<Long> = _stateRevision.asStateFlow()
+    override val hostInputChannels: StateFlow<Int?> = _hostInputChannels.asStateFlow() // -- WP AN35 --
     override val status: StateFlow<BridgeStatus> = _status.asStateFlow()
     override val devices: StateFlow<DeviceListState> = _devices.asStateFlow()
     override val presetDirty: StateFlow<Boolean> = _presetDirty.asStateFlow()
@@ -1414,7 +1416,8 @@ class DspiBridgeImpl(
     /**
      * macOS `numMatrixInputs` = `effectiveInputChannels`: the input rows the
      * current source carries (S/PDIF 2, I2S its channel count, ADAT 8, USB the
-     * host's active channels), at least 2, at most the device's inputs.
+     * host's format, else the device's active channels), at least 2, at most
+     * the device's inputs.
      */
     override val effectiveInputChannels: Int
         get() {
@@ -1424,7 +1427,7 @@ class DspiBridgeImpl(
                     1, 4, 5, 6 -> 2
                     2 -> s.i2sInputChannels
                     3 -> 8
-                    else -> _status.value.activeInputChannels
+                    else -> _hostInputChannels.value ?: _status.value.activeInputChannels // -- WP AN35 --
                 }
             return maxOf(2, minOf(base, s.numInputChannels))
         }
@@ -2370,7 +2373,14 @@ class DspiBridgeImpl(
 
     // ═══ Input pair links ═══
 
-    override fun liveInputCount(): Int = minOf(current.numInputChannels, maxOf(2, _status.value.activeInputChannels))
+    // -- WP AN35 -- the strips and the link mirror share macOS numMatrixInputs
+    override fun liveInputCount(): Int = if (current.numInputChannels <= 0) 0 else effectiveInputChannels
+
+    override fun setHostInputChannels(count: Int?) {
+        if (count == _hostInputChannels.value) return
+        _hostInputChannels.value = count
+        _stateRevision.value += 1
+    }
 
     private fun pairIndex(ch: Int): Int = map.inputOf(ch).let { if (it >= 0) it / 2 else -1 }
 

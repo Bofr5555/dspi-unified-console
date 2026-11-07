@@ -1,9 +1,10 @@
 // WP AN35: AN18's HostAudioFormat wired into the strip layout (M25), as
 // macOS HostAudioFormatMonitor feeds DSPViewModel.effectiveInputChannels
 // (DSPViewModel.swift:1947-1951). The count is read again whenever Android's
-// outputs change (AudioDeviceCallback), so the strips follow the host while
-// the device's own report idles to stereo. The pair links follow the same
-// count: a pair the strips show can be linked.
+// outputs change (AudioDeviceCallback) and handed to the bridge, whose
+// liveInputCount (macOS numMatrixInputs) is then the one count for the
+// strips and for the pair links it mirrors, so the strips follow the host
+// while the device's own report idles to stereo.
 package se.bofr.dspi.feature.home
 
 import android.content.Context
@@ -14,10 +15,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 import se.bofr.dspi.bridge.DspiBridge
@@ -51,47 +49,38 @@ class AudioManagerHostChannelSource(context: Context) : HostChannelSource {
     }
 }
 
-/** The host count source; null: the screen's own [AudioManagerHostChannelSource]. */
+/** The host count source; null: an [AudioManagerHostChannelSource] over the context. */
 val LocalHostChannelSource = staticCompositionLocalOf<HostChannelSource?> { null }
 
-/** The host channel count, kept current while composed. */
+/**
+ * Hands the host count to [bridge] while composed (the app calls it once, over
+ * every route). [enabled] false (demo, DSPi Link: the DSPi is not on this
+ * phone's USB) gives the bridge none.
+ */
 @Composable
-internal fun hostChannelCount(): Int? {
+fun HostChannelsFeed(bridge: DspiBridge, enabled: Boolean = true) {
     val source = LocalHostChannelSource.current ?: LocalContext.current.let { ctx -> remember(ctx) { AudioManagerHostChannelSource(ctx) } }
-    var count by remember(source) { mutableStateOf(source.channelCount()) }
-    DisposableEffect(source) {
-        val watch = source.watch { count = source.channelCount() }
-        count = source.channelCount()
-        onDispose { watch.close() }
+    DisposableEffect(bridge, source, enabled) {
+        if (!enabled) {
+            bridge.setHostInputChannels(null)
+            return@DisposableEffect onDispose {}
+        }
+        val watch = source.watch { bridge.setHostInputChannels(source.channelCount()) }
+        bridge.setHostInputChannels(source.channelCount())
+        onDispose {
+            watch.close()
+            bridge.setHostInputChannels(null)
+        }
     }
-    return count
 }
 
 /**
- * How many input strips to lay out: [HostAudioFormat.effectiveInputChannels]
- * over the device's report and the host count. 0 until the device has
- * reported (no inputs, or an unknown active count).
+ * How many input strips to lay out: the bridge's [DspiBridge.liveInputCount]
+ * (the host's format on USB). 0 until the device has reported its active count.
  */
 @Composable
 internal fun stripInputCount(bridge: DspiBridge): Int {
-    val s = bridge.observeState()
+    bridge.observeState() // a host count change bumps the revision
     val active = bridge.observeStatus { it.activeInputChannels }
-    val host = hostChannelCount()
-    return HostStrips.count(host, active, s.inputSource, s.numInputChannels, s.i2sInputChannels)
-}
-
-internal object HostStrips {
-    /** [stripInputCount]'s rule. */
-    fun count(host: Int?, active: Int, inputSource: Int, numInputChannels: Int, i2sInputChannels: Int): Int =
-        if (active < 0 || numInputChannels <= 0) {
-            0
-        } else {
-            HostAudioFormat.effectiveInputChannels(host, active, inputSource, numInputChannels, i2sInputChannels)
-        }
-
-    /** Input [input]'s pair is laid out whole, so it can be linked (the bridge's `pairAvailable` over [strips]). */
-    fun pairAvailable(input: Int, strips: Int): Boolean = input >= 0 && (input or 1) < strips
-
-    /** Input [input]'s pair is linked in [links] (one bit per pair) and laid out whole. */
-    fun linked(input: Int, strips: Int, links: Int): Boolean = pairAvailable(input, strips) && (links shr (input / 2)) and 1 == 1
+    return if (active < 0) 0 else bridge.liveInputCount()
 }
