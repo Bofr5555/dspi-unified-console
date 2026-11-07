@@ -270,6 +270,9 @@ impl Prompt {
                     kind: dspi_cmd::complete::CandidateKind::Verb,
                 })
                 .collect();
+            // -- WP TM12 -- `autoeq` is a verb of both, and is listed once.
+            self.candidates
+                .retain(|c| !mine.iter().any(|m| m.value == c.value));
             self.candidates.splice(0..0, mine);
         }
         self.index = 0;
@@ -644,6 +647,9 @@ pub struct Live {
     boot: Option<actions::BootloaderWatch>,
     /// An AutoEQ rebuild, while it is running.
     rebuild: Option<dspi_session::autoeq::RebuildHandle>,
+    // -- WP TM12 --
+    /// What a rebuild fetches with: HTTPS, unless a test scripts it.
+    autoeq_fetch: Box<dyn Fn() -> Box<dyn dspi_session::autoeq::Fetch>>,
     /// The serial of a device to open in place of this one. The event loop
     /// owns the transport, so the picker asks and the loop does it.
     pub switch_to: Option<String>,
@@ -719,6 +725,8 @@ impl Live {
             started: Instant::now(),
             boot: None,
             rebuild: None,
+            // -- WP TM12 --
+            autoeq_fetch: Box::new(|| Box::new(crate::autoeq_fetch::HttpFetch::new())),
             switch_to: None,
             input_pending: false,
             graphing: config.graphing.clone(),
@@ -911,6 +919,15 @@ impl Live {
         self.shared.borrow_mut().graph = m.graph.clone();
         // -- WP TM5 --
         m.spectrum = screens::spectrum::overlay_picture(&self.shared, s, t, Instant::now());
+    }
+
+    // -- WP TM12 --
+    /// Fetch with this instead of HTTPS on the next AutoEQ rebuild.
+    pub fn set_autoeq_fetch(
+        &mut self,
+        fetch: impl Fn() -> Box<dyn dspi_session::autoeq::Fetch> + 'static,
+    ) {
+        self.autoeq_fetch = Box::new(fetch);
     }
 
     fn note(&mut self, text: impl Into<String>) {
@@ -2334,9 +2351,8 @@ impl Live {
                 }
             }
             (AppDialog::AutoEqRebuild, DialogOutcome::Button(0)) => {
-                let handle = dspi_session::autoeq::rebuild_from_github(Box::new(
-                    dspi_session::autoeq::CurlFetch,
-                ));
+                // -- WP TM12 --
+                let handle = dspi_session::autoeq::rebuild_from_github((self.autoeq_fetch)());
                 self.dialog = Some((
                     AppDialog::AutoEqRebuildProgress,
                     Dialog::progress("Updating Database", "Connecting to GitHub..."),
@@ -3309,6 +3325,17 @@ impl Live {
         self.rebuild = None;
         self.dialog = None;
         match done {
+            // -- WP TM12 -- A note lasts three seconds: what is missing stays up.
+            Ok(n) if n.failed_profiles > 0 || n.failed_listings > 0 => {
+                self.reload_autoeq();
+                self.dialog = Some((
+                    AppDialog::Report,
+                    Dialog::report(
+                        "Database rebuilt with parts missing",
+                        screens::autoeq::rebuild_report(&n),
+                    ),
+                ));
+            }
             Ok(n) => {
                 self.reload_autoeq();
                 self.note(format!("Database rebuilt successfully! Entries: {n}"));
@@ -6578,5 +6605,29 @@ mod tests_wp_tm5 {
                     .any(|e| e.0 == second && e.2 == req::RTA_GET_BANDS)
         });
         assert_eq!(device_mask(&hub), 0b01, "our own choice");
+    }
+}
+
+// -- WP TM12 --
+#[cfg(test)]
+mod tests_wp_tm12 {
+    use super::*;
+
+    /// A verb of both the grammar and the interface is offered once.
+    #[test]
+    fn tm12_the_palette_lists_autoeq_once() {
+        let ctx = Context {
+            channel_slugs: Vec::new(),
+            num_inputs: 0,
+            num_outputs: 0,
+            max_bands: 0,
+        };
+        let prompt = Prompt::new(true, &ctx);
+        let listed = prompt
+            .candidates
+            .iter()
+            .filter(|c| c.value == "autoeq")
+            .count();
+        assert_eq!(listed, 1);
     }
 }

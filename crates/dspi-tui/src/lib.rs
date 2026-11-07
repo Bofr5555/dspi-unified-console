@@ -1,6 +1,8 @@
 //! The DSPi terminal interface.
 
 pub mod actions;
+// -- WP TM12 --
+pub mod autoeq_fetch;
 pub mod curves;
 pub mod graph;
 pub mod live;
