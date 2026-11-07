@@ -4445,6 +4445,10 @@ void dspi_monitor_clear(struct FfiCore *core);
 /**
  * The device's configuration as a `.dspipreset` document. `links` = the
  * app's input-pair link mask. Returns the length needed.
+ *
+ * With no device's state to export, the text is instead the JSON failure reply
+ * `{"ok":false,"code":<kind>,"error":<sentence>}`: a document has no `ok` key.
+ * Check before writing it to a file.
  */
 uint32_t dspi_config_export(struct FfiCore *core,
                             const char *name,
@@ -4475,7 +4479,9 @@ uint32_t dspi_config_import(struct FfiCore *core,
                             uint32_t len);
 
 /**
- * Every channel's filters as a text file (`inputs` = live inputs to write).
+ * Every channel's filters as a text file (`inputs` = live inputs to write),
+ * or the JSON failure reply as [`dspi_config_export`] gives it: a filter file
+ * starts with `#`.
  */
 uint32_t dspi_filters_export(struct FfiCore *core, uint8_t inputs, char *buf, uint32_t len);
 
