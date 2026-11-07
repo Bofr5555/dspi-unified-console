@@ -78,6 +78,8 @@ mod firmware;
 mod firmware_guard;
 mod hardware;
 mod hotplug;
+// -- WP CG26 --
+mod host_transport;
 mod info;
 #[cfg(feature = "link")]
 pub mod link;
@@ -139,6 +141,8 @@ pub use hotplug::{BrokeredDevice, DeviceBroker};
 pub use dspi_proto::ext::PairMap;
 // -- WP CG23 --
 pub use raw::RawNotification;
+// -- WP CG26 --
+pub use host_transport::{HostTransport, HostTransportKind};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -162,6 +166,9 @@ pub struct DspiCore {
     /// The running hub browse.
     #[cfg(feature = "mdns")]
     pub(crate) browse: link_browse::BrowseSlot,
+    // -- WP CG26 --
+    /// Where `host_notify` sends: the newest `open_host` connection's feed.
+    pub(crate) host_feed: host_transport::FeedSlot,
 }
 
 /// Everything behind the lock.
@@ -552,6 +559,8 @@ impl DspiCore {
             // -- WP CG2 --
             #[cfg(feature = "mdns")]
             browse: link_browse::BrowseSlot::default(),
+            // -- WP CG26 --
+            host_feed: host_transport::FeedSlot::default(),
         })
     }
 }

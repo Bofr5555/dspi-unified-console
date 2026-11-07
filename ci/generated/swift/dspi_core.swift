@@ -2177,6 +2177,16 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func getState()  -> DspState
     
     /**
+     * A notification packet from the device of the [`DspiCore::open_host`]
+     * connection, as its endpoint delivered it, with the hub's `origin` (the
+     * session whose write caused it, 0 for a change at the device; `None`
+     * over USB and MIDI). From any thread; never blocks beyond a short lock.
+     * Ignored without an open host connection, for an empty packet, and
+     * after the connection ended.
+     */
+    func hostNotify(packet: Data, origin: UInt16?) 
+    
+    /**
      * DSPis the last scan saw but could not open: no permission (Linux udev
      * rule), no WinUSB binding, or held by another program.
      */
@@ -2385,6 +2395,15 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * `usb` feature; [`DspiError::Unsupported`] elsewhere.
      */
     func openFd(fd: Int32, serial: String, vid: UInt16) throws 
+    
+    /**
+     * Open a device over `transport`, a link the app carries, and run the
+     * connect sequence; `serial` names it for the picker. Replaces any open
+     * device. From now on [`DspiCore::host_notify`] feeds this connection.
+     * Errors as for the connect sequence; a host that fails during it (an
+     * error, a hang, a reply of the wrong length) leaves nothing connected.
+     */
+    func openHost(transport: HostTransport, serial: String) throws 
     
     /**
      * Open a DSPi through the USB MIDI control channel (Android
@@ -5015,6 +5034,22 @@ open func getState() -> DspState  {
 }
     
     /**
+     * A notification packet from the device of the [`DspiCore::open_host`]
+     * connection, as its endpoint delivered it, with the hub's `origin` (the
+     * session whose write caused it, 0 for a change at the device; `None`
+     * over USB and MIDI). From any thread; never blocks beyond a short lock.
+     * Ignored without an open host connection, for an empty packet, and
+     * after the connection ended.
+     */
+open func hostNotify(packet: Data, origin: UInt16?)  {try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_host_notify(self.uniffiClonePointer(),
+        FfiConverterData.lower(packet),
+        FfiConverterOptionUInt16.lower(origin),$0
+    )
+}
+}
+    
+    /**
      * DSPis the last scan saw but could not open: no permission (Linux udev
      * rule), no WinUSB binding, or held by another program.
      */
@@ -5320,6 +5355,21 @@ open func openFd(fd: Int32, serial: String, vid: UInt16)throws   {try rustCallWi
         FfiConverterInt32.lower(fd),
         FfiConverterString.lower(serial),
         FfiConverterUInt16.lower(vid),$0
+    )
+}
+}
+    
+    /**
+     * Open a device over `transport`, a link the app carries, and run the
+     * connect sequence; `serial` names it for the picker. Replaces any open
+     * device. From now on [`DspiCore::host_notify`] feeds this connection.
+     * Errors as for the connect sequence; a host that fails during it (an
+     * error, a hang, a reply of the wrong length) leaves nothing connected.
+     */
+open func openHost(transport: HostTransport, serial: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_open_host(self.uniffiClonePointer(),
+        FfiConverterTypeHostTransport_lower(transport),
+        FfiConverterString.lower(serial),$0
     )
 }
 }
@@ -7108,6 +7158,314 @@ public func FfiConverterTypeDspiCore_lift(_ pointer: UnsafeMutableRawPointer) th
 #endif
 public func FfiConverterTypeDspiCore_lower(_ value: DspiCore) -> UnsafeMutableRawPointer {
     return FfiConverterTypeDspiCore.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Control transfers to a DSPi, carried by the embedding app (WP CG26).
+ *
+ * Calls come one at a time (the core's lock serialises them), on the thread
+ * of the core call that makes them (on the Mac, `coreQueue`) or on the
+ * analyser's worker thread, so an implementation must be `Send + Sync` but
+ * sees no overlap. Each call must not block for long: bound it by the
+ * transport's own timeout (about 1 s for a control transfer). A call that
+ * returns after [`HANG_LIMIT`] (10 s) ends the connection.
+ *
+ * Errors: [`DspiError::Disconnected`] when the device is gone (the
+ * connection then ends); [`DspiError::Refused`] or
+ * [`DspiError::Unsupported`] when the device stalled the request;
+ * [`DspiError::Locked`] or [`DspiError::Denied`] from a hub; anything else
+ * (a timeout after the host's own retries, a USB error) as
+ * [`DspiError::Transfer`] with the host's words.
+ */
+public protocol HostTransport: AnyObject, Sendable {
+    
+    /**
+     * IN transfer of up to `len` bytes; the reply as the device sent it.
+     * Also carries the write-as-read opcodes. A reply longer than `len` is
+     * an error; a shorter one is one only where the opcode's size is fixed.
+     */
+    func controlIn(opcode: UInt8, value: UInt16, len: UInt16) throws  -> Data
+    
+    /**
+     * OUT transfer carrying `data`.
+     */
+    func controlOut(opcode: UInt8, value: UInt16, data: Data) throws 
+    
+    /**
+     * What kind of link this is. Read once, at [`DspiCore::open_host`].
+     */
+    func kind()  -> HostTransportKind
+    
+}
+/**
+ * Control transfers to a DSPi, carried by the embedding app (WP CG26).
+ *
+ * Calls come one at a time (the core's lock serialises them), on the thread
+ * of the core call that makes them (on the Mac, `coreQueue`) or on the
+ * analyser's worker thread, so an implementation must be `Send + Sync` but
+ * sees no overlap. Each call must not block for long: bound it by the
+ * transport's own timeout (about 1 s for a control transfer). A call that
+ * returns after [`HANG_LIMIT`] (10 s) ends the connection.
+ *
+ * Errors: [`DspiError::Disconnected`] when the device is gone (the
+ * connection then ends); [`DspiError::Refused`] or
+ * [`DspiError::Unsupported`] when the device stalled the request;
+ * [`DspiError::Locked`] or [`DspiError::Denied`] from a hub; anything else
+ * (a timeout after the host's own retries, a USB error) as
+ * [`DspiError::Transfer`] with the host's words.
+ */
+open class HostTransportImpl: HostTransport, @unchecked Sendable {
+    fileprivate let pointer: UnsafeMutableRawPointer!
+
+    /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoPointer {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noPointer: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noPointer: NoPointer) {
+        self.pointer = nil
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiClonePointer() -> UnsafeMutableRawPointer {
+        return try! rustCall { uniffi_dspi_core_fn_clone_hosttransport(self.pointer, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        guard let pointer = pointer else {
+            return
+        }
+
+        try! rustCall { uniffi_dspi_core_fn_free_hosttransport(pointer, $0) }
+    }
+
+    
+
+    
+    /**
+     * IN transfer of up to `len` bytes; the reply as the device sent it.
+     * Also carries the write-as-read opcodes. A reply longer than `len` is
+     * an error; a shorter one is one only where the opcode's size is fixed.
+     */
+open func controlIn(opcode: UInt8, value: UInt16, len: UInt16)throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_hosttransport_control_in(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(opcode),
+        FfiConverterUInt16.lower(value),
+        FfiConverterUInt16.lower(len),$0
+    )
+})
+}
+    
+    /**
+     * OUT transfer carrying `data`.
+     */
+open func controlOut(opcode: UInt8, value: UInt16, data: Data)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_hosttransport_control_out(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(opcode),
+        FfiConverterUInt16.lower(value),
+        FfiConverterData.lower(data),$0
+    )
+}
+}
+    
+    /**
+     * What kind of link this is. Read once, at [`DspiCore::open_host`].
+     */
+open func kind() -> HostTransportKind  {
+    return try!  FfiConverterTypeHostTransportKind_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_hosttransport_kind(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+
+}
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceHostTransport {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // This creates 1-element array, since this seems to be the only way to construct a const
+    // pointer that we can pass to the Rust code.
+    static let vtable: [UniffiVTableCallbackInterfaceHostTransport] = [UniffiVTableCallbackInterfaceHostTransport(
+        controlIn: { (
+            uniffiHandle: UInt64,
+            opcode: UInt8,
+            value: UInt16,
+            len: UInt16,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> Data in
+                guard let uniffiObj = try? FfiConverterTypeHostTransport.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.controlIn(
+                     opcode: try FfiConverterUInt8.lift(opcode),
+                     value: try FfiConverterUInt16.lift(value),
+                     len: try FfiConverterUInt16.lift(len)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterData.lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeDspiError_lower
+            )
+        },
+        controlOut: { (
+            uniffiHandle: UInt64,
+            opcode: UInt8,
+            value: UInt16,
+            data: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeHostTransport.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.controlOut(
+                     opcode: try FfiConverterUInt8.lift(opcode),
+                     value: try FfiConverterUInt16.lift(value),
+                     data: try FfiConverterData.lift(data)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeDspiError_lower
+            )
+        },
+        kind: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> HostTransportKind in
+                guard let uniffiObj = try? FfiConverterTypeHostTransport.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.kind(
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeHostTransportKind_lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            let result = try? FfiConverterTypeHostTransport.handleMap.remove(handle: uniffiHandle)
+            if result == nil {
+                print("Uniffi callback interface HostTransport: handle missing in uniffiFree")
+            }
+        }
+    )]
+}
+
+private func uniffiCallbackInitHostTransport() {
+    uniffi_dspi_core_fn_init_callback_vtable_hosttransport(UniffiCallbackInterfaceHostTransport.vtable)
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHostTransport: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<HostTransport>()
+
+    typealias FfiType = UnsafeMutableRawPointer
+    typealias SwiftType = HostTransport
+
+    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> HostTransport {
+        return HostTransportImpl(unsafeFromRawPointer: pointer)
+    }
+
+    public static func lower(_ value: HostTransport) -> UnsafeMutableRawPointer {
+        guard let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: handleMap.insert(obj: value))) else {
+            fatalError("Cast to UnsafeMutableRawPointer failed")
+        }
+        return ptr
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HostTransport {
+        let v: UInt64 = try readInt(&buf)
+        // The Rust code won't compile if a pointer won't fit in a UInt64.
+        // We have to go via `UInt` because that's the thing that's the size of a pointer.
+        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+        if (ptr == nil) {
+            throw UniffiInternalError.unexpectedNullPointer
+        }
+        return try lift(ptr!)
+    }
+
+    public static func write(_ value: HostTransport, into buf: inout [UInt8]) {
+        // This fiddling is because `Int` is the thing that's the same size as a pointer.
+        // The Rust code won't compile if a pointer won't fit in a `UInt64`.
+        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHostTransport_lift(_ pointer: UnsafeMutableRawPointer) throws -> HostTransport {
+    return try FfiConverterTypeHostTransport.lift(pointer)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHostTransport_lower(_ value: HostTransport) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeHostTransport.lower(value)
 }
 
 
@@ -18790,6 +19148,117 @@ extension FirmwareGuardReason: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * What kind of link a [`HostTransport`] is. It decides the echo rule (which
+ * notifications are this client's own writes, `dspi_transport::is_own_write`)
+ * and how bulk transfers go.
+ */
+
+public enum HostTransportKind {
+    
+    /**
+     * USB vendor control transfers: our writes echo as `HOST_SET`; chunked
+     * bulk.
+     */
+    case usb
+    /**
+     * The USB MIDI control channel: our writes echo as `PARAM_SRC_MIDI`;
+     * single-shot bulk.
+     */
+    case midi
+    /**
+     * A DSPi Link hub, where this client is `session` (the Mac's own hub:
+     * session 1). Our writes are the notifications whose origin is `session`;
+     * single-shot bulk.
+     */
+    case link(
+        /**
+         * This client's session id on the hub.
+         */session: UInt16
+    )
+    /**
+     * A scripted or simulated device (Swift's `FakeTransport`): USB's rules.
+     */
+    case fake
+}
+
+
+#if compiler(>=6)
+extension HostTransportKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHostTransportKind: FfiConverterRustBuffer {
+    typealias SwiftType = HostTransportKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HostTransportKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .usb
+        
+        case 2: return .midi
+        
+        case 3: return .link(session: try FfiConverterUInt16.read(from: &buf)
+        )
+        
+        case 4: return .fake
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: HostTransportKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .usb:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .midi:
+            writeInt(&buf, Int32(2))
+        
+        
+        case let .link(session):
+            writeInt(&buf, Int32(3))
+            FfiConverterUInt16.write(session, into: &buf)
+            
+        
+        case .fake:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHostTransportKind_lift(_ buf: RustBuffer) throws -> HostTransportKind {
+    return try FfiConverterTypeHostTransportKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHostTransportKind_lower(_ value: HostTransportKind) -> RustBuffer {
+    return FfiConverterTypeHostTransportKind.lower(value)
+}
+
+
+extension HostTransportKind: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * Where a DSPi Link session stands, for the UI's wording
  * ([`LinkStatus::phase`]).
  */
@@ -20913,6 +21382,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_get_state() != 32151) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_host_notify() != 47004) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices() != 62282) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -20968,6 +21440,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_open_fd() != 57502) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_open_host() != 2384) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_open_midi() != 37496) {
@@ -21285,6 +21760,15 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_wire_features() != 30561) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_hosttransport_control_in() != 18930) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_hosttransport_control_out() != 51524) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_hosttransport_kind() != 14425) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_linklistener_on_link_devices_changed() != 16214) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -21321,6 +21805,7 @@ private let initializationResult: InitializationResult = {
 
     uniffiCallbackInitAutoEqFetch()
     uniffiCallbackInitDeviceEvents()
+    uniffiCallbackInitHostTransport()
     uniffiCallbackInitLinkListener()
     uniffiCallbackInitMidiSender()
     uniffiCallbackInitNotifyListener()

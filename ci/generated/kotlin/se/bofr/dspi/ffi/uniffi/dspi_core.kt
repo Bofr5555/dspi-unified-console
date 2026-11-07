@@ -663,6 +663,15 @@ internal interface UniffiCallbackInterfaceDeviceEventsMethod0 : com.sun.jna.Call
 internal interface UniffiCallbackInterfaceDeviceEventsMethod1 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`serial`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
+internal interface UniffiCallbackInterfaceHostTransportMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`opcode`: Byte,`value`: Short,`len`: Short,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceHostTransportMethod1 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`opcode`: Byte,`value`: Short,`data`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceHostTransportMethod2 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
+}
 internal interface UniffiCallbackInterfaceLinkListenerMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
@@ -715,6 +724,28 @@ internal open class UniffiVTableCallbackInterfaceDeviceEvents(
    internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceDeviceEvents) {
         `onArrived` = other.`onArrived`
         `onDeparted` = other.`onDeparted`
+        `uniffiFree` = other.`uniffiFree`
+    }
+
+}
+@Structure.FieldOrder("controlIn", "controlOut", "kind", "uniffiFree")
+internal open class UniffiVTableCallbackInterfaceHostTransport(
+    @JvmField internal var `controlIn`: UniffiCallbackInterfaceHostTransportMethod0? = null,
+    @JvmField internal var `controlOut`: UniffiCallbackInterfaceHostTransportMethod1? = null,
+    @JvmField internal var `kind`: UniffiCallbackInterfaceHostTransportMethod2? = null,
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+) : Structure() {
+    class UniffiByValue(
+        `controlIn`: UniffiCallbackInterfaceHostTransportMethod0? = null,
+        `controlOut`: UniffiCallbackInterfaceHostTransportMethod1? = null,
+        `kind`: UniffiCallbackInterfaceHostTransportMethod2? = null,
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    ): UniffiVTableCallbackInterfaceHostTransport(`controlIn`,`controlOut`,`kind`,`uniffiFree`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceHostTransport) {
+        `controlIn` = other.`controlIn`
+        `controlOut` = other.`controlOut`
+        `kind` = other.`kind`
         `uniffiFree` = other.`uniffiFree`
     }
 
@@ -792,6 +823,19 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
     }
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1631,6 +1675,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_get_preset_name(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_get_state(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_host_notify(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_is_connected(
@@ -1668,6 +1714,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_notify_tap_set(
 fun uniffi_dspi_core_checksum_method_dspicore_open_demo(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_open_fd(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_open_host(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_open_midi(
 ): Short
@@ -1879,6 +1927,12 @@ fun uniffi_dspi_core_checksum_method_dspicore_test_dac_mute(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_wire_features(
 ): Short
+fun uniffi_dspi_core_checksum_method_hosttransport_control_in(
+): Short
+fun uniffi_dspi_core_checksum_method_hosttransport_control_out(
+): Short
+fun uniffi_dspi_core_checksum_method_hosttransport_kind(
+): Short
 fun uniffi_dspi_core_checksum_method_linklistener_on_link_devices_changed(
 ): Short
 fun uniffi_dspi_core_checksum_method_linklistener_on_link_closed(
@@ -1941,6 +1995,7 @@ internal interface UniffiLib : Library {
             // we already did that with `IntegrityCheckingUniffiLib` above.
             uniffiCallbackInterfaceAutoEqFetch.register(lib)
             uniffiCallbackInterfaceDeviceEvents.register(lib)
+            uniffiCallbackInterfaceHostTransport.register(lib)
             uniffiCallbackInterfaceLinkListener.register(lib)
             uniffiCallbackInterfaceMidiSender.register(lib)
             uniffiCallbackInterfaceNotifyListener.register(lib)
@@ -2154,6 +2209,8 @@ fun uniffi_dspi_core_fn_method_dspicore_get_preset_name(`ptr`: Pointer,`slot`: B
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_get_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_host_notify(`ptr`: Pointer,`packet`: RustBuffer.ByValue,`origin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_inaccessible_devices(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
 fun uniffi_dspi_core_fn_method_dspicore_is_connected(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2191,6 +2248,8 @@ fun uniffi_dspi_core_fn_method_dspicore_notify_tap_set(`ptr`: Pointer,`enabled`:
 fun uniffi_dspi_core_fn_method_dspicore_open_demo(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_open_fd(`ptr`: Pointer,`fd`: Int,`serial`: RustBuffer.ByValue,`vid`: Short,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_open_host(`ptr`: Pointer,`transport`: Pointer,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_open_midi(`ptr`: Pointer,`input`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -2402,6 +2461,18 @@ fun uniffi_dspi_core_fn_method_dspicore_test_dac_mute(`ptr`: Pointer,uniffi_out_
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_wire_features(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
+fun uniffi_dspi_core_fn_clone_hosttransport(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Pointer
+fun uniffi_dspi_core_fn_free_hosttransport(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_init_callback_vtable_hosttransport(`vtable`: UniffiVTableCallbackInterfaceHostTransport,
+): Unit
+fun uniffi_dspi_core_fn_method_hosttransport_control_in(`ptr`: Pointer,`opcode`: Byte,`value`: Short,`len`: Short,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_hosttransport_control_out(`ptr`: Pointer,`opcode`: Byte,`value`: Short,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_hosttransport_kind(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_clone_linklistener(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Pointer
 fun uniffi_dspi_core_fn_free_linklistener(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2990,6 +3061,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_get_state() != 32151.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_host_notify() != 47004.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices() != 62282.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3045,6 +3119,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_open_fd() != 57502.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_open_host() != 2384.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_open_midi() != 37496.toShort()) {
@@ -3360,6 +3437,15 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_wire_features() != 30561.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_hosttransport_control_in() != 18930.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_hosttransport_control_out() != 51524.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_hosttransport_kind() != 14425.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_linklistener_on_link_devices_changed() != 16214.toShort()) {
@@ -5829,6 +5915,16 @@ public interface DspiCoreInterface {
     fun `getState`(): DspState
     
     /**
+     * A notification packet from the device of the [`DspiCore::open_host`]
+     * connection, as its endpoint delivered it, with the hub's `origin` (the
+     * session whose write caused it, 0 for a change at the device; `None`
+     * over USB and MIDI). From any thread; never blocks beyond a short lock.
+     * Ignored without an open host connection, for an empty packet, and
+     * after the connection ended.
+     */
+    fun `hostNotify`(`packet`: kotlin.ByteArray, `origin`: kotlin.UShort?)
+    
+    /**
      * DSPis the last scan saw but could not open: no permission (Linux udev
      * rule), no WinUSB binding, or held by another program.
      */
@@ -6037,6 +6133,15 @@ public interface DspiCoreInterface {
      * `usb` feature; [`DspiError::Unsupported`] elsewhere.
      */
     fun `openFd`(`fd`: kotlin.Int, `serial`: kotlin.String, `vid`: kotlin.UShort)
+    
+    /**
+     * Open a device over `transport`, a link the app carries, and run the
+     * connect sequence; `serial` names it for the picker. Replaces any open
+     * device. From now on [`DspiCore::host_notify`] feeds this connection.
+     * Errors as for the connect sequence; a host that fails during it (an
+     * error, a hang, a reply of the wrong length) leaves nothing connected.
+     */
+    fun `openHost`(`transport`: HostTransport, `serial`: kotlin.String)
     
     /**
      * Open a DSPi through the USB MIDI control channel (Android
@@ -9120,6 +9225,25 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * A notification packet from the device of the [`DspiCore::open_host`]
+     * connection, as its endpoint delivered it, with the hub's `origin` (the
+     * session whose write caused it, 0 for a change at the device; `None`
+     * over USB and MIDI). From any thread; never blocks beyond a short lock.
+     * Ignored without an open host connection, for an empty packet, and
+     * after the connection ended.
+     */override fun `hostNotify`(`packet`: kotlin.ByteArray, `origin`: kotlin.UShort?)
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_host_notify(
+        it, FfiConverterByteArray.lower(`packet`),FfiConverterOptionalUShort.lower(`origin`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * DSPis the last scan saw but could not open: no permission (Linux udev
      * rule), no WinUSB binding, or held by another program.
      */override fun `inaccessibleDevices`(): kotlin.UInt {
@@ -9510,6 +9634,25 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_open_fd(
         it, FfiConverterInt.lower(`fd`),FfiConverterString.lower(`serial`),FfiConverterUShort.lower(`vid`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Open a device over `transport`, a link the app carries, and run the
+     * connect sequence; `serial` names it for the picker. Replaces any open
+     * device. From now on [`DspiCore::host_notify`] feeds this connection.
+     * Errors as for the connect sequence; a host that fails during it (an
+     * error, a hang, a reply of the wrong length) leaves nothing connected.
+     */
+    @Throws(DspiException::class)override fun `openHost`(`transport`: HostTransport, `serial`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_open_host(
+        it, FfiConverterTypeHostTransport.lower(`transport`),FfiConverterString.lower(`serial`),_status)
 }
     }
     
@@ -11766,6 +11909,401 @@ public object FfiConverterTypeDspiCore: FfiConverter<DspiCore, Pointer> {
     override fun allocationSize(value: DspiCore) = 8UL
 
     override fun write(value: DspiCore, buf: ByteBuffer) {
+        // The Rust code always expects pointers written as 8 bytes,
+        // and will fail to compile if they don't fit.
+        buf.putLong(Pointer.nativeValue(lower(value)))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a Pointer/Arc<T>
+// to the live Rust struct on the other side of the FFI.
+//
+// Each instance implements core operations for working with the Rust `Arc<T>` and the
+// Kotlin Pointer to work with the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque pointer to the underlying Rust struct.
+//     Method calls need to read this pointer from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its pointer should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the pointer, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the pointer, but is interrupted
+//      before it can pass the pointer over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read pointer value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * Control transfers to a DSPi, carried by the embedding app (WP CG26).
+ *
+ * Calls come one at a time (the core's lock serialises them), on the thread
+ * of the core call that makes them (on the Mac, `coreQueue`) or on the
+ * analyser's worker thread, so an implementation must be `Send + Sync` but
+ * sees no overlap. Each call must not block for long: bound it by the
+ * transport's own timeout (about 1 s for a control transfer). A call that
+ * returns after [`HANG_LIMIT`] (10 s) ends the connection.
+ *
+ * Errors: [`DspiError::Disconnected`] when the device is gone (the
+ * connection then ends); [`DspiError::Refused`] or
+ * [`DspiError::Unsupported`] when the device stalled the request;
+ * [`DspiError::Locked`] or [`DspiError::Denied`] from a hub; anything else
+ * (a timeout after the host's own retries, a USB error) as
+ * [`DspiError::Transfer`] with the host's words.
+ */
+public interface HostTransport {
+    
+    /**
+     * IN transfer of up to `len` bytes; the reply as the device sent it.
+     * Also carries the write-as-read opcodes. A reply longer than `len` is
+     * an error; a shorter one is one only where the opcode's size is fixed.
+     */
+    fun `controlIn`(`opcode`: kotlin.UByte, `value`: kotlin.UShort, `len`: kotlin.UShort): kotlin.ByteArray
+    
+    /**
+     * OUT transfer carrying `data`.
+     */
+    fun `controlOut`(`opcode`: kotlin.UByte, `value`: kotlin.UShort, `data`: kotlin.ByteArray)
+    
+    /**
+     * What kind of link this is. Read once, at [`DspiCore::open_host`].
+     */
+    fun `kind`(): HostTransportKind
+    
+    companion object
+}
+
+/**
+ * Control transfers to a DSPi, carried by the embedding app (WP CG26).
+ *
+ * Calls come one at a time (the core's lock serialises them), on the thread
+ * of the core call that makes them (on the Mac, `coreQueue`) or on the
+ * analyser's worker thread, so an implementation must be `Send + Sync` but
+ * sees no overlap. Each call must not block for long: bound it by the
+ * transport's own timeout (about 1 s for a control transfer). A call that
+ * returns after [`HANG_LIMIT`] (10 s) ends the connection.
+ *
+ * Errors: [`DspiError::Disconnected`] when the device is gone (the
+ * connection then ends); [`DspiError::Refused`] or
+ * [`DspiError::Unsupported`] when the device stalled the request;
+ * [`DspiError::Locked`] or [`DspiError::Denied`] from a hub; anything else
+ * (a timeout after the host's own retries, a USB error) as
+ * [`DspiError::Transfer`] with the host's words.
+ */
+open class HostTransportImpl: Disposable, AutoCloseable, HostTransport
+{
+
+    constructor(pointer: Pointer) {
+        this.pointer = pointer
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
+    }
+
+    /**
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noPointer: NoPointer) {
+        this.pointer = null
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
+    }
+
+    protected val pointer: Pointer?
+    protected val cleanable: UniffiCleaner.Cleanable
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithPointer(block: (ptr: Pointer) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the pointer being freed concurrently.
+        try {
+            return block(this.uniffiClonePointer())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val pointer: Pointer?) : Runnable {
+        override fun run() {
+            pointer?.let { ptr ->
+                uniffiRustCall { status ->
+                    UniffiLib.INSTANCE.uniffi_dspi_core_fn_free_hosttransport(ptr, status)
+                }
+            }
+        }
+    }
+
+    fun uniffiClonePointer(): Pointer {
+        return uniffiRustCall() { status ->
+            UniffiLib.INSTANCE.uniffi_dspi_core_fn_clone_hosttransport(pointer!!, status)
+        }
+    }
+
+    
+    /**
+     * IN transfer of up to `len` bytes; the reply as the device sent it.
+     * Also carries the write-as-read opcodes. A reply longer than `len` is
+     * an error; a shorter one is one only where the opcode's size is fixed.
+     */
+    @Throws(DspiException::class)override fun `controlIn`(`opcode`: kotlin.UByte, `value`: kotlin.UShort, `len`: kotlin.UShort): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_hosttransport_control_in(
+        it, FfiConverterUByte.lower(`opcode`),FfiConverterUShort.lower(`value`),FfiConverterUShort.lower(`len`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * OUT transfer carrying `data`.
+     */
+    @Throws(DspiException::class)override fun `controlOut`(`opcode`: kotlin.UByte, `value`: kotlin.UShort, `data`: kotlin.ByteArray)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_hosttransport_control_out(
+        it, FfiConverterUByte.lower(`opcode`),FfiConverterUShort.lower(`value`),FfiConverterByteArray.lower(`data`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * What kind of link this is. Read once, at [`DspiCore::open_host`].
+     */override fun `kind`(): HostTransportKind {
+            return FfiConverterTypeHostTransportKind.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_hosttransport_kind(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+
+    
+    
+    companion object
+    
+}
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfaceHostTransport {
+    internal object `controlIn`: UniffiCallbackInterfaceHostTransportMethod0 {
+        override fun callback(`uniffiHandle`: Long,`opcode`: Byte,`value`: Short,`len`: Short,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeHostTransport.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`controlIn`(
+                    FfiConverterUByte.lift(`opcode`),
+                    FfiConverterUShort.lift(`value`),
+                    FfiConverterUShort.lift(`len`),
+                )
+            }
+            val writeReturn = { value: kotlin.ByteArray -> uniffiOutReturn.setValue(FfiConverterByteArray.lower(value)) }
+            uniffiTraitInterfaceCallWithError(
+                uniffiCallStatus,
+                makeCall,
+                writeReturn,
+                { e: DspiException -> FfiConverterTypeDspiError.lower(e) }
+            )
+        }
+    }
+    internal object `controlOut`: UniffiCallbackInterfaceHostTransportMethod1 {
+        override fun callback(`uniffiHandle`: Long,`opcode`: Byte,`value`: Short,`data`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeHostTransport.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`controlOut`(
+                    FfiConverterUByte.lift(`opcode`),
+                    FfiConverterUShort.lift(`value`),
+                    FfiConverterByteArray.lift(`data`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCallWithError(
+                uniffiCallStatus,
+                makeCall,
+                writeReturn,
+                { e: DspiException -> FfiConverterTypeDspiError.lower(e) }
+            )
+        }
+    }
+    internal object `kind`: UniffiCallbackInterfaceHostTransportMethod2 {
+        override fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeHostTransport.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`kind`(
+                )
+            }
+            val writeReturn = { value: HostTransportKind -> uniffiOutReturn.setValue(FfiConverterTypeHostTransportKind.lower(value)) }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypeHostTransport.handleMap.remove(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfaceHostTransport.UniffiByValue(
+        `controlIn`,
+        `controlOut`,
+        `kind`,
+        uniffiFree,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_dspi_core_fn_init_callback_vtable_hosttransport(vtable)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHostTransport: FfiConverter<HostTransport, Pointer> {
+    internal val handleMap = UniffiHandleMap<HostTransport>()
+
+    override fun lower(value: HostTransport): Pointer {
+        return Pointer(handleMap.insert(value))
+    }
+
+    override fun lift(value: Pointer): HostTransport {
+        return HostTransportImpl(value)
+    }
+
+    override fun read(buf: ByteBuffer): HostTransport {
+        // The Rust code always writes pointers as 8 bytes, and will
+        // fail to compile if they don't fit.
+        return lift(Pointer(buf.getLong()))
+    }
+
+    override fun allocationSize(value: HostTransport) = 8UL
+
+    override fun write(value: HostTransport, buf: ByteBuffer) {
         // The Rust code always expects pointers written as 8 bytes,
         // and will fail to compile if they don't fit.
         buf.putLong(Pointer.nativeValue(lower(value)))
@@ -18797,6 +19335,122 @@ public object FfiConverterTypeFirmwareGuardReason: FfiConverterRustBuffer<Firmwa
 
     override fun write(value: FirmwareGuardReason, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * What kind of link a [`HostTransport`] is. It decides the echo rule (which
+ * notifications are this client's own writes, `dspi_transport::is_own_write`)
+ * and how bulk transfers go.
+ */
+sealed class HostTransportKind {
+    
+    /**
+     * USB vendor control transfers: our writes echo as `HOST_SET`; chunked
+     * bulk.
+     */
+    object Usb : HostTransportKind()
+    
+    
+    /**
+     * The USB MIDI control channel: our writes echo as `PARAM_SRC_MIDI`;
+     * single-shot bulk.
+     */
+    object Midi : HostTransportKind()
+    
+    
+    /**
+     * A DSPi Link hub, where this client is `session` (the Mac's own hub:
+     * session 1). Our writes are the notifications whose origin is `session`;
+     * single-shot bulk.
+     */
+    data class Link(
+        /**
+         * This client's session id on the hub.
+         */
+        val `session`: kotlin.UShort) : HostTransportKind() {
+        companion object
+    }
+    
+    /**
+     * A scripted or simulated device (Swift's `FakeTransport`): USB's rules.
+     */
+    object Fake : HostTransportKind()
+    
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHostTransportKind : FfiConverterRustBuffer<HostTransportKind>{
+    override fun read(buf: ByteBuffer): HostTransportKind {
+        return when(buf.getInt()) {
+            1 -> HostTransportKind.Usb
+            2 -> HostTransportKind.Midi
+            3 -> HostTransportKind.Link(
+                FfiConverterUShort.read(buf),
+                )
+            4 -> HostTransportKind.Fake
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: HostTransportKind) = when(value) {
+        is HostTransportKind.Usb -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is HostTransportKind.Midi -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is HostTransportKind.Link -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterUShort.allocationSize(value.`session`)
+            )
+        }
+        is HostTransportKind.Fake -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+    }
+
+    override fun write(value: HostTransportKind, buf: ByteBuffer) {
+        when(value) {
+            is HostTransportKind.Usb -> {
+                buf.putInt(1)
+                Unit
+            }
+            is HostTransportKind.Midi -> {
+                buf.putInt(2)
+                Unit
+            }
+            is HostTransportKind.Link -> {
+                buf.putInt(3)
+                FfiConverterUShort.write(value.`session`, buf)
+                Unit
+            }
+            is HostTransportKind.Fake -> {
+                buf.putInt(4)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
     }
 }
 
