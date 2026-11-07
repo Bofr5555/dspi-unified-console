@@ -144,6 +144,12 @@ pub struct NetworkConfig {
     // -- WP HB5 --
     /// Whether and where the hub says it is there.
     pub advertise: Advertise,
+    // -- WP TM26 --
+    /// Bind, and accept nothing until [`NetworkControl::start_accepting`]: the port is
+    /// the hub's while the embedder attaches its devices, so no client is told "no
+    /// device" by a hub that is still starting. A client that connects meanwhile waits
+    /// in the listen backlog.
+    pub hold_accepts: bool,
 }
 
 // -- WP HB5 --
@@ -187,6 +193,8 @@ impl NetworkConfig {
             limits: ServerLimits::default(),
             // -- WP HB5 --
             advertise: Advertise::default(),
+            // -- WP TM26 --
+            hold_accepts: false,
         }
     }
 }
@@ -389,6 +397,8 @@ struct Shared {
     stopping: AtomicBool,
     table: Mutex<Table>,
     changed: Condvar,
+    // -- WP TM26 -- False while [`NetworkConfig::hold_accepts`] holds them.
+    accepting: AtomicBool,
 }
 
 /// The way to a running server, for a binding: the pairing window, the client list,
@@ -410,6 +420,14 @@ impl NetworkControl {
     /// The port actually bound.
     pub fn port(&self) -> u16 {
         self.shared.port
+    }
+
+    // -- WP TM26 --
+    /// Start accepting clients, on a server started with
+    /// [`NetworkConfig::hold_accepts`]. Without it, and when called again, nothing
+    /// changes.
+    pub fn start_accepting(&self) {
+        self.shared.accepting.store(true, Ordering::SeqCst);
     }
 
     /// Clients and pairing: [`AuthStore::begin_pairing`], [`AuthStore::clients`].
@@ -613,6 +631,11 @@ impl Drop for DoneGuard<'_> {
 
 fn accept_loop(shared: &Arc<Shared>, listener: &TcpListener) {
     while !shared.stopping.load(Ordering::SeqCst) {
+        // -- WP TM26 --
+        if !shared.accepting.load(Ordering::SeqCst) {
+            thread::sleep(ACCEPT_TICK);
+            continue;
+        }
         match listener.accept() {
             Ok((tcp, peer)) => {
                 shared.reap();
@@ -1777,6 +1800,8 @@ impl Server {
             stopping: AtomicBool::new(false),
             table: Mutex::new(Table::default()),
             changed: Condvar::new(),
+            // -- WP TM26 --
+            accepting: AtomicBool::new(!config.hold_accepts),
         });
         let acceptor = {
             let shared = Arc::clone(&shared);
