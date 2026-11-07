@@ -121,17 +121,20 @@ void SmokeDriver::testSeam() {
     check("QD0: banner host in the main window", host && content);
     if (!probe || !host || !content) return;
     const qreal before = content->height();
-    check("QD0: no banner shown: no space taken", !host->isVisible());
+    // -- WP QD7 -- The demo's label is up on this run. The host with none shown is
+    // checked by QD7's own run, without --demo.
+    const qreal hostBefore = host->height();
+    const int shownBefore = host->property("shownCount").toInt();
 
     probe->setBannerShown(true);
-    check("QD0: banner shows", waitFor(1000, [&]() { return host->isVisible() && host->height() == 44.0; }));
+    check("QD0: banner shows", waitFor(1000, [&]() { return host->isVisible() && host->height() == hostBefore + 44.0 + 10.0; }));
     spin(100);
-    check("QD0: the hidden banner is not counted", host->property("shownCount").toInt() == 1);
+    check("QD0: the hidden banner is not counted", host->property("shownCount").toInt() == shownBefore + 1);
     check("QD0: the content makes room", content->height() == before - 44.0 - 10.0);
     if (auto *main = qobject_cast<QQuickWindow *>(root())) main->grabWindow().save(m_out + QStringLiteral("/window-banner.png"));
 
     probe->setBannerShown(false);
-    check("QD0: banner hides", waitFor(1000, [&]() { return !host->isVisible(); }));
+    check("QD0: banner hides", waitFor(1000, [&]() { return host->height() == hostBefore && host->property("shownCount").toInt() == shownBefore; }));
     spin(100);
     check("QD0: the content takes the room back", content->height() == before);
 }
