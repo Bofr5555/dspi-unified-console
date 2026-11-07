@@ -59,8 +59,7 @@ class LinkUiAn5Test {
         rule.setContent {
             AppScaffold(
                 bridge,
-                connectionStrip(AppMode.REMOTE, UsbSessionState.NoDevice, false, state),
-                onEnterDemo = {},
+                connectionStrip(AppMode.REMOTE, UsbSessionState.NoDevice, state),
                 onExitDemo = {},
                 onRequestPermission = {},
                 onRemoteAction = { actions += it }

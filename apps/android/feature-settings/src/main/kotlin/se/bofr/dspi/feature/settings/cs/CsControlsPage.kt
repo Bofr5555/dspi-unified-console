@@ -75,10 +75,24 @@ internal fun CsSlotEditor(
         LaunchedEffect(slot) { onClose() }
         return
     }
+    // -- WP AN11 -- a display opens its own page (S6): wiring, panel state, settings and pages
+    if (b.type == CsModel.TYPE_DISPLAY) {
+        CsDisplayStack(bridge, coordinator, cs, slot, connected, onClose)
+        return
+    }
     val busy by coordinator.csBusy.collectAsState()
     val editor = remember(drafts, slot) { drafts.editor(CsRules.KIND_BINDING, slot, draftOf(b), cs.slotName(slot)) }
     // The device's copy moved (an Apply re-read, a revert): an untouched draft follows it
     LaunchedEffect(editor, b, cs.slotName(slot)) { editor.sync(draftOf(b), cs.slotName(slot)) }
+    // -- WP AN10 -- The IR receiver's page (S4) carries its remote buttons
+    if (b.type == CsModel.TYPE_IR) {
+        CsIrReceiverPage(bridge, coordinator, cs, slot, editor, connected, busy, onClose) {
+            coordinator.csOp(CsModel.clearBindingOp(slot))
+            drafts.drop(CsRules.KIND_BINDING, slot)
+            onClose()
+        }
+        return
+    }
     CsBindingEditorPage(editor, connected, busy, onClose) {
         coordinator.csOp(CsModel.clearBindingOp(slot))
         drafts.drop(CsRules.KIND_BINDING, slot)

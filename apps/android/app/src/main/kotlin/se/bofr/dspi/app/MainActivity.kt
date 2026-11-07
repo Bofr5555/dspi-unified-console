@@ -53,11 +53,11 @@ class MainActivity : ComponentActivity() {
                 val modes = app.modes
                 val bridge by modes.bridge.collectAsStateWithLifecycle()
                 val mode by modes.mode.collectAsStateWithLifecycle()
-                val demoAvailable by modes.demoAvailable.collectAsStateWithLifecycle()
                 val usbState by app.session.state.collectAsStateWithLifecycle()
                 val remote by modes.remoteState.collectAsStateWithLifecycle()
                 val usbPrompt by modes.usbPrompt.collectAsStateWithLifecycle()
                 val link by app.linkSettings.settings.collectAsStateWithLifecycle()
+                val hubs by app.networking.hubs.collectAsStateWithLifecycle() // -- WP AN7 --
                 var networkingOpen by remember { mutableStateOf(false) }
                 // macOS DeviceLockNotice: "Another console is applying changes" for 4 s after a LOCKED refusal
                 var lockNotice by remember { mutableStateOf(false) }
@@ -76,20 +76,24 @@ class MainActivity : ComponentActivity() {
                 ) {
                     AppScaffold(
                         bridge = bridge,
-                        strip = connectionStrip(mode, usbState, demoAvailable, remote, link.enabled, lockNotice),
-                        onEnterDemo = { modes.enterDemo() },
-                        onExitDemo = { modes.exitDemo() },
+                        strip = connectionStrip(mode, usbState, remote, lockNotice),
+                        // -- WP AN7 -- every user switch goes through the Unsaved Changes flow
+                        onExitDemo = { modes.switchTo(DeviceChoice.Usb) },
                         onRequestPermission = { app.session.requestPermission(this) },
                         bootloaderLocator = app.bootloaderLocator,
                         onRemoteAction = { a ->
                             when (a) {
                                 RemoteAction.RETRY -> modes.remoteSession?.retryNow()
                                 RemoteAction.CONNECT -> remote.hub?.let { modes.remoteSession?.connect(it) }
-                                RemoteAction.DISCONNECT -> modes.exitRemote()
+                                RemoteAction.DISCONNECT -> modes.switchTo(DeviceChoice.Usb) // -- WP AN7 --
                             }
                         },
                         onConnectNetwork = { networkingOpen = true },
                         onboarding = app.onboarding, // -- WP AN19 --
+                        // -- WP AN7 --
+                        devices = deviceList(mode, usbState, remote, hubs, link.enabled),
+                        onChooseDevice = modes::switchTo,
+                        switchAlerts = modes.switchAlerts,
                         overlay = {
                             RemoteDialogs(
                                 state = remote,

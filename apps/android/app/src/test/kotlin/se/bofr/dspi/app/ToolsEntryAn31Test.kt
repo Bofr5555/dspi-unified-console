@@ -58,7 +58,7 @@ class ToolsEntryAn31Test {
         val bridge = startDemoSession(scope, "test").also { session = it }.bridge
         // On Home, Compose does not go idle with the clock on auto (60 s timeout), so drive the clock
         rule.mainClock.autoAdvance = false
-        rule.setContent { AppScaffold(bridge, ConnectionStrip.Demo, onEnterDemo = {}, onExitDemo = {}, onRequestPermission = {}) }
+        rule.setContent { AppScaffold(bridge, ConnectionStrip.Demo, onExitDemo = {}, onRequestPermission = {}) }
         settle()
     }
 

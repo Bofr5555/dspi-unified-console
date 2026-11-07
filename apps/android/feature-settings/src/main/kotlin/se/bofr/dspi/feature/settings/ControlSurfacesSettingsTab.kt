@@ -39,8 +39,9 @@ fun ControlSurfacesSettingsTab(section: CsSection, bridge: DspiBridge, coordinat
     }
     when (section) {
         CsSection.CONTROLS -> CsControlsPage(bridge, coordinator, cs, connected)
-        CsSection.GROUPS -> CsGroupsPage(coordinator, cs)
-        CsSection.MACROS -> CsMacrosPage(coordinator, cs)
+        // -- WP AN12 -- the groups and macros pages edit, so they need the bridge and the connection
+        CsSection.GROUPS -> CsGroupsPage(bridge, coordinator, cs, connected)
+        CsSection.MACROS -> CsMacrosPage(bridge, coordinator, cs, connected)
         CsSection.AUX -> CsAuxPage(bridge, coordinator, cs, connected)
     }
 }

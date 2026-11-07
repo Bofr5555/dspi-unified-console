@@ -16,7 +16,7 @@ class ConnectionStripTest {
     @Test
     fun demoModeIsAlwaysLabelled() {
         for (s in listOf(UsbSessionState.NoDevice, UsbSessionState.Open("x", UsbIds.DSPI_VID))) {
-            val strip = connectionStrip(AppMode.DEMO, s, demoAvailable = false)
+            val strip = connectionStrip(AppMode.DEMO, s)
             assertEquals(ConnectionStrip.Demo, strip)
             assertTrue(strip.text.startsWith("Demo (no device)"))
         }
@@ -24,25 +24,41 @@ class ConnectionStripTest {
 
     @Test
     fun deviceModeFollowsTheUsbSession() {
-        fun of(s: UsbSessionState, demo: Boolean = false) = connectionStrip(AppMode.DEVICE, s, demo)
-        assertEquals(ConnectionStrip.NoDevice(true), of(UsbSessionState.NoDevice, demo = true))
-        assertEquals(ConnectionStrip.NoDevice(false), of(UsbSessionState.NoDevice))
+        fun of(s: UsbSessionState) = connectionStrip(AppMode.DEVICE, s)
+        assertEquals(ConnectionStrip.NoDevice, of(UsbSessionState.NoDevice))
         assertTrue(of(UsbSessionState.PermissionRequired("")) is ConnectionStrip.NeedsPermission)
         assertTrue(of(UsbSessionState.PermissionDenied("")) is ConnectionStrip.NeedsPermission)
         assertTrue(of(UsbSessionState.PermissionPending("", dialogShown = false)) is ConnectionStrip.Info)
         assertTrue(of(UsbSessionState.Failed("x", "busy")).text.contains("busy"))
-        assertEquals(ConnectionStrip.Hidden, of(UsbSessionState.Open("x", UsbIds.DSPI_LEGACY_VID)))
+        assertEquals(ConnectionStrip.Usb, of(UsbSessionState.Open("x", UsbIds.DSPI_LEGACY_VID)))
     }
 
     private val hub = LinkHub("6f1a", "Studio Mac", "console", "pin", 1, emptyList(), "192.168.1.20", 11915)
     private val dev = LinkDevice(0, "0123456789ABCDEF", "Living room", "1.1.6", 0, 1, "online", "usb", 0)
 
+    // -- WP AN7 --
     @Test
-    fun noDeviceOffersTheNetworkWhenLinkIsOn() {
+    fun an7UsbLinkAndDemoAreOneList() {
+        val open = UsbSessionState.Open("x", UsbIds.DSPI_VID)
+        val typed = LinkHub.manual("10.0.0.2", 11915)
+        val rows = deviceList(AppMode.DEVICE, open, hubs = listOf(hub, typed), linkEnabled = true)
         assertEquals(
-            ConnectionStrip.NoDevice(true, true),
-            connectionStrip(AppMode.DEVICE, UsbSessionState.NoDevice, true, networkAvailable = true)
+            listOf(DeviceChoice.Usb, DeviceChoice.Hub(hub), DeviceChoice.Hub(typed), DeviceChoice.Network, DeviceChoice.Demo),
+            rows.map { it.choice }
         )
+        assertEquals(listOf(true, false, false, false, false), rows.map { it.current })
+        assertTrue("demo is offered with a DSPi open", rows.single { it.choice == DeviceChoice.Demo }.enabled)
+        assertEquals("Studio Mac (network)", rows[1].label)
+        // DSPi Link off: no hubs, no dialog; nothing on USB: listed, disabled
+        val off = deviceList(AppMode.DEMO, UsbSessionState.NoDevice, hubs = listOf(hub))
+        assertEquals(listOf(DeviceChoice.Usb, DeviceChoice.Demo), off.map { it.choice })
+        assertFalse(off[0].enabled)
+        assertTrue(off[1].current)
+        // REMOTE marks its hub, by id or a typed hub by address
+        val connected = LinkSessionState.Connected(hub.copy(id = "9c2e", host = "10.0.0.2"), dev, "control")
+        val remote = deviceList(AppMode.REMOTE, open, connected, listOf(hub, typed), linkEnabled = true)
+        assertEquals(listOf(false, false, true, false, false), remote.map { it.current })
+        assertEquals(ConnectionStrip.Usb, connectionStrip(AppMode.DEVICE, open))
     }
 
     @Test
@@ -50,7 +66,6 @@ class ConnectionStripTest {
         fun of(s: LinkSessionState, lock: Boolean = false) = connectionStrip(
             AppMode.REMOTE,
             UsbSessionState.Open("x", UsbIds.DSPI_VID),
-            false,
             s,
             lockNotice = lock
         ) as ConnectionStrip.Remote
@@ -71,8 +86,8 @@ class ConnectionStripTest {
     // -- WP AN29 --
     @Test
     fun an29PermissionStripsTellAboutAlwaysOpenWithoutDeviceNouns() {
-        val required = connectionStrip(AppMode.DEVICE, UsbSessionState.PermissionRequired(""), false)
-        val pending = connectionStrip(AppMode.DEVICE, UsbSessionState.PermissionPending("", dialogShown = true), false)
+        val required = connectionStrip(AppMode.DEVICE, UsbSessionState.PermissionRequired(""))
+        val pending = connectionStrip(AppMode.DEVICE, UsbSessionState.PermissionPending("", dialogShown = true))
         for (strip in listOf(required, pending)) {
             assertTrue(strip.text, strip.text.contains("\"Always open\""))
             assertTrue(strip.text, strip.text.endsWith("Tick \"Always open\" in Android's dialog and it will not ask again."))
