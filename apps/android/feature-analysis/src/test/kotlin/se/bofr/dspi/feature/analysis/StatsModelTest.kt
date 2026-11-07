@@ -5,11 +5,55 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import se.bofr.dspi.core.AdatOutStatus
+import se.bofr.dspi.core.FillBand
 import se.bofr.dspi.core.InputLockStatus
 import se.bofr.dspi.core.LgStatus
+import se.bofr.dspi.core.OutputFill
+import se.bofr.dspi.core.RingHealth
+import se.bofr.dspi.core.SpdifBufferStats
 import se.bofr.dspi.core.SpdifRxStatus
 
 class StatsModelTest {
+    private fun ring(lowest: Long?) = RingHealth(96, 2000, 48, 0, 0, lowest, 0, 0, 0)
+
+    @Test
+    fun an25RingHealthTextAsTheReference() {
+        assertEquals("96 frames (2 ms)", ringTargetText(ring(1)))
+        assertEquals("64 frames (1.33 ms)", ringTargetText(ring(1).copy(targetFrames = 64, targetUs = 1333)))
+        assertEquals("72 frames", ringLowestFillText(ring(72)))
+        assertEquals("-", ringLowestFillText(ring(null)))
+        assertEquals("9999 µs", ringGapText(9_999))
+        assertEquals("10.0 ms", ringGapText(10_000))
+        assertEquals("125.5 ms", ringGapText(125_500))
+    }
+
+    @Test
+    fun an25AnOutputReadsTheCoresFillAndBandOverTheFixedOnes() {
+        val slot = SpdifBufferStats(2, 2, 4, 12, 9, 16)
+        // 12% is yellow on the fixed bands; the core's band around the target wins
+        assertEquals(FillHealth.YELLOW, BufferFillThresholds.SPDIF.health(12))
+        val r = outputFillReading(slot, OutputFill(18.75, 14, 23, FillBand.GOOD))
+        assertEquals(OutputFillReading(18.75, 14, 23, FillHealth.GREEN), r)
+        assertEquals(19, r.wholePct)
+        assertEquals(FillHealth.YELLOW, FillBand.WARN.health())
+        assertEquals(FillHealth.RED, FillBand.BAD.health())
+        // Before the first read: the slot on its fixed bands
+        assertEquals(OutputFillReading(12.0, 9, 16, FillHealth.YELLOW), outputFillReading(slot, null))
+        assertEquals(0, OutputFillReading(Double.NaN, 0, 0, FillHealth.RED).wholePct)
+    }
+
+    @Test
+    fun an25TracesTakeTheRingScaleWhenThereIsOne() {
+        val h = BufferFillHistory()
+        h.append(testBufferStats(3), List(4) { OutputFill(18.75, 14, 23, FillBand.GOOD) })
+        assertEquals(18.75f, h.value(0, 0), 0f)
+        // Firmware's fixed scale can pass 100; the trace stops at the top
+        h.append(testBufferStats(3), List(4) { OutputFill(120.0, 14, 23, FillBand.BAD) })
+        assertEquals(100f, h.value(0, 1), 0f)
+        h.append(testBufferStats(3))
+        assertEquals(50f, h.value(0, 2), 0f)
+    }
+
     @Test
     fun systemInformationRows() {
         assertEquals("150.0 MHz", SystemInfoFormat.clock(150_000_000))
