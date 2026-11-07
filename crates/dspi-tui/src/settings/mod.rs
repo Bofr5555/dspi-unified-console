@@ -782,10 +782,11 @@ impl Row {
                 cursor,
                 enabled,
             } => {
-                buf.set_string(
+                buf.set_stringn(
                     area.x,
                     area.y,
                     if focused { "▸" } else { " " },
+                    usize::from(area.width),
                     theme.focused(),
                 );
                 let width: usize = buttons.iter().map(|b| b.chars().count() + 3).sum();
@@ -799,7 +800,9 @@ impl Row {
                         theme.label()
                     },
                 );
-                let mut x = area.x + area.width - width as u16;
+                // -- WP TM23 --
+                // Buttons wider than the pane start at its left and stop at its right.
+                let mut x = area.right().saturating_sub(width as u16).max(area.x);
                 for (i, b) in buttons.iter().enumerate() {
                     let text = format!(" {b} ");
                     let style = if !*enabled {
@@ -809,8 +812,9 @@ impl Row {
                     } else {
                         theme.focused()
                     };
-                    buf.set_string(x, area.y, &text, style);
-                    x += text.chars().count() as u16 + 1;
+                    let room = usize::from(area.right().saturating_sub(x));
+                    buf.set_stringn(x, area.y, &text, room, style);
+                    x = x.saturating_add(text.chars().count() as u16 + 1);
                 }
                 if let Some(c) = caption
                     && area.height >= 2
@@ -1952,7 +1956,10 @@ impl SettingsScreen {
             if top < self.page_scroll {
                 self.page_scroll = top;
             } else if bottom > self.page_scroll + area.height {
-                self.page_scroll = bottom.saturating_sub(area.height);
+                // -- WP TM23 --
+                // A row taller than the pane stays at its top, or the branch above
+                // would move it back on the next frame.
+                self.page_scroll = bottom.saturating_sub(area.height).min(top);
             }
         }
         let total: u16 = heights.iter().sum();
@@ -3187,6 +3194,61 @@ pub(crate) mod tests {
         for x in 12..40 {
             assert_eq!(buf[(x, 0)].symbol(), " ", "column {x}");
         }
+    }
+
+    #[test]
+    fn wp_tm23_buttons_wider_than_a_narrow_pane_stay_inside_it() {
+        let row = |caption: Option<&str>| Row::Buttons {
+            label: "Label".into(),
+            caption: caption.map(str::to_string),
+            buttons: vec!["Save".into(), "Revert".into()],
+            cursor: 0,
+            enabled: true,
+        };
+        for width in 0..24u16 {
+            let mut buf = Buffer::empty(Rect::new(0, 0, width + 6, 1));
+            row(None).draw(Rect::new(3, 0, width, 1), &mut buf, &theme(), true);
+            for x in (0..3).chain(3 + width..width + 6) {
+                assert_eq!(buf[(x, 0)].symbol(), " ", "column {x} at width {width}");
+            }
+            // And as the page draws it, caption included.
+            let caption = [row(Some("A caption"))];
+            let height = caption[0].height(width);
+            pane(&caption, 0, width, height);
+        }
+    }
+
+    #[test]
+    fn wp_tm23_a_focused_row_taller_than_the_pane_holds_still_at_its_top() {
+        let mut tall_rows_seen = 0;
+        for page in every_page() {
+            let (mut s, st) = screen(page);
+            s.focus = Focus::Page;
+            let width = 59;
+            s.current().set_width(width);
+            let cx = s.cx(&st);
+            let rows = s.current_ref().rows(&cx);
+            let focusable: Vec<usize> = (0..rows.len()).filter(|i| rows[*i].focusable()).collect();
+            for (cursor, at) in focusable.into_iter().enumerate() {
+                if rows[at].height(width) < 2 {
+                    continue;
+                }
+                tall_rows_seen += 1;
+                let top: u16 = rows[..at].iter().map(|r| r.height(width)).sum();
+                s.current().set_cursor(cursor);
+                // From above the row and from below it.
+                for start in [0, u16::MAX] {
+                    s.page_scroll = start;
+                    let area = Rect::new(0, 0, width, 1);
+                    for n in 0..3 {
+                        let mut buf = Buffer::empty(area);
+                        s.draw_page(area, &mut buf, &theme(), &st);
+                        assert_eq!(s.page_scroll, top, "{page:?} {cursor}, frame {n}");
+                    }
+                }
+            }
+        }
+        assert!(tall_rows_seen > 0);
     }
 
     /// One pair drawn in a pane inside a wider line, returning the line.
