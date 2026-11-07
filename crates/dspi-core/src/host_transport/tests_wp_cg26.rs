@@ -34,6 +34,11 @@ enum Call {
         value: u16,
         data: Vec<u8>,
     },
+    Lock {
+        reason: String,
+        timeout_ms: u32,
+    },
+    Unlock,
 }
 
 type Log = Arc<Mutex<Vec<Call>>>;
@@ -57,6 +62,8 @@ struct ScriptedHost {
     kind: HostTransportKind,
     log: Log,
     fault: Mutex<Option<Fault>>,
+    /// What `lock` answers instead of `Ok`.
+    lock_error: Mutex<Option<DspiError>>,
     calls: Mutex<usize>,
 }
 
@@ -67,6 +74,7 @@ impl ScriptedHost {
             kind,
             log: Log::default(),
             fault: Mutex::new(None),
+            lock_error: Mutex::new(None),
             calls: Mutex::new(0),
         })
     }
@@ -135,6 +143,25 @@ impl HostTransport for ScriptedHost {
     fn kind(&self) -> HostTransportKind {
         self.kind
     }
+
+    fn lock(&self, reason: String, timeout_ms: u32) -> Result<()> {
+        if let Some(Fault::Fail(e)) = self.fault() {
+            return Err(e);
+        }
+        if let Some(e) = self.lock_error.lock().unwrap().clone() {
+            return Err(e);
+        }
+        self.log
+            .lock()
+            .unwrap()
+            .push(Call::Lock { reason, timeout_ms });
+        Ok(())
+    }
+
+    fn unlock(&self) {
+        *self.calls.lock().unwrap() += 1;
+        self.log.lock().unwrap().push(Call::Unlock);
+    }
 }
 
 /// The fake device as the core's own transport, recording the same way.
@@ -184,6 +211,18 @@ impl Transport for Recorder {
 
     fn caps(&self) -> TransportCaps {
         self.dev.caps()
+    }
+
+    fn lock(&mut self, reason: &str, timeout: Duration) -> TResult<()> {
+        self.log.lock().unwrap().push(Call::Lock {
+            reason: reason.to_owned(),
+            timeout_ms: timeout.as_millis() as u32,
+        });
+        Ok(())
+    }
+
+    fn unlock(&mut self) {
+        self.log.lock().unwrap().push(Call::Unlock);
     }
 }
 
@@ -501,4 +540,91 @@ fn wp_cg26_reply_lengths_are_checked() {
         t.control_out(op::REQ_SET_MASTER_VOLUME, 0, &[0; 4]),
         Err(TransportError::Stalled { opcode }) if opcode == op::REQ_SET_MASTER_VOLUME
     ));
+}
+
+// -- review c4i finding 2: the hub's device lock (WP CG24) reaches the host.
+
+/// The lock calls in the host's log since `from`.
+fn lock_calls(host: &ScriptedHost, from: usize) -> Vec<Call> {
+    host.log.lock().unwrap()[from..]
+        .iter()
+        .filter(|c| matches!(c, Call::Lock { .. } | Call::Unlock))
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn wp_cg26_the_device_lock_reaches_the_host_and_flows_nest_in_it() {
+    let (core, host, _) = opened(HostTransportKind::Link { session: 1 });
+    let from = host.log.lock().unwrap().len();
+    core.device_lock_acquire("restore".into(), 5_000).unwrap();
+    // The core's own locked flow nests: the hub is not asked again.
+    core.save_preset(2).unwrap();
+    core.device_lock_release();
+    assert_eq!(
+        lock_calls(&host, from),
+        vec![
+            Call::Lock {
+                reason: "restore".into(),
+                timeout_ms: 5_000
+            },
+            Call::Unlock
+        ]
+    );
+
+    // A flow of its own takes and gives back the lock around its writes.
+    let from = host.log.lock().unwrap().len();
+    core.save_preset(3).unwrap();
+    let flow = host.log.lock().unwrap()[from..].to_vec();
+    assert!(matches!(flow.first(), Some(Call::Lock { .. })), "{flow:?}");
+    assert_eq!(flow.last(), Some(&Call::Unlock), "{flow:?}");
+}
+
+#[test]
+fn wp_cg26_a_lock_held_by_another_session_refuses_the_flow() {
+    let (core, host, _) = opened(HostTransportKind::Link { session: 1 });
+    *host.lock_error.lock().unwrap() = Some(DspiError::Locked);
+    assert_eq!(
+        core.device_lock_acquire("x".into(), 1_000),
+        Err(DspiError::Locked)
+    );
+    let from = host.log.lock().unwrap().len();
+    assert_eq!(core.save_preset(2), Err(DspiError::Locked));
+    let after = host.log.lock().unwrap()[from..].to_vec();
+    assert!(
+        !after
+            .iter()
+            .any(|c| matches!(c, Call::Out { .. } | Call::Unlock)),
+        "nothing written and nothing to give back: {after:?}"
+    );
+
+    // Refusals of the lock are not stalls.
+    *host.lock_error.lock().unwrap() = Some(DspiError::Unsupported);
+    assert!(matches!(
+        core.device_lock_acquire("x".into(), 1_000),
+        Err(DspiError::Transfer { .. })
+    ));
+    *host.lock_error.lock().unwrap() = Some(DspiError::Denied);
+    assert_eq!(
+        core.device_lock_acquire("x".into(), 1_000),
+        Err(DspiError::Denied)
+    );
+}
+
+#[test]
+fn wp_cg26_closing_with_the_lock_held_gives_it_back() {
+    let (core, host, _) = opened(HostTransportKind::Link { session: 1 });
+    core.device_lock_acquire("x".into(), 5_000).unwrap();
+    let from = host.log.lock().unwrap().len();
+    core.disconnect();
+    assert_eq!(lock_calls(&host, from), vec![Call::Unlock]);
+
+    // A host that went away is not called again, not even to unlock.
+    let (core, host, _) = opened(HostTransportKind::Link { session: 1 });
+    core.device_lock_acquire("x".into(), 5_000).unwrap();
+    host.set_fault(Some(Fault::Fail(DspiError::Disconnected)));
+    assert_eq!(core.set_master_volume(-2.0), Err(DspiError::Disconnected));
+    let from = host.log.lock().unwrap().len();
+    core.disconnect();
+    assert_eq!(lock_calls(&host, from), vec![]);
 }

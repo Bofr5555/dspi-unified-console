@@ -2243,7 +2243,8 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * session whose write caused it, 0 for a change at the device; `None`
      * over USB and MIDI). From any thread; never blocks beyond a short lock.
      * Ignored without an open host connection, for an empty packet, and
-     * after the connection ended.
+     * after the connection ended. Packets fed while a later `open_host`
+     * connects go to the new connection: stop feeding the old device first.
      */
     func hostNotify(packet: Data, origin: UInt16?) 
     
@@ -5171,7 +5172,8 @@ open func getState() -> DspState  {
      * session whose write caused it, 0 for a change at the device; `None`
      * over USB and MIDI). From any thread; never blocks beyond a short lock.
      * Ignored without an open host connection, for an empty packet, and
-     * after the connection ended.
+     * after the connection ended. Packets fed while a later `open_host`
+     * connects go to the new connection: stop feeding the old device first.
      */
 open func hostNotify(packet: Data, origin: UInt16?)  {try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_host_notify(self.uniffiClonePointer(),
@@ -7307,6 +7309,10 @@ public func FfiConverterTypeDspiCore_lower(_ value: DspiCore) -> UnsafeMutableRa
  * transport's own timeout (about 1 s for a control transfer). A call that
  * returns after [`HANG_LIMIT`] (10 s) ends the connection.
  *
+ * The core's lock is held during every call: an implementation must not
+ * call the core from inside one, except [`DspiCore::host_notify`], or the
+ * core deadlocks.
+ *
  * Errors: [`DspiError::Disconnected`] when the device is gone (the
  * connection then ends); [`DspiError::Refused`] or
  * [`DspiError::Unsupported`] when the device stalled the request;
@@ -7333,6 +7339,25 @@ public protocol HostTransport: AnyObject, Sendable {
      */
     func kind()  -> HostTransportKind
     
+    /**
+     * Take the hub's device lock around a multi-step flow (a preset load, an
+     * IR learn, a firmware install): other sessions are refused until
+     * [`HostTransport::unlock`] or until `timeout_ms` (the lease, at most
+     * 60 s; not a wait) runs out. A link without locks (USB, MIDI, a fake
+     * device) succeeds at once. The core asks once per flow; its own flows
+     * nest inside a held lock without asking again.
+     *
+     * Errors: [`DspiError::Locked`] while another session holds it; others
+     * as for a transfer.
+     */
+    func lock(reason: String, timeoutMs: UInt32) throws 
+    
+    /**
+     * Give back the lock [`HostTransport::lock`] took. Also called when the
+     * connection closes with the lock still held.
+     */
+    func unlock() 
+    
 }
 /**
  * Control transfers to a DSPi, carried by the embedding app (WP CG26).
@@ -7343,6 +7368,10 @@ public protocol HostTransport: AnyObject, Sendable {
  * sees no overlap. Each call must not block for long: bound it by the
  * transport's own timeout (about 1 s for a control transfer). A call that
  * returns after [`HANG_LIMIT`] (10 s) ends the connection.
+ *
+ * The core's lock is held during every call: an implementation must not
+ * call the core from inside one, except [`DspiCore::host_notify`], or the
+ * core deadlocks.
  *
  * Errors: [`DspiError::Disconnected`] when the device is gone (the
  * connection then ends); [`DspiError::Refused`] or
@@ -7440,6 +7469,35 @@ open func kind() -> HostTransportKind  {
 })
 }
     
+    /**
+     * Take the hub's device lock around a multi-step flow (a preset load, an
+     * IR learn, a firmware install): other sessions are refused until
+     * [`HostTransport::unlock`] or until `timeout_ms` (the lease, at most
+     * 60 s; not a wait) runs out. A link without locks (USB, MIDI, a fake
+     * device) succeeds at once. The core asks once per flow; its own flows
+     * nest inside a held lock without asking again.
+     *
+     * Errors: [`DspiError::Locked`] while another session holds it; others
+     * as for a transfer.
+     */
+open func lock(reason: String, timeoutMs: UInt32)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_hosttransport_lock(self.uniffiClonePointer(),
+        FfiConverterString.lower(reason),
+        FfiConverterUInt32.lower(timeoutMs),$0
+    )
+}
+}
+    
+    /**
+     * Give back the lock [`HostTransport::lock`] took. Also called when the
+     * connection closes with the lock still held.
+     */
+open func unlock()  {try! rustCall() {
+    uniffi_dspi_core_fn_method_hosttransport_unlock(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
 
 }
 
@@ -7527,6 +7585,55 @@ fileprivate struct UniffiCallbackInterfaceHostTransport {
 
             
             let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeHostTransportKind_lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        lock: { (
+            uniffiHandle: UInt64,
+            reason: RustBuffer,
+            timeoutMs: UInt32,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeHostTransport.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.lock(
+                     reason: try FfiConverterString.lift(reason),
+                     timeoutMs: try FfiConverterUInt32.lift(timeoutMs)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeDspiError_lower
+            )
+        },
+        unlock: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeHostTransport.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.unlock(
+                )
+            }
+
+            
+            let writeReturn = { () }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
                 makeCall: makeCall,
@@ -21520,7 +21627,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_get_state() != 32151) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_host_notify() != 47004) {
+    if (uniffi_dspi_core_checksum_method_dspicore_host_notify() != 19114) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices() != 62282) {
@@ -21905,6 +22012,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_hosttransport_kind() != 14425) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_hosttransport_lock() != 7609) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_hosttransport_unlock() != 61429) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_linklistener_on_link_devices_changed() != 16214) {
