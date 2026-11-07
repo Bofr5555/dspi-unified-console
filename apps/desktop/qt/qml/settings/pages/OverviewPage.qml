@@ -7,6 +7,7 @@ import "../../components"
 // list per role. Read-only; change pins on the Inputs, Outputs, I2S and
 // Control Interfaces pages.
 SettingsPage {
+    writesToDevice: false   // -- WP QD6 --
     id: page
     title: "Overview"
     subtitle: "Every GPIO the device has claimed, by what uses it."

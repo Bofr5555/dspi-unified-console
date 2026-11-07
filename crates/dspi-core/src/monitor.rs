@@ -10,7 +10,9 @@
 //! Owned by WP C7 (docs/core-merge/PLAN.md).
 
 use std::collections::VecDeque;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
+
+use dspi_transport::clock::{self, Instant};
 
 use dspi_proto::generated as g;
 use dspi_session::notify::{Event, Notification, Source};
@@ -87,7 +89,7 @@ impl MonitorLog {
 /// `at` as ms since the Unix epoch (0 if the clock is before it).
 fn epoch_ms(at: Instant) -> i64 {
     let age = Instant::now().saturating_duration_since(at);
-    SystemTime::now()
+    clock::system_time()
         .checked_sub(age)
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
         .and_then(|d| i64::try_from(d.as_millis()).ok())
@@ -803,7 +805,7 @@ mod tests_wp_c7 {
     fn wp_c7_entries_carry_the_receive_time() {
         let mut log = MonitorLog::default();
         log.record(&note(Event::Idle));
-        let now = SystemTime::now()
+        let now = clock::system_time()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_millis() as i64;

@@ -51,7 +51,7 @@ public:
     QString choice() const;
     bool busy() const { return m_writes > 0; }
     QString lastError() const { return m_lastError; }
-    int k340PairMask() const { return 0x03; }
+    int k340PairMask() const { return dspi_crossfeed_k340_pair_mask(); }
     bool watching() const { return m_watching; }
     void setWatching(bool on);
 

@@ -39,8 +39,8 @@ Record for each item: pass / fail, phone, hub, firmware, and the numbers asked f
 - [ ] **Echo/attribution:** change EQ gain / master volume on the phone → the Mac follows; change them on the Mac → the phone follows within ~0.2 s (patch 0004 origin rule). Drag a slider on the phone: no jumping back.
 - [ ] Preset load on the Mac → the phone re-reads (preset name, all curves).
 - [ ] Save preset on the phone while the Mac is idle → saved; on the Mac start "Import Device Configuration" while the phone saves → the phone shows "Another console is applying changes" and sends nothing.
-- [ ] Mac: change the phone's role to Viewer → next write refused (DENIED) / after reconnect "view only"; revoke the phone → "Mac revoked this phone's access. Pair again to reconnect.", no reconnect loop.
-- [ ] Mac sleeps, wakes: the phone reconnects by itself (backoff ≤ 30 s, or at once on "Retry now" / app to foreground).
+- [ ] Mac: change the phone's role to Viewer → next write refused (DENIED) / after reconnect "view only"; revoke the phone → the pairing prompt, with "Access to Mac was revoked. Pair again to reconnect.", no reconnect loop.
+- [ ] Mac sleeps, wakes: "Connection lost, reconnecting" with Retry now and Disconnect, the settings stay readable, controls are disabled; the core reconnects by itself (backoff ≤ 30 s, or at once on "Retry now" / app to foreground); Disconnect ends it at once.
 - [ ] Phone Wi-Fi off/on: reconnect when Wi-Fi is back (LinkNetworkMonitor).
 - [ ] Background: lock the phone 10 min; the notification's volume/mute/next preset still reach the board.
 - [ ] Firmware page in REMOTE: the notice, no installer.

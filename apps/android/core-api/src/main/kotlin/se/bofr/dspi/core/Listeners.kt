@@ -43,15 +43,15 @@ interface LinkListener {
     fun onLinkClosed(code: Int, reason: String)
 
     /**
-     * `linkStatus().phase` changed, or a reconnect try failed. Do-nothing default
-     * until the Link engine follows the core's supervisor (WP AN3).
+     * `linkStatus().phase` changed, or a reconnect try failed: reconnecting, a PIN
+     * needed, no board, bound again (the mirror is then already fetched; re-read
+     * the state and call `rtaStart` again).
      */
     fun onLinkStatusChanged() {}
 
     /**
      * The hub issued a token: store it now against [hubId]. Comes as soon as the
-     * hub's answer arrives, even if `linkPair` has already timed out. Do-nothing
-     * default until WP AN3; `linkPair` still returns the token.
+     * hub's answer arrives, even if `linkPair` has already timed out.
      */
     fun onLinkTokenIssued(hubId: String, token: String) {}
 }

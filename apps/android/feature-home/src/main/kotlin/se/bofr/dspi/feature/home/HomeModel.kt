@@ -7,6 +7,8 @@
 // Preset labels and alerts are PRESETS' (PresetLabels.kt, PresetAlerts.kt; F1).
 package se.bofr.dspi.feature.home
 
+import se.bofr.dspi.bridge.DspiBridge
+import se.bofr.dspi.core.DspState
 import se.bofr.dspi.core.DspiConstants
 
 /** What the detail pane shows (macOS `SidebarSelection`); ids are APP channel ids / output indices. */
@@ -82,25 +84,54 @@ object HomeModel {
     }
 
     /**
-     * FirmwareMismatchBanner text. The bridge reports compatibility, not a
-     * match against a bundled firmware, so the banner is shown for the two
-     * incompatible states; [expected] is the firmware this Console targets.
+     * FirmwareMismatchBanner text (`WIRE-FORMAT-COMPAT.md` 4.4). The bridge
+     * reports compatibility, which is the wire format alone, not a match
+     * against a bundled firmware: every firmware on this app's wire format gets
+     * no banner, whichever version it reports (stock final, the K340's fork).
+     * Comparing versions is AN18's, with the updated images. [expected] is the
+     * firmware this Console targets; the last argument is [settingsRead] of the
+     * state: false when the banner must not say that settings are shown.
      */
-    fun firmwareBannerMessage(compat: Int, device: String, expected: String): String? = when (compat) {
-        DspiConstants.COMPAT_FIRMWARE_TOO_NEW ->
-            "This device runs firmware ${device.ifEmpty { "unknown" }}, which is newer than DSPi Console $expected. " +
-                "Some of its features may not be shown. $READ_ONLY_NOTE"
-        DspiConstants.COMPAT_FIRMWARE_TOO_OLD -> "This device runs firmware ${device.ifEmpty {
-            "unknown"
-        }}; DSPi Console expects $expected. $READ_ONLY_NOTE"
-        else -> null
+    fun firmwareBannerMessage(compat: Int, device: String, expected: String, settingsRead: Boolean = true): String? {
+        val version = device.ifEmpty { "unknown" }
+        return when (compat) {
+            DspiConstants.COMPAT_FIRMWARE_TOO_NEW ->
+                "This device runs firmware $version, which is newer than DSPi Console $expected. " +
+                    if (settingsRead) "Some of its features may not be shown. $READ_ONLY_NOTE" else SETTINGS_UNREAD_NOTE
+            DspiConstants.COMPAT_FIRMWARE_TOO_OLD ->
+                "This device runs firmware $version; DSPi Console expects $expected. " +
+                    if (settingsRead) "$MISSING_FEATURES_NOTE $READ_ONLY_NOTE" else SETTINGS_UNREAD_NOTE
+            else -> null
+        }
     }
+
+    /** The banner for the connected device, what FirmwareMismatchBanner shows; null for none. */
+    fun firmwareBannerMessage(bridge: DspiBridge): String? = firmwareBannerMessage(
+        bridge.compat,
+        bridge.firmwareVersion,
+        EXPECTED_FIRMWARE,
+        settingsRead(bridge.state.value)
+    )
+
+    /**
+     * Whether the mirror holds the device's settings: the core rewrites a
+     * decoded image's header to this app's wire format, whatever the device
+     * speaks, and leaves the zeroed default image when it could not map one.
+     */
+    fun settingsRead(state: DspState): Boolean = state.bulkRaw.firstOrNull()?.toInt() == DspiConstants.WIRE_FORMAT_VERSION
 
     /**
      * Decision G1 (owner, deliberate deviation): the sentence the banner adds
      * to the macOS wording while the bridge refuses writes.
      */
     const val READ_ONLY_NOTE = "Until the firmware matches, this app is read-only: settings are shown but cannot be changed."
+
+    /** Older firmware that was decoded: the tools and rows it lacks follow its wire format. */
+    const val MISSING_FEATURES_NOTE = "Features that firmware does not have are hidden."
+
+    /** A wire format the core cannot map: the mirror still holds its defaults, and the screens draw them. */
+    const val SETTINGS_UNREAD_NOTE =
+        "This app cannot read that firmware's settings, so the values shown are defaults. Until the firmware matches, nothing can be changed."
 
     /** The banner button: "Details..." for newer firmware, "Update..." otherwise. */
     fun firmwareBannerButton(compat: Int): String = if (compat == DspiConstants.COMPAT_FIRMWARE_TOO_NEW) "Details..." else "Update..."

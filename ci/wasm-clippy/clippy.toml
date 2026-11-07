@@ -1,0 +1,8 @@
+# WP WB1: what `ci/check.sh --step wasm-core` refuses in the library code of
+# dspi-transport, dspi-session and dspi-core on wasm32-unknown-unknown. These
+# compile there and panic when they run; dspi_transport::clock replaces them.
+disallowed-methods = [
+  { path = "std::time::Instant::now", reason = "use dspi_transport::clock::Instant" },
+  { path = "std::time::SystemTime::now", reason = "use dspi_transport::clock::system_time" },
+  { path = "std::thread::sleep", reason = "use dspi_transport::clock::sleep" },
+]

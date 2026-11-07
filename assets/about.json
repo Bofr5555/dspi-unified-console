@@ -1,0 +1,48 @@
+{
+  "draft": true,
+  "credit_lines": [
+    { "id": "made_with_love", "text": "Made with love by Weeb Labs" },
+    { "id": "unified_console", "text": "Unified console by Bofr5555" }
+  ],
+  "makers": [
+    {
+      "id": "weeb_labs",
+      "name": "Weeb Labs",
+      "url": "https://github.com/WeebLabs",
+      "made": ["DSPi", "The DSPi firmware", "The DSPi Consoles", "DSPi-Terminal", "DSPi-Link"]
+    },
+    {
+      "id": "bofr5555",
+      "name": "Bofr5555",
+      "url": "https://github.com/Bofr5555",
+      "made": ["The unified console", "The core merge", "The Android console", "The Rust Link client"]
+    }
+  ],
+  "links": [
+    { "id": "youtube", "title": "YouTube", "detail": "Builds, demos and how-tos", "url": "https://youtube.com/weeblabs" },
+    { "id": "github", "title": "GitHub", "detail": "DSPi firmware and the Consoles", "url": "https://github.com/weeblabs" },
+    { "id": "discord", "title": "Discord", "detail": "Help and discussion", "url": "https://discord.gg/RCyqxAQ5xS" },
+    { "id": "patreon", "title": "Patreon", "detail": "Support development", "url": "https://patreon.com/weeblabs" },
+    { "id": "ko_fi", "title": "Ko-fi", "detail": "Buy a coffee", "url": "https://ko-fi.com/weeblabs" }
+  ],
+  "credits": [
+    {
+      "id": "jonathan_rosser",
+      "name": "Jonathan Rosser",
+      "what": "Code in the DSPi firmware, and the notch and all-pass filters in the macOS Console"
+    },
+    { "id": "tim_prangenberg", "name": "Tim Prangenberg", "what": "Code in the DSPi firmware" },
+    { "id": "jeremy_blencowe", "name": "Jeremy Blencowe", "what": "A contribution to the DSPi firmware repository" },
+    {
+      "id": "autoeq",
+      "name": "AutoEq",
+      "what": "Headphone EQ data by Jaakko Pasanen, from measurements AutoEq credits to crinacle, innerfidelity, oratory1990, rtings and headphone.com",
+      "url": "https://github.com/jaakkopasanen/AutoEq"
+    },
+    { "id": "qt", "name": "Qt", "what": "The Qt app is built on it" },
+    { "id": "lufa", "name": "LUFA", "what": "Third-party code in the DSPi firmware's source tree" },
+    { "id": "pico_sdk", "name": "pico-sdk", "what": "Third-party code in the DSPi firmware's source tree" },
+    { "id": "pico_extras", "name": "pico-extras", "what": "Third-party code in the DSPi firmware's source tree" },
+    { "id": "rust_crates", "name": "Third-party Rust crates", "what": "The crates listed in Cargo.lock" }
+  ]
+}

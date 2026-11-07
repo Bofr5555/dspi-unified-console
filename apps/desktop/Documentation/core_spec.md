@@ -63,7 +63,7 @@ The GUI never sends raw USB transfers. It calls high-level functions like `dspi_
 From the repository root:
 
 ```bash
-cargo build --release -p dspi-capi
+cargo build --release -p dspi-capi --features link,midir,mdns
 ```
 
 ### Output files

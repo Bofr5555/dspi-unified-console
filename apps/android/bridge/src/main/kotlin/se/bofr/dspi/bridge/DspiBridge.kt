@@ -661,6 +661,17 @@ interface DspiBridge {
      */
     fun setRemoteReadOnly(readOnly: Boolean)
 
+    // -- WP AN3 --
+
+    /**
+     * DSPi Link: the core lost the hub or the board and is getting it back by
+     * itself. The device stays selected and the mirror readable; while true,
+     * [writesAllowed] is false, writes are refused before any traffic
+     * ([WritesNotAllowedException.NOT_CONNECTED]), nothing is queued, and the
+     * status poll rests, so the meters read empty rather than old.
+     */
+    fun setRemoteInterrupted(interrupted: Boolean) {}
+
     // ═══ Input source / tools ══════════════════════════════════════════
 
     /** GATED [DangerousOp.HARDWARE_APPLY] (minted by the source menu/picker tap, e.g. HOME's input-source menu; rebuilds the input pipeline). */

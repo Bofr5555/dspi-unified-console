@@ -3,6 +3,8 @@
 //! No rendering happens here, which is what lets the TUI and the one-shot CLI
 //! share every behaviour rather than reimplementing it.
 
+// -- WP CG15 --
+pub mod about;
 pub mod autoeq;
 pub mod clipboard;
 pub mod compat;

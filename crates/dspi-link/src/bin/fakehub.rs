@@ -3,7 +3,7 @@
 //!
 //!   dspi-link-fakehub [--bind 0.0.0.0:11915] [--auth none|window:PIN|fixed:PIN]
 //!                     [--bridge] [--role viewer|control|admin] [--name NAME]
-//!                     [--max-sessions N] [--no-board]
+//!                     [--max-sessions N] [--no-board] [--rta]
 //!
 //! Faults, one command per line on stdin:
 //!   stall | unstall          the network goes dark, or comes back (TCP stays up)
@@ -18,6 +18,8 @@
 //!   dup on | dup off         send every frame twice
 //!   board on | board off     attach or remove the board
 //!   window                   open a new PIN window (a window PIN pairs one client)
+//!   revoke                   revoke every token (the hub closes with 4002)
+//!   close CODE               close every session with this code
 //!
 //! Advertise it for discovery with avahi on the same host, e.g.
 //!   avahi-publish -s "Fake Hub" _dspi._tcp 11915 v=1 hid=<id> kind=console auth=none n=1
@@ -56,6 +58,12 @@ fn fault(hub: &FakeHub, line: &str) -> bool {
         ["board", "on"] => hub.set_board_present(true),
         ["board", "off"] => hub.set_board_present(false),
         ["window"] => hub.reopen_window(),
+        // -- WP AN3 --
+        ["revoke"] => hub.revoke_all(),
+        ["close", code] => match code.parse() {
+            Ok(c) => hub.close_all(c),
+            Err(_) => return false,
+        },
         _ => return false,
     }
     true
@@ -85,6 +93,7 @@ fn main() {
             "--name" => cfg.name = val(),
             "--max-sessions" => cfg.max_sessions = Some(val().parse().expect("--max-sessions N")),
             "--no-board" => cfg.board_attached = false,
+            "--rta" => cfg.rta = true, // -- WP AN3 / QD8 --
             other => panic!("unknown argument {other}"),
         }
     }

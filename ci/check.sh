@@ -3,7 +3,8 @@
 # (ci/run.sh), never on tmpfs.
 #
 #   ci/check.sh                       full gate (reviewer/merger): fmt, clippy,
-#                                     tests, Windows GNU cross-build, licences, deny
+#                                     tests, Windows GNU cross-build, wasm-core,
+#                                     licences, deny
 #   ci/check.sh --crate dspi-core     scoped (WP agents): fmt, clippy and tests
 #   ci/check.sh --crate a --crate b   of the named packages only
 #   ci/check.sh --step NAME ...       one or more optional steps:
@@ -18,6 +19,11 @@
 #                                     throwaway key, in its Gradle container
 #                                     (apps/android/tools/ci.sh release)
 #       wasm                          dspi-proto for wasm32-unknown-unknown
+#       wasm-core                     dspi-session and dspi-core for wasm32-unknown-
+#                                     unknown, cargo check only, without `usb`; their
+#                                     library code may not call std's clock or sleep
+#                                     (ci/wasm-clippy, use dspi_transport::clock).
+#                                     Nothing is run: docs/core-merge/WEB-STUDY.md 11
 #       qt                            the Qt 6 desktop app (crates/dspi-capi,
 #                                     library dspi_capi)
 #       qt5                           the same against Qt 5.15
@@ -65,9 +71,8 @@ RUN=ci/run.sh
 # shellcheck source=container/images.conf
 . ci/container/images.conf
 CAPI_FEATURES=link,midir,mdns
-# midir needs ALSA at link time, and the app's CMakeLists does not name it until QD8
-# turns these features on for the app itself.
-CAPI_LINK=-DCMAKE_CXX_STANDARD_LIBRARIES=-lasound
+# -- WP QD8 -- The smoke driver's Link test talks to this binary.
+FAKEHUB="cargo build --release -p dspi-link --features fake-hub --bin dspi-link-fakehub"
 # -- WP CG9 -- The image with kotlinc and swiftc. Other steps keep ci/run.sh's.
 crates=()
 steps=()
@@ -75,14 +80,15 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --crate) crates+=("$2"); shift 2 ;;
     --step) steps+=("$2"); shift 2 ;;
-    --all) steps=(fetch fmt clippy test windows-gnu licences deny windows-msvc android android-aab wasm qt qt5 qt-offscreen qt5-offscreen terminal qt-windows proptest kotlin swift ios-check drift); shift ;;
+    --all) steps=(fetch fmt clippy test windows-gnu licences deny windows-msvc android android-aab wasm wasm-core qt qt5 qt-offscreen qt5-offscreen terminal qt-windows proptest kotlin swift ios-check drift); shift ;;
     --all-clients) exec ci/matrix.sh ;;
     -h|--help) sed -n "2,/^set -euo/p" "$0" | sed '$d'; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
   esac
 done
 if [ ${#crates[@]} -eq 0 ] && [ ${#steps[@]} -eq 0 ]; then
-  steps=(fmt clippy test windows-gnu licences deny)
+  # -- WP WB1 -- wasm-core
+  steps=(fmt clippy test windows-gnu wasm-core licences deny)
 fi
 
 ok() { printf '\n== %s: OK\n' "$1"; }
@@ -110,16 +116,25 @@ for s in "${steps[@]}"; do
     android)
       DSPI_PROFILE=cross $RUN "cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 --platform 26 build -p dspi-core --features link && cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 --platform 26 build -p dspi-ffi" ;;
     wasm) DSPI_PROFILE=cross $RUN "cargo build -p dspi-proto --target wasm32-unknown-unknown" ;;
+    wasm-core)
+      # -- WP WB1 -- dspi-session twice: with every default but `usb`, and as dspi-core
+      # uses it. Only --lib is linted, so tests keep std's clock.
+      DSPI_PROFILE=cross $RUN "set -e
+        t='--target wasm32-unknown-unknown --locked'
+        cargo check -p dspi-session --no-default-features --features serde,bundled-autoeq,undo \$t
+        cargo check -p dspi-session -p dspi-core --no-default-features \$t
+        CLIPPY_CONF_DIR=ci/wasm-clippy cargo clippy -p dspi-transport -p dspi-session -p dspi-core \\
+          --no-default-features --lib \$t -- -A clippy::all -D clippy::disallowed_methods -D warnings" ;;
     qt)
       # The build directory's name moved with the core: /work/build-desktop-qt6
       # may still cache the old core's paths.
-      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-capi -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target $CAPI_LINK && cmake --build /work/build-desktop-qt6-capi" ;;
+      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-capi -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target && cmake --build /work/build-desktop-qt6-capi" ;;
     qt5)
-      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && cmake -S apps/desktop/qt -B /work/build-desktop-qt5 -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=5 -DDSPI_CARGO_TARGET_DIR=/target $CAPI_LINK && cmake --build /work/build-desktop-qt5" ;;
+      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && cmake -S apps/desktop/qt -B /work/build-desktop-qt5 -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=5 -DDSPI_CARGO_TARGET_DIR=/target && cmake --build /work/build-desktop-qt5" ;;
     qt-offscreen)
-      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target $CAPI_LINK -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt6-smoke --target DSPiConsoleSmoke && apps/desktop/qt/smoke/run.sh /work/build-desktop-qt6-smoke/DSPiConsoleSmoke /work/smoke-out && DSPI_SMOKE_HW=dry apps/desktop/qt/smoke/run.sh /work/build-desktop-qt6-smoke/DSPiConsoleSmoke /work/smoke-out-hw-dry" ;;
+      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt6-smoke --target DSPiConsoleSmoke && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub apps/desktop/qt/smoke/run.sh /work/build-desktop-qt6-smoke/DSPiConsoleSmoke /work/smoke-out && DSPI_SMOKE_HW=dry apps/desktop/qt/smoke/run.sh /work/build-desktop-qt6-smoke/DSPiConsoleSmoke /work/smoke-out-hw-dry" ;;
     qt5-offscreen)
-      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && cmake -S apps/desktop/qt -B /work/build-desktop-qt5-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=5 -DDSPI_CARGO_TARGET_DIR=/target $CAPI_LINK -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt5-smoke --target DSPiConsoleSmoke && apps/desktop/qt/smoke/run.sh /work/build-desktop-qt5-smoke/DSPiConsoleSmoke /work/smoke-out-qt5" ;;
+      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && cmake -S apps/desktop/qt -B /work/build-desktop-qt5-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=5 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt5-smoke --target DSPiConsoleSmoke && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub apps/desktop/qt/smoke/run.sh /work/build-desktop-qt5-smoke/DSPiConsoleSmoke /work/smoke-out-qt5" ;;
     qt-windows)
       $RUN "BUILD_DIR=/work/build-desktop-win64 apps/desktop/packaging/windows/build-windows.sh /work/dist-windows" ;;
     proptest)

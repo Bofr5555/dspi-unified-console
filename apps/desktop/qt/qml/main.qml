@@ -291,7 +291,7 @@ ApplicationWindow {
     }
     Shortcut {
         sequences: [StandardKey.Paste]
-        enabled: root.openChannelId >= 0 && !root.textFocused
+        enabled: root.openChannelId >= 0 && !root.textFocused && bridge.writable
         onActivated: bridge.pasteChannel(root.openChannelId)
     }
 
@@ -396,27 +396,12 @@ ApplicationWindow {
                 // Graph's 8 px resize handle + 10 = 18 px, the same gap as between cards
                 spacing: 10
 
-                // Firmware compatibility banner
-                Rectangle {
+                // Firmware this Console may not write to: read-only, and the way out
+                ReadOnlyBanner {
                     id: compatBanner
-                    visible: bridge.compat >= 2
                     width: parent.width - 32
                     x: 16
-                    height: visible ? compatText.implicitHeight + 20 : 0
-                    radius: 8
-                    color: Qt.rgba(0.95, 0.6, 0.2, 0.15)
-                    border.color: Qt.rgba(0.95, 0.6, 0.2, 0.5)
-
-                    Text {
-                        id: compatText
-                        anchors.fill: parent
-                        anchors.margins: 10
-                        wrapMode: Text.WordWrap
-                        verticalAlignment: Text.AlignVCenter
-                        font.pixelSize: 12
-                        color: "white"
-                        text: bridge.compatMessage
-                    }
+                    onUpdateRequested: root.openToolWindow("firmware")
                 }
 
                 // Firmware version mismatch: the device runs another version
@@ -556,6 +541,7 @@ ApplicationWindow {
             InputHeaderCard {
                 id: inputHeader
                 visible: root.selectedChannel >= 0
+                enabled: bridge.writable   // -- WP QD6 --
                 anchors.top: parent.top
                 anchors.topMargin: parent.pageTop
                 anchors.left: parent.left
@@ -666,20 +652,22 @@ ApplicationWindow {
     }
 
     // Separate windows
-    MatrixMixerWindow { id: matrixWindow }
-    LoudnessWindow { id: loudnessWindow }
-    CrossfeedWindow { id: crossfeedWindow }
-    VolumeLevellerWindow { id: levellerWindow }
-    PsychoacousticBassWindow { id: psybassWindow }
-    SubharmonicSynthWindow { id: subharmWindow }
-    TubeModellerWindow { id: tubeWindow }
-    UpmixerWindow { id: upmixWindow }
+    MatrixMixerWindow { id: matrixWindow; objectName: "matrixWindow"; writesToDevice: true }
+    LoudnessWindow { id: loudnessWindow; objectName: "loudnessWindow"; writesToDevice: true }
+    CrossfeedWindow { id: crossfeedWindow; objectName: "crossfeedWindow"; writesToDevice: true }
+    VolumeLevellerWindow { id: levellerWindow; objectName: "levellerWindow"; writesToDevice: true }
+    PsychoacousticBassWindow { id: psybassWindow; objectName: "psybassWindow"; writesToDevice: true }
+    SubharmonicSynthWindow { id: subharmWindow; objectName: "subharmWindow"; writesToDevice: true }
+    TubeModellerWindow { id: tubeWindow; objectName: "tubeWindow"; writesToDevice: true }
+    UpmixerWindow { id: upmixWindow; objectName: "upmixWindow"; writesToDevice: true }
     FirmwareUpdateWindow { id: firmwareWindow; onExportRequested: root.fileAction("exportConfig") }
-    AutoEqBrowserWindow { id: autoeqWindow }
+    AutoEqBrowserWindow { id: autoeqWindow; objectName: "autoeqWindow"; writesToDevice: true }
     AutoEqRebuildWindow { id: autoeqRebuildWindow }
     WhatsNewWindow { id: whatsNewWindow; onVisibleChanged: if (visible) onboarding.whatsNewShown = Qt.application.version }
 
     function openToolWindow(name) {
+        // -- WP QD6 -- Features this firmware lacks are hidden (the menu leaves them out)
+        if (["psybass", "subharm", "tube", "upmix"].indexOf(name) >= 0 && !bridge.firmwareHas(name)) return
         if (name.indexOf("url:") === 0) { Qt.openUrlExternally(name.substring(4)); return }
         if (name === "gettingStarted") { setupRequested = true; return }
         var w = { matrix: matrixWindow, loudness: loudnessWindow, crossfeed: crossfeedWindow,
@@ -1066,7 +1054,7 @@ ApplicationWindow {
     // Ctrl+Shift+M also closes the Matrix from its own window); the rest act
     // on the main window and stay with it
     Shortcut { enabled: !isMacOS; sequences: [StandardKey.Quit]; context: Qt.ApplicationShortcut; onActivated: root.close() }
-    Shortcut { sequence: "Ctrl+S"; enabled: !isMacOS && !root.showWizard && bridge.connected; onActivated: commitDialog.open() }
+    Shortcut { sequence: "Ctrl+S"; enabled: !isMacOS && !root.showWizard && bridge.writable; onActivated: commitDialog.open() }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+M"; enabled: !isMacOS && !root.showWizard; onActivated: matrixWindow.visible = !matrixWindow.visible }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+L"; enabled: !isMacOS && !root.showWizard; onActivated: root.openToolWindow("loudness") }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+X"; enabled: !isMacOS && !root.showWizard; onActivated: root.openToolWindow("crossfeed") }
@@ -1078,7 +1066,7 @@ ApplicationWindow {
     Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+T"; enabled: !isMacOS && !root.showWizard; onActivated: root.openToolWindow("stats") }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+A"; enabled: !isMacOS && !root.showWizard; onActivated: root.openToolWindow("spectrum") }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+G"; enabled: !isMacOS && !root.showWizard; onActivated: root.openToolWindow("siggen") }
-    Shortcut { sequence: "Ctrl+I"; enabled: !isMacOS && !root.showWizard && bridge.connected && !root.textFocused; onActivated: root.fileAction("importFilters") }
+    Shortcut { sequence: "Ctrl+I"; enabled: !isMacOS && !root.showWizard && bridge.writable && !root.textFocused; onActivated: root.fileAction("importFilters") }
     Shortcut { sequence: "Ctrl+E"; enabled: !isMacOS && !root.showWizard && bridge.connected && !root.textFocused; onActivated: root.fileAction("exportFilters") }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "Ctrl+Shift+I"; enabled: !isMacOS && !root.showWizard; onActivated: root.openToolWindow("monitor") }
     Shortcut { enabled: !isMacOS; context: Qt.ApplicationShortcut; sequence: "Ctrl+,"; onActivated: root.openToolWindow("settings") }
@@ -1086,7 +1074,7 @@ ApplicationWindow {
     StatsWindow { id: statsWindow }
     SpectrumAnalyserWindow { id: spectrumWindow; app: root }
     GraphWindow { id: graphWindow }
-    SignalGeneratorWindow { id: siggenWindow }
+    SignalGeneratorWindow { id: siggenWindow; objectName: "siggenWindow"; writesToDevice: true }
     InterruptMonitorWindow { id: monitorWindow }
     SettingsWindow { id: settingsWindow }
 }

@@ -8,6 +8,9 @@ import QtQuick.Window 2.15
 Window {
     id: appWindow
     default property alias content: contentArea.data
+    // -- WP QD6 -- The content changes the device: off on firmware that's read-only,
+    // and it still shows and scrolls
+    property bool writesToDevice: false
 
     // macOS: the width of a sidebar under a unified, transparent titlebar
     // (Settings). The window then gets the sidebar material behind that strip
@@ -80,8 +83,35 @@ Window {
 
     Item {
         id: contentArea
+        objectName: "appWindowContent"
         anchors.fill: parent
         anchors.topMargin: appWindow.contentUnderTitlebar ? 0 : appWindow.titlebarHeight
+        enabled: !appWindow.writesToDevice || bridge.writable
+    }
+
+    // -- WP QD6 -- A disabled Flickable takes no wheel, so this scrolls it instead
+    MouseArea {
+        objectName: "readOnlyWheel"
+        anchors.fill: contentArea
+        visible: !contentArea.enabled
+        acceptedButtons: Qt.NoButton
+        function flickableAt(item, x, y) {
+            var found = null
+            while (item) {
+                if (item.contentY !== undefined && item.contentHeight > item.height) found = item
+                var child = item.childAt(x, y)
+                if (!child) break
+                var p = item.mapToItem(child, x, y)
+                x = p.x
+                y = p.y
+                item = child
+            }
+            return found
+        }
+        onWheel: {
+            var f = flickableAt(contentArea, wheel.x, wheel.y)
+            if (f) f.contentY = Math.max(0, Math.min(f.contentHeight - f.height, f.contentY - wheel.angleDelta.y))
+        }
     }
 
     WindowTitleBar {

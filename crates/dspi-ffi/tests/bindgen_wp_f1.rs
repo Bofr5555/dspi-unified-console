@@ -366,3 +366,18 @@ fn wp_cg10_wording_and_onboarding_are_exported() {
         assert!(swift.contains(item), "{item} is not in the Swift binding");
     }
 }
+
+// -- WP CG15 --
+#[test]
+fn wp_cg15_about_is_exported() {
+    let kotlin = std::fs::read_to_string(find(&generate("kotlin"), "dspi_core.kt")).unwrap();
+    assert!(
+        kotlin.contains("fun `aboutJson`"),
+        "not in the Kotlin binding"
+    );
+    let swift = std::fs::read_to_string(find(&generate("swift"), "dspi_core.swift")).unwrap();
+    assert!(
+        swift.contains("func aboutJson("),
+        "not in the Swift binding"
+    );
+}

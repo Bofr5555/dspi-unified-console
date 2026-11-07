@@ -24,6 +24,8 @@ NamesController::NamesController(DSPiBridge *bridge, QObject *parent)
     connect(m_bridge, &DSPiBridge::devicesChanged, this, &NamesController::sync);
     connect(m_bridge, &DSPiBridge::stateChanged, this, &NamesController::sync);
     connect(m_bridge, &DSPiBridge::notificationsArrived, this, &NamesController::refresh);
+    // -- WP QD6 -- Before the next device opens, not after: stateChanged comes too late
+    connect(m_bridge, &DSPiBridge::deviceChanging, this, [this]() { m_generation++; });
     sync();
 }
 
@@ -103,7 +105,7 @@ QString NamesController::clean(const QString &text) const {
 }
 
 void NamesController::editSource(int source, const QString &text) {
-    if (source < 0 || source >= kSourceCount) return;
+    if (source < 0 || source >= kSourceCount || !m_bridge->writable()) return;   // -- WP QD6 --
     const QString name = clean(text);
     Draft &d = m_sourceDrafts[source];
     d.held = name != m_sources[source];
@@ -112,6 +114,7 @@ void NamesController::editSource(int source, const QString &text) {
 }
 
 void NamesController::editDevice(const QString &text) {
+    if (!m_bridge->writable()) return;   // -- WP QD6 --
     const QString name = clean(text);
     m_deviceDraft.held = name != m_device;
     m_deviceDraft.text = m_deviceDraft.held ? name : QString();
@@ -129,7 +132,7 @@ void NamesController::revert() {
 }
 
 void NamesController::save() {
-    if (m_saving || !dirty() || !m_bridge->connected()) return;
+    if (m_saving || !dirty() || !m_bridge->writable()) return;   // -- WP QD6 --
     std::vector<Write> writes;
     for (int i = 0; i < kSourceCount; i++)
         if (sourcePending(i)) writes.push_back({ i, trimmedName(m_sourceDrafts[i].text).toUtf8() });

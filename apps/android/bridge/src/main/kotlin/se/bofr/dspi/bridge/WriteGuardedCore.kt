@@ -795,7 +795,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "linkPhaseText",
             "linkPhaseTexts",
             "onboardingWhatsNewJson",
-            "onboardingGettingStartedJson"
+            "onboardingGettingStartedJson",
+            // WP CG15: stateless text.
+            "aboutJson"
         )
 
         /** Control-surface operations that only read the device (`cs.rs` "refresh", "refreshStatus"). */

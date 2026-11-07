@@ -482,6 +482,30 @@ impl DspiCore {
     }
 }
 
+// -- WP QD6 --
+impl DspiCore {
+    /// Open the demo device as firmware of wire format `wire`, for clients'
+    /// read-only tests ([`dspi_transport::Capture::demo_as_wire`]). Replaces any
+    /// open device. [`DspiError::Unsupported`] for a format without a fixture.
+    pub fn open_demo_wire(&self, wire: u8) -> Result<()> {
+        let demo = FakeDevice::demo_as_wire(wire).ok_or(DspiError::Unsupported)?;
+        let serial = demo.descriptor().serial.clone();
+        self.attach_probed(Box::new(demo), serial, 0)
+    }
+
+    /// How many writes this core has refused because the connection is read-only.
+    /// A client's read-only mode keeps this from moving.
+    pub fn read_only_refusals(&self) -> u32 {
+        self.lock().read_only_refusals
+    }
+
+    /// The `wire_compat::feat` bits the connected firmware's wire format carries:
+    /// every known bit on V32 and newer, none with no device or below V16.
+    pub fn wire_features(&self) -> u32 {
+        dspi_proto::wire_compat::features(self.lock().state.format_version)
+    }
+}
+
 impl DspiCore {
     /// The DSPis on USB, by enumeration only: nothing is opened or claimed,
     /// so a device another program holds is listed like any other and

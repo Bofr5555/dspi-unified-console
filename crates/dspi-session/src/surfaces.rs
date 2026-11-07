@@ -278,7 +278,7 @@ impl<'t> Surfaces<'t> {
     /// write is not something a user can act on.
     pub fn wait_applied(&mut self) -> Result<CsStatusPacket> {
         for _ in 0..self.max_polls {
-            std::thread::sleep(self.poll_interval);
+            dspi_transport::clock::sleep(self.poll_interval);
             let st = self.read_status()?;
 
             let mine = self.pending.is_none_or(|tag| st.last_slot == tag);
@@ -326,7 +326,7 @@ impl<'t> Surfaces<'t> {
     /// here; the re-send then answers `BUSY` again and that is reported.
     fn wait_idle(&mut self) -> Result<()> {
         for _ in 0..self.max_polls {
-            std::thread::sleep(self.busy_backoff);
+            dspi_transport::clock::sleep(self.busy_backoff);
             let st = self.read_status()?;
             if st.last_status != status::BUSY && st.last_status != status::PENDING {
                 break;

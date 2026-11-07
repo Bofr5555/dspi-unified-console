@@ -51,7 +51,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, Weak};
 use std::thread::{self, JoinHandle};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use dspi_transport::clock::Instant;
 
 use dspi_proto::generated::notify as nfy;
 use dspi_proto::generated::opcodes as op;

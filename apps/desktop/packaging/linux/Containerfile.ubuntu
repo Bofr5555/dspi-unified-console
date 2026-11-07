@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         qml-module-qtquick2 qml-module-qtquick-window2 qml-module-qtquick-layouts \
         qml-module-qtquick-controls2 qml-module-qtquick-templates2 qml-module-qtqml \
         qml-module-qt-labs-settings qml-module-qt-labs-platform \
-        libkf5windowsystem-dev kwayland-integration qt5-xdgdesktopportal-platformtheme \
+        libasound2-dev libkf5windowsystem-dev kwayland-integration qt5-xdgdesktopportal-platformtheme \
     && rm -rf /var/lib/apt/lists/*
 RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
 ENV PATH=/root/.cargo/bin:$PATH
