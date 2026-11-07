@@ -21,6 +21,9 @@
 use dspi_proto::generated::opcodes as op;
 use dspi_proto::value::Value;
 use dspi_transport::TransportError;
+// -- WP QD4 --
+use dspi_transport::TransportKind;
+use dspi_transport::fake::EXT_FAKE_RENAME_ELSEWHERE;
 
 use crate::consts::CHANNEL_NAME_LEN;
 use crate::records::*;
@@ -75,8 +78,11 @@ impl DspiCore {
     /// names; `Disconnected`; `Transfer`, `Denied` or `Locked` from the link.
     pub fn set_input_source_name(&self, source: u8, name: String) -> Result<()> {
         // -- WP CG13 --
-        // As `write_name`, but the cache is updated under the same lock, so a
-        // rename from elsewhere cannot land between the write and the update.
+        // The cache is updated under the same lock, so a rename from elsewhere
+        // cannot land between the write and the update. `send` refuses a feature
+        // the probe did not find (`Unsupported`) and a source the device lacks,
+        // then pads the name with NULs to the 32-byte field: "" sends a leading
+        // NUL, which clears it.
         check_name(&name)?;
         let mut inner = self.lock();
         let mut w = inner.writable_conn()?;
@@ -98,7 +104,69 @@ impl DspiCore {
     /// only printable ASCII. Applied and notified (`NOTIFY_EVT_DEVICE_NAME`)
     /// as a source name. Errors as for [`DspiCore::set_input_source_name`].
     pub fn set_device_name(&self, name: String) -> Result<()> {
-        self.write_name("dev.name", &[], name)
+        // -- WP QD4 --
+        // As `set_input_source_name`: the cache is updated under the same lock.
+        check_name(&name)?;
+        let mut inner = self.lock();
+        let mut w = inner.writable_conn()?;
+        w.session()?
+            .send("dev.name", &[], Value::Text(name.clone()))?;
+        w.conn().device_name = name;
+        Ok(())
+    }
+
+    // -- WP QD4 --
+    /// The name of input source `source` as last known, with no traffic: read
+    /// on connect, kept current by notifications (from any client) and by
+    /// [`DspiCore::set_input_source_name`], and read again after a lost
+    /// notification. "" when unnamed. For a client's rows, which would
+    /// otherwise read over the wire what connect has just read.
+    ///
+    /// Errors: `Unsupported` on firmware without source names; `InvalidArgument`
+    /// for a source past the table; `Disconnected` without a device or before
+    /// it was probed.
+    pub fn cached_input_source_name(&self, source: u8) -> Result<String> {
+        let mut inner = self.lock();
+        let conn = inner.conn()?;
+        require_feature(conn.session()?, F_SOURCE_NAMES)?;
+        conn.source_names
+            .get(usize::from(source))
+            .cloned()
+            .ok_or_else(|| DspiError::InvalidArgument {
+                msg: format!("no input source {source}"),
+            })
+    }
+
+    /// The device's name as last known, with no traffic, kept as
+    /// [`DspiCore::cached_input_source_name`] keeps source names. "" when
+    /// unnamed. Errors: `Unsupported` on firmware without device names;
+    /// `Disconnected`.
+    pub fn cached_device_name(&self) -> Result<String> {
+        let mut inner = self.lock();
+        let conn = inner.conn()?;
+        require_feature(conn.session()?, F_DEVICE_NAME)?;
+        Ok(conn.device_name.clone())
+    }
+
+    /// Have someone else rename something on the demo device, for clients'
+    /// tests and demo mode: `target` is an input source, or 0xFF for the device
+    /// itself. The rename arrives as a notification that is not this client's
+    /// own. `Unsupported`, with no traffic, on anything but a simulated device.
+    pub fn demo_rename_elsewhere(&self, target: u8, name: String) -> Result<()> {
+        check_name(&name)?;
+        let mut inner = self.lock();
+        let mut w = inner.writable_conn()?;
+        if w.conn().caps.kind != TransportKind::Fake {
+            return Err(DspiError::Unsupported);
+        }
+        let mut payload = vec![target];
+        payload.extend_from_slice(name.as_bytes());
+        // A leading NUL clears, as on the wire.
+        payload.push(0);
+        w.conn()
+            .transport()
+            .control_out(op::REQ_EXTENSION, EXT_FAKE_RENAME_ELSEWHERE, &payload)
+            .map_err(DspiError::from)
     }
 
     /// `REQ_OUTPUT_LATENCY` status (`wValue` 0, 12 bytes): the requested
@@ -210,17 +278,6 @@ impl DspiCore {
             }),
         }
     }
-
-    fn write_name(&self, path: &str, indices: &[u8], name: String) -> Result<()> {
-        check_name(&name)?;
-        let mut inner = self.lock();
-        let mut w = inner.writable_conn()?;
-        // `send` refuses a feature the probe did not find (`Unsupported`) and
-        // a source the device lacks, then pads the name with NULs to the
-        // 32-byte field: "" sends a leading NUL, which clears it.
-        w.session()?.send(path, indices, Value::Text(name))?;
-        Ok(())
-    }
 }
 
 // -- WP CG13 --
@@ -264,6 +321,31 @@ pub(crate) fn read_source_names(conn: &mut Connection) {
 pub(crate) fn note_source_name_event(conn: &mut Connection, bytes: &[u8]) {
     if let (Some(&source), Some(field)) = (bytes.first(), bytes.get(SOURCE_NAME_EVENT_FIELD)) {
         note_source_name(conn, source, decode_name(field));
+    }
+}
+
+// -- WP QD4 --
+/// Read the device's name into the connection's cache, as
+/// [`read_source_names`] reads the source names.
+pub(crate) fn read_device_name(conn: &mut Connection) {
+    let supported = conn
+        .session()
+        .is_ok_and(|s| require_feature(s, F_DEVICE_NAME).is_ok());
+    if !supported {
+        return;
+    }
+    match conn.session().and_then(|s| Ok(s.read("dev.name", &[])?)) {
+        Ok(Value::Text(t)) => conn.device_name = decode_name(t.as_bytes()),
+        Ok(other) => log::debug!("device name: read {other:?}"),
+        Err(e) => log::debug!("device name not read: {e}"),
+    }
+}
+
+/// A `NOTIFY_EVT_DEVICE_NAME` payload into the cache, as
+/// [`note_source_name_event`]. A short packet is ignored.
+pub(crate) fn note_device_name_event(conn: &mut Connection, bytes: &[u8]) {
+    if let Some(field) = bytes.get(SOURCE_NAME_EVENT_FIELD) {
+        conn.device_name = decode_name(field);
     }
 }
 
@@ -520,3 +602,8 @@ mod tests_wp_c8;
 // -- WP CG13 --
 #[cfg(test)]
 mod tests_wp_cg13;
+
+// -- WP QD4 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_qd4;

@@ -413,6 +413,15 @@ impl FakeRemote {
 /// checks for [`TransportKind::Fake`] before sending it.
 pub const EXT_FAKE_VREG_SIM: u16 = 0xFFF0;
 
+// -- WP QD4 --
+/// `REQ_EXTENSION` OUT sub-command only a [`FakeDevice`] answers, as
+/// [`EXT_FAKE_VREG_SIM`]: `[target, name..]`, stored and announced as a rename
+/// by someone else (AN6, QD4, SW, TM17). `target` is an input source, or
+/// [`RENAME_ELSEWHERE_DEVICE`] for the device.
+pub const EXT_FAKE_RENAME_ELSEWHERE: u16 = 0xFFF1;
+/// The device itself as the target of [`EXT_FAKE_RENAME_ELSEWHERE`].
+pub const RENAME_ELSEWHERE_DEVICE: u8 = 0xFF;
+
 /// What can happen to a simulated device's core-voltage state (WP CG11).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VregSim {
@@ -1792,6 +1801,11 @@ impl State {
                     self.vreg_sim(sim);
                     true
                 }
+                None => false,
+            },
+            // -- WP QD4 --
+            EXT_FAKE_RENAME_ELSEWHERE => match data.split_first() {
+                Some((&target, name)) => self.rename_elsewhere(target, name),
                 None => false,
             },
             _ => false,
