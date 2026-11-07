@@ -669,7 +669,8 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "csDemoBusy",
             "demoRenameElsewhere",
             "demoLatencyTiming",
-            "demoOutputSaveStatus"   // -- WP QD31 --
+            // -- WP QD31 --
+            "demoOutputSaveStatus"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
