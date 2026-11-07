@@ -415,6 +415,10 @@ fn version() {
         dspi_proto::generated::ALL_OPCODES.len(),
         dspi_proto::packets::FirmwareVersion::expected(),
     );
+    // -- WP TM22 --
+    for line in dspi_tui::settings::about::credit_lines() {
+        println!("{line}");
+    }
 }
 
 fn usage() {
@@ -489,7 +493,7 @@ USAGE:
     dspi -f <script>         run one command per line, `#` starts a comment
     dspi < script            the same, from standard input
     dspi --install-udev      install the Linux udev rule (needs root)
-    dspi --version           show app and protocol versions
+    dspi --version           show app and protocol versions, and credits
 
 EXAMPLES:
     dspi get vol.user
