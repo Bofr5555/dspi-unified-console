@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the Kotlin side of the core contract from the core's own modules.
 
-Reads   crates/dspi-core/src/*.rs       what `cfg_attr(feature = "uniffi", ...)` marks:
+Reads   crates/dspi-core/src/**/*.rs    what `cfg_attr(feature = "uniffi", ...)` marks:
                                         records, enums, objects, foreign traits, the error,
                                         `DspiCore` methods, free functions
         crates/dspi-core/src/consts.rs  constants the C header does not have
@@ -303,7 +303,11 @@ def parse_trait(lines: list[str], i: int, doc: list[str]) -> Iface:
 def parse_surface() -> Surface:
     out = Surface()
     # records.rs first: the big types read best at the top of CoreTypes.kt.
-    files = sorted(CORE_SRC.glob("*.rs"), key=lambda p: (p.name != "records.rs", p.name))
+    # Recursive, so that an export in a submodule cannot go silently missing.
+    files = sorted(
+        CORE_SRC.rglob("*.rs"),
+        key=lambda p: (p != CORE_SRC / "records.rs", p.relative_to(CORE_SRC).as_posix()),
+    )
     for path in files:
         lines = path.read_text().splitlines()
         i = 0

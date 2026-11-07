@@ -10,11 +10,22 @@
 # bind-mounted at its host path, not only apps/android, because the Rust workspace
 # (Cargo.toml, crates/) is at its top; caches live in NAMED podman volumes:
 #   dspi-android-cargo    CARGO_HOME (crates.io registry/git cache)
-#   dspi-android-gradle   GRADLE_USER_HOME (wrapper dists, Maven caches)
+#   dspi-android-gradle   shared wrapper dists and downloaded dependencies
 #   dspi-android-target-<hash of the app's path>   CARGO_TARGET_DIR (per worktree);
 #                                                  also TMPDIR, so rustc and mktemp
-#                                                  stay off any tmpfs
+#                                                  stay off any tmpfs, and
+#                                                  GRADLE_USER_HOME, see below
 # DSPI_JOBS caps cargo's parallel jobs per container (default 4), as ci/run.sh does.
+#
+# Gradle home per checkout: Gradle asks a lock's holder to let go over UDP on
+# localhost, and a holder in another container cannot hear it, so a shared home
+# fails with "Timeout waiting to lock journal cache" when runs overlap. Downloads
+# stay shared: the shared volume is the read-only GRADLE_RO_DEP_CACHE, and the
+# wrapper, which only takes file locks, is a link to it. What a checkout finds
+# missing there it downloads for itself. To add it for everyone, with no other
+# Gradle running, use the shared volume as the home for one run:
+#   DSPI_GRADLE_SHARED_HOME=1 tools/dev.sh ./gradlew <tasks>
+# Two Gradle runs in one checkout still collide (they share build/ as well).
 #
 # HARD RULE: the container gets no USB/hardware access. No --device, no
 # --privileged, no /dev/bus/usb. Do not add any. An empty directory covers
@@ -47,6 +58,8 @@ if ! podman image exists "$IMAGE"; then
   podman build -t "$IMAGE" -f "$ROOT/container/Containerfile" "$ROOT/container" >&2
 fi
 
+# The image's user is 1000 (its /cache is owned by that uid): the host user becomes
+# that uid, so bind mounts and volumes both belong to the host user, whatever its uid.
 mounts=(-v "$TOP:$TOP:z")
 # A git worktree keeps its metadata in the main repo's .git; mount that too so
 # git works inside the container.
@@ -73,6 +86,11 @@ case "$workdir/" in
   *) workdir="$ROOT" ;;
 esac
 
+gradle_env=(-e GRADLE_USER_HOME=/cache/target/gradle-home -e GRADLE_RO_DEP_CACHE=/cache/gradle/caches)
+if [[ -n "${DSPI_GRADLE_SHARED_HOME:-}" ]]; then
+  gradle_env=(-e GRADLE_USER_HOME=/cache/gradle)
+fi
+
 tty=()
 if [[ -t 0 && -t 1 ]]; then tty=(-t); fi
 
@@ -84,7 +102,8 @@ if [[ -n "${DSPI_DEV_PUBLISH:-}" ]]; then publish=(-p "$DSPI_DEV_PUBLISH"); fi
 if [[ $# -eq 0 ]]; then set -- bash; fi
 
 exec podman run --rm -i "${tty[@]}" \
-  --userns=keep-id \
+  --userns=keep-id:uid=1000,gid=1000 \
+  --user 1000:1000 \
   --security-opt no-new-privileges \
   --cap-drop=all \
   "${mounts[@]}" \
@@ -94,4 +113,8 @@ exec podman run --rm -i "${tty[@]}" \
   -e CI="${CI:-}" \
   -e CARGO_BUILD_JOBS="${DSPI_JOBS:-4}" \
   -e TMPDIR=/cache/target/tmp \
-  "$IMAGE" bash -c 'mkdir -p "$TMPDIR" && exec "$@"' dev.sh "$@"
+  "${gradle_env[@]}" \
+  "$IMAGE" bash -c '
+    mkdir -p "$TMPDIR" /cache/gradle/wrapper "$GRADLE_USER_HOME"
+    [[ -z "${GRADLE_RO_DEP_CACHE:-}" ]] || ln -sfn /cache/gradle/wrapper "$GRADLE_USER_HOME/wrapper"
+    exec "$@"' dev.sh "$@"

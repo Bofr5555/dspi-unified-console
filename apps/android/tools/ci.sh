@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # tools/ci.sh <package>   run exactly that package's checks
 # tools/ci.sh all         run everything
+# tools/ci.sh tests       every package but release (ci/check.sh --step android-tests)
 # tools/ci.sh list        list packages
 # tools/ci.sh release     signed Play .aab with a CI-only throwaway key + bundletool checks
 #                         (docs/RELEASE.md; part of `all`, ~2 min cold, mostly the Rust release build)
@@ -250,10 +251,15 @@ PACKAGES=(supply contract ffi link usb bridge home graph matrix tools presets se
 
 case "${1:-}" in
   ""|-h|--help|list)
-    echo "usage: tools/ci.sh <package>|all"; echo "packages: ${PACKAGES[*]} (+ release-deps, run by app)"; exit 0 ;;
+    echo "usage: tools/ci.sh <package>|tests|all"; echo "packages: ${PACKAGES[*]} (+ release-deps, run by app)"; exit 0 ;;
   all)
     for p in "${PACKAGES[@]}"; do "pkg_$p"; done
     step "all: OK" ;;
+  tests)
+    for p in "${PACKAGES[@]}"; do
+      [[ "$p" == release ]] || "pkg_$p"
+    done
+    step "tests: OK" ;;
   *)
     if declare -F "pkg_${1//-/_}" >/dev/null; then "pkg_${1//-/_}"; step "$1: OK"
     else echo "unknown package: $1 (packages: ${PACKAGES[*]})" >&2; exit 2; fi ;;
