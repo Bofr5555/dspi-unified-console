@@ -1,0 +1,604 @@
+import SwiftUI
+
+// MARK: - Psychoacoustic Bass Window Controller
+
+#if os(macOS)
+class PsychoacousticBassWindowController: NSObject, ObservableObject {
+    private var window: NSWindow?
+    @Published var isVisible: Bool = false
+
+    func show(vm: DSPViewModel) {
+        if window == nil {
+            let view = PsychoacousticBassView(vm: vm, psybass: vm.psybass).onboardingHint("psybass")
+
+            window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 780, height: 500),
+                styleMask: [.titled, .closable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            window?.title = "Psychoacoustic Bass"
+            let hosting = NSHostingView(rootView: view)
+            // The window's size limits are set here, not derived from the
+            // tree: left at its defaults the hosting view re-measures the
+            // whole tree for them on every display cycle, which is most of
+            // what a meter reading or a drag used to cost in this window.
+            hosting.sizingOptions = []
+            window?.contentView = hosting
+            window?.isReleasedWhenClosed = false
+            window?.delegate = self
+            window?.contentMinSize = NSSize(width: 740, height: 496)
+        }
+
+        window?.center()
+        window?.makeKeyAndOrderFront(nil)
+        isVisible = true
+    }
+
+    func hide() {
+        window?.orderOut(nil)
+        isVisible = false
+    }
+}
+
+extension PsychoacousticBassWindowController: NSWindowDelegate {
+    func windowWillClose(_ notification: Notification) {
+        isVisible = false
+    }
+}
+#else
+class PsychoacousticBassWindowController: IOSToolWindowController {
+    func show(vm: DSPViewModel) {
+        present(title: "Psychoacoustic Bass") { PsychoacousticBassView(vm: vm, psybass: vm.psybass).onboardingHint("psybass") }
+    }
+}
+#endif
+
+// MARK: - Starting Points (spec §6)
+
+private struct PsybassStartingPoint {
+    let name: String
+    let detail: String
+    let cutoff: Float
+    let harmonics: Float
+    let drive: Float
+    let character: Float
+    let original: Float
+}
+
+private let psybassStartingPoints: [PsybassStartingPoint] = [
+    PsybassStartingPoint(name: "Bookshelf speakers",  detail: "Gentle low-end help",       cutoff: 60,  harmonics: 0,  drive: 6,  character: 50, original: 0),
+    PsybassStartingPoint(name: "Small Bluetooth",     detail: "Portable speaker",           cutoff: 100, harmonics: 3,  drive: 9,  character: 40, original: -12),
+    PsybassStartingPoint(name: "Laptop / tablet",     detail: "Tiny drivers, protect them", cutoff: 180, harmonics: 6,  drive: 12, character: 50, original: -24),
+    PsybassStartingPoint(name: "Headphone bass feel", detail: "Extra sub sensation",        cutoff: 45,  harmonics: -3, drive: 6,  character: 30, original: 0),
+]
+
+// MARK: - Psychoacoustic Bass View
+
+struct PsychoacousticBassView: View {
+    @ObservedObject var vm: DSPViewModel
+    /// Observed separately from `vm` so a slider drag invalidates this
+    /// window and nothing else; see ToolParameters.swift.
+    @ObservedObject var psybass: PsybassParameters
+    /// What the spectrum follows during a drag; see `GraphLive`.
+    @State private var graphLive = GraphLive<PsybassGraphKey>()
+
+    /// Output channels exposed in the mask grid (5 on RP2040, 9 on RP2350).
+    private var outputCount: Int { vm.numOutputChannels }
+
+    /// The whole feature ships in wire format V23; hide the interactive body on
+    /// older firmware and show an upgrade note instead.
+    private var supported: Bool { vm.firmwareSupportsPsybass }
+
+    /// Mask with every valid output bit set.
+    private var allOutputsMask: UInt16 {
+        outputCount >= 16 ? 0xFFFF : UInt16((1 << outputCount) - 1)
+    }
+
+    /// All outputs except the PDM sub (harmonics on a real-bass channel are
+    /// counterproductive, so this is the recommended default).
+    private var excludeSubMask: UInt16 {
+        allOutputsMask & ~(UInt16(1) << vm.pdmOutputIndex)
+    }
+
+    /// Display name for output channel `out` (unified channel index chOut1 + out).
+    private func outputName(_ out: Int) -> String {
+        let idx = vm.chOut1 + out
+        return idx < vm.channelNames.count ? vm.channelNames[idx] : "Out \(out + 1)"
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            headerSection
+
+            Divider()
+
+            if supported {
+                // Two columns of the sections the other tool windows stack.
+                // The graph sits over the cutoff and level that shape its
+                // harmonic band; the right column chooses the outputs and
+                // shapes how the harmonics are made.
+                HStack(alignment: .top, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        spectrumGraph
+                        Divider()
+                        harmonicsSection
+                    }
+                    .toolColumn()
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        outputSection
+                        Divider()
+                        shapingSection
+                    }
+                    .toolColumn()
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, 16)
+            } else {
+                unsupportedNote
+            }
+        }
+        .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    // MARK: - Header
+
+    private var headerSection: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "speaker.wave.3.fill")
+                .font(.system(size: 22))
+                .foregroundColor(.accentColor)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Psychoacoustic Bass")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Phantom fundamental bass enhancement")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            Toggle("", isOn: Binding(
+                get: { vm.psybassEnabled },
+                set: { vm.setPsybass($0) }
+            ))
+            .toggleStyle(.switch)
+            .disabled(!vm.isDeviceConnected || !supported)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
+    private var unsupportedNote: some View {
+        VStack(spacing: 10) {
+            Spacer()
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 28))
+                .foregroundColor(.secondary)
+            Text("Requires firmware with wire format V23 or newer.")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Update the DSPi firmware to use Psychoacoustic Bass.")
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+            Spacer()
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Spectrum Graph
+
+    private var spectrumGraph: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("SPECTRUM")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.secondary)
+                Spacer()
+                startingPointsMenu
+            }
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(NSColor.controlBackgroundColor).opacity(0.6))
+
+                // In its own hosting view, so following a drag re-lays out the
+                // graph alone rather than the whole window.
+                LiveGraphHost(flexibleHeight: true) {
+                    PsybassGraphPane(
+                        base: .init(cutoff: psybass.cutoffHz, harmonicsDB: psybass.harmonicsDB,
+                                    originalDB: psybass.originalDB),
+                        isEnabled: vm.psybassEnabled, live: graphLive)
+                    .padding(8)
+                }
+            }
+            .frame(height: 160)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+            )
+        }
+    }
+
+    // MARK: - Starting Points
+
+    private var startingPointsMenu: some View {
+        Menu {
+            ForEach(0..<psybassStartingPoints.count, id: \.self) { i in
+                let p = psybassStartingPoints[i]
+                Button("\(p.name) - \(p.detail)") {
+                    vm.setPsybassCutoff(p.cutoff)
+                    vm.setPsybassHarmonics(p.harmonics)
+                    vm.setPsybassDrive(p.drive)
+                    vm.setPsybassCharacter(p.character)
+                    vm.setPsybassOriginal(p.original)
+                }
+            }
+        } label: {
+            Text("Apply preset")
+                .font(.system(size: 11))
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .disabled(!vm.isDeviceConnected)
+    }
+
+    // MARK: - Output Channels
+
+    private var outputSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("OUTPUTS")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Menu {
+                    Button("All outputs") {
+                        vm.setPsybassMask(allOutputsMask)
+                    }
+                    Button("Exclude sub (recommended)") {
+                        vm.setPsybassMask(excludeSubMask)
+                    }
+                    Button("None") {
+                        vm.setPsybassMask(0x0000)
+                    }
+                } label: {
+                    Text("Presets")
+                        .font(.system(size: 11))
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .disabled(!vm.isDeviceConnected)
+            }
+
+            Text("Enhance only the small-speaker outputs. Mask off the sub and any full-range outputs - synthesizing harmonics on a channel that can reproduce real bass is counterproductive.")
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 6) {
+                ForEach(0..<outputCount, id: \.self) { out in
+                    outputChip(
+                        out: out,
+                        on: psybass.outputMask & (UInt16(1) << out) != 0
+                    ) {
+                        vm.setPsybassOutputChannel(out, enabled: psybass.outputMask & (UInt16(1) << out) == 0)
+                    }
+                }
+            }
+        }
+    }
+
+    private func outputChip(out: Int, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text("\(out + 1)")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .frame(maxWidth: .infinity, minHeight: 26)
+                .foregroundColor(on ? .white : .primary.opacity(0.6))
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(on ? Color.accentColor : Color.secondary.opacity(0.12))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.primary.opacity(on ? 0 : 0.08), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .help(outputName(out))
+        .disabled(!vm.isDeviceConnected)
+        .animation(.easeInOut(duration: 0.12), value: on)
+    }
+
+    // MARK: - Harmonics
+
+    private var harmonicsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("HARMONICS")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.secondary)
+
+            paramRow(
+                title: "Cutoff Frequency",
+                unit: "Hz",
+                value: psybass.cutoffHz,
+                range: 30...300,
+                maxDecimals: 0,
+                scrollStep: 1,
+                liveRequest: REQ_SET_PSYBASS_CUTOFF,
+                liveKey: .cutoff,
+                help: "The speaker's low-frequency limit. Content below this feeds the harmonic generator; generated harmonics span roughly this to 4x.",
+                set: { vm.setPsybassCutoff($0) }
+            )
+
+            Divider()
+
+            paramRow(
+                title: "Harmonics",
+                unit: "dB",
+                value: psybass.harmonicsDB,
+                range: -24...12,
+                maxDecimals: 1,
+                scrollStep: 0.5,
+                liveRequest: REQ_SET_PSYBASS_HARMONICS,
+                liveKey: .harmonicsDB,
+                help: "Level of the synthesized harmonics. The primary amount-of-effect control. Higher = more perceived bass.",
+                set: { vm.setPsybassHarmonics($0) }
+            )
+        }
+    }
+
+    // MARK: - Shaping
+
+    private var shapingSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("SHAPING")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.secondary)
+
+            paramRow(
+                title: "Drive",
+                unit: "dB",
+                value: psybass.driveDB,
+                range: 0...18,
+                maxDecimals: 1,
+                scrollStep: 0.5,
+                liveRequest: REQ_SET_PSYBASS_DRIVE,
+                help: "Pre-gain into the odd-harmonic soft clipper. Higher makes the effect audible on quieter passages. Mostly affects aggressive character.",
+                set: { vm.setPsybassDrive($0) }
+            )
+
+            Divider()
+
+            ParameterRow(
+                title: "Character",
+                unit: "%",
+                value: psybass.characterPct,
+                range: 0...100,
+                scrollStep: 1,
+                maxDecimals: 0,
+                ends: ("Warm", "Aggressive"),
+                isEnabled: vm.isDeviceConnected,
+                live: { vm.sendFloatParamToDevice(REQ_SET_PSYBASS_CHARACTER,
+                                                  min(max($0, 0), 100)) },
+                set: { vm.setPsybassCharacter(min(max($0, 0), 100)) }
+            )
+
+            Divider()
+
+            paramRow(
+                title: "Original Bass",
+                unit: "dB",
+                value: psybass.originalDB,
+                range: -60...0,
+                maxDecimals: 1,
+                scrollStep: 1,
+                liveRequest: REQ_SET_PSYBASS_ORIGINAL,
+                liveKey: .originalDB,
+                help: "Level of the un-reproducible fundamental below the cutoff. Lower attenuates it, freeing driver excursion and headroom. -60 dB is full removal. Speaker protection.",
+                set: { vm.setPsybassOriginal($0) }
+            )
+        }
+    }
+
+    /// One labelled ValueField + slider + caption row, on the shared
+    /// `ParameterRow` so a drag stays out of the view model: `liveRequest` is
+    /// the vendor code the live value goes to, and `set` commits on release.
+    private func paramRow(
+        title: String,
+        unit: String,
+        value: Float,
+        range: ClosedRange<Float>,
+        maxDecimals: Int,
+        scrollStep: Float,
+        liveRequest: UInt8,
+        liveKey: PsybassGraphKey? = nil,
+        help: String,
+        set: @escaping (Float) -> Void
+    ) -> some View {
+        ParameterRow(
+            title: title,
+            unit: unit,
+            value: value,
+            range: range,
+            scrollStep: scrollStep,
+            maxDecimals: maxDecimals,
+            isEnabled: vm.isDeviceConnected,
+            caption: help,
+            live: { v in
+                let c = min(max(v, range.lowerBound), range.upperBound)
+                vm.sendFloatParamToDevice(liveRequest, c)
+                if let liveKey { graphLive.set(liveKey, c) }
+            },
+            set: { set(min(max($0, range.lowerBound), range.upperBound)) }
+        )
+    }
+}
+
+// MARK: - Spectrum Visualization
+
+/// Schematic (not a precise DSP magnitude) illustration of what psybass does:
+/// the original low band below the cutoff, attenuated by `originalDB`, and the
+/// synthesized harmonic band from the cutoff to 4x the cutoff at `harmonicsDB`.
+enum PsybassGraphKey: Hashable { case cutoff, harmonicsDB, originalDB }
+
+/// The spectrum, resolving live overrides over the committed values. Lives in
+/// a `LiveGraphHost`, so a live update costs the layout of this view alone.
+private struct PsybassGraphPane: View {
+    struct Base: Equatable { var cutoff, harmonicsDB, originalDB: Float }
+    let base: Base
+    let isEnabled: Bool
+    @ObservedObject var live: GraphLive<PsybassGraphKey>
+
+    var body: some View {
+        PsybassSpectrumView(
+            cutoff: live[.cutoff, or: base.cutoff],
+            harmonicsDB: live[.harmonicsDB, or: base.harmonicsDB],
+            originalDB: live[.originalDB, or: base.originalDB],
+            isEnabled: isEnabled
+        )
+        .onChange(of: base) { _ in live.clear() }
+    }
+}
+
+private struct PsybassSpectrumView: View {
+    let cutoff: Float
+    let harmonicsDB: Float
+    let originalDB: Float
+    let isEnabled: Bool
+
+    private let minFreq: CGFloat = 20.0
+    private let maxFreq: CGFloat = 20000.0
+
+    private func xPos(_ freq: CGFloat, w: CGFloat) -> CGFloat {
+        let logMin = log10(minFreq)
+        let logMax = log10(maxFreq)
+        let logVal = log10(min(max(freq, minFreq), maxFreq))
+        return CGFloat((logVal - logMin) / (logMax - logMin)) * w
+    }
+
+    /// Original band height fraction: 0 dB = full, -60 dB = gone.
+    private var originalFrac: CGFloat {
+        CGFloat(min(max((originalDB + 60) / 60, 0), 1))
+    }
+
+    /// Harmonics band height fraction: -24 dB = low, +12 dB = full.
+    private var harmonicsFrac: CGFloat {
+        CGFloat(min(max((harmonicsDB + 24) / 36, 0), 1))
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let fcX = xPos(CGFloat(cutoff), w: w)
+            let fc4X = xPos(CGFloat(cutoff) * 4, w: w)
+            let baseline = h - 14   // leave room for freq labels
+
+            ZStack(alignment: .topLeading) {
+                grid(w: w, h: h)
+
+                if isEnabled {
+                    // Original low band (20 Hz .. cutoff)
+                    let origH = baseline * originalFrac
+                    Rectangle()
+                        .fill(Color.accentColor.opacity(0.35))
+                        .frame(width: max(0, fcX), height: max(0, origH))
+                        .position(x: fcX / 2, y: baseline - origH / 2)
+
+                    // Synthesized harmonics band (cutoff .. 4x cutoff)
+                    let harmH = baseline * harmonicsFrac
+                    Rectangle()
+                        .fill(Color.orange.opacity(0.55))
+                        .frame(width: max(0, fc4X - fcX), height: max(0, harmH))
+                        .position(x: (fcX + fc4X) / 2, y: baseline - harmH / 2)
+
+                    // Cutoff marker
+                    dashedLine(x: fcX, top: 0, bottom: baseline)
+                        .stroke(Color.primary.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    Text("fc")
+                        .font(.system(size: 7, weight: .bold, design: .monospaced))
+                        .foregroundColor(.primary.opacity(0.6))
+                        .position(x: fcX, y: 8)
+
+                    // 4x cutoff marker
+                    dashedLine(x: fc4X, top: 0, bottom: baseline)
+                        .stroke(Color.primary.opacity(0.2), style: StrokeStyle(lineWidth: 1, dash: [2, 3]))
+                    Text("4fc")
+                        .font(.system(size: 7, weight: .bold, design: .monospaced))
+                        .foregroundColor(.primary.opacity(0.4))
+                        .position(x: fc4X, y: 8)
+
+                    // Legend
+                    VStack(alignment: .leading, spacing: 2) {
+                        legendItem(color: .accentColor, label: "Original")
+                        legendItem(color: .orange, label: "Harmonics")
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color(NSColor.controlBackgroundColor).opacity(0.85))
+                    .cornerRadius(4)
+                    .position(x: w - 42, y: 20)
+                } else {
+                    Text("Disabled")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary.opacity(0.5))
+                        .position(x: w / 2, y: h / 2)
+                }
+
+                freqLabels(w: w, h: h)
+            }
+            .clipped()
+        }
+    }
+
+    private func dashedLine(x: CGFloat, top: CGFloat, bottom: CGFloat) -> Path {
+        Path { p in
+            p.move(to: CGPoint(x: x, y: top))
+            p.addLine(to: CGPoint(x: x, y: bottom))
+        }
+    }
+
+    private func grid(w: CGFloat, h: CGFloat) -> some View {
+        Path { path in
+            for f in [100.0, 1000.0, 10000.0] {
+                let x = xPos(CGFloat(f), w: w)
+                path.move(to: CGPoint(x: x, y: 0))
+                path.addLine(to: CGPoint(x: x, y: h - 14))
+            }
+            path.move(to: CGPoint(x: 0, y: h - 14))
+            path.addLine(to: CGPoint(x: w, y: h - 14))
+        }
+        .stroke(Color.gray.opacity(0.15), lineWidth: 0.5)
+    }
+
+    private func freqLabels(w: CGFloat, h: CGFloat) -> some View {
+        ZStack {
+            ForEach([100, 1000, 10000], id: \.self) { f in
+                Text(f == 1000 ? "1k" : (f == 10000 ? "10k" : "\(f)"))
+                    .font(.system(size: 7, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.6))
+                    .position(x: xPos(CGFloat(f), w: w), y: h - 5)
+            }
+        }
+    }
+
+    private func legendItem(color: Color, label: String) -> some View {
+        HStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(color)
+                .frame(width: 10, height: 6)
+            Text(label)
+                .font(.system(size: 7, weight: .bold))
+                .foregroundColor(.primary)
+        }
+    }
+}

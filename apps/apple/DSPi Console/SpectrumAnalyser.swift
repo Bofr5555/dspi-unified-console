@@ -1,0 +1,1182 @@
+import Foundation
+import Combine
+
+// MARK: - Wire structures
+//
+// The device-side spectrum analyser, as described by
+// Documentation/Features/spectrum_analyser_spec.md in the firmware repository.
+// Every structure here is a byte-for-byte reading of a packed little-endian
+// struct, so the parsers check the length they were given rather than trusting
+// the caller: firmware without the analyser STALLs these requests, and a STALL
+// arrives as a nil or a short read.
+
+/// The staged configuration (REQ_RTA_SET_CONFIG / GET_CONFIG, 12 bytes).
+///
+/// A change of tap, channel mask or FFT size restarts the frame in flight and
+/// clears the averaging; a change of averaging or peak decay alone takes effect
+/// at the next publish.  Byte 5 and the last two bytes are reserved and go out
+/// as zero.
+struct RtaConfig: Equatable {
+    var tap: UInt8 = RTA_TAP_OUTPUT
+    var channelMask: UInt16 = 1
+    var fftOrder: UInt8 = 10
+    var avgMs: UInt16 = 300
+    var peakDecayDBs: UInt8 = 12
+    var flags: UInt8 = 0
+
+    /// Points in the transform: 256, 512 or 1024.
+    var points: Int { 1 << Int(fftOrder) }
+
+    func toData() -> Data {
+        var d = Data(count: RTA_CONFIG_SIZE)
+        d[0] = RTA_CFG_VERSION
+        d[1] = tap
+        d[2] = UInt8(channelMask & 0xFF)
+        d[3] = UInt8(channelMask >> 8)
+        d[4] = fftOrder
+        d[6] = UInt8(avgMs & 0xFF)
+        d[7] = UInt8(avgMs >> 8)
+        d[8] = peakDecayDBs
+        d[9] = flags
+        return d
+    }
+
+    static func fromData(_ d: Data) -> RtaConfig? {
+        guard d.count >= RTA_CONFIG_SIZE, d[d.startIndex] == RTA_CFG_VERSION else { return nil }
+        let b = [UInt8](d)
+        return RtaConfig(
+            tap: b[1],
+            channelMask: UInt16(b[2]) | (UInt16(b[3]) << 8),
+            fftOrder: b[4],
+            avgMs: UInt16(b[6]) | (UInt16(b[7]) << 8),
+            peakDecayDBs: b[8],
+            flags: b[9])
+    }
+
+    /// The configuration and ParamSource carried by a NOTIFY_EVT_RTA_CONFIG
+    /// packet: header, the 12 applied bytes at 4-15, source at 16.
+    static func fromNotification(_ packet: Data) -> (config: RtaConfig, source: UInt8)? {
+        guard packet.count >= NOTIFY_RTA_CONFIG_SIZE else { return nil }
+        let s = packet.startIndex
+        guard packet[s] == 0x02, packet[s + 1] == NOTIFY_EVT_RTA_CONFIG,
+              let config = fromData(packet[(s + 4)..<(s + 4 + RTA_CONFIG_SIZE)]) else { return nil }
+        return (config, packet[s + 16])
+    }
+
+    /// The same tap, channels and transform size.  Exact, not a superset: a
+    /// device analysing more channels than asked for rotates through them,
+    /// and the bins then belong to whichever came last.  The device clamps
+    /// averaging and decay rather than refusing them, so those never decide
+    /// whether a configuration landed.  It also drops channel bits beyond
+    /// the tap's count, which is safe only because the selections never
+    /// carry any.
+    func matches(_ own: RtaConfig) -> Bool {
+        tap == own.tap && fftOrder == own.fftOrder && channelMask == own.channelMask
+    }
+}
+
+/// Who chose the configuration the device holds.  The last console to push
+/// one drives and every other console follows (spectrum_analyser_spec.md §7).
+enum RtaOwnership: Equatable {
+    /// The device holds what this console asked for.
+    case driving
+    /// Someone else's configuration; origin 0 when the writer is unknown.
+    case following(origin: LinkSessionID)
+}
+
+/// What this device's analyser can do (REQ_RTA_GET_CAPS wValue 0, 16 bytes).
+/// A successful read is the feature probe: the analyser is transient and absent
+/// from the bulk parameter blob, so there is no wire-format version to gate on.
+struct RtaCaps: Equatable {
+    var version: UInt8 = 0
+    var inputChannels: UInt8 = 0
+    var outputChannels: UInt8 = 0
+    var fftOrderMin: UInt8 = UInt8(RTA_ORDER_MIN)
+    var fftOrderMax: UInt8 = UInt8(RTA_ORDER_MAX)
+    var fftOrderDefault: UInt8 = 10
+    var bassBands: UInt8 = 0
+    var maxBands: UInt8 = UInt8(RTA_MAX_BANDS)
+    var levelZero: UInt8 = RTA_LEVEL_ZERO_DBFS
+    /// Measured, not theoretical: 78 dB for the RP2040 Q15 kernel, 120 for the
+    /// RP2350 float kernel.  Worth showing, because it is the floor a reading
+    /// can be trusted down to.
+    var dynamicRangeDB: UInt8 = 0
+    var idleTimeoutMs: UInt16 = 0
+    var maxBinFrame: UInt16 = 0
+    /// Bass detection has a separate usable range from the FFT arithmetic.
+    var bassDynamicRangeDB: UInt16 = 0
+    var bandFrameSize: Int { 8 + 2 * Int(maxBands) }
+
+    static func fromData(_ d: Data) -> RtaCaps? {
+        guard d.count >= RTA_CAPS_SIZE else { return nil }
+        let b = [UInt8](d)
+        // Band indices and strides changed in V3. Never send V3 config to
+        // an older/newer protocol or interpret its frames with this layout.
+        guard b[0] == RTA_CFG_VERSION,
+              Int(b[3]) >= RTA_ORDER_MIN, Int(b[4]) <= RTA_ORDER_MAX, b[3] <= b[5], b[5] <= b[4],
+              b[7] > 0, Int(b[7]) <= RTA_MAX_BANDS, b[6] <= b[7] else { return nil }
+        return RtaCaps(
+            version: b[0],
+            inputChannels: b[1],
+            outputChannels: b[2],
+            fftOrderMin: b[3],
+            fftOrderMax: b[4],
+            fftOrderDefault: b[5],
+            bassBands: b[6],
+            maxBands: b[7],
+            levelZero: b[8],
+            dynamicRangeDB: b[9],
+            idleTimeoutMs: UInt16(b[10]) | (UInt16(b[11]) << 8),
+            maxBinFrame: UInt16(b[12]) | (UInt16(b[13]) << 8),
+            bassDynamicRangeDB: UInt16(b[14]) | (UInt16(b[15]) << 8))
+    }
+}
+
+/// One channel's third-octave picture (REQ_RTA_GET_BANDS, 82 bytes).
+///
+/// `avg` and `peak` always carry `RTA_MAX_BANDS` slots; only the first
+/// `nBands` are meaningful at the current sample rate. The first `bassBands`
+/// are continuous filter-bank readings; FFT population rules apply only above
+/// them. Raw FFT bins remain a separate product.
+struct RtaBandFrame: Equatable {
+    var channel: UInt8 = 0
+    var seq: UInt8 = 0
+    var nBands: UInt8 = 0
+    /// Milliseconds since this channel's last frame; 0xFFFF = never.
+    var ageMs: UInt16 = 0xFFFF
+    var avg: [UInt8] = Array(repeating: 0, count: RTA_MAX_BANDS)
+    var peak: [UInt8] = Array(repeating: 0, count: RTA_MAX_BANDS)
+
+    /// True once the channel has produced at least one frame.
+    var hasData: Bool { ageMs != 0xFFFF }
+
+    static func fromData(_ d: Data, at offset: Int = 0,
+                         maxBands: Int = RTA_MAX_BANDS) -> RtaBandFrame? {
+        guard maxBands > 0, maxBands <= RTA_MAX_BANDS,
+              offset >= 0, offset <= d.count else { return nil }
+        let size = 8 + 2 * maxBands
+        guard d.count - offset >= size else { return nil }
+        let b = [UInt8](d[(d.startIndex + offset)..<(d.startIndex + offset + size)])
+        guard b[0] == RTA_CFG_VERSION, Int(b[3]) <= maxBands else { return nil }
+        return RtaBandFrame(
+            channel: b[1],
+            seq: b[2],
+            nBands: b[3],
+            ageMs: UInt16(b[4]) | (UInt16(b[5]) << 8),
+            avg: Array(b[8..<(8 + maxBands)]),
+            peak: Array(b[(8 + maxBands)..<(8 + 2 * maxBands)]))
+    }
+}
+
+/// The most recent frame's raw magnitude bins (REQ_RTA_GET_BINS).
+///
+/// Only the latest frame is kept, tagged with the channel it came from, so a
+/// multichannel selection makes this rotate.  The sequence number appears in
+/// the header and again as the frame's last byte; a host that reads the frame
+/// while the engine is publishing sees the two disagree and re-reads.
+struct RtaBinFrame: Equatable {
+    var channel: UInt8 = 0
+    var seq: UInt8 = 0
+    var fftOrder: UInt8 = 0
+    var sampleRateHz: UInt32 = 0
+    /// One level byte per bin, bin k centred at
+    /// k * sampleRateHz / (2 * bins.count).
+    var bins: [UInt8] = []
+    /// dBFS per bin after the engine's time average; nil for a frame straight
+    /// off the wire.
+    var levelsDB: [Double]? = nil
+    /// Frequency-smoothed levels, prepared once when the time average changes
+    /// and shared by all displays. Wire frames leave this nil.
+    var smoothedLevelsDB: [Double]? = nil
+
+    /// Hz of bin `k`.
+    func frequency(ofBin k: Int) -> Double {
+        guard !bins.isEmpty else { return 0 }
+        return Double(k) * Double(sampleRateHz) / Double(2 * bins.count)
+    }
+
+    /// Parses a whole frame, however many chunks it was read in.  Returns nil
+    /// for a short read, a header that does not describe the bytes that
+    /// followed, or a sequence tail that disagrees with the header - the last
+    /// of which means the engine republished mid-read and the caller should
+    /// simply read it again.
+    static func fromData(_ d: Data) -> RtaBinFrame? {
+        guard d.count >= RTA_BIN_HEADER_SIZE else { return nil }
+        let b = [UInt8](d)
+        guard b[0] == RTA_CFG_VERSION else { return nil }
+        let seq = b[2]
+        // 0xFF is the in-progress marker the engine writes before it fills the
+        // frame, never a published sequence number.
+        guard seq != 0xFF else { return nil }
+        let nBins = Int(UInt16(b[8]) | (UInt16(b[9]) << 8))
+        let tail = RTA_BIN_HEADER_SIZE + nBins
+        guard nBins > 0, b.count > tail, b[tail] == seq else { return nil }
+        return RtaBinFrame(
+            channel: b[1],
+            seq: seq,
+            fftOrder: b[3],
+            sampleRateHz: UInt32(b[4]) | (UInt32(b[5]) << 8) | (UInt32(b[6]) << 16) | (UInt32(b[7]) << 24),
+            bins: Array(b[RTA_BIN_HEADER_SIZE..<tail]))
+    }
+}
+
+/// Engine telemetry (REQ_RTA_GET_STATUS, 24 bytes).  Reading it deliberately
+/// does not count as a data read, so polling status neither starts the analyser
+/// nor keeps it alive.
+struct RtaStatus: Equatable {
+    var state: UInt8 = RTA_STATE_IDLE
+    var tap: UInt8 = RTA_TAP_OUTPUT
+    /// The channel being captured or transformed; RTA_CH_NONE while idle.
+    var channel: UInt8 = RTA_CH_NONE
+    var liveCount: UInt8 = 0
+    /// Selected AND actually live: disabled outputs and inactive input rows are
+    /// dropped from the rotation, so they never slow the channels that remain.
+    var liveMask: UInt16 = 0
+    var framesPerSecond: UInt16 = 0
+    /// Main-loop microseconds per second spent transforming.  The existing CPU
+    /// figure measures only the packet callback and cannot see this work.
+    var busyUsPerSecond: UInt16 = 0
+    var lastFrameUs: UInt16 = 0
+    var idleMs: UInt16 = 0xFFFF
+    var sampleRateHz: UInt32 = 0
+    /// V3 reports zero for a supported bass layout; FFT gaps above 200 Hz
+    /// can still be empty. 0xFF means an unsupported layout.
+    var firstBand: UInt8 = 0
+    /// Summed bass tap time on both cores, already included in audio CPU load.
+    /// 65535 is saturation, so it represents a lower bound rather than 6.6%.
+    var bassBusyUsPerSecond: UInt16 = 0
+    var bassLoadDescription: String {
+        let prefix = bassBusyUsPerSecond == .max ? "≥" : ""
+        return String(format: "bass %@%.2f%%", prefix, Double(bassBusyUsPerSecond) / 10000.0)
+    }
+
+    var isRunning: Bool { state != RTA_STATE_IDLE }
+
+    /// The lowest band with a reading, as a band index the display can compare
+    /// against.  A device reporting "no band resolves" greys out the lot.
+    var firstResolvedBand: Int {
+        firstBand == 0xFF ? RTA_MAX_BANDS : Int(firstBand)
+    }
+
+    static func fromData(_ d: Data) -> RtaStatus? {
+        guard d.count >= RTA_STATUS_SIZE else { return nil }
+        let b = [UInt8](d)
+        guard b[0] == RTA_CFG_VERSION else { return nil }
+        return RtaStatus(
+            state: b[1],
+            tap: b[2],
+            channel: b[3],
+            liveCount: b[5],
+            liveMask: UInt16(b[6]) | (UInt16(b[7]) << 8),
+            framesPerSecond: UInt16(b[8]) | (UInt16(b[9]) << 8),
+            busyUsPerSecond: UInt16(b[10]) | (UInt16(b[11]) << 8),
+            lastFrameUs: UInt16(b[12]) | (UInt16(b[13]) << 8),
+            idleMs: UInt16(b[14]) | (UInt16(b[15]) << 8),
+            sampleRateHz: UInt32(b[16]) | (UInt32(b[17]) << 8) | (UInt32(b[18]) << 16) | (UInt32(b[19]) << 24),
+            firstBand: b[20],
+            bassBusyUsPerSecond: UInt16(b[22]) | (UInt16(b[23]) << 8))
+    }
+}
+
+// MARK: - Subscriptions
+
+/// What one on-screen analyser wants to see.  Views hand one of these to the
+/// engine while they are visible and take it back when they go away; the engine
+/// turns the set of them into a single device configuration, because there is
+/// only one FFT engine on the device.
+struct RtaRequest: Equatable {
+    var tap: UInt8
+    /// Bit i = channel i at that tap (input row, or matrix output index).
+    var mask: UInt16
+    /// Whether this view draws the fine curve from the raw bins when the
+    /// device analyses a single channel.  The engine reads the bins only
+    /// then, whoever chose that channel, since a bin frame belongs to
+    /// whichever channel was transformed last.
+    var drawsBins: Bool = false
+}
+
+/// The bins averaged over time the way the device averages its bands: power,
+/// moved toward each new frame by dt / (avgMs + dt).  The device never averages
+/// the bins it publishes, so without this the Averaging setting stops at the bass.
+struct RtaBinAverage {
+    private struct Series: Equatable {
+        let tap: UInt8, channel: UInt8, fftOrder: UInt8, sampleRateHz: UInt32, count: Int
+    }
+    private var series: Series?
+    private var seq = -1
+    private var time = Date.distantPast
+    private var power: [Double] = []
+    private(set) var levels: [Double] = []
+    private(set) var smoothedLevels: [Double] = []
+
+    mutating func reset() { series = nil }
+
+    /// Averaged dBFS per bin.  A frame already counted (same sequence number)
+    /// changes nothing; a different tap, channel, size or rate starts over.
+    mutating func add(_ frame: RtaBinFrame, tap: UInt8, at now: Date, avgMs: UInt16,
+                      levelDB: (UInt8) -> Double) -> [Double] {
+        let key = Series(tap: tap, channel: frame.channel, fftOrder: frame.fftOrder,
+                         sampleRateHz: frame.sampleRateHz, count: frame.bins.count)
+        if key == series, Int(frame.seq) == seq { return levels }
+
+        let fresh = frame.bins.map { pow(10, levelDB($0) / 10) }
+        if key != series || avgMs == 0 {
+            power = fresh
+        } else {
+            let dt = max(now.timeIntervalSince(time), 0)
+            let a = dt / (Double(avgMs) / 1000 + dt)
+            for i in power.indices { power[i] += (fresh[i] - power[i]) * a }
+        }
+        series = key
+        seq = Int(frame.seq)
+        time = now
+        levels = power.map { 10 * log10(max($0, 1e-30)) }
+        smoothedLevels = rtaSmoothBins(levels, octaves: rtaBinSmoothingOctaves)
+        return levels
+    }
+}
+
+/// Everything the engine holds after a poll.
+struct RtaSnapshot: Equatable {
+    /// Latest band frame per channel, keyed by channel index at the active tap.
+    var frames: [UInt8: RtaBandFrame] = [:]
+    var bins: RtaBinFrame? = nil
+    var status: RtaStatus = RtaStatus()
+    /// The tap the frames in this snapshot were taken at.  A view at the other
+    /// tap must not draw them as its own.
+    var tap: UInt8 = RTA_TAP_OUTPUT
+}
+
+/// The frame-derived state that decides how a display is laid out rather than
+/// what it shows.  It changes with the configuration or the sample rate, not
+/// with every frame, so it is the only frame-derived state SwiftUI observes.
+struct RtaDisplayState: Equatable {
+    var tap: UInt8 = RTA_TAP_OUTPUT
+    var sampleRateHz: UInt32 = 0
+    var firstResolvedBand: Int = 0
+    /// Bands in the latest frames; 0 until a frame arrives.
+    var bandCount: Int = 0
+
+    init() {}
+
+    init(_ snapshot: RtaSnapshot) {
+        tap = snapshot.tap
+        sampleRateHz = snapshot.status.sampleRateHz
+        firstResolvedBand = snapshot.status.firstResolvedBand
+        bandCount = snapshot.frames.values.map { Int($0.nBands) }.max() ?? 0
+    }
+}
+
+/// Advances whenever the analyser's picture changes, for the displays that draw
+/// only on demand: a Metal view with smoothing off, and the Canvas fallback.
+/// Kept apart from the engine's published state so nothing else redraws with it.
+final class RtaFrameFeed: ObservableObject {
+    @Published private(set) var version: UInt64 = 0
+    func advance() { version &+= 1 }
+}
+
+/// What the Metal surfaces draw from.  The poll queue writes it as each tick
+/// lands and the main thread when the configuration changes; the render thread
+/// reads it.  None of that waits on the main thread, so a window being built
+/// there does not freeze the spectrum.
+struct RtaRenderState {
+    /// Advances whenever the picture changes, like `RtaFrameFeed.version`.
+    var version: UInt64 = 0
+    var snapshot = RtaSnapshot()
+    var configuration = RtaDisplayConfiguration(
+        tap: RTA_TAP_OUTPUT, centres: [], sampleRateHz: 0, fftOrder: 10, bassBands: 0,
+        firstResolvedBand: 0, levelZero: Double(RTA_LEVEL_ZERO_DBFS))
+    /// `RtaEngine.channelRefreshInterval` for this snapshot.
+    var refreshInterval: TimeInterval = 1024.0 / 48000.0
+
+    /// `RtaEngine.frame(channel:tap:)` against this snapshot.
+    func frame(channel: Int, tap: UInt8) -> RtaBandFrame? {
+        guard snapshot.tap == tap else { return nil }
+        return snapshot.frames[UInt8(clamping: channel)]
+    }
+}
+
+/// The analyser window's status line, published on its own so its changes
+/// twice a second redraw the status bar and nothing else.
+final class RtaTelemetry: ObservableObject {
+    @Published fileprivate(set) var status = RtaStatus()
+}
+
+/// The three settings the device owns rather than the app: transform size,
+/// averaging and peak-hold decay.  They are never persisted on the device (the
+/// analyser is transient), so the Console keeps them in its own preferences and
+/// pushes them whenever it starts watching.
+struct RtaOptions: Equatable {
+    var fftOrder: UInt8 = 10
+    /// Power-domain averaging: the device applies it to the bands, the engine to
+    /// the bins.  Bass retains its minimum detector smoothing at 0.
+    var avgMs: UInt16 = 300
+    /// Peak-hold decay in dB per second; 0 turns the peak hold off.
+    var peakDecayDBs: UInt8 = 12
+}
+
+// MARK: - Engine
+
+/// The Console's half of the spectrum analyser: it owns the device
+/// configuration, polls the band and bin frames, and republishes them.
+///
+/// Deliberately a separate observable rather than more `@Published` properties
+/// on `DSPViewModel`: this republishes at the poll rate, and everything that
+/// observes the view model would otherwise redraw with it.
+///
+/// Polling is driven from `DSPViewModel`'s existing 60 ms timer rather than a
+/// timer of its own, so all vendor traffic stays on one queue in one order.
+/// Nothing is polled unless a view is actually watching, and dropping the last
+/// view stops the analyser on the device, which is the only way it costs
+/// nothing when nobody is looking.
+final class RtaEngine: ObservableObject {
+
+    // MARK: Published state
+
+    /// True once REQ_RTA_GET_CAPS has answered.  Firmware without the analyser
+    /// STALLs it, which is the whole feature gate.
+    @Published private(set) var supported: Bool = false
+    @Published private(set) var caps = RtaCaps()
+    /// Nominal third-octave centre frequencies, straight from the caps table,
+    /// so the axis labels come from the same source as the band edges.
+    @Published private(set) var bandCentresHz: [Double] = []
+    /// The latest frames, bins and status.  Deliberately not published: an
+    /// update at the poll rate re-evaluated every view observing the engine and
+    /// laid the window out again, only to hand the numbers to Metal views that
+    /// can read them here as they draw.  Main thread only.
+    private(set) var snapshot = RtaSnapshot()
+    /// The layout-relevant part of the snapshot, published only when it changes.
+    @Published private(set) var display = RtaDisplayState()
+    let frameFeed = RtaFrameFeed()
+    let telemetry = RtaTelemetry()
+    /// Set when the device has repeatedly refused the configuration we are
+    /// asking for.  The views show the reason rather than an empty graph.
+    @Published private(set) var configRejected: Bool = false
+    @Published private(set) var ownership: RtaOwnership = .driving
+    /// The device's tap and channels while following, nil while driving.  The
+    /// views draw this instead of their own selection so they show what the
+    /// analyser is doing, but keep registering their own requests.
+    @Published private(set) var effectiveSelection: RtaChannelSelection? = nil
+
+    /// The device-side options the app is asking for, mirrored for the UI.
+    /// Written only on the main thread; the poll queue reads its own copy from
+    /// under the lock, which is what `setOptions` keeps in step.
+    @Published private(set) var options = RtaOptions()
+
+    // MARK: Private state
+
+    private weak var transport: (any DeviceTransport)?
+    /// Guards `requests` and the polling bookkeeping, which are touched from
+    /// the main thread (subscribe/release) and the poll queue (tick).
+    private let lock = NSLock()
+    private var requests: [UUID: (seq: UInt64, request: RtaRequest)] = [:]
+    private var requestSeq: UInt64 = 0
+    /// What we believe the device has applied; nil means "push again".
+    private var appliedConfig: RtaConfig? = nil
+    /// The last configuration we actually sent, so that asking for something
+    /// different resets the give-up counter instead of inheriting it.
+    private var lastAttempted: RtaConfig? = nil
+    private var pushAttempts = 0
+
+    // Sharing with other consoles (Documentation/rta_sharing_spec.md §3).
+    /// The device configuration someone else pushed, while following it.
+    private var following: (config: RtaConfig, origin: LinkSessionID)? = nil
+    /// The configuration our views last asked for, kept while none is
+    /// watching, so a display shown again is told apart from a new choice and
+    /// events received meanwhile are judged against it.
+    private var lastOwn: RtaConfig? = nil
+    /// A readback agreed since the last new push.  Only then does a
+    /// disagreeing readback mean another host, rather than a refusal.
+    private var everAgreed = false
+    /// The device's clamped averaging for the confirmed configuration, which
+    /// the bins are averaged with.
+    private var adoptedAvgMs: UInt16? = nil
+    /// A push not yet confirmed by an echo or a readback.
+    private var pushOutstanding = false
+    /// An RTA_CONFIG event arrived on this connection, so the periodic
+    /// GET_CONFIG readback is needed only to confirm a push.
+    private var eventSeen = false
+    /// Bumped by anything that changes ownership, so a readback taken before
+    /// the change is not applied after it.
+    private var stateEpoch: UInt64 = 0
+    /// Readback cadence; tests shorten it.
+    var statusInterval: TimeInterval = RTA_STATUS_INTERVAL
+    /// The poll queue's copy of `options`, kept in step by `setOptions`.
+    private var pollOptions = RtaOptions()
+    /// How long the device takes to publish one frame, as last measured from
+    /// the status.  The bin cadence follows it, so a 1024-point transform is
+    /// not read four times per frame the way a 256-point one is read once.
+    private var pollFrameInterval: TimeInterval = 1024.0 / 48000.0
+    private var lastBinRead: Date = .distantPast
+    private var lastStatusRead: Date = .distantPast
+    /// Guards `render` and `binAverage`.  Never taken while holding `lock`.
+    private let renderLock = NSLock()
+    private var render = RtaRenderState()
+    /// Time average of the bin frames, advanced on the poll queue.
+    private var binAverage = RtaBinAverage()
+
+    /// The render thread's copy of the picture.  Any thread.
+    var renderState: RtaRenderState {
+        renderLock.lock(); defer { renderLock.unlock() }
+        return render
+    }
+
+    /// `renderState.version` without copying the snapshot.  Any thread.
+    var renderVersion: UInt64 {
+        renderLock.lock(); defer { renderLock.unlock() }
+        return render.version
+    }
+
+    init(transport: any DeviceTransport) {
+        self.transport = transport
+    }
+
+    // MARK: Subscription
+
+    /// Start watching.  The returned token identifies this subscription; hand
+    /// it back to `release` when the view goes away.
+    @discardableResult
+    func subscribe(_ request: RtaRequest) -> UUID {
+        let id = UUID()
+        update(id, to: request)
+        return id
+    }
+
+    /// Change what an existing subscription wants without giving up its place:
+    /// selecting another channel keeps the view primary, so the picture does
+    /// not jump to whatever else happens to be on screen.
+    func update(_ id: UUID, to request: RtaRequest) {
+        lock.lock()
+        let existing = requests[id]
+        // A request that has not actually changed keeps its sequence number,
+        // so a view that re-publishes the same thing does not steal the tap.
+        if existing?.request == request { lock.unlock(); return }
+        requestSeq += 1
+        requests[id] = (requestSeq, request)
+        // Only a change of what this console asks for takes the analyser
+        // back.  Showing another display of the same selection (the graph,
+        // the bars, the window) is not a choice, and must not blank the
+        // picture of a console we are following.
+        if let mine = ownConfigLocked() {
+            if mine != lastOwn { takeControlLocked() }
+            lastOwn = mine
+        }
+        lock.unlock()
+        publishSharing()
+    }
+
+    func release(_ id: UUID) {
+        lock.lock()
+        requests.removeValue(forKey: id)
+        let empty = requests.isEmpty
+        // Ownership survives the last view going away: the device keeps its
+        // configuration through STOP and auto-off, and events keep arriving,
+        // so showing a display again resumes driving or following rather
+        // than pushing over another console.
+        if empty { stateEpoch += 1 }
+        lock.unlock()
+        guard empty else { return }
+        publishSharing()
+        // Nobody is watching.  The device would auto-off five seconds from now
+        // anyway; stopping it explicitly hands the CPU back at once.
+        let transport = self.transport
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self, !self.isWatching else { return }
+            _ = transport?.getControlRequest(request: REQ_RTA_CONTROL, value: RTA_CTL_STOP, index: 2, length: 1)
+            DispatchQueue.main.async { [weak self] in
+                // A hidden window can be shown again before STOP completes.
+                // Never clear data belonging to that new subscription.
+                guard let self, !self.isWatching else { return }
+                self.clearSnapshot()
+            }
+        }
+    }
+
+    /// Clear the running averages (the device's bands and the bins here) and the
+    /// peak hold without disturbing the frame in flight.  Main thread only.
+    func resetAveraging() {
+        renderLock.lock()
+        binAverage.reset()
+        renderLock.unlock()
+        let transport = self.transport
+        DispatchQueue.global(qos: .utility).async {
+            _ = transport?.getControlRequest(request: REQ_RTA_CONTROL, value: RTA_CTL_RESET_AVG, index: 2, length: 1)
+        }
+    }
+
+    /// Adopt new device-side options and re-push them on the next tick.  Main
+    /// thread only; the poll queue picks up its copy from under the lock.
+    func setOptions(_ new: RtaOptions) {
+        guard new != options else { return }
+        options = new
+        frameFeed.advance()
+        publishRenderConfiguration()
+        lock.lock()
+        pollOptions = new
+        appliedConfig = nil
+        lastAttempted = nil
+        pushAttempts = 0
+        takeControlLocked()
+        lock.unlock()
+        if configRejected { configRejected = false }
+        publishSharing()
+    }
+
+    /// Push our own configuration again after following someone else's: the
+    /// graph options popover's Take control button.  Main thread only.
+    func takeControl() {
+        lock.lock()
+        takeControlLocked()
+        lock.unlock()
+        publishSharing()
+    }
+
+    /// Stop following and push our own configuration on the next tick.
+    /// Caller holds `lock`.
+    private func takeControlLocked() {
+        stateEpoch += 1
+        guard following != nil else { return }
+        following = nil
+        appliedConfig = nil
+        lastAttempted = nil
+        pushAttempts = 0
+    }
+
+    /// Re-push the configuration on the next tick without changing it, after a
+    /// device switch or anything else that could have reset the engine.
+    func configurationChanged() {
+        lock.lock()
+        appliedConfig = nil
+        lastAttempted = nil
+        pushAttempts = 0
+        forgetSharingLocked()
+        lock.unlock()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if self.configRejected { self.configRejected = false }
+            self.publishSharing()
+        }
+    }
+
+    /// Everything learned about other consoles on this connection.  Caller
+    /// holds `lock`.
+    private func forgetSharingLocked() {
+        following = nil
+        everAgreed = false
+        pushOutstanding = false
+        eventSeen = false
+        stateEpoch += 1
+    }
+
+    // MARK: Sharing
+
+    /// A NOTIFY_EVT_RTA_CONFIG from the device: the configuration it just
+    /// applied and the session the hub attributes the SET to.  Main thread.
+    func deviceAnnounced(_ config: RtaConfig, origin: LinkSessionID) {
+        let own = transport?.isOwnWrite(origin: origin) ?? false
+        var clearRejected = false
+        lock.lock()
+        eventSeen = true
+        stateEpoch += 1
+        // While no view watches, judge it against what we last asked for, so
+        // a display shown later follows a change made in the meantime.
+        let mine = ownConfigLocked() ?? lastOwn
+        if let mine {
+            if config.matches(mine) {
+                // Our echo, or someone else choosing exactly what we want.
+                following = nil
+                confirmLocked(mine, device: config)
+                clearRejected = true
+            } else if !own {
+                following = (config, origin)
+                pushOutstanding = false
+                clearRejected = true
+            }
+            // An echo of ours that no longer matches is an older push,
+            // superseded by one still in flight.
+        }
+        lock.unlock()
+        if clearRejected, configRejected { configRejected = false }
+        publishSharing()
+    }
+
+    /// The configuration this console's own views ask for.  nil while nobody
+    /// watches or the mask is empty.  Caller holds `lock`.
+    private func ownConfigLocked() -> RtaConfig? {
+        guard let primary = requests.values.max(by: { $0.seq < $1.seq })?.request else { return nil }
+        let mask: UInt16
+        // Every view registers the same selection, so the newest one alone
+        // differs from the union only while a change reaches them one by one.
+        if primary.mask.nonzeroBitCount == 1 {
+            mask = primary.mask
+        } else {
+            mask = requests.values
+                .filter { $0.request.tap == primary.tap }
+                .reduce(UInt16(0)) { $0 | $1.request.mask }
+        }
+        guard mask != 0 else { return nil }
+        return RtaConfig(tap: primary.tap, channelMask: mask, fftOrder: pollOptions.fftOrder,
+                         avgMs: pollOptions.avgMs, peakDecayDBs: pollOptions.peakDecayDBs, flags: 0)
+    }
+
+    /// The device holds what we want: adopt its clamped averaging and stop
+    /// pushing.  `appliedConfig` keeps the values we asked for, so a clamped
+    /// one does not read as a difference and get pushed again on every echo.
+    /// Caller holds `lock`.
+    private func confirmLocked(_ mine: RtaConfig, device: RtaConfig) {
+        appliedConfig = mine
+        adoptedAvgMs = device.avgMs
+        pushAttempts = 0
+        everAgreed = true
+        pushOutstanding = false
+    }
+
+    /// Publish who drives and what the views should draw.  Main thread only;
+    /// reads the lock state at call time so a late tick cannot publish an
+    /// ownership an event has already replaced.
+    private func publishSharing() {
+        lock.lock()
+        let f = following
+        lock.unlock()
+        let o: RtaOwnership = f.map { .following(origin: $0.origin) } ?? .driving
+        if o != ownership { ownership = o }
+        let sel = f.map { f in
+            RtaChannelSelection(tap: f.config.tap,
+                                channels: (0..<16).filter { f.config.channelMask & (1 << $0) != 0 })
+        }
+        if sel != effectiveSelection { effectiveSelection = sel }
+    }
+
+    // MARK: Capability probe
+
+    /// Reads the caps header and the band-centre table.  Called once per
+    /// connect from the tier-2 fetches; a STALL leaves `supported` false and
+    /// every analyser view shows its unsupported notice.
+    ///
+    /// Blocking; call off the main thread.
+    func fetchCaps() {
+        guard let transport else { return }
+        let generation = transport.generation
+        guard let d = transport.getControlRequest(request: REQ_RTA_GET_CAPS, value: 0, index: 2,
+                                            length: UInt16(RTA_CAPS_SIZE)),
+              let caps = RtaCaps.fromData(d) else {
+            DispatchQueue.main.async { [weak self] in
+                self?.supported = false
+                self?.bandCentresHz = []
+            }
+            return
+        }
+
+        // Band centres arrive 32 values to a chunk, starting at wValue 1; the
+        // table ends when a chunk comes back short or is refused.
+        var centres: [Double] = []
+        var chunk: UInt16 = 1
+        while centres.count < Int(caps.maxBands), chunk < 16 {
+            guard transport.generation == generation,
+                  let c = transport.getControlRequest(request: REQ_RTA_GET_CAPS, value: chunk, index: 2,
+                                                length: UInt16(RTA_CENTRES_PER_CHUNK * 2)),
+                  c.count >= 2 else { break }
+            let b = [UInt8](c)
+            for i in stride(from: 0, to: b.count - 1, by: 2) {
+                centres.append(Double(UInt16(b[i]) | (UInt16(b[i + 1]) << 8)))
+            }
+            if c.count < RTA_CENTRES_PER_CHUNK * 2 { break }
+            chunk += 1
+        }
+
+        let complete = centres.count >= Int(caps.maxBands)
+        DispatchQueue.main.async { [weak self] in
+            guard let self, transport.generation == generation else { return }
+            self.caps = caps
+            self.bandCentresHz = Array(centres.prefix(Int(caps.maxBands)))
+            self.frameFeed.advance()
+            self.publishRenderConfiguration()
+            self.supported = complete
+            // Fold this device's limits into the options: a size outside the
+            // range this device reports would be STALLed on every push.
+            var o = self.options
+            if o.fftOrder < caps.fftOrderMin || o.fftOrder > caps.fftOrderMax {
+                o.fftOrder = caps.fftOrderDefault
+            }
+            self.setOptions(o)
+        }
+        // A fresh device knows nothing of the previous one's configuration.
+        configurationChanged()
+    }
+
+    /// Forget everything about the device that just went away.
+    func deviceDisconnected() {
+        lock.lock()
+        appliedConfig = nil
+        lastAttempted = nil
+        pushAttempts = 0
+        forgetSharingLocked()
+        lock.unlock()
+        DispatchQueue.main.async { [weak self] in
+            self?.supported = false
+            self?.clearSnapshot()
+            self?.configRejected = false
+            self?.publishSharing()
+        }
+    }
+
+    // MARK: Polling
+
+    /// True when at least one view is watching, so the caller can skip the
+    /// whole poll without taking the lock twice.
+    var isWatching: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return !requests.isEmpty
+    }
+
+    /// One poll.  Called from the view model's poll timer on its poll queue,
+    /// which is the same queue every other vendor read runs on.  Each product
+    /// has its own cadence in elapsed time, so a slower timer or a larger
+    /// transform changes how often things are read but not what is read.
+    func tick() {
+        guard supported, let transport else { return }
+
+        lock.lock()
+        // An empty mask is a STALL on the device, and there is nothing to draw
+        // either; hold the previous configuration and skip the poll.
+        guard let own = ownConfigLocked() else { lock.unlock(); return }
+        let drawsBins = requests.values.contains { $0.request.drawsBins }
+        var want: RtaConfig
+        var needsPush = false
+        if let f = following {
+            // Poll what the device is analysing; never push over it.
+            want = f.config
+        } else {
+            want = own
+            // Give up after three rejected pushes of the *same* configuration,
+            // so firmware that refuses one setting does not turn into a write
+            // on every tick - but asking for something different starts the
+            // count again, otherwise a rejected size would silently freeze the
+            // channel selection too.
+            if appliedConfig != want {
+                if lastAttempted != want {
+                    lastAttempted = want
+                    pushAttempts = 0
+                    everAgreed = false
+                }
+                if pushAttempts < 3 {
+                    pushAttempts += 1
+                    appliedConfig = want
+                    adoptedAvgMs = nil
+                    pushOutstanding = true
+                    needsPush = true
+                }
+            }
+            if !needsPush, let avg = adoptedAvgMs { want.avgMs = avg }
+        }
+        let epoch = stateEpoch
+        let now = Date()
+        // Read the bins no faster than the device publishes them, which is a
+        // frame time apart: at 1024 points that is 21 ms, at 256 points 5 ms,
+        // and the poll timer is slower than both.  Keyed to what the device
+        // analyses, whoever chose it, so a follower draws the same fine curve
+        // as the console it follows.
+        let readBins = drawsBins && want.channelMask.nonzeroBitCount == 1
+            && now.timeIntervalSince(lastBinRead) >= max(pollFrameInterval, RTA_MIN_BIN_INTERVAL)
+        let readStatus = now.timeIntervalSince(lastStatusRead) >= statusInterval
+        // Once the device announces its configurations, reading it back is
+        // only needed to tell a refused push from one still being applied.
+        let readConfig = readStatus && (!eventSeen || pushOutstanding)
+        if readBins { lastBinRead = now }
+        if readStatus { lastStatusRead = now }
+        let bandSlots = Int(caps.maxBands)
+        let bandFrameSize = caps.bandFrameSize
+        let binFrameLength = caps.maxBinFrame > 0 ? Int(caps.maxBinFrame) : RTA_BIN_FRAME_MAX
+        lock.unlock()
+
+        if needsPush {
+            transport.sendControlRequest(request: REQ_RTA_SET_CONFIG, value: 0, index: 2, data: want.toData())
+        }
+
+        // Band frames.  GET_BANDS_ALL answers for every live channel in one
+        // transfer and each frame names its own channel, so a multichannel view
+        // costs one read rather than one per channel.
+        var frames: [UInt8: RtaBandFrame] = [:]
+        if want.channelMask.nonzeroBitCount > 1 {
+            let maxFrames = 16
+            if let d = transport.getControlRequest(request: REQ_RTA_GET_BANDS_ALL, value: 0, index: 2,
+                                             length: UInt16(bandFrameSize * maxFrames)) {
+                var off = 0
+                while off + bandFrameSize <= d.count {
+                    if let f = RtaBandFrame.fromData(d, at: off, maxBands: bandSlots) { frames[f.channel] = f }
+                    off += bandFrameSize
+                }
+            }
+        } else {
+            let ch = want.channelMask.trailingZeroBitCount   // exactly one bit set here
+            if let d = transport.getControlRequest(request: REQ_RTA_GET_BANDS, value: UInt16(ch), index: 2,
+                                             length: UInt16(bandFrameSize)),
+               let f = RtaBandFrame.fromData(d, maxBands: bandSlots) {
+                frames[f.channel] = f
+            }
+        }
+
+        var bins: RtaBinFrame? = nil
+        if readBins {
+            bins = Self.readBinFrame(transport: transport, length: binFrameLength)
+        }
+        let binsReadAt = Date()
+
+        var status: RtaStatus? = nil
+        var applied: RtaConfig? = nil
+        if readStatus {
+            if let d = transport.getControlRequest(request: REQ_RTA_GET_STATUS, value: 0, index: 2,
+                                             length: UInt16(RTA_STATUS_SIZE)) {
+                status = RtaStatus.fromData(d)
+            }
+        }
+        if readConfig {
+            if let d = transport.getControlRequest(request: REQ_RTA_GET_CONFIG, value: 0, index: 2,
+                                             length: UInt16(RTA_CONFIG_SIZE)) {
+                applied = RtaConfig.fromData(d)
+            }
+        }
+
+        if let s = status {
+            lock.lock()
+            pollFrameInterval = Self.frameInterval(status: s, order: want.fftOrder)
+            lock.unlock()
+        }
+
+        // The device clamps `avgMs` and `peakDecayDBs` rather than refusing
+        // them, so compare only the fields it either takes or STALLs on.
+        var rejected: Bool? = nil
+        if let a = applied {
+            lock.lock()
+            // Anything that changed ownership mid-tick outranks this reading.
+            if epoch == stateEpoch {
+                if a.matches(own) {
+                    // Ours, or someone else's identical choice.
+                    following = nil
+                    confirmLocked(own, device: a)
+                    if want.tap == a.tap { want.avgMs = a.avgMs; want.peakDecayDBs = a.peakDecayDBs }
+                    rejected = false
+                } else if let f = following {
+                    // Firmware without the event: follow further changes in place.
+                    let a0 = RtaConfig(tap: a.tap, channelMask: a.channelMask, fftOrder: a.fftOrder)
+                    let f0 = RtaConfig(tap: f.config.tap, channelMask: f.config.channelMask,
+                                       fftOrder: f.config.fftOrder)
+                    if a0 != f0 { following = (a, 0) }
+                } else if everAgreed {
+                    // It held ours and now holds something else: another host
+                    // changed it, which is not a refusal.
+                    following = (a, 0)
+                    pushOutstanding = false
+                    rejected = false
+                } else if pushAttempts >= 3 {
+                    rejected = true
+                } else {
+                    // Not applied yet (the device applies a staged config from
+                    // its main loop) or genuinely refused; try again next tick.
+                    appliedConfig = nil
+                }
+            }
+            lock.unlock()
+        }
+
+        let tap = want.tap
+        // What the device reports it applied, when this tick read it back.
+        let avgMs = want.avgMs
+        // Merged here rather than on main so the render thread has the frame
+        // now; main only mirrors the result for SwiftUI.
+        renderLock.lock()
+        var s = render.snapshot
+        // A tap change invalidates every frame we were holding: the frames
+        // are indexed by channel, and channel 0 means a different thing on
+        // the other side of the matrix.
+        if s.tap != tap { s.frames = [:]; s.bins = nil }
+        s.tap = tap
+        let fresh = Self.silencingStale(frames, staleAfterMs: Self.staleAfterMs(render.refreshInterval))
+        for (ch, f) in fresh.frames { s.frames[ch] = f }
+        if var bins {
+            let zero = render.configuration.levelZero
+            bins.levelsDB = binAverage.add(bins, tap: tap, at: binsReadAt, avgMs: avgMs,
+                                           levelDB: { (Double($0) - zero) * RTA_LEVEL_STEP_DB })
+            bins.smoothedLevelsDB = binAverage.smoothedLevels
+            s.bins = bins
+        }
+        // Bins carry no age of their own, and the device keeps the last
+        // transform's bins just as it keeps the bands, so they go with
+        // their channel's frame.
+        if let held = s.bins, fresh.stale.contains(held.channel) {
+            s.bins = nil
+            binAverage.reset()
+        }
+        if let status { s.status = status }
+        adoptRenderSnapshotLocked(s)
+        renderLock.unlock()
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.replaceSnapshot(s)
+            if let rejected, rejected != self.configRejected { self.configRejected = rejected }
+            self.publishSharing()
+        }
+    }
+
+    // MARK: Publishing
+
+    /// Adopt a new snapshot.  Main thread only.
+    ///
+    /// Only the display state and the telemetry reach SwiftUI, each only when
+    /// it changes.  The feed advances when something a display draws changed;
+    /// a frame whose age or sequence number alone moved has not.
+    private func replaceSnapshot(_ s: RtaSnapshot) {
+        let old = snapshot
+        guard s != old else { return }
+        snapshot = s
+        if Self.drawsDifferently(s, old) { frameFeed.advance() }
+        if telemetry.status != s.status { telemetry.status = s.status }
+        let d = RtaDisplayState(s)
+        if d != display { display = d }
+    }
+
+    /// Empty the snapshot and the bin average on both sides.  Main thread only.
+    private func clearSnapshot() {
+        renderLock.lock()
+        binAverage.reset()
+        adoptRenderSnapshotLocked(RtaSnapshot())
+        renderLock.unlock()
+        replaceSnapshot(RtaSnapshot())
+    }
+
+    /// The render-side half of `replaceSnapshot`.  Caller holds `renderLock`.
+    private func adoptRenderSnapshotLocked(_ s: RtaSnapshot) {
+        let old = render.snapshot
+        guard s != old else { return }
+        render.snapshot = s
+        let d = RtaDisplayState(s)
+        render.configuration.tap = d.tap
+        render.configuration.sampleRateHz = d.sampleRateHz
+        render.configuration.firstResolvedBand = d.firstResolvedBand
+        render.configuration.bandCount = d.bandCount
+        render.refreshInterval = Self.channelRefreshInterval(
+            status: s.status, fftOrder: UInt8(clamping: render.configuration.fftOrder))
+        if Self.drawsDifferently(s, old) { render.version &+= 1 }
+    }
+
+    /// Hand the render thread the parts of `RtaDisplayConfiguration` that come
+    /// from the caps and the options rather than the frames.  Main thread only.
+    private func publishRenderConfiguration() {
+        let centres = bandCentresHz
+        let fftOrder = options.fftOrder
+        let bassBands = Int(caps.bassBands)
+        let levelZero = caps.levelZero == 0 ? Double(RTA_LEVEL_ZERO_DBFS) : Double(caps.levelZero)
+        renderLock.lock()
+        render.configuration.centres = centres
+        render.configuration.fftOrder = Int(fftOrder)
+        render.configuration.bassBands = bassBands
+        render.configuration.levelZero = levelZero
+        render.refreshInterval = Self.channelRefreshInterval(status: render.snapshot.status, fftOrder: fftOrder)
+        render.version &+= 1
+        renderLock.unlock()
+    }
+
+    /// Whether two snapshots draw different pictures.  Sequence numbers and
+    /// ages alone do not count.
+    static func drawsDifferently(_ a: RtaSnapshot, _ b: RtaSnapshot) -> Bool {
+        a.tap != b.tap || a.status != b.status
+            || a.bins?.displayFrame != b.bins?.displayFrame || !drawsSame(a.frames, b.frames)
+    }
+
+    /// Whether two sets of band frames draw the same picture.
+    static func drawsSame(_ a: [UInt8: RtaBandFrame], _ b: [UInt8: RtaBandFrame]) -> Bool {
+        guard a.count == b.count else { return false }
+        return a.allSatisfy { ch, f in b[ch].map { $0.displayFrame == f.displayFrame } ?? false }
+    }
+
+    // MARK: Stopped streams
+
+    /// How old a channel's frame may get before it is shown as silence: a few
+    /// refresh intervals, so a slow rotation through many channels is not
+    /// mistaken for a stopped stream.
+    private static func staleAfterMs(_ refreshInterval: TimeInterval) -> Double {
+        max(500, refreshInterval * 4000)
+    }
+
+    /// Frames with any that have stopped updating replaced by silence.
+    ///
+    /// The device only publishes when a channel's capture fills, and it only
+    /// captures while audio blocks arrive.  When the host stops streaming (it
+    /// switched output to another device, say), each channel keeps reporting
+    /// the last levels it published, part way down a fade, forever.  Its age
+    /// keeps growing, which is the one sign of it the wire carries.
+    static func silencingStale(_ frames: [UInt8: RtaBandFrame],
+                               staleAfterMs: Double) -> (frames: [UInt8: RtaBandFrame], stale: Set<UInt8>) {
+        var out = frames
+        var stale = Set<UInt8>()
+        for (ch, frame) in frames where frame.hasData && Double(frame.ageMs) > staleAfterMs {
+            var silent = frame
+            silent.avg = Array(repeating: 0, count: frame.avg.count)
+            silent.peak = Array(repeating: 0, count: frame.peak.count)
+            out[ch] = silent
+            stale.insert(ch)
+        }
+        return (out, stale)
+    }
+
+    // MARK: Reads that need more than one transfer
+
+    /// Reads the published bin frame and validates it.
+    ///
+    /// `wValue` is a byte offset into the frame, so a transport that cannot
+    /// carry the whole thing reads it in chunks; USB manages it in one, and a
+    /// short answer here is picked up from where it stopped.  The frame is
+    /// published without a lock and carries its sequence number in the header
+    /// and again as its last byte, so a disagreement means the engine
+    /// republished mid-read: read it again rather than draw half of each.
+    private static func readBinFrame(transport: any DeviceTransport, length: Int) -> RtaBinFrame? {
+        for _ in 0..<2 {
+            var frame = Data()
+            while frame.count < length {
+                guard let chunk = transport.getControlRequest(request: REQ_RTA_GET_BINS,
+                                                        value: UInt16(frame.count), index: 2,
+                                                        length: UInt16(length - frame.count)),
+                      !chunk.isEmpty else { break }
+                frame.append(chunk)
+                // A complete frame is shorter than the ceiling at every size
+                // below the largest, so stop once the header's own length is in.
+                if let n = binFrameLength(of: frame), frame.count >= n { break }
+            }
+            if let f = RtaBinFrame.fromData(frame) { return f }
+        }
+        return nil
+    }
+
+    /// Total frame length from a header that has arrived, or nil while it has
+    /// not: 16 header bytes, one byte per bin, and the repeated sequence byte.
+    private static func binFrameLength(of d: Data) -> Int? {
+        guard d.count >= RTA_BIN_HEADER_SIZE else { return nil }
+        let b = [UInt8](d.prefix(RTA_BIN_HEADER_SIZE))
+        let nBins = Int(UInt16(b[8]) | (UInt16(b[9]) << 8))
+        return nBins > 0 ? RTA_BIN_HEADER_SIZE + nBins + 1 : nil
+    }
+
+    /// How long one channel waits between frames, from the device's own frame
+    /// rate where it has one and from the configured size otherwise.
+    private static func frameInterval(status: RtaStatus, order: UInt8) -> TimeInterval {
+        if status.framesPerSecond > 0 {
+            return Double(max(Int(status.liveCount), 1)) / Double(status.framesPerSecond)
+        }
+        let rate = status.sampleRateHz > 0 ? Double(status.sampleRateHz) : 48000
+        return Double(1 << Int(order)) / rate * Double(max(Int(status.liveCount), 1))
+    }
+
+    // MARK: Level conversion
+
+    /// dBFS of one wire level byte.  The zero point comes from the caps so it
+    /// is never hard-coded at the point of use.
+    func levelDB(_ v: UInt8) -> Double {
+        let zero = caps.levelZero != 0 ? Double(caps.levelZero) : Double(RTA_LEVEL_ZERO_DBFS)
+        return (Double(v) - zero) * RTA_LEVEL_STEP_DB
+    }
+
+    /// The lowest level the wire can express, which is also what an empty band
+    /// and a silent channel both read.
+    var floorDB: Double { levelDB(0) }
+}
