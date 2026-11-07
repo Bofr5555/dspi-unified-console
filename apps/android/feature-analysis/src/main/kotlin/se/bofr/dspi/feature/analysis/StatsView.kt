@@ -2,7 +2,9 @@
 // StarvationTimerRow, StarvationIntervalRow, BufferFillRow,
 // BufferFillSparkline, SystemInfoRow, StatRow), reading the bridge's
 // StatsController (2 s counters, 60 ms buffer fills) and its fetch* calls the
-// way DSPi-Console-Linux:qt/qml/StatsWindow.qml @ 4683a2c does.
+// way DSPi-Console-Linux:qt/qml/StatsWindow.qml @ 4683a2c does. Output ring
+// health and the ring-scaled fills follow the reference's StatsView.swift
+// through the core's fetchRingHealth and fetchOutputFills (AN25).
 // Deviations (docs/UPSTREAM-DEVIATIONS.md, ANALYSIS): one column on phones.
 package se.bofr.dspi.feature.analysis
 
@@ -47,6 +49,9 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -64,6 +69,8 @@ import se.bofr.dspi.core.BufferStats
 import se.bofr.dspi.core.DspiConstants
 import se.bofr.dspi.core.InputLockStatus
 import se.bofr.dspi.core.LgStatus
+import se.bofr.dspi.core.OutputFill
+import se.bofr.dspi.core.RingHealth
 import se.bofr.dspi.core.SpdifRxStatus
 import se.bofr.dspi.ui.Caption
 import se.bofr.dspi.ui.ChannelPalette
@@ -97,12 +104,20 @@ data class StatsUiState(
     val adat: AdatOutStatus?,
     /** Shown only while the device is the I2S clock slave. */
     val i2sSlave: InputLockStatus?,
+    /** Output ring health; null hides the section. */
+    val ringHealth: RingHealth?,
     /** Trace colours: S/PDIF slot i takes its pair's left output colour, PDM the sub's. */
     val slotColors: List<Color>,
     val pdmColor: Color
 ) {
     val hasInterfaceSections: Boolean get() = spdifRx != null || lg != null || adat != null || i2sSlave != null
 }
+
+/** The section's title. */
+const val RING_HEALTH_LABEL = "OUTPUT RING HEALTH"
+
+/** The test tag of [series]' fill figure, which says its band in its state description. */
+fun statsFillTag(series: Int): String = "stats-fill-$series"
 
 @Composable
 fun StatsView(bridge: DspiBridge, modifier: Modifier = Modifier) {
@@ -111,6 +126,7 @@ fun StatsView(bridge: DspiBridge, modifier: Modifier = Modifier) {
     val bridgeState by bridge.state.collectAsState()
     val info by stats.info.collectAsState()
     val reconnects by stats.reconnects.collectAsState()
+    val ringHealth by stats.ringHealth.collectAsState()
     val connected = bridgeStatus.connected
     var visible by remember { mutableStateOf(false) }
     WhileVisible(key = stats, onShow = {
@@ -142,7 +158,7 @@ fun StatsView(bridge: DspiBridge, modifier: Modifier = Modifier) {
     LaunchedEffect(history) {
         stats.buffers.collect { b ->
             if (b != null) {
-                history.append(b)
+                history.append(b, stats.outputFills.value)
                 historyTick.longValue++
             }
         }
@@ -196,10 +212,19 @@ fun StatsView(bridge: DspiBridge, modifier: Modifier = Modifier) {
             lg = lg,
             adat = adat,
             i2sSlave = i2s,
+            ringHealth = ringHealth,
             slotColors = List(4) { i -> channelColorOf(bridge, 2 + i * 2) },
             pdmColor = channelColorOf(bridge, 1 + outputs)
         )
-    StatsContent(state, stats.buffers, history, historyTick, onResetWatermarks = { stats.resetWatermarks() }, modifier = modifier)
+    StatsContent(
+        state,
+        stats.buffers,
+        stats.outputFills,
+        history,
+        historyTick,
+        onResetWatermarks = { stats.resetWatermarks() },
+        modifier = modifier
+    )
 }
 
 private fun channelColorOf(bridge: DspiBridge, app: Int): Color =
@@ -209,6 +234,7 @@ private fun channelColorOf(bridge: DspiBridge, app: Int): Color =
 fun StatsContent(
     state: StatsUiState,
     buffers: StateFlow<BufferStats?>,
+    outputFills: StateFlow<List<OutputFill>>,
     history: BufferFillHistory,
     historyTick: LongState,
     onResetWatermarks: () -> Unit,
@@ -228,7 +254,7 @@ fun StatsContent(
                     Column(Modifier.weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         StarvationSection(state, buffers)
                         HorizontalDivider()
-                        BufferFillSection(state, buffers, history, historyTick, onResetWatermarks)
+                        BufferFillSection(state, buffers, outputFills, history, historyTick, onResetWatermarks)
                     }
                     if (state.hasInterfaceSections) {
                         VerticalDivider()
@@ -246,7 +272,7 @@ fun StatsContent(
                     HorizontalDivider()
                     StarvationSection(state, buffers)
                     HorizontalDivider()
-                    BufferFillSection(state, buffers, history, historyTick, onResetWatermarks)
+                    BufferFillSection(state, buffers, outputFills, history, historyTick, onResetWatermarks)
                     if (state.hasInterfaceSections) {
                         HorizontalDivider()
                         InterfaceSections(state)
@@ -290,17 +316,38 @@ private fun DeviceAndPipeline(state: StatsUiState) {
     SectionLabel("AUDIO OUTPUT")
     StatRow("USB Ring", "ISR → Main Loop", c.count(DspiConstants.STAT_USB_RING_OVERRUNS), null)
     StatRow("Buffer Pool", "USB → DMA", c.count(DspiConstants.STAT_SPDIF_OVERRUNS), c.count(DspiConstants.STAT_SPDIF_UNDERRUNS))
+    state.ringHealth?.let { health ->
+        HorizontalDivider()
+        RingHealthSection(health)
+    }
     HorizontalDivider()
     SectionLabel("PDM (SUBWOOFER)")
     StatRow("Ring Buffer", "Core 0 → Core 1", c.count(DspiConstants.STAT_PDM_RING_OVERRUNS), c.count(DspiConstants.STAT_PDM_RING_UNDERRUNS))
     StatRow("DMA Buffer", "Core 1 → PIO", c.count(DspiConstants.STAT_PDM_DMA_OVERRUNS), c.count(DspiConstants.STAT_PDM_DMA_UNDERRUNS))
 }
 
+/** Swift `ringHealthSection`. */
 @Composable
-private fun SystemInfoRow(title: String, value: String) {
+private fun RingHealthSection(health: RingHealth) {
+    SectionLabel(RING_HEALTH_LABEL)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        SystemInfoRow("Fill Target", ringTargetText(health))
+        SystemInfoRow("Underrun Episodes", "${health.underrunEpisodes}", alarmIf(health.underrunEpisodes, MacColors.red))
+        SystemInfoRow("Refused Blocks", "${health.refusedBlocks}", alarmIf(health.refusedBlocks, MacColors.orange))
+        SystemInfoRow("Lowest Fill", ringLowestFillText(health))
+        SystemInfoRow("Worst Input Gap", ringGapText(health.worstInputGapUs))
+        SystemInfoRow("Worst USB Gap", ringGapText(health.worstUsbGapUs))
+        SystemInfoRow("Over-Budget Steps", "${health.overBudgetSteps}", alarmIf(health.overBudgetSteps, MacColors.orange))
+    }
+}
+
+private fun alarmIf(count: Long, alarm: Color): Color = if (count > 0) alarm else Color.Unspecified
+
+@Composable
+private fun SystemInfoRow(title: String, value: String, valueColor: Color = Color.Unspecified) {
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(title, Modifier.weight(1f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
-        Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, color = valueColor)
     }
 }
 
@@ -421,11 +468,13 @@ private fun TimerRow(label: String, value: String) {
 private fun BufferFillSection(
     state: StatsUiState,
     buffers: StateFlow<BufferStats?>,
+    outputFills: StateFlow<List<OutputFill>>,
     history: BufferFillHistory,
     historyTick: LongState,
     onResetWatermarks: () -> Unit
 ) {
     val b by buffers.collectAsState()
+    val fills by outputFills.collectAsState()
     Row(verticalAlignment = Alignment.CenterVertically) {
         SectionLabel("BUFFER FILL LEVELS", Modifier.weight(1f))
         OutlinedButton(onClick = onResetWatermarks, enabled = writeEnabled(state.connected)) { Text("Reset Watermarks", fontSize = 12.sp) }
@@ -439,13 +488,13 @@ private fun BufferFillSection(
     val stats = b ?: return
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         for (i in 0 until minOf(stats.numSpdif, 4)) {
-            val s = stats.spdif[i]
+            val r = outputFillReading(stats.spdif.getOrNull(i), fills.getOrNull(i))
             BufferFillRow(
                 title = bufferSlotTitle(i, state.outputSlotTypes.getOrElse(i) { 0 }),
-                fillPct = s.fillPct,
-                minPct = s.minPct,
-                maxPct = s.maxPct,
-                thresholds = BufferFillThresholds.SPDIF,
+                fillPct = r.wholePct,
+                minPct = r.minPct,
+                maxPct = r.maxPct,
+                health = r.health,
                 color = state.slotColors[i],
                 hollow = false,
                 history = history,
@@ -455,11 +504,13 @@ private fun BufferFillSection(
         }
         if (stats.pdmActive) {
             BufferFillRow(
-                "PDM DMA", stats.pdm.dmaFillPct, stats.pdm.dmaMinPct, stats.pdm.dmaMaxPct, BufferFillThresholds.PDM_DMA,
+                "PDM DMA", stats.pdm.dmaFillPct, stats.pdm.dmaMinPct, stats.pdm.dmaMaxPct,
+                BufferFillThresholds.PDM_DMA.health(stats.pdm.dmaFillPct.coerceIn(0, 100)),
                 state.pdmColor, false, history, BufferFillHistory.PDM_DMA_SERIES, historyTick
             )
             BufferFillRow(
-                "PDM Ring", stats.pdm.ringFillPct, stats.pdm.ringMinPct, stats.pdm.ringMaxPct, BufferFillThresholds.PDM_RING,
+                "PDM Ring", stats.pdm.ringFillPct, stats.pdm.ringMinPct, stats.pdm.ringMaxPct,
+                BufferFillThresholds.PDM_RING.health(stats.pdm.ringFillPct.coerceIn(0, 100)),
                 state.pdmColor, true, history, BufferFillHistory.PDM_RING_SERIES, historyTick
             )
         }
@@ -478,7 +529,7 @@ private fun BufferFillRow(
     fillPct: Int,
     minPct: Int,
     maxPct: Int,
-    thresholds: BufferFillThresholds,
+    health: FillHealth,
     color: Color,
     hollow: Boolean,
     history: BufferFillHistory,
@@ -507,11 +558,14 @@ private fun BufferFillRow(
             Text(watermarkText(minPct, maxPct), fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = secondaryText())
             Text(
                 "$fillPct%",
-                Modifier.width(44.dp),
+                Modifier
+                    .width(44.dp)
+                    .testTag(statsFillTag(series))
+                    .semantics { stateDescription = health.label },
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
-                color = thresholds.health(fillPct.coerceIn(0, 100)).color(),
+                color = health.color(),
                 textAlign = TextAlign.End
             )
         }

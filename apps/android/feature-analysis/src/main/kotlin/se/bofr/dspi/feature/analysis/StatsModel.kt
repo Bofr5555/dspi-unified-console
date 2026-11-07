@@ -7,10 +7,15 @@
 package se.bofr.dspi.feature.analysis
 
 import java.util.Locale
+import kotlin.math.roundToInt
 import se.bofr.dspi.core.AdatOutStatus
 import se.bofr.dspi.core.DspiConstants
+import se.bofr.dspi.core.FillBand
 import se.bofr.dspi.core.InputLockStatus
 import se.bofr.dspi.core.LgStatus
+import se.bofr.dspi.core.OutputFill
+import se.bofr.dspi.core.RingHealth
+import se.bofr.dspi.core.SpdifBufferStats
 import se.bofr.dspi.core.SpdifRxStatus
 
 /** "-" for a value the device has not given (Swift's dash). */
@@ -42,6 +47,55 @@ fun statsFormatElapsed(seconds: Long): String {
 
 /** The three colours a buffer fill can be (Swift `.green/.yellow/.red`). */
 enum class FillHealth { GREEN, YELLOW, RED }
+
+/** Said for a fill's colour to anything that cannot see it. */
+val FillHealth.label: String
+    get() = when (this) {
+        FillHealth.GREEN -> "Good"
+        FillHealth.YELLOW -> "Warning"
+        FillHealth.RED -> "Bad"
+    }
+
+/** The core's judgement of a fill, which is around the live target where there is one. */
+fun FillBand.health(): FillHealth = when (this) {
+    FillBand.GOOD -> FillHealth.GREEN
+    FillBand.WARN -> FillHealth.YELLOW
+    FillBand.BAD -> FillHealth.RED
+}
+
+/** What an output's row shows. */
+data class OutputFillReading(val fillPct: Double, val minPct: Int, val maxPct: Int, val health: FillHealth) {
+    /** Swift `BufferFillRow`'s `Int(fillPct.rounded())`. */
+    val wholePct: Int get() = if (fillPct.isFinite()) fillPct.roundToInt() else 0
+}
+
+/**
+ * An output's row: the core's [fill] where it has one, on the ring's scale and
+ * judged by the live target. Before the first read of it, the slot's own
+ * figures and the fixed bands.
+ */
+fun outputFillReading(slot: SpdifBufferStats?, fill: OutputFill?): OutputFillReading = when {
+    fill != null -> OutputFillReading(fill.fillPct, fill.minPct, fill.maxPct, fill.band.health())
+    slot != null -> OutputFillReading(
+        slot.fillPct.toDouble(),
+        slot.minPct,
+        slot.maxPct,
+        BufferFillThresholds.SPDIF.health(slot.fillPct.coerceIn(0, 100))
+    )
+    else -> OutputFillReading(0.0, 0, 0, BufferFillThresholds.SPDIF.health(0))
+}
+
+/** Swift `formatLatencyMs`. */
+fun ringLatencyText(us: Int): String = if (us % 1000 == 0) "${us / 1000} ms" else cFixed(us / 1000.0, 2) + " ms"
+
+/** Swift `formatGapUs`: microseconds below 10 ms, milliseconds above. */
+fun ringGapText(us: Long): String = if (us < 10_000) "$us µs" else cFixed(us / 1000.0, 1) + " ms"
+
+/** Fill Target row of OUTPUT RING HEALTH. */
+fun ringTargetText(h: RingHealth): String = "${h.targetFrames} frames (${ringLatencyText(h.targetUs)})"
+
+/** Lowest Fill row of OUTPUT RING HEALTH: a dash before the first write. */
+fun ringLowestFillText(h: RingHealth): String = h.lowestFill?.let { "$it frames" } ?: STATS_DASH
 
 /** Swift `BufferFillThresholds`. */
 enum class BufferFillThresholds {
@@ -80,11 +134,17 @@ class BufferFillHistory {
     var total: Int = 0
         private set
 
-    fun append(stats: se.bofr.dspi.core.BufferStats) {
+    /** One sample; the outputs' traces take [fills], on the ring's scale, where there are any. */
+    fun append(stats: se.bofr.dspi.core.BufferStats, fills: List<OutputFill> = emptyList()) {
         val slot = total % CAPACITY
         val spdifCount = minOf(stats.numSpdif, 4)
         for (i in 0 until 4) {
-            rings[i][slot] = if (i < spdifCount) minOf(100, stats.spdif.getOrNull(i)?.fillPct ?: 0).toFloat() else ABSENT
+            rings[i][slot] =
+                if (i < spdifCount) {
+                    minOf(100f, outputFillReading(stats.spdif.getOrNull(i), fills.getOrNull(i)).fillPct.toFloat())
+                } else {
+                    ABSENT
+                }
         }
         rings[PDM_DMA_SERIES][slot] = if (stats.pdmActive) stats.pdm.dmaFillPct.toFloat() else ABSENT
         rings[PDM_RING_SERIES][slot] = if (stats.pdmActive) stats.pdm.ringFillPct.toFloat() else ABSENT

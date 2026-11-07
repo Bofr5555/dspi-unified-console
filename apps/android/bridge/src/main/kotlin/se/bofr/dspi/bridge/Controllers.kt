@@ -2,6 +2,8 @@ package se.bofr.dspi.bridge
 
 import kotlinx.coroutines.flow.StateFlow
 import se.bofr.dspi.core.BufferStats
+import se.bofr.dspi.core.OutputFill
+import se.bofr.dspi.core.RingHealth
 import se.bofr.dspi.core.RtaCapsInfo
 import se.bofr.dspi.core.RtaSnapshot
 import se.bofr.dspi.core.SiggenCaps
@@ -93,6 +95,20 @@ interface StatsController {
      */
     val info: StateFlow<Map<Int, Long>>
     val buffers: StateFlow<BufferStats?>
+
+    /**
+     * Output ring health, refreshed slowly while watching. Null on firmware
+     * without it or before the first read: show no section. A failed read keeps
+     * the last values.
+     */
+    val ringHealth: StateFlow<RingHealth?>
+
+    /**
+     * The live outputs' fills on the ring's scale, judged by the live target,
+     * refreshed with [buffers] and updated just before it. Empty before the
+     * first read. A failed read keeps the last values.
+     */
+    val outputFills: StateFlow<List<OutputFill>>
     val reconnects: StateFlow<Int>
 
     /** Ungated (D1). */
