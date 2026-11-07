@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QTimer>
@@ -51,6 +52,35 @@ QString execArgument(const QString &path) {
     return quoted;
 }
 
+// -- WP QD13b -- The first argument of an Exec value, as execArgument's reverse:
+// the string value's escapes, then quoting, then %%
+QString execProgram(const QString &value) {
+    QString unescaped;
+    for (int i = 0; i < value.size(); i++) {
+        if (value[i] != QLatin1Char('\\') || i + 1 == value.size()) { unescaped += value[i]; continue; }
+        const QChar next = value[++i];
+        unescaped += next == QLatin1Char('s') ? QChar(u' ') : next == QLatin1Char('n') ? QChar(u'\n')
+                   : next == QLatin1Char('t') ? QChar(u'\t') : next == QLatin1Char('r') ? QChar(u'\r') : next;
+    }
+    const QString line = unescaped.trimmed();
+    QString arg;
+    if (line.startsWith(QLatin1Char('"'))) {
+        for (int i = 1; i < line.size() && line[i] != QLatin1Char('"'); i++) {
+            if (line[i] == QLatin1Char('\\') && i + 1 < line.size()) i++;
+            arg += line[i];
+        }
+    } else {
+        arg = line.section(QLatin1Char(' '), 0, 0);
+    }
+    arg.replace(QStringLiteral("%%"), QStringLiteral("%"));
+    // A bare name, as a desktop's own startup tool writes it
+    if (!arg.isEmpty() && !arg.contains(QLatin1Char('/'))) {
+        const QString found = QStandardPaths::findExecutable(arg);
+        if (!found.isEmpty()) return found;
+    }
+    return arg;
+}
+
 class XdgLoginItem : public LoginItem
 {
 public:
@@ -81,6 +111,8 @@ public:
     bool matches(const QString &program) const override {
         return isOn() && key("Exec") == execArgument(program);
     }
+
+    QString program() const override { return QFile::exists(file()) ? execProgram(key("Exec")) : QString(); }
 
     QString set(bool on, const QString &program) override {
         if (!on) {
@@ -125,6 +157,14 @@ public:
 
     bool matches(const QString &program) const override {
         return m_key->value(QLatin1String(kRunName)).toString() == runCommand(program);
+    }
+
+    // -- WP QD13b -- "path" args, or an unquoted path: up to .exe, else the first space
+    QString program() const override {
+        const QString value = m_key->value(QLatin1String(kRunName)).toString().trimmed();
+        if (value.startsWith(QLatin1Char('"'))) return value.mid(1).section(QLatin1Char('"'), 0, 0);
+        const int exe = value.indexOf(QLatin1String(".exe"), 0, Qt::CaseInsensitive);
+        return exe >= 0 ? value.left(exe + 4) : value.section(QLatin1Char(' '), 0, 0);
     }
 
     QString set(bool on, const QString &program) override {
@@ -325,8 +365,22 @@ QString SystemIntegration::programPath() {
 void SystemIntegration::setLoginItem(std::unique_ptr<LoginItem> item) {
     m_login = std::move(item);
     m_loginError.clear();
-    // On, but for a program that moved (an AppImage, an update to another folder)
-    if (m_login && m_login->isOn() && !m_login->matches(programPath())) m_loginError = m_login->set(true, programPath());
+    m_loginOther.clear();
+    // -- WP QD13b -- On, but for another program. Repointed here only when that one is
+    // gone (an AppImage moved, an old folder removed): an entry that starts nothing
+    // helps nobody. Another copy that is still there is the user's choice, and stays.
+    if (m_login && m_login->isOn() && !m_login->matches(programPath())) {
+        const QString recorded = m_login->program();
+        if (recorded.isEmpty() || !QFileInfo(recorded).isFile()) m_loginError = m_login->set(true, programPath());
+        else m_loginOther = recorded;
+    }
+    emit loginChanged();
+}
+
+void SystemIntegration::pointLoginHere() {
+    if (!m_login) return;
+    m_loginError = m_login->set(true, programPath());
+    if (m_loginError.isEmpty()) m_loginOther.clear();
     emit loginChanged();
 }
 
@@ -335,6 +389,7 @@ bool SystemIntegration::openAtLogin() const { return m_login && m_login->isOn();
 void SystemIntegration::setOpenAtLogin(bool on) {
     if (!m_login) return;
     m_loginError = m_login->set(on, programPath());
+    if (m_loginError.isEmpty()) m_loginOther.clear();
     emit loginChanged();
 }
 

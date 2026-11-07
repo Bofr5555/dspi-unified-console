@@ -11,7 +11,9 @@
 #include "LinkController.h"
 #include "LinkFakeHub.h"
 
+#include <QCoreApplication>
 #include <QJsonDocument>
+#include <QKeyEvent>
 #include <QJsonObject>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -140,6 +142,30 @@ void SmokeDriver::testDevices() {
     QQuickItem *pairButton = in(dialog, QStringLiteral("pairingPair"));
     QQuickItem *pinError = in(dialog, QStringLiteral("pairingError"));
     check("QD9: Pair is off until a PIN is typed", pairButton && !pairButton->isEnabled());
+    // -- WP QD13b -- (review c4q N1) Six digits or nothing: a typo costs no try
+    if (pinField && pairButton) {
+        const auto typeKeys = [&](const QString &keys) {
+            for (const QChar c : keys) {
+                const int key = c == QLatin1Char(' ') ? int(Qt::Key_Space) : int(c.toUpper().unicode());
+                QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier, QString(c));
+                QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier, QString(c));
+                QCoreApplication::sendEvent(pinField, &press);
+                QCoreApplication::sendEvent(pinField, &release);
+            }
+        };
+        pinField->forceActiveFocus();
+        typeKeys(QStringLiteral("a1 2-345x67"));
+        check("QD13b: the PIN field takes six digits and nothing else", pinField->property("text").toString() == QLatin1String("123456")
+              && pairButton->isEnabled());
+        printf("smoke: QD13b typed into the PIN field: '%s'\n", qPrintable(pinField->property("text").toString()));
+        const QString before = link->errorCode();
+        for (const char *bad : { "12345", "12345a", "12 456", "" }) {
+            pinField->setProperty("text", QString::fromLatin1(bad));
+            QMetaObject::invokeMethod(dialog, "submit");
+            check("QD13b: Pair is off, and a submit sends nothing, for a PIN that is not six digits",
+                  !pairButton->isEnabled() && !link->busy() && link->errorCode() == before && phaseIs("needs_pairing"));
+        }
+    }
     if (pinField) pinField->setProperty("text", QStringLiteral("000000"));
     check("QD9: Pair sends it", click(pairButton));
     check("QD9: wrong PIN", settled() && link->errorCode() == QLatin1String("wrong_pin"));

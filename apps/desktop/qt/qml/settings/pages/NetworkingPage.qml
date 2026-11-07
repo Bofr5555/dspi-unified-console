@@ -363,8 +363,19 @@ SettingsPage {
             objectName: "networkingOpenAtLogin"
             visible: system.loginSupported
             title: "Open at login"
+            // -- WP QD13b -- An entry another copy of the app made stays that copy's
+            detail: system.loginOtherProgram !== "" ? "Opens another copy: " + system.loginOtherProgram : ""
             checked: system.openAtLogin
             onToggled: system.openAtLogin = checked
+        }
+        // -- WP QD13b --
+        SettingsButtonRow {
+            objectName: "networkingLoginHere"
+            visible: system.loginSupported && system.loginOtherProgram !== ""
+            title: "Open this copy at login instead"
+            detail: system.thisProgram
+            buttonText: "Use This Copy"
+            onClicked: system.pointLoginHere()
         }
         SettingsSwitchRow {
             objectName: "networkingKeepAwake"
