@@ -230,7 +230,7 @@ sudo pacman -S cmake qt5-base qt5-declarative qt5-quickcontrols2 qt5-svg qt5-way
 Then, from the repository root:
 
 ```
-cargo build --release -p dspi-capi --features link,midir,mdns            # Rust core and crates/dspi-capi/include/dspi_core.h
+cargo build --release -p dspi-capi --features link,midir,mdns,hub            # Rust core and crates/dspi-capi/include/dspi_core.h
 cmake -S apps/desktop/qt -B apps/desktop/qt/build -DCMAKE_BUILD_TYPE=Release
 cmake --build apps/desktop/qt/build -j"$(nproc)"
 ./apps/desktop/qt/build/DSPiConsole           # with no DSPi, Open Demo offers a simulated one; --demo starts on it

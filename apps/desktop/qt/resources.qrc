@@ -155,6 +155,8 @@
         <file>qml/settings/pages/ChannelGroupsPage.qml</file>
         <file>qml/settings/pages/MacrosPage.qml</file>
         <file>qml/settings/pages/AuxOutputsPage.qml</file>
+        <!-- WP QD14 -->
+        <file>qml/settings/pages/NetworkingPage.qml</file>
         <file>qml/components/CascadeMenu.qml</file>
         <file>qml/settings/cs/CsApplyRow.qml</file>
         <file>qml/settings/cs/CsBadge.qml</file>

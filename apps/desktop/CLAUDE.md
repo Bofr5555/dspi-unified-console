@@ -13,7 +13,7 @@ From the repository root (toolchains run in containers: `ci/check.sh --step qt`,
 `--step qt-offscreen`, see the root `README.md`):
 
 ```
-cargo build --release -p dspi-capi --features link,midir,mdns         # target/release/libdspi_capi.a, crates/dspi-capi/include/dspi_core.h
+cargo build --release -p dspi-capi --features link,midir,mdns,hub         # target/release/libdspi_capi.a, crates/dspi-capi/include/dspi_core.h
 cmake -S apps/desktop/qt -B apps/desktop/qt/build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build apps/desktop/qt/build
 QT_FORCE_STDERR_LOGGING=1 apps/desktop/qt/build/DSPiConsole          # --demo: the simulated device
