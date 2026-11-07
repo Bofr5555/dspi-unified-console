@@ -18,6 +18,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::Widget;
 
 use crate::theme::{ColorDepth, Glyphs, Theme};
+use crate::widgets::text::truncate;
 
 /// How strongly the grid is drawn: the Console's Grid Opacity slider
 /// (0..200 %, `DSPi_ConsoleApp.swift:1864-1869`) in the three steps a
@@ -163,6 +164,22 @@ pub struct GraphCurve {
     pub selected: bool,
 }
 
+/// The live spectrum behind the response curves
+/// (`GraphSpectrumOverlay.swift`). The two pictures share only the frequency
+/// axis: the response is relative dB about zero and the spectrum is absolute
+/// dBFS, so the spectrum has its own vertical mapping, the analyser's floor at
+/// the bottom of the plot and its ceiling at the top. A cell has no opacity,
+/// so it is drawn dim, under the curves. The readout does not name it.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SpectrumOverlay {
+    pub floor_db: f64,
+    pub ceiling_db: f64,
+    /// dBFS at `dsp::frequencies()`, NaN outside what was measured.
+    pub curves: Vec<GraphCurve>,
+    /// Why the picture is not this console's own, top right of the plot.
+    pub note: Option<String>,
+}
+
 /// Interpolate a 201-point log-spaced curve at any frequency.
 pub fn value_at(points: &[f64], hz: f64) -> f64 {
     if points.is_empty() {
@@ -188,6 +205,8 @@ pub struct Graph<'a> {
     pub marker_hz: Option<f64>,
     /// Draw the plot with the accent border colour.
     pub focused: bool,
+    /// The live spectrum to draw behind the curves.
+    pub spectrum: Option<&'a SpectrumOverlay>,
 }
 
 impl<'a> Graph<'a> {
@@ -199,7 +218,12 @@ impl<'a> Graph<'a> {
             cursor: None,
             marker_hz: None,
             focused: false,
+            spectrum: None,
         }
+    }
+    pub fn spectrum(mut self, overlay: Option<&'a SpectrumOverlay>) -> Self {
+        self.spectrum = overlay;
+        self
     }
     pub fn cursor(mut self, hz: Option<f64>) -> Self {
         self.cursor = hz;
@@ -375,6 +399,25 @@ impl Widget for Graph<'_> {
             }
         }
 
+        // The live spectrum over the grid and under everything else, on its
+        // own dBFS axis.
+        if let Some(o) = self.spectrum {
+            let (floor, range) = (o.floor_db, (o.ceiling_db - o.floor_db).max(1.0));
+            let to_row = |db: f64, rows: f64| -> f64 {
+                (1.0 - ((db - floor) / range).clamp(0.0, 1.0)) * (rows - 1.0)
+            };
+            for c in &o.curves {
+                let sample = |frac: f64| -> f64 { value_at(&c.magnitude, s.hz_at(frac)) };
+                let style = if t.depth == ColorDepth::Mono {
+                    Style::default()
+                } else {
+                    Style::default().fg(c.color)
+                };
+                let style = style.add_modifier(Modifier::DIM);
+                draw_curve(plot, buf, t, &sample, &to_row, false, style);
+            }
+        }
+
         // Band marker and cursor.
         if let Some(hz) = self.marker_hz
             && let Some(x) = x_of(hz)
@@ -407,6 +450,8 @@ impl Widget for Graph<'_> {
             } else {
                 Style::default().fg(c.color)
             };
+            // A cell the spectrum drew keeps its dimness otherwise.
+            let style = style.remove_modifier(Modifier::DIM);
             draw_curve(plot, buf, t, &sample, &to_row, false, style);
         }
 
@@ -451,6 +496,12 @@ impl Widget for Graph<'_> {
             }
             let mid = plot.y + (to_row(s.db_center, rows).round() as u16).min(plot.height - 1);
             buf.set_string(gx + 1, mid, "   0", t.label());
+        }
+
+        if let Some(note) = self.spectrum.and_then(|o| o.note.as_deref()) {
+            let text = truncate(note, plot.width as usize);
+            let x = plot.x + plot.width - text.chars().count() as u16;
+            buf.set_string(x, plot.y, &text, t.warning_style());
         }
 
         // dB labels in the left gutter.
@@ -777,6 +828,122 @@ mod tests {
             "{normal:?}"
         );
         assert!(!normal.contains(&t.chrome_faint), "{normal:?}");
+    }
+
+    /// A spectrum at `db` dBFS across the graph.
+    fn overlay(t: &Theme, db: f64) -> SpectrumOverlay {
+        SpectrumOverlay {
+            floor_db: -90.0,
+            ceiling_db: 6.0,
+            curves: vec![GraphCurve {
+                descriptor: "OUT1".into(),
+                color: t.outputs[0],
+                magnitude: vec![db; dsp::POINTS],
+                phase: None,
+                selected: true,
+            }],
+            note: None,
+        }
+    }
+
+    fn rows_with(buf: &Buffer, color: Color, h: u16) -> Vec<u16> {
+        (0..h)
+            .filter(|y| {
+                (4..60).any(|x| {
+                    let c = &buf[(x, *y)];
+                    c.fg == color && ('\u{2800}'..='\u{28FF}').contains(&c.symbol_char())
+                })
+            })
+            .collect()
+    }
+
+    trait SymbolChar {
+        fn symbol_char(&self) -> char;
+    }
+    impl SymbolChar for ratatui::buffer::Cell {
+        fn symbol_char(&self) -> char {
+            self.symbol().chars().next().unwrap_or(' ')
+        }
+    }
+
+    #[test]
+    fn wp_tm5_the_spectrum_has_its_own_axis_and_stays_out_of_the_readout() {
+        let t = Theme::console(ColorDepth::TrueColor, Glyphs::Braille);
+        let s = GraphSettings::default();
+        let none: Vec<GraphCurve> = Vec::new();
+        let row = |db: f64| {
+            let o = overlay(&t, db);
+            let buf = render_buf(Graph::new(&none, &s, &t).spectrum(Some(&o)), 60, 12);
+            rows_with(&buf, t.outputs[0], 11)
+        };
+        // The ceiling on the top row, the floor on the bottom, whatever the
+        // response graph's own zero and range: 0 dBFS is near the top here,
+        // though 0 dB is the graph's middle.
+        assert_eq!(row(6.0), [0]);
+        assert_eq!(row(-90.0), [10]);
+        assert_eq!(row(0.0), [0], "six dB of 96 is under one of eleven rows");
+        assert_eq!(row(-42.0), [5]);
+
+        let o = overlay(&t, -42.0);
+        let curves = vec![flat("IN1", t.inputs[0])];
+        let g = Graph::new(&curves, &s, &t).spectrum(Some(&o));
+        assert_eq!(g.readout(1000.0).len(), 1, "only the response");
+    }
+
+    #[test]
+    fn wp_tm5_the_spectrum_is_dim_and_the_response_draws_over_it() {
+        let t = Theme::console(ColorDepth::TrueColor, Glyphs::Braille);
+        let s = GraphSettings::default();
+        // On the same row: the response's zero is the middle of the plot.
+        let o = overlay(&t, -42.0);
+        let curves = vec![flat("IN1", t.inputs[0])];
+        let buf = render_buf(Graph::new(&curves, &s, &t).spectrum(Some(&o)), 60, 12);
+        assert_eq!(rows_with(&buf, t.outputs[0], 11), Vec::<u16>::new());
+        let x = (4..60).find(|x| buf[(*x, 5)].fg == t.inputs[0]).unwrap();
+        assert!(!buf[(x, 5)].modifier.contains(Modifier::DIM));
+
+        // On its own row it shows, dim.
+        let o = overlay(&t, -20.0);
+        let buf = render_buf(Graph::new(&curves, &s, &t).spectrum(Some(&o)), 60, 12);
+        let y = rows_with(&buf, t.outputs[0], 11)[0];
+        let x = (4..60).find(|x| buf[(*x, y)].fg == t.outputs[0]).unwrap();
+        assert!(buf[(x, y)].modifier.contains(Modifier::DIM));
+    }
+
+    #[test]
+    fn wp_tm5_what_was_not_measured_leaves_a_gap_on_the_graph() {
+        let t = Theme::console(ColorDepth::TrueColor, Glyphs::Braille);
+        let s = GraphSettings::default();
+        let none: Vec<GraphCurve> = Vec::new();
+        let mut o = overlay(&t, -42.0);
+        // Nothing below the middle of the frequency axis.
+        for v in &mut o.curves[0].magnitude[..dsp::POINTS / 2] {
+            *v = f64::NAN;
+        }
+        let buf = render_buf(Graph::new(&none, &s, &t).spectrum(Some(&o)), 60, 12);
+        let drawn: Vec<u16> = (4..60)
+            .filter(|x| buf[(*x, 5)].fg == t.outputs[0])
+            .collect();
+        assert!(!drawn.is_empty());
+        assert!(
+            drawn[0] > 25,
+            "starts where the measurement does: {drawn:?}"
+        );
+    }
+
+    #[test]
+    fn wp_tm5_the_note_shows_top_right_and_ascii_draws_too() {
+        let t = Theme::console(ColorDepth::TrueColor, Glyphs::Ascii);
+        let s = GraphSettings::default();
+        let none: Vec<GraphCurve> = Vec::new();
+        let mut o = overlay(&t, -42.0);
+        o.note = Some("Following another console".into());
+        let out = render(Graph::new(&none, &s, &t).spectrum(Some(&o)), 60, 12);
+        assert!(
+            out.lines().next().unwrap().trim_end().ends_with("console"),
+            "{out}"
+        );
+        assert!(out.lines().nth(5).unwrap().contains('*'), "{out}");
     }
 
     #[test]
