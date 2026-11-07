@@ -14,7 +14,8 @@ import UniformTypeIdentifiers
 class AppState: ObservableObject {
     static let shared = AppState()
     #if os(macOS)
-    let usb = USBDevice()
+    // -- WP SW2 -- No real device under XCTest unless the run opts in (TestHostGuard).
+    let usb = USBDevice(startMonitoring: TestHostGuard.mayOpenDevices)
 
     /// The DSPi Link gateway.  It owns the USB device's command path; the local
     /// UI is session 1 on it, exactly like a remote client, so ordering,
@@ -48,7 +49,8 @@ class AppState: ObservableObject {
     /// stay on the vendor interface.
     /// `-MIDIRelay host:port` reaches the DSPi through a relay instead of
     /// CoreMIDI (MIDIRelayPort.swift; how the iOS Simulator gets to one).
-    lazy var midiTransport: MIDITransport = MIDITransport(port: MIDIRelayPort.fromDefaults() ?? CoreMIDIControlPort())
+    // -- WP SW2 -- The relay or CoreMIDI, or no device under XCTest (TestHostGuard).
+    lazy var midiTransport: MIDITransport = MIDITransport(port: TestHostGuard.midiPort())
 
     /// True when `-LocalTransport midi` (UserDefaults `LocalTransport`).
     static var usesMIDITransport: Bool {
@@ -94,7 +96,8 @@ class AppState: ObservableObject {
     /// USB MIDI control port carries the commands (MIDITransport.swift).
     /// `-MIDIRelay host:port` reaches the DSPi through a relay instead of
     /// CoreMIDI (MIDIRelayPort.swift; how the iOS Simulator gets to one).
-    lazy var midiTransport: MIDITransport = MIDITransport(port: MIDIRelayPort.fromDefaults() ?? CoreMIDIControlPort())
+    // -- WP SW2 -- The relay or CoreMIDI, or no device under XCTest (TestHostGuard).
+    lazy var midiTransport: MIDITransport = MIDITransport(port: TestHostGuard.midiPort())
 
     /// The local side of the composite: a DSPi on USB MIDI and the demo
     /// device in one list, the DSPi first.  `-LocalTransport demo` leaves

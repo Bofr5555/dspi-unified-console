@@ -1,0 +1,39 @@
+// swift-tools-version:5.9
+// The DSPi core for the Swift app (WP SW2): the XCFramework that
+// apps/apple/build-xcframework.sh builds, and UniFFI's Swift for it, one module
+// per namespace (one bindgen run each). Two modules, not one: the bindings'
+// types share names with the app's own (FilterParams, SystemStatus, ...), and
+// each namespace's runtime helpers are private to its file.
+//
+// Sources/<namespace>/<namespace>.swift is generated: never edit it. It is the
+// same file as ci/generated/swift/, and ci/drift.sh fails when they differ
+// (`ci/run.sh 'ci/drift.sh write'` updates both).
+//
+// The XCFramework is a build product (gitignored): run build-xcframework.sh
+// before opening or building the Xcode project.
+import PackageDescription
+
+// What the core's static library links against, per platform: rustc's
+// native-static-libs (build/xcframework/native-static-libs.txt). macOS has the
+// `usb` feature, so it adds IOKit and CoreFoundation.
+let systemLibraries: [LinkerSetting] = [
+  .linkedLibrary("iconv"),
+  .linkedLibrary("c"),
+  .linkedLibrary("m"),
+  .linkedFramework("IOKit", .when(platforms: [.macOS])),
+  .linkedFramework("CoreFoundation", .when(platforms: [.macOS])),
+]
+
+let package = Package(
+  name: "DSPiCoreBindings",
+  platforms: [.macOS("14.6"), .iOS("17.0")],
+  products: [
+    .library(name: "DSPiCoreBindings", targets: ["dspi_core", "dspi_ffi"]),
+  ],
+  targets: [
+    .binaryTarget(name: "DSPiCore", path: "../../../build/xcframework/DSPiCore.xcframework"),
+    .target(name: "dspi_core", dependencies: ["DSPiCore"], linkerSettings: systemLibraries),
+    .target(name: "dspi_ffi", dependencies: ["DSPiCore"], linkerSettings: systemLibraries),
+  ],
+  swiftLanguageVersions: [.v5]
+)

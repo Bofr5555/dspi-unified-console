@@ -23,6 +23,10 @@ enum HardwareTest {
     /// the cost is paid at most once per run. The run loop is spun while waiting
     /// because IOKit hot-plug notifications are delivered on the main run loop.
     static func requireDevice(timeout: TimeInterval = 30.0) throws -> USBDevice {
+        // -- WP SW2 -- The test host opens no real device unless the run opts in.
+        guard TestHostGuard.mayOpenDevices else {
+            throw XCTSkip("Real devices are off under XCTest: set TEST_RUNNER_DSPI_USB_HW=1 to run live-device tests.")
+        }
         if probedAbsent {
             throw XCTSkip("No DSPi connected (VID 0x2E8B / PID 0xFEAA) - skipping live-device tests.")
         }

@@ -9,7 +9,8 @@
 # Runs from a clean checkout: missing images are built from their committed
 # Containerfiles, the Rust cache is filled.
 # A failing row does not stop the others. Exits 0 only if no row ran and failed;
-# "not run" rows are the VM's and do not fail the run.
+# "not run" rows are the VM's and do not fail the run. The VM rows (ci/macvm.sh)
+# are "not run" when the macOS VM is down or nobody is logged in to its GUI.
 #
 # Logs and the printed matrix: $DSPI_BUILD_CACHE/work/matrix/<commit>/ (never tmpfs).
 set -uo pipefail
@@ -45,9 +46,10 @@ rows=(
   "kotlin|Kotlin bindings compile|container|kotlin"
   "swift|Swift bindings compile (Linux swiftc)|container|swift"
   "drift|Generated code matches its sources|container|drift"
-  "macos-swift|macOS Swift app|macvm|-until SW2 adds this row"
-  "ios-sim|iOS Simulator|macvm|-until SW2 adds this row"
-  "qt-dmg|Qt .dmg (build only)|macvm|-until SW2 adds this row"
+  # -- WP SW2 -- Not run (exit 3) when the VM is down or has no GUI login.
+  "macos-swift|macOS Swift app|macvm|=ci/macvm.sh macos"
+  "ios-sim|iOS Simulator|macvm|=ci/macvm.sh ios"
+  "qt-dmg|Qt .dmg (build only)|macvm|-no Qt build for macOS yet (QD21)"
 )
 
 only=""
@@ -55,7 +57,7 @@ case "${1:-}" in
   "") ;;
   --only) only=",${2:?--only needs row ids},"; ;;
   --list) for r in "${rows[@]}"; do echo "${r%%|*}"; done; exit 0 ;;
-  -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+  -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
   *) echo "unknown argument $1" >&2; exit 2 ;;
 esac
 
@@ -87,12 +89,17 @@ for r in "${rows[@]}"; do
   start=$SECONDS
   case "$steps" in
     -*) results+=("$client|$where|not run|${steps#-}|"); echo "-- $id: not run"; continue ;;
-    =*) cmd=("${steps#=}") ;;
+    =*) read -ra cmd <<<"${steps#=}" ;;  # -- WP SW2 -- a command with arguments
     *) cmd=(ci/check.sh); for s in $steps; do cmd+=(--step "$s"); done ;;
   esac
   echo "-- $id: ${cmd[*]}"
   if "${cmd[@]}" >"$log" 2>&1 </dev/null; then
     result=OK
+  elif [ $? = 3 ] && [ "$where" = macvm ]; then
+    # -- WP SW2 -- the VM could not run it: its reason, not a failure
+    results+=("$client|$where|not run|$(tail -n 1 "$log")|$((SECONDS - start)) s")
+    echo "-- $id: not run"
+    continue
   else
     result=FAILED
     failed=1
