@@ -41,7 +41,10 @@ import se.bofr.dspi.feature.analysis.SpectrumBarStrip
 import se.bofr.dspi.feature.graph.GraphResizeHandle
 import se.bofr.dspi.feature.graph.GraphView
 import se.bofr.dspi.feature.graph.LocalPeqGraphSelection
+import se.bofr.dspi.feature.graph.LocalSpectrumPageSelection
 import se.bofr.dspi.feature.graph.PeqGraphSelection
+import se.bofr.dspi.feature.graph.RtaChannelSelection as GraphRtaSelection
+import se.bofr.dspi.feature.graph.rememberSpectrumPageSelection
 import se.bofr.dspi.ui.ChannelPalette
 import se.bofr.dspi.ui.DspiIcons
 import se.bofr.dspi.ui.DspiRoutes
@@ -106,7 +109,9 @@ fun ChannelScreen(bridge: DspiBridge, ch: Int, onNavigate: (String) -> Unit, onB
             )
             return@Column
         }
-        CompositionLocalProvider(LocalPeqGraphSelection provides graphSelection) {
+        // -- WP AN37 -- one spectrum selection for the gear and the bar strip (macOS vm.rtaSelection)
+        val spectrumSelection = rememberSpectrumPageSelection(bridge, ch)
+        CompositionLocalProvider(LocalPeqGraphSelection provides graphSelection, LocalSpectrumPageSelection provides spectrumSelection) {
             // No on-graph editing while the XO tab lists the crossover bands (macOS editedChannel, crossoverTabShown)
             val editable = input >= 0 || tabState.value != OutputChannelTab.CROSSOVER
             GraphView(bridge, Modifier.fillMaxWidth().padding(horizontal = 16.dp), channels = setOf(ch), editable = editable)
@@ -139,14 +144,30 @@ internal fun channelPageRtaSelection(bridge: DspiBridge, ch: Int, showSpectrum: 
 /**
  * The bar strip above a channel's filters (macOS ContentView.swift:984, 1025):
  * shown when the page has RTA Bars on; "Open Analyser" goes to the analyser.
+ * It shows the page's spectrum channels as the graph's gear set them
+ * ([LocalSpectrumPageSelection], macOS `vm.rtaSelection`), else the page start.
  */
 @Composable
 internal fun ChannelBarStrip(bridge: DspiBridge, ch: Int, onNavigate: (String) -> Unit, modifier: Modifier = Modifier) {
     val settings by LocalAppSettings.current.settings.collectAsStateWithLifecycle()
     val revision by bridge.stateRevision.collectAsStateWithLifecycle()
+    val caps by bridge.rta.caps.collectAsStateWithLifecycle()
+    val page = LocalSpectrumPageSelection.current?.takeIf { it.eqCh == ch }
+    val pageSelection = page?.selection
     val own =
-        remember(ch, revision, settings.rtaChannelPagesShowSpectrum) {
-            channelPageRtaSelection(bridge, ch, settings.rtaChannelPagesShowSpectrum)
+        remember(ch, revision, caps, settings.rtaChannelPagesShowSpectrum, pageSelection) {
+            if (pageSelection != null) {
+                channelPageRtaSelection(bridge, pageSelection)
+            } else {
+                channelPageRtaSelection(bridge, ch, settings.rtaChannelPagesShowSpectrum)
+            }
         }
     SpectrumBarStrip(bridge, modifier, own = own, onOpenAnalyser = { onNavigate(DspiRoutes.ANALYSIS) })
+}
+
+// -- WP AN37 --
+/** The gear's page selection as the analyser's type, restricted to the live channels as the graph draws it (macOS `rtaSelection`). */
+internal fun channelPageRtaSelection(bridge: DspiBridge, page: GraphRtaSelection): RtaChannelSelection {
+    val live = bridge.rta.availableChannels(page.tap)
+    return RtaChannelSelection.of(page.tap, page.channels.filter { it in live })
 }
