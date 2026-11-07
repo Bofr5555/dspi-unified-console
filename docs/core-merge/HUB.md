@@ -342,6 +342,22 @@ another handle.
 
 Record further differences from HB7's runs here.
 
+<!-- WP HB7 -->
+**From HB7's runs** (`crates/dspi-hub/tests/conformance/`: our client, upstream's TypeScript client and the Swift
+console's client, all passing against this hub; the Swift hub read at `apps/apple`, not run):
+
+| Point | Swift hub | Spec | This hub | Why |
+|---|---|---|---|---|
+| `hub.rename` | renames the hub | 7.9, admin; no cap names it | **`unsupported`** (admin), `denied` (others) | The name is the embedder's setting, applied at a start (HB6). TypeScript `renameHub()` rejects with `unsupported` |
+| `hub.stats` | `ok`, every field absent | 7.9, admin: sessions, uptime, per-device counts | **`unsupported`** (admin), `denied` (others) | Not in HB1's entry. TypeScript `hubStats()` rejects |
+| `auth.revoke` of an unknown `cid` | `ok` | not said | **`bad_request`**, "no such client" | Says the revoke did nothing |
+| The bridge's requests (`hub.config.*`, `hub.wifi.*`, `hub.auth.set`, `hub.update`, `hub.restart`, `hub.reset`) | `unknown_type` | `unknown_type` for an unknown type | `unknown_type` | Same |
+| `{"t":"ping"}`, the browser keepalive of the TypeScript client | `unknown_type` | | `unknown_type`, which that client counts as a live round trip | Same |
+
+Section 12, item 4 (`origin` narrowed to the own path): none of the three clients minds. Each saw its own write's echo
+and another session's copy carry the writer's session, and a change at the device carry 0. The echo rule above the Swift
+client (`NetworkTransport.swift`) was not exercised: it needs the app.
+
 **For HB7, on hardware:** the supervisor is the single blocking point for the bus (section
 12.3). Decided: it stays until hardware says otherwise, so measure how long a wedged open or
 identity read delays another device's loss. Also check the 1 s `BUSY_WINDOW` against a real
