@@ -125,7 +125,25 @@ fn wp_cg24_the_bootloader_restart_holds_the_lock() {
     let before = sent(&hub);
     assert_eq!(b.enter_bootloader(), Err(DspiError::Locked));
     assert_eq!(sent(&hub), before);
-    // The install ended without a restart.
+    // The caller's release is not the install's: still locked.
+    a.device_lock_release();
+    assert_eq!(a.held_lock_holder(), Some(Holder::Bootloader));
+    assert_eq!(b.set_master_volume(-3.0), Err(DspiError::Locked));
+    // The device leaves: the lost connection gives it back.
+    a.disconnect();
+    wait_unlocked(&hub);
+    writable(&b);
+}
+
+#[test]
+fn wp_cg24_an_install_inside_the_callers_lock_ends_with_its_release() {
+    let hub = hub();
+    let (a, b) = (bound(&hub), bound(&hub));
+    a.device_lock_acquire("Installing firmware".into(), 60_000)
+        .unwrap();
+    a.enter_bootloader().unwrap();
+    assert_eq!(b.set_master_volume(-3.0), Err(DspiError::Locked));
+    // The restart never happened.
     a.device_lock_release();
     wait_unlocked(&hub);
     writable(&b);
