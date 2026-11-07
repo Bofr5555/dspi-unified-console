@@ -365,7 +365,9 @@ class ReadOnlyTest {
                 "limiterThreshold", "linkedPartner", "liveInputCount", "magnitudeCurve", "matrixGain", "matrixInvert",
                 "matrixRouting", "numPinOutputs", "outputDelayMS", "outputEnabled", "outputGainDB", "outputMuted", "outputPin",
                 "pairAvailable", "pairPartner", "peakLevel", "phaseCurve", "pinOwners", "presetChanges", "presetName",
-                "refreshCtrlIfaces", "restoreInputLinks", "crossfeedPairMapValid"
+                "refreshCtrlIfaces", "restoreInputLinks", "crossfeedPairMapValid",
+                // -- WP AN35 -- the host's USB format, app-local
+                "setHostInputChannels"
             )
 
         /** Controller members that read or only edit app-side drafts/subscriptions. */

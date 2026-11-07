@@ -96,8 +96,9 @@ internal val GraphBackground = Color(0xFF242426)
  *   single channel in [channels].
  *
  * Height: [AppSettings.graphHeight] unless [modifier] fixes one. Share the
- * band selection with a band list through [LocalPeqGraphSelection]; the
- * preferences come from [LocalAppSettings].
+ * band selection with a band list through [LocalPeqGraphSelection], and a
+ * channel page's spectrum channels with its bar strip through
+ * [LocalSpectrumPageSelection]; the preferences come from [LocalAppSettings].
  */
 @Composable
 fun GraphView(bridge: DspiBridge, modifier: Modifier = Modifier, channels: Set<Int> = emptySet(), editable: Boolean = false) {
@@ -449,11 +450,14 @@ internal fun BodePlotView(bridge: DspiBridge, modifier: Modifier, channels: Set<
         }
     val curvesAlpha by animateFloatAsState(if (connected) 1f else 0f, tween(300), label = "device")
     var optionsOpen by remember { mutableStateOf(false) }
-    val onDashboard = activeEq == null
+    // -- WP AN37 -- a channel page's held selection, also while its XO tab turns editing off (macOS activeEqChannel)
+    val pageSpectrum = LocalSpectrumPageSelection.current?.takeIf { channels == setOf(it.eqCh) }
+    val pageEq = activeEq ?: pageSpectrum?.eqCh
+    val onDashboard = pageEq == null
     // Parsed once per state change, not per group per recomposition.
     val colours = remember(stateRev) { List(ChannelMap.APP_CHANNEL_COUNT) { channelColour(bridge, it) } }
     val caps by bridge.rta.caps.collectAsStateWithLifecycle()
-    val spectrum = rememberSpectrumSelection(bridge, store, activeEq)
+    val spectrum = rememberSpectrumSelection(bridge, store, pageEq, pageSpectrum)
     // The page's channels, from their explicit inputs (settings, analyser caps, device state).
     val liveInputs = bridge.observeLiveInputs()
     val spectrumSelection = remember(spectrum, spectrum.pageKey, settings, caps, stateRev, liveInputs) { spectrum.value }

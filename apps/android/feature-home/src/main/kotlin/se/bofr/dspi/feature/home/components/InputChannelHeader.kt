@@ -28,7 +28,7 @@ import se.bofr.dspi.core.DspState
 import se.bofr.dspi.feature.home.HomeModel
 import se.bofr.dspi.feature.home.channelMap
 import se.bofr.dspi.feature.home.observeState
-import se.bofr.dspi.feature.home.observeStatus
+import se.bofr.dspi.feature.home.stripInputCount
 import se.bofr.dspi.ui.AlertButton
 import se.bofr.dspi.ui.CustomSlider
 import se.bofr.dspi.ui.DspiAlertDialog
@@ -76,12 +76,12 @@ data class InputPairMismatch(val bands: Boolean, val preamp: Boolean) {
 fun InputChannelHeader(bridge: DspiBridge, ch: Int, onClearPEQ: () -> Unit, modifier: Modifier = Modifier) {
     val c = DspiTheme.colors
     val s = bridge.observeState()
-    val activeInputs = bridge.observeStatus { it.activeInputChannels }
+    val strips = stripInputCount(bridge) // -- WP AN35 --
     val map = s.channelMap
     val input = map.inputOf(ch)
     val partner = bridge.pairPartner(ch)
-    // Both follow the state and the polled active-input count read above.
-    val pairAvailable = activeInputs >= 0 && bridge.pairAvailable(ch)
+    // Both ask the bridge, which mirrors the link over the same count the strips use (WP AN35: the host's format on USB).
+    val pairAvailable = strips > 0 && bridge.pairAvailable(ch)
     val linked = pairAvailable && bridge.isInputLinked(ch)
     val pairLabel = HomeModel.pairLabel(maxOf(input, 0))
     val preamp = rememberSliderDrag(s.inputPreampDb.getOrElse(input) { 0f })

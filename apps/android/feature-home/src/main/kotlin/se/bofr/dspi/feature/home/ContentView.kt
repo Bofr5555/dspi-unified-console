@@ -58,7 +58,9 @@ import se.bofr.dspi.feature.analysis.SpectrumBarStrip
 import se.bofr.dspi.feature.graph.GraphResizeHandle
 import se.bofr.dspi.feature.graph.GraphView
 import se.bofr.dspi.feature.graph.LocalPeqGraphSelection
+import se.bofr.dspi.feature.graph.LocalSpectrumPageSelection
 import se.bofr.dspi.feature.graph.PeqGraphSelection
+import se.bofr.dspi.feature.graph.rememberSpectrumPageSelection
 import se.bofr.dspi.feature.home.components.ChannelRow
 import se.bofr.dspi.feature.home.components.ConnectionStatusIndicator
 import se.bofr.dspi.feature.home.components.SidebarVolumeMode
@@ -147,7 +149,12 @@ fun ContentView(bridge: DspiBridge, onNavigate: (String) -> Unit, modifier: Modi
                         val selectedChannel = graphChannels(bridge, selection).firstOrNull()
                         val graphSelection = remember(selectedChannel) { PeqGraphSelection() }
                         val tabState = rememberSaveable(selectedChannel) { mutableStateOf(OutputChannelTab.PEQ) }
-                        CompositionLocalProvider(LocalPeqGraphSelection provides graphSelection) {
+                        // -- WP AN37 -- the selected channel's spectrum selection, shared by the gear and the bar strip
+                        val spectrumSelection = selectedChannel?.let { rememberSpectrumPageSelection(bridge, it) }
+                        CompositionLocalProvider(
+                            LocalPeqGraphSelection provides graphSelection,
+                            LocalSpectrumPageSelection provides spectrumSelection
+                        ) {
                             // No on-graph editing while the XO tab lists the crossover bands (macOS crossoverTabShown)
                             val editable = selection is SidebarSelection.Input ||
                                 (selection is SidebarSelection.Output && tabState.value != OutputChannelTab.CROSSOVER)
@@ -272,12 +279,12 @@ private fun SidebarChannels(bridge: DspiBridge, selection: SidebarSelection, onS
     val c = DspiTheme.colors
     val s = bridge.observeState()
     val connected = bridge.observeStatus { it.connected }
-    val active = bridge.observeStatus { it.activeInputChannels }
     val curves by bridge.magnitudesRevision.collectAsStateWithLifecycle()
     val status = bridge.statusState()
     var renaming by rememberSaveable { mutableStateOf<Int?>(null) }
     var menuFor by rememberSaveable { mutableStateOf<Int?>(null) }
-    val numInputs = if (active >= 0) bridge.liveInputCount() else 0
+    // -- WP AN35 -- the bridge's count, the host's format on USB (macOS numMatrixInputs)
+    val numInputs = stripInputCount(bridge)
     val rowHeight = HomeModel.sidebarRowHeight(numInputs)
     // Curve visibility lives in the bridge; magnitudesChanged announces a toggle.
     val visible = remember(curves) { (0 until ChannelMap.APP_CHANNEL_COUNT).map { bridge.channelVisible(it) } }

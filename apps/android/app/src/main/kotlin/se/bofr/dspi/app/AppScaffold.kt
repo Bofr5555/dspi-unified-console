@@ -1,6 +1,7 @@
 package se.bofr.dspi.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,13 +21,30 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -39,12 +57,17 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.feature.analysis.AnalysisScreen
+import se.bofr.dspi.feature.analysis.TestSignalsUiState
+import se.bofr.dspi.feature.analysis.isRunning
 import se.bofr.dspi.feature.firmware.FirmwareUpdateView
 import se.bofr.dspi.feature.graph.GraphScreen
 import se.bofr.dspi.feature.home.ChannelScreen
 import se.bofr.dspi.feature.home.HomeScreen
+import se.bofr.dspi.feature.home.HostChannelsFeed
 import se.bofr.dspi.feature.matrix.MatrixMixerView
 import se.bofr.dspi.feature.onboarding.OnboardingSource
 import se.bofr.dspi.feature.presets.PresetsScreen
@@ -59,6 +82,8 @@ import se.bofr.dspi.ui.alert.AlertHost
 import se.bofr.dspi.ui.alert.ConsoleAlertHost
 import se.bofr.dspi.ui.link.LinkBanner
 import se.bofr.dspi.ui.link.LinkBannerAction
+import se.bofr.dspi.ui.state.AppState
+import se.bofr.dspi.ui.state.LocalAppState
 import se.bofr.dspi.usb.BootloaderLocator
 
 /** Test tag of the connection strip, the top of the app. */
@@ -88,6 +113,9 @@ internal const val DEVICE_LIST_TAG = "device-list"
  * demo mode. With no topBar the Scaffold's content padding comes from its
  * contentWindowInsets alone, so those keep the strip off the status bar. Screens
  * handle no insets themselves, so the same padding keeps them off a landscape cutout.
+ *
+ * Hardware keys (WP AN35): the app's column holds focus when nothing inside
+ * it does, and takes the keys its focused view leaves ([ConsoleKeyMap]).
  */
 @Composable
 fun AppScaffold(
@@ -106,18 +134,34 @@ fun AppScaffold(
     switchAlerts: AlertHost? = null,
     overlay: @Composable () -> Unit = {}
 ) {
+    // -- WP AN35 --
+    val keys = remember { ShortcutKeys() }
+    val focus = remember { FocusRequester() }
+    var focusLost by remember { mutableIntStateOf(0) }
     // The IME stays out, as with the Scaffold's default insets
     Scaffold(contentWindowInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout)) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .onKeyEvent(keys::onKey) // -- WP AN35 --
+                .focusRequester(focus)
+                .onFocusChanged { if (!it.hasFocus) focusLost++ }
+                .focusable()
+        ) {
+            // In here: the Scaffold composes its content after the scaffold itself, the requester's node with it
+            LaunchedEffect(focusLost) { focus.requestFocus() }
             ConnectionStripBar(strip, onExitDemo, onRequestPermission, onRemoteAction) {
                 DeviceListButton(devices) { c -> if (c == DeviceChoice.Network) onConnectNetwork() else onChooseDevice(c) }
             }
             key(bridge) {
+                // -- WP AN35 -- the host's USB format, for every route; the DSPi is on this phone's USB only outside demo and Link
+                HostChannelsFeed(bridge, enabled = strip !is ConnectionStrip.Demo && strip !is ConnectionStrip.Remote)
                 CompositionLocalProvider(
                     LocalDemoMode provides (strip is ConnectionStrip.Demo),
                     LocalOnboarding provides onboarding // -- WP AN19 --
                 ) {
-                    DspiNavHost(bridge, bootloaderLocator, remote = strip is ConnectionStrip.Remote)
+                    DspiNavHost(bridge, bootloaderLocator, remote = strip is ConnectionStrip.Remote, keys)
                 }
             }
         }
@@ -127,15 +171,23 @@ fun AppScaffold(
 }
 
 @Composable
-private fun DspiNavHost(bridge: DspiBridge, bootloaderLocator: BootloaderLocator?, remote: Boolean) {
+private fun DspiNavHost(bridge: DspiBridge, bootloaderLocator: BootloaderLocator?, remote: Boolean, keys: ShortcutKeys) {
     // G1: every device-writing control is disabled while the bridge refuses writes
     val writes by bridge.writesAllowed.collectAsStateWithLifecycle()
-    CompositionLocalProvider(LocalWritesAllowed provides writes) { DspiRoutesHost(bridge, bootloaderLocator, remote) }
+    CompositionLocalProvider(LocalWritesAllowed provides writes) { DspiRoutesHost(bridge, bootloaderLocator, remote, keys) }
 }
 
 @Composable
-private fun DspiRoutesHost(bridge: DspiBridge, bootloaderLocator: BootloaderLocator?, remote: Boolean) {
+private fun DspiRoutesHost(bridge: DspiBridge, bootloaderLocator: BootloaderLocator?, remote: Boolean, keys: ShortcutKeys) {
     val nav = rememberNavController()
+    // -- WP AN35 -- the shortcuts drive this NavHost while it is on screen
+    val writes = rememberUpdatedState(LocalWritesAllowed.current)
+    val appState = LocalAppState.current
+    val scope = rememberCoroutineScope()
+    DisposableEffect(nav, bridge, appState) {
+        keys.host = NavShortcutHost(nav, bridge, appState, scope) { writes.value }
+        onDispose { keys.host = null }
+    }
     NavHost(navController = nav, startDestination = DspiRoutes.HOME) {
         // Each screen's back/navigate act only while its own entry is current (EntryNavigator)
         screen(nav, DspiRoutes.HOME) { _, go, back -> HomeScreen(bridge, go, back) }
@@ -273,4 +325,64 @@ private fun FirmwareNotice(back: () -> Unit, text: String) {
         Text("Firmware Update", style = MaterialTheme.typography.headlineSmall)
         Text(text, style = MaterialTheme.typography.bodyLarge)
     }
+}
+
+// -- WP AN35 --
+/** Hands the column's keys to the current NavHost's [ShortcutHost]. */
+internal class ShortcutKeys {
+    var host: ShortcutHost? = null
+
+    fun onKey(e: KeyEvent): Boolean {
+        if (e.type != KeyEventType.KeyDown || e.nativeKeyEvent.repeatCount > 0) return false
+        val shortcut = ConsoleKeyMap.shortcutOf(e.key, e.isCtrlPressed || e.isMetaPressed, e.isShiftPressed, e.isAltPressed)
+            ?: return false
+        return host?.let { ConsoleShortcuts.perform(shortcut, it) } ?: false
+    }
+}
+
+/** [ShortcutHost] over the app's NavHost, the bridge and the main window's selection. */
+private class NavShortcutHost(
+    private val nav: NavHostController,
+    private val bridge: DspiBridge,
+    private val appState: AppState,
+    private val scope: CoroutineScope,
+    private val writes: () -> Boolean
+) : ShortcutHost {
+    override val currentRoute: String?
+        get() = nav.currentBackStackEntry?.let { e ->
+            e.destination.route?.let { p -> ConsoleShortcuts.resolve(p) { name -> e.arguments?.get(name)?.toString() } }
+        }
+    override val selectedChannel: Int? get() = appState.activeEqChannel.value
+    override val writesAllowed: Boolean get() = writes()
+
+    override fun canPaste() = bridge.canPaste()
+
+    override fun navigate(route: String) = nav.navigate(route)
+
+    override fun copyChannel(ch: Int) = bridge.copyChannel(ch)
+
+    override fun pasteChannel(ch: Int) = bridge.pasteChannel(ch)
+
+    override val generatorRunning: Boolean get() = bridge.siggen.status.value.isRunning
+
+    /** The page's own `startBlocker`; no draft yet (no caps read) does not start. */
+    override val generatorCanStart: Boolean
+        get() {
+            val draft = bridge.siggen.draft.value ?: return false
+            val page = TestSignalsUiState(
+                connected = bridge.status.value.connected,
+                caps = bridge.siggen.caps.value,
+                draft = draft,
+                status = bridge.siggen.status.value,
+                outputNames = emptyList(),
+                outputEnabled = emptyList()
+            )
+            return page.startBlocker == null
+        }
+
+    override fun startGenerator() {
+        scope.launch { bridge.siggen.start() }
+    }
+
+    override fun stopGenerator() = bridge.siggen.stop()
 }

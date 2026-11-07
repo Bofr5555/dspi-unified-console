@@ -978,7 +978,11 @@ fn write_op(inner: &mut Inner, cs: &mut CsState, kind: &str, op: &Value) -> Resu
             let c = display_cfg_from_json(object(op, "config")?)?;
             let session = w.session()?;
             let r = cs_model::apply(session, |s| s.write_display_cfg(&c));
-            with_surfaces(session, |s| read_display_into(s, d))?;
+            // -- WP CG28 -- The status too: a display write makes the device dirty
+            with_surfaces(session, |s| {
+                read_display_into(s, d);
+                read_status_into(s, d);
+            })?;
             r.map_err(apply_error)?;
         }
         "displayPage" => {
@@ -986,7 +990,11 @@ fn write_op(inner: &mut Inner, cs: &mut CsState, kind: &str, op: &Value) -> Resu
             let p = page_from_json(object(op, "page")?)?;
             let session = w.session()?;
             let r = cs_model::apply(session, |s| s.write_display_page(p_index, &p));
-            with_surfaces(session, |s| read_display_into(s, d))?;
+            // -- WP CG28 -- The status too: a display write makes the device dirty
+            with_surfaces(session, |s| {
+                read_display_into(s, d);
+                read_status_into(s, d);
+            })?;
             r.map_err(apply_error)?;
         }
         "learnArm" => {
@@ -1908,6 +1916,22 @@ mod tests_wp_c14 {
         assert_eq!(live.ir[2].code, 0xDEAD_BEEF);
         assert_eq!(live.groups[3].member_mask, 12);
         assert_eq!(live.display_cfg.brightness, 9);
+    }
+
+    // -- WP CG28 --
+    #[test]
+    fn wp_cg28_display_writes_set_dirty_at_once() {
+        for op in [
+            json!({ "op": "displayConfig", "config": { "mode": 1, "dwell": 40, "brightness": 9 } }),
+            json!({ "op": "displayPage", "index": 2, "page": { "noun": noun::PRESET, "flags": 1 } }),
+        ] {
+            let (core, sim_) = cs_core();
+            assert_eq!(snap(&core)["status"]["dirty"], false);
+            assert_eq!(apply(&core, op)["ok"], true);
+            assert!(sim(&sim_).live.status.dirty);
+            // No refresh or refreshStatus: the write itself re-read the status.
+            assert_eq!(snap(&core)["status"]["dirty"], true);
+        }
     }
 
     #[test]
