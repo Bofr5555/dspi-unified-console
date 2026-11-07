@@ -57,8 +57,11 @@ device persisted it and the dirty flags cleared, then restores the original.
 It flips the output-config mode through `save()`, confirms the device persisted
 it and the dirty flags cleared, then restores the original.
 
-`xcodebuild test` launches the app as the test host, so `AppState.shared.usb`
-connects to the device during the run. The first live-device test waits up to
+`xcodebuild test` launches the app as the test host. Under XCTest the app opens
+no real device (USB or MIDI) unless the run opts in (`TestHostGuard.swift`, WP SW2),
+so live-device tests need `TEST_RUNNER_DSPI_USB_HW=1 xcodebuild test ...`; the MIDI
+hardware tests' own `DSPI_MIDI_HW=1` / `DSPI_EXT_HW=1` also opt in. With it,
+`AppState.shared.usb` connects to the device during the run. The first live-device test waits up to
 30 s for that connection (it can take ~15 s under `xcodebuild test`); the result
 is cached so the rest are instant, and a device-less run skips after one probe.
 

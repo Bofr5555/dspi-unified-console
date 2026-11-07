@@ -16,8 +16,12 @@
 #                              UnimplementedDspiCore, DspiConstants), read from crates/
 #                              by apps/android/tools/gen_kotlin_contract.py --check
 #
+#   apps/apple/.../Core/Generated/Sources/<ns>/<ns>.swift
+#                              the Swift app's copy of ci/generated/swift (WP SW2),
+#                              one package module per namespace
+#
 # ci/generated/ is the committed copy of output that the builds regenerate for
-# themselves. When SW2 commits bindings into the Swift app, add that copy here.
+# themselves.
 set -euo pipefail
 mode=${1:?usage: drift.sh check|write}
 case "$mode" in check|write) ;; *) echo "unknown mode $mode" >&2; exit 2 ;; esac
@@ -59,6 +63,30 @@ elif ! diff -ru "$committed" "$out" >"$out.diff"; then
   echo "drift: container at $out.diff). Generated code is never hand-edited: if the" >&2
   echo "drift: source changed on purpose, run ci/run.sh 'ci/drift.sh write' and commit." >&2
   status=1
+fi
+
+# -- WP SW2 -- The Swift app's copy: the same files, and a module for each
+# namespace (a new namespace also needs its target in the package's Package.swift).
+app="apps/apple/DSPi Console/Core/Generated/Sources"
+if [ "$mode" = write ]; then
+  rm -rf "$app"
+  for ns in "${namespaces[@]}"; do
+    mkdir -p "$app/$ns"
+    cp "$out/swift/$ns.swift" "$app/$ns/"
+  done
+  echo "drift: wrote $app"
+else
+  have=$(cd "$app" && ls | sort | tr '\n' ' ')
+  if [ "$have" != "${namespaces[*]} " ]; then
+    echo "drift: $app has modules [ $have] for namespaces [ ${namespaces[*]} ]" >&2
+    status=1
+  fi
+  for ns in "${namespaces[@]}"; do
+    if ! diff -q "$out/swift/$ns.swift" "$app/$ns/$ns.swift"; then
+      echo "drift: $app/$ns/$ns.swift differs from what the sources generate" >&2
+      status=1
+    fi
+  done
 fi
 
 if ! (cd apps/android && python3 tools/gen_kotlin_contract.py --check); then

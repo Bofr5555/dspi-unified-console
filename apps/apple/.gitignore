@@ -7,3 +7,5 @@ DerivedData/
 xcuserdata/
 *.xcuserstate
 .DS_Store
+# Xcode writes this into a local Swift package it opens (Core/Generated).
+.swiftpm/

@@ -14,6 +14,8 @@
 		D5010000000000000000004B /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; productRef = D5010000000000000000004A /* NIOHTTP1 */; };
 		D5010000000000000000005B /* NIOWebSocket in Frameworks */ = {isa = PBXBuildFile; productRef = D5010000000000000000005A /* NIOWebSocket */; };
 		D5010000000000000000006B /* NIOFoundationCompat in Frameworks */ = {isa = PBXBuildFile; productRef = D5010000000000000000006A /* NIOFoundationCompat */; };
+		D5020000000000000000001B /* DSPiCoreBindings in Frameworks */ = {isa = PBXBuildFile; productRef = D5020000000000000000001A /* DSPiCoreBindings */; };
+		D5020000000000000000002B /* DSPiCoreBindings in Frameworks */ = {isa = PBXBuildFile; productRef = D5020000000000000000002A /* DSPiCoreBindings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -76,6 +78,7 @@
 				PeqBandHUD.swift,
 				PeqGraphRenderer.swift,
 				PeqGraphShaders.swift,
+				Core/Generated,
 			);
 			target = 1A1A00000000000000000001 /* DSPi Console iOS */;
 		};
@@ -148,12 +151,20 @@
 			);
 			target = 1A1A00000000000000000011 /* DSPi Console iOSTests */;
 		};
+		D50200000000000000000009 /* Exceptions for "DSPi Console" folder in "DSPi Console" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Core/Generated,
+			);
+			target = 665141C42F0DF37B00093CAF /* DSPi Console */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		665141C72F0DF37B00093CAF /* DSPi Console */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
+				D50200000000000000000009 /* Exceptions for "DSPi Console" folder in "DSPi Console" target */,
 				1A1A00000000000000000009 /* Exceptions for "DSPi Console" folder in "DSPi Console iOS" target */,
 			);
 			path = "DSPi Console";
@@ -203,6 +214,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D5020000000000000000002B /* DSPiCoreBindings in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -216,6 +228,7 @@
 				D5010000000000000000004B /* NIOHTTP1 in Frameworks */,
 				D5010000000000000000005B /* NIOWebSocket in Frameworks */,
 				D5010000000000000000006B /* NIOFoundationCompat in Frameworks */,
+				D5020000000000000000001B /* DSPiCoreBindings in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -321,6 +334,7 @@
 			);
 			name = "DSPi Console iOS";
 			packageProductDependencies = (
+				D5020000000000000000002A /* DSPiCoreBindings */,
 			);
 			productName = "DSPi Console iOS";
 			productReference = 1A1A00000000000000000002 /* DSPi Console iOS.app */;
@@ -350,6 +364,7 @@
 				D5010000000000000000004A /* NIOHTTP1 */,
 				D5010000000000000000005A /* NIOWebSocket */,
 				D5010000000000000000006A /* NIOFoundationCompat */,
+				D5020000000000000000001A /* DSPiCoreBindings */,
 			);
 			productName = "DSPi Console";
 			productReference = 665141C52F0DF37B00093CAF /* DSPi Console.app */;
@@ -419,6 +434,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				D5010000000000000000000A /* XCRemoteSwiftPackageReference "swift-nio" */,
+				D5020000000000000000000A /* XCLocalSwiftPackageReference "DSPi Console/Core/Generated" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 665141C62F0DF37B00093CAF /* Products */;
@@ -964,6 +980,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		D5020000000000000000000A /* XCLocalSwiftPackageReference "DSPi Console/Core/Generated" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "DSPi Console/Core/Generated";
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		D5010000000000000000000A /* XCRemoteSwiftPackageReference "swift-nio" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -1005,6 +1028,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = D5010000000000000000000A /* XCRemoteSwiftPackageReference "swift-nio" */;
 			productName = NIOFoundationCompat;
+		};
+		D5020000000000000000001A /* DSPiCoreBindings */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D5020000000000000000000A /* XCLocalSwiftPackageReference "DSPi Console/Core/Generated" */;
+			productName = DSPiCoreBindings;
+		};
+		D5020000000000000000002A /* DSPiCoreBindings */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D5020000000000000000000A /* XCLocalSwiftPackageReference "DSPi Console/Core/Generated" */;
+			productName = DSPiCoreBindings;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
