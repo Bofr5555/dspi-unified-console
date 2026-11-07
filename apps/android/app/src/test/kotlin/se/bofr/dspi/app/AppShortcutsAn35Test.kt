@@ -22,7 +22,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import se.bofr.dspi.feature.tools.ToolRoute
 import se.bofr.dspi.feature.tools.toolPageTag
@@ -32,7 +31,7 @@ import se.bofr.dspi.feature.tools.toolPageTag
  * demo bridge: Ctrl and Meta both stand for Command, and nothing needs focusing first.
  */
 @OptIn(ExperimentalTestApi::class)
-@RunWith(RobolectricTestRunner::class)
+@RunWith(DspiRobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w400dp-h1600dp-port-mdpi")
 class AppShortcutsAn35Test {
     @get:Rule val rule = createComposeRule()

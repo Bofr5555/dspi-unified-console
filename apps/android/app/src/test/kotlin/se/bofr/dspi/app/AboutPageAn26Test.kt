@@ -18,7 +18,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import se.bofr.dspi.feature.settings.GeneralSettingsTab
 import se.bofr.dspi.feature.settings.LocalAboutJson
@@ -28,7 +27,7 @@ import se.bofr.dspi.ui.json.list
 import se.bofr.dspi.ui.json.str
 
 /** AN26: the About page over the CG15 table. Tall, so the lazy list composes every section. */
-@RunWith(RobolectricTestRunner::class)
+@RunWith(DspiRobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w400dp-h5000dp-port-mdpi")
 class AboutPageAn26Test {
     @get:Rule val rule = createComposeRule()

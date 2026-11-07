@@ -21,7 +21,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import se.bofr.dspi.feature.analysis.AnalysisRoute
 
@@ -35,7 +34,7 @@ import se.bofr.dspi.feature.analysis.AnalysisRoute
  * JVM, opening the analysis pages leaves their demo cores' analyser caps unseen (a latent test
  * isolation fault on main; it reproduces with ToolsEntryAn31Test moved first).
  */
-@RunWith(RobolectricTestRunner::class)
+@RunWith(DspiRobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w400dp-h800dp-port-mdpi")
 class ToolsAnalysisEntryAn32Test {
     @get:Rule val rule = createComposeRule()
