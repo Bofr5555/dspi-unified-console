@@ -9,21 +9,25 @@ import Combine
 /// `dspstate_v32.json`).
 final class FakeTransportTests: XCTestCase {
 
-    private func connectedFake() -> FakeTransport {
+    // -- WP SW4 -- The tests drive `t`: the fake itself, or behind the launch
+    // flag the Rust core over it (CoreTransportUnderTest).
+    private func connectedFake() -> (fake: FakeTransport, t: any DeviceTransport) {
         let fake = FakeTransport(autoSelect: false)
+        let t = CoreTransportUnderTest.over(fake)
         fake.selectDevice(FakeTransport.demoDevice)
-        return fake
+        XCTAssertTrue(spinUntil(10) { t.isConnected })
+        return (fake, t)
     }
 
-    private func get(_ fake: FakeTransport, _ request: UInt8, value: UInt16 = 0, index: UInt16 = 2,
+    private func get(_ t: any DeviceTransport, _ request: UInt8, value: UInt16 = 0, index: UInt16 = 2,
                      length: UInt16) -> Data? {
-        fake.getControlRequest(request: request, value: value, index: index, length: length)
+        t.getControlRequest(request: request, value: value, index: index, length: length)
     }
 
     // MARK: - Wire level
 
     func testPlatformIsTheCapturedRP2350Beta5() throws {
-        let fake = connectedFake()
+        let (_, fake) = connectedFake()
         let reply = try XCTUnwrap(get(fake, REQ_GET_PLATFORM, length: 7))
         XCTAssertEqual([UInt8](reply), [1, 1, 0x16, 9, 1, 6, 5])
         let decoded = FirmwareVersion.fromPlatformReply([UInt8](reply))
@@ -32,7 +36,7 @@ final class FakeTransportTests: XCTestCase {
     }
 
     func testBulkImageIsV32() throws {
-        let fake = connectedFake()
+        let (_, fake) = connectedFake()
         let bulk = try XCTUnwrap(get(fake, REQ_GET_ALL_PARAMS, length: BULK_PARAMS_SIZE))
         XCTAssertEqual(bulk.count, Int(BULK_PARAMS_SIZE))
         XCTAssertEqual(Int(bulk[0]), WIRE_FORMAT_VERSION)
@@ -43,13 +47,13 @@ final class FakeTransportTests: XCTestCase {
     }
 
     func testNothingAnswersWhileDisconnected() {
-        let fake = FakeTransport(autoSelect: false)
+        let fake = CoreTransportUnderTest.over(FakeTransport(autoSelect: false))   // -- WP SW4 --
         XCTAssertEqual(fake.getControlResult(request: REQ_GET_PLATFORM, value: 0, index: 2, length: 7),
                        .failure(.noDevice))
     }
 
     func testMetersMoveOnTheEnabledChannels() throws {
-        let fake = connectedFake()
+        let (_, fake) = connectedFake()
         // 17 channels: peaks u16[17], cpu0, cpu1, clip u32, active inputs.
         let length = UInt16(17 * 2 + 7)
         let status = try XCTUnwrap(get(fake, REQ_GET_STATUS, value: 9, index: 0, length: length))
@@ -62,7 +66,7 @@ final class FakeTransportTests: XCTestCase {
     }
 
     func testSetPatchesTheImageAndNotifies() throws {
-        let fake = connectedFake()
+        let (_, fake) = connectedFake()
         var packets: [Data] = []
         let token = fake.addNotificationObserver { packets.append($0.packet) }
         defer { token.cancel() }
@@ -78,6 +82,7 @@ final class FakeTransportTests: XCTestCase {
         let gain = bulk.withUnsafeBytes { $0.load(fromByteOffset: base + 12, as: Float.self) }
         XCTAssertEqual(gain, 3)
 
+        XCTAssertTrue(spinUntil(5) { !packets.isEmpty })   // -- WP SW4 -- the core's tap is asynchronous
         let notification = try XCTUnwrap(packets.last)
         XCTAssertEqual(notification[0], 0x02)     // v2
         XCTAssertEqual(notification[1], 0x02)     // PARAM_CHANGED
@@ -86,7 +91,7 @@ final class FakeTransportTests: XCTestCase {
     }
 
     func testPresetsSaveLoadAndName() throws {
-        let fake = connectedFake()
+        let (_, fake) = connectedFake()
         XCTAssertEqual(get(fake, REQ_PRESET_SAVE, value: 4, length: 1), Data([PRESET_OK]))
         fake.sendControlRequest(request: REQ_PRESET_SET_NAME, value: 4, index: 2, data: Data("Late night".utf8))
         let dir = try XCTUnwrap(get(fake, REQ_PRESET_GET_DIR, length: 7))
@@ -100,7 +105,7 @@ final class FakeTransportTests: XCTestCase {
     }
 
     func testEchoReadsBackWhatASetWrote() {
-        let fake = connectedFake()
+        let (_, fake) = connectedFake()
         var cutoff: Float = 95
         fake.sendControlRequest(request: REQ_SET_PSYBASS_CUTOFF, value: 0, index: 0,
                                 data: Data(bytes: &cutoff, count: 4))
@@ -114,8 +119,11 @@ final class FakeTransportTests: XCTestCase {
     /// only reads left unanswered are the documented gaps (features the demo
     /// device reports as absent).
     func testFetchAllDecodesTheCapture() {
+        // -- WP SW4 -- behind the flag, the core's own connect reads reach
+        // the fake too; only the console's reads are checked.
+        let coreGaps = CoreTransportUnderTest.connectSequenceGaps()
         let fake = FakeTransport(autoSelect: false)
-        let vm = DSPViewModel(transport: fake)
+        let vm = DSPViewModel(transport: CoreTransportUnderTest.over(fake))
         fake.selectDevice(FakeTransport.demoDevice)
 
         let fetched = expectation(description: "fetchAll")
@@ -144,7 +152,7 @@ final class FakeTransportTests: XCTestCase {
             // STALL as on that firmware.
             REQ_OUTPUT_LATENCY, REQ_GET_INPUT_SOURCE_NAME, REQ_GET_DEVICE_NAME,
         ]
-        let unexpected = fake.unansweredRequests.filter { line in
+        let unexpected = fake.unansweredRequests.filter { !coreGaps.contains($0) }.filter { line in
             guard let hex = line.split(separator: " ").first, let op = UInt8(hex.dropFirst(2), radix: 16) else { return true }
             return !knownGaps.contains(op)
         }

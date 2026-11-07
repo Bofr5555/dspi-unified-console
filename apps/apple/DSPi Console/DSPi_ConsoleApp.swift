@@ -65,12 +65,20 @@ class AppState: ObservableObject {
     }
     lazy var demoTransport: FakeTransport = FakeTransport(autoSelect: true)
 
+    // -- WP SW4 -- `-CoreTransport YES`: the Rust core drives the local
+    // device, over the hub's session 1 (docs/SWIFT-SEAMS.md 5.4), or its own
+    // demo device with `-LocalTransport demo`.
+    lazy var coreTransport: CoreBackedTransport = AppState.usesDemoTransport
+        ? CoreBackedTransport(link: .demo, autoSelect: true)
+        : CoreBackedTransport(link: .host(localTransport, .hub))
+
     /// The transport the whole UI drives: local USB devices and devices shared
     /// by other hubs on the network in one list, with selection routed to
     /// whichever owns the device.  The view model never learns which.
     lazy var transport: CompositeTransport = {
         let local: any DeviceTransport
         if AppState.usesMIDITransport { local = midiTransport }
+        else if CoreBackedTransport.isEnabled { local = coreTransport }   // -- WP SW4 --
         else if AppState.usesDemoTransport { local = demoTransport }
         else { local = localTransport }
         let composite = CompositeTransport(
@@ -104,8 +112,13 @@ class AppState: ObservableObject {
     /// MIDI out.  Devices shared by DSPi Link hubs on the network join the
     /// same list, as on macOS.
     lazy var localTransports: LocalTransportSet = UserDefaults.standard.string(forKey: "LocalTransport") == "demo"
-        ? LocalTransportSet([demoTransport])
-        : LocalTransportSet([midiTransport, demoTransport])
+        ? LocalTransportSet([demoMember])
+        : LocalTransportSet([midiTransport, demoMember])
+
+    // -- WP SW4 -- `-CoreTransport YES`: the demo device is the Rust core's.
+    lazy var demoMember: any DeviceTransport = CoreBackedTransport.isEnabled
+        ? CoreBackedTransport(link: .demo, autoSelect: FakeTransport.autoSelectAtLaunch)
+        : demoTransport
 
     /// The local device path, under the name the macOS code uses for it
     /// (`DSPViewModel`'s default transport, the Stats window).
