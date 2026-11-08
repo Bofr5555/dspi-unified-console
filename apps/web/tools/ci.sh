@@ -11,6 +11,7 @@
 #                                   `dspi hub --web`, `dspi web` (WB7)
 #   apps/web/tools/ci.sh --no-e2e   all but the browsers
 #   PW_ARGS="test/e2e/x.spec.ts --repeat-each 5" apps/web/tools/ci.sh   (WB7) e2e arguments
+#                                   (HB9: 4 workers unless PW_ARGS has --workers N)
 #
 # npm installs only what package-lock.json names, with its integrity hashes. The
 # npm cache and node_modules live under ${DSPI_BUILD_CACHE:-~/.cache/dspi-build}/work/web

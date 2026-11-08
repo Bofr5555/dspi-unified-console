@@ -382,7 +382,11 @@ impl Console {
         if path == "/console" {
             return ConsoleAnswer::Redirect;
         }
-        let key = path.strip_suffix("index.html").unwrap_or(path);
+        // -- WP HB9 -- A directory's `index.html` is its own path; `app.jsindex.html` is nothing.
+        let key = path
+            .strip_suffix("index.html")
+            .filter(|dir| dir.ends_with('/'))
+            .unwrap_or(path);
         let Some(file) = self.files.get(key).or_else(|| self.files.get(path)) else {
             return ConsoleAnswer::NotFound;
         };

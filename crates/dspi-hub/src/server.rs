@@ -14,10 +14,10 @@
 //!
 //! | Cost | Bound |
 //! |---|---|
-//! | Sockets and threads | [`ServerLimits::max_connections`] over every kind of socket, of which [`ServerLimits::max_preauth_per_peer`] unauthenticated from one address ([`ServerLimits::max_preauth_per_peer_web`] with `web` on, WP WB7). Past that an answer of HTTP 503 on a short-lived thread, at most [`ServerLimits::max_refusing`] at a time; past that, closed unread |
-//! | A socket that says nothing | The request head within [`ServerLimits::head_timeout`], however slowly it trickles; authenticated within [`ServerLimits::auth_timeout`] of opening, or close 4001 |
+//! | Sockets and threads | Two budgets (WP HB9). Plain HTTP, from accept until a request upgrades: [`ServerLimits::max_http`], of which [`ServerLimits::max_http_per_peer`] from one address; past either an idle socket (the address's own, else the fullest address's) is closed to make room, and only if none is idle the answer is HTTP 503. WebSockets, from the upgrade: [`ServerLimits::max_connections`], of which [`ServerLimits::max_preauth_per_peer`] unauthenticated from one address; past either the upgrade is answered 503. A 503 at accept is on a short-lived thread, at most [`ServerLimits::max_refusing`] at a time; past that, closed unread |
+//! | A socket that says nothing | Its first request's head within [`ServerLimits::head_timeout`], a later one's start within [`ServerLimits::keepalive_idle`], and any head within [`ServerLimits::request_timeout`] of its first byte, however slowly it trickles; reclaimed sooner while it waits if room is needed; authenticated within [`ServerLimits::auth_timeout`] of the upgrade, or close 4001 |
 //! | Memory per socket | A head of [`MAX_HEAD`] bytes; a frame or message of [`MAX_FRAME`], refused from its header before it is buffered |
-//! | A peer that stops reading | One write's [`ServerLimits::write_stall`]. Behind that, the outbox's limits (HUB.md section 6) |
+//! | A peer that stops reading | One write's [`ServerLimits::write_stall`]; an HTTP response's whole [`ServerLimits::response_timeout`]. Behind that, the outbox's limits (HUB.md section 6) |
 //! | A peer that stops answering | [`ServerLimits::dead_peer`], close 1001. A frame trickled and never finished does not count as an answer |
 //! | Guessing | [`crate::auth`]'s limits, and a token is not guessable |
 //!
@@ -79,25 +79,40 @@ const MAX_CLOSE_REASON: usize = 123;
 
 /// What one socket may cost. The defaults are the spec's where it names one. Tests
 /// shorten the times.
+///
+/// -- WP HB9 -- Two budgets. A socket counts as plain HTTP from accept until its request
+/// upgrades: the page's files, `/dspi/v1/info`, a browser's speculative connects. Only
+/// at the upgrade does it move into the WebSocket budget, so no number of page loads can
+/// keep a Link client or the app out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerLimits {
-    /// Every socket at once, authenticated or not. Each costs up to two threads, and
-    /// up to `max_inflight` queued commands. Past it: HTTP 503.
+    /// WebSockets at once, authenticated or not. Each costs up to two threads, and up to
+    /// `max_inflight` queued commands. Past it the upgrade is answered HTTP 503.
     pub max_connections: usize,
-    /// Unauthenticated sockets from one address (an IPv6 /64 counts as one), so one
-    /// machine cannot hold every slot. Past it: HTTP 503.
+    /// Unauthenticated WebSockets from one address (an IPv6 /64 counts as one), so one
+    /// machine cannot hold every slot. Past it the upgrade is answered HTTP 503.
     pub max_preauth_per_peer: usize,
-    // -- WP WB7 --
-    /// The same with `web` on, in its place: a browser loads a page's files over up to
-    /// six connections at once, each a plain HTTP request that counts here until it is
-    /// answered, beside its WebSocket and its fetch of `/dspi/v1/info`. With 4, one
-    /// browser opening the console was answered 503 for `app.js`.
-    pub max_preauth_per_peer_web: usize,
+    // -- WP HB9 --
+    /// Plain HTTP sockets at once (not yet upgraded), one thread each. More than two
+    /// addresses' worth, so one dual-stack machine (two addresses) cannot fill it.
+    pub max_http: usize,
+    /// Plain HTTP sockets from one address. A browser opens up to six per host and
+    /// pre-connects more, per window or profile. Past it the address's own idlest
+    /// socket is closed to make room; only if none is idle, HTTP 503.
+    pub max_http_per_peer: usize,
     /// Threads answering 503 at once. Past it a socket is closed unanswered.
     pub max_refusing: usize,
-    /// From accept to the whole HTTP request head.
+    /// From accept to the whole head of a socket's first request.
     pub head_timeout: Duration,
-    /// From accept to a successful authentication (spec 5).
+    // -- WP HB9 --
+    /// From a request's first byte to its whole head, however slowly it trickles.
+    pub request_timeout: Duration,
+    /// How long a kept-alive socket may wait for its next request.
+    pub keepalive_idle: Duration,
+    /// From a response's first byte to its last, however steadily the peer takes it.
+    /// Each write must also progress within [`Self::write_stall`].
+    pub response_timeout: Duration,
+    /// From the upgrade to a successful authentication (spec 5).
     pub auth_timeout: Duration,
     /// Between pings to an authenticated peer (spec 4).
     pub ping_interval: Duration,
@@ -116,10 +131,15 @@ impl Default for ServerLimits {
         Self {
             max_connections: 16,
             max_preauth_per_peer: 4,
-            // -- WP WB7 --
-            max_preauth_per_peer_web: 8,
+            // -- WP HB9 --
+            max_http: 48,
+            max_http_per_peer: 16,
             max_refusing: 4,
             head_timeout: Duration::from_secs(10),
+            // -- WP HB9 --
+            request_timeout: Duration::from_secs(3),
+            keepalive_idle: Duration::from_secs(5),
+            response_timeout: Duration::from_secs(30),
             auth_timeout: Duration::from_secs(30),
             ping_interval: Duration::from_secs(10),
             dead_peer: Duration::from_secs(30),
@@ -377,15 +397,54 @@ fn guard<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 enum Stage {
     /// Being answered 503. Not a connection for the limits.
     Refusing,
-    /// Anything without a session yet.
+    // -- WP HB9 --
+    /// Plain HTTP: not upgraded (yet). [`ServerLimits::max_http`]'s.
+    Http(Http),
+    /// A WebSocket without a session yet.
     PreAuth,
     Session,
+}
+
+// -- WP HB9 --
+/// Where a plain HTTP socket is, for choosing one to close when room is needed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Http {
+    /// Waiting for a request to start, since then: a browser's spare or kept-alive
+    /// socket. Closed first.
+    Idle(Instant),
+    /// A request's head has started, since then. Closed next.
+    Head(Instant),
+    /// Being answered. Never closed for room: bounded by the response's own times.
+    Busy,
+}
+
+impl Http {
+    /// Whether and how readily it may be closed to make room: lower goes first.
+    fn reclaim_order(self) -> Option<(u8, Instant)> {
+        match self {
+            Self::Idle(since) => Some((0, since)),
+            Self::Head(since) => Some((1, since)),
+            Self::Busy => None,
+        }
+    }
+}
+
+impl Stage {
+    fn is_http(self) -> bool {
+        matches!(self, Self::Http(_))
+    }
+
+    fn is_websocket(self) -> bool {
+        matches!(self, Self::PreAuth | Self::Session)
+    }
 }
 
 struct Entry {
     /// The address, as limits count it.
     peer: IpAddr,
     stage: Stage,
+    // -- WP HB9 -- Closed to make room: no longer counted, and its thread stops.
+    reclaimed: bool,
     /// To cut it off from outside.
     tcp: TcpStream,
     tx: Option<Arc<WsTx>>,
@@ -453,12 +512,22 @@ impl NetworkControl {
         &self.shared.auth
     }
 
-    /// Sockets the limits count now, authenticated or not.
+    /// Sockets the limits count now, plain HTTP and WebSocket, authenticated or not.
     pub fn connections(&self) -> usize {
         guard(&self.shared.table)
             .conns
             .values()
-            .filter(|e| !e.done && e.stage != Stage::Refusing)
+            .filter(|e| e.counts() && e.stage != Stage::Refusing)
+            .count()
+    }
+
+    // -- WP HB9 --
+    /// WebSockets the limits count now, authenticated or not: [`ServerLimits::max_connections`]'s.
+    pub fn websockets(&self) -> usize {
+        guard(&self.shared.table)
+            .conns
+            .values()
+            .filter(|e| e.counts() && e.stage.is_websocket())
             .count()
     }
 
@@ -492,6 +561,13 @@ impl NetworkControl {
     }
 }
 
+impl Entry {
+    // -- WP HB9 --
+    fn counts(&self) -> bool {
+        !self.done && !self.reclaimed
+    }
+}
+
 impl Shared {
     fn sessions_of(&self, cid: u32) -> Vec<Arc<Session>> {
         guard(&self.table)
@@ -515,6 +591,48 @@ impl Shared {
         if let Some(e) = guard(&self.table).conns.get_mut(&id) {
             e.tx = Some(Arc::clone(tx));
         }
+    }
+
+    // -- WP HB9 --
+    /// Where a plain HTTP socket is now. False if it was closed to make room, when its
+    /// thread is to stop.
+    fn set_http(&self, id: u64, http: Http) -> bool {
+        let mut table = guard(&self.table);
+        match table.conns.get_mut(&id) {
+            Some(e) if !e.reclaimed => {
+                e.stage = Stage::Http(http);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Move a plain HTTP socket into the WebSocket budget, at its upgrade. False when
+    /// there is no room there, or it was closed to make room.
+    fn promote(&self, id: u64) -> bool {
+        let mut table = guard(&self.table);
+        let Some(peer) = table
+            .conns
+            .get(&id)
+            .filter(|e| !e.reclaimed)
+            .map(|e| e.peer)
+        else {
+            return false;
+        };
+        let live = || table.conns.values().filter(|e| e.counts());
+        let websockets = live().filter(|e| e.stage.is_websocket()).count();
+        let from_peer = live()
+            .filter(|e| e.stage == Stage::PreAuth && e.peer == peer)
+            .count();
+        if websockets >= self.limits.max_connections
+            || from_peer >= self.limits.max_preauth_per_peer
+        {
+            return false;
+        }
+        if let Some(e) = table.conns.get_mut(&id) {
+            e.stage = Stage::PreAuth;
+        }
+        true
     }
 
     fn set_session(&self, id: u64, session: &Arc<Session>) {
@@ -572,20 +690,14 @@ impl Shared {
         let key = peer_key(peer.ip());
         let (id, stage) = {
             let mut table = guard(&self.table);
-            let live = || table.conns.values().filter(|e| !e.done);
-            let connections = live().filter(|e| e.stage != Stage::Refusing).count();
-            let from_peer = live()
-                .filter(|e| e.stage == Stage::PreAuth && e.peer == key)
+            let refusing = table
+                .conns
+                .values()
+                .filter(|e| e.counts() && e.stage == Stage::Refusing)
                 .count();
-            let refusing = live().filter(|e| e.stage == Stage::Refusing).count();
-            // -- WP WB7 -- a browser's parallel page loads, with web on
-            let per_peer = if self.web {
-                self.limits.max_preauth_per_peer_web
-            } else {
-                self.limits.max_preauth_per_peer
-            };
-            let stage = if connections < self.limits.max_connections && from_peer < per_peer {
-                Stage::PreAuth
+            // -- WP HB9 -- Every socket starts as plain HTTP; the upgrade moves it on.
+            let stage = if make_http_room(&mut table, key, &self.limits) {
+                Stage::Http(Http::Idle(opened))
             } else if refusing < self.limits.max_refusing {
                 Stage::Refusing
             } else {
@@ -598,6 +710,7 @@ impl Shared {
                 Entry {
                     peer: key,
                     stage,
+                    reclaimed: false,
                     tcp: cut_off,
                     tx: None,
                     session: None,
@@ -638,6 +751,52 @@ impl Shared {
     }
 }
 
+// -- WP HB9 --
+/// Room in the plain HTTP budget for one more socket from `peer`, closing an idle one if
+/// that is what it takes: the address's own when it is at its share, else one of the
+/// fullest address's. False if every socket that would have to go is being answered.
+fn make_http_room(table: &mut Table, peer: IpAddr, limits: &ServerLimits) -> bool {
+    let mut per_peer: BTreeMap<IpAddr, usize> = BTreeMap::new();
+    for e in table
+        .conns
+        .values()
+        .filter(|e| e.counts() && e.stage.is_http())
+    {
+        let n = per_peer.entry(e.peer).or_default();
+        *n = n.saturating_add(1);
+    }
+    let own = per_peer.get(&peer).copied().unwrap_or(0);
+    let total: usize = per_peer.values().sum();
+    let from: Option<IpAddr> = if own >= limits.max_http_per_peer {
+        Some(peer)
+    } else if total >= limits.max_http {
+        None
+    } else {
+        return true;
+    };
+    // The idlest, from the address at its share, or from the fullest address that has one.
+    let victim = table
+        .conns
+        .iter()
+        .filter(|(_, e)| e.counts() && from.is_none_or(|p| e.peer == p))
+        .filter_map(|(id, e)| match e.stage {
+            Stage::Http(http) => http.reclaim_order().map(|order| (*id, e.peer, order)),
+            _ => None,
+        })
+        .min_by_key(|(_, p, order)| {
+            let fullness = per_peer.get(p).copied().unwrap_or(0);
+            (std::cmp::Reverse(fullness), *order)
+        })
+        .map(|(id, ..)| id);
+    let Some(entry) = victim.and_then(|id| table.conns.get_mut(&id)) else {
+        return false;
+    };
+    entry.reclaimed = true;
+    // Ends its read at once, on its own thread, which then marks it done.
+    let _ = entry.tcp.shutdown(Shutdown::Both);
+    true
+}
+
 struct DoneGuard<'a> {
     shared: &'a Shared,
     id: u64,
@@ -673,12 +832,49 @@ fn accept_loop(shared: &Arc<Shared>, listener: &TcpListener) {
     }
 }
 
-/// Read up to the end of the HTTP head: `(head, what came behind it)`. Bounded in bytes
-/// and, however slowly they trickle, in time.
-fn read_head(tcp: &mut TcpStream, deadline: Instant) -> Result<(Vec<u8>, Vec<u8>), HeadError> {
-    let mut buf = Vec::with_capacity(1024);
+/// Read up to the end of the next HTTP head: `(head, what came behind it)`, starting
+/// with `buf`, what came behind the last one. Bounded in bytes and in time: the request
+/// must start by `start_by`, and its head end within `request_timeout` of its first byte
+/// and by `cap`, however slowly it trickles (WP HB9). `started` hears of the first byte;
+/// false from it ends the read.
+fn read_head(
+    tcp: &mut TcpStream,
+    mut buf: Vec<u8>,
+    start_by: Instant,
+    cap: Option<Instant>,
+    request_timeout: Duration,
+    mut started: impl FnMut() -> bool,
+) -> Result<(Vec<u8>, Vec<u8>), HeadError> {
+    let head_by = |first_byte: Instant| {
+        let end = after(first_byte, request_timeout);
+        cap.map_or(end, |cap| end.min(cap))
+    };
+    let mut deadline = start_by;
+    if !buf.is_empty() {
+        if !started() {
+            return Err(HeadError::Gone);
+        }
+        deadline = head_by(Instant::now());
+    }
     let mut chunk = [0u8; 1024];
+    let mut scanned: usize = 0;
     loop {
+        // Back over the seam: the end of the head can straddle two reads.
+        let from = scanned.saturating_sub(3);
+        let end = buf
+            .get(from..)
+            .and_then(|tail| tail.windows(4).position(|w| w == b"\r\n\r\n"))
+            .map(|at| from.saturating_add(at).saturating_add(4));
+        scanned = buf.len();
+        match end {
+            Some(end) if end <= MAX_HEAD => {
+                let tail = buf.split_off(end);
+                return Ok((buf, tail));
+            }
+            Some(_) => return Err(HeadError::TooLarge),
+            None if buf.len() > MAX_HEAD => return Err(HeadError::TooLarge),
+            None => {}
+        }
         let left = deadline.saturating_duration_since(Instant::now());
         if left.is_zero() {
             return Err(HeadError::Gone);
@@ -689,22 +885,13 @@ fn read_head(tcp: &mut TcpStream, deadline: Instant) -> Result<(Vec<u8>, Vec<u8>
             Ok(0) | Err(_) => return Err(HeadError::Gone),
             Ok(n) => n,
         };
-        // Back over the seam: the end of the head can straddle two reads.
-        let from = buf.len().saturating_sub(3);
-        buf.extend_from_slice(chunk.get(..n).unwrap_or_default());
-        let end = buf
-            .get(from..)
-            .and_then(|tail| tail.windows(4).position(|w| w == b"\r\n\r\n"))
-            .map(|at| from.saturating_add(at).saturating_add(4));
-        match end {
-            Some(end) if end <= MAX_HEAD => {
-                let tail = buf.split_off(end);
-                return Ok((buf, tail));
+        if buf.is_empty() {
+            if !started() {
+                return Err(HeadError::Gone);
             }
-            Some(_) => return Err(HeadError::TooLarge),
-            None if buf.len() > MAX_HEAD => return Err(HeadError::TooLarge),
-            None => {}
+            deadline = head_by(Instant::now());
         }
+        buf.extend_from_slice(chunk.get(..n).unwrap_or_default());
     }
 }
 
@@ -714,10 +901,16 @@ enum HeadError {
     TooLarge,
 }
 
-/// Write all of it by the deadline, however slowly the peer takes it.
-fn write_by(tcp: &mut TcpStream, mut bytes: &[u8], deadline: Instant) -> io::Result<()> {
+/// Write all of it by `cap`, however slowly the peer takes it, each write making
+/// progress within `stall`.
+fn write_by(
+    tcp: &mut TcpStream,
+    mut bytes: &[u8],
+    stall: Duration,
+    cap: Instant,
+) -> io::Result<()> {
     while !bytes.is_empty() {
-        let left = deadline.saturating_duration_since(Instant::now());
+        let left = cap.saturating_duration_since(Instant::now()).min(stall);
         if left.is_zero() {
             return Err(io::ErrorKind::TimedOut.into());
         }
@@ -745,17 +938,27 @@ fn drain(tcp: &mut TcpStream, deadline: Instant) {
     }
 }
 
-/// One whole HTTP answer on a connection that closes behind it.
+/// One whole HTTP answer, written by `until` with each write progressing within
+/// [`ServerLimits::write_stall`]. With `keep` the connection stays open for the next
+/// request, and the result says whether it may; without, it closes behind the answer.
 fn respond(
     shared: &Shared,
     tcp: &mut TcpStream,
     status: &str,
     headers: &[(&str, &str)],
     body: &[u8],
-    deadline: Instant,
-) {
+    keep: bool,
+    until: Instant,
+) -> bool {
+    // -- WP HB9 -- kept alive when the request allows it
+    let connection = if keep {
+        let idle = shared.limits.keepalive_idle.as_secs().max(1);
+        format!("Keep-Alive: timeout={idle}")
+    } else {
+        "Connection: close".to_owned()
+    };
     let mut head = format!(
-        "HTTP/1.1 {status}\r\nConnection: close\r\nContent-Length: {}\r\n",
+        "HTTP/1.1 {status}\r\n{connection}\r\nContent-Length: {}\r\n",
         body.len()
     );
     for (name, value) in headers {
@@ -765,55 +968,149 @@ fn respond(
         head.push_str("\r\n");
     }
     head.push_str("\r\n");
-    if write_by(tcp, head.as_bytes(), deadline).is_err() || write_by(tcp, body, deadline).is_err() {
-        return;
+    let stall = shared.limits.write_stall;
+    if write_by(tcp, head.as_bytes(), stall, until).is_err()
+        || write_by(tcp, body, stall, until).is_err()
+    {
+        return false;
+    }
+    if keep {
+        return true;
     }
     let _ = tcp.shutdown(Shutdown::Write);
     drain(tcp, after(Instant::now(), shared.limits.close_grace));
+    false
 }
 
 const TEXT: (&str, &str) = ("Content-Type", "text/plain; charset=utf-8");
+const BUSY: &[u8] = b"The hub has no room for another session.";
 
 /// The answer for a socket past the limits. On its own short-lived thread, so that a
 /// legitimate client hears 503 (`LinkError::HubBusy`, spec 4) and not a reset: closing
 /// with its request unread would be one.
 fn refuse(shared: &Shared, mut tcp: TcpStream, opened: Instant) {
     let deadline = after(opened, shared.limits.close_grace);
-    let _ = read_head(&mut tcp, deadline);
-    respond(
-        shared,
+    let grace = shared.limits.close_grace;
+    let _ = read_head(
         &mut tcp,
-        "503 Service Unavailable",
-        &[TEXT, ("Retry-After", "5")],
-        b"The hub has no room for another session.",
+        Vec::new(),
         deadline,
+        Some(deadline),
+        grace,
+        || true,
     );
+    let headers = [TEXT, ("Retry-After", "5")];
+    let status = "503 Service Unavailable";
+    respond(shared, &mut tcp, status, &headers, BUSY, false, deadline);
 }
 
-/// The whole life of a socket, on its reader thread.
+// -- WP HB9 --
+/// What a socket does after a request's answer.
+enum Next {
+    /// Waits for the next request: kept alive.
+    Keep,
+    Close,
+    /// Becomes a WebSocket, already counted in that budget. The `Sec-WebSocket-Accept`.
+    Upgrade(String),
+}
+
+fn kept(alive: bool) -> Next {
+    if alive { Next::Keep } else { Next::Close }
+}
+
+/// Whether the connection may carry another request after this one's answer: HTTP/1.1
+/// asking for it by `Connection: keep-alive`, as browsers do, and no body this server
+/// would have to skip. Without the word it closes as before, for a client that reads
+/// its answer to the end of the stream.
+fn keep_alive(request: &httparse::Request<'_, '_>) -> bool {
+    let Ok(connection) = single_header(request, "Connection") else {
+        return false;
+    };
+    let no_body = match single_header(request, "Content-Length") {
+        Ok(None) => true,
+        Ok(Some(length)) => length.trim() == "0",
+        Err(()) => false,
+    };
+    let chunked = request
+        .headers
+        .iter()
+        .any(|h| h.name.eq_ignore_ascii_case("Transfer-Encoding"));
+    request.version == Some(1)
+        && request.method == Some("GET")
+        && has_token(connection, "keep-alive")
+        && !has_token(connection, "close")
+        && no_body
+        && !chunked
+}
+
+/// The whole life of a socket, on its reader thread: plain HTTP requests, kept alive
+/// while the peer and the answer allow, until one upgrades or the socket closes.
 fn serve(shared: &Arc<Shared>, id: u64, mut tcp: TcpStream, peer: IpAddr, opened: Instant) {
-    let deadline = after(opened, shared.limits.head_timeout);
-    let (head, tail) = match read_head(&mut tcp, deadline) {
-        Ok(read) => read,
-        Err(HeadError::Gone) => return,
-        Err(HeadError::TooLarge) => {
-            let status = "431 Request Header Fields Too Large";
-            respond(shared, &mut tcp, status, &[TEXT], b"Too large.", deadline);
+    let limits = &shared.limits;
+    let first_by = after(opened, limits.head_timeout);
+    let mut carry = Vec::new();
+    let mut first = true;
+    loop {
+        let (start_by, cap) = if first {
+            (first_by, Some(first_by))
+        } else {
+            // Idle again, for the next request: the first to go when room is needed.
+            if !shared.set_http(id, Http::Idle(Instant::now())) {
+                return;
+            }
+            (after(Instant::now(), limits.keepalive_idle), None)
+        };
+        first = false;
+        let started = || shared.set_http(id, Http::Head(Instant::now()));
+        let read = read_head(
+            &mut tcp,
+            carry,
+            start_by,
+            cap,
+            limits.request_timeout,
+            started,
+        );
+        // Being answered from here on: bounded by the response's own times.
+        if !shared.set_http(id, Http::Busy) {
             return;
         }
-    };
+        let until = after(Instant::now(), limits.response_timeout);
+        let (head, tail) = match read {
+            Ok(read) => read,
+            Err(HeadError::Gone) => return,
+            Err(HeadError::TooLarge) => {
+                let status = "431 Request Header Fields Too Large";
+                respond(
+                    shared,
+                    &mut tcp,
+                    status,
+                    &[TEXT],
+                    b"Too large.",
+                    false,
+                    until,
+                );
+                return;
+            }
+        };
+        match answer(shared, id, &mut tcp, &head, until) {
+            Next::Keep => carry = tail,
+            Next::Close => return,
+            Next::Upgrade(accept) => {
+                upgrade(shared, id, tcp, tail, &accept, peer);
+                return;
+            }
+        }
+    }
+}
+
+/// The answer to one plain HTTP request.
+fn answer(shared: &Shared, id: u64, tcp: &mut TcpStream, head: &[u8], until: Instant) -> Next {
     let mut headers = [httparse::EMPTY_HEADER; MAX_HEADERS];
     let mut request = httparse::Request::new(&mut headers);
-    if !matches!(request.parse(&head), Ok(httparse::Status::Complete(_))) {
-        respond(
-            shared,
-            &mut tcp,
-            "400 Bad Request",
-            &[TEXT],
-            b"Not HTTP.",
-            deadline,
-        );
-        return;
+    if !matches!(request.parse(head), Ok(httparse::Status::Complete(_))) {
+        let status = "400 Bad Request";
+        respond(shared, tcp, status, &[TEXT], b"Not HTTP.", false, until);
+        return Next::Close;
     }
     let path = request
         .path
@@ -823,45 +1120,45 @@ fn serve(shared: &Arc<Shared>, id: u64, mut tcp: TcpStream, peer: IpAddr, opened
         .unwrap_or_default();
     if path == WS_PATH {
         match check_upgrade(shared, &request) {
-            Ok(accept) => upgrade(shared, id, tcp, tail, &accept, peer, opened),
+            // -- WP HB9 -- Into the WebSocket budget here, and only here.
+            Ok(accept) if shared.promote(id) => return Next::Upgrade(accept),
+            Ok(_) => {
+                let headers = [TEXT, ("Retry-After", "5")];
+                let status = "503 Service Unavailable";
+                respond(shared, tcp, status, &headers, BUSY, false, until);
+            }
             Err((status, why)) => {
-                respond(shared, &mut tcp, status, &[TEXT], why.as_bytes(), deadline)
+                respond(shared, tcp, status, &[TEXT], why.as_bytes(), false, until);
             }
         }
-        return;
+        return Next::Close;
     }
     if request.method != Some("GET") {
         let status = "405 Method Not Allowed";
-        respond(
-            shared,
-            &mut tcp,
-            status,
-            &[TEXT, ("Allow", "GET")],
-            b"GET only.",
-            deadline,
-        );
-        return;
+        let headers = [TEXT, ("Allow", "GET")];
+        respond(shared, tcp, status, &headers, b"GET only.", false, until);
+        return Next::Close;
     }
+    let keep = keep_alive(&request);
     if path == INFO_PATH {
         let body = shared.info();
         let headers = [
             ("Content-Type", "application/json"),
             ("Access-Control-Allow-Origin", "*"),
         ];
-        respond(
+        return kept(respond(
             shared,
-            &mut tcp,
+            tcp,
             "200 OK",
             &headers,
             body.as_bytes(),
-            deadline,
-        );
-        return;
+            keep,
+            until,
+        ));
     }
     // -- WP WB7 -- The console, beside the page at `/`, with web on only.
     if shared.web && crate::web::is_console_path(path) {
-        serve_console(shared, &mut tcp, &request, path, opened, deadline);
-        return;
+        return kept(serve_console(shared, tcp, &request, path, keep, until));
     }
     // `/dspi/` is the protocol's (spec 4.2), and the web UI is only served when on.
     let asset = (shared.web && !path.starts_with("/dspi/"))
@@ -870,17 +1167,12 @@ fn serve(shared: &Arc<Shared>, id: u64, mut tcp: TcpStream, peer: IpAddr, opened
     // -- WP WB7 -- `/hub` to `/hub/`, where upstream's relative URLs resolve.
     if let Some(to) = shared.web.then(|| crate::web::redirect(path)).flatten() {
         let headers = [TEXT, ("Location", to)];
-        respond(
-            shared,
-            &mut tcp,
-            "301 Moved Permanently",
-            &headers,
-            b"Moved.",
-            deadline,
-        );
-        return;
+        let status = "301 Moved Permanently";
+        return kept(respond(
+            shared, tcp, status, &headers, b"Moved.", keep, until,
+        ));
     }
-    match asset {
+    let alive = match asset {
         Some(asset) => {
             // -- WP HB5 -- A hub's update changes these under the same paths.
             // -- WP WB7 -- ...but for upstream's hashed asset names; and a policy per page.
@@ -892,36 +1184,35 @@ fn serve(shared: &Arc<Shared>, id: u64, mut tcp: TcpStream, peer: IpAddr, opened
                 ("Content-Security-Policy", csp.as_str()),
                 ("Referrer-Policy", "no-referrer"),
             ];
-            // The peer's slot is held until its time runs out, however big the file.
-            let until = after(opened, shared.limits.auth_timeout);
-            respond(shared, &mut tcp, "200 OK", &headers, asset.body, until);
+            respond(shared, tcp, "200 OK", &headers, asset.body, keep, until)
         }
         None => respond(
             shared,
-            &mut tcp,
+            tcp,
             "404 Not Found",
             &[TEXT],
             b"Not found.",
-            deadline,
+            keep,
+            until,
         ),
-    }
+    };
+    kept(alive)
 }
 
 // -- WP WB7 --
-/// One request under the console's path.
+/// One request under the console's path. Whether the connection stays open.
 fn serve_console(
     shared: &Shared,
     tcp: &mut TcpStream,
     request: &httparse::Request<'_, '_>,
     path: &str,
-    opened: Instant,
-    deadline: Instant,
-) {
+    keep: bool,
+    until: Instant,
+) -> bool {
     use crate::web::ConsoleAnswer;
     let Some(console) = shared.console.as_deref() else {
         let why = b"No web console on this hub.";
-        respond(shared, tcp, "404 Not Found", &[TEXT], why, deadline);
-        return;
+        return respond(shared, tcp, "404 Not Found", &[TEXT], why, keep, until);
     };
     let hub = own_authority(shared, request);
     let csp = crate::web::console_csp(hub);
@@ -938,12 +1229,20 @@ fn serve_console(
         ConsoleAnswer::Redirect => {
             let headers = [TEXT, ("Location", crate::web::CONSOLE_PATH)];
             let status = "301 Moved Permanently";
-            respond(shared, tcp, status, &headers, b"See /console/.", deadline);
+            respond(
+                shared,
+                tcp,
+                status,
+                &headers,
+                b"See /console/.",
+                keep,
+                until,
+            )
         }
         ConsoleAnswer::NotModified { etag } => {
             let mut headers = common.to_vec();
             headers.push(("ETag", etag));
-            respond(shared, tcp, "304 Not Modified", &headers, b"", deadline);
+            respond(shared, tcp, "304 Not Modified", &headers, b"", keep, until)
         }
         ConsoleAnswer::File {
             content_type,
@@ -953,9 +1252,7 @@ fn serve_console(
             let mut headers = common.to_vec();
             headers.push(("Content-Type", content_type));
             headers.extend(etag.map(|e| ("ETag", e)));
-            // As for the page at `/`: the peer's slot is held until its time runs out.
-            let until = after(opened, shared.limits.auth_timeout);
-            respond(shared, tcp, "200 OK", &headers, &body, until);
+            respond(shared, tcp, "200 OK", &headers, &body, keep, until)
         }
         ConsoleAnswer::NotFound => respond(
             shared,
@@ -963,7 +1260,8 @@ fn serve_console(
             "404 Not Found",
             &[TEXT],
             b"Not found.",
-            deadline,
+            keep,
+            until,
         ),
     }
 }
@@ -1051,14 +1349,15 @@ fn upgrade(
     tail: Vec<u8>,
     accept: &str,
     peer: IpAddr,
-    opened: Instant,
 ) {
+    // -- WP HB9 -- The pre-auth clock starts here, where the WebSocket budget's count does.
+    let upgraded = Instant::now();
     let response = format!(
         "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\
          Sec-WebSocket-Accept: {accept}\r\nSec-WebSocket-Protocol: {SUBPROTOCOL}\r\n\r\n"
     );
-    let until = after(opened, shared.limits.head_timeout);
-    if write_by(&mut tcp, response.as_bytes(), until).is_err() {
+    let stall = shared.limits.write_stall;
+    if write_by(&mut tcp, response.as_bytes(), stall, after(upgraded, stall)).is_err() {
         return;
     }
     let limits = &shared.limits;
@@ -1086,7 +1385,7 @@ fn upgrade(
         session: None,
         writer: None,
     };
-    connection.run(reader, opened);
+    connection.run(reader, upgraded);
 }
 
 /// The sending half of a WebSocket. The writer thread sends through it once there is
@@ -1250,9 +1549,9 @@ fn is_timeout(e: &io::Error) -> bool {
 }
 
 impl Connection {
-    fn run(&mut self, mut reader: WebSocket<Pipe>, opened: Instant) {
+    fn run(&mut self, mut reader: WebSocket<Pipe>, upgraded: Instant) {
         let limits = self.shared.limits.clone();
-        let auth_deadline = after(opened, limits.auth_timeout);
+        let auth_deadline = after(upgraded, limits.auth_timeout);
         let mut last_heard = Instant::now();
         while self.tx.close_deadline().is_none() {
             match reader.read() {
