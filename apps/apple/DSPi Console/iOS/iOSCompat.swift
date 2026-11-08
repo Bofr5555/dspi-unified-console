@@ -215,9 +215,16 @@ struct ToolSheetHost: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView([.vertical, .horizontal]) {
-                sheet.content
-                    .padding(.bottom, 24)
+            GeometryReader { viewport in
+                ScrollView([.vertical, .horizontal]) {
+                    SheetFitLayout(viewport: viewport.size) {
+                        sheet.content
+                            .padding(.bottom, 24)
+                    }
+                }
+                // Content larger than the sheet starts at its corner rather
+                // than centred, which put a tool's own header under the bar.
+                .defaultScrollAnchor(.topLeading)
             }
             .navigationTitle(sheet.title)
             .navigationBarTitleDisplayMode(.inline)
@@ -228,6 +235,37 @@ struct ToolSheetHost: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+}
+
+/// Lays a tool view out at the sheet's visible size, as its Mac window would.
+/// A scroll view proposes no size at all, so on its own the tool took its
+/// ideal width (text unwrapped, the right column off screen) and its ideal
+/// height (the Filter Response graph a thin strip).  This proposes the
+/// visible width, and the visible height too when the tool fits in it, so a
+/// tool that grows fills the sheet.  A tool that needs more room in either
+/// direction keeps its size and the sheet scrolls; a narrower one is centred.
+private struct SheetFitLayout: Layout {
+    let viewport: CGSize
+
+    private func proposal(for child: LayoutSubview) -> ProposedViewSize {
+        let natural = child.sizeThatFits(ProposedViewSize(width: viewport.width, height: nil))
+        return ProposedViewSize(width: viewport.width,
+                                height: natural.height <= viewport.height ? viewport.height : nil)
+    }
+
+    func sizeThatFits(proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
+        guard let child = subviews.first else { return viewport }
+        let size = child.sizeThatFits(proposal(for: child))
+        return CGSize(width: max(size.width, viewport.width), height: max(size.height, viewport.height))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
+        guard let child = subviews.first else { return }
+        let childProposal = proposal(for: child)
+        let width = child.sizeThatFits(childProposal).width
+        child.place(at: CGPoint(x: bounds.minX + max(0, (bounds.width - width) / 2), y: bounds.minY),
+                    anchor: .topLeading, proposal: childProposal)
     }
 }
 #endif

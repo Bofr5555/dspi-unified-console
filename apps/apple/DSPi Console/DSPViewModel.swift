@@ -2095,9 +2095,12 @@ class DSPViewModel: ObservableObject {
     /// Console build expects.  nil while disconnected, before the first
     /// `fetchPlatform()`, or if the app's own bundle version is unparseable -
     /// in every one of those cases we know too little to tell the user
-    /// anything, so callers must stay silent rather than guess.
+    /// anything, so callers must stay silent rather than guess.  Also nil for
+    /// the demo device: its reply is a 1.1.6 beta 5 capture, a simulated
+    /// device has no firmware to update, and a banner about it was noise.
     var firmwareMatch: FirmwareMatch? {
         guard isDeviceConnected,
+              selectedDevice != FakeTransport.demoDevice,
               let v = firmwareVersion,
               let expected = FirmwareVersion.expected else { return nil }
         let device = FirmwareVersion(v.major, v.minor, v.patch, v.beta)

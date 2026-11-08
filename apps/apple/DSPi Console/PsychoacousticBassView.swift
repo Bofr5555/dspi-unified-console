@@ -118,7 +118,7 @@ struct PsychoacousticBassView: View {
                 // The graph sits over the cutoff and level that shape its
                 // harmonic band; the right column chooses the outputs and
                 // shapes how the harmonics are made.
-                HStack(alignment: .top, spacing: 0) {
+                ToolColumns {
                     VStack(alignment: .leading, spacing: 14) {
                         spectrumGraph
                         Divider()
@@ -135,13 +135,11 @@ struct PsychoacousticBassView: View {
                     }
                     .toolColumn()
                 }
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.vertical, 16)
             } else {
                 unsupportedNote
             }
         }
-        .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .toolWindowFrame(minWidth: 620)
     }
 
     // MARK: - Header
