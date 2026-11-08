@@ -257,6 +257,7 @@ impl DspiCore {
             let worker = rta::take_worker(&mut inner);
             (inner.conn.take(), worker)
         };
+        drop(self.set_meter_path(None)); // -- WP LK2 --
         if let Some(worker) = worker {
             worker.stop();
         }
@@ -280,6 +281,7 @@ impl DspiCore {
             let worker = rta::take_worker(&mut inner);
             (inner.conn.replace(conn), worker)
         };
+        drop(self.set_meter_path(None)); // -- WP LK2 --
         if let Some(worker) = worker {
             worker.stop();
         }

@@ -14,7 +14,7 @@ use dspi_proto::generated::wire::WIRE_FORMAT_VERSION;
 use dspi_proto::packets::{BuildInfo, FirmwareVersion, PlatformInfo};
 use dspi_proto::wire::{BulkPacket, WireHeader};
 use dspi_proto::{Platform, generated};
-use dspi_transport::{Result, Transport, TransportError, with_busy_retry};
+use dspi_transport::{InRead, Result, Transport, TransportError, with_busy_retry};
 
 /// Everything discovered about a connected device.
 #[derive(Debug, Clone)]
@@ -296,19 +296,32 @@ fn describe(
         })
         .collect();
 
-    let features = probe_features(t);
-    let cs = probe_cs_caps(t);
-    let siggen = probe_siggen_caps(t);
+    // WP LK2: every read that needs no earlier answer goes out in one batch,
+    // pipelined over DSPi Link (one at a time elsewhere): the feature probes,
+    // the control-surface and generator caps headers, the build info, the
+    // active preset and the first band; then what depends on them.
+    let mut reads = feature_reads();
+    let first = reads.len();
+    reads.extend([
+        InRead::exact(op::REQ_GET_CS_CAPS, 0xFFFF, 4),
+        InRead::exact(op::REQ_SIGGEN_GET_CAPS, 0xFFFF, 8),
+        InRead::exact(op::REQ_GET_BUILD_INFO, 0, BuildInfo::SIZE as u16),
+        InRead::exact(op::REQ_PRESET_GET_ACTIVE, 0, 1),
+    ]);
+    if h.max_bands != 0 {
+        reads.push(band_read(0));
+    }
+    let mut answers = t.control_in_batch(&reads).into_iter();
+    let features = features_from(answers.by_ref().take(first));
+    let mut next = || answers.next().unwrap_or(Err(TransportError::Disconnected));
+    let (cs_header, siggen_header) = (next(), next());
     // Informational, and absent before beta4: a stall is the answer, so no
     // retry (config.h:326).
-    let build_info = t
-        .control_in(op::REQ_GET_BUILD_INFO, 0, BuildInfo::SIZE as u16)
-        .ok()
-        .and_then(|d| BuildInfo::decode(&d).ok());
-    let active_preset = t
-        .control_in(op::REQ_PRESET_GET_ACTIVE, 0, 1)
-        .ok()
-        .and_then(|d| d.first().copied());
+    let build_info = next().ok().and_then(|d| BuildInfo::decode(&d).ok());
+    let active_preset = next().ok().and_then(|d| d.first().copied());
+    let band0 = h.max_bands != 0 && next().is_ok();
+    let cs = cs_caps_after(t, cs_header);
+    let siggen = siggen_caps_after(t, siggen_header);
 
     Ok(Capabilities {
         serial: if serial.is_empty() {
@@ -324,7 +337,7 @@ fn describe(
         num_channels: h.num_channels,
         num_inputs: h.num_input_channels,
         num_outputs: h.num_output_channels,
-        max_bands: probe_band_count(t, h.max_bands),
+        max_bands: band_count_after(t, h.max_bands, band0),
         band_storage: h.max_bands,
         channels,
         features,
@@ -349,16 +362,31 @@ fn describe(
 ///
 /// Deliberately not wrapped in `with_busy_retry`: here a stall is the answer,
 /// and retrying it would cost 600 ms per probe.
+#[cfg(test)]
 fn probe_band_count(t: &mut dyn Transport, storage: u8) -> u8 {
-    // Channel 0, param 0 (filter type). Any live band answers; reserved ones stall.
+    let band0 = storage != 0 && {
+        let r = band_read(0);
+        t.control_in(r.opcode, r.value, r.len).is_ok()
+    };
+    band_count_after(t, storage, band0)
+}
+
+/// The read of `band`'s filter type on channel 0: any live band answers,
+/// reserved ones stall.
+fn band_read(band: u8) -> InRead {
+    InRead::exact(op::REQ_GET_EQ_PARAM, (band as u16) << 3, 4)
+}
+
+/// [`probe_band_count`] once band 0's answer is known (`band0`: it answered).
+fn band_count_after(t: &mut dyn Transport, storage: u8, band0: bool) -> u8 {
     let live = |t: &mut dyn Transport, band: u8| {
-        t.control_in(op::REQ_GET_EQ_PARAM, (band as u16) << 3, 4)
-            .is_ok()
+        let r = band_read(band);
+        t.control_in(r.opcode, r.value, r.len).is_ok()
     };
 
     // If even band 0 will not answer, the device is not in a state to be
     // measured. Report the header's depth rather than claiming it has no EQ.
-    if storage == 0 || !live(t, 0) {
+    if storage == 0 || !band0 {
         return storage;
     }
 
@@ -393,14 +421,24 @@ fn channel_names(bulk: &BulkPacket, count: u8) -> Vec<String> {
         .collect()
 }
 
+/// (name, opcode, wValue, length) of each feature probe.
+type FeatureProbe = (&'static str, u8, u16, u16);
+
+/// The feature probes' reads, in [`feature_probes`]' order.
+fn feature_reads() -> Vec<InRead> {
+    feature_probes()
+        .iter()
+        .map(|(_, opcode, value, len)| InRead::exact(*opcode, *value, *len))
+        .collect()
+}
+
 /// Features with no capability descriptor: probe once, cache the answer.
 ///
 /// A stall here is information, not a failure. The loudness output mask, for
 /// instance, only exists from wire V19, and older firmware stalls on it.
-fn probe_features(t: &mut dyn Transport) -> Vec<Feature> {
+fn feature_probes() -> &'static [FeatureProbe] {
     use dspi_proto::generated::{limiter, tube};
-    // (name, opcode, wValue, length).
-    let probes: &[(&str, u8, u16, u16)] = &[
+    &[
         // The Console's `inputSourceSupported`, which gates its whole input
         // page: firmware without a selectable source stalls 0xE1.
         ("input_source", op::REQ_GET_INPUT_SOURCE, 0, 1),
@@ -449,35 +487,44 @@ fn probe_features(t: &mut dyn Transport) -> Vec<Feature> {
         ("device_name", op::REQ_GET_DEVICE_NAME, 0, 32),
         // OutputLatencyStatus, 12 bytes (config.h REQ_OUTPUT_LATENCY).
         ("output_latency", op::REQ_OUTPUT_LATENCY, 0, 12),
-    ];
+    ]
+}
 
-    probes
+/// The features from the answers to [`feature_reads`], in order.
+fn features_from(answers: impl Iterator<Item = Result<Vec<u8>>>) -> Vec<Feature> {
+    feature_probes()
         .iter()
-        .map(
-            |(name, opcode, value, len)| match t.control_in(*opcode, *value, *len) {
-                Ok(_) => Feature {
-                    name: (*name).into(),
-                    present: true,
-                    evidence: format!("0x{opcode:02X} answered"),
-                },
-                Err(TransportError::Stalled { .. }) => Feature {
-                    name: (*name).into(),
-                    present: false,
-                    evidence: format!("0x{opcode:02X} stalled"),
-                },
-                Err(e) => Feature {
-                    name: (*name).into(),
-                    present: false,
-                    evidence: format!("0x{opcode:02X}: {e}"),
-                },
+        .zip(answers)
+        .map(|((name, opcode, _, _), answer)| match answer {
+            Ok(_) => Feature {
+                name: (*name).into(),
+                present: true,
+                evidence: format!("0x{opcode:02X} answered"),
             },
-        )
+            Err(TransportError::Stalled { .. }) => Feature {
+                name: (*name).into(),
+                present: false,
+                evidence: format!("0x{opcode:02X} stalled"),
+            },
+            Err(e) => Feature {
+                name: (*name).into(),
+                present: false,
+                evidence: format!("0x{opcode:02X}: {e}"),
+            },
+        })
         .collect()
 }
 
+#[cfg(test)]
 fn probe_cs_caps(t: &mut dyn Transport) -> Option<ControlSurfaceCaps> {
     // wValue 0xFFFF asks for the header rather than a single noun descriptor.
-    let d = t.control_in(op::REQ_GET_CS_CAPS, 0xFFFF, 4).ok()?;
+    let header = t.control_in(op::REQ_GET_CS_CAPS, 0xFFFF, 4);
+    cs_caps_after(t, header)
+}
+
+/// The control-surface caps once the 4-byte header's read is answered.
+fn cs_caps_after(t: &mut dyn Transport, header: Result<Vec<u8>>) -> Option<ControlSurfaceCaps> {
+    let d = header.ok()?;
     let caps_version = *d.first()?;
     let max_bindings = *d.get(1)?;
     let type_count = *d.get(2)?;
@@ -527,23 +574,27 @@ fn probe_cs_caps(t: &mut dyn Transport) -> Option<ControlSurfaceCaps> {
     })
 }
 
-fn probe_siggen_caps(t: &mut dyn Transport) -> Option<SiggenCaps> {
-    let d = t.control_in(op::REQ_SIGGEN_GET_CAPS, 0xFFFF, 8).ok()?;
+/// The generator's caps once the 8-byte header's read is answered.
+fn siggen_caps_after(t: &mut dyn Transport, header: Result<Vec<u8>>) -> Option<SiggenCaps> {
+    let d = header.ok()?;
     let type_count = *d.get(1)?;
     // Each descriptor is its own transfer, indexed by wValue; a descriptor
     // that fails to read is skipped rather than failing the probe, so a
     // device with an odd table still gets a generator panel.
-    let types = (0..type_count as u16)
-        .filter_map(|i| {
-            let b = t
-                .control_in(
-                    op::REQ_SIGGEN_GET_CAPS,
-                    i,
-                    dspi_proto::packets::SiggenTypeDesc::SIZE as u16,
-                )
-                .ok()?;
-            dspi_proto::packets::SiggenTypeDesc::decode(&b).ok()
+    // WP LK2: one batch, pipelined over DSPi Link
+    let reads: Vec<InRead> = (0..type_count as u16)
+        .map(|i| {
+            InRead::exact(
+                op::REQ_SIGGEN_GET_CAPS,
+                i,
+                dspi_proto::packets::SiggenTypeDesc::SIZE as u16,
+            )
         })
+        .collect();
+    let types = t
+        .control_in_batch(&reads)
+        .into_iter()
+        .filter_map(|b| dspi_proto::packets::SiggenTypeDesc::decode(&b.ok()?).ok())
         .collect();
     Some(SiggenCaps {
         version: *d.first()?,

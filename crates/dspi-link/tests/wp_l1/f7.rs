@@ -1,4 +1,5 @@
-//! F7: the first timeout probes; connect is bounded.
+//! F7: the first timeout probes (a ping; WP LK2: only silence ends the
+//! session); connect is bounded.
 
 use std::net::TcpListener;
 use std::sync::atomic::Ordering;
@@ -24,20 +25,32 @@ fn pings(hub: &MockHub) -> u32 {
     hub.pings.load(Ordering::SeqCst)
 }
 
+// WP LK2 (LK1-c): an unanswered request no longer ends the session after 5 s;
+// only the silence limit does.
 #[test]
-fn wp_l1_f7_a_command_timeout_probes_and_no_answer_ends_it_early() {
+fn wp_lk2_a_command_timeout_pings_and_only_silence_ends_the_session() {
     let clock = manual_clock();
     let (hub, c) = mock_session(&clock, short(&clock));
     assert_eq!(pings(&hub), 0, "the clock has not moved: no regular ping yet");
     timed_out_command(&c);
     assert!(wait(|| pings(&hub) == 1), "the probe goes out at once, not at the next regular ping");
-    clock.advance(Duration::from_secs(4));
+    clock.advance(Duration::from_secs(6));
     hub.settle();
-    assert!(!c.is_closed(), "within the probe's time");
+    assert!(!c.is_closed(), "an unanswered request and a lost ping are not a dead link");
+    clock.advance(Timing::default().silence_limit - Duration::from_secs(6) - Duration::from_millis(500));
+    hub.settle();
+    assert!(!c.is_closed(), "within the silence limit");
     clock.advance(Duration::from_millis(1100));
-    assert!(wait(|| c.is_closed()), "dead about 5 s after the timeout, not 35 s");
+    assert!(wait(|| c.is_closed()), "dead once the hub was silent for the limit");
     assert_eq!(c.closed_reason().unwrap(), (None, "connection lost".to_owned()));
     assert_eq!(c.command(0, Dir::Get, req::GET_PLATFORM, 0, 2, 7, &[]).status, status::NO_DEVICE);
+}
+
+#[test]
+fn wp_lk2_the_defaults_ping_every_5_s_and_give_up_after_30_s_of_silence() {
+    let t = Timing::default();
+    assert_eq!(t.ping_interval, Duration::from_secs(5));
+    assert_eq!(t.silence_limit, Duration::from_secs(30));
 }
 
 #[test]
@@ -86,7 +99,7 @@ fn wp_l1_f7_half_open_through_real_sockets() {
     hub.stall(true);
     timed_out_command(&c);
     std::thread::sleep(Duration::from_millis(20)); // The probe goes out
-    clock.advance(Duration::from_millis(5100));
+    clock.advance(Timing::default().silence_limit + Duration::from_millis(100));
     assert!(wait(|| c.is_closed()), "at the next reader tick");
 }
 

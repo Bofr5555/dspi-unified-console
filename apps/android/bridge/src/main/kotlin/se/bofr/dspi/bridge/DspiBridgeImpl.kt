@@ -6,9 +6,11 @@ package se.bofr.dspi.bridge
 
 import java.util.concurrent.Executors
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
@@ -21,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import se.bofr.dspi.core.AdatOutStatus
 import se.bofr.dspi.core.DeviceEvents
 import se.bofr.dspi.core.DspState
@@ -60,6 +63,13 @@ import se.bofr.dspi.core.statusOf
  * Public members are called on the main thread. Core callbacks (notify, RTA,
  * hotplug) only post to [main].
  *
+ * -- WP LK2 -- One exception: over DSPi Link the meter poll's `fetchStatus`
+ * runs on [meters], its own thread, because the core answers it without its
+ * lock: the meters start as soon as the hub's device is open and keep going
+ * while [ffi] waits on the start-up reads, `csFetch` or a re-read. What else
+ * the poll needs from the core (clearing clips, the limiter meter) still goes
+ * to [ffi], without the poll waiting for it.
+ *
  * @param scope   lifetime of the bridge's coroutines (app scope; tests: backgroundScope)
  * @param clock   monotonic milliseconds (clip latch, notify batching, retry window, tokens)
  * @param appVersion written into exported configuration files
@@ -74,7 +84,10 @@ class DspiBridgeImpl(
     private val linkStore: LinkStore = InMemoryLinkStore(),
     internal val clock: () -> Long = { System.nanoTime() / 1_000_000 },
     internal val appVersion: String = "",
-    private val hotplugPolling: Boolean = false
+    private val hotplugPolling: Boolean = false,
+    // -- WP LK2 -- the Link meter poll's thread; with a test's dispatcher for
+    // [ffi], that one, so a test's virtual time covers it too
+    internal val meters: CoroutineDispatcher = if (ffi is ExecutorCoroutineDispatcher) newMeterDispatcher() else ffi
 ) : DspiBridge {
     /**
      * G1: the core as every member and controller sees it — writes refused
@@ -212,9 +225,25 @@ class DspiBridgeImpl(
     /** App ids whose curve changed since the last emission (Qt m_magnitudeDirty). */
     private val pendingDirty = HashSet<Int>()
 
-    /** Per wire channel, when the last clip was seen (ms, 0 = never): Qt m_lastClipMs. */
+    /**
+     * Per wire channel, when the last clip was seen (ms, 0 = never): Qt m_lastClipMs.
+     * WP LK2: written from [meters] too, so only under its own monitor.
+     */
     private val lastClipMs = LongArray(MAX_CHANNELS)
     private var pollTick = 0
+
+    // -- WP LK2 --
+    /** The hub's device is open: the meter poll may run before [connected] (Link only). */
+    @Volatile private var remoteOpen = false
+
+    /** The latest limiter meter read on [ffi] for the Link poll; null before the first. */
+    @Volatile private var remoteLimiter: List<Float>? = null
+    private var remoteLimiterJob: Job? = null
+
+    /** Completed by the first live (not stale) meter reading of a Link device. */
+    @Volatile private var firstMeter = CompletableDeferred<Unit>()
+
+    private fun clearClipTimes() = synchronized(lastClipMs) { lastClipMs.fill(0) }
 
     /** Until when idempotent GETs are retried (after a flash write). */
     @Volatile private var blackoutUntil = Long.MIN_VALUE
@@ -674,7 +703,8 @@ class DspiBridgeImpl(
 
     /** Status polling runs only while a UI is visible (PLAN §5.3) and a device is open. */
     private fun updateTimers() {
-        val pollOn = uiVisible && connected
+        // WP LK2: a Link device's meters from the moment it is open
+        val pollOn = uiVisible && (connected || remoteOpen)
         if (pollOn && pollJob?.isActive != true) {
             pollJob =
                 scope.launch(main) {
@@ -707,33 +737,46 @@ class DspiBridgeImpl(
     /** DSPiBridge::pollStatus: peaks, CPU, clip latch, limiter meter (every 4th tick). */
     private suspend fun pollStatus() {
         // -- WP AN6 -- Qt keeps reading on read-only firmware and as a viewer; only a dropped link pauses it
-        if (!connected || remoteInterrupted) return
+        if (!(connected || remoteOpen) || remoteInterrupted) return
         val m = map
         val anyLimiter = (0 until current.numOutputChannels).any { current.limiterEnabled[it] }
         val prev = _status.value
+        // -- WP LK2 -- over Link on [meters]: nothing here may wait for the core lock
+        val remote = attachedRemote != null
+        val gen = generation
         val r =
-            onFfi {
+            withContext(if (remote) meters else ffi) {
                 val ns =
                     try {
                         get { core.fetchStatus() }
                     } catch (e: DspiException) {
-                        return@onFfi StatusPoll(null, !core.isConnected())
+                        if (!remote) return@withContext StatusPoll(null, !core.isConnected())
+                        // isConnected takes the core lock: ask on [ffi], do not wait here
+                        scope.launch(ffi) {
+                            if (!core.isConnected()) post { if (gen == generation && connected) setDisconnected() }
+                        }
+                        return@withContext StatusPoll(null, false)
                     }
+                if (remote && !ns.stale) firstMeter.complete(Unit)
                 // Clip flags are sticky on the device. Latch each clip here with a
                 // timestamp and read-then-clear the device flags, so a clip marker
                 // clears itself 10 s after the last clip (as on the macOS Console).
                 val now = clock()
-                if (ns.clipFlags != 0L) {
-                    for (w in 0 until MAX_CHANNELS) if ((ns.clipFlags shr w) and 1L == 1L) lastClipMs[w] = now
-                    runCatching { core.clearClips() }
-                }
                 var latched = 0L
-                for (w in 0 until MAX_CHANNELS) {
-                    if (lastClipMs[w] != 0L &&
-                        now - lastClipMs[w] < CLIP_HOLD_MS
-                    ) {
-                        latched = latched or (1L shl w)
+                synchronized(lastClipMs) {
+                    if (ns.clipFlags != 0L) {
+                        for (w in 0 until MAX_CHANNELS) if ((ns.clipFlags shr w) and 1L == 1L) lastClipMs[w] = now
                     }
+                    for (w in 0 until MAX_CHANNELS) {
+                        if (lastClipMs[w] != 0L &&
+                            now - lastClipMs[w] < CLIP_HOLD_MS
+                        ) {
+                            latched = latched or (1L shl w)
+                        }
+                    }
+                }
+                if (ns.clipFlags != 0L) {
+                    if (remote) scope.launch(ffi) { runCatching { core.clearClips() } } else runCatching { core.clearClips() }
                 }
                 val peaks = List(ChannelMap.APP_CHANNEL_COUNT) { id ->
                     m.wire(id).let { w ->
@@ -750,15 +793,30 @@ class DspiBridgeImpl(
                 // change of it alone is a status change (Qt: changed = true)
                 var gr = prev.limiterReduction
                 if (anyLimiter && (++pollTick % 4) == 0) {
-                    runCatching { get { core.fetchLimiterMeter() } }.getOrNull()?.let { g ->
-                        gr = List(MAX_OUTPUTS) { g.getOrElse(it) { 0f } }
+                    if (remote) {
+                        // Read on [ffi]; this poll shows the last one read
+                        if (remoteLimiterJob?.isActive != true) {
+                            remoteLimiterJob =
+                                scope.launch(ffi) {
+                                    runCatching { get { core.fetchLimiterMeter() } }.getOrNull()?.let { g ->
+                                        remoteLimiter = List(MAX_OUTPUTS) { g.getOrElse(it) { 0f } }
+                                    }
+                                }
+                        }
+                        remoteLimiter?.let { gr = it }
+                    } else {
+                        runCatching { get { core.fetchLimiterMeter() } }.getOrNull()?.let { g ->
+                            gr = List(MAX_OUTPUTS) { g.getOrElse(it) { 0f } }
+                        }
                     }
                 } else if (!anyLimiter) {
                     gr = emptyList()
                 }
                 val st =
                     prev.copy(
-                        connected = true,
+                        // WP LK2: before deviceSelected finishes, a Link device's
+                        // meters run with the connection not yet shown
+                        connected = prev.connected || !remote,
                         cpu0 = ns.cpu0,
                         cpu1 = ns.cpu1,
                         clipFlags = latched,
@@ -772,6 +830,8 @@ class DspiBridgeImpl(
             setDisconnected()
             return
         }
+        // A poll that ended after the device changed must not show the old one's meters
+        if (gen != generation) return
         if (r.status != null && r.status != _status.value) _status.value = r.status
     }
 
@@ -1703,7 +1763,7 @@ class DspiBridgeImpl(
         if (writeRefused("clearClips")) return
         scope.launch(ffi) {
             runCatching { core.clearClips() }
-            lastClipMs.fill(0)
+            clearClipTimes()
             post { _status.value = _status.value.copy(clipFlags = 0) }
         }
     }
@@ -1756,7 +1816,7 @@ class DspiBridgeImpl(
         class Opened(val snap: Snapshot, val error: String, val pairMap: Boolean)
         val r =
             onFfi {
-                lastClipMs.fill(0)
+                clearClipTimes()
                 pendingDirty.clear()
                 val fetched = runCatching { get { core.fetchAll() } }.isSuccess
                 val st = core.getState()
@@ -1796,10 +1856,24 @@ class DspiBridgeImpl(
         }
         _magnitudesRevision.value += 1
         updateTimers()
-        deviceChangedHooks.forEach { it() }
+        // -- WP LK2 -- over Link the pages' own reads (control surfaces: about
+        // seventy round trips; the generator) wait for the first live meter, or
+        // HOOKS_AFTER_METERS_MS, so they never hold the meters back (no meter
+        // poll while no UI is visible: then at once)
+        if (attachedRemote == null || pollJob?.isActive != true || firstMeter.isCompleted) {
+            deviceChangedHooks.forEach { it() }
+        } else {
+            val gen = generation
+            val first = firstMeter
+            scope.launch(main) {
+                withTimeoutOrNull(HOOKS_AFTER_METERS_MS) { first.await() }
+                if (gen == generation) deviceChangedHooks.forEach { it() }
+            }
+        }
     }
 
     private fun setDisconnected() {
+        remoteOpen = false // -- WP LK2 --
         bumpGeneration()
         crossfeedPairMapSupported = false
         deviceSettings.clear()
@@ -1889,6 +1963,12 @@ class DspiBridgeImpl(
             return false
         }
         attachedRemote = handle to serial
+        // -- WP LK2 -- the meters start now, alongside the reads below
+        firstMeter = CompletableDeferred()
+        remoteLimiter = null
+        clearClipTimes()
+        remoteOpen = true
+        updateTimers()
         deviceSelected(serial)
         return true
     }
@@ -2564,6 +2644,9 @@ class DspiBridgeImpl(
 
     companion object {
         const val STATUS_POLL_MS = 60L
+
+        /** -- WP LK2 -- Over Link the device-changed hooks wait at most this long for the first live meter. */
+        const val HOOKS_AFTER_METERS_MS = 5_000L
         const val HOTPLUG_POLL_MS = 500L
 
         /** Device notifications are applied at most this often (a turning knob sends many). */
@@ -2587,6 +2670,11 @@ class DspiBridgeImpl(
         /** The single FFI thread (daemon): every core call runs here, in order. */
         fun newFfiDispatcher(): CoroutineDispatcher = Executors.newSingleThreadExecutor { r ->
             Thread(r, "dspi-ffi").apply { isDaemon = true }
+        }.asCoroutineDispatcher()
+
+        /** -- WP LK2 -- The Link meter poll's thread (daemon); started by its first poll. */
+        fun newMeterDispatcher(): CoroutineDispatcher = Executors.newSingleThreadExecutor { r ->
+            Thread(r, "dspi-meters").apply { isDaemon = true }
         }.asCoroutineDispatcher()
     }
 }
