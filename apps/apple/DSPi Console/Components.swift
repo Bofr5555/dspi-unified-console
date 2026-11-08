@@ -1079,7 +1079,10 @@ struct ChannelSettingsView: View {
                 Spacer()
                 // -- WP SWF5 -- shows a fractional delay as it is; Cmd-scroll
                 // steps whole ms, a typed value is kept.
-                ValueField(label: "ms", value: localDelay, width: 60, scrollStep: 1,
+                // -- WP SWF7 -- While the slider drags, the whole ms it sends
+                // (SWF5-1); Cmd-scroll lands on the whole-ms grid (SWF5-2).
+                ValueField(label: "ms", value: ValueField.delayShown(localDelay, dragging: isDraggingDelay),
+                           width: 60, scrollStep: 1, scrollOnGrid: true,
                            maxDecimals: ValueField.delayDecimals) {
                     localDelay = $0
                     delayMS = $0
@@ -2808,6 +2811,9 @@ struct ValueField: View {
     let value: Float
     let width: CGFloat
     var scrollStep: Float = 0.1
+    /// -- WP SWF7 -- Cmd-scroll steps whole units from a fractional start to
+    /// the next whole value in the scroll direction (`wholeStep`).
+    var scrollOnGrid: Bool = false
     var minValue: Float? = nil
     var maxDecimals: Int = 1
     /// Width of the trailing unit label.  The default suits the one- and
@@ -2836,6 +2842,25 @@ struct ValueField: View {
     // -- WP SWF5 -- A delay in ms, to the 0.0001 ms the core keeps, trailing
     // zeros trimmed: "12", "0.5", "1.25".
     static let delayDecimals = 4
+
+    // -- WP SWF7 --
+    /// The channel panel's delay field: while the slider drags, the whole ms
+    /// the drag sends; otherwise the value exactly (typed, file or device).
+    static func delayShown(_ ms: Float, dragging: Bool) -> Float {
+        dragging ? ms.rounded() : ms
+    }
+
+    /// A scroll by `delta` (whole units, signed) from `value`, kept on the
+    /// whole-unit grid: from a whole value it is `(value + delta).rounded()`
+    /// (the Mac's whole-ms steps); from a fractional one the first step goes
+    /// to the next whole value in the scroll direction and never past what
+    /// `delta` reaches (0.25 up -> 1, 1.5 down -> 1, 0.5 up by 1 -> 1).
+    static func wholeStep(from value: Float, by delta: Float) -> Float {
+        guard delta != 0 else { return value }
+        if value == value.rounded() { return (value + delta).rounded() }
+        return delta > 0 ? max((value + delta).rounded(.down), value.rounded(.up))
+                         : min((value + delta).rounded(.up), value.rounded(.down))
+    }
     static func delayText(_ ms: Float) -> String {
         format(ms, maxDecimals: delayDecimals, stripTrailingZeros: true)
     }
@@ -2892,7 +2917,8 @@ struct ValueField: View {
                 .frame(width: labelWidth, alignment: .leading)
         }
         .overlay(
-            ValueFieldScrollHandler(value: value, step: scrollStep, minValue: minValue, onCommit: onCommit)
+            ValueFieldScrollHandler(value: value, step: scrollStep, onGrid: scrollOnGrid, minValue: minValue,
+                                    onCommit: onCommit)
         )
         .onAppear { text = (!isFocused && displayOverride != nil) ? displayOverride! : format(value) }
         .onChange(of: value) { newValue in
@@ -3110,6 +3136,7 @@ private struct ToolWindowFrame: ViewModifier {
 struct ValueFieldScrollHandler: NSViewRepresentable {
     let value: Float
     let step: Float
+    var onGrid: Bool = false
     let minValue: Float?
     let onCommit: (Float) -> Void
 
@@ -3117,6 +3144,7 @@ struct ValueFieldScrollHandler: NSViewRepresentable {
         let view = ValueFieldScrollNSView()
         view.value = value
         view.step = step
+        view.onGrid = onGrid
         view.minValue = minValue
         view.onCommit = onCommit
         return view
@@ -3125,6 +3153,7 @@ struct ValueFieldScrollHandler: NSViewRepresentable {
     func updateNSView(_ nsView: ValueFieldScrollNSView, context: Context) {
         nsView.value = value
         nsView.step = step
+        nsView.onGrid = onGrid
         nsView.minValue = minValue
         nsView.onCommit = onCommit
     }
@@ -3133,6 +3162,7 @@ struct ValueFieldScrollHandler: NSViewRepresentable {
 class ValueFieldScrollNSView: NSView {
     var value: Float = 0
     var step: Float = 0.1
+    var onGrid = false
     var minValue: Float?
     var onCommit: ((Float) -> Void)?
 
@@ -3170,7 +3200,8 @@ class ValueFieldScrollNSView: NSView {
         guard abs(delta) > 0.01 else { return }
 
         let direction: Float = delta > 0 ? 1 : -1
-        let newValue = value + direction * step
+        let newValue = onGrid ? ValueField.wholeStep(from: value, by: direction * step)
+                              : value + direction * step
         onCommit?(minValue.map { max(newValue, $0) } ?? newValue)
     }
 }
@@ -3180,6 +3211,7 @@ class ValueFieldScrollNSView: NSView {
 struct ValueFieldScrollHandler: View {
     let value: Float
     let step: Float
+    var onGrid: Bool = false
     let minValue: Float?
     let onCommit: (Float) -> Void
 

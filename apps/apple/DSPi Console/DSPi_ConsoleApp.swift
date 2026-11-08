@@ -11798,6 +11798,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let vm = AppState.shared.viewModel
+        vm.settleUnsavedChanges()   // -- WP SWF7 --
         guard vm.isDeviceConnected, vm.hasUnsavedChanges else { return .terminateNow }
 
         let diff = vm.computeDiff()

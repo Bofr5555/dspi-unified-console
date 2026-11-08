@@ -67,6 +67,17 @@ protocol CoreStateSource: AnyObject {
     /// the baseline.  The state and the change list after it.  Blocking:
     /// call off the main thread.
     func loadPreset(slot: UInt8) -> Result<(DspState, [String]), DspiError>
+    // -- WP SWF7 --
+    /// Before an unsaved-changes prompt (c70-N1): when a raw SET went out
+    /// less than `CoreBackedTransport.settleWindow` ago, its echo may not be
+    /// in the core's list yet, so apply the queued notifications and return
+    /// the list after; nil when no SET is that recent (the list is current).
+    /// Blocks on the core's queue only in that case; main thread.
+    func settlePresetChanges() -> [String]?
+}
+
+extension CoreStateSource {
+    func settlePresetChanges() -> [String]? { nil }
 }
 
 /// What one `processNotifications` changed, and the core's state after it.
@@ -208,20 +219,6 @@ final class CoreMirror {
     func showPresetChanges(_ changes: [String], from source: CoreStateSource?) {
         guard let vm = vm, let source = source, source === self.source else { return }
         if vm.corePresetChanges != changes { vm.corePresetChanges = changes }
-    }
-
-    /// `updateSavedSnapshot` through the core: the core's live state becomes
-    /// its baseline (off main), and the list after it is shown.
-    func capturePresetBaseline() {
-        guard let source = source else { return }
-        let attached = attachment
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let changes = source.capturePresetBaseline()
-            DispatchQueue.main.async {
-                guard let self = self, self.attachment == attached else { return }
-                self.showPresetChanges(changes, from: source)
-            }
-        }
     }
 
     /// Put the core's current state back on screen, pending edits included:
