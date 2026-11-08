@@ -10688,6 +10688,11 @@ struct FileMenuActions {
 // are shared with the iOS file actions (below, and iOS/DocumentPicker.swift),
 // so both platforms write and read the same files the same way.
 extension FileMenuActions {
+    /// The default name of an exported configuration.  The Mac takes the
+    /// document's name from the file name typed in its save panel; the iOS
+    /// export picker takes a finished file, so it always uses this one.
+    static let configurationName = "DSPi Configuration"
+
     /// Content types offered by the configuration panels.  The `.dspipreset`
     /// type is created from the extension rather than declared in the bundle:
     /// the app's Info.plist is generated, so there is nowhere to export a real
@@ -11232,11 +11237,6 @@ extension FileMenuActions {
 // code above, so they are the Mac's byte for byte; the Mac's alerts with
 // checkboxes become sheets (FileImportSheets).
 struct FileMenuActions {
-    /// The name a configuration is exported under.  The Mac takes the
-    /// document's name from the file name typed in its save panel; the
-    /// export picker takes a finished file, so the default name is used.
-    static let configurationName = "DSPi Configuration"
-
     static func importFilters() {
         let vm = AppState.shared.viewModel
         if let refusal = importRefusal(vm, needsDevice: false) { return showError(refusal) }
