@@ -5,9 +5,12 @@
 // Console. Rows keep one height whatever their type.
 
 import { memo } from "preact/compat";
+import { useState } from "preact/hooks";
 import type { FilterParams } from "../../core/protocol";
 import type { Ask } from "../../ui/screens";
 import { ValueField, useCompact } from "./Field";
+// -- WP WB6c --
+import { LinkwitzDialog } from "./Linkwitz";
 import {
   OFF_BAND,
   T,
@@ -49,6 +52,8 @@ export const BandList = memo(function BandList(props: {
   const fText = compact ? shortFreq : freqText;
   const gText = compact ? shortGain : gainText;
   const set = (b: number, p: FilterParams) => props.commit(new Map([[b, p]]));
+  // -- WP WB6c -- the Linkwitz Transform panel of a band
+  const [lt, setLt] = useState<number | null>(null);
   const actionable = bands.map((p, b) => (p.filterType !== T.flat ? b : -1)).filter((b) => b >= 0);
   const allBypassed = actionable.every((b) => bands[b]!.bypass);
   const allEnabled = actionable.every((b) => !bands[b]!.bypass);
@@ -125,7 +130,7 @@ export const BandList = memo(function BandList(props: {
                     }}
                   >
                     {types.map((t) => (
-                      <option key={t} value={t} disabled={t === T.linkwitz}>
+                      <option key={t} value={t}>
                         {typeName(t)}
                       </option>
                     ))}
@@ -141,6 +146,17 @@ export const BandList = memo(function BandList(props: {
                   />
                 </td>
                 <td class="c-gain">
+                  {p.filterType === T.linkwitz ? (
+                    <button
+                      type="button"
+                      class="lt-edit"
+                      aria-label={`${n} Linkwitz Transform`}
+                      title="Edit Linkwitz Transform parameters (f0, Q0, fp, Qp)"
+                      onClick={() => setLt(b)}
+                    >
+                      f0, Q0, fp, Qp…
+                    </button>
+                  ) : (
                   <ValueField
                     label={`${n} gain`}
                     text={on && usesGain(p.filterType) ? gText(p.gain) : "–"}
@@ -148,6 +164,7 @@ export const BandList = memo(function BandList(props: {
                     disabled={disabled || !usesGain(p.filterType)}
                     onCommit={(v) => set(b, { ...p, gain: round2(clamp(v, limits.gain)) })}
                   />
+                  )}
                 </td>
                 <td class="c-q">
                   <ValueField
@@ -189,6 +206,9 @@ export const BandList = memo(function BandList(props: {
           Clear All
         </button>
       </div>
+      {lt !== null && bands[lt]?.filterType === T.linkwitz ? (
+        <LinkwitzDialog band={lt} p={bands[lt]!} disabled={disabled} apply={(p) => set(lt, p)} onClose={() => setLt(null)} />
+      ) : null}
     </section>
   );
 });

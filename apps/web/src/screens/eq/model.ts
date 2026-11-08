@@ -73,12 +73,11 @@ export function isGraphBand(p: FilterParams): boolean {
 /**
  * The PEQ types this firmware takes (the Console's `availableFilterTypes`):
  * notch and the 2nd-order all-pass from 1.1.4, the 1st-order all-pass from
- * wire V13, 1st-order shelves V14, 1st-order passes V28. The Linkwitz
- * Transform is left out: an existing one is shown, not edited here (its
- * target frequency and Q are the registry's `eq.fp` and `eq.qp` since CG34;
- * offering it is a later EQ slice).
+ * wire V13, 1st-order shelves V14, 1st-order passes V28. -- WP WB6c -- The
+ * Linkwitz Transform on outputs only, from wire V22 (`includeLinkwitz`); its
+ * target frequency and Q are the registry's `eq.fp` and `eq.qp` (CG34).
  */
-export function availableTypes(s: Pick<DspState, "formatVersion" | "fwMajor" | "fwMinor" | "fwPatch">): number[] {
+export function availableTypes(s: Pick<DspState, "formatVersion" | "fwMajor" | "fwMinor" | "fwPatch">, output = false): number[] {
   const v114 = fwAtLeast(s, 1, 1, 4);
   const w = s.formatVersion;
   return TYPE_ORDER.filter((t) => {
@@ -86,7 +85,8 @@ export function availableTypes(s: Pick<DspState, "formatVersion" | "fwMajor" | "
     if (t === T.allPass1) return w >= 13;
     if (t === T.lowShelf1 || t === T.highShelf1) return w >= 14;
     if (t === T.lowPass1 || t === T.highPass1) return w >= 28;
-    return t !== T.linkwitz;
+    if (t === T.linkwitz) return output && w >= 22;
+    return true;
   });
 }
 
@@ -139,6 +139,13 @@ export function orderTitle(shape: Shape, order: 1 | 2): string {
  * for a bell or notch, 0.707 otherwise).
  */
 export function retyped(p: FilterParams, t: number): FilterParams {
+  // -- WP WB6c -- into a Linkwitz Transform: a neutral one, the target the driver
+  // (fp = f0, Qp = Q0), as the core's `registry::retyped` and the Console do
+  if (t === T.linkwitz && p.filterType !== T.linkwitz) {
+    const freq = Math.max(p.freq, LT_FP[0]);
+    const q = clamp(p.q, LT_Q);
+    return { ...p, filterType: t, freq, q, gain: Math.min(freq, LT_FP[1]), qp: q };
+  }
   const out = { ...p, filterType: t };
   if (!usesGain(t)) out.gain = 0;
   if (usesQ(t) && !usesQ(p.filterType)) out.q = t === T.peaking || t === T.notch ? 1 : 0.707;
@@ -159,6 +166,16 @@ export interface Limits {
  * these are its values until `describe` has answered.
  */
 export const DEFAULT_LIMITS: Limits = { freq: [10, 24000], q: [0.1, 20], gain: [-24, 24] };
+
+// -- WP WB6c --
+/** A Linkwitz Transform's ranges: f0 and fp 10..14 400 Hz (`eq.fp`), Q0 and Qp 0.1..20 (`eq.qp`). */
+export const LT_FP: [number, number] = [10, 14400];
+export const LT_Q: [number, number] = [0.1, 20];
+
+/** The Transform's low-frequency boost, dB (`40 log10(f0/fp)`); 0 for an unset one. */
+export function dcBoost(f0: number, fp: number): number {
+  return f0 > 0 && fp > 0 ? 40 * Math.log10(f0 / fp) : 0;
+}
 
 export function clamp(v: number, r: readonly [number, number]): number {
   return Math.min(Math.max(v, r[0]), r[1]);
@@ -374,7 +391,10 @@ export function bandWrites(ch: number, b: number, now: FilterParams, next: Filte
   if (next.filterType !== now.filterType) w.push({ path: "eq.type", indices: at, value: { choice: next.filterType } });
   if (next.freq !== now.freq) w.push({ path: "eq.freq", indices: at, value: { float: next.freq } });
   if (next.q !== now.q) w.push({ path: "eq.q", indices: at, value: { float: next.q } });
-  if (next.gain !== now.gain) w.push({ path: "eq.gain", indices: at, value: { float: next.gain } });
+  // -- WP WB6c -- a Linkwitz Transform's gain field is its target frequency, `eq.fp`, and its Qp `eq.qp`
+  const lt = next.filterType === T.linkwitz;
+  if (next.gain !== now.gain) w.push({ path: lt ? "eq.fp" : "eq.gain", indices: at, value: { float: next.gain } });
+  if (lt && next.qp !== now.qp) w.push({ path: "eq.qp", indices: at, value: { float: next.qp } });
   if (next.bypass !== now.bypass) w.push({ path: "eq.bypass", indices: at, value: { bool: next.bypass } });
   return w;
 }
@@ -455,6 +475,8 @@ export function bandLabel(b: number, p: FilterParams): string {
     parts.push(freqText(p.freq));
     if (usesGain(p.filterType)) parts.push(gainText(p.gain));
     if (usesQ(p.filterType)) parts.push(`Q ${qText(p.q)}`);
+    // -- WP WB6c --
+    if (p.filterType === T.linkwitz) parts.push(`Q0 ${qText(p.q)}`, `fp ${freqText(p.gain)}`, `Qp ${qText(p.qp)}`);
     if (p.bypass) parts.push("bypassed");
   }
   return `Band ${b + 1}: ${parts.join(", ")}`;

@@ -90,7 +90,8 @@ type Gesture =
   | { kind: "marquee"; x0: number; y0: number; x1: number; y1: number; base: Set<number> }
   | { kind: "pinch"; d0: number; start: Map<number, FilterParams> };
 
-type Popup = { kind: "band" | "graph" | "shapes"; x: number; y: number; b?: number };
+// -- WP WB6c -- (WB6b-4) "orders": the shape card's second step, a shape's slopes
+type Popup = { kind: "band" | "graph" | "shapes" | "orders"; x: number; y: number; b?: number; shape?: string };
 
 const LONG_PRESS_MS = 500;
 const DOUBLE_MS = 400;
@@ -212,7 +213,11 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
     document.addEventListener("visibilitychange", seen);
     const dark = window.matchMedia?.("(prefers-color-scheme: dark)");
     dark?.addEventListener?.("change", schedule);
+    // -- WP WB6c -- (WB6b-2) a host page that flips `data-theme` on the console (or above it)
+    const themed = new MutationObserver(schedule);
+    for (let n: Element | null = el; n; n = n.parentElement) themed.observe(n, { attributes: true, attributeFilter: ["data-theme"] });
     return () => {
+      themed.disconnect();
       io.disconnect();
       document.removeEventListener("visibilitychange", seen);
       dark?.removeEventListener?.("change", schedule);
@@ -696,17 +701,35 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
   };
 
   const menuItems = (pp: Popup): PopupItem[] => {
+    // -- WP WB6c -- (WB6b-4) as the Console's card: a shape with two slopes asks which (`PeqShapeChooser`)
+    const add = (t: number) => {
+      const base = newBand(g, pp.x, pp.y, false, limits, available);
+      create({ ...base, filterType: t, gain: usesGain(t) ? base.gain : 0, q: t === T.peaking || t === T.notch ? 1 : 0.707 });
+    };
+    const orders = (sh: (typeof SHAPES)[number]) => ([1, 2] as const).filter((o) => {
+      const t = (sh.types as Partial<Record<1 | 2, number>>)[o];
+      return t !== undefined && available.includes(t);
+    });
     if (pp.kind === "shapes") {
       return [
         { heading: "Add Band" },
-        ...SHAPES.filter((s) => s.types[2] !== undefined && available.includes(s.types[2])).map((s) => ({
-          label: s.title,
-          onSelect: () => {
-            const base = newBand(g, pp.x, pp.y, false, limits, available);
-            const t = s.types[2];
-            create({ ...base, filterType: t, gain: usesGain(t) ? base.gain : 0, q: t === T.peaking || t === T.notch ? 1 : 0.707 });
-          },
-        })),
+        ...SHAPES.filter((sh) => orders(sh).length > 0).map((sh) => {
+          const os = orders(sh);
+          return {
+            label: os.length > 1 ? `${sh.title}…` : sh.title,
+            onSelect: () => (os.length > 1 ? setPopup({ ...pp, kind: "orders", shape: sh.id }) : add((sh.types as Partial<Record<1 | 2, number>>)[os[0]!]!)),
+          };
+        }),
+      ];
+    }
+    if (pp.kind === "orders") {
+      const sh = SHAPES.find((x) => x.id === pp.shape);
+      if (!sh) return [];
+      return [
+        { heading: sh.title },
+        ...orders(sh).map((o) => ({ label: slopeChoice(sh.id, o), onSelect: () => add((sh.types as Partial<Record<1 | 2, number>>)[o]!) })),
+        "separator",
+        { label: "Back to shapes", onSelect: () => setPopup({ ...pp, kind: "shapes" }) },
       ];
     }
     if (pp.kind === "graph") {
@@ -785,7 +808,8 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
       </p>
       {popup ? (
         <PopupMenu
-          label={popup.kind === "band" ? "Band" : popup.kind === "shapes" ? "Add Band" : "Graph"}
+          key={`${popup.kind}${popup.shape ?? ""}`}
+          label={popup.kind === "band" ? "Band" : popup.kind === "shapes" || popup.kind === "orders" ? "Add Band" : "Graph"}
           x={popup.x}
           y={popup.y}
           bounds={size}
@@ -799,3 +823,10 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
     </div>
   );
 });
+
+// -- WP WB6c -- (WB6b-4)
+/** The shape card's slope buttons (`PeqShapeChooser`): "6 dB" / "12 dB", for an all-pass "180°" / "360°". */
+function slopeChoice(shape: string, order: 1 | 2): string {
+  if (shape === "allPass") return order === 1 ? "180°" : "360°";
+  return order === 1 ? "6 dB" : "12 dB";
+}

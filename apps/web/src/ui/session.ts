@@ -46,7 +46,10 @@ export interface SessionState {
 
 // -- WP WB6a --
 /** The calls `Session.change` makes. */
-export type ChangeMethod = "presetCopy" | "presetRevert" | "factoryReset";
+export type ChangeMethod = "presetCopy" | "presetRevert" | "factoryReset"
+  // -- WP WB6c --
+  | "crossoverType"
+  | "crosspoint";
 
 // -- WP WB6b --
 /** One write of `Session.writeAll`. */

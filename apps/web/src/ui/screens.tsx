@@ -12,6 +12,8 @@ import { useCallback, useEffect, useState } from "preact/hooks";
 import { EqScreen } from "../screens/eq/EqScreen";
 import { Dialog } from "../screens/main/Dialog";
 import { MainScreen } from "../screens/main/MainScreen";
+// -- WP WB6c --
+import { MatrixScreen } from "../screens/matrix/MatrixScreen";
 import { changeSummary } from "../screens/main/model";
 import type { Session } from "./session";
 
@@ -44,6 +46,8 @@ export const SCREENS: ScreenDef[] = [
   { id: "main", label: "Main", View: MainScreen },
   // -- WP WB6b --
   { id: "eq", label: "EQ", View: EqScreen },
+  // -- WP WB6c --
+  { id: "matrix", label: "Matrix", View: MatrixScreen },
 ];
 
 export function Screens(props: { session: Session }) {
