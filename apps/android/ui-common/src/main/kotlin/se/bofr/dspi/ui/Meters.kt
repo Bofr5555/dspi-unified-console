@@ -67,10 +67,10 @@ fun HorizontalMeterBar(
     val a11y = if (label == null) {
         Modifier
     } else {
+        // No range info: a meter sits in clickable rows, which would merge it and read as a progress bar
         Modifier.semantics {
             contentDescription = label
             stateDescription = spoken.text + if (isMuted) ", muted" else ""
-            progressBarRangeInfo = ProgressBarRangeInfo(spoken.fraction, 0f..1f)
         }
     }
     LaunchedEffect(Unit) {
@@ -104,18 +104,17 @@ fun HorizontalMeterBar(
  * [STEP_DB] steps of dBFS, "Silent" below [FLOOR_DB], "Clipping" while the
  * channel clips. Pure (JVM-tested).
  */
-data class MeterReadout(val text: String, val fraction: Float) {
+data class MeterReadout(val text: String) {
     companion object {
         const val STEP_DB = 3
         const val FLOOR_DB = -60
 
         fun of(level: Float, clipping: Boolean): MeterReadout {
+            if (clipping) return MeterReadout("Clipping")
             val l = level.coerceIn(0f, 1f)
-            if (clipping) return MeterReadout("Clipping", 1f)
             val db = if (l > 0f) 20.0 * kotlin.math.log10(l.toDouble()) else Double.NEGATIVE_INFINITY
-            if (db < FLOOR_DB) return MeterReadout("Silent", 0f)
-            val stepped = (kotlin.math.round(db / STEP_DB) * STEP_DB).toInt()
-            return MeterReadout("$stepped dB", ((stepped - FLOOR_DB).toFloat() / -FLOOR_DB).coerceIn(0f, 1f))
+            if (db < FLOOR_DB) return MeterReadout("Silent")
+            return MeterReadout("${(kotlin.math.round(db / STEP_DB) * STEP_DB).toInt()} dB")
         }
     }
 }

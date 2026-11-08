@@ -436,6 +436,7 @@ private fun SidebarBottomPanel(bridge: DspiBridge, vm: HomeViewModel, prefs: App
                 "Headphone Crossfeed",
                 { bridge.setCrossfeed(!s.crossfeedEnabled) },
                 enabled = canWrite,
+                isToggle = true,
                 onLongClick = { onNavigate(DspiRoutes.tool("crossfeed")) }
             )
             SidebarIconButton(
@@ -444,6 +445,7 @@ private fun SidebarBottomPanel(bridge: DspiBridge, vm: HomeViewModel, prefs: App
                 "Loudness Compensation",
                 { bridge.setLoudness(!s.loudnessEnabled) },
                 enabled = canWrite,
+                isToggle = true,
                 onLongClick = { onNavigate(DspiRoutes.tool("loudness")) }
             )
             SidebarIconButton(
@@ -452,6 +454,7 @@ private fun SidebarBottomPanel(bridge: DspiBridge, vm: HomeViewModel, prefs: App
                 "Volume Leveller",
                 { bridge.setLevellerEnabled(!s.levellerEnabled) },
                 enabled = canWrite,
+                isToggle = true,
                 onLongClick = { onNavigate(DspiRoutes.tool("leveller")) }
             )
             SidebarIconButton(
@@ -460,12 +463,15 @@ private fun SidebarBottomPanel(bridge: DspiBridge, vm: HomeViewModel, prefs: App
                 "Psychoacoustic Bass",
                 { bridge.setPsybassEnabled(!s.psybassEnabled) },
                 enabled = canWrite,
+                isToggle = true,
                 onLongClick = { onNavigate(DspiRoutes.tool("psybass")) }
             )
             // AN32: the stats icon opens the stats page, not the first analysis page
             SidebarIconButton(DspiIcons.info, false, "Stats for Nerbs", { onNavigate(DspiRoutes.analysis("stats")) })
             SidebarIconButton(DspiIcons.gear, false, "Settings", { onNavigate(DspiRoutes.SETTINGS) })
-            SidebarIconButton(DspiIcons.xmark, s.bypass, "Bypass Master EQ", { bridge.setBypass(!s.bypass) }, enabled = canWrite)
+            SidebarIconButton(DspiIcons.xmark, s.bypass, "Bypass Master EQ", {
+                bridge.setBypass(!s.bypass)
+            }, enabled = canWrite, isToggle = true)
         }
         HorizontalRule(Modifier.fillMaxWidth())
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -577,7 +583,9 @@ fun UserVolumeSection(bridge: DspiBridge, prefs: AppSettingsStore, modifier: Mod
             defaultValue = 1f,
             onReset = { drag.set(1f) { bridge.setUserVolume(0f) } },
             enabled = connected,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            label = "User Volume",
+            stateText = { UserVolumeTaper.displayString(db(it)) }
         )
     }
 }
@@ -618,7 +626,12 @@ fun MasterModeSection(bridge: DspiBridge, prefs: AppSettingsStore, modifier: Mod
             onReset = { drag.set(1f) { bridge.setMasterVolume(0f) } },
             enabled = connected,
             trackColor = c.redSliderFill,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            label = "Master Volume",
+            stateText = { v ->
+                val d = MasterVolumeTaper.sliderToDB(v)
+                if (d <= MasterVolumeTaper.MUTE_DB) "Muted" else MasterVolumeTaper.format(d) + " dB"
+            }
         )
     }
 }

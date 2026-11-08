@@ -129,7 +129,7 @@ class ControlsSemanticsAn20Test {
 
     @Test
     fun an20MeterReadoutSteps() {
-        assertEquals(MeterReadout("0 dB", 1f), MeterReadout.of(1f, false))
+        assertEquals(MeterReadout("0 dB"), MeterReadout.of(1f, false))
         assertEquals("Silent", MeterReadout.of(0f, false).text)
         assertEquals("Silent", MeterReadout.of(0.0005f, false).text)
         assertEquals("-60 dB", MeterReadout.of(0.001f, false).text)
