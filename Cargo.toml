@@ -24,6 +24,8 @@ members = [
     "crates/dspi-link",
     # -- WP HB0 --
     "crates/dspi-hub",
+    # -- WP WB2 -- the wasm gate's scenario module (ci/check.sh --step wasm-core)
+    "ci/wasm-scenario",
     "apps/terminal",
     "xtask",
 ]

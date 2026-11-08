@@ -19,6 +19,10 @@
 #   apps/apple/.../Core/Generated/Sources/<ns>/<ns>.swift
 #                              the Swift app's copy of ci/generated/swift (WP SW2),
 #                              one package module per namespace
+#   ci/generated/web/link-words.json
+#                              the core's Link wording for the web client (WP WB5,
+#                              crates/dspi-core/examples/web_texts.rs), until WB3's
+#                              binding answers it at run time
 #   ci/generated/swift/DspiConstants.swift
 #                              the core's constants for Swift (WP SW25,
 #                              apps/apple/Tools/gen_swift_constants.py); the app's
@@ -58,6 +62,10 @@ done
 
 # -- WP SW25 --
 python3 apps/apple/Tools/gen_swift_constants.py "$out/swift/DspiConstants.swift"
+
+# -- WP WB5 --
+mkdir -p "$out/web"
+cargo run --quiet --locked -p dspi-core --example web_texts >"$out/web/link-words.json"
 
 status=0
 if [ "$mode" = write ]; then

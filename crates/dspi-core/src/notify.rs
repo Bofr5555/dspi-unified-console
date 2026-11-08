@@ -247,6 +247,7 @@ impl DspiCore {
     /// Call the [`NotifyListener`] once after `delay`, so the app comes back
     /// for a due retry even if the device stays silent. The thread holds the
     /// listeners, not the core, and ends by itself.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn wake_notify_after(&self, delay: Duration) {
         let listeners = Arc::clone(&self.listeners);
         let spawned = std::thread::Builder::new()
@@ -258,6 +259,52 @@ impl DspiCore {
         if let Err(e) = spawned {
             log::warn!("cannot schedule a re-read retry: {e}");
         }
+    }
+
+    /// No threads on the web (WP WB2): the caller asks
+    /// [`DspiCore::notify_retry_due_in`] when to come back instead.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn wake_notify_after(&self, delay: Duration) {
+        log::debug!("a re-read retry is due in {delay:?}");
+    }
+}
+
+// -- WP WB2 --
+/// The caller-driven side of notifications, for a build without threads
+/// (`wasm32-unknown-unknown`), where the reader is
+/// `dspi_session::Notifications::caller_driven` and nothing wakes the app.
+/// Not exported over UniFFI or the C ABI; the web binding (WB3) calls these.
+impl DspiCore {
+    /// Hand in a notification packet the caller read itself (a page's own
+    /// endpoint or socket loop), with the link's origin, then call
+    /// [`DspiCore::process_notifications`] as after a wake. On the web a
+    /// connection without a notification source gets a reader for this on
+    /// the first push.
+    ///
+    /// [`DspiError::Disconnected`] without a device; [`DspiError::Unsupported`]
+    /// when the connection's reader runs on its own thread (it reads its own
+    /// source), or natively when it has none.
+    pub fn push_notification(&self, packet: Vec<u8>, origin: Option<u16>) -> crate::Result<()> {
+        let mut inner = self.lock();
+        let conn = inner.conn.as_mut().ok_or(DspiError::Disconnected)?;
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        if conn.notifications.is_none() {
+            conn.notifications = Some(dspi_session::Notifications::caller_driven(None));
+        }
+        match conn.notifications.as_ref() {
+            Some(reader) if reader.push(packet, origin) => Ok(()),
+            _ => Err(DspiError::Unsupported),
+        }
+    }
+
+    /// How long until a failed re-read is due to be tried again: call
+    /// [`DspiCore::process_notifications`] then. Zero when it is overdue,
+    /// `None` with nothing owed. Natively a thread wakes the
+    /// [`NotifyListener`] for this; on the web the caller sets a timer.
+    pub fn notify_retry_due_in(&self) -> Option<Duration> {
+        let inner = self.lock();
+        let pending = inner.conn.as_ref()?.refresh_pending?;
+        Some(pending.next_at.saturating_duration_since(Instant::now()))
     }
 }
 
@@ -667,6 +714,54 @@ mod tests_wp_c7 {
         failing.store(false, Ordering::SeqCst);
         remote.load_image(remote.image(), SRC_BULK);
         process_until(&core, |r| r.flags & NOTIFY_REFRESHED != 0);
+    }
+
+    // -- WP WB2 --
+    #[test]
+    fn wb2_the_retry_deadline_is_readable_for_a_caller_driven_timer() {
+        let (core, remote, failing) = flaky();
+        assert_eq!(core.notify_retry_due_in(), None, "nothing owed");
+        failing.store(true, Ordering::SeqCst);
+        failed_refresh(&core, &remote, SRC_BULK, -43.0);
+        let due = core.notify_retry_due_in().expect("a retry is owed");
+        assert!(due <= REFRESH_FIRST_DELAY, "{due:?}");
+        failing.store(false, Ordering::SeqCst);
+        core.process_notifications_at(Instant::now() + Duration::from_secs(2));
+        assert_eq!(core.notify_retry_due_in(), None, "the retry worked");
+    }
+
+    // -- WP WB2 --
+    #[test]
+    fn wb2_a_push_needs_a_device_and_a_caller_driven_reader() {
+        let core = DspiCore::new();
+        assert!(matches!(
+            core.push_notification(vec![0], None),
+            Err(DspiError::Disconnected)
+        ));
+        let (core, _remote) = demo();
+        // Natively the demo's reader has its own thread.
+        assert!(matches!(
+            core.push_notification(vec![0], None),
+            Err(DspiError::Unsupported)
+        ));
+    }
+
+    // -- WP WB2 --
+    #[test]
+    fn wb2_a_pushed_packet_is_applied_like_a_read_one() {
+        let (core, _remote) = demo();
+        core.lock().conn.as_mut().unwrap().notifications =
+            Some(dspi_session::Notifications::caller_driven(None));
+        let mut p = ev(nfy::NOTIFY_EVT_PARAM_CHANGED, &[]);
+        p[3] = 1;
+        p.extend((g::OFF_MASTER_VOLUME as u16).to_le_bytes());
+        p.extend(4u16.to_le_bytes());
+        p.extend([SRC_GPIO, 0, 0, 0]);
+        p.extend((-31.5f32).to_le_bytes());
+        core.push_notification(p, None).unwrap();
+        let r = core.process_notifications();
+        assert_ne!(r.flags & NOTIFY_STATE, 0, "{r:?}");
+        assert_eq!(core.get_state().master_volume_db, -31.5);
     }
 
     #[test]

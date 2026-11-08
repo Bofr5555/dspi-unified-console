@@ -1,0 +1,20 @@
+[package]
+name = "dspi-wasm-scenario"
+description = "The wasm gate's scenario module (WP WB2): the core on the demo device under Node and JSPI"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+# Test scaffolding for `ci/check.sh --step wasm-core`, not the web binding
+# (WP WB3's crates/dspi-wasm). On every other target the library is empty.
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+dspi-proto = { path = "../../crates/dspi-proto" }
+dspi-core = { path = "../../crates/dspi-core", default-features = false, features = ["link"] }
+dspi-transport = { path = "../../crates/dspi-transport", default-features = false }
+dspi-session = { path = "../../crates/dspi-session", default-features = false }
