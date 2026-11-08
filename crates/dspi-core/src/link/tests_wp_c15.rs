@@ -1678,8 +1678,14 @@ fn wp_c15_band_frames_come_from_polls_on_a_bridge() {
     let (faults, _) = connect_faulty(&core, &hub, "");
     bind(&core);
     let side = bound_side(&core);
-    // WP LK4: the meter poll is subscribed during the select
-    wait_until("the meter poll", || guard(&side.feed).meter_hz.is_some());
+    // WP LK4: the meter poll is subscribed during the select, at 2 Hz on a
+    // bridge until the bind has its image, then at the full rate (review c82
+    // F2: count after that upgrade)
+    wait_until("the full-rate meter poll", || {
+        let _ = core.fetch_status();
+        let feed = guard(&side.feed);
+        feed.meter_hz == Some(METER_HZ_BRIDGED) && !feed.meter_asked_slow && !feed.meter_binding
+    });
     let before = faults.sent("poll.subscribe");
 
     let mut t = Arc::clone(&side).rta_transport(0b11);

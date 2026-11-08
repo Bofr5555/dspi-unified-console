@@ -1381,7 +1381,7 @@ impl DspiCore {
 
     /// [`DspiCore::complete_probe`] with `probe_lock` held.
     fn complete_probe_held(&self) {
-        let (quick, side, generation, sources, mut scratch) = {
+        let (quick, side, generation, sources, mut scratch, names_before) = {
             let mut guard = self.lock();
             let inner = &mut *guard;
             let Some(conn) = inner.conn.as_mut() else {
@@ -1402,8 +1402,12 @@ impl DspiCore {
                 conn.generation,
                 conn.source_names.len(),
                 inner.state.clone(),
+                (conn.source_names.clone(), conn.device_name.clone()),
             )
         };
+        // What the mirror held as the reads went out: a value that differs at
+        // the end was written (or notified) meanwhile, and stays (review c82 F1)
+        let before = scratch.clone();
         let Some(mut t) = side.background() else {
             return;
         };
@@ -1421,7 +1425,8 @@ impl DspiCore {
             }
         };
         let names = crate::info::name_reads_for(&done.caps, sources);
-        crate::connect::reset_per_item(&mut scratch);
+        // From the mirror, not from defaults: a read that fails (firmware
+        // without it, a stall) is no value, and leaves the field as it is
         let answers = crate::connect::read_per_item_on(&mut *t, &names, &mut scratch);
         let reusable = done.reusable();
         let ext = match done.ext {
@@ -1452,9 +1457,21 @@ impl DspiCore {
             conn.pending_probe = None;
             conn.echo.set_bulk_source(ext.bulk_source());
             conn.ext = ext;
+            // The names likewise: one renamed meanwhile keeps its new name
+            let names_now = (conn.source_names.clone(), conn.device_name.clone());
             crate::info::apply_names(conn, &names, answers);
+            for (i, (now, was)) in names_now.0.iter().zip(names_before.0.iter()).enumerate() {
+                if now != was
+                    && let Some(slot) = conn.source_names.get_mut(i)
+                {
+                    slot.clone_from(now);
+                }
+            }
+            if names_now.1 != names_before.1 {
+                conn.device_name = names_now.1;
+            }
             conn.announce_refresh = true;
-            crate::connect::copy_per_item(&scratch, &mut inner.state);
+            crate::connect::merge_per_item(&before, &scratch, &mut inner.state);
             if let Some(p) = platform {
                 log::info!(
                     "the Link device's GET_PLATFORM differs from the hub's list; the mirror follows the device"

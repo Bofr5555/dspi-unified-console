@@ -858,3 +858,101 @@ fn wp_lk4_the_meter_poll_is_asked_for_before_the_snapshot() {
     });
     core.link_close();
 }
+
+// -- review c82 F1 -- (the reviewer's probe, adopted)
+#[test]
+fn wp_lk4_a_write_during_the_background_completion_is_kept_in_the_mirror() {
+    let hub = bridge_with(4);
+    let core = DspiCore::new();
+    let slow = Arc::new(SlowCommands::default());
+    connect_slow(&core, &hub, &slow);
+    slow.delay_ms.store(40, Ordering::SeqCst);
+    select(&core).unwrap();
+    core.fetch_all().unwrap();
+    // The completion's per-item read of the preset directory has gone out
+    wait_until("the preset directory read", || {
+        ran(&hub, op::REQ_PRESET_GET_DIR) == 1
+    });
+    let pending = core.lock().conn.as_ref().unwrap().pending_probe.is_some();
+    assert!(pending, "still completing");
+    let before = core.get_state();
+    let mode = if before.preset_startup_mode == 0 {
+        1
+    } else {
+        0
+    };
+    let slot = if before.preset_default_slot == 3 {
+        4
+    } else {
+        3
+    };
+    core.set_preset_startup(mode, slot).unwrap();
+    let mid = core.get_state();
+    assert_eq!(
+        (mid.preset_startup_mode, mid.preset_default_slot),
+        (mode, slot)
+    );
+    core.ensure_probed();
+    wait_until("the refresh", || {
+        core.process_notifications().flags & crate::consts::NOTIFY_REFRESHED != 0
+    });
+    let after = core.get_state();
+    assert_eq!(
+        (after.preset_startup_mode, after.preset_default_slot),
+        (mode, slot),
+        "the completion's per-item copy reverted the user's write in the mirror"
+    );
+    core.link_close();
+}
+
+#[test]
+fn wp_lk4_a_fetch_all_during_the_completion_keeps_what_the_user_set() {
+    let hub = bridge_with(4);
+    let core = DspiCore::new();
+    let slow = Arc::new(SlowCommands::default());
+    connect_slow(&core, &hub, &slow);
+    slow.delay_ms.store(40, Ordering::SeqCst);
+    select(&core).unwrap();
+    assert!(core.lock().conn.as_ref().unwrap().pending_probe.is_some());
+    let before = core.get_state();
+    let mode = if before.preset_startup_mode == 0 {
+        1
+    } else {
+        0
+    };
+    core.set_preset_startup(mode, 2).unwrap();
+    // A re-read in the window (the app's, or after a resync) puts no defaults over it
+    core.fetch_all().unwrap();
+    let mid = core.get_state();
+    assert_eq!(
+        (mid.preset_startup_mode, mid.preset_default_slot),
+        (mode, 2)
+    );
+    core.ensure_probed();
+    let after = core.get_state();
+    assert_eq!(
+        (after.preset_startup_mode, after.preset_default_slot),
+        (mode, 2)
+    );
+    core.link_close();
+}
+
+#[test]
+fn wp_lk4_the_background_reads_fill_only_what_nobody_changed() {
+    let before = crate::state::default_state();
+    let mut read = before.clone();
+    read.preset_startup_mode = 2;
+    read.output_config_mode = 1;
+    read.preset_names = vec!["A".into(), "B".into()];
+    let mut now = before.clone();
+    now.preset_startup_mode = 1; // the user's, meanwhile
+    now.preset_names = vec!["mine".into(), String::new()];
+    crate::connect::merge_per_item(&before, &read, &mut now);
+    assert_eq!(now.preset_startup_mode, 1, "the user's write wins");
+    assert_eq!(
+        now.output_config_mode, 1,
+        "an untouched field takes the read"
+    );
+    assert_eq!(now.preset_names[0], "mine");
+    assert_eq!(now.preset_names[1], "B");
+}

@@ -110,7 +110,12 @@ impl DspiCore {
         let conn = inner.conn.as_mut().ok_or(DspiError::Disconnected)?;
         let (mut next, wire) = if conn.fresh_image {
             let mut next = inner.state.clone();
-            reset_per_item(&mut next);
+            // -- WP LK4 -- (review c82 F1) while a DSPi Link bind's background
+            // reads fill them, the per-item values stay as they are: a reset
+            // here would put defaults over what a user set meanwhile
+            if conn.pending_probe.is_none() {
+                reset_per_item(&mut next);
+            }
             (next, conn.wire)
         } else {
             let mut next = state::default_state();
@@ -492,23 +497,42 @@ pub(crate) fn read_per_item_on(
 }
 
 // -- WP LK4 --
-/// Copy the values the image does not carry ([`reset_per_item`]'s list) from
-/// `from` into `to`: the background per-item reads of a DSPi Link bind.
-pub(crate) fn copy_per_item(from: &DspState, to: &mut DspState) {
-    to.core1_mode = from.core1_mode;
-    to.subharm_solo = from.subharm_solo;
-    to.dac_mute_supported = from.dac_mute_supported;
-    to.ctrl_iface_supported = from.ctrl_iface_supported;
-    to.ctrl_status = from.ctrl_status;
-    to.uart = from.uart;
-    to.i2c = from.i2c;
-    to.preset_occupied = from.preset_occupied;
-    to.preset_startup_mode = from.preset_startup_mode;
-    to.preset_default_slot = from.preset_default_slot;
-    to.active_preset_slot = from.active_preset_slot;
-    to.output_config_mode = from.output_config_mode;
-    to.master_volume_mode = from.master_volume_mode;
-    to.preset_names = from.preset_names.clone();
+/// Fill the values the image does not carry ([`reset_per_item`]'s list) from
+/// `read`, the background per-item reads of a DSPi Link bind, into `to`, the
+/// mirror now; `before` is what the mirror held when those reads were issued.
+/// Field by field (preset names name by name), only a value nobody changed
+/// since takes the read one: a user's write or a notification that arrived
+/// meanwhile is newer than the read and wins (review c82 F1).
+pub(crate) fn merge_per_item(before: &DspState, read: &DspState, to: &mut DspState) {
+    macro_rules! fill {
+        ($($f:ident),*) => {$(
+            if to.$f == before.$f {
+                to.$f = read.$f.clone();
+            }
+        )*};
+    }
+    fill!(
+        core1_mode,
+        subharm_solo,
+        dac_mute_supported,
+        ctrl_iface_supported,
+        ctrl_status,
+        uart,
+        i2c,
+        preset_occupied,
+        preset_startup_mode,
+        preset_default_slot,
+        active_preset_slot,
+        output_config_mode,
+        master_volume_mode
+    );
+    for (i, name) in to.preset_names.iter_mut().enumerate() {
+        if before.preset_names.get(i) == Some(name)
+            && let Some(r) = read.preset_names.get(i)
+        {
+            name.clone_from(r);
+        }
+    }
 }
 
 /// `COMPAT_*` for a device wire format other than V32's (0: unknown, old).
