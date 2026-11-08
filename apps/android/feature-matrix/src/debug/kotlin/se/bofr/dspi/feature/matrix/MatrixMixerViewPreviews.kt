@@ -83,7 +83,7 @@ private fun CompactFieldsPreview() {
         Surface {
             androidx.compose.foundation.layout.Row {
                 CompactGainField(-3.5f, {}, {})
-                CompactDelayField(12f, 85f, {}, {})
+                CompactDelayField(12f, 42f, {}, {})
             }
         }
     }

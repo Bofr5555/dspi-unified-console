@@ -44,8 +44,11 @@ data class MatrixOutputControls(
     val wouldConflict: Boolean
 )
 
-/** macOS `PendingConflict`: the alert shown before switching Core 1 between PDM and the EQ workers. */
-data class PendingConflict(val output: Int, val isPDM: Boolean)
+/**
+ * macOS `PendingConflict`: the alert shown before switching Core 1 between PDM and the EQ workers.
+ * [reason]: why, in the core's words (`core1ConflictReason`, WP AN41); null when the device could not be asked.
+ */
+data class PendingConflict(val output: Int, val isPDM: Boolean, val reason: String? = null)
 
 /** The macOS PDM-conflict alert, with its exact wording. */
 data class ConflictAlert(val title: String, val message: String, val confirm: String)
@@ -69,6 +72,7 @@ data class MatrixMixerState(
     val inputTrimDB: List<Float>,
     val pdmOutputIndex: Int,
     val eqWorkerRange: IntRange,
+    /** The connected platform's delay line, from the core (`bridge.maxDelayMs`: 21 ms RP2040, 42 ms RP2350; WP AN41). */
     val maxDelay: Float
 ) {
     fun route(row: Int, col: Int): MatrixRoute = routes.getOrNull(row)?.getOrNull(col) ?: MatrixRoute(false, 0f, false)
@@ -92,13 +96,17 @@ data class MatrixMixerState(
     }
 
     /** The macOS alert text for [conflict] (`.alert(item: $pendingConflict)`). */
-    fun conflictAlert(conflict: PendingConflict): ConflictAlert = if (conflict.isPDM) {
-        // 1-based for display
-        val first = eqWorkerRange.first + 1
-        val last = eqWorkerRange.last + 1
-        ConflictAlert("Warning", "Outputs $first-$last will be disabled. Are you sure?", "Enable PDM")
-    } else {
-        ConflictAlert("Warning", "The PDM output will be disabled. Are you sure?", "Disable PDM")
+    fun conflictAlert(conflict: PendingConflict): ConflictAlert {
+        val alert = if (conflict.isPDM) {
+            // 1-based for display
+            val first = eqWorkerRange.first + 1
+            val last = eqWorkerRange.last + 1
+            ConflictAlert("Warning", "Outputs $first-$last will be disabled. Are you sure?", "Enable PDM")
+        } else {
+            ConflictAlert("Warning", "The PDM output will be disabled. Are you sure?", "Disable PDM")
+        }
+        // -- WP AN41 -- the core's reason first, then what the button does
+        return conflict.reason?.let { alert.copy(message = "$it.\n\n${alert.message}") } ?: alert
     }
 
     companion object {
@@ -161,7 +169,7 @@ data class MatrixMixerState(
                 inputTrimDB = inputs.map { if (it.index < numIn) bridge.inputPreampDB(it.index) else 0f },
                 pdmOutputIndex = pdm,
                 eqWorkerRange = eqRange,
-                maxDelay = maxDelayFor(platform)
+                maxDelay = bridge.maxDelayMs
             )
         }
 
@@ -271,9 +279,6 @@ fun pdmOutputIndex(numOutputChannels: Int): Int = numOutputChannels - 1
 
 /** macOS `eqWorkerRange`: outputs sharing Core 1 with the PDM sub. */
 fun eqWorkerRange(platformName: String): IntRange = if (platformName == "RP2040") 2..3 else 2..7
-
-/** macOS `CompactDelayField(maxDelay:)` in MatrixMixerView: 42 ms on RP2040, 85 ms otherwise. */
-fun maxDelayFor(platformName: String): Float = if (platformName == "RP2040") 42f else 85f
 
 /** macOS `outputEnableWouldConflict`. */
 fun outputEnableWouldConflict(output: Int, outputEnabled: List<Boolean>, pdmOutputIndex: Int, eqWorkerRange: IntRange): Boolean {
