@@ -34,6 +34,9 @@ fw=$work/fw
 # -- WP LK4 -- a target dir of its own, so two rigs (a WP and a review) do not share one
 target=${ESP_RIG_TARGET:-$B/target/esp-rig}
 NETEM_IMAGE=${NETEM_IMAGE:-localhost/lk3-netem:1}
+FEDORA_BASE=registry.fedoraproject.org/fedora:44@sha256:5b3a1aeece15ae01e3d04541e9269226d40e832566f3ce183856a12951dddb1e
+# -- WP LK4 -- (review c73 N3) containers that run a client or the demo device see no USB
+NO_USB=(-v "$B/work/empty":/sys/bus/usb/devices:ro,z)
 QEMU=/opt/esp/tools/qemu-xtensa/esp_develop_9.2.2_20260417/qemu/bin/qemu-system-xtensa
 BRIDGE=10.77.0.2
 URL=ws://$BRIDGE:11915/dspi/v1
@@ -49,7 +52,8 @@ net_of() { echo "lk3-$1-net"; }
 netem_image() {
   podman image exists "$NETEM_IMAGE" && return
   # Fedora 44 with iproute and tc from the Fedora repositories (as LK1's lk1-netem:1).
-  printf 'FROM registry.fedoraproject.org/fedora:44\nRUN dnf -y install iproute-tc iproute && dnf clean all\n' |
+  # -- WP LK4 -- (review c73 N1) the base pinned by digest
+  printf 'FROM %s\nRUN dnf -y install iproute-tc iproute && dnf clean all\n' "$FEDORA_BASE" |
     podman build -q -t "$NETEM_IMAGE" -f - "$work" > /dev/null
 }
 
@@ -133,7 +137,7 @@ cmd_up() {
     "$IDF_IMAGE" -nographic -machine esp32 -drive file=/run/flash.bin,if=mtd,format=raw \
     -nic tap,ifname=tap0,script=no,downscript=no,model=open_eth \
     -serial mon:stdio -serial unix:/run/uart1.sock,server=on,wait=off)"
-  local dev=() device=demo a
+  local dev=("${NO_USB[@]}") device=demo a
   for a in "$@"; do case "$a" in usb|usb:*) device=$a ;; esac; done
   if [[ $device == usb* ]]; then
     local node; node=$(dspi_node) || die "$node"
@@ -194,7 +198,7 @@ cmd_rust() {
   [ -x "$work/$bin" ] || die "no $bin (rig.sh build / build-before)"
   local env=(); mapfile -t env < <(client_env "LK3_URL=$URL" "$@")
   podman run --rm --init --network "container:$(net_of "$run")" --security-opt label=disable \
-    "${env[@]}" -v "$work":/rig:ro "$NETEM_IMAGE" \
+    "${env[@]}" -v "$work":/rig:ro "${NO_USB[@]}" "$NETEM_IMAGE" \
     "/rig/$bin" --ignored --nocapture --test-threads=1 --exact wp_lk3_meters_against_the_emulated_bridge 2>&1 |
     sed 's/^test wp_lk3_[a-z_]* \.\.\. //' | grep -E '^LK3|panicked|test result' | sed "s/^/[$bin] /"
 }
@@ -205,7 +209,7 @@ cmd_ts() {
   local env=(); mapfile -t env < <(client_env "LK3_URL=$URL" "$@")
   podman image exists "$NODE" || podman pull -q "$NODE" > /dev/null
   podman run --rm --init --network "container:$(net_of "$run")" --security-opt label=disable \
-    "${env[@]}" -v "$fw/src":/upstream:ro -v "$here/clients":/clients:ro \
+    "${env[@]}" -v "$fw/src":/upstream:ro -v "$here/clients":/clients:ro "${NO_USB[@]}" \
     -v "$root/crates/dspi-hub/tests/conformance/ts":/ts:ro "$NODE" \
     node --experimental-transform-types --no-warnings --import /ts/register.mjs /clients/ts-probe.ts 2>&1 |
     sed 's/^/[ts] /'
@@ -216,7 +220,7 @@ cmd_realhub() {
   need_run "$run"
   [ -x "$work/real-hub-test" ] || die "no real_hub test (rig.sh build)"
   podman run --rm --init --network "container:$(net_of "$run")" --security-opt label=disable \
-    -v "$work":/rig:z -e DSPI_REAL_HUB=$BRIDGE:11915 -e DSPI_REAL_HUB_REPORT="/rig/runs/$run/real-hub.jsonl" \
+    -v "$work":/rig:z "${NO_USB[@]}" -e DSPI_REAL_HUB=$BRIDGE:11915 -e DSPI_REAL_HUB_REPORT="/rig/runs/$run/real-hub.jsonl" \
     "$NETEM_IMAGE" /rig/real-hub-test "$filter" --test-threads=1 2>&1 | grep -E '^test |panicked|^test result|endpoint'
 }
 

@@ -18,6 +18,7 @@ the per-directory table.
 |---|---|---|
 | `tests/fixtures/link/` | MIT, Copyright (c) 2026 Weeb Labs | `tests/fixtures/link/LICENSE.DSPi-Link` |
 | `crates/dspi-hub/assets/web/hub/` | DSPi-Link's web page (`js/apps/web`), built unmodified; MIT, Copyright (c) 2026 Weeb Labs. `dspi hub --web` serves it at `/hub/` and its licence at `/THIRD-PARTY-NOTICES.txt` | `crates/dspi-hub/assets/web/hub/LICENSE`, `PROVENANCE.json` |
+| `tools/esp-rig/firmware/net/net_qemu.c` | Three functions copied from DSPi-Link's `bridge/esp32/components/net/net.c`, MIT, Copyright (c) 2026 Weeb Labs (named in the file). The rig's flash image (upstream's MIT firmware with ESP-IDF's Apache-2.0 components, run in Espressif's GPL-2.0 QEMU as a tool) is built and used locally only and never distributed | `tools/esp-rig/firmware/net/LICENSE.DSPi-Link` |
 | `crates/dspi-link/` | The owner's, from `dspi-android`; follows Weeb Labs' MIT DSPi-Link spec and policy | its `Cargo.toml` |
 | `crates/dspi-proto/firmware/` | Vendored DSPi firmware headers, GPL-3.0 | `PROVENANCE.toml` there |
 | `apps/desktop/qt/firmware/*.uf2` | DSPi firmware images, GPL-3.0, with third-party parts | https://github.com/WeebLabs/DSPi |

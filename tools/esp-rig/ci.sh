@@ -16,5 +16,12 @@ CLIENTS="after ts" "$here/scenarios.sh" smoke | tee "$log"
 results=$(grep '^RESULT' "$log" || true)
 [ "$(wc -l <<< "$results")" -ge 2 ] || { echo "esp-rig: missing results" >&2; exit 1; }
 bad=$(grep -E ' (first_meter=never|failed=[^n]|drops=[1-9]|closes=[1-9]|unwritable_closes=[1-9])' <<< "$results" || true)
+# -- WP LK4 -- (review c73 F3) every client row must be a real summary: ours
+# says failed=no as a whole word (failed=no-summary is a crash), and each client
+# reached a first meter
+bad+=$(grep ' who=after ' <<< "$results" | grep -vE ' failed=no( |$)' || true)
+for who in after ts; do
+  grep -E " who=$who .*first_meter=[0-9]" <<< "$results" > /dev/null || bad+=$'\n'"no first meter from $who"
+done
 [ -z "$bad" ] || { echo "esp-rig: FAILED:" >&2; echo "$bad" >&2; exit 1; }
 echo "esp-rig: OK (both clients reached live meters over the emulated bridge)"

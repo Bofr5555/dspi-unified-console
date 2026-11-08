@@ -12,6 +12,23 @@
  * The address comes from the build (RIG_IP, RIG_NETMASK, RIG_GATEWAY,
  * set by tools/esp-rig/firmware/build.sh), default 10.77.0.2/24 via
  * 10.77.0.1.
+ *
+ * net_advertise, is_hex_key and net_check_credentials are copied from
+ * upstream's components/net/net.c (WeebLabs/DSPi-Link bridge/esp32, at the
+ * conformance pin), under its MIT licence:
+ *
+ *   Copyright (c) 2026 Weeb Labs
+ *
+ *   Permission is hereby granted, free of charge, to any person obtaining a
+ *   copy of this software and associated documentation files (the
+ *   "Software"), to deal in the Software without restriction, including
+ *   without limitation the rights to use, copy, modify, merge, publish,
+ *   distribute, sublicense, and/or sell copies of the Software, and to
+ *   permit persons to whom the Software is furnished to do so, subject to
+ *   the following conditions: the above copyright notice and this
+ *   permission notice shall be included in all copies or substantial
+ *   portions of the Software. The full text: LICENSE.DSPi-Link next to
+ *   this file.
  */
 
 #include "net.h"

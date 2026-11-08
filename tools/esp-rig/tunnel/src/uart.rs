@@ -56,6 +56,22 @@ impl RequestParser {
         self.in_frame
     }
 
+    // -- WP LK4 -- (review c73 N2)
+    /// Drop a frame stalled for [`FRAME_TIMEOUT`] at `now`, as the
+    /// firmware's poll does without waiting for another byte; true when one
+    /// was dropped. Call it before [`RequestParser::mid_frame`].
+    pub fn expire(&mut self, now: Instant) -> bool {
+        let stalled = self.in_frame
+            && self
+                .last_byte
+                .is_some_and(|t| now.saturating_duration_since(t) >= FRAME_TIMEOUT);
+        if stalled {
+            self.timed_out += 1;
+            self.reset();
+        }
+        stalled
+    }
+
     /// When the current or last frame's sync byte arrived.
     pub fn started(&self) -> Option<Instant> {
         self.started
@@ -63,14 +79,7 @@ impl RequestParser {
 
     /// Feed one byte that arrived at `now`.
     pub fn push(&mut self, byte: u8, now: Instant) -> Option<Parsed> {
-        if self.in_frame
-            && self
-                .last_byte
-                .is_some_and(|t| now.saturating_duration_since(t) >= FRAME_TIMEOUT)
-        {
-            self.timed_out += 1;
-            self.reset();
-        }
+        self.expire(now);
         self.last_byte = Some(now);
         if !self.in_frame {
             if byte == SYNC {
@@ -256,6 +265,20 @@ impl Faults {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn wp_lk4_a_stalled_frame_stops_holding_notifications_without_another_byte() {
+        let mut p = RequestParser::default();
+        let t0 = Instant::now();
+        assert!(p.push(SYNC, t0).is_none());
+        assert!(p.push(TY_GET, t0).is_none());
+        assert!(p.mid_frame());
+        assert!(!p.expire(t0 + FRAME_TIMEOUT / 2));
+        assert!(p.mid_frame(), "still within the timeout");
+        assert!(p.expire(t0 + FRAME_TIMEOUT));
+        assert!(!p.mid_frame());
+        assert_eq!(p.timed_out, 1);
+    }
+
     use super::*;
 
     fn feed(p: &mut RequestParser, bytes: &[u8], t: Instant) -> Vec<Parsed> {
