@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -127,8 +126,6 @@ fun CustomSlider(
     val inactive = colors.gray.copy(alpha = 0.25f)
     Canvas(
         modifier
-            // -- WP AN20 -- room for a 48 dp target around the 32 dp track
-            .minimumInteractiveComponentSize()
             .height(32.dp)
             .alpha(if (enabled) 1f else 0.4f)
             .semantics {

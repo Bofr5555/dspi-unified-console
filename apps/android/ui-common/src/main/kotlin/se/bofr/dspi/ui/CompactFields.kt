@@ -26,7 +26,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -248,8 +247,6 @@ private fun CompactValueField(
     Box(
         modifier =
         modifier
-            // -- WP AN20 -- room for a 48 dp target around the field
-            .minimumInteractiveComponentSize()
             .width(width)
             .background(
                 if (dragging) accent.copy(alpha = 0.15f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),

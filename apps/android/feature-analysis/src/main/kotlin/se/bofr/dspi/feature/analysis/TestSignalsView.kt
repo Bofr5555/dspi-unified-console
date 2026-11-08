@@ -39,7 +39,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -394,8 +393,6 @@ private fun OutputChip(state: TestSignalsUiState, o: Int, modifier: Modifier, on
     val shape = RoundedCornerShape(6.dp)
     Row(
         modifier
-            // -- WP AN20 -- room for a 48 dp target
-            .minimumInteractiveComponentSize()
             .alpha(if (matrixEnabled) 1f else 0.4f)
             .clip(shape)
             .background(if (selected) accent.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))

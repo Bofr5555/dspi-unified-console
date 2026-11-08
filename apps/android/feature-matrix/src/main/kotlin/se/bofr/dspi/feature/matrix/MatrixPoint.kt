@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -41,8 +40,7 @@ import se.bofr.dspi.ui.writeEnabled
  * macOS `MatrixPoint`: gain field above the dot when connected, the connect
  * toggle (filled dot / empty ring), and INV below when connected.
  * [outlineColor] overrides the disconnected ring (PDM conflict: orange).
- * [label] names the crosspoint for TalkBack ("USB 1 L to OUT1"). Each of
- * the three controls has a 48 dp row (WP AN20).
+ * [label] names the crosspoint for TalkBack ("USB 1 L to OUT1", WP AN20).
  */
 @Composable
 fun MatrixPoint(
@@ -67,24 +65,24 @@ fun MatrixPoint(
                 onGainCommit,
                 enabled = enabled,
                 title = "Gain, $label",
-                quantized = false
+                quantized = false,
+                modifier = Modifier.padding(top = 6.dp)
             )
         } else {
-            Spacer(Modifier.height(MatrixTarget))
+            Spacer(Modifier.height(22.dp))
         }
+        Spacer(Modifier.height(2.dp))
         MatrixConnectToggle(isConnected, inputColor, outlineColor, enabled, label, onToggleConnected)
+        Spacer(Modifier.height(2.dp))
         if (isConnected) {
-            MatrixInvertToggle(isInverted, enabled, onToggleInverted, label = label)
+            MatrixInvertToggle(isInverted, enabled, onToggleInverted, Modifier.padding(bottom = 6.dp), label = label)
         } else {
-            Spacer(Modifier.height(MatrixTarget))
+            Spacer(Modifier.height(22.dp))
         }
     }
 }
 
-/** WP AN20: the smallest touch target a matrix control gets. */
-internal val MatrixTarget = 48.dp
-
-/** The crosspoint circle; a 48 dp touch target around macOS's 28 pt one. TalkBack: "[label], switch, Connected". */
+/** The crosspoint circle; a 44 dp touch target around macOS's 28 pt one. TalkBack: "[label], switch, Connected". */
 @Composable
 fun MatrixConnectToggle(
     isConnected: Boolean,
@@ -99,7 +97,7 @@ fun MatrixConnectToggle(
     Box(
         modifier =
         Modifier
-            .size(MatrixTarget)
+            .size(44.dp)
             .toggleable(
                 value = isConnected,
                 enabled = writeEnabled(enabled),
@@ -130,8 +128,6 @@ fun MatrixInvertToggle(isInverted: Boolean, enabled: Boolean, onToggle: () -> Un
     Box(
         modifier =
         modifier
-            // -- WP AN20 -- a 48 dp target around the label
-            .minimumInteractiveComponentSize()
             .toggleable(value = isInverted, enabled = writeEnabled(enabled), role = Role.Switch, onValueChange = { onToggle() })
             .semantics { contentDescription = listOf("Invert phase", label).filter { it.isNotEmpty() }.joinToString(", ") }
             .padding(horizontal = 10.dp, vertical = 3.dp),

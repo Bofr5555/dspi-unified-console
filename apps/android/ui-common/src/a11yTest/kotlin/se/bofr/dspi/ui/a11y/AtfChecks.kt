@@ -35,17 +35,35 @@ import org.junit.Assert.assertEquals
  */
 object AtfChecks {
     /** Every result of the LATEST preset of [type] (ERROR by default) for the window [root] is in, as text. */
-    fun results(root: View, type: AccessibilityCheckResultType = AccessibilityCheckResultType.ERROR): List<String> = withRealNodes {
+    fun results(root: View, type: AccessibilityCheckResultType = AccessibilityCheckResultType.ERROR): List<String> =
+        checkResults(root, type).map(::describe)
+
+    private fun checkResults(root: View, type: AccessibilityCheckResultType): List<AccessibilityHierarchyCheckResult> = withRealNodes {
         val hierarchy = hierarchy(root) ?: return@withRealNodes emptyList()
         val checks = AccessibilityCheckPreset.getAccessibilityHierarchyChecksForPreset(AccessibilityCheckPreset.LATEST)
-        checks.flatMap { check -> check.runCheckOnHierarchy(hierarchy) }
-            .filter { it.type == type }
-            .map(::describe)
+        checks.flatMap { check -> check.runCheckOnHierarchy(hierarchy) }.filter { it.type == type }
     }
 
-    /** Fails with every ATF error on the window [root] is in. */
+    /**
+     * ATF checks [assertPass] leaves out. TouchTargetSizeCheck: the owner's rule of 2026-11-08 (review c6c,
+     * AN20-1) keeps the phone's layout as it was, so controls drawn smaller than 48 dp stay that size;
+     * ControlSizesAn20Test pins those sizes instead.
+     */
+    val NOT_ENFORCED = setOf("TouchTargetSizeCheck")
+
+    /**
+     * Fails with every ATF error on the window [root] is in, except the [NOT_ENFORCED] checks and findings
+     * on a node the window's bottom edge cuts: Compose reports only the visible part of such a node and
+     * leaves out its children that are off screen, so a row at the fold loses its text to ATF while
+     * TalkBack scrolls it into view and reads it.
+     */
     fun assertPass(root: View, what: String) {
-        assertEquals("$what: Accessibility Test Framework errors", emptyList<String>(), results(root))
+        val bottom = root.rootView.height
+        val enforced = checkResults(root, AccessibilityCheckResultType.ERROR)
+            .filterNot { r -> r.sourceCheckClass.simpleName in NOT_ENFORCED }
+            .filterNot { r -> (r.element?.boundsInScreen?.bottom ?: 0) >= bottom }
+            .map(::describe)
+        assertEquals("$what: Accessibility Test Framework errors", emptyList<String>(), enforced)
     }
 
     /** How many nodes ATF saw: a check that saw only the window frame proves nothing. */

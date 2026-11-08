@@ -16,6 +16,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.isToggleable
@@ -26,6 +27,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -108,6 +110,28 @@ class HomeAccessibilityAn20Test {
         show { HomeScreen(bridge, {}, {}) }
         assertTrue("ATF sees Home", AtfChecks.nodeCount(view) > 30)
         AtfChecks.assertPass(view, "home")
+    }
+
+    /** Review c6c AN20-2: the bottom icon row fits a 360 dp phone (8 x 44 dp in 352 dp), as on main. */
+    @Test
+    @Config(qualifiers = "w360dp-h740dp-port-mdpi")
+    fun an20HomeIconRowFitsA360DpPhone() {
+        show { HomeScreen(bridge, {}, {}) }
+        val icons = listOf(
+            "Matrix Mixer",
+            "Headphone Crossfeed",
+            "Loudness Compensation",
+            "Volume Leveller",
+            "Psychoacoustic Bass",
+            "Stats for Nerbs",
+            "Settings",
+            "Bypass Master EQ"
+        ).map {
+            rule.onNode(hasContentDescription(it) and SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick)).getUnclippedBoundsInRoot()
+        }
+        icons.forEach { assertEquals(44f, (it.right - it.left).value, 0.5f) }
+        assertTrue("the Bypass icon ends inside the screen: ${icons.last()}", icons.last().right.value <= 360f)
+        icons.zipWithNext().forEach { (a, b) -> assertTrue("icons do not overlap", a.right <= b.left) }
     }
 
     @Test

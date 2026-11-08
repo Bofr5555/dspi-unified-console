@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
@@ -109,11 +108,10 @@ fun PinOverviewTab(bridge: DspiBridge, coordinator: SettingsSaveCoordinator, onO
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             row.forEach { pin ->
                                 val claim = claims[pin]
-                                // -- WP AN20 -- a 48 dp target around the 36 dp chip, read as "GPIO 12, <role>"
+                                // -- WP AN20 -- read as "GPIO 12, <role>"
                                 Box(
                                     Modifier
                                         .weight(1f)
-                                        .heightIn(min = 48.dp)
                                         .then(if (claim != null) Modifier.clickable { onOpen(claim.page) } else Modifier)
                                         .semantics(mergeDescendants = true) {
                                             contentDescription = "GPIO $pin"

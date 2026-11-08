@@ -15,7 +15,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -102,8 +101,6 @@ fun ValueField(
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         Box(
             Modifier
-                // -- WP AN20 -- room for a 48 dp target around the field
-                .minimumInteractiveComponentSize()
                 .width(width)
                 .border(1.dp, if (editing) colors.accent else colors.pillStroke.copy(alpha = 0.15f), RoundedCornerShape(5.dp))
                 .combinedClickable(

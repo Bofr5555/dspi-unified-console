@@ -28,7 +28,6 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -775,8 +774,7 @@ fun GraphLegend(bridge: DspiBridge, modifier: Modifier = Modifier) {
             val color = channelColour(bridge, ch)
             Row(
                 Modifier
-                    // -- WP AN20 -- a 48 dp target; TalkBack: "OUT1, switch, on" (the curve shown)
-                    .minimumInteractiveComponentSize()
+                    // -- WP AN20 -- TalkBack: "OUT1, switch, on" (the curve shown)
                     .clip(CircleShape)
                     .background(if (isVisible) color.copy(alpha = 0.15f) else Color.Gray.copy(alpha = 0.1f))
                     .border(1.dp, if (isVisible) color.copy(alpha = 0.5f) else Color.Transparent, CircleShape)

@@ -33,7 +33,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -103,8 +102,6 @@ fun SegmentedControl(tabs: List<SegmentTab>, modifier: Modifier = Modifier, enab
     val shape = RoundedCornerShape(6.dp)
     Row(
         modifier
-            // -- WP AN20 -- room for 48 dp targets around the segments
-            .minimumInteractiveComponentSize()
             .height(IntrinsicSize.Min)
             .clip(shape)
             .border(1.dp, c.pillStroke, shape)
@@ -154,11 +151,7 @@ fun SplitActionPill(
 
     @Suppress("NAME_SHADOWING")
     val rightDisabled = rightDisabled || !canWrite
-    Row(
-        // -- WP AN20 -- room for 48 dp targets around the pill
-        modifier.minimumInteractiveComponentSize().height(IntrinsicSize.Min).clip(shape).border(1.dp, c.pillStroke, shape),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    Row(modifier.height(IntrinsicSize.Min).clip(shape).border(1.dp, c.pillStroke, shape), verticalAlignment = Alignment.CenterVertically) {
         PillHalf(leftTitle, leftDisabled, onLeft)
         Box(Modifier.width(1.dp).height(16.dp).background(c.pillStroke))
         PillHalf(rightTitle, rightDisabled, onRight)
@@ -202,8 +195,6 @@ fun PillButton(
     val fg = if (selected) c.accent else c.secondaryLabel
     Row(
         modifier
-            // -- WP AN20 -- room for a 48 dp target around the pill
-            .minimumInteractiveComponentSize()
             .clip(shape)
             .background(if (selected) c.accent.copy(alpha = 0.18f) else Color.Transparent, shape)
             .border(1.dp, if (selected) c.accent.copy(alpha = 0.45f) else c.pillStroke, shape)
@@ -253,8 +244,7 @@ fun <T> PopUpButton(
                     onClick = { if (enabled) open = true },
                     onLongClick = onLongClick
                 ).alpha(if (enabled || !dimWhenDisabled) 1f else 0.4f)
-                // -- WP AN20 -- a 48 dp target (was 32)
-                .heightIn(min = 48.dp)
+                .heightIn(min = 32.dp)
                 .padding(horizontal = 6.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -309,8 +299,6 @@ fun SidebarIconButton(
     val tint = if (isActive) activeColor ?: (if (c.isDark) Color.White else c.accent) else c.secondaryLabel.copy(alpha = 0.6f)
     Box(
         modifier
-            // -- WP AN20 -- room for a 48 dp target around the 44 dp circle
-            .minimumInteractiveComponentSize()
             .size(44.dp)
             .clip(CircleShape)
             .combinedClickable(
@@ -349,8 +337,6 @@ fun BypassCheckbox(
     val fillAlpha by animateFloatAsState(if (isActive) 1f else 0f, label = "bypass")
     Box(
         modifier
-            // -- WP AN20 -- a 48 dp target around the 14 dp disc
-            .minimumInteractiveComponentSize()
             .size(36.dp)
             .clip(CircleShape)
             .toggleable(

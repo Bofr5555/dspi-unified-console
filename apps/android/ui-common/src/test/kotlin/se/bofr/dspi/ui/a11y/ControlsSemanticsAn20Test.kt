@@ -43,6 +43,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import se.bofr.dspi.ui.BypassCheckbox
+import se.bofr.dspi.ui.ChannelChips
 import se.bofr.dspi.ui.CompactGainField
 import se.bofr.dspi.ui.CpuMeter
 import se.bofr.dspi.ui.CustomSlider
@@ -189,6 +190,19 @@ class ControlsSemanticsAn20Test {
             rule.mainClock.advanceTimeBy(100)
         }
         rule.onNodeWithText("OK").assertExists()
+    }
+
+    /** Review c6c AN20-3: the chip is its own TalkBack node, so its help (the channel's name) goes in its description. */
+    @Test
+    fun an20ChannelChipsSayTheChannelName() {
+        var on by mutableStateOf(false)
+        show { ChannelChips(2, { i -> i == 0 || on }, listOf("USB 1 L", ""), true, { on = !on }) }
+        rule.onNode(hasContentDescription("1, USB 1 L") and isToggleable()).assertIsOn()
+        // No name: the chip reads its label, as before
+        val second = rule.onNode(hasContentDescription("2, ", substring = true) and isToggleable(), useUnmergedTree = true)
+        second.assertDoesNotExist()
+        rule.onNode(androidx.compose.ui.test.hasText("2") and isToggleable()).assertIsOff().performClick()
+        rule.onNode(androidx.compose.ui.test.hasText("2") and isToggleable()).assertIsOn()
     }
 
     @Test

@@ -257,7 +257,7 @@ private fun EnableButton(ui: MatrixUi, idx: Int, modifier: Modifier = Modifier) 
     val o = ui.state.output(idx)
     Box(
         modifier
-            .size(MatrixTarget)
+            .size(44.dp)
             // -- WP AN20 -- a switch with its state and its output's name (help text as before)
             .toggleable(value = o.enabled, enabled = writesAllowed(), role = Role.Switch, onValueChange = {
                 ui.requestOutputEnable(idx)
@@ -272,7 +272,7 @@ private fun MuteButton(ui: MatrixUi, idx: Int, modifier: Modifier = Modifier) {
     val o = ui.state.output(idx)
     Box(
         modifier
-            .size(MatrixTarget)
+            .size(44.dp)
             // -- WP AN20 -- a switch with its state and its output's name
             .toggleable(value = o.muted, enabled = writesAllowed(), role = Role.Switch, onValueChange = {
                 ui.actions.setOutputMute(idx, !o.muted)
@@ -397,8 +397,7 @@ private fun MatrixGrid(ui: MatrixUi) {
             // ── ROUTING ──
             RoutingHeader(ui)
             s.matrixInputs.forEach { row ->
-                // -- WP AN20 -- three 48 dp targets per crosspoint (gain, dot, INV); was 84
-                Row(Modifier.height(MatrixTarget * 3), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.height(84.dp), verticalAlignment = Alignment.CenterVertically) {
                     GridInputLabel(ui, row)
                     s.visibleOutputs.forEach { out -> Crosspoint(ui, row, out, Modifier.width(ColumnWidth)) }
                 }
@@ -491,8 +490,7 @@ private fun GridInputLabel(ui: MatrixUi, row: MatrixInput) {
 
 @Composable
 private fun GridControlRow(label: String, content: @Composable () -> Unit) {
-    // -- WP AN20 -- 48 dp targets (was 44)
-    Row(Modifier.height(MatrixTarget), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.height(44.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(
             label,
             fontSize = 10.sp,
@@ -623,8 +621,7 @@ private fun PhoneRouteRow(ui: MatrixUi, row: MatrixInput, out: MatrixOutput) {
                     )
                 }
             }
-            // -- WP AN20 -- INV's 48 dp target (was 44)
-            Box(Modifier.width(MatrixTarget), contentAlignment = Alignment.Center) {
+            Box(Modifier.width(44.dp), contentAlignment = Alignment.Center) {
                 if (route.isConnected) {
                     MatrixInvertToggle(route.isInverted, true, {
                         ui.actions.toggleInvert(row.index, out.index)

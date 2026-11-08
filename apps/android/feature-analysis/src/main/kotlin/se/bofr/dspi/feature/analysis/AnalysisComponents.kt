@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -59,8 +58,7 @@ internal fun PlainButton(text: String, enabled: Boolean = true, modifier: Modifi
     val c = if (enabled) MaterialTheme.colorScheme.primary else secondaryText().copy(alpha = 0.4f)
     Box(
         modifier
-            // -- WP AN20 -- a 48 dp target; read as a button
-            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            // -- WP AN20 -- read as a button
             .clip(RoundedCornerShape(6.dp))
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 6.dp),

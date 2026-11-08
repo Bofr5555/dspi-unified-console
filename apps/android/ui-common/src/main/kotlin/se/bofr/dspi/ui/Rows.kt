@@ -11,7 +11,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,7 +36,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -52,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -282,47 +281,44 @@ fun ChannelChips(
     label: (Int) -> String = { "${it + 1}" },
     below: (@Composable (Int, Boolean) -> Unit)? = null
 ) {
-    // -- WP AN20 -- as many chips per row as keep 48 dp each; the rest wrap
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-        val perRow = ((maxWidth + CHIP_GAP) / (CHIP_MIN + CHIP_GAP)).toInt().coerceIn(1, count.coerceAtLeast(1))
-        Column(verticalArrangement = Arrangement.spacedBy(CHIP_GAP)) {
-            for (row in (0 until count).chunked(perRow)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(CHIP_GAP)) {
-                    for (i in row) {
-                        val on = isOn(i)
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            HelpTip(names.getOrElse(i) { "" }) {
-                                ToolChip(label(i), on, enabled, Modifier.fillMaxWidth()) { onToggle(i) }
-                            }
-                            below?.invoke(i, on)
-                        }
-                    }
-                    repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (i in 0 until count) {
+            val on = isOn(i)
+            val name = names.getOrElse(i) { "" }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                HelpTip(name) {
+                    // -- WP AN20 -- the chip is its own TalkBack node, so the help's action never reaches it:
+                    // the channel's name goes in the chip's description ("1, USB 1 L")
+                    ToolChip(
+                        label(i),
+                        on,
+                        enabled,
+                        Modifier.fillMaxWidth(),
+                        description = if (name.isEmpty()) null else "${label(i)}, $name"
+                    ) { onToggle(i) }
                 }
+                below?.invoke(i, on)
             }
         }
     }
 }
 
-private val CHIP_GAP = 6.dp
-private val CHIP_MIN = 48.dp
-
-/** One chip (channel chips, tube shelf). */
+/** One chip (channel chips, tube shelf). [description] replaces [text] for TalkBack when set (WP AN20). */
 @Composable
-fun ToolChip(text: String, on: Boolean, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun ToolChip(text: String, on: Boolean, enabled: Boolean, modifier: Modifier = Modifier, description: String? = null, onClick: () -> Unit) {
     @Suppress("NAME_SHADOWING")
     val enabled = writeEnabled(enabled)
     val shape = RoundedCornerShape(6.dp)
     val bg = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f)
     Box(
         modifier
-            // -- WP AN20 -- room for a 48 dp target; TalkBack: "1, switch, on"
-            .minimumInteractiveComponentSize()
             .heightIn(min = 36.dp)
             .alpha(if (enabled) 1f else 0.5f)
             .background(bg, shape)
             .border(1.dp, if (on) Color.Transparent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), shape)
-            .toggleable(value = on, enabled = enabled, role = Role.Switch, onValueChange = { onClick() }),
+            // -- WP AN20 -- TalkBack: "1, switch, on"
+            .toggleable(value = on, enabled = enabled, role = Role.Switch, onValueChange = { onClick() })
+            .then(if (description != null) Modifier.semantics { contentDescription = description } else Modifier),
         contentAlignment = Alignment.Center
     ) {
         Text(

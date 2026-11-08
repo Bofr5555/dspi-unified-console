@@ -20,7 +20,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -124,9 +123,9 @@ fun GraphScreen(bridge: DspiBridge, onNavigate: (String) -> Unit, onBack: () -> 
                 "Open channel page",
                 fontSize = 12.sp,
                 color = Color(0xFF7AA7FF),
-                // -- WP AN20 -- a 48 dp target, read as a button
+                // -- WP AN20 -- read as a button
                 modifier =
-                Modifier.padding(top = 4.dp).minimumInteractiveComponentSize().clickable(role = Role.Button) {
+                Modifier.padding(top = 4.dp).clickable(role = Role.Button) {
                     onNavigate(DspiRoutes.channel(edited))
                 }
             )
