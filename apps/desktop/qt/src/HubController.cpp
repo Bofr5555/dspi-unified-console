@@ -249,7 +249,7 @@ void HubController::setSharing(bool on) {
 
 void HubController::start() {
     if (!m_hub) {
-        setError(QStringLiteral("Sharing is not available in this build."));
+        setError(tr("Sharing is not available in this build."));
         return;
     }
     const QByteArray name = m_name.toUtf8(), store = m_store;
@@ -277,18 +277,18 @@ void HubController::onStarted(const QJsonObject &reply) {
     if (!reply.value(QStringLiteral("ok")).toBool()) {
         // The switch stays on, as the Mac's does: the user sees why and turns it off
         if (reply.value(QStringLiteral("code")).toString() == QLatin1String("io"))
-            setError(QStringLiteral("Could not share on port %1: %2").arg(m_port).arg(failureOf(reply, QStringLiteral("the port is in use"))));
+            setError(tr("Could not share on port %1: %2").arg(m_port).arg(failureOf(reply, tr("the port is in use"))));
         else
-            setError(QStringLiteral("Could not start sharing: ") + failureOf(reply, QStringLiteral("the hub did not answer")));
+            setError(tr("Could not start sharing: %1").arg(failureOf(reply, tr("the hub did not answer"))));
         refresh();
         return;
     }
     const int revoked = reply.value(QStringLiteral("tokensRevoked")).toInt();
     if (revoked > 0)
-        m_lastNote = revoked == 1 ? QStringLiteral("The access mode changed: 1 paired client must pair again.")
-                                  : QStringLiteral("The access mode changed: %1 paired clients must pair again.").arg(revoked);
+        m_lastNote = revoked == 1 ? tr("The access mode changed: 1 paired client must pair again.")
+                                  : tr("The access mode changed: %1 paired clients must pair again.").arg(revoked);
     if (reply.value(QStringLiteral("attachFailed")).toBool())
-        m_lastError = QStringLiteral("Sharing started, but this app's own device could not be put on the hub.");
+        m_lastError = tr("Sharing started, but this app's own device could not be put on the hub.");
     // Switched off while starting: the stop queued behind this start comes next
     refresh();
 }
@@ -320,7 +320,7 @@ bool HubController::setHubName(const QString &name) {
         if (!c.isNonCharacter() && c.category() != QChar::Other_Control) clean.append(c);
     clean = clean.trimmed().left(64);
     if (clean.isEmpty()) {
-        setError(QStringLiteral("A hub needs a name."));
+        setError(tr("A hub needs a name."));
         return false;
     }
     if (clean == m_name) return true;
@@ -344,11 +344,11 @@ bool HubController::setAccess(const QString &mode) {
 
 bool HubController::setPort(int port) {
     if (port < kMinPort || port > kMaxPort) {
-        setError(QStringLiteral("A port from %1 to %2.").arg(kMinPort).arg(kMaxPort));
+        setError(tr("A port from %1 to %2.").arg(kMinPort).arg(kMaxPort));
         return false;
     }
     if (m_running) {
-        setError(QStringLiteral("Turn sharing off to change the port."));
+        setError(tr("Turn sharing off to change the port."));
         return false;
     }
     if (port == m_port) return true;
@@ -369,7 +369,7 @@ void HubController::allowNewClient() {
             if (reply.value(QStringLiteral("ok")).toBool())
                 setPairing(reply.value(QStringLiteral("pin")).toString(), reply.value(QStringLiteral("expiresInMs")).toInt());
             else
-                setError(QStringLiteral("Could not open pairing: ") + failureOf(reply, QStringLiteral("the hub did not answer")));
+                setError(tr("Could not open pairing: %1").arg(failureOf(reply, tr("the hub did not answer"))));
         }, Qt::QueuedConnection);
     });
 }
@@ -388,7 +388,7 @@ void HubController::setRole(int cid, const QString &role) {
     apply([this, hub, cid, r]() {
         const bool ok = dspi_hub_set_role(hub, uint32_t(cid), r.constData());
         QMetaObject::invokeMethod(this, [this, ok]() {
-            if (!ok) setError(QStringLiteral("Could not change that client's role."));
+            if (!ok) setError(tr("Could not change that client's role."));
             refresh();
         }, Qt::QueuedConnection);
     });
@@ -400,7 +400,7 @@ void HubController::revoke(int cid) {
     apply([this, hub, cid]() {
         const bool ok = dspi_hub_revoke(hub, uint32_t(cid));
         QMetaObject::invokeMethod(this, [this, ok]() {
-            if (!ok) setError(QStringLiteral("Could not remove that client."));
+            if (!ok) setError(tr("Could not remove that client."));
             refresh();
         }, Qt::QueuedConnection);
     });
@@ -444,7 +444,7 @@ void HubController::syncBrowse() {
         m_browseOwnId = m_hubId;
         const QByteArray own = m_hubId.toUtf8();
         m_browsing = dspi_link_browse_start(m_core, &HubController::browseWake, this, own.constData());
-        if (!m_browsing) m_browseError = QStringLiteral("Looking for hubs is not available in this build.");
+        if (!m_browsing) m_browseError = tr("Looking for hubs is not available in this build.");
         emit browseChanged();
         readHubs();
     }

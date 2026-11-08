@@ -942,8 +942,12 @@ void SmokeDriver::testPopoverAnchor() {
 
         clickAt(main, upper);
         check(what("the anchor opens it").constData(), pop->isVisible() && opens == 1 && gear->property("clicks").toInt() == 1);
-        // Without a move, as when the window has just appeared under the pointer
-        check(what("the hand stays on opening").constData(), main->cursor().shape() == Qt::PointingHandCursor);
+        // Without a move, as when the window has just appeared under the pointer.
+        // -- WP QD40 -- Once the click is through: on Qt 6.5 to 6.8 the popover
+        // gives the window its pointer again then (PopoverWindow.openBelow)
+        check(what("the hand stays on opening").constData(),
+              waitFor(1000, [&]() { return main->cursor().shape() == Qt::PointingHandCursor; }));
+        printf("smoke: QD30 %s: cursor %d after opening\n", name.constData(), int(main->cursor().shape()));
 
         check(what("its window overlaps the anchor (the reported case)").constData(), pop->geometry().contains(lowerGlobal));
         sendMouse(main, QEvent::MouseMove, QPointF(5, 5));

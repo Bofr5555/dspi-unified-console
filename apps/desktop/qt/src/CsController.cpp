@@ -114,7 +114,7 @@ void CsController::reload() {
 QVariantMap CsController::call(const QByteArray &json) {
     QByteArray buf(4096, '\0');
     uint32_t needed = dspi_cs_apply(m_bridge->core(), json.constData(), buf.data(), uint32_t(buf.size()));
-    if (needed > uint32_t(buf.size())) return { { "ok", false }, { "error", "Reply too long." } };
+    if (needed > uint32_t(buf.size())) return { { "ok", false }, { "error", tr("Reply too long.") } };
     buf.truncate(int(qMax<uint32_t>(1, needed) - 1));
     return QJsonDocument::fromJson(buf).object().toVariantMap();
 }
@@ -123,7 +123,7 @@ QVariantMap CsController::apply(const QVariantMap &op) {
     m_lastError.clear();
     if (!m_bridge->connected()) {
         // The core is not asked, so the reason is given here
-        m_lastError = QStringLiteral("The device is not connected");
+        m_lastError = tr("The device is not connected");
         return { { "ok", false }, { "status", 0xFF }, { "error", m_lastError } };
     }
     QVariantMap r = call(QJsonDocument(QJsonObject::fromVariantMap(op)).toJson(QJsonDocument::Compact));
@@ -181,7 +181,7 @@ static QByteArray askCore(Call call) {
 QString CsController::statusMessage(int code) const {
     // 0xFF is "no device status": the last apply()'s own reason, when it gave one
     if (code == 0xFF && !m_lastError.isEmpty()) return m_lastError;
-    if (code == 0xFF) return QStringLiteral("Failed to apply the binding");
+    if (code == 0xFF) return tr("Failed to apply the binding");
     return QString::fromUtf8(askCore([&](char *buf, uint32_t len) {
         return dspi_cs_status_text(m_bridge->core(), uint8_t(code), buf, len);
     }));

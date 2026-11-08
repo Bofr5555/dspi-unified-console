@@ -35,8 +35,8 @@ template <class F>
 QJsonObject actReply(F call) {
     QByteArray buf(kActReplyBytes, 0);
     const uint32_t needed = call(buf.data(), kActReplyBytes);
-    if (needed == 0) return failure("core", QStringLiteral("The core did not answer."));
-    if (needed > kActReplyBytes) return failure(kReplyTooLong, QStringLiteral("The hub's reply was too long to read."));
+    if (needed == 0) return failure("core", QCoreApplication::translate("LinkController", "The core did not answer."));
+    if (needed > kActReplyBytes) return failure(kReplyTooLong, QCoreApplication::translate("LinkController", "The hub's reply was too long to read."));
     return parsed(buf.left(int(needed) - 1));
 }
 
@@ -159,7 +159,7 @@ bool LinkController::connectToAddress(const QString &address, const QString &exp
     char url[512];
     const uint32_t needed = dspi_link_ws_url(host.constData(), port, nullptr, url, sizeof(url));
     if (needed == 0 || needed > sizeof(url)) {
-        setError(QStringLiteral("invalid"), QStringLiteral("That address is too long."));
+        setError(QStringLiteral("invalid"), tr("That address is too long."));
         return false;
     }
     connectToHub(QString::fromUtf8(url), expectedHubId);
@@ -266,7 +266,7 @@ void LinkController::bindDevice(int handle, const QString &serial) {
             return dspi_link_select_device(m_core, uint32_t(handle), serialBytes.constData(), buf, len);
         });
         if (isOk(reply) && !dspi_fetch_all(m_core))
-            reply = failure("transfer", QStringLiteral("Connected, but the device's settings could not be read."));
+            reply = failure("transfer", tr("Connected, but the device's settings could not be read."));
         QMetaObject::invokeMethod(this, [this, generation, reply, serial] {
             if (m_generation.load() != generation) return;
             if (isOk(reply)) emit deviceBound(serial);
@@ -389,10 +389,10 @@ void LinkController::saveToken(const QString &hubId, const QString &token) {
             QString warning;
             if (saved == TokenStore::Saved::InFile) {
                 qWarning() << "DSPi Link: no secret store answered; the hub's token is in" << m_store->filePath();
-                warning = QStringLiteral("No secret store answered, so the pairing with this hub is saved in a "
-                                         "file only your account can read.");
+                warning = tr("No secret store answered, so the pairing with this hub is saved in a "
+                             "file only your account can read.");
             } else if (saved == TokenStore::Saved::Nowhere) {
-                warning = QStringLiteral("The pairing with this hub could not be saved. It will ask for a PIN next time.");
+                warning = tr("The pairing with this hub could not be saved. It will ask for a PIN next time.");
             }
             if (warning != m_tokenWarning) {
                 m_tokenWarning = warning;

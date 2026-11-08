@@ -212,6 +212,7 @@ AppWindow {
         onToggled: bridge.setUpmixParam(win.pEnabled, enable ? 1 : 0)
         accessories: [
             SegmentedControl {
+                objectName: "viewPicker"
                 anchors.verticalCenter: parent.verticalCenter
                 width: 150
                 visible: win.supported

@@ -138,7 +138,7 @@ bool ExtController::applyPairs(const QVariantList &pairs) {
     bool ok = false;
     const QByteArray map = pairsToMap(pairs, &ok);
     if (!m_hasPairMap || !ok || !mapValid(map, m_pairCount)) {
-        setError(QStringLiteral("Each pair needs two different outputs, and no output can be in two pairs."));
+        setError(tr("Each pair needs two different outputs, and no output can be in two pairs."));
         return false;
     }
     applyMap(map);
@@ -174,7 +174,7 @@ void ExtController::applyMap(const QByteArray &map) {
         m_writes--;
         if (generation == m_generation) {
             if (read) setMap(now);
-            if (!*wrote) setError(QStringLiteral("The pair map was not applied."));
+            if (!*wrote) setError(tr("The pair map was not applied."));
         }
         emit changed();
         emit applyFinished(*wrote);

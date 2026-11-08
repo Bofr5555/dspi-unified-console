@@ -132,12 +132,12 @@
     <name>AppMenu</name>
     <message>
         <location filename="../qml/components/AppMenu.qml" line="+20"/>
-        <location line="+233"/>
+        <location line="+234"/>
         <source>No device connected</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-193"/>
+        <location line="-194"/>
         <source>Device</source>
         <translation type="unfinished"></translation>
     </message>
@@ -292,8 +292,8 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+2"/>
-        <source>DSPi Console on GitHub</source>
+        <location line="+3"/>
+        <source>Weeb Labs&apos; DSPi Console for Linux on GitHub</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -340,6 +340,44 @@
     <message>
         <location line="+14"/>
         <source>Serial %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>AppUpdater</name>
+    <message>
+        <location filename="../src/AppUpdater.cpp" line="+153"/>
+        <source>The release feed did not answer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+22"/>
+        <source>This build has no release feed, so it never checks.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>A check asks %1 for its list of releases. It sends what any web request does, your IP address, and the app&apos;s version (User-Agent %2); nothing about your devices, presets or settings. With automatic checks on, it checks at launch and once a day.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+34"/>
+        <source>This build has no release feed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+20"/>
+        <source>The release feed&apos;s answer was too large.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+17"/>
+        <source>The release feed answered %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>The release feed&apos;s answer is not a list of releases.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -418,6 +456,134 @@
     <message>
         <location line="+1"/>
         <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>AutoEqLibrary</name>
+    <message>
+        <location filename="../src/AutoEqLibrary.cpp" line="+73"/>
+        <location line="+408"/>
+        <source>The answer was too large.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="-405"/>
+        <source>The download failed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+15"/>
+        <source>Database rebuilt successfully!
+Entries: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>%1 profile could not be downloaded.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>%1 profiles could not be downloaded.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>%1 folder could not be listed, so whatever it holds is missing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>%1 folders could not be listed, so whatever they hold is missing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Rebuild again to try for these.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+98"/>
+        <source>This is not an AutoEQ database file.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+38"/>
+        <source>The AutoEQ database could not be read.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+100"/>
+        <location line="+18"/>
+        <location line="+2"/>
+        <source>Import Failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="-20"/>
+        <location line="+29"/>
+        <location line="+39"/>
+        <source>Another update of the database is running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="-50"/>
+        <source>The file could not be opened.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>The database could not be imported.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Database updated successfully.
+Entries: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+6"/>
+        <location line="+11"/>
+        <source>Reset Failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>The updated database could not be removed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Reset to built-in database.
+Entries: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+23"/>
+        <location line="+58"/>
+        <source>Rebuild failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="-48"/>
+        <source>The database&apos;s location could not be used.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Connecting to GitHub...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+77"/>
+        <source>Cancelled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>The request timed out.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -649,7 +815,7 @@ Groups are stored on the device alongside the controls and share their Save and 
 <context>
     <name>ChannelSettingsView</name>
     <message>
-        <location filename="../qml/ChannelSettingsView.qml" line="+177"/>
+        <location filename="../qml/ChannelSettingsView.qml" line="+189"/>
         <source>Route %1</source>
         <translation type="unfinished"></translation>
     </message>
@@ -680,7 +846,7 @@ Groups are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+18"/>
         <source>DELAY</source>
         <translation type="unfinished"></translation>
     </message>
@@ -692,6 +858,43 @@ Groups are stored on the device alongside the controls and share their Save and 
     <message>
         <location line="+34"/>
         <source>Mute</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ConfigFiles</name>
+    <message>
+        <location filename="../src/ConfigFiles.cpp" line="+38"/>
+        <source>The reply was too long to read, but the device may have changed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <location line="+28"/>
+        <location line="+42"/>
+        <location line="+19"/>
+        <location line="+26"/>
+        <source>No device connected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="-106"/>
+        <source>The file could not be opened: %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>The file could not be written: %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+31"/>
+        <source>%1 channels, %2 active EQ bands, %3 crossover bands, %4 crosspoints.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+60"/>
+        <source>No filters this device can use were found in the file.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1555,12 +1758,14 @@ Click for help.</source>
     <message>
         <location line="+30"/>
         <location line="+478"/>
-        <location line="+15"/>
+        <location line="+3"/>
+        <location line="+13"/>
+        <location line="+3"/>
         <source>Out %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-432"/>
+        <location line="-436"/>
         <source>BS2B Bauer stereophonic-to-binaural</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1676,7 +1881,8 @@ Click for help.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+27"/>
+        <location line="+20"/>
+        <location line="+9"/>
         <source>Pair %1</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1686,12 +1892,12 @@ Click for help.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+15"/>
+        <location line="+16"/>
         <source>Pair %1 right</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+17"/>
+        <location line="+18"/>
         <source>Each pair needs two different outputs, and no output can be in two pairs.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1821,9 +2027,27 @@ Click for help.</source>
     </message>
 </context>
 <context>
+    <name>CsController</name>
+    <message>
+        <location filename="../src/CsController.cpp" line="+117"/>
+        <source>Reply too long.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>The device is not connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+58"/>
+        <source>Failed to apply the binding</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>CsControlsView</name>
     <message>
-        <location filename="../qml/settings/cs/CsControlsView.qml" line="+264"/>
+        <location filename="../qml/settings/cs/CsControlsView.qml" line="+265"/>
         <source>Point the remote at the receiver and press the button to learn.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2810,6 +3034,74 @@ Click for help.</source>
     </message>
 </context>
 <context>
+    <name>DSPiBridge</name>
+    <message>
+        <location filename="../src/DSPiBridge.cpp" line="+335"/>
+        <source>This DSPi runs firmware %1, which is too old for this Console. Its settings are shown read-only; features it lacks are hidden. Update it to firmware 1.1.6.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>older than 1.1.6</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>This DSPi runs firmware %1, which is newer than this Console understands. Its settings are shown read-only, and some of its features may not be shown. Update the Console.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+103"/>
+        <source>Input %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Output %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+627"/>
+        <source>The rule could not be prepared.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>pkexec, which asks for the administrator password, isn&apos;t available.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>The password prompt was dismissed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Authorisation failed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>The rule could not be installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+29"/>
+        <source>Could not open DSPi %1. Check that its udev rule is installed and that no other program is using it. Right-click the device name to retry.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Could not open DSPi %1. Check that no other program is using it. Right-click the device name to retry.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>Connected, but the device&apos;s settings could not be read. Right-click the device name to retry.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>DashboardCard</name>
     <message>
         <location filename="../qml/components/DashboardCard.qml" line="+37"/>
@@ -2982,6 +3274,14 @@ Click for help.</source>
     </message>
 </context>
 <context>
+    <name>DemoController</name>
+    <message>
+        <location filename="../src/DemoController.cpp" line="+64"/>
+        <source>The demo could not be opened.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>DevicesPopup</name>
     <message>
         <location filename="../qml/DevicesPopup.qml" line="+161"/>
@@ -3113,7 +3413,20 @@ Click for help.</source>
     </message>
     <message>
         <location line="+12"/>
-        <source>A DSPi on another computer appears here once that Console shares it (Settings &gt; Networking there), as does one on a DSPi Link bridge.</source>
+        <source>A DSPi that another Console shares (Settings &gt; Networking there) appears here, as does one on a DSPi Link bridge.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ExtController</name>
+    <message>
+        <location filename="../src/ExtController.cpp" line="+141"/>
+        <source>Each pair needs two different outputs, and no output can be in two pairs.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+36"/>
+        <source>The pair map was not applied.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -3761,7 +4074,7 @@ Click for help.</source>
     </message>
     <message>
         <location line="-65"/>
-        <source>Hold the BOOTSEL button on your Pico-compatible device while plugging it into your computer.</source>
+        <source>Hold the BOOTSEL button on your Pico-compatible device while plugging it in.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3807,6 +4120,193 @@ Click for help.</source>
     <message>
         <location line="+0"/>
         <source>All files (*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>FirmwareUpdater</name>
+    <message>
+        <location filename="../src/FirmwareUpdater.cpp" line="+43"/>
+        <source>unknown chip</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+158"/>
+        <source>This board has no UF2 bootloader.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>This device is on a hub. Its bootloader drive would appear where the hub runs, so update it there.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>The demo is open, so nothing is written to a real board. Use Leave Demo in the banner, or start the app without --demo, and try again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>This Console&apos;s firmware</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>names no version</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>%1 is firmware for the %2, and this board is an %3.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+111"/>
+        <source>%1 boards are in bootloader mode, and nothing says which is this one. Nothing was written. Disconnect all but the one you want to update.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>%1 boards are in bootloader mode. Disconnect all but the one you want to update.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>The board that appeared is an %1, and %2 is firmware for the %3. Nothing was written.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+13"/>
+        <source>No bootloader drive appeared. Nothing was written. Look for it in your file manager, or unplug the board and hold BOOTSEL while plugging it back in.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+45"/>
+        <source>The board is connected but its %1 drive could not be mounted. Mount it from your file manager and try again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+82"/>
+        <location line="+5"/>
+        <source>Could not read %1: %2.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+10"/>
+        <source>%1 is not a firmware file: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>it could not be checked.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+42"/>
+        <location line="+180"/>
+        <source>The board is gone. Nothing was changed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="-175"/>
+        <location line="+23"/>
+        <location line="+159"/>
+        <source>%1 Nothing was changed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="-155"/>
+        <source>%1 is not the drive of an RP2040 or RP2350 bootloader. Nothing was changed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+39"/>
+        <source>This build of DSPi Console does not include firmware for the %1. Nothing was changed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>The bundled firmware is version %1 but this Console expects %2. The app was built incorrectly; do not install it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>%1 is firmware for the %2, and this board is an %3. Nothing was changed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>A board has appeared in bootloader mode, and with this one there would be two. Nothing was changed. Disconnect it and try again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>%1 boards are in bootloader mode. Nothing was changed. Disconnect all but the one you want to update.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>The drive at %1 has gone. Nothing was changed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+71"/>
+        <source>The board is in its bootloader and nothing was written. Install again, or unplug it to go back to the old firmware.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+22"/>
+        <source>The firmware guard refused this image.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>This board keeps changing. Nothing was changed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+41"/>
+        <source>%1 Nothing was written.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+27"/>
+        <source>%1. The board stays in its bootloader at %2; Try Again asks about core voltage, as a board there cannot say what it needs.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>The firmware could not be written</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+36"/>
+        <source>The firmware was written to the drive, but a hub session is open, so the board can&apos;t be opened here to confirm it. Leave the hub session and check the version it reports.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>%1 new DSPis appeared, so which is this board cannot be told</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+8"/>
+        <source>The board is back, running %1. This image names no version, so whether it took cannot be confirmed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+16"/>
+        <source>The board came back running firmware %1, but the image was %2: it did not take.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>The write ended, but %1, so this is not confirmed. Unplug the board, plug it back in, and check whether it works. If the drive is still there the image did not take.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>the board did not come back</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -4328,7 +4828,7 @@ Click for help.</source>
     </message>
     <message>
         <location line="+1"/>
-        <source>How the response graph looks. These are preferences on this computer and take effect immediately.</source>
+        <source>How the response graph looks. These preferences are kept here, not on the DSPi, and take effect immediately.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4544,6 +5044,85 @@ Click for help.</source>
     </message>
 </context>
 <context>
+    <name>HubController</name>
+    <message>
+        <location filename="../src/HubController.cpp" line="+252"/>
+        <source>Sharing is not available in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+28"/>
+        <source>Could not share on port %1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>the port is in use</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Could not start sharing: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <location line="+90"/>
+        <source>the hub did not answer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="-84"/>
+        <source>The access mode changed: 1 paired client must pair again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>The access mode changed: %1 paired clients must pair again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Sharing started, but this app&apos;s own device could not be put on the hub.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+32"/>
+        <source>A hub needs a name.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+24"/>
+        <source>A port from %1 to %2.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Turn sharing off to change the port.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+21"/>
+        <source>Could not open pairing: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+19"/>
+        <source>Could not change that client&apos;s role.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+12"/>
+        <source>Could not remove that client.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+44"/>
+        <source>Looking for hubs is not available in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>I2SPage</name>
     <message>
         <location filename="../qml/settings/pages/I2SPage.qml" line="+9"/>
@@ -4745,7 +5324,7 @@ Click for help.</source>
 <context>
     <name>InputHeaderCard</name>
     <message>
-        <location filename="../qml/components/InputHeaderCard.qml" line="+36"/>
+        <location filename="../qml/components/InputHeaderCard.qml" line="+37"/>
         <source>Link Pair</source>
         <translation type="unfinished"></translation>
     </message>
@@ -4787,7 +5366,7 @@ Click for help.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+10"/>
+        <location line="+11"/>
         <source>Link %1 and %2?</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5392,6 +5971,39 @@ Click for help.</source>
     </message>
 </context>
 <context>
+    <name>LinkController</name>
+    <message>
+        <location filename="../src/LinkController.cpp" line="+38"/>
+        <source>The core did not answer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>The hub&apos;s reply was too long to read.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+123"/>
+        <source>That address is too long.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+107"/>
+        <source>Connected, but the device&apos;s settings could not be read.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+123"/>
+        <source>No secret store answered, so the pairing with this hub is saved in a file only your account can read.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>The pairing with this hub could not be saved. It will ask for a PIN next time.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>LinkwitzEditor</name>
     <message>
         <location filename="../qml/components/LinkwitzEditor.qml" line="+67"/>
@@ -5674,7 +6286,7 @@ Macros are stored on the device alongside the controls and share their Save and 
 <context>
     <name>MatrixMixerWindow</name>
     <message>
-        <location filename="../qml/MatrixMixerWindow.qml" line="+11"/>
+        <location filename="../qml/MatrixMixerWindow.qml" line="+12"/>
         <source>Matrix Mixer</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5710,12 +6322,12 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <location line="+32"/>
-        <location line="+292"/>
+        <location line="+294"/>
         <source>OUT%1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-280"/>
+        <location line="-282"/>
         <source>Output name</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5807,7 +6419,7 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+4"/>
         <source>%1 delay</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5907,6 +6519,14 @@ Macros are stored on the device alongside the controls and share their Save and 
     <message>
         <location line="+0"/>
         <source>Ctrl</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>NamesController</name>
+    <message>
+        <location filename="../src/NamesController.cpp" line="+184"/>
+        <source>The device did not take the name.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -6249,7 +6869,7 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <location line="+1"/>
-        <source>This desktop shows no tray icons right now, so closing the window quits.</source>
+        <source>No tray icon can be shown right now, so closing the window quits.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6295,6 +6915,39 @@ Macros are stored on the device alongside the controls and share their Save and 
     <message>
         <location line="+1"/>
         <source>Idle sleep waits while devices are shared; the screen can still turn off.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>OutputLatencyController</name>
+    <message>
+        <location filename="../src/OutputLatencyController.cpp" line="+178"/>
+        <source>Lower values reduce the delay from input to output. Higher values may benefit sources exhibiting high jitter in the event of audio stutters.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>At the current sample rate the output buffer is smaller than this, so it runs as %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Values less than 2 ms have no effect upon USB Audio.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+68"/>
+        <source>The device did not take the latency.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>The device has not applied the latency yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>The device kept the previous latency.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -6913,6 +7566,15 @@ Macros are stored on the device alongside the controls and share their Save and 
         <location line="+1"/>
         <location line="+1"/>
         <source>%1 Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>PeqEditorItem</name>
+    <message>
+        <location filename="../src/PeqEditorItem.cpp" line="+436"/>
+        <location line="+366"/>
+        <source>All %1 bands in use</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -8898,6 +9560,64 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
 </context>
 <context>
+    <name>StatsController</name>
+    <message>
+        <location filename="../src/StatsController.cpp" line="+33"/>
+        <source>General</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>CD Player</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Synthesizer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Broadcast Receiver</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Musical Instrument</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>A/D Converter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Mixer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Rate Converter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Sampler</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Digital Signal Processor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+7"/>
+        <source>Not indicated</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>StatsWindow</name>
     <message>
         <location filename="../qml/StatsWindow.qml" line="+15"/>
@@ -9926,6 +10646,51 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
 </context>
 <context>
+    <name>SystemIntegration</name>
+    <message>
+        <location filename="../src/SystemIntegration.cpp" line="+120"/>
+        <source>Could not remove %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Could not create %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <location line="+11"/>
+        <source>Could not write %1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+38"/>
+        <source>Could not add the Console to the programs that start at sign-in.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Could not remove the Console from the programs that start at sign-in.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+25"/>
+        <location line="+6"/>
+        <source>Windows did not take the request (error %1).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+83"/>
+        <source>Neither the desktop portal nor logind took the request (%1; %2).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>no lock</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>Theme</name>
     <message>
         <location filename="../qml/Theme.qml" line="+49"/>
@@ -9985,6 +10750,89 @@ Macros are stored on the device alongside the controls and share their Save and 
     <message>
         <location line="+0"/>
         <source>HP</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>TrayController</name>
+    <message>
+        <location filename="../src/TrayController.cpp" line="+174"/>
+        <source>Share on This Network</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+15"/>
+        <source>Quit DSPi Console</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+32"/>
+        <source>DSPi connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>No DSPi connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>DSPi connected, not sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>No DSPi connected, not sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>DSPi connected, sharing, 1 client</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>No DSPi connected, sharing, 1 client</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>DSPi connected, sharing, %1 clients</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>No DSPi connected, sharing, %1 clients</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+11"/>
+        <source>DSPi Console: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Pairing code %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Open DSPi Console</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Show DSPi Console</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Allow a New Client...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Cancel Pairing</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -10182,7 +11030,7 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+7"/>
+        <location line="+8"/>
         <source>Basic</source>
         <translation type="unfinished"></translation>
     </message>
@@ -10615,12 +11463,12 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <location line="-135"/>
-        <location line="+176"/>
+        <location line="+177"/>
         <source>No device connected</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-175"/>
+        <location line="-176"/>
         <source>Active - processing audio</source>
         <translation type="unfinished"></translation>
     </message>
@@ -10745,7 +11593,7 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+9"/>
+        <location line="+10"/>
         <source>Basic</source>
         <translation type="unfinished"></translation>
     </message>
@@ -11150,6 +11998,106 @@ Macros are stored on the device alongside the controls and share their Save and 
     <message>
         <location line="+1"/>
         <source>Front L / R Only</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>VregController</name>
+    <message>
+        <location filename="../src/VregController.cpp" line="+197"/>
+        <source>Core voltage can&apos;t be changed on this connection.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+9"/>
+        <source>That trial isn&apos;t offered now.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Start a trial at %1 for %2 min</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>The device&apos;s record of hangs and failures is cleared first. The trial runs in RAM only: a hang or a reboot returns the device to its saved voltage. Nothing is saved until you choose to.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>There is no passed trial to save.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <location line="+8"/>
+        <source>Save %1 on the device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="-7"/>
+        <location line="+9"/>
+        <source>The device starts at this voltage from now on, after every reboot and power cycle, until it is reset.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="-5"/>
+        <source>%1 isn&apos;t offered on this device.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+4"/>
+        <source>Run %1 as a trial</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>The trial runs in RAM only: a hang or a reboot returns the device to its saved voltage.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+5"/>
+        <source>Reset to the build default</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>The device forgets the voltage saved on it and starts at its build default.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+3"/>
+        <source>Turn automatic raising on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Turn automatic raising off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>After two watchdog hangs in one power session the device raises its saved voltage one step by itself, up to 1.25 V.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>The device no longer raises its saved voltage after repeated hangs.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+2"/>
+        <source>Clear the device&apos;s record</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>The hang count and the last trial failure are forgotten.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location line="+67"/>
+        <source>The device did not take it (status %1).</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

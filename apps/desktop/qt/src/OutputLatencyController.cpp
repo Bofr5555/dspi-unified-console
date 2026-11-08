@@ -175,11 +175,11 @@ const OutputLatencyController::Option *OutputLatencyController::optionFor(int id
 }
 
 QString OutputLatencyController::caption() const {
-    QString text = QStringLiteral("Lower values reduce the delay from input to output. Higher values may benefit sources exhibiting high jitter in the event of audio stutters.");
+    QString text = tr("Lower values reduce the delay from input to output. Higher values may benefit sources exhibiting high jitter in the event of audio stutters.");
     const Option *o = optionFor(shownId());
     if (o && o->available && o->effectiveUs != o->latencyUs)
-        text += QStringLiteral(" At the current sample rate the output buffer is smaller than this, so it runs as %1.").arg(formatMs(o->effectiveUs));
-    text += QStringLiteral(" Values less than 2 ms have no effect upon USB Audio.");
+        text += QLatin1Char(' ') + tr("At the current sample rate the output buffer is smaller than this, so it runs as %1.").arg(formatMs(o->effectiveUs));
+    text += QLatin1Char(' ') + tr("Values less than 2 ms have no effect upon USB Audio.");
     return text;
 }
 
@@ -247,10 +247,10 @@ void OutputLatencyController::applied(Outcome outcome, const Reading &reading) {
     case Outcome::Applied:
         break;
     case Outcome::NotSent:
-        emit saveFailed(QStringLiteral("The device did not take the latency."));
+        emit saveFailed(tr("The device did not take the latency."));
         break;
     case Outcome::NotYetApplied: {
-        emit saveFailed(QStringLiteral("The device has not applied the latency yet."));
+        emit saveFailed(tr("The device has not applied the latency yet."));
         // A read only, once. If it hasn't landed by then, the draft and message stay.
         const unsigned generation = m_generation;
         QTimer::singleShot(kRecheckMs, this, [this, generation]() {
@@ -259,7 +259,7 @@ void OutputLatencyController::applied(Outcome outcome, const Reading &reading) {
         break;
     }
     case Outcome::Kept:
-        emit saveFailed(QStringLiteral("The device kept the previous latency."));
+        emit saveFailed(tr("The device kept the previous latency."));
         break;
     }
 }

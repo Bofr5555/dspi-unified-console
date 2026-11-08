@@ -594,15 +594,29 @@ void SmokeDriver::a11yAudit(QQuickWindow *w, QQuickItem *scope, const QString &w
         if (owner && grabs && !shows.value(owner)) {
             const QRect at = owner->mapRectToScene(QRectF(0, 0, owner->width(), owner->height())).toAlignedRect();
             shownAt[owner] = at;
-            const QImage with = w->grabWindow();
+            QImage with = w->grabWindow();
             f->setFocus(false);
             spin(5);
-            const QImage without = w->grabWindow();
+            QImage without = w->grabWindow();
             f->forceActiveFocus(Qt::TabFocusReason);
             spin(5);
             const qreal dpr = with.devicePixelRatio();
             const QRect r = at.adjusted(-4, -4, 4, 4).intersected(QRect(QPoint(), with.size() / dpr));
             const QRect px(QPoint(int(r.x() * dpr), int(r.y() * dpr)), QSize(int(r.width() * dpr), int(r.height() * dpr)));
+            // -- WP QD40 -- A ring inside a control that fades in (the graph's gear,
+            // 150 ms) may not have ticked yet on a loaded host: the same pair once
+            // more, 200 ms after the focus came back, and that pair decides
+            if (!px.isEmpty() && with.copy(px) == without.copy(px)) {
+                printf("smoke: QD22 %s: no focus seen at once on %s, grabbed again after 200 ms\n", qPrintable(where),
+                       qPrintable(describe(owner)));
+                spin(200);
+                with = w->grabWindow();
+                f->setFocus(false);
+                spin(5);
+                without = w->grabWindow();
+                f->forceActiveFocus(Qt::TabFocusReason);
+                spin(5);
+            }
             shows[owner] = !px.isEmpty() && with.copy(px) != without.copy(px);
         }
         if (!f) break;
@@ -656,6 +670,24 @@ void SmokeDriver::testAccessibility() {
     QMetaObject::invokeMethod(root(), "selectChannel", Q_ARG(QVariant, 0));
     spin(600);
     a11yAudit(main, nullptr, QStringLiteral("main window, an input's EQ"), true);
+    // -- WP QD40 -- (QD23-2) The link question names both inputs of the pair in
+    // one pass: a name holding "%2" shows as typed (asked on this page, which
+    // shows it, rather than on a page shown for the check)
+    {
+        DSPiBridge *b = m_.bridge;
+        const int inId = b->inputAppId(0), partnerId = b->pairPartner(inId);
+        const QString inWas = b->channelName(inId);
+        b->setChannelName(inId, QStringLiteral("Left %2 x"));
+        spin(100);
+        const QString want = QStringLiteral("Link %1 and %2?").arg(QStringLiteral("Left %2 x"), b->channelName(partnerId));
+        bool titled = false;
+        for (QObject *o : root()->findChildren<QObject *>())
+            if (o->property("title").toString() == want) titled = true;
+        printf("smoke: QD40 link question wanted: \"%s\"\n", qPrintable(want));
+        check("QD40: a name with %2 reads as typed in the link question", titled);
+        b->setChannelName(inId, inWas);
+        spin(100);
+    }
     QMetaObject::invokeMethod(root(), "selectOutput", Q_ARG(QVariant, 0));
     spin(600);
     a11yAudit(main, nullptr, QStringLiteral("main window, an output's EQ"), true);
@@ -766,6 +798,17 @@ void SmokeDriver::testAccessibility() {
             keyOn(matrix, Qt::Key_Return, QString());
             check("QD22: Space and Return switch a route", spaced && waitFor(1000, [&]() { return b->matrixRouting(0, 0) == was; }));
         }
+        // -- WP QD40 -- (QD23-2) Two names in one string, filled in one pass: a
+        // name holding "%2" shows as typed, not with the second name inside it
+        const int inId = b->inputAppId(0);
+        const QString inWas = b->channelName(inId), outWas = b->channelName(2);
+        b->setChannelName(inId, QStringLiteral("Left %2 x"));
+        b->setChannelName(2, QStringLiteral("Right"));
+        spin(200);
+        check("QD40: a name with %2 reads as typed in the Matrix",
+              byAccessibleName(matrix->contentItem(), QStringLiteral("Left %2 x to Right")) != nullptr);
+        b->setChannelName(inId, inWas);
+        b->setChannelName(2, outWas);
         matrix->setVisible(false);
         spin(100);
     }

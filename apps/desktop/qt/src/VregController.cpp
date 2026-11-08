@@ -194,7 +194,7 @@ bool VregController::request(const QString &action, int value, int soakS) {
     clearPending();
     setLastError(QString());
     if (!m_connected || !m_bridge->writable() || !m_view.value(QStringLiteral("available")).toBool()) {
-        setLastError(QStringLiteral("Core voltage can't be changed on this connection."));
+        setLastError(tr("Core voltage can't be changed on this connection."));
         return false;
     }
     const int minSoakS = m_view.value(QStringLiteral("minSoakS")).toInt();
@@ -203,44 +203,44 @@ bool VregController::request(const QString &action, int value, int soakS) {
     QString title, detail;
     if (action == QLatin1String("start")) {
         if (!m_view.value(QStringLiteral("canStart")).toBool() || !offered(value, "needsWord", &needsWord) || soakS < minSoakS) {
-            setLastError(QStringLiteral("That trial isn't offered now."));
+            setLastError(tr("That trial isn't offered now."));
             return false;
         }
-        title = QStringLiteral("Start a trial at %1 for %2 min").arg(volts(value)).arg(soakS / 60);
-        detail = QStringLiteral("The device's record of hangs and failures is cleared first. The trial runs in RAM only: a hang or a reboot returns the device to its saved voltage. Nothing is saved until you choose to.");
+        title = tr("Start a trial at %1 for %2 min").arg(volts(value)).arg(soakS / 60);
+        detail = tr("The device's record of hangs and failures is cleared first. The trial runs in RAM only: a hang or a reboot returns the device to its saved voltage. Nothing is saved until you choose to.");
     } else if (action == QLatin1String("commit")) {
         if (!m_view.value(QStringLiteral("canCommit")).toBool()) {
-            setLastError(QStringLiteral("There is no passed trial to save."));
+            setLastError(tr("There is no passed trial to save."));
             return false;
         }
         value = m_view.value(QStringLiteral("targetVreg")).toInt();
         needsWord = m_view.value(QStringLiteral("commitNeedsWord")).toBool();
-        title = QStringLiteral("Save %1 on the device").arg(volts(value));
-        detail = QStringLiteral("The device starts at this voltage from now on, after every reboot and power cycle, until it is reset.");
+        title = tr("Save %1 on the device").arg(volts(value));
+        detail = tr("The device starts at this voltage from now on, after every reboot and power cycle, until it is reset.");
     } else if (action == QLatin1String("set") || action == QLatin1String("trial")) {
         const bool set = action == QLatin1String("set");
         if (!offered(value, set ? "saveNeedsWord" : "needsWord", &needsWord)) {
-            setLastError(QStringLiteral("%1 isn't offered on this device.").arg(volts(value)));
+            setLastError(tr("%1 isn't offered on this device.").arg(volts(value)));
             return false;
         }
-        title = set ? QStringLiteral("Save %1 on the device").arg(volts(value))
-                    : QStringLiteral("Run %1 as a trial").arg(volts(value));
-        detail = set ? QStringLiteral("The device starts at this voltage from now on, after every reboot and power cycle, until it is reset.")
-                     : QStringLiteral("The trial runs in RAM only: a hang or a reboot returns the device to its saved voltage.");
+        title = set ? tr("Save %1 on the device").arg(volts(value))
+                    : tr("Run %1 as a trial").arg(volts(value));
+        detail = set ? tr("The device starts at this voltage from now on, after every reboot and power cycle, until it is reset.")
+                     : tr("The trial runs in RAM only: a hang or a reboot returns the device to its saved voltage.");
     } else if (action == QLatin1String("reset")) {
         value = 0;
         // -- WP QD28b -- The core's rule: an unreadable current voltage asks for the word
         needsWord = m_view.value(QStringLiteral("resetNeedsWord")).toBool();
-        title = QStringLiteral("Reset to the build default");
-        detail = QStringLiteral("The device forgets the voltage saved on it and starts at its build default.");
+        title = tr("Reset to the build default");
+        detail = tr("The device forgets the voltage saved on it and starts at its build default.");
     } else if (action == QLatin1String("auto")) {
         if (value != 0 && value != 1) return false;
-        title = value ? QStringLiteral("Turn automatic raising on") : QStringLiteral("Turn automatic raising off");
-        detail = value ? QStringLiteral("After two watchdog hangs in one power session the device raises its saved voltage one step by itself, up to 1.25 V.")
-                       : QStringLiteral("The device no longer raises its saved voltage after repeated hangs.");
+        title = value ? tr("Turn automatic raising on") : tr("Turn automatic raising off");
+        detail = value ? tr("After two watchdog hangs in one power session the device raises its saved voltage one step by itself, up to 1.25 V.")
+                       : tr("The device no longer raises its saved voltage after repeated hangs.");
     } else if (action == QLatin1String("clear")) {
-        title = QStringLiteral("Clear the device's record");
-        detail = QStringLiteral("The hang count and the last trial failure are forgotten.");
+        title = tr("Clear the device's record");
+        detail = tr("The hang count and the last trial failure are forgotten.");
     } else {
         return false;
     }
@@ -307,7 +307,7 @@ void VregController::apply(const Call &call) {
                 if (m_viewOverride.isEmpty()) setView(view, false);
                 if (code != 0) {
                     const QString why = QJsonDocument::fromJson(view).object().value(QStringLiteral("lastError")).toString();
-                    setLastError(!why.isEmpty() ? why : QStringLiteral("The device did not take it (status %1).").arg(code));
+                    setLastError(!why.isEmpty() ? why : tr("The device did not take it (status %1).").arg(code));
                 }
             }
             emit applied(call.action, code == 0);

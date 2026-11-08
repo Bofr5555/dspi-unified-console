@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Window 2.15
 import "components"
+import "components/Format.js" as Format
 
 // Matrix Mixer: inputs (rows) to outputs (columns), plus each output's
 // enable, gain, delay and mute. Laid out as on the macOS Console, styled
@@ -281,7 +282,7 @@ AppWindow {
                                         y: 4
                                         fieldWidth: 44; height: 20; suffix: qsTr("dB"); decimals: 1
                                         minValue: -60; maxValue: 12; plainWheel: true
-                                        accessibleName: { rev; return qsTr("%1 to %2 gain").arg(inName(inputIndex)).arg(bridge.channelName(o + 2)) }
+                                        accessibleName: { rev; return Format.fmt(qsTr("%1 to %2 gain"), [inName(inputIndex), bridge.channelName(o + 2)]) }
                                         value: parent.gain
                                         onValueEdited: bridge.setMatrixRoute(inputIndex, o, true, newValue, parent.inverted)
                                     }
@@ -302,7 +303,7 @@ AppWindow {
                                             cursorShape: Qt.PointingHandCursor
                                             focusRadius: width / 2 + 2
                                             Accessible.role: Accessible.CheckBox
-                                            Accessible.name: { rev; return qsTr("%1 to %2").arg(inName(inputIndex)).arg(bridge.channelName(o + 2)) }
+                                            Accessible.name: { rev; return Format.fmt(qsTr("%1 to %2"), [inName(inputIndex), bridge.channelName(o + 2)]) }
                                             Accessible.checkable: true
                                             Accessible.checked: parent.parent.connected
                                             onActivated: bridge.setMatrixRoute(inputIndex, o, !parent.parent.connected,
@@ -322,7 +323,7 @@ AppWindow {
                                             anchors.margins: -4
                                             cursorShape: Qt.PointingHandCursor
                                             Accessible.role: Accessible.CheckBox
-                                            Accessible.name: { rev; return qsTr("%1 to %2 inverted").arg(inName(inputIndex)).arg(bridge.channelName(o + 2)) }
+                                            Accessible.name: { rev; return Format.fmt(qsTr("%1 to %2 inverted"), [inName(inputIndex), bridge.channelName(o + 2)]) }
                                             Accessible.checkable: true
                                             Accessible.checked: parent.parent.inverted
                                             onActivated: bridge.setMatrixRoute(inputIndex, o, true, parent.parent.gain,
