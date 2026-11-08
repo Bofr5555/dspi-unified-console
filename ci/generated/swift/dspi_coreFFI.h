@@ -1805,6 +1805,17 @@ int8_t uniffi_dspi_core_fn_func_crossfeed_pair_map_valid(RustBuffer map, uint8_t
 double uniffi_dspi_core_fn_func_curve_freq(uint32_t i, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FILTER_TYPE_NAME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FILTER_TYPE_NAME
+RustBuffer uniffi_dspi_core_fn_func_filter_type_name(uint8_t code, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FILTER_TYPE_NAMES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FILTER_TYPE_NAMES
+RustBuffer uniffi_dspi_core_fn_func_filter_type_names(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FIRMWARE_GUARD_BOARD_IN_BOOTLOADER
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FIRMWARE_GUARD_BOARD_IN_BOOTLOADER
 RustBuffer uniffi_dspi_core_fn_func_firmware_guard_board_in_bootloader(RustCallStatus *_Nonnull out_status
@@ -2252,6 +2263,18 @@ uint16_t uniffi_dspi_core_checksum_func_crossfeed_pair_map_valid(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_CURVE_FREQ
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_CURVE_FREQ
 uint16_t uniffi_dspi_core_checksum_func_curve_freq(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FILTER_TYPE_NAME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FILTER_TYPE_NAME
+uint16_t uniffi_dspi_core_checksum_func_filter_type_name(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FILTER_TYPE_NAMES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FILTER_TYPE_NAMES
+uint16_t uniffi_dspi_core_checksum_func_filter_type_names(void
     
 );
 #endif

@@ -1086,6 +1086,11 @@ fn decode_read(d: &ParamDesc, bytes: &[u8]) -> Value {
     if let WValue::EqScalar(param) = d.wvalue {
         return match param {
             1..=3 => Repr::F32.decode(bytes).unwrap_or(Value::Float(0.0)),
+            // -- WP CG34 -- the Linkwitz Transform's Qp, `Q * 512`.
+            5 => Value::Float(decode_qp(u16::from_le_bytes([
+                bytes.first().copied().unwrap_or(0),
+                bytes.get(1).copied().unwrap_or(0),
+            ]))),
             _ => Value::Int(bytes.first().copied().unwrap_or(0) as i64),
         };
     }
@@ -1140,6 +1145,9 @@ fn bands_agree(sent: &EqParamPacket, actual: &EqParamPacket) -> bool {
         && close(sent.freq, actual.freq)
         && close(sent.q, actual.q)
         && close(sent.gain_db, actual.gain_db)
+        // -- WP CG34 -- a Linkwitz Transform's Qp, to its 1/512 step.
+        && (!sent.filter_type.is_linkwitz()
+            || close(sent.qp.unwrap_or(0.707), actual.qp.unwrap_or(0.707)))
 }
 
 /// Compare what we sent against what came back.

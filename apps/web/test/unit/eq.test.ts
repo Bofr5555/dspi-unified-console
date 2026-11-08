@@ -32,7 +32,9 @@ import {
   retyped,
   roleDb,
   roleOf,
+  setTypeNames,
   shapeOf,
+  typeName,
   usesGain,
   usesQ,
   wheel,
@@ -162,6 +164,9 @@ test("WB6b: values read and type as on the Console: 2k, note names, units", () =
   assert.equal(parseNumber("+3.5 dB", "db"), 3.5);
   assert.equal(parseNumber("q0.7", ""), 0.7);
   assert.equal(parseNumber("", ""), null);
+  // -- WP CG34 -- the names are the core's, loaded by the screen; before that a band reads by its code.
+  assert.equal(typeName(1), "Type 1");
+  setTypeNames([{ code: 1, name: "Peaking" }]);
   assert.equal(bandLabel(2, { ...bell(1000, 3), bypass: true }), "Band 3: Peaking, 1.000 kHz, +3.00 dB, Q 1.000, bypassed");
 });
 
@@ -206,6 +211,18 @@ test("WB6b: the core answers curves and which types use Q and gain, as the page'
     assert.equal(r.bands[t]!.usesQ, usesQ(t), `usesQ ${t}`);
     assert.equal(r.bands[t]!.usesGain, usesGain(t), `usesGain ${t}`);
   }
+});
+
+// -- WP CG34 --
+test("CG34: the type names are the core's table, the Console's band-list names", { skip }, async () => {
+  const { session } = await sessionOn("control");
+  const table = await session.core.call("filterTypeNames", undefined);
+  setTypeNames(table);
+  const want = ["Off", "Peaking", "Low Shelf (12dB)", "High Shelf (12dB)", "High Cut (12dB)", "Low Cut (12dB)", "Notch",
+    "All Pass (360°)", "All Pass (180°)", "Low Shelf (6dB)", "High Shelf (6dB)", "Linkwitz Transform", "High Cut (6dB)", "Low Cut (6dB)"];
+  assert.deepEqual(Array.from({ length: 14 }, (_, t) => typeName(t)), want);
+  assert.equal(typeName(34), "LR4 Low Pass");
+  assert.equal(typeName(14), "Type 14");
 });
 
 test("WB6b: a band's writes go through the registry paths and the state reads back what the device kept", { skip }, async () => {

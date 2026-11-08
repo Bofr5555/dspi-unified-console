@@ -15,7 +15,7 @@
 )]
 
 use dspi_proto::generated::opcodes as op;
-use dspi_proto::registry::{ParamDesc, WValue, by_path};
+use dspi_proto::registry::{self, ParamDesc, WValue, by_path};
 use dspi_proto::value::{EqParamPacket, Value};
 use dspi_proto::{Dir, FilterType, Platform};
 
@@ -32,7 +32,7 @@ impl Session {
     ///
     /// Cost on the wire:
     /// - a scalar: one transfer (an OUT, or an IN for a write-as-read);
-    /// - an EQ field (`eq.type`, `eq.freq`, `eq.q`, `eq.gain`): one band read
+    /// - an EQ field (`eq.type`, `eq.freq`, `eq.q`, `eq.gain`, `eq.fp`, `eq.qp`): one band read
     ///   ([`Session::read_band`], five IN transfers, six for a Linkwitz
     ///   Transform) and one band write, because the firmware takes a band only
     ///   whole. A caller that holds the band already should send the packet
@@ -136,6 +136,9 @@ impl Session {
     }
 }
 
+/// The Linkwitz Transform's target Q when the firmware stores 0 (`decode_qp`).
+const DEFAULT_QP: f32 = 0.707;
+
 /// Put one validated EQ field into a band read from the device. Shared by
 /// `send` and the EQ path of `Session::write`.
 pub(crate) fn apply_eq_field(
@@ -143,18 +146,36 @@ pub(crate) fn apply_eq_field(
     d: &ParamDesc,
     value: &Value,
 ) -> Result<(), WriteError> {
+    // -- WP CG34 -- `eq.gain` or `eq.fp` and `eq.qp` by the band's type.
+    registry::eq_field_fits(d.path, packet.filter_type).map_err(|why| WriteError::Unavailable {
+        path: d.path.into(),
+        why,
+    })?;
     match d.path {
         "eq.type" => {
-            packet.filter_type = FilterType::from_raw(value.as_u8().unwrap_or(0));
+            let to = FilterType::from_raw(value.as_u8().unwrap_or(0));
+            // -- WP CG34 -- the Console's retype: into or out of a Linkwitz
+            // Transform, the gain field changes meaning (registry::retyped).
+            let qp = packet.qp.unwrap_or(DEFAULT_QP);
+            let [freq, q, gain, qp] = registry::retyped(
+                packet.filter_type,
+                to,
+                [packet.freq, packet.q, packet.gain_db, qp],
+            );
+            packet.filter_type = to;
+            packet.freq = freq;
+            packet.q = q;
+            packet.gain_db = gain;
             // A Linkwitz Transform needs a Qp to send; the firmware reads 0 as
             // "use the 0.707 default".
-            if packet.filter_type.is_linkwitz() && packet.qp.is_none() {
-                packet.qp = Some(0.707);
+            if to.is_linkwitz() {
+                packet.qp = Some(qp);
             }
         }
         "eq.freq" => packet.freq = value.as_f32().unwrap_or(packet.freq),
         "eq.q" => packet.q = value.as_f32().unwrap_or(packet.q),
-        "eq.gain" => packet.gain_db = value.as_f32().unwrap_or(packet.gain_db),
+        "eq.gain" | "eq.fp" => packet.gain_db = value.as_f32().unwrap_or(packet.gain_db),
+        "eq.qp" => packet.qp = value.as_f32().or(packet.qp),
         other => return Err(WriteError::UnknownParam(other.into())),
     }
     Ok(())
@@ -459,5 +480,71 @@ mod tests_wp_s1 {
         assert!(s.send("pre", &[0], Value::Float(18.0)).is_ok());
         let mut s = session(Platform::Rp2350);
         assert!(s.send("pre", &[0], Value::Float(24.0)).is_ok());
+    }
+
+    // -- WP CG34 --
+    /// A band that reads as a Linkwitz Transform: every GET_EQ_PARAM
+    /// answers 11, so the type is 11 (and the floats tiny).
+    fn lt_band() -> MockTransport {
+        MockTransport::new().data(op::REQ_GET_EQ_PARAM, 11u32.to_le_bytes().to_vec())
+    }
+
+    #[test]
+    fn wp_cg34_fp_and_qp_go_out_in_the_whole_band() {
+        let (mut s, log) = rig(lt_band());
+        s.send("eq.fp", &[8, 1], Value::Float(30.0)).unwrap();
+        s.send("eq.qp", &[8, 1], Value::Float(0.5)).unwrap();
+        let sets: Vec<Exchange> = outs(&log)
+            .into_iter()
+            .filter(|e| e.opcode == op::REQ_SET_EQ_PARAM)
+            .collect();
+        assert_eq!(sets.len(), 2);
+        // fp is gain_db (bytes 12..16); Qp the two bytes after, Q * 512.
+        assert_eq!(sets[0].payload[2], 11);
+        assert_eq!(sets[0].payload[12..16], 30.0f32.to_le_bytes());
+        assert_eq!(sets[1].payload.len(), 18);
+        assert_eq!(sets[1].payload[16..18], 256u16.to_le_bytes());
+    }
+
+    #[test]
+    fn wp_cg34_the_band_type_decides_gain_or_fp() {
+        let (mut s, _) = rig(lt_band());
+        assert!(matches!(
+            s.send("eq.gain", &[8, 1], Value::Float(3.0)),
+            Err(WriteError::Unavailable { why, .. }) if why.contains("eq.fp")
+        ));
+        // A flat band (type 0): no fp, no Qp; its gain as before.
+        let (mut s, _) = rig(MockTransport::new().data(op::REQ_GET_EQ_PARAM, vec![0; 4]));
+        for (path, v) in [("eq.fp", 30.0), ("eq.qp", 0.7)] {
+            assert!(matches!(
+                s.send(path, &[8, 1], Value::Float(v)),
+                Err(WriteError::Unavailable { .. })
+            ));
+        }
+        assert!(s.send("eq.gain", &[8, 1], Value::Float(3.0)).is_ok());
+        // Out of the firmware's range, before the wire.
+        let (mut s, log) = rig(lt_band());
+        assert!(matches!(
+            s.send("eq.fp", &[8, 1], Value::Float(5.0)),
+            Err(WriteError::Value(_))
+        ));
+        assert!(matches!(
+            s.send("eq.qp", &[8, 1], Value::Float(25.0)),
+            Err(WriteError::Value(_))
+        ));
+        assert!(log_of(&log).is_empty());
+    }
+
+    #[test]
+    fn wp_cg34_qp_reads_back_from_param_5() {
+        let (mut s, log) =
+            rig(MockTransport::new().data(op::REQ_GET_EQ_PARAM, 307u32.to_le_bytes().to_vec()));
+        assert_eq!(
+            s.read("eq.qp", &[8, 1]).unwrap(),
+            Value::Float(307.0 / 512.0)
+        );
+        assert_eq!(log_of(&log)[0].value & 7, 5);
+        let (mut s, _) = rig(MockTransport::new().data(op::REQ_GET_EQ_PARAM, vec![0; 4]));
+        assert_eq!(s.read("eq.qp", &[8, 1]).unwrap(), Value::Float(0.707));
     }
 }

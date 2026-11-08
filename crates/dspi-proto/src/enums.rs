@@ -129,6 +129,53 @@ impl FilterType {
         matches!(self, Self::LinkwitzTransform)
     }
 
+    // -- WP CG34 --
+    /// The name every client shows for this type: the Console's band-list
+    /// name (`FilterType.name`, DSPMath.swift:114-160 at release/v1.1.6).
+    /// Passes read as cuts ("High Cut (12dB)" for a low pass), crossovers as
+    /// family, order and pass ("LR4 Low Pass"); a type this build does not
+    /// know reads "Type 14". [`label`](Self::label) stays the protocol's own
+    /// wording for logs and the command line.
+    pub fn display_name(self) -> String {
+        let name = match self {
+            Self::Flat => "Off",
+            Self::Peaking => "Peaking",
+            Self::LowShelf => "Low Shelf (12dB)",
+            Self::HighShelf => "High Shelf (12dB)",
+            Self::LowPass => "High Cut (12dB)",
+            Self::HighPass => "Low Cut (12dB)",
+            Self::Notch => "Notch",
+            Self::AllPass => "All Pass (360°)",
+            Self::AllPass1 => "All Pass (180°)",
+            Self::LowShelf1 => "Low Shelf (6dB)",
+            Self::HighShelf1 => "High Shelf (6dB)",
+            Self::LinkwitzTransform => "Linkwitz Transform",
+            Self::LowPass1 => "High Cut (6dB)",
+            Self::HighPass1 => "Low Cut (6dB)",
+            Self::Unknown(raw) => {
+                return match crate::xover::meta(raw) {
+                    Some(m) => format!(
+                        "{}{} {}",
+                        m.family.short().to_uppercase(),
+                        m.order,
+                        if m.high_pass { "High Pass" } else { "Low Pass" }
+                    ),
+                    None => format!("Type {raw}"),
+                };
+            }
+        };
+        name.to_string()
+    }
+
+    /// Every type the firmware defines, in the Console's order
+    /// (`FilterType.allCases`): the PEQ types 0..13, then the crossovers
+    /// 32..63.
+    pub fn all_defined() -> impl Iterator<Item = Self> {
+        (0..=13)
+            .chain(Self::XOVER_FIRST..=Self::XOVER_LAST)
+            .map(Self::from_raw)
+    }
+
     /// Field labels for this type, as `(freq, q, gain)`.
     pub fn field_labels(self) -> (&'static str, &'static str, &'static str) {
         if self.is_linkwitz() {
@@ -533,5 +580,66 @@ mod tests {
         assert!(PinConfigStatus(0).is_ok());
         assert!(PinConfigStatus(2).explain().contains("already claimed"));
         assert!(PinConfigStatus(0x99).explain().contains("0x99"));
+    }
+
+    // -- WP CG34 --
+    /// The Console's `FilterType.name` (DSPMath.swift:114-160, release/v1.1.6)
+    /// for every case, in `allCases` order.
+    #[test]
+    fn wp_cg34_display_names_are_the_consoles() {
+        let console = [
+            "Off",
+            "Peaking",
+            "Low Shelf (12dB)",
+            "High Shelf (12dB)",
+            "High Cut (12dB)",
+            "Low Cut (12dB)",
+            "Notch",
+            "All Pass (360°)",
+            "All Pass (180°)",
+            "Low Shelf (6dB)",
+            "High Shelf (6dB)",
+            "Linkwitz Transform",
+            "High Cut (6dB)",
+            "Low Cut (6dB)",
+            "LR2 Low Pass",
+            "LR2 High Pass",
+            "LR4 Low Pass",
+            "LR4 High Pass",
+            "LR6 Low Pass",
+            "LR6 High Pass",
+            "LR8 Low Pass",
+            "LR8 High Pass",
+            "BW1 Low Pass",
+            "BW1 High Pass",
+            "BW2 Low Pass",
+            "BW2 High Pass",
+            "BW3 Low Pass",
+            "BW3 High Pass",
+            "BW4 Low Pass",
+            "BW4 High Pass",
+            "BW5 Low Pass",
+            "BW5 High Pass",
+            "BW6 Low Pass",
+            "BW6 High Pass",
+            "BW7 Low Pass",
+            "BW7 High Pass",
+            "BW8 Low Pass",
+            "BW8 High Pass",
+            "BES2 Low Pass",
+            "BES2 High Pass",
+            "BES4 Low Pass",
+            "BES4 High Pass",
+            "BES6 Low Pass",
+            "BES6 High Pass",
+            "BES8 Low Pass",
+            "BES8 High Pass",
+        ];
+        let ours: Vec<String> = FilterType::all_defined()
+            .map(FilterType::display_name)
+            .collect();
+        assert_eq!(ours, console);
+        assert_eq!(FilterType::from_raw(14).display_name(), "Type 14");
+        assert_eq!(FilterType::from_raw(64).display_name(), "Type 64");
     }
 }

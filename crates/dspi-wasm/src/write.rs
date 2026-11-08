@@ -296,4 +296,29 @@ mod tests {
         assert_eq!(d["routed"], true);
         assert_eq!(describe("nope").unwrap_err().code, "unknown_param");
     }
+
+    // -- WP CG34 --
+    #[test]
+    fn wp_cg34_a_linkwitz_band_is_written_by_path_from_the_page() {
+        let core = DspiCore::new();
+        core.open_demo().unwrap();
+        put(&core, "eq.type", &[2, 4], ParamValue::Choice(11)).unwrap();
+        assert_eq!(
+            put(&core, "eq.fp", &[2, 4], ParamValue::Float(28.0)).unwrap(),
+            ParamValue::Float(28.0)
+        );
+        assert_eq!(
+            put(&core, "eq.qp", &[2, 4], ParamValue::Float(0.6)).unwrap(),
+            ParamValue::Float(307.0 / 512.0)
+        );
+        let b = core.get_state().filters[2][4];
+        assert_eq!((b.filter_type, b.gain, b.qp), (11, 28.0, 307.0 / 512.0));
+        // The page's own range check names the firmware's limits first.
+        let e = put(&core, "eq.fp", &[2, 4], ParamValue::Float(5.0)).unwrap_err();
+        assert_eq!(e.code, "out_of_range");
+        // A dB value cannot land in the target frequency.
+        let e = put(&core, "eq.gain", &[2, 4], ParamValue::Float(3.0)).unwrap_err();
+        assert!(e.message.contains("eq.fp"), "{}", e.message);
+        assert_eq!(core.get_state().filters[2][4].gain, 28.0);
+    }
 }

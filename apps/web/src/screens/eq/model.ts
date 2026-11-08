@@ -26,29 +26,27 @@ export const T = {
   highPass1: 13,
 } as const;
 
-/** The Console's names in its band list (`FilterType.name`, DSPMath.swift): passes read as cuts. */
-export const TYPE_NAMES: Record<number, string> = {
-  0: "Off",
-  1: "Peaking",
-  2: "Low Shelf (12dB)",
-  3: "High Shelf (12dB)",
-  4: "High Cut (12dB)",
-  5: "Low Cut (12dB)",
-  6: "Notch",
-  7: "All Pass (360°)",
-  8: "All Pass (180°)",
-  9: "Low Shelf (6dB)",
-  10: "High Shelf (6dB)",
-  11: "Linkwitz Transform",
-  12: "High Cut (6dB)",
-  13: "Low Cut (6dB)",
-};
-
 /** The picker's order (the Console's `FilterType.allCases`, crossovers left out). */
 const TYPE_ORDER = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
 
+// -- WP CG34 --
+/**
+ * The filter types' names: the core's one table (`filterTypeNames`, the
+ * Console's band-list names, "High Cut (12dB)"), which the EQ screen loads
+ * once before it shows a band. The same for every session.
+ */
+const typeNames = new Map<number, string>();
+
+export function setTypeNames(table: readonly { code: number; name: string }[]): void {
+  for (const t of table) typeNames.set(t.code, t.name);
+}
+
+export function typeNamesLoaded(): boolean {
+  return typeNames.size > 0;
+}
+
 export function typeName(t: number): string {
-  return TYPE_NAMES[t] ?? `Type ${t}`;
+  return typeNames.get(t) ?? `Type ${t}`;
 }
 
 /**
@@ -76,8 +74,9 @@ export function isGraphBand(p: FilterParams): boolean {
  * The PEQ types this firmware takes (the Console's `availableFilterTypes`):
  * notch and the 2nd-order all-pass from 1.1.4, the 1st-order all-pass from
  * wire V13, 1st-order shelves V14, 1st-order passes V28. The Linkwitz
- * Transform is left out: its target frequency and Q have no registry path
- * yet (an existing one is shown, not edited here).
+ * Transform is left out: an existing one is shown, not edited here (its
+ * target frequency and Q are the registry's `eq.fp` and `eq.qp` since CG34;
+ * offering it is a later EQ slice).
  */
 export function availableTypes(s: Pick<DspState, "formatVersion" | "fwMajor" | "fwMinor" | "fwPatch">): number[] {
   const v114 = fwAtLeast(s, 1, 1, 4);

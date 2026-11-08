@@ -1087,7 +1087,13 @@ mod tests_wp_tm4 {
             let is_exception = d.set.is_some_and(|s| HOUSEKEEPING.contains(&s));
 
             // The control: on a writable device this row does write.
-            let mock = MockTransport::new().answering_everything(vec![0u8; 512]);
+            // -- WP CG34 -- eq.fp and eq.qp only on a Linkwitz Transform band
+            // (type 11, the first byte of the band's type read).
+            let mut answer = vec![0u8; 512];
+            if matches!(d.path, "eq.fp" | "eq.qp") {
+                answer[0] = 11;
+            }
+            let mock = MockTransport::new().answering_everything(answer);
             let log = mock.log_handle();
             let mut s = Session::new(Box::new(mock), everything_caps(32)).unwrap();
             if s.check(d.path, &indices, &value).is_err() {

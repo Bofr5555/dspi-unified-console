@@ -19,7 +19,18 @@ import { BandChip, retypeAll } from "./Chip";
 import { useCurves, useGrid, type CurveRequest } from "./curves";
 import { useBandEdits } from "./edits";
 import { EqGraph } from "./EqGraph";
-import { DEFAULT_LIMITS, OFF_BAND, availableTypes, bypassSupported, channelColour, isGraphBand, type Geometry, type Limits } from "./model";
+import {
+  DEFAULT_LIMITS,
+  OFF_BAND,
+  availableTypes,
+  bypassSupported,
+  channelColour,
+  isGraphBand,
+  setTypeNames,
+  typeNamesLoaded,
+  type Geometry,
+  type Limits,
+} from "./model";
 
 interface EqChannel extends ChannelRow {
   output: boolean;
@@ -75,7 +86,25 @@ export function EqScreen(props: ScreenProps) {
     };
   }, [session]);
 
-  if (!s || !Array.isArray(s.filters)) return <p class="empty">This DSPi's filters are not known yet.</p>;
+  // -- WP CG34 -- the filter types' names, the core's table, before any band is shown.
+  const [named, setNamed] = useState(typeNamesLoaded);
+  useEffect(() => {
+    if (named) return;
+    let alive = true;
+    session.core.call("filterTypeNames", undefined).then(
+      (table) => {
+        setTypeNames(table);
+        if (alive) setNamed(true);
+      },
+      // A core without the table (the tests' stub): "Type 1" rather than nothing.
+      () => alive && setNamed(true),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [session]);
+
+  if (!s || !Array.isArray(s.filters) || !named) return <p class="empty">This DSPi's filters are not known yet.</p>;
   return <EqView session={session} ask={ask} s={s} ro={ro} usbActive={usbActive} limits={limits} />;
 }
 
