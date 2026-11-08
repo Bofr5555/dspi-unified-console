@@ -324,6 +324,8 @@ void SmokeDriver::runTrayLaunch(const QString &mode) {
             check("QD12: then close hides it", !main->isVisible() && tray->windowHidden());
         }
     }
+    // -- WP QD38 --
+    sectionTimes();
     printf("smoke: tray launch %s: %d checks, %d failures, quitting\n", qPrintable(mode), m_checks, m_failures + qmlErrors());
     fflush(stdout);
     if (m_failures + qmlErrors()) {
