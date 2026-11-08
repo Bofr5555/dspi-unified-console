@@ -242,6 +242,11 @@ pub(crate) struct LinkControl {
     cancel: Arc<AtomicBool>,
     tx: Sender<Msg>,
     client: Option<LinkClient>,
+    // -- WP WB4b --
+    /// No supervisor thread: the caller turns it with [`DspiCore::link_tick`].
+    pumped: bool,
+    /// The supervisor's messages, while no turn has them.
+    driver: Option<Receiver<Msg>>,
 }
 
 /// The device bound with `link_select_device`.
@@ -704,6 +709,11 @@ impl DspiCore {
         let (done, finished) = mpsc::sync_channel::<()>(1);
         let id = control.id;
         let client = control.client;
+        // -- WP WB4b -- no threads, and no other call can hold the lock: here, now
+        if control.pumped {
+            core.finish_close(id, client);
+            return;
+        }
         let spawned = std::thread::Builder::new()
             .name("dspi-link-close".into())
             .spawn(move || {
@@ -801,6 +811,8 @@ impl DspiCore {
             timing: tuning.timing,
             clock: Arc::clone(&tuning.clock),
         };
+        // -- WP WB4b -- decided on the caller's thread, as the client's own mode is
+        let pumped = dspi_link::client::caller_driven();
         let (client, state) = dial(&target, true, &tx).map_err(map_error)?;
         if !target.hub_id.is_empty() && !client.hello().hub.id.eq_ignore_ascii_case(&target.hub_id)
         {
@@ -849,10 +861,20 @@ impl DspiCore {
             cancel: Arc::clone(&cancel),
             tx: kick.clone(),
             client: session.client.clone(),
+            pumped,
+            driver: None,
         });
         // Installed first: the supervisor ends when it finds no session.
         let displaced = self.lock().link.replace(session);
         drop(displaced);
+        // -- WP WB4b -- the caller turns the supervisor (`link_tick`)
+        if pumped {
+            if let Some(c) = guard(&self.link_control).as_mut().filter(|c| c.id == id) {
+                c.driver = Some(rx);
+            }
+            let _ = kick.send(Msg::Kick);
+            return Ok(hello);
+        }
         let spawned = std::thread::Builder::new()
             .name("dspi-link".into())
             .spawn(move || supervise(&me, id, &rx, &cancel));
@@ -1249,32 +1271,163 @@ fn supervise(me: &Weak<DspiCore>, id: u64, rx: &Receiver<Msg>, cancel: &AtomicBo
         let Some(core) = me.upgrade() else {
             return;
         };
-        match msg {
-            Some(Msg::Devices(epoch)) => {
-                let current = core
-                    .lock()
-                    .link
-                    .as_ref()
-                    .is_some_and(|s| s.id == id && s.instance == epoch);
-                if current {
-                    core.listeners.link.call(|l| l.on_link_devices_changed());
-                }
-            }
-            Some(Msg::Token { hub_id, token }) => core.note_token(hub_id, token),
-            Some(Msg::Kick) | None => {}
+        if let Some(msg) = msg {
+            on_msg(&core, id, msg);
         }
-        // -- WP LK2 -- the meter feed first, without the core lock: a start-up
-        // read or a re-read may hold it for many seconds
-        let meters = (!cancel.load(Ordering::SeqCst))
-            .then(|| core.meter_path())
-            .flatten();
         drop(core);
-        if let Some(path) = meters {
-            path.side.maintain_meters();
-        }
-        match run_steps(me, id, cancel) {
+        match turn(me, id, cancel) {
             Some(next) => wait = next,
             None => return,
+        }
+    }
+}
+
+/// A message to the supervisor.
+fn on_msg(core: &DspiCore, id: u64, msg: Msg) {
+    match msg {
+        Msg::Devices(epoch) => {
+            let current = core
+                .lock()
+                .link
+                .as_ref()
+                .is_some_and(|s| s.id == id && s.instance == epoch);
+            if current {
+                core.listeners.link.call(|l| l.on_link_devices_changed());
+            }
+        }
+        Msg::Token { hub_id, token } => core.note_token(hub_id, token),
+        Msg::Kick => {}
+    }
+}
+
+/// The supervisor's work after its messages: the meter feed, then the steps.
+/// The time to sleep, or `None` when the session is over.
+fn turn(me: &Weak<DspiCore>, id: u64, cancel: &AtomicBool) -> Option<Option<Duration>> {
+    let core = me.upgrade()?;
+    // -- WP LK2 -- the meter feed first, without the core lock: a start-up
+    // read or a re-read may hold it for many seconds
+    let meters = (!cancel.load(Ordering::SeqCst))
+        .then(|| core.meter_path())
+        .flatten();
+    drop(core);
+    if let Some(path) = meters {
+        path.side.maintain_meters();
+    }
+    run_steps(me, id, cancel)
+}
+
+// -- WP WB4b --
+/// Turns of the supervisor in one [`DspiCore::link_tick`] at most: each turn's
+/// steps may wake it again (a bind kicks it), as the thread would loop.
+const TICK_TURNS: usize = 8;
+
+/// The caller-driven side of Link sessions (WP WB4b), for a build without
+/// threads (`wasm32-unknown-unknown`): the same supervisor, client and rules,
+/// turned by the caller's timer instead of a supervisor thread and the
+/// client's reader and keepalive threads. Not exported over UniFFI or the C
+/// ABI; the web binding calls these.
+impl DspiCore {
+    /// [`DspiCore::link_connect`] over `connector`, the platform's WebSocket
+    /// (the browser's, on the web).
+    pub fn link_connect_over(
+        &self,
+        connector: Arc<dyn WsConnector>,
+        url: String,
+        client_name: String,
+        app_version: String,
+        token: String,
+        expected_hub_id: String,
+    ) -> Result<LinkHello> {
+        self.link_connect_with(
+            url,
+            client_name,
+            app_version,
+            token,
+            expected_hub_id,
+            Tuning {
+                connector,
+                ..Tuning::default()
+            },
+        )
+    }
+
+    /// Read what the hub sent the session: replies nobody waits for, device
+    /// list changes, notifications and meter frames for the bound device, a
+    /// ping when due, the end of a silent link. Cheap; call it before
+    /// draining notifications or reading meters. A no-op with threads.
+    pub fn link_service(&self) {
+        let client = guard(&self.link_control)
+            .as_ref()
+            .filter(|c| c.pumped)
+            .and_then(|c| c.client.clone());
+        if let Some(c) = client {
+            c.service();
+        }
+    }
+
+    /// One turn of a caller-driven session: [`DspiCore::link_service`], then
+    /// the supervisor's messages and steps (reconnect, re-bind, meter
+    /// subscriptions). Returns when to call again: the supervisor's own wait,
+    /// at most the client's keepalive tick. `None` when there is no
+    /// caller-driven session (none, or one with threads).
+    pub fn link_tick(&self) -> Option<Duration> {
+        let (id, rx, cancel) = {
+            let mut control = guard(&self.link_control);
+            let c = control.as_mut().filter(|c| c.pumped)?;
+            (c.id, c.driver.take()?, Arc::clone(&c.cancel))
+        };
+        self.link_service();
+        let me = self.me.clone();
+        let mut wait = None;
+        let mut over = false;
+        for i in 0..TICK_TURNS {
+            let mut woken = false;
+            while let Ok(msg) = rx.try_recv() {
+                woken = true;
+                if cancel.load(Ordering::SeqCst) {
+                    break;
+                }
+                on_msg(self, id, msg);
+            }
+            if cancel.load(Ordering::SeqCst) {
+                over = true;
+                break;
+            }
+            // After the first turn, only what the thread would wake for: a
+            // message, or a wait of zero
+            if i > 0 && !woken && wait.is_none_or(|w: Duration| !w.is_zero()) {
+                break;
+            }
+            match turn(&me, id, &cancel) {
+                Some(next) => wait = next,
+                None => {
+                    over = true;
+                    break;
+                }
+            }
+        }
+        let tick = {
+            let inner = self.lock();
+            inner
+                .link
+                .as_ref()
+                .map_or(Timing::default().keepalive_tick, |s| {
+                    s.tuning.timing.keepalive_tick
+                })
+        };
+        let mut control = guard(&self.link_control);
+        let mine = control.as_mut().filter(|c| c.id == id);
+        match mine {
+            Some(c) if !over => {
+                c.driver = Some(rx);
+                Some(wait.map_or(tick, |w| w.min(tick)))
+            }
+            // Over: what is left of it goes with the next connect or close.
+            Some(c) => {
+                c.driver = Some(rx);
+                None
+            }
+            None => None,
         }
     }
 }
@@ -2132,3 +2285,8 @@ mod tests_wp_cg24;
 #[cfg(test)]
 #[path = "link/tests_wp_lk2.rs"]
 mod tests_wp_lk2;
+
+// -- WP WB4b --
+#[cfg(test)]
+#[path = "link/tests_wp_wb4b.rs"]
+mod tests_wp_wb4b;

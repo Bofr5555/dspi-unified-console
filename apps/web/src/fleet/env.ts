@@ -11,16 +11,21 @@ export interface Availability {
 
 export interface PageEnv {
   usb: Availability;
-  /** Link to a hub: needs WB4b's transport. */
+  /** Link to a hub (WB4b): the browser's WebSocket. */
   link: Availability;
   // -- WP WB4a --
   /** The page's side of WebUSB, when `usb.ok`: the browser's picker and the DSPis it already allows. */
   usbDevices?: UsbAccess;
 }
 
-const LATER = "Not available in this version yet";
+// -- WP WB4b --
+function linkEnv(g: { WebSocket?: unknown }): Availability {
+  return typeof g.WebSocket === "function"
+    ? { ok: true, reason: "" }
+    : { ok: false, reason: "Hubs need a browser that can open a WebSocket" };
+}
 
-export function pageEnv(g: { isSecureContext?: boolean; navigator?: unknown } = globalThis): PageEnv {
+export function pageEnv(g: { isSecureContext?: boolean; navigator?: unknown; WebSocket?: unknown } = globalThis): PageEnv {
   const nav = g.navigator as { usb?: unknown } | undefined;
   let usb: Availability;
   if (!g.isSecureContext) {
@@ -30,9 +35,9 @@ export function pageEnv(g: { isSecureContext?: boolean; navigator?: unknown } = 
   } else {
     // -- WP WB4a --
     const api = webUsb(g);
-    return { usb: { ok: true, reason: "" }, link: { ok: false, reason: LATER }, usbDevices: api ? usbAccess(api) : undefined };
+    return { usb: { ok: true, reason: "" }, link: linkEnv(g), usbDevices: api ? usbAccess(api) : undefined };
   }
-  return { usb, link: { ok: false, reason: LATER } };
+  return { usb, link: linkEnv(g) };
 }
 
 // -- WP WB4a --

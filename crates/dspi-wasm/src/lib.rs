@@ -29,6 +29,10 @@
 //! **The core is caller-driven** on the web (WB2): the Worker calls `poll`
 //! for notifications and `rta_tick` for the analyser on its own timers,
 //! through the same queue as the page's calls.
+//!
+//! **Link** (WP WB4b, [`link`]): `dspi-link`'s client and the core's session
+//! over the browser's WebSocket, through the imports `dspi_ws_*`; the Worker
+//! turns the session with `linkTick` (no threads here either).
 
 // The core-merge quality bar (docs/core-merge/PLAN.md §1.7, §1.8): no
 // panicking shortcuts on the page's data. clippy.toml exempts test code.
@@ -41,6 +45,8 @@
 
 pub mod calls;
 pub mod guard;
+// -- WP WB4b --
+pub mod link;
 // -- WP WB4a --
 pub mod usb;
 pub mod write;

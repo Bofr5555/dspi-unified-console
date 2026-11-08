@@ -34,6 +34,8 @@ export function DevicePicker(props: {
   onOpen: (inst: Installation, source: Source) => void;
   onAddHub: ((url: string, name: string) => Promise<void>) | null;
   addHubError: string;
+  /** -- WP WB4b -- the fleet's list of a hub's DSPis, when it has one. */
+  hubDevices?: ((url: string) => Promise<{ deviceId: string; name: string }[] | null>) | null;
 }) {
   return (
     <nav class="picker" aria-label="DSPi devices">
@@ -50,12 +52,23 @@ export function DevicePicker(props: {
                   isOpen={(s) => props.openKeys.has(`${inst.id}/${sourceKey(s)}`)}
                   onOpen={(s) => props.onOpen(inst, s)}
                 />
+              ) : src.kind === "hub" && !src.deviceId && props.hubDevices && props.env.link.ok ? (
+                // -- WP WB4b --
+                <HubDevices
+                  key={sourceKey(src)}
+                  url={src.url}
+                  list={props.hubDevices}
+                  env={props.env}
+                  isOpen={(s) => props.openKeys.has(`${inst.id}/${sourceKey(s)}`)}
+                  onOpen={(s) => props.onOpen(inst, s)}
+                />
               ) : (
                 <SourceRow
                   key={sourceKey(src)}
                   src={src}
                   env={props.env}
-                  open={props.openKeys.has(`${inst.id}/${sourceKey(src)}`)}
+                  // -- WP WB4b -- a hub's own list: open as many sessions as wanted
+                  open={!(src.kind === "hub" && !src.deviceId) && props.openKeys.has(`${inst.id}/${sourceKey(src)}`)}
                   onOpen={() => props.onOpen(inst, src)}
                 />
               ),
@@ -77,7 +90,9 @@ function SourceRow(props: { src: Source; env: PageEnv; open: boolean; onOpen: ()
         ? src.serial
           ? `DSPi on USB · ${shortSerial(src.serial)}`
           : "DSPi on USB"
-        : `Hub ${hostOf(src.url)}`;
+        : src.deviceId
+          ? `${src.name || src.deviceId} · hub ${hostOf(src.url)}`
+          : `Hub ${hostOf(src.url)}`;
   const avail = src.kind === "demo" ? { ok: true, reason: "" } : src.kind === "usb" ? env.usb : env.link;
   return (
     <li class="source">
@@ -155,6 +170,51 @@ function UsbSource(props: { env: PageEnv; isOpen: (s: Source) => boolean; onOpen
   );
 }
 
+// -- WP WB4b --
+/**
+ * A hub whose DSPis the fleet backend lists (`hubDevices`): one entry each. When
+ * it has no list for this hub (null), the hub's own entry, which asks the hub.
+ */
+function HubDevices(props: {
+  url: string;
+  list: (url: string) => Promise<{ deviceId: string; name: string }[] | null>;
+  env: PageEnv;
+  isOpen: (s: Source) => boolean;
+  onOpen: (s: Source) => void;
+}) {
+  const [devices, setDevices] = useState<{ deviceId: string; name: string }[] | null | undefined>(undefined);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let alive = true;
+    props.list(props.url).then(
+      (l) => alive && setDevices(l),
+      (e: unknown) => alive && setError(e instanceof Error ? e.message : String(e)),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [props.url, props.list]);
+  if (error)
+    return (
+      <li class="source">
+        <span class="source-name">Hub {hostOf(props.url)}</span>
+        <span class="unavailable">{error}</span>
+      </li>
+    );
+  if (devices === null) {
+    const src: Source = { kind: "hub", url: props.url };
+    return <SourceRow src={src} env={props.env} open={false} onOpen={() => props.onOpen(src)} />;
+  }
+  return (
+    <>
+      {(devices ?? []).map((d) => {
+        const src: Source = { kind: "hub", url: props.url, deviceId: d.deviceId, name: d.name };
+        return <SourceRow key={sourceKey(src)} src={src} env={props.env} open={props.isOpen(src)} onOpen={() => props.onOpen(src)} />;
+      })}
+    </>
+  );
+}
+
 function AddHub(props: { onAdd: (url: string, name: string) => Promise<void>; error: string }) {
   const [url, setUrl] = useState("");
   return (
@@ -226,6 +286,9 @@ export function SessionView(props: { session: Session; onClose: () => void }) {
         </button>
       </header>
       {st.link && st.link.phase !== "bound" ? <LostLinkBanner phase={st.link} onClose={props.onClose} /> : null}
+      {/* -- WP WB4b -- Link's steps before a DSPi is open */}
+      {st.status === "pairing" ? <PinEntry session={s} error={st.pinError} /> : null}
+      {st.status === "choosing" ? <HubChooser session={s} /> : null}
       {ro ? <p class="note read-only-reason">{ro}</p> : null}
       {st.error ? (
         <p class="error" role="alert">
@@ -239,6 +302,72 @@ export function SessionView(props: { session: Session; onClose: () => void }) {
         </div>
       ) : null}
     </article>
+  );
+}
+
+// -- WP WB4b --
+/** The hub's PIN; the banner above says where to find it (CG10's needs_pairing wording). */
+function PinEntry(props: { session: Session; error: string }) {
+  const [pin, setPin] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <form
+      class="pin-entry"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!pin.trim() || busy) return;
+        setBusy(true);
+        void props.session.pair(pin.trim()).finally(() => {
+          setBusy(false);
+          setPin("");
+        });
+      }}
+    >
+      <label>
+        PIN
+        <input
+          name="pin"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          value={pin}
+          onInput={(e) => setPin((e.target as HTMLInputElement).value)}
+        />
+      </label>
+      <button type="submit" disabled={busy}>
+        Pair
+      </button>
+      {props.error ? (
+        <p class="error" role="alert">
+          {props.error}
+        </p>
+      ) : null}
+    </form>
+  );
+}
+
+/** The hub's DSPis (Link's choose_device step): open one in this session. */
+function HubChooser(props: { session: Session }) {
+  const st = useSessionState(props.session);
+  return (
+    <ul class="hub-devices" aria-label={st.hubName ? `DSPis on ${st.hubName}` : "DSPis on the hub"}>
+      {st.devices.map((d) => {
+        const online = d.state === "online";
+        return (
+          <li key={d.serial} class="source">
+            <span class="source-name" title={d.serial}>
+              {d.name || "DSPi"} · {shortSerial(d.serial)}
+            </span>
+            {online ? (
+              <button type="button" onClick={() => void props.session.choose(d.serial)}>
+                Open
+              </button>
+            ) : (
+              <span class="unavailable">{d.state}</span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

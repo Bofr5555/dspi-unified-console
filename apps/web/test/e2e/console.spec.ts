@@ -1,17 +1,10 @@
 // WP WB5 e2e: the standalone page and the embedding page, in Chromium and
 // Firefox (and Chromium at 375 px wide). Since WB3 on the real core
 // (crates/dspi-wasm) and its own demo device: name "DSPi", firmware 1.1.6, the
-// user volume at 0 dB, a silent meter capture, an analyser with frames. One
-// test, marked STUB, runs on the tests' fake core instead (embed.html?core=stub):
-// the lost-link banner needs Link phases, which the core's demo cannot produce
-// before WB4b.
+// user volume at 0 dB, a silent meter capture, an analyser with frames. The
+// lost-link banner is in link.spec.ts (WB4b), on the core's real Link phases.
 
 import { expect, test, type Page } from "@playwright/test";
-
-const linkWords = (await import("../../../../ci/generated/web/link-words.json", { with: { type: "json" } })).default as {
-  link: { key: string; text: string; action: string | null }[];
-};
-const words = (key: string) => linkWords.link.find((w) => w.key === key)!;
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 
@@ -200,34 +193,6 @@ test("core: the analyser delivers RTA frames on the Worker's timers", async ({ p
     }, { timeout: 10_000 })
     .toBe(true);
   await core(page, 0, "rtaStop");
-});
-
-test("STUB lost link: CG10's wording and its way out (the fake core: Link phases come with WB4b)", async ({ page }) => {
-  await page.goto("/test/embed.html?core=stub");
-  const one = page.locator("#one");
-  await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
-  const session = one.getByRole("article", { name: "Stub DSPi" });
-  await expect(session.locator(".volume-value")).toBeVisible();
-
-  await page.evaluate(() =>
-    (globalThis as unknown as { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] }).dspiClients[0]!.call(
-      "simulate",
-      { what: "link-lost" },
-    ),
-  );
-  const reconnecting = words("reconnecting");
-  const banner = session.locator(".banner");
-  await expect(banner).toContainText(reconnecting.text);
-  await expect(banner.getByRole("button", { name: reconnecting.action! })).toBeVisible();
-
-  await page.evaluate(() =>
-    (globalThis as unknown as { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] }).dspiClients[0]!.call(
-      "simulate",
-      { what: "link-closed" },
-    ),
-  );
-  await expect(banner).toContainText(words("closed").text);
-  await expect(banner.getByRole("button")).toHaveCount(0);
 });
 
 test("narrow width: no sideways scrolling", async ({ page }) => {

@@ -105,7 +105,8 @@ export function normaliseHubUrl(input: string): string {
   return `${scheme}//${u.host}`;
 }
 
-function safeLocalStorage(): KeyValueStore | null {
+/** This page's storage, or null where it is refused (a private window, blocked site data). */
+export function safeLocalStorage(): KeyValueStore | null {
   try {
     return typeof localStorage === "undefined" ? null : localStorage;
   } catch {
