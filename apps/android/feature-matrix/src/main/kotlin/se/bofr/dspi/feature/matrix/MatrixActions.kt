@@ -7,6 +7,7 @@
 package se.bofr.dspi.feature.matrix
 
 import java.util.WeakHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -133,11 +134,26 @@ class MatrixActions(
     /** macOS `@State pendingConflict`: the open "Warning" alert, if any. */
     val pendingConflict: StateFlow<PendingConflict?> = _pendingConflict.asStateFlow()
 
-    /** macOS requestOutputEnable: disable at once, enable directly or ask first. */
+    /**
+     * macOS requestOutputEnable: disable at once, enable directly or ask first.
+     * WP AN41: whether enabling collides on Core 1 is the core's answer
+     * (`core1ConflictReason`, asked off the main thread), its words in the
+     * alert; the layout rule ([MatrixMixerState.requestOutputEnable]) only
+     * when the device cannot be asked.
+     */
     fun requestOutputEnable(state: MatrixMixerState, output: Int) {
-        when (val a = state.requestOutputEnable(output)) {
-            is EnableAction.Set -> setOutputEnable(output, a.enabled)
-            is EnableAction.Confirm -> _pendingConflict.value = a.conflict
+        val local = state.requestOutputEnable(output)
+        if (local == EnableAction.Set(false)) return setOutputEnable(output, false)
+        scope.launch {
+            val conflict =
+                try {
+                    bridge.core1ConflictReason(output)?.let { PendingConflict(output, isPDM = output == state.pdmOutputIndex, reason = it) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    (local as? EnableAction.Confirm)?.conflict
+                }
+            if (conflict != null) _pendingConflict.value = conflict else outputEnable(output, true)
         }
     }
 

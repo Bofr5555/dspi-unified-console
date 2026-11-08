@@ -241,6 +241,23 @@ open class FakeDspiCore(
 
     private fun rp2350() = s.platformId == 1
 
+    // -- WP AN41 --
+    /**
+     * The core's `delay_ms` (WP CG36): quantized, below 0 made 0, above the
+     * platform's line refused in its words, nothing changed.
+     */
+    private fun delayMs(path: String, ms: Float): Float {
+        if (ms.isNaN()) bad("delay is NaN")
+        val v = DspMath.quantizeDelay(ms).coerceAtLeast(0f)
+        val max = maxDelayMs()
+        val platform = if (rp2350()) "RP2350" else "RP2040"
+        if (v > max) bad("$path: ${rustFloat(v)} ms is out of range; this device ($platform) holds at most ${rustFloat(max)} ms")
+        return v
+    }
+
+    /** Rust's `{}` for an f32 in the delay range: "42", "42.5". */
+    private fun rustFloat(v: Float): String = if (v % 1f == 0f) v.toLong().toString() else v.toString()
+
     // ═══ Device management ═══════════════════════════════════════════════
 
     override fun openFd(fd: Int, serial: String, vid: Int) = op("openFd", "$fd, $serial, $vid", device = false) { connected = true }
@@ -475,7 +492,7 @@ open class FakeDspiCore(
         if (out >= 0) return setOutputDelay(out, ms)
         set("setDelay", "$ch, $ms") {
             if (ch !in 0 until MAX_CHANNELS) bad("channel")
-            it.copy(channelDelays = it.channelDelays.with(ch, DspMath.quantizeDelay(ms).coerceIn(0f, maxDelayMs())))
+            it.copy(channelDelays = it.channelDelays.with(ch, delayMs("ch.delay", ms)))
         }
     }
 
@@ -793,7 +810,7 @@ open class FakeDspiCore(
 
     override fun setOutputDelay(output: Int, ms: Float) = set("setOutputDelay", "$output, $ms") {
         if (output !in 0 until MAX_OUTPUTS) bad("output")
-        val v = DspMath.quantizeDelay(ms).coerceIn(0f, maxDelayMs())
+        val v = delayMs("out.delay", ms)
         val ch = it.numInputChannels + output
         it.copy(
             outputDelayMs = it.outputDelayMs.with(output, v),
@@ -842,6 +859,25 @@ open class FakeDspiCore(
     override fun fetchCore1Mode(): Int = op("fetchCore1Mode") { core1ModeOf(s).also { m -> state = s.copy(core1Mode = m) } }
 
     override fun checkCore1Conflict(output: Int): Boolean = op("checkCore1Conflict", "$output") { conflicts(s, output) }
+
+    // -- WP AN41 --
+    /** The core's `core1_conflict_reason`: null without a conflict, else its words from the layout (write_param.rs). */
+    override fun core1ConflictReason(output: Int): String? = op("core1ConflictReason", "$output") {
+        if (conflicts(s, output)) core1Words(output) else null
+    }
+
+    private fun core1Words(output: Int): String {
+        val n = output + 1
+        val pdm = s.numOutputChannels
+        val workers = "outputs 3-${pdm - 1}"
+        return when {
+            n == pdm ->
+                "Output $n is the PDM output, which shares Core 1 with $workers, and one of them is enabled: disable $workers first"
+            output in 2 until pdm - 1 ->
+                "Output $n shares Core 1 with the PDM output (output $pdm), which is enabled: disable the PDM output first"
+            else -> "Output $n cannot be enabled now: Core 1 is busy with another output"
+        }
+    }
 
     // ═══ Pins / hardware IO ══════════════════════════════════════════════
 

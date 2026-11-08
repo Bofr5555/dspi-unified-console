@@ -17,6 +17,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -138,8 +139,14 @@ fun AppScaffold(
     val keys = remember { ShortcutKeys() }
     val focus = remember { FocusRequester() }
     var focusLost by remember { mutableIntStateOf(0) }
+    // -- WP AN41 -- a write the core refused, in its words, over the screen
+    val notices = remember { SnackbarHostState() }
+    RefusalNotices(bridge, notices)
     // The IME stays out, as with the Scaffold's default insets
-    Scaffold(contentWindowInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout)) { padding ->
+    Scaffold(
+        snackbarHost = { RefusalNoticeHost(notices) },
+        contentWindowInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout)
+    ) { padding ->
         Column(
             Modifier
                 .fillMaxSize()

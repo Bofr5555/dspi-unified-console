@@ -1572,6 +1572,9 @@ class DspiBridgeImpl(
         runCatching { get { core.checkCore1Conflict(output) } }.getOrDefault(false)
     }
 
+    // -- WP AN41 --
+    override suspend fun core1ConflictReason(output: Int): String? = onFfi { get { core.core1ConflictReason(output) } }
+
     // ═══ Pins / output config / names ═══
 
     /** In independent mode a hardware edit is RAM-only until Save Output Config. */
@@ -2584,7 +2587,9 @@ class DspiBridgeImpl(
             if (c.output && out >= 0) {
                 for (b in 0 until MAX_XOVER_BANDS) core.setCrossover(w, b, c.xover[b])
                 core.setOutputGain(out, c.gain)
-                core.setOutputDelay(out, c.delay)
+                // -- WP AN41 -- a clip from a longer line (RP2350 onto RP2040) takes this device's line, as the
+                // fields do (bridge.maxDelayMs, read here on the FFI thread), instead of the core refusing the paste midway
+                core.setOutputDelay(out, c.delay.coerceAtMost(core.maxDelayMs()))
                 core.setOutputMute(out, c.mute)
             }
             markDirty(ch)

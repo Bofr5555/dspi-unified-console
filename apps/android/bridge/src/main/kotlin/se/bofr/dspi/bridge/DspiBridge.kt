@@ -567,6 +567,15 @@ interface DspiBridge {
 
     suspend fun checkCore1Conflict(output: Int): Boolean
 
+    // -- WP AN41 --
+    /**
+     * Why enabling [output] would collide on Core 1, in the core's words
+     * (`core1_conflict_reason`; the device decides), or null when it would not.
+     * Throws the core's [se.bofr.dspi.core.DspiException] when the device
+     * cannot be asked, so a caller can tell "no conflict" from "no answer".
+     */
+    suspend fun core1ConflictReason(output: Int): String?
+
     // ═══ Pins / output config / names ══════════════════════════════════
 
     /** GATED [DangerousOp.HARDWARE_APPLY] (minted by the pin picker; applied live, E1b). */

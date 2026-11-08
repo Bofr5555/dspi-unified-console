@@ -73,7 +73,7 @@ fun ChannelSettingsView(bridge: DspiBridge, outputIndex: Int, onNavigate: (Strin
     val gainDB = s.outputGainDb.getOrElse(outputIndex) { 0f }
     val delayMS = s.outputDelayMs.getOrElse(outputIndex) { 0f }
     val isMuted = s.outputMuted.getOrElse(outputIndex) { false }
-    val maxDelay = bridge.maxDelayMs.takeIf { it > 0f } ?: if (bridge.platformName == "RP2040") 42f else 85f
+    val maxDelay = bridge.maxDelayMs // the core's line (21 ms RP2040, 42 ms RP2350; review c77: the 42/85 fallback was unreachable)
 
     val gain = rememberSliderDrag(gainDB)
     val delay = rememberSliderDrag(delayMS, quantize = ::roundDelayToWholeMs)

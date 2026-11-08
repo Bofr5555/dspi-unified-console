@@ -367,7 +367,9 @@ class ReadOnlyTest {
                 "pairAvailable", "pairPartner", "peakLevel", "phaseCurve", "pinOwners", "presetChanges", "presetName",
                 "refreshCtrlIfaces", "restoreInputLinks", "crossfeedPairMapValid",
                 // -- WP AN35 -- the host's USB format, app-local
-                "setHostInputChannels"
+                "setHostInputChannels",
+                // -- WP AN41 -- a GET (PASS_THROUGH in WriteGuardedCore)
+                "core1ConflictReason"
             )
 
         /** Controller members that read or only edit app-side drafts/subscriptions. */
