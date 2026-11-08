@@ -8,7 +8,6 @@ package se.bofr.dspi.feature.matrix
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,8 +15,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -28,6 +29,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,6 +41,8 @@ import se.bofr.dspi.ui.writeEnabled
  * macOS `MatrixPoint`: gain field above the dot when connected, the connect
  * toggle (filled dot / empty ring), and INV below when connected.
  * [outlineColor] overrides the disconnected ring (PDM conflict: orange).
+ * [label] names the crosspoint for TalkBack ("USB 1 L to OUT1"). Each of
+ * the three controls has a 48 dp row (WP AN20).
  */
 @Composable
 fun MatrixPoint(
@@ -52,7 +56,8 @@ fun MatrixPoint(
     onToggleInverted: () -> Unit,
     modifier: Modifier = Modifier,
     outlineColor: Color? = null,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    label: String = ""
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         if (isConnected) {
@@ -61,41 +66,53 @@ fun MatrixPoint(
                 onGainLive,
                 onGainCommit,
                 enabled = enabled,
-                title = "Gain",
-                quantized = false,
-                modifier = Modifier.padding(top = 6.dp)
+                title = "Gain, $label",
+                quantized = false
             )
         } else {
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(MatrixTarget))
         }
-        Spacer(Modifier.height(2.dp))
-        MatrixConnectToggle(isConnected, inputColor, outlineColor, enabled, onToggleConnected)
-        Spacer(Modifier.height(2.dp))
+        MatrixConnectToggle(isConnected, inputColor, outlineColor, enabled, label, onToggleConnected)
         if (isConnected) {
-            MatrixInvertToggle(isInverted, enabled, onToggleInverted, Modifier.padding(bottom = 6.dp))
+            MatrixInvertToggle(isInverted, enabled, onToggleInverted, label = label)
         } else {
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(MatrixTarget))
         }
     }
 }
 
-/** The crosspoint circle; a 44 dp touch target around macOS's 28 pt one. */
+/** WP AN20: the smallest touch target a matrix control gets. */
+internal val MatrixTarget = 48.dp
+
+/** The crosspoint circle; a 48 dp touch target around macOS's 28 pt one. TalkBack: "[label], switch, Connected". */
 @Composable
-fun MatrixConnectToggle(isConnected: Boolean, inputColor: Color, outlineColor: Color?, enabled: Boolean, onToggle: () -> Unit) {
+fun MatrixConnectToggle(
+    isConnected: Boolean,
+    inputColor: Color,
+    outlineColor: Color?,
+    enabled: Boolean,
+    label: String = "",
+    onToggle: () -> Unit
+) {
     val dot by animateFloatAsState(if (isConnected) 1f else 0f, spring(dampingRatio = 0.7f, stiffness = 600f), label = "dot")
     val ring = outlineColor?.copy(alpha = 0.45f) ?: MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
     Box(
         modifier =
         Modifier
-            .size(44.dp)
-            .clickable(
+            .size(MatrixTarget)
+            .toggleable(
+                value = isConnected,
                 enabled = writeEnabled(enabled),
                 role = Role.Switch,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-                onClick = onToggle
+                onValueChange = { onToggle() }
             )
-            .semantics { contentDescription = if (isConnected) "Disconnect" else "Connect" },
+            // -- WP AN20 -- which crosspoint, and whether it routes (was "Connect"/"Disconnect" alone)
+            .semantics {
+                contentDescription = label.ifEmpty { "Route" }
+                stateDescription = if (isConnected) "Connected" else "Not connected"
+            },
         contentAlignment = Alignment.Center
     ) {
         Canvas(Modifier.size(22.dp)) {
@@ -107,13 +124,16 @@ fun MatrixConnectToggle(isConnected: Boolean, inputColor: Color, outlineColor: C
     }
 }
 
+/** INV: TalkBack reads "Invert phase, [label], switch, on/off" (WP AN20). */
 @Composable
-fun MatrixInvertToggle(isInverted: Boolean, enabled: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+fun MatrixInvertToggle(isInverted: Boolean, enabled: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier, label: String = "") {
     Box(
         modifier =
         modifier
-            .clickable(enabled = writeEnabled(enabled), role = Role.Switch, onClick = onToggle)
-            .semantics { contentDescription = if (isInverted) "Phase inverted" else "Normal phase" }
+            // -- WP AN20 -- a 48 dp target around the label
+            .minimumInteractiveComponentSize()
+            .toggleable(value = isInverted, enabled = writeEnabled(enabled), role = Role.Switch, onValueChange = { onToggle() })
+            .semantics { contentDescription = listOf("Invert phase", label).filter { it.isNotEmpty() }.joinToString(", ") }
             .padding(horizontal = 10.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center
     ) {
