@@ -1497,12 +1497,14 @@ interface DspiCoreApi : AutoCloseable {
     fun setUserMute(muted: Boolean)
 
     /**
-     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms and then
-     * clamped to 0..[`DspiCore::max_delay_ms`]. An output channel's delay
-     * is its output delay, so it goes through [`DspiCore::set_output_delay`].
+     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms; below 0 it
+     * is 0. An output channel's delay is its output delay, so it goes
+     * through [`DspiCore::set_output_delay`].
      *
-     * Errors: [`DspiError::InvalidArgument`] for a channel out of range or a
-     * NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for a channel out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
     @Throws(DspiException::class)
     fun setDelay(ch: Int, ms: Float)
@@ -1719,12 +1721,13 @@ interface DspiCoreApi : AutoCloseable {
     fun setOutputMute(output: Int, muted: Boolean)
 
     /**
-     * Output delay in ms, quantized to 0.0001 ms and then clamped to
-     * 0..[`DspiCore::max_delay_ms`]. It is also the delay of the output's
-     * wire channel.
+     * Output delay in ms, quantized to 0.0001 ms; below 0 it is 0. It is
+     * also the delay of the output's wire channel.
      *
-     * Errors: [`DspiError::InvalidArgument`] for an output out of range or
-     * a NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for an output out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
     @Throws(DspiException::class)
     fun setOutputDelay(output: Int, ms: Float)
@@ -2561,6 +2564,17 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun coreVregDemoEvent(event: VregDemoEvent, seconds: Long)
+
+    /**
+     * Whether enabling output `output` would collide on Core 1, and if so
+     * why, in the words [`DspiCore::write_param`] refuses it with: `None`
+     * when it would not. The device decides
+     * ([`DspiCore::check_core1_conflict`]); the words come from the layout.
+     *
+     * Errors: those of [`DspiCore::check_core1_conflict`].
+     */
+    @Throws(DspiException::class)
+    fun core1ConflictReason(output: Int): String?
 
     /**
      * The database at `db_path`: for the "Update Database" dialog. Reads the file.

@@ -701,6 +701,8 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "bootloaderCounts",
             "captureBaseline",
             "checkCore1Conflict",
+            // -- WP CG36 -- the same question, with the core's words: a read.
+            "core1ConflictReason",
             "closeFd",
             "computeMagnitudeCurve",
             "computePhaseCurve",
