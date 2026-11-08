@@ -1438,6 +1438,10 @@ class DSPViewModel: ObservableObject {
     @Published var outputGainDB = Array(repeating: Float(0.0), count: 9)
     @Published var outputMuted = Array(repeating: false, count: 9)
     @Published var outputDelayMS = Array(repeating: Float(0.0), count: 9)
+    // -- WP SWF8 -- c75-N3: the device's delay line, the core's
+    // `maxDelayMs` (dspi_proto Platform::max_delay_ms), read with each fetch
+    // through the core; nil until then.
+    @Published var coreMaxDelayMS: Float?
     @Published var channelNames: [String] = DSPViewModel.defaultChannelNames(for: "")
     @Published var core1Mode: Int = 0  // 0=IDLE, 1=PDM, 2=EQ_WORKER
     @Published var outputPins: [UInt8] = [6, 7, 8, 9, 10]  // GPIO pins for SPDIF 1-4 + PDM
@@ -3392,7 +3396,8 @@ class DSPViewModel: ObservableObject {
                 }
             }
             if let gain = cb.outputGainDB { setOutputGain(output: outIdx, db: gain) }
-            if let delay = cb.outputDelayMS { setOutputDelay(output: outIdx, ms: delay) }
+            // -- WP SWF8 -- held to this device's delay line
+            if let delay = cb.outputDelayMS { setOutputDelay(output: outIdx, ms: min(delay, maxOutputDelayMS)) }
             if let muted = cb.outputMuted { setOutputMute(output: outIdx, muted: muted) }
         }
     }

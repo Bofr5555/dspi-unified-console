@@ -76,10 +76,22 @@ protocol CoreStateSource: AnyObject {
     /// -- WP SWF8 -- At most `settleWindow` in all (nil past it), and nil at
     /// once over a hub, whose echoes reach the core through main.
     func settlePresetChanges() -> [String]?
+    // -- WP SWF8 -- c75-N3
+    /// The core's `maxDelayMs()` (no device I/O).  Blocking: call off the
+    /// main thread.
+    func readMaxDelayMs() -> Float?
+    /// For a delay past the line (or NaN): the core's refusal of it, from
+    /// its typed setter, which sends nothing then; nil when the core would
+    /// take it or refused for another reason.  `reply` runs on main.
+    func outputDelayRefusal(output: UInt8, ms: Float, reply: @escaping (String?) -> Void)
 }
 
 extension CoreStateSource {
     func settlePresetChanges() -> [String]? { nil }
+    func readMaxDelayMs() -> Float? { nil }
+    func outputDelayRefusal(output: UInt8, ms: Float, reply: @escaping (String?) -> Void) {
+        DispatchQueue.main.async { reply(nil) }
+    }
 }
 
 /// What one `processNotifications` changed, and the core's state after it.
@@ -723,7 +735,9 @@ extension DSPViewModel {
             let decoded = CoreMirror.decoded(state)
             // -- WP SWF6 -- `fetchAll` made this state the core's baseline.
             let changes = source.readPresetChanges()
+            let maxDelay = source.readMaxDelayMs()   // -- WP SWF8 --
             DispatchQueue.main.async {
+                if self.coreMaxDelayMS != maxDelay { self.coreMaxDelayMS = maxDelay }
                 self.applyCoreIdentity(state)
                 guard decoded else { return }
                 self.applyCoreState(state, force: true)

@@ -936,7 +936,7 @@ struct ChannelSettingsView: View {
     @Binding var gainDB: Float
     @Binding var delayMS: Float
     @Binding var isMuted: Bool
-    var maxDelay: Float = 85
+    var maxDelay: Float = 21   // -- WP SWF8 -- the shorter line
     var onGainDrag: ((Float) -> Void)? = nil
     var onDelayDrag: ((Float) -> Void)? = nil
 
@@ -1081,11 +1081,13 @@ struct ChannelSettingsView: View {
                 // steps whole ms, a typed value is kept.
                 // -- WP SWF7 -- While the slider drags, the whole ms it sends
                 // (SWF5-1); Cmd-scroll lands on the whole-ms grid (SWF5-2).
+                // -- WP SWF8 -- Cmd-scroll stops at the line; a typed value
+                // past it is refused and the field shows the delay kept.
                 ValueField(label: "ms", value: ValueField.delayShown(localDelay, dragging: isDraggingDelay),
-                           width: 60, scrollStep: 1, scrollOnGrid: true,
-                           maxDecimals: ValueField.delayDecimals) {
-                    localDelay = $0
+                           width: 60, scrollStep: 1, scrollOnGrid: true, maxValue: maxDelay,
+                           maxDecimals: ValueField.delayDecimals, revertsOnCommit: true) {
                     delayMS = $0
+                    localDelay = delayMS
                 }
             }
 
@@ -2815,7 +2817,12 @@ struct ValueField: View {
     /// the next whole value in the scroll direction (`wholeStep`).
     var scrollOnGrid: Bool = false
     var minValue: Float? = nil
+    /// -- WP SWF8 -- Cmd-scroll stops here.
+    var maxValue: Float? = nil
     var maxDecimals: Int = 1
+    /// -- WP SWF8 -- After a commit the field shows `value` again, so a
+    /// value the owner refused is not left in it.
+    var revertsOnCommit: Bool = false
     /// Width of the trailing unit label.  The default suits the one- and
     /// two-character symbols this field was built for (dB, Hz, %, s); a longer
     /// one (min) needs more room or it truncates.
@@ -2878,6 +2885,13 @@ struct ValueField: View {
         return "\(parts[0]).\(trimmed)"
     }
 
+    private func commit() {
+        guard let v = Float(text) else { text = format(value); return }
+        onCommit(v)
+        // An accepted value comes back through `value` (onChange below).
+        if revertsOnCommit { text = format(value) }
+    }
+
     var body: some View {
         HStack(spacing: 4) {
             ZStack(alignment: .trailing) {
@@ -2895,8 +2909,8 @@ struct ValueField: View {
                     .padding(4)
                     .frame(width: width) // Enforce fixed width
                     .focused($isFocused)
-                    .onSubmit { if let v = Float(text) { onCommit(v) } else { text = format(value) } }
-                    .onChange(of: isFocused) { focused in if !focused { if let v = Float(text) { onCommit(v) } else { text = format(value) } } }
+                    .onSubmit { commit() }
+                    .onChange(of: isFocused) { focused in if !focused { commit() } }
 
                 // Always present but hidden until a drag begins, and shown and
                 // hidden again purely in AppKit, so grabbing a slider changes
@@ -2918,7 +2932,7 @@ struct ValueField: View {
         }
         .overlay(
             ValueFieldScrollHandler(value: value, step: scrollStep, onGrid: scrollOnGrid, minValue: minValue,
-                                    onCommit: onCommit)
+                                    maxValue: maxValue, onCommit: onCommit)
         )
         .onAppear { text = (!isFocused && displayOverride != nil) ? displayOverride! : format(value) }
         .onChange(of: value) { newValue in
@@ -3138,6 +3152,7 @@ struct ValueFieldScrollHandler: NSViewRepresentable {
     let step: Float
     var onGrid: Bool = false
     let minValue: Float?
+    var maxValue: Float? = nil   // -- WP SWF8 --
     let onCommit: (Float) -> Void
 
     func makeNSView(context: Context) -> ValueFieldScrollNSView {
@@ -3146,6 +3161,7 @@ struct ValueFieldScrollHandler: NSViewRepresentable {
         view.step = step
         view.onGrid = onGrid
         view.minValue = minValue
+        view.maxValue = maxValue
         view.onCommit = onCommit
         return view
     }
@@ -3155,6 +3171,7 @@ struct ValueFieldScrollHandler: NSViewRepresentable {
         nsView.step = step
         nsView.onGrid = onGrid
         nsView.minValue = minValue
+        nsView.maxValue = maxValue
         nsView.onCommit = onCommit
     }
 }
@@ -3164,6 +3181,7 @@ class ValueFieldScrollNSView: NSView {
     var step: Float = 0.1
     var onGrid = false
     var minValue: Float?
+    var maxValue: Float?   // -- WP SWF8 --
     var onCommit: ((Float) -> Void)?
 
     override var mouseDownCanMoveWindow: Bool { false }
@@ -3202,7 +3220,8 @@ class ValueFieldScrollNSView: NSView {
         let direction: Float = delta > 0 ? 1 : -1
         let newValue = onGrid ? ValueField.wholeStep(from: value, by: direction * step)
                               : value + direction * step
-        onCommit?(minValue.map { max(newValue, $0) } ?? newValue)
+        let floored = minValue.map { max(newValue, $0) } ?? newValue
+        onCommit?(maxValue.map { min(floored, $0) } ?? floored)
     }
 }
 #else
@@ -3213,6 +3232,7 @@ struct ValueFieldScrollHandler: View {
     let step: Float
     var onGrid: Bool = false
     let minValue: Float?
+    var maxValue: Float? = nil   // -- WP SWF8 --
     let onCommit: (Float) -> Void
 
     var body: some View { Color.clear.allowsHitTesting(false) }

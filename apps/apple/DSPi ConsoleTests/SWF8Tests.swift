@@ -105,6 +105,87 @@ final class SWF8Tests: XCTestCase {
         XCTAssertNotNil(settled, "a SET just went out and the queue was free")
         XCTAssertEqual(t.readState().outputDelayMs[2], target, "drained before it returned")
     }
+
+    // MARK: - c75-N3: the delay line is the core's
+
+    private func demoVM(file: StaticString = #filePath, line: UInt = #line) -> (CoreBackedTransport, DSPViewModel) {
+        let t = CoreBackedTransport(link: .demo)
+        let vm = DSPViewModel(transport: t)
+        t.selectDevice(FakeTransport.demoDevice)
+        XCTAssertTrue(spinUntil(30) { vm.isDeviceConnected && vm.fullReadGeneration == t.generation },
+                      "the connect-time read finishes", file: file, line: line)
+        settle()
+        return (t, vm)
+    }
+
+    func testSWF8TheDelayLineIsTheCores() throws {
+        let (t, vm) = demoVM()
+        let line = try XCTUnwrap(t.readMaxDelayMs())
+        XCTAssertEqual(vm.coreMaxDelayMS, line, "read with the fetch")
+        XCTAssertEqual(vm.maxOutputDelayMS, line)
+        XCTAssertEqual(DSPViewModel.delayLineMS(platform: vm.platformName), line, "the rule off the core agrees")
+        XCTAssertNotEqual(line, 85, "not the Console's own maximum")
+        XCTAssertEqual(DSPViewModel.delayLineMS(platform: "RP2350"), 42)
+        XCTAssertEqual(DSPViewModel.delayLineMS(platform: "RP2040"), 21)
+        XCTAssertEqual(DSPViewModel.delayLineMS(platform: ""), 21, "unknown: the shorter line")
+    }
+
+    /// A typed delay past the line: nothing is sent, the field's delay stays,
+    /// and the status row says why in the core's words.
+    func testSWF8ATypedDelayPastTheLineIsRefusedInTheCoresWords() {
+        let (t, vm) = demoVM()
+        let line = vm.maxOutputDelayMS
+        vm.setOutputDelay(output: 0, ms: line)
+        XCTAssertTrue(spinUntil(5) { t.readState().outputDelayMs[0] == line }, "the line itself is taken")
+        settle()
+
+        vm.setOutputDelay(output: 0, ms: line + 1)
+        XCTAssertEqual(vm.outputDelayMS[0], line, "the delay kept")
+        XCTAssertTrue(spinUntil(5) { DeviceLock.notice.message?.contains("out of range") == true },
+                      "the refusal is posted")
+        let words = DeviceLock.notice.message ?? ""
+        XCTAssertTrue(words.contains("\(ValueField.delayText(line + 1)) ms"), words)
+        XCTAssertTrue(words.contains("holds 0 to \(ValueField.delayText(line)) ms"), words)
+        settle()
+        XCTAssertEqual(t.readState().outputDelayMs[0], line, "nothing reached the device")
+
+        vm.setOutputDelay(output: 0, ms: .nan)
+        XCTAssertEqual(vm.outputDelayMS[0], line, "NaN is refused too")
+        settle()
+        XCTAssertEqual(t.readState().outputDelayMs[0], line)
+    }
+
+    /// A drag, a paste and a file's delay are held to the line.
+    func testSWF8DragsAndPastesStopAtTheLine() {
+        let (t, vm) = demoVM()
+        let line = vm.maxOutputDelayMS
+        vm.sendOutputDelayToDevice(output: 1, ms: 85)
+        XCTAssertTrue(spinUntil(5) { t.readState().outputDelayMs[1] == line }, "the drag stops at the line")
+
+        let out = 2
+        vm.channelClipboard = DSPViewModel.ChannelClipboard(
+            filters: [], crossover: nil, outputGainDB: nil, outputDelayMS: 85, outputMuted: nil, sourceName: "SWF8")
+        vm.pasteChannelParams(eqChannel: vm.eqChannel(forOutput: out))
+        XCTAssertEqual(vm.outputDelayMS[out], line, "the paste stops at the line")
+        XCTAssertTrue(spinUntil(5) { t.readState().outputDelayMs[out] == line })
+    }
+
+    /// Off the core the platform's rule bounds it, worded the same way.
+    func testSWF8OffTheCoreThePlatformRuleRefuses() {
+        let fake = FakeTransport(autoSelect: false)
+        let vm = DSPViewModel(transport: fake)
+        fake.selectDevice(FakeTransport.demoDevice)
+        XCTAssertTrue(spinUntil(30) { vm.isDeviceConnected && vm.fullReadGeneration == fake.generation })
+        settle()
+        XCTAssertNil(vm.coreMirror.attachedSource)
+        let line = DSPViewModel.delayLineMS(platform: vm.platformName)
+        XCTAssertEqual(vm.maxOutputDelayMS, line)
+        let before = vm.outputDelayMS[0]
+        vm.setOutputDelay(output: 0, ms: line + 5)
+        XCTAssertEqual(vm.outputDelayMS[0], before)
+        XCTAssertTrue(spinUntil(5) { DeviceLock.notice.message?.contains("holds 0 to \(ValueField.delayText(line)) ms") == true },
+                      DeviceLock.notice.message ?? "no message")
+    }
 }
 
 /// A hub host.  Its notifications arrive on main (the fake's fanout, as

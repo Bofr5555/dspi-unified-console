@@ -576,6 +576,28 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
         }
     }
 
+    // -- WP SWF8 -- c75-N3
+
+    func readMaxDelayMs() -> Float? {
+        onCoreSync { self.onCore { $0.maxDelayMs() } }
+    }
+
+    func outputDelayRefusal(output: UInt8, ms: Float, reply: @escaping (String?) -> Void) {
+        coreQueue.async { [weak self] in
+            var text: String?
+            // Only past the line: there the typed setter refuses before it
+            // sends anything (a negative it would send as 0).
+            if let self = self, ms.isNaN || ms > self.onCore({ $0.maxDelayMs() }) {
+                do {
+                    try self.onCore { try $0.setOutputDelay(output: output, ms: ms) }
+                } catch DspiError.InvalidArgument(let msg) {
+                    text = msg
+                } catch {}
+            }
+            DispatchQueue.main.async { reply(text) }
+        }
+    }
+
     func loadPreset(slot: UInt8) -> Result<(DspState, [String]), DspiError> {
         onCoreSync {
             do {
