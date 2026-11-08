@@ -84,6 +84,8 @@ itself), hence the wrapper.
 ## Firewall and network
 
 The hub listens on TCP port 11915 (`--port`), and on mDNS so that clients find
-it. Allow both on a private network only. Clients on the network cannot raise a
-unit's core voltage above 1.20 V, whatever their role: do that on the machine
-itself.
+it. Allow both on a private network only. On Windows, the first start asks
+whether `dspi` may use the network: tick private networks only. Cancel there
+adds rules that block it, which then have to be removed in Windows Defender
+Firewall. Clients on the network cannot raise a unit's core voltage above
+1.20 V, whatever their role: do that on the machine itself.

@@ -1797,6 +1797,45 @@ mod tests {
         assert!(!s.stale);
     }
 
+    // -- WP CG31 --
+    /// `REQ_SET_DELAY` on an output's wire channel (another client's `ch.delay
+    /// i2s.1.l 1`) notifies only `delays[]`; the Terminal's output and matrix
+    /// pages read the output record, which follows it.
+    #[test]
+    fn wp_cg31_a_channel_delay_from_elsewhere_moves_the_output_delay() {
+        let mut s = state();
+        let (_, d, _) = section("delays");
+        let change = |offset: usize, v: f32| Notification {
+            seq: 1,
+            event: Event::ParamChanged {
+                offset: offset as u16,
+                source: Source::Midi,
+                bytes: v.to_le_bytes().to_vec(),
+            },
+            lost: false,
+            origin: None,
+            received: std::time::Instant::now(),
+        };
+        // Wire channel 8 is output 0 (8 inputs).
+        s.apply(&change(d + 8 * 4, 1.0));
+        assert_eq!((s.delay_ms(8), s.output(0).delay_ms), (1.0, 1.0));
+        // And back: the output record moves the channel's delay.
+        let (_, o, _) = section("outputs");
+        s.apply(&change(o + 3 * 12 + 8, 2.5));
+        assert_eq!((s.delay_ms(11), s.output(3).delay_ms), (2.5, 2.5));
+        // An input's delay has no twin.
+        s.apply(&change(d, 4.0));
+        assert_eq!(s.delay_ms(0), 4.0);
+        assert!((0..9).all(|o| s.output(o).delay_ms != 4.0));
+        // Input 0's preamp is also the legacy global preamp.
+        let (_, p, _) = section("preamp");
+        s.apply(&change(p, -2.0));
+        assert_eq!(s.preamp_db(0), -2.0);
+        let (_, g, _) = section("global");
+        assert_eq!(&s.bulk.as_bytes()[g..g + 4], &(-2.0f32).to_le_bytes());
+        assert!(!s.stale);
+    }
+
     #[test]
     fn a_change_into_the_header_or_past_the_end_marks_the_shadow_stale() {
         let mut s = state();

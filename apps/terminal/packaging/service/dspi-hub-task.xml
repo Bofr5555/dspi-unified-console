@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0"?>
 <!--
   DSPi Link hub as a Windows scheduled task: shares this PC's DSPi devices on the
   network from logon. A placeholder to adapt (WP TM11): see README.md.
@@ -7,6 +7,9 @@
     Register-ScheduledTask -TaskName "DSPi Hub" -Xml (Get-Content -Raw .\dspi-hub-task.xml)
   Remove:
     Unregister-ScheduledTask -TaskName "DSPi Hub"
+  The declaration names no encoding on purpose: -Xml hands Task Scheduler a UTF-16
+  string, and a declared UTF-8 fails with "unable to switch the encoding" (WP CG31).
+  `schtasks /create /xml` needs the file saved as UTF-16 first.
 
   Edit the Command if dspi.exe is installed elsewhere. PIN pairing is the default:
   do not add the open option here. To pair a client, end the task, run `dspi hub`

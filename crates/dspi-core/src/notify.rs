@@ -482,7 +482,9 @@ fn patch(img: &mut [u8], offset: usize, bytes: &[u8]) -> Option<bool> {
     let dst = img.get_mut(offset..end)?;
     let changed = dst != bytes;
     dst.copy_from_slice(bytes);
-    Some(changed)
+    // -- WP CG31 -- A value the image holds twice changes in both places
+    let twin = dspi_proto::wire::sync_twins(img, offset, bytes.len());
+    Some(changed || twin)
 }
 
 /// `NOTIFY_CURVES` when a change at `offset` moves the graph (bands, global,
@@ -1493,3 +1495,8 @@ mod tests_wp_cg25 {
         assert_eq!(s.master_volume_db, -6.0);
     }
 }
+
+// -- WP CG31 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_cg31;
