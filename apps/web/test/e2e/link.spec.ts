@@ -222,13 +222,14 @@ test("fleet embedding: hubDevices names the DSPi, hubCredentials supplies the to
   await chooseAndOpen(page.getByRole("article"));
   await siteB.click();
   await chooseAndOpen(page.getByRole("article"));
-  await expect(page.getByRole("tab")).toHaveCount(3);
+  // -- WP WB6b -- the sessions' tabs (a session's own screens have tabs too)
+  await expect(page.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab")).toHaveCount(3);
 
   // Each session is its own: hub b drops, hub a's session stays bound.
   await fault(request, b, "refuse 503");
   await fault(request, b, "drop");
   await expect(page.getByRole("article").locator(".banner")).toContainText(words("reconnecting").text);
-  await page.getByRole("tab").first().click();
+  await page.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab").first().click();
   // (The user volume shows what the hub re-read gave: the fake hub keeps only the master volume.)
   await expect(page.getByRole("article").locator(".device-meta")).toContainText(SERIAL);
   await expect(page.getByRole("article").locator(".banner")).toHaveCount(0);

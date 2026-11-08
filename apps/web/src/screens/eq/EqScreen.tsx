@@ -1,0 +1,286 @@
+// The EQ screen of one session (WP WB6b, the second WB6 slice): the channels
+// with their curve-visibility pills (M58), the response graph with on-graph
+// editing (M21), the band chip, and the chosen channel's band list (B5). It
+// lives inside its session's view, as every screen does.
+//
+// The curves are the core's (`curves`), asked for only when the bands drawn
+// change; the graph draws only then. Edits go through the session (`write`
+// by registry path with the read-back), a drag's as fast as the device
+// answers, the newest winning. A read-only session shows it all, editing off.
+
+import { memo } from "preact/compat";
+import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
+import type { DspState, FilterParams } from "../../core/protocol";
+import { useSessionState } from "../../ui/components";
+import type { ScreenProps } from "../../ui/screens";
+import { inputRows, liveInputs, outputRows, type ChannelRow } from "../main/model";
+import { BandList } from "./BandList";
+import { BandChip, retypeAll } from "./Chip";
+import { useCurves, useGrid, type CurveRequest } from "./curves";
+import { useBandEdits } from "./edits";
+import { EqGraph } from "./EqGraph";
+import { DEFAULT_LIMITS, OFF_BAND, availableTypes, bypassSupported, channelColour, isGraphBand, type Geometry, type Limits } from "./model";
+
+interface EqChannel extends ChannelRow {
+  output: boolean;
+  /** Its colour on the graph. */
+  colour: string;
+}
+
+/** The PEQ bands the device takes on a wire channel. */
+function peq(s: DspState, wire: number): FilterParams[] {
+  return (s.filters?.[wire] ?? []).slice(0, s.maxBands || 10);
+}
+
+/** What a channel's curve is made of: its PEQ and, for an output, its crossover. */
+function chain(s: DspState, c: EqChannel, bands: FilterParams[]): FilterParams[] {
+  return c.output ? [...bands, ...(s.xover?.[c.wire] ?? [])] : bands;
+}
+
+/** The level shift drawn on a channel's curve: an output's gain, an input's trim. */
+function offsetOf(s: DspState, c: EqChannel): number {
+  return (c.output ? s.outputGainDb[c.index] : s.inputPreampDb[c.index]) ?? 0;
+}
+
+export function EqScreen(props: ScreenProps) {
+  const { session, ask } = props;
+  const st = useSessionState(session);
+  const s = st.snapshot?.state;
+  const ro = session.readOnlyReason !== "";
+
+  // How many inputs USB streams, read once (the main window keeps it current).
+  const [usbActive, setUsbActive] = useState<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    session.core.call("meters", undefined).then(
+      (m) => alive && setUsbActive(m.activeInputChannels),
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [session]);
+
+  // The registry's ranges, which `write` checks.
+  const [limits, setLimits] = useState<Limits>(DEFAULT_LIMITS);
+  useEffect(() => {
+    let alive = true;
+    void Promise.all(["eq.freq", "eq.q", "eq.gain"].map((path) => session.core.call("describe", { path }).catch(() => null))).then(([f, q, g]) => {
+      const r = (i: { min?: number; max?: number } | null, d: [number, number]): [number, number] =>
+        i?.min !== undefined && i.max !== undefined ? [i.min, i.max] : d;
+      if (alive) setLimits({ freq: r(f!, DEFAULT_LIMITS.freq), q: r(q!, DEFAULT_LIMITS.q), gain: r(g!, DEFAULT_LIMITS.gain) });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [session]);
+
+  if (!s || !Array.isArray(s.filters)) return <p class="empty">This DSPi's filters are not known yet.</p>;
+  return <EqView session={session} ask={ask} s={s} ro={ro} usbActive={usbActive} limits={limits} />;
+}
+
+const EqView = memo(
+  function EqView(props: { session: ScreenProps["session"]; ask: ScreenProps["ask"]; s: DspState; ro: boolean; usbActive: number | null; limits: Limits }) {
+    const { session, ask, s, ro, limits } = props;
+    const idBase = useMemo(() => `eq-${Math.random().toString(36).slice(2, 9)}`, []);
+
+    // The channels, as the Console's sidebar lists them.
+    const channelsKey = JSON.stringify([s.channelNames, s.outputEnabled, s.numInputChannels, s.numOutputChannels, s.inputSource, s.i2sInputChannels, props.usbActive]);
+    const channels = useMemo<EqChannel[]>(() => {
+      const ins = inputRows(s, liveInputs(s, props.usbActive)).map((r) => ({ ...r, output: false }));
+      const outs = outputRows(s).map((r) => ({ ...r, output: true }));
+      return [...ins, ...outs].map((c) => ({ ...c, colour: channelColour(c.wire) }));
+    }, [channelsKey]);
+
+    const [wire, setWire] = useState<number>(() => channels[0]?.wire ?? 0);
+    const chosen = channels.find((c) => c.wire === wire) ?? channels[0];
+    const cw = chosen?.wire ?? 0;
+    useEffect(() => {
+      if (chosen && chosen.wire !== wire) setWire(chosen.wire);
+    }, [chosen, wire]);
+
+    // Which other channels' curves are shown (M58): this viewer's, in this view.
+    const [hidden, setHidden] = useState<ReadonlySet<number>>(new Set());
+
+    // The chosen channel's bands from the device, the same array while they are the same.
+    const deviceKey = JSON.stringify(peq(s, cw));
+    const device = useMemo(() => peq(s, cw), [deviceKey, cw]);
+    const edits = useBandEdits(session, cw, device, ro);
+
+    const [sel, setSel] = useState<{ set: ReadonlySet<number>; anchor: number | null }>({ set: new Set(), anchor: null });
+    useEffect(() => setSel({ set: new Set(), anchor: null }), [cw]);
+    const select = useCallback((set: Set<number>, anchor: number | null) => setSel({ set, anchor: anchor !== null && set.has(anchor) ? anchor : ([...set][0] ?? null) }), []);
+    // A band that went off (deleted elsewhere) is not chosen.
+    useEffect(() => {
+      const keep = [...sel.set].filter((b) => edits.shown[b] && isGraphBand(edits.shown[b]!));
+      if (keep.length !== sel.set.size) select(new Set(keep), sel.anchor);
+    }, [edits.shown]);
+
+    // The curves: the chosen channel's (as shown, a drag included) first, then the others shown.
+    const flat = s.bypass;
+    const othersShown = channels.filter((c) => c.wire !== cw && !hidden.has(c.wire));
+    const req = useMemo<CurveRequest>(
+      () => ({
+        chains: flat ? [[], ...othersShown.map(() => [])] : [chosen ? chain(s, chosen, edits.shown) : edits.shown, ...othersShown.map((c) => chain(s, c, peq(s, c.wire)))],
+        bands: edits.shown,
+      }),
+      [JSON.stringify([edits.shown, flat, othersShown.map((c) => [c.wire, peq(s, c.wire), c.output ? s.xover?.[c.wire] : null]), chosen?.output ? s.xover?.[cw] : null])],
+    );
+    const key = JSON.stringify(req);
+    const curves = useCurves(session, key, req);
+    const freqs = useGrid(session);
+    const othersKey = JSON.stringify([curves?.chains.slice(1), othersShown.map((c) => [c.colour, offsetOf(s, c)])]);
+    const others = useMemo(
+      () =>
+        othersShown
+          .map((c, i) => ({ curve: curves?.chains[i + 1] ?? [], colour: c.colour, offset: offsetOf(s, c) }))
+          .filter((o) => o.curve.length),
+      [othersKey],
+    );
+
+    const freqInput = useRef<HTMLInputElement | null>(null);
+    const freqRef = useCallback((el: HTMLInputElement | null) => {
+      freqInput.current = el;
+    }, []);
+    const openFields = useCallback(
+      (b: number) => {
+        select(new Set([b]), b);
+        // Once the chip shows that band.
+        requestAnimationFrame(() => freqInput.current?.focus());
+      },
+      [select],
+    );
+
+    const available = useMemo(() => availableTypes(s), [s.formatVersion, s.fwMajor, s.fwMinor, s.fwPatch]);
+    const bypassOk = bypassSupported(s);
+    const anchor = sel.anchor !== null && sel.set.has(sel.anchor) ? sel.anchor : null;
+    const chipBand = anchor !== null && edits.shown[anchor] ? { b: anchor, p: edits.shown[anchor]! } : null;
+    const chipG: Geometry = { width: 1, height: 1, minFreq: 20, maxFreq: 20000, dbTop: 25, dbBottom: -25 };
+    const targets = () => new Map([...sel.set].map((b) => [b, edits.current(b)]));
+    const choose = useCallback(
+      (b: number, add: boolean) => {
+        setSel((cur) => {
+          if (!add) return { set: new Set([b]), anchor: b };
+          const next = new Set(cur.set);
+          if (next.has(b)) next.delete(b);
+          else next.add(b);
+          return { set: next, anchor: next.has(b) ? b : ([...next][0] ?? null) };
+        });
+      },
+      [],
+    );
+
+    if (!chosen) return <p class="empty">This DSPi has no channels to show.</p>;
+    const offset = offsetOf(s, chosen);
+
+    return (
+      <div class="eq-screen">
+        <div class="eq-channels" role="group" aria-label="Channels">
+          {channels.map((c) => (
+            <span class="eq-channel" key={c.wire}>
+              <button type="button" class="eq-pick" aria-pressed={c.wire === cw} onClick={() => setWire(c.wire)} title={c.name}>
+                <span class="swatch" style={{ background: c.colour }} aria-hidden="true" />
+                <span class="eq-desc">{c.descriptor}</span> <span class="eq-name">{c.name}</span>
+              </button>
+              <button
+                type="button"
+                class="eq-eye"
+                aria-label={`Show ${c.descriptor} ${c.name} on the graph`}
+                aria-pressed={c.wire === cw || !hidden.has(c.wire)}
+                disabled={c.wire === cw}
+                onClick={() =>
+                  setHidden((h) => {
+                    const n = new Set(h);
+                    if (n.has(c.wire)) n.delete(c.wire);
+                    else n.add(c.wire);
+                    return n;
+                  })
+                }
+              >
+                <span aria-hidden="true">{c.wire === cw || !hidden.has(c.wire) ? "●" : "○"}</span>
+              </button>
+            </span>
+          ))}
+        </div>
+        <section class="card eq-graph-card" aria-label="Graph">
+          <EqGraph
+            idBase={idBase}
+            channelName={`${chosen.descriptor} ${chosen.name}`}
+            edits={edits}
+            curves={curves}
+            freqs={freqs}
+            others={others}
+            colour={chosen.colour}
+            offset={flat ? 0 : offset}
+            selection={sel.set}
+            anchor={anchor}
+            select={select}
+            limits={limits}
+            available={available}
+            bypassOk={bypassOk}
+            disabled={ro}
+            openFields={openFields}
+          />
+          <BandChip
+            band={chipBand}
+            count={sel.set.size}
+            available={available}
+            bypassOk={bypassOk}
+            limits={limits}
+            g={chipG}
+            disabled={ro}
+            set={(p) => anchor !== null && edits.commit(new Map([[anchor, p]]))}
+            retype={(t) => edits.commit(retypeAll(targets(), t))}
+            bypass={(on) => edits.commit(new Map([...targets()].map(([b, p]) => [b, { ...p, bypass: on }])))}
+            remove={() => {
+              edits.commit(new Map([...sel.set].map((b) => [b, { ...OFF_BAND }])));
+              setSel({ set: new Set(), anchor: null });
+            }}
+            freqRef={freqRef}
+          />
+        </section>
+        <BandList
+          channelName={`${chosen.descriptor} ${chosen.name}`}
+          bands={edits.shown}
+          selection={sel.set}
+          available={available}
+          bypassOk={bypassOk}
+          limits={limits}
+          disabled={ro}
+          ask={ask}
+          choose={choose}
+          commit={edits.commit}
+        />
+      </div>
+    );
+  },
+  // The meters and the rest of the device's state do not reach it: only the EQ's own.
+  (a, b) =>
+    a.session === b.session &&
+    a.ask === b.ask &&
+    a.ro === b.ro &&
+    a.usbActive === b.usbActive &&
+    a.limits === b.limits &&
+    eqKey(a.s) === eqKey(b.s),
+);
+
+function eqKey(s: DspState): string {
+  return JSON.stringify([
+    s.filters,
+    s.xover,
+    s.maxBands,
+    s.bypass,
+    s.channelNames,
+    s.outputEnabled,
+    s.outputGainDb,
+    s.inputPreampDb,
+    s.numInputChannels,
+    s.numOutputChannels,
+    s.inputSource,
+    s.i2sInputChannels,
+    s.formatVersion,
+    s.fwMajor,
+    s.fwMinor,
+    s.fwPatch,
+  ]);
+}

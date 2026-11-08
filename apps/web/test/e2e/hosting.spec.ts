@@ -261,8 +261,9 @@ test.describe("served by dspi web on localhost", () => {
     const hubSession = await openHubDemo(page, `localhost:${LOCAL_PORT}`);
     await writeOnce(hubSession, info, "-18.0");
     // Both open at once, each its own session.
-    await expect(page.getByRole("tab")).toHaveCount(2);
-    await page.getByRole("tab").first().click();
+    // -- WP WB6b -- the sessions' tabs (a session's own screens have tabs too)
+    await expect(page.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab")).toHaveCount(2);
+    await page.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab").first().click();
     await expect(page.getByRole("article").locator(".device-meta")).toHaveText("RP2350 · firmware 1.1.6 · MOCKA001");
     expect(errors).toEqual([]);
   });

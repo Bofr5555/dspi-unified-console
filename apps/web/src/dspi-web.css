@@ -232,7 +232,10 @@
 .dspi-web [role="menuitem"].danger { color: var(--bad); }
 
 .dspi-web .presets-card .card-head { flex-wrap: wrap; }
-.dspi-web .preset-pick { display: flex; align-items: center; gap: 0.5rem; min-width: 0; flex: 1 1 11rem; }
+/* -- WP WB6b -- (c6p WB6a-1) the picker has its row to itself, the menu button under it, so a
+   card's width never cuts the slot's name */
+.dspi-web .preset-pick { display: flex; align-items: center; gap: 0.5rem; min-width: 0; flex: 1 1 100%; }
+.dspi-web .presets-card .card-head .menu { margin-left: auto; }
 .dspi-web .preset-pick select { flex: 1; min-width: 7rem; }
 .dspi-web .preset-status { margin: 0.4rem 0 0; min-height: 1.4rem; display: flex; gap: 0.5rem; align-items: center; }
 
@@ -314,3 +317,165 @@
 .dspi-web .change-list { margin: 0.25rem 0; padding-left: 1.1rem; font-size: 0.9rem; }
 .dspi-web .dialog-field { display: flex; flex-direction: column; gap: 0.3rem; margin: 0.5rem 0; }
 .dspi-web .dialog-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; margin-top: 0.75rem; }
+
+/* -- WP WB6b -- the EQ screen (src/screens/eq): channel pills that scroll sideways inside
+   their row, the graph at a fixed height, the band chip and the band list at fixed row
+   heights, so choosing, editing and states never move the layout */
+.dspi-web {
+  --eq-bg: #f1f2f5;
+  --eq-grid: rgba(0, 0, 0, 0.07);
+  --eq-zero: rgba(0, 0, 0, 0.3);
+  --eq-text: rgba(0, 0, 0, 0.5);
+  --eq-ring: #1c1c1f;
+}
+@media (prefers-color-scheme: dark) {
+  .dspi-web:not([data-theme="light"]) {
+    --eq-bg: #151518;
+    --eq-grid: rgba(255, 255, 255, 0.08);
+    --eq-zero: rgba(255, 255, 255, 0.3);
+    --eq-text: rgba(255, 255, 255, 0.55);
+    --eq-ring: #ffffff;
+  }
+}
+.dspi-web[data-theme="dark"] {
+  --eq-bg: #151518;
+  --eq-grid: rgba(255, 255, 255, 0.08);
+  --eq-zero: rgba(255, 255, 255, 0.3);
+  --eq-text: rgba(255, 255, 255, 0.55);
+  --eq-ring: #ffffff;
+}
+.dspi-web .eq-screen { display: grid; gap: 0.75rem; min-width: 0; }
+.dspi-web .eq-channels {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  height: 2.4rem;
+  align-items: center;
+  scrollbar-width: thin;
+}
+.dspi-web .eq-channel { display: inline-flex; flex: none; }
+.dspi-web .eq-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  height: 1.9rem;
+  max-width: 11rem;
+  padding: 0 0.5rem;
+  border-radius: 999px 0 0 999px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.dspi-web .eq-pick[aria-pressed="true"] { border-color: var(--accent); background: var(--bg); }
+.dspi-web .eq-pick .eq-name { overflow: hidden; text-overflow: ellipsis; }
+.dspi-web .eq-pick .eq-desc { color: var(--muted); }
+.dspi-web .eq-eye {
+  height: 1.9rem;
+  width: 1.9rem;
+  padding: 0;
+  border-left: 0;
+  border-radius: 0 999px 999px 0;
+  font-size: 0.7rem;
+}
+.dspi-web .swatch { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; flex: none; background: var(--line); }
+.dspi-web .eq-graph-card { padding: 0.5rem; display: grid; gap: 0.5rem; }
+.dspi-web .eq-graph {
+  position: relative;
+  height: 16rem;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--eq-bg);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: crosshair;
+}
+@media (max-width: 720px) {
+  .dspi-web .eq-graph { height: 12rem; }
+}
+.dspi-web .eq-graph:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dspi-web .eq-graph canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.dspi-web .graph-menu {
+  position: absolute;
+  z-index: 5;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem;
+  min-width: 11rem;
+  max-height: 100%;
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+  cursor: default;
+}
+.dspi-web .graph-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 4px;
+  padding: 0.3rem 0.6rem;
+  white-space: nowrap;
+  font-size: 0.9rem;
+}
+.dspi-web .graph-menu button:focus-visible,
+.dspi-web .graph-menu button:hover:not(:disabled) { background: var(--bg); outline: none; }
+.dspi-web .graph-menu-heading { padding: 0.2rem 0.6rem; font-size: 0.75rem; color: var(--muted); }
+.dspi-web .band-chip { display: grid; grid-template-rows: 2rem 2rem; gap: 0.35rem; min-width: 0; }
+.dspi-web .chip-row { display: flex; gap: 0.35rem; align-items: center; min-width: 0; height: 2rem; }
+.dspi-web .chip-row > * { flex: none; }
+.dspi-web .chip-row select { height: 1.9rem; font-size: 0.85rem; flex: 0 1 9rem; min-width: 0; }
+.dspi-web .chip-row button { height: 1.9rem; padding: 0 0.5rem; font-size: 0.85rem; }
+.dspi-web .chip-band { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; color: var(--muted); white-space: nowrap; min-width: 4.2rem; }
+.dspi-web .chip-delete { margin-left: auto; }
+.dspi-web .chip-x { display: none; }
+.dspi-web .chip-values { justify-content: space-between; }
+.dspi-web .chip-values .value-field { flex: 1 1 0; }
+.dspi-web .chip-values .value-field:last-child { flex-grow: 1.5; }
+.dspi-web .value-field { display: inline-flex; align-items: center; min-width: 0; }
+.dspi-web .value-field input {
+  width: 100%;
+  min-width: 0;
+  height: 1.9rem;
+  padding: 0 0.3rem;
+  text-align: center;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+.dspi-web .value-field input[aria-invalid="true"] { border-color: var(--bad); }
+.dspi-web .value-field .step { flex: none; width: 1.6rem; padding: 0; }
+.dspi-web .band-list { padding: 0.4rem; overflow-x: auto; }
+.dspi-web .band-list table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 0.8rem; }
+.dspi-web .band-list th { font-size: 0.7rem; color: var(--muted); text-align: center; font-weight: 600; padding: 0 0.1rem 0.25rem; }
+.dspi-web .band-list td { height: 2.1rem; padding: 0 0.1rem; }
+.dspi-web .band-list tr.chosen td { background: var(--bg); }
+.dspi-web .band-list .c-n { width: 2.6rem; }
+.dspi-web .band-list .c-type { width: 34%; }
+.dspi-web .band-list .c-q { width: 14%; }
+.dspi-web .band-list .c-byp { width: 2rem; text-align: center; }
+.dspi-web .band-list select { width: 100%; height: 1.8rem; font-size: 0.8rem; padding: 0 0.2rem; }
+.dspi-web .band-list .value-field { width: 100%; }
+.dspi-web .band-list .value-field input { height: 1.8rem; font-size: 0.8rem; padding: 0 0.15rem; }
+.dspi-web .band-n { display: inline-flex; align-items: center; gap: 0.25rem; height: 1.8rem; padding: 0 0.35rem; font-size: 0.8rem; }
+.dspi-web .band-n[aria-pressed="true"] { border-color: var(--accent); }
+.dspi-web .band-list-foot { display: flex; gap: 0.5rem; justify-content: space-between; margin-top: 0.4rem; flex-wrap: wrap; }
+.dspi-web .band-list-foot button { font-size: 0.8rem; padding: 0.2rem 0.6rem; }
+.dspi-web .split { display: inline-flex; }
+.dspi-web .split button:first-child { border-radius: 6px 0 0 6px; }
+.dspi-web .split button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
+@media (max-width: 720px) {
+  .dspi-web .chip-band { min-width: 1.4rem; }
+  .dspi-web .chip-word { display: none; }
+  .dspi-web .chip-x { display: inline; }
+  .dspi-web .chip-row select { flex: 1 1 0; }
+  .dspi-web .band-list .c-n { width: 2.2rem; }
+  .dspi-web .band-n { padding: 0 0.2rem; }
+  .dspi-web .band-list .c-byp { width: 1.6rem; }
+}
+/* a phone: the list's values in short (useCompact), Q given the room */
+@media (max-width: 520px) {
+  .dspi-web .band-list .c-type { width: 28%; }
+  .dspi-web .band-list .c-q { width: 17%; }
+}
