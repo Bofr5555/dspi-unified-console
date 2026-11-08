@@ -54,6 +54,9 @@ import androidx.compose.ui.unit.dp
  *   that has no slider (e.g. a matrix crosspoint gain -> 0 dB).
  * @param range when set, a typed entry may carry its unit and is kept within
  *   it ([ValueFormat.parse] with a range; the tool windows' rows).
+ * @param editText the text the editor starts with, when it should carry more
+ *   decimals than the field shows (a delay: leaving the field untouched must
+ *   not round it; WP AN40). Default: the shown text.
  *
  * Stable API (lot 3).
  */
@@ -74,6 +77,7 @@ fun ValueField(
     textStyle: TextStyle = DspiType.bodyMono,
     onReset: (() -> Unit)? = null,
     range: ClosedFloatingPointRange<Float>? = null,
+    editText: String? = null,
     onCommit: (Float) -> Unit
 ) {
     @Suppress("NAME_SHADOWING")
@@ -104,7 +108,8 @@ fun ValueField(
                     onLongClick = onReset,
                     onLongClickLabel = if (onReset != null) "Reset" else null
                 ) {
-                    field = TextFieldValue(shown, TextRange(0, shown.length))
+                    val start = editText ?: shown
+                    field = TextFieldValue(start, TextRange(0, start.length))
                     editing = true
                 }.padding(horizontal = 4.dp, vertical = 4.dp),
             contentAlignment = Alignment.CenterEnd

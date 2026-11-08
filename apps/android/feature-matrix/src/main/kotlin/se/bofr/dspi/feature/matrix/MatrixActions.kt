@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.bridge.Throttle
-import se.bofr.dspi.ui.roundOutputDelay
 import se.bofr.dspi.ui.roundOutputGain
 
 /**
@@ -98,13 +97,16 @@ class MatrixActions(
         bridge.setOutputGain(output, roundOutputGain(db))
     }
 
-    fun outputDelayLive(output: Int, ms: Float) =
-        throttle("od/$output") { bridge.sendOutputDelayToDevice(output, roundOutputDelay(it)) }.submit(ms)
+    fun outputDelayLive(output: Int, ms: Float) = throttle("od/$output") { bridge.sendOutputDelayToDevice(output, it) }.submit(ms)
 
-    /** Commands.swift setOutputDelay (whole ms). */
+    /**
+     * Commands.swift setOutputDelay, without its whole-ms rounding: the core
+     * quantises to 0.0001 ms, so 0.5 ms stays 0.5 ms (WP AN40). The field's
+     * drag still steps on whole ms.
+     */
     fun outputDelayCommit(output: Int, ms: Float) {
         throttles["od/$output"]?.cancel()
-        bridge.setOutputDelay(output, roundOutputDelay(ms))
+        bridge.setOutputDelay(output, ms)
     }
 
     fun setOutputMute(output: Int, muted: Boolean) = bridge.setOutputMute(output, muted)
