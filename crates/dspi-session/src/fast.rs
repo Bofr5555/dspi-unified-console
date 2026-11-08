@@ -15,8 +15,8 @@
 )]
 
 use dspi_proto::generated::opcodes as op;
-use dspi_proto::registry::{ParamDesc, WValue, by_path};
-use dspi_proto::value::{EqParamPacket, Value};
+use dspi_proto::registry::{self, ParamDesc, WValue, by_path};
+use dspi_proto::value::{EqParamPacket, Unit, Value, ValueError};
 use dspi_proto::{Dir, FilterType, Platform};
 
 use crate::{Session, WriteError};
@@ -32,7 +32,7 @@ impl Session {
     ///
     /// Cost on the wire:
     /// - a scalar: one transfer (an OUT, or an IN for a write-as-read);
-    /// - an EQ field (`eq.type`, `eq.freq`, `eq.q`, `eq.gain`): one band read
+    /// - an EQ field (`eq.type`, `eq.freq`, `eq.q`, `eq.gain`, `eq.fp`, `eq.qp`): one band read
     ///   ([`Session::read_band`], five IN transfers, six for a Linkwitz
     ///   Transform) and one band write, because the firmware takes a band only
     ///   whole. A caller that holds the band already should send the packet
@@ -64,8 +64,8 @@ impl Session {
 
         self.check_available(d)?;
         self.check_indices(d, indices)?;
-        let value = d.kind.validate(&value)?;
         self.check_platform_range(d, &value)?;
+        let value = d.kind.validate(&value)?;
 
         if self.dry_run {
             return Ok(());
@@ -104,22 +104,45 @@ impl Session {
         Ok(())
     }
 
-    /// The platform limit [`Session::write`] checks beyond the registry's
-    /// range: the delay buffers hold 42 ms on an RP2040 against 85 ms on an
-    /// RP2350 (config.h:94-99). Shared by `send` and `write`.
+    /// The platform limits [`Session::write`] checks beyond the registry's
+    /// range. Shared by `send` and `write`; run before the registry's own
+    /// check, so a delay out of range names the line's range, not the
+    /// schema's 85 ms.
     pub(crate) fn check_platform_range(
         &self,
         d: &ParamDesc,
         value: &Value,
     ) -> Result<(), WriteError> {
+        // -- WP DL3 -- NaN and infinity pass every range test (`f < min` is
+        // false for NaN), so they are refused here, for every parameter,
+        // before any range is looked at.
+        if let Value::Float(f) = value {
+            check_finite(*f)?;
+        }
+        // A value of the wrong kind is the registry's to refuse.
+        if !matches!(value, Value::Float(_) | Value::Int(_)) {
+            return Ok(());
+        }
+        // -- WP CG37 -- the delay line holds 21 ms on an RP2040 and 42 ms on
+        // an RP2350 (`Platform::max_delay_ms`, the core's source too).
         if matches!(d.path, "ch.delay" | "out.delay")
-            && self.capabilities().platform == Platform::Rp2040
-            && value.as_f32().is_some_and(|v| v > 42.0)
+            && let Some(v) = value.as_f32()
         {
-            return Err(WriteError::PlatformRange {
-                path: d.path.into(),
-                max: "42 ms".into(),
-            });
+            let max = self.capabilities().platform.max_delay_ms();
+            if v > max {
+                return Err(WriteError::PlatformRange {
+                    path: d.path.into(),
+                    max: format!("{max} ms"),
+                });
+            }
+            if v < 0.0 {
+                return Err(WriteError::Value(ValueError::OutOfRange {
+                    value: f64::from(v),
+                    min: 0.0,
+                    max: f64::from(max),
+                    unit: Unit::Ms,
+                }));
+            }
         }
         // The registry carries the RP2350's +24 dB; an RP2040 applies its
         // preamp as a Q28 multiplier, which overflows above about +18 dB.
@@ -136,6 +159,28 @@ impl Session {
     }
 }
 
+// -- WP DL3 --
+/// Refuse NaN and infinity, which no parameter holds and every range test
+/// lets through.
+pub(crate) fn check_finite(f: f32) -> Result<(), WriteError> {
+    if f.is_finite() {
+        return Ok(());
+    }
+    Err(WriteError::Value(ValueError::WrongType {
+        expected: "a finite number",
+        got: if f.is_nan() {
+            "NaN"
+        } else if f > 0.0 {
+            "infinity"
+        } else {
+            "-infinity"
+        },
+    }))
+}
+
+/// The Linkwitz Transform's target Q when the firmware stores 0 (`decode_qp`).
+pub(crate) const DEFAULT_QP: f32 = 0.707;
+
 /// Put one validated EQ field into a band read from the device. Shared by
 /// `send` and the EQ path of `Session::write`.
 pub(crate) fn apply_eq_field(
@@ -143,18 +188,38 @@ pub(crate) fn apply_eq_field(
     d: &ParamDesc,
     value: &Value,
 ) -> Result<(), WriteError> {
+    // -- WP CG34 -- `eq.gain` or `eq.fp` and `eq.qp` by the band's type.
+    registry::eq_field_fits(d.path, packet.band, packet.filter_type).map_err(|why| {
+        WriteError::Unavailable {
+            path: d.path.into(),
+            why,
+        }
+    })?;
     match d.path {
         "eq.type" => {
-            packet.filter_type = FilterType::from_raw(value.as_u8().unwrap_or(0));
+            let to = FilterType::from_raw(value.as_u8().unwrap_or(0));
+            // -- WP CG34 -- the Console's retype: into or out of a Linkwitz
+            // Transform, the gain field changes meaning (registry::retyped).
+            let qp = packet.qp.unwrap_or(DEFAULT_QP);
+            let [freq, q, gain, qp] = registry::retyped(
+                packet.filter_type,
+                to,
+                [packet.freq, packet.q, packet.gain_db, qp],
+            );
+            packet.filter_type = to;
+            packet.freq = freq;
+            packet.q = q;
+            packet.gain_db = gain;
             // A Linkwitz Transform needs a Qp to send; the firmware reads 0 as
             // "use the 0.707 default".
-            if packet.filter_type.is_linkwitz() && packet.qp.is_none() {
-                packet.qp = Some(0.707);
+            if to.is_linkwitz() {
+                packet.qp = Some(qp);
             }
         }
         "eq.freq" => packet.freq = value.as_f32().unwrap_or(packet.freq),
         "eq.q" => packet.q = value.as_f32().unwrap_or(packet.q),
-        "eq.gain" => packet.gain_db = value.as_f32().unwrap_or(packet.gain_db),
+        "eq.gain" | "eq.fp" => packet.gain_db = value.as_f32().unwrap_or(packet.gain_db),
+        "eq.qp" => packet.qp = value.as_f32().or(packet.qp),
         other => return Err(WriteError::UnknownParam(other.into())),
     }
     Ok(())
@@ -224,7 +289,7 @@ mod tests_wp_s1 {
         }
     }
 
-    fn rig_on(t: MockTransport, platform: Platform) -> (Session, LogHandle) {
+    pub(super) fn rig_on(t: MockTransport, platform: Platform) -> (Session, LogHandle) {
         let log = t.log_handle();
         let s = Session::new(Box::new(t), caps(platform)).unwrap();
         (s, log)
@@ -459,5 +524,218 @@ mod tests_wp_s1 {
         assert!(s.send("pre", &[0], Value::Float(18.0)).is_ok());
         let mut s = session(Platform::Rp2350);
         assert!(s.send("pre", &[0], Value::Float(24.0)).is_ok());
+    }
+
+    // -- WP CG34 --
+    /// A band that reads as a Linkwitz Transform: every GET_EQ_PARAM
+    /// answers 11, so the type is 11 (and the floats tiny).
+    fn lt_band() -> MockTransport {
+        MockTransport::new().data(op::REQ_GET_EQ_PARAM, 11u32.to_le_bytes().to_vec())
+    }
+
+    #[test]
+    fn wp_cg34_fp_and_qp_go_out_in_the_whole_band() {
+        let (mut s, log) = rig(lt_band());
+        s.send("eq.fp", &[8, 1], Value::Float(30.0)).unwrap();
+        s.send("eq.qp", &[8, 1], Value::Float(0.5)).unwrap();
+        let sets: Vec<Exchange> = outs(&log)
+            .into_iter()
+            .filter(|e| e.opcode == op::REQ_SET_EQ_PARAM)
+            .collect();
+        assert_eq!(sets.len(), 2);
+        // fp is gain_db (bytes 12..16); Qp the two bytes after, Q * 512.
+        assert_eq!(sets[0].payload[2], 11);
+        assert_eq!(sets[0].payload[12..16], 30.0f32.to_le_bytes());
+        assert_eq!(sets[1].payload.len(), 18);
+        assert_eq!(sets[1].payload[16..18], 256u16.to_le_bytes());
+    }
+
+    #[test]
+    fn wp_cg34_the_band_type_decides_gain_or_fp() {
+        let (mut s, _) = rig(lt_band());
+        assert!(matches!(
+            s.send("eq.gain", &[8, 1], Value::Float(3.0)),
+            Err(WriteError::Unavailable { why, .. }) if why.contains("eq.fp")
+        ));
+        // A flat band (type 0): no fp, no Qp; its gain as before.
+        let (mut s, _) = rig(MockTransport::new().data(op::REQ_GET_EQ_PARAM, vec![0; 4]));
+        for (path, v) in [("eq.fp", 30.0), ("eq.qp", 0.7)] {
+            assert!(matches!(
+                s.send(path, &[8, 1], Value::Float(v)),
+                Err(WriteError::Unavailable { .. })
+            ));
+        }
+        assert!(s.send("eq.gain", &[8, 1], Value::Float(3.0)).is_ok());
+        // Out of the firmware's range, before the wire.
+        let (mut s, log) = rig(lt_band());
+        assert!(matches!(
+            s.send("eq.fp", &[8, 1], Value::Float(5.0)),
+            Err(WriteError::Value(_))
+        ));
+        assert!(matches!(
+            s.send("eq.qp", &[8, 1], Value::Float(25.0)),
+            Err(WriteError::Value(_))
+        ));
+        assert!(log_of(&log).is_empty());
+    }
+
+    #[test]
+    fn wp_cg34_qp_reads_back_from_param_5() {
+        let (mut s, log) =
+            rig(MockTransport::new().data(op::REQ_GET_EQ_PARAM, 307u32.to_le_bytes().to_vec()));
+        assert_eq!(
+            s.read("eq.qp", &[8, 1]).unwrap(),
+            Value::Float(307.0 / 512.0)
+        );
+        assert_eq!(log_of(&log)[0].value & 7, 5);
+        let (mut s, _) = rig(MockTransport::new().data(op::REQ_GET_EQ_PARAM, vec![0; 4]));
+        assert_eq!(s.read("eq.qp", &[8, 1]).unwrap(), Value::Float(0.707));
+    }
+}
+
+// -- WP CG37 --
+#[cfg(test)]
+mod tests_wp_cg37 {
+    use super::tests_wp_s1::rig_on;
+    use crate::WriteError;
+    use dspi_proto::Platform;
+    use dspi_proto::value::Value;
+    use dspi_transport::MockTransport;
+
+    #[test]
+    fn wp_cg37_the_line_is_21_ms_on_an_rp2040_and_42_on_an_rp2350() {
+        assert_eq!(Platform::Rp2040.max_delay_ms(), 21.0);
+        assert_eq!(Platform::Rp2350.max_delay_ms(), 42.0);
+        assert_eq!(Platform::Unknown(7).max_delay_ms(), 21.0);
+    }
+
+    /// `write`, `send` and `check` refuse a delay past the platform's line
+    /// and take one at it, for both delay paths.
+    #[test]
+    fn wp_cg37_write_send_and_check_hold_the_line() {
+        for (platform, max) in [(Platform::Rp2040, 21.0f32), (Platform::Rp2350, 42.0)] {
+            for (path, ix) in [("ch.delay", 0u8), ("out.delay", 1)] {
+                let (mut s, _) = rig_on(MockTransport::new(), platform);
+                assert!(s.check(path, &[ix], &Value::Float(max)).is_ok(), "{path}");
+                assert!(s.send(path, &[ix], Value::Float(max)).is_ok(), "{path}");
+                for over in [Value::Float(max + 0.5), Value::Int(85)] {
+                    let w = s.write(path, &[ix], over.clone()).unwrap_err();
+                    let f = s.send(path, &[ix], over.clone()).unwrap_err();
+                    assert_eq!(format!("{w:?}"), format!("{f:?}"));
+                    assert!(
+                        matches!(&w, WriteError::PlatformRange { max: m, .. } if *m == format!("{max} ms")),
+                        "{path} {over:?}: {w:?}"
+                    );
+                    assert_eq!(
+                        w.to_string(),
+                        format!("`{path}` is limited to {max} ms on this platform")
+                    );
+                }
+            }
+        }
+    }
+
+    /// Below 0 the message names the line's range, not the schema's 85 ms.
+    #[test]
+    fn wp_cg37_a_negative_delay_names_the_lines_range() {
+        for (platform, max) in [(Platform::Rp2040, 21), (Platform::Rp2350, 42)] {
+            let (mut s, log) = rig_on(MockTransport::new(), platform);
+            let e = s.write("out.delay", &[0], Value::Float(-1.0)).unwrap_err();
+            assert!(matches!(e, WriteError::Value(_)), "{e:?}");
+            assert_eq!(
+                e.to_string(),
+                format!("-1 is outside the allowed range 0 to {max} ms")
+            );
+            let f = s.send("ch.delay", &[0], Value::Float(-1.0)).unwrap_err();
+            assert_eq!(e.to_string(), f.to_string());
+            assert!(log.lock().unwrap().is_empty(), "nothing on the wire");
+        }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests_wp_dl3 {
+    use super::tests_wp_s1::rig_on;
+    use crate::WriteError;
+    use dspi_proto::registry::{Kind, REGISTRY};
+    use dspi_proto::value::{EqParamPacket, Value};
+    use dspi_proto::{FilterType, Platform};
+    use dspi_transport::MockTransport;
+
+    const NOT_FINITE: [f32; 3] = [f32::NAN, f32::INFINITY, f32::NEG_INFINITY];
+
+    /// Every float parameter in the registry refuses NaN and infinity in the
+    /// check `write`, `send` and `check` share, before its range is looked at.
+    #[test]
+    fn wp_dl3_every_float_parameter_refuses_a_value_that_is_not_finite() {
+        let (s, _) = rig_on(MockTransport::new(), Platform::Rp2350);
+        let floats: Vec<_> = REGISTRY
+            .iter()
+            .filter(|d| matches!(d.kind, Kind::Float { .. }))
+            .collect();
+        assert!(floats.len() > 10, "the registry has float parameters");
+        for d in floats {
+            for f in NOT_FINITE {
+                let e = s.check_platform_range(d, &Value::Float(f)).unwrap_err();
+                assert!(matches!(e, WriteError::Value(_)), "{} {f}: {e:?}", d.path);
+            }
+        }
+    }
+
+    /// `dspi set out.delay 1 nan`, through each session path: refused in
+    /// words, nothing on the wire.
+    #[test]
+    fn wp_dl3_a_nan_delay_is_refused_before_the_wire() {
+        for platform in [Platform::Rp2040, Platform::Rp2350] {
+            let (mut s, log) = rig_on(MockTransport::new(), platform);
+            for (f, word) in [
+                (f32::NAN, "NaN"),
+                (f32::INFINITY, "infinity"),
+                (f32::NEG_INFINITY, "-infinity"),
+            ] {
+                let want = format!("expected a finite number, got {word}");
+                let w = s.write("out.delay", &[1], Value::Float(f)).unwrap_err();
+                assert_eq!(w.to_string(), want);
+                let n = s.send("out.delay", &[1], Value::Float(f)).unwrap_err();
+                assert_eq!(n.to_string(), want);
+                let c = s.check("ch.delay", &[0], &Value::Float(f)).unwrap_err();
+                assert_eq!(c.to_string(), want);
+                let g = s.send("vol.user", &[], Value::Float(f)).unwrap_err();
+                assert_eq!(g.to_string(), want);
+            }
+            assert!(log.lock().unwrap().is_empty(), "nothing on the wire");
+        }
+    }
+
+    /// A whole band with a field that is not finite is refused before it is sent.
+    #[test]
+    fn wp_dl3_a_band_with_a_nan_field_is_not_sent() {
+        let (mut s, log) = rig_on(MockTransport::new(), Platform::Rp2350);
+        let band = EqParamPacket {
+            channel: 0,
+            band: 0,
+            filter_type: FilterType::Peaking,
+            bypass: false,
+            freq: 1000.0,
+            q: 0.707,
+            gain_db: 0.0,
+            qp: None,
+        };
+        for f in NOT_FINITE {
+            for p in [
+                EqParamPacket { freq: f, ..band },
+                EqParamPacket { q: f, ..band },
+                EqParamPacket { gain_db: f, ..band },
+                EqParamPacket {
+                    qp: Some(f),
+                    ..band
+                },
+            ] {
+                let e = s.write_band(&p).unwrap_err();
+                assert!(matches!(e, WriteError::Value(_)), "{e:?}");
+            }
+        }
+        assert!(log.lock().unwrap().is_empty(), "nothing on the wire");
     }
 }

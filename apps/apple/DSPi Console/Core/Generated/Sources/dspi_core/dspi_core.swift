@@ -1385,6 +1385,16 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func copyPreset(source: UInt8, dest: UInt8) throws 
     
     /**
+     * Whether enabling output `output` would collide on Core 1, and if so
+     * why, in the words [`DspiCore::write_param`] refuses it with: `None`
+     * when it would not. The device decides
+     * ([`DspiCore::check_core1_conflict`]); the words come from the layout.
+     *
+     * Errors: those of [`DspiCore::check_core1_conflict`].
+     */
+    func core1ConflictReason(output: UInt8) throws  -> String?
+    
+    /**
      * Close the flow: the user left. No traffic. `InvalidArgument` during a
      * run, which goes on until ended.
      */
@@ -2386,7 +2396,8 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * directory. The baseline becomes the loaded state. Runs under the Link
      * device lock. The device also notifies `PRESET_LOADED` and then
      * `BULK_INVALIDATED` (source `PRESET`); `process_notifications`
-     * re-reads on those as on any foreign change.
+     * re-reads on those as on any foreign change, and an edit made between
+     * this call and that notification stays unsaved (WP CG33).
      *
      * Errors: [`DspiError::Refused`] with the `PRESET_*` status;
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
@@ -2543,7 +2554,9 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * mirror cannot patch re-read the whole image and the preset
      * directory: `NOTIFY_STATE | NOTIFY_CURVES | NOTIFY_REFRESHED`. A
      * preset load or factory reset also makes the new state the
-     * baseline of `preset_dirty`. If the re-read fails, the flags say
+     * baseline of `preset_dirty`, except what was changed on the device
+     * after the load (an edit made before the notification arrived):
+     * that stays unsaved. If the re-read fails, the flags say
      * only what was patched, and it is tried again: up to 5 times over
      * about 31 s, each try announced by a call of the [`NotifyListener`].
      * After the last one the result carries [`NOTIFY_STALE`], once; the
@@ -2970,12 +2983,14 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func setDacMute(enabled: Bool, activeLow: Bool, pin: UInt8, holdMs: UInt16, releaseMs: UInt16) throws 
     
     /**
-     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms and then
-     * clamped to 0..[`DspiCore::max_delay_ms`]. An output channel's delay
-     * is its output delay, so it goes through [`DspiCore::set_output_delay`].
+     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms; below 0 it
+     * is 0. An output channel's delay is its output delay, so it goes
+     * through [`DspiCore::set_output_delay`].
      *
-     * Errors: [`DspiError::InvalidArgument`] for a channel out of range or a
-     * NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for a channel out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
     func setDelay(ch: UInt8, ms: Float) throws 
     
@@ -3332,12 +3347,13 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func setOutputConfigMode(mode: UInt8) throws 
     
     /**
-     * Output delay in ms, quantized to 0.0001 ms and then clamped to
-     * 0..[`DspiCore::max_delay_ms`]. It is also the delay of the output's
-     * wire channel.
+     * Output delay in ms, quantized to 0.0001 ms; below 0 it is 0. It is
+     * also the delay of the output's wire channel.
      *
-     * Errors: [`DspiError::InvalidArgument`] for an output out of range or
-     * a NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for an output out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
     func setOutputDelay(output: UInt8, ms: Float) throws 
     
@@ -3942,6 +3958,22 @@ open func copyPreset(source: UInt8, dest: UInt8)throws   {try rustCallWithError(
         FfiConverterUInt8.lower(dest),$0
     )
 }
+}
+    
+    /**
+     * Whether enabling output `output` would collide on Core 1, and if so
+     * why, in the words [`DspiCore::write_param`] refuses it with: `None`
+     * when it would not. The device decides
+     * ([`DspiCore::check_core1_conflict`]); the words come from the layout.
+     *
+     * Errors: those of [`DspiCore::check_core1_conflict`].
+     */
+open func core1ConflictReason(output: UInt8)throws  -> String?  {
+    return try  FfiConverterOptionString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_core1_conflict_reason(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(output),$0
+    )
+})
 }
     
     /**
@@ -5407,7 +5439,8 @@ open func loadParams()throws   {try rustCallWithError(FfiConverterTypeDspiError_
      * directory. The baseline becomes the loaded state. Runs under the Link
      * device lock. The device also notifies `PRESET_LOADED` and then
      * `BULK_INVALIDATED` (source `PRESET`); `process_notifications`
-     * re-reads on those as on any foreign change.
+     * re-reads on those as on any foreign change, and an edit made between
+     * this call and that notification stays unsaved (WP CG33).
      *
      * Errors: [`DspiError::Refused`] with the `PRESET_*` status;
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
@@ -5635,7 +5668,9 @@ open func presetDirty() -> Bool  {
      * mirror cannot patch re-read the whole image and the preset
      * directory: `NOTIFY_STATE | NOTIFY_CURVES | NOTIFY_REFRESHED`. A
      * preset load or factory reset also makes the new state the
-     * baseline of `preset_dirty`. If the re-read fails, the flags say
+     * baseline of `preset_dirty`, except what was changed on the device
+     * after the load (an edit made before the notification arrived):
+     * that stays unsaved. If the re-read fails, the flags say
      * only what was patched, and it is tried again: up to 5 times over
      * about 31 s, each try announced by a call of the [`NotifyListener`].
      * After the last one the result carries [`NOTIFY_STALE`], once; the
@@ -6244,12 +6279,14 @@ open func setDacMute(enabled: Bool, activeLow: Bool, pin: UInt8, holdMs: UInt16,
 }
     
     /**
-     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms and then
-     * clamped to 0..[`DspiCore::max_delay_ms`]. An output channel's delay
-     * is its output delay, so it goes through [`DspiCore::set_output_delay`].
+     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms; below 0 it
+     * is 0. An output channel's delay is its output delay, so it goes
+     * through [`DspiCore::set_output_delay`].
      *
-     * Errors: [`DspiError::InvalidArgument`] for a channel out of range or a
-     * NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for a channel out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
 open func setDelay(ch: UInt8, ms: Float)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_set_delay(self.uniffiClonePointer(),
@@ -6800,12 +6837,13 @@ open func setOutputConfigMode(mode: UInt8)throws   {try rustCallWithError(FfiCon
 }
     
     /**
-     * Output delay in ms, quantized to 0.0001 ms and then clamped to
-     * 0..[`DspiCore::max_delay_ms`]. It is also the delay of the output's
-     * wire channel.
+     * Output delay in ms, quantized to 0.0001 ms; below 0 it is 0. It is
+     * also the delay of the output's wire channel.
      *
-     * Errors: [`DspiError::InvalidArgument`] for an output out of range or
-     * a NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for an output out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
 open func setOutputDelay(output: UInt8, ms: Float)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_set_output_delay(self.uniffiClonePointer(),
@@ -12363,6 +12401,91 @@ public func FfiConverterTypeFilterParams_lift(_ buf: RustBuffer) throws -> Filte
 #endif
 public func FfiConverterTypeFilterParams_lower(_ value: FilterParams) -> RustBuffer {
     return FfiConverterTypeFilterParams.lower(value)
+}
+
+
+/**
+ * One filter type and the name clients show for it.
+ */
+public struct FilterTypeName {
+    /**
+     * The firmware's type code (`FILTER_*`): 0..13 PEQ, 32..63 crossover.
+     */
+    public var code: UInt8
+    /**
+     * The name, e.g. "High Cut (12dB)".
+     */
+    public var name: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The firmware's type code (`FILTER_*`): 0..13 PEQ, 32..63 crossover.
+         */code: UInt8, 
+        /**
+         * The name, e.g. "High Cut (12dB)".
+         */name: String) {
+        self.code = code
+        self.name = name
+    }
+}
+
+#if compiler(>=6)
+extension FilterTypeName: Sendable {}
+#endif
+
+
+extension FilterTypeName: Equatable, Hashable {
+    public static func ==(lhs: FilterTypeName, rhs: FilterTypeName) -> Bool {
+        if lhs.code != rhs.code {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(code)
+        hasher.combine(name)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFilterTypeName: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FilterTypeName {
+        return
+            try FilterTypeName(
+                code: FfiConverterUInt8.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FilterTypeName, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.code, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFilterTypeName_lift(_ buf: RustBuffer) throws -> FilterTypeName {
+    return try FfiConverterTypeFilterTypeName.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFilterTypeName_lower(_ value: FilterTypeName) -> RustBuffer {
+    return FfiConverterTypeFilterTypeName.lower(value)
 }
 
 
@@ -20726,6 +20849,31 @@ fileprivate struct FfiConverterSequenceTypeFilterParams: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFilterTypeName: FfiConverterRustBuffer {
+    typealias SwiftType = [FilterTypeName]
+
+    public static func write(_ value: [FilterTypeName], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFilterTypeName.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FilterTypeName] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FilterTypeName]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFilterTypeName.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeLinkDenied: FfiConverterRustBuffer {
     typealias SwiftType = [LinkDenied]
 
@@ -21354,6 +21502,27 @@ public func curveFreq(i: UInt32) -> Double  {
 })
 }
 /**
+ * The name of filter type `code`; "Type 14" for a code the firmware does
+ * not define (yet).
+ */
+public func filterTypeName(code: UInt8) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_filter_type_name(
+        FfiConverterUInt8.lower(code),$0
+    )
+})
+}
+/**
+ * Every filter type the firmware defines with its name, in the Console's
+ * order: the PEQ types 0..13, then the crossovers 32..63.
+ */
+public func filterTypeNames() -> [FilterTypeName]  {
+    return try!  FfiConverterSequenceTypeFilterTypeName.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_filter_type_names($0
+    )
+})
+}
+/**
  * The record for a board already in the bootloader: unknown, so the check
  * asks.
  */
@@ -21619,6 +21788,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_curve_freq() != 1109) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_func_filter_type_name() != 9662) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_filter_type_names() != 37435) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_func_firmware_guard_board_in_bootloader() != 60307) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -21707,6 +21882,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_copy_preset() != 46555) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_core1_conflict_reason() != 6255) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_close() != 22148) {
@@ -21967,7 +22145,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_load_params() != 50295) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_load_preset() != 31859) {
+    if (uniffi_dspi_core_checksum_method_dspicore_load_preset() != 51595) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_max_delay_ms() != 14810) {
@@ -22009,7 +22187,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_preset_dirty() != 19546) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_process_notifications() != 39404) {
+    if (uniffi_dspi_core_checksum_method_dspicore_process_notifications() != 22812) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_raw_get() != 1394) {
@@ -22114,7 +22292,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_set_dac_mute() != 53415) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_set_delay() != 25981) {
+    if (uniffi_dspi_core_checksum_method_dspicore_set_delay() != 62461) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_device_name() != 13429) {
@@ -22222,7 +22400,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_set_output_config_mode() != 52088) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_set_output_delay() != 4990) {
+    if (uniffi_dspi_core_checksum_method_dspicore_set_output_delay() != 49897) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_output_enable() != 35905) {

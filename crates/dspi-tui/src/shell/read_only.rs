@@ -1083,11 +1083,22 @@ mod tests_wp_tm4 {
             // S/PDIF input 0 is always on, so its enable starts at 1.
             let first = u8::from(d.path == "in.spdif.enable");
             let indices = vec![first; d.target.arity()];
-            let value = sample(d.kind);
+            // -- WP CG37 -- a delay's midpoint (42.5 ms) is past every line.
+            let value = if dspi_cmd::is_delay(d.path) {
+                Value::Float(1.0)
+            } else {
+                sample(d.kind)
+            };
             let is_exception = d.set.is_some_and(|s| HOUSEKEEPING.contains(&s));
 
             // The control: on a writable device this row does write.
-            let mock = MockTransport::new().answering_everything(vec![0u8; 512]);
+            // -- WP CG34 -- eq.fp and eq.qp only on a Linkwitz Transform band
+            // (type 11, the first byte of the band's type read).
+            let mut answer = vec![0u8; 512];
+            if matches!(d.path, "eq.fp" | "eq.qp") {
+                answer[0] = 11;
+            }
+            let mock = MockTransport::new().answering_everything(answer.clone());
             let log = mock.log_handle();
             let mut s = Session::new(Box::new(mock), everything_caps(32)).unwrap();
             if s.check(d.path, &indices, &value).is_err() {
@@ -1109,15 +1120,30 @@ mod tests_wp_tm4 {
             tried += 1;
 
             for send in [false, true] {
-                let mock = MockTransport::new().answering_everything(vec![0u8; 512]);
+                // -- WP CG35 -- the same answer as the control (review c6v
+                // CG34-N1), so eq.fp/eq.qp pass the type guard and reach the
+                // ReadOnlyTransport, which must be what refuses them.
+                let mock = MockTransport::new().answering_everything(answer.clone());
                 let log = mock.log_handle();
                 let guarded =
                     ReadOnlyTransport::new(Box::new(mock), BulkReads::Mapped, None, Some(17));
                 let mut s = Session::new(Box::new(guarded), everything_caps(17)).unwrap();
-                if send {
-                    let _ = s.send(d.path, &indices, value.clone());
+                let r = if send {
+                    s.send(d.path, &indices, value.clone()).map(|_| ())
                 } else {
-                    let _ = s.write(d.path, &indices, value.clone());
+                    s.write(d.path, &indices, value.clone()).map(|_| ())
+                };
+                if matches!(d.path, "eq.fp" | "eq.qp") {
+                    assert!(
+                        matches!(
+                            r,
+                            Err(dspi_session::WriteError::Transport(TransportError::Denied(
+                                _
+                            )))
+                        ),
+                        "{} (send: {send}) must be refused by the guard: {r:?}",
+                        d.path
+                    );
                 }
                 let leaked = writes(&log);
                 if is_exception {

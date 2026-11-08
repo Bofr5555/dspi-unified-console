@@ -25,7 +25,12 @@ type State = {
   outputMuted: boolean[];
 };
 
-/** The core's state of the n-th session the embedding page opened. */
+/**
+ * The core's state of the n-th session the embedding page opened. -- WP WB6b --
+ * Read by polling after a page action: a slider shows its position at once and
+ * the device's value once its writes are read back, so a read made in between
+ * may come before the last write (it shares the Worker's queue).
+ */
 async function coreState(page: Page, n = 0): Promise<State> {
   const snap = (await page.evaluate(
     (n) => (globalThis as unknown as Clients).dspiClients[n]!.call("state", null),
@@ -79,35 +84,35 @@ test("WB6a volume: user and master volume, reset, mute and bypass write and read
   // The user taper: position 128 of 200 is -12 dB.
   await setRange(vol.getByRole("slider", { name: "User Volume" }), 128);
   await expect(vol.locator(".volume-value")).toHaveText("-12.0 dB");
-  expect((await coreState(page)).userVolumeDb).toBe(-12);
+  await expect.poll(async () => (await coreState(page)).userVolumeDb).toBe(-12);
 
   // The master volume, on the firmware's taper: 100 steps of 0.1 dB below 0 is -10 dB.
   await vol.getByRole("combobox", { name: "Volume shown" }).selectOption("master");
   const master = vol.getByRole("slider", { name: "Master Volume" });
   await setRange(master, 148);
   await expect(vol.locator(".volume-value")).toHaveText("-10.0 dB");
-  expect((await coreState(page)).masterVolumeDb).toBe(-10);
+  await expect.poll(async () => (await coreState(page)).masterVolumeDb).toBe(-10);
   await expect(master).toHaveAttribute("aria-valuetext", "-10.0 dB");
   // A double click puts it back at 0 dB.
   await master.dblclick();
   await expect(vol.locator(".volume-value")).toHaveText("0.0 dB");
-  expect((await coreState(page)).masterVolumeDb).toBe(0);
+  await expect.poll(async () => (await coreState(page)).masterVolumeDb).toBe(0);
 
   const mute = vol.getByRole("button", { name: "Mute" });
   await mute.click();
   await expect(mute).toHaveAttribute("aria-pressed", "true");
-  expect((await coreState(page)).userMute).toBe(true);
+  await expect.poll(async () => (await coreState(page)).userMute).toBe(true);
   await mute.click();
   await expect(mute).toHaveAttribute("aria-pressed", "false");
-  expect((await coreState(page)).userMute).toBe(false);
+  await expect.poll(async () => (await coreState(page)).userMute).toBe(false);
 
   const bypass = vol.getByRole("button", { name: "Bypass" });
   await bypass.click();
   await expect(bypass).toHaveAttribute("aria-pressed", "true");
-  expect((await coreState(page)).bypass).toBe(true);
+  await expect.poll(async () => (await coreState(page)).bypass).toBe(true);
   await bypass.click();
   await expect(bypass).toHaveAttribute("aria-pressed", "false");
-  expect((await coreState(page)).bypass).toBe(false);
+  await expect.poll(async () => (await coreState(page)).bypass).toBe(false);
 
   // The volume shown is this viewer's choice and kept (the Console's sidebar mode).
   await page.reload();
@@ -125,7 +130,7 @@ test("WB6a volume: the keyboard moves the slider and the device follows", async 
   await page.keyboard.press("ArrowLeft");
   // Position 127: -60 + 60 * sqrt(127/200), read back at the core's 0.1 dB.
   await expect(session.locator(".volume-value")).toHaveText("-12.2 dB");
-  expect((await coreState(page)).userVolumeDb).toBe(-12.2);
+  await expect.poll(async () => (await coreState(page)).userVolumeDb).toBe(-12.2);
 });
 
 test("WB6a presets: switching asks about unsaved changes (Cancel, Discard, Save), in the core's words", async ({ page }) => {
@@ -158,28 +163,24 @@ test("WB6a presets: switching asks about unsaved changes (Cancel, Discard, Save)
   await prompt.getByRole("button", { name: "Cancel" }).click();
   await expect(prompt).toHaveCount(0);
   await expect(picker).toHaveValue(String(start));
-  expect((await coreState(page)).activePresetSlot).toBe(start);
+  await expect.poll(async () => (await coreState(page)).activePresetSlot).toBe(start);
 
   // Escape is Cancel too.
   await picker.selectOption(String(other));
   await expect(prompt).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(prompt).toHaveCount(0);
-  expect((await coreState(page)).activePresetSlot).toBe(start);
+  await expect.poll(async () => (await coreState(page)).activePresetSlot).toBe(start);
 
   // Discard: the other slot loads; the change is gone with it.
   await picker.selectOption(String(other));
   await prompt.getByRole("button", { name: "Discard" }).click();
   await expect(picker).toHaveValue(String(other));
-  expect((await coreState(page)).activePresetSlot).toBe(other);
+  await expect.poll(async () => (await coreState(page)).activePresetSlot).toBe(other);
   await expect(presets.getByText("Unsaved changes")).toHaveCount(0);
 
-  // Save: the change is stored in the slot left, then the switch.
-  // The load's own notification (PRESET_LOADED, then BULK_INVALIDATED from a
-  // preset) reaches the core on the Worker's next poll, and the core then takes
-  // what the device runs as the new baseline; an edit made before that would
-  // count as saved (a core race, reported with WB6a). Let it land first.
-  await page.waitForTimeout(500);
+  // Save: the change is stored in the slot left, then the switch. An edit made
+  // right after the load counts as unsaved (core fix CG33), so no wait is needed.
   await setRange(outputs.getByRole("slider").first(), -7.5);
   await expect(presets.getByText("Unsaved changes")).toBeVisible();
   await picker.selectOption(String(start));
@@ -191,7 +192,7 @@ test("WB6a presets: switching asks about unsaved changes (Cancel, Discard, Save)
   // And it is there when that slot is loaded again (no prompt: nothing unsaved).
   await picker.selectOption(String(other));
   await expect(picker).toHaveValue(String(other));
-  expect((await coreState(page)).outputGainDb[0]).toBe(-7.5);
+  await expect.poll(async () => (await coreState(page)).outputGainDb[0]).toBe(-7.5);
   expect(errors).toEqual([]);
 });
 
@@ -211,7 +212,7 @@ test("WB6a presets: the slot menu renames, sets the default, copies and clears",
   );
   await picker.selectOption(String(active));
   await expect(picker).toHaveValue(String(active));
-  expect((await coreState(page)).activePresetSlot).toBe(active);
+  await expect.poll(async () => (await coreState(page)).activePresetSlot).toBe(active);
 
   // Rename…: the device's name, read back into the picker.
   await menu(session, "Rename…");
@@ -219,7 +220,7 @@ test("WB6a presets: the slot menu renames, sets the default, copies and clears",
   await rename.getByRole("textbox", { name: "Name" }).fill("Stage");
   await rename.getByRole("button", { name: "Rename" }).click();
   await expect(picker.locator(`option[value="${active}"]`)).toHaveText(`${n}: Stage`);
-  expect((await coreState(page)).presetNames[active]).toBe("Stage");
+  await expect.poll(async () => (await coreState(page)).presetNames[active]).toBe("Stage");
 
   // Set as Default: the startup slot; the entry is then off.
   await menu(session, "Set as Default");
@@ -248,7 +249,7 @@ test("WB6a presets: the slot menu renames, sets the default, copies and clears",
   await expect(clear).toContainText("This cannot be undone.");
   await clear.getByRole("button", { name: "Clear" }).click();
   await expect(picker.locator(`option[value="${active}"]`)).toHaveText(`${n}: Empty`);
-  expect((await coreState(page)).presetOccupied & (1 << active)).toBe(0);
+  await expect.poll(async () => (await coreState(page)).presetOccupied & (1 << active)).toBe(0);
 
   // Clear All Slots…: every slot.
   await menu(session, "Clear All Slots…");
@@ -285,16 +286,16 @@ test("WB6a tools: Commit, Revert to Saved and Factory Reset ask first, then the 
   await expect(presets.getByText("Unsaved changes")).toBeVisible();
   await menu(session, "Revert to Saved…");
   await page.getByRole("dialog", { name: "Revert to Saved" }).getByRole("button", { name: "Cancel" }).click();
-  expect((await coreState(page)).outputGainDb[0]).toBe(-9);
+  await expect.poll(async () => (await coreState(page)).outputGainDb[0]).toBe(-9);
   await menu(session, "Revert to Saved…");
   await page.getByRole("dialog", { name: "Revert to Saved" }).getByRole("button", { name: "Revert" }).click();
   await expect(presets.getByText("Unsaved changes")).toHaveCount(0);
-  expect((await coreState(page)).outputGainDb[0]).toBe(-2);
+  await expect.poll(async () => (await coreState(page)).outputGainDb[0]).toBe(-2);
   await expect(session.getByRole("region", { name: "Outputs" }).locator(".ch-value").first()).toHaveText("-2.0 dB");
 
   // Factory Reset: the defaults (bypass off, trims at 0).
   await session.getByRole("button", { name: "Bypass" }).click();
-  expect((await coreState(page)).bypass).toBe(true);
+  await expect.poll(async () => (await coreState(page)).bypass).toBe(true);
   await menu(session, "Factory Reset…");
   await page.getByRole("dialog", { name: "Factory Reset" }).getByRole("button", { name: "Reset" }).click();
   await expect(session.getByRole("button", { name: "Bypass" })).toHaveAttribute("aria-pressed", "false");
@@ -324,31 +325,31 @@ test("WB6a channels: inputs and outputs are renamed, trimmed and muted, each rea
   await dlg.getByRole("textbox", { name: "Name" }).fill("Left in");
   await page.keyboard.press("Enter");
   await expect(inputs.getByRole("button", { name: "Rename Left in" })).toBeVisible();
-  expect((await coreState(page)).channelNames[0]).toBe("Left in");
+  await expect.poll(async () => (await coreState(page)).channelNames[0]).toBe("Left in");
 
   // The input's trim (`pre`, the registry's "Input trim").
   const trim = inputs.getByRole("slider", { name: "Left in Input trim" });
   await setRange(trim, -4);
   await expect(inputs.locator(".ch-value").first()).toHaveText("-4.0 dB");
-  expect((await coreState(page)).inputPreampDb[0]).toBe(-4);
+  await expect.poll(async () => (await coreState(page)).inputPreampDb[0]).toBe(-4);
   // A secondary click puts it back at 0 dB, as on the Console.
   await trim.click({ button: "right" });
   await expect(inputs.locator(".ch-value").first()).toHaveText("0.0 dB");
-  expect((await coreState(page)).inputPreampDb[0]).toBe(0);
+  await expect.poll(async () => (await coreState(page)).inputPreampDb[0]).toBe(0);
 
   // The first output: trim and mute.
   const outName = st0.channelNames[st0.numInputChannels]!;
   const gain = outputs.getByRole("slider", { name: `${outName} Output gain` });
   await setRange(gain, -3.5);
   await expect(outputs.locator(".ch-value").first()).toHaveText("-3.5 dB");
-  expect((await coreState(page)).outputGainDb[0]).toBe(-3.5);
+  await expect.poll(async () => (await coreState(page)).outputGainDb[0]).toBe(-3.5);
   const mute = outputs.getByRole("button", { name: `Mute ${outName}` });
   await mute.click();
   await expect(mute).toHaveAttribute("aria-pressed", "true");
-  expect((await coreState(page)).outputMuted[0]).toBe(true);
+  await expect.poll(async () => (await coreState(page)).outputMuted[0]).toBe(true);
   await mute.click();
   await expect(mute).toHaveAttribute("aria-pressed", "false");
-  expect((await coreState(page)).outputMuted[0]).toBe(false);
+  await expect.poll(async () => (await coreState(page)).outputMuted[0]).toBe(false);
   expect(errors).toEqual([]);
 });
 

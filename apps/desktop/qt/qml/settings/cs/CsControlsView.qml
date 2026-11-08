@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQml 2.15
 import "../../components"
+import "../../components/Format.js" as Format
 
 // The control cards (Control Surfaces page) or the aux output cards
 // (Auxiliary Outputs page): both are binding slots. Each card edits a draft;
@@ -331,7 +332,7 @@ Column {
         var parts = []
         if (remotes > 0) parts.push(remotes === 1 ? qsTr("%1 remote key").arg(remotes) : qsTr("%1 remote keys").arg(remotes))
         if (macros.length > 0) parts.push(macros.length === 1 ? qsTr("the macro %1").arg(macros.join(", ")) : qsTr("the macros %1").arg(macros.join(", ")))
-        return parts.length === 2 ? qsTr("Also driven by %1 and %2.").arg(parts[0]).arg(parts[1])
+        return parts.length === 2 ? Format.fmt(qsTr("Also driven by %1 and %2."), [parts[0], parts[1]])
              : parts.length === 1 ? qsTr("Also driven by %1.").arg(parts[0]) : ""
     }
 
@@ -556,7 +557,7 @@ Column {
                                     target: levelRow
                                     function onStoredChanged() { if (!levelSlider.pressed) levelSlider.value = levelRow.stored }
                                 }
-                                onPressedChanged: if (!pressed) {
+                                onSettled: {
                                     levelThrottle.cancel()
                                     // -- WP QD1 -- Refused: the slider goes back to what the device holds
                                     if (view.commitAuxLevel(card.slot, value) !== 0) value = levelRow.stored
@@ -663,7 +664,7 @@ Column {
                                     target: card
                                     function onBChanged() { if (!bootSlider.pressed) bootSlider.value = card.b.value / 256 }
                                 }
-                                onPressedChanged: if (!pressed) aux.setB("value", Math.max(0, Math.min(25600, Math.round(value * 256))))
+                                onSettled: aux.setB("value", Math.max(0, Math.min(25600, Math.round(value * 256))))
                             }
                             Text {
                                 width: 38

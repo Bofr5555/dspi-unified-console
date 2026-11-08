@@ -398,3 +398,24 @@ fn wp_cg15_about_is_exported() {
         "not in the Swift binding"
     );
 }
+
+// -- WP CG34 --
+#[test]
+fn wp_cg34_filter_type_names_are_exported() {
+    let kotlin = std::fs::read_to_string(find(&generate("kotlin"), "dspi_core.kt")).unwrap();
+    for item in [
+        "fun `filterTypeNames`",
+        "fun `filterTypeName`",
+        "data class FilterTypeName",
+    ] {
+        assert!(kotlin.contains(item), "{item} is not in the Kotlin binding");
+    }
+    let swift = std::fs::read_to_string(find(&generate("swift"), "dspi_core.swift")).unwrap();
+    for item in [
+        "func filterTypeNames(",
+        "func filterTypeName(",
+        "struct FilterTypeName",
+    ] {
+        assert!(swift.contains(item), "{item} is not in the Swift binding");
+    }
+}

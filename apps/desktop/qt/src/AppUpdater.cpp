@@ -150,7 +150,7 @@ AppUpdater::AppUpdater(DSPiBridge *, QObject *parent)
     m_timeout.setInterval(kTimeoutMs);
     connect(&m_timeout, &QTimer::timeout, this, [this]() {
         if (m_reply) {
-            m_failure = QStringLiteral("The release feed did not answer.");
+            m_failure = tr("The release feed did not answer.");
             m_reply->abort();
         }
     });
@@ -172,10 +172,10 @@ QByteArray AppUpdater::userAgent() const {
 }
 
 QString AppUpdater::privacyLine() const {
-    if (!hasFeed()) return QStringLiteral("This build has no release feed, so it never checks.");
-    return QStringLiteral("A check asks %1 for its list of releases. It sends what any web request does, your IP address, "
-                          "and the app's version (User-Agent %2); nothing about your devices, presets or settings. "
-                          "With automatic checks on, it checks at launch and once a day.")
+    if (!hasFeed()) return tr("This build has no release feed, so it never checks.");
+    return tr("A check asks %1 for its list of releases. It sends what any web request does, your IP address, "
+              "and the app's version (User-Agent %2); nothing about your devices, presets or settings. "
+              "With automatic checks on, it checks at launch and once a day.")
         .arg(feedHost(), QString::fromLatin1(userAgent()));
 }
 
@@ -207,7 +207,7 @@ void AppUpdater::check(bool automatic) {
     if (m_reply) return;
     if (automatic && !m_automatic) return;
     if (!hasFeed()) {
-        setFailure(QStringLiteral("This build has no release feed."));
+        setFailure(tr("This build has no release feed."));
         return;
     }
     if (!m_net) m_net = new QNetworkAccessManager(this);
@@ -227,7 +227,7 @@ void AppUpdater::check(bool automatic) {
     m_reply = m_net->get(request);
     connect(m_reply, &QNetworkReply::downloadProgress, this, [this](qint64 received, qint64) {
         if (m_reply && received > kMaxBytes) {
-            m_failure = QStringLiteral("The release feed's answer was too large.");
+            m_failure = tr("The release feed's answer was too large.");
             m_reply->abort();
         }
     });
@@ -244,10 +244,10 @@ void AppUpdater::finished() {
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     if (!m_failure.isEmpty()) { setFailure(m_failure); return; }
     if (reply->error() != QNetworkReply::NoError && status == 0) { setFailure(reply->errorString()); return; }
-    if (status != 200) { setFailure(QStringLiteral("The release feed answered %1.").arg(status)); return; }
+    if (status != 200) { setFailure(tr("The release feed answered %1.").arg(status)); return; }
     const QByteArray body = reply->readAll();
     if (!QJsonDocument::fromJson(body).isArray()) {
-        setFailure(QStringLiteral("The release feed's answer is not a list of releases."));
+        setFailure(tr("The release feed's answer is not a list of releases."));
         return;
     }
     const QVector<Release> releases = parseFeed(body);

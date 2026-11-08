@@ -10,7 +10,7 @@ tar -C /src --exclude=./target --exclude=./apps/desktop/qt/build --exclude=./.gi
 cd /work
 cargo build --release --locked -p dspi-capi --features link,midir,mdns,hub
 cd /work/apps/desktop
-cmake -S qt -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6
+cmake -S qt -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_PACKAGE_FORMAT=deb   # -- WP QD42 --
 cmake --build build -j"${JOBS:-4}"
 "$here/check-binary.sh" build/DSPiConsole 2.41
 (cd build && cpack -G DEB && cp dspi-console_*.deb /dist/)

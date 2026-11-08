@@ -23,6 +23,14 @@
 //  `deviceReadOnly`; the detail controls are disabled and `ReadOnlyBanner`
 //  says why.
 //
+//  Unsaved changes (-- WP SWF6 --).  Through the core, the preset baseline
+//  and the change list are the core's (`presetChanges`, CG7's sentences in
+//  the Mac's words; CG33's rule keeps an edit made right after a preset load
+//  unsaved).  The view model holds the last list in `corePresetChanges`,
+//  delivered on main with each state change, after a fetch, a load and a
+//  save; `hasUnsavedChanges` and `computeDiff` read it.  The transports not
+//  yet on the core keep the Swift snapshot (PresetSnapshot.swift).
+//
 //  Threads.  Core calls go through the source, on its `coreQueue`; `apply`
 //  runs on main.
 //
@@ -46,12 +54,53 @@ protocol CoreStateSource: AnyObject {
     /// Each `processNotifications` result that changed the mirror, with the
     /// state after it.  Delivered on the main thread.
     func addStateObserver(_ handler: @escaping (CoreStateChange) -> Void) -> AnyCancellable
+    // -- WP SWF6 --
+    /// `presetChanges()` on the core's queue (no device I/O).  Blocking:
+    /// call off the main thread.
+    func readPresetChanges() -> [String]
+    /// The live state is now the active preset (a save the app made): apply
+    /// the queued notifications, so the last edits' echoes are in it, then
+    /// `captureBaseline()`.  Returns the change list after.  Blocking: call
+    /// off the main thread.
+    func capturePresetBaseline() -> [String]
+    /// The core's `loadPreset`: load, confirm, re-read, and make the preset
+    /// the baseline.  The state and the change list after it.  Blocking:
+    /// call off the main thread.
+    func loadPreset(slot: UInt8) -> Result<(DspState, [String]), DspiError>
+    // -- WP SWF7 --
+    /// Before an unsaved-changes prompt (c70-N1): when a raw SET went out
+    /// less than `CoreBackedTransport.settleWindow` ago, its echo may not be
+    /// in the core's list yet, so apply the queued notifications and return
+    /// the list after; nil when no SET is that recent (the list is current).
+    /// Blocks on the core's queue only in that case; main thread.
+    /// -- WP SWF8 -- At most `settleWindow` in all (nil past it), and nil at
+    /// once over a hub, whose echoes reach the core through main.
+    func settlePresetChanges() -> [String]?
+    // -- WP SWF8 -- c75-N3
+    /// The core's `maxDelayMs()` (no device I/O).  Blocking: call off the
+    /// main thread.
+    func readMaxDelayMs() -> Float?
+    /// For a delay past the line (or NaN): the core's refusal of it, from
+    /// its typed setter, which sends nothing then; nil when the core would
+    /// take it or refused for another reason.  `reply` runs on main.
+    func outputDelayRefusal(output: UInt8, ms: Float, reply: @escaping (String?) -> Void)
+}
+
+extension CoreStateSource {
+    func settlePresetChanges() -> [String]? { nil }
+    func readMaxDelayMs() -> Float? { nil }
+    func outputDelayRefusal(output: UInt8, ms: Float, reply: @escaping (String?) -> Void) {
+        DispatchQueue.main.async { reply(nil) }
+    }
 }
 
 /// What one `processNotifications` changed, and the core's state after it.
 struct CoreStateChange {
     let flags: UInt32
     let state: DspState
+    /// The core's unsaved-changes list after the change (-- WP SWF6 --);
+    /// nil when it was not read.
+    var presetChanges: [String]? = nil
 
     /// The `NotifyResult` flags after which the mirror is read again.
     static let stateFlags = DspiConstants.NOTIFY_STATE | DspiConstants.NOTIFY_REFRESHED
@@ -125,9 +174,6 @@ final class CoreMirror {
     private var sweep: DispatchWorkItem?
     /// The last state applied, for the sweep after a pending window.
     private(set) var latest: DspState?
-    /// A preset load was announced; its re-read rebases the unsaved-changes
-    /// snapshot.
-    private var rebaseOnRefresh = false
 
     /// Counts the sources followed (-- WP SWF4 --): a state change or a
     /// revert read under an earlier one is dropped.
@@ -167,19 +213,26 @@ final class CoreMirror {
     func reset() {
         fields.forEach { $0.reset() }
         latest = nil
-        rebaseOnRefresh = false
         sweep?.cancel(); sweep = nil
+        if vm?.corePresetChanges.isEmpty == false { vm?.corePresetChanges = [] }   // -- WP SWF6 --
     }
 
     /// The core reported a change.
     private func changed(_ change: CoreStateChange) {
         guard let vm = vm else { return }
-        if change.presetLoaded { rebaseOnRefresh = true }
         vm.applyCoreState(change.state, force: change.refreshed)
-        if change.refreshed && rebaseOnRefresh {
-            rebaseOnRefresh = false
-            vm.updateSavedSnapshot()
-        }
+        // -- WP SWF6 -- No Swift snapshot at a preset's refresh: the core
+        // rebased its baseline when it re-read, keeping what changed after the
+        // load unsaved (CG33), and its list comes with the change.
+        if let changes = change.presetChanges { showPresetChanges(changes, from: source) }
+    }
+
+    // -- WP SWF6 --
+    /// Show the core's unsaved-changes list, read from `source`: dropped when
+    /// the view model follows another source by now.  Main thread.
+    func showPresetChanges(_ changes: [String], from source: CoreStateSource?) {
+        guard let vm = vm, let source = source, source === self.source else { return }
+        if vm.corePresetChanges != changes { vm.corePresetChanges = changes }
     }
 
     /// Put the core's current state back on screen, pending edits included:
@@ -680,13 +733,47 @@ extension DSPViewModel {
         case .success(let state):
             guard transport.generation == generation else { return false }
             let decoded = CoreMirror.decoded(state)
+            // -- WP SWF6 -- `fetchAll` made this state the core's baseline.
+            let changes = source.readPresetChanges()
+            let maxDelay = source.readMaxDelayMs()   // -- WP SWF8 --
             DispatchQueue.main.async {
+                if self.coreMaxDelayMS != maxDelay { self.coreMaxDelayMS = maxDelay }
                 self.applyCoreIdentity(state)
                 guard decoded else { return }
                 self.applyCoreState(state, force: true)
-                self.coreFetchTail()
+                self.coreFetchTail(changes, from: source)
             }
             return decoded
+        }
+    }
+
+    // -- WP SWF6 --
+    /// `loadPreset` through the core (its `loadPreset`: the device lock, the
+    /// confirmation, the re-read and the baseline), then the state into the
+    /// view model.  The preset status the command layer returns: a refusal's
+    /// own byte, `PRESET_STATUS_LOCKED` for the hub's lock, 0xFF for any other
+    /// failure.  Blocking: off the main thread.
+    func loadPresetThroughCore(_ source: CoreStateSource, slot: Int) -> UInt8 {
+        guard let wire = UInt8(exactly: slot) else { return PRESET_ERR_INVALID_SLOT }
+        let generation = transport.generation
+        switch source.loadPreset(slot: wire) {
+        case .failure(let error):
+            CoreMirrorLog.log.info("loadPreset(\(slot)) failed: \(String(describing: error), privacy: .public)")
+            switch error {
+            case .Refused(let status): return status
+            case .Locked, .Denied: return PRESET_STATUS_LOCKED
+            default: return 0xFF
+            }
+        case .success(let (state, changes)):
+            guard transport.generation == generation else { return PRESET_OK }
+            DispatchQueue.main.async {
+                // The new slot at once, as the raw path does (the popup's
+                // check mark), then the preset's state.
+                if self.activePresetSlot != slot { self.activePresetSlot = slot }
+                self.applyCoreState(state, force: true)
+                self.coreFetchTail(changes, from: source)
+            }
+            return PRESET_OK
         }
     }
 
@@ -748,8 +835,9 @@ extension DSPViewModel {
     }
 
     /// What the old bulk apply ended with: the dashboard's visibility for
-    /// this channel set, the curves, and the unsaved-changes baseline.
-    private func coreFetchTail() {
+    /// this channel set, the curves, and the unsaved-changes list (the
+    /// core's, after the read made its baseline).
+    private func coreFetchTail(_ changes: [String], from source: CoreStateSource) {
         savedOverviewVisibility = nil
         if isOverviewMode {
             for i in 0..<chOut1 { channelVisibility[i] = (i < effectiveInputChannels) }
@@ -758,7 +846,7 @@ extension DSPViewModel {
             }
         }
         recomputeAllMagnitudes()
-        updateSavedSnapshot()
+        coreMirror.showPresetChanges(changes, from: source)   // -- WP SWF6 --
     }
 }
 

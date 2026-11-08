@@ -701,6 +701,8 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "bootloaderCounts",
             "captureBaseline",
             "checkCore1Conflict",
+            // -- WP CG36 -- the same question, with the core's words: a read.
+            "core1ConflictReason",
             "closeFd",
             "computeMagnitudeCurve",
             "computePhaseCurve",
@@ -825,6 +827,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "onboardingGettingStartedJson",
             // WP CG15: stateless text.
             "aboutJson",
+            // -- WP CG34 -- stateless: the filter types' names.
+            "filterTypeNames",
+            "filterTypeName",
             // -- WP CG24 -- The device lock across a flow: no device write
             // (the firmware-update path, as enterBootloader; the writes
             // inside it are guarded one by one).

@@ -7,7 +7,7 @@ SettingsPage {
     writesToDevice: false   // -- WP QD6 --
     id: page
     title: qsTr("Graphing")
-    subtitle: qsTr("How the response graph looks. These are preferences on this computer and take effect immediately.")
+    subtitle: qsTr("How the response graph looks. These preferences are kept here, not on the DSPi, and take effect immediately.")
     readonly property var app: ctx ? ctx.app : null
 
     SettingsSection {

@@ -24,10 +24,10 @@ use std::time::Duration;
 use dspi_transport::clock::Instant;
 
 use dspi_proto::enums::FilterType;
-use dspi_proto::generated::opcodes as op;
 use dspi_proto::generated::ranges::{SUBHARM_CEILING_MAX, SUBHARM_LEVEL_MIN};
 use dspi_proto::generated::status as st;
 use dspi_proto::generated::tube as tb;
+use dspi_proto::generated::{self as g, opcodes as op};
 use dspi_session::tube;
 
 use crate::connect::{read_preset_directory, read_preset_name, refresh_params_locked};
@@ -192,7 +192,8 @@ impl DspiCore {
     /// directory. The baseline becomes the loaded state. Runs under the Link
     /// device lock. The device also notifies `PRESET_LOADED` and then
     /// `BULK_INVALIDATED` (source `PRESET`); `process_notifications`
-    /// re-reads on those as on any foreign change.
+    /// re-reads on those as on any foreign change, and an edit made between
+    /// this call and that notification stays unsaved (WP CG33).
     ///
     /// Errors: [`DspiError::Refused`] with the `PRESET_*` status;
     /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
@@ -758,7 +759,8 @@ impl DspiCore {
 /// Remember the live image as the baseline. The hook for every flow that
 /// leaves the live state equal to the active preset, and for
 /// `process_notifications` (WP C7) once it has re-read a `BULK_INVALIDATED`
-/// from a preset load or factory reset. Cleared without a device, or when
+/// from a preset load or factory reset (through
+/// [`rebaseline_after_load_locked`], WP CG33). Cleared without a device, or when
 /// no image has been read (the mirror's image does not decode).
 pub(crate) fn capture_baseline_locked(inner: &mut Inner) {
     let readable = inner.conn.is_some() && {
@@ -766,6 +768,190 @@ pub(crate) fn capture_baseline_locked(inner: &mut Inner) {
         state::decode_bulk(&inner.state.bulk_raw, &mut probe).is_ok()
     };
     inner.baseline = readable.then(|| inner.state.bulk_raw.clone());
+}
+
+// -- WP CG33 --
+/// The baseline after the re-read a preset load or factory reset notified
+/// (`process_notifications`, WP C7), given the baseline (`old`) and the
+/// mirror's image (`mirror`) as they stood just before that re-read.
+///
+/// The notification comes after the load, up to ~100 ms on USB and longer
+/// over DSPi Link, and the re-read also brings in whatever was changed on
+/// the device after the load: an edit of this client's, or another host's
+/// change it notified. Taken as is, the re-read would count those as saved.
+/// So the re-read becomes the baseline except where the mirror held a value
+/// that differs from the old baseline and the device holds that same value
+/// after the load: such a change was made (or made again) after the load,
+/// and stays a change, from the old baseline's value. For this client's own
+/// load, whose read-back already made the preset the baseline, that is
+/// exactly the preset's own state; for another's, the preset's value under
+/// a later edit cannot be read, so the edit shows from the value saved
+/// before. An unsaved change from before another's load that the loaded
+/// preset happens to hold too also stays a change: the error is toward a
+/// prompt, never toward a lost edit.
+pub(crate) fn rebaseline_after_load_locked(inner: &mut Inner, old: Option<&[u8]>, mirror: &[u8]) {
+    capture_baseline_locked(inner);
+    if let (Some(old), Some(new)) = (old, inner.baseline.as_mut()) {
+        keep_edits_after_load(new, old, mirror);
+    }
+}
+
+/// Put `old` back into `baseline` (the re-read) over every field in which
+/// `mirror` differs from `old` and `baseline` equals `mirror`. The unit is a
+/// field of the bulk image ([`IMAGE_FIELDS`], WP CG33b), not a run of
+/// differing bytes: two adjacent fields can differ from `old` in their
+/// boundary bytes, and as one run a load that replaced the first would hide
+/// an edit of the second. When the three images are of equal length other
+/// than `BULK_SIZE`, there is no known layout and the unit is a maximal
+/// byte run. When their lengths differ, nothing is put back.
+pub(crate) fn keep_edits_after_load(baseline: &mut [u8], old: &[u8], mirror: &[u8]) {
+    let len = baseline.len();
+    if old.len() != len || mirror.len() != len {
+        return;
+    }
+    let units = if len == g::BULK_SIZE {
+        image_fields()
+    } else {
+        byte_runs(old, mirror)
+    };
+    for unit in units {
+        let (Some(o), Some(m)) = (old.get(unit.clone()), mirror.get(unit.clone())) else {
+            continue;
+        };
+        if o != m
+            && let Some(dst) = baseline.get_mut(unit)
+            && *dst == *m
+        {
+            dst.copy_from_slice(o);
+        }
+    }
+}
+
+// -- WP CG33b --
+/// The fields of a `BULK_SIZE` image (`WireBulkParams`, bulk_params.h), for
+/// [`keep_edits_after_load`]: per section its offset, its length and the
+/// byte widths of one record's fields, the record repeated over the
+/// section. Reserved bytes and `u8` arrays count byte by byte; a channel
+/// name is one field.
+///
+/// Transcribed by hand from the V32 layout: on a wire format bump, check
+/// every section's fields against the new bulk_params.h (a same-size change
+/// inside a section passes the layout test) and move the pin below.
+pub(crate) const IMAGE_FIELDS: [(usize, usize, &[usize]); 25] = [
+    (
+        g::OFF_HEADER,
+        g::LEN_HEADER,
+        &[1, 1, 1, 1, 1, 1, 2, 2, 2, 4],
+    ),
+    (g::OFF_GLOBAL, g::LEN_GLOBAL, &[4, 1, 1, 2, 4, 4]),
+    (
+        g::OFF_CROSSFEED,
+        g::LEN_CROSSFEED,
+        &[1, 1, 1, 1, 4, 4, 1, 1, 1, 1],
+    ),
+    (g::OFF_LEGACY, g::LEN_LEGACY, &[4, 4, 4, 1, 1, 1, 1]),
+    (g::OFF_DELAYS, g::LEN_DELAYS, &[4]),
+    (g::OFF_CROSSPOINTS, g::LEN_CROSSPOINTS, &[1, 1, 1, 1, 4]),
+    (g::OFF_OUTPUTS, g::LEN_OUTPUTS, &[1, 1, 1, 1, 4, 4]),
+    (g::OFF_PINS, g::LEN_PINS, &[1]),
+    (g::OFF_EQ, g::LEN_EQ, BAND_FIELDS),
+    (
+        g::OFF_CHANNEL_NAMES,
+        g::LEN_CHANNEL_NAMES,
+        &[CHANNEL_NAME_LEN],
+    ),
+    (g::OFF_I2S_CONFIG, g::LEN_I2S_CONFIG, &[1]),
+    (
+        g::OFF_LEVELLER,
+        g::LEN_LEVELLER,
+        &[1, 1, 1, 1, 4, 4, 4, 1, 1, 1, 1],
+    ),
+    (g::OFF_PREAMP, g::LEN_PREAMP, &[4]),
+    (
+        g::OFF_MASTER_VOLUME,
+        g::LEN_MASTER_VOLUME,
+        &[4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    ),
+    (g::OFF_INPUT_CONFIG, g::LEN_INPUT_CONFIG, &[1]),
+    (g::OFF_LG_SOUND_SYNC, g::LEN_LG_SOUND_SYNC, &[1]),
+    (
+        g::OFF_USER_VOLUME,
+        g::LEN_USER_VOLUME,
+        &[4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    ),
+    (
+        g::OFF_DAC_HW_MUTE,
+        g::LEN_DAC_HW_MUTE,
+        &[1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1],
+    ),
+    (g::OFF_CROSSOVERS, g::LEN_CROSSOVERS, BAND_FIELDS),
+    (g::OFF_ADAT_CONFIG, g::LEN_ADAT_CONFIG, &[1]),
+    (g::OFF_PSYBASS, g::LEN_PSYBASS, &[1, 1, 2, 4, 4, 4, 4, 4]),
+    (
+        g::OFF_UPMIX,
+        g::LEN_UPMIX,
+        &[1, 1, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+    ),
+    (
+        g::OFF_SUBHARM,
+        g::LEN_SUBHARM,
+        &[1, 1, 2, 4, 4, 4, 4, 4, 4, 4, 1, 1, 1, 1],
+    ),
+    (
+        g::OFF_TUBE,
+        g::LEN_TUBE,
+        &[1, 1, 1, 1, 2, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+    ),
+    (g::OFF_LIMITER, g::LEN_LIMITER, &[1, 1, 1, 1, 4, 4]),
+];
+
+// -- WP CG35 -- (review c6x N1)
+const _: () = assert!(
+    g::wire::WIRE_FORMAT_VERSION == 32,
+    "the wire format changed: update presets::IMAGE_FIELDS (crates/dspi-core/src/presets.rs) \
+     to the new bulk_params.h, then this pin"
+);
+
+/// `WireBandParams`: type, bypass, the Linkwitz target Q (`u16`), freq, Q,
+/// gain.
+const BAND_FIELDS: &[usize] = &[1, 1, 2, 4, 4, 4];
+
+/// [`IMAGE_FIELDS`] as byte ranges of the image, in order. A record that
+/// does not fit its section's end is cut there (the layout test rules that
+/// out).
+pub(crate) fn image_fields() -> Vec<std::ops::Range<usize>> {
+    let mut fields = Vec::new();
+    for &(off, len, widths) in &IMAGE_FIELDS {
+        let end = off.saturating_add(len);
+        let mut at = off;
+        for &w in widths.iter().cycle() {
+            if at >= end || w == 0 {
+                break;
+            }
+            let next = at.saturating_add(w).min(end);
+            fields.push(at..next);
+            at = next;
+        }
+    }
+    fields
+}
+
+/// The maximal runs of bytes in which `mirror` differs from `old`.
+fn byte_runs(old: &[u8], mirror: &[u8]) -> Vec<std::ops::Range<usize>> {
+    let mut runs = Vec::new();
+    let mut start = None;
+    let differs = mirror.iter().zip(old).map(|(m, o)| m != o);
+    for (i, differs) in differs.chain(std::iter::once(false)).enumerate() {
+        match (start, differs) {
+            (None, true) => start = Some(i),
+            (Some(s), false) => {
+                start = None;
+                runs.push(s..i);
+            }
+            _ => {}
+        }
+    }
+    runs
 }
 
 /// The occupied-mask bit of `slot`, or `Refused { PRESET_ERR_INVALID_SLOT }`

@@ -24,8 +24,10 @@
 #![warn(missing_docs)]
 
 use dspi_proto::FilterType;
+use dspi_proto::registry;
 use dspi_proto::value::{EqParamPacket, Value};
 
+use crate::fast::DEFAULT_QP;
 use crate::probe::Capabilities;
 use crate::{DeviceState, Outcome, Session, WriteError};
 
@@ -271,9 +273,12 @@ pub fn paste_plan(
                 output: o,
                 db: gain,
             });
+            // -- WP CG37 -- a clip taken on a longer line pastes at this
+            // device's longest delay, as the core's file import does, rather
+            // than being refused and stopping the paste before the mute.
             out.push(PasteWrite::OutputDelay {
                 output: o,
-                ms: delay,
+                ms: delay.min(state.caps.platform.max_delay_ms()),
             });
             out.push(PasteWrite::OutputMute { output: o, mute });
         }
@@ -300,30 +305,43 @@ fn param_write(w: &PasteWrite) -> Option<(&'static str, u8, Value)> {
 
 /// Check every write of a paste against the session without making any
 /// ([`Session::check`]): targets, ranges and platform limits. A band is
-/// checked as the registry's `eq.freq` and `eq.gain` on its channel and band
-/// (and `eq.q`, except for a crossover type, whose Q the firmware derives).
-/// Returns the index of the first bad write with its error.
+/// checked field by field as the registry's rows on its channel and band,
+/// taking the fields its type uses (`registry::eq_field_fits`): `eq.freq`,
+/// `eq.q` (except for a crossover type, whose Q the firmware derives) and
+/// `eq.gain`, or for a Linkwitz Transform `eq.fp` and `eq.qp` instead of
+/// `eq.gain`. Returns the index of the first bad write with its error.
 pub fn validate_paste(session: &Session, plan: &[PasteWrite]) -> Result<(), (usize, WriteError)> {
     for (i, w) in plan.iter().enumerate() {
         let r = match (w, param_write(w)) {
-            (PasteWrite::Band(p), _) => {
-                let at = [p.channel, p.band];
-                session
-                    .check("eq.freq", &at, &Value::Float(p.freq))
-                    .and_then(|()| session.check("eq.gain", &at, &Value::Float(p.gain_db)))
-                    .and_then(|()| {
-                        if dspi_proto::xover::meta(p.filter_type.to_raw()).is_some() {
-                            Ok(())
-                        } else {
-                            session.check("eq.q", &at, &Value::Float(p.q))
-                        }
-                    })
-            }
+            (PasteWrite::Band(p), _) => check_band(session, p),
             (_, Some((path, index, value))) => session.check(path, &[index], &value),
             // `param_write` answers every non-band write.
             (_, None) => Ok(()),
         };
         r.map_err(|e| (i, e))?;
+    }
+    Ok(())
+}
+
+// -- WP CG35 -- (review c6v: a Linkwitz band's fp is not a gain)
+/// [`validate_paste`] for one band: each field its type takes, by the
+/// registry's row.
+fn check_band(session: &Session, p: &EqParamPacket) -> Result<(), WriteError> {
+    let t = p.filter_type;
+    let fields = [
+        ("eq.freq", p.freq),
+        ("eq.q", p.q),
+        ("eq.gain", p.gain_db),
+        ("eq.fp", p.gain_db),
+        ("eq.qp", p.qp.unwrap_or(DEFAULT_QP)),
+    ];
+    let at = [p.channel, p.band];
+    for (path, v) in fields {
+        let derived_q = path == "eq.q" && dspi_proto::xover::meta(t.to_raw()).is_some();
+        if derived_q || registry::eq_field_fits(path, p.band, t).is_err() {
+            continue;
+        }
+        session.check(path, &at, &Value::Float(v))?;
     }
     Ok(())
 }
@@ -383,7 +401,7 @@ mod tests_wp_s5 {
     use dspi_transport::FakeDevice;
 
     /// The demo device, its state, and a session over it.
-    fn demo() -> (DeviceState, Session) {
+    pub(super) fn demo() -> (DeviceState, Session) {
         let mut d = FakeDevice::demo();
         let caps = probe(&mut d).unwrap();
         let bulk = read_bulk(&mut d).unwrap();
@@ -566,5 +584,103 @@ mod tests_wp_s5 {
         assert!(supports_band_bypass(&s.caps));
         s.caps.firmware = "garbage".into();
         assert!(!supports_band_bypass(&s.caps));
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg35 {
+    use super::tests_wp_s5::demo;
+    use super::*;
+
+    /// A Linkwitz Transform on band 0 of the copy: f0 40 Hz, Q0 0.5, target
+    /// `fp` Hz (the gain field) and Qp `qp`.
+    fn linkwitz_clip(s: &DeviceState, fp: f32, qp: f32) -> ChannelClipboard {
+        let mut clip = copy_channel(s, 0);
+        clip.bands[0] = EqParamPacket {
+            channel: 0,
+            band: 0,
+            filter_type: FilterType::LinkwitzTransform,
+            bypass: false,
+            freq: 40.0,
+            q: 0.5,
+            gain_db: fp,
+            qp: Some(qp),
+        };
+        clip
+    }
+
+    /// Review c6v: a pasted Linkwitz band's gain field is fp in Hz, checked
+    /// as `eq.fp` (10..14400) and its Qp as `eq.qp`, not as `eq.gain`'s
+    /// +-24 dB, so a valid transform (fp 25 Hz) pastes and lands whole.
+    #[test]
+    fn wp_cg35_a_valid_linkwitz_band_pastes() {
+        let (s, mut session) = demo();
+        let plan = paste_plan(&linkwitz_clip(&s, 25.0, 0.6), &s, 1, None);
+        assert!(validate_paste(&session, &plan).is_ok());
+        apply_paste(&mut session, &plan).unwrap();
+        let after = DeviceState::new(s.caps.clone(), session.snapshot().unwrap());
+        let b = after.bands(1)[0];
+        assert_eq!(b.filter_type, FilterType::LinkwitzTransform);
+        assert!((b.freq - 40.0).abs() < 0.01 && (b.gain_db - 25.0).abs() < 0.01);
+        assert!((b.qp.unwrap() - 0.6).abs() < 0.01, "{b:?}");
+    }
+
+    /// An out-of-range fp or Qp is refused before anything is written, as is
+    /// a bell's gain past +-24 dB (unchanged).
+    #[test]
+    fn wp_cg35_an_invalid_linkwitz_band_is_refused() {
+        let (s, session) = demo();
+        for (fp, qp) in [(5.0, 0.6), (20_000.0, 0.6), (25.0, 30.0)] {
+            let plan = paste_plan(&linkwitz_clip(&s, fp, qp), &s, 1, None);
+            let (i, e) = validate_paste(&session, &plan).unwrap_err();
+            assert_eq!(i, 0, "fp {fp} qp {qp}");
+            assert!(matches!(e, WriteError::Value(_)), "{e:?}");
+        }
+        let mut clip = linkwitz_clip(&s, 25.0, 0.6);
+        clip.bands[0].filter_type = FilterType::Peaking;
+        let plan = paste_plan(&clip, &s, 1, None);
+        assert!(matches!(
+            validate_paste(&session, &plan),
+            Err((0, WriteError::Value(_)))
+        ));
+    }
+}
+
+// -- WP CG37 --
+#[cfg(test)]
+mod tests_wp_cg37 {
+    use super::tests_wp_s5::demo;
+    use super::*;
+
+    #[test]
+    fn wp_cg37_a_paste_takes_the_delay_to_this_lines_longest() {
+        let (mut s, _) = demo();
+        let ni = usize::from(s.caps.num_inputs);
+        let mut clip = copy_channel(&s, ni);
+        clip.output = Some((0.0, 40.0, false));
+        let max = s.caps.platform.max_delay_ms();
+        let delay = |plan: &[PasteWrite]| {
+            plan.iter().find_map(|w| match w {
+                PasteWrite::OutputDelay { ms, .. } => Some(*ms),
+                _ => None,
+            })
+        };
+        assert_eq!(
+            delay(&paste_plan(&clip, &s, ni, None)),
+            Some(40.0f32.min(max))
+        );
+        s.caps.platform = dspi_proto::Platform::Rp2040;
+        let plan = paste_plan(&clip, &s, ni, None);
+        assert_eq!(delay(&plan), Some(21.0));
+        // The whole plan lands on an RP2040's session; 40 ms itself would not.
+        let mut rp2040 =
+            Session::new(Box::new(dspi_transport::FakeDevice::demo()), s.caps.clone()).unwrap();
+        assert_eq!(apply_paste(&mut rp2040, &plan).unwrap().len(), plan.len());
+        let unclamped = [PasteWrite::OutputDelay {
+            output: 0,
+            ms: 40.0,
+        }];
+        assert!(apply_paste(&mut rp2040, &unclamped).is_err());
     }
 }

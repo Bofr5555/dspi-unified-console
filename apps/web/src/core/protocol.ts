@@ -137,7 +137,67 @@ export interface DspState {
   inputSource: number;
   /** The configured I2S input channel count (2, 4, 6, 8). */
   i2sInputChannels: number;
+  // -- WP WB6b -- the EQ's
+  /** PEQ bands, `[wire channel][band]`; the first `maxBands` of each are the device's. */
+  filters: FilterParams[][];
+  /** Crossover bands of each wire channel (outputs'), drawn with its curve. */
+  xover: FilterParams[][];
+  /** PEQ bands per channel the firmware takes. */
+  maxBands: number;
+  // -- WP WB6c -- outputs, matrix, limiter
+  /** Per output, ms (fractions kept to 0.0001 ms). */
+  outputDelayMs: number[];
+  /** `[input][output]`: the crosspoint routes. */
+  matrixRouting: boolean[][];
+  /** `[input][output]`, dB. */
+  matrixGain: number[][];
+  /** `[input][output]`: polarity inverted. */
+  matrixInvert: boolean[][];
+  /** Per output (wire format 32 on). */
+  limiterEnabled: boolean[];
+  /** Per output: 0 unlinked, 1..4 a link group. */
+  limiterLinkGroup: number[];
+  limiterThresholdDb: number[];
+  limiterReleaseMs: number[];
   [field: string]: unknown;
+}
+
+// -- WP WB6b --
+/** One filter band (`dspi_core::FilterParams`). */
+export interface FilterParams {
+  /** The firmware's type: 0 off, 1..13 PEQ, 32..63 crossover. */
+  filterType: number;
+  bypass: boolean;
+  /** Centre or corner, Hz. */
+  freq: number;
+  q: number;
+  /** dB; for the Linkwitz Transform its target frequency. */
+  gain: number;
+  /** The Linkwitz Transform's target Q. */
+  qp: number;
+}
+
+// -- WP WB6c --
+/** One matrix crosspoint. */
+export interface Crosspoint {
+  input: number;
+  output: number;
+  enabled: boolean;
+  /** dB, kept to 0.1 dB. */
+  gain: number;
+  invert: boolean;
+}
+
+/** One band of the edited channel, as `curves` answers it (crates/dspi-wasm/src/curves.rs). */
+export interface BandCurve {
+  /** The band alone, its bypass ignored, on the grid; empty for an off band. */
+  curve: number[];
+  /** Its level at its own frequency, dB. */
+  at: number;
+  /** For a type with gain: its level there per dB of gain (1 for a bell, about ½ for a shelf). */
+  unit: number;
+  usesGain: boolean;
+  usesQ: boolean;
 }
 
 /** What the page shows of a device. Read again after every write. */
@@ -261,6 +321,13 @@ export interface CoreMethods {
    */
   write: { params: { path: string; indices?: number[]; value: ParamValue }; result: ParamValue };
   describe: { params: { path: string }; result: ParamInfo };
+  // -- WP CG36 --
+  /**
+   * Whether enabling `output` (0-based) would collide on Core 1, as the device
+   * answers it, with the core's reason: the words `write` of `out.enable`
+   * refuses such an enable with.
+   */
+  core1Conflict: { params: { output: number }; result: { conflict: boolean; reason: string | null } };
   meters: { params: undefined; result: SystemStatus };
   rtaStart: { params: RtaRequest; result: null };
   rtaStop: { params: undefined; result: null };
@@ -288,6 +355,29 @@ export interface CoreMethods {
   presetRevert: { params: undefined; result: null };
   /** Factory Reset, once the user confirmed it: the defaults; stored presets are kept. */
   factoryReset: { params: undefined; result: null };
+  // -- WP WB6b -- the EQ graph's curves: the core's maths, no device I/O
+  /** The frequency (Hz) of each curve point: 201, log-spaced 10 Hz..20 kHz. */
+  curveGrid: { params: undefined; result: { freqs: number[] } };
+  /**
+   * Each chain's combined magnitude (dB) on the grid, and each band's own
+   * curve and dot level. Bands need not be the device's (a drag in progress).
+   */
+  curves: { params: { chains?: FilterParams[][]; bands?: FilterParams[] }; result: { chains: number[][]; bands: BandCurve[] } };
+  // -- WP CG34 -- the filter types' names, the core's one table (the Console's band-list names)
+  /** Every type the firmware defines, PEQ 0..13 then crossovers 32..63: `{code: 4, name: "High Cut (12dB)"}`. */
+  filterTypeNames: { params: undefined; result: { code: number; name: string }[] };
+  // -- WP WB6c -- what `write` does not cover for the outputs (crates/dspi-wasm/src/outputs.rs)
+  /**
+   * A crossover band's type (0 off, 32..63), and with it its corner: the
+   * core's `set_crossover` (the registry's `eq.type` takes PEQ types only).
+   * `channel` is the output's wire channel, `band` 0..3. Frequency and bypass
+   * alone are `write`s of `eq.freq` / `eq.bypass` on band 20 + `band`.
+   */
+  crossoverType: { params: { channel: number; band: number; filterType: number; freq?: number }; result: FilterParams };
+  /** One matrix crosspoint: `write` of `mix` with the packet built in the binding; the fields kept. */
+  crosspoint: { params: Crosspoint; result: Crosspoint };
+  /** The longest delay this device takes (21 ms on RP2040, 42 on RP2350). */
+  outputLimits: { params: undefined; result: { maxDelayMs: number } };
   /** Tests only: make the stub core lose its link. The real core answers `unknown_method`. */
   simulate: { params: { what: "link-lost" | "link-closed" }; result: null };
 }

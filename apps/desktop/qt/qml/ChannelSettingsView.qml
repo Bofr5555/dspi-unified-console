@@ -73,6 +73,11 @@ Rectangle {
         property real from: 0
         property real to: 100
         property real stepSize: 1
+        // -- WP SL1 -- What the slider sends and commits, and the wheel's
+        // steps, land on whole steps (the delay: whole ms, as macOS rounds
+        // them); a typed value stays as typed
+        property bool wholeSteps: false
+        function dragValue(v) { return wholeSteps ? Math.round(v / stepSize) * stepSize + 0 : v }
         readonly property bool dragging: slider.pressed
         // What the field and slider show: the dragged value until the
         // stored value catches up, so release never flashes the old one
@@ -93,9 +98,11 @@ Rectangle {
             SectionLabel { text: sec.label }
             Item { Layout.fillWidth: true }
             ValueField {
+                objectName: sec.objectName ? sec.objectName + "Field" : ""
                 fieldWidth: sec.fieldWidth; height: 22
                 suffix: sec.unit; decimals: sec.decimals; maxDecimals: sec.maxDecimals
                 wheelStep: sec.stepSize
+                wheelOnGrid: sec.wholeSteps   // -- WP SL1 --
                 minValue: sec.from; maxValue: sec.to
                 accessibleName: sec.label.charAt(0) + sec.label.slice(1).toLowerCase()
                 value: sec.shown
@@ -104,6 +111,7 @@ Rectangle {
         }
         CardSlider {
             id: slider
+            objectName: sec.objectName ? sec.objectName + "Slider" : ""
             Layout.fillWidth: true
             from: sec.from; to: sec.to; stepSize: sec.stepSize
             snapMode: Slider.SnapAlways   // drags land on the step (whole ms of delay)
@@ -112,10 +120,14 @@ Rectangle {
             // A press that didn't move commits nothing, so a value set
             // outside the slider's range elsewhere stays as it is
             property bool dragged: false
-            onMoved: { dragged = true; sec.shown = value; live.push(value) }
-            onPressedChanged: if (!pressed) {
+            onMoved: { dragged = true; sec.shown = value; live.push(sec.dragValue(value)) }
+            onSettled: {
                 live.cancel()
-                if (dragged) sec.committed(value)
+                if (dragged) {
+                    // the thumb snaps to what was committed (-- WP SL1 --)
+                    sec.shown = sec.dragValue(value)
+                    sec.committed(sec.shown)
+                }
                 dragged = false
             }
             onReset: sec.reset()
@@ -230,6 +242,7 @@ Rectangle {
         LevelSection {
             id: gainSection
             enabled: bridge.writable   // -- WP QD6 --
+            objectName: "gainSection"   // -- WP QD41 --
             label: qsTr("GAIN"); unit: qsTr("dB"); decimals: 1
             from: -60; to: 12; stepSize: 0.1      // the firmware's output gain range
             value: gainDB
@@ -245,9 +258,11 @@ Rectangle {
             id: delaySection
             enabled: bridge.writable   // -- WP QD6 --
             // As on Windows: the slider and wheel step whole ms, typing
-            // takes up to 0.0001 ms
+            // takes up to 0.0001 ms. The slider sends and commits whole ms
+            // even from a fractional start (macOS; -- WP SL1 --)
+            objectName: "delaySection"
             label: qsTr("DELAY"); unit: qsTr("ms"); decimals: 2; maxDecimals: 4; fieldWidth: 60
-            from: 0; to: bridge.maxDelayMs; stepSize: 1
+            from: 0; to: bridge.maxDelayMs; stepSize: 1; wholeSteps: true
             value: delayMS
             onMoved: bridge.sendOutputDelayToDevice(outputIndex, v)
             onCommitted: { delayMS = v; bridge.setOutputDelay(outputIndex, v) }

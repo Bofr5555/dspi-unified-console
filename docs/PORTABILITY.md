@@ -364,9 +364,9 @@ none has run against a K340 yet.
 
 ## 7. Remaining gaps and open questions
 
-1. **Licences. Nothing is final.** The repository is private and carries GPL-3.0
-   as the owner's working assumption; final terms are open between the owner and
-   Weeb Labs (README, "Licensing").
+1. **Licences. Nothing is final.** The repository is private; the owner's code is
+   GPL-3.0-or-later (owner, 2026-11-08); final terms for Weeb Labs' parts are open
+   between the owner and Weeb Labs (README, "Licensing").
    - DSPi-Console-Linux has no licence file upstream. The Android console's
      `NOTICE.md` records "MIT per Weeb Labs, file pending".
    - DSPi-Terminal states GPL-3.0-or-later but has no LICENSE file.

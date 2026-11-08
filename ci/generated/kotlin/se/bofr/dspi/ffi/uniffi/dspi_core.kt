@@ -1446,6 +1446,12 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1492,6 +1498,10 @@ fun uniffi_dspi_core_checksum_func_core_info(
 fun uniffi_dspi_core_checksum_func_crossfeed_pair_map_valid(
 ): Short
 fun uniffi_dspi_core_checksum_func_curve_freq(
+): Short
+fun uniffi_dspi_core_checksum_func_filter_type_name(
+): Short
+fun uniffi_dspi_core_checksum_func_filter_type_names(
 ): Short
 fun uniffi_dspi_core_checksum_func_firmware_guard_board_in_bootloader(
 ): Short
@@ -1552,6 +1562,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_config_import(
 fun uniffi_dspi_core_checksum_method_dspicore_connection_generation(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_copy_preset(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_core1_conflict_reason(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_close(
 ): Short
@@ -2097,6 +2109,8 @@ fun uniffi_dspi_core_fn_method_dspicore_connection_generation(`ptr`: Pointer,uni
 ): Long
 fun uniffi_dspi_core_fn_method_dspicore_copy_preset(`ptr`: Pointer,`source`: Byte,`dest`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_core1_conflict_reason(`ptr`: Pointer,`output`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_close(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_commit(`ptr`: Pointer,`typed`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -2595,6 +2609,10 @@ fun uniffi_dspi_core_fn_func_crossfeed_pair_map_valid(`map`: RustBuffer.ByValue,
 ): Byte
 fun uniffi_dspi_core_fn_func_curve_freq(`i`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Double
+fun uniffi_dspi_core_fn_func_filter_type_name(`code`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_filter_type_names(uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_firmware_guard_board_in_bootloader(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_firmware_guard_check(`image`: RustBuffer.ByValue,`board`: RustBuffer.ByValue,`typedConfirmation`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -2797,6 +2815,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_func_curve_freq() != 1109.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_func_filter_type_name() != 9662.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_filter_type_names() != 37435.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_func_firmware_guard_board_in_bootloader() != 60307.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -2885,6 +2909,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_copy_preset() != 46555.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_core1_conflict_reason() != 6255.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_close() != 22148.toShort()) {
@@ -3145,7 +3172,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_load_params() != 50295.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_load_preset() != 31859.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_load_preset() != 51595.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_max_delay_ms() != 14810.toShort()) {
@@ -3187,7 +3214,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_preset_dirty() != 19546.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_process_notifications() != 39404.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_process_notifications() != 22812.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_raw_get() != 1394.toShort()) {
@@ -3292,7 +3319,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_dac_mute() != 53415.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_delay() != 25981.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_delay() != 62461.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_device_name() != 13429.toShort()) {
@@ -3400,7 +3427,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_output_config_mode() != 52088.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_output_delay() != 4990.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_output_delay() != 49897.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_output_enable() != 35905.toShort()) {
@@ -5180,6 +5207,16 @@ public interface DspiCoreInterface {
     fun `copyPreset`(`source`: kotlin.UByte, `dest`: kotlin.UByte)
     
     /**
+     * Whether enabling output `output` would collide on Core 1, and if so
+     * why, in the words [`DspiCore::write_param`] refuses it with: `None`
+     * when it would not. The device decides
+     * ([`DspiCore::check_core1_conflict`]); the words come from the layout.
+     *
+     * Errors: those of [`DspiCore::check_core1_conflict`].
+     */
+    fun `core1ConflictReason`(`output`: kotlin.UByte): kotlin.String?
+    
+    /**
      * Close the flow: the user left. No traffic. `InvalidArgument` during a
      * run, which goes on until ended.
      */
@@ -6181,7 +6218,8 @@ public interface DspiCoreInterface {
      * directory. The baseline becomes the loaded state. Runs under the Link
      * device lock. The device also notifies `PRESET_LOADED` and then
      * `BULK_INVALIDATED` (source `PRESET`); `process_notifications`
-     * re-reads on those as on any foreign change.
+     * re-reads on those as on any foreign change, and an edit made between
+     * this call and that notification stays unsaved (WP CG33).
      *
      * Errors: [`DspiError::Refused`] with the `PRESET_*` status;
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
@@ -6338,7 +6376,9 @@ public interface DspiCoreInterface {
      * mirror cannot patch re-read the whole image and the preset
      * directory: `NOTIFY_STATE | NOTIFY_CURVES | NOTIFY_REFRESHED`. A
      * preset load or factory reset also makes the new state the
-     * baseline of `preset_dirty`. If the re-read fails, the flags say
+     * baseline of `preset_dirty`, except what was changed on the device
+     * after the load (an edit made before the notification arrived):
+     * that stays unsaved. If the re-read fails, the flags say
      * only what was patched, and it is tried again: up to 5 times over
      * about 31 s, each try announced by a call of the [`NotifyListener`].
      * After the last one the result carries [`NOTIFY_STALE`], once; the
@@ -6765,12 +6805,14 @@ public interface DspiCoreInterface {
     fun `setDacMute`(`enabled`: kotlin.Boolean, `activeLow`: kotlin.Boolean, `pin`: kotlin.UByte, `holdMs`: kotlin.UShort, `releaseMs`: kotlin.UShort)
     
     /**
-     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms and then
-     * clamped to 0..[`DspiCore::max_delay_ms`]. An output channel's delay
-     * is its output delay, so it goes through [`DspiCore::set_output_delay`].
+     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms; below 0 it
+     * is 0. An output channel's delay is its output delay, so it goes
+     * through [`DspiCore::set_output_delay`].
      *
-     * Errors: [`DspiError::InvalidArgument`] for a channel out of range or a
-     * NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for a channel out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
     fun `setDelay`(`ch`: kotlin.UByte, `ms`: kotlin.Float)
     
@@ -7127,12 +7169,13 @@ public interface DspiCoreInterface {
     fun `setOutputConfigMode`(`mode`: kotlin.UByte)
     
     /**
-     * Output delay in ms, quantized to 0.0001 ms and then clamped to
-     * 0..[`DspiCore::max_delay_ms`]. It is also the delay of the output's
-     * wire channel.
+     * Output delay in ms, quantized to 0.0001 ms; below 0 it is 0. It is
+     * also the delay of the output's wire channel.
      *
-     * Errors: [`DspiError::InvalidArgument`] for an output out of range or
-     * a NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for an output out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
     fun `setOutputDelay`(`output`: kotlin.UByte, `ms`: kotlin.Float)
     
@@ -7822,6 +7865,27 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * Whether enabling output `output` would collide on Core 1, and if so
+     * why, in the words [`DspiCore::write_param`] refuses it with: `None`
+     * when it would not. The device decides
+     * ([`DspiCore::check_core1_conflict`]); the words come from the layout.
+     *
+     * Errors: those of [`DspiCore::check_core1_conflict`].
+     */
+    @Throws(DspiException::class)override fun `core1ConflictReason`(`output`: kotlin.UByte): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core1_conflict_reason(
+        it, FfiConverterUByte.lower(`output`),_status)
+}
+    }
+    )
+    }
     
 
     
@@ -9717,7 +9781,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * directory. The baseline becomes the loaded state. Runs under the Link
      * device lock. The device also notifies `PRESET_LOADED` and then
      * `BULK_INVALIDATED` (source `PRESET`); `process_notifications`
-     * re-reads on those as on any foreign change.
+     * re-reads on those as on any foreign change, and an edit made between
+     * this call and that notification stays unsaved (WP CG33).
      *
      * Errors: [`DspiError::Refused`] with the `PRESET_*` status;
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
@@ -10011,7 +10076,9 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * mirror cannot patch re-read the whole image and the preset
      * directory: `NOTIFY_STATE | NOTIFY_CURVES | NOTIFY_REFRESHED`. A
      * preset load or factory reset also makes the new state the
-     * baseline of `preset_dirty`. If the re-read fails, the flags say
+     * baseline of `preset_dirty`, except what was changed on the device
+     * after the load (an edit made before the notification arrived):
+     * that stays unsaved. If the re-read fails, the flags say
      * only what was patched, and it is tried again: up to 5 times over
      * about 31 s, each try announced by a call of the [`NotifyListener`].
      * After the last one the result carries [`NOTIFY_STALE`], once; the
@@ -10785,12 +10852,14 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
-     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms and then
-     * clamped to 0..[`DspiCore::max_delay_ms`]. An output channel's delay
-     * is its output delay, so it goes through [`DspiCore::set_output_delay`].
+     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms; below 0 it
+     * is 0. An output channel's delay is its output delay, so it goes
+     * through [`DspiCore::set_output_delay`].
      *
-     * Errors: [`DspiError::InvalidArgument`] for a channel out of range or a
-     * NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for a channel out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
     @Throws(DspiException::class)override fun `setDelay`(`ch`: kotlin.UByte, `ms`: kotlin.Float)
         = 
@@ -11504,12 +11573,13 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
-     * Output delay in ms, quantized to 0.0001 ms and then clamped to
-     * 0..[`DspiCore::max_delay_ms`]. It is also the delay of the output's
-     * wire channel.
+     * Output delay in ms, quantized to 0.0001 ms; below 0 it is 0. It is
+     * also the delay of the output's wire channel.
      *
-     * Errors: [`DspiError::InvalidArgument`] for an output out of range or
-     * a NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for an output out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
     @Throws(DspiException::class)override fun `setOutputDelay`(`output`: kotlin.UByte, `ms`: kotlin.Float)
         = 
@@ -15981,6 +16051,47 @@ public object FfiConverterTypeFilterParams: FfiConverterRustBuffer<FilterParams>
             FfiConverterFloat.write(value.`q`, buf)
             FfiConverterFloat.write(value.`gain`, buf)
             FfiConverterFloat.write(value.`qp`, buf)
+    }
+}
+
+
+
+/**
+ * One filter type and the name clients show for it.
+ */
+data class FilterTypeName (
+    /**
+     * The firmware's type code (`FILTER_*`): 0..13 PEQ, 32..63 crossover.
+     */
+    var `code`: kotlin.UByte, 
+    /**
+     * The name, e.g. "High Cut (12dB)".
+     */
+    var `name`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFilterTypeName: FfiConverterRustBuffer<FilterTypeName> {
+    override fun read(buf: ByteBuffer): FilterTypeName {
+        return FilterTypeName(
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FilterTypeName) = (
+            FfiConverterUByte.allocationSize(value.`code`) +
+            FfiConverterString.allocationSize(value.`name`)
+    )
+
+    override fun write(value: FilterTypeName, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`code`, buf)
+            FfiConverterString.write(value.`name`, buf)
     }
 }
 
@@ -20866,6 +20977,34 @@ public object FfiConverterSequenceTypeFilterParams: FfiConverterRustBuffer<List<
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeFilterTypeName: FfiConverterRustBuffer<List<FilterTypeName>> {
+    override fun read(buf: ByteBuffer): List<FilterTypeName> {
+        val len = buf.getInt()
+        return List<FilterTypeName>(len) {
+            FfiConverterTypeFilterTypeName.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<FilterTypeName>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeFilterTypeName.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<FilterTypeName>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeFilterTypeName.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeLinkDenied: FfiConverterRustBuffer<List<LinkDenied>> {
     override fun read(buf: ByteBuffer): List<LinkDenied> {
         val len = buf.getInt()
@@ -21568,6 +21707,32 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_curve_freq(
         FfiConverterUInt.lower(`i`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The name of filter type `code`; "Type 14" for a code the firmware does
+         * not define (yet).
+         */ fun `filterTypeName`(`code`: kotlin.UByte): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_filter_type_name(
+        FfiConverterUByte.lower(`code`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Every filter type the firmware defines with its name, in the Console's
+         * order: the PEQ types 0..13, then the crossovers 32..63.
+         */ fun `filterTypeNames`(): List<FilterTypeName> {
+            return FfiConverterSequenceTypeFilterTypeName.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_filter_type_names(
+        _status)
 }
     )
     }

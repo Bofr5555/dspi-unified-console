@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import "Format.js" as Format
 
 // Header card of an input channel page, laid out as on the macOS Console:
 // Link n/n+1 | Preamp slider and value | Clear PEQ, separated by dividers.
@@ -150,7 +151,7 @@ Rectangle {
                 // outside the slider's range elsewhere stays as it is
                 property bool dragged: false
                 onMoved: { dragged = true; preampDB = value; preampLive.push(value) }
-                onPressedChanged: if (!pressed) {
+                onSettled: {
                     preampLive.cancel()
                     if (dragged) bridge.setInputPreamp(inputIndex, value)
                     dragged = false
@@ -206,7 +207,8 @@ Rectangle {
     AppDialog {
         id: linkDialog
         icon: "link"
-        title: qsTr("Link %1 and %2?").arg(bridge.channelName(card.firstId)).arg(bridge.channelName(card.secondId))
+        // -- WP QD40 -- Read again on each state change, so a rename shows here
+        title: { bridge.numChannels; return Format.fmt(qsTr("Link %1 and %2?"), [bridge.channelName(card.firstId), bridge.channelName(card.secondId)]) }
         message: qsTr("Their filters or preamp differ. Which settings should both use?")
         onAboutToShow: details = [card.settingsSummary(card.firstId), card.settingsSummary(card.secondId)]
         buttons: [

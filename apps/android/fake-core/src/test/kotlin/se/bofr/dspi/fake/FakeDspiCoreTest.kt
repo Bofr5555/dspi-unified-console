@@ -39,7 +39,7 @@ class FakeDspiCoreTest {
         assertEquals(24f, core.getState().inputPreampDb[1]) // RP2350 ceiling
         core.setFilter(0, 3, FilterParams(DspiConstants.FILTER_PEAKING, false, 1000f, 1f, 3.14f, 0.707f))
         assertEquals(3.1f, core.getState().filters[0][3].gain)
-        core.setOutputDelay(2, 100f)
+        core.setOutputDelay(2, 42f)
         assertEquals(42f, core.getState().outputDelayMs[2])
         assertEquals(42f, core.getState().channelDelays[8 + 2])
         core.setCrossfeedPreset(2)
@@ -52,6 +52,57 @@ class FakeDspiCoreTest {
         assertEquals(0f, core.getState().tube[DspiConstants.TUBE_PARAM_TYPE])
         core.setLimiterParam(DspiConstants.LIMITER_ALL_OUTPUTS, DspiConstants.LIMITER_PARAM_THRESHOLD_DB, -50f)
         assertTrue(core.getState().limiterThresholdDb.take(9).all { it == -30f })
+    }
+
+    /** WP AN41: above the platform's line the core (CG36) refuses in its words and changes nothing; below 0 is 0. */
+    @Test
+    fun wpAn41DelaysAboveTheLineAreRefusedLikeTheCore() {
+        val core = FakeDspiCore()
+        core.setOutputDelay(2, 7.5f)
+        val e = runCatching { core.setOutputDelay(2, 100f) }.exceptionOrNull() as DspiException.InvalidArgument
+        assertEquals("out.delay: 100 ms is out of range; this device (RP2350) holds 0 to 42 ms", e.msg)
+        assertEquals(7.5f, core.getState().outputDelayMs[2])
+        assertEquals(7.5f, core.getState().channelDelays[8 + 2])
+        // setDelay on an output's wire channel is the output's delay
+        val e2 = runCatching { core.setDelay(8 + 2, 42.5f) }.exceptionOrNull() as DspiException.InvalidArgument
+        assertEquals("out.delay: 42.5 ms is out of range; this device (RP2350) holds 0 to 42 ms", e2.msg)
+        // an input's delay
+        val e3 = runCatching { core.setDelay(0, 50f) }.exceptionOrNull() as DspiException.InvalidArgument
+        assertEquals("ch.delay: 50 ms is out of range; this device (RP2350) holds 0 to 42 ms", e3.msg)
+        core.setOutputDelay(2, -3f)
+        assertEquals(0f, core.getState().outputDelayMs[2])
+        // exact below the line (0.0001 ms grid)
+        core.setOutputDelay(2, 41.2345f)
+        assertEquals(41.2345f, core.getState().outputDelayMs[2])
+        // RP2040: 21 ms
+        val rp2040 = FakeDspiCore(demoDspState().copy(platformId = 0))
+        assertEquals(21f, rp2040.maxDelayMs())
+        rp2040.setOutputDelay(0, 21f)
+        val e4 = runCatching { rp2040.setOutputDelay(0, 21.5f) }.exceptionOrNull() as DspiException.InvalidArgument
+        assertEquals("out.delay: 21.5 ms is out of range; this device (RP2040) holds 0 to 21 ms", e4.msg)
+        assertEquals(21f, rp2040.getState().outputDelayMs[0])
+    }
+
+    /** WP AN41: core1ConflictReason as the core words it (write_param.rs, 9 outputs), null without a conflict. */
+    @Test
+    fun wpAn41Core1ConflictReasonInTheCoresWords() {
+        val core = FakeDspiCore()
+        // Demo: outputs 3-4 hold the EQ worker
+        assertEquals(
+            "Output 9 is the PDM output, which shares Core 1 with outputs 3-8, and one of them is enabled: disable outputs 3-8 first",
+            core.core1ConflictReason(8)
+        )
+        assertEquals(null, core.core1ConflictReason(4))
+        assertEquals(null, core.core1ConflictReason(0))
+        core.setOutputEnable(2, false)
+        core.setOutputEnable(3, false)
+        assertEquals(null, core.core1ConflictReason(8))
+        assertTrue(core.setOutputEnable(8, true))
+        assertEquals(
+            "Output 3 shares Core 1 with the PDM output (output 9), which is enabled: disable the PDM output first",
+            core.core1ConflictReason(2)
+        )
+        assertEquals(null, core.core1ConflictReason(1))
     }
 
     @Test

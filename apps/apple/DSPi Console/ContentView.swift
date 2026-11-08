@@ -240,6 +240,7 @@ struct ContentView: View {
         let sourceSlot = vm.activePresetSlot
         guard destinationSlot != sourceSlot else { return }
 
+        vm.settleUnsavedChanges()   // -- WP SWF7 --
         if vm.isDeviceConnected && vm.hasUnsavedChanges {
             #if os(macOS)
             let action = PresetAlerts.showUnsavedChangesAlert(diff: vm.computeDiff())
@@ -694,9 +695,7 @@ struct ContentView: View {
                                             let alert = PlatformAlert()
                                             #endif
                                             alert.messageText = "Load Failed"
-                                            alert.informativeText = status == PRESET_ERR_CRC
-                                                ? "Preset data is corrupted."
-                                                : "Failed to load preset (error \(status))."
+                                            alert.informativeText = presetLoadFailedText(status)   // -- WP SWF7 --
                                             alert.alertStyle = .warning
                                             alert.addButton(withTitle: "OK")
                                             #if os(macOS)
@@ -708,6 +707,7 @@ struct ContentView: View {
 
                                         presetSwitchInFlight = true
                                         print("[PRESET] inFlight = true")
+                                        vm.settleUnsavedChanges()   // -- WP SWF7 --
                                         if vm.isDeviceConnected && vm.hasUnsavedChanges {
                                             let diff = vm.computeDiff()
                                             let handle: (UnsavedChangesAction) -> Void = { action in
@@ -1305,7 +1305,7 @@ struct OutputChannelDetail: View {
                     get: { vm.outputMuted[outputIndex] },
                     set: { vm.setOutputMute(output: outputIndex, muted: $0) }
                 ),
-                maxDelay: vm.platformName == "RP2040" ? 42 : 85,
+                maxDelay: vm.maxOutputDelayMS,   // -- WP SWF8 -- the core's line
                 onGainDrag: { vm.sendOutputGainToDevice(output: outputIndex, db: $0) },
                 onDelayDrag: { vm.sendOutputDelayToDevice(output: outputIndex, ms: $0) }
             )

@@ -90,12 +90,6 @@ class MatrixModelTest {
         assertEquals(listOf(1, 3, 5), (0 until 8).filter { rowNeedsDivider(it, true, 8) })
     }
 
-    @Test
-    fun maxDelayPerPlatform() {
-        assertEquals(42f, maxDelayFor("RP2040"))
-        assertEquals(85f, maxDelayFor("RP2350"))
-    }
-
     private fun state(enabled: List<Boolean>, platform: String = "RP2350"): MatrixMixerState {
         val pdm = pdmOutputIndex(enabled.size)
         val range = eqWorkerRange(platform)
@@ -113,7 +107,7 @@ class MatrixModelTest {
             inputTrimDB = emptyList(),
             pdmOutputIndex = pdm,
             eqWorkerRange = range,
-            maxDelay = maxDelayFor(platform)
+            maxDelay = if (platform == "RP2040") 21f else 42f
         )
     }
 
@@ -140,6 +134,17 @@ class MatrixModelTest {
         )
         val rp2040 = state(List(5) { it < 3 }, "RP2040")
         assertEquals("Outputs 3-4 will be disabled. Are you sure?", rp2040.conflictAlert(PendingConflict(4, true)).message)
+    }
+
+    /** WP AN41: the core's reason comes first, then what the button does; title and button stay the macOS ones. */
+    @Test
+    fun wpAn41ConflictAlertLeadsWithTheCoresReason() {
+        val s = state(List(9) { it < 3 })
+        val why = "Output 9 is the PDM output, which shares Core 1 with outputs 3-8, and one of them is enabled: disable outputs 3-8 first"
+        assertEquals(
+            ConflictAlert("Warning", "$why.\n\nOutputs 3-8 will be disabled. Are you sure?", "Enable PDM"),
+            s.conflictAlert(PendingConflict(8, true, why))
+        )
     }
 
     @Test

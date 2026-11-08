@@ -140,7 +140,8 @@ fn summary(state: &DeviceState, channel: usize, flat: bool) -> String {
         state.output(channel - ni).delay_ms
     };
     if delay != 0.0 {
-        parts.push(ms(delay as f64));
+        // -- WP CG37 -- as the line delivers it.
+        parts.push(ms(super::delivered_delay_ms(state, delay)));
     }
     parts.join(" · ")
 }

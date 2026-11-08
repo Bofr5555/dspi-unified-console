@@ -35,6 +35,9 @@
 #       qt                            the Qt 6 desktop app (crates/dspi-capi,
 #                                     library dspi_capi)
 #       qt5                           the same against Qt 5.15
+#       qt-ts                         translations/dspi-console_en.ts is what
+#                                     lupdate makes of the sources (WP QD40; the
+#                                     qt step runs it too)
 #       qt-offscreen                  the Qt 6 app with its smoke driver, on the
 #                                     demo device, offscreen (apps/desktop/qt/smoke)
 #       qt5-offscreen                 the same on Qt 5.15
@@ -98,6 +101,24 @@ CAPI_FEATURES=link,midir,mdns,hub
 FAKEHUB="cargo build --release -p dspi-link --features fake-hub --bin dspi-link-fakehub"
 # -- WP HB6 -- The Terminal, as the smoke driver's client of a demo hub
 TERMINAL="cargo build --release --locked -p dspi-term"
+# -- WP QD40 -- The Qt app's .ts is what lupdate makes of the sources now: lupdate
+# runs as the dspi_lupdate target does (apps/desktop/qt/CMakeLists.txt, the same
+# arguments) on a copy of qml/, src/ and translations/ laid out as in the tree,
+# and any difference from the committed file fails. -- WP QD41 -- Without
+# locations (-locations none), so moved lines don't make a difference; the fix
+# names the command, which runs in the CI image (lupdate 6.11.2: another version
+# may write the file differently).
+TSUPDATE='lupdate-qt6 -silent -locations none -no-obsolete -source-language en -target-language en qml src -ts translations/dspi-console_en.ts'
+TSCHECK='set -e; d=/work/ts-check; rm -rf "$d"; mkdir -p "$d"
+  cp -r apps/desktop/qt/qml apps/desktop/qt/src apps/desktop/qt/translations "$d"/
+  (cd "$d" && '"$TSUPDATE"')
+  if ! diff -u apps/desktop/qt/translations/dspi-console_en.ts "$d"/translations/dspi-console_en.ts; then
+    echo "qt-ts: apps/desktop/qt/translations/dspi-console_en.ts is not current. Regenerate it in the CI image (lupdate $(lupdate-qt6 -version 2>&1 | grep -o "[0-9][0-9.]*" | head -1)) and commit it:" >&2
+    echo "  ci/run.sh '"'"'cd apps/desktop/qt && '"$TSUPDATE"''"'"'" >&2
+    exit 1
+  fi
+  echo "qt-ts: dspi-console_en.ts is current"'
+# -- WP QD40 end --
 # -- WP CG9 -- The image with kotlinc and swiftc. Other steps keep ci/run.sh's.
 crates=()
 steps=()
@@ -167,7 +188,12 @@ for s in "${steps[@]}"; do
     qt)
       # The build directory's name moved with the core: /work/build-desktop-qt6
       # may still cache the old core's paths.
-      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-capi -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target && cmake --build /work/build-desktop-qt6-capi" ;;
+      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-capi -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target && cmake --build /work/build-desktop-qt6-capi"
+      # -- WP QD40 -- and the .ts is current
+      $RUN "$TSCHECK" ;;
+    qt-ts)
+      # -- WP QD40 -- only the .ts check (the qt step runs it too)
+      $RUN "$TSCHECK" ;;
     qt5)
       $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && cmake -S apps/desktop/qt -B /work/build-desktop-qt5 -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=5 -DDSPI_CARGO_TARGET_DIR=/target && cmake --build /work/build-desktop-qt5" ;;
     qt-offscreen)

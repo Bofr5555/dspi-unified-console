@@ -110,6 +110,15 @@ final class CoreBackedTransport: DeviceTransport {
     /// transport made; any other value means the core changed it (coreQueue).
     private var knownCoreGeneration: UInt64 = 0
     private var drainScheduled = false
+    /// -- WP SWF6 -- Tests only: drains wait while set, so a notification
+    /// window (a preset load's, say) stays open for as long as a test needs.
+    private var drainHeldForTest = false
+    /// -- WP SWF7 -- For `settlePresetChanges` (system uptime): when the last
+    /// raw SET was handed to `coreQueue`, when it went to the core
+    /// (coreQueue only), and when the core last reported a notification.
+    private var lastRawSetAt: TimeInterval?
+    private var lastRawSetSentAt: TimeInterval = 0
+    private var lastNotifiedAt: TimeInterval = 0
 
     private static let log = Logger(subsystem: "WeebLabs.DSPi-Console", category: "CoreBackedTransport")
     #if DEBUG
@@ -270,6 +279,7 @@ final class CoreBackedTransport: DeviceTransport {
         stateLock.lock()
         let already = drainScheduled
         drainScheduled = true
+        lastNotifiedAt = ProcessInfo.processInfo.systemUptime   // -- WP SWF7 --
         stateLock.unlock()
         guard !already else { return }
         coreQueue.asyncAfter(deadline: .now() + .milliseconds(30)) { [weak self] in self?.drain() }
@@ -278,7 +288,11 @@ final class CoreBackedTransport: DeviceTransport {
     // On coreQueue.  Apply the queued packets to the core's mirror, hand the
     // tap's copies to the observers, and follow the connection.
     private func drain() {
-        stateLock.lock(); drainScheduled = false; stateLock.unlock()
+        stateLock.lock()
+        drainScheduled = false
+        let held = drainHeldForTest
+        stateLock.unlock()
+        guard !held else { return }   // -- WP SWF6 --
         let result = onCore { $0.processNotifications() }
         let packets = onCore { $0.notifyTapDrain() }
         for raw in packets {
@@ -290,7 +304,9 @@ final class CoreBackedTransport: DeviceTransport {
         // -- WP SW8 -- The mirror after the change, after the tap's packets
         // (both reach main in this order).
         if result.flags & CoreStateChange.stateFlags != 0, !stateFanout.isEmpty {
-            stateFanout.publish(CoreStateChange(flags: result.flags, state: onCore { $0.getState() }))
+            // -- WP SWF6 -- With the core's unsaved-changes list after it.
+            stateFanout.publish(CoreStateChange(flags: result.flags, state: onCore { $0.getState() },
+                                                presetChanges: onCore { $0.presetChanges() }))
         }
         let connected = onCore { $0.isConnected() }
         let coreGeneration = onCore { $0.connectionGeneration() }
@@ -306,12 +322,22 @@ final class CoreBackedTransport: DeviceTransport {
         }
     }
 
+    // -- WP SWF6 --
+    /// Tests only: hold the notification drain (true), or let it run again
+    /// and process what arrived meanwhile in one batch (false).
+    func holdDrainForTest(_ hold: Bool) {
+        stateLock.lock(); drainHeldForTest = hold; stateLock.unlock()
+        if !hold { scheduleDrain() }
+    }
+
     // MARK: - SET (host to device)
 
     /// The core picks the interface, so `index` is dropped.
     func sendControlRequest(request: UInt8, value: UInt16, index: UInt16, data: Data) {
+        stateLock.lock(); lastRawSetAt = ProcessInfo.processInfo.systemUptime; stateLock.unlock()   // -- WP SWF7 --
         coreQueue.async { [weak self] in
             guard let self = self else { return }
+            self.lastRawSetSentAt = ProcessInfo.processInfo.systemUptime   // -- WP SWF7 --
             do {
                 try self.onCore { try $0.rawSet(opcode: request, value: value, data: data) }
             } catch {
@@ -461,6 +487,134 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
     func addStateObserver(_ handler: @escaping (CoreStateChange) -> Void) -> AnyCancellable {
         stateFanout.add(handler)
     }
+
+    // -- WP SWF6 -- The unsaved-changes baseline is the core's.
+
+    func readPresetChanges() -> [String] {
+        onCoreSync { self.onCore { $0.presetChanges() } }
+    }
+
+    func capturePresetBaseline() -> [String] {
+        onCoreSync {
+            // The echoes of the last raw SETs are in the mirror first.
+            self.drain()
+            self.onCore { $0.captureBaseline() }
+            return self.onCore { $0.presetChanges() }
+        }
+    }
+
+    // -- WP SWF7 --
+    /// How recent a raw SET must be for a prompt to settle first: its echo
+    /// arrives one drain (30 ms) plus the link's echo latency after it.  Also
+    /// the longest the settle waits for the echoes after the last SET.
+    static let settleWindow: TimeInterval = 0.1
+    /// How long the link must be quiet before the settle drains.
+    static let settleQuiet: TimeInterval = 0.02
+
+    func settlePresetChanges() -> [String]? {
+        // -- WP SWF8 -- Not over a hub (c72-N1): its echoes reach the core
+        // through the main thread (HubTransport's fanout), which this call
+        // holds, so waiting cannot bring them in.
+        if bridge?.isHub == true { return nil }
+        let start = ProcessInfo.processInfo.systemUptime
+        stateLock.lock(); let at = lastRawSetAt; stateLock.unlock()
+        guard let at = at, start - at < Self.settleWindow else { return nil }
+        if DispatchQueue.getSpecific(key: CoreBackedTransport.onCoreQueue) == true {
+            return settleOnCore(until: start + Self.settleWindow)
+        }
+        // -- WP SWF8 -- The whole call is bounded, the hop behind work already
+        // on coreQueue included (c72-N2): past `settleWindow` the caller gets
+        // nil (the list as delivered) and the late job does nothing.
+        let done = DispatchSemaphore(value: 0)
+        let box = SettleBox()
+        coreQueue.async { [weak self] in
+            if !box.abandoned, let self = self {
+                box.result = self.settleOnCore(until: start + Self.settleWindow - Self.settleDrainReserve)
+            }
+            done.signal()
+        }
+        guard done.wait(timeout: .now() + Self.settleWindow) == .success else {
+            box.abandoned = true
+            return nil
+        }
+        return box.result
+    }
+
+    /// -- WP SWF8 -- Of the call's `settleWindow`, what the wait leaves for
+    /// the drain.
+    static let settleDrainReserve: TimeInterval = 0.02
+
+    // On coreQueue.  Behind the SETs on the queue.  Their echoes reach the
+    // core through the reader thread, one wake each: wait until the link has
+    // been quiet for `settleQuiet` since the last SET or echo, at most the
+    // window from the last SET (a write that echoes nothing waits only the
+    // quiet time) and never past `limit`.
+    private func settleOnCore(until limit: TimeInterval) -> [String] {
+        let deadline = min(lastRawSetSentAt + Self.settleWindow, limit)
+        while true {
+            let now = ProcessInfo.processInfo.systemUptime
+            stateLock.lock(); let heard = lastNotifiedAt; stateLock.unlock()
+            if now >= deadline || now - max(heard, lastRawSetSentAt) >= Self.settleQuiet { break }
+            Thread.sleep(forTimeInterval: 0.002)
+        }
+        drain()
+        return onCore { $0.presetChanges() }
+    }
+
+    /// -- WP SWF8 -- The settle's result, and the caller giving up on it.
+    private final class SettleBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _result: [String]?
+        private var _abandoned = false
+        var result: [String]? {
+            get { lock.lock(); defer { lock.unlock() }; return _result }
+            set { lock.lock(); _result = newValue; lock.unlock() }
+        }
+        var abandoned: Bool {
+            get { lock.lock(); defer { lock.unlock() }; return _abandoned }
+            set { lock.lock(); _abandoned = newValue; lock.unlock() }
+        }
+    }
+
+    // -- WP SWF8 -- c75-N3
+
+    func readMaxDelayMs() -> Float? {
+        onCoreSync { self.onCore { $0.maxDelayMs() } }
+    }
+
+    func outputDelayRefusal(output: UInt8, ms: Float, reply: @escaping (String?) -> Void) {
+        coreQueue.async { [weak self] in
+            var text: String?
+            // Only past the line: there the typed setter refuses before it
+            // sends anything (a negative it would send as 0).
+            if let self = self, ms.isNaN || ms > self.onCore({ $0.maxDelayMs() }) {
+                do {
+                    try self.onCore { try $0.setOutputDelay(output: output, ms: ms) }
+                } catch DspiError.InvalidArgument(let msg) {
+                    text = msg
+                } catch {}
+            }
+            DispatchQueue.main.async { reply(text) }
+        }
+    }
+
+    func loadPreset(slot: UInt8) -> Result<(DspState, [String]), DspiError> {
+        onCoreSync {
+            do {
+                try self.onCore { try $0.loadPreset(slot: slot) }
+                return .success((self.onCore { $0.getState() }, self.onCore { $0.presetChanges() }))
+            } catch {
+                let failure = error as? DspiError ?? .Transfer(msg: String(describing: error))
+                // As a raw write-as-read's failure (getControlResult).
+                switch failure {
+                case .Locked: DeviceLock.notice.post()
+                case .ReadOnly: RefusedWrite.handleReadOnly(fanout: self.fanout)
+                default: break
+                }
+                return .failure(failure)
+            }
+        }
+    }
 }
 
 // MARK: - The core's notification listener
@@ -499,6 +653,9 @@ final class HostBridge: HostTransport, @unchecked Sendable {
     func origin(of note: LinkNotification) -> UInt16? {
         hostKind == .hub ? note.origin : nil
     }
+
+    /// -- WP SWF8 -- A hub session: its notifications arrive on main.
+    var isHub: Bool { hostKind == .hub }
 
     func kind() -> HostTransportKind {
         switch hostKind {

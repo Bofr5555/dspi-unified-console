@@ -34,9 +34,12 @@
     clippy::arithmetic_side_effects
 )]
 
+use dspi_proto::FilterType;
 use dspi_proto::generated::{filter, limiter};
 use dspi_proto::packets::MatrixRoutePacket;
-use dspi_proto::registry::{ALL_OUTPUTS, Kind, ParamDesc, by_path};
+use dspi_proto::registry::{
+    ALL_OUTPUTS, Kind, ParamDesc, by_path, eq_field_fits, eq_type_fits, retyped,
+};
 use dspi_proto::value::Value;
 use dspi_session::Outcome;
 
@@ -199,12 +202,38 @@ impl DspiCore {
         }
         let value = {
             let mut inner = self.writing()?;
+            // -- WP CG36 -- the line's length is the connected platform's,
+            // which the registry's 85 ms does not know. -- WP CG37 -- checked
+            // on the quantized value, as the typed setter checks it, and
+            // below 0 refused with the line's range (the setter makes it 0).
+            let value = match value {
+                Value::Float(_) | Value::Int(_) if matches!(d.path, "out.delay" | "ch.delay") => {
+                    let ms = crate::quantize_delay(value.as_f32().unwrap_or(f32::NAN));
+                    if !ms.is_nan() {
+                        crate::params::check_delay(&inner.state, d.path, ms)?;
+                    }
+                    Value::Float(ms)
+                }
+                v => v,
+            };
             let mut w = inner.writable_conn()?;
             let session = w.session()?;
-            session.check(d.path, &indices, &value)?;
-            d.kind
-                .validate(&value)
-                .map_err(|e| invalid(e.to_string()))?
+            if d.path == "eq.type" {
+                // -- WP CG36 -- the choices depend on the band: the registry's
+                // list is the PEQ bands' (indices and feature checked with Off,
+                // which every band takes).
+                let code = byte(&value)?;
+                session.check(d.path, &indices, &Value::Choice(0))?;
+                let b = indices.get(1).copied().unwrap_or(0);
+                eq_type_fits(b, code)
+                    .map_err(|why| invalid(format!("eq.type {indices:?}: {why}")))?;
+                Value::Choice(code)
+            } else {
+                session.check(d.path, &indices, &value)?;
+                d.kind
+                    .validate(&value)
+                    .map_err(|e| invalid(e.to_string()))?
+            }
         };
         if value.as_f32().is_some_and(f32::is_nan) {
             return Err(invalid(format!("{path} is NaN")));
@@ -213,6 +242,19 @@ impl DspiCore {
             return self.write_by_session(d, &indices, value);
         }
         self.write_typed(d, &indices, &value)
+    }
+
+    // -- WP CG36 --
+    /// Whether enabling output `output` would collide on Core 1, and if so
+    /// why, in the words [`DspiCore::write_param`] refuses it with: `None`
+    /// when it would not. The device decides
+    /// ([`DspiCore::check_core1_conflict`]); the words come from the layout.
+    ///
+    /// Errors: those of [`DspiCore::check_core1_conflict`].
+    pub fn core1_conflict_reason(&self, output: u8) -> Result<Option<String>> {
+        Ok(self
+            .check_core1_conflict(output)?
+            .then(|| self.seen(|s| core1_conflict_reason(s, output))))
     }
 }
 
@@ -280,7 +322,9 @@ impl DspiCore {
             }),
             "pre.all" => then(self.set_preamp(num(v)?), &|s| some_f(s.preamp_db)),
             "bypass" => then(self.set_bypass(flag(v)?), &|s| some_b(s.bypass)),
-            "eq.type" | "eq.freq" | "eq.q" | "eq.gain" => self.write_band_field(d.path, i0, i1, v),
+            "eq.type" | "eq.freq" | "eq.q" | "eq.gain" | "eq.fp" | "eq.qp" => {
+                self.write_band_field(d.path, i0, i1, v)
+            }
             "eq.bypass" => then(self.set_band_bypass(i0, i1, flag(v)?), &|s| {
                 band(s, i0, i1).map(|b| ParamValue::Bool(b.bypass))
             }),
@@ -291,7 +335,11 @@ impl DspiCore {
                 at(&s.channel_names, i0).map(ParamValue::Text)
             }),
             "mix" => self.write_crosspoint(i0, i1, v),
-            "out.enable" => self.set_output_enable(i0, flag(v)?).map(ParamValue::Bool),
+            // -- WP CG36 -- a Core 1 conflict is refused in words, not read back as false.
+            "out.enable" => match self.output_enable(i0, flag(v)?)? {
+                (_, true) => Err(invalid(self.seen(|s| core1_conflict_reason(s, i0)))),
+                (on, false) => Ok(ParamValue::Bool(on)),
+            },
             "out.gain" => then(self.set_output_gain(i0, num(v)?), &|s| {
                 at(&s.output_gain_db, i0).map(ParamValue::Float)
             }),
@@ -524,14 +572,31 @@ impl DspiCore {
     /// One field of a PEQ band (0..9) or a crossover band (20..23): the
     /// mirror's band with that field changed, sent whole through
     /// `set_filter` or `set_crossover`.
+    ///
+    /// A Linkwitz Transform band takes `eq.fp` and `eq.qp` and refuses
+    /// `eq.gain` (its gain field is fp, in Hz); every other band the
+    /// reverse (`registry::eq_field_fits`). A type change into or out of a
+    /// Linkwitz Transform rewrites the gain field as the Console does
+    /// (`registry::retyped`).
     fn write_band_field(&self, path: &str, ch: u8, b: u8, v: &Value) -> Answer {
         let mut p = self
             .seen(|s| band(s, ch, b))
             .ok_or_else(|| invalid(format!("channel {ch} has no band {b}")))?;
+        // -- WP CG34 --
+        let from = FilterType::from_raw(p.filter_type);
+        eq_field_fits(path, b, from)
+            .map_err(|why| invalid(format!("{path} [{ch}, {b}]: {why}")))?;
         match path {
-            "eq.type" => p.filter_type = byte(v)?,
+            "eq.type" => {
+                let to = byte(v)?;
+                [p.freq, p.q, p.gain, p.qp] =
+                    retyped(from, FilterType::from_raw(to), [p.freq, p.q, p.gain, p.qp]);
+                p.filter_type = to;
+            }
             "eq.freq" => p.freq = num(v)?,
             "eq.q" => p.q = num(v)?,
+            "eq.qp" => p.qp = num(v)?,
+            // eq.gain, or eq.fp on a Linkwitz Transform: the same field.
             _ => p.gain = num(v)?,
         }
         match b.checked_sub(XOVER_BASE) {
@@ -545,6 +610,7 @@ impl DspiCore {
             "eq.type" => ParamValue::Choice(p.filter_type),
             "eq.freq" => ParamValue::Float(p.freq),
             "eq.q" => ParamValue::Float(p.q),
+            "eq.qp" => ParamValue::Float(p.qp),
             _ => ParamValue::Float(p.gain),
         })
     }
@@ -578,6 +644,30 @@ impl DspiCore {
         })
         .map(|p| ParamValue::Bytes(p.encode().to_vec()))
         .ok_or_else(|| invalid(format!("mix has no crosspoint [{input}, {output}]")))
+    }
+}
+
+// -- WP CG36 --
+/// Why output `output` (0-based) cannot be enabled while Core 1 runs the
+/// other side, numbered from 1 as the Console shows outputs. Core 1 runs
+/// either the PDM output (the last) or the EQ worker for outputs 3 up to the
+/// one before it (`eqWorkerRange`, `pdmOutputIndex` in DSPViewModel.swift).
+fn core1_conflict_reason(s: &DspState, output: u8) -> String {
+    let n = u16::from(output).saturating_add(1);
+    let pdm = s.num_output_channels;
+    let workers = format!("outputs 3-{}", pdm.saturating_sub(1));
+    if output.saturating_add(1) == pdm {
+        format!(
+            "Output {n} is the PDM output, which shares Core 1 with {workers}, and one of \
+             them is enabled: disable {workers} first"
+        )
+    } else if (2..pdm.saturating_sub(1)).contains(&output) {
+        format!(
+            "Output {n} shares Core 1 with the PDM output (output {pdm}), which is enabled: \
+             disable the PDM output first"
+        )
+    } else {
+        format!("Output {n} cannot be enabled now: Core 1 is busy with another output")
     }
 }
 
@@ -996,5 +1086,146 @@ mod tests_wp_cg32 {
         ] {
             assert_eq!(ParamValue::from(Value::from(v.clone())), v);
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg34 {
+    use super::*;
+
+    fn demo() -> std::sync::Arc<DspiCore> {
+        let core = DspiCore::new();
+        core.open_demo().unwrap();
+        core
+    }
+
+    fn put(core: &DspiCore, path: &str, ix: &[u8], v: ParamValue) -> Result<ParamValue> {
+        core.write_param(path.into(), ix.to_vec(), v)
+    }
+
+    fn refused(r: Result<ParamValue>) -> String {
+        match r {
+            Err(DspiError::InvalidArgument { msg }) => msg,
+            other => panic!("expected an invalid argument, got {other:?}"),
+        }
+    }
+
+    fn settle(cores: &[&DspiCore]) {
+        for _ in 0..20 {
+            for c in cores {
+                c.process_notifications();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    /// A Linkwitz Transform written field by field reads back, and leaves
+    /// the mirror (image included) as one whole-band `set_filter` does.
+    #[test]
+    fn wp_cg34_a_linkwitz_band_by_path_is_the_typed_setters_band() {
+        let (a, b) = (demo(), demo());
+        let (ch, band) = (9, 2);
+        let f = |p: &str, v: ParamValue| put(&a, p, &[ch, band], v).unwrap();
+        assert_eq!(f("eq.type", ParamValue::Choice(11)), ParamValue::Choice(11));
+        assert_eq!(
+            f("eq.freq", ParamValue::Float(42.0)),
+            ParamValue::Float(42.0)
+        );
+        assert_eq!(f("eq.q", ParamValue::Float(0.95)), ParamValue::Float(0.95));
+        assert_eq!(f("eq.fp", ParamValue::Float(25.0)), ParamValue::Float(25.0));
+        // Qp travels as Q * 512 and reads back on that step.
+        assert_eq!(
+            f("eq.qp", ParamValue::Float(0.6)),
+            ParamValue::Float(307.0 / 512.0)
+        );
+        let bypass = a.get_state().filters[usize::from(ch)][usize::from(band)].bypass;
+        b.set_filter(
+            ch,
+            band,
+            FilterParams {
+                filter_type: 11,
+                bypass,
+                freq: 42.0,
+                q: 0.95,
+                gain: 25.0,
+                qp: 0.6,
+            },
+        )
+        .unwrap();
+        assert_eq!(a.get_state(), b.get_state());
+        settle(&[&a, &b]);
+        assert_eq!(a.get_state(), b.get_state());
+        let p = a.get_state().filters[usize::from(ch)][usize::from(band)];
+        assert_eq!((p.filter_type, p.gain, p.qp), (11, 25.0, 307.0 / 512.0));
+    }
+
+    #[test]
+    fn wp_cg34_out_of_range_and_wrong_band_writes_are_refused_and_change_nothing() {
+        let core = demo();
+        let (ch, band) = (9, 3);
+        put(&core, "eq.type", &[ch, band], ParamValue::Choice(11)).unwrap();
+        put(&core, "eq.fp", &[ch, band], ParamValue::Float(30.0)).unwrap();
+        let before = core.get_state();
+        for (path, v) in [
+            ("eq.fp", 9.0),
+            ("eq.fp", 14_401.0),
+            ("eq.fp", -30.0),
+            ("eq.qp", 0.05),
+            ("eq.qp", 21.0),
+            ("eq.fp", f32::NAN),
+            ("eq.qp", f32::INFINITY),
+        ] {
+            let msg = refused(put(&core, path, &[ch, band], ParamValue::Float(v)));
+            assert!(!msg.is_empty(), "{path} {v}");
+        }
+        // A dB value would land in fp as a few hertz: refused on a Linkwitz band.
+        let msg = refused(put(&core, "eq.gain", &[ch, band], ParamValue::Float(6.0)));
+        assert!(msg.contains("eq.fp"), "{msg}");
+        // fp and Qp mean nothing on another type.
+        let msg = refused(put(&core, "eq.fp", &[ch, 4], ParamValue::Float(30.0)));
+        assert!(msg.contains("Linkwitz"), "{msg}");
+        let msg = refused(put(&core, "eq.qp", &[ch, 4], ParamValue::Float(0.7)));
+        assert!(msg.contains("eq.type"), "{msg}");
+        // Nor on a crossover band (20..23).
+        assert!(refused(put(&core, "eq.qp", &[ch, 20], ParamValue::Float(0.7))).contains("eq.qp"));
+        assert_eq!(core.get_state(), before);
+    }
+
+    /// Other types write exactly as before; a type change into a Linkwitz
+    /// Transform seeds a neutral one (fp = f0, Qp = Q0), and out of one
+    /// zeroes the gain, as the Console does.
+    #[test]
+    fn wp_cg34_other_bands_are_unchanged_and_retyping_is_the_consoles() {
+        let (a, b) = (demo(), demo());
+        let (ch, band) = (9, 5);
+        put(&a, "eq.type", &[ch, band], ParamValue::Choice(1)).unwrap();
+        put(&a, "eq.freq", &[ch, band], ParamValue::Float(800.0)).unwrap();
+        put(&a, "eq.q", &[ch, band], ParamValue::Float(2.0)).unwrap();
+        assert_eq!(
+            put(&a, "eq.gain", &[ch, band], ParamValue::Float(4.04)).unwrap(),
+            ParamValue::Float(4.0)
+        );
+        let bypass = a.get_state().filters[usize::from(ch)][usize::from(band)].bypass;
+        let bell = FilterParams {
+            filter_type: 1,
+            bypass,
+            freq: 800.0,
+            q: 2.0,
+            gain: 4.04,
+            qp: 0.707,
+        };
+        b.set_filter(ch, band, bell).unwrap();
+        assert_eq!(a.get_state(), b.get_state());
+
+        put(&a, "eq.type", &[ch, band], ParamValue::Choice(11)).unwrap();
+        let p = a.get_state().filters[usize::from(ch)][usize::from(band)];
+        assert_eq!(
+            (p.filter_type, p.freq, p.q, p.gain, p.qp),
+            (11, 800.0, 2.0, 800.0, 1024.0 / 512.0)
+        );
+        put(&a, "eq.type", &[ch, band], ParamValue::Choice(2)).unwrap();
+        let p = a.get_state().filters[usize::from(ch)][usize::from(band)];
+        assert_eq!((p.filter_type, p.freq, p.q, p.gain), (2, 800.0, 2.0, 0.0));
     }
 }

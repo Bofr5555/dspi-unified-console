@@ -428,6 +428,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun coreVregDemoEvent(event: VregDemoEvent, seconds: Long): Unit = throw NotImplementedError("core_vreg_demo_event")
 
+    override fun core1ConflictReason(output: Int): String? = throw NotImplementedError("core1_conflict_reason")
+
     override fun autoeqDatabaseInfo(dbPath: String): AutoEqDatabaseInfo = throw NotImplementedError("autoeq_database_info")
 
     override fun autoeqImport(dbPath: String, data: List<Int>): AutoEqDatabaseInfo = throw NotImplementedError("autoeq_import")
@@ -487,4 +489,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun onboardingGettingStartedJson(): String = throw NotImplementedError("onboarding_getting_started_json")
 
     override fun aboutJson(): String = throw NotImplementedError("about_json")
+
+    override fun filterTypeNames(): List<FilterTypeName> = throw NotImplementedError("filter_type_names")
+
+    override fun filterTypeName(code: Int): String = throw NotImplementedError("filter_type_name")
 }

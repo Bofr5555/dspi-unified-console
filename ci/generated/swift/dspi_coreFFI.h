@@ -556,6 +556,11 @@ uint64_t uniffi_dspi_core_fn_method_dspicore_connection_generation(void*_Nonnull
 void uniffi_dspi_core_fn_method_dspicore_copy_preset(void*_Nonnull ptr, uint8_t source, uint8_t dest, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE1_CONFLICT_REASON
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE1_CONFLICT_REASON
+RustBuffer uniffi_dspi_core_fn_method_dspicore_core1_conflict_reason(void*_Nonnull ptr, uint8_t output, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_CLOSE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_CLOSE
 void uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_close(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -1805,6 +1810,17 @@ int8_t uniffi_dspi_core_fn_func_crossfeed_pair_map_valid(RustBuffer map, uint8_t
 double uniffi_dspi_core_fn_func_curve_freq(uint32_t i, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FILTER_TYPE_NAME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FILTER_TYPE_NAME
+RustBuffer uniffi_dspi_core_fn_func_filter_type_name(uint8_t code, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FILTER_TYPE_NAMES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FILTER_TYPE_NAMES
+RustBuffer uniffi_dspi_core_fn_func_filter_type_names(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FIRMWARE_GUARD_BOARD_IN_BOOTLOADER
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FIRMWARE_GUARD_BOARD_IN_BOOTLOADER
 RustBuffer uniffi_dspi_core_fn_func_firmware_guard_board_in_bootloader(RustCallStatus *_Nonnull out_status
@@ -2255,6 +2271,18 @@ uint16_t uniffi_dspi_core_checksum_func_curve_freq(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FILTER_TYPE_NAME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FILTER_TYPE_NAME
+uint16_t uniffi_dspi_core_checksum_func_filter_type_name(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FILTER_TYPE_NAMES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FILTER_TYPE_NAMES
+uint16_t uniffi_dspi_core_checksum_func_filter_type_names(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FIRMWARE_GUARD_BOARD_IN_BOOTLOADER
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FIRMWARE_GUARD_BOARD_IN_BOOTLOADER
 uint16_t uniffi_dspi_core_checksum_func_firmware_guard_board_in_bootloader(void
@@ -2432,6 +2460,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_connection_generation(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_COPY_PRESET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_COPY_PRESET
 uint16_t uniffi_dspi_core_checksum_method_dspicore_copy_preset(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE1_CONFLICT_REASON
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE1_CONFLICT_REASON
+uint16_t uniffi_dspi_core_checksum_method_dspicore_core1_conflict_reason(void
     
 );
 #endif

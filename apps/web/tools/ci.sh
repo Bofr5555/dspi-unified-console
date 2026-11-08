@@ -11,6 +11,7 @@
 #                                   `dspi hub --web`, `dspi web` (WB7)
 #   apps/web/tools/ci.sh --no-e2e   all but the browsers
 #   PW_ARGS="test/e2e/x.spec.ts --repeat-each 5" apps/web/tools/ci.sh   (WB7) e2e arguments
+#                                   (HB9: 4 workers unless PW_ARGS has --workers N)
 #
 # npm installs only what package-lock.json names, with its integrity hashes. The
 # npm cache and node_modules live under ${DSPI_BUILD_CACHE:-~/.cache/dspi-build}/work/web
@@ -44,7 +45,7 @@ DSPI_PROFILE=cross "$root/ci/run.sh" "cargo build -p dspi-term --no-default-feat
 cp "$B/target/${branch//\//-}-cross/debug/dspi" "$work/hub/"
 
 podman image exists "$PLAYWRIGHT" || podman pull -q "$PLAYWRIGHT" >/dev/null
-podman run --rm --init --userns=keep-id --user "$(id -u):$(id -g)" --ipc=private \
+podman run --rm --init --userns=keep-id --user "$(id -u):$(id -g)" --ipc=private --shm-size=1g \
   -v "$root":/src:ro,z \
   -v "$work/node_modules":/src/apps/web/node_modules:z \
   -v "$work/dist":/src/apps/web/dist:z \

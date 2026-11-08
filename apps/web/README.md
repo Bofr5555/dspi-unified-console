@@ -12,7 +12,7 @@ and DSPis behind hubs over DSPi Link (WB4b; tested against dspi-link's fake hub
 behind a host that enforces the hub's `Origin` rule, in Chromium and Firefox),
 served by a real hub, by `dspi web` on this machine and by any static host (WB7,
 [`DEPLOY.md`](DEPLOY.md)). The screens of the other clients arrive in WB6 slices;
-the first, the main window (WB6a), is in. Nothing here is published.
+the main window (WB6a), the EQ (WB6b) and the outputs and matrix (WB6c) are in. Nothing here is published.
 
 ## What it is for
 
@@ -183,6 +183,42 @@ show changes (the meters and the rest of the device's state do not reach them),
 rows keep one height whatever their state, and at 375 px the cards stack in one
 column with the slot and tools entries in one menu button.
 
+## The EQ (WB6b)
+
+`src/screens/eq/`: the channels with their curve pills, the response graph on a
+canvas with on-graph editing after the Console's `PeqGraphEditor` (keys and
+gestures listed atop `EqGraph.tsx`; touch: drag, double tap, pinch for Q, long
+press for menus), the band chip and the band list. The curves are the core's
+(`curves`, `crates/dspi-wasm/src/curves.rs`); the canvas draws only when what
+it shows changes. Edits are `eq.*` writes with the read-back, a drag's
+coalesced (newest wins, nothing replayed after a failure).
+
+## Outputs, crossover and matrix (WB6c)
+
+`src/screens/outputs/`, `src/screens/matrix/`. An output chosen on the EQ
+screen is the Console's output page: its settings card on top (the first two
+inputs' routing with level and INV, GAIN, DELAY, mute, the limiter with its
+settings and batch actions), the graph, then the PEQ or XO bands (the
+crossover: family, pass, slope, frequency, bypass; Bypass All asks with the
+Console's warning). Outputs also offer the Linkwitz Transform, edited in its
+panel (f0, Q0, fp, Qp, Apply). The Matrix screen is the Console's Matrix Mixer:
+crosspoints, and per output ENABLE (the PDM / Core 1 questions), GAIN, DELAY,
+MUTE.
+
+The delay follows the owner's rule (SL1, `outputs/Level.tsx`): a drag sends
+whole ms live and on release, never -0, and the thumb snaps to what was
+committed; typed values are sent as typed and values from the device are shown
+as they are (to 0.0001 ms); the wheel and the keys go to the next whole ms;
+a key or an assistive technology's change commits at once. The longest delay is
+the device's (`outputLimits`). Three binding calls cover what `write` by path
+does not (`crates/dspi-wasm/src/outputs.rs`): `crossoverType` (the registry's
+`eq.type` takes PEQ types only), `crosspoint` (the registry's `mix`, its packet
+built in the binding) and `outputLimits`.
+
+EQ follow-ups: the shape card asks a shape's slope as the Console's chooser; a
+host's `data-theme` change redraws the graph; the curves hook shows every
+answer as it comes, so a drag over a slow queue never freezes the curve.
+
 ## Embedding in a fleet server
 
 ```js
@@ -195,6 +231,10 @@ const console = mount(document.getElementById("dspi"), {
 });
 // console.unmount();
 ```
+
+What is unsaved (WB6b): `console.unsaved()` and `console.onUnsavedChange(fn)`.
+By default the console asks the browser's leave-page question while something
+is; a host page that asks its own way mounts with `leavePrompt: false`.
 
 `FleetBackend` (`src/fleet/types.ts`):
 
@@ -245,7 +285,8 @@ e2e's host; `DSPI_FAKEHUB` names the binary, which `tools/ci.sh` builds).
 `dist/` holds `index.html`, `app.js` and `page.css` (the standalone page), `dspi-web.js` (the
 library), `worker.js`, `dspi_wasm.wasm` (the core: 1 086 KB, 362 KB gzip with WebUSB and Link),
 `dspi-web.css` and `THIRD-PARTY-NOTICES.txt`. A host serves `dspi_wasm.wasm` beside `worker.js`.
-(With WB6a's preset calls the core is 1 126 KB, 373 KB gzip.) The page needs
+(With WB6a's preset calls the core is 1 126 KB, 373 KB gzip; with WB6b's curves 1 154 KB, 381 KB gzip;
+on main before WB6c 1 168 KB; with WB6c's output calls 1 178 KB, 389 KB gzip.) The page needs
 JSPI (Chrome 137, Firefox 153, Safari 27); without it every call says so. Preact (MIT) is the one runtime
 dependency; `ci/licence-inventory.py` records it (section 6b), and the notices file carries its
 licence and the core's Rust crates (`notices/rust-crates.txt`, written by
@@ -274,6 +315,9 @@ The web step also runs the hosting routes on the real `dspi` (`test/e2e/hosting.
 | `src/ui/` | Preact components and the session model |
 | `src/ui/screens.tsx` | a session's screens (WB6 slices) |
 | `src/screens/main/` | the main window (WB6a): volume, presets, inputs and outputs; `model.ts` the tapers and layout |
+| `src/screens/eq/` | the EQ (WB6b): graph, chip, band list; `model.ts` its logic, `draw.ts` the canvas; `Linkwitz.tsx` the Transform's panel (WB6c) |
+| `src/screens/outputs/` | WB6c: an output's settings card (`OutputCard.tsx`), the level and delay control (`Level.tsx`, SL1), the limiter (`Limiter.tsx`), the crossover (`Crossover.tsx`); `model.ts` their logic |
+| `src/screens/matrix/` | WB6c: the matrix mixer |
 | `src/index.tsx` | `mount()` and the public types |
 | `src/standalone.ts`, `index.html` | the standalone page (`?readonly` for a display page) |
 | `test/unit/` | `node --test` |

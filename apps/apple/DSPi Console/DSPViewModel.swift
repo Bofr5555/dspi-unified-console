@@ -1438,6 +1438,10 @@ class DSPViewModel: ObservableObject {
     @Published var outputGainDB = Array(repeating: Float(0.0), count: 9)
     @Published var outputMuted = Array(repeating: false, count: 9)
     @Published var outputDelayMS = Array(repeating: Float(0.0), count: 9)
+    // -- WP SWF8 -- c75-N3: the device's delay line, the core's
+    // `maxDelayMs` (dspi_proto Platform::max_delay_ms), read with each fetch
+    // through the core; nil until then.
+    @Published var coreMaxDelayMS: Float?
     @Published var channelNames: [String] = DSPViewModel.defaultChannelNames(for: "")
     @Published var core1Mode: Int = 0  // 0=IDLE, 1=PDM, 2=EQ_WORKER
     @Published var outputPins: [UInt8] = [6, 7, 8, 9, 10]  // GPIO pins for SPDIF 1-4 + PDM
@@ -2356,7 +2360,13 @@ class DSPViewModel: ObservableObject {
     @Published var connectionError: String? = nil
 
     /// Snapshot of state at last save/load point for unsaved changes detection
+    /// on the transports not yet on the core (USB without `-CoreTransport`,
+    /// MIDI, the Link client).
     var savedSnapshot: PresetSnapshot?
+    /// -- WP SWF6 -- Through the core: its unsaved-changes list, one sentence
+    /// each (`presetChanges`), as last delivered (Core/CoreMirror.swift).
+    /// Main thread.
+    @Published var corePresetChanges: [String] = []
 
     // Platform-aware layout (platformName is set once at connection, safe to read from poll queue).
     // V16 unified channel model: inputs 0..chOut1-1, outputs chOut1..numChannels-1.
@@ -3166,11 +3176,30 @@ class DSPViewModel: ObservableObject {
         )
     }
 
+    /// The Swift baseline.  Through the core the baseline is the core's, taken
+    /// where a save or load completes (-- WP SWF6 --); this one is then unused.
     func updateSavedSnapshot() {
         savedSnapshot = captureSnapshot()
     }
 
+    // -- WP SWF7 --
+    /// Call before deciding on an unsaved-changes prompt (c70-N1): through the
+    /// core, an edit sent within the last ~100 ms reaches `corePresetChanges`
+    /// only with its echo, so drain it now and publish the list.  No-op
+    /// otherwise.  Main thread.
+    func settleUnsavedChanges() {
+        guard let source = coreMirror.attachedSource, let changes = source.settlePresetChanges() else { return }
+        coreMirror.showPresetChanges(changes, from: source)
+    }
+
+    /// True while the view model follows a core (a device connected through
+    /// `CoreBackedTransport`), whose baseline and change list the prompt
+    /// uses (-- WP SWF6 --).  Otherwise the Swift snapshot does.  Main thread.
+    var unsavedChangesFromCore: Bool { coreMirror.attachedSource != nil }
+
     var hasUnsavedChanges: Bool {
+        // -- WP SWF6 -- The core's list, with CG33's rule after a preset load.
+        if unsavedChangesFromCore { return !corePresetChanges.isEmpty }
         // Route through computeDiff so the gating matches the alert text exactly:
         // master volume only counts when both snapshots have it (i.e. when the
         // current/baseline modes were WITH_PRESET).  Plain Equatable on
@@ -3182,6 +3211,11 @@ class DSPViewModel: ObservableObject {
     }
 
     func computeDiff() -> PresetDiff {
+        // -- WP SWF6 -- The core's sentences are already in the Mac's words;
+        // the prompt lists them as it lists the Swift diff's.
+        if unsavedChangesFromCore {
+            return PresetDiff(changes: corePresetChanges.map { PresetDiff.Change(category: "", description: $0) })
+        }
         guard let saved = savedSnapshot else { return PresetDiff(changes: []) }
         return PresetSnapshot.diff(from: saved, to: captureSnapshot(), channelNames: channelNames,
                                    sourceTitle: inputSourceTitle)
@@ -3208,6 +3242,7 @@ class DSPViewModel: ObservableObject {
             guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
 
+        settleUnsavedChanges()   // -- WP SWF7 --
         if isDeviceConnected && hasUnsavedChanges {
             let diff = computeDiff()
             let action = PresetAlerts.showUnsavedChangesAlert(diff: diff)
@@ -3264,6 +3299,7 @@ class DSPViewModel: ObservableObject {
     }
 
     private func switchToDeviceAfterSettingsCheck(_ device: DSPiDevice) {
+        settleUnsavedChanges()   // -- WP SWF7 --
         guard isDeviceConnected && hasUnsavedChanges else {
             savedSnapshot = nil
             transport.selectDevice(device)
@@ -3360,7 +3396,8 @@ class DSPViewModel: ObservableObject {
                 }
             }
             if let gain = cb.outputGainDB { setOutputGain(output: outIdx, db: gain) }
-            if let delay = cb.outputDelayMS { setOutputDelay(output: outIdx, ms: delay) }
+            // -- WP SWF8 -- held to this device's delay line
+            if let delay = cb.outputDelayMS { setOutputDelay(output: outIdx, ms: min(delay, maxOutputDelayMS)) }
             if let muted = cb.outputMuted { setOutputMute(output: outIdx, muted: muted) }
         }
     }

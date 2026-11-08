@@ -122,6 +122,19 @@ export class StubCore implements CoreImpl {
       outputEnabled: [true, true, true, true],
       inputSource: 0,
       i2sInputChannels: 2,
+      // -- WP WB6b -- no bands: the stub has no curves to draw them with
+      filters: [],
+      xover: [],
+      maxBands: 10,
+      // -- WP WB6c -- no matrix, delays or limiter in the stub
+      outputDelayMs: [0, 0, 0, 0],
+      matrixRouting: [],
+      matrixGain: [],
+      matrixInvert: [],
+      limiterEnabled: [],
+      limiterLinkGroup: [],
+      limiterThresholdDb: [],
+      limiterReleaseMs: [],
     } satisfies DspState;
     this.device = {
       device: {

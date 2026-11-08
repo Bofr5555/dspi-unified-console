@@ -1350,7 +1350,9 @@ interface DspiCoreApi : AutoCloseable {
      * mirror cannot patch re-read the whole image and the preset
      * directory: `NOTIFY_STATE | NOTIFY_CURVES | NOTIFY_REFRESHED`. A
      * preset load or factory reset also makes the new state the
-     * baseline of `preset_dirty`. If the re-read fails, the flags say
+     * baseline of `preset_dirty`, except what was changed on the device
+     * after the load (an edit made before the notification arrived):
+     * that stays unsaved. If the re-read fails, the flags say
      * only what was patched, and it is tried again: up to 5 times over
      * about 31 s, each try announced by a call of the [`NotifyListener`].
      * After the last one the result carries [`NOTIFY_STALE`], once; the
@@ -1495,12 +1497,14 @@ interface DspiCoreApi : AutoCloseable {
     fun setUserMute(muted: Boolean)
 
     /**
-     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms and then
-     * clamped to 0..[`DspiCore::max_delay_ms`]. An output channel's delay
-     * is its output delay, so it goes through [`DspiCore::set_output_delay`].
+     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms; below 0 it
+     * is 0. An output channel's delay is its output delay, so it goes
+     * through [`DspiCore::set_output_delay`].
      *
-     * Errors: [`DspiError::InvalidArgument`] for a channel out of range or a
-     * NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for a channel out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
     @Throws(DspiException::class)
     fun setDelay(ch: Int, ms: Float)
@@ -1717,12 +1721,13 @@ interface DspiCoreApi : AutoCloseable {
     fun setOutputMute(output: Int, muted: Boolean)
 
     /**
-     * Output delay in ms, quantized to 0.0001 ms and then clamped to
-     * 0..[`DspiCore::max_delay_ms`]. It is also the delay of the output's
-     * wire channel.
+     * Output delay in ms, quantized to 0.0001 ms; below 0 it is 0. It is
+     * also the delay of the output's wire channel.
      *
-     * Errors: [`DspiError::InvalidArgument`] for an output out of range or
-     * a NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for an output out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
     @Throws(DspiException::class)
     fun setOutputDelay(output: Int, ms: Float)
@@ -1908,7 +1913,8 @@ interface DspiCoreApi : AutoCloseable {
      * directory. The baseline becomes the loaded state. Runs under the Link
      * device lock. The device also notifies `PRESET_LOADED` and then
      * `BULK_INVALIDATED` (source `PRESET`); `process_notifications`
-     * re-reads on those as on any foreign change.
+     * re-reads on those as on any foreign change, and an edit made between
+     * this call and that notification stays unsaved (WP CG33).
      *
      * Errors: [`DspiError::Refused`] with the `PRESET_*` status;
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
@@ -2560,6 +2566,17 @@ interface DspiCoreApi : AutoCloseable {
     fun coreVregDemoEvent(event: VregDemoEvent, seconds: Long)
 
     /**
+     * Whether enabling output `output` would collide on Core 1, and if so
+     * why, in the words [`DspiCore::write_param`] refuses it with: `None`
+     * when it would not. The device decides
+     * ([`DspiCore::check_core1_conflict`]); the words come from the layout.
+     *
+     * Errors: those of [`DspiCore::check_core1_conflict`].
+     */
+    @Throws(DspiException::class)
+    fun core1ConflictReason(output: Int): String?
+
+    /**
      * The database at `db_path`: for the "Update Database" dialog. Reads the file.
      * Never fails: a file it cannot read is reported in
      * [`AutoEqDatabaseInfo::problem`].
@@ -2876,4 +2893,20 @@ interface DspiCoreApi : AutoCloseable {
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun aboutJson(): String
+
+    /**
+     * Every filter type the firmware defines with its name, in the Console's
+     * order: the PEQ types 0..13, then the crossovers 32..63.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun filterTypeNames(): List<FilterTypeName>
+
+    /**
+     * The name of filter type `code`; "Type 14" for a code the firmware does
+     * not define (yet).
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun filterTypeName(code: Int): String
 }

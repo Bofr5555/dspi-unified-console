@@ -475,13 +475,13 @@ impl Session {
         self.check_available(d)?;
         self.check_indices(d, indices)?;
 
+        // The platform's limits first (-- WP CG37 --): the delay line holds
+        // 1024 samples on an RP2040 and 2048 on an RP2350 (config.h), 21 ms
+        // against 42 ms at 48 kHz, where the registry carries the schema's 85.
+        self.check_platform_range(d, value)?;
         // Validate before the wire, so the user gets a message naming the limits
         // rather than a bare stall from the device.
         let value = d.kind.validate(value)?;
-        // The delay buffers are 1024 samples on an RP2040 and 2048 on an
-        // RP2350 (config.h:94-99): 42 ms against 85 ms at 48 kHz. The registry
-        // carries the larger; the smaller is a platform fact, checked here.
-        self.check_platform_range(d, &value)?;
         Ok(value)
     }
 
@@ -562,6 +562,13 @@ impl Session {
         // -- WP LK4 -- the live band count is not measured yet
         if self.provisional {
             return Err(WriteError::Unprobed { path: "eq".into() });
+        }
+        // -- WP DL3 -- a band field that is NaN or infinite never reaches the wire.
+        for f in [packet.freq, packet.q, packet.gain_db]
+            .into_iter()
+            .chain(packet.qp)
+        {
+            crate::fast::check_finite(f)?;
         }
         if self.dry_run {
             return Ok(Outcome::Accepted);
@@ -1155,6 +1162,11 @@ fn decode_read(d: &ParamDesc, bytes: &[u8]) -> Value {
     if let WValue::EqScalar(param) = d.wvalue {
         return match param {
             1..=3 => Repr::F32.decode(bytes).unwrap_or(Value::Float(0.0)),
+            // -- WP CG34 -- the Linkwitz Transform's Qp, `Q * 512`.
+            5 => Value::Float(decode_qp(u16::from_le_bytes([
+                bytes.first().copied().unwrap_or(0),
+                bytes.get(1).copied().unwrap_or(0),
+            ]))),
             _ => Value::Int(bytes.first().copied().unwrap_or(0) as i64),
         };
     }
@@ -1209,6 +1221,9 @@ fn bands_agree(sent: &EqParamPacket, actual: &EqParamPacket) -> bool {
         && close(sent.freq, actual.freq)
         && close(sent.q, actual.q)
         && close(sent.gain_db, actual.gain_db)
+        // -- WP CG34 -- a Linkwitz Transform's Qp, to its 1/512 step.
+        && (!sent.filter_type.is_linkwitz()
+            || close(sent.qp.unwrap_or(0.707), actual.qp.unwrap_or(0.707)))
 }
 
 /// Compare what we sent against what came back.

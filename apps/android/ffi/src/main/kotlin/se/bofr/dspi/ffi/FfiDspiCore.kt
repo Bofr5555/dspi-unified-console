@@ -484,6 +484,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun coreVregDemoEvent(event: VregDemoEvent, seconds: Long) = call { core.coreVregDemoEvent(event.toFfi(), seconds.toUInt()) }
 
+    override fun core1ConflictReason(output: Int): String? = call { core.core1ConflictReason(output.toUByte()) }
+
     override fun autoeqDatabaseInfo(dbPath: String): AutoEqDatabaseInfo = se.bofr.dspi.ffi.uniffi.autoeqDatabaseInfo(dbPath).toDomain()
 
     override fun autoeqImport(dbPath: String, data: List<Int>): AutoEqDatabaseInfo = call { se.bofr.dspi.ffi.uniffi.autoeqImport(dbPath, ByteArray(data.size) { data[it].toByte() }).toDomain() }
@@ -543,6 +545,10 @@ class FfiDspiCore : DspiCoreApi {
     override fun onboardingGettingStartedJson(): String = se.bofr.dspi.ffi.uniffi.onboardingGettingStartedJson()
 
     override fun aboutJson(): String = se.bofr.dspi.ffi.uniffi.aboutJson()
+
+    override fun filterTypeNames(): List<FilterTypeName> = se.bofr.dspi.ffi.uniffi.filterTypeNames().map { it.toDomain() }
+
+    override fun filterTypeName(code: Int): String = se.bofr.dspi.ffi.uniffi.filterTypeName(code.toUByte())
 }
 
 internal class FfiAutoEqRebuild(private val inner: se.bofr.dspi.ffi.uniffi.AutoEqRebuild) : AutoEqRebuild {
@@ -1889,6 +1895,18 @@ internal fun LinkPhaseText.toFfi() =
         text = text,
         actionKey = actionKey,
         action = action,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.FilterTypeName.toDomain() =
+    FilterTypeName(
+        code = code.toInt(),
+        name = name,
+    )
+
+internal fun FilterTypeName.toFfi() =
+    se.bofr.dspi.ffi.uniffi.FilterTypeName(
+        code = code.toUByte(),
+        name = name,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.RawNotification.toDomain() =

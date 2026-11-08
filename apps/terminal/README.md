@@ -35,7 +35,7 @@ plan and surveys it was built from, before the merge, are in
 │ ▪SR     ░░░░░░▏ IN8││ Link 1/2   ▸Preamp +0.0 dB ━━━━━━━━━━━━━━━━━━━━━━━━●━━━━   Clear PEQ │
 │                    ││──────────────────────────────────────────────────────────────────────│
 │ OUTPUTS            ▼│   # TYPE                       FREQ      GAIN   WIDTH                │
-│ ●Crossfeed Matrix  ││ ● 1 Low Shelf 12 dB/oct      105 Hz   +8.8 dB   0.707                │
+│ ●Crossfeed Matrix  ││ ● 1 Low Shelf (12dB)         105 Hz   +8.8 dB   0.707                │
 │ ○Loudness  Stats   ││ ● 2 Peaking                   64 Hz   -6.2 dB     0.3                │
 │ ○Leveller  Settings││ ● 3 Peaking                 2856 Hz   -8.6 dB    3.58                │
 │ ●Bass      ○Bypass ││ ● 4 Peaking                 1880 Hz   +3.6 dB    1.69                │

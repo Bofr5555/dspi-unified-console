@@ -15,7 +15,6 @@ import {
   type DeviceTarget,
   type LinkDeviceRecord,
   type LinkPhase,
-  type ParamInfo,
   type ParamValue,
 } from "../core/protocol";
 import type { CoreClient } from "../core/client";
@@ -29,8 +28,6 @@ export interface SessionState {
   snapshot: DeviceSnapshot | null;
   link: { phase: LinkPhase; pinSource?: string } | null;
   error: string;
-  /** What the registry says of the parameters the screens show, by path. */
-  params: Record<string, ParamInfo>;
   // -- WP WB4b --
   /** The hub's DSPis, while `choosing`. */
   devices: LinkDeviceRecord[];
@@ -38,14 +35,29 @@ export interface SessionState {
   hubName: string;
   /** Why the last PIN was not taken. */
   pinError: string;
+  // -- WP WB6b -- (c6p WB6a-4)
+  /**
+   * What is unsaved against the active preset, in the core's sentences (CG7,
+   * `presetChanges`), kept current after every change the session sees. Empty
+   * when nothing is, and always while read only.
+   */
+  unsaved: string[];
 }
 
 // -- WP WB6a --
 /** The calls `Session.change` makes. */
-export type ChangeMethod = "presetCopy" | "presetRevert" | "factoryReset";
+export type ChangeMethod = "presetCopy" | "presetRevert" | "factoryReset"
+  // -- WP WB6c --
+  | "crossoverType"
+  | "crosspoint";
 
-/** The parameters whose ranges the skeleton's controls need. */
-const SHOWN_PARAMS = ["vol.user"];
+// -- WP WB6b --
+/** One write of `Session.writeAll`. */
+export interface Write {
+  path: string;
+  value: ParamValue;
+  indices?: number[];
+}
 
 export class Session {
   state: SessionState = {
@@ -53,10 +65,10 @@ export class Session {
     snapshot: null,
     link: null,
     error: "",
-    params: {},
     devices: [],
     hubName: "",
     pinError: "",
+    unsaved: [],
   };
   private readonly listeners = new Set<() => void>();
   private unsubscribe: () => void;
@@ -95,9 +107,7 @@ export class Session {
 
   private async load(target: DeviceTarget): Promise<void> {
     const snapshot = await this.core.call("open", target);
-    const params: Record<string, ParamInfo> = {};
-    for (const path of SHOWN_PARAMS) params[path] = await this.core.call("describe", { path });
-    this.set({ status: "open", snapshot, params, error: "" });
+    this.set({ status: "open", snapshot, error: "" });
   }
 
   // -- WP WB4b --
@@ -217,14 +227,88 @@ export class Session {
   }
 
   /**
-   * Asked before the user closes this session (Disconnect): a screen with
-   * something unsaved sets it (the main window's unsaved-changes guard, M42).
-   * Answers whether to go on.
+   * Asked before the user closes this session (Disconnect): the session's
+   * view sets it (the unsaved-changes guard, M42; -- WP WB6b -- for every
+   * screen, not one). Answers whether to go on.
    */
   leaveGuard: (() => Promise<boolean>) | null = null;
 
   async mayLeave(): Promise<boolean> {
     return this.leaveGuard ? this.leaveGuard() : true;
+  }
+
+  // -- WP WB6b --
+  /**
+   * Several writes in a row (the fields of one filter band), then one
+   * read-back of the state, as `write`. Stops at the first refusal, which
+   * the error shows; answers whether all went through.
+   */
+  async writeAll(writes: Write[]): Promise<boolean> {
+    if (this.readOnlyReason) {
+      this.set({ error: this.readOnlyReason });
+      return false;
+    }
+    let ok = true;
+    try {
+      for (const w of writes) await this.core.call("write", w.indices ? { path: w.path, indices: w.indices, value: w.value } : w);
+    } catch (e) {
+      ok = false;
+      this.set({ error: message(e) });
+    }
+    try {
+      const snapshot = await this.core.call("state", undefined);
+      this.set(ok ? { snapshot, error: "" } : { snapshot });
+    } catch (e) {
+      if (ok) this.set({ error: message(e) });
+      ok = false;
+    }
+    return ok;
+  }
+
+  /**
+   * Save the live state to `slot`. (c6p WB6a-3) A slot without a name is
+   * named "Preset N" first, as the Console and the Qt app do.
+   */
+  async savePreset(slot: number): Promise<boolean> {
+    const name = this.state.snapshot?.state.presetNames[slot] ?? "";
+    if (!name.trim() && !(await this.write("preset.name", { text: `Preset ${slot + 1}` }, [slot]))) return false;
+    return this.write("preset.save", "trigger", [slot]);
+  }
+
+  /** Whether anything is unsaved (`unsaved`); the page's leave prompt and a host page ask this. */
+  get dirty(): boolean {
+    return this.state.unsaved.length > 0;
+  }
+
+  private unsavedAsked: DeviceSnapshot | null = null;
+  private unsavedRunning = false;
+
+  /**
+   * After a new snapshot: what is unsaved now (`presetChanges`, the core's
+   * comparison, no device I/O). One call at a time; a snapshot that comes
+   * meanwhile is asked about once that one is answered.
+   */
+  private async refreshUnsaved(): Promise<void> {
+    if (this.unsavedRunning) return;
+    this.unsavedRunning = true;
+    try {
+      while (this.unsavedAsked !== this.state.snapshot) {
+        const snap = this.state.snapshot;
+        this.unsavedAsked = snap;
+        if (!snap || this.readOnlyReason || this.state.status !== "open") {
+          if (this.state.unsaved.length) this.set({ unsaved: [] });
+          continue;
+        }
+        try {
+          const r = await this.core.call("presetChanges", undefined);
+          if (!sameLines(r.changes, this.state.unsaved)) this.set({ unsaved: r.changes });
+        } catch {
+          // Kept: the last answer stands.
+        }
+      }
+    } finally {
+      this.unsavedRunning = false;
+    }
   }
 
   async close(): Promise<void> {
@@ -251,12 +335,18 @@ export class Session {
   private set(patch: Partial<SessionState>): void {
     this.state = { ...this.state, ...patch };
     for (const l of this.listeners) l();
+    // -- WP WB6b --
+    if (this.state.snapshot !== this.unsavedAsked) void this.refreshUnsaved();
   }
 }
 
 function message(e: unknown): string {
   if (e instanceof CoreCallError) return capitalise(e.message);
   return e instanceof Error ? e.message : String(e);
+}
+
+function sameLines(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((x, i) => x === b[i]);
 }
 
 function capitalise(s: string): string {

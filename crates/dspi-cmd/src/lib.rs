@@ -18,6 +18,24 @@ use dspi_proto::value::Value;
 
 pub use complete::{Candidate, complete};
 
+// -- WP CG37 --
+/// The paths whose range is the delay line's ([`delay_range`]).
+pub fn is_delay(path: &str) -> bool {
+    matches!(path, "ch.delay" | "out.delay")
+}
+
+/// A delay's range as the CLI and the `:` line offer it without a device:
+/// the delay line's (`Platform::max_delay_ms`), not the registry's 85 ms
+/// ceiling. "0 to 42 ms (21 on RP2040)".
+pub fn delay_range() -> String {
+    use dspi_proto::Platform;
+    format!(
+        "0 to {} ms ({} on RP2040)",
+        Platform::Rp2350.max_delay_ms(),
+        Platform::Rp2040.max_delay_ms()
+    )
+}
+
 #[derive(Debug, thiserror::Error, PartialEq)]
 pub enum ParseError {
     #[error("no parameter or command called `{0}`. Try `dspi params`.")]
@@ -275,7 +293,12 @@ fn parse_crosspoint(indices: &[u8], tokens: &[&str]) -> Result<Value, ParseError
     };
     let gain: f32 = match tokens.get(1) {
         None => 0.0,
-        Some(t) => t.parse().map_err(|_| bad(t, "a gain in dB"))?,
+        // -- WP DL3 -- not "nan" or "inf", which `f32::parse` takes.
+        Some(t) => t
+            .parse::<f32>()
+            .ok()
+            .filter(|f| f.is_finite())
+            .ok_or_else(|| bad(t, "a gain in dB"))?,
     };
     let invert = match tokens.get(2) {
         None => false,
@@ -455,11 +478,16 @@ fn parse_eq(tokens: &[&str], ctx: &Context) -> Result<Command, ParseError> {
     let num = |i: usize, default: f32| -> Result<f32, ParseError> {
         match tokens.get(i) {
             None => Ok(default),
-            Some(t) => t.parse::<f32>().map_err(|_| ParseError::BadValue {
-                path: "eq".into(),
-                value: (*t).into(),
-                expected: "a number".into(),
-            }),
+            // -- WP DL3 -- `f32::parse` takes "nan" and "inf"; no band field holds them.
+            Some(t) => t
+                .parse::<f32>()
+                .ok()
+                .filter(|f| f.is_finite())
+                .ok_or_else(|| ParseError::BadValue {
+                    path: "eq".into(),
+                    value: (*t).into(),
+                    expected: "a finite number".into(),
+                }),
         }
     };
 
@@ -581,7 +609,13 @@ pub fn parse_value(d: &ParamDesc, raw: &str) -> Result<Value, ParseError> {
             let tokens: Vec<&str> = raw.split_whitespace().collect();
             parse_packet(d, &[], &tokens)?
         }
-        _ => Value::Float(raw.parse().map_err(|_| bad("a number"))?),
+        // -- WP DL3 -- `f32::parse` takes "nan" and "inf"; no parameter holds them.
+        _ => Value::Float(
+            raw.parse::<f32>()
+                .ok()
+                .filter(|f| f.is_finite())
+                .ok_or_else(|| bad("a finite number"))?,
+        ),
     })
 }
 
@@ -1419,5 +1453,54 @@ mod echo_tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests_wp_dl3 {
+    use super::tests::ctx;
+    use super::*;
+
+    fn p(line: &str) -> Result<Command, ParseError> {
+        let toks = tokenize(line);
+        let refs: Vec<&str> = toks.iter().map(String::as_str).collect();
+        parse(&refs, &ctx())
+    }
+
+    /// `f32::parse` takes "nan", "inf" and "infinity"; the parser does not,
+    /// for a scalar, a band field or a packet field, and says why.
+    #[test]
+    fn wp_dl3_the_parser_refuses_values_that_are_not_finite() {
+        for word in ["nan", "NaN", "inf", "-inf", "infinity", "-Infinity"] {
+            for line in [
+                format!("set out.delay 1 {word}"),
+                format!("out.delay 1 {word}"),
+                format!("vol.user {word}"),
+            ] {
+                let e = p(&line).unwrap_err();
+                assert!(
+                    matches!(&e, ParseError::BadValue { expected, .. } if expected == "a finite number"),
+                    "{line}: {e:?}"
+                );
+            }
+            let e = p(&format!("set out.delay 1 {word}")).unwrap_err();
+            assert_eq!(
+                e.to_string(),
+                format!("`{word}` is not valid for out.delay; expected a finite number")
+            );
+            for line in [
+                format!("eq usb.1 1 peak {word}"),
+                format!("eq usb.1 1 peak 1000 {word}"),
+                format!("eq usb.1 1 peak 1000 0.7 {word}"),
+                format!("eq usb.1 1 peak 1000 0.7 0 {word}"),
+                format!("mix 0 8 on {word}"),
+            ] {
+                assert!(p(&line).is_err(), "{line}");
+            }
+        }
+        // Finite values still parse.
+        assert!(p("set out.delay 1 21.5").is_ok());
+        assert!(p("eq usb.1 1 peak 1000 0.7 -3").is_ok());
+        assert!(p("mix 0 8 on -6").is_ok());
     }
 }

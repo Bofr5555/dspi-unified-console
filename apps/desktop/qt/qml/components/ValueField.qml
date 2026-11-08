@@ -31,6 +31,9 @@ Row {
     // Ctrl+scroll steps the value and plain scrolling scrolls the page
     property bool plainWheel: false
     property real wheelStep: Math.pow(10, -decimals)
+    // -- WP SL1 -- The wheel lands on multiples of wheelStep: from a value
+    // between two (a fractional delay) it goes to the next one up or down
+    property bool wheelOnGrid: false
 
     signal valueEdited(real newValue)
     // -- WP QD22 -- What a screen reader calls the field (the row's label)
@@ -116,11 +119,17 @@ Row {
             acceptedButtons: Qt.NoButton
             onWheel: {
                 if (!plainWheel && !(wheel.modifiers & Qt.ControlModifier)) { wheel.accepted = false; return }
-                var delta = wheel.angleDelta.y > 0 ? wheelStep : -wheelStep
+                var up = wheel.angleDelta.y > 0
+                var target = value + (up ? wheelStep : -wheelStep)
+                if (wheelOnGrid) {
+                    var n = value / wheelStep
+                    // 1e-6: a value a float's error off a step counts as on it
+                    target = (up ? Math.floor(n + 1e-6) + 1 : Math.ceil(n - 1e-6) - 1) * wheelStep + 0
+                }
                 // A value already outside the range steps from where it is
                 // rather than jumping to the limit
                 var lo = Math.min(minValue, value), hi = Math.max(maxValue, value)
-                var newVal = Math.max(lo, Math.min(hi, value + delta))
+                var newVal = Math.max(lo, Math.min(hi, target))
                 if (newVal !== value) valueFieldRoot.valueEdited(newVal)
             }
         }

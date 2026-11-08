@@ -103,6 +103,8 @@ pub mod autoeq;
 mod link_text;
 // -- WP CG32 --
 mod write_param;
+// -- WP CG34 --
+mod names;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -147,6 +149,8 @@ pub use raw::RawNotification;
 pub use host_transport::{HostTransport, HostTransportKind};
 // -- WP CG32 --
 pub use write_param::{ParamValue, write_refusal};
+// -- WP CG34 --
+pub use names::{FilterTypeName, filter_type_name, filter_type_names};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///

@@ -159,9 +159,12 @@ else()
     message(WARNING "No lrelease found (Qt Linguist tools): the app builds without its translations")
 endif()
 if(_dspi_lupdate)
-    # The .ts files from the sources; not part of the build
+    # The .ts files from the sources; not part of the build. -- WP QD41 -- No
+    # locations: the file holds the strings and their contexts only, so a line
+    # moved in qml/ or src/ leaves it as it is (ci/check.sh --step qt-ts runs
+    # the same arguments)
     add_custom_target(dspi_lupdate
-        COMMAND ${_dspi_lupdate} -silent -locations relative -no-obsolete -source-language en -target-language en
+        COMMAND ${_dspi_lupdate} -silent -locations none -no-obsolete -source-language en -target-language en
                 qml src -ts ${DSPI_TS_FILES}
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         VERBATIM)
@@ -218,7 +221,7 @@ add_executable(DSPiConsole ${DSPI_APP_SOURCES})
 # The app with its offscreen test driver (ci/check.sh --step qt-offscreen).
 option(DSPI_SMOKE "Also build DSPiConsoleSmoke, the app with its test driver" OFF)
 if(DSPI_SMOKE)
-    add_executable(DSPiConsoleSmoke ${DSPI_APP_SOURCES} smoke/SmokeDriver.cpp smoke/SmokeDriverHw.cpp smoke/SmokeDriverReplug.cpp smoke/SmokeDriverSeam.cpp smoke/SmokeDriverExt.cpp smoke/SmokeDriverNames.cpp smoke/SmokeDriverLatency.cpp smoke/SmokeDriverLink.cpp smoke/SmokeDriverLinkFault.cpp smoke/SmokeDriverDevices.cpp smoke/LinkFakeHub.h smoke/SmokeDriverReadOnly.cpp smoke/SmokeDriverDemo.cpp smoke/SmokeDriverRing.cpp smoke/SmokeDriverPoll.cpp smoke/SmokeDriverSaveBar.cpp smoke/SmokeDriverAbout.cpp smoke/SmokeDriverOnboarding.cpp smoke/SmokeDriverAutoEq.cpp smoke/SmokeDriverHostAudio.cpp smoke/SmokeDriverTray.cpp smoke/SmokeDriverFirmware.cpp smoke/SmokeDriverHub.cpp smoke/SmokeDriverVreg.cpp smoke/SmokeDriverShortcuts.cpp smoke/SmokeDriverRtaFollow.cpp smoke/SmokeDriverNetworking.cpp smoke/SmokeDriverSystem.cpp smoke/SmokeDriver.h smoke/smoke.qrc)
+    add_executable(DSPiConsoleSmoke ${DSPI_APP_SOURCES} smoke/SmokeDriver.cpp smoke/SmokeDriverHw.cpp smoke/SmokeDriverReplug.cpp smoke/SmokeDriverSeam.cpp smoke/SmokeDriverExt.cpp smoke/SmokeDriverNames.cpp smoke/SmokeDriverLatency.cpp smoke/SmokeDriverLink.cpp smoke/SmokeDriverLinkFault.cpp smoke/SmokeDriverDevices.cpp smoke/LinkFakeHub.h smoke/SmokeDriverReadOnly.cpp smoke/SmokeDriverDemo.cpp smoke/SmokeDriverRing.cpp smoke/SmokeDriverPoll.cpp smoke/SmokeDriverSaveBar.cpp smoke/SmokeDriverAbout.cpp smoke/SmokeDriverOnboarding.cpp smoke/SmokeDriverAutoEq.cpp smoke/SmokeDriverHostAudio.cpp smoke/SmokeDriverTray.cpp smoke/SmokeDriverFirmware.cpp smoke/SmokeDriverHub.cpp smoke/SmokeDriverVreg.cpp smoke/SmokeDriverShortcuts.cpp smoke/SmokeDriverRtaFollow.cpp smoke/SmokeDriverNetworking.cpp smoke/SmokeDriverSystem.cpp smoke/SmokeDriverDelay.cpp smoke/SmokeDriverSliderKeys.cpp smoke/SmokeDriver.h smoke/smoke.qrc)
     target_include_directories(DSPiConsoleSmoke PRIVATE ${DSPI_CORE_DIR}/include src/ smoke/)
     target_compile_definitions(DSPiConsoleSmoke PRIVATE DSPI_SMOKE)
     # -- WP QD23 -- The pseudo-locale pass
@@ -332,6 +335,21 @@ if(UNIX AND NOT APPLE)
     install(FILES ${CMAKE_SOURCE_DIR}/dspi-console.svg DESTINATION share/icons/hicolor/scalable/apps)
     install(FILES ${PKG}/dspi-console.metainfo.xml DESTINATION share/metainfo)
     install(FILES ${PKG}/70-dspi.rules DESTINATION lib/udev/rules.d)
+    # -- WP QD42 -- The licence and the notice (Qt is the distribution's): in
+    # the .deb, Debian's copyright file, pointing at Debian's copy of the GPL;
+    # elsewhere (the .rpm, Arch, a plain install) the GPL's text and the notice
+    # in share/licenses, as Fedora and Arch expect
+    set(DSPI_PACKAGE_FORMAT "" CACHE STRING "deb: the licence as Debian lays it out (build-debian.sh)")
+    set(LIC ${CMAKE_SOURCE_DIR}/../packaging/licences)
+    if(DSPI_PACKAGE_FORMAT STREQUAL "deb")
+        set(DSPI_GPL_TEXT "/usr/share/common-licenses/GPL-3")
+        configure_file(${LIC}/NOTICE-distro.txt.in ${CMAKE_BINARY_DIR}/copyright @ONLY)
+        install(FILES ${CMAKE_BINARY_DIR}/copyright DESTINATION share/doc/dspi-console)
+    else()
+        set(DSPI_GPL_TEXT "GPL-3.0.txt, next to this file,")
+        configure_file(${LIC}/NOTICE-distro.txt.in ${CMAKE_BINARY_DIR}/NOTICE.txt @ONLY)
+        install(FILES ${LIC}/GPL-3.0.txt ${CMAKE_BINARY_DIR}/NOTICE.txt DESTINATION share/licenses/dspi-console)
+    endif()
 
     set(CPACK_PACKAGE_NAME dspi-console)
     set(CPACK_PACKAGE_VERSION ${DSPI_PKG_VERSION})
@@ -359,7 +377,7 @@ if(UNIX AND NOT APPLE)
     # Fedora: library dependencies are found automatically
     set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
     set(CPACK_RPM_PACKAGE_RELEASE 1)
-    set(CPACK_RPM_PACKAGE_LICENSE "Unspecified")
+    set(CPACK_RPM_PACKAGE_LICENSE "GPL-3.0-or-later")   # -- WP QD42 -- the owner's decision, 2026-11-08
     set(CPACK_RPM_PACKAGE_GROUP "Applications/Multimedia")
     if(QT_VERSION_MAJOR EQUAL 5)
         set(CPACK_RPM_PACKAGE_REQUIRES "qt5-qtdeclarative, qt5-qtquickcontrols2, qt5-qtsvg, qt5-qtwayland")
@@ -372,7 +390,8 @@ if(UNIX AND NOT APPLE)
     # Don't claim ownership of system directories
     set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
         /usr/share/applications /usr/share/icons /usr/share/icons/hicolor /usr/share/icons/hicolor/scalable
-        /usr/share/icons/hicolor/scalable/apps /usr/share/metainfo /usr/lib/udev /usr/lib/udev/rules.d)
+        /usr/share/icons/hicolor/scalable/apps /usr/share/metainfo /usr/lib/udev /usr/lib/udev/rules.d
+        /usr/share/licenses)   # -- WP QD42 --
 
     include(CPack)
 endif()

@@ -526,13 +526,15 @@ AppWindow {
                             y: 8
                             width: parent.width - 16
                             spacing: 6
+                            // -- WP QD40 -- The label column as wide as its longest label
+                            TextMetrics { id: pairLabelFit; font.pixelSize: 12; text: qsTr("Pair %1").arg(Math.max(1, win.pairDraft.length)) }
                             Repeater {
                                 model: win.editingPairs ? win.pairDraft.length : 0
                                 Row {
                                     readonly property int pair: index
                                     spacing: 6
                                     Text {
-                                        width: 46
+                                        width: Math.max(46, Math.ceil(pairLabelFit.advanceWidth) + 1)
                                         anchors.verticalCenter: parent.verticalCenter
                                         text: qsTr("Pair %1").arg(parent.pair + 1)
                                         font.pixelSize: 12
@@ -542,6 +544,7 @@ AppWindow {
                                         Accessible.name: qsTr("Pair %1 left").arg(parent.pair + 1)
                                         objectName: "pairLeft" + parent.pair
                                         width: Math.max(92, fitWidth)
+                                        fitText: qsTr("Out %1").arg(win.outputLabels.length)
                                         model: win.outputLabels
                                         currentIndex: win.pairDraft[parent.pair].left
                                         displayText: qsTr("Out %1").arg(currentIndex + 1)
@@ -557,6 +560,7 @@ AppWindow {
                                         Accessible.name: qsTr("Pair %1 right").arg(parent.pair + 1)
                                         objectName: "pairRight" + parent.pair
                                         width: Math.max(92, fitWidth)
+                                        fitText: qsTr("Out %1").arg(win.outputLabels.length)
                                         model: win.outputLabels
                                         currentIndex: win.pairDraft[parent.pair].right
                                         displayText: qsTr("Out %1").arg(currentIndex + 1)

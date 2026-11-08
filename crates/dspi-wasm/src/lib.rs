@@ -44,9 +44,13 @@
 )]
 
 pub mod calls;
+// -- WP WB6b --
+pub mod curves;
 pub mod guard;
 // -- WP WB4b --
 pub mod link;
+// -- WP WB6c --
+pub mod outputs;
 // -- WP WB6a --
 pub mod presets;
 // -- WP WB4a --
