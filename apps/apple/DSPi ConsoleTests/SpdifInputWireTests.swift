@@ -8,10 +8,10 @@ import XCTest
 final class SpdifInputWireTests: XCTestCase {
 
     /// One view model for the whole class.  Constructing a DSPViewModel starts a
-    /// 60 ms status poller against the shared USB transport that lives for the
-    /// rest of the process, so a per-test instance would pile up pollers and
-    /// starve the live control transfers below.
-    private static let sharedVM = DSPViewModel()
+    /// 60 ms status poller that lives for the rest of the process, so a
+    /// per-test instance would pile up pollers.  It is offline (WP SWF1): its
+    /// setters must not reach a real device under the hardware opt-in.
+    private static let sharedVM = HardwareTest.offlineViewModel()
     private var vm: DSPViewModel { Self.sharedVM }
 
     /// Sharing one instance means each test must start from a known S/PDIF state
@@ -130,7 +130,7 @@ final class SpdifInputWireTests: XCTestCase {
     /// input.  Cross-checked against per-index REQ_GET_SPDIF_RX_PIN reads, which
     /// is an independent path - a shared decode bug can't make this pass.
     func testLiveInventoryMatchesPerIndexPins() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let d = usb.getControlRequest(request: REQ_GET_SPDIF_INPUT_CONFIG, value: 0,
                                             index: 2, length: UInt16(2 + SPDIF_RX_NUM_INPUTS)),
               d.count >= 3 else {
@@ -162,7 +162,7 @@ final class SpdifInputWireTests: XCTestCase {
     /// The app's own parse of 0xEF must agree with the raw bytes, and must keep
     /// the ext arrays full-length even when the device reports only three inputs.
     func testLiveFetchPopulatesViewModel() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         vm.fetchSpdifInputConfig()
         RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.3))
         try XCTSkipUnless(vm.multiSpdifSupported,

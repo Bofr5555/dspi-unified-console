@@ -65,12 +65,32 @@ hardware tests' own `DSPI_MIDI_HW=1` / `DSPI_EXT_HW=1` also opt in. With it,
 30 s for that connection (it can take ~15 s under `xcodebuild test`); the result
 is cached so the rest are instant, and a device-less run skips after one probe.
 
+## A hardware run leaves the device as it found it (WP SWF1)
+
+- `requireDevice(self)` waits until the app's view model has finished a full
+  read of the device (`fullReadGeneration`), so a capture from it is the
+  device's state and not its defaults. It then takes the raw REQ_GET_ALL_PARAMS
+  image, and the test **fails** if the image differs after it (after its body
+  and `defer`s, before `tearDown`): `DeviceImageGuard`, proven on the demo device
+  in `DeviceImageGuardTests`.
+- A test of the view model's own logic uses `HardwareTest.offlineViewModel()`,
+  never `DSPViewModel()`: the default drives `AppState.shared.usb`, which is the
+  real DSPi under the opt-in, and bounces it at init.
+- A test that drives the app's shared view model (windows, benchmarks) calls
+  `try HardwareTest.requireNoDevice()` and skips in a hardware run.
+- `SiggenHardwareDiagTests` play a signal: they need `TEST_RUNNER_DSPI_SIGGEN_HW=1`
+  as well.
+
+The guard sees the 0xA0 image only. State outside it (the analyser's
+configuration, the generator, control-surface records) is still each test's to
+restore.
+
 ## Adding a test for a new feature
 
 1. **Pure logic** (math/state): assert against an analytic expectation or a
    reference computed independently of the code under test.
 2. **A control that talks to the device**: in `HardwareIntegrationTests`, call
-   `try HardwareTest.requireDevice()`, save the original via a raw read, call the
+   `try HardwareTest.requireDevice(self)`, save the original via a raw read, call the
    `DSPViewModel` setter, read back with a raw `getControlRequest`, assert, and
    restore the original in a `defer`. The serial queue guarantees a sync read
    right after an async set observes the new value.

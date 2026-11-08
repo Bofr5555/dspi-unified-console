@@ -151,7 +151,7 @@ final class UpmixerWireTests: XCTestCase {
     // MARK: - Feature detection gate (spec §6)
 
     func testFeatureDetectionThreshold() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.platformName = "RP2350"
         vm.firmwareWireFormatVersion = 25
         XCTAssertFalse(vm.firmwareSupportsUpmixer)   // presence needs V26
@@ -165,7 +165,7 @@ final class UpmixerWireTests: XCTestCase {
     // MARK: - Matrix source-row labelling (spec §3)
 
     func testDerivedMatrixRows() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.platformName = "RP2350"
         vm.firmwareWireFormatVersion = 26
 
@@ -193,7 +193,7 @@ final class UpmixerWireTests: XCTestCase {
 
     /// The bulk upmix section agrees with the individual GET_CONFIG readback.
     func testUpmixReadbackConsistency() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let all = usb.getControlRequest(request: REQ_GET_ALL_PARAMS, value: 0, index: 2, length: BULK_PARAMS_SIZE),
               all.count >= Int(BULK_PARAMS_SIZE), Int(all[0]) == WIRE_FORMAT_VERSION else {
             throw XCTSkip("Firmware predates the Stereo Upmixer (wire format < V25).")
@@ -219,7 +219,7 @@ final class UpmixerWireTests: XCTestCase {
     /// (clamping happens only at coefficient computation), so an in-range write
     /// must read back exactly.
     func testStrengthParamRoundTrips() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let cfg = usb.getControlRequest(request: REQ_UPMIX_GET_CONFIG, value: 0, index: 0,
                                               length: UInt16(UPMIX_CONFIG_PACKET_SIZE)),
               cfg.count >= UPMIX_CONFIG_PACKET_SIZE else {

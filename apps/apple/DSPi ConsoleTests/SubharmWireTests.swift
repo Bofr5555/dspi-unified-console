@@ -131,7 +131,7 @@ final class SubharmWireTests: XCTestCase {
     // MARK: - Feature detection gate (spec §6)
 
     func testFeatureDetectionThreshold() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.firmwareWireFormatVersion = 28
         XCTAssertFalse(vm.firmwareSupportsSubharm)
         vm.firmwareWireFormatVersion = 29
@@ -141,7 +141,7 @@ final class SubharmWireTests: XCTestCase {
     /// The V30 additions have their own gate: on V29 firmware the third band,
     /// selectivity, ceiling, link and solo commands STALL, so the UI hides them.
     func testExtendedFeatureDetectionThreshold() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.firmwareWireFormatVersion = 29
         XCTAssertTrue(vm.firmwareSupportsSubharm)
         XCTAssertFalse(vm.firmwareSupportsSubharmExtended)
@@ -152,7 +152,7 @@ final class SubharmWireTests: XCTestCase {
     /// The mode is a clamp, not a drop: the firmware reads a byte of 7 back as 2,
     /// and the app clamps the same way so its state matches without a read-back.
     func testSelectModeClamps() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.setSubharmSelectMode(7)
         XCTAssertEqual(vm.subharm.selectMode, SUBHARM_SELECT_SUSTAINED)
         vm.setSubharmSelectMode(-3)
@@ -164,7 +164,7 @@ final class SubharmWireTests: XCTestCase {
     /// Factory defaults the app starts from, so a fresh device and an
     /// unconnected app agree before the first bulk read (spec §2, §5).
     func testDefaultsMatchTheFirmware() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         XCTAssertFalse(vm.subharmEnabled)
         XCTAssertEqual(vm.subharm.lowDB, 0.0)
         XCTAssertEqual(vm.subharm.highDB, 0.0)
@@ -181,7 +181,7 @@ final class SubharmWireTests: XCTestCase {
     /// Both platforms run subharm, unlike the upmixer: the gate must not depend
     /// on the platform name.
     func testSupportedOnBothPlatforms() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.firmwareWireFormatVersion = 29
         vm.platformName = "RP2040"
         XCTAssertTrue(vm.firmwareSupportsSubharm)
@@ -192,7 +192,7 @@ final class SubharmWireTests: XCTestCase {
     // MARK: - Mask bit toggle helper
 
     func testOutputChannelMaskToggle() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.subharm.outputMask = 0x0000
         vm.setSubharmOutputChannel(0, enabled: true)
         XCTAssertEqual(vm.subharm.outputMask & 0x0001, 0x0001)
@@ -250,7 +250,7 @@ final class SubharmWireTests: XCTestCase {
     /// The bulk subharm section agrees with the five individual GETs, and every
     /// value sits inside its documented range.
     func testSubharmReadbackConsistency() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let all = usb.getControlRequest(request: REQ_GET_ALL_PARAMS, value: 0, index: 2, length: BULK_PARAMS_SIZE),
               all.count >= Int(BULK_PARAMS_SIZE), Int(all[0]) == WIRE_FORMAT_VERSION else {
             throw XCTSkip("Firmware predates the Subharmonic Synthesizer (wire format < V29).")
@@ -288,7 +288,7 @@ final class SubharmWireTests: XCTestCase {
     /// The V30 tail of the section agrees with its individual GETs and sits
     /// inside the documented ranges (spec §2.7 to §2.12).
     func testExtendedReadbackConsistency() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let all = usb.getControlRequest(request: REQ_GET_ALL_PARAMS, value: 0, index: 2, length: BULK_PARAMS_SIZE),
               all.count >= Int(BULK_PARAMS_SIZE), Int(all[0]) == WIRE_FORMAT_VERSION else {
             throw XCTSkip("Firmware predates the extended Subharmonic Synthesizer (wire format < V30).")
@@ -330,7 +330,7 @@ final class SubharmWireTests: XCTestCase {
     /// The selectivity mode clamps rather than being rejected: a byte of 7 comes
     /// back as 2 (spec §2.8).  Non-destructive - the original is restored.
     func testSelectModeClampsOnDevice() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let orig = usb.getControlRequest(request: REQ_GET_SUBHARM_SELECT, value: 0, index: 0, length: 1),
               !orig.isEmpty else {
             throw XCTSkip("Firmware predates the extended Subharmonic Synthesizer.")
@@ -352,7 +352,7 @@ final class SubharmWireTests: XCTestCase {
 
     /// The sub meter is one uint16 per output channel, all inside 0..32767.
     func testSubMeterShape() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         // 9 outputs on RP2350, 5 on RP2040; ask for the larger and accept either.
         guard let d = usb.getControlRequest(request: REQ_GET_SUBHARM_METER, value: 0, index: 0, length: 18),
               d.count >= 10 else {
@@ -370,7 +370,7 @@ final class SubharmWireTests: XCTestCase {
     /// The ceiling bounds the synthesized sub, so switching it on can only lower
     /// the reported headroom - never raise it (spec §2.6).
     func testCeilingLowersTheHeadroom() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
 
         func headroom() -> Float? {
             guard let d = usb.getControlRequest(request: REQ_GET_SUBHARM_HEADROOM, value: 0, index: 0, length: 4),
@@ -409,7 +409,7 @@ final class SubharmWireTests: XCTestCase {
     /// Writing an out-of-range band level and reading it back returns the
     /// clamped value; the original is restored so the test is non-destructive.
     func testLowBandClampsAndRestores() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let orig = usb.getControlRequest(request: REQ_GET_SUBHARM_LOW, value: 0, index: 0, length: 4),
               orig.count >= 4 else {
             throw XCTSkip("Firmware predates the Subharmonic Synthesizer.")
@@ -435,7 +435,7 @@ final class SubharmWireTests: XCTestCase {
     /// followed immediately by a GET must already reflect the new value.  It
     /// reads 0 while the effect is disabled and rises with the boost.
     func testHeadroomTracksConfiguration() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
 
         func headroom() -> Float? {
             guard let d = usb.getControlRequest(request: REQ_GET_SUBHARM_HEADROOM, value: 0, index: 0, length: 4),

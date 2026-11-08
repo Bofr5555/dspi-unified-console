@@ -92,6 +92,7 @@
 				CompositeTransportTests.swift,
 				ControlSurfacesWireTests.swift,
 				DSPMathTests.swift,
+				DeviceImageGuardTests.swift,
 				DisplayConfigDiagTests.swift,
 				FilterDocumentTests.swift,
 				FilterFileTests.swift,

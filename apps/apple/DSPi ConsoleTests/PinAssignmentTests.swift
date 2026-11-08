@@ -18,7 +18,7 @@ final class PinAssignmentTests: XCTestCase {
     /// Note this is not a blank board - a fresh model carries the stock output
     /// pins, BCK and MCK, so a test that wants to prove one feature owns a pin
     /// has to place it somewhere nothing already sits.  Hence the two helpers.
-    private func makeVM() -> DSPViewModel { DSPViewModel() }
+    private func makeVM() -> DSPViewModel { HardwareTest.offlineViewModel() }
 
     /// A GPIO nothing claims in the model's current state.
     private func freePin(_ vm: DSPViewModel) -> UInt8 {

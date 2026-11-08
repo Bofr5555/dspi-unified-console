@@ -66,7 +66,7 @@ final class I2sClockPinModeWireTests: XCTestCase {
     /// i2s_clock_pin_claimed helper.
     @MainActor
     func testSlavePairReservedOnlyInSplit() {
-        let vm = DSPViewModel(transport: AppState.shared.usb)
+        let vm = HardwareTest.offlineViewModel()
         vm.platformName = "RP2350"
         vm.i2sInputSupported = true
         vm.i2sBckPinSlave = 26
@@ -90,7 +90,7 @@ final class I2sClockPinModeWireTests: XCTestCase {
     /// REQ_GET_I2S_CLOCK_PIN_MODE returns a valid 0/1 byte; the slave pair GPIO
     /// (0xC3 role 1) is a plausible GPIO distinct from the master pair.
     func testClockPinModeReadable() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let m = usb.getControlRequest(request: REQ_GET_I2S_CLOCK_PIN_MODE, value: 0, index: 2, length: 1),
               let mode = m.first else {
             throw XCTSkip("Firmware predates I2S clock-pin mode (0xFF STALLed).")
@@ -114,7 +114,7 @@ final class I2sClockPinModeWireTests: XCTestCase {
     /// Re-setting the current clock-pin mode is a no-op that returns
     /// PIN_CONFIG_SUCCESS and leaves the live mode unchanged.
     func testSetCurrentPinModeIdempotent() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let m = usb.getControlRequest(request: REQ_GET_I2S_CLOCK_PIN_MODE, value: 0, index: 2, length: 1),
               let mode = m.first else {
             throw XCTSkip("Firmware predates I2S clock-pin mode.")
@@ -135,7 +135,7 @@ final class I2sClockPinModeWireTests: XCTestCase {
     /// An out-of-range mode (wValue > 1) is rejected with INVALID_PARAM, and the
     /// live mode is unaffected.
     func testInvalidPinModeRejected() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let m = usb.getControlRequest(request: REQ_GET_I2S_CLOCK_PIN_MODE, value: 0, index: 2, length: 1),
               let mode = m.first else {
             throw XCTSkip("Firmware predates I2S clock-pin mode.")

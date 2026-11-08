@@ -201,7 +201,7 @@ final class DSPMathTests: XCTestCase {
     /// so early V27 builds lack the types).  V28 is the first version that
     /// always carries them, so that is where the picker may offer them.
     func testFirstOrderPassGateIsV28() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.isDeviceConnected = true
 
         vm.firmwareWireFormatVersion = 27
