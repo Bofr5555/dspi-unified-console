@@ -86,7 +86,7 @@ Section "Install"
   WriteRegStr HKCU "Software\DSPi\${APP}" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayName" "${APP}"
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayVersion" "${VERSION}"
-  WriteRegStr HKCU "${UNINST_KEY}" "Publisher" "WeebLabs"
+  WriteRegStr HKCU "${UNINST_KEY}" "Publisher" "DSPi unified console maintainers"
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayIcon" "$INSTDIR\DSPiConsole.exe"
   WriteRegStr HKCU "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "${UNINST_KEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'

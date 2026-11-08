@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Builds every Linux release file into dist/ (or $DSPI_DIST), against Qt 6:
-#   DSPi-Console-v<version>-x86_64.AppImage       any distribution (glibc 2.41+)
+#   DSPi-Console-v<version>-x86_64.AppImage       any distribution (glibc 2.39+: Ubuntu 24.04+)
 #   DSPi-Console-v<version>-linux-x86_64.tar.gz   the AppImage, udev rule and installer
 #   dspi-console_<version>_amd64.deb              Debian 13+, Ubuntu 25.04+
 #   dspi-console-<version>-1.x86_64.rpm           Fedora 42+
-# Each is built in a podman container of the oldest distribution it targets.
+# Each is built in a podman container of the oldest distribution it targets:
+# the AppImage on Ubuntu 24.04 with the official Qt 6.8 LTS (checked against
+# download.qt.io's SHA-256, see fetch-qt.sh), the packages on the
+# distributions' own Qt 6.
 # Qt stays dynamic in all of them (LGPL-3): each build fails if the app links
 # Qt statically. Nothing is published.
 set -euo pipefail
@@ -42,8 +45,10 @@ rm -f "$dist"/*.AppImage "$dist"/*.tar.gz "$dist"/*.deb "$dist"/*.rpm
 # The shared crate cache (as ci/run.sh); cargo's jobs capped as ci/run.sh does
 run=(podman run --rm -v "$repo":/src:ro,z -v "$dist":/dist:z -v "$B/cargo-home":/cache/cargo:z
      -e CARGO_HOME=/cache/cargo -e CARGO_BUILD_JOBS="${DSPI_JOBS:-4}" -e JOBS="${DSPI_JOBS:-4}")
+podman build -t dspi-console-build-ubuntu -f "$here/Containerfile.ubuntu" "$here"
+"${run[@]}" -e VERSION="$version" dspi-console-build-ubuntu /src/apps/desktop/packaging/linux/build-ubuntu.sh
 podman build -t dspi-console-build-debian -f "$here/Containerfile.debian" "$here"
-"${run[@]}" -e VERSION="$version" dspi-console-build-debian /src/apps/desktop/packaging/linux/build-debian.sh
+"${run[@]}" dspi-console-build-debian /src/apps/desktop/packaging/linux/build-debian.sh
 podman build -t dspi-console-build-fedora -f "$here/Containerfile.fedora" "$here"
 "${run[@]}" dspi-console-build-fedora /src/apps/desktop/packaging/linux/build-fedora.sh
 ls -l "$dist"/*.AppImage "$dist"/*.tar.gz "$dist"/*.deb "$dist"/*.rpm
