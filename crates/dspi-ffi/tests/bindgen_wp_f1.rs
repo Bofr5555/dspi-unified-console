@@ -37,6 +37,11 @@ const NOT_EXPORTED: &[&str] = &[
     "rta_tick",
     "push_notification",
     "notify_retry_due_in",
+    // -- WP WB4b -- The web's caller-driven Link (link.rs): takes a trait object
+    // (WsConnector) or is driven by the web binding's timer; not exported.
+    "link_connect_over",
+    "link_service",
+    "link_tick",
 ];
 
 /// `crates/dspi-core/src/link.rs`, exported by WP C15.

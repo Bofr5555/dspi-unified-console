@@ -989,18 +989,46 @@ mod tests_wp_qd32 {
             .join("\n")
     }
 
-    /// Every `text: "..."` in a slice of QML.
-    fn quoted_after<'a>(qml: &'a str, field: &str) -> Vec<&'a str> {
-        qml.split(field)
+    /// QML with `qsTr("x")` read as `"x"` (WP QD23 wrapped the labels).
+    fn plain(qml: &str) -> String {
+        let mut out = String::with_capacity(qml.len());
+        let mut rest = qml;
+        while let Some(i) = rest.find("qsTr(\"") {
+            out.push_str(&rest[..i]);
+            let after = &rest[i + 5..];
+            // The string literal, then the call's own closing parenthesis.
+            match after[1..].find('"') {
+                Some(end) => {
+                    out.push_str(&after[..end + 2]);
+                    rest = after[end + 2..]
+                        .strip_prefix(')')
+                        .unwrap_or(&after[end + 2..]);
+                }
+                None => {
+                    out.push_str(after);
+                    rest = "";
+                }
+            }
+        }
+        out.push_str(rest);
+        out
+    }
+
+    /// Every `text: "..."` in a slice of QML, `qsTr` or not.
+    fn quoted_after(qml: &str, field: &str) -> Vec<String> {
+        plain(qml)
+            .split(field)
             .skip(1)
             .filter_map(|rest| rest.split('"').next())
+            .map(str::to_owned)
             .collect()
     }
 
     /// The labels of an `AppMenu.qml` group, without the ellipsis.
     fn menu_items(group: &str) -> Vec<String> {
         let start = format!("{{ text: \"{group}\", icon");
-        let body = APP_MENU.split(&start).nth(1).expect(group);
+        let menu = plain(APP_MENU);
+        let body = menu.split(&start).nth(1).expect(group);
         let body = body.split("\n        ]").next().unwrap();
         quoted_after(body, "text: \"")
             .into_iter()
@@ -1035,7 +1063,8 @@ mod tests_wp_qd32 {
                 assert!(
                     pages
                         .iter()
-                        .chain(&PENDING_PAGES)
+                        .map(String::as_str)
+                        .chain(PENDING_PAGES)
                         .any(|p| rest.starts_with(p)),
                     "Settings > {rest}"
                 );
@@ -1049,11 +1078,11 @@ mod tests_wp_qd32 {
     fn wp_qd32_sections_named_in_the_notes_are_on_qts_pages() {
         let text = release_text(Platform::Linux);
         assert!(text.contains("Settings > Inputs > Source Names"));
-        assert!(INPUTS_PAGE.contains("title: \"Source Names\""));
+        assert!(INPUTS_PAGE.contains("title: qsTr(\"Source Names\")"));
         assert!(text.contains("Settings > Global Parameters > Device Name"));
-        assert!(GLOBAL_PAGE.contains("title: \"Device Name\""));
+        assert!(GLOBAL_PAGE.contains("title: qsTr(\"Device Name\")"));
         assert!(text.contains("Settings > Global Parameters has a Latency section"));
-        assert!(GLOBAL_PAGE.contains("title: \"Latency\""));
+        assert!(GLOBAL_PAGE.contains("title: qsTr(\"Latency\")"));
     }
 
     /// Qt's source picker has no right-click: the sidebar connects no
