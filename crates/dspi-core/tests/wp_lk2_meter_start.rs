@@ -273,3 +273,62 @@ fn wp_lk2_time_to_notice_a_dead_hub() {
     core.link_close();
     hub.stop();
 }
+
+/// LK1-c: a Wi-Fi stall of `LK2_STALL_S` seconds (the fake hub goes silent,
+/// TCP stays up) with meters running and a read in flight: does the session
+/// survive, and when are the meters live again after the stall ends.
+#[test]
+#[ignore = "measurement; run under netem (WP LK2)"]
+fn wp_lk2_a_wifi_stall() {
+    let hub = FakeHub::start(HubConfig {
+        auth: Auth::None,
+        ..HubConfig::bridge()
+    })
+    .unwrap();
+    let core = DspiCore::new();
+    if bound(&hub, &core).is_none() {
+        println!("LK2 stall start failed");
+        return;
+    }
+    let _ = core.fetch_all();
+    let _ = meter_loop(&core, Instant::now());
+    let stall = secs("LK2_STALL_S", 20);
+    let generation_before = core.connection_generation();
+    hub.stall(true);
+    let start = Instant::now();
+    let mut dropped = false;
+    std::thread::scope(|scope| {
+        // The app's read, in flight when the link stalls
+        scope.spawn(|| {
+            let _ = core.raw_get(PLAIN_READ, 0, 7);
+        });
+        while start.elapsed() < stall {
+            std::thread::sleep(STATUS_POLL);
+            let _ = core.fetch_status();
+            dropped |= core.link_status().phase != dspi_core::LinkPhase::Bound;
+        }
+        hub.stall(false);
+    });
+    let resumed = Instant::now();
+    let back = loop {
+        std::thread::sleep(STATUS_POLL);
+        dropped |= core.link_status().phase != dspi_core::LinkPhase::Bound;
+        if core.fetch_status().is_ok_and(|s| !s.stale) {
+            break Some(resumed.elapsed());
+        }
+        if resumed.elapsed() > Duration::from_secs(60) {
+            break None;
+        }
+    };
+    dropped |= core.connection_generation() != generation_before;
+    println!(
+        "LK2 stall {}s: session_dropped={dropped} meters_back_after={}",
+        stall.as_secs(),
+        back.map_or("never (60 s)".to_owned(), |d| format!(
+            "{:.1}s",
+            d.as_secs_f64()
+        ))
+    );
+    core.link_close();
+    hub.stop();
+}
