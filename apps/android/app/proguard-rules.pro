@@ -9,3 +9,8 @@
 # (BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map).
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
+
+# Review c6c AN15-1: error texts fall back to the exception's class name
+# (`e.message ?: e.javaClass.simpleName`), so keep the names of every
+# Throwable, including UniFFI's DspiException hierarchy and FirmwareInstallError.
+-keepnames class ** extends java.lang.Throwable
