@@ -10521,29 +10521,10 @@ struct FileMenuActions {
 
     // MARK: - Device Configuration Files
 
-    /// Content types offered by the configuration panels.  The `.dspipreset`
-    /// type is created from the extension rather than declared in the bundle:
-    /// the app's Info.plist is generated, so there is nowhere to export a real
-    /// UTI, and a dynamic type is enough for the panels to filter correctly.
-    private static var configurationTypes: [UTType] {
-        var types: [UTType] = []
-        if let type = UTType(filenameExtension: PresetDocument.fileExtension) { types.append(type) }
-        types.append(.json)
-        return types
-    }
-
     static func exportConfiguration() {
         let vm = AppState.shared.viewModel
-        guard vm.isDeviceConnected else {
-            showError("No device connected.")
-            return
-        }
-
-        // The document's channel ids depend on the platform (id 6 is S/PDIF 3 L
-        // on RP2350 and PDM on RP2040), so a file written before the device has
-        // identified itself could land on the wrong channels elsewhere.
-        guard !vm.platformName.isEmpty else {
-            showError("Still identifying the device. Try again in a moment.")
+        if let refusal = configurationExportRefusal(vm) {   // -- WP SW17 -- shared with iOS
+            showError(refusal)
             return
         }
 
@@ -10563,16 +10544,7 @@ struct FileMenuActions {
             return
         }
 
-        // Count the bands that actually do something, not the empty slots that
-        // pad every bank out to its full width.
-        let bands = doc.channels.reduce(0) { $0 + $1.eq.filter { $0.type != 0 }.count }
-        let xover = doc.channels.reduce(0) { $0 + $1.crossover.filter { $0.type != 0 }.count }
-        showSuccess("""
-            Configuration exported.
-
-            \(doc.channels.count) channels, \(bands) active EQ bands, \
-            \(xover) crossover bands, \(doc.matrix.count) crosspoints.
-            """)
+        showSuccess(configurationExportSummary(doc))   // -- WP SW17 -- shared with iOS
     }
 
     static func importConfiguration() {
@@ -10620,31 +10592,7 @@ struct FileMenuActions {
         let alert = NSAlert()
         alert.messageText = "Import Device Configuration"
         alert.alertStyle = .informational
-
-        var provenance: [String] = []
-        if let platform = doc.meta.platform, !platform.isEmpty { provenance.append(platform) }
-        if let firmware = doc.meta.firmwareVersion, !firmware.isEmpty {
-            provenance.append("firmware \(firmware)")
-        }
-        if !doc.meta.savedUtc.isEmpty, let saved = ISO8601DateFormatter().date(from: doc.meta.savedUtc) {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd HH:mm"
-            provenance.append(formatter.string(from: saved))
-        }
-
-        var informative = provenance.isEmpty
-            ? "Applies the settings in this file to the connected device."
-            : "Saved from \(provenance.joined(separator: ", "))."
-
-        // A file from a device with a different channel count still applies; say
-        // so up front rather than leaving it to be discovered in the report.
-        if let source = doc.meta.platform, !source.isEmpty, !vm.platformName.isEmpty,
-           source.caseInsensitiveCompare(vm.platformName) != .orderedSame {
-            informative += "\n\nThis file came from a \(source) device and you are connected to "
-                         + "\(vm.platformName). Anything the connected device doesn't have will be skipped."
-        }
-        informative += "\n\nEQ, crossover, delays, gains, routing and the DSP features are always applied."
-        alert.informativeText = informative
+        alert.informativeText = configurationImportPrompt(doc, vm: vm)   // -- WP SW17 -- shared with iOS
 
         let volumeCheck = NSButton(checkboxWithTitle: "Volume levels (master and listening volume)",
                                    target: nil, action: nil)
@@ -10668,25 +10616,7 @@ struct FileMenuActions {
     }
 
     private static func showImportResult(_ report: PresetApplyReport) {
-        var lines = ["""
-            Applied \(report.channelsApplied) channels, \(report.bandsApplied) EQ bands, \
-            \(report.crossoverBandsApplied) crossover bands, \(report.crosspointsApplied) crosspoints.
-            """]
-
-        if !report.missingChannels.isEmpty {
-            lines.append("Not present on this device: \(report.missingChannels.joined(separator: ", "))")
-        }
-        for skipped in report.skipped {
-            lines.append("Skipped: \(skipped)")
-        }
-
-        // Everything landed in RAM.  Saying so avoids the trap of power-cycling
-        // and losing the whole import.  "Preset slot" rather than "preset", to
-        // keep it distinct from the file that was just imported.
-        lines.append("These changes are live but not yet stored on the device. "
-                   + "Save them to a preset slot to keep them.")
-
-        let text = lines.joined(separator: "\n\n")
+        let text = configurationImportResultText(report)   // -- WP SW17 -- shared with iOS
         // Anything the device refused or couldn't do isn't a success, so don't
         // put a "Success" heading over it.
         if report.isClean {
@@ -10751,6 +10681,97 @@ struct FileMenuActions {
             }
         }
     }
+}
+#endif
+
+// -- WP SW17 -- Parsing, export, the import's channel choices and its applying
+// are shared with the iOS file actions (below, and iOS/DocumentPicker.swift),
+// so both platforms write and read the same files the same way.
+extension FileMenuActions {
+    /// Content types offered by the configuration panels.  The `.dspipreset`
+    /// type is created from the extension rather than declared in the bundle:
+    /// the app's Info.plist is generated, so there is nowhere to export a real
+    /// UTI, and a dynamic type is enough for the panels to filter correctly.
+    static var configurationTypes: [UTType] {
+        var types: [UTType] = []
+        if let type = UTType(filenameExtension: PresetDocument.fileExtension) { types.append(type) }
+        types.append(.json)
+        return types
+    }
+
+    /// Why a configuration cannot be exported now, or nil when it can.
+    static func configurationExportRefusal(_ vm: DSPViewModel) -> String? {
+        guard vm.isDeviceConnected else { return "No device connected." }
+        // The document's channel ids depend on the platform (id 6 is S/PDIF 3 L
+        // on RP2350 and PDM on RP2040), so a file written before the device has
+        // identified itself could land on the wrong channels elsewhere.
+        guard !vm.platformName.isEmpty else { return "Still identifying the device. Try again in a moment." }
+        return nil
+    }
+
+    static func configurationExportSummary(_ doc: PresetDocument) -> String {
+        // Count the bands that actually do something, not the empty slots that
+        // pad every bank out to its full width.
+        let bands = doc.channels.reduce(0) { $0 + $1.eq.filter { $0.type != 0 }.count }
+        let xover = doc.channels.reduce(0) { $0 + $1.crossover.filter { $0.type != 0 }.count }
+        return """
+            Configuration exported.
+
+            \(doc.channels.count) channels, \(bands) active EQ bands, \
+            \(xover) crossover bands, \(doc.matrix.count) crosspoints.
+            """
+    }
+
+    /// What the import options ask under their heading: where the file came
+    /// from, and a warning when it is from another platform.
+    static func configurationImportPrompt(_ doc: PresetDocument, vm: DSPViewModel) -> String {
+        var provenance: [String] = []
+        if let platform = doc.meta.platform, !platform.isEmpty { provenance.append(platform) }
+        if let firmware = doc.meta.firmwareVersion, !firmware.isEmpty {
+            provenance.append("firmware \(firmware)")
+        }
+        if !doc.meta.savedUtc.isEmpty, let saved = ISO8601DateFormatter().date(from: doc.meta.savedUtc) {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd HH:mm"
+            provenance.append(formatter.string(from: saved))
+        }
+
+        var informative = provenance.isEmpty
+            ? "Applies the settings in this file to the connected device."
+            : "Saved from \(provenance.joined(separator: ", "))."
+
+        // A file from a device with a different channel count still applies; say
+        // so up front rather than leaving it to be discovered in the report.
+        if let source = doc.meta.platform, !source.isEmpty, !vm.platformName.isEmpty,
+           source.caseInsensitiveCompare(vm.platformName) != .orderedSame {
+            informative += "\n\nThis file came from a \(source) device and you are connected to "
+                         + "\(vm.platformName). Anything the connected device doesn't have will be skipped."
+        }
+        informative += "\n\nEQ, crossover, delays, gains, routing and the DSP features are always applied."
+        return informative
+    }
+
+    static func configurationImportResultText(_ report: PresetApplyReport) -> String {
+        var lines = ["""
+            Applied \(report.channelsApplied) channels, \(report.bandsApplied) EQ bands, \
+            \(report.crossoverBandsApplied) crossover bands, \(report.crosspointsApplied) crosspoints.
+            """]
+
+        if !report.missingChannels.isEmpty {
+            lines.append("Not present on this device: \(report.missingChannels.joined(separator: ", "))")
+        }
+        for skipped in report.skipped {
+            lines.append("Skipped: \(skipped)")
+        }
+
+        // Everything landed in RAM.  Saying so avoids the trap of power-cycling
+        // and losing the whole import.  "Preset slot" rather than "preset", to
+        // keep it distinct from the file that was just imported.
+        lines.append("These changes are live but not yet stored on the device. "
+                   + "Save them to a preset slot to keep them.")
+
+        return lines.joined(separator: "\n\n")
+    }
 
     // MARK: - Parsing
 
@@ -10761,7 +10782,7 @@ struct FileMenuActions {
         var preamp: Float? = nil
     }
 
-    private static func parseREWFile(_ contents: String) -> ParsedREWFile {
+    static func parseREWFile(_ contents: String) -> ParsedREWFile {
         var parsed = ParsedREWFile()
 
         for line in contents.components(separatedBy: .newlines) {
@@ -10796,8 +10817,7 @@ struct FileMenuActions {
         var formatVersion: Int
     }
 
-    static func parseDSPiFile(_ contents: String) -> ParsedDSPiFile? {
-        let vm = AppState.shared.viewModel
+    static func parseDSPiFile(_ contents: String, vm: DSPViewModel = AppState.shared.viewModel) -> ParsedDSPiFile? {
         var result: [Int: ParsedChannelData] = [:]
         var formatVersion = 1
         var currentChannel: Int? = nil
@@ -10907,15 +10927,13 @@ struct FileMenuActions {
 
     // MARK: - Export
 
-    static func generateExportString() -> String {
+    static func generateExportString(vm: DSPViewModel = AppState.shared.viewModel) -> String {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
 
         var output = "# DSPi Console Filter Settings\n"
         output += "# Exported: \(dateFormatter.string(from: Date()))\n"
         output += "# Format: \(FilterFile.formatVersion)\n\n"
-
-        let vm = AppState.shared.viewModel
 
         // Input channels.  Headers are keyed by index, with the (renameable)
         // channel name carried alongside for readability only.  Only the
@@ -10950,17 +10968,18 @@ struct FileMenuActions {
 
         return output
     }
+}
 
+#if os(macOS)
+extension FileMenuActions {
     // MARK: - Dialogs
 
-    private static func showSingleChannelPicker(_ file: ParsedREWFile) {
+    // -- WP SW17 -- the choices, prompts and applying are shared with iOS.
+    /// The channel choices as an alert's checkboxes; nil when cancelled.
+    private static func runChannelPicker(message: String, choices: [ImportChannelChoice]) -> [Int]? {
         let alert = NSAlert()
         alert.messageText = "Import Filters"
-        var prompt = "Found \(file.filters.count) filter(s)"
-        if let preamp = file.preamp {
-            prompt += String(format: " and a %+.1f dB preamp", preamp)
-        }
-        alert.informativeText = prompt + ". Select which channel(s) to apply them to:"
+        alert.informativeText = message
         alert.alertStyle = .informational
 
         let accessory = NSStackView()
@@ -10968,24 +10987,11 @@ struct FileMenuActions {
         accessory.alignment = .leading
         accessory.spacing = 8
 
-        let vm = AppState.shared.viewModel
         var checkboxes: [NSButton] = []
-
-        // Active input channels (checked by default)
-        for eqCh in 0..<vm.numMatrixInputs {
-            let checkbox = NSButton(checkboxWithTitle: vm.channelNames[eqCh], target: nil, action: nil)
-            checkbox.tag = eqCh
-            checkbox.state = .on
-            checkboxes.append(checkbox)
-            accessory.addArrangedSubview(checkbox)
-        }
-
-        // Enabled output channels (unchecked by default)
-        for outputIdx in 0..<vm.numOutputChannels where vm.outputEnabled[outputIdx] {
-            let eqCh = vm.eqChannel(forOutput: outputIdx)
-            let checkbox = NSButton(checkboxWithTitle: vm.channelNames[eqCh], target: nil, action: nil)
-            checkbox.tag = eqCh
-            checkbox.state = .off
+        for choice in choices {
+            let checkbox = NSButton(checkboxWithTitle: choice.name, target: nil, action: nil)
+            checkbox.tag = choice.id
+            checkbox.state = choice.selected ? .on : .off
             checkboxes.append(checkbox)
             accessory.addArrangedSubview(checkbox)
         }
@@ -10996,13 +11002,87 @@ struct FileMenuActions {
         alert.addButton(withTitle: "Import")
         alert.addButton(withTitle: "Cancel")
 
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        return checkboxes.filter { $0.state == .on }.map(\.tag)
+    }
 
+    private static func showSingleChannelPicker(_ file: ParsedREWFile) {
+        let vm = AppState.shared.viewModel
+        guard let chosen = runChannelPicker(message: importPrompt(for: file),
+                                            choices: channelChoices(for: file, vm: vm)) else { return }
+        let report = applyREWFile(file, to: chosen, vm: vm)
+        if !chosen.isEmpty {
+            showSuccess("Filters imported to \(chosen.count) channel(s)" + report.notes)
+        }
+    }
+
+    private static func showMultiChannelPicker(file: ParsedDSPiFile) {
+        let vm = AppState.shared.viewModel
+        guard let chosen = runChannelPicker(message: importPrompt(for: file),
+                                            choices: channelChoices(for: file, vm: vm)) else { return }
+        let report = applyDSPiFile(file, to: chosen, vm: vm)
+        showSuccess("Filters imported successfully" + report.notes)
+    }
+}
+#endif
+
+extension FileMenuActions {
+    // MARK: - Channel choices
+
+    /// One channel offered by the import's picker: its unified (EQ) channel
+    /// index, its name, and whether it starts ticked.
+    struct ImportChannelChoice: Identifiable, Equatable {
+        let id: Int
+        let name: String
+        var selected: Bool
+    }
+
+    static func importPrompt(for file: ParsedREWFile) -> String {
+        var prompt = "Found \(file.filters.count) filter(s)"
+        if let preamp = file.preamp {
+            prompt += String(format: " and a %+.1f dB preamp", preamp)
+        }
+        return prompt + ". Select which channel(s) to apply them to:"
+    }
+
+    static func importPrompt(for file: ParsedDSPiFile) -> String {
+        "This file contains filter settings for multiple channels. Select which channels to import:"
+    }
+
+    /// A REW file goes to the active inputs (ticked) or the enabled outputs.
+    static func channelChoices(for file: ParsedREWFile, vm: DSPViewModel) -> [ImportChannelChoice] {
+        var choices: [ImportChannelChoice] = []
+        // Active input channels (checked by default)
+        for eqCh in 0..<vm.numMatrixInputs {
+            choices.append(ImportChannelChoice(id: eqCh, name: vm.channelNames[eqCh], selected: true))
+        }
+        // Enabled output channels (unchecked by default)
+        for outputIdx in 0..<vm.numOutputChannels where vm.outputEnabled[outputIdx] {
+            let eqCh = vm.eqChannel(forOutput: outputIdx)
+            choices.append(ImportChannelChoice(id: eqCh, name: vm.channelNames[eqCh], selected: false))
+        }
+        return choices
+    }
+
+    /// A DSPi Console file offers each channel it carries, all ticked.
+    static func channelChoices(for file: ParsedDSPiFile, vm: DSPViewModel) -> [ImportChannelChoice] {
+        // Show channels in order: inputs then outputs (full unified range).
+        (0..<vm.numChannels).compactMap { eqCh in
+            guard file.channels[eqCh] != nil else { return nil }
+            let name = eqCh < vm.channelNames.count ? vm.channelNames[eqCh] : "Ch \(eqCh)"
+            return ImportChannelChoice(id: eqCh, name: name, selected: true)
+        }
+    }
+
+    // MARK: - Applying
+
+    /// A REW or AutoEQ file's bands on each chosen channel.
+    @discardableResult
+    static func applyREWFile(_ file: ParsedREWFile, to channels: [Int],
+                             vm: DSPViewModel = AppState.shared.viewModel) -> ImportReport {
         var report = ImportReport()
-        var importedCount = 0
-        for checkbox in checkboxes where checkbox.state == .on {
-            let eqCh = checkbox.tag
-            report.merge(applyFilters(file.filters, to: eqCh))
+        for eqCh in channels {
+            report.merge(applyFilters(file.filters, to: eqCh, vm: vm))
             // Preamp is an input-only trim; outputs have no equivalent, so a
             // REW file's preamp is dropped when targeting one.
             if let preamp = file.preamp {
@@ -11012,78 +11092,40 @@ struct FileMenuActions {
                     report.preampDropped = true
                 }
             }
-            importedCount += 1
         }
-        if importedCount > 0 {
-            showSuccess("Filters imported to \(importedCount) channel(s)" + report.notes)
-        }
+        return report
     }
 
-    private static func showMultiChannelPicker(file: ParsedDSPiFile) {
-        let channelFilters = file.channels
-
-        let alert = NSAlert()
-        alert.messageText = "Import Filters"
-        alert.informativeText = "This file contains filter settings for multiple channels. Select which channels to import:"
-        alert.alertStyle = .informational
-
-        let accessory = NSStackView()
-        accessory.orientation = .vertical
-        accessory.alignment = .leading
-        accessory.spacing = 8
-
-        let vm = AppState.shared.viewModel
-        var checkboxes: [NSButton] = []
-
-        // Show channels in order: inputs then outputs (full unified range).
-        for eqCh in 0..<vm.numChannels {
-            guard channelFilters[eqCh] != nil else { continue }
-            let name = eqCh < vm.channelNames.count ? vm.channelNames[eqCh] : "Ch \(eqCh)"
-
-            let checkbox = NSButton(checkboxWithTitle: name, target: nil, action: nil)
-            checkbox.tag = eqCh
-            checkbox.state = .on
-            checkboxes.append(checkbox)
-            accessory.addArrangedSubview(checkbox)
-        }
-
-        accessory.setFrameSize(NSSize(width: 200, height: CGFloat(checkboxes.count * 24)))
-        alert.accessoryView = accessory
-
-        alert.addButton(withTitle: "Import")
-        alert.addButton(withTitle: "Cancel")
-
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-
+    /// A DSPi Console file's sections on each chosen channel.
+    @discardableResult
+    static func applyDSPiFile(_ file: ParsedDSPiFile, to channels: [Int],
+                              vm: DSPViewModel = AppState.shared.viewModel) -> ImportReport {
         var report = ImportReport()
         // A file from a newer build may carry sections this one doesn't know
         // about, and they'd be dropped silently otherwise.
         report.newerFormat = file.formatVersion > FilterFile.formatVersion
 
-        for checkbox in checkboxes where checkbox.state == .on {
-            let eqCh = checkbox.tag
-            guard let data = channelFilters[eqCh] else { continue }
+        for eqCh in channels {
+            guard let data = file.channels[eqCh] else { continue }
 
-            report.merge(applyFilters(data.filters, to: eqCh))
+            report.merge(applyFilters(data.filters, to: eqCh, vm: vm))
             if let preamp = data.preamp, eqCh < vm.chOut1 {
                 vm.setPreampChannel(channel: eqCh, db: preamp)
             }
             if let xover = data.xover {
-                applyCrossover(xover, to: eqCh, report: &report)
+                applyCrossover(xover, to: eqCh, report: &report, vm: vm)
             }
             // Restore enable/disable state for output channels
             if eqCh >= vm.chOut1, let enabled = data.enableState {
                 vm.setOutputEnable(output: eqCh - vm.chOut1, enabled: enabled)
             }
         }
-        showSuccess("Filters imported successfully" + report.notes)
+        return report
     }
-
-    // MARK: - Applying
 
     /// What an import couldn't carry across, so the confirmation can say so
     /// instead of leaving the user to spot it.
-    private struct ImportReport {
+    struct ImportReport {
         var truncated = 0                     // filters past the channel's band count
         var unsupported: Set<FilterType> = [] // types this firmware would reject
         var crossoverSkipped = false
@@ -11121,8 +11163,7 @@ struct FileMenuActions {
     }
 
     @discardableResult
-    private static func applyFilters(_ filters: [FilterParams], to channelIndex: Int) -> ImportReport {
-        let vm = AppState.shared.viewModel
+    private static func applyFilters(_ filters: [FilterParams], to channelIndex: Int, vm: DSPViewModel) -> ImportReport {
         var report = ImportReport()
         let bandCount = vm.channelData[channelIndex]?.count ?? 10
         report.truncated = max(0, filters.count - bandCount)
@@ -11141,8 +11182,8 @@ struct FileMenuActions {
         return report
     }
 
-    private static func applyCrossover(_ bands: [FilterParams], to channelIndex: Int, report: inout ImportReport) {
-        let vm = AppState.shared.viewModel
+    private static func applyCrossover(_ bands: [FilterParams], to channelIndex: Int, report: inout ImportReport,
+                                       vm: DSPViewModel) {
         guard channelIndex >= vm.chOut1 else { return }
         if vm.isDeviceConnected && !vm.firmwareSupportsCrossover {
             report.crossoverSkipped = true
@@ -11160,6 +11201,10 @@ struct FileMenuActions {
         !vm.firmwareSupports(filterType: type)
     }
 
+}
+
+#if os(macOS)
+extension FileMenuActions {
     // MARK: - Alerts
 
     private static func showSuccess(_ message: String) {
@@ -11182,15 +11227,135 @@ struct FileMenuActions {
 }
 #else
 // MARK: - File Menu Actions (iOS)
-/// Filter and configuration files go through NSOpenPanel/NSSavePanel on
-/// macOS.  On iOS they belong in `.fileImporter`/`.fileExporter` on the
-/// presenting view, which is part of the compact-layout work (A3); until then
-/// the entry points explain that rather than doing nothing.
+// -- WP SW17 -- The Mac's file actions through the system document picker
+// (iOS/DocumentPicker.swift).  The files are written and read by the shared
+// code above, so they are the Mac's byte for byte; the Mac's alerts with
+// checkboxes become sheets (FileImportSheets).
 struct FileMenuActions {
-    static func importFilters() { notYet("Importing filters") }
-    static func exportFilters() { notYet("Exporting filters") }
-    static func importConfiguration() { notYet("Importing a device configuration") }
-    static func exportConfiguration() { notYet("Exporting a device configuration") }
+    /// The name a configuration is exported under.  The Mac takes the
+    /// document's name from the file name typed in its save panel; the
+    /// export picker takes a finished file, so the default name is used.
+    static let configurationName = "DSPi Configuration"
+
+    static func importFilters() {
+        let vm = AppState.shared.viewModel
+        if let refusal = importRefusal(vm, needsDevice: false) { return showError(refusal) }
+        DocumentPicker.importFile(types: [.plainText]) { url in
+            let contents: String
+            do {
+                contents = try String(contentsOf: url, encoding: .utf8)
+            } catch {
+                showError("Failed to read file: \(error.localizedDescription)")
+                return
+            }
+            importFilters(contents, vm: vm)
+        }
+    }
+
+    static func importFilters(_ contents: String, vm: DSPViewModel) {
+        if contents.hasPrefix("# DSPi Console") {
+            // DSPi Console format - pick from the channels it carries
+            guard let parsed = parseDSPiFile(contents, vm: vm) else {
+                showError("Failed to parse DSPi Console filter file")
+                return
+            }
+            FileImportSheets.chooseChannels(message: importPrompt(for: parsed),
+                                            choices: channelChoices(for: parsed, vm: vm)) { chosen in
+                let report = applyDSPiFile(parsed, to: chosen, vm: vm)
+                showSuccess("Filters imported successfully" + report.notes)
+            }
+        } else {
+            // REW format - pick the channels to put its one band list on
+            let parsed = parseREWFile(contents)
+            guard !parsed.filters.isEmpty else {
+                showError("No valid filters found in file")
+                return
+            }
+            FileImportSheets.chooseChannels(message: importPrompt(for: parsed),
+                                            choices: channelChoices(for: parsed, vm: vm)) { chosen in
+                let report = applyREWFile(parsed, to: chosen, vm: vm)
+                if !chosen.isEmpty {
+                    showSuccess("Filters imported to \(chosen.count) channel(s)" + report.notes)
+                }
+            }
+        }
+    }
+
+    static func exportFilters() {
+        let output = generateExportString()
+        DocumentPicker.export(Data(output.utf8), fileName: "DSPi Filters.txt") { outcome in
+            switch outcome {
+            case .saved:             showSuccess("Filters exported successfully")
+            case .cancelled:         break
+            case .failed(let error): showError("Failed to write file: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    static func exportConfiguration() {
+        let vm = AppState.shared.viewModel
+        if let refusal = configurationExportRefusal(vm) { return showError(refusal) }
+        let doc = PresetDocument.capture(from: vm, name: configurationName)
+        let data: Data
+        do {
+            data = try PresetDocumentFile.encode(doc)
+        } catch {
+            showError("Failed to write file: \(error.localizedDescription)")
+            return
+        }
+        DocumentPicker.export(data, fileName: "\(configurationName).\(PresetDocument.fileExtension)") { outcome in
+            switch outcome {
+            case .saved:             showSuccess(configurationExportSummary(doc))
+            case .cancelled:         break
+            case .failed(let error): showError("Failed to write file: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    static func importConfiguration() {
+        let vm = AppState.shared.viewModel
+        if let refusal = importRefusal(vm, needsDevice: true) { return showError(refusal) }
+        DocumentPicker.importFile(types: configurationTypes) { url in
+            let doc: PresetDocument
+            do {
+                doc = try PresetDocumentFile.decode(try Data(contentsOf: url))
+            } catch {
+                showError(error.localizedDescription)
+                return
+            }
+            FileImportSheets.askImportOptions(prompt: configurationImportPrompt(doc, vm: vm)) { options in
+                applyConfiguration(doc, options: options, vm: vm)
+            }
+        }
+    }
+
+    private static func applyConfiguration(_ doc: PresetDocument, options: PresetApplyOptions, vm: DSPViewModel) {
+        let progress = FileImportSheets.ProgressSheet()
+        progress.begin()
+        PresetDocumentApply.apply(doc, to: vm, options: options,
+                                  progress: { progress.update($0) }) { report in
+            progress.end {
+                if report.lockedOut {
+                    showError("The configuration was not applied: \(DeviceLock.lockedMessage).")
+                } else if report.isClean {
+                    showSuccess(configurationImportResultText(report))
+                } else {
+                    // Anything the device refused or couldn't do isn't a
+                    // success, so no "Success" heading over it.
+                    show("Import Device Configuration", configurationImportResultText(report))
+                }
+            }
+        }
+    }
+
+    /// Why an import must not start, or nil.  A read-only connection (older
+    /// or newer firmware, SW8) refuses every write, so the import is refused
+    /// up front in the core's words (SWF4) instead of being reverted later.
+    static func importRefusal(_ vm: DSPViewModel, needsDevice: Bool) -> String? {
+        if needsDevice && !vm.isDeviceConnected { return "No device connected." }
+        if vm.deviceReadOnly { return DeviceLock.readOnlyMessage }
+        return nil
+    }
 
     static func saveMasterVolume() {
         let vm = AppState.shared.viewModel
@@ -11204,10 +11369,15 @@ struct FileMenuActions {
         DispatchQueue.global(qos: .userInitiated).async { _ = vm.saveOutputConfig() }
     }
 
-    private static func notYet(_ what: String) {
+    private static func showSuccess(_ message: String) { show("Success", message) }
+
+    private static func showError(_ message: String) { show("Error", message, style: .warning) }
+
+    private static func show(_ title: String, _ message: String, style: PlatformAlert.Style = .informational) {
         let alert = PlatformAlert()
-        alert.messageText = "Not available yet"
-        alert.informativeText = "\(what) is not available in the iOS version yet."
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = style
         alert.addButton(withTitle: "OK")
         alert.present()
     }
