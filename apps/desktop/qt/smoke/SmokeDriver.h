@@ -43,6 +43,8 @@ private:
     void run();
     void check(const char *what, bool ok);
     void section(const char *name);
+    // -- WP QD38 -- Ends the last section and prints the run's section times
+    void sectionTimes();
     void spin(int ms);
     bool waitFor(int ms, const std::function<bool()> &done);
     QObject *root() const;

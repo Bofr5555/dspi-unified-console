@@ -27,7 +27,11 @@ if [ "${DSPI_SMOKE_HW:-}" = replug ]; then
     timeout 330 "$app" 2>&1 | tee "$out/log.txt" | grep --line-buffered -E '^(smoke:|FAIL)'
     code=${PIPESTATUS[0]}
 else
-    timeout 300 "$app" "${args[@]}" > "$out/log.txt" 2>&1
+    # -- WP QD38 -- The driver's watchdog ends a run whose section hangs (exit 4,
+    # naming the section; DSPI_SMOKE_SECTION_LIMIT, 120 s by default) and logs
+    # each section's time. This total only backs it up: about twice the main
+    # run's cost on a quiet host (285 s at gate 2), so a loaded host fits.
+    timeout 600 "$app" "${args[@]}" > "$out/log.txt" 2>&1
     code=$?
     grep -E '^(smoke:|FAIL)' "$out/log.txt"
 fi

@@ -42,6 +42,16 @@ extern "C" {
 #include <QQmlComponent>
 #include <QQuickItem>
 #include <cstdio>
+// -- WP QD38 --
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cstdlib>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <utility>
+#include <vector>
 
 // QML runtime errors fail the run (TypeError, ReferenceError, a broken binding)
 static int g_qmlErrors = 0;
@@ -57,6 +67,65 @@ static void messageHandler(QtMsgType type, const QMessageLogContext &ctx, const 
 
 int SmokeDriver::qmlErrors() { return g_qmlErrors; }
 
+// -- WP QD38 -- Each section's time goes in the log, so growth shows before a
+// budget is hit. A watchdog thread ends the run when one section runs longer
+// than the limit and names it: a hang is found by its section, not by the
+// whole run's timeout in run.sh. The limit is DSPI_SMOKE_SECTION_LIMIT seconds
+// (0 turns it off); the replug pass waits on the owner, so it has none.
+namespace {
+using Clock = std::chrono::steady_clock;
+constexpr int kSectionLimitS = 120;
+std::mutex g_sectionMutex;
+std::string g_section = "start";
+Clock::time_point g_sectionSince = Clock::now();
+Clock::time_point g_runSince = Clock::now();
+std::vector<std::pair<double, std::string>> g_sectionTimes;
+std::atomic<int> g_sectionLimitS{0};
+
+double secondsSince(Clock::time_point t) {
+    return std::chrono::duration<double>(Clock::now() - t).count();
+}
+
+// Ends the current section; called with g_sectionMutex held
+void closeSection() {
+    const double s = secondsSince(g_sectionSince);
+    g_sectionTimes.emplace_back(s, g_section);
+    printf("smoke: -- %s: %.1f s\n", g_section.c_str(), s);
+}
+
+void startWatchdog(int limitS) {
+    g_sectionLimitS = limitS;
+    if (limitS <= 0) return;
+    std::thread([]() {
+        for (;;) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            std::lock_guard<std::mutex> lock(g_sectionMutex);
+            const double s = secondsSince(g_sectionSince);
+            if (s > g_sectionLimitS) {
+                printf("FAIL watchdog: section \"%s\" still running after %.0f s (limit %d s, run %.0f s): a hang\n",
+                       g_section.c_str(), s, g_sectionLimitS.load(), secondsSince(g_runSince));
+                fflush(stdout);
+                std::_Exit(4);
+            }
+        }
+    }).detach();
+}
+} // namespace
+
+void SmokeDriver::sectionTimes() {
+    std::lock_guard<std::mutex> lock(g_sectionMutex);
+    closeSection();
+    g_section = "after the summary";
+    g_sectionSince = Clock::now();
+    auto slowest = g_sectionTimes;
+    std::sort(slowest.begin(), slowest.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
+    if (slowest.size() > 5) slowest.resize(5);
+    printf("smoke: %zu sections in %.1f s; slowest:", g_sectionTimes.size(), secondsSince(g_runSince));
+    for (const auto &t : slowest) printf(" %s %.1f s;", t.second.c_str(), t.first);
+    printf("\n");
+    fflush(stdout);
+}
+
 void SmokeDriver::start() {
     m_out = qEnvironmentVariable("DSPI_SMOKE_OUT", QDir::currentPath());
     g_previous = qInstallMessageHandler(messageHandler);
@@ -64,6 +133,10 @@ void SmokeDriver::start() {
     const bool replug = qEnvironmentVariable("DSPI_SMOKE_HW") == QLatin1String("replug");
     // -- WP QD12 --
     const QString trayLaunch = qEnvironmentVariable("DSPI_SMOKE_TRAY");
+    // -- WP QD38 --
+    bool limitSet = false;
+    const int limit = qEnvironmentVariableIntValue("DSPI_SMOKE_SECTION_LIMIT", &limitSet);
+    startWatchdog(limitSet ? limit : replug ? 0 : kSectionLimitS);
     QTimer::singleShot(200, this, [this, hardware, replug, trayLaunch]() {
         if (!trayLaunch.isEmpty()) runTrayLaunch(trayLaunch);
         // -- WP QD7 --
@@ -161,6 +234,7 @@ void SmokeDriver::run() {
 #endif
     // -- WP QD12 -- Last: an accepted close takes the window's surface away
     testTray();
+    sectionTimes();
     m_failures += g_qmlErrors;
     printf("smoke: %d checks, %d failures (%d QML errors)\n", m_checks, m_failures, g_qmlErrors);
     fflush(stdout);
@@ -170,6 +244,7 @@ void SmokeDriver::run() {
 // -- WP QD7 -- A run of its own, on an app started without --demo (run.sh)
 void SmokeDriver::runDemoEntry() {
     testDemoEntry();
+    sectionTimes();
     m_failures += g_qmlErrors;
     printf("smoke: %d checks, %d failures (%d QML errors)\n", m_checks, m_failures, g_qmlErrors);
     fflush(stdout);
@@ -177,6 +252,11 @@ void SmokeDriver::runDemoEntry() {
 }
 
 void SmokeDriver::section(const char *name) {
+    // -- WP QD38 --
+    std::lock_guard<std::mutex> lock(g_sectionMutex);
+    closeSection();
+    g_section = name;
+    g_sectionSince = Clock::now();
     printf("smoke: == %s\n", name);
     fflush(stdout);
 }

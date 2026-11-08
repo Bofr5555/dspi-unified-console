@@ -79,6 +79,8 @@ static QVariantMap coreJson(F call) {
 // ── The pass ──
 
 void SmokeDriver::finish() {
+    // -- WP QD38 --
+    sectionTimes();
     m_failures += qmlErrors();
     printf("smoke: %d checks, %d failures (%d QML errors), %d not run\n", m_passed + m_failures, m_failures, qmlErrors(), m_notRun);
     fflush(stdout);
