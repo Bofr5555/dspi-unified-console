@@ -801,9 +801,9 @@ pub(crate) fn rebaseline_after_load_locked(inner: &mut Inner, old: Option<&[u8]>
 /// field of the bulk image ([`IMAGE_FIELDS`], WP CG33b), not a run of
 /// differing bytes: two adjacent fields can differ from `old` in their
 /// boundary bytes, and as one run a load that replaced the first would hide
-/// an edit of the second. An image of another size than `BULK_SIZE` has no
-/// known layout and goes by maximal byte runs; images of different sizes
-/// (another layout) are left alone.
+/// an edit of the second. When the three images are of equal length other
+/// than `BULK_SIZE`, there is no known layout and the unit is a maximal
+/// byte run. When their lengths differ, nothing is put back.
 pub(crate) fn keep_edits_after_load(baseline: &mut [u8], old: &[u8], mirror: &[u8]) {
     let len = baseline.len();
     if old.len() != len || mirror.len() != len {
@@ -833,6 +833,10 @@ pub(crate) fn keep_edits_after_load(baseline: &mut [u8], old: &[u8], mirror: &[u
 /// byte widths of one record's fields, the record repeated over the
 /// section. Reserved bytes and `u8` arrays count byte by byte; a channel
 /// name is one field.
+///
+/// Transcribed by hand from the V32 layout: on a wire format bump, check
+/// every section's fields against the new bulk_params.h (a same-size change
+/// inside a section passes the layout test) and move the pin below.
 pub(crate) const IMAGE_FIELDS: [(usize, usize, &[usize]); 25] = [
     (
         g::OFF_HEADER,
@@ -900,6 +904,13 @@ pub(crate) const IMAGE_FIELDS: [(usize, usize, &[usize]); 25] = [
     ),
     (g::OFF_LIMITER, g::LEN_LIMITER, &[1, 1, 1, 1, 4, 4]),
 ];
+
+// -- WP CG35 -- (review c6x N1)
+const _: () = assert!(
+    g::wire::WIRE_FORMAT_VERSION == 32,
+    "the wire format changed: update presets::IMAGE_FIELDS (crates/dspi-core/src/presets.rs) \
+     to the new bulk_params.h, then this pin"
+);
 
 /// `WireBandParams`: type, bypass, the Linkwitz target Q (`u16`), freq, Q,
 /// gain.

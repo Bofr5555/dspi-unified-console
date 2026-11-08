@@ -534,7 +534,8 @@ impl DspiCore {
             .ok_or_else(|| invalid(format!("channel {ch} has no band {b}")))?;
         // -- WP CG34 --
         let from = FilterType::from_raw(p.filter_type);
-        eq_field_fits(path, from).map_err(|why| invalid(format!("{path} [{ch}, {b}]: {why}")))?;
+        eq_field_fits(path, b, from)
+            .map_err(|why| invalid(format!("{path} [{ch}, {b}]: {why}")))?;
         match path {
             "eq.type" => {
                 let to = byte(v)?;
