@@ -73,6 +73,8 @@ protocol CoreStateSource: AnyObject {
     /// in the core's list yet, so apply the queued notifications and return
     /// the list after; nil when no SET is that recent (the list is current).
     /// Blocks on the core's queue only in that case; main thread.
+    /// -- WP SWF8 -- At most `settleWindow` in all (nil past it), and nil at
+    /// once over a hub, whose echoes reach the core through main.
     func settlePresetChanges() -> [String]?
 }
 

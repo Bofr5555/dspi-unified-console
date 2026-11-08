@@ -512,23 +512,67 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
     static let settleQuiet: TimeInterval = 0.02
 
     func settlePresetChanges() -> [String]? {
+        // -- WP SWF8 -- Not over a hub (c72-N1): its echoes reach the core
+        // through the main thread (HubTransport's fanout), which this call
+        // holds, so waiting cannot bring them in.
+        if bridge?.isHub == true { return nil }
+        let start = ProcessInfo.processInfo.systemUptime
         stateLock.lock(); let at = lastRawSetAt; stateLock.unlock()
-        guard let at = at, ProcessInfo.processInfo.systemUptime - at < Self.settleWindow else { return nil }
-        return onCoreSync {
-            // Behind the SETs on the queue.  Their echoes reach the core
-            // through the reader thread, one wake each: wait until the link
-            // has been quiet for `settleQuiet` since the last SET or echo,
-            // at most the window from the last SET (a write that echoes
-            // nothing waits only the quiet time).
-            let deadline = self.lastRawSetSentAt + Self.settleWindow
-            while true {
-                let now = ProcessInfo.processInfo.systemUptime
-                self.stateLock.lock(); let heard = self.lastNotifiedAt; self.stateLock.unlock()
-                if now >= deadline || now - max(heard, self.lastRawSetSentAt) >= Self.settleQuiet { break }
-                Thread.sleep(forTimeInterval: 0.002)
+        guard let at = at, start - at < Self.settleWindow else { return nil }
+        if DispatchQueue.getSpecific(key: CoreBackedTransport.onCoreQueue) == true {
+            return settleOnCore(until: start + Self.settleWindow)
+        }
+        // -- WP SWF8 -- The whole call is bounded, the hop behind work already
+        // on coreQueue included (c72-N2): past `settleWindow` the caller gets
+        // nil (the list as delivered) and the late job does nothing.
+        let done = DispatchSemaphore(value: 0)
+        let box = SettleBox()
+        coreQueue.async { [weak self] in
+            if !box.abandoned, let self = self {
+                box.result = self.settleOnCore(until: start + Self.settleWindow - Self.settleDrainReserve)
             }
-            self.drain()
-            return self.onCore { $0.presetChanges() }
+            done.signal()
+        }
+        guard done.wait(timeout: .now() + Self.settleWindow) == .success else {
+            box.abandoned = true
+            return nil
+        }
+        return box.result
+    }
+
+    /// -- WP SWF8 -- Of the call's `settleWindow`, what the wait leaves for
+    /// the drain.
+    static let settleDrainReserve: TimeInterval = 0.02
+
+    // On coreQueue.  Behind the SETs on the queue.  Their echoes reach the
+    // core through the reader thread, one wake each: wait until the link has
+    // been quiet for `settleQuiet` since the last SET or echo, at most the
+    // window from the last SET (a write that echoes nothing waits only the
+    // quiet time) and never past `limit`.
+    private func settleOnCore(until limit: TimeInterval) -> [String] {
+        let deadline = min(lastRawSetSentAt + Self.settleWindow, limit)
+        while true {
+            let now = ProcessInfo.processInfo.systemUptime
+            stateLock.lock(); let heard = lastNotifiedAt; stateLock.unlock()
+            if now >= deadline || now - max(heard, lastRawSetSentAt) >= Self.settleQuiet { break }
+            Thread.sleep(forTimeInterval: 0.002)
+        }
+        drain()
+        return onCore { $0.presetChanges() }
+    }
+
+    /// -- WP SWF8 -- The settle's result, and the caller giving up on it.
+    private final class SettleBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _result: [String]?
+        private var _abandoned = false
+        var result: [String]? {
+            get { lock.lock(); defer { lock.unlock() }; return _result }
+            set { lock.lock(); _result = newValue; lock.unlock() }
+        }
+        var abandoned: Bool {
+            get { lock.lock(); defer { lock.unlock() }; return _abandoned }
+            set { lock.lock(); _abandoned = newValue; lock.unlock() }
         }
     }
 
@@ -587,6 +631,9 @@ final class HostBridge: HostTransport, @unchecked Sendable {
     func origin(of note: LinkNotification) -> UInt16? {
         hostKind == .hub ? note.origin : nil
     }
+
+    /// -- WP SWF8 -- A hub session: its notifications arrive on main.
+    var isHub: Bool { hostKind == .hub }
 
     func kind() -> HostTransportKind {
         switch hostKind {
