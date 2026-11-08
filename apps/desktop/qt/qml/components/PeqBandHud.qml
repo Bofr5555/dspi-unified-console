@@ -23,8 +23,8 @@ Rectangle {
     readonly property int type: v.type || 0
     readonly property bool bypass: v.bypass === true
     readonly property color tint: v.color || "white"
-    readonly property var codes: ({ 1: "PK", 2: "LS", 9: "LS", 3: "HS", 10: "HS", 4: "HC", 12: "HC",
-                                    5: "LC", 13: "LC", 6: "NT", 7: "AP", 8: "AP", 11: "LT" })
+    readonly property var codes: ({ 1: qsTr("PK"), 2: qsTr("LS"), 9: qsTr("LS"), 3: qsTr("HS"), 10: qsTr("HS"), 4: qsTr("HC"), 12: qsTr("HC"),
+                                    5: qsTr("LC"), 13: qsTr("LC"), 6: qsTr("NT"), 7: qsTr("AP"), 8: qsTr("AP"), 11: qsTr("LT") })
     readonly property bool firstOrderCut: type === 12 || type === 13
     readonly property bool linkwitz: type === 11
 
@@ -83,7 +83,7 @@ Rectangle {
         anchors.fill: parent
         ownType: hud.type
         markColor: isMacOS ? (hud.bypass ? Qt.rgba(1, 1, 1, 0.4) : hud.tint) : hud.tint
-        backTip: "Back to the band"
+        backTip: qsTr("Back to the band")
         onBack: hud.shapePage = false
         onPicked: { hud.editor.setBandType(hud.band, type); hud.shapePage = false }
     }
@@ -124,12 +124,12 @@ Rectangle {
                 enabled: !hud.linkwitz
                 cursorShape: Qt.PointingHandCursor
                 Accessible.role: Accessible.ButtonMenu
-                Accessible.name: "Change the filter shape"
+                Accessible.name: qsTr("Change the filter shape")
                 onActivated: { shapeChooser.reset(); hud.shapePage = true }
             }
             ToolTip.visible: shapeMouse.containsMouse
             ToolTip.delay: 600
-            ToolTip.text: "Change the filter shape"
+            ToolTip.text: qsTr("Change the filter shape")
         }
         Rectangle {
             anchors.right: parent.right
@@ -149,14 +149,14 @@ Rectangle {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 Accessible.role: Accessible.CheckBox
-                Accessible.name: "Band active"
+                Accessible.name: qsTr("Band active")
                 Accessible.checkable: true
                 Accessible.checked: !hud.bypass
                 onActivated: hud.editor.toggleBypass(hud.band)
             }
             ToolTip.visible: powerMouse.containsMouse
             ToolTip.delay: 600
-            ToolTip.text: hud.bypass ? "Enable this band" : "Bypass this band"
+            ToolTip.text: hud.bypass ? qsTr("Enable this band") : qsTr("Bypass this band")
         }
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: isMacOS ? Qt.rgba(1, 1, 1, 0.09) : Qt.rgba(1, 1, 1, 0.08) }
     }
@@ -196,7 +196,7 @@ Rectangle {
             width: rows.width
             height: 16
             readonly property bool khz: (hud.v.freq || 0) >= 1000
-            Label { text: "Freq" }
+            Label { text: qsTr("Freq") }
             ValueField {
                 id: freqField
                 anchors.right: parent.right
@@ -205,8 +205,8 @@ Rectangle {
                 height: 18
                 fontSize: 10
                 plainWheel: true
-                suffix: parent.khz ? "kHz" : "Hz"
-                accessibleName: "Frequency"
+                suffix: parent.khz ? qsTr("kHz") : qsTr("Hz")
+                accessibleName: qsTr("Frequency")
                 decimals: parent.khz ? 2 : 1
                 wheelStep: parent.khz ? 0.05 : 1
                 minValue: parent.khz ? 1 : 10
@@ -219,7 +219,7 @@ Rectangle {
             visible: hud.v.usesGain === true
             width: rows.width
             height: 16
-            Label { text: "Gain" }
+            Label { text: qsTr("Gain") }
             ValueField {
                 id: gainField
                 anchors.right: parent.right
@@ -228,8 +228,8 @@ Rectangle {
                 height: 18
                 fontSize: 10
                 plainWheel: true
-                suffix: "dB"
-                accessibleName: "Gain"
+                suffix: qsTr("dB")
+                accessibleName: qsTr("Gain")
                 decimals: 1
                 wheelStep: 0.5
                 minValue: -30
@@ -242,7 +242,7 @@ Rectangle {
             visible: hud.v.usesQ === true
             width: rows.width
             height: 16
-            Label { text: "Width" }
+            Label { text: qsTr("Width") }
             ValueField {
                 id: qField
                 anchors.right: parent.right
@@ -251,8 +251,8 @@ Rectangle {
                 height: 18
                 fontSize: 10
                 plainWheel: true
-                suffix: "Q"
-                accessibleName: "Q"
+                suffix: qsTr("Q")
+                accessibleName: qsTr("Q")
                 decimals: 2
                 wheelStep: 0.05
                 minValue: 0.1
@@ -261,9 +261,9 @@ Rectangle {
                 onValueEdited: hud.editor.setBandValue(hud.band, "q", newValue)
             }
         }
-        ReadRow { visible: hud.firstOrderCut; label: "Slope"; value: "6 dB/oct" }
-        ReadRow { visible: hud.type === 8; label: "Order"; value: "1st" }
-        ReadRow { visible: hud.linkwitz; label: "f0"; value: (hud.v.freq || 0).toFixed(0) + " Hz" }
-        ReadRow { visible: hud.linkwitz; label: "fp"; value: (hud.v.gain || 0).toFixed(0) + " Hz" }
+        ReadRow { visible: hud.firstOrderCut; label: qsTr("Slope"); value: qsTr("6 dB/oct") }
+        ReadRow { visible: hud.type === 8; label: qsTr("Order"); value: qsTr("1st") }
+        ReadRow { visible: hud.linkwitz; label: "f0"; value: qsTr("%1 Hz").arg((hud.v.freq || 0).toFixed(0)) }
+        ReadRow { visible: hud.linkwitz; label: "fp"; value: qsTr("%1 Hz").arg((hud.v.gain || 0).toFixed(0)) }
     }
 }

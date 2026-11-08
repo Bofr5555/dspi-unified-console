@@ -33,7 +33,7 @@ Rectangle {
     // As on Windows: "Link 3/4" on the numbered sources (USB, ADAT), else "Link Pair"
     function linkLabel() {
         var numbered = bridge.inputSource === 0 || bridge.inputSource === 3   // USB, ADAT
-        return inputIndex < 2 || !numbered ? "Link Pair" : "Link " + pairLabel()
+        return inputIndex < 2 || !numbered ? qsTr("Link Pair") : qsTr("Link %1").arg(pairLabel())
     }
 
     function refresh() {
@@ -133,7 +133,7 @@ Rectangle {
             spacing: 16
 
             Text {
-                text: "Preamp"
+                text: qsTr("Preamp")
                 font.pixelSize: 13
                 font.weight: Font.DemiBold
                 color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.6)
@@ -141,7 +141,7 @@ Rectangle {
             StyledSlider {
                 id: preampSlider
                 Layout.fillWidth: true
-                Accessible.name: "Preamp"
+                Accessible.name: qsTr("Preamp")
                 from: -60; to: bridge.preampMaxDB     // +18 dB on RP2040, +24 on RP2350
                 stepSize: 0.1
                 value: preampDB
@@ -167,8 +167,8 @@ Rectangle {
                 fieldWidth: 58
                 height: 24
                 value: preampDB
-                suffix: "dB"
-                accessibleName: "Preamp"
+                suffix: qsTr("dB")
+                accessibleName: qsTr("Preamp")
                 decimals: 1
                 minValue: -60
                 maxValue: bridge.preampMaxDB
@@ -184,7 +184,7 @@ Rectangle {
             Layout.leftMargin: 14
             Layout.rightMargin: 14
             fontSize: 14
-            text: linked ? "Clear " + pairLabel() + " PEQ" : "Clear PEQ"
+            text: linked ? qsTr("Clear %1 PEQ").arg(pairLabel()) : qsTr("Clear PEQ")
             onClicked: bridge.clearPeq(channelId)
         }
     }
@@ -195,8 +195,8 @@ Rectangle {
         for (var b = 0; b < 10; b++) if (bridge.filterType(appId, b) !== 0) n++
         var p = bridge.inputPreampDB(inputOfApp(appId))
         return {
-            text: bridge.channelName(appId) + ":  " + n + (n === 1 ? " filter" : " filters")
-                  + "  \u00b7  preamp " + (p > 0 ? "+" : "") + p.toFixed(1) + " dB",
+            text: n === 1 ? qsTr("%3:  %1 filter  \u00b7  preamp %2 dB").arg(n).arg((p > 0 ? "+" : "") + p.toFixed(1)).arg(bridge.channelName(appId))
+                          : qsTr("%3:  %1 filters  \u00b7  preamp %2 dB").arg(n).arg((p > 0 ? "+" : "") + p.toFixed(1)).arg(bridge.channelName(appId)),
             color: bridge.channelColor(appId)
         }
     }
@@ -206,13 +206,13 @@ Rectangle {
     AppDialog {
         id: linkDialog
         icon: "link"
-        title: "Link " + bridge.channelName(card.firstId) + " and " + bridge.channelName(card.secondId) + "?"
-        message: "Their filters or preamp differ. Which settings should both use?"
+        title: qsTr("Link %1 and %2?").arg(bridge.channelName(card.firstId)).arg(bridge.channelName(card.secondId))
+        message: qsTr("Their filters or preamp differ. Which settings should both use?")
         onAboutToShow: details = [card.settingsSummary(card.firstId), card.settingsSummary(card.secondId)]
         buttons: [
-            { key: "cancel", text: "Cancel" },
-            { key: "other", text: "Keep " + bridge.channelName(card.partnerId) },
-            { key: "this", text: "Keep " + bridge.channelName(card.channelId), role: "primary" }
+            { key: "cancel", text: qsTr("Cancel") },
+            { key: "other", text: qsTr("Keep %1").arg(bridge.channelName(card.partnerId)) },
+            { key: "this", text: qsTr("Keep %1").arg(bridge.channelName(card.channelId)), role: "primary" }
         ]
         onChosen: {
             if (key === "this") bridge.setInputLinked(card.channelId, true, card.channelId)

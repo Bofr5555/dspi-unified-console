@@ -13,7 +13,7 @@ Item {
     property string outputColor: "#45C2A3"
     property bool isHovering: false
     // -- WP QD22 -- What a screen reader calls the route ("IN1 to OUT2")
-    property string routeName: "Route"
+    property string routeName: qsTr("Route")
 
     signal connectionToggled(bool newConnected)
     signal gainEdited(real newGain)
@@ -41,11 +41,11 @@ Item {
                 verticalAlignment: Text.AlignVCenter
                 selectByMouse: true
                 padding: 2
-                Accessible.name: pointRoot.routeName + " gain"
+                Accessible.name: qsTr("%1 gain").arg(pointRoot.routeName)
 
                 background: Rectangle { color: "transparent" }
 
-                text: gain === 0 ? "0 dB" : (gain > 0 ? "+" : "") + gain.toFixed(0) + " dB"
+                text: gain === 0 ? qsTr("0 dB") : qsTr("%1 dB").arg((gain > 0 ? "+" : "") + gain.toFixed(0))
 
                 onEditingFinished: {
                     var cleaned = text.replace("dB", "").trim()
@@ -55,7 +55,7 @@ Item {
                         pointRoot.gainEdited(v)
                     }
                     text = Qt.binding(function() {
-                        return gain === 0 ? "0 dB" : (gain > 0 ? "+" : "") + gain.toFixed(0) + " dB"
+                        return gain === 0 ? qsTr("0 dB") : qsTr("%1 dB").arg((gain > 0 ? "+" : "") + gain.toFixed(0))
                     })
                 }
 
@@ -126,7 +126,7 @@ Item {
 
             Text {
                 anchors.centerIn: parent
-                text: "INV"
+                text: qsTr("INV")
                 font.pixelSize: 9
                 font.weight: isInverted ? Font.Bold : Font.Medium
                 color: isMacOS ? (isInverted ? MacColors.orange : MacColors.opacity(MacColors.secondaryLabel, 0.3)) : isInverted ? "#ff9800" : Qt.rgba(1, 1, 1, 0.3)
@@ -135,7 +135,7 @@ Item {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     Accessible.role: Accessible.CheckBox
-                    Accessible.name: pointRoot.routeName + " inverted"
+                    Accessible.name: qsTr("%1 inverted").arg(pointRoot.routeName)
                     Accessible.checkable: true
                     Accessible.checked: isInverted
                     onActivated: pointRoot.invertToggled(!isInverted)

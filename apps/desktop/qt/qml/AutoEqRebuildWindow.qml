@@ -6,7 +6,7 @@ import "components"
 // cancels the rebuild and leaves the database as it was.
 AppWindow {
     id: win
-    title: "Rebuilding AutoEQ Database"
+    title: qsTr("Rebuilding AutoEQ Database")
     visible: false
     width: 380
     height: 140 + titlebarHeight
@@ -28,7 +28,7 @@ AppWindow {
             Text {
                 width: win.width - 32 - spinner.width - 10
                 elide: Text.ElideRight
-                text: autoeq.rebuildStatus || "Connecting to GitHub..."
+                text: autoeq.rebuildStatus || qsTr("Connecting to GitHub...")
                 font.pixelSize: 13
                 color: isMacOS ? MacColors.secondaryLabel : "white"
                 anchors.verticalCenter: parent.verticalCenter
@@ -44,7 +44,7 @@ AppWindow {
         Text {
             width: parent.width
             wrapMode: Text.WordWrap
-            text: "Every profile is downloaded from the AutoEQ project. This can take several minutes."
+            text: qsTr("Every profile is downloaded from the AutoEQ project. This can take several minutes.")
             font.pixelSize: 11
             color: Qt.rgba(1, 1, 1, 0.5)
         }
@@ -54,7 +54,7 @@ AppWindow {
         anchors.rightMargin: 16
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 14
-        text: "Cancel"
+        text: qsTr("Cancel")
         onClicked: win.close()
     }
 }

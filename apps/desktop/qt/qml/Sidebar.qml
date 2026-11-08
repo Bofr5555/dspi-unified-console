@@ -37,6 +37,8 @@ Rectangle {
         id: qb
         property string icon: ""
         property string tip: ""
+        property string label: tip          // what a screen reader says
+        property bool hasSettings: false    // right-click opens its settings
         property bool lit: false
         property color litColor: "#3a96dd"
         signal clicked()
@@ -62,8 +64,8 @@ Rectangle {
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             focusRadius: 7
             // -- WP QD22 -- The menu key does what a right-click does
-            Accessible.name: qb.tip.replace(" (right-click for settings)", "")
-            Accessible.description: qb.tip.indexOf("right-click") >= 0 ? "The menu key opens its settings" : ""
+            Accessible.name: qb.label
+            Accessible.description: qb.hasSettings ? qsTr("The menu key opens its settings") : ""
             Accessible.checkable: true
             Accessible.checked: qb.lit
             onActivated: qb.clicked()
@@ -101,7 +103,7 @@ Rectangle {
                 width: parent.width - 16
                 spacing: 2
 
-                SectionHeader { text: "INPUTS"; leftPadding: 4 }
+                SectionHeader { text: qsTr("INPUTS"); leftPadding: 4 }
 
                 // -- WP QD18 -- The inputs in use (at least the stereo pair), held while the host idles
                 Repeater {
@@ -135,7 +137,7 @@ Rectangle {
                     }
                 }
 
-                SectionHeader { text: "OUTPUTS"; leftPadding: 4; topPadding: 14 }
+                SectionHeader { text: qsTr("OUTPUTS"); leftPadding: 4; topPadding: 14 }
 
                 // Enabled outputs only (outputs are enabled in the Matrix Mixer)
                 Repeater {
@@ -187,27 +189,27 @@ Rectangle {
 
                 QuickButton {
                     anchors.verticalCenter: parent.verticalCenter
-                    icon: "sliders"; tip: "Matrix Mixer"
+                    icon: "sliders"; tip: qsTr("Matrix Mixer")
                     lit: matrixWindow.visible
                     onClicked: matrixWindow.visible = !matrixWindow.visible
                 }
                 QuickButton {
                     anchors.verticalCenter: parent.verticalCenter
-                    icon: "headphones"; tip: "Headphone Crossfeed (right-click for settings)"
+                    icon: "headphones"; tip: qsTr("Headphone Crossfeed (right-click for settings)"); label: qsTr("Headphone Crossfeed"); hasSettings: true
                     lit: bridge.crossfeedEnabled
                     onClicked: if (bridge.writable) bridge.setCrossfeed(!bridge.crossfeedEnabled)
                     onRightClicked: crossfeedWindow.visible = true
                 }
                 QuickButton {
                     anchors.verticalCenter: parent.verticalCenter
-                    icon: "loudness"; tip: "Loudness Compensation (right-click for settings)"
+                    icon: "loudness"; tip: qsTr("Loudness Compensation (right-click for settings)"); label: qsTr("Loudness Compensation"); hasSettings: true
                     lit: bridge.loudnessEnabled
                     onClicked: if (bridge.writable) bridge.setLoudness(!bridge.loudnessEnabled)
                     onRightClicked: loudnessWindow.visible = true
                 }
                 QuickButton {
                     anchors.verticalCenter: parent.verticalCenter
-                    icon: "waveform"; tip: "Volume Leveller (right-click for settings)"
+                    icon: "waveform"; tip: qsTr("Volume Leveller (right-click for settings)"); label: qsTr("Volume Leveller"); hasSettings: true
                     lit: bridge.levellerEnabled
                     onClicked: if (bridge.writable) bridge.setLevellerEnabled(!bridge.levellerEnabled)
                     onRightClicked: levellerWindow.visible = true
@@ -215,26 +217,26 @@ Rectangle {
                 QuickButton {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: { bridge.wireFeatures; return bridge.firmwareHas("psybass") }   // -- WP QD6 --
-                    icon: "bassclef"; tip: "Psychoacoustic Bass (right-click for settings)"
+                    icon: "bassclef"; tip: qsTr("Psychoacoustic Bass (right-click for settings)"); label: qsTr("Psychoacoustic Bass"); hasSettings: true
                     lit: bridge.psybassEnabled
                     onClicked: if (bridge.writable) bridge.setPsybassEnabled(!bridge.psybassEnabled)
                     onRightClicked: psybassWindow.visible = true
                 }
                 QuickButton {
                     anchors.verticalCenter: parent.verticalCenter
-                    icon: "info"; tip: "Stats for Nerds"
+                    icon: "info"; tip: qsTr("Stats for Nerds")
                     lit: statsWindow.visible
                     onClicked: statsWindow.visible = !statsWindow.visible
                 }
                 QuickButton {
                     anchors.verticalCenter: parent.verticalCenter
-                    icon: "gear"; tip: "Settings"
+                    icon: "gear"; tip: qsTr("Settings")
                     lit: settingsWindow.visible
                     onClicked: settingsWindow.visible = !settingsWindow.visible
                 }
                 QuickButton {
                     anchors.verticalCenter: parent.verticalCenter
-                    icon: "xmark"; tip: "Bypass Master EQ"
+                    icon: "xmark"; tip: qsTr("Bypass Master EQ")
                     lit: bridge.bypass
                     litColor: "#ff9f0a"
                     onClicked: if (bridge.writable) bridge.setBypass(!bridge.bypass)
@@ -265,7 +267,7 @@ Rectangle {
                     SidebarPicker {
                         id: presetPicker
                         width: parent.width - presetRow.reveal * (presetSave.width + 2)
-                        label: "Preset"
+                        label: qsTr("Preset")
                         enabled: bridge.writable   // -- WP QD6 --
                         readonly property var slots: {
                             bridge.presetOccupied; bridge.activePresetSlot
@@ -275,7 +277,7 @@ Rectangle {
                                 var occupied = bridge.isPresetOccupied(i)
                                 // An empty slot loads factory defaults, as on macOS
                                 o.push({ value: i, prefix: String(i + 1),
-                                         text: occupied ? (name === "" ? "Preset " + (i + 1) : name) : "Empty" })
+                                         text: occupied ? (name === "" ? qsTr("Preset %1").arg(i + 1) : name) : qsTr("Empty") })
                             }
                             return o
                         }
@@ -315,7 +317,7 @@ Rectangle {
                             Accessible.name: presetSave.ToolTip.text
                             onActivated: root.quickSavePreset()
                         }
-                        ToolTip.text: "Save changes to preset " + (bridge.activePresetSlot + 1)
+                        ToolTip.text: qsTr("Save changes to preset %1").arg(bridge.activePresetSlot + 1)
                         ToolTip.visible: saveMouse.containsMouse
                         ToolTip.delay: 600
                     }
@@ -326,7 +328,7 @@ Rectangle {
                 SidebarPicker {
                     width: parent.width
                     objectName: "sourcePicker"   // -- WP QD4 -- for the smoke driver
-                    label: "Source"
+                    label: qsTr("Source")
                     enabled: bridge.writable   // -- WP QD6 --
                     // -- WP QD4 -- The user's name for a source, when it has one
                     readonly property var sources: bridge.inputSources.map(function (src) {
@@ -337,7 +339,7 @@ Rectangle {
                     valueText: {
                         if (!bridge.connected) return "—"
                         for (var i = 0; i < sources.length; i++) if (sources[i].value === bridge.inputSource) return sources[i].text
-                        return "USB"
+                        return qsTr("USB")
                     }
                     onChosen: bridge.setInputSource(value)
                 }
@@ -358,7 +360,7 @@ Rectangle {
                             id: headingRow
                             spacing: 4
                             GlobalLabel {
-                                text: volumeSettings.showMaster ? "Master Volume" : "User Volume"
+                                text: volumeSettings.showMaster ? qsTr("Master Volume") : qsTr("User Volume")
                                 color: isMacOS ? MacColors.secondaryLabel : volHeadMouse.containsMouse || volumeMenu.visible ? "white" : Qt.rgba(1, 1, 1, 0.6)
                                 anchors.verticalCenter: parent.verticalCenter
                             }
@@ -376,8 +378,8 @@ Rectangle {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             Accessible.role: Accessible.ComboBox
-                            Accessible.name: "Volume shown"
-                            Accessible.description: volumeSettings.showMaster ? "Master Volume" : "User Volume"
+                            Accessible.name: qsTr("Volume shown")
+                            Accessible.description: volumeSettings.showMaster ? qsTr("Master Volume") : qsTr("User Volume")
                             onActivated: volumeMenu.toggleAt(volumeHeading)
                         }
                     }
@@ -386,8 +388,8 @@ Rectangle {
                         parent: Overlay.overlay
                         currentValue: volumeSettings.showMaster ? "master" : "user"
                         options: [
-                            { value: "user", text: "User Volume", icon: "speaker" },
-                            { value: "master", text: "Master Volume", icon: "gauge" }
+                            { value: "user", text: qsTr("User Volume"), icon: "speaker" },
+                            { value: "master", text: qsTr("Master Volume"), icon: "gauge" }
                         ]
                         onChosen: volumeSettings.showMaster = (value === "master")
                     }
@@ -396,8 +398,8 @@ Rectangle {
                         textColor: isMacOS ? MacColors.label : "#cccccc"
                         value: volumeSlider.pressed ? volumeSlider.dbAt(volumeSlider.value)
                              : volumeSettings.showMaster ? bridge.masterVolumeDB : bridge.userVolumeDB
-                        suffix: "dB"
-                        accessibleName: volumeSettings.showMaster ? "Master Volume" : "User Volume"
+                        suffix: qsTr("dB")
+                        accessibleName: volumeSettings.showMaster ? qsTr("Master Volume") : qsTr("User Volume")
                         decimals: 1
                         minValue: volumeSettings.showMaster ? -128 : -60
                         maxValue: 0
@@ -416,7 +418,7 @@ Rectangle {
                     id: volumeSlider
                     width: parent.width
                     height: 20
-                    Accessible.name: volumeSettings.showMaster ? "Master Volume" : "User Volume"
+                    Accessible.name: volumeSettings.showMaster ? qsTr("Master Volume") : qsTr("User Volume")
                     topPadding: 0
                     bottomPadding: 0
                     // The slider runs over a 0..1 position with the macOS

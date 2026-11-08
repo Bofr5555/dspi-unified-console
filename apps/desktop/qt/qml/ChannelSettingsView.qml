@@ -174,7 +174,7 @@ Rectangle {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             Accessible.role: Accessible.CheckBox
-                            Accessible.name: "Route " + bridge.channelName(bridge.inputAppId(index))
+                            Accessible.name: qsTr("Route %1").arg(bridge.channelName(bridge.inputAppId(index)))
                             Accessible.checkable: true
                             Accessible.checked: route.connected
                             onActivated: route.toggle()
@@ -188,9 +188,9 @@ Rectangle {
                         ValueField {
                             id: levelField
                             anchors.verticalCenter: parent.verticalCenter
-                            fieldWidth: 44; height: 22; suffix: "dB"; decimals: 1
+                            fieldWidth: 44; height: 22; suffix: qsTr("dB"); decimals: 1
                             minValue: -60; maxValue: 12
-                            accessibleName: bridge.channelName(bridge.inputAppId(index)) + " level"
+                            accessibleName: qsTr("%1 level").arg(bridge.channelName(bridge.inputAppId(index)))
                             value: route.level
                             textColor: isMacOS ? MacColors.opacity(MacColors.label, route.connected ? 1.0 : 0.55) : route.connected ? Qt.rgba(1, 1, 1, 0.9) : Qt.rgba(1, 1, 1, 0.5)
                             onValueEdited: bridge.setMatrixRoute(index, outputIndex, route.connected, newValue, route.inverted)
@@ -205,7 +205,7 @@ Rectangle {
                     // Polarity
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "INV"
+                        text: qsTr("INV")
                         font.pixelSize: 11
                         font.weight: Font.Bold
                         color: isMacOS ? (route.inverted ? MacColors.orange : MacColors.opacity(MacColors.secondaryLabel, route.connected ? 0.45 : 0.3)) : route.inverted ? "#ff9f0a" : Qt.rgba(1, 1, 1, route.connected ? 0.35 : 0.2)
@@ -214,7 +214,7 @@ Rectangle {
                             anchors.margins: -5
                             cursorShape: Qt.PointingHandCursor
                             Accessible.role: Accessible.CheckBox
-                            Accessible.name: bridge.channelName(bridge.inputAppId(index)) + " inverted"
+                            Accessible.name: qsTr("%1 inverted").arg(bridge.channelName(bridge.inputAppId(index)))
                             Accessible.checkable: true
                             Accessible.checked: route.inverted
                             onActivated: bridge.setMatrixRoute(index, outputIndex, route.connected, route.level, !route.inverted)
@@ -230,7 +230,7 @@ Rectangle {
         LevelSection {
             id: gainSection
             enabled: bridge.writable   // -- WP QD6 --
-            label: "GAIN"; unit: "dB"; decimals: 1
+            label: qsTr("GAIN"); unit: qsTr("dB"); decimals: 1
             from: -60; to: 12; stepSize: 0.1      // the firmware's output gain range
             value: gainDB
             onMoved: bridge.sendOutputGainToDevice(outputIndex, v)
@@ -246,7 +246,7 @@ Rectangle {
             enabled: bridge.writable   // -- WP QD6 --
             // As on Windows: the slider and wheel step whole ms, typing
             // takes up to 0.0001 ms
-            label: "DELAY"; unit: "ms"; decimals: 2; maxDecimals: 4; fieldWidth: 60
+            label: qsTr("DELAY"); unit: qsTr("ms"); decimals: 2; maxDecimals: 4; fieldWidth: 60
             from: 0; to: bridge.maxDelayMs; stepSize: 1
             value: delayMS
             onMoved: bridge.sendOutputDelayToDevice(outputIndex, v)
@@ -280,7 +280,7 @@ Rectangle {
                     cursorShape: Qt.PointingHandCursor
                     focusRadius: 8
                     Accessible.role: Accessible.CheckBox
-                    Accessible.name: "Mute"
+                    Accessible.name: qsTr("Mute")
                     Accessible.checkable: true
                     Accessible.checked: isMuted
                     onActivated: bridge.setOutputMute(outputIndex, !isMuted)

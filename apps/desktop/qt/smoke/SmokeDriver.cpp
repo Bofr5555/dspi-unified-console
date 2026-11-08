@@ -143,6 +143,8 @@ void SmokeDriver::start() {
         else if (!qEnvironmentVariableIsEmpty("DSPI_SMOKE_DEMO_ENTRY")) runDemoEntry();
         else if (replug) runReplug();
         // -- WP QD22 -- Only the accessibility pass, for a quick look (not in run.sh)
+        // -- WP QD23 -- The pseudo-locale pass, a launch of its own (run.sh)
+        else if (!qEnvironmentVariableIsEmpty("DSPI_SMOKE_PSEUDO")) runPseudoLocale();
         else if (!qEnvironmentVariableIsEmpty("DSPI_SMOKE_A11Y")) { testAccessibility(); sectionTimes(); QCoreApplication::exit(m_failures ? 1 : 0); }
         else if (hardware) runHardware();
         else run();

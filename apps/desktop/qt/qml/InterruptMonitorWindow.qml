@@ -10,7 +10,7 @@ import "components"
 // closed; Pause stops new lines (they are skipped, not held back).
 AppWindow {
     id: win
-    title: "Interrupt Monitor"
+    title: qsTr("Interrupt Monitor")
     visible: false
     width: 900
     height: 480 + titlebarHeight
@@ -60,13 +60,14 @@ AppWindow {
             anchors.rightMargin: 14
             spacing: 8
             ToolButton {
-                text: monitor.paused ? "Resume" : "Pause"
+                text: monitor.paused ? qsTr("Resume") : qsTr("Pause")
                 icon: monitor.paused ? "play" : "pause"
-                tip: (monitor.paused ? "Show new events again" : "Stop showing new events (they are not kept)") + "  (" + MenuStyle.shortcutLabel("Ctrl+P") + ")"
+                tip: monitor.paused ? qsTr("Show new events again  (%1)").arg(MenuStyle.shortcutLabel("Ctrl+P"))
+                                     : qsTr("Stop showing new events (they are not kept)  (%1)").arg(MenuStyle.shortcutLabel("Ctrl+P"))
                 onClicked: monitor.paused = !monitor.paused
             }
-            ToolButton { text: "Clear"; tip: "Empty the log  (" + MenuStyle.shortcutLabel("Ctrl+K") + ")"; onClicked: monitor.clear() }
-            ToolButton { text: "Copy"; tip: "Copy every line to the clipboard"; onClicked: { clip.text = monitor.allText(); clip.selectAll(); clip.copy() } }
+            ToolButton { text: qsTr("Clear"); tip: qsTr("Empty the log  (%1)").arg(MenuStyle.shortcutLabel("Ctrl+K")); onClicked: monitor.clear() }
+            ToolButton { text: qsTr("Copy"); tip: qsTr("Copy every line to the clipboard"); onClicked: { clip.text = monitor.allText(); clip.selectAll(); clip.copy() } }
             Item { Layout.fillWidth: true }
             Row {
                 spacing: 6
@@ -76,13 +77,13 @@ AppWindow {
                     color: !win.listening ? Qt.rgba(1, 1, 1, 0.35) : monitor.paused ? "#ff9f0a" : "#32d74b"
                 }
                 Text {
-                    text: !win.listening ? "Inactive" : monitor.paused ? "Paused" : "Listening"
+                    text: !win.listening ? qsTr("Inactive") : monitor.paused ? qsTr("Paused") : qsTr("Listening")
                     font.pixelSize: 11
                     color: isMacOS ? (!win.listening ? MacColors.secondaryLabel : monitor.paused ? MacColors.orange : MacColors.green) : !win.listening ? Qt.rgba(1, 1, 1, 0.5) : monitor.paused ? "#ff9f0a" : "#32d74b"
                 }
             }
             Text {
-                text: monitor.count + (monitor.count === 1 ? " event" : " events")
+                text: monitor.count === 1 ? qsTr("%1 event").arg(monitor.count) : qsTr("%1 events").arg(monitor.count)
                 font.pixelSize: 11
                 color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
             }
@@ -137,7 +138,7 @@ AppWindow {
         Text {
             anchors.centerIn: parent
             visible: monitor.count === 0
-            text: win.listening ? "Waiting for the device to report a change" : "Connect a DSPi to see its notifications"
+            text: win.listening ? qsTr("Waiting for the device to report a change") : qsTr("Connect a DSPi to see its notifications")
             font.pixelSize: 12
             color: Qt.rgba(1, 1, 1, 0.4)
         }

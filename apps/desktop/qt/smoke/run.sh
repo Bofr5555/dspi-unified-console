@@ -80,3 +80,22 @@ if [ -z "${DSPI_SMOKE_HW:-}" ] && [ -z "${DSPI_SMOKE_DEMO_ENTRY:-}" ]; then
         fi
     done
 fi
+# -- WP QD23 -- The pseudo-locale pass (SmokeDriverPseudo.cpp): the main windows
+# untranslated first, for what English already cuts off, then with every qsTr
+# string accented and a third longer. Screenshots in pseudo-en/ and pseudo/.
+if [ -z "${DSPI_SMOKE_HW:-}" ] && [ -z "${DSPI_SMOKE_DEMO_ENTRY:-}" ]; then
+    printf '[onboarding]\nsetupDone=true\n' > "$HOME/.config/DSPi/DSPi Console.conf"
+    for mode in en pseudo; do
+        dir="$out/pseudo"; [ "$mode" = en ] && dir="$out/pseudo-en"
+        mkdir -p "$dir"
+        DSPI_SMOKE_PSEUDO=$mode DSPI_SMOKE_OUT="$dir" DSPI_SMOKE_PSEUDO_BASE="$out/pseudo-en/clipped.txt" \
+            timeout 300 "$app" --demo > "$out/log-pseudo-$mode.txt" 2>&1
+        code=$?
+        grep -E '^(smoke:|FAIL)' "$out/log-pseudo-$mode.txt"
+        if [ "$code" != 0 ]; then
+            echo "pseudo-locale run $mode exited with $code; the end of its log:" >&2
+            tail -30 "$out/log-pseudo-$mode.txt" >&2
+            exit 1
+        fi
+    done
+fi

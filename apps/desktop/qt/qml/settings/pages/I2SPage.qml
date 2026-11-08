@@ -6,8 +6,8 @@ import "../../components"
 // I2S clocking: bit clock pins, master clock and the master-mode sample rate.
 SettingsPage {
     id: page
-    title: "I2S Configuration"
-    subtitle: "Clock pins and the master clock for I2S outputs and the I2S input. Changes apply at once."
+    title: qsTr("I2S Configuration")
+    subtitle: qsTr("Clock pins and the master clock for I2S outputs and the I2S input. Changes apply at once.")
 
     readonly property var hw: bridge.hardware
     readonly property bool rp2350: hw.rp2350 === true
@@ -36,78 +36,78 @@ SettingsPage {
     readonly property var slavePair: ["I2S Slave BCK", "I2S Slave LRCLK"]
 
     SettingsSection {
-        title: "Bit Clock"
+        title: qsTr("Bit Clock")
         enabled: bridge.connected
-        footnote: page.anyI2sOutput ? "Set every output to S/PDIF (Outputs) before moving the bit clock pins." : ""
+        footnote: page.anyI2sOutput ? qsTr("Set every output to S/PDIF (Outputs) before moving the bit clock pins.") : ""
 
         SettingsPinRow {
-            title: "BCK Pin"
-            detail: "LRCLK: GPIO " + (page.hw.bckPin + 1) + " (BCK + 1)"
+            title: qsTr("BCK Pin")
+            detail: qsTr("LRCLK: GPIO %1 (BCK + 1)").arg(page.hw.bckPin + 1)
             enabled: !page.anyI2sOutput
             pin: page.hw.bckPin
             accept: function(p) { return page.pairFree(p, page.masterPair) }
-            onChosen: page.report(bridge.setI2sBckPin(0, pin), pin, "BCK now on GPIO " + pin + ", LRCLK on GPIO " + (pin + 1) + ".")
+            onChosen: page.report(bridge.setI2sBckPin(0, pin), pin, qsTr("BCK now on GPIO %1, LRCLK on GPIO %2.").arg(pin).arg(pin + 1))
         }
         SettingsSegmentedRow {
-            title: "Clock Pins"
-            detail: page.hw.clockPinMode === 1 ? "Split: separate pins for Master and Slave modes."
-                                               : "Unified: Master and Slave modes share pins."
-            options: ["Unified", "Split"]
+            title: qsTr("Clock Pins")
+            detail: page.hw.clockPinMode === 1 ? qsTr("Split: separate pins for Master and Slave modes.")
+                                               : qsTr("Unified: Master and Slave modes share pins.")
+            options: [qsTr("Unified"), qsTr("Split")]
             value: page.hw.clockPinMode === 1 ? 1 : 0
             controlWidth: 168
             onChosen: page.report(bridge.setI2sClockPinMode(index), page.hw.bckPinSlave,
-                                  index === 1 ? "Slave mode uses its own clock pins." : "Master and Slave share the clock pins.")
+                                  index === 1 ? qsTr("Slave mode uses its own clock pins.") : qsTr("Master and Slave share the clock pins."))
         }
         SettingsPinRow {
-            title: "Slave BCK Pin"
-            detail: page.hw.clockPinMode === 1 ? "LRCLK: GPIO " + (page.hw.bckPinSlave + 1) + " (BCK + 1)"
-                                               : "Stored but inactive while clock pins are shared."
+            title: qsTr("Slave BCK Pin")
+            detail: page.hw.clockPinMode === 1 ? qsTr("LRCLK: GPIO %1 (BCK + 1)").arg(page.hw.bckPinSlave + 1)
+                                               : qsTr("Stored but inactive while clock pins are shared.")
             enabled: page.hw.clockPinMode === 1
             pin: page.hw.bckPinSlave
             accept: function(p) { return page.pairFree(p, page.slavePair) }
-            onChosen: page.report(bridge.setI2sBckPin(1, pin), pin, "Slave BCK now on GPIO " + pin + ".")
+            onChosen: page.report(bridge.setI2sBckPin(1, pin), pin, qsTr("Slave BCK now on GPIO %1.").arg(pin))
         }
     }
 
     SettingsSection {
-        title: "Master Clock"
+        title: qsTr("Master Clock")
         enabled: bridge.connected
 
         SettingsSwitchRow {
-            title: "Master Clock (MCK)"
-            detail: page.slaveMode ? "Forced off in I2S slave mode: the external master supplies the clocks."
-                                   : "Clock reference for external DACs."
+            title: qsTr("Master Clock (MCK)")
+            detail: page.slaveMode ? qsTr("Forced off in I2S slave mode: the external master supplies the clocks.")
+                                   : qsTr("Clock reference for external DACs.")
             enabled: !page.slaveMode
             checked: page.hw.mckEnabled === true && !page.slaveMode
-            onToggled: page.report(bridge.setMckEnabled(checked), page.hw.mckPin, checked ? "MCK on GPIO " + page.hw.mckPin + "." : "MCK off.")
+            onToggled: page.report(bridge.setMckEnabled(checked), page.hw.mckPin, checked ? qsTr("MCK on GPIO %1.").arg(page.hw.mckPin) : qsTr("MCK off."))
         }
         SettingsPinRow {
-            title: "MCK Pin"
-            detail: page.hw.mckEnabled ? "Turn MCK off to change its pin." : "Pin on which MCK is generated."
+            title: qsTr("MCK Pin")
+            detail: page.hw.mckEnabled ? qsTr("Turn MCK off to change its pin.") : qsTr("Pin on which MCK is generated.")
             enabled: !page.hw.mckEnabled && !page.slaveMode
             pin: page.hw.mckPin
             accept: function(p) { return page.mckPins.indexOf(p) >= 0 }
-            onChosen: page.report(bridge.setMckPin(pin), pin, "MCK pin is now GPIO " + pin + ".")
+            onChosen: page.report(bridge.setMckPin(pin), pin, qsTr("MCK pin is now GPIO %1.").arg(pin))
         }
         SettingsChoiceRow {
-            title: "MCK Multiplier"
-            detail: page.hw.inputRate === 2 ? "Locked to 128x at 96 kHz." : "Use 256x for DACs that need a higher MCK rate."
+            title: qsTr("MCK Multiplier")
+            detail: page.hw.inputRate === 2 ? qsTr("Locked to 128x at 96 kHz.") : qsTr("Use 256x for DACs that need a higher MCK rate.")
             enabled: !page.slaveMode && page.hw.inputRate !== 2
-            options: [{ text: "128x", value: 0 }, { text: "256x", value: 1 }]
+            options: [{ text: qsTr("128x"), value: 0 }, { text: qsTr("256x"), value: 1 }]
             value: page.hw.mckMultiplier
             onChosen: page.report(bridge.setMckMultiplier(value), undefined, "")
         }
     }
 
     SettingsSection {
-        title: "Input Sample Rate"
+        title: qsTr("Input Sample Rate")
         enabled: bridge.connected
-        footnote: "Used when DSPi is the clock master for the I2S or ADAT input."
+        footnote: qsTr("Used when DSPi is the clock master for the I2S or ADAT input.")
         SettingsChoiceRow {
-            title: "Sample Rate"
-            detail: page.slaveMode ? "Rate used in master mode; in slave mode it follows the external clock." : ""
+            title: qsTr("Sample Rate")
+            detail: page.slaveMode ? qsTr("Rate used in master mode; in slave mode it follows the external clock.") : ""
             enabled: !page.slaveMode
-            options: [{ text: "44.1 kHz", value: 0 }, { text: "48 kHz", value: 1 }, { text: "96 kHz", value: 2 }]
+            options: [{ text: qsTr("44.1 kHz"), value: 0 }, { text: qsTr("48 kHz"), value: 1 }, { text: qsTr("96 kHz"), value: 2 }]
             value: page.hw.inputRate
             onChosen: bridge.setInputRate(value)
         }

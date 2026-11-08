@@ -64,21 +64,21 @@ Popup {
         width: parent.width
         spacing: 10
 
-        Text { text: "Linkwitz Transform"; font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? MacColors.label : "white" }
+        Text { text: qsTr("Linkwitz Transform"); font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? MacColors.label : "white" }
 
         Row {
             spacing: 20
             Column {
                 spacing: 6
-                Text { text: "DRIVER"; font.pixelSize: 9; font.weight: Font.Bold; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.45) }
-                Field { label: "f0"; suffix: "Hz"; decimals: 1; wheelStep: 1; minValue: 10; maxValue: 500; value: lt.f0; onEdited: lt.f0 = v }
-                Field { label: "Q0"; suffix: ""; decimals: 3; wheelStep: 0.1; minValue: 0.1; maxValue: 20; value: lt.q0; onEdited: lt.q0 = v }
+                Text { text: qsTr("DRIVER"); font.pixelSize: 9; font.weight: Font.Bold; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.45) }
+                Field { label: qsTr("f0"); suffix: qsTr("Hz"); decimals: 1; wheelStep: 1; minValue: 10; maxValue: 500; value: lt.f0; onEdited: lt.f0 = v }
+                Field { label: qsTr("Q0"); suffix: ""; decimals: 3; wheelStep: 0.1; minValue: 0.1; maxValue: 20; value: lt.q0; onEdited: lt.q0 = v }
             }
             Column {
                 spacing: 6
-                Text { text: "TARGET"; font.pixelSize: 9; font.weight: Font.Bold; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.45) }
-                Field { label: "fp"; suffix: "Hz"; decimals: 1; wheelStep: 1; minValue: 10; maxValue: 500; value: lt.fp; onEdited: lt.fp = v }
-                Field { label: "Qp"; suffix: ""; decimals: 3; wheelStep: 0.1; minValue: 0.1; maxValue: 20; value: lt.qp; onEdited: lt.qp = v }
+                Text { text: qsTr("TARGET"); font.pixelSize: 9; font.weight: Font.Bold; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.45) }
+                Field { label: qsTr("fp"); suffix: qsTr("Hz"); decimals: 1; wheelStep: 1; minValue: 10; maxValue: 500; value: lt.fp; onEdited: lt.fp = v }
+                Field { label: qsTr("Qp"); suffix: ""; decimals: 3; wheelStep: 0.1; minValue: 0.1; maxValue: 20; value: lt.qp; onEdited: lt.qp = v }
             }
         }
 
@@ -87,16 +87,16 @@ Popup {
             wrapMode: Text.WordWrap
             font.pixelSize: 11
             color: isMacOS ? (lt.dcBoost > 15 ? MacColors.orange : MacColors.label) : lt.dcBoost > 15 ? "#ff9800" : Qt.rgba(1, 1, 1, 0.7)
-            text: "DC boost " + (lt.dcBoost >= 0 ? "+" : "") + lt.dcBoost.toFixed(1) + " dB"
-                  + (lt.dcBoost > 15 ? " — large boosts cost headroom and cone excursion" : "")
+            text: lt.dcBoost > 15 ? qsTr("DC boost %1 dB — large boosts cost headroom and cone excursion").arg((lt.dcBoost >= 0 ? "+" : "") + lt.dcBoost.toFixed(1))
+                                  : qsTr("DC boost %1 dB").arg((lt.dcBoost >= 0 ? "+" : "") + lt.dcBoost.toFixed(1))
         }
 
         Row {
             spacing: 8
-            Button { text: "Revert"; enabled: { lt.rev; return !lt.applied } onClicked: lt.load() }
-            Button { text: "Apply"; highlighted: true; enabled: { lt.rev; return !lt.applied } onClicked: lt.apply() }
+            Button { text: qsTr("Revert"); enabled: { lt.rev; return !lt.applied } onClicked: lt.load() }
+            Button { text: qsTr("Apply"); highlighted: true; enabled: { lt.rev; return !lt.applied } onClicked: lt.apply() }
             Text {
-                text: { lt.rev; return lt.applied ? "Applied" : "Not applied yet" }
+                text: { lt.rev; return lt.applied ? qsTr("Applied") : qsTr("Not applied yet") }
                 font.pixelSize: 11
                 color: isMacOS ? (lt.rev >= 0 && lt.applied ? MacColors.secondaryLabel : MacColors.orange) : Qt.rgba(1, 1, 1, 0.5)
                 anchors.verticalCenter: parent.verticalCenter

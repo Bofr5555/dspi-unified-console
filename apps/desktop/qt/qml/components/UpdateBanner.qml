@@ -17,7 +17,7 @@ Item {
         Text {
             objectName: "updateBannerText"
             anchors { left: parent.left; leftMargin: 12; right: buttons.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
-            text: "DSPi Console " + appUpdater.availableVersion + " is available. You have " + appUpdater.currentVersion + "."
+            text: qsTr("DSPi Console %1 is available. You have %2.").arg(appUpdater.availableVersion).arg(appUpdater.currentVersion)
             textFormat: Text.PlainText
             color: "white"
             font.pixelSize: 12
@@ -31,12 +31,12 @@ Item {
             anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
             AppButton {
                 objectName: "updateBannerDetails"
-                text: "Details"
+                text: qsTr("Details")
                 onClicked: { root.openSettingsPage("updates"); appUpdater.dismiss() }
             }
             AppButton {
                 objectName: "updateBannerLater"
-                text: "Later"
+                text: qsTr("Later")
                 onClicked: appUpdater.dismiss()
             }
         }

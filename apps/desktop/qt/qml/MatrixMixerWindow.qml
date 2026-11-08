@@ -8,7 +8,7 @@ import "components"
 // like the Settings cards.
 AppWindow {
     id: matrixWindow
-    title: "Matrix Mixer"
+    title: qsTr("Matrix Mixer")
     visible: false
 
     // ── App palette ──
@@ -47,7 +47,7 @@ AppWindow {
     onContentWChanged: width = Math.min(contentW, Screen.desktopAvailableWidth - 40)
     onContentHChanged: height = Math.min(contentH, Screen.desktopAvailableHeight - 80)
 
-    function inName(i) { return upmixRows && i >= 2 ? ["Upmix C", "Upmix Ls", "Upmix Rs"][i - 2] : bridge.channelName(bridge.inputAppId(i)) }
+    function inName(i) { return upmixRows && i >= 2 ? [qsTr("Upmix C"), qsTr("Upmix Ls"), qsTr("Upmix Rs")][i - 2] : bridge.channelName(bridge.inputAppId(i)) }
     function inColor(i) {
         if (upmixRows && i >= 2)
             return isMacOS ? [Qt.rgba(0.45, 0.78, 0.55, 1), Qt.rgba(0.93, 0.70, 0.30, 1), Qt.rgba(0.60, 0.55, 0.92, 1)][i - 2] : i === 2 && bridge.upmixParams[1] === 2 ? Qt.rgba(1, 1, 1, 0.35)   // centre off: silent row
@@ -132,14 +132,14 @@ AppWindow {
             Item {
                 width: gridWidth
                 height: 28
-                SectionTitle { text: "Routing"; anchors.verticalCenter: parent.verticalCenter }
+                SectionTitle { text: qsTr("Routing"); anchors.verticalCenter: parent.verticalCenter }
                 Row {
                     visible: multichannel
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 8
-                    CardButton { label: "Direct 1:1"; onClicked: bridge.directRouting() }
-                    CardButton { label: "Clear"; onClicked: bridge.clearRouting() }
+                    CardButton { label: qsTr("Direct 1:1"); onClicked: bridge.directRouting() }
+                    CardButton { label: qsTr("Clear"); onClicked: bridge.clearRouting() }
                 }
             }
 
@@ -171,7 +171,7 @@ AppWindow {
                                 }
                                 Text {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    text: "OUT" + (index + 1)
+                                    text: qsTr("OUT%1").arg(index + 1)
                                     font.pixelSize: 10; font.weight: Font.Bold
                                     color: isMacOS ? MacColors.opacity(Qt.lighter(bridge.channelColor(index + 2), 1.0), 0.8) : bridge.channelColor(index + 2)
                                 }
@@ -183,7 +183,7 @@ AppWindow {
                                 width: colWidth - 6
                                 font.pixelSize: 12
                                 maximumLength: 31
-                                Accessible.name: "Output name"
+                                Accessible.name: qsTr("Output name")
                                 onAccepted: { if (text.trim() !== "") bridge.setChannelName(index + 2, text.trim()); hdr.renaming = false }
                                 onActiveFocusChanged: if (!activeFocus) hdr.renaming = false
                                 Keys.onEscapePressed: hdr.renaming = false
@@ -194,15 +194,15 @@ AppWindow {
                                 acceptedButtons: Qt.RightButton
                                 onClicked: {
                                     hdrMenu.items = [
-                                        { key: "rename", text: "Rename", icon: "pencil" },
+                                        { key: "rename", text: qsTr("Rename"), icon: "pencil" },
                                         { separator: true },
-                                        { key: "copy", text: "Copy Parameters", icon: "copy" },
-                                        { key: "paste", text: "Paste Parameters", icon: "paste", enabled: bridge.canPaste() }
+                                        { key: "copy", text: qsTr("Copy Parameters"), icon: "copy" },
+                                        { key: "paste", text: qsTr("Paste Parameters"), icon: "paste", enabled: bridge.canPaste() }
                                     ]
                                     if (bridge.connected && siggen.supported)
                                         hdrMenu.items = hdrMenu.items.concat([
                                             { separator: true },
-                                            { key: "identify", text: "Identify", icon: "identify", enabled: bridge.outputEnabled(index) }
+                                            { key: "identify", text: qsTr("Identify"), icon: "identify", enabled: bridge.outputEnabled(index) }
                                         ])
                                     hdrMenu.openAt(hdr, mouse.x, mouse.y)
                                 }
@@ -255,9 +255,9 @@ AppWindow {
                                 ValueField {
                                     visible: multichannel
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    fieldWidth: 50; height: 20; suffix: "dB"; decimals: 1
+                                    fieldWidth: 50; height: 20; suffix: qsTr("dB"); decimals: 1
                                     minValue: -60; maxValue: bridge.preampMaxDB; plainWheel: true
-                                    accessibleName: { rev; return inName(inputIndex) + " trim" }
+                                    accessibleName: { rev; return qsTr("%1 trim").arg(inName(inputIndex)) }
                                     value: { rev; return bridge.inputPreampDB(inputIndex) }
                                     onValueEdited: bridge.setInputPreamp(inputIndex, newValue)
                                 }
@@ -279,9 +279,9 @@ AppWindow {
                                         visible: parent.connected
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         y: 4
-                                        fieldWidth: 44; height: 20; suffix: "dB"; decimals: 1
+                                        fieldWidth: 44; height: 20; suffix: qsTr("dB"); decimals: 1
                                         minValue: -60; maxValue: 12; plainWheel: true
-                                        accessibleName: { rev; return inName(inputIndex) + " to " + bridge.channelName(o + 2) + " gain" }
+                                        accessibleName: { rev; return qsTr("%1 to %2 gain").arg(inName(inputIndex)).arg(bridge.channelName(o + 2)) }
                                         value: parent.gain
                                         onValueEdited: bridge.setMatrixRoute(inputIndex, o, true, newValue, parent.inverted)
                                     }
@@ -302,7 +302,7 @@ AppWindow {
                                             cursorShape: Qt.PointingHandCursor
                                             focusRadius: width / 2 + 2
                                             Accessible.role: Accessible.CheckBox
-                                            Accessible.name: { rev; return inName(inputIndex) + " to " + bridge.channelName(o + 2) }
+                                            Accessible.name: { rev; return qsTr("%1 to %2").arg(inName(inputIndex)).arg(bridge.channelName(o + 2)) }
                                             Accessible.checkable: true
                                             Accessible.checked: parent.parent.connected
                                             onActivated: bridge.setMatrixRoute(inputIndex, o, !parent.parent.connected,
@@ -314,7 +314,7 @@ AppWindow {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         anchors.bottom: parent.bottom
                                         anchors.bottomMargin: 6
-                                        text: "INV"
+                                        text: qsTr("INV")
                                         font.pixelSize: 10; font.weight: Font.Bold
                                         color: isMacOS ? (parent.inverted ? MacColors.orange : MacColors.opacity(MacColors.secondaryLabel, 0.3)) : parent.inverted ? warn : Qt.rgba(1, 1, 1, 0.35)
                                         ClickArea {
@@ -322,7 +322,7 @@ AppWindow {
                                             anchors.margins: -4
                                             cursorShape: Qt.PointingHandCursor
                                             Accessible.role: Accessible.CheckBox
-                                            Accessible.name: { rev; return inName(inputIndex) + " to " + bridge.channelName(o + 2) + " inverted" }
+                                            Accessible.name: { rev; return qsTr("%1 to %2 inverted").arg(inName(inputIndex)).arg(bridge.channelName(o + 2)) }
                                             Accessible.checkable: true
                                             Accessible.checked: parent.parent.inverted
                                             onActivated: bridge.setMatrixRoute(inputIndex, o, true, parent.parent.gain,
@@ -341,13 +341,13 @@ AppWindow {
             Item { width: 1; height: 14 }
 
             // ── Output ──
-            SectionTitle { text: "Output" }
+            SectionTitle { text: qsTr("Output") }
 
             Card {
                 // Enable
                 Row {
                     height: 44
-                    RowLabel { text: "Enable"; anchors.verticalCenter: parent.verticalCenter }
+                    RowLabel { text: qsTr("Enable"); anchors.verticalCenter: parent.verticalCenter }
                     Item { width: 14; height: 1 }
                     Repeater {
                         model: numOut
@@ -365,7 +365,7 @@ AppWindow {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
                                 Accessible.role: Accessible.CheckBox
-                                Accessible.name: { rev; return bridge.channelName(index + 2) + " enabled" }
+                                Accessible.name: { rev; return qsTr("%1 enabled").arg(bridge.channelName(index + 2)) }
                                 Accessible.checkable: true
                                 Accessible.checked: parent.isOn
                                 onActivated: toggleEnable(index)
@@ -378,7 +378,7 @@ AppWindow {
                 // Gain
                 Row {
                     height: 40
-                    RowLabel { text: "Gain"; anchors.verticalCenter: parent.verticalCenter }
+                    RowLabel { text: qsTr("Gain"); anchors.verticalCenter: parent.verticalCenter }
                     Item { width: 14; height: 1 }
                     Repeater {
                         model: numOut
@@ -387,9 +387,9 @@ AppWindow {
                             opacity: isMacOS ? (outEnabled(index) ? 1.0 : 0.3) : outEnabled(index) ? 1.0 : 0.4
                             ValueField {
                                 anchors.centerIn: parent
-                                fieldWidth: 44; height: 22; suffix: "dB"; decimals: 1
+                                fieldWidth: 44; height: 22; suffix: qsTr("dB"); decimals: 1
                                 minValue: -60; maxValue: 12; plainWheel: true
-                                accessibleName: { rev; return bridge.channelName(index + 2) + " gain" }
+                                accessibleName: { rev; return qsTr("%1 gain").arg(bridge.channelName(index + 2)) }
                                 value: { rev; return bridge.outputGainDB(index) }
                                 onValueEdited: bridge.setOutputGain(index, newValue)
                             }
@@ -401,7 +401,7 @@ AppWindow {
                 // Delay
                 Row {
                     height: 40
-                    RowLabel { text: "Delay"; anchors.verticalCenter: parent.verticalCenter }
+                    RowLabel { text: qsTr("Delay"); anchors.verticalCenter: parent.verticalCenter }
                     Item { width: 14; height: 1 }
                     Repeater {
                         model: numOut
@@ -410,9 +410,9 @@ AppWindow {
                             opacity: isMacOS ? (outEnabled(index) ? 1.0 : 0.3) : outEnabled(index) ? 1.0 : 0.4
                             ValueField {
                                 anchors.centerIn: parent
-                                fieldWidth: 60; height: 22; suffix: "ms"; decimals: 2; maxDecimals: 4; wheelStep: 1
+                                fieldWidth: 60; height: 22; suffix: qsTr("ms"); decimals: 2; maxDecimals: 4; wheelStep: 1
                                 minValue: 0; maxValue: bridge.maxDelayMs; plainWheel: true
-                                accessibleName: { rev; return bridge.channelName(index + 2) + " delay" }
+                                accessibleName: { rev; return qsTr("%1 delay").arg(bridge.channelName(index + 2)) }
                                 value: { rev; return bridge.outputDelayMS(index) }
                                 onValueEdited: bridge.setOutputDelay(index, newValue)
                             }
@@ -424,7 +424,7 @@ AppWindow {
                 // Mute
                 Row {
                     height: 44
-                    RowLabel { text: "Mute"; anchors.verticalCenter: parent.verticalCenter }
+                    RowLabel { text: qsTr("Mute"); anchors.verticalCenter: parent.verticalCenter }
                     Item { width: 14; height: 1 }
                     Repeater {
                         model: numOut
@@ -442,7 +442,7 @@ AppWindow {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
                                 Accessible.role: Accessible.CheckBox
-                                Accessible.name: { rev; return bridge.channelName(index + 2) + " muted" }
+                                Accessible.name: { rev; return qsTr("%1 muted").arg(bridge.channelName(index + 2)) }
                                 Accessible.checkable: true
                                 Accessible.checked: parent.muted
                                 onActivated: bridge.setOutputMute(index, !parent.muted)
@@ -461,16 +461,16 @@ AppWindow {
         property var conflicting: []
         readonly property bool enablingPdm: output === pdm
         icon: "power"
-        title: enablingPdm ? "Enable PDM?" : "Disable PDM?"
+        title: enablingPdm ? qsTr("Enable PDM?") : qsTr("Disable PDM?")
         message: {
-            var names = pdmDialog.conflicting.map(function (o) { return "OUT" + (o + 1) }).join(", ")
+            var names = pdmDialog.conflicting.map(function (o) { return qsTr("OUT%1").arg(o + 1) }).join(", ")
             return pdmDialog.enablingPdm
-                ? "The PDM output shares a processor core with " + names + ". Enabling PDM disables them."
-                : "OUT" + (pdmDialog.output + 1) + " shares a processor core with the PDM output. Enabling it disables PDM."
+                ? qsTr("The PDM output shares a processor core with %1. Enabling PDM disables them.").arg(names)
+                : qsTr("OUT%1 shares a processor core with the PDM output. Enabling it disables PDM.").arg(pdmDialog.output + 1)
         }
         buttons: [
-            { key: "cancel", text: "Cancel" },
-            { key: "confirm", text: enablingPdm ? "Enable PDM" : "Disable PDM", role: "primary" }
+            { key: "cancel", text: qsTr("Cancel") },
+            { key: "confirm", text: enablingPdm ? qsTr("Enable PDM") : qsTr("Disable PDM"), role: "primary" }
         ]
         onChosen: if (key === "confirm") bridge.enableOutputResolvingConflict(pdmDialog.output)
     }

@@ -7,7 +7,7 @@ import "components"
 // Setup) its own channels, picked with the pills under it.
 AppWindow {
     id: win
-    title: "Filter Response"
+    title: qsTr("Filter Response")
     visible: false
     width: 800
     height: 400 + titlebarHeight

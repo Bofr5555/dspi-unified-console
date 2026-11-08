@@ -18,10 +18,10 @@ Item {
             objectName: "demoBannerText"
             anchors { left: parent.left; leftMargin: 12; right: buttons.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
             text: demo.active
-                  ? "Demo: a simulated DSPi. Nothing is sent to a real device."
-                    + (demo.leavable && bridge.availableSerials.length > 0 ? " Leave the demo to use the DSPi that is connected." : "")
+                  ? (demo.leavable && bridge.availableSerials.length > 0 ? qsTr("Demo: a simulated DSPi. Nothing is sent to a real device. Leave the demo to use the DSPi that is connected.")
+                                                                         : qsTr("Demo: a simulated DSPi. Nothing is sent to a real device."))
                   : demo.failure !== "" ? demo.failure
-                  : "No DSPi connected. The demo shows the app on a simulated one."
+                  : qsTr("No DSPi connected. The demo shows the app on a simulated one.")
             color: "white"
             font.pixelSize: 12
             wrapMode: Text.WordWrap
@@ -34,13 +34,13 @@ Item {
             AppButton {
                 objectName: "demoEnter"
                 visible: demo.offered
-                text: "Open Demo"
+                text: qsTr("Open Demo")
                 onClicked: demo.enter()
             }
             AppButton {
                 objectName: "demoLeave"
                 visible: demo.leavable
-                text: "Leave Demo"
+                text: qsTr("Leave Demo")
                 onClicked: demo.leave()
             }
         }

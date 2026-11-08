@@ -62,7 +62,7 @@ Item {
             AppButton {
                 id: dismiss
                 anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
-                text: "OK"
+                text: qsTr("OK")
                 onClicked: linkSession.dismissTokenWarning()
             }
         }

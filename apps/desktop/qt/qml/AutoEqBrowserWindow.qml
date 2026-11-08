@@ -8,7 +8,7 @@ import "components"
 // favourites in the menu.
 AppWindow {
     id: win
-    title: "AutoEQ - Browse Profiles"
+    title: qsTr("AutoEQ - Browse Profiles")
     visible: false
     width: 600
     height: 500 + titlebarHeight
@@ -28,7 +28,7 @@ AppWindow {
     function apply() {
         if (selectedId === "") return
         if (!autoeq.apply(selectedId)) {
-            message = bridge.connected ? "This profile could not be applied." : "Connect the DSPi before applying a profile."
+            message = bridge.connected ? qsTr("This profile could not be applied.") : qsTr("Connect the DSPi before applying a profile.")
             return
         }
         close()
@@ -75,14 +75,14 @@ AppWindow {
                 selectByMouse: true
                 clip: true
                 activeFocusOnTab: true   // -- WP QD22 --
-                Accessible.name: "Search headphones"
+                Accessible.name: qsTr("Search headphones")
                 text: autoeq.query
                 onTextChanged: { autoeq.query = text; list.currentIndex = -1 }
                 Keys.onDownPressed: { list.forceActiveFocus(); if (list.currentIndex < 0) list.currentIndex = 0 }
                 Keys.onReturnPressed: win.apply()
                 Text {
                     visible: !search.text
-                    text: "Search headphones..."
+                    text: qsTr("Search headphones...")
                     font: search.font
                     color: isMacOS ? MacColors.placeholderText : Qt.rgba(1, 1, 1, 0.4)
                 }
@@ -96,7 +96,7 @@ AppWindow {
                 name: "xmark"
                 size: 12
                 color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
-                ClickArea { anchors.fill: parent; anchors.margins: -4; Accessible.name: "Clear the search"; onActivated: search.text = "" }
+                ClickArea { anchors.fill: parent; anchors.margins: -4; Accessible.name: qsTr("Clear the search"); onActivated: search.text = "" }
             }
         }
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: isMacOS ? MacColors.separator : Qt.rgba(1, 1, 1, 0.07) }
@@ -119,7 +119,7 @@ AppWindow {
         // -- WP QD22 -- Tab reaches the list, its first row current; F favourites a row
         activeFocusOnTab: true
         Accessible.role: Accessible.List
-        Accessible.name: "Profiles"
+        Accessible.name: qsTr("Profiles")
         onActiveFocusChanged: if (activeFocus && currentIndex < 0 && count > 0) currentIndex = 0
         Keys.onPressed: function (event) {
             if (event.key === Qt.Key_F && event.modifiers === Qt.NoModifier && currentItem) {
@@ -223,12 +223,12 @@ AppWindow {
                     onClicked: autoeq.toggleFavorite(model.entryId)
                     // -- WP QD22 -- From the keyboard: F on the list's current row (below)
                     Accessible.role: Accessible.CheckBox
-                    Accessible.name: "Favorite " + model.name
+                    Accessible.name: qsTr("Favorite %1").arg(model.name)
                     Accessible.checkable: true
                     Accessible.checked: model.favorite === true
                     Accessible.onToggleAction: autoeq.toggleFavorite(model.entryId)
                 }
-                ToolTip.text: model.favorite ? "Remove from favorites" : "Add to favorites"
+                ToolTip.text: model.favorite ? qsTr("Remove from favorites") : qsTr("Add to favorites")
                 ToolTip.visible: heartMouse.containsMouse
                 ToolTip.delay: 600
             }
@@ -241,8 +241,8 @@ AppWindow {
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
             text: autoeq.loadError !== "" ? autoeq.loadError
-                : autoeq.entryCount === 0 ? "Loading headphone database..."
-                : "No headphones found matching \"" + search.text + "\""
+                : autoeq.entryCount === 0 ? qsTr("Loading headphone database...")
+                : qsTr("No headphones found matching \"%1\"").arg(search.text)
             font.pixelSize: 13
             color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
         }
@@ -266,7 +266,7 @@ AppWindow {
                 width: parent.width
                 elide: Text.ElideRight
                 text: win.message !== "" ? win.message
-                    : win.selected.name || "Select a headphone to apply its EQ profile"
+                    : win.selected.name || qsTr("Select a headphone to apply its EQ profile")
                 font.pixelSize: 13
                 font.weight: win.selected.name && win.message === "" ? Font.DemiBold : Font.Normal
                 color: isMacOS ? (win.message !== "" ? MacColors.orange : win.selected.name ? MacColors.label : MacColors.secondaryLabel) : win.message !== "" ? "#ff9f0a" : win.selected.name ? "white" : Qt.rgba(1, 1, 1, 0.5)
@@ -284,8 +284,8 @@ AppWindow {
             anchors.rightMargin: 16
             anchors.verticalCenter: parent.verticalCenter
             spacing: 8
-            AppButton { text: "Cancel"; onClicked: win.close() }
-            AppButton { text: "Apply"; primary: true; enabled: win.selectedId !== ""; onClicked: win.apply() }
+            AppButton { text: qsTr("Cancel"); onClicked: win.close() }
+            AppButton { text: qsTr("Apply"); primary: true; enabled: win.selectedId !== ""; onClicked: win.apply() }
         }
     }
 

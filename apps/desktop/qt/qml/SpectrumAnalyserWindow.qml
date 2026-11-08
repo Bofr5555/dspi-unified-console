@@ -16,7 +16,7 @@ import "components"
 // takes the analyser back.
 AppWindow {
     id: win
-    title: "Spectrum Analyser"
+    title: qsTr("Spectrum Analyser")
     visible: false
     width: 760
     height: 560 + titlebarHeight
@@ -35,7 +35,14 @@ AppWindow {
     onVisibleChanged: if (visible && app) mode = app.rtaShowGraph && app.rtaShowBars ? 2 : app.rtaShowBars ? 1 : 0
     onSelChanged: hiddenChannels = hiddenChannels.filter(function (c) { return sel.channels.indexOf(c) >= 0 })
 
-    component Stat: Text { font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5); visible: rta.running }
+    // -- WP QD23 -- The load figures (shrinks) give way with an ellipsis when the
+    // window is too narrow for the status line, after the range text, rather
+    // than run past its edge
+    component Stat: Text {
+        property bool shrinks: false
+        font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5); visible: rta.running
+        elide: Text.ElideRight; Layout.fillWidth: shrinks && statusLine.othersWidth > statusLine.width; Layout.maximumWidth: implicitWidth
+    }
 
     function colorOf(c) { return bridge.channelColor(rta.appChannel(sel.tap, c)) }
     function nameOf(c) { return bridge.channelName(rta.appChannel(sel.tap, c)) }
@@ -60,13 +67,13 @@ AppWindow {
                 anchors.rightMargin: 12
                 spacing: 10
                 Text {
-                    text: !win.app || win.app.onDashboard ? "Dashboard" : bridge.channelName(win.app.openChannelId)
+                    text: !win.app || win.app.onDashboard ? qsTr("Dashboard") : bridge.channelName(win.app.openChannelId)
                     font.pixelSize: 12
                     font.weight: Font.DemiBold
                     color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9)
                 }
                 Text {
-                    text: win.sel.tap === 0 ? "Inputs" : "Outputs"
+                    text: win.sel.tap === 0 ? qsTr("Inputs") : qsTr("Outputs")
                     font.pixelSize: 12
                     color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
                 }
@@ -111,13 +118,13 @@ AppWindow {
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     Accessible.role: Accessible.CheckBox
-                                    Accessible.name: win.nameOf(modelData) + " shown"
+                                    Accessible.name: qsTr("%1 shown").arg(win.nameOf(modelData))
                                     Accessible.checkable: true
                                     Accessible.checked: !parent.hidden
                                     onActivated: win.toggleHidden(modelData)
                                     ToolTip.visible: containsMouse
                                     ToolTip.delay: 600
-                                    ToolTip.text: (parent.hidden ? "Show " : "Hide ") + win.nameOf(modelData) + " in this window"
+                                    ToolTip.text: parent.hidden ? qsTr("Show %1 in this window").arg(win.nameOf(modelData)) : qsTr("Hide %1 in this window").arg(win.nameOf(modelData))
                                 }
                             }
                         }
@@ -126,7 +133,7 @@ AppWindow {
                 SegmentedControl {
                     Layout.preferredWidth: 180
                     height: 24
-                    model: ["Curves", "Bars", "Both"]
+                    model: [qsTr("Curves"), qsTr("Bars"), qsTr("Both")]
                     currentIndex: win.mode
                     onActivated: win.mode = index
                 }
@@ -142,11 +149,11 @@ AppWindow {
             width: parent.width
             color: Qt.rgba(0, 0, 0, 0.2)
 
-            readonly property string notice: !rta.supported ? (bridge.connected ? "This firmware has no spectrum analyser" : "Connect a DSPi to see its spectrum")
-                : win.sel.channels.length === 0 ? "No channels selected"
-                : win.visibleChannels.length === 0 ? "Every channel is hidden in this window" : ""
+            readonly property string notice: !rta.supported ? (bridge.connected ? qsTr("This firmware has no spectrum analyser") : qsTr("Connect a DSPi to see its spectrum"))
+                : win.sel.channels.length === 0 ? qsTr("No channels selected")
+                : win.visibleChannels.length === 0 ? qsTr("Every channel is hidden in this window") : ""
             readonly property string noticeDetail: !rta.supported ? ""
-                : win.sel.channels.length === 0 ? "Pick channels with the gear on the response graph." : ""
+                : win.sel.channels.length === 0 ? qsTr("Pick channels with the gear on the response graph.") : ""
 
             Column {
                 visible: body.notice !== ""
@@ -290,25 +297,33 @@ AppWindow {
             color: "transparent"
             Rectangle { width: parent.width; height: 1; color: isMacOS ? MacColors.separator : Qt.rgba(1, 1, 1, 0.07) }
             RowLayout {
+                id: statusLine
                 anchors.fill: parent
                 anchors.leftMargin: 12
                 anchors.rightMargin: 12
                 spacing: 14
                 visible: rta.supported
+                // -- WP QD23 -- What the line holds besides the range text, at full width
+                readonly property real othersWidth: {
+                    var w = 0
+                    for (var i = 0; i < children.length; i++)
+                        if (children[i] !== rangeText && children[i].visible) w += children[i].implicitWidth + spacing
+                    return w
+                }
                 Row {
                     spacing: 6
                     Rectangle { width: 6; height: 6; radius: 3; color: isMacOS ? (rta.running ? MacColors.green : MacColors.opacity(MacColors.secondaryLabel, 0.5)) : rta.running ? "#32d74b" : Qt.rgba(1, 1, 1, 0.3); anchors.verticalCenter: parent.verticalCenter }
-                    Text { text: rta.running ? "Running" : "Idle"; font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.55) }
+                    Text { text: rta.running ? qsTr("Running") : qsTr("Idle"); font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.55) }
                 }
                 Stat {
-                    text: rta.liveCount + (rta.liveCount === 1 ? " channel" : " channels") + ", each refreshed every "
-                          + Math.round(rta.refreshMs) + " ms"
+                    text: rta.liveCount === 1 ? qsTr("%1 channel, each refreshed every %2 ms").arg(rta.liveCount).arg(Math.round(rta.refreshMs))
+                          : qsTr("%1 channels, each refreshed every %2 ms").arg(rta.liveCount).arg(Math.round(rta.refreshMs))
                 }
-                Stat { text: rta.framesPerSecond + " frames/s" }
+                Stat { text: qsTr("%1 frames/s").arg(String(rta.framesPerSecond)) }
                 // -- WP QD19 -- The load figures make room for the following line
-                Stat { text: "transform " + rta.transformUs + " µs"; visible: rta.running && !rta.following }
-                Stat { text: "main loop " + rta.mainLoopPercent.toFixed(1) + "%"; visible: rta.running && !rta.following }
-                Stat { text: "bass " + (rta.bassSaturated ? "≥" : "") + rta.bassPercent.toFixed(2) + "%"; visible: rta.running && !rta.following }
+                Stat { shrinks: true; text: qsTr("transform %1 µs").arg(String(rta.transformUs)); visible: rta.running && !rta.following }
+                Stat { shrinks: true; text: qsTr("main loop %1%").arg(rta.mainLoopPercent.toFixed(1)); visible: rta.running && !rta.following }
+                Stat { shrinks: true; text: rta.bassSaturated ? qsTr("bass ≥%1%").arg(rta.bassPercent.toFixed(2)) : qsTr("bass %1%").arg(rta.bassPercent.toFixed(2)); visible: rta.running && !rta.following }
                 Item { Layout.fillWidth: true }
                 // -- WP QD19 --
                 Row {
@@ -316,7 +331,7 @@ AppWindow {
                     spacing: 10
                     Text {
                         objectName: "rtaFollowingText"
-                        text: "Following another console"
+                        text: qsTr("Following another console")
                         font.pixelSize: 11
                         color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.55)
                     }
@@ -324,7 +339,7 @@ AppWindow {
                         id: takeControl
                         objectName: "rtaTakeControl"
                         signal clicked()
-                        text: "Take control"
+                        text: qsTr("Take control")
                         font.pixelSize: 11
                         font.underline: takeMouse.containsMouse
                         color: isMacOS ? MacColors.accent : "#0a7cff"
@@ -341,15 +356,17 @@ AppWindow {
                     }
                 }
                 Text {
+                    id: rangeText
                     visible: !rta.following
                     readonly property bool shaded: win.mode !== 0 && rta.running && rta.appliedOrder < rta.orderMax && rta.lowestShadedHz > 0
                     font.pixelSize: 11
                     elide: Text.ElideLeft
-                    Layout.maximumWidth: 320
+                    // -- WP QD23 -- Gives way first when the line is too long, then the load figures
+                    Layout.preferredWidth: Math.max(0, Math.min(320, implicitWidth, statusLine.width - statusLine.othersWidth - 2))
                     color: isMacOS ? (rta.configRejected || shaded ? MacColors.orange : MacColors.secondaryLabel) : rta.configRejected || shaded ? "#ff9f0a" : Qt.rgba(1, 1, 1, 0.4)
-                    text: rta.configRejected ? "Device refused this configuration"
-                        : shaded ? "Bands up to " + rta.lowestShadedHz + " Hz need a larger transform size in Settings"
-                        : rta.dynamicRange + " dB range (bass " + rta.bassDynamicRange + " dB)"
+                    text: rta.configRejected ? qsTr("Device refused this configuration")
+                        : shaded ? qsTr("Bands up to %1 Hz need a larger transform size in Settings").arg(String(rta.lowestShadedHz))
+                        : qsTr("%1 dB range (bass %2 dB)").arg(String(rta.dynamicRange)).arg(String(rta.bassDynamicRange))
                 }
             }
         }

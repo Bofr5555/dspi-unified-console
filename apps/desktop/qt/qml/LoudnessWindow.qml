@@ -9,7 +9,7 @@ import "components"
 AppWindow {
     id: win
     fitHeight: header.height + flick.contentHeight
-    title: "Loudness Compensation"
+    title: qsTr("Loudness Compensation")
     visible: false
     width: 720
     height: 440 + titlebarHeight
@@ -71,8 +71,8 @@ AppWindow {
         id: header
         width: parent.width
         icon: "loudness"
-        title: "Loudness Compensation"
-        subtitle: "ISO 226:2003 Fletcher-Munson"
+        title: qsTr("Loudness Compensation")
+        subtitle: qsTr("ISO 226:2003 Fletcher-Munson")
         checked: bridge.loudnessEnabled
         onToggled: bridge.setLoudness(enable)
     }
@@ -100,7 +100,7 @@ AppWindow {
                 width: columns.colWidth
                 spacing: 12
 
-                SectionLabel { text: "COMPENSATION CURVE" }
+                SectionLabel { text: qsTr("COMPENSATION CURVE") }
 
                 Rectangle {
                     width: parent.width
@@ -164,7 +164,7 @@ AppWindow {
                                 ctx.textAlign = "center"
                                 ctx.fillStyle = isMacOS ? MacColors.opacity(MacColors.secondaryLabel, 0.5) : "rgba(255,255,255,0.35)"
                                 ctx.font = "12px sans-serif"
-                                ctx.fillText("Disabled", left + w / 2, h / 2)
+                                ctx.fillText(qsTr("Disabled"), left + w / 2, h / 2)
                                 return
                             }
 
@@ -193,7 +193,7 @@ AppWindow {
                         Text {
                             id: curveTag
                             anchors.centerIn: parent
-                            text: "Curve at " + win.curveVolumeDB + " dB"
+                            text: qsTr("Curve at %1 dB").arg(win.curveVolumeDB)
                             font.pixelSize: 11
                             font.weight: Font.DemiBold
                             color: "white"
@@ -210,22 +210,22 @@ AppWindow {
                 width: columns.colWidth
                 spacing: 12
 
-                SectionLabel { text: "PARAMETERS" }
+                SectionLabel { text: qsTr("PARAMETERS") }
 
                 ParamRow {
                     id: refRow
-                    label: "Reference SPL"; unit: "dB"; from: 40; to: 100; stepSize: 0.5; decimals: 1
+                    label: qsTr("Reference SPL"); unit: qsTr("dB"); from: 40; to: 100; stepSize: 0.5; decimals: 1
                     value: bridge.loudnessRefSPL
-                    caption: "SPL at 1 kHz when USB volume is 0 dB. Lower = more compensation per dB of volume reduction."
+                    caption: qsTr("SPL at 1 kHz when USB volume is 0 dB. Lower = more compensation per dB of volume reduction.")
                     onLiveChanged: bridge.setLoudnessRef(v, true)
                     onCommitted: bridge.setLoudnessRef(v)
                 }
                 Divider {}
                 ParamRow {
                     id: intensityRow
-                    label: "Intensity"; unit: "%"; from: 0; to: 200; stepSize: 1; decimals: 1
+                    label: qsTr("Intensity"); unit: "%"; from: 0; to: 200; stepSize: 1; decimals: 1
                     value: bridge.loudnessIntensity
-                    caption: "Scales the ISO 226 compensation. 100% = standard curve. 0% = bypassed. Over 100% = exaggerated."
+                    caption: qsTr("Scales the ISO 226 compensation. 100% = standard curve. 0% = bypassed. Over 100% = exaggerated.")
                     onLiveChanged: bridge.setLoudnessIntensity(v, true)
                     onCommitted: bridge.setLoudnessIntensity(v)
                 }
@@ -234,7 +234,7 @@ AppWindow {
                 Item {
                     width: parent.width
                     height: 20
-                    SectionLabel { text: "OUTPUTS"; anchors.verticalCenter: parent.verticalCenter }
+                    SectionLabel { text: qsTr("OUTPUTS"); anchors.verticalCenter: parent.verticalCenter }
                     Item {
                         id: outLink
                         anchors.right: parent.right
@@ -245,7 +245,7 @@ AppWindow {
                             id: outRow
                             spacing: 4
                             Text {
-                                text: "Presets"
+                                text: qsTr("Presets")
                                 font.pixelSize: 12
                                 color: isMacOS ? MacColors.label : outMouse.containsMouse ? "white" : Qt.rgba(1, 1, 1, 0.75)
                             }
@@ -257,7 +257,7 @@ AppWindow {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             Accessible.role: Accessible.ButtonMenu
-                            Accessible.name: "Output presets"
+                            Accessible.name: qsTr("Output presets")
                             onActivated: outMenu.openAt(outLink, 0, outLink.height + 4)
                         }
                     }
@@ -268,7 +268,7 @@ AppWindow {
                     wrapMode: Text.WordWrap
                     font.pixelSize: 11
                     color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
-                    text: "Compensate only the outputs feeding your low-level listening chain. Keep bass-managed pairs (mains + sub) together so the crossover stays coherent."
+                    text: qsTr("Compensate only the outputs feeding your low-level listening chain. Keep bass-managed pairs (mains + sub) together so the crossover stays coherent.")
                 }
 
                 ChannelChips {
@@ -286,9 +286,9 @@ AppWindow {
         id: outMenu
         parent: Overlay.overlay
         items: [
-            { key: "all", text: "All Outputs" },
-            { key: "first", text: "Outputs 1–2 Only (Headphones)" },
-            { key: "none", text: "None" }
+            { key: "all", text: qsTr("All Outputs") },
+            { key: "first", text: qsTr("Outputs 1–2 Only (Headphones)") },
+            { key: "none", text: qsTr("None") }
         ]
         onTriggered: {
             if (key === "all") bridge.setLoudnessOutputMask(0xFFFF)

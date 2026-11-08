@@ -13,7 +13,7 @@ Item {
 
     signal toggled()
     // -- WP QD22 -- What a screen reader calls it; FilterRow names the band
-    property string accessibleName: "Band active"
+    property string accessibleName: qsTr("Band active")
 
     // macOS: the native BypassCheckbox (Components.swift:2391) - 12 pt, and an
     // Off band keeps a faint hollow ring rather than no dot
@@ -43,6 +43,6 @@ Item {
         onActivated: dotRoot.toggled()
         ToolTip.visible: containsMouse
         ToolTip.delay: 600
-        ToolTip.text: dotRoot.bypassed ? "Enable band" : "Bypass band"
+        ToolTip.text: dotRoot.bypassed ? qsTr("Enable band") : qsTr("Bypass band")
     }
 }

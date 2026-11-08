@@ -151,18 +151,18 @@ QtObject {
     // ── Names ──
     function typeName(t) {
         switch (t) {
-        case typeNone: return "None"
-        case typeButton: return "Push Button"
-        case typeSwitch: return "Toggle Switch"
-        case typePot: return "Potentiometer / Fader"
-        case typeEncoder: return "Rotary Encoder"
-        case typeLed: return "Indicator LED"
-        case typeLedPwm: return "Dimmable LED"
-        case typeIr: return "IR Remote"
-        case typeDisplay: return "Display"
-        case typeAuxOut: return "On/Off Output"
-        case typeAuxPwm: return "Dimmable Output"
-        default: return "Type " + t
+        case typeNone: return qsTr("None")
+        case typeButton: return qsTr("Push Button")
+        case typeSwitch: return qsTr("Toggle Switch")
+        case typePot: return qsTr("Potentiometer / Fader")
+        case typeEncoder: return qsTr("Rotary Encoder")
+        case typeLed: return qsTr("Indicator LED")
+        case typeLedPwm: return qsTr("Dimmable LED")
+        case typeIr: return qsTr("IR Remote")
+        case typeDisplay: return qsTr("Display")
+        case typeAuxOut: return qsTr("On/Off Output")
+        case typeAuxPwm: return qsTr("Dimmable Output")
+        default: return qsTr("Type %1").arg(t)
         }
     }
     function typeIcon(t) {
@@ -202,7 +202,7 @@ QtObject {
     // an LED shows it
     function nounName(n, type) {
         var nd = nounDesc(n)
-        if (!nd || nd.name === undefined) return "Parameter " + n
+        if (!nd || nd.name === undefined) return qsTr("Parameter %1").arg(n)
         return isIndicatorType(type) ? nd.name : nd.controlName
     }
 
@@ -210,42 +210,42 @@ QtObject {
         var nd = nounDesc(noun)
         var isEnum = !!nd && nd.kind === kindEnum
         if (noun === nounPageValue) {
-            if (a === actInc) return "Up"
-            if (a === actDec) return "Down"
+            if (a === actInc) return qsTr("Up")
+            if (a === actDec) return qsTr("Down")
         }
         switch (a) {
-        case actAdjust: return "Adjust"
-        case actStep: return "Step"
-        case actInc: return isEnum ? "Next" : "Increase"
-        case actDec: return isEnum ? "Previous" : "Decrease"
-        case actToggle: return "Toggle"
-        case actSet: return "Set value"
-        case actFollow: return "Follow position"
-        case actTrigger: return "Trigger"
-        case actIndEquals: return "Indicate"
-        case actMomentary: return "Hold"
-        case actIndAbove: return "Indicate above"
-        case actIndLevel: return "Show level"
-        default: return "Action " + a
+        case actAdjust: return qsTr("Adjust")
+        case actStep: return qsTr("Step")
+        case actInc: return isEnum ? qsTr("Next") : qsTr("Increase")
+        case actDec: return isEnum ? qsTr("Previous") : qsTr("Decrease")
+        case actToggle: return qsTr("Toggle")
+        case actSet: return qsTr("Set value")
+        case actFollow: return qsTr("Follow position")
+        case actTrigger: return qsTr("Trigger")
+        case actIndEquals: return qsTr("Indicate")
+        case actMomentary: return qsTr("Hold")
+        case actIndAbove: return qsTr("Indicate above")
+        case actIndLevel: return qsTr("Show level")
+        default: return qsTr("Action %1").arg(a)
         }
     }
 
     function groupName(g) {
         var grp = groups[g]
-        return grp && grp.name !== "" ? grp.name : "Group " + (g + 1)
+        return grp && grp.name !== "" ? grp.name : qsTr("Group %1").arg(g + 1)
     }
     function macroName(i) {
         var mc = macros[i]
-        return mc && mc.name !== "" ? mc.name : "Macro " + (i + 1)
+        return mc && mc.name !== "" ? mc.name : qsTr("Macro %1").arg(i + 1)
     }
     function auxName(slot) {
-        return names[slot] ? names[slot] : "Aux " + (slot + 1)
+        return names[slot] ? names[slot] : qsTr("Aux %1").arg(slot + 1)
     }
 
     // ── Channels and targets ──
     function channelName(appId) {
         var n = appId >= 0 ? bridge.channelName(appId) : ""
-        return n !== "" ? n : "Channel " + (appId + 1)
+        return n !== "" ? n : qsTr("Channel %1").arg(appId + 1)
     }
     // DSP channels are numbered inputs first, then outputs
     function dspName(w) {
@@ -280,9 +280,9 @@ QtObject {
 
     // Macro step waits: 10 ms units
     function fmtSeconds(s) {
-        if (s < 60) return (s < 10 ? Number(s.toPrecision(2)) : Math.round(s)) + " s"
+        if (s < 60) return qsTr("%1 s").arg(String(s < 10 ? Number(s.toPrecision(2)) : Math.round(s)))
         var mins = s / 60
-        return (mins === Math.round(mins) ? mins.toFixed(0) : mins.toFixed(1)) + " min"
+        return qsTr("%1 min").arg(mins === Math.round(mins) ? mins.toFixed(0) : mins.toFixed(1))
     }
 
     // ── Rules: the core's (dspi_session::cs_rows, WP CG20) ──
@@ -353,46 +353,46 @@ QtObject {
     // ── Wording ──
     function pinDetail(type) {
         switch (type) {
-        case typePot: return "ADC pin (GPIO 26, 27, or 28), wiper to the pin."
-        case typeLed: case typeLedPwm: return "Output pin driving the LED."
-        case typeIr: return "GPIO wired to the receiver module's OUT (VCC to 3V3, GND to GND)."
-        case typeAuxOut: return "Output pin driving the relay or MOSFET input."
-        case typeAuxPwm: return "PWM output pin driving the dimmer or fan input."
-        default: return "Wired between this GPIO and GND."
+        case typePot: return qsTr("ADC pin (GPIO 26, 27, or 28), wiper to the pin.")
+        case typeLed: case typeLedPwm: return qsTr("Output pin driving the LED.")
+        case typeIr: return qsTr("GPIO wired to the receiver module's OUT (VCC to 3V3, GND to GND).")
+        case typeAuxOut: return qsTr("Output pin driving the relay or MOSFET input.")
+        case typeAuxPwm: return qsTr("PWM output pin driving the dimmer or fan input.")
+        default: return qsTr("Wired between this GPIO and GND.")
         }
     }
     function invertTitle(type) {
         switch (type) {
-        case typeLed: case typeLedPwm: return "Active-Low LED"
-        case typePot: case typeEncoder: return "Pull-Down Wiring"
-        case typeIr: return "Idle-Low Receiver"
-        case typeAuxOut: case typeAuxPwm: return "Active-Low Output"
-        default: return "Active-High Wiring"
+        case typeLed: case typeLedPwm: return qsTr("Active-Low LED")
+        case typePot: case typeEncoder: return qsTr("Pull-Down Wiring")
+        case typeIr: return qsTr("Idle-Low Receiver")
+        case typeAuxOut: case typeAuxPwm: return qsTr("Active-Low Output")
+        default: return qsTr("Active-High Wiring")
         }
     }
     function invertDetail(type) {
         switch (type) {
-        case typeLed: return "Drive the pin low to light the LED (LED wired to 3V3 through a resistor)."
-        case typeLedPwm: return "Invert the PWM duty for an LED wired to 3V3 through a resistor."
-        case typePot: case typeEncoder: return "Wire the common terminal to 3V3 instead of GND (internal pull-down)."
-        case typeIr: return "The receiver idles low and pulls high on a mark; default is the usual idle-high, active-low module."
-        case typeAuxOut: return "Drive the pin low to switch the load on, which is what most relay and opto-isolator boards expect."
-        case typeAuxPwm: return "Invert the PWM duty for a driver that switches on when the pin goes low."
-        default: return "Component wired to 3V3 with the internal pull-down; default is to GND with pull-up."
+        case typeLed: return qsTr("Drive the pin low to light the LED (LED wired to 3V3 through a resistor).")
+        case typeLedPwm: return qsTr("Invert the PWM duty for an LED wired to 3V3 through a resistor.")
+        case typePot: case typeEncoder: return qsTr("Wire the common terminal to 3V3 instead of GND (internal pull-down).")
+        case typeIr: return qsTr("The receiver idles low and pulls high on a mark; default is the usual idle-high, active-low module.")
+        case typeAuxOut: return qsTr("Drive the pin low to switch the load on, which is what most relay and opto-isolator boards expect.")
+        case typeAuxPwm: return qsTr("Invert the PWM duty for a driver that switches on when the pin goes low.")
+        default: return qsTr("Component wired to 3V3 with the internal pull-down; default is to GND with pull-up.")
         }
     }
 
     function displayModelName(model) {
         switch (model) {
-        case 1: return "LCD 16x2 (HD44780)"
-        case 2: return "LCD 20x4 (HD44780)"
-        case 3: return "Character OLED 16x2"
-        case 4: return "Character OLED 20x2"
-        case 5: return "Character OLED 20x4"
-        case 6: return "OLED 128x64 (SSD1306)"
-        case 7: return "OLED 128x32 (SSD1306)"
-        case 8: return "OLED 128x64 (SH1106)"
-        default: return "Model " + model
+        case 1: return qsTr("LCD 16x2 (HD44780)")
+        case 2: return qsTr("LCD 20x4 (HD44780)")
+        case 3: return qsTr("Character OLED 16x2")
+        case 4: return qsTr("Character OLED 20x2")
+        case 5: return qsTr("Character OLED 20x4")
+        case 6: return qsTr("OLED 128x64 (SSD1306)")
+        case 7: return qsTr("OLED 128x32 (SSD1306)")
+        case 8: return qsTr("OLED 128x64 (SH1106)")
+        default: return qsTr("Model %1").arg(model)
         }
     }
     function displayDefaultAddress(model) { return model === 1 || model === 2 ? 0x27 : 0x3C }
@@ -403,8 +403,8 @@ QtObject {
         case 1: return "NEC"
         case 2: return "RC5"
         case 3: return "RC6"
-        case 4: return "Generic"
-        default: return "None"
+        case 4: return qsTr("Generic")
+        default: return qsTr("None")
         }
     }
     readonly property bool editGated: !!display.config && (display.config.flags & dcfgEditGated) !== 0

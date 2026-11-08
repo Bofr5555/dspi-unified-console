@@ -109,6 +109,64 @@ set(DSPI_UPDATE_FEED_URL "" CACHE STRING "Release list the update check asks (Gi
 if(DSPI_UPDATE_CHECK)
     list(APPEND DSPI_APP_SOURCES src/AppUpdater.cpp)
 endif()
+# -- WP QD23 -- Translations. The QML's qsTr strings are collected by lupdate into
+# translations/dspi-console_<lang>.ts (`cmake --build <dir> --target dspi_lupdate`
+# refreshes them); lrelease builds each into a .qm in the resources under :/i18n,
+# which main.cpp loads for the system's language. English only for now: the
+# source text is English, so the English file carries no translations. Qt's own
+# tools when their CMake package is there, else lrelease/lupdate on the PATH
+# (the .qm format is the same for Qt 5 and 6). Without either the app builds
+# untranslated, which is English.
+set(DSPI_TS_FILES ${CMAKE_CURRENT_SOURCE_DIR}/translations/dspi-console_en.ts)
+find_package(Qt${QT_VERSION_MAJOR}LinguistTools QUIET)
+if(TARGET Qt${QT_VERSION_MAJOR}::lrelease)
+    set(_dspi_lrelease Qt${QT_VERSION_MAJOR}::lrelease)
+    set(_dspi_lupdate Qt${QT_VERSION_MAJOR}::lupdate)
+else()
+    find_program(DSPI_LRELEASE NAMES lrelease-qt${QT_VERSION_MAJOR} lrelease lrelease-qt6)
+    find_program(DSPI_LUPDATE NAMES lupdate-qt${QT_VERSION_MAJOR} lupdate lupdate-qt6)
+    set(_dspi_lrelease ${DSPI_LRELEASE})
+    set(_dspi_lupdate ${DSPI_LUPDATE})
+endif()
+if(_dspi_lrelease)
+    set(_dspi_i18n_dir ${CMAKE_CURRENT_BINARY_DIR}/i18n)
+    set(_dspi_i18n_qrc "<RCC>\n    <qresource prefix=\"/i18n\">\n")
+    set(_dspi_qm_files)
+    foreach(_ts IN LISTS DSPI_TS_FILES)
+        get_filename_component(_name ${_ts} NAME_WE)
+        add_custom_command(OUTPUT ${_dspi_i18n_dir}/${_name}.qm
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${_dspi_i18n_dir}
+            COMMAND ${_dspi_lrelease} -silent ${_ts} -qm ${_dspi_i18n_dir}/${_name}.qm
+            DEPENDS ${_ts}
+            VERBATIM)
+        list(APPEND _dspi_qm_files ${_dspi_i18n_dir}/${_name}.qm)
+        string(APPEND _dspi_i18n_qrc "        <file>${_name}.qm</file>\n")
+    endforeach()
+    string(APPEND _dspi_i18n_qrc "    </qresource>\n</RCC>\n")
+    # Written only when it changes; rcc run here rather than by AUTORCC, so the
+    # resource waits for the .qm files it holds
+    file(WRITE ${_dspi_i18n_dir}/i18n.qrc.in "${_dspi_i18n_qrc}")
+    configure_file(${_dspi_i18n_dir}/i18n.qrc.in ${_dspi_i18n_dir}/i18n.qrc COPYONLY)
+    add_custom_command(OUTPUT ${_dspi_i18n_dir}/qrc_i18n.cpp
+        COMMAND Qt${QT_VERSION_MAJOR}::rcc --name dspi_i18n -o ${_dspi_i18n_dir}/qrc_i18n.cpp ${_dspi_i18n_dir}/i18n.qrc
+        DEPENDS ${_dspi_i18n_dir}/i18n.qrc ${_dspi_qm_files}
+        WORKING_DIRECTORY ${_dspi_i18n_dir}
+        VERBATIM)
+    set_source_files_properties(${_dspi_i18n_dir}/qrc_i18n.cpp PROPERTIES SKIP_AUTOGEN ON)
+    list(APPEND DSPI_APP_SOURCES ${_dspi_i18n_dir}/qrc_i18n.cpp)
+    message(STATUS "Translations: ${_dspi_lrelease}")
+else()
+    message(WARNING "No lrelease found (Qt Linguist tools): the app builds without its translations")
+endif()
+if(_dspi_lupdate)
+    # The .ts files from the sources; not part of the build
+    add_custom_target(dspi_lupdate
+        COMMAND ${_dspi_lupdate} -silent -locations relative -no-obsolete -source-language en -target-language en
+                qml src -ts ${DSPI_TS_FILES}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        VERBATIM)
+endif()
+# -- WP QD23 end --
 # -- WP QD21a -- The QML in resources.qrc compiled to byte code at build time, so
 # the first start does not compile it (it took several seconds on Windows). The
 # sources stay in the resources: a unit that does not match the Qt it runs on is
@@ -163,6 +221,8 @@ if(DSPI_SMOKE)
     add_executable(DSPiConsoleSmoke ${DSPI_APP_SOURCES} smoke/SmokeDriver.cpp smoke/SmokeDriverHw.cpp smoke/SmokeDriverReplug.cpp smoke/SmokeDriverSeam.cpp smoke/SmokeDriverExt.cpp smoke/SmokeDriverNames.cpp smoke/SmokeDriverLatency.cpp smoke/SmokeDriverLink.cpp smoke/SmokeDriverLinkFault.cpp smoke/SmokeDriverDevices.cpp smoke/LinkFakeHub.h smoke/SmokeDriverReadOnly.cpp smoke/SmokeDriverDemo.cpp smoke/SmokeDriverRing.cpp smoke/SmokeDriverPoll.cpp smoke/SmokeDriverSaveBar.cpp smoke/SmokeDriverAbout.cpp smoke/SmokeDriverOnboarding.cpp smoke/SmokeDriverAutoEq.cpp smoke/SmokeDriverHostAudio.cpp smoke/SmokeDriverTray.cpp smoke/SmokeDriverFirmware.cpp smoke/SmokeDriverHub.cpp smoke/SmokeDriverVreg.cpp smoke/SmokeDriverShortcuts.cpp smoke/SmokeDriverRtaFollow.cpp smoke/SmokeDriverNetworking.cpp smoke/SmokeDriverSystem.cpp smoke/SmokeDriver.h smoke/smoke.qrc)
     target_include_directories(DSPiConsoleSmoke PRIVATE ${DSPI_CORE_DIR}/include src/ smoke/)
     target_compile_definitions(DSPiConsoleSmoke PRIVATE DSPI_SMOKE)
+    # -- WP QD23 -- The pseudo-locale pass
+    target_sources(DSPiConsoleSmoke PRIVATE smoke/SmokeDriverPseudo.cpp)
     # -- WP QD16 --
     if(DSPI_UPDATE_CHECK)
         target_sources(DSPiConsoleSmoke PRIVATE smoke/SmokeDriverUpdates.cpp)

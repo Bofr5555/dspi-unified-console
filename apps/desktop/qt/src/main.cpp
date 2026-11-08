@@ -8,6 +8,10 @@
 #include <QSettings>
 #include <QFile>
 #include <cstdio>
+// -- WP QD23 --
+#include <QLibraryInfo>
+#include <QLocale>
+#include <QTranslator>
 
 #ifdef Q_OS_MACOS
 #include <objc/runtime.h>
@@ -262,6 +266,23 @@ int main(int argc, char *argv[])
     // The Wayland app id, matched to dspi-console.desktop for the taskbar icon
     app.setDesktopFileName(QStringLiteral("dspi-console"));
     app.setWindowIcon(QIcon(QStringLiteral(":/dspi-console.svg")));
+#endif
+
+    // -- WP QD23 -- The app's translations (translations/*.ts, built into :/i18n)
+    // and Qt's own, for the system's language. Neither is found for English,
+    // the source language: the text then shows as written.
+    QTranslator qtTranslator, appTranslator;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    const QString qtTranslations = QLibraryInfo::path(QLibraryInfo::TranslationsPath);
+#else
+    const QString qtTranslations = QLibraryInfo::location(QLibraryInfo::TranslationsPath);
+#endif
+    if (qtTranslator.load(QLocale(), QStringLiteral("qt"), QStringLiteral("_"), qtTranslations))
+        app.installTranslator(&qtTranslator);
+    if (appTranslator.load(QLocale(), QStringLiteral("dspi-console"), QStringLiteral("_"), QStringLiteral(":/i18n")))
+        app.installTranslator(&appTranslator);
+#ifdef DSPI_SMOKE
+    SmokeDriver::installPseudoLocale(&app);   // only when DSPI_SMOKE_PSEUDO asks for it
 #endif
 
     setPlatformDarkMode();

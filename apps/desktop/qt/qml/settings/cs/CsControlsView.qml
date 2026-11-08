@@ -261,7 +261,7 @@ Column {
             return
         }
         learningSub = k
-        learnMessage = "Point the remote at the receiver and press the button to learn."
+        learnMessage = qsTr("Point the remote at the receiver and press the button to learn.")
         learnTimeout.restart()
     }
     function finishLearn(state, protocol, code) {
@@ -274,10 +274,10 @@ Column {
             c.protocol = protocol
             c.code = code
             setIrDraft(k, c)
-            setMap("subMessages", k, { text: "Learned a " + cs.irProtocolName(protocol) + " code. Apply to keep it.", error: false })
+            setMap("subMessages", k, { text: qsTr("Learned a %1 code. Apply to keep it.").arg(cs.irProtocolName(protocol)), error: false })
         } else {
             var timedOut = state === 3
-            setMap("subMessages", k, { text: timedOut ? "No remote button was detected - try again." : "Learn stopped.", error: timedOut })
+            setMap("subMessages", k, { text: timedOut ? qsTr("No remote button was detected - try again.") : qsTr("Learn stopped."), error: timedOut })
         }
     }
     function cancelLearn() {
@@ -287,7 +287,7 @@ Column {
         learnTimeout.stop()
         // -- WP QD1 --
         var status = result(controlSurfaces.apply({ op: "learnCancel" }))
-        setMap("subMessages", k, status === 0 ? { text: "Learn cancelled.", error: false } : { text: cs.statusMessage(status), error: true })
+        setMap("subMessages", k, status === 0 ? { text: qsTr("Learn cancelled."), error: false } : { text: cs.statusMessage(status), error: true })
     }
     // -- WP QD1 -- A refused read says why, not that no button was pressed
     function checkLearn() {
@@ -329,9 +329,10 @@ Column {
                     && (steps[i].noun === cs.nounAux || steps[i].noun === cs.nounAuxLevel)) { macros.push(cs.macroName(m)); break }
         }
         var parts = []
-        if (remotes > 0) parts.push(remotes + " remote key" + (remotes === 1 ? "" : "s"))
-        if (macros.length > 0) parts.push("the macro" + (macros.length === 1 ? " " : "s ") + macros.join(", "))
-        return parts.length > 0 ? "Also driven by " + parts.join(" and ") + "." : ""
+        if (remotes > 0) parts.push(remotes === 1 ? qsTr("%1 remote key").arg(remotes) : qsTr("%1 remote keys").arg(remotes))
+        if (macros.length > 0) parts.push(macros.length === 1 ? qsTr("the macro %1").arg(macros.join(", ")) : qsTr("the macros %1").arg(macros.join(", ")))
+        return parts.length === 2 ? qsTr("Also driven by %1 and %2.").arg(parts[0]).arg(parts[1])
+             : parts.length === 1 ? qsTr("Also driven by %1.").arg(parts[0]) : ""
     }
 
     // ── Layout ──
@@ -339,23 +340,23 @@ Column {
         visible: !cs.supported
         width: parent.width
         wrapMode: Text.WordWrap
-        text: "Reading control-surface capabilities from the device..."
+        text: qsTr("Reading control-surface capabilities from the device...")
         font.pixelSize: 12
         color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
     }
 
     CsEmptyState {
         visible: cs.supported && view.visibleSlots.length === 0
-        title: view.auxPage ? "No Auxiliary Outputs Set Up" : "No Controls Configured"
-        text: view.auxPage ? "Put a relay, lamp or fan on a spare GPIO, then point a button, knob or remote key at it from the Control Surfaces page."
-                           : "Wire a button, switch, knob, encoder, or LED to a spare GPIO and bind it to a device function."
+        title: view.auxPage ? qsTr("No Auxiliary Outputs Set Up") : qsTr("No Controls Configured")
+        text: view.auxPage ? qsTr("Put a relay, lamp or fan on a spare GPIO, then point a button, knob or remote key at it from the Control Surfaces page.")
+                           : qsTr("Wire a button, switch, knob, encoder, or LED to a spare GPIO and bind it to a device function.")
         Repeater {
             model: cs.realTypes.filter(function (t) { return cs.isAuxType(t) === view.auxPage })
             CsBadge { icon: cs.typeIcon(modelData); tint: cs.typeTint(modelData); size: 28 }
         }
         action: CsButton {
             id: emptyAdd
-            text: view.auxPage ? "Add Output" : "Add Control"
+            text: view.auxPage ? qsTr("Add Output") : qsTr("Add Control")
             icon: "plus"
             primary: true
             enabled: view.firstFreeSlot >= 0 && cs.connected
@@ -380,7 +381,7 @@ Column {
         height: 30
         CsButton {
             id: addButton
-            text: view.auxPage ? "Add Output" : "Add Control"
+            text: view.auxPage ? qsTr("Add Output") : qsTr("Add Control")
             icon: "plus"
             enabled: view.firstFreeSlot >= 0 && cs.connected
             anchors.verticalCenter: parent.verticalCenter
@@ -390,7 +391,7 @@ Column {
             visible: view.firstFreeSlot < 0
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: "All " + cs.slotCount + " control slots are in use."
+            text: qsTr("All %1 control slots are in use.").arg(cs.slotCount)
             font.pixelSize: 12
             color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
         }
@@ -426,7 +427,7 @@ Column {
             name: view.slotName(slot)
             placeholder: cs.typeName(b.type)
             summary: hasName ? cs.typeName(b.type) + " - " + cs.verbPhrase(b) : cs.verbPhrase(b)
-            removeTip: "Remove this control"
+            removeTip: qsTr("Remove this control")
             enabled: true
             onToggle: view.setMap("expanded", slot, !expanded ? true : undefined)
             onNameEdited: view.setMap("nameEdits", slot, text)
@@ -443,23 +444,23 @@ Column {
                     cursorShape: Qt.PointingHandCursor
                     focusRadius: 8
                     Accessible.role: Accessible.ButtonMenu
-                    Accessible.name: "Change the component type"
+                    Accessible.name: qsTr("Change the component type")
                     onActivated: { typeMenu.slot = card.slot; typeMenu.openAt(parent, 0, parent.height + 4) }
                 }
-                ToolTip.text: "Change the component type"
+                ToolTip.text: qsTr("Change the component type")
                 ToolTip.visible: badgeMouse.containsMouse
                 ToolTip.delay: 600
             }
             trailing: CsPill {
-                text: card.dirty ? "Pending" : card.active ? "Active" : "Inactive"
+                text: card.dirty ? qsTr("Pending") : card.active ? qsTr("Active") : qsTr("Inactive")
                 tint: card.dirty || !card.active ? "#ff9f0a" : "#32d74b"
             }
 
             CsNote {
                 warning: true
                 text: cs.isConfigured(card.liveB) && !card.active
-                      ? "Not running: " + (cs.slotHealth(card.slot) ? cs.statusMessage(cs.slotHealth(card.slot)).toLowerCase() + "." : "it isn't running.")
-                        + " Reassign the conflicting pin, then apply." : ""
+                      ? (cs.slotHealth(card.slot) ? qsTr("Not running: %1. Reassign the conflicting pin, then apply.").arg(cs.statusMessage(cs.slotHealth(card.slot)).toLowerCase())
+                                                  : qsTr("Not running: it isn't running. Reassign the conflicting pin, then apply.")) : ""
             }
 
             // A control: its function, target, action, pins, values and options
@@ -484,7 +485,7 @@ Column {
                 sourceComponent: Column {
                     width: parent ? parent.width : 400
                     CsPickerRow {
-                        title: "GPIO"
+                        title: qsTr("GPIO")
                         detail: cs.pinDetail(cs.typeIr)
                         options: cs.pickOptions(cs.rowOf(cs.describe("binding", card.slot, card.b), "gpio0"))
                         value: card.b.gpio0
@@ -526,9 +527,9 @@ Column {
                     }
 
                     CsSwitchRow {
-                        title: "Output"
-                        detail: aux.live ? "Switches the pin now. Instant, and never written to flash."
-                                         : "Apply the output first; the switch works once it is running."
+                        title: qsTr("Output")
+                        detail: aux.live ? qsTr("Switches the pin now. Instant, and never written to flash.")
+                                         : qsTr("Apply the output first; the switch works once it is running.")
                         enabled: aux.live
                         checked: controlSurfaces.auxLive.state ? controlSurfaces.auxLive.state[card.slot] !== 0 : false
                         onToggled: view.setAuxState(card.slot, on)   // -- WP QD1 --
@@ -537,8 +538,8 @@ Column {
                         id: levelRow
                         visible: aux.pwm
                         enabled: aux.live
-                        title: "Level"
-                        detail: "How bright or fast the load runs while the output is on."
+                        title: qsTr("Level")
+                        detail: qsTr("How bright or fast the load runs while the output is on.")
                         readonly property real stored: controlSurfaces.auxLive.level ? controlSurfaces.auxLive.level[card.slot] / 256 : 0
                         Row {
                             spacing: 10
@@ -564,7 +565,7 @@ Column {
                             Text {
                                 width: 38
                                 horizontalAlignment: Text.AlignRight
-                                text: Math.round(levelSlider.value) + "%"
+                                text: qsTr("%1%").arg(Math.round(levelSlider.value))
                                 font.pixelSize: 13
                                 color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.8)
                                 anchors.verticalCenter: parent.verticalCenter
@@ -576,7 +577,7 @@ Column {
                         }
                     }
                     CsPickerRow {
-                        title: "GPIO"
+                        title: qsTr("GPIO")
                         detail: cs.pinDetail(card.b.type)
                         options: cs.pickOptions(cs.rowOf(cs.describe("binding", card.slot, card.b), "gpio0"))
                         value: card.b.gpio0
@@ -590,11 +591,11 @@ Column {
                     }
                     CsRow {
                         visible: aux.pwm
-                        title: "Level Limit"
-                        detail: "Cap on the output's duty as a share of full. Everything below the cap scales with it."
+                        title: qsTr("Level Limit")
+                        detail: qsTr("Cap on the output's duty as a share of full. Everything below the cap scales with it.")
                         ValueField {
                             value: card.b.baseBright === 0 ? 100 : card.b.baseBright
-                            suffix: "%"
+                            suffix: qsTr("%")
                             decimals: 0
                             minValue: 1
                             maxValue: 100
@@ -605,53 +606,53 @@ Column {
                     }
                     CsSwitchRow {
                         visible: aux.pwm
-                        title: "Linear Response"
-                        detail: "Off: the level follows the eye's curve, right for a lamp. On: duty is proportional to the level, right for a fan or heater."
+                        title: qsTr("Linear Response")
+                        detail: qsTr("Off: the level follows the eye's curve, right for a lamp. On: duty is proportional to the level, right for a fan or heater.")
                         checked: (card.b.extras & cs.auxLinear) !== 0
                         onToggled: aux.setExtra(cs.auxLinear, on)
                     }
                     CsDelayRow {
-                        title: "Turn-On Delay"
-                        detail: "Hold off until the condition has been true this long. Any interruption restarts the wait. Up to 109 min 13 s."
+                        title: qsTr("Turn-On Delay")
+                        detail: qsTr("Hold off until the condition has been true this long. Any interruption restarts the wait. Up to 109 min 13 s.")
                         raw: card.b.onDelay
                         onChanged: aux.setB("onDelay", raw)
                     }
                     CsDelayRow {
-                        title: "Turn-Off Delay"
-                        detail: "Stay on until the condition has been false this long - long enough to hold an amplifier trigger on through quiet passages. Up to 109 min 13 s."
+                        title: qsTr("Turn-Off Delay")
+                        detail: qsTr("Stay on until the condition has been false this long - long enough to hold an amplifier trigger on through quiet passages. Up to 109 min 13 s.")
                         raw: card.b.offDelay
                         onChanged: aux.setB("offDelay", raw)
                     }
                     CsNote {
                         text: card.b.onDelay !== 0 || card.b.offDelay !== 0
-                              ? "Applying, reverting, or rebooting briefly releases the pin and restarts the timing from off. Driving an amplifier trigger, that is a power cycle." : ""
+                              ? qsTr("Applying, reverting, or rebooting briefly releases the pin and restarts the timing from off. Driving an amplifier trigger, that is a power cycle.") : ""
                     }
                     CsPickerRow {
-                        title: "At Power-On"
-                        detail: "What this output does when the device starts up."
-                        options: [{ value: 0, text: "Fixed" }, { value: 1, text: "As Last Saved" }]
+                        title: qsTr("At Power-On")
+                        detail: qsTr("What this output does when the device starts up.")
+                        options: [{ value: 0, text: qsTr("Fixed") }, { value: 1, text: qsTr("As Last Saved") }]
                         value: (card.b.extras & cs.auxBootSaved) ? 1 : 0
                         onChosen: aux.setExtra(cs.auxBootSaved, value === 1)
                     }
                     CsNote {
                         text: (card.b.extras & cs.auxBootSaved)
-                              ? "Saving takes a copy of the switch and level as they are at that moment, and the output comes back that way after a restart. Changing them afterwards does not move the stored values until the next save." : ""
+                              ? qsTr("Saving takes a copy of the switch and level as they are at that moment, and the output comes back that way after a restart. Changing them afterwards does not move the stored values until the next save.") : ""
                     }
                     CsSwitchRow {
                         visible: !(card.b.extras & cs.auxBootSaved)
-                        title: "Starts On"
-                        detail: "Leave this off for anything that should never wake with the device, such as an amplifier trigger."
+                        title: qsTr("Starts On")
+                        detail: qsTr("Leave this off for anything that should never wake with the device, such as an amplifier trigger.")
                         checked: (card.b.extras & cs.auxBootOn) !== 0
                         onToggled: aux.setExtra(cs.auxBootOn, on)
                     }
                     CsRow {
                         visible: aux.pwm && !(card.b.extras & cs.auxBootSaved)
-                        title: "Starting Level"
-                        detail: "The level this output comes up at."
+                        title: qsTr("Starting Level")
+                        detail: qsTr("The level this output comes up at.")
                         Row {
                             spacing: 10
                             StyledSlider {
-                                Accessible.name: "Starting Level"
+                                Accessible.name: qsTr("Starting Level")
                                 id: bootSlider
                                 width: 160
                                 from: 0
@@ -667,7 +668,7 @@ Column {
                             Text {
                                 width: 38
                                 horizontalAlignment: Text.AlignRight
-                                text: Math.round(bootSlider.pressed ? bootSlider.value : card.b.value / 256) + "%"
+                                text: qsTr("%1%").arg(Math.round(bootSlider.pressed ? bootSlider.value : card.b.value / 256))
                                 font.pixelSize: 13
                                 color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.8)
                                 anchors.verticalCenter: parent.verticalCenter
@@ -676,8 +677,8 @@ Column {
                     }
                     // What drives it: a new output does nothing until something points at it
                     CsRow {
-                        title: "Driven By"
-                        detail: "Controls on the Control Surfaces page, remote keys and macros pointed at this output."
+                        title: qsTr("Driven By")
+                        detail: qsTr("Controls on the Control Surfaces page, remote keys and macros pointed at this output.")
                     }
                     Column {
                         width: parent.width
@@ -685,8 +686,8 @@ Column {
                         readonly property string others: view.otherDrivers(card.slot)
                         CsNote {
                             text: parent.drivers.length === 0 && parent.others === ""
-                                  ? (aux.pwm ? "Nothing yet. Add a button on \"Aux Switch\" or an encoder or fader on \"Aux Level\" and point it at this output."
-                                             : "Nothing yet. Add a button or switch on \"Aux Switch\" and point it at this output.") : ""
+                                  ? (aux.pwm ? qsTr("Nothing yet. Add a button on \"Aux Switch\" or an encoder or fader on \"Aux Level\" and point it at this output.")
+                                             : qsTr("Nothing yet. Add a button or switch on \"Aux Switch\" and point it at this output.")) : ""
                         }
                         Repeater {
                             model: parent.drivers
@@ -705,7 +706,7 @@ Column {
                                         color: isMacOS ? MacColors.label : "white"
                                     }
                                     Text {
-                                        text: "- " + cs.actionName(parent.parent.d.action, parent.parent.d.noun) + " on " + cs.nounName(parent.parent.d.noun, parent.parent.d.type)
+                                        text: qsTr("- %1 on %2").arg(cs.actionName(parent.parent.d.action, parent.parent.d.noun)).arg(cs.nounName(parent.parent.d.noun, parent.parent.d.type))
                                         font.pixelSize: 12
                                         color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
                                     }
@@ -729,7 +730,7 @@ Column {
                     onRevert: view.revertSlot(card.slot)
                     leading: CsButton {
                         visible: card.b.type === cs.typeIr && card.expanded
-                        text: "Add Remote Button"
+                        text: qsTr("Add Remote Button")
                         enabled: view.firstFreeSub >= 0 && cs.connected
                         onClicked: view.addIrCommand()
                     }

@@ -12,6 +12,10 @@ ComboBox {
     implicitHeight: form ? 20 : 28
     implicitWidth: form ? Math.ceil(widest.advanceWidth) + 22 : Math.max(96, Math.ceil(widest.advanceWidth) + 56)
     font.pixelSize: 13
+    // -- WP QD23 -- The width that shows the longest option whole: a caller that
+    // sets a width takes at least this, so a longer translation is not cut off
+    readonly property real fitWidth: Math.ceil(widest.advanceWidth) + contentItem.leftPadding + contentItem.rightPadding
+                                     + leftPadding + rightPadding
 
     // Measures the longest option for implicitWidth
     TextMetrics { id: widest; font: box.font; text: {

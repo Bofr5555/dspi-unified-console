@@ -12,9 +12,9 @@ Item {
     readonly property int slot: bridge.activePresetSlot
 
     function slotName(i) {
-        if (!bridge.isPresetOccupied(i)) return "Empty"
+        if (!bridge.isPresetOccupied(i)) return qsTr("Empty")
         var n = bridge.presetName(i)
-        return n === "" ? "Preset " + (i + 1) : n
+        return n === "" ? qsTr("Preset %1").arg(i + 1) : n
     }
     function slotLabel(i) { return (i + 1) + ": " + slotName(i) }
     // Saving an unnamed slot gives it its default name, so the picker
@@ -24,26 +24,26 @@ Item {
     }
     function report(status, what) {
         if (status === 0) return
-        errorDialog.title = what + " Failed"
-        errorDialog.message = "The device reported error " + status + "."
+        errorDialog.title = what
+        errorDialog.message = qsTr("The device reported error %1.").arg(status)
         errorDialog.open()
     }
 
     function openAt(item, x, y) {
         var anyOccupied = bridge.presetOccupied !== 0
         var items = [
-            { key: "save", text: "Save", icon: "save" },
-            { key: "rename", text: "Rename…", icon: "pencil" },
-            { key: "default", text: "Set as Default",
+            { key: "save", text: qsTr("Save"), icon: "save" },
+            { key: "rename", text: qsTr("Rename…"), icon: "pencil" },
+            { key: "default", text: qsTr("Set as Default"),
               enabled: !(bridge.presetStartupMode === 0 && bridge.presetDefaultSlot === slot) },
-            { key: "copy", text: "Copy to…", icon: "copy" }
+            { key: "copy", text: qsTr("Copy to…"), icon: "copy" }
         ]
         if (bridge.isPresetOccupied(slot))
             items.push({ separator: true },
-                       { key: "clear", text: "Clear “" + slotLabel(slot) + "”…", danger: true })
+                       { key: "clear", text: qsTr("Clear “%1”…").arg(slotLabel(slot)), danger: true })
         if (anyOccupied)
             items.push({ separator: true },
-                       { key: "clearAll", text: "Clear All Slots…", danger: true })
+                       { key: "clearAll", text: qsTr("Clear All Slots…"), danger: true })
         menu.items = items
         menu.openAt(item, x, y)
     }
@@ -54,10 +54,10 @@ Item {
         onTriggered: {
             if (key === "save") {
                 pm.ensureName(pm.slot)
-                pm.report(bridge.savePreset(pm.slot), "Save")
+                pm.report(bridge.savePreset(pm.slot), qsTr("Save Failed"))
             } else if (key === "rename") {
                 renameDialog.renameSlot = pm.slot
-                renameDialog.inputText = pm.slotName(pm.slot) === "Empty" ? "" : pm.slotName(pm.slot)
+                renameDialog.inputText = pm.slotName(pm.slot) === qsTr("Empty") ? "" : pm.slotName(pm.slot)
                 renameDialog.open()
             } else if (key === "default") {
                 bridge.setPresetStartup(0, pm.slot)
@@ -99,7 +99,7 @@ Item {
             if (choice === "discard") bridge.loadPreset(src)
             ensureName(src)
             ensureName(dest)
-            report(bridge.copyPreset(src, dest), "Copy")
+            report(bridge.copyPreset(src, dest), qsTr("Copy Failed"))
         })
     }
 
@@ -107,12 +107,12 @@ Item {
         id: renameDialog
         property int renameSlot: 0
         icon: "pencil"
-        title: "Rename Preset " + (renameSlot + 1)
+        title: qsTr("Rename Preset %1").arg(renameSlot + 1)
         hasInput: true
-        placeholder: "Preset " + (renameSlot + 1)
+        placeholder: qsTr("Preset %1").arg(renameSlot + 1)
         buttons: [
-            { key: "cancel", text: "Cancel" },
-            { key: "rename", text: "Rename", role: "primary" }
+            { key: "cancel", text: qsTr("Cancel") },
+            { key: "rename", text: qsTr("Rename"), role: "primary" }
         ]
         onChosen: {
             var name = inputText.trim()
@@ -124,11 +124,11 @@ Item {
         id: replaceDialog
         property int destSlot: 0
         icon: "copy"
-        title: "Replace “" + pm.slotLabel(destSlot) + "”?"
-        message: "Its settings will be replaced with the current ones. Its name stays the same."
+        title: qsTr("Replace “%1”?").arg(pm.slotLabel(destSlot))
+        message: qsTr("Its settings will be replaced with the current ones. Its name stays the same.")
         buttons: [
-            { key: "cancel", text: "Cancel" },
-            { key: "replace", text: "Replace", role: "destructive" }
+            { key: "cancel", text: qsTr("Cancel") },
+            { key: "replace", text: qsTr("Replace"), role: "destructive" }
         ]
         onChosen: if (key === "replace") pm.copyTo(destSlot)
     }
@@ -138,31 +138,31 @@ Item {
         property int clearSlot: 0
         icon: "warning"
         iconTint: "#ff6961"
-        title: "Clear Preset?"
-        message: "Clear “" + pm.slotLabel(clearSlot) + "” and restore factory defaults? This cannot be undone."
+        title: qsTr("Clear Preset?")
+        message: qsTr("Clear “%1” and restore factory defaults? This cannot be undone.").arg(pm.slotLabel(clearSlot))
         buttons: [
-            { key: "cancel", text: "Cancel" },
-            { key: "clear", text: "Clear", role: "destructive" }
+            { key: "cancel", text: qsTr("Cancel") },
+            { key: "clear", text: qsTr("Clear"), role: "destructive" }
         ]
-        onChosen: if (key === "clear") pm.report(bridge.deletePreset(clearSlot), "Clear")
+        onChosen: if (key === "clear") pm.report(bridge.deletePreset(clearSlot), qsTr("Clear Failed"))
     }
 
     AppDialog {
         id: clearAllDialog
         icon: "warning"
         iconTint: "#ff6961"
-        title: "Clear All Presets?"
-        message: "This erases all preset data and names, restoring every slot to factory defaults. This cannot be undone."
+        title: qsTr("Clear All Presets?")
+        message: qsTr("This erases all preset data and names, restoring every slot to factory defaults. This cannot be undone.")
         buttons: [
-            { key: "cancel", text: "Cancel" },
-            { key: "clearAll", text: "Clear All", role: "destructive" }
+            { key: "cancel", text: qsTr("Cancel") },
+            { key: "clearAll", text: qsTr("Clear All"), role: "destructive" }
         ]
         onChosen: {
             if (key !== "clearAll") return
             for (var i = 0; i < 10; i++) {
                 if (!bridge.isPresetOccupied(i)) continue
                 var status = bridge.deletePreset(i)
-                if (status !== 0) { pm.report(status, "Clear"); return }
+                if (status !== 0) { pm.report(status, qsTr("Clear Failed")); return }
             }
         }
     }
@@ -171,6 +171,6 @@ Item {
         id: errorDialog
         icon: "warning"
         iconTint: "#ff9f0a"
-        buttons: [{ key: "ok", text: "OK", role: "primary" }]
+        buttons: [{ key: "ok", text: qsTr("OK"), role: "primary" }]
     }
 }

@@ -26,7 +26,7 @@ Row {
     property real infinityAt: -1e9
     // A value that means "off" reads as offText (e.g. a level at its -30 dB floor)
     property real offAt: NaN
-    property string offText: "Off"
+    property string offText: qsTr("Off")
     // Compact fields (Matrix Mixer) adjust on plain scrolling; otherwise
     // Ctrl+scroll steps the value and plain scrolling scrolls the page
     property bool plainWheel: false

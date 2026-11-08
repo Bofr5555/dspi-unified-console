@@ -64,7 +64,7 @@ Popup {
 
     contentItem: PeqShapeChooser {
         id: chooser
-        backTip: "Cancel"
+        backTip: qsTr("Cancel")
         onBack: card.close()
         onPicked: { card.editor.createShape(type, card.createFreq, card.createGain); card.close() }
     }

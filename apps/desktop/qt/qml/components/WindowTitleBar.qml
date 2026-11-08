@@ -79,7 +79,7 @@ Item {
         visible: bar.showMenuButton
         x: 10
         icon: "menu"
-        accessibleName: "Menu"
+        accessibleName: qsTr("Menu")
         onClicked: bar.menuRequested(menuBtn)
         ToolTip.visible: false
     }
@@ -89,8 +89,8 @@ Item {
         x: bar.sidebarWidth + 10
         anchors.verticalCenter: parent.verticalCenter
         spacing: 2
-        BarButton { icon: "chev-left"; accessibleName: "Back"; active: bar.canGoBack; onClicked: bar.goBack() }
-        BarButton { icon: "chev-right"; accessibleName: "Forward"; active: bar.canGoForward; onClicked: bar.goForward() }
+        BarButton { icon: "chev-left"; accessibleName: qsTr("Back"); active: bar.canGoBack; onClicked: bar.goBack() }
+        BarButton { icon: "chev-right"; accessibleName: qsTr("Forward"); active: bar.canGoForward; onClicked: bar.goForward() }
     }
 
     Text {
@@ -110,9 +110,9 @@ Item {
         anchors.rightMargin: 8
         anchors.verticalCenter: parent.verticalCenter
         spacing: 4
-        BarButton { visible: bar.showMinMax; icon: "win-min"; accessibleName: "Minimize"; onClicked: bar.window.showMinimized() }
-        BarButton { visible: bar.showMinMax; icon: bar.maximized ? "win-restore" : "win-max"; accessibleName: bar.maximized ? "Restore" : "Maximize"; onClicked: bar.toggleMaximized() }
-        BarButton { icon: "win-close"; accessibleName: "Close"; danger: true; onClicked: bar.window.close() }
+        BarButton { visible: bar.showMinMax; icon: "win-min"; accessibleName: qsTr("Minimize"); onClicked: bar.window.showMinimized() }
+        BarButton { visible: bar.showMinMax; icon: bar.maximized ? "win-restore" : "win-max"; accessibleName: bar.maximized ? qsTr("Restore") : qsTr("Maximize"); onClicked: bar.toggleMaximized() }
+        BarButton { icon: "win-close"; accessibleName: qsTr("Close"); danger: true; onClicked: bar.window.close() }
     }
 
     // Windows: caption buttons as Windows draws them, 46 px wide, the full
@@ -148,8 +148,8 @@ Item {
         visible: isWindows
         anchors.right: parent.right
         anchors.top: parent.top
-        CaptionButton { visible: bar.showMinMax; icon: "win-min"; accessibleName: "Minimize"; onClicked: bar.window.showMinimized() }
-        CaptionButton { visible: bar.showMinMax; icon: bar.maximized ? "win-restore" : "win-max"; accessibleName: bar.maximized ? "Restore" : "Maximize"; onClicked: bar.toggleMaximized() }
-        CaptionButton { icon: "win-close"; accessibleName: "Close"; danger: true; onClicked: bar.window.close() }
+        CaptionButton { visible: bar.showMinMax; icon: "win-min"; accessibleName: qsTr("Minimize"); onClicked: bar.window.showMinimized() }
+        CaptionButton { visible: bar.showMinMax; icon: bar.maximized ? "win-restore" : "win-max"; accessibleName: bar.maximized ? qsTr("Restore") : qsTr("Maximize"); onClicked: bar.toggleMaximized() }
+        CaptionButton { icon: "win-close"; accessibleName: qsTr("Close"); danger: true; onClicked: bar.window.close() }
     }
 }

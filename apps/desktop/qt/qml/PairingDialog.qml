@@ -84,7 +84,7 @@ Popup {
                 width: parent.width - 44
                 anchors.verticalCenter: parent.verticalCenter
                 wrapMode: Text.WordWrap
-                text: "Pair with " + (linkSession.hubName !== "" ? linkSession.hubName : "the hub")
+                text: linkSession.hubName !== "" ? qsTr("Pair with %1").arg(linkSession.hubName) : qsTr("Pair with the hub")
                 font.pixelSize: 15
                 font.weight: Font.DemiBold
                 color: isMacOS ? MacColors.label : "white"
@@ -99,7 +99,7 @@ Popup {
             color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.65)
         }
         TextField {
-            Accessible.name: "PIN"
+            Accessible.name: qsTr("PIN")
             id: pinField
             objectName: "pairingPin"
             width: parent.width
@@ -143,14 +143,14 @@ Popup {
             AppButton {
                 objectName: "pairingCancel"
                 width: (parent.width - parent.spacing) / 2
-                text: "Cancel"
+                text: qsTr("Cancel")
                 onClicked: dlg.cancel()
             }
             AppButton {
                 objectName: "pairingPair"
                 width: (parent.width - parent.spacing) / 2
                 primary: true
-                text: linkSession.busy && dlg.sent ? "Pairing…" : "Pair"
+                text: linkSession.busy && dlg.sent ? qsTr("Pairing…") : qsTr("Pair")
                 enabled: dlg.valid && !linkSession.busy
                 onClicked: dlg.submit()
             }

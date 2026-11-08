@@ -34,7 +34,7 @@ Item {
     height: 32 + 1 + (bandCount * 24)
 
     // An off band shows a dash, as on macOS
-    readonly property var typeShort: ["–", "PK", "LS", "HS", "HC", "LC", "NO", "AP", "AP1", "LS1", "HS1", "LT", "HC1", "LC1"]
+    readonly property var typeShort: ["–", qsTr("PK"), qsTr("LS"), qsTr("HS"), qsTr("HC"), qsTr("LC"), qsTr("NO"), qsTr("AP"), qsTr("AP1"), qsTr("LS1"), qsTr("HS1"), qsTr("LT"), qsTr("HC1"), qsTr("LC1")]
 
     // Gradient border (left color → right color for stereo, single color for mono)
     Rectangle {
@@ -151,7 +151,7 @@ Item {
                 x: (isStereo ? parent.width / 2 : parent.width - cardRoot.gearSlot) - width - 10
                 Behavior on x { NumberAnimation { duration: 150; easing.type: Easing.InOutQuad } }
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Delay: " + cardRoot.delayText(cardRoot.leftDelay) + "ms"
+                text: qsTr("Delay: %1ms").arg(cardRoot.delayText(cardRoot.leftDelay))
                 font.pixelSize: 9
                 font.family: root.monoFont
                 color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
@@ -161,7 +161,7 @@ Item {
                 x: parent.width - cardRoot.gearSlot - width - 10
                 Behavior on x { NumberAnimation { duration: 150; easing.type: Easing.InOutQuad } }
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Delay: " + cardRoot.delayText(cardRoot.rightDelay) + "ms"
+                text: qsTr("Delay: %1ms").arg(cardRoot.delayText(cardRoot.rightDelay))
                 font.pixelSize: 9
                 font.family: root.monoFont
                 color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
@@ -221,7 +221,7 @@ Item {
 
                             Text {
                                 visible: cardRoot.ft(leftChannel, index) > 0
-                                text: cardRoot.ff(leftChannel, index).toFixed(1) + " Hz"
+                                text: qsTr("%1 Hz").arg(cardRoot.ff(leftChannel, index).toFixed(1))
                                 font.pixelSize: 10
                                 font.family: root.monoFont
                                 color: isMacOS ? MacColors.opacity(MacColors.label, 0.8) : Qt.rgba(1, 1, 1, 0.7)
@@ -230,7 +230,7 @@ Item {
                             }
                             Text {
                                 visible: cardRoot.ft(leftChannel, index) > 0
-                                text: cardRoot.fg(leftChannel, index).toFixed(1) + " dB"
+                                text: qsTr("%1 dB").arg(cardRoot.fg(leftChannel, index).toFixed(1))
                                 font.pixelSize: 10
                                 font.family: root.monoFont
                                 color: isMacOS ? MacColors.opacity(MacColors.label, 0.8) : Qt.rgba(1, 1, 1, 0.7)
@@ -239,7 +239,7 @@ Item {
                             }
                             Text {
                                 visible: cardRoot.ft(leftChannel, index) > 0
-                                text: "Q " + cardRoot.fq(leftChannel, index).toFixed(3)
+                                text: qsTr("Q %1").arg(cardRoot.fq(leftChannel, index).toFixed(3))
                                 font.pixelSize: 10
                                 font.family: root.monoFont
                                 color: isMacOS ? MacColors.opacity(MacColors.label, 0.8) : Qt.rgba(1, 1, 1, 0.7)
@@ -274,7 +274,7 @@ Item {
 
                             Text {
                                 visible: rightChannel >= 0 && cardRoot.ft(rightChannel, index) > 0
-                                text: cardRoot.ff(rightChannel, index).toFixed(1) + " Hz"
+                                text: qsTr("%1 Hz").arg(cardRoot.ff(rightChannel, index).toFixed(1))
                                 font.pixelSize: 10
                                 font.family: root.monoFont
                                 color: isMacOS ? MacColors.opacity(MacColors.label, 0.8) : Qt.rgba(1, 1, 1, 0.7)
@@ -283,7 +283,7 @@ Item {
                             }
                             Text {
                                 visible: rightChannel >= 0 && cardRoot.ft(rightChannel, index) > 0
-                                text: cardRoot.fg(rightChannel, index).toFixed(1) + " dB"
+                                text: qsTr("%1 dB").arg(cardRoot.fg(rightChannel, index).toFixed(1))
                                 font.pixelSize: 10
                                 font.family: root.monoFont
                                 color: isMacOS ? MacColors.opacity(MacColors.label, 0.8) : Qt.rgba(1, 1, 1, 0.7)
@@ -292,7 +292,7 @@ Item {
                             }
                             Text {
                                 visible: rightChannel >= 0 && cardRoot.ft(rightChannel, index) > 0
-                                text: "Q " + cardRoot.fq(rightChannel, index).toFixed(3)
+                                text: qsTr("Q %1").arg(cardRoot.fq(rightChannel, index).toFixed(3))
                                 font.pixelSize: 10
                                 font.family: root.monoFont
                                 color: isMacOS ? MacColors.opacity(MacColors.label, 0.8) : Qt.rgba(1, 1, 1, 0.7)

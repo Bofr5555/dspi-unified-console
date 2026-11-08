@@ -10,7 +10,7 @@ import "components"
 // live. Closing the window leaves a running signal playing.
 AppWindow {
     id: win
-    title: "Signal Generator"
+    title: qsTr("Signal Generator")
     visible: false
     width: 780
     height: 600 + titlebarHeight
@@ -29,39 +29,39 @@ AppWindow {
 
     // Display names and help, by firmware type id (as on macOS)
     readonly property var types: [
-        { tile: "Sine", name: "Sine", blurb: "Pure tone, THD approx -139 dB", labels: ["Frequency"] },
-        { tile: "Square", name: "Square wave", blurb: "Band-limited (polyBLEP) square", labels: ["Frequency"] },
-        { tile: "White", name: "White noise", blurb: "Uniform white noise", labels: [] },
-        { tile: "Pink", name: "Pink noise", blurb: "-3 dB/oct, level-safe normalized", labels: [] },
-        { tile: "Log Swp", name: "Log sweep", blurb: "Exponential sweep for room measurement", labels: ["Start", "End"] },
-        { tile: "Lin Swp", name: "Linear sweep", blurb: "Linear frequency sweep", labels: ["Start", "End"] },
-        { tile: "Step Swp", name: "Stepped sweep", blurb: "Discrete tones stepping up the band", labels: ["Start", "End", "Steps/octave", "Dwell"] },
-        { tile: "Impulse", name: "Impulse", blurb: "Single-sample unit impulses", labels: ["Period"] },
-        { tile: "Clicks", name: "Alternating clicks", blurb: "Clicks with alternating polarity", labels: ["Period"] },
-        { tile: "Polarity", name: "Polarity pulse", blurb: "Positive half-sine lobe per period", labels: ["Pulse width", "Period"] },
-        { tile: "Burst", name: "Tone burst", blurb: "Sine bursts with raised-cosine edges", labels: ["Frequency", "On cycles", "Off cycles", "Edge cycles"] },
-        { tile: "2-Tone", name: "Tone pair", blurb: "IMD test pair (SMPTE / CCIF)", labels: ["Tone 1", "Tone 2", "Ratio A1/A2"] },
-        { tile: "Multi", name: "Multitone", blurb: "Log-spaced tones, Schroeder phases", labels: ["Tones", "Low", "High"] },
-        { tile: "ISP", name: "ISP test", blurb: "Inter-sample-peak over patterns", labels: ["Pattern"] },
-        { tile: "Chan ID", name: "Channel ID", blurb: "Counted pentatonic blips per channel", labels: ["Blip length"] }
+        { tile: qsTr("Sine"), name: qsTr("Sine"), blurb: qsTr("Pure tone, THD approx -139 dB"), labels: [qsTr("Frequency")] },
+        { tile: qsTr("Square"), name: qsTr("Square wave"), blurb: qsTr("Band-limited (polyBLEP) square"), labels: [qsTr("Frequency")] },
+        { tile: qsTr("White"), name: qsTr("White noise"), blurb: qsTr("Uniform white noise"), labels: [] },
+        { tile: qsTr("Pink"), name: qsTr("Pink noise"), blurb: qsTr("-3 dB/oct, level-safe normalized"), labels: [] },
+        { tile: qsTr("Log Swp"), name: qsTr("Log sweep"), blurb: qsTr("Exponential sweep for room measurement"), labels: [qsTr("Start", "sweep start frequency"), qsTr("End")] },
+        { tile: qsTr("Lin Swp"), name: qsTr("Linear sweep"), blurb: qsTr("Linear frequency sweep"), labels: [qsTr("Start", "sweep start frequency"), qsTr("End")] },
+        { tile: qsTr("Step Swp"), name: qsTr("Stepped sweep"), blurb: qsTr("Discrete tones stepping up the band"), labels: [qsTr("Start", "sweep start frequency"), qsTr("End"), qsTr("Steps/octave"), qsTr("Dwell")] },
+        { tile: qsTr("Impulse"), name: qsTr("Impulse"), blurb: qsTr("Single-sample unit impulses"), labels: [qsTr("Period")] },
+        { tile: qsTr("Clicks"), name: qsTr("Alternating clicks"), blurb: qsTr("Clicks with alternating polarity"), labels: [qsTr("Period")] },
+        { tile: qsTr("Polarity"), name: qsTr("Polarity pulse"), blurb: qsTr("Positive half-sine lobe per period"), labels: [qsTr("Pulse width"), qsTr("Period")] },
+        { tile: qsTr("Burst"), name: qsTr("Tone burst"), blurb: qsTr("Sine bursts with raised-cosine edges"), labels: [qsTr("Frequency"), qsTr("On cycles"), qsTr("Off cycles"), qsTr("Edge cycles")] },
+        { tile: qsTr("2-Tone"), name: qsTr("Tone pair"), blurb: qsTr("IMD test pair (SMPTE / CCIF)"), labels: [qsTr("Tone 1"), qsTr("Tone 2"), qsTr("Ratio A1/A2")] },
+        { tile: qsTr("Multi"), name: qsTr("Multitone"), blurb: qsTr("Log-spaced tones, Schroeder phases"), labels: [qsTr("Tones"), qsTr("Low"), qsTr("High")] },
+        { tile: qsTr("ISP"), name: qsTr("ISP test"), blurb: qsTr("Inter-sample-peak over patterns"), labels: [qsTr("Pattern")] },
+        { tile: qsTr("Chan ID"), name: qsTr("Channel ID"), blurb: qsTr("Counted pentatonic blips per channel"), labels: [qsTr("Blip length")] }
     ]
     function typeName(t) { return (types[t] || types[0]).name }
 
-    readonly property var stateNames: ["Idle", "Fading in", "Running", "Gap", "Fading out"]
+    readonly property var stateNames: [qsTr("Idle"), qsTr("Fading in"), qsTr("Running"), qsTr("Gap"), qsTr("Fading out")]
     readonly property var stateColors: isMacOS ? [MacColors.secondaryLabel, MacColors.green, MacColors.green, MacColors.yellow, MacColors.orange] : [Qt.rgba(1, 1, 1, 0.4), "#32d74b", "#32d74b", "#ffd60a", "#ff9f0a"]
 
     readonly property int outputCount: siggen.outputChannels > 0 ? siggen.outputChannels : bridge.numOutputChannels
-    function outputName(o) { var n = bridge.channelName(o + 2); return n !== "" ? n : "Out " + (o + 1) }
+    function outputName(o) { var n = bridge.channelName(o + 2); return n !== "" ? n : qsTr("Out %1").arg(o + 1) }
     function popcount(m) { var n = 0; while (m) { n += m & 1; m >>= 1 } return n }
 
-    readonly property string blocker: !bridge.connected ? "No device connected"
-        : !siggen.supported ? "Firmware has no signal generator"
-        : d.channelMask === 0 ? "Select at least one output"
-        : timing === 1 && d.durationMs === 0 ? "Sweep length must be greater than 0" : ""
+    readonly property string blocker: !bridge.connected ? qsTr("No device connected")
+        : !siggen.supported ? qsTr("Firmware has no signal generator")
+        : d.channelMask === 0 ? qsTr("Select at least one output")
+        : timing === 1 && d.durationMs === 0 ? qsTr("Sweep length must be greater than 0") : ""
 
     function fmtTime(ms) {
         var s = ms / 1000
-        if (s < 60) return s.toFixed(1) + " s"
+        if (s < 60) return qsTr("%1 s").arg(s.toFixed(1))
         var m = Math.floor(s / 60)
         var r = s - m * 60
         return m + ":" + (r < 10 ? "0" : "") + r.toFixed(1)
@@ -167,8 +167,8 @@ AppWindow {
         id: header
         width: parent.width
         icon: "signal"
-        title: "Signal Generator"
-        subtitle: "Onboard test and measurement signals"
+        title: qsTr("Signal Generator")
+        subtitle: qsTr("Onboard test and measurement signals")
         showSwitch: false
         accessories: [
             Rectangle {
@@ -197,7 +197,7 @@ AppWindow {
                         }
                     }
                     Text {
-                        text: win.stateNames[siggen.state] || "Idle"
+                        text: win.stateNames[siggen.state] || qsTr("Idle")
                         font.pixelSize: 11
                         font.weight: Font.DemiBold
                         color: isMacOS ? (siggen.running ? MacColors.label : MacColors.secondaryLabel) : Qt.rgba(1, 1, 1, siggen.running ? 0.9 : 0.55)
@@ -215,12 +215,12 @@ AppWindow {
         spacing: 8
         width: 360
         Icon { anchors.horizontalCenter: parent.horizontalCenter; name: "signal"; size: 32; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.35) }
-        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Signal generator not available"; font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.85) }
+        Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Signal generator not available"); font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.85) }
         Text {
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
-            text: "The connected firmware does not include the onboard test signal generator. Update the DSPi firmware to use this tool."
+            text: qsTr("The connected firmware does not include the onboard test signal generator. Update the DSPi firmware to use this tool.")
             font.pixelSize: 11
             color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
         }
@@ -255,7 +255,7 @@ AppWindow {
             Column {
                 width: parent.width
                 spacing: 8
-                SectionLabel { text: "SIGNAL" }
+                SectionLabel { text: qsTr("SIGNAL") }
                 Grid {
                     columns: 5
                     spacing: 6
@@ -312,10 +312,10 @@ AppWindow {
                 spacing: 8
                 RowLayout {
                     width: parent.width
-                    SectionLabel { text: "OUTPUTS" }
+                    SectionLabel { text: qsTr("OUTPUTS") }
                     Item { Layout.fillWidth: true }
-                    LinkText { text: "All"; onClicked: siggen.selectAllOutputs() }
-                    LinkText { text: "None"; onClicked: siggen.clearOutputs() }
+                    LinkText { text: qsTr("All"); onClicked: siggen.selectAllOutputs() }
+                    LinkText { text: qsTr("None"); onClicked: siggen.clearOutputs() }
                 }
                 Grid {
                     columns: 3
@@ -360,17 +360,22 @@ AppWindow {
                                 cursorShape: Qt.PointingHandCursor
                                 focusRadius: 8
                                 Accessible.name: win.outputName(index)
-                                Accessible.description: (parent.on ? (parent.inverted ? "Inverted" : "On") : "Off") + (parent.silent ? ", disabled in the matrix mixer" : "") + ". Press: on, inverted, off"
+                                Accessible.description: parent.silent
+                                    ? (parent.on ? (parent.inverted ? qsTr("Inverted, disabled in the matrix mixer. Press: on, inverted, off")
+                                                                    : qsTr("On, disabled in the matrix mixer. Press: on, inverted, off"))
+                                                 : qsTr("Off, disabled in the matrix mixer. Press: on, inverted, off"))
+                                    : (parent.on ? (parent.inverted ? qsTr("Inverted. Press: on, inverted, off") : qsTr("On. Press: on, inverted, off"))
+                                                 : qsTr("Off. Press: on, inverted, off"))
                                 onActivated: siggen.cycleOutput(index)
                                 ToolTip.visible: containsMouse
                                 ToolTip.delay: 600
-                                ToolTip.text: parent.silent ? "Output disabled in the matrix mixer: selected but silent until enabled"
-                                                            : "Click: on → inverted → off"
+                                ToolTip.text: parent.silent ? qsTr("Output disabled in the matrix mixer: selected but silent until enabled")
+                                                            : qsTr("Click: on → inverted → off")
                             }
                         }
                     }
                 }
-                Caption { text: "Click to select, click again to invert polarity (ø). Dimmed outputs are disabled in the matrix mixer and stay silent." }
+                Caption { text: qsTr("Click to select, click again to invert polarity (ø). Dimmed outputs are disabled in the matrix mixer and stay silent.") }
             }
 
             Column {
@@ -378,12 +383,12 @@ AppWindow {
                 spacing: 6
                 RowLayout {
                     width: parent.width
-                    SectionLabel { text: "LEVEL" }
+                    SectionLabel { text: qsTr("LEVEL") }
                     Item { Layout.fillWidth: true }
                     ValueField {
-                        fieldWidth: 60; height: 24; suffix: "dB"; decimals: 1; wheelStep: 1
+                        fieldWidth: 60; height: 24; suffix: qsTr("dB"); decimals: 1; wheelStep: 1
                         minValue: -120; maxValue: 0
-                        accessibleName: "Level"
+                        accessibleName: qsTr("Level")
                         value: win.d.levelDb
                         onValueEdited: siggen.setDraftValue("levelDb", newValue)
                     }
@@ -391,11 +396,11 @@ AppWindow {
                 StyledSlider {
                     width: parent.width
                     from: -80; to: 0; stepSize: 0.5
-                    Accessible.name: "Level"
+                    Accessible.name: qsTr("Level")
                     value: win.d.levelDb
                     onMoved: siggen.setDraftValue("levelDb", value)
                 }
-                Caption { text: "Peak level in dBFS. Output trim, master volume and mute still apply downstream." }
+                Caption { text: qsTr("Peak level in dBFS. Output trim, master volume and mute still apply downstream.") }
             }
         }
         }
@@ -427,15 +432,15 @@ AppWindow {
                     visible: any
                     width: parent.width
                     spacing: 4
-                    SectionLabel { text: "PARAMETERS" }
+                    SectionLabel { text: qsTr("PARAMETERS") }
                     Repeater {
                         model: win.d.type === 13 ? [] : parent.params
                         FieldRow {
                             visible: modelData.semantic !== 0
                             height: visible ? 28 : 0
                             readonly property int sem: modelData.semantic
-                            label: (win.types[win.d.type].labels[index]) || "Value"
-                            suffix: sem === 1 ? "Hz" : sem === 2 ? "ms" : sem === 3 ? "cyc" : sem === 5 ? "×" : ""
+                            label: (win.types[win.d.type].labels[index]) || qsTr("Value")
+                            suffix: sem === 1 ? qsTr("Hz") : sem === 2 ? qsTr("ms") : sem === 3 ? qsTr("cyc") : sem === 5 ? "×" : ""
                             decimals: sem === 3 || sem === 4 ? 0 : sem === 5 ? 2 : 1
                             wheelStep: sem === 5 ? 0.1 : 1
                             minValue: modelData.min
@@ -448,22 +453,22 @@ AppWindow {
                     SegmentedControl {
                         visible: win.d.type === 13
                         width: parent.width
-                        model: ["fs/4 · +3.01 dBTP", "fs/6 · +1.25 dBTP"]
+                        model: [qsTr("fs/4 · +3.01 dBTP"), qsTr("fs/6 · +1.25 dBTP")]
                         currentIndex: win.d.p[0] >= 0.5 ? 1 : 0
                         onActivated: siggen.setParam(0, index)
-                        tips: ["Alternating +1 +1 -1 -1 samples: the reconstructed peak is 3.01 dB over the samples",
-                               "A sample pattern at fs/6: the reconstructed peak is 1.25 dB over the samples"]
+                        tips: [qsTr("Alternating +1 +1 -1 -1 samples: the reconstructed peak is 3.01 dB over the samples"),
+                               qsTr("A sample pattern at fs/6: the reconstructed peak is 1.25 dB over the samples")]
                     }
                     Row {
                         visible: win.d.type === 11
                         spacing: 10
-                        Text { text: "Presets:"; font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
-                        LinkText { text: "SMPTE 60/7k"; onClicked: { siggen.setParam(0, 60); siggen.setParam(1, 7000); siggen.setParam(2, 4) } }
-                        LinkText { text: "CCIF 19k/20k"; onClicked: { siggen.setParam(0, 19000); siggen.setParam(1, 20000); siggen.setParam(2, 1) } }
+                        Text { text: qsTr("Presets:"); font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
+                        LinkText { text: qsTr("SMPTE 60/7k"); onClicked: { siggen.setParam(0, 60); siggen.setParam(1, 7000); siggen.setParam(2, 4) } }
+                        LinkText { text: qsTr("CCIF 19k/20k"); onClicked: { siggen.setParam(0, 19000); siggen.setParam(1, 20000); siggen.setParam(2, 1) } }
                     }
                     Caption {
                         visible: win.d.type === 12 && siggen.multitoneMax > 0
-                        text: "Up to " + siggen.multitoneMax + " tones on this device."
+                        text: qsTr("Up to %1 tones on this device.").arg(siggen.multitoneMax)
                     }
                 }
 
@@ -471,39 +476,39 @@ AppWindow {
                 Column {
                     width: parent.width
                     spacing: 4
-                    SectionLabel { text: "TIMING" }
+                    SectionLabel { text: qsTr("TIMING") }
                     // Sweep
                     FieldRow {
                         visible: win.timing === 1
-                        label: "Sweep length"
-                        suffix: "s"; decimals: 2; wheelStep: 0.5; minValue: 0.01; maxValue: 3600
+                        label: qsTr("Sweep length")
+                        suffix: qsTr("s"); decimals: 2; wheelStep: 0.5; minValue: 0.01; maxValue: 3600
                         value: win.d.durationMs / 1000
                         onEdited: siggen.setDraftValue("durationMs", Math.round(v * 1000))
                     }
                     FieldRow {
                         visible: win.timing !== 0 || win.walking
-                        label: win.timing === 0 ? "Passes" : "Repeat"
-                        caption: win.timing === 1 ? "0 = repeat forever"
-                               : win.d.type === 14 ? "Passes over the selected outputs. 0 = forever"
-                               : win.timing === 2 ? "Pattern periods. 0 = repeat forever"
-                               : "Full passes over the outputs. 0 = forever"
+                        label: win.timing === 0 ? qsTr("Passes") : qsTr("Repeat")
+                        caption: win.timing === 1 ? qsTr("0 = repeat forever")
+                               : win.d.type === 14 ? qsTr("Passes over the selected outputs. 0 = forever")
+                               : win.timing === 2 ? qsTr("Pattern periods. 0 = repeat forever")
+                               : qsTr("Full passes over the outputs. 0 = forever")
                         decimals: 0; wheelStep: 1; minValue: 0; maxValue: 65535
                         value: win.d.repeat
                         onEdited: siggen.setDraftValue("repeat", Math.round(v))
                     }
                     FieldRow {
                         visible: win.timing !== 0
-                        label: win.timing === 1 ? "Gap between sweeps" : "Extra gap per period"
-                        suffix: "ms"; decimals: 0; wheelStep: 50; minValue: 0; maxValue: 65535
+                        label: win.timing === 1 ? qsTr("Gap between sweeps") : qsTr("Extra gap per period")
+                        suffix: qsTr("ms"); decimals: 0; wheelStep: 50; minValue: 0; maxValue: 65535
                         value: win.d.gapMs
                         onEdited: siggen.setDraftValue("gapMs", Math.round(v))
                     }
                     // Continuous
                     FieldRow {
                         visible: win.timing === 0
-                        label: win.walking ? "Dwell per channel" : "Duration"
-                        caption: win.walking ? "0 = 2 s default" : "0 = play until stopped"
-                        suffix: "s"; decimals: 2; wheelStep: 0.5; minValue: 0; maxValue: 86400
+                        label: win.walking ? qsTr("Dwell per channel") : qsTr("Duration")
+                        caption: win.walking ? qsTr("0 = 2 s default") : qsTr("0 = play until stopped")
+                        suffix: qsTr("s"); decimals: 2; wheelStep: 0.5; minValue: 0; maxValue: 86400
                         value: win.d.durationMs / 1000
                         onEdited: siggen.setDraftValue("durationMs", Math.round(v * 1000))
                     }
@@ -513,24 +518,24 @@ AppWindow {
                 Column {
                     width: parent.width
                     spacing: 8
-                    SectionLabel { text: "OPTIONS" }
+                    SectionLabel { text: qsTr("OPTIONS") }
                     OptionRow {
-                        title: "Bypass output EQ (RAW)"
-                        caption: "Skips crossover and PEQ on the selected outputs. Trim, master volume, mute and delay still apply."
+                        title: qsTr("Bypass output EQ (RAW)")
+                        caption: qsTr("Skips crossover and PEQ on the selected outputs. Trim, master volume, mute and delay still apply.")
                         checked: (win.d.flags & 1) !== 0
                         onToggled: on ? rawDialog.open() : siggen.setFlag(1, false)
                     }
                     OptionRow {
                         visible: win.d.type === 2 || win.d.type === 3
-                        title: "Decorrelate channels"
-                        caption: "Independent noise per output instead of one copied signal."
+                        title: qsTr("Decorrelate channels")
+                        caption: qsTr("Independent noise per output instead of one copied signal.")
                         checked: (win.d.flags & 2) !== 0
                         onToggled: siggen.setFlag(2, on)
                     }
                     OptionRow {
-                        title: "Walk outputs one at a time"
-                        caption: win.d.type === 14 ? "Channel ID always walks: each output plays its channel number as counted blips."
-                                                   : "Plays the selected outputs sequentially instead of together."
+                        title: qsTr("Walk outputs one at a time")
+                        caption: win.d.type === 14 ? qsTr("Channel ID always walks: each output plays its channel number as counted blips.")
+                                                   : qsTr("Plays the selected outputs sequentially instead of together.")
                         enabled: win.d.type !== 14
                         checked: win.walking
                         onToggled: siggen.setFlag(4, on)
@@ -562,7 +567,7 @@ AppWindow {
                 color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9)
                 text: siggen.running ? win.stateNames[siggen.state] + " · " + win.typeName(siggen.signalType)
                     : win.blocker !== "" && bridge.connected && siggen.supported ? win.blocker
-                    : "Ready · " + win.typeName(win.d.type)
+                    : qsTr("Ready · %1").arg(win.typeName(win.d.type))
             }
             Text {
                 width: parent.width
@@ -573,17 +578,18 @@ AppWindow {
                     if (siggen.running) {
                         var parts = [win.fmtTime(siggen.elapsedMs)]
                         if (siggen.currentFreq > 0)
-                            parts.push(siggen.currentFreq >= 1000 ? (siggen.currentFreq / 1000).toFixed(2) + " kHz" : siggen.currentFreq.toFixed(0) + " Hz")
-                        if (siggen.cyclesDone > 0) parts.push("cycle " + siggen.cyclesDone)
+                            parts.push(siggen.currentFreq >= 1000 ? qsTr("%1 kHz").arg((siggen.currentFreq / 1000).toFixed(2)) : qsTr("%1 Hz").arg(siggen.currentFreq.toFixed(0)))
+                        if (siggen.cyclesDone > 0) parts.push(qsTr("cycle %1").arg(siggen.cyclesDone))
                         if (siggen.activeChannel >= 0) parts.push(win.outputName(siggen.activeChannel))
-                        parts.push("edits apply live")
+                        parts.push(qsTr("edits apply live"))
                         return parts.join(" · ")
                     }
-                    if (siggen.stopReason === 2) return "Finished after " + win.fmtTime(siggen.elapsedMs)
-                    if (siggen.stopReason === 1) return "Stopped"
-                    if (siggen.stopReason === 3) return "Stopped by preset load"
+                    if (siggen.stopReason === 2) return qsTr("Finished after %1").arg(win.fmtTime(siggen.elapsedMs))
+                    if (siggen.stopReason === 1) return qsTr("Stopped")
+                    if (siggen.stopReason === 3) return qsTr("Stopped by preset load")
                     var n = win.popcount(win.d.channelMask)
-                    return n + (n === 1 ? " output" : " outputs") + " · peak " + win.d.levelDb.toFixed(1) + " dBFS"
+                    return n === 1 ? qsTr("%1 output · peak %2 dBFS").arg(n).arg(win.d.levelDb.toFixed(1))
+                                  : qsTr("%1 outputs · peak %2 dBFS").arg(n).arg(win.d.levelDb.toFixed(1))
                 }
             }
         }
@@ -606,11 +612,11 @@ AppWindow {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     focusRadius: 10
-                    Accessible.name: "Stop immediately, no fade"
+                    Accessible.name: qsTr("Stop immediately, no fade")
                     onActivated: siggen.stopNow()
                     ToolTip.visible: containsMouse
                     ToolTip.delay: 600
-                    ToolTip.text: "Stop immediately, no fade"
+                    ToolTip.text: qsTr("Stop immediately, no fade")
                 }
             }
             // Start / Stop
@@ -627,7 +633,7 @@ AppWindow {
                     anchors.centerIn: parent
                     spacing: 6
                     Icon { name: siggen.running ? "stop" : "play"; size: 13; color: isMacOS ? (siggen.running || parent.parent.canStart ? "white" : MacColors.tertiaryLabel) : "white"; anchors.verticalCenter: parent.verticalCenter }
-                    Text { text: siggen.running ? "Stop" : "Start"; font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? (siggen.running || parent.parent.canStart ? "white" : MacColors.tertiaryLabel) : "white"; anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: siggen.running ? qsTr("Stop") : qsTr("Start"); font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? (siggen.running || parent.parent.canStart ? "white" : MacColors.tertiaryLabel) : "white"; anchors.verticalCenter: parent.verticalCenter }
                 }
                 ClickArea {
                     id: mainMouse
@@ -636,7 +642,7 @@ AppWindow {
                     enabled: siggen.running || parent.canStart
                     cursorShape: Qt.PointingHandCursor
                     focusRadius: 10
-                    Accessible.name: siggen.running ? "Stop" : "Start"
+                    Accessible.name: siggen.running ? qsTr("Stop") : qsTr("Start")
                     Accessible.description: parent.canStart || siggen.running ? "" : win.blocker
                     onActivated: win.startOrStop()
                 }
@@ -652,11 +658,11 @@ AppWindow {
         id: rawDialog
         icon: "warning"
         iconTint: "#ff9f0a"
-        title: "Bypass the Output EQ?"
-        message: "The signal skips each selected output's crossover and PEQ. A full-range signal can damage a tweeter or other driver that relies on its crossover for protection."
+        title: qsTr("Bypass the Output EQ?")
+        message: qsTr("The signal skips each selected output's crossover and PEQ. A full-range signal can damage a tweeter or other driver that relies on its crossover for protection.")
         buttons: [
-            { key: "cancel", text: "Cancel" },
-            { key: "bypass", text: "Bypass", role: "destructive" }
+            { key: "cancel", text: qsTr("Cancel") },
+            { key: "bypass", text: qsTr("Bypass"), role: "destructive" }
         ]
         onChosen: if (key === "bypass") siggen.setFlag(1, true)
     }
@@ -665,8 +671,8 @@ AppWindow {
         id: rejectedDialog
         icon: "warning"
         iconTint: "#ff9f0a"
-        title: "Signal Refused"
-        message: "The device declined the signal configuration."
-        buttons: [{ key: "ok", text: "OK", role: "primary" }]
+        title: qsTr("Signal Refused")
+        message: qsTr("The device declined the signal configuration.")
+        buttons: [{ key: "ok", text: qsTr("OK"), role: "primary" }]
     }
 }

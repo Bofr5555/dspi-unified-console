@@ -17,8 +17,8 @@ Rectangle {
         x: 20
         anchors.verticalCenter: parent.verticalCenter
         spacing: 1
-        Text { text: "Unsaved changes"; font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? MacColors.secondaryLabel : "white" }
-        Text { visible: bar.message === ""; text: "Saving writes these settings to the device's flash"; font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
+        Text { text: qsTr("Unsaved changes"); font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? MacColors.secondaryLabel : "white" }
+        Text { visible: bar.message === ""; text: qsTr("Saving writes these settings to the device's flash"); font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
         // -- WP QD1 --
         Text { objectName: "saveBarReason"; visible: bar.message !== ""; width: bar.width - 220; elide: Text.ElideRight; text: bar.message; font.pixelSize: 11; color: "#ff9f0a" }
     }
@@ -60,7 +60,7 @@ Rectangle {
         anchors.rightMargin: 16
         anchors.verticalCenter: parent.verticalCenter
         spacing: 8
-        BarButton { visible: bar.canRevert; text: "Revert"; onClicked: bar.revert() }
-        BarButton { text: "Save"; primary: true; onClicked: bar.save() }
+        BarButton { visible: bar.canRevert; text: qsTr("Revert"); onClicked: bar.revert() }
+        BarButton { text: qsTr("Save"); primary: true; onClicked: bar.save() }
     }
 }
