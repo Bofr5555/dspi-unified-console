@@ -185,7 +185,9 @@ for s in "${steps[@]}"; do
       # may still cache the old core's paths.
       $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-capi -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target && cmake --build /work/build-desktop-qt6-capi"
       # -- WP QD40 -- and the .ts is current
-      $RUN "$TSCHECK" ;;
+      $RUN "$TSCHECK"
+      # -- WP LIC1 -- and the packages' Rust crates notice is current
+      $RUN "python3 apps/desktop/packaging/licences/gen_rust_notices.py --check" ;;
     qt-ts)
       # -- WP QD40 -- only the .ts check (the qt step runs it too)
       $RUN "$TSCHECK" ;;

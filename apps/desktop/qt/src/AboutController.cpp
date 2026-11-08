@@ -1,6 +1,7 @@
 #include "AboutController.h"
 #include "Registrar.h"
 
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -78,5 +79,32 @@ void AboutController::load(const QByteArray &json) {
         const QJsonObject o = v.toObject();
         addRow(&m_credits, field(o, "name"), field(o, "what"), field(o, "url"));
     }
+
+    // -- WP LIC1 --
+    const QJsonObject licence = about.value(QLatin1String("licence")).toObject();
+    m_licenceTitle = field(licence, "title");
+    m_licenceSpdx = field(licence, "spdx");
+    m_licenceCopyright.clear();
+    for (const QJsonValue &v : licence.value(QLatin1String("copyright")).toArray())
+        if (!v.toString().isEmpty()) m_licenceCopyright.append(v.toString());
+    m_licenceStatement = field(licence, "statement");
+    m_termsTitle = field(licence, "terms_title");
+    m_termsNote = field(licence, "terms_note");
+    m_terms.clear();
+    for (const QJsonValue &v : licence.value(QLatin1String("terms")).toArray()) {
+        const QJsonObject o = v.toObject();
+        addRow(&m_terms, field(o, "title"), field(o, "text"), QString());
+    }
+    m_licenceFreedoms = field(licence, "freedoms");
+    m_licenceNotices = field(licence, "notices");
     emit changed();
+}
+
+QString AboutController::licenceText(const QString &file) const {
+    static const QStringList known{ QStringLiteral("GPL-3.0.txt"), QStringLiteral("LGPL-3.0.txt"),
+                                    QStringLiteral("rust-crates.txt") };
+    if (!known.contains(file)) return {};
+    QFile f(QStringLiteral(":/licences/") + file);
+    if (!f.open(QIODevice::ReadOnly)) return {};
+    return QString::fromUtf8(f.readAll());
 }

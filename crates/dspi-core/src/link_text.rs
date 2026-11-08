@@ -822,6 +822,13 @@ mod tests_wp_cg15 {
         SOURCES.iter().any(|s| s.contains(what))
     }
 
+    // -- WP LIC1 -- NOTICE.md wraps its paragraphs, so its statement is compared flat.
+    static NOTICE_FLAT: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| flat(SOURCES[0]));
+
+    fn flat(text: &str) -> String {
+        text.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
     fn table() -> Value {
         serde_json::from_str(&about_json()).unwrap()
     }
@@ -941,7 +948,20 @@ mod tests_wp_cg15 {
             "desktop",
         ];
         let mut all = Vec::new();
-        strings(&table(), &mut all);
+        // -- WP LIC1 -- `licence` is the owner's own statement and terms (NOTICE.md),
+        // which every client must show: the one legal text the table holds. Its words
+        // are held equal to NOTICE.md's by dspi_session::about's tests.
+        let mut doc = table();
+        let licence = doc.as_object_mut().unwrap().remove("licence");
+        let statement = licence
+            .as_ref()
+            .and_then(|l| l["statement"].as_str())
+            .unwrap();
+        assert!(
+            NOTICE_FLAT.contains(&flat(statement)),
+            "NOTICE.md does not say: {statement}"
+        );
+        strings(&doc, &mut all);
         assert!(all.len() > 20);
         for s in all {
             let lower = s.to_lowercase();

@@ -24,6 +24,22 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>GNU General Public License, version 3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Qt: GNU Lesser General Public License, version 3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rust crates: licences and notices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The crates the core links</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>DSPi Firmware and Console are free, open-source software developed in spare time. Contributions of any kind - code, feedback, funding, or otherwise - are always immensely appreciated.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -4635,6 +4651,17 @@ Click for help.</source>
     </message>
     <message>
         <source>Connect a DSPi to see its notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>LicenceTextPopup</name>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This text is missing from this build.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

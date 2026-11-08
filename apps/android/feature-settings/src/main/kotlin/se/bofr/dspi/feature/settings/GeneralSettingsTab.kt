@@ -49,10 +49,13 @@ private const val LICENSES = "licenses"
 @Composable
 fun GeneralSettingsTab(onNavigate: (String) -> Unit = {}) {
     var page by rememberSaveable { mutableStateOf<String?>(null) }
+    // -- WP LIC1 -- the Licences screen shows the table's licence notice and terms
+    val readAbout = LocalAboutJson.current
+    val licence = remember(readAbout) { runCatching { parseAbout(readAbout()).licence }.getOrDefault(AboutLicence()) }
     BackHandler(enabled = page != null) { page = if (page == LICENSES) null else LICENSES }
     when (val p = page) {
         null -> AboutPage(onOpenLicenses = { page = LICENSES }, onNavigate = onNavigate)
-        LICENSES -> LicensesView(onOpenText = { page = it.asset })
+        LICENSES -> LicensesView(licence, onOpenText = { page = it.asset })
         else -> {
             val text = (THIRD_PARTY.mapNotNull { it.text } + GPL3).firstOrNull { it.asset == p }
             if (text == null) page = LICENSES else LicenseTextView(text, onBack = { page = LICENSES })
@@ -142,7 +145,11 @@ private fun AboutPage(onOpenLicenses: () -> Unit, onNavigate: (String) -> Unit) 
         }
         item {
             SettingsSection("Licence") {
-                SettingRow("Licences", "GPL-3.0 with additional terms · third-party notices", onClick = onOpenLicenses)
+                SettingRow(
+                    "Licences",
+                    "${about.licence.spdx ?: "GPL-3.0-or-later"} with additional terms · third-party notices",
+                    onClick = onOpenLicenses
+                )
                 SettingRow("Source code", APP_SOURCE_URL, onClick = { runCatching { uri.openUri(APP_SOURCE_URL) } })
                 SettingRow(
                     "Privacy policy",

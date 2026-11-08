@@ -46,5 +46,36 @@
     { "id": "pico_sdk", "name": "pico-sdk", "what": "Third-party code in the DSPi firmware's source tree" },
     { "id": "pico_extras", "name": "pico-extras", "what": "Third-party code in the DSPi firmware's source tree" },
     { "id": "rust_crates", "name": "Third-party Rust crates", "what": "The crates listed in Cargo.lock" }
-  ]
+  ],
+  "licence": {
+    "id": "gpl3_or_later_section7",
+    "title": "Licence",
+    "spdx": "GPL-3.0-or-later",
+    "copyright": [
+      "The unified console, the core merge, the Android console and the Rust Link client: Copyright (C) 2026 Bofr5555 (https://github.com/Bofr5555).",
+      "DSPi, the DSPi firmware, the DSPi Consoles and DSPi-Terminal: Copyright (C) Weeb Labs (https://github.com/WeebLabs)."
+    ],
+    "statement": "DSPi Console (the Qt console for Linux, Windows and macOS, the Android console, the Swift console for macOS and iOS, the DSPi Terminal, the web console and the hub) is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version, with the additional terms below. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for details.",
+    "terms_title": "Additional terms (GNU GPL v3, section 7)",
+    "terms_note": "These terms apply to the material Bofr5555 added to this work (section 7, paragraph 2). They do not restrict the rights Weeb Labs' GPL-3.0 code carries on its own.",
+    "terms": [
+      {
+        "id": "attributions",
+        "title": "Attributions (7b)",
+        "text": "Keep the author attributions — \"Made with love by Weeb Labs\", \"Unified console by Bofr5555\" — and the licence notice and licences view in each client's About, or in an equivalent place a user can reach from the client."
+      },
+      {
+        "id": "modified_versions",
+        "title": "Modified versions are marked (7c)",
+        "text": "A distributed modified version must be clearly marked as different from the original. It must not be presented as one of these clients or as an official Weeb Labs app: it uses its own application ID, its own app name and its own icon."
+      },
+      {
+        "id": "no_trademark_rights",
+        "title": "No trademark rights (7e)",
+        "text": "This licence grants no rights under trademark law to the names \"DSPi\" and \"DSPi Console\" (Weeb Labs) or to the clients' icons and store graphics."
+      }
+    ],
+    "freedoms": "Everything else the GPL-3.0 allows stays allowed: you may study, change, rebuild and share the clients, including for a fee, as long as you pass the same freedoms on and publish your source.",
+    "notices": "The third-party parts and their licences are listed in NOTICE.md in the source code, and in each package's notices."
+  }
 }

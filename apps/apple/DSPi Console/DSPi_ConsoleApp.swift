@@ -1050,9 +1050,12 @@ struct GeneralSettingsTab: View {
                         Text("Version \(Self.appVersion)")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        Text("Made with love by Weeb Labs")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        // -- WP LIC1 -- the attributions, from the core's About table
+                        ForEach(AboutTable.shared?.creditLines.map(\.text) ?? ["Made with love by Weeb Labs"], id: \.self) { line in
+                            Text(line)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
                 .padding(.vertical, 8)
@@ -1076,6 +1079,11 @@ struct GeneralSettingsTab: View {
                             icon: "cup.and.saucer.fill", color: Color(red: 0.443, green: 0.620, blue: 0.737))
             } header: {
                 Label("Links & Support", systemImage: "heart.text.square")
+            }
+
+            // -- WP LIC1 -- the licence notice and its additional terms
+            if let licence = AboutTable.shared?.licence {
+                AboutLicenceSections(licence: licence)
             }
         }
         .formStyle(.grouped)
@@ -12033,8 +12041,12 @@ struct DSPi_ConsoleApp: App {
             // it shows our sign-off.
             CommandGroup(replacing: .appInfo) {
                 Button("About DSPi Console") {
+                    // -- WP LIC1 -- the attributions and the licence, from the core's About table
+                    let table = AboutTable.shared
+                    let lines = (table?.creditLines.map(\.text) ?? ["Made with love by Weeb Labs"])
+                        + (table.map { ["\($0.licence.spdx), with additional terms: Settings > About"] } ?? [])
                     let credits = NSAttributedString(
-                        string: "Made with love by Weeb Labs",
+                        string: lines.joined(separator: "\n"),
                         attributes: [
                             .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
                             .foregroundColor: NSColor.secondaryLabelColor,

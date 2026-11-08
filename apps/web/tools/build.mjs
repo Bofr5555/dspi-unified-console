@@ -108,6 +108,16 @@ if (args.has("--unit")) {
   console.log("built dist/");
 }
 
+// -- WP LIC1 --
+/** The project's licence statement and its section 7 terms, from assets/about.json, as paragraphs. */
+function projectLicence() {
+  const l = JSON.parse(readFileSync(join(root, "../../assets/about.json"), "utf8")).licence;
+  const out = [...l.copyright, "", l.statement, "", l.terms_title, "", l.terms_note, ""];
+  l.terms.forEach((t, i) => out.push(`${i + 1}. ${t.title}. ${t.text}`, ""));
+  out.push(l.freedoms);
+  return out;
+}
+
 // -- WP WB7 --
 /** dist/THIRD-PARTY-NOTICES.txt: the page's JavaScript (Preact) and the core's Rust crates. */
 function notices() {
@@ -116,10 +126,13 @@ function notices() {
   const licence = readFileSync(join(preactDir, "LICENSE"), "utf8").trim();
   const rust = readFileSync(join(root, "notices/rust-crates.txt"), "utf8");
   return [
-    "DSPi web console: third-party notices",
+    "DSPi web console: licence and third-party notices",
     "",
-    "The console itself is GNU GPL, version 3 or later (About links its source).",
-    "It bundles the parts below, each under its own licence.",
+    // -- WP LIC1 -- the console's own licence and its additional terms, as About shows them
+    ...projectLicence(),
+    "",
+    "=".repeat(72),
+    "The console bundles the parts below, each under its own licence.",
     "",
     "=".repeat(72),
     `preact ${preact.version} — ${preact.license}`,

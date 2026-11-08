@@ -12,12 +12,18 @@ Every package carries DSPi Console's licence and, where it bundles libraries, th
 
 | Package | Where | What |
 |---|---|---|
-| AppImage | `usr/share/doc/dspi-console/` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `Qt/` (Qt 6.8's licence files and `THIRD-PARTY.txt`), `KWindowSystem/`, `ICU/`, `AppImage-runtime/` (the runtime's, libfuse's LGPL-2.1, squashfuse's), `BUNDLED.txt`, `bundled/<Ubuntu package>/copyright` |
+| AppImage | `usr/share/doc/dspi-console/` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `TERMS.txt`, `rust-crates.txt`, `Qt/` (Qt 6.8's licence files and `THIRD-PARTY.txt`), `KWindowSystem/`, `ICU/`, `AppImage-runtime/` (the runtime's, libfuse's LGPL-2.1, squashfuse's, and Alpine's musl, zlib, zstd and mimalloc it links), `BUNDLED.txt`, `bundled/<Ubuntu package>/copyright` |
 | `-linux-x86_64.tar.gz` | top level | the AppImage's `NOTICE.txt` and `LICENSES/` |
-| Windows `.zip` and installer | next to `DSPiConsole.exe` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `Qt/`, `BUNDLED.txt`, `bundled/<Fedora package>/` (MinGW Qt's, GCC's runtime with its exception, the other DLLs') |
-| macOS `.dmg` | `DSPi Console.app/Contents/Resources/` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `Qt/`, `BUNDLED.txt` |
-| `.deb` | `/usr/share/doc/dspi-console/copyright` | the notice; the GPL is Debian's `/usr/share/common-licenses/GPL-3` |
-| `.rpm`, a plain `cmake --install` | `/usr/share/licenses/dspi-console/` | `GPL-3.0.txt`, `NOTICE.txt` |
+| Windows `.zip` and installer | next to `DSPiConsole.exe` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `TERMS.txt`, `rust-crates.txt`, `Qt/`, `BUNDLED.txt`, `bundled/<Fedora package>/` (MinGW Qt's, GCC's runtime with its exception, the other DLLs') |
+| macOS `.dmg` | `DSPi Console.app/Contents/Resources/` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `TERMS.txt`, `rust-crates.txt`, `Qt/`, `BUNDLED.txt` |
+| `.deb` | `/usr/share/doc/dspi-console/` | `copyright` (the notice with the additional terms; the GPL is Debian's `/usr/share/common-licenses/GPL-3`), `rust-crates.txt` |
+| `.rpm`, a plain `cmake --install` | `/usr/share/licenses/dspi-console/` | `GPL-3.0.txt`, `NOTICE.txt` (with the additional terms), `TERMS.txt`, `rust-crates.txt` |
+
+<!-- WP LIC1 --> Every notice states the additional terms under GPL-3.0 section 7 (the project's `NOTICE.md`),
+verbatim from `licences/TERMS.txt`, which a test in `crates/dspi-session` (about.rs) holds equal to the words every
+client's About shows (`assets/about.json`). `licences/rust-crates.txt` lists the Rust crates in the core
+(`dspi_capi`) with their licence texts, for Linux, Windows and macOS together; `licences/gen_rust_notices.py`
+writes it and `ci/check.sh --step qt` fails when it is stale.
 
 `licences/stage.sh` lays these out for the AppImage (`linux/build-ubuntu.sh`), Windows
 (`windows/build-windows.sh`) and macOS (`macos/build-macos.sh`). It lists every library in the package
@@ -62,6 +68,13 @@ and writes `MANIFEST.tsv` (packages, file, URL, SHA-256, how it was checked):
   (`scripts/common/install-dependencies.sh`) downloads and pins by SHA-256: libfuse 3.15.0 (LGPL-2.1, linked
   in statically, with the patch in the tree's `patches/libfuse/`; its release signature checked against its
   maintainer's key) and squashfuse 0.5.2.
+  <!-- WP LIC1 --> And the Alpine 3.21 packages the runtime links statically, as
+  `licences/appimage-runtime-<commit>/ALPINE.txt` pins them (musl 1.2.5-r11, zlib 1.3.2-r1, zstd 1.5.6-r2,
+  mimalloc2 2.1.7-r0 for fedfad5, read from the log of the GitHub Actions job that built the released
+  runtime): each package's aports directory (APKBUILD and patches) by git at the pinned commit, and the
+  upstream archive its APKBUILD names, against the APKBUILD's SHA-512 (Alpine's distfiles mirror if upstream
+  is gone; musl's release signature against musl's key). The APKBUILD is read only in a container with no
+  network.
 - `fedora/`: the Fedora source RPMs of the Windows DLLs (`BUNDLED.txt`: MinGW Qt, GCC's runtime, GLib,
   ...), by `dnf download --srpm`, signatures checked against Fedora's key.
 

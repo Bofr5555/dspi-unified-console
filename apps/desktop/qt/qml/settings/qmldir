@@ -13,3 +13,4 @@ SettingsPinRow 1.0 SettingsPinRow.qml
 SettingsSegmentedRow 1.0 SettingsSegmentedRow.qml
 SettingsStatusLine 1.0 SettingsStatusLine.qml
 SettingsNameRow 1.0 SettingsNameRow.qml
+LicenceTextPopup 1.0 LicenceTextPopup.qml

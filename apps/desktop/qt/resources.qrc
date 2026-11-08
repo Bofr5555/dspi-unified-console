@@ -146,6 +146,11 @@
         <file>qml/settings/SettingsSwitchRow.qml</file>
         <file>qml/settings/SettingsValueRow.qml</file>
         <file>qml/settings/pages/AboutPage.qml</file>
+        <!-- WP LIC1: the licence texts the About page shows -->
+        <file>qml/settings/LicenceTextPopup.qml</file>
+        <file alias="licences/GPL-3.0.txt">../packaging/licences/GPL-3.0.txt</file>
+        <file alias="licences/LGPL-3.0.txt">../packaging/licences/LGPL-3.0.txt</file>
+        <file alias="licences/rust-crates.txt">../packaging/licences/rust-crates.txt</file>
         <file>qml/settings/pages/AdvancedPage.qml</file>
         <!-- WP QD28 -->
         <file>qml/settings/pages/CoreVoltagePage.qml</file>

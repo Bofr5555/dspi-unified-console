@@ -168,11 +168,15 @@ The imports, with history (each upstream's paths rewritten with
 
 ## Licensing
 
-**Nothing here is final.** The repository is private. The owner's own code is
-`GPL-3.0-or-later` (owner, 2026-11-08): `LICENSE` holds the GPL version 3 text,
-as usual for "or later", and the workspace's licence field says
-`GPL-3.0-or-later`. Final terms for Weeb Labs' parts are open between the owner
-and Weeb Labs. This table says what is known; it is not legal text.
+**The project's licence statement is [`NOTICE.md`](NOTICE.md)** (WP LIC1, pending
+the owner's approval of its wording): `GPL-3.0-or-later` (owner, 2026-11-08) with
+three additional terms under GPL version 3 section 7 (attributions, modified
+versions marked, no trademark rights), which apply to the material Bofr5555
+added and to every client. `LICENSE` holds the GPL version 3 text, as usual for
+"or later", and the workspace's licence field says `GPL-3.0-or-later`. Every
+client shows the notice and the terms in its About. Final terms for Weeb Labs'
+parts are open between the owner and Weeb Labs. This table says what is known;
+it is not legal text.
 
 | Component | What applies now | Open point |
 |---|---|---|
@@ -183,10 +187,12 @@ and Weeb Labs. This table says what is known; it is not legal text.
 | `tests/fixtures/link/` | MIT, Weeb Labs | `LICENSE.DSPi-Link` next to the files. |
 | Vendored firmware headers (`crates/dspi-proto/firmware/`) and bundled firmware images (`apps/desktop/qt/firmware/*.uf2`) | GPL-3.0 (DSPi firmware) | |
 | AutoEQ database (`apps/desktop/qt/autoeq/`, `crates/dspi-session/autoeq/`) | MIT (AutoEq measurements, jaakkopasanen/AutoEq), as recorded | Upstream terms to be read (client plan LC1). |
+| Parts ported from Weeb Labs' DSPi Console for macOS (`apps/apple/`, and the UI, behaviour and texts other clients port from it) | GPL-3.0: its `LICENSE` says GPL-3.0, without "or later" | Open, for the owner and Weeb Labs: how that fits the project's GPL-3.0-or-later statement. |
 
 A GPL core conflicts with App Store terms, which matters for the iOS build. The
 owner's direction is in `docs/core-merge/PLAN-CLIENTS.md`, section 0.4. The
-inventory is `docs/licensing/IOS-INVENTORY.md`; third-party notices are in `NOTICE.md`.
+inventory is `docs/licensing/IOS-INVENTORY.md`; the licence statement and the third-party
+notices are in `NOTICE.md`.
 
 "DSPi" and "DSPi Console" are Weeb Labs' names. This repository grants no
 rights to them.

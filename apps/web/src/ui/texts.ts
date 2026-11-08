@@ -32,6 +32,19 @@ export interface AboutData {
   links_note: string;
   links: { id: string; title: string; detail: string; url: string }[];
   credits: { id: string; name: string; what: string; url?: string }[];
+  // -- WP LIC1 -- the project's licence and its GPL v3 section 7 terms
+  licence: {
+    id: string;
+    title: string;
+    spdx: string;
+    copyright: string[];
+    statement: string;
+    terms_title: string;
+    terms_note: string;
+    terms: { id: string; title: string; text: string }[];
+    freedoms: string;
+    notices: string;
+  };
 }
 
 export const aboutData = about as AboutData;

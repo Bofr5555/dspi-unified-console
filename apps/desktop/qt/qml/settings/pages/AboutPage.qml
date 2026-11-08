@@ -86,6 +86,54 @@ SettingsPage {
         }
     }
 
+    // -- WP LIC1 -- The project's licence and its section 7 terms, as the table words
+    // them (assets/about.json `licence`). The terms require them here, with the credit
+    // lines above and the licence texts below.
+    SettingsSection {
+        objectName: "aboutLicence"
+        visible: aboutInfo.licenceStatement !== ""
+        title: aboutInfo.licenceTitle
+        note: {
+            var lines = []
+            for (var i = 0; i < aboutInfo.licenceCopyright.length; i++) lines.push(aboutInfo.licenceCopyright[i])
+            lines.push(aboutInfo.licenceStatement)
+            return lines.join("\n\n")
+        }
+        Repeater {
+            model: [
+                { title: qsTr("GNU General Public License, version 3"), detail: aboutInfo.licenceSpdx, file: "GPL-3.0.txt" },
+                { title: qsTr("Qt: GNU Lesser General Public License, version 3"), detail: "LGPL-3.0-only", file: "LGPL-3.0.txt" },
+                { title: qsTr("Rust crates: licences and notices"), detail: qsTr("The crates the core links"), file: "rust-crates.txt" }
+            ]
+            SettingsRow {
+                objectName: "licenceTextRow"
+                title: modelData.title
+                detail: modelData.detail
+                verbatim: true
+                clickable: true
+                onActivated: { licenceText.heading = modelData.title; licenceText.file = modelData.file; licenceText.open() }
+            }
+        }
+        footnote: aboutInfo.licenceNotices
+    }
+    SettingsSection {
+        objectName: "aboutTerms"
+        visible: aboutInfo.terms.length > 0
+        title: aboutInfo.termsTitle
+        note: aboutInfo.termsNote
+        Repeater {
+            model: aboutInfo.terms
+            SettingsRow {
+                objectName: "licenceTermRow"
+                title: (index + 1) + ". " + modelData.title
+                detail: modelData.detail
+                verbatim: true
+            }
+        }
+        footnote: aboutInfo.licenceFreedoms
+    }
+    LicenceTextPopup { id: licenceText }
+
     // Not in about.json: the wording of this paragraph is pending with the owner
     Text {
         width: parent.width

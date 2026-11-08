@@ -4,6 +4,7 @@
 // user volume at 0 dB, a silent meter capture, an analyser with frames. The
 // lost-link banner is in link.spec.ts (WB4b), on the core's real Link phases.
 
+import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
@@ -105,6 +106,25 @@ test("About: Weeb Labs' links are marked as theirs, from assets/about.json", asy
   await expect(about.getByRole("link", { name: "Discord" })).toHaveAttribute("rel", /noopener/);
   await about.getByRole("button", { name: "Close" }).click();
   await expect(about).toHaveCount(0);
+});
+
+// -- WP LIC1 --
+test("About: the licence notice and its three section 7 terms, from assets/about.json", async ({ page }) => {
+  const licence = JSON.parse(readFileSync(new URL("../../../../assets/about.json", import.meta.url), "utf8")).licence;
+  await page.goto("/");
+  await page.getByRole("button", { name: "About" }).click();
+  const about = page.getByRole("dialog", { name: "About" });
+  await expect(about.getByRole("heading", { name: licence.title, exact: true })).toBeVisible();
+  await expect(about.getByText(licence.statement)).toBeVisible();
+  await expect(about.getByRole("heading", { name: licence.terms_title })).toBeVisible();
+  const terms = about.locator("ol.terms li");
+  await expect(terms).toHaveCount(3);
+  for (const [i, t] of licence.terms.entries()) {
+    await expect(terms.nth(i)).toHaveText(`${t.title}. ${t.text}`);
+  }
+  await expect(about.getByText(licence.freedoms)).toBeVisible();
+  await expect(about.getByText("Made with love by Weeb Labs", { exact: true })).toBeVisible();
+  await expect(about.getByRole("link", { name: "Third-party notices" })).toHaveAttribute("href", "THIRD-PARTY-NOTICES.txt");
 });
 
 test("embedded: two consoles on one page, each with its user, roles and sessions", async ({ page }) => {

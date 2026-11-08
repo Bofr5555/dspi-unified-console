@@ -8,7 +8,11 @@
 //! fails if one is added.
 //!
 //! **The wording is a draft** until the owner approves it (`draft` in the file). No
-//! legal text belongs here: licences are in `NOTICE.md`.
+//! legal text belongs here but the project's own licence statement (`licence`, WP
+//! LIC1): the owner's GPL-3.0-or-later notice and section 7 terms, which every client
+//! shows in its About. The same words are in `NOTICE.md`, `apps/android/NOTICE.md`
+//! and the packages' `TERMS.txt`; a test holds them equal. Third-party licences stay
+//! in `NOTICE.md`.
 //!
 //! Sources: makers and credits from `NOTICE.md` and `docs/licensing/`, links from the
 //! Swift console's About (`DSPi_ConsoleApp.swift:1042-1050`), their details from
@@ -38,6 +42,49 @@ pub struct About {
     pub links: Vec<Link>,
     /// Who and what else the work includes.
     pub credits: Vec<Credit>,
+    // -- WP LIC1 --
+    /// The project's licence statement and its additional terms.
+    pub licence: Licence,
+}
+
+// -- WP LIC1 --
+/// The project's licence: GPL-3.0-or-later with additional terms under its section 7.
+/// Every client shows all of it where it shows licences.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Licence {
+    /// Stable key of the wording.
+    pub id: String,
+    /// The section's heading.
+    pub title: String,
+    /// The SPDX expression.
+    pub spdx: String,
+    /// Who holds the copyright in what, a line each.
+    pub copyright: Vec<String>,
+    /// The licence notice.
+    pub statement: String,
+    /// The heading of [`terms`](Self::terms).
+    pub terms_title: String,
+    /// What the terms apply to.
+    pub terms_note: String,
+    /// The additional terms, in order.
+    pub terms: Vec<Term>,
+    /// What stays allowed.
+    pub freedoms: String,
+    /// Where the third-party licences are.
+    pub notices: String,
+}
+
+/// One additional term.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Term {
+    /// Stable key.
+    pub id: String,
+    /// Its name and the paragraph of section 7 it uses.
+    pub title: String,
+    /// The term.
+    pub text: String,
 }
 
 /// One line under the app's name.
@@ -131,5 +178,75 @@ mod tests_wp_cg29 {
              This console is made by Bofr5555, not Weeb Labs."
         );
         assert!(!table.links.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod tests_wp_lic1 {
+    use super::*;
+
+    /// `text` with runs of whitespace as single spaces and Markdown's emphasis removed,
+    /// so a paragraph reads the same however a file wraps it.
+    fn flat(text: &str) -> String {
+        text.replace("**", "")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// Every copy of the statement and the terms, where users and packagers read them.
+    const COPIES: &[(&str, &str)] = &[
+        ("NOTICE.md", include_str!("../../../NOTICE.md")),
+        (
+            "apps/android/NOTICE.md",
+            include_str!("../../../apps/android/NOTICE.md"),
+        ),
+        (
+            "apps/desktop/packaging/licences/TERMS.txt",
+            include_str!("../../../apps/desktop/packaging/licences/TERMS.txt"),
+        ),
+    ];
+
+    #[test]
+    fn wp_lic1_the_licence_is_gpl3_or_later_with_three_terms() {
+        let l = about().unwrap().licence;
+        assert_eq!(l.spdx, "GPL-3.0-or-later");
+        assert!(
+            l.statement
+                .contains("either version 3 of the License, or (at your option) any later version")
+        );
+        let ids: Vec<_> = l.terms.iter().map(|t| t.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["attributions", "modified_versions", "no_trademark_rights"]
+        );
+        // The attributions the first term names are the lines every About shows
+        let table = about().unwrap();
+        for line in &table.credit_lines {
+            assert!(
+                l.terms[0].text.contains(&format!("\"{}\"", line.text)),
+                "{} is not in the terms",
+                line.text
+            );
+        }
+    }
+
+    /// One statement for the whole project: each copy holds the table's words.
+    #[test]
+    fn wp_lic1_every_copy_says_the_same() {
+        let l = about().unwrap().licence;
+        let mut parts = vec![
+            l.statement.clone(),
+            l.terms_note.clone(),
+            l.freedoms.clone(),
+        ];
+        parts.extend(l.terms.iter().map(|t| format!("{}. {}", t.title, t.text)));
+        parts.extend(l.copyright.iter().cloned());
+        for (path, text) in COPIES {
+            let text = flat(text);
+            for part in &parts {
+                assert!(text.contains(&flat(part)), "{path} does not say: {part}");
+            }
+        }
     }
 }

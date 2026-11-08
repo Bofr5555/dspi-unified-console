@@ -1,0 +1,21 @@
+# -- WP LIC1 -- The Alpine 3.21 packages AppImage's type2-runtime fedfad5 links statically
+# into its released runtime-x86_64 (944632 bytes, SHA-256
+# 617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46, the "continuous"
+# release's asset, uploaded 2026-10-19T20:37:12Z).
+# How determined: the log of the job that built it, GitHub Actions run 39320578745, job
+# 118293253809 ("build (x86_64, ubuntu-24.04)", 2026-10-19T20:35Z, image
+# alpine:3.21@sha256:ce64758a109eb420d874a118f87920e625e12d3634e03b4a5573fd9f6e5d3507):
+# `apk add` installed musl-dev 1.2.5-r11, zlib-static 1.3.2-r1, zstd-static 1.5.6-r2 and
+# mimalloc2-dev 2.1.7-r0, and the runtime was linked with
+# `-static -static-pie ... -lzstd -lz -lfuse3 -lmimalloc` (musl's libc.a from musl-dev).
+# The log states the binary's size, 944632 bytes. aports commit: the 3.21-stable head at the
+# build (2026-10-19T07:48:46Z), whose APKBUILDs carry exactly these pkgver and pkgrel.
+# (mimalloc is linked though the runtime's own notice does not name it.)
+# release-sources.sh fetches each package's aports directory at that commit and the
+# upstream archive its APKBUILD names, checked against the APKBUILD's SHA-512;
+# update-licences.sh takes the licence files below from that archive.
+# package	version	aports path	aports commit	upstream archive	licence files
+musl	1.2.5-r11	main/musl	8f01bd5af18e4f66b7df105bdd7cab10de2ee1fa	musl-1.2.5.tar.gz	COPYRIGHT
+zlib	1.3.2-r1	main/zlib	8f01bd5af18e4f66b7df105bdd7cab10de2ee1fa	zlib-1.3.2.tar.gz	LICENSE
+zstd	1.5.6-r2	main/zstd	8f01bd5af18e4f66b7df105bdd7cab10de2ee1fa	zstd-1.5.6.tar.gz	LICENSE COPYING
+mimalloc2	2.1.7-r0	community/mimalloc2	8f01bd5af18e4f66b7df105bdd7cab10de2ee1fa	mimalloc-2.1.7.tar.gz	LICENSE
