@@ -142,6 +142,10 @@ SettingsPage {
                     maximumLength: 16
                     selectByMouse: true
                     clip: true
+                    activeFocusOnTab: true   // -- WP QD22 --
+                    Accessible.name: "Confirmation word"
+                    Accessible.description: "Type " + (vreg.pending.word || "") + " to confirm."
+
                     font.pixelSize: 13
                     color: isMacOS ? MacColors.label : "white"
                     selectionColor: isMacOS ? MacColors.selectedControl : "#0a7cff"

@@ -53,6 +53,7 @@ PopoverWindow {
             anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             checked: sr.checked
+            Accessible.name: sr.text
             onToggled: sr.toggled(checked)
         }
     }
@@ -86,7 +87,8 @@ PopoverWindow {
             size: 11
             color: isMacOS ? (arMouse.containsMouse ? "white" : MacColors.opacity(MacColors.label, 0.5)) : arMouse.containsMouse ? "white" : Qt.rgba(1, 1, 1, 0.4)
         }
-        MouseArea { id: arMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: ar.clicked() }
+        ClickArea { id: arMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; focusRadius: ar.radius + 2
+                    Accessible.role: ar.chevron ? Accessible.ButtonMenu : Accessible.Button; Accessible.name: ar.text; onActivated: ar.clicked() }
     }
 
     // Label, slider, value: label and value fixed so rows line up
@@ -106,6 +108,8 @@ PopoverWindow {
         Text { id: slLabel; width: 70; text: slr.text; font.pixelSize: 12; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9); anchors.verticalCenter: parent.verticalCenter }
         StyledSlider {
             id: slider
+            Accessible.name: slr.text
+            Accessible.description: slr.valueText
             anchors.left: slLabel.right
             anchors.right: slValue.left
             anchors.rightMargin: 6
@@ -205,12 +209,16 @@ PopoverWindow {
                                     color: isMacOS ? (chip.on ? MacColors.label : MacColors.secondaryLabel) : Qt.rgba(1, 1, 1, chip.on ? 0.95 : 0.7)
                                 }
                             }
-                            MouseArea {
+                            ClickArea {
                                 id: chipMouse
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: pop.app.rtaToggle(modelData)
+                                Accessible.role: Accessible.CheckBox
+                                Accessible.name: bridge.channelName(chip.app) + " spectrum"
+                                Accessible.checkable: true
+                                Accessible.checked: chip.on
+                                onActivated: pop.app.rtaToggle(modelData)
                             }
                         }
                     }
@@ -231,7 +239,8 @@ PopoverWindow {
                         text: "Clear"
                         font.pixelSize: 11
                         color: isMacOS ? MacColors.accent : clearMouse.containsMouse ? "white" : "#3a96ff"
-                        MouseArea { id: clearMouse; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pop.app.rtaClear() }
+                        ClickArea { id: clearMouse; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                    Accessible.name: "Clear the spectrum channels"; onActivated: pop.app.rtaClear() }
                     }
                 }
             }
@@ -299,7 +308,8 @@ PopoverWindow {
                     Icon { name: "chev-left"; size: 12; color: isMacOS ? MacColors.accent : backMouse.containsMouse ? "white" : "#3a96ff"; anchors.verticalCenter: parent.verticalCenter }
                     Text { text: "Back"; font.pixelSize: 12; color: isMacOS ? MacColors.accent : backMouse.containsMouse ? "white" : "#3a96ff"; anchors.verticalCenter: parent.verticalCenter }
                 }
-                MouseArea { id: backMouse; anchors.fill: backRow; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pop.page = 0 }
+                ClickArea { id: backMouse; anchors.fill: backRow; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            Accessible.name: "Back"; onActivated: pop.page = 0 }
             }
             Divider {}
 
@@ -316,13 +326,14 @@ PopoverWindow {
                     text: "Reset"
                     font.pixelSize: 11
                     color: isMacOS ? MacColors.accent : resetMouse.containsMouse ? "white" : "#3a96ff"
-                    MouseArea {
+                    ClickArea {
                         id: resetMouse
                         anchors.fill: parent
                         anchors.margins: -4
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: {
+                        Accessible.name: "Reset the scale"
+                        onActivated: {
                             pop.app.graphMinFreq = 15
                             pop.app.graphMaxFreq = 20000
                             pop.app.graphDbRange = 50
@@ -346,6 +357,7 @@ PopoverWindow {
                     StyledComboBox {
                         id: minBox
                         width: 80
+                        Accessible.name: "Lowest frequency"
                         leftPadding: 0
                         rightPadding: 0
                         readonly property var values: [10, 15, 20, 50, 100]
@@ -358,6 +370,7 @@ PopoverWindow {
                         width: 80
                         leftPadding: 0
                         rightPadding: 0
+                        Accessible.name: "Highest frequency"
                         readonly property var values: [5000, 10000, 20000]
                         model: ["5 kHz", "10 kHz", "20 kHz"]
                         currentIndex: pop.app ? values.indexOf(pop.app.graphMaxFreq) : 2

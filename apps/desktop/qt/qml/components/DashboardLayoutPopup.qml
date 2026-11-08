@@ -110,12 +110,16 @@ Popup {
                             color: tile.fg
                         }
                     }
-                    MouseArea {
+                    ClickArea {
                         id: tileMouse
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: root.dashboardCardsPerRow = index
+                        Accessible.role: Accessible.RadioButton
+                        Accessible.name: tile.ToolTip.text
+                        Accessible.checkable: true
+                        Accessible.checked: tile.on
+                        onActivated: root.dashboardCardsPerRow = index
                     }
                     ToolTip.text: index === 0 ? "Fit cards to the window width" : index + (index === 1 ? " card" : " cards") + " per row"
                     ToolTip.visible: tileMouse.containsMouse

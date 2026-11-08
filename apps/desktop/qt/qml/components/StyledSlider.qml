@@ -31,5 +31,7 @@ Slider {
         radius: 9
         color: isMacOS ? (sl.enabled ? Qt.rgba(0.6, 0.6, 0.6, 1) : Qt.rgba(0.408, 0.408, 0.408, 1)) : sl.pressed ? "#e8e8e8" : "white"
         border.color: Qt.rgba(0, 0, 0, 0.25)
+        // -- WP QD22 -- Give the slider an Accessible.name
+        FocusRing { radius: 11; shown: sl.visualFocus }
     }
 }

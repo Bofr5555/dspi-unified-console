@@ -82,13 +82,17 @@ Item {
             font.pixelSize: 11
             color: isMacOS ? (parent.active ? MacColors.label : MacColors.opacity(MacColors.secondaryLabel, parent.dim ? 0.4 : 1.0)) : parent.active ? "white" : Qt.rgba(1, 1, 1, parent.dim ? 0.3 : 0.75)
         }
-        MouseArea {
+        ClickArea {
             id: ma
             anchors.fill: parent
             hoverEnabled: true
             enabled: !parent.dim
             cursorShape: Qt.PointingHandCursor
-            onClicked: parent.clicked()
+            focusRadius: 7
+            Accessible.name: lbl.text
+            Accessible.checkable: parent.active
+            Accessible.checked: parent.active
+            onActivated: parent.clicked()
         }
     }
 
@@ -143,12 +147,15 @@ Item {
             color: seg.selected ? MacColors.label : MacColors.secondaryLabel
             opacity: seg.dim ? 0.4 : 1
         }
-        MouseArea {
+        ClickArea {
             id: segMouse
             anchors.fill: parent
             hoverEnabled: true
             enabled: !seg.dim
-            onClicked: seg.clicked()
+            Accessible.name: segText.text
+            Accessible.checkable: seg.selected
+            Accessible.checked: seg.selected
+            onActivated: seg.clicked()
         }
     }
 

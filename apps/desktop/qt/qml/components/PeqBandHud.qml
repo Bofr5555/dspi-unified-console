@@ -117,13 +117,15 @@ Rectangle {
                 }
                 Icon { visible: !hud.linkwitz; name: "chev-down"; size: 9; color: isMacOS ? Qt.rgba(1, 1, 1, 0.42) : Qt.rgba(1, 1, 1, 0.5); anchors.verticalCenter: parent.verticalCenter }
             }
-            MouseArea {
+            ClickArea {
                 id: shapeMouse
                 anchors.fill: parent
                 hoverEnabled: true
                 enabled: !hud.linkwitz
                 cursorShape: Qt.PointingHandCursor
-                onClicked: { shapeChooser.reset(); hud.shapePage = true }
+                Accessible.role: Accessible.ButtonMenu
+                Accessible.name: "Change the filter shape"
+                onActivated: { shapeChooser.reset(); hud.shapePage = true }
             }
             ToolTip.visible: shapeMouse.containsMouse
             ToolTip.delay: 600
@@ -141,12 +143,16 @@ Rectangle {
                 size: 11
                 color: isMacOS ? (hud.bypass ? Qt.rgba(1, 1, 1, 0.4) : hud.tint) : hud.bypass ? Qt.rgba(1, 1, 1, 0.35) : hud.tint
             }
-            MouseArea {
+            ClickArea {
                 id: powerMouse
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: hud.editor.toggleBypass(hud.band)
+                Accessible.role: Accessible.CheckBox
+                Accessible.name: "Band active"
+                Accessible.checkable: true
+                Accessible.checked: !hud.bypass
+                onActivated: hud.editor.toggleBypass(hud.band)
             }
             ToolTip.visible: powerMouse.containsMouse
             ToolTip.delay: 600
@@ -200,6 +206,7 @@ Rectangle {
                 fontSize: 10
                 plainWheel: true
                 suffix: parent.khz ? "kHz" : "Hz"
+                accessibleName: "Frequency"
                 decimals: parent.khz ? 2 : 1
                 wheelStep: parent.khz ? 0.05 : 1
                 minValue: parent.khz ? 1 : 10
@@ -222,6 +229,7 @@ Rectangle {
                 fontSize: 10
                 plainWheel: true
                 suffix: "dB"
+                accessibleName: "Gain"
                 decimals: 1
                 wheelStep: 0.5
                 minValue: -30
@@ -244,6 +252,7 @@ Rectangle {
                 fontSize: 10
                 plainWheel: true
                 suffix: "Q"
+                accessibleName: "Q"
                 decimals: 2
                 wheelStep: 0.05
                 minValue: 0.1

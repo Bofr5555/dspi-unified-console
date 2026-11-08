@@ -25,12 +25,17 @@ Item {
         }
         Text { text: box.text; font.pixelSize: 12; color: isMacOS ? MacColors.label : "white"; anchors.verticalCenter: parent.verticalCenter }
     }
-    MouseArea {
+    ClickArea {
         id: mouse
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: box.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-        onClicked: box.toggled(!box.checked)
+        Accessible.role: Accessible.CheckBox
+        Accessible.name: box.text
+        Accessible.description: box.tip
+        Accessible.checkable: true
+        Accessible.checked: box.checked
+        onActivated: box.toggled(!box.checked)
     }
     ToolTip.text: box.tip
     ToolTip.visible: box.tip !== "" && mouse.containsMouse

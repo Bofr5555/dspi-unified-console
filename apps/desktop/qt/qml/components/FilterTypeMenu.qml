@@ -143,6 +143,12 @@ Popup {
                 cursorShape: Qt.PointingHandCursor
                 onEntered: menu.current = entryIndex
                 onClicked: menu.pick(entry.types[entry.types.length - 1])
+                // -- WP QD22 -- The menu keeps the keys (Up/Down, Enter); a row is its item
+                Accessible.role: Accessible.MenuItem
+                Accessible.name: entry.text
+                Accessible.checkable: true
+                Accessible.checked: row.selected
+                Accessible.onPressAction: menu.pick(entry.types[entry.types.length - 1])
             }
             Text {
                 id: check
@@ -193,6 +199,11 @@ Popup {
                             cursorShape: Qt.PointingHandCursor
                             onEntered: menu.current = entryIndex
                             onClicked: menu.pick(parent.type)
+                            Accessible.role: Accessible.MenuItem
+                            Accessible.name: entry.text + " " + modelData + (modelData.indexOf("°") < 0 ? " dB" : "")
+                            Accessible.checkable: true
+                            Accessible.checked: parent.isCurrent
+                            Accessible.onPressAction: menu.pick(parent.type)
                         }
                     }
                 }

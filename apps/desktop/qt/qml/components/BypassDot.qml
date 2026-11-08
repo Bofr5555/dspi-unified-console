@@ -12,6 +12,8 @@ Item {
     property color dotColor: "#3a96dd"
 
     signal toggled()
+    // -- WP QD22 -- What a screen reader calls it; FilterRow names the band
+    property string accessibleName: "Band active"
 
     // macOS: the native BypassCheckbox (Components.swift:2391) - 12 pt, and an
     // Off band keeps a faint hollow ring rather than no dot
@@ -27,13 +29,18 @@ Item {
         Behavior on scale { enabled: isMacOS; NumberAnimation { duration: 120; easing.type: Easing.InOutQuad } }
     }
 
-    MouseArea {
+    ClickArea {
         id: mouse
         anchors.fill: parent
         enabled: dotRoot.active
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: dotRoot.toggled()
+        focusRadius: width / 2 + 2
+        Accessible.role: Accessible.CheckBox
+        Accessible.name: dotRoot.accessibleName
+        Accessible.checkable: true
+        Accessible.checked: !dotRoot.bypassed
+        onActivated: dotRoot.toggled()
         ToolTip.visible: containsMouse
         ToolTip.delay: 600
         ToolTip.text: dotRoot.bypassed ? "Enable band" : "Bypass band"

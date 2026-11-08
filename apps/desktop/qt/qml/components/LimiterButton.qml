@@ -37,15 +37,23 @@ Rectangle {
         color: isMacOS ? (!btn.enabled_ ? MacColors.secondaryLabel : btn.limiting ? MacColors.orange : MacColors.accent) : !btn.enabled_ ? Qt.rgba(1, 1, 1, 0.4) : btn.limiting ? "#ff9f0a" : "#3a96dd"
     }
 
-    MouseArea {
+    ClickArea {
         id: hover
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         acceptedButtons: Qt.LeftButton | Qt.RightButton
+        focusRadius: btn.radius + 2
+        // -- WP QD22 -- Space switches it, the menu key opens its settings
+        Accessible.role: Accessible.CheckBox
+        Accessible.name: "Output limiter"
+        Accessible.description: btn.limiting ? "Reducing the level now" : ""
+        Accessible.checkable: true
+        Accessible.checked: btn.enabled_
+        onActivated: if (bridge.writable) bridge.setLimiterEnabled(btn.outputIndex, !btn.enabled_)   // -- WP QD6 --
+        Keys.onMenuPressed: btn.openSettings()
         onClicked: {
             if (mouse.button === Qt.RightButton) btn.openSettings()
-            else if (bridge.writable) bridge.setLimiterEnabled(btn.outputIndex, !btn.enabled_)   // -- WP QD6 --
         }
         ToolTip.visible: containsMouse && !popup.visible
         ToolTip.delay: 600
@@ -84,7 +92,8 @@ Rectangle {
             Text { text: ob.text; font.pixelSize: 12; color: isMacOS ? MacColors.label : "white"; anchors.verticalCenter: parent.verticalCenter }
             Icon { visible: ob.chevron; name: "chev-down"; size: 11; color: Qt.rgba(1, 1, 1, 0.6); anchors.verticalCenter: parent.verticalCenter }
         }
-        MouseArea { id: obMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: ob.clicked() }
+        ClickArea { id: obMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; focusRadius: ob.radius + 2
+                    Accessible.role: ob.chevron ? Accessible.ButtonMenu : Accessible.Button; Accessible.name: ob.text; onActivated: ob.clicked() }
     }
 
     Popup {
@@ -160,6 +169,7 @@ Rectangle {
                     }
                 }
                 ToggleSwitch {
+                    Accessible.name: "Limiter"
                     checked: btn.enabled_
                     onToggled: bridge.setLimiterEnabled(btn.outputIndex, checked)
                 }
@@ -184,6 +194,7 @@ Rectangle {
                 }
                 StyledSlider {
                     width: parent.width
+                    Accessible.name: "Threshold"
                     from: -30; to: 0; stepSize: 0.5
                     value: btn.threshold
                     onMoved: { btn.threshold = value; thresholdLive.push(value) }
@@ -209,6 +220,7 @@ Rectangle {
                 }
                 StyledSlider {
                     width: parent.width
+                    Accessible.name: "Release"
                     from: 10; to: 1000; stepSize: 10
                     value: btn.release
                     onMoved: { btn.release = value; releaseLive.push(value) }
@@ -258,12 +270,16 @@ Rectangle {
                                     font.weight: parent.isCurrent ? Font.DemiBold : Font.Normal
                                     color: isMacOS ? MacColors.label : parent.isCurrent ? "white" : Qt.rgba(1, 1, 1, 0.75)
                                 }
-                                MouseArea {
+                                ClickArea {
                                     id: segMouse
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: bridge.setLimiterLinkGroup(btn.outputIndex, index)
+                                    Accessible.role: Accessible.RadioButton
+                                    Accessible.name: "Link group " + modelData
+                                    Accessible.checkable: true
+                                    Accessible.checked: parent.isCurrent
+                                    onActivated: bridge.setLimiterLinkGroup(btn.outputIndex, index)
                                 }
                             }
                         }

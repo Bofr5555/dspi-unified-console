@@ -288,6 +288,8 @@ ApplicationWindow {
     }
 
     readonly property bool textFocused: activeFocusItem !== null && activeFocusItem.selectedText !== undefined
+    // -- WP QD22 -- The keyboard focus stays in view
+    FocusFollower { window: root }
 
     // App id of the open channel page, or -1 on the dashboard
     readonly property int openChannelId: selectedOutput >= 0 ? selectedOutput + 2 : selectedChannel
@@ -465,12 +467,15 @@ ApplicationWindow {
                                 color: isMacOS ? (bannerMouse.pressed ? MacColors.opacity(MacColors.control, 1.6) : MacColors.control) : bannerMouse.pressed ? Qt.rgba(1, 1, 1, 0.13) : bannerMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
                                 border.color: isMacOS ? "transparent" : Qt.rgba(1, 1, 1, 0.18)
                                 Text { id: label; anchors.centerIn: parent; text: modelData; font.pixelSize: 12; color: isMacOS ? MacColors.label : "white" }
-                                MouseArea {
+                                ClickArea {
                                     id: bannerMouse
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: index === 0 ? root.openToolWindow("firmware") : (versionBanner.hiddenThisLaunch = true)
+                                    focusRadius: parent.radius + 2
+                                    Accessible.name: modelData
+                                    Accessible.description: parent.ToolTip.text
+                                    onActivated: index === 0 ? root.openToolWindow("firmware") : (versionBanner.hiddenThisLaunch = true)
                                 }
                                 ToolTip.text: index === 1 ? "Hide this warning until DSPi Console is next started" : ""
                                 ToolTip.visible: index === 1 && bannerMouse.containsMouse
@@ -584,6 +589,7 @@ ApplicationWindow {
         z: 800
         hoverEnabled: true
         cursorShape: Qt.SplitHCursor
+        Accessible.ignored: true   // -- WP QD22 -- a drag for the sidebar's width, not a control
         onPositionChanged: {
             if (!pressed) return
             var x = mapToItem(root.contentItem, mouse.x, 0).x

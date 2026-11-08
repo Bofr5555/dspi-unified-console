@@ -31,6 +31,7 @@ SettingsRow {
         width: isMacOS ? Math.max(92, implicitWidth) : row.menuWidth
         model: row.options.map(function(o) { return o.text })
         currentIndex: row.ctx ? row.ctx.optionIndex(row.options, row.pin) : -1
+        Accessible.name: row.title
         onActivated: if (row.options[index].value !== row.pin) row.chosen(row.options[index].value)
     }
 }

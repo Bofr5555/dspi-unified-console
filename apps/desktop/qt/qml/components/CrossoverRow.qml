@@ -77,6 +77,7 @@ Rectangle {
         }
 
         StyledComboBox {
+            Accessible.name: "Crossover " + (bandIndex + 1) + " family"
             width: 140; height: 30
             anchors.verticalCenter: parent.verticalCenter
             font.pixelSize: 12
@@ -93,6 +94,7 @@ Rectangle {
         }
 
         StyledComboBox {
+            Accessible.name: "Crossover " + (bandIndex + 1) + " type"
             visible: isActive
             width: 110; height: 30
             anchors.verticalCenter: parent.verticalCenter
@@ -103,6 +105,7 @@ Rectangle {
         }
 
         StyledComboBox {
+            Accessible.name: "Crossover " + (bandIndex + 1) + " slope"
             id: slopeCombo
             visible: isActive
             width: 110; height: 30

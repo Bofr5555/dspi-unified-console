@@ -99,6 +99,7 @@ Popup {
             color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.65)
         }
         TextField {
+            Accessible.name: "PIN"
             id: pinField
             objectName: "pairingPin"
             width: parent.width

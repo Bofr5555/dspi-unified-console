@@ -39,6 +39,8 @@ SettingsPage {
         property alias text: input.text
         property alias input: input
         property string placeholder: ""
+        // -- WP QD22 -- What a screen reader calls the field: the row's title
+        property string accessibleName: placeholder
         property var validator: null
         signal committed(string text)
         signal accepted()
@@ -57,6 +59,8 @@ SettingsPage {
             verticalAlignment: Text.AlignVCenter
             selectByMouse: true
             clip: true
+            activeFocusOnTab: true
+            Accessible.name: box.accessibleName
             font.pixelSize: 13
             color: page.primary
             selectionColor: isMacOS ? MacColors.selectedControl : "#0a7cff"
@@ -119,7 +123,7 @@ SettingsPage {
                 objectName: "networkingName"
                 text: hub.hubName
                 placeholder: "Hub name"
-                onCommitted: if (!hub.setHubName(text)) input.text = hub.hubName
+                onCommitted: function (text) { if (!hub.setHubName(text)) input.text = hub.hubName }
                 Connections {
                     target: hub
                     function onStateChanged() { if (!nameField.input.activeFocus) nameField.text = hub.hubName }
@@ -146,12 +150,13 @@ SettingsPage {
         SettingsRow {
             title: "Port"
             Field {
+                accessibleName: "Port"
                 objectName: "networkingPort"
                 width: 80
                 enabled: !hub.running
                 text: hub.port > 0 ? String(hub.port) : ""
                 validator: IntValidator { bottom: 1; top: 65535 }
-                onCommitted: if (!hub.setPort(parseInt(text))) input.text = hub.port > 0 ? String(hub.port) : ""
+                onCommitted: function (text) { if (!hub.setPort(parseInt(text))) input.text = hub.port > 0 ? String(hub.port) : "" }
             }
         }
     }
@@ -235,6 +240,7 @@ SettingsPage {
                 Row {
                     spacing: 10
                     StyledComboBox {
+                        Accessible.name: modelData.name + " role"
                         anchors.verticalCenter: parent.verticalCenter
                         enabled: hub.running
                         model: [ "Viewer", "Control", "Admin" ]
@@ -252,12 +258,14 @@ SettingsPage {
                             size: 16
                             color: removeMouse.containsMouse ? "#ff6961" : page.secondary
                         }
-                        MouseArea {
+                        ClickArea {
                             id: removeMouse
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: hub.revoke(modelData.cid)
+                            focusRadius: 13
+                            Accessible.name: parent.ToolTip.text
+                            onActivated: hub.revoke(modelData.cid)
                         }
                         ToolTip.visible: removeMouse.containsMouse
                         ToolTip.delay: 600
@@ -323,6 +331,7 @@ SettingsPage {
                 Field {
                     id: addressField
                     objectName: "networkingAddress"
+                    accessibleName: "Hub address"
                     width: 170
                     placeholder: "192.168.1.20"
                     onAccepted: connectButton.clicked()

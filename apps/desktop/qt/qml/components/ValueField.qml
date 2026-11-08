@@ -33,6 +33,8 @@ Row {
     property real wheelStep: Math.pow(10, -decimals)
 
     signal valueEdited(real newValue)
+    // -- WP QD22 -- What a screen reader calls the field (the row's label)
+    property string accessibleName: ""
 
     // Start typing in the field, its value selected
     function beginEdit() { textField.forceActiveFocus() }
@@ -49,6 +51,8 @@ Row {
         horizontalAlignment: Text.AlignRight
         verticalAlignment: Text.AlignVCenter
         selectByMouse: true
+        Accessible.name: valueFieldRoot.accessibleName
+        Accessible.description: valueFieldRoot.suffix
         hoverEnabled: true
         leftPadding: 6
         rightPadding: 6

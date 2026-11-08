@@ -108,12 +108,17 @@ AppWindow {
                     font.letterSpacing: 0.4
                     color: isMacOS ? (solo.isOn ? "white" : MacColors.secondaryLabel) : solo.isOn ? "white" : Qt.rgba(1, 1, 1, 0.7)
                 }
-                MouseArea {
+                ClickArea {
                     id: soloMouse
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: bridge.setSubharmSolo(!solo.isOn)
+                    focusRadius: 8
+                    Accessible.role: Accessible.CheckBox
+                    Accessible.name: "Solo"
+                    Accessible.checkable: true
+                    Accessible.checked: solo.isOn
+                    onActivated: bridge.setSubharmSolo(!solo.isOn)
                     ToolTip.visible: containsMouse
                     ToolTip.delay: 500
                     ToolTip.text: solo.isOn
@@ -483,6 +488,7 @@ AppWindow {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
                         checked: win.params[win.pLink] > 0
+                        Accessible.name: "Link output pairs"
                         onToggled: bridge.setSubharmParam(win.pLink, checked ? 1 : 0)
                     }
                     MouseArea {
