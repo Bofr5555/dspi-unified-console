@@ -2,6 +2,7 @@
 # WP LK3: the emulated ESP32 DSPi-Link bridge rig. See README.md.
 #
 #   rig.sh build                      firmware (if missing), tunnel, our probe
+#                                     (ESP_RIG_RELEASE=1: the probe optimised)
 #   rig.sh build-before               our probe against the pre-LK2 core (4cdefa24)
 #   rig.sh provision BAUD             boot once, save the bridge's UART rate (detection off)
 #                                     into its flash: fw/flash-BAUD.bin
@@ -70,7 +71,10 @@ cargo_in() { # cargo in the build image, target dir $1, source $2
 
 probe_bin() { # build the probe test in $1 (target) from $2 (source), print its path on the host
   local out
-  out=$(cargo_in "$1" "$2" 'cargo test -p dspi-core --features link --test wp_lk3_rig --no-run 2>&1') ||
+  # -- WP LK4 -- ESP_RIG_RELEASE=1: the optimised build, as the apps ship it
+  local profile=""
+  [ "${ESP_RIG_RELEASE:-0}" = 1 ] && profile=--release
+  out=$(cargo_in "$1" "$2" "cargo test $profile -p dspi-core --features link --test wp_lk3_rig --no-run 2>&1") ||
     { echo "$out" >&2; die "probe build failed"; }
   local bin
   bin=$(sed -n 's/.*Executable tests\/wp_lk3_rig.rs (\/target\/\(.*\))$/\1/p' <<< "$out" | tail -1)

@@ -483,6 +483,8 @@ enum Step {
 /// session is dead; the new one replaces it at once.
 const PROBE_AFTER: Duration = Duration::from_secs(12);
 const PROBE_EVERY: Duration = Duration::from_secs(2);
+/// How long a select that lost its session waits for the next one.
+const SELECT_AGAIN_WITHIN: Duration = Duration::from_secs(10);
 /// After a failed try, the bound device's probe is completed again this much
 /// later.
 const COMPLETE_AGAIN: Duration = Duration::from_secs(2);
@@ -669,7 +671,15 @@ impl DspiCore {
         // poll during it, and an old side of the same handle unsubscribes
         // its slot when dropped
         drop(_replaced);
-        let opened = self.open_bound(handle, serial, false);
+        let mut opened = self.open_bound(handle, serial.clone(), false);
+        // -- WP LK4 -- the session was replaced meanwhile (the hub closed it on
+        // a lossy link, or a probe dial found it dead): bind once more on the
+        // new one
+        if matches!(opened, Err(DspiError::Disconnected))
+            && let Some(handle) = self.ready_again(&serial)
+        {
+            opened = self.open_bound(handle, serial, false);
+        }
         if opened.is_err() {
             {
                 let mut inner = self.lock();
@@ -1097,6 +1107,37 @@ impl DspiCore {
     }
 
     // -- WP LK4 --
+    /// After a select lost its session: the device's handle once the session
+    /// is ready again (within [`SELECT_AGAIN_WITHIN`]), if the select is still
+    /// wanted; `None` at once for a session that ended or a caller-driven one
+    /// (it cannot wait here).
+    fn ready_again(&self, serial: &str) -> Option<u8> {
+        if guard(&self.link_control).as_ref().is_none_or(|c| c.pumped) {
+            return None;
+        }
+        let start = Instant::now();
+        while start.elapsed() < SELECT_AGAIN_WITHIN {
+            {
+                let inner = self.lock();
+                let s = inner.link.as_ref()?;
+                let wanted = s
+                    .bound
+                    .as_ref()
+                    .is_some_and(|b| b.opening && b.serial == serial);
+                if s.ended || s.cancel.load(Ordering::SeqCst) || !wanted {
+                    return None;
+                }
+                if let Some(c) = s.client.as_ref().filter(|c| c.is_ready())
+                    && let Some(d) = c.devices().into_iter().find(|d| d.serial == serial)
+                {
+                    return u8::try_from(d.handle).ok();
+                }
+            }
+            dspi_transport::clock::sleep(Duration::from_millis(50));
+        }
+        None
+    }
+
     /// Clear the meter path if it is `side`'s (a failed open set it early).
     fn drop_meter_path_of(&self, side: &Arc<LinkSide>) {
         let ours = self
@@ -1279,7 +1320,9 @@ impl DspiCore {
             let Some(side) = conn.side.clone().filter(|_| conn.pending_probe.is_some()) else {
                 return;
             };
-            let Some(quick) = conn.pending_probe.take() else {
+            // Left in place until the results go in: meanwhile `fetch_all`
+            // still knows the per-item reads are this completion's
+            let Some(quick) = conn.pending_probe.clone() else {
                 return;
             };
             (
@@ -1290,18 +1333,7 @@ impl DspiCore {
                 inner.state.clone(),
             )
         };
-        let put_back = |quick: Box<dspi_session::probe::Quick>| {
-            if let Some(conn) = self
-                .lock()
-                .conn
-                .as_mut()
-                .filter(|c| c.generation == generation)
-            {
-                conn.pending_probe = Some(quick);
-            }
-        };
         let Some(mut t) = side.background() else {
-            put_back(quick);
             return;
         };
         // The bind took the hub's word for the identity: the device's own
@@ -1314,7 +1346,6 @@ impl DspiCore {
             Err(TransportError::Disconnected) => return,
             Err(e) => {
                 log::info!("completing the Link device's probe failed, trying again: {e}");
-                put_back(quick);
                 return;
             }
         };
@@ -1344,8 +1375,10 @@ impl DspiCore {
                 log::warn!(
                     "the Link device's completed probe does not fit its image; kept as it was"
                 );
+                conn.pending_probe = None;
                 return;
             }
+            conn.pending_probe = None;
             conn.echo.set_bulk_source(ext.bulk_source());
             conn.ext = ext;
             crate::info::apply_names(conn, &names, answers);

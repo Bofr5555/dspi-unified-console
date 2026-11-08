@@ -547,3 +547,50 @@ fn wp_lk4_the_listed_identity_is_the_platform_reply_the_device_gives() {
         assert!(listed_identity(&odd).is_none(), "{odd:?}");
     }
 }
+
+#[test]
+fn wp_lk4_fetch_all_leaves_the_per_item_reads_to_a_completion_in_progress() {
+    let hub = bridge_with(4);
+    let core = DspiCore::new();
+    let slow = Arc::new(SlowCommands::default());
+    connect_slow(&core, &hub, &slow);
+    slow.delay_ms.store(40, Ordering::SeqCst);
+    select(&core).unwrap();
+    // The background completion has started (it reads GET_PLATFORM first)
+    wait_until("the completion", || ran(&hub, op::REQ_GET_PLATFORM) == 1);
+    let started = Instant::now();
+    core.fetch_all().unwrap();
+    assert!(
+        started.elapsed() < Duration::from_millis(500),
+        "fetch_all read: {:?}",
+        started.elapsed()
+    );
+    core.ensure_probed();
+    assert_eq!(
+        ran(&hub, op::REQ_PRESET_GET_DIR),
+        1,
+        "the per-item reads once, by the completion"
+    );
+    core.link_close();
+}
+
+#[test]
+fn wp_lk4_a_select_whose_session_is_replaced_binds_on_the_new_one() {
+    let hub = bridge_with(4);
+    let core = DspiCore::new();
+    let slow = Arc::new(SlowCommands::default());
+    connect_slow(&core, &hub, &slow);
+    hub.hold_replies();
+    let opener = {
+        let core = Arc::clone(&core);
+        std::thread::spawn(move || select(&core))
+    };
+    std::thread::sleep(Duration::from_millis(300));
+    // The hub drops the session mid-select, then answers again
+    hub.drop_connections();
+    std::thread::sleep(Duration::from_millis(100));
+    hub.release_replies();
+    assert!(opener.join().unwrap().is_ok(), "bound on the new session");
+    assert_eq!(core.link_status().phase, LinkPhase::Bound);
+    core.link_close();
+}

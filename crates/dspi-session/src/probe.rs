@@ -320,6 +320,7 @@ pub fn probe_connect(
 
 /// What [`probe_quick`] read: enough to show the device and run its meters
 /// (the identity and the image), not yet its features.
+#[derive(Debug, Clone)]
 pub struct Quick {
     /// Complete when an earlier probe served ([`Quick::is_complete`]);
     /// otherwise provisional: the channel model, the identity and the
