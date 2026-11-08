@@ -8,8 +8,10 @@ package se.bofr.dspi.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -41,16 +43,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 
 /** The 9-pt secondary explanation under a control. */
 @Composable
@@ -67,6 +75,10 @@ fun Caption(text: String, modifier: Modifier = Modifier, color: Color = Color.Un
 /**
  * The macOS `.help(...)` tooltip, on touch: long-press the [content] to read it.
  * Nothing is wrapped when [help] is empty.
+ *
+ * WP AN20: TalkBack reads the help as a custom action ("Help: …", which also
+ * shows the tooltip) rather than through the tooltip's long-click node, which
+ * is only as large as the caption it wraps; the long-press stays for touch.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,11 +87,25 @@ fun HelpTip(help: String, modifier: Modifier = Modifier, content: @Composable ()
         Box(modifier) { content() }
         return
     }
+    val state = rememberTooltipState(isPersistent = true)
+    val scope = rememberCoroutineScope()
     TooltipBox(
         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
         tooltip = { PlainTooltip { Text(help) } },
-        state = rememberTooltipState(isPersistent = true),
-        modifier = modifier
+        state = state,
+        modifier =
+        modifier
+            .pointerInput(state) { detectTapGestures(onLongPress = { scope.launch { state.show() } }) }
+            .semantics(mergeDescendants = true) {
+                customActions =
+                    listOf(
+                        CustomAccessibilityAction("Help: $help") {
+                            scope.launch { state.show() }
+                            true
+                        }
+                    )
+            },
+        enableUserInput = false
     ) { content() }
 }
 
@@ -256,18 +282,30 @@ fun ChannelChips(
     label: (Int) -> String = { "${it + 1}" },
     below: (@Composable (Int, Boolean) -> Unit)? = null
 ) {
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        for (i in 0 until count) {
-            val on = isOn(i)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                HelpTip(names.getOrElse(i) { "" }) {
-                    ToolChip(label(i), on, enabled, Modifier.fillMaxWidth()) { onToggle(i) }
+    // -- WP AN20 -- as many chips per row as keep 48 dp each; the rest wrap
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val perRow = ((maxWidth + CHIP_GAP) / (CHIP_MIN + CHIP_GAP)).toInt().coerceIn(1, count.coerceAtLeast(1))
+        Column(verticalArrangement = Arrangement.spacedBy(CHIP_GAP)) {
+            for (row in (0 until count).chunked(perRow)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(CHIP_GAP)) {
+                    for (i in row) {
+                        val on = isOn(i)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            HelpTip(names.getOrElse(i) { "" }) {
+                                ToolChip(label(i), on, enabled, Modifier.fillMaxWidth()) { onToggle(i) }
+                            }
+                            below?.invoke(i, on)
+                        }
+                    }
+                    repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
                 }
-                below?.invoke(i, on)
             }
         }
     }
 }
+
+private val CHIP_GAP = 6.dp
+private val CHIP_MIN = 48.dp
 
 /** One chip (channel chips, tube shelf). */
 @Composable
