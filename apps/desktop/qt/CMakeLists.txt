@@ -108,6 +108,52 @@ set(DSPI_UPDATE_FEED_URL "" CACHE STRING "Release list the update check asks (Gi
 if(DSPI_UPDATE_CHECK)
     list(APPEND DSPI_APP_SOURCES src/AppUpdater.cpp)
 endif()
+# -- WP QD21a -- The QML in resources.qrc compiled to byte code at build time, so
+# the first start does not compile it (it took several seconds on Windows). The
+# sources stay in the resources: a unit that does not match the Qt it runs on is
+# compiled from them as before. Qt 6: qmlcachegen per file, as qt_add_qml_module
+# runs it, with no QML module; only byte code, as the engine would make itself.
+# Qt 5: Qt Quick Compiler. The file list is read from resources.qrc.
+option(DSPI_QML_PRECOMPILE "Compile the app's QML to byte code at build time" ON)
+if(DSPI_QML_PRECOMPILE AND QT_VERSION_MAJOR EQUAL 5)
+    find_package(Qt5QuickCompiler REQUIRED)
+    set(QTQUICK_COMPILER_RETAINED_RESOURCES resources.qrc)
+    qtquick_compiler_add_resources(_dspi_qml_cache resources.qrc)
+    list(REMOVE_ITEM DSPI_APP_SOURCES resources.qrc)
+    list(APPEND DSPI_APP_SOURCES ${_dspi_qml_cache})
+elseif(DSPI_QML_PRECOMPILE)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/resources.qrc)
+    file(READ ${CMAKE_CURRENT_SOURCE_DIR}/resources.qrc _dspi_qrc)
+    string(REGEX MATCHALL "<file( alias=\"[^\"]*\")?>[^<]*\\.(qml|js|mjs)</file>" _dspi_qrc_qml "${_dspi_qrc}")
+    set(_dspi_qml_dir ${CMAKE_CURRENT_BINARY_DIR}/.rcc/dspi-qmlcache)
+    set(_dspi_qml_paths)
+    foreach(_entry IN LISTS _dspi_qrc_qml)
+        string(REGEX REPLACE "^<file[^>]*>([^<]*)</file>$" "\\1" _file "${_entry}")
+        set(_alias ${_file})
+        if(_entry MATCHES "^<file alias=\"([^\"]+)\">")
+            set(_alias ${CMAKE_MATCH_1})
+        endif()
+        string(REGEX REPLACE "[./]" "_" _out "${_alias}")
+        add_custom_command(OUTPUT ${_dspi_qml_dir}/${_out}.cpp
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${_dspi_qml_dir}
+            COMMAND Qt6::qmlcachegen --only-bytecode --resource-path /${_alias}
+                    -o ${_dspi_qml_dir}/${_out}.cpp ${CMAKE_CURRENT_SOURCE_DIR}/${_file}
+            DEPENDS Qt6::qmlcachegen ${CMAKE_CURRENT_SOURCE_DIR}/${_file}
+            VERBATIM)
+        list(APPEND DSPI_APP_SOURCES ${_dspi_qml_dir}/${_out}.cpp)
+        list(APPEND _dspi_qml_paths /${_alias})
+    endforeach()
+    # The loader registers the units under their resource paths
+    add_custom_command(OUTPUT ${_dspi_qml_dir}/qmlcache_loader.cpp
+        COMMAND Qt6::qmlcachegen --resource-name qmlcache_dspi
+                -o ${_dspi_qml_dir}/qmlcache_loader.cpp ${_dspi_qml_paths}
+        DEPENDS Qt6::qmlcachegen ${CMAKE_CURRENT_SOURCE_DIR}/resources.qrc
+        VERBATIM)
+    list(APPEND DSPI_APP_SOURCES ${_dspi_qml_dir}/qmlcache_loader.cpp)
+    set_source_files_properties(${_dspi_qml_dir}/qmlcache_loader.cpp PROPERTIES SKIP_AUTOGEN ON)
+    list(LENGTH _dspi_qml_paths _n)
+    message(STATUS "QML precompiled: ${_n} files")
+endif()
 add_executable(DSPiConsole ${DSPI_APP_SOURCES})
 
 # The app with its offscreen test driver (ci/check.sh --step qt-offscreen).
