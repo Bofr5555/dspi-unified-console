@@ -663,7 +663,8 @@ struct CompactDelayField: View {
                 ScrollWheelHandler { delta in
                     if !isFocused {
                         // -- WP SWF5 -- whole-ms steps (upstream's setter rounded)
-                        delay = max(0, min(maxDelay, (delay + delta * 5).rounded()))
+                        // -- WP SWF7 -- on the whole-ms grid from a fractional start
+                        delay = max(0, min(maxDelay, ValueField.wholeStep(from: delay, by: delta * 5)))
                     }
                 }
             )

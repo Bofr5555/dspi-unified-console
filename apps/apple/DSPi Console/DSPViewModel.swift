@@ -3172,10 +3172,20 @@ class DSPViewModel: ObservableObject {
         )
     }
 
+    /// The Swift baseline.  Through the core the baseline is the core's, taken
+    /// where a save or load completes (-- WP SWF6 --); this one is then unused.
     func updateSavedSnapshot() {
-        // -- WP SWF6 -- Through the core, the baseline is the core's.
-        if unsavedChangesFromCore { coreMirror.capturePresetBaseline(); return }
         savedSnapshot = captureSnapshot()
+    }
+
+    // -- WP SWF7 --
+    /// Call before deciding on an unsaved-changes prompt (c70-N1): through the
+    /// core, an edit sent within the last ~100 ms reaches `corePresetChanges`
+    /// only with its echo, so drain it now and publish the list.  No-op
+    /// otherwise.  Main thread.
+    func settleUnsavedChanges() {
+        guard let source = coreMirror.attachedSource, let changes = source.settlePresetChanges() else { return }
+        coreMirror.showPresetChanges(changes, from: source)
     }
 
     /// True while the view model follows a core (a device connected through
@@ -3228,6 +3238,7 @@ class DSPViewModel: ObservableObject {
             guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
 
+        settleUnsavedChanges()   // -- WP SWF7 --
         if isDeviceConnected && hasUnsavedChanges {
             let diff = computeDiff()
             let action = PresetAlerts.showUnsavedChangesAlert(diff: diff)
@@ -3284,6 +3295,7 @@ class DSPViewModel: ObservableObject {
     }
 
     private func switchToDeviceAfterSettingsCheck(_ device: DSPiDevice) {
+        settleUnsavedChanges()   // -- WP SWF7 --
         guard isDeviceConnected && hasUnsavedChanges else {
             savedSnapshot = nil
             transport.selectDevice(device)

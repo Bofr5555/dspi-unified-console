@@ -113,6 +113,12 @@ final class CoreBackedTransport: DeviceTransport {
     /// -- WP SWF6 -- Tests only: drains wait while set, so a notification
     /// window (a preset load's, say) stays open for as long as a test needs.
     private var drainHeldForTest = false
+    /// -- WP SWF7 -- For `settlePresetChanges` (system uptime): when the last
+    /// raw SET was handed to `coreQueue`, when it went to the core
+    /// (coreQueue only), and when the core last reported a notification.
+    private var lastRawSetAt: TimeInterval?
+    private var lastRawSetSentAt: TimeInterval = 0
+    private var lastNotifiedAt: TimeInterval = 0
 
     private static let log = Logger(subsystem: "WeebLabs.DSPi-Console", category: "CoreBackedTransport")
     #if DEBUG
@@ -273,6 +279,7 @@ final class CoreBackedTransport: DeviceTransport {
         stateLock.lock()
         let already = drainScheduled
         drainScheduled = true
+        lastNotifiedAt = ProcessInfo.processInfo.systemUptime   // -- WP SWF7 --
         stateLock.unlock()
         guard !already else { return }
         coreQueue.asyncAfter(deadline: .now() + .milliseconds(30)) { [weak self] in self?.drain() }
@@ -327,8 +334,10 @@ final class CoreBackedTransport: DeviceTransport {
 
     /// The core picks the interface, so `index` is dropped.
     func sendControlRequest(request: UInt8, value: UInt16, index: UInt16, data: Data) {
+        stateLock.lock(); lastRawSetAt = ProcessInfo.processInfo.systemUptime; stateLock.unlock()   // -- WP SWF7 --
         coreQueue.async { [weak self] in
             guard let self = self else { return }
+            self.lastRawSetSentAt = ProcessInfo.processInfo.systemUptime   // -- WP SWF7 --
             do {
                 try self.onCore { try $0.rawSet(opcode: request, value: value, data: data) }
             } catch {
@@ -490,6 +499,35 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
             // The echoes of the last raw SETs are in the mirror first.
             self.drain()
             self.onCore { $0.captureBaseline() }
+            return self.onCore { $0.presetChanges() }
+        }
+    }
+
+    // -- WP SWF7 --
+    /// How recent a raw SET must be for a prompt to settle first: its echo
+    /// arrives one drain (30 ms) plus the link's echo latency after it.  Also
+    /// the longest the settle waits for the echoes after the last SET.
+    static let settleWindow: TimeInterval = 0.1
+    /// How long the link must be quiet before the settle drains.
+    static let settleQuiet: TimeInterval = 0.02
+
+    func settlePresetChanges() -> [String]? {
+        stateLock.lock(); let at = lastRawSetAt; stateLock.unlock()
+        guard let at = at, ProcessInfo.processInfo.systemUptime - at < Self.settleWindow else { return nil }
+        return onCoreSync {
+            // Behind the SETs on the queue.  Their echoes reach the core
+            // through the reader thread, one wake each: wait until the link
+            // has been quiet for `settleQuiet` since the last SET or echo,
+            // at most the window from the last SET (a write that echoes
+            // nothing waits only the quiet time).
+            let deadline = self.lastRawSetSentAt + Self.settleWindow
+            while true {
+                let now = ProcessInfo.processInfo.systemUptime
+                self.stateLock.lock(); let heard = self.lastNotifiedAt; self.stateLock.unlock()
+                if now >= deadline || now - max(heard, self.lastRawSetSentAt) >= Self.settleQuiet { break }
+                Thread.sleep(forTimeInterval: 0.002)
+            }
+            self.drain()
             return self.onCore { $0.presetChanges() }
         }
     }
