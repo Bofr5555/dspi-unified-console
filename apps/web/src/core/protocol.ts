@@ -27,11 +27,57 @@ export type DeviceTarget =
    */
   | { kind: "usb"; serial?: string }
   /**
-   * A DSPi behind a hub. `deviceId` "" lets the console ask the hub which ones
-   * it has (Link's choose_device); a fleet backend may name one itself
-   * (owner, 2026-11-08; WB4b).
+   * A DSPi behind a hub (WB4b): its serial as `deviceId`, from `linkDevices` (Link's
+   * choose_device step) or from a fleet backend's own list (`hubDevices`). The
+   * session must have connected first (`linkConnect`, and `linkPair` if the hub
+   * wanted a PIN); the core then binds that device and reads it.
    */
   | { kind: "hub"; url: string; deviceId: string };
+
+// -- WP WB4b --
+/** The hub's hello (`dspi_core::LinkHello`), after `linkConnect`. */
+export interface LinkHelloRecord {
+  /** `hid`: stable per hub installation. Tokens belong to it. */
+  hubId: string;
+  hubName: string;
+  /** `console` or `bridge`. */
+  hubKind: string;
+  /** `none` or `pin`. */
+  auth: string;
+  /** `window` (a PIN shown on the hub) or `fixed` (the hub's own PIN). */
+  pinSource: string;
+  /** Ask for the PIN and call `linkPair`. */
+  needsPairing: boolean;
+  /** The hub refused the token passed in: forget it. Only this says a token is bad. */
+  tokenRefused: boolean;
+  caps: string[];
+  maxInflight: number;
+}
+
+/** A DSPi a hub shares (`dspi_core::LinkDevice`). */
+export interface LinkDeviceRecord {
+  handle: number;
+  serial: string;
+  name: string;
+  firmware: string;
+  platform: string;
+  /** `online`, `offline`, `updating`. */
+  state: string;
+}
+
+/** Where a Link session stands (`dspi_core::LinkStatus`). */
+export interface LinkStatusRecord {
+  phase: LinkPhase;
+  pinSource: string;
+  role: string;
+  /** The hub's close code, -1 for none. */
+  closeCode: number;
+  /** Why it ended or was lost, in the core's words; "" while all is well. */
+  closeReason: string;
+  reconnectAttempt: number;
+  reconnectInMs: number;
+  tokenRefused: boolean;
+}
 
 /** Who the device is. Composed by the binding from the core's mirror. */
 export interface DeviceRecord {
@@ -184,7 +230,7 @@ export type LinkPhase =
 export type CoreEvent =
   /** The device changed under us (a notification): the new snapshot. */
   | { event: "state"; snapshot: DeviceSnapshot; flags: number }
-  | { event: "link"; phase: LinkPhase; pinSource?: string }
+  | { event: "link"; phase: LinkPhase; pinSource?: string; reason?: string }
   /** The connection is gone (unplugged, the core stopped). */
   | { event: "lost"; reason: string };
 
@@ -206,6 +252,17 @@ export interface CoreMethods {
   /** The core's demo simulations; refused for a real device. */
   demo: { params: { action: "renameElsewhere"; name: string }; result: null };
   close: { params: undefined; result: null };
+  // -- WP WB4b -- Link: the choose_device flow, then `open` of `{kind: "hub"}`
+  /**
+   * A session with the hub at `url` (`ws://host:port`). `token` and `hubId`: the
+   * token kept for that hub, which goes out only once the hub has said it is
+   * that one. Fails in the core's words (`link`).
+   */
+  linkConnect: { params: { url: string; token?: string; hubId?: string; clientName?: string }; result: LinkHelloRecord };
+  /** The PIN the user typed: the token to keep for this hub. A wrong one is `wrong_pin`. */
+  linkPair: { params: { pin: string }; result: { token: string } };
+  linkDevices: { params: undefined; result: LinkDeviceRecord[] };
+  linkStatus: { params: undefined; result: LinkStatusRecord };
   /** Tests only: make the stub core lose its link. The real core answers `unknown_method`. */
   simulate: { params: { what: "link-lost" | "link-closed" }; result: null };
 }
@@ -223,7 +280,8 @@ export interface CoreError {
    * Stable: `refused`, `read_only`, `out_of_range`, `invalid`, `unknown_param`,
    * `unsupported`, `not_open`, `transfer`, `locked`, `denied`, `link`, `lost`,
    * `busy` (another call is running; this one did not run), `dead` (the core
-   * stopped after an internal error), `unknown_method`, `internal`.
+   * stopped after an internal error), `unknown_method`, `internal`; Link (WB4b):
+   * `wrong_pin`, `not_found` (the hub does not offer that DSPi now).
    */
   code: string;
   message: string;

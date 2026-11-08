@@ -445,7 +445,19 @@ impl NotificationSource for LinkNotifications {
     /// 0 for a change made at the device. Silence is an empty packet; the
     /// session ending (or the transport dropped) is `Disconnected`.
     fn read_attributed(&mut self, timeout: Duration) -> Result<Attributed> {
-        match self.rx.recv_timeout(timeout) {
+        // -- WP WB4b -- the web's caller-driven reader looks without waiting,
+        // and `recv_timeout` reads `std`'s clock, which panics there
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        let received = match self.rx.try_recv() {
+            Ok(item) => Ok(item),
+            Err(std::sync::mpsc::TryRecvError::Empty) => Err(RecvTimeoutError::Timeout),
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => Err(RecvTimeoutError::Disconnected),
+        };
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        let received = self.rx.recv_timeout(timeout);
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        let _ = timeout;
+        match received {
             Ok(item) => Ok(Attributed {
                 packet: item.packet,
                 origin: Some(item.origin),

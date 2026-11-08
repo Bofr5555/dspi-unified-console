@@ -318,6 +318,8 @@ pub(crate) trait SideChannel: Send + Sync {
     /// callers need it; may do a round trip. The Link supervisor calls it
     /// before it waits for the core lock, so the first meter does not wait
     /// for whatever holds it.
+    // -- WP WB4b -- only the Link supervisor calls it (wasm-core builds without `link`)
+    #[cfg_attr(not(feature = "link"), allow(dead_code))]
     fn maintain_meters(&self) {}
 }
 

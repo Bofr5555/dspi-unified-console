@@ -46,6 +46,16 @@ export class MockBackend {
         dspi_usb_in: never,
         dspi_usb_out: never,
         dspi_usb_error: () => 0,
+        // -- WP WB4b -- the module has Link's socket imports too; the mock opens none
+        dspi_ws_open: never,
+        dspi_ws_error: () => 0,
+        dspi_ws_send: () => -1,
+        dspi_ws_close: () => undefined,
+        dspi_ws_poll: () => 3,
+        dspi_ws_wait: never,
+        dspi_ws_len: () => 0,
+        dspi_ws_take: () => -1,
+        dspi_ws_closed: () => -1,
       },
     };
     const { instance } = await WebAssembly.instantiate(bytes, imports as unknown as WebAssembly.Imports);

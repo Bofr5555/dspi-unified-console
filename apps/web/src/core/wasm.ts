@@ -13,12 +13,30 @@
 // notification packets wait in `packets` and go in (`usbPush`) ahead of the next
 // `poll`; an unplug ends the session (`usbGone`) in the core's words.
 //
+// Link (WB4b, ws.ts): the page drives the core's choose_device flow with
+// `linkConnect`, `linkPair`, `linkDevices` and an `open` of `{kind: "hub"}`. Once
+// connected, the Worker turns the session (`linkTick`) at the wait the core asks
+// for and whenever the socket has something, and pushes a `link` event when the
+// phase changes: the banner's phases are the core's own.
+//
 // A panic in the core traps. The module has marked itself dead first; the
 // session reports `lost`, and every later call is refused as `dead`.
 
-import { CoreCallError, type CoreEvent, type CoreImpl, type CoreMethods, type DeviceSnapshot, type DeviceTarget, type Method } from "./protocol";
+import {
+  CoreCallError,
+  type CoreEvent,
+  type CoreImpl,
+  type CoreMethods,
+  type DeviceSnapshot,
+  type DeviceTarget,
+  type LinkPhase,
+  type LinkStatusRecord,
+  type Method,
+} from "./protocol";
 // -- WP WB4a --
 import { UsbHost } from "./usb";
+// -- WP WB4b --
+import { WsHost } from "./ws";
 
 /** `dspi_call`'s answers when the call did not run (crates/dspi-wasm/src/lib.rs). */
 const CALL_BUSY = 0xffff_ffff;
@@ -29,6 +47,8 @@ const NOTIFY_DISCONNECTED = 1 << 9;
 
 /** How often the Worker drains notifications while a device is open, ms. */
 const POLL_MS = 100;
+/** The longest a Link session goes without a turn, ms (the core asks for less). */
+const LINK_MAX_MS = 1000;
 
 interface Exports {
   memory: WebAssembly.Memory;
@@ -51,7 +71,11 @@ export function jspiMissing(): string {
 }
 
 /** Instantiate the module from its bytes or its URL. One module per Worker. `usb`: the Worker's WebUSB (WB4a). */
-export async function loadWasmModule(source: URL | string | BufferSource, usb: UsbHost = new UsbHost()): Promise<WasmModule> {
+export async function loadWasmModule(
+  source: URL | string | BufferSource,
+  usb: UsbHost = new UsbHost(),
+  ws: WsHost = new WsHost(),
+): Promise<WasmModule> {
   const missing = jspiMissing();
   if (missing) throw new Error(missing);
   const bytes =
@@ -74,13 +98,16 @@ export async function loadWasmModule(source: URL | string | BufferSource, usb: U
       },
       // -- WP WB4a --
       ...usb.imports(J.Suspending),
+      // -- WP WB4b --
+      ...ws.imports(J.Suspending),
     },
   };
   usb.bindMemory(() => memory!);
+  ws.bindMemory(() => memory!);
   const { instance } = await WebAssembly.instantiate(bytes, imports as unknown as WebAssembly.Imports);
   const x = instance.exports as unknown as Exports;
   memory = x.memory;
-  return new WasmModule(x, J.promising(x.dspi_call), usb);
+  return new WasmModule(x, J.promising(x.dspi_call), usb, ws);
 }
 
 /** One instance of crates/dspi-wasm: may hold several sessions. */
@@ -92,6 +119,8 @@ export class WasmModule {
     private readonly promisedCall: (h: number, ptr: number, len: number) => Promise<number>,
     // -- WP WB4a --
     readonly usb: UsbHost = new UsbHost(),
+    // -- WP WB4b --
+    readonly ws: WsHost = new WsHost(),
   ) {}
 
   /** Empty while alive; why the core stopped otherwise. */
@@ -156,10 +185,18 @@ export class WasmCore implements CoreImpl {
   // -- WP WB4a -- the claimed USB device (usb.ts), and its packets not yet pushed in
   private usbDevice: number | null = null;
   private packets: number[][] = [];
+  // -- WP WB4b -- a Link session's turns, and the phase last told to the page
+  private linkTimer: ReturnType<typeof setTimeout> | undefined;
+  private linkOn = false;
+  private linkDue = Infinity;
+  private phase = "";
+  private linkReason = "";
+  private readonly stopActivity: () => void;
   readonly handle: number;
 
   constructor(private readonly m: WasmModule) {
     this.handle = m.newSession();
+    this.stopActivity = m.ws.onActivity(() => this.scheduleLink(0));
   }
 
   onEvent(push: (e: CoreEvent) => void): void {
@@ -168,6 +205,8 @@ export class WasmCore implements CoreImpl {
 
   async call<M extends Method>(method: M, params: CoreMethods[M]["params"]): Promise<CoreMethods[M]["result"]> {
     try {
+      // -- WP WB4b -- (c6g N1) a session that opens something else gives its USB device back
+      if (method === "open" && (params as DeviceTarget).kind !== "usb") this.releaseUsb();
       const value =
         method === "open" && (params as DeviceTarget).kind === "usb"
           ? await this.openUsb(params as DeviceTarget & { kind: "usb" })
@@ -188,6 +227,8 @@ export class WasmCore implements CoreImpl {
   /** Stops the timers and frees the session. */
   dispose(): void {
     this.stopTimers();
+    this.stopLink();
+    this.stopActivity();
     this.releaseUsb();
     this.open = false;
     this.m.freeSession(this.handle);
@@ -208,6 +249,13 @@ export class WasmCore implements CoreImpl {
       this.open = false;
       this.stopTimers();
       this.releaseUsb();
+      // -- WP WB4b --
+      this.stopLink();
+    } else if (method === "linkConnect") {
+      // -- WP WB4b --
+      this.linkOn = true;
+      this.phase = "";
+      this.scheduleLink(0);
     } else if (method === "rtaStart") {
       this.rtaOn = true;
       this.scheduleRta(0);
@@ -288,8 +336,12 @@ export class WasmCore implements CoreImpl {
         await this.queued("usbPush", { packets });
       }
       const r = (await this.queued("poll", null)) as { flags: number; retryMs: number | null; connected: boolean };
+      // -- WP WB4b -- (c6g N2) ended meanwhile (an unplug): that path has the core's words
+      if (!this.open) return;
       if (!r.connected || r.flags & NOTIFY_DISCONNECTED) {
-        this.lose("The DSPi is no longer connected");
+        // -- WP WB4b -- a hub session's end is its phase, in the core's words
+        if (this.linkOn) await this.linkOnce();
+        this.lose(this.linkReason || "The DSPi is no longer connected");
         return;
       }
       if (r.flags) {
@@ -315,10 +367,52 @@ export class WasmCore implements CoreImpl {
     }
   }
 
+  // -- WP WB4b --
+  /** The next Link turn in `ms`, unless one is due sooner. */
+  private scheduleLink(ms: number): void {
+    if (!this.linkOn) return;
+    const due = performance.now() + ms;
+    if (this.linkTimer !== undefined && this.linkDue <= due) return;
+    clearTimeout(this.linkTimer);
+    this.linkDue = due;
+    this.linkTimer = setTimeout(() => {
+      this.linkTimer = undefined;
+      this.linkDue = Infinity;
+      void this.linkOnce();
+    }, ms);
+  }
+
+  private stopLink(): void {
+    this.linkOn = false;
+    clearTimeout(this.linkTimer);
+    this.linkTimer = undefined;
+    this.linkDue = Infinity;
+  }
+
+  /** One turn of the Link session; a `link` event when its phase changed. */
+  private async linkOnce(): Promise<void> {
+    if (!this.linkOn) return;
+    try {
+      const r = (await this.queued("linkTick", null)) as { waitMs: number | null; status: LinkStatusRecord };
+      const st = r.status;
+      this.linkReason = st.closeReason;
+      if (st.phase !== this.phase) {
+        this.phase = st.phase;
+        this.push({ event: "link", phase: st.phase as LinkPhase, pinSource: st.pinSource, reason: st.closeReason });
+      }
+      if (r.waitMs == null || st.phase === "idle") this.stopLink();
+      else this.scheduleLink(Math.min(LINK_MAX_MS, r.waitMs));
+    } catch (e) {
+      if (e instanceof CoreCallError && e.code === "dead") this.lose(e.message);
+      else this.scheduleLink(LINK_MAX_MS);
+    }
+  }
+
   private lose(reason: string): void {
     this.open = false;
     this.stopTimers();
     this.releaseUsb();
+    this.stopLink();
     if (this.lostSent) return;
     this.lostSent = true;
     this.push({ event: "lost", reason: capitalise(reason) });
