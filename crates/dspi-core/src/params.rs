@@ -708,7 +708,7 @@ impl DspiCore {
     // ── helpers ──────────────────────────────────────────────────────
 
     /// The lock, once the connection is known to be writable.
-    fn writing(&self) -> Result<std::sync::MutexGuard<'_, Inner>> {
+    pub(crate) fn writing(&self) -> Result<std::sync::MutexGuard<'_, Inner>> {
         let mut inner = self.lock();
         inner.writable_conn()?;
         Ok(inner)
