@@ -97,12 +97,14 @@ AppWindow {
                             }
                             Icon { name: "chev-down"; size: 11; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.6); anchors.verticalCenter: parent.verticalCenter }
                         }
-                        MouseArea {
+                        ClickArea {
                             id: presetMouse
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: presetMenu.openAt(presetsLink, 0, presetsLink.height + 4)
+                            Accessible.role: Accessible.ButtonMenu
+                            Accessible.name: "Presets"
+                            onActivated: presetMenu.openAt(presetsLink, 0, presetsLink.height + 4)
                         }
                     }
                 }
@@ -170,12 +172,17 @@ AppWindow {
                                     font.weight: parent.isCurrent ? Font.DemiBold : Font.Normal
                                     color: isMacOS ? (parent.isCurrent ? "white" : MacColors.label) : parent.isCurrent ? "white" : Qt.rgba(1, 1, 1, 0.75)
                                 }
-                                MouseArea {
+                                ClickArea {
                                     id: speedMouse
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: bridge.setLevellerSpeed(index)
+                                    focusRadius: 7
+                                    Accessible.role: Accessible.RadioButton
+                                    Accessible.name: "Speed " + modelData
+                                    Accessible.checkable: true
+                                    Accessible.checked: parent.isCurrent
+                                    onActivated: bridge.setLevellerSpeed(index)
                                 }
                             }
                         }
@@ -223,6 +230,7 @@ AppWindow {
                 }
                 ToggleSwitch {
                     id: lookSwitch
+                    Accessible.name: "Lookahead"
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     checked: bridge.levellerLookahead

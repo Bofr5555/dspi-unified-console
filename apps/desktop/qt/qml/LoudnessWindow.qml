@@ -251,12 +251,14 @@ AppWindow {
                             }
                             Icon { name: "chev-down"; size: 11; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.6); anchors.verticalCenter: parent.verticalCenter }
                         }
-                        MouseArea {
+                        ClickArea {
                             id: outMouse
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: outMenu.openAt(outLink, 0, outLink.height + 4)
+                            Accessible.role: Accessible.ButtonMenu
+                            Accessible.name: "Output presets"
+                            onActivated: outMenu.openAt(outLink, 0, outLink.height + 4)
                         }
                     }
                 }

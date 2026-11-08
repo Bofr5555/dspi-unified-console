@@ -90,7 +90,8 @@ AppWindow {
         signal clicked()
         font.pixelSize: 11
         color: isMacOS ? MacColors.accent : linkMouse.containsMouse ? "white" : "#3a96ff"
-        MouseArea { id: linkMouse; anchors.fill: parent; anchors.margins: -3; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: parent.clicked() }
+        ClickArea { id: linkMouse; anchors.fill: parent; anchors.margins: -3; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    Accessible.role: Accessible.Link; Accessible.name: parent.text; onActivated: parent.clicked() }
     }
     // Label left, value field right
     // (plain properties: aliases in inline components misbehave in Qt 5.15)
@@ -120,6 +121,7 @@ AppWindow {
             y: 0
             height: 26
             fieldWidth: 66
+            accessibleName: fr.label
             value: fr.value
             suffix: fr.suffix
             decimals: fr.decimals
@@ -152,6 +154,7 @@ AppWindow {
             id: optSwitch
             anchors.right: parent.right
             y: 0
+            Accessible.name: opt.title
             checked: opt.checked
             // Shows the draft again after the click (a refused change, such
             // as a cancelled RAW confirmation, flips back)
@@ -282,12 +285,18 @@ AppWindow {
                                     color: isMacOS ? (parent.parent.selected ? MacColors.accent : MacColors.secondaryLabel) : Qt.rgba(1, 1, 1, parent.parent.selected ? 0.95 : 0.7)
                                 }
                             }
-                            MouseArea {
+                            ClickArea {
                                 id: tileMouse
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: siggen.selectType(index)
+                                focusRadius: 9
+                                Accessible.role: Accessible.RadioButton
+                                Accessible.name: modelData.name
+                                Accessible.description: modelData.blurb
+                                Accessible.checkable: true
+                                Accessible.checked: parent.selected
+                                onActivated: siggen.selectType(index)
                                 ToolTip.visible: containsMouse
                                 ToolTip.delay: 600
                                 ToolTip.text: modelData.name + ": " + modelData.blurb
@@ -344,12 +353,15 @@ AppWindow {
                                     color: isMacOS ? MacColors.orange : "#ff9f0a"
                                 }
                             }
-                            MouseArea {
+                            ClickArea {
                                 id: chipMouse
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: siggen.cycleOutput(index)
+                                focusRadius: 8
+                                Accessible.name: win.outputName(index)
+                                Accessible.description: (parent.on ? (parent.inverted ? "Inverted" : "On") : "Off") + (parent.silent ? ", disabled in the matrix mixer" : "") + ". Press: on, inverted, off"
+                                onActivated: siggen.cycleOutput(index)
                                 ToolTip.visible: containsMouse
                                 ToolTip.delay: 600
                                 ToolTip.text: parent.silent ? "Output disabled in the matrix mixer: selected but silent until enabled"
@@ -371,6 +383,7 @@ AppWindow {
                     ValueField {
                         fieldWidth: 60; height: 24; suffix: "dB"; decimals: 1; wheelStep: 1
                         minValue: -120; maxValue: 0
+                        accessibleName: "Level"
                         value: win.d.levelDb
                         onValueEdited: siggen.setDraftValue("levelDb", newValue)
                     }
@@ -378,6 +391,7 @@ AppWindow {
                 StyledSlider {
                     width: parent.width
                     from: -80; to: 0; stepSize: 0.5
+                    Accessible.name: "Level"
                     value: win.d.levelDb
                     onMoved: siggen.setDraftValue("levelDb", value)
                 }
@@ -586,12 +600,14 @@ AppWindow {
                 color: isMacOS ? (nowMouse.pressed ? MacColors.opacity(MacColors.control, 1.6) : MacColors.control) : nowMouse.pressed ? Qt.rgba(1, 1, 1, 0.14) : nowMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
                 border.color: isMacOS ? "transparent" : Qt.rgba(1, 1, 1, 0.18)
                 Icon { anchors.centerIn: parent; name: "stop"; size: 13; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.8) }
-                MouseArea {
+                ClickArea {
                     id: nowMouse
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: siggen.stopNow()
+                    focusRadius: 10
+                    Accessible.name: "Stop immediately, no fade"
+                    onActivated: siggen.stopNow()
                     ToolTip.visible: containsMouse
                     ToolTip.delay: 600
                     ToolTip.text: "Stop immediately, no fade"
@@ -613,13 +629,16 @@ AppWindow {
                     Icon { name: siggen.running ? "stop" : "play"; size: 13; color: isMacOS ? (siggen.running || parent.parent.canStart ? "white" : MacColors.tertiaryLabel) : "white"; anchors.verticalCenter: parent.verticalCenter }
                     Text { text: siggen.running ? "Stop" : "Start"; font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? (siggen.running || parent.parent.canStart ? "white" : MacColors.tertiaryLabel) : "white"; anchors.verticalCenter: parent.verticalCenter }
                 }
-                MouseArea {
+                ClickArea {
                     id: mainMouse
                     anchors.fill: parent
                     hoverEnabled: true
                     enabled: siggen.running || parent.canStart
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: win.startOrStop()
+                    focusRadius: 10
+                    Accessible.name: siggen.running ? "Stop" : "Start"
+                    Accessible.description: parent.canStart || siggen.running ? "" : win.blocker
+                    onActivated: win.startOrStop()
                 }
                 ToolTip.visible: mainHover.containsMouse && !parent.canStart && !siggen.running
                 ToolTip.delay: 400

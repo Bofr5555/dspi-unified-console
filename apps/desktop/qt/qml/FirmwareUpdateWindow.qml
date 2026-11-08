@@ -178,12 +178,14 @@ AppWindow {
                             font.pixelSize: 11
                             font.underline: fileMouse.containsMouse
                             color: isMacOS ? MacColors.link : "#3a96ff"
-                            MouseArea {
+                            ClickArea {
                                 id: fileMouse
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: {
+                                Accessible.role: Accessible.Link
+                                Accessible.name: parent.text
+                                onActivated: {
                                     if (win.custom || firmware.imageProblem !== "") firmware.useBundledImage()
                                     else uf2Dialog.open()
                                 }
@@ -280,12 +282,14 @@ AppWindow {
                             font.pixelSize: 11
                             font.underline: linkMouse.containsMouse
                             color: isMacOS ? MacColors.link : "#3a96ff"
-                            MouseArea {
+                            ClickArea {
                                 id: linkMouse
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: firmware.enterBootloader()
+                                Accessible.role: Accessible.Link
+                                Accessible.name: parent.text
+                                onActivated: firmware.enterBootloader()
                             }
                         }
                     }

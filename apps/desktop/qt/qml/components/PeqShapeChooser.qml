@@ -45,12 +45,13 @@ Item {
             width: 15; height: 16; radius: 4
             color: isMacOS ? (backMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.09) : "transparent") : backMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.1) : "transparent"
             Icon { anchors.centerIn: parent; name: "chev-left"; size: 10; color: isMacOS ? Qt.rgba(1, 1, 1, 0.82) : Qt.rgba(1, 1, 1, 0.75) }
-            MouseArea {
+            ClickArea {
                 id: backMouse
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: { if (chooser.pending >= 0) chooser.pending = -1; else chooser.back() }
+                Accessible.name: chooser.pending >= 0 ? "Back to shapes" : chooser.backTip
+                onActivated: { if (chooser.pending >= 0) chooser.pending = -1; else chooser.back() }
             }
             ToolTip.visible: backMouse.containsMouse
             ToolTip.delay: 600
@@ -98,17 +99,26 @@ Item {
                     type: modelData.t2
                     color: parent.marked ? chooser.markColor : Qt.rgba(1, 1, 1, 0.7)
                 }
-                MouseArea {
+                ClickArea {
                     id: cellMouse
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
+                    focusRadius: 7
+                    Accessible.name: modelData.name
+                    Accessible.checkable: parent.marked
+                    Accessible.checked: parent.marked
                     onContainsMouseChanged: {
                         if (containsMouse) chooser.hovered = index
                         else if (chooser.hovered === index) chooser.hovered = -1
                     }
+                    // -- WP QD22 -- The keyboard focus names the shape in the header too
+                    onActiveFocusChanged: {
+                        if (activeFocus) chooser.hovered = index
+                        else if (chooser.hovered === index) chooser.hovered = -1
+                    }
                     // Two orders: ask which; one: done
-                    onClicked: { if (modelData.t1 !== 0) chooser.pending = index; else chooser.picked(modelData.t2) }
+                    onActivated: { if (modelData.t1 !== 0) chooser.pending = index; else chooser.picked(modelData.t2) }
                 }
             }
         }
@@ -135,12 +145,14 @@ Item {
                     font.pixelSize: 10
                     color: parent.marked ? chooser.markColor : Qt.rgba(1, 1, 1, 0.85)
                 }
-                MouseArea {
+                ClickArea {
                     id: orderMouse
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: chooser.picked(parent.order === 1 ? parent.shape.t1 : parent.shape.t2)
+                    focusRadius: 7
+                    Accessible.name: parent.ToolTip.text
+                    onActivated: chooser.picked(parent.order === 1 ? parent.shape.t1 : parent.shape.t2)
                 }
                 ToolTip.visible: orderMouse.containsMouse
                 ToolTip.delay: 600

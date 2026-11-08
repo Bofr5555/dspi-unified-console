@@ -436,12 +436,15 @@ Column {
                 width: 28
                 height: 28
                 CsBadge { icon: cs.typeIcon(card.b.type); tint: cs.typeTint(card.b.type); size: 28 }
-                MouseArea {
+                ClickArea {
                     id: badgeMouse
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: { typeMenu.slot = card.slot; typeMenu.openAt(parent, 0, parent.height + 4) }
+                    focusRadius: 8
+                    Accessible.role: Accessible.ButtonMenu
+                    Accessible.name: "Change the component type"
+                    onActivated: { typeMenu.slot = card.slot; typeMenu.openAt(parent, 0, parent.height + 4) }
                 }
                 ToolTip.text: "Change the component type"
                 ToolTip.visible: badgeMouse.containsMouse
@@ -540,6 +543,7 @@ Column {
                         Row {
                             spacing: 10
                             StyledSlider {
+                                Accessible.name: levelRow.title
                                 id: levelSlider
                                 width: 160
                                 from: 0
@@ -647,6 +651,7 @@ Column {
                         Row {
                             spacing: 10
                             StyledSlider {
+                                Accessible.name: "Starting Level"
                                 id: bootSlider
                                 width: 160
                                 from: 0

@@ -92,7 +92,8 @@ AppWindow {
         color: isMacOS ? MacColors.control : cbMouse.pressed ? Qt.rgba(1, 1, 1, 0.20) : cbMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(1, 1, 1, 0.09)
         border.color: isMacOS ? "transparent" : Qt.rgba(1, 1, 1, 0.10)
         Text { id: lbl; anchors.centerIn: parent; font.pixelSize: 13; color: isMacOS ? MacColors.label : "white" }
-        MouseArea { id: cbMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: parent.clicked() }
+        ClickArea { id: cbMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; focusRadius: 9
+                    Accessible.name: lbl.text; onActivated: parent.clicked() }
     }
 
     component Card: Rectangle {
@@ -182,6 +183,7 @@ AppWindow {
                                 width: colWidth - 6
                                 font.pixelSize: 12
                                 maximumLength: 31
+                                Accessible.name: "Output name"
                                 onAccepted: { if (text.trim() !== "") bridge.setChannelName(index + 2, text.trim()); hdr.renaming = false }
                                 onActiveFocusChanged: if (!activeFocus) hdr.renaming = false
                                 Keys.onEscapePressed: hdr.renaming = false
@@ -255,6 +257,7 @@ AppWindow {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     fieldWidth: 50; height: 20; suffix: "dB"; decimals: 1
                                     minValue: -60; maxValue: bridge.preampMaxDB; plainWheel: true
+                                    accessibleName: { rev; return inName(inputIndex) + " trim" }
                                     value: { rev; return bridge.inputPreampDB(inputIndex) }
                                     onValueEdited: bridge.setInputPreamp(inputIndex, newValue)
                                 }
@@ -278,6 +281,7 @@ AppWindow {
                                         y: 4
                                         fieldWidth: 44; height: 20; suffix: "dB"; decimals: 1
                                         minValue: -60; maxValue: 12; plainWheel: true
+                                        accessibleName: { rev; return inName(inputIndex) + " to " + bridge.channelName(o + 2) + " gain" }
                                         value: parent.gain
                                         onValueEdited: bridge.setMatrixRoute(inputIndex, o, true, newValue, parent.inverted)
                                     }
@@ -290,13 +294,18 @@ AppWindow {
                                                     : pointMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.45) : Qt.rgba(1, 1, 1, 0.20)
                                         scale: pointMouse.containsMouse ? 1.08 : 1.0
                                         Behavior on scale { NumberAnimation { duration: 90 } }
-                                        MouseArea {
+                                        ClickArea {
                                             id: pointMouse
                                             anchors.fill: parent
                                             anchors.margins: -6
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: bridge.setMatrixRoute(inputIndex, o, !parent.parent.connected,
+                                            focusRadius: width / 2 + 2
+                                            Accessible.role: Accessible.CheckBox
+                                            Accessible.name: { rev; return inName(inputIndex) + " to " + bridge.channelName(o + 2) }
+                                            Accessible.checkable: true
+                                            Accessible.checked: parent.parent.connected
+                                            onActivated: bridge.setMatrixRoute(inputIndex, o, !parent.parent.connected,
                                                                              parent.parent.gain, parent.parent.inverted)
                                         }
                                     }
@@ -308,11 +317,15 @@ AppWindow {
                                         text: "INV"
                                         font.pixelSize: 10; font.weight: Font.Bold
                                         color: isMacOS ? (parent.inverted ? MacColors.orange : MacColors.opacity(MacColors.secondaryLabel, 0.3)) : parent.inverted ? warn : Qt.rgba(1, 1, 1, 0.35)
-                                        MouseArea {
+                                        ClickArea {
                                             anchors.fill: parent
                                             anchors.margins: -4
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: bridge.setMatrixRoute(inputIndex, o, true, parent.parent.gain,
+                                            Accessible.role: Accessible.CheckBox
+                                            Accessible.name: { rev; return inName(inputIndex) + " to " + bridge.channelName(o + 2) + " inverted" }
+                                            Accessible.checkable: true
+                                            Accessible.checked: parent.parent.inverted
+                                            onActivated: bridge.setMatrixRoute(inputIndex, o, true, parent.parent.gain,
                                                                              !parent.parent.inverted)
                                         }
                                     }
@@ -348,10 +361,14 @@ AppWindow {
                                 size: 20
                                 color: isMacOS ? (parent.isOn ? MacColors.blue : parent.wouldConflict ? MacColors.opacity(MacColors.orange, 0.4) : MacColors.opacity(MacColors.secondaryLabel, 0.3)) : parent.wouldConflict ? warn : parent.isOn ? accent : Qt.rgba(1, 1, 1, 0.3)
                             }
-                            MouseArea {
+                            ClickArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: toggleEnable(index)
+                                Accessible.role: Accessible.CheckBox
+                                Accessible.name: { rev; return bridge.channelName(index + 2) + " enabled" }
+                                Accessible.checkable: true
+                                Accessible.checked: parent.isOn
+                                onActivated: toggleEnable(index)
                             }
                         }
                     }
@@ -372,6 +389,7 @@ AppWindow {
                                 anchors.centerIn: parent
                                 fieldWidth: 44; height: 22; suffix: "dB"; decimals: 1
                                 minValue: -60; maxValue: 12; plainWheel: true
+                                accessibleName: { rev; return bridge.channelName(index + 2) + " gain" }
                                 value: { rev; return bridge.outputGainDB(index) }
                                 onValueEdited: bridge.setOutputGain(index, newValue)
                             }
@@ -394,6 +412,7 @@ AppWindow {
                                 anchors.centerIn: parent
                                 fieldWidth: 60; height: 22; suffix: "ms"; decimals: 2; maxDecimals: 4; wheelStep: 1
                                 minValue: 0; maxValue: bridge.maxDelayMs; plainWheel: true
+                                accessibleName: { rev; return bridge.channelName(index + 2) + " delay" }
                                 value: { rev; return bridge.outputDelayMS(index) }
                                 onValueEdited: bridge.setOutputDelay(index, newValue)
                             }
@@ -419,10 +438,14 @@ AppWindow {
                                 size: 20
                                 color: isMacOS ? (parent.muted ? MacColors.red : MacColors.opacity(MacColors.secondaryLabel, 0.4)) : parent.muted ? danger : Qt.rgba(1, 1, 1, 0.5)
                             }
-                            MouseArea {
+                            ClickArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: bridge.setOutputMute(index, !parent.muted)
+                                Accessible.role: Accessible.CheckBox
+                                Accessible.name: { rev; return bridge.channelName(index + 2) + " muted" }
+                                Accessible.checkable: true
+                                Accessible.checked: parent.muted
+                                onActivated: bridge.setOutputMute(index, !parent.muted)
                             }
                         }
                     }

@@ -30,4 +30,6 @@ Switch {
         }
     }
     contentItem: Item {}
+    // -- WP QD22 -- Give it an Accessible.name: it has no text of its own
+    FocusRing { target: sw.indicator; parent: sw.indicator; shown: sw.visualFocus }
 }

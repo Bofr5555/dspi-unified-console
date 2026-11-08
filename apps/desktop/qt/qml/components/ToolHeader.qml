@@ -55,6 +55,7 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         checked: hdr.checked
         enabled: bridge.connected
+        Accessible.name: hdr.title
         onToggled: hdr.toggled(checked)
     }
     Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: isMacOS ? MacColors.separator : Qt.rgba(1, 1, 1, 0.08) }

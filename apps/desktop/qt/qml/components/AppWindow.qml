@@ -51,6 +51,9 @@ Window {
     }
     onVisibleChanged: if (visible && !fitted) { fitted = true; fitToContent() }
 
+    // -- WP QD22 -- The keyboard focus stays in view
+    FocusFollower { window: appWindow }
+
     // Refit smoothly once the content's height settles (e.g. after switching
     // a window between views): call refitAnimated() before the change
     property bool refitPending: false

@@ -57,3 +57,6 @@ InstallWritingCard 1.0 InstallWritingCard.qml
 AppButton 1.0 AppButton.qml
 DashboardLayoutPopup 1.0 DashboardLayoutPopup.qml
 singleton MacColors 1.0 MacColors.qml
+ClickArea 1.0 ClickArea.qml
+FocusRing 1.0 FocusRing.qml
+FocusFollower 1.0 FocusFollower.qml

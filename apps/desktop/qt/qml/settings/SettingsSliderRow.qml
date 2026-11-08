@@ -23,6 +23,8 @@ SettingsRow {
             to: row.to
             stepSize: row.stepSize
             value: row.value
+            Accessible.name: row.title
+            Accessible.description: row.format(slider.value)
             anchors.verticalCenter: parent.verticalCenter
             onMoved: row.moved(value)
             onPressedChanged: if (!pressed) row.committed(value)

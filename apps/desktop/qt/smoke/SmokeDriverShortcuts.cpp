@@ -375,3 +375,412 @@ void SmokeDriver::testShownInputCount() {
     check("QD17: back to the report", waitFor(3000, [&]() { return host->inputCount() == report; }) && b->liveInputCount() == report
                                           && !b->pairAvailable(b->inputAppId(2)));
 }
+
+// -- WP QD22 -- Accessibility. Each main window's accessible tree is walked (QAccessible's
+// own interfaces, as a screen reader gets them), and every control in it, a Quick
+// Controls one or a custom one (a MouseArea someone clicks, a C++ item taking the
+// mouse), must reach a node with a control's role and a name. Then Tab alone walks
+// the window: every control takes the focus on the way, and (Qt 6, whose software
+// backend grabs offscreen) the window looks different round it while it has it.
+#include <QAccessible>
+#include <QMetaMethod>
+#include <QQmlContext>
+#include <QHash>
+#include <QImage>
+#include <QSet>
+
+namespace {
+// QObject::isSignalConnected is protected; a member pointer through a subclass reads it
+struct SignalPeek : QObject {
+    using QObject::isSignalConnected;
+};
+
+// The Accessible attached object QML gave an item, if any (its parent is the item)
+QObject *accessibleAttached(QObject *o) {
+    for (QObject *c : o->children())
+        if (c->inherits("QQuickAccessibleAttached")) return c;
+    return nullptr;
+}
+
+bool isQuickControl(const QQuickItem *it) {
+    return it->inherits("QQuickAbstractButton") || it->inherits("QQuickSlider") || it->inherits("QQuickComboBox")
+        || it->inherits("QQuickSpinBox") || it->inherits("QQuickRangeSlider") || it->inherits("QQuickDial")
+        || (it->inherits("QQuickTextInput") && !it->property("readOnly").toBool())
+        || (it->inherits("QQuickTextEdit") && !it->property("readOnly").toBool());
+}
+
+// Something a user clicks: a Quick control, a MouseArea with a click handler or a
+// drag, or a C++ item taking the mouse (the graph). Hover-only areas, Flickables
+// and the Controls' own containers are not.
+bool isInteractive(QQuickItem *it) {
+    if (isQuickControl(it)) return true;
+    if (it->inherits("QQuickMouseArea")) {
+        // A right-click alone is a second way to a menu or a reset, not a control
+        if (!(it->acceptedMouseButtons() & Qt::LeftButton)) return false;
+        const QMetaObject *mo = it->metaObject();
+        static const QSet<QByteArray> kSignals = { "clicked", "pressed", "doubleClicked", "pressAndHold", "released" };
+        for (int i = 0; i < mo->methodCount(); i++) {
+            const QMetaMethod m = mo->method(i);
+            if (m.methodType() == QMetaMethod::Signal && kSignals.contains(m.name())
+                && (it->*(&SignalPeek::isSignalConnected))(m))
+                return true;
+        }
+        QObject *drag = it->property("drag").value<QObject *>();
+        return drag && drag->property("target").value<QObject *>();
+    }
+    // Text takes the mouse for its links only
+    if (it->inherits("QQuickText")) {
+        const QMetaObject *mo = it->metaObject();
+        const int i = mo->indexOfSignal("linkActivated(QString)");
+        return i >= 0 && (it->*(&SignalPeek::isSignalConnected))(mo->method(i));
+    }
+    if (it->inherits("QQuickFlickable") || it->inherits("QQuickControl") || it->inherits("QQuickPopupItem")
+        || it->inherits("QQuickTextInput") || it->inherits("QQuickTextEdit") || it->inherits("QQuickOverlay"))
+        return false;
+    // A C++ item of the app's own (the graph editor); Qt Quick's own items take
+    // the mouse for a pointer handler (a row's HoverHandler) as well
+    const QMetaObject *base = it->metaObject();
+    while (base && QByteArray(base->className()).contains("_QML")) base = base->superClass();
+    if (base && QByteArray(base->className()).startsWith("QQuick")) return false;
+    return it->acceptedMouseButtons() != Qt::NoButton;
+}
+
+bool isControlRole(QAccessible::Role r) {
+    switch (r) {
+    case QAccessible::Button: case QAccessible::CheckBox: case QAccessible::RadioButton: case QAccessible::ComboBox:
+    case QAccessible::Slider: case QAccessible::SpinBox: case QAccessible::EditableText: case QAccessible::PageTab:
+    case QAccessible::ListItem: case QAccessible::MenuItem: case QAccessible::Link: case QAccessible::Cell:
+    case QAccessible::ButtonMenu: case QAccessible::ButtonDropDown: case QAccessible::Dial: case QAccessible::Chart:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// Where a failure is: the item's QML file and its nearest few QML types
+QString describe(QQuickItem *it) {
+    QStringList chain;
+    for (QQuickItem *x = it; x && chain.size() < 5; x = x->parentItem()) {
+        QString n = QString::fromLatin1(x->metaObject()->className());
+        n = n.section(QLatin1String("_QML"), 0, 0);
+        if (!x->objectName().isEmpty()) n += QLatin1Char('#') + x->objectName();
+        chain << n;
+    }
+    QQmlContext *ctx = QQmlEngine::contextForObject(it);
+    return (ctx ? ctx->baseUrl().fileName() : QStringLiteral("?")) + QLatin1String(": ") + chain.join(QLatin1String(" < "));
+}
+
+void collectAccessible(QAccessibleInterface *iface, QSet<QObject *> *seen, int depth) {
+    if (!iface || depth > 200) return;
+    if (QObject *o = iface->object()) {
+        if (seen->contains(o)) return;
+        seen->insert(o);
+    }
+    for (int i = 0; i < iface->childCount(); i++) collectAccessible(iface->child(i), seen, depth + 1);
+}
+
+void collectInteractive(QQuickItem *it, QList<QQuickItem *> *out) {
+    // A MouseArea's own `enabled` is not the item's
+    if (!it->isVisible() || !it->isEnabled() || !it->property("enabled").toBool() || it->opacity() <= 0.0) return;
+    if (isInteractive(it)) out->append(it);
+    for (QQuickItem *c : it->childItems()) collectInteractive(c, out);
+}
+
+bool within(QQuickItem *it, QQuickItem *scope) {
+    for (QQuickItem *x = it; x; x = x->parentItem())
+        if (x == scope) return true;
+    return false;
+}
+
+// The visible item a screen reader knows by this name
+QQuickItem *byAccessibleName(QQuickItem *it, const QString &name) {
+    if (!it->isVisible()) return nullptr;
+    if (QObject *att = accessibleAttached(it))
+        if (att->property("name").toString() == name) return it;
+    for (QQuickItem *c : it->childItems())
+        if (QQuickItem *found = byAccessibleName(c, name)) return found;
+    return nullptr;
+}
+
+// The screen reader's press on an item's node
+bool accessiblePress(QQuickItem *it) {
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(it);
+    QAccessibleActionInterface *actions = iface ? iface->actionInterface() : nullptr;
+    if (!actions || !actions->actionNames().contains(QAccessibleActionInterface::pressAction())) return false;
+    actions->doAction(QAccessibleActionInterface::pressAction());
+    return true;
+}
+}
+
+// One window, or one popup in it (`scope`): the accessible tree, then a Tab walk
+void SmokeDriver::a11yAudit(QQuickWindow *w, QQuickItem *scope, const QString &where, bool tabWalk) {
+    QAccessible::setActive(true);   // the Controls attach their roles now, as for a screen reader
+    spin(100);
+    if (!scope) scope = w->contentItem();
+    QSet<QObject *> tree;
+    collectAccessible(QAccessible::queryAccessibleInterface(w), &tree, 0);
+    QList<QQuickItem *> clicked;
+    collectInteractive(scope, &clicked);
+    // Each control's node: itself when it is one, else the nearest item above it
+    // that QML made accessible. An area marked Accessible.ignored is decoration.
+    QList<QQuickItem *> controls;
+    int bad = 0;
+    for (QQuickItem *p : clicked) {
+        QObject *own = accessibleAttached(p);
+        if (own && own->property("ignored").toBool()) continue;
+        QQuickItem *node = nullptr;
+        for (QQuickItem *x = p; x && !node; x = x->parentItem()) {
+            QObject *att = accessibleAttached(x);
+            if (isQuickControl(x) || (att && !att->property("ignored").toBool())) node = x;
+        }
+        QAccessibleInterface *iface = node ? QAccessible::queryAccessibleInterface(node) : nullptr;
+        const QString name = iface ? iface->text(QAccessible::Name).trimmed() : QString();
+        QString why;
+        if (!iface) why = QStringLiteral("no accessible node");
+        else if (!isControlRole(iface->role())) why = QStringLiteral("role %1").arg(int(iface->role()));
+        else if (name.isEmpty()) why = QStringLiteral("no name");
+        else if (!tree.contains(node)) why = QStringLiteral("not in the window's accessible tree");
+        if (!why.isEmpty()) {
+            bad++;
+            printf("smoke: QD22 %s: %s: %s\n", qPrintable(where), qPrintable(why),
+                   qPrintable(describe(node && isControlRole(iface->role()) ? node : p)));
+            continue;
+        }
+        if (!controls.contains(node)) controls.append(node);
+    }
+    printf("smoke: QD22 %s: %d controls, %d without a role or name\n", qPrintable(where), int(controls.size()), bad);
+    check(qPrintable(QStringLiteral("QD22: %1: every control has a role and a name").arg(where)), bad == 0 && !controls.isEmpty());
+    if (!tabWalk) return;
+
+    // Tab alone, from the first item, until the focus comes round again
+    w->requestActivate();
+    waitFor(1000, [&]() { return QGuiApplication::focusWindow() == w; });
+    QQuickItem *start = w->activeFocusItem();
+    if (!start || !within(start, scope)) {
+        scope->forceActiveFocus(Qt::TabFocusReason);
+        spin(20);
+    }
+    QList<QQuickItem *> order;
+    QSet<QQuickItem *> reached;
+    QHash<QQuickItem *, bool> shows;   // a control, and whether its focus showed
+    QHash<QQuickItem *, QRect> shownAt;
+    QSet<QQuickItem *> viaList;   // a list's rows: its current row shows, not a ring
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    const bool grabs = true;
+#else
+    const bool grabs = false;   // Qt 5's software backend grabs nothing offscreen
+#endif
+    QQuickItem *prev = nullptr;
+    int same = 0;
+    bool trapped = false;
+    for (int step = 0; step < 600; step++) {
+        press(w, Qt::Key_Tab, Qt::NoModifier);
+        spin(15);
+        QQuickItem *f = w->activeFocusItem();
+        QQuickItem *owner = nullptr, *list = nullptr;
+        // A list's rows: the list keeps the keys (Up/Down), so reaching it, or
+        // its current row, reaches them
+        for (QQuickItem *x = f; x && !list; x = x->parentItem())
+            if (x->inherits("QQuickItemView")) list = x;
+        for (QQuickItem *c : controls) {
+            if (f && within(f, c) && (!owner || within(c, owner))) owner = c;
+            if (list && within(c, list)) { reached.insert(c); viaList.insert(c); }
+        }
+        if (owner) reached.insert(owner);
+        // The window round the control, with the focus and with the focus
+        // taken off it and given back: the same scroll, the same everything else
+        if (owner && grabs && !shows.value(owner)) {
+            const QRect at = owner->mapRectToScene(QRectF(0, 0, owner->width(), owner->height())).toAlignedRect();
+            shownAt[owner] = at;
+            const QImage with = w->grabWindow();
+            f->setFocus(false);
+            spin(5);
+            const QImage without = w->grabWindow();
+            f->forceActiveFocus(Qt::TabFocusReason);
+            spin(5);
+            const qreal dpr = with.devicePixelRatio();
+            const QRect r = at.adjusted(-4, -4, 4, 4).intersected(QRect(QPoint(), with.size() / dpr));
+            const QRect px(QPoint(int(r.x() * dpr), int(r.y() * dpr)), QSize(int(r.width() * dpr), int(r.height() * dpr)));
+            shows[owner] = !px.isEmpty() && with.copy(px) != without.copy(px);
+        }
+        if (!f) break;
+        // An item may keep the focus for a few presses (the graph steps through
+        // its bands), never for good
+        if (f == prev && ++same > 2 * BANDS_PER_CHANNEL) { trapped = true; break; }
+        if (f != prev) same = 0;
+        if (f != prev && !order.isEmpty() && f == order.first()) break;   // round again
+        if (!order.contains(f)) order.append(f);
+        prev = f;
+    }
+    if (trapped) printf("smoke: QD22 %s: Tab is held by %s\n", qPrintable(where), qPrintable(describe(prev)));
+    int missed = 0, unseen = 0;
+    for (QQuickItem *c : controls) missed += reached.contains(c) ? 0 : 1;
+    if (missed)
+        for (int i = 0; i < order.size(); i++)
+            printf("smoke: QD22 %s: Tab stop %d: %s\n", qPrintable(where), i + 1, qPrintable(describe(order[i])));
+    missed = 0;
+    for (QQuickItem *c : controls) {
+        if (!reached.contains(c)) {
+            missed++;
+            printf("smoke: QD22 %s: Tab never reaches %s\n", qPrintable(where), qPrintable(describe(c)));
+        } else if (grabs && !shows.value(c) && !viaList.contains(c)) {
+            unseen++;
+            const QRect r = shownAt.value(c);
+            printf("smoke: QD22 %s: no visible focus on %s (at %d,%d %dx%d in %dx%d)\n", qPrintable(where), qPrintable(describe(c)),
+                   r.x(), r.y(), r.width(), r.height(), w->width(), w->height());
+        }
+    }
+    printf("smoke: QD22 %s: Tab stops %d, reached %d of %d controls\n", qPrintable(where), int(order.size()),
+           int(reached.size()), int(controls.size()));
+    check(qPrintable(QStringLiteral("QD22: %1: Tab reaches every control").arg(where)), missed == 0 && !trapped);
+    check(qPrintable(QStringLiteral("QD22: %1: the focus shows on each").arg(where)), unseen == 0);
+}
+
+void SmokeDriver::testAccessibility() {
+    section("QD22: accessible names and roles, a keyboard-only walk");
+    auto *main = qobject_cast<QQuickWindow *>(root());
+    check("QD22: the main window", main != nullptr);
+    if (!main) return;
+    const auto hideTools = [&]() {
+        for (QQuickWindow *w : root()->findChildren<QQuickWindow *>())
+            if (w != main && w->isVisible()) w->setVisible(false);
+        spin(50);
+    };
+    hideTools();
+    main->show();
+    QMetaObject::invokeMethod(root(), "selectOverview");
+    spin(300);
+    a11yAudit(main, nullptr, QStringLiteral("main window"), true);
+    QMetaObject::invokeMethod(root(), "selectChannel", Q_ARG(QVariant, 0));
+    spin(600);
+    a11yAudit(main, nullptr, QStringLiteral("main window, an input's EQ"), true);
+    QMetaObject::invokeMethod(root(), "selectOutput", Q_ARG(QVariant, 0));
+    spin(600);
+    a11yAudit(main, nullptr, QStringLiteral("main window, an output's EQ"), true);
+    QMetaObject::invokeMethod(root(), "selectOverview");
+    spin(300);
+
+    // Devices: a popup in the main window
+    QMetaObject::invokeMethod(root(), "openToolWindow", Q_ARG(QVariant, QStringLiteral("devices")));
+    spin(400);
+    QObject *devices = root()->findChild<QObject *>(QStringLiteral("devicesPopup"));
+    QQuickItem *devicesItem = devices ? devices->property("contentItem").value<QQuickItem *>() : nullptr;
+    check("QD22: the devices list", devicesItem && devices->property("visible").toBool());
+    if (devicesItem) a11yAudit(main, devicesItem->parentItem(), QStringLiteral("devices"), true);
+    if (devices) QMetaObject::invokeMethod(devices, "close");
+    spin(200);
+
+    // Settings, every page
+    QQuickWindow *settings = qobject_cast<QQuickWindow *>(inMain(root(), QStringLiteral("settingsWindow")).value<QObject *>());
+    check("QD22: the Settings window", settings != nullptr);
+    if (settings) {
+        QMetaObject::invokeMethod(root(), "openToolWindow", Q_ARG(QVariant, QStringLiteral("settings")));
+        spin(400);
+        const QVariantList groups = settings->property("groups").toList();
+        for (const QVariant &g : groups)
+            for (const QVariant &p : g.toMap().value(QStringLiteral("pages")).toList()) {
+                const QString id = p.toMap().value(QStringLiteral("id")).toString();
+                QMetaObject::invokeMethod(settings, "navigate", Q_ARG(QVariant, id));
+                spin(400);
+                if (settings->property("currentPage").toMap().value(QStringLiteral("id")).toString() != id) continue;   // not on this device
+                a11yAudit(settings, nullptr, QStringLiteral("settings: %1").arg(id), true);
+            }
+        settings->setVisible(false);
+        spin(100);
+    }
+
+    // Activation: Space and Return work a custom control as a click does, and so
+    // does a screen reader's press. Each one is left as found.
+    const auto focusOn = [&](QQuickWindow *w, QQuickItem *it) {
+        w->requestActivate();
+        waitFor(1000, [&]() { return QGuiApplication::focusWindow() == w; });
+        it->forceActiveFocus(Qt::TabFocusReason);
+        spin(30);
+        return it->hasActiveFocus();
+    };
+    const auto keyOn = [&](QQuickWindow *w, int k, const QString &text) {
+        press(w, k, Qt::NoModifier, text);
+        spin(80);
+    };
+    hideTools();
+    main->requestActivate();
+    QMetaObject::invokeMethod(root(), "selectOverview");
+    spin(200);
+    auto *b = m_.bridge;
+    if (QQuickItem *bypass = byAccessibleName(main->contentItem(), QStringLiteral("Bypass Master EQ"))) {
+        const bool was = b->bypass();
+        check("QD22: the bypass button takes the focus", focusOn(main, bypass));
+        keyOn(main, Qt::Key_Space, QStringLiteral(" "));
+        const bool spaced = waitFor(1000, [&]() { return b->bypass() != was; });
+        keyOn(main, Qt::Key_Return, QString());
+        const bool returned = waitFor(1000, [&]() { return b->bypass() == was; });
+        check("QD22: Space and Return press the bypass button", spaced && returned);
+        check("QD22: a screen reader presses it", accessiblePress(bypass) && waitFor(1000, [&]() { return b->bypass() != was; }));
+        if (b->bypass() != was) b->setBypass(was);
+    } else {
+        check("QD22: the bypass button", false);
+    }
+    if (QQuickItem *preset = byAccessibleName(main->contentItem(), QStringLiteral("Preset"))) {
+        check("QD22: the preset picker takes the focus", focusOn(main, preset));
+        keyOn(main, Qt::Key_Space, QStringLiteral(" "));
+        QObject *menu = nullptr;
+        for (QObject *o : root()->findChildren<QObject *>())
+            if (o->inherits("QQuickPopup") && o->property("visible").toBool()) menu = o;
+        check("QD22: Space opens the preset menu", menu != nullptr);
+        keyOn(main, Qt::Key_Escape, QString());
+        check("QD22: Escape closes it", menu && waitFor(1000, [&]() { return !menu->property("visible").toBool(); }));
+    } else {
+        check("QD22: the preset picker", false);
+    }
+    if (settings) {
+        QMetaObject::invokeMethod(root(), "openToolWindow", Q_ARG(QVariant, QStringLiteral("settings")));
+        QMetaObject::invokeMethod(settings, "navigate", Q_ARG(QVariant, QStringLiteral("about")));
+        spin(300);
+        const auto page = [&]() { return settings->property("currentPage").toMap().value(QStringLiteral("id")).toString(); };
+        QQuickItem *graphing = byAccessibleName(settings->contentItem(), QStringLiteral("Graphing"));
+        QQuickItem *advanced = byAccessibleName(settings->contentItem(), QStringLiteral("Advanced"));
+        check("QD22: the Settings sidebar's pages", graphing && advanced);
+        if (graphing && advanced) {
+            check("QD22: a sidebar page takes the focus", focusOn(settings, graphing));
+            keyOn(settings, Qt::Key_Space, QStringLiteral(" "));
+            check("QD22: Space opens its page", waitFor(1000, [&]() { return page() == QLatin1String("graphing"); }));
+            check("QD22: a screen reader opens another", accessiblePress(advanced) && waitFor(1000, [&]() { return page() == QLatin1String("advanced"); }));
+        }
+        settings->setVisible(false);
+        spin(100);
+    }
+    QQuickWindow *matrix = root()->findChild<QQuickWindow *>(QStringLiteral("matrixWindow"));
+    if (matrix) {
+        QMetaObject::invokeMethod(root(), "openToolWindow", Q_ARG(QVariant, QStringLiteral("matrix")));
+        spin(400);
+        const QString in = b->channelName(b->inputAppId(0)), out = b->channelName(2);
+        QQuickItem *point = byAccessibleName(matrix->contentItem(), in + QLatin1String(" to ") + out);
+        check("QD22: the Matrix's first point", point != nullptr);
+        if (point) {
+            const bool was = b->matrixRouting(0, 0);
+            check("QD22: it takes the focus", focusOn(matrix, point));
+            keyOn(matrix, Qt::Key_Space, QStringLiteral(" "));
+            const bool spaced = waitFor(1000, [&]() { return b->matrixRouting(0, 0) != was; });
+            keyOn(matrix, Qt::Key_Return, QString());
+            check("QD22: Space and Return switch a route", spaced && waitFor(1000, [&]() { return b->matrixRouting(0, 0) == was; }));
+        }
+        matrix->setVisible(false);
+        spin(100);
+    }
+
+    // The tool windows
+    for (const char *n : { "matrix", "graph", "loudness", "crossfeed", "leveller", "psybass", "subharm", "tube", "upmix",
+                           "stats", "spectrum", "siggen", "monitor", "firmware", "whatsNew", "autoeq", "autoeqRebuild" }) {
+        hideTools();
+        QMetaObject::invokeMethod(root(), "openToolWindow", Q_ARG(QVariant, QString::fromLatin1(n)));
+        spin(500);
+        QQuickWindow *found = nullptr;
+        for (QQuickWindow *w : root()->findChildren<QQuickWindow *>())
+            if (w != main && w->isVisible()) found = w;
+        if (!found) continue;
+        a11yAudit(found, nullptr, QString::fromLatin1(n), true);
+    }
+    hideTools();
+    main->requestActivate();
+    spin(100);
+}

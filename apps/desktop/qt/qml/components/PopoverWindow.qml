@@ -109,6 +109,7 @@ Window {
         enabled: pw.visible && Qt.platform.pluginName !== "wayland"
         visible: enabled
         onPressed: pw.close()
+        Accessible.ignored: true   // -- WP QD22 -- a press outside closes; Escape does too
 
         // A MouseArea on top shows its own cursor, so the anchor needs one here
         MouseArea {
@@ -119,6 +120,7 @@ Window {
             height: pw.anchorInScene.height
             cursorShape: Qt.PointingHandCursor
             onPressed: pw.close()
+            Accessible.ignored: true
         }
     }
 
@@ -163,5 +165,6 @@ Window {
         height: Math.max(0, Math.min(pw.height, pw.anchorOnScreen.y + pw.anchorOnScreen.height - pw.y) - y)
         cursorShape: Qt.PointingHandCursor
         onPressed: pw.close()
+        Accessible.ignored: true
     }
 }

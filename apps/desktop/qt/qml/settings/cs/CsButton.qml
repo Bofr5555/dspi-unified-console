@@ -45,12 +45,15 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
         }
     }
-    MouseArea {
+    ClickArea {
         id: mouse
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: btn.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-        onClicked: btn.clicked()
+        focusRadius: btn.radius + 2
+        Accessible.name: btn.text !== "" ? btn.text : btn.tip
+        Accessible.description: btn.text !== "" ? btn.tip : ""
+        onActivated: btn.clicked()
     }
     ToolTip.text: btn.tip
     ToolTip.visible: btn.tip !== "" && mouse.containsMouse

@@ -134,6 +134,7 @@ Popup {
                     selectByMouse: true
                     maximumLength: dlg.maxLength
                     placeholderText: dlg.placeholder
+                    Accessible.name: dlg.placeholder !== "" ? dlg.placeholder : dlg.title
                     placeholderTextColor: isMacOS ? Qt.rgba(1, 1, 1, 0.47) : Qt.rgba(1, 1, 1, 0.35)
                     onAccepted: dlg.choosePrimary()
                     background: Rectangle {
@@ -212,7 +213,10 @@ Popup {
                                     Text { width: parent.width; wrapMode: Text.WordWrap; text: modelData.text; font.pixelSize: 13; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9) }
                                     Text { visible: !!modelData.detail; width: parent.width; wrapMode: Text.WordWrap; text: modelData.detail || ""; font.pixelSize: 11; color: Qt.rgba(1, 1, 1, 0.5) }
                                 }
-                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: dlg.toggleCheck(modelData.key) }
+                                ClickArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; Accessible.role: Accessible.CheckBox
+                                            Accessible.name: modelData.text; Accessible.description: modelData.detail || ""
+                                            Accessible.checkable: true; Accessible.checked: parent.ticked
+                                            onActivated: dlg.toggleCheck(modelData.key) }
                             }
                         }
                     }
@@ -266,12 +270,14 @@ Popup {
                         font.weight: btn.filled ? Font.DemiBold : Font.Normal
                         color: isMacOS ? (btn.filled ? Qt.rgba(1, 1, 1, 0.86) : Qt.rgba(1, 1, 1, 0.89)) : "white"
                     }
-                    MouseArea {
+                    ClickArea {
                         id: btnMouse
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: dlg.choose(modelData.key)
+                        focusRadius: btn.radius + 2
+                        Accessible.name: modelData.text
+                        onActivated: dlg.choose(modelData.key)
                     }
                 }
             }

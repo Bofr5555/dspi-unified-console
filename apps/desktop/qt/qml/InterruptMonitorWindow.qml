@@ -39,7 +39,8 @@ AppWindow {
             Icon { visible: tb.icon !== ""; name: tb.icon; size: 13; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.8); anchors.verticalCenter: parent.verticalCenter }
             Text { text: tb.text; font.pixelSize: 12; color: isMacOS ? MacColors.label : "white"; anchors.verticalCenter: parent.verticalCenter }
         }
-        MouseArea { id: tbMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: tb.clicked() }
+        ClickArea { id: tbMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; focusRadius: 8
+                    Accessible.name: tb.text; Accessible.description: tb.tip; onActivated: tb.clicked() }
         ToolTip.visible: tbMouse.containsMouse && tip !== ""
         ToolTip.delay: 600
         ToolTip.text: tip

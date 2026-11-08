@@ -13,6 +13,7 @@ Item {
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton
         onPressed: windowEffects.systemResize(edges.window, edgeFlags)
+        Accessible.ignored: true   // the window manager's resize, not a control
     }
 
     Edge { edgeFlags: Qt.LeftEdge; cursorShape: Qt.SizeHorCursor

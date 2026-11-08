@@ -136,6 +136,9 @@ private:
     // -- WP QD17 --
     void testShortcuts();
     void testShownInputCount();
+    // -- WP QD22 --
+    void testAccessibility();
+    void a11yAudit(QQuickWindow *w, QQuickItem *scope, const QString &where, bool tabWalk);
     // -- WP QD13 --
     void testSystemIntegration();
     // -- WP QD16 --

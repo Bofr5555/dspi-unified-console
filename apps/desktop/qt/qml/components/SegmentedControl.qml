@@ -36,12 +36,18 @@ Rectangle {
                     font.weight: parent.isCurrent ? Font.DemiBold : Font.Normal
                     color: isMacOS ? (parent.isCurrent ? "white" : MacColors.label) : parent.isCurrent ? "white" : Qt.rgba(1, 1, 1, 0.75)
                 }
-                MouseArea {
+                ClickArea {
                     id: segMouse
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: if (!parent.isCurrent) seg.activated(index)
+                    focusRadius: 7
+                    Accessible.role: Accessible.RadioButton
+                    Accessible.name: modelData
+                    Accessible.description: seg.tips.length > index ? seg.tips[index] : ""
+                    Accessible.checkable: true
+                    Accessible.checked: parent.isCurrent
+                    onActivated: if (!parent.isCurrent) seg.activated(index)
                     ToolTip.visible: containsMouse && seg.tips.length > index && seg.tips[index] !== ""
                     ToolTip.delay: 500
                     ToolTip.text: seg.tips.length > index ? seg.tips[index] : ""

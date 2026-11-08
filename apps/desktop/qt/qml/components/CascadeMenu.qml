@@ -163,6 +163,10 @@ Popup {
                         hoverEnabled: true
                         onEntered: menu.openSub(index, false)
                         onClicked: menu.openSub(index, true)
+                        // -- WP QD22 -- The menu keeps the keys; a row opens its family
+                        Accessible.role: Accessible.ButtonMenu
+                        Accessible.name: modelData.text
+                        Accessible.onPressAction: menu.openSub(index, true)
                     }
                 }
             }

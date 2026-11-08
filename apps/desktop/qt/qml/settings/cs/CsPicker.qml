@@ -45,12 +45,15 @@ Rectangle {
         Icon { name: "chev-up"; size: 11; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.6) }
         Icon { name: "chev-down"; size: 11; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.6) }
     }
-    MouseArea {
+    ClickArea {
         id: mouse
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: {
+        focusRadius: 9
+        Accessible.role: Accessible.ComboBox
+        Accessible.name: picker.Accessible.name !== "" ? picker.Accessible.name : picker.text
+        onActivated: {
             menus.active = true
             if (picker.categories) menus.item.cascade.toggleAt(picker)
             else menus.item.flat.toggleAt(picker)

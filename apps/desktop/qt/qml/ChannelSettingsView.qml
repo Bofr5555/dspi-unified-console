@@ -97,6 +97,7 @@ Rectangle {
                 suffix: sec.unit; decimals: sec.decimals; maxDecimals: sec.maxDecimals
                 wheelStep: sec.stepSize
                 minValue: sec.from; maxValue: sec.to
+                accessibleName: sec.label.charAt(0) + sec.label.slice(1).toLowerCase()
                 value: sec.shown
                 onValueEdited: sec.committed(newValue)
             }
@@ -106,6 +107,7 @@ Rectangle {
             Layout.fillWidth: true
             from: sec.from; to: sec.to; stepSize: sec.stepSize
             snapMode: Slider.SnapAlways   // drags land on the step (whole ms of delay)
+            Accessible.name: sec.label.charAt(0) + sec.label.slice(1).toLowerCase()
             value: sec.shown
             // A press that didn't move commits nothing, so a value set
             // outside the slider's range elsewhere stays as it is
@@ -168,10 +170,14 @@ Rectangle {
                             font.weight: route.connected ? Font.DemiBold : Font.Normal
                             color: isMacOS ? (route.connected ? route.inputColor : MacColors.secondaryLabel) : route.connected ? route.inputColor : Qt.rgba(1, 1, 1, 0.75)
                         }
-                        MouseArea {
+                        ClickArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: route.toggle()
+                            Accessible.role: Accessible.CheckBox
+                            Accessible.name: "Route " + bridge.channelName(bridge.inputAppId(index))
+                            Accessible.checkable: true
+                            Accessible.checked: route.connected
+                            onActivated: route.toggle()
                         }
                     }
 
@@ -184,6 +190,7 @@ Rectangle {
                             anchors.verticalCenter: parent.verticalCenter
                             fieldWidth: 44; height: 22; suffix: "dB"; decimals: 1
                             minValue: -60; maxValue: 12
+                            accessibleName: bridge.channelName(bridge.inputAppId(index)) + " level"
                             value: route.level
                             textColor: isMacOS ? MacColors.opacity(MacColors.label, route.connected ? 1.0 : 0.55) : route.connected ? Qt.rgba(1, 1, 1, 0.9) : Qt.rgba(1, 1, 1, 0.5)
                             onValueEdited: bridge.setMatrixRoute(index, outputIndex, route.connected, newValue, route.inverted)
@@ -202,11 +209,15 @@ Rectangle {
                         font.pixelSize: 11
                         font.weight: Font.Bold
                         color: isMacOS ? (route.inverted ? MacColors.orange : MacColors.opacity(MacColors.secondaryLabel, route.connected ? 0.45 : 0.3)) : route.inverted ? "#ff9f0a" : Qt.rgba(1, 1, 1, route.connected ? 0.35 : 0.2)
-                        MouseArea {
+                        ClickArea {
                             anchors.fill: parent
                             anchors.margins: -5
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: bridge.setMatrixRoute(index, outputIndex, route.connected, route.level, !route.inverted)
+                            Accessible.role: Accessible.CheckBox
+                            Accessible.name: bridge.channelName(bridge.inputAppId(index)) + " inverted"
+                            Accessible.checkable: true
+                            Accessible.checked: route.inverted
+                            onActivated: bridge.setMatrixRoute(index, outputIndex, route.connected, route.level, !route.inverted)
                         }
                     }
                 }
@@ -261,13 +272,18 @@ Rectangle {
                     size: 18
                     color: isMacOS ? (isMuted ? MacColors.red : MacColors.secondaryLabel) : isMuted ? "#ff453a" : Qt.rgba(1, 1, 1, 0.6)
                 }
-                MouseArea {
+                ClickArea {
                     id: muteMouse
                     enabled: bridge.writable   // -- WP QD6 --
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: bridge.setOutputMute(outputIndex, !isMuted)
+                    focusRadius: 8
+                    Accessible.role: Accessible.CheckBox
+                    Accessible.name: "Mute"
+                    Accessible.checkable: true
+                    Accessible.checked: isMuted
+                    onActivated: bridge.setOutputMute(outputIndex, !isMuted)
                 }
             }
 

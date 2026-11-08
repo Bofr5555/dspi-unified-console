@@ -17,12 +17,14 @@ Item {
         }
         Icon { name: "chev-down"; size: 11; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.6); anchors.verticalCenter: parent.verticalCenter }
     }
-    MouseArea {
+    ClickArea {
         id: linkMouse
         anchors.fill: parent
         hoverEnabled: true
         enabled: link.enabled
         cursorShape: Qt.PointingHandCursor
-        onClicked: link.menu.openAt(link, 0, link.height + 4)
+        Accessible.role: Accessible.ButtonMenu
+        Accessible.name: link.text
+        onActivated: link.menu.openAt(link, 0, link.height + 4)
     }
 }
