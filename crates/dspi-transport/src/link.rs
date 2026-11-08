@@ -45,9 +45,6 @@ const CAP_SNAPSHOT: &str = "snapshot";
 const CAP_LOCK: &str = "lock";
 /// Longest lock a client may ask for (spec 7.7; `dspi-link` clamps too).
 const LOCK_MAX_MS: u32 = 60_000;
-/// A snapshot older than this is not used for the first bulk read; the
-/// device is read instead.
-const SNAPSHOT_MAX_AGE_MS: u64 = 5_000;
 /// What [`Transport::max_transfer`] reports when the hub's `max_payload` does
 /// not fit a `usize` (spec 7.2's default).
 const MAX_PAYLOAD_DEFAULT: usize = 8192;
@@ -198,27 +195,28 @@ impl LinkTransport {
         }
     }
 
-    /// The bulk image from the hub's snapshot, if it has a fresh one of at
-    /// least `len` bytes. Any failure, or a snapshot older than
-    /// [`SNAPSHOT_MAX_AGE_MS`], falls back to a device read.
-    fn snapshot_bulk(&self, len: u16) -> Option<Vec<u8>> {
-        let snap = self.client.snapshot(self.handle).ok()?;
-        if snap.age_ms.is_some_and(|a| a > SNAPSHOT_MAX_AGE_MS) {
-            return None;
-        }
-        let mut blob = snap.bulk()?;
-        if blob.len() < usize::from(len) {
+    /// The bulk image from the hub's snapshot, cut to `len`, if it has one of
+    /// at least `min_len` bytes. Any failure falls back to a device read.
+    ///
+    /// WP LK1: `age_ms` is not a reason to read the device instead. A hub keeps
+    /// the blob current (spec 7.5), and the ESP32 bridge reports the time since
+    /// it last read it, hours on a bridge up for hours; the macOS Console and
+    /// the 0.10 app ignore it too.
+    fn snapshot_bulk(&self, len: u16, min_len: u16) -> Option<Vec<u8>> {
+        let mut blob = self.client.snapshot(self.handle).ok()?.bulk()?;
+        if blob.is_empty() || blob.len() < usize::from(min_len) {
             return None;
         }
         blob.truncate(usize::from(len));
         Some(blob)
     }
 
-    /// One GET; the reply may be shorter than `len`, never longer.
-    fn get(&mut self, opcode: u8, value: u16, len: u16) -> Result<Vec<u8>> {
+    /// One GET; the reply may be shorter than `len`, never longer. The first
+    /// bulk read comes from the snapshot when it has at least `min_len` bytes.
+    fn get(&mut self, opcode: u8, value: u16, len: u16, min_len: u16) -> Result<Vec<u8>> {
         if opcode == op::REQ_GET_ALL_PARAMS
             && std::mem::take(&mut self.snapshot_unused)
-            && let Some(blob) = self.snapshot_bulk(len)
+            && let Some(blob) = self.snapshot_bulk(len, min_len)
         {
             return Ok(blob);
         }
@@ -240,7 +238,7 @@ impl LinkTransport {
 
 impl Transport for LinkTransport {
     fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> Result<Vec<u8>> {
-        let payload = self.get(opcode, value, len)?;
+        let payload = self.get(opcode, value, len, len)?;
         if payload.len() < usize::from(len) {
             return Err(TransportError::ShortRead {
                 opcode,
@@ -252,7 +250,9 @@ impl Transport for LinkTransport {
     }
 
     fn control_in_upto(&mut self, opcode: u8, value: u16, max_len: u16) -> Result<Vec<u8>> {
-        self.get(opcode, value, max_len)
+        // WP LK1: `max_len` is a cap (the probe asks for `max_payload`), so any
+        // snapshot serves, as a device reply of that size would
+        self.get(opcode, value, max_len, 1)
     }
 
     fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> Result<()> {
@@ -501,6 +501,58 @@ mod tests_wp_t5 {
             hub.image()
         );
         assert_eq!(bulk_reads(&hub), 1, "later reads go to the device");
+    }
+
+    // -- WP LK1 --
+    /// The probe's read asks for `max_payload`, more than the image: the
+    /// snapshot still serves it, as on the 0.10 app.
+    #[test]
+    fn wp_lk1_the_probes_capped_bulk_read_comes_from_the_snapshot() {
+        let hub = FakeHub::start(HubConfig::default()).unwrap();
+        let mut t = open(&hub);
+        let max = u16::try_from(t.max_transfer()).unwrap();
+        assert!(usize::from(max) > hub.image().len());
+        assert_eq!(
+            t.control_in_upto(req::GET_ALL_PARAMS, 0, max).unwrap(),
+            hub.image()
+        );
+        assert_eq!(bulk_reads(&hub), 0, "no second bulk transfer");
+    }
+
+    /// An ESP32 bridge's snapshot is as old as its last read of the blob, which
+    /// its notifications keep current: it is used whatever its age.
+    #[test]
+    fn wp_lk1_an_old_snapshot_is_used() {
+        let hub = FakeHub::start(HubConfig {
+            snapshot_age_ms: 3_600_000,
+            auth: dspi_link::fakehub::Auth::None,
+            ..HubConfig::bridge()
+        })
+        .unwrap();
+        let mut t = open(&hub);
+        let len = u16::try_from(hub.image().len()).unwrap();
+        assert_eq!(
+            t.control_in(req::GET_ALL_PARAMS, 0, len).unwrap(),
+            hub.image()
+        );
+        assert_eq!(bulk_reads(&hub), 0);
+    }
+
+    /// An exact read the snapshot is too short for goes to the device.
+    #[test]
+    fn wp_lk1_an_exact_read_longer_than_the_snapshot_reads_the_device() {
+        let hub = FakeHub::start(HubConfig::default()).unwrap();
+        let mut t = open(&hub);
+        let len = u16::try_from(hub.image().len() + 1).unwrap();
+        assert!(matches!(
+            t.control_in(req::GET_ALL_PARAMS, 0, len),
+            Err(TransportError::ShortRead { .. })
+        ));
+        assert_eq!(
+            bulk_reads(&hub),
+            1,
+            "read from the device after the snapshot"
+        );
     }
 
     #[test]
