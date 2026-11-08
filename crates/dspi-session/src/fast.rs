@@ -137,7 +137,7 @@ impl Session {
 }
 
 /// The Linkwitz Transform's target Q when the firmware stores 0 (`decode_qp`).
-const DEFAULT_QP: f32 = 0.707;
+pub(crate) const DEFAULT_QP: f32 = 0.707;
 
 /// Put one validated EQ field into a band read from the device. Shared by
 /// `send` and the EQ path of `Session::write`.
@@ -147,9 +147,11 @@ pub(crate) fn apply_eq_field(
     value: &Value,
 ) -> Result<(), WriteError> {
     // -- WP CG34 -- `eq.gain` or `eq.fp` and `eq.qp` by the band's type.
-    registry::eq_field_fits(d.path, packet.filter_type).map_err(|why| WriteError::Unavailable {
-        path: d.path.into(),
-        why,
+    registry::eq_field_fits(d.path, packet.band, packet.filter_type).map_err(|why| {
+        WriteError::Unavailable {
+            path: d.path.into(),
+            why,
+        }
     })?;
     match d.path {
         "eq.type" => {

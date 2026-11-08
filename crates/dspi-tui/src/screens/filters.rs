@@ -11,6 +11,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use dspi_proto::FilterType;
+use dspi_proto::registry;
 use dspi_proto::value::EqParamPacket;
 use dspi_proto::xover::{self, Family};
 use dspi_session::DeviceState;
@@ -895,20 +896,17 @@ fn nudge(field: Field, value: f64, dir: f64, coarse: bool) -> f64 {
 
 /// Change a band's type the way the Console's `retyped(to:)` does: the
 /// Linkwitz Transform repurposes the gain field for `fp` in Hz, so a leftover
-/// dB gain must not survive the switch.
+/// dB gain must not survive the switch. The rule is the core's
+/// (`registry::retyped`, WP CG35): entering seeds fp = f0 and Qp = Q0.
 fn retype(p: &mut EqParamPacket, t: FilterType) {
-    let was_linkwitz = p.filter_type.is_linkwitz();
+    let qp = p.qp.unwrap_or(0.707);
+    let [freq, q, gain, qp] = registry::retyped(p.filter_type, t, [p.freq, p.q, p.gain_db, qp]);
     p.filter_type = t;
-    if t.is_linkwitz() && !was_linkwitz {
-        // Seed a target an octave below the driver, which is what the panel
-        // opens on, rather than reading a dB value as a frequency.
-        p.gain_db = (p.freq / 2.0).max(10.0);
-        p.q = p.q.clamp(0.1, 20.0);
-        p.qp = Some(p.qp.unwrap_or(0.707));
-    } else if was_linkwitz && !t.is_linkwitz() {
-        p.gain_db = 0.0;
-        p.qp = None;
-    }
+    p.freq = freq;
+    p.q = q;
+    p.gain_db = gain;
+    // Qp travels only with a Linkwitz Transform.
+    p.qp = t.is_linkwitz().then_some(qp);
 }
 
 fn apply_family(p: &mut EqParamPacket, family: Option<Family>) {
@@ -1430,6 +1428,41 @@ mod tests {
             l.popup_result(Some(4), &state),
             ScreenEvent::Command("eq in.1 3 lowshelf 2856 3.58 -8.6".into())
         );
+    }
+
+    /// CG35 (review c6v): the TUI's retype is the core's and the Console's
+    /// (`registry::retyped`): entering a Linkwitz Transform seeds fp = f0 and
+    /// Qp = Q0, not fp = f0/2; leaving it sets the gain to 0 dB.
+    #[test]
+    fn wp_cg35_retype_is_the_cores_rule() {
+        let bell = EqParamPacket {
+            channel: 16,
+            band: 1,
+            filter_type: FilterType::Peaking,
+            bypass: false,
+            freq: 80.0,
+            q: 0.5,
+            gain_db: 6.0,
+            qp: None,
+        };
+        let mut p = bell;
+        retype(&mut p, FilterType::LinkwitzTransform);
+        assert_eq!(p.filter_type, FilterType::LinkwitzTransform);
+        assert_eq!((p.freq, p.q, p.gain_db, p.qp), (80.0, 0.5, 80.0, Some(0.5)));
+        let want = registry::retyped(
+            FilterType::Peaking,
+            FilterType::LinkwitzTransform,
+            [80.0, 0.5, 6.0, 0.707],
+        );
+        assert_eq!([p.freq, p.q, p.gain_db, p.qp.unwrap()], want);
+
+        retype(&mut p, FilterType::Peaking);
+        assert_eq!((p.freq, p.q, p.gain_db, p.qp), (80.0, 0.5, 0.0, None));
+
+        // Any other change keeps the fields.
+        let mut p = bell;
+        retype(&mut p, FilterType::LowShelf1);
+        assert_eq!((p.freq, p.q, p.gain_db), (80.0, 0.5, 6.0));
     }
 
     #[test]
