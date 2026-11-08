@@ -34,6 +34,10 @@
 //!   stop it with the lock released ([`RtaWorker::stop`]): it is joined, and
 //!   the listener is woken once so the app sees the reset.
 //!
+//! - Where there are no threads (`wasm32-unknown-unknown`), `rta_start`
+//!   installs the same worker without one, and the caller's timer runs each
+//!   turn through `DspiCore::rta_tick` (WP WB2).
+//!
 //! The request (what the app wants analysed) and the listener survive a
 //! reconnect, as in the old core; `rta_start` must be called again for the
 //! new connection.
@@ -188,6 +192,51 @@ impl DspiCore {
         if let Some(signal) = signal {
             signal.kick();
         }
+    }
+}
+
+// -- WP WB2 --
+/// The analyser without threads (`wasm32-unknown-unknown`). Not exported over
+/// UniFFI or the C ABI; the web binding (WB3) calls it.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+impl DspiCore {
+    /// One turn of the worker [`DspiCore::rta_start`] installed, as its thread
+    /// takes natively: one poll (the probe on the first), then the
+    /// [`RtaListener`] if the caps or the picture changed, with the lock
+    /// released. Returns how long to wait before the next call: [`TICK`]
+    /// while frames are wanted, longer while nothing is, zero after a request
+    /// changed. `None` when there is no worker or it has ended (disconnect,
+    /// close, a read-only connection); call `rta_start` after the next
+    /// connect.
+    ///
+    /// Call it from a timer, never from inside a listener.
+    pub fn rta_tick(&self) -> Option<Duration> {
+        let (id, signal, turns) = {
+            let inner = self.lock();
+            let w = inner.rta.worker.as_ref()?;
+            (w.id, Arc::clone(&w.signal), Arc::clone(&w.turns))
+        };
+        let mut turns = turns.lock().unwrap_or_else(|p| p.into_inner());
+        if turns.done || signal.stopped() {
+            return None;
+        }
+        *signal.kicked.lock().unwrap_or_else(|p| p.into_inner()) = false;
+        let Turns {
+            probed, refused, ..
+        } = &mut *turns;
+        let polled = poll_once(self, id, probed, refused);
+        if polled.changed && !signal.stopped() {
+            self.listeners.rta.call(|l| l.on_frame());
+        }
+        if !polled.more {
+            turns.done = true;
+            return None;
+        }
+        // A request or a stop came during the poll: go again at once.
+        if *signal.kicked.lock().unwrap_or_else(|p| p.into_inner()) {
+            return Some(Duration::ZERO);
+        }
+        Some(if polled.idle { IDLE_TICK } else { TICK })
     }
 }
 
@@ -766,6 +815,7 @@ impl Signal {
     }
 
     /// Sleep up to `d`, returning early on a kick or a stop.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn wait(&self, d: Duration) {
         let guard = self.kicked.lock().unwrap_or_else(|p| p.into_inner());
         let mut guard = if *guard || self.stopped() {
@@ -788,9 +838,24 @@ pub(crate) struct RtaWorker {
     signal: Arc<Signal>,
     listeners: Arc<Listeners>,
     thread: Option<JoinHandle<()>>,
+    /// The poll's own state where the caller drives it (WP WB2).
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    turns: Arc<Mutex<Turns>>,
+}
+
+/// What the worker thread keeps between polls, for a worker the caller
+/// drives with [`DspiCore::rta_tick`] (WP WB2).
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[derive(Default)]
+struct Turns {
+    probed: bool,
+    refused: bool,
+    /// The worker has ended, as its thread would have returned.
+    done: bool,
 }
 
 impl RtaWorker {
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn spawn(core: Weak<DspiCore>, listeners: Arc<Listeners>, id: u64) -> std::io::Result<Self> {
         let signal = Arc::new(Signal::default());
         let (sig, l) = (Arc::clone(&signal), Arc::clone(&listeners));
@@ -802,6 +867,19 @@ impl RtaWorker {
             signal,
             listeners,
             thread: Some(thread),
+        })
+    }
+
+    /// No threads on the web (WP WB2): the worker is polled by
+    /// [`DspiCore::rta_tick`], on the caller's timer.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn spawn(_core: Weak<DspiCore>, listeners: Arc<Listeners>, id: u64) -> std::io::Result<Self> {
+        Ok(Self {
+            id,
+            signal: Arc::new(Signal::default()),
+            listeners,
+            thread: None,
+            turns: Arc::default(),
         })
     }
 
@@ -857,6 +935,7 @@ struct Polled {
 
 /// The worker thread: poll under the lock, wake the listener with the lock
 /// released, sleep.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 fn run(core: &Weak<DspiCore>, signal: &Signal, listeners: &Listeners, id: u64) {
     let mut probed = false;
     let mut refused = false;

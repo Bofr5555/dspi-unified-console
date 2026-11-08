@@ -19,11 +19,11 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::clock::{Clock, SystemClock};
+use crate::clock::{Clock, Instant, SystemClock};
 use crate::frames::{status, CmdRequest, CmdResponse, Dir, Frame, PollFrame};
 use crate::messages::{out, AuthOk, ClientInfo, DeviceInfo, HelloHub, Inbound, PollGrant, PollSpec, Snapshot};
 use crate::socket::{WsConnector, WsMessage, WsReceiver, WsRecv, WsSender};
@@ -957,7 +957,7 @@ impl LinkClient {
         thread::Builder::new()
             .name("dspi-link-ping".into())
             .spawn(move || loop {
-                thread::sleep(tick);
+                crate::clock::sleep(tick);
                 let inner = match weak.upgrade() {
                     Some(i) if lock(&i.closed).is_none() => i,
                     _ => return,

@@ -34,6 +34,8 @@ exceptions = [
     { crate = "dspi-transport", allow = ["GPL-3.0-or-later"] },
     { crate = "dspi-tui", allow = ["GPL-3.0-or-later"] },
     { crate = "xtask", allow = ["GPL-3.0-or-later"] },
+    # -- WP WB2 -- the wasm gate's scenario module (ci/wasm-scenario)
+    { crate = "dspi-wasm-scenario", allow = ["GPL-3.0-or-later"] },
     # -- WP TM12 --
     # The Terminal's HTTPS (dspi-tui/src/autoeq_fetch.rs): named one by one, like
     # the rest of this list. Not in the iOS or Android libraries. webpki-roots is
