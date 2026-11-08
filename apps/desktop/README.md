@@ -274,6 +274,9 @@ Fedora 42). `cmake --install` lays out a system install, and the Arch package is
 with MinGW Qt 6) in the container from `packaging/windows/Containerfile`, and makes the folder, the `.zip` and
 the installer.
 
+Every package carries the licence texts and a notice; `packaging/release-sources.sh` fetches the source of
+each library the packages bundle, for publishing with the release ([`packaging/README.md`](packaging/README.md)).
+
 ---
 
 ## Project structure
@@ -288,6 +291,7 @@ the installer.
 | `packaging/linux/` | Release builds (AppImage, .deb, .rpm), udev rule, desktop entry, AppStream data and installer. |
 | `packaging/arch/` | The Arch package. |
 | `packaging/windows/` | The Windows build, `.zip` and installer. |
+| `packaging/licences/` | The licence texts the packages carry, and the scripts that stage and refresh them; `packaging/release-sources.sh` fetches the bundled libraries' sources ([`packaging/README.md`](packaging/README.md)). |
 | `qt/smoke/` | The smoke driver: the app run offscreen on the demo device, a fake hub and fakes of the platform. |
 | `Documentation/` | `core_spec.md`, the old core's API from before wire format V32, kept for history; it does not describe `dspi-capi`. |
 

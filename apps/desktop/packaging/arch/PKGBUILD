@@ -9,7 +9,7 @@ pkgdesc="Control application for the DSPi audio processor"
 arch=('x86_64')
 # The repository is private for now: AUR users can fetch the source only once it is public
 url="https://github.com/Bofr5555/dspi-unified-console"
-license=('unknown')
+license=('GPL-3.0-or-later')
 depends=('qt6-base' 'qt6-declarative' 'qt6-svg' 'qt6-wayland' 'kwindowsystem' 'hicolor-icon-theme'
          'alsa-lib' 'libx11' 'libglvnd' 'libstdc++' 'libgcc' 'glibc')
 makedepends=('git' 'cargo' 'cmake' 'ninja')
