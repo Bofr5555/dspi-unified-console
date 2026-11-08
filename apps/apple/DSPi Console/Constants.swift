@@ -1704,6 +1704,12 @@ func presetFailureText(_ status: UInt8) -> String {
     status == PRESET_STATUS_LOCKED ? DeviceLock.lockedMessage : "error \(status)"
 }
 
+/// -- WP SWF7 -- The "Load Failed" alert's text (c70-N2): a lock reads as the
+/// lock, not as "error 254".
+func presetLoadFailedText(_ status: UInt8) -> String {
+    status == PRESET_ERR_CRC ? "Preset data is corrupted." : "Failed to load preset (\(presetFailureText(status)))."
+}
+
 // Flash result codes
 let FLASH_OK: UInt8           = 0
 let FLASH_ERR_WRITE: UInt8    = 1

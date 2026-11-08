@@ -47,9 +47,11 @@ final class SWF4ReadOnlyTests: XCTestCase {
     /// notification needed, the status row says why, and the preset is not
     /// left dirty.  The device never changes.
     func testSWF4AnEditOnReadOnlyFirmwareRevertsAtOnceAndSaysWhy() throws {
-        let (fake, _, vm, monitor) = try olderFirmware()
+        let (fake, core, vm, monitor) = try olderFirmware()
         defer { monitor.stop() }
-        vm.updateSavedSnapshot()
+        // -- WP SWF7 -- The core's baseline, as a save takes it (updateSavedSnapshot
+        // no longer reaches the core).
+        vm.coreMirror.showPresetChanges(core.capturePresetBaseline(), from: core)
         XCTAssertEqual(vm.masterVolumeDB, -20)
 
         // What the sidebar slider does: the value on screen, then the write.
