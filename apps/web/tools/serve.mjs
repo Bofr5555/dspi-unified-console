@@ -26,7 +26,13 @@ createServer(async (req, res) => {
     res.writeHead(405).end();
     return;
   }
-  const path = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
+  let path;
+  try {
+    path = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
+  } catch {
+    res.writeHead(400).end();
+    return;
+  }
   let file = normalize(join(dir, path));
   if (file !== dir && !file.startsWith(dir + sep)) {
     res.writeHead(403).end();
