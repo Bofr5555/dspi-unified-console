@@ -3,7 +3,7 @@
 // pattern: the first item takes focus, arrows move, Escape closes and gives
 // focus back to the graph.
 
-import { useEffect, useLayoutEffect, useRef } from "preact/hooks";
+import { useLayoutEffect, useRef } from "preact/hooks";
 
 export type PopupItem =
   | { label: string; disabled?: boolean; checked?: boolean; danger?: boolean; onSelect: () => void }
@@ -32,7 +32,9 @@ export function PopupMenu(props: {
     el.style.top = `${Math.max(0, Math.min(props.y, props.bounds.height - h))}px`;
   }, [props.x, props.y, props.bounds.width, props.bounds.height]);
 
-  useEffect(() => {
+  // (review c6t) Before the first paint: a key sent as soon as the menu shows
+  // must reach the menu, not the graph behind it.
+  useLayoutEffect(() => {
     items()[0]?.focus();
     const outside = (e: PointerEvent) => {
       if (!ref.current?.contains(e.target as Node)) props.onClose(false);
