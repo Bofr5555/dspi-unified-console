@@ -57,6 +57,9 @@ class DSPiBridge : public QObject
     // WIRE_FEAT_* of the connected firmware's wire format; all of them with no device
     Q_PROPERTY(int wireFeatures READ wireFeatures NOTIFY stateChanged)
     Q_PROPERTY(float maxDelayMs READ maxDelayMs NOTIFY stateChanged)
+    // -- WP DL3 -- The core's words for the last delay it refused, empty after an
+    // accepted one or dismissDelayRefusal().
+    Q_PROPERTY(QString delayRefusal READ delayRefusal NOTIFY delayRefusalChanged)
 
     // Global
     Q_PROPERTY(float preampDB READ preampDB NOTIFY stateChanged)
@@ -166,6 +169,12 @@ public:
     // limiter. Features firmware lacks are hidden.
     Q_INVOKABLE bool firmwareHas(const QString &feature) const;
     float maxDelayMs() const;
+    // -- WP DL3 --
+    QString delayRefusal() const { return m_delayRefusal; }
+    Q_INVOKABLE void dismissDelayRefusal();
+    // A pasted delay: the clip's, held to the connected device's line (0 to
+    // `line` ms), as the sliders hold theirs. `line` 0 (no device): unchanged.
+    static float pastedDelay(float clip, float line);
 
     float preampDB() const;
     bool bypass() const;
@@ -516,6 +525,7 @@ signals:
     void devicesChanged();
     void inaccessibleDevicesChanged();
     void hubSessionChanged();   // -- WP QD37 --
+    void delayRefusalChanged();  // -- WP DL3 --
     void udevRuleInstalled(bool ok, const QString &message);
     // The signal generator started or stopped (on the device or elsewhere)
     void siggenNotified();
@@ -615,6 +625,13 @@ private:
         float gain = 0, delay = 0;
         bool mute = false;
     } m_clip;
+
+    // -- WP DL3 -- Every delay write: `path` ch.delay or out.delay through the
+    // core's write_param, so a refusal comes back in the core's words
+    // (delayRefusal). False when not written.
+    bool writeDelay(const char *path, int index, float ms);
+    void setDelayRefusal(const QString &words);
+    QString m_delayRefusal;
 
     static void hotplugCallback(uint8_t event, const char *serial, void *userData);
     static void notifyCallback(void *userData);

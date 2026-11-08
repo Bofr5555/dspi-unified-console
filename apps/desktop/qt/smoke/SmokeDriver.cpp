@@ -212,6 +212,8 @@ void SmokeDriver::run() {
     testDelaySliders();
     // -- WP QD41 --
     testSliderKeys();
+    // -- WP DL3 --
+    testDelayRefusal();
     // -- WP QD8 --
     testLink();
     // -- WP QD10 --

@@ -4,9 +4,11 @@
 // a typed one is kept as typed.
 #include "SmokeDriver.h"
 
+#include "ConfigFiles.h"   // -- WP DL3 --
 #include "DSPiBridge.h"
 
 #include <QCoreApplication>
+#include <QFile>   // -- WP DL3 --
 #include <QMouseEvent>
 #include <QQuickItem>
 #include <QQuickWindow>
@@ -43,6 +45,7 @@ void wheelOn(QQuickItem *item, int delta, Qt::KeyboardModifiers mods) {
 }
 
 bool whole(float ms) { return std::fabs(ms - std::round(ms)) < 1e-6f; }
+bool near(double a, double b, double tol) { return std::fabs(a - b) <= tol; }   // -- WP DL3 --
 }
 
 void SmokeDriver::testDelaySliders() {
@@ -152,4 +155,60 @@ void SmokeDriver::testDelaySliders() {
     b->setOutputDelay(0, before);
     QMetaObject::invokeMethod(root(), "selectOverview");
     spin(100);
+}
+
+// -- WP DL3 -- A delay past the device's line is refused in the core's words and
+// shown on the banner; a pasted one is held to the line; an imported one is
+// shortened and named in the report.
+void SmokeDriver::testDelayRefusal() {
+    section("delay refusal and the line (DL3)");
+    auto *b = m_.bridge;
+    check("DL3: the demo device is writable", waitFor(2000, [b] { return b->connected() && b->writable(); }));
+    const float line = b->maxDelayMs();
+    check("DL3: the demo's line is the RP2350's 42 ms", line == 42.0f);
+    const float before = b->outputDelayMS(0);
+    auto *main = qobject_cast<QQuickWindow *>(root());
+    QQuickItem *banner = main ? findItem(main->contentItem(), QStringLiteral("delayRefusalBanner")) : nullptr;
+    check("DL3: the banner is registered", banner != nullptr);
+    const auto shown = [&] { return banner && banner->property("shown").toBool(); };
+    check("DL3: no banner before a refusal", b->delayRefusal().isEmpty() && !shown());
+
+    b->setOutputDelay(0, line + 5);
+    printf("smoke: DL3 refusal: %s\n", qPrintable(b->delayRefusal()));
+    check("DL3: past the line, the delay is not changed", near(b->outputDelayMS(0), before, 1e-4));
+    check("DL3: the refusal is in the core's words", b->delayRefusal() == QLatin1String("out.delay: 47 ms is out of range; this device (RP2350) holds 0 to 42 ms"));
+    spin(50);
+    check("DL3: the banner shows it", shown());
+    b->setOutputDelay(0, 2.0f);
+    spin(50);
+    check("DL3: an accepted delay clears it", b->delayRefusal().isEmpty() && !shown() && near(b->outputDelayMS(0), 2.0, 1e-4));
+    b->sendOutputDelayToDevice(0, 100.0f);
+    check("DL3: the live path is refused the same way", b->delayRefusal().contains(QLatin1String("holds 0 to 42 ms")) && near(b->outputDelayMS(0), 2.0, 1e-4));
+    b->dismissDelayRefusal();
+    spin(50);
+    check("DL3: Dismiss clears it", b->delayRefusal().isEmpty() && !shown());
+
+    check("DL3: a pasted delay is held to the line",
+          DSPiBridge::pastedDelay(85, 42) == 42 && DSPiBridge::pastedDelay(85, 21) == 21 && DSPiBridge::pastedDelay(10, 21) == 10
+              && DSPiBridge::pastedDelay(-1, 21) == 0 && DSPiBridge::pastedDelay(std::nanf(""), 21) == 0 && DSPiBridge::pastedDelay(85, 0) == 85);
+    const int out0 = 2;   // the app channel of output 0 (DSPiBridge::outputOf)
+    b->setOutputDelay(0, 40.0f);
+    b->copyChannel(out0);
+    b->setOutputDelay(0, 1.0f);
+    b->pasteChannel(out0);
+    check("DL3: a paste within the line lands whole", near(b->outputDelayMS(0), 40.0, 1e-4) && b->delayRefusal().isEmpty());
+
+    QFile doc(m_out + QStringLiteral("/dl3.dspipreset"));
+    const bool written = doc.open(QIODevice::WriteOnly | QIODevice::Truncate)
+        && doc.write(R"({"schemaVersion": 1, "channels": [{"isOutput": true, "outputIndex": 0, "name": "Sub", "outputDelayMs": 85}]})") > 0;
+    doc.close();
+    check("DL3: the document is written", written);
+    const QVariantMap r = m_.config->importConfiguration(QUrl::fromLocalFile(doc.fileName()), false, false);
+    const QStringList lines = r.value("lines").toStringList();
+    printf("smoke: DL3 import: %s\n", qPrintable(lines.join(QLatin1String(" | "))));
+    check("DL3: the import shortens the delay to the line", r.value("ok").toBool() && near(b->outputDelayMS(0), 42.0, 1e-4));
+    check("DL3: the report names it",
+          lines.contains(QStringLiteral("Delays shortened to the 42 ms this device (RP2350) holds: Sub output delay (85 ms).")));
+
+    b->setOutputDelay(0, before);
 }

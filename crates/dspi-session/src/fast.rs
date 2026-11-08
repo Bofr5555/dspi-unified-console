@@ -113,6 +113,12 @@ impl Session {
         d: &ParamDesc,
         value: &Value,
     ) -> Result<(), WriteError> {
+        // -- WP DL3 -- NaN and infinity pass every range test (`f < min` is
+        // false for NaN), so they are refused here, for every parameter,
+        // before any range is looked at.
+        if let Value::Float(f) = value {
+            check_finite(*f)?;
+        }
         // A value of the wrong kind is the registry's to refuse.
         if !matches!(value, Value::Float(_) | Value::Int(_)) {
             return Ok(());
@@ -151,6 +157,25 @@ impl Session {
         }
         Ok(())
     }
+}
+
+// -- WP DL3 --
+/// Refuse NaN and infinity, which no parameter holds and every range test
+/// lets through.
+pub(crate) fn check_finite(f: f32) -> Result<(), WriteError> {
+    if f.is_finite() {
+        return Ok(());
+    }
+    Err(WriteError::Value(ValueError::WrongType {
+        expected: "a finite number",
+        got: if f.is_nan() {
+            "NaN"
+        } else if f > 0.0 {
+            "infinity"
+        } else {
+            "-infinity"
+        },
+    }))
 }
 
 /// The Linkwitz Transform's target Q when the firmware stores 0 (`decode_qp`).
@@ -625,5 +650,92 @@ mod tests_wp_cg37 {
             assert_eq!(e.to_string(), f.to_string());
             assert!(log.lock().unwrap().is_empty(), "nothing on the wire");
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests_wp_dl3 {
+    use super::tests_wp_s1::rig_on;
+    use crate::WriteError;
+    use dspi_proto::registry::{Kind, REGISTRY};
+    use dspi_proto::value::{EqParamPacket, Value};
+    use dspi_proto::{FilterType, Platform};
+    use dspi_transport::MockTransport;
+
+    const NOT_FINITE: [f32; 3] = [f32::NAN, f32::INFINITY, f32::NEG_INFINITY];
+
+    /// Every float parameter in the registry refuses NaN and infinity in the
+    /// check `write`, `send` and `check` share, before its range is looked at.
+    #[test]
+    fn wp_dl3_every_float_parameter_refuses_a_value_that_is_not_finite() {
+        let (s, _) = rig_on(MockTransport::new(), Platform::Rp2350);
+        let floats: Vec<_> = REGISTRY
+            .iter()
+            .filter(|d| matches!(d.kind, Kind::Float { .. }))
+            .collect();
+        assert!(floats.len() > 10, "the registry has float parameters");
+        for d in floats {
+            for f in NOT_FINITE {
+                let e = s.check_platform_range(d, &Value::Float(f)).unwrap_err();
+                assert!(matches!(e, WriteError::Value(_)), "{} {f}: {e:?}", d.path);
+            }
+        }
+    }
+
+    /// `dspi set out.delay 1 nan`, through each session path: refused in
+    /// words, nothing on the wire.
+    #[test]
+    fn wp_dl3_a_nan_delay_is_refused_before_the_wire() {
+        for platform in [Platform::Rp2040, Platform::Rp2350] {
+            let (mut s, log) = rig_on(MockTransport::new(), platform);
+            for (f, word) in [
+                (f32::NAN, "NaN"),
+                (f32::INFINITY, "infinity"),
+                (f32::NEG_INFINITY, "-infinity"),
+            ] {
+                let want = format!("expected a finite number, got {word}");
+                let w = s.write("out.delay", &[1], Value::Float(f)).unwrap_err();
+                assert_eq!(w.to_string(), want);
+                let n = s.send("out.delay", &[1], Value::Float(f)).unwrap_err();
+                assert_eq!(n.to_string(), want);
+                let c = s.check("ch.delay", &[0], &Value::Float(f)).unwrap_err();
+                assert_eq!(c.to_string(), want);
+                let g = s.send("vol.user", &[], Value::Float(f)).unwrap_err();
+                assert_eq!(g.to_string(), want);
+            }
+            assert!(log.lock().unwrap().is_empty(), "nothing on the wire");
+        }
+    }
+
+    /// A whole band with a field that is not finite is refused before it is sent.
+    #[test]
+    fn wp_dl3_a_band_with_a_nan_field_is_not_sent() {
+        let (mut s, log) = rig_on(MockTransport::new(), Platform::Rp2350);
+        let band = EqParamPacket {
+            channel: 0,
+            band: 0,
+            filter_type: FilterType::Peaking,
+            bypass: false,
+            freq: 1000.0,
+            q: 0.707,
+            gain_db: 0.0,
+            qp: None,
+        };
+        for f in NOT_FINITE {
+            for p in [
+                EqParamPacket { freq: f, ..band },
+                EqParamPacket { q: f, ..band },
+                EqParamPacket { gain_db: f, ..band },
+                EqParamPacket {
+                    qp: Some(f),
+                    ..band
+                },
+            ] {
+                let e = s.write_band(&p).unwrap_err();
+                assert!(matches!(e, WriteError::Value(_)), "{e:?}");
+            }
+        }
+        assert!(log.lock().unwrap().is_empty(), "nothing on the wire");
     }
 }
