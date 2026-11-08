@@ -153,7 +153,8 @@ mod web {
 
     /// Wait for `d`, in whole milliseconds and never less than asked for.
     pub fn sleep(d: Duration) {
-        let ms = d.as_millis().saturating_add(u128::from(d.subsec_nanos() % 1_000_000 != 0));
+        // -- WP WB4b -- (the binding's clippy now reaches this crate)
+        let ms = d.as_millis().saturating_add(u128::from(!d.subsec_nanos().is_multiple_of(1_000_000)));
         dspi_sleep_ms(u32::try_from(ms).unwrap_or(u32::MAX));
     }
 }

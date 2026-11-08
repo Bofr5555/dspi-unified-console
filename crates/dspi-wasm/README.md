@@ -13,9 +13,20 @@ Integration. The crate docs (`src/lib.rs`) have the details.
 - **Panics** mark the module dead (the hook runs before the abort); every later
   call is refused (`dead`) and the page reports the session lost.
 - **Imports:** `dspi.dspi_now_ms`, `dspi_unix_ms`, `dspi_sleep_ms` (the clock
-  seam) and `dspi_random_fill` (dspi-link's getrandom backend, once Link is in),
-  defined by the core's crates; and WebUSB's `dspi_usb_in`, `dspi_usb_out`
-  (Suspending) and `dspi_usb_error` (WB4a, `src/usb.rs`).
+  seam) and `dspi_random_fill` (dspi-link's getrandom backend), defined by the
+  core's crates; WebUSB's `dspi_usb_in`, `dspi_usb_out` (Suspending) and
+  `dspi_usb_error` (WB4a, `src/usb.rs`); the browser's WebSocket,
+  `dspi_ws_open` and `dspi_ws_wait` (Suspending), `dspi_ws_error`,
+  `dspi_ws_send`, `dspi_ws_close`, `dspi_ws_poll`, `dspi_ws_len`,
+  `dspi_ws_take`, `dspi_ws_closed` (WB4b, `src/link.rs`;
+  `apps/web/src/core/ws.ts`).
+- **Link** (WB4b, `src/link.rs`): `dspi-link`'s client and the core's session
+  and supervisor over the browser's WebSocket, caller-driven (no threads):
+  `linkConnect {url, token, hubId}` (the hello), `linkPair {pin}` (the token),
+  `linkDevices`, `open {"kind": "hub", "url", "deviceId"}` (a serial from the
+  list or a fleet's), `linkStatus`, and `linkTick` (the Worker's turn: when to
+  come back, and the status). `poll` and `meters` read what came over Link
+  first; `close` leaves the hub.
 - **USB** (WB4a, `src/usb.rs`): `open {"kind": "usb", "serial", "device",
   "vendorId"}` after the Worker claimed the device; `usbPush {"packets"}` hands
   in notification packets the Worker read (the transport has no notification
@@ -43,6 +54,12 @@ call that suspends; `test.panic`) for the binding's own tests. The page never
 loads it.
 
 ## Size
+
+With WebUSB and Link (WB4b), 2026-11-08: **1 085 783 bytes, 362 302 gzip**
+(`gzip -9`). Link adds 433 KB, 130 KB gzip: `dspi-link`, the core's Link
+session, and `tungstenite` with its handshake and `rand`, which the web build
+links although the browser's WebSocket replaces it (`dspi-link`'s
+`TcpConnector`; gating it out of the wasm build is an OPT9 candidate).
 
 With WebUSB (WB4a), 2026-11-08: **652 935 bytes, 232 678 gzip**.
 

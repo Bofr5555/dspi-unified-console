@@ -84,6 +84,15 @@ pub trait WsSender: Send + Sync {
 
 pub trait WsReceiver: Send {
     fn recv(&mut self) -> WsRecv;
+
+    // -- WP WB4b --
+    /// [`Self::recv`] waiting at most about `max` ([`WsRecv::Idle`] after it;
+    /// zero: only what has arrived). A caller-driven session
+    /// ([`crate::client::caller_driven`]) reads with this. The default is
+    /// `recv`, whose wait is its own tick.
+    fn recv_within(&mut self, _max: Duration) -> WsRecv {
+        self.recv()
+    }
 }
 
 /// The two halves of an open WebSocket.
@@ -418,6 +427,17 @@ impl WsReceiver for TcpReceiver {
                 Err(e) => return WsRecv::Closed { code: self.close_code, reason: e.to_string() },
             }
         }
+    }
+
+    // -- WP WB4b -- only a caller-driven session (natively: tests) waits less than the tick
+    fn recv_within(&mut self, max: Duration) -> WsRecv {
+        let wait = max.clamp(Duration::from_millis(1), READ_TICK);
+        if self.ws.get_ref().tcp.set_read_timeout(Some(wait)).is_err() {
+            return self.recv();
+        }
+        let received = self.recv();
+        let _ = self.ws.get_ref().tcp.set_read_timeout(Some(READ_TICK));
+        received
     }
 }
 

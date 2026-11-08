@@ -22,7 +22,12 @@ export type Source =
    * browser's picker chooses one; with it, that DSPi (WP WB4a).
    */
   | { kind: "usb"; serial?: string }
-  | { kind: "hub"; url: string };
+  /**
+   * A hub. Without `deviceId`, the console asks the hub which DSPis it has (Link's
+   * choose_device step); with it (a fleet backend's `hubDevices`), that DSPi, by
+   * its serial (WP WB4b).
+   */
+  | { kind: "hub"; url: string; deviceId?: string; name?: string };
 
 /** A place with DSPi devices: one or more sources under one name. */
 export interface Installation {
@@ -55,16 +60,21 @@ export interface FleetBackend {
   /** Missing or null when nobody signs in (standalone). */
   user?(): Promise<FleetUser | null>;
   /**
-   * Credentials for a hub, when a server hands them out (a Link PIN or token held
-   * for the fleet). Standalone returns null and the user pairs with the hub.
+   * Credentials for a hub, when a server hands them out: a Link token held for the
+   * fleet, with the hub's id it belongs to when known (then it goes to that hub
+   * only). Missing (standalone): the user pairs with the hub once and the token
+   * is kept in this page's storage. A token the hub refuses is not offered again
+   * in this visit; the user is asked for the PIN instead (WP WB4b).
    */
-  hubCredentials?(url: string): Promise<{ token: string } | null>;
+  hubCredentials?(url: string): Promise<{ token: string; hubId?: string } | null>;
   // -- WP WB3 -- the seam for the owner's decision of 2026-11-08; WB4b uses it.
   /**
-   * The DSPis behind a hub, when the server knows them. Missing (the default):
-   * the console asks the hub itself over Link (its choose_device step).
+   * The DSPis behind a hub, when the server knows them: `deviceId` is the DSPi's
+   * serial, and the picker lists each, opening it without asking the hub. Missing,
+   * or null for a hub (the default): the console asks the hub itself over Link
+   * (its choose_device step).
    */
-  hubDevices?(url: string): Promise<{ deviceId: string; name: string }[]>;
+  hubDevices?(url: string): Promise<{ deviceId: string; name: string }[] | null>;
 }
 
 /** The wording shown when access is the backend's "view". */
@@ -73,5 +83,7 @@ export const VIEW_ONLY_REASON = "You can view this DSPi but not change it";
 export function sourceKey(s: Source): string {
   // -- WP WB4a -- one key per USB DSPi
   if (s.kind === "usb" && s.serial) return `usb:${s.serial}`;
+  // -- WP WB4b -- one per DSPi a fleet names on a hub
+  if (s.kind === "hub" && s.deviceId) return `hub:${s.url}#${s.deviceId}`;
   return s.kind === "hub" ? `hub:${s.url}` : s.kind;
 }

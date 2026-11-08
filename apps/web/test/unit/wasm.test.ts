@@ -53,6 +53,8 @@ test("WB3: the module imports only the page's seams", { skip }, () => {
   const seams = ["dspi.dspi_now_ms", "dspi.dspi_random_fill", "dspi.dspi_sleep_ms", "dspi.dspi_unix_ms"];
   // -- WP WB4a -- WebUSB's control transfers (src/core/usb.ts)
   seams.push("dspi.dspi_usb_in", "dspi.dspi_usb_out", "dspi.dspi_usb_error");
+  // -- WP WB4b -- the browser's WebSocket (src/core/ws.ts)
+  for (const f of ["open", "error", "send", "close", "poll", "wait", "len", "take", "closed"]) seams.push(`dspi.dspi_ws_${f}`);
   for (const file of [testModule, pageModule]) {
     const names = WebAssembly.Module.imports(new WebAssembly.Module(readFileSync(file))).map((i) => `${i.module}.${i.name}`);
     assert.deepEqual(names.filter((n) => !seams.includes(n)), []);
