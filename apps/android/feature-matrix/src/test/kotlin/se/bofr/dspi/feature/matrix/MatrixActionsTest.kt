@@ -1,6 +1,8 @@
 package se.bofr.dspi.feature.matrix
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -10,9 +12,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import se.bofr.dspi.bridge.BridgeEvent
 import se.bofr.dspi.bridge.DspiBridgeImpl
 import se.bofr.dspi.core.DspiConstants
+import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.fake.FakeDspiCore
+import se.bofr.dspi.ui.CompactDrag
 import se.bofr.dspi.ui.compactDelayDisplay
 import se.bofr.dspi.ui.compactDelayEditText
 import se.bofr.dspi.ui.parseCompactDelay
@@ -47,7 +52,8 @@ class MatrixActionsTest {
         assertEquals("SPDIF 1 L", s.visibleOutputs[0].name)
         assertEquals("PDM", s.visibleOutputs[8].name)
         assertEquals(8, s.pdmOutputIndex)
-        assertEquals(85f, s.maxDelay)
+        // WP AN41: the core's line for the RP2350 (bridge.maxDelayMs), not the Mac's 85
+        assertEquals(42f, s.maxDelay)
         // V32 fixture: stereo active, upmixer off -> 2 rows
         assertEquals(listOf("USB 1", "USB 2"), s.matrixInputs.map { it.name })
         assertEquals("#4A8FE3", s.matrixInputs[0].color)
@@ -211,7 +217,7 @@ class MatrixActionsTest {
         assertEquals(1.5f, r.core.getState().outputDelayMs[3], 0f)
     }
 
-    private fun parseCompactDelayOrFail(text: String) = checkNotNull(parseCompactDelay(text, 85f))
+    private fun parseCompactDelayOrFail(text: String) = checkNotNull(parseCompactDelay(text, 42f))
 
     @Test
     fun inputTrimLiveIsSendOnlyAndCommits() = runTest {
@@ -254,7 +260,8 @@ class MatrixActionsTest {
         runCurrent()
         val s = MatrixMixerState.from(r.bridge, 2, true)
         r.actions.requestOutputEnable(s, 8)
-        assertEquals(PendingConflict(8, true), r.actions.pendingConflict.value)
+        runCurrent()
+        assertEquals(PendingConflict(8, true, PDM_REASON), r.actions.pendingConflict.value)
         r.core.calls.clear()
         r.actions.resolveConflict(r.actions.pendingConflict.value!!, s.eqWorkerRange, s.pdmOutputIndex)
         assertEquals(null, r.actions.pendingConflict.value)
@@ -276,7 +283,8 @@ class MatrixActionsTest {
         assertTrue(r.bridge.outputEnabled(8))
         val s = MatrixMixerState.from(r.bridge, 2, true)
         r.actions.requestOutputEnable(s, 4)
-        assertEquals(PendingConflict(4, false), r.actions.pendingConflict.value)
+        runCurrent()
+        assertEquals(PendingConflict(4, false, OUT5_REASON), r.actions.pendingConflict.value)
         r.core.calls.clear()
         r.actions.resolveConflict(PendingConflict(4, false), s.eqWorkerRange, s.pdmOutputIndex)
         runCurrent()
@@ -332,6 +340,117 @@ class MatrixActionsTest {
         runCurrent()
     }
 
+    // ═══ WP AN41: delay line and Core 1 from the core ═══
+
+    private fun TestScope.events(r: Rig): List<BridgeEvent> {
+        val seen = mutableListOf<BridgeEvent>()
+        r.bridge.events.onEach { seen += it }.launchIn(backgroundScope)
+        runCurrent()
+        return seen
+    }
+
+    /** The demo board becomes an RP2040 (a remote change), so the core's line is 21 ms. */
+    private fun TestScope.becomeRp2040(r: Rig) {
+        r.core.simulateRemote { it.copy(platformId = 0) }
+        advanceTimeBy(100)
+        runCurrent()
+    }
+
+    @Test
+    fun wpAn41TheFieldOffersTheCoresLine() = runTest {
+        val r = rig()
+        assertEquals(42f, r.bridge.maxDelayMs)
+        val s = MatrixMixerState.from(r.bridge, 2, true)
+        assertEquals(r.bridge.maxDelayMs, s.maxDelay)
+        // a drag stops at the line on whole ms (SL1), typing past it gives the line
+        assertEquals(42f, CompactDrag.delay(40f, 400f, s.maxDelay), 0f)
+        assertEquals(42f, parseCompactDelay("85", s.maxDelay)!!, 0f)
+        // typed values below the line stay exact
+        assertEquals(41.25f, parseCompactDelay("41.25", s.maxDelay)!!, 0f)
+        becomeRp2040(r)
+        assertEquals(21f, MatrixMixerState.from(r.bridge, 2, true).maxDelay)
+    }
+
+    @Test
+    fun wpAn41ARefusedDelayCarriesTheCoresWordsAndTheFieldReverts() = runTest {
+        val r = rig()
+        r.actions.outputDelayCommit(2, 12.5f)
+        runCurrent()
+        val seen = events(r)
+        r.core.calls.clear()
+        // a value past the line (a field still holding an older board's limit): the core refuses it
+        r.actions.outputDelayCommit(2, 50f)
+        runCurrent()
+        val failed = seen.filterIsInstance<BridgeEvent.CommandFailed>().single()
+        assertEquals("setOutputDelay", failed.command)
+        val e = failed.error as DspiException.InvalidArgument
+        assertEquals("out.delay: 50 ms is out of range; this device (RP2350) holds at most 42 ms", e.msg)
+        // nothing changed: the field shows the device's value again
+        assertEquals(12.5f, r.bridge.outputDelayMS(2), 0f)
+        assertEquals(12.5f, MatrixMixerState.from(r.bridge, 2, true).output(2).delayMS, 0f)
+        assertEquals(12.5f, r.core.getState().outputDelayMs[2], 0f)
+        assertEquals(listOf("setOutputDelay(2, 50.0)"), r.calls("setOutputDelay"))
+    }
+
+    @Test
+    fun wpAn41PasteTakesThisDevicesLine() = runTest {
+        val r = rig()
+        r.actions.outputDelayCommit(0, 40f)
+        r.actions.setOutputMute(0, true)
+        runCurrent()
+        r.actions.copyChannelParams(0)
+        becomeRp2040(r)
+        val seen = events(r)
+        r.core.calls.clear()
+        r.actions.pasteChannelParams(1)
+        runCurrent()
+        assertEquals(emptyList<BridgeEvent>(), seen.filterIsInstance<BridgeEvent.CommandFailed>())
+        assertEquals(listOf("setOutputDelay(1, 21.0)"), r.calls("setOutputDelay"))
+        assertEquals(21f, r.bridge.outputDelayMS(1), 0f)
+        // the rest of the paste is not cut short
+        assertTrue(r.bridge.outputMuted(1))
+        // a clip within the line is pasted exactly
+        r.actions.outputDelayCommit(0, 12.25f)
+        runCurrent()
+        r.actions.copyChannelParams(0)
+        r.actions.pasteChannelParams(1)
+        runCurrent()
+        assertEquals(12.25f, r.bridge.outputDelayMS(1), 0f)
+    }
+
+    @Test
+    fun wpAn41EnableAsksTheCoreNotTheLayout() = runTest {
+        val r = rig()
+        r.actions.setOutputEnable(2, true)
+        runCurrent()
+        // a state read before OUT3-8 went off: the layout rule still sees a conflict
+        val stale = MatrixMixerState.from(r.bridge, 2, true)
+        assertTrue(stale.output(8).wouldConflict)
+        for (o in 2..7) r.bridge.setOutputEnable(o, false)
+        runCurrent()
+        r.core.calls.clear()
+        r.actions.requestOutputEnable(stale, 8)
+        runCurrent()
+        // the core says no conflict: enabled at once, no alert
+        assertEquals(listOf("core1ConflictReason(8)"), r.calls("core1ConflictReason"))
+        assertEquals(null, r.actions.pendingConflict.value)
+        assertTrue(r.bridge.outputEnabled(8))
+    }
+
+    @Test
+    fun wpAn41WithoutAnAnswerTheLayoutRuleStillAsks() = runTest {
+        val r = rig()
+        r.actions.setOutputEnable(2, true)
+        runCurrent()
+        val s = MatrixMixerState.from(r.bridge, 2, true)
+        r.core.failNext("core1ConflictReason") { DspiException.Disconnected() }
+        r.core.calls.clear()
+        r.actions.requestOutputEnable(s, 8)
+        runCurrent()
+        assertEquals(PendingConflict(8, true, null), r.actions.pendingConflict.value)
+        assertEquals(emptyList<String>(), r.calls("setOutputEnable"))
+    }
+
     @Test
     fun directRoutingShowsTheOutputsItEnablesOnlyInOverview() = runTest {
         for (overview in listOf(false, true)) {
@@ -344,5 +463,12 @@ class MatrixActionsTest {
             assertTrue(r.bridge.outputEnabled(1))
             assertEquals("overview=$overview", overview, r.bridge.channelVisible(3))
         }
+    }
+
+    companion object {
+        /** The core's words (write_param.rs core1_conflict_reason) for the demo's 9 outputs. */
+        const val PDM_REASON =
+            "Output 9 is the PDM output, which shares Core 1 with outputs 3-8, and one of them is enabled: disable outputs 3-8 first"
+        const val OUT5_REASON = "Output 5 shares Core 1 with the PDM output (output 9), which is enabled: disable the PDM output first"
     }
 }
