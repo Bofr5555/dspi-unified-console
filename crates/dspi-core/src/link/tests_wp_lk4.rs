@@ -302,7 +302,12 @@ fn wp_lk4_a_stalled_bridge_feed_runs_slow_then_recovers() {
     wait_until("live meters", || {
         core.fetch_status().is_ok_and(|s| !s.stale)
     });
-    assert_eq!(guard(&side.feed).meter_hz, Some(METER_HZ_BRIDGED));
+    // The bind's slow rate goes up to the full one once the snapshot is in
+    wait_until("the full rate", || {
+        let _ = core.fetch_status();
+        guard(&side.feed).meter_hz == Some(METER_HZ_BRIDGED)
+    });
+    assert!(!guard(&side.feed).meter_binding);
 
     // A stall: no frame for longer than FEED_LOST. The hub stops sending
     // (as the stalled link would), the frames on their way are drained

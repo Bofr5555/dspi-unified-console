@@ -1166,10 +1166,11 @@ impl DspiCore {
             b.seen_offline = false;
             b.offline_base = offline_base;
             b.probe = probe;
-            old_side = b.side.replace(side);
+            old_side = b.side.replace(Arc::clone(&side));
         }
         current.retry = None;
         let _ = current.tx.send(Msg::Kick);
+        side.bind_done(); // -- WP LK4 --
         drop(guard);
         drop(old_side);
         drop(old_path);
@@ -2147,6 +2148,12 @@ struct Feed {
     /// A subscription sent ahead of the bind's snapshot, its grant not read
     /// yet ([`LinkSide::subscribe_ahead`]), with the rate asked.
     meter_pending: Option<(dspi_link::client::PendingPolls, u32)>,
+    /// A bind is reading the snapshot: on a bridge the feed runs at
+    /// [`METER_HZ_STALLED`] meanwhile, so its frames take little from the
+    /// snapshot on a lossy link ([`LinkSide::bind_done`] lifts it).
+    meter_binding: bool,
+    /// The current subscription was asked at the slow rate.
+    meter_asked_slow: bool,
     /// A wake-up to the supervisor is on its way.
     kicked: bool,
     /// The channels the analyser wants.
@@ -2350,11 +2357,15 @@ impl LinkSide {
             if recovered {
                 feed.meter_slow_since = None;
             }
-            if feed.meter_hz.is_some() && !silent && !recovered {
+            // The bind's slow rate is over: up to the full one
+            let slow = feed.meter_slow_since.is_some() || feed.meter_binding;
+            let upgrade = !slow && feed.meter_asked_slow && feed.meter_hz.is_some();
+            if feed.meter_hz.is_some() && !silent && !recovered && !upgrade {
                 return;
             }
             feed.meter_subscribed_at = Some(now);
-            self.meter_spec(feed.meter_len, feed.meter_slow_since.is_some())
+            feed.meter_asked_slow = slow;
+            self.meter_spec(feed.meter_len, slow)
         };
         let granted = self.client.poll_subscribe(self.handle, &[spec]);
         let mut feed = guard(&self.feed);
@@ -2386,16 +2397,26 @@ impl LinkSide {
             return;
         }
         let now = Instant::now();
-        let spec = self.meter_spec(len, false);
+        let spec = self.meter_spec(len, self.bridged);
         let Ok(pending) = self.client.poll_subscribe_begin(self.handle, &[spec]) else {
             return;
         };
         let mut feed = guard(&self.feed);
+        feed.meter_binding = self.bridged;
+        feed.meter_asked_slow = self.bridged;
         feed.meter_len = len;
         feed.meter_asked = Some(now);
         feed.meter_subscribed_at = Some(now);
         feed.meter_pending = Some((pending, spec.hz));
         if !std::mem::replace(&mut feed.kicked, true) {
+            let _ = self.tx.send(Msg::Kick);
+        }
+    }
+
+    /// The bind has its snapshot: the feed goes to its full rate.
+    fn bind_done(&self) {
+        let mut feed = guard(&self.feed);
+        if std::mem::take(&mut feed.meter_binding) && !std::mem::replace(&mut feed.kicked, true) {
             let _ = self.tx.send(Msg::Kick);
         }
     }
