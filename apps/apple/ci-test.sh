@@ -48,6 +48,7 @@ case "$platform" in
     core_pass+=(AdatWireTests ControlSurfacesWireTests I2sClockPinModeWireTests I2sSlaveWireTests
                 LimiterWireTests PsybassWireTests RtaWireTests SiggenWireTests SpdifInputWireTests
                 SubharmWireTests TubeWireTests UpmixerWireTests)   # -- WP SW4 --
+    core_pass+=(SaveCoordinationTests)   # -- WP SW8 -- the view model over the core's mirror
     # In a VM: skip the tests that failed there before and after the move to
     # this repository (MR1S): Metal precision on the paravirtual GPU, frame and
     # timing limits on shared vCPUs. Other rendering and benchmark tests fail

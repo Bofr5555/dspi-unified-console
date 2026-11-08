@@ -2341,6 +2341,14 @@ class DSPViewModel: ObservableObject {
     /// state (an export, a test capture) waits for this to equal
     /// `transport.generation`.
     @Published var fullReadGeneration: UInt64? = nil
+    // -- WP SW8 --
+    /// The device's firmware speaks another wire format: the core shows its
+    /// settings but refuses every write (docs/SWIFT-SEAMS.md 5.2).  Only set
+    /// on a device driven through the core.
+    @Published var deviceReadOnly: Bool = false
+    /// The view model's state from the core's `DspState`, when the device is
+    /// driven through the core (Core/CoreMirror.swift).
+    private(set) lazy var coreMirror: CoreMirror = CoreMirror(vm: self)
     @Published var availableDevices: [DSPiDevice] = []
     @Published var selectedDevice: DSPiDevice? = nil
     /// Last USB connection error, mirrored from USBDevice so the status dot can
@@ -2686,6 +2694,8 @@ class DSPViewModel: ObservableObject {
         // Origin 0 is unattributed and never ours.
         AppState.shared.interruptMonitor.onParamChanged = { [weak self] offset, size, source, origin, payload in
             guard let self = self, !self.transport.isOwnWrite(origin: origin) else { return }
+            // -- WP SW8 -- Through the core, its mirror says what changed.
+            guard self.transport.coreStateSource == nil else { return }
             self.applyNotifiedParamChange(offset: offset, size: size, payload: payload)
         }
 
@@ -2806,6 +2816,9 @@ class DSPViewModel: ObservableObject {
         AppState.shared.interruptMonitor.onPresetLoaded = { [weak self] slot in
             guard let self = self else { return }
             if self.activePresetSlot != Int(slot) { self.activePresetSlot = Int(slot) }
+            // -- WP SW8 -- The core re-reads by itself (NOTIFY_PRESET, then
+            // NOTIFY_REFRESHED), and the mirror rebases on that.
+            guard self.transport.coreStateSource == nil else { return }
             self.scheduleDeviceResync(rebaseSnapshot: true)
         }
 
@@ -2814,7 +2827,13 @@ class DSPViewModel: ObservableObject {
         // are suppressed inside that bracket, so a full re-read is the only way
         // to learn what changed.
         AppState.shared.interruptMonitor.onBulkInvalidated = { [weak self] _ in
-            self?.scheduleDeviceResync()
+            guard let self = self else { return }
+            // -- WP SW8 -- The core re-reads a real invalidation by itself
+            // (NOTIFY_REFRESHED).  This puts the core's state back over any
+            // edit in flight, which is what a refused write needs
+            // (RefusedWrite: the device kept its value).
+            if self.transport.coreStateSource != nil { self.coreMirror.revertToCore(); return }
+            self.scheduleDeviceResync()
         }
 
         // 1. Subscribe to USB connection changes AND Trigger Fetch
@@ -2843,8 +2862,12 @@ class DSPViewModel: ObservableObject {
                         self?.activePresetSlot = 0
                         self?.extensionProbe = .unknown
                         self?.coreVregStatus = nil
+                        self?.deviceReadOnly = false   // -- WP SW8 --
                     }
                 }
+                // -- WP SW8 -- Follow the core of the device just connected
+                // (none on a disconnect): a fresh mirror for each connection.
+                self?.coreMirror.attach(connected ? self?.transport.coreStateSource : nil)
                 if !connected {
                     AppState.shared.interruptMonitor.stop()
                     self?.rta.deviceDisconnected()
@@ -2910,6 +2933,9 @@ class DSPViewModel: ObservableObject {
         }
         timer.resume()
         pollTimer = timer
+
+        // -- WP SW8 -- Watch for local edits from the start (pending keys).
+        _ = coreMirror
 
         // Initial Connect attempt
         transport.reconnect()

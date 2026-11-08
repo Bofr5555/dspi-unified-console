@@ -372,3 +372,9 @@ final class CompositeTransport: DeviceTransport {
     /// True while the view model is driving a device on another hub.
     var isRemoteActive: Bool { active !== local }
 }
+
+// -- WP SW8 -- The core of the device in use, if it is driven through one
+// (CoreMirror.swift).
+extension CompositeTransport: CoreStateSourceProviding {
+    var providedCoreStateSource: CoreStateSource? { active.coreStateSource }
+}

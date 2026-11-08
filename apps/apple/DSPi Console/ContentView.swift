@@ -1044,6 +1044,8 @@ struct ContentView: View {
                 // enlarging the graph above it shrinks this (scrollable) region
                 // rather than growing the column.
                 .frame(maxHeight: .infinity)
+                // -- WP SW8 -- Firmware in another wire format: shown, not editable.
+                .disabled(vm.deviceReadOnly)
                 .consoleDetailFrame()
             }
             // `idealHeight` pins the column's *reported* height to a constant,
@@ -1072,8 +1074,12 @@ struct ContentView: View {
         // top of the pane and the window never moves.  That does mean it covers
         // the graph header while shown, which is what its Hide button is for.
         .overlay(alignment: .top) {
-            FirmwareMismatchBanner(vm: vm) {
-                firmwareUpdateController.show(vm: vm)
+            // -- WP SW8 -- with the read-only notice under it
+            VStack(spacing: 0) {
+                FirmwareMismatchBanner(vm: vm) {
+                    firmwareUpdateController.show(vm: vm)
+                }
+                ReadOnlyBanner(vm: vm)
             }
         }
         .navigationTitle("DSPi Console")

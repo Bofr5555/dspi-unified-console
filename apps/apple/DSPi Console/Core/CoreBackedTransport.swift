@@ -72,6 +72,8 @@ final class CoreBackedTransport: DeviceTransport {
     private let selectedSubject = CurrentValueSubject<DSPiDevice?, Never>(nil)
     private let errorSubject = CurrentValueSubject<String?, Never>(nil)
     private let fanout = NotificationFanout()
+    // -- WP SW8 -- What a drain changed in the core's mirror (CoreMirror.swift).
+    private let stateFanout = CoreStateFanout()
 
     var isConnected: Bool { connectedSubject.value }
     var isConnectedPublisher: AnyPublisher<Bool, Never> { connectedSubject.eraseToAnyPublisher() }
@@ -285,6 +287,11 @@ final class CoreBackedTransport: DeviceTransport {
             let at = Date(timeIntervalSince1970: TimeInterval(raw.receivedMs) / 1000)
             fanout.publish(LinkNotification(packet: raw.packet, origin: origin, receivedAt: at))
         }
+        // -- WP SW8 -- The mirror after the change, after the tap's packets
+        // (both reach main in this order).
+        if result.flags & CoreStateChange.stateFlags != 0, !stateFanout.isEmpty {
+            stateFanout.publish(CoreStateChange(flags: result.flags, state: onCore { $0.getState() }))
+        }
         let connected = onCore { $0.isConnected() }
         let coreGeneration = onCore { $0.connectionGeneration() }
         stateLock.lock()
@@ -419,6 +426,35 @@ final class CoreBackedTransport: DeviceTransport {
     private func onCoreSync<T>(_ body: () -> T) -> T {
         if DispatchQueue.getSpecific(key: CoreBackedTransport.onCoreQueue) == true { return body() }
         return coreQueue.sync(execute: body)
+    }
+}
+
+// MARK: - The core's state (WP SW8)
+
+// -- WP SW8 -- The view model reads the device state from the core
+// (docs/SWIFT-SEAMS.md 5.2).
+extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
+    var providedCoreStateSource: CoreStateSource? { self }
+
+    func readAll() -> Result<DspState, DspiError> {
+        onCoreSync {
+            do {
+                try self.onCore { try $0.fetchAll() }
+                return .success(self.onCore { $0.getState() })
+            } catch let error as DspiError {
+                return .failure(error)
+            } catch {
+                return .failure(.Transfer(msg: String(describing: error)))
+            }
+        }
+    }
+
+    func readState() -> DspState {
+        onCoreSync { self.onCore { $0.getState() } }
+    }
+
+    func addStateObserver(_ handler: @escaping (CoreStateChange) -> Void) -> AnyCancellable {
+        stateFanout.add(handler)
     }
 }
 
