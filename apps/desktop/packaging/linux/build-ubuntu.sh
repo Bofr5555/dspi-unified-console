@@ -41,6 +41,9 @@ cp "$QTDIR/plugins/platformthemes/libqxdgdesktopportal.so" AppDir/usr/plugins/pl
 "$tools/linuxdeploy-x86_64.AppImage" --appdir AppDir --deploy-deps-only AppDir/usr/plugins/kf6/kwindowsystem \
     --deploy-deps-only AppDir/usr/plugins/platformthemes
 
+# -- WP QD42 -- The licence texts, the notice and the list of bundled libraries
+APPIMAGE_RUNTIME="$tools/runtime-x86_64" "$here/../licences/stage.sh" appimage AppDir AppDir/usr/share/doc/dspi-console "${VERSION#v}"
+
 # The runtime build-release.sh fetched, so appimagetool downloads nothing
 OUTPUT="$name-x86_64.AppImage" LDAI_RUNTIME_FILE="$tools/runtime-x86_64" "$tools/linuxdeploy-x86_64.AppImage" --appdir AppDir --output appimage
 
@@ -48,5 +51,6 @@ OUTPUT="$name-x86_64.AppImage" LDAI_RUNTIME_FILE="$tools/runtime-x86_64" "$tools
 rm -rf "$name" && mkdir "$name"
 cp "$name-x86_64.AppImage" packaging/linux/70-dspi.rules packaging/linux/install.sh qt/dspi-console.svg "$name/"
 cp packaging/linux/README.txt "$name/"
+cp -R AppDir/usr/share/doc/dspi-console/NOTICE.txt AppDir/usr/share/doc/dspi-console/LICENSES "$name/"   # -- WP QD42 --
 tar -czf "$name-linux-x86_64.tar.gz" "$name"
 cp "$name-x86_64.AppImage" "$name-linux-x86_64.tar.gz" /dist/

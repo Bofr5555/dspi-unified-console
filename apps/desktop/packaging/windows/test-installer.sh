@@ -5,6 +5,9 @@
 # Runs in the build image, after build-windows.sh:
 #   ci/run.sh 'apps/desktop/packaging/windows/test-installer.sh /work/dist-windows/DSPi-Console-<v>-windows-x86_64-setup.exe'
 # The app runs on the demo device under Xvfb; no device, no network needed.
+# -- WP QD42 -- The install, and the zip beside the installer, carry the licence
+# texts: NOTICE.txt and LICENSES/ (Qt's, GCC's runtime exception, every DLL
+# listed in BUNDLED.txt).
 set -uo pipefail
 setup=$(realpath "$1")
 export WINEPREFIX=${WINEPREFIX:-$HOME/wine-installer-test} WINEDEBUG=-all WINEDLLOVERRIDES="mscoree,mshtml="
@@ -31,6 +34,27 @@ wine "$setup" /S "/D=$dir"; check "install" 0 $?
 publisher=$(wine reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\DSPiConsole' /v Publisher 2>/dev/null | tr -d '\r' | sed -n 's/.*REG_SZ *//p')
 [ -n "$publisher" ] && echo "test-installer: ok: Publisher \"$publisher\"" \
     || { echo "test-installer: FAIL: no Publisher in the uninstall entry"; fails=$((fails + 1)); }
+
+# -- WP QD42 -- the licence files
+lic_ok=1
+for f in NOTICE.txt LICENSES/GPL-3.0.txt LICENSES/LGPL-3.0.txt LICENSES/BUNDLED.txt LICENSES/Qt/THIRD-PARTY.txt \
+         LICENSES/Qt/LGPL-3.0-only.txt LICENSES/bundled/mingw64-libgcc/COPYING.RUNTIME LICENSES/bundled/mingw64-libstdc++/COPYING.RUNTIME; do
+    [ -s "$unix/$f" ] || { echo "test-installer: FAIL: no $f in the install"; lic_ok=; }
+done
+for dll in "$unix"/*.dll; do
+    b=${dll##*/}
+    [ "$b" = dspi_capi.dll ] && continue
+    cut -f6 "$unix/LICENSES/BUNDLED.txt" | tr ' ' '\n' | grep -qx "$b" || { echo "test-installer: FAIL: $b is not in BUNDLED.txt"; lic_ok=; }
+done
+zip=${setup%-setup.exe}.zip
+if [ -f "$zip" ]; then
+    names=$(python3 -m zipfile -l "$zip" | awk '{print $1}')
+    for f in NOTICE.txt LICENSES/BUNDLED.txt LICENSES/Qt/THIRD-PARTY.txt; do
+        grep -q "^[^/]*/$f$" <<<"$names" || { echo "test-installer: FAIL: no $f in ${zip##*/}"; lic_ok=; }
+    done
+fi
+[ -n "$lic_ok" ] && echo "test-installer: ok: NOTICE.txt and LICENSES/ installed${zip:+ and in the zip}, every DLL listed" \
+    || fails=$((fails + 1))
 
 # The installed app, running (on the demo device). Only whether it stays up:
 # under Wine the GUI exe's Qt messages reach no log this script can read

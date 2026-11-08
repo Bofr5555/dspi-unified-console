@@ -2,7 +2,8 @@
 # Mounts the .dmg from build-macos.sh read-only and starts the app from it on
 # the demo device for 15 s (DMG_RUN_SECONDS). Passes when the app is still
 # running at the end and its log shows no QML module or component, Qt plugin,
-# library or image that failed to load. Needs the GUI session (from ssh:
+# library or image that failed to load, and the bundle carries the licence texts
+# (Contents/Resources/NOTICE.txt and LICENSES/, WP QD42). Needs the GUI session (from ssh:
 # sudo launchctl asuser "$(id -u)" sudo -u "$USER" test-dmg.sh <dmg>).
 #
 #   apps/desktop/packaging/macos/test-dmg.sh <dmg>
@@ -20,6 +21,13 @@ trap detach EXIT
 
 app="$mnt/DSPi Console.app"
 codesign --verify --deep --strict "$app" || { echo "test-dmg: the signature does not verify"; exit 1; }
+# -- WP QD42 -- the licence files
+for f in NOTICE.txt LICENSES/GPL-3.0.txt LICENSES/LGPL-3.0.txt LICENSES/BUNDLED.txt LICENSES/Qt/THIRD-PARTY.txt LICENSES/Qt/LGPL-3.0-only.txt; do
+    [ -s "$app/Contents/Resources/$f" ] || { echo "test-dmg: no Contents/Resources/$f in the app"; exit 1; }
+done
+grep -q "^Qt	.*	qtbase-everywhere-src-" "$app/Contents/Resources/LICENSES/BUNDLED.txt" \
+    || { echo "test-dmg: BUNDLED.txt does not name Qt's source archives"; exit 1; }
+echo "test-dmg: NOTICE.txt and LICENSES/ are in the app"
 QT_FORCE_STDERR_LOGGING=1 "$app/Contents/MacOS/DSPi Console" --demo >"$log" 2>&1 &
 pid=$!
 sleep "$secs"

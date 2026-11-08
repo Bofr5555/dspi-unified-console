@@ -80,6 +80,7 @@ Section "Install"
   SetOutPath "$INSTDIR"
   ; A previous version's files go first, so no stale Qt modules stay behind
   RMDir /r "$INSTDIR\qml"
+  RMDir /r "$INSTDIR\LICENSES"   ; -- WP QD42 -- and no stale licence texts
   File /r "${BUNDLE}\*.*"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   CreateShortcut "$SMPROGRAMS\${APP}.lnk" "$INSTDIR\DSPiConsole.exe"
