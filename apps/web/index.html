@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <!-- A hub that serves this page sets content to its Link address (ws://host:port). -->
     <meta name="dspi-hub" content="" />
+    <!-- WP WB7: and to its own page (/), which the console links to. -->
+    <meta name="dspi-hub-page" content="" />
     <title>DSPi Console</title>
     <link rel="stylesheet" href="dspi-web.css" />
-    <style>
-      html, body { margin: 0; height: 100%; }
-      #console > .dspi-web { min-height: 100vh; }
-    </style>
+    <!-- WP WB7: no inline style, so a host's policy can be style-src 'self'. -->
+    <link rel="stylesheet" href="page.css" />
   </head>
   <body>
     <div id="console"></div>

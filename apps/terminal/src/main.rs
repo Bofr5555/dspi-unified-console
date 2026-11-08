@@ -141,7 +141,8 @@ fn main() -> ExitCode {
     // -- WP TM26 -- `dspi --dry-run set ...` is `dspi set ... --dry-run`.
     let flags = command_first(flags);
     // -- WP TM11 -- Before a PIN is read or a `--hub` looked for: a hub runs here.
-    if flags.first() == Some(&"hub")
+    // -- WP WB7 -- `web` is a hub too.
+    if matches!(flags.first(), Some(&"hub" | &"web"))
         && let Some(code) = hub::refuse_target(&target)
     {
         return ExitCode::from(code);
@@ -224,6 +225,8 @@ fn main() -> ExitCode {
         Some("flash") => flash::cmd_flash(target, &flags),
         // -- WP TM11 --
         Some("hub") => hub::run(target, &flags, json),
+        // -- WP WB7 --
+        Some("web") => hub::run(target, &flags, json),
         Some("dump") => cmd_dump(target, json),
         Some("watch") => cmd_watch(target, json),
         // No arguments opens the interface; arguments run one command and exit.
@@ -256,6 +259,8 @@ fn is_command_word(word: &str) -> bool {
         "flash",
         // -- WP TM11 -- `dspi --hub hub` is the `hub` command, not a hub called "hub".
         "hub",
+        // -- WP WB7 --
+        "web",
     ];
     TERMINAL_VERBS.contains(&word)
         || dspi_cmd::VERBS.iter().any(|(n, _)| *n == word)
@@ -545,6 +550,8 @@ USAGE:
     dspi --install-udev      install the Linux udev rule (needs root)
     dspi hub [run]           share this machine's devices on the network, with
                              PIN pairing; clients, roles: dspi hub --help
+    dspi web                 the web console on this machine, at
+                             http://localhost:11916/console/ (dspi hub --local)
     dspi --version           show app and protocol versions, and credits
 
 EXAMPLES:

@@ -25,6 +25,14 @@
 //! `dspi-hub` is built without `app`: there is no `DspiCore` here, and nothing holds a
 //! device but the hub. `--demo` serves the built-in simulated device instead of USB.
 //!
+//! -- WP WB7 -- **The web console.** `--web` serves the hub's own page at `/` and the web
+//! console (`apps/web`'s built dist) at `/console/`, read from `--console DIR`, else from
+//! `$DSPI_WEB_CONSOLE`, else from `web/` beside this binary or `../share/dspi/web/` above
+//! it. `dspi web` (the same as `dspi hub --local`) runs a hub on this machine only with
+//! the console, so `http://localhost:PORT/console/` is a secure page: WebUSB and Link in
+//! one browser tab. That hub holds no USB device unless `--share-usb`, so the browser can
+//! take a DSPi over WebUSB; `--demo` shares the simulated device over Link.
+//!
 //! Owned by WP TM11 (docs/core-merge/PLAN-CLIENTS.md).
 #![warn(
     clippy::unwrap_used,
@@ -59,6 +67,13 @@ const DEFAULT_NAME: &str = "DSPi Hub";
 const MAX_NAME: usize = 64;
 /// Held by a running hub, in its store.
 const LOCK_FILE: &str = "dspi-hub.lock";
+// -- WP WB7 --
+/// `dspi web`'s port when nobody says: the standard one plus one, so it can run beside
+/// a `dspi hub`, and the same each time, so the page's origin (and with it the hub
+/// tokens and the DSPis it was allowed on USB) stays the browser's.
+const LOCAL_PORT: u16 = DEFAULT_PORT + 1;
+/// The environment variable naming the web console's directory.
+const CONSOLE_ENV: &str = "DSPI_WEB_CONSOLE";
 /// How often the foreground loop looks for a stop.
 const TICK: Duration = Duration::from_millis(200);
 
@@ -107,6 +122,16 @@ struct RunOptions {
     demo: bool,
     keep_awake: bool,
     forget_clients: bool,
+    // -- WP WB7 --
+    /// `--web`: a landing page at `/`, the console at `/console/`, the hub's own page
+    /// (upstream's DSPi Link page) at `/hub/`.
+    web: bool,
+    /// `--console DIR`: where the console is; else [`find_console`] looks.
+    console: Option<PathBuf>,
+    /// `dspi web`, `--local`: loopback, web on, the console required.
+    local: bool,
+    /// `--share-usb` with `--local`: the hub holds this machine's USB devices.
+    share_usb: bool,
 }
 
 /// One `dspi hub` command.
@@ -134,7 +159,17 @@ pub fn run(target: &Target, flags: &[&str], json: bool) -> u8 {
         return code;
     }
     let demo = *target == Target::Demo;
-    let command = match parse(flags.get(1..).unwrap_or_default(), demo, default_store()) {
+    // -- WP WB7 -- `dspi web` is `dspi hub --local`, with a store of its own, so it can
+    // run beside a `dspi hub`.
+    let local = flags.first() == Some(&"web");
+    let mut args: Vec<&str> = flags.get(1..).unwrap_or_default().to_vec();
+    let store = if local {
+        args.insert(0, "--local");
+        default_store().and_then(|d| d.parent().map(|p| p.join("web")))
+    } else {
+        default_store()
+    };
+    let command = match parse(&args, demo, store) {
         Ok(c) => c,
         Err(e) => return e.report(),
     };
@@ -183,6 +218,7 @@ dspi hub - share this machine's DSPi devices on the network (DSPi Link)
 USAGE:
     dspi hub [run] [OPTIONS]  run a hub in the foreground until Ctrl-C or SIGTERM
     dspi --demo hub [...]     the same, sharing the built-in simulated device
+    dspi [--demo] web         the web console on this machine (dspi hub --local)
     dspi hub clients          list the paired clients (hub stopped)
     dspi hub role <cid> viewer|control|admin
                               change a client's role (hub stopped)
@@ -196,6 +232,17 @@ OPTIONS:
                               anyone else on this network. PIN pairing is the default
     --forget-clients          agree to a change of --open that forgets every
                               paired client
+    --web                     serve web pages to browsers on this network: the
+                              web console at /console/, the hub's own page
+                              (DSPi Link's) at /hub/, and a page at / linking both
+    --console <dir>           the built web console (apps/web's dist); implies
+                              --web. Else ${CONSOLE_ENV}, else web/ beside this
+                              program or ../share/dspi/web/ above it
+    --local                   the same as `dspi web`: this machine only, with
+                              the console at http://localhost:PORT/console/
+                              (default port {LOCAL_PORT}), a secure page with
+                              WebUSB and Link together. The hub holds no USB
+                              device, so the browser can; --share-usb: it does
     --loopback                listen on this machine only, and do not advertise
     --no-keep-awake           let the machine sleep while sharing
     --store <dir>             where the hub keeps its id, clients and device names
@@ -238,6 +285,9 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
     let mut run_only: Vec<&str> = Vec::new();
     let mut access = AccessMode::Pin;
     let (mut loopback, mut pair, mut keep_awake, mut forget) = (false, false, true, false);
+    // -- WP WB7 --
+    let (mut web, mut console, mut local, mut share_usb) = (false, None, false, false);
+    let mut port_given = false;
     let mut words = Vec::new();
 
     let mut it = args.iter().copied();
@@ -268,6 +318,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 port = text
                     .parse()
                     .map_err(|_| usage(format!("`{text}` is not a port number")))?;
+                port_given = true;
                 run_only.push("--port");
             }
             "--open" => access = AccessMode::Open,
@@ -275,12 +326,27 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
             "--pair" => pair = true,
             "--no-keep-awake" => keep_awake = false,
             "--forget-clients" => forget = true,
+            // -- WP WB7 --
+            "--web" => web = true,
+            "--console" => {
+                console = Some(PathBuf::from(value("the web console's directory")?));
+                run_only.push("--console");
+            }
+            "--local" => local = true,
+            "--share-usb" => share_usb = true,
             f if f.starts_with('-') => return Err(usage(format!("`{f}` is not a hub option"))),
             word => words.push(word),
         }
         if matches!(
             flag,
-            "--open" | "--loopback" | "--pair" | "--no-keep-awake" | "--forget-clients"
+            "--open"
+                | "--loopback"
+                | "--pair"
+                | "--no-keep-awake"
+                | "--forget-clients"
+                | "--web"
+                | "--local"
+                | "--share-usb"
         ) {
             run_only.push(flag);
         }
@@ -300,16 +366,35 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
     };
     let command = match words.as_slice() {
         [] | ["run"] => {
+            // -- WP WB7 --
+            if share_usb && !local {
+                return Err(usage(
+                    "--share-usb is for `dspi web`; a hub shares USB anyway".into(),
+                ));
+            }
+            if share_usb && demo {
+                return Err(usage(
+                    "--share-usb and --demo: the demo hub holds no USB device".into(),
+                ));
+            }
+            if local && !port_given {
+                port = LOCAL_PORT;
+            }
             return Ok(HubCommand::Run(RunOptions {
                 name,
                 port,
                 access,
                 store: store()?,
-                loopback,
                 pair,
                 demo,
                 keep_awake,
                 forget_clients: forget,
+                // -- WP WB7 --
+                web: web || local || console.is_some(),
+                console,
+                loopback: loopback || local,
+                local,
+                share_usb,
             }));
         }
         ["help"] => return Ok(HubCommand::Help),
@@ -462,6 +547,8 @@ struct Running {
     control: NetworkControl,
     name: String,
     access: AccessMode,
+    // -- WP WB7 -- where a browser finds the console, when served
+    console_url: Option<String>,
     _awake: Option<awake::KeepAwake>,
     _lock: File,
 }
@@ -495,9 +582,13 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
             .unwrap_or_else(|| DEFAULT_NAME.to_owned()),
     };
 
+    // -- WP WB7 -- Read whole before the port is bound: a wrong directory is said at once.
+    let console = load_console(opts)?;
     let mut network = NetworkConfig::new(opts.store.clone());
     network.port = opts.port;
     network.access = opts.access;
+    network.web = opts.web;
+    network.console = console.clone();
     if opts.loopback {
         network.bind = IpAddr::V4(Ipv4Addr::LOCALHOST);
     }
@@ -508,7 +599,8 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
     config.network = Some(network);
     // A scan only once the listener is in, below.
     config.initial_scan = false;
-    if !opts.demo {
+    // -- WP WB7 -- `dspi web` leaves USB to the browser unless asked.
+    if !opts.demo && (!opts.local || opts.share_usb) {
         config.bus = Some(Box::new(UsbBus::default()));
     }
     let hub = Hub::start(config)?;
@@ -519,12 +611,25 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
         control.auth().set_name(&name);
     }
     handle.set_listener(Some(Arc::new(Printer { json })));
+    let console_url = console.map(|_| {
+        let host = if opts.loopback {
+            "localhost"
+        } else {
+            "<this machine>"
+        };
+        format!(
+            "http://{host}:{}{}",
+            control.port(),
+            dspi_hub::web::CONSOLE_PATH
+        )
+    });
     let running = Running {
         hub,
         handle,
         control,
         name,
         access: opts.access,
+        console_url,
         _awake: opts.keep_awake.then(awake::KeepAwake::begin).flatten(),
         _lock: lock,
     };
@@ -540,6 +645,60 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
     // the truth.
     running.control.start_accepting();
     Ok(running)
+}
+
+// -- WP WB7 --
+/// The web console to serve: `None` when it is not wanted, or (for a LAN hub's `--web`
+/// alone) not found, which is said. `dspi web` and `--console` need one.
+fn load_console(opts: &RunOptions) -> Result<Option<Arc<dspi_hub::web::Console>>, Failure> {
+    if !opts.web {
+        return Ok(None);
+    }
+    let found = opts.console.clone().or_else(|| {
+        let exe = std::env::current_exe().ok();
+        find_console(
+            std::env::var_os(CONSOLE_ENV).map(PathBuf::from),
+            exe.as_deref(),
+        )
+    });
+    let Some(dir) = found else {
+        if opts.local {
+            return Err(Failure::Usage(format!(
+                "no web console found: give --console DIR (apps/web's built dist), \
+                 or set {CONSOLE_ENV}"
+            )));
+        }
+        eprintln!(
+            "dspi hub: no web console found (--console DIR, {CONSOLE_ENV}): serving / and \
+             /hub/ only"
+        );
+        return Ok(None);
+    };
+    let console = dspi_hub::web::Console::load(&dir).map_err(|e| Failure::Failed(e.to_string()))?;
+    let (files, bytes) = console.size();
+    log::info!(
+        "dspi hub: web console from {}: {files} files, {bytes} bytes",
+        dir.display()
+    );
+    Ok(Some(Arc::new(console)))
+}
+
+/// Where the console is when nobody says: `$DSPI_WEB_CONSOLE`, then `web/` beside the
+/// program, then `share/dspi/web/` in the prefix it is installed in. The first that has
+/// an `index.html`.
+fn find_console(env: Option<PathBuf>, exe: Option<&Path>) -> Option<PathBuf> {
+    if let Some(dir) = env {
+        return Some(dir);
+    }
+    let bin = exe?.parent()?;
+    let beside = bin.join("web");
+    let shared = bin
+        .parent()
+        .map(|prefix| prefix.join("share").join("dspi").join("web"));
+    [Some(beside), shared]
+        .into_iter()
+        .flatten()
+        .find(|d| d.join("index.html").is_file())
 }
 
 fn other_mode(mode: AccessMode) -> AccessMode {
@@ -776,6 +935,8 @@ fn status(running: &Running, json: bool) {
                 "access": running.access.wire_name(),
                 "connections": running.control.connections(),
                 "tokensRevoked": running.control.auth().tokens_revoked_at_start(),
+                // -- WP WB7 --
+                "console": running.console_url,
             })
         );
     } else {
@@ -784,6 +945,10 @@ fn status(running: &Running, json: bool) {
             printable(&running.name),
             access_words(running.access),
         );
+        // -- WP WB7 --
+        if let Some(url) = &running.console_url {
+            println!("Web console: {url}");
+        }
     }
 }
 
@@ -1098,6 +1263,11 @@ mod tests_wp_tm11 {
             demo: true,
             keep_awake: false,
             forget_clients: false,
+            // -- WP WB7 --
+            web: false,
+            console: None,
+            local: false,
+            share_usb: false,
         }
     }
 
@@ -1468,5 +1638,166 @@ mod tests_wp_tm11 {
         let running = start(&unnamed, false).unwrap();
         assert_eq!(running.name, "TM11 test hub");
         assert_eq!(running.handle.name(), "TM11 test hub");
+    }
+}
+
+#[cfg(test)]
+mod tests_wp_wb7 {
+    use super::*;
+    use std::io::{Read, Write};
+
+    fn scratch(name: &str) -> PathBuf {
+        // Beside the test binary, in the target directory: never on tmpfs.
+        let dir = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("wp_wb7")
+            .join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn run_options(args: &[&str], demo: bool) -> RunOptions {
+        match parse(args, demo, Some(PathBuf::from("/store"))).unwrap() {
+            HubCommand::Run(o) => o,
+            other => panic!("not a run: {other:?}"),
+        }
+    }
+
+    /// A built console, as far as a hub can tell.
+    fn console_dir() -> PathBuf {
+        let dir = scratch("dist");
+        std::fs::write(
+            dir.join("index.html"),
+            r#"<head><meta name="dspi-hub" content="" /></head>"#,
+        )
+        .unwrap();
+        std::fs::write(dir.join("app.js"), "1").unwrap();
+        dir
+    }
+
+    fn get(port: u16, path: &str) -> (String, String) {
+        let mut tcp = std::net::TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
+        tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        write!(tcp, "GET {path} HTTP/1.1\r\nHost: localhost:{port}\r\n\r\n").unwrap();
+        let mut text = String::new();
+        tcp.read_to_string(&mut text).unwrap();
+        let (head, body) = text.split_once("\r\n\r\n").unwrap();
+        (head.to_owned(), body.to_owned())
+    }
+
+    #[test]
+    fn wp_wb7_local_is_loopback_with_the_console_on_its_own_port() {
+        let o = run_options(&["--local"], false);
+        assert!(o.local && o.loopback && o.web && !o.share_usb);
+        assert_eq!(o.port, LOCAL_PORT);
+        assert_eq!(o.access, AccessMode::Pin, "PIN pairing stays the default");
+        let o = run_options(&["--local", "--port", "9000", "--share-usb"], false);
+        assert_eq!((o.port, o.share_usb), (9000, true));
+        let o = run_options(&["--local", "--console", "/srv/dist"], true);
+        assert_eq!(o.console, Some(PathBuf::from("/srv/dist")));
+        assert!(o.demo);
+    }
+
+    #[test]
+    fn wp_wb7_web_and_console_on_a_lan_hub() {
+        let o = run_options(&[], false);
+        assert!(!o.web && o.console.is_none() && !o.local);
+        let o = run_options(&["--web"], false);
+        assert!(o.web && !o.loopback && !o.local);
+        assert_eq!(o.port, DEFAULT_PORT);
+        let o = run_options(&["--console=/srv/dist"], false);
+        assert!(o.web, "--console implies --web");
+    }
+
+    #[test]
+    fn wp_wb7_bad_web_lines_are_usage_errors() {
+        let bad = |args: &[&str], demo: bool| {
+            matches!(
+                parse(args, demo, Some(PathBuf::from("/store"))),
+                Err(Failure::Usage(_))
+            )
+        };
+        assert!(bad(&["--share-usb"], false), "only with --local");
+        assert!(
+            bad(&["--local", "--share-usb"], true),
+            "the demo holds no USB"
+        );
+        assert!(bad(&["--console"], false), "needs a directory");
+        assert!(bad(&["clients", "--web"], false));
+        assert!(bad(&["clients", "--console", "/x"], false));
+    }
+
+    #[test]
+    fn wp_wb7_the_console_is_found_by_the_environment_or_beside_the_program() {
+        let root = scratch("find");
+        let bin = root.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let exe = bin.join("dspi");
+        assert_eq!(find_console(None, Some(&exe)), None);
+        let shared = root.join("share/dspi/web");
+        std::fs::create_dir_all(&shared).unwrap();
+        assert_eq!(
+            find_console(None, Some(&exe)),
+            None,
+            "no index.html: not one"
+        );
+        std::fs::write(shared.join("index.html"), "x").unwrap();
+        assert_eq!(find_console(None, Some(&exe)), Some(shared.clone()));
+        let beside = bin.join("web");
+        std::fs::create_dir_all(&beside).unwrap();
+        std::fs::write(beside.join("index.html"), "x").unwrap();
+        assert_eq!(find_console(None, Some(&exe)), Some(beside));
+        let env = PathBuf::from("/from/env");
+        assert_eq!(find_console(Some(env.clone()), Some(&exe)), Some(env));
+        assert_eq!(find_console(None, None), None);
+    }
+
+    #[test]
+    fn wp_wb7_dspi_web_serves_the_console_and_the_demo_on_loopback() {
+        let store = scratch("local");
+        let mut opts = run_options(&["--local", "--port", "0"], true);
+        opts.store = store.clone();
+        opts.keep_awake = false;
+        opts.console = Some(console_dir());
+        let running = start(&opts, false).unwrap();
+        let port = running.control.port();
+        assert_eq!(
+            running.console_url.as_deref(),
+            Some(format!("http://localhost:{port}/console/").as_str())
+        );
+        let (head, body) = get(port, "/console/");
+        assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+        assert!(
+            body.contains(&format!(r#"content="ws://localhost:{port}""#)),
+            "{body}"
+        );
+        assert!(head.contains("'wasm-unsafe-eval'"), "{head}");
+        let (head, _) = get(port, "/");
+        assert!(head.starts_with("HTTP/1.1 200"), "the hub's page: {head}");
+        assert_eq!(running.handle.devices().len(), 1, "the demo device");
+        drop(running);
+
+        // Without a console `dspi web` has nothing to serve, and says so.
+        let mut none = opts.clone();
+        none.console = Some(store.join("nowhere"));
+        assert!(matches!(start(&none, false), Err(Failure::Failed(_))));
+    }
+
+    #[test]
+    fn wp_wb7_a_lan_hubs_web_without_a_console_serves_its_page_only() {
+        if std::env::var_os(CONSOLE_ENV).is_some() {
+            return; // a console is named for the whole process
+        }
+        let mut opts = run_options(&["--web", "--port", "0", "--loopback"], true);
+        opts.store = scratch("lan");
+        opts.keep_awake = false;
+        let running = start(&opts, false).unwrap();
+        let port = running.control.port();
+        assert!(get(port, "/").0.starts_with("HTTP/1.1 200"));
+        assert!(get(port, "/console/").0.starts_with("HTTP/1.1 404"));
+        assert_eq!(running.console_url, None);
     }
 }
