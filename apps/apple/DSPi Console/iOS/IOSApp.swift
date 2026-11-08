@@ -219,9 +219,30 @@ struct IOSRootView: View {
                 Button("Firmware Update...") { firmwareUpdate.show(vm: vm) }
             }
         }
+        // -- WP SW17 -- The Mac's File menu: filter and configuration files
+        // through the document picker.  On an iPhone in a submenu, so the
+        // Tools menu stays short.
+        if sizeClass == .compact {
+            Menu {
+                fileMenu
+            } label: {
+                Label("Files", systemImage: "doc")
+            }
+        } else {
+            Section { fileMenu }
+        }
         Section {
             Button("What's New") { whatsNew.show() }
         }
+    }
+
+    // -- WP SW17 --
+    @ViewBuilder
+    private var fileMenu: some View {
+        Button("Import Filters...") { FileMenuActions.importFilters() }
+        Button("Export Filters...") { FileMenuActions.exportFilters() }
+        Button("Import Device Configuration...") { FileMenuActions.importConfiguration() }
+        Button("Export Device Configuration...") { FileMenuActions.exportConfiguration() }
     }
 
     /// One-time launch work: onboarding, and the launch-argument hooks used
