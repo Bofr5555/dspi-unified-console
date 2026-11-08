@@ -332,12 +332,12 @@ int DSPiBridge::compat() const { return connected() ? state()->compat : COMPAT_U
 QString DSPiBridge::compatMessage() const {
     switch (compat()) {
     case COMPAT_FIRMWARE_TOO_OLD:
-        return QString("This DSPi runs firmware %1, which is too old for this Console. Its settings are shown "
-                       "read-only; features it lacks are hidden. Update it to firmware 1.1.6.")
-            .arg(firmwareVersion().isEmpty() ? "older than 1.1.6" : firmwareVersion());
+        return tr("This DSPi runs firmware %1, which is too old for this Console. Its settings are shown "
+                  "read-only; features it lacks are hidden. Update it to firmware 1.1.6.")
+            .arg(firmwareVersion().isEmpty() ? tr("older than 1.1.6") : firmwareVersion());
     case COMPAT_FIRMWARE_TOO_NEW:
-        return QString("This DSPi runs firmware %1, which is newer than this Console understands. Its settings are "
-                       "shown read-only, and some of its features may not be shown. Update the Console.")
+        return tr("This DSPi runs firmware %1, which is newer than this Console understands. Its settings are "
+                  "shown read-only, and some of its features may not be shown. Update the Console.")
             .arg(firmwareVersion());
     default:
         return "";
@@ -439,9 +439,9 @@ QString DSPiBridge::channelName(int ch) const {
     QString name = QString::fromUtf8(reinterpret_cast<const char *>(state()->channel_names[w]));
     if (!name.isEmpty()) return name;
     int in = inputOf(ch);
-    if (in >= 0) return in < 2 ? (in == 0 ? "USB L" : "USB R") : QString("Input %1").arg(in + 1);
+    if (in >= 0) return in < 2 ? (in == 0 ? "USB L" : "USB R") : tr("Input %1").arg(in + 1);
     int out = outputOf(ch);
-    return isPdmOutput(out) ? QString("PDM") : QString("Output %1").arg(out + 1);
+    return isPdmOutput(out) ? QString("PDM") : tr("Output %1").arg(out + 1);
 }
 
 QString DSPiBridge::channelColor(int ch) const {
@@ -1068,7 +1068,7 @@ void DSPiBridge::installUdevRule() {
     auto *tmp = new QTemporaryFile(QDir::tempPath() + "/dspi-udev-XXXXXX.rules", this);
     if (!rule.open(QIODevice::ReadOnly) || !tmp->open()) {
         delete tmp;
-        emit udevRuleInstalled(false, "The rule could not be prepared.");
+        emit udevRuleInstalled(false, tr("The rule could not be prepared."));
         return;
     }
     tmp->write(rule.readAll());
@@ -1078,7 +1078,7 @@ void DSPiBridge::installUdevRule() {
     auto *proc = new QProcess(this);
     connect(proc, &QProcess::errorOccurred, this, [this, proc, tmp](QProcess::ProcessError e) {
         if (e != QProcess::FailedToStart) return;
-        emit udevRuleInstalled(false, "pkexec, which asks for the administrator password, isn't available.");
+        emit udevRuleInstalled(false, tr("pkexec, which asks for the administrator password, isn't available."));
         proc->deleteLater();
         tmp->deleteLater();
     });
@@ -1087,10 +1087,10 @@ void DSPiBridge::installUdevRule() {
         const bool ok = status == QProcess::NormalExit && code == 0;
         QString message;
         if (!ok) {
-            if (code == 126) message = "The password prompt was dismissed.";   // pkexec: not authorised
-            else if (code == 127) message = "Authorisation failed.";
+            if (code == 126) message = tr("The password prompt was dismissed.");   // pkexec: not authorised
+            else if (code == 127) message = tr("Authorisation failed.");
             else message = QString::fromLocal8Bit(proc->readAllStandardError()).trimmed();
-            if (message.isEmpty()) message = "The rule could not be installed.";
+            if (message.isEmpty()) message = tr("The rule could not be installed.");
         }
         emit udevRuleInstalled(ok, message);
         proc->deleteLater();
@@ -1119,11 +1119,11 @@ void DSPiBridge::openDevice(const QString &serial, bool keepDemo) {
                              : dspi_select_device(m_core, utf8.constData());
     if (!opened) {
 #ifdef Q_OS_LINUX
-        m_connectionError = QString("Could not open DSPi %1. Check that its udev rule is installed and that no other "
-                                    "program is using it. Right-click the device name to retry.").arg(serial.right(8));
+        m_connectionError = tr("Could not open DSPi %1. Check that its udev rule is installed and that no other "
+                               "program is using it. Right-click the device name to retry.").arg(serial.right(8));
 #else
-        m_connectionError = QString("Could not open DSPi %1. Check that no other program is using it. "
-                                    "Right-click the device name to retry.").arg(serial.right(8));
+        m_connectionError = tr("Could not open DSPi %1. Check that no other program is using it. "
+                               "Right-click the device name to retry.").arg(serial.right(8));
 #endif
         emit statusChanged();
         return;
@@ -1131,7 +1131,7 @@ void DSPiBridge::openDevice(const QString &serial, bool keepDemo) {
     resetForDevice(serial);
     if (!dspi_fetch_all(m_core)) {
         qWarning() << "DSPi: could not read device state for" << serial;
-        m_connectionError = "Connected, but the device's settings could not be read. Right-click the device name to retry.";
+        m_connectionError = tr("Connected, but the device's settings could not be read. Right-click the device name to retry.");
     }
     else if (state()->compat != COMPAT_OK)
         qWarning() << "DSPi:" << compatMessage();

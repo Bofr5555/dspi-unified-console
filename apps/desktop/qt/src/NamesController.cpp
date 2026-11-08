@@ -181,5 +181,5 @@ void NamesController::saveDone(const std::vector<Write> &writes, bool ok) {
         }
     }
     emit textsChanged();
-    if (!ok) emit saveFailed(QStringLiteral("The device did not take the name."));
+    if (!ok) emit saveFailed(tr("The device did not take the name."));
 }

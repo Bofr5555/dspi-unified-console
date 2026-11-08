@@ -267,7 +267,7 @@ AppWindow {
                         Text {
                             width: hints.width - 22
                             wrapMode: Text.WordWrap
-                            text: qsTr("Hold the BOOTSEL button on your Pico-compatible device while plugging it into your computer.")
+                            text: qsTr("Hold the BOOTSEL button on your Pico-compatible device while plugging it in.")
                             font.pixelSize: 11
                             color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
                         }

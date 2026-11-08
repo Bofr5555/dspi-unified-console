@@ -40,7 +40,7 @@ constexpr int kRp2040 = 0;
 constexpr int kRp2350 = 1;
 
 QString chipOf(int platform) {
-    return platform == kRp2350 ? QStringLiteral("RP2350") : platform == kRp2040 ? QStringLiteral("RP2040") : QStringLiteral("unknown chip");
+    return platform == kRp2350 ? QStringLiteral("RP2350") : platform == kRp2040 ? QStringLiteral("RP2040") : QCoreApplication::translate("FirmwareUpdater", "unknown chip");
 }
 
 // Text from a file or a path, for a Text item: no control characters, and nothing
@@ -198,16 +198,16 @@ int FirmwareUpdater::match() const {
 
 QString FirmwareUpdater::rebootBlocked() const {
     if (!connectedNow()) return QString();
-    if (!supported()) return "This board has no UF2 bootloader.";
+    if (!supported()) return tr("This board has no UF2 bootloader.");
     if (m_bridge->hubSession())
-        return "This device is on a hub. Its bootloader drive would appear on the hub's machine, so update it there.";
+        return tr("This device is on a hub. Its bootloader drive would appear where the hub runs, so update it there.");
     if (isDemoDevice()) return writeBlocked();
     return QString();
 }
 
 QString FirmwareUpdater::writeBlocked() const {
     if (!isDemoDevice()) return QString();
-    return "The demo is open, so nothing is written to a real board. Use Leave Demo in the banner, or start the app without --demo, and try again.";
+    return tr("The demo is open, so nothing is written to a real board. Use Leave Demo in the banner, or start the app without --demo, and try again.");
 }
 
 QString FirmwareUpdater::chipName() const {
@@ -218,12 +218,12 @@ QString FirmwareUpdater::volumeName() const {
 }
 
 QString FirmwareUpdater::imageName() const {
-    return m_custom.loaded ? plain(m_custom.name) : QString("This Console's firmware");
+    return m_custom.loaded ? plain(m_custom.name) : tr("This Console's firmware");
 }
 
 QString FirmwareUpdater::imageVersion() const {
     if (!m_custom.loaded) return m_expected.text();
-    return m_custom.version.isEmpty() ? QString("names no version") : plain(m_custom.version);
+    return m_custom.version.isEmpty() ? tr("names no version") : plain(m_custom.version);
 }
 
 QString FirmwareUpdater::imageProblem() const {
@@ -233,7 +233,7 @@ QString FirmwareUpdater::imageProblem() const {
     int board = m_chip;
     if (board < 0 && connectedNow() && supported()) board = dspi_get_state(m_bridge->core())->platform_id;
     if (board < 0 || board == m_custom.platform) return QString();
-    return QString("%1 is firmware for the %2, and this board is an %3.").arg(plain(m_custom.name), chipOf(m_custom.platform), chipOf(board));
+    return tr("%1 is firmware for the %2, and this board is an %3.").arg(plain(m_custom.name), chipOf(m_custom.platform), chipOf(board));
 }
 
 void FirmwareUpdater::publish(const QString &state) {
@@ -344,8 +344,8 @@ void FirmwareUpdater::scanDone(const Scan &scan) {
     if (boards > 1 && !(parked && !m_armed)) {
         m_volumeWait.invalidate();
         fail(awaiting
-             ? QString("%1 boards are in bootloader mode, and nothing says which is this one. Nothing was written. Disconnect all but the one you want to update.").arg(boards)
-             : QString("%1 boards are in bootloader mode. Disconnect all but the one you want to update.").arg(boards), true);
+             ? tr("%1 boards are in bootloader mode, and nothing says which is this one. Nothing was written. Disconnect all but the one you want to update.").arg(boards)
+             : tr("%1 boards are in bootloader mode. Disconnect all but the one you want to update.").arg(boards), true);
         return;
     }
 
@@ -361,7 +361,7 @@ void FirmwareUpdater::scanDone(const Scan &scan) {
         if (!scan.drives.isEmpty()) {
             const Drive drive = scan.drives.first();
             if (drive.platform != m_image.platform) {
-                fail(QString("The board that appeared is an %1, and %2 is firmware for the %3. Nothing was written.")
+                fail(tr("The board that appeared is an %1, and %2 is firmware for the %3. Nothing was written.")
                          .arg(chipOf(drive.platform), m_image.name, chipOf(m_image.platform)), false);
                 return;
             }
@@ -374,7 +374,7 @@ void FirmwareUpdater::scanDone(const Scan &scan) {
         if (m_seam.driveWaitMs) limit = m_seam.driveWaitMs;
 #endif
         if (m_driveClock.elapsed() >= limit)
-            fail("No bootloader drive appeared. Nothing was written. Look for it in your file manager, or unplug the board and hold BOOTSEL while plugging it back in.", true, true);
+            fail(tr("No bootloader drive appeared. Nothing was written. Look for it in your file manager, or unplug the board and hold BOOTSEL while plugging it back in."), true, true);
         return;
     }
 
@@ -419,7 +419,7 @@ void FirmwareUpdater::scanDone(const Scan &scan) {
     askUdisks(scan);
     if (!m_volumeWait.isValid()) m_volumeWait.start();
     if (m_volumeWait.elapsed() >= kVolumeWaitMs) {
-        fail(QString("The board is connected but its %1 drive could not be mounted. Mount it from your file manager and try again.").arg(volumeName()), true);
+        fail(tr("The board is connected but its %1 drive could not be mounted. Mount it from your file manager and try again.").arg(volumeName()), true);
         return;
     }
     publish("waitingForVolume");
@@ -501,12 +501,12 @@ FirmwareUpdater::Image FirmwareUpdater::readImage(const QString &path, const QSt
     image.name = plain(name);
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) {
-        image.problem = QString("Could not read %1: %2.").arg(image.name, f.errorString());
+        image.problem = tr("Could not read %1: %2.").arg(image.name, f.errorString());
         return image;
     }
     image.bytes = f.read(kMaxFile + 1);
     if (f.error() != QFileDevice::NoError) {
-        image.problem = QString("Could not read %1: %2.").arg(image.name, f.errorString());
+        image.problem = tr("Could not read %1: %2.").arg(image.name, f.errorString());
         image.bytes.clear();
         return image;
     }
@@ -516,7 +516,7 @@ FirmwareUpdater::Image FirmwareUpdater::readImage(const QString &path, const QSt
     });
     const QJsonObject info = QJsonDocument::fromJson(reply).object();
     if (!info.value("valid").toBool()) {
-        image.problem = QString("%1 is not a firmware file: %2").arg(image.name, info.value("problem").toString("it could not be checked."));
+        image.problem = tr("%1 is not a firmware file: %2").arg(image.name, info.value("problem").toString(tr("it could not be checked.")));
         image.bytes.clear();
         return image;
     }
@@ -558,12 +558,12 @@ void FirmwareUpdater::beginDevice() {
     m_installing = true;
     m_path = Path::Device;
     if (!connectedNow()) {
-        fail("The board is gone. Nothing was changed.", true, true);
+        fail(tr("The board is gone. Nothing was changed."), true, true);
         return;
     }
     const QString blocked = rebootBlocked();
     if (!blocked.isEmpty()) {
-        fail(blocked + " Nothing was changed.", true);
+        fail(tr("%1 Nothing was changed.").arg(blocked), true);
         return;
     }
     m_boardPlatform = dspi_get_state(m_bridge->core())->platform_id;
@@ -586,11 +586,11 @@ void FirmwareUpdater::beginMounted(const Drive &drive) {
     m_questions = 0;
     m_image = Image();
     if (!writeBlocked().isEmpty()) {
-        fail(writeBlocked() + " Nothing was changed.", true);
+        fail(tr("%1 Nothing was changed.").arg(writeBlocked()), true);
         return;
     }
     if (drive.platform != kRp2040 && drive.platform != kRp2350) {
-        fail(QString("%1 is not the drive of an RP2040 or RP2350 bootloader. Nothing was changed.").arg(drive.path), false);
+        fail(tr("%1 is not the drive of an RP2040 or RP2350 bootloader. Nothing was changed.").arg(drive.path), false);
         return;
     }
     runGate(QString());
@@ -629,17 +629,17 @@ void FirmwareUpdater::runGate(const QString &typed) {
             } else {
                 const QString path = imagePath(platform);
                 if (path.isEmpty()) {
-                    r.failure = QString("This build of DSPi Console does not include firmware for the %1. Nothing was changed.").arg(chipOf(platform));
+                    r.failure = tr("This build of DSPi Console does not include firmware for the %1. Nothing was changed.").arg(chipOf(platform));
                 } else {
                     image = readImage(path, QFileInfo(path).fileName());
                     if (!image.loaded) r.failure = image.problem;
                     else if (!(FwVersion::parse(image.version) == FwVersion::parse(expected)))
-                        r.failure = QString("The bundled firmware is version %1 but this Console expects %2. The app was built incorrectly; do not install it.").arg(image.version, expected);
+                        r.failure = tr("The bundled firmware is version %1 but this Console expects %2. The app was built incorrectly; do not install it.").arg(image.version, expected);
                 }
             }
         }
         if (r.failure.isEmpty() && image.platform != platform) {
-            r.failure = QString("%1 is firmware for the %2, and this board is an %3. Nothing was changed.")
+            r.failure = tr("%1 is firmware for the %2, and this board is an %3. Nothing was changed.")
                             .arg(image.name, chipOf(image.platform), chipOf(platform));
         }
         // What is on the bus now, not what was there when a question was first asked
@@ -648,11 +648,11 @@ void FirmwareUpdater::runGate(const QString &typed) {
             const int boards = qMax(scan.boards, int(scan.drives.size()));
             r.failureMundane = true;
             if (device && boards > 0) {
-                r.failure = "A board has appeared in bootloader mode, and with this one there would be two. Nothing was changed. Disconnect it and try again.";
+                r.failure = tr("A board has appeared in bootloader mode, and with this one there would be two. Nothing was changed. Disconnect it and try again.");
             } else if (!device && boards > 1) {
-                r.failure = QString("%1 boards are in bootloader mode. Nothing was changed. Disconnect all but the one you want to update.").arg(boards);
+                r.failure = tr("%1 boards are in bootloader mode. Nothing was changed. Disconnect all but the one you want to update.").arg(boards);
             } else if (!device && std::none_of(scan.drives.cbegin(), scan.drives.cend(), [&drivePath](const Drive &d) { return d.path == drivePath; })) {
-                r.failure = QString("The drive at %1 has gone. Nothing was changed.").arg(drivePath);
+                r.failure = tr("The drive at %1 has gone. Nothing was changed.").arg(drivePath);
             } else {
                 r.failureMundane = false;
             }
@@ -723,7 +723,7 @@ void FirmwareUpdater::gateDone(const GateResult &r, const QString &typed) {
         m_questionPhrase.clear();
         m_answerWrong = false;
         emit questionChanged();
-        m_failure = "The board is in its bootloader and nothing was written. Install again, or unplug it to go back to the old firmware.";
+        m_failure = tr("The board is in its bootloader and nothing was written. Install again, or unplug it to go back to the old firmware.");
         m_failureMundane = true;
         m_parkedSeen = false;
         m_driveClock.start();
@@ -738,21 +738,21 @@ void FirmwareUpdater::gateDone(const GateResult &r, const QString &typed) {
         return;
     }
     if (r.boardGone) {
-        fail("The board is gone. Nothing was changed.", true, true);
+        fail(tr("The board is gone. Nothing was changed."), true, true);
         return;
     }
     m_image = r.image;
     m_requiredMv = r.requiredMv;
     if (!r.allowed) {
         if (r.decision != QLatin1String("needsConfirmation") || r.phrase.isEmpty()) {
-            fail((r.message.isEmpty() ? QString("The firmware guard refused this image.") : r.message) + " Nothing was changed.", false);
+            fail(tr("%1 Nothing was changed.").arg(r.message.isEmpty() ? tr("The firmware guard refused this image.") : r.message), false);
             return;
         }
         const QString message = plain(r.message);
         const bool sameQuestion = r.phrase == m_questionPhrase && message == m_questionMessage;
         // A new or changed risk takes its own answer
         if (!sameQuestion && ++m_questions > kMaxQuestions) {
-            fail("This board keeps changing. Nothing was changed.", false);
+            fail(tr("This board keeps changing. Nothing was changed."), false);
             return;
         }
         m_typed.clear();
@@ -793,7 +793,7 @@ void FirmwareUpdater::startWrite(const Drive &drive) {
     m_drive = drive;
     // The demo may have been opened since the last check
     if (!writeBlocked().isEmpty()) {
-        fail(writeBlocked() + " Nothing was written.", true);
+        fail(tr("%1 Nothing was written.").arg(writeBlocked()), true);
         return;
     }
     if (m_path == Path::Mounted) m_before = serialsNow();
@@ -820,8 +820,8 @@ void FirmwareUpdater::startWrite(const Drive &drive) {
 void FirmwareUpdater::writeDone(const QByteArray &reply) {
     const QJsonObject o = QJsonDocument::fromJson(reply).object();
     if (!o.value("ok").toBool(false)) {
-        fail(QString("%1. The board stays in its bootloader at %2; Try Again asks about core voltage, as a board there cannot say what it needs.")
-                 .arg(o.value("error").toString("The firmware could not be written"), m_drive.path), false);
+        fail(tr("%1. The board stays in its bootloader at %2; Try Again asks about core voltage, as a board there cannot say what it needs.")
+                 .arg(o.value("error").toString(tr("The firmware could not be written")), m_drive.path), false);
         return;
     }
     m_progress = 1;
@@ -857,7 +857,7 @@ void FirmwareUpdater::verifyTick() {
     // A hub session keeps the app off USB devices, so the board can't be opened
     if (m_bridge->hubSession()) {
         m_verifyTimer.stop();
-        m_failure = "The firmware was written to the drive, but a hub session is open, so the board can't be opened here to confirm it. Leave the hub session and check the version it reports.";
+        m_failure = tr("The firmware was written to the drive, but a hub session is open, so the board can't be opened here to confirm it. Leave the hub session and check the version it reports.");
         m_failureMundane = false;
         m_state = "unconfirmed";
         emit stateChanged();
@@ -873,7 +873,7 @@ void FirmwareUpdater::verifyTick() {
         // Anything on the bus already is not the board that was written
         QStringList fresh = serialsNow();
         for (const QString &serial : m_before) fresh.removeAll(serial);
-        if (fresh.size() > 1) error = QString("%1 new DSPis appeared, so which is this board cannot be told").arg(fresh.size());
+        if (fresh.size() > 1) error = tr("%1 new DSPis appeared, so which is this board cannot be told").arg(fresh.size());
         else if (fresh.size() == 1) judge = bringBack(fresh.first());
     }
 
@@ -881,7 +881,7 @@ void FirmwareUpdater::verifyTick() {
         const FwVersion now = deviceFw(m_bridge);
         if (m_image.version.isEmpty()) {
             m_verifyTimer.stop();
-            m_failure = QString("The board is back, running %1. This image names no version, so whether it took cannot be confirmed.").arg(now.text());
+            m_failure = tr("The board is back, running %1. This image names no version, so whether it took cannot be confirmed.").arg(now.text());
             m_failureMundane = false;
             m_state = "unconfirmed";
             emit stateChanged();
@@ -897,7 +897,7 @@ void FirmwareUpdater::verifyTick() {
         }
         if (same == 0) {
             m_verifyTimer.stop();
-            fail(QString("The board came back running firmware %1, but the image was %2: it did not take.").arg(now.text(), m_image.version), false);
+            fail(tr("The board came back running firmware %1, but the image was %2: it did not take.").arg(now.text(), m_image.version), false);
             return;
         }
         // -1: it went away again, so keep waiting
@@ -909,7 +909,7 @@ void FirmwareUpdater::verifyTick() {
 #endif
     if (!error.isEmpty() || m_verifyClock.elapsed() > limit) {
         m_verifyTimer.stop();
-        fail(QString("The write ended, but %1, so this is not confirmed. Unplug the board, plug it back in, and check whether it works. If the drive is still there the image did not take.")
-                 .arg(error.isEmpty() ? QString("the board did not come back") : error), false);
+        fail(tr("The write ended, but %1, so this is not confirmed. Unplug the board, plug it back in, and check whether it works. If the drive is still there the image did not take.")
+                 .arg(error.isEmpty() ? tr("the board did not come back") : error), false);
     }
 }

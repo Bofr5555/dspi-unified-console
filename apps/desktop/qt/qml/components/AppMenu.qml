@@ -99,7 +99,8 @@ Popup {
             { icon: "cap", text: qsTr("Getting Started…"), window: "gettingStarted", help: true },
             { icon: "sparkles", text: qsTr("What's New in DSPi Console"), window: "whatsNew", help: true },
             { sep: true },
-            { icon: "github", text: qsTr("DSPi Console on GitHub"), window: "url:https://github.com/WeebLabs/DSPi-Console-Linux", help: true },
+            // -- WP QD40 -- Weeb Labs' own Linux console, named as theirs: this app has no public page yet
+            { icon: "github", text: qsTr("Weeb Labs' DSPi Console for Linux on GitHub"), window: "url:https://github.com/WeebLabs/DSPi-Console-Linux", help: true },
             { icon: "github", text: qsTr("DSPi Firmware on GitHub"), window: "url:https://github.com/WeebLabs/DSPi", help: true }
         ]}
     ]

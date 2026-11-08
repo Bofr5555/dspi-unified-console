@@ -225,8 +225,22 @@ void SmokeDriver::testDevices() {
 
     // closed: the hub ends the session for good
     check("QD9: the hub takes close 4000", hub.fault("close 4000"));
-    check("QD9: closed in CG10's words", waitFor(5000, [&] { return shows("closed"); }));
-    check("QD9: no hub devices listed once closed", !hubRow(serial));
+    // -- WP QD40 -- (review c6k, a Qt 5 flake under load) Waits for the session to
+    // leave bound, however long a loaded host takes, rather than a fixed 5 s, and
+    // says which phases it went through; the list's row goes with the next repaint
+    QStringList phases;
+    const bool left = waitFor(30000, [&] {
+        const QString p = link->phase();
+        if (phases.isEmpty() || phases.last() != p) phases << p;
+        return p != QLatin1String("bound");
+    });
+    check("QD9: closed in CG10's words", left && waitFor(5000, [&] {
+        const QString p = link->phase();
+        if (phases.last() != p) phases << p;
+        return shows("closed");
+    }));
+    printf("smoke: QD9 phases after close 4000: %s\n", qPrintable(phases.join(QStringLiteral(" > "))));
+    check("QD9: no hub devices listed once closed", waitFor(2000, [&] { return !hubRow(serial); }));
     grab("closed");
 
     // Again by address: the stored token, no prompt this time

@@ -389,6 +389,28 @@ void SmokeDriver::runPseudoLocale() {
                 if (w != main && w->isVisible()) found = w;
             check(qPrintable(QStringLiteral("QD23: the %1 window").arg(QString::fromLatin1(n))), found != nullptr);
             if (found) pseudoScan(found, nullptr, QString::fromLatin1(n));
+            if (!found) continue;
+            // -- WP QD40 -- The views a window opens only on a pick: the
+            // Crossfeed pair editor and the Advanced settings
+            const QString name = QString::fromLatin1(n);
+            if (name == QLatin1String("crossfeed")) {
+                QQuickItem *editor = found->findChild<QQuickItem *>(QStringLiteral("pairMapEditor"));
+                QMetaObject::invokeMethod(found, "pickPairChoice", Q_ARG(QVariant, QStringLiteral("custom")));
+                check("QD40: the crossfeed pair editor opens", editor && waitFor(2000, [&]() { return editor->isVisible(); }));
+                spin(500);   // the refit and the scroll to Apply
+                if (editor && editor->isVisible()) pseudoScan(found, nullptr, QStringLiteral("crossfeed: pair editor"));
+                QMetaObject::invokeMethod(found, "cancelDraft");
+            }
+            if (name == QLatin1String("tube") || name == QLatin1String("upmix")) {
+                QQuickItem *picker = found->findChild<QQuickItem *>(QStringLiteral("viewPicker"));
+                check(qPrintable(QStringLiteral("QD40: the %1 window's Advanced view").arg(name)), picker != nullptr);
+                if (!picker) continue;
+                QMetaObject::invokeMethod(picker, "activated", Q_ARG(int, 1));
+                spin(600);
+                pseudoScan(found, nullptr, QStringLiteral("%1: advanced").arg(name));
+                QMetaObject::invokeMethod(picker, "activated", Q_ARG(int, 0));
+                spin(100);
+            }
         }
         hideTools();
 

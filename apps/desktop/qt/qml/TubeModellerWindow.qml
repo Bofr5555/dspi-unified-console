@@ -190,6 +190,7 @@ AppWindow {
         onToggled: bridge.setTubeParam(win.pEnabled, enable ? 1 : 0)
         accessories: [
             SegmentedControl {
+                objectName: "viewPicker"
                 anchors.verticalCenter: parent.verticalCenter
                 width: 150
                 model: [qsTr("Basic"), qsTr("Advanced")]

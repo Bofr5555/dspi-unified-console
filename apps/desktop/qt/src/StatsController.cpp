@@ -1,6 +1,7 @@
 #include "StatsController.h"
 #include "DSPiBridge.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QHash>
 #include <QJsonArray>
@@ -29,26 +30,26 @@ QString inputSourceName(int s) {
 
 QString categoryName(quint8 c) {
     switch (c) {
-    case 0x00: return "General";
-    case 0x01: return "CD Player";
+    case 0x00: return QCoreApplication::translate("StatsController", "General");
+    case 0x01: return QCoreApplication::translate("StatsController", "CD Player");
     case 0x02: return "DAT";
     case 0x03: return "DCC";
     case 0x04: return "MiniDisc";
-    case 0x06: return "Synthesizer";
-    case 0x08: return "Broadcast Receiver";
-    case 0x09: return "Musical Instrument";
-    case 0x0A: return "A/D Converter";
-    case 0x0C: return "Mixer";
-    case 0x0D: return "Rate Converter";
-    case 0x0E: return "Sampler";
-    case 0x0F: return "Digital Signal Processor";
+    case 0x06: return QCoreApplication::translate("StatsController", "Synthesizer");
+    case 0x08: return QCoreApplication::translate("StatsController", "Broadcast Receiver");
+    case 0x09: return QCoreApplication::translate("StatsController", "Musical Instrument");
+    case 0x0A: return QCoreApplication::translate("StatsController", "A/D Converter");
+    case 0x0C: return QCoreApplication::translate("StatsController", "Mixer");
+    case 0x0D: return QCoreApplication::translate("StatsController", "Rate Converter");
+    case 0x0E: return QCoreApplication::translate("StatsController", "Sampler");
+    case 0x0F: return QCoreApplication::translate("StatsController", "Digital Signal Processor");
     default: return QString("0x%1").arg(c, 2, 16, QChar('0')).toUpper().replace("0X", "0x");
     }
 }
 
 QString wordLengthName(quint8 b) {
     switch (b & 0x0F) {
-    case 0x00: return "Not indicated";
+    case 0x00: return QCoreApplication::translate("StatsController", "Not indicated");
     case 0x02: return "16-bit";
     case 0x04: return "20-bit";
     case 0x08: return "17-bit";
