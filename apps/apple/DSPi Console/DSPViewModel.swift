@@ -2356,7 +2356,13 @@ class DSPViewModel: ObservableObject {
     @Published var connectionError: String? = nil
 
     /// Snapshot of state at last save/load point for unsaved changes detection
+    /// on the transports not yet on the core (USB without `-CoreTransport`,
+    /// MIDI, the Link client).
     var savedSnapshot: PresetSnapshot?
+    /// -- WP SWF6 -- Through the core: its unsaved-changes list, one sentence
+    /// each (`presetChanges`), as last delivered (Core/CoreMirror.swift).
+    /// Main thread.
+    @Published var corePresetChanges: [String] = []
 
     // Platform-aware layout (platformName is set once at connection, safe to read from poll queue).
     // V16 unified channel model: inputs 0..chOut1-1, outputs chOut1..numChannels-1.
@@ -3167,10 +3173,19 @@ class DSPViewModel: ObservableObject {
     }
 
     func updateSavedSnapshot() {
+        // -- WP SWF6 -- Through the core, the baseline is the core's.
+        if unsavedChangesFromCore { coreMirror.capturePresetBaseline(); return }
         savedSnapshot = captureSnapshot()
     }
 
+    /// True while the view model follows a core (a device connected through
+    /// `CoreBackedTransport`), whose baseline and change list the prompt
+    /// uses (-- WP SWF6 --).  Otherwise the Swift snapshot does.  Main thread.
+    var unsavedChangesFromCore: Bool { coreMirror.attachedSource != nil }
+
     var hasUnsavedChanges: Bool {
+        // -- WP SWF6 -- The core's list, with CG33's rule after a preset load.
+        if unsavedChangesFromCore { return !corePresetChanges.isEmpty }
         // Route through computeDiff so the gating matches the alert text exactly:
         // master volume only counts when both snapshots have it (i.e. when the
         // current/baseline modes were WITH_PRESET).  Plain Equatable on
@@ -3182,6 +3197,11 @@ class DSPViewModel: ObservableObject {
     }
 
     func computeDiff() -> PresetDiff {
+        // -- WP SWF6 -- The core's sentences are already in the Mac's words;
+        // the prompt lists them as it lists the Swift diff's.
+        if unsavedChangesFromCore {
+            return PresetDiff(changes: corePresetChanges.map { PresetDiff.Change(category: "", description: $0) })
+        }
         guard let saved = savedSnapshot else { return PresetDiff(changes: []) }
         return PresetSnapshot.diff(from: saved, to: captureSnapshot(), channelNames: channelNames,
                                    sourceTitle: inputSourceTitle)
