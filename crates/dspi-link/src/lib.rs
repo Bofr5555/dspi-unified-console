@@ -34,6 +34,8 @@ pub use client::{
     close_reason, should_reconnect, AuthState, ConnectOptions, LinkClient, LinkEvents, NotifyItem, SessionConfig,
     SessionState, Timing, TokenLookup,
 };
+// -- WP LK2 --
+pub use client::CmdSpec;
 pub use frames::{status, Dir};
 pub use messages::{DeviceInfo, HelloHub, PinSource};
 

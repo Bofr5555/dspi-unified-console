@@ -21,8 +21,11 @@ use crate::target::{
 const HUB_PEER_TIMEOUT: f64 = 30.0;
 /// `dspi_link::client`'s limits.
 const REQUEST_TIMEOUT: f64 = 10.0;
-const PROBE_TIMEOUT: f64 = 5.0;
-const SILENCE_LIMIT: f64 = 35.0;
+/// WP LK2 (LK1-c): the only liveness rule; a timed-out read no longer ends the
+/// session after a 5 s probe.
+const SILENCE_LIMIT: f64 = 30.0;
+/// How long a late reply may take to reach a listener after the stall ends.
+const LATE_REPLY_WAIT: f64 = 5.0;
 /// The hub's lockout after 5 failures, and the client's backoff for it.
 const LOCKOUT: f64 = 60.0;
 /// Upper limit on a retrying connect: a held slot's life, plus a backoff step
@@ -198,7 +201,8 @@ impl Poller {
 
 /// Item 3 (F7): the network goes dark for `secs` while reading, or idle.
 /// Time to detect, the longest wait on a read, and how soon a new session gets in.
-/// `secs` below the request timeout is a hiccup, and the session survives it.
+/// `secs` below the silence limit is a hiccup, and the session survives it
+/// (WP LK2: reads time out meanwhile, the session stays).
 pub fn dark_network(t: &Target, secs: f64, polling: bool) -> Outcome {
     let name = format!("3_dark_{secs}s_{}", if polling { "polling" } else { "idle" });
     run(t, &name, &[Gate::Board], |t, rec| {
@@ -210,8 +214,9 @@ pub fn dark_network(t: &Target, secs: f64, polling: bool) -> Outcome {
             assert!(wait_until(t.s(5.0) + t.slack, || p.reads() > 0), "no read answered before the stall");
         }
 
-        let detect_limit = if polling { REQUEST_TIMEOUT + PROBE_TIMEOUT } else { SILENCE_LIMIT };
-        let survives = secs < REQUEST_TIMEOUT;
+        // WP LK2: polling or idle, only silence ends the session
+        let detect_limit = SILENCE_LIMIT;
+        let survives = secs < SILENCE_LIMIT;
         proxy.stall(true);
         let dark_at = Instant::now();
         let detected = if survives {
@@ -523,7 +528,7 @@ pub fn pair_late_reply(t: &Target) -> Outcome {
         assert_eq!(e, LinkError::Timeout, "pair gives up while the reply waits");
         proxy.stall_replies(false);
         assert!(
-            wait_until(t.s(PROBE_TIMEOUT) + t.slack, || !ev.tokens.lock().unwrap().is_empty()),
+            wait_until(t.s(LATE_REPLY_WAIT) + t.slack, || !ev.tokens.lock().unwrap().is_empty()),
             "the late token never reached the listener"
         );
         let token = ev.tokens.lock().unwrap()[0].clone();

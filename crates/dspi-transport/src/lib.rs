@@ -296,6 +296,62 @@ pub trait Transport: Send {
     }
 
     fn unlock(&mut self) {}
+
+    // -- WP LK2 --
+    /// Several IN transfers that do not depend on each other, answered in
+    /// order: for each, what [`Transport::control_in`] (`exact`) or
+    /// [`Transport::control_in_upto`] would answer.
+    ///
+    /// The default sends them one at a time, exactly as those calls would. A
+    /// link whose round trips dominate (DSPi Link) keeps several on the wire
+    /// at once. Only for reads whose order does not matter to the device:
+    /// never a write-as-read opcode.
+    fn control_in_batch(&mut self, reads: &[InRead]) -> Vec<Result<Vec<u8>>> {
+        reads
+            .iter()
+            .map(|r| {
+                if r.exact {
+                    self.control_in(r.opcode, r.value, r.len)
+                } else {
+                    self.control_in_upto(r.opcode, r.value, r.len)
+                }
+            })
+            .collect()
+    }
+}
+
+// -- WP LK2 --
+/// One read of [`Transport::control_in_batch`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InRead {
+    pub opcode: u8,
+    pub value: u16,
+    pub len: u16,
+    /// A short reply is an error ([`Transport::control_in`]); otherwise it is
+    /// the answer ([`Transport::control_in_upto`]).
+    pub exact: bool,
+}
+
+impl InRead {
+    /// A read that must bring `len` bytes.
+    pub const fn exact(opcode: u8, value: u16, len: u16) -> Self {
+        Self {
+            opcode,
+            value,
+            len,
+            exact: true,
+        }
+    }
+
+    /// A read of up to `len` bytes.
+    pub const fn upto(opcode: u8, value: u16, len: u16) -> Self {
+        Self {
+            opcode,
+            value,
+            len,
+            exact: false,
+        }
+    }
 }
 
 /// The firmware's notification stream: bulk IN endpoint `0x83`, 64-byte
@@ -370,6 +426,32 @@ pub fn with_busy_retry<T>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // -- WP LK2 --
+    #[test]
+    fn wp_lk2_the_default_batch_is_one_read_at_a_time_in_order() {
+        let mut t = MockTransport::new()
+            .data(0x10, vec![1, 2, 3, 4])
+            .data(0x11, vec![5]);
+        let log = t.log_handle();
+        let answers = t.control_in_batch(&[
+            InRead::exact(0x10, 7, 4),
+            InRead::exact(0x12, 0, 1),
+            InRead::upto(0x11, 3, 8),
+        ]);
+        assert_eq!(answers[0].as_ref().unwrap(), &vec![1, 2, 3, 4]);
+        assert!(matches!(
+            answers[1],
+            Err(TransportError::Stalled { opcode: 0x12 })
+        ));
+        let seen: Vec<(u8, u16)> = log
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|e| (e.opcode, e.value))
+            .collect();
+        assert_eq!(seen, vec![(0x10, 7), (0x12, 0), (0x11, 3)]);
+    }
 
     #[test]
     fn short_name_matches_the_console_convention() {

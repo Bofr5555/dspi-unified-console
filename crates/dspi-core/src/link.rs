@@ -770,6 +770,7 @@ impl DspiCore {
             let worker = crate::rta::take_worker(&mut inner);
             (inner.conn.take(), worker)
         };
+        drop(self.set_meter_path(None)); // -- WP LK2 --
         if let Some(worker) = worker {
             worker.stop();
         }
@@ -938,6 +939,11 @@ impl DspiCore {
             .ok_or(DspiError::Disconnected)?;
         let side = Arc::new(LinkSide::new(client, handle, &serial, tx));
         conn.side = Some(Arc::clone(&side) as Arc<dyn SideChannel>);
+        // -- WP LK2 -- meters from now on, whatever holds the core lock
+        let old_path = self.set_meter_path(Some(crate::MeterPath {
+            num_channels: inner.state.num_channels,
+            side: Arc::clone(&side) as Arc<dyn SideChannel>,
+        }));
         if let Some(b) = current.bound.as_mut() {
             b.handle = handle;
             b.generation = conn.generation;
@@ -951,6 +957,7 @@ impl DspiCore {
         let _ = current.tx.send(Msg::Kick);
         drop(guard);
         drop(old_side);
+        drop(old_path);
         Ok(())
     }
 
@@ -1256,7 +1263,15 @@ fn supervise(me: &Weak<DspiCore>, id: u64, rx: &Receiver<Msg>, cancel: &AtomicBo
             Some(Msg::Token { hub_id, token }) => core.note_token(hub_id, token),
             Some(Msg::Kick) | None => {}
         }
+        // -- WP LK2 -- the meter feed first, without the core lock: a start-up
+        // read or a re-read may hold it for many seconds
+        let meters = (!cancel.load(Ordering::SeqCst))
+            .then(|| core.meter_path())
+            .flatten();
         drop(core);
+        if let Some(path) = meters {
+            path.side.maintain_meters();
+        }
         match run_steps(me, id, cancel) {
             Some(next) => wait = next,
             None => return,
@@ -1844,6 +1859,10 @@ impl SideChannel for LinkSide {
         })
     }
 
+    fn maintain_meters(&self) {
+        self.maintain(Instant::now());
+    }
+
     fn meters(&self, len: u16) -> Result<MeterRead> {
         if self.client.is_closed() {
             return Err(DspiError::Disconnected);
@@ -2108,3 +2127,8 @@ mod tests_wp_cg21;
 #[cfg(test)]
 #[path = "link/tests_wp_cg24.rs"]
 mod tests_wp_cg24;
+
+// -- WP LK2 --
+#[cfg(test)]
+#[path = "link/tests_wp_lk2.rs"]
+mod tests_wp_lk2;

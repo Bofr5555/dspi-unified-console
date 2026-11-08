@@ -109,13 +109,14 @@ fn wp_hb7_l1_a_hub_restart_says_4003_and_keeps_the_token_good() {
 }
 
 #[test]
-fn wp_hb7_l1_a_stalled_link_stays_bounded_and_the_probe_ends_it() {
+fn wp_hb7_l1_a_stalled_link_stays_bounded_and_silence_ends_it() {
     let b = Bench::pin_hub("stall");
     let t = token(&b, "stall");
     let proxy = Proxy::start(b.port());
+    // -- WP LK2 -- the client's 5 s probe rule is gone: only silence ends a session
     let cfg = timing(|t| {
         t.request_timeout = Duration::from_millis(200);
-        t.probe_timeout = Duration::from_millis(600);
+        t.silence_limit = Duration::from_millis(800);
     });
     let (c, _) = connect_with(&proxy.url(), "stall", Some(t), &cfg).unwrap();
     proxy.stall(true);
