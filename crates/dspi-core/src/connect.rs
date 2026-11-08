@@ -300,7 +300,11 @@ impl DspiCore {
             // from the image on, before the connection is installed
             drop(guard);
             let path = self.meter_path().ok_or(DspiError::Disconnected)?;
-            return Ok(Locked::Side(usize::from(path.num_channels), path.side, None));
+            return Ok(Locked::Side(
+                usize::from(path.num_channels),
+                path.side,
+                None,
+            ));
         };
         let Some(side) = conn.side.clone() else {
             // n <= 17: at most 41 bytes.

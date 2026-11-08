@@ -1323,7 +1323,10 @@ fn wp_c15_meters_read_stale_before_the_first_frame() {
     // WP LK4: the poll is subscribed during the select, so a frame may be in
     // already; before one, the block is all zero and stale, not silence
     if first.stale {
-        assert!(first.peaks.iter().all(|p| *p == 0.0), "all zero, and not silence");
+        assert!(
+            first.peaks.iter().all(|p| *p == 0.0),
+            "all zero, and not silence"
+        );
     }
     meters_live(&core);
     let live = core.fetch_status().unwrap();
@@ -1664,7 +1667,13 @@ fn wp_c15_band_frames_come_from_polls_on_a_bridge() {
     assert_eq!(faults.sent("poll.subscribe"), before + 1);
     let v: Value = {
         let out = guard(&faults.outbound);
-        serde_json::from_str(out.iter().rev().find(|t| t.contains("poll.subscribe")).unwrap()).unwrap()
+        serde_json::from_str(
+            out.iter()
+                .rev()
+                .find(|t| t.contains("poll.subscribe"))
+                .unwrap(),
+        )
+        .unwrap()
     };
     let polls = v["polls"].as_array().unwrap();
     assert_eq!(polls.len(), 2);
@@ -1742,7 +1751,11 @@ fn wp_c15_a_refused_band_poll_throttles_tunnelled_reads_on_a_bridge() {
         .filter(|e| e.2 == op::REQ_RTA_GET_BANDS)
         .count();
     assert!((2..=4).contains(&reads), "{reads}");
-    assert_eq!(faults.sent("poll.subscribe"), before + 1, "asked again only later");
+    assert_eq!(
+        faults.sent("poll.subscribe"),
+        before + 1,
+        "asked again only later"
+    );
 }
 
 #[test]

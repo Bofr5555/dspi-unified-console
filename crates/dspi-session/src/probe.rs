@@ -313,12 +313,20 @@ pub fn probe_connect(
         Vec::new()
     };
     let (info, serial, platform, extra) = identify_with(t, &extra)?;
-    let again = reuse.filter(|r| r.key.platform == platform && r.key.serial == serial).and_then(|r| {
-        let mut answers = extra.into_iter();
-        let build = answers.next().and_then(Result::ok).and_then(|d| BuildInfo::decode(&d).ok());
-        let active = answers.next().and_then(Result::ok).and_then(|d| d.first().copied());
-        (r.key.build == build).then_some((r, active))
-    });
+    let again = reuse
+        .filter(|r| r.key.platform == platform && r.key.serial == serial)
+        .and_then(|r| {
+            let mut answers = extra.into_iter();
+            let build = answers
+                .next()
+                .and_then(Result::ok)
+                .and_then(|d| BuildInfo::decode(&d).ok());
+            let active = answers
+                .next()
+                .and_then(Result::ok)
+                .and_then(|d| d.first().copied());
+            (r.key.build == build).then_some((r, active))
+        });
     let image = crate::compat::read_any(t, Some(&info.version))?;
     on_image(&image);
     let header = *image.packet.header();
@@ -340,7 +348,14 @@ pub fn probe_connect(
             key: r.key.clone(),
         });
     }
-    let (caps, ext) = describe(t, info, serial.clone(), &image.packet, image.device_version, true)?;
+    let (caps, ext) = describe(
+        t,
+        info,
+        serial.clone(),
+        &image.packet,
+        image.device_version,
+        true,
+    )?;
     let key = ProbeKey {
         platform: platform.clone(),
         serial,
@@ -381,10 +396,7 @@ type Identity = (PlatformInfo, String, Vec<u8>, Vec<Result<Vec<u8>>>);
 
 /// [`identify`], and the answers to `extra` reads sent along (over DSPi Link
 /// in the same round trip; elsewhere after the identity).
-fn identify_with(
-    t: &mut dyn Transport,
-    extra: &[InRead],
-) -> Result<Identity> {
+fn identify_with(t: &mut dyn Transport, extra: &[InRead]) -> Result<Identity> {
     // GET_PLATFORM is the canonical liveness read; do it first so a dead or
     // wrongly-bound device fails here with a clear message rather than midway
     // through a 6136-byte transfer. Ask for 7 bytes and take what comes: older
@@ -398,14 +410,24 @@ fn identify_with(
         let mut reads = vec![platform_read, InRead::exact(op::REQ_GET_SERIAL, 0, 16)];
         reads.extend_from_slice(extra);
         let mut answers = t.control_in_batch(&reads).into_iter();
-        let plat = answers.next().unwrap_or(Err(TransportError::Disconnected))?;
+        let plat = answers
+            .next()
+            .unwrap_or(Err(TransportError::Disconnected))?;
         let serial = answers.next().and_then(Result::ok).unwrap_or_default();
         (plat, serial, answers.collect())
     } else {
         let r = platform_read;
-        let plat = with_busy_retry(kind, || t.control_in_upto(r.opcode, r.value, r.len), op::REQ_GET_PLATFORM)?;
+        let plat = with_busy_retry(
+            kind,
+            || t.control_in_upto(r.opcode, r.value, r.len),
+            op::REQ_GET_PLATFORM,
+        )?;
         let serial = t.control_in(op::REQ_GET_SERIAL, 0, 16).unwrap_or_default();
-        let extra = if extra.is_empty() { Vec::new() } else { t.control_in_batch(extra) };
+        let extra = if extra.is_empty() {
+            Vec::new()
+        } else {
+            t.control_in_batch(extra)
+        };
         (plat, serial, extra)
     };
     let info = PlatformInfo::decode(&plat)
@@ -486,14 +508,28 @@ fn describe(
     let siggen = siggen_header_from(siggen_header);
     let descriptors = siggen.as_ref().map_or(0, |s| s.type_count);
     let round2 = if band0 { bands.points() } else { Vec::new() };
-    let ext_reads = ext_list.as_ref().map(ExtState::follow_up).unwrap_or_default();
+    let ext_reads = ext_list
+        .as_ref()
+        .map(ExtState::follow_up)
+        .unwrap_or_default();
     let mut reads: Vec<InRead> = (0..u16::from(descriptors))
-        .map(|i| InRead::exact(op::REQ_SIGGEN_GET_CAPS, i, dspi_proto::packets::SiggenTypeDesc::SIZE as u16))
+        .map(|i| {
+            InRead::exact(
+                op::REQ_SIGGEN_GET_CAPS,
+                i,
+                dspi_proto::packets::SiggenTypeDesc::SIZE as u16,
+            )
+        })
         .collect();
     reads.extend(display);
     reads.extend(round2.iter().map(|b| band_read(*b)));
     reads.extend(ext_reads.iter().copied());
-    let mut answers = if reads.is_empty() { Vec::new() } else { t.control_in_batch(&reads) }.into_iter();
+    let mut answers = if reads.is_empty() {
+        Vec::new()
+    } else {
+        t.control_in_batch(&reads)
+    }
+    .into_iter();
     let mut next = || answers.next().unwrap_or(Err(TransportError::Disconnected));
     let types = (0..descriptors)
         .filter_map(|_| dspi_proto::packets::SiggenTypeDesc::decode(&next().ok()?).ok())
@@ -515,7 +551,8 @@ fn describe(
     });
     let round2: Vec<(u8, bool)> = round2.into_iter().map(|b| (b, next().is_ok())).collect();
     bands.answer(&round2);
-    let ext = ext_list.map(|list| ExtState::from_answers(list, ext_reads.iter().map(|_| next()).collect()));
+    let ext = ext_list
+        .map(|list| ExtState::from_answers(list, ext_reads.iter().map(|_| next()).collect()));
     let max_bands = if band0 { bands.finish(t) } else { h.max_bands };
 
     Ok((
@@ -595,11 +632,16 @@ impl BandSearch {
         let mut points: Vec<u16> = if gap - 1 <= BAND_FANOUT {
             (lo + 1..hi).collect()
         } else {
-            (1..=BAND_FANOUT).map(|k| lo + gap * k / (BAND_FANOUT + 1)).collect()
+            (1..=BAND_FANOUT)
+                .map(|k| lo + gap * k / (BAND_FANOUT + 1))
+                .collect()
         };
         points.retain(|p| *p > lo && *p < hi);
         points.dedup();
-        points.into_iter().filter_map(|p| u8::try_from(p).ok()).collect()
+        points
+            .into_iter()
+            .filter_map(|p| u8::try_from(p).ok())
+            .collect()
     }
 
     /// Narrow by `answers` (band, answered): the highest live band and the
@@ -661,7 +703,11 @@ fn probe_band_count(t: &mut dyn Transport, storage: u8) -> u8 {
     // The probe's two rounds, one read at a time here
     let mut search = BandSearch::new(storage);
     for _ in 0..2 {
-        let answers: Vec<(u8, bool)> = search.points().into_iter().map(|b| (b, live(t, b))).collect();
+        let answers: Vec<(u8, bool)> = search
+            .points()
+            .into_iter()
+            .map(|b| (b, live(t, b)))
+            .collect();
         search.answer(&answers);
     }
     search.finish(t)
@@ -1633,5 +1679,145 @@ mod meter_tests {
         assert_eq!(d.len(), 21);
         let mut t = MockTransport::new().data(op::REQ_GET_STATUS, d);
         assert_eq!(read_meters(&mut t, 7).unwrap().cpu0, 12);
+    }
+}
+
+/// WP LK4: the connect's probe, its hook and its reuse on a re-attach.
+#[cfg(test)]
+mod tests_wp_lk4 {
+    use super::*;
+    use dspi_transport::fake::{Capture, FakeOptions};
+    use dspi_transport::{DeviceDescriptor, FakeDevice};
+
+    /// A device that counts the requests it answers.
+    struct Counted {
+        inner: FakeDevice,
+        asked: Vec<(u8, u16)>,
+    }
+
+    impl Transport for Counted {
+        fn control_in(&mut self, o: u8, v: u16, l: u16) -> Result<Vec<u8>> {
+            self.asked.push((o, v));
+            self.inner.control_in(o, v, l)
+        }
+        fn control_in_upto(&mut self, o: u8, v: u16, l: u16) -> Result<Vec<u8>> {
+            self.asked.push((o, v));
+            self.inner.control_in_upto(o, v, l)
+        }
+        fn control_out(&mut self, o: u8, v: u16, d: &[u8]) -> Result<()> {
+            self.inner.control_out(o, v, d)
+        }
+        fn descriptor(&self) -> &DeviceDescriptor {
+            self.inner.descriptor()
+        }
+    }
+
+    fn device(capture: Capture) -> Counted {
+        let options = FakeOptions {
+            extensions: true,
+            surfaces: true,
+            ..FakeOptions::default()
+        };
+        Counted {
+            inner: FakeDevice::new(capture, options),
+            asked: Vec::new(),
+        }
+    }
+
+    fn asked(t: &Counted, opcode: u8) -> usize {
+        t.asked.iter().filter(|a| a.0 == opcode).count()
+    }
+
+    #[test]
+    fn wp_lk4_the_probe_matches_the_old_one_and_reads_the_platform_once() {
+        let mut t = device(Capture::demo());
+        let mut seen = None;
+        let p = probe_connect(
+            &mut t,
+            &mut |img| seen = Some(img.packet.header().num_channels),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            seen,
+            Some(p.caps.num_channels),
+            "the hook saw the image's channel count"
+        );
+        assert!(!p.reused);
+        assert_eq!(asked(&t, op::REQ_GET_PLATFORM), 1, "no second GET_PLATFORM");
+        assert!(!p.platform.is_empty());
+        assert!(
+            p.ext.as_ref().is_ok_and(|e| !e.supported.is_empty()),
+            "the extension channel read"
+        );
+
+        let mut old = device(Capture::demo());
+        let (caps, _) = probe_any_with_image(&mut old).unwrap();
+        assert_eq!(format!("{:?}", p.caps), format!("{caps:?}"));
+        // The whole CS caps header in one read, the band count in two rounds
+        assert_eq!(asked(&t, op::REQ_GET_CS_CAPS), 1);
+        assert!(asked(&t, op::REQ_GET_EQ_PARAM) <= 6, "{:?}", t.asked);
+    }
+
+    #[test]
+    fn wp_lk4_a_re_attach_to_the_same_device_skips_the_feature_reads() {
+        let mut t = device(Capture::demo());
+        let first = probe_connect(&mut t, &mut |_| {}, None).unwrap();
+        let reuse = first.reusable().unwrap();
+
+        let mut again = device(Capture::demo());
+        let p = probe_connect(&mut again, &mut |_| {}, Some(&reuse)).unwrap();
+        assert!(p.reused);
+        assert_eq!(
+            asked(&again, op::REQ_GET_INPUT_SOURCE),
+            0,
+            "no feature reads"
+        );
+        assert_eq!(asked(&again, op::REQ_SIGGEN_GET_CAPS), 0);
+        assert_eq!(
+            asked(&again, op::REQ_GET_BUILD_INFO),
+            1,
+            "the build is checked"
+        );
+        assert_eq!(
+            format!("{:?}", p.caps.features),
+            format!("{:?}", first.caps.features)
+        );
+        assert_eq!(p.caps.max_bands, first.caps.max_bands);
+        assert_eq!(p.ext.unwrap(), first.ext.unwrap());
+    }
+
+    #[test]
+    fn wp_lk4_another_firmware_is_probed_in_full() {
+        let mut t = device(Capture::demo());
+        let reuse = probe_connect(&mut t, &mut |_| {}, None)
+            .unwrap()
+            .reusable()
+            .unwrap();
+        // The same unit after an update: another beta in GET_PLATFORM
+        let mut capture = Capture::demo();
+        if let Some(beta) = capture.platform.get_mut(6) {
+            *beta = beta.wrapping_add(1);
+        }
+        let mut updated = device(capture);
+        let p = probe_connect(&mut updated, &mut |_| {}, Some(&reuse)).unwrap();
+        assert!(!p.reused);
+        assert_eq!(asked(&updated, op::REQ_GET_INPUT_SOURCE), 1, "probed again");
+    }
+
+    #[test]
+    fn wp_lk4_the_band_search_narrows_by_rounds() {
+        let mut s = BandSearch::new(12);
+        assert_eq!(s.points(), vec![3, 6, 9]);
+        s.answer(&[(3, true), (6, true), (9, true)]);
+        assert_eq!(s.points(), vec![10, 11]);
+        s.answer(&[(10, false), (11, false)]);
+        assert!(s.points().is_empty());
+        assert_eq!((s.lo, s.hi), (9, 10));
+        // A contradicting answer (dead below live) is ignored
+        let mut s = BandSearch::new(12);
+        s.answer(&[(3, false), (6, true), (9, false)]);
+        assert_eq!((s.lo, s.hi), (6, 9));
+        assert!(BandSearch::new(1).points().is_empty());
     }
 }

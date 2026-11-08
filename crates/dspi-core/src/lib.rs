@@ -715,21 +715,21 @@ impl DspiCore {
         let mut on_image = |image: &dspi_proto::wire_compat::Normalized| {
             on_channels(image.packet.header().num_channels);
         };
-        let probed =
-            match dspi_session::probe::probe_connect(&mut *transport, &mut on_image, reuse) {
-                Ok(probed) => probed,
-                Err(e) => {
-                    // §1.5 "Unmappable images": a device that identifies itself
-                    // but whose image cannot be read is still shown, read-only.
-                    let Some(mirror) = device::unmappable_mirror(&mut *transport, &e, vid) else {
-                        return Err(DspiError::from(e));
-                    };
-                    let mut conn = Connection::new(transport, serial.clone(), vid);
-                    conn.notifications = notifications;
-                    self.install(conn, mirror, serial, vid);
-                    return Ok(None);
-                }
-            };
+        let probed = match dspi_session::probe::probe_connect(&mut *transport, &mut on_image, reuse)
+        {
+            Ok(probed) => probed,
+            Err(e) => {
+                // §1.5 "Unmappable images": a device that identifies itself
+                // but whose image cannot be read is still shown, read-only.
+                let Some(mirror) = device::unmappable_mirror(&mut *transport, &e, vid) else {
+                    return Err(DspiError::from(e));
+                };
+                let mut conn = Connection::new(transport, serial.clone(), vid);
+                conn.notifications = notifications;
+                self.install(conn, mirror, serial, vid);
+                return Ok(None);
+            }
+        };
         let reusable = probed.reusable();
         let dspi_session::probe::Probed {
             caps,

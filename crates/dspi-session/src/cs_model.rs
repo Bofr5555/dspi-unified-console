@@ -69,24 +69,65 @@ fn read_batched(t: &mut dyn Transport, caps: CsCaps, limits: &Limits, pages_hint
         (0..count).map(move |i| InRead::exact(opcode, u16::from(i), len(size)))
     };
     let mut reads: Vec<InRead> = Vec::new();
-    reads.extend(indexed(op::REQ_GET_CS_CAPS, caps.noun_count, CsNounDesc::SIZE));
-    reads.extend(indexed(op::REQ_GET_CS_BINDING, caps.max_bindings, CsBinding::SIZE));
+    reads.extend(indexed(
+        op::REQ_GET_CS_CAPS,
+        caps.noun_count,
+        CsNounDesc::SIZE,
+    ));
+    reads.extend(indexed(
+        op::REQ_GET_CS_BINDING,
+        caps.max_bindings,
+        CsBinding::SIZE,
+    ));
     reads.extend(indexed(op::REQ_GET_CS_NAME, caps.max_bindings, 32));
-    reads.extend(indexed(op::REQ_GET_CS_IR_CMD, caps.max_ir_commands, IrCommand::SIZE));
-    reads.extend(indexed(op::REQ_GET_CS_GROUP, caps.max_groups, CsGroup::SIZE));
-    reads.extend(indexed(op::REQ_GET_CS_MACRO, caps.max_macros, CsMacro::SIZE));
-    reads.push(InRead::exact(op::REQ_GET_CS_DISPLAY_CFG, 0, len(CsDisplayCfgReply::SIZE)));
-    reads.extend(indexed(op::REQ_GET_CS_DISPLAY_PAGE, pages_hint, CsDisplayPage::SIZE));
+    reads.extend(indexed(
+        op::REQ_GET_CS_IR_CMD,
+        caps.max_ir_commands,
+        IrCommand::SIZE,
+    ));
+    reads.extend(indexed(
+        op::REQ_GET_CS_GROUP,
+        caps.max_groups,
+        CsGroup::SIZE,
+    ));
+    reads.extend(indexed(
+        op::REQ_GET_CS_MACRO,
+        caps.max_macros,
+        CsMacro::SIZE,
+    ));
+    reads.push(InRead::exact(
+        op::REQ_GET_CS_DISPLAY_CFG,
+        0,
+        len(CsDisplayCfgReply::SIZE),
+    ));
+    reads.extend(indexed(
+        op::REQ_GET_CS_DISPLAY_PAGE,
+        pages_hint,
+        CsDisplayPage::SIZE,
+    ));
     let status_len = CsStatusPacket::wire_len(limits.max_bindings, limits.max_ir_commands);
     reads.push(InRead::exact(op::REQ_GET_CS_STATUS, 0, len(status_len)));
-    reads.push(InRead::exact(op::REQ_GET_CS_EXT_STATUS, 0, len(CsExtStatusPacket::SIZE)));
-    reads.push(InRead::exact(op::REQ_GET_CS_DISPLAY_STATUS, 0, len(CsDisplayStatus::SIZE)));
+    reads.push(InRead::exact(
+        op::REQ_GET_CS_EXT_STATUS,
+        0,
+        len(CsExtStatusPacket::SIZE),
+    ));
+    reads.push(InRead::exact(
+        op::REQ_GET_CS_DISPLAY_STATUS,
+        0,
+        len(CsDisplayStatus::SIZE),
+    ));
     let mut answers = t.control_in_batch(&reads).into_iter();
     let a = &mut answers;
     let nouns = records(a, caps.noun_count, |d| CsNounDesc::decode(d).ok());
     let bindings = records(a, caps.max_bindings, |d| CsBinding::decode(d).ok());
     let names = records(a, caps.max_bindings, |d| {
-        Some(String::from_utf8_lossy(d).trim_end_matches('\0').trim().to_string())
+        Some(
+            String::from_utf8_lossy(d)
+                .trim_end_matches('\0')
+                .trim()
+                .to_string(),
+        )
     });
     let ir = records(a, caps.max_ir_commands, |d| IrCommand::decode(d).ok());
     let groups = records(a, caps.max_groups, |d| CsGroup::decode(d).ok());
@@ -105,10 +146,20 @@ fn read_batched(t: &mut dyn Transport, caps: CsCaps, limits: &Limits, pages_hint
     pages.truncate(usize::from(max_pages));
     if max_pages > pages_hint {
         let more: Vec<InRead> = (pages_hint..max_pages)
-            .map(|p| InRead::exact(op::REQ_GET_CS_DISPLAY_PAGE, u16::from(p), len(CsDisplayPage::SIZE)))
+            .map(|p| {
+                InRead::exact(
+                    op::REQ_GET_CS_DISPLAY_PAGE,
+                    u16::from(p),
+                    len(CsDisplayPage::SIZE),
+                )
+            })
             .collect();
         let mut answers = t.control_in_batch(&more).into_iter();
-        pages.extend(records(&mut answers, max_pages.saturating_sub(pages_hint), |d| CsDisplayPage::decode(d).ok()));
+        pages.extend(records(
+            &mut answers,
+            max_pages.saturating_sub(pages_hint),
+            |d| CsDisplayPage::decode(d).ok(),
+        ));
     }
     CsData {
         caps,
@@ -144,7 +195,9 @@ fn records<T: Default>(
     count: u8,
     f: impl Fn(&[u8]) -> Option<T>,
 ) -> Vec<T> {
-    (0..count).map(|_| record(answers, &f).unwrap_or_default()).collect()
+    (0..count)
+        .map(|_| record(answers, &f).unwrap_or_default())
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -4044,5 +4097,80 @@ mod tests_wp_cg16 {
     fn wp_cg16_a_stock_device_has_no_surfaces() {
         let s = session(FakeDevice::demo_without_surfaces());
         assert!(s.capabilities().cs.is_none());
+    }
+}
+
+/// WP LK4: the records are read in one batch.
+#[cfg(test)]
+mod tests_wp_lk4 {
+    use super::*;
+    use dspi_transport::{FakeDevice, Result as TResult};
+
+    /// The demo device, counting the batches it is asked for.
+    struct Batches {
+        inner: FakeDevice,
+        sizes: std::sync::Arc<std::sync::Mutex<Vec<usize>>>,
+    }
+
+    impl Transport for Batches {
+        fn control_in(&mut self, o: u8, v: u16, l: u16) -> TResult<Vec<u8>> {
+            self.inner.control_in(o, v, l)
+        }
+        fn control_in_upto(&mut self, o: u8, v: u16, l: u16) -> TResult<Vec<u8>> {
+            self.inner.control_in_upto(o, v, l)
+        }
+        fn control_out(&mut self, o: u8, v: u16, d: &[u8]) -> TResult<()> {
+            self.inner.control_out(o, v, d)
+        }
+        fn descriptor(&self) -> &dspi_transport::DeviceDescriptor {
+            self.inner.descriptor()
+        }
+        fn control_in_batch(&mut self, reads: &[InRead]) -> Vec<TResult<Vec<u8>>> {
+            self.sizes.lock().unwrap().push(reads.len());
+            // Answered last to first, as a pipelined link may complete them
+            let mut out: Vec<_> = reads
+                .iter()
+                .rev()
+                .map(|r| {
+                    if r.exact {
+                        self.inner.control_in(r.opcode, r.value, r.len)
+                    } else {
+                        self.inner.control_in_upto(r.opcode, r.value, r.len)
+                    }
+                })
+                .collect();
+            out.reverse();
+            out
+        }
+    }
+
+    #[test]
+    fn wp_lk4_control_surfaces_are_read_in_one_batch() {
+        let sizes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut t: Box<dyn Transport> = Box::new(Batches {
+            inner: FakeDevice::demo(),
+            sizes: std::sync::Arc::clone(&sizes),
+        });
+        let caps = crate::probe::probe(t.as_mut()).unwrap();
+        let mut s = Session::new(t, caps).unwrap();
+        sizes.lock().unwrap().clear();
+        let got = CsData::read(&mut s).unwrap();
+        let sizes = sizes.lock().unwrap().clone();
+        assert_eq!(sizes.len(), 1, "one batch: {sizes:?}");
+        let c = &got.caps;
+        let want = usize::from(c.noun_count)
+            + 2 * usize::from(c.max_bindings)
+            + usize::from(c.max_ir_commands)
+            + usize::from(c.max_groups)
+            + usize::from(c.max_macros)
+            + usize::from(got.max_pages)
+            + 4;
+        assert_eq!(sizes[0], want);
+        let fixture = demo::data();
+        assert_eq!(got.nouns, fixture.nouns);
+        assert_eq!(got.bindings, fixture.bindings);
+        assert_eq!(got.names, fixture.names);
+        assert_eq!(got.pages, fixture.pages);
+        assert_eq!(got.status, fixture.status);
     }
 }

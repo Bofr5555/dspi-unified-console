@@ -117,6 +117,11 @@ const METER_SLOT: u8 = 0;
 /// Requested meter rate. A bridge shares a UART with everything else.
 const METER_HZ: u32 = 15;
 const METER_HZ_BRIDGED: u32 = 10;
+// -- WP LK4 --
+/// The meter rate on a bridge after its feed went silent (a stall).
+const METER_HZ_STALLED: u32 = 2;
+/// How long frames must flow again before the full rate comes back.
+const METER_SLOW_FOR: Duration = Duration::from_secs(10);
 /// No `fetch_status` for this long: the UI stopped asking, so unsubscribe.
 const METER_IDLE: Duration = Duration::from_secs(2);
 /// How often the supervisor looks at a bound device's meter feed.
@@ -1048,9 +1053,9 @@ impl DspiCore {
     // -- WP LK4 --
     /// Clear the meter path if it is `side`'s (a failed open set it early).
     fn drop_meter_path_of(&self, side: &Arc<LinkSide>) {
-        let ours = self.meter_path().is_some_and(|p| {
-            std::ptr::addr_eq(Arc::as_ptr(&p.side), Arc::as_ptr(side))
-        });
+        let ours = self
+            .meter_path()
+            .is_some_and(|p| std::ptr::addr_eq(Arc::as_ptr(&p.side), Arc::as_ptr(side)));
         if ours {
             drop(self.set_meter_path(None));
         }
@@ -1689,6 +1694,10 @@ struct Feed {
     meter_hz: Option<u32>,
     meter_refused_until: Option<Instant>,
     meter_subscribed_at: Option<Instant>,
+    // -- WP LK4 --
+    /// The meter feed last went silent on a bridge then: it runs at
+    /// [`METER_HZ_STALLED`] until frames have flowed for [`METER_SLOW_FOR`].
+    meter_slow_since: Option<Instant>,
     /// A wake-up to the supervisor is on its way.
     kicked: bool,
     /// The channels the analyser wants.
@@ -1872,11 +1881,30 @@ impl LinkSide {
                     .map(|f| f.1)
                     .max(feed.meter_subscribed_at)
                     .is_none_or(|t| now.saturating_duration_since(t) >= FEED_LOST);
-            if feed.meter_hz.is_some() && !silent {
+            // -- WP LK4 -- a bridge closes a session whose queued frames it
+            // could not write for 10 s (bridge spec 8.2; a stall fills its
+            // send buffer sooner the faster it polls): a feed gone silent is
+            // asked again at a low rate, and back at the full rate once
+            // frames have flowed again for a while
+            if self.bridged && silent {
+                feed.meter_slow_since = Some(now);
+            }
+            let flowing = feed.latest.get(&METER_SLOT).is_some_and(|f| {
+                now.saturating_duration_since(f.1) < stale_after(METER_HZ_STALLED)
+            });
+            let recovered = !silent
+                && flowing
+                && feed
+                    .meter_slow_since
+                    .is_some_and(|t| now.saturating_duration_since(t) >= METER_SLOW_FOR);
+            if recovered {
+                feed.meter_slow_since = None;
+            }
+            if feed.meter_hz.is_some() && !silent && !recovered {
                 return;
             }
             feed.meter_subscribed_at = Some(now);
-            self.meter_spec(feed.meter_len)
+            self.meter_spec(feed.meter_len, feed.meter_slow_since.is_some())
         };
         let granted = self.client.poll_subscribe(self.handle, &[spec]);
         let mut feed = guard(&self.feed);
@@ -1923,8 +1951,10 @@ impl LinkSide {
         }
     }
 
-    fn meter_spec(&self, len: u16) -> PollSpec {
-        let wanted = if self.bridged {
+    fn meter_spec(&self, len: u16, slow: bool) -> PollSpec {
+        let wanted = if slow {
+            METER_HZ_STALLED
+        } else if self.bridged {
             METER_HZ_BRIDGED
         } else {
             METER_HZ
@@ -2382,6 +2412,11 @@ mod tests_wp_cg24;
 #[cfg(test)]
 #[path = "link/tests_wp_lk2.rs"]
 mod tests_wp_lk2;
+
+// -- WP LK4 --
+#[cfg(test)]
+#[path = "link/tests_wp_lk4.rs"]
+mod tests_wp_lk4;
 
 // -- WP WB4b --
 #[cfg(test)]

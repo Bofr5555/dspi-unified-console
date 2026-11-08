@@ -346,7 +346,9 @@ const SOURCE_NAME_EVENT_FIELD: std::ops::Range<usize> = 4..4 + CHANNEL_NAME_LEN;
 /// that batches them (`fetch_all`'s per-item reads): one exact 32-byte GET per
 /// source, then the device name, each only when the probe found it.
 pub(crate) fn name_reads(conn: &mut Connection) -> Vec<InRead> {
-    let has = |conn: &mut Connection, f: &str| conn.session().is_ok_and(|s| require_feature(s, f).is_ok());
+    let has = |conn: &mut Connection, f: &str| {
+        conn.session().is_ok_and(|s| require_feature(s, f).is_ok())
+    };
     let mut reads = Vec::new();
     if has(conn, F_SOURCE_NAMES) {
         reads.extend(
@@ -366,17 +368,18 @@ pub(crate) fn name_reads(conn: &mut Connection) -> Vec<InRead> {
 /// them.
 pub(crate) fn apply_names(conn: &mut Connection, reads: &[InRead], answers: Vec<Result<Vec<u8>>>) {
     for (r, answer) in reads.iter().zip(answers) {
-        let text = match answer.map(|b| dspi_proto::value::Repr::Text(usize::from(NAME_LEN)).decode(&b)) {
-            Ok(Some(Value::Text(t))) => t,
-            Ok(other) => {
-                log::debug!("name 0x{:02X}/{}: read {other:?}", r.opcode, r.value);
-                continue;
-            }
-            Err(e) => {
-                log::debug!("name 0x{:02X}/{} not read: {e}", r.opcode, r.value);
-                continue;
-            }
-        };
+        let text =
+            match answer.map(|b| dspi_proto::value::Repr::Text(usize::from(NAME_LEN)).decode(&b)) {
+                Ok(Some(Value::Text(t))) => t,
+                Ok(other) => {
+                    log::debug!("name 0x{:02X}/{}: read {other:?}", r.opcode, r.value);
+                    continue;
+                }
+                Err(e) => {
+                    log::debug!("name 0x{:02X}/{} not read: {e}", r.opcode, r.value);
+                    continue;
+                }
+            };
         if r.opcode == op::REQ_GET_DEVICE_NAME {
             conn.device_name = decode_name(text.as_bytes());
         } else if let Ok(source) = u8::try_from(r.value) {

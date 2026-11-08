@@ -11,7 +11,9 @@
 #                                 the bridge's 10 s unwritable close
 #   scenarios.sh reread           a bulk re-read every 5 s while the meters run
 #
-# CLIENTS (default "after before ts") picks clients; BAUDS ("115200 1000000") rates;
+# CLIENTS (default "after before ts") picks clients; WP LK4 adds "lk3" (the
+# kept LK3 build, probe-lk3, Android's LK2 order) and "lk4" (probe-after in the
+# lk4 order: meters from select's start); BAUDS ("115200 1000000") rates;
 # MATRIX_SECONDS (30) the meter time in the matrix. Needs `rig.sh build`, `rig.sh
 # build-before` (for "before") and `rig.sh provision` for each rate.
 set -uo pipefail
@@ -20,6 +22,8 @@ rig=$here/rig.sh
 CLIENTS=${CLIENTS:-after before ts}
 BAUDS=${BAUDS:-115200 1000000}
 BASE="delay 50ms 20ms"
+# -- WP LK4 -- a prefix for the rigs' names, so two people's runs do not meet
+P=${RIG_PREFIX:-}
 
 # The bridge's own log lines since `from`: its 10 s unwritable close and its
 # "dropped (session queue full)" reports.
@@ -41,6 +45,8 @@ client() {
   case "$who" in
     after) out=$("$rig" rust "$run" LK3_MODE=android "$@") ;;
     before) out=$("$rig" rust-before "$run" LK3_MODE=seq "$@") ;;
+    lk3) out=$("$rig" rust-bin "$run" probe-lk3 LK3_MODE=android "$@") ;;
+    lk4) out=$("$rig" rust-bin "$run" "${LK4_BIN:-probe-after}" LK3_MODE=lk4 "$@") ;;
     ts) out=$("$rig" ts "$run" "$@") ;;
   esac
   echo "$out" | grep -v summary
@@ -58,60 +64,60 @@ group() { # group RUN BAUD SHAPE: a fresh bridge with this shaping
 
 case "${1:-}" in
   smoke)
-    group smoke 1000000 "" || exit 1
-    for who in $CLIENTS; do client smoke "$who" "scenario=smoke baud=1000000 shape=none" LK3_SECONDS=10; done
-    "$rig" down smoke
+    group ${P}smoke 1000000 "" || exit 1
+    for who in $CLIENTS; do client ${P}smoke "$who" "scenario=smoke baud=1000000 shape=none" LK3_SECONDS=10; done
+    "$rig" down ${P}smoke
     ;;
   matrix)
     reps=${2:-2}
     for baud in $BAUDS; do
       for shape in "" "$BASE" "$BASE loss 5%" "$BASE loss 10%" "$BASE loss 20%"; do
-        group mx "$baud" "$shape" || continue
+        group ${P}mx "$baud" "$shape" || continue
         for rep in $(seq "$reps"); do
           for who in $CLIENTS; do
-            client mx "$who" "scenario=matrix baud=$baud shape=${shape:-none} rep=$rep" \
+            client ${P}mx "$who" "scenario=matrix baud=$baud shape=${shape:-none} rep=$rep" \
               LK3_SECONDS="${MATRIX_SECONDS:-30}"
           done
         done
-        "$rig" down mx
+        "$rig" down ${P}mx
       done
     done
     ;;
   outage)
     for baud in $BAUDS; do
-      group og "$baud" "$BASE" || continue
+      group ${P}og "$baud" "$BASE" || continue
       for who in $CLIENTS; do
         # 15 s after the client starts, which reaches live meters well before.
-        (sleep 15; "$rig" outage og 20) &
-        client og "$who" "scenario=outage20 baud=$baud shape=base" LK3_SECONDS=60
+        (sleep 15; "$rig" outage ${P}og 20) &
+        client ${P}og "$who" "scenario=outage20 baud=$baud shape=base" LK3_SECONDS=60
         wait
       done
-      "$rig" down og
+      "$rig" down ${P}og
     done
     ;;
   pollload)
     for baud in $BAUDS; do
       for loss in 10 20; do
-        group pl "$baud" "$BASE loss $loss%" || continue
+        group ${P}pl "$baud" "$BASE loss $loss%" || continue
         for n in 1 2; do
           for who in $CLIENTS; do
-            [ "$who" = before ] && continue
-            client pl "$who" "scenario=pollload baud=$baud shape=loss$loss clients=$n" \
+            [ "$who" = before ] && continue # -- WP LK4 -- lk3/lk4 run here
+            client ${P}pl "$who" "scenario=pollload baud=$baud shape=loss$loss clients=$n" \
               LK3_SECONDS=120 LK3_CLIENTS="$n"
           done
         done
-        "$rig" down pl
+        "$rig" down ${P}pl
       done
     done
     ;;
   reread)
     for baud in $BAUDS; do
       for shape in "" "$BASE loss 10%"; do
-        group rr "$baud" "$shape" || continue
+        group ${P}rr "$baud" "$shape" || continue
         for who in $CLIENTS; do
-          client rr "$who" "scenario=reread baud=$baud shape=${shape:-none}" LK3_SECONDS=40 LK3_REREAD_S=5
+          client ${P}rr "$who" "scenario=reread baud=$baud shape=${shape:-none}" LK3_SECONDS=40 LK3_REREAD_S=5
         done
-        "$rig" down rr
+        "$rig" down ${P}rr
       done
     done
     ;;

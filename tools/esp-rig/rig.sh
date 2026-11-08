@@ -10,6 +10,7 @@
 #   rig.sh outage RUN SECONDS         drop everything for SECONDS, then the old shaping
 #   rig.sh rust RUN [VAR=VALUE...]    our client (crates/dspi-core/tests/wp_lk3_rig.rs)
 #   rig.sh rust-before RUN [VAR=...]  the same, built from the pre-LK2 core
+#   rig.sh rust-bin RUN BIN [VAR=...] the same, from $ESP_RIG_WORK/BIN (a kept build)
 #   rig.sh ts RUN [VAR=VALUE...]      upstream's TypeScript client (clients/ts-probe.ts)
 #   rig.sh realhub RUN [FILTER]       crates/dspi-link/tests/real_hub against the bridge
 #                                     (default filter real::, the read-only safe set)
@@ -264,6 +265,7 @@ case "${1:-}" in
   outage) cmd_outage "${2:?run}" "${3:?seconds}" ;;
   rust) shift; cmd_rust "${1:?run}" probe-after "${@:2}" ;;
   rust-before) shift; cmd_rust "${1:?run}" probe-before "${@:2}" ;;
+  rust-bin) shift; cmd_rust "${1:?run}" "${2:?binary}" "${@:3}" ;;
   ts) shift; cmd_ts "${1:?run}" "${@:2}" ;;
   realhub) cmd_realhub "${2:?run}" "${3:-}" ;;
   log) cmd_log "${2:?run}" ;;

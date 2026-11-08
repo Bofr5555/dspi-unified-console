@@ -10,6 +10,7 @@
 // LK3_REREAD_S a 0xA0 bulk re-read every this many seconds while meters run (0: none)
 // LK3_CLIENTS  sessions at once (meters), default 1
 // LK3_BAUD     config: the UART rate to save, with detection off
+// LK3_HZ       the meter poll's rate (meters), default 10 (WP LK4)
 //
 // Output: `LK3 ...` lines, then `LK3 summary ...` per session.
 
@@ -25,6 +26,7 @@ const MODE = process.env.LK3_MODE ?? "meters";
 const SECONDS = Number(process.env.LK3_SECONDS ?? "60");
 const REREAD_S = Number(process.env.LK3_REREAD_S ?? "0");
 const CLIENTS = Number(process.env.LK3_CLIENTS ?? "1");
+const HZ = Number(process.env.LK3_HZ ?? "10");
 const REQ_GET_STATUS = 0x50;
 const REQ_GET_ALL_PARAMS = 0xa0;
 /** A gap between live meter frames longer than this is a freeze. */
@@ -129,7 +131,7 @@ async function session(id: number, deadline: number): Promise<Stats> {
         say(`c${id} snapshot failed: ${(e as Error).message}`);
       }
       const grants = await c.subscribePolls(d.handle, [
-        { slot: 1, req: REQ_GET_STATUS, val: 9, idx: 2, len: meterLen(d), hz: 10 },
+        { slot: 1, req: REQ_GET_STATUS, val: 9, idx: 2, len: meterLen(d), hz: HZ },
       ]);
       say(`c${id} poll granted ${JSON.stringify(grants)}`);
       let nextReread = REREAD_S > 0 ? Date.now() + REREAD_S * 1000 : Infinity;

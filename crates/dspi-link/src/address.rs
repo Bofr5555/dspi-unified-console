@@ -284,7 +284,10 @@ mod tests {
         assert!(matches!(parse(b"HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\nabc"), Err(Framing::Bad(_))));
         assert!(matches!(parse(b"HTTP/1.1 200 OK\r\nContent-Length: -1\r\n\r\n"), Err(Framing::Bad(_))));
         assert!(matches!(parse(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\n"), Err(Framing::Bad(_))));
-        assert!(matches!(parse(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nabcd"), Err(Framing::Bad(_))));
+        assert!(matches!(
+            parse(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nabcd"),
+            Err(Framing::Bad(_))
+        ));
         let mut head = b"HTTP/1.1 200 OK\r\nX: ".to_vec();
         head.resize(head.len() + HEAD_MAX + 10, b'a');
         assert!(matches!(parse(&head), Err(Framing::Bad("HTTP header too long"))));
@@ -316,15 +319,15 @@ mod tests {
     #[test]
     fn wp_lk4_fetch_info_reads_a_hub_that_keeps_the_socket_open() {
         let started = Instant::now();
-        let head = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n", INFO.len());
+        let head =
+            format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n", INFO.len());
         let (port, _done) = keep_open_hub(vec![head.into_bytes(), INFO.as_bytes().to_vec()], Duration::from_millis(50));
         let doc = fetch_info("127.0.0.1", port, Duration::from_secs(5)).expect("info");
         assert_eq!(doc.hub.id, "abc");
         assert!(started.elapsed() < Duration::from_secs(2), "waited for EOF: {:?}", started.elapsed());
 
         let chunked = format!("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n{:x}\r\n{INFO}\r\n", INFO.len());
-        let (port, _done) =
-            keep_open_hub(vec![chunked.into_bytes(), b"0\r\n\r\n".to_vec()], Duration::from_millis(50));
+        let (port, _done) = keep_open_hub(vec![chunked.into_bytes(), b"0\r\n\r\n".to_vec()], Duration::from_millis(50));
         let doc = fetch_info("127.0.0.1", port, Duration::from_secs(5)).expect("chunked info");
         assert_eq!(doc.hub.name, "Bridge");
     }
