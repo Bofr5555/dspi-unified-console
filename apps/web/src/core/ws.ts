@@ -99,14 +99,19 @@ export class WsHost {
         clearTimeout(timer);
         resolve(v);
       };
+      // -- WP WB7 -- (c6m N3) the text of a failed open, set only while the open is
+      // still unsettled: a later close of an open socket keeps the first failure's words.
+      const failOpen = (why: string) => {
+        if (!settled) settle(this.fail(why));
+      };
       const timer = setTimeout(() => {
         ws.close();
-        settle(this.fail(`The hub at ${hostOf(url)} did not answer`));
+        failOpen(`The hub at ${hostOf(url)} did not answer`);
       }, OPEN_TIMEOUT_MS);
       ws.onopen = () => {
         if (ws.protocol !== protocol) {
           ws.close(1000);
-          settle(this.fail(`The server at ${hostOf(url)} is not a DSPi hub`));
+          failOpen(`The server at ${hostOf(url)} is not a DSPi hub`);
           return;
         }
         this.socks.set(id, s);
@@ -124,11 +129,9 @@ export class WsHost {
         // code counts even when the TCP close was not clean (Firefox says so when
         // the hub hangs up right after its close frame): 4000 must end the session.
         s.closed = ev.code === 1005 || ev.code === 1006 ? -1 : ev.code;
-        settle(
-          this.fail(
-            `Cannot connect to the hub at ${hostOf(url)}. It may be off or busy, or it refuses this page: ` +
-              "a hub accepts only pages it serves itself.",
-          ),
+        failOpen(
+          `Cannot connect to the hub at ${hostOf(url)}. It may be off or busy, or it refuses this page: ` +
+            "a hub accepts only pages it serves itself.",
         );
         this.wake(s);
       };

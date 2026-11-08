@@ -6,7 +6,9 @@
 #                                   container), install (npm ci, from the lockfile),
 #                                   typecheck, build, unit tests (the core's under
 #                                   JSPI too), e2e in Chromium and Firefox; Link's
-#                                   against dspi-link's fake hub (WB4b)
+#                                   against dspi-link's fake hub (WB4b); and
+#                                   the hosting routes on the real `dspi`:
+#                                   `dspi hub --web`, `dspi web` (WB7)
 #   apps/web/tools/ci.sh --no-e2e   all but the browsers
 #
 # npm installs only what package-lock.json names, with its integrity hashes. The
@@ -33,6 +35,12 @@ e2e=1
 mkdir -p "$work/hub"
 DSPI_PROFILE=cross "$root/ci/run.sh" "cargo build -p dspi-link --features fake-hub --bin dspi-link-fakehub --locked"
 cp "$B/target/${branch//\//-}-cross/debug/dspi-link-fakehub" "$work/hub/"
+# -- WP WB7 -- the real hub (`dspi hub --web`, `dspi web`) serving the built console,
+# for test/e2e/hosting.spec.ts; without MIDI and mDNS (a loopback hub advertises
+# nothing), so it needs no ALSA in the Playwright image. And the core's Rust notices
+# (notices/rust-crates.txt) must match what the module links.
+DSPI_PROFILE=cross "$root/ci/run.sh" "cargo build -p dspi-term --no-default-features --locked && python3 apps/web/tools/gen_rust_notices.py --check"
+cp "$B/target/${branch//\//-}-cross/debug/dspi" "$work/hub/"
 
 podman image exists "$PLAYWRIGHT" || podman pull -q "$PLAYWRIGHT" >/dev/null
 podman run --rm --init --userns=keep-id --user "$(id -u):$(id -g)" --ipc=private \
@@ -43,6 +51,8 @@ podman run --rm --init --userns=keep-id --user "$(id -u):$(id -g)" --ipc=private
   -v "$work/results":/results:z -e PW_OUTPUT_DIR=/results/out \
   -v "$work/wasm":/wasm:ro,z -e DSPI_WASM_DIR=/wasm -e DSPI_WASM_REQUIRED=1 \
   -v "$work/hub":/hub:ro,z -e DSPI_FAKEHUB=/hub/dspi-link-fakehub -e DSPI_FAKEHUB_REQUIRED=1 \
+  -e DSPI_TERM=/hub/dspi -e DSPI_TERM_REQUIRED=1 \
+  -e DSPI_WEB_SOURCE_URL="${DSPI_WEB_SOURCE_URL:-https://example.invalid/dspi-web-source}" \
   -v "$work/npm":/npm:z -v "$work/home":/home/web:z -v "$work/tmp":/wtmp:z \
   -e HOME=/home/web -e TMPDIR=/wtmp -e npm_config_cache=/npm -e npm_config_update_notifier=false \
   -e CI=1 -e E2E=$e2e -w /src/apps/web "$PLAYWRIGHT" bash -euo pipefail -c '

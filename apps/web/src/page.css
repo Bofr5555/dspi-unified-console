@@ -1,0 +1,5 @@
+/* The standalone page's own frame (index.html), apart from the library's
+   dspi-web.css so an embedding page keeps its own. A file, not an inline style,
+   so the page runs under a policy of style-src 'self' (WP WB7). */
+html, body { margin: 0; height: 100%; }
+#console > .dspi-web { min-height: 100vh; }

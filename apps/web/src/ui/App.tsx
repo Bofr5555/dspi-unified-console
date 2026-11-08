@@ -21,6 +21,8 @@ export interface ConsoleOptions {
   title: string;
   /** Link to this build's source (GPL). Shown in About when set. */
   sourceUrl: string | null;
+  /** -- WP WB7 -- The serving hub's own page, linked from the header. */
+  hubPage?: string | null;
   /** Every session read only, whatever the backend allows (a display page). */
   readOnly: boolean;
   /** What this page can reach; tests override it. */
@@ -111,6 +113,11 @@ export function App(props: { options: ConsoleOptions }) {
       <header class="top">
         <h1>{props.options.title}</h1>
         {user ? <span class="user">{user.name}</span> : null}
+        {props.options.hubPage ? (
+          <a class="hub-page" href={props.options.hubPage}>
+            Hub page
+          </a>
+        ) : null}
         <button type="button" class="about-button" onClick={() => setAboutOpen(true)}>
           About
         </button>

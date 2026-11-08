@@ -9,15 +9,31 @@
 // crates/dspi-wasm/tools/build.sh and taken from $DSPI_WASM_DIR), dspi-web.css.
 // --pages adds test/stub-worker.js, a Worker on the tests' fake core, and (WB4a)
 // test/usb.html over a WebUSB mock, with dspi_wasm_test.wasm as the mock's engine.
+//
+// -- WP WB7 -- Build settings, from the environment:
+//   DSPI_WEB_SOURCE_URL   the link to this build's source that About shows (GPL);
+//                         an embedder's mount({sourceUrl}) overrides it
+//   DSPI_WEB_RELEASE=1    a build for publishing: refuses to build without the
+//                         source link
+// dist/ also gets page.css (the standalone page's frame) and THIRD-PARTY-NOTICES.txt:
+// Preact's licence from node_modules and the core's Rust crates
+// (notices/rust-crates.txt, tools/gen_rust_notices.py).
 
 import { build } from "esbuild";
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const args = new Set(process.argv.slice(2));
+// -- WP WB7 --
+const sourceUrl = (process.env.DSPI_WEB_SOURCE_URL ?? "").trim();
+if (sourceUrl && !/^https?:\/\//.test(sourceUrl)) {
+  console.error(`build: DSPI_WEB_SOURCE_URL must be an http(s) address, not "${sourceUrl}"`);
+  process.exit(2);
+}
 const common = {
+  define: { __DSPI_SOURCE_URL__: JSON.stringify(sourceUrl) },
   absWorkingDir: root,
   bundle: true,
   format: "esm",
@@ -53,6 +69,16 @@ if (args.has("--unit")) {
   });
   cpSync(join(root, "index.html"), join(out, "index.html"));
   cpSync(join(root, "src/dspi-web.css"), join(out, "dspi-web.css"));
+  // -- WP WB7 --
+  cpSync(join(root, "src/page.css"), join(out, "page.css"));
+  writeFileSync(join(out, "THIRD-PARTY-NOTICES.txt"), notices());
+  if (!sourceUrl) {
+    if (process.env.DSPI_WEB_RELEASE === "1") {
+      console.error("build: a release needs DSPI_WEB_SOURCE_URL, the link to its source (GPL)");
+      process.exit(2);
+    }
+    console.warn("build: no DSPI_WEB_SOURCE_URL: About shows no source link (set it before publishing)");
+  }
   // -- WP WB3 -- the core
   const wasm = process.env.DSPI_WASM_DIR ? join(process.env.DSPI_WASM_DIR, "dspi_wasm.wasm") : "";
   if (wasm && existsSync(wasm)) cpSync(wasm, join(out, "dspi_wasm.wasm"));
@@ -80,4 +106,29 @@ if (args.has("--unit")) {
     if (wasm && existsSync(wasm)) cpSync(wasm, join(out, "test/dspi_wasm.wasm"));
   }
   console.log("built dist/");
+}
+
+// -- WP WB7 --
+/** dist/THIRD-PARTY-NOTICES.txt: the page's JavaScript (Preact) and the core's Rust crates. */
+function notices() {
+  const preactDir = join(root, "node_modules/preact");
+  const preact = JSON.parse(readFileSync(join(preactDir, "package.json"), "utf8"));
+  const licence = readFileSync(join(preactDir, "LICENSE"), "utf8").trim();
+  const rust = readFileSync(join(root, "notices/rust-crates.txt"), "utf8");
+  return [
+    "DSPi web console: third-party notices",
+    "",
+    "The console itself is GNU GPL, version 3 or later (About links its source).",
+    "It bundles the parts below, each under its own licence.",
+    "",
+    "=".repeat(72),
+    `preact ${preact.version} — ${preact.license}`,
+    "https://github.com/preactjs/preact",
+    "",
+    "--- LICENSE ---",
+    licence,
+    "",
+    "",
+    rust,
+  ].join("\n");
 }

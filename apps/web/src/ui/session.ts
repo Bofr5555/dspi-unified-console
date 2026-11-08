@@ -20,7 +20,7 @@ import {
 import type { CoreClient } from "../core/client";
 import { VIEW_ONLY_REASON, type Access, type Source } from "../fleet/types";
 // -- WP WB4b --
-import type { HubTokens } from "../fleet/hub-tokens";
+import type { HubToken, HubTokens } from "../fleet/hub-tokens";
 
 export interface SessionState {
   /** -- WP WB4b -- `pairing`: a hub wants its PIN; `choosing`: pick one of a hub's DSPis. */
@@ -100,7 +100,18 @@ export class Session {
     this.deviceId = deviceId;
     try {
       const saved = (await this.tokens?.get(url)) ?? null;
-      const hello = await this.core.call("linkConnect", { url, token: saved?.token ?? "", hubId: saved?.hubId ?? "" });
+      const connect = (t: HubToken | null) => this.core.call("linkConnect", { url, token: t?.token ?? "", hubId: t?.hubId ?? "" });
+      let hello: Awaited<ReturnType<typeof connect>>;
+      try {
+        hello = await connect(saved);
+      } catch (e) {
+        // -- WP WB7 -- (c6m N2) another hub answers where the token's hub was (it was
+        // replaced, or the address moved): that token is for no hub here. Forget it and
+        // connect without one; this hub then asks for its PIN.
+        if (!(saved && e instanceof CoreCallError && e.code === "wrong_hub")) throw e;
+        this.tokens?.forget(url);
+        hello = await connect(null);
+      }
       if (hello.tokenRefused) this.tokens?.forget(url);
       this.hub = { url, hubId: hello.hubId };
       this.set({ hubName: hello.hubName });

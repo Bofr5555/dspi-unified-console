@@ -27,6 +27,10 @@ container (ci/run.sh). The inputs:
          git ref, never from the working tree.
   Firmware  $DSPI_FIRMWARE_TREE or ~/prog/DSPi, only with --write: the generated
          protocol constants' headers and any bundled .uf2 images.
+  Web    (WP WB7) the web console's runtime JavaScript: the packages in
+         apps/web/package-lock.json that are not dev-only (Preact), with the
+         licence each declares. Its Rust core is apps/web/notices/rust-crates.txt
+         (tools/gen_rust_notices.py, checked by the web step).
 
 Re-run --write after each SW wave, and when the gate says to.
 """
@@ -47,6 +51,8 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / "docs/licensing"
 OUT_MD = OUT_DIR / "IOS-INVENTORY.md"
 OUT_JSON = OUT_DIR / "ios-inventory.json"
+# -- WP WB7 --
+WEB_LOCK = ROOT / "apps/web/package-lock.json"
 NOTES_MD = OUT_DIR / "ios-inventory-notes.md"
 
 BUILD_CACHE = Path(os.environ.get("DSPI_BUILD_CACHE", Path.home() / ".cache/dspi-build"))
@@ -613,6 +619,19 @@ def firmware_report(tree: Path | None, ref: str, sub: str, paths: list[str] | No
 # ---------------------------------------------------------------------------
 
 
+# -- WP WB7 --
+def collect_web() -> dict:
+    """The web console's runtime packages (what its dist bundles), from the lockfile."""
+    lock = json.loads(WEB_LOCK.read_text())
+    packages = {}
+    for path, pkg in lock.get("packages", {}).items():
+        if not path or pkg.get("dev") or pkg.get("devOptional"):
+            continue
+        name = path.rsplit("node_modules/", 1)[-1]
+        packages[name] = {"version": pkg.get("version", ""), "license": pkg.get("license", "")}
+    return {"packages": packages}
+
+
 def light_snapshot(args) -> dict:
     """What --check compares: cheap, no blame."""
     cargo = collect_cargo()
@@ -629,6 +648,8 @@ def light_snapshot(args) -> dict:
             + sorted(p for v in cargo["build_inputs"].values() for p in v),
         },
         "swift": None,
+        # -- WP WB7 --
+        "web": collect_web(),
     }
     rust_paths = snap["rust"]["files"]
     snap["rust"]["authors"] = sorted(
@@ -674,6 +695,22 @@ def compare(old: dict, new: dict) -> tuple[list[str], list[str]]:
         soft.append(f"Rust input gone: {rel}")
     for who in sorted(set(new["rust"]["authors"]) - set(old["rust"]["authors"]) - set(KNOWN_HOLDERS)):
         hard.append(f"new outside contributor to the Rust files: {who}")
+
+    # -- WP WB7 -- the web console's JavaScript
+    old_w, new_w = old.get("web"), new.get("web")
+    if old_w is None:
+        hard.append("the record has no web half: run --write")
+    elif new_w is not None:
+        old_p, new_p = old_w["packages"], new_w["packages"]
+        for name in sorted(set(new_p) - set(old_p)):
+            hard.append(f"new package in the web console: {name} {new_p[name]['version']} ({new_p[name]['license'] or 'no licence field'})")
+        for name in sorted(set(old_p) - set(new_p)):
+            soft.append(f"package left the web console: {name}")
+        for name in sorted(set(old_p) & set(new_p)):
+            if old_p[name]["license"] != new_p[name]["license"]:
+                hard.append(f"web licence changed: {name}: {old_p[name]['license']!r} -> {new_p[name]['license']!r}")
+            if old_p[name]["version"] != new_p[name]["version"]:
+                soft.append(f"web version changed: {name} {old_p[name]['version']} -> {new_p[name]['version']}")
 
     old_s, new_s = old.get("swift"), new.get("swift")
     if new_s is None:
@@ -933,6 +970,19 @@ def render(data: dict) -> str:
             emit("Copyright wording not naming Weeb Labs in those files (first 20): "
                  + "; ".join(f"`{c}`" for c in image["copyright"]) + "\n")
 
+    # -- WP WB7 --
+    web = data.get("web")
+    if web:
+        emit("## 6b. The web console's JavaScript\n")
+        emit("What `apps/web`'s dist bundles besides its Rust core (the lockfile's packages that are not dev-only). "
+             "`dist/THIRD-PARTY-NOTICES.txt` carries their licence texts and the core's crates "
+             "(`apps/web/notices/rust-crates.txt`, `apps/web/tools/gen_rust_notices.py`).\n")
+        emit("| Package | Version | Licence | Class |")
+        emit("|---|---|---|---|")
+        for name, pkg in sorted(web["packages"].items()):
+            emit(f"| `{name}` | {pkg['version']} | {pkg['license'] or 'none given'} | {classify_licence(pkg['license'])} |")
+        emit("")
+
     emit("## 7. Flags\n")
     for flag in data["flags"]:
         emit(f"- {flag}")
@@ -1110,6 +1160,8 @@ def build_full(args, snap: dict) -> dict:
             "waived_hits": waived_hits,
         },
         "swift": swift_out,
+        # -- WP WB7 --
+        "web": snap["web"],
         "firmware": firmware,
         "contributors": contributors,
         "trailers": {"humans": dict(trailers["humans"]), "tools": trailers["tools"]},

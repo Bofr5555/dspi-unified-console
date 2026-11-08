@@ -27,3 +27,10 @@ the per-directory table.
 `Cargo.lock` lists them; each carries its own licence, and `deny.toml` lists those allowed. They are MIT, Apache-2.0,
 BSD, Zlib, Unicode or Unlicense, plus MPL-2.0 for `uniffi*`, `cbindgen` and `option-ext`. The Terminal alone also carries ISC (`ring`, `rustls-webpki`,
 `untrusted`) and CDLA-Permissive-2.0 (`webpki-roots`, Mozilla's root list). The Qt app links Qt under the LGPL-3.
+
+## The web console's JavaScript
+
+<!-- WP WB7 -->
+`apps/web` bundles Preact (MIT, Copyright (c) 2015-present Jason Miller) as its one runtime package; the lockfile pins it and
+`ci/licence-inventory.py` records it. A built console carries `THIRD-PARTY-NOTICES.txt` with Preact's licence and the Rust
+crates of its core (`apps/web/notices/rust-crates.txt`).

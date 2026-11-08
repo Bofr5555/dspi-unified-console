@@ -58,6 +58,8 @@ impl From<DspiError> for CallError {
             DspiError::Locked => "locked",
             DspiError::Denied => "denied",
             DspiError::Link { code, .. } if code == "wrong_pin" => "wrong_pin",
+            // -- WP WB7 -- (c6m N2) the page forgets the token it offered
+            DspiError::Link { code, .. } if code == "wrong_hub" => "wrong_hub",
             DspiError::Link { .. } => "link",
             _ => "internal",
         };

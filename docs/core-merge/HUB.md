@@ -549,6 +549,22 @@ reference to the hub (section 3). Set `initial_scan: false` when an app is to at
 - **QD14 has to add `hub`** to the `dspi-capi` feature lists that build the plain app: `apps/desktop/packaging/*`, the Arch
   `PKGBUILD`, `ci/github-actions-build.yml` and the `windows-msvc` step. The smoke builds have it.
 
+<!-- WP WB7 -->
+**WB7 as built: the web console beside the hub's page.** `NetworkConfig::console`
+(`Option<Arc<web::Console>>`) serves `apps/web`'s built dist at `/console/` while `web` is on; `/` stays
+HB5's page byte for byte (owner decision 1, 2026-11-08). **The files come at run time**, from a directory
+the embedder names (`Console::load`), read whole once at start, never per request: the Rust build needs no
+Node, the console and the hub version apart, and a request path is only a key, as for `FILES` (only plain
+names, served kinds, no hidden files, no symlinks, at most 512 files and 64 MB; directories are no keys,
+so no listing). The console's `index.html` gets `<meta name="dspi-hub" content="ws://<Host>">` (the
+request's `Host`, only when the `Origin` rule's own names accept it; else left empty) and
+`<meta name="dspi-hub-page" content="/">`. Every console response: CSP `default-src 'none'; script-src
+'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self' ws://<Host>; style-src 'self'; ...
+frame-ancestors 'none'`, `nosniff`, `no-cache` with an ETag (304), `Referrer-Policy: no-referrer`;
+`/console` redirects to `/console/`. The `Origin` check is untouched. The C ABI (HB6) does not offer
+`console` yet; a desktop app that wants it adds a path option in `config_for`. The Terminal: `dspi hub
+--web [--console DIR]`, `dspi web` (= `--local`: loopback, port 11916, no USB bus unless `--share-usb`).
+
 **TM11.** `dspi-hub` without `app`. **SW-M3.** A UniFFI wrapper over the same; `DeviceBroker`
 is a plain Rust trait today and needs no export if the wrapper's `AppLink` stays in Rust.
 

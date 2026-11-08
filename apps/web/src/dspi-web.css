@@ -83,6 +83,9 @@
 .dspi-web .top .user { margin-left: auto; color: var(--muted); }
 .dspi-web .top .about-button { margin-left: auto; }
 .dspi-web .top .user + .about-button { margin-left: 0; }
+/* -- WP WB7 -- the serving hub's own page */
+.dspi-web .top .hub-page { margin-left: auto; color: var(--muted); }
+.dspi-web .top .hub-page + .about-button, .dspi-web .top .user + .hub-page { margin-left: 0; }
 
 .dspi-web .body {
   display: grid;
