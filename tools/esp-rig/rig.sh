@@ -31,6 +31,8 @@ root=$(cd "$here/../.." && pwd)
 B=${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}
 work=${ESP_RIG_WORK:-$B/work/esp-rig}
 fw=$work/fw
+# -- WP LK4 -- a target dir of its own, so two rigs (a WP and a review) do not share one
+target=${ESP_RIG_TARGET:-$B/target/esp-rig}
 NETEM_IMAGE=${NETEM_IMAGE:-localhost/lk3-netem:1}
 QEMU=/opt/esp/tools/qemu-xtensa/esp_develop_9.2.2_20260417/qemu/bin/qemu-system-xtensa
 BRIDGE=10.77.0.2
@@ -74,18 +76,18 @@ probe_bin() { # build the probe test in $1 (target) from $2 (source), print its 
 cmd_build() {
   netem_image
   [ -f "$fw/flash.bin" ] || "$here/firmware/build.sh" "$fw"
-  cargo_in "$B/target/esp-rig" "$root" 'cargo build --release -p dspi-esp-rig 2>&1 | tail -1'
-  put "$B/target/esp-rig/release/esp-rig-tunnel" "$work/esp-rig-tunnel"
-  put "$(probe_bin "$B/target/esp-rig" "$root")" "$work/probe-after"
+  cargo_in "$target" "$root" 'cargo build --release -p dspi-esp-rig 2>&1 | tail -1'
+  put "$target/release/esp-rig-tunnel" "$work/esp-rig-tunnel"
+  put "$(probe_bin "$target" "$root")" "$work/probe-after"
   local out bin
-  out=$(cargo_in "$B/target/esp-rig" "$root" 'cargo test -p dspi-link --test real_hub --no-run 2>&1') ||
+  out=$(cargo_in "$target" "$root" 'cargo test -p dspi-link --test real_hub --no-run 2>&1') ||
     { echo "$out" >&2; die "real_hub build failed"; }
   bin=$(sed -n 's/.*Executable tests\/real_hub\/main.rs (\/target\/\(.*\))$/\1/p' <<< "$out" | tail -1)
-  put "$B/target/esp-rig/$bin" "$work/real-hub-test"
+  put "$target/$bin" "$work/real-hub-test"
   # The release Terminal client, for the K340 backup and diff (README).
   if [ "${ESP_RIG_DSPI_CLI:-0}" = 1 ]; then
-    cargo_in "$B/target/esp-rig" "$root" 'cargo build --release -p dspi-term 2>&1 | tail -1'
-    put "$B/target/esp-rig/release/dspi" "$work/dspi"
+    cargo_in "$target" "$root" 'cargo build --release -p dspi-term 2>&1 | tail -1'
+    put "$target/release/dspi" "$work/dspi"
   fi
   echo "built: $work/esp-rig-tunnel, $work/probe-after"
 }
