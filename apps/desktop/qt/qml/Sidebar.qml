@@ -414,7 +414,7 @@ Rectangle {
                 }
 
                 // Volume slider (master volume is red); right-click resets to 0 dB
-                Slider {
+                StyledSlider {   // -- WP QD41 -- for settled()
                     id: volumeSlider
                     width: parent.width
                     height: 20
@@ -462,8 +462,7 @@ Rectangle {
 
                     // The value follows the drag; the device gets live updates
                     onMoved: volumeLive.push(dbAt(value))
-                    onPressedChanged: {
-                        if (pressed) return
+                    onSettled: {
                         volumeLive.cancel()
                         if (volumeSettings.showMaster) bridge.setMasterVolume(dbAt(value))
                         else bridge.setUserVolume(dbAt(value))
