@@ -10,10 +10,10 @@
 //! nor listed in [`EXCLUDED`] with a written reason, which is what makes
 //! "controls every setting" a checkable claim rather than an aspiration.
 
-use crate::Dir;
 use crate::generated::opcodes as op;
 use crate::generated::{limiter, ranges, tube};
 use crate::value::{Repr, Unit, Value, ValueError};
+use crate::{Dir, FilterType};
 
 /// Which panel owns a parameter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -703,6 +703,54 @@ pub static REGISTRY: &[ParamDesc] = &[
         Some(op::REQ_GET_EQ_PARAM),
         DOut,
         Wv::EqScalar(3),
+        Hz::None,
+        Ps::LiveOnly,
+        Rq::Always,
+    ),
+    // -- WP CG34 -- The Linkwitz Transform's own two fields (config.h:1060-1065).
+    // `eq.fp` is the same wire field as `eq.gain` (param 3, `gain_db`), which a
+    // Linkwitz band reads as its target frequency in Hz; `eq.qp` is the target
+    // Q, sent as the two bytes after the 16-byte packet (Q*512, LE) and read as
+    // param 5 (vendor_commands.c:2666-2690). Which of `eq.gain` and `eq.fp` a
+    // band takes depends on its type: see [`eq_field_fits`]. Ranges are the
+    // firmware's clamps (dsp_pipeline.c:117-131): fp 10 Hz to 0.15 x Fs, which
+    // is 14.4 kHz at 96 kHz, and Qp 0.1 to 20.
+    p(
+        "eq.fp",
+        "Target frequency",
+        "Linkwitz Transform: the frequency the driver's rolloff is moved to",
+        Filters,
+        Advanced,
+        Float {
+            unit: Unit::Hz,
+            min: LT_FP_MIN,
+            max: LT_FP_MAX,
+        },
+        Tg::ChannelBand,
+        Some(op::REQ_SET_EQ_PARAM),
+        Some(op::REQ_GET_EQ_PARAM),
+        DOut,
+        Wv::EqScalar(3),
+        Hz::None,
+        Ps::LiveOnly,
+        Rq::Always,
+    ),
+    p(
+        "eq.qp",
+        "Target Q",
+        "Linkwitz Transform: the Q of the target alignment",
+        Filters,
+        Advanced,
+        Float {
+            unit: Unit::Q,
+            min: 0.1,
+            max: 20.0,
+        },
+        Tg::ChannelBand,
+        Some(op::REQ_SET_EQ_PARAM),
+        Some(op::REQ_GET_EQ_PARAM),
+        DOut,
+        Wv::EqScalar(5),
         Hz::None,
         Ps::LiveOnly,
         Rq::Always,
@@ -3767,6 +3815,55 @@ pub fn by_path(path: &str) -> Option<&'static ParamDesc> {
     REGISTRY.iter().find(|d| d.path == path)
 }
 
+// -- WP CG34 --
+/// Lowest Linkwitz Transform target frequency the firmware applies, Hz
+/// (dsp_pipeline.c:124). A stored fp of 0 or less makes the band flat.
+pub const LT_FP_MIN: f32 = 10.0;
+/// Highest Linkwitz Transform target frequency the firmware applies at any
+/// rate: 0.15 x 96 kHz (dsp_pipeline.c:125).
+pub const LT_FP_MAX: f32 = 14_400.0;
+
+/// Whether a band of type `t` takes the EQ field at `path`, and if not, why.
+///
+/// A Linkwitz Transform's `gain_db` is its target frequency in Hz, so on such
+/// a band `eq.gain` is refused (a dB value there would move the target to a
+/// few Hz, a large bass boost) and `eq.fp` writes that field; `eq.fp` and
+/// `eq.qp` mean nothing on any other type. Every other path fits every type.
+pub fn eq_field_fits(path: &str, t: FilterType) -> Result<(), String> {
+    match path {
+        "eq.fp" | "eq.qp" if !t.is_linkwitz() => Err(format!(
+            "{path} belongs to a Linkwitz Transform band; this band is {} (set eq.type to 11 first)",
+            t.display_name()
+        )),
+        "eq.gain" if t.is_linkwitz() => Err(
+            "a Linkwitz Transform band has no gain: its gain field is the target frequency, eq.fp"
+                .into(),
+        ),
+        _ => Ok(()),
+    }
+}
+
+/// A band's `[freq, q, gain, qp]` once its type changes from `from` to `to`,
+/// after the Console's `FilterParams.retyped(to:)` (DSPMath.swift:467-487).
+///
+/// Only the Linkwitz Transform needs it, since it reads `gain` as fp in Hz:
+/// entering it seeds a neutral transform (fp = f0, Qp = Q0, f0 at least
+/// 10 Hz, Q0 within 0.1..20) instead of reading +6 dB as fp = 6 Hz, and
+/// leaving it sets the gain to 0 dB instead of reading fp = 30 Hz as +30 dB.
+/// Any other change keeps the fields.
+pub fn retyped(from: FilterType, to: FilterType, fields: [f32; 4]) -> [f32; 4] {
+    let [freq, q, _gain, qp] = fields;
+    match (from.is_linkwitz(), to.is_linkwitz()) {
+        (false, true) => {
+            let freq = freq.max(LT_FP_MIN);
+            let q = q.clamp(0.1, 20.0);
+            [freq, q, freq.min(LT_FP_MAX), q]
+        }
+        (true, false) => [freq, q, 0.0, qp],
+        _ => fields,
+    }
+}
+
 /// Every opcode the registry references, in either direction.
 pub fn referenced_opcodes() -> Vec<u8> {
     let mut v: Vec<u8> = REGISTRY
@@ -4079,5 +4176,74 @@ mod tests {
                     .is_err()
             );
         }
+    }
+
+    // -- WP CG34 --
+    #[test]
+    fn wp_cg34_the_linkwitz_rows_address_gain_db_and_the_qp_sidecar() {
+        let fp = by_path("eq.fp").unwrap();
+        let qp = by_path("eq.qp").unwrap();
+        // fp is the gain field (param 3), Qp the firmware's param 5.
+        assert_eq!(fp.wvalue, by_path("eq.gain").unwrap().wvalue);
+        assert_eq!(qp.wvalue, WValue::EqScalar(5));
+        for d in [fp, qp] {
+            assert_eq!(d.target, Target::ChannelBand);
+            assert_eq!(d.set, Some(op::REQ_SET_EQ_PARAM));
+            assert_eq!(d.get, Some(op::REQ_GET_EQ_PARAM));
+        }
+        // The firmware's clamps: fp 10 Hz..0.15 x 96 kHz, Qp 0.1..20.
+        assert!(fp.kind.validate(&Value::Float(10.0)).is_ok());
+        assert!(fp.kind.validate(&Value::Float(14_400.0)).is_ok());
+        assert!(fp.kind.validate(&Value::Float(9.9)).is_err());
+        assert!(fp.kind.validate(&Value::Float(14_401.0)).is_err());
+        assert!(qp.kind.validate(&Value::Float(0.1)).is_ok());
+        assert!(qp.kind.validate(&Value::Float(20.0)).is_ok());
+        assert!(qp.kind.validate(&Value::Float(0.09)).is_err());
+        assert!(qp.kind.validate(&Value::Float(20.1)).is_err());
+    }
+
+    #[test]
+    fn wp_cg34_a_bands_type_decides_gain_or_fp() {
+        let lt = FilterType::LinkwitzTransform;
+        let bell = FilterType::Peaking;
+        assert!(eq_field_fits("eq.fp", lt).is_ok());
+        assert!(eq_field_fits("eq.qp", lt).is_ok());
+        assert!(eq_field_fits("eq.gain", lt).unwrap_err().contains("eq.fp"));
+        assert!(eq_field_fits("eq.gain", bell).is_ok());
+        let e = eq_field_fits("eq.fp", bell).unwrap_err();
+        assert!(e.contains("Peaking") && e.contains("eq.type"), "{e}");
+        assert!(eq_field_fits("eq.qp", FilterType::from_raw(34)).is_err());
+        for path in ["eq.type", "eq.freq", "eq.q", "eq.bypass"] {
+            assert!(eq_field_fits(path, lt).is_ok() && eq_field_fits(path, bell).is_ok());
+        }
+    }
+
+    #[test]
+    fn wp_cg34_retyping_into_and_out_of_linkwitz_is_neutral() {
+        let lt = FilterType::LinkwitzTransform;
+        let bell = FilterType::Peaking;
+        // +6 dB must not become fp = 6 Hz: a neutral transform, fp = f0, Qp = Q0.
+        assert_eq!(
+            retyped(bell, lt, [80.0, 0.5, 6.0, 0.707]),
+            [80.0, 0.5, 80.0, 0.5]
+        );
+        assert_eq!(
+            retyped(bell, lt, [5.0, 40.0, 6.0, 0.707]),
+            [10.0, 20.0, 10.0, 20.0]
+        );
+        assert_eq!(
+            retyped(bell, lt, [20_000.0, 1.0, 0.0, 0.7]),
+            [20_000.0, 1.0, 14_400.0, 1.0]
+        );
+        // fp = 30 Hz must not become +30 dB.
+        assert_eq!(
+            retyped(lt, bell, [40.0, 0.9, 30.0, 0.6]),
+            [40.0, 0.9, 0.0, 0.6]
+        );
+        assert_eq!(
+            retyped(bell, FilterType::LowShelf, [1.0, 2.0, 3.0, 4.0]),
+            [1.0, 2.0, 3.0, 4.0]
+        );
+        assert_eq!(retyped(lt, lt, [1.0, 2.0, 3.0, 4.0]), [1.0, 2.0, 3.0, 4.0]);
     }
 }

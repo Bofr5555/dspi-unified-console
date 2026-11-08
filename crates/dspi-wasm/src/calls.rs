@@ -249,6 +249,8 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         // -- WP WB6b -- the EQ graph's curves, the core's maths (src/curves.rs)
         "curveGrid" => Ok(curves::grid()),
         "curves" => curves::curves(params(req.params)?),
+        // -- WP CG34 -- the filter types' names, the core's one table
+        "filterTypeNames" => Ok(curves::type_names()),
         "close" => {
             core.disconnect();
             set_demo(h, false);

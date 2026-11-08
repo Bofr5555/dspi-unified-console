@@ -1446,6 +1446,10 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1492,6 +1496,10 @@ fun uniffi_dspi_core_checksum_func_core_info(
 fun uniffi_dspi_core_checksum_func_crossfeed_pair_map_valid(
 ): Short
 fun uniffi_dspi_core_checksum_func_curve_freq(
+): Short
+fun uniffi_dspi_core_checksum_func_filter_type_name(
+): Short
+fun uniffi_dspi_core_checksum_func_filter_type_names(
 ): Short
 fun uniffi_dspi_core_checksum_func_firmware_guard_board_in_bootloader(
 ): Short
@@ -2595,6 +2603,10 @@ fun uniffi_dspi_core_fn_func_crossfeed_pair_map_valid(`map`: RustBuffer.ByValue,
 ): Byte
 fun uniffi_dspi_core_fn_func_curve_freq(`i`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Double
+fun uniffi_dspi_core_fn_func_filter_type_name(`code`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_filter_type_names(uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_firmware_guard_board_in_bootloader(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_firmware_guard_check(`image`: RustBuffer.ByValue,`board`: RustBuffer.ByValue,`typedConfirmation`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -2795,6 +2807,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_curve_freq() != 1109.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_filter_type_name() != 9662.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_filter_type_names() != 37435.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_firmware_guard_board_in_bootloader() != 60307.toShort()) {
@@ -15987,6 +16005,47 @@ public object FfiConverterTypeFilterParams: FfiConverterRustBuffer<FilterParams>
 
 
 /**
+ * One filter type and the name clients show for it.
+ */
+data class FilterTypeName (
+    /**
+     * The firmware's type code (`FILTER_*`): 0..13 PEQ, 32..63 crossover.
+     */
+    var `code`: kotlin.UByte, 
+    /**
+     * The name, e.g. "High Cut (12dB)".
+     */
+    var `name`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFilterTypeName: FfiConverterRustBuffer<FilterTypeName> {
+    override fun read(buf: ByteBuffer): FilterTypeName {
+        return FilterTypeName(
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FilterTypeName) = (
+            FfiConverterUByte.allocationSize(value.`code`) +
+            FfiConverterString.allocationSize(value.`name`)
+    )
+
+    override fun write(value: FilterTypeName, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`code`, buf)
+            FfiConverterString.write(value.`name`, buf)
+    }
+}
+
+
+
+/**
  * What a board needs, read before it enters the bootloader. The default is
  * the safe one: unknown.
  */
@@ -20866,6 +20925,34 @@ public object FfiConverterSequenceTypeFilterParams: FfiConverterRustBuffer<List<
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeFilterTypeName: FfiConverterRustBuffer<List<FilterTypeName>> {
+    override fun read(buf: ByteBuffer): List<FilterTypeName> {
+        val len = buf.getInt()
+        return List<FilterTypeName>(len) {
+            FfiConverterTypeFilterTypeName.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<FilterTypeName>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeFilterTypeName.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<FilterTypeName>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeFilterTypeName.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeLinkDenied: FfiConverterRustBuffer<List<LinkDenied>> {
     override fun read(buf: ByteBuffer): List<LinkDenied> {
         val len = buf.getInt()
@@ -21568,6 +21655,32 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_curve_freq(
         FfiConverterUInt.lower(`i`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The name of filter type `code`; "Type 14" for a code the firmware does
+         * not define (yet).
+         */ fun `filterTypeName`(`code`: kotlin.UByte): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_filter_type_name(
+        FfiConverterUByte.lower(`code`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Every filter type the firmware defines with its name, in the Console's
+         * order: the PEQ types 0..13, then the crossovers 32..63.
+         */ fun `filterTypeNames`(): List<FilterTypeName> {
+            return FfiConverterSequenceTypeFilterTypeName.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_filter_type_names(
+        _status)
 }
     )
     }

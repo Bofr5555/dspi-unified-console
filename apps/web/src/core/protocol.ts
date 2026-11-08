@@ -330,6 +330,9 @@ export interface CoreMethods {
    * curve and dot level. Bands need not be the device's (a drag in progress).
    */
   curves: { params: { chains?: FilterParams[][]; bands?: FilterParams[] }; result: { chains: number[][]; bands: BandCurve[] } };
+  // -- WP CG34 -- the filter types' names, the core's one table (the Console's band-list names)
+  /** Every type the firmware defines, PEQ 0..13 then crossovers 32..63: `{code: 4, name: "High Cut (12dB)"}`. */
+  filterTypeNames: { params: undefined; result: { code: number; name: string }[] };
   /** Tests only: make the stub core lose its link. The real core answers `unknown_method`. */
   simulate: { params: { what: "link-lost" | "link-closed" }; result: null };
 }

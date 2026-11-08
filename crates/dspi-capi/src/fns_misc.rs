@@ -2059,3 +2059,30 @@ pub extern "C" fn dspi_state_presence(core: *const FfiCore) -> u8 {
 #[cfg(test)]
 #[path = "fns_misc/tests_wp_cg32.rs"]
 mod tests_wp_cg32;
+
+// -- WP CG34 -- ── Added: the filter types' names ────────────────────────
+
+/// Every filter type the firmware defines with the name clients show for it
+/// (`dspi_core::filter_type_names`, the Console's band-list names), in JSON:
+/// {ok, value:[{code, name}]}, PEQ types 0..13 then crossovers 32..63.
+/// Returns the bytes needed including the NUL, 0 for a panic.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_filter_type_names(buf: *mut c_char, len: u32) -> u32 {
+    guard(0, || {
+        copy_text(&json_reply(Ok(dspi_core::filter_type_names())), buf, len)
+    })
+}
+
+/// The name of filter type `code` as plain NUL-terminated text, e.g.
+/// "High Cut (12dB)"; "Type 14" for a code the firmware does not define.
+/// Returns the bytes needed including the NUL, 0 for a panic.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_filter_type_name(code: u8, buf: *mut c_char, len: u32) -> u32 {
+    guard(0, || {
+        copy_text(&dspi_core::filter_type_name(code), buf, len)
+    })
+}
+
+#[cfg(test)]
+#[path = "fns_misc/tests_wp_cg34.rs"]
+mod tests_wp_cg34;

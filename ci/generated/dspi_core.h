@@ -5142,6 +5142,21 @@ uint32_t dspi_write_param(struct FfiCore *core, const char *request, char *buf, 
 uint8_t dspi_state_presence(const struct FfiCore *core);
 
 /**
+ * Every filter type the firmware defines with the name clients show for it
+ * (`dspi_core::filter_type_names`, the Console's band-list names), in JSON:
+ * {ok, value:[{code, name}]}, PEQ types 0..13 then crossovers 32..63.
+ * Returns the bytes needed including the NUL, 0 for a panic.
+ */
+uint32_t dspi_filter_type_names(char *buf, uint32_t len);
+
+/**
+ * The name of filter type `code` as plain NUL-terminated text, e.g.
+ * "High Cut (12dB)"; "Type 14" for a code the firmware does not define.
+ * Returns the bytes needed including the NUL, 0 for a panic.
+ */
+uint32_t dspi_filter_type_name(uint8_t code, char *buf, uint32_t len);
+
+/**
  * Answer a fetch: the HTTP status and body, as received, for any status.
  * `retry_after_s`, `rate_limit_remaining` and `rate_limit_reset` (Unix seconds) are
  * the `Retry-After`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers, -1 if

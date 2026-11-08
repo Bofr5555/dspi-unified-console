@@ -2108,6 +2108,20 @@ data class LinkPhaseText(
 )
 
 /**
+ * One filter type and the name clients show for it.
+ */
+data class FilterTypeName(
+    /**
+     * The firmware's type code (`FILTER_*`): 0..13 PEQ, 32..63 crossover.
+     */
+    val code: Int,
+    /**
+     * The name, e.g. "High Cut (12dB)".
+     */
+    val name: String,
+)
+
+/**
  * One notification as the tap saw it (WP CG23).
  */
 data class RawNotification(

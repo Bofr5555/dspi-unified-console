@@ -2876,4 +2876,20 @@ interface DspiCoreApi : AutoCloseable {
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun aboutJson(): String
+
+    /**
+     * Every filter type the firmware defines with its name, in the Console's
+     * order: the PEQ types 0..13, then the crossovers 32..63.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun filterTypeNames(): List<FilterTypeName>
+
+    /**
+     * The name of filter type `code`; "Type 14" for a code the firmware does
+     * not define (yet).
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun filterTypeName(code: Int): String
 }
