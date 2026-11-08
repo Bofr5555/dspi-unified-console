@@ -125,6 +125,10 @@ private final class ScriptedCoreSource: CoreStateSource {
     func readAll() -> Result<DspState, DspiError> { .success(state) }
     func readState() -> DspState { state }
     func addStateObserver(_ handler: @escaping (CoreStateChange) -> Void) -> AnyCancellable { fanout.add(handler) }
+    // -- WP SWF6 --
+    func readPresetChanges() -> [String] { [] }
+    func capturePresetBaseline() -> [String] { [] }
+    func loadPreset(slot: UInt8) -> Result<(DspState, [String]), DspiError> { .failure(.Unsupported) }
 
     /// Publish `state` off main: the handlers run on main, later.
     func publishFromCoreQueue() {

@@ -541,6 +541,12 @@ arrive late.
 - A field held back by a pending edit is applied 500 ms after the last edit if the core still differs (one sweep).
 - `NOTIFY_REFRESHED` applies the whole state over pending edits, and so does a `BULK_INVALIDATED`, which is
   RefusedWrite's revert. A `NOTIFY_PRESET` then rebases the unsaved-changes snapshot on that refresh.
+  -- WP SWF6 -- Superseded: through the core, the unsaved-changes flag and the prompt's list are the core's
+  (`presetChanges`, CG7), delivered with each `CoreStateChange` and after a fetch, a load and a save
+  (`DSPViewModel.corePresetChanges`). The core rebases at the load's re-read and keeps an edit made after the load
+  unsaved (CG33). A load goes through the core's `loadPreset`; a raw save is followed by `captureBaseline` (after a
+  drain, so the last edits' echoes are in it). The Swift `PresetSnapshot` serves only the transports not yet on the
+  core (USB without `-CoreTransport`, MIDI, the Link client) and a view model not connected through one.
 - `DspState` has no field for four +1-encoded presence bytes: I2S clock-pin mode, the S/PDIF 2-4 mask, and ADAT-in
   enable and clock mode. The mirror reads them from `bulk_raw`, a CG candidate.
 - The transports not yet on the core (USB without `-CoreTransport`, MIDI, the Link client) keep the Swift decoder
