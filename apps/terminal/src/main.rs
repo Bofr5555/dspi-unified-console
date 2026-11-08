@@ -2966,3 +2966,36 @@ mod tests_wp_cg37 {
         );
     }
 }
+
+// -- WP DL3 --
+#[cfg(test)]
+mod tests_wp_dl3 {
+    use super::*;
+
+    /// `dspi set out.delay 1 nan` is refused as bad input: the parser does not
+    /// take the word, and a NaN that reaches the session some other way is
+    /// refused there, before the wire, the stored delay unchanged.
+    #[test]
+    fn wp_dl3_set_refuses_a_delay_that_is_not_finite() {
+        let mut s = Target::Demo.open_session(&prompt_pin).unwrap();
+        let ctx = context_for(&s);
+        for word in ["nan", "inf", "-inf"] {
+            let args = ["set", "out.delay", "1", word];
+            let e = dspi_cmd::parse(&args, &ctx).unwrap_err();
+            assert_eq!(
+                e.to_string(),
+                format!("`{word}` is not valid for out.delay; expected a finite number")
+            );
+        }
+        let before = s.read("out.delay", &[1]).unwrap();
+        for f in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let cmd = Command::Set {
+                path: "out.delay",
+                indices: vec![1],
+                value: Value::Float(f),
+            };
+            assert_eq!(run(&mut s, cmd, false, true, false), exit::USAGE);
+        }
+        assert_eq!(s.read("out.delay", &[1]).unwrap(), before);
+    }
+}

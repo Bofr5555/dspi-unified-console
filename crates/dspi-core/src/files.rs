@@ -334,6 +334,16 @@ fn f_in(v: &Value, key: &str, lo: f32, hi: f32, current: f32) -> f32 {
         .map_or(current, |x| x.clamp(lo, hi))
 }
 
+// -- WP DL3 --
+/// The finite value of `key` when it is past `max` (a delay longer than the
+/// line), else `None`.
+fn past_line(v: &Value, key: &str, max: f32) -> Option<f32> {
+    v.get(key)
+        .and_then(Value::as_f64)
+        .map(|x| x as f32)
+        .filter(|x| x.is_finite() && *x > max)
+}
+
 /// An integer array, at most `max` entries (the rest is never read); `None`
 /// for an entry that is not a number, so that position stays as it is.
 fn ints(v: &Value, key: &str, max: usize) -> Option<Vec<Option<i64>>> {
@@ -789,6 +799,10 @@ struct ConfigBuild {
     unreadable: bool,
     /// [`preset_file::old_format_warning`].
     warning: Option<String>,
+    // -- WP DL3 --
+    /// Delays the file holds past this device's line, which were shortened to
+    /// it: "<channel> (<ms> ms)" each.
+    shortened: Vec<String>,
 }
 
 /// Apply a parsed document to `old` (the mirror): the state to write and
@@ -820,6 +834,7 @@ fn build_config(old: &DspState, v: &Value, options: u32) -> ConfigBuild {
         }),
         unreadable: typed.is_none(),
         warning: typed.as_ref().and_then(preset_file::old_format_warning),
+        shortened: Vec::new(),
     };
     build_channels(&mut b, v, options & IMPORT_HARDWARE != 0);
     build_matrix(&mut b, v);
@@ -1036,7 +1051,16 @@ fn build_channels(b: &mut ConfigBuild, v: &Value, hardware: bool) {
         if let Some(name) = text(c, "name") {
             put(&mut ns.channel_names, w, clip_name(&name));
         }
+        // -- WP DL3 -- a delay past the line is shortened to it, and named.
+        let label = || {
+            text(c, "name")
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| format!("channel {}", int(c, "channelId", -1)))
+        };
         let delay = f_in(c, "delayMs", 0.0, max_delay, at(&ns.channel_delays, w, 0.0));
+        if let Some(ms) = past_line(c, "delayMs", max_delay) {
+            b.shortened.push(format!("{} ({ms} ms)", label()));
+        }
         put(&mut ns.channel_delays, w, delay);
         // A bank with entries replaces the channel's, the rest going flat; one
         // with none leaves it alone, as the Mac Console and the Terminal do.
@@ -1082,6 +1106,10 @@ fn build_channels(b: &mut ConfigBuild, v: &Value, hardware: bool) {
             max_delay,
             at(&ns.output_delay_ms, o, 0.0),
         );
+        if let Some(ms) = past_line(c, "outputDelayMs", max_delay) {
+            b.shortened
+                .push(format!("{} output delay ({ms} ms)", label()));
+        }
         put(&mut ns.output_delay_ms, o, d);
         let xs = array(c, "crossover");
         let filled = if xs.is_empty() { 0 } else { MAX_XOVER_BANDS };
@@ -1242,11 +1270,24 @@ fn config_report(b: &ConfigBuild) -> (Vec<String>, bool) {
             "Left as they are: any setting whose value in the file could not be read.".into(),
         );
     }
+    // -- WP DL3 --
+    if !b.shortened.is_empty() {
+        let s = &b.state;
+        lines.push(format!(
+            "Delays shortened to the {} ms this device ({}) holds: {}.",
+            crate::state::max_delay_ms_for(s),
+            dspi_proto::Platform::from_id(s.platform_id).name(),
+            b.shortened.join(", ")
+        ));
+    }
     if let Some(w) = &b.warning {
         lines.push(format!("Warning: {w}"));
     }
-    let clean =
-        b.missing.is_empty() && b.skipped.0.is_empty() && b.left_alone.is_empty() && !b.unreadable;
+    let clean = b.missing.is_empty()
+        && b.skipped.0.is_empty()
+        && b.left_alone.is_empty()
+        && !b.unreadable
+        && b.shortened.is_empty();
     lines.push(NOT_STORED.into());
     (lines, clean)
 }
@@ -2292,3 +2333,8 @@ mod tests_wp_c13;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_cg18;
+
+// -- WP DL3 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_dl3;

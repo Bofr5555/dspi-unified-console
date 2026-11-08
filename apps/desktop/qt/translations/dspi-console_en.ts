@@ -2577,6 +2577,17 @@ Click for help.</source>
     </message>
 </context>
 <context>
+    <name>DelayRefusalBanner</name>
+    <message>
+        <source>Delay not changed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dismiss</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>DemoBanner</name>
     <message>
         <source>Demo: a simulated DSPi. Nothing is sent to a real device. Leave the demo to use the DSPi that is connected.</source>

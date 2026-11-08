@@ -500,6 +500,13 @@ impl Session {
     /// than seven, and it cannot leave the band in a half-updated state if the
     /// device disappears midway.
     pub fn write_band(&mut self, packet: &EqParamPacket) -> Result<Outcome, WriteError> {
+        // -- WP DL3 -- a band field that is NaN or infinite never reaches the wire.
+        for f in [packet.freq, packet.q, packet.gain_db]
+            .into_iter()
+            .chain(packet.qp)
+        {
+            crate::fast::check_finite(f)?;
+        }
         if self.dry_run {
             return Ok(Outcome::Accepted);
         }
