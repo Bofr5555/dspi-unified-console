@@ -54,12 +54,14 @@ android {
     }
     buildTypes {
         release {
-            // R8 off: UniFFI's Kotlin bindings reach libdspi_ffi through JNA
-            // (reflection over Structure fields / Library interfaces); shrinking
-            // would need keep rules for both and device testing, for little gain
-            // (the native libraries and bundled assets dominate the size). :ffi always links the Rust release profile here.
-            isMinifyEnabled = false
-            isShrinkResources = false
+            // -- WP AN15 -- R8: shrink, optimise and obfuscate the code, and drop
+            // unused resources. UniFFI's Kotlin bindings reach libdspi_ffi through
+            // JNA (reflection over Structure fields, Library and Callback
+            // interfaces); their keep rules come with :ffi (ffi/consumer-rules.pro).
+            // :ffi always links the Rust release profile here.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.findByName("upload")
         }
     }
