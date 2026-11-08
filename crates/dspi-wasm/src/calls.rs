@@ -217,13 +217,15 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
             let v = write::write(&core, &w)?;
             Ok(tidy(&v))
         }
+        // -- WP CG36 --
+        "core1Conflict" => write::core1_conflict(&core, &params(req.params)?),
         "describe" => {
             #[derive(Deserialize)]
             struct P {
                 path: String,
             }
             let p: P = params(req.params)?;
-            write::describe(&p.path)
+            write::describe(&core, &p.path)
         }
         "meters" => {
             // -- WP WB4b -- the meter frames that came over Link meanwhile
@@ -836,5 +838,74 @@ mod tests {
         );
         assert_eq!(session_new().err(), Some(Refusal::Dead));
         guard::reset_for_test();
+    }
+
+    // -- WP CG36 --
+    #[test]
+    fn cg36_crossover_types_by_write_the_delay_line_and_core1_conflict() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        let snap = ok(h, "open", json!({ "kind": "demo" }));
+        // The first output's wire channel.
+        let ch = snap["state"]["numInputChannels"].as_u64().unwrap();
+        let ty = |b: u8, t: u8| {
+            run(
+                h,
+                "write",
+                json!({ "path": "eq.type", "indices": [ch, b], "value": { "choice": t } }),
+            )
+        };
+        // A crossover type on a crossover band, read back.
+        for t in [32u8, 40, 63] {
+            let r = ty(20, t);
+            assert_eq!(r["value"], json!({ "choice": t }), "{r}");
+        }
+        assert_eq!(
+            ok(h, "state", Value::Null)["state"]["xover"][ch as usize][0]["filterType"],
+            63
+        );
+        // Not on a PEQ band, and no PEQ type on a crossover band.
+        let r = ty(3, 40);
+        assert_eq!(code(&r), "out_of_range", "{r}");
+        assert!(r["error"].as_str().unwrap().contains("PEQ band"), "{r}");
+        let r = ty(21, 5);
+        assert_eq!(code(&r), "out_of_range", "{r}");
+        assert!(r["error"].as_str().unwrap().contains("32..63"), "{r}");
+        assert_eq!(ty(3, 13)["value"], json!({ "choice": 13 }));
+
+        // The delay: the platform's line, not the registry's 85 ms.
+        let max = snap["state"]["platformId"]
+            .as_u64()
+            .map(|p| if p == 1 { 42 } else { 21 });
+        let max = max.unwrap();
+        let r = run(
+            h,
+            "write",
+            json!({ "path": "out.delay", "indices": [0], "value": { "float": max as f32 + 1.0 } }),
+        );
+        assert_eq!(code(&r), "out_of_range", "{r}");
+        assert!(
+            r["error"]
+                .as_str()
+                .unwrap()
+                // -- WP CG37 -- the range, 0 to the line.
+                .contains(&format!("0 to {max} ms")),
+            "{r}"
+        );
+        let r = run(
+            h,
+            "write",
+            json!({ "path": "out.delay", "indices": [0], "value": { "float": max } }),
+        );
+        assert_eq!(r["value"], json!({ "float": max as f32 }), "{r}");
+
+        // Ask before an enable: the demo has no conflict.
+        assert_eq!(
+            ok(h, "core1Conflict", json!({ "output": 0 })),
+            json!({ "conflict": false, "reason": null })
+        );
+        let r = run(h, "core1Conflict", json!({ "output": 200 }));
+        assert_eq!(code(&r), "invalid", "{r}");
+        session_free(h).unwrap();
     }
 }

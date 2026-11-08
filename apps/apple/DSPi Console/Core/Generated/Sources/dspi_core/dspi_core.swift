@@ -1385,6 +1385,16 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func copyPreset(source: UInt8, dest: UInt8) throws 
     
     /**
+     * Whether enabling output `output` would collide on Core 1, and if so
+     * why, in the words [`DspiCore::write_param`] refuses it with: `None`
+     * when it would not. The device decides
+     * ([`DspiCore::check_core1_conflict`]); the words come from the layout.
+     *
+     * Errors: those of [`DspiCore::check_core1_conflict`].
+     */
+    func core1ConflictReason(output: UInt8) throws  -> String?
+    
+    /**
      * Close the flow: the user left. No traffic. `InvalidArgument` during a
      * run, which goes on until ended.
      */
@@ -2973,12 +2983,14 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func setDacMute(enabled: Bool, activeLow: Bool, pin: UInt8, holdMs: UInt16, releaseMs: UInt16) throws 
     
     /**
-     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms and then
-     * clamped to 0..[`DspiCore::max_delay_ms`]. An output channel's delay
-     * is its output delay, so it goes through [`DspiCore::set_output_delay`].
+     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms; below 0 it
+     * is 0. An output channel's delay is its output delay, so it goes
+     * through [`DspiCore::set_output_delay`].
      *
-     * Errors: [`DspiError::InvalidArgument`] for a channel out of range or a
-     * NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for a channel out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
     func setDelay(ch: UInt8, ms: Float) throws 
     
@@ -3335,12 +3347,13 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func setOutputConfigMode(mode: UInt8) throws 
     
     /**
-     * Output delay in ms, quantized to 0.0001 ms and then clamped to
-     * 0..[`DspiCore::max_delay_ms`]. It is also the delay of the output's
-     * wire channel.
+     * Output delay in ms, quantized to 0.0001 ms; below 0 it is 0. It is
+     * also the delay of the output's wire channel.
      *
-     * Errors: [`DspiError::InvalidArgument`] for an output out of range or
-     * a NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for an output out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
     func setOutputDelay(output: UInt8, ms: Float) throws 
     
@@ -3945,6 +3958,22 @@ open func copyPreset(source: UInt8, dest: UInt8)throws   {try rustCallWithError(
         FfiConverterUInt8.lower(dest),$0
     )
 }
+}
+    
+    /**
+     * Whether enabling output `output` would collide on Core 1, and if so
+     * why, in the words [`DspiCore::write_param`] refuses it with: `None`
+     * when it would not. The device decides
+     * ([`DspiCore::check_core1_conflict`]); the words come from the layout.
+     *
+     * Errors: those of [`DspiCore::check_core1_conflict`].
+     */
+open func core1ConflictReason(output: UInt8)throws  -> String?  {
+    return try  FfiConverterOptionString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_core1_conflict_reason(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(output),$0
+    )
+})
 }
     
     /**
@@ -6250,12 +6279,14 @@ open func setDacMute(enabled: Bool, activeLow: Bool, pin: UInt8, holdMs: UInt16,
 }
     
     /**
-     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms and then
-     * clamped to 0..[`DspiCore::max_delay_ms`]. An output channel's delay
-     * is its output delay, so it goes through [`DspiCore::set_output_delay`].
+     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms; below 0 it
+     * is 0. An output channel's delay is its output delay, so it goes
+     * through [`DspiCore::set_output_delay`].
      *
-     * Errors: [`DspiError::InvalidArgument`] for a channel out of range or a
-     * NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for a channel out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
 open func setDelay(ch: UInt8, ms: Float)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_set_delay(self.uniffiClonePointer(),
@@ -6806,12 +6837,13 @@ open func setOutputConfigMode(mode: UInt8)throws   {try rustCallWithError(FfiCon
 }
     
     /**
-     * Output delay in ms, quantized to 0.0001 ms and then clamped to
-     * 0..[`DspiCore::max_delay_ms`]. It is also the delay of the output's
-     * wire channel.
+     * Output delay in ms, quantized to 0.0001 ms; below 0 it is 0. It is
+     * also the delay of the output's wire channel.
      *
-     * Errors: [`DspiError::InvalidArgument`] for an output out of range or
-     * a NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for an output out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
 open func setOutputDelay(output: UInt8, ms: Float)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_set_output_delay(self.uniffiClonePointer(),
@@ -21852,6 +21884,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_copy_preset() != 46555) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_core1_conflict_reason() != 6255) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_close() != 22148) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -22257,7 +22292,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_set_dac_mute() != 53415) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_set_delay() != 25981) {
+    if (uniffi_dspi_core_checksum_method_dspicore_set_delay() != 62461) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_device_name() != 13429) {
@@ -22365,7 +22400,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_set_output_config_mode() != 52088) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_set_output_delay() != 4990) {
+    if (uniffi_dspi_core_checksum_method_dspicore_set_output_delay() != 49897) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_output_enable() != 35905) {

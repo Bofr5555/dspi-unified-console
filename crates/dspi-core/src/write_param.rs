@@ -37,7 +37,9 @@
 use dspi_proto::FilterType;
 use dspi_proto::generated::{filter, limiter};
 use dspi_proto::packets::MatrixRoutePacket;
-use dspi_proto::registry::{ALL_OUTPUTS, Kind, ParamDesc, by_path, eq_field_fits, retyped};
+use dspi_proto::registry::{
+    ALL_OUTPUTS, Kind, ParamDesc, by_path, eq_field_fits, eq_type_fits, retyped,
+};
 use dspi_proto::value::Value;
 use dspi_session::Outcome;
 
@@ -195,12 +197,38 @@ impl DspiCore {
         }
         let value = {
             let mut inner = self.writing()?;
+            // -- WP CG36 -- the line's length is the connected platform's,
+            // which the registry's 85 ms does not know. -- WP CG37 -- checked
+            // on the quantized value, as the typed setter checks it, and
+            // below 0 refused with the line's range (the setter makes it 0).
+            let value = match value {
+                Value::Float(_) | Value::Int(_) if matches!(d.path, "out.delay" | "ch.delay") => {
+                    let ms = crate::quantize_delay(value.as_f32().unwrap_or(f32::NAN));
+                    if !ms.is_nan() {
+                        crate::params::check_delay(&inner.state, d.path, ms)?;
+                    }
+                    Value::Float(ms)
+                }
+                v => v,
+            };
             let mut w = inner.writable_conn()?;
             let session = w.session()?;
-            session.check(d.path, &indices, &value)?;
-            d.kind
-                .validate(&value)
-                .map_err(|e| invalid(e.to_string()))?
+            if d.path == "eq.type" {
+                // -- WP CG36 -- the choices depend on the band: the registry's
+                // list is the PEQ bands' (indices and feature checked with Off,
+                // which every band takes).
+                let code = byte(&value)?;
+                session.check(d.path, &indices, &Value::Choice(0))?;
+                let b = indices.get(1).copied().unwrap_or(0);
+                eq_type_fits(b, code)
+                    .map_err(|why| invalid(format!("eq.type {indices:?}: {why}")))?;
+                Value::Choice(code)
+            } else {
+                session.check(d.path, &indices, &value)?;
+                d.kind
+                    .validate(&value)
+                    .map_err(|e| invalid(e.to_string()))?
+            }
         };
         if value.as_f32().is_some_and(f32::is_nan) {
             return Err(invalid(format!("{path} is NaN")));
@@ -209,6 +237,19 @@ impl DspiCore {
             return self.write_by_session(d, &indices, value);
         }
         self.write_typed(d, &indices, &value)
+    }
+
+    // -- WP CG36 --
+    /// Whether enabling output `output` would collide on Core 1, and if so
+    /// why, in the words [`DspiCore::write_param`] refuses it with: `None`
+    /// when it would not. The device decides
+    /// ([`DspiCore::check_core1_conflict`]); the words come from the layout.
+    ///
+    /// Errors: those of [`DspiCore::check_core1_conflict`].
+    pub fn core1_conflict_reason(&self, output: u8) -> Result<Option<String>> {
+        Ok(self
+            .check_core1_conflict(output)?
+            .then(|| self.seen(|s| core1_conflict_reason(s, output))))
     }
 }
 
@@ -289,7 +330,11 @@ impl DspiCore {
                 at(&s.channel_names, i0).map(ParamValue::Text)
             }),
             "mix" => self.write_crosspoint(i0, i1, v),
-            "out.enable" => self.set_output_enable(i0, flag(v)?).map(ParamValue::Bool),
+            // -- WP CG36 -- a Core 1 conflict is refused in words, not read back as false.
+            "out.enable" => match self.output_enable(i0, flag(v)?)? {
+                (_, true) => Err(invalid(self.seen(|s| core1_conflict_reason(s, i0)))),
+                (on, false) => Ok(ParamValue::Bool(on)),
+            },
             "out.gain" => then(self.set_output_gain(i0, num(v)?), &|s| {
                 at(&s.output_gain_db, i0).map(ParamValue::Float)
             }),
@@ -594,6 +639,30 @@ impl DspiCore {
         })
         .map(|p| ParamValue::Bytes(p.encode().to_vec()))
         .ok_or_else(|| invalid(format!("mix has no crosspoint [{input}, {output}]")))
+    }
+}
+
+// -- WP CG36 --
+/// Why output `output` (0-based) cannot be enabled while Core 1 runs the
+/// other side, numbered from 1 as the Console shows outputs. Core 1 runs
+/// either the PDM output (the last) or the EQ worker for outputs 3 up to the
+/// one before it (`eqWorkerRange`, `pdmOutputIndex` in DSPViewModel.swift).
+fn core1_conflict_reason(s: &DspState, output: u8) -> String {
+    let n = u16::from(output).saturating_add(1);
+    let pdm = s.num_output_channels;
+    let workers = format!("outputs 3-{}", pdm.saturating_sub(1));
+    if output.saturating_add(1) == pdm {
+        format!(
+            "Output {n} is the PDM output, which shares Core 1 with {workers}, and one of \
+             them is enabled: disable {workers} first"
+        )
+    } else if (2..pdm.saturating_sub(1)).contains(&output) {
+        format!(
+            "Output {n} shares Core 1 with the PDM output (output {pdm}), which is enabled: \
+             disable the PDM output first"
+        )
+    } else {
+        format!("Output {n} cannot be enabled now: Core 1 is busy with another output")
     }
 }
 

@@ -484,6 +484,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun coreVregDemoEvent(event: VregDemoEvent, seconds: Long) = call { core.coreVregDemoEvent(event.toFfi(), seconds.toUInt()) }
 
+    override fun core1ConflictReason(output: Int): String? = call { core.core1ConflictReason(output.toUByte()) }
+
     override fun autoeqDatabaseInfo(dbPath: String): AutoEqDatabaseInfo = se.bofr.dspi.ffi.uniffi.autoeqDatabaseInfo(dbPath).toDomain()
 
     override fun autoeqImport(dbPath: String, data: List<Int>): AutoEqDatabaseInfo = call { se.bofr.dspi.ffi.uniffi.autoeqImport(dbPath, ByteArray(data.size) { data[it].toByte() }).toDomain() }

@@ -205,13 +205,19 @@ pub fn available_types(state: &DeviceState, include_linkwitz: bool) -> Vec<Filte
     out
 }
 
-/// The longest delay this platform accepts, in ms. `ChannelSettingsView`'s
-/// `maxDelay`: 42 on RP2040, 85 elsewhere.
+/// The longest delay this platform's line holds, in ms: 21 on RP2040, 42 on
+/// RP2350 (-- WP CG37 -- `Platform::max_delay_ms`, the session's and the
+/// core's limit; the Console's 42/85 is more than the line delivers).
 pub fn max_delay_ms(state: &DeviceState) -> f64 {
-    match state.caps.platform {
-        dspi_proto::Platform::Rp2040 => 42.0,
-        _ => 85.0,
-    }
+    f64::from(state.caps.platform.max_delay_ms())
+}
+
+// -- WP CG37 --
+/// A delay as the line delivers it. A value stored past the line (another
+/// app can set one: the firmware keeps the ms and caps the samples) shows as
+/// the line's longest.
+pub fn delivered_delay_ms(state: &DeviceState, ms: f32) -> f64 {
+    f64::from(ms).min(max_delay_ms(state))
 }
 
 // ---------------------------------------------------------------------------

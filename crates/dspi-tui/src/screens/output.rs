@@ -18,7 +18,10 @@ use ratatui::widgets::Widget;
 
 use super::filters::{FilterList, FilterMode};
 use super::limiter::{self, LimiterSettings};
-use super::{Shared, channel_name, max_delay_ms, number, output_channel, supports_crossover};
+use super::{
+    Shared, channel_name, delivered_delay_ms, max_delay_ms, number, output_channel,
+    supports_crossover,
+};
 use crate::shell::{Screen, ScreenEvent};
 use crate::theme::{ChannelRole, Glyphs, Theme};
 use crate::widgets::{DialogOutcome, KeyHelp, NumberEdit, ParamRow, Taper};
@@ -145,7 +148,7 @@ impl OutputPage {
     fn delay_row<'a>(&self, state: &DeviceState, theme: &'a Theme) -> ParamRow<'a> {
         ParamRow::new(
             "DELAY",
-            state.output(self.output).delay_ms as f64,
+            delivered_delay_ms(state, state.output(self.output).delay_ms),
             0.0,
             max_delay_ms(state),
             "ms",
@@ -162,7 +165,8 @@ impl OutputPage {
         let mult = if coarse { 10.0 } else { 1.0 };
         match item {
             Item::Gain => (out.gain_db as f64 + dir * 0.5 * mult).clamp(-60.0, 10.0),
-            Item::Delay => (out.delay_ms as f64 + dir * 0.1 * mult).clamp(0.0, max_delay_ms(state)),
+            Item::Delay => (delivered_delay_ms(state, out.delay_ms) + dir * 0.1 * mult)
+                .clamp(0.0, max_delay_ms(state)),
             _ => 0.0,
         }
     }
@@ -779,7 +783,10 @@ impl Screen for OutputPage {
                 }
                 Item::Delay => {
                     self.edit = Some(NumberEdit {
-                        text: format!("{:.1}", state.output(self.output).delay_ms),
+                        text: format!(
+                            "{:.1}",
+                            delivered_delay_ms(state, state.output(self.output).delay_ms)
+                        ),
                         dirty: false,
                     });
                     ScreenEvent::Handled
@@ -1109,10 +1116,10 @@ mod tests {
     #[test]
     fn the_delay_range_follows_the_platform() {
         let state = fixture::state();
-        assert_eq!(max_delay_ms(&state), 85.0);
+        assert_eq!(max_delay_ms(&state), 42.0);
         let mut rp2040 = fixture::state();
         rp2040.caps.platform = dspi_proto::Platform::Rp2040;
-        assert_eq!(max_delay_ms(&rp2040), 42.0);
+        assert_eq!(max_delay_ms(&rp2040), 21.0);
     }
 
     #[test]
@@ -1161,6 +1168,45 @@ mod tests {
         );
     }
 
+    // -- WP CG37 --
+    /// A delay stored past the line (another app's) shows, edits and nudges
+    /// from what the line delivers: 42 ms on an RP2350, 21 on an RP2040.
+    #[test]
+    fn wp_cg37_a_delay_stored_past_the_line_shows_as_the_lines_longest() {
+        let state = fixture::with_output_delay(0, 85.0);
+        assert_eq!(state.output(0).delay_ms, 85.0);
+        let mut p = OutputPage::new(0, shared(), &state);
+        let f = draw(&mut p, &state, 120, 30);
+        assert!(f.contains("42.0") && !f.contains("85.0"), "{f}");
+        p.header = Some(3); // DELAY
+        assert_eq!(
+            p.handle(key(KeyCode::Left), &state),
+            ScreenEvent::Command("out.delay 0 41.9".into())
+        );
+        p.handle(key(KeyCode::Enter), &state);
+        assert_eq!(p.edit.as_ref().map(|e| e.text.as_str()), Some("42.0"));
+        let mut rp2040 = state.clone();
+        rp2040.caps.platform = dspi_proto::Platform::Rp2040;
+        assert_eq!(delivered_delay_ms(&rp2040, 85.0), 21.0);
+        assert_eq!(delivered_delay_ms(&rp2040, 20.5), 20.5);
+    }
+
+    #[test]
+    fn wp_cg37_an_rp2040_takes_a_typed_delay_to_21_ms() {
+        let mut state = fixture::state();
+        state.caps.platform = dspi_proto::Platform::Rp2040;
+        let mut p = OutputPage::new(0, shared(), &state);
+        p.header = Some(3);
+        p.handle(key(KeyCode::Enter), &state);
+        for c in "30".chars() {
+            p.handle(key(KeyCode::Char(c)), &state);
+        }
+        assert_eq!(
+            p.handle(key(KeyCode::Enter), &state),
+            ScreenEvent::Command("out.delay 0 21".into())
+        );
+    }
+
     #[test]
     fn a_typed_delay_is_clamped_to_the_platforms_maximum() {
         let (mut p, state) = page(0);
@@ -1171,7 +1217,7 @@ mod tests {
         }
         assert_eq!(
             p.handle(key(KeyCode::Enter), &state),
-            ScreenEvent::Command("out.delay 0 85".into())
+            ScreenEvent::Command("out.delay 0 42".into())
         );
     }
 

@@ -1450,6 +1450,8 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1560,6 +1562,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_config_import(
 fun uniffi_dspi_core_checksum_method_dspicore_connection_generation(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_copy_preset(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_core1_conflict_reason(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_close(
 ): Short
@@ -2105,6 +2109,8 @@ fun uniffi_dspi_core_fn_method_dspicore_connection_generation(`ptr`: Pointer,uni
 ): Long
 fun uniffi_dspi_core_fn_method_dspicore_copy_preset(`ptr`: Pointer,`source`: Byte,`dest`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_core1_conflict_reason(`ptr`: Pointer,`output`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_close(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_commit(`ptr`: Pointer,`typed`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -2905,6 +2911,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_copy_preset() != 46555.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_core1_conflict_reason() != 6255.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_close() != 22148.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3310,7 +3319,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_dac_mute() != 53415.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_delay() != 25981.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_delay() != 62461.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_device_name() != 13429.toShort()) {
@@ -3418,7 +3427,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_output_config_mode() != 52088.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_output_delay() != 4990.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_output_delay() != 49897.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_output_enable() != 35905.toShort()) {
@@ -5198,6 +5207,16 @@ public interface DspiCoreInterface {
     fun `copyPreset`(`source`: kotlin.UByte, `dest`: kotlin.UByte)
     
     /**
+     * Whether enabling output `output` would collide on Core 1, and if so
+     * why, in the words [`DspiCore::write_param`] refuses it with: `None`
+     * when it would not. The device decides
+     * ([`DspiCore::check_core1_conflict`]); the words come from the layout.
+     *
+     * Errors: those of [`DspiCore::check_core1_conflict`].
+     */
+    fun `core1ConflictReason`(`output`: kotlin.UByte): kotlin.String?
+    
+    /**
      * Close the flow: the user left. No traffic. `InvalidArgument` during a
      * run, which goes on until ended.
      */
@@ -6786,12 +6805,14 @@ public interface DspiCoreInterface {
     fun `setDacMute`(`enabled`: kotlin.Boolean, `activeLow`: kotlin.Boolean, `pin`: kotlin.UByte, `holdMs`: kotlin.UShort, `releaseMs`: kotlin.UShort)
     
     /**
-     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms and then
-     * clamped to 0..[`DspiCore::max_delay_ms`]. An output channel's delay
-     * is its output delay, so it goes through [`DspiCore::set_output_delay`].
+     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms; below 0 it
+     * is 0. An output channel's delay is its output delay, so it goes
+     * through [`DspiCore::set_output_delay`].
      *
-     * Errors: [`DspiError::InvalidArgument`] for a channel out of range or a
-     * NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for a channel out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
     fun `setDelay`(`ch`: kotlin.UByte, `ms`: kotlin.Float)
     
@@ -7148,12 +7169,13 @@ public interface DspiCoreInterface {
     fun `setOutputConfigMode`(`mode`: kotlin.UByte)
     
     /**
-     * Output delay in ms, quantized to 0.0001 ms and then clamped to
-     * 0..[`DspiCore::max_delay_ms`]. It is also the delay of the output's
-     * wire channel.
+     * Output delay in ms, quantized to 0.0001 ms; below 0 it is 0. It is
+     * also the delay of the output's wire channel.
      *
-     * Errors: [`DspiError::InvalidArgument`] for an output out of range or
-     * a NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for an output out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
     fun `setOutputDelay`(`output`: kotlin.UByte, `ms`: kotlin.Float)
     
@@ -7843,6 +7865,27 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * Whether enabling output `output` would collide on Core 1, and if so
+     * why, in the words [`DspiCore::write_param`] refuses it with: `None`
+     * when it would not. The device decides
+     * ([`DspiCore::check_core1_conflict`]); the words come from the layout.
+     *
+     * Errors: those of [`DspiCore::check_core1_conflict`].
+     */
+    @Throws(DspiException::class)override fun `core1ConflictReason`(`output`: kotlin.UByte): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core1_conflict_reason(
+        it, FfiConverterUByte.lower(`output`),_status)
+}
+    }
+    )
+    }
     
 
     
@@ -10809,12 +10852,14 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
-     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms and then
-     * clamped to 0..[`DspiCore::max_delay_ms`]. An output channel's delay
-     * is its output delay, so it goes through [`DspiCore::set_output_delay`].
+     * Delay of wire channel `ch` in ms, quantized to 0.0001 ms; below 0 it
+     * is 0. An output channel's delay is its output delay, so it goes
+     * through [`DspiCore::set_output_delay`].
      *
-     * Errors: [`DspiError::InvalidArgument`] for a channel out of range or a
-     * NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for a channel out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
     @Throws(DspiException::class)override fun `setDelay`(`ch`: kotlin.UByte, `ms`: kotlin.Float)
         = 
@@ -11528,12 +11573,13 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
-     * Output delay in ms, quantized to 0.0001 ms and then clamped to
-     * 0..[`DspiCore::max_delay_ms`]. It is also the delay of the output's
-     * wire channel.
+     * Output delay in ms, quantized to 0.0001 ms; below 0 it is 0. It is
+     * also the delay of the output's wire channel.
      *
-     * Errors: [`DspiError::InvalidArgument`] for an output out of range or
-     * a NaN; the connection and transfer errors of every setter.
+     * Errors: [`DspiError::InvalidArgument`] for an output out of range, a
+     * NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+     * message names it; nothing is sent); the connection and transfer
+     * errors of every setter.
      */
     @Throws(DspiException::class)override fun `setOutputDelay`(`output`: kotlin.UByte, `ms`: kotlin.Float)
         = 

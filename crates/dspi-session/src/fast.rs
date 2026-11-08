@@ -16,7 +16,7 @@
 
 use dspi_proto::generated::opcodes as op;
 use dspi_proto::registry::{self, ParamDesc, WValue, by_path};
-use dspi_proto::value::{EqParamPacket, Value};
+use dspi_proto::value::{EqParamPacket, Unit, Value, ValueError};
 use dspi_proto::{Dir, FilterType, Platform};
 
 use crate::{Session, WriteError};
@@ -64,8 +64,8 @@ impl Session {
 
         self.check_available(d)?;
         self.check_indices(d, indices)?;
-        let value = d.kind.validate(&value)?;
         self.check_platform_range(d, &value)?;
+        let value = d.kind.validate(&value)?;
 
         if self.dry_run {
             return Ok(());
@@ -104,22 +104,39 @@ impl Session {
         Ok(())
     }
 
-    /// The platform limit [`Session::write`] checks beyond the registry's
-    /// range: the delay buffers hold 42 ms on an RP2040 against 85 ms on an
-    /// RP2350 (config.h:94-99). Shared by `send` and `write`.
+    /// The platform limits [`Session::write`] checks beyond the registry's
+    /// range. Shared by `send` and `write`; run before the registry's own
+    /// check, so a delay out of range names the line's range, not the
+    /// schema's 85 ms.
     pub(crate) fn check_platform_range(
         &self,
         d: &ParamDesc,
         value: &Value,
     ) -> Result<(), WriteError> {
+        // A value of the wrong kind is the registry's to refuse.
+        if !matches!(value, Value::Float(_) | Value::Int(_)) {
+            return Ok(());
+        }
+        // -- WP CG37 -- the delay line holds 21 ms on an RP2040 and 42 ms on
+        // an RP2350 (`Platform::max_delay_ms`, the core's source too).
         if matches!(d.path, "ch.delay" | "out.delay")
-            && self.capabilities().platform == Platform::Rp2040
-            && value.as_f32().is_some_and(|v| v > 42.0)
+            && let Some(v) = value.as_f32()
         {
-            return Err(WriteError::PlatformRange {
-                path: d.path.into(),
-                max: "42 ms".into(),
-            });
+            let max = self.capabilities().platform.max_delay_ms();
+            if v > max {
+                return Err(WriteError::PlatformRange {
+                    path: d.path.into(),
+                    max: format!("{max} ms"),
+                });
+            }
+            if v < 0.0 {
+                return Err(WriteError::Value(ValueError::OutOfRange {
+                    value: f64::from(v),
+                    min: 0.0,
+                    max: f64::from(max),
+                    unit: Unit::Ms,
+                }));
+            }
         }
         // The registry carries the RP2350's +24 dB; an RP2040 applies its
         // preamp as a Q28 multiplier, which overflows above about +18 dB.
@@ -247,7 +264,7 @@ mod tests_wp_s1 {
         }
     }
 
-    fn rig_on(t: MockTransport, platform: Platform) -> (Session, LogHandle) {
+    pub(super) fn rig_on(t: MockTransport, platform: Platform) -> (Session, LogHandle) {
         let log = t.log_handle();
         let s = Session::new(Box::new(t), caps(platform)).unwrap();
         (s, log)
@@ -548,5 +565,65 @@ mod tests_wp_s1 {
         assert_eq!(log_of(&log)[0].value & 7, 5);
         let (mut s, _) = rig(MockTransport::new().data(op::REQ_GET_EQ_PARAM, vec![0; 4]));
         assert_eq!(s.read("eq.qp", &[8, 1]).unwrap(), Value::Float(0.707));
+    }
+}
+
+// -- WP CG37 --
+#[cfg(test)]
+mod tests_wp_cg37 {
+    use super::tests_wp_s1::rig_on;
+    use crate::WriteError;
+    use dspi_proto::Platform;
+    use dspi_proto::value::Value;
+    use dspi_transport::MockTransport;
+
+    #[test]
+    fn wp_cg37_the_line_is_21_ms_on_an_rp2040_and_42_on_an_rp2350() {
+        assert_eq!(Platform::Rp2040.max_delay_ms(), 21.0);
+        assert_eq!(Platform::Rp2350.max_delay_ms(), 42.0);
+        assert_eq!(Platform::Unknown(7).max_delay_ms(), 21.0);
+    }
+
+    /// `write`, `send` and `check` refuse a delay past the platform's line
+    /// and take one at it, for both delay paths.
+    #[test]
+    fn wp_cg37_write_send_and_check_hold_the_line() {
+        for (platform, max) in [(Platform::Rp2040, 21.0f32), (Platform::Rp2350, 42.0)] {
+            for (path, ix) in [("ch.delay", 0u8), ("out.delay", 1)] {
+                let (mut s, _) = rig_on(MockTransport::new(), platform);
+                assert!(s.check(path, &[ix], &Value::Float(max)).is_ok(), "{path}");
+                assert!(s.send(path, &[ix], Value::Float(max)).is_ok(), "{path}");
+                for over in [Value::Float(max + 0.5), Value::Int(85)] {
+                    let w = s.write(path, &[ix], over.clone()).unwrap_err();
+                    let f = s.send(path, &[ix], over.clone()).unwrap_err();
+                    assert_eq!(format!("{w:?}"), format!("{f:?}"));
+                    assert!(
+                        matches!(&w, WriteError::PlatformRange { max: m, .. } if *m == format!("{max} ms")),
+                        "{path} {over:?}: {w:?}"
+                    );
+                    assert_eq!(
+                        w.to_string(),
+                        format!("`{path}` is limited to {max} ms on this platform")
+                    );
+                }
+            }
+        }
+    }
+
+    /// Below 0 the message names the line's range, not the schema's 85 ms.
+    #[test]
+    fn wp_cg37_a_negative_delay_names_the_lines_range() {
+        for (platform, max) in [(Platform::Rp2040, 21), (Platform::Rp2350, 42)] {
+            let (mut s, log) = rig_on(MockTransport::new(), platform);
+            let e = s.write("out.delay", &[0], Value::Float(-1.0)).unwrap_err();
+            assert!(matches!(e, WriteError::Value(_)), "{e:?}");
+            assert_eq!(
+                e.to_string(),
+                format!("-1 is outside the allowed range 0 to {max} ms")
+            );
+            let f = s.send("ch.delay", &[0], Value::Float(-1.0)).unwrap_err();
+            assert_eq!(e.to_string(), f.to_string());
+            assert!(log.lock().unwrap().is_empty(), "nothing on the wire");
+        }
     }
 }

@@ -151,7 +151,7 @@ Rectangle {
                 // outside the slider's range elsewhere stays as it is
                 property bool dragged: false
                 onMoved: { dragged = true; preampDB = value; preampLive.push(value) }
-                onPressedChanged: if (!pressed) {
+                onSettled: {
                     preampLive.cancel()
                     if (dragged) bridge.setInputPreamp(inputIndex, value)
                     dragged = false

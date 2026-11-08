@@ -298,12 +298,14 @@ impl DspiCore {
         self.set_scalar("vol.mute", Value::Bool(muted), |s| s.user_mute = muted)
     }
 
-    /// Delay of wire channel `ch` in ms, quantized to 0.0001 ms and then
-    /// clamped to 0..[`DspiCore::max_delay_ms`]. An output channel's delay
-    /// is its output delay, so it goes through [`DspiCore::set_output_delay`].
+    /// Delay of wire channel `ch` in ms, quantized to 0.0001 ms; below 0 it
+    /// is 0. An output channel's delay is its output delay, so it goes
+    /// through [`DspiCore::set_output_delay`].
     ///
-    /// Errors: [`DspiError::InvalidArgument`] for a channel out of range or a
-    /// NaN; the connection and transfer errors of every setter.
+    /// Errors: [`DspiError::InvalidArgument`] for a channel out of range, a
+    /// NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+    /// message names it; nothing is sent); the connection and transfer
+    /// errors of every setter.
     pub fn set_delay(&self, ch: u8, ms: f32) -> Result<()> {
         let mut inner = self.writing()?;
         let c = channel_index(&inner.state, ch)?;
@@ -311,7 +313,7 @@ impl DspiCore {
             drop(inner);
             return self.set_output_delay(out, ms);
         }
-        let val = delay_ms(&inner, ms)?;
+        let val = delay_ms(&inner, "ch.delay", ms)?;
         send(&mut inner, "ch.delay", &[ch], Value::Float(val))?;
         if let Some(d) = inner.state.channel_delays.get_mut(c) {
             *d = val;
@@ -568,40 +570,8 @@ impl DspiCore {
     /// not an error: the requested state (or, after a refused enable, the
     /// previous one) is assumed, as the old core did.
     pub fn set_output_enable(&self, output: u8, enabled: bool) -> Result<bool> {
-        let mut inner = self.writing()?;
-        let o = output_index(&inner.state, output)?;
-        let before = inner.state.output_enabled.get(o).copied().unwrap_or(false);
-        // `Session::send` runs no interlock, and the firmware would skip a
-        // colliding enable without a word.
-        let conflict = enabled
-            && inner
-                .writable_conn()?
-                .session()?
-                .try_core1_conflict(output)?;
-        if conflict {
-            log::info!("output {output}: not enabled, Core 1 runs the other side");
-        } else {
-            send(&mut inner, "out.enable", &[output], Value::Bool(enabled))?;
-        }
-        let conn = inner.conn()?;
-        let fallback = if conflict { before } else { enabled };
-        let actual = conn
-            .get(op::REQ_GET_OUTPUT_ENABLE, u16::from(output), 1)
-            .ok()
-            .and_then(|b| b.first().map(|v| *v != 0))
-            .unwrap_or(fallback);
-        let core1 = conn
-            .get(op::REQ_GET_CORE1_MODE, 0, 1)
-            .ok()
-            .and_then(|b| b.first().copied());
-        if let Some(v) = inner.state.output_enabled.get_mut(o) {
-            *v = actual;
-        }
-        if let Some(mode) = core1 {
-            inner.state.core1_mode = mode;
-        }
-        commit(&mut inner);
-        Ok(actual)
+        self.output_enable(output, enabled)
+            .map(|(actual, _)| actual)
     }
 
     /// Output gain in dB, clamped to −60..+20 and quantized to 0.1 dB.
@@ -635,16 +605,17 @@ impl DspiCore {
         Ok(())
     }
 
-    /// Output delay in ms, quantized to 0.0001 ms and then clamped to
-    /// 0..[`DspiCore::max_delay_ms`]. It is also the delay of the output's
-    /// wire channel.
+    /// Output delay in ms, quantized to 0.0001 ms; below 0 it is 0. It is
+    /// also the delay of the output's wire channel.
     ///
-    /// Errors: [`DspiError::InvalidArgument`] for an output out of range or
-    /// a NaN; the connection and transfer errors of every setter.
+    /// Errors: [`DspiError::InvalidArgument`] for an output out of range, a
+    /// NaN, or a delay above the platform's [`DspiCore::max_delay_ms`] (the
+    /// message names it; nothing is sent); the connection and transfer
+    /// errors of every setter.
     pub fn set_output_delay(&self, output: u8, ms: f32) -> Result<()> {
         let mut inner = self.writing()?;
         let o = output_index(&inner.state, output)?;
-        let val = delay_ms(&inner, ms)?;
+        let val = delay_ms(&inner, "out.delay", ms)?;
         send(&mut inner, "out.delay", &[output], Value::Float(val))?;
         let s = &mut inner.state;
         if let Some(v) = s.output_delay_ms.get_mut(o) {
@@ -705,6 +676,47 @@ impl DspiCore {
 }
 
 impl DspiCore {
+    // -- WP CG36 --
+    /// [`DspiCore::set_output_enable`], also answering whether the enable
+    /// was not sent for a Core 1 conflict (`write_param` refuses it in
+    /// words).
+    pub(crate) fn output_enable(&self, output: u8, enabled: bool) -> Result<(bool, bool)> {
+        let mut inner = self.writing()?;
+        let o = output_index(&inner.state, output)?;
+        let before = inner.state.output_enabled.get(o).copied().unwrap_or(false);
+        // `Session::send` runs no interlock, and the firmware would skip a
+        // colliding enable without a word.
+        let conflict = enabled
+            && inner
+                .writable_conn()?
+                .session()?
+                .try_core1_conflict(output)?;
+        if conflict {
+            log::info!("output {output}: not enabled, Core 1 runs the other side");
+        } else {
+            send(&mut inner, "out.enable", &[output], Value::Bool(enabled))?;
+        }
+        let conn = inner.conn()?;
+        let fallback = if conflict { before } else { enabled };
+        let actual = conn
+            .get(op::REQ_GET_OUTPUT_ENABLE, u16::from(output), 1)
+            .ok()
+            .and_then(|b| b.first().map(|v| *v != 0))
+            .unwrap_or(fallback);
+        let core1 = conn
+            .get(op::REQ_GET_CORE1_MODE, 0, 1)
+            .ok()
+            .and_then(|b| b.first().copied());
+        if let Some(v) = inner.state.output_enabled.get_mut(o) {
+            *v = actual;
+        }
+        if let Some(mode) = core1 {
+            inner.state.core1_mode = mode;
+        }
+        commit(&mut inner);
+        Ok((actual, conflict))
+    }
+
     // ── helpers ──────────────────────────────────────────────────────
 
     /// The lock, once the connection is known to be writable.
@@ -813,10 +825,28 @@ fn clamped(path: &str, v: f32) -> Result<f32> {
     })
 }
 
-/// A delay as the old core shaped it: quantized, then clamped to the line.
-fn delay_ms(inner: &Inner, ms: f32) -> Result<f32> {
-    let ms = not_nan(ms, "delay")?;
-    Ok(quantize_delay(ms).clamp(0.0, state::max_delay_ms_for(&inner.state)))
+/// A delay as the old core shaped it, quantized, below 0 made 0; above the
+/// platform's line it is refused (WP CG36: the old core clamped it there
+/// without a word).
+fn delay_ms(inner: &Inner, path: &str, ms: f32) -> Result<f32> {
+    let ms = quantize_delay(not_nan(ms, "delay")?).max(0.0);
+    check_delay(&inner.state, path, ms)?;
+    Ok(ms)
+}
+
+// -- WP CG36 -- -- WP CG37 --
+/// `ms` (quantized, [`quantize_delay`]) against the connected platform's
+/// line ([`state::max_delay_ms_for`]): an error naming the range, 0 to that
+/// limit, outside it. NaN is the caller's to refuse.
+pub(crate) fn check_delay(s: &DspState, path: &str, ms: f32) -> Result<()> {
+    let max = state::max_delay_ms_for(s);
+    if ms < 0.0 || ms > max {
+        let platform = dspi_proto::Platform::from_id(s.platform_id).name();
+        return Err(invalid(format!(
+            "{path}: {ms} ms is out of range; this device ({platform}) holds 0 to {max} ms"
+        )));
+    }
+    Ok(())
 }
 
 /// A preamp as the old core shaped it: clamped to the platform's range,
@@ -975,7 +1005,7 @@ mod tests_wp_c3 {
         log: Log,
     }
 
-    struct SpyHandles {
+    pub(super) struct SpyHandles {
         answers: Arc<Mutex<HashMap<u8, Vec<u8>>>>,
         swallow: Arc<Mutex<Vec<u8>>>,
         log: Log,
@@ -989,10 +1019,10 @@ mod tests_wp_c3 {
         fn swallow(&self, opcode: u8) {
             self.swallow.lock().unwrap().push(opcode);
         }
-        fn clear(&self) {
+        pub(super) fn clear(&self) {
             self.log.lock().unwrap().clear();
         }
-        fn outs(&self, opcode: u8) -> Vec<(u16, Vec<u8>)> {
+        pub(super) fn outs(&self, opcode: u8) -> Vec<(u16, Vec<u8>)> {
             self.log
                 .lock()
                 .unwrap()
@@ -1010,7 +1040,7 @@ mod tests_wp_c3 {
         }
     }
 
-    fn spy_core() -> (Arc<DspiCore>, SpyHandles) {
+    pub(super) fn spy_core() -> (Arc<DspiCore>, SpyHandles) {
         let inner = FakeDevice::demo();
         let h = SpyHandles {
             answers: Arc::default(),
@@ -1200,7 +1230,9 @@ mod tests_wp_c3 {
         core.set_output_gain(0, 1.26).unwrap();
         assert_eq!(core.get_state().output_gain_db[0], 1.3);
 
-        core.set_delay(0, 50.0).unwrap();
+        // -- WP CG36 -- above the line: refused, no longer clamped to 42.
+        invalid_arg(core.set_delay(0, 50.0));
+        core.set_delay(0, 42.0).unwrap();
         assert_eq!(core.get_state().channel_delays[0], 42.0);
         core.set_delay(0, 1.23456).unwrap();
         assert_eq!(core.get_state().channel_delays[0], quantize_delay(1.23456));
@@ -1536,5 +1568,237 @@ mod tests_wp_c3 {
         assert!(core.lock().conn().unwrap().fresh_image);
         core.set_bypass(true).unwrap();
         assert!(!core.lock().conn().unwrap().fresh_image);
+    }
+
+    // -- WP CG36 --
+    use crate::ParamValue;
+
+    pub(super) fn refusal(r: Result<impl std::fmt::Debug>) -> String {
+        match r {
+            Err(DspiError::InvalidArgument { msg }) => msg,
+            other => panic!("expected InvalidArgument, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn wp_cg36_eq_type_on_a_crossover_band_takes_crossover_types_only() {
+        let (core, h) = spy_core();
+        let put = |ch: u8, b: u8, t: u8| {
+            core.write_param("eq.type".into(), vec![ch, b], ParamValue::Choice(t))
+        };
+        // Every crossover code on band 20..23 of an output channel, read back.
+        for (x, b) in (20..=23u8).enumerate() {
+            for t in FilterType::XOVER_FIRST..=FilterType::XOVER_LAST {
+                assert_eq!(put(9, b, t), Ok(ParamValue::Choice(t)), "band {b} type {t}");
+                assert_eq!(core.get_state().xover[9][x].filter_type, t);
+            }
+        }
+        // The device has it too, through set_crossover's packet.
+        let mut dev = core.get_state();
+        state::decode_bulk(&h.remote.image(), &mut dev).unwrap();
+        assert_eq!(dev.xover[9][3].filter_type, FilterType::XOVER_LAST);
+        // A family change keeps the band's frequency (no Linkwitz retype).
+        let f = core.get_state().xover[9][0].freq;
+        assert_eq!(put(9, 20, 40), Ok(ParamValue::Choice(40)));
+        assert_eq!(core.get_state().xover[9][0].freq, f);
+        // Off is a crossover band's too, as set_crossover takes it.
+        assert_eq!(put(9, 20, 0), Ok(ParamValue::Choice(0)));
+
+        // A PEQ type on a crossover band and a crossover type on a PEQ band
+        // are refused before the wire, in words.
+        h.clear();
+        let before = core.get_state();
+        let e = refusal(put(9, 21, 5));
+        assert!(e.contains("crossover band") && e.contains("32..63"), "{e}");
+        let e = refusal(put(9, 3, 40));
+        assert!(e.contains("PEQ band") && e.contains("20..23"), "{e}");
+        let e = refusal(put(0, 3, 40));
+        assert!(e.contains("PEQ band"), "{e}");
+        refusal(put(9, 20, 14));
+        refusal(put(9, 20, 64));
+        assert!(h.outs(op::REQ_SET_EQ_PARAM).is_empty(), "nothing sent");
+        assert_eq!(core.get_state(), before);
+        // PEQ bands keep 0..13.
+        assert_eq!(put(0, 3, 13), Ok(ParamValue::Choice(13)));
+        // An input channel has no crossover band: refused as before.
+        refusal(put(0, 20, 40));
+    }
+
+    #[test]
+    fn wp_cg36_a_delay_past_the_platforms_line_is_refused_naming_it() {
+        let (core, h) = spy_core();
+        let put = |path: &str, i: u8, ms: f32| {
+            core.write_param(path.into(), vec![i], ParamValue::Float(ms))
+        };
+        // RP2350: 42 ms.
+        assert_eq!(put("out.delay", 1, 42.0), Ok(ParamValue::Float(42.0)));
+        h.clear();
+        let before = core.get_state();
+        let e = refusal(put("out.delay", 1, 42.5));
+        assert!(
+            e.contains("out.delay") && e.contains("42 ms") && e.contains("RP2350"),
+            "{e}"
+        );
+        let e = refusal(put("ch.delay", 0, 60.0));
+        assert!(e.contains("ch.delay") && e.contains("42 ms"), "{e}");
+        // The typed setters refuse the same (they clamped silently before).
+        let e = refusal(core.set_output_delay(1, 50.0));
+        assert!(e.contains("0 to 42 ms"), "{e}");
+        refusal(core.set_delay(0, 50.0));
+        // An output's wire channel goes through the output's setter.
+        refusal(core.set_delay(9, 50.0));
+        assert!(h.outs(op::REQ_SET_OUTPUT_DELAY).is_empty(), "nothing sent");
+        assert!(h.outs(op::REQ_SET_DELAY).is_empty(), "nothing sent");
+        assert_eq!(core.get_state(), before);
+
+        // RP2040: 21 ms, below the registry's 85 and the session's 42.
+        core.lock().state.platform_id = 0;
+        let e = refusal(put("out.delay", 1, 30.0));
+        assert!(e.contains("0 to 21 ms") && e.contains("RP2040"), "{e}");
+        assert!(h.outs(op::REQ_SET_OUTPUT_DELAY).is_empty(), "nothing sent");
+        assert_eq!(put("out.delay", 1, 21.0), Ok(ParamValue::Float(21.0)));
+        // Below 0 is still 0 for a typed setter.
+        core.set_output_delay(1, -0.5).unwrap();
+        assert_eq!(core.get_state().output_delay_ms[1], 0.0);
+    }
+
+    #[test]
+    fn wp_cg36_a_core1_conflict_is_refused_in_words_by_write_param() {
+        let (core, h) = spy_core();
+        let outputs = core.get_state().num_output_channels;
+        let pdm = outputs - 1;
+        let enable = |o: u8| core.write_param("out.enable".into(), vec![o], ParamValue::Bool(true));
+        h.answer(op::REQ_GET_CORE1_CONFLICT, &[1]);
+        let e = refusal(enable(pdm));
+        assert_eq!(
+            e,
+            format!(
+                "Output {outputs} is the PDM output, which shares Core 1 with outputs 3-{pdm}, \
+                 and one of them is enabled: disable outputs 3-{pdm} first"
+            )
+        );
+        assert!(h.outs(op::REQ_SET_OUTPUT_ENABLE).is_empty(), "not sent");
+        assert!(!core.get_state().output_enabled[usize::from(pdm)]);
+        let e = refusal(enable(2));
+        assert_eq!(
+            e,
+            format!(
+                "Output 3 shares Core 1 with the PDM output (output {outputs}), which is \
+                 enabled: disable the PDM output first"
+            )
+        );
+        // The same words to ask before, and the typed setter's answer unchanged.
+        assert_eq!(core.core1_conflict_reason(2), Ok(Some(e)));
+        assert_eq!(core.set_output_enable(pdm, true), Ok(false));
+        // A disable never conflicts.
+        assert_eq!(
+            core.write_param("out.enable".into(), vec![0], ParamValue::Bool(false)),
+            Ok(ParamValue::Bool(false))
+        );
+
+        h.answer(op::REQ_GET_CORE1_CONFLICT, &[0]);
+        assert_eq!(core.core1_conflict_reason(pdm), Ok(None));
+        assert_eq!(enable(pdm), Ok(ParamValue::Bool(true)));
+        assert!(core.get_state().output_enabled[usize::from(pdm)]);
+        assert!(matches!(
+            core.core1_conflict_reason(outputs),
+            Err(DspiError::InvalidArgument { .. })
+        ));
+    }
+}
+
+// -- WP CG37 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg37 {
+    use super::tests_wp_c3::{refusal, spy_core};
+    use crate::{ParamValue, state};
+    use dspi_proto::generated::opcodes as op;
+
+    /// The core's line is the session's: one source for both.
+    #[test]
+    fn wp_cg37_the_cores_line_is_the_sessions() {
+        let (core, _) = spy_core();
+        for id in [0u8, 1, 7] {
+            core.lock().state.platform_id = id;
+            let p = dspi_proto::Platform::from_id(id);
+            assert_eq!(core.max_delay_ms(), p.max_delay_ms(), "{id}");
+            assert_eq!(
+                state::max_delay_ms_for(&core.get_state()),
+                core.max_delay_ms()
+            );
+        }
+    }
+
+    /// write_param checks the quantized value, as the typed setters do: a
+    /// value that quantizes onto the line is taken both ways, one that
+    /// quantizes past it is refused both ways.
+    #[test]
+    fn wp_cg37_write_param_and_the_setters_check_the_same_quantized_value() {
+        let (core, h) = spy_core();
+        for (id, max) in [(1u8, 42.0f32), (0, 21.0)] {
+            // A write may read the image again, which brings back the
+            // demo's platform: set the one under test before each call.
+            let at = || core.lock().state.platform_id = id;
+            let put = |path: &str, i: u8, ms: f32| {
+                at();
+                core.write_param(path.into(), vec![i], ParamValue::Float(ms))
+            };
+            let on = max + 0.00004;
+            assert_eq!(put("out.delay", 1, on), Ok(ParamValue::Float(max)));
+            assert_eq!(core.get_state().output_delay_ms[1], max);
+            at();
+            core.set_output_delay(2, on).unwrap();
+            assert_eq!(core.get_state().output_delay_ms[2], max);
+            assert_eq!(put("ch.delay", 0, on), Ok(ParamValue::Float(max)));
+            at();
+            core.set_delay(1, on).unwrap();
+            assert_eq!(core.get_state().channel_delays[1], max);
+
+            at();
+            h.clear();
+            let before = core.get_state();
+            let past = max + 0.00006;
+            let w = refusal(put("out.delay", 1, past));
+            let t = refusal(core.set_output_delay(1, past));
+            assert_eq!(w, t, "the same words both ways");
+            assert!(w.contains(&format!("0 to {max} ms")), "{w}");
+            refusal(put("ch.delay", 0, past));
+            refusal(core.set_delay(0, past));
+            assert!(h.outs(op::REQ_SET_OUTPUT_DELAY).is_empty(), "nothing sent");
+            assert!(h.outs(op::REQ_SET_DELAY).is_empty(), "nothing sent");
+            assert_eq!(core.get_state(), before);
+        }
+    }
+
+    /// Below 0, write_param names the line's range (not the registry's
+    /// 85 ms); a typed setter still makes it 0, and a value that quantizes
+    /// to 0 is 0 both ways.
+    #[test]
+    fn wp_cg37_a_negative_delay_names_the_lines_range() {
+        let (core, h) = spy_core();
+        for (id, platform, max) in [(1u8, "RP2350", 42), (0, "RP2040", 21)] {
+            core.lock().state.platform_id = id;
+            h.clear();
+            for path in ["out.delay", "ch.delay"] {
+                let e = refusal(core.write_param(path.into(), vec![1], ParamValue::Float(-1.0)));
+                assert_eq!(
+                    e,
+                    format!(
+                        "{path}: -1 ms is out of range; this device ({platform}) holds 0 to {max} ms"
+                    )
+                );
+                let e = refusal(core.write_param(path.into(), vec![1], ParamValue::Int(-3)));
+                assert!(e.contains(&format!("0 to {max} ms")), "{e}");
+            }
+            assert!(h.outs(op::REQ_SET_OUTPUT_DELAY).is_empty(), "nothing sent");
+            assert!(h.outs(op::REQ_SET_DELAY).is_empty(), "nothing sent");
+            assert_eq!(
+                core.write_param("out.delay".into(), vec![1], ParamValue::Float(-0.00002)),
+                Ok(ParamValue::Float(0.0))
+            );
+            core.set_output_delay(1, -1.0).unwrap();
+            assert_eq!(core.get_state().output_delay_ms[1], 0.0);
+        }
     }
 }

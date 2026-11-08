@@ -83,6 +83,23 @@ impl Platform {
             Self::Unknown(n) => format!("unknown platform {n}"),
         }
     }
+
+    // -- WP CG37 --
+    /// The longest delay, in ms, the firmware's delay line holds: 42 on an
+    /// RP2350 (`MAX_DELAY_SAMPLES` 2048 at 48 kHz, config.h), 21 on an
+    /// RP2040 (1024) and on a platform this build does not know. The firmware
+    /// keeps a longer value but caps its samples, so a delay past this is not
+    /// what the line delivers. The one source of the limit: `dspi-session`'s
+    /// write check, `dspi-core` (`max_delay_ms`), the TUI and the CLI read it.
+    ///
+    /// The registry's 85 ms on `ch.delay` and `out.delay` is the schema's
+    /// ceiling only (the Console's figure); no platform delivers it.
+    pub fn max_delay_ms(self) -> f32 {
+        match self {
+            Self::Rp2350 => 42.0,
+            Self::Rp2040 | Self::Unknown(_) => 21.0,
+        }
+    }
 }
 
 #[cfg(test)]
