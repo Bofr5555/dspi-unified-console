@@ -1145,6 +1145,9 @@ impl Write for Replay {
 #[allow(clippy::result_large_err)] // tungstenite's callback signature
 fn serve(mut tcp: TcpStream, state: Arc<Mutex<State>>, stop: Arc<AtomicBool>) {
     let _ = tcp.set_nonblocking(false);
+    // -- WP LK2 -- as the ESP32 bridge (http_server.c:745): no Nagle delay on
+    // replies, which matters once several commands are on the wire
+    let _ = tcp.set_nodelay(true);
     let _ = tcp.set_read_timeout(Some(Duration::from_secs(5)));
     // Read the request head to tell the info endpoint from the upgrade
     let mut head = Vec::new();

@@ -38,16 +38,29 @@ const OPEN_ACCESS_PIN: &str = "000000";
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 pub const BULK_TIMEOUT: Duration = Duration::from_secs(15);
 const BULK_OPCODES: [u8; 4] = [0xA0, 0xA1, 0xA2, 0xA3];
-const PING_INTERVAL: Duration = Duration::from_secs(15);
-/// The hub pings every 10 s (spec 4), and those pings and the pongs to our own
-/// count (`WsRecv::Alive`); this much silence means the link is gone.
-const SILENCE_LIMIT: Duration = Duration::from_secs(35);
+/// WP LK2 (LK1-c): often enough that a weak Wi-Fi link carries something from
+/// us every few seconds. The ESP32 bridge closes a session that has had nothing
+/// inbound for 30 s (`hub.c`), so six of our pings must be lost in a row before
+/// it does; each pong also tells us the hub is alive.
+const PING_INTERVAL: Duration = Duration::from_secs(5);
+/// WP LK2 (LK1-c): this much silence, nothing at all from the hub (frames,
+/// its pings every 10 s, the pongs to ours every 5 s), means the link is gone.
+/// It is the only rule that ends a session for want of answers: a request that
+/// times out fails on its own and the session stays (see
+/// [`Timing::silence_limit`]).
+///
+/// Why 30 s: the ESP32 bridge closes a session whose socket has made no write
+/// progress for 10 s with frames queued (`http_server.c:543`), and one with
+/// nothing inbound for 30 s (`hub.c:679`). A stall of 10 to 30 s is therefore
+/// either survived by both sides (Wi-Fi recovers, TCP retransmits, the queue
+/// moves again) or ends with the hub's close, which reaches us as soon as the
+/// link carries anything. Giving up before 30 s would only drop sessions the
+/// hub still keeps; much later would leave a dead hub on screen for long.
+/// Three of the hub's own pings and six pongs must be lost to reach it.
+const SILENCE_LIMIT: Duration = Duration::from_secs(30);
 
 /// Connect in about this much, whatever each step would allow on its own.
 const CONNECT_BUDGET: Duration = Duration::from_secs(15);
-/// After a request times out, a ping must be answered within this, or by
-/// anything else from the hub.
-const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long a request that timed out waits for a reply the reader just took.
 const HANDOVER_GRACE: Duration = Duration::from_millis(50);
 /// How often the keepalive thread looks at its clock.
@@ -60,19 +73,20 @@ pub struct Timing {
     pub request_timeout: Duration,
     /// A bulk command's or snapshot's answer; [`BULK_TIMEOUT`].
     pub bulk_timeout: Duration,
-    /// Our pings to the hub.
+    /// Our pings to the hub; [`PING_INTERVAL`].
     pub ping_interval: Duration,
-    /// This much silence, control frames included, means the link is gone.
-    pub silence_limit: Duration,
-    /// After a request times out, a ping goes out at the next keepalive tick
-    /// (within [`Self::keepalive_tick`], 250 ms); nothing from the hub for this
-    /// long then means the link is gone. Much shorter than `silence_limit`,
-    /// because now someone is waiting.
+    /// This much silence, control frames included, means the link is gone;
+    /// [`SILENCE_LIMIT`].
     ///
-    /// The trade-off: a Wi-Fi stall of 5 s or more right after an unanswered 10 s
-    /// request costs a reconnect that waiting might have saved. That is accepted:
-    /// the UI shows a reconnect banner, which beats freezing for 35 s.
-    pub probe_timeout: Duration,
+    /// WP LK2 (LK1-c, owner decision 2026-11-08): this is the only liveness
+    /// rule. A request that times out fails with TIMEOUT and is not retried
+    /// (it may have run; a write is never replayed), and an extra ping goes out
+    /// at the next keepalive tick, but the session stays while the hub sends
+    /// anything at all. The old rule (close 5 s after an unanswered request
+    /// unless a ping was answered) turned every Wi-Fi stall of about 15 s into
+    /// a reconnect and a full re-read; a truly dead hub is now noticed after
+    /// this limit instead of after about 15 s.
+    pub silence_limit: Duration,
     /// How often the keepalive thread looks at the clock.
     pub keepalive_tick: Duration,
     /// Hello, authentication and the device list together, instead of
@@ -89,7 +103,6 @@ impl Default for Timing {
             bulk_timeout: BULK_TIMEOUT,
             ping_interval: PING_INTERVAL,
             silence_limit: SILENCE_LIMIT,
-            probe_timeout: PROBE_TIMEOUT,
             keepalive_tick: KEEPALIVE_TICK,
             connect_budget: CONNECT_BUDGET,
         }
@@ -267,11 +280,24 @@ impl Session {
     }
 }
 
-/// A request timed out, so the link is under suspicion: a ping goes out, and
-/// anything arriving from the hub clears it.
+// -- WP LK2 --
+/// One request of [`LinkClient::commands`]: the arguments of
+/// [`LinkClient::command`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CmdSpec {
+    pub handle: u8,
+    pub dir: Dir,
+    pub b_request: u8,
+    pub w_value: u16,
+    pub w_index: u16,
+    pub w_length: u16,
+    pub payload: Vec<u8>,
+}
+
+/// A request timed out: a ping goes out at the next keepalive tick, so a live
+/// hub's pong is heard. It never ends the session by itself (WP LK2).
 #[derive(Default)]
 struct Probe {
-    armed_at: Option<Instant>,
     /// For the keepalive thread: the caller must not block on a stuck socket.
     ping_wanted: bool,
 }
@@ -688,48 +714,119 @@ impl LinkClient {
         w_length: u16,
         payload: &[u8],
     ) -> CmdResponse {
-        let timing = &self.inner.timing;
-        let timeout = if BULK_OPCODES.contains(&b_request) { timing.bulk_timeout } else { timing.request_timeout };
-        let deadline = Instant::now() + timeout;
+        let spec = CmdSpec { handle, dir, b_request, w_value, w_index, w_length, payload: payload.to_vec() };
+        let deadline = Instant::now() + self.timeout_of(b_request);
         if !self.is_ready() {
             return CmdResponse { tag: 0, status: status::NO_DEVICE, payload: Vec::new() };
         }
         // max_inflight (spec 8.2): wait for a free slot
-        let limit = self.inner.hello.limits.max_inflight.max(1);
-        {
-            let mut n = lock(&self.inner.inflight);
-            while *n >= limit {
-                let left = deadline.saturating_duration_since(Instant::now());
-                if left.is_zero() || self.is_closed() {
-                    return CmdResponse { tag: 0, status: status::TIMEOUT, payload: Vec::new() };
-                }
-                n = self
-                    .inner
-                    .inflight_free
-                    .wait_timeout(n, left.min(Duration::from_millis(200)))
-                    .unwrap_or_else(|p| p.into_inner())
-                    .0;
-            }
-            *n += 1;
+        if !self.take_slot(Some(deadline)) {
+            return CmdResponse { tag: 0, status: status::TIMEOUT, payload: Vec::new() };
         }
-        let r = self.command_slot(handle, dir, b_request, w_value, w_index, w_length, payload, deadline);
-        *lock(&self.inner.inflight) -= 1;
-        self.inner.inflight_free.notify_one();
+        let r = match self.send_cmd(&spec) {
+            Ok(sent) => self.await_cmd(sent, deadline),
+            Err(r) => r,
+        };
+        self.free_slot();
         r
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn command_slot(
-        &self,
-        handle: u8,
-        dir: Dir,
-        b_request: u8,
-        w_value: u16,
-        w_index: u16,
-        w_length: u16,
-        payload: &[u8],
-        deadline: Instant,
-    ) -> CmdResponse {
+    // -- WP LK2 --
+    /// Tunnel several vendor requests with up to the hub's `max_inflight` of
+    /// them on the wire at once (spec 8.2), instead of one round trip each, and
+    /// answer them in order: what [`LinkClient::command`] would answer for
+    /// each. The hub runs a device's commands in the order sent (spec 8.2), so
+    /// this is meant for requests that do not depend on each other's answers:
+    /// the reads at bind. Slots are shared with every other caller, so a batch
+    /// never goes past the limit (no RATE_LIMITED). Each request has its own
+    /// timeout from the moment it is sent; a timed-out one is not repeated.
+    pub fn commands(&self, specs: &[CmdSpec]) -> Vec<CmdResponse> {
+        let mut out: Vec<Option<CmdResponse>> = vec![None; specs.len()];
+        let mut sent = std::collections::VecDeque::new();
+        let mut next = 0;
+        while next < specs.len() || !sent.is_empty() {
+            while let Some(spec) = specs.get(next) {
+                if !self.is_ready() {
+                    out[next] = Some(CmdResponse { tag: 0, status: status::NO_DEVICE, payload: Vec::new() });
+                    next += 1;
+                    continue;
+                }
+                let deadline = Instant::now() + self.timeout_of(spec.b_request);
+                // With answers of our own outstanding, only a free slot: never
+                // wait for one we hold ourselves
+                if !self.take_slot(sent.is_empty().then_some(deadline)) {
+                    if sent.is_empty() {
+                        out[next] = Some(CmdResponse { tag: 0, status: status::TIMEOUT, payload: Vec::new() });
+                        next += 1;
+                        continue;
+                    }
+                    break;
+                }
+                match self.send_cmd(spec) {
+                    Ok(s) => sent.push_back((next, s, deadline)),
+                    Err(r) => {
+                        self.free_slot();
+                        out[next] = Some(r);
+                    }
+                }
+                next += 1;
+            }
+            if let Some((i, s, deadline)) = sent.pop_front() {
+                out[i] = Some(self.await_cmd(s, deadline));
+                self.free_slot();
+            }
+        }
+        out.into_iter()
+            .map(|r| r.unwrap_or(CmdResponse { tag: 0, status: status::NO_DEVICE, payload: Vec::new() }))
+            .collect()
+    }
+
+    /// The hub's `max_inflight` (spec 8.2), at least 1.
+    pub fn max_inflight(&self) -> u32 {
+        self.inner.hello.limits.max_inflight.max(1)
+    }
+
+    fn timeout_of(&self, b_request: u8) -> Duration {
+        let timing = &self.inner.timing;
+        if BULK_OPCODES.contains(&b_request) {
+            timing.bulk_timeout
+        } else {
+            timing.request_timeout
+        }
+    }
+
+    /// Take one of the `max_inflight` slots: wait until `deadline` for one, or,
+    /// with `None`, only if one is free now. False when none was taken.
+    fn take_slot(&self, deadline: Option<Instant>) -> bool {
+        let limit = self.max_inflight();
+        let mut n = lock(&self.inner.inflight);
+        while *n >= limit {
+            let Some(deadline) = deadline else { return false };
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() || self.is_closed() {
+                return false;
+            }
+            n = self
+                .inner
+                .inflight_free
+                .wait_timeout(n, left.min(Duration::from_millis(200)))
+                .unwrap_or_else(|p| p.into_inner())
+                .0;
+        }
+        *n += 1;
+        true
+    }
+
+    fn free_slot(&self) {
+        let mut n = lock(&self.inner.inflight);
+        *n = n.saturating_sub(1);
+        drop(n);
+        self.inner.inflight_free.notify_one();
+    }
+
+    /// Send one CMD frame; its tag and where its answer will arrive, or the
+    /// answer when it could not go out.
+    fn send_cmd(&self, spec: &CmdSpec) -> Result<(u16, Receiver<CmdResponse>), CmdResponse> {
         let tag = {
             let mut t = lock(&self.inner.next_tag);
             let tag = *t;
@@ -742,23 +839,28 @@ impl LinkClient {
         // As in request_id: see socket_failed's order
         if self.is_closed() {
             lock(&self.inner.pending_cmd).remove(&tag);
-            return CmdResponse { tag, status: status::NO_DEVICE, payload: Vec::new() };
+            return Err(CmdResponse { tag, status: status::NO_DEVICE, payload: Vec::new() });
         }
         let frame = Frame::CmdRequest(CmdRequest {
             tag,
-            handle,
-            dir,
-            b_request,
-            w_value,
-            w_index,
-            w_length,
-            payload: payload.to_vec(),
+            handle: spec.handle,
+            dir: spec.dir,
+            b_request: spec.b_request,
+            w_value: spec.w_value,
+            w_index: spec.w_index,
+            w_length: spec.w_length,
+            payload: spec.payload.clone(),
         });
         if self.inner.sender.send(WsMessage::Binary(frame.encode())).is_err() {
             lock(&self.inner.pending_cmd).remove(&tag);
             self.socket_failed(None, "send failed");
-            return CmdResponse { tag, status: status::NO_DEVICE, payload: Vec::new() };
+            return Err(CmdResponse { tag, status: status::NO_DEVICE, payload: Vec::new() });
         }
+        Ok((tag, rx))
+    }
+
+    /// The answer to a frame [`Self::send_cmd`] sent, by `deadline`.
+    fn await_cmd(&self, (tag, rx): (u16, Receiver<CmdResponse>), deadline: Instant) -> CmdResponse {
         match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
             Ok(r) => r,
             Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -885,14 +987,10 @@ impl LinkClient {
     // ── Liveness ───────────────────────────────────────────────────────
 
     /// A request got no answer in time. That alone proves nothing (the device
-    /// may be slow behind a live hub), but it is the first sign of a half-open
-    /// link: probe it now instead of waiting out the silence limit.
+    /// may be slow behind a live hub, or Wi-Fi stalled for a while): ping now,
+    /// so that the silence limit is judged on fresh evidence (WP LK2).
     fn suspect(&self) {
-        let mut probe = lock(&self.inner.probe);
-        if probe.armed_at.is_none() {
-            probe.armed_at = Some(self.inner.clock.now());
-            probe.ping_wanted = true;
-        }
+        lock(&self.inner.probe).ping_wanted = true;
     }
 
     fn heard_from_hub(&self) {
@@ -900,14 +998,11 @@ impl LinkClient {
         *lock(&self.inner.probe) = Probe::default();
     }
 
-    /// Silence past the limit, or a probe left unanswered.
+    /// Silence past the limit (WP LK2: the only rule).
     fn link_is_dead(&self) -> bool {
-        let timing = &self.inner.timing;
         let now = self.inner.clock.now();
-        let armed_at = lock(&self.inner.probe).armed_at;
         let last_inbound = *lock(&self.inner.last_inbound);
-        now.saturating_duration_since(last_inbound) > timing.silence_limit
-            || armed_at.is_some_and(|t| now.saturating_duration_since(t) > timing.probe_timeout)
+        now.saturating_duration_since(last_inbound) > self.inner.timing.silence_limit
     }
 
     // ── Threads ────────────────────────────────────────────────────────

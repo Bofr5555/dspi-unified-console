@@ -31,11 +31,11 @@ use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
 use dspi_link::frames::CmdResponse;
-use dspi_link::{Dir, LinkClient, LinkError, NotifyItem, status};
+use dspi_link::{CmdSpec, Dir, LinkClient, LinkError, NotifyItem, status};
 use dspi_proto::generated::opcodes as op;
 
 use crate::{
-    Attributed, BUSY_BACKOFF, BUSY_RETRIES, DeviceDescriptor, NotificationSource, Result,
+    Attributed, BUSY_BACKOFF, BUSY_RETRIES, DeviceDescriptor, InRead, NotificationSource, Result,
     Transport, TransportCaps, TransportError,
 };
 
@@ -236,17 +236,47 @@ impl LinkTransport {
     }
 }
 
+// -- WP LK2 --
+/// One answer of a pipelined batch, as [`Transport::control_in`] or
+/// [`Transport::control_in_upto`] would give it. A busy status, or
+/// RATE_LIMITED (a slot the hub still counts for a request of ours that timed
+/// out), means the read did not run: it goes again on its own by `again`.
+fn batch_answer(
+    r: &InRead,
+    a: CmdResponse,
+    again: impl FnOnce() -> Result<Vec<u8>>,
+) -> Result<Vec<u8>> {
+    if is_busy(a.status) || a.status == status::RATE_LIMITED {
+        return again();
+    }
+    if let Some(e) = map_status(a.status, r.opcode) {
+        return Err(e);
+    }
+    let mut payload = a.payload;
+    payload.truncate(usize::from(r.len));
+    if r.exact {
+        exact_reply(r.opcode, r.len, payload)
+    } else {
+        Ok(payload)
+    }
+}
+
+/// `payload` as [`Transport::control_in`] answers it: refused when short.
+fn exact_reply(opcode: u8, len: u16, payload: Vec<u8>) -> Result<Vec<u8>> {
+    if payload.len() < usize::from(len) {
+        return Err(TransportError::ShortRead {
+            opcode,
+            wanted: usize::from(len),
+            got: payload.len(),
+        });
+    }
+    Ok(payload)
+}
+
 impl Transport for LinkTransport {
     fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> Result<Vec<u8>> {
         let payload = self.get(opcode, value, len, len)?;
-        if payload.len() < usize::from(len) {
-            return Err(TransportError::ShortRead {
-                opcode,
-                wanted: usize::from(len),
-                got: payload.len(),
-            });
-        }
-        Ok(payload)
+        exact_reply(opcode, len, payload)
     }
 
     fn control_in_upto(&mut self, opcode: u8, value: u16, max_len: u16) -> Result<Vec<u8>> {
@@ -336,6 +366,46 @@ impl Transport for LinkTransport {
         if std::mem::take(&mut self.locked) {
             self.client.lock_release(self.handle);
         }
+    }
+
+    // -- WP LK2 --
+    /// Up to the hub's `max_inflight` of the reads on the wire at once
+    /// ([`LinkClient::commands`]): one round trip for each window of them
+    /// instead of one each. A busy answer (spec 8.1) is retried on its own
+    /// through the busy window afterwards; a bulk read goes one at a time (it
+    /// may come from the snapshot).
+    fn control_in_batch(&mut self, reads: &[InRead]) -> Vec<Result<Vec<u8>>> {
+        let one = |t: &mut Self, r: &InRead| {
+            if r.exact {
+                t.control_in(r.opcode, r.value, r.len)
+            } else {
+                t.control_in_upto(r.opcode, r.value, r.len)
+            }
+        };
+        if reads.len() < 2
+            || self.client.max_inflight() < 2
+            || reads.iter().any(|r| r.opcode == op::REQ_GET_ALL_PARAMS)
+        {
+            return reads.iter().map(|r| one(self, r)).collect();
+        }
+        let specs: Vec<CmdSpec> = reads
+            .iter()
+            .map(|r| CmdSpec {
+                handle: self.handle,
+                dir: Dir::Get,
+                b_request: r.opcode,
+                w_value: r.value,
+                w_index: dspi_proto::VENDOR_INTERFACE,
+                w_length: r.len,
+                payload: Vec::new(),
+            })
+            .collect();
+        let answers = self.client.commands(&specs);
+        reads
+            .iter()
+            .zip(answers)
+            .map(|(r, a)| batch_answer(r, a, || one(self, r)))
+            .collect()
     }
 }
 
@@ -825,6 +895,113 @@ mod tests_wp_t5 {
             }
         });
         (r, calls)
+    }
+
+    // -- WP LK2 --
+    #[test]
+    fn wp_lk2_a_batch_answers_as_one_read_at_a_time_does() {
+        let hub = FakeHub::start(HubConfig {
+            max_inflight: 4,
+            ..HubConfig::default()
+        })
+        .unwrap();
+        let reads = [
+            InRead::exact(req::GET_PLATFORM, 0, 7),
+            InRead::upto(req::GET_PLATFORM, 0, 64),
+            InRead::exact(req::GET_PLATFORM, 0, 64),
+            InRead::exact(0xEE, 0, 4),
+            InRead::upto(req::GET_STATUS, 9, 41),
+            InRead::exact(req::GET_PLATFORM, 0, 4),
+        ];
+        let mut t = open(&hub);
+        let one: Vec<String> = reads
+            .iter()
+            .map(|r| {
+                let a = if r.exact {
+                    t.control_in(r.opcode, r.value, r.len)
+                } else {
+                    t.control_in_upto(r.opcode, r.value, r.len)
+                };
+                format!("{a:?}")
+            })
+            .collect();
+        let batch: Vec<String> = t
+            .control_in_batch(&reads)
+            .iter()
+            .map(|a| format!("{a:?}"))
+            .collect();
+        assert_eq!(batch, one);
+        assert!(batch[2].contains("ShortRead"), "{}", batch[2]);
+        assert!(batch[3].contains("Stalled"), "{}", batch[3]);
+    }
+
+    #[test]
+    fn wp_lk2_a_batch_keeps_at_most_max_inflight_on_the_wire() {
+        let hub = FakeHub::start(HubConfig {
+            max_inflight: 4,
+            ..HubConfig::default()
+        })
+        .unwrap();
+        let mut t = open(&hub);
+        let base = hub.log().len();
+        hub.hold_replies();
+        let reads = vec![InRead::exact(req::GET_PLATFORM, 0, 7); 10];
+        let batch = std::thread::spawn(move || t.control_in_batch(&reads));
+        assert!(wait(|| hub.log().len() == base + 4), "four out at once");
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(hub.log().len(), base + 4, "and no more (no RATE_LIMITED)");
+        hub.release_replies();
+        let answers = batch.join().unwrap();
+        assert_eq!(answers.len(), 10);
+        assert!(
+            answers
+                .iter()
+                .all(|a| a.as_ref().is_ok_and(|d| d.len() == 7))
+        );
+        assert_eq!(hub.log().len(), base + 10);
+    }
+
+    #[test]
+    fn wp_lk2_a_batch_retries_what_did_not_run_and_nothing_else() {
+        let r = InRead::exact(0x7F, 0, 3);
+        let answer = |status, payload: Vec<u8>| CmdResponse {
+            tag: 1,
+            status,
+            payload,
+        };
+        for s in [
+            status::BUSY,
+            status::BULK_LOCKED,
+            status::CRC_ERROR,
+            status::RATE_LIMITED,
+        ] {
+            let again = batch_answer(&r, answer(s, Vec::new()), || Ok(vec![1, 2, 3]));
+            assert_eq!(again.unwrap(), vec![1, 2, 3], "0x{s:02X} goes again");
+        }
+        for s in [status::TIMEOUT, status::ERROR, status::NO_DEVICE] {
+            let mut retried = false;
+            let e = batch_answer(&r, answer(s, Vec::new()), || {
+                retried = true;
+                Ok(Vec::new())
+            });
+            assert!(
+                e.is_err() && !retried,
+                "0x{s:02X} is not repeated: it may have run"
+            );
+        }
+        assert!(matches!(
+            batch_answer(&r, answer(status::OK, vec![9; 2]), || unreachable!()),
+            Err(TransportError::ShortRead { got: 2, .. })
+        ));
+        assert_eq!(
+            batch_answer(
+                &InRead::upto(0x7F, 0, 3),
+                answer(status::OK, vec![9; 5]),
+                || unreachable!()
+            )
+            .unwrap(),
+            vec![9; 3]
+        );
     }
 
     #[test]

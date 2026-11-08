@@ -694,7 +694,10 @@ fn connect_quick(core: &DspiCore, hub: &FakeHub) {
         Tuning {
             timing: Timing {
                 request_timeout: Duration::from_millis(400),
-                probe_timeout: Duration::from_millis(300),
+                // -- WP LK2 -- only silence ends a session now: a short limit,
+                // and pings often enough that a live hub's pongs beat it
+                silence_limit: Duration::from_millis(700),
+                ping_interval: Duration::from_millis(100),
                 ..Timing::default()
             },
             backoff_divisor: FAST,
@@ -730,7 +733,7 @@ fn wp_c15_a_stalled_hub_is_noticed_and_reconnected() {
     let start = Instant::now();
     assert!(core.set_master_volume(-30.0).is_err());
     assert!(start.elapsed() < Duration::from_secs(2), "bounded");
-    wait_until("the probe to fail", || {
+    wait_until("the silence limit", || {
         core.link_status().phase == LinkPhase::Reconnecting
     });
     hub.stall(false);

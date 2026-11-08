@@ -82,7 +82,6 @@ impl Target {
                 bulk_timeout: d.bulk_timeout / self.scale,
                 ping_interval: d.ping_interval / self.scale,
                 silence_limit: d.silence_limit / self.scale,
-                probe_timeout: d.probe_timeout / self.scale,
                 keepalive_tick: d.keepalive_tick / self.scale,
                 connect_budget: d.connect_budget / self.scale,
             }

@@ -22,13 +22,15 @@
 //!
 //! Owned by WP C2 (docs/core-merge/PLAN.md).
 
+use std::sync::Arc;
+
 use dspi_transport::clock::Instant;
 
 use dspi_proto::generated::opcodes as op;
 use dspi_proto::wire::WireError;
 use dspi_proto::wire_compat::{self, WireRead};
 use dspi_session::WriteError;
-use dspi_transport::TransportError;
+use dspi_transport::{InRead, TransportError};
 
 use crate::consts::*;
 use crate::records::*;
@@ -198,24 +200,31 @@ impl DspiCore {
     /// [`DspiError::Transfer`] when the read fails or the reply is shorter
     /// than `num_channels * 2 + 6` bytes.
     pub fn fetch_status(&self) -> Result<SystemStatus> {
-        let (n, want, len, side) = {
-            let mut guard = self.lock();
-            let inner = &mut *guard;
-            let n = usize::from(inner.state.num_channels).min(MAX_CHANNELS);
-            let conn = inner.conn.as_mut().ok_or(DspiError::Disconnected)?;
-            // n <= 17: at most 41 bytes.
-            let want = n.saturating_mul(2).saturating_add(7);
-            let len = u16::try_from(want).unwrap_or(u16::MAX);
-            match conn.side.clone() {
-                Some(side) => (n, want, len, side),
-                None => {
-                    let data = conn.get_upto(op::REQ_GET_STATUS, STATUS_METERS, len)?;
-                    return parse_status(&data, n).ok_or_else(|| {
-                        short(op::REQ_GET_STATUS, want.saturating_sub(1), data.len())
-                    });
-                }
-            }
+        // WP LK2: over DSPi Link this never waits for the core lock, so the
+        // meters keep going while `fetch_all`, `cs_fetch` or a re-read after a
+        // resync runs on another thread (call it from a thread of its own).
+        // When another call holds the lock, the meter path recorded with the
+        // side channel serves. Elsewhere it takes the lock for its one
+        // transfer. (A comment, not doc: the bindings' docs stay as they are.)
+        let (n, side, old) = match self.try_lock() {
+            Some(guard) => match self.status_locked(guard)? {
+                Locked::Done(status) => return Ok(status),
+                Locked::Side(n, side, old) => (n, side, old),
+            },
+            None => match self.meter_path() {
+                Some(path) => (usize::from(path.num_channels), path.side, None),
+                // USB, MIDI, the demo: their reads need the lock anyway
+                None => match self.status_locked(self.lock())? {
+                    Locked::Done(status) => return Ok(status),
+                    Locked::Side(n, side, old) => (n, side, old),
+                },
+            },
         };
+        drop(old);
+        let n = n.min(MAX_CHANNELS);
+        // n <= 17: at most 41 bytes.
+        let want = n.saturating_mul(2).saturating_add(7);
+        let len = u16::try_from(want).unwrap_or(u16::MAX);
         // DSPi Link: the hub's poll feed, with the core lock released. No
         // recent frame reads as zero, not as an error or a frozen meter, and is
         // flagged `stale`: it is not real silence.
@@ -257,6 +266,41 @@ impl DspiCore {
         let conn = guard.conn()?;
         conn.get_upto(op::REQ_CLEAR_CLIPS, 0, 4)?;
         Ok(())
+    }
+}
+
+// -- WP LK2 --
+/// What [`DspiCore::fetch_status`] found with the lock held.
+enum Locked {
+    /// Read directly (USB, MIDI, the demo).
+    Done(SystemStatus),
+    /// Over the side channel, with this many channels, after the lock is
+    /// released; and the meter path this replaced, to drop after it too.
+    Side(usize, Arc<dyn crate::SideChannel>, Option<crate::MeterPath>),
+}
+
+impl DspiCore {
+    /// [`DspiCore::fetch_status`] with the lock: a direct read, or the side
+    /// channel to read with it released. Records the side channel's meter path.
+    fn status_locked(&self, mut guard: std::sync::MutexGuard<'_, Inner>) -> Result<Locked> {
+        let inner = &mut *guard;
+        let n = usize::from(inner.state.num_channels).min(MAX_CHANNELS);
+        let num_channels = inner.state.num_channels;
+        let conn = inner.conn.as_mut().ok_or(DspiError::Disconnected)?;
+        let Some(side) = conn.side.clone() else {
+            // n <= 17: at most 41 bytes.
+            let want = n.saturating_mul(2).saturating_add(7);
+            let len = u16::try_from(want).unwrap_or(u16::MAX);
+            let data = conn.get_upto(op::REQ_GET_STATUS, STATUS_METERS, len)?;
+            return parse_status(&data, n)
+                .map(Locked::Done)
+                .ok_or_else(|| short(op::REQ_GET_STATUS, want.saturating_sub(1), data.len()));
+        };
+        let old = self.set_meter_path(Some(crate::MeterPath {
+            num_channels,
+            side: Arc::clone(&side),
+        }));
+        Ok(Locked::Side(n, side, old))
     }
 }
 
@@ -343,16 +387,67 @@ fn reset_per_item(s: &mut DspState) {
 
 /// The values the image does not carry. Each is optional: firmware that
 /// lacks one stalls, and the default stays.
+///
+/// WP LK2: in two batches ([`dspi_transport::Transport::control_in_batch`]),
+/// pipelined over DSPi Link (two windows of round trips instead of fifteen).
+/// Elsewhere the transfers go one at a time in the order they always did: Core
+/// 1 mode, subharm solo, DAC mute, the control interfaces' status, then their
+/// UART and I2C configs only if the status answered, the preset directory and
+/// the names. The one difference: a UART config that fails after the status
+/// answered no longer skips the I2C read.
 fn read_per_item(conn: &mut Connection, s: &mut DspState) {
-    let _ = read_core1_mode(conn, s);
-    let _ = read_subharm_solo(conn, s);
-    let _ = read_dac_mute(conn, s);
-    let _ = read_ctrl_ifaces(conn, s);
-    let _ = read_preset_directory(conn, s);
-    for slot in 0..MAX_PRESETS {
-        if let Ok(slot) = u8::try_from(slot) {
-            let _ = read_preset_name(conn, s, slot);
+    let first = conn.transport().control_in_batch(&[
+        InRead::upto(op::REQ_GET_CORE1_MODE, 0, 1),
+        InRead::upto(op::REQ_GET_SUBHARM_SOLO, 0, 1),
+        InRead::upto(op::REQ_GET_DAC_HW_MUTE_CONFIG, 0, 16),
+        InRead::upto(op::REQ_GET_CTRL_IFACE_STATUS, 0, 8),
+    ]);
+    let mut first = first.into_iter().map(|r| r.map_err(DspiError::from));
+    let mut next = || first.next().unwrap_or(Err(DspiError::Disconnected));
+    if let Ok(d) = at_least(op::REQ_GET_CORE1_MODE, next(), 1) {
+        apply_core1_mode(&d, s);
+    }
+    if let Ok(d) = at_least(op::REQ_GET_SUBHARM_SOLO, next(), 1) {
+        apply_subharm_solo(&d, s);
+    }
+    if let Ok(d) = at_least(op::REQ_GET_DAC_HW_MUTE_CONFIG, next(), DAC_MUTE_REPLY) {
+        apply_dac_mute(&d, s);
+    }
+    let status = at_least(op::REQ_GET_CTRL_IFACE_STATUS, next(), 5);
+    if status.is_err() {
+        s.ctrl_iface_supported = false;
+    }
+
+    let mut reads = Vec::new();
+    if status.is_ok() {
+        reads.push(InRead::upto(op::REQ_GET_UART_CONFIG, 0, 8));
+        reads.push(InRead::upto(op::REQ_GET_I2C_CONFIG, 0, 8));
+    }
+    reads.push(InRead::upto(op::REQ_PRESET_GET_DIR, 0, 7));
+    let name_len = u16::try_from(CHANNEL_NAME_LEN).unwrap_or(u16::MAX);
+    let slots: Vec<u8> = (0..MAX_PRESETS)
+        .filter_map(|slot| u8::try_from(slot).ok())
+        .collect();
+    reads.extend(
+        slots
+            .iter()
+            .map(|slot| InRead::upto(op::REQ_PRESET_GET_NAME, u16::from(*slot), name_len)),
+    );
+    let second = conn.transport().control_in_batch(&reads);
+    let mut second = second.into_iter().map(|r| r.map_err(DspiError::from));
+    let mut next = || second.next().unwrap_or(Err(DspiError::Disconnected));
+    if let Ok(st) = status {
+        let u = at_least(op::REQ_GET_UART_CONFIG, next(), 8);
+        let i = at_least(op::REQ_GET_I2C_CONFIG, next(), 4);
+        if let (Ok(u), Ok(i)) = (u, i) {
+            apply_ctrl_ifaces(&st, &u, &i, s);
         }
+    }
+    if let Ok(d) = at_least(op::REQ_PRESET_GET_DIR, next(), 5) {
+        apply_preset_directory(&d, s);
+    }
+    for slot in slots {
+        apply_preset_name(next().map(|d| name_from(&d)).as_ref(), s, slot);
     }
     // -- WP CG13 --
     crate::info::read_source_names(conn);
@@ -457,7 +552,12 @@ fn read_min(
     len: u16,
     min: usize,
 ) -> Result<Vec<u8>> {
-    let d = conn.get_upto(opcode, value, len)?;
+    at_least(opcode, conn.get_upto(opcode, value, len), min)
+}
+
+/// A reply that must bring at least `min` bytes.
+fn at_least(opcode: u8, reply: Result<Vec<u8>>, min: usize) -> Result<Vec<u8>> {
+    let d = reply?;
     if d.len() < min {
         return Err(short(opcode, min, d.len()));
     }
@@ -487,15 +587,18 @@ pub(crate) fn read_platform(conn: &mut Connection, s: &mut DspState) -> Result<(
 /// `REQ_GET_CORE1_MODE` into `core1_mode`.
 pub(crate) fn read_core1_mode(conn: &mut Connection, s: &mut DspState) -> Result<u8> {
     let d = read_min(conn, op::REQ_GET_CORE1_MODE, 0, 1, 1)?;
-    s.core1_mode = byte(&d, 0);
-    Ok(s.core1_mode)
+    Ok(apply_core1_mode(&d, s))
 }
 
-/// `REQ_GET_SUBHARM_SOLO` into `subharm_solo`.
-pub(crate) fn read_subharm_solo(conn: &mut Connection, s: &mut DspState) -> Result<bool> {
-    let d = read_min(conn, op::REQ_GET_SUBHARM_SOLO, 0, 1, 1)?;
-    s.subharm_solo = byte(&d, 0) != 0;
-    Ok(s.subharm_solo)
+fn apply_core1_mode(d: &[u8], s: &mut DspState) -> u8 {
+    s.core1_mode = byte(d, 0);
+    s.core1_mode
+}
+
+/// A `REQ_GET_SUBHARM_SOLO` reply into `subharm_solo`.
+fn apply_subharm_solo(d: &[u8], s: &mut DspState) -> bool {
+    s.subharm_solo = byte(d, 0) != 0;
+    s.subharm_solo
 }
 
 /// `REQ_GET_DAC_HW_MUTE_CONFIG` (8 bytes): marks the DAC mute supported and
@@ -504,12 +607,18 @@ pub(crate) fn read_subharm_solo(conn: &mut Connection, s: &mut DspState) -> Resu
 /// would re-apply them); nothing else in `bulk_raw` changes.
 pub(crate) fn read_dac_mute(conn: &mut Connection, s: &mut DspState) -> Result<()> {
     let d = read_min(conn, op::REQ_GET_DAC_HW_MUTE_CONFIG, 0, 16, DAC_MUTE_REPLY)?;
+    apply_dac_mute(&d, s);
+    Ok(())
+}
+
+/// [`read_dac_mute`]'s reply (at least [`DAC_MUTE_REPLY`] bytes) into `s`.
+fn apply_dac_mute(d: &[u8], s: &mut DspState) {
     s.dac_mute_supported = true;
-    s.dac_mute_enabled = byte(&d, 0) != 0;
-    s.dac_mute_active_low = byte(&d, 1) != 0;
-    s.dac_mute_pin = byte(&d, 2);
-    s.dac_mute_hold_ms = u16_at(&d, 4);
-    s.dac_mute_release_ms = u16_at(&d, 6);
+    s.dac_mute_enabled = byte(d, 0) != 0;
+    s.dac_mute_active_low = byte(d, 1) != 0;
+    s.dac_mute_pin = byte(d, 2);
+    s.dac_mute_hold_ms = u16_at(d, 4);
+    s.dac_mute_release_ms = u16_at(d, 6);
     if s.bulk_valid {
         let at = dspi_proto::generated::OFF_DAC_HW_MUTE;
         let n = DAC_MUTE_REPLY.min(dspi_proto::generated::LEN_DAC_HW_MUTE);
@@ -521,7 +630,6 @@ pub(crate) fn read_dac_mute(conn: &mut Connection, s: &mut DspState) -> Result<(
             dst.copy_from_slice(src);
         }
     }
-    Ok(())
 }
 
 /// The control interfaces: status (5 bytes), UART config (8) and I2C
@@ -537,28 +645,33 @@ pub(crate) fn read_ctrl_ifaces(conn: &mut Connection, s: &mut DspState) -> Resul
     };
     let u = read_min(conn, op::REQ_GET_UART_CONFIG, 0, 8, 8)?;
     let i = read_min(conn, op::REQ_GET_I2C_CONFIG, 0, 8, 4)?;
+    apply_ctrl_ifaces(&st, &u, &i, s);
+    Ok(())
+}
+
+/// The three replies of [`read_ctrl_ifaces`] (status, UART, I2C) into `s`.
+fn apply_ctrl_ifaces(st: &[u8], u: &[u8], i: &[u8], s: &mut DspState) {
     s.ctrl_iface_supported = true;
     s.ctrl_status = CtrlIfaceStatus {
-        uart_last_status: byte(&st, 0),
-        uart_live: byte(&st, 1) != 0,
-        i2c_last_status: byte(&st, 2),
-        i2c_live: byte(&st, 3) != 0,
-        protocol_version: byte(&st, 4),
+        uart_last_status: byte(st, 0),
+        uart_live: byte(st, 1) != 0,
+        i2c_last_status: byte(st, 2),
+        i2c_live: byte(st, 3) != 0,
+        protocol_version: byte(st, 4),
     };
     s.uart = UartConfig {
-        enabled: byte(&u, 0) != 0,
-        tx_pin: byte(&u, 1),
-        rx_pin: byte(&u, 2),
-        notify: byte(&u, 3) != 0,
-        baud: u32_at(&u, 4),
+        enabled: byte(u, 0) != 0,
+        tx_pin: byte(u, 1),
+        rx_pin: byte(u, 2),
+        notify: byte(u, 3) != 0,
+        baud: u32_at(u, 4),
     };
     s.i2c = I2cConfig {
-        enabled: byte(&i, 0) != 0,
-        sda_pin: byte(&i, 1),
-        scl_pin: byte(&i, 2),
-        address: byte(&i, 3),
+        enabled: byte(i, 0) != 0,
+        sda_pin: byte(i, 1),
+        scl_pin: byte(i, 2),
+        address: byte(i, 3),
     };
-    Ok(())
 }
 
 /// `REQ_PRESET_GET_DIR` (5 to 7 bytes) into the preset fields, the active
@@ -569,11 +682,16 @@ pub(crate) fn read_preset_directory(
     s: &mut DspState,
 ) -> Result<PresetDirectory> {
     let d = read_min(conn, op::REQ_PRESET_GET_DIR, 0, 7, 5)?;
+    Ok(apply_preset_directory(&d, s))
+}
+
+/// A `REQ_PRESET_GET_DIR` reply (at least 5 bytes) into `s`.
+fn apply_preset_directory(d: &[u8], s: &mut DspState) -> PresetDirectory {
     let dir = PresetDirectory {
-        occupied_mask: u16_at(&d, 0),
-        startup_mode: byte(&d, 2),
-        default_slot: byte(&d, 3),
-        last_active: byte(&d, 4),
+        occupied_mask: u16_at(d, 0),
+        startup_mode: byte(d, 2),
+        default_slot: byte(d, 3),
+        last_active: byte(d, 4),
         output_config_mode: d.get(5).copied().unwrap_or(1),
         master_volume_mode: d.get(6).copied().unwrap_or(0),
     };
@@ -583,7 +701,7 @@ pub(crate) fn read_preset_directory(
     s.active_preset_slot = dir.last_active;
     s.output_config_mode = dir.output_config_mode;
     s.master_volume_mode = dir.master_volume_mode;
-    Ok(dir)
+    dir
 }
 
 /// `REQ_PRESET_GET_NAME` of `slot` into `preset_names[slot]`. An empty slot
@@ -604,16 +722,22 @@ pub(crate) fn read_preset_name(
     let name = conn
         .get_upto(op::REQ_PRESET_GET_NAME, u16::from(slot), len)
         .map(|d| name_from(&d));
+    apply_preset_name(name.as_ref(), s, slot);
+    name
+}
+
+/// `slot`'s name read, or empty when the read failed (an empty slot stalls).
+/// A slot past `MAX_PRESETS` is ignored.
+fn apply_preset_name(name: std::result::Result<&String, &DspiError>, s: &mut DspState, slot: u8) {
     if s.preset_names.len() < MAX_PRESETS {
         s.preset_names.resize(MAX_PRESETS, String::new());
     }
-    if let Some(n) = s.preset_names.get_mut(index) {
-        match &name {
+    if let Some(n) = s.preset_names.get_mut(usize::from(slot)) {
+        match name {
             Ok(v) => n.clone_from(v),
             Err(_) => n.clear(),
         }
     }
-    name
 }
 
 /// A name buffer: UTF-8 (lossy) up to the first NUL, at most 31 bytes.
