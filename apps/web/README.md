@@ -11,7 +11,7 @@ WebUSB (WB4a, Chromium only; tested on a WebUSB mock, real hardware is WB8),
 and DSPis behind hubs over DSPi Link (WB4b; tested against dspi-link's fake hub
 behind a host that enforces the hub's `Origin` rule, in Chromium and Firefox; a
 real hub serving this page is WB7). The screens of the other clients arrive in
-WB6 slices. Nothing here is published.
+WB6 slices; the first, the main window (WB6a), is in. Nothing here is published.
 
 ## What it is for
 
@@ -150,6 +150,38 @@ Link address; the standalone page lists it first), or a fleet server's page
 whose server carries Link to its hubs through its own origin. A standalone page
 can list any hub, but only hubs without the check answer it.
 
+## The main window (WB6a)
+
+`src/screens/main/`, one per session, inside its view (`src/ui/screens.tsx`
+lists a session's screens; the tab row appears once a slice adds a second).
+The macOS Console's main window is the floor:
+
+- **Volume**: User or Master Volume (the Console's sidebar choice, kept for this
+  viewer in the page's storage), on the Console's tapers (the user volume's
+  square root over -60..0 dB; the firmware's master steps down to -128, shown as
+  −∞); Mute and Bypass. While a slider moves, each new position is written once
+  the one before has been read back (the newest wins); let go, it shows the
+  device's value. A double or secondary click puts it back at 0 dB.
+- **Presets**: the slot picker ("3: Living room", "4: Empty"), the Console's
+  slot menu (Save, Rename…, Set as Default, Copy to…, Clear, Clear All Slots…)
+  and its Tools entries (Commit Parameters…, Revert to Saved…, Factory
+  Reset…), each asked first as on the Mac. Before a switch, a Copy to or a
+  Disconnect with unsaved changes, the Console's prompt (Save, Discard, Cancel)
+  lists the core's own sentences (`presetChanges`); leaving the page then asks
+  the browser's own question.
+- **Inputs and outputs**: the live inputs as the Console counts them (by source;
+  on USB what the device streams) and the enabled outputs; each with its name
+  (click to rename), its trim (`pre` or `out.gain`, ranges from the core's
+  registry) and, for an output, its mute.
+
+Every change goes through the core (`write` by registry path, or a preset call)
+and the page shows what the device kept. A read-only session (a viewer, or
+firmware the core only reads) shows everything with the controls off; only
+which volume is shown stays the viewer's. The parts redraw only when what they
+show changes (the meters and the rest of the device's state do not reach them),
+rows keep one height whatever their state, and at 375 px the cards stack in one
+column with the slot and tools entries in one menu button.
+
 ## Embedding in a fleet server
 
 ```js
@@ -206,7 +238,8 @@ e2e's host; `DSPI_FAKEHUB` names the binary, which `tools/ci.sh` builds).
 
 `dist/` holds `index.html` and `app.js` (the standalone page), `dspi-web.js` (the
 library), `worker.js`, `dspi_wasm.wasm` (the core: 1 086 KB, 362 KB gzip with WebUSB and Link) and
-`dspi-web.css`. A host serves `dspi_wasm.wasm` beside `worker.js`. The page needs
+`dspi-web.css`. A host serves `dspi_wasm.wasm` beside `worker.js`. (With WB6a's
+preset calls the core is 1 126 KB, 373 KB gzip.) The page needs
 JSPI (Chrome 137, Firefox 153, Safari 27); without it every call says so. Preact (MIT) is the one runtime
 dependency. Its notice is not yet in the licence inventory (`ci/licence-inventory.py`
 covers the Rust and iOS sides); that belongs with WB7, before anything is served.
@@ -226,6 +259,8 @@ covers the Rust and iOS sides); that belongs with WB7, before anything is served
 | `src/fleet/hub-tokens.ts` | hub tokens: this page's storage, or the fleet's credentials (WB4b) |
 | `src/fleet/` | installations, sources, access; `LocalBackend`; what this page can reach |
 | `src/ui/` | Preact components and the session model |
+| `src/ui/screens.tsx` | a session's screens (WB6 slices) |
+| `src/screens/main/` | the main window (WB6a): volume, presets, inputs and outputs; `model.ts` the tapers and layout |
 | `src/index.tsx` | `mount()` and the public types |
 | `src/standalone.ts`, `index.html` | the standalone page (`?readonly` for a display page) |
 | `test/unit/` | `node --test` |

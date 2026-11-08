@@ -38,6 +38,13 @@ Integration. The crate docs (`src/lib.rs`) have the details.
   the answer is read back from the device's image. Routed paths so far:
   `vol.user`, `vol.mute`, `vol.master`, `pre`, `bypass`, `out.gain`, `out.mute`,
   `loud.on`, `loud.ref`, `loud.intensity`; WB6's slices add the rest.
+- **Presets** (WB6a, `src/presets.rs`): `presetChanges` (`{dirty, changes}`,
+  the core's sentences, CG7), `presetCopy {source, dest}`, `presetRevert` and
+  `factoryReset` (the page asks the user first). Save, load, delete, names and
+  the startup slot are `write`s (`preset.*`). `open` of the demo or a USB DSPi
+  ends with the core's `fetch_all`, as every other client's connect does: the
+  preset directory and names and the other reads outside the image, and the
+  baseline the unsaved-changes check compares with (a hub DSPi had it already).
 
 ## Build and test
 
@@ -54,6 +61,9 @@ call that suspends; `test.panic`) for the binding's own tests. The page never
 loads it.
 
 ## Size
+
+With WB6a's preset calls, 2026-11-08: **1 125 650 bytes, 372 668 gzip**
+(+40 KB, +10 KB gzip: the preset diff and the copy, revert and reset flows).
 
 With WebUSB and Link (WB4b), 2026-11-08: **1 085 783 bytes, 362 302 gzip**
 (`gzip -9`). Link adds 433 KB, 130 KB gzip: `dspi-link`, the core's Link

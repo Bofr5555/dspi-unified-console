@@ -10,6 +10,7 @@
 import {
   CoreCallError,
   type CoreEvent,
+  type CoreMethods,
   type DeviceSnapshot,
   type DeviceTarget,
   type LinkDeviceRecord,
@@ -38,6 +39,10 @@ export interface SessionState {
   /** Why the last PIN was not taken. */
   pinError: string;
 }
+
+// -- WP WB6a --
+/** The calls `Session.change` makes. */
+export type ChangeMethod = "presetCopy" | "presetRevert" | "factoryReset";
 
 /** The parameters whose ranges the skeleton's controls need. */
 const SHOWN_PARAMS = ["vol.user"];
@@ -158,19 +163,57 @@ export class Session {
     );
   }
 
-  /** Writes and shows what the device read back; a refusal leaves the old value shown. */
-  async write(path: string, value: ParamValue, indices?: number[]): Promise<void> {
+  /**
+   * Writes and shows what the device read back; a refusal leaves the old value
+   * shown. -- WP WB6a -- Answers whether the write went through.
+   */
+  async write(path: string, value: ParamValue, indices?: number[]): Promise<boolean> {
     if (this.readOnlyReason) {
       this.set({ error: this.readOnlyReason });
-      return;
+      return false;
     }
     try {
       await this.core.call("write", indices ? { path, indices, value } : { path, value });
       const snapshot = await this.core.call("state", undefined);
       this.set({ snapshot, error: "" });
+      return true;
     } catch (e) {
       this.set({ error: message(e) });
+      return false;
     }
+  }
+
+  // -- WP WB6a --
+  /**
+   * A core call that changes the device without a path (the preset flows:
+   * `presetCopy`, `presetRevert`, `factoryReset`), then the read-back, as
+   * `write`. Refused while read only. Answers whether it went through.
+   */
+  async change<M extends ChangeMethod>(method: M, params: CoreMethods[M]["params"]): Promise<boolean> {
+    if (this.readOnlyReason) {
+      this.set({ error: this.readOnlyReason });
+      return false;
+    }
+    try {
+      await this.core.call(method, params);
+      const snapshot = await this.core.call("state", undefined);
+      this.set({ snapshot, error: "" });
+      return true;
+    } catch (e) {
+      this.set({ error: message(e) });
+      return false;
+    }
+  }
+
+  /**
+   * Asked before the user closes this session (Disconnect): a screen with
+   * something unsaved sets it (the main window's unsaved-changes guard, M42).
+   * Answers whether to go on.
+   */
+  leaveGuard: (() => Promise<boolean>) | null = null;
+
+  async mayLeave(): Promise<boolean> {
+    return this.leaveGuard ? this.leaveGuard() : true;
   }
 
   async close(): Promise<void> {

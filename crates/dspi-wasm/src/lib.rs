@@ -47,6 +47,8 @@ pub mod calls;
 pub mod guard;
 // -- WP WB4b --
 pub mod link;
+// -- WP WB6a --
+pub mod presets;
 // -- WP WB4a --
 pub mod usb;
 pub mod write;

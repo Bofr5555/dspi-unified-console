@@ -25,6 +25,8 @@ use serde_json::{Value, json};
 use crate::guard::{self, Refusal};
 // -- WP WB4b --
 use crate::link;
+// -- WP WB6a --
+use crate::presets;
 // -- WP WB4a --
 use crate::usb;
 use crate::write;
@@ -235,6 +237,11 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "rtaTick" => rta_tick(&core),
         "rta" => Ok(rta(&core)),
         "demo" => demo_action(&core, demo, params(req.params)?),
+        // -- WP WB6a -- the preset flows `write` does not cover (src/presets.rs)
+        "presetChanges" => presets::changes(&core),
+        "presetCopy" => presets::copy(&core, params(req.params)?),
+        "presetRevert" => presets::revert(&core),
+        "factoryReset" => presets::factory_reset(&core),
         "close" => {
             core.disconnect();
             set_demo(h, false);
@@ -325,6 +332,8 @@ fn open(h: u32, core: &DspiCore, target: Target) -> CallResult {
             // -- WP WB4b -- (c6g N1) whatever this session had on USB or a hub is not it
             usb::closed(h);
             link::forget(h);
+            // -- WP WB6a --
+            presets::opened(core)?;
             Ok(snapshot(core, true))
         }
         // -- WP WB4a --
@@ -332,6 +341,8 @@ fn open(h: u32, core: &DspiCore, target: Target) -> CallResult {
             link::forget(h);
             usb::open(h, core, t)?;
             set_demo(h, false);
+            // -- WP WB6a --
+            presets::opened(core)?;
             Ok(usb::with_serial(h, snapshot(core, false)))
         }
         // -- WP WB4b --

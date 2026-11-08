@@ -121,6 +121,22 @@ export interface DspState {
   channelNames: string[];
   presetNames: string[];
   activePresetSlot: number;
+  // -- WP WB6a -- the main window's
+  /** 0 independent, 1 saved with the preset (the registry's `vol.master.mode`). */
+  masterVolumeMode: number;
+  /** Bit per slot: the slot holds a preset. */
+  presetOccupied: number;
+  /** 0 the default slot at power on, 1 the last active one. */
+  presetStartupMode: number;
+  presetDefaultSlot: number;
+  /** Per input (wire channels 0..numInputChannels). */
+  inputPreampDb: number[];
+  /** Per output (wire channel numInputChannels + output). */
+  outputEnabled: boolean[];
+  /** 0 USB, 1 S/PDIF, 2 I2S, 3 ADAT, 4..6 S/PDIF 2..4 (the registry's `in.source`). */
+  inputSource: number;
+  /** The configured I2S input channel count (2, 4, 6, 8). */
+  i2sInputChannels: number;
   [field: string]: unknown;
 }
 
@@ -263,6 +279,15 @@ export interface CoreMethods {
   linkPair: { params: { pin: string }; result: { token: string } };
   linkDevices: { params: undefined; result: LinkDeviceRecord[] };
   linkStatus: { params: undefined; result: LinkStatusRecord };
+  // -- WP WB6a -- the preset flows `write` does not cover (crates/dspi-wasm/src/presets.rs)
+  /** The live state against the active preset: the core's sentences (CG7), empty when it matches. */
+  presetChanges: { params: undefined; result: { dirty: boolean; changes: string[] } };
+  /** Copy to: the live state into `dest`, `source` stays active. Writes flash twice. */
+  presetCopy: { params: { source: number; dest: number }; result: null };
+  /** Revert to Saved: reload the active preset. */
+  presetRevert: { params: undefined; result: null };
+  /** Factory Reset, once the user confirmed it: the defaults; stored presets are kept. */
+  factoryReset: { params: undefined; result: null };
   /** Tests only: make the stub core lose its link. The real core answers `unknown_method`. */
   simulate: { params: { what: "link-lost" | "link-closed" }; result: null };
 }

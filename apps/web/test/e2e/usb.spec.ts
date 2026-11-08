@@ -52,10 +52,12 @@ test("WB4a: two DSPis on USB at once: the picker, an allowed DSPi, write with re
   await expect(session.locator(".volume-value")).toHaveText("0.0 dB");
 
   // A write, read back from the device.
+  // -- WP WB6a -- the main window's slider is the Console's taper: position 128 of 200 is -12 dB,
+  // 50 is -30 dB, 98 is -18 dB
   const slider = session.getByRole("slider", { name: "Volume" });
-  await slider.fill("-12.5");
+  await slider.fill("128");
   await slider.dispatchEvent("change");
-  await expect(session.locator(".volume-value")).toHaveText("-12.5 dB");
+  await expect(session.locator(".volume-value")).toHaveText("-12.0 dB");
 
   // A change at the device arrives as a notification.
   await mock(page, "renameElsewhere", "MOCKA001", "Stage left");
@@ -67,11 +69,11 @@ test("WB4a: two DSPis on USB at once: the picker, an allowed DSPi, write with re
   await expect(tabs).toHaveCount(2);
   await expect(session.locator(".device-meta")).toHaveText("RP2350 · firmware 1.1.6 · MOCKB002");
   await expect(session.locator(".volume-value")).toHaveText("0.0 dB");
-  await slider.fill("-30");
+  await slider.fill("50");
   await slider.dispatchEvent("change");
   await expect(session.locator(".volume-value")).toHaveText("-30.0 dB");
   await tabs.filter({ hasText: "Stage left" }).click();
-  await expect(session.locator(".volume-value")).toHaveText("-12.5 dB");
+  await expect(session.locator(".volume-value")).toHaveText("-12.0 dB");
 
   // Unplug A: its session ends in the core's words, it leaves the list, B goes on.
   await mock(page, "unplug", "MOCKA001");
@@ -79,9 +81,9 @@ test("WB4a: two DSPis on USB at once: the picker, an allowed DSPi, write with re
   await expect(rowA).toHaveCount(0);
   await tabs.filter({ hasText: "This console · DSPi" }).click();
   await expect(session.locator(".device-meta")).toContainText("MOCKB002");
-  await slider.fill("-20");
+  await slider.fill("98");
   await slider.dispatchEvent("change");
-  await expect(session.locator(".volume-value")).toHaveText("-20.0 dB");
+  await expect(session.locator(".volume-value")).toHaveText("-18.0 dB");
 
   await session.getByRole("button", { name: "Disconnect" }).click();
   await expect(tabs).toHaveCount(0);
