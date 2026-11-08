@@ -103,6 +103,26 @@ class AboutPageAn26Test {
         assertGoogleRowsStay()
     }
 
+    /** WP LIC1: About › Licences shows the table's licence notice and its three section 7 terms. */
+    @Test
+    @Suppress("UNCHECKED_CAST")
+    fun wpLic1TheLicencesScreenShowsTheNoticeAndTheTerms() {
+        val asset = File("../../../assets/about.json").readText()
+        show(asset)
+        val licence = Json.parseObject(asset)!!["licence"] as Map<String, Any?>
+        rule.onNodeWithText("GPL-3.0-or-later with additional terms · third-party notices").assertExists()
+        rule.onNodeWithText("Licences").performClick()
+        rule.onNodeWithText(licence.str("statement")!!).assertExists()
+        rule.onNodeWithText(licence.str("terms_title")!!).assertExists()
+        rule.onNodeWithText(licence.str("terms_note")!!).assertExists()
+        val terms = licence.list("terms")!!.map { it as Map<String, Any?> }
+        assertEquals(3, terms.size)
+        terms.forEachIndexed { i, t -> rule.onNodeWithText("${i + 1}. ${t.str("title")}. ${t.str("text")}").assertExists() }
+        rule.onNodeWithText(licence.str("freedoms")!!).assertExists()
+        rule.onNodeWithText((licence.list("copyright")!! as List<String>).joinToString("\n")).assertExists()
+        rule.onNodeWithText("GNU General Public License v3.0").assertHasClickAction()
+    }
+
     @Test
     fun aMissingTableLeavesTheRestOfThePage() {
         show("")

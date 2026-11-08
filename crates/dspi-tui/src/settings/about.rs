@@ -14,7 +14,7 @@
 
 use std::sync::OnceLock;
 
-use dspi_session::about::{About, about};
+use dspi_session::about::{About, Licence, about};
 use unicode_width::UnicodeWidthStr;
 
 use crate::widgets::{Action, KeyHelp};
@@ -216,8 +216,101 @@ fn table_rows(table: Option<&About>, width: u16) -> Vec<Row> {
             }
         }
     }
+    licence_rows(&table.licence, &mut w);
     w.rows.truncate(MAX_ROWS);
     w.rows
+}
+
+// -- WP LIC1 --
+/// Where the page sends a reader for the same text on its own.
+pub const LICENCE_HINT: &str = "dspi --license prints this licence notice and its terms.";
+
+/// Where the GPL's own text is.
+pub const GPL_TEXT: &str =
+    "The GNU General Public License, version 3: https://www.gnu.org/licenses/gpl-3.0.txt";
+
+/// The project's licence and its additional terms, as the table words them: the terms
+/// require them in About, after the credit lines at its top.
+fn licence_rows(l: &Licence, w: &mut Writer) {
+    if l.statement.trim().is_empty() {
+        return;
+    }
+    w.rows.push(Row::Blank);
+    w.heading(&l.title);
+    for line in &l.copyright {
+        w.note(line);
+    }
+    w.rows.push(Row::Blank);
+    w.note(&l.statement);
+    if !l.terms.is_empty() {
+        w.rows.push(Row::Blank);
+        w.heading(&l.terms_title);
+        w.note(&l.terms_note);
+        for (i, term) in l.terms.iter().enumerate() {
+            w.rows.push(Row::Blank);
+            w.note(&format!(
+                "{}. {}. {}",
+                i.saturating_add(1),
+                term.title,
+                term.text
+            ));
+        }
+    }
+    w.rows.push(Row::Blank);
+    w.note(&l.freedoms);
+    w.rows.push(Row::Blank);
+    w.note(&l.notices);
+    w.note(GPL_TEXT);
+    w.note(LICENCE_HINT);
+}
+
+/// `dspi --license`: the credit lines, then the licence and its terms, as paragraphs
+/// folded to `width` columns. Empty if the table cannot be read.
+pub fn licence_text(width: u16) -> String {
+    let Some(table) = table() else {
+        return String::new();
+    };
+    let width = usize::from(width.max(20));
+    let l = &table.licence;
+    let mut paragraphs: Vec<String> = plain_credits(table);
+    paragraphs.push(String::new());
+    paragraphs.extend(l.copyright.iter().cloned());
+    paragraphs.extend([
+        String::new(),
+        l.statement.clone(),
+        String::new(),
+        l.terms_title.clone(),
+        String::new(),
+    ]);
+    paragraphs.push(l.terms_note.clone());
+    for (i, term) in l.terms.iter().enumerate() {
+        paragraphs.push(String::new());
+        paragraphs.push(format!(
+            "{}. {}. {}",
+            i.saturating_add(1),
+            term.title,
+            term.text
+        ));
+    }
+    paragraphs.extend([
+        String::new(),
+        l.freedoms.clone(),
+        String::new(),
+        l.notices.clone(),
+        GPL_TEXT.to_owned(),
+    ]);
+    let mut out = String::new();
+    for p in paragraphs {
+        let lines = fold(&clean(&p), width);
+        if lines.is_empty() {
+            out.push('\n');
+        }
+        for line in lines {
+            out.push_str(&line);
+            out.push('\n');
+        }
+    }
+    out
 }
 
 /// The credit lines as plain text, for `dspi --version`. Empty if the table cannot be
@@ -284,7 +377,7 @@ mod tests {
     use super::super::tests::{frame, screen};
     use super::*;
     use crossterm::event::{KeyCode, KeyEvent};
-    use dspi_session::about::{Credit, CreditLine, Link, Maker};
+    use dspi_session::about::{Credit, CreditLine, Licence, Link, Maker, Term};
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
 
@@ -340,6 +433,16 @@ mod tests {
             wanted.extend([c.name.clone(), c.what.clone()]);
             wanted.extend(c.url.clone());
         }
+        // -- WP LIC1 --
+        let l = &table.licence;
+        wanted.extend(l.copyright.iter().cloned());
+        wanted.extend([
+            l.statement.clone(),
+            l.terms_note.clone(),
+            l.freedoms.clone(),
+            l.notices.clone(),
+        ]);
+        wanted.extend(l.terms.iter().map(|t| t.text.clone()));
         for text in wanted {
             assert!(all.contains(&squeezed(&text)), "missing {text}\n{all}");
         }
@@ -392,9 +495,9 @@ mod tests {
         assert!(frames.iter().all(|f| f.lines().count() == 24));
         assert!(frames[0].contains("DSPi Terminal"), "{}", frames[0]);
         assert!(frames.len() > 1, "the page should need scrolling");
-        let last_credit = about().unwrap().credits.pop().unwrap();
+        // -- WP LIC1 -- the licence closes the page
         let last = frames.last().unwrap();
-        assert!(last.contains(&last_credit.name), "{last}");
+        assert!(last.contains(LICENCE_HINT), "{last}");
     }
 
     /// Text nobody would approve, in every field.
@@ -417,6 +520,26 @@ mod tests {
             links_note: String::new(),
             links: vec![],
             credits: vec![],
+            // -- WP LIC1 --
+            licence: Licence {
+                id: String::new(),
+                title: words[0].clone(),
+                spdx: words[1].clone(),
+                copyright: words.to_vec(),
+                statement: words[2].clone(),
+                terms_title: words[3].clone(),
+                terms_note: words[4].clone(),
+                terms: words
+                    .iter()
+                    .map(|w| Term {
+                        id: String::new(),
+                        title: w.clone(),
+                        text: w.clone(),
+                    })
+                    .collect(),
+                freedoms: words[5].clone(),
+                notices: words[0].clone(),
+            },
         };
         t.links_title = words[0].clone();
         t.links_note = words[2].clone();
@@ -542,6 +665,7 @@ mod tests {
             links_note: String::new(),
             links: vec![],
             credits: vec![],
+            licence: Licence::default(),
         };
         assert!(credit_rows(Some(&empty), 59).is_empty());
         let rows = table_rows(Some(&empty), 59);
@@ -573,5 +697,30 @@ mod tests {
         let table = about().unwrap();
         let texts: Vec<String> = table.credit_lines.iter().map(|l| l.text.clone()).collect();
         assert_eq!(credit_lines(), texts);
+    }
+}
+
+#[cfg(test)]
+mod tests_wp_lic1 {
+    use super::*;
+
+    /// `dspi --license`: the attributions, the statement and every term, folded.
+    #[test]
+    fn wp_lic1_licence_text_holds_the_statement_and_the_terms() {
+        let table = about().unwrap();
+        let text = licence_text(79);
+        assert!(text.lines().all(|l| l.chars().count() <= 79), "{text}");
+        let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        let flat_of = |t: &str| t.split_whitespace().collect::<Vec<_>>().join(" ");
+        for line in &table.credit_lines {
+            assert!(flat.contains(&line.text), "{}", line.text);
+        }
+        let l = &table.licence;
+        assert!(flat.contains(&flat_of(&l.statement)));
+        assert_eq!(l.terms.len(), 3);
+        for term in &l.terms {
+            assert!(flat.contains(&flat_of(&term.text)), "{}", term.text);
+        }
+        assert!(flat.contains("GPL-3.0") || flat.contains("version 3"));
     }
 }

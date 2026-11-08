@@ -31,6 +31,15 @@ class AboutInfoAn26Test {
         assertEquals(rawStrings("credits", "what"), a.credits.map { it.what })
         assertEquals(rawStrings("credits", "url"), a.credits.map { it.url })
         assertTrue(a.makers.all { it.made.isNotEmpty() })
+        // -- WP LIC1 --
+        @Suppress("UNCHECKED_CAST")
+        val raw = Json.parseObject(asset)!!["licence"] as Map<String, Any?>
+        assertEquals(raw.str("statement"), a.licence.statement)
+        assertEquals(raw.list("copyright"), a.licence.copyright)
+        @Suppress("UNCHECKED_CAST")
+        val terms = raw.list("terms")!!.map { it as Map<String, Any?> }
+        assertEquals(terms.map { it.str("text") }, a.licence.terms.map { it.text })
+        assertEquals(terms.map { it.str("title") }, a.licence.terms.map { it.title })
     }
 
     @Test

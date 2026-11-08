@@ -7,7 +7,9 @@
 # -- WP QD42 -- Each carries its licence texts: the .deb Debian's copyright file,
 # the .rpm the GPL and the notice in /usr/share/licenses, the AppImage and the
 # archive NOTICE.txt and LICENSES/ (Qt's, KWindowSystem's, ICU's, and every
-# library in usr/lib listed in BUNDLED.txt).
+# library in usr/lib listed in BUNDLED.txt). -- WP LIC1 -- and the additional
+# terms (TERMS.txt, in the notice), the Rust crates notice, the AppImage runtime's
+# Alpine parts (musl, zlib, zstd, mimalloc), and each BUNDLED.txt row's copyright file.
 #   test-packages.sh [dist dir, default dist/ or $DSPI_DIST]
 # Needs podman and the network (each container installs its packages).
 set -uo pipefail
@@ -29,12 +31,25 @@ else echo "app exit $code; the log:"; cat /root/app.log; exit 1; fi'
 lic_check='
 for f in NOTICE.txt LICENSES/GPL-3.0.txt LICENSES/LGPL-3.0.txt LICENSES/BUNDLED.txt LICENSES/Qt/THIRD-PARTY.txt \
          LICENSES/Qt/LGPL-3.0-only.txt LICENSES/KWindowSystem/LGPL-2.1-only.txt LICENSES/ICU/LICENSE \
-         LICENSES/AppImage-runtime/LICENSE LICENSES/AppImage-runtime/libfuse-LGPL2.txt LICENSES/AppImage-runtime/squashfuse-LICENSE; do
+         LICENSES/AppImage-runtime/LICENSE LICENSES/AppImage-runtime/libfuse-LGPL2.txt LICENSES/AppImage-runtime/squashfuse-LICENSE \
+         LICENSES/TERMS.txt LICENSES/rust-crates.txt LICENSES/AppImage-runtime/musl-COPYRIGHT LICENSES/AppImage-runtime/zlib-LICENSE \
+         LICENSES/AppImage-runtime/zstd-LICENSE LICENSES/AppImage-runtime/zstd-COPYING LICENSES/AppImage-runtime/mimalloc-LICENSE; do
     [ -s "$1/$f" ] || { echo "licences: no $f in $1"; exit 1; }
 done
 grep -q "GNU LESSER GENERAL PUBLIC LICENSE" "$1/LICENSES/LGPL-3.0.txt" || { echo "licences: LGPL-3.0.txt is not the LGPL"; exit 1; }
 grep -q "any later version" "$1/NOTICE.txt" || { echo "licences: NOTICE.txt does not say GPL-3.0-or-later"; exit 1; }
-grep -q "^AppImage runtime	.*	type2-runtime-[0-9a-f]*\.tar\.gz fuse-" "$1/LICENSES/BUNDLED.txt" || { echo "licences: BUNDLED.txt does not name the runtime'"'"'s sources"; exit 1; }
+# -- WP LIC1 -- the additional terms, verbatim, and the Rust crates
+grep -q "section 7 (LICENSES/TERMS.txt" "$1/NOTICE.txt" && grep -q "No trademark rights (7e)" "$1/NOTICE.txt" \
+    && grep -q "No trademark rights (7e)" "$1/LICENSES/TERMS.txt" || { echo "licences: NOTICE.txt or TERMS.txt lacks the additional terms"; exit 1; }
+grep -q "^Third-party Rust crates linked into" "$1/LICENSES/rust-crates.txt" && grep -q "LICENSES/rust-crates.txt" "$1/NOTICE.txt" \
+    || { echo "licences: no Rust crates notice"; exit 1; }
+grep -q "^AppImage runtime	.*	.*musl-[0-9.]*\.tar\.gz.*	.*musl" "$1/LICENSES/BUNDLED.txt" || { echo "licences: BUNDLED.txt does not name musl'"'"'s source and licence"; exit 1; }
+# -- WP LIC1 -- (review c80 N2) every row that names a copyright file has it
+while IFS="	" read -r pkg _ _ _ lic _; do
+    case $pkg in "#"*) continue ;; esac
+    case $lic in LICENSES/bundled/*/copyright) [ -s "$1/$lic" ] || { echo "licences: $pkg: no $lic"; exit 1; } ;; esac
+done <"$1/LICENSES/BUNDLED.txt"
+grep -q "^AppImage runtime	.*	type2-runtime-[0-9a-f]*\.tar\.gz.* fuse-[0-9]" "$1/LICENSES/BUNDLED.txt" || { echo "licences: BUNDLED.txt does not name the runtime'"'"'s sources"; exit 1; }
 grep -q "^Qt	.*	qtbase-everywhere-src-" "$1/LICENSES/BUNDLED.txt" || { echo "licences: BUNDLED.txt does not name Qt'"'"'s source archives"; exit 1; }
 for l in "$2"/*.so*; do
     cut -f6 "$1/LICENSES/BUNDLED.txt" | tr " " "\n" | grep -qx "usr/lib/${l##*/}" || { echo "licences: ${l##*/} is not in BUNDLED.txt"; exit 1; }
@@ -55,6 +70,9 @@ t deb-debian-13 docker.io/library/debian:13 "
     grep -q /usr/share/common-licenses/GPL-3 /usr/share/doc/dspi-console/copyright && test -s /usr/share/common-licenses/GPL-3 \
         && grep -q 'any later version' /usr/share/doc/dspi-console/copyright \
         || { echo 'licences: no copyright file pointing at the GPL'; exit 1; }
+    grep -q 'No trademark rights (7e)' /usr/share/doc/dspi-console/copyright && grep -q /usr/share/doc/dspi-console/rust-crates.txt /usr/share/doc/dspi-console/copyright \
+        && grep -q '^Third-party Rust crates linked into' /usr/share/doc/dspi-console/rust-crates.txt \
+        || { echo 'licences: copyright lacks the additional terms or the Rust crates notice'; exit 1; }   # -- WP LIC1 --
     run() { $run_app
     }; QT_QPA_PLATFORM=offscreen run dspi-console"
 t rpm-fedora-42 registry.fedoraproject.org/fedora:42 "
@@ -62,6 +80,9 @@ t rpm-fedora-42 registry.fedoraproject.org/fedora:42 "
     grep -q 'GNU GENERAL PUBLIC LICENSE' /usr/share/licenses/dspi-console/GPL-3.0.txt && grep -q 'any later version' /usr/share/licenses/dspi-console/NOTICE.txt \
         && [ \"\$(rpm -q --qf '%{LICENSE}' dspi-console)\" = GPL-3.0-or-later ] \
         || { echo 'licences: no GPL text or notice in /usr/share/licenses/dspi-console'; exit 1; }
+    grep -q 'No trademark rights (7e)' /usr/share/licenses/dspi-console/NOTICE.txt && grep -q 'No trademark rights (7e)' /usr/share/licenses/dspi-console/TERMS.txt \
+        && grep -q '^Third-party Rust crates linked into' /usr/share/licenses/dspi-console/rust-crates.txt \
+        || { echo 'licences: no additional terms or Rust crates notice in /usr/share/licenses/dspi-console'; exit 1; }   # -- WP LIC1 --
     run() { $run_app
     }; QT_QPA_PLATFORM=offscreen run dspi-console"
 # The AppImage on a system with no Qt at all, on X11 (Xvfb): it brings its own.
@@ -87,7 +108,8 @@ done
 # -- WP QD42 -- The archive carries the AppImage's licence files beside it
 echo "== archive"
 if listing=$(tar -tzf "$dist"/DSPi-Console-*-linux-x86_64.tar.gz) && grep -q '^[^/]*/NOTICE.txt$' <<<"$listing" \
-    && grep -q '^[^/]*/LICENSES/BUNDLED.txt$' <<<"$listing" && grep -q '^[^/]*/LICENSES/Qt/THIRD-PARTY.txt$' <<<"$listing"; then
+    && grep -q '^[^/]*/LICENSES/BUNDLED.txt$' <<<"$listing" && grep -q '^[^/]*/LICENSES/Qt/THIRD-PARTY.txt$' <<<"$listing" \
+    && grep -q '^[^/]*/LICENSES/TERMS.txt$' <<<"$listing" && grep -q '^[^/]*/LICENSES/rust-crates.txt$' <<<"$listing"; then
     echo "== archive: OK (NOTICE.txt, LICENSES/)"
 else
     echo "== archive: FAILED (no NOTICE.txt or LICENSES/ at its top)"; fails=$((fails + 1))

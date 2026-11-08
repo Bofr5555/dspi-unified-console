@@ -70,7 +70,16 @@ const FILES: &[(&str, Asset)] = &[
         "/THIRD-PARTY-NOTICES.txt",
         Asset {
             content_type: "text/plain; charset=utf-8",
-            body: include_bytes!("../assets/web/THIRD-PARTY-NOTICES.txt"),
+            // -- WP LIC1 -- the hub's own licence and its additional terms (the
+            // project's, as the desktop packages carry them), then the third parties
+            body: concat!(
+                "DSPi hub (dspi hub, part of the DSPi Terminal): licence\n\n",
+                include_str!("../../../apps/desktop/packaging/licences/TERMS.txt"),
+                "\n",
+                "========================================================================\n\n",
+                include_str!("../assets/web/THIRD-PARTY-NOTICES.txt"),
+            )
+            .as_bytes(),
         },
     ),
 ];
@@ -657,6 +666,10 @@ mod tests_wp_wb7 {
             notices.contains(licence.trim()),
             "the MIT text is in the notices"
         );
+        // -- WP LIC1 -- and the hub's own licence with its section 7 terms
+        let terms = include_str!("../../../apps/desktop/packaging/licences/TERMS.txt");
+        assert!(notices.contains(terms), "the terms are in the notices");
+        assert!(notices.contains("GNU General Public License") && notices.contains("section 7"));
     }
 
     #[test]

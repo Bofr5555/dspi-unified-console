@@ -56,6 +56,8 @@ QStringList shownTexts(QQuickItem *page) {
 QList<QQuickItem *> rowsOf(QQuickItem *page) {
     QList<QQuickItem *> out;
     walk(page, [&](QQuickItem *i) {
+        // -- WP LIC1 -- the licence's rows are not the table's makers, links and credits
+        if (i->objectName().startsWith(QLatin1String("licence"))) return;
         if (i->isVisible() && i->property("clickable").isValid() && i->property("verbatim").isValid()) out.append(i);
     });
     return out;
@@ -206,6 +208,52 @@ void SmokeDriver::testAbout() {
             }
     check("QD33: no string of the table in the page's source", !copy);
     check("QD33: the draft fits", fits(page));
+
+    // -- WP LIC1 -- The licence statement and every term, as the table words them, and
+    // each licence text opens over the page
+    {
+        const QJsonObject licence = table.value(QLatin1String("licence")).toObject();
+        QStringList words{ str(licence, "title"), str(licence, "statement"), str(licence, "terms_title"),
+                           str(licence, "terms_note"), str(licence, "freedoms"), str(licence, "notices") };
+        for (const QJsonValue &v : licence.value(QLatin1String("copyright")).toArray()) words << v.toString();
+        for (const QJsonValue &v : licence.value(QLatin1String("terms")).toArray())
+            words << str(v.toObject(), "title") << str(v.toObject(), "text");
+        const QString all = shown.join(QLatin1Char('\n'));
+        int absent = 0;
+        for (const QString &w : words)
+            if (w.isEmpty() || !all.contains(w)) { printf("  about: licence not on the page: \"%s\"\n", qPrintable(w.left(60))); absent++; }
+        check("LIC1: the licence statement and its three terms are on the About page",
+              licence.value(QLatin1String("terms")).toArray().size() == 3 && absent == 0);
+        QList<QQuickItem *> textRows;
+        walk(page, [&](QQuickItem *i) { if (i->objectName() == QLatin1String("licenceTextRow")) textRows.append(i); });
+        bool opened = textRows.size() == 3;
+        const QStringList expect{ QStringLiteral("GNU GENERAL PUBLIC LICENSE"), QStringLiteral("GNU LESSER GENERAL PUBLIC LICENSE"),
+                                  QStringLiteral("Third-party Rust crates") };
+        for (int n = 0; n < textRows.size() && n < expect.size(); n++) {
+            QMetaObject::invokeMethod(textRows[n], "activated");
+            spin(200);
+            QQuickItem *body = nullptr;
+            walk(settings->contentItem(),
+                 [&](QQuickItem *i) { if (i->objectName() == QLatin1String("licenceTextBody") && i->isVisible()) body = i; });
+            const QString text = body ? body->property("text").toString() : QString();
+            if (!text.contains(expect[n])) { printf("  about: licence text %d does not open\n", n); opened = false; }
+            if (n == 0) settings->grabWindow().save(m_out + QStringLiteral("/about-licence-text.png"));
+            QQuickItem *close = nullptr;
+            walk(settings->contentItem(),
+                 [&](QQuickItem *i) { if (i->objectName() == QLatin1String("licenceTextClose") && i->isVisible()) close = i; });
+            if (close) QMetaObject::invokeMethod(close, "clicked");
+            spin(150);
+        }
+        check("LIC1: the GPL, Qt's LGPL and the Rust crates' notices open from About", opened);
+        QQuickItem *terms = nullptr;
+        walk(page, [&](QQuickItem *i) { if (i->objectName() == QLatin1String("aboutTerms")) terms = i; });
+        if (terms) {
+            page->setProperty("contentY", qMax<qreal>(0, terms->mapToItem(page, QPointF(0, 0)).y() + page->property("contentY").toReal() - 40));
+            spin(100);
+        }
+        settings->grabWindow().save(m_out + QStringLiteral("/about-licence.png"));
+        page->setProperty("contentY", 0);
+    }
     settings->grabWindow().save(m_out + QStringLiteral("/about-draft.png"));
 
     // Other wording: shown literally, all of it fits, fields left out do no harm

@@ -201,6 +201,11 @@ fn main() -> ExitCode {
             version();
             exit::OK
         }
+        // -- WP LIC1 --
+        Some("--license" | "--licence") => {
+            print!("{}", dspi_tui::settings::about::licence_text(79));
+            exit::OK
+        }
         Some("list") => cmd_list(target, json),
         Some("params") => cmd_params(),
         Some("completions") => cmd_completions(&positional(&flags)),
@@ -283,6 +288,8 @@ fn command_first(flags: Vec<&str>) -> Vec<&str> {
         "-h",
         "--version",
         "-V",
+        "--license",
+        "--licence",
         "--doctor",
         "--install-udev",
     ];
@@ -474,6 +481,8 @@ fn version() {
     for line in dspi_tui::settings::about::credit_lines() {
         println!("{line}");
     }
+    // -- WP LIC1 --
+    println!("GPL-3.0-or-later, with additional terms: dspi --license");
 }
 
 fn usage() {
@@ -553,6 +562,7 @@ USAGE:
     dspi web                 the web console on this machine, at
                              http://localhost:11916/console/ (dspi hub --local)
     dspi --version           show app and protocol versions, and credits
+    dspi --license           show the licence notice and its additional terms
 
 EXAMPLES:
     dspi get vol.user
@@ -1897,6 +1907,8 @@ const NOT_A_SCRIPT: &[&str] = &[
     "-h",
     "--version",
     "-V",
+    "--license",
+    "--licence",
     "--doctor",
     "--install-udev",
     "--lite",

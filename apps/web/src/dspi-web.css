@@ -184,6 +184,9 @@
   z-index: 10;
 }
 .dspi-web .about ul { padding-left: 1.1rem; }
+/* -- WP LIC1 -- the licence's section 7 terms */
+.dspi-web .about ol.terms { padding-left: 1.3rem; }
+.dspi-web .about h4 { margin: 0.75rem 0 0.25rem; }
 
 /* -- WP WB6a -- the main window (src/screens/main): cards in a grid that falls
    to one column on a narrow screen; rows of fixed height, so values and states
