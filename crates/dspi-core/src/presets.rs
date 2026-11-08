@@ -192,7 +192,8 @@ impl DspiCore {
     /// directory. The baseline becomes the loaded state. Runs under the Link
     /// device lock. The device also notifies `PRESET_LOADED` and then
     /// `BULK_INVALIDATED` (source `PRESET`); `process_notifications`
-    /// re-reads on those as on any foreign change.
+    /// re-reads on those as on any foreign change, and an edit made between
+    /// this call and that notification stays unsaved (WP CG33).
     ///
     /// Errors: [`DspiError::Refused`] with the `PRESET_*` status;
     /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
@@ -758,7 +759,8 @@ impl DspiCore {
 /// Remember the live image as the baseline. The hook for every flow that
 /// leaves the live state equal to the active preset, and for
 /// `process_notifications` (WP C7) once it has re-read a `BULK_INVALIDATED`
-/// from a preset load or factory reset. Cleared without a device, or when
+/// from a preset load or factory reset (through
+/// [`rebaseline_after_load_locked`], WP CG33). Cleared without a device, or when
 /// no image has been read (the mirror's image does not decode).
 pub(crate) fn capture_baseline_locked(inner: &mut Inner) {
     let readable = inner.conn.is_some() && {
@@ -766,6 +768,58 @@ pub(crate) fn capture_baseline_locked(inner: &mut Inner) {
         state::decode_bulk(&inner.state.bulk_raw, &mut probe).is_ok()
     };
     inner.baseline = readable.then(|| inner.state.bulk_raw.clone());
+}
+
+// -- WP CG33 --
+/// The baseline after the re-read a preset load or factory reset notified
+/// (`process_notifications`, WP C7), given the baseline (`old`) and the
+/// mirror's image (`mirror`) as they stood just before that re-read.
+///
+/// The notification comes after the load, up to ~100 ms on USB and longer
+/// over DSPi Link, and the re-read also brings in whatever was changed on
+/// the device after the load: an edit of this client's, or another host's
+/// change it notified. Taken as is, the re-read would count those as saved.
+/// So the re-read becomes the baseline except where the mirror held a value
+/// that differs from the old baseline and the device holds that same value
+/// after the load: such a change was made (or made again) after the load,
+/// and stays a change, from the old baseline's value. For this client's own
+/// load, whose read-back already made the preset the baseline, that is
+/// exactly the preset's own state; for another's, the preset's value under
+/// a later edit cannot be read, so the edit shows from the value saved
+/// before. An unsaved change from before another's load that the loaded
+/// preset happens to hold too also stays a change: the error is toward a
+/// prompt, never toward a lost edit.
+pub(crate) fn rebaseline_after_load_locked(inner: &mut Inner, old: Option<&[u8]>, mirror: &[u8]) {
+    capture_baseline_locked(inner);
+    if let (Some(old), Some(new)) = (old, inner.baseline.as_mut()) {
+        keep_edits_after_load(new, old, mirror);
+    }
+}
+
+/// Put `old` back into `baseline` (the re-read) over every run of bytes in
+/// which `mirror` differs from `old` and `baseline` equals `mirror`. Images
+/// of different sizes (another layout) are left alone.
+pub(crate) fn keep_edits_after_load(baseline: &mut [u8], old: &[u8], mirror: &[u8]) {
+    if old.len() != baseline.len() || mirror.len() != baseline.len() {
+        return;
+    }
+    let mut start = None;
+    let differs = mirror.iter().zip(old).map(|(m, o)| m != o);
+    for (i, differs) in differs.chain(std::iter::once(false)).enumerate() {
+        match (start, differs) {
+            (None, true) => start = Some(i),
+            (Some(s), false) => {
+                start = None;
+                let run = s..i;
+                if baseline.get(run.clone()) == mirror.get(run.clone())
+                    && let (Some(dst), Some(src)) = (baseline.get_mut(run.clone()), old.get(run))
+                {
+                    dst.copy_from_slice(src);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /// The occupied-mask bit of `slot`, or `Refused { PRESET_ERR_INVALID_SLOT }`
