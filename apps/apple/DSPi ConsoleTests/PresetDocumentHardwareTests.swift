@@ -9,6 +9,11 @@ import XCTest
 /// original document is applied again on the way out, restoring whatever the
 /// device was set to.
 ///
+/// WP SWF1 (F1): the original must be the device's state, not the view
+/// model's defaults, so `requireDevice` first waits for the view model's full
+/// read of the device.  It also takes a raw REQ_GET_ALL_PARAMS image, and a
+/// test fails if the image after it (after the restore) differs.
+///
 /// SKIPs cleanly when no DSPi is attached.
 final class PresetDocumentHardwareTests: XCTestCase {
 
@@ -32,7 +37,7 @@ final class PresetDocumentHardwareTests: XCTestCase {
     /// Capture, change one value in each block that has a raw read-back, apply,
     /// and confirm the device took all of them.
     func testDocumentRoundTripsThroughTheDevice() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         let vm = AppState.shared.viewModel
 
         let original = PresetDocument.capture(from: vm)
@@ -82,14 +87,23 @@ final class PresetDocumentHardwareTests: XCTestCase {
     /// it catches any value that capture reads from one place and apply writes
     /// to another.
     func testReapplyingACaptureIsANoOp() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         let vm = AppState.shared.viewModel
 
         let before = PresetDocument.capture(from: vm)
         let gainBefore = HardwareTest.readFloat(usb, REQ_GET_OUTPUT_GAIN, value: 0, index: 2)
         let preampBefore = HardwareTest.readFloat(usb, REQ_GET_PREAMP_CH, value: 0)
+        HardwareTest.settle()
+        let imageBefore = try XCTUnwrap(HardwareTest.deviceImage(usb), "no 0xA0 image")
 
         _ = try apply(before, to: vm)
+
+        // -- WP SWF1 -- The whole image, not two values: F1 passed here while
+        // the apply had written the view model's defaults over 66 bytes.
+        HardwareTest.settle()
+        let imageAfter = try XCTUnwrap(HardwareTest.deviceImage(usb), "no 0xA0 image")
+        XCTAssertNil(DeviceImageGuard.describe(before: imageBefore, after: imageAfter),
+                     "a no-op apply changed the device")
 
         XCTAssertEqual(HardwareTest.readFloat(usb, REQ_GET_OUTPUT_GAIN, value: 0, index: 2) ?? .nan,
                        gainBefore ?? .nan, accuracy: 0.05, "output gain moved on a no-op apply")
@@ -108,7 +122,7 @@ final class PresetDocumentHardwareTests: XCTestCase {
     /// A document whose channels this device doesn't have is reported rather
     /// than quietly dropped, and the channels it does have still apply.
     func testChannelsThisDeviceLacksAreReported() throws {
-        _ = try HardwareTest.requireDevice()
+        _ = try HardwareTest.requireDevice(self)
         let vm = AppState.shared.viewModel
 
         let original = PresetDocument.capture(from: vm)

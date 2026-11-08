@@ -148,6 +148,11 @@ struct WhatsNewView: View {
             }
             .padding(16)
         }
+        #if os(macOS)
         .frame(width: 460, height: 420)
+        #else
+        // The sheet's size, which on a phone is narrower than the Mac window.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        #endif
     }
 }

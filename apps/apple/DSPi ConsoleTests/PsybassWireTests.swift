@@ -77,7 +77,7 @@ final class PsybassWireTests: XCTestCase {
     // MARK: - Feature detection gate (spec §6)
 
     func testFeatureDetectionThreshold() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.firmwareWireFormatVersion = 22
         XCTAssertFalse(vm.firmwareSupportsPsybass)
         vm.firmwareWireFormatVersion = 23
@@ -87,7 +87,7 @@ final class PsybassWireTests: XCTestCase {
     // MARK: - Mask bit toggle helper
 
     func testOutputChannelMaskToggle() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.psybass.outputMask = 0x0000
         vm.setPsybassOutputChannel(0, enabled: true)
         XCTAssertEqual(vm.psybass.outputMask & 0x0001, 0x0001)
@@ -102,7 +102,7 @@ final class PsybassWireTests: XCTestCase {
     /// Each individual GET returns a value inside the documented range, and the
     /// bulk psybass section agrees with the seven individual GETs.
     func testPsybassReadbackConsistency() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let all = usb.getControlRequest(request: REQ_GET_ALL_PARAMS, value: 0, index: 2, length: BULK_PARAMS_SIZE),
               all.count >= Int(BULK_PARAMS_SIZE), Int(all[0]) == WIRE_FORMAT_VERSION else {
             throw XCTSkip("Firmware predates Psychoacoustic Bass (wire format < V23).")
@@ -134,7 +134,7 @@ final class PsybassWireTests: XCTestCase {
     /// Writing an out-of-range cutoff and reading it back returns the clamped
     /// value; restores the original afterwards so the test is non-destructive.
     func testCutoffClampsAndRestores() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let orig = usb.getControlRequest(request: REQ_GET_PSYBASS_CUTOFF, value: 0, index: 0, length: 4),
               orig.count >= 4 else {
             throw XCTSkip("Firmware predates Psychoacoustic Bass.")

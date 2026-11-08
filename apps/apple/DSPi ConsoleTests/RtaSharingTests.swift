@@ -316,7 +316,7 @@ final class RtaSharingTests: XCTestCase {
         let drawn = RtaChannelSelection.drawn(own: own, followed: engine.effectiveSelection)
         XCTAssertEqual(drawn, RtaChannelSelection(tap: RTA_TAP_INPUT, channels: [1, 2]))
 
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         let cells = vm.rtaDrawnChannels(drawn)
         XCTAssertEqual(cells.map(\.channel), [1, 2])
         XCTAssertEqual(cells.map(\.eqChannel), [1, 2], "input channels colour as input rows")
@@ -335,7 +335,7 @@ final class RtaSharingTests: XCTestCase {
         XCTAssertNil(engine.effectiveSelection)
         XCTAssertEqual(RtaChannelSelection.drawn(own: own, followed: engine.effectiveSelection), own)
 
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         let outputs = RtaChannelSelection(tap: RTA_TAP_OUTPUT, channels: [3])
         let cell = vm.rtaDrawnChannels(outputs)[0]
         XCTAssertEqual(cell.eqChannel, vm.chOut1 + 3)

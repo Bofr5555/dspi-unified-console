@@ -30,7 +30,7 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// A genuinely new install gets everything, framed as setup.
     func testNewUserGetsEveryApplicableStep() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
 
         XCTAssertEqual(coordinator.cohort, .newUser)
         XCTAssertFalse(coordinator.pending(.setup).isEmpty)
@@ -43,7 +43,7 @@ final class OnboardingCoordinatorTests: XCTestCase {
     func testExistingUserIsSeededRatherThanOnboarded() {
         defaults.set(250.0, forKey: "graphHeight")   // evidence of prior use
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
 
         XCTAssertEqual(coordinator.cohort, .existingUser)
         XCTAssertTrue(coordinator.pending.isEmpty)
@@ -53,10 +53,10 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// second seeding, and must not wipe progress made in between.
     func testSeedingHappensOnlyOnce() {
         defaults.set(250.0, forKey: "graphHeight")
-        makeCoordinator().evaluate(vm: DSPViewModel())
+        makeCoordinator().evaluate(vm: HardwareTest.offlineViewModel())
 
         let second = makeCoordinator()
-        second.evaluate(vm: DSPViewModel())
+        second.evaluate(vm: HardwareTest.offlineViewModel())
         XCTAssertEqual(second.cohort, .upToDate)
     }
 
@@ -67,7 +67,7 @@ final class OnboardingCoordinatorTests: XCTestCase {
         defaults.set(seen, forKey: OnboardingCoordinator.Key.completed)
 
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
 
         XCTAssertEqual(coordinator.cohort, .updater)
         XCTAssertEqual(coordinator.pending.count, 2)
@@ -75,11 +75,11 @@ final class OnboardingCoordinatorTests: XCTestCase {
 
     func testDecliningSilencesEverything() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.declineEverything()
 
         let next = makeCoordinator()
-        next.evaluate(vm: DSPViewModel())
+        next.evaluate(vm: HardwareTest.offlineViewModel())
         XCTAssertEqual(next.cohort, .declined)
         XCTAssertTrue(next.pending.isEmpty)
     }
@@ -90,18 +90,18 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// and the wizard returns on the next launch.
     func testSkippingAPhaseIsPermanent() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.skip(.setup)
 
         let next = makeCoordinator()
-        next.evaluate(vm: DSPViewModel())
+        next.evaluate(vm: HardwareTest.offlineViewModel())
         XCTAssertTrue(next.pending(.setup).isEmpty)
         XCTAssertFalse(next.pending(.basics).isEmpty, "skipping setup must not skip the tour")
     }
 
     func testMarkingASingleStepSeenRemovesOnlyThatStep() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         let before = coordinator.pending.count
         coordinator.markSeen(OnboardingCatalogue.basics[0])
 
@@ -115,9 +115,9 @@ final class OnboardingCoordinatorTests: XCTestCase {
     func testUnknownStoredIdsAreIgnored() {
         defaults.set(["some.retired.step", "another.one"], forKey: OnboardingCoordinator.Key.completed)
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
 
-        let applicable = OnboardingCatalogue.all.filter { $0.applies(DSPViewModel()) }.count
+        let applicable = OnboardingCatalogue.all.filter { $0.applies(HardwareTest.offlineViewModel()) }.count
         XCTAssertEqual(coordinator.pending.count, applicable)
         XCTAssertEqual(coordinator.cohort, .updater)
     }
@@ -127,7 +127,7 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// A step about a feature the connected device does not have describes
     /// controls that are not on screen, so it is worse than useless.
     func testStepsAreGatedOnDeviceCapability() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.controlSurfacesSupported = false
         let coordinator = makeCoordinator()
         coordinator.evaluate(vm: vm)
@@ -142,7 +142,7 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// A hidden step is not a seen step: plugging in a device that has the
     /// feature must surface its card, even years later.
     func testAnInapplicableStepIsNotMarkedSeen() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.controlSurfacesSupported = false
         let coordinator = makeCoordinator()
         coordinator.evaluate(vm: vm)
@@ -156,7 +156,7 @@ final class OnboardingCoordinatorTests: XCTestCase {
 
     func testJustInTimeCardIsOfferedOnceThenNeverAgain() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
 
         guard let card = coordinator.justInTimeStep(for: "matrix-mixer") else {
             return XCTFail("expected a matrix mixer card for a new user")
@@ -172,7 +172,7 @@ final class OnboardingCoordinatorTests: XCTestCase {
         defaults.set("fresh", forKey: OnboardingDebug.Key.cohort)
 
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         XCTAssertEqual(coordinator.cohort, .newUser)
     }
 
@@ -180,7 +180,7 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// so the next launch shows what a real user in that position would see.
     func testCohortOverrideIsConsumed() {
         defaults.set("fresh", forKey: OnboardingDebug.Key.cohort)
-        makeCoordinator().evaluate(vm: DSPViewModel())
+        makeCoordinator().evaluate(vm: HardwareTest.offlineViewModel())
         XCTAssertNil(defaults.string(forKey: OnboardingDebug.Key.cohort))
     }
 
@@ -189,7 +189,7 @@ final class OnboardingCoordinatorTests: XCTestCase {
     func testUpdaterOverrideMarksEverythingFromThatReleaseSeen() {
         defaults.set("updater:1.1.6-beta3", forKey: OnboardingDebug.Key.cohort)
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
 
         // Every step currently ships in 1.1.6 beta 3, so an updater from it has
         // nothing left; when later steps are added this becomes the interesting
@@ -208,13 +208,13 @@ final class OnboardingCoordinatorTests: XCTestCase {
         defaults.set(true, forKey: "showDebugInfo")
 
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         XCTAssertEqual(coordinator.cohort, .existingUser)
 
         coordinator.resetAll()
 
         let next = makeCoordinator()
-        next.evaluate(vm: DSPViewModel())
+        next.evaluate(vm: HardwareTest.offlineViewModel())
         XCTAssertEqual(next.cohort, .newUser)
         XCTAssertTrue(next.shouldTakeOverMainWindow())
     }
@@ -224,16 +224,16 @@ final class OnboardingCoordinatorTests: XCTestCase {
     func testSimulatedFreshInstallAppliesOnlyOnce() {
         defaults.set(282.25, forKey: "graphHeight")
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.resetAll()
 
         let first = makeCoordinator()
-        first.evaluate(vm: DSPViewModel())
+        first.evaluate(vm: HardwareTest.offlineViewModel())
         XCTAssertEqual(first.cohort, .newUser)
         first.finishSetup()
 
         let second = makeCoordinator()
-        second.evaluate(vm: DSPViewModel())
+        second.evaluate(vm: HardwareTest.offlineViewModel())
         XCTAssertFalse(second.shouldTakeOverMainWindow())
     }
 
@@ -243,18 +243,18 @@ final class OnboardingCoordinatorTests: XCTestCase {
         defaults.set("fresh", forKey: OnboardingDebug.Key.cohort)
 
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         XCTAssertEqual(coordinator.cohort, .newUser)
     }
 
     func testResetForgetsEverything() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.skip(.basics)
         coordinator.resetAll()
 
         let next = makeCoordinator()
-        next.evaluate(vm: DSPViewModel())
+        next.evaluate(vm: HardwareTest.offlineViewModel())
         XCTAssertEqual(next.cohort, .newUser)
     }
 
@@ -262,13 +262,13 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// requests and a user asking for one has not asked for the other.
     func testReplayingBasicsLeavesSetupAlone() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.skip(.setup)
         coordinator.skip(.basics)
         coordinator.replayBasics()
 
         let next = makeCoordinator()
-        next.evaluate(vm: DSPViewModel())
+        next.evaluate(vm: HardwareTest.offlineViewModel())
         XCTAssertTrue(next.pending(.setup).isEmpty)
         XCTAssertFalse(next.pending(.basics).isEmpty)
     }
@@ -277,12 +277,12 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// menu item does nothing for the people most likely to use it.
     func testReplayingBasicsUndoesDeclining() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.declineEverything()
         coordinator.replayBasics()
 
         let next = makeCoordinator()
-        next.evaluate(vm: DSPViewModel())
+        next.evaluate(vm: HardwareTest.offlineViewModel())
         XCTAssertNotEqual(next.cohort, .declined)
     }
 
@@ -297,7 +297,7 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// to do anything useful with one.)
     func testWizardTakesOverForANewUser() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         XCTAssertTrue(coordinator.shouldTakeOverMainWindow())
     }
 
@@ -306,7 +306,7 @@ final class OnboardingCoordinatorTests: XCTestCase {
     func testWizardNeverTakesOverForAReturningUser() {
         defaults.set(Array(OnboardingCatalogue.all.map(\.id)), forKey: OnboardingCoordinator.Key.completed)
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         XCTAssertFalse(coordinator.shouldTakeOverMainWindow())
     }
 
@@ -315,7 +315,7 @@ final class OnboardingCoordinatorTests: XCTestCase {
     func testRequestingSetupOpensItForAnyone() {
         defaults.set(Array(OnboardingCatalogue.all.map(\.id)), forKey: OnboardingCoordinator.Key.completed)
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.requestSetup()
         XCTAssertTrue(coordinator.shouldTakeOverMainWindow())
     }
@@ -324,19 +324,19 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// the user completed the wizard or skipped it.
     func testFinishingSetupReleasesTheWindowPermanently() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.finishSetup()
         XCTAssertFalse(coordinator.shouldTakeOverMainWindow())
 
         let next = makeCoordinator()
-        next.evaluate(vm: DSPViewModel())
+        next.evaluate(vm: HardwareTest.offlineViewModel())
         XCTAssertFalse(next.shouldTakeOverMainWindow())
     }
 
     /// Skipping setup must not also skip the tour: they are separate offers.
     func testFinishingSetupLeavesTheTourPending() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.finishSetup()
         XCTAssertFalse(coordinator.pending(.basics).isEmpty)
     }
@@ -381,13 +381,13 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// finishing it records every one of them.
     func testTourRunsPendingStepsAndRecordsThem() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.skip(.setup)
 
         let expected = coordinator.pending(.basics).map(\.id)
         XCTAssertFalse(expected.isEmpty)
 
-        coordinator.startBasicsTour(vm: DSPViewModel())
+        coordinator.startBasicsTour(vm: HardwareTest.offlineViewModel())
         XCTAssertTrue(coordinator.basicsTourRunning)
         XCTAssertEqual(coordinator.basicsTourSteps.map(\.id), expected)
 
@@ -404,9 +404,9 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// current index.
     func testTourStepListDoesNotShrinkWhileRunning() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.skip(.setup)
-        coordinator.startBasicsTour(vm: DSPViewModel())
+        coordinator.startBasicsTour(vm: HardwareTest.offlineViewModel())
 
         let total = coordinator.basicsTourSteps.count
         coordinator.basicsTourNext()
@@ -419,9 +419,9 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// too, or the same banner returns on the next launch.
     func testSkippingTheTourRecordsTheStepsNotReached() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.skip(.setup)
-        coordinator.startBasicsTour(vm: DSPViewModel())
+        coordinator.startBasicsTour(vm: HardwareTest.offlineViewModel())
         coordinator.basicsTourNext()        // read one, then walk out
         coordinator.endBasicsTour()
 
@@ -432,9 +432,9 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// Back does not un-record what has been read; it only moves the cursor.
     func testTourBackMovesWithoutForgetting() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.skip(.setup)
-        coordinator.startBasicsTour(vm: DSPViewModel())
+        coordinator.startBasicsTour(vm: HardwareTest.offlineViewModel())
 
         let first = coordinator.basicsTourStep?.id
         coordinator.basicsTourNext()
@@ -449,7 +449,7 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// is not offered a tour of an interface they have not reached.
     func testTourIsNotOfferedWhileSetupIsPending() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
 
         XCTAssertFalse(coordinator.pending(.setup).isEmpty)
         XCTAssertFalse(coordinator.canOfferBasicsTour)
@@ -464,13 +464,13 @@ final class OnboardingCoordinatorTests: XCTestCase {
     func testExistingUserIsOfferedATourThatActuallyRuns() {
         defaults.set(250.0, forKey: "graphHeight")   // evidence of prior use
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
 
         XCTAssertEqual(coordinator.cohort, .existingUser)
         XCTAssertTrue(coordinator.pending(.basics).isEmpty)
         XCTAssertTrue(coordinator.showsBasicsOffer)
 
-        coordinator.startBasicsTour(vm: DSPViewModel())
+        coordinator.startBasicsTour(vm: HardwareTest.offlineViewModel())
         XCTAssertTrue(coordinator.basicsTourRunning)
         XCTAssertEqual(coordinator.basicsTourSteps.count, OnboardingCatalogue.basics.count)
     }
@@ -479,7 +479,7 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// still has a tour to run.
     func testDismissingTheOfferKeepsTheStepsPending() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.finishSetup()
         coordinator.dismissBasicsOffer()
 
@@ -491,7 +491,7 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// "Never" means never, for the tour and everything after it.
     func testDecliningStopsTheOfferForGood() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.finishSetup()
         coordinator.declineEverything()
 
@@ -503,12 +503,12 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// after it has been completed once.
     func testReplayRestoresTheWholeTour() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.skip(.setup)
         coordinator.skip(.basics)
         XCTAssertTrue(coordinator.pending(.basics).isEmpty)
 
-        coordinator.startBasicsTour(vm: DSPViewModel())
+        coordinator.startBasicsTour(vm: HardwareTest.offlineViewModel())
         XCTAssertEqual(coordinator.basicsTourSteps.count, OnboardingCatalogue.basics.count)
     }
 
@@ -517,9 +517,9 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// spotlight, no Skip button, nothing to press.
     func testAskingForTheWizardEndsARunningTour() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.finishSetup()
-        coordinator.startBasicsTour(vm: DSPViewModel())
+        coordinator.startBasicsTour(vm: HardwareTest.offlineViewModel())
         XCTAssertTrue(coordinator.basicsTourRunning)
 
         coordinator.requestSetup()
@@ -533,9 +533,9 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// pressed Next.
     func testResettingWhileTheTourRunsDoesNotRecordItsSteps() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.finishSetup()
-        coordinator.startBasicsTour(vm: DSPViewModel())
+        coordinator.startBasicsTour(vm: HardwareTest.offlineViewModel())
 
         coordinator.resetAll()
         coordinator.basicsTourNext()        // a click that was already in flight
@@ -551,11 +551,11 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// and reclassifies the user as up to date in the middle of their tour.
     func testReplayedTourKeepsTheCohortIntactWhileItRuns() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.skip(.setup)
         coordinator.skip(.basics)
 
-        coordinator.startBasicsTour(vm: DSPViewModel())
+        coordinator.startBasicsTour(vm: HardwareTest.offlineViewModel())
         coordinator.basicsTourNext()
 
         XCTAssertTrue(coordinator.basicsTourRunning)
@@ -587,7 +587,7 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// A hint is shown once and then never again, whatever else happens.
     func testJustInTimeHintIsShownOnceOnly() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
 
         XCTAssertNotNil(coordinator.justInTimeStep(for: "crossfeed"))
         coordinator.markJustInTimeSeen("crossfeed")
@@ -602,7 +602,7 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// Marking one feature seen must not silence the others.
     func testJustInTimeHintsAreIndependent() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.markJustInTimeSeen("crossfeed")
 
         XCTAssertNotNil(coordinator.justInTimeStep(for: "loudness"))
@@ -612,7 +612,7 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// An unknown key is a caller's typo, not a crash.
     func testUnknownJustInTimeKeyIsHarmless() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
 
         XCTAssertNil(coordinator.justInTimeStep(for: "not-a-feature"))
         coordinator.markJustInTimeSeen("not-a-feature")
@@ -655,11 +655,11 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// saying the same thing, and again the next time it is opened.
     func testStartingTheTourSpendsTheMatrixFirstOpenCard() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.finishSetup()
         XCTAssertNotNil(coordinator.justInTimeStep(for: "matrix-mixer"))
 
-        coordinator.startBasicsTour(vm: DSPViewModel())
+        coordinator.startBasicsTour(vm: HardwareTest.offlineViewModel())
 
         XCTAssertNil(coordinator.justInTimeStep(for: "matrix-mixer"))
         // Only the windows the tour actually visits.
@@ -671,7 +671,7 @@ final class OnboardingCoordinatorTests: XCTestCase {
     /// card that explains it must still be waiting on first open.
     func testPuttingTheTourOffKeepsTheMatrixFirstOpenCard() {
         let coordinator = makeCoordinator()
-        coordinator.evaluate(vm: DSPViewModel())
+        coordinator.evaluate(vm: HardwareTest.offlineViewModel())
         coordinator.finishSetup()
         coordinator.dismissBasicsOffer()
 

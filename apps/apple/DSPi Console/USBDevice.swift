@@ -75,6 +75,9 @@ class USBDevice: ObservableObject {
     typealias DeviceInterfacePtr = UnsafeMutablePointer<UnsafeMutablePointer<DeviceInterface>?>?
 
     private var deviceInterface: DeviceInterfacePtr = nil
+    // -- WP SWF2 -- False while `deviceInterface` is held without a
+    // device-level open (see `OpenPlan.shareDevice`): it must not be closed.
+    private var deviceOpened = false
     private let vendorID: UInt16 = 0x2e8b
     private let productID: UInt16 = 0xfeaa
 
@@ -187,7 +190,8 @@ class USBDevice: ObservableObject {
     /// Opens a USB device from its IOKit service. Returns `kIOReturnSuccess` on
     /// success, otherwise the failing IOKit status.
     /// Does NOT release the service — caller is responsible.
-    private func openDevice(service: io_service_t) -> IOReturn {
+    /// `exclusive: false` skips the device-level open (`OpenPlan.shareDevice`).
+    private func openDevice(service: io_service_t, exclusive: Bool = true) -> IOReturn {
         var score: Int32 = 0
         var interface: UnsafeMutablePointer<UnsafeMutablePointer<IOCFPlugInInterface>?>?
 
@@ -217,9 +221,10 @@ class USBDevice: ObservableObject {
         let devPtr = tempDeviceInterface?.assumingMemoryBound(to: UnsafeMutablePointer<DeviceInterface>?.self)
         guard let dev = devPtr else { return kIOReturnNoResources }
 
-        let openRes = dev.pointee!.pointee.USBDeviceOpen(dev)
+        let openRes = exclusive ? dev.pointee!.pointee.USBDeviceOpen(dev) : kIOReturnSuccess
         if openRes == kIOReturnSuccess {
             self.deviceInterface = devPtr
+            self.deviceOpened = exclusive
             bumpGeneration()
         } else {
             // Release the handle we just created; retries build a fresh one,
@@ -238,30 +243,43 @@ class USBDevice: ObservableObject {
     /// is permanent - nothing else ever attempts a connect.
     private static let openRetryDelays: [TimeInterval] = [0.1, 0.2, 0.4, 0.8, 1.0]
 
+    // -- WP SWF2 --
+    /// What to do after a device-level open returned `result` on attempt
+    /// `attempt` (0-based).
+    enum OpenPlan: Equatable {
+        case connected
+        case retry(after: TimeInterval)
+        /// Still held by someone else after every retry: use the device
+        /// without the device-level open (hw-mac F2).  `USBDeviceOpen` is
+        /// exclusive, and CoreMIDI's USB MIDI driver opens the whole device
+        /// while any MIDI client (a DAW, a relay) has the DSPi's port open, so
+        /// the Console could not connect at all.  Vendor control requests on
+        /// endpoint 0 and the vendor interface's own open do not need it,
+        /// which is how libusb, and so the Terminal, reach a held DSPi.
+        case shareDevice
+        case failed
+    }
+
+    static func openPlan(after result: IOReturn, attempt: Int) -> OpenPlan {
+        if result == kIOReturnSuccess { return .connected }
+        if attempt < openRetryDelays.count { return .retry(after: openRetryDelays[attempt]) }
+        return result == kIOReturnExclusiveAccess ? .shareDevice : .failed
+    }
+
     /// Opens `service` on `serialQueue`, retrying with backoff, and publishes
     /// the resulting connection state. Takes ownership of `service`: it is
     /// released once the attempt sequence finishes.
     /// Must be called on `serialQueue`.
     private func openWithRetry(service: io_service_t, device: DSPiDevice, attempt: Int = 0) {
-        let result = openDevice(service: service)
+        var result = openDevice(service: service)
 
-        if result == kIOReturnSuccess {
-            IOObjectRelease(service)
-            DispatchQueue.main.async {
-                // Attach the notification reader before publishing, so a
-                // subscriber reacting to isConnected already has a live stream.
-                self.notificationReader.start()
-                self.selectedDevice = device
-                self.isConnected = true
-                self.errorMessage = nil
-            }
-            return
-        }
-
-        if attempt < USBDevice.openRetryDelays.count {
+        switch USBDevice.openPlan(after: result, attempt: attempt) {
+        case .connected:
+            break
+        case .retry(let delay):
             // asyncAfter rather than sleeping: serialQueue also serves the
             // synchronous control reads, so blocking it would stall the UI.
-            serialQueue.asyncAfter(deadline: .now() + USBDevice.openRetryDelays[attempt]) { [weak self] in
+            serialQueue.asyncAfter(deadline: .now() + delay) { [weak self] in
                 guard let self = self else {
                     IOObjectRelease(service)
                     return
@@ -275,9 +293,25 @@ class USBDevice: ObservableObject {
                 self.openWithRetry(service: service, device: device, attempt: attempt + 1)
             }
             return
+        case .shareDevice:  // -- WP SWF2 --
+            result = openDevice(service: service, exclusive: false)
+        case .failed:
+            break
         }
 
         IOObjectRelease(service)
+        if result == kIOReturnSuccess {
+            DispatchQueue.main.async {
+                // Attach the notification reader before publishing, so a
+                // subscriber reacting to isConnected already has a live stream.
+                self.notificationReader.start()
+                self.selectedDevice = device
+                self.isConnected = true
+                self.errorMessage = nil
+            }
+            return
+        }
+
         DispatchQueue.main.async {
             self.isConnected = false
             self.errorMessage = result == kIOReturnExclusiveAccess
@@ -290,7 +324,8 @@ class USBDevice: ObservableObject {
     private func closeDevice() {
         notificationReader.stop()
         if let dev = self.deviceInterface {
-            _ = dev.pointee!.pointee.USBDeviceClose(dev)
+            if deviceOpened { _ = dev.pointee!.pointee.USBDeviceClose(dev) }
+            deviceOpened = false
             _ = dev.pointee!.pointee.Release(dev)
             self.deviceInterface = nil
             bumpGeneration()

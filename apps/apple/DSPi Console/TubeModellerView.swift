@@ -168,7 +168,7 @@ struct TubeModellerView: View {
                 // The left column is the stage itself: its curve, the tube and
                 // how hard it is driven, and where it applies.  The right column
                 // holds what the tube type presets and the output stage after it.
-                HStack(alignment: .top, spacing: 0) {
+                ToolColumns {
                     VStack(alignment: .leading, spacing: 14) {
                         transferGraph
                         Divider()
@@ -187,8 +187,6 @@ struct TubeModellerView: View {
                     }
                     .toolColumn()
                 }
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.vertical, 16)
             } else {
                 unsupportedNote
             }
@@ -197,7 +195,7 @@ struct TubeModellerView: View {
             Color.clear.preference(key: TubeContentHeightKey.self, value: geo.size.height)
         })
         .onPreferenceChange(TubeContentHeightKey.self) { controller.fit(contentHeight: $0) }
-        .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .toolWindowFrame(minWidth: 620)
     }
 
     private func sectionLabel(_ title: String) -> some View {
@@ -212,7 +210,7 @@ struct TubeModellerView: View {
     /// two controls that matter most, and where it applies.  Everything else
     /// keeps the value it has, so switching modes never changes the sound.
     private var basicBody: some View {
-        HStack(alignment: .top, spacing: 0) {
+        ToolColumns {
             tubeShowcase
                 .toolColumn()
                 .frame(maxHeight: .infinity)
@@ -228,8 +226,6 @@ struct TubeModellerView: View {
             }
             .toolColumn()
         }
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(.vertical, 16)
     }
 
     private var family: TubeFamily { TubeFamily.of(tube.type) }

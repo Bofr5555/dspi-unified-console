@@ -15,7 +15,7 @@ import XCTest
 final class HardwareIntegrationTests: XCTestCase {
 
     func testMasterVolumeRoundTrip() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         let vm = AppState.shared.viewModel
 
         let original = HardwareTest.readFloat(usb, REQ_GET_MASTER_VOLUME, value: 0)
@@ -30,7 +30,7 @@ final class HardwareIntegrationTests: XCTestCase {
     }
 
     func testOutputGainRoundTrip() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         let vm = AppState.shared.viewModel
         let output = 0
 
@@ -46,7 +46,7 @@ final class HardwareIntegrationTests: XCTestCase {
     }
 
     func testEQBandRoundTrip() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         let vm = AppState.shared.viewModel
         let ch = 0, band = 0
 
@@ -76,7 +76,7 @@ final class HardwareIntegrationTests: XCTestCase {
     }
 
     func testInputSourceReadable() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let d = usb.getControlRequest(request: REQ_GET_INPUT_SOURCE, value: 0, index: 0, length: 1) else {
             throw XCTSkip("Firmware does not support input-source switching (0xE1 STALLed).")
         }

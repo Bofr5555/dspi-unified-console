@@ -825,7 +825,7 @@ struct StatsView: View {
             // The scroll view only engages when a locked S/PDIF input with its
             // channel status and debug rows outgrows a short window.
             ScrollView {
-                HStack(alignment: .top, spacing: 0) {
+                ToolColumns(stackedSpacing: 12) {
                     VStack(alignment: .leading, spacing: 12) {
                         deviceSection
                         Divider()
@@ -876,8 +876,6 @@ struct StatsView: View {
                         .toolColumn()
                     }
                 }
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.vertical, 16)
             }
 
             Divider()
@@ -886,7 +884,7 @@ struct StatsView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
         }
-        .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .toolWindowFrame(minWidth: 620)
     }
 
     private func sectionLabel(_ title: String) -> some View {

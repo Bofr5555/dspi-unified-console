@@ -12,6 +12,12 @@
 //  (a DSPi plugged in) takes over from a lower-priority member (the demo
 //  device), or from any member with nothing selected.
 //
+//  -- WP SWF2 -- On macOS the set is the DSPi on its vendor interface, then
+//  the same DSPi on its USB MIDI port (one serial, one row in the list).  A
+//  member that fails to open a device it lists (an error, nothing selected)
+//  hands the device to the next member that lists it, so a vendor path that
+//  cannot be opened falls back to MIDI instead of leaving a red badge.
+//
 
 import Foundation
 import Combine
@@ -45,6 +51,30 @@ final class LocalTransportSet: DeviceTransport {
             member.selectedDevicePublisher
                 .sink { [weak self] device in self?.memberSelected(i, device) }
                 .store(in: &memberCancellables)
+            // -- WP SWF2 --
+            member.errorMessagePublisher
+                .sink { [weak self] error in self?.memberFailed(i, error) }
+                .store(in: &memberCancellables)
+        }
+    }
+
+    // -- WP SWF2 --
+    /// The member in use reported an error with nothing selected: it could
+    /// not open its device.  The first lower-priority member that lists one
+    /// of its devices and has nothing selected opens that device instead.
+    private func memberFailed(_ i: Int, _ error: String?) {
+        guard error != nil else { return }
+        let member = members[i]
+        guard member === current, member.selectedDevice == nil, !member.isConnected else { return }
+        lock.lock(); let failedList = lists[i]; let later = Array(lists.enumerated().dropFirst(i + 1)); lock.unlock()
+        for (j, list) in later {
+            let fallback = members[j]
+            guard fallback.selectedDevice == nil,
+                  let device = failedList.first(where: { list.contains($0) }),
+                  let own = list.first(where: { $0 == device }) else { continue }
+            attach(to: fallback)
+            fallback.selectDevice(own)
+            return
         }
     }
 
@@ -130,4 +160,12 @@ final class LocalTransportSet: DeviceTransport {
     func addNotificationObserver(_ handler: @escaping (LinkNotification) -> Void) -> AnyCancellable {
         fanout.add(handler)
     }
+
+    // -- WP SWF2 -- The member in use holds the lock: on macOS the hub's
+    // (HubTransport).  Without these the protocol's no-op default would win.
+    func acquireDeviceLock(reason: String, timeout: TimeInterval) -> Bool {
+        current.acquireDeviceLock(reason: reason, timeout: timeout)
+    }
+
+    func releaseDeviceLock() { current.releaseDeviceLock() }
 }

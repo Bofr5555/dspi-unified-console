@@ -154,7 +154,7 @@ struct LoudnessView: View {
             // curve has the left column to itself and grows to the height of
             // the parameters and outputs beside it, so the columns always end
             // together.
-            HStack(alignment: .top, spacing: 0) {
+            ToolColumns {
                 compensationGraph
                     .toolColumn()
 
@@ -169,10 +169,8 @@ struct LoudnessView: View {
                 }
                 .toolColumn()
             }
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.vertical, 16)
         }
-        .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .toolWindowFrame(minWidth: 620)
     }
 
     // MARK: - Header

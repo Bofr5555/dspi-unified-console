@@ -20,7 +20,7 @@ final class SaveCoordinationTests: XCTestCase {
     /// we save and restore it to avoid disturbing the app's live view model.
     private func makeIsolatedVM() -> DSPViewModel {
         let savedHandler = AppState.shared.interruptMonitor.onParamChanged
-        let vm = DSPViewModel(transport: AppState.shared.usb)
+        let vm = HardwareTest.offlineViewModel()
         AppState.shared.interruptMonitor.onParamChanged = savedHandler
         return vm
     }
@@ -215,7 +215,7 @@ final class SaveCoordinationTests: XCTestCase {
         //   defaults delete -g DSPiAllowFlash
         try XCTSkipUnless(UserDefaults.standard.bool(forKey: "DSPiAllowFlash"),
                           "Enable flash-writing save tests with: defaults write -g DSPiAllowFlash -bool YES")
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         let vm = AppState.shared.viewModel
         let coord = SettingsSaveCoordinator.shared
 

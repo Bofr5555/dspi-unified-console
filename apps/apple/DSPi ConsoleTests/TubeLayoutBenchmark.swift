@@ -11,9 +11,14 @@ import Combine
 /// It publishes through the view model, which re-runs the whole window body
 /// as well as its layout, so it is an upper bound on the drag path; the
 /// profile showed the body itself is negligible and layout is the cost.
+///
+/// WP SWF1: skipped when the run may open a real device.  The window drives
+/// the app's shared view model, which such a run connects to the DSPi, and the
+/// drag writes the tube drive through it.
 final class TubeLayoutBenchmark: XCTestCase {
     @MainActor
     func testAdvancedModeUpdateCost() throws {
+        try HardwareTest.requireNoDevice()   // -- WP SWF1 --
         let defaults = UserDefaults.standard
         let hadAdvanced = defaults.object(forKey: "tubeModellerAdvanced")
         defaults.set(true, forKey: "tubeModellerAdvanced")
@@ -48,6 +53,7 @@ final class TubeLayoutBenchmark: XCTestCase {
     /// as stutter is in this number.
     @MainActor
     func testSyntheticDragCost() throws {
+        try HardwareTest.requireNoDevice()   // -- WP SWF1 --
         let defaults = UserDefaults.standard
         let hadAdvanced = defaults.object(forKey: "tubeModellerAdvanced")
         defaults.set(true, forKey: "tubeModellerAdvanced")
@@ -152,6 +158,7 @@ final class TubeLayoutBenchmark: XCTestCase {
     /// not move at grab or release and the row does not change height.
     @MainActor
     func testLiveLabelCoincidesWithField() throws {
+        try HardwareTest.requireNoDevice()   // -- WP SWF1 --
         let defaults = UserDefaults.standard
         let hadAdvanced = defaults.object(forKey: "tubeModellerAdvanced")
         defaults.set(true, forKey: "tubeModellerAdvanced")

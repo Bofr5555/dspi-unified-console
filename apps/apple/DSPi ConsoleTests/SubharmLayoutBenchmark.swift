@@ -5,9 +5,13 @@ import SwiftUI
 /// What a sub-meter publish costs the Subharmonic window. The meter is polled
 /// while the window is open, so this is paid at the poll rate with no user
 /// input at all, and any drag rides on top of it.
+///
+/// WP SWF1: skipped when the run may open a real device, since it rewrites
+/// the app's shared view model (the wire version), which is then the DSPi's.
 final class SubharmLayoutBenchmark: XCTestCase {
     @MainActor
     func testMeterPublishCost() throws {
+        try HardwareTest.requireNoDevice()   // -- WP SWF1 --
         let vm = AppState.shared.viewModel
         vm.firmwareWireFormatVersion = 31
         let controller = SubharmonicSynthWindowController()
@@ -39,6 +43,7 @@ final class SubharmLayoutBenchmark: XCTestCase {
     /// at about 16 Hz while its window is open.
     @MainActor
     func testUpmixTelemetryPublishCost() throws {
+        try HardwareTest.requireNoDevice()   // -- WP SWF1 --
         let vm = AppState.shared.viewModel
         vm.firmwareWireFormatVersion = 31
         vm.platformName = "RP2350"

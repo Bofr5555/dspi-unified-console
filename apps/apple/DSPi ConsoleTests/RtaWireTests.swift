@@ -711,7 +711,7 @@ final class RtaWireTests: XCTestCase {
     /// Reading the caps is the whole feature probe.  Firmware without the
     /// analyser STALLs it, which is a skip here rather than a failure.
     func testLiveCapsAgreeWithTheSpec() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let d = usb.getControlRequest(request: REQ_RTA_GET_CAPS, value: 0, index: 2,
                                             length: UInt16(RTA_CAPS_SIZE)),
               let caps = RtaCaps.fromData(d) else {
@@ -728,7 +728,7 @@ final class RtaWireTests: XCTestCase {
     /// The band-centre table is the single source of truth for where a band
     /// sits, so the app's axis labels come from it rather than a table of ours.
     func testLiveBandCentresAreThirdOctaveFrom10Hz() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let c = usb.getControlRequest(request: REQ_RTA_GET_CAPS, value: 1, index: 2,
                                             length: UInt16(RTA_CENTRES_PER_CHUNK * 2)),
               c.count >= 8 else {
@@ -751,11 +751,19 @@ final class RtaWireTests: XCTestCase {
     /// A configuration the spec calls valid must be accepted and read back, and
     /// the analyser must report itself running once band frames are read.
     func testLiveConfigRoundTripAndAutoStart() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let d = usb.getControlRequest(request: REQ_RTA_GET_CAPS, value: 0, index: 2,
                                             length: UInt16(RTA_CAPS_SIZE)),
               let caps = RtaCaps.fromData(d) else {
             throw XCTSkip("Connected firmware has no spectrum analyser.")
+        }
+        // -- WP SWF1 -- and put the configuration back as it was.
+        let original = usb.getControlRequest(request: REQ_RTA_GET_CONFIG, value: 0, index: 2,
+                                             length: UInt16(RTA_CONFIG_SIZE))
+        defer {
+            if let original, original.count == RTA_CONFIG_SIZE {
+                usb.sendControlRequest(request: REQ_RTA_SET_CONFIG, value: 0, index: 2, data: original)
+            }
         }
 
         let want = RtaConfig(tap: RTA_TAP_OUTPUT, channelMask: 0x0001,
@@ -797,10 +805,18 @@ final class RtaWireTests: XCTestCase {
 
     /// An empty channel mask is a STALL, not a silently-ignored configuration.
     func testLiveEmptyMaskIsRefused() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard usb.getControlRequest(request: REQ_RTA_GET_CAPS, value: 0, index: 2,
                                     length: UInt16(RTA_CAPS_SIZE)).flatMap(RtaCaps.fromData) != nil else {
             throw XCTSkip("Connected firmware has no spectrum analyser.")
+        }
+        // -- WP SWF1 -- and put the configuration back as it was.
+        let original = usb.getControlRequest(request: REQ_RTA_GET_CONFIG, value: 0, index: 2,
+                                             length: UInt16(RTA_CONFIG_SIZE))
+        defer {
+            if let original, original.count == RTA_CONFIG_SIZE {
+                usb.sendControlRequest(request: REQ_RTA_SET_CONFIG, value: 0, index: 2, data: original)
+            }
         }
         let good = RtaConfig(tap: RTA_TAP_OUTPUT, channelMask: 0x0001)
         usb.sendControlRequest(request: REQ_RTA_SET_CONFIG, value: 0, index: 2, data: good.toData())
