@@ -4,6 +4,9 @@
 #
 #   ci/macvm.sh macos   macOS Swift app: build, unit tests
 #   ci/macvm.sh ios     iOS app: build, unit and UI tests in the Simulator
+#   ci/macvm.sh qt-dmg  Qt app: the .dmg (apps/desktop/packaging/macos/ci-dmg.sh),
+#                       started from the .dmg on the demo device; the .dmg is
+#                       copied back next to the matrix logs (WP QD21b)
 #
 # Exits 3 when the VM cannot run it (no ssh, or nobody logged in to its GUI):
 # ci/matrix.sh prints the row as "not run". One heavy job at a time in the VM:
@@ -15,7 +18,11 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 platform=${1:-}
-case "$platform" in macos|ios) ;; *) echo "usage: $0 macos|ios" >&2; exit 2 ;; esac
+case "$platform" in
+  macos|ios) script="apps/apple/ci-test.sh $platform" ;;
+  qt-dmg) script=apps/desktop/packaging/macos/ci-dmg.sh ;;  # -- WP QD21b --
+  *) echo "usage: $0 macos|ios|qt-dmg" >&2; exit 2 ;;
+esac
 host=${DSPI_MACVM:-macvm}
 vm() { ssh -o ConnectTimeout=10 -o BatchMode=yes "$host" "$@"; }
 
@@ -25,7 +32,7 @@ grep -qw console <<<"$who" || { echo "macvm: nobody is logged in to the GUI of $
 # One ssh session: take the lock, unpack the tree from stdin, run, unlock. The
 # lock holds the session shell's pid, so a run that died (VM restart, lost ssh)
 # leaves a lock the next run removes.
-echo "macvm: copying the tree to $host:~/work/matrix/src and running ci-test.sh $platform"
+echo "macvm: copying the tree to $host:~/work/matrix/src and running $script"
 # Tracked and untracked files, without ignored ones: what the container rows see.
 git ls-files -z --cached --others --exclude-standard |
   tar --null --ignore-failed-read -T - -cf - 2>/dev/null |
@@ -41,7 +48,16 @@ git ls-files -z --cached --others --exclude-standard |
     sudo launchctl asuser \"\$(id -u)\" sudo -u \"\$(id -un)\" env \\
       PATH=\"\$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin\" HOME=\"\$HOME\" \\
       CARGO_TARGET_DIR=\"\$HOME/work/matrix/target\" CI_OUT=\"\$HOME/work/matrix/out\" \\
-      nice -n 10 \"\$HOME/work/matrix/src/apps/apple/ci-test.sh\" $platform </dev/null
+      nice -n 10 \$HOME/work/matrix/src/$script </dev/null
     rc=\$?
     rm -rf ~/work/matrix/lock
     exit \$rc"
+rc=$?
+# -- WP QD21b -- the .dmg, an unpublished artefact, next to the matrix logs
+if [ "$platform" = qt-dmg ] && [ "$rc" = 0 ]; then
+  dest=${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}/work/matrix/$(git rev-parse --short=12 HEAD)
+  mkdir -p "$dest"
+  scp -q -o BatchMode=yes "$host:work/matrix/out/qt-dmg/DSPi-Console-*-macos.dmg" "$dest/" || rc=1
+  echo "macvm: the .dmg is in $dest"
+fi
+exit "$rc"

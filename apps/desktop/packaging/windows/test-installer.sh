@@ -27,8 +27,13 @@ wineboot -i >/dev/null 2>&1; wineserver -w
 
 wine "$setup" /S "/D=$dir"; check "install" 0 $?
 [ -f "$unix/DSPiConsole.exe" ] || { echo "test-installer: FAIL: no DSPiConsole.exe after the install"; exit 1; }
+# -- WP QD21c -- the publisher Apps & features shows
+publisher=$(wine reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\DSPiConsole' /v Publisher 2>/dev/null | tr -d '\r' | sed -n 's/.*REG_SZ *//p')
+[ -n "$publisher" ] && echo "test-installer: ok: Publisher \"$publisher\"" \
+    || { echo "test-installer: FAIL: no Publisher in the uninstall entry"; fails=$((fails + 1)); }
 
-# The installed app, running (on the demo device)
+# The installed app, running (on the demo device). Only whether it stays up:
+# under Wine the GUI exe's Qt messages reach no log this script can read
 wine "$unix/DSPiConsole.exe" --demo >/dev/null 2>&1 &
 app=$!
 sleep 15

@@ -11191,19 +11191,19 @@ Macros are stored on the device alongside the controls and share their Save and 
     <message>
         <location line="+20"/>
         <location line="+38"/>
-        <source>Minimise</source>
+        <source>Minimize</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location line="-37"/>
         <location line="+38"/>
-        <source>Restore</source>
+        <source>Maximize</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location line="-38"/>
         <location line="+38"/>
-        <source>Maximise</source>
+        <source>Restore</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

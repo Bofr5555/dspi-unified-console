@@ -3,6 +3,11 @@
 //! notification stream. Blocking API, any thread; one reader thread and one
 //! keepalive thread per session.
 //!
+//! -- WP WB4b -- Where there are no threads (`wasm32-unknown-unknown`, see
+//! [`caller_driven`]) a session has neither: whoever waits for an answer
+//! reads the socket meanwhile ([`LinkClient::service`] does a turn of both
+//! for the embedder's timer), with the same handling, timers and rules.
+//!
 //! Port of DSPi-Console `release/v1.1.6` `Link/LinkClient.swift` (session
 //! lifecycle, timeouts, `none`-mode session probe, close-code reasons) with
 //! the reconnect policy left to the embedder, as there. Differences:
@@ -13,10 +18,13 @@
 //!   synthetic `BULK_INVALIDATED` packet for the bound device, so the core's
 //!   own re-read path runs (macOS does the same for RESYNC only).
 
+// -- WP WB4b --
+#[cfg(feature = "fake-hub")]
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
+use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 use std::time::Duration;
@@ -65,6 +73,38 @@ const CONNECT_BUDGET: Duration = Duration::from_secs(15);
 const HANDOVER_GRACE: Duration = Duration::from_millis(50);
 /// How often the keepalive thread looks at its clock.
 const KEEPALIVE_TICK: Duration = Duration::from_millis(250);
+
+// -- WP WB4b --
+/// Longest single wait on the socket in a caller-driven session, so the
+/// keepalive is looked at while a long request waits.
+const PUMP_SLICE: Duration = Duration::from_millis(250);
+/// Messages handled per turn of a caller-driven session before the turn ends.
+const PUMP_BATCH: usize = 256;
+
+#[cfg(feature = "fake-hub")]
+thread_local! {
+    static CALLER_DRIVEN_HERE: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Whether a session opened on this thread runs without threads: always on
+/// `wasm32-unknown-unknown`, where there are none (WP WB4b), and natively
+/// only where a test asked for it ([`set_caller_driven_on_this_thread`]).
+/// Such a session reads its socket only while someone waits on it or calls
+/// [`LinkClient::service`].
+pub fn caller_driven() -> bool {
+    #[cfg(feature = "fake-hub")]
+    if CALLER_DRIVEN_HERE.with(Cell::get) {
+        return true;
+    }
+    cfg!(all(target_arch = "wasm32", target_os = "unknown"))
+}
+
+/// Tests only: sessions opened on this thread from now on are caller-driven
+/// (as on the web), so the web's path runs natively against the fake hub.
+#[cfg(feature = "fake-hub")]
+pub fn set_caller_driven_on_this_thread(on: bool) {
+    CALLER_DRIVEN_HERE.with(|c| c.set(on));
+}
 
 /// A session's timers. The defaults are what production uses.
 #[derive(Debug, Clone, Copy)]
@@ -331,6 +371,12 @@ struct Inner {
     probe: Mutex<Probe>,
     /// `auth.pair` requests not settled yet: sent, or given up on by a timeout.
     open_pairs: Mutex<HashSet<u64>>,
+    // -- WP WB4b --
+    /// No threads: the receiving half lives here, read by whoever waits.
+    caller_driven: bool,
+    rx: Mutex<Option<Box<dyn WsReceiver>>>,
+    /// When the keepalive last pinged (caller-driven; the thread keeps its own).
+    last_ping: Mutex<Instant>,
 }
 
 impl Drop for Inner {
@@ -397,7 +443,7 @@ impl LinkClient {
             sender.close(1000);
             return Err(LinkError::Io(e.to_string()));
         }
-        let hello = match Self::await_hello(receiver.as_mut(), left()) {
+        let hello = match Self::await_hello(receiver.as_mut(), left(), caller_driven()) {
             Ok(h) => h,
             Err(e) => {
                 sender.close(1000);
@@ -435,9 +481,15 @@ impl LinkClient {
             epoch: NEXT_EPOCH.fetch_add(1, Ordering::Relaxed),
             probe: Mutex::new(Probe::default()),
             open_pairs: Mutex::new(HashSet::new()),
+            caller_driven: caller_driven(),
+            rx: Mutex::new(None),
+            last_ping: Mutex::new(cfg.clock.now()),
         });
         let c = LinkClient { inner };
-        if let Err(e) = c.spawn_threads(receiver) {
+        // -- WP WB4b --
+        if c.inner.caller_driven {
+            *lock(&c.inner.rx) = Some(receiver);
+        } else if let Err(e) = c.spawn_threads(receiver) {
             c.close();
             return Err(e);
         }
@@ -500,10 +552,16 @@ impl LinkClient {
         Ok((c, state))
     }
 
-    fn await_hello(receiver: &mut dyn WsReceiver, timeout: Duration) -> Result<HelloHub, LinkError> {
+    fn await_hello(receiver: &mut dyn WsReceiver, timeout: Duration, pumped: bool) -> Result<HelloHub, LinkError> {
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
-            match receiver.recv() {
+            // -- WP WB4b --
+            let received = if pumped {
+                receiver.recv_within(deadline.saturating_duration_since(Instant::now()).min(PUMP_SLICE))
+            } else {
+                receiver.recv()
+            };
+            match received {
                 WsRecv::Message(WsMessage::Text(t)) => {
                     if let Ok(Inbound::Hello(h)) = Inbound::parse(&t) {
                         return Ok(h);
@@ -806,6 +864,13 @@ impl LinkClient {
             if left.is_zero() || self.is_closed() {
                 return false;
             }
+            // -- WP WB4b -- no other thread frees a slot: read the socket meanwhile
+            if self.inner.caller_driven {
+                drop(n);
+                self.pump(left.min(Duration::from_millis(200)));
+                n = lock(&self.inner.inflight);
+                continue;
+            }
             n = self
                 .inner
                 .inflight_free
@@ -861,7 +926,13 @@ impl LinkClient {
 
     /// The answer to a frame [`Self::send_cmd`] sent, by `deadline`.
     fn await_cmd(&self, (tag, rx): (u16, Receiver<CmdResponse>), deadline: Instant) -> CmdResponse {
-        match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+        // -- WP WB4b --
+        let answer = if self.inner.caller_driven {
+            self.pumped_recv(&rx, deadline)
+        } else {
+            rx.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+        };
+        match answer {
             Ok(r) => r,
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 lock(&self.inner.pending_cmd).remove(&tag);
@@ -965,7 +1036,13 @@ impl LinkClient {
             self.socket_failed(None, &close_reason(None));
             return Err(LinkError::Io(e.to_string()));
         }
-        match rx.recv_timeout(timeout) {
+        // -- WP WB4b --
+        let answer = if self.inner.caller_driven {
+            self.pumped_recv(&rx, Instant::now() + timeout)
+        } else {
+            rx.recv_timeout(timeout)
+        };
+        match answer {
             Ok(r) => r,
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 if lock(&self.inner.pending_json).remove(&id).is_none() {
@@ -1003,6 +1080,101 @@ impl LinkClient {
         let now = self.inner.clock.now();
         let last_inbound = *lock(&self.inner.last_inbound);
         now.saturating_duration_since(last_inbound) > self.inner.timing.silence_limit
+    }
+
+    // ── Without threads (WP WB4b) ──────────────────────────────────────
+
+    /// Wait for `rx` until `deadline`, reading the socket meanwhile: what a
+    /// blocking `recv_timeout` is where nothing else reads it.
+    fn pumped_recv<T>(&self, rx: &Receiver<T>, deadline: Instant) -> Result<T, mpsc::RecvTimeoutError> {
+        loop {
+            match rx.try_recv() {
+                Ok(v) => return Ok(v),
+                Err(TryRecvError::Disconnected) => return Err(mpsc::RecvTimeoutError::Disconnected),
+                Err(TryRecvError::Empty) => {}
+            }
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return Err(mpsc::RecvTimeoutError::Timeout);
+            }
+            if self.is_closed() {
+                // Whatever closed it has answered (or dropped) the waiters
+                return rx.try_recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected);
+            }
+            self.pump(left.min(PUMP_SLICE));
+        }
+    }
+
+    /// A caller-driven session's turn without waiting: what arrived is
+    /// handled, a ping goes out when due, and long silence ends the session,
+    /// as the reader and keepalive threads do. For the embedder's timer;
+    /// call it at least every [`Timing::keepalive_tick`] and when the socket
+    /// has something. A no-op for a session with threads.
+    pub fn service(&self) {
+        if self.inner.caller_driven {
+            self.pump(Duration::ZERO);
+        }
+    }
+
+    /// Read the socket for up to `wait` (the first message ends the wait),
+    /// handle what arrived, then the keepalive's turn.
+    fn pump(&self, wait: Duration) {
+        if self.is_closed() {
+            return;
+        }
+        // Taken out, so nothing holds the lock while the hub's messages are handled
+        let Some(mut receiver) = lock(&self.inner.rx).take() else { return };
+        let mut wait = wait;
+        let mut ended = false;
+        for _ in 0..PUMP_BATCH {
+            match receiver.recv_within(wait) {
+                WsRecv::Message(m) => {
+                    self.heard_from_hub();
+                    match m {
+                        WsMessage::Text(t) => self.handle_text(&t),
+                        WsMessage::Binary(b) => self.handle_binary(&b),
+                    }
+                }
+                WsRecv::Alive => self.heard_from_hub(),
+                WsRecv::Idle => break,
+                WsRecv::Closed { code, reason } => {
+                    log::debug!("dspi-link: socket closed: {reason}");
+                    self.socket_failed(code, &close_reason(code));
+                    ended = true;
+                    break;
+                }
+            }
+            wait = Duration::ZERO;
+        }
+        if ended {
+            return;
+        }
+        *lock(&self.inner.rx) = Some(receiver);
+        self.keepalive_turn();
+    }
+
+    /// What the keepalive thread does on each tick, and the reader's silence rule.
+    fn keepalive_turn(&self) {
+        if self.is_closed() {
+            return;
+        }
+        if self.link_is_dead() {
+            self.inner.sender.close(1001);
+            self.socket_failed(None, &close_reason(None));
+            return;
+        }
+        let now = self.inner.clock.now();
+        let probing = std::mem::take(&mut lock(&self.inner.probe).ping_wanted);
+        {
+            let mut last = lock(&self.inner.last_ping);
+            if !probing && now.saturating_duration_since(*last) < self.inner.timing.ping_interval {
+                return;
+            }
+            *last = now;
+        }
+        if self.inner.sender.ping().is_err() {
+            self.socket_failed(None, &close_reason(None));
+        }
     }
 
     // ── Threads ────────────────────────────────────────────────────────

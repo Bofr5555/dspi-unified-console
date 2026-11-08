@@ -31,7 +31,11 @@ else
     # naming the section; DSPI_SMOKE_SECTION_LIMIT, 120 s by default) and logs
     # each section's time. This total only backs it up: about twice the main
     # run's cost on a quiet host (285 s at gate 2), so a loaded host fits.
-    timeout 600 "$app" "${args[@]}" > "$out/log.txt" 2>&1
+    # -- WP QD39 -- Rule kept, total raised: the main run reached 355 s quiet
+    # and 386 s loaded after QD22 (review c6d), so twice quiet is 710 s; 900 s
+    # leaves room for the next section. A hang is still caught first by the
+    # section watchdog, and by this total at worst.
+    timeout 900 "$app" "${args[@]}" > "$out/log.txt" 2>&1
     code=$?
     grep -E '^(smoke:|FAIL)' "$out/log.txt"
 fi

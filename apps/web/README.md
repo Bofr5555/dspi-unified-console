@@ -6,9 +6,11 @@ as every other client runs in a dedicated Worker under JSPI
 `src/core/worker.ts` from `dspi_wasm.wasm` beside it. A small stub core
 (`src/core/stub.ts`) remains as the tests' fake only.
 
-**Status:** skeleton. The core's own demo device, and a DSPi on USB through
-WebUSB (WB4a, Chromium only; tested on a WebUSB mock, real hardware is WB8).
-Link to hubs (WB4b) says "Not available in this version yet". The screens of the other clients arrive in
+**Status:** skeleton. The core's own demo device, a DSPi on USB through
+WebUSB (WB4a, Chromium only; tested on a WebUSB mock, real hardware is WB8),
+and DSPis behind hubs over DSPi Link (WB4b; tested against dspi-link's fake hub
+behind a host that enforces the hub's `Origin` rule, in Chromium and Firefox; a
+real hub serving this page is WB7). The screens of the other clients arrive in
 WB6 slices. Nothing here is published.
 
 ## What it is for
@@ -95,7 +97,58 @@ older firmware, or someone bound it by hand): then pick "WinUSB" for interface 2
 in Zadig, or remove the device in Device Manager with its driver and replug.
 That this needs no step on a clean machine is reasoned, not yet tested: WB8.
 
-**macOS:** no step; quit any other program holding the DSPi.
+**macOS:** no step expected; quit any other program holding the DSPi. Reasoned
+from WEB-STUDY section 6, not yet run (WB8).
+
+## Link (hubs)
+
+WP WB4b. The client is the core's own, the same as every other console's:
+`dspi-link`'s Rust client under the core's Link session and supervisor, built
+into `dspi_wasm.wasm`. Only the socket is the browser's: `src/core/ws.ts` hands
+whole WebSocket messages to the module's `dspi_ws_*` imports
+(`crates/dspi-wasm/src/link.rs`). No `@dspi/link` JavaScript.
+
+- **Steps**, each the core's (Link's choose_device flow), driven by the session
+  model (`src/ui/session.ts`): `linkConnect` with the token kept for that hub
+  and the hub's id it belongs to (the core sends it only once the hub has said
+  it is that hub); if the hub wants a PIN, the session shows CG10's
+  `needs_pairing` wording and a PIN field (`linkPair`; a wrong PIN keeps the
+  prompt); then the DSPi a fleet backend named, or the hub's own list
+  (`linkDevices`) to choose from; then `open {kind: "hub", deviceId}` binds it
+  and reads it.
+- **Then the core keeps it up by itself**: the Worker turns the session
+  (`linkTick`) at the wait the core asks for (at most 250 ms) and whenever the
+  socket has something, and pushes each new phase. The banner is the core's
+  phases in CG10's wording: reconnecting (with Disconnect, the way out), no
+  DSPi, closed, refused. A lost link reconnects with the core's backoff and
+  binds the DSPi again; a write made while the link is down fails at once and is
+  never sent later (the owner's rule); 30 s of silence ends a session (the
+  core's rule since LK2).
+- **No threads**: on the web `dspi-link` and the core's supervisor are
+  caller-driven (`dspi_link::client::caller_driven`): whoever waits for the hub
+  reads the socket meanwhile (JSPI suspends the call in `dspi_ws_wait`).
+- **Several at once**: every hub session is a Worker of its own. A hub's entry
+  opens a new session each time, so one hub can have several DSPis (or the same
+  DSPi twice) open, and several hubs as well.
+- **Tokens**: standalone, per hub in this page's storage
+  (`src/fleet/hub-tokens.ts`; a page served by a hub is that hub's own origin).
+  A token the hub refuses is forgotten. With `hubCredentials` (below) the
+  fleet's token is used, and a token paired for in this visit is kept in memory
+  only.
+- **What a page cannot do**, and what stands in: it cannot send a WebSocket
+  ping, so the core's ping is a request every hub answers (`unknown_type`), as
+  the upstream JavaScript client does; it may close only with 1000 or
+  3000-4999; and it cannot see why an upgrade failed, so a refused `Origin`, a
+  full hub and an unreachable one read alike: "Cannot connect to the hub at …
+  It may be off or busy, or it refuses this page: a hub accepts only pages it
+  serves itself."
+
+**The `Origin` rule** (Link spec 4, WEB-STUDY section 5): a hub accepts a
+browser's WebSocket only from its own pages. So the page that reaches a hub is
+the one that hub serves (`<meta name="dspi-hub" content="ws://…">` names its
+Link address; the standalone page lists it first), or a fleet server's page
+whose server carries Link to its hubs through its own origin. A standalone page
+can list any hub, but only hubs without the check answer it.
 
 ## Embedding in a fleet server
 
@@ -118,7 +171,8 @@ const console = mount(document.getElementById("dspi"), {
 | `addHub`, `removeSource` | present | omit them when the server manages the list |
 | `access(installation, source, device)` | always `control` | `control` or `view` per role; `view` makes the session read only |
 | `user()` | `null` | the signed-in user, shown in the header |
-| `hubCredentials(url)` | absent: the user pairs with each hub | a Link token the server holds for the fleet (used from WB4b) |
+| `hubCredentials(url)` | absent: the user pairs with each hub once; the token is kept in this page's storage | `{token, hubId?}` the server holds for the fleet; no PIN is asked. A refused one is not offered again this visit, and the user may pair instead (kept in memory only) |
+| `hubDevices(url)` | absent: the console asks the hub (choose_device) | the hub's DSPis the server knows, `{deviceId: serial, name}`, each its own entry that opens without asking the hub; `null` for a hub it leaves to the console |
 
 The console never signs anyone in, never stores a server credential and never
 decides access. Styles are scoped under `.dspi-web` (`dist/dspi-web.css`); light
@@ -127,8 +181,9 @@ host page's own element styles can still reach the console's buttons and inputs.
 
 Reaching hubs from a server-hosted page is bounded by the Link spec's `Origin`
 rule: a hub accepts only its own pages (WEB-STUDY section 5). A fleet product
-therefore talks to hubs through its own server, or serves the console from each
-hub; the backend interface allows either, and WB4b/WB7 settle which.
+therefore carries Link to its hubs through its own server (a hub `url` on the
+server's origin, as `tools/hub-host.mjs` does in the tests), or serves the
+console from each hub (WB7).
 
 ## Build and test
 
@@ -137,16 +192,20 @@ Everything runs in the official Playwright image, pinned by digest in
 host.
 
 ```bash
-ci/check.sh --step web                 # the core (cross container), npm ci, typecheck,
-                                       # unit (the core's too, under JSPI), e2e
+ci/check.sh --step web                 # the core and dspi-link's fake hub (cross
+                                       # container), npm ci, typecheck, unit (the
+                                       # core's too, under JSPI), e2e
 apps/web/tools/ci.sh --no-e2e          # without the browsers
 ```
 
 Outputs and caches go to `~/.cache/dspi-build/work/web/<branch>/` (`dist/` is there,
 not in the tree). `node tools/serve.mjs <dist>` serves a build on loopback for a look.
+`node tools/hub-host.mjs <dist> <port> <dspi-link-fakehub>` serves it as a hub
+would, with the `Origin` rule, over fake hubs it starts on request (the Link
+e2e's host; `DSPI_FAKEHUB` names the binary, which `tools/ci.sh` builds).
 
 `dist/` holds `index.html` and `app.js` (the standalone page), `dspi-web.js` (the
-library), `worker.js`, `dspi_wasm.wasm` (the core: 653 KB, 233 KB gzip with WebUSB) and
+library), `worker.js`, `dspi_wasm.wasm` (the core: 1 086 KB, 362 KB gzip with WebUSB and Link) and
 `dspi-web.css`. A host serves `dspi_wasm.wasm` beside `worker.js`. The page needs
 JSPI (Chrome 137, Firefox 153, Safari 27); without it every call says so. Preact (MIT) is the one runtime
 dependency. Its notice is not yet in the licence inventory (`ci/licence-inventory.py`
@@ -163,9 +222,11 @@ covers the Rust and iOS sides); that belongs with WB7, before anything is served
 | `src/core/client.ts` | the page's side: calls, replies, events |
 | `src/core/stub.ts` | the tests' fake core |
 | `src/core/usb.ts`, `usb-ids.ts` | WebUSB in the Worker: claim, transfers, notifications, unplug (WB4a) |
+| `src/core/ws.ts` | the browser's WebSocket as the core's socket imports (WB4b) |
+| `src/fleet/hub-tokens.ts` | hub tokens: this page's storage, or the fleet's credentials (WB4b) |
 | `src/fleet/` | installations, sources, access; `LocalBackend`; what this page can reach |
 | `src/ui/` | Preact components and the session model |
 | `src/index.tsx` | `mount()` and the public types |
 | `src/standalone.ts`, `index.html` | the standalone page (`?readonly` for a display page) |
 | `test/unit/` | `node --test` |
-| `test/e2e/`, `test/pages/` | Playwright; `embed.html` mounts two consoles with a server-like backend (`?core=stub`: on the fake core, `stub-worker.ts`); `usb.html` runs USB sessions over a WebUSB mock (`webusb-mock.ts`) whose devices are the core's simulated DSPi in the test module (Chromium) |
+| `test/e2e/`, `test/pages/` | Playwright; `embed.html` mounts two consoles with a server-like backend (`?core=stub`: on the fake core, `stub-worker.ts`); `usb.html` runs USB sessions over a WebUSB mock (`webusb-mock.ts`) whose devices are the core's simulated DSPi in the test module (Chromium); `fleet-hub.html` a fleet page with two hubs, `hubDevices` and `hubCredentials`, served by `tools/hub-host.mjs` (`link.spec.ts`, WB4b) |

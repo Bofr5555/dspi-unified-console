@@ -1,13 +1,12 @@
-# Debian 13 (glibc 2.41, Qt 6.8, KDE Frameworks 6): the AppImage built here runs
-# on it and on every newer distribution (Ubuntu 25.04, Fedora 42 and newer); the
-# .deb installs on Debian 13 and Ubuntu 25.04 and newer. Qt 6 raised the floor
-# from Ubuntu 22.04 (Qt 5.15). Not Ubuntu 24.04: the app crashes at its first
-# window activation on 24.04's Qt 6.4 (a recursion inside QQuickItem::event).
+# Debian 13 (glibc 2.41, Qt 6.8, KDE Frameworks 6): the .deb built here installs
+# on Debian 13 and Ubuntu 25.04 and newer, against the system Qt 6. Not Ubuntu
+# 24.04: the app crashes at its first window activation on 24.04's Qt 6.4 (inside
+# Qt's WindowActivate propagation); 24.04 gets the AppImage (Containerfile.ubuntu).
 # Rust from rustup-init, pinned and checked as in ci/container/Containerfile.qtport.
 FROM docker.io/library/debian:13
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential cmake ninja-build pkg-config curl ca-certificates file patchelf \
+        build-essential cmake ninja-build pkg-config curl ca-certificates file \
         qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools \
         libgl-dev libopengl-dev libglx-dev libvulkan-dev \
         libqt6svg6 qt6-svg-plugins qt6-wayland qt6-xdgdesktopportal-platformtheme \

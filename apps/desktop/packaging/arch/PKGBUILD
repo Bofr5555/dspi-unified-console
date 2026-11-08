@@ -1,4 +1,4 @@
-# Maintainer: WeebLabs <https://github.com/WeebLabs>
+# Maintainer: DSPi unified console maintainers
 # Builds DSPi Console from source against the system Qt 6, from the
 # dspi-unified-console repository (the app is apps/desktop, its core crates/).
 pkgname=dspi-console
@@ -7,6 +7,7 @@ pkgrel=1
 _commit=c4b71f136d79b7d434674696cfdcfb0924cb0f99
 pkgdesc="Control application for the DSPi audio processor"
 arch=('x86_64')
+# The repository is private for now: AUR users can fetch the source only once it is public
 url="https://github.com/Bofr5555/dspi-unified-console"
 license=('unknown')
 depends=('qt6-base' 'qt6-declarative' 'qt6-svg' 'qt6-wayland' 'kwindowsystem' 'hicolor-icon-theme'
