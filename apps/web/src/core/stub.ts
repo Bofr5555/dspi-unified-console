@@ -126,6 +126,15 @@ export class StubCore implements CoreImpl {
       filters: [],
       xover: [],
       maxBands: 10,
+      // -- WP WB6c -- no matrix, delays or limiter in the stub
+      outputDelayMs: [0, 0, 0, 0],
+      matrixRouting: [],
+      matrixGain: [],
+      matrixInvert: [],
+      limiterEnabled: [],
+      limiterLinkGroup: [],
+      limiterThresholdDb: [],
+      limiterReleaseMs: [],
     } satisfies DspState;
     this.device = {
       device: {

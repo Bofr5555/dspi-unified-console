@@ -19,6 +19,9 @@ import { BandChip, retypeAll } from "./Chip";
 import { useCurves, useGrid, type CurveRequest } from "./curves";
 import { useBandEdits } from "./edits";
 import { EqGraph } from "./EqGraph";
+// -- WP WB6c -- the output's page: its settings card and crossover
+import { CrossoverList } from "../outputs/Crossover";
+import { OutputCard, type OutputLimits } from "../outputs/OutputCard";
 import {
   DEFAULT_LIMITS,
   OFF_BAND,
@@ -104,12 +107,39 @@ export function EqScreen(props: ScreenProps) {
     };
   }, [session]);
 
+  // -- WP WB6c -- an output's gain range (the registry's) and longest delay (the device's)
+  const [outLimits, setOutLimits] = useState<OutputLimits>(DEFAULT_OUTPUT_LIMITS);
+  useEffect(() => {
+    let alive = true;
+    void Promise.all([session.core.call("describe", { path: "out.gain" }).catch(() => null), session.core.call("outputLimits", undefined).catch(() => null)]).then(([g, d]) => {
+      if (!alive) return;
+      setOutLimits({
+        gain: g?.min !== undefined && g.max !== undefined ? [g.min, g.max] : DEFAULT_OUTPUT_LIMITS.gain,
+        delay: d ? [0, d.maxDelayMs] : DEFAULT_OUTPUT_LIMITS.delay,
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [session]);
+
   if (!s || !Array.isArray(s.filters) || !named) return <p class="empty">This DSPi's filters are not known yet.</p>;
-  return <EqView session={session} ask={ask} s={s} ro={ro} usbActive={usbActive} limits={limits} />;
+  return <EqView session={session} ask={ask} s={s} ro={ro} usbActive={usbActive} limits={limits} outLimits={outLimits} />;
 }
 
+// -- WP WB6c --
+const DEFAULT_OUTPUT_LIMITS: OutputLimits = { gain: [-60, 20], delay: [0, 21] };
+
 const EqView = memo(
-  function EqView(props: { session: ScreenProps["session"]; ask: ScreenProps["ask"]; s: DspState; ro: boolean; usbActive: number | null; limits: Limits }) {
+  function EqView(props: {
+    session: ScreenProps["session"];
+    ask: ScreenProps["ask"];
+    s: DspState;
+    ro: boolean;
+    usbActive: number | null;
+    limits: Limits;
+    outLimits: OutputLimits;
+  }) {
     const { session, ask, s, ro, limits } = props;
     const idBase = useMemo(() => `eq-${Math.random().toString(36).slice(2, 9)}`, []);
 
@@ -130,6 +160,9 @@ const EqView = memo(
 
     // Which other channels' curves are shown (M58): this viewer's, in this view.
     const [hidden, setHidden] = useState<ReadonlySet<number>>(new Set());
+    // -- WP WB6c -- an output's PEQ or XO bands (the Console's tab toggle), PEQ on every new channel
+    const [tab, setTab] = useState<"peq" | "xo">("peq");
+    useEffect(() => setTab("peq"), [cw]);
 
     // The chosen channel's bands from the device, the same array while they are the same.
     const deviceKey = JSON.stringify(peq(s, cw));
@@ -180,7 +213,8 @@ const EqView = memo(
       [select],
     );
 
-    const available = useMemo(() => availableTypes(s), [s.formatVersion, s.fwMajor, s.fwMinor, s.fwPatch]);
+    // -- WP WB6c -- the Linkwitz Transform on outputs
+    const available = useMemo(() => availableTypes(s, chosen?.output ?? false), [s.formatVersion, s.fwMajor, s.fwMinor, s.fwPatch, chosen?.output]);
     const bypassOk = bypassSupported(s);
     const anchor = sel.anchor !== null && sel.set.has(sel.anchor) ? sel.anchor : null;
     const chipBand = anchor !== null && edits.shown[anchor] ? { b: anchor, p: edits.shown[anchor]! } : null;
@@ -201,6 +235,9 @@ const EqView = memo(
 
     if (!chosen) return <p class="empty">This DSPi has no channels to show.</p>;
     const offset = offsetOf(s, chosen);
+    // -- WP WB6c -- the crossover, where the firmware has one (outputs only)
+    const xoBands = chosen.output ? (s.xover?.[cw] ?? []) : [];
+    const showXo = tab === "xo" && xoBands.length > 0;
 
     return (
       <div class="eq-screen">
@@ -231,6 +268,17 @@ const EqView = memo(
             </span>
           ))}
         </div>
+        {chosen.output ? (
+          <OutputCard
+            session={session}
+            s={s}
+            output={chosen.index}
+            name={`${chosen.descriptor} ${chosen.name}`}
+            inputs={channels.filter((c) => !c.output)}
+            limits={props.outLimits}
+            disabled={ro}
+          />
+        ) : null}
         <section class="card eq-graph-card" aria-label="Graph">
           <EqGraph
             idBase={idBase}
@@ -268,6 +316,34 @@ const EqView = memo(
             freqRef={freqRef}
           />
         </section>
+        {xoBands.length ? (
+          <div class="band-tabs" role="tablist" aria-label="Bands">
+            {(["peq", "xo"] as const).map((t) => (
+              <button
+                type="button"
+                role="tab"
+                key={t}
+                aria-selected={(t === "xo") === showXo}
+                title={(t === "xo") === showXo ? `Currently showing ${t.toUpperCase()} bands` : `Switch to ${t.toUpperCase()} bands`}
+                onClick={() => setTab(t)}
+              >
+                {t.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {showXo ? (
+          <CrossoverList
+            session={session}
+            wire={cw}
+            channelName={`${chosen.descriptor} ${chosen.name}`}
+            bands={xoBands}
+            freq={limits.freq}
+            bypassOk={bypassOk}
+            disabled={ro}
+            ask={ask}
+          />
+        ) : (
         <BandList
           channelName={`${chosen.descriptor} ${chosen.name}`}
           bands={edits.shown}
@@ -280,6 +356,7 @@ const EqView = memo(
           choose={choose}
           commit={edits.commit}
         />
+        )}
       </div>
     );
   },
@@ -290,6 +367,7 @@ const EqView = memo(
     a.ro === b.ro &&
     a.usbActive === b.usbActive &&
     a.limits === b.limits &&
+    a.outLimits === b.outLimits &&
     eqKey(a.s) === eqKey(b.s),
 );
 
@@ -311,5 +389,15 @@ function eqKey(s: DspState): string {
     s.fwMajor,
     s.fwMinor,
     s.fwPatch,
+    // -- WP WB6c -- the output card's
+    s.outputMuted,
+    s.outputDelayMs,
+    s.matrixRouting,
+    s.matrixGain,
+    s.matrixInvert,
+    s.limiterEnabled,
+    s.limiterLinkGroup,
+    s.limiterThresholdDb,
+    s.limiterReleaseMs,
   ]);
 }

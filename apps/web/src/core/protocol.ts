@@ -144,6 +144,21 @@ export interface DspState {
   xover: FilterParams[][];
   /** PEQ bands per channel the firmware takes. */
   maxBands: number;
+  // -- WP WB6c -- outputs, matrix, limiter
+  /** Per output, ms (fractions kept to 0.0001 ms). */
+  outputDelayMs: number[];
+  /** `[input][output]`: the crosspoint routes. */
+  matrixRouting: boolean[][];
+  /** `[input][output]`, dB. */
+  matrixGain: number[][];
+  /** `[input][output]`: polarity inverted. */
+  matrixInvert: boolean[][];
+  /** Per output (wire format 32 on). */
+  limiterEnabled: boolean[];
+  /** Per output: 0 unlinked, 1..4 a link group. */
+  limiterLinkGroup: number[];
+  limiterThresholdDb: number[];
+  limiterReleaseMs: number[];
   [field: string]: unknown;
 }
 
@@ -160,6 +175,17 @@ export interface FilterParams {
   gain: number;
   /** The Linkwitz Transform's target Q. */
   qp: number;
+}
+
+// -- WP WB6c --
+/** One matrix crosspoint. */
+export interface Crosspoint {
+  input: number;
+  output: number;
+  enabled: boolean;
+  /** dB, kept to 0.1 dB. */
+  gain: number;
+  invert: boolean;
 }
 
 /** One band of the edited channel, as `curves` answers it (crates/dspi-wasm/src/curves.rs). */
@@ -333,6 +359,18 @@ export interface CoreMethods {
   // -- WP CG34 -- the filter types' names, the core's one table (the Console's band-list names)
   /** Every type the firmware defines, PEQ 0..13 then crossovers 32..63: `{code: 4, name: "High Cut (12dB)"}`. */
   filterTypeNames: { params: undefined; result: { code: number; name: string }[] };
+  // -- WP WB6c -- what `write` does not cover for the outputs (crates/dspi-wasm/src/outputs.rs)
+  /**
+   * A crossover band's type (0 off, 32..63), and with it its corner: the
+   * core's `set_crossover` (the registry's `eq.type` takes PEQ types only).
+   * `channel` is the output's wire channel, `band` 0..3. Frequency and bypass
+   * alone are `write`s of `eq.freq` / `eq.bypass` on band 20 + `band`.
+   */
+  crossoverType: { params: { channel: number; band: number; filterType: number; freq?: number }; result: FilterParams };
+  /** One matrix crosspoint: `write` of `mix` with the packet built in the binding; the fields kept. */
+  crosspoint: { params: Crosspoint; result: Crosspoint };
+  /** The longest delay this device takes (21 ms on RP2040, 42 on RP2350). */
+  outputLimits: { params: undefined; result: { maxDelayMs: number } };
   /** Tests only: make the stub core lose its link. The real core answers `unknown_method`. */
   simulate: { params: { what: "link-lost" | "link-closed" }; result: null };
 }

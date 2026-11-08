@@ -479,3 +479,100 @@
   .dspi-web .band-list .c-type { width: 28%; }
   .dspi-web .band-list .c-q { width: 17%; }
 }
+
+/* -- WP WB6c -- an output's settings card, its crossover, the limiter, the matrix, the Linkwitz panel */
+.dspi-web .output-card {
+  display: grid;
+  /* as many columns as the console's width holds (a fleet page shows consoles side by side) */
+  grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  min-width: 0;
+}
+.dspi-web .output-routes { display: grid; gap: 0.2rem; min-width: 0; }
+.dspi-web .route { display: grid; grid-template-columns: minmax(0, 1fr) 4.4rem 2.6rem; gap: 0.3rem; align-items: center; height: 1.8rem; }
+.dspi-web .route-pick { display: inline-flex; align-items: center; gap: 0.4rem; min-width: 0; border: 0; background: none; padding: 0 0.2rem; height: 1.7rem; }
+.dspi-web .route-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dspi-web .route.on .route-name { font-weight: 600; }
+.dspi-web .route-dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; border: 1.5px solid var(--muted); flex: none; }
+.dspi-web .route-dot.on { background: var(--accent); border-color: var(--accent); }
+.dspi-web .route:not(.on) .route-level input { opacity: 0.55; }
+.dspi-web .route-level input, .dspi-web .level-field input, .dspi-web .m-field input, .dspi-web .m-level input { width: 100%; height: 1.6rem; font-size: 0.8rem; padding: 0 0.2rem; font-variant-numeric: tabular-nums; }
+.dspi-web .route-inv { font-size: 0.7rem; font-weight: 700; padding: 0.1rem 0.2rem; height: 1.6rem; }
+.dspi-web .level { min-width: 0; }
+.dspi-web .level-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.dspi-web .level-caption { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; color: var(--muted); text-transform: uppercase; }
+.dspi-web .level-field { width: 6.2rem; flex: none; }
+.dspi-web .level-slider { margin: 0.3rem 0 0; }
+.dspi-web .output-switches { display: flex; flex-direction: column; gap: 0.3rem; align-items: stretch; }
+.dspi-web .output-mute { min-width: 4.5rem; }
+.dspi-web .output-mute[aria-pressed="true"] { border-color: var(--bad); color: var(--bad); }
+.dspi-web .limiter-buttons { display: inline-flex; }
+.dspi-web .limiter-toggle { border-radius: 6px 0 0 6px; flex: 1; }
+.dspi-web .limiter-more { border-radius: 0 6px 6px 0; border-left: 0; padding: 0 0.4rem; }
+.dspi-web .limiter-toggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+@media (max-width: 720px) {
+  .dspi-web .output-card { gap: 0.4rem; }
+  .dspi-web .output-switches { flex-direction: row; }
+  .dspi-web .output-switches > * { flex: 1; }
+}
+.dspi-web .limiter { display: grid; gap: 0.4rem; min-width: min(20rem, 80vw); }
+.dspi-web .limiter-name { color: var(--muted); }
+.dspi-web .limiter-switch { display: flex; gap: 0.5rem; align-items: center; }
+.dspi-web .limiter-params.off { opacity: 0.4; }
+.dspi-web .limiter-params .note { margin: 0.1rem 0 0.3rem; }
+.dspi-web .limiter-ends { display: flex; justify-content: space-between; font-size: 0.75rem; }
+.dspi-web .limiter-link { display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap; }
+.dspi-web .limiter-link .level-caption { margin-right: 0.5rem; }
+.dspi-web .limiter-link [role="radio"] { min-width: 2.2rem; padding: 0.15rem 0.4rem; }
+.dspi-web .limiter-link [aria-checked="true"] { border-color: var(--accent); color: var(--accent); }
+.dspi-web .limiter-summary { min-height: 1.2rem; }
+.dspi-web .limiter-batch { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+.dspi-web .band-tabs { display: inline-flex; justify-self: end; margin-bottom: -0.4rem; }
+.dspi-web .band-tabs button { font-size: 0.8rem; padding: 0.15rem 0.7rem; }
+.dspi-web .band-tabs button:first-child { border-radius: 6px 0 0 6px; }
+.dspi-web .band-tabs button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
+.dspi-web .band-tabs [aria-selected="true"] { border-color: var(--accent); color: var(--accent); }
+.dspi-web .xover-list tr.xover-off td:not(.c-byp) { opacity: 0.45; }
+.dspi-web .lt-edit { width: 100%; height: 1.8rem; font-size: 0.75rem; padding: 0 0.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dspi-web .lt-grid { display: grid; grid-template-columns: auto 1fr 1fr; gap: 0.35rem 0.5rem; align-items: center; margin: 0.5rem 0; }
+.dspi-web .lt-grid input { width: 100%; }
+.dspi-web .lt-row { color: var(--muted); font-size: 0.85rem; }
+.dspi-web .lt-boost { font-variant-numeric: tabular-nums; font-weight: 600; }
+.dspi-web .lt-boost.warn { color: var(--warn); }
+.dspi-web .lt-status { color: var(--muted); font-size: 0.85rem; }
+.dspi-web .lt-status.pending { color: var(--warn); }
+.dspi-web .matrix-screen { display: grid; gap: 0.75rem; min-width: 0; }
+.dspi-web .matrix-card { min-width: 0; padding: 0.5rem; }
+.dspi-web .matrix-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.dspi-web .matrix-actions { display: flex; gap: 0.4rem; }
+.dspi-web .matrix-actions button { font-size: 0.8rem; padding: 0.15rem 0.5rem; }
+.dspi-web .matrix-scroll { overflow-x: auto; max-width: 100%; }
+.dspi-web .matrix { border-collapse: collapse; table-layout: fixed; }
+.dspi-web .matrix th, .dspi-web .matrix td { width: 4.6rem; min-width: 4.6rem; text-align: center; padding: 0.15rem; vertical-align: middle; }
+.dspi-web .matrix .m-corner, .dspi-web .matrix .m-in, .dspi-web .matrix .m-label { width: 5.2rem; min-width: 5.2rem; text-align: right; }
+.dspi-web .m-out .menu > button { width: 100%; font-size: 0.75rem; padding: 0.1rem 0.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; background: none; }
+.dspi-web .m-out .menu [role="menu"] { text-align: left; }
+.dspi-web .m-desc { display: block; font-size: 0.65rem; font-weight: 700; }
+.dspi-web .m-in .m-desc { display: inline; margin-right: 0.3rem; }
+.dspi-web .m-name { font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; max-width: 3.4rem; vertical-align: bottom; }
+.dspi-web .m-label { font-size: 0.65rem; font-weight: 700; color: var(--muted); }
+.dspi-web .m-cell { height: 4.6rem; border-top: 1px solid var(--line); }
+.dspi-web .m-cell > span, .dspi-web .m-cell > button { display: flex; justify-content: center; align-items: center; margin: 0 auto; }
+.dspi-web .m-level, .dspi-web .m-inv { height: 1.6rem; }
+.dspi-web .m-point { width: 2rem; height: 1.3rem; border: 0; background: none; }
+.dspi-web .m-cell .route-dot { width: 0.9rem; height: 0.9rem; }
+.dspi-web .m-divide td, .dspi-web .m-divide th { border-bottom: 2px solid var(--line); }
+.dspi-web .matrix .disabled { opacity: 0.3; }
+.dspi-web .m-outputs td, .dspi-web .m-outputs th { height: 2.2rem; border-top: 1px solid var(--line); }
+.dspi-web .m-enable[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.dspi-web .m-enable.conflict { border-color: var(--warn); color: var(--warn); opacity: 0.6; }
+.dspi-web .m-field { display: block; }
+.dspi-web .matrix .m-corner, .dspi-web .matrix .m-in, .dspi-web .matrix .m-label { position: sticky; left: 0; z-index: 1; background: var(--panel); }
+.dspi-web .m-outputs .ch-mute { min-width: 2rem; }
+.dspi-web .xover-list th { font-size: 0.75rem; }
+@media (max-width: 520px) {
+  .dspi-web .matrix .m-corner, .dspi-web .matrix .m-in, .dspi-web .matrix .m-label { width: 4rem; min-width: 4rem; }
+  .dspi-web .m-name { max-width: 2.4rem; }
+}
