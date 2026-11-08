@@ -187,6 +187,15 @@ pub struct DspiCore {
 }
 
 // -- WP LK4 --
+/// A DSPi Link bind's part of `attach_opened_with`.
+#[derive(Clone, Copy)]
+pub(crate) struct LinkBind<'a> {
+    /// The device's last probe, for a re-attach.
+    pub(crate) reuse: Option<&'a dspi_session::probe::Reusable>,
+    /// The identity the hub lists.
+    pub(crate) listed: Option<&'a dspi_session::probe::Listed>,
+}
+
 /// What `attach_opened_with`'s probe read.
 struct Attached {
     /// The probe to keep for a re-attach.
@@ -711,7 +720,7 @@ impl DspiCore {
         serial: String,
         vid: u16,
     ) -> Result<()> {
-        self.attach_opened_with(transport, serial, vid, &mut |_| {}, None, false)
+        self.attach_opened_with(transport, serial, vid, &mut |_| {}, None)
             .map(drop)
     }
 
@@ -723,18 +732,18 @@ impl DspiCore {
     /// for a later re-attach (`None` for an unmappable device or one whose
     /// extension channel could not be read).
     ///
-    /// With `defer` (a DSPi Link bind), only the identity and the image are
-    /// read before the device is installed; the rest of the probe and the
-    /// per-item reads are left for [`DspiCore::ensure_probed`]
-    /// (`Connection::pending_probe`), unless `reuse` already describes it.
+    /// With `bind` (a DSPi Link bind), only the identity (unless the hub
+    /// listed it) and the image are read before the device is installed; the
+    /// rest of the probe and the per-item reads are left for
+    /// [`DspiCore::ensure_probed`] (`Connection::pending_probe`), unless its
+    /// `reuse` already describes the device.
     pub(crate) fn attach_opened_with(
         &self,
         mut transport: Box<dyn Transport>,
         serial: String,
         vid: u16,
         on_channels: &mut dyn FnMut(u8),
-        reuse: Option<&dspi_session::probe::Reusable>,
-        defer: bool,
+        bind: Option<LinkBind<'_>>,
     ) -> Result<Option<dspi_session::probe::Reusable>> {
         let listeners = Arc::clone(&self.listeners);
         let waker: dspi_session::notify::Waker =
@@ -758,31 +767,33 @@ impl DspiCore {
         let mut on_image = |image: &dspi_proto::wire_compat::Normalized| {
             on_channels(image.packet.header().num_channels);
         };
-        let probed = if defer {
-            dspi_session::probe::probe_quick(&mut *transport, &mut on_image, reuse).map(|quick| {
-                if quick.is_complete() {
-                    let ext = quick.reused_ext().cloned().unwrap_or_default();
-                    Attached {
-                        reusable: quick.reusable(),
-                        ext: Ok(ext),
-                        caps: quick.caps,
-                        image: quick.image,
-                        platform: quick.platform,
-                        pending: None,
+        let probed = if let Some(LinkBind { reuse, listed }) = bind {
+            dspi_session::probe::probe_quick(&mut *transport, &mut on_image, reuse, listed).map(
+                |quick| {
+                    if quick.is_complete() {
+                        let ext = quick.reused_ext().cloned().unwrap_or_default();
+                        Attached {
+                            reusable: quick.reusable(),
+                            ext: Ok(ext),
+                            caps: quick.caps,
+                            image: quick.image,
+                            platform: quick.platform,
+                            pending: None,
+                        }
+                    } else {
+                        Attached {
+                            reusable: None,
+                            ext: Ok(ExtState::default()),
+                            caps: quick.caps.clone(),
+                            image: quick.image.clone(),
+                            platform: quick.platform.clone(),
+                            pending: Some(Box::new(quick)),
+                        }
                     }
-                } else {
-                    Attached {
-                        reusable: None,
-                        ext: Ok(ExtState::default()),
-                        caps: quick.caps.clone(),
-                        image: quick.image.clone(),
-                        platform: quick.platform.clone(),
-                        pending: Some(Box::new(quick)),
-                    }
-                }
-            })
+                },
+            )
         } else {
-            dspi_session::probe::probe_connect(&mut *transport, &mut on_image, reuse).map(|p| {
+            dspi_session::probe::probe_connect(&mut *transport, &mut on_image, None).map(|p| {
                 Attached {
                     reusable: p.reusable(),
                     ext: p.ext,

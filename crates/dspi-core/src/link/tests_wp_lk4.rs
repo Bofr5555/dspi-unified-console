@@ -119,8 +119,8 @@ fn wp_lk4_select_binds_on_the_snapshot_and_the_meters_run_before_the_probe_compl
     // Bound on the identity and the snapshot: no feature read yet, the
     // mirror shows the device's settings, and fetch_all reads nothing more
     assert_eq!(ran(&hub, probe_op), 0, "the select read only what binds");
-    let commands = hub.log().len();
-    assert!(commands <= 2, "identity reads only: {commands}");
+    // The hub lists the identity: not even GET_PLATFORM before the bind
+    assert_eq!(hub.log().len(), 0, "the snapshot alone: {:02X?}", hub.log());
     core.fetch_all().unwrap();
     assert_eq!(
         core.get_state().num_channels,
@@ -153,6 +153,11 @@ fn wp_lk4_select_binds_on_the_snapshot_and_the_meters_run_before_the_probe_compl
         .capabilities()
         .clone();
     assert!(!caps.features.is_empty());
+    assert_eq!(
+        ran(&hub, op::REQ_GET_PLATFORM),
+        1,
+        "the device's own word, after"
+    );
     // Every feature asked and answered (the fake firmware stalls them all)
     assert!(
         caps.features
@@ -205,13 +210,14 @@ fn wp_lk4_a_failed_select_leaves_no_meter_path() {
     let core = DspiCore::new();
     let slow = Arc::new(SlowCommands::default());
     connect_slow(&core, &hub, &slow);
-    // The identity reads go unanswered: the select waits, with its feed up
+    // Its reads go unanswered: the select waits
     hub.hold_replies();
     let opener = {
         let core = Arc::clone(&core);
         std::thread::spawn(move || select(&core))
     };
-    wait_until("the identity reads", || !hub.log().is_empty());
+    // The snapshot (and any identity read) goes unanswered meanwhile
+    std::thread::sleep(Duration::from_millis(300));
     hub.drop_connections();
     assert!(opener.join().unwrap().is_err(), "the select lost its link");
     assert!(core.meter_path().is_none(), "cleared with the failed open");
@@ -492,4 +498,52 @@ fn wp_lk4_a_silent_session_on_another_hub_is_left_to_the_silence_limit() {
     assert_eq!(quiet.connects.load(Ordering::SeqCst), 1, "no probe dial");
     assert_eq!(core.link_status().phase, LinkPhase::Bound);
     core.link_close();
+}
+
+#[test]
+fn wp_lk4_the_listed_identity_is_the_platform_reply_the_device_gives() {
+    let d = DeviceInfo {
+        handle: 0,
+        serial: "ABC".into(),
+        platform: Some(1),
+        fw: Some("1.1.6".into()),
+        fw_beta: Some(5),
+        outputs: Some(9),
+        inputs: Some(8),
+        wire_version: Some(32),
+        state: "online".into(),
+        ..DeviceInfo::default()
+    };
+    let l = listed_identity(&d).unwrap();
+    assert_eq!(l.platform, vec![1, 1, 0x16, 9, 1, 6, 5]);
+    assert_eq!(l.serial, "ABC");
+    // Anything missing or odd: the bind reads the device instead
+    for odd in [
+        DeviceInfo {
+            fw_beta: None,
+            ..d.clone()
+        },
+        DeviceInfo {
+            fw: Some("1.1".into()),
+            ..d.clone()
+        },
+        DeviceInfo {
+            fw: Some("1.1.6-beta5".into()),
+            ..d.clone()
+        },
+        DeviceInfo {
+            platform: None,
+            ..d.clone()
+        },
+        DeviceInfo {
+            outputs: Some(300),
+            ..d.clone()
+        },
+        DeviceInfo {
+            serial: String::new(),
+            ..d.clone()
+        },
+    ] {
+        assert!(listed_identity(&odd).is_none(), "{odd:?}");
+    }
 }

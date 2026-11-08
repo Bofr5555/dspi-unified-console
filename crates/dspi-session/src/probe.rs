@@ -303,7 +303,7 @@ pub fn probe_connect(
     on_image: &mut dyn FnMut(&dspi_proto::wire_compat::Normalized),
     reuse: Option<&Reusable>,
 ) -> Result<Probed> {
-    let quick = probe_quick(t, on_image, reuse)?;
+    let quick = probe_quick(t, on_image, reuse, None)?;
     if quick.reused.is_some() {
         return Ok(quick.into_reused());
     }
@@ -396,13 +396,25 @@ impl Completed {
     }
 }
 
+/// The identity a DSPi Link hub lists for a device (spec 7.4: platform,
+/// firmware with its beta, outputs, serial), as the GET_PLATFORM reply and
+/// serial the device would give: a bind needs no read for what the hub
+/// already said.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Listed {
+    pub platform: Vec<u8>,
+    pub serial: String,
+}
+
 /// The first part of [`probe_connect`]: the identity and the image (over
 /// DSPi Link one batch and the hub's snapshot), `on_image` once the image is
 /// in, and from `reuse` the rest when it is the same device and firmware.
+/// With `listed`, the identity is the hub's, not read.
 pub fn probe_quick(
     t: &mut dyn Transport,
     on_image: &mut dyn FnMut(&dspi_proto::wire_compat::Normalized),
     reuse: Option<&Reusable>,
+    listed: Option<&Listed>,
 ) -> Result<Quick> {
     // The build and the active preset ride along with the identity
     let extra = if reuse.is_some() {
@@ -413,7 +425,20 @@ pub fn probe_quick(
     } else {
         Vec::new()
     };
-    let (info, serial, platform, extra) = identify_with(t, &extra)?;
+    let (info, serial, platform, extra) = match listed {
+        Some(l) => {
+            let info = PlatformInfo::decode(&l.platform).map_err(|e| {
+                TransportError::Usb(format!("the device could not identify itself: {e}"))
+            })?;
+            let extra = if extra.is_empty() {
+                Vec::new()
+            } else {
+                t.control_in_batch(&extra)
+            };
+            (info, l.serial.clone(), l.platform.clone(), extra)
+        }
+        None => identify_with(t, &extra)?,
+    };
     let again = reuse
         .filter(|r| r.key.platform == platform && r.key.serial == serial)
         .and_then(|r| {

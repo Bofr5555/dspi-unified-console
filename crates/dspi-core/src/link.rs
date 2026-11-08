@@ -1020,23 +1020,31 @@ impl DspiCore {
         // The hub's device list says how many channels there are (as the
         // reference client sizes its poll), so the feed starts before even
         // the identity read; the image corrects it if it says otherwise.
-        let listed = client
+        let device = client
             .devices()
             .into_iter()
-            .find(|d| d.handle == u32::from(handle) && d.serial == serial)
+            .find(|d| d.handle == u32::from(handle) && d.serial == serial);
+        let channels = device
+            .as_ref()
             .and_then(|d| d.inputs.zip(d.outputs))
             .and_then(|(i, o)| u8::try_from(i.checked_add(o)?).ok())
             .filter(|n| (1..=crate::consts::MAX_CHANNELS as u8).contains(n));
-        if let Some(n) = listed {
+        if let Some(n) = channels {
             on_channels(n);
         }
+        // The identity too: GET_PLATFORM and the serial are what the hub
+        // lists, so the bind reads only the snapshot (the background
+        // completion reads GET_PLATFORM and corrects the mirror if it differs)
+        let listed = device.as_ref().and_then(listed_identity);
         let attached = self.attach_opened_with(
             Box::new(transport),
             serial.clone(),
             0,
             &mut on_channels,
-            reuse.as_ref(),
-            true,
+            Some(crate::LinkBind {
+                reuse: reuse.as_ref(),
+                listed: listed.as_ref(),
+            }),
         );
         let probe = match attached {
             Ok(probe) => probe,
@@ -1296,6 +1304,11 @@ impl DspiCore {
             put_back(quick);
             return;
         };
+        // The bind took the hub's word for the identity: the device's own
+        let platform = t
+            .control_in_upto(op::REQ_GET_PLATFORM, 0, 7)
+            .ok()
+            .filter(|p| *p != quick.platform);
         let done = match dspi_session::probe::probe_rest(&mut *t, &quick) {
             Ok(done) => done,
             Err(TransportError::Disconnected) => return,
@@ -1338,6 +1351,14 @@ impl DspiCore {
             crate::info::apply_names(conn, &names, answers);
             conn.announce_refresh = true;
             crate::connect::copy_per_item(&scratch, &mut inner.state);
+            if let Some(p) = platform {
+                log::info!(
+                    "the Link device's GET_PLATFORM differs from the hub's list; the mirror follows the device"
+                );
+                if let Err(e) = crate::state::apply_platform(&p, &mut inner.state) {
+                    log::warn!("GET_PLATFORM reply not applied: {e}");
+                }
+            }
             if let Some(b) = inner.link.as_mut().and_then(|s| s.bound.as_mut()) {
                 b.probe = reusable;
             }
@@ -1895,6 +1916,32 @@ fn hello_record(client: &LinkClient, state: &AuthState) -> LinkHello {
         max_payload: h.limits.max_payload,
         max_inflight: h.limits.max_inflight,
     }
+}
+
+// -- WP LK4 --
+/// The GET_PLATFORM reply and serial the hub lists for `d`, when it says all
+/// of it (platform, firmware `major.minor.patch` with its beta, outputs);
+/// `None` otherwise, and the bind reads them.
+fn listed_identity(d: &DeviceInfo) -> Option<dspi_session::probe::Listed> {
+    use dspi_proto::packets::{FirmwareVersion, PlatformInfo};
+    let mut parts =
+        d.fw.as_deref()?
+            .split('.')
+            .map(|p| p.trim().parse::<u8>().ok());
+    let (major, minor, patch) = (parts.next()??, parts.next()??, parts.next()??);
+    if parts.next().is_some() || d.serial.is_empty() {
+        return None;
+    }
+    let info = PlatformInfo {
+        platform_id: u8::try_from(d.platform?).ok()?,
+        num_output_channels: u8::try_from(d.outputs?).ok()?,
+        version: FirmwareVersion::new(major, minor, patch, u8::try_from(d.fw_beta?).ok()?),
+        reply_len: PlatformInfo::REQUEST_LEN,
+    };
+    Some(dspi_session::probe::Listed {
+        platform: info.encode().to_vec(),
+        serial: d.serial.clone(),
+    })
 }
 
 fn device_record(d: DeviceInfo) -> LinkDevice {
