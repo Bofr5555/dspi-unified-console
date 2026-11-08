@@ -23,7 +23,7 @@ Rectangle {
     }
 
     // Family 0 = Off, 1 = Linkwitz-Riley, 2 = Butterworth, 3 = Bessel
-    readonly property var familyNames: ["Off", "Linkwitz-Riley", "Butterworth", "Bessel"]
+    readonly property var familyNames: [qsTr("Off"), qsTr("Linkwitz-Riley"), qsTr("Butterworth"), qsTr("Bessel")]
     readonly property var familyOrders: [[], [2, 4, 6, 8], [1, 2, 3, 4, 5, 6, 7, 8], [2, 4, 6, 8]]
 
     function decode(t) {
@@ -77,8 +77,8 @@ Rectangle {
         }
 
         StyledComboBox {
-            Accessible.name: "Crossover " + (bandIndex + 1) + " family"
-            width: 140; height: 30
+            Accessible.name: qsTr("Crossover %1 family").arg(bandIndex + 1)
+            width: Math.max(140, fitWidth); height: 30
             anchors.verticalCenter: parent.verticalCenter
             font.pixelSize: 12
             model: familyNames
@@ -94,24 +94,24 @@ Rectangle {
         }
 
         StyledComboBox {
-            Accessible.name: "Crossover " + (bandIndex + 1) + " type"
+            Accessible.name: qsTr("Crossover %1 type").arg(bandIndex + 1)
             visible: isActive
-            width: 110; height: 30
+            width: Math.max(110, fitWidth); height: 30
             anchors.verticalCenter: parent.verticalCenter
             font.pixelSize: 12
-            model: ["Low Pass", "High Pass"]
+            model: [qsTr("Low Pass"), qsTr("High Pass")]
             currentIndex: meta.hp ? 1 : 0
             onActivated: bridge.setCrossover(channelId, bandIndex, encode(meta.family, meta.order, index === 1), filterFreq)
         }
 
         StyledComboBox {
-            Accessible.name: "Crossover " + (bandIndex + 1) + " slope"
+            Accessible.name: qsTr("Crossover %1 slope").arg(bandIndex + 1)
             id: slopeCombo
             visible: isActive
-            width: 110; height: 30
+            width: Math.max(110, fitWidth); height: 30
             anchors.verticalCenter: parent.verticalCenter
             font.pixelSize: 12
-            model: isActive ? familyOrders[meta.family].map(function (o) { return (o * 6) + " dB/oct" }) : []
+            model: isActive ? familyOrders[meta.family].map(function (o) { return qsTr("%1 dB/oct").arg(o * 6) }) : []
             currentIndex: isActive ? familyOrders[meta.family].indexOf(meta.order) : -1
             onActivated: bridge.setCrossover(channelId, bandIndex,
                                              encode(meta.family, familyOrders[meta.family][index], meta.hp), filterFreq)
@@ -120,7 +120,7 @@ Rectangle {
 
         ValueField {
             visible: isActive
-            fieldWidth: 70; height: 28; suffix: "Hz"; decimals: 1; wheelStep: 10; minValue: 10; maxValue: 20000
+            fieldWidth: 70; height: 28; suffix: qsTr("Hz"); decimals: 1; wheelStep: 10; minValue: 10; maxValue: 20000
             value: filterFreq
             anchors.verticalCenter: parent.verticalCenter
             onValueEdited: bridge.setCrossover(channelId, bandIndex, filterType, newValue)

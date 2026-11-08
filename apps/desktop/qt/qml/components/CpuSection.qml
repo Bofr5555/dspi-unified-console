@@ -13,7 +13,7 @@ Item {
     readonly property bool noAccess: !connected && bridge.availableSerials.length === 0 && bridge.inaccessibleDevices > 0
 
     readonly property string serialTail: bridge.selectedSerial.slice(-8)
-    readonly property string fullName: bridge.selectedSerial.length >= 8 ? "DSPi (" + serialTail + ")" : "DSPi"
+    readonly property string fullName: bridge.selectedSerial.length >= 8 ? qsTr("DSPi (%1)").arg(serialTail) : qsTr("DSPi")
 
     // One core: its name, a bar (at most 40 px, as on the Mac) and its load
     component CoreMeter: Row {
@@ -26,7 +26,7 @@ Item {
         spacing: 5
         Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: "C" + meter.core + ":"
+            text: qsTr("C%1:").arg(meter.core)
             font.pixelSize: 10
             color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
         }
@@ -106,8 +106,8 @@ Item {
             // Short device name, as in the Windows Console: "DSPi (last 8 of the serial)"
             text: {
                 if (!cpuRoot.connected)
-                    return bridge.availableSerials.length > 0 ? "Disconnected"
-                         : cpuRoot.noAccess ? "No Permission" : "No Devices"
+                    return bridge.availableSerials.length > 0 ? qsTr("Disconnected")
+                         : cpuRoot.noAccess ? qsTr("No Permission") : qsTr("No Devices")
                 return cpuRoot.fullName
             }
             font.pixelSize: 11
@@ -121,13 +121,14 @@ Item {
         // -- WP QD37 -- (review c4o N1) During a hub session a right-click does nothing
         // (bridge.rescan) and devices are chosen in Device > Devices…
         readonly property string statusTip: bridge.hubSession
-                      ? (cpuRoot.connected ? "Connected through a hub · Serial " + bridge.selectedSerial : "On a hub, no device chosen yet.")
-                        + "\nChoose devices in Device > Devices…"
+                      ? (cpuRoot.connected ? qsTr("Connected through a hub · Serial %1\nChoose devices in Device > Devices…").arg(bridge.selectedSerial)
+                                           : qsTr("On a hub, no device chosen yet.\nChoose devices in Device > Devices…"))
                       : cpuRoot.connected
-                      ? "Connected · Serial " + bridge.selectedSerial
-                        + (bridge.availableSerials.length > 1 ? "\nClick to switch device. Right-click to reconnect." : "\nRight-click to reconnect.")
-                      : cpuRoot.noAccess ? ("A DSPi is connected, but this app isn't allowed to open it.\n" + (isLinux ? "Click to install its udev rule." : "Click for help."))
-                      : (bridge.connectionError || "Not connected. Right-click the device name to retry.")
+                      ? (bridge.availableSerials.length > 1 ? qsTr("Connected · Serial %1\nClick to switch device. Right-click to reconnect.").arg(bridge.selectedSerial)
+                                                            : qsTr("Connected · Serial %1\nRight-click to reconnect.").arg(bridge.selectedSerial))
+                      : cpuRoot.noAccess ? (isLinux ? qsTr("A DSPi is connected, but this app isn't allowed to open it.\nClick to install its udev rule.")
+                                                    : qsTr("A DSPi is connected, but this app isn't allowed to open it.\nClick for help."))
+                      : (bridge.connectionError || qsTr("Not connected. Right-click the device name to retry."))
     }
 
     // Several DSPis: click to choose one. Right-click rescans and reconnects.
@@ -140,7 +141,7 @@ Item {
         cursorShape: bridge.availableSerials.length > 1 || cpuRoot.noAccess ? Qt.PointingHandCursor : Qt.ArrowCursor
         // -- WP QD22 -- From the keyboard: the click's action, or the right-click's
         // reconnect where a click has none
-        Accessible.name: "Device: " + (cpuRoot.connected ? cpuRoot.fullName : bridge.availableSerials.length > 0 ? "Disconnected" : cpuRoot.noAccess ? "No Permission" : "No Devices")
+        Accessible.name: qsTr("Device: %1").arg(cpuRoot.connected ? cpuRoot.fullName : bridge.availableSerials.length > 0 ? qsTr("Disconnected") : cpuRoot.noAccess ? qsTr("No Permission") : qsTr("No Devices"))
         Accessible.description: status.statusTip
         onActivated: {
             if (cpuRoot.noAccess) { root.showUdevHelp(); return }
@@ -153,9 +154,9 @@ Item {
         id: deviceMenu
         parent: Overlay.overlay
         alignRight: true
-        heading: "Devices"
+        heading: qsTr("Devices")
         currentValue: bridge.selectedSerial
-        options: bridge.availableSerials.map(function (s) { return { value: s, text: "DSPi " + s.slice(-8) } })
+        options: bridge.availableSerials.map(function (s) { return { value: s, text: qsTr("DSPi %1").arg(s.slice(-8)) } })
         onChosen: if (value !== bridge.selectedSerial) root.switchDevice(value)
     }
 }

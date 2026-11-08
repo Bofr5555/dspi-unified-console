@@ -158,7 +158,7 @@ Popup {
             focusRadius: row.radius + 2
             Accessible.role: Accessible.RadioButton
             Accessible.name: row.title
-            Accessible.description: row.pending ? "Opening" : row.detail
+            Accessible.description: row.pending ? qsTr("Opening") : row.detail
             Accessible.checkable: true
             Accessible.checked: row.current
             onActivated: row.clicked()
@@ -182,7 +182,7 @@ Popup {
                 height: 30
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Devices"
+                    text: qsTr("Devices")
                     font.pixelSize: 15
                     font.weight: Font.DemiBold
                     color: isMacOS ? MacColors.label : "white"
@@ -191,21 +191,21 @@ Popup {
                     objectName: "devicesDone"
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Done"
+                    text: qsTr("Done")
                     primary: true
                     onClicked: pop.close()
                 }
             }
 
             // ── This machine ──
-            Heading { text: "USB" }
+            Heading { text: qsTr("USB") }
             Repeater {
                 model: pop.usbSerials
                 DeviceRow {
                     objectName: "devicesUsb_" + modelData
                     icon: "plug"
-                    title: "DSPi " + modelData.slice(-8)
-                    detail: "USB · " + modelData
+                    title: qsTr("DSPi %1").arg(modelData.slice(-8))
+                    detail: qsTr("USB · %1").arg(modelData)
                     current: !pop.sessionUp && bridge.connected && bridge.selectedSerial === modelData
                     onClicked: pop.chooseUsb(modelData)
                 }
@@ -213,14 +213,14 @@ Popup {
             Note {
                 visible: pop.usbSerials.length === 0
                 text: bridge.inaccessibleDevices > 0
-                      ? "A DSPi is plugged in, but this account can't open it."
-                      : "No DSPi on USB."
+                      ? qsTr("A DSPi is plugged in, but this account can't open it.")
+                      : qsTr("No DSPi on USB.")
             }
             DeviceRow {
                 objectName: "devicesDemo"
                 icon: "play"
-                title: "Demo"
-                detail: "Simulated DSPi, nothing is sent to hardware"
+                title: qsTr("Demo")
+                detail: qsTr("Simulated DSPi, nothing is sent to hardware")
                 current: demo.active
                 // The hub's session closes first, so the demo is never refused here
                 onClicked: pop.chooseDemo()
@@ -232,7 +232,7 @@ Popup {
             }
 
             // ── The hub this session is on ──
-            Heading { text: "DSPi Link" }
+            Heading { text: qsTr("DSPi Link") }
             Item {
                 objectName: "devicesPhase"
                 // CG10's sentence for the phase, as linkSession has it
@@ -266,20 +266,20 @@ Popup {
                     AppButton {
                         objectName: "devicesRetry"
                         visible: linkSession.phase === "reconnecting"
-                        text: "Retry Now"
+                        text: qsTr("Retry Now")
                         onClicked: linkSession.retryNow()
                     }
                     AppButton {
                         objectName: "devicesLeaveHub"
                         visible: pop.sessionUp && linkSession.actionText === ""
-                        text: "Disconnect"
+                        text: qsTr("Disconnect")
                         onClicked: linkSession.closeSession()
                     }
                 }
             }
             Note {
                 visible: linkSession.phase === "reconnecting" && linkSession.reconnectInMs > 0
-                text: "Try " + (linkSession.reconnectAttempt + 1) + " in " + Math.ceil(linkSession.reconnectInMs / 1000) + " s."
+                text: qsTr("Try %1 in %2 s.").arg(linkSession.reconnectAttempt + 1).arg(Math.ceil(linkSession.reconnectInMs / 1000))
             }
             Note {
                 visible: (linkSession.phase === "closed" || linkSession.phase === "refused") && linkSession.closeReason !== ""
@@ -290,9 +290,9 @@ Popup {
                 DeviceRow {
                     objectName: "devicesHub_" + modelData.serial
                     icon: "link"
-                    title: modelData.name || ("DSPi " + String(modelData.serial).slice(-8))
+                    title: modelData.name || qsTr("DSPi %1").arg(String(modelData.serial).slice(-8))
                     detail: [linkSession.hubName, modelData.platform, modelData.fw,
-                             modelData.lockedBy ? "in use by " + modelData.lockedBy : ""]
+                             modelData.lockedBy ? qsTr("in use by %1").arg(modelData.lockedBy) : ""]
                             .filter(function (s) { return !!s }).join(" · ")
                     current: linkSession.phase === "bound" && bridge.selectedSerial === modelData.serial
                     pending: linkSession.busy && !current
@@ -307,13 +307,13 @@ Popup {
                 height: 30
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Find hubs automatically"
+                    text: qsTr("Find hubs automatically")
                     font.pixelSize: MenuStyle.fontSize
                     color: MenuStyle.text
                 }
                 ToggleSwitch {
                     objectName: "devicesLook"
-                    Accessible.name: "Find hubs automatically"
+                    Accessible.name: qsTr("Find hubs automatically")
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     checked: hub.lookForHubs
@@ -332,15 +332,15 @@ Popup {
                     icon: "globe"
                     title: modelData.name
                     detail: modelData.host + ":" + modelData.port + " · "
-                            + (modelData.deviceCount === 1 ? "1 device" : modelData.deviceCount + " devices")
-                            + (modelData.auth === "none" ? " · Open" : " · Private")
+                            + (modelData.deviceCount === 1 ? qsTr("1 device") : qsTr("%1 devices").arg(modelData.deviceCount))
+                            + " · " + (modelData.auth === "none" ? qsTr("Open", "hub needs no PIN") : qsTr("Private"))
                     current: pop.sessionUp && linkSession.hubId === modelData.id
                     onClicked: pop.connectFound(modelData)
                 }
             }
             Note {
                 visible: hub.hubs.length === 0
-                text: hub.lookForHubs ? "Looking for hubs…" : "Not looking for hubs."
+                text: hub.lookForHubs ? qsTr("Looking for hubs…") : qsTr("Not looking for hubs.")
             }
             Row {
                 width: parent.width
@@ -358,8 +358,8 @@ Popup {
                     font.pixelSize: 13
                     color: isMacOS ? MacColors.label : "white"
                     selectByMouse: true
-                    placeholderText: "Hub address (host or host:port)"
-                    Accessible.name: "Hub address"
+                    placeholderText: qsTr("Hub address (host or host:port)")
+                    Accessible.name: qsTr("Hub address")
                     placeholderTextColor: Qt.rgba(1, 1, 1, 0.35)
                     onAccepted: pop.connectTyped(text)
                     background: Rectangle {
@@ -372,7 +372,7 @@ Popup {
                 AppButton {
                     id: addButton
                     objectName: "devicesConnect"
-                    text: "Connect"
+                    text: qsTr("Connect")
                     enabled: addressField.text.trim() !== ""
                     onClicked: pop.connectTyped(addressField.text)
                 }
@@ -384,7 +384,7 @@ Popup {
                 color: pop.warning
             }
             Note {
-                text: "A DSPi on another computer appears here once that Console shares it (Settings > Networking there), as does one on a DSPi Link bridge."
+                text: qsTr("A DSPi on another computer appears here once that Console shares it (Settings > Networking there), as does one on a DSPi Link bridge.")
             }
         }
     }

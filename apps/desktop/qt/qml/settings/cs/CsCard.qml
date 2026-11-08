@@ -14,7 +14,7 @@ Rectangle {
     property string summary: ""
     property color summaryColor: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
     property bool removable: true
-    property string removeTip: "Remove"
+    property string removeTip: qsTr("Remove")
     default property alias body: bodyColumn.data
     property alias badge: badgeSlot.data
     property alias trailing: trailingRow.data
@@ -43,7 +43,7 @@ Rectangle {
                 cursorShape: Qt.PointingHandCursor
                 focusRadius: 10
                 // -- WP QD22 -- Opens or closes the card
-                Accessible.name: (card.name !== "" ? card.name : card.placeholder) + (card.expanded ? ", open" : ", closed")
+                Accessible.name: card.expanded ? qsTr("%1, open").arg(card.name !== "" ? card.name : card.placeholder) : qsTr("%1, closed").arg(card.name !== "" ? card.name : card.placeholder)
                 Accessible.description: card.summary
                 onActivated: card.toggle()
             }
@@ -76,7 +76,7 @@ Rectangle {
                 TextInput {
                     id: nameInput
                     activeFocusOnTab: true   // -- WP QD22 --
-                    Accessible.name: "Name"
+                    Accessible.name: qsTr("Name")
                     width: Math.min(parent.width, Math.max(60, Math.max(contentWidth, placeholderText.implicitWidth) + 12))
                     height: 20
                     leftPadding: 4

@@ -14,7 +14,7 @@ ApplicationWindow {
     height: 813
     minimumWidth: 950
     minimumHeight: 600
-    title: "DSPi Console"
+    title: qsTr("DSPi Console")
     color: isMacOS ? "transparent" : "#303030"
     // Linux draws its own titlebar (with the menu button in it)
     flags: isMacOS ? Qt.Window : (Qt.Window | Qt.FramelessWindowHint)
@@ -354,14 +354,14 @@ ApplicationWindow {
                 }
 
                 Platform.Menu {
-                    title: "Window"
+                    title: qsTr("Window")
                     Platform.MenuItem {
-                        text: "Minimize"
+                        text: qsTr("Minimize")
                         shortcut: "Ctrl+M"
                         onTriggered: root.showMinimized()
                     }
                     Platform.MenuItem {
-                        text: "Zoom"
+                        text: qsTr("Zoom")
                         onTriggered: root.visibility === Window.Maximized ? root.showNormal() : root.showMaximized()
                     }
                     Platform.MenuSeparator {}
@@ -448,9 +448,9 @@ ApplicationWindow {
                         font.pixelSize: 12
                         color: isMacOS ? MacColors.label : "white"
                         text: firmware.match === 3
-                              ? "This device runs firmware " + firmware.deviceVersion + ", which is newer than DSPi Console "
-                                + firmware.expectedVersion + ". Some of its features may not be shown."
-                              : "This device runs firmware " + firmware.deviceVersion + "; DSPi Console expects " + firmware.expectedVersion + "."
+                              ? qsTr("This device runs firmware %1, which is newer than DSPi Console %2. Some of its features may not be shown.")
+                                .arg(firmware.deviceVersion).arg(firmware.expectedVersion)
+                              : qsTr("This device runs firmware %1; DSPi Console expects %2.").arg(firmware.deviceVersion).arg(firmware.expectedVersion)
                     }
                     Row {
                         id: versionButtons
@@ -459,7 +459,7 @@ ApplicationWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 6
                         Repeater {
-                            model: [firmware.match === 3 ? "Details…" : "Update…", "Hide"]
+                            model: [firmware.match === 3 ? qsTr("Details…") : qsTr("Update…"), qsTr("Hide")]
                             Rectangle {
                                 width: label.implicitWidth + 20
                                 height: 24
@@ -477,7 +477,7 @@ ApplicationWindow {
                                     Accessible.description: parent.ToolTip.text
                                     onActivated: index === 0 ? root.openToolWindow("firmware") : (versionBanner.hiddenThisLaunch = true)
                                 }
-                                ToolTip.text: index === 1 ? "Hide this warning until DSPi Console is next started" : ""
+                                ToolTip.text: index === 1 ? qsTr("Hide this warning until DSPi Console is next started") : ""
                                 ToolTip.visible: index === 1 && bannerMouse.containsMouse
                                 ToolTip.delay: 600
                             }
@@ -725,24 +725,24 @@ ApplicationWindow {
         if (!bridge.connected) return
         pendingFileAction = name
         if (name === "exportConfig") {
-            saveDialog.title = "Export Device Configuration"
-            saveDialog.nameFilters = ["DSPi configuration (*.dspipreset)", "JSON (*.json)"]
+            saveDialog.title = qsTr("Export Device Configuration")
+            saveDialog.nameFilters = [qsTr("DSPi configuration (*.dspipreset)"), qsTr("JSON (*.json)")]
             saveDialog.defaultSuffix = "dspipreset"
             saveDialog.currentFile = documentsFolder + "/DSPi Configuration.dspipreset"
             saveDialog.open()
         } else if (name === "exportFilters") {
-            saveDialog.title = "Export Filters"
-            saveDialog.nameFilters = ["Text (*.txt)"]
+            saveDialog.title = qsTr("Export Filters")
+            saveDialog.nameFilters = [qsTr("Text (*.txt)")]
             saveDialog.defaultSuffix = "txt"
             saveDialog.currentFile = documentsFolder + "/DSPi Filters.txt"
             saveDialog.open()
         } else if (name === "importConfig") {
-            openDialog.title = "Import Device Configuration"
-            openDialog.nameFilters = ["DSPi configuration (*.dspipreset *.json)", "All files (*)"]
+            openDialog.title = qsTr("Import Device Configuration")
+            openDialog.nameFilters = [qsTr("DSPi configuration (*.dspipreset *.json)"), qsTr("All files (*)")]
             openDialog.open()
         } else if (name === "importFilters") {
-            openDialog.title = "Import Filters"
-            openDialog.nameFilters = ["Filter files (*.txt)", "All files (*)"]
+            openDialog.title = qsTr("Import Filters")
+            openDialog.nameFilters = [qsTr("Filter files (*.txt)"), qsTr("All files (*)")]
             openDialog.open()
         }
     }
@@ -762,8 +762,8 @@ ApplicationWindow {
         onAccepted: {
             var r = root.pendingFileAction === "exportConfig" ? configFiles.exportConfiguration(file)
                                                                : configFiles.exportFilters(file)
-            if (!r.ok) root.showFileResult("Export Failed", [r.error], false)
-            else if (root.pendingFileAction === "exportConfig") root.showFileResult("Configuration Exported", [r.message], true)
+            if (!r.ok) root.showFileResult(qsTr("Export Failed"), [r.error], false)
+            else if (root.pendingFileAction === "exportConfig") root.showFileResult(qsTr("Configuration Exported"), [r.message], true)
         }
     }
 
@@ -774,39 +774,47 @@ ApplicationWindow {
         onAccepted: {
             if (root.pendingFileAction === "importConfig") {
                 var info = configFiles.inspectConfiguration(file)
-                if (!info.ok) { root.showFileResult("Import Failed", [info.error], false); return }
+                if (!info.ok) { root.showFileResult(qsTr("Import Failed"), [info.error], false); return }
                 var lines = []
-                var from = "Saved from " + (info.platform || "a DSPi")
-                         + (info.firmware ? ", firmware " + info.firmware : "") + (info.saved ? ", " + info.saved : "") + "."
+                var source = info.platform || qsTr("a DSPi")
+                var from = info.firmware
+                    ? (info.saved ? qsTr("Saved from %3, firmware %1, %2.").arg(info.firmware).arg(info.saved).arg(source)
+                                  : qsTr("Saved from %2, firmware %1.").arg(info.firmware).arg(source))
+                    : (info.saved ? qsTr("Saved from %2, %1.").arg(info.saved).arg(source)
+                                  : qsTr("Saved from %1.").arg(source))
                 lines.push(from)
                 if (info.crossPlatform)
-                    lines.push("This file comes from a " + info.platform + "; channels this " + bridge.platformName + " doesn't have are left out.")
-                lines.push("EQ, crossover, delays, gains, routing and the DSP features are always applied.")
+                    lines.push(qsTr("This file comes from a %2; channels this %1 doesn't have are left out.").arg(bridge.platformName).arg(info.platform))
+                lines.push(qsTr("EQ, crossover, delays, gains, routing and the DSP features are always applied."))
                 fileChoice.mode = "config"
                 fileChoice.configFile = file
-                fileChoice.title = "Import Device Configuration"
+                fileChoice.title = qsTr("Import Device Configuration")
                 fileChoice.message = lines.join("\n\n")
                 fileChoice.checks = [
-                    { key: "volumes", text: "Volume levels", detail: "Master and listening volume", checked: false },
-                    { key: "hardware", text: "Hardware I/O", detail: "GPIO pins, clocks, ADAT, inputs, output limiters", checked: false }
+                    { key: "volumes", text: qsTr("Volume levels"), detail: qsTr("Master and listening volume"), checked: false },
+                    { key: "hardware", text: qsTr("Hardware I/O"), detail: qsTr("GPIO pins, clocks, ADAT, inputs, output limiters"), checked: false }
                 ]
-                fileChoice.buttons = [{ key: "cancel", text: "Cancel" }, { key: "import", text: "Import", role: "primary" }]
+                fileChoice.buttons = [{ key: "cancel", text: qsTr("Cancel") }, { key: "import", text: qsTr("Import"), role: "primary" }]
                 fileChoice.open()
             } else {
                 var f = configFiles.inspectFilters(file)
-                if (!f.ok) { root.showFileResult("Import Failed", [f.error], false); return }
+                if (!f.ok) { root.showFileResult(qsTr("Import Failed"), [f.error], false); return }
                 fileChoice.mode = "filters"
-                fileChoice.title = "Import Filters"
+                fileChoice.title = qsTr("Import Filters")
+                var hasPreamp = f.preamp !== null && f.preamp !== undefined
+                var preamp = hasPreamp ? (f.preamp > 0 ? "+" : "") + Number(f.preamp).toFixed(1) : ""
                 fileChoice.message = f.kind === "rew"
-                    ? "Found " + f.filters + (f.filters === 1 ? " filter" : " filters")
-                      + (f.preamp !== null && f.preamp !== undefined ? " and a " + (f.preamp > 0 ? "+" : "") + Number(f.preamp).toFixed(1) + " dB preamp" : "")
-                      + ". Pick the channels to apply them to."
-                    : "Pick the channels to load from the file."
+                    ? (f.filters === 1
+                       ? (hasPreamp ? qsTr("Found %1 filter and a %2 dB preamp. Pick the channels to apply them to.").arg(f.filters).arg(preamp)
+                                    : qsTr("Found %1 filter. Pick the channels to apply them to.").arg(f.filters))
+                       : (hasPreamp ? qsTr("Found %1 filters and a %2 dB preamp. Pick the channels to apply them to.").arg(f.filters).arg(preamp)
+                                    : qsTr("Found %1 filters. Pick the channels to apply them to.").arg(f.filters)))
+                    : qsTr("Pick the channels to load from the file.")
                 fileChoice.checks = f.channels.map(function (c) {
                     return { key: c.wire, text: c.label, checked: c.checked,
-                             detail: c.bands + (c.bands === 1 ? " band" : " bands") }
+                             detail: c.bands === 1 ? qsTr("%1 band").arg(c.bands) : qsTr("%1 bands").arg(c.bands) }
                 })
-                fileChoice.buttons = [{ key: "cancel", text: "Cancel" }, { key: "import", text: "Import", role: "primary" }]
+                fileChoice.buttons = [{ key: "cancel", text: qsTr("Cancel") }, { key: "import", text: qsTr("Import"), role: "primary" }]
                 fileChoice.open()
             }
         }
@@ -824,29 +832,29 @@ ApplicationWindow {
         id: udevDialog
         icon: "plug"
         iconTint: "#ff9f0a"
-        title: isLinux ? "DSPi Needs Permission" : "DSPi Can't Be Opened"
+        title: isLinux ? qsTr("DSPi Needs Permission") : qsTr("DSPi Can't Be Opened")
         message: isLinux
-                 ? "A DSPi is connected, but Linux only lets programs open it once a udev rule allows it. "
-                   + "Install the rule now? You'll be asked for your password."
+                 ? qsTr("A DSPi is connected, but Linux only lets programs open it once a udev rule allows it. "
+                   + "Install the rule now? You'll be asked for your password.")
                  : isWindows
-                   ? "A DSPi is connected, but it couldn't be opened. Close any other program using it "
+                   ? qsTr("A DSPi is connected, but it couldn't be opened. Close any other program using it "
                      + "(another DSPi Console, or a terminal client), then unplug it and plug it in again. "
-                     + "Very old firmware without WinUSB descriptors needs the WinUSB driver installed once with Zadig."
-                   : "A DSPi is connected, but it couldn't be opened. Close any other program using it, "
-                     + "then unplug it and plug it in again."
-        buttons: isLinux ? [{ key: "cancel", text: "Not Now" }, { key: "install", text: "Install Rule", role: "primary" }]
-                         : [{ key: "cancel", text: "OK", role: "primary" }]
+                     + "Very old firmware without WinUSB descriptors needs the WinUSB driver installed once with Zadig.")
+                   : qsTr("A DSPi is connected, but it couldn't be opened. Close any other program using it, "
+                     + "then unplug it and plug it in again.")
+        buttons: isLinux ? [{ key: "cancel", text: qsTr("Not Now") }, { key: "install", text: qsTr("Install Rule"), role: "primary" }]
+                         : [{ key: "cancel", text: qsTr("OK"), role: "primary" }]
         onChosen: if (key === "install") bridge.installUdevRule()
     }
     AppDialog {
         id: udevFailed
         icon: "warning"
         iconTint: "#ff9f0a"
-        title: "Rule Not Installed"
-        details: [{ text: "Install the dspi-console .deb or .rpm package, or copy" },
-                  { text: "70-dspi.rules from the release to /etc/udev/rules.d/," },
-                  { text: "then unplug the DSPi and plug it in again." }]
-        buttons: [{ key: "ok", text: "OK", role: "primary" }]
+        title: qsTr("Rule Not Installed")
+        details: [{ text: qsTr("Install the dspi-console .deb or .rpm package, or copy") },
+                  { text: qsTr("70-dspi.rules from the release to /etc/udev/rules.d/,") },
+                  { text: qsTr("then unplug the DSPi and plug it in again.") }]
+        buttons: [{ key: "ok", text: qsTr("OK"), role: "primary" }]
     }
     Connections {
         target: bridge
@@ -867,14 +875,14 @@ ApplicationWindow {
             var r = mode === "config"
                 ? configFiles.importConfiguration(configFile, checkedKeys.indexOf("volumes") >= 0, checkedKeys.indexOf("hardware") >= 0)
                 : configFiles.importFilters(checkedKeys)
-            if (!r.ok) root.showFileResult("Import Failed", [r.error], false)
-            else root.showFileResult(r.clean === false ? "Import Finished" : "Import Complete", r.lines, r.clean !== false)
+            if (!r.ok) root.showFileResult(qsTr("Import Failed"), [r.error], false)
+            else root.showFileResult(r.clean === false ? qsTr("Import Finished") : qsTr("Import Complete"), r.lines, r.clean !== false)
         }
     }
 
     AppDialog {
         id: fileResult
-        buttons: [{ key: "ok", text: "OK", role: "primary" }]
+        buttons: [{ key: "ok", text: qsTr("OK"), role: "primary" }]
     }
 
     // ── Unsaved changes ──
@@ -888,7 +896,7 @@ ApplicationWindow {
         var shown = lines.slice(0, 15).map(function (l) { return { text: l } })
         if (lines.length > 15) {
             var more = lines.length - 15
-            shown.push({ text: "…and " + more + " more change" + (more === 1 ? "" : "s") })
+            shown.push({ text: more === 1 ? qsTr("…and %1 more change").arg(more) : qsTr("…and %1 more changes").arg(more) })
         }
         unsavedDialog.details = shown
         unsavedDialog.pending = action
@@ -903,13 +911,13 @@ ApplicationWindow {
     // The sidebar's Save: straight to the active preset, reporting only a failure
     function quickSavePreset() {
         var status = saveActivePreset()
-        if (status !== 0) showFileResult("Error", ["Failed to save preset (error " + status + ")"], false)
+        if (status !== 0) showFileResult(qsTr("Error"), [qsTr("Failed to save preset (error %1)").arg(status)], false)
     }
     function switchPreset(slot) {
         withUnsaved(function (choice) {
             var status = bridge.loadPreset(slot)
             if (status !== 0)
-                showFileResult("Load Failed", [status === 3 ? "Preset data is corrupted." : "Failed to load preset (error " + status + ")."], false)
+                showFileResult(qsTr("Load Failed"), [status === 3 ? qsTr("Preset data is corrupted.") : qsTr("Failed to load preset (error %1).").arg(status)], false)
         })
     }
     // Switching devices: staged Settings edits belong to this device, and the
@@ -927,9 +935,9 @@ ApplicationWindow {
         property string serial: ""
         icon: "warning"
         iconTint: "#ff9f0a"
-        title: "Unsaved Settings Changes"
-        message: "Settings has pending changes for the current device that have not been saved. Switching devices will discard them."
-        buttons: [{ key: "cancel", text: "Cancel" }, { key: "switch", text: "Discard and Switch", role: "destructive" }]
+        title: qsTr("Unsaved Settings Changes")
+        message: qsTr("Settings has pending changes for the current device that have not been saved. Switching devices will discard them.")
+        buttons: [{ key: "cancel", text: qsTr("Cancel") }, { key: "switch", text: qsTr("Discard and Switch"), role: "destructive" }]
         onChosen: if (key === "switch") {
             settingsWindow.discardPending()
             var s = serial
@@ -942,9 +950,9 @@ ApplicationWindow {
         property var onSaveFailed: null
         icon: "warning"
         iconTint: "#ff9f0a"
-        title: "Unsaved Changes"
-        message: "The current preset has unsaved changes. Save before continuing?"
-        buttons: [{ key: "cancel", text: "Cancel" }, { key: "discard", text: "Discard" }, { key: "save", text: "Save", role: "primary" }]
+        title: qsTr("Unsaved Changes")
+        message: qsTr("The current preset has unsaved changes. Save before continuing?")
+        buttons: [{ key: "cancel", text: qsTr("Cancel") }, { key: "discard", text: qsTr("Discard") }, { key: "save", text: qsTr("Save"), role: "primary" }]
         onChosen: {
             var action = pending
             pending = null
@@ -953,7 +961,7 @@ ApplicationWindow {
                 var status = root.saveActivePreset()
                 if (status !== 0) {
                     if (onSaveFailed) onSaveFailed(status)
-                    else root.showFileResult("Save Failed", ["Failed to save preset (error " + status + ")."], false)
+                    else root.showFileResult(qsTr("Save Failed"), [qsTr("Failed to save preset (error %1).").arg(status)], false)
                     return
                 }
             }
@@ -969,7 +977,7 @@ ApplicationWindow {
         close.accepted = false
         withUnsaved(function (choice) { root.closeConfirmed = true; root.close() },
                     function (status) {
-                        quitAnyway.message = "Failed to save preset (error " + status + "). Quit anyway?"
+                        quitAnyway.message = qsTr("Failed to save preset (error %1). Quit anyway?").arg(status)
                         quitAnyway.open()
                     })
     }
@@ -977,8 +985,8 @@ ApplicationWindow {
         id: quitAnyway
         icon: "warning"
         iconTint: "#ff9f0a"
-        title: "Save Failed"
-        buttons: [{ key: "cancel", text: "Cancel" }, { key: "quit", text: "Quit", role: "destructive" }]
+        title: qsTr("Save Failed")
+        buttons: [{ key: "cancel", text: qsTr("Cancel") }, { key: "quit", text: qsTr("Quit"), role: "destructive" }]
         onChosen: if (key === "quit") { root.closeConfirmed = true; root.close() }
     }
 
@@ -986,12 +994,12 @@ ApplicationWindow {
     AppDialog {
         id: autoeqUpdate
         icon: "headphones"
-        title: "Update AutoEQ Database"
-        message: { autoeq.entryCount; return "Current database: " + (autoeq.databaseDate || "Unknown") + "\nEntries: " + autoeq.entryCount + "\n\nChoose an update method:" }
+        title: qsTr("Update AutoEQ Database")
+        message: { autoeq.entryCount; return qsTr("Current database: %2\nEntries: %1\n\nChoose an update method:").arg(autoeq.entryCount).arg(autoeq.databaseDate || qsTr("Unknown")) }
         onAboutToShow: autoeq.load()
-        buttons: [{ key: "rebuild", text: "Rebuild from GitHub", role: "primary" }, { key: "import", text: "Import File…" }]
-                 .concat(autoeq.hasUserDatabase ? [{ key: "reset", text: "Reset to Built-in" }] : [])
-                 .concat([{ key: "cancel", text: "Cancel" }])
+        buttons: [{ key: "rebuild", text: qsTr("Rebuild from GitHub"), role: "primary" }, { key: "import", text: qsTr("Import File…") }]
+                 .concat(autoeq.hasUserDatabase ? [{ key: "reset", text: qsTr("Reset to Built-in") }] : [])
+                 .concat([{ key: "cancel", text: qsTr("Cancel") }])
         onChosen: {
             if (key === "rebuild") autoeqRebuildConfirm.open()
             else if (key === "import") autoeqImportDialog.open()
@@ -1002,28 +1010,28 @@ ApplicationWindow {
         id: autoeqRebuildConfirm
         icon: "warning"
         iconTint: "#ff9f0a"
-        title: "Rebuild AutoEQ Database"
+        title: qsTr("Rebuild AutoEQ Database")
         message: autoeq.rebuildWarning()   // -- WP QD27 --
-        buttons: [{ key: "cancel", text: "Cancel" }, { key: "rebuild", text: "Rebuild", role: "primary" }]
+        buttons: [{ key: "cancel", text: qsTr("Cancel") }, { key: "rebuild", text: qsTr("Rebuild"), role: "primary" }]
         onChosen: if (key === "rebuild") { autoeq.startRebuild(); root.openToolWindow("autoeqRebuild") }
     }
     Connections {
         target: autoeq
         function onRebuildFinished(ok, message) {
             autoeqRebuildWindow.close()
-            root.showFileResult(ok ? "AutoEQ Database" : "Rebuild Failed", [message], ok)
+            root.showFileResult(ok ? qsTr("AutoEQ Database") : qsTr("Rebuild Failed"), [message], ok)
         }
         // -- WP QD27 --
         function onUpdateFinished(ok, failedTitle, message) {
-            root.showFileResult(ok ? "AutoEQ Database" : failedTitle, [message], ok)
+            root.showFileResult(ok ? qsTr("AutoEQ Database") : failedTitle, [message], ok)
         }
     }
     Platform.FileDialog {
         id: autoeqImportDialog
-        title: "Import AutoEQ Database"
+        title: qsTr("Import AutoEQ Database")
         fileMode: Platform.FileDialog.OpenFile
         folder: root.documentsFolder
-        nameFilters: ["AutoEQ database (*.json)", "All files (*)"]
+        nameFilters: [qsTr("AutoEQ database (*.json)"), qsTr("All files (*)")]
         onAccepted: autoeq.importFile(file)
     }
 
@@ -1031,42 +1039,42 @@ ApplicationWindow {
     AppDialog {
         id: commitDialog
         icon: "save"
-        title: "Save Preset"
-        message: "Save current parameters to preset slot " + (bridge.activePresetSlot + 1) + "?"
-        buttons: [{ key: "cancel", text: "Cancel" }, { key: "save", text: "Save", role: "primary" }]
+        title: qsTr("Save Preset")
+        message: qsTr("Save current parameters to preset slot %1?").arg(bridge.activePresetSlot + 1)
+        buttons: [{ key: "cancel", text: qsTr("Cancel") }, { key: "save", text: qsTr("Save"), role: "primary" }]
         onChosen: {
             if (key !== "save") return
             var status = root.saveActivePreset()
-            root.showFileResult(status === 0 ? "Success" : "Error",
-                                [status === 0 ? "Preset saved successfully" : "Failed to save preset (error " + status + ")"], status === 0)
+            root.showFileResult(status === 0 ? qsTr("Success") : qsTr("Error"),
+                                [status === 0 ? qsTr("Preset saved successfully") : qsTr("Failed to save preset (error %1)").arg(status)], status === 0)
         }
     }
     AppDialog {
         id: revertDialog
         icon: "revert"
-        title: "Revert to Saved"
-        message: "Revert to last saved parameters?\n\nCurrent unsaved changes will be lost."
-        buttons: [{ key: "cancel", text: "Cancel" }, { key: "revert", text: "Revert", role: "primary" }]
+        title: qsTr("Revert to Saved")
+        message: qsTr("Revert to last saved parameters?\n\nCurrent unsaved changes will be lost.")
+        buttons: [{ key: "cancel", text: qsTr("Cancel") }, { key: "revert", text: qsTr("Revert"), role: "primary" }]
         onChosen: {
             if (key !== "revert") return
             var status = bridge.loadParams()
-            if (status === 0) root.showFileResult("Success", ["Parameters reverted successfully"], true)
-            else if (status === 2) root.showFileResult("No Saved Parameters", ["No saved parameters found.\n\nThe device is using factory defaults."], true)
-            else root.showFileResult("Error", [status === 3 ? "Saved data is corrupted" : "Failed to load parameters"], false)
+            if (status === 0) root.showFileResult(qsTr("Success"), [qsTr("Parameters reverted successfully")], true)
+            else if (status === 2) root.showFileResult(qsTr("No Saved Parameters"), [qsTr("No saved parameters found.\n\nThe device is using factory defaults.")], true)
+            else root.showFileResult(qsTr("Error"), [status === 3 ? qsTr("Saved data is corrupted") : qsTr("Failed to load parameters")], false)
         }
     }
     AppDialog {
         id: factoryResetDialog
         icon: "warning"
         iconTint: "#ff6961"
-        title: "Factory Reset"
-        message: "Do you wish to clear all active parameters?\n\nThis will not overwrite your saved parameters unless you run Commit Parameters."
-        buttons: [{ key: "cancel", text: "Cancel" }, { key: "reset", text: "Reset", role: "destructive" }]
+        title: qsTr("Factory Reset")
+        message: qsTr("Do you wish to clear all active parameters?\n\nThis will not overwrite your saved parameters unless you run Commit Parameters.")
+        buttons: [{ key: "cancel", text: qsTr("Cancel") }, { key: "reset", text: qsTr("Reset"), role: "destructive" }]
         onChosen: {
             if (key !== "reset") return
             var status = bridge.factoryReset()
-            root.showFileResult(status === 0 ? "Success" : "Error",
-                                [status === 0 ? "Factory reset complete" : "Failed to reset parameters"], status === 0)
+            root.showFileResult(status === 0 ? qsTr("Success") : qsTr("Error"),
+                                [status === 0 ? qsTr("Factory reset complete") : qsTr("Failed to reset parameters")], status === 0)
         }
     }
 

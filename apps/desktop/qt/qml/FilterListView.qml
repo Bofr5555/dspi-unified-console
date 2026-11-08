@@ -199,14 +199,14 @@ Item {
                 anchors.leftMargin: 16
                 anchors.verticalCenter: parent.verticalCenter
                 MacSegment {
-                    label: "Enable All"
+                    label: qsTr("Enable All")
                     last: false
                     dim: { filterListRoot.rev; return !bridge.writable || !bridge.canSetAllBypass(filterListRoot.channelId, false, xo) }
                     onClicked: bridge.setAllBandsBypass(filterListRoot.channelId, false, xo)
                 }
                 MacSegmentRule {}
                 MacSegment {
-                    label: "Bypass All"
+                    label: qsTr("Bypass All")
                     first: false
                     dim: { filterListRoot.rev; return !bridge.writable || !bridge.canSetAllBypass(filterListRoot.channelId, true, xo) }
                     onClicked: {
@@ -223,14 +223,14 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 8
                 MacPill {
-                    MacSegment { label: "Clear All"; hoverFill: false; dim: !bridge.writable; onClicked: clearDialog.open() }
+                    MacSegment { label: qsTr("Clear All"); hoverFill: false; dim: !bridge.writable; onClicked: clearDialog.open() }
                 }
                 MacPill {
                     // Both segments as wide as the wider title
-                    TextMetrics { id: tabTitle; font.pixelSize: 10; font.weight: Font.Medium; text: "PEQ" }
-                    MacSegment { label: "PEQ"; last: false; minWidth: tabTitle.width + 16; selected: !showCrossover; hoverFill: false; onClicked: showCrossover = false }
+                    TextMetrics { id: tabTitle; font.pixelSize: 10; font.weight: Font.Medium; text: qsTr("PEQ") }
+                    MacSegment { label: qsTr("PEQ"); last: false; minWidth: tabTitle.width + 16; selected: !showCrossover; hoverFill: false; onClicked: showCrossover = false }
                     MacSegmentRule {}
-                    MacSegment { label: "XO"; first: false; minWidth: tabTitle.width + 16; selected: showCrossover; hoverFill: false; onClicked: showCrossover = true }
+                    MacSegment { label: qsTr("XO"); first: false; minWidth: tabTitle.width + 16; selected: showCrossover; hoverFill: false; onClicked: showCrossover = true }
                 }
             }
         }
@@ -269,10 +269,10 @@ Item {
                 anchors.leftMargin: 16
                 spacing: 0
                 HeaderText { width: 42; text: "#"; leftPadding: isMacOS ? 30 : 18 }
-                HeaderText { width: 150; text: "TYPE"; leftPadding: 4 }
-                HeaderText { width: 100; text: "FREQ" }
-                HeaderText { width: 90; text: "GAIN" }
-                HeaderText { width: 80; text: "WIDTH" }
+                HeaderText { width: 150; text: qsTr("TYPE"); leftPadding: 4 }
+                HeaderText { width: 100; text: qsTr("FREQ") }
+                HeaderText { width: 90; text: qsTr("GAIN") }
+                HeaderText { width: 80; text: qsTr("WIDTH") }
             }
             Row {
                 visible: xo
@@ -280,10 +280,10 @@ Item {
                 anchors.leftMargin: 16
                 spacing: 0
                 HeaderText { width: 42; text: "#"; leftPadding: isMacOS ? 30 : 18 }
-                HeaderText { width: 140; text: "FAMILY"; leftPadding: 4 }
-                HeaderText { width: 110; text: "TYPE"; leftPadding: 4 }
-                HeaderText { width: 110; text: "SLOPE"; leftPadding: 4 }
-                HeaderText { width: 100; text: "FREQ" }
+                HeaderText { width: 140; text: qsTr("FAMILY"); leftPadding: 4 }
+                HeaderText { width: 110; text: qsTr("TYPE"); leftPadding: 4 }
+                HeaderText { width: 110; text: qsTr("SLOPE"); leftPadding: 4 }
+                HeaderText { width: 100; text: qsTr("FREQ") }
             }
         }
 
@@ -360,12 +360,12 @@ Item {
                 spacing: 6
 
                 FooterButton {
-                    label: "Enable All"
+                    label: qsTr("Enable All")
                     dim: { filterListRoot.rev; return !bridge.writable || !bridge.canSetAllBypass(filterListRoot.channelId, false, xo) }
                     onClicked: bridge.setAllBandsBypass(filterListRoot.channelId, false, xo)
                 }
                 FooterButton {
-                    label: "Bypass All"
+                    label: qsTr("Bypass All")
                     dim: { filterListRoot.rev; return !bridge.writable || !bridge.canSetAllBypass(filterListRoot.channelId, true, xo) }
                     onClicked: {
                         if (xo) xoBypassDialog.open()
@@ -374,7 +374,7 @@ Item {
                 }
                 FooterButton {
                     visible: isOutput
-                    label: "Clear All"
+                    label: qsTr("Clear All")
                     dim: !bridge.writable   // -- WP QD6 --
                     onClicked: clearDialog.open()
                 }
@@ -386,8 +386,8 @@ Item {
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 2
-                FooterButton { label: "PEQ"; active: !showCrossover; onClicked: showCrossover = false }
-                FooterButton { label: "XO"; active: showCrossover; onClicked: showCrossover = true }
+                FooterButton { label: qsTr("PEQ"); active: !showCrossover; onClicked: showCrossover = false }
+                FooterButton { label: qsTr("XO"); active: showCrossover; onClicked: showCrossover = true }
             }
 
             Loader {
@@ -402,12 +402,12 @@ Item {
         id: clearDialog
         icon: "warning"
         iconTint: "#ff6961"
-        title: "Clear All Bands?"
-        message: "Every " + (xo ? "crossover" : "PEQ") + " band on " + bridge.channelName(filterListRoot.channelId)
-                 + " will be set to Off."
+        title: qsTr("Clear All Bands?")
+        message: xo ? qsTr("Every crossover band on %1 will be set to Off.").arg(bridge.channelName(filterListRoot.channelId))
+                 : qsTr("Every PEQ band on %1 will be set to Off.").arg(bridge.channelName(filterListRoot.channelId))
         buttons: [
-            { key: "cancel", text: "Cancel" },
-            { key: "clear", text: "Clear All", role: "destructive" }
+            { key: "cancel", text: qsTr("Cancel") },
+            { key: "clear", text: qsTr("Clear All"), role: "destructive" }
         ]
         onChosen: if (key === "clear") bridge.clearAllBands(filterListRoot.channelId, xo)
     }
@@ -416,12 +416,11 @@ Item {
         id: xoBypassDialog
         icon: "warning"
         iconTint: "#ff9f0a"
-        title: "Bypass All Crossovers?"
-        message: "Bypassing the crossovers sends full-range audio to this output, which can damage "
-                 + "a tweeter or other driver that relies on them for protection."
+        title: qsTr("Bypass All Crossovers?")
+        message: qsTr("Bypassing the crossovers sends full-range audio to this output, which can damage a tweeter or other driver that relies on them for protection.")
         buttons: [
-            { key: "cancel", text: "Cancel" },
-            { key: "bypass", text: "Bypass All", role: "destructive" }
+            { key: "cancel", text: qsTr("Cancel") },
+            { key: "bypass", text: qsTr("Bypass All"), role: "destructive" }
         ]
         onChosen: if (key === "bypass") bridge.setAllBandsBypass(filterListRoot.channelId, true, true)
     }

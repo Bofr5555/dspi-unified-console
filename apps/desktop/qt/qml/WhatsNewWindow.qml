@@ -7,7 +7,7 @@ import "components"
 // automatically, after Console is updated, and from Help.
 AppWindow {
     id: win
-    title: "What's New"
+    title: qsTr("What's New")
     visible: false
     width: 460
     height: 420 + titlebarHeight
@@ -97,7 +97,7 @@ AppWindow {
             }
             Text {
                 visible: win.releases.length === 0
-                text: "No release notes are available in this build."
+                text: qsTr("No release notes are available in this build.")
                 font.pixelSize: 12
                 color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
             }
@@ -113,7 +113,7 @@ AppWindow {
             anchors.right: parent.right
             anchors.rightMargin: 16
             anchors.verticalCenter: parent.verticalCenter
-            text: "Done"
+            text: qsTr("Done")
             primary: true
             onClicked: win.close()
         }

@@ -85,7 +85,7 @@ Rectangle {
     TextField {
         id: nameEdit
         visible: renaming
-        Accessible.name: "Channel name"
+        Accessible.name: qsTr("Channel name")
         width: 150
         height: 24
         font.pixelSize: 14
@@ -149,7 +149,7 @@ Rectangle {
             cursorShape: Qt.PointingHandCursor
             focusRadius: parent.radius + 2
             Accessible.role: Accessible.CheckBox
-            Accessible.name: channelName + " curve on the graph"
+            Accessible.name: qsTr("%1 curve on the graph").arg(channelName)
             Accessible.checkable: true
             Accessible.checked: rowRoot.curveVisible
             onActivated: bridge.setChannelVisible(rowRoot.channelIndex, !rowRoot.curveVisible)
@@ -158,16 +158,16 @@ Rectangle {
 
     function openContextMenu(px, py) {
         contextMenu.items = [
-            { key: "rename", text: "Rename", icon: "pencil", shortcut: "Alt+Click", enabled: bridge.writable },
+            { key: "rename", text: qsTr("Rename"), icon: "pencil", shortcut: "Alt+Click", enabled: bridge.writable },
             { separator: true },
-            { key: "copy", text: "Copy Parameters", icon: "copy" },
-            { key: "paste", text: "Paste Parameters", icon: "paste", enabled: bridge.canPaste() && bridge.writable }
+            { key: "copy", text: qsTr("Copy Parameters"), icon: "copy" },
+            { key: "paste", text: qsTr("Paste Parameters"), icon: "paste", enabled: bridge.canPaste() && bridge.writable }
         ]
         // Outputs: play their channel number (the signal generator's Channel ID)
         if (!bridge.isInputChannel(channelIndex) && bridge.writable && siggen.supported) {
             contextMenu.items = contextMenu.items.concat([
                 { separator: true },
-                { key: "identify", text: "Identify", icon: "identify" }
+                { key: "identify", text: qsTr("Identify"), icon: "identify" }
             ])
         }
         contextMenu.openAt(rowRoot, px, py)

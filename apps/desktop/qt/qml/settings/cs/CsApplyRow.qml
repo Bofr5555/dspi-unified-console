@@ -55,7 +55,7 @@ Item {
         anchors.rightMargin: 14
         anchors.verticalCenter: parent.verticalCenter
         spacing: 8
-        CsButton { text: "Revert"; enabled: row.dirty; onClicked: row.revert() }
-        CsButton { text: "Apply"; primary: true; enabled: row.canApply; onClicked: row.apply() }
+        CsButton { text: qsTr("Revert"); enabled: row.dirty; onClicked: row.revert() }
+        CsButton { text: qsTr("Apply"); primary: true; enabled: row.canApply; onClicked: row.apply() }
     }
 }

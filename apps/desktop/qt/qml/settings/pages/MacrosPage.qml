@@ -7,8 +7,8 @@ import "../../components"
 // Macros: short sequences of changes fired by one press.
 SettingsPage {
     id: page
-    title: "Macros"
-    subtitle: "Run a short sequence of changes from a single press: select an input and load a preset, switch monitors, mute after a delay."
+    title: qsTr("Macros")
+    subtitle: qsTr("Run a short sequence of changes from a single press: select an input and load a preset, switch monitors, mute after a delay.")
 
     CsHelper { id: cs }
     readonly property var csHelper: cs
@@ -64,13 +64,13 @@ SettingsPage {
     readonly property int running: cs.ext.macroRunning !== undefined ? cs.ext.macroRunning : 0xFF
 
     function summary(mc, isRunning) {
-        if (isRunning) return "Running - step " + ((cs.ext.macroStep || 0) + 1) + " of " + mc.steps.length + "."
+        if (isRunning) return qsTr("Running - step %1 of %2.").arg((cs.ext.macroStep || 0) + 1).arg(mc.steps.length)
         var n = mc.steps.length
-        if (n === 0) return "No steps yet."
+        if (n === 0) return qsTr("No steps yet.")
         var total = 0
         for (var i = 0; i < n; i++) total += mc.steps[i].preDelay / 100
-        var base = n + " step" + (n === 1 ? "" : "s")
-        return total > 0 ? base + ", " + cs.fmtSeconds(total) + " total" : base
+        var base = n === 1 ? qsTr("%1 step").arg(n) : qsTr("%1 steps").arg(n)
+        return total > 0 ? qsTr("%1, %2 total").arg(base).arg(cs.fmtSeconds(total)) : base
     }
     function addMacro() {
         var m = firstFree
@@ -112,18 +112,18 @@ SettingsPage {
 
         Text {
             visible: !cs.supported
-            text: "Reading control-surface capabilities from the device..."
+            text: qsTr("Reading control-surface capabilities from the device...")
             font.pixelSize: 12
             color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
         }
 
         CsEmptyState {
             visible: cs.supported && page.visibleMacros.length === 0
-            title: "No Macros Configured"
-            text: "Run a short sequence of changes from a single press: select an input and load a preset, switch monitors, mute after a delay."
+            title: qsTr("No Macros Configured")
+            text: qsTr("Run a short sequence of changes from a single press: select an input and load a preset, switch monitors, mute after a delay.")
             Icon { name: "list-number"; size: 28; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.45) }
             action: CsButton {
-                text: "Add Macro"; icon: "plus"; primary: true
+                text: qsTr("Add Macro"); icon: "plus"; primary: true
                 enabled: page.firstFree >= 0 && cs.connected
                 onClicked: page.addMacro()
             }
@@ -141,10 +141,10 @@ SettingsPage {
                 visible: m < cs.macroCount && page.inUse(m)
                 expanded: page.expanded[m] === true
                 name: d.name
-                placeholder: "Macro " + (m + 1)
+                placeholder: qsTr("Macro %1").arg(m + 1)
                 summary: page.summary(d, isRunning)
                 summaryColor: isMacOS ? (isRunning ? MacColors.green : MacColors.secondaryLabel) : isRunning ? "#32d74b" : Qt.rgba(1, 1, 1, 0.5)
-                removeTip: "Remove this macro"
+                removeTip: qsTr("Remove this macro")
                 onToggle: page.setMap("expanded", m, expanded ? undefined : true)
                 onNameEdited: { var nd = cs.copy(card.d); nd.name = text; page.setDraft(card.m, nd) }
                 onRemoveClicked: page.removeMacro(m)
@@ -166,7 +166,7 @@ SettingsPage {
                     CsButton {
                         bare: true
                         icon: card.isRunning ? "stop" : "play"
-                        tip: card.isRunning ? "Stop this macro" : "Run this macro now"
+                        tip: card.isRunning ? qsTr("Stop this macro") : qsTr("Run this macro now")
                         // -- WP CG16 -- Not undefined while the model empties at a device change
                         enabled: cs.connected && (card.isRunning || !!(page.live[card.m] && page.live[card.m].steps.length > 0))
                         onClicked: page.runOrStop(card.m, card.isRunning)   // -- WP QD1 --
@@ -211,9 +211,9 @@ SettingsPage {
                                 anchors.rightMargin: 12
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 2
-                                CsButton { bare: true; icon: "arrow-up"; tip: "Move up"; enabled: index > 0; onClicked: page.moveStep(card.m, index, -1) }
-                                CsButton { bare: true; icon: "arrow-down"; tip: "Move down"; enabled: index < card.d.steps.length - 1; onClicked: page.moveStep(card.m, index, 1) }
-                                CsButton { bare: true; icon: "minus-circle"; tip: "Remove this step"; onClicked: page.removeStep(card.m, index) }
+                                CsButton { bare: true; icon: "arrow-up"; tip: qsTr("Move up"); enabled: index > 0; onClicked: page.moveStep(card.m, index, -1) }
+                                CsButton { bare: true; icon: "arrow-down"; tip: qsTr("Move down"); enabled: index < card.d.steps.length - 1; onClicked: page.moveStep(card.m, index, 1) }
+                                CsButton { bare: true; icon: "minus-circle"; tip: qsTr("Remove this step"); onClicked: page.removeStep(card.m, index) }
                             }
                         }
                         CsRecordEditor {
@@ -232,7 +232,7 @@ SettingsPage {
                     CsButton {
                         x: 14
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Add Step"
+                        text: qsTr("Add Step")
                         icon: "plus"
                         enabled: card.d.steps.length < cs.stepCount
                         onClicked: page.addStep(card.m)
@@ -242,7 +242,7 @@ SettingsPage {
                         anchors.right: parent.right
                         anchors.rightMargin: 14
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "A macro holds up to " + cs.stepCount + " steps."
+                        text: qsTr("A macro holds up to %1 steps.").arg(cs.stepCount)
                         font.pixelSize: 11
                         color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
                     }
@@ -267,7 +267,7 @@ SettingsPage {
             width: parent.width
             height: 30
             CsButton {
-                text: "Add Macro"; icon: "plus"
+                text: qsTr("Add Macro"); icon: "plus"
                 enabled: page.firstFree >= 0 && cs.connected
                 anchors.verticalCenter: parent.verticalCenter
                 onClicked: page.addMacro()
@@ -276,7 +276,7 @@ SettingsPage {
                 visible: page.firstFree < 0
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                text: "All " + cs.macroCount + " macro slots are in use."
+                text: qsTr("All %1 macro slots are in use.").arg(cs.macroCount)
                 font.pixelSize: 12
                 color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
             }
@@ -288,7 +288,7 @@ SettingsPage {
         wrapMode: Text.WordWrap
         leftPadding: 4
         rightPadding: 4
-        text: "To fire a macro, bind a push button or remote key to Tools > Macro with the action Set value. Each step can wait before it runs, and can address a channel group. One macro runs at a time - firing another cancels the first at its current step.\n\nMacros are stored on the device alongside the controls and share their Save and Revert."
+        text: qsTr("To fire a macro, bind a push button or remote key to Tools > Macro with the action Set value. Each step can wait before it runs, and can address a channel group. One macro runs at a time - firing another cancels the first at its current step.\n\nMacros are stored on the device alongside the controls and share their Save and Revert.")
         font.pixelSize: 11
         color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.45)
     }

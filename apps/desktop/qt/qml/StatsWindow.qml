@@ -12,7 +12,7 @@ import "components"
 // the window is open: counters and ring health every 2 s, buffers every 60 ms.
 AppWindow {
     id: win
-    title: "System Statistics"
+    title: qsTr("System Statistics")
     visible: false
     width: 960
     height: 780 + titlebarHeight    // -- WP QD29 -- Column 1 with ring health and PDM, unscrolled
@@ -42,12 +42,12 @@ AppWindow {
         if (ms <= 0) return dash
         var s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60
         function two(n) { return (n < 10 ? "0" : "") + n }
-        return h > 0 ? h + "h " + two(m) + "m " + two(r) + "s" : m + "m " + two(r) + "s"
+        return h > 0 ? qsTr("%1h %2m %3s").arg(h).arg(two(m)).arg(two(r)) : qsTr("%1m %2s").arg(m).arg(two(r))
     }
     function num(v) { return v === undefined || v === null ? dash : String(v) }
     // -- WP QD29 -- formatLatencyMs and formatGapUs on the Mac
-    function latencyMs(us) { return us % 1000 === 0 ? (us / 1000) + " ms" : (us / 1000).toFixed(2) + " ms" }
-    function gapText(us) { return us < 10000 ? us + " µs" : (us / 1000).toFixed(1) + " ms" }
+    function latencyMs(us) { return us % 1000 === 0 ? qsTr("%1 ms").arg(String(us / 1000)) : qsTr("%1 ms").arg((us / 1000).toFixed(2)) }
+    function gapText(us) { return us < 10000 ? qsTr("%1 µs").arg(String(us)) : qsTr("%1 ms").arg((us / 1000).toFixed(1)) }
 
     // Colours: macOS dark system colours
     readonly property color green: isMacOS ? MacColors.green : "#32d74b"
@@ -71,17 +71,20 @@ AppWindow {
         property string title: ""
         property string value: ""
         property color valueColor: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9)
+        // macOS: the starvation section's per-output rows have a secondary title,
+        // its timer rows a secondary title and value
+        property bool secondaryTitle: secondaryValue
+        property bool secondaryValue: false
         width: parent ? parent.width : 0
         height: 22
-        // macOS: the starvation section's per-output and timer rows have secondary titles
-        Text { anchors.verticalCenter: parent.verticalCenter; text: parent.title; font.pixelSize: 11; font.weight: Font.Medium; color: isMacOS ? (/^(Out \d|Time )/.test(parent.title) ? MacColors.secondaryLabel : MacColors.label) : Qt.rgba(1, 1, 1, 0.75) }
+        Text { anchors.verticalCenter: parent.verticalCenter; text: parent.title; font.pixelSize: 11; font.weight: Font.Medium; color: isMacOS ? (parent.secondaryTitle ? MacColors.secondaryLabel : MacColors.label) : Qt.rgba(1, 1, 1, 0.75) }
         Text {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             text: parent.value
             font.pixelSize: 12
             font.weight: Font.Bold
-            color: isMacOS ? (/^Time /.test(parent.title) ? MacColors.secondaryLabel : parent.valueColor) : parent.valueColor
+            color: isMacOS ? (parent.secondaryValue ? MacColors.secondaryLabel : parent.valueColor) : parent.valueColor
         }
     }
     // -- WP QD29 -- An InfoRow that explains itself, with the plain colour for a count at 0
@@ -136,7 +139,7 @@ AppWindow {
                     font.weight: Font.Bold
                     color: isMacOS ? ((parent.parent.parent.over || 0) > 0 ? win.orange : MacColors.label) : (parent.parent.parent.over || 0) > 0 ? win.orange : Qt.rgba(1, 1, 1, 0.9)
                 }
-                Text { anchors.right: parent.right; text: "over"; font.pixelSize: 9; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.45) }
+                Text { anchors.right: parent.right; text: qsTr("over"); font.pixelSize: 9; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.45) }
             }
             Column {
                 visible: parent.parent.hasUnder
@@ -147,7 +150,7 @@ AppWindow {
                     font.weight: Font.Bold
                     color: isMacOS ? ((parent.parent.parent.under || 0) > 0 ? win.red : MacColors.label) : (parent.parent.parent.under || 0) > 0 ? win.red : Qt.rgba(1, 1, 1, 0.9)
                 }
-                Text { anchors.right: parent.right; text: "under"; font.pixelSize: 9; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.45) }
+                Text { anchors.right: parent.right; text: qsTr("under"); font.pixelSize: 9; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.45) }
             }
         }
     }
@@ -191,7 +194,7 @@ AppWindow {
                 MouseArea { id: wmHover; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
                 ToolTip.visible: wmHover.containsMouse
                 ToolTip.delay: 600
-                ToolTip.text: "Lowest and highest fill since the watermarks were reset"
+                ToolTip.text: qsTr("Lowest and highest fill since the watermarks were reset")
             }
         }
         Text {
@@ -220,7 +223,7 @@ AppWindow {
         MouseArea { id: rowHover; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton; z: -1 }
         ToolTip.visible: rowHover.containsMouse
         ToolTip.delay: 800
-        ToolTip.text: br.title + " fill level over the last 15 seconds"
+        ToolTip.text: qsTr("%1 fill level over the last 15 seconds").arg(br.title)
     }
 
     Flickable {
@@ -243,32 +246,32 @@ AppWindow {
                 spacing: 4
                 readonly property real inner: width - 32
 
-                SectionLabel { text: "DEVICE INFORMATION" }
+                SectionLabel { text: qsTr("DEVICE INFORMATION") }
                 Column {
                     width: parent.inner
-                    InfoRow { title: "Platform"; value: bridge.connected ? bridge.platformName : win.dash }
-                    InfoRow { title: "Firmware"; value: bridge.connected ? bridge.firmwareVersion : win.dash }
-                    InfoRow { title: "Serial"; value: bridge.selectedSerial || win.dash }
-                    InfoRow { title: "Reconnects"; value: String(stats.reconnects) }
+                    InfoRow { title: qsTr("Platform"); value: bridge.connected ? bridge.platformName : win.dash }
+                    InfoRow { title: qsTr("Firmware"); value: bridge.connected ? bridge.firmwareVersion : win.dash }
+                    InfoRow { title: qsTr("Serial"); value: bridge.selectedSerial || win.dash }
+                    InfoRow { title: qsTr("Reconnects"); value: String(stats.reconnects) }
                 }
                 Item { width: 1; height: 8 }
-                SectionLabel { text: "SYSTEM INFORMATION" }
+                SectionLabel { text: qsTr("SYSTEM INFORMATION") }
                 Column {
                     width: parent.inner
-                    InfoRow { title: "Clock Frequency"; value: win.live ? win.info.clockMHz.toFixed(1) + " MHz" : win.dash }
-                    InfoRow { title: "Core Voltage"; value: win.live && win.info.coreVolts !== undefined ? win.info.coreVolts.toFixed(2) + " V" : win.dash }
-                    InfoRow { title: "Sample Rate"; value: win.live && win.info.sampleKHz !== undefined ? win.info.sampleKHz.toFixed(1) + " kHz" : win.dash }
-                    InfoRow { title: "Temperature"; value: win.live && win.info.tempC !== undefined ? win.info.tempC.toFixed(1) + " °C" : win.dash }
-                    InfoRow { title: "Core 0 Load"; value: bridge.connected ? bridge.cpu0 + " %" : win.dash; valueColor: bridge.cpu0 > 80 ? win.orange : Qt.rgba(1, 1, 1, 0.9) }
-                    InfoRow { title: "Core 1 Load"; value: bridge.connected ? bridge.cpu1 + " %" : win.dash; valueColor: bridge.cpu1 > 80 ? win.orange : Qt.rgba(1, 1, 1, 0.9) }
-                    InfoRow { title: "Core 1 Mode"; value: !bridge.connected ? win.dash : ["Idle", "PDM", "EQ Worker"][bridge.core1Mode] || "Unknown" }
+                    InfoRow { title: qsTr("Clock Frequency"); value: win.live ? qsTr("%1 MHz").arg(win.info.clockMHz.toFixed(1)) : win.dash }
+                    InfoRow { title: qsTr("Core Voltage"); value: win.live && win.info.coreVolts !== undefined ? qsTr("%1 V").arg(win.info.coreVolts.toFixed(2)) : win.dash }
+                    InfoRow { title: qsTr("Sample Rate"); value: win.live && win.info.sampleKHz !== undefined ? qsTr("%1 kHz").arg(win.info.sampleKHz.toFixed(1)) : win.dash }
+                    InfoRow { title: qsTr("Temperature"); value: win.live && win.info.tempC !== undefined ? qsTr("%1 °C").arg(win.info.tempC.toFixed(1)) : win.dash }
+                    InfoRow { title: qsTr("Core 0 Load"); value: bridge.connected ? bridge.cpu0 + " %" : win.dash; valueColor: bridge.cpu0 > 80 ? win.orange : Qt.rgba(1, 1, 1, 0.9) }
+                    InfoRow { title: qsTr("Core 1 Load"); value: bridge.connected ? bridge.cpu1 + " %" : win.dash; valueColor: bridge.cpu1 > 80 ? win.orange : Qt.rgba(1, 1, 1, 0.9) }
+                    InfoRow { title: qsTr("Core 1 Mode"); value: !bridge.connected ? win.dash : [qsTr("Idle"), qsTr("PDM"), qsTr("EQ Worker")][bridge.core1Mode] || qsTr("Unknown") }
                 }
                 Item { width: 1; height: 8 }
-                SectionLabel { text: "AUDIO OUTPUT" }
+                SectionLabel { text: qsTr("AUDIO OUTPUT") }
                 Column {
                     width: parent.inner
-                    CounterRow { title: "USB Ring"; subtitle: "ISR → Main Loop"; over: win.info.usbRingOver; hasUnder: false }
-                    CounterRow { title: "Buffer Pool"; subtitle: "USB → DMA"; over: win.info.spdifOver; under: win.info.spdifUnder }
+                    CounterRow { title: qsTr("USB Ring"); subtitle: qsTr("ISR → Main Loop"); over: win.info.usbRingOver; hasUnder: false }
+                    CounterRow { title: qsTr("Buffer Pool"); subtitle: qsTr("USB → DMA"); over: win.info.spdifOver; under: win.info.spdifUnder }
                 }
                 // -- WP QD29 -- Output ring health, on firmware that reports it
                 Column {
@@ -277,62 +280,62 @@ AppWindow {
                     width: parent.inner
                     spacing: 4
                     Item { width: 1; height: 8 }
-                    SectionLabel { text: "OUTPUT RING HEALTH" }
+                    SectionLabel { text: qsTr("OUTPUT RING HEALTH") }
                     Column {
                         width: parent.width
                         RingRow {
                             objectName: "ringFillTarget"
-                            title: "Fill Target"
-                            value: win.ring.targetFrames + " frames (" + win.latencyMs(win.ring.targetUs) + ")"
-                            tip: "How full the output rings are kept, set by Latency in Settings"
+                            title: qsTr("Fill Target")
+                            value: qsTr("%1 frames (%2)").arg(win.ring.targetFrames).arg(win.latencyMs(win.ring.targetUs))
+                            tip: qsTr("How full the output rings are kept, set by Latency in Settings")
                         }
                         RingRow {
                             objectName: "ringUnderruns"
-                            title: "Underrun Episodes"
+                            title: qsTr("Underrun Episodes")
                             value: win.num(win.ring.underrunEpisodes)
                             valueColor: win.ring.underrunEpisodes > 0 ? win.red : plain
-                            tip: "Times the outputs ran dry while a source owed audio. A host that pauses its stream does not count."
+                            tip: qsTr("Times the outputs ran dry while a source owed audio. A host that pauses its stream does not count.")
                         }
                         RingRow {
                             objectName: "ringRefused"
-                            title: "Refused Blocks"
+                            title: qsTr("Refused Blocks")
                             value: win.num(win.ring.refusedBlocks)
                             valueColor: win.ring.refusedBlocks > 0 ? win.orange : plain
-                            tip: "Audio blocks dropped because the rings had no room for them"
+                            tip: qsTr("Audio blocks dropped because the rings had no room for them")
                         }
                         RingRow {
                             objectName: "ringLowestFill"
-                            title: "Lowest Fill"
-                            value: win.ring.lowestFill !== undefined ? win.ring.lowestFill + " frames" : win.dash
-                            tip: "The emptiest any output ring got just before new audio arrived, since the watermarks were reset. Near zero means the margin is thin."
+                            title: qsTr("Lowest Fill")
+                            value: win.ring.lowestFill !== undefined ? qsTr("%1 frames").arg(win.ring.lowestFill) : win.dash
+                            tip: qsTr("The emptiest any output ring got just before new audio arrived, since the watermarks were reset. Near zero means the margin is thin.")
                         }
                         RingRow {
                             objectName: "ringInputGap"
-                            title: "Worst Input Gap"
+                            title: qsTr("Worst Input Gap")
                             value: win.gapText(win.ring.worstInputGapUs)
-                            tip: "Longest wait between input deliveries since the watermarks were reset"
+                            tip: qsTr("Longest wait between input deliveries since the watermarks were reset")
                         }
                         RingRow {
                             objectName: "ringUsbGap"
-                            title: "Worst USB Gap"
+                            title: qsTr("Worst USB Gap")
                             value: win.gapText(win.ring.worstUsbGapUs)
-                            tip: "Longest gap between USB audio packets since the watermarks were reset. Long gaps are the host pausing its stream."
+                            tip: qsTr("Longest gap between USB audio packets since the watermarks were reset. Long gaps are the host pausing its stream.")
                         }
                         RingRow {
                             objectName: "ringOverBudget"
-                            title: "Over-Budget Steps"
+                            title: qsTr("Over-Budget Steps")
                             value: win.num(win.ring.overBudgetSteps)
                             valueColor: win.ring.overBudgetSteps > 0 ? win.orange : plain
-                            tip: "Background tasks that ran past their time slice in the device's main loop"
+                            tip: qsTr("Background tasks that ran past their time slice in the device's main loop")
                         }
                     }
                 }
                 Item { width: 1; height: 8 }
-                SectionLabel { text: "PDM (SUBWOOFER)" }
+                SectionLabel { text: qsTr("PDM (SUBWOOFER)") }
                 Column {
                     width: parent.inner
-                    CounterRow { title: "Ring Buffer"; subtitle: "Core 0 → Core 1"; over: win.info.pdmRingOver; under: win.info.pdmRingUnder }
-                    CounterRow { title: "DMA Buffer"; subtitle: "Core 1 → PIO"; over: win.info.pdmDmaOver; under: win.info.pdmDmaUnder }
+                    CounterRow { title: qsTr("Ring Buffer"); subtitle: qsTr("Core 0 → Core 1"); over: win.info.pdmRingOver; under: win.info.pdmRingUnder }
+                    CounterRow { title: qsTr("DMA Buffer"); subtitle: qsTr("Core 1 → PIO"); over: win.info.pdmDmaOver; under: win.info.pdmDmaUnder }
                 }
             }
 
@@ -346,13 +349,13 @@ AppWindow {
                 spacing: 4
                 readonly property real inner: width - 32
 
-                SectionLabel { text: "SPDIF DMA STARVATION" }
+                SectionLabel { text: qsTr("SPDIF DMA STARVATION") }
                 Column {
                     width: parent.inner
                     Item {
                         width: parent.width
                         height: 26
-                        Text { anchors.verticalCenter: parent.verticalCenter; text: "Total"; font.pixelSize: 11; font.weight: Font.Medium; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.75) }
+                        Text { anchors.verticalCenter: parent.verticalCenter; text: qsTr("Total"); font.pixelSize: 11; font.weight: Font.Medium; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.75) }
                         Row {
                             anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
@@ -378,21 +381,23 @@ AppWindow {
                         model: Math.max(win.buf.numSpdif || 0, 2)
                         InfoRow {
                             readonly property var per: win.info.starvationPer || []
-                            title: "Out " + (index * 2 + 1) + "/" + (index * 2 + 2)
+                            title: qsTr("Out %1/%2").arg(index * 2 + 1).arg(index * 2 + 2)
+                            secondaryTitle: true
                             value: per.length > index ? String(per[index]) : win.dash
                             valueColor: isMacOS ? ((per[index] || 0) > 0 ? win.red : MacColors.label) : (per[index] || 0) > 0 ? win.red : Qt.rgba(1, 1, 1, 0.9)
                         }
                     }
-                    InfoRow { title: "Time since last event"; value: (win.info.lastEventMs || 0) > 0 ? win.span(win.now - win.info.lastEventMs) : win.dash }
+                    InfoRow { title: qsTr("Time since last event"); secondaryValue: true; value: (win.info.lastEventMs || 0) > 0 ? win.span(win.now - win.info.lastEventMs) : win.dash }
                     InfoRow {
-                        title: "Time between last two"
+                        title: qsTr("Time between last two")
+                        secondaryValue: true
                         value: (win.info.previousEventMs || 0) > 0 ? win.span(win.info.lastEventMs - win.info.previousEventMs) : win.dash
                     }
                 }
                 Item { width: 1; height: 8 }
                 RowLayout {
                     width: parent.inner
-                    SectionLabel { text: "BUFFER FILL LEVELS" }
+                    SectionLabel { text: qsTr("BUFFER FILL LEVELS") }
                     Item { Layout.fillWidth: true }
                     Rectangle {
                         Layout.preferredWidth: resetText.width + 16
@@ -400,7 +405,7 @@ AppWindow {
                         radius: 6
                         color: isMacOS ? (resetMouse.pressed ? MacColors.opacity(MacColors.control, 1.6) : MacColors.control) : resetMouse.pressed ? Qt.rgba(1, 1, 1, 0.14) : resetMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
                         border.color: isMacOS ? "transparent" : Qt.rgba(1, 1, 1, 0.18)
-                        Text { id: resetText; anchors.centerIn: parent; text: "Reset Watermarks"; font.pixelSize: 10; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.85) }
+                        Text { id: resetText; anchors.centerIn: parent; text: qsTr("Reset Watermarks"); font.pixelSize: 10; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.85) }
                         ClickArea { id: resetMouse; enabled: bridge.writable; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; focusRadius: 8
                                     Accessible.name: resetText.text; onActivated: stats.resetWatermarks() }
                     }
@@ -408,7 +413,7 @@ AppWindow {
                 Row {
                     spacing: 14
                     Repeater {
-                        model: [{ t: "Audio Streaming", on: win.buf.streaming === true }, { t: "PDM Active", on: win.buf.pdmActive === true }]
+                        model: [{ t: qsTr("Audio Streaming"), on: win.buf.streaming === true }, { t: qsTr("PDM Active"), on: win.buf.pdmActive === true }]
                         Row {
                             spacing: 5
                             Rectangle { width: 6; height: 6; radius: 3; color: modelData.on ? win.green : win.grey; anchors.verticalCenter: parent.verticalCenter }
@@ -424,7 +429,7 @@ AppWindow {
                     Repeater {
                         model: win.buf.numSpdif || 0
                         BufferRow {
-                            title: "Out " + (index * 2 + 1) + "/" + (index * 2 + 2) + " (" + (win.outputTypes[index] === 1 ? "I2S" : "S/PDIF") + ")"
+                            title: qsTr("Out %1/%2 (%3)").arg(index * 2 + 1).arg(index * 2 + 2).arg(win.outputTypes[index] === 1 ? "I2S" : "S/PDIF")
                             tint: bridge.channelColor(2 + index * 2)
                             series: index
                             levels: (win.buf.spdif || [])[index] || ({})
@@ -434,7 +439,7 @@ AppWindow {
                     }
                     BufferRow {
                         visible: win.buf.pdmActive === true
-                        title: "PDM DMA"
+                        title: qsTr("PDM DMA")
                         tint: bridge.channelColor(bridge.numOutputChannels + 1)
                         series: 4
                         levels: win.buf.pdmDma || ({})
@@ -442,7 +447,7 @@ AppWindow {
                     }
                     BufferRow {
                         visible: win.buf.pdmActive === true
-                        title: "PDM Ring"
+                        title: qsTr("PDM Ring")
                         tint: bridge.channelColor(bridge.numOutputChannels + 1)
                         hollow: true
                         series: 5
@@ -472,7 +477,7 @@ AppWindow {
                     width: parent.inner
                     wrapMode: Text.WordWrap
                     topPadding: 4
-                    text: bridge.connected ? "No digital inputs or links to report." : "Connect a DSPi to see its statistics."
+                    text: bridge.connected ? qsTr("No digital inputs or links to report.") : qsTr("Connect a DSPi to see its statistics.")
                     font.pixelSize: 11
                     color: Qt.rgba(1, 1, 1, 0.4)
                 }
@@ -483,38 +488,38 @@ AppWindow {
                     width: parent.inner
                     spacing: 0
                     readonly property var r: parent.rx || ({})
-                    SectionLabel { text: "S/PDIF INPUT" }
+                    SectionLabel { text: qsTr("S/PDIF INPUT") }
                     StateRow {
-                        title: "State"
-                        text: ["Inactive", "Acquiring", "Locked", "Relocking"][parent.r.state] || "Inactive"
+                        title: qsTr("State")
+                        text: [qsTr("Inactive"), qsTr("Acquiring"), qsTr("Locked"), qsTr("Relocking")][parent.r.state] || qsTr("Inactive")
                         dot: [win.grey, win.yellow, win.green, win.orange][parent.r.state] || win.grey
                     }
-                    InfoRow { title: "Active Source"; value: parent.r.source || win.dash }
-                    InfoRow { title: "Sample Rate"; value: parent.r.locked ? parent.r.rateKHz.toFixed(1) + " kHz" : win.dash }
-                    InfoRow { title: "Lock Count"; value: win.num(parent.r.lockCount) }
-                    InfoRow { title: "Loss Count"; value: win.num(parent.r.lossCount) }
-                    InfoRow { title: "Parity Errors"; value: parent.r.locked ? win.num(parent.r.parityErrors) : win.dash }
-                    InfoRow { title: "FIFO Fill"; value: parent.r.locked ? parent.r.fifoPct + "%" : win.dash }
-                    InfoRow { title: "RX Pin"; value: parent.r.pin !== undefined ? "GPIO " + parent.r.pin : win.dash }
+                    InfoRow { title: qsTr("Active Source"); value: parent.r.source || win.dash }
+                    InfoRow { title: qsTr("Sample Rate"); value: parent.r.locked ? qsTr("%1 kHz").arg(parent.r.rateKHz.toFixed(1)) : win.dash }
+                    InfoRow { title: qsTr("Lock Count"); value: win.num(parent.r.lockCount) }
+                    InfoRow { title: qsTr("Loss Count"); value: win.num(parent.r.lossCount) }
+                    InfoRow { title: qsTr("Parity Errors"); value: parent.r.locked ? win.num(parent.r.parityErrors) : win.dash }
+                    InfoRow { title: qsTr("FIFO Fill"); value: parent.r.locked ? parent.r.fifoPct + "%" : win.dash }
+                    InfoRow { title: qsTr("RX Pin"); value: parent.r.pin !== undefined ? qsTr("GPIO %1").arg(parent.r.pin) : win.dash }
                     Column {
                         visible: parent.r.locked === true && parent.r.category !== undefined
                         width: parent.width
                         Item { width: 1; height: 6 }
-                        SectionLabel { text: "CHANNEL STATUS" }
-                        InfoRow { title: "Format"; value: parent.parent.r.consumer ? "Consumer" : "Professional" }
-                        InfoRow { title: "Audio"; value: parent.parent.r.pcm ? "PCM" : "Non-PCM" }
-                        InfoRow { title: "Category"; value: parent.parent.r.category || win.dash }
-                        InfoRow { title: "Word Length"; value: parent.parent.r.wordLength || win.dash }
-                        InfoRow { title: "Copy"; value: parent.parent.r.copyPermitted ? "Permitted" : "Prohibited" }
+                        SectionLabel { text: qsTr("CHANNEL STATUS") }
+                        InfoRow { title: qsTr("Format"); value: parent.parent.r.consumer ? qsTr("Consumer") : qsTr("Professional") }
+                        InfoRow { title: qsTr("Audio"); value: parent.parent.r.pcm ? qsTr("PCM") : qsTr("Non-PCM") }
+                        InfoRow { title: qsTr("Category"); value: parent.parent.r.category || win.dash }
+                        InfoRow { title: qsTr("Word Length"); value: parent.parent.r.wordLength || win.dash }
+                        InfoRow { title: qsTr("Copy"); value: parent.parent.r.copyPermitted ? qsTr("Permitted") : qsTr("Prohibited") }
                     }
                     Column {
                         visible: (parent.r.state || 0) !== 0
                         width: parent.width
                         Item { width: 1; height: 6 }
-                        SectionLabel { text: "DEBUG" }
-                        InfoRow { title: "Library State"; value: ["No Signal", "Waiting Stable", "Stable"][parent.parent.r.libState] || win.dash }
-                        InfoRow { title: "Stable Callbacks"; value: win.num(parent.parent.r.stableCallbacks) }
-                        InfoRow { title: "Lost Callbacks"; value: win.num(parent.parent.r.lostCallbacks) }
+                        SectionLabel { text: qsTr("DEBUG") }
+                        InfoRow { title: qsTr("Library State"); value: [qsTr("No Signal"), qsTr("Waiting Stable"), qsTr("Stable")][parent.parent.r.libState] || win.dash }
+                        InfoRow { title: qsTr("Stable Callbacks"); value: win.num(parent.parent.r.stableCallbacks) }
+                        InfoRow { title: qsTr("Lost Callbacks"); value: win.num(parent.parent.r.lostCallbacks) }
                     }
                     Item { width: 1; height: 8 }
                 }
@@ -524,11 +529,11 @@ AppWindow {
                     visible: !!parent.lg
                     width: parent.inner
                     readonly property var l: parent.lg || ({})
-                    SectionLabel { text: "LG SOUND SYNC" }
-                    InfoRow { title: "Enabled"; value: parent.l.enabled ? "Yes" : "No" }
-                    StateRow { title: "Present"; text: parent.l.present ? "Yes" : "No"; dot: parent.l.present ? win.green : win.grey }
-                    InfoRow { title: "TV Volume"; value: parent.l.volume === undefined || parent.l.volume === 255 ? win.dash : parent.l.volume + " / 100" }
-                    InfoRow { title: "TV Mute"; value: parent.l.muted ? "On" : "Off" }
+                    SectionLabel { text: qsTr("LG SOUND SYNC") }
+                    InfoRow { title: qsTr("Enabled"); value: parent.l.enabled ? qsTr("Yes") : qsTr("No") }
+                    StateRow { title: qsTr("Present"); text: parent.l.present ? qsTr("Yes") : qsTr("No"); dot: parent.l.present ? win.green : win.grey }
+                    InfoRow { title: qsTr("TV Volume"); value: parent.l.volume === undefined || parent.l.volume === 255 ? win.dash : parent.l.volume + " / 100" }
+                    InfoRow { title: qsTr("TV Mute"); value: parent.l.muted ? qsTr("On") : qsTr("Off") }
                     Item { width: 1; height: 8 }
                 }
 
@@ -537,17 +542,17 @@ AppWindow {
                     visible: !!parent.adat
                     width: parent.inner
                     readonly property var a: parent.adat || ({})
-                    SectionLabel { text: "ADAT BULK OUTPUT" }
+                    SectionLabel { text: qsTr("ADAT BULK OUTPUT") }
                     StateRow {
-                        title: "State"
-                        text: !parent.a.enabled ? "Disabled" : parent.a.active ? "Streaming" : !parent.a.rateOk ? "Suspended (rate above 48 kHz)" : "Enabled"
+                        title: qsTr("State")
+                        text: !parent.a.enabled ? qsTr("Disabled") : parent.a.active ? qsTr("Streaming") : !parent.a.rateOk ? qsTr("Suspended (rate above 48 kHz)") : qsTr("Enabled")
                         dot: !parent.a.enabled ? win.grey : parent.a.active ? win.green : !parent.a.rateOk ? win.orange : win.yellow
                     }
-                    InfoRow { title: "Streaming"; value: parent.a.active ? "Yes" : "No" }
-                    InfoRow { title: "Rate Supported"; value: parent.a.rateOk ? "Yes" : "No" }
-                    InfoRow { title: "Data Pin"; value: parent.a.pin !== undefined ? "GPIO " + parent.a.pin : win.dash }
-                    InfoRow { title: "Resync Count"; value: win.num(parent.a.resyncCount) }
-                    InfoRow { title: "Slip Count"; value: win.num(parent.a.slipCount) }
+                    InfoRow { title: qsTr("Streaming"); value: parent.a.active ? qsTr("Yes") : qsTr("No") }
+                    InfoRow { title: qsTr("Rate Supported"); value: parent.a.rateOk ? qsTr("Yes") : qsTr("No") }
+                    InfoRow { title: qsTr("Data Pin"); value: parent.a.pin !== undefined ? qsTr("GPIO %1").arg(parent.a.pin) : win.dash }
+                    InfoRow { title: qsTr("Resync Count"); value: win.num(parent.a.resyncCount) }
+                    InfoRow { title: qsTr("Slip Count"); value: win.num(parent.a.slipCount) }
                     Item { width: 1; height: 8 }
                 }
 
@@ -556,16 +561,16 @@ AppWindow {
                     visible: !!parent.i2s
                     width: parent.inner
                     readonly property var s: parent.i2s || ({})
-                    SectionLabel { text: "I2S INPUT (SLAVE CLOCK)" }
+                    SectionLabel { text: qsTr("I2S INPUT (SLAVE CLOCK)") }
                     StateRow {
-                        title: "State"
-                        text: ["Inactive", "Acquiring", "Relocking", "Locked"][parent.s.state] || "Inactive"
+                        title: qsTr("State")
+                        text: [qsTr("Inactive"), qsTr("Acquiring"), qsTr("Relocking"), qsTr("Locked")][parent.s.state] || qsTr("Inactive")
                         dot: [win.grey, win.yellow, win.orange, win.green][parent.s.state] || win.grey
                     }
-                    InfoRow { title: "Detected Rate"; value: (parent.s.detectedKHz || 0) > 0 ? parent.s.detectedKHz.toFixed(1) + " kHz" : win.dash }
-                    InfoRow { title: "Measured Rate"; value: (parent.s.measuredKHz || 0) > 0 ? parent.s.measuredKHz.toFixed(1) + " kHz" : win.dash }
-                    InfoRow { title: "Lock Count"; value: win.num(parent.s.lockCount) }
-                    InfoRow { title: "Loss Count"; value: win.num(parent.s.lossCount) }
+                    InfoRow { title: qsTr("Detected Rate"); value: (parent.s.detectedKHz || 0) > 0 ? qsTr("%1 kHz").arg(parent.s.detectedKHz.toFixed(1)) : win.dash }
+                    InfoRow { title: qsTr("Measured Rate"); value: (parent.s.measuredKHz || 0) > 0 ? qsTr("%1 kHz").arg(parent.s.measuredKHz.toFixed(1)) : win.dash }
+                    InfoRow { title: qsTr("Lock Count"); value: win.num(parent.s.lockCount) }
+                    InfoRow { title: qsTr("Loss Count"); value: win.num(parent.s.lossCount) }
                     Item { width: 1; height: 8 }
                 }
 
@@ -574,7 +579,7 @@ AppWindow {
                     objectName: "clockDiagSection"
                     visible: parent.clockRows.length > 0
                     width: parent.inner
-                    SectionLabel { text: "CLOCK DIAGNOSTICS" }
+                    SectionLabel { text: qsTr("CLOCK DIAGNOSTICS") }
                     Repeater {
                         model: stats.clockDiag
                         InfoRow { title: modelData.title; value: modelData.value }
@@ -597,13 +602,13 @@ AppWindow {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 7
             Rectangle { width: 6; height: 6; radius: 3; anchors.verticalCenter: parent.verticalCenter; color: bridge.connected ? win.green : win.red }
-            Text { text: bridge.connected ? "Connected" : "Disconnected"; font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.55) }
+            Text { text: bridge.connected ? qsTr("Connected") : qsTr("Disconnected"); font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.55) }
         }
         Text {
             anchors.right: parent.right
             anchors.rightMargin: 16
             anchors.verticalCenter: parent.verticalCenter
-            text: "Updated every 2 seconds"
+            text: qsTr("Updated every 2 seconds")
             font.pixelSize: 11
             color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.4)
         }

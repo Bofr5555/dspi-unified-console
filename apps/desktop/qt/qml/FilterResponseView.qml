@@ -150,8 +150,8 @@ Column {
                     // selected, so the graph never holds the focus; Shift+Tab the same way back
                     Accessible.ignored: !active   // no channel open: nothing to edit
                     Accessible.role: Accessible.Chart
-                    Accessible.name: "EQ graph"
-                    Accessible.description: "Tab steps through the bands. Arrows move the selected band, Alt with Up or Down sets its width, Delete removes it, Escape deselects."
+                    Accessible.name: qsTr("EQ graph")
+                    Accessible.description: qsTr("Tab steps through the bands. Arrows move the selected band, Alt with Up or Down sets its width, Delete removes it, Escape deselects.")
                     property bool keyFocused: false
                     onActiveFocusChanged: keyFocused = activeFocus && !plotPointer.hovered
                     FocusRing { gap: -2; radius: 4; shown: editor.keyFocused }   // inside: the plot clips
@@ -190,23 +190,23 @@ Column {
                         var items = []
                         if (band >= 0) {
                             var info = editor.bandInfo(band)
-                            items.push({ key: "header", text: selectionCount > 1 ? selectionCount + " Bands" : "Band " + (band + 1), enabled: false })
+                            items.push({ key: "header", text: selectionCount > 1 ? qsTr("%1 Bands").arg(selectionCount) : qsTr("Band %1").arg(band + 1), enabled: false })
                             if (info.order > 0) {
-                                var labels = info.allPass ? ["180\u00b0", "360\u00b0"] : ["6 dB/oct", "12 dB/oct"]
+                                var labels = info.allPass ? ["180\u00b0", "360\u00b0"] : [qsTr("6 dB/oct"), qsTr("12 dB/oct")]
                                 items.push({ key: "order1", text: labels[0], enabled: info.order !== 1 })
                                 items.push({ key: "order2", text: labels[1], enabled: info.order !== 2 })
                             }
                             items.push({ separator: true })
-                            items.push({ key: "bypass", text: info.bypass ? "Enable" : "Bypass" })
-                            if (info.hasGain) items.push({ key: "invert", text: "Invert Gain" })
+                            items.push({ key: "bypass", text: info.bypass ? qsTr("Enable") : qsTr("Bypass") })
+                            if (info.hasGain) items.push({ key: "invert", text: qsTr("Invert Gain") })
                             items.push({ separator: true })
-                            items.push({ key: "delete", text: selectionCount > 1 ? "Delete " + selectionCount + " Bands" : "Delete Band", danger: true })
+                            items.push({ key: "delete", text: selectionCount > 1 ? qsTr("Delete %1 Bands").arg(selectionCount) : qsTr("Delete Band"), danger: true })
                         } else {
-                            items.push({ key: "all", text: "Select All Bands", shortcut: "Ctrl+A" })
-                            items.push({ key: "none", text: "Deselect All", shortcut: "Esc" })
+                            items.push({ key: "all", text: qsTr("Select All Bands"), shortcut: "Ctrl+A" })
+                            items.push({ key: "none", text: qsTr("Deselect All"), shortcut: "Esc" })
                             if (selectionCount > 0) {
                                 items.push({ separator: true })
-                                items.push({ key: "delete", text: selectionCount > 1 ? "Delete Selected Bands" : "Delete Selected Band", danger: true })
+                                items.push({ key: "delete", text: selectionCount > 1 ? qsTr("Delete Selected Bands") : qsTr("Delete Selected Band"), danger: true })
                             }
                         }
                         graphMenu.band = band
@@ -261,11 +261,11 @@ Column {
                     cursorShape: Qt.PointingHandCursor
                     focusRadius: 8
                     Accessible.role: Accessible.ButtonMenu
-                    Accessible.name: "Graph and spectrum options"
+                    Accessible.name: qsTr("Graph and spectrum options")
                     onActivated: graphOptions.toggleBelow(gearButton)
                     ToolTip.visible: containsMouse && !graphOptions.visible
                     ToolTip.delay: 600
-                    ToolTip.text: "Graph and spectrum options"
+                    ToolTip.text: qsTr("Graph and spectrum options")
                 }
             }
 

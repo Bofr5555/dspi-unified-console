@@ -50,7 +50,7 @@ Rectangle {
     property bool rebootRequested: false
 
     readonly property string phase: firmware.state
-    readonly property string bundled: firmware.expectedVersion || "unknown"
+    readonly property string bundled: firmware.expectedVersion || qsTr("unknown")
     readonly property bool installing: phase === "writing" || phase === "waitingForDevice"
     // A running DSPi the board step talks about instead of a bootloader:
     // 1 matches, 2 older, 3 newer (0 = none, or the installer owns the step)

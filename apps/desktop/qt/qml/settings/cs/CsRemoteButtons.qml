@@ -12,8 +12,8 @@ Column {
     width: parent ? parent.width : 400
 
     CsRow {
-        title: "Remote Buttons"
-        detail: "Learn buttons on any remote and bind each to a function."
+        title: qsTr("Remote Buttons")
+        detail: qsTr("Learn buttons on any remote and bind each to a function.")
         Text {
             text: rb.host.visibleSubs.length + "/" + rb.cs.irCount
             font.pixelSize: 12
@@ -21,7 +21,7 @@ Column {
         }
     }
     CsNote {
-        text: rb.receiverLive ? "" : "Apply the receiver above before learning remote buttons."
+        text: rb.receiverLive ? "" : qsTr("Apply the receiver above before learning remote buttons.")
     }
 
     Repeater {
@@ -56,7 +56,7 @@ Column {
                         ClickArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            Accessible.name: "Button " + (sub.k + 1) + (sub.open ? ", open" : ", closed")
+                            Accessible.name: sub.open ? qsTr("Button %1, open").arg(sub.k + 1) : qsTr("Button %1, closed").arg(sub.k + 1)
                             onActivated: rb.host.setMap("expandedSubs", sub.k, sub.open ? undefined : true)
                         }
                         Icon {
@@ -83,7 +83,7 @@ Column {
                                 anchors.verticalCenter: parent.verticalCenter
                             }
                             Text {
-                                text: rb.cs.irConfigured(sub.c) ? rb.cs.irProtocolName(sub.c.protocol) + " 0x" + rb.cs.hex(sub.c.code, 8) : "Not learned"
+                                text: rb.cs.irConfigured(sub.c) ? rb.cs.irProtocolName(sub.c.protocol) + " 0x" + rb.cs.hex(sub.c.code, 8) : qsTr("Not learned")
                                 font.pixelSize: 12
                                 font.family: rb.cs.irConfigured(sub.c) ? "monospace" : Qt.application.font.family
                                 color: isMacOS ? (rb.cs.irConfigured(sub.c) ? MacColors.label : MacColors.secondaryLabel) : rb.cs.irConfigured(sub.c) ? "white" : Qt.rgba(1, 1, 1, 0.5)
@@ -111,19 +111,19 @@ Column {
                             CsBusyDot { visible: sub.learning; anchors.verticalCenter: parent.verticalCenter }
                             CsButton {
                                 visible: sub.learning
-                                text: "Cancel"
+                                text: qsTr("Cancel")
                                 onClicked: rb.host.cancelLearn()
                             }
                             CsButton {
                                 visible: !sub.learning
-                                text: rb.cs.irConfigured(sub.c) ? "Re-learn" : "Learn Button"
+                                text: rb.cs.irConfigured(sub.c) ? qsTr("Re-learn") : qsTr("Learn Button")
                                 enabled: rb.receiverLive && rb.cs.connected && rb.host.learningSub < 0
                                 onClicked: rb.host.startLearn(sub.k)
                             }
                             CsButton {
                                 bare: true
                                 icon: "trash"
-                                tip: "Remove this remote button"
+                                tip: qsTr("Remove this remote button")
                                 enabled: !sub.learning
                                 onClicked: rb.host.removeIrCommand(sub.k)
                             }

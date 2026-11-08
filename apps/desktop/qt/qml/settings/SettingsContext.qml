@@ -76,22 +76,22 @@ QtObject {
     function saveControlSurfaces() {
         if (!bridge.writable) return false   // -- WP QD6 --
         var st = controlSurfaces.save()
-        saveError = st !== 0 ? "Not saved: " + controlSurfaces.statusMessage(st) : ""
+        saveError = st !== 0 ? qsTr("Not saved: %1").arg(controlSurfaces.statusMessage(st)) : ""
         return st === 0
     }
     function revertControlSurfaces() {
         if (!bridge.writable) return false   // -- WP QD6 --
         var st = controlSurfaces.revert()
-        saveError = st !== 0 ? "Not reverted: " + controlSurfaces.statusMessage(st) : ""
+        saveError = st !== 0 ? qsTr("Not reverted: %1").arg(controlSurfaces.statusMessage(st)) : ""
         return st === 0
     }
 
     // -- WP QD31 -- A PRESET_* status as the reason an output config save failed
     function outputConfigStatusText(code) {
         switch (code) {
-        case 4: return "the device could not write its flash"
-        case 255: return "the device did not respond"
-        default: return "the device reported error " + code
+        case 4: return qsTr("the device could not write its flash")
+        case 255: return qsTr("the device did not respond")
+        default: return qsTr("the device reported error %1").arg(code)
         }
     }
 
@@ -102,16 +102,16 @@ QtObject {
         // stays, with the reason on the bar. What went through already now matches the device.
         if (startupMode !== bridge.presetStartupMode || defaultSlot !== bridge.presetDefaultSlot) {
             if (!bridge.setPresetStartup(startupMode, defaultSlot)) {
-                saveError = "Not saved: the device did not accept the startup preset"
+                saveError = qsTr("Not saved: the device did not accept the startup preset")
                 return
             }
         }
         if (masterVolumeMode !== bridge.masterVolumeMode && !bridge.setMasterVolumeMode(masterVolumeMode)) {
-            saveError = "Not saved: the device did not accept the master volume mode"
+            saveError = qsTr("Not saved: the device did not accept the master volume mode")
             return
         }
         if (outputConfigMode !== bridge.outputConfigMode && !bridge.setOutputConfigMode(outputConfigMode)) {
-            saveError = "Not saved: the device did not accept the output config mode"
+            saveError = qsTr("Not saved: the device did not accept the output config mode")
             return
         }
         var dacSent = false
@@ -123,7 +123,7 @@ QtObject {
         if (hardwareDirty) {
             var st = bridge.saveOutputConfig()
             if (st !== 0) {
-                saveError = "Not saved: " + outputConfigStatusText(st)
+                saveError = qsTr("Not saved: %1").arg(outputConfigStatusText(st))
                 return
             }
         }
@@ -157,14 +157,14 @@ QtObject {
         for (var i = 0; i < owners.length; i++)
             if (!sharable || sharable.indexOf(owners[i].owner) < 0) taken[owners[i].pin] = true
         var list = []
-        if (allowUnset) list.push({ text: unsetText || "Not set", value: 0xFF })
+        if (allowUnset) list.push({ text: unsetText || qsTr("Not set"), value: 0xFF })
         var pins = bridge.validPins
         for (var k = 0; k < pins.length; k++) {
             var p = pins[k]
             if (p !== pin && (taken[p] || (accept && !accept(p)))) continue
-            list.push({ text: "GPIO " + p, value: p })
+            list.push({ text: qsTr("GPIO %1").arg(p), value: p })
         }
-        if (pin !== 0xFF && pins.indexOf(pin) < 0) list.push({ text: "GPIO " + pin, value: pin })
+        if (pin !== 0xFF && pins.indexOf(pin) < 0) list.push({ text: qsTr("GPIO %1").arg(pin), value: pin })
         return list
     }
     function optionIndex(options, value) {
@@ -176,17 +176,17 @@ QtObject {
     function statusText(code, pin) {
         switch (code) {
         case 0: return ""
-        case 1: return pin !== undefined ? "GPIO " + pin + " can't be used for this." : "That pin can't be used for this."
+        case 1: return pin !== undefined ? qsTr("GPIO %1 can't be used for this.").arg(pin) : qsTr("That pin can't be used for this.")
         case 2: {
             var who = pin !== undefined ? ownerOf(pin) : ""
-            return pin !== undefined ? "GPIO " + pin + " is already assigned" + (who !== "" ? " to " + who : "") + "."
-                                     : "That pin is already in use."
+            return pin !== undefined ? (who !== "" ? qsTr("GPIO %1 is already assigned to %2.").arg(pin).arg(who) : qsTr("GPIO %1 is already assigned.").arg(pin))
+                                     : qsTr("That pin is already in use.")
         }
-        case 3: return "This isn't supported on this device."
-        case 4: return "Turn this off before changing it."
-        case 5: return "That value is out of range."
-        case 255: return "The device did not respond."
-        default: return "Error " + code + "."
+        case 3: return qsTr("This isn't supported on this device.")
+        case 4: return qsTr("Turn this off before changing it.")
+        case 5: return qsTr("That value is out of range.")
+        case 255: return qsTr("The device did not respond.")
+        default: return qsTr("Error %1.").arg(code)
         }
     }
 
@@ -209,7 +209,7 @@ QtObject {
         target: bridge
         function onDacMuteApplied(accepted) {
             if (!accepted) {
-                if (ctx.dirty) ctx.saveError = "Not saved: the device did not keep the DAC mute settings"
+                if (ctx.dirty) ctx.saveError = qsTr("Not saved: the device did not keep the DAC mute settings")
             } else if (ctx.edited && !ctx.settingsDiffer) {
                 ctx.edited = false
                 ctx.load()
@@ -219,13 +219,13 @@ QtObject {
     // -- WP QD4 --
     property Connections namesWatch: Connections {
         target: deviceNames
-        function onSaveFailed(reason) { ctx.saveError = "Not saved: " + reason }
+        function onSaveFailed(reason) { ctx.saveError = qsTr("Not saved: %1").arg(reason) }
     }
     // -- WP QD5 --
     property Connections latencyWatch: Connections {
         target: outputLatency
         property string shownError: ""
-        function onSaveFailed(reason) { shownError = "Not saved: " + reason; ctx.saveError = shownError }
+        function onSaveFailed(reason) { shownError = qsTr("Not saved: %1").arg(reason); ctx.saveError = shownError }
         // Another draft may keep the save bar up; its own refusal stays
         function onDraftSettled() { if (ctx.saveError === shownError) ctx.saveError = "" }
     }

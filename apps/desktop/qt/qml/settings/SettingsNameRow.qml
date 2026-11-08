@@ -62,7 +62,7 @@ SettingsRow {
                 Text {
                     visible: field.text === ""
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Add a name"
+                    text: qsTr("Add a name")
                     font: field.font
                     color: isMacOS ? MacColors.tertiaryLabel : Qt.rgba(1, 1, 1, 0.35)
                 }
@@ -83,7 +83,7 @@ SettingsRow {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    Accessible.name: row.clearTip !== "" ? row.clearTip : "Clear " + row.title
+                    Accessible.name: row.clearTip !== "" ? row.clearTip : qsTr("Clear %1").arg(row.title)
                     onActivated: { field.text = ""; row.edited("") }
                 }
                 ToolTip.visible: clearMouse.containsMouse && row.clearTip !== ""

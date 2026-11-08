@@ -8,8 +8,8 @@ import "../../components"
 // pins and saves the result to flash.
 SettingsPage {
     id: page
-    title: "Control Interfaces"
-    subtitle: "Let an external microcontroller control DSPi over UART or I2C. Set up over USB only; the configuration survives a factory reset."
+    title: qsTr("Control Interfaces")
+    subtitle: qsTr("Let an external microcontroller control DSPi over UART or I2C. Set up over USB only; the configuration survives a factory reset.")
 
     readonly property var hw: bridge.hardware
     readonly property var bauds: [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 1000000]
@@ -50,11 +50,11 @@ SettingsPage {
     function resultText(which, code) {
         var name = which === 0 ? "UART" : "I2C"
         switch (code) {
-        case 0: return name + " configuration applied and saved."
-        case 1: return "A pin is out of range or lacks the required " + name + " function."
-        case 2: return "A pin is already claimed by another output or interface."
-        case 5: return which === 0 ? "Baud rate is out of range (9600 - 1000000)." : "Address is out of range (0x08 - 0x77)."
-        default: return "Failed to apply the " + name + " configuration."
+        case 0: return qsTr("%1 configuration applied and saved.").arg(name)
+        case 1: return qsTr("A pin is out of range or lacks the required %1 function.").arg(name)
+        case 2: return qsTr("A pin is already claimed by another output or interface.")
+        case 5: return which === 0 ? qsTr("Baud rate is out of range (9600 - 1000000).") : qsTr("Address is out of range (0x08 - 0x77).")
+        default: return qsTr("Failed to apply the %1 configuration.").arg(name)
         }
     }
     Connections {
@@ -69,7 +69,7 @@ SettingsPage {
     component StatePill: Rectangle {
         property bool enabledInFlash: false
         property bool live: false
-        readonly property string label: !enabledInFlash ? "Disabled" : live ? "Active" : "Inactive"
+        readonly property string label: !enabledInFlash ? qsTr("Disabled") : live ? qsTr("Active") : qsTr("Inactive")
         readonly property color tint: isMacOS ? (!enabledInFlash ? MacColors.secondaryLabel : live ? MacColors.green : MacColors.orange) : !enabledInFlash ? Qt.rgba(1, 1, 1, 0.4) : live ? "#32d74b" : "#ff9f0a"
         width: pillText.implicitWidth + 16
         height: 20
@@ -94,7 +94,7 @@ SettingsPage {
         property bool resultError: false
         signal apply()
         signal revert()
-        title: edited ? "Unapplied changes" : result !== "" ? result : "Applied"
+        title: edited ? qsTr("Unapplied changes") : result !== "" ? result : qsTr("Applied")
         titleColor: isMacOS ? (resultError && !edited ? MacColors.orange : MacColors.secondaryLabel) : edited ? "white" : resultError ? "#ff9f0a" : Qt.rgba(1, 1, 1, 0.7)
         Row {
             spacing: 8
@@ -103,17 +103,17 @@ SettingsPage {
                 width: 80; height: 28; radius: 8
                 color: isMacOS ? "transparent" : revertMouse.pressed ? Qt.rgba(1, 1, 1, 0.12) : revertMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.07) : "transparent"
                 border.color: isMacOS ? "transparent" : Qt.rgba(1, 1, 1, 0.18)
-                Text { anchors.centerIn: parent; text: "Revert"; font.pixelSize: 13; color: isMacOS ? MacColors.accent : "white" }
+                Text { anchors.centerIn: parent; text: qsTr("Revert"); font.pixelSize: 13; color: isMacOS ? MacColors.accent : "white" }
                 ClickArea { id: revertMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; focusRadius: 10
-                            Accessible.name: "Revert"; onActivated: applyRow.revert() }
+                            Accessible.name: qsTr("Revert"); onActivated: applyRow.revert() }
             }
             Rectangle {
                 width: 80; height: 28; radius: 8
                 opacity: applyRow.edited ? 1 : 0.4
                 color: isMacOS ? (applyMouse.pressed ? Qt.rgba(1, 1, 1, 0.36) : MacColors.control) : applyMouse.pressed ? "#0060cc" : "#0a7cff"
-                Text { anchors.centerIn: parent; text: "Apply"; font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? MacColors.label : "white" }
+                Text { anchors.centerIn: parent; text: qsTr("Apply"); font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? MacColors.label : "white" }
                 ClickArea { id: applyMouse; anchors.fill: parent; enabled: applyRow.edited; cursorShape: Qt.PointingHandCursor; focusRadius: 10
-                            Accessible.name: "Apply"; onActivated: applyRow.apply() }
+                            Accessible.name: qsTr("Apply"); onActivated: applyRow.apply() }
             }
         }
     }
@@ -122,7 +122,7 @@ SettingsPage {
         visible: !page.hw.ctrlSupported
         width: parent.width
         wrapMode: Text.WordWrap
-        text: bridge.connected ? "The connected firmware has no UART or I2C control interface." : "Connect a DSPi to set up its control interfaces."
+        text: bridge.connected ? qsTr("The connected firmware has no UART or I2C control interface.") : qsTr("Connect a DSPi to set up its control interfaces.")
         font.pixelSize: 13
         color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
     }
@@ -130,15 +130,15 @@ SettingsPage {
     // ── UART ──
     SettingsSection {
         visible: page.hw.ctrlSupported === true
-        title: "UART"
+        title: qsTr("UART")
         enabled: bridge.connected
         footnote: page.hw.uartEnabled && !page.hw.uartLive
-                  ? "Enabled in flash but not running: its pins likely collide with the current wiring. Reassign the conflicting pin or move this interface, then apply."
+                  ? qsTr("Enabled in flash but not running: its pins likely collide with the current wiring. Reassign the conflicting pin or move this interface, then apply.")
                   : ""
 
         SettingsRow {
-            title: "Enable UART"
-            detail: "Asynchronous 3.3 V serial link, fixed 8N1 framing."
+            title: qsTr("Enable UART")
+            detail: qsTr("Asynchronous 3.3 V serial link, fixed 8N1 framing.")
             Row {
                 spacing: 12
                 StatePill {
@@ -147,7 +147,7 @@ SettingsPage {
                     live: page.hw.uartLive === true
                 }
                 ToggleSwitch {
-                    Accessible.name: "Enable UART"
+                    Accessible.name: qsTr("Enable UART")
                     checked: page.uartEnabled
                     onToggled: { page.uartEnabled = checked; page.uartEdited = true }
                 }
@@ -155,8 +155,8 @@ SettingsPage {
         }
         SettingsPinRow {
             visible: page.uartEnabled
-            title: "TX Pin"
-            detail: "GPIO transmitting to the controller's RX (a UART TX pin: GPIO number divisible by 4)."
+            title: qsTr("TX Pin")
+            detail: qsTr("GPIO transmitting to the controller's RX (a UART TX pin: GPIO number divisible by 4).")
             pin: page.uartTx
             alsoTaken: [page.uartRx]
             sharable: ["UART TX", "UART RX"]
@@ -165,8 +165,8 @@ SettingsPage {
         }
         SettingsPinRow {
             visible: page.uartEnabled
-            title: "RX Pin"
-            detail: "GPIO receiving from the controller's TX (a UART RX pin: one above a TX pin)."
+            title: qsTr("RX Pin")
+            detail: qsTr("GPIO receiving from the controller's TX (a UART RX pin: one above a TX pin).")
             pin: page.uartRx
             alsoTaken: [page.uartTx]
             sharable: ["UART TX", "UART RX"]
@@ -175,16 +175,16 @@ SettingsPage {
         }
         SettingsChoiceRow {
             visible: page.uartEnabled
-            title: "Baud Rate"
-            detail: "Must match the controller."
-            options: page.bauds.map(function(b) { return { text: b >= 1000 ? (b / 1000) + "k" : String(b), value: b } })
+            title: qsTr("Baud Rate")
+            detail: qsTr("Must match the controller.")
+            options: page.bauds.map(function(b) { return { text: b >= 1000 ? qsTr("%1k").arg(String(b / 1000)) : String(b), value: b } })
             value: page.uartBaud
             onChosen: { page.uartBaud = value; page.uartEdited = true }
         }
         SettingsSwitchRow {
             visible: page.uartEnabled
-            title: "Push Notifications"
-            detail: "Stream live parameter, preset and format changes to the controller instead of having it poll."
+            title: qsTr("Push Notifications")
+            detail: qsTr("Stream live parameter, preset and format changes to the controller instead of having it poll.")
             checked: page.uartNotify
             onToggled: { page.uartNotify = checked; page.uartEdited = true }
         }
@@ -200,15 +200,15 @@ SettingsPage {
     // ── I2C ──
     SettingsSection {
         visible: page.hw.ctrlSupported === true
-        title: "I2C"
+        title: qsTr("I2C")
         enabled: bridge.connected
         footnote: page.hw.i2cEnabled && !page.hw.i2cLive
-                  ? "Enabled in flash but not running: its pins likely collide with the current wiring. Reassign the conflicting pin or move this interface, then apply."
-                  : "The controller is the bus master; fit 2.2k to 4.7k pull-ups on SDA and SCL. External control protocol version " + (page.hw.ctrlProtocol || 1) + "."
+                  ? qsTr("Enabled in flash but not running: its pins likely collide with the current wiring. Reassign the conflicting pin or move this interface, then apply.")
+                  : qsTr("The controller is the bus master; fit 2.2k to 4.7k pull-ups on SDA and SCL. External control protocol version %1.").arg(page.hw.ctrlProtocol || 1)
 
         SettingsRow {
-            title: "Enable I2C Target"
-            detail: "DSPi answers as an I2C target; the controller polls it (no notifications)."
+            title: qsTr("Enable I2C Target")
+            detail: qsTr("DSPi answers as an I2C target; the controller polls it (no notifications).")
             Row {
                 spacing: 12
                 StatePill {
@@ -217,7 +217,7 @@ SettingsPage {
                     live: page.hw.i2cLive === true
                 }
                 ToggleSwitch {
-                    Accessible.name: "Enable I2C Target"
+                    Accessible.name: qsTr("Enable I2C Target")
                     checked: page.i2cEnabled
                     onToggled: { page.i2cEnabled = checked; page.i2cEdited = true }
                 }
@@ -225,8 +225,8 @@ SettingsPage {
         }
         SettingsPinRow {
             visible: page.i2cEnabled
-            title: "SDA Pin"
-            detail: "Serial data line (even GPIO). SCL is the next pin up."
+            title: qsTr("SDA Pin")
+            detail: qsTr("Serial data line (even GPIO). SCL is the next pin up.")
             pin: page.i2cSda
             sharable: ["I2C SDA", "I2C SCL"]
             accept: function(p) {
@@ -238,14 +238,14 @@ SettingsPage {
         }
         SettingsValueRow {
             visible: page.i2cEnabled
-            title: "SCL Pin"
-            detail: "Serial clock line (next odd GPIO, same I2C block)."
-            value: "GPIO " + page.i2cScl
+            title: qsTr("SCL Pin")
+            detail: qsTr("Serial clock line (next odd GPIO, same I2C block).")
+            value: qsTr("GPIO %1").arg(page.i2cScl)
         }
         SettingsRow {
             visible: page.i2cEnabled
-            title: "Target Address"
-            detail: "7-bit address, 0x08 - 0x77."
+            title: qsTr("Target Address")
+            detail: qsTr("7-bit address, 0x08 - 0x77.")
             ValueField {
                 fieldWidth: 56
                 height: 24

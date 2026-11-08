@@ -9,7 +9,7 @@ import "../../components"
 // HubController; the background switches are the tray's (QD12).
 SettingsPage {
     id: page
-    title: "Networking"
+    title: qsTr("Networking")
     writesToDevice: false
     objectName: "networkingPage"
 
@@ -19,17 +19,18 @@ SettingsPage {
     readonly property color secondary: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
     readonly property color primary: isMacOS ? MacColors.label : "white"
 
-    function plural(n, one) { return n + " " + one + (n === 1 ? "" : "s") }
     function ago(seconds) {
         var s = Math.max(0, Math.floor(Date.now() / 1000) - seconds)
-        if (s < 60) return "just now"
-        if (s < 3600) return plural(Math.floor(s / 60), "minute") + " ago"
-        if (s < 86400) return plural(Math.floor(s / 3600), "hour") + " ago"
-        return plural(Math.floor(s / 86400), "day") + " ago"
+        if (s < 60) return qsTr("just now")
+        var n
+        if (s < 3600) { n = Math.floor(s / 60); return n === 1 ? qsTr("%1 minute ago").arg(n) : qsTr("%1 minutes ago").arg(n) }
+        if (s < 86400) { n = Math.floor(s / 3600); return n === 1 ? qsTr("%1 hour ago").arg(n) : qsTr("%1 hours ago").arg(n) }
+        n = Math.floor(s / 86400)
+        return n === 1 ? qsTr("%1 day ago").arg(n) : qsTr("%1 days ago").arg(n)
     }
     readonly property string statusLine: {
         var n = hub.connections
-        var c = n === 0 ? "No clients connected" : plural(n, "client") + " connected"
+        var c = n === 0 ? qsTr("No clients connected") : n === 1 ? qsTr("%1 client connected").arg(n) : qsTr("%1 clients connected").arg(n)
         return hub.address !== "" ? hub.address + " · " + c : c
     }
 
@@ -82,10 +83,10 @@ SettingsPage {
     SettingsSection {
         SettingsSwitchRow {
             objectName: "networkingShare"
-            title: "Share Devices on This Network"
+            title: qsTr("Share Devices on This Network")
             detail: hub.running ? page.statusLine
-                    : hub.busy && hub.sharing ? "Starting…"
-                    : "Lets phones, browsers and other Consoles control the DSPi devices plugged in here."
+                    : hub.busy && hub.sharing ? qsTr("Starting…")
+                    : qsTr("Lets phones, browsers and other Consoles control the DSPi devices plugged in here.")
             checked: hub.sharing
             onToggled: hub.setSharing(checked)
         }
@@ -94,13 +95,13 @@ SettingsPage {
         SettingsRow {
             objectName: "networkingDemoNote"
             visible: demo.active
-            title: "The hub shares its own demo device"
-            detail: "Clients see a separate demo device, not the one shown here: changes made here don't show on theirs. It stays on the hub until sharing restarts."
+            title: qsTr("The hub shares its own demo device")
+            detail: qsTr("Clients see a separate demo device, not the one shown here: changes made here don't show on theirs. It stays on the hub until sharing restarts.")
         }
         SettingsRow {
             visible: hub.running && hub.inaccessible > 0
-            title: hub.inaccessible === 1 ? "1 device could not be opened" : hub.inaccessible + " devices could not be opened"
-            detail: "Another program has it, or this user may not open it."
+            title: hub.inaccessible === 1 ? qsTr("1 device could not be opened") : qsTr("%1 devices could not be opened").arg(hub.inaccessible)
+            detail: qsTr("Another program has it, or this user may not open it.")
         }
     }
     SettingsStatusLine {
@@ -111,18 +112,18 @@ SettingsPage {
 
     // ── This hub ──
     SettingsSection {
-        title: "This Hub"
-        footnote: "Other Consoles see this hub by this name. Sharing works on your local network only. To reach it from elsewhere, use a VPN such as Tailscale. Don't forward the port on your router."
-                  + (hub.access === "pin" ? " The pairing code crosses the network as plain text, without encryption: pair only on a network you trust." : "")
-                  + (hub.running ? " Turn sharing off to change the port." : "")
+        title: qsTr("This Hub")
+        footnote: qsTr("Other Consoles see this hub by this name. Sharing works on your local network only. To reach it from elsewhere, use a VPN such as Tailscale. Don't forward the port on your router.")
+                  + (hub.access === "pin" ? qsTr(" The pairing code crosses the network as plain text, without encryption: pair only on a network you trust.") : "")
+                  + (hub.running ? qsTr(" Turn sharing off to change the port.") : "")
 
         SettingsRow {
-            title: "Name"
+            title: qsTr("Name")
             Field {
                 id: nameField
                 objectName: "networkingName"
                 text: hub.hubName
-                placeholder: "Hub name"
+                placeholder: qsTr("Hub name")
                 onCommitted: function (text) { if (!hub.setHubName(text)) input.text = hub.hubName }
                 Connections {
                     target: hub
@@ -132,8 +133,8 @@ SettingsPage {
         }
         SettingsChoiceRow {
             objectName: "networkingAccess"
-            title: "Access"
-            options: [ { text: "Require Pairing", value: "pin" }, { text: "Open", value: "open" } ]
+            title: qsTr("Access")
+            options: [ { text: qsTr("Require Pairing"), value: "pin" }, { text: qsTr("Open"), value: "open" } ]
             value: hub.access
             onChosen: function (mode) {
                 if (mode === hub.access) return
@@ -148,9 +149,9 @@ SettingsPage {
             }
         }
         SettingsRow {
-            title: "Port"
+            title: qsTr("Port")
             Field {
-                accessibleName: "Port"
+                accessibleName: qsTr("Port")
                 objectName: "networkingPort"
                 width: 80
                 enabled: !hub.running
@@ -168,21 +169,21 @@ SettingsPage {
         property int cost: 0
         icon: "warning"
         iconTint: "#ff9f0a"
-        title: mode === "open" ? "Let anyone on this network in?" : "Require pairing?"
-        message: (mode === "open" ? "Every connection on this network will be an admin, with no code asked. " : "")
-                 + (cost > 0 ? (cost === 1 ? "The paired client must" : "All " + cost + " paired clients must")
-                               + " pair again: changing the access mode forgets every client, and cannot be undone." : "")
-        buttons: [ { key: "cancel", text: "Cancel" },
-                   { key: "change", text: mode === "open" ? "Make Open" : "Require Pairing", role: cost > 0 ? "destructive" : "primary" } ]
+        title: mode === "open" ? qsTr("Let anyone on this network in?") : qsTr("Require pairing?")
+        message: (mode === "open" ? qsTr("Every connection on this network will be an admin, with no code asked. ") : "")
+                 + (cost > 0 ? (cost === 1 ? qsTr("The paired client must pair again: changing the access mode forgets every client, and cannot be undone.")
+                                           : qsTr("All %1 paired clients must pair again: changing the access mode forgets every client, and cannot be undone.").arg(cost)) : "")
+        buttons: [ { key: "cancel", text: qsTr("Cancel") },
+                   { key: "change", text: mode === "open" ? qsTr("Make Open") : qsTr("Require Pairing"), role: cost > 0 ? "destructive" : "primary" } ]
         onChosen: function (key) { if (key === "change") hub.setAccess(mode) }
     }
 
     // ── Paired clients ──
     SettingsSection {
         visible: hub.access === "pin"
-        title: "Paired Clients"
-        footnote: "Viewer can only watch. Control can adjust devices. Admin can also change these hub settings."
-                  + (hub.running ? "" : " Turn sharing on to pair a new client.")
+        title: qsTr("Paired Clients")
+        footnote: qsTr("Viewer can only watch. Control can adjust devices. Admin can also change these hub settings.")
+                  + (hub.running ? "" : qsTr(" Turn sharing on to pair a new client."))
 
         // The code to type on the new client
         Item {
@@ -196,7 +197,7 @@ SettingsPage {
                 spacing: 6
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Enter this code on the new client"
+                    text: qsTr("Enter this code on the new client")
                     font.pixelSize: 12
                     color: page.secondary
                 }
@@ -213,13 +214,13 @@ SettingsPage {
                 }
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Expires in " + Math.floor(hub.pairingSecondsLeft / 60) + ":" + ("0" + hub.pairingSecondsLeft % 60).slice(-2)
+                    text: qsTr("Expires in %1:%2").arg(Math.floor(hub.pairingSecondsLeft / 60)).arg(("0" + hub.pairingSecondsLeft % 60).slice(-2))
                     font.pixelSize: 11
                     color: page.secondary
                 }
                 AppButton {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Cancel"
+                    text: qsTr("Cancel")
                     onClicked: hub.cancelPairing()
                 }
             }
@@ -227,7 +228,7 @@ SettingsPage {
 
         SettingsRow {
             visible: hub.clients.length === 0
-            title: "No paired clients yet."
+            title: qsTr("No paired clients yet.")
             titleColor: page.secondary
         }
         Repeater {
@@ -236,14 +237,14 @@ SettingsPage {
                 objectName: "networkingClient"
                 verbatim: true
                 title: modelData.name
-                detail: (modelData.online ? "Connected" : modelData.lastSeen ? "Last seen " + page.ago(modelData.lastSeen) : "Never connected")
+                detail: (modelData.online ? qsTr("Connected") : modelData.lastSeen ? qsTr("Last seen %1").arg(page.ago(modelData.lastSeen)) : qsTr("Never connected"))
                 Row {
                     spacing: 10
                     StyledComboBox {
-                        Accessible.name: modelData.name + " role"
+                        Accessible.name: qsTr("%1 role").arg(modelData.name)
                         anchors.verticalCenter: parent.verticalCenter
                         enabled: hub.running
-                        model: [ "Viewer", "Control", "Admin" ]
+                        model: [ qsTr("Viewer"), qsTr("Control"), qsTr("Admin") ]
                         currentIndex: [ "viewer", "control", "admin" ].indexOf(modelData.role)
                         onActivated: function (index) { hub.setRole(modelData.cid, [ "viewer", "control", "admin" ][index]) }
                     }
@@ -269,7 +270,7 @@ SettingsPage {
                         }
                         ToolTip.visible: removeMouse.containsMouse
                         ToolTip.delay: 600
-                        ToolTip.text: "Remove this client: it must pair again"
+                        ToolTip.text: qsTr("Remove this client: it must pair again")
                     }
                 }
             }
@@ -278,21 +279,21 @@ SettingsPage {
             objectName: "networkingPair"
             visible: hub.pairingCode === ""
             enabled: hub.running
-            title: "Pair a New Client"
-            detail: "Shows a code to type on the new client, for a few minutes."
-            buttonText: "Pair…"
+            title: qsTr("Pair a New Client")
+            detail: qsTr("Shows a code to type on the new client, for a few minutes.")
+            buttonText: qsTr("Pair…")
             onClicked: hub.allowNewClient()
         }
     }
 
     // ── Other hubs ──
     SettingsSection {
-        title: "Other Hubs"
-        footnote: "Connecting to a hub shows its devices in place of the ones plugged in here."
+        title: qsTr("Other Hubs")
+        footnote: qsTr("Connecting to a hub shows its devices in place of the ones plugged in here.")
 
         SettingsSwitchRow {
             objectName: "networkingLook"
-            title: "Find hubs automatically"
+            title: qsTr("Find hubs automatically")
             checked: hub.lookForHubs
             onToggled: hub.lookForHubs = checked
         }
@@ -307,12 +308,12 @@ SettingsPage {
             SettingsRow {
                 verbatim: true
                 title: modelData.name
-                detail: modelData.host + ":" + modelData.port + ", " + page.plural(modelData.deviceCount, "device")
-                        + (modelData.auth === "none" ? " · Open" : " · Private")
+                detail: modelData.host + ":" + modelData.port + ", " + (modelData.deviceCount === 1 ? qsTr("%1 device").arg(modelData.deviceCount) : qsTr("%1 devices").arg(modelData.deviceCount))
+                        + " · " + (modelData.auth === "none" ? qsTr("Open") : qsTr("Private"))
                 Row {
                     spacing: 8
                     AppButton {
-                        text: "Connect"
+                        text: qsTr("Connect")
                         onClicked: linkSession.connectToHub(modelData.url, modelData.id)
                     }
                 }
@@ -320,25 +321,25 @@ SettingsPage {
         }
         SettingsRow {
             visible: hub.hubs.length === 0
-            title: hub.lookForHubs ? "Looking for hubs…" : "Not looking for hubs."
+            title: hub.lookForHubs ? qsTr("Looking for hubs…") : qsTr("Not looking for hubs.")
             titleColor: page.secondary
         }
         SettingsRow {
-            title: "Connect by Address"
-            detail: "Host name or IP address. Add :port if the hub doesn't use the usual one."
+            title: qsTr("Connect by Address")
+            detail: qsTr("Host name or IP address. Add :port if the hub doesn't use the usual one.")
             Row {
                 spacing: 8
                 Field {
                     id: addressField
                     objectName: "networkingAddress"
-                    accessibleName: "Hub address"
+                    accessibleName: qsTr("Hub address")
                     width: 170
                     placeholder: "192.168.1.20"
                     onAccepted: connectButton.clicked()
                 }
                 AppButton {
                     id: connectButton
-                    text: "Connect"
+                    text: qsTr("Connect")
                     enabled: addressField.text.trim() !== ""
                     onClicked: if (linkSession.connectToAddress(addressField.text.trim())) addressField.text = ""
                 }
@@ -352,17 +353,17 @@ SettingsPage {
 
     // ── Running in the background (QD12's tray) ──
     SettingsSection {
-        title: "Running in the Background"
-        footnote: tray.trayAvailable ? "" : "This desktop shows no tray icons right now, so closing the window quits."
+        title: qsTr("Running in the Background")
+        footnote: tray.trayAvailable ? "" : qsTr("This desktop shows no tray icons right now, so closing the window quits.")
         SettingsSwitchRow {
             objectName: "networkingShowInTray"
-            title: "Show in the tray"
-            detail: "Closing the window keeps the Console running in the tray, and sharing."
+            title: qsTr("Show in the tray")
+            detail: qsTr("Closing the window keeps the Console running in the tray, and sharing.")
             checked: tray.showInTray
             onToggled: tray.showInTray = checked
         }
         SettingsSwitchRow {
-            title: "Start in the tray only"
+            title: qsTr("Start in the tray only")
             enabled: tray.showInTray
             checked: tray.startMinimised
             onToggled: tray.startMinimised = checked
@@ -371,9 +372,9 @@ SettingsPage {
         SettingsSwitchRow {
             objectName: "networkingOpenAtLogin"
             visible: system.loginSupported
-            title: "Open at login"
+            title: qsTr("Open at login")
             // -- WP QD13b -- An entry another copy of the app made stays that copy's
-            detail: system.loginOtherProgram !== "" ? "Opens another copy: " + system.loginOtherProgram : ""
+            detail: system.loginOtherProgram !== "" ? qsTr("Opens another copy: %1").arg(system.loginOtherProgram) : ""
             checked: system.openAtLogin
             onToggled: system.openAtLogin = checked
         }
@@ -381,16 +382,16 @@ SettingsPage {
         SettingsButtonRow {
             objectName: "networkingLoginHere"
             visible: system.loginSupported && system.loginOtherProgram !== ""
-            title: "Open this copy at login instead"
+            title: qsTr("Open this copy at login instead")
             detail: system.thisProgram
-            buttonText: "Use This Copy"
+            buttonText: qsTr("Use This Copy")
             onClicked: system.pointLoginHere()
         }
         SettingsSwitchRow {
             objectName: "networkingKeepAwake"
             visible: system.keepAwakeSupported
-            title: "Keep awake while sharing"
-            detail: "Idle sleep waits while devices are shared; the screen can still turn off."
+            title: qsTr("Keep awake while sharing")
+            detail: qsTr("Idle sleep waits while devices are shared; the screen can still turn off.")
             checked: system.keepAwake
             onToggled: system.keepAwake = checked
         }

@@ -103,7 +103,7 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 focusRadius: 7
                 Accessible.role: Accessible.ButtonMenu
-                Accessible.name: "Bar strip options"
+                Accessible.name: qsTr("Bar strip options")
                 onActivated: options.toggleBelow(gear)
             }
         }
@@ -144,7 +144,7 @@ Item {
             spacing: 8
             Text {
                 visible: strip.count > 1
-                text: "LAYOUT"
+                text: qsTr("LAYOUT")
                 font.pixelSize: 11
                 font.weight: Font.Bold
                 font.letterSpacing: 0.4
@@ -194,7 +194,7 @@ Item {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             Accessible.role: Accessible.RadioButton
-                            Accessible.name: tile.cols + (tile.cols === 1 ? " column" : " columns")
+                            Accessible.name: tile.cols === 1 ? qsTr("%1 column").arg(tile.cols) : qsTr("%1 columns").arg(tile.cols)
                             Accessible.checkable: true
                             Accessible.checked: tile.isCurrent
                             onActivated: strip.app.rtaBarColumns = tile.cols
@@ -214,7 +214,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 8
                     Icon { name: "spectrum"; size: 15; color: isMacOS ? (openMouse.containsMouse ? "white" : MacColors.label) : openMouse.containsMouse ? "white" : Qt.rgba(1, 1, 1, 0.65); anchors.verticalCenter: parent.verticalCenter }
-                    Text { text: "Open in Window"; font.pixelSize: 13; color: isMacOS ? (openMouse.containsMouse ? "white" : MacColors.label) : openMouse.containsMouse ? "white" : Qt.rgba(1, 1, 1, 0.9); anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: qsTr("Open in Window"); font.pixelSize: 13; color: isMacOS ? (openMouse.containsMouse ? "white" : MacColors.label) : openMouse.containsMouse ? "white" : Qt.rgba(1, 1, 1, 0.9); anchors.verticalCenter: parent.verticalCenter }
                 }
                 ClickArea {
                     id: openMouse
@@ -222,7 +222,7 @@ Item {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     focusRadius: 8
-                    Accessible.name: "Open in Window"
+                    Accessible.name: qsTr("Open in Window")
                     onActivated: { options.close(); strip.openAnalyser() }
                 }
             }

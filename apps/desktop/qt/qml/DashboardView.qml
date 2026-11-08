@@ -126,10 +126,10 @@ Flickable {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             Accessible.role: Accessible.ButtonMenu
-                            Accessible.name: "Dashboard layout"
+                            Accessible.name: qsTr("Dashboard layout")
                             onActivated: { layoutPopup.owner = slot; layoutPopup.toggleBelow(gear) }
                         }
-                        ToolTip.text: "Dashboard layout"
+                        ToolTip.text: qsTr("Dashboard layout")
                         ToolTip.visible: gearMouse.containsMouse && !layoutPopup.visible
                         ToolTip.delay: 600
                     }

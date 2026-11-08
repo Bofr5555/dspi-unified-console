@@ -8,7 +8,7 @@ import "components"
 AppWindow {
     id: win
     fitHeight: header.height + flick.contentHeight
-    title: "Subharmonic Synthesizer"
+    title: qsTr("Subharmonic Synthesizer")
     visible: false
     width: 760
     height: 600 + titlebarHeight
@@ -60,10 +60,10 @@ AppWindow {
 
     // low, high, boost (top band off), as on macOS
     readonly property var presets: [
-        { name: "Subwoofer feed",   detail: "Subtle added weight",      v: [-6, -6, 0] },
-        { name: "Club / large PA",  detail: "Lower two bands, full",    v: [0, 0, 3] },
-        { name: "Thin recordings",  detail: "Add a missing bottom",     v: [0, -6, 3] },
-        { name: "Cinema LFE",       detail: "Lowest octave only",       v: [3, -12, 0] }]
+        { name: qsTr("Subwoofer feed"),   detail: qsTr("Subtle added weight"),      v: [-6, -6, 0] },
+        { name: qsTr("Club / large PA"),  detail: qsTr("Lower two bands, full"),    v: [0, 0, 3] },
+        { name: qsTr("Thin recordings"),  detail: qsTr("Add a missing bottom"),     v: [0, -6, 3] },
+        { name: qsTr("Cinema LFE"),       detail: qsTr("Lowest octave only"),       v: [3, -12, 0] }]
 
     function applyPreset(p) {
         bridge.setSubharmParam(pLow, p.v[0])
@@ -83,8 +83,8 @@ AppWindow {
         id: header
         width: parent.width
         icon: "subwave"
-        title: "Subharmonic Synthesizer"
-        subtitle: "Generates a subharmonic at half the frequency of the source's bass"
+        title: qsTr("Subharmonic Synthesizer")
+        subtitle: qsTr("Generates a subharmonic at half the frequency of the source's bass")
         checked: win.active
         onToggled: bridge.setSubharmParam(win.pEnabled, enable ? 1 : 0)
         accessories: [
@@ -102,7 +102,7 @@ AppWindow {
                 Text {
                     id: soloText
                     anchors.centerIn: parent
-                    text: "SOLO"
+                    text: qsTr("SOLO")
                     font.pixelSize: 10
                     font.weight: Font.Bold
                     font.letterSpacing: 0.4
@@ -115,15 +115,15 @@ AppWindow {
                     cursorShape: Qt.PointingHandCursor
                     focusRadius: 8
                     Accessible.role: Accessible.CheckBox
-                    Accessible.name: "Solo"
+                    Accessible.name: qsTr("Solo")
                     Accessible.checkable: true
                     Accessible.checked: solo.isOn
                     onActivated: bridge.setSubharmSolo(!solo.isOn)
                     ToolTip.visible: containsMouse
                     ToolTip.delay: 500
                     ToolTip.text: solo.isOn
-                        ? "The selected outputs are carrying the synthesized sub only - the program signal is muted on them. Closing this window switches it off."
-                        : "Mute the program signal on the selected outputs so the synthesized sub can be heard or measured on its own. Never saved to a preset."
+                        ? qsTr("The selected outputs are carrying the synthesized sub only - the program signal is muted on them. Closing this window switches it off.")
+                        : qsTr("Mute the program signal on the selected outputs so the synthesized sub can be heard or measured on its own. Never saved to a preset.")
                 }
             }
         ]
@@ -155,11 +155,11 @@ AppWindow {
                 Item {
                     width: parent.width
                     height: 20
-                    SectionLabel { text: "BANDS"; anchors.verticalCenter: parent.verticalCenter }
+                    SectionLabel { text: qsTr("BANDS"); anchors.verticalCenter: parent.verticalCenter }
                     MenuLink {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Apply preset"
+                        text: qsTr("Apply preset")
                         menu: presetMenu
                     }
                 }
@@ -224,7 +224,7 @@ AppWindow {
                                 ctx.textAlign = "center"
                                 ctx.fillStyle = isMacOS ? MacColors.opacity(MacColors.secondaryLabel, 0.5) : "rgba(255,255,255,0.35)"
                                 ctx.font = "12px sans-serif"
-                                ctx.fillText("Disabled", left + w / 2, h / 2)
+                                ctx.fillText(qsTr("Disabled"), left + w / 2, h / 2)
                                 return
                             }
 
@@ -283,14 +283,14 @@ AppWindow {
                                 ctx.setLineDash([])
                                 ctx.textAlign = "left"
                                 ctx.fillStyle = isMacOS ? MacColors.opacity(MacColors.red, 0.8) : "#ff6961"
-                                ctx.fillText("ceiling", xOf(80) + 4, yc + 3)
+                                ctx.fillText(qsTr("ceiling"), xOf(80) + 4, yc + 3)
                             }
 
                             if (!anyOn) {
                                 ctx.textAlign = "center"
                                 ctx.fillStyle = isMacOS ? MacColors.opacity(MacColors.secondaryLabel, 0.6) : "rgba(255,255,255,0.35)"
                                 ctx.font = "12px sans-serif"
-                                ctx.fillText("All bands off", left + w / 2, h / 2)
+                                ctx.fillText(qsTr("All bands off"), left + w / 2, h / 2)
                             }
                         }
                     }
@@ -299,31 +299,31 @@ AppWindow {
                 Item {
                     width: parent.width
                     height: 20
-                    SectionLabel { text: "HEADROOM COST"; anchors.verticalCenter: parent.verticalCenter }
+                    SectionLabel { text: qsTr("HEADROOM COST"); anchors.verticalCenter: parent.verticalCenter }
                     Text {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        text: win.headroom > 0 ? "+" + win.headroom.toFixed(1) + " dB" : "none"
+                        text: win.headroom > 0 ? qsTr("+%1 dB").arg(win.headroom.toFixed(1)) : qsTr("none")
                         font.pixelSize: 13
                         color: isMacOS ? (win.headroom > 0 ? MacColors.orange : MacColors.secondaryLabel) : win.headroom > 0 ? "#ff9f0a" : Qt.rgba(1, 1, 1, 0.45)
                         MouseArea { id: headroomHover; anchors.fill: parent; hoverEnabled: true }
                         ToolTip.visible: headroomHover.containsMouse
                         ToolTip.delay: 500
                         ToolTip.text: win.headroom > 0
-                            ? "This setting can add up to " + win.headroom.toFixed(1) + " dB. Lower the preamp on the inputs feeding the selected outputs by that much, or a loud passage will clip."
-                            : "This setting cannot push the signal past full scale."
+                            ? qsTr("This setting can add up to %1 dB. Lower the preamp on the inputs feeding the selected outputs by that much, or a loud passage will clip.").arg(win.headroom.toFixed(1))
+                            : qsTr("This setting cannot push the signal past full scale.")
                     }
                 }
 
                 Divider {}
-                SectionLabel { text: "LEVELS" }
+                SectionLabel { text: qsTr("LEVELS") }
 
                 ParamRow {
                     id: lowRow
-                    label: "24 - 36 Hz"; subtitle: "Derived from 48 - 72 Hz"
-                    unit: "dB"; from: -30; to: 12; stepSize: 0.5; offAt: -30; defaultValue: 0
-                    leftHint: "Off"; rightHint: "+12 dB"
-                    tip: "Level of the sub synthesized from program content between 48 and 72 Hz. At 0 dB it comes out 1.4 dB below the bass that produced it, which is the divider's own gain."
+                    label: qsTr("24 - 36 Hz"); subtitle: qsTr("Derived from 48 - 72 Hz")
+                    unit: qsTr("dB"); from: -30; to: 12; stepSize: 0.5; offAt: -30; defaultValue: 0
+                    leftHint: qsTr("Off"); rightHint: qsTr("+12 dB")
+                    tip: qsTr("Level of the sub synthesized from program content between 48 and 72 Hz. At 0 dB it comes out 1.4 dB below the bass that produced it, which is the divider's own gain.")
                     value: win.params[win.pLow]
                     onLiveChanged: bridge.setSubharmParam(win.pLow, v, true)
                     onCommitted: bridge.setSubharmParam(win.pLow, v)
@@ -331,10 +331,10 @@ AppWindow {
                 Divider {}
                 ParamRow {
                     id: highRow
-                    label: "36 - 56 Hz"; subtitle: "Derived from 72 - 112 Hz"
-                    unit: "dB"; from: -30; to: 12; stepSize: 0.5; offAt: -30; defaultValue: 0
-                    leftHint: "Off"; rightHint: "+12 dB"
-                    tip: "Level of the sub synthesized from program content between 72 and 112 Hz. This band has its own divider, so a bass note here and a kick in the band below are tracked independently."
+                    label: qsTr("36 - 56 Hz"); subtitle: qsTr("Derived from 72 - 112 Hz")
+                    unit: qsTr("dB"); from: -30; to: 12; stepSize: 0.5; offAt: -30; defaultValue: 0
+                    leftHint: qsTr("Off"); rightHint: qsTr("+12 dB")
+                    tip: qsTr("Level of the sub synthesized from program content between 72 and 112 Hz. This band has its own divider, so a bass note here and a kick in the band below are tracked independently.")
                     value: win.params[win.pHigh]
                     onLiveChanged: bridge.setSubharmParam(win.pHigh, v, true)
                     onCommitted: bridge.setSubharmParam(win.pHigh, v)
@@ -342,10 +342,10 @@ AppWindow {
                 Divider {}
                 ParamRow {
                     id: topRow
-                    label: "56 - 80 Hz"; subtitle: "Derived from 112 - 160 Hz"
-                    unit: "dB"; from: -30; to: 12; stepSize: 0.5; offAt: -30; defaultValue: -30
-                    leftHint: "Off"; rightHint: "+12 dB"
-                    tip: "Level of the sub synthesized from program content between 112 and 160 Hz. It ships off: this band reaches up into the range where a divided sub starts to compete with the program's own fundamentals. Turn it up for a subwoofer that cannot reach the lowest octave."
+                    label: qsTr("56 - 80 Hz"); subtitle: qsTr("Derived from 112 - 160 Hz")
+                    unit: qsTr("dB"); from: -30; to: 12; stepSize: 0.5; offAt: -30; defaultValue: -30
+                    leftHint: qsTr("Off"); rightHint: qsTr("+12 dB")
+                    tip: qsTr("Level of the sub synthesized from program content between 112 and 160 Hz. It ships off: this band reaches up into the range where a divided sub starts to compete with the program's own fundamentals. Turn it up for a subwoofer that cannot reach the lowest octave.")
                     value: win.params[win.pTop]
                     onLiveChanged: bridge.setSubharmParam(win.pTop, v, true)
                     onCommitted: bridge.setSubharmParam(win.pTop, v)
@@ -359,15 +359,15 @@ AppWindow {
                 width: columns.colWidth
                 spacing: 12
 
-                SectionLabel { text: "SELECTIVITY" }
+                SectionLabel { text: qsTr("SELECTIVITY") }
                 SegmentedControl {
                     width: parent.width
-                    model: ["All material", "Percussive", "Sustained"]
+                    model: [qsTr("All material"), qsTr("Percussive"), qsTr("Sustained")]
                     currentIndex: win.selectMode
                     tips: [
-                        "Every band signal is treated alike. Choose percussive or sustained to weight the synthesized sub toward one kind of bass material; the gate decides per band from time behaviour, so it cannot separate two sources sounding at once in the same band.",
-                        "A short sub burst after each attack, so a kick can be extended without extending the bass line under it. The most robust of the three: a held note gets nothing between kicks.",
-                        "The sub opens only after a band has been ringing, so bass notes are extended and kicks are not. A kick landing in the same band ducks the held note's sub, which pumps on a four-on-the-floor line - shorten the hold or lower the depth to soften it."]
+                        qsTr("Every band signal is treated alike. Choose percussive or sustained to weight the synthesized sub toward one kind of bass material; the gate decides per band from time behaviour, so it cannot separate two sources sounding at once in the same band."),
+                        qsTr("A short sub burst after each attack, so a kick can be extended without extending the bass line under it. The most robust of the three: a held note gets nothing between kicks."),
+                        qsTr("The sub opens only after a band has been ringing, so bass notes are extended and kicks are not. A kick landing in the same band ducks the held note's sub, which pumps on a four-on-the-floor line - shorten the hold or lower the depth to soften it.")]
                     onActivated: bridge.setSubharmParam(win.pSelect, index)
                 }
                 Text {
@@ -375,48 +375,48 @@ AppWindow {
                     wrapMode: Text.WordWrap
                     font.pixelSize: 11
                     color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
-                    text: win.selectMode === 1 ? "A short sub burst after each attack - extends kicks, not the bass line."
-                        : win.selectMode === 2 ? "The sub opens once a band has been ringing - extends bass notes, not kicks."
-                        : "Every band signal is treated alike."
+                    text: win.selectMode === 1 ? qsTr("A short sub burst after each attack - extends kicks, not the bass line.")
+                        : win.selectMode === 2 ? qsTr("The sub opens once a band has been ringing - extends bass notes, not kicks.")
+                        : qsTr("Every band signal is treated alike.")
                 }
-                // Depth and hold do nothing in "All material"
+                // Depth and hold do nothing in qsTr("All material")
                 ParamRow {
                     visible: win.selectMode !== 0
-                    label: "Depth"; unit: "%"; from: 0; to: 100; stepSize: 5; decimals: 0; defaultValue: 100
-                    tip: "How far the material this mode does not favour is gated down. At 0% the selectivity is inaudible whatever the mode is set to; 100% is full gating."
+                    label: qsTr("Depth"); unit: "%"; from: 0; to: 100; stepSize: 5; decimals: 0; defaultValue: 100
+                    tip: qsTr("How far the material this mode does not favour is gated down. At 0% the selectivity is inaudible whatever the mode is set to; 100% is full gating.")
                     value: win.params[win.pDepth]
                     onLiveChanged: bridge.setSubharmParam(win.pDepth, v, true)
                     onCommitted: bridge.setSubharmParam(win.pDepth, v)
                 }
                 ParamRow {
                     visible: win.selectMode !== 0
-                    label: "Hold"; unit: "ms"; from: 50; to: 400; stepSize: 10; decimals: 0; defaultValue: 150
-                    tip: win.selectMode === 1 ? "The length of the sub burst after each attack."
-                        : "How long a band must ring before its sub opens. Every note's first hold period has no sub, so staccato bass lines get little."
+                    label: qsTr("Hold"); unit: qsTr("ms"); from: 50; to: 400; stepSize: 10; decimals: 0; defaultValue: 150
+                    tip: win.selectMode === 1 ? qsTr("The length of the sub burst after each attack.")
+                        : qsTr("How long a band must ring before its sub opens. Every note's first hold period has no sub, so staccato bass lines get little.")
                     value: win.params[win.pHold]
                     onLiveChanged: bridge.setSubharmParam(win.pHold, v, true)
                     onCommitted: bridge.setSubharmParam(win.pHold, v)
                 }
 
                 Divider {}
-                SectionLabel { text: "SUB CEILING" }
+                SectionLabel { text: qsTr("SUB CEILING") }
                 ParamRow {
                     id: ceilingRow
-                    label: "Threshold"; unit: "dB"; from: -40; to: 0; stepSize: 1; decimals: 0; offAt: 0; defaultValue: 0
-                    leftHint: "-40 dBFS"; rightHint: "Off"
-                    tip: "A soft limit on the synthesized sub just before it is mixed back in, capping how far it can push a driver without touching the program signal. It is an absolute level, so a ceiling at full scale limits nothing and means the stage is off. With it on, the headroom cost is only the ceiling's worth. A loud onset overshoots it by a few dB for the first few milliseconds while the limiter's 3 ms attack catches up."
+                    label: qsTr("Threshold"); unit: qsTr("dB"); from: -40; to: 0; stepSize: 1; decimals: 0; offAt: 0; defaultValue: 0
+                    leftHint: qsTr("-40 dBFS"); rightHint: qsTr("Off")
+                    tip: qsTr("A soft limit on the synthesized sub just before it is mixed back in, capping how far it can push a driver without touching the program signal. It is an absolute level, so a ceiling at full scale limits nothing and means the stage is off. With it on, the headroom cost is only the ceiling's worth. A loud onset overshoots it by a few dB for the first few milliseconds while the limiter's 3 ms attack catches up.")
                     value: win.params[win.pCeiling]
                     onLiveChanged: bridge.setSubharmParam(win.pCeiling, v, true)
                     onCommitted: bridge.setSubharmParam(win.pCeiling, v)
                 }
 
                 Divider {}
-                SectionLabel { text: "LF BOOST" }
+                SectionLabel { text: qsTr("LF BOOST") }
                 ParamRow {
                     id: boostRow
-                    label: "70 Hz bell"; unit: "dB"; from: 0; to: 6; stepSize: 0.5; offAt: 0; defaultValue: 0
-                    leftHint: "Off"; rightHint: "+6 dB"
-                    tip: "A gentle bell at 70 Hz, Q 0.9, applied to the whole output after the subs are summed. It fills the gap between the synthesized sub and the program's own mid-bass. Meant to stay gentle, as on the dbx."
+                    label: qsTr("70 Hz bell"); unit: qsTr("dB"); from: 0; to: 6; stepSize: 0.5; offAt: 0; defaultValue: 0
+                    leftHint: qsTr("Off"); rightHint: qsTr("+6 dB")
+                    tip: qsTr("A gentle bell at 70 Hz, Q 0.9, applied to the whole output after the subs are summed. It fills the gap between the synthesized sub and the program's own mid-bass. Meant to stay gentle, as on the dbx.")
                     value: win.params[win.pBoost]
                     onLiveChanged: bridge.setSubharmParam(win.pBoost, v, true)
                     onCommitted: bridge.setSubharmParam(win.pBoost, v)
@@ -427,17 +427,17 @@ AppWindow {
                     width: parent.width
                     height: 20
                     SectionLabel {
-                        text: "OUTPUTS"
+                        text: qsTr("OUTPUTS")
                         anchors.verticalCenter: parent.verticalCenter
                         MouseArea { id: outputsHover; anchors.fill: parent; hoverEnabled: true }
                         ToolTip.visible: outputsHover.containsMouse
                         ToolTip.delay: 500
-                        ToolTip.text: "Select the outputs that can actually play 24 to 80 Hz. Subharm runs before the crossover, so a satellite with a highpass loses the sub again - mask it off and save the CPU instead."
+                        ToolTip.text: qsTr("Select the outputs that can actually play 24 to 80 Hz. Subharm runs before the crossover, so a satellite with a highpass loses the sub again - mask it off and save the CPU instead.")
                     }
                     MenuLink {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Presets"
+                        text: qsTr("Presets")
                         menu: outputPresetMenu
                     }
                 }
@@ -481,14 +481,14 @@ AppWindow {
                     Column {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 1
-                        Text { text: "Link output pairs"; font.pixelSize: 13; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9) }
-                        Text { text: "One sub per pair, from its mono sum."; font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
+                        Text { text: qsTr("Link output pairs"); font.pixelSize: 13; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9) }
+                        Text { text: qsTr("One sub per pair, from its mono sum."); font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
                     }
                     ToggleSwitch {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
                         checked: win.params[win.pLink] > 0
-                        Accessible.name: "Link output pairs"
+                        Accessible.name: qsTr("Link output pairs")
                         onToggled: bridge.setSubharmParam(win.pLink, checked ? 1 : 0)
                     }
                     MouseArea {
@@ -500,7 +500,7 @@ AppWindow {
                     }
                     ToolTip.visible: linkHover.containsMouse
                     ToolTip.delay: 500
-                    ToolTip.text: "Synthesize one sub per output pair from its mono sum and feed it to both channels, as the dbx does. Bass is near-mono in most material, and two independent dividers can land on opposite polarities, which cancels a centred note's sub between the speakers."
+                    ToolTip.text: qsTr("Synthesize one sub per output pair from its mono sum and feed it to both channels, as the dbx does. Bass is near-mono in most material, and two independent dividers can land on opposite polarities, which cancels a centred note's sub between the speakers.")
                 }
             }
         }
@@ -517,9 +517,9 @@ AppWindow {
         id: outputPresetMenu
         parent: Overlay.overlay
         items: [
-            { key: "sub", text: "Sub only (Recommended)" },
-            { key: "all", text: "All Outputs" },
-            { key: "none", text: "None" }
+            { key: "sub", text: qsTr("Sub only (Recommended)") },
+            { key: "all", text: qsTr("All Outputs") },
+            { key: "none", text: qsTr("None") }
         ]
         onTriggered: {
             if (key === "sub") bridge.setSubharmParam(win.pMask, 1 << win.pdm)

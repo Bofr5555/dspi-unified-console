@@ -13,7 +13,7 @@ import "settings"
 // to `groups` below.
 AppWindow {
     id: settingsWindow
-    title: "Settings"
+    title: qsTr("Settings")
     visible: false
     // macOS: the native Settings window's size (664 x 584 pt, measured)
     width: isMacOS ? 664 : 860
@@ -21,7 +21,16 @@ AppWindow {
     minimumWidth: isMacOS ? 600 : 720
     minimumHeight: isMacOS ? 480 : 480 + titlebarHeight
 
-    readonly property int sidebarWidth: isMacOS ? 180 : 232
+    // -- WP QD23 -- Wider only when a page title needs it (a longer translation):
+    // the title plus the row's tile and margins and the sidebar's own margins
+    readonly property int sidebarWidth: Math.max(isMacOS ? 180 : 232, Math.ceil(longestPageTitle) + (isMacOS ? 55 : 66))
+    readonly property real longestPageTitle: {
+        var w = 0
+        for (var g = 0; g < groups.length; g++)
+            for (var p = 0; p < groups[g].pages.length; p++) w = Math.max(w, sidebarMetrics.advanceWidth(groups[g].pages[p].title))
+        return w
+    }
+    FontMetrics { id: sidebarMetrics; font.pixelSize: settingsWindow.sidebarFontSize }
     // macOS: the sidebar follows System Settings ▸ Appearance ▸ Sidebar icon
     // size, as the native List does: rows of 24 / 28 / 32 pt with 11 / 13 / 15 pt text
     readonly property int sidebarRowHeight: isMacOS ? [28, 24, 28, 32][macSidebarSizeMode] : 28
@@ -32,7 +41,7 @@ AppWindow {
     blurWidth: sidebarWidth
     // macOS: unified titlebar over the sidebar material, as the native Settings
     macUnifiedSidebar: isMacOS ? sidebarWidth : 0
-    titleBar.titleText: currentPage ? currentPage.title : "Settings"
+    titleBar.titleText: currentPage ? currentPage.title : qsTr("Settings")
     titleBar.showNav: true
     titleBar.canGoBack: historyIndex > 0
     titleBar.canGoForward: historyIndex < history.length - 1
@@ -46,46 +55,46 @@ AppWindow {
     // id: stable key (history, deep links); icon: Icon name; tint: tile colour;
     // keywords: extra search terms; needsDevice: hidden while disconnected.
     readonly property var groups: [
-        { title: "Application", pages: [
-            { id: "about", title: "About", icon: isMacOS ? "gear" : "info", tint: isMacOS ? "#646971" : "#8e8e93",
+        { title: qsTr("Application"), pages: [
+            { id: "about", title: qsTr("About"), icon: isMacOS ? "gear" : "info", tint: isMacOS ? "#646971" : "#8e8e93",
               source: "settings/pages/AboutPage.qml", keywords: "version links github discord patreon ko-fi youtube" },
-            { id: "advanced", title: "Advanced", icon: isMacOS ? "gears" : "wrench", tint: isMacOS ? "#727880" : "#636366",
+            { id: "advanced", title: qsTr("Advanced"), icon: isMacOS ? "gears" : "wrench", tint: isMacOS ? "#727880" : "#636366",
               source: "settings/pages/AdvancedPage.qml", keywords: "channel names reset device serial firmware" },
             // -- WP QD14 --
-            { id: "networking", title: "Networking", icon: "signal", tint: "#4a7499",
+            { id: "networking", title: qsTr("Networking"), icon: "signal", tint: "#4a7499",
               source: "settings/pages/NetworkingPage.qml", keywords: "share sharing hub link network pairing pair code pin clients roles revoke port tray background lan" },
             // -- WP QD16 --
-            { id: "updates", title: "Updates", icon: "arrow-down-circle", tint: "#2f7bd9", needs: "updates",
+            { id: "updates", title: qsTr("Updates"), icon: "arrow-down-circle", tint: "#2f7bd9", needs: "updates",
               source: "settings/pages/UpdatesPage.qml", keywords: "update updates new version release check automatic notes privacy" }
         ]},
-        { title: "Display", pages: [
-            { id: "graphing", title: "Graphing", icon: isMacOS ? "ecg" : "chart", tint: isMacOS ? "#587a89" : "#30b0c7",
+        { title: qsTr("Display"), pages: [
+            { id: "graphing", title: qsTr("Graphing"), icon: isMacOS ? "ecg" : "chart", tint: isMacOS ? "#587a89" : "#30b0c7",
               source: "settings/pages/GraphingPage.qml", keywords: "graph glow line width grid opacity labels range center frequency pop out popout window follow phase readout" },
-            { id: "spectrum", title: "Spectrum Analyser", icon: isMacOS ? "wave-search" : "spectrum", tint: isMacOS ? "#4c808a" : "#5e5ce6",
+            { id: "spectrum", title: qsTr("Spectrum Analyser"), icon: isMacOS ? "wave-search" : "spectrum", tint: isMacOS ? "#4c808a" : "#5e5ce6",
               source: "settings/pages/SpectrumPage.qml", keywords: "rta fft spectrum analyser analyzer bars peak hold smoothing floor ceiling transform averaging decay" }
         ]},
-        { title: "System", pages: [
-            { id: "overview", title: "Overview", icon: isMacOS ? "chip-fill" : "pins", tint: isMacOS ? "#627080" : "#636366", needsDevice: true,
+        { title: qsTr("System"), pages: [
+            { id: "overview", title: qsTr("Overview"), icon: isMacOS ? "chip-fill" : "pins", tint: isMacOS ? "#627080" : "#636366", needsDevice: true,
               source: "settings/pages/OverviewPage.qml", keywords: "gpio pins map assignments in use free" },
-            { id: "inputs", title: "Inputs", icon: "input", tint: "#04856f", needsDevice: true,
+            { id: "inputs", title: qsTr("Inputs"), icon: "input", tint: "#04856f", needsDevice: true,
               source: "settings/pages/InputsPage.qml", keywords: "spdif toslink receiver i2s adat clock slave master lock channels lg sound sync tv name rename" },
-            { id: "outputs", title: "Outputs", icon: isMacOS ? "connector" : "output", tint: isMacOS ? "#0278c7" : "#34c759", needsDevice: true,
+            { id: "outputs", title: qsTr("Outputs"), icon: isMacOS ? "connector" : "output", tint: isMacOS ? "#0278c7" : "#34c759", needsDevice: true,
               source: "settings/pages/OutputsPage.qml", keywords: "pins gpio spdif i2s pdm sub adat optical type reset" },
-            { id: "i2s", title: "I2S Configuration", icon: isMacOS ? "waveform" : "clock", tint: "#ba3822", needsDevice: true,
+            { id: "i2s", title: qsTr("I2S Configuration"), icon: isMacOS ? "waveform" : "clock", tint: "#ba3822", needsDevice: true,
               source: "settings/pages/I2SPage.qml", keywords: "bck lrclk bit clock mck master clock multiplier sample rate split unified" },
-            { id: "global", title: "Global Parameters", icon: isMacOS ? "drive" : "globe", tint: isMacOS ? "#807701" : "#ff9f0a", needsDevice: true,
+            { id: "global", title: qsTr("Global Parameters"), icon: isMacOS ? "drive" : "globe", tint: isMacOS ? "#807701" : "#ff9f0a", needsDevice: true,
               source: "settings/pages/GlobalParametersPage.qml", keywords: "startup default preset master volume hardware independent dac mute amplifier pop name rename latency delay jitter" }
         ]},
-        { title: "Control", pages: [
-            { id: "surfaces", title: "Control Surfaces", icon: isMacOS ? "dial" : "cs-pot", tint: "#8354a0", needsDevice: true, needs: "cs",
+        { title: qsTr("Control"), pages: [
+            { id: "surfaces", title: qsTr("Control Surfaces"), icon: isMacOS ? "dial" : "cs-pot", tint: "#8354a0", needsDevice: true, needs: "cs",
               source: "settings/pages/ControlSurfacesPage.qml", keywords: "buttons switches knobs potentiometer fader encoder led ir remote receiver learn display oled lcd gpio bindings" },
-            { id: "control", title: "Control Interfaces", icon: "chip", tint: "#8f60ad", needsDevice: true,
+            { id: "control", title: qsTr("Control Interfaces"), icon: "chip", tint: "#8f60ad", needsDevice: true,
               source: "settings/pages/ControlInterfacesPage.qml", keywords: "uart serial i2c target microcontroller baud address" },
-            { id: "groups", title: "Channel Groups", icon: "group", tint: "#6c64b7", needsDevice: true, needs: "groups",
+            { id: "groups", title: qsTr("Channel Groups"), icon: "group", tint: "#6c64b7", needsDevice: true, needs: "groups",
               source: "settings/pages/ChannelGroupsPage.qml", keywords: "group zone stereo pair members control surfaces" },
-            { id: "macros", title: "Macros", icon: "list-number", tint: "#9e528d", needsDevice: true, needs: "macros",
+            { id: "macros", title: qsTr("Macros"), icon: "list-number", tint: "#9e528d", needsDevice: true, needs: "macros",
               source: "settings/pages/MacrosPage.qml", keywords: "macro sequence steps fire run delay control surfaces" },
-            { id: "aux", title: "Auxiliary Outputs", icon: "power", tint: "#7a5aac", needsDevice: true, needs: "aux",
+            { id: "aux", title: qsTr("Auxiliary Outputs"), icon: "power", tint: "#7a5aac", needsDevice: true, needs: "aux",
               source: "settings/pages/AuxOutputsPage.qml", keywords: "aux relay trigger amplifier lamp fan dimmer pwm gpio output" }
         ]}
     ]
@@ -226,10 +235,10 @@ AppWindow {
                         selectByMouse: true
                         clip: true
                         activeFocusOnTab: true   // -- WP QD22 --
-                        Accessible.name: "Search settings"
+                        Accessible.name: qsTr("Search settings")
                         Text {
                             visible: !search.text && !search.activeFocus
-                            text: "Search"
+                            text: qsTr("Search")
                             font: search.font
                             color: Qt.rgba(1, 1, 1, 0.4)
                         }
@@ -255,7 +264,7 @@ AppWindow {
                         text: "✕"
                         font.pixelSize: 11
                         color: Qt.rgba(1, 1, 1, 0.5)
-                        ClickArea { anchors.fill: parent; anchors.margins: -4; Accessible.name: "Clear the search"; onActivated: search.text = "" }
+                        ClickArea { anchors.fill: parent; anchors.margins: -4; Accessible.name: qsTr("Clear the search"); onActivated: search.text = "" }
                     }
                 }
                 Item { visible: !isMacOS; width: 1; height: isMacOS ? 0 : 8 }
@@ -319,7 +328,7 @@ AppWindow {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
                     topPadding: 20
-                    text: "No matching settings"
+                    text: qsTr("No matching settings")
                     font.pixelSize: 12
                     color: Qt.rgba(1, 1, 1, 0.4)
                 }
@@ -424,12 +433,12 @@ AppWindow {
         height: settingsWindow.titlebarHeight + 2
         sourceComponent: Row {
             spacing: 0
-            MacNavButton { icon: "chev-left"; tip: "Back"; active: settingsWindow.historyIndex > 0; onClicked: settingsWindow.goBack() }
-            MacNavButton { icon: "chev-right"; tip: "Forward"; active: settingsWindow.historyIndex < settingsWindow.history.length - 1; onClicked: settingsWindow.goForward() }
+            MacNavButton { icon: "chev-left"; tip: qsTr("Back"); active: settingsWindow.historyIndex > 0; onClicked: settingsWindow.goBack() }
+            MacNavButton { icon: "chev-right"; tip: qsTr("Forward"); active: settingsWindow.historyIndex < settingsWindow.history.length - 1; onClicked: settingsWindow.goForward() }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 leftPadding: 1.5
-                text: settingsWindow.currentPage ? settingsWindow.currentPage.title : "Settings"
+                text: settingsWindow.currentPage ? settingsWindow.currentPage.title : qsTr("Settings")
                 font.pixelSize: 13
                 font.weight: Font.Bold
                 color: Qt.rgba(1, 1, 1, 0.9)    // the label colour as the titlebar's vibrancy brightens it (measured)

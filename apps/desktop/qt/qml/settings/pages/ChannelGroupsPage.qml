@@ -7,8 +7,8 @@ import "../../components"
 // Channel groups: named sets of channels one control can drive together.
 SettingsPage {
     id: page
-    title: "Channel Groups"
-    subtitle: "Name a set of channels so one control, remote key, macro step or display page can drive them together."
+    title: qsTr("Channel Groups")
+    subtitle: qsTr("Name a set of channels so one control, remote key, macro step or display page can drive them together.")
 
     CsHelper { id: cs }
 
@@ -64,10 +64,10 @@ SettingsPage {
         return n
     }
     function summary(grp) {
-        if (!cs.groupConfigured(grp)) return "No channels selected."
+        if (!cs.groupConfigured(grp)) return qsTr("No channels selected.")
         var names = cs.memberList(grp.memberMask).map(function (ch) { return cs.groupChannelName(grp.targetKind, ch) })
         var head = names.slice(0, 4).join(", ")
-        return names.length > 4 ? head + " +" + (names.length - 4) + " more" : head
+        return names.length > 4 ? qsTr("%2 +%1 more").arg(names.length - 4).arg(head) : head
     }
     function addGroup() {
         var g = firstFree
@@ -96,18 +96,18 @@ SettingsPage {
 
         Text {
             visible: !cs.supported
-            text: "Reading control-surface capabilities from the device..."
+            text: qsTr("Reading control-surface capabilities from the device...")
             font.pixelSize: 12
             color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
         }
 
         CsEmptyState {
             visible: cs.supported && page.visibleGroups.length === 0
-            title: "No Channel Groups Configured"
-            text: "Name a set of channels so one control can drive them together - a stereo pair, a zone, every output at once."
+            title: qsTr("No Channel Groups Configured")
+            text: qsTr("Name a set of channels so one control can drive them together - a stereo pair, a zone, every output at once.")
             Icon { name: "group"; size: 28; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.45) }
             action: CsButton {
-                text: "Add Group"; icon: "plus"; primary: true
+                text: qsTr("Add Group"); icon: "plus"; primary: true
                 enabled: page.firstFree >= 0 && cs.connected
                 onClicked: page.addGroup()
             }
@@ -124,9 +124,9 @@ SettingsPage {
                 visible: g < cs.groupCount && page.inUse(g)
                 expanded: page.expanded[g] === true
                 name: d.name
-                placeholder: "Group " + (g + 1)
+                placeholder: qsTr("Group %1").arg(g + 1)
                 summary: page.summary(d)
-                removeTip: "Remove this group"
+                removeTip: qsTr("Remove this group")
                 onToggle: page.setMap("expanded", g, expanded ? undefined : true)
                 onNameEdited: { var nd = cs.copy(card.d); nd.name = text; page.setDraft(card.g, nd) }
                 onRemoveClicked: page.removeGroup(g)
@@ -143,16 +143,16 @@ SettingsPage {
                 }
 
                 CsPickerRow {
-                    title: "Channel Type"
-                    detail: "Which set of channels the members are numbered in."
-                    options: [{ value: 1, text: "Inputs" }, { value: 2, text: "Outputs" }, { value: 3, text: "All Channels" }]
+                    title: qsTr("Channel Type")
+                    detail: qsTr("Which set of channels the members are numbered in.")
+                    options: [{ value: 1, text: qsTr("Inputs") }, { value: 2, text: qsTr("Outputs") }, { value: 3, text: qsTr("All Channels") }]
                     value: card.d.targetKind
                     // The mask means different channels under another kind
                     onChosen: { var nd = cs.copy(card.d); nd.targetKind = value; nd.memberMask = 0; page.setDraft(card.g, nd) }
                 }
                 CsRow {
-                    title: "Members"
-                    detail: "Every channel this group drives together."
+                    title: qsTr("Members")
+                    detail: qsTr("Every channel this group drives together.")
                 }
                 Item {
                     readonly property int count: cs.groupChannelCount(card.d.targetKind)
@@ -162,7 +162,7 @@ SettingsPage {
                         id: noChannels
                         visible: parent.count === 0
                         x: 14
-                        text: "No channels of this type on the connected device."
+                        text: qsTr("No channels of this type on the connected device.")
                         font.pixelSize: 11
                         color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
                     }
@@ -189,14 +189,14 @@ SettingsPage {
                 }
                 CsNote {
                     readonly property int n: page.usedBy(card.g)
-                    text: n > 0 ? "Used by " + n + " control" + (n === 1 ? "" : "s") + ". Emptying this group or changing its channel type deactivates them until it fits again." : ""
+                    text: n > 0 ? (n === 1 ? qsTr("Used by %1 control. Emptying this group or changing its channel type deactivates them until it fits again.").arg(n) : qsTr("Used by %1 controls. Emptying this group or changing its channel type deactivates them until it fits again.").arg(n)) : ""
                 }
 
                 footer: CsApplyRow {
                     visible: card.expanded || card.dirty || page.messages[card.g] !== undefined
                     dirty: card.dirty
                     canApply: card.dirty && cs.groupConfigured(card.d)
-                    hint: !cs.groupConfigured(card.d) ? "Pick at least one channel." : ""
+                    hint: !cs.groupConfigured(card.d) ? qsTr("Pick at least one channel.") : ""
                     message: page.messages[card.g] || ""
                     onApply: page.applyGroup(card.g)
                     onRevert: { page.setDraft(card.g, cs.copy(page.live[card.g])); page.setMap("messages", card.g, undefined) }
@@ -209,7 +209,7 @@ SettingsPage {
             width: parent.width
             height: 30
             CsButton {
-                text: "Add Group"; icon: "plus"
+                text: qsTr("Add Group"); icon: "plus"
                 enabled: page.firstFree >= 0 && cs.connected
                 anchors.verticalCenter: parent.verticalCenter
                 onClicked: page.addGroup()
@@ -218,7 +218,7 @@ SettingsPage {
                 visible: page.firstFree < 0
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                text: "All " + cs.groupCount + " group slots are in use."
+                text: qsTr("All %1 group slots are in use.").arg(cs.groupCount)
                 font.pixelSize: 12
                 color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
             }
@@ -230,7 +230,7 @@ SettingsPage {
         wrapMode: Text.WordWrap
         leftPadding: 4
         rightPadding: 4
-        text: "Choose a group in a control's Channel or Group menu. Relative moves (an encoder, a button) step every member from its own value, so the balance between them survives. A knob moves the group's average and keeps those offsets unless \"Match Members Exactly\" is on.\n\nGroups are stored on the device alongside the controls and share their Save and Revert."
+        text: qsTr("Choose a group in a control's Channel or Group menu. Relative moves (an encoder, a button) step every member from its own value, so the balance between them survives. A knob moves the group's average and keeps those offsets unless \"Match Members Exactly\" is on.\n\nGroups are stored on the device alongside the controls and share their Save and Revert.")
         font.pixelSize: 11
         color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.45)
     }

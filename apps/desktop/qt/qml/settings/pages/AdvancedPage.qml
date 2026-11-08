@@ -6,7 +6,7 @@ import "../"
 Item {
     id: advanced
     property var ctx                    // SettingsContext, set by the window
-    readonly property string title: "Advanced"
+    readonly property string title: qsTr("Advanced")
     property bool coreVoltageOpen: false
     // Only while the core's flow could be used, or a run of it is in a phase
     readonly property bool coreVoltageOffered: bridge.connected && ext.hasCoreVreg && bridge.writable
@@ -20,23 +20,23 @@ Item {
         title: advanced.title
 
         SettingsSection {
-            title: "Device"
+            title: qsTr("Device")
             enabled: bridge.connected
-            SettingsValueRow { title: "Platform"; value: bridge.connected ? bridge.platformName : "—" }
-            SettingsValueRow { title: "Firmware"; value: bridge.firmwareVersion || "—" }
-            SettingsValueRow { title: "Serial Number"; value: bridge.selectedSerial || "—"; mono: true }
+            SettingsValueRow { title: qsTr("Platform"); value: bridge.connected ? bridge.platformName : "—" }
+            SettingsValueRow { title: qsTr("Firmware"); value: bridge.firmwareVersion || "—" }
+            SettingsValueRow { title: qsTr("Serial Number"); value: bridge.selectedSerial || "—"; mono: true }
             SettingsValueRow {
-                title: "Channels"
-                value: bridge.connected ? bridge.numInputChannels + " inputs, " + bridge.numOutputChannels + " outputs" : "—"
+                title: qsTr("Channels")
+                value: bridge.connected ? qsTr("%1 inputs, %2 outputs").arg(bridge.numInputChannels).arg(bridge.numOutputChannels) : "—"
             }
         }
 
         SettingsSection {
-            title: "Channel Names"
-            footnote: "Renames every channel back to its default (USB L, SPDIF 1 L and so on). Takes effect immediately."
+            title: qsTr("Channel Names")
+            footnote: qsTr("Renames every channel back to its default (USB L, SPDIF 1 L and so on). Takes effect immediately.")
             SettingsButtonRow {
-                title: "Reset Channel Names"
-                buttonText: "Reset"
+                title: qsTr("Reset Channel Names")
+                buttonText: qsTr("Reset")
                 enabled: bridge.connected
                 onClicked: bridge.resetChannelNames()
             }
@@ -46,18 +46,18 @@ Item {
         SettingsSection {
             objectName: "advancedCoreVoltage"
             visible: advanced.coreVoltageOffered || vreg.phase !== "idle"
-            title: "Core Voltage"
-            footnote: "Changes the voltage of the device's processor. For a device that hangs or drops off USB; read the warning first."
+            title: qsTr("Core Voltage")
+            footnote: qsTr("Changes the voltage of the device's processor. For a device that hangs or drops off USB; read the warning first.")
             SettingsButtonRow {
                 objectName: "advancedCoreVoltageOpen"
-                title: "Core Voltage"
+                title: qsTr("Core Voltage")
                 detail: {
                     var s = vreg.view.status
-                    if (vreg.phase !== "idle" && vreg.phase !== "review") return "Calibration: " + (vreg.view.message || vreg.phase)
-                    if (s && s.trialActive) return "A trial is running at " + vreg.volts(s.trialVreg)
-                    return s ? "Running at " + (s.millivolts > 0 ? (s.millivolts / 1000).toFixed(2) + " V" : vreg.volts(s.liveVreg)) : ""
+                    if (vreg.phase !== "idle" && vreg.phase !== "review") return qsTr("Calibration: %1").arg(vreg.view.message || vreg.phase)
+                    if (s && s.trialActive) return qsTr("A trial is running at %1").arg(vreg.volts(s.trialVreg))
+                    return s ? qsTr("Running at %1").arg(s.millivolts > 0 ? qsTr("%1 V").arg((s.millivolts / 1000).toFixed(2)) : vreg.volts(s.liveVreg)) : ""
                 }
-                buttonText: "Open…"
+                buttonText: qsTr("Open…")
                 onClicked: advanced.coreVoltageOpen = true
             }
         }

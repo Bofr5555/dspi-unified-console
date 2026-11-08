@@ -12,7 +12,7 @@ AppWindow {
     // -- WP QD6 -- The picker is off on read-only firmware, and every setting shows
     readonly property bool showAdvanced: prefs.advanced || (bridge.connected && !bridge.writable)
     fitHeight: header.height + flick.contentHeight
-    title: "Stereo Upmixer"
+    title: qsTr("Stereo Upmixer")
     visible: false
     width: 840
     height: 600 + titlebarHeight
@@ -70,26 +70,26 @@ AppWindow {
     readonly property bool processing: status.active === true
 
     function statusText() {
-        if (!bridge.connected) return "No device connected"
-        if (processing) return "Active - processing audio"
+        if (!bridge.connected) return qsTr("No device connected")
+        if (processing) return qsTr("Active - processing audio")
         switch (status.parkedReason) {
-        case 1: return "Idle: upmixer disabled"
-        case 2: return "Idle: input is not stereo"
-        case 3: return "Idle: sample rate above 48 kHz"
-        default: return "Idle"
+        case 1: return qsTr("Idle: upmixer disabled")
+        case 2: return qsTr("Idle: input is not stereo")
+        case 3: return qsTr("Idle: sample rate above 48 kHz")
+        default: return qsTr("Idle")
         }
     }
     // What the speakers add up to, and which engines drive them
     function layoutName() {
-        if (!active || (!centerOn && !surroundOn)) return "Stereo"
-        return centerOn && surroundOn ? "5.0 Surround" : centerOn ? "3.0 Front" : "4.0 Quad"
+        if (!active || (!centerOn && !surroundOn)) return qsTr("Stereo")
+        return centerOn && surroundOn ? qsTr("5.0 Surround") : centerOn ? qsTr("3.0 Front") : qsTr("4.0 Quad")
     }
     function layoutCaption() {
-        if (!active) return "Upmixer off: L and R pass through untouched."
-        if (!centerOn && !surroundOn) return "Both engines are off: L and R pass through untouched."
+        if (!active) return qsTr("Upmixer off: L and R pass through untouched.")
+        if (!centerOn && !surroundOn) return qsTr("Both engines are off: L and R pass through untouched.")
         var parts = []
-        if (centerOn) parts.push((centerMode === 1 ? "Logician" : "Sinner") + " centre")
-        if (surroundOn) parts.push((surroundMode === 2 ? "Logician" : "Sinner") + " surround")
+        if (centerOn) parts.push(centerMode === 1 ? qsTr("Logician centre") : qsTr("Sinner centre"))
+        if (surroundOn) parts.push(surroundMode === 2 ? qsTr("Logician surround") : qsTr("Sinner surround"))
         return parts.join(", ") + "."
     }
 
@@ -166,8 +166,8 @@ AppWindow {
         spacing: 10
         Repeater {
             model: [
-                { label: "Centre", param: win.pCenterMode, wire: win.centerWire, current: win.centerMode },
-                { label: "Surround", param: win.pSurroundMode, wire: win.surroundWire, current: win.surroundMode }]
+                { key: "centre", label: qsTr("Centre"), param: win.pCenterMode, wire: win.centerWire, current: win.centerMode },
+                { key: "surround", label: qsTr("Surround"), param: win.pSurroundMode, wire: win.surroundWire, current: win.surroundMode }]
             Item {
                 width: parent.width
                 height: 26
@@ -180,11 +180,11 @@ AppWindow {
                 SegmentedControl {
                     anchors.right: parent.right
                     width: parent.width - 90
-                    model: ["Off", "Sinner", "Logician"]
+                    model: [qsTr("Off"), qsTr("Sinner"), qsTr("Logician")]
                     currentIndex: modelData.wire.indexOf(modelData.current)
-                    tips: ["", "A fixed passive matrix, Hafler-style: C = 0.7071(L+R), surround = L-R.",
-                           modelData.label === "Centre" ? "Gates centre extraction on running L/R correlation."
-                                                        : "A Pro Logic II-style matrix decoder."]
+                    tips: ["", qsTr("A fixed passive matrix, Hafler-style: C = 0.7071(L+R), surround = L-R."),
+                           modelData.key === "centre" ? qsTr("Gates centre extraction on running L/R correlation.")
+                                                        : qsTr("A Pro Logic II-style matrix decoder.")]
                     onActivated: { win.refitAnimated(); bridge.setUpmixParam(modelData.param, modelData.wire[index]) }
                 }
             }
@@ -199,14 +199,14 @@ AppWindow {
         onCommitted: bridge.setUpmixParam(param, v)
     }
 
-    readonly property string routingText: "The derived channels appear as matrix source rows: row 2 = Centre, row 3 = Left Surround, row 4 = Right Surround. Open the Matrix Mixer to route them to your output slots (a centre crosspoint gain of -3 dB is a safe start, since the centre row can reach +3 dBFS)."
+    readonly property string routingText: qsTr("The derived channels appear as matrix source rows: row 2 = Centre, row 3 = Left Surround, row 4 = Right Surround. Open the Matrix Mixer to route them to your output slots (a centre crosspoint gain of -3 dB is a safe start, since the centre row can reach +3 dBFS).")
 
     ToolHeader {
         id: header
         width: parent.width
         icon: "upmix"
-        title: "Stereo Upmixer"
-        subtitle: "Derive Centre and Surround from stereo"
+        title: qsTr("Stereo Upmixer")
+        subtitle: qsTr("Derive Centre and Surround from stereo")
         checked: win.active
         enabled: win.supported
         onToggled: bridge.setUpmixParam(win.pEnabled, enable ? 1 : 0)
@@ -215,7 +215,7 @@ AppWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 150
                 visible: win.supported
-                model: ["Basic", "Advanced"]
+                model: [qsTr("Basic"), qsTr("Advanced")]
                 currentIndex: prefs.advanced ? 1 : 0
                 onActivated: { win.refitAnimated(); prefs.advanced = (index === 1) }
             }
@@ -246,7 +246,7 @@ AppWindow {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
-                text: bridge.connected ? "Requires an RP2350 device with firmware wire format V25 or newer." : "No device connected"
+                text: bridge.connected ? qsTr("Requires an RP2350 device with firmware wire format V25 or newer.") : qsTr("No device connected")
                 font.pixelSize: 13
                 color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.85)
             }
@@ -254,7 +254,7 @@ AppWindow {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
-                text: "The upmixer runs on stereo input at 48 kHz or below."
+                text: qsTr("The upmixer runs on stereo input at 48 kHz or below.")
                 font.pixelSize: 11
                 color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
             }
@@ -320,14 +320,14 @@ AppWindow {
                 width: flick.colWidth
                 spacing: 12
 
-                SectionLabel { text: "ENGINES" }
+                SectionLabel { text: qsTr("ENGINES") }
                 Engines { width: parent.width }
                 Note {
-                    text: "Sinner is a fixed passive matrix; Logician steers by what the music is doing."
+                    text: qsTr("Sinner is a fixed passive matrix; Logician steers by what the music is doing.")
                     MouseArea { id: engineHover; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
                     ToolTip.visible: engineHover.containsMouse
                     ToolTip.delay: 500
-                    ToolTip.text: "Logician centre gates extraction on running L/R correlation; Logician surround uses a Pro Logic II-style matrix decoder. Sinner modes are fixed (C = 0.7071(L+R), surround = L-R) - a Hafler-style passive matrix like the one in the Schiit Syn."
+                    ToolTip.text: qsTr("Logician centre gates extraction on running L/R correlation; Logician surround uses a Pro Logic II-style matrix decoder. Sinner modes are fixed (C = 0.7071(L+R), surround = L-R) - a Hafler-style passive matrix like the one in the Schiit Syn.")
                 }
 
                 // Greyed out, not hidden, while an engine is off, so the page keeps its size
@@ -337,17 +337,17 @@ AppWindow {
                     spacing: 12
                     enabled: win.centerOn
                     opacity: enabled ? 1 : 0.4
-                    SectionLabel { text: "CENTRE" }
+                    SectionLabel { text: qsTr("CENTRE") }
                     UpmixRow {
                         param: win.pStrength
-                        label: "Strength"; unit: "%"; from: 0; to: 100; stepSize: 1; decimals: 0; defaultValue: 100
-                        tip: "Centre extraction strength; scales both the C output and how much centre energy is removed from L/R. In Sinner mode this is the fixed centre gain."
+                        label: qsTr("Strength"); unit: "%"; from: 0; to: 100; stepSize: 1; decimals: 0; defaultValue: 100
+                        tip: qsTr("Centre extraction strength; scales both the C output and how much centre energy is removed from L/R. In Sinner mode this is the fixed centre gain.")
                     }
                     UpmixRow {
                         param: win.pPresence
-                        label: "Presence"; unit: "dB"; from: -12; to: 12; stepSize: 0.5; defaultValue: 0
-                        leftHint: "Back"; rightHint: "Forward"
-                        tip: "Voice presence bell at 3 kHz (Q 0.6). Positive brings voices forward, negative pushes them back (Syn-style). Stored in 0.5 dB steps."
+                        label: qsTr("Presence"); unit: qsTr("dB"); from: -12; to: 12; stepSize: 0.5; defaultValue: 0
+                        leftHint: qsTr("Back"); rightHint: qsTr("Forward")
+                        tip: qsTr("Voice presence bell at 3 kHz (Q 0.6). Positive brings voices forward, negative pushes them back (Syn-style). Stored in 0.5 dB steps.")
                     }
                 }
 
@@ -357,17 +357,17 @@ AppWindow {
                     spacing: 12
                     enabled: win.surroundOn
                     opacity: enabled ? 1 : 0.4
-                    SectionLabel { text: "SURROUND" }
+                    SectionLabel { text: qsTr("SURROUND") }
                     UpmixRow {
                         param: win.pSurDelay
-                        label: "Delay"; unit: "ms"; from: 0; to: 20; stepSize: 0.5; defaultValue: 12
-                        tip: "Haas delay on Ls/Rs (precedence effect). Rule of thumb ~1 ms per foot of listener distance."
+                        label: qsTr("Delay"); unit: qsTr("ms"); from: 0; to: 20; stepSize: 0.5; defaultValue: 12
+                        tip: qsTr("Haas delay on Ls/Rs (precedence effect). Rule of thumb ~1 ms per foot of listener distance.")
                     }
                 }
 
                 Divider {}
                 Note {
-                    text: "Route Upmix C, Ls and Rs to your outputs in the Matrix Mixer. More settings in Advanced."
+                    text: qsTr("Route Upmix C, Ls and Rs to your outputs in the Matrix Mixer. More settings in Advanced.")
                     MouseArea { id: routeHover; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
                     ToolTip.visible: routeHover.containsMouse
                     ToolTip.delay: 500
@@ -389,7 +389,7 @@ AppWindow {
                 width: flick.colWidth
                 spacing: 12
 
-                SectionLabel { text: "SOUNDSTAGE" }
+                SectionLabel { text: qsTr("SOUNDSTAGE") }
                 Rectangle {
                     width: parent.width
                     height: 200
@@ -425,27 +425,27 @@ AppWindow {
                     spacing: 6
                     Gauge {
                         opacity: win.processing ? 1 : 0
-                        label: "Correlation"
+                        label: qsTr("Correlation")
                         fraction: ((win.status.correlation || 0) + 1) / 2
                         reading: { var c = win.status.correlation || 0; return (c >= 0 ? "+" : "") + c.toFixed(2) }
                     }
                     Gauge {
                         opacity: win.processing && win.centerOn ? 1 : 0
-                        label: "Centre gain"
+                        label: qsTr("Centre gain")
                         barColor: win.centerColor
                         fraction: win.status.centerGain || 0
                         reading: Math.round((win.status.centerGain || 0) * 100) + "%"
                     }
                     Gauge {
                         opacity: win.processing && win.surroundOn ? 1 : 0
-                        label: "Ls gain"
+                        label: qsTr("Ls gain")
                         barColor: win.lsColor
                         fraction: win.status.lsGain || 0
                         reading: Math.round((win.status.lsGain || 0) * 100) + "%"
                     }
                     Gauge {
                         opacity: win.processing && win.surroundOn ? 1 : 0
-                        label: "Rs gain"
+                        label: qsTr("Rs gain")
                         barColor: win.rsColor
                         fraction: win.status.rsGain || 0
                         reading: Math.round((win.status.rsGain || 0) * 100) + "%"
@@ -453,14 +453,14 @@ AppWindow {
                 }
 
                 Divider {}
-                SectionLabel { text: "ENGINES" }
+                SectionLabel { text: qsTr("ENGINES") }
                 Engines { width: parent.width }
                 Note {
-                    text: "Logician centre gates extraction on running L/R correlation; Logician surround uses a Pro Logic II-style matrix decoder. Sinner modes are fixed (C = 0.7071(L+R), surround = L-R) - a Hafler-style passive matrix like the one in the Schiit Syn."
+                    text: qsTr("Logician centre gates extraction on running L/R correlation; Logician surround uses a Pro Logic II-style matrix decoder. Sinner modes are fixed (C = 0.7071(L+R), surround = L-R) - a Hafler-style passive matrix like the one in the Schiit Syn.")
                 }
 
                 Divider {}
-                SectionLabel { text: "ROUTING" }
+                SectionLabel { text: qsTr("ROUTING") }
                 Note { text: win.routingText }
             }
 
@@ -476,7 +476,7 @@ AppWindow {
                     topPadding: 40
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
-                    text: "Both engines are off. Choose Sinner or Logician for the centre or the surrounds."
+                    text: qsTr("Both engines are off. Choose Sinner or Logician for the centre or the surrounds.")
                     font.pixelSize: 12
                     color: Qt.rgba(1, 1, 1, 0.45)
                 }
@@ -486,23 +486,23 @@ AppWindow {
                     visible: win.centerOn
                     width: parent.width
                     spacing: 12
-                    SectionLabel { text: "CENTRE" }
+                    SectionLabel { text: qsTr("CENTRE") }
                     UpmixRow {
                         param: win.pStrength
-                        label: "Strength"; unit: "%"; from: 0; to: 100; stepSize: 1; decimals: 0; defaultValue: 100
-                        tip: "Centre extraction strength; scales both the C output and how much centre energy is removed from L/R. In Sinner mode this is the fixed centre gain."
+                        label: qsTr("Strength"); unit: "%"; from: 0; to: 100; stepSize: 1; decimals: 0; defaultValue: 100
+                        tip: qsTr("Centre extraction strength; scales both the C output and how much centre energy is removed from L/R. In Sinner mode this is the fixed centre gain.")
                     }
                     UpmixRow {
                         param: win.pWidth
-                        label: "Centre Width"; unit: "%"; from: 0; to: 100; stepSize: 1; decimals: 0; defaultValue: 25
-                        leftHint: "Discrete"; rightHint: "L/R untouched"
-                        tip: "How much extracted centre stays in L/R. 0 = full removal (discrete centre); 100 = L/R untouched (expect combing if a real centre speaker plays)."
+                        label: qsTr("Centre Width"); unit: "%"; from: 0; to: 100; stepSize: 1; decimals: 0; defaultValue: 25
+                        leftHint: qsTr("Discrete"); rightHint: qsTr("L/R untouched")
+                        tip: qsTr("How much extracted centre stays in L/R. 0 = full removal (discrete centre); 100 = L/R untouched (expect combing if a real centre speaker plays).")
                     }
                     UpmixRow {
                         param: win.pPresence
-                        label: "Presence"; unit: "dB"; from: -12; to: 12; stepSize: 0.5; defaultValue: 0
-                        leftHint: "Back"; rightHint: "Forward"
-                        tip: "Voice presence bell at 3 kHz (Q 0.6). Positive brings voices forward, negative pushes them back (Syn-style). Stored in 0.5 dB steps."
+                        label: qsTr("Presence"); unit: qsTr("dB"); from: -12; to: 12; stepSize: 0.5; defaultValue: 0
+                        leftHint: qsTr("Back"); rightHint: qsTr("Forward")
+                        tip: qsTr("Voice presence bell at 3 kHz (Q 0.6). Positive brings voices forward, negative pushes them back (Syn-style). Stored in 0.5 dB steps.")
                     }
                     // Logician only
                     Column {
@@ -511,23 +511,23 @@ AppWindow {
                         spacing: 12
                         UpmixRow {
                             param: win.pThreshold
-                            label: "Correlation Threshold"; unit: "%"; from: 0; to: 95; stepSize: 1; decimals: 0; defaultValue: 30
-                            tip: "Correlation gate. Below this, nothing is extracted; above it, extraction scales up to full. Raise to extract only strongly-correlated content."
+                            label: qsTr("Correlation Threshold"); unit: "%"; from: 0; to: 95; stepSize: 1; decimals: 0; defaultValue: 30
+                            tip: qsTr("Correlation gate. Below this, nothing is extracted; above it, extraction scales up to full. Raise to extract only strongly-correlated content.")
                         }
                         UpmixRow {
                             param: win.pAttack
-                            label: "Attack"; unit: "ms"; from: 1; to: 500; stepSize: 1; decimals: 0; defaultValue: 10
-                            tip: "Centre gain rise time (Logician mode)."
+                            label: qsTr("Attack"); unit: qsTr("ms"); from: 1; to: 500; stepSize: 1; decimals: 0; defaultValue: 10
+                            tip: qsTr("Centre gain rise time (Logician mode).")
                         }
                         UpmixRow {
                             param: win.pRelease
-                            label: "Release"; unit: "ms"; from: 5; to: 2000; stepSize: 5; decimals: 0; defaultValue: 100
-                            tip: "Centre gain fall time (Logician mode)."
+                            label: qsTr("Release"); unit: qsTr("ms"); from: 5; to: 2000; stepSize: 5; decimals: 0; defaultValue: 100
+                            tip: qsTr("Centre gain fall time (Logician mode).")
                         }
                         UpmixRow {
                             param: win.pDetectorHpf
-                            label: "Detector HPF"; unit: "Hz"; from: 20; to: 1000; stepSize: 5; decimals: 0; defaultValue: 200
-                            tip: "Detector bass-cut corner. Content below this is ignored by the steering detector (the audio itself is not filtered) so bass does not pump the centre."
+                            label: qsTr("Detector HPF"); unit: qsTr("Hz"); from: 20; to: 1000; stepSize: 5; decimals: 0; defaultValue: 200
+                            tip: qsTr("Detector bass-cut corner. Content below this is ignored by the steering detector (the audio itself is not filtered) so bass does not pump the centre.")
                         }
                     }
                 }
@@ -539,26 +539,26 @@ AppWindow {
                     visible: win.surroundOn
                     width: parent.width
                     spacing: 12
-                    SectionLabel { text: "SURROUND" }
+                    SectionLabel { text: qsTr("SURROUND") }
                     UpmixRow {
                         param: win.pSurDelay
-                        label: "Delay"; unit: "ms"; from: 0; to: 20; stepSize: 0.5; defaultValue: 12
-                        tip: "Haas delay on Ls/Rs (precedence effect). Rule of thumb ~1 ms per foot of listener distance."
+                        label: qsTr("Delay"); unit: qsTr("ms"); from: 0; to: 20; stepSize: 0.5; defaultValue: 12
+                        tip: qsTr("Haas delay on Ls/Rs (precedence effect). Rule of thumb ~1 ms per foot of listener distance.")
                     }
                     UpmixRow {
                         param: win.pSurHpf
-                        label: "Band-limit HPF"; unit: "Hz"; from: 20; to: 2000; stepSize: 5; decimals: 0; defaultValue: 300
-                        tip: "Surround high-pass; keeps rumble out of the rears."
+                        label: qsTr("Band-limit HPF"); unit: qsTr("Hz"); from: 20; to: 2000; stepSize: 5; decimals: 0; defaultValue: 300
+                        tip: qsTr("Surround high-pass; keeps rumble out of the rears.")
                     }
                     UpmixRow {
                         param: win.pSurLpf
-                        label: "Band-limit LPF"; unit: "Hz"; from: 1000; to: 20000; stepSize: 100; decimals: 0; defaultValue: 7000
-                        tip: "Surround low-pass. 7 kHz is the classic surround voicing; raise for full-band rears."
+                        label: qsTr("Band-limit LPF"); unit: qsTr("Hz"); from: 1000; to: 20000; stepSize: 100; decimals: 0; defaultValue: 7000
+                        tip: qsTr("Surround low-pass. 7 kHz is the classic surround voicing; raise for full-band rears.")
                     }
                     UpmixRow {
                         param: win.pDecorr
-                        label: "Decorrelation"; unit: "%"; from: 0; to: 100; stepSize: 1; decimals: 0; defaultValue: 90
-                        tip: "Schroeder allpass decorrelator amount. 0 disables decorrelation."
+                        label: qsTr("Decorrelation"); unit: "%"; from: 0; to: 100; stepSize: 1; decimals: 0; defaultValue: 90
+                        tip: qsTr("Schroeder allpass decorrelator amount. 0 disables decorrelation.")
                     }
                 }
             }

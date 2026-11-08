@@ -17,7 +17,7 @@ Popup {
     TextMetrics {
         id: labelWidest
         font.pixelSize: MenuStyle.fontSize
-        text: "No device connected   "
+        text: qsTr("No device connected") + "   "
     }
 
     // Actions are supplied by the window that hosts the menu
@@ -57,64 +57,64 @@ Popup {
     //          help (allowed during setup), always (needs no device),
     //          enabled: false } or { sep: true }
     readonly property var groups: [
-        { text: "Device", icon: "chip", items: [
-            { icon: "link", text: "Devices…", window: "devices" },   // -- WP QD9 --
+        { text: qsTr("Device"), icon: "chip", items: [
+            { icon: "link", text: qsTr("Devices…"), window: "devices" },   // -- WP QD9 --
             { sep: true },
-            { icon: "save", text: "Commit Parameters", shortcut: "Ctrl+S", action: "commit" },
-            { icon: "revert", text: "Revert to Saved", action: "revert" },
+            { icon: "save", text: qsTr("Commit Parameters"), shortcut: "Ctrl+S", action: "commit" },
+            { icon: "revert", text: qsTr("Revert to Saved"), action: "revert" },
             { sep: true },
-            { icon: "speaker", text: "Save Master Volume", action: "saveMasterVolume" },
-            { icon: "chip", text: "Save Output Config", action: "saveOutputConfig" },
+            { icon: "speaker", text: qsTr("Save Master Volume"), action: "saveMasterVolume" },
+            { icon: "chip", text: qsTr("Save Output Config"), action: "saveOutputConfig" },
             { sep: true },
-            { icon: "chip", text: "Firmware Update…", window: "firmware", firmwareUpdate: true },
-            { icon: "warning", text: "Factory Reset…", action: "factoryReset", danger: true }
+            { icon: "chip", text: qsTr("Firmware Update…"), window: "firmware", firmwareUpdate: true },
+            { icon: "warning", text: qsTr("Factory Reset…"), action: "factoryReset", danger: true }
         // -- WP QD11 -- No UF2 bootloader on this board (the STM32H723), so no entry
         ].filter(function (r) { return !r.firmwareUpdate || menu.firmwareUpdatable })},
-        { text: "File", icon: "input", items: [
-            { icon: "input", text: "Import Filters…", shortcut: "Ctrl+I", action: "importFilters" },
-            { icon: "output", text: "Export Filters…", shortcut: "Ctrl+E", action: "exportFilters" },
+        { text: qsTr("File"), icon: "input", items: [
+            { icon: "input", text: qsTr("Import Filters…"), shortcut: "Ctrl+I", action: "importFilters" },
+            { icon: "output", text: qsTr("Export Filters…"), shortcut: "Ctrl+E", action: "exportFilters" },
             { sep: true },
-            { icon: "input", text: "Import Device Configuration…", action: "importConfig" },
-            { icon: "output", text: "Export Device Configuration…", action: "exportConfig" }
+            { icon: "input", text: qsTr("Import Device Configuration…"), action: "importConfig" },
+            { icon: "output", text: qsTr("Export Device Configuration…"), action: "exportConfig" }
         ]},
-        { text: "AutoEQ", icon: "headphones", items: autoeqItems },
-        { text: "Effects", icon: "sliders", items: [
-            { icon: "loudness", text: "Loudness Compensation", shortcut: "Ctrl+Shift+L", window: "loudness" },
-            { icon: "headphones", text: "Headphone Crossfeed", shortcut: "Ctrl+Shift+X", window: "crossfeed" },
-            { icon: "waveform", text: "Volume Leveller", shortcut: "Ctrl+Shift+V", window: "leveller" },
-            { icon: "bassclef", text: "Psychoacoustic Bass", shortcut: "Ctrl+Shift+P", window: "psybass", feature: true },
-            { icon: "subwave", text: "Subharmonic Synthesizer", shortcut: "Ctrl+Shift+S", window: "subharm", feature: true },
-            { icon: "tube", text: "Tube Modeller", shortcut: "Ctrl+Shift+D", window: "tube", feature: true },
-            { icon: "upmix", text: "Stereo Upmixer", shortcut: "Ctrl+Shift+U", window: "upmix", feature: true }
+        { text: qsTr("AutoEQ"), icon: "headphones", items: autoeqItems },
+        { text: qsTr("Effects"), icon: "sliders", items: [
+            { icon: "loudness", text: qsTr("Loudness Compensation"), shortcut: "Ctrl+Shift+L", window: "loudness" },
+            { icon: "headphones", text: qsTr("Headphone Crossfeed"), shortcut: "Ctrl+Shift+X", window: "crossfeed" },
+            { icon: "waveform", text: qsTr("Volume Leveller"), shortcut: "Ctrl+Shift+V", window: "leveller" },
+            { icon: "bassclef", text: qsTr("Psychoacoustic Bass"), shortcut: "Ctrl+Shift+P", window: "psybass", feature: true },
+            { icon: "subwave", text: qsTr("Subharmonic Synthesizer"), shortcut: "Ctrl+Shift+S", window: "subharm", feature: true },
+            { icon: "tube", text: qsTr("Tube Modeller"), shortcut: "Ctrl+Shift+D", window: "tube", feature: true },
+            { icon: "upmix", text: qsTr("Stereo Upmixer"), shortcut: "Ctrl+Shift+U", window: "upmix", feature: true }
         ].filter(function (r) { menu.firmwareFeatures; return !r.feature || bridge.firmwareHas(r.window) })},
-        { text: "Tools", icon: "wrench", items: [
-            { icon: "sliders", text: "Matrix Mixer", shortcut: "Ctrl+Shift+M", window: "matrix" },
+        { text: qsTr("Tools"), icon: "wrench", items: [
+            { icon: "sliders", text: qsTr("Matrix Mixer"), shortcut: "Ctrl+Shift+M", window: "matrix" },
             { sep: true },
-            { icon: "spectrum", text: "Spectrum Analyser", shortcut: "Ctrl+Shift+A", window: "spectrum" },
-            { icon: "signal", text: "Signal Generator", shortcut: "Ctrl+Shift+G", window: "siggen" },
-            { icon: "info", text: "Stats for Nerds", shortcut: "Ctrl+Shift+T", window: "stats" },
-            { icon: "identify", text: "Interrupt Monitor", shortcut: "Ctrl+Shift+I", window: "monitor" }
+            { icon: "spectrum", text: qsTr("Spectrum Analyser"), shortcut: "Ctrl+Shift+A", window: "spectrum" },
+            { icon: "signal", text: qsTr("Signal Generator"), shortcut: "Ctrl+Shift+G", window: "siggen" },
+            { icon: "info", text: qsTr("Stats for Nerds"), shortcut: "Ctrl+Shift+T", window: "stats" },
+            { icon: "identify", text: qsTr("Interrupt Monitor"), shortcut: "Ctrl+Shift+I", window: "monitor" }
         ]},
-        { text: "Help", icon: "question-circle", help: true, items: [
-            { icon: "cap", text: "Getting Started…", window: "gettingStarted", help: true },
-            { icon: "sparkles", text: "What's New in DSPi Console", window: "whatsNew", help: true },
+        { text: qsTr("Help"), icon: "question-circle", help: true, items: [
+            { icon: "cap", text: qsTr("Getting Started…"), window: "gettingStarted", help: true },
+            { icon: "sparkles", text: qsTr("What's New in DSPi Console"), window: "whatsNew", help: true },
             { sep: true },
-            { icon: "github", text: "DSPi Console on GitHub", window: "url:https://github.com/WeebLabs/DSPi-Console-Linux", help: true },
-            { icon: "github", text: "DSPi Firmware on GitHub", window: "url:https://github.com/WeebLabs/DSPi", help: true }
+            { icon: "github", text: qsTr("DSPi Console on GitHub"), window: "url:https://github.com/WeebLabs/DSPi-Console-Linux", help: true },
+            { icon: "github", text: qsTr("DSPi Firmware on GitHub"), window: "url:https://github.com/WeebLabs/DSPi", help: true }
         ]}
     ]
     // Browse, the favourites (one click applies), and the database
     readonly property var autoeqItems: {
-        var list = [{ icon: "search", text: "Browse Profiles…", shortcut: "Ctrl+Shift+B", window: "autoeq" }, { sep: true }]
+        var list = [{ icon: "search", text: qsTr("Browse Profiles…"), shortcut: "Ctrl+Shift+B", window: "autoeq" }, { sep: true }]
         var favs = autoeq.favorites
-        if (favs.length === 0) list.push({ icon: "heart", text: "No favorites yet", enabled: false })
+        if (favs.length === 0) list.push({ icon: "heart", text: qsTr("No favorites yet"), enabled: false })
         for (var i = 0; i < favs.length; i++) list.push({ icon: "heart", text: favs[i].name, autoeq: favs[i].id })
-        list.push({ icon: "xmark", text: "Clear Favorites", action: "clearFavorites", always: true, enabled: favs.length > 0 })
+        list.push({ icon: "xmark", text: qsTr("Clear Favorites"), action: "clearFavorites", always: true, enabled: favs.length > 0 })
         list.push({ sep: true })
-        list.push({ icon: "revert", text: "Update Database…", action: "autoeqUpdate", always: true })
+        list.push({ icon: "revert", text: qsTr("Update Database…"), action: "autoeqUpdate", always: true })
         return list
     }
-    readonly property var settingsItem: ({ icon: "gear", text: "Settings", shortcut: "Ctrl+,", window: "settings" })
+    readonly property var settingsItem: ({ icon: "gear", text: qsTr("Settings"), shortcut: "Ctrl+,", window: "settings" })
 
     // -- WP QD6 -- Changes with the device: `groups` hides what its firmware lacks
     readonly property int firmwareFeatures: bridge.wireFeatures
@@ -248,9 +248,9 @@ Popup {
                 elide: Text.ElideRight
                 textFormat: Text.StyledText
                 text: bridge.connected
-                      ? "<b>DSPi " + bridge.platformName + "</b>"
-                        + (bridge.firmwareVersion ? "<font color='#8c8c90'>  ·  " + bridge.firmwareVersion + "</font>" : "")
-                      : "No device connected"
+                      ? (bridge.firmwareVersion ? qsTr("<b>DSPi %1</b><font color='#8c8c90'>  ·  %2</font>").arg(bridge.platformName).arg(bridge.firmwareVersion)
+                                                : qsTr("<b>DSPi %1</b>").arg(bridge.platformName))
+                      : qsTr("No device connected")
                 font.pixelSize: MenuStyle.fontSize - 1
                 color: "white"
             }
@@ -263,7 +263,7 @@ Popup {
             }
             ToolTip.visible: deviceMouse.containsMouse && bridge.connected
             ToolTip.delay: 500
-            ToolTip.text: "Serial " + bridge.selectedSerial
+            ToolTip.text: qsTr("Serial %1").arg(bridge.selectedSerial)
         }
         Rectangle { width: parent.width; height: 1; color: isMacOS ? Qt.rgba(1, 1, 1, 0.15) : MenuStyle.separator }
         Item { width: 1; height: MenuStyle.padding }
@@ -352,7 +352,7 @@ Popup {
                 anchors.left: settingsIcon.right
                 anchors.leftMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Settings"
+                text: qsTr("Settings")
                 font.pixelSize: MenuStyle.fontSize
                 color: settingsRow.hot ? "white" : MenuStyle.text
             }

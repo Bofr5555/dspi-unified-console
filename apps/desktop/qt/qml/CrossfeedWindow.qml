@@ -10,7 +10,7 @@ import "components"
 AppWindow {
     id: win
     fitHeight: header.height + flick.contentHeight
-    title: "Crossfeed"
+    title: qsTr("Crossfeed")
     visible: false
     width: 720
     height: 470 + titlebarHeight
@@ -18,10 +18,10 @@ AppWindow {
     minimumHeight: 360 + titlebarHeight
 
     readonly property var presets: [
-        { name: "Default",   detail: "700 Hz / 4.5 dB · Balanced, most popular", fc: 700, feed: 4.5 },
-        { name: "Chu Moy",   detail: "700 Hz / 6.0 dB · Stronger spatial effect", fc: 700, feed: 6.0 },
-        { name: "Jan Meier", detail: "650 Hz / 9.5 dB · Natural speaker-like", fc: 650, feed: 9.5 },
-        { name: "Custom",    detail: "User-defined parameters" }]
+        { name: qsTr("Default"),   detail: qsTr("700 Hz / 4.5 dB · Balanced, most popular"), fc: 700, feed: 4.5 },
+        { name: qsTr("Chu Moy"),   detail: qsTr("700 Hz / 6.0 dB · Stronger spatial effect"), fc: 700, feed: 6.0 },
+        { name: qsTr("Jan Meier"), detail: qsTr("650 Hz / 9.5 dB · Natural speaker-like"), fc: 650, feed: 9.5 },
+        { name: qsTr("Custom"),    detail: qsTr("User-defined parameters") }]
     readonly property bool isCustom: bridge.crossfeedPreset === 3
     // What the rows and the graph show: a preset's own values (crossfeed.c), which
     // the device doesn't report, or the device's custom values under Custom
@@ -34,9 +34,9 @@ AppWindow {
     // The pair map section: hidden when the firmware stalls the extension channel
     readonly property bool pairMapShown: ext.hasPairMap && bridge.connected
     readonly property var pairChoices: [
-        { key: "default", text: "Default (1/2, 3/4, …)" },
-        { key: "k340", text: "One DAC per ear (K340)" },
-        { key: "custom", text: "Custom…" }]
+        { key: "default", text: qsTr("Default (1/2, 3/4, …)") },
+        { key: "k340", text: qsTr("One DAC per ear (K340)") },
+        { key: "custom", text: qsTr("Custom…") }]
     property bool editingPairs: false
     property bool offerK340Mask: false
     property bool applyingDraft: false
@@ -66,7 +66,7 @@ AppWindow {
         onTriggered: win.revealPairEditor()
     }
 
-    function outputName(o) { return bridge.channelName(o + 2) || "Out " + (o + 1) }
+    function outputName(o) { return bridge.channelName(o + 2) || qsTr("Out %1").arg(o + 1) }
 
     function pairNames() {
         var n = []
@@ -126,8 +126,8 @@ AppWindow {
         id: header
         width: parent.width
         icon: "headphones"
-        title: "Crossfeed"
-        subtitle: "BS2B Bauer stereophonic-to-binaural"
+        title: qsTr("Crossfeed")
+        subtitle: qsTr("BS2B Bauer stereophonic-to-binaural")
         checked: bridge.crossfeedEnabled
         onToggled: bridge.setCrossfeed(enable)
     }
@@ -155,7 +155,7 @@ AppWindow {
                 width: columns.colWidth
                 spacing: 12
 
-                SectionLabel { text: "FREQUENCY RESPONSE" }
+                SectionLabel { text: qsTr("FREQUENCY RESPONSE") }
 
                 Rectangle {
                     width: parent.width
@@ -239,7 +239,7 @@ AppWindow {
                                 ctx.textAlign = "center"
                                 ctx.fillStyle = isMacOS ? MacColors.opacity(MacColors.secondaryLabel, 0.5) : "rgba(255,255,255,0.35)"
                                 ctx.font = "12px sans-serif"
-                                ctx.fillText("Disabled", left + w / 2, h / 2)
+                                ctx.fillText(qsTr("Disabled"), left + w / 2, h / 2)
                                 return
                             }
 
@@ -273,15 +273,15 @@ AppWindow {
                             anchors.centerIn: parent
                             spacing: 3
                             Row { spacing: 6; Rectangle { width: 12; height: 2; radius: 1; color: isMacOS ? MacColors.accent : "#0a7cff"; anchors.verticalCenter: parent.verticalCenter }
-                                  Text { text: "Direct"; font.pixelSize: 11; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.85) } }
+                                  Text { text: qsTr("Direct"); font.pixelSize: 11; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.85) } }
                             Row { spacing: 6; Rectangle { width: 12; height: 2; radius: 1; color: isMacOS ? MacColors.orange : "#ff9f0a"; anchors.verticalCenter: parent.verticalCenter }
-                                  Text { text: "Crossfeed"; font.pixelSize: 11; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.85) } }
+                                  Text { text: qsTr("Crossfeed"); font.pixelSize: 11; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.85) } }
                         }
                     }
                 }
 
                 Divider {}
-                SectionLabel { text: "PRESET" }
+                SectionLabel { text: qsTr("PRESET") }
 
                 // Radio list
                 Column {
@@ -355,7 +355,7 @@ AppWindow {
                 width: columns.colWidth
                 spacing: 12
 
-                SectionLabel { text: "PARAMETERS" }
+                SectionLabel { text: qsTr("PARAMETERS") }
 
                 // Dimmed unless Custom; editing switches to Custom
                 Column {
@@ -367,9 +367,9 @@ AppWindow {
                     ParamRow {
                         id: freqRow
                         objectName: "crossfeedFreqRow"
-                        label: "Cutoff Frequency"; unit: "Hz"; from: 500; to: 2000; stepSize: 10; decimals: 0
+                        label: qsTr("Cutoff Frequency"); unit: qsTr("Hz"); from: 500; to: 2000; stepSize: 10; decimals: 0
                         value: win.shownFreq
-                        caption: "Simulates head shadow lowpass cutoff. Lower = more bass crossfeed. Typical: 650–700 Hz."
+                        caption: qsTr("Simulates head shadow lowpass cutoff. Lower = more bass crossfeed. Typical: 650–700 Hz.")
                         onLiveChanged: bridge.setCrossfeedFreq(v, true)
                         onCommitted: {
                             bridge.setCrossfeedFreq(v)
@@ -381,9 +381,9 @@ AppWindow {
                     ParamRow {
                         id: feedRow
                         objectName: "crossfeedFeedRow"
-                        label: "Feed Level"; unit: "dB"; from: 0; to: 15; stepSize: 0.1; decimals: 1
+                        label: qsTr("Feed Level"); unit: qsTr("dB"); from: 0; to: 15; stepSize: 0.1; decimals: 1
                         value: win.shownFeed
-                        caption: "Crossfeed attenuation below the direct signal. Higher = more crossfeed. Typical: 4.5–9.5 dB."
+                        caption: qsTr("Crossfeed attenuation below the direct signal. Higher = more crossfeed. Typical: 4.5–9.5 dB.")
                         onLiveChanged: bridge.setCrossfeedFeed(v, true)
                         onCommitted: {
                             bridge.setCrossfeedFeed(v)
@@ -403,12 +403,12 @@ AppWindow {
                         anchors.rightMargin: 10
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 2
-                        Text { text: "Interaural Time Delay"; font.pixelSize: 13; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9) }
-                        Text { width: parent.width; wrapMode: Text.WordWrap; text: "Simulates a ~220 µs path difference via an all-pass filter"; font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
+                        Text { text: qsTr("Interaural Time Delay"); font.pixelSize: 13; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9) }
+                        Text { width: parent.width; wrapMode: Text.WordWrap; text: qsTr("Simulates a ~220 µs path difference via an all-pass filter"); font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
                     }
                     ToggleSwitch {
                         id: itdSwitch
-                        Accessible.name: "Interaural Time Delay"
+                        Accessible.name: qsTr("Interaural Time Delay")
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
                         checked: bridge.crossfeedITD
@@ -420,7 +420,7 @@ AppWindow {
                 Item {
                     width: parent.width
                     height: 20
-                    SectionLabel { text: "OUTPUT PAIRS"; anchors.verticalCenter: parent.verticalCenter }
+                    SectionLabel { text: qsTr("OUTPUT PAIRS"); anchors.verticalCenter: parent.verticalCenter }
                     Item {
                         id: pairLink
                         anchors.right: parent.right
@@ -431,7 +431,7 @@ AppWindow {
                             id: pairRow
                             spacing: 4
                             Text {
-                                text: "Presets"
+                                text: qsTr("Presets")
                                 font.pixelSize: 12
                                 color: isMacOS ? MacColors.label : pairMouse.containsMouse ? "white" : Qt.rgba(1, 1, 1, 0.75)
                             }
@@ -443,7 +443,7 @@ AppWindow {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             Accessible.role: Accessible.ButtonMenu
-                            Accessible.name: "Output pair presets"
+                            Accessible.name: qsTr("Output pair presets")
                             onActivated: pairMenu.openAt(pairLink, 0, pairLink.height + 4)
                         }
                     }
@@ -454,7 +454,7 @@ AppWindow {
                     wrapMode: Text.WordWrap
                     font.pixelSize: 11
                     color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
-                    text: "Crossfeed only the stereo output pairs feeding headphones. Speaker pairs stay bit-accurate. The mono sub is never crossfed."
+                    text: qsTr("Crossfeed only the stereo output pairs feeding headphones. Speaker pairs stay bit-accurate. The mono sub is never crossfed.")
                 }
 
                 // ── Pair map ──
@@ -469,7 +469,7 @@ AppWindow {
                         height: 20
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "Outputs"
+                            text: qsTr("Outputs")
                             font.pixelSize: 13
                             color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9)
                         }
@@ -478,7 +478,7 @@ AppWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             menu: pairMapMenu
                             text: ext.choice === "k340" ? win.pairChoices[1].text
-                                : ext.choice === "default" ? win.pairChoices[0].text : "Custom"
+                                : ext.choice === "default" ? win.pairChoices[0].text : qsTr("Custom")
                         }
                     }
 
@@ -487,7 +487,7 @@ AppWindow {
                         wrapMode: Text.WordWrap
                         font.pixelSize: 11
                         color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
-                        text: "Which two outputs each pair crossfeeds. An output can belong to one pair only."
+                        text: qsTr("Which two outputs each pair crossfeeds. An output can belong to one pair only.")
                     }
 
                     // After the K340 preset, on a tap only: the factory mask
@@ -502,12 +502,12 @@ AppWindow {
                             wrapMode: Text.WordWrap
                             font.pixelSize: 11
                             color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
-                            text: "Crossfeed the woofers and the tweeters?"
+                            text: qsTr("Crossfeed the woofers and the tweeters?")
                         }
                         Row {
                             spacing: 8
-                            AppButton { text: "Not Now"; onClicked: win.offerK340Mask = false }
-                            AppButton { text: "Enable Pairs 1 and 2"; onClicked: win.enableK340Mask() }
+                            AppButton { text: qsTr("Not Now"); onClicked: win.offerK340Mask = false }
+                            AppButton { text: qsTr("Enable Pairs 1 and 2"); onClicked: win.enableK340Mask() }
                         }
                     }
 
@@ -534,17 +534,17 @@ AppWindow {
                                     Text {
                                         width: 46
                                         anchors.verticalCenter: parent.verticalCenter
-                                        text: "Pair " + (parent.pair + 1)
+                                        text: qsTr("Pair %1").arg(parent.pair + 1)
                                         font.pixelSize: 12
                                         color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9)
                                     }
                                     StyledComboBox {
-                                        Accessible.name: "Pair " + (parent.pair + 1) + " left"
+                                        Accessible.name: qsTr("Pair %1 left").arg(parent.pair + 1)
                                         objectName: "pairLeft" + parent.pair
-                                        width: 92
+                                        width: Math.max(92, fitWidth)
                                         model: win.outputLabels
                                         currentIndex: win.pairDraft[parent.pair].left
-                                        displayText: "Out " + (currentIndex + 1)
+                                        displayText: qsTr("Out %1").arg(currentIndex + 1)
                                         onActivated: win.setDraftOutput(parent.pair, "left", index)
                                     }
                                     Text {
@@ -554,12 +554,12 @@ AppWindow {
                                         color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
                                     }
                                     StyledComboBox {
-                                        Accessible.name: "Pair " + (parent.pair + 1) + " right"
+                                        Accessible.name: qsTr("Pair %1 right").arg(parent.pair + 1)
                                         objectName: "pairRight" + parent.pair
-                                        width: 92
+                                        width: Math.max(92, fitWidth)
                                         model: win.outputLabels
                                         currentIndex: win.pairDraft[parent.pair].right
-                                        displayText: "Out " + (currentIndex + 1)
+                                        displayText: qsTr("Out %1").arg(currentIndex + 1)
                                         onActivated: win.setDraftOutput(parent.pair, "right", index)
                                     }
                                 }
@@ -571,15 +571,15 @@ AppWindow {
                                 wrapMode: Text.WordWrap
                                 font.pixelSize: 11
                                 color: isMacOS ? MacColors.orange : "#ff9f0a"
-                                text: "Each pair needs two different outputs, and no output can be in two pairs."
+                                text: qsTr("Each pair needs two different outputs, and no output can be in two pairs.")
                             }
                             Row {
                                 anchors.right: parent.right
                                 spacing: 8
-                                AppButton { text: "Cancel"; onClicked: win.cancelDraft() }
+                                AppButton { text: qsTr("Cancel"); onClicked: win.cancelDraft() }
                                 AppButton {
                                     objectName: "pairMapApply"
-                                    text: "Apply"
+                                    text: qsTr("Apply")
                                     primary: true
                                     enabled: win.draftValid && !ext.busy
                                     onClicked: win.applyDraft()
@@ -616,7 +616,7 @@ AppWindow {
                                 border.color: isMacOS ? (isOn ? "transparent" : MacColors.opacity(MacColors.label, 0.08)) : isOn ? "transparent" : Qt.rgba(1, 1, 1, 0.12)
                                 Text {
                                     anchors.centerIn: parent
-                                    text: (index + 1) + ": Out " + (modelData.left + 1) + " / Out " + (modelData.right + 1)
+                                    text: qsTr("%1: Out %2 / Out %3").arg(index + 1).arg(modelData.left + 1).arg(modelData.right + 1)
                                     font.pixelSize: 12
                                     font.weight: Font.DemiBold
                                     color: isMacOS ? (parent.isOn ? "white" : MacColors.opacity(MacColors.label, 0.6)) : parent.isOn ? "white" : Qt.rgba(1, 1, 1, 0.5)
@@ -666,9 +666,9 @@ AppWindow {
         id: pairMenu
         parent: Overlay.overlay
         items: [
-            { key: "all", text: "All Pairs" },
-            { key: "first", text: "Pair 1 Only (Headphones)" },
-            { key: "none", text: "None" }
+            { key: "all", text: qsTr("All Pairs") },
+            { key: "first", text: qsTr("Pair 1 Only (Headphones)") },
+            { key: "none", text: qsTr("None") }
         ]
         onTriggered: {
             if (key === "all") bridge.setCrossfeedOutputPairMask((1 << win.pairCount) - 1)

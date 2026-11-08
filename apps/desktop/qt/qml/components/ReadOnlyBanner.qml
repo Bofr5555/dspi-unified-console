@@ -51,7 +51,7 @@ Rectangle {
         Text {
             id: label
             anchors.centerIn: parent
-            text: banner.tooNew ? "Details…" : "Update…"
+            text: banner.tooNew ? qsTr("Details…") : qsTr("Update…")
             font.pixelSize: 12
             color: isMacOS ? MacColors.label : "white"
         }

@@ -9,16 +9,16 @@ Item {
     id: chooser
     property int ownType: -1              // the band's type, marked; -1 = none
     property color markColor: "white"
-    property string backTip: "Back"
+    property string backTip: qsTr("Back")
     signal picked(int type)
     signal back()
 
     // name, 2nd-order type, 1st-order type (0 = none)
     readonly property var shapes: [
-        { name: "Bell", t2: 1, t1: 0 }, { name: "Low Shelf", t2: 2, t1: 9 },
-        { name: "Low Cut", t2: 5, t1: 13 }, { name: "High Shelf", t2: 3, t1: 10 },
-        { name: "High Cut", t2: 4, t1: 12 }, { name: "Notch", t2: 6, t1: 0 },
-        { name: "All Pass", t2: 7, t1: 8 }]
+        { name: qsTr("Bell"), t2: 1, t1: 0 }, { name: qsTr("Low Shelf"), t2: 2, t1: 9 },
+        { name: qsTr("Low Cut"), t2: 5, t1: 13 }, { name: qsTr("High Shelf"), t2: 3, t1: 10 },
+        { name: qsTr("High Cut"), t2: 4, t1: 12 }, { name: qsTr("Notch"), t2: 6, t1: 0 },
+        { name: qsTr("All Pass"), t2: 7, t1: 8 }]
     function indexOfType(t) {
         for (var i = 0; i < shapes.length; i++) if (shapes[i].t2 === t || shapes[i].t1 === t) return i
         return -1
@@ -31,7 +31,7 @@ Item {
 
     readonly property string title: {
         var i = pending >= 0 ? pending : hovered >= 0 ? hovered : ownShape
-        return i >= 0 ? shapes[i].name : "Add Band"
+        return i >= 0 ? shapes[i].name : qsTr("Add Band")
     }
 
     // Header: back arrow and the shape's name
@@ -50,12 +50,12 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                Accessible.name: chooser.pending >= 0 ? "Back to shapes" : chooser.backTip
+                Accessible.name: chooser.pending >= 0 ? qsTr("Back to shapes") : chooser.backTip
                 onActivated: { if (chooser.pending >= 0) chooser.pending = -1; else chooser.back() }
             }
             ToolTip.visible: backMouse.containsMouse
             ToolTip.delay: 600
-            ToolTip.text: chooser.pending >= 0 ? "Back to shapes" : chooser.backTip
+            ToolTip.text: chooser.pending >= 0 ? qsTr("Back to shapes") : chooser.backTip
         }
         Text {
             x: 19
@@ -141,7 +141,7 @@ Item {
                      : orderMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(1, 1, 1, 0.07)
                 Text {
                     anchors.centerIn: parent
-                    text: parent.shape && parent.shape.t2 === 7 ? (parent.order === 1 ? "180°" : "360°") : (parent.order === 1 ? "6 dB" : "12 dB")
+                    text: parent.shape && parent.shape.t2 === 7 ? (parent.order === 1 ? qsTr("180°") : qsTr("360°")) : (parent.order === 1 ? qsTr("6 dB") : qsTr("12 dB"))
                     font.pixelSize: 10
                     color: parent.marked ? chooser.markColor : Qt.rgba(1, 1, 1, 0.85)
                 }
@@ -156,8 +156,8 @@ Item {
                 }
                 ToolTip.visible: orderMouse.containsMouse
                 ToolTip.delay: 600
-                ToolTip.text: shape && shape.t2 === 7 ? (order === 1 ? "First order, 180° of phase" : "Second order, 360° of phase")
-                                                      : (order === 1 ? "6 dB per octave" : "12 dB per octave")
+                ToolTip.text: shape && shape.t2 === 7 ? (order === 1 ? qsTr("First order, 180° of phase") : qsTr("Second order, 360° of phase"))
+                                                      : (order === 1 ? qsTr("6 dB per octave") : qsTr("12 dB per octave"))
             }
         }
     }

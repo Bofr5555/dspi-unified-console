@@ -36,11 +36,11 @@ Column {
         var noun = cs.nounName(p.noun, cs.typeNone)
         var nd = cs.nounDesc(p.noun)
         if (!cs.isTargeted(nd)) return noun
-        return ((p.flags & cs.dpageGroup) ? cs.groupName(p.target) : cs.targetName(nd, p.target)) + " " + noun
+        return qsTr("%2 %1").arg(noun).arg((p.flags & cs.dpageGroup) ? cs.groupName(p.target) : cs.targetName(nd, p.target))
     }
     function pageMenuLabel(i) {
         var p = pages[i]
-        if (!pageActive(p)) return "Page " + (i + 1) + " (empty)"
+        if (!pageActive(p)) return qsTr("Page %1 (empty)").arg(i + 1)
         return (i + 1) + ". " + pageSummary(p)
     }
     readonly property int firstFreePage: {
@@ -76,10 +76,10 @@ Column {
     }
 
     // ── Wiring ──
-    CsHeading { text: "Wiring" }
+    CsHeading { text: qsTr("Wiring") }
     CsPickerRow {
-        title: "Model"
-        detail: "The type of display connected."
+        title: qsTr("Model")
+        detail: qsTr("The type of display connected.")
         options: {
             var list = []
             for (var mdl = 1; mdl < Math.max(2, Math.min(ds.cs.modelCount, 9)); mdl++)
@@ -92,43 +92,44 @@ Column {
         }
     }
     CsPickerRow {
-        title: "SDA/SCL Pins"
-        detail: "Clock and data pins are chosen in fixed pairs."
+        title: qsTr("SDA/SCL Pins")
+        detail: qsTr("Clock and data pins are chosen in fixed pairs.")
         options: ds.cs.pickOptions(ds.cs.rowOf(ds.cs.describe("binding", ds.slot, ds.b), "sda"))
         value: ds.b.gpio0
         onChosen: ds.host.setDraft(ds.slot, ds.cs.edit("binding", ds.slot, ds.b, "sda", value))
     }
     CsPickerRow {
-        title: "Address"
-        detail: "7-bit I2C address. Default is the model's usual one (0x" + ds.cs.hex(ds.cs.displayDefaultAddress(ds.b.index), 2) + ")."
-        options: [{ value: 0, text: "Default" }].concat([0x27, 0x3C, 0x3D, 0x3E, 0x3F].map(function (a) { return { value: a, text: "0x" + ds.cs.hex(a, 2) } }))
+        title: qsTr("Address")
+        detail: qsTr("7-bit I2C address. Default is the model's usual one (0x%1).").arg(ds.cs.hex(ds.cs.displayDefaultAddress(ds.b.index), 2))
+        options: [{ value: 0, text: qsTr("Default") }].concat([0x27, 0x3C, 0x3D, 0x3E, 0x3F].map(function (a) { return { value: a, text: "0x" + ds.cs.hex(a, 2) } }))
         value: ds.b.value
         onChosen: ds.setB("value", value)
     }
     CsRow {
-        title: "Panel State"
-        detail: ds.st.naks > 0 ? ds.st.naks + " I2C error" + (ds.st.naks === 1 ? "" : "s") + " so far. Check wiring, pull-up resistors, and the address."
-                               : "Reported by the device."
+        title: qsTr("Panel State")
+        detail: ds.st.naks > 0 ? (ds.st.naks === 1 ? qsTr("%1 I2C error so far. Check wiring, pull-up resistors, and the address.").arg(ds.st.naks)
+                                                    : qsTr("%1 I2C errors so far. Check wiring, pull-up resistors, and the address.").arg(ds.st.naks))
+                               : qsTr("Reported by the device.")
         Text {
-            text: ds.st.init === 2 ? "Running" : ds.st.init === 1 ? "Starting up" : ds.st.init === 3 ? "Not responding" : "Not started"
+            text: ds.st.init === 2 ? qsTr("Running") : ds.st.init === 1 ? qsTr("Starting up") : ds.st.init === 3 ? qsTr("Not responding") : qsTr("Not started")
             font.pixelSize: 12
             color: isMacOS ? (ds.st.init === 2 ? MacColors.green : ds.st.init === 3 ? MacColors.orange : MacColors.secondaryLabel) : ds.st.init === 2 ? "#32d74b" : ds.st.init === 3 ? "#ff9f0a" : Qt.rgba(1, 1, 1, 0.5)
         }
     }
 
     // ── Behavior ──
-    CsHeading { text: "Behavior" }
+    CsHeading { text: qsTr("Behavior") }
     CsPickerRow {
-        title: "Idle Behavior"
-        detail: "What the panel rests on between changes."
-        options: [{ value: 0, text: "One page" }, { value: 1, text: "Cycle Dashboard" }, { value: 2, text: "Cycle All" }]
+        title: qsTr("Idle Behavior")
+        detail: qsTr("What the panel rests on between changes.")
+        options: [{ value: 0, text: qsTr("One page") }, { value: 1, text: qsTr("Cycle Dashboard") }, { value: 2, text: qsTr("Cycle All") }]
         value: ds.cfg.mode
         onChosen: ds.applyConfig({ mode: value })
     }
     CsPickerRow {
         visible: ds.cfg.mode === ds.cs.dmodeFixed
-        title: "Page"
-        detail: "Which page rests on screen."
+        title: qsTr("Page")
+        detail: qsTr("Which page rests on screen.")
         options: {
             var list = []
             for (var i = 0; i < ds.cs.pageCount; i++) list.push({ value: i, text: ds.pageMenuLabel(i) })
@@ -139,11 +140,11 @@ Column {
     }
     CsRow {
         visible: ds.cfg.mode !== ds.cs.dmodeFixed
-        title: "Cycle Every"
-        detail: "How long each page stays up."
+        title: qsTr("Cycle Every")
+        detail: qsTr("How long each page stays up.")
         ValueField {
             value: ds.cfg.dwell / 10
-            suffix: "s"
+            suffix: qsTr("s")
             decimals: 1
             minValue: 1
             maxValue: 655.3
@@ -153,11 +154,11 @@ Column {
         }
     }
     CsRow {
-        title: "Pop-Up Hold"
-        detail: "Duration for which a change remains on-screen. Zero turns pop-ups off."
+        title: qsTr("Pop-Up Hold")
+        detail: qsTr("Duration for which a change remains on-screen. Zero turns pop-ups off.")
         ValueField {
             value: ds.cfg.overlayHold / 10
-            suffix: "s"
+            suffix: qsTr("s")
             decimals: 1
             minValue: 0
             maxValue: 655.3
@@ -168,20 +169,20 @@ Column {
     }
     CsSwitchRow {
         visible: ds.cfg.overlayHold > 0
-        title: "All Changes Pop-Up"
-        detail: "Show changes made by a knob, button or remote key even if the parameter doesn't correspond to a dashboard page."
+        title: qsTr("All Changes Pop-Up")
+        detail: qsTr("Show changes made by a knob, button or remote key even if the parameter doesn't correspond to a dashboard page.")
         checked: (ds.cfg.flags & ds.cs.dcfgOverlayAny) !== 0
         onToggled: ds.setCfgFlag(ds.cs.dcfgOverlayAny, on)
     }
 
     // ── Editing ──
-    CsHeading { text: "Editing" }
+    CsHeading { text: qsTr("Editing") }
     CsRow {
-        title: "Editing Times Out"
-        detail: "Disarm editing after this long untouched. Zero leaves it armed until switched off."
+        title: qsTr("Editing Times Out")
+        detail: qsTr("Disarm editing after this long untouched. Zero leaves it armed until switched off.")
         ValueField {
             value: ds.cfg.editTimeout / 10
-            suffix: "s"
+            suffix: qsTr("s")
             decimals: 1
             minValue: 0
             maxValue: 655.3
@@ -191,21 +192,21 @@ Column {
         }
     }
     CsSwitchRow {
-        title: "Arm Before Editing"
-        detail: "When enabled, an encoder or button browses pages unless Allow Editing is toggled. When disabled, an encoder or button will always adjust the displayed value."
+        title: qsTr("Arm Before Editing")
+        detail: qsTr("When enabled, an encoder or button browses pages unless Allow Editing is toggled. When disabled, an encoder or button will always adjust the displayed value.")
         checked: (ds.cfg.flags & ds.cs.dcfgEditGated) !== 0
         onToggled: ds.setCfgFlag(ds.cs.dcfgEditGated, on)
     }
     CsNote {
         warning: true
-        text: ds.editingUnreachable ? "Nothing can arm editing, so a Browse/Adjust control can only browse pages. Bind a button or remote key to Allow Editing." : ""
+        text: ds.editingUnreachable ? qsTr("Nothing can arm editing, so a Browse/Adjust control can only browse pages. Bind a button or remote key to Allow Editing.") : ""
     }
 
     // ── Appearance ──
-    CsHeading { text: "Appearance" }
+    CsHeading { text: qsTr("Appearance") }
     CsRow {
-        title: "Brightness"
-        detail: "OLED contrast, applied when the panel next starts. Zero is the driver default."
+        title: qsTr("Brightness")
+        detail: qsTr("OLED contrast, applied when the panel next starts. Zero is the driver default.")
         ValueField {
             value: ds.cfg.brightness
             decimals: 0
@@ -217,19 +218,19 @@ Column {
         }
     }
     Repeater {
-        model: [{ title: "Name Alignment", detail: "Horizontal placement of the current page's name.", shift: 2 },
-                { title: "Value Alignment", detail: "Horizontal placement of the current page's value.", shift: 4 }]
+        model: [{ title: qsTr("Name Alignment"), detail: qsTr("Horizontal placement of the current page's name."), shift: 2 },
+                { title: qsTr("Value Alignment"), detail: qsTr("Horizontal placement of the current page's value."), shift: 4 }]
         CsPickerRow {
             title: modelData.title
             detail: modelData.detail
-            options: [{ value: 0, text: "Left" }, { value: 1, text: "Centre" }, { value: 2, text: "Right" }]
+            options: [{ value: 0, text: qsTr("Left") }, { value: 1, text: qsTr("Centre") }, { value: 2, text: qsTr("Right") }]
             value: (ds.cfg.flags >> modelData.shift) & 3
             onChosen: ds.applyConfig({ flags: (ds.cfg.flags & ~(3 << modelData.shift)) | (value << modelData.shift) })
         }
     }
 
     // ── Dashboard pages ──
-    CsHeading { text: "Dashboard Pages" }
+    CsHeading { text: qsTr("Dashboard Pages") }
     Repeater {
         model: ds.cs.pageCount
         Column {
@@ -285,24 +286,24 @@ Column {
                     spacing: 10
                     CsCheck {
                         visible: ds.graphic
-                        text: "Large value"
+                        text: qsTr("Large value")
                         checked: (pageRow.p.flags & ds.cs.dpageLarge) !== 0
                         onToggled: pageRow.editPage("large", on)
                     }
                     CsCheck {
-                        text: "Level bar"
+                        text: qsTr("Level bar")
                         enabled: pageRow.barOk
-                        tip: !enabled ? "Only a value with a range can be drawn as a bar."
-                             : ds.graphic ? "Fills the value's own row behind the text, with no row given up."
-                             : (ds.b.index === 2 || ds.b.index === 5) ? "Draws the bar on the bottom row."
-                             : "Draws the bar on the bottom row, moving the value up beside its name."
+                        tip: !enabled ? qsTr("Only a value with a range can be drawn as a bar.")
+                             : ds.graphic ? qsTr("Fills the value's own row behind the text, with no row given up.")
+                             : (ds.b.index === 2 || ds.b.index === 5) ? qsTr("Draws the bar on the bottom row.")
+                             : qsTr("Draws the bar on the bottom row, moving the value up beside its name.")
                         checked: (pageRow.p.flags & ds.cs.dpageBar) !== 0
                         onToggled: pageRow.editPage("bar", on)
                     }
                     CsButton {
                         bare: true
                         icon: "minus-circle"
-                        tip: "Remove this page"
+                        tip: qsTr("Remove this page")
                         onClicked: ds.applyPage(index, { noun: 0, target: 0, index: 0, flags: 0 })
                     }
                 }
@@ -338,7 +339,7 @@ Column {
         CsButton {
             x: 14
             anchors.verticalCenter: parent.verticalCenter
-            text: "Add Page"
+            text: qsTr("Add Page")
             icon: "plus"
             enabled: ds.firstFreePage >= 0 && ds.cs.connected
             onClicked: ds.applyPage(ds.firstFreePage, ds.cs.newPage())
@@ -348,7 +349,7 @@ Column {
             anchors.right: parent.right
             anchors.rightMargin: 14
             anchors.verticalCenter: parent.verticalCenter
-            text: "All " + ds.cs.pageCount + " page slots are in use."
+            text: qsTr("All %1 page slots are in use.").arg(ds.cs.pageCount)
             font.pixelSize: 12
             color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
         }

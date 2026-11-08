@@ -8,7 +8,7 @@ Row {
     property int labelWidth: 120
     spacing: 8
     Text {
-        width: parent.labelWidth
+        width: Math.max(parent.labelWidth, implicitWidth)   // -- WP QD23 -- a longer label pushes its value along
         text: parent.label.toUpperCase()
         font.pixelSize: 10
         font.weight: Font.Bold
