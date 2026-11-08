@@ -11,6 +11,8 @@ import { shortSerial } from "../core/usb-ids";
 import { peakDb } from "../core/protocol";
 import type { Session } from "./session";
 import { aboutData, linkText } from "./texts";
+// -- WP WB6a --
+import { Screens } from "./screens";
 
 export function useSessionState(s: Session) {
   const [, bump] = useState(0);
@@ -281,7 +283,8 @@ export function SessionView(props: { session: Session; onClose: () => void }) {
             Read only
           </span>
         ) : null}
-        <button type="button" class="close" onClick={props.onClose}>
+        {/* -- WP WB6a -- a screen may hold the user back first (unsaved changes) */}
+        <button type="button" class="close" onClick={() => void s.mayLeave().then((go) => go && props.onClose())}>
           Disconnect
         </button>
       </header>
@@ -297,7 +300,8 @@ export function SessionView(props: { session: Session; onClose: () => void }) {
       ) : null}
       {snap && st.status === "open" ? (
         <div class="controls">
-          <Volume session={s} disabled={!!ro} />
+          {/* -- WP WB6a -- the session's screens (WB6 slices); the skeleton's volume is the main window's now */}
+          <Screens session={s} />
           <Meters session={s} names={snap.state.channelNames.slice(0, snap.state.numChannels)} />
         </div>
       ) : null}
@@ -382,37 +386,6 @@ function LostLinkBanner(props: { phase: { phase: Parameters<typeof linkText>[0];
           {t.action}
         </button>
       ) : null}
-    </div>
-  );
-}
-
-function Volume(props: { session: Session; disabled: boolean }) {
-  const { snapshot, params } = props.session.state;
-  const db = snapshot!.state.userVolumeDb;
-  const range = params["vol.user"];
-  const [draft, setDraft] = useState<number | null>(null);
-  const shown = draft ?? db;
-  return (
-    <div class="volume">
-      <label>
-        Volume
-        <input
-          type="range"
-          min={range?.min ?? -60}
-          max={range?.max ?? 0}
-          step={0.5}
-          value={shown}
-          disabled={props.disabled}
-          onInput={(e) => setDraft(Number((e.target as HTMLInputElement).value))}
-          onChange={(e) => {
-            const v = Number((e.target as HTMLInputElement).value);
-            void props.session.write("vol.user", { float: v }).then(() => setDraft(null));
-          }}
-        />
-      </label>
-      <output class="volume-value" aria-live="polite">
-        {db.toFixed(1)} dB
-      </output>
     </div>
   );
 }

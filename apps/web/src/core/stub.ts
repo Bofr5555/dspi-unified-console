@@ -113,6 +113,15 @@ export class StubCore implements CoreImpl {
       channelNames: names,
       presetNames: ["Living room", "Late night", "Flat"],
       activePresetSlot: 0,
+      // -- WP WB6a -- the main window's fields
+      masterVolumeMode: 0,
+      presetOccupied: 0b111,
+      presetStartupMode: 1,
+      presetDefaultSlot: 0,
+      inputPreampDb: [0, 0],
+      outputEnabled: [true, true, true, true],
+      inputSource: 0,
+      i2sInputChannels: 2,
     } satisfies DspState;
     this.device = {
       device: {

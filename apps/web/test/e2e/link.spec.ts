@@ -83,7 +83,9 @@ async function chooseAndOpen(session: ReturnType<Page["getByRole"]>) {
 
 async function writeVolume(session: ReturnType<Page["getByRole"]>, db: string) {
   const slider = session.getByRole("slider", { name: "Volume" });
-  await slider.fill(db);
+  // -- WP WB6a -- the main window's slider is the Console's taper: the position of `db`
+  // (the values below are ones the taper reaches exactly)
+  await slider.fill(String(Math.round(((Number(db) + 60) / 60) ** 2 * 200)));
   await slider.dispatchEvent("change");
   await expect(session.locator(".volume-value")).toHaveText(`${Number(db).toFixed(1)} dB`);
 }
@@ -102,7 +104,7 @@ test("served by its hub: pairs with the PIN, lists the hub's DSPis, opens one, w
   await session.getByRole("button", { name: "Pair" }).click();
 
   await chooseAndOpen(session);
-  await writeVolume(session, "-12.5");
+  await writeVolume(session, "-12");
 
   // The token was kept for this hub: the next visit asks no PIN.
   const stored = await page.evaluate(() => localStorage.getItem("dspi-web.hub-tokens.v1") ?? "");
@@ -135,7 +137,7 @@ test("lost link: the core's reconnecting phase with its way out, back by itself;
   // The hub takes connections again: the core reconnects and binds the DSPi by itself.
   await fault(request, id, "refuse ok");
   await expect(banner).toHaveCount(0, { timeout: 20_000 });
-  await writeVolume(session, "-9");
+  await writeVolume(session, "-24");
 
   // 4000: the hub ended the session for good.
   await fault(request, id, "close 4000");
@@ -189,7 +191,7 @@ test("fleet embedding: hubDevices names the DSPi, hubCredentials supplies the to
   const one = page.getByRole("article");
   await expect(one.locator(".device-meta")).toContainText(SERIAL);
   await expect(one.getByLabel("PIN")).toHaveCount(0);
-  await writeVolume(one, "-3");
+  await writeVolume(one, "-36");
   expect(await page.evaluate(() => (globalThis as unknown as { fleet: { asked: string[] } }).fleet.asked)).toContain(hubAddress(a));
   // A write the hub's DSPi keeps, read back.
   expect(await core(page, 0, "write", { path: "vol.master", value: { float: -7.5 } })).toEqual({ float: -7.5 });
