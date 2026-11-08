@@ -198,7 +198,7 @@ Rectangle {
                     from: -30; to: 0; stepSize: 0.5
                     value: btn.threshold
                     onMoved: { btn.threshold = value; thresholdLive.push(value) }
-                    onPressedChanged: if (!pressed) { thresholdLive.cancel(); bridge.setLimiterThreshold(btn.outputIndex, value) }
+                    onSettled: { thresholdLive.cancel(); bridge.setLimiterThreshold(btn.outputIndex, value) }
                     Throttle { id: thresholdLive; onFire: bridge.setLimiterThreshold(btn.outputIndex, value, true) }
                 }
             }
@@ -224,7 +224,7 @@ Rectangle {
                     from: 10; to: 1000; stepSize: 10
                     value: btn.release
                     onMoved: { btn.release = value; releaseLive.push(value) }
-                    onPressedChanged: if (!pressed) { releaseLive.cancel(); bridge.setLimiterRelease(btn.outputIndex, value) }
+                    onSettled: { releaseLive.cancel(); bridge.setLimiterRelease(btn.outputIndex, value) }
                     Throttle { id: releaseLive; onFire: bridge.setLimiterRelease(btn.outputIndex, value, true) }
                 }
             }

@@ -27,7 +27,7 @@ SettingsRow {
             Accessible.description: row.format(slider.value)
             anchors.verticalCenter: parent.verticalCenter
             onMoved: row.moved(value)
-            onPressedChanged: if (!pressed) row.committed(value)
+            onSettled: row.committed(value)
             Connections {
                 target: row
                 function onValueChanged() { if (!slider.pressed) slider.value = row.value }

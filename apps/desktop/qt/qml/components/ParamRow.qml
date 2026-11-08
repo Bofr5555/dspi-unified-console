@@ -83,7 +83,7 @@ Column {
         Accessible.name: row.label
         Accessible.description: row.caption
         onMoved: live.push(value)
-        onPressedChanged: if (!pressed) { live.cancel(); row.committed(value) }
+        onSettled: { live.cancel(); row.committed(value) }
         Throttle { id: live; onFire: row.liveChanged(value) }
         Connections {
             target: row

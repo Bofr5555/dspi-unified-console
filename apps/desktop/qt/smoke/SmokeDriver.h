@@ -58,6 +58,8 @@ private:
     void testSetters();
     // -- WP SL1 --
     void testDelaySliders();
+    // -- WP QD41 --
+    void testSliderKeys();
     void testRouting();
     void testCrossfeedRows();
     void testPresets();
