@@ -1800,6 +1800,67 @@ class PeqGraphEditor(private val host: PeqGraphEditorHost, private val clock: Pe
         gainLabelValue = null
     }
 
+    // ── Accessibility (WP AN20) ─────────────────────────────────────────────
+
+    /** The bands as an accessibility service reaches them: one handle per dot, in frequency order (empty when not editing). */
+    val accessibilityBands: List<PeqA11yBand>
+        get() = if (!editing) {
+            emptyList()
+        } else {
+            frequencyOrder(graphBands).map { b ->
+                val p = current(b)
+                PeqA11yBand(b, p, nodePoint(p), b in selectionSet)
+            }
+        }
+
+    /** TalkBack's activate on a handle: the band alone selected, its chip shown (as a tap on its dot). */
+    fun accessibilitySelect(b: Int): Boolean {
+        if (!editing || !isBand(b)) return false
+        setSelection(listOf(b))
+        anchor = b
+        showHud(b)
+        invalidate()
+        return true
+    }
+
+    /**
+     * One step of [field] for band [b] alone, as the arrow keys step it (1/12 octave, 0.5 dB, Q × 2^±0.1):
+     * the drag's only other way in. False when the band has no such value.
+     */
+    fun accessibilityAdjust(b: Int, field: PeqHudField, up: Boolean): Boolean {
+        if (!editing || !isBand(b)) return false
+        val type = current(b).filterType
+        val key =
+            when (field) {
+                PeqHudField.FREQ -> if (up) PeqKey.RIGHT else PeqKey.LEFT
+                PeqHudField.GAIN -> if (!FilterTypes.hasGain(type)) {
+                    return false
+                } else if (up) {
+                    PeqKey.UP
+                } else {
+                    PeqKey.DOWN
+                }
+                PeqHudField.Q -> if (!FilterTypes.hasQ(type)) {
+                    return false
+                } else if (up) {
+                    PeqKey.UP
+                } else {
+                    PeqKey.DOWN
+                }
+            }
+        setSelection(listOf(b))
+        anchor = b
+        nudge(key, if (field == PeqHudField.Q) PeqMods.ALT else PeqMods.NONE)
+        return true
+    }
+
+    /** Bypass or enable band [b] alone (the chip's power button). */
+    fun accessibilityToggleBypass(b: Int): Boolean {
+        if (!editing || !isBand(b) || !config.bypassSupported) return false
+        toggleBypass(listOf(b))
+        return true
+    }
+
     // ── Test hooks ──────────────────────────────────────────────────────────
 
     /** Where band [b]'s dot is drawn now (also used by the touch layer to find dots). */

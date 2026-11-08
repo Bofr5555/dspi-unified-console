@@ -9,7 +9,14 @@ android {
     namespace = "se.bofr.dspi.feature.analysis"
     // WP AN17: the fake-hub test runs the real bridge, which may touch android.util.Log
     testOptions { unitTests.isReturnDefaultValues = true }
+    // -- WP AN20 -- Robolectric reads the merged manifest and resources (as :feature-settings, AN9)
+    testOptions { unitTests.isIncludeAndroidResources = true }
+    // -- WP AN20 -- ui-common's AtfChecks (the Accessibility Test Framework over Compose's nodes)
+    sourceSets["test"].kotlin.srcDir("../ui-common/src/a11yTest/kotlin")
 }
+
+// -- WP AN20 -- the Android runtime Robolectric runs on, resolved (checksum-pinned) so it stays offline (as :app)
+val robolectricRuntime: Configuration by configurations.creating
 
 dependencies {
     implementation(project(":bridge"))
@@ -21,6 +28,15 @@ dependencies {
     // WP AN17: following over the real core and crates/dspi-link's fake hub (as :link's AN3 test)
     testImplementation(project(":ffi"))
     testImplementation("${libs.jna.get().module}:${libs.versions.jna.get()}")
+    // -- WP AN20 -- Compose semantics tests and the Accessibility Test Framework checks, in Robolectric
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
+    testImplementation(libs.compose.ui.test.junit4.accessibility)
+    testImplementation(libs.robolectric)
+    debugImplementation(platform(libs.compose.bom))
+    debugImplementation(libs.compose.ui.test.manifest)
+    robolectricRuntime(libs.robolectric.android.all)
+    constraints { testImplementation("androidx.tracing:tracing:1.2.0") }
 }
 
 // WP AN17: the fake hub binary comes from :link's build task; the host core from :ffi's
@@ -32,4 +48,12 @@ tasks.withType<Test>().configureEach {
     systemProperty("jna.library.path", "$cargoTarget/debug")
     systemProperty("java.library.path", "$cargoTarget/debug")
     systemProperty("dspi.fakehub", "$cargoTarget/debug/dspi-link-fakehub")
+}
+
+// -- WP AN20 -- as :app: Robolectric offline
+tasks.withType<Test>().configureEach {
+    val runtime = robolectricRuntime
+    inputs.files(runtime)
+    systemProperty("robolectric.offline", "true")
+    doFirst { systemProperty("robolectric.dependency.dir", runtime.singleFile.parentFile.path) }
 }

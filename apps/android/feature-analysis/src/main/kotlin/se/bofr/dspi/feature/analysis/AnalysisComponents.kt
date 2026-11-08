@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -55,16 +56,16 @@ internal fun Dot(color: Color, size: Dp = 7.dp, modifier: Modifier = Modifier) {
 @Composable
 internal fun PlainButton(text: String, enabled: Boolean = true, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val c = if (enabled) MaterialTheme.colorScheme.primary else secondaryText().copy(alpha = 0.4f)
-    Text(
-        text,
-        modifier = modifier
+    Box(
+        modifier
+            // -- WP AN20 -- read as a button
             .clip(RoundedCornerShape(6.dp))
-            .clickable(enabled = enabled, onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 6.dp),
-        color = c,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Medium
-    )
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, color = c, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+    }
 }
 
 /** A centred notice: title and explanation (the macOS unavailable / hidden notices). */

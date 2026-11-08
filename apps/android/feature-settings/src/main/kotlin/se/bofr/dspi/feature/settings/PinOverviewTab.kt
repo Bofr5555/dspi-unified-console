@@ -5,6 +5,7 @@ package se.bofr.dspi.feature.settings
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,6 +20,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -104,11 +108,17 @@ fun PinOverviewTab(bridge: DspiBridge, coordinator: SettingsSaveCoordinator, onO
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             row.forEach { pin ->
                                 val claim = claims[pin]
-                                GpioChip(
-                                    "$pin",
-                                    claim?.let { Color(it.role.tint) },
-                                    Modifier.weight(1f).clickable(enabled = claim != null) { claim?.let { onOpen(it.page) } }
-                                )
+                                // -- WP AN20 -- read as "GPIO 12, <role>"
+                                Box(
+                                    Modifier
+                                        .weight(1f)
+                                        .then(if (claim != null) Modifier.clickable { onOpen(claim.page) } else Modifier)
+                                        .semantics(mergeDescendants = true) {
+                                            contentDescription = "GPIO $pin"
+                                            stateDescription = claim?.role?.title ?: "Free"
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) { GpioChip("$pin", claim?.let { Color(it.role.tint) }, Modifier.fillMaxWidth()) }
                             }
                             repeat(7 - row.size) { Spacer(Modifier.weight(1f)) }
                         }

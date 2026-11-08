@@ -10,7 +10,6 @@ package se.bofr.dspi.feature.matrix
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +28,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -59,6 +59,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -256,9 +258,11 @@ private fun EnableButton(ui: MatrixUi, idx: Int, modifier: Modifier = Modifier) 
     Box(
         modifier
             .size(44.dp)
-            .clickable(enabled = writesAllowed(), role = Role.Switch, onClickLabel = enableHelp(o), onClick = {
+            // -- WP AN20 -- a switch with its state and its output's name (help text as before)
+            .toggleable(value = o.enabled, enabled = writesAllowed(), role = Role.Switch, onValueChange = {
                 ui.requestOutputEnable(idx)
-            }),
+            })
+            .semantics { contentDescription = "Enable ${outputName(ui, idx)}. ${enableHelp(o)}" },
         contentAlignment = Alignment.Center
     ) { PowerGlyph(enableColor(o, secondaryColor)) }
 }
@@ -269,12 +273,18 @@ private fun MuteButton(ui: MatrixUi, idx: Int, modifier: Modifier = Modifier) {
     Box(
         modifier
             .size(44.dp)
-            .clickable(enabled = writesAllowed(), role = Role.Switch, onClickLabel = if (o.muted) "Unmute" else "Mute", onClick = {
+            // -- WP AN20 -- a switch with its state and its output's name
+            .toggleable(value = o.muted, enabled = writesAllowed(), role = Role.Switch, onValueChange = {
                 ui.actions.setOutputMute(idx, !o.muted)
-            }),
+            })
+            .semantics { contentDescription = "Mute ${outputName(ui, idx)}" },
         contentAlignment = Alignment.Center
     ) { SpeakerGlyph(o.muted, if (o.muted) MacColors.red else secondaryColor.copy(alpha = 0.4f), size = 16.dp) }
 }
+
+/** The output's name as the column header shows it, for TalkBack labels. */
+private fun outputName(ui: MatrixUi, idx: Int): String =
+    ui.state.visibleOutputs.firstOrNull { it.index == idx }?.name ?: "output ${idx + 1}"
 
 @Composable
 private fun OutputGainField(ui: MatrixUi, idx: Int, width: Dp = 62.dp) {
@@ -283,7 +293,7 @@ private fun OutputGainField(ui: MatrixUi, idx: Int, width: Dp = 62.dp) {
         onLive = { ui.actions.outputGainLive(idx, it) },
         onCommit = { ui.actions.outputGainCommit(idx, it) },
         width = width,
-        title = "Output gain"
+        title = "Output gain, ${outputName(ui, idx)}"
     )
 }
 
@@ -295,7 +305,7 @@ private fun OutputDelayField(ui: MatrixUi, idx: Int, width: Dp = 62.dp) {
         onLive = { ui.actions.outputDelayLive(idx, it) },
         onCommit = { ui.actions.outputDelayCommit(idx, it) },
         width = width,
-        title = "Output delay"
+        title = "Output delay, ${outputName(ui, idx)}"
     )
 }
 
@@ -325,9 +335,13 @@ private fun Crosspoint(ui: MatrixUi, row: MatrixInput, out: MatrixOutput, modifi
         onGainCommit = { ui.actions.matrixGainCommit(row.index, out.index, it) },
         onToggleInverted = { ui.actions.toggleInvert(row.index, out.index) },
         outlineColor = conflictOutline(ui.state, out.index),
-        modifier = modifier.alpha(if (enabled) 1f else 0.3f)
+        modifier = modifier.alpha(if (enabled) 1f else 0.3f),
+        label = routeLabel(row, out)
     )
 }
+
+/** TalkBack's name for a crosspoint (WP AN20). */
+internal fun routeLabel(row: MatrixInput, out: MatrixOutput) = "${row.name} to ${out.name}"
 
 /** macOS: orange rings in the PDM column where enabling PDM would conflict. */
 private fun conflictOutline(s: MatrixMixerState, outIndex: Int): Color? =
@@ -429,7 +443,7 @@ private fun GridColumnHeader(ui: MatrixUi, out: MatrixOutput) {
             Modifier
                 .width(ColumnWidth)
                 .height(52.dp)
-                .combinedClickable(onClick = { menu = true }, onLongClick = { menu = true }),
+                .combinedClickable(onClickLabel = "Output menu", onClick = { menu = true }, onLongClick = { menu = true }),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -535,7 +549,7 @@ private fun OutputPage(ui: MatrixUi, out: MatrixOutput) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
         // Column header: name, OUTn, header menu
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f).combinedClickable(onClick = {}, onLongClick = { menu = true })) {
+            Column(Modifier.weight(1f).combinedClickable(onClick = {}, onLongClick = { menu = true }, onLongClickLabel = "Output menu")) {
                 Text(out.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     out.descriptor,
@@ -602,19 +616,24 @@ private fun PhoneRouteRow(ui: MatrixUi, row: MatrixInput, out: MatrixOutput) {
                         gain = route.gain,
                         onLive = { ui.actions.matrixGainLive(row.index, out.index, it) },
                         onCommit = { ui.actions.matrixGainCommit(row.index, out.index, it) },
-                        title = "${row.name} → ${out.name}",
+                        title = "Gain, ${routeLabel(row, out)}",
                         quantized = false
                     )
                 }
             }
             Box(Modifier.width(44.dp), contentAlignment = Alignment.Center) {
-                if (route.isConnected) MatrixInvertToggle(route.isInverted, true, { ui.actions.toggleInvert(row.index, out.index) })
+                if (route.isConnected) {
+                    MatrixInvertToggle(route.isInverted, true, {
+                        ui.actions.toggleInvert(row.index, out.index)
+                    }, label = routeLabel(row, out))
+                }
             }
             MatrixConnectToggle(
                 route.isConnected,
                 if (enabled) ChannelPalette.fromHex(row.color) else Color.Gray,
                 conflictOutline(s, out.index),
-                true
+                true,
+                routeLabel(row, out)
             ) { ui.actions.toggleRoute(row.index, out.index) }
         }
     }

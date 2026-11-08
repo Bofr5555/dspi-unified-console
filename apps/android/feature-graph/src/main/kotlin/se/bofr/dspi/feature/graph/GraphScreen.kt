@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -122,7 +123,11 @@ fun GraphScreen(bridge: DspiBridge, onNavigate: (String) -> Unit, onBack: () -> 
                 "Open channel page",
                 fontSize = 12.sp,
                 color = Color(0xFF7AA7FF),
-                modifier = Modifier.padding(top = 4.dp).clickable { onNavigate(DspiRoutes.channel(edited)) }
+                // -- WP AN20 -- read as a button
+                modifier =
+                Modifier.padding(top = 4.dp).clickable(role = Role.Button) {
+                    onNavigate(DspiRoutes.channel(edited))
+                }
             )
         }
     }

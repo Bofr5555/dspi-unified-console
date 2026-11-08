@@ -32,9 +32,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -79,6 +81,8 @@ object SliderMath {
  *
  * @param trackColor tint of the filled track (`.tint(.red)` for the master
  *   volume); the accent colour when null.
+ * @param label what TalkBack calls the slider ("Preamp", "User Volume").
+ * @param stateText the value as TalkBack reads it ("-3.0 dB"); a percentage of the range when null.
  */
 @Composable
 fun CustomSlider(
@@ -91,7 +95,9 @@ fun CustomSlider(
     enabled: Boolean = true,
     trackColor: Color? = null,
     onEditingChanged: ((Boolean) -> Unit)? = null,
-    onReset: (() -> Unit)? = null
+    onReset: (() -> Unit)? = null,
+    label: String? = null,
+    stateText: ((Float) -> String)? = null
 ) {
     @Suppress("NAME_SHADOWING")
     val enabled = writeEnabled(enabled)
@@ -124,6 +130,9 @@ fun CustomSlider(
             .alpha(if (enabled) 1f else 0.4f)
             .semantics {
                 progressBarRangeInfo = ProgressBarRangeInfo(current, range)
+                // -- WP AN20 -- the name and the value in its unit, not "37 percent"
+                if (label != null) contentDescription = label
+                if (stateText != null) stateDescription = stateText(current)
                 if (enabled) {
                     setProgress { v ->
                         editingChanged?.invoke(true)
@@ -315,7 +324,8 @@ fun ParameterRow(
                 displayOverride = displayOverride,
                 liveText = if (drag.dragging) liveFormat(drag.value) else null,
                 enabled = isEnabled,
-                range = range
+                range = range,
+                accessibilityLabel = title
             ) { typed ->
                 // Commit and let the published value echo back (a clamped entry shows the clamp).
                 setNow(typed)
@@ -329,7 +339,9 @@ fun ParameterRow(
             defaultValue = defaultValue,
             onReset = defaultValue?.let { d -> { drag.set(d) { setNow(it) } } },
             enabled = isEnabled,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            label = title,
+            stateText = { v -> listOf(displayOverride ?: liveFormat(v), unit).filter { it.isNotEmpty() }.joinToString(" ") }
         )
         if (ends != null) {
             Row {
