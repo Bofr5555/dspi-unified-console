@@ -3829,18 +3829,38 @@ pub const LT_FP_MAX: f32 = 14_400.0;
 /// a band `eq.gain` is refused (a dB value there would move the target to a
 /// few Hz, a large bass boost) and `eq.fp` writes that field; `eq.fp` and
 /// `eq.qp` mean nothing on any other type. Every other path fits every type.
-pub fn eq_field_fits(path: &str, t: FilterType) -> Result<(), String> {
+///
+/// `band` is the band's index on the wire and only shapes the advice: a PEQ
+/// band can become a Linkwitz Transform (`eq.type` 11), a crossover band
+/// (20..23) cannot, since `set_crossover` takes only Off or a crossover type.
+pub fn eq_field_fits(path: &str, band: u8, t: FilterType) -> Result<(), String> {
     match path {
-        "eq.fp" | "eq.qp" if !t.is_linkwitz() => Err(format!(
-            "{path} belongs to a Linkwitz Transform band; this band is {} (set eq.type to 11 first)",
-            t.display_name()
-        )),
+        "eq.fp" | "eq.qp" if !t.is_linkwitz() => Err(if is_crossover_band(band) {
+            // -- WP CG35 -- (review c6v CG34-N2)
+            format!(
+                "{path} belongs to a Linkwitz Transform band; band {band} is a crossover band, \
+                 which cannot hold one (use a PEQ band, eq.type 11)"
+            )
+        } else {
+            format!(
+                "{path} belongs to a Linkwitz Transform band; this band is {} (set eq.type to 11 first)",
+                t.display_name()
+            )
+        }),
         "eq.gain" if t.is_linkwitz() => Err(
             "a Linkwitz Transform band has no gain: its gain field is the target frequency, eq.fp"
                 .into(),
         ),
         _ => Ok(()),
     }
+}
+
+// -- WP CG35 --
+/// Whether `band` is one of the crossover bands (`XOVER_BAND_BASE`, 20..23).
+fn is_crossover_band(band: u8) -> bool {
+    let first = crate::generated::filter::XOVER_BAND_BASE;
+    let n = crate::generated::wire::WIRE_MAX_XOVER_BANDS;
+    (first..first.saturating_add(n)).contains(&u16::from(band))
 }
 
 /// A band's `[freq, q, gain, qp]` once its type changes from `from` to `to`,
@@ -4206,15 +4226,41 @@ mod tests {
     fn wp_cg34_a_bands_type_decides_gain_or_fp() {
         let lt = FilterType::LinkwitzTransform;
         let bell = FilterType::Peaking;
-        assert!(eq_field_fits("eq.fp", lt).is_ok());
-        assert!(eq_field_fits("eq.qp", lt).is_ok());
-        assert!(eq_field_fits("eq.gain", lt).unwrap_err().contains("eq.fp"));
-        assert!(eq_field_fits("eq.gain", bell).is_ok());
-        let e = eq_field_fits("eq.fp", bell).unwrap_err();
+        assert!(eq_field_fits("eq.fp", 0, lt).is_ok());
+        assert!(eq_field_fits("eq.qp", 0, lt).is_ok());
+        assert!(
+            eq_field_fits("eq.gain", 0, lt)
+                .unwrap_err()
+                .contains("eq.fp")
+        );
+        assert!(eq_field_fits("eq.gain", 0, bell).is_ok());
+        let e = eq_field_fits("eq.fp", 0, bell).unwrap_err();
         assert!(e.contains("Peaking") && e.contains("eq.type"), "{e}");
-        assert!(eq_field_fits("eq.qp", FilterType::from_raw(34)).is_err());
+        assert!(eq_field_fits("eq.qp", 20, FilterType::from_raw(34)).is_err());
         for path in ["eq.type", "eq.freq", "eq.q", "eq.bypass"] {
-            assert!(eq_field_fits(path, lt).is_ok() && eq_field_fits(path, bell).is_ok());
+            assert!(eq_field_fits(path, 0, lt).is_ok() && eq_field_fits(path, 0, bell).is_ok());
+        }
+    }
+
+    /// CG35 (review c6v CG34-N2): a crossover band cannot become a Linkwitz
+    /// Transform (`set_crossover` takes Off or 32..63), so its refusal does
+    /// not advise `eq.type` 11 on that band; a PEQ band's still does.
+    #[test]
+    fn wp_cg35_a_crossover_band_is_not_told_to_become_a_linkwitz() {
+        let lr4 = FilterType::from_raw(34);
+        for band in 20..=23 {
+            for t in [lr4, FilterType::Flat] {
+                let e = eq_field_fits("eq.fp", band, t).unwrap_err();
+                assert!(
+                    e.contains("crossover band") && e.contains("PEQ band"),
+                    "{e}"
+                );
+                assert!(!e.contains("set eq.type to 11"), "{e}");
+            }
+        }
+        for band in [0, 9, 19, 24] {
+            let e = eq_field_fits("eq.qp", band, FilterType::Flat).unwrap_err();
+            assert!(e.contains("set eq.type to 11 first"), "{e}");
         }
     }
 
