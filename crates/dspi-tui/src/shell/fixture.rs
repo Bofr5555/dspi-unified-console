@@ -456,6 +456,16 @@ pub fn state() -> DeviceState {
     )
 }
 
+// -- WP CG37 --
+/// [`state`] with `output`'s delay stored as `ms` (`WireOutputConfig`'s
+/// `delay_ms` at offset 8), past the line if asked: another app can set one.
+pub fn with_output_delay(output: usize, ms: f32) -> DeviceState {
+    let mut b = packet();
+    let at = section("outputs") + output * 12 + 8;
+    b[at..at + 4].copy_from_slice(&ms.to_le_bytes());
+    DeviceState::new(caps(), BulkPacket::decode(b).expect("fixture packet"))
+}
+
 /// Give `state` a Tube Modeller: the probe's `tube_preamp` feature, and the
 /// firmware's power-on values (tube.h:61-73) in the tube section at
 /// `WireTubeParams` (bulk_params.h:403-427), with the master switch as asked.

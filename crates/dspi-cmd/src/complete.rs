@@ -11,7 +11,7 @@
 use dspi_proto::packets::{FieldKind, FieldSpec, spec_for_path};
 use dspi_proto::registry::{Kind, REGISTRY, Target, by_path};
 
-use crate::{Context, VERBS};
+use crate::{Context, VERBS, delay_range, is_delay};
 
 /// One suggestion, with enough context to render a useful menu.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -240,6 +240,11 @@ fn value_candidates(d: &dspi_proto::registry::ParamDesc) -> Vec<Candidate> {
             .iter()
             .map(|(_, name)| Candidate::new(*name, d.label, CandidateKind::Choice))
             .collect(),
+        // -- WP CG37 -- a delay's range is the platform's line, not the
+        // registry's 85 ms ceiling.
+        Kind::Float { .. } if is_delay(d.path) => {
+            vec![Candidate::new("", delay_range(), CandidateKind::Hint)]
+        }
         Kind::Float { unit, min, max } => vec![Candidate::new(
             "",
             format!("{min} to {max}{}", unit.suffix()),
@@ -331,6 +336,15 @@ mod tests {
     fn a_number_offers_its_range_as_a_hint() {
         assert_eq!(hint(&["bass.drive"], ""), Some("0 to 18 dB".into()));
         assert_eq!(hint(&["vol.user"], ""), Some("-60 to 0 dB".into()));
+    }
+
+    // -- WP CG37 --
+    /// A delay's hint is the line's range, not the registry's 85 ms.
+    #[test]
+    fn wp_cg37_a_delay_hints_the_lines_range() {
+        let want = Some("0 to 42 ms (21 on RP2040)".to_string());
+        assert_eq!(hint(&["out.delay", "1"], ""), want);
+        assert_eq!(hint(&["ch.delay", "in.1"], ""), want);
     }
 
     /// Channel suggestions come from the device, so a renamed channel completes

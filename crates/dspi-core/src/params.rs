@@ -834,19 +834,16 @@ fn delay_ms(inner: &Inner, path: &str, ms: f32) -> Result<f32> {
     Ok(ms)
 }
 
-// -- WP CG36 --
-/// `ms` against the longest delay the connected platform's line holds
-/// ([`state::max_delay_ms_for`]): an error naming that limit above it.
+// -- WP CG36 -- -- WP CG37 --
+/// `ms` (quantized, [`quantize_delay`]) against the connected platform's
+/// line ([`state::max_delay_ms_for`]): an error naming the range, 0 to that
+/// limit, outside it. NaN is the caller's to refuse.
 pub(crate) fn check_delay(s: &DspState, path: &str, ms: f32) -> Result<()> {
     let max = state::max_delay_ms_for(s);
-    if ms > max {
-        let platform = if s.platform_id == 1 {
-            "RP2350"
-        } else {
-            "RP2040"
-        };
+    if ms < 0.0 || ms > max {
+        let platform = dspi_proto::Platform::from_id(s.platform_id).name();
         return Err(invalid(format!(
-            "{path}: {ms} ms is out of range; this device ({platform}) holds at most {max} ms"
+            "{path}: {ms} ms is out of range; this device ({platform}) holds 0 to {max} ms"
         )));
     }
     Ok(())
@@ -1008,7 +1005,7 @@ mod tests_wp_c3 {
         log: Log,
     }
 
-    struct SpyHandles {
+    pub(super) struct SpyHandles {
         answers: Arc<Mutex<HashMap<u8, Vec<u8>>>>,
         swallow: Arc<Mutex<Vec<u8>>>,
         log: Log,
@@ -1022,10 +1019,10 @@ mod tests_wp_c3 {
         fn swallow(&self, opcode: u8) {
             self.swallow.lock().unwrap().push(opcode);
         }
-        fn clear(&self) {
+        pub(super) fn clear(&self) {
             self.log.lock().unwrap().clear();
         }
-        fn outs(&self, opcode: u8) -> Vec<(u16, Vec<u8>)> {
+        pub(super) fn outs(&self, opcode: u8) -> Vec<(u16, Vec<u8>)> {
             self.log
                 .lock()
                 .unwrap()
@@ -1043,7 +1040,7 @@ mod tests_wp_c3 {
         }
     }
 
-    fn spy_core() -> (Arc<DspiCore>, SpyHandles) {
+    pub(super) fn spy_core() -> (Arc<DspiCore>, SpyHandles) {
         let inner = FakeDevice::demo();
         let h = SpyHandles {
             answers: Arc::default(),
@@ -1576,7 +1573,7 @@ mod tests_wp_c3 {
     // -- WP CG36 --
     use crate::ParamValue;
 
-    fn refusal(r: Result<impl std::fmt::Debug>) -> String {
+    pub(super) fn refusal(r: Result<impl std::fmt::Debug>) -> String {
         match r {
             Err(DspiError::InvalidArgument { msg }) => msg,
             other => panic!("expected InvalidArgument, got {other:?}"),
@@ -1646,7 +1643,7 @@ mod tests_wp_c3 {
         assert!(e.contains("ch.delay") && e.contains("42 ms"), "{e}");
         // The typed setters refuse the same (they clamped silently before).
         let e = refusal(core.set_output_delay(1, 50.0));
-        assert!(e.contains("at most 42 ms"), "{e}");
+        assert!(e.contains("0 to 42 ms"), "{e}");
         refusal(core.set_delay(0, 50.0));
         // An output's wire channel goes through the output's setter.
         refusal(core.set_delay(9, 50.0));
@@ -1657,7 +1654,7 @@ mod tests_wp_c3 {
         // RP2040: 21 ms, below the registry's 85 and the session's 42.
         core.lock().state.platform_id = 0;
         let e = refusal(put("out.delay", 1, 30.0));
-        assert!(e.contains("at most 21 ms") && e.contains("RP2040"), "{e}");
+        assert!(e.contains("0 to 21 ms") && e.contains("RP2040"), "{e}");
         assert!(h.outs(op::REQ_SET_OUTPUT_DELAY).is_empty(), "nothing sent");
         assert_eq!(put("out.delay", 1, 21.0), Ok(ParamValue::Float(21.0)));
         // Below 0 is still 0 for a typed setter.
@@ -1707,5 +1704,101 @@ mod tests_wp_c3 {
             core.core1_conflict_reason(outputs),
             Err(DspiError::InvalidArgument { .. })
         ));
+    }
+}
+
+// -- WP CG37 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg37 {
+    use super::tests_wp_c3::{refusal, spy_core};
+    use crate::{ParamValue, state};
+    use dspi_proto::generated::opcodes as op;
+
+    /// The core's line is the session's: one source for both.
+    #[test]
+    fn wp_cg37_the_cores_line_is_the_sessions() {
+        let (core, _) = spy_core();
+        for id in [0u8, 1, 7] {
+            core.lock().state.platform_id = id;
+            let p = dspi_proto::Platform::from_id(id);
+            assert_eq!(core.max_delay_ms(), p.max_delay_ms(), "{id}");
+            assert_eq!(
+                state::max_delay_ms_for(&core.get_state()),
+                core.max_delay_ms()
+            );
+        }
+    }
+
+    /// write_param checks the quantized value, as the typed setters do: a
+    /// value that quantizes onto the line is taken both ways, one that
+    /// quantizes past it is refused both ways.
+    #[test]
+    fn wp_cg37_write_param_and_the_setters_check_the_same_quantized_value() {
+        let (core, h) = spy_core();
+        for (id, max) in [(1u8, 42.0f32), (0, 21.0)] {
+            // A write may read the image again, which brings back the
+            // demo's platform: set the one under test before each call.
+            let at = || core.lock().state.platform_id = id;
+            let put = |path: &str, i: u8, ms: f32| {
+                at();
+                core.write_param(path.into(), vec![i], ParamValue::Float(ms))
+            };
+            let on = max + 0.00004;
+            assert_eq!(put("out.delay", 1, on), Ok(ParamValue::Float(max)));
+            assert_eq!(core.get_state().output_delay_ms[1], max);
+            at();
+            core.set_output_delay(2, on).unwrap();
+            assert_eq!(core.get_state().output_delay_ms[2], max);
+            assert_eq!(put("ch.delay", 0, on), Ok(ParamValue::Float(max)));
+            at();
+            core.set_delay(1, on).unwrap();
+            assert_eq!(core.get_state().channel_delays[1], max);
+
+            at();
+            h.clear();
+            let before = core.get_state();
+            let past = max + 0.00006;
+            let w = refusal(put("out.delay", 1, past));
+            let t = refusal(core.set_output_delay(1, past));
+            assert_eq!(w, t, "the same words both ways");
+            assert!(w.contains(&format!("0 to {max} ms")), "{w}");
+            refusal(put("ch.delay", 0, past));
+            refusal(core.set_delay(0, past));
+            assert!(h.outs(op::REQ_SET_OUTPUT_DELAY).is_empty(), "nothing sent");
+            assert!(h.outs(op::REQ_SET_DELAY).is_empty(), "nothing sent");
+            assert_eq!(core.get_state(), before);
+        }
+    }
+
+    /// Below 0, write_param names the line's range (not the registry's
+    /// 85 ms); a typed setter still makes it 0, and a value that quantizes
+    /// to 0 is 0 both ways.
+    #[test]
+    fn wp_cg37_a_negative_delay_names_the_lines_range() {
+        let (core, h) = spy_core();
+        for (id, platform, max) in [(1u8, "RP2350", 42), (0, "RP2040", 21)] {
+            core.lock().state.platform_id = id;
+            h.clear();
+            for path in ["out.delay", "ch.delay"] {
+                let e = refusal(core.write_param(path.into(), vec![1], ParamValue::Float(-1.0)));
+                assert_eq!(
+                    e,
+                    format!(
+                        "{path}: -1 ms is out of range; this device ({platform}) holds 0 to {max} ms"
+                    )
+                );
+                let e = refusal(core.write_param(path.into(), vec![1], ParamValue::Int(-3)));
+                assert!(e.contains(&format!("0 to {max} ms")), "{e}");
+            }
+            assert!(h.outs(op::REQ_SET_OUTPUT_DELAY).is_empty(), "nothing sent");
+            assert!(h.outs(op::REQ_SET_DELAY).is_empty(), "nothing sent");
+            assert_eq!(
+                core.write_param("out.delay".into(), vec![1], ParamValue::Float(-0.00002)),
+                Ok(ParamValue::Float(0.0))
+            );
+            core.set_output_delay(1, -1.0).unwrap();
+            assert_eq!(core.get_state().output_delay_ms[1], 0.0);
+        }
     }
 }
