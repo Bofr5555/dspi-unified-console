@@ -1,10 +1,11 @@
-// A stand-in core for the skeleton (WP WB5), until WB3's `dspi-wasm` exists.
+// A fake core for tests (WP WB5; since WB3 tests only, the page runs the real
+// core from crates/dspi-wasm).
 //
 // It answers the same calls with the same shapes, from a small in-memory demo
-// device, so the page and its tests are written against the real contract. It is
-// not a second implementation of the protocol: it has no wire, no registry and
-// only the parameters the skeleton shows. When WB3 lands, worker.ts loads the
-// wasm core and this file stays only as the tests' fake.
+// device, so unit tests and the stub-driven e2e page (the lost-link banner,
+// which the core's demo cannot produce before Link, WB4b) run without the wasm
+// module. It is not a second implementation of the protocol: it has no wire, a
+// registry of one parameter, and only the record fields the console reads.
 
 import {
   CoreCallError,
@@ -13,14 +14,29 @@ import {
   type CoreMethods,
   type DeviceSnapshot,
   type DeviceTarget,
+  type DspState,
   type Method,
+  type ParamInfo,
+  type ParamValue,
+  type SystemStatus,
 } from "./protocol";
 
-/** `vol.user`'s range, from `dspi-proto`'s registry. */
-const VOL_MIN = -60;
-const VOL_MAX = 0;
+/** `vol.user` as `dspi-proto`'s registry describes it. */
+const VOL_USER: ParamInfo = {
+  path: "vol.user",
+  label: "Volume",
+  plain: "The listening volume, shared with the OS volume slider",
+  writable: true,
+  readable: true,
+  indices: 0,
+  routed: true,
+  kind: "float",
+  unit: "dB",
+  min: -60,
+  max: 0,
+};
 
-/** `dspi_core`'s error for firmware it can read but not write (`connect.rs`). */
+/** `dspi_core`'s error for firmware it can read but not write (`error.rs`). */
 const READ_ONLY_REASON = "the connected firmware is read-only in this version";
 
 export interface StubOptions {
@@ -53,6 +69,11 @@ export class StubCore implements CoreImpl {
         return structuredClone(this.need());
       case "write":
         return this.write(params as CoreMethods["write"]["params"]);
+      case "describe":
+        if ((params as { path: string }).path !== VOL_USER.path) {
+          throw new CoreCallError("unknown_param", `there is no parameter ${(params as { path: string }).path}`);
+        }
+        return { ...VOL_USER };
       case "meters":
         return this.meters();
       case "close":
@@ -70,23 +91,40 @@ export class StubCore implements CoreImpl {
       throw new CoreCallError("refused", "This connection type is not available yet");
     }
     const readOnly = target.readOnly === true;
+    const names = ["USB L", "USB R", "Out 1", "Out 2", "Out 3", "Out 4"];
+    const state = {
+      platformId: 1,
+      numChannels: names.length,
+      numInputChannels: 2,
+      numOutputChannels: 4,
+      formatVersion: readOnly ? 31 : 32,
+      fwMajor: 1,
+      fwMinor: 1,
+      fwPatch: 6,
+      fwBeta: 0,
+      preampDb: 0,
+      bypass: false,
+      masterVolumeDb: 0,
+      userVolumeDb: -20,
+      userMute: false,
+      loudnessEnabled: false,
+      outputGainDb: [0, 0, 0, 0],
+      outputMuted: [false, false, false, false],
+      channelNames: names,
+      presetNames: ["Living room", "Late night", "Flat"],
+      activePresetSlot: 0,
+    } satisfies DspState;
     this.device = {
-      name: "DSPi demo",
-      serial: "DEMO-0001",
-      firmware: "1.1.6",
-      platform: "RP2350",
-      readOnly,
-      readOnlyReason: readOnly ? READ_ONLY_REASON : "",
-      volume: { db: -20, minDb: VOL_MIN, maxDb: VOL_MAX },
-      presets: { active: 0, names: ["Living room", "Late night", "Flat"] },
-      channels: [
-        { name: "USB L" },
-        { name: "USB R" },
-        { name: "Out 1" },
-        { name: "Out 2" },
-        { name: "Out 3" },
-        { name: "Out 4" },
-      ],
+      device: {
+        name: "Stub DSPi",
+        serial: "STUB-0001",
+        firmware: "1.1.6",
+        platform: "RP2350",
+        demo: true,
+        readOnly,
+        readOnlyReason: readOnly ? READ_ONLY_REASON : "",
+      },
+      state,
     };
     return structuredClone(this.device);
   }
@@ -96,27 +134,30 @@ export class StubCore implements CoreImpl {
     return this.device;
   }
 
-  private write({ path, value }: { path: string; value: number }): number {
+  private write({ path, value }: CoreMethods["write"]["params"]): ParamValue {
     const d = this.need();
-    if (d.readOnly) throw new CoreCallError("read_only", d.readOnlyReason);
-    if (path !== "vol.user") throw new CoreCallError("refused", `${path} is not available yet`);
-    if (!Number.isFinite(value) || value < VOL_MIN || value > VOL_MAX) {
-      throw new CoreCallError("out_of_range", `Volume must be between ${VOL_MIN} and ${VOL_MAX} dB`);
+    if (path !== VOL_USER.path) throw new CoreCallError("refused", `${path} is not available in this version yet`);
+    if (typeof value !== "object" || !("float" in value)) throw new CoreCallError("invalid", "Volume takes a number");
+    const db = value.float;
+    if (!Number.isFinite(db) || db < VOL_USER.min! || db > VOL_USER.max!) {
+      throw new CoreCallError("out_of_range", `Volume must be between ${VOL_USER.min} and ${VOL_USER.max} dB`);
     }
-    // The device keeps 0.5 dB steps; the read-back is what it kept.
-    d.volume.db = Math.round(value * 2) / 2;
-    this.push({ event: "state", snapshot: structuredClone(d) });
-    return d.volume.db;
+    if (d.device.readOnly) throw new CoreCallError("read_only", d.device.readOnlyReason);
+    // A device keeps its own steps; the read-back is what it kept.
+    d.state.userVolumeDb = Math.round(db * 2) / 2;
+    this.push({ event: "state", snapshot: structuredClone(d), flags: 1 });
+    return { float: d.state.userVolumeDb };
   }
 
-  private meters(): number[] {
+  private meters(): SystemStatus {
     const d = this.need();
     this.tick += 1;
-    const level = d.volume.db - VOL_MIN; // louder volume, higher meters
-    return d.channels.map((_, i) => {
-      const wobble = 6 * Math.sin((this.tick + i * 7) / 5);
-      return Math.min(0, Math.max(-90, level - 60 + wobble - i));
+    const level = d.state.userVolumeDb + 60; // louder volume, higher meters
+    const peaks = d.state.channelNames.map((_, i) => {
+      const db = Math.min(0, Math.max(-90, level - 60 + 6 * Math.sin((this.tick + i * 7) / 5) - i));
+      return 10 ** (db / 20);
     });
+    return { peaks, cpu0: 10, cpu1: 20, clipFlags: 0, activeInputChannels: 2, numChannels: peaks.length, stale: false, ageMs: 0 };
   }
 
   private simulate({ what }: { what: "link-lost" | "link-closed" }): null {

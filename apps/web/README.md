@@ -1,12 +1,12 @@
 # DSPi web console
 
 The web client of the unified console (WP WB5, the skeleton). The same Rust core
-as every other client will run in a dedicated Worker under JSPI
-(`docs/core-merge/WEB-STUDY.md`); until WB3 builds that binding, a small stub core
-answers the same calls, so the page and its tests are already written against the
-real contract.
+as every other client runs in a dedicated Worker under JSPI
+(`docs/core-merge/WEB-STUDY.md`): `crates/dspi-wasm` (WP WB3), loaded by
+`src/core/worker.ts` from `dspi_wasm.wasm` beside it. A small stub core
+(`src/core/stub.ts`) remains as the tests' fake only.
 
-**Status:** skeleton. Demo device only. USB (WB4a) and Link to hubs (WB4b) say
+**Status:** skeleton. The core's own demo device only. USB (WB4a) and Link to hubs (WB4b) say
 "Not available in this version yet". The screens of the other clients arrive in
 WB6 slices. Nothing here is published.
 
@@ -34,15 +34,22 @@ page ── mount(el, options) ── App (Preact)
           │
           └─ CoreClient ×N ──postMessage──▶ Worker ×N (one per session)
                                               SerialCore: one call at a time
-                                              StubCore now → dspi-wasm (WB3)
+                                              WasmCore → dspi_wasm.wasm (the core)
 ```
 
 - **One Worker per device session.** Sessions share nothing, so a page can hold
   as many as it shows, and two consoles can live on one page. Inside a Worker
-  calls run strictly one at a time (`src/core/serial.ts`): the core under JSPI
-  must not be re-entered while a call is suspended.
-- **The contract** with the core is `src/core/protocol.ts`. Its shapes follow the
-  core's records so WB3 answers them from `dspi-core` directly.
+  calls run strictly one at a time (`src/core/serial.ts`, and `WasmCore`'s own
+  queue for the Worker's timers): the core under JSPI must not be re-entered
+  while a call is suspended. The module refuses such a call itself (`busy`).
+- **The contract** with the core is `src/core/protocol.ts`: the core's records
+  (`DspState` as the core's serde writes it, camelCase), writes by registry path
+  with `indices` and a typed value as `Session::write` takes them, the read-back
+  as the answer. `crates/dspi-wasm/src/calls.rs` is the other side.
+- **The core is caller-driven** on the web (WB2): the Worker drains notifications
+  every 100 ms (`poll`) and pushes a `state` event when something changed, and
+  turns the analyser (`rtaTick`) at the wait the core asks for. A panic in the
+  core ends the module: the session reports `lost`, later calls `dead`.
 - **Wording** is the core's: the Link phases come from `link_phase_texts()`
   (generated to `ci/generated/web/link-words.json` by `ci/drift.sh` until the
   binding answers at run time); About is `assets/about.json`.
@@ -87,7 +94,8 @@ Everything runs in the official Playwright image, pinned by digest in
 host.
 
 ```bash
-ci/check.sh --step web                 # npm ci, typecheck, unit, e2e (Chromium, Firefox, 375 px)
+ci/check.sh --step web                 # the core (cross container), npm ci, typecheck,
+                                       # unit (the core's too, under JSPI), e2e
 apps/web/tools/ci.sh --no-e2e          # without the browsers
 ```
 
@@ -95,7 +103,9 @@ Outputs and caches go to `~/.cache/dspi-build/work/web/<branch>/` (`dist/` is th
 not in the tree). `node tools/serve.mjs <dist>` serves a build on loopback for a look.
 
 `dist/` holds `index.html` and `app.js` (the standalone page), `dspi-web.js` (the
-library), `worker.js` and `dspi-web.css`. Preact (MIT) is the one runtime
+library), `worker.js`, `dspi_wasm.wasm` (the core: 638 KB, 227 KB gzip) and
+`dspi-web.css`. A host serves `dspi_wasm.wasm` beside `worker.js`. The page needs
+JSPI (Chrome 137, Firefox 153, Safari 27); without it every call says so. Preact (MIT) is the one runtime
 dependency. Its notice is not yet in the licence inventory (`ci/licence-inventory.py`
 covers the Rust and iOS sides); that belongs with WB7, before anything is served.
 
@@ -105,12 +115,13 @@ covers the Rust and iOS sides); that belongs with WB7, before anything is served
 |---|---|
 | `src/core/protocol.ts` | the page ↔ Worker contract, the shape WB3 implements |
 | `src/core/serial.ts` | one call at a time, with a `busy` guard |
-| `src/core/worker.ts` | the Worker: loads the core (stub now) |
+| `src/core/worker.ts` | the Worker: loads the core (`dspi_wasm.wasm`) |
+| `src/core/wasm.ts` | the core's glue: imports, JSON calls, the Worker's timers |
 | `src/core/client.ts` | the page's side: calls, replies, events |
-| `src/core/stub.ts` | the stand-in core; later the tests' fake |
+| `src/core/stub.ts` | the tests' fake core |
 | `src/fleet/` | installations, sources, access; `LocalBackend`; what this page can reach |
 | `src/ui/` | Preact components and the session model |
 | `src/index.tsx` | `mount()` and the public types |
 | `src/standalone.ts`, `index.html` | the standalone page (`?readonly` for a display page) |
 | `test/unit/` | `node --test` |
-| `test/e2e/`, `test/pages/` | Playwright; `embed.html` mounts two consoles with a server-like backend |
+| `test/e2e/`, `test/pages/` | Playwright; `embed.html` mounts two consoles with a server-like backend (`?core=stub`: on the fake core, `stub-worker.ts`) |

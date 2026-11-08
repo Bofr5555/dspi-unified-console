@@ -55,6 +55,12 @@ export interface FleetBackend {
    * for the fleet). Standalone returns null and the user pairs with the hub.
    */
   hubCredentials?(url: string): Promise<{ token: string } | null>;
+  // -- WP WB3 -- the seam for the owner's decision of 2026-11-08; WB4b uses it.
+  /**
+   * The DSPis behind a hub, when the server knows them. Missing (the default):
+   * the console asks the hub itself over Link (its choose_device step).
+   */
+  hubDevices?(url: string): Promise<{ deviceId: string; name: string }[]>;
 }
 
 /** The wording shown when access is the backend's "view". */

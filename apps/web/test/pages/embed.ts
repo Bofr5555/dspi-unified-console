@@ -25,8 +25,11 @@ class FakeFleet implements FleetBackend {
   }
 }
 
-const worker = new URL("../worker.js", location.href);
-// Every session's client, so the tests can make the stub core lose its link.
+// `?core=stub`: the tests' fake core (stub-worker.js), for what the real core's
+// demo cannot do yet (Link phases). Otherwise the page's own Worker, the real core.
+const stub = new URLSearchParams(location.search).get("core") === "stub";
+const worker = new URL(stub ? "./stub-worker.js" : "../worker.js", location.href);
+// Every session's client, so the tests can call the core directly.
 const clients: CoreClient[] = [];
 (globalThis as unknown as { dspiClients: CoreClient[] }).dspiClients = clients;
 const spawnCore = () => {

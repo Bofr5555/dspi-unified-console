@@ -46,13 +46,20 @@ export class CoreClient {
     return () => this.listeners.delete(fn);
   }
 
-  /** Closes the session and stops its Worker. Pending calls fail with `not_open`. */
-  async dispose(): Promise<void> {
+  /**
+   * Closes the session and stops its Worker. Pending calls fail with `not_open`.
+   * A core call that never returns (a hung transfer) holds the close behind it,
+   * so the Worker stops after `closeWaitMs` whatever happened (c6a F-4).
+   */
+  async dispose(closeWaitMs = 2000): Promise<void> {
     if (this.closed) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      await this.call("close", undefined);
+      await Promise.race([this.call("close", undefined), new Promise((r) => (timer = setTimeout(r, closeWaitMs)))]);
     } catch {
       // The session may already be gone; the Worker stops either way.
+    } finally {
+      clearTimeout(timer);
     }
     this.closed = true;
     this.worker.terminate();

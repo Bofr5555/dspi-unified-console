@@ -319,6 +319,9 @@ New code keeps this from growing under the rule in `PLAN-CLIENTS.md` section 1. 
 
 Still blocking, unchanged and not reached by the scenario: `link.rs`'s two spawns, `midi.rs`, and the `Condvar`/`recv_timeout` waits listed above outside these paths.
 
+<!-- -- WP WB3 -- -->
+**After WB3: the binding.** `crates/dspi-wasm` is the module the page's Worker loads (`apps/web/src/core/wasm.ts`). JSON calls over the core's records, any number of sessions per module, and the two sharp edges of section 2 closed in the module itself: a call entering while another is suspended is refused (`busy`) and does not run, which the page's unit tests show by bypassing the Worker's queue during a suspended `clock::sleep`. A panic marks the module dead before the abort; the session reports lost. The page's e2e (Chromium, Firefox) runs on the core's own demo: connect, a write with read-back, a notification turned into a state event by the Worker's poll, meters, RTA frames on the Worker's timers. The module is 638 KB, 227 KB gzip, without Link (`opt-level = "s"`). Still to come: WebUSB (WB4a, which pushes packets with `push_notification` and must not also have a source, review c6a W2-2) and Link (WB4b).
+
 ## Sources
 
 - [JSPI support table, web-features](https://web-platform-dx.github.io/web-features-explorer/features/wasm-jspi); [Firefox intent to ship JSPI](https://groups.google.com/a/mozilla.org/g/dev-platform/c/8cOxM-dWaNs)

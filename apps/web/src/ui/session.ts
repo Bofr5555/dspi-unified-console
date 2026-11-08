@@ -1,7 +1,15 @@
 // One open device session as the UI sees it (WP WB5): the core client, what the
 // fleet backend allows, and the last snapshot and Link phase it reported.
 
-import { CoreCallError, type CoreEvent, type DeviceSnapshot, type DeviceTarget, type LinkPhase } from "../core/protocol";
+import {
+  CoreCallError,
+  type CoreEvent,
+  type DeviceSnapshot,
+  type DeviceTarget,
+  type LinkPhase,
+  type ParamInfo,
+  type ParamValue,
+} from "../core/protocol";
 import type { CoreClient } from "../core/client";
 import { VIEW_ONLY_REASON, type Access, type Source } from "../fleet/types";
 
@@ -10,10 +18,15 @@ export interface SessionState {
   snapshot: DeviceSnapshot | null;
   link: { phase: LinkPhase; pinSource?: string } | null;
   error: string;
+  /** What the registry says of the parameters the screens show, by path. */
+  params: Record<string, ParamInfo>;
 }
 
+/** The parameters whose ranges the skeleton's controls need. */
+const SHOWN_PARAMS = ["vol.user"];
+
 export class Session {
-  state: SessionState = { status: "opening", snapshot: null, link: null, error: "" };
+  state: SessionState = { status: "opening", snapshot: null, link: null, error: "", params: {} };
   private readonly listeners = new Set<() => void>();
   private unsubscribe: () => void;
 
@@ -31,26 +44,28 @@ export class Session {
   /** Why writes are off, or "" when this session may write. */
   get readOnlyReason(): string {
     if (this.access === "view") return VIEW_ONLY_REASON;
-    return this.state.snapshot?.readOnly ? this.state.snapshot.readOnlyReason : "";
+    return this.state.snapshot?.device.readOnly ? this.state.snapshot.device.readOnlyReason : "";
   }
 
   async open(target: DeviceTarget): Promise<void> {
     try {
       const snapshot = await this.core.call("open", target);
-      this.set({ status: "open", snapshot, error: "" });
+      const params: Record<string, ParamInfo> = {};
+      for (const path of SHOWN_PARAMS) params[path] = await this.core.call("describe", { path });
+      this.set({ status: "open", snapshot, params, error: "" });
     } catch (e) {
       this.set({ status: "failed", error: message(e) });
     }
   }
 
   /** Writes and shows what the device read back; a refusal leaves the old value shown. */
-  async write(path: string, value: number): Promise<void> {
+  async write(path: string, value: ParamValue, indices?: number[]): Promise<void> {
     if (this.readOnlyReason) {
       this.set({ error: this.readOnlyReason });
       return;
     }
     try {
-      await this.core.call("write", { path, value });
+      await this.core.call("write", indices ? { path, indices, value } : { path, value });
       const snapshot = await this.core.call("state", undefined);
       this.set({ snapshot, error: "" });
     } catch (e) {

@@ -154,7 +154,9 @@ for s in "${steps[@]}"; do
           --no-default-features --lib \$t -- -A clippy::all -D clippy::disallowed_methods -D warnings
         # -- WP WB2 -- with Link: dspi-link's clock and getrandom's backend
         CLIPPY_CONF_DIR=ci/wasm-clippy cargo clippy -p dspi-link -p dspi-core \\
-          --no-default-features --features dspi-core/link --lib \$t -- -A clippy::all -D clippy::disallowed_methods -D warnings"
+          --no-default-features --features dspi-core/link --lib \$t -- -A clippy::all -D clippy::disallowed_methods -D warnings
+        # -- WP WB3 -- the binding, its wasm-only exports included
+        CLIPPY_CONF_DIR=ci/wasm-clippy cargo clippy -p dspi-wasm --all-features --lib \$t -- -D clippy::disallowed_methods -D warnings"
       # -- WP WB2 -- and run it
       ci/wasm-scenario/run.sh ;;
     qt)
