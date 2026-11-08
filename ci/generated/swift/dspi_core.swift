@@ -12373,6 +12373,91 @@ public func FfiConverterTypeFilterParams_lower(_ value: FilterParams) -> RustBuf
 
 
 /**
+ * One filter type and the name clients show for it.
+ */
+public struct FilterTypeName {
+    /**
+     * The firmware's type code (`FILTER_*`): 0..13 PEQ, 32..63 crossover.
+     */
+    public var code: UInt8
+    /**
+     * The name, e.g. "High Cut (12dB)".
+     */
+    public var name: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The firmware's type code (`FILTER_*`): 0..13 PEQ, 32..63 crossover.
+         */code: UInt8, 
+        /**
+         * The name, e.g. "High Cut (12dB)".
+         */name: String) {
+        self.code = code
+        self.name = name
+    }
+}
+
+#if compiler(>=6)
+extension FilterTypeName: Sendable {}
+#endif
+
+
+extension FilterTypeName: Equatable, Hashable {
+    public static func ==(lhs: FilterTypeName, rhs: FilterTypeName) -> Bool {
+        if lhs.code != rhs.code {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(code)
+        hasher.combine(name)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFilterTypeName: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FilterTypeName {
+        return
+            try FilterTypeName(
+                code: FfiConverterUInt8.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FilterTypeName, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.code, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFilterTypeName_lift(_ buf: RustBuffer) throws -> FilterTypeName {
+    return try FfiConverterTypeFilterTypeName.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFilterTypeName_lower(_ value: FilterTypeName) -> RustBuffer {
+    return FfiConverterTypeFilterTypeName.lower(value)
+}
+
+
+/**
  * What a board needs, read before it enters the bootloader. The default is
  * the safe one: unknown.
  */
@@ -20732,6 +20817,31 @@ fileprivate struct FfiConverterSequenceTypeFilterParams: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFilterTypeName: FfiConverterRustBuffer {
+    typealias SwiftType = [FilterTypeName]
+
+    public static func write(_ value: [FilterTypeName], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFilterTypeName.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FilterTypeName] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FilterTypeName]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFilterTypeName.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeLinkDenied: FfiConverterRustBuffer {
     typealias SwiftType = [LinkDenied]
 
@@ -21360,6 +21470,27 @@ public func curveFreq(i: UInt32) -> Double  {
 })
 }
 /**
+ * The name of filter type `code`; "Type 14" for a code the firmware does
+ * not define (yet).
+ */
+public func filterTypeName(code: UInt8) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_filter_type_name(
+        FfiConverterUInt8.lower(code),$0
+    )
+})
+}
+/**
+ * Every filter type the firmware defines with its name, in the Console's
+ * order: the PEQ types 0..13, then the crossovers 32..63.
+ */
+public func filterTypeNames() -> [FilterTypeName]  {
+    return try!  FfiConverterSequenceTypeFilterTypeName.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_filter_type_names($0
+    )
+})
+}
+/**
  * The record for a board already in the bootloader: unknown, so the check
  * asks.
  */
@@ -21623,6 +21754,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_curve_freq() != 1109) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_filter_type_name() != 9662) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_filter_type_names() != 37435) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_firmware_guard_board_in_bootloader() != 60307) {

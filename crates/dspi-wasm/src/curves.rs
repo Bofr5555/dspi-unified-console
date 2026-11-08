@@ -70,6 +70,13 @@ pub fn grid() -> Value {
     json!({ "freqs": freqs })
 }
 
+// -- WP CG34 --
+/// `filterTypeNames`: [{code, name}] for every type the firmware defines
+/// (`dspi_core::filter_type_names`, the Console's band-list names).
+pub fn type_names() -> Value {
+    json!(dspi_core::filter_type_names())
+}
+
 /// `curves`: see the module's text.
 pub fn curves(p: CurvesParams) -> Result<Value, CallError> {
     if p.chains.len() > MAX_CHAINS
@@ -217,5 +224,19 @@ mod tests_wp_wb6b {
         let many: Vec<Value> = (0..40).map(|_| bell(100.0, 1.0, 1.0)).collect();
         let r = run(h, "curves", json!({ "bands": many }));
         assert_eq!(r["code"], "invalid", "{r}");
+    }
+
+    // -- WP CG34 --
+    #[test]
+    fn wp_cg34_the_page_reads_the_cores_type_names() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        let r = run(h, "filterTypeNames", Value::Null);
+        assert_eq!(r["ok"], true, "{r}");
+        let t = r["value"].as_array().unwrap();
+        assert_eq!(t.len(), 46);
+        assert_eq!(t[0], json!({ "code": 0, "name": "Off" }));
+        assert_eq!(t[12], json!({ "code": 12, "name": "High Cut (6dB)" }));
+        assert_eq!(t[14], json!({ "code": 32, "name": "LR2 Low Pass" }));
     }
 }

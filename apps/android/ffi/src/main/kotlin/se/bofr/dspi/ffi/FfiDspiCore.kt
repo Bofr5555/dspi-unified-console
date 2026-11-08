@@ -543,6 +543,10 @@ class FfiDspiCore : DspiCoreApi {
     override fun onboardingGettingStartedJson(): String = se.bofr.dspi.ffi.uniffi.onboardingGettingStartedJson()
 
     override fun aboutJson(): String = se.bofr.dspi.ffi.uniffi.aboutJson()
+
+    override fun filterTypeNames(): List<FilterTypeName> = se.bofr.dspi.ffi.uniffi.filterTypeNames().map { it.toDomain() }
+
+    override fun filterTypeName(code: Int): String = se.bofr.dspi.ffi.uniffi.filterTypeName(code.toUByte())
 }
 
 internal class FfiAutoEqRebuild(private val inner: se.bofr.dspi.ffi.uniffi.AutoEqRebuild) : AutoEqRebuild {
@@ -1889,6 +1893,18 @@ internal fun LinkPhaseText.toFfi() =
         text = text,
         actionKey = actionKey,
         action = action,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.FilterTypeName.toDomain() =
+    FilterTypeName(
+        code = code.toInt(),
+        name = name,
+    )
+
+internal fun FilterTypeName.toFfi() =
+    se.bofr.dspi.ffi.uniffi.FilterTypeName(
+        code = code.toUByte(),
+        name = name,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.RawNotification.toDomain() =

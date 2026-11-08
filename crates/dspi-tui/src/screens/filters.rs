@@ -1109,7 +1109,7 @@ mod tests {
         );
         // A 12 dB/oct shelf has a gain and a Q, exactly as DESIGN 2.1's
         // reference row draws it.
-        assert!(lines[1].contains("Low Shelf 12 dB/oct"), "{f}");
+        assert!(lines[1].contains("Low Shelf (12dB)"), "{f}");
         assert!(
             lines[1].contains("105 Hz") && lines[1].contains("+8.8 dB"),
             "{f}"
