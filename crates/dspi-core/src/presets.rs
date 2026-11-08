@@ -24,10 +24,10 @@ use std::time::Duration;
 use dspi_transport::clock::Instant;
 
 use dspi_proto::enums::FilterType;
-use dspi_proto::generated::opcodes as op;
 use dspi_proto::generated::ranges::{SUBHARM_CEILING_MAX, SUBHARM_LEVEL_MIN};
 use dspi_proto::generated::status as st;
 use dspi_proto::generated::tube as tb;
+use dspi_proto::generated::{self as g, opcodes as op};
 use dspi_session::tube;
 
 use crate::connect::{read_preset_directory, read_preset_name, refresh_params_locked};
@@ -796,13 +796,138 @@ pub(crate) fn rebaseline_after_load_locked(inner: &mut Inner, old: Option<&[u8]>
     }
 }
 
-/// Put `old` back into `baseline` (the re-read) over every run of bytes in
-/// which `mirror` differs from `old` and `baseline` equals `mirror`. Images
-/// of different sizes (another layout) are left alone.
+/// Put `old` back into `baseline` (the re-read) over every field in which
+/// `mirror` differs from `old` and `baseline` equals `mirror`. The unit is a
+/// field of the bulk image ([`IMAGE_FIELDS`], WP CG33b), not a run of
+/// differing bytes: two adjacent fields can differ from `old` in their
+/// boundary bytes, and as one run a load that replaced the first would hide
+/// an edit of the second. An image of another size than `BULK_SIZE` has no
+/// known layout and goes by maximal byte runs; images of different sizes
+/// (another layout) are left alone.
 pub(crate) fn keep_edits_after_load(baseline: &mut [u8], old: &[u8], mirror: &[u8]) {
-    if old.len() != baseline.len() || mirror.len() != baseline.len() {
+    let len = baseline.len();
+    if old.len() != len || mirror.len() != len {
         return;
     }
+    let units = if len == g::BULK_SIZE {
+        image_fields()
+    } else {
+        byte_runs(old, mirror)
+    };
+    for unit in units {
+        let (Some(o), Some(m)) = (old.get(unit.clone()), mirror.get(unit.clone())) else {
+            continue;
+        };
+        if o != m
+            && let Some(dst) = baseline.get_mut(unit)
+            && *dst == *m
+        {
+            dst.copy_from_slice(o);
+        }
+    }
+}
+
+// -- WP CG33b --
+/// The fields of a `BULK_SIZE` image (`WireBulkParams`, bulk_params.h), for
+/// [`keep_edits_after_load`]: per section its offset, its length and the
+/// byte widths of one record's fields, the record repeated over the
+/// section. Reserved bytes and `u8` arrays count byte by byte; a channel
+/// name is one field.
+pub(crate) const IMAGE_FIELDS: [(usize, usize, &[usize]); 25] = [
+    (
+        g::OFF_HEADER,
+        g::LEN_HEADER,
+        &[1, 1, 1, 1, 1, 1, 2, 2, 2, 4],
+    ),
+    (g::OFF_GLOBAL, g::LEN_GLOBAL, &[4, 1, 1, 2, 4, 4]),
+    (
+        g::OFF_CROSSFEED,
+        g::LEN_CROSSFEED,
+        &[1, 1, 1, 1, 4, 4, 1, 1, 1, 1],
+    ),
+    (g::OFF_LEGACY, g::LEN_LEGACY, &[4, 4, 4, 1, 1, 1, 1]),
+    (g::OFF_DELAYS, g::LEN_DELAYS, &[4]),
+    (g::OFF_CROSSPOINTS, g::LEN_CROSSPOINTS, &[1, 1, 1, 1, 4]),
+    (g::OFF_OUTPUTS, g::LEN_OUTPUTS, &[1, 1, 1, 1, 4, 4]),
+    (g::OFF_PINS, g::LEN_PINS, &[1]),
+    (g::OFF_EQ, g::LEN_EQ, BAND_FIELDS),
+    (
+        g::OFF_CHANNEL_NAMES,
+        g::LEN_CHANNEL_NAMES,
+        &[CHANNEL_NAME_LEN],
+    ),
+    (g::OFF_I2S_CONFIG, g::LEN_I2S_CONFIG, &[1]),
+    (
+        g::OFF_LEVELLER,
+        g::LEN_LEVELLER,
+        &[1, 1, 1, 1, 4, 4, 4, 1, 1, 1, 1],
+    ),
+    (g::OFF_PREAMP, g::LEN_PREAMP, &[4]),
+    (
+        g::OFF_MASTER_VOLUME,
+        g::LEN_MASTER_VOLUME,
+        &[4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    ),
+    (g::OFF_INPUT_CONFIG, g::LEN_INPUT_CONFIG, &[1]),
+    (g::OFF_LG_SOUND_SYNC, g::LEN_LG_SOUND_SYNC, &[1]),
+    (
+        g::OFF_USER_VOLUME,
+        g::LEN_USER_VOLUME,
+        &[4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    ),
+    (
+        g::OFF_DAC_HW_MUTE,
+        g::LEN_DAC_HW_MUTE,
+        &[1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1],
+    ),
+    (g::OFF_CROSSOVERS, g::LEN_CROSSOVERS, BAND_FIELDS),
+    (g::OFF_ADAT_CONFIG, g::LEN_ADAT_CONFIG, &[1]),
+    (g::OFF_PSYBASS, g::LEN_PSYBASS, &[1, 1, 2, 4, 4, 4, 4, 4]),
+    (
+        g::OFF_UPMIX,
+        g::LEN_UPMIX,
+        &[1, 1, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+    ),
+    (
+        g::OFF_SUBHARM,
+        g::LEN_SUBHARM,
+        &[1, 1, 2, 4, 4, 4, 4, 4, 4, 4, 1, 1, 1, 1],
+    ),
+    (
+        g::OFF_TUBE,
+        g::LEN_TUBE,
+        &[1, 1, 1, 1, 2, 1, 1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+    ),
+    (g::OFF_LIMITER, g::LEN_LIMITER, &[1, 1, 1, 1, 4, 4]),
+];
+
+/// `WireBandParams`: type, bypass, the Linkwitz target Q (`u16`), freq, Q,
+/// gain.
+const BAND_FIELDS: &[usize] = &[1, 1, 2, 4, 4, 4];
+
+/// [`IMAGE_FIELDS`] as byte ranges of the image, in order. A record that
+/// does not fit its section's end is cut there (the layout test rules that
+/// out).
+pub(crate) fn image_fields() -> Vec<std::ops::Range<usize>> {
+    let mut fields = Vec::new();
+    for &(off, len, widths) in &IMAGE_FIELDS {
+        let end = off.saturating_add(len);
+        let mut at = off;
+        for &w in widths.iter().cycle() {
+            if at >= end || w == 0 {
+                break;
+            }
+            let next = at.saturating_add(w).min(end);
+            fields.push(at..next);
+            at = next;
+        }
+    }
+    fields
+}
+
+/// The maximal runs of bytes in which `mirror` differs from `old`.
+fn byte_runs(old: &[u8], mirror: &[u8]) -> Vec<std::ops::Range<usize>> {
+    let mut runs = Vec::new();
     let mut start = None;
     let differs = mirror.iter().zip(old).map(|(m, o)| m != o);
     for (i, differs) in differs.chain(std::iter::once(false)).enumerate() {
@@ -810,16 +935,12 @@ pub(crate) fn keep_edits_after_load(baseline: &mut [u8], old: &[u8], mirror: &[u
             (None, true) => start = Some(i),
             (Some(s), false) => {
                 start = None;
-                let run = s..i;
-                if baseline.get(run.clone()) == mirror.get(run.clone())
-                    && let (Some(dst), Some(src)) = (baseline.get_mut(run.clone()), old.get(run))
-                {
-                    dst.copy_from_slice(src);
-                }
+                runs.push(s..i);
             }
             _ => {}
         }
     }
+    runs
 }
 
 /// The occupied-mask bit of `slot`, or `Refused { PRESET_ERR_INVALID_SLOT }`
