@@ -81,8 +81,13 @@ object AtfChecks {
         if (view.visibility != View.VISIBLE) return null
         val provider: AccessibilityNodeProvider? = view.accessibilityNodeProvider
         if (provider != null) {
-            forceAccessibility(view)
-            return virtualNode(provider, AccessibilityNodeProvider.HOST_VIEW_ID, depth = 0)
+            forceAccessibility(view, true)
+            try {
+                return virtualNode(provider, AccessibilityNodeProvider.HOST_VIEW_ID, depth = 0)
+            } finally {
+                // Off again: Compose would send events Robolectric's AccessibilityManager refuses ("Accessibility off")
+                forceAccessibility(view, false)
+            }
         }
         val kids = if (view is ViewGroup) (0 until view.childCount).mapNotNull { nodeFor(view.getChildAt(it)) } else emptyList()
         return Linked(view.createAccessibilityNodeInfo(), kids)
@@ -99,10 +104,10 @@ object AtfChecks {
      * Compose builds its node tree only while an accessibility service runs; Robolectric has none, so
      * switch it on as Compose's own test framework does (`AndroidComposeView` is internal: by name).
      */
-    private fun forceAccessibility(view: View) {
+    private fun forceAccessibility(view: View, on: Boolean) {
         runCatching { view.javaClass.getMethod("forceAccessibilityForTesting", Boolean::class.javaPrimitiveType) }
             .getOrNull()
-            ?.invoke(view, true)
+            ?.invoke(view, on)
     }
 
     /** The virtual ids the provider recorded with addChild(View, Int): the framework's child node ids, upper 32 bits. */

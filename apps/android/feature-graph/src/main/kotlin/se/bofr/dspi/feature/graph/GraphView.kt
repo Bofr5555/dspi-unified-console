@@ -24,9 +24,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -50,6 +52,12 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -687,14 +695,30 @@ private fun GraphLabels(settings: AppSettings, minF: Double, maxF: Double, dTop:
 /**
  * A vertical drag strip that resizes the graph, between 200 and 350 points
  * (macOS `GraphResizeHandle`), for HOME to put under the graph on a page.
+ * TalkBack: "Taller" / "Shorter" actions in [GRAPH_HEIGHT_STEP] steps (WP AN20).
  */
 @Composable
 fun GraphResizeHandle(modifier: Modifier = Modifier, height: Int = 20) {
     val store = LocalAppSettings.current
+    val graphHeight = store.settings.collectAsStateWithLifecycle().value.graphHeight
+    fun resizeBy(d: Double): Boolean {
+        store.update { it.copy(graphHeight = (it.graphHeight + d).coerceIn(AppSettings.GRAPH_HEIGHT_MIN, AppSettings.GRAPH_HEIGHT_MAX)) }
+        return true
+    }
     Box(
         modifier
             .fillMaxWidth()
             .height(height.dp)
+            // -- WP AN20 -- the drag's only other way in
+            .semantics {
+                contentDescription = "Graph height"
+                stateDescription = "${graphHeight.toInt()} points"
+                customActions =
+                    listOf(
+                        CustomAccessibilityAction("Taller") { resizeBy(GRAPH_HEIGHT_STEP) },
+                        CustomAccessibilityAction("Shorter") { resizeBy(-GRAPH_HEIGHT_STEP) }
+                    )
+            }
             .pointerInput(store) {
                 detectVerticalDragGestures { change, dy ->
                     change.consume()
@@ -713,6 +737,9 @@ fun GraphResizeHandle(modifier: Modifier = Modifier, height: Int = 20) {
         Box(Modifier.size(36.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(Color.Gray.copy(alpha = 0.5f)))
     }
 }
+
+/** WP AN20: one TalkBack step of [GraphResizeHandle]. */
+internal const val GRAPH_HEIGHT_STEP = 25.0
 
 /**
  * Pills for the active inputs and enabled outputs; a tap shows or hides that
@@ -748,10 +775,14 @@ fun GraphLegend(bridge: DspiBridge, modifier: Modifier = Modifier) {
             val color = channelColour(bridge, ch)
             Row(
                 Modifier
+                    // -- WP AN20 -- a 48 dp target; TalkBack: "OUT1, switch, on" (the curve shown)
+                    .minimumInteractiveComponentSize()
                     .clip(CircleShape)
                     .background(if (isVisible) color.copy(alpha = 0.15f) else Color.Gray.copy(alpha = 0.1f))
                     .border(1.dp, if (isVisible) color.copy(alpha = 0.5f) else Color.Transparent, CircleShape)
-                    .clickable(enabled = connected) { bridge.setChannelVisible(ch, !bridge.channelVisible(ch)) }
+                    .toggleable(value = isVisible, enabled = connected, role = Role.Switch) {
+                        bridge.setChannelVisible(ch, !bridge.channelVisible(ch))
+                    }
                     .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {

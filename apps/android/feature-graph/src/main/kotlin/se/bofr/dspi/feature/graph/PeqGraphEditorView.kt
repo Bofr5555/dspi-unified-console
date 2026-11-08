@@ -73,6 +73,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -225,6 +227,8 @@ fun PeqGraphEditorView(
     val hud = remember { mutableStateOf<PeqHudState?>(null) }
     val labels = remember { mutableStateOf<PeqLabelState?>(null) }
     val card = remember { mutableStateOf<PeqPoint?>(null) }
+    // -- WP AN20 -- the dots as accessibility nodes (PeqBandHandles)
+    val handles = remember { mutableStateOf<List<PeqA11yBand>>(emptyList()) }
     val wake = remember { Channel<Unit>(Channel.CONFLATED) }
     var menu by remember { mutableStateOf<Pair<List<PeqMenuItem>, PeqPoint>?>(null) }
     var editField by remember { mutableStateOf<PeqHudField?>(null) }
@@ -243,6 +247,7 @@ fun PeqGraphEditorView(
         hud.value = editor.hudState()
         labels.value = editor.labelState()
         card.value = if (editor.editing && editor.cardOpen) editor.cardOrigin else null
+        handles.value = editor.accessibilityBands
     }
 
     SideEffect {
@@ -320,6 +325,8 @@ fun PeqGraphEditorView(
                 .graphicsLayer()
                 .focusRequester(focus)
                 .focusable()
+                // -- WP AN20 -- the graph's own node (its bands are PeqBandHandles' nodes)
+                .semantics { contentDescription = "Response graph" }
                 .onKeyEvent { e ->
                     // -- WP AN18 -- the map is PeqKeyMap's (tested)
                     val m = PeqKeyMap.modsOf(e.isCtrlPressed, e.isMetaPressed, e.isAltPressed, e.isShiftPressed)
@@ -444,6 +451,7 @@ fun PeqGraphEditorView(
             scale(density, density, pivot = Offset.Zero) { renderer.draw(this, pic, background, glow = pic.glow && !blurAvailable) }
         }
 
+        PeqBandHandles(editor, handles.value, editor.bypassSupported)
         PeqReadouts(labels, w, h)
         hud.value?.let { state -> PeqBandHud(editor, state) { editField = it } }
         card.value?.let { origin -> PeqAddBandCard(editor, origin) }

@@ -8,7 +8,6 @@ package se.bofr.dspi.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -278,11 +278,13 @@ fun ToolChip(text: String, on: Boolean, enabled: Boolean, modifier: Modifier = M
     val bg = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f)
     Box(
         modifier
+            // -- WP AN20 -- room for a 48 dp target; TalkBack: "1, switch, on"
+            .minimumInteractiveComponentSize()
             .heightIn(min = 36.dp)
             .alpha(if (enabled) 1f else 0.5f)
             .background(bg, shape)
             .border(1.dp, if (on) Color.Transparent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), shape)
-            .clickable(enabled = enabled, onClick = onClick),
+            .toggleable(value = on, enabled = enabled, role = Role.Switch, onValueChange = { onClick() }),
         contentAlignment = Alignment.Center
     ) {
         Text(

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,6 +44,13 @@ import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.isMetaPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -213,7 +221,9 @@ fun PeqBandHud(editor: PeqGraphEditor, state: PeqHudState, onEditField: (PeqHudF
                     Modifier
                         .width(60.dp)
                         .clip(RoundedCornerShape(5.dp))
-                        .clickable(enabled = so != null) { editor.hudShapeButton() },
+                        .clickable(enabled = so != null, role = Role.Button, onClickLabel = "Change shape") { editor.hudShapeButton() }
+                        // -- WP AN20 --
+                        .semantics { contentDescription = "Shape, " + (so?.first?.title ?: "Linkwitz Transform") },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (so != null) {
@@ -234,7 +244,9 @@ fun PeqBandHud(editor: PeqGraphEditor, state: PeqHudState, onEditField: (PeqHudF
                         Modifier
                             .size(18.dp, 17.dp)
                             .clip(RoundedCornerShape(5.dp))
-                            .clickable { editor.hudBypass() },
+                            // -- WP AN20 -- a switch: on while the band is bypassed
+                            .toggleable(value = p.bypass, role = Role.Switch, onValueChange = { editor.hudBypass() })
+                            .semantics { contentDescription = "Bypass band ${band + 1}" },
                         contentAlignment = Alignment.Center
                     ) {
                         PowerGlyph(if (dim) muted else color)
@@ -349,7 +361,28 @@ private fun HudValueRow(editor: PeqGraphEditor, state: PeqHudState, row: PeqHudR
         } else {
             Modifier
         }
-    Row(Modifier.height(15.dp).fillMaxWidth().padding(horizontal = 8.dp).then(adjust), verticalAlignment = Alignment.CenterVertically) {
+    // -- WP AN20 -- one node per value: its name, the value, a click that types (as a tap) and the arrow keys' steps
+    // (the drag's only other way in)
+    val a11y =
+        Modifier.semantics(mergeDescendants = true) {
+            contentDescription = row.label
+            stateDescription = listOf(row.number, row.unit).filter { it.isNotEmpty() }.joinToString(" ")
+            if (row.adjustable) {
+                onClick(label = "Type a value") {
+                    onEditField(row.field)
+                    true
+                }
+                customActions =
+                    listOf(
+                        CustomAccessibilityAction("Increase") { editor.accessibilityAdjust(state.band, row.field, up = true) },
+                        CustomAccessibilityAction("Decrease") { editor.accessibilityAdjust(state.band, row.field, up = false) }
+                    )
+            }
+        }
+    Row(
+        Modifier.height(15.dp).fillMaxWidth().padding(horizontal = 8.dp).then(adjust).then(a11y),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Text(row.label, fontSize = 9.5.sp, color = quiet, modifier = Modifier.weight(1f), maxLines = 1)
         if (row.inline) {
             Text("${row.number} ${row.unit}", fontSize = 11.sp, color = Color.White.copy(alpha = numberAlpha), maxLines = 1)
