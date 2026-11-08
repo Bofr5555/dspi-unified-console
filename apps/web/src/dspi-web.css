@@ -160,10 +160,6 @@
 .dspi-web .empty { color: var(--muted); }
 
 .dspi-web .controls { display: grid; gap: 1rem; margin-top: 1rem; }
-.dspi-web .volume { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
-.dspi-web .volume label { display: flex; align-items: center; gap: 0.75rem; flex: 1; min-width: 12rem; }
-.dspi-web .volume input { flex: 1; min-width: 0; accent-color: var(--accent); }
-.dspi-web .volume-value { font-variant-numeric: tabular-nums; min-width: 5rem; text-align: right; }
 .dspi-web .meters { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3rem; }
 .dspi-web .meter { display: grid; grid-template-columns: 4.5rem 1fr; align-items: center; gap: 0.5rem; }
 .dspi-web .meter-name { color: var(--muted); font-size: 0.85rem; }
@@ -185,3 +181,133 @@
   z-index: 10;
 }
 .dspi-web .about ul { padding-left: 1.1rem; }
+
+/* -- WP WB6a -- the main window (src/screens/main): cards in a grid that falls
+   to one column on a narrow screen; rows of fixed height, so values and states
+   never move the layout */
+.dspi-web .visually-hidden {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.dspi-web .screen-tabs { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+.dspi-web .screen-tabs [aria-selected="true"] { border-color: var(--accent); }
+.dspi-web .main-screen {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+  align-items: start;
+}
+.dspi-web .card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  min-width: 0;
+}
+.dspi-web .card h3 { margin: 0 0 0.4rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.dspi-web .card-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-width: 0; }
+.dspi-web select {
+  font: inherit;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  min-width: 0;
+  max-width: 100%;
+}
+.dspi-web select:focus-visible,
+.dspi-web input[type="range"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dspi-web input[type="range"] { accent-color: var(--accent); min-width: 0; width: 100%; margin: 0.4rem 0; }
+.dspi-web .volume-slider.master { accent-color: var(--bad); }
+.dspi-web .volume-value,
+.dspi-web .ch-value { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dspi-web .volume-value { min-width: 5rem; text-align: right; }
+.dspi-web .toggles { display: flex; gap: 0.5rem; }
+.dspi-web .toggle[aria-pressed="true"] { border-color: var(--warn); color: var(--warn); }
+.dspi-web .ch-mute[aria-pressed="true"] { background: var(--warn); color: var(--panel); }
+.dspi-web button.danger,
+.dspi-web [role="menuitem"].danger { color: var(--bad); }
+
+.dspi-web .presets-card .card-head { flex-wrap: wrap; }
+.dspi-web .preset-pick { display: flex; align-items: center; gap: 0.5rem; min-width: 0; flex: 1 1 11rem; }
+.dspi-web .preset-pick select { flex: 1; min-width: 7rem; }
+.dspi-web .preset-status { margin: 0.4rem 0 0; min-height: 1.4rem; display: flex; gap: 0.5rem; align-items: center; }
+
+.dspi-web .menu { position: relative; flex: none; }
+.dspi-web .menu [role="menu"] {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 5;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem;
+  min-width: 13rem;
+  max-width: calc(100vw - 32px);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+}
+.dspi-web [role="menuitem"] {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 4px;
+  padding: 0.35rem 0.6rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dspi-web [role="menuitem"]:focus-visible,
+.dspi-web [role="menuitem"]:hover:not(:disabled) { background: var(--bg); outline: none; }
+.dspi-web [role="separator"] { border-top: 1px solid var(--line); margin: 0.25rem 0; }
+
+.dspi-web .channel-rows { list-style: none; margin: 0; padding: 0; }
+.dspi-web .channel-row {
+  display: grid;
+  grid-template-columns: 2.9rem minmax(0, 1fr) auto 2.2rem;
+  grid-template-rows: 1.9rem 1.5rem;
+  column-gap: 0.4rem;
+  align-items: center;
+  border-top: 1px solid var(--line);
+}
+.dspi-web .channel-row:first-child { border-top: 0; }
+.dspi-web .ch-tag {
+  font-size: 0.7rem;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+}
+.dspi-web .ch-name {
+  border: 0;
+  background: none;
+  padding: 0.1rem 0.2rem;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.dspi-web .ch-mute { padding: 0.1rem 0; font-size: 0.8rem; }
+.dspi-web .ch-gain { grid-column: 1 / -1; margin: 0; }
+.dspi-web .channel-row.muted .ch-name,
+.dspi-web .channel-row.muted .ch-value { color: var(--muted); text-decoration: line-through; }
+
+.dspi-web .main-dialog {
+  max-width: min(32rem, calc(100vw - 32px));
+  max-height: 85vh;
+  overflow: auto;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+}
+.dspi-web .main-dialog::backdrop { background: rgb(0 0 0 / 0.35); }
+.dspi-web .main-dialog p { margin: 0.4rem 0; }
+.dspi-web .change-list { margin: 0.25rem 0; padding-left: 1.1rem; font-size: 0.9rem; }
+.dspi-web .dialog-field { display: flex; flex-direction: column; gap: 0.3rem; margin: 0.5rem 0; }
+.dspi-web .dialog-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; margin-top: 0.75rem; }

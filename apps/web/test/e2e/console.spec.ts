@@ -48,10 +48,11 @@ test("standalone: the core's demo connects, a volume write reads back, meters ar
   await expect(session.locator(".device-meta")).toHaveText("RP2350 · firmware 1.1.6 · DEMO0000DSPI0001");
   await expect(session.locator(".volume-value")).toHaveText("0.0 dB");
 
+  // -- WP WB6a -- the main window's slider is the Console's taper: position 128 of 200 is -12 dB
   const slider = session.getByRole("slider", { name: "Volume" });
-  await slider.fill("-12.5");
+  await slider.fill("128");
   await slider.dispatchEvent("change");
-  await expect(session.locator(".volume-value")).toHaveText("-12.5 dB");
+  await expect(session.locator(".volume-value")).toHaveText("-12.0 dB");
 
   // The demo's meter capture is silent: every channel the core named, at the floor.
   await expect(session.getByRole("meter")).toHaveCount(17);
@@ -130,7 +131,8 @@ test("embedded: two consoles on one page, each with its user, roles and sessions
   await two.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const twoSession = two.getByRole("article", { name: "DSPi" });
   const slider = twoSession.getByRole("slider", { name: "Volume" });
-  await slider.fill("-6");
+  // -- WP WB6a -- position 162 of 200 is -6 dB
+  await slider.fill("162");
   await slider.dispatchEvent("change");
   await expect(twoSession.locator(".volume-value")).toHaveText("-6.0 dB");
   await one.getByRole("tab").first().click();
