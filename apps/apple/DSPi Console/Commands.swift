@@ -317,7 +317,7 @@ extension DSPViewModel {
     }
 
     func sendOutputDelayToDevice(output: Int, ms: Float) {
-        var val = Self.quantizeDelayMS(ms)   // -- WP SWF5 -- the slider rounds its drag
+        var val = Self.quantizeDelayMS(min(ms, maxOutputDelayMS))   // -- WP SWF5 -- the slider rounds its drag
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_OUTPUT_DELAY, value: UInt16(output), index: 2, data: data)
     }
@@ -2151,9 +2151,40 @@ extension DSPViewModel {
 
     func setOutputDelay(output: Int, ms: Float) {
         var val = Self.quantizeDelayMS(ms)   // -- WP SWF5 --
+        // -- WP SWF8 -- Past the device's delay line (or not a number):
+        // nothing is sent, the field shows the delay it had, and the status
+        // row says why.
+        guard val <= maxOutputDelayMS else { refuseOutputDelay(output: output, ms: val); return }
         outputDelayMS[output] = val
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_OUTPUT_DELAY, value: UInt16(output), index: 2, data: data)
+    }
+
+    // -- WP SWF8 -- c75-N3
+    /// The longest output delay this device's line holds, in ms: the core's
+    /// `maxDelayMs` while the view model follows a core, else the same rule
+    /// (dspi_proto Platform::max_delay_ms: 42 ms on RP2350, 21 ms on RP2040
+    /// and anything else) from the platform.
+    var maxOutputDelayMS: Float {
+        if coreMirror.attachedSource != nil, let core = coreMaxDelayMS { return core }
+        return Self.delayLineMS(platform: platformName)
+    }
+
+    static func delayLineMS(platform: String) -> Float { platform == "RP2350" ? 42 : 21 }
+
+    /// A delay past the line: re-publish the delay kept, so the fields
+    /// show it again, and post the refusal, in the core's words through the
+    /// core (its typed setter refuses before anything is sent).
+    private func refuseOutputDelay(output: Int, ms: Float) {
+        outputDelayMS[output] = outputDelayMS[output]
+        let max = maxOutputDelayMS
+        let text = "out.delay: \(ValueField.delayText(ms)) ms is out of range; this device"
+            + " (\(platformName.isEmpty ? "RP2040" : platformName)) holds 0 to \(ValueField.delayText(max)) ms"
+        guard let source = coreMirror.attachedSource, let wire = UInt8(exactly: output) else {
+            DeviceLock.notice.post(text)
+            return
+        }
+        source.outputDelayRefusal(output: wire, ms: ms) { DeviceLock.notice.post($0 ?? text) }
     }
 
     func fetchOutputDelay(output: Int) {

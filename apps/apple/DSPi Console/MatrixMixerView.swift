@@ -381,7 +381,7 @@ struct MatrixMixerView: View {
                     CompactDelayField(delay: Binding(
                         get: { vm.outputDelayMS[idx] },
                         set: { vm.setOutputDelay(output: idx, ms: $0) }
-                    ), maxDelay: vm.platformName == "RP2040" ? 42 : 85)
+                    ), maxDelay: vm.maxOutputDelayMS)   // -- WP SWF8 -- the core's line
                     .frame(width: columnWidth, height: 30)
                     .opacity(vm.outputEnabled[idx] ? 1.0 : 0.3)
                 }
@@ -628,7 +628,7 @@ struct CompactGainField: View {
 
 struct CompactDelayField: View {
     @Binding var delay: Float
-    var maxDelay: Float = 85
+    var maxDelay: Float = 21   // -- WP SWF8 -- the shorter line
     @State private var text: String = ""
     @FocusState private var isFocused: Bool
 
@@ -680,7 +680,9 @@ struct CompactDelayField: View {
             .replacingOccurrences(of: "ms", with: "")
             .trimmingCharacters(in: .whitespaces)
         if let value = Float(cleaned) {
-            delay = max(0, min(maxDelay, value))
+            // -- WP SWF8 -- past the line the view model refuses it and the
+            // display below shows the delay kept.
+            delay = max(0, value)
         }
         updateDisplay()
     }

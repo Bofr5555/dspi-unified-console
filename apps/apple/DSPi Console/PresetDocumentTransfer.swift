@@ -484,7 +484,9 @@ enum PresetDocumentApply {
         if !block.name.isEmpty, eqCh < vm.channelNames.count, block.name != vm.channelNames[eqCh] {
             vm.setChannelName(channel: eqCh, name: block.name)
         }
-        vm.setDelay(ch: eqCh, ms: block.delayMs)
+        // -- WP SWF8 -- delays held to this device's line, as the core's
+        // file import holds them (c76).
+        vm.setDelay(ch: eqCh, ms: min(block.delayMs, vm.maxOutputDelayMS))
 
         if case .output(let output) = ref {
             vm.setOutputGain(output: output, db: block.gainDb)
@@ -493,7 +495,7 @@ enum PresetDocumentApply {
             }
             // Additive field: a document written by a build (or a platform) that
             // doesn't carry the post-matrix delay leaves it alone.
-            if let delay = block.outputDelayMs { vm.setOutputDelay(output: output, ms: delay) }
+            if let delay = block.outputDelayMs { vm.setOutputDelay(output: output, ms: min(delay, vm.maxOutputDelayMS)) }
         }
 
         // A document that carries no bands for this channel leaves its EQ alone

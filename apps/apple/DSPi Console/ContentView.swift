@@ -1305,7 +1305,7 @@ struct OutputChannelDetail: View {
                     get: { vm.outputMuted[outputIndex] },
                     set: { vm.setOutputMute(output: outputIndex, muted: $0) }
                 ),
-                maxDelay: vm.platformName == "RP2040" ? 42 : 85,
+                maxDelay: vm.maxOutputDelayMS,   // -- WP SWF8 -- the core's line
                 onGainDrag: { vm.sendOutputGainToDevice(output: outputIndex, db: $0) },
                 onDelayDrag: { vm.sendOutputDelayToDevice(output: outputIndex, ms: $0) }
             )
