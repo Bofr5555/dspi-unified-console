@@ -757,6 +757,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "dspi-wasm"
+version = "2.0.0-dev"
+dependencies = [
+ "dspi-core",
+ "dspi-proto",
+ "dspi-transport",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "dspi-wasm-scenario"
 version = "2.0.0-dev"
 dependencies = [

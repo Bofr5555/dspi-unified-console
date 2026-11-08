@@ -8,7 +8,7 @@
   "scripts": {
     "build": "node tools/build.mjs",
     "typecheck": "tsc --noEmit -p .",
-    "test:unit": "node tools/build.mjs --unit && node --test dist-test/unit/",
+    "test:unit": "node tools/build.mjs --unit && node tools/unit.mjs",
     "test:e2e": "playwright test",
     "serve": "node tools/serve.mjs dist"
   },

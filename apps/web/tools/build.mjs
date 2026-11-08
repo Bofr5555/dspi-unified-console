@@ -5,10 +5,12 @@
 //   node tools/build.mjs --pages   dist/test/: the e2e tests' own pages (embedding)
 //
 // dist/ is what a host serves: index.html, app.js (standalone), dspi-web.js (the
-// library), worker.js (one per session), dspi-web.css.
+// library), worker.js (one per session), dspi_wasm.wasm (the core, WB3: built by
+// crates/dspi-wasm/tools/build.sh and taken from $DSPI_WASM_DIR), dspi-web.css.
+// --pages adds test/stub-worker.js, a Worker on the tests' fake core.
 
 import { build } from "esbuild";
-import { cpSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -50,9 +52,18 @@ if (args.has("--unit")) {
   });
   cpSync(join(root, "index.html"), join(out, "index.html"));
   cpSync(join(root, "src/dspi-web.css"), join(out, "dspi-web.css"));
+  // -- WP WB3 -- the core
+  const wasm = process.env.DSPI_WASM_DIR ? join(process.env.DSPI_WASM_DIR, "dspi_wasm.wasm") : "";
+  if (wasm && existsSync(wasm)) cpSync(wasm, join(out, "dspi_wasm.wasm"));
+  else console.warn("build: no core module (DSPI_WASM_DIR): the page will say the core could not be loaded");
   if (args.has("--pages")) {
     cpSync(join(root, "test/pages"), join(out, "test"), { recursive: true, filter: (p) => !p.endsWith(".ts") });
-    await build({ ...common, entryPoints: { "test/embed": "test/pages/embed.ts" }, outdir: out, minify: false });
+    await build({
+      ...common,
+      entryPoints: { "test/embed": "test/pages/embed.ts", "test/stub-worker": "test/pages/stub-worker.ts" },
+      outdir: out,
+      minify: false,
+    });
   }
   console.log("built dist/");
 }

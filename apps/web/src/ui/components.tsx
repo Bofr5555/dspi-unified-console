@@ -7,6 +7,7 @@ import { useEffect, useState } from "preact/hooks";
 import type { Installation, Source } from "../fleet/types";
 import { sourceKey } from "../fleet/types";
 import type { PageEnv } from "../fleet/env";
+import { peakDb } from "../core/protocol";
 import type { Session } from "./session";
 import { aboutData, linkText } from "./texts";
 
@@ -107,7 +108,7 @@ export function TabLabel(props: { session: Session }) {
   const st = useSessionState(props.session);
   return (
     <>
-      {props.session.installationName} · {st.snapshot?.name ?? "Connecting"}
+      {props.session.installationName} · {st.snapshot?.device.name ?? "Connecting"}
     </>
   );
 }
@@ -118,13 +119,14 @@ export function SessionView(props: { session: Session; onClose: () => void }) {
   const snap = st.snapshot;
   const ro = s.readOnlyReason;
   return (
-    <article class="session" aria-label={snap?.name ?? "DSPi"} data-status={st.status}>
+    <article class="session" aria-label={snap?.device.name ?? "DSPi"} data-status={st.status}>
       <header class="strip">
         <span class={`dot dot-${st.status}`} aria-hidden="true" />
-        <strong class="device-name">{snap?.name ?? "Connecting"}</strong>
+        <strong class="device-name">{snap?.device.name ?? "Connecting"}</strong>
         {snap ? (
           <span class="device-meta">
-            {snap.platform} · firmware {snap.firmware} · {snap.serial}
+            {snap.device.platform} · firmware {snap.device.firmware}
+            {snap.device.serial ? ` · ${snap.device.serial}` : ""}
           </span>
         ) : null}
         {ro ? (
@@ -146,7 +148,7 @@ export function SessionView(props: { session: Session; onClose: () => void }) {
       {snap && st.status === "open" ? (
         <div class="controls">
           <Volume session={s} disabled={!!ro} />
-          <Meters session={s} names={snap.channels.map((c) => c.name)} />
+          <Meters session={s} names={snap.state.channelNames.slice(0, snap.state.numChannels)} />
         </div>
       ) : null}
     </article>
@@ -169,29 +171,31 @@ function LostLinkBanner(props: { phase: { phase: Parameters<typeof linkText>[0];
 }
 
 function Volume(props: { session: Session; disabled: boolean }) {
-  const snap = props.session.state.snapshot!;
+  const { snapshot, params } = props.session.state;
+  const db = snapshot!.state.userVolumeDb;
+  const range = params["vol.user"];
   const [draft, setDraft] = useState<number | null>(null);
-  const shown = draft ?? snap.volume.db;
+  const shown = draft ?? db;
   return (
     <div class="volume">
       <label>
         Volume
         <input
           type="range"
-          min={snap.volume.minDb}
-          max={snap.volume.maxDb}
+          min={range?.min ?? -60}
+          max={range?.max ?? 0}
           step={0.5}
           value={shown}
           disabled={props.disabled}
           onInput={(e) => setDraft(Number((e.target as HTMLInputElement).value))}
           onChange={(e) => {
             const v = Number((e.target as HTMLInputElement).value);
-            void props.session.write("vol.user", v).then(() => setDraft(null));
+            void props.session.write("vol.user", { float: v }).then(() => setDraft(null));
           }}
         />
       </label>
       <output class="volume-value" aria-live="polite">
-        {snap.volume.db.toFixed(1)} dB
+        {db.toFixed(1)} dB
       </output>
     </div>
   );
@@ -207,7 +211,7 @@ function Meters(props: { session: Session; names: string[] }) {
       if (!alive) return;
       if (document.visibilityState === "visible" && props.session.state.status === "open") {
         try {
-          setLevels(await props.session.core.call("meters", undefined));
+          setLevels((await props.session.core.call("meters", undefined)).peaks.map(peakDb));
         } catch {
           // A failed read leaves the last levels; the strip shows the state.
         }
@@ -226,7 +230,7 @@ function Meters(props: { session: Session; names: string[] }) {
         const db = levels[i] ?? -90;
         const pct = Math.max(0, Math.min(100, ((db + 90) / 90) * 100));
         return (
-          <li key={n} class="meter">
+          <li key={`${i}-${n}`} class="meter">
             <span class="meter-name">{n}</span>
             <span class="meter-bar" role="meter" aria-valuemin={-90} aria-valuemax={0} aria-valuenow={Math.round(db)} aria-label={n}>
               <span style={{ width: `${pct}%` }} />

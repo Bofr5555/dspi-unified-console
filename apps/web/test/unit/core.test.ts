@@ -1,5 +1,5 @@
 // WP WB5 unit tests: the serial rule, the stub's contract, the client's RPC and
-// the standalone backend. Run with `npm run test:unit` (node --test).
+// the standalone backend. WB3 widened the contract (records, typed values). Run with `npm run test:unit` (node --test).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -27,19 +27,20 @@ class CountingCore implements CoreImpl {
   async call<M extends Method>(method: M, params: CoreMethods[M]["params"]): Promise<CoreMethods[M]["result"]> {
     this.running++;
     this.max = Math.max(this.max, this.running);
-    this.order.push(`start ${String((params as { value?: number })?.value ?? method)}`);
+    const v = (params as { value?: { float?: number } })?.value?.float;
+    this.order.push(`start ${String(v ?? method)}`);
     await new Promise((r) => setTimeout(r, 5));
     this.running--;
-    this.order.push(`end ${String((params as { value?: number })?.value ?? method)}`);
-    if ((params as { value?: number })?.value === 2) throw new CoreCallError("refused", "two is refused");
-    return 0 as CoreMethods[M]["result"];
+    this.order.push(`end ${String(v ?? method)}`);
+    if (v === 2) throw new CoreCallError("refused", "two is refused");
+    return null as CoreMethods[M]["result"];
   }
 }
 
 test("calls never overlap, run in arrival order, and a failure does not stop the queue", async () => {
   const core = new CountingCore();
   const s = new SerialCore(core);
-  const results = await Promise.allSettled([1, 2, 3, 4].map((v) => s.call("write", { path: "vol.user", value: v })));
+  const results = await Promise.allSettled([1, 2, 3, 4].map((v) => s.call("write", { path: "vol.user", value: { float: v } })));
   assert.equal(core.max, 1);
   assert.deepEqual(core.order, ["start 1", "end 1", "start 2", "end 2", "start 3", "end 3", "start 4", "end 4"]);
   assert.deepEqual(
@@ -52,25 +53,26 @@ test("a call made while one is suspended inside the core waits for it", async ()
   const stub = new StubCore({ latencyMs: 10 });
   const s = new SerialCore(stub);
   await s.call("open", { kind: "demo" });
-  const write = s.call("write", { path: "vol.user", value: -12 });
+  const write = s.call("write", { path: "vol.user", value: { float: -12 } });
   const read = s.call("state", undefined); // arrives while the write is suspended
-  assert.equal(await write, -12);
-  assert.equal((await read).volume.db, -12, "the read ran after the write, not inside it");
+  assert.deepEqual(await write, { float: -12 });
+  assert.equal((await read).state.userVolumeDb, -12, "the read ran after the write, not inside it");
 });
 
 test("stub: write reads back the kept value; out of range and read-only are refused", async () => {
   const c = new StubCore();
   await assert.rejects(c.call("state", undefined), (e: CoreCallError) => e.code === "not_open");
   await c.call("open", { kind: "demo" });
-  assert.equal(await c.call("write", { path: "vol.user", value: -12.3 }), -12.5);
-  await assert.rejects(c.call("write", { path: "vol.user", value: 3 }), (e: CoreCallError) => e.code === "out_of_range");
-  assert.equal((await c.call("state", undefined)).volume.db, -12.5, "a refused write changes nothing");
+  assert.deepEqual(await c.call("write", { path: "vol.user", value: { float: -12.3 } }), { float: -12.5 });
+  await assert.rejects(c.call("write", { path: "vol.user", value: { float: 3 } }), (e: CoreCallError) => e.code === "out_of_range");
+  assert.equal((await c.call("state", undefined)).state.userVolumeDb, -12.5, "a refused write changes nothing");
+  assert.equal((await c.call("describe", { path: "vol.user" })).min, -60);
 
   const ro = new StubCore();
   const snap = await ro.call("open", { kind: "demo", readOnly: true });
-  assert.equal(snap.readOnly, true);
-  assert.ok(snap.readOnlyReason.length > 0);
-  await assert.rejects(ro.call("write", { path: "vol.user", value: -10 }), (e: CoreCallError) => e.code === "read_only");
+  assert.equal(snap.device.readOnly, true);
+  assert.ok(snap.device.readOnlyReason.length > 0);
+  await assert.rejects(ro.call("write", { path: "vol.user", value: { float: -10 } }), (e: CoreCallError) => e.code === "read_only");
 });
 
 test("stub: only the demo opens until the transports land", async () => {
@@ -104,12 +106,12 @@ test("client: replies match their calls, errors keep their code, events reach su
   const events: CoreEvent[] = [];
   client.subscribe((e) => events.push(e));
   const snap = await client.call("open", { kind: "demo" });
-  assert.equal(snap.name, "DSPi demo");
+  assert.equal(snap.device.name, "Stub DSPi");
   const [a, b] = await Promise.allSettled([
-    client.call("write", { path: "vol.user", value: -6 }),
-    client.call("write", { path: "vol.user", value: 6 }),
+    client.call("write", { path: "vol.user", value: { float: -6 } }),
+    client.call("write", { path: "vol.user", value: { float: 6 } }),
   ]);
-  assert.deepEqual(a, { status: "fulfilled", value: -6 });
+  assert.deepEqual(a, { status: "fulfilled", value: { float: -6 } });
   assert.equal(b.status, "rejected");
   assert.equal((b as PromiseRejectedResult).reason.code, "out_of_range");
   await client.call("simulate", { what: "link-lost" });
@@ -125,8 +127,8 @@ test("two sessions are independent", async () => {
   const two = new CoreClient(inProcessWorker(new StubCore()));
   await one.call("open", { kind: "demo" });
   await two.call("open", { kind: "demo" });
-  await one.call("write", { path: "vol.user", value: -3 });
-  assert.equal((await two.call("state", undefined)).volume.db, -20);
+  await one.call("write", { path: "vol.user", value: { float: -3 } });
+  assert.equal((await two.call("state", undefined)).state.userVolumeDb, -20);
 });
 
 class MapStore implements KeyValueStore {
@@ -183,4 +185,20 @@ test("page env: USB needs a secure page and WebUSB; the reasons name no device",
   for (const r of [insecure.usb.reason, noUsb.usb.reason, noUsb.link.reason]) {
     assert.doesNotMatch(r, /\b(computer|phone|tablet|laptop|desktop|mac|pc)\b/i);
   }
+});
+
+test("WB3: dispose stops the Worker even when a core call never returns (c6a F-4)", async () => {
+  let terminated = false;
+  const hung: WorkerLike = {
+    onmessage: null,
+    postMessage() {}, // never answers
+    terminate() {
+      terminated = true;
+    },
+  };
+  const client = new CoreClient(hung);
+  const pending = client.call("state", undefined);
+  await client.dispose(20);
+  assert.equal(terminated, true);
+  await assert.rejects(pending, (e: CoreCallError) => e.code === "not_open");
 });

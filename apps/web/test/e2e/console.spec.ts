@@ -1,6 +1,10 @@
 // WP WB5 e2e: the standalone page and the embedding page, in Chromium and
-// Firefox (and Chromium at 375 px wide). The core is the stub until WB3; these
-// tests are written against the contract, so they keep passing on the real core.
+// Firefox (and Chromium at 375 px wide). Since WB3 on the real core
+// (crates/dspi-wasm) and its own demo device: name "DSPi", firmware 1.1.6, the
+// user volume at 0 dB, a silent meter capture, an analyser with frames. One
+// test, marked STUB, runs on the tests' fake core instead (embed.html?core=stub):
+// the lost-link banner needs Link phases, which the core's demo cannot produce
+// before WB4b.
 
 import { expect, test, type Page } from "@playwright/test";
 
@@ -8,6 +12,28 @@ const linkWords = (await import("../../../../ci/generated/web/link-words.json", 
   link: { key: string; text: string; action: string | null }[];
 };
 const words = (key: string) => linkWords.link.find((w) => w.key === key)!;
+
+type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
+
+/** A call on the n-th session the embedding page opened, straight to its core. */
+function core(page: Page, n: number, method: string, params: unknown = null) {
+  return page.evaluate(
+    ([n, method, params]) => (globalThis as unknown as Clients).dspiClients[n as number]!.call(method as string, params),
+    [n, method, params] as const,
+  );
+}
+
+/** The same, for a call that must fail: its code and message. */
+function coreRefusal(page: Page, n: number, method: string, params: unknown = null) {
+  return page.evaluate(
+    ([n, method, params]) =>
+      (globalThis as unknown as Clients).dspiClients[n as number]!.call(method as string, params).then(
+        () => null,
+        (e: { code: string; message: string }) => ({ code: e.code, message: e.message }),
+      ),
+    [n, method, params] as const,
+  );
+}
 
 async function noPageErrors(page: Page) {
   const errors: string[] = [];
@@ -18,25 +44,26 @@ async function noPageErrors(page: Page) {
   return errors;
 }
 
-test("standalone: the demo connects, a volume write reads back, meters move", async ({ page }) => {
+test("standalone: the core's demo connects, a volume write reads back, meters are read", async ({ page }) => {
   const errors = await noPageErrors(page);
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "DSPi Console" })).toBeVisible();
   const picker = page.getByRole("navigation", { name: "DSPi devices" });
   await picker.getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
 
-  const session = page.getByRole("article", { name: "DSPi demo" });
-  await expect(session.locator(".device-meta")).toContainText("firmware 1.1.6");
-  await expect(session.locator(".volume-value")).toHaveText("-20.0 dB");
+  const session = page.getByRole("article", { name: "DSPi" });
+  await expect(session.locator(".device-meta")).toHaveText("RP2350 · firmware 1.1.6 · DEMO0000DSPI0001");
+  await expect(session.locator(".volume-value")).toHaveText("0.0 dB");
 
   const slider = session.getByRole("slider", { name: "Volume" });
   await slider.fill("-12.5");
   await slider.dispatchEvent("change");
   await expect(session.locator(".volume-value")).toHaveText("-12.5 dB");
 
-  const meter = session.getByRole("meter", { name: "USB L" });
-  const first = await meter.getAttribute("aria-valuenow");
-  await expect.poll(async () => meter.getAttribute("aria-valuenow"), { timeout: 5000 }).not.toBe(first);
+  // The demo's meter capture is silent: every channel the core named, at the floor.
+  await expect(session.getByRole("meter")).toHaveCount(17);
+  await expect(session.getByRole("meter", { name: "USB 1" })).toHaveAttribute("aria-valuenow", "-90");
+  await expect(session.getByRole("meter", { name: "PDM" })).toBeVisible();
 
   await session.getByRole("button", { name: "Disconnect" }).click();
   await expect(page.getByText("Choose a DSPi to connect to.")).toBeVisible();
@@ -64,7 +91,7 @@ test("standalone: an added hub is listed and kept across a reload", async ({ pag
 test("standalone ?readonly: the volume control is off and says why", async ({ page }) => {
   await page.goto("/?readonly");
   await page.getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
-  const session = page.getByRole("article", { name: "DSPi demo" });
+  const session = page.getByRole("article", { name: "DSPi" });
   await expect(session.getByText("Read only", { exact: true })).toBeVisible();
   await expect(session.getByRole("slider", { name: "Volume" })).toBeDisabled();
   await expect(session.locator(".read-only-reason")).toHaveText("You can view this DSPi but not change it");
@@ -93,23 +120,23 @@ test("embedded: two consoles on one page, each with its user, roles and sessions
 
   // Console one: Venue A with control, Venue B view only, both open at once.
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
-  await expect(one.getByRole("article", { name: "DSPi demo" }).getByRole("slider", { name: "Volume" })).toBeEnabled();
+  await expect(one.getByRole("article", { name: "DSPi" }).getByRole("slider", { name: "Volume" })).toBeEnabled();
   await one.getByRole("region", { name: "Venue B" }).getByRole("button", { name: "Connect" }).click();
   await expect(one.getByRole("tab")).toHaveCount(2);
-  await expect(one.getByRole("tab", { name: "Venue B · DSPi demo" })).toHaveAttribute("aria-selected", "true");
-  const venueB = one.getByRole("article", { name: "DSPi demo" });
+  await expect(one.getByRole("tab", { name: "Venue B · DSPi" })).toHaveAttribute("aria-selected", "true");
+  const venueB = one.getByRole("article", { name: "DSPi" });
   await expect(venueB.getByRole("slider", { name: "Volume" })).toBeDisabled();
   await expect(venueB.locator(".read-only-reason")).toHaveText("You can view this DSPi but not change it");
 
   // Console two's session is its own: a write there does not show in console one.
   await two.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
-  const twoSession = two.getByRole("article", { name: "DSPi demo" });
+  const twoSession = two.getByRole("article", { name: "DSPi" });
   const slider = twoSession.getByRole("slider", { name: "Volume" });
   await slider.fill("-6");
   await slider.dispatchEvent("change");
   await expect(twoSession.locator(".volume-value")).toHaveText("-6.0 dB");
   await one.getByRole("tab").first().click();
-  await expect(one.getByRole("article", { name: "DSPi demo" }).locator(".volume-value")).toHaveText("-20.0 dB");
+  await expect(one.getByRole("article", { name: "DSPi" }).locator(".volume-value")).toHaveText("0.0 dB");
 
   // Our styles are scoped: a button of the host page keeps the host's style.
   const hostButtonColour = await page.evaluate(() => {
@@ -123,11 +150,58 @@ test("embedded: two consoles on one page, each with its user, roles and sessions
   expect(errors).toEqual([]);
 });
 
-test("lost link: CG10's wording and its way out", async ({ page }) => {
+test("core: a write reads back what the device kept; a refused one says why and changes nothing", async ({ page }) => {
+  const errors = await noPageErrors(page);
   await page.goto("/test/embed.html");
   const one = page.locator("#one");
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
-  const session = one.getByRole("article", { name: "DSPi demo" });
+  await expect(one.getByRole("article", { name: "DSPi" }).locator(".volume-value")).toHaveText("0.0 dB");
+  expect(await core(page, 0, "write", { path: "vol.user", value: { float: -12.3 } })).toEqual({ float: -12.3 });
+  expect(await core(page, 0, "write", { path: "out.gain", indices: [1], value: { float: -4 } })).toEqual({ float: -4 });
+  expect(await coreRefusal(page, 0, "write", { path: "vol.user", value: { float: 6 } })).toEqual({
+    code: "out_of_range",
+    message: "Volume must be between -60 and 0 dB",
+  });
+  const snap = (await core(page, 0, "state")) as { state: { userVolumeDb: number; outputGainDb: number[] } };
+  expect(snap.state.userVolumeDb).toBe(-12.3);
+  expect(snap.state.outputGainDb[1]).toBe(-4);
+  expect(errors).toEqual([]);
+});
+
+test("core: a change made elsewhere arrives as a notification and the page shows it", async ({ page }) => {
+  const errors = await noPageErrors(page);
+  await page.goto("/test/embed.html");
+  const one = page.locator("#one");
+  await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
+  await expect(one.getByRole("article", { name: "DSPi" })).toBeVisible();
+  // The core's demo: another host renames the device. The Worker's poll drains
+  // the notification and pushes the new snapshot.
+  await core(page, 0, "demo", { action: "renameElsewhere", name: "Stage left" });
+  await expect(one.getByRole("article", { name: "Stage left" }).locator(".device-name")).toHaveText("Stage left");
+  expect(errors).toEqual([]);
+});
+
+test("core: the analyser delivers RTA frames on the Worker's timers", async ({ page }) => {
+  await page.goto("/test/embed.html");
+  const one = page.locator("#one");
+  await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
+  await expect(one.getByRole("article", { name: "DSPi" })).toBeVisible();
+  await core(page, 0, "rtaStart", { tap: 1, mask: 3 });
+  type View = { caps: { supported: boolean }; snapshot: { count: number; frames: { nBands: number; avgDb: number[] }[] } };
+  await expect
+    .poll(async () => {
+      const v = (await core(page, 0, "rta")) as View;
+      return v.caps.supported && v.snapshot.count >= 1 && v.snapshot.frames[0]!.nBands > 0;
+    }, { timeout: 10_000 })
+    .toBe(true);
+  await core(page, 0, "rtaStop");
+});
+
+test("STUB lost link: CG10's wording and its way out (the fake core: Link phases come with WB4b)", async ({ page }) => {
+  await page.goto("/test/embed.html?core=stub");
+  const one = page.locator("#one");
+  await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
+  const session = one.getByRole("article", { name: "Stub DSPi" });
   await expect(session.locator(".volume-value")).toBeVisible();
 
   await page.evaluate(() =>
@@ -154,7 +228,7 @@ test("lost link: CG10's wording and its way out", async ({ page }) => {
 test("narrow width: no sideways scrolling", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
-  await expect(page.getByRole("article", { name: "DSPi demo" })).toBeVisible();
+  await expect(page.getByRole("article", { name: "DSPi" })).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
