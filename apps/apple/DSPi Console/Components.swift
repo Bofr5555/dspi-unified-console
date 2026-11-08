@@ -1077,20 +1077,28 @@ struct ChannelSettingsView: View {
                 Text("DELAY")
                     .font(.caption).fontWeight(.bold).foregroundColor(.secondary)
                 Spacer()
-                ValueField(label: "ms", value: localDelay, width: 60) {
+                // -- WP SWF5 -- shows a fractional delay as it is; Cmd-scroll
+                // steps whole ms, a typed value is kept.
+                ValueField(label: "ms", value: localDelay, width: 60, scrollStep: 1,
+                           maxDecimals: ValueField.delayDecimals) {
                     localDelay = $0
                     delayMS = $0
                 }
             }
 
+            // -- WP SWF5 -- the slider moves in whole ms, as upstream's setter
+            // rounded it; the setter itself now keeps fractions.
             Slider(value: $localDelay, in: 0...maxDelay) { editing in
                 isDraggingDelay = editing
-                if !editing { delayMS = localDelay }
+                if !editing {
+                    localDelay = localDelay.rounded()
+                    delayMS = localDelay
+                }
             }
             .controlSize(.small)
             .frame(height: 24)
             .onChange(of: localDelay) { val in
-                if isDraggingDelay { onDelayDrag?(val) }
+                if isDraggingDelay { onDelayDrag?(val.rounded()) }
             }
             .onAppear { localDelay = delayMS }
             .onChange(of: delayMS) { val in if !isDraggingDelay { localDelay = val } }
@@ -2823,6 +2831,13 @@ struct ValueField: View {
 
     private func format(_ v: Float) -> String {
         Self.format(v, maxDecimals: maxDecimals, stripTrailingZeros: stripTrailingZeros)
+    }
+
+    // -- WP SWF5 -- A delay in ms, to the 0.0001 ms the core keeps, trailing
+    // zeros trimmed: "12", "0.5", "1.25".
+    static let delayDecimals = 4
+    static func delayText(_ ms: Float) -> String {
+        format(ms, maxDecimals: delayDecimals, stripTrailingZeros: true)
     }
 
     static func format(_ v: Float, maxDecimals: Int, stripTrailingZeros: Bool) -> String {

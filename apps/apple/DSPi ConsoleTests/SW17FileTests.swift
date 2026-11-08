@@ -87,8 +87,8 @@ final class SW17FileTests: XCTestCase {
     /// The JSON paths where what the device holds differs from every value
     /// the file carries.  Left out: `meta` (who saved it, when, from which
     /// build), the volume levels (not imported), and fields the file does not
-    /// have (a newer field such as io.dacHwMute).  Delays compare to the
-    /// whole milliseconds the console's setters send.
+    /// have (a newer field such as io.dacHwMute).  Delays compare exactly:
+    /// the setters keep fractions since SWF5.
     private static func differences(device a: PresetDocument, file b: PresetDocument) throws -> [String] {
         func object(_ doc: PresetDocument) throws -> Any {
             var top = try JSONSerialization.jsonObject(with: PresetDocumentFile.encode(doc)) as? [String: Any] ?? [:]
@@ -103,10 +103,6 @@ final class SW17FileTests: XCTestCase {
         var out: [String] = []
         func walk(_ x: Any?, _ y: Any?, _ path: String) {
             guard let y else { return }
-            if path.lowercased().hasSuffix("delayms"), let nx = x as? NSNumber, let ny = y as? NSNumber,
-               nx.floatValue == ny.floatValue.rounded() {
-                return
-            }
             if let dx = x as? [String: Any], let dy = y as? [String: Any] {
                 for key in Set(dx.keys).union(dy.keys).sorted() { walk(dx[key], dy[key], path + "." + key) }
             } else if let ax = x as? [Any], let ay = y as? [Any], ax.count == ay.count {

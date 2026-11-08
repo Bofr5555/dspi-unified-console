@@ -491,7 +491,7 @@ extension PresetSnapshot {
             let newVal = new.channelDelays[ch] ?? 0
             if oldVal != newVal {
                 let name = ch < channelNames.count ? channelNames[ch] : "Ch \(ch)"
-                changes.append(.init(category: "Delays", description: "\(name) delay: \(formatVal(oldVal)) ms → \(formatVal(newVal)) ms"))
+                changes.append(.init(category: "Delays", description: "\(name) delay: \(ValueField.delayText(oldVal)) ms → \(ValueField.delayText(newVal)) ms"))   // -- WP SWF5 --
             }
         }
 
@@ -519,7 +519,7 @@ extension PresetSnapshot {
             if old.outputEnabled[i] != new.outputEnabled[i] { outputChanges.append(new.outputEnabled[i] ? "enabled" : "disabled") }
             if old.outputMuted[i] != new.outputMuted[i] { outputChanges.append(new.outputMuted[i] ? "muted" : "unmuted") }
             if old.outputGainDB[i] != new.outputGainDB[i] { outputChanges.append("gain: \(formatDB(old.outputGainDB[i])) → \(formatDB(new.outputGainDB[i]))") }
-            if old.outputDelayMS[i] != new.outputDelayMS[i] { outputChanges.append("delay: \(formatVal(old.outputDelayMS[i])) ms → \(formatVal(new.outputDelayMS[i])) ms") }
+            if old.outputDelayMS[i] != new.outputDelayMS[i] { outputChanges.append("delay: \(ValueField.delayText(old.outputDelayMS[i])) ms → \(ValueField.delayText(new.outputDelayMS[i])) ms") }   // -- WP SWF5 --
             for change in outputChanges {
                 changes.append(.init(category: name, description: "\(name) \(change)"))
             }
