@@ -1093,7 +1093,7 @@ mod tests_wp_tm4 {
             if matches!(d.path, "eq.fp" | "eq.qp") {
                 answer[0] = 11;
             }
-            let mock = MockTransport::new().answering_everything(answer);
+            let mock = MockTransport::new().answering_everything(answer.clone());
             let log = mock.log_handle();
             let mut s = Session::new(Box::new(mock), everything_caps(32)).unwrap();
             if s.check(d.path, &indices, &value).is_err() {
@@ -1115,15 +1115,30 @@ mod tests_wp_tm4 {
             tried += 1;
 
             for send in [false, true] {
-                let mock = MockTransport::new().answering_everything(vec![0u8; 512]);
+                // -- WP CG35 -- the same answer as the control (review c6v
+                // CG34-N1), so eq.fp/eq.qp pass the type guard and reach the
+                // ReadOnlyTransport, which must be what refuses them.
+                let mock = MockTransport::new().answering_everything(answer.clone());
                 let log = mock.log_handle();
                 let guarded =
                     ReadOnlyTransport::new(Box::new(mock), BulkReads::Mapped, None, Some(17));
                 let mut s = Session::new(Box::new(guarded), everything_caps(17)).unwrap();
-                if send {
-                    let _ = s.send(d.path, &indices, value.clone());
+                let r = if send {
+                    s.send(d.path, &indices, value.clone()).map(|_| ())
                 } else {
-                    let _ = s.write(d.path, &indices, value.clone());
+                    s.write(d.path, &indices, value.clone()).map(|_| ())
+                };
+                if matches!(d.path, "eq.fp" | "eq.qp") {
+                    assert!(
+                        matches!(
+                            r,
+                            Err(dspi_session::WriteError::Transport(TransportError::Denied(
+                                _
+                            )))
+                        ),
+                        "{} (send: {send}) must be refused by the guard: {r:?}",
+                        d.path
+                    );
                 }
                 let leaked = writes(&log);
                 if is_exception {
