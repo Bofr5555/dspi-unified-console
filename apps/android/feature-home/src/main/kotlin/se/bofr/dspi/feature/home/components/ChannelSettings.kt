@@ -127,6 +127,9 @@ fun ChannelSettingsView(bridge: DspiBridge, outputIndex: Int, onNavigate: (Strin
     }
 }
 
+/** WP AN20: "GAIN" as TalkBack says it ("Gain"). */
+internal fun sectionName(title: String): String = title.lowercase().replaceFirstChar { it.uppercase() }
+
 /** "GAIN  [-3.0] dB" over a full-width slider (one ChannelSettingsView section). */
 @Composable
 internal fun SliderSection(
@@ -145,7 +148,9 @@ internal fun SliderSection(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title, style = DspiType.captionBold, color = c.secondaryLabel)
             Spacer(Modifier.weight(1f))
-            ValueField(label = unit, value = drag.value, width = fieldWidth, enabled = enabled) { drag.set(it, commit) }
+            ValueField(label = unit, value = drag.value, width = fieldWidth, enabled = enabled, accessibilityLabel = sectionName(title)) {
+                drag.set(it, commit)
+            }
         }
         CustomSlider(
             value = drag.value,
@@ -155,7 +160,9 @@ internal fun SliderSection(
             enabled = enabled,
             onEditingChanged = { drag.editing(it, commit) },
             onReset = { drag.set(0f, commit) },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            label = sectionName(title),
+            stateText = { "%.1f %s".format(java.util.Locale.ROOT, it, unit) }
         )
     }
 }

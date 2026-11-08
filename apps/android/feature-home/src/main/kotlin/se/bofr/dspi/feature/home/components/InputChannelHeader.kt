@@ -120,9 +120,13 @@ fun InputChannelHeader(bridge: DspiBridge, ch: Int, onClearPEQ: () -> Unit, modi
                 defaultValue = 0f,
                 onEditingChanged = { e -> preamp.editing(e) { v -> bridge.setInputPreamp(input, v) } },
                 onReset = { preamp.set(0f) { v -> bridge.setInputPreamp(input, v) } },
-                modifier = Modifier.weight(1f).widthIn(max = 320.dp)
+                modifier = Modifier.weight(1f).widthIn(max = 320.dp),
+                label = "Preamp",
+                stateText = { "%.1f dB".format(java.util.Locale.ROOT, it) }
             )
-            ValueField(label = "dB", value = preamp.value, width = 52.dp) { v -> preamp.set(v) { bridge.setInputPreamp(input, it) } }
+            ValueField(label = "dB", value = preamp.value, width = 52.dp, accessibilityLabel = "Preamp") { v ->
+                preamp.set(v) { bridge.setInputPreamp(input, it) }
+            }
         }
     }
 

@@ -9,6 +9,8 @@ android {
     namespace = "se.bofr.dspi.feature.settings"
     // -- WP AN9 -- Robolectric reads the merged manifest and resources (as :app, AN27)
     testOptions { unitTests.isIncludeAndroidResources = true }
+    // -- WP AN20 -- ui-common's AtfChecks (the Accessibility Test Framework over Compose's nodes)
+    sourceSets["test"].kotlin.srcDir("../ui-common/src/a11yTest/kotlin")
 }
 
 // -- WP AN9 -- the Android runtime Robolectric runs on, resolved (checksum-pinned) so it stays offline (as :app)
@@ -28,6 +30,8 @@ dependencies {
     testImplementation("${libs.jna.get().module}:${libs.versions.jna.get()}")
     testImplementation(platform(libs.compose.bom))
     testImplementation(libs.compose.ui.test.junit4)
+    // -- WP AN20 --
+    testImplementation(libs.compose.ui.test.junit4.accessibility)
     testImplementation(libs.robolectric)
     debugImplementation(platform(libs.compose.bom))
     debugImplementation(libs.compose.ui.test.manifest)

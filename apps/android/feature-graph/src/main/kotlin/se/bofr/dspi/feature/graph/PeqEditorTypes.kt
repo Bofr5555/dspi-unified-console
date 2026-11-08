@@ -150,3 +150,6 @@ data class PeqPicture(
     val nodes: List<PeqNode> = emptyList(),
     val marquee: PeqRect? = null
 )
+
+/** WP AN20: one band's dot as an accessibility service reaches it ([PeqGraphEditor.accessibilityBands]). */
+data class PeqA11yBand(val band: Int, val params: FilterParams, val point: PeqPoint, val selected: Boolean)

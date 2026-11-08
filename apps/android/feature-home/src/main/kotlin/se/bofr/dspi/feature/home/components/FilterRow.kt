@@ -136,7 +136,8 @@ fun FilterRowView(
                 isActive = isActive && !isBypassed,
                 isEnabled = isActive,
                 onToggle = { onBypassToggle(!isBypassed) },
-                color = if (isActive) bandColor else null
+                color = if (isActive) bandColor else null,
+                label = "Band ${index + 1}"
             )
         }
         Text(

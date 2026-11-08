@@ -91,7 +91,8 @@ fun ChannelMeterBar(
     ch: Int,
     color: Color,
     modifier: Modifier = Modifier,
-    isMuted: Boolean = false
+    isMuted: Boolean = false,
+    label: String? = null
 ) {
     HorizontalMeterBar(
         level = { status.value.peaks.getOrElse(ch) { 0f } },
@@ -101,7 +102,8 @@ fun ChannelMeterBar(
         clipping = {
             status.value // subscribe
             bridge.isClipping(ch)
-        }
+        },
+        label = label
     )
 }
 
@@ -161,7 +163,7 @@ fun ChannelRow(
                     modifier = Modifier.padding(start = 8.dp).width(96.dp)
                 )
             }
-            ChannelMeterBar(bridge, status, ch, color, Modifier.weight(1f).padding(start = 4.dp), isMuted = isMuted)
+            ChannelMeterBar(bridge, status, ch, color, Modifier.weight(1f).padding(start = 4.dp), isMuted = isMuted, label = "Level")
             ChannelVisibilityPill(descriptor, color, isCurveVisible, onToggleCurve)
         }
         menu()

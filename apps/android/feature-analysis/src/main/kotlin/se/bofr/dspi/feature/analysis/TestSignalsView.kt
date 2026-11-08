@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -47,6 +48,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -338,7 +342,8 @@ private fun SignalTile(ti: SiggenTypePresentation, selected: Boolean, enabled: B
             .clip(shape)
             .background(if (selected) accent.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
             .border(1.dp, if (selected) accent.copy(alpha = 0.7f) else Color.Gray.copy(alpha = 0.2f), shape)
-            .clickable(enabled = enabled, onClick = onClick)
+            // -- WP AN20 -- one of a set: TalkBack says which is selected
+            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
             .padding(vertical = 8.dp)
             .alpha(if (enabled) 1f else 0.5f),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -400,7 +405,15 @@ private fun OutputChip(state: TestSignalsUiState, o: Int, modifier: Modifier, on
                 },
                 shape
             )
-            .clickable(enabled = state.controlsEnabled, onClick = onClick)
+            .clickable(enabled = state.controlsEnabled, role = Role.Button, onClickLabel = "Change") { onClick() }
+            // -- WP AN20 -- the tap cycles off, on, inverted: say which
+            .semantics {
+                stateDescription = when (os) {
+                    SiggenOutputState.OFF -> "Off"
+                    SiggenOutputState.INVERTED -> "On, polarity inverted"
+                    else -> "On"
+                } + if (matrixEnabled) "" else ", disabled in the matrix"
+            }
             .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
