@@ -44,6 +44,24 @@ final class RestoreVerifiedWrites {
         guard serial != nil, serial == configRef["serial"] as? String else {
             return "a different unit: \(serial ?? "no serial") vs \(configRef["serial"] as? String ?? "?")"
         }
+        return run(bulkRef: bulkRef, configRef: configRef, timeout: timeout)
+    }
+
+    // -- WP SW8 --
+    /// The reference as `backup_config.py` would write it, read from the unit
+    /// itself (the demo device has no backup on disk).  nil if the image or
+    /// the serial cannot be read.
+    func captureReference(numOutputs: Int) -> (bulk: [UInt8], config: [String: Any])? {
+        guard let bulk = get(REQ_GET_ALL_PARAMS, length: UInt16(BULK_PARAMS_SIZE)), bulk.count == Int(BULK_PARAMS_SIZE),
+              let serial = Self.cstr(get(0x7E, length: 16)) else { return nil }
+        var config = readConfig(numOutputs: numOutputs)
+        config["serial"] = serial
+        config["num_outputs"] = numOutputs
+        return (bulk, config)
+    }
+
+    /// `run(referenceDirectory:)` with the reference in hand.
+    func run(bulkRef: [UInt8], configRef: [String: Any], timeout: TimeInterval = 300) -> String? {
         let numOutputs = configRef["num_outputs"] as? Int ?? 9
         var failure: String? = "timed out"
         let done = DispatchSemaphore(value: 0)
@@ -193,6 +211,18 @@ final class RestoreVerifiedWrites {
             report.append("\(label): 0xA0 DIFFERS (\(bulk?.count ?? 0) B, \(differing.count) bytes differ, first offsets \(differing.prefix(16).map { String(format: "0x%04X", $0) }))")
         } else {
             report.append("\(label): 0xA0 byte-identical to bulk_params.bin")
+        }
+        // -- WP SW8 -- Through the core, its mirror must have followed every
+        // write and restore back to the reference too.
+        if let core = transport.coreStateSource {
+            let mirror = [UInt8](core.readState().bulkRaw)
+            if mirror == bulkRef {
+                report.append("\(label): the core's mirror is byte-identical to bulk_params.bin")
+            } else {
+                ok = false
+                let differing = zip(mirror, bulkRef).enumerated().filter { $1.0 != $1.1 }.map { $0.offset }
+                report.append("\(label): the core's mirror DIFFERS (\(mirror.count) B, \(differing.count) bytes differ, first offsets \(differing.prefix(16).map { String(format: "0x%04X", $0) }))")
+            }
         }
         let fresh = readConfig(numOutputs: numOutputs)
         var diffs: [String] = []

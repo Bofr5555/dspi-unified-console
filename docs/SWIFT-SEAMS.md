@@ -402,20 +402,23 @@ SW-M1 (macOS USB) and SW-M3 (the hub).
 
 ### 4.1 `CoreBackedTransport` (SW4): each `DeviceTransport` member
 
+*Updated by SW8 (2026-11-08) to what SW4 built (review c4n): CG23 and CG24 have landed, `generation` is a local
+counter, and host mode's `errorMessage` is the core's.*
+
 | `DeviceTransport` member (`Link/DeviceTransport.swift`) | Over the core | Evidence |
 |---|---|---|
 | `sendControlRequest` `:160` | `rawSet(opcode,value,data)` on `coreQueue`, asynchronously (section 5.1). `wIndex` is dropped: the core picks the interface | `raw.rs:93`, binding `2509` |
 | `getControlResult` `:167` | `rawGet(opcode,value,len)` with `coreQueue.sync`. `DspiError` maps to `LinkStatus`: `Locked` to `.locked`, `Denied` to `.denied`, `Disconnected` to `.noDevice`, `Refused` to `.error`, `Transfer` to `.timeout` | `raw.rs:58`, binding `2491` |
-| `addNotificationObserver` `:171` | Packets drained from the tap, published through the existing `NotificationFanout` (`:101-126`) on main. **Gap: CG23** | `notify.rs:327` (where entries are recorded) |
-| `session`, `isOwnWrite` `:133`, `:215` | A constant session. A tap entry's `own` flag sets `origin`: our session when true, 0 when false. **CG23** | `notify.rs:327`, `notify.rs:452` |
-| `generation` `:137` | The core's connection generation (`lib.rs:234`), exported. **CG23** | `lib.rs:231-234` |
+| `addNotificationObserver` `:171` | Packets drained from the tap (CG23's `notifyTapDrain`) after `processNotifications`, at most once per 30 ms, published through the existing `NotificationFanout` (`:101-126`) on main. From SW8 the same drain also hands `CoreMirror` the `NotifyResult` flags and `getState()` (section 5.2) | `notify.rs:327` (where entries are recorded), `CoreBackedTransport.swift` `drain` |
+| `session`, `isOwnWrite` `:133`, `:215` | A constant session (1, or the hub's session over `.hub`). A tap entry's `own` flag sets `origin`: our session when true, 0 when false (so another hub session's origin arrives as 0; the tap keeps the real one) | `notify.rs:327`, `notify.rs:452` |
+| `generation` `:137` | **A local counter**, not the core's value: bumped at once when the app opens or closes the device (before the core has reconnected, so work queued for the old device is dropped at once, as `FakeTransport` and `USBDevice` do), and when a drain sees `connectionGeneration()` differ from the value after the transport's own last open or close (the core replaced the connection itself) | `CoreBackedTransport.swift` `bumpGeneration`, `drain`; `lib.rs:231-234` |
 | `isConnected`, `isConnectedPublisher` `:139-140` | `isConnected()`, refreshed on `DeviceEvents`, on `LinkListener.onLinkStatusChanged` and on `NOTIFY_DISCONNECTED` | `device.rs:441`, bindings `2184`, `2906`, `3108` |
 | `availableDevices` `:142-143` | `scanDevices()` on `coreQueue`, plus `linkDevices()` for a bound hub (section 4.3) | bindings `2668`, `2226` |
 | `selectDevice` `:151` | `selectDevice(serial)`, `openDemo()`, `openMidi(handle)` or `linkSelectDevice(handle,serial)`, by device kind | bindings `2683`, `2349`, `2374` |
 | `reconnect` `:152` | Select the device again. Over Link: `linkRetryNow()` | binding `2251` |
 | `disconnect` `:153`, `markDisconnected` `:157` | `disconnect()`. `markDisconnected` turns into a no-op: the core closes a dead stream itself (`NOTIFY_DISCONNECTED`, `consts.rs:169`) | binding `1686` |
-| `acquireDeviceLock`, `releaseDeviceLock` `:177-178` | **Gap: CG24** | `presets.rs:396-430` (internal only) |
-| `errorMessage` `:148` | `DspiError` text and CG10's `linkPhaseText` | `link_text.rs` |
+| `acquireDeviceLock`, `releaseDeviceLock` `:177-178` | CG24's `deviceLockAcquire(reason,timeoutMs)` (timeout clamped to 1 ms..60 s) and `deviceLockRelease()`; release ends only the lock this caller took. Over a host link the core asks the host transport's lock (CG26) | `presets.rs`, CG24 |
+| `errorMessage` `:148` | The core's open error (`DspiError` text). In host mode it is the core's, not the host's: a USB open error from `HubTransport` is not forwarded (c4n nit 2, for the first `-CoreTransport YES` UI check). CG10's `linkPhaseText` comes with SW6/SW7 | `link_text.rs` |
 
 `withDeviceLock` (`:232`) stays as a Swift helper over the two lock calls.
 
@@ -530,6 +533,18 @@ This replaces today's drop-own-echo rule (`DSPViewModel.swift:2669-2680`). That 
 `CoreBackedTransport` sends raw writes, whose echoes do change the core's mirror (`raw.rs:43-47`). It stays
 harmless after the domains move. SW8's test for "no echo flicker" drags a value on the demo device while echoes
 arrive late.
+
+**As built (SW8, `Core/CoreMirror.swift`).**
+- A field is pending from the moment its `@Published` value changes outside `CoreMirror.apply`. The mirror watches
+  each mirrored property's publisher, so setters register nothing by hand, and a domain WP that moves a setter to
+  the typed API keeps the rule for free. EQ, crossover and channel names have one key per wire channel.
+- A field held back by a pending edit is applied 500 ms after the last edit if the core still differs (one sweep).
+- `NOTIFY_REFRESHED` applies the whole state over pending edits, and so does a `BULK_INVALIDATED`, which is
+  RefusedWrite's revert. A `NOTIFY_PRESET` then rebases the unsaved-changes snapshot on that refresh.
+- `DspState` has no field for four +1-encoded presence bytes: I2S clock-pin mode, the S/PDIF 2-4 mask, and ADAT-in
+  enable and clock mode. The mirror reads them from `bulk_raw`, a CG candidate.
+- The transports not yet on the core (USB without `-CoreTransport`, MIDI, the Link client) keep the Swift decoder
+  until SW-M1, SW5 and SW6.
 
 **Slider fast path** (`Commands.swift:257-345`, `ContentView.swift:1464`). The `send*ToDevice` functions become
 typed setters behind a coalescing write lane on `coreQueue`. While a write for key K is still queued, a newer

@@ -15,15 +15,18 @@ enum CoreTransportUnderTest {
         enabled ? CoreBackedTransport(link: .host(fake, .fake)) : fake
     }
 
-    /// The GETs the core's own connect sequence leaves unanswered on a fresh
-    /// fake: behind the flag they reach the fake too, and are not the
-    /// console's reads.  Empty without the flag.
+    /// The GETs the core's own connect sequence and `fetchAll` leave
+    /// unanswered on a fresh fake: behind the flag they reach the fake too,
+    /// and are not the console's reads.  Empty without the flag.
     static func connectSequenceGaps(extensions: Bool = true) -> Set<String> {
         guard enabled else { return [] }
         let fake = FakeTransport(autoSelect: false, extensions: extensions)
         let t = CoreBackedTransport(link: .host(fake, .fake))
         fake.selectDevice(FakeTransport.demoDevice)
         _ = t.getControlResult(request: REQ_GET_PLATFORM, value: 0, index: 2, length: 7)
+        // -- WP SW8 -- and its fetchAll, which the view model's read now is
+        // (per-item reads such as the subharm solo, 0x2D).
+        _ = t.readAll()
         return Set(fake.unansweredRequests)
     }
 }
