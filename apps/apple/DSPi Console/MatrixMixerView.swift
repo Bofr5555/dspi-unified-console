@@ -643,7 +643,7 @@ struct CompactDelayField: View {
             .onSubmit { commitValue(); isFocused = false }
             .onChange(of: isFocused) { focused in
                 if focused {
-                    text = String(format: "%.1f", delay)
+                    text = ValueField.delayText(delay)   // -- WP SWF5 --
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         #if os(macOS)
                         NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
@@ -662,20 +662,16 @@ struct CompactDelayField: View {
             .background(
                 ScrollWheelHandler { delta in
                     if !isFocused {
-                        delay = max(0, min(maxDelay, delay + delta * 5))
+                        // -- WP SWF5 -- whole-ms steps (upstream's setter rounded)
+                        delay = max(0, min(maxDelay, (delay + delta * 5).rounded()))
                     }
                 }
             )
     }
 
     private func updateDisplay() {
-        if delay == 0 {
-            text = "0 ms"
-        } else if delay < 1 {
-            text = String(format: "%.1f ms", delay)
-        } else {
-            text = String(format: "%.1f ms", delay)
-        }
+        // -- WP SWF5 -- the delay as the core keeps it ("0 ms", "0.5 ms", "12 ms")
+        text = "\(ValueField.delayText(delay)) ms"
     }
 
     private func commitValue() {

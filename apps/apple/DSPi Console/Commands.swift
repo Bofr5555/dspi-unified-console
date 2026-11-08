@@ -317,8 +317,7 @@ extension DSPViewModel {
     }
 
     func sendOutputDelayToDevice(output: Int, ms: Float) {
-        var val = ms.rounded()
-        if val == -0.0 { val = 0.0 }
+        var val = Self.quantizeDelayMS(ms)   // -- WP SWF5 -- the slider rounds its drag
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_OUTPUT_DELAY, value: UInt16(output), index: 2, data: data)
     }
@@ -524,9 +523,17 @@ extension DSPViewModel {
         recomputeMagnitudes(for: ch)
     }
 
+    // -- WP SWF5 -- Delays keep the core's 0.0001 ms grid (`quantize_delay`)
+    // instead of upstream's whole ms, so a 0.5 ms delay from a preset file,
+    // another console or the device is written as 0.5 ms.  The views' sliders
+    // and scroll steps round to whole ms themselves; the core clamps.
+    static func quantizeDelayMS(_ ms: Float) -> Float {
+        let val = (ms * 10000).rounded() / 10000
+        return val == 0 ? 0 : val
+    }
+
     func setDelay(ch: Int, ms: Float) {
-        var val = ms.rounded()
-        if val == -0.0 { val = 0.0 }
+        var val = Self.quantizeDelayMS(ms)
         self.channelDelays[ch] = val
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_DELAY, value: UInt16(ch), index: 0, data: data)
@@ -2143,8 +2150,7 @@ extension DSPViewModel {
     // MARK: - Per-Output Delay
 
     func setOutputDelay(output: Int, ms: Float) {
-        var val = ms.rounded()
-        if val == -0.0 { val = 0.0 }
+        var val = Self.quantizeDelayMS(ms)   // -- WP SWF5 --
         outputDelayMS[output] = val
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_OUTPUT_DELAY, value: UInt16(output), index: 2, data: data)

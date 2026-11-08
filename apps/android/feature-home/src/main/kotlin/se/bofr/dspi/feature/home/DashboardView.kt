@@ -52,6 +52,7 @@ import se.bofr.dspi.ui.FilterType
 import se.bofr.dspi.ui.HorizontalRule
 import se.bofr.dspi.ui.ValueFormat
 import se.bofr.dspi.ui.VerticalRule
+import se.bofr.dspi.ui.delayDecimals
 import se.bofr.dspi.ui.settings.AppSettingsStore
 
 /**
@@ -103,6 +104,16 @@ private fun bands(bridge: DspiBridge, ch: Int): List<BandFields> = bridge.channe
 
 private fun outputColumn(bridge: DspiBridge, s: DspState, index: Int) =
     ChannelColumn(bridge.channelName(2 + index), outputColor(s, index), s.outputDelayMs.getOrElse(index) { 0f }, bands(bridge, 2 + index))
+
+/**
+ * macOS "Delay: %.0fms", with up to two decimals when the delay has them
+ * ("Delay: 0.5ms", not "1ms"; WP AN40). The name beside it gives way, the row
+ * keeps its height.
+ */
+internal fun dashboardDelayText(ms: Float): String {
+    val d = delayDecimals(ms, 2)
+    return "Delay: ${if (d.endsWith(".0")) ValueFormat.fixedPoint(ms, 0) else d}ms"
+}
 
 /** One side of a card: name, colour, delay readout (null = hidden, as on the input card), bands. */
 data class ChannelColumn(val name: String, val color: Color, val delayMs: Float?, val bands: List<BandFields>)
@@ -167,7 +178,7 @@ private fun CardHeader(ch: ChannelColumn, modifier: Modifier) {
             modifier = Modifier.weight(1f)
         )
         if (ch.delayMs != null) {
-            Text("Delay: ${ValueFormat.fixedPoint(ch.delayMs, 0)}ms", style = DspiType.mono9, color = c.secondaryLabel, maxLines = 1)
+            Text(dashboardDelayText(ch.delayMs), style = DspiType.mono9, color = c.secondaryLabel, maxLines = 1)
         }
     }
 }

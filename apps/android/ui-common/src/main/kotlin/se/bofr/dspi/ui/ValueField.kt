@@ -59,6 +59,9 @@ import androidx.compose.ui.unit.dp
  *   it ([ValueFormat.parse] with a range; the tool windows' rows).
  * @param accessibilityLabel what TalkBack calls the field ("Preamp"); it then
  *   reads the value with [label] as its state.
+ * @param editText the text the editor starts with, when it should carry more
+ *   decimals than the field shows (a delay: leaving the field untouched must
+ *   not round it; WP AN40). Default: the shown text.
  *
  * Stable API (lot 3).
  */
@@ -80,6 +83,7 @@ fun ValueField(
     onReset: (() -> Unit)? = null,
     range: ClosedFloatingPointRange<Float>? = null,
     accessibilityLabel: String? = null,
+    editText: String? = null,
     onCommit: (Float) -> Unit
 ) {
     @Suppress("NAME_SHADOWING")
@@ -111,7 +115,8 @@ fun ValueField(
                     onLongClick = onReset,
                     onLongClickLabel = if (onReset != null) "Reset" else null
                 ) {
-                    field = TextFieldValue(shown, TextRange(0, shown.length))
+                    val start = editText ?: shown
+                    field = TextFieldValue(start, TextRange(0, start.length))
                     editing = true
                 }.then(
                     // -- WP AN20 --

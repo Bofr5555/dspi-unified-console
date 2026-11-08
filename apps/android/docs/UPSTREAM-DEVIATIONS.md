@@ -254,9 +254,18 @@ Reference: macOS `MatrixMixerView.swift` (+ the matrix helpers of
    `sendOutputDelayToDevice` → `setOutputDelay`, input trim via
    `setInputPreamp(sendOnly = true)` → `sendOnly = false`, crosspoint gain
    via `setMatrixRoute(sendOnly = true)` → `sendOnly = false`.
-3. **Rounding as macOS:** output gain 0.1 dB, output delay whole ms
-   (README: "Applied in whole milliseconds"); delay max 42 ms (RP2040) /
+3. **Rounding as macOS:** output gain 0.1 dB; delay max 42 ms (RP2040) /
    85 ms (RP2350) as `CompactDelayField(maxDelay:)`. Gain fields −60…+12 dB.
+   **Delays are not rounded to whole ms** (WP AN40; upstream: Commands.swift
+   `setDelay`/`setOutputDelay` do `ms.rounded()`, README "Applied in whole
+   milliseconds", Dashboard `%.0f`): the core quantises to 0.0001 ms and the
+   firmware takes any float, so a fractional delay from a file, another
+   client, Link or the device is shown and kept. The compact field shows up
+   to two decimals ("0.25 ms"), its editor starts with up to four, so OK on
+   an untouched value writes it back unchanged; a drag still steps on the
+   whole-ms grid (0.5 → 1 → 2). HOME's delay field shows two decimals and the
+   Dashboard "Delay: 0.5ms". No field or row grows. (Qt never rounded; the
+   Swift clients are WP SWF5's.)
 4. **Hover help → captions/labels.** ENABLE's tooltip text is a caption on the
    phone page and the click label for accessibility; MatrixPoint's
    "Connect/Disconnect" and "Phase inverted/Normal phase" are content

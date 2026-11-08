@@ -49,6 +49,7 @@ import se.bofr.dspi.ui.SliderDragState
 import se.bofr.dspi.ui.ValueField
 import se.bofr.dspi.ui.ValueFormat
 import se.bofr.dspi.ui.VerticalRule
+import se.bofr.dspi.ui.delayDecimals
 import se.bofr.dspi.ui.dspiCard
 import se.bofr.dspi.ui.rememberSliderDrag
 import se.bofr.dspi.ui.writesAllowed
@@ -93,7 +94,10 @@ fun ChannelSettingsView(bridge: DspiBridge, outputIndex: Int, onNavigate: (Strin
             0f..maxDelay,
             live = { bridge.sendOutputDelayToDevice(outputIndex, it) },
             commit = { bridge.setOutputDelay(outputIndex, it.coerceIn(0f, maxDelay)) },
-            modifier = m
+            modifier = m,
+            // a fractional delay is shown (0.25, not 0.3) and kept when the field is left untouched (WP AN40)
+            maxDecimals = 2,
+            editText = { delayDecimals(it, 4) }
         )
     }
     val muteColumn: @Composable (Modifier) -> Unit = { m ->
@@ -141,16 +145,24 @@ internal fun SliderSection(
     commit: (Float) -> Unit,
     modifier: Modifier = Modifier,
     fieldWidth: Dp = 64.dp,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    maxDecimals: Int = 1,
+    editText: ((Float) -> String)? = null
 ) {
     val c = DspiTheme.colors
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title, style = DspiType.captionBold, color = c.secondaryLabel)
             Spacer(Modifier.weight(1f))
-            ValueField(label = unit, value = drag.value, width = fieldWidth, enabled = enabled, accessibilityLabel = sectionName(title)) {
-                drag.set(it, commit)
-            }
+            ValueField(
+                label = unit,
+                value = drag.value,
+                width = fieldWidth,
+                maxDecimals = maxDecimals,
+                enabled = enabled,
+                accessibilityLabel = sectionName(title),
+                editText = editText?.invoke(drag.value)
+            ) { drag.set(it, commit) }
         }
         CustomSlider(
             value = drag.value,

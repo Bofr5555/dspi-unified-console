@@ -58,9 +58,6 @@ class CompactFieldsTest {
         assertEquals(-3.3f, roundOutputGain(-3.25f), 1e-6f)
         assertEquals(0f, roundOutputGain(-0.04f), 0f)
         assertEquals(Float.POSITIVE_INFINITY, 1f / roundOutputGain(-0.04f), 0f) // no negative zero
-        assertEquals(13f, roundOutputDelay(12.5f), 0f)
-        assertEquals(12f, roundOutputDelay(12.4f), 0f)
-        assertEquals(0f, roundOutputDelay(0.3f), 0f)
     }
 
     @Test
@@ -78,5 +75,29 @@ class CompactFieldsTest {
         assertEquals(15f, CompactDrag.delay(10f, 20f, 85f), 0f)
         assertEquals(0f, CompactDrag.delay(1f, -40f, 85f), 0f)
         assertEquals(42f, CompactDrag.delay(40f, 400f, 42f), 0f)
+    }
+
+    /** WP AN40: a fractional delay is shown and kept; the drag steps on the whole-ms grid. */
+    @Test
+    fun wpAn40FractionalDelaysAreShownAndKept() {
+        assertEquals("0.25 ms", compactDelayDisplay(0.25f))
+        assertEquals("1.5 ms", compactDelayDisplay(1.5f))
+        assertEquals("12.35 ms", compactDelayDisplay(12.3456f)) // the widest the 62 dp field shows
+        assertEquals("85.0 ms", compactDelayDisplay(85f))
+        // the editor starts with every decimal the core keeps, so OK on it writes the same value
+        for (v in listOf(0.5f, 1.5f, 0.25f, 1.2346f, 12f, 0f)) {
+            assertEquals(v, parseCompactDelay(compactDelayEditText(v), 85f)!!, 0f)
+        }
+        assertEquals("1.2346", compactDelayEditText(1.2346f))
+        assertEquals("0.0", compactDelayEditText(0f))
+        // typed fractions are not rounded
+        assertEquals(0.5f, parseCompactDelay("0,5 ms", 85f)!!, 0f)
+        // a drag that has not reached a step leaves 0.5 alone; steps land on whole ms
+        assertEquals(0.5f, CompactDrag.delay(0.5f, 1f, 85f), 0f)
+        assertEquals(1f, CompactDrag.delay(0.5f, 4f, 85f), 0f)
+        assertEquals(3f, CompactDrag.delay(1.5f, 8f, 85f), 0f)
+        assertEquals(0f, CompactDrag.delay(0.5f, -4f, 85f), 0f)
+        assertEquals(1f, CompactDrag.delay(2.25f, -8f, 85f), 0f)
+        assertEquals(42f, CompactDrag.delay(41.5f, 40f, 42f), 0f)
     }
 }

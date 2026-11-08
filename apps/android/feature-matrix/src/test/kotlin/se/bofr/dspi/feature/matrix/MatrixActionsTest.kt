@@ -13,6 +13,9 @@ import org.junit.Test
 import se.bofr.dspi.bridge.DspiBridgeImpl
 import se.bofr.dspi.core.DspiConstants
 import se.bofr.dspi.fake.FakeDspiCore
+import se.bofr.dspi.ui.compactDelayDisplay
+import se.bofr.dspi.ui.compactDelayEditText
+import se.bofr.dspi.ui.parseCompactDelay
 
 /** MatrixMixerState.from + MatrixActions against DspiBridgeImpl over the V32 FakeDspiCore. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -147,7 +150,7 @@ class MatrixActionsTest {
     }
 
     @Test
-    fun outputGainAndDelayCommitRounded() = runTest {
+    fun outputGainRoundedDelayNot() = runTest {
         val r = rig()
         r.actions.outputGainLive(2, -3.04f)
         r.actions.outputGainCommit(2, -3.26f)
@@ -155,10 +158,60 @@ class MatrixActionsTest {
         r.actions.outputDelayCommit(2, 12.4f)
         runCurrent()
         assertEquals(listOf("setOutputGain(2, -3.0)", "setOutputGain(2, -3.3)"), r.calls("setOutputGain"))
-        assertEquals(listOf("setOutputDelay(2, 10.0)", "setOutputDelay(2, 12.0)"), r.calls("setOutputDelay"))
+        // WP AN40: the delay goes out as given; the core quantises to 0.0001 ms
+        assertEquals(listOf("setOutputDelay(2, 9.6)", "setOutputDelay(2, 12.4)"), r.calls("setOutputDelay"))
         assertEquals(-3.3f, r.bridge.outputGainDB(2), 1e-6f)
-        assertEquals(12f, r.bridge.outputDelayMS(2), 0f)
+        assertEquals(12.4f, r.bridge.outputDelayMS(2), 0f)
     }
+
+    /** WP AN40: 0.5 and 1.5 ms typed into the delay fields apply exactly (no whole-ms rounding). */
+    @Test
+    fun wpAn40HalfMillisecondDelaysApplyExactly() = runTest {
+        val r = rig()
+        r.actions.outputDelayCommit(0, parseCompactDelayOrFail("0.5"))
+        r.actions.outputDelayCommit(1, parseCompactDelayOrFail("1,5 ms"))
+        runCurrent()
+        assertEquals(listOf("setOutputDelay(0, 0.5)", "setOutputDelay(1, 1.5)"), r.calls("setOutputDelay"))
+        assertEquals(0.5f, r.bridge.outputDelayMS(0), 0f)
+        assertEquals(1.5f, r.bridge.outputDelayMS(1), 0f)
+        val s = MatrixMixerState.from(r.bridge, activeInputChannels = 2, connected = true)
+        assertEquals("0.5 ms", compactDelayDisplay(s.output(0).delayMS))
+        assertEquals("1.5 ms", compactDelayDisplay(s.output(1).delayMS))
+    }
+
+    /**
+     * WP AN40: fractional delays set elsewhere (the device, another client,
+     * Link) reach the matrix as they are and survive unrelated writes,
+     * including an untouched pass through the delay editor.
+     */
+    @Test
+    fun wpAn40FractionalDelayFromTheDeviceSurvivesUnrelatedWrites() = runTest {
+        val r = rig()
+        r.core.simulateRemote { st ->
+            st.copy(outputDelayMs = st.outputDelayMs.mapIndexed { i, v -> mapOf(2 to 0.25f, 3 to 1.5f)[i] ?: v })
+        }
+        advanceTimeBy(100)
+        runCurrent()
+        assertEquals(0.25f, r.bridge.outputDelayMS(2), 0f)
+        val before = MatrixMixerState.from(r.bridge, activeInputChannels = 2, connected = true)
+        assertEquals("0.25 ms", compactDelayDisplay(before.output(2).delayMS))
+
+        r.core.calls.clear()
+        r.actions.outputGainCommit(2, -4f)
+        r.actions.setOutputMute(2, true)
+        r.actions.outputDelayCommit(4, 3f)
+        r.actions.matrixGainCommit(0, 0, -6f)
+        // OK on the editor without typing: the text it starts with parses back to the same value
+        r.actions.outputDelayCommit(3, parseCompactDelayOrFail(compactDelayEditText(before.output(3).delayMS)))
+        runCurrent()
+        assertEquals(listOf("setOutputDelay(4, 3.0)", "setOutputDelay(3, 1.5)"), r.calls("setOutputDelay"))
+        assertEquals(0.25f, r.bridge.outputDelayMS(2), 0f)
+        assertEquals(1.5f, r.bridge.outputDelayMS(3), 0f)
+        assertEquals(0.25f, r.core.getState().outputDelayMs[2], 0f)
+        assertEquals(1.5f, r.core.getState().outputDelayMs[3], 0f)
+    }
+
+    private fun parseCompactDelayOrFail(text: String) = checkNotNull(parseCompactDelay(text, 85f))
 
     @Test
     fun inputTrimLiveIsSendOnlyAndCommits() = runTest {
