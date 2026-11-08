@@ -3208,7 +3208,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_rta_set_listener() != 3531.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_rta_set_request() != 28027.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_rta_set_request() != 55894.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_rta_start() != 14405.toShort()) {
@@ -6469,6 +6469,11 @@ public interface DspiCoreInterface {
      * A request that changes what this console asks for takes the analyser
      * back from a console being followed ([`Self::rta_get_ownership`]).
      * Releasing it (mask 0) and asking for the same thing again does not.
+     *
+     * Mask 0 with `watching` set (WP CG30): a view shows the analyser with
+     * no channel chosen. It asks for nothing of its own, so while driving
+     * the analyser is released as with mask 0; while following, the
+     * device's configuration is still polled and in the snapshot.
      */
     fun `rtaSetRequest`(`request`: RtaRequest)
     
@@ -10205,6 +10210,11 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * A request that changes what this console asks for takes the analyser
      * back from a console being followed ([`Self::rta_get_ownership`]).
      * Releasing it (mask 0) and asking for the same thing again does not.
+     *
+     * Mask 0 with `watching` set (WP CG30): a view shows the analyser with
+     * no channel chosen. It asks for nothing of its own, so while driving
+     * the analyser is released as with mask 0; while following, the
+     * device's configuration is still polled and in the snapshot.
      */override fun `rtaSetRequest`(`request`: RtaRequest)
         = 
     callWithPointer {
@@ -17662,7 +17672,7 @@ data class RtaRequest (
      */
     var `tap`: kotlin.UByte, 
     /**
-     * Channel mask within the tap; 0 releases the analyser.
+     * Channel mask within the tap; 0 releases the analyser unless `watching`.
      */
     var `mask`: kotlin.UShort, 
     /**
@@ -17681,7 +17691,15 @@ data class RtaRequest (
     /**
      * Peak decay, dB/s; 0 = peak hold off.
      */
-    var `peakDecayDbS`: kotlin.UByte
+    var `peakDecayDbS`: kotlin.UByte, 
+    /**
+     * A view shows the analyser, also with no channel chosen
+     * (`isWatching`, SpectrumAnalyser.swift:827). With mask 0 it asks for
+     * nothing of its own, but while another console is followed the device's
+     * configuration keeps being polled and drawn. A mask other than 0 watches
+     * anyway.
+     */
+    var `watching`: kotlin.Boolean = false
 ) {
     
     companion object
@@ -17699,6 +17717,7 @@ public object FfiConverterTypeRtaRequest: FfiConverterRustBuffer<RtaRequest> {
             FfiConverterUByte.read(buf),
             FfiConverterUShort.read(buf),
             FfiConverterUByte.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
@@ -17708,7 +17727,8 @@ public object FfiConverterTypeRtaRequest: FfiConverterRustBuffer<RtaRequest> {
             FfiConverterBoolean.allocationSize(value.`wantsBins`) +
             FfiConverterUByte.allocationSize(value.`fftOrder`) +
             FfiConverterUShort.allocationSize(value.`avgMs`) +
-            FfiConverterUByte.allocationSize(value.`peakDecayDbS`)
+            FfiConverterUByte.allocationSize(value.`peakDecayDbS`) +
+            FfiConverterBoolean.allocationSize(value.`watching`)
     )
 
     override fun write(value: RtaRequest, buf: ByteBuffer) {
@@ -17718,6 +17738,7 @@ public object FfiConverterTypeRtaRequest: FfiConverterRustBuffer<RtaRequest> {
             FfiConverterUByte.write(value.`fftOrder`, buf)
             FfiConverterUShort.write(value.`avgMs`, buf)
             FfiConverterUByte.write(value.`peakDecayDbS`, buf)
+            FfiConverterBoolean.write(value.`watching`, buf)
     }
 }
 

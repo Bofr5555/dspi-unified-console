@@ -108,6 +108,9 @@ void RtaController::release(int id) {
 // The newest subscription picks the tap; every subscription at that tap adds
 // its channels, except that one drawing bins gets its own channel alone (the
 // device keeps bins for the last channel it transformed).
+// -- WP CG30 -- Any subscription watches, also one with no channel: it asks
+// for nothing of its own, and the core keeps polling a console being followed
+// (isWatching, SpectrumAnalyser.swift:827)
 void RtaController::pushRequest() {
     RtaRequest r {};
     const Sub *primary = nullptr;
@@ -130,9 +133,11 @@ void RtaController::pushRequest() {
         r.avg_ms = uint16_t(qBound(0, m_avgMs, 10000));
         r.peak_decay_db_s = uint8_t(qBound(0, m_peakDecay, 100));
     }
-    if (std::memcmp(&r, &m_sent, sizeof(r)) == 0) return;
+    const bool watching = !m_subs.isEmpty() && m_caps.supported;
+    if (std::memcmp(&r, &m_sent, sizeof(r)) == 0 && watching == m_sentWatching) return;
     m_sent = r;
-    dspi_rta_set_request(m_core, &r);
+    m_sentWatching = watching;
+    dspi_rta_set_request_watching(m_core, &r, watching);
 }
 
 int RtaController::appChannel(int tap, int index) const {

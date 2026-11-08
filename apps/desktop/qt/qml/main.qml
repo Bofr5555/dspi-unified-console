@@ -177,6 +177,11 @@ ApplicationWindow {
         rtaAvailable
         return rtaParse(onDashboard ? (rtaDashboardSource !== "" ? rtaDashboardSource : rtaDefaultSource()) : rtaPageSource)
     }
+    // -- WP CG30 -- What the graph and the bar strip draw: the device's tap and
+    // channels while another console drives, also with none chosen here
+    // (drawn(own:followed:), SpectrumAnalyserView.swift:682). They keep asking
+    // for rtaSelection, so showing it never takes control.
+    readonly property var rtaDrawn: rta.following ? ({ tap: rta.followedTap, channels: rta.followedChannels }) : rtaSelection
 
     function rtaSetSource(src) {
         if (onDashboard) rtaDashboardSource = src

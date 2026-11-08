@@ -102,7 +102,8 @@ public:
     Q_INVOKABLE void takeControl();
 
     // A view's interest: tap, channel mask, and whether it draws FFT bins.
-    // Returns an id for update/release.
+    // Returns an id for update/release. A mask of 0 still watches: the
+    // device's analyser is drawn while following another console (WP CG30).
     int subscribe(int tap, int mask, bool wantsBins);
     void update(int id, int tap, int mask, bool wantsBins);
     void release(int id);
@@ -142,6 +143,7 @@ private:
     int m_nextId = 1;
     QAtomicInt m_wakePending = 0;
     RtaRequest m_sent {};
+    bool m_sentWatching = false;   // -- WP CG30 --
     RtaOwnership m_owner {};   // -- WP QD19 --
     int m_fftOrder = 10;
     int m_avgMs = 300;

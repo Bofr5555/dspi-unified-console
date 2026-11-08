@@ -135,6 +135,11 @@ impl DspiCore {
     /// A request that changes what this console asks for takes the analyser
     /// back from a console being followed ([`Self::rta_get_ownership`]).
     /// Releasing it (mask 0) and asking for the same thing again does not.
+    ///
+    /// Mask 0 with `watching` set (WP CG30): a view shows the analyser with
+    /// no channel chosen. It asks for nothing of its own, so while driving
+    /// the analyser is released as with mask 0; while following, the
+    /// device's configuration is still polled and in the snapshot.
     pub fn rta_set_request(&self, request: RtaRequest) {
         let signal = {
             let mut inner = self.lock();
@@ -191,7 +196,7 @@ pub(crate) struct RtaState {
     /// The session's analyser host half; the core's subscription is `view`.
     engine: RtaEngine,
     /// The core's one subscription to the engine, while the request's mask
-    /// is not 0.
+    /// is not 0, or while following for a watching request.
     view: Option<ViewId>,
     /// What the app asked for last (survives reconnects).
     request: RtaRequest,
@@ -335,10 +340,11 @@ impl RtaState {
     }
 
     /// The request with the tap and channels the device really analyses:
-    /// what is polled and drawn. Released stays released.
+    /// what is polled and drawn. Released stays released; watching with
+    /// nothing chosen draws what is followed (WP CG30).
     fn analysed(&self) -> RtaRequest {
         match self.sharing.following() {
-            Some(f) if self.request.mask != 0 => RtaRequest {
+            Some(f) if self.request.mask != 0 || self.request.watching => RtaRequest {
                 tap: f.config.tap,
                 mask: f.config.channel_mask,
                 ..self.request
@@ -1304,6 +1310,7 @@ mod tests_wp_c9 {
             fft_order: 10,
             avg_ms: 300,
             peak_decay_db_s: 12,
+            watching: false,
         }
     }
 
@@ -1751,6 +1758,60 @@ mod tests_wp_c9 {
         assert!(!core.rta_get_snapshot().config_rejected);
     }
 
+    // ── WP CG30: watching with nothing chosen ─────────────────────────
+
+    fn watching(mask: u16) -> RtaRequest {
+        RtaRequest {
+            watching: true,
+            ..request(mask)
+        }
+    }
+
+    #[test]
+    fn wp_cg30_watching_with_nothing_chosen_polls_what_is_followed() {
+        let (core, dev) = driving_on(0b1, TransportKind::Usb);
+        let seen = readbacks(&dev);
+        wait_for("agreement", || {
+            readbacks(&dev) > seen && core.lock().rta.sharing.agreed()
+        });
+        dev.lock().unwrap().config = Some(config(engine::TAP_OUTPUT, 0b110));
+        wait_for("following", || core.rta_get_ownership().following);
+        // The view stays, its choice cleared: nothing taken back.
+        let n = pushes(&dev);
+        core.rta_set_request(watching(0));
+        assert!(core.rta_get_ownership().following);
+        wait_for("their picture", || {
+            let s = core.rta_get_snapshot();
+            s.tap == engine::TAP_OUTPUT && s.count == 2
+        });
+        // Still polled, so a change there shows here.
+        dev.lock().unwrap().config = Some(config(engine::TAP_INPUT, 0b11));
+        wait_for("the new picture", || {
+            let s = core.rta_get_snapshot();
+            s.tap == engine::TAP_INPUT && s.count == 2
+        });
+        let seen = readbacks(&dev);
+        wait_for("more polls", || readbacks(&dev) >= seen + 2);
+        assert_eq!(pushes(&dev), n, "nothing of ours is pushed");
+        assert!(core.rta_get_ownership().following);
+        // Not watching: released, as before.
+        core.rta_set_request(request(0));
+        wait_for("released", || core.lock().rta.view.is_none());
+    }
+
+    #[test]
+    fn wp_cg30_watching_with_nothing_chosen_while_driving_asks_for_nothing() {
+        let (core, dev) = driving_on(0b1, TransportKind::Usb);
+        core.rta_set_request(watching(0));
+        wait_for("the stop", || dev.lock().unwrap().stops > 0);
+        wait_for("an empty picture", || core.rta_get_snapshot().count == 0);
+        assert!(core.lock().rta.view.is_none());
+        let transfers = dev.lock().unwrap().log.len();
+        thread::sleep(TICK * 4);
+        assert_eq!(dev.lock().unwrap().log.len(), transfers, "no polls");
+        assert!(!core.rta_get_ownership().following);
+    }
+
     #[test]
     fn wp_cg5_a_refused_push_is_not_following() {
         // SET is taken but never applied: the readback never agrees.
@@ -2032,6 +2093,7 @@ mod tests_wp_cg5 {
             fft_order: 10,
             avg_ms: 300,
             peak_decay_db_s: 12,
+            watching: false,
         }
     }
 
@@ -2174,6 +2236,50 @@ mod tests_wp_cg5 {
         a.rta_set_request(request(0b1000));
         assert!(!a.rta_get_ownership().following);
         until("a's choice", &[&a, &b], || device_mask(&hub) == 0b1000);
+    }
+
+    /// WP CG30: a view on screen with its choice cleared draws, live, what
+    /// another session chooses, and asks for nothing.
+    #[test]
+    fn wp_cg30_watching_with_nothing_chosen_draws_another_sessions_choice() {
+        let hub = hub();
+        let (a, sid_a) = console(&hub, "a", 0b0001);
+        until("a's push", &[&a], || pushes(&hub, sid_a) > 0);
+        a.rta_set_request(RtaRequest {
+            watching: true,
+            ..request(0)
+        });
+        until("a released", &[&a], || a.lock().rta.view.is_none());
+        let n = pushes(&hub, sid_a);
+
+        let (b, sid_b) = console(&hub, "b", 0b0110);
+        until("a following", &[&a, &b], || a.rta_get_ownership().following);
+        assert_eq!(a.rta_get_ownership().origin, sid_b);
+        until("b's channels on a", &[&a, &b], || {
+            channels(&a.rta_get_snapshot()) == [1, 2]
+        });
+        let first = a.rta_get_snapshot();
+        hub.set_rta_level(100);
+        until("a new level on a", &[&a, &b], || {
+            let now = a.rta_get_snapshot();
+            now.version != first.version && now.frames[0].avg_db[0] != first.frames[0].avg_db[0]
+        });
+        b.rta_set_request(request(0b1000));
+        until("b's new choice on a", &[&a, &b], || {
+            channels(&a.rta_get_snapshot()) == [3]
+        });
+        settle(&[&a, &b]);
+        assert_eq!(pushes(&hub, sid_a), n, "a pushes nothing");
+        assert!(a.rta_get_ownership().following);
+        assert!(!b.rta_get_ownership().following);
+        assert_eq!(device_mask(&hub), 0b1000);
+
+        // Without the flag the view is gone: released, though still following.
+        a.rta_set_request(request(0));
+        until("a released again", &[&a, &b], || {
+            a.lock().rta.view.is_none()
+        });
+        assert!(a.rta_get_ownership().following);
     }
 
     #[test]

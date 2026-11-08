@@ -37,6 +37,7 @@ fn request(mask: u16, wants_bins: bool) -> RtaRequest {
         fft_order: 10,
         avg_ms: 300,
         peak_decay_db_s: 12,
+        watching: false,
     }
 }
 

@@ -72,6 +72,7 @@ Column {
             // The device's spectrum, behind the response curves
             SpectrumCurveItem {
                 id: spectrum
+                objectName: "graphSpectrum"   // -- WP CG30 -- (smoke)
                 anchors.fill: parent
                 controller: rta
                 // Not while its window is minimised: nobody sees it
@@ -80,8 +81,10 @@ Column {
                 opacity: wanted ? 1 : 0
                 visible: opacity > 0
                 Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
-                tap: root.rtaSelection.tap
-                channels: root.rtaSelection.channels
+                // -- WP CG30 --
+                tap: root.rtaDrawn.tap
+                channels: root.rtaDrawn.channels
+                request: root.rtaSelection
                 colors: channels.map(function (c) { return bridge.channelColor(rta.appChannel(tap, c)) })
                 floorDb: root.rtaFloorDb
                 ceilingDb: root.rtaCeilingDb
