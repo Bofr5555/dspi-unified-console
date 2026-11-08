@@ -1,0 +1,36 @@
+#!/bin/bash
+# Mounts the .dmg from build-macos.sh read-only and starts the app from it on
+# the demo device for 15 s (DMG_RUN_SECONDS). Passes when the app is still
+# running at the end and its log shows no QML module or component, Qt plugin,
+# library or image that failed to load. Needs the GUI session (from ssh:
+# sudo launchctl asuser "$(id -u)" sudo -u "$USER" test-dmg.sh <dmg>).
+#
+#   apps/desktop/packaging/macos/test-dmg.sh <dmg>
+set -uo pipefail
+dmg=${1:?usage: test-dmg.sh <dmg>}
+secs=${DMG_RUN_SECONDS:-15}
+work=$(dirname "$dmg")
+mnt=$work/mnt
+log=$work/app.log
+
+mkdir -p "$mnt"
+hdiutil attach -quiet -readonly -nobrowse -mountpoint "$mnt" "$dmg" || { echo "test-dmg: cannot mount $dmg"; exit 1; }
+detach() { hdiutil detach -quiet "$mnt" || hdiutil detach -quiet -force "$mnt"; }
+trap detach EXIT
+
+app="$mnt/DSPi Console.app"
+codesign --verify --deep --strict "$app" || { echo "test-dmg: the signature does not verify"; exit 1; }
+QT_FORCE_STDERR_LOGGING=1 "$app/Contents/MacOS/DSPi Console" --demo >"$log" 2>&1 &
+pid=$!
+sleep "$secs"
+if kill -0 "$pid" 2>/dev/null; then
+    alive=1; kill "$pid"; wait "$pid" 2>/dev/null
+else
+    alive=""; wait "$pid"; echo "test-dmg: the app exited with $? before $secs s"
+fi
+bad=$(grep -E "is not installed|failed to load component|is not a type|Could not load the Qt platform plugin|Library not loaded|Error decoding|Unsupported image format" "$log")
+if [ -n "$alive" ] && [ -z "$bad" ]; then
+    echo "test-dmg: the app from the .dmg ran $secs s on the demo device, no load errors"
+else
+    echo "test-dmg: FAILED; the log:"; cat "$log"; exit 1
+fi

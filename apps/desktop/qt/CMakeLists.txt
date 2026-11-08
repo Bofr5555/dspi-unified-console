@@ -221,7 +221,9 @@ if(APPLE)
         MACOSX_BUNDLE ON
         OUTPUT_NAME "DSPi Console"
         MACOSX_BUNDLE_INFO_PLIST ${DSPI_MAC_DIR}/Info.plist.in
-        MACOSX_BUNDLE_GUI_IDENTIFIER io.github.weeblabs.DSPiConsole
+        # -- WP QD21b -- a neutral placeholder: .invalid is reserved (RFC 6761), so
+        # no one can hold it; a real id needs a domain the maintainers own
+        MACOSX_BUNDLE_GUI_IDENTIFIER invalid.dspi-unified-console.DSPiConsole
         MACOSX_BUNDLE_SHORT_VERSION_STRING ${DSPI_VER_MAJOR}.${DSPI_VER_MINOR}.${DSPI_VER_PATCH}
         MACOSX_BUNDLE_BUNDLE_VERSION ${DSPI_VERSION})
 
