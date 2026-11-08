@@ -66,6 +66,11 @@ required-features = ["fake-hub"]
 name = "client_fakehub"
 required-features = ["fake-hub"]
 
+# -- WP WB4b --
+[[test]]
+name = "wp_wb4b"
+required-features = ["fake-hub"]
+
 [[test]]
 name = "wp_l1"
 path = "tests/wp_l1/main.rs"

@@ -67,6 +67,8 @@ if (args.has("--unit")) {
         // -- WP WB4a -- the USB page over a WebUSB mock
         "test/usb": "test/pages/usb.ts",
         "test/usb-worker": "test/pages/usb-worker.ts",
+        // -- WP WB4b -- a fleet server's page with hubs
+        "test/fleet-hub": "test/pages/fleet-hub.ts",
       },
       outdir: out,
       minify: false,

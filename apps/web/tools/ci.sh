@@ -5,7 +5,8 @@
 #   apps/web/tools/ci.sh            the core (crates/dspi-wasm, built in the cross
 #                                   container), install (npm ci, from the lockfile),
 #                                   typecheck, build, unit tests (the core's under
-#                                   JSPI too), e2e in Chromium and Firefox
+#                                   JSPI too), e2e in Chromium and Firefox; Link's
+#                                   against dspi-link's fake hub (WB4b)
 #   apps/web/tools/ci.sh --no-e2e   all but the browsers
 #
 # npm installs only what package-lock.json names, with its integrity hashes. The
@@ -27,6 +28,12 @@ e2e=1
 # into dist/, the unit tests load both.
 "$root/crates/dspi-wasm/tools/build.sh" "$work/wasm"
 
+# -- WP WB4b -- the fake hub the Link e2e tests reach through tools/hub-host.mjs,
+# built in the cross container (Ubuntu 24.04, as the Playwright image) so it runs there
+mkdir -p "$work/hub"
+DSPI_PROFILE=cross "$root/ci/run.sh" "cargo build -p dspi-link --features fake-hub --bin dspi-link-fakehub --locked"
+cp "$B/target/${branch//\//-}-cross/debug/dspi-link-fakehub" "$work/hub/"
+
 podman image exists "$PLAYWRIGHT" || podman pull -q "$PLAYWRIGHT" >/dev/null
 podman run --rm --init --userns=keep-id --user "$(id -u):$(id -g)" --ipc=private \
   -v "$root":/src:ro,z \
@@ -35,6 +42,7 @@ podman run --rm --init --userns=keep-id --user "$(id -u):$(id -g)" --ipc=private
   -v "$work/dist-test":/src/apps/web/dist-test:z \
   -v "$work/results":/results:z -e PW_OUTPUT_DIR=/results/out \
   -v "$work/wasm":/wasm:ro,z -e DSPI_WASM_DIR=/wasm -e DSPI_WASM_REQUIRED=1 \
+  -v "$work/hub":/hub:ro,z -e DSPI_FAKEHUB=/hub/dspi-link-fakehub -e DSPI_FAKEHUB_REQUIRED=1 \
   -v "$work/npm":/npm:z -v "$work/home":/home/web:z -v "$work/tmp":/wtmp:z \
   -e HOME=/home/web -e TMPDIR=/wtmp -e npm_config_cache=/npm -e npm_config_update_notifier=false \
   -e CI=1 -e E2E=$e2e -w /src/apps/web "$PLAYWRIGHT" bash -euo pipefail -c '

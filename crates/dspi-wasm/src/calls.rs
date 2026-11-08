@@ -23,6 +23,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::guard::{self, Refusal};
+// -- WP WB4b --
+use crate::link;
 // -- WP WB4a --
 use crate::usb;
 use crate::write;
@@ -55,6 +57,7 @@ impl From<DspiError> for CallError {
             DspiError::ReadOnly => "read_only",
             DspiError::Locked => "locked",
             DspiError::Denied => "denied",
+            DspiError::Link { code, .. } if code == "wrong_pin" => "wrong_pin",
             DspiError::Link { .. } => "link",
             _ => "internal",
         };
@@ -195,8 +198,11 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "open" => open(h, &core, params(req.params)?),
         "state" => {
             need_open(&core)?;
-            // -- WP WB4a -- (a USB device's serial)
-            Ok(usb::with_serial(h, snapshot(&core, demo)))
+            // -- WP WB4a -- (a USB device's serial) -- WP WB4b -- (a hub device's)
+            Ok(link::with_serial(
+                h,
+                usb::with_serial(h, snapshot(&core, demo)),
+            ))
         }
         "write" => {
             let w: write::WriteParams = params(req.params)?;
@@ -211,8 +217,16 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
             let p: P = params(req.params)?;
             write::describe(&p.path)
         }
-        "meters" => meters(&core),
-        "poll" => poll(&core),
+        "meters" => {
+            // -- WP WB4b -- the meter frames that came over Link meanwhile
+            core.link_service();
+            meters(&core)
+        }
+        "poll" => {
+            // -- WP WB4b -- the notifications that came over Link meanwhile
+            core.link_service();
+            poll(&core)
+        }
         "rtaStart" => rta_start(&core, params(req.params)?),
         "rtaStop" => {
             core.rta_set_request(RtaRequest::default());
@@ -226,8 +240,17 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
             set_demo(h, false);
             // -- WP WB4a --
             usb::closed(h);
+            // -- WP WB4b -- and leave the hub, giving back its session slot
+            core.link_close();
+            link::forget(h);
             Ok(Value::Null)
         }
+        // -- WP WB4b -- Link (src/link.rs)
+        "linkConnect" => link::connect(&core, params(req.params)?),
+        "linkPair" => link::pair(&core, params(req.params)?),
+        "linkDevices" => Ok(link::devices(&core)),
+        "linkStatus" => Ok(link::status(&core)),
+        "linkTick" => Ok(link::tick(&core)),
         // -- WP WB4a -- WebUSB (src/usb.rs)
         "usbPush" => usb::push(&core, params(req.params)?),
         "usbGone" => {
@@ -283,7 +306,8 @@ enum Target {
     },
     // -- WP WB4a --
     Usb(usb::UsbTarget),
-    Hub {},
+    // -- WP WB4b --
+    Hub(link::HubTarget),
 }
 
 /// The demo in an older wire format: the core reads it and refuses writes.
@@ -298,19 +322,25 @@ fn open(h: u32, core: &DspiCore, target: Target) -> CallResult {
                 core.open_demo()?;
             }
             set_demo(h, true);
+            // -- WP WB4b -- (c6g N1) whatever this session had on USB or a hub is not it
+            usb::closed(h);
+            link::forget(h);
             Ok(snapshot(core, true))
         }
         // -- WP WB4a --
         Target::Usb(t) => {
+            link::forget(h);
             usb::open(h, core, t)?;
             set_demo(h, false);
             Ok(usb::with_serial(h, snapshot(core, false)))
         }
-        // WB4b (Link) brings this.
-        Target::Hub {} => Err(CallError::new(
-            "refused",
-            "This connection type is not available yet",
-        )),
+        // -- WP WB4b --
+        Target::Hub(t) => {
+            usb::closed(h);
+            link::open(h, core, &t)?;
+            set_demo(h, false);
+            Ok(link::with_serial(h, snapshot(core, false)))
+        }
     }
 }
 
@@ -671,13 +701,22 @@ mod tests {
         let h = session_new().unwrap();
         // -- WP WB4a -- USB is offered now; without a chosen device it says so.
         assert_eq!(code(&run(h, "open", json!({ "kind": "usb" }))), "invalid");
+        // -- WP WB4b -- hubs are offered now: a device must be chosen, on a connected hub.
         assert_eq!(
             code(&run(
                 h,
                 "open",
                 json!({ "kind": "hub", "url": "ws://h:1", "deviceId": "" })
             )),
-            "refused"
+            "invalid"
+        );
+        assert_eq!(
+            code(&run(
+                h,
+                "open",
+                json!({ "kind": "hub", "url": "ws://h:1", "deviceId": "X" })
+            )),
+            "not_open"
         );
         assert_eq!(
             code(&run(h, "simulate", json!({ "what": "link-lost" }))),

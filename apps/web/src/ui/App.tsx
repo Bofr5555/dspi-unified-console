@@ -6,6 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks"
 import { CoreClient } from "../core/client";
 import type { DeviceTarget } from "../core/protocol";
 import { pageEnv, type PageEnv } from "../fleet/env";
+// -- WP WB4b --
+import { hubTokensFor } from "../fleet/hub-tokens";
+import { safeLocalStorage } from "../fleet/local";
 import { sourceKey, type FleetBackend, type FleetUser, type Installation, type Source } from "../fleet/types";
 import { About, DevicePicker, SessionView, TabLabel } from "./components";
 import { Session } from "./session";
@@ -36,6 +39,9 @@ export function App(props: { options: ConsoleOptions }) {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [listError, setListError] = useState("");
   const [addHubError, setAddHubError] = useState("");
+  // -- WP WB4b -- tokens per hub: the fleet's, or this page's storage
+  const tokens = useMemo(() => hubTokensFor(backend, safeLocalStorage()), [backend]);
+  const hubSessions = useRef(0);
 
   const reload = useCallback(async () => {
     try {
@@ -54,15 +60,19 @@ export function App(props: { options: ConsoleOptions }) {
   const openKeys = useMemo(() => new Set(sessions.map((s) => s.id)), [sessions]);
 
   const open = async (inst: Installation, source: Source) => {
-    const id = `${inst.id}/${sourceKey(source)}`;
+    // -- WP WB4b -- a hub without a named DSPi: a new session each time, which
+    // asks the hub for its list (one hub, several DSPis open at once)
+    const chooser = source.kind === "hub" && !source.deviceId;
+    const id = `${inst.id}/${sourceKey(source)}${chooser ? `~${++hubSessions.current}` : ""}`;
     if (openKeys.has(id)) {
       setActive(id);
       return;
     }
     // -- WP WB4a -- a USB DSPi is its serial
-    const deviceId = source.kind === "hub" ? "" : source.kind === "usb" && source.serial ? source.serial : source.kind;
+    const deviceId =
+      source.kind === "hub" ? (source.deviceId ?? "") : source.kind === "usb" && source.serial ? source.serial : source.kind;
     const access = props.options.readOnly ? "view" : await backend.access(inst.id, source, deviceId);
-    const session = new Session(id, inst.id, inst.name, source, access, spawnCore());
+    const session = new Session(id, inst.id, inst.name, source, access, spawnCore(), source.kind === "hub" ? tokens : null);
     setSessions((list) => [...list, session]);
     setActive(id);
     await session.open(targetFor(source));
@@ -118,6 +128,7 @@ export function App(props: { options: ConsoleOptions }) {
           onOpen={(i, s) => void open(i, s)}
           onAddHub={addHub}
           addHubError={addHubError}
+          hubDevices={backend.hubDevices ? (url) => backend.hubDevices!(url) : null}
         />
         <main class="sessions">
           {sessions.length > 1 ? (
@@ -155,6 +166,7 @@ function targetFor(source: Source): DeviceTarget {
       // -- WP WB4a --
       return source.serial ? { kind: "usb", serial: source.serial } : { kind: "usb" };
     case "hub":
-      return { kind: "hub", url: source.url, deviceId: "" };
+      // -- WP WB4b --
+      return { kind: "hub", url: source.url, deviceId: source.deviceId ?? "" };
   }
 }

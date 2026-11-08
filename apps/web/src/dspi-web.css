@@ -114,6 +114,12 @@
 .dspi-web .unavailable { color: var(--muted); font-size: 0.85rem; text-align: right; }
 .dspi-web .add-hub { margin-top: 0.75rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end; }
 .dspi-web .add-hub label { display: flex; flex-direction: column; gap: 0.2rem; flex: 1; font-size: 0.85rem; color: var(--muted); }
+/* -- WP WB4b -- a hub's PIN, and its DSPis to choose from */
+.dspi-web .pin-entry { margin: 0.75rem 0; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end; }
+.dspi-web .pin-entry label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: var(--muted); }
+.dspi-web .pin-entry input { width: 8rem; }
+.dspi-web .pin-entry .error { flex-basis: 100%; }
+.dspi-web .hub-devices { list-style: none; margin: 0.75rem 0; padding: 0; }
 
 .dspi-web .sessions { min-width: 0; }
 .dspi-web .tabs { display: flex; gap: 0.25rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
