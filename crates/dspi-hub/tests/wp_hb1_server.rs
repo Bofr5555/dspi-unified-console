@@ -1410,7 +1410,9 @@ fn connect_from(source: Ipv4Addr, port: u16) -> TcpStream {
 
 /// The pre-auth flood: one address cannot hold more than its share however many sockets
 /// it opens; another address and an authenticated session are untouched; and every slot
-/// comes back on its own.
+/// comes back on its own. -- WP HB9 -- Silent sockets are plain HTTP, in their own budget
+/// (the address's oldest goes to make room for its next), and the WebSocket share is
+/// counted at the upgrade.
 #[test]
 fn wp_hb1_a_pre_auth_flood_from_one_address_does_not_fill_the_hub() {
     let limits = ServerLimits {
@@ -1422,19 +1424,32 @@ fn wp_hb1_a_pre_auth_flood_from_one_address_does_not_fill_the_hub() {
         dead_peer: Duration::from_secs(60),
         ..quick()
     };
+    let http_share = limits.max_http_per_peer;
     let b = bench(AccessMode::Pin, limits);
     let (mut authed, _) = b.admin();
     b.wait_connections(1);
 
     let flooder = Ipv4Addr::new(127, 0, 0, 9);
     let mut flood: Vec<TcpStream> = (0..200).map(|_| connect_from(flooder, b.port)).collect();
-    wait_until("the flood's share", || b.net.connections() == 1 + 3);
+    wait_until("the flood's share", || {
+        b.net.connections() == 1 + http_share
+    });
     std::thread::sleep(Duration::from_millis(100));
-    assert_eq!(b.net.connections(), 4, "only its share, whatever it opens");
-
-    // A socket past the share, which sends its request, hears 503 and not a reset. Once
-    // the flood's own refusals are done: at most `max_refusing` at a time, then none.
-    std::thread::sleep(Duration::from_millis(400));
+    assert_eq!(
+        b.net.connections(),
+        1 + http_share,
+        "only its share, whatever it opens"
+    );
+    assert_eq!(b.net.websockets(), 1);
+    // Upgrades from the same address: its WebSocket share, then 503.
+    let mut upgraded = Vec::new();
+    for _ in 0..3 {
+        let mut tcp = connect_from(flooder, b.port);
+        tcp.write_all(request_text(b.port, &[]).as_bytes()).unwrap();
+        assert_eq!(read_status(&mut tcp).0, 101);
+        upgraded.push(tcp);
+    }
+    assert_eq!(b.net.websockets(), 1 + 3);
     let mut extra = connect_from(flooder, b.port);
     extra
         .write_all(request_text(b.port, &[]).as_bytes())
@@ -1453,7 +1468,7 @@ fn wp_hb1_a_pre_auth_flood_from_one_address_does_not_fill_the_hub() {
     );
 
     // The flood's sockets are all closed by the hub, without a byte from them.
-    for tcp in &mut flood {
+    for tcp in flood.iter_mut().chain(&mut upgraded) {
         assert!(is_closed_by_peer(tcp));
     }
     drop(other);
@@ -1470,6 +1485,8 @@ fn wp_hb1_a_pre_auth_flood_from_many_addresses_stops_at_the_limit_and_clears() {
     let limits = ServerLimits {
         max_connections: 8,
         max_preauth_per_peer: 3,
+        // -- WP HB9 -- silent sockets are plain HTTP
+        max_http: 8,
         max_refusing: 2,
         ..quick()
     };

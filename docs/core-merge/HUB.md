@@ -36,7 +36,7 @@ upstream web page is served at `/hub/` since WB7 (section 9, "WB7 as built").
 | `hub-supervisor` | 1 | **the `DeviceBus`**; the only thread that tears down a lost device | its channel, with a scan tick (500 ms) | `SupMsg::Stop` |
 | `hub-events` | 1 | calling the `HubListener` | its channel | `EventMsg::Stop`, last of all |
 | `hub-accept` (HB1) | 1 | the listening socket | `accept` | `stop_accepting` |
-| `hub-conn-rx-<id>`, `hub-conn-tx-<id>` (HB1) | 2 per connection | the read half; the session's outbox and the write half | the socket; `Outbox::pop` | the outbox closes, or the peer goes |
+| `hub-conn-rx-<id>`, `hub-conn-tx-<id>` (HB1) | 1 per plain HTTP socket (at most 48, HB9); 2 per WebSocket with a session (at most 16) | the read half; the session's outbox and the write half | the socket; `Outbox::pop` | the outbox closes, or the peer goes |
 | `hub-refuse-<id>` (HB1) | 0–4, short-lived | a socket past the limits | its request, 1 s at most | it has answered 503 |
 | `mdns-sd`'s daemon (HB5) | 1, with `mdns` and while advertised | the responder's sockets | its poller | `Advertiser` dropped; joined then |
 | the app's (not ours) | | core's reader, `poll_hotplug` caller | | |
@@ -332,7 +332,7 @@ another handle.
 | Foreign `Origin` | not checked at this ref | refused | refused (HB1) | Spec 4 |
 | A second authentication on a session | a new session replaces it | not said | **`bad_request`**, the session stands (open access: the usual `ok`, same session) | A writer per session has one outbox, and nothing here re-authenticates |
 | No `dspi-link-1` at the upgrade | not checked | may refuse | **400**, as the bridge | Everything here sends it |
-| Connections | no connection limit | | 16 sockets of any kind, 4 unauthenticated per address (/64 on IPv6); 503 past them | HUB section 9 |
+| Connections | no connection limit | | Two budgets (HB9). WebSockets: 16, 4 unauthenticated per address (/64 on IPv6), counted from the upgrade; 503 at the upgrade past them. Plain HTTP (pages, `/dspi/v1/info`, sockets not yet upgraded): 48, 16 per address; past them an idle one is closed for room, 503 only if none is idle | HUB section 9 |
 | A token's hash | of the decoded bytes | of the token | of the token as presented | No decoding branch before the comparison; nothing shares the store |
 | `0x00` | unlisted, so `config` | | `config`, reads are not writes | Section 13 |
 | `EXT_CORE_VREG` raises from the network | passed | not said | **refused** | Owner's rule, section 13 |
@@ -421,8 +421,12 @@ socket can cost.
 - `hub.stats` and `hub.rename` answer `unsupported` to an admin: not in this WP's entry. `name` in the
   store has no caller yet, and `HubHandle::name` is fixed at start.
 - Switching `NetworkConfig::access` between starts revokes every token (spec 6.2).
-- Residual, accepted: a host with many IPv4 addresses (or IPv6 prefixes) can hold every slot for up to
-  30 s at a time, as the per-address cap is its only defence there. Those already authenticated are
+- Residual, accepted (numbers as of HB9): a host with four or more addresses (IPv4, or IPv6 /64s) can
+  hold all 16 WebSocket slots for up to 30 s at a time (4 unauthenticated each), and one with three or more
+  can hold all 48 plain HTTP slots with responses it reads slowly (up to `response_timeout`, 30 s); silent
+  or trickling sockets it holds are closed for anyone's new one. The per-address caps are the only defence
+  there. One dual-stack machine is two addresses and cannot do either (`hostile_lan`
+  `atk_hb9_a_dual_stack_host_cannot_keep_a_third_peer_from_pairing`). Those already authenticated are
   untouched. The 10 s stall's close 1011 usually cannot be sent, as the failed write may have cut a
   frame in two: the socket just closes.
 - Close order: close frame, half-close, up to `close_grace` for the peer's reply, so what the peer has sent
@@ -562,10 +566,31 @@ compares byte for byte). Output committed in `assets/web/hub/` (index.html and t
 `location.host`: no configuration. Policy for `/hub/`: `script-src 'self'; connect-src 'self' ws://<Host>;
 style-src 'self'` (its inline styles are set through the DOM, which CSP does not stop); for `/`: no scripts.
 `/hub/assets/*` (hashed names) are cached `immutable`. `/THIRD-PARTY-NOTICES.txt` carries DSPi-Link's MIT text.
-**`ServerLimits::max_preauth_per_peer_web` = 8** replaces `max_preauth_per_peer` (4) while `web` is on: one
-browser opening the console from the landing page was answered 503 for `app.js` with 4 (each plain HTTP
-request counts as unauthenticated until answered, and Chromium opens up to six at once). `max_connections`
-(16) and the web-off budget are unchanged.
+WB7 had `ServerLimits::max_preauth_per_peer_web` = 8 in place of 4 while `web` was on (one browser was
+answered 503 for `app.js` with 4); review c6r found that two addresses then held all 16 slots (WB7-1).
+HB9 replaced it with the two budgets below.
+
+<!-- WP HB9 -->
+**HB9 as built: page loads apart from the WebSocket pre-auth budget** (review c6r WB7-1, coordinator's
+decision). Every socket starts as **plain HTTP** and is counted in that budget only: `max_http` 48, of which
+`max_http_per_peer` 16 from one address (one thread each). A request that upgrades moves the socket into the
+**WebSocket** budget at the upgrade, and only there (`Shared::promote`): `max_connections` 16, of which
+`max_preauth_per_peer` 4 unauthenticated from one address, web on or off; past either the upgrade is
+answered 503 (`HubBusy`). An HTTP socket is `Idle` (waiting for a request to start, since when), `Head`
+(a head has started) or `Busy` (being answered). Past an address's share its own idlest socket is closed to
+make room (`Idle` before `Head`, oldest first); past the total, the idlest of the address with the most;
+only if every candidate is `Busy` the answer is 503 on a refusing thread, as before. Times: the first
+request's head within `head_timeout` (10 s) of accept; a later one must start within `keepalive_idle` (5 s);
+any head must end within `request_timeout` (3 s) of its first byte; an answer is written with each write
+progressing within `write_stall` (10 s) and all of it within `response_timeout` (30 s), no longer "until
+`auth_timeout` from open". `auth_timeout` (30 s) now runs from the upgrade. **Keep-alive** only when the
+request asks for it (`Connection: keep-alive`, which browsers send) on an HTTP/1.1 GET without a body; the
+answer then says `Keep-Alive: timeout=5`, and anything else is answered `Connection: close` as before, so a
+client that reads to the end of the stream is unaffected. `NetworkControl::connections` counts both kinds;
+`websockets` the WebSocket budget's. `hostile_lan` `atk_hb9_*` and the e2e
+"HB9: four browser windows on one address" (four contexts, three rounds, nothing 503 or failed) cover it.
+The e2e's hosting groups each start their own hubs on free ports (`ownHub` in `hosting.spec.ts`), so
+`--repeat-each` copies in parallel workers no longer share one (WB7-3).
 
 **WB7: the web console.** `NetworkConfig::console`
 (`Option<Arc<web::Console>>`) serves `apps/web`'s built dist at `/console/` while `web` is on. **The files come at run time**, from a directory
