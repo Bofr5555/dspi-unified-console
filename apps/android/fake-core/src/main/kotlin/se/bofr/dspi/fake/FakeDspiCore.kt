@@ -251,7 +251,7 @@ open class FakeDspiCore(
         val v = DspMath.quantizeDelay(ms).coerceAtLeast(0f)
         val max = maxDelayMs()
         val platform = if (rp2350()) "RP2350" else "RP2040"
-        if (v > max) bad("$path: ${rustFloat(v)} ms is out of range; this device ($platform) holds at most ${rustFloat(max)} ms")
+        if (v > max) bad("$path: ${rustFloat(v)} ms is out of range; this device ($platform) holds 0 to ${rustFloat(max)} ms")
         return v
     }
 

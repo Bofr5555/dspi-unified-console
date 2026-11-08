@@ -78,7 +78,7 @@ class RefusalNoticeAn41Test {
         val max = bridge.maxDelayMs
         val before = bridge.outputDelayMS(0)
         val strip = rule.onNodeWithTag(CONNECTION_STRIP_TAG, useUnmergedTree = true).getBoundsInRoot()
-        val words = "out.delay: 50 ms is out of range; this device (${bridge.platformName}) holds at most ${max.toInt()} ms"
+        val words = "out.delay: 50 ms is out of range; this device (${bridge.platformName}) holds 0 to ${max.toInt()} ms"
         assertTrue(max < 50f)
         rule.runOnUiThread { bridge.setOutputDelay(0, 50f) }
         pumpUntil("the core's words are shown") { shown(words) }

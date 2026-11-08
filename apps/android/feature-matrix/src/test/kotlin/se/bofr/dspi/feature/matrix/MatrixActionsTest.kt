@@ -384,7 +384,7 @@ class MatrixActionsTest {
         val failed = seen.filterIsInstance<BridgeEvent.CommandFailed>().single()
         assertEquals("setOutputDelay", failed.command)
         val e = failed.error as DspiException.InvalidArgument
-        assertEquals("out.delay: 50 ms is out of range; this device (RP2350) holds at most 42 ms", e.msg)
+        assertEquals("out.delay: 50 ms is out of range; this device (RP2350) holds 0 to 42 ms", e.msg)
         // nothing changed: the field shows the device's value again
         assertEquals(12.5f, r.bridge.outputDelayMS(2), 0f)
         assertEquals(12.5f, MatrixMixerState.from(r.bridge, 2, true).output(2).delayMS, 0f)

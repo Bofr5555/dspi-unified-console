@@ -60,15 +60,15 @@ class FakeDspiCoreTest {
         val core = FakeDspiCore()
         core.setOutputDelay(2, 7.5f)
         val e = runCatching { core.setOutputDelay(2, 100f) }.exceptionOrNull() as DspiException.InvalidArgument
-        assertEquals("out.delay: 100 ms is out of range; this device (RP2350) holds at most 42 ms", e.msg)
+        assertEquals("out.delay: 100 ms is out of range; this device (RP2350) holds 0 to 42 ms", e.msg)
         assertEquals(7.5f, core.getState().outputDelayMs[2])
         assertEquals(7.5f, core.getState().channelDelays[8 + 2])
         // setDelay on an output's wire channel is the output's delay
         val e2 = runCatching { core.setDelay(8 + 2, 42.5f) }.exceptionOrNull() as DspiException.InvalidArgument
-        assertEquals("out.delay: 42.5 ms is out of range; this device (RP2350) holds at most 42 ms", e2.msg)
+        assertEquals("out.delay: 42.5 ms is out of range; this device (RP2350) holds 0 to 42 ms", e2.msg)
         // an input's delay
         val e3 = runCatching { core.setDelay(0, 50f) }.exceptionOrNull() as DspiException.InvalidArgument
-        assertEquals("ch.delay: 50 ms is out of range; this device (RP2350) holds at most 42 ms", e3.msg)
+        assertEquals("ch.delay: 50 ms is out of range; this device (RP2350) holds 0 to 42 ms", e3.msg)
         core.setOutputDelay(2, -3f)
         assertEquals(0f, core.getState().outputDelayMs[2])
         // exact below the line (0.0001 ms grid)
@@ -79,7 +79,7 @@ class FakeDspiCoreTest {
         assertEquals(21f, rp2040.maxDelayMs())
         rp2040.setOutputDelay(0, 21f)
         val e4 = runCatching { rp2040.setOutputDelay(0, 21.5f) }.exceptionOrNull() as DspiException.InvalidArgument
-        assertEquals("out.delay: 21.5 ms is out of range; this device (RP2040) holds at most 21 ms", e4.msg)
+        assertEquals("out.delay: 21.5 ms is out of range; this device (RP2040) holds 0 to 21 ms", e4.msg)
         assertEquals(21f, rp2040.getState().outputDelayMs[0])
     }
 
