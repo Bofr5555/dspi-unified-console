@@ -52,6 +52,7 @@ import se.bofr.dspi.ui.VerticalRule
 import se.bofr.dspi.ui.delayDecimals
 import se.bofr.dspi.ui.dspiCard
 import se.bofr.dspi.ui.rememberSliderDrag
+import se.bofr.dspi.ui.roundDelayToWholeMs
 import se.bofr.dspi.ui.writesAllowed
 
 /**
@@ -61,7 +62,9 @@ import se.bofr.dspi.ui.writesAllowed
  * above full-width GAIN and DELAY sliders.
  *
  * Gain: drag -> `sendOutputGainToDevice` (live), release -> `setOutputGain`.
- * Delay: drag -> `sendOutputDelayToDevice`, release -> `setOutputDelay`.
+ * Delay: drag -> `sendOutputDelayToDevice`, release -> `setOutputDelay`, both
+ * whole ms as macOS (the thumb moves continuously and snaps on release; a
+ * typed value keeps its fraction; WP SL1).
  * Double-tap a slider = the macOS right-click reset to 0.
  */
 @Composable
@@ -73,7 +76,7 @@ fun ChannelSettingsView(bridge: DspiBridge, outputIndex: Int, onNavigate: (Strin
     val maxDelay = bridge.maxDelayMs.takeIf { it > 0f } ?: if (bridge.platformName == "RP2040") 42f else 85f
 
     val gain = rememberSliderDrag(gainDB)
-    val delay = rememberSliderDrag(delayMS)
+    val delay = rememberSliderDrag(delayMS, quantize = ::roundDelayToWholeMs)
 
     val gainSection: @Composable (Modifier) -> Unit = { m ->
         SliderSection(
@@ -97,7 +100,9 @@ fun ChannelSettingsView(bridge: DspiBridge, outputIndex: Int, onNavigate: (Strin
             modifier = m,
             // a fractional delay is shown (0.25, not 0.3) and kept when the field is left untouched (WP AN40)
             maxDecimals = 2,
-            editText = { delayDecimals(it, 4) }
+            editText = { delayDecimals(it, 4) },
+            // TalkBack reads what the field shows: 0.25 ms, not 0.3 ms (WP SL1, review c6q AN40-2)
+            stateText = { delayStateText(it) }
         )
     }
     val muteColumn: @Composable (Modifier) -> Unit = { m ->
@@ -131,6 +136,9 @@ fun ChannelSettingsView(bridge: DspiBridge, outputIndex: Int, onNavigate: (Strin
     }
 }
 
+/** The DELAY slider's TalkBack value, at the field's precision ("0.25 ms", "12.0 ms"; WP SL1). */
+internal fun delayStateText(ms: Float): String = ValueFormat.format(ms, 2) + " ms"
+
 /** WP AN20: "GAIN" as TalkBack says it ("Gain"). */
 internal fun sectionName(title: String): String = title.lowercase().replaceFirstChar { it.uppercase() }
 
@@ -147,7 +155,8 @@ internal fun SliderSection(
     fieldWidth: Dp = 64.dp,
     enabled: Boolean = true,
     maxDecimals: Int = 1,
-    editText: ((Float) -> String)? = null
+    editText: ((Float) -> String)? = null,
+    stateText: (Float) -> String = { "%.1f %s".format(java.util.Locale.ROOT, it, unit) }
 ) {
     val c = DspiTheme.colors
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -174,7 +183,7 @@ internal fun SliderSection(
             onReset = { drag.set(0f, commit) },
             modifier = Modifier.fillMaxWidth(),
             label = sectionName(title),
-            stateText = { "%.1f %s".format(java.util.Locale.ROOT, it, unit) }
+            stateText = stateText
         )
     }
 }
