@@ -28,6 +28,8 @@ members = [
     "ci/wasm-scenario",
     # -- WP WB3 -- the web binding (apps/web's Worker loads it)
     "crates/dspi-wasm",
+    # -- WP LK3 -- the ESP32 bridge emulator rig's UART tunnel (tools/esp-rig)
+    "tools/esp-rig/tunnel",
     "apps/terminal",
     "xtask",
 ]
