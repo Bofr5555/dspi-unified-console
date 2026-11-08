@@ -2145,6 +2145,8 @@ fn params_lines() -> Vec<String> {
                 _ => " <index> <index>",
             };
             let range = match d.kind {
+                // -- WP CG37 -- the delay line's range, not the registry's 85 ms.
+                Kind::Float { .. } if dspi_cmd::is_delay(d.path) => dspi_cmd::delay_range(),
                 Kind::Float { unit, min, max } => {
                     format!("{min} to {max}{}", unit.suffix())
                 }
@@ -2515,6 +2517,11 @@ mod tests {
         assert!(sub.contains("all | percussive | sustained  "), "{sub}");
         let rect = lines.iter().find(|l| l.contains("5y3")).unwrap();
         assert!(rect.contains("solid-state | gz34 | 5u4 | 5y3  "), "{rect}");
+        // -- WP CG37 -- the delays show the line's range, not 85 ms.
+        for path in ["ch.delay ", "out.delay "] {
+            let l = lines.iter().find(|l| l.starts_with(path)).unwrap();
+            assert!(l.contains("0 to 42 ms (21 on RP2040)  "), "{l}");
+        }
     }
 
     // -- scripts ------------------------------------------------------------
@@ -2917,5 +2924,45 @@ mod tests_wp_cg14 {
         })
         .unwrap();
         vreg_send(&mut d, VregOp::Clear, None, &mut no_prompt).unwrap();
+    }
+}
+
+// -- WP CG37 --
+#[cfg(test)]
+mod tests_wp_cg37 {
+    use super::*;
+
+    /// `dspi set` takes a delay up to the line (42 ms on the demo's RP2350)
+    /// and refuses past it or below 0 as bad input, before the wire.
+    #[test]
+    fn wp_cg37_set_holds_a_delay_to_the_line() {
+        let mut s = Target::Demo.open_session(&prompt_pin).unwrap();
+        assert_eq!(s.capabilities().platform, dspi_proto::Platform::Rp2350);
+        let set = |path, i: u8, ms: f32| Command::Set {
+            path,
+            indices: vec![i],
+            value: Value::Float(ms),
+        };
+        assert_eq!(
+            run(&mut s, set("out.delay", 1, 42.0), false, true, false),
+            exit::OK
+        );
+        assert_eq!(
+            run(&mut s, set("out.delay", 1, 42.5), false, true, false),
+            exit::USAGE
+        );
+        assert_eq!(
+            run(&mut s, set("ch.delay", 0, 60.0), false, true, false),
+            exit::USAGE
+        );
+        assert_eq!(
+            run(&mut s, set("out.delay", 1, -1.0), false, true, false),
+            exit::USAGE
+        );
+        let e = s.write("out.delay", &[1], Value::Float(42.5)).unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "`out.delay` is limited to 42 ms on this platform"
+        );
     }
 }

@@ -225,7 +225,7 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
                 path: String,
             }
             let p: P = params(req.params)?;
-            write::describe(&p.path)
+            write::describe(&core, &p.path)
         }
         "meters" => {
             // -- WP WB4b -- the meter frames that came over Link meanwhile
@@ -888,7 +888,8 @@ mod tests {
             r["error"]
                 .as_str()
                 .unwrap()
-                .contains(&format!("at most {max} ms")),
+                // -- WP CG37 -- the range, 0 to the line.
+                .contains(&format!("0 to {max} ms")),
             "{r}"
         );
         let r = run(

@@ -198,12 +198,19 @@ impl DspiCore {
         let value = {
             let mut inner = self.writing()?;
             // -- WP CG36 -- the line's length is the connected platform's,
-            // which the registry's 85 ms does not know.
-            if matches!(d.path, "out.delay" | "ch.delay")
-                && let Some(ms) = value.as_f32()
-            {
-                crate::params::check_delay(&inner.state, d.path, ms)?;
-            }
+            // which the registry's 85 ms does not know. -- WP CG37 -- checked
+            // on the quantized value, as the typed setter checks it, and
+            // below 0 refused with the line's range (the setter makes it 0).
+            let value = match value {
+                Value::Float(_) | Value::Int(_) if matches!(d.path, "out.delay" | "ch.delay") => {
+                    let ms = crate::quantize_delay(value.as_f32().unwrap_or(f32::NAN));
+                    if !ms.is_nan() {
+                        crate::params::check_delay(&inner.state, d.path, ms)?;
+                    }
+                    Value::Float(ms)
+                }
+                v => v,
+            };
             let mut w = inner.writable_conn()?;
             let session = w.session()?;
             if d.path == "eq.type" {

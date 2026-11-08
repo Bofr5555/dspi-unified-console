@@ -273,9 +273,12 @@ pub fn paste_plan(
                 output: o,
                 db: gain,
             });
+            // -- WP CG37 -- a clip taken on a longer line pastes at this
+            // device's longest delay, as the core's file import does, rather
+            // than being refused and stopping the paste before the mute.
             out.push(PasteWrite::OutputDelay {
                 output: o,
-                ms: delay,
+                ms: delay.min(state.caps.platform.max_delay_ms()),
             });
             out.push(PasteWrite::OutputMute { output: o, mute });
         }
@@ -641,5 +644,43 @@ mod tests_wp_cg35 {
             validate_paste(&session, &plan),
             Err((0, WriteError::Value(_)))
         ));
+    }
+}
+
+// -- WP CG37 --
+#[cfg(test)]
+mod tests_wp_cg37 {
+    use super::tests_wp_s5::demo;
+    use super::*;
+
+    #[test]
+    fn wp_cg37_a_paste_takes_the_delay_to_this_lines_longest() {
+        let (mut s, _) = demo();
+        let ni = usize::from(s.caps.num_inputs);
+        let mut clip = copy_channel(&s, ni);
+        clip.output = Some((0.0, 40.0, false));
+        let max = s.caps.platform.max_delay_ms();
+        let delay = |plan: &[PasteWrite]| {
+            plan.iter().find_map(|w| match w {
+                PasteWrite::OutputDelay { ms, .. } => Some(*ms),
+                _ => None,
+            })
+        };
+        assert_eq!(
+            delay(&paste_plan(&clip, &s, ni, None)),
+            Some(40.0f32.min(max))
+        );
+        s.caps.platform = dspi_proto::Platform::Rp2040;
+        let plan = paste_plan(&clip, &s, ni, None);
+        assert_eq!(delay(&plan), Some(21.0));
+        // The whole plan lands on an RP2040's session; 40 ms itself would not.
+        let mut rp2040 =
+            Session::new(Box::new(dspi_transport::FakeDevice::demo()), s.caps.clone()).unwrap();
+        assert_eq!(apply_paste(&mut rp2040, &plan).unwrap().len(), plan.len());
+        let unclamped = [PasteWrite::OutputDelay {
+            output: 0,
+            ms: 40.0,
+        }];
+        assert!(apply_paste(&mut rp2040, &unclamped).is_err());
     }
 }
