@@ -72,7 +72,7 @@ last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
 | State | WPs |
 |---|---|
 | **In progress** (7) | **SW8** reads and the mirror (Swift, the VM job; critical path to SW-V1 and OD3), **AN15** R8, **QD21a** Qt packaging for Linux and Windows, **QD22** Qt accessibility, **AN20** Android accessibility, **WB2** core runtime without threads (wasm), **WB5** web client skeleton |
-| **Next** | Plan: QD23 after QD22; AN21 after AN20; QD21b (`.dmg`, VM) after QD21a, then SW-V1 to the owner (OD3); SW-M1, SW17, SW18, SW20, SW19, SW23, SW24 on the VM in that order; AN13's record (`docs/HIL-NEW-CORE.md`) from the existing reports; the records of hw-1 (TM13, QD24's non-flash part) and hw-win (QD25) as their docs; HO1's rest after R-Qt and SW8. Web: WB3 after WB2; WB4a and WB4b after WB3; WB6 slices after WB5 and WB4a; WB7; WB8 last. Then OPT0-OPT9, then PL-* |
+| **Next** | Plan: QD23 after QD22; AN21 after AN20; QD21b (`.dmg`, VM) after QD21a, then SW-V1 to the owner (OD3); SW-M1, SW17, SW18, SW20, SW19, SW23, SW24 on the VM in that order; HO1's rest after R-Qt and SW8. Web: WB3 after WB2; WB4a and WB4b after WB3; WB6 slices after WB5 and WB4a; WB7; WB8 last. Then OPT0-OPT9, then PL-* |
 | **Blocked** | **On the owner:** OD3 (decides SW9-SW14, then SW-M3, SW-M4, SW15, SW22); AN13's Link half and the phone checks of AN15, AN16, AN20; AN16 waits for AN15's release to be uploaded; QD35 hand checks; XC4 and XC5 (an ESP32 bridge); XC6 (go for a VREG write); SW16 (iPhone or iPad); SW-M5 (Apple silicon Mac); WB4c's public use (OD9). **On deps:** SW5, SW6, SW7, SW-M2 behind the VM queue; SW-V1 behind SW8 and QD21b |
 | **Done since the last status (2026-11-07)** | CG3, CG7, AN18 (closed: their moved parts are done); CG23-CG31 with CG29b; HB7, HB8; QD9, QD10, QD13, QD13b, QD14, QD16, QD17, QD19, QD36, QD37, QD38; TM25, TM26; AN14, AN32-AN39; SW4, SW25, SW-U1, SWF1-SWF3; DOC1, HO1a |
 
@@ -185,8 +185,8 @@ last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
 | QD21b | Qt `.dmg` and its matrix row | TODO |  | VM; after QD21a. SW-V1 needs it |
 | QD22 | Accessibility | IN PROGRESS | wp/QD22 | Alone in `qml/` |
 | QD23 | Localisation plumbing | TODO |  | After QD22 |
-| QD24 | Hardware pass, Linux | TODO |  | hw-1 ran the Qt hardware smoke on the K340: write `docs/core-merge/HW-QT.md` from its report; the flash item needs the coordinator and the owner's go |
-| QD25 | Windows | TODO |  | hw-win ran on `winvm` with the K340 (its F1, F2 fixed in CG31; F3: the smoke does not run on Windows); record it; flash item as QD24 |
+| QD24 | Hardware pass, Linux | PARTIAL |  | Record `docs/core-merge/HW-QT.md` (hw-1): connect, read, write, reselect pass. Owed: replug [OWNER], Link from Qt, notifications from another client, the firmware path (coordinator and owner's go), RTA with a signal |
+| QD25 | Windows | PARTIAL |  | Record `docs/core-merge/HW-QT.md` (hw-win): connect, read, write, detach and re-attach pass; notifications failed (F1, fixed in CG31, not re-run). Owed: notifications re-run, Link from Qt, the firmware path, F3 (no smoke on Windows) |
 | QD27 | AutoEQ on the core | DONE | 1eac03c |  |
 | QD28 | Advanced core voltage | DONE | 0d88cee, fixup QD28b 6d36ab3 |  |
 | QD29 | Output ring health | DONE | b4f2e29 |  |
@@ -216,7 +216,7 @@ last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
 | TM10 | JSON import and export | DONE | 7fdab0a, fixup 3072918 | Real Mac export as fixture: coordinator |
 | TM11 | `dspi hub` | DONE | 053da66, fixup TM11b 516bea6 |  |
 | TM12 | AutoEQ update | DONE | 1050ea0 |  |
-| TM13 | K340 hardware pass | TODO |  | hw-1 ran its checks (pass, bar the RTA items, which need audio); write `docs/core-merge/HW-TERMINAL.md` from its report |
+| TM13 | K340 hardware pass | PARTIAL |  | Record `docs/core-merge/HW-TERMINAL.md` (hw-1, hw-win): real MIDI ports end to end pass (Linux, Windows); replug passed only as a VM detach on Windows. Owed: a physical replug on Linux [OWNER], or the coordinator accepting the VM detach |
 | TM14 | No tmpfs in tests | DONE | fcfdb58 (earlier commit; no WP merge) |  |
 | TM15 | Closed pipes | DONE | ea55e5b |  |
 | TM16 | Output ring health | DONE | 95d7f9d |  |
@@ -247,7 +247,7 @@ last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
 | AN10 | IR learn | DONE | 2f30f66 | [HW] IR learn on the K340 with a receiver and a remote |
 | AN11 | Display pages | DONE | 5ec67f2 | [HW] real panels |
 | AN12 | Groups, macros, aux | DONE | 0863194, fixup 8377d99 |  |
-| AN13 | Phone test | PARTIAL |  | Done at the 0.12.0 release: AN29, AN30 and USB basics (owner), the demo set (phone-test-2). Owed: `docs/HIL-NEW-CORE.md` (a worker, from the reports); Link half, older firmware, 45 s background, no secrets in logcat on USB [HW][OWNER] |
+| AN13 | Phone test | PARTIAL |  | Record `docs/HIL-NEW-CORE.md`: AN29, AN30 and USB basics (owner), the demo set (phone-test-2), About (release-check-2). Owed: Link half, older firmware, 45 s background, notifications and no secrets in logcat on USB; LK2, AN15, AN20 phone checks once shipped [HW][OWNER] |
 | AN14 | First new-core update | DONE | eb66e5e5 (tag `android-v0.12.0`) | 0.12.0 uploaded to Play by the owner |
 | AN15 | R8 | IN PROGRESS | wp/AN15 | Phone run [HW][OWNER]; ships as its own release (AN22) |
 | AN16 | Edge-to-edge | TODO |  | After AN15's release is uploaded; phone check [HW][OWNER] |
@@ -970,7 +970,8 @@ Q3 makes it run on the core. macOS leaves this track, with Swift as the working 
 
 **QD23: Localisation plumbing.** [TODO] Size 1.75. **After QD22. Owns:** all QML, `translations/`. **Implements:** `qsTr` and the `.ts` build, **English only for now** (owner). **Done when:** a pseudo-locale run shows no untranslated string or clipped layout in main windows. **Deps:** QD22.
 
-**QD24: Hardware pass, Linux.** [TODO] Size 0.5. **QD25: Windows.** [TODO] Size 1. Both **[HW][COORD]**. Stock USB pass-through per `~/vm/windows/USB-PASSTHROUGH.md`, with the bootloader device attached too. **Owns:** `docs/core-merge/HW-QT.md`. **Done when:** connect, read, write, notifications, replug, firmware path and Link pass on the K340 under section 6's rules. **Deps:** QD0–QD14.
+**QD24: Hardware pass, Linux.** [PARTIAL] Size 0.5. **QD25: Windows.** [PARTIAL] Size 1. Both **[HW][COORD]**. Stock USB pass-through per `~/vm/windows/USB-PASSTHROUGH.md`, with the bootloader device attached too. **Owns:** `docs/core-merge/HW-QT.md`. **Done when:** connect, read, write, notifications, replug, firmware path and Link pass on the K340 under section 6's rules. **Deps:** QD0–QD14.
+- **Record (2026-11-08):** `docs/core-merge/HW-QT.md`, from hw-1 (Linux) and hw-win (Windows). Pass: connect, read, write, reselect (Linux), detach and re-attach (Windows). **Still owed:** QD24's replug [OWNER] and both platforms' Link from the Qt client and firmware path (flash: coordinator and owner's go, backups first); notifications from another client (Linux not checked; Windows failed as F1, fixed in CG31, not re-run); the RTA items with a real signal; F3 (no smoke driver on Windows).
 
 **QD27: AutoEQ on the core.** [DONE 1eac03c] Size 0.5. **Owns:** `src/AutoEqLibrary.{h,cpp}` (453 lines), `qml/AutoEqRebuildWindow.qml`. **Implements:** re-point at CG6, with Qt supplying the fetch; remove the duplicated logic. **Done when:** existing behaviour passes against a scripted fetch. **Deps:** CG6.
 
@@ -1008,7 +1009,7 @@ Owner decided: it skips what needs a graphical UI (on-graph editing, onboarding)
 
 **TM12: AutoEQ update.** [DONE 1050ea0] Size 0.25. **Owns:** `screens/autoeq.rs`, `crates/dspi-cmd` command. **Implements:** CG6, removing the `curl` call. **Done when:** update, rebuild and reset work on a scripted fetch, with no external process. **Deps:** CG6.
 
-**TM13: K340 hardware pass.** [TODO] Size 0.5. **[HW][COORD]**. **Owns:** `docs/core-merge/HW-TERMINAL.md`. **Done when:** USB replug and real MIDI ports end to end pass (R1's open item). **Deps:** TM1, TM2, TM4. **State:** hw-1 ran these checks on the K340 (2026-11-08, `work/hw-1/REPORT.md`): pass, bar the RTA items, which need audio. Its two defects were fixed in TM26. What is left is the record.
+**TM13: K340 hardware pass.** [PARTIAL] Size 0.5. **[HW][COORD]**. **Owns:** `docs/core-merge/HW-TERMINAL.md`. **Done when:** USB replug and real MIDI ports end to end pass (R1's open item). **Deps:** TM1, TM2, TM4. **State:** hw-1 ran these checks on the K340 (2026-11-08, `work/hw-1/REPORT.md`): pass, bar the RTA items, which need audio. Its two defects were fixed in TM26. Record: `docs/core-merge/HW-TERMINAL.md` (2026-11-08). Owed: USB replug with a physical unplug (hw-win replugged only by VM detach).
 
 **TM15: Closed pipes.** [DONE ea55e5b] Size 0.25. **Owns:** output handling in `apps/terminal/src/main.rs`, under its marker. **Implements:** `dspi --demo dump | head -5` panics with "failed printing to stdout: Broken pipe". Handle a closed pipe across all CLI output: stop quietly, with the usual exit status. **Done when:** a test pipes every command that prints into a closed reader, with no panic. **Deps:** `main`.
 
@@ -1103,7 +1104,7 @@ The swap is contained: UI talks to the `core-api` interface, and only `ffi` sees
 **AN9: CS bindings.** [DONE 2e3267e] Size 2–4. **AN10: IR learn.** [DONE 2f30f66] Size 1. **AN11: Display pages.** [DONE 5ec67f2] Size 1–2. **AN12: Groups, macros, aux.** [DONE 0863194] Size 1.5–2.5. **Owns:** one file set each under `feature-settings/.../cs/`. **Implements:** `cs_snapshot`, `cs_apply`, `cs_pin_uses`. **Done when:** runs on the demo device (`FakeDevice`'s CS support looks minimal: check, and extend); IR and display need **[HW]**; an `error` reply is shown. **Deps:** AN8.
 
 **AN13: Phone test.** [PARTIAL] Size 1. **[HW][OWNER][COORD]**. **Owns:** `docs/HIL-NEW-CORE.md`. **Requires** the owner's adb port. **Done when:** the earlier HIL set passes on the nusb `from_fd` path (unproven on hardware): USB, notifications, old firmware, Link with a Mac hub, 45 s background, no secrets in logcat. Side by side with `applicationIdSuffix ".hil"`: never uninstall the Play build. **Deps:** AN1, AN2, AN3; USB half needs nothing more; Link half needs XC2 or XC4.
-- **Record (2026-11-08):** 0.12.0 shipped on the owner's partial checks: the owner passed AN29, AN30 and USB basics on the phone, and phone-test-2 passed the demo set (the `macr` hub was visible from the phone). **Still owed:** `docs/HIL-NEW-CORE.md` (a worker can write it from `work/release-check-2` and `work/phone-test-2`); the Link half with the phone, older firmware, 45 s in the background, no secrets in logcat on USB, and notes on the nusb `from_fd` path [HW][OWNER].
+- **Record (2026-11-08):** 0.12.0 shipped on the owner's partial checks: the owner passed AN29, AN30 and USB basics on the phone, and phone-test-2 passed the demo set (the `macr` hub was visible from the phone). Record: `docs/HIL-NEW-CORE.md`. **Still owed:** the Link half with the phone, older firmware, 45 s in the background, no secrets in logcat on USB, and notes on the nusb `from_fd` path [HW][OWNER].
 
 **AN14: First new-core update.** [DONE eb66e5e5, tag `android-v0.12.0`; 0.12.0 uploaded to Play] Size 0.5. **[OWNER]**. **Owns:** version, notes, store text. **Implements:** the unreleased crossfeed pair fix ships here; README; versionCode bump; source tarball on the release (OD1). **Done when:** an AAB is ready for the owner to upload. **Deps:** AN13, R-And.
 
