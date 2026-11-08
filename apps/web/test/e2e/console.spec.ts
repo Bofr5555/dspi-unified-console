@@ -121,7 +121,8 @@ test("embedded: two consoles on one page, each with its user, roles and sessions
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   await expect(one.getByRole("article", { name: "DSPi" }).getByRole("slider", { name: "Volume" })).toBeEnabled();
   await one.getByRole("region", { name: "Venue B" }).getByRole("button", { name: "Connect" }).click();
-  await expect(one.getByRole("tab")).toHaveCount(2);
+  // -- WP WB6b -- the sessions' tabs (a session's own screens have tabs too)
+  await expect(one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab")).toHaveCount(2);
   await expect(one.getByRole("tab", { name: "Venue B · DSPi" })).toHaveAttribute("aria-selected", "true");
   const venueB = one.getByRole("article", { name: "DSPi" });
   await expect(venueB.getByRole("slider", { name: "Volume" })).toBeDisabled();
@@ -135,7 +136,7 @@ test("embedded: two consoles on one page, each with its user, roles and sessions
   await slider.fill("162");
   await slider.dispatchEvent("change");
   await expect(twoSession.locator(".volume-value")).toHaveText("-6.0 dB");
-  await one.getByRole("tab").first().click();
+  await one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab").first().click();
   await expect(one.getByRole("article", { name: "DSPi" }).locator(".volume-value")).toHaveText("0.0 dB");
 
   // Our styles are scoped: a button of the host page keeps the host's style.

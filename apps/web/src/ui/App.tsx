@@ -12,6 +12,8 @@ import { safeLocalStorage } from "../fleet/local";
 import { sourceKey, type FleetBackend, type FleetUser, type Installation, type Source } from "../fleet/types";
 import { About, DevicePicker, SessionView, TabLabel } from "./components";
 import { Session } from "./session";
+// -- WP WB6b --
+import { UnsavedWatch } from "./unsaved";
 
 export interface ConsoleOptions {
   backend: FleetBackend;
@@ -27,6 +29,9 @@ export interface ConsoleOptions {
   readOnly: boolean;
   /** What this page can reach; tests override it. */
   env?: PageEnv;
+  // -- WP WB6b --
+  /** Follows what is unsaved in the open sessions (and holds the leave prompt); `mount` makes one. */
+  unsaved?: UnsavedWatch;
 }
 
 export function App(props: { options: ConsoleOptions }) {
@@ -60,6 +65,11 @@ export function App(props: { options: ConsoleOptions }) {
   }, [backend, reload]);
 
   const openKeys = useMemo(() => new Set(sessions.map((s) => s.id)), [sessions]);
+
+  // -- WP WB6b -- what is unsaved, for the leave prompt and the host page
+  const watch = useMemo(() => props.options.unsaved ?? new UnsavedWatch(true), [props.options.unsaved]);
+  useEffect(() => watch.track(sessions), [watch, sessions]);
+  useEffect(() => () => watch.track([]), [watch]);
 
   const open = async (inst: Installation, source: Source) => {
     // -- WP WB4b -- a hub without a named DSPi: a new session each time, which

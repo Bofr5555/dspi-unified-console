@@ -15,6 +15,8 @@ import { CoreClient } from "./core/client";
 import { LocalBackend } from "./fleet/local";
 import type { FleetBackend } from "./fleet/types";
 import { App, type ConsoleOptions } from "./ui/App";
+// -- WP WB6b --
+import { UnsavedWatch } from "./ui/unsaved";
 
 export interface MountOptions {
   /** Default: a LocalBackend (standalone). */
@@ -29,6 +31,13 @@ export interface MountOptions {
   readOnly?: boolean;
   /** Advanced: replaces the Worker, for tests or another runtime. */
   spawnCore?: () => CoreClient;
+  // -- WP WB6b --
+  /**
+   * Leaving the page while something is unsaved asks the browser's own
+   * question. Default true; a host page that asks in its own way sets false
+   * and uses `unsaved()` and `onUnsavedChange`.
+   */
+  leavePrompt?: boolean;
 }
 
 // -- WP WB7 -- set at build time (tools/build.mjs, DSPI_WEB_SOURCE_URL)
@@ -37,6 +46,11 @@ const BUILD_SOURCE_URL = typeof __DSPI_SOURCE_URL__ === "string" ? __DSPI_SOURCE
 
 export interface MountedConsole {
   unmount(): void;
+  // -- WP WB6b --
+  /** Whether any of this console's open sessions has changes not saved to its preset. */
+  unsaved(): boolean;
+  /** Called with the new answer whenever `unsaved()` changes; the result stops it. */
+  onUnsavedChange(fn: (unsaved: boolean) => void): () => void;
 }
 
 export function mount(el: HTMLElement, opts: MountOptions = {}): MountedConsole {
@@ -48,9 +62,15 @@ export function mount(el: HTMLElement, opts: MountOptions = {}): MountedConsole 
     sourceUrl: opts.sourceUrl ?? (BUILD_SOURCE_URL || null),
     hubPage: opts.hubPage ?? null,
     readOnly: opts.readOnly ?? false,
+    unsaved: new UnsavedWatch(opts.leavePrompt ?? true),
   };
+  const watch = options.unsaved!;
   render(<App options={options} />, el);
-  return { unmount: () => render(null, el) };
+  return {
+    unmount: () => render(null, el),
+    unsaved: () => watch.unsaved,
+    onUnsavedChange: (fn) => watch.onChange(fn),
+  };
 }
 
 export { CoreClient } from "./core/client";

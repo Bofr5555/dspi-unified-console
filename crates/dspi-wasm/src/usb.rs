@@ -775,4 +775,28 @@ mod tests {
         assert_eq!(ids["notifyPacket"], 64);
         calls::session_free(h).unwrap();
     }
+
+    // -- WP WB6b -- (c6p WB6a-2)
+    #[test]
+    fn wb6b_a_failed_read_after_a_usb_open_leaves_no_claim() {
+        guard::reset_for_test();
+        let h = calls::session_new().unwrap();
+        let core = calls::core_of(h).unwrap();
+        // The device goes between the open and the reads after it (an
+        // unplug): the reads (fetch_all) fail.
+        let (host, _remote, _) = fake();
+        open_with(h, &core, host, "USBF0001".into(), dspi_proto::USB_VID).unwrap();
+        assert_eq!(
+            with_serial(h, json!({ "device": {} }))["device"]["serial"],
+            "USBF0001"
+        );
+        core.disconnect();
+        assert!(calls::usb_opened(h, &core).is_err());
+        assert!(!core.is_connected());
+        // The session keeps no serial and no switch of the device.
+        let snap = with_serial(h, json!({ "device": { "serial": "" } }));
+        assert_eq!(snap["device"]["serial"], "");
+        assert!(forget(h).is_none());
+        calls::session_free(h).unwrap();
+    }
 }
