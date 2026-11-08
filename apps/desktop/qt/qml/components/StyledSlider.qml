@@ -50,17 +50,18 @@ Slider {
                 : event.key === Qt.Key_PageDown ? -Math.max(1, Math.round(steps / 10))
                 : event.key === Qt.Key_End ? steps
                 : event.key === Qt.Key_Home ? -steps : 0
-        if (n === 0 || sl.pressed) return
+        if (n === 0) return
+        // -- review c74 N1 -- during a pointer drag a step key does nothing: taken
+        // here, so Qt's own handler cannot clear `pressed` and lose the drag's commit.
         event.accepted = true
-        stepBy(n)
+        if (!sl.pressed) stepBy(n)
     }
     Keys.onReleased: function (event) {
         switch (event.key) {
         case Qt.Key_Left: case Qt.Key_Right: case Qt.Key_Up: case Qt.Key_Down:
         case Qt.Key_PageUp: case Qt.Key_PageDown: case Qt.Key_Home: case Qt.Key_End:
-            if (sl.pressed) return
             event.accepted = true
-            if (!event.isAutoRepeat) settle()
+            if (!sl.pressed && !event.isAutoRepeat) settle()
         }
     }
     Accessible.onIncreaseAction: if (stepBy(1)) settleTimer.restart()
