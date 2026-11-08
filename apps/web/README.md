@@ -9,9 +9,10 @@ as every other client runs in a dedicated Worker under JSPI
 **Status:** skeleton. The core's own demo device, a DSPi on USB through
 WebUSB (WB4a, Chromium only; tested on a WebUSB mock, real hardware is WB8),
 and DSPis behind hubs over DSPi Link (WB4b; tested against dspi-link's fake hub
-behind a host that enforces the hub's `Origin` rule, in Chromium and Firefox; a
-real hub serving this page is WB7). The screens of the other clients arrive in
-WB6 slices; the first, the main window (WB6a), is in. Nothing here is published.
+behind a host that enforces the hub's `Origin` rule, in Chromium and Firefox),
+served by a real hub, by `dspi web` on this machine and by any static host (WB7,
+[`DEPLOY.md`](DEPLOY.md)). The screens of the other clients arrive in WB6 slices;
+the first, the main window (WB6a), is in. Nothing here is published.
 
 ## What it is for
 
@@ -210,12 +211,17 @@ The console never signs anyone in, never stores a server credential and never
 decides access. Styles are scoped under `.dspi-web` (`dist/dspi-web.css`); light
 and dark follow the system unless the host sets `data-theme` on `.dspi-web`. A
 host page's own element styles can still reach the console's buttons and inputs.
+`hubPage` (a URL) adds a link to the serving hub's own page in the header; the
+standalone page sets it from `<meta name="dspi-hub-page">`, which a hub fills in with
+`/hub/`, upstream's DSPi Link page (WB7; `/` on a hub is a landing page linking both).
+How to serve the build, the headers and the policy a host needs: [`DEPLOY.md`](DEPLOY.md).
 
 Reaching hubs from a server-hosted page is bounded by the Link spec's `Origin`
 rule: a hub accepts only its own pages (WEB-STUDY section 5). A fleet product
 therefore carries Link to its hubs through its own server (a hub `url` on the
-server's origin, as `tools/hub-host.mjs` does in the tests), or serves the
-console from each hub (WB7).
+server's origin, as `tools/hub-host.mjs` does in the tests; behind TLS that is a
+`wss://` address, which the core accepts), or serves the console from each hub
+(`dspi hub --web`, WB7).
 
 ## Build and test
 
@@ -236,13 +242,20 @@ not in the tree). `node tools/serve.mjs <dist>` serves a build on loopback for a
 would, with the `Origin` rule, over fake hubs it starts on request (the Link
 e2e's host; `DSPI_FAKEHUB` names the binary, which `tools/ci.sh` builds).
 
-`dist/` holds `index.html` and `app.js` (the standalone page), `dspi-web.js` (the
-library), `worker.js`, `dspi_wasm.wasm` (the core: 1 086 KB, 362 KB gzip with WebUSB and Link) and
-`dspi-web.css`. A host serves `dspi_wasm.wasm` beside `worker.js`. (With WB6a's
-preset calls the core is 1 126 KB, 373 KB gzip.) The page needs
+`dist/` holds `index.html`, `app.js` and `page.css` (the standalone page), `dspi-web.js` (the
+library), `worker.js`, `dspi_wasm.wasm` (the core: 1 086 KB, 362 KB gzip with WebUSB and Link),
+`dspi-web.css` and `THIRD-PARTY-NOTICES.txt`. A host serves `dspi_wasm.wasm` beside `worker.js`.
+(With WB6a's preset calls the core is 1 126 KB, 373 KB gzip.) The page needs
 JSPI (Chrome 137, Firefox 153, Safari 27); without it every call says so. Preact (MIT) is the one runtime
-dependency. Its notice is not yet in the licence inventory (`ci/licence-inventory.py`
-covers the Rust and iOS sides); that belongs with WB7, before anything is served.
+dependency; `ci/licence-inventory.py` records it (section 6b), and the notices file carries its
+licence and the core's Rust crates (`notices/rust-crates.txt`, written by
+`tools/gen_rust_notices.py` in the cross container; the web step fails when it is stale).
+
+-- WP WB7 -- Build settings: `DSPI_WEB_SOURCE_URL` is the GPL source link About shows
+(an embedder's `sourceUrl` overrides it); `DSPI_WEB_RELEASE=1` refuses a build without
+it. `tools/dist.sh <out>` is the release build, an artefact only ([`DEPLOY.md`](DEPLOY.md)).
+The web step also runs the hosting routes on the real `dspi` (`test/e2e/hosting.spec.ts`:
+`dspi hub --web` and `dspi web`, built in the cross container as `DSPI_TERM`).
 
 ## Files
 
@@ -264,4 +277,7 @@ covers the Rust and iOS sides); that belongs with WB7, before anything is served
 | `src/index.tsx` | `mount()` and the public types |
 | `src/standalone.ts`, `index.html` | the standalone page (`?readonly` for a display page) |
 | `test/unit/` | `node --test` |
+| `test/e2e/hosting.spec.ts` | WB7: the console through each route, on the real `dspi` (hub, `dspi web`) and a static host |
+| `DEPLOY.md`, `tools/dist.sh` | WB7: serving the build; the release artefact |
+| `notices/rust-crates.txt`, `tools/gen_rust_notices.py` | WB7: the core's crates for `THIRD-PARTY-NOTICES.txt` |
 | `test/e2e/`, `test/pages/` | Playwright; `embed.html` mounts two consoles with a server-like backend (`?core=stub`: on the fake core, `stub-worker.ts`); `usb.html` runs USB sessions over a WebUSB mock (`webusb-mock.ts`) whose devices are the core's simulated DSPi in the test module (Chromium); `fleet-hub.html` a fleet page with two hubs, `hubDevices` and `hubCredentials`, served by `tools/hub-host.mjs` (`link.spec.ts`, WB4b) |

@@ -22,11 +22,18 @@ export interface MountOptions {
   /** Where worker.js is. Default: beside this module. */
   workerUrl?: string | URL;
   title?: string;
+  /** Link to this build's source (GPL). Default: the build's own (`DSPI_WEB_SOURCE_URL`). */
   sourceUrl?: string | null;
+  /** -- WP WB7 -- A link to the page of the hub that serves this one, shown in the header. */
+  hubPage?: string | null;
   readOnly?: boolean;
   /** Advanced: replaces the Worker, for tests or another runtime. */
   spawnCore?: () => CoreClient;
 }
+
+// -- WP WB7 -- set at build time (tools/build.mjs, DSPI_WEB_SOURCE_URL)
+declare const __DSPI_SOURCE_URL__: string | undefined;
+const BUILD_SOURCE_URL = typeof __DSPI_SOURCE_URL__ === "string" ? __DSPI_SOURCE_URL__ : "";
 
 export interface MountedConsole {
   unmount(): void;
@@ -38,7 +45,8 @@ export function mount(el: HTMLElement, opts: MountOptions = {}): MountedConsole 
     backend: opts.backend ?? new LocalBackend(),
     spawnCore: opts.spawnCore ?? (() => CoreClient.spawn(workerUrl)),
     title: opts.title ?? "DSPi Console",
-    sourceUrl: opts.sourceUrl ?? null,
+    sourceUrl: opts.sourceUrl ?? (BUILD_SOURCE_URL || null),
+    hubPage: opts.hubPage ?? null,
     readOnly: opts.readOnly ?? false,
   };
   render(<App options={options} />, el);

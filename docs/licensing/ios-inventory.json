@@ -1,5 +1,5 @@
 {
- "repo_commit": "08fe0e0a",
+ "repo_commit": "97014521",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -305,6 +305,7 @@
    "crates/dspi-core/src/firmware.rs",
    "crates/dspi-core/src/firmware_guard.rs",
    "crates/dspi-core/src/hardware.rs",
+   "crates/dspi-core/src/host_transport.rs",
    "crates/dspi-core/src/hotplug.rs",
    "crates/dspi-core/src/info.rs",
    "crates/dspi-core/src/lib.rs",
@@ -321,6 +322,7 @@
    "crates/dspi-core/src/state.rs",
    "crates/dspi-core/src/stats.rs",
    "crates/dspi-core/src/vreg.rs",
+   "crates/dspi-core/src/write_param.rs",
    "crates/dspi-ffi/src/lib.rs",
    "crates/dspi-link/src/address.rs",
    "crates/dspi-link/src/client.rs",
@@ -404,7 +406,7 @@
    "Weeb Labs",
    "owner (bofr)"
   ],
-  "commit": "08fe0e0a814f4c3c55838f47c54e2883a59a74f3",
+  "commit": "970145214fd68c032831670677554956eb7a1fb6",
   "files": [
    "DSPi Console iOS/Info.plist",
    "DSPi Console/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -419,6 +421,8 @@
    "DSPi Console/Components.swift",
    "DSPi Console/Constants.swift",
    "DSPi Console/ContentView.swift",
+   "DSPi Console/Core/CoreBackedTransport.swift",
+   "DSPi Console/Core/CoreMirror.swift",
    "DSPi Console/CoreVoltageStatusView.swift",
    "DSPi Console/CrossfeedPairMapView.swift",
    "DSPi Console/CrossfeedView.swift",
@@ -445,6 +449,7 @@
    "DSPi Console/InterruptMonitor.swift",
    "DSPi Console/Link/AuthStore.swift",
    "DSPi Console/Link/CompositeTransport.swift",
+   "DSPi Console/Link/CoreVoltageRule.swift",
    "DSPi Console/Link/DeviceTransport.swift",
    "DSPi Console/Link/HubBrowser.swift",
    "DSPi Console/Link/LinkClient.swift",
@@ -519,5 +524,23 @@
   "products": [
    "DSPiCoreBindings"
   ]
+ },
+ "web": {
+  "hub_page": {
+   "commit": "86f10e38dd760d01d4f589e4b606a5250b2d523d",
+   "license": "MIT",
+   "packages": [
+    "@dspi/link 1.2.0 MIT",
+    "@dspi/web 1.2.0 no licence field"
+   ],
+   "repository": "https://github.com/WeebLabs/DSPi-Link",
+   "version": "1.2.0"
+  },
+  "packages": {
+   "preact": {
+    "license": "MIT",
+    "version": "11.2.0"
+   }
+  }
  }
 }

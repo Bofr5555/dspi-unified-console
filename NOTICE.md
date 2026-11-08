@@ -17,6 +17,7 @@ the per-directory table.
 | Part | What it says | Where |
 |---|---|---|
 | `tests/fixtures/link/` | MIT, Copyright (c) 2026 Weeb Labs | `tests/fixtures/link/LICENSE.DSPi-Link` |
+| `crates/dspi-hub/assets/web/hub/` | DSPi-Link's web page (`js/apps/web`), built unmodified; MIT, Copyright (c) 2026 Weeb Labs. `dspi hub --web` serves it at `/hub/` and its licence at `/THIRD-PARTY-NOTICES.txt` | `crates/dspi-hub/assets/web/hub/LICENSE`, `PROVENANCE.json` |
 | `crates/dspi-link/` | The owner's, from `dspi-android`; follows Weeb Labs' MIT DSPi-Link spec and policy | its `Cargo.toml` |
 | `crates/dspi-proto/firmware/` | Vendored DSPi firmware headers, GPL-3.0 | `PROVENANCE.toml` there |
 | `apps/desktop/qt/firmware/*.uf2` | DSPi firmware images, GPL-3.0, with third-party parts | https://github.com/WeebLabs/DSPi |
@@ -27,3 +28,10 @@ the per-directory table.
 `Cargo.lock` lists them; each carries its own licence, and `deny.toml` lists those allowed. They are MIT, Apache-2.0,
 BSD, Zlib, Unicode or Unlicense, plus MPL-2.0 for `uniffi*`, `cbindgen` and `option-ext`. The Terminal alone also carries ISC (`ring`, `rustls-webpki`,
 `untrusted`) and CDLA-Permissive-2.0 (`webpki-roots`, Mozilla's root list). The Qt app links Qt under the LGPL-3.
+
+## The web console's JavaScript
+
+<!-- WP WB7 -->
+`apps/web` bundles Preact (MIT, Copyright (c) 2015-present Jason Miller) as its one runtime package; the lockfile pins it and
+`ci/licence-inventory.py` records it. A built console carries `THIRD-PARTY-NOTICES.txt` with Preact's licence and the Rust
+crates of its core (`apps/web/notices/rust-crates.txt`).

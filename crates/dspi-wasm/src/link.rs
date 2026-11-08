@@ -113,10 +113,17 @@ pub struct ConnectParams {
     pub client_name: String,
 }
 
-/// `ws://host:port` with the protocol's path when it has none.
+/// `ws://host:port` (or `wss://`) with the protocol's path when it has none.
+///
+/// -- WP WB7 -- `wss://` too (review c6m N1): the browser does the TLS, so a fleet
+/// server behind TLS, whose `https` page may not open `ws://` at all, carries Link to
+/// its hubs as `wss://` on its own origin. Natively `TcpConnector` has no TLS; this is
+/// the binding's only.
 pub fn ws_url(url: &str) -> Result<String, CallError> {
-    let rest = url
+    let (scheme, rest) = url
         .strip_prefix("ws://")
+        .map(|r| ("ws", r))
+        .or_else(|| url.strip_prefix("wss://").map(|r| ("wss", r)))
         .ok_or_else(|| CallError::new("invalid", format!("not a hub address: {url}")))?;
     let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
     if authority.is_empty() {
@@ -130,7 +137,7 @@ pub fn ws_url(url: &str) -> Result<String, CallError> {
     } else {
         format!("/{path}")
     };
-    Ok(format!("ws://{authority}{path}"))
+    Ok(format!("{scheme}://{authority}{path}"))
 }
 
 /// `linkConnect`: a session with the hub at `url`, replacing any other.
@@ -551,6 +558,17 @@ mod tests_wp_wb4b {
         );
         assert!(ws_url("http://hub.local").is_err());
         assert!(ws_url("ws://").is_err());
+        // -- WP WB7 -- (c6m N1) a TLS-fronted fleet server
+        assert_eq!(
+            ws_url("wss://fleet.example/hubs/7/dspi/v1").unwrap(),
+            "wss://fleet.example/hubs/7/dspi/v1"
+        );
+        assert_eq!(
+            ws_url("wss://fleet.example:8443").unwrap(),
+            "wss://fleet.example:8443/dspi/v1"
+        );
+        assert!(ws_url("wss://").is_err());
+        assert!(ws_url("https://fleet.example").is_err());
         assert_eq!(page_close_code(1001), 1000);
         assert_eq!(page_close_code(4000), 4000);
         assert_eq!(page_close_code(1000), 1000);

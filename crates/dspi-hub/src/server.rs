@@ -14,7 +14,7 @@
 //!
 //! | Cost | Bound |
 //! |---|---|
-//! | Sockets and threads | [`ServerLimits::max_connections`] over every kind of socket, of which [`ServerLimits::max_preauth_per_peer`] unauthenticated from one address. Past that an answer of HTTP 503 on a short-lived thread, at most [`ServerLimits::max_refusing`] at a time; past that, closed unread |
+//! | Sockets and threads | [`ServerLimits::max_connections`] over every kind of socket, of which [`ServerLimits::max_preauth_per_peer`] unauthenticated from one address ([`ServerLimits::max_preauth_per_peer_web`] with `web` on, WP WB7). Past that an answer of HTTP 503 on a short-lived thread, at most [`ServerLimits::max_refusing`] at a time; past that, closed unread |
 //! | A socket that says nothing | The request head within [`ServerLimits::head_timeout`], however slowly it trickles; authenticated within [`ServerLimits::auth_timeout`] of opening, or close 4001 |
 //! | Memory per socket | A head of [`MAX_HEAD`] bytes; a frame or message of [`MAX_FRAME`], refused from its header before it is buffered |
 //! | A peer that stops reading | One write's [`ServerLimits::write_stall`]. Behind that, the outbox's limits (HUB.md section 6) |
@@ -87,6 +87,12 @@ pub struct ServerLimits {
     /// Unauthenticated sockets from one address (an IPv6 /64 counts as one), so one
     /// machine cannot hold every slot. Past it: HTTP 503.
     pub max_preauth_per_peer: usize,
+    // -- WP WB7 --
+    /// The same with `web` on, in its place: a browser loads a page's files over up to
+    /// six connections at once, each a plain HTTP request that counts here until it is
+    /// answered, beside its WebSocket and its fetch of `/dspi/v1/info`. With 4, one
+    /// browser opening the console was answered 503 for `app.js`.
+    pub max_preauth_per_peer_web: usize,
     /// Threads answering 503 at once. Past it a socket is closed unanswered.
     pub max_refusing: usize,
     /// From accept to the whole HTTP request head.
@@ -110,6 +116,8 @@ impl Default for ServerLimits {
         Self {
             max_connections: 16,
             max_preauth_per_peer: 4,
+            // -- WP WB7 --
+            max_preauth_per_peer_web: 8,
             max_refusing: 4,
             head_timeout: Duration::from_secs(10),
             auth_timeout: Duration::from_secs(30),
@@ -150,6 +158,10 @@ pub struct NetworkConfig {
     /// device" by a hub that is still starting. A client that connects meanwhile waits
     /// in the listen backlog.
     pub hold_accepts: bool,
+    // -- WP WB7 --
+    /// The web console, served at [`crate::web::CONSOLE_PATH`] beside the page at `/`
+    /// while `web` is on. `None`: not served (404).
+    pub console: Option<Arc<crate::web::Console>>,
 }
 
 // -- WP HB5 --
@@ -195,6 +207,8 @@ impl NetworkConfig {
             advertise: Advertise::default(),
             // -- WP TM26 --
             hold_accepts: false,
+            // -- WP WB7 --
+            console: None,
         }
     }
 }
@@ -399,6 +413,8 @@ struct Shared {
     changed: Condvar,
     // -- WP TM26 -- False while [`NetworkConfig::hold_accepts`] holds them.
     accepting: AtomicBool,
+    // -- WP WB7 --
+    console: Option<Arc<crate::web::Console>>,
 }
 
 /// The way to a running server, for a binding: the pairing window, the client list,
@@ -562,9 +578,13 @@ impl Shared {
                 .filter(|e| e.stage == Stage::PreAuth && e.peer == key)
                 .count();
             let refusing = live().filter(|e| e.stage == Stage::Refusing).count();
-            let stage = if connections < self.limits.max_connections
-                && from_peer < self.limits.max_preauth_per_peer
-            {
+            // -- WP WB7 -- a browser's parallel page loads, with web on
+            let per_peer = if self.web {
+                self.limits.max_preauth_per_peer_web
+            } else {
+                self.limits.max_preauth_per_peer
+            };
+            let stage = if connections < self.limits.max_connections && from_peer < per_peer {
                 Stage::PreAuth
             } else if refusing < self.limits.max_refusing {
                 Stage::Refusing
@@ -838,17 +858,39 @@ fn serve(shared: &Arc<Shared>, id: u64, mut tcp: TcpStream, peer: IpAddr, opened
         );
         return;
     }
+    // -- WP WB7 -- The console, beside the page at `/`, with web on only.
+    if shared.web && crate::web::is_console_path(path) {
+        serve_console(shared, &mut tcp, &request, path, opened, deadline);
+        return;
+    }
     // `/dspi/` is the protocol's (spec 4.2), and the web UI is only served when on.
     let asset = (shared.web && !path.starts_with("/dspi/"))
         .then(|| crate::web::asset(path))
         .flatten();
+    // -- WP WB7 -- `/hub` to `/hub/`, where upstream's relative URLs resolve.
+    if let Some(to) = shared.web.then(|| crate::web::redirect(path)).flatten() {
+        let headers = [TEXT, ("Location", to)];
+        respond(
+            shared,
+            &mut tcp,
+            "301 Moved Permanently",
+            &headers,
+            b"Moved.",
+            deadline,
+        );
+        return;
+    }
     match asset {
         Some(asset) => {
             // -- WP HB5 -- A hub's update changes these under the same paths.
+            // -- WP WB7 -- ...but for upstream's hashed asset names; and a policy per page.
+            let csp = crate::web::page_csp(path, own_authority(shared, &request));
             let headers = [
                 ("Content-Type", asset.content_type),
                 ("X-Content-Type-Options", "nosniff"),
-                ("Cache-Control", "no-cache"),
+                ("Cache-Control", crate::web::cache_control(path)),
+                ("Content-Security-Policy", csp.as_str()),
+                ("Referrer-Policy", "no-referrer"),
             ];
             // The peer's slot is held until its time runs out, however big the file.
             let until = after(opened, shared.limits.auth_timeout);
@@ -863,6 +905,77 @@ fn serve(shared: &Arc<Shared>, id: u64, mut tcp: TcpStream, peer: IpAddr, opened
             deadline,
         ),
     }
+}
+
+// -- WP WB7 --
+/// One request under the console's path.
+fn serve_console(
+    shared: &Shared,
+    tcp: &mut TcpStream,
+    request: &httparse::Request<'_, '_>,
+    path: &str,
+    opened: Instant,
+    deadline: Instant,
+) {
+    use crate::web::ConsoleAnswer;
+    let Some(console) = shared.console.as_deref() else {
+        let why = b"No web console on this hub.";
+        respond(shared, tcp, "404 Not Found", &[TEXT], why, deadline);
+        return;
+    };
+    let hub = own_authority(shared, request);
+    let csp = crate::web::console_csp(hub);
+    let if_none_match = single_header(request, "If-None-Match").ok().flatten();
+    // The same as the page at `/`, plus the policy and a validator: the file names
+    // carry no hash, so a browser asks again each time and gets 304 when unchanged.
+    let common = [
+        ("X-Content-Type-Options", "nosniff"),
+        ("Cache-Control", "no-cache"),
+        ("Content-Security-Policy", csp.as_str()),
+        ("Referrer-Policy", "no-referrer"),
+    ];
+    match console.answer(path, hub, if_none_match) {
+        ConsoleAnswer::Redirect => {
+            let headers = [TEXT, ("Location", crate::web::CONSOLE_PATH)];
+            let status = "301 Moved Permanently";
+            respond(shared, tcp, status, &headers, b"See /console/.", deadline);
+        }
+        ConsoleAnswer::NotModified { etag } => {
+            let mut headers = common.to_vec();
+            headers.push(("ETag", etag));
+            respond(shared, tcp, "304 Not Modified", &headers, b"", deadline);
+        }
+        ConsoleAnswer::File {
+            content_type,
+            body,
+            etag,
+        } => {
+            let mut headers = common.to_vec();
+            headers.push(("Content-Type", content_type));
+            headers.extend(etag.map(|e| ("ETag", e)));
+            // As for the page at `/`: the peer's slot is held until its time runs out.
+            let until = after(opened, shared.limits.auth_timeout);
+            respond(shared, tcp, "200 OK", &headers, &body, until);
+        }
+        ConsoleAnswer::NotFound => respond(
+            shared,
+            tcp,
+            "404 Not Found",
+            &[TEXT],
+            b"Not found.",
+            deadline,
+        ),
+    }
+}
+
+/// The request's `Host`, when it names this hub as the `Origin` rule does: the only
+/// address a page from here may open a socket to. `None` for anything else.
+fn own_authority<'a>(shared: &Shared, request: &httparse::Request<'_, 'a>) -> Option<&'a str> {
+    let host = single_header(request, "Host").ok().flatten()?.trim();
+    let advertised = shared.hub.advertised().map(|names| names.host);
+    let name = advertised.as_deref().or(shared.mdns_name.as_deref());
+    let own = OwnNames::current(shared.port, name);
+    origin_allowed(Some(&format!("http://{host}")), &own).then_some(host)
 }
 
 /// One header's value, all of it: `Err` when it is there more than once or is not text,
@@ -1802,6 +1915,8 @@ impl Server {
             changed: Condvar::new(),
             // -- WP TM26 --
             accepting: AtomicBool::new(!config.hold_accepts),
+            // -- WP WB7 --
+            console: config.console.clone(),
         });
         let acceptor = {
             let shared = Arc::clone(&shared);

@@ -31,8 +31,10 @@ const tell = (m: MockMessage) => channel.postMessage(m);
 };
 
 const worker = new URL(`./usb-worker.js?usb=${encodeURIComponent(serials.join(","))}`, location.href);
+// -- WP WB7 -- served by `dspi web`, the hub on this machine is listed too
+const servingHub = document.querySelector<HTMLMetaElement>('meta[name="dspi-hub"]')?.content || null;
 mount(document.getElementById("console")!, {
-  backend: new LocalBackend({ storage: null }),
+  backend: new LocalBackend({ storage: null, servingHub }),
   spawnCore: () => CoreClient.spawn(worker),
   title: "USB test",
 });

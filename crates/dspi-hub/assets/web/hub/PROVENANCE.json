@@ -1,0 +1,20 @@
+{
+ "build": "npm ci --ignore-scripts && npm run build, in docker.io/library/node:24-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20",
+ "bundled_packages": [
+  "@dspi/link 1.2.0 MIT",
+  "@dspi/web 1.2.0 no licence field"
+ ],
+ "commit": "86f10e38dd760d01d4f589e4b606a5250b2d523d",
+ "files": {
+  "assets/index-CUIl9Kty.css": "8f2ade6a7ac8eff5837e6fd73548bafb8092fffdb0298d121214c6fb5bf7d5c2",
+  "assets/index-DHRTeVeR.js": "85c1e0d2f051ee977c6ccac5adf992f4c9fd5ef2cbf495017e3d637952fb7035",
+  "assets/wifi-C4D5IVMF.js": "21e268225360fde29e8358c03007c184a17183315ed2881a12dcabdd5670fa3e",
+  "index.html": "a40a0648525839d06b628c95b31d4cfb050f21bd451c5f21e1aef4dfc62e279d"
+ },
+ "js_tree": "128dca29d020ff7d709c35f422573fef0083df7e",
+ "left_out": "setup.html and its assets (the bridge's Wi-Fi setup page)",
+ "license": "MIT",
+ "repository": "https://github.com/WeebLabs/DSPi-Link",
+ "version": "1.2.0",
+ "what": "DSPi-Link js/apps/web (@dspi/web), the control page a hub serves, built unmodified"
+}

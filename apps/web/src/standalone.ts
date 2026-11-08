@@ -6,13 +6,14 @@ import { mount } from "./index";
 
 const params = new URLSearchParams(location.search);
 // A page served by a hub over http(s) is that hub's own page: list it first.
-const servingHub =
-  location.protocol === "http:" || location.protocol === "https:"
-    ? document.querySelector<HTMLMetaElement>('meta[name="dspi-hub"]')?.content || null
-    : null;
+const served = location.protocol === "http:" || location.protocol === "https:";
+const meta = (name: string) => (served ? document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`)?.content || null : null);
+const servingHub = meta("dspi-hub");
 
 mount(document.getElementById("console")!, {
   backend: new LocalBackend({ servingHub }),
   workerUrl: new URL("./worker.js", location.href),
   readOnly: params.has("readonly"),
+  // -- WP WB7 -- the hub's own page, beside which a hub serves this one
+  hubPage: meta("dspi-hub-page"),
 });
