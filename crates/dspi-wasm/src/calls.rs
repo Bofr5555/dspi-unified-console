@@ -23,6 +23,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::guard::{self, Refusal};
+// -- WP WB4a --
+use crate::usb;
 use crate::write;
 
 /// An error reply: a stable code (protocol.ts lists them) and the core's
@@ -193,7 +195,8 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "open" => open(h, &core, params(req.params)?),
         "state" => {
             need_open(&core)?;
-            Ok(snapshot(&core, demo))
+            // -- WP WB4a -- (a USB device's serial)
+            Ok(usb::with_serial(h, snapshot(&core, demo)))
         }
         "write" => {
             let w: write::WriteParams = params(req.params)?;
@@ -221,8 +224,17 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "close" => {
             core.disconnect();
             set_demo(h, false);
+            // -- WP WB4a --
+            usb::closed(h);
             Ok(Value::Null)
         }
+        // -- WP WB4a -- WebUSB (src/usb.rs)
+        "usbPush" => usb::push(&core, params(req.params)?),
+        "usbGone" => {
+            set_demo(h, false);
+            Ok(usb::gone(h, &core))
+        }
+        "usbIds" => Ok(usb::ids()),
         #[cfg(any(test, feature = "test-hooks"))]
         "test.sleep" => {
             #[derive(Deserialize)]
@@ -269,7 +281,8 @@ enum Target {
         #[serde(default, rename = "readOnly")]
         read_only: bool,
     },
-    Usb {},
+    // -- WP WB4a --
+    Usb(usb::UsbTarget),
     Hub {},
 }
 
@@ -287,12 +300,25 @@ fn open(h: u32, core: &DspiCore, target: Target) -> CallResult {
             set_demo(h, true);
             Ok(snapshot(core, true))
         }
-        // WB4a (WebUSB) and WB4b (Link) bring these.
-        Target::Usb {} | Target::Hub {} => Err(CallError::new(
+        // -- WP WB4a --
+        Target::Usb(t) => {
+            usb::open(h, core, t)?;
+            set_demo(h, false);
+            Ok(usb::with_serial(h, snapshot(core, false)))
+        }
+        // WB4b (Link) brings this.
+        Target::Hub {} => Err(CallError::new(
             "refused",
             "This connection type is not available yet",
         )),
     }
+}
+
+// -- WP WB4a --
+/// Session `h`'s core, for the USB tests.
+#[cfg(test)]
+pub(crate) fn core_of(h: u32) -> Option<Arc<DspiCore>> {
+    SESSIONS.with_borrow(|s| s.get(h as usize)?.as_ref().map(|s| Arc::clone(&s.core)))
 }
 
 /// What the page shows of a device: who it is (`device`) and the core's
@@ -643,7 +669,8 @@ mod tests {
     fn wb3_usb_and_hubs_are_not_offered_yet_and_unknown_methods_say_so() {
         guard::reset_for_test();
         let h = session_new().unwrap();
-        assert_eq!(code(&run(h, "open", json!({ "kind": "usb" }))), "refused");
+        // -- WP WB4a -- USB is offered now; without a chosen device it says so.
+        assert_eq!(code(&run(h, "open", json!({ "kind": "usb" }))), "invalid");
         assert_eq!(
             code(&run(
                 h,

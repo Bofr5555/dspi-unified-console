@@ -51,6 +51,8 @@ test("WB3: the module imports only the page's seams", { skip }, () => {
   // dspi_random_fill joins these once Link is built in (WB4b); the glue
   // supplies all four either way.
   const seams = ["dspi.dspi_now_ms", "dspi.dspi_random_fill", "dspi.dspi_sleep_ms", "dspi.dspi_unix_ms"];
+  // -- WP WB4a -- WebUSB's control transfers (src/core/usb.ts)
+  seams.push("dspi.dspi_usb_in", "dspi.dspi_usb_out", "dspi.dspi_usb_error");
   for (const file of [testModule, pageModule]) {
     const names = WebAssembly.Module.imports(new WebAssembly.Module(readFileSync(file))).map((i) => `${i.module}.${i.name}`);
     assert.deepEqual(names.filter((n) => !seams.includes(n)), []);
@@ -114,7 +116,8 @@ test("WB3: two sessions in one module: demo connect, write with read-back, apart
     e.code === "out_of_range" && e.message === "Volume must be between -60 and 0 dB");
   assert.equal((await a.call("describe", { path: "vol.user" })).max, 0);
   await assert.rejects(a.call("simulate", { what: "link-lost" }), code("unknown_method"));
-  await assert.rejects(a.call("open", { kind: "usb" }), code("refused"));
+  // -- WP WB4a -- USB is offered; without a chosen DSPi the core says so.
+  await assert.rejects(a.call("open", { kind: "usb" }), code("invalid"));
 
   // The page's module has no test calls.
   await assert.rejects(a.unqueued("test.sleep", { ms: 1 }), code("unknown_method"));

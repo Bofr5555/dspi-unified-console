@@ -17,7 +17,11 @@
 /** Where a device can be reached from this page. */
 export type Source =
   | { kind: "demo" }
-  | { kind: "usb" }
+  /**
+   * USB through the browser (WebUSB). Without `serial`, "a DSPi on USB": the
+   * browser's picker chooses one; with it, that DSPi (WP WB4a).
+   */
+  | { kind: "usb"; serial?: string }
   | { kind: "hub"; url: string };
 
 /** A place with DSPi devices: one or more sources under one name. */
@@ -67,5 +71,7 @@ export interface FleetBackend {
 export const VIEW_ONLY_REASON = "You can view this DSPi but not change it";
 
 export function sourceKey(s: Source): string {
+  // -- WP WB4a -- one key per USB DSPi
+  if (s.kind === "usb" && s.serial) return `usb:${s.serial}`;
   return s.kind === "hub" ? `hub:${s.url}` : s.kind;
 }

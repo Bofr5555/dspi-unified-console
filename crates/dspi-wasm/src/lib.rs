@@ -23,7 +23,8 @@
 //! `dspi_now_ms() -> f64`, `dspi_unix_ms() -> f64`, `dspi_sleep_ms(f64)` (a
 //! `WebAssembly.Suspending` timer) from `dspi_transport::clock`, and
 //! `dspi_random_fill(ptr, len) -> i32` from `dspi-link`'s getrandom backend.
-//! This crate defines none of them.
+//! This crate adds WebUSB's three ([`usb`], WP WB4a): `dspi_usb_in` and
+//! `dspi_usb_out` (Suspending control transfers) and `dspi_usb_error`.
 //!
 //! **The core is caller-driven** on the web (WB2): the Worker calls `poll`
 //! for notifications and `rta_tick` for the analyser on its own timers,
@@ -40,6 +41,8 @@
 
 pub mod calls;
 pub mod guard;
+// -- WP WB4a --
+pub mod usb;
 pub mod write;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]

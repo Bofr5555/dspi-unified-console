@@ -70,9 +70,14 @@ test("standalone: the core's demo connects, a volume write reads back, meters ar
   expect(errors).toEqual([]);
 });
 
-test("standalone: USB and hubs say why they are not offered, in words without a device noun", async ({ page }) => {
+test("standalone: USB and hubs say why they are not offered, in words without a device noun", async ({ page, browserName }) => {
   await page.goto("/");
   const usb = page.getByRole("listitem").filter({ hasText: "DSPi on USB" });
+  // -- WP WB4a -- Chromium on a secure page offers USB (the browser's picker); Firefox says why not.
+  if (browserName === "chromium") {
+    await expect(usb.getByRole("button", { name: "Connect" })).toBeEnabled();
+    return;
+  }
   await expect(usb.getByRole("button")).toHaveCount(0);
   const reason = (await usb.locator(".unavailable").textContent()) ?? "";
   expect(reason.length).toBeGreaterThan(10);
