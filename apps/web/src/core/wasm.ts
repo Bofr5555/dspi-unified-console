@@ -8,10 +8,17 @@
 // is entered by one call at a time. The module refuses a second one anyway
 // (`busy`), which `unqueued` lets a test show.
 //
+// USB (WB4a, usb.ts): an `open` of `{kind: "usb", serial}` first claims the
+// device here, then opens it in the core over the module's USB imports;
+// notification packets wait in `packets` and go in (`usbPush`) ahead of the next
+// `poll`; an unplug ends the session (`usbGone`) in the core's words.
+//
 // A panic in the core traps. The module has marked itself dead first; the
 // session reports `lost`, and every later call is refused as `dead`.
 
-import { CoreCallError, type CoreEvent, type CoreImpl, type CoreMethods, type DeviceSnapshot, type Method } from "./protocol";
+import { CoreCallError, type CoreEvent, type CoreImpl, type CoreMethods, type DeviceSnapshot, type DeviceTarget, type Method } from "./protocol";
+// -- WP WB4a --
+import { UsbHost } from "./usb";
 
 /** `dspi_call`'s answers when the call did not run (crates/dspi-wasm/src/lib.rs). */
 const CALL_BUSY = 0xffff_ffff;
@@ -43,14 +50,14 @@ export function jspiMissing(): string {
     : "This browser cannot run the DSPi core: it needs WebAssembly JavaScript Promise Integration";
 }
 
-/** Instantiate the module from its bytes or its URL. One module per Worker. */
-export async function loadWasmModule(source: URL | string | BufferSource): Promise<WasmModule> {
+/** Instantiate the module from its bytes or its URL. One module per Worker. `usb`: the Worker's WebUSB (WB4a). */
+export async function loadWasmModule(source: URL | string | BufferSource, usb: UsbHost = new UsbHost()): Promise<WasmModule> {
   const missing = jspiMissing();
   if (missing) throw new Error(missing);
   const bytes =
     source instanceof URL || typeof source === "string" ? await (await fetch(source)).arrayBuffer() : source;
   const J = WebAssembly as unknown as {
-    Suspending: new (f: (...a: number[]) => Promise<unknown>) => unknown;
+    Suspending: new (f: (...a: number[]) => Promise<number>) => unknown;
     promising: <F extends (...a: never[]) => unknown>(f: F) => (...a: Parameters<F>) => Promise<ReturnType<F>>;
   };
   let memory: WebAssembly.Memory | null = null;
@@ -58,19 +65,22 @@ export async function loadWasmModule(source: URL | string | BufferSource): Promi
     dspi: {
       dspi_now_ms: () => performance.now(),
       dspi_unix_ms: () => Date.now(),
-      dspi_sleep_ms: new J.Suspending((ms: number) => new Promise((r) => setTimeout(r, ms))),
+      dspi_sleep_ms: new J.Suspending((ms: number) => new Promise((r) => setTimeout(() => r(0), ms))),
       dspi_random_fill: (ptr: number, len: number) => {
         for (let at = 0; at < len; at += 65536) {
           crypto.getRandomValues(new Uint8Array(memory!.buffer, ptr + at, Math.min(65536, len - at)));
         }
         return 0;
       },
+      // -- WP WB4a --
+      ...usb.imports(J.Suspending),
     },
   };
+  usb.bindMemory(() => memory!);
   const { instance } = await WebAssembly.instantiate(bytes, imports as unknown as WebAssembly.Imports);
   const x = instance.exports as unknown as Exports;
   memory = x.memory;
-  return new WasmModule(x, J.promising(x.dspi_call));
+  return new WasmModule(x, J.promising(x.dspi_call), usb);
 }
 
 /** One instance of crates/dspi-wasm: may hold several sessions. */
@@ -80,6 +90,8 @@ export class WasmModule {
   constructor(
     private readonly x: Exports,
     private readonly promisedCall: (h: number, ptr: number, len: number) => Promise<number>,
+    // -- WP WB4a --
+    readonly usb: UsbHost = new UsbHost(),
   ) {}
 
   /** Empty while alive; why the core stopped otherwise. */
@@ -141,6 +153,9 @@ export class WasmCore implements CoreImpl {
   private open = false;
   private rtaOn = false;
   private lostSent = false;
+  // -- WP WB4a -- the claimed USB device (usb.ts), and its packets not yet pushed in
+  private usbDevice: number | null = null;
+  private packets: number[][] = [];
   readonly handle: number;
 
   constructor(private readonly m: WasmModule) {
@@ -153,7 +168,10 @@ export class WasmCore implements CoreImpl {
 
   async call<M extends Method>(method: M, params: CoreMethods[M]["params"]): Promise<CoreMethods[M]["result"]> {
     try {
-      const value = await this.queued(method, params);
+      const value =
+        method === "open" && (params as DeviceTarget).kind === "usb"
+          ? await this.openUsb(params as DeviceTarget & { kind: "usb" })
+          : await this.queued(method, params);
       this.after(method);
       return value as CoreMethods[M]["result"];
     } catch (e) {
@@ -170,6 +188,7 @@ export class WasmCore implements CoreImpl {
   /** Stops the timers and frees the session. */
   dispose(): void {
     this.stopTimers();
+    this.releaseUsb();
     this.open = false;
     this.m.freeSession(this.handle);
   }
@@ -188,6 +207,7 @@ export class WasmCore implements CoreImpl {
     } else if (method === "close") {
       this.open = false;
       this.stopTimers();
+      this.releaseUsb();
     } else if (method === "rtaStart") {
       this.rtaOn = true;
       this.scheduleRta(0);
@@ -195,6 +215,56 @@ export class WasmCore implements CoreImpl {
       this.rtaOn = false;
       clearTimeout(this.rtaTimer);
     }
+  }
+
+  // -- WP WB4a --
+  /**
+   * Claim the chosen DSPi, then open it in the core, in the queue as one step so
+   * no other call runs between. A failed open gives the device back.
+   */
+  private openUsb(t: DeviceTarget & { kind: "usb" }): Promise<unknown> {
+    const run = this.tail.then(async () => {
+      this.releaseUsb();
+      if (!t.serial) return this.m.call(this.handle, "open", t);
+      const claimed = await this.m.usb.claim(t.serial, () => void this.usbGone(claimed.device));
+      try {
+        const snap = await this.m.call(this.handle, "open", { kind: "usb", ...claimed });
+        this.usbDevice = claimed.device;
+        this.packets = [];
+        this.m.usb.readNotifications(claimed.device, (p) => {
+          this.packets.push(p);
+          this.schedulePoll(0);
+        });
+        return snap;
+      } catch (e) {
+        await this.m.usb.release(claimed.device);
+        throw e;
+      }
+    });
+    this.tail = run.catch(() => undefined);
+    return run;
+  }
+
+  /** The device left: the core ends the connection and says so in its words. */
+  private async usbGone(device: number): Promise<void> {
+    if (this.usbDevice !== device) return;
+    this.releaseUsb();
+    // No more turns: a poll after this would report the end in other words.
+    this.open = false;
+    this.stopTimers();
+    try {
+      const r = (await this.queued("usbGone", null)) as { reason: string };
+      this.lose(r.reason);
+    } catch (e) {
+      this.lose(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  private releaseUsb(): void {
+    if (this.usbDevice == null) return;
+    void this.m.usb.release(this.usbDevice);
+    this.usbDevice = null;
+    this.packets = [];
   }
 
   private schedulePoll(ms: number): void {
@@ -211,6 +281,12 @@ export class WasmCore implements CoreImpl {
   private async pollOnce(): Promise<void> {
     if (!this.open) return;
     try {
+      // -- WP WB4a -- the packets read since the last turn, then the turn.
+      if (this.packets.length) {
+        const packets = this.packets;
+        this.packets = [];
+        await this.queued("usbPush", { packets });
+      }
       const r = (await this.queued("poll", null)) as { flags: number; retryMs: number | null; connected: boolean };
       if (!r.connected || r.flags & NOTIFY_DISCONNECTED) {
         this.lose("The DSPi is no longer connected");
@@ -242,6 +318,7 @@ export class WasmCore implements CoreImpl {
   private lose(reason: string): void {
     this.open = false;
     this.stopTimers();
+    this.releaseUsb();
     if (this.lostSent) return;
     this.lostSent = true;
     this.push({ event: "lost", reason: capitalise(reason) });
