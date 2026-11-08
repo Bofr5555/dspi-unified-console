@@ -132,6 +132,16 @@ fun roundOutputGain(db: Float): Float {
     return if (v == 0f) 0f else v
 }
 
+/**
+ * Commands.swift sendOutputDelayToDevice / setOutputDelay (release/v1.1.6): a
+ * slider drag sends and commits whole ms, no negative zero (WP SL1). Typed
+ * values keep their fraction (WP AN40); only gestures use this.
+ */
+fun roundDelayToWholeMs(ms: Float): Float {
+    val v = roundHalfAwayFromZero(ms)
+    return if (v == 0f) 0f else v
+}
+
 // ═══ Drag math (touch stand-in for ScrollWheelHandler) ═════════════════════
 
 /**

@@ -265,7 +265,11 @@ Reference: macOS `MatrixMixerView.swift` (+ the matrix helpers of
    an untouched value writes it back unchanged; a drag still steps on the
    whole-ms grid (0.5 → 1 → 2). HOME's delay field shows two decimals and the
    Dashboard "Delay: 0.5ms". No field or row grows. (Qt never rounded; the
-   Swift clients are WP SWF5's.)
+   Swift clients are WP SWF5's.) Gestures do round, as macOS (WP SL1, owner
+   2026-11-08): HOME's DELAY slider moves continuously but sends and commits
+   whole ms (`roundDelayToWholeMs`, Swift `rounded()`, no −0) and snaps to the
+   committed value on release; until a drag, a fractional delay stays shown.
+   TalkBack reads the slider at the field's precision ("0.25 ms").
 4. **Hover help → captions/labels.** ENABLE's tooltip text is a caption on the
    phone page and the click label for accessibility; MatrixPoint's
    "Connect/Disconnect" and "Phase inverted/Normal phase" are content
