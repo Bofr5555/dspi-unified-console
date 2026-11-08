@@ -159,12 +159,34 @@ final class SpdifInputWireTests: XCTestCase {
         }
     }
 
+    // -- WP SW8 -- hw-mac-2 N1: the offline view model never answers 0xEF, so
+    // this test always skipped.  It only reads, so a hardware run uses the
+    // app's view model on the real DSPi, and every other run the Rust core's
+    // demo device, which answers 0xEF like four-input firmware.
+    private static let demo: CoreBackedTransport = {
+        let t = CoreBackedTransport(link: .demo)
+        t.selectDevice(FakeTransport.demoDevice)
+        return t
+    }()
+    private static let demoVM = DSPViewModel(transport: demo)
+
+    /// The view model and the raw link to compare it with.
+    private func liveViewModel() throws -> (DSPViewModel, any DeviceTransport) {
+        if TestHostGuard.mayOpenDevices {
+            let usb = try HardwareTest.requireDevice(self)
+            return (AppState.shared.viewModel, usb)
+        }
+        let vm = Self.demoVM
+        XCTAssertTrue(spinUntil(10) { Self.demo.isConnected && vm.isDeviceConnected }, "the demo device opens")
+        return (vm, Self.demo)
+    }
+
     /// The app's own parse of 0xEF must agree with the raw bytes, and must keep
     /// the ext arrays full-length even when the device reports only three inputs.
     func testLiveFetchPopulatesViewModel() throws {
-        let usb = try HardwareTest.requireDevice(self)
+        let (vm, usb) = try liveViewModel()
         vm.fetchSpdifInputConfig()
-        RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.3))
+        XCTAssertTrue(spinUntil(2) { vm.multiSpdifSupported } || TestHostGuard.mayOpenDevices)
         try XCTSkipUnless(vm.multiSpdifSupported,
                           "Firmware predates the multiple-S/PDIF feature (0xEF STALLs).")
 
