@@ -815,7 +815,7 @@ Groups are stored on the device alongside the controls and share their Save and 
 <context>
     <name>ChannelSettingsView</name>
     <message>
-        <location filename="../qml/ChannelSettingsView.qml" line="+177"/>
+        <location filename="../qml/ChannelSettingsView.qml" line="+189"/>
         <source>Route %1</source>
         <translation type="unfinished"></translation>
     </message>
@@ -846,7 +846,7 @@ Groups are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+16"/>
+        <location line="+18"/>
         <source>DELAY</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6322,12 +6322,12 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <location line="+32"/>
-        <location line="+292"/>
+        <location line="+294"/>
         <source>OUT%1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="-280"/>
+        <location line="-282"/>
         <source>Output name</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6419,7 +6419,7 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location line="+2"/>
+        <location line="+4"/>
         <source>%1 delay</source>
         <translation type="unfinished"></translation>
     </message>
