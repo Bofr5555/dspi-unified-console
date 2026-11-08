@@ -35,11 +35,14 @@ QT_FORCE_STDERR_LOGGING=1 apps/desktop/qt/build/DSPiConsole          # --demo: t
 
 `packaging/linux/build-release.sh` builds into `dist/`, in podman containers:
 the AppImage and `-linux-x86_64.tar.gz` (AppImage, `70-dspi.rules`, `install.sh`)
-and the `.deb` on Ubuntu 22.04, the `.rpm` on Fedora 42. Packages come from the
+on Ubuntu 24.04 with the official Qt 6.8 LTS (`fetch-qt.sh`, hashes pinned in
+`qt-6.8.3.sha256`), the `.deb` on Debian 13 and the `.rpm` on Fedora 42, both on
+the distribution's Qt 6. `packaging/linux/test-packages.sh` installs each in a
+clean container and runs it. Packages come from the
 CMake install rules and CPack config at the end of `qt/CMakeLists.txt`. The
 version comes from `setApplicationVersion` in `qt/src/main.cpp` (packages use
 `~` for the pre-release: `1.1.6~beta4`). Per release, also bump the `<release>`
-in `packaging/linux/io.github.weeblabs.DSPiConsole.metainfo.xml` and `pkgver` /
+in `packaging/linux/dspi-console.metainfo.xml` and `pkgver` /
 `_commit` in `packaging/arch/PKGBUILD` (then regenerate `.SRCINFO`). Releases are
 tagged `v<version>` and named `DSPi Console v<version>`, like the macOS and
 Windows repos.
