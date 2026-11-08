@@ -13,8 +13,15 @@ Integration. The crate docs (`src/lib.rs`) have the details.
 - **Panics** mark the module dead (the hook runs before the abort); every later
   call is refused (`dead`) and the page reports the session lost.
 - **Imports:** `dspi.dspi_now_ms`, `dspi_unix_ms`, `dspi_sleep_ms` (the clock
-  seam) and `dspi_random_fill` (dspi-link's getrandom backend, once Link is in).
-  Defined by the core's crates; this one adds none.
+  seam) and `dspi_random_fill` (dspi-link's getrandom backend, once Link is in),
+  defined by the core's crates; and WebUSB's `dspi_usb_in`, `dspi_usb_out`
+  (Suspending) and `dspi_usb_error` (WB4a, `src/usb.rs`).
+- **USB** (WB4a, `src/usb.rs`): `open {"kind": "usb", "serial", "device",
+  "vendorId"}` after the Worker claimed the device; `usbPush {"packets"}` hands
+  in notification packets the Worker read (the transport has no notification
+  source: one or the other, c6a W2-2); `usbGone` ends the connection and answers
+  the core's words; `usbIds` the protocol's IDs. The test module adds a mock
+  DSPi (`dspi_mock_*`, the core's `FakeDevice::demo`) for the WebUSB mock.
 - **Writes** by registry path, indices and a typed value, as `Session::write`
   takes them (`src/write.rs`); the registry validates, the core's setter sends,
   the answer is read back from the device's image. Routed paths so far:
@@ -36,6 +43,8 @@ call that suspends; `test.panic`) for the binding's own tests. The page never
 loads it.
 
 ## Size
+
+With WebUSB (WB4a), 2026-11-08: **652 935 bytes, 232 678 gzip**.
 
 Profile `wasm-web` (release, `opt-level = "s"`, thin LTO, stripped, no
 `wasm-opt`), without Link, 2026-11-08: **637 682 bytes, 227 423 gzip** (`gzip -9`), 184 353 brotli (`-q 11`).

@@ -6,14 +6,22 @@
 import { useEffect, useState } from "preact/hooks";
 import type { Installation, Source } from "../fleet/types";
 import { sourceKey } from "../fleet/types";
-import type { PageEnv } from "../fleet/env";
+import type { PageEnv, UsbChoice } from "../fleet/env";
+import { shortSerial } from "../core/usb-ids";
 import { peakDb } from "../core/protocol";
 import type { Session } from "./session";
 import { aboutData, linkText } from "./texts";
 
 export function useSessionState(s: Session) {
   const [, bump] = useState(0);
-  useEffect(() => s.watch(() => bump((n) => n + 1)), [s]);
+  const rendered = s.state;
+  useEffect(() => {
+    const stop = s.watch(() => bump((n) => n + 1));
+    // -- WP WB4a -- The effect runs after paint: a change between this render and
+    // the subscription (an unplug just after a tab switch) must not be lost.
+    if (s.state !== rendered) bump((n) => n + 1);
+    return stop;
+  }, [s]);
   return s.state;
 }
 
@@ -33,15 +41,25 @@ export function DevicePicker(props: {
         <section key={inst.id} class="installation" aria-label={inst.name}>
           <h2>{inst.name}</h2>
           <ul>
-            {inst.sources.map((src) => (
-              <SourceRow
-                key={sourceKey(src)}
-                src={src}
-                env={props.env}
-                open={props.openKeys.has(`${inst.id}/${sourceKey(src)}`)}
-                onOpen={() => props.onOpen(inst, src)}
-              />
-            ))}
+            {inst.sources.map((src) =>
+              // -- WP WB4a --
+              src.kind === "usb" && !src.serial && props.env.usb.ok ? (
+                <UsbSource
+                  key="usb"
+                  env={props.env}
+                  isOpen={(s) => props.openKeys.has(`${inst.id}/${sourceKey(s)}`)}
+                  onOpen={(s) => props.onOpen(inst, s)}
+                />
+              ) : (
+                <SourceRow
+                  key={sourceKey(src)}
+                  src={src}
+                  env={props.env}
+                  open={props.openKeys.has(`${inst.id}/${sourceKey(src)}`)}
+                  onOpen={() => props.onOpen(inst, src)}
+                />
+              ),
+            )}
           </ul>
           {inst.editable && props.onAddHub ? <AddHub onAdd={props.onAddHub} error={props.addHubError} /> : null}
         </section>
@@ -52,11 +70,20 @@ export function DevicePicker(props: {
 
 function SourceRow(props: { src: Source; env: PageEnv; open: boolean; onOpen: () => void }) {
   const { src, env } = props;
-  const label = src.kind === "demo" ? "Demo DSPi" : src.kind === "usb" ? "DSPi on USB" : `Hub ${hostOf(src.url)}`;
+  const label =
+    src.kind === "demo"
+      ? "Demo DSPi"
+      : src.kind === "usb"
+        ? src.serial
+          ? `DSPi on USB · ${shortSerial(src.serial)}`
+          : "DSPi on USB"
+        : `Hub ${hostOf(src.url)}`;
   const avail = src.kind === "demo" ? { ok: true, reason: "" } : src.kind === "usb" ? env.usb : env.link;
   return (
     <li class="source">
-      <span class="source-name">{label}</span>
+      <span class="source-name" title={src.kind === "usb" && src.serial ? src.serial : undefined}>
+        {label}
+      </span>
       {avail.ok ? (
         <button type="button" disabled={props.open} onClick={props.onOpen}>
           {props.open ? "Open" : "Connect"}
@@ -65,6 +92,66 @@ function SourceRow(props: { src: Source; env: PageEnv; open: boolean; onOpen: ()
         <span class="unavailable">{avail.reason}</span>
       )}
     </li>
+  );
+}
+
+// -- WP WB4a --
+/**
+ * USB: Connect opens the browser's own picker (it needs the click); the DSPis
+ * this page may already open are listed as entries of their own, kept current
+ * as they are plugged in and out. Each opens its own session.
+ */
+function UsbSource(props: { env: PageEnv; isOpen: (s: Source) => boolean; onOpen: (s: Source) => void }) {
+  const access = props.env.usbDevices;
+  const [permitted, setPermitted] = useState<UsbChoice[]>([]);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!access) return;
+    let alive = true;
+    const refresh = () =>
+      void access.permitted().then(
+        (l) => alive && setPermitted(l),
+        () => alive && setPermitted([]),
+      );
+    refresh();
+    const stop = access.watch(refresh);
+    return () => {
+      alive = false;
+      stop();
+    };
+  }, [access]);
+  const choose = async () => {
+    if (!access) return;
+    try {
+      const chosen = await access.choose();
+      setError("");
+      if (!chosen) return;
+      setPermitted(await access.permitted());
+      props.onOpen({ kind: "usb", serial: chosen.serial });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  return (
+    <>
+      <li class="source source-usb">
+        <span class="source-name">DSPi on USB</span>
+        <button type="button" onClick={() => void choose()}>
+          Connect
+        </button>
+        {error ? (
+          <p class="error" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </li>
+      {permitted.map((d) => {
+        const src: Source = { kind: "usb", serial: d.serial };
+        return (
+          <SourceRow key={sourceKey(src)} src={src} env={props.env} open={props.isOpen(src)} onOpen={() => props.onOpen(src)} />
+        );
+      })}
+    </>
   );
 }
 

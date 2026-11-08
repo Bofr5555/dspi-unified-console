@@ -59,7 +59,8 @@ export function App(props: { options: ConsoleOptions }) {
       setActive(id);
       return;
     }
-    const deviceId = source.kind === "hub" ? "" : source.kind;
+    // -- WP WB4a -- a USB DSPi is its serial
+    const deviceId = source.kind === "hub" ? "" : source.kind === "usb" && source.serial ? source.serial : source.kind;
     const access = props.options.readOnly ? "view" : await backend.access(inst.id, source, deviceId);
     const session = new Session(id, inst.id, inst.name, source, access, spawnCore());
     setSessions((list) => [...list, session]);
@@ -151,7 +152,8 @@ function targetFor(source: Source): DeviceTarget {
     case "demo":
       return { kind: "demo" };
     case "usb":
-      return { kind: "usb" };
+      // -- WP WB4a --
+      return source.serial ? { kind: "usb", serial: source.serial } : { kind: "usb" };
     case "hub":
       return { kind: "hub", url: source.url, deviceId: "" };
   }

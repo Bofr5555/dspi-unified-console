@@ -6,8 +6,9 @@ as every other client runs in a dedicated Worker under JSPI
 `src/core/worker.ts` from `dspi_wasm.wasm` beside it. A small stub core
 (`src/core/stub.ts`) remains as the tests' fake only.
 
-**Status:** skeleton. The core's own demo device only. USB (WB4a) and Link to hubs (WB4b) say
-"Not available in this version yet". The screens of the other clients arrive in
+**Status:** skeleton. The core's own demo device, and a DSPi on USB through
+WebUSB (WB4a, Chromium only; tested on a WebUSB mock, real hardware is WB8).
+Link to hubs (WB4b) says "Not available in this version yet". The screens of the other clients arrive in
 WB6 slices. Nothing here is published.
 
 ## What it is for
@@ -53,6 +54,48 @@ page ── mount(el, options) ── App (Preact)
 - **Wording** is the core's: the Link phases come from `link_phase_texts()`
   (generated to `ci/generated/web/link-words.json` by `ci/drift.sh` until the
   binding answers at run time); About is `assets/about.json`.
+
+## USB (WebUSB)
+
+WP WB4a. **Chromium-based browsers only** (Chrome, Edge, Opera; Firefox and
+Safari have no WebUSB), and only on a **secure page**: `https://`, or
+`http://localhost` / `http://127.0.0.1`. Elsewhere the picker says which of the
+two is missing. USB MIDI cannot go through WebUSB (Chromium will not let a page
+claim an audio-class interface); the console uses the vendor interface 2, which
+every DSPi firmware since 1.1.5 has, stock and bofr-main alike.
+
+- **Choosing a DSPi.** "DSPi on USB" → Connect opens the browser's own device
+  picker (it needs the click). DSPis this page was allowed before and that are
+  plugged in are listed as entries of their own ("DSPi on USB · 1B8B4E3A", the
+  serial's last 8 characters), kept current as they are plugged in and out.
+- **Several at once.** Each DSPi opens in its own session and Worker; the
+  Worker finds the chosen device again by serial (the permission is the
+  page's origin's, which a Worker shares), opens it and claims interface 2.
+  A DSPi held by another tab or program cannot be claimed; the session says so.
+- **Unplugged** (or gone mid-transfer): the session ends with the core's words
+  ("Device not connected"); the other sessions go on.
+- **How it runs:** the core's control transfers are the module's imports
+  `dspi_usb_in` / `dspi_usb_out`, Promises under JSPI, each bounded by the core's
+  1 s transfer time (WebUSB has none of its own); the Worker reads the
+  notification endpoint and pushes the packets in before its next `poll`
+  (`src/core/usb.ts`, `crates/dspi-wasm/src/usb.rs`).
+
+**Linux: the udev rule.** Chromium opens the device through usbfs, so without a
+rule the open fails ("Access denied") and the session says the udev rule must be
+installed. It is the same rule as for the other consoles:
+`xtask/70-dspi.rules` (installed by `sudo dspi --install-udev`) or
+`apps/desktop/packaging/linux/70-dspi.rules`, then `sudo udevadm control
+--reload` and replug. A Flatpak or Snap Chromium may also need its own USB
+permission. ChromeOS and Android Chrome: WB8 checks them.
+
+**Windows: no Zadig.** The firmware's MS OS 2.0 descriptors bind WinUSB to
+interface 2 by themselves since 1.1.5 (WEB-STUDY section 6). Zadig is only the
+blunt fix for a machine that cached another driver for that device (it saw
+older firmware, or someone bound it by hand): then pick "WinUSB" for interface 2
+in Zadig, or remove the device in Device Manager with its driver and replug.
+That this needs no step on a clean machine is reasoned, not yet tested: WB8.
+
+**macOS:** no step; quit any other program holding the DSPi.
 
 ## Embedding in a fleet server
 
@@ -103,7 +146,7 @@ Outputs and caches go to `~/.cache/dspi-build/work/web/<branch>/` (`dist/` is th
 not in the tree). `node tools/serve.mjs <dist>` serves a build on loopback for a look.
 
 `dist/` holds `index.html` and `app.js` (the standalone page), `dspi-web.js` (the
-library), `worker.js`, `dspi_wasm.wasm` (the core: 638 KB, 227 KB gzip) and
+library), `worker.js`, `dspi_wasm.wasm` (the core: 653 KB, 233 KB gzip with WebUSB) and
 `dspi-web.css`. A host serves `dspi_wasm.wasm` beside `worker.js`. The page needs
 JSPI (Chrome 137, Firefox 153, Safari 27); without it every call says so. Preact (MIT) is the one runtime
 dependency. Its notice is not yet in the licence inventory (`ci/licence-inventory.py`
@@ -119,9 +162,10 @@ covers the Rust and iOS sides); that belongs with WB7, before anything is served
 | `src/core/wasm.ts` | the core's glue: imports, JSON calls, the Worker's timers |
 | `src/core/client.ts` | the page's side: calls, replies, events |
 | `src/core/stub.ts` | the tests' fake core |
+| `src/core/usb.ts`, `usb-ids.ts` | WebUSB in the Worker: claim, transfers, notifications, unplug (WB4a) |
 | `src/fleet/` | installations, sources, access; `LocalBackend`; what this page can reach |
 | `src/ui/` | Preact components and the session model |
 | `src/index.tsx` | `mount()` and the public types |
 | `src/standalone.ts`, `index.html` | the standalone page (`?readonly` for a display page) |
 | `test/unit/` | `node --test` |
-| `test/e2e/`, `test/pages/` | Playwright; `embed.html` mounts two consoles with a server-like backend (`?core=stub`: on the fake core, `stub-worker.ts`) |
+| `test/e2e/`, `test/pages/` | Playwright; `embed.html` mounts two consoles with a server-like backend (`?core=stub`: on the fake core, `stub-worker.ts`); `usb.html` runs USB sessions over a WebUSB mock (`webusb-mock.ts`) whose devices are the core's simulated DSPi in the test module (Chromium) |

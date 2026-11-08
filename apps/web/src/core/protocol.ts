@@ -18,6 +18,13 @@
 export type DeviceTarget =
   /** The core's own demo device; `readOnly` opens it as older firmware, which the core only reads. */
   | { kind: "demo"; readOnly?: boolean }
+  /**
+   * A DSPi on USB (WebUSB, WB4a): the serial the page's picker or
+   * `getDevices()` gave. The Worker claims that device and completes the target
+   * for the core (`device`, `vendorId`); without a serial the core answers
+   * `invalid`. The Worker's own calls `usbPush`, `usbGone` and `usbIds`
+   * (crates/dspi-wasm/src/usb.rs) are not the page's.
+   */
   | { kind: "usb"; serial?: string }
   /**
    * A DSPi behind a hub. `deviceId` "" lets the console ask the hub which ones
