@@ -32,6 +32,11 @@ const NOT_EXPORTED: &[&str] = &[
     "read_only_refusals",
     // -- WP CG23 -- The C drain's too-small buffer; Rust-only (doc(hidden)).
     "notify_tap_note_dropped",
+    // -- WP CG32 -- The web's runtime without threads (WB2, WB3): not exported
+    // over UniFFI (rta.rs behind cfg(wasm32)), which core_methods() reads anyway.
+    "rta_tick",
+    "push_notification",
+    "notify_retry_due_in",
 ];
 
 /// `crates/dspi-core/src/link.rs`, exported by WP C15.

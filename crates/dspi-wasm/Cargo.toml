@@ -1,0 +1,26 @@
+[package]
+name = "dspi-wasm"
+description = "The web binding (WP WB3): dspi-core in wasm behind the web console's Worker, JSON calls, one at a time"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+# A cdylib for the page (wasm32-unknown-unknown, `tools/build.sh`), and an rlib
+# so the calls and the guard are tested natively (`ci/check.sh --crate dspi-wasm`).
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# Two calls only the binding's own test module has: `test.sleep` (a call that
+# suspends under JSPI) and `test.panic`. Never in the module the page loads.
+test-hooks = []
+
+[dependencies]
+dspi-proto = { path = "../dspi-proto" }
+dspi-core = { path = "../dspi-core", default-features = false }
+dspi-transport = { path = "../dspi-transport", default-features = false }
+serde.workspace = true
+serde_json.workspace = true

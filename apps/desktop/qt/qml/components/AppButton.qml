@@ -22,11 +22,13 @@ Rectangle {
         font.weight: btn.primary ? Font.DemiBold : Font.Normal
         color: isMacOS ? (btn.primary ? Qt.rgba(1, 1, 1, 0.86) : Qt.rgba(1, 1, 1, 0.89)) : "white"
     }
-    MouseArea {
+    ClickArea {
         id: mouse
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: btn.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-        onClicked: btn.clicked()
+        focusRadius: btn.radius + 2
+        Accessible.name: btn.text
+        onActivated: btn.clicked()
     }
 }

@@ -31,11 +31,11 @@ use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
 use dspi_link::frames::CmdResponse;
-use dspi_link::{Dir, LinkClient, LinkError, NotifyItem, status};
+use dspi_link::{CmdSpec, Dir, LinkClient, LinkError, NotifyItem, status};
 use dspi_proto::generated::opcodes as op;
 
 use crate::{
-    Attributed, BUSY_BACKOFF, BUSY_RETRIES, DeviceDescriptor, NotificationSource, Result,
+    Attributed, BUSY_BACKOFF, BUSY_RETRIES, DeviceDescriptor, InRead, NotificationSource, Result,
     Transport, TransportCaps, TransportError,
 };
 
@@ -45,9 +45,6 @@ const CAP_SNAPSHOT: &str = "snapshot";
 const CAP_LOCK: &str = "lock";
 /// Longest lock a client may ask for (spec 7.7; `dspi-link` clamps too).
 const LOCK_MAX_MS: u32 = 60_000;
-/// A snapshot older than this is not used for the first bulk read; the
-/// device is read instead.
-const SNAPSHOT_MAX_AGE_MS: u64 = 5_000;
 /// What [`Transport::max_transfer`] reports when the hub's `max_payload` does
 /// not fit a `usize` (spec 7.2's default).
 const MAX_PAYLOAD_DEFAULT: usize = 8192;
@@ -198,27 +195,28 @@ impl LinkTransport {
         }
     }
 
-    /// The bulk image from the hub's snapshot, if it has a fresh one of at
-    /// least `len` bytes. Any failure, or a snapshot older than
-    /// [`SNAPSHOT_MAX_AGE_MS`], falls back to a device read.
-    fn snapshot_bulk(&self, len: u16) -> Option<Vec<u8>> {
-        let snap = self.client.snapshot(self.handle).ok()?;
-        if snap.age_ms.is_some_and(|a| a > SNAPSHOT_MAX_AGE_MS) {
-            return None;
-        }
-        let mut blob = snap.bulk()?;
-        if blob.len() < usize::from(len) {
+    /// The bulk image from the hub's snapshot, cut to `len`, if it has one of
+    /// at least `min_len` bytes. Any failure falls back to a device read.
+    ///
+    /// WP LK1: `age_ms` is not a reason to read the device instead. A hub keeps
+    /// the blob current (spec 7.5), and the ESP32 bridge reports the time since
+    /// it last read it, hours on a bridge up for hours; the macOS Console and
+    /// the 0.10 app ignore it too.
+    fn snapshot_bulk(&self, len: u16, min_len: u16) -> Option<Vec<u8>> {
+        let mut blob = self.client.snapshot(self.handle).ok()?.bulk()?;
+        if blob.is_empty() || blob.len() < usize::from(min_len) {
             return None;
         }
         blob.truncate(usize::from(len));
         Some(blob)
     }
 
-    /// One GET; the reply may be shorter than `len`, never longer.
-    fn get(&mut self, opcode: u8, value: u16, len: u16) -> Result<Vec<u8>> {
+    /// One GET; the reply may be shorter than `len`, never longer. The first
+    /// bulk read comes from the snapshot when it has at least `min_len` bytes.
+    fn get(&mut self, opcode: u8, value: u16, len: u16, min_len: u16) -> Result<Vec<u8>> {
         if opcode == op::REQ_GET_ALL_PARAMS
             && std::mem::take(&mut self.snapshot_unused)
-            && let Some(blob) = self.snapshot_bulk(len)
+            && let Some(blob) = self.snapshot_bulk(len, min_len)
         {
             return Ok(blob);
         }
@@ -238,21 +236,53 @@ impl LinkTransport {
     }
 }
 
+// -- WP LK2 --
+/// One answer of a pipelined batch, as [`Transport::control_in`] or
+/// [`Transport::control_in_upto`] would give it. A busy status, or
+/// RATE_LIMITED (a slot the hub still counts for a request of ours that timed
+/// out), means the read did not run: it goes again on its own by `again`.
+fn batch_answer(
+    r: &InRead,
+    a: CmdResponse,
+    again: impl FnOnce() -> Result<Vec<u8>>,
+) -> Result<Vec<u8>> {
+    if is_busy(a.status) || a.status == status::RATE_LIMITED {
+        return again();
+    }
+    if let Some(e) = map_status(a.status, r.opcode) {
+        return Err(e);
+    }
+    let mut payload = a.payload;
+    payload.truncate(usize::from(r.len));
+    if r.exact {
+        exact_reply(r.opcode, r.len, payload)
+    } else {
+        Ok(payload)
+    }
+}
+
+/// `payload` as [`Transport::control_in`] answers it: refused when short.
+fn exact_reply(opcode: u8, len: u16, payload: Vec<u8>) -> Result<Vec<u8>> {
+    if payload.len() < usize::from(len) {
+        return Err(TransportError::ShortRead {
+            opcode,
+            wanted: usize::from(len),
+            got: payload.len(),
+        });
+    }
+    Ok(payload)
+}
+
 impl Transport for LinkTransport {
     fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> Result<Vec<u8>> {
-        let payload = self.get(opcode, value, len)?;
-        if payload.len() < usize::from(len) {
-            return Err(TransportError::ShortRead {
-                opcode,
-                wanted: usize::from(len),
-                got: payload.len(),
-            });
-        }
-        Ok(payload)
+        let payload = self.get(opcode, value, len, len)?;
+        exact_reply(opcode, len, payload)
     }
 
     fn control_in_upto(&mut self, opcode: u8, value: u16, max_len: u16) -> Result<Vec<u8>> {
-        self.get(opcode, value, max_len)
+        // WP LK1: `max_len` is a cap (the probe asks for `max_payload`), so any
+        // snapshot serves, as a device reply of that size would
+        self.get(opcode, value, max_len, 1)
     }
 
     fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> Result<()> {
@@ -336,6 +366,46 @@ impl Transport for LinkTransport {
         if std::mem::take(&mut self.locked) {
             self.client.lock_release(self.handle);
         }
+    }
+
+    // -- WP LK2 --
+    /// Up to the hub's `max_inflight` of the reads on the wire at once
+    /// ([`LinkClient::commands`]): one round trip for each window of them
+    /// instead of one each. A busy answer (spec 8.1) is retried on its own
+    /// through the busy window afterwards; a bulk read goes one at a time (it
+    /// may come from the snapshot).
+    fn control_in_batch(&mut self, reads: &[InRead]) -> Vec<Result<Vec<u8>>> {
+        let one = |t: &mut Self, r: &InRead| {
+            if r.exact {
+                t.control_in(r.opcode, r.value, r.len)
+            } else {
+                t.control_in_upto(r.opcode, r.value, r.len)
+            }
+        };
+        if reads.len() < 2
+            || self.client.max_inflight() < 2
+            || reads.iter().any(|r| r.opcode == op::REQ_GET_ALL_PARAMS)
+        {
+            return reads.iter().map(|r| one(self, r)).collect();
+        }
+        let specs: Vec<CmdSpec> = reads
+            .iter()
+            .map(|r| CmdSpec {
+                handle: self.handle,
+                dir: Dir::Get,
+                b_request: r.opcode,
+                w_value: r.value,
+                w_index: dspi_proto::VENDOR_INTERFACE,
+                w_length: r.len,
+                payload: Vec::new(),
+            })
+            .collect();
+        let answers = self.client.commands(&specs);
+        reads
+            .iter()
+            .zip(answers)
+            .map(|(r, a)| batch_answer(r, a, || one(self, r)))
+            .collect()
     }
 }
 
@@ -501,6 +571,58 @@ mod tests_wp_t5 {
             hub.image()
         );
         assert_eq!(bulk_reads(&hub), 1, "later reads go to the device");
+    }
+
+    // -- WP LK1 --
+    /// The probe's read asks for `max_payload`, more than the image: the
+    /// snapshot still serves it, as on the 0.10 app.
+    #[test]
+    fn wp_lk1_the_probes_capped_bulk_read_comes_from_the_snapshot() {
+        let hub = FakeHub::start(HubConfig::default()).unwrap();
+        let mut t = open(&hub);
+        let max = u16::try_from(t.max_transfer()).unwrap();
+        assert!(usize::from(max) > hub.image().len());
+        assert_eq!(
+            t.control_in_upto(req::GET_ALL_PARAMS, 0, max).unwrap(),
+            hub.image()
+        );
+        assert_eq!(bulk_reads(&hub), 0, "no second bulk transfer");
+    }
+
+    /// An ESP32 bridge's snapshot is as old as its last read of the blob, which
+    /// its notifications keep current: it is used whatever its age.
+    #[test]
+    fn wp_lk1_an_old_snapshot_is_used() {
+        let hub = FakeHub::start(HubConfig {
+            snapshot_age_ms: 3_600_000,
+            auth: dspi_link::fakehub::Auth::None,
+            ..HubConfig::bridge()
+        })
+        .unwrap();
+        let mut t = open(&hub);
+        let len = u16::try_from(hub.image().len()).unwrap();
+        assert_eq!(
+            t.control_in(req::GET_ALL_PARAMS, 0, len).unwrap(),
+            hub.image()
+        );
+        assert_eq!(bulk_reads(&hub), 0);
+    }
+
+    /// An exact read the snapshot is too short for goes to the device.
+    #[test]
+    fn wp_lk1_an_exact_read_longer_than_the_snapshot_reads_the_device() {
+        let hub = FakeHub::start(HubConfig::default()).unwrap();
+        let mut t = open(&hub);
+        let len = u16::try_from(hub.image().len() + 1).unwrap();
+        assert!(matches!(
+            t.control_in(req::GET_ALL_PARAMS, 0, len),
+            Err(TransportError::ShortRead { .. })
+        ));
+        assert_eq!(
+            bulk_reads(&hub),
+            1,
+            "read from the device after the snapshot"
+        );
     }
 
     #[test]
@@ -773,6 +895,113 @@ mod tests_wp_t5 {
             }
         });
         (r, calls)
+    }
+
+    // -- WP LK2 --
+    #[test]
+    fn wp_lk2_a_batch_answers_as_one_read_at_a_time_does() {
+        let hub = FakeHub::start(HubConfig {
+            max_inflight: 4,
+            ..HubConfig::default()
+        })
+        .unwrap();
+        let reads = [
+            InRead::exact(req::GET_PLATFORM, 0, 7),
+            InRead::upto(req::GET_PLATFORM, 0, 64),
+            InRead::exact(req::GET_PLATFORM, 0, 64),
+            InRead::exact(0xEE, 0, 4),
+            InRead::upto(req::GET_STATUS, 9, 41),
+            InRead::exact(req::GET_PLATFORM, 0, 4),
+        ];
+        let mut t = open(&hub);
+        let one: Vec<String> = reads
+            .iter()
+            .map(|r| {
+                let a = if r.exact {
+                    t.control_in(r.opcode, r.value, r.len)
+                } else {
+                    t.control_in_upto(r.opcode, r.value, r.len)
+                };
+                format!("{a:?}")
+            })
+            .collect();
+        let batch: Vec<String> = t
+            .control_in_batch(&reads)
+            .iter()
+            .map(|a| format!("{a:?}"))
+            .collect();
+        assert_eq!(batch, one);
+        assert!(batch[2].contains("ShortRead"), "{}", batch[2]);
+        assert!(batch[3].contains("Stalled"), "{}", batch[3]);
+    }
+
+    #[test]
+    fn wp_lk2_a_batch_keeps_at_most_max_inflight_on_the_wire() {
+        let hub = FakeHub::start(HubConfig {
+            max_inflight: 4,
+            ..HubConfig::default()
+        })
+        .unwrap();
+        let mut t = open(&hub);
+        let base = hub.log().len();
+        hub.hold_replies();
+        let reads = vec![InRead::exact(req::GET_PLATFORM, 0, 7); 10];
+        let batch = std::thread::spawn(move || t.control_in_batch(&reads));
+        assert!(wait(|| hub.log().len() == base + 4), "four out at once");
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(hub.log().len(), base + 4, "and no more (no RATE_LIMITED)");
+        hub.release_replies();
+        let answers = batch.join().unwrap();
+        assert_eq!(answers.len(), 10);
+        assert!(
+            answers
+                .iter()
+                .all(|a| a.as_ref().is_ok_and(|d| d.len() == 7))
+        );
+        assert_eq!(hub.log().len(), base + 10);
+    }
+
+    #[test]
+    fn wp_lk2_a_batch_retries_what_did_not_run_and_nothing_else() {
+        let r = InRead::exact(0x7F, 0, 3);
+        let answer = |status, payload: Vec<u8>| CmdResponse {
+            tag: 1,
+            status,
+            payload,
+        };
+        for s in [
+            status::BUSY,
+            status::BULK_LOCKED,
+            status::CRC_ERROR,
+            status::RATE_LIMITED,
+        ] {
+            let again = batch_answer(&r, answer(s, Vec::new()), || Ok(vec![1, 2, 3]));
+            assert_eq!(again.unwrap(), vec![1, 2, 3], "0x{s:02X} goes again");
+        }
+        for s in [status::TIMEOUT, status::ERROR, status::NO_DEVICE] {
+            let mut retried = false;
+            let e = batch_answer(&r, answer(s, Vec::new()), || {
+                retried = true;
+                Ok(Vec::new())
+            });
+            assert!(
+                e.is_err() && !retried,
+                "0x{s:02X} is not repeated: it may have run"
+            );
+        }
+        assert!(matches!(
+            batch_answer(&r, answer(status::OK, vec![9; 2]), || unreachable!()),
+            Err(TransportError::ShortRead { got: 2, .. })
+        ));
+        assert_eq!(
+            batch_answer(
+                &InRead::upto(0x7F, 0, 3),
+                answer(status::OK, vec![9; 5]),
+                || unreachable!()
+            )
+            .unwrap(),
+            vec![9; 3]
+        );
     }
 
     #[test]

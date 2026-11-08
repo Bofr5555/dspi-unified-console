@@ -105,11 +105,14 @@ tools/dev.sh keytool -list -v -keystore keystore/upload.jks -alias upload
    - always compiles `libdspi_ffi.so` with the workspace's Rust **release** profile
      (no debug info) for arm64-v8a, armeabi-v7a and x86_64, whatever
      `dspi.rustProfile` says (that property only affects debug builds);
-   - has R8 / minification **off**: UniFFI's bindings reach the native
-     library through JNA reflection. Enabling R8 would need keep rules for JNA and the
-     generated bindings plus testing on a device, and would gain little because
-     the native libraries and bundled assets dominate the size (about 11 MB
-     Play download per device, 13.8 MB `.aab`);
+   - runs R8 (code shrinking, optimisation, obfuscation) and resource
+     shrinking (WP AN15). UniFFI's bindings reach the native library through JNA
+     reflection; the keep rules for that are `ffi/consumer-rules.pro`, the app's
+     own are `app/proguard-rules.pro`. The bundle carries R8's mapping
+     (`BUNDLE-METADATA/.../proguard.map`), which Play uses to retrace crash
+     reports. A change to the generated bindings or to JNA needs a smoke run of
+     a release build (demo device, analyser, DSPi Link), not only the debug
+     build: the debug build is not minified;
    - targets API 36 (`gradle/libs.versions.toml`), Google Play's requirement
      for new apps and updates from 2026-08-31
      (https://developer.android.com/google/play/requirements/target-sdk).

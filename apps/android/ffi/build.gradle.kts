@@ -11,6 +11,8 @@ android {
     namespace = "se.bofr.dspi.ffi"
     defaultConfig {
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
+        // -- WP AN15 -- keep rules for UniFFI/JNA, applied to the app's R8 run
+        consumerProguardFiles("consumer-rules.pro")
     }
     // Filled per UniFFI namespace by the generateUniffiKotlin_* tasks below.
     sourceSets["main"].kotlin.srcDir(layout.buildDirectory.dir("generated/uniffi/dspi_core"))

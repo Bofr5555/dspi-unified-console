@@ -150,12 +150,18 @@ Popup {
             Icon { anchors.centerIn: parent; visible: row.current && !row.pending; name: "check-circle"; size: 16; color: "#32d74b" }
             Spinner { anchors.centerIn: parent; visible: row.pending; size: 16 }
         }
-        MouseArea {
+        ClickArea {
             id: rowMouse
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: row.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-            onClicked: row.clicked()
+            focusRadius: row.radius + 2
+            Accessible.role: Accessible.RadioButton
+            Accessible.name: row.title
+            Accessible.description: row.pending ? "Opening" : row.detail
+            Accessible.checkable: true
+            Accessible.checked: row.current
+            onActivated: row.clicked()
         }
     }
 
@@ -307,6 +313,7 @@ Popup {
                 }
                 ToggleSwitch {
                     objectName: "devicesLook"
+                    Accessible.name: "Find hubs automatically"
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     checked: hub.lookForHubs
@@ -352,6 +359,7 @@ Popup {
                     color: isMacOS ? MacColors.label : "white"
                     selectByMouse: true
                     placeholderText: "Hub address (host or host:port)"
+                    Accessible.name: "Hub address"
                     placeholderTextColor: Qt.rgba(1, 1, 1, 0.35)
                     onAccepted: pop.connectTyped(text)
                     background: Rectangle {

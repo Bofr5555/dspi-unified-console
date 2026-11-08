@@ -182,134 +182,147 @@ AppWindow {
 
         Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: isMacOS ? "black" : Qt.rgba(0, 0, 0, 0.6) }
 
-        Column {
+        // -- WP QD22 -- Scrolls when the window is too short for every page, so
+        // the last ones stay reachable (and the keyboard focus follows); as before
+        // when they fit
+        Flickable {
             anchors.fill: parent
             anchors.topMargin: settingsWindow.titlebarHeight + 2
             anchors.leftMargin: isMacOS ? 9 : 10
             anchors.rightMargin: isMacOS ? 11 : 10
-            spacing: 2
-
-            // Search (macOS: none - the native sidebar has no search field)
-            Rectangle {
-                visible: !isMacOS
+            contentHeight: sidebarColumn.implicitHeight
+            interactive: contentHeight > height
+            boundsBehavior: Flickable.StopAtBounds
+            clip: true
+            Column {
+                id: sidebarColumn
                 width: parent.width
-                height: isMacOS ? 22 : 28
-                radius: isMacOS ? 6 : 7
-                color: Qt.rgba(1, 1, 1, 0.08)
-                border.color: search.activeFocus ? "#0a7cff" : "transparent"
-                Icon {
-                    id: searchIcon
-                    x: isMacOS ? 7 : 9
-                    anchors.verticalCenter: parent.verticalCenter
-                    name: "search"
-                    size: isMacOS ? 12 : 14
-                    color: Qt.rgba(1, 1, 1, 0.45)
-                }
-                TextInput {
-                    id: search
-                    anchors.left: searchIcon.right
-                    anchors.leftMargin: 7
-                    anchors.right: clearSearch.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    font.pixelSize: 13
-                    color: "white"
-                    selectByMouse: true
-                    clip: true
-                    Text {
-                        visible: !search.text && !search.activeFocus
-                        text: "Search"
-                        font: search.font
-                        color: Qt.rgba(1, 1, 1, 0.4)
-                    }
-                    // Enter opens the first match
-                    onAccepted: {
-                        for (var g = 0; g < settingsWindow.groups.length; g++)
-                            for (var p = 0; p < settingsWindow.groups[g].pages.length; p++) {
-                                var pg = settingsWindow.groups[g].pages[p]
-                                if (settingsWindow.pageAvailable(pg) && settingsWindow.matchesSearch(pg)) {
-                                    settingsWindow.navigate(pg.id)
-                                    return
-                                }
-                            }
-                    }
-                    Keys.onEscapePressed: text = ""
-                }
-                Text {
-                    id: clearSearch
-                    visible: search.text !== ""
-                    anchors.right: parent.right
-                    anchors.rightMargin: 9
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "✕"
-                    font.pixelSize: 11
-                    color: Qt.rgba(1, 1, 1, 0.5)
-                    MouseArea { anchors.fill: parent; anchors.margins: -4; onClicked: search.text = "" }
-                }
-            }
-            Item { visible: !isMacOS; width: 1; height: isMacOS ? 0 : 8 }
+                spacing: 2
 
-            // Groups and pages
-            Repeater {
-                model: settingsWindow.groups
-                Column {
-                    id: group
-                    readonly property var groupData: modelData
-                    readonly property int shownCount: {
-                        search.text; settingsWindow.deviceConnected; controlSurfaces.revision
-                        var n = 0
-                        for (var i = 0; i < groupData.pages.length; i++)
-                            if (settingsWindow.pageAvailable(groupData.pages[i]) && settingsWindow.matchesSearch(groupData.pages[i])) n++
-                        return n
-                    }
-                    visible: shownCount > 0
+                // Search (macOS: none - the native sidebar has no search field)
+                Rectangle {
+                    visible: !isMacOS
                     width: parent.width
-                    spacing: isMacOS ? 0 : 2
-
-                    // macOS: measured from the native sidebar, the same at every size
-                    Text {
-                        text: group.groupData.title
-                        leftPadding: isMacOS ? 4 : 8
-                        topPadding: isMacOS ? (index === 0 ? 2 : 14) : 9
-                        bottomPadding: 3
-                        font.pixelSize: 11
-                        font.weight: isMacOS ? Font.Bold : Font.DemiBold
-                        // macOS: the system font's 13 pt line, whichever SF the app uses
-                        lineHeightMode: isMacOS ? Text.FixedHeight : Text.ProportionalHeight
-                        lineHeight: isMacOS ? 13 : 1.0
-                        color: isMacOS ? Qt.rgba(1, 1, 1, 0.31) : Qt.rgba(1, 1, 1, 0.45)   // macOS: tertiary label, vibrancy-brightened (measured)
+                    height: isMacOS ? 22 : 28
+                    radius: isMacOS ? 6 : 7
+                    color: Qt.rgba(1, 1, 1, 0.08)
+                    border.color: search.activeFocus ? "#0a7cff" : "transparent"
+                    Icon {
+                        id: searchIcon
+                        x: isMacOS ? 7 : 9
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "search"
+                        size: isMacOS ? 12 : 14
+                        color: Qt.rgba(1, 1, 1, 0.45)
                     }
-                    Repeater {
-                        model: group.groupData.pages
-                        SettingsSidebarItem {
-                            width: group.width
-                            visible: { search.text; settingsWindow.deviceConnected; controlSurfaces.revision; return settingsWindow.pageAvailable(modelData) && settingsWindow.matchesSearch(modelData) }
-                            height: visible ? settingsWindow.sidebarRowHeight : 0
-                            fontSize: settingsWindow.sidebarFontSize
-                            title: modelData.title
-                            icon: modelData.icon
-                            tint: modelData.tint
-                            selected: settingsWindow.currentPage !== null && settingsWindow.currentPage.id === modelData.id
-                            onClicked: settingsWindow.navigate(modelData.id)
+                    TextInput {
+                        id: search
+                        anchors.left: searchIcon.right
+                        anchors.leftMargin: 7
+                        anchors.right: clearSearch.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        font.pixelSize: 13
+                        color: "white"
+                        selectByMouse: true
+                        clip: true
+                        activeFocusOnTab: true   // -- WP QD22 --
+                        Accessible.name: "Search settings"
+                        Text {
+                            visible: !search.text && !search.activeFocus
+                            text: "Search"
+                            font: search.font
+                            color: Qt.rgba(1, 1, 1, 0.4)
+                        }
+                        // Enter opens the first match
+                        onAccepted: {
+                            for (var g = 0; g < settingsWindow.groups.length; g++)
+                                for (var p = 0; p < settingsWindow.groups[g].pages.length; p++) {
+                                    var pg = settingsWindow.groups[g].pages[p]
+                                    if (settingsWindow.pageAvailable(pg) && settingsWindow.matchesSearch(pg)) {
+                                        settingsWindow.navigate(pg.id)
+                                        return
+                                    }
+                                }
+                        }
+                        Keys.onEscapePressed: text = ""
+                    }
+                    Text {
+                        id: clearSearch
+                        visible: search.text !== ""
+                        anchors.right: parent.right
+                        anchors.rightMargin: 9
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "✕"
+                        font.pixelSize: 11
+                        color: Qt.rgba(1, 1, 1, 0.5)
+                        ClickArea { anchors.fill: parent; anchors.margins: -4; Accessible.name: "Clear the search"; onActivated: search.text = "" }
+                    }
+                }
+                Item { visible: !isMacOS; width: 1; height: isMacOS ? 0 : 8 }
+
+                // Groups and pages
+                Repeater {
+                    model: settingsWindow.groups
+                    Column {
+                        id: group
+                        readonly property var groupData: modelData
+                        readonly property int shownCount: {
+                            search.text; settingsWindow.deviceConnected; controlSurfaces.revision
+                            var n = 0
+                            for (var i = 0; i < groupData.pages.length; i++)
+                                if (settingsWindow.pageAvailable(groupData.pages[i]) && settingsWindow.matchesSearch(groupData.pages[i])) n++
+                            return n
+                        }
+                        visible: shownCount > 0
+                        width: parent.width
+                        spacing: isMacOS ? 0 : 2
+
+                        // macOS: measured from the native sidebar, the same at every size
+                        Text {
+                            text: group.groupData.title
+                            leftPadding: isMacOS ? 4 : 8
+                            topPadding: isMacOS ? (index === 0 ? 2 : 14) : 9
+                            bottomPadding: 3
+                            font.pixelSize: 11
+                            font.weight: isMacOS ? Font.Bold : Font.DemiBold
+                            // macOS: the system font's 13 pt line, whichever SF the app uses
+                            lineHeightMode: isMacOS ? Text.FixedHeight : Text.ProportionalHeight
+                            lineHeight: isMacOS ? 13 : 1.0
+                            color: isMacOS ? Qt.rgba(1, 1, 1, 0.31) : Qt.rgba(1, 1, 1, 0.45)   // macOS: tertiary label, vibrancy-brightened (measured)
+                        }
+                        Repeater {
+                            model: group.groupData.pages
+                            SettingsSidebarItem {
+                                width: group.width
+                                visible: { search.text; settingsWindow.deviceConnected; controlSurfaces.revision; return settingsWindow.pageAvailable(modelData) && settingsWindow.matchesSearch(modelData) }
+                                height: visible ? settingsWindow.sidebarRowHeight : 0
+                                fontSize: settingsWindow.sidebarFontSize
+                                title: modelData.title
+                                icon: modelData.icon
+                                tint: modelData.tint
+                                selected: settingsWindow.currentPage !== null && settingsWindow.currentPage.id === modelData.id
+                                onClicked: settingsWindow.navigate(modelData.id)
+                            }
                         }
                     }
                 }
-            }
 
-            Text {
-                visible: {
-                    search.text; settingsWindow.deviceConnected; controlSurfaces.revision
-                    for (var g = 0; g < settingsWindow.groups.length; g++)
-                        for (var p = 0; p < settingsWindow.groups[g].pages.length; p++)
-                            if (settingsWindow.pageAvailable(settingsWindow.groups[g].pages[p])
-                                && settingsWindow.matchesSearch(settingsWindow.groups[g].pages[p])) return false
-                    return true
+                Text {
+                    visible: {
+                        search.text; settingsWindow.deviceConnected; controlSurfaces.revision
+                        for (var g = 0; g < settingsWindow.groups.length; g++)
+                            for (var p = 0; p < settingsWindow.groups[g].pages.length; p++)
+                                if (settingsWindow.pageAvailable(settingsWindow.groups[g].pages[p])
+                                    && settingsWindow.matchesSearch(settingsWindow.groups[g].pages[p])) return false
+                        return true
+                    }
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    topPadding: 20
+                    text: "No matching settings"
+                    font.pixelSize: 12
+                    color: Qt.rgba(1, 1, 1, 0.4)
                 }
-                width: parent.width
-                horizontalAlignment: Text.AlignHCenter
-                topPadding: 20
-                text: "No matching settings"
-                font.pixelSize: 12
-                color: Qt.rgba(1, 1, 1, 0.4)
             }
         }
     }
@@ -394,12 +407,14 @@ AppWindow {
             size: 19
             color: nav.active ? MacColors.label : MacColors.tertiaryLabel
         }
-        MouseArea {
+        ClickArea {
             id: navMouse
             anchors.fill: parent
             hoverEnabled: true
             enabled: nav.active
-            onClicked: nav.clicked()
+            focusRadius: 8
+            Accessible.name: nav.tip
+            onActivated: nav.clicked()
         }
     }
     Loader {

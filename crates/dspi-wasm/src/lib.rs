@@ -1,0 +1,154 @@
+//! The web binding (WP WB3): `dspi-core` in wasm, behind the web console's
+//! Worker (`apps/web/src/core/wasm.ts`), under JavaScript Promise Integration
+//! (docs/core-merge/WEB-STUDY.md section 2).
+//!
+//! **Calls** are JSON ([`calls`]): one export, [`dspi_call`], takes a session
+//! handle and `{"method", "params"}` and answers `{"ok", "value"}` or
+//! `{"ok": false, "code", "error"}`. The shapes are the core's records, as
+//! the C ABI's JSON carries them; `apps/web/src/core/protocol.ts` is the same
+//! contract for the page.
+//!
+//! **Sessions**: any number per module, each its own `DspiCore`. The page
+//! runs one per Worker; nothing here assumes one device.
+//!
+//! **One call at a time** ([`guard`]): a call that enters while another is
+//! suspended is refused (`busy`), not run. That covers whatever might enter:
+//! a second caller, a timer, a listener called back from inside `rta_tick`.
+//!
+//! **Panics** end the module ([`guard`]): the module is marked dead, the page
+//! sees a trap, reads [`dspi_panic_message`], and the session is gone. Every
+//! later call is refused (`dead`).
+//!
+//! **Imports** are the four the core's seams use, all from module `dspi`:
+//! `dspi_now_ms() -> f64`, `dspi_unix_ms() -> f64`, `dspi_sleep_ms(f64)` (a
+//! `WebAssembly.Suspending` timer) from `dspi_transport::clock`, and
+//! `dspi_random_fill(ptr, len) -> i32` from `dspi-link`'s getrandom backend.
+//! This crate adds WebUSB's three ([`usb`], WP WB4a): `dspi_usb_in` and
+//! `dspi_usb_out` (Suspending control transfers) and `dspi_usb_error`.
+//!
+//! **The core is caller-driven** on the web (WB2): the Worker calls `poll`
+//! for notifications and `rta_tick` for the analyser on its own timers,
+//! through the same queue as the page's calls.
+
+// The core-merge quality bar (docs/core-merge/PLAN.md §1.7, §1.8): no
+// panicking shortcuts on the page's data. clippy.toml exempts test code.
+#![warn(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
+
+pub mod calls;
+pub mod guard;
+// -- WP WB4a --
+pub mod usb;
+pub mod write;
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[allow(unsafe_code)]
+mod abi {
+    //! The exports. Pointers are offsets in the module's memory; the page
+    //! writes a call into a buffer from [`dspi_alloc`] and reads the reply at
+    //! [`dspi_reply_ptr`] for the length [`dspi_call`] returned.
+
+    use std::cell::RefCell;
+
+    use crate::calls;
+    use crate::guard::{self, Refusal};
+
+    /// [`dspi_call`]'s answer when another call is running: nothing ran.
+    pub const CALL_BUSY: u32 = u32::MAX;
+    /// [`dspi_call`]'s answer when a panic has ended the module.
+    pub const CALL_DEAD: u32 = u32::MAX - 1;
+
+    thread_local! {
+        static REPLY: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+    }
+
+    /// `len` bytes for the page to write into; free with [`dspi_free`].
+    #[unsafe(no_mangle)]
+    pub extern "C" fn dspi_alloc(len: usize) -> *mut u8 {
+        let mut v = vec![0u8; len];
+        let p = v.as_mut_ptr();
+        std::mem::forget(v);
+        p
+    }
+
+    /// # Safety
+    /// `ptr` and `len` from one [`dspi_alloc`].
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn dspi_free(ptr: *mut u8, len: usize) {
+        if ptr.is_null() {
+            return;
+        }
+        // SAFETY: as the caller promises, a vector of exactly this length.
+        drop(unsafe { Vec::from_raw_parts(ptr, len, len) });
+    }
+
+    /// A new session; its handle, or `u32::MAX` while a call runs or after
+    /// a panic.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn dspi_session_new() -> u32 {
+        guard::install_panic_hook();
+        calls::session_new().unwrap_or(u32::MAX)
+    }
+
+    /// Close the session and forget it: 1 done, 0 unknown handle, -1 busy,
+    /// -2 dead.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn dspi_session_free(h: u32) -> i32 {
+        match calls::session_free(h) {
+            Ok(true) => 1,
+            Ok(false) => 0,
+            Err(Refusal::Busy) => -1,
+            Err(Refusal::Dead) => -2,
+        }
+    }
+
+    /// Run the JSON call at `ptr`, `len` on session `h`. The reply's length
+    /// (read it at [`dspi_reply_ptr`]), or [`CALL_BUSY`] / [`CALL_DEAD`]
+    /// when the call did not run; the reply buffer is then untouched.
+    ///
+    /// # Safety
+    /// `ptr` is valid for `len` bytes.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn dspi_call(h: u32, ptr: *const u8, len: usize) -> u32 {
+        // The refusal first, before anything else is touched: this may run
+        // while another call is suspended.
+        match guard::enter() {
+            Err(Refusal::Busy) => return CALL_BUSY,
+            Err(Refusal::Dead) => return CALL_DEAD,
+            Ok(probe) => drop(probe),
+        }
+        let request = if ptr.is_null() || len == 0 {
+            &[][..]
+        } else {
+            // SAFETY: as the caller promises.
+            unsafe { std::slice::from_raw_parts(ptr, len) }
+        };
+        let out = calls::call(h, request);
+        let n = u32::try_from(out.len()).unwrap_or(0);
+        REPLY.with_borrow_mut(|r| *r = out);
+        n
+    }
+
+    /// Where the last reply is; valid until the next [`dspi_call`].
+    #[unsafe(no_mangle)]
+    pub extern "C" fn dspi_reply_ptr() -> *const u8 {
+        REPLY.with_borrow(|r| r.as_ptr())
+    }
+
+    /// The panic's message after a trap: its pointer; [`dspi_panic_len`]
+    /// bytes. Reads one stored string and nothing else.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn dspi_panic_ptr() -> *const u8 {
+        guard::panic_message_raw().0
+    }
+
+    /// The panic message's length; 0 while the module is alive.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn dspi_panic_len() -> usize {
+        guard::panic_message_raw().1
+    }
+}

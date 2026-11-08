@@ -1,0 +1,67 @@
+{
+  "link": [
+    {
+      "action": null,
+      "action_key": null,
+      "key": "idle",
+      "phase": "idle",
+      "text": "Not connected to a hub"
+    },
+    {
+      "action": null,
+      "action_key": null,
+      "key": "needs_pairing.window",
+      "phase": "needs_pairing",
+      "text": "Enter the PIN shown on the hub. On a DSPi Console, open Settings > Networking and choose Allow a New Client to get one."
+    },
+    {
+      "action": null,
+      "action_key": null,
+      "key": "needs_pairing.fixed",
+      "phase": "needs_pairing",
+      "text": "Enter the hub's PIN."
+    },
+    {
+      "action": null,
+      "action_key": null,
+      "key": "no_device",
+      "phase": "no_device",
+      "text": "Connected to hub, no DSPi found"
+    },
+    {
+      "action": null,
+      "action_key": null,
+      "key": "choose_device",
+      "phase": "choose_device",
+      "text": "Connected to hub, choose a DSPi"
+    },
+    {
+      "action": null,
+      "action_key": null,
+      "key": "bound",
+      "phase": "bound",
+      "text": "Connected"
+    },
+    {
+      "action": "Disconnect",
+      "action_key": "reconnecting.disconnect",
+      "key": "reconnecting",
+      "phase": "reconnecting",
+      "text": "Connection lost, reconnecting"
+    },
+    {
+      "action": null,
+      "action_key": null,
+      "key": "closed",
+      "phase": "closed",
+      "text": "The connection to the hub has ended"
+    },
+    {
+      "action": null,
+      "action_key": null,
+      "key": "refused",
+      "phase": "refused",
+      "text": "The hub refused this connection"
+    }
+  ]
+}

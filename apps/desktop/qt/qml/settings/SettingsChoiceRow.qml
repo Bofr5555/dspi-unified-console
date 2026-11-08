@@ -34,6 +34,8 @@ SettingsRow {
             return t
         }
         currentIndex: row.currentIndex
+        Accessible.name: row.title
+        Accessible.description: row.detail
         onActivated: row.chosen(row.valueAt(index))
     }
 }

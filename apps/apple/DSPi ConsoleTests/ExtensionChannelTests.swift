@@ -621,3 +621,9 @@ class ForwardingTransport: DeviceTransport {
     }
     func releaseDeviceLock() { inner.releaseDeviceLock() }
 }
+
+// -- WP SW8 -- forward the core too, as CompositeTransport does, so a wrapped
+// core transport still feeds the view model from the core's state.
+extension ForwardingTransport: CoreStateSourceProviding {
+    var providedCoreStateSource: CoreStateSource? { inner.coreStateSource }
+}

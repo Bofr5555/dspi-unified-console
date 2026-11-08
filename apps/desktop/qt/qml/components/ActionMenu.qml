@@ -191,6 +191,10 @@ Popup {
                 onEntered: menu.current = entryIndex
                 onExited: if (menu.current === entryIndex) menu.current = -1
                 onClicked: menu.activate(entryIndex)
+                // -- WP QD22 -- The menu keeps the keys (Up/Down, Enter); a row is its item
+                Accessible.role: Accessible.MenuItem
+                Accessible.name: entry.text || ""
+                Accessible.onPressAction: menu.activate(entryIndex)
             }
         }
     }

@@ -42,23 +42,28 @@ extension DSPViewModel {
         // Tier 1: only what the main window renders - source, rate, volume
         // and the preset picker.  The bulk read above already carried the
         // filters and channel layout.
+        // -- WP SW8 -- Through the core, its fetchAll read the volumes and the
+        // preset directory and names with the image.
+        let throughCore = transport.coreStateSource != nil
         fetchInputSource()
         fetchSampleRate()
-        fetchUserVolume()
+        if !throughCore { fetchUserVolume() }
         guard transport.generation == generation else { return }
 
         // Fetch preset state
-        let occupied = fetchPresetDirectory()
-        for slot in 0..<10 {
-            if (occupied & UInt16(1 << slot)) != 0 {
-                fetchPresetName(slot: slot)
-            } else {
-                DispatchQueue.main.async {
-                    self.presetNames[slot] = ""
+        if !throughCore {
+            let occupied = fetchPresetDirectory()
+            for slot in 0..<10 {
+                if (occupied & UInt16(1 << slot)) != 0 {
+                    fetchPresetName(slot: slot)
+                } else {
+                    DispatchQueue.main.async {
+                        self.presetNames[slot] = ""
+                    }
                 }
             }
+            fetchPresetActive()
         }
-        fetchPresetActive()
         guard transport.generation == generation else { return }
 
         // The live UI fades in here, not on raw connection and not after the
@@ -3711,8 +3716,15 @@ extension DSPViewModel {
     /// Parses the flat WireBulkParams structure (unified channel model: inputs
     /// 0..N-1, outputs follow) and updates all published properties.  Returns
     /// true on a valid V16 payload, false otherwise.
+    ///
+    /// -- WP SW8 -- A device driven through the Rust core is read by the
+    /// core instead (`fetchAllParamsThroughCore`, Core/CoreMirror.swift),
+    /// which also shows an older firmware's image read-only.  The decoder
+    /// below serves the transports not yet on the core (USB without
+    /// `-CoreTransport`, MIDI, the Link client) and goes with them.
     @discardableResult
     func fetchAllParams(markDisconnectedOnFailure: Bool = true) -> Bool {
+        if let core = transport.coreStateSource { return fetchAllParamsThroughCore(core) }
         let result = transport.getControlResult(request: REQ_GET_ALL_PARAMS, value: 0, index: 2, length: BULK_PARAMS_SIZE)
         guard case .success(let data) = result else {
             // LOCKED means another session is mid-flow on a live device, not a
@@ -4566,6 +4578,10 @@ extension DSPViewModel {
 
     /// Apply a v2 PARAM_CHANGED notification (already filtered to non-HOST
     /// sources) to local UI state.  Runs on the main thread.
+    ///
+    /// -- WP SW8 -- Not used for a device driven through the core: there the
+    /// core's mirror follows every notification and `CoreMirror` applies
+    /// what changed (Core/CoreMirror.swift).
     ///
     /// The listed offsets are decoded in place: EQ and crossover bands, channel
     /// names, dac_hw_mute, user volume, LG, and the input / I2S / ADAT config.

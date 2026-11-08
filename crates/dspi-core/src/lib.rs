@@ -101,6 +101,8 @@ mod vreg;
 pub mod autoeq;
 // -- WP CG10 --
 mod link_text;
+// -- WP CG32 --
+mod write_param;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -143,6 +145,8 @@ pub use dspi_proto::ext::PairMap;
 pub use raw::RawNotification;
 // -- WP CG26 --
 pub use host_transport::{HostTransport, HostTransportKind};
+// -- WP CG32 --
+pub use write_param::{ParamValue, write_refusal};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -169,6 +173,22 @@ pub struct DspiCore {
     // -- WP CG26 --
     /// Where `host_notify` sends: the newest `open_host` connection's feed.
     pub(crate) host_feed: host_transport::FeedSlot,
+    // -- WP LK2 --
+    /// The open connection's side channel and channel count, for
+    /// `fetch_status` while another call holds `inner` (a start-up read, a
+    /// re-read after a resync, `cs_fetch`). Set where the side is installed,
+    /// refreshed by every `fetch_status` that gets the lock, cleared when the
+    /// connection goes. Taken with or without `inner`, never `inner` after it.
+    pub(crate) meter_path: Mutex<Option<MeterPath>>,
+}
+
+// -- WP LK2 --
+/// What [`DspiCore::meter_path`] holds.
+#[derive(Clone)]
+pub(crate) struct MeterPath {
+    /// The mirror's `num_channels`.
+    pub(crate) num_channels: u8,
+    pub(crate) side: Arc<dyn SideChannel>,
 }
 
 /// Everything behind the lock.
@@ -293,6 +313,12 @@ pub(crate) trait SideChannel: Send + Sync {
     /// The latest meter block of `len` bytes, without a round trip when the
     /// hub is feeding it.
     fn meters(&self, len: u16) -> Result<MeterRead>;
+    // -- WP LK2 --
+    /// Subscribe, renew or drop the meter feed as [`SideChannel::meters`]'s
+    /// callers need it; may do a round trip. The Link supervisor calls it
+    /// before it waits for the core lock, so the first meter does not wait
+    /// for whatever holds it.
+    fn maintain_meters(&self) {}
 }
 
 /// What [`SideChannel::meters`] has.
@@ -568,6 +594,8 @@ impl DspiCore {
             browse: link_browse::BrowseSlot::default(),
             // -- WP CG26 --
             host_feed: host_transport::FeedSlot::default(),
+            // -- WP LK2 --
+            meter_path: Mutex::new(None),
         })
     }
 }
@@ -739,6 +767,34 @@ impl DspiCore {
     /// The lock. A panic while it was held does not poison the API.
     pub(crate) fn lock(&self) -> MutexGuard<'_, Inner> {
         self.inner.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    // -- WP LK2 --
+    /// The lock if nobody holds it now, else `None`.
+    pub(crate) fn try_lock(&self) -> Option<MutexGuard<'_, Inner>> {
+        match self.inner.try_lock() {
+            Ok(g) => Some(g),
+            Err(std::sync::TryLockError::Poisoned(p)) => Some(p.into_inner()),
+            Err(std::sync::TryLockError::WouldBlock) => None,
+        }
+    }
+
+    /// Replace [`DspiCore::meter_path`]. Returns the old one: drop it with the
+    /// core lock released (a Link side's drop may write to the socket).
+    #[must_use]
+    pub(crate) fn set_meter_path(&self, path: Option<MeterPath>) -> Option<MeterPath> {
+        std::mem::replace(
+            &mut *self.meter_path.lock().unwrap_or_else(|p| p.into_inner()),
+            path,
+        )
+    }
+
+    /// A copy of [`DspiCore::meter_path`].
+    pub(crate) fn meter_path(&self) -> Option<MeterPath> {
+        self.meter_path
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
     }
 }
 

@@ -31,5 +31,6 @@ Slider {
         height: 12
         radius: 6
         color: isMacOS ? (sliderRoot.enabled ? Qt.rgba(0.6, 0.6, 0.6, 1) : Qt.rgba(0.408, 0.408, 0.408, 1)) : sliderRoot.enabled ? "white" : Qt.rgba(0.7, 0.7, 0.7, 1.0)
+        FocusRing { radius: 8; shown: sliderRoot.visualFocus }
     }
 }

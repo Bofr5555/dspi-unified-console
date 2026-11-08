@@ -47,6 +47,7 @@ Rectangle {
             color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.55)
         }
         TextField {
+            Accessible.name: "Confirmation phrase"
             id: field
             objectName: "firmwareAnswer"
             width: parent.width

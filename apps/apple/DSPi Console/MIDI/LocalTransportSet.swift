@@ -169,3 +169,9 @@ final class LocalTransportSet: DeviceTransport {
 
     func releaseDeviceLock() { current.releaseDeviceLock() }
 }
+
+// -- WP SW8 -- The core of the member in use, if it is driven through one
+// (CoreMirror.swift).
+extension LocalTransportSet: CoreStateSourceProviding {
+    var providedCoreStateSource: CoreStateSource? { current.coreStateSource }
+}

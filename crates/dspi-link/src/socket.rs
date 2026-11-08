@@ -22,8 +22,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, TryLockError};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
+use crate::clock::Instant;
+
+// -- WP WB2 -- socket2 has no wasm32-unknown-unknown backend.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use socket2::{SockRef, TcpKeepalive};
 
 use tungstenite::client::IntoClientRequest;
@@ -99,6 +103,7 @@ const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 const CLOSE_WRITE_TIMEOUT: Duration = Duration::from_secs(1);
 /// SO_KEEPALIVE, as the bridge sets on its side (`http_server.c`): a backstop
 /// for when nothing is being sent; the client's own pings notice sooner.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 const KEEPALIVE_TIME: Duration = Duration::from_secs(30);
 #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "ios", target_os = "windows"))]
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(5);
@@ -266,6 +271,7 @@ fn connect_any(addrs: &[SocketAddr], deadline: Instant) -> Result<TcpStream, Lin
 }
 
 /// NODELAY and SO_KEEPALIVE. Neither is worth failing a connection for.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 fn tune(tcp: &TcpStream) {
     let _ = tcp.set_nodelay(true);
     let keepalive = TcpKeepalive::new().with_time(KEEPALIVE_TIME);
@@ -280,6 +286,12 @@ fn tune(tcp: &TcpStream) {
     if let Err(e) = SockRef::from(tcp).set_tcp_keepalive(&keepalive) {
         log::warn!("dspi-link: no TCP keepalive: {e}");
     }
+}
+
+/// No sockets on the web (WP WB2): `std`'s connect fails there before this.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+fn tune(tcp: &TcpStream) {
+    let _ = tcp.set_nodelay(true);
 }
 
 impl WsConnector for TcpConnector {

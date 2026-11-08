@@ -25,10 +25,13 @@
 #                                     (gen_kotlin_contract.py --check)
 #       wasm                          dspi-proto for wasm32-unknown-unknown
 #       wasm-core                     dspi-session and dspi-core for wasm32-unknown-
-#                                     unknown, cargo check only, without `usb`; their
-#                                     library code may not call std's clock or sleep
-#                                     (ci/wasm-clippy, use dspi_transport::clock).
-#                                     Nothing is run: docs/core-merge/WEB-STUDY.md 11
+#                                     unknown, without `usb`, also with `link`; their
+#                                     library code and dspi-link's may not call std's
+#                                     clock or sleep (ci/wasm-clippy, use
+#                                     dspi_transport::clock). Then runs the core there
+#                                     (WP WB2, ci/wasm-scenario/run.sh): Node with
+#                                     JSPI (NODE in images.conf), the demo device in
+#                                     two sessions, no threads
 #       qt                            the Qt 6 desktop app (crates/dspi-capi,
 #                                     library dspi_capi)
 #       qt5                           the same against Qt 5.15
@@ -65,6 +68,10 @@
 #                                     run-clients.sh ts): the build container and
 #                                     NODE from images.conf; needs the DSPi-Link
 #                                     clone in work/consoles (README there)
+#       web                           the web client (apps/web/tools/ci.sh): npm ci
+#                                     from the lockfile, typecheck, unit tests, and
+#                                     e2e in Chromium and Firefox on the demo
+#                                     device, in PLAYWRIGHT from images.conf
 #   ci/check.sh --all                 full gate plus every optional step
 #   ci/check.sh --all-clients         every client, then the matrix (ci/matrix.sh);
 #                                     builds missing images first
@@ -93,7 +100,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --crate) crates+=("$2"); shift 2 ;;
     --step) steps+=("$2"); shift 2 ;;
-    --all) steps=(fetch fmt clippy test windows-gnu android-contract licences deny windows-msvc android android-tests android-aab wasm wasm-core qt qt5 qt-offscreen qt5-offscreen terminal qt-windows proptest kotlin swift ios-check drift conformance-ts); shift ;;
+    --all) steps=(fetch fmt clippy test windows-gnu android-contract licences deny windows-msvc android android-tests android-aab wasm wasm-core qt qt5 qt-offscreen qt5-offscreen terminal qt-windows proptest kotlin swift ios-check drift conformance-ts web); shift ;;
     --all-clients) exec ci/matrix.sh ;;
     -h|--help) sed -n "2,/^set -euo/p" "$0" | sed '$d'; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
@@ -144,7 +151,14 @@ for s in "${steps[@]}"; do
         cargo check -p dspi-session --no-default-features --features serde,bundled-autoeq,undo \$t
         cargo check -p dspi-session -p dspi-core --no-default-features \$t
         CLIPPY_CONF_DIR=ci/wasm-clippy cargo clippy -p dspi-transport -p dspi-session -p dspi-core \\
-          --no-default-features --lib \$t -- -A clippy::all -D clippy::disallowed_methods -D warnings" ;;
+          --no-default-features --lib \$t -- -A clippy::all -D clippy::disallowed_methods -D warnings
+        # -- WP WB2 -- with Link: dspi-link's clock and getrandom's backend
+        CLIPPY_CONF_DIR=ci/wasm-clippy cargo clippy -p dspi-link -p dspi-core \\
+          --no-default-features --features dspi-core/link --lib \$t -- -A clippy::all -D clippy::disallowed_methods -D warnings
+        # -- WP WB3 -- the binding, its wasm-only exports included
+        CLIPPY_CONF_DIR=ci/wasm-clippy cargo clippy -p dspi-wasm --all-features --lib \$t -- -D clippy::disallowed_methods -D warnings"
+      # -- WP WB2 -- and run it
+      ci/wasm-scenario/run.sh ;;
     qt)
       # The build directory's name moved with the core: /work/build-desktop-qt6
       # may still cache the old core's paths.
@@ -175,6 +189,9 @@ for s in "${steps[@]}"; do
     conformance-ts)
       # -- WP HB8 --
       crates/dspi-hub/tests/conformance/run-clients.sh ts ;;
+    web)
+      # -- WP WB5 --
+      apps/web/tools/ci.sh ;;
     ios-check)
       # -- WP CG3 --
       $RUN 'set -euo pipefail

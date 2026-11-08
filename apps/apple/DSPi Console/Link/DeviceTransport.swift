@@ -185,6 +185,9 @@ enum DeviceLock {
     // -- WP SWF2 -- The core's wording for DENIED (`DspiError::Denied`), as
     // `lockedMessage` is its `Locked`: a write this session's role may not make.
     static let deniedMessage = "This console's role on the hub does not allow that"
+    // -- WP SWF4 -- The core's wording for `DspiError::ReadOnly`: firmware in
+    // another wire format is shown, and nothing is written to it.
+    static let readOnlyMessage = "The connected firmware is read-only in this version"
     /// Hubs cap a lock at 60 s (spec 7.7).
     static let maxTimeout: TimeInterval = 60
 
@@ -234,6 +237,15 @@ enum RefusedWrite {
         DeviceLock.notice.post(message)
         fanout.publish(LinkNotification(packet: resyncPacket, origin: 0, receivedAt: Date()))
         return true
+    }
+
+    // -- WP SWF4 --
+    /// A write the core refused because the connection is read-only (older
+    /// or newer firmware): nothing reached the device, so the edit is put
+    /// back at once, as for a hub's refusal, and the status row says why.
+    static func handleReadOnly(fanout: NotificationFanout) {
+        DeviceLock.notice.post(DeviceLock.readOnlyMessage)
+        fanout.publish(LinkNotification(packet: resyncPacket, origin: 0, receivedAt: Date()))
     }
 }
 

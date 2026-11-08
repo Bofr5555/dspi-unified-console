@@ -68,18 +68,23 @@ Item {
             }
         }
 
-        MouseArea {
+        ClickArea {
             id: mouse
             anchors.fill: parent
             enabled: picker.enabled
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
+            focusRadius: 8
+            Accessible.role: Accessible.ComboBox
+            Accessible.name: picker.label
+            Accessible.description: picker.valueText
+            onActivated: menu.toggleAt(valueButton)
             onClicked: {
                 if (mouse.button === Qt.RightButton) {
                     var p = mapToItem(picker, mouse.x, mouse.y)
                     picker.contextMenuRequested(p.x, p.y)
-                } else menu.toggleAt(valueButton)
+                }
             }
         }
     }

@@ -39,13 +39,16 @@ Item {
         visible: row.clickable && rowMouse.containsMouse
         color: Qt.rgba(1, 1, 1, 0.05)
     }
-    MouseArea {
+    ClickArea {
         id: rowMouse
         anchors.fill: parent
         enabled: row.clickable
         hoverEnabled: row.clickable
         cursorShape: row.clickable ? Qt.PointingHandCursor : Qt.ArrowCursor
-        onClicked: row.activated()
+        focusRadius: 9
+        Accessible.name: row.title
+        Accessible.description: row.detail
+        onActivated: row.activated()
     }
 
     Rectangle {

@@ -12,6 +12,8 @@ SettingsRow {
 
     ToggleSwitch {
         mini: true
+        Accessible.name: row.title
+        Accessible.description: row.detail
         checked: row.checked
         onToggled: row.toggled(checked)
     }

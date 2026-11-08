@@ -91,17 +91,20 @@ Item {
             width: 20
             height: 18
             radius: 5
-            opacity: cardHover.containsPointer || options.visible ? 1 : 0
-            visible: opacity > 0
+            // -- WP QD22 -- Also while it has the keyboard focus: Tab reaches it while hidden
+            opacity: cardHover.containsPointer || options.visible || gearMouse.activeFocus ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.InOutQuad } }
             color: isMacOS ? "transparent" : gearMouse.containsMouse || options.visible ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
             Icon { anchors.centerIn: parent; name: "gear"; size: 12; color: isMacOS ? (options.visible ? MacColors.label : MacColors.secondaryLabel) : Qt.rgba(1, 1, 1, 0.7) }
-            MouseArea {
+            ClickArea {
                 id: gearMouse
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: options.toggleBelow(gear)
+                focusRadius: 7
+                Accessible.role: Accessible.ButtonMenu
+                Accessible.name: "Bar strip options"
+                onActivated: options.toggleBelow(gear)
             }
         }
 
@@ -112,6 +115,7 @@ Item {
             anchors.bottom: parent.bottom
             height: 10
             cursorShape: Qt.SizeVerCursor
+            Accessible.ignored: true   // -- WP QD22 -- a drag for the strip's height, not a control
             property real startY: 0
             property real startHeight: 0
             onPressed: { startY = mapToItem(null, 0, mouse.y).y; startHeight = strip.app.rtaBarHeight }
@@ -184,12 +188,16 @@ Item {
                                 color: isMacOS ? (tile.isCurrent ? MacColors.accent : MacColors.secondaryLabel) : Qt.rgba(1, 1, 1, 0.75)
                             }
                         }
-                        MouseArea {
+                        ClickArea {
                             id: tileMouse
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: strip.app.rtaBarColumns = tile.cols
+                            Accessible.role: Accessible.RadioButton
+                            Accessible.name: tile.cols + (tile.cols === 1 ? " column" : " columns")
+                            Accessible.checkable: true
+                            Accessible.checked: tile.isCurrent
+                            onActivated: strip.app.rtaBarColumns = tile.cols
                         }
                     }
                 }
@@ -208,12 +216,14 @@ Item {
                     Icon { name: "spectrum"; size: 15; color: isMacOS ? (openMouse.containsMouse ? "white" : MacColors.label) : openMouse.containsMouse ? "white" : Qt.rgba(1, 1, 1, 0.65); anchors.verticalCenter: parent.verticalCenter }
                     Text { text: "Open in Window"; font.pixelSize: 13; color: isMacOS ? (openMouse.containsMouse ? "white" : MacColors.label) : openMouse.containsMouse ? "white" : Qt.rgba(1, 1, 1, 0.9); anchors.verticalCenter: parent.verticalCenter }
                 }
-                MouseArea {
+                ClickArea {
                     id: openMouse
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: { options.close(); strip.openAnalyser() }
+                    focusRadius: 8
+                    Accessible.name: "Open in Window"
+                    onActivated: { options.close(); strip.openAnalyser() }
                 }
             }
         }

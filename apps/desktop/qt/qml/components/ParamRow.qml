@@ -67,6 +67,7 @@ Column {
             maxValue: row.to
             offAt: row.offAt
             wheelStep: row.stepSize
+            accessibleName: row.label
             onValueEdited: row.committed(newValue)
         }
     }
@@ -79,6 +80,8 @@ Column {
         stepSize: row.stepSize
         enabled: bridge.connected
         value: row.value
+        Accessible.name: row.label
+        Accessible.description: row.caption
         onMoved: live.push(value)
         onPressedChanged: if (!pressed) { live.cancel(); row.committed(value) }
         Throttle { id: live; onFire: row.liveChanged(value) }

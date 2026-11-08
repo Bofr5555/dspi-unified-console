@@ -1,0 +1,24 @@
+{
+  "name": "dspi-web",
+  "private": true,
+  "version": "0.1.0",
+  "description": "DSPi web console: the Rust core in a Worker, a small Preact UI, built for standalone use and for embedding in a fleet server",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "typecheck": "tsc --noEmit -p .",
+    "test:unit": "node tools/build.mjs --unit && node tools/unit.mjs",
+    "test:e2e": "playwright test",
+    "serve": "node tools/serve.mjs dist"
+  },
+  "dependencies": {
+    "preact": "11.2.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@types/node": "24.19.2",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
+  }
+}

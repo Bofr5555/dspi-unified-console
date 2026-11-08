@@ -49,7 +49,34 @@ Function LaunchApp
   ExecShell "open" "$INSTDIR\DSPiConsole.exe" "" SW_SHOWNORMAL
 FunctionEnd
 
+; -- WP QD21a -- DSPi Console must not be running while its files are replaced or
+; removed. A running exe can't be opened for writing (Windows maps it), which is
+; the case that matters: this copy, also when it only shows in the tray. Retry
+; or cancel; a silent run (/S) cancels, with exit code 2.
+!macro DSPI_NOT_RUNNING
+  retry:
+  IfFileExists "$INSTDIR\DSPiConsole.exe" 0 done
+  ClearErrors
+  FileOpen $0 "$INSTDIR\DSPiConsole.exe" a
+  IfErrors 0 closed
+  MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION \
+    "${APP} is running. Quit it (also from its icon in the notification area), then click Retry." \
+    /SD IDCANCEL IDRETRY retry
+  SetErrorLevel 2
+  Quit
+  closed:
+  FileClose $0
+  done:
+!macroend
+Function CheckNotRunning
+  !insertmacro DSPI_NOT_RUNNING
+FunctionEnd
+Function un.CheckNotRunning
+  !insertmacro DSPI_NOT_RUNNING
+FunctionEnd
+
 Section "Install"
+  Call CheckNotRunning
   SetOutPath "$INSTDIR"
   ; A previous version's files go first, so no stale Qt modules stay behind
   RMDir /r "$INSTDIR\qml"
@@ -69,6 +96,7 @@ SectionEnd
 
 Section "Uninstall"
   ; The settings (%APPDATA%\DSPi) stay, as Windows apps usually leave them
+  Call un.CheckNotRunning
   Delete "$SMPROGRAMS\${APP}.lnk"
   RMDir /r "$INSTDIR"
   DeleteRegKey HKCU "${UNINST_KEY}"

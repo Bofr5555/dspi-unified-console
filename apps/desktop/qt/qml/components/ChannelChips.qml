@@ -26,13 +26,18 @@ Row {
                 font.weight: Font.DemiBold
                 color: isMacOS ? (parent.isOn ? "white" : MacColors.opacity(MacColors.label, 0.6)) : parent.isOn ? "white" : Qt.rgba(1, 1, 1, 0.5)
             }
-            MouseArea {
+            ClickArea {
                 id: chipMouse
                 anchors.fill: parent
                 hoverEnabled: true
                 enabled: bridge.connected
                 cursorShape: Qt.PointingHandCursor
-                onClicked: chips.maskEdited(chips.mask ^ (1 << index))
+                focusRadius: 8
+                Accessible.role: Accessible.CheckBox
+                Accessible.name: chips.names.length > index && chips.names[index] !== "" ? chips.names[index] : "Channel " + (index + 1)
+                Accessible.checkable: true
+                Accessible.checked: parent.isOn
+                onActivated: chips.maskEdited(chips.mask ^ (1 << index))
                 ToolTip.visible: containsMouse && chips.names.length > index
                 ToolTip.delay: 500
                 ToolTip.text: chips.names.length > index ? chips.names[index] : ""

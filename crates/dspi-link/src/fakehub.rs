@@ -158,6 +158,10 @@ pub struct HubConfig {
     pub rta: bool,
     /// -- WP CG21 -- Answer `OUTPUT_LATENCY` and `GET_BUFFER_STATS`.
     pub stats: bool,
+    /// -- WP LK1 -- The snapshot's `age_ms`. The ESP32 bridge reports the time
+    /// since it last read the blob, which stays current while the DSPi
+    /// notifies: hours on a bridge that has been up for hours.
+    pub snapshot_age_ms: u64,
 }
 
 impl Default for HubConfig {
@@ -189,8 +193,9 @@ impl Default for HubConfig {
             board_removal_hold: Duration::from_secs(60),
             poll_budget_bps: 200_000,
             clock: Arc::new(SystemClock),
-            rta: false,   // -- WP CG5 --
-            stats: false, // -- WP CG21 --
+            rta: false,         // -- WP CG5 --
+            stats: false,       // -- WP CG21 --
+            snapshot_age_ms: 0, // -- WP LK1 --
         }
     }
 }
@@ -1140,6 +1145,9 @@ impl Write for Replay {
 #[allow(clippy::result_large_err)] // tungstenite's callback signature
 fn serve(mut tcp: TcpStream, state: Arc<Mutex<State>>, stop: Arc<AtomicBool>) {
     let _ = tcp.set_nonblocking(false);
+    // -- WP LK2 -- as the ESP32 bridge (http_server.c:745): no Nagle delay on
+    // replies, which matters once several commands are on the wire
+    let _ = tcp.set_nodelay(true);
     let _ = tcp.set_read_timeout(Some(Duration::from_secs(5)));
     // Read the request head to tell the info endpoint from the upgrade
     let mut head = Vec::new();
@@ -1575,7 +1583,7 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str) -> Vec<String> {
             let st = data_encoding::BASE64.encode(STATUS_WVALUE9);
             vec![ok(
                 &id,
-                json!({"handle": 0, "wire_version": s.image[0], "age_ms": 0, "bulk_b64": b64, "status_b64": st}),
+                json!({"handle": 0, "wire_version": s.image[0], "age_ms": s.cfg.snapshot_age_ms, "bulk_b64": b64, "status_b64": st}),
             )]
         }
         "poll.subscribe" => {

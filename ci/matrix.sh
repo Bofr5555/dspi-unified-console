@@ -41,8 +41,10 @@ rows=(
   "android-aab|Android AAB|Gradle container|android-aab"
   "wasm|wasm check|cross container|wasm"
   # -- WP WB1 --
-  "wasm-core|wasm check: session and core (no run)|cross container|wasm-core"
+  "wasm-core|wasm: session and core, scenario under Node (JSPI)|cross container|wasm-core"
   "ios-check|iOS check (no link)|container|ios-check"
+  # -- WP WB5 --
+  "web|Web client on the wasm core's demo, Chromium and Firefox|container|web"
   "kotlin|Kotlin bindings compile|container|kotlin"
   "swift|Swift bindings compile (Linux swiftc)|container|swift"
   "drift|Generated code matches its sources|container|drift"

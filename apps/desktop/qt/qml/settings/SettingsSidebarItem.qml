@@ -47,10 +47,15 @@ Rectangle {
         // macOS: the label colour as the sidebar's vibrancy brightens it (measured)
         color: isMacOS ? (item.selected ? "white" : Qt.rgba(1, 1, 1, 0.9)) : "white"
     }
-    MouseArea {
+    ClickArea {
         id: mouse
         anchors.fill: parent
         hoverEnabled: true
-        onClicked: item.clicked()
+        focusRadius: item.radius + 2
+        Accessible.role: Accessible.PageTab
+        Accessible.name: item.title
+        Accessible.checkable: true
+        Accessible.checked: item.selected
+        onActivated: item.clicked()
     }
 }

@@ -26,6 +26,9 @@
         <file>qml/components/Spinner.qml</file>
         <file>qml/components/DashboardLayoutPopup.qml</file>
         <file>qml/components/AppButton.qml</file>
+        <file>qml/components/ClickArea.qml</file>
+        <file>qml/components/FocusRing.qml</file>
+        <file>qml/components/FocusFollower.qml</file>
         <!-- WP QD8 -->
         <file>qml/components/LinkBanner.qml</file>
         <!-- WP QD7 -->

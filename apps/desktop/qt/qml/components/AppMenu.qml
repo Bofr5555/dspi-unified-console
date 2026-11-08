@@ -313,6 +313,10 @@ Popup {
                     hoverEnabled: true
                     onEntered: menu.openSubmenu(index, false)
                     onClicked: menu.openSubmenu(index, false)
+                    // -- WP QD22 -- The menu keeps the keys; a row is its item
+                    Accessible.role: Accessible.ButtonMenu
+                    Accessible.name: modelData.text
+                    Accessible.onPressAction: menu.openSubmenu(index, true)
                 }
             }
         }
@@ -366,6 +370,9 @@ Popup {
                 cursorShape: Qt.PointingHandCursor
                 onEntered: { sub.close(); menu.openGroup = -1; menu.current = menu.groups.length }
                 onClicked: menu.activateItem(menu.settingsItem)
+                Accessible.role: Accessible.MenuItem
+                Accessible.name: menu.settingsItem.text
+                Accessible.onPressAction: menu.activateItem(menu.settingsItem)
             }
         }
     }

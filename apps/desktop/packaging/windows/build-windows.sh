@@ -22,6 +22,10 @@ cmake -S "$root/qt" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_TOOLCHAIN_FILE=/usr/share/mingw/toolchain-mingw64.cmake \
       -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR="$target" -DDSPI_RUST_TARGET=$triple
 cmake --build "$build"
+# -- WP QD21a -- Qt stays dynamic (LGPL-3: users can swap the Qt DLLs)
+imports=$(x86_64-w64-mingw32-objdump -p "$build/DSPiConsole.exe")
+grep -q 'DLL Name: Qt6Core.dll' <<<"$imports" \
+    || { echo "build-windows: DSPiConsole.exe does not load Qt6Core.dll (Qt linked statically?)" >&2; exit 1; }
 
 mkdir -p "$out"
 "$root/packaging/windows/deploy-mingw.sh" "$build" "$out/$name" 6

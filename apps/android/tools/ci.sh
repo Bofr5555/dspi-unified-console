@@ -177,7 +177,7 @@ pkg_release() {
   fi
   grep -q "tools/upload-key.sh" "$tmp/err"
 
-  step "release: ./gradlew :app:bundleRelease (Rust release profile, R8 off)"
+  step "release: ./gradlew :app:bundleRelease (Rust release profile, R8 on)" # -- WP AN15 --
   "${GRADLE[@]}" :app:bundleRelease -Pdspi.uploadKey="$tmp/upload.properties"
   aab="$out/app-release.aab"
   test -f "$aab"
@@ -189,6 +189,10 @@ pkg_release() {
   want="$(keytool -list -keystore "$tmp/upload.jks" -storepass:file "$tmp/pass" -alias upload | sed -n 's/.*SHA-256): //p')"
   got="$(keytool -printcert -jarfile "$aab" | sed -n 's/^[[:space:]]*SHA256: //p')"
   [[ -n "$want" && "$want" == "$got" ]] || { echo "ERROR: .aab signer $got != upload key $want" >&2; return 1; }
+
+  # -- WP AN15 -- R8 is on: Play retraces crash reports with the mapping the bundle carries
+  step "release: R8 mapping in the bundle"
+  unzip -l "$aab" | grep -q "BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map"
 
   step "release: bundletool validate"
   bundletool validate --bundle="$aab" >/dev/null

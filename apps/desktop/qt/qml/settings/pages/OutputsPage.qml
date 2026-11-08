@@ -56,6 +56,7 @@ SettingsPage {
                 Row {
                     spacing: 8
                     StyledComboBox {
+                        Accessible.name: slotRow.title + " type"
                         width: 92
                         enabled: !slotRow.isSub
                         model: slotRow.isSub ? ["PDM"] : ["S/PDIF", "I2S"]
@@ -65,6 +66,7 @@ SettingsPage {
                                         slotRow.title + " is now " + (index === 1 ? "I2S." : "S/PDIF."))
                     }
                     StyledComboBox {
+                        Accessible.name: slotRow.title + " pin"
                         width: 108
                         model: slotRow.pinChoices.map(function(o) { return o.text })
                         currentIndex: page.ctx ? page.ctx.optionIndex(slotRow.pinChoices, slotRow.pin) : -1
@@ -220,11 +222,12 @@ SettingsPage {
                         text: "Reset Pins"
                         font.pixelSize: 13
                         color: bridge.connected ? MacColors.accent : MacColors.opacity(MacColors.secondaryLabel, 0.5)
-                        MouseArea {
+                        ClickArea {
                             anchors.fill: parent
                             anchors.margins: -4
                             enabled: bridge.connected
-                            onClicked: page.resetPins()
+                            Accessible.name: resetText.text
+                            onActivated: page.resetPins()
                         }
                     }
                 }
@@ -288,6 +291,7 @@ SettingsPage {
         Row {
             spacing: 8
             StyledComboBox {
+                Accessible.name: slotRow.title + " type"
                 macForm: true
                 anchors.verticalCenter: parent.verticalCenter
                 enabled: !slotRow.isSub
@@ -298,6 +302,7 @@ SettingsPage {
                                 (slotRow.isSub ? "Sub" : page.slotName(slotRow.slot)) + " is now " + (index === 1 ? "I2S." : "S/PDIF."))
             }
             StyledComboBox {
+                Accessible.name: slotRow.title + " pin"
                 macForm: true
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.max(92, implicitWidth)

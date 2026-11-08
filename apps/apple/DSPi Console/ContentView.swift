@@ -142,7 +142,8 @@ struct ContentView: View {
     /// source names, which leaves the picker's default right-click alone.
     private func sourceContextMenu() -> NSMenu? {
         let source = vm.inputSource
-        guard vm.inputSourceNamesSupported, vm.inputSourceNames.indices.contains(source) else { return nil }
+        guard vm.inputSourceNamesSupported, vm.inputSourceNames.indices.contains(source),
+              !vm.deviceReadOnly else { return nil }   // -- WP SWF4 --
         let menu = NSMenu()
         menu.addItem(ClosureMenuItem(title: "Rename \u{201C}\(vm.inputSourceTitle(source))\u{201D}\u{2026}") {
             sourceRenameTarget = source
@@ -169,6 +170,7 @@ struct ContentView: View {
     }
 
     private func startRename(_ channelIdx: Int) {
+        guard !vm.deviceReadOnly else { return }   // -- WP SWF4 --
         if renamingChannel != nil { commitRename() }
         renameText = vm.channelNames[channelIdx]
         renamingChannel = channelIdx
@@ -476,6 +478,7 @@ struct ContentView: View {
                             }
                             .contextMenu {
                                 Button("Rename") { startRename(ch) }
+                                    .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
                                 Divider()
                                 Button("Copy Parameters") {
                                     vm.copyChannelParams(eqChannel: ch, name: vm.channelNames[ch])
@@ -483,7 +486,7 @@ struct ContentView: View {
                                 Button("Paste Parameters") {
                                     vm.pasteChannelParams(eqChannel: ch)
                                 }
-                                .disabled(vm.channelClipboard == nil)
+                                .disabled(vm.channelClipboard == nil || vm.deviceReadOnly)   // -- WP SWF4 --
                             }
                     }
                 }
@@ -516,9 +519,11 @@ struct ContentView: View {
                             .contextMenu {
                                 if vm.isDeviceConnected && vm.siggenSupported {
                                     Button("Identify") { vm.identifyOutput(out.index) }
+                                        .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
                                     Divider()
                                 }
                                 Button("Rename") { startRename(eqCh) }
+                                    .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
                                 Divider()
                                 Button("Copy Parameters") {
                                     vm.copyChannelParams(eqChannel: eqCh, name: vm.channelNames[eqCh])
@@ -526,7 +531,7 @@ struct ContentView: View {
                                 Button("Paste Parameters") {
                                     vm.pasteChannelParams(eqChannel: eqCh)
                                 }
-                                .disabled(vm.channelClipboard == nil)
+                                .disabled(vm.channelClipboard == nil || vm.deviceReadOnly)   // -- WP SWF4 --
                             }
                     }
                 }
@@ -572,6 +577,7 @@ struct ContentView: View {
                             tooltip: "Headphone Crossfeed",
                             action: { vm.setCrossfeed(!vm.crossfeedEnabled) }
                         )
+                        .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
                         .onRightClick { crossfeedController.show(vm: vm) }
 
                         SidebarIconButton(
@@ -580,6 +586,7 @@ struct ContentView: View {
                             tooltip: "Loudness Compensation",
                             action: { vm.setLoudness(!vm.loudnessEnabled) }
                         )
+                        .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
                         .onRightClick { loudnessController.show(vm: vm) }
 
                         SidebarIconButton(
@@ -588,6 +595,7 @@ struct ContentView: View {
                             tooltip: "Volume Leveller",
                             action: { vm.setLeveller(!vm.levellerEnabled) }
                         )
+                        .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
                         .onRightClick { levellerController.show(vm: vm) }
 
                         SidebarIconButton(
@@ -599,6 +607,7 @@ struct ContentView: View {
                             tooltip: "Psychoacoustic Bass",
                             action: { vm.setPsybass(!vm.psybassEnabled) }
                         )
+                        .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
                         .onRightClick { psybassController.show(vm: vm) }
 
                         SidebarIconButton(
@@ -635,6 +644,7 @@ struct ContentView: View {
                             tooltip: "Bypass Master EQ",
                             action: { vm.setBypass(!vm.bypass) }
                         )
+                        .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
                     }
                     .padding(.vertical, 8)
                     .onboardingAnchor("basics.tools")
@@ -787,8 +797,9 @@ struct ContentView: View {
                                     .allowsHitTesting(false)
                             }
                             .fixedSize()
-                            .opacity(vm.isDeviceConnected ? 1.0 : 0.4)
-                            .allowsHitTesting(vm.isDeviceConnected && !presetSwitchInFlight)
+                            // -- WP SWF4 -- No preset load or save on read-only firmware.
+                            .opacity(vm.isDeviceConnected && !vm.deviceReadOnly ? 1.0 : 0.4)
+                            .allowsHitTesting(vm.isDeviceConnected && !presetSwitchInFlight && !vm.deviceReadOnly)
                         }
                         .onboardingAnchor("basics.presets")
                         .contextMenu {
@@ -831,6 +842,7 @@ struct ContentView: View {
                                 onClearAll: { showPresetClearAllConfirmation(vm: vm) }
                             )
                             .equatable()
+                            .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
                         }
 
                         // Input Source Picker (hidden if firmware doesn't support it)
@@ -859,8 +871,8 @@ struct ContentView: View {
                                         .allowsHitTesting(false)
                                 }
                                 .fixedSize()
-                                .opacity(vm.isDeviceConnected ? 1.0 : 0.4)
-                                .allowsHitTesting(vm.isDeviceConnected)
+                                .opacity(vm.isDeviceConnected && !vm.deviceReadOnly ? 1.0 : 0.4)   // -- WP SWF4 --
+                                .allowsHitTesting(vm.isDeviceConnected && !vm.deviceReadOnly)
                             }
                         }
 
@@ -1044,6 +1056,8 @@ struct ContentView: View {
                 // enlarging the graph above it shrinks this (scrollable) region
                 // rather than growing the column.
                 .frame(maxHeight: .infinity)
+                // -- WP SW8 -- Firmware in another wire format: shown, not editable.
+                .disabled(vm.deviceReadOnly)
                 .consoleDetailFrame()
             }
             // `idealHeight` pins the column's *reported* height to a constant,
@@ -1072,8 +1086,12 @@ struct ContentView: View {
         // top of the pane and the window never moves.  That does mean it covers
         // the graph header while shown, which is what its Hide button is for.
         .overlay(alignment: .top) {
-            FirmwareMismatchBanner(vm: vm) {
-                firmwareUpdateController.show(vm: vm)
+            // -- WP SW8 -- with the read-only notice under it
+            VStack(spacing: 0) {
+                FirmwareMismatchBanner(vm: vm) {
+                    firmwareUpdateController.show(vm: vm)
+                }
+                ReadOnlyBanner(vm: vm)
             }
         }
         .navigationTitle("DSPi Console")
@@ -1408,7 +1426,8 @@ struct UserVolumeSection: View {
             .onChange(of: vm.userVolumeDB) { val in
                 if !isDragging { localScalar = Self.dbToScalar(val) }
             }
-            .onRightClick { localScalar = 1; vm.setUserVolume(0) }
+            .onRightClick { guard !vm.deviceReadOnly else { return }; localScalar = 1; vm.setUserVolume(0) }
+            .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
         }
     }
 }
@@ -1467,7 +1486,8 @@ struct MasterModeSection: View {
             .onChange(of: vm.masterVolumeDB) { val in
                 if !isDragging { localDB = val }
             }
-            .onRightClick { localDB = 0; vm.setMasterVolume(0) }
+            .onRightClick { guard !vm.deviceReadOnly else { return }; localDB = 0; vm.setMasterVolume(0) }
+            .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
         }
     }
 }

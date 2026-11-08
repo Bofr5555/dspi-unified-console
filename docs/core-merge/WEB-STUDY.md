@@ -303,6 +303,25 @@ One manual run, not in the gate: the study's `spike-core` harness on the WB1 tre
 
 New code keeps this from growing under the rule in `PLAN-CLIENTS.md` section 1. The gate enforces the time half of it; it does not count threads.
 
+<!-- -- WP WB2 -- -->
+**After WB2: the core runs on the web with no threads.** Native behaviour is unchanged; each change below is `cfg` on `wasm32-unknown-unknown`.
+
+| Gap above | Now on the web |
+|---|---|
+| Notification reader | `Notifications::caller_driven` (also native, for tests): each drain reads the source with a zero timeout; `DspiCore::push_notification` takes packets a page read itself, and gives a connection without a source a reader on the first push |
+| Re-read retry wake | No thread; `DspiCore::notify_retry_due_in` says when to call `process_notifications` |
+| RTA worker | `rta_start` installs the worker without a thread; `DspiCore::rta_tick` runs one turn and returns the wait before the next |
+| AutoEQ rebuild | A step machine (`Rebuild` in `dspi-session/src/autoeq.rs`); each `RebuildHandle::poll` does one listing or one batch, fetches one after the other |
+| `std::fs` | `dspi-session` AutoEQ: `parse_user_database`, `check_import`, `update_bytes`, `rebuild_bytes` with `RebuildHandle::take_database`, `favourites_from_bytes`/`favourites_text`. Preset files already had `parse`/`write`; firmware has `uf2_inspect`. `dspi-core`'s `autoeq_*` still take a path (not in WB2's files) |
+| Link build | `dspi-core --features link` builds: `socket2` is off on this target, getrandom uses its custom backend over a fourth import `dspi.dspi_random_fill(ptr, len) -> i32` (`.cargo/config.toml`, `dspi-link/src/clock.rs`), and `dspi-link`'s `Clock` is on `dspi_link::clock::Instant`, which is `std`'s natively and the same `dspi_now_ms` import on the web. It is not `dspi_transport::clock::Instant` there: `dspi-transport` depends on `dspi-link`, so one type would need the seam moved into a crate below both. `link.rs` compiles with the two; Link's threads and `TcpStream` remain WB4b's |
+
+**The gate runs it.** `ci/check.sh --step wasm-core` builds `ci/wasm-scenario` (a test module, not the binding) and runs `run.mjs` under Node 24 with `--experimental-wasm-jspi`: two demo sessions in one module, connect, a write with read-back, notifications drained from the device's source and pushed by the "page", RTA frames on the page's timers, an AutoEQ rebuild into bytes, and a sleep that suspends. 844 KB, 302 KB gzip, with `link`.
+
+Still blocking, unchanged and not reached by the scenario: `link.rs`'s two spawns, `midi.rs`, and the `Condvar`/`recv_timeout` waits listed above outside these paths.
+
+<!-- -- WP WB3 -- -->
+**After WB3: the binding.** `crates/dspi-wasm` is the module the page's Worker loads (`apps/web/src/core/wasm.ts`). JSON calls over the core's records, any number of sessions per module, and the two sharp edges of section 2 closed in the module itself: a call entering while another is suspended is refused (`busy`) and does not run, which the page's unit tests show by bypassing the Worker's queue during a suspended `clock::sleep`. A panic marks the module dead before the abort; the session reports lost. The page's e2e (Chromium, Firefox) runs on the core's own demo: connect, a write with read-back, a notification turned into a state event by the Worker's poll, meters, RTA frames on the Worker's timers. The module is 638 KB, 227 KB gzip, without Link (`opt-level = "s"`). Still to come: WebUSB (WB4a, which pushes packets with `push_notification` and must not also have a source, review c6a W2-2) and Link (WB4b).
+
 ## Sources
 
 - [JSPI support table, web-features](https://web-platform-dx.github.io/web-features-explorer/features/wasm-jspi); [Firefox intent to ship JSPI](https://groups.google.com/a/mozilla.org/g/dev-platform/c/8cOxM-dWaNs)

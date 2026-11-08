@@ -74,6 +74,8 @@ AppWindow {
                 color: isMacOS ? MacColors.label : "white"
                 selectByMouse: true
                 clip: true
+                activeFocusOnTab: true   // -- WP QD22 --
+                Accessible.name: "Search headphones"
                 text: autoeq.query
                 onTextChanged: { autoeq.query = text; list.currentIndex = -1 }
                 Keys.onDownPressed: { list.forceActiveFocus(); if (list.currentIndex < 0) list.currentIndex = 0 }
@@ -94,7 +96,7 @@ AppWindow {
                 name: "xmark"
                 size: 12
                 color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
-                MouseArea { anchors.fill: parent; anchors.margins: -4; onClicked: search.text = "" }
+                ClickArea { anchors.fill: parent; anchors.margins: -4; Accessible.name: "Clear the search"; onActivated: search.text = "" }
             }
         }
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: isMacOS ? MacColors.separator : Qt.rgba(1, 1, 1, 0.07) }
@@ -114,6 +116,17 @@ AppWindow {
         onCurrentIndexChanged: if (currentItem) win.selectedId = currentItem.entryId
         Keys.onReturnPressed: win.apply()
         Keys.onEnterPressed: win.apply()
+        // -- WP QD22 -- Tab reaches the list, its first row current; F favourites a row
+        activeFocusOnTab: true
+        Accessible.role: Accessible.List
+        Accessible.name: "Profiles"
+        onActiveFocusChanged: if (activeFocus && currentIndex < 0 && count > 0) currentIndex = 0
+        Keys.onPressed: function (event) {
+            if (event.key === Qt.Key_F && event.modifiers === Qt.NoModifier && currentItem) {
+                autoeq.toggleFavorite(currentItem.entryId)
+                event.accepted = true
+            }
+        }
 
         delegate: Item {
             id: row
@@ -185,6 +198,11 @@ AppWindow {
                 hoverEnabled: true
                 onClicked: { list.currentIndex = index; list.forceActiveFocus() }
                 onDoubleClicked: { list.currentIndex = index; win.apply() }
+                // -- WP QD22 -- The list keeps the keys (Up/Down, Return applies); a row is its item
+                Accessible.role: Accessible.ListItem
+                Accessible.name: model.name
+                Accessible.description: model.sourceName
+                Accessible.onPressAction: { list.currentIndex = index; win.apply() }
             }
             // On hover, or always once favourited
             Icon {
@@ -203,6 +221,12 @@ AppWindow {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: autoeq.toggleFavorite(model.entryId)
+                    // -- WP QD22 -- From the keyboard: F on the list's current row (below)
+                    Accessible.role: Accessible.CheckBox
+                    Accessible.name: "Favorite " + model.name
+                    Accessible.checkable: true
+                    Accessible.checked: model.favorite === true
+                    Accessible.onToggleAction: autoeq.toggleFavorite(model.entryId)
                 }
                 ToolTip.text: model.favorite ? "Remove from favorites" : "Add to favorites"
                 ToolTip.visible: heartMouse.containsMouse

@@ -8700,5 +8700,9 @@
     0,
     200,
     66
-  ]
+  ],
+  "i2sClockPinModePresent": true,
+  "spdifInputsEnabledPresent": true,
+  "adatInputEnabledPresent": true,
+  "adatInputClockModePresent": true
 }

@@ -99,10 +99,15 @@ Item {
             }
         }
 
-        MouseArea {
+        ClickArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
-            onClicked: {
+            focusRadius: height / 2 + 2
+            Accessible.role: Accessible.CheckBox
+            Accessible.name: label
+            Accessible.checkable: true
+            Accessible.checked: legendRoot.isVisible(eqChannel)
+            onActivated: {
                 if (legendRoot.follow) bridge.setChannelVisible(eqChannel, !bridge.channelVisible(eqChannel))
                 else legendRoot.toggled(eqChannel)
             }
