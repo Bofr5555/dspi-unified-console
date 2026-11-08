@@ -45,7 +45,8 @@ const USAGE: &str =
   --flip-* / --drop-*  per-byte bit-flip / loss probability; -in is bridge to DSPi,
                -out DSPi to bridge
   --drop-reply probability that a request runs but its answer is lost
-  --log        one line per request: t_ms op kind span_us reply_bytes status";
+  --log        one line per request: t_ms op kind span_us reply_bytes status, and per
+               notification: t_ms note - - length first_bytes";
 
 struct Args {
     uart: String,
@@ -197,12 +198,26 @@ struct Ring {
     packets: Mutex<VecDeque<Vec<u8>>>,
     dropped: AtomicU64,
     received: AtomicU64,
+    /// USB-only packets left out (see [`uart_packet`]).
+    usb_only: AtomicU64,
+}
+
+/// Whether the UART consumer gets this packet. The UART carries only v2
+/// packets from the firmware's notify ring (spec 3.6: "the v1 legacy
+/// master-volume packet is never sent over UART"); the USB endpoint also
+/// carries v1 packets and a one-byte keep-alive every 100 ms without traffic,
+/// which `Transport::notifications` passes on.
+fn uart_packet(packet: &[u8]) -> bool {
+    packet.first() == Some(&2) && packet.len() >= 4
 }
 
 fn notifier(ring: Arc<Ring>, mut source: Box<dyn NotificationSource>, stop: Arc<Tx>) {
     while !stop.stop.load(Ordering::Relaxed) {
         match source.read(Duration::from_millis(100)) {
             Ok(p) if p.is_empty() => {}
+            Ok(p) if !uart_packet(&p) => {
+                ring.usb_only.fetch_add(1, Ordering::Relaxed);
+            }
             Ok(p) => {
                 ring.received.fetch_add(1, Ordering::Relaxed);
                 let mut q = lock(&ring.packets);
@@ -377,6 +392,16 @@ fn run(mut args: Args) -> Result<(), String> {
         if !parser.mid_frame() && lock(&tx.line).idle(now) {
             let packet = lock(&ring.packets).pop_front();
             if let Some(packet) = packet {
+                if let Some(l) = log.as_mut() {
+                    // The v2 header's first bytes: version, event, source, seq.
+                    let head: String = packet.iter().take(8).map(|b| format!("{b:02X}")).collect();
+                    let _ = writeln!(
+                        l,
+                        "{:.1} note - - {} {head}",
+                        now.duration_since(start).as_secs_f64() * 1000.0,
+                        packet.len()
+                    );
+                }
                 send(&Frame::Notification { packet });
                 sent_notes += 1;
             }
@@ -388,7 +413,7 @@ fn run(mut args: Args) -> Result<(), String> {
             eprintln!(
                 "esp-rig-tunnel t={:.0}s requests={requests} gets={} sets={} refused={} stalls={} no_answer={} \
                  lost_replies={lost_replies} bad_crc={bad_crc} parser_timeouts={} noise={} \
-                 notes_sent={sent_notes} notes_dropped={} flips_in={} drops_in={} flips_out={} drops_out={} \
+                 notes_sent={sent_notes} notes_dropped={} notes_usb_only={} flips_in={} drops_in={} flips_out={} drops_out={} \
                  longest_request_span_us={}",
                 now.duration_since(start).as_secs_f64(),
                 s.gets,
@@ -399,6 +424,7 @@ fn run(mut args: Args) -> Result<(), String> {
                 parser.timed_out,
                 parser.noise,
                 ring.dropped.load(Ordering::Relaxed),
+                ring.usb_only.load(Ordering::Relaxed),
                 args.faults_in.flipped,
                 args.faults_in.dropped,
                 f.0.flipped,
@@ -415,4 +441,18 @@ fn run(mut args: Args) -> Result<(), String> {
     let _ = w.join();
     eprintln!("esp-rig-tunnel: the emulator closed its UART after {requests} requests");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::uart_packet;
+
+    #[test]
+    fn wp_lk3_only_v2_packets_go_to_the_uart() {
+        // USB keep-alive, a v1 master-volume packet, a v2 PARAM_CHANGED.
+        assert!(!uart_packet(&[0x00]));
+        assert!(!uart_packet(&[0x01, 0x00, 0x00, 0xA0, 0xC1]));
+        assert!(uart_packet(&[0x02, 0x02, 0x00, 0x07, 0x10, 0x00]));
+        assert!(!uart_packet(&[0x02, 0x02]));
+    }
 }

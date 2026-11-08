@@ -11,6 +11,8 @@
 #   rig.sh rust RUN [VAR=VALUE...]    our client (crates/dspi-core/tests/wp_lk3_rig.rs)
 #   rig.sh rust-before RUN [VAR=...]  the same, built from the pre-LK2 core
 #   rig.sh ts RUN [VAR=VALUE...]      upstream's TypeScript client (clients/ts-probe.ts)
+#   rig.sh realhub RUN [FILTER]       crates/dspi-link/tests/real_hub against the bridge
+#                                     (default filter real::, the read-only safe set)
 #   rig.sh log RUN                    the bridge's serial log
 #   rig.sh down RUN                   stop and remove the rig's containers
 #
@@ -75,6 +77,11 @@ cmd_build() {
   cargo_in "$B/target/esp-rig" "$root" 'cargo build --release -p dspi-esp-rig 2>&1 | tail -1'
   put "$B/target/esp-rig/release/esp-rig-tunnel" "$work/esp-rig-tunnel"
   put "$(probe_bin "$B/target/esp-rig" "$root")" "$work/probe-after"
+  local out bin
+  out=$(cargo_in "$B/target/esp-rig" "$root" 'cargo test -p dspi-link --test real_hub --no-run 2>&1') ||
+    { echo "$out" >&2; die "real_hub build failed"; }
+  bin=$(sed -n 's/.*Executable tests\/real_hub\/main.rs (\/target\/\(.*\))$/\1/p' <<< "$out" | tail -1)
+  put "$B/target/esp-rig/$bin" "$work/real-hub-test"
   # The release Terminal client, for the K340 backup and diff (README).
   if [ "${ESP_RIG_DSPI_CLI:-0}" = 1 ]; then
     cargo_in "$B/target/esp-rig" "$root" 'cargo build --release -p dspi-term 2>&1 | tail -1'
@@ -187,7 +194,7 @@ cmd_rust() {
   podman run --rm --init --network "container:$(net_of "$run")" --security-opt label=disable \
     "${env[@]}" -v "$work":/rig:ro "$NETEM_IMAGE" \
     "/rig/$bin" --ignored --nocapture --test-threads=1 --exact wp_lk3_meters_against_the_emulated_bridge 2>&1 |
-    grep -E '^LK3|panicked|test result' | sed "s/^/[$bin] /"
+    sed 's/^test wp_lk3_[a-z_]* \.\.\. //' | grep -E '^LK3|panicked|test result' | sed "s/^/[$bin] /"
 }
 
 cmd_ts() {
@@ -200,6 +207,15 @@ cmd_ts() {
     -v "$root/crates/dspi-hub/tests/conformance/ts":/ts:ro "$NODE" \
     node --experimental-transform-types --no-warnings --import /ts/register.mjs /clients/ts-probe.ts 2>&1 |
     sed 's/^/[ts] /'
+}
+
+cmd_realhub() {
+  local run=$1 filter=${2:-real::}
+  need_run "$run"
+  [ -x "$work/real-hub-test" ] || die "no real_hub test (rig.sh build)"
+  podman run --rm --init --network "container:$(net_of "$run")" --security-opt label=disable \
+    -v "$work":/rig:z -e DSPI_REAL_HUB=$BRIDGE:11915 -e DSPI_REAL_HUB_REPORT="/rig/runs/$run/real-hub.jsonl" \
+    "$NETEM_IMAGE" /rig/real-hub-test "$filter" --test-threads=1 2>&1 | grep -E '^test |panicked|^test result|endpoint'
 }
 
 cmd_provision() {
@@ -226,6 +242,7 @@ cmd_down() {
   local run=$1 dir id
   dir=$(run_dir "$run")
   [ -f "$dir/ids" ] || return 0
+  podman logs "lk3-$run-qemu" > "$dir/bridge.log" 2>&1 || true # kept for evidence
   tac "$dir/ids" | while read -r id; do
     [ -n "$id" ] && podman rm -f -t 3 "$id" > /dev/null 2>&1 || true
   done
@@ -242,7 +259,8 @@ case "${1:-}" in
   rust) shift; cmd_rust "${1:?run}" probe-after "${@:2}" ;;
   rust-before) shift; cmd_rust "${1:?run}" probe-before "${@:2}" ;;
   ts) shift; cmd_ts "${1:?run}" "${@:2}" ;;
+  realhub) cmd_realhub "${2:?run}" "${3:-}" ;;
   log) cmd_log "${2:?run}" ;;
   down) cmd_down "${2:?run}" ;;
-  *) sed -n '2,20p' "$0" >&2; exit 2 ;;
+  *) sed -n '2,22p' "$0" >&2; exit 2 ;;
 esac

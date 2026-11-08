@@ -15,6 +15,6 @@ log=$work/ci-smoke.log
 CLIENTS="after ts" "$here/scenarios.sh" smoke | tee "$log"
 results=$(grep '^RESULT' "$log" || true)
 [ "$(wc -l <<< "$results")" -ge 2 ] || { echo "esp-rig: missing results" >&2; exit 1; }
-bad=$(grep -E 'first_meter=never|failed=[^n]|drops=[1-9]|closes=[1-9]|unwritable_closes=[1-9]' <<< "$results" || true)
+bad=$(grep -E ' (first_meter=never|failed=[^n]|drops=[1-9]|closes=[1-9]|unwritable_closes=[1-9])' <<< "$results" || true)
 [ -z "$bad" ] || { echo "esp-rig: FAILED:" >&2; echo "$bad" >&2; exit 1; }
 echo "esp-rig: OK (both clients reached live meters over the emulated bridge)"

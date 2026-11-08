@@ -42,7 +42,9 @@ pages. They are built with `npm ci --ignore-scripts` from upstream's lockfile in
   - a GET with `wLength` 0 reads the whole bulk image.
 - **Notifications.** The device's notifications go out as `0x40` frames:
   - only at a frame boundary on an idle line (spec 3.6);
-  - from a 31-entry ring, which drops the oldest entry as the firmware's ring does.
+  - from a 31-entry ring, which drops the oldest entry as the firmware's ring does;
+  - v2 packets only. The USB endpoint also delivers v1 packets and a one-byte keep-alive every 100 ms, which the
+    firmware never sends on its UART, so the tunnel leaves them out and counts them (`notes_usb_only`).
 - **UART-only facts it plays itself:**
   - `0xF6` (UART config) reports enabled, notify on, and the tunnel's baud;
   - `0xF9` (interface status) reports UART live;
@@ -75,8 +77,9 @@ tools/esp-rig/rig.sh rust r1 LK3_MODE=android LK3_SECONDS=30
 tools/esp-rig/rig.sh rust-before r1 LK3_MODE=seq
 tools/esp-rig/rig.sh ts r1 LK3_SECONDS=30 LK3_CLIENTS=2
 tools/esp-rig/rig.sh outage r1 20          # 100 % loss for 20 s, then the old shaping
+tools/esp-rig/rig.sh realhub r1            # crates/dspi-link/tests/real_hub's read-only set against the bridge
 tools/esp-rig/rig.sh log r1                # the bridge's serial log
-tools/esp-rig/rig.sh down r1
+tools/esp-rig/rig.sh down r1               # also keeps the serial log in runs/r1/bridge.log
 ```
 
 - **Tunnel options.** Anything after the baud in `up` goes to the tunnel, for example
@@ -117,5 +120,7 @@ Only one job may use the device at a time.
 - **Not a real radio.** There is no Wi-Fi power save, no 802.11 retries, no airtime contention. netem's loss is
   independent per packet, whereas Wi-Fi loses packets in bursts, which `outage` stands in for.
 - **The emulated ESP32 runs in real time but is not cycle-exact.** One QEMU process takes about 25 % of a host core.
+- **real_hub's dark-network scenarios go dark in their own proxy.** That proxy keeps ACKing the bridge's TCP, so
+  they never reach the bridge's 10 s no-write-progress close. Use `rig.sh outage` for that.
 - **The demo device answers at once.** `--latency-us` (default 300) stands in for the firmware's main-loop
   dispatch.

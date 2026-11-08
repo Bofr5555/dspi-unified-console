@@ -31,8 +31,11 @@ bridge_counts() {
 }
 
 # client RUN NAME SCENARIO-TAGS [VAR=VALUE...]: one client run, its summaries as RESULT lines.
+# The demo device has control surfaces, so our client's cs_fetch is real (about
+# 180 round trips): no stand-in chain (LK3_CS_CHAIN, CS_CHAIN here) unless asked.
 client() {
   local run=$1 who=$2 tags=$3; shift 3
+  set -- "LK3_CS_CHAIN=${CS_CHAIN:-0}" "$@"
   local from out
   from=$("$rig" log "$run" | wc -l)
   case "$who" in
@@ -94,7 +97,7 @@ case "${1:-}" in
           for who in $CLIENTS; do
             [ "$who" = before ] && continue
             client pl "$who" "scenario=pollload baud=$baud shape=loss$loss clients=$n" \
-              LK3_SECONDS=120 LK3_CLIENTS="$n" LK3_CS_CHAIN=0
+              LK3_SECONDS=120 LK3_CLIENTS="$n"
           done
         done
         "$rig" down pl
