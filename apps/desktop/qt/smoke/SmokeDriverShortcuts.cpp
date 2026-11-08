@@ -177,7 +177,9 @@ void SmokeDriver::testShortcuts() {
     key(Qt::Key_S, kCtrl);
     row("Cmd+S", "Ctrl+S", inMain(root(), QStringLiteral("commitDialog.visible")).toBool());
     inMain(root(), QStringLiteral("commitDialog.close()"));
-    spin(100);
+    // -- WP QD39 -- The dialog is modal until its exit fade ends, and a modal
+    // popup blocks the window's shortcuts: wait for it to hide, not a fixed time
+    check("QD39: the commit dialog hides", waitFor(2000, [&]() { return !inMain(root(), QStringLiteral("commitDialog.visible")).toBool(); }));
     root()->setProperty("pendingFileAction", QString());
     key(Qt::Key_I, kCtrl);
     row("Cmd+I", "Ctrl+I", root()->property("pendingFileAction").toString() == QLatin1String("importFilters"));
@@ -775,8 +777,14 @@ void SmokeDriver::testAccessibility() {
         QMetaObject::invokeMethod(root(), "openToolWindow", Q_ARG(QVariant, QString::fromLatin1(n)));
         spin(500);
         QQuickWindow *found = nullptr;
-        for (QQuickWindow *w : root()->findChildren<QQuickWindow *>())
-            if (w != main && w->isVisible()) found = w;
+        // -- WP QD39 -- A window that does not open fails here, not skipped; a
+        // loaded host gets a little longer than the settle time to show it
+        waitFor(2000, [&]() {
+            for (QQuickWindow *w : root()->findChildren<QQuickWindow *>())
+                if (w != main && w->isVisible()) found = w;
+            return found != nullptr;
+        });
+        check(qPrintable(QStringLiteral("QD39: tool window %1 opens for the audit").arg(QString::fromLatin1(n))), found != nullptr);
         if (!found) continue;
         a11yAudit(found, nullptr, QString::fromLatin1(n), true);
     }
