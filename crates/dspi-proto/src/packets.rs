@@ -3532,9 +3532,12 @@ fn parse_mask16_field(field: &'static str, v: &str) -> Result<u16, PacketError> 
 }
 
 fn parse_f32_field(field: &'static str, v: &str) -> Result<f32, PacketError> {
+    // -- WP DL3 -- `f32::parse` takes "nan" and "inf"; no packet field holds them.
     v.trim()
         .parse::<f32>()
-        .map_err(|_| bad(field, v, "a number"))
+        .ok()
+        .filter(|f| f.is_finite())
+        .ok_or_else(|| bad(field, v, "a finite number"))
 }
 
 fn parse_gpio_pair(field: &'static str, v: &str) -> Result<[u8; 2], PacketError> {

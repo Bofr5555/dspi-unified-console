@@ -166,6 +166,8 @@
         <!-- WP QD16 -->
         <file>qml/settings/pages/UpdatesPage.qml</file>
         <file>qml/components/UpdateBanner.qml</file>
+        <!-- WP DL3 -->
+        <file>qml/components/DelayRefusalBanner.qml</file>
         <file>qml/components/CascadeMenu.qml</file>
         <file>qml/settings/cs/CsApplyRow.qml</file>
         <file>qml/settings/cs/CsBadge.qml</file>

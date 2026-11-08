@@ -794,6 +794,23 @@ pub struct ApplyReport {
     pub left_alone: Vec<String>,
     /// What the user should know about the document itself.
     pub warnings: Vec<String>,
+    // -- WP DL3 --
+    /// Delays the document holds past this device's delay line, which were
+    /// shortened to it.
+    pub shortened: Option<ShortenedDelays>,
+}
+
+// -- WP DL3 --
+/// Delays an import shortened to the device's line
+/// ([`dspi_proto::Platform::max_delay_ms`]).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ShortenedDelays {
+    /// The line, ms.
+    pub line_ms: f32,
+    /// The platform's name, as `Platform::name` gives it.
+    pub platform: String,
+    /// "<channel> (<ms> ms)" each, as the document held it.
+    pub delays: Vec<String>,
 }
 
 impl ApplyReport {
@@ -810,7 +827,10 @@ impl ApplyReport {
 
     /// Nothing was missing, nothing was refused and nothing was left out.
     pub fn is_clean(&self) -> bool {
-        self.missing_channels.is_empty() && self.skipped.is_empty() && self.left_alone.is_empty()
+        self.missing_channels.is_empty()
+            && self.skipped.is_empty()
+            && self.left_alone.is_empty()
+            && self.shortened.is_none()
     }
 
     /// The result report, worded as the Console words it.
@@ -841,6 +861,15 @@ impl ApplyReport {
             lines.push(format!(
                 "Left as they are, because the file holds no value for them: {}",
                 self.left_alone.join(", ")
+            ));
+        }
+        // -- WP DL3 --
+        if let Some(d) = &self.shortened {
+            lines.push(format!(
+                "Delays shortened to the {} ms this device ({}) holds: {}",
+                d.line_ms,
+                d.platform,
+                d.delays.join(", ")
             ));
         }
         for warning in &self.warnings {
@@ -1259,6 +1288,31 @@ fn apply_output_enables(session: &mut Session, placed: &Placement, report: &mut 
     }
 }
 
+// -- WP DL3 --
+/// `ms`, or the device's delay line when `ms` is past it, which is then
+/// named in the report.
+fn within_line(
+    caps: &crate::probe::Capabilities,
+    report: &mut ApplyReport,
+    label: &str,
+    ms: f32,
+) -> f32 {
+    let line = caps.platform.max_delay_ms();
+    if !(ms.is_finite() && ms > line) {
+        return ms;
+    }
+    report
+        .shortened
+        .get_or_insert_with(|| ShortenedDelays {
+            line_ms: line,
+            platform: caps.platform.name(),
+            delays: Vec::new(),
+        })
+        .delays
+        .push(format!("{label} ({ms} ms)"));
+    line
+}
+
 /// One channel's name, delay, output strip and filter banks
 /// (PresetDocumentTransfer.swift:451-505).
 fn apply_channel(
@@ -1278,7 +1332,15 @@ fn apply_channel(
     if !block.name.is_empty() && current_name != Some(block.name.as_str()) {
         let _ = session.write("ch.name", &[ch], Value::Text(block.name.clone()));
     }
+    // -- WP DL3 -- a delay past the line is shortened to it and named, where
+    // the write would refuse it and leave the old delay.
+    let label = if block.name.is_empty() {
+        current_name.map_or_else(|| format!("channel {ch}"), str::to_string)
+    } else {
+        block.name.clone()
+    };
     if let Some(ms) = block.delay_ms {
+        let ms = within_line(&caps, report, &label, ms);
         let _ = session.write("ch.delay", &[ch], Value::Float(ms));
     }
 
@@ -1297,6 +1359,7 @@ fn apply_channel(
         }
         // Additive: a document without it leaves the output delay alone.
         if let Some(ms) = block.output_delay_ms {
+            let ms = within_line(&caps, report, &format!("{label} output delay"), ms);
             let _ = session.write("out.delay", &[o], Value::Float(ms));
         }
     }
@@ -6057,6 +6120,60 @@ mod interop_tests {
         assert_eq!(iso8601(0), "1970-01-01T00:00:00Z");
         assert_eq!(iso8601(951_782_400), "2000-02-29T00:00:00Z");
         assert_eq!(iso8601(1_790_762_645), "2026-09-30T10:04:05Z");
+    }
+
+    // -- WP DL3 --
+    mod tests_wp_dl3 {
+        use super::*;
+
+        const LONG: &str = r#"{
+          "schemaVersion": 1,
+          "meta": {"platform": "RP2350", "inputChannelCount": 8, "outputChannelCount": 9},
+          "channels": [
+            {"channelId": 0, "inputIndex": 0, "isOutput": false, "name": "USB L", "delayMs": 40},
+            {"channelId": 1, "inputIndex": 1, "isOutput": false, "name": "USB R", "delayMs": 3},
+            {"channelId": 8, "outputIndex": 0, "isOutput": true, "name": "Sub",
+             "delayMs": 85, "outputDelayMs": 30.5}
+          ]
+        }"#;
+
+        /// A delay past the line is sent at the line (where the write would be
+        /// refused and the old delay kept) and named in the report.
+        #[test]
+        fn wp_dl3_an_import_shortens_a_delay_past_the_line_and_names_it() {
+            let (mut s, log) = rig(Platform::Rp2040);
+            let report = apply(&mut s, &parse(LONG).unwrap(), ApplyOptions::default());
+            let line = 21.0f32.to_le_bytes().to_vec();
+            let ch = sent(&log, op::REQ_SET_DELAY);
+            assert!(ch.contains(&(0, line.clone())), "{ch:?}");
+            assert!(ch.contains(&(1, 3.0f32.to_le_bytes().to_vec())), "{ch:?}");
+            assert_eq!(sent(&log, op::REQ_SET_OUTPUT_DELAY), vec![(0, line)]);
+            assert!(!report.is_clean());
+            let lines = report.lines(false);
+            assert!(
+                lines.contains(
+                    &"Delays shortened to the 21 ms this device (RP2040) holds: \
+                      USB L (40 ms), Sub (85 ms), Sub output delay (30.5 ms)"
+                        .to_string()
+                ),
+                "{lines:?}"
+            );
+        }
+
+        /// On an RP2350 only the 85 ms delay is past the 42 ms line.
+        #[test]
+        fn wp_dl3_the_rp2350_names_only_what_is_past_42_ms() {
+            let (mut s, _) = rig(Platform::Rp2350);
+            let report = apply(&mut s, &parse(LONG).unwrap(), ApplyOptions::default());
+            assert_eq!(
+                report.shortened,
+                Some(ShortenedDelays {
+                    line_ms: 42.0,
+                    platform: "RP2350".into(),
+                    delays: vec!["Sub (85 ms)".into()],
+                })
+            );
+        }
     }
 }
 
