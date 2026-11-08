@@ -13,6 +13,8 @@
 //! that draws the selection: this panel while it is open, the overlay on the
 //! response graph while that is on screen, and the bar strip above the page
 //! while that is. Nothing drawing, or no channel chosen, releases it, which is what makes the device stop the analyser.
+//! No channel chosen while following another console still draws and polls
+//! that console's choice (WP CG30).
 //!
 //! The device has one analyser and other consoles may be using it. The
 //! Terminal does not link `dspi-core`, so it reaches the following state
@@ -325,12 +327,14 @@ pub fn channels(state: &DeviceState, engine: &RtaEngine, tap: u8) -> Vec<u8> {
 
 /// The selection on show: this console's, and while it follows another one
 /// the device's tap and channels, so every display draws what the analyser is
-/// doing (`effectiveSelection`, SpectrumAnalyser.swift:456). A display hidden
-/// here stays hidden.
+/// doing (`effectiveSelection`, SpectrumAnalyser.swift:456), also with no
+/// channel chosen here (`drawn(own:followed:)`, SpectrumAnalyserView.swift:682;
+/// WP CG30). Nothing is asked for then: [`SpectrumState::own_config`] is
+/// `None`, and the poll holds every push back while following.
 pub fn selection(state: &DeviceState, s: &SpectrumState) -> Selection {
     let own = own_selection(state, s);
     match s.sharing.following() {
-        Some(f) if !own.channels.is_empty() => {
+        Some(f) => {
             let mask = f.config.channel_mask;
             Selection::new(
                 f.config.tap,
@@ -1899,20 +1903,83 @@ mod tests {
         assert_eq!((w.tap, w.channel_mask), (TAP_OUTPUT, 1), "kept as it was");
     }
 
+    /// The device's writes during polls: every `control_out` opcode. Reads
+    /// stall, which a poll survives.
+    struct Pushes(Vec<u8>, dspi_transport::DeviceDescriptor);
+
+    impl Transport for Pushes {
+        fn control_in(&mut self, opcode: u8, _: u16, _: u16) -> dspi_transport::Result<Vec<u8>> {
+            Err(dspi_transport::TransportError::Stalled { opcode })
+        }
+        fn control_out(&mut self, opcode: u8, _: u16, _: &[u8]) -> dspi_transport::Result<()> {
+            self.0.push(opcode);
+            Ok(())
+        }
+        fn descriptor(&self) -> &dspi_transport::DeviceDescriptor {
+            &self.1
+        }
+    }
+
+    /// WP CG30 (was TM5's "a display hidden here stays hidden"): with no
+    /// channel chosen here, the panel draws what another console drives, as
+    /// the Console's `drawn(own:followed:)` does (SpectrumAnalyserView.swift:682),
+    /// and asks the device for nothing of its own.
     #[test]
-    fn wp_tm5_a_display_hidden_here_stays_hidden_while_following() {
+    fn wp_cg30_an_empty_selection_draws_what_is_followed_and_pushes_nothing() {
         let state = testing::state();
         let shared = shared_with(TAP_OUTPUT, &[]);
         let mut p = SpectrumPanel::new(shared.clone());
+        let following = || shared.borrow().spectrum.sharing.following().is_some();
+        let watching = || shared.borrow().spectrum.engine.watching();
+        // Never chosen anything: another console's choice is not judged
+        // against anything (`lastOwn`, SpectrumAnalyser.swift:683).
         p.sync(&state);
         follow(&shared, 0b0110, 9);
         p.sync(&state);
-        assert!(
-            selection(&state, &shared.borrow().spectrum)
-                .channels
-                .is_empty()
+        assert!(!following() && !watching());
+
+        // Chosen, then cleared while driving: released.
+        shared.borrow_mut().spectrum.selection = Some(Selection::new(TAP_OUTPUT, vec![0]));
+        p.sync(&state);
+        assert!(watching());
+        shared.borrow_mut().spectrum.selection = Some(Selection::new(TAP_OUTPUT, vec![]));
+        p.sync(&state);
+        assert!(!watching());
+
+        // Another console drives: its channels are polled and drawn.
+        follow(&shared, 0b0110, 9);
+        p.sync(&state);
+        assert!(following());
+        assert_eq!(
+            selection(&state, &shared.borrow().spectrum),
+            Selection::new(TAP_INPUT, vec![1, 2])
         );
-        assert!(!shared.borrow().spectrum.engine.watching());
+        let w = shared.borrow().spectrum.engine.wanted().unwrap();
+        assert_eq!((w.tap, w.channel_mask), (TAP_INPUT, 0b0110), "polls theirs");
+        let out = frame_of(&shared, &state, 100, 30);
+        assert!(
+            out.contains("Following another console (session 9)"),
+            "{out}"
+        );
+        // Nothing of ours goes to the device, and our choice stays empty.
+        let mut t = Pushes(
+            Vec::new(),
+            dspi_transport::DeviceDescriptor {
+                serial: "CG30".into(),
+                bus_id: String::new(),
+                address: 0,
+            },
+        );
+        for _ in 0..3 {
+            p.sync(&state);
+            shared.borrow_mut().spectrum.tick(&mut t, Instant::now());
+        }
+        assert_eq!(t.0, Vec::<u8>::new(), "no push over the other console");
+        assert!(following());
+        assert_eq!(
+            shared.borrow().spectrum.selection,
+            Some(Selection::new(TAP_OUTPUT, vec![]))
+        );
     }
 
     #[test]
@@ -2037,7 +2104,7 @@ mod tests {
     }
 
     #[test]
-    fn wp_tm6_following_draws_the_devices_channels_and_a_hidden_strip_stays_hidden() {
+    fn wp_tm6_following_draws_the_devices_channels_also_with_none_chosen_here() {
         let state = testing::state();
         let theme = Theme::console(crate::theme::ColorDepth::TrueColor, Glyphs::Braille);
         let shared = shared_with(TAP_OUTPUT, &[0]);
@@ -2056,11 +2123,13 @@ mod tests {
             "the device's channels, not this console's"
         );
 
+        // -- WP CG30 -- none chosen here: still the device's channels (was: hidden)
         shared.borrow_mut().spectrum.selection = Some(Selection::new(TAP_OUTPUT, vec![]));
+        let p = bars_picture(&shared, &state, &theme, Instant::now()).unwrap();
         assert_eq!(
-            bars_picture(&shared, &state, &theme, Instant::now()),
-            None,
-            "a display hidden here stays hidden"
+            p.channels.len(),
+            2,
+            "the device's channels with none of ours"
         );
     }
 

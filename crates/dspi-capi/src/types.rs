@@ -1483,6 +1483,8 @@ impl From<&I2cConfig> for r::I2cConfig {
     }
 }
 
+/// Not watching: the old record has no field for it, and a zero mask
+/// releases the analyser (`dspi_rta_set_request_watching` sets it, WP CG30).
 impl From<&RtaRequest> for r::RtaRequest {
     fn from(v: &RtaRequest) -> Self {
         Self {
@@ -1492,6 +1494,7 @@ impl From<&RtaRequest> for r::RtaRequest {
             fft_order: v.fft_order,
             avg_ms: v.avg_ms,
             peak_decay_db_s: v.peak_decay_db_s,
+            watching: false,
         }
     }
 }

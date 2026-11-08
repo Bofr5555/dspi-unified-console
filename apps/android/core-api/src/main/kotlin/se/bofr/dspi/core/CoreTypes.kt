@@ -764,7 +764,7 @@ data class RtaRequest(
      */
     val tap: Int,
     /**
-     * Channel mask within the tap; 0 releases the analyser.
+     * Channel mask within the tap; 0 releases the analyser unless `watching`.
      */
     val mask: Int,
     /**
@@ -784,6 +784,14 @@ data class RtaRequest(
      * Peak decay, dB/s; 0 = peak hold off.
      */
     val peakDecayDbS: Int,
+    /**
+     * A view shows the analyser, also with no channel chosen
+     * (`isWatching`, SpectrumAnalyser.swift:827). With mask 0 it asks for
+     * nothing of its own, but while another console is followed the device's
+     * configuration keeps being polled and drawn. A mask other than 0 watches
+     * anyway.
+     */
+    val watching: Boolean,
 )
 
 /**

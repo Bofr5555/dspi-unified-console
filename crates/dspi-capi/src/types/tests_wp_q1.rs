@@ -1917,6 +1917,7 @@ fn wp_q1_input_records_round_trip() {
         fft_order: 12,
         avg_ms: 300,
         peak_decay_db_s: 20,
+        watching: false,
     };
     assert_eq!(r::RtaRequest::from(&RtaRequest::from(&q)), q);
     let s = r::SiggenConfig {

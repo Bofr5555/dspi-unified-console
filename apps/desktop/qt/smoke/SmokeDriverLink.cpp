@@ -325,6 +325,32 @@ void SmokeDriver::testLink() {
                   && b->selectedSerial() == hubSerial && app->phase() == QLatin1String("bound") && b->writable());
         // -- WP QD18 --
         testHostAudioOnHub();
+        // -- WP CG31 -- Another client's channel delay reaches the open output page
+        // (hw-win F1: `dspi --midi set ch.delay i2s.1.l 1`). The device notifies only
+        // the channel's delays[] entry, not the output record the page reads.
+        {
+            QMetaObject::invokeMethod(root(), "selectOutput", Q_ARG(QVariant, 0));
+            spin(200);
+            QQuickItem *page = nullptr;
+            for (QQuickItem *i : root()->findChildren<QQuickItem *>())
+                if (QString::fromLatin1(i->metaObject()->className()).startsWith(QLatin1String("ChannelSettingsView"))) page = i;
+            check("CG31: the output page is open", page && page->isVisible());
+            const auto change = [&](float ms) {
+                QByteArray bytes(reinterpret_cast<const char *>(&ms), 4);   // little-endian, as the wire
+                const int off = OFF_DELAYS + b->numInputChannels() * 4;
+                return open.fault("change " + QByteArray::number(off) + ' ' + bytes.toHex() + " 10 30583");
+            };
+            const auto shows = [&](float ms) {
+                return qAbs(b->outputDelayMS(0) - ms) < 0.001f && page && qAbs(page->property("delayMS").toDouble() - ms) < 0.001;
+            };
+            const float before = b->outputDelayMS(0);
+            check("CG31: the hub takes another client's channel delay", change(before + 1.0f));
+            check("CG31: the output page shows it", waitFor(3000, [&] { return shows(before + 1.0f); }));
+            check("CG31: and so does the channel's delay", qAbs(b->channelDelayMS(root()->property("openChannelId").toInt()) - (before + 1.0f)) < 0.001f);
+            check("CG31: the hub takes it back", change(before));
+            check("CG31: the page follows back", waitFor(3000, [&] { return shows(before); }));
+            QMetaObject::invokeMethod(root(), "selectOverview");
+        }
         // Nothing here starts the analyser: binding does, and a drop starts it again
         const auto wait = [this](int ms, const std::function<bool()> &done) { return waitFor(ms, done); };
         RtaRequest request = {};

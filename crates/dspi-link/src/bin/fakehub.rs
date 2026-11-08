@@ -23,6 +23,8 @@
 //! Each command is answered on stdout once it has taken effect: `ok`, or `unknown`.
 //!   revoke                   revoke every token (the hub closes with 4002)
 //!   close CODE               close every session with this code
+//!   change OFF HEX SRC ORIGIN   another client's write (WP CG31): the bytes HEX at
+//!                            image offset OFF, notified with source SRC from session ORIGIN
 //!
 //! Advertise it for discovery with avahi on the same host, e.g.
 //!   avahi-publish -s "Fake Hub" _dspi._tcp 11915 v=1 hid=<id> kind=console auth=none n=1
@@ -72,9 +74,24 @@ fn fault(hub: &FakeHub, line: &str) -> bool {
             Ok(c) => hub.close_all(c),
             Err(_) => return false,
         },
+        // -- WP CG31 --
+        ["change", off, hex, src, origin] => match (off.parse::<u16>(), hex_bytes(hex), src.parse(), origin.parse()) {
+            (Ok(o), Some(v), Ok(s), Ok(from)) if !v.is_empty() && usize::from(o) + v.len() <= hub.image().len() => {
+                hub.external_change(o, &v, s, from)
+            }
+            _ => return false,
+        },
         _ => return false,
     }
     true
+}
+
+// -- WP CG31 --
+fn hex_bytes(hex: &str) -> Option<Vec<u8>> {
+    if !hex.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok()).collect()
 }
 
 fn main() {

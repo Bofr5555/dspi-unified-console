@@ -1193,7 +1193,7 @@ open class FakeDspiCore(
     // ═══ Spectrum analyser ═══════════════════════════════════════════════
 
     private var rtaStarted = false
-    private var rtaRequest = RtaRequest(0, 0, false, 10, 300, 12)
+    private var rtaRequest = RtaRequest(0, 0, false, 10, 300, 12, false)
     private var rtaVersion = 0L
     private var rtaTelemetry = 0L
     private var rtaTimer: Timer? = null

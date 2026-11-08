@@ -1033,6 +1033,7 @@ internal fun se.bofr.dspi.ffi.uniffi.RtaRequest.toDomain() =
         fftOrder = fftOrder.toInt(),
         avgMs = avgMs.toInt(),
         peakDecayDbS = peakDecayDbS.toInt(),
+        watching = watching,
     )
 
 internal fun RtaRequest.toFfi() =
@@ -1043,6 +1044,7 @@ internal fun RtaRequest.toFfi() =
         fftOrder = fftOrder.toUByte(),
         avgMs = avgMs.toUShort(),
         peakDecayDbS = peakDecayDbS.toUByte(),
+        watching = watching,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.RtaCapsInfo.toDomain() =

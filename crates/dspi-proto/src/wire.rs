@@ -125,6 +125,65 @@ impl WireHeader {
     }
 }
 
+// -- WP CG31 --
+/// `WireOutputChannel`: 12 bytes, `delay_ms` at 8.
+const OUTPUT_LEN: usize = 12;
+const OUTPUT_DELAY: usize = 8;
+
+/// The image's twins: `(a, b, both_ways)`, the offsets of two 4-byte floats
+/// that hold one value. An output's delay is also its wire channel's delay
+/// (`delays[inputs + o]`), and the legacy `global.preamp_gain_db` is input
+/// 0's preamp (it only follows `preamp[0]`: the device never notifies it).
+fn twins(raw: &[u8]) -> Vec<(usize, usize, bool)> {
+    let count = |at: usize| usize::from(raw.get(at).copied().unwrap_or(0));
+    let (inputs, outputs) = (count(4), count(3));
+    let max_channels = generated::wire::WIRE_MAX_CHANNELS as usize;
+    let max_outputs = generated::wire::WIRE_MAX_OUTPUT_CHANNELS as usize;
+    let mut v: Vec<_> = (0..outputs.min(max_outputs))
+        .filter(|o| inputs + o < max_channels)
+        .map(|o| {
+            let delay = generated::OFF_DELAYS + (inputs + o) * 4;
+            let output = generated::OFF_OUTPUTS + o * OUTPUT_LEN + OUTPUT_DELAY;
+            (delay, output, true)
+        })
+        .collect();
+    v.push((generated::OFF_PREAMP, generated::OFF_GLOBAL, false));
+    v
+}
+
+/// After `len` bytes at `offset` of the image `raw` were replaced (a
+/// `PARAM_CHANGED` patch), copy each value the range covers whole to its
+/// twin, as the firmware keeps them in step on the device: `REQ_SET_DELAY`
+/// on an output's channel notifies only `delays[]`, `REQ_SET_PREAMP_CH`
+/// only `preamp[]`. True if a twin changed. [`BulkPacket::patch`] does this
+/// itself; a host that patches its own copy of the image calls it.
+pub fn sync_twins(raw: &mut [u8], offset: usize, len: usize) -> bool {
+    let Some(end) = offset.checked_add(len) else {
+        return false;
+    };
+    let covered = |at: usize| offset <= at && at + 4 <= end;
+    let mut changed = false;
+    for (a, b, both_ways) in twins(raw) {
+        let (from, to) = if covered(a) {
+            (a, b)
+        } else if both_ways && covered(b) {
+            (b, a)
+        } else {
+            continue;
+        };
+        if from.max(to) + 4 > raw.len() {
+            continue;
+        }
+        let mut v = [0u8; 4];
+        v.copy_from_slice(&raw[from..from + 4]);
+        if raw[to..to + 4] != v {
+            raw[to..to + 4].copy_from_slice(&v);
+            changed = true;
+        }
+    }
+    changed
+}
+
 /// A validated full bulk snapshot.
 ///
 /// Holds the raw bytes so that a read-modify-write cycle preserves every field
@@ -180,6 +239,8 @@ impl BulkPacket {
             return None;
         }
         self.raw[offset..end].copy_from_slice(bytes);
+        // -- WP CG31 --
+        sync_twins(&mut self.raw, offset, bytes.len());
         Self::section_at(offset)
     }
 
@@ -723,6 +784,40 @@ mod tests {
             &p.section("limiter").unwrap()[4..8],
             &(-3.0f32).to_le_bytes()
         );
+    }
+
+    // -- WP CG31 --
+    /// A patch of one twin moves the other; a range that covers only part of
+    /// a value, or no twin at all, moves nothing.
+    #[test]
+    fn wp_cg31_a_patch_keeps_the_images_twins_in_step() {
+        let mut raw = valid();
+        let (inputs, outputs) = (usize::from(raw[4]), usize::from(raw[3]));
+        assert!(outputs > 0, "the fixture has outputs");
+        let delay = generated::OFF_DELAYS + inputs * 4;
+        let out_delay = generated::OFF_OUTPUTS + 8;
+        let before = raw.clone();
+        assert!(!sync_twins(&mut raw, delay, 2));
+        assert!(!sync_twins(&mut raw, generated::OFF_OUTPUTS + 4, 4));
+        assert!(!sync_twins(&mut raw, generated::OFF_GLOBAL, 4));
+        assert!(
+            !sync_twins(&mut raw, generated::OFF_DELAYS, 4),
+            "an input's delay"
+        );
+        assert_eq!(raw, before);
+
+        let mut p = BulkPacket::decode(valid()).unwrap();
+        p.patch(delay, &1.5f32.to_le_bytes()).unwrap();
+        assert_eq!(
+            &p.as_bytes()[out_delay..out_delay + 4],
+            &1.5f32.to_le_bytes()
+        );
+        p.patch(out_delay, &2.0f32.to_le_bytes()).unwrap();
+        assert_eq!(&p.as_bytes()[delay..delay + 4], &2.0f32.to_le_bytes());
+        p.patch(generated::OFF_PREAMP, &(-1.0f32).to_le_bytes())
+            .unwrap();
+        let g = generated::OFF_GLOBAL;
+        assert_eq!(&p.as_bytes()[g..g + 4], &(-1.0f32).to_le_bytes());
     }
 
     #[test]

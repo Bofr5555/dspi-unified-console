@@ -116,6 +116,8 @@ void RtaViewBase::itemChange(ItemChange change, const ItemChangeData &value) {
 
 // Subscribed only while shown: hidden views cost the device nothing
 // -- WP QD19 -- With a request, it asks for that instead of what it draws
+// -- WP CG30 -- Also with no channel: a view on screen watches, so it draws
+// what another console analyses (the controller asks for nothing of its own)
 void RtaViewBase::resubscribe() {
     int tap = m_tap, mask = channelMask();
     bool bins = wantsBins();
@@ -127,7 +129,7 @@ void RtaViewBase::resubscribe() {
             if (c.toInt() >= 0 && c.toInt() < 16) mask |= 1 << c.toInt();
         bins = binsForOne() && qPopulationCount(uint(mask)) == 1;
     }
-    const bool want = m_rta && m_active && isVisible() && mask;
+    const bool want = m_rta && m_active && isVisible();
     if (want) {
         if (m_sub) m_rta->update(m_sub, tap, mask, bins);
         else m_sub = m_rta->subscribe(tap, mask, bins);

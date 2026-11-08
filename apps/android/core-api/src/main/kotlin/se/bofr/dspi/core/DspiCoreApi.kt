@@ -2222,6 +2222,11 @@ interface DspiCoreApi : AutoCloseable {
      * A request that changes what this console asks for takes the analyser
      * back from a console being followed ([`Self::rta_get_ownership`]).
      * Releasing it (mask 0) and asking for the same thing again does not.
+     *
+     * Mask 0 with `watching` set (WP CG30): a view shows the analyser with
+     * no channel chosen. It asks for nothing of its own, so while driving
+     * the analyser is released as with mask 0; while following, the
+     * device's configuration is still polled and in the snapshot.
      */
     fun rtaSetRequest(request: RtaRequest)
 
