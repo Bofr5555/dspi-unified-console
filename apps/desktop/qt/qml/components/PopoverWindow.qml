@@ -1,5 +1,6 @@
 import QtQuick 2.15
 import QtQuick.Window 2.15
+import DSPi 1.0
 
 // A popover in a window of its own, so it can reach past the edge of the
 // window it opens from, as macOS popovers do: the dark rounded card with a
@@ -15,8 +16,10 @@ import QtQuick.Window 2.15
 // lower part, and on platforms other than Wayland the catcher covers the whole
 // parent window. Each has its own area over the anchor for that (anchorInPopup,
 // anchorInParent). They have no hover: the window sets the cursor from the item
-// under the pointer whenever the pointer enters or moves, so neither needs a
-// wiggle after the window appears. The anchors are all hand-cursor buttons.
+// under the pointer whenever the pointer enters or moves. Qt 6.9 and newer also
+// do when such an item appears under a still pointer; for Qt 6.5 to 6.8 (the
+// AppImage, Debian 13) the parent window gets its last pointer move once more
+// after the popover shows. The anchors are all hand-cursor buttons.
 Window {
     id: pw
     default property alias content: card.data
@@ -51,9 +54,14 @@ Window {
         }
         x = Math.round(px)
         y = Math.round(py)
+        var pointerHere = Qt.platform.pluginName !== "wayland" && parentPointer.pointerInWindow()   // -- WP QD40 --
         show()
         // A Wayland popup takes the keyboard with its grab
         if (Qt.platform.pluginName !== "wayland") requestActivate()
+        // -- WP QD40 -- The catcher's area over the anchor sets the hand at once:
+        // once the press or key that opened it is through (Qt 6.8 sets the cursor
+        // again at the end of a release)
+        if (pointerHere) Qt.callLater(function () { parentPointer.resendPointer() })
     }
 
     // The anchor toggles the popover. A press on the anchor while it is open
@@ -110,6 +118,9 @@ Window {
         visible: enabled
         onPressed: pw.close()
         Accessible.ignored: true   // -- WP QD22 -- a press outside closes; Escape does too
+
+        // -- WP QD40 -- The parent window's pointer, for openBelow
+        PointerTracker { id: parentPointer }
 
         // A MouseArea on top shows its own cursor, so the anchor needs one here
         MouseArea {

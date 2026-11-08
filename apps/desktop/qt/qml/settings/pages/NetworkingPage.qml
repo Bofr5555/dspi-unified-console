@@ -354,7 +354,7 @@ SettingsPage {
     // ── Running in the background (QD12's tray) ──
     SettingsSection {
         title: qsTr("Running in the Background")
-        footnote: tray.trayAvailable ? "" : qsTr("This desktop shows no tray icons right now, so closing the window quits.")
+        footnote: tray.trayAvailable ? "" : qsTr("No tray icon can be shown right now, so closing the window quits.")
         SettingsSwitchRow {
             objectName: "networkingShowInTray"
             title: qsTr("Show in the tray")

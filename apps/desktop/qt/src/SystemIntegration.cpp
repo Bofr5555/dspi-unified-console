@@ -117,13 +117,13 @@ public:
     QString set(bool on, const QString &program) override {
         if (!on) {
             if (QFile::exists(file()) && !QFile::remove(file()))
-                return QStringLiteral("Could not remove %1.").arg(file());
+                return QCoreApplication::translate("SystemIntegration", "Could not remove %1.").arg(file());
             return QString();
         }
-        if (!QDir().mkpath(m_dir)) return QStringLiteral("Could not create %1.").arg(m_dir);
+        if (!QDir().mkpath(m_dir)) return QCoreApplication::translate("SystemIntegration", "Could not create %1.").arg(m_dir);
         QSaveFile f(file());
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
-            return QStringLiteral("Could not write %1: %2").arg(file(), f.errorString());
+            return QCoreApplication::translate("SystemIntegration", "Could not write %1: %2").arg(file(), f.errorString());
         const QString entry = QStringLiteral("[Desktop Entry]\n"
                                              "Type=Application\n"
                                              "Name=DSPi Console\n"
@@ -134,7 +134,7 @@ public:
                                              "X-GNOME-Autostart-enabled=true\n")
                                   .arg(execArgument(program));
         f.write(entry.toUtf8());
-        if (!f.commit()) return QStringLiteral("Could not write %1: %2").arg(file(), f.errorString());
+        if (!f.commit()) return QCoreApplication::translate("SystemIntegration", "Could not write %1: %2").arg(file(), f.errorString());
         return QString();
     }
 
@@ -172,8 +172,8 @@ public:
         else m_key->remove(QLatin1String(kRunName));
         m_key->sync();
         if (m_key->status() != QSettings::NoError)
-            return on ? QStringLiteral("Could not add the Console to the programs that start at sign-in.")
-                      : QStringLiteral("Could not remove the Console from the programs that start at sign-in.");
+            return on ? QCoreApplication::translate("SystemIntegration", "Could not add the Console to the programs that start at sign-in.")
+                      : QCoreApplication::translate("SystemIntegration", "Could not remove the Console from the programs that start at sign-in.");
         return QString();
     }
 
@@ -198,13 +198,13 @@ public:
         context.Reason.SimpleReasonString = text.data();
         HANDLE request = PowerCreateRequest(&context);
         if (request == INVALID_HANDLE_VALUE) {
-            done(QStringLiteral("Windows did not take the request (error %1).").arg(GetLastError()));
+            done(QCoreApplication::translate("SystemIntegration", "Windows did not take the request (error %1).").arg(GetLastError()));
             return;
         }
         if (!PowerSetRequest(request, PowerRequestSystemRequired)) {
             const DWORD error = GetLastError();
             CloseHandle(request);
-            done(QStringLiteral("Windows did not take the request (error %1).").arg(error));
+            done(QCoreApplication::translate("SystemIntegration", "Windows did not take the request (error %1).").arg(error));
             return;
         }
         m_request = request;
@@ -287,8 +287,8 @@ private:
                 done(QString());
                 return;
             }
-            done(QStringLiteral("Neither the desktop portal nor logind took the request (%1; %2).")
-                     .arg(portalError, reply.isError() ? reply.error().message() : QStringLiteral("no lock")));
+            done(QCoreApplication::translate("SystemIntegration", "Neither the desktop portal nor logind took the request (%1; %2).")
+                     .arg(portalError, reply.isError() ? reply.error().message() : QCoreApplication::translate("SystemIntegration", "no lock")));
         });
     }
 

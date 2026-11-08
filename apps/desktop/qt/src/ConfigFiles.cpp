@@ -35,7 +35,7 @@ static QVariantMap coreApply(const std::function<uint32_t(char *, uint32_t)> &ca
     QByteArray buf(capacity, '\0');
     const uint32_t needed = call(buf.data(), uint32_t(buf.size()));
     if (needed > uint32_t(buf.size()))
-        return { { "ok", false }, { "error", "The reply was too long to read, but the device may have changed." } };
+        return { { "ok", false }, { "error", QCoreApplication::translate("ConfigFiles", "The reply was too long to read, but the device may have changed.") } };
     buf.truncate(int(qMax<uint32_t>(1, needed) - 1));
     return jsonMap(buf);
 }
@@ -43,7 +43,7 @@ static QVariantMap coreApply(const std::function<uint32_t(char *, uint32_t)> &ca
 bool ConfigFiles::exportRefused(const QByteArray &text, QVariantMap &result) {
     const QVariantMap reply = jsonMap(text);
     if (!text.isEmpty() && (!reply.contains("ok") || reply.value("ok").toBool())) return false;
-    result = { { "ok", false }, { "error", reply.value("error", "No device connected.") } };
+    result = { { "ok", false }, { "error", reply.value("error", tr("No device connected.")) } };
     return true;
 }
 
@@ -52,7 +52,7 @@ ConfigFiles::ConfigFiles(DSPiBridge *bridge, QObject *parent) : QObject(parent),
 bool ConfigFiles::readFile(const QUrl &file, QByteArray &out, QString &error) {
     QFile f(file.toLocalFile());
     if (!f.open(QIODevice::ReadOnly)) {
-        error = "The file could not be opened: " + f.errorString() + ".";
+        error = tr("The file could not be opened: %1.").arg(f.errorString());
         return false;
     }
     out = f.readAll();
@@ -62,7 +62,7 @@ bool ConfigFiles::readFile(const QUrl &file, QByteArray &out, QString &error) {
 bool ConfigFiles::writeFile(const QUrl &file, const QByteArray &data, QString &error) {
     QSaveFile f(file.toLocalFile());
     if (!f.open(QIODevice::WriteOnly) || f.write(data) != data.size() || !f.commit()) {
-        error = "The file could not be written: " + f.errorString() + ".";
+        error = tr("The file could not be written: %1.").arg(f.errorString());
         return false;
     }
     return true;
@@ -71,7 +71,7 @@ bool ConfigFiles::writeFile(const QUrl &file, const QByteArray &data, QString &e
 // ── Device configuration ──
 
 QVariantMap ConfigFiles::exportConfiguration(const QUrl &file) {
-    if (!m_bridge->connected()) return { { "ok", false }, { "error", "No device connected." } };
+    if (!m_bridge->connected()) return { { "ok", false }, { "error", tr("No device connected.") } };
     const QByteArray name = QFileInfo(file.toLocalFile()).completeBaseName().toUtf8();
     const QByteArray version = QCoreApplication::applicationVersion().toUtf8();
     const uint8_t links = m_bridge->inputLinks();
@@ -93,8 +93,8 @@ QVariantMap ConfigFiles::exportConfiguration(const QUrl &file) {
     }
     for (const QJsonValue &x : doc["matrix"].toArray()) points += x["enabled"].toBool();
     return { { "ok", true },
-             { "message", QString("%1 channels, %2 active EQ bands, %3 crossover bands, %4 crosspoints.")
-                              .arg(channels).arg(bands).arg(xover).arg(points) } };
+             { "message", tr("%1 channels, %2 active EQ bands, %3 crossover bands, %4 crosspoints.")
+                              .arg(QString::number(channels), QString::number(bands), QString::number(xover), QString::number(points)) } };
 }
 
 QVariantMap ConfigFiles::inspectConfiguration(const QUrl &file) {
@@ -113,7 +113,7 @@ QVariantMap ConfigFiles::inspectConfiguration(const QUrl &file) {
 }
 
 QVariantMap ConfigFiles::importConfiguration(const QUrl &file, bool volumes, bool hardware) {
-    if (!m_bridge->connected()) return { { "ok", false }, { "error", "No device connected." } };
+    if (!m_bridge->connected()) return { { "ok", false }, { "error", tr("No device connected.") } };
     QString error;
     if (m_configText.isEmpty() && !readFile(file, m_configText, error)) return { { "ok", false }, { "error", error } };
     const uint32_t options = (volumes ? 1u : 0u) | (hardware ? 2u : 0u);
@@ -132,7 +132,7 @@ QVariantMap ConfigFiles::importConfiguration(const QUrl &file, bool volumes, boo
 // ── Filter files ──
 
 QVariantMap ConfigFiles::exportFilters(const QUrl &file) {
-    if (!m_bridge->connected()) return { { "ok", false }, { "error", "No device connected." } };
+    if (!m_bridge->connected()) return { { "ok", false }, { "error", tr("No device connected.") } };
     const uint8_t inputs = uint8_t(m_bridge->liveInputCount());
     QByteArray text = coreText([&](char *buf, uint32_t len) {
         return dspi_filters_export(m_bridge->core(), inputs, buf, len);
@@ -153,12 +153,12 @@ QVariantMap ConfigFiles::inspectFilters(const QUrl &file) {
     }));
     m["ok"] = !m.value("channels").toList().isEmpty();
     if (!m["ok"].toBool())
-        m["error"] = "No filters this device can use were found in the file.";
+        m["error"] = tr("No filters this device can use were found in the file.");
     return m;
 }
 
 QVariantMap ConfigFiles::importFilters(const QVariantList &wires) {
-    if (!m_bridge->connected()) return { { "ok", false }, { "error", "No device connected." } };
+    if (!m_bridge->connected()) return { { "ok", false }, { "error", tr("No device connected.") } };
     QByteArray chosen;
     for (const QVariant &w : wires) chosen.append(char(w.toInt()));
     QVariantMap r = coreApply([&](char *buf, uint32_t len) {

@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQml 2.15
 import "../../components"
+import "../../components/Format.js" as Format
 
 // The control cards (Control Surfaces page) or the aux output cards
 // (Auxiliary Outputs page): both are binding slots. Each card edits a draft;
@@ -331,7 +332,7 @@ Column {
         var parts = []
         if (remotes > 0) parts.push(remotes === 1 ? qsTr("%1 remote key").arg(remotes) : qsTr("%1 remote keys").arg(remotes))
         if (macros.length > 0) parts.push(macros.length === 1 ? qsTr("the macro %1").arg(macros.join(", ")) : qsTr("the macros %1").arg(macros.join(", ")))
-        return parts.length === 2 ? qsTr("Also driven by %1 and %2.").arg(parts[0]).arg(parts[1])
+        return parts.length === 2 ? Format.fmt(qsTr("Also driven by %1 and %2."), [parts[0], parts[1]])
              : parts.length === 1 ? qsTr("Also driven by %1.").arg(parts[0]) : ""
     }
 

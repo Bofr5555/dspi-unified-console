@@ -171,7 +171,7 @@ void TrayController::makeIcon()
     m_open = named("trayOpen");
     connect(m_open, &QAction::triggered, this, &TrayController::restore);
     m_share = named("trayShare");
-    m_share->setText(QStringLiteral("Share on This Network"));
+    m_share->setText(tr("Share on This Network"));
     m_share->setCheckable(true);
     connect(m_share, &QAction::triggered, this, [this](bool on) {
         if (s_hub) s_hub->setSharing(on);
@@ -186,7 +186,7 @@ void TrayController::makeIcon()
     });
     m_menu->addSeparator();
     auto *quitAction = named("trayQuit");
-    quitAction->setText(QStringLiteral("Quit DSPi Console"));
+    quitAction->setText(tr("Quit DSPi Console"));
     connect(quitAction, &QAction::triggered, this, &TrayController::quit);
 
     m_icon = new QSystemTrayIcon(this);
@@ -216,11 +216,12 @@ void TrayController::removeIcon()
 
 QString TrayController::statusLine(const TrayHub::State *hub) const
 {
-    const QString device = m_bridge->connected() ? QStringLiteral("DSPi connected") : QStringLiteral("No DSPi connected");
-    if (!hub) return device;
-    if (!hub->running) return device + QStringLiteral(", not sharing");
-    return device + QStringLiteral(", sharing, ")
-        + (hub->clients == 1 ? QStringLiteral("1 client") : QStringLiteral("%1 clients").arg(hub->clients));
+    // -- WP QD40 -- Each line whole, for a translation
+    const bool on = m_bridge->connected();
+    if (!hub) return on ? tr("DSPi connected") : tr("No DSPi connected");
+    if (!hub->running) return on ? tr("DSPi connected, not sharing") : tr("No DSPi connected, not sharing");
+    if (hub->clients == 1) return on ? tr("DSPi connected, sharing, 1 client") : tr("No DSPi connected, sharing, 1 client");
+    return (on ? tr("DSPi connected, sharing, %1 clients") : tr("No DSPi connected, sharing, %1 clients")).arg(hub->clients);
 }
 
 void TrayController::refreshMenu()
@@ -231,17 +232,17 @@ void TrayController::refreshMenu()
     if (hasHub) state = s_hub->trayState();
 
     m_status->setText(statusLine(hasHub ? &state : nullptr));
-    m_icon->setToolTip(QStringLiteral("DSPi Console: ") + m_status->text());
+    m_icon->setToolTip(tr("DSPi Console: %1").arg(m_status->text()));
     m_address->setText(state.address);
     m_address->setVisible(state.running && !state.address.isEmpty());
-    m_pairingCode->setText(QStringLiteral("Pairing code ") + state.pairingCode);
+    m_pairingCode->setText(tr("Pairing code %1").arg(state.pairingCode));
     m_pairingCode->setVisible(!state.pairingCode.isEmpty());
-    m_open->setText(m_hidden ? QStringLiteral("Open DSPi Console") : QStringLiteral("Show DSPi Console"));
+    m_open->setText(m_hidden ? tr("Open DSPi Console") : tr("Show DSPi Console"));
     m_share->setVisible(hasHub);
     m_share->setChecked(state.sharing);
     m_pair->setVisible(hasHub && state.pinAccess);
     m_pair->setEnabled(state.running);
-    m_pair->setText(state.pairingCode.isEmpty() ? QStringLiteral("Allow a New Client...") : QStringLiteral("Cancel Pairing"));
+    m_pair->setText(state.pairingCode.isEmpty() ? tr("Allow a New Client...") : tr("Cancel Pairing"));
     if (state.running != m_iconSharing) {
         m_iconSharing = state.running;
         m_icon->setIcon(trayIcon(m_iconSharing));

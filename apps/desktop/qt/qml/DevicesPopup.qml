@@ -384,7 +384,7 @@ Popup {
                 color: pop.warning
             }
             Note {
-                text: qsTr("A DSPi on another computer appears here once that Console shares it (Settings > Networking there), as does one on a DSPi Link bridge.")
+                text: qsTr("A DSPi that another Console shares (Settings > Networking there) appears here, as does one on a DSPi Link bridge.")
             }
         }
     }

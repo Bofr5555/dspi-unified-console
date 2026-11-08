@@ -61,7 +61,7 @@ bool DemoController::enter() {
     if (!dspi_open_demo(core) || !dspi_fetch_all(core)) {
         dspi_disconnect(core);
         qWarning() << "DSPi: could not open the demo device";
-        m_failure = QStringLiteral("The demo could not be opened.");
+        m_failure = tr("The demo could not be opened.");
         emit changed();
         return false;
     }

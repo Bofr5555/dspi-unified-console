@@ -433,7 +433,7 @@ int PeqEditorItem::firstFreeBand() const {
 
 void PeqEditorItem::createBand(float freq, float gain, int type, float q) {
     int b = firstFreeBand();
-    if (b < 0) { showMessage(QString("All %1 bands in use").arg(BANDS_PER_CHANNEL)); return; }
+    if (b < 0) { showMessage(tr("All %1 bands in use").arg(BANDS_PER_CHANNEL)); return; }
     FilterParams p = m_bands[b];
     p.filter_type = uint8_t(type);
     p.bypass = false;
@@ -799,7 +799,7 @@ void PeqEditorItem::mousePressEvent(QMouseEvent *e) {
     } else if (m_pressMods & Qt::ControlModifier) {
         // Ctrl-click: a card to pick the new band's shape, opened at once
         m_mode = Idle;
-        if (firstFreeBand() < 0) { showMessage(QString("All %1 bands in use").arg(BANDS_PER_CHANNEL)); return; }
+        if (firstFreeBand() < 0) { showMessage(tr("All %1 bands in use").arg(BANDS_PER_CHANNEL)); return; }
         m_cardOpen = true;
         m_cardPoint = p;
         setHover(-1, -1);

@@ -202,6 +202,7 @@
         <file>qml/components/ToggleSwitch.qml</file>
         <file>qml/components/StyledSlider.qml</file>
         <file>qml/components/StyledComboBox.qml</file>
+        <file>qml/components/Format.js</file>
         <file>qml/qmldir</file>
         <file>qml/components/SegmentedControl.qml</file>
         <file>qml/components/SectionLabel.qml</file>

@@ -136,6 +136,21 @@ void SmokeDriver::testPairMap() {
     spin(50);
     check("QD2: Custom opens the editor", editor->isVisible());
     check("QD2: the editor starts from the device's map", win->property("draftValid").toBool() && !warning->isVisible());
+    // -- WP QD40 -- (QD23-1) The menus show "Out N": sized for that, not for the
+    // longest option, so in English they keep their 92 px and stay on the card
+    {
+        const QRectF card = editor->mapRectToScene(QRectF(0, 0, editor->width(), editor->height()));
+        bool inside = true, plain = true;
+        for (int p = 0; p < ext->pairCount(); ++p)
+            for (const QString &name : { QStringLiteral("pairLeft%1").arg(p), QStringLiteral("pairRight%1").arg(p) }) {
+                QQuickItem *box = findItem(editor, name);
+                if (!box) { inside = plain = false; continue; }
+                inside = inside && card.contains(box->mapRectToScene(QRectF(0, 0, box->width(), box->height())));
+                plain = plain && qAbs(box->width() - 92) < 0.5;
+            }
+        check("QD40: the pair menus stay on the editor card", inside);
+        check("QD40: the pair menus keep their English width", plain);
+    }
     setOutput(0, "left", 7);
     setOutput(3, "right", 0);
     spin(50);
