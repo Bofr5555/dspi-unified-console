@@ -95,3 +95,45 @@ put on the phone by these runs (**unclear** whether the owner ran it before the 
 - **Once they ship:** the LK2 Link changes (first meter, stall tolerance, dead-hub close) on the phone; AN15's phone run of the
   R8 build (AN22); AN20's TalkBack pass. A user report of 0.12.0 over the ESP32 bridge (meters after ~2 min) led to LK1 and LK2;
   it has not been reproduced on this phone.
+
+## Phone checklist for the next Android release (AN15 + AN20 + LK2), from review c6o, 2026-11-08
+
+Run on a release build of main (aa721b13 or later). Owed by the owner; not yet run.
+
+AN15 (R8 minified release, real upload key, side by side with `applicationIdSuffix ".hil"`):
+1. USB: plug the DSPi, chooser, connect, read state, write (volume, crossfeed), replug 3x; logcat has no
+   `UnsatisfiedLink`/`NoSuchMethod`/`ClassNotFound`/`FATAL`.
+2. Firmware page: pick a .uf2, let the guard judge it, cancel before flashing (or flash the known candidate if intended).
+3. Presets: export and import a preset file; AutoEQ database update (HTTPS) and apply a profile.
+4. DSPi Link to the Mac hub: pair, write, disconnect.
+5. Any error dialog text: no one-letter class names (AN15-1, the keepnames rule rides with AN22).
+
+AN20 (TalkBack on in Settings > Accessibility; demo mode is enough for most):
+6. Home: channel rows read name and "Level, -N dB" and change with audio; crossfeed/loudness/leveller/psybass/bypass icons say
+   "switch, on/off", double-tap toggles, double-tap-and-hold opens the tool ("Open ..."); Settings, Matrix, Stats are buttons.
+   **All 8 icons visible in one row at 360 dp width or display size "largest"** (AN20-2).
+7. Volume: "User Volume, -12.0 dB" / Master "... dB" or "Muted"; volume keys or swipe step it and the device follows.
+8. Channel page: Preamp, Gain, Delay sliders read name and value; PEQ row checkboxes "Band N, checkbox, checked"; typed fields
+   "Preamp, -3.0 dB, double-tap to Edit".
+9. PEQ graph: bands in frequency order ("Band 2, Bell, 200.0 Hz, -2.00 dB, Q 0.700"); the actions menu has Increase/Decrease
+   frequency, gain, Q and Bypass band, each audible and shown in the band list; double-tap selects; a plain drag with TalkBack
+   off still works.
+10. PEQ chip: Freq/Gain/Width rows with Increase/Decrease; "Shape, Bell"; "Bypass band N". The chip is unchanged in size (owner).
+11. Graph height strip: "Graph height, 250 points", Taller/Shorter.
+12. Matrix, phone pages and landscape grid: "USB 1 L to OUT1, switch, Connected / Not connected", "Gain, USB 1 L to OUT1",
+    "Invert phase, ...", "Enable OUT1. ...", "Mute OUT1". **The grid rows are main's 84 dp again; nothing should look different.**
+13. Meters elsewhere: Stats > CPU "Core 0 load, 40%"; tool pages: sliders read title and value; chips read "1, switch, on" and,
+    when the channel is named, "1, USB 1 L" (AN20-3). **Chips stay on one line as before.**
+14. Help tooltips: a help-tipped caption offers "Help: ..." in the actions menu; long-press without TalkBack still shows it.
+15. Signal generator: tiles are radio buttons; output chips "OUT1, On / Off / On, polarity inverted"; All/None buttons.
+16. Settings > Overview: pin grid "GPIO 12, <role>" or "Free"; double-tap opens the claiming page.
+17. Contrast on the dark theme by eye; TalkBack focus outline visible on graph handles and matrix dots.
+18. Largest system font: nothing important clipped on Home, channel page, matrix.
+19. **Layout rule check: with TalkBack off, Home, a channel page, a tool page and the matrix look exactly as 0.12.0 did**
+    (no taller rows, no wrapped chips, no larger pills).
+
+LK2 (Link meters over the real ESP32 hub, not the fake hub):
+20. Connect over Link: meters move at once (before the start-up reads finish), no grey/frozen meters while cs/siggen load.
+21. Keep the app open 2 minutes idle and during re-reads (open/close pages): the session stays up (5 s pings, 30 s silence rule);
+    walk out of Wi-Fi range for ~20 s and back: no spurious "lost link".
+22. Check the ESP32 does not close the session under POLL load (its 10 s unwritable rule) with meters running on two clients.
