@@ -178,13 +178,16 @@ mod tests_wb6c {
         let st = ok(h, "open", json!({ "kind": "demo" }))["state"].clone();
         let out1 = st["numInputChannels"].as_u64().unwrap();
 
-        // `write` refuses a crossover type: the registry's choices are the PEQ's.
-        let refused = run(
+        // -- review c75 -- `write` takes a crossover type on a crossover band
+        // since WP CG36 (registry::eq_type_fits); WB6c wrote this test when the
+        // registry's PEQ choices refused it.
+        let taken = run(
             h,
             "write",
             json!({ "path": "eq.type", "indices": [out1, 20], "value": { "choice": 35 } }),
         );
-        assert_eq!(refused["ok"], false, "{refused}");
+        assert_eq!(taken["ok"], true, "{taken}");
+        assert_eq!(taken["value"], json!({ "choice": 35 }), "{taken}");
 
         // crossoverType sets it, read back from the mirror; the frequency by `write`.
         let b = ok(
