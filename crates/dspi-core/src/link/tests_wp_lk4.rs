@@ -792,3 +792,64 @@ fn wp_lk4_a_write_that_races_the_probe_is_refused_with_its_reason() {
     drop(inner);
     core.link_close();
 }
+
+/// Records the text frames sent, in order.
+#[derive(Default)]
+struct Sent(Mutex<Vec<String>>);
+
+struct RecordingConnector(Arc<Sent>);
+
+impl WsConnector for RecordingConnector {
+    fn connect(&self, url: &str, protocol: &str) -> std::result::Result<WsPair, LinkError> {
+        let (tx, rx) = TcpConnector::default().connect(url, protocol)?;
+        let tx: Box<dyn WsSender> = Box::new(RecordingSender(tx, Arc::clone(&self.0)));
+        Ok((tx, rx))
+    }
+}
+
+struct RecordingSender(Box<dyn WsSender>, Arc<Sent>);
+
+impl WsSender for RecordingSender {
+    fn send(&self, msg: WsMessage) -> io::Result<()> {
+        if let WsMessage::Text(t) = &msg {
+            guard(&self.1.0).push(t.clone());
+        }
+        self.0.send(msg)
+    }
+    fn ping(&self) -> io::Result<()> {
+        self.0.ping()
+    }
+    fn close(&self, code: u16) {
+        self.0.close(code);
+    }
+}
+
+#[test]
+fn wp_lk4_the_meter_poll_is_asked_for_before_the_snapshot() {
+    let hub = bridge_with(4);
+    let core = DspiCore::new();
+    let sent = Arc::new(Sent::default());
+    core.link_connect_with(
+        hub.url(),
+        "wp-lk4".into(),
+        "test".into(),
+        String::new(),
+        String::new(),
+        Tuning {
+            connector: Arc::new(RecordingConnector(Arc::clone(&sent))),
+            ..Tuning::default()
+        },
+    )
+    .unwrap();
+    wait_until("the device list", || !core.link_devices().is_empty());
+    select(&core).unwrap();
+    let texts = guard(&sent.0).clone();
+    let at = |what: &str| texts.iter().position(|t| t.contains(what));
+    let (subscribe, snapshot) = (at("poll.subscribe"), at("device.snapshot"));
+    assert!(subscribe.is_some() && snapshot.is_some(), "{texts:?}");
+    assert!(subscribe < snapshot, "the poll first: {texts:?}");
+    wait_until("live meters", || {
+        core.fetch_status().is_ok_and(|s| !s.stale)
+    });
+    core.link_close();
+}

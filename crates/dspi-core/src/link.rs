@@ -1069,9 +1069,6 @@ impl DspiCore {
         };
         // Read before the attach: a flap during it counts as one after it.
         let offline_base = client.offline_count(u32::from(handle));
-        let mut transport = LinkTransport::new(client.clone(), handle, &serial);
-        // -- WP LK4 -- the snapshot is on its way while the identity is read
-        transport.prefetch_snapshot();
         // -- WP LK4 -- the meter feed starts as soon as the image says how
         // many channels there are, before the feature reads: `fetch_status`
         // serves it from then on. On the supervisor's own thread (a
@@ -1084,8 +1081,10 @@ impl DspiCore {
         }
         drop(old_side);
         let side = Arc::new(LinkSide::new(client.clone(), handle, &serial, tx.clone()));
+        // A subscription sent ahead is settled by the supervisor, never here
+        let ahead = std::cell::Cell::new(false);
         let mut on_channels = |n: u8| {
-            side.want_meters(crate::connect::meter_len(n), keep_mirror);
+            side.want_meters(crate::connect::meter_len(n), keep_mirror && !ahead.get());
             drop(self.set_meter_path(Some(crate::MeterPath {
                 num_channels: n,
                 side: Arc::clone(&side) as Arc<dyn SideChannel>,
@@ -1104,8 +1103,15 @@ impl DspiCore {
             .and_then(|(i, o)| u8::try_from(i.checked_add(o)?).ok())
             .filter(|n| (1..=crate::consts::MAX_CHANNELS as u8).contains(n));
         if let Some(n) = channels {
+            // Sent ahead of the snapshot: the hub answers in order, so its
+            // POLL frames start before the snapshot's bytes, not behind them
+            side.subscribe_ahead(crate::connect::meter_len(n));
+            ahead.set(true);
             on_channels(n);
         }
+        let mut transport = LinkTransport::new(client.clone(), handle, &serial);
+        // -- WP LK4 -- the snapshot is on its way while the identity is read
+        transport.prefetch_snapshot();
         // The identity too: GET_PLATFORM and the serial are what the hub
         // lists, so the bind reads only the snapshot (the background
         // completion reads GET_PLATFORM and corrects the mirror if it differs)
@@ -2138,6 +2144,9 @@ struct Feed {
     /// The meter feed last went silent on a bridge then: it runs at
     /// [`METER_HZ_STALLED`] until frames have flowed for [`METER_SLOW_FOR`].
     meter_slow_since: Option<Instant>,
+    /// A subscription sent ahead of the bind's snapshot, its grant not read
+    /// yet ([`LinkSide::subscribe_ahead`]), with the rate asked.
+    meter_pending: Option<(dspi_link::client::PendingPolls, u32)>,
     /// A wake-up to the supervisor is on its way.
     kicked: bool,
     /// The channels the analyser wants.
@@ -2295,6 +2304,7 @@ impl LinkSide {
         if !self.polls || self.client.is_closed() {
             return;
         }
+        self.settle_pending(now); // -- WP LK4 --
         let spec = {
             let mut feed = guard(&self.feed);
             feed.kicked = false;
@@ -2368,6 +2378,55 @@ impl LinkSide {
     }
 
     // -- WP LK4 --
+    /// Subscribe the meter block of `len` bytes now without waiting for the
+    /// grant (the supervisor reads it), so the request goes out ahead of
+    /// whatever the caller sends next: the bind's snapshot.
+    fn subscribe_ahead(&self, len: u16) {
+        if !self.polls || self.client.is_closed() {
+            return;
+        }
+        let now = Instant::now();
+        let spec = self.meter_spec(len, false);
+        let Ok(pending) = self.client.poll_subscribe_begin(self.handle, &[spec]) else {
+            return;
+        };
+        let mut feed = guard(&self.feed);
+        feed.meter_len = len;
+        feed.meter_asked = Some(now);
+        feed.meter_subscribed_at = Some(now);
+        feed.meter_pending = Some((pending, spec.hz));
+        if !std::mem::replace(&mut feed.kicked, true) {
+            let _ = self.tx.send(Msg::Kick);
+        }
+    }
+
+    /// Read the grant of [`LinkSide::subscribe_ahead`]'s request, if one is
+    /// pending: the supervisor's, may wait for the answer.
+    fn settle_pending(&self, now: Instant) {
+        let Some((pending, _)) = guard(&self.feed).meter_pending.take() else {
+            return;
+        };
+        let granted = self.client.poll_subscribe_finish(pending);
+        let mut feed = guard(&self.feed);
+        match granted {
+            Ok(g) => match g.iter().find(|g| g.slot == METER_SLOT && g.hz > 0) {
+                Some(g) => {
+                    feed.meter_hz = Some(g.hz);
+                    feed.meter_refused_until = None;
+                }
+                None => {
+                    feed.meter_hz = None;
+                    feed.meter_refused_until = now.checked_add(POLL_RETRY_AFTER);
+                }
+            },
+            Err(e) => {
+                log::info!("the hub did not grant the meter poll: {e}");
+                feed.meter_hz = None;
+                feed.meter_refused_until = now.checked_add(POLL_RETRY_AFTER);
+            }
+        }
+    }
+
     /// Ask for the meter block of `len` bytes now, as a first `fetch_status`
     /// would, so the poll is subscribed before the app's first look: here
     /// with `now` (one round trip), else by a word to the supervisor.
@@ -2606,7 +2665,14 @@ impl SideChannel for LinkSide {
             drop(feed);
             return self.meters_tunnel(len, now);
         }
-        let Some(hz) = feed.meter_hz else {
+        // -- WP LK4 -- frames of a subscription sent ahead count before its
+        // grant is read (the supervisor may be busy with the re-attach)
+        let ahead = feed
+            .meter_pending
+            .as_ref()
+            .filter(|_| feed.latest.contains_key(&METER_SLOT))
+            .map(|p| p.1);
+        let Some(hz) = feed.meter_hz.or(ahead) else {
             if !std::mem::replace(&mut feed.kicked, true) {
                 let _ = self.tx.send(Msg::Kick);
             }

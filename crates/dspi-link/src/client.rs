@@ -170,6 +170,9 @@ struct PendingRequest {
 /// A `device.snapshot` sent with [`LinkClient::snapshot_begin`].
 pub struct PendingSnapshot(PendingRequest);
 
+/// A `poll.subscribe` sent with [`LinkClient::poll_subscribe_begin`].
+pub struct PendingPolls(PendingRequest);
+
 /// Picks the token for the hub whose `hub.id` it is given, after the hello has
 /// said which hub answered (spec 6.2, `tokenFor` in dspi-link-js).
 pub type TokenLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
@@ -1027,6 +1030,29 @@ impl LinkClient {
     pub fn snapshot_finish(&self, pending: PendingSnapshot) -> Result<Snapshot, LinkError> {
         let v = self.request_finish(pending.0)?;
         serde_json::from_value(v).map_err(|e| LinkError::Protocol(e.to_string()))
+    }
+
+    // -- WP LK4 --
+    /// `poll.subscribe` sent now, its grant read later with
+    /// [`LinkClient::poll_subscribe_finish`]: a bind sends it ahead of the
+    /// snapshot, so the hub's first POLL frames come before the snapshot's
+    /// bytes on the stream instead of behind them.
+    pub fn poll_subscribe_begin(&self, handle: u8, polls: &[PollSpec]) -> Result<PendingPolls, LinkError> {
+        let id = self.inner.next_id.fetch_add(1, Ordering::SeqCst);
+        let text = out::poll_subscribe(id, handle, polls);
+        self.request_begin(id, text, self.inner.timing.request_timeout).map(PendingPolls)
+    }
+
+    /// The grant to [`LinkClient::poll_subscribe_begin`]'s request, as
+    /// [`LinkClient::poll_subscribe`] would give it.
+    pub fn poll_subscribe_finish(&self, pending: PendingPolls) -> Result<Vec<PollGrant>, LinkError> {
+        let v = self.request_finish(pending.0)?;
+        v.get("granted")
+            .cloned()
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|e| LinkError::Protocol(e.to_string()))
+            .map(Option::unwrap_or_default)
     }
 
     pub fn poll_subscribe(&self, handle: u8, polls: &[PollSpec]) -> Result<Vec<PollGrant>, LinkError> {
