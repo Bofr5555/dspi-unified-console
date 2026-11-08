@@ -295,6 +295,13 @@ export interface CoreMethods {
    */
   write: { params: { path: string; indices?: number[]; value: ParamValue }; result: ParamValue };
   describe: { params: { path: string }; result: ParamInfo };
+  // -- WP CG36 --
+  /**
+   * Whether enabling `output` (0-based) would collide on Core 1, as the device
+   * answers it, with the core's reason: the words `write` of `out.enable`
+   * refuses such an enable with.
+   */
+  core1Conflict: { params: { output: number }; result: { conflict: boolean; reason: string | null } };
   meters: { params: undefined; result: SystemStatus };
   rtaStart: { params: RtaRequest; result: null };
   rtaStop: { params: undefined; result: null };

@@ -2086,3 +2086,40 @@ pub extern "C" fn dspi_filter_type_name(code: u8, buf: *mut c_char, len: u32) ->
 #[cfg(test)]
 #[path = "fns_misc/tests_wp_cg34.rs"]
 mod tests_wp_cg34;
+
+// -- WP CG36 -- ── Added: a Core 1 conflict, in words ──────────────────
+
+/// `dspi_core1_conflict_reason`'s reply.
+#[derive(Serialize)]
+struct Core1ConflictReply {
+    conflict: bool,
+    reason: Option<String>,
+}
+
+/// Whether enabling `output` would collide on Core 1, as the device answers it
+/// (`dspi_check_core1_conflict`), with the core's reason: the words
+/// `dspi_write_param` refuses such an `out.enable` with
+/// (`DspiCore::core1_conflict_reason`). Writes JSON {ok, conflict, reason},
+/// `reason` null without a conflict, or the failure reply. Returns the length
+/// needed including the NUL, 0 for a null handle.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_core1_conflict_reason(
+    core: *mut FfiCore,
+    output: u8,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        json_reply(
+            c.core1_conflict_reason(output)
+                .map(|reason| Core1ConflictReply {
+                    conflict: reason.is_some(),
+                    reason,
+                }),
+        )
+    })
+}
+
+#[cfg(test)]
+#[path = "fns_misc/tests_wp_cg36.rs"]
+mod tests_wp_cg36;

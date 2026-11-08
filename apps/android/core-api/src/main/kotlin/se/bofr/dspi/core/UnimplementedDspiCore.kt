@@ -428,6 +428,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun coreVregDemoEvent(event: VregDemoEvent, seconds: Long): Unit = throw NotImplementedError("core_vreg_demo_event")
 
+    override fun core1ConflictReason(output: Int): String? = throw NotImplementedError("core1_conflict_reason")
+
     override fun autoeqDatabaseInfo(dbPath: String): AutoEqDatabaseInfo = throw NotImplementedError("autoeq_database_info")
 
     override fun autoeqImport(dbPath: String, data: List<Int>): AutoEqDatabaseInfo = throw NotImplementedError("autoeq_import")

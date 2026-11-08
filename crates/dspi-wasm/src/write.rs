@@ -10,7 +10,7 @@
 //! is refused in the core's words; `describe.routed` says which.
 
 use dspi_core::{DspiCore, write_refusal};
-use dspi_proto::registry::{Kind, ParamDesc, by_path};
+use dspi_proto::registry::{Kind, ParamDesc, by_path, eq_type_fits};
 use serde::Deserialize;
 
 use crate::calls::CallError;
@@ -141,13 +141,47 @@ pub fn write(core: &DspiCore, p: &WriteParams) -> Result<ParamValue, CallError> 
             ),
         ));
     }
-    check_value(d, &p.value)?;
+    // -- WP CG36 -- eq.type's choices depend on the band (a crossover band
+    // takes 32..63), which the registry's list does not say.
+    match (d.path, &p.value) {
+        ("eq.type", ParamValue::Choice(c)) => {
+            eq_type_fits(p.indices.get(1).copied().unwrap_or(0), *c)
+                .map_err(|why| CallError::new("out_of_range", why))?;
+        }
+        _ => check_value(d, &p.value)?,
+    }
     if let Some(why) = write_refusal(d.path) {
         return Err(CallError::new("refused", why));
     }
     // The read-back is the core's: the mirror once its setter is done.
     core.write_param(p.path.clone(), p.indices.clone(), p.value.clone())
-        .map_err(CallError::from)
+        .map_err(|e| {
+            // -- WP CG36 -- a delay past the platform's line is out of
+            // range, in the core's words (which name the limit).
+            let past_line =
+                matches!(d.path, "out.delay" | "ch.delay") && float(&p.value) > core.max_delay_ms();
+            match e {
+                dspi_core::DspiError::InvalidArgument { msg } if past_line => {
+                    CallError::new("out_of_range", msg)
+                }
+                e => CallError::from(e),
+            }
+        })
+}
+
+// -- WP CG36 --
+/// `core1Conflict`'s parameters.
+#[derive(Debug, Deserialize)]
+pub struct Core1Params {
+    pub output: u8,
+}
+
+/// `core1Conflict`: whether enabling `output` would collide on Core 1 (the
+/// device's answer), with the core's reason, which `write` of `out.enable`
+/// refuses with: `{"conflict": bool, "reason": string | null}`.
+pub fn core1_conflict(core: &DspiCore, p: &Core1Params) -> Result<serde_json::Value, CallError> {
+    let reason = core.core1_conflict_reason(p.output)?;
+    Ok(serde_json::json!({ "conflict": reason.is_some(), "reason": reason }))
 }
 
 /// `describe`: what the registry says of a path, for a control's range and
