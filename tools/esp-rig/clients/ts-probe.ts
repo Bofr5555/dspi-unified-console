@@ -72,6 +72,8 @@ interface Stats {
   connects: number;
   closes: string[];
   firstMeterS: number | null;
+  /** WP LK4: the snapshot (every setting) in hand: the reference client's usable UI. */
+  usableS: number | null;
   frames: number;
   freezes: number;
   longestGapMs: number;
@@ -86,6 +88,7 @@ async function session(id: number, deadline: number): Promise<Stats> {
     connects: 0,
     closes: [],
     firstMeterS: null,
+    usableS: null,
     frames: 0,
     freezes: 0,
     longestGapMs: 0,
@@ -126,6 +129,7 @@ async function session(id: number, deadline: number): Promise<Stats> {
       if (!d) throw new Error("no device in 30 s");
       try {
         const snap = await c.snapshot(d.handle);
+        if (st.usableS === null && snap.bulk) st.usableS = (Date.now() - t0) / 1000;
         say(`c${id} snapshot ${snap.bulk?.length ?? 0} bytes`);
       } catch (e) {
         say(`c${id} snapshot failed: ${(e as Error).message}`);
@@ -180,6 +184,7 @@ async function meters(): Promise<void> {
     const rr = st.rereadMs.length ? Math.max(...st.rereadMs) : 0;
     console.log(
       `LK3 summary client=ts c=${i + 1} first_meter=${st.firstMeterS?.toFixed(2) ?? "never"} ` +
+        `usable=${st.usableS?.toFixed(2) ?? "never"} ` +
         `frames=${st.frames} freezes=${st.freezes} longest_gap_ms=${st.longestGapMs} ` +
         `sessions=${st.connects} closes=${st.closes.length} [${st.closes.join(",")}] ` +
         `rereads=${st.rereads} reread_failed=${st.rereadFailed} reread_max_ms=${rr} errors=${st.cmdFailed}`,

@@ -253,6 +253,7 @@ impl DspiCore {
     /// Errors: [`DspiError::Disconnected`]; another transfer failure of the
     /// header (a timeout) as [`DspiError::Transfer`].
     pub fn siggen_fetch_caps(&self) -> Result<SiggenCaps> {
+        self.ensure_probed(); // -- WP LK4 --
         let mut guard = self.lock();
         let conn = guard.conn()?;
         let mut caps = SiggenCaps {

@@ -79,6 +79,7 @@ impl DspiCore {
     /// a read-only connection; `Unsupported` on firmware without source
     /// names; `Disconnected`; `Transfer`, `Denied` or `Locked` from the link.
     pub fn set_input_source_name(&self, source: u8, name: String) -> Result<()> {
+        self.ensure_probed(); // -- WP LK4 --
         // -- WP CG13 --
         // The cache is updated under the same lock, so a rename from elsewhere
         // cannot land between the write and the update. `send` refuses a feature
@@ -106,6 +107,7 @@ impl DspiCore {
     /// only printable ASCII. Applied and notified (`NOTIFY_EVT_DEVICE_NAME`)
     /// as a source name. Errors as for [`DspiCore::set_input_source_name`].
     pub fn set_device_name(&self, name: String) -> Result<()> {
+        self.ensure_probed(); // -- WP LK4 --
         // -- WP QD4 --
         // As `set_input_source_name`: the cache is updated under the same lock.
         check_name(&name)?;
@@ -128,6 +130,7 @@ impl DspiCore {
     /// for a source past the table; `Disconnected` without a device or before
     /// it was probed.
     pub fn cached_input_source_name(&self, source: u8) -> Result<String> {
+        self.ensure_probed(); // -- WP LK4 --
         let mut inner = self.lock();
         let conn = inner.conn()?;
         require_feature(conn.session()?, F_SOURCE_NAMES)?;
@@ -144,6 +147,7 @@ impl DspiCore {
     /// unnamed. Errors: `Unsupported` on firmware without device names;
     /// `Disconnected`.
     pub fn cached_device_name(&self) -> Result<String> {
+        self.ensure_probed(); // -- WP LK4 --
         let mut inner = self.lock();
         let conn = inner.conn()?;
         require_feature(conn.session()?, F_DEVICE_NAME)?;
@@ -226,6 +230,7 @@ impl DspiCore {
     /// Errors: `Unsupported` on firmware without the setting (nothing is
     /// sent); `Disconnected`; `Transfer` for a short or failed read.
     pub fn fetch_output_latency(&self) -> Result<OutputLatency> {
+        self.ensure_probed(); // -- WP LK4 --
         let mut inner = self.lock();
         let conn = inner.conn()?;
         require_feature(conn.session()?, F_LATENCY)?;
@@ -245,6 +250,7 @@ impl DspiCore {
     ///
     /// Errors as for [`DspiCore::fetch_output_latency`].
     pub fn fetch_output_latency_options(&self) -> Result<Vec<OutputLatencyOption>> {
+        self.ensure_probed(); // -- WP LK4 --
         let mut inner = self.lock();
         let conn = inner.conn()?;
         require_feature(conn.session()?, F_LATENCY)?;
@@ -317,6 +323,7 @@ impl DspiCore {
 
 impl DspiCore {
     fn read_name(&self, path: &str, indices: &[u8], feature: &str) -> Result<String> {
+        self.ensure_probed(); // -- WP LK4 --
         let mut inner = self.lock();
         let session = inner.conn()?.session()?;
         require_feature(session, feature)?;
@@ -346,18 +353,28 @@ const SOURCE_NAME_EVENT_FIELD: std::ops::Range<usize> = 4..4 + CHANNEL_NAME_LEN;
 /// that batches them (`fetch_all`'s per-item reads): one exact 32-byte GET per
 /// source, then the device name, each only when the probe found it.
 pub(crate) fn name_reads(conn: &mut Connection) -> Vec<InRead> {
-    let has = |conn: &mut Connection, f: &str| {
-        conn.session().is_ok_and(|s| require_feature(s, f).is_ok())
-    };
+    let sources = conn.source_names.len();
+    match conn.session() {
+        Ok(session) => name_reads_for(session.capabilities(), sources),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// [`name_reads`] for a device with `caps` and `sources` input sources.
+pub(crate) fn name_reads_for(
+    caps: &dspi_session::probe::Capabilities,
+    sources: usize,
+) -> Vec<InRead> {
+    let has = |f: &str| caps.features.iter().any(|x| x.name == f && x.present);
     let mut reads = Vec::new();
-    if has(conn, F_SOURCE_NAMES) {
+    if has(F_SOURCE_NAMES) {
         reads.extend(
-            (0..conn.source_names.len())
+            (0..sources)
                 .filter_map(|i| u16::try_from(i).ok())
                 .map(|i| InRead::exact(op::REQ_GET_INPUT_SOURCE_NAME, i, NAME_LEN)),
         );
     }
-    if has(conn, F_DEVICE_NAME) {
+    if has(F_DEVICE_NAME) {
         reads.push(InRead::exact(op::REQ_GET_DEVICE_NAME, 0, NAME_LEN));
     }
     reads

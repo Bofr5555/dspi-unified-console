@@ -66,14 +66,24 @@ fn wall() -> String {
 }
 
 /// `DspiBridgeImpl.deviceSelected` and the `deviceChangedHooks`, in order.
-fn startup_reads(core: &DspiCore, chain: u64) {
+/// `usable` is called where the app shows the device (its `connected`):
+/// after `fetch_all` in the lk4 order (WP LK4), after the analyser start and
+/// the pair-map probe before.
+fn startup_reads(core: &DspiCore, chain: u64, lk4: bool, usable: &dyn Fn()) {
     if std::env::var("LK3_NO_READS").is_ok_and(|v| v == "1") {
+        usable();
         return;
     }
     let _ = core.fetch_all();
+    if lk4 {
+        usable();
+    }
     core.rta_start();
     let _ = core.fetch_crossfeed_pair_map();
     let _ = core.fetch_crossfeed_pair_map();
+    if !lk4 {
+        usable();
+    }
     let _ = core.siggen_fetch_caps();
     let _ = core.siggen_get_config();
     let _ = core.siggen_get_status();
@@ -87,6 +97,8 @@ fn startup_reads(core: &DspiCore, chain: u64) {
 #[derive(Default)]
 struct Run {
     first_meter: Option<f64>,
+    /// The app would show the device (WP LK4).
+    usable: Option<f64>,
     after_select: Option<f64>,
     select_at: Option<f64>,
     reads_done: Option<f64>,
@@ -158,6 +170,7 @@ fn one_client(id: usize, url: &str, mode: &str, seconds: u64, reread_s: u64, cha
     let selected = Instant::now();
     let select_at = std::sync::Mutex::new(run.select_at);
     let select_failed = std::sync::Mutex::new(None::<String>);
+    let usable_at = std::sync::Mutex::new(None::<f64>);
     let reads_done = AtomicBool::new(false);
     let reads_done_at = std::sync::Mutex::new(None::<f64>);
     let stop = AtomicBool::new(false);
@@ -180,7 +193,13 @@ fn one_client(id: usize, url: &str, mode: &str, seconds: u64, reread_s: u64, cha
                 }
                 println!("LK3 c{id} t={:.2}s selected", secs(start));
             }
-            startup_reads(&core, chain);
+            let usable = || {
+                if let Ok(mut at) = usable_at.lock() {
+                    *at = Some(secs(start));
+                }
+                println!("LK3 c{id} t={:.2}s usable", secs(start));
+            };
+            startup_reads(&core, chain, early, &usable);
             reads_done.store(true, Ordering::SeqCst);
             if let Ok(mut at) = reads_done_at.lock() {
                 *at = Some(secs(start));
@@ -311,6 +330,7 @@ fn one_client(id: usize, url: &str, mode: &str, seconds: u64, reread_s: u64, cha
         (run.drops, run.rebinds) = watcher.join().unwrap_or_default();
     });
     run.reads_done = reads_done_at.lock().ok().and_then(|at| *at);
+    run.usable = usable_at.lock().ok().and_then(|at| *at);
     run.select_at = select_at.lock().ok().and_then(|at| *at);
     if let Some(e) = select_failed.lock().ok().and_then(|f| f.clone()) {
         run.failed = Some(e);
@@ -355,12 +375,13 @@ fn wp_lk3_meters_against_the_emulated_bridge() {
     for (i, r) in runs.iter().enumerate() {
         let f = |v: Option<f64>| v.map_or("never".to_owned(), |v| format!("{v:.2}"));
         println!(
-            "LK3 summary client=rust mode={} c={} first_meter={} after_select={} select={} reads_done={} \
+            "LK3 summary client=rust mode={} c={} first_meter={} usable={} after_select={} select={} reads_done={} \
              freezes={} longest_gap_s={:.1} drops={} rebinds={} rereads={} reread_failed={} reread_max_s={:.2} \
              final_read_failed={} failed={}",
             mode,
             i + 1,
             f(r.first_meter),
+            f(r.usable),
             f(r.after_select),
             f(r.select_at),
             f(r.reads_done),

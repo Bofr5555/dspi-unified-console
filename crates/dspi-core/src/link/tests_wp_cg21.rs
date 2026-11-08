@@ -32,6 +32,8 @@ fn bound(hub: &FakeHub) -> Arc<DspiCore> {
     wait_until("the device list", || !core.link_devices().is_empty());
     let d = core.link_devices().remove(0);
     core.link_select_device(d.handle, d.serial).unwrap();
+    // WP LK4: the bind completes its probe in the background; settle it
+    core.ensure_probed();
     core.fetch_all().unwrap();
     core
 }

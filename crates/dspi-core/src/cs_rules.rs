@@ -167,6 +167,7 @@ fn drafted(d: &Draft) -> Value {
 impl DspiCore {
     /// The rules' view of the open device. The lock is released on return.
     fn rules_device(&self) -> Result<Device> {
+        self.ensure_probed(); // -- WP LK4 --
         Device::of(&mut self.lock())
     }
 }

@@ -277,6 +277,20 @@ impl Session {
         &self.caps
     }
 
+    // -- WP LK4 --
+    /// Replace the capabilities with a later, complete probe of the same
+    /// device (a DSPi Link bind completes its probe after the image: see
+    /// `probe::probe_quick`). False, and nothing changes, when the channel
+    /// layout differs.
+    pub fn complete_capabilities(&mut self, caps: Capabilities) -> bool {
+        let layout = |c: &Capabilities| (c.num_inputs, c.num_outputs, c.num_channels);
+        if layout(&caps) != layout(&self.caps) {
+            return false;
+        }
+        self.caps = caps;
+        true
+    }
+
     /// The status byte the last write-as-read answered, if there was one.
     ///
     /// Every pin and clock setter is a write-as-read that returns a

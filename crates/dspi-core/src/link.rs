@@ -97,6 +97,7 @@ use dspi_transport::{
 use crate::callbacks::LinkListener;
 use crate::records::*;
 use crate::{DspiCore, DspiError, MeterRead, Result, SideChannel};
+use dspi_session::ext_state::ExtState;
 
 /// The role asked for when pairing, as the macOS Console does.
 const PAIR_ROLE: &str = "control";
@@ -315,6 +316,8 @@ pub(crate) struct LinkSession {
     // -- WP LK4 --
     /// The last probe dial past a silent bridge session ([`PROBE_AFTER`]).
     probed_at: Option<Instant>,
+    /// The last try to complete the bound device's probe.
+    completed_at: Option<Instant>,
     /// The next re-attach's read fails.
     #[cfg(test)]
     fail_next_read: bool,
@@ -463,6 +466,8 @@ enum Step {
     Rebind(u8, String),
     /// -- WP LK4 -- dial past a silent bridge session ([`PROBE_AFTER`]).
     Probe(Box<Target>),
+    /// -- WP LK4 -- complete the bound device's probe ([`DspiCore::ensure_probed`]).
+    Complete,
     /// Read a device list that failed after a pairing.
     ReadDevices(LinkClient),
 }
@@ -478,6 +483,9 @@ enum Step {
 /// session is dead; the new one replaces it at once.
 const PROBE_AFTER: Duration = Duration::from_secs(12);
 const PROBE_EVERY: Duration = Duration::from_secs(2);
+/// After a failed try, the bound device's probe is completed again this much
+/// later.
+const COMPLETE_AGAIN: Duration = Duration::from_secs(2);
 
 /// Whether a probe dial past session `s`'s silent client is due.
 fn probe_due(s: &LinkSession, client: &LinkClient, now: Instant) -> bool {
@@ -886,6 +894,7 @@ impl DspiCore {
             released: false,
             retired: None,
             probed_at: None,
+            completed_at: None,
             #[cfg(test)]
             fail_next_read: false,
             unreported_end: None,
@@ -986,7 +995,9 @@ impl DspiCore {
         };
         // Read before the attach: a flap during it counts as one after it.
         let offline_base = client.offline_count(u32::from(handle));
-        let transport = LinkTransport::new(client.clone(), handle, &serial);
+        let mut transport = LinkTransport::new(client.clone(), handle, &serial);
+        // -- WP LK4 -- the snapshot is on its way while the identity is read
+        transport.prefetch_snapshot();
         // -- WP LK4 -- the meter feed starts as soon as the image says how
         // many channels there are, before the feature reads: `fetch_status`
         // serves it from then on. On the supervisor's own thread (a
@@ -1025,6 +1036,7 @@ impl DspiCore {
             0,
             &mut on_channels,
             reuse.as_ref(),
+            true,
         );
         let probe = match attached {
             Ok(probe) => probe,
@@ -1092,6 +1104,11 @@ impl DspiCore {
         let mut locked = self.lock();
         let inner = &mut *locked;
         let conn_gen = inner.conn.as_ref().map(|c| c.generation);
+        // -- WP LK4 -- a bound device whose probe is still to complete
+        let pending = inner
+            .conn
+            .as_ref()
+            .is_some_and(|c| c.pending_probe.is_some() && c.side.is_some());
         let Some(s) = inner
             .link
             .as_mut()
@@ -1115,7 +1132,7 @@ impl DspiCore {
             return (Step::Stop, None, true);
         }
         s.note_loss(conn_gen, now);
-        let step = next_step(s, conn_gen, now);
+        let step = next_step(s, conn_gen, pending, now);
         let retired = s.retired.take();
         let ended = s.unreported_end.take();
         let phase = s.phase(conn_gen);
@@ -1213,6 +1230,119 @@ impl DspiCore {
             old.close();
         }
         self.finish_dial(id, Ok(dialled))
+    }
+
+    /// Complete the open Link device's pending probe (see
+    /// [`DspiCore::ensure_probed`]): the features, caps, band count and
+    /// extension channel, then the per-item reads, all through the side
+    /// channel's background transport without the core lock (never ahead of a
+    /// user's command: it leaves one of the hub's slots free); then, under the
+    /// lock and only for the same connection, the results go in and the next
+    /// `process_notifications` reports a full refresh. A failure leaves it
+    /// pending, for the next try.
+    pub(crate) fn complete_probe(&self) {
+        let _one = guard(&self.probe_lock);
+        self.complete_probe_held();
+    }
+
+    /// [`DspiCore::ensure_probed`] for a Link build: waits for a completion
+    /// in progress, then completes what is still pending.
+    pub(crate) fn ensure_probed_link(&self) {
+        let _one = guard(&self.probe_lock);
+        let pending = self
+            .lock()
+            .conn
+            .as_ref()
+            .is_some_and(|c| c.pending_probe.is_some());
+        if pending {
+            self.complete_probe_held();
+        }
+    }
+
+    /// [`DspiCore::complete_probe`] with `probe_lock` held.
+    fn complete_probe_held(&self) {
+        let (quick, side, generation, sources, mut scratch) = {
+            let mut guard = self.lock();
+            let inner = &mut *guard;
+            let Some(conn) = inner.conn.as_mut() else {
+                return;
+            };
+            // The side comes with the bind's end (`open_bound`)
+            let Some(side) = conn.side.clone().filter(|_| conn.pending_probe.is_some()) else {
+                return;
+            };
+            let Some(quick) = conn.pending_probe.take() else {
+                return;
+            };
+            (
+                quick,
+                side,
+                conn.generation,
+                conn.source_names.len(),
+                inner.state.clone(),
+            )
+        };
+        let put_back = |quick: Box<dspi_session::probe::Quick>| {
+            if let Some(conn) = self
+                .lock()
+                .conn
+                .as_mut()
+                .filter(|c| c.generation == generation)
+            {
+                conn.pending_probe = Some(quick);
+            }
+        };
+        let Some(mut t) = side.background() else {
+            put_back(quick);
+            return;
+        };
+        let done = match dspi_session::probe::probe_rest(&mut *t, &quick) {
+            Ok(done) => done,
+            Err(TransportError::Disconnected) => return,
+            Err(e) => {
+                log::info!("completing the Link device's probe failed, trying again: {e}");
+                put_back(quick);
+                return;
+            }
+        };
+        let names = crate::info::name_reads_for(&done.caps, sources);
+        crate::connect::reset_per_item(&mut scratch);
+        let answers = crate::connect::read_per_item_on(&mut *t, &names, &mut scratch);
+        let reusable = done.reusable();
+        let ext = match done.ext {
+            Ok(ext) => ext,
+            Err(TransportError::Disconnected) => return,
+            // As at a whole probe: the device stays, without the channel
+            Err(e) => {
+                log::warn!("extension probe failed, continuing without it: {e}");
+                ExtState::default()
+            }
+        };
+        {
+            let mut guard = self.lock();
+            let inner = &mut *guard;
+            let Some(conn) = inner.conn.as_mut().filter(|c| c.generation == generation) else {
+                return;
+            };
+            let fits = conn
+                .session()
+                .is_ok_and(|session| session.complete_capabilities(done.caps));
+            if !fits {
+                log::warn!(
+                    "the Link device's completed probe does not fit its image; kept as it was"
+                );
+                return;
+            }
+            conn.echo.set_bulk_source(ext.bulk_source());
+            conn.ext = ext;
+            crate::info::apply_names(conn, &names, answers);
+            conn.announce_refresh = true;
+            crate::connect::copy_per_item(&scratch, &mut inner.state);
+            if let Some(b) = inner.link.as_mut().and_then(|s| s.bound.as_mut()) {
+                b.probe = reusable;
+            }
+        }
+        self.listeners.notify.call(|l| l.on_notifications());
     }
 
     /// The read after a re-attach.
@@ -1320,7 +1450,7 @@ pub(crate) fn session_recovers(inner: &crate::Inner) -> bool {
 }
 
 /// The next step for session `s`, under the lock.
-fn next_step(s: &mut LinkSession, conn_gen: Option<u64>, now: Instant) -> Step {
+fn next_step(s: &mut LinkSession, conn_gen: Option<u64>, pending: bool, now: Instant) -> Step {
     let feed = s.bound.as_ref().and_then(|b| b.side.clone());
     if s.ended {
         return Step::Wait(None, None);
@@ -1382,6 +1512,15 @@ fn next_step(s: &mut LinkSession, conn_gen: Option<u64>, now: Instant) -> Step {
         b.attached = false;
     }
     if b.attached {
+        // -- WP LK4 -- the rest of the bind's probe, in the background
+        if pending
+            && client.silent_for() < PROBE_AFTER
+            && s.completed_at
+                .is_none_or(|t| now.saturating_duration_since(t) >= COMPLETE_AGAIN)
+        {
+            s.completed_at = Some(now);
+            return Step::Complete;
+        }
         if probe_due(s, &client, now) {
             s.probed_at = Some(now);
             return Step::Probe(Box::new(s.target.clone()));
@@ -1648,6 +1787,8 @@ fn run_steps(me: &Weak<DspiCore>, id: u64, cancel: &AtomicBool) -> Option<Option
                 }
             }
             Step::ReadDevices(client) => core.read_devices(id, &client),
+            // -- WP LK4 --
+            Step::Complete => core.complete_probe(),
         }
     }
 }
@@ -2234,6 +2375,11 @@ impl SideChannel for LinkSide {
         self.maintain(Instant::now());
     }
 
+    // -- WP LK4 --
+    fn background(self: Arc<Self>) -> Option<Box<dyn Transport>> {
+        Some(Box::new(BackgroundTransport { side: self }))
+    }
+
     fn meters(&self, len: u16) -> Result<MeterRead> {
         if self.client.is_closed() {
             return Err(DspiError::Disconnected);
@@ -2289,6 +2435,142 @@ impl Drop for LinkSide {
         }
         if !slots.is_empty() {
             self.client.poll_unsubscribe(self.handle, &slots);
+        }
+    }
+}
+
+// -- WP LK4 --
+/// Background reads of a Link device without the core lock (a bind's probe
+/// completing): tunnelled GETs, batches with one of the hub's
+/// `max_inflight` slots left free for the commands a user waits for. Reads
+/// only.
+struct BackgroundTransport {
+    side: Arc<LinkSide>,
+}
+
+impl BackgroundTransport {
+    /// `reply` as [`Transport::control_in`] (`exact`) or
+    /// [`Transport::control_in_upto`] answers it.
+    fn shaped(
+        opcode: u8,
+        len: u16,
+        exact: bool,
+        reply: Vec<u8>,
+    ) -> dspi_transport::Result<Vec<u8>> {
+        let mut reply = reply;
+        reply.truncate(usize::from(len));
+        if exact && reply.len() < usize::from(len) {
+            return Err(TransportError::ShortRead {
+                opcode,
+                wanted: usize::from(len),
+                got: reply.len(),
+            });
+        }
+        Ok(reply)
+    }
+
+    /// One GET, a busy answer (spec 8.1, refused before it ran) tried again.
+    fn get(&self, opcode: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
+        let mut tries = 0;
+        loop {
+            let r = self.side.client.command(
+                self.side.handle,
+                Dir::Get,
+                opcode,
+                value,
+                dspi_proto::VENDOR_INTERFACE,
+                len,
+                &[],
+            );
+            if busy(r.status) && tries < dspi_transport::BUSY_RETRIES {
+                tries = tries.saturating_add(1);
+                dspi_transport::clock::sleep(dspi_transport::BUSY_BACKOFF);
+                continue;
+            }
+            return match map_status(r.status, opcode) {
+                Some(e) => Err(e),
+                None => Ok(r.payload),
+            };
+        }
+    }
+}
+
+/// A status that says the command did not run and may go again (spec 8.1;
+/// RATE_LIMITED: a slot the hub still counts for one of ours).
+fn busy(status: u8) -> bool {
+    use dspi_link::status as st;
+    matches!(
+        status,
+        st::BUSY | st::BULK_LOCKED | st::CRC_ERROR | st::RATE_LIMITED
+    )
+}
+
+impl Transport for BackgroundTransport {
+    fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
+        let reply = self.get(opcode, value, len)?;
+        Self::shaped(opcode, len, true, reply)
+    }
+
+    fn control_in_upto(
+        &mut self,
+        opcode: u8,
+        value: u16,
+        len: u16,
+    ) -> dspi_transport::Result<Vec<u8>> {
+        let reply = self.get(opcode, value, len)?;
+        Self::shaped(opcode, len, false, reply)
+    }
+
+    fn control_out(&mut self, opcode: u8, _value: u16, _data: &[u8]) -> dspi_transport::Result<()> {
+        Err(TransportError::Remote(format!(
+            "opcode 0x{opcode:02X}: background reads only"
+        )))
+    }
+
+    fn control_in_batch(
+        &mut self,
+        reads: &[dspi_transport::InRead],
+    ) -> Vec<dspi_transport::Result<Vec<u8>>> {
+        let client = &self.side.client;
+        let specs: Vec<dspi_link::CmdSpec> = reads
+            .iter()
+            .map(|r| dspi_link::CmdSpec {
+                handle: self.side.handle,
+                dir: Dir::Get,
+                b_request: r.opcode,
+                w_value: r.value,
+                w_index: dspi_proto::VENDOR_INTERFACE,
+                w_length: r.len,
+                payload: Vec::new(),
+            })
+            .collect();
+        let slots = client.max_inflight().saturating_sub(1).max(1);
+        let answers = client.commands_within(&specs, slots);
+        reads
+            .iter()
+            .zip(answers)
+            .map(|(r, a)| {
+                let reply = if busy(a.status) {
+                    self.get(r.opcode, r.value, r.len)?
+                } else if let Some(e) = map_status(a.status, r.opcode) {
+                    return Err(e);
+                } else {
+                    a.payload
+                };
+                Self::shaped(r.opcode, r.len, r.exact, reply)
+            })
+            .collect()
+    }
+
+    fn descriptor(&self) -> &DeviceDescriptor {
+        &self.side.descriptor
+    }
+
+    fn caps(&self) -> TransportCaps {
+        TransportCaps {
+            kind: TransportKind::Link,
+            chunked_bulk: false,
+            remote: true,
         }
     }
 }

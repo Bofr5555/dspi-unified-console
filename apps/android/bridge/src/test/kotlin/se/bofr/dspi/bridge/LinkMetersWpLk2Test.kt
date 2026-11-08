@@ -113,6 +113,40 @@ class LinkMetersWpLk2Test {
         }
     }
 
+    /** A fake whose analyser start is held (a probe read on a slow link). */
+    private class SlowRta : FakeDspiCore() {
+        val release = CountDownLatch(1)
+
+        override fun rtaStart() {
+            release.await(10, TimeUnit.SECONDS)
+            super.rtaStart()
+        }
+    }
+
+    @Test
+    fun wpLk4OverLinkTheDeviceShowsBeforeTheAnalyserStarts() {
+        val core = SlowRta().linked()
+        val ffiExec = Executors.newSingleThreadExecutor()
+        val mainExec = Executors.newSingleThreadExecutor()
+        val ffi = ffiExec.asCoroutineDispatcher()
+        val main = mainExec.asCoroutineDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + main)
+        val b = DspiBridgeImpl(core, scope, ffi = ffi, main = main)
+        try {
+            scope.launch { b.attachRemote(0, core.serial) }
+            waitFor("the connection") { b.status.value.connected }
+            assertEquals("the analyser start still held", 0, core.callCount("fetchCrossfeedPairMap"))
+            core.release.countDown()
+            waitFor("the pair-map probe after it") { core.callCount("fetchCrossfeedPairMap") >= 1 }
+        } finally {
+            core.release.countDown()
+            b.close()
+            scope.cancel()
+            ffiExec.shutdownNow()
+            mainExec.shutdownNow()
+        }
+    }
+
     @Test
     fun wpLk4AFailedSelectStopsThePoll() = runTest {
         val core = FakeDspiCore().apply { closeFd() } // nothing open, no Link session: the select fails

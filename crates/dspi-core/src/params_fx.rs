@@ -584,6 +584,7 @@ impl DspiCore {
     /// Errors: `Disconnected`, `Unsupported` (no limiter), `Transfer`
     /// (including a short reply).
     pub fn fetch_limiter_meter(&self) -> Result<Vec<f32>> {
+        self.ensure_probed(); // -- WP LK4 --
         let mut inner = self.lock();
         inner.require_feature("output_limiter")?;
         inner.read_meter(
@@ -652,6 +653,7 @@ impl DspiCore {
     ///
     /// Errors: `Disconnected`, `Unsupported`, `Transfer`.
     pub fn fetch_subharm_headroom(&self) -> Result<f32> {
+        self.ensure_probed(); // -- WP LK4 --
         let mut inner = self.lock();
         inner.require_feature("subharmonic_synth")?;
         let d = inner.conn()?.get(op::REQ_GET_SUBHARM_HEADROOM, 0, 4)?;
@@ -668,6 +670,7 @@ impl DspiCore {
     ///
     /// Errors: `Disconnected`, `Unsupported`, `Transfer`.
     pub fn fetch_subharm_meter(&self) -> Result<Vec<f32>> {
+        self.ensure_probed(); // -- WP LK4 --
         let mut inner = self.lock();
         inner.require_feature("subharmonic_synth")?;
         inner.read_meter(op::REQ_GET_SUBHARM_METER, 0, 32767.0, "subharm meter")

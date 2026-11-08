@@ -659,6 +659,7 @@ impl DspiCore {
     /// Errors: [`DspiError::Disconnected`] without a device; a transfer
     /// failure (lost device, timeout) as its typed error.
     pub fn cs_fetch(&self) -> Result<()> {
+        self.ensure_probed(); // -- WP LK4 --
         self.with_cs(fetch_into)
     }
 
@@ -705,6 +706,7 @@ impl DspiCore {
     /// [`DspiCore::device_lock_acquire`] a learn takes no lock of its own and
     /// lasts only as long as that one.
     pub fn cs_apply(&self, op: String) -> String {
+        self.ensure_probed(); // -- WP LK4 --
         let r = serde_json::from_str::<Value>(&op)
             .map_err(|e| invalid(format!("malformed operation: {e}")))
             .and_then(|v| self.cs_op(&v));

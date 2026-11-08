@@ -1816,7 +1816,11 @@ class DspiBridgeImpl(
             if (outputEditSerial.isNotEmpty()) clearOutputEdit()
             outputEditSerial = serial
         }
-        class Opened(val snap: Snapshot, val error: String, val pairMap: Boolean)
+        class Opened(val snap: Snapshot, val error: String, val pairMap: Boolean, val probesLeft: Boolean)
+        // -- WP LK4 -- over Link the device is shown as soon as its image is
+        // read (the core binds on the snapshot and completes its probe in the
+        // background); the analyser start and the pair-map probe follow
+        val remote = attachedRemote != null
         val r =
             onFfi {
                 clearClipTimes()
@@ -1825,17 +1829,32 @@ class DspiBridgeImpl(
                 val st = core.getState()
                 val compatOk = core.isConnected() && st.compat == COMPAT_OK
                 if (fetched && compatOk) core.captureBaseline()
-                if (compatOk) runCatching { core.rtaStart() } // probes for the spectrum analyser
+                if (!remote && compatOk) runCatching { core.rtaStart() } // probes for the spectrum analyser
                 // K340 fork probe (core patch 0002): upstream firmware STALLs 0x00
                 // (Transfer: the answer, no retry); any other error retries once.
-                val pairMap = fetched && compatOk && probeCrossfeedPairMap()
+                val pairMap = !remote && fetched && compatOk && probeCrossfeedPairMap()
                 Opened(
                     snapshot(all = true),
                     if (fetched) "" else "Connected, but the device's settings could not be read. Reconnect it to retry.",
-                    pairMap
+                    pairMap,
+                    remote && fetched && compatOk
                 )
             }
         crossfeedPairMapSupported = r.pairMap
+        if (r.probesLeft) {
+            val gen = generation
+            scope.launch(main) {
+                val pairMap =
+                    onFfi {
+                        runCatching { core.rtaStart() }
+                        probeCrossfeedPairMap()
+                    }
+                if (gen == generation) {
+                    crossfeedPairMapSupported = pairMap
+                    if (pairMap) publish(onFfi { snapshot(all = true) })
+                }
+            }
+        }
         _hardwareUnsaved.value = false
         _status.value = BridgeStatus(connected = true, connectionError = r.error)
         val d = _devices.value

@@ -164,6 +164,9 @@ pub struct LinkTransport {
     /// The first bulk read comes from the hub's snapshot when it offers one
     /// (one round trip instead of a device read). Later reads go to the device.
     snapshot_unused: bool,
+    // -- WP LK4 --
+    /// The snapshot asked for ahead ([`LinkTransport::prefetch_snapshot`]).
+    snapshot_pending: Option<dspi_link::client::PendingSnapshot>,
     /// Whether this transport holds the hub's device lock.
     locked: bool,
 }
@@ -191,7 +194,19 @@ impl LinkTransport {
             descriptor,
             notes,
             snapshot_unused,
+            snapshot_pending: None,
             locked: false,
+        }
+    }
+
+    // -- WP LK4 --
+    /// Ask the hub for its snapshot now, so the first bulk read finds it on
+    /// its way: the reads sent before that read go out behind the request
+    /// instead of before it. A no-op without the `snapshot` capability or
+    /// once the snapshot was used.
+    pub fn prefetch_snapshot(&mut self) {
+        if self.snapshot_unused && self.snapshot_pending.is_none() {
+            self.snapshot_pending = self.client.snapshot_begin(self.handle).ok();
         }
     }
 
@@ -202,8 +217,12 @@ impl LinkTransport {
     /// the blob current (spec 7.5), and the ESP32 bridge reports the time since
     /// it last read it, hours on a bridge up for hours; the macOS Console and
     /// the 0.10 app ignore it too.
-    fn snapshot_bulk(&self, len: u16, min_len: u16) -> Option<Vec<u8>> {
-        let mut blob = self.client.snapshot(self.handle).ok()?.bulk()?;
+    fn snapshot_bulk(&mut self, len: u16, min_len: u16) -> Option<Vec<u8>> {
+        let snapshot = match self.snapshot_pending.take() {
+            Some(pending) => self.client.snapshot_finish(pending),
+            None => self.client.snapshot(self.handle),
+        };
+        let mut blob = snapshot.ok()?.bulk()?;
         if blob.is_empty() || blob.len() < usize::from(min_len) {
             return None;
         }

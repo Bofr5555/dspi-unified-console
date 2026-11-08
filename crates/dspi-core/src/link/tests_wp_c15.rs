@@ -177,6 +177,8 @@ fn wait_phase(core: &DspiCore, phase: LinkPhase) {
 fn bind(core: &DspiCore) -> String {
     let d = core.link_devices().remove(0);
     core.link_select_device(d.handle, d.serial.clone()).unwrap();
+    // WP LK4: the bind completes its probe in the background; settle it
+    core.ensure_probed();
     core.fetch_all().unwrap();
     d.serial
 }

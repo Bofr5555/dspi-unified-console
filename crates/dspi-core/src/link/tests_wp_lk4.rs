@@ -107,36 +107,95 @@ fn ran(hub: &FakeHub, opcode: u8) -> usize {
 }
 
 #[test]
-fn wp_lk4_meters_are_live_before_link_select_device_returns() {
+fn wp_lk4_select_binds_on_the_snapshot_and_the_meters_run_before_the_probe_completes() {
     let hub = bridge_with(4);
     let core = DspiCore::new();
     let slow = Arc::new(SlowCommands::default());
     connect_slow(&core, &hub, &slow);
-    // About forty reads at 60 ms each: the select takes seconds
+    // Every command 60 ms late: the probe's forty-odd reads take seconds
     slow.delay_ms.store(60, Ordering::SeqCst);
-    let returned = Arc::new(AtomicBool::new(false));
-    let opener = {
-        let (core, returned) = (Arc::clone(&core), Arc::clone(&returned));
-        std::thread::spawn(move || {
-            let r = select(&core);
-            returned.store(true, Ordering::SeqCst);
-            r
-        })
-    };
-    let mut live_during = false;
-    while !returned.load(Ordering::SeqCst) {
+    let probe_op = op::REQ_GET_LG_SOUND_SYNC_ENABLE;
+    select(&core).unwrap();
+    // Bound on the identity and the snapshot: no feature read yet, the
+    // mirror shows the device's settings, and fetch_all reads nothing more
+    assert_eq!(ran(&hub, probe_op), 0, "the select read only what binds");
+    let commands = hub.log().len();
+    assert!(commands <= 2, "identity reads only: {commands}");
+    core.fetch_all().unwrap();
+    assert_eq!(
+        core.get_state().num_channels,
+        core.meter_path().unwrap().num_channels
+    );
+    let mut live_before_probe = false;
+    let start = Instant::now();
+    while start.elapsed() < WAIT {
         if core.fetch_status().is_ok_and(|s| !s.stale) {
-            live_during = !returned.load(Ordering::SeqCst);
+            live_before_probe = ran(&hub, probe_op) == 0
+                || core
+                    .lock()
+                    .conn
+                    .as_ref()
+                    .is_some_and(|c| c.pending_probe.is_some());
             break;
         }
-        std::thread::sleep(Duration::from_millis(20));
+        std::thread::sleep(Duration::from_millis(10));
     }
-    assert!(live_during, "a live meter while the select ran");
-    opener.join().unwrap().unwrap();
-    // The device list's size was right: no second subscription for the image's
-    let n = core.get_state().num_channels;
-    assert_eq!(core.meter_path().unwrap().num_channels, n);
-    assert!(!core.fetch_status().unwrap().stale);
+    assert!(live_before_probe, "a live meter before the probe completed");
+    // The probe completes by itself, and says so with a full refresh
+    wait_until("the completed probe", || ran(&hub, probe_op) == 1);
+    core.ensure_probed(); // waits for the completion in progress
+    let caps = core
+        .lock()
+        .conn()
+        .unwrap()
+        .session()
+        .unwrap()
+        .capabilities()
+        .clone();
+    assert!(!caps.features.is_empty());
+    // Every feature asked and answered (the fake firmware stalls them all)
+    assert!(
+        caps.features
+            .iter()
+            .all(|f| f.evidence.ends_with("answered") || f.evidence.ends_with("stalled")),
+        "{:?}",
+        caps.features
+            .iter()
+            .map(|f| f.evidence.clone())
+            .collect::<Vec<_>>()
+    );
+    wait_until("the refresh", || {
+        core.process_notifications().flags & crate::consts::NOTIFY_REFRESHED != 0
+    });
+    core.link_close();
+}
+
+#[test]
+fn wp_lk4_a_call_that_needs_the_features_completes_the_probe_first() {
+    let hub = bridge_with(4);
+    let core = DspiCore::new();
+    let slow = Arc::new(SlowCommands::default());
+    connect_slow(&core, &hub, &slow);
+    slow.delay_ms.store(30, Ordering::SeqCst);
+    select(&core).unwrap();
+    // The device name is a probed feature: asked at once, it is answered from
+    // the completed probe (the fake hub's firmware has none: Unsupported)
+    let _ = core.cached_device_name();
+    let complete = core
+        .lock()
+        .conn()
+        .unwrap()
+        .session()
+        .unwrap()
+        .capabilities()
+        .features
+        .len();
+    assert!(complete > 0, "the probe completed first");
+    assert_eq!(
+        ran(&hub, op::REQ_GET_LG_SOUND_SYNC_ENABLE),
+        1,
+        "probed once"
+    );
     core.link_close();
 }
 
@@ -146,12 +205,13 @@ fn wp_lk4_a_failed_select_leaves_no_meter_path() {
     let core = DspiCore::new();
     let slow = Arc::new(SlowCommands::default());
     connect_slow(&core, &hub, &slow);
-    slow.delay_ms.store(60, Ordering::SeqCst);
+    // The identity reads go unanswered: the select waits, with its feed up
+    hub.hold_replies();
     let opener = {
         let core = Arc::clone(&core);
         std::thread::spawn(move || select(&core))
     };
-    wait_until("the early feed", || core.meter_path().is_some());
+    wait_until("the identity reads", || !hub.log().is_empty());
     hub.drop_connections();
     assert!(opener.join().unwrap().is_err(), "the select lost its link");
     assert!(core.meter_path().is_none(), "cleared with the failed open");
@@ -166,6 +226,7 @@ fn wp_lk4_a_re_attach_reuses_the_probe_of_the_same_device() {
     let slow = Arc::new(SlowCommands::default());
     connect_slow(&core, &hub, &slow);
     select(&core).unwrap();
+    core.ensure_probed();
     core.fetch_all().unwrap();
     // One feature probe only the full probe reads
     let probe_op = op::REQ_GET_LG_SOUND_SYNC_ENABLE;
@@ -215,9 +276,11 @@ fn wp_lk4_a_fresh_select_probes_in_full() {
     let slow = Arc::new(SlowCommands::default());
     connect_slow(&core, &hub, &slow);
     select(&core).unwrap();
+    core.ensure_probed();
     core.disconnect();
     // A new select (not a re-attach) never reuses: the user chose again
     select(&core).unwrap();
+    core.ensure_probed();
     assert_eq!(ran(&hub, op::REQ_GET_LG_SOUND_SYNC_ENABLE), 2);
     core.link_close();
 }
@@ -383,6 +446,7 @@ fn wp_lk4_a_silent_bridge_session_is_replaced_once_a_new_one_connects() {
     let clock = Arc::new(dspi_link::clock::ManualClock::new());
     connect_quiet(&core, &hub, &quiet, &clock);
     select(&core).unwrap();
+    core.ensure_probed();
     core.fetch_all().unwrap();
     let generation = core.lock().conn().unwrap().generation;
     let old = core.lock().link.as_ref().unwrap().client.clone().unwrap();

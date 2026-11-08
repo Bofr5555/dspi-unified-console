@@ -13,6 +13,7 @@ from collections import OrderedDict
 FIELDS = {
     "rust": [
         ("first meter s", "first_meter"),
+        ("usable s", "usable"),
         ("after select s", "after_select"),
         ("select s", "select"),
         ("reads done s", "reads_done"),
@@ -27,6 +28,7 @@ FIELDS = {
     ],
     "ts": [
         ("first meter s", "first_meter"),
+        ("usable s", "usable"),
         ("freezes", "freezes"),
         ("longest gap ms", "longest_gap_ms"),
         ("closes", "closes"),

@@ -303,6 +303,107 @@ pub fn probe_connect(
     on_image: &mut dyn FnMut(&dspi_proto::wire_compat::Normalized),
     reuse: Option<&Reusable>,
 ) -> Result<Probed> {
+    let quick = probe_quick(t, on_image, reuse)?;
+    if quick.reused.is_some() {
+        return Ok(quick.into_reused());
+    }
+    let rest = probe_rest(t, &quick)?;
+    Ok(Probed {
+        caps: rest.caps,
+        image: quick.image,
+        platform: quick.platform,
+        ext: rest.ext,
+        reused: false,
+        key: rest.key,
+    })
+}
+
+/// What [`probe_quick`] read: enough to show the device and run its meters
+/// (the identity and the image), not yet its features.
+pub struct Quick {
+    /// Complete when an earlier probe served ([`Quick::is_complete`]);
+    /// otherwise provisional: the channel model, the identity and the
+    /// header's band depth, with no features, no control-surface or generator
+    /// caps, no build info and no active preset, until [`probe_rest`]
+    /// completes them.
+    pub caps: Capabilities,
+    pub image: dspi_proto::wire_compat::Normalized,
+    pub platform: Vec<u8>,
+    info: PlatformInfo,
+    serial: String,
+    /// An earlier probe described the device: its key and extension channel.
+    reused: Option<(ProbeKey, ExtState)>,
+}
+
+impl Quick {
+    /// Whether an earlier probe completed `caps` (no [`probe_rest`] needed).
+    pub fn is_complete(&self) -> bool {
+        self.reused.is_some()
+    }
+
+    /// The extension channel, when an earlier probe served.
+    pub fn reused_ext(&self) -> Option<&ExtState> {
+        self.reused.as_ref().map(|(_, ext)| ext)
+    }
+
+    fn into_reused(self) -> Probed {
+        let key = ProbeKey {
+            platform: self.platform.clone(),
+            serial: self.serial.clone(),
+            build: self.caps.build_info.clone(),
+            header: *self.image.packet.header(),
+            device_version: self.image.device_version,
+        };
+        let (key, ext) = self.reused.unwrap_or((key, ExtState::default()));
+        Probed {
+            caps: self.caps,
+            image: self.image,
+            platform: self.platform,
+            ext: Ok(ext),
+            reused: true,
+            key,
+        }
+    }
+
+    /// The probe for a later re-attach, when an earlier one served.
+    pub fn reusable(&self) -> Option<Reusable> {
+        let (key, ext) = self.reused.as_ref()?;
+        Some(Reusable {
+            key: key.clone(),
+            caps: self.caps.clone(),
+            ext: ext.clone(),
+        })
+    }
+}
+
+/// What [`probe_rest`] read.
+pub struct Completed {
+    /// The complete capabilities.
+    pub caps: Capabilities,
+    /// As [`Probed::ext`].
+    pub ext: Result<ExtState>,
+    key: ProbeKey,
+}
+
+impl Completed {
+    /// This probe, for a later re-attach ([`Probed::reusable`]).
+    pub fn reusable(&self) -> Option<Reusable> {
+        Some(Reusable {
+            key: self.key.clone(),
+            caps: self.caps.clone(),
+            ext: self.ext.as_ref().ok()?.clone(),
+        })
+    }
+}
+
+/// The first part of [`probe_connect`]: the identity and the image (over
+/// DSPi Link one batch and the hub's snapshot), `on_image` once the image is
+/// in, and from `reuse` the rest when it is the same device and firmware.
+pub fn probe_quick(
+    t: &mut dyn Transport,
+    on_image: &mut dyn FnMut(&dspi_proto::wire_compat::Normalized),
+    reuse: Option<&Reusable>,
+) -> Result<Quick> {
     // The build and the active preset ride along with the identity
     let extra = if reuse.is_some() {
         vec![
@@ -339,36 +440,69 @@ pub fn probe_connect(
             active_preset,
             ..r.caps.clone()
         };
-        return Ok(Probed {
+        return Ok(Quick {
             caps,
             image,
             platform,
-            ext: Ok(r.ext.clone()),
-            reused: true,
-            key: r.key.clone(),
+            info,
+            serial,
+            reused: Some((r.key.clone(), r.ext.clone())),
         });
     }
-    let (caps, ext) = describe(
-        t,
-        info,
-        serial.clone(),
-        &image.packet,
-        image.device_version,
-        true,
-    )?;
-    let key = ProbeKey {
-        platform: platform.clone(),
-        serial,
-        build: caps.build_info.clone(),
-        header,
-        device_version: image.device_version,
+    let caps = Capabilities {
+        serial: if serial.is_empty() {
+            t.descriptor().serial.clone()
+        } else {
+            serial.clone()
+        },
+        platform: info.platform(),
+        firmware: info.version.to_string(),
+        firmware_version: info.version,
+        build_info: None,
+        wire_format: image.device_version,
+        num_channels: header.num_channels,
+        num_inputs: header.num_input_channels,
+        num_outputs: header.num_output_channels,
+        max_bands: header.max_bands,
+        band_storage: header.max_bands,
+        channels: channels_of(&image.packet)?,
+        features: Vec::new(),
+        cs: None,
+        siggen: None,
+        active_preset: None,
     };
-    Ok(Probed {
+    Ok(Quick {
         caps,
         image,
         platform,
+        info,
+        serial,
+        reused: None,
+    })
+}
+
+/// The rest of [`probe_connect`] after [`probe_quick`]: the features, the
+/// control-surface and generator caps, the band count and the extension
+/// channel, batched as [`probe_connect`] does.
+pub fn probe_rest(t: &mut dyn Transport, quick: &Quick) -> Result<Completed> {
+    let (caps, ext) = describe(
+        t,
+        quick.info.clone(),
+        quick.serial.clone(),
+        &quick.image.packet,
+        quick.image.device_version,
+        true,
+    )?;
+    let key = ProbeKey {
+        platform: quick.platform.clone(),
+        serial: quick.serial.clone(),
+        build: caps.build_info.clone(),
+        header: *quick.image.packet.header(),
+        device_version: quick.image.device_version,
+    };
+    Ok(Completed {
+        caps,
         ext: ext.unwrap_or_else(|| Ok(ExtState::default())),
-        reused: false,
         key,
     })
 }

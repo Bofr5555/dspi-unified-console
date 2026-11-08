@@ -149,6 +149,17 @@ impl Default for Timing {
     }
 }
 
+// -- WP LK4 --
+/// A request sent and not yet answered.
+struct PendingRequest {
+    id: u64,
+    rx: Receiver<Result<Value, LinkError>>,
+    deadline: Instant,
+}
+
+/// A `device.snapshot` sent with [`LinkClient::snapshot_begin`].
+pub struct PendingSnapshot(PendingRequest);
+
 /// Picks the token for the hub whose `hub.id` it is given, after the hello has
 /// said which hub answered (spec 6.2, `tokenFor` in dspi-link-js).
 pub type TokenLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
@@ -807,11 +818,20 @@ impl LinkClient {
     /// never goes past the limit (no RATE_LIMITED). Each request has its own
     /// timeout from the moment it is sent; a timed-out one is not repeated.
     pub fn commands(&self, specs: &[CmdSpec]) -> Vec<CmdResponse> {
+        self.commands_within(specs, u32::MAX)
+    }
+
+    // -- WP LK4 --
+    /// [`LinkClient::commands`] with at most `max_slots` of them on the wire
+    /// at once (and never more than `max_inflight`): a background batch that
+    /// leaves slots to the commands a user is waiting for.
+    pub fn commands_within(&self, specs: &[CmdSpec], max_slots: u32) -> Vec<CmdResponse> {
+        let max_slots = usize::try_from(max_slots.max(1)).unwrap_or(usize::MAX);
         let mut out: Vec<Option<CmdResponse>> = vec![None; specs.len()];
         let mut sent = std::collections::VecDeque::new();
         let mut next = 0;
         while next < specs.len() || !sent.is_empty() {
-            while let Some(spec) = specs.get(next) {
+            while let Some(spec) = specs.get(next).filter(|_| sent.len() < max_slots) {
                 if !self.is_ready() {
                     out[next] = Some(CmdResponse { tag: 0, status: status::NO_DEVICE, payload: Vec::new() });
                     next += 1;
@@ -982,6 +1002,23 @@ impl LinkClient {
         serde_json::from_value(v).map_err(|e| LinkError::Protocol(e.to_string()))
     }
 
+    // -- WP LK4 --
+    /// `device.snapshot` sent now, its answer read later with
+    /// [`LinkClient::snapshot_finish`], so other requests can go out
+    /// meanwhile (a bind sends its identity reads behind it).
+    pub fn snapshot_begin(&self, handle: u8) -> Result<PendingSnapshot, LinkError> {
+        let id = self.inner.next_id.fetch_add(1, Ordering::SeqCst);
+        let text = out::device_snapshot(id, handle);
+        self.request_begin(id, text, self.inner.timing.bulk_timeout).map(PendingSnapshot)
+    }
+
+    /// The answer to [`LinkClient::snapshot_begin`]'s request, as
+    /// [`LinkClient::snapshot`] would give it.
+    pub fn snapshot_finish(&self, pending: PendingSnapshot) -> Result<Snapshot, LinkError> {
+        let v = self.request_finish(pending.0)?;
+        serde_json::from_value(v).map_err(|e| LinkError::Protocol(e.to_string()))
+    }
+
     pub fn poll_subscribe(&self, handle: u8, polls: &[PollSpec]) -> Result<Vec<PollGrant>, LinkError> {
         let v = self.request(|id| out::poll_subscribe(id, handle, polls), self.inner.timing.request_timeout)?;
         v.get("granted")
@@ -1031,6 +1068,13 @@ impl LinkClient {
     }
 
     fn request_id(&self, id: u64, text: String, timeout: Duration) -> Result<Value, LinkError> {
+        let pending = self.request_begin(id, text, timeout)?;
+        self.request_finish(pending)
+    }
+
+    // -- WP LK4 --
+    /// Send a request without waiting for its answer ([`Self::request_finish`] waits).
+    fn request_begin(&self, id: u64, text: String, timeout: Duration) -> Result<PendingRequest, LinkError> {
         let (tx, rx) = mpsc::sync_channel(1);
         lock(&self.inner.pending_json).insert(id, tx);
         // After the insert: socket_failed sets `closed` before it drains, so either
@@ -1044,11 +1088,17 @@ impl LinkClient {
             self.socket_failed(None, &close_reason(None));
             return Err(LinkError::Io(e.to_string()));
         }
+        Ok(PendingRequest { id, rx, deadline: Instant::now() + timeout })
+    }
+
+    /// The answer to a request [`Self::request_begin`] sent, by its deadline.
+    fn request_finish(&self, pending: PendingRequest) -> Result<Value, LinkError> {
+        let PendingRequest { id, rx, deadline } = pending;
         // -- WP WB4b --
         let answer = if self.inner.caller_driven {
-            self.pumped_recv(&rx, Instant::now() + timeout)
+            self.pumped_recv(&rx, deadline)
         } else {
-            rx.recv_timeout(timeout)
+            rx.recv_timeout(deadline.saturating_duration_since(Instant::now()))
         };
         match answer {
             Ok(r) => r,

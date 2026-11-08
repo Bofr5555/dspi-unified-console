@@ -180,6 +180,25 @@ pub struct DspiCore {
     /// refreshed by every `fetch_status` that gets the lock, cleared when the
     /// connection goes. Taken with or without `inner`, never `inner` after it.
     pub(crate) meter_path: Mutex<Option<MeterPath>>,
+    // -- WP LK4 --
+    /// Held while a pending probe is completed ([`DspiCore::ensure_probed`]),
+    /// so it runs once. Taken without `inner`, never while holding it.
+    pub(crate) probe_lock: Mutex<()>,
+}
+
+// -- WP LK4 --
+/// What `attach_opened_with`'s probe read.
+struct Attached {
+    /// The probe to keep for a re-attach.
+    reusable: Option<dspi_session::probe::Reusable>,
+    ext: dspi_transport::Result<ExtState>,
+    /// Complete, or provisional while `pending`.
+    caps: dspi_session::probe::Capabilities,
+    image: dspi_proto::wire_compat::Normalized,
+    /// GET_PLATFORM's reply.
+    platform: Vec<u8>,
+    /// The rest of the probe, still to run.
+    pending: Option<Box<dspi_session::probe::Quick>>,
 }
 
 // -- WP LK2 --
@@ -296,6 +315,13 @@ pub(crate) struct Connection {
     /// learn window, the bootloader restart). On the connection, so it goes
     /// with it: a closed or replaced connection gives it back.
     pub(crate) held_lock: Option<presets::HeldLock>,
+    // -- WP LK4 --
+    /// A DSPi Link bind installed the device from its identity and image
+    /// alone: the rest of its probe (features, control-surface and generator
+    /// caps, band count, extension channel) and the per-item reads still
+    /// have to run ([`DspiCore::ensure_probed`]; the Link supervisor runs
+    /// them in the background).
+    pub(crate) pending_probe: Option<Box<dspi_session::probe::Quick>>,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -321,6 +347,14 @@ pub(crate) trait SideChannel: Send + Sync {
     // -- WP WB4b -- only the Link supervisor calls it (wasm-core builds without `link`)
     #[cfg_attr(not(feature = "link"), allow(dead_code))]
     fn maintain_meters(&self) {}
+    // -- WP LK4 --
+    /// A read-only transport for background reads that needs no core lock
+    /// and leaves room for the commands a user waits for; `None` where there
+    /// is none.
+    #[cfg_attr(not(feature = "link"), allow(dead_code))]
+    fn background(self: Arc<Self>) -> Option<Box<dyn Transport>> {
+        None
+    }
 }
 
 /// What [`SideChannel::meters`] has.
@@ -395,6 +429,8 @@ impl Connection {
             ring_target: Default::default(),
             // -- WP CG24 --
             held_lock: None,
+            // -- WP LK4 --
+            pending_probe: None,
         }
     }
 
@@ -598,6 +634,7 @@ impl DspiCore {
             host_feed: host_transport::FeedSlot::default(),
             // -- WP LK2 --
             meter_path: Mutex::new(None),
+            probe_lock: Mutex::new(()),
         })
     }
 }
@@ -674,7 +711,7 @@ impl DspiCore {
         serial: String,
         vid: u16,
     ) -> Result<()> {
-        self.attach_opened_with(transport, serial, vid, &mut |_| {}, None)
+        self.attach_opened_with(transport, serial, vid, &mut |_| {}, None, false)
             .map(drop)
     }
 
@@ -685,6 +722,11 @@ impl DspiCore {
     /// firmware ([`dspi_session::probe::probe_connect`]). Returns the probe
     /// for a later re-attach (`None` for an unmappable device or one whose
     /// extension channel could not be read).
+    ///
+    /// With `defer` (a DSPi Link bind), only the identity and the image are
+    /// read before the device is installed; the rest of the probe and the
+    /// per-item reads are left for [`DspiCore::ensure_probed`]
+    /// (`Connection::pending_probe`), unless `reuse` already describes it.
     pub(crate) fn attach_opened_with(
         &self,
         mut transport: Box<dyn Transport>,
@@ -692,6 +734,7 @@ impl DspiCore {
         vid: u16,
         on_channels: &mut dyn FnMut(u8),
         reuse: Option<&dspi_session::probe::Reusable>,
+        defer: bool,
     ) -> Result<Option<dspi_session::probe::Reusable>> {
         let listeners = Arc::clone(&self.listeners);
         let waker: dspi_session::notify::Waker =
@@ -715,8 +758,42 @@ impl DspiCore {
         let mut on_image = |image: &dspi_proto::wire_compat::Normalized| {
             on_channels(image.packet.header().num_channels);
         };
-        let probed = match dspi_session::probe::probe_connect(&mut *transport, &mut on_image, reuse)
-        {
+        let probed = if defer {
+            dspi_session::probe::probe_quick(&mut *transport, &mut on_image, reuse).map(|quick| {
+                if quick.is_complete() {
+                    let ext = quick.reused_ext().cloned().unwrap_or_default();
+                    Attached {
+                        reusable: quick.reusable(),
+                        ext: Ok(ext),
+                        caps: quick.caps,
+                        image: quick.image,
+                        platform: quick.platform,
+                        pending: None,
+                    }
+                } else {
+                    Attached {
+                        reusable: None,
+                        ext: Ok(ExtState::default()),
+                        caps: quick.caps.clone(),
+                        image: quick.image.clone(),
+                        platform: quick.platform.clone(),
+                        pending: Some(Box::new(quick)),
+                    }
+                }
+            })
+        } else {
+            dspi_session::probe::probe_connect(&mut *transport, &mut on_image, reuse).map(|p| {
+                Attached {
+                    reusable: p.reusable(),
+                    ext: p.ext,
+                    caps: p.caps,
+                    image: p.image,
+                    platform: p.platform,
+                    pending: None,
+                }
+            })
+        };
+        let probed = match probed {
             Ok(probed) => probed,
             Err(e) => {
                 // §1.5 "Unmappable images": a device that identifies itself
@@ -730,13 +807,13 @@ impl DspiCore {
                 return Ok(None);
             }
         };
-        let reusable = probed.reusable();
-        let dspi_session::probe::Probed {
+        let Attached {
+            reusable,
+            ext,
             caps,
             image,
             platform,
-            ext,
-            ..
+            pending,
         } = probed;
         let ext = match ext {
             Ok(ext) => ext,
@@ -795,9 +872,21 @@ impl DspiCore {
         // Without the platform reply the mirror lacks the firmware identity:
         // let `fetch_all` read everything again.
         conn.fresh_image = platform_known;
+        conn.pending_probe = pending; // -- WP LK4 --
 
         self.install(conn, mirror, serial, vid);
         Ok(reusable)
+    }
+
+    // -- WP LK4 --
+    /// Complete the open device's probe if a DSPi Link bind left it pending
+    /// (`Connection::pending_probe`): what needs the features, the
+    /// control-surface or generator caps or the extension channel calls this
+    /// first. Waits for a completion in progress. Call with the lock
+    /// released. A no-op otherwise.
+    pub(crate) fn ensure_probed(&self) {
+        #[cfg(feature = "link")]
+        self.ensure_probed_link();
     }
 
     /// Tell the Link supervisor the open connection changed, so that it sees a
