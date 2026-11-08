@@ -1976,6 +1976,23 @@ fn dial(
 /// and the client's own connect timeouts): longer than the reference
 /// client's 15 s handshake plus its prober's 1 s retries.
 pub(crate) const FIRST_DIAL_BUDGET: Duration = Duration::from_secs(60);
+/// The environment variable that overrides [`FIRST_DIAL_BUDGET`], in ms, for
+/// tests and integration rigs that drive the core through its bindings (the
+/// Android suite's fake-hub tests): unset, empty or unparsable means the
+/// default. Read at each first dial.
+pub const FIRST_DIAL_BUDGET_ENV: &str = "DSPI_LINK_FIRST_DIAL_MS";
+
+/// [`FIRST_DIAL_BUDGET`], or its override from [`FIRST_DIAL_BUDGET_ENV`].
+fn first_dial_budget() -> Duration {
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    if let Some(ms) = std::env::var(FIRST_DIAL_BUDGET_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+    {
+        return Duration::from_millis(ms.min(600_000));
+    }
+    FIRST_DIAL_BUDGET
+}
 /// The wait before the first dial's second try, doubled each time up to
 /// [`FIRST_DIAL_RETRY_MAX`] (or the hub's own advice when longer).
 const FIRST_DIAL_RETRY: Duration = Duration::from_millis(500);
@@ -2012,7 +2029,7 @@ fn dial_first(
             .min(FIRST_DIAL_RETRY_MAX)
             .max(min_delay);
         let wait = divided(wait, by);
-        if start.elapsed().saturating_add(wait) >= divided(FIRST_DIAL_BUDGET, by) {
+        if start.elapsed().saturating_add(wait) >= divided(first_dial_budget(), by) {
             return Err(e);
         }
         log::info!("DSPi Link: the first dial failed ({e}); trying again in {wait:?}");

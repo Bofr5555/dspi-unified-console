@@ -351,6 +351,8 @@ class LinkEngineFakeHubTest {
         assertEquals(LinkPhase.IDLE, core.linkStatus().phase)
     }
 
+    // WP LK4: the core's first dial retries for 60 s before it fails (2 s here:
+    // DSPI_LINK_FIRST_DIAL_MS in build.gradle.kts); the app adds no retry of its own
     @Test
     fun wpAn3AFailedFirstDialIsNotRetriedByTheApp() = runBlocking<Unit> {
         val h = hub()

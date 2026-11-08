@@ -42,4 +42,7 @@ tasks.withType<Test>().configureEach {
     systemProperty("jna.library.path", "$cargoTarget/debug")
     systemProperty("java.library.path", "$cargoTarget/debug")
     systemProperty("dspi.fakehub", "$cargoTarget/debug/dspi-link-fakehub")
+    // -- WP LK4 -- the core's first dial retries for 60 s; 2 s here, so a test of a
+    // first dial that fails sees it fail (DSPI_LINK_FIRST_DIAL_MS, dspi-core link.rs)
+    environment("DSPI_LINK_FIRST_DIAL_MS", "2000")
 }

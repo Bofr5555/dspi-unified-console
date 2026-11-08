@@ -4,10 +4,14 @@
 // `linkStatus().phase` and adds what only an app knows: the stored tokens, the
 // board the user wants, the PIN prompt, the foreground service.
 //
-// It has no retry loop and queues no write. A first dial that fails has no session
-// and so no backoff in the core: it is repeated once for each thing that happened
-// (the user's tap, a network coming up, the hub announced again; WP AN4), never on
-// a timer. So a hub that stays away costs nothing.
+// It has no retry loop and queues no write. The core's first dial retries by itself
+// for up to 60 s (timeouts, a lost socket, a busy hub; never a refusal: WP LK4), all
+// of it shown as Connecting, with Disconnect (`linkClose`) as the way out. One that
+// still fails has no session and so no backoff in the core: the app repeats it once
+// for each thing that happened (the user's tap, a network coming up, the hub
+// announced again; WP AN4), never on a timer, and never a second dial on top of one
+// still trying (the dial lock; an edge during it re-dials after it). So a hub that
+// stays away costs nothing after that minute.
 //
 // Ported from DSPi-Console release/v1.1.6 `Link/NetworkTransport.swift`, whose
 // differences stay: the pairing prompt is a non-modal state the UI shows
