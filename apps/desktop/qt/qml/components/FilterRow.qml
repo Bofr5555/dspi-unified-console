@@ -86,6 +86,7 @@ Rectangle {
             bypassed: filterBypass
             dotColor: bandColors[bandIndex % bandColors.length]
             anchors.verticalCenter: parent.verticalCenter
+            accessibleName: "Band " + (bandIndex + 1) + " active"
             onToggled: filterRowRoot.bypassToggled(!filterBypass)
         }
 
@@ -97,11 +98,16 @@ Rectangle {
             color: isMacOS ? (isActive && !filterBypass ? MacColors.label : MacColors.opacity(MacColors.secondaryLabel, 0.5)) : isActive ? "#e0e0e0" : "#888888"
             anchors.verticalCenter: parent.verticalCenter
             // Selects the band, with the modifiers of a click on its dot
-            MouseArea {
+            ClickArea {
                 anchors.fill: parent
                 anchors.margins: -6
                 enabled: linked && isActive
                 cursorShape: Qt.PointingHandCursor
+                Accessible.role: Accessible.CheckBox
+                Accessible.name: "Select band " + (bandIndex + 1) + " on the graph"
+                Accessible.checkable: true
+                Accessible.checked: selected
+                onActivated: if (byKeyboard) filterRowRoot.numberClicked(0)
                 onClicked: filterRowRoot.numberClicked(mouse.modifiers)
             }
         }
@@ -136,12 +142,16 @@ Rectangle {
                 Icon { name: "chev-up"; size: 10; color: isMacOS ? MacColors.opacity(MacColors.secondaryLabel, filterBypass || !isActive ? 0.45 : 1.0) : Qt.rgba(1, 1, 1, typeMouse.containsMouse ? 0.7 : 0.4) }
                 Icon { name: "chev-down"; size: 10; color: isMacOS ? MacColors.opacity(MacColors.secondaryLabel, filterBypass || !isActive ? 0.45 : 1.0) : Qt.rgba(1, 1, 1, typeMouse.containsMouse ? 0.7 : 0.4) }
             }
-            MouseArea {
+            ClickArea {
                 id: typeMouse
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: typeMenu.toggleAt(typeBtn)
+                focusRadius: typeBtn.radius + 2
+                Accessible.role: Accessible.ComboBox
+                Accessible.name: "Band " + (bandIndex + 1) + " type"
+                Accessible.description: typeNames[filterType] || ""
+                onActivated: typeMenu.toggleAt(typeBtn)
             }
 
             FilterTypeMenu {
@@ -170,12 +180,13 @@ Rectangle {
                 color: isMacOS ? MacColors.opacity(MacColors.secondaryLabel, filterBypass ? 0.45 : 1.0) : "#cccccc"
                 text: "⚙  f0 " + filterFreq.toFixed(0) + " Hz → fp " + filterGain.toFixed(0) + " Hz"
             }
-            MouseArea {
+            ClickArea {
                 id: ltMouse
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: ltEditor.openFor(filterRowRoot.channelId, filterRowRoot.bandIndex)
+                Accessible.name: "Band " + (bandIndex + 1) + " Linkwitz transform: f0 " + filterFreq.toFixed(0) + " Hz, fp " + filterGain.toFixed(0) + " Hz"
+                onActivated: ltEditor.openFor(filterRowRoot.channelId, filterRowRoot.bandIndex)
             }
             LinkwitzEditor { id: ltEditor; y: parent.height + 4 }
         }
@@ -188,7 +199,7 @@ Rectangle {
             ValueField {
                 anchors.verticalCenter: parent.verticalCenter
                 textColor: isMacOS ? MacColors.opacity(MacColors.label, filterBypass ? 0.45 : 1.0) : "#cccccc"; unitColor: isMacOS ? MacColors.opacity(MacColors.secondaryLabel, filterBypass ? 0.45 : 1.0) : "#888888"; unitSize: 10
-                fieldWidth: 70; height: 28; suffix: "Hz"; decimals: 1; wheelStep: 10; minValue: 10; maxValue: 20000
+                fieldWidth: 70; height: 28; suffix: "Hz"; accessibleName: "Band " + (bandIndex + 1) + " frequency"; decimals: 1; wheelStep: 10; minValue: 10; maxValue: 20000
                 value: filterFreq
                 onValueEdited: filterRowRoot.filterChanged(filterType, newValue, filterGain, filterQ)
             }
@@ -203,7 +214,7 @@ Rectangle {
                 visible: hasGain
                 anchors.verticalCenter: parent.verticalCenter
                 textColor: isMacOS ? MacColors.opacity(MacColors.label, filterBypass ? 0.45 : 1.0) : "#cccccc"; unitColor: isMacOS ? MacColors.opacity(MacColors.secondaryLabel, filterBypass ? 0.45 : 1.0) : "#888888"; unitSize: 10
-                fieldWidth: 60; height: 28; suffix: "dB"; decimals: 1; minValue: -30; maxValue: 30
+                fieldWidth: 60; height: 28; suffix: "dB"; accessibleName: "Band " + (bandIndex + 1) + " gain"; decimals: 1; minValue: -30; maxValue: 30
                 value: filterGain
                 onValueEdited: filterRowRoot.filterChanged(filterType, filterFreq, newValue, filterQ)
             }
@@ -218,7 +229,7 @@ Rectangle {
                 visible: hasQ
                 anchors.verticalCenter: parent.verticalCenter
                 textColor: isMacOS ? MacColors.opacity(MacColors.label, filterBypass ? 0.45 : 1.0) : "#cccccc"; unitColor: isMacOS ? MacColors.opacity(MacColors.secondaryLabel, filterBypass ? 0.45 : 1.0) : "#888888"; unitSize: 10
-                fieldWidth: 56; height: 28; suffix: "Q"; decimals: 3; wheelStep: 0.1; minValue: 0.1; maxValue: 20
+                fieldWidth: 56; height: 28; suffix: "Q"; accessibleName: "Band " + (bandIndex + 1) + " Q"; decimals: 3; wheelStep: 0.1; minValue: 0.1; maxValue: 20
                 value: filterQ
                 onValueEdited: filterRowRoot.filterChanged(filterType, filterFreq, filterGain, newValue)
             }

@@ -142,6 +142,8 @@ void SmokeDriver::start() {
         // -- WP QD7 --
         else if (!qEnvironmentVariableIsEmpty("DSPI_SMOKE_DEMO_ENTRY")) runDemoEntry();
         else if (replug) runReplug();
+        // -- WP QD22 -- Only the accessibility pass, for a quick look (not in run.sh)
+        else if (!qEnvironmentVariableIsEmpty("DSPI_SMOKE_A11Y")) { testAccessibility(); sectionTimes(); QCoreApplication::exit(m_failures ? 1 : 0); }
         else if (hardware) runHardware();
         else run();
     });
@@ -169,6 +171,8 @@ void SmokeDriver::run() {
     // -- WP QD17 -- Before the passes that right-click text fields: Qt's text context
     // menu keeps its Select All / Copy / Paste keys once opened (QD17 report)
     testShortcuts();
+    // -- WP QD22 --
+    testAccessibility();
     testSettingsPages();
     testBypassRepaint();
     testSweep();

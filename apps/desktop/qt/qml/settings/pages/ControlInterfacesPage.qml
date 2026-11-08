@@ -104,14 +104,16 @@ SettingsPage {
                 color: isMacOS ? "transparent" : revertMouse.pressed ? Qt.rgba(1, 1, 1, 0.12) : revertMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.07) : "transparent"
                 border.color: isMacOS ? "transparent" : Qt.rgba(1, 1, 1, 0.18)
                 Text { anchors.centerIn: parent; text: "Revert"; font.pixelSize: 13; color: isMacOS ? MacColors.accent : "white" }
-                MouseArea { id: revertMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: applyRow.revert() }
+                ClickArea { id: revertMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; focusRadius: 10
+                            Accessible.name: "Revert"; onActivated: applyRow.revert() }
             }
             Rectangle {
                 width: 80; height: 28; radius: 8
                 opacity: applyRow.edited ? 1 : 0.4
                 color: isMacOS ? (applyMouse.pressed ? Qt.rgba(1, 1, 1, 0.36) : MacColors.control) : applyMouse.pressed ? "#0060cc" : "#0a7cff"
                 Text { anchors.centerIn: parent; text: "Apply"; font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? MacColors.label : "white" }
-                MouseArea { id: applyMouse; anchors.fill: parent; enabled: applyRow.edited; cursorShape: Qt.PointingHandCursor; onClicked: applyRow.apply() }
+                ClickArea { id: applyMouse; anchors.fill: parent; enabled: applyRow.edited; cursorShape: Qt.PointingHandCursor; focusRadius: 10
+                            Accessible.name: "Apply"; onActivated: applyRow.apply() }
             }
         }
     }
@@ -145,6 +147,7 @@ SettingsPage {
                     live: page.hw.uartLive === true
                 }
                 ToggleSwitch {
+                    Accessible.name: "Enable UART"
                     checked: page.uartEnabled
                     onToggled: { page.uartEnabled = checked; page.uartEdited = true }
                 }
@@ -214,6 +217,7 @@ SettingsPage {
                     live: page.hw.i2cLive === true
                 }
                 ToggleSwitch {
+                    Accessible.name: "Enable I2C Target"
                     checked: page.i2cEnabled
                     onToggled: { page.i2cEnabled = checked; page.i2cEdited = true }
                 }

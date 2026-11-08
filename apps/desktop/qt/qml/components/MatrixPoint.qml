@@ -12,6 +12,8 @@ Item {
     property string inputColor: "#4A8FE3"
     property string outputColor: "#45C2A3"
     property bool isHovering: false
+    // -- WP QD22 -- What a screen reader calls the route ("IN1 to OUT2")
+    property string routeName: "Route"
 
     signal connectionToggled(bool newConnected)
     signal gainEdited(real newGain)
@@ -39,6 +41,7 @@ Item {
                 verticalAlignment: Text.AlignVCenter
                 selectByMouse: true
                 padding: 2
+                Accessible.name: pointRoot.routeName + " gain"
 
                 background: Rectangle { color: "transparent" }
 
@@ -97,13 +100,18 @@ Item {
                     border.width: pointRoot.isHovering ? 2 : 1.5
                 }
 
-                MouseArea {
+                ClickArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     hoverEnabled: true
+                    focusRadius: 16
+                    Accessible.role: Accessible.CheckBox
+                    Accessible.name: pointRoot.routeName
+                    Accessible.checkable: true
+                    Accessible.checked: isConnected
                     onEntered: pointRoot.isHovering = true
                     onExited: pointRoot.isHovering = false
-                    onClicked: pointRoot.connectionToggled(!isConnected)
+                    onActivated: pointRoot.connectionToggled(!isConnected)
                 }
             }
         }
@@ -123,10 +131,14 @@ Item {
                 font.weight: isInverted ? Font.Bold : Font.Medium
                 color: isMacOS ? (isInverted ? MacColors.orange : MacColors.opacity(MacColors.secondaryLabel, 0.3)) : isInverted ? "#ff9800" : Qt.rgba(1, 1, 1, 0.3)
 
-                MouseArea {
+                ClickArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: pointRoot.invertToggled(!isInverted)
+                    Accessible.role: Accessible.CheckBox
+                    Accessible.name: pointRoot.routeName + " inverted"
+                    Accessible.checkable: true
+                    Accessible.checked: isInverted
+                    onActivated: pointRoot.invertToggled(!isInverted)
                 }
             }
         }

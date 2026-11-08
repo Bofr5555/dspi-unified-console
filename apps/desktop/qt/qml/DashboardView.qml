@@ -120,12 +120,14 @@ Flickable {
                             size: 12
                             color: isMacOS ? (layoutPopup.visible && layoutPopup.owner === slot ? MacColors.label : MacColors.secondaryLabel) : Qt.rgba(1, 1, 1, layoutPopup.visible && layoutPopup.owner === slot ? 0.95 : 0.6)
                         }
-                        MouseArea {
+                        ClickArea {
                             id: gearMouse
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: { layoutPopup.owner = slot; layoutPopup.toggleBelow(gear) }
+                            Accessible.role: Accessible.ButtonMenu
+                            Accessible.name: "Dashboard layout"
+                            onActivated: { layoutPopup.owner = slot; layoutPopup.toggleBelow(gear) }
                         }
                         ToolTip.text: "Dashboard layout"
                         ToolTip.visible: gearMouse.containsMouse && !layoutPopup.visible

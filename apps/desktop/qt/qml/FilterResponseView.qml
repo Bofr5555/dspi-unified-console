@@ -137,6 +137,48 @@ Column {
                 showLevelReadout: root.graphLevelReadout
                 backgroundColor: parent.color
                 Component.onCompleted: setBridge(bridge)
+                // -- WP QD22 -- Tab steps through the bands (as on the Mac) and, from
+                // the last one (or with none), on out of the graph with nothing
+                // selected, so the graph never holds the focus; Shift+Tab the same way back
+                activeFocusOnTab: active
+                Accessible.ignored: !active   // no channel open: nothing to edit
+                Accessible.role: Accessible.Chart
+                Accessible.name: "EQ graph"
+                Accessible.description: "Tab steps through the bands. Arrows move the selected band, Alt with Up or Down sets its width, Delete removes it, Escape deselects."
+                property bool keyFocused: false
+                onActiveFocusChanged: keyFocused = activeFocus && !plotPointer.hovered
+                FocusRing { gap: -2; radius: 4; shown: editor.keyFocused }   // inside: the plot clips
+                function leavesOn(back) {
+                    var sel = editor.selectedBands
+                    var edge = -1, edgeFreq = 0
+                    for (var b = 0; b < 10; b++) {   // BANDS_PER_CHANNEL, as FilterListView
+                        var t = bridge.filterType(editor.channel, b)
+                        if (t === 0 || t >= 32) continue   // flat, or a crossover (isEditable)
+                        var f = bridge.filterFreq(editor.channel, b)
+                        if (edge < 0 || (back ? f < edgeFreq : f > edgeFreq)) { edge = b; edgeFreq = f }
+                    }
+                    // No band to step to, or the last one selected
+                    return edge < 0 || (sel.length === 1 && edge === sel[0])
+                }
+                function leave(forward) {
+                    editor.deselectAll()
+                    var n = editor.nextItemInFocusChain(forward)
+                    for (var i = 0; n && i < 200; i++) {
+                        var inside = false
+                        for (var p = n; p; p = p.parent) if (p === editor) inside = true
+                        if (!inside) break
+                        n = n.nextItemInFocusChain(forward)
+                    }
+                    if (n) n.forceActiveFocus(forward ? Qt.TabFocusReason : Qt.BacktabFocusReason)
+                }
+                Keys.onTabPressed: function (event) {
+                    if (leavesOn(false)) leave(true)
+                    else event.accepted = false
+                }
+                Keys.onBacktabPressed: function (event) {
+                    if (leavesOn(true)) leave(false)
+                    else event.accepted = false
+                }
                 onContextMenuRequested: {
                     var items = []
                     if (band >= 0) {
@@ -193,8 +235,8 @@ Column {
                 width: 24
                 height: 22
                 radius: 6
-                opacity: plotPointer.containsPointer || graphOptions.visible ? 1 : 0
-                visible: opacity > 0
+                // -- WP QD22 -- Also while it has the keyboard focus; Tab reaches it from the graph
+                opacity: plotPointer.containsPointer || graphOptions.visible || gearMouse.activeFocus ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.InOutQuad } }
                 color: isMacOS ? "transparent" : gearMouse.pressed ? Qt.rgba(1, 1, 1, 0.14) : gearMouse.containsMouse || graphOptions.visible
                        ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
@@ -204,12 +246,15 @@ Column {
                     size: 14
                     color: Qt.rgba(1, 1, 1, graphOptions.visible ? 0.95 : 0.7)
                 }
-                MouseArea {
+                ClickArea {
                     id: gearMouse
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: graphOptions.toggleBelow(gearButton)
+                    focusRadius: 8
+                    Accessible.role: Accessible.ButtonMenu
+                    Accessible.name: "Graph and spectrum options"
+                    onActivated: graphOptions.toggleBelow(gearButton)
                     ToolTip.visible: containsMouse && !graphOptions.visible
                     ToolTip.delay: 600
                     ToolTip.text: "Graph and spectrum options"
@@ -269,6 +314,7 @@ Column {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.SplitVCursor
+            Accessible.ignored: true   // a drag for the graph's height; Settings > Graphing has the rest
             property real startY: 0
             property real startHeight: 0
 

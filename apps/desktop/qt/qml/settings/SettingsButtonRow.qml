@@ -12,6 +12,7 @@ SettingsRow {
     Button {
         id: button
         text: row.buttonText
+        Accessible.description: row.title
         onClicked: row.clicked()
         contentItem: Text {
             text: button.text
@@ -26,6 +27,7 @@ SettingsRow {
             radius: 7
             color: isMacOS ? (button.down ? Qt.rgba(1, 1, 1, 0.36) : MacColors.control) : button.down ? Qt.rgba(1, 1, 1, 0.20) : button.hovered ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(1, 1, 1, 0.09)
             border.color: isMacOS ? "transparent" : Qt.rgba(1, 1, 1, 0.10)
+            FocusRing { radius: 9; shown: button.visualFocus }
         }
     }
 }

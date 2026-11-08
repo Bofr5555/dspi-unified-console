@@ -54,13 +54,21 @@ Rectangle {
             size: 18
             color: isMacOS ? (qb.lit ? "white" : qbMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.7) : MacColors.opacity(MacColors.secondaryLabel, 0.6)) : qb.lit ? qb.litColor : (qbMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.85) : Qt.rgba(1, 1, 1, 0.5))
         }
-        MouseArea {
+        ClickArea {
             id: qbMouse
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             acceptedButtons: Qt.LeftButton | Qt.RightButton
-            onClicked: mouse.button === Qt.RightButton ? qb.rightClicked() : qb.clicked()
+            focusRadius: 7
+            // -- WP QD22 -- The menu key does what a right-click does
+            Accessible.name: qb.tip.replace(" (right-click for settings)", "")
+            Accessible.description: qb.tip.indexOf("right-click") >= 0 ? "The menu key opens its settings" : ""
+            Accessible.checkable: true
+            Accessible.checked: qb.lit
+            onActivated: qb.clicked()
+            Keys.onMenuPressed: qb.rightClicked()
+            onClicked: if (mouse.button === Qt.RightButton) qb.rightClicked()
             ToolTip.visible: containsMouse && qb.tip !== ""
             ToolTip.delay: 600
             ToolTip.text: qb.tip
@@ -298,12 +306,14 @@ Rectangle {
                             size: 14
                             color: saveMouse.containsMouse ? "#3a96ff" : Qt.rgba(1, 1, 1, 0.55)
                         }
-                        MouseArea {
+                        ClickArea {
                             id: saveMouse
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.quickSavePreset()
+                            focusRadius: 7
+                            Accessible.name: presetSave.ToolTip.text
+                            onActivated: root.quickSavePreset()
                         }
                         ToolTip.text: "Save changes to preset " + (bridge.activePresetSlot + 1)
                         ToolTip.visible: saveMouse.containsMouse
@@ -359,13 +369,16 @@ Rectangle {
                                 anchors.verticalCenter: parent.verticalCenter
                             }
                         }
-                        MouseArea {
+                        ClickArea {
                             id: volHeadMouse
                             anchors.fill: parent
                             anchors.margins: -4
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: volumeMenu.toggleAt(volumeHeading)
+                            Accessible.role: Accessible.ComboBox
+                            Accessible.name: "Volume shown"
+                            Accessible.description: volumeSettings.showMaster ? "Master Volume" : "User Volume"
+                            onActivated: volumeMenu.toggleAt(volumeHeading)
                         }
                     }
                     ChoiceMenu {
@@ -384,6 +397,7 @@ Rectangle {
                         value: volumeSlider.pressed ? volumeSlider.dbAt(volumeSlider.value)
                              : volumeSettings.showMaster ? bridge.masterVolumeDB : bridge.userVolumeDB
                         suffix: "dB"
+                        accessibleName: volumeSettings.showMaster ? "Master Volume" : "User Volume"
                         decimals: 1
                         minValue: volumeSettings.showMaster ? -128 : -60
                         maxValue: 0
@@ -402,6 +416,7 @@ Rectangle {
                     id: volumeSlider
                     width: parent.width
                     height: 20
+                    Accessible.name: volumeSettings.showMaster ? "Master Volume" : "User Volume"
                     topPadding: 0
                     bottomPadding: 0
                     // The slider runs over a 0..1 position with the macOS
@@ -489,6 +504,7 @@ Rectangle {
                         radius: 9
                         color: isMacOS ? Qt.rgba(0.6, 0.6, 0.6, 1) : "#d8d8d8"
                         border.color: Qt.rgba(0, 0, 0, 0.3)
+                        FocusRing { radius: 11; shown: volumeSlider.visualFocus }
                     }
                 }
             }

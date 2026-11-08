@@ -132,12 +132,18 @@ AppWindow {
             font.weight: Font.DemiBold
             color: isMacOS ? (parent.isCurrent ? "white" : MacColors.opacity(MacColors.label, 0.75)) : parent.isCurrent ? "white" : Qt.rgba(1, 1, 1, 0.75)
         }
-        MouseArea {
+        ClickArea {
             id: chipMouse
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: bridge.setTubeParam(win.pType, parent.type)
+            focusRadius: 8
+            Accessible.role: Accessible.RadioButton
+            Accessible.name: win.tubeNames[parent.type]
+            Accessible.description: win.tubeStyles[parent.type]
+            Accessible.checkable: true
+            Accessible.checked: parent.isCurrent
+            onActivated: bridge.setTubeParam(win.pType, parent.type)
             ToolTip.visible: containsMouse
             ToolTip.delay: 500
             ToolTip.text: win.tubeNames[parent.type] + ": " + win.tubeStyles[parent.type]
@@ -512,6 +518,7 @@ AppWindow {
                     height: 28
                     Text { text: "Tube"; font.pixelSize: 13; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9); anchors.verticalCenter: parent.verticalCenter }
                     StyledComboBox {
+                        Accessible.name: "Tube"
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
                         width: 190
@@ -652,6 +659,7 @@ AppWindow {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
                         checked: win.outputStage
+                        Accessible.name: "Output stage"
                         onToggled: bridge.setTubeParam(win.pXfmr, checked ? 1 : 0)
                     }
                 }

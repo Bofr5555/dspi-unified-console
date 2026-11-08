@@ -83,12 +83,16 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
             }
         }
-        MouseArea {
+        ClickArea {
             id: cbMouse
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: cb.clicked()
+            focusRadius: cb.radius + 2
+            Accessible.name: cb.text
+            Accessible.checkable: true
+            Accessible.checked: cb.active
+            onActivated: cb.clicked()
         }
     }
 
@@ -137,6 +141,7 @@ Rectangle {
             StyledSlider {
                 id: preampSlider
                 Layout.fillWidth: true
+                Accessible.name: "Preamp"
                 from: -60; to: bridge.preampMaxDB     // +18 dB on RP2040, +24 on RP2350
                 stepSize: 0.1
                 value: preampDB
@@ -163,6 +168,7 @@ Rectangle {
                 height: 24
                 value: preampDB
                 suffix: "dB"
+                accessibleName: "Preamp"
                 decimals: 1
                 minValue: -60
                 maxValue: bridge.preampMaxDB

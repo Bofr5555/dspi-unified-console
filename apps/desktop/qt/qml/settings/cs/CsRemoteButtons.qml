@@ -53,10 +53,11 @@ Column {
                     Item {
                         width: parent.width
                         height: 40
-                        MouseArea {
+                        ClickArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: rb.host.setMap("expandedSubs", sub.k, sub.open ? undefined : true)
+                            Accessible.name: "Button " + (sub.k + 1) + (sub.open ? ", open" : ", closed")
+                            onActivated: rb.host.setMap("expandedSubs", sub.k, sub.open ? undefined : true)
                         }
                         Icon {
                             id: chev

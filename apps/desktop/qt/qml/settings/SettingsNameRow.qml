@@ -39,6 +39,8 @@ SettingsRow {
                 maximumLength: 31
                 selectByMouse: true
                 clip: true
+                activeFocusOnTab: true   // -- WP QD22 --
+                Accessible.name: row.title
                 font.pixelSize: 13
                 color: isMacOS ? MacColors.label : "white"
                 selectionColor: isMacOS ? MacColors.selectedControl : "#0a7cff"
@@ -76,12 +78,13 @@ SettingsRow {
                     size: 11
                     color: isMacOS ? MacColors.tertiaryLabel : Qt.rgba(1, 1, 1, 0.45)
                 }
-                MouseArea {
+                ClickArea {
                     id: clearMouse
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: { field.text = ""; row.edited("") }
+                    Accessible.name: row.clearTip !== "" ? row.clearTip : "Clear " + row.title
+                    onActivated: { field.text = ""; row.edited("") }
                 }
                 ToolTip.visible: clearMouse.containsMouse && row.clearTip !== ""
                 ToolTip.delay: 600

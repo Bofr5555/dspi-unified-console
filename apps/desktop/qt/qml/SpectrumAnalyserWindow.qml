@@ -105,12 +105,16 @@ AppWindow {
                                         color: isMacOS ? (parent.parent.hidden ? MacColors.opacity(MacColors.secondaryLabel, 0.4) : MacColors.secondaryLabel) : Qt.rgba(1, 1, 1, parent.parent.hidden ? 0.3 : (chipMouse.containsMouse ? 0.9 : 0.65))
                                     }
                                 }
-                                MouseArea {
+                                ClickArea {
                                     id: chipMouse
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: win.toggleHidden(modelData)
+                                    Accessible.role: Accessible.CheckBox
+                                    Accessible.name: win.nameOf(modelData) + " shown"
+                                    Accessible.checkable: true
+                                    Accessible.checked: !parent.hidden
+                                    onActivated: win.toggleHidden(modelData)
                                     ToolTip.visible: containsMouse
                                     ToolTip.delay: 600
                                     ToolTip.text: (parent.hidden ? "Show " : "Hide ") + win.nameOf(modelData) + " in this window"
@@ -325,12 +329,14 @@ AppWindow {
                         font.underline: takeMouse.containsMouse
                         color: isMacOS ? MacColors.accent : "#0a7cff"
                         onClicked: rta.takeControl()
-                        MouseArea {
+                        ClickArea {
                             id: takeMouse
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: takeControl.clicked()
+                            Accessible.role: Accessible.Link
+                            Accessible.name: takeControl.text
+                            onActivated: takeControl.clicked()
                         }
                     }
                 }

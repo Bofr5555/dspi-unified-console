@@ -38,10 +38,14 @@ Rectangle {
             width: parent.width
             height: 48
 
-            MouseArea {
+            ClickArea {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
-                onClicked: card.toggle()
+                focusRadius: 10
+                // -- WP QD22 -- Opens or closes the card
+                Accessible.name: (card.name !== "" ? card.name : card.placeholder) + (card.expanded ? ", open" : ", closed")
+                Accessible.description: card.summary
+                onActivated: card.toggle()
             }
             Icon {
                 id: chevron
@@ -71,6 +75,8 @@ Rectangle {
                 // The name edits in place; Return or a click elsewhere commits
                 TextInput {
                     id: nameInput
+                    activeFocusOnTab: true   // -- WP QD22 --
+                    Accessible.name: "Name"
                     width: Math.min(parent.width, Math.max(60, Math.max(contentWidth, placeholderText.implicitWidth) + 12))
                     height: 20
                     leftPadding: 4

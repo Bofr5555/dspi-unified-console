@@ -45,12 +45,22 @@ Rectangle {
             bridge.setChannelName(channelIndex, name.substring(0, 31))
     }
 
-    MouseArea {
+    ClickArea {
         id: hover
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         acceptedButtons: Qt.LeftButton | Qt.RightButton
+        focusRadius: rowRoot.radius + 2
+        // -- WP QD22 -- Space or Return opens the channel; the menu key its menu, F2 renames
+        Accessible.role: Accessible.ListItem
+        Accessible.name: channelName
+        Accessible.description: descriptor
+        Accessible.checkable: true
+        Accessible.checked: isSelected
+        onActivated: if (byKeyboard) rowRoot.clicked()
+        Keys.onMenuPressed: rowRoot.openContextMenu(width / 2, height / 2)
+        Keys.onPressed: function (event) { if (event.key === Qt.Key_F2 && bridge.writable) { rowRoot.startRename(); event.accepted = true } }
         onClicked: {
             if (mouse.button === Qt.RightButton) rowRoot.openContextMenu(mouse.x, mouse.y)
             else if (mouse.modifiers & Qt.AltModifier) { if (bridge.writable) rowRoot.startRename() }   // -- WP QD6 --
@@ -75,6 +85,7 @@ Rectangle {
     TextField {
         id: nameEdit
         visible: renaming
+        Accessible.name: "Channel name"
         width: 150
         height: 24
         font.pixelSize: 14
@@ -133,10 +144,15 @@ Rectangle {
             font.weight: Font.Bold
             color: isMacOS ? (curveVisible ? parsedColor : MacColors.secondaryLabel) : pill.tint
         }
-        MouseArea {
+        ClickArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
-            onClicked: bridge.setChannelVisible(rowRoot.channelIndex, !rowRoot.curveVisible)
+            focusRadius: parent.radius + 2
+            Accessible.role: Accessible.CheckBox
+            Accessible.name: channelName + " curve on the graph"
+            Accessible.checkable: true
+            Accessible.checked: rowRoot.curveVisible
+            onActivated: bridge.setChannelVisible(rowRoot.channelIndex, !rowRoot.curveVisible)
         }
     }
 

@@ -331,12 +331,17 @@ AppWindow {
                                     color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
                                 }
                             }
-                            MouseArea {
+                            ClickArea {
                                 id: presetMouse
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: bridge.setCrossfeedPreset(index)
+                                Accessible.role: Accessible.RadioButton
+                                Accessible.name: modelData.name
+                                Accessible.description: modelData.detail
+                                Accessible.checkable: true
+                                Accessible.checked: parent.isCurrent
+                                onActivated: bridge.setCrossfeedPreset(index)
                             }
                         }
                     }
@@ -403,6 +408,7 @@ AppWindow {
                     }
                     ToggleSwitch {
                         id: itdSwitch
+                        Accessible.name: "Interaural Time Delay"
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
                         checked: bridge.crossfeedITD
@@ -431,12 +437,14 @@ AppWindow {
                             }
                             Icon { name: "chev-down"; size: 11; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.6); anchors.verticalCenter: parent.verticalCenter }
                         }
-                        MouseArea {
+                        ClickArea {
                             id: pairMouse
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: pairMenu.openAt(pairLink, 0, pairLink.height + 4)
+                            Accessible.role: Accessible.ButtonMenu
+                            Accessible.name: "Output pair presets"
+                            onActivated: pairMenu.openAt(pairLink, 0, pairLink.height + 4)
                         }
                     }
                 }
@@ -531,6 +539,7 @@ AppWindow {
                                         color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9)
                                     }
                                     StyledComboBox {
+                                        Accessible.name: "Pair " + (parent.pair + 1) + " left"
                                         objectName: "pairLeft" + parent.pair
                                         width: 92
                                         model: win.outputLabels
@@ -545,6 +554,7 @@ AppWindow {
                                         color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
                                     }
                                     StyledComboBox {
+                                        Accessible.name: "Pair " + (parent.pair + 1) + " right"
                                         objectName: "pairRight" + parent.pair
                                         width: 92
                                         model: win.outputLabels
@@ -611,12 +621,17 @@ AppWindow {
                                     font.weight: Font.DemiBold
                                     color: isMacOS ? (parent.isOn ? "white" : MacColors.opacity(MacColors.label, 0.6)) : parent.isOn ? "white" : Qt.rgba(1, 1, 1, 0.5)
                                 }
-                                MouseArea {
+                                ClickArea {
                                     id: pairChipMouse
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: bridge.setCrossfeedOutputPairMask(bridge.crossfeedOutputPairMask ^ (1 << index))
+                                    focusRadius: 8
+                                    Accessible.role: Accessible.CheckBox
+                                    Accessible.name: win.outputName(modelData.left) + " / " + win.outputName(modelData.right)
+                                    Accessible.checkable: true
+                                    Accessible.checked: parent.isOn
+                                    onActivated: bridge.setCrossfeedOutputPairMask(bridge.crossfeedOutputPairMask ^ (1 << index))
                                     ToolTip.visible: containsMouse
                                     ToolTip.delay: 500
                                     ToolTip.text: win.outputName(modelData.left) + " / " + win.outputName(modelData.right)

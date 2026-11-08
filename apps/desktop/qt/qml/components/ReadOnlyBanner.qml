@@ -55,12 +55,14 @@ Rectangle {
             font.pixelSize: 12
             color: isMacOS ? MacColors.label : "white"
         }
-        MouseArea {
+        ClickArea {
             id: actionMouse
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: banner.updateRequested()
+            focusRadius: 9
+            Accessible.name: label.text
+            onActivated: banner.updateRequested()
         }
     }
 }

@@ -401,7 +401,8 @@ AppWindow {
                         color: isMacOS ? (resetMouse.pressed ? MacColors.opacity(MacColors.control, 1.6) : MacColors.control) : resetMouse.pressed ? Qt.rgba(1, 1, 1, 0.14) : resetMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
                         border.color: isMacOS ? "transparent" : Qt.rgba(1, 1, 1, 0.18)
                         Text { id: resetText; anchors.centerIn: parent; text: "Reset Watermarks"; font.pixelSize: 10; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.85) }
-                        MouseArea { id: resetMouse; enabled: bridge.writable; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: stats.resetWatermarks() }
+                        ClickArea { id: resetMouse; enabled: bridge.writable; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; focusRadius: 8
+                                    Accessible.name: resetText.text; onActivated: stats.resetWatermarks() }
                     }
                 }
                 Row {

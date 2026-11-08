@@ -131,18 +131,23 @@ Item {
     }
 
     // Several DSPis: click to choose one. Right-click rescans and reconnects.
-    MouseArea {
+    ClickArea {
         id: statusHover
         anchors.fill: status
         anchors.margins: -4
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         cursorShape: bridge.availableSerials.length > 1 || cpuRoot.noAccess ? Qt.PointingHandCursor : Qt.ArrowCursor
-        onClicked: {
-            if (mouse.button === Qt.RightButton) { bridge.rescan(); return }
+        // -- WP QD22 -- From the keyboard: the click's action, or the right-click's
+        // reconnect where a click has none
+        Accessible.name: "Device: " + (cpuRoot.connected ? cpuRoot.fullName : bridge.availableSerials.length > 0 ? "Disconnected" : cpuRoot.noAccess ? "No Permission" : "No Devices")
+        Accessible.description: status.statusTip
+        onActivated: {
             if (cpuRoot.noAccess) { root.showUdevHelp(); return }
             if (bridge.availableSerials.length > 1) deviceMenu.toggleAt(status)
+            else if (statusHover.byKeyboard) bridge.rescan()
         }
+        onClicked: if (mouse.button === Qt.RightButton) bridge.rescan()
     }
     ChoiceMenu {
         id: deviceMenu
