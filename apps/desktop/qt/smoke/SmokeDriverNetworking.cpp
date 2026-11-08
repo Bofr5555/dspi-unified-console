@@ -174,10 +174,12 @@ void SmokeDriver::testNetworking() {
         }));
         QQuickItem *accessRow = item("networkingAccess");
         if (accessRow) QMetaObject::invokeMethod(accessRow, "chosen", Q_ARG(QVariant, QStringLiteral("open")));
-        spin(200);
         QObject *dialog = settings->findChild<QObject *>(QStringLiteral("networkingAccessDialog"));
         if (!dialog) dialog = page->findChild<QObject *>(QStringLiteral("networkingAccessDialog"));
-        check("QD14: going open asks first, with the cost", dialog && dialog->property("opened").toBool()
+        // -- review c74 -- opened is true after AppDialog's 150 ms enter transition, so a
+        // fixed 200 ms wait flaked under load (QD41's first Qt 5 run): wait for it
+        const bool opened = dialog && waitFor(5000, [dialog] { return dialog->property("opened").toBool(); });
+        check("QD14: going open asks first, with the cost", opened
                   && dialog->property("message").toString().contains(QLatin1String("must pair again")));
         if (dialog) QMetaObject::invokeMethod(dialog, "chosen", Q_ARG(QString, QStringLiteral("cancel")));
         if (dialog) QMetaObject::invokeMethod(dialog, "close");
