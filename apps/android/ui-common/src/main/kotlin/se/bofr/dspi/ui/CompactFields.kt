@@ -1,7 +1,9 @@
 // Port of DSPi-Console (macOS) `DSPi Console/MatrixMixerView.swift`
 // (CompactGainField, CompactDelayField, ScrollWheelHandler) @ v1.1.6-beta5,
-// plus the rounding of `Commands.swift` setOutputGain (0.1 dB) and
-// setOutputDelay (whole ms).
+// plus the rounding of `Commands.swift` setOutputGain (0.1 dB). Delays are
+// not rounded to whole ms as Commands.swift setOutputDelay does: the core
+// quantises them to 0.0001 ms, so a fractional delay from a file, another
+// client or the device is shown and kept (WP AN40, UPSTREAM-DEVIATIONS MATRIX 3).
 //
 // Touch adaptation (docs/UPSTREAM-DEVIATIONS.md "MATRIX"): tap = type a value
 // (macOS: click the field); long-press then drag up/right = more, down/left =
@@ -58,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.floor
 
 // ═══ Formatting / parsing (pure, JVM-tested) ═══════════════════════════════
@@ -85,13 +88,24 @@ fun formatGain(value: Float): String {
 /** CompactGainField.updateDisplay. */
 fun compactGainDisplay(gain: Float): String = formatGain(gain) + " dB"
 
-/** CompactDelayField.updateDisplay. */
-fun compactDelayDisplay(delay: Float): String = if (delay == 0f) "0 ms" else String.format(Locale.ROOT, "%.1f ms", delay)
+/**
+ * CompactDelayField.updateDisplay ("%.1f ms"), with a second decimal when the
+ * delay has one (0.25 ms stays "0.25 ms", not "0.3 ms"; WP AN40). At most
+ * "12.35 ms", which fits the field.
+ */
+fun compactDelayDisplay(delay: Float): String = if (delay == 0f) "0 ms" else delayDecimals(delay, 2) + " ms"
 
 /** The text the editor starts with (macOS on focus: formatGain / "%.1f"). */
 fun compactGainEditText(gain: Float): String = formatGain(gain)
 
-fun compactDelayEditText(delay: Float): String = String.format(Locale.ROOT, "%.1f", delay)
+/** "%.1f" as macOS, but every decimal the core keeps (0.0001 ms), so OK on an untouched value writes it back unchanged. */
+fun compactDelayEditText(delay: Float): String = delayDecimals(delay, 4)
+
+/** At least one and at most [max] decimals, trailing zeros trimmed: "12.0", "0.5", "1.2346". */
+fun delayDecimals(ms: Float, max: Int): String {
+    val s = String.format(Locale.ROOT, "%.${max}f", ms).trimEnd('0')
+    return if (s.endsWith('.')) s + "0" else s
+}
 
 private val NUMBER = Regex("""^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$""")
 
@@ -118,18 +132,12 @@ fun roundOutputGain(db: Float): Float {
     return if (v == 0f) 0f else v
 }
 
-/** Commands.swift setOutputDelay: whole milliseconds ("Applied in whole milliseconds"). */
-fun roundOutputDelay(ms: Float): Float {
-    val v = roundHalfAwayFromZero(ms)
-    return if (v == 0f) 0f else v
-}
-
 // ═══ Drag math (touch stand-in for ScrollWheelHandler) ═════════════════════
 
 /**
  * Value after dragging [dragDp] dp (positive = up/right) from [start].
  * Gain: 0.1 dB per [GAIN_DP_PER_STEP] dp (snapped to 0.1 dB unless unquantised). Delay: 1 ms per
- * [DELAY_DP_PER_STEP] dp, snapped to whole ms (what the device applies).
+ * [DELAY_DP_PER_STEP] dp on the whole-ms grid; no step leaves a fractional delay as it is.
  */
 object CompactDrag {
     const val GAIN_DP_PER_STEP = 3f
@@ -149,7 +157,10 @@ object CompactDrag {
 
     fun delay(start: Float, dragDp: Float, maxDelay: Float): Float {
         val steps = roundHalfAwayFromZero(dragDp / DELAY_DP_PER_STEP)
-        return roundOutputDelay(start + steps).coerceIn(0f, maxDelay)
+        if (steps == 0f) return start
+        // 0.5 ms: one step up is 1 ms, one step down 0 ms
+        val base = if (steps > 0) floor(start) else ceil(start)
+        return (base + steps).coerceIn(0f, maxDelay)
     }
 }
 
