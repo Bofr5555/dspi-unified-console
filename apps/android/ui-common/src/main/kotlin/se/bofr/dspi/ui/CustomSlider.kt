@@ -201,9 +201,19 @@ private val THUMB_RADIUS = 9.dp
  * pull the thumb back); values go to the device live (sendOnly, at most
  * 30/s, never on the grab, never a value equal to the last one sent); one
  * commit on release. Stable API (lot 3).
+ *
+ * [quantize] (WP SL1): the thumb still moves continuously, but every value a
+ * drag sends and the value it commits go through it, and the thumb snaps to
+ * the committed value on release (macOS output delay: whole ms). Typed values
+ * and resets ([set]) are not quantized.
  */
 @Stable
-class SliderDragState(scope: CoroutineScope, initial: Float, intervalMs: Long = 1000L / 30L) {
+class SliderDragState(
+    scope: CoroutineScope,
+    initial: Float,
+    intervalMs: Long = 1000L / 30L,
+    private val quantize: ((Float) -> Float)? = null
+) {
     var value by mutableFloatStateOf(initial)
         private set
     var dragging by mutableStateOf(false)
@@ -220,7 +230,7 @@ class SliderDragState(scope: CoroutineScope, initial: Float, intervalMs: Long = 
         value = v
         if (dragging) {
             delivery.onValue = live
-            delivery.submit(v)
+            delivery.submit(quantize?.invoke(v) ?: v)
         }
     }
 
@@ -232,6 +242,7 @@ class SliderDragState(scope: CoroutineScope, initial: Float, intervalMs: Long = 
         } else if (dragging) {
             dragging = false
             delivery.cancel()
+            quantize?.let { value = it(value) }
             commit(value)
         }
     }
@@ -245,11 +256,11 @@ class SliderDragState(scope: CoroutineScope, initial: Float, intervalMs: Long = 
     fun cancel() = delivery.cancel()
 }
 
-/** A [SliderDragState] that follows [model] while no drag runs. */
+/** A [SliderDragState] that follows [model] while no drag runs; [quantize] as in [SliderDragState]. */
 @Composable
-fun rememberSliderDrag(model: Float): SliderDragState {
+fun rememberSliderDrag(model: Float, quantize: ((Float) -> Float)? = null): SliderDragState {
     val scope = rememberCoroutineScope()
-    val drag = remember { SliderDragState(scope, model) }
+    val drag = remember { SliderDragState(scope, model, quantize = quantize) }
     LaunchedEffect(model) { drag.sync(model) }
     DisposableEffect(Unit) { onDispose { drag.cancel() } }
     return drag

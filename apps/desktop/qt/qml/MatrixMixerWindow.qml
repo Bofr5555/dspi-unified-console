@@ -413,6 +413,8 @@ AppWindow {
                                 anchors.centerIn: parent
                                 fieldWidth: 60; height: 22; suffix: qsTr("ms"); decimals: 2; maxDecimals: 4; wheelStep: 1
                                 minValue: 0; maxValue: bridge.maxDelayMs; plainWheel: true
+                                wheelOnGrid: true   // -- WP SL1 -- whole ms from a fractional start too
+                                objectName: "matrixDelayField" + index
                                 accessibleName: { rev; return qsTr("%1 delay").arg(bridge.channelName(index + 2)) }
                                 value: { rev; return bridge.outputDelayMS(index) }
                                 onValueEdited: bridge.setOutputDelay(index, newValue)
