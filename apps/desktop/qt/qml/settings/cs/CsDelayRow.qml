@@ -19,7 +19,7 @@ CsRow {
             minValue: 0
             maxValue: Math.floor(row.maxSeconds / 60)
             fieldWidth: 40
-            suffix: "m"
+            suffix: qsTr("m")
             wheelStep: 1
             onValueEdited: row.set(newValue * 60 + row.total % 60)
         }
@@ -29,7 +29,7 @@ CsRow {
             minValue: 0
             maxValue: 5999
             fieldWidth: 34
-            suffix: "s"
+            suffix: qsTr("s")
             wheelStep: 1
             onValueEdited: row.set(Math.floor(row.total / 60) * 60 + newValue)
         }

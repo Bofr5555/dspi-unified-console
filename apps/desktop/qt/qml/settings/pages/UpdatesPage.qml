@@ -8,7 +8,7 @@ import "../../components"
 // page opens in the browser.
 SettingsPage {
     id: page
-    title: "Updates"
+    title: qsTr("Updates")
     writesToDevice: false
     objectName: "updatesPage"
 
@@ -19,19 +19,19 @@ SettingsPage {
         footnote: appUpdater.privacyLine
         SettingsSwitchRow {
             objectName: "updatesAutomatic"
-            title: "Check for Updates Automatically"
-            detail: "Off until you turn it on."
+            title: qsTr("Check for Updates Automatically")
+            detail: qsTr("Off until you turn it on.")
             enabled: appUpdater.hasFeed
             checked: appUpdater.automatic
             onToggled: function (on) { appUpdater.automatic = on }
         }
         SettingsButtonRow {
             objectName: "updatesCheckNow"
-            title: "Version " + appUpdater.currentVersion
-            detail: appUpdater.checking ? "Checking…"
-                    : appUpdater.lastChecked !== "" ? "Last checked " + appUpdater.lastChecked
-                    : "Not checked yet"
-            buttonText: "Check Now"
+            title: qsTr("Version %1").arg(appUpdater.currentVersion)
+            detail: appUpdater.checking ? qsTr("Checking…")
+                    : appUpdater.lastChecked !== "" ? qsTr("Last checked %1").arg(appUpdater.lastChecked)
+                    : qsTr("Not checked yet")
+            buttonText: qsTr("Check Now")
             enabled: appUpdater.hasFeed && !appUpdater.checking
             onClicked: appUpdater.checkNow()
         }
@@ -39,8 +39,8 @@ SettingsPage {
     SettingsStatusLine {
         objectName: "updatesStatus"
         text: appUpdater.checking ? ""
-              : appUpdater.result === "current" ? "DSPi Console " + appUpdater.currentVersion + " is the newest version."
-              : appUpdater.result === "failed" ? "Couldn't check for updates: " + appUpdater.failure
+              : appUpdater.result === "current" ? qsTr("DSPi Console %1 is the newest version.").arg(appUpdater.currentVersion)
+              : appUpdater.result === "failed" ? qsTr("Couldn't check for updates: %1").arg(appUpdater.failure)
               : ""
         error: appUpdater.result === "failed"
     }
@@ -48,28 +48,28 @@ SettingsPage {
     SettingsSection {
         objectName: "updatesAvailable"
         visible: appUpdater.result === "available"
-        title: "Available"
-        footnote: "The new version includes matching DSPi firmware, which it offers to install when your device is connected."
+        title: qsTr("Available")
+        footnote: qsTr("The new version includes matching DSPi firmware, which it offers to install when your device is connected.")
         SettingsButtonRow {
             objectName: "updatesOpenPage"
             title: appUpdater.availableTitle
             verbatim: true
-            detail: "Version " + appUpdater.availableVersion
-            buttonText: "View Release"
+            detail: qsTr("Version %1").arg(appUpdater.availableVersion)
+            buttonText: qsTr("View Release")
             onClicked: appUpdater.openPage()
         }
         SettingsRow {
             objectName: "updatesNotes"
             visible: appUpdater.notes !== ""
-            title: "Release Notes"
+            title: qsTr("Release Notes")
             detail: appUpdater.notes
             verbatim: true
         }
         SettingsButtonRow {
             objectName: "updatesSkip"
-            title: "Skip This Version"
-            detail: "Automatic checks won't mention " + appUpdater.availableVersion + " again."
-            buttonText: "Skip"
+            title: qsTr("Skip This Version")
+            detail: qsTr("Automatic checks won't mention %1 again.").arg(appUpdater.availableVersion)
+            buttonText: qsTr("Skip")
             onClicked: appUpdater.skipVersion()
         }
     }

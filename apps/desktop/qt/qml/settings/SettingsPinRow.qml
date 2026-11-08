@@ -12,7 +12,7 @@ SettingsRow {
     property var alsoTaken: []             // pins this page holds for something else
     property var sharable: []              // owners this pin may share with
     property bool allowUnset: false
-    property string unsetText: "Not set"
+    property string unsetText: qsTr("Not set")
     property int menuWidth: 120
     signal chosen(int pin)
 
@@ -28,7 +28,7 @@ SettingsRow {
 
     StyledComboBox {
         macForm: true
-        width: isMacOS ? Math.max(92, implicitWidth) : row.menuWidth
+        width: isMacOS ? Math.max(92, implicitWidth) : Math.max(row.menuWidth, fitWidth)
         model: row.options.map(function(o) { return o.text })
         currentIndex: row.ctx ? row.ctx.optionIndex(row.options, row.pin) : -1
         Accessible.name: row.title

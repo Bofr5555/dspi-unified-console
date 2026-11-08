@@ -55,7 +55,7 @@ Popup {
     contentItem: Column {
         spacing: 8
         Text {
-            text: "DASHBOARD LAYOUT"
+            text: qsTr("DASHBOARD LAYOUT")
             font.pixelSize: 10
             font.weight: Font.Bold
             font.letterSpacing: 0.6
@@ -104,7 +104,7 @@ Popup {
                         }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: index === 0 ? "Auto" : index
+                            text: index === 0 ? qsTr("Auto") : index
                             font.pixelSize: 10
                             font.weight: tile.on ? Font.DemiBold : Font.Normal
                             color: tile.fg
@@ -121,7 +121,7 @@ Popup {
                         Accessible.checked: tile.on
                         onActivated: root.dashboardCardsPerRow = index
                     }
-                    ToolTip.text: index === 0 ? "Fit cards to the window width" : index + (index === 1 ? " card" : " cards") + " per row"
+                    ToolTip.text: index === 0 ? qsTr("Fit cards to the window width") : index === 1 ? qsTr("%1 card per row").arg(index) : qsTr("%1 cards per row").arg(index)
                     ToolTip.visible: tileMouse.containsMouse
                     ToolTip.delay: 600
                 }
@@ -130,8 +130,8 @@ Popup {
         Text {
             width: parent.width
             wrapMode: Text.WordWrap
-            text: pop.chosen === 0 ? "Fits as many cards per row as the window allows."
-                                   : "Up to " + pop.chosen + (pop.chosen === 1 ? " card" : " cards") + " per row."
+            text: pop.chosen === 0 ? qsTr("Fits as many cards per row as the window allows.")
+                                   : pop.chosen === 1 ? qsTr("Up to %1 card per row.").arg(pop.chosen) : qsTr("Up to %1 cards per row.").arg(pop.chosen)
             font.pixelSize: 11
             color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
         }

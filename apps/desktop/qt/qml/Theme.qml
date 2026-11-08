@@ -46,12 +46,12 @@ QtObject {
 
     // Filter type names
     readonly property var filterTypeNames: [
-        "Off", "Peaking", "Low Shelf", "High Shelf", "Low Pass", "High Pass"
+        qsTr("Off"), qsTr("Peaking"), qsTr("Low Shelf"), qsTr("High Shelf"), qsTr("Low Pass"), qsTr("High Pass")
     ]
 
     // Filter type short names
     readonly property var filterTypeShort: [
-        "OFF", "PK", "LS", "HS", "LP", "HP"
+        qsTr("OFF"), qsTr("PK"), qsTr("LS"), qsTr("HS"), qsTr("LP"), qsTr("HP")
     ]
 
     // Font helpers

@@ -7,7 +7,7 @@ import "components"
 AppWindow {
     id: win
     fitHeight: header.height + flick.contentHeight
-    title: "Psychoacoustic Bass"
+    title: qsTr("Psychoacoustic Bass")
     visible: false
     width: 720
     height: 520 + titlebarHeight
@@ -19,10 +19,10 @@ AppWindow {
 
     // Apply preset: cutoff, harmonics, drive, character, original (macOS values)
     readonly property var presets: [
-        { name: "Bookshelf Speakers",  detail: "Gentle low-end help",       v: [60, 0, 6, 50, 0] },
-        { name: "Small Bluetooth",     detail: "Portable speaker",           v: [100, 3, 9, 40, -12] },
-        { name: "Laptop / Tablet",     detail: "Tiny drivers, protect them", v: [180, 6, 12, 50, -24] },
-        { name: "Headphone Bass Feel", detail: "Extra sub sensation",        v: [45, -3, 6, 30, 0] }]
+        { name: qsTr("Bookshelf Speakers"),  detail: qsTr("Gentle low-end help"),       v: [60, 0, 6, 50, 0] },
+        { name: qsTr("Small Bluetooth"),     detail: qsTr("Portable speaker"),           v: [100, 3, 9, 40, -12] },
+        { name: qsTr("Laptop / Tablet"),     detail: qsTr("Tiny drivers, protect them"), v: [180, 6, 12, 50, -24] },
+        { name: qsTr("Headphone Bass Feel"), detail: qsTr("Extra sub sensation"),        v: [45, -3, 6, 30, 0] }]
 
     function applyPreset(p) {
         for (var i = 0; i < 5; i++) bridge.setPsybassParam(i, p.v[i])
@@ -72,8 +72,8 @@ AppWindow {
         id: header
         width: parent.width
         icon: "bassclef"
-        title: "Psychoacoustic Bass"
-        subtitle: "Phantom fundamental bass enhancement"
+        title: qsTr("Psychoacoustic Bass")
+        subtitle: qsTr("Phantom fundamental bass enhancement")
         checked: bridge.psybassEnabled
         onToggled: bridge.setPsybassEnabled(enable)
     }
@@ -104,11 +104,11 @@ AppWindow {
                 Item {
                     width: parent.width
                     height: 20
-                    SectionLabel { text: "SPECTRUM"; anchors.verticalCenter: parent.verticalCenter }
+                    SectionLabel { text: qsTr("SPECTRUM"); anchors.verticalCenter: parent.verticalCenter }
                     MenuLink {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Apply Preset"
+                        text: qsTr("Apply Preset")
                         menu: spectrumPresetMenu
                     }
                 }
@@ -159,7 +159,7 @@ AppWindow {
                             if (!active) {
                                 ctx.fillStyle = isMacOS ? MacColors.opacity(MacColors.secondaryLabel, 0.5) : "rgba(255,255,255,0.35)"
                                 ctx.font = "12px sans-serif"
-                                ctx.fillText("Disabled", w / 2, h / 2)
+                                ctx.fillText(qsTr("Disabled"), w / 2, h / 2)
                                 return
                             }
 
@@ -199,30 +199,30 @@ AppWindow {
                             anchors.centerIn: parent
                             spacing: 4
                             Row { spacing: 6; Rectangle { width: 10; height: 8; radius: 2; color: isMacOS ? MacColors.accent : "#2b6fd6"; anchors.verticalCenter: parent.verticalCenter }
-                                  Text { text: "Original"; font.pixelSize: 11; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.85) } }
+                                  Text { text: qsTr("Original"); font.pixelSize: 11; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.85) } }
                             Row { spacing: 6; Rectangle { width: 10; height: 8; radius: 2; color: isMacOS ? MacColors.orange : "#e8901f"; anchors.verticalCenter: parent.verticalCenter }
-                                  Text { text: "Harmonics"; font.pixelSize: 11; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.85) } }
+                                  Text { text: qsTr("Harmonics"); font.pixelSize: 11; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.85) } }
                         }
                     }
                 }
 
                 Divider {}
-                SectionLabel { text: "HARMONICS" }
+                SectionLabel { text: qsTr("HARMONICS") }
 
                 ParamRow {
                     id: cutoffRow
-                    label: "Cutoff Frequency"; unit: "Hz"; from: 30; to: 300; stepSize: 1; decimals: 0
+                    label: qsTr("Cutoff Frequency"); unit: qsTr("Hz"); from: 30; to: 300; stepSize: 1; decimals: 0
                     value: bridge.psybassCutoff
-                    caption: "The speaker's low-frequency limit. Content below this feeds the harmonic generator; generated harmonics span roughly this to 4x."
+                    caption: qsTr("The speaker's low-frequency limit. Content below this feeds the harmonic generator; generated harmonics span roughly this to 4x.")
                     onLiveChanged: bridge.setPsybassParam(0, v, true)
                     onCommitted: bridge.setPsybassParam(0, v)
                 }
                 Divider {}
                 ParamRow {
                     id: harmonicsRow
-                    label: "Harmonics"; unit: "dB"; from: -24; to: 12; stepSize: 0.5
+                    label: qsTr("Harmonics"); unit: qsTr("dB"); from: -24; to: 12; stepSize: 0.5
                     value: bridge.psybassHarmonics
-                    caption: "Level of the synthesized harmonics. The primary amount-of-effect control. Higher = more perceived bass."
+                    caption: qsTr("Level of the synthesized harmonics. The primary amount-of-effect control. Higher = more perceived bass.")
                     onLiveChanged: bridge.setPsybassParam(1, v, true)
                     onCommitted: bridge.setPsybassParam(1, v)
                 }
@@ -238,11 +238,11 @@ AppWindow {
                 Item {
                     width: parent.width
                     height: 20
-                    SectionLabel { text: "OUTPUTS"; anchors.verticalCenter: parent.verticalCenter }
+                    SectionLabel { text: qsTr("OUTPUTS"); anchors.verticalCenter: parent.verticalCenter }
                     MenuLink {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Presets"
+                        text: qsTr("Presets")
                         menu: outputPresetMenu
                     }
                 }
@@ -252,7 +252,7 @@ AppWindow {
                     wrapMode: Text.WordWrap
                     font.pixelSize: 11
                     color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
-                    text: "Enhance only the small-speaker outputs. Mask off the sub and any full-range outputs: synthesizing harmonics on a channel that can reproduce real bass is counterproductive."
+                    text: qsTr("Enhance only the small-speaker outputs. Mask off the sub and any full-range outputs: synthesizing harmonics on a channel that can reproduce real bass is counterproductive.")
                 }
 
                 ChannelChips {
@@ -264,19 +264,19 @@ AppWindow {
                 }
 
                 Divider {}
-                SectionLabel { text: "SHAPING" }
+                SectionLabel { text: qsTr("SHAPING") }
 
                 ParamRow {
-                    label: "Drive"; unit: "dB"; from: 0; to: 18; stepSize: 0.5
+                    label: qsTr("Drive"); unit: qsTr("dB"); from: 0; to: 18; stepSize: 0.5
                     value: bridge.psybassDrive
-                    caption: "Pre-gain into the odd-harmonic soft clipper. Higher makes the effect audible on quieter passages. Mostly affects aggressive character."
+                    caption: qsTr("Pre-gain into the odd-harmonic soft clipper. Higher makes the effect audible on quieter passages. Mostly affects aggressive character.")
                     onLiveChanged: bridge.setPsybassParam(2, v, true)
                     onCommitted: bridge.setPsybassParam(2, v)
                 }
                 Divider {}
                 ParamRow {
-                    label: "Character"; unit: "%"; from: 0; to: 100; stepSize: 1; decimals: 0
-                    leftHint: "Warm"; rightHint: "Aggressive"
+                    label: qsTr("Character"); unit: "%"; from: 0; to: 100; stepSize: 1; decimals: 0
+                    leftHint: qsTr("Warm"); rightHint: qsTr("Aggressive")
                     value: bridge.psybassCharacter
                     onLiveChanged: bridge.setPsybassParam(3, v, true)
                     onCommitted: bridge.setPsybassParam(3, v)
@@ -284,9 +284,9 @@ AppWindow {
                 Divider {}
                 ParamRow {
                     id: originalRow
-                    label: "Original Bass"; unit: "dB"; from: -60; to: 0; stepSize: 0.5
+                    label: qsTr("Original Bass"); unit: qsTr("dB"); from: -60; to: 0; stepSize: 0.5
                     value: bridge.psybassOriginal
-                    caption: "Level of the un-reproducible fundamental below the cutoff. Lower attenuates it, freeing driver excursion and headroom. -60 dB is full removal. Speaker protection."
+                    caption: qsTr("Level of the un-reproducible fundamental below the cutoff. Lower attenuates it, freeing driver excursion and headroom. -60 dB is full removal. Speaker protection.")
                     onLiveChanged: bridge.setPsybassParam(4, v, true)
                     onCommitted: bridge.setPsybassParam(4, v)
                 }
@@ -305,9 +305,9 @@ AppWindow {
         id: outputPresetMenu
         parent: Overlay.overlay
         items: [
-            { key: "all", text: "All Outputs" },
-            { key: "nosub", text: "Exclude Sub (Recommended)" },
-            { key: "none", text: "None" }
+            { key: "all", text: qsTr("All Outputs") },
+            { key: "nosub", text: qsTr("Exclude Sub (Recommended)") },
+            { key: "none", text: qsTr("None") }
         ]
         onTriggered: {
             var all = (1 << win.numOut) - 1

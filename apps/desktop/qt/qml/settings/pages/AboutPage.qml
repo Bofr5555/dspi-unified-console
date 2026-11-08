@@ -4,7 +4,7 @@ import "../../components"
 
 SettingsPage {
     writesToDevice: false   // -- WP QD6 --
-    title: "About"
+    title: qsTr("About")
 
     // Who made what, the links and the credits come from assets/about.json through
     // aboutInfo (AboutController), as written, so any wording fits: rows and the card
@@ -38,8 +38,8 @@ SettingsPage {
             anchors.rightMargin: 20
             anchors.verticalCenter: parent.verticalCenter
             spacing: 4
-            Text { text: "DSPi Console"; font.pixelSize: 22; font.weight: Font.Bold; color: isMacOS ? MacColors.label : "white" }
-            Text { text: "Version " + Qt.application.version + " for " + (isMacOS ? "macOS" : isWindows ? "Windows" : "Linux"); font.pixelSize: 13; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.6) }
+            Text { text: qsTr("DSPi Console"); font.pixelSize: 22; font.weight: Font.Bold; color: isMacOS ? MacColors.label : "white" }
+            Text { text: qsTr("Version %1 for %2").arg(Qt.application.version).arg(isMacOS ? "macOS" : isWindows ? "Windows" : "Linux"); font.pixelSize: 13; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.6) }
             Repeater {
                 model: aboutInfo.creditLines
                 Text {
@@ -58,9 +58,9 @@ SettingsPage {
     // links these are. The note sits above the rows, as it must be read before them.
     Repeater {
         model: [
-            { title: "Made by", note: "", rows: aboutInfo.makers },
+            { title: qsTr("Made by"), note: "", rows: aboutInfo.makers },
             { title: aboutInfo.linksTitle, note: aboutInfo.linksNote, rows: aboutInfo.links },
-            { title: "Credits", note: "", rows: aboutInfo.credits }
+            { title: qsTr("Credits"), note: "", rows: aboutInfo.credits }
         ]
         SettingsSection {
             title: modelData.title
@@ -92,7 +92,7 @@ SettingsPage {
         wrapMode: Text.WordWrap
         font.pixelSize: 12
         color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
-        text: "DSPi Firmware and Console are free, open-source software developed in spare time. "
-            + "Contributions of any kind - code, feedback, funding, or otherwise - are always immensely appreciated."
+        text: qsTr("DSPi Firmware and Console are free, open-source software developed in spare time. "
+            + "Contributions of any kind - code, feedback, funding, or otherwise - are always immensely appreciated.")
     }
 }

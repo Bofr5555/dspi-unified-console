@@ -13,16 +13,16 @@ Popup {
     // types: firmware filter types; chips label each when there's more than one.
     // The last type is the one the row's name picks.
     readonly property var rows: [
-        { text: "Off", types: [0] },
-        { text: "Peaking", types: [1] },
-        { text: "Low Shelf", types: [9, 2], chips: ["6", "12"] },
-        { text: "High Shelf", types: [10, 3], chips: ["6", "12"] },
-        { text: "High Cut", types: [12, 4], chips: ["6", "12"] },
-        { text: "Low Cut", types: [13, 5], chips: ["6", "12"] },
-        { text: "Notch", types: [6] },
-        { text: "All Pass", types: [8, 7], chips: ["180°", "360°"] },
+        { text: qsTr("Off"), types: [0] },
+        { text: qsTr("Peaking"), types: [1] },
+        { text: qsTr("Low Shelf"), types: [9, 2], chips: ["6", "12"] },
+        { text: qsTr("High Shelf"), types: [10, 3], chips: ["6", "12"] },
+        { text: qsTr("High Cut"), types: [12, 4], chips: ["6", "12"] },
+        { text: qsTr("Low Cut"), types: [13, 5], chips: ["6", "12"] },
+        { text: qsTr("Notch"), types: [6] },
+        { text: qsTr("All Pass"), types: [8, 7], chips: ["180°", "360°"] },
         { separator: true, lt: true },
-        { text: "Linkwitz Transform", types: [11], lt: true }
+        { text: qsTr("Linkwitz Transform"), types: [11], lt: true }
     ]
 
     padding: MenuStyle.padding
@@ -31,7 +31,7 @@ Popup {
     width: Math.ceil(MenuStyle.sideInset + 16 + labelWidest.advanceWidth + 24 + 2 * 44 + 4
                      + MenuStyle.sideInset + 2 * MenuStyle.padding)
 
-    TextMetrics { id: labelWidest; font.pixelSize: MenuStyle.fontSize; font.weight: Font.DemiBold; text: "Linkwitz Transform" }
+    TextMetrics { id: labelWidest; font.pixelSize: MenuStyle.fontSize; font.weight: Font.DemiBold; text: qsTr("Linkwitz Transform") }
 
     property int current: -1          // hovered row
     property real closedAt: 0
@@ -187,7 +187,7 @@ Popup {
                              : chipMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(1, 1, 1, 0.07)
                         Text {
                             anchors.centerIn: parent
-                            text: modelData + (modelData.indexOf("°") < 0 ? " dB" : "")
+                            text: modelData.indexOf("°") < 0 ? qsTr("%1 dB").arg(modelData) : modelData
                             font.pixelSize: MenuStyle.smallFontSize
                             font.weight: parent.isCurrent ? Font.DemiBold : Font.Normal
                             color: parent.isCurrent || chipMouse.containsMouse ? "white" : Qt.rgba(1, 1, 1, 0.65)
@@ -200,7 +200,7 @@ Popup {
                             onEntered: menu.current = entryIndex
                             onClicked: menu.pick(parent.type)
                             Accessible.role: Accessible.MenuItem
-                            Accessible.name: entry.text + " " + modelData + (modelData.indexOf("°") < 0 ? " dB" : "")
+                            Accessible.name: modelData.indexOf("°") < 0 ? qsTr("%1 %2 dB").arg(entry.text).arg(modelData) : entry.text + " " + modelData
                             Accessible.checkable: true
                             Accessible.checked: parent.isCurrent
                             Accessible.onPressAction: menu.pick(parent.type)

@@ -7,8 +7,8 @@ import "../../components"
 // Changes apply at once; in independent mode Save keeps them on the board.
 SettingsPage {
     id: page
-    title: "Inputs"
-    subtitle: "Receivers, pins and clocking for the digital inputs. Select which one plays in the sidebar's Source menu."
+    title: qsTr("Inputs")
+    subtitle: qsTr("Receivers, pins and clocking for the digital inputs. Select which one plays in the sidebar's Source menu.")
 
     readonly property var hw: bridge.hardware
     readonly property bool rp2350: hw.rp2350 === true
@@ -48,9 +48,9 @@ SettingsPage {
         }
     }
     function lockText(st, adat) {
-        var names = adat ? ["Inactive", "Acquiring", "Syncing", "Locked", "Relocking"]
-                         : ["Inactive", "Acquiring", "Relocking", "Locked"]
-        return names[st.state] || "Inactive"
+        var names = adat ? [qsTr("Inactive"), qsTr("Acquiring"), qsTr("Syncing"), qsTr("Locked"), qsTr("Relocking")]
+                         : [qsTr("Inactive"), qsTr("Acquiring"), qsTr("Relocking"), qsTr("Locked")]
+        return names[st.state] || qsTr("Inactive")
     }
     function lockColor(st, adat) {
         var locked = st.state === 3
@@ -60,9 +60,9 @@ SettingsPage {
                        : locked ? "#32d74b" : hunting ? "#ff9f0a" : Qt.rgba(1, 1, 1, 0.35)
     }
     function lockDetail(st) {
-        if (st.state === 3 && st.detectedRate > 0) return "Locked to the external clock at " + (st.detectedRate / 1000).toFixed(1) + " kHz."
-        if (st.measuredHz > 0) return "Waiting for the external clock (measured " + (st.measuredHz / 1000).toFixed(1) + " kHz)."
-        return "Waiting for the external clock."
+        if (st.state === 3 && st.detectedRate > 0) return qsTr("Locked to the external clock at %1 kHz.").arg((st.detectedRate / 1000).toFixed(1))
+        if (st.measuredHz > 0) return qsTr("Waiting for the external clock (measured %1 kHz).").arg((st.measuredHz / 1000).toFixed(1))
+        return qsTr("Waiting for the external clock.")
     }
 
     // Instances: enable upwards / disable downwards, stopping at the first refusal
@@ -73,12 +73,12 @@ SettingsPage {
         } else {
             for (var j = spdifCount - 1; j >= n && code === 0; j--) { code = bridge.setSpdifInputEnabled(j, false); failed = j }
         }
-        if (code === 0) { report(0, undefined, n + (n === 1 ? " S/PDIF input." : " S/PDIF inputs.")); return }
+        if (code === 0) { report(0, undefined, (n === 1 ? qsTr("%1 S/PDIF input.").arg(n) : qsTr("%1 S/PDIF inputs.").arg(n))); return }
         statusError = true
         if (n > spdifCount && code === 2)
-            status = "Can't enable S/PDIF " + (failed + 1) + ": " + ctx.statusText(2, hw.spdifRxPins[failed])
+            status = qsTr("Can't enable S/PDIF %1: %2").arg(failed + 1).arg(ctx.statusText(2, hw.spdifRxPins[failed]))
         else if (code === 2)
-            status = "Switch the input source away from S/PDIF " + (failed + 1) + " before reducing the input count."
+            status = qsTr("Switch the input source away from S/PDIF %1 before reducing the input count.").arg(failed + 1)
         else
             status = ctx.statusText(code)
     }
@@ -87,7 +87,7 @@ SettingsPage {
         id: lockRow
         property var lockState: ({})
         property bool adat: false
-        title: "Lock Status"
+        title: qsTr("Lock Status")
         detail: page.lockDetail(lockState)
         Row {
             spacing: 6
@@ -106,13 +106,13 @@ SettingsPage {
 
     // ── S/PDIF ──
     SettingsSection {
-        title: "S/PDIF Input"
+        title: qsTr("S/PDIF Input")
         enabled: bridge.connected
-        footnote: "Up to four S/PDIF inputs share one receiver; the Source menu picks which one plays."
+        footnote: qsTr("Up to four S/PDIF inputs share one receiver; the Source menu picks which one plays.")
 
         SettingsSegmentedRow {
-            title: "Inputs"
-            detail: page.spdifCount + (page.spdifCount === 1 ? " selectable input" : " selectable inputs") + " sharing one receiver"
+            title: qsTr("Inputs")
+            detail: (page.spdifCount === 1 ? qsTr("%1 selectable input sharing one receiver").arg(page.spdifCount) : qsTr("%1 selectable inputs sharing one receiver").arg(page.spdifCount))
             options: ["1", "2", "3", "4"]
             value: page.spdifCount - 1
             controlWidth: 200
@@ -121,15 +121,15 @@ SettingsPage {
         Repeater {
             model: page.spdifCount
             SettingsPinRow {
-                title: page.spdifCount > 1 ? "S/PDIF " + (index + 1) : "S/PDIF RX"
-                detail: "GPIO pin for S/PDIF input " + (index + 1) + " (TOSLINK RX module or comparator)."
+                title: page.spdifCount > 1 ? qsTr("S/PDIF %1").arg(index + 1) : qsTr("S/PDIF RX")
+                detail: qsTr("GPIO pin for S/PDIF input %1 (TOSLINK RX module or comparator).").arg(index + 1)
                 pin: page.hw.spdifRxPins ? page.hw.spdifRxPins[index] : 0xFF
-                onChosen: page.report(bridge.setSpdifRxPin(index, pin), pin, title + " now uses GPIO " + pin + ".")
+                onChosen: page.report(bridge.setSpdifRxPin(index, pin), pin, qsTr("%2 now uses GPIO %1.").arg(pin).arg(title))
             }
         }
         SettingsSwitchRow {
-            title: "LG Sound Sync"
-            detail: "Decode an LG TV's TOSLINK volume and mute and apply them as the user volume, so the TV remote controls the volume. Saved with the active preset."
+            title: qsTr("LG Sound Sync")
+            detail: qsTr("Decode an LG TV's TOSLINK volume and mute and apply them as the user volume, so the TV remote controls the volume. Saved with the active preset.")
             checked: page.hw.lgEnabled === true
             onToggled: bridge.setLgSoundSync(checked)
         }
@@ -137,14 +137,14 @@ SettingsPage {
 
     // ── I2S ──
     SettingsSection {
-        title: "I2S Input"
+        title: qsTr("I2S Input")
         enabled: bridge.connected
-        footnote: "The bit clock pins and the master-mode sample rate are set in I2S Configuration."
+        footnote: qsTr("The bit clock pins and the master-mode sample rate are set in I2S Configuration.")
 
         SettingsSegmentedRow {
-            title: "Clock Mode"
-            detail: "Master: DSPi drives BCK/LRCLK. Slave: an external master drives the clocks and the rate is auto-detected."
-            options: ["Master", "Slave"]
+            title: qsTr("Clock Mode")
+            detail: qsTr("Master: DSPi drives BCK/LRCLK. Slave: an external master drives the clocks and the rate is auto-detected.")
+            options: [qsTr("Master"), qsTr("Slave")]
             value: page.hw.i2sClockMode === 1 ? 1 : 0
             controlWidth: 168
             onChosen: {
@@ -159,8 +159,8 @@ SettingsPage {
         }
         SettingsSegmentedRow {
             visible: page.rp2350
-            title: "Channels"
-            detail: page.i2sPairs + (page.i2sPairs === 1 ? " stereo pair" : " stereo pairs") + " of 24-bit audio, sample-aligned"
+            title: qsTr("Channels")
+            detail: (page.i2sPairs === 1 ? qsTr("%1 stereo pair of 24-bit audio, sample-aligned").arg(page.i2sPairs) : qsTr("%1 stereo pairs of 24-bit audio, sample-aligned").arg(page.i2sPairs))
             options: ["2", "4", "6", "8"]
             value: page.i2sPairs - 1
             controlWidth: 200
@@ -168,23 +168,23 @@ SettingsPage {
                 var n = (index + 1) * 2, code = bridge.setI2sInputChannels(n)
                 if (code === 2) {
                     page.statusError = true
-                    page.status = "Can't switch to " + n + " channels: a data pin is already in use. Reassign it first."
-                } else page.report(code, undefined, "I2S input set to " + n + " channels.")
+                    page.status = qsTr("Can't switch to %1 channels: a data pin is already in use. Reassign it first.").arg(n)
+                } else page.report(code, undefined, qsTr("I2S input set to %1 channels.").arg(n))
             }
         }
         SettingsValueRow {
             visible: !page.rp2350
-            title: "Channels"
-            detail: "One stereo pair of 24-bit audio"
+            title: qsTr("Channels")
+            detail: qsTr("One stereo pair of 24-bit audio")
             value: "2"
         }
         Repeater {
             model: page.i2sPairs
             SettingsPinRow {
-                title: page.i2sPairs > 1 ? "Serial Data " + (index + 1) : "Serial Data"
-                detail: "GPIO data pin for input channels " + (index * 2 + 1) + "-" + (index * 2 + 2) + "."
+                title: page.i2sPairs > 1 ? qsTr("Serial Data %1").arg(index + 1) : qsTr("Serial Data")
+                detail: qsTr("GPIO data pin for input channels %1-%2.").arg(index * 2 + 1).arg(index * 2 + 2)
                 pin: page.hw.i2sRxPins ? page.hw.i2sRxPins[index] : 0xFF
-                onChosen: page.report(bridge.setI2sRxPin(index, pin), pin, title + " now uses GPIO " + pin + ".")
+                onChosen: page.report(bridge.setI2sRxPin(index, pin), pin, qsTr("%2 now uses GPIO %1.").arg(pin).arg(title))
             }
         }
     }
@@ -192,33 +192,33 @@ SettingsPage {
     // ── ADAT (RP2350) ──
     SettingsSection {
         visible: page.rp2350
-        title: "ADAT Input"
+        title: qsTr("ADAT Input")
         enabled: bridge.connected
-        footnote: "Wire an optical receiver's data output to the pin above (an ADA8200 or similar sends 8 channels). Save a preset to keep this wiring."
+        footnote: qsTr("Wire an optical receiver's data output to the pin above (an ADA8200 or similar sends 8 channels). Save a preset to keep this wiring.")
 
         SettingsSwitchRow {
-            title: "Enable ADAT Input"
-            detail: "Receive 8 channels of 24-bit audio (44.1/48 kHz). Assign a data pin below, then select ADAT as the input source."
+            title: qsTr("Enable ADAT Input")
+            detail: qsTr("Receive 8 channels of 24-bit audio (44.1/48 kHz). Assign a data pin below, then select ADAT as the input source.")
             enabled: page.hw.adatInPin !== 0xFF || page.hw.adatInEnabled
             checked: page.hw.adatInEnabled === true
             onToggled: {
                 var code = bridge.setAdatInputEnabled(checked)
-                if (code === 1) { page.statusError = true; page.status = "Assign a valid data pin before enabling ADAT input." }
-                else page.report(code, page.hw.adatInPin, checked ? "ADAT input enabled." : "ADAT input disabled.")
+                if (code === 1) { page.statusError = true; page.status = qsTr("Assign a valid data pin before enabling ADAT input.") }
+                else page.report(code, page.hw.adatInPin, checked ? qsTr("ADAT input enabled.") : qsTr("ADAT input disabled."))
             }
         }
         SettingsPinRow {
-            title: "Serial Data"
-            detail: "No default: assign a spare pin. It may match the ADAT output pin for a loopback self-test."
+            title: qsTr("Serial Data")
+            detail: qsTr("No default: assign a spare pin. It may match the ADAT output pin for a loopback self-test.")
             pin: page.hw.adatInPin
             allowUnset: !page.hw.adatInEnabled
             sharable: ["ADAT Output"]
-            onChosen: page.report(bridge.setAdatInputPin(pin), pin, pin === 0xFF ? "ADAT input pin cleared." : "ADAT input now uses GPIO " + pin + ".")
+            onChosen: page.report(bridge.setAdatInputPin(pin), pin, pin === 0xFF ? qsTr("ADAT input pin cleared.") : qsTr("ADAT input now uses GPIO %1.").arg(pin))
         }
         SettingsSegmentedRow {
-            title: "Clock Mode"
-            detail: "Master runs the input at the rate set in I2S Configuration; Slave follows the ADAT stream's clock."
-            options: ["Master", "Slave"]
+            title: qsTr("Clock Mode")
+            detail: qsTr("Master runs the input at the rate set in I2S Configuration; Slave follows the ADAT stream's clock.")
+            options: [qsTr("Master"), qsTr("Slave")]
             value: page.hw.adatInClockMode === 1 ? 1 : 0
             controlWidth: 168
             onChosen: page.report(bridge.setAdatInputClockMode(index), undefined, "")
@@ -226,11 +226,11 @@ SettingsPage {
         // A master-mode ADAT input with nothing driving the far end's clock
         SettingsButtonRow {
             visible: page.hw.adatInEnabled && page.hw.adatInClockMode === 0 && !page.hw.adatOutEnabled
-            title: "Clock is free-running"
+            title: qsTr("Clock is free-running")
             titleColor: isMacOS ? MacColors.label : "#ff9f0a"
-            detail: "In master mode the device sending ADAT must lock to DSPi's clock, which only the ADAT output provides. Turn it on, or switch to Slave above."
-            buttonText: "Enable ADAT Output"
-            onClicked: page.report(bridge.setAdatOutEnabled(true), page.hw.adatOutPin, "ADAT output enabled.")
+            detail: qsTr("In master mode the device sending ADAT must lock to DSPi's clock, which only the ADAT output provides. Turn it on, or switch to Slave above.")
+            buttonText: qsTr("Enable ADAT Output")
+            onClicked: page.report(bridge.setAdatOutEnabled(true), page.hw.adatOutPin, qsTr("ADAT output enabled."))
         }
         LockRow {
             visible: page.watchAdat
@@ -244,18 +244,18 @@ SettingsPage {
     // would lose its focus at every state change.
     readonly property string sourceList: JSON.stringify(bridge.inputSources)
     function sourceDetail(id) {
-        if (id === 0) return "Audio over USB"
-        if (id === 2) return "External I2S device"
-        if (id === 3) return "Lightpipe on GPIO " + hw.adatInPin
+        if (id === 0) return qsTr("Audio over USB")
+        if (id === 2) return qsTr("External I2S device")
+        if (id === 3) return qsTr("Lightpipe on GPIO %1").arg(hw.adatInPin)
         var k = id === 1 ? 0 : id - 3
         var pin = hw.spdifRxPins ? hw.spdifRxPins[k] : undefined
-        return pin !== undefined ? "Receiver on GPIO " + pin : "S/PDIF receiver"
+        return pin !== undefined ? qsTr("Receiver on GPIO %1").arg(pin) : qsTr("S/PDIF receiver")
     }
     SettingsSection {
         visible: deviceNames.sourceNamesSupported
-        title: "Source Names"
+        title: qsTr("Source Names")
         enabled: bridge.connected
-        footnote: "Stored on the device and shown in the sidebar and on its front panel. An empty name uses the built-in one. Held until you click Save."
+        footnote: qsTr("Stored on the device and shown in the sidebar and on its front panel. An empty name uses the built-in one. Held until you click Save.")
         Repeater {
             model: JSON.parse(page.sourceList)
             SettingsNameRow {
@@ -263,7 +263,7 @@ SettingsPage {
                 title: modelData.name
                 detail: page.sourceDetail(source)
                 fieldName: "sourceNameField" + source
-                clearTip: "Use the built-in name"
+                clearTip: qsTr("Use the built-in name")
                 value: deviceNames.sourceTexts[source] || ""
                 pending: { deviceNames.sourceTexts; return deviceNames.sourcePending(source) }
                 onEdited: function (text) { deviceNames.editSource(source, text) }
@@ -279,11 +279,11 @@ SettingsPage {
         property int pending: 0
         icon: "warning"
         iconTint: isMacOS ? MacColors.yellow : "#ff453a"
-        title: "Change I2S clock mode?"
-        message: "One or more I2S outputs are active. Switching between Master and Slave modes may cause sustained loud noises to be emitted by the connected I2S DAC if wiring has not been adjusted."
+        title: qsTr("Change I2S clock mode?")
+        message: qsTr("One or more I2S outputs are active. Switching between Master and Slave modes may cause sustained loud noises to be emitted by the connected I2S DAC if wiring has not been adjusted.")
         buttons: [
-            { key: "cancel", text: "Cancel" },
-            { key: "change", text: "Change Clock Mode", role: "destructive" }
+            { key: "cancel", text: qsTr("Cancel") },
+            { key: "change", text: qsTr("Change Clock Mode"), role: "destructive" }
         ]
         onChosen: if (key === "change") bridge.setI2sClockMode(pending)
     }

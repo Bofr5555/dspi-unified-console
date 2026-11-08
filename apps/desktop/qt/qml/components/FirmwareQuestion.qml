@@ -28,7 +28,7 @@ Rectangle {
         Row {
             spacing: 6
             Icon { name: "warning"; size: 14; color: isMacOS ? MacColors.orange : "#ff9f0a"; anchors.verticalCenter: parent.verticalCenter }
-            Text { text: "Core voltage risk"; font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? MacColors.label : "white" }
+            Text { text: qsTr("Core voltage risk"); font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? MacColors.label : "white" }
         }
         Text {
             width: parent.width
@@ -42,12 +42,12 @@ Rectangle {
             width: parent.width
             wrapMode: Text.WordWrap
             textFormat: Text.PlainText
-            text: "To go ahead anyway, type this exactly: " + card.phrase
+            text: qsTr("To go ahead anyway, type this exactly: %1").arg(card.phrase)
             font.pixelSize: 11
             color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.55)
         }
         TextField {
-            Accessible.name: "Confirmation phrase"
+            Accessible.name: qsTr("Confirmation phrase")
             id: field
             objectName: "firmwareAnswer"
             width: parent.width
@@ -74,7 +74,7 @@ Rectangle {
             visible: card.wrong
             width: parent.width
             wrapMode: Text.WordWrap
-            text: "That is not it. Case and spaces count."
+            text: qsTr("That is not it. Case and spaces count.")
             font.pixelSize: 11
             color: isMacOS ? MacColors.orange : "#ff9f0a"
         }
@@ -82,13 +82,13 @@ Rectangle {
             spacing: 8
             AppButton {
                 objectName: "firmwareAnswerGo"
-                text: "Go Ahead"
+                text: qsTr("Go Ahead")
                 enabled: field.text.length > 0
                 onClicked: card.submit()
             }
             AppButton {
                 objectName: "firmwareAnswerCancel"
-                text: "Don't Install"
+                text: qsTr("Don't Install")
                 onClicked: firmware.reset()
             }
         }

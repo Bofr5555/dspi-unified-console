@@ -34,9 +34,10 @@ QtObject {
         if (key === "" && parts.length > 0) { parts.pop(); key = "+" }      // "Ctrl++"
         var mods = { Meta: false, Alt: false, Shift: false, Ctrl: false }
         for (var i = 0; i < parts.length; i++) if (parts[i] in mods) mods[parts[i]] = true
-        return (mods.Meta ? "\u2303" : "") + (mods.Alt ? "\u2325" : "") + (mods.Shift ? "\u21e7" : "")
-             + (mods.Ctrl ? "\u2318" : "") + (key === "Click" ? "-Click" : key)                // "⌥-Click"
+        var symbols = (mods.Meta ? "\u2303" : "") + (mods.Alt ? "\u2325" : "") + (mods.Shift ? "\u21e7" : "")
+             + (mods.Ctrl ? "\u2318" : "")
+        return key === "Click" ? qsTr("%1-Click").arg(symbols) : symbols + key                // "⌥-Click"
     }
     // The modifier Qt calls Ctrl, by its name on this platform (Command on macOS)
-    readonly property string ctrlName: isMacOS ? "Command" : "Ctrl"
+    readonly property string ctrlName: isMacOS ? qsTr("Command") : qsTr("Ctrl")
 }

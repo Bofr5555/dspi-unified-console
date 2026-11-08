@@ -12,7 +12,7 @@ import "components"
 // version it reports. All of it works on a read-only device.
 AppWindow {
     id: win
-    title: "Firmware Update"
+    title: qsTr("Firmware Update")
     visible: false
     width: 460
     height: 510 + titlebarHeight
@@ -30,8 +30,8 @@ AppWindow {
     readonly property bool connected: bridge.connected
     readonly property bool custom: firmware.imageCustom
     readonly property bool newer: !custom && firmware.match === 3
-    readonly property string bundled: firmware.imageVersion || "unknown"
-    readonly property string primaryTitle: custom ? "Install File" : newer ? "Downgrade" : "Update Firmware"
+    readonly property string bundled: firmware.imageVersion || qsTr("unknown")
+    readonly property string primaryTitle: custom ? qsTr("Install File") : newer ? qsTr("Downgrade") : qsTr("Update Firmware")
     readonly property int step: phase === "writing" ? 1 : phase === "waitingForDevice" ? 2 : phase === "verified" || phase === "unconfirmed" ? 3 : 0
     // Under way or being asked: the buttons below have nothing to add
     readonly property bool engaged: ["checking", "question", "waitingForDrive", "writing", "waitingForDevice"].indexOf(phase) >= 0
@@ -70,43 +70,43 @@ AppWindow {
     readonly property var card: {
         switch (phase) {
         case "idle": case "waitingForBoard":
-            if (confirmed) return { icon: "search", spin: true, title: "Looking for the board",
-                text: "Waiting for it to appear in bootloader mode. If nothing happens after a few seconds, unplug the board, hold BOOTSEL, and plug it back in." }
-            if (connected && !firmware.canReboot) return { icon: "plug", tint: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5), title: "Can't restart this device",
-                text: firmware.rebootBlocked + (firmware.writeBlocked === "" ? " A board already in bootloader mode can still be updated: hold BOOTSEL while plugging it in." : "") }
-            if (connected) return { icon: "check-circle", tint: isMacOS ? MacColors.accent : "#3a96ff", title: "Ready when you are",
-                text: "Click " + primaryTitle + " to begin. The device will restart into bootloader mode, and audio will stop until the update finishes. Nothing is written without this click." }
-            return { icon: "plug", tint: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5), title: "Connect a board",
-                text: "No device is connected. Hold the BOOTSEL button while plugging a board in, and it will appear here." }
+            if (confirmed) return { icon: "search", spin: true, title: qsTr("Looking for the board"),
+                text: qsTr("Waiting for it to appear in bootloader mode. If nothing happens after a few seconds, unplug the board, hold BOOTSEL, and plug it back in.") }
+            if (connected && !firmware.canReboot) return { icon: "plug", tint: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5), title: qsTr("Can't restart this device"),
+                text: firmware.writeBlocked === "" ? qsTr("%1 A board already in bootloader mode can still be updated: hold BOOTSEL while plugging it in.").arg(firmware.rebootBlocked) : firmware.rebootBlocked }
+            if (connected) return { icon: "check-circle", tint: isMacOS ? MacColors.accent : "#3a96ff", title: qsTr("Ready when you are"),
+                text: qsTr("Click %1 to begin. The device will restart into bootloader mode, and audio will stop until the update finishes. Nothing is written without this click.").arg(primaryTitle) }
+            return { icon: "plug", tint: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5), title: qsTr("Connect a board"),
+                text: qsTr("No device is connected. Hold the BOOTSEL button while plugging a board in, and it will appear here.") }
         case "waitingForVolume":
-            return { icon: "drive", spin: true, title: firmware.chipName + " found",
-                text: "The board is in bootloader mode. Waiting for its " + firmware.volumeName + " drive to mount - this usually takes a second or two." }
+            return { icon: "drive", spin: true, title: qsTr("%1 found").arg(firmware.chipName),
+                text: qsTr("The board is in bootloader mode. Waiting for its %1 drive to mount - this usually takes a second or two.").arg(firmware.volumeName) }
         case "ready":
-            if (firmware.writeBlocked !== "") return { icon: "plug", tint: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5), title: "The demo is open", text: firmware.writeBlocked }
-            if (confirmed) return { icon: "drive", spin: true, title: "Preparing to write",
-                text: "Opening the " + firmware.chipName + "'s " + firmware.volumeName + " drive." }
-            return { icon: "drive", tint: isMacOS ? MacColors.green : "#32d74b", title: firmware.chipName + " ready",
-                text: "The board is in bootloader mode and ready to receive firmware " + bundled + ". Click " + primaryTitle + " to begin." }
+            if (firmware.writeBlocked !== "") return { icon: "plug", tint: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5), title: qsTr("The demo is open"), text: firmware.writeBlocked }
+            if (confirmed) return { icon: "drive", spin: true, title: qsTr("Preparing to write"),
+                text: qsTr("Opening the %1's %2 drive.").arg(firmware.chipName).arg(firmware.volumeName) }
+            return { icon: "drive", tint: isMacOS ? MacColors.green : "#32d74b", title: qsTr("%1 ready").arg(firmware.chipName),
+                text: qsTr("The board is in bootloader mode and ready to receive firmware %1. Click %2 to begin.").arg(bundled).arg(primaryTitle) }
         case "inBootloader":
-            if (confirmed) return { icon: "drive", spin: true, title: "Waiting for the drive", text: "Waiting for the board's drive to appear." }
-            return { icon: "drive", tint: isMacOS ? MacColors.orange : "#ff9f0a", title: "Nothing was written", text: firmware.failure }
+            if (confirmed) return { icon: "drive", spin: true, title: qsTr("Waiting for the drive"), text: qsTr("Waiting for the board's drive to appear.") }
+            return { icon: "drive", tint: isMacOS ? MacColors.orange : "#ff9f0a", title: qsTr("Nothing was written"), text: firmware.failure }
         case "checking":
-            return { icon: "search", spin: true, title: "Checking",
-                text: "Looking at the file and the board. Nothing has changed yet." }
+            return { icon: "search", spin: true, title: qsTr("Checking"),
+                text: qsTr("Looking at the file and the board. Nothing has changed yet.") }
         case "waitingForDrive":
-            return { icon: "drive", spin: true, title: "Restarting into bootloader mode",
-                text: "Waiting for the board's drive to appear. Audio stops until the update finishes." }
+            return { icon: "drive", spin: true, title: qsTr("Restarting into bootloader mode"),
+                text: qsTr("Waiting for the board's drive to appear. Audio stops until the update finishes.") }
         case "waitingForDevice":
-            return { icon: "revert", spin: true, title: "Firmware written",
-                text: "The board is restarting with its new firmware. This can take up to half a minute; leave it plugged in." }
+            return { icon: "revert", spin: true, title: qsTr("Firmware written"),
+                text: qsTr("The board is restarting with its new firmware. This can take up to half a minute; leave it plugged in.") }
         case "verified":
-            return { icon: "check-circle", tint: isMacOS ? MacColors.green : "#32d74b", size: 36, title: "Update complete",
-                text: "The device is back and confirmed running firmware " + firmware.verifiedVersion + "." }
+            return { icon: "check-circle", tint: isMacOS ? MacColors.green : "#32d74b", size: 36, title: qsTr("Update complete"),
+                text: qsTr("The device is back and confirmed running firmware %1.").arg(firmware.verifiedVersion) }
         case "unconfirmed":
-            return { icon: "question-circle", tint: isMacOS ? MacColors.orange : "#ff9f0a", title: "Written, not confirmed", text: firmware.failure }
+            return { icon: "question-circle", tint: isMacOS ? MacColors.orange : "#ff9f0a", title: qsTr("Written, not confirmed"), text: firmware.failure }
         case "failed":
             return { icon: firmware.failureMundane ? "question-circle" : "warning", tint: isMacOS ? MacColors.orange : "#ff9f0a",
-                title: firmware.failureMundane ? "Not quite ready" : "The update did not complete", text: firmware.failure }
+                title: firmware.failureMundane ? qsTr("Not quite ready") : qsTr("The update did not complete"), text: firmware.failure }
         default:
             return { icon: "", title: "", text: "" }
         }
@@ -140,8 +140,8 @@ AppWindow {
                 anchors.leftMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 1
-                Text { text: "Firmware Update"; font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? MacColors.label : "white" }
-                Text { text: "Install firmware " + win.bundled + " onto a DSPi board"; font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
+                Text { text: qsTr("Firmware Update"); font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? MacColors.label : "white" }
+                Text { text: qsTr("Install firmware %1 onto a DSPi board").arg(win.bundled); font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
             }
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: isMacOS ? MacColors.separator : Qt.rgba(1, 1, 1, 0.07) }
         }
@@ -167,14 +167,14 @@ AppWindow {
                         y: 10
                         width: parent.width - 24
                         spacing: 6
-                        LabelValueRow { label: "Will install"; value: win.bundled + (win.custom ? "  (" + firmware.imageName + ")" : "") }
-                        LabelValueRow { label: "Connected device"; value: firmware.deviceVersion || "None"; secondary: !firmware.deviceVersion }
+                        LabelValueRow { label: qsTr("Will install"); value: win.bundled + (win.custom ? "  (" + firmware.imageName + ")" : "") }
+                        LabelValueRow { label: qsTr("Connected device"); value: firmware.deviceVersion || qsTr("None"); secondary: !firmware.deviceVersion }
                         // A .uf2 of one's own, checked as soon as it is chosen
                         Text {
                             objectName: "firmwareChooseFile"
                             visible: !win.engaged && win.phase !== "verified"
-                            text: firmware.imageLoading ? "Reading the file…"
-                                  : win.custom || firmware.imageProblem !== "" ? "Use this Console's firmware instead" : "Install a .uf2 file instead…"
+                            text: firmware.imageLoading ? qsTr("Reading the file…")
+                                  : win.custom || firmware.imageProblem !== "" ? qsTr("Use this Console's firmware instead") : qsTr("Install a .uf2 file instead…")
                             font.pixelSize: 11
                             font.underline: fileMouse.containsMouse
                             color: isMacOS ? MacColors.link : "#3a96ff"
@@ -208,7 +208,7 @@ AppWindow {
                             Text {
                                 width: versions.width - 20
                                 wrapMode: Text.WordWrap
-                                text: "The device is newer than this Console, so this would be a downgrade."
+                                text: qsTr("The device is newer than this Console, so this would be a downgrade.")
                                 font.pixelSize: 11
                                 color: isMacOS ? MacColors.orange : "#ff9f0a"
                             }
@@ -219,7 +219,7 @@ AppWindow {
                 // Prepare - Write - Verify - Done
                 StepStrip {
                     width: parent.width
-                    labels: ["Prepare", "Write", "Verify", "Done"]
+                    labels: [qsTr("Prepare"), qsTr("Write"), qsTr("Verify"), qsTr("Done")]
                     current: win.step
                     dimmed: win.phase === "failed"
                 }
@@ -267,7 +267,7 @@ AppWindow {
                         Text {
                             width: hints.width - 22
                             wrapMode: Text.WordWrap
-                            text: "Hold the BOOTSEL button on your Pico-compatible device while plugging it into your computer."
+                            text: qsTr("Hold the BOOTSEL button on your Pico-compatible device while plugging it into your computer.")
                             font.pixelSize: 11
                             color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
                         }
@@ -276,9 +276,9 @@ AppWindow {
                         id: manual
                         visible: !win.showBootselHint && win.showManualHint
                         spacing: 4
-                        Text { text: "Flashing a UF2 of your own?"; font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
+                        Text { text: qsTr("Flashing a UF2 of your own?"); font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
                         Text {
-                            text: "Enter bootloader mode without installing"
+                            text: qsTr("Enter bootloader mode without installing")
                             font.pixelSize: 11
                             font.underline: linkMouse.containsMouse
                             color: isMacOS ? MacColors.link : "#3a96ff"
@@ -308,12 +308,12 @@ AppWindow {
                 spacing: 8
                 AppButton {
                     visible: win.phase === "verified" || win.phase === "unconfirmed"
-                    text: "Update Another Board"
+                    text: qsTr("Update Another Board")
                     onClicked: win.resetRun()
                 }
                 AppButton {
                     visible: win.phase !== "verified" && win.phase !== "unconfirmed"
-                    text: "Cancel"
+                    text: qsTr("Cancel")
                     onClicked: win.close()
                 }
                 // A UF2 write leaves presets alone, but a format change between
@@ -321,7 +321,7 @@ AppWindow {
                 AppButton {
                     objectName: "firmwareExport"
                     visible: win.phase !== "verified" && win.phase !== "unconfirmed" && win.connected && !win.confirmed
-                    text: "Export Configuration…"
+                    text: qsTr("Export Configuration…")
                     onClicked: win.exportRequested()
                 }
             }
@@ -332,13 +332,13 @@ AppWindow {
                 spacing: 8
                 AppButton {
                     visible: win.phase === "verified" || win.phase === "unconfirmed"
-                    text: "Done"
+                    text: qsTr("Done")
                     primary: true
                     onClicked: win.close()
                 }
                 AppButton {
                     visible: win.phase === "failed"
-                    text: "Try Again"
+                    text: qsTr("Try Again")
                     primary: true
                     onClicked: win.resetRun()
                 }
@@ -358,9 +358,9 @@ AppWindow {
 
     Platform.FileDialog {
         id: uf2Dialog
-        title: "Choose a Firmware File"
+        title: qsTr("Choose a Firmware File")
         fileMode: Platform.FileDialog.OpenFile
-        nameFilters: ["Firmware (*.uf2)", "All files (*)"]
+        nameFilters: [qsTr("Firmware (*.uf2)"), qsTr("All files (*)")]
         onAccepted: firmware.chooseImage(file)
     }
 

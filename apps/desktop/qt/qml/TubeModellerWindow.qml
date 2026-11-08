@@ -11,7 +11,7 @@ AppWindow {
     // -- WP QD6 -- The picker is off on read-only firmware, and every setting shows
     readonly property bool showAdvanced: prefs.advanced || (bridge.connected && !bridge.writable)
     fitHeight: header.height + flick.contentHeight
-    title: "Tube Modeller"
+    title: qsTr("Tube Modeller")
     visible: false
     width: 840
     height: 600 + titlebarHeight
@@ -49,42 +49,42 @@ AppWindow {
     readonly property int mask: params[pMask]
 
     // Types 1..16 (0 = Custom); character rows live in the core
-    readonly property var tubeNames: ["Custom", "12AX7 / ECC83", "5751", "12AT7 / ECC81", "12AY7",
+    readonly property var tubeNames: [qsTr("Custom"), "12AX7 / ECC83", "5751", "12AT7 / ECC81", "12AY7",
         "12AU7 / ECC82", "6SN7", "6SL7", "6DJ8 / ECC88 / 6922", "EF86 / 6267", "6SJ7",
         "EL84 / 6BQ5", "EL34", "6L6 / 5881", "6V6", "KT88 / 6550", "300B / 2A3"]
-    readonly property var tubeStyles: ["", "High-gain preamp triode", "Cooler 12AX7",
-        "Medium-gain driver, more odd-order", "Tweed front end, gentle", "Clean line stage",
-        "Octal hi-fi line stage, sweet", "Octal high-mu, rounder knee", "Clean, hard when pushed",
-        "Pentode preamp, symmetric bite", "Octal pentode, softer than EF86", "Push-pull power, chimey",
-        "Push-pull power, mid crunch, deep sag", "Push-pull power, tight",
-        "Push-pull power, early breakup, heavy sag", "Push-pull hi-fi power, near linear",
-        "Single-ended DHT, pure even harmonics"]
+    readonly property var tubeStyles: ["", qsTr("High-gain preamp triode"), qsTr("Cooler 12AX7"),
+        qsTr("Medium-gain driver, more odd-order"), qsTr("Tweed front end, gentle"), qsTr("Clean line stage"),
+        qsTr("Octal hi-fi line stage, sweet"), qsTr("Octal high-mu, rounder knee"), qsTr("Clean, hard when pushed"),
+        qsTr("Pentode preamp, symmetric bite"), qsTr("Octal pentode, softer than EF86"), qsTr("Push-pull power, chimey"),
+        qsTr("Push-pull power, mid crunch, deep sag"), qsTr("Push-pull power, tight"),
+        qsTr("Push-pull power, early breakup, heavy sag"), qsTr("Push-pull hi-fi power, near linear"),
+        qsTr("Single-ended DHT, pure even harmonics")]
     readonly property var groups: [
-        { title: "Preamp triodes", types: [1, 2, 3, 4, 5, 6, 7, 8] },
-        { title: "Preamp pentodes", types: [9, 10] },
-        { title: "Power stages", types: [11, 12, 13, 14, 15, 16] }]
-    readonly property var rectifiers: ["Solid state", "GZ34", "5U4", "5Y3"]
+        { title: qsTr("Preamp triodes"), types: [1, 2, 3, 4, 5, 6, 7, 8] },
+        { title: qsTr("Preamp pentodes"), types: [9, 10] },
+        { title: qsTr("Power stages"), types: [11, 12, 13, 14, 15, 16] }]
+    readonly property var rectifiers: [qsTr("Solid state"), "GZ34", "5U4", "5Y3"]
     readonly property var rectifierNotes: [
-        "No sag: the supply holds up however hard the stage is driven.",
-        "Sag depth x0.6, 5 ms attack, 120 ms release.",
-        "Sag depth x1.0, 8 ms attack, 200 ms release.",
-        "Sag depth x1.3, 10 ms attack, 300 ms release."]
+        qsTr("No sag: the supply holds up however hard the stage is driven."),
+        qsTr("Sag depth x0.6, 5 ms attack, 120 ms release."),
+        qsTr("Sag depth x1.0, 8 ms attack, 200 ms release."),
+        qsTr("Sag depth x1.3, 10 ms attack, 300 ms release.")]
 
     function shortName(t) { return tubeNames[t].split(" / ")[0] }
     function isPushPull(t) { return t >= 11 && t <= 15 }
     function caption(t) {
-        if (t === 0) return "Character set by hand in Advanced."
-        var s = tubeStyles[t] + "."
-        return isPushPull(t) && !outputStage ? s + " Meant for use with the output stage, in Advanced." : s
+        if (t === 0) return qsTr("Character set by hand in Advanced.")
+        return isPushPull(t) && !outputStage ? qsTr("%1. Meant for use with the output stage, in Advanced.").arg(tubeStyles[t])
+                                             : qsTr("%1.").arg(tubeStyles[t])
     }
 
     // type, drive, rectifier, damping, resonance (output stage on, mix 100, trim 0)
     readonly property var presets: [
-        { name: "Clean default",          v: [1, -12, 1, 2, 95] },
-        { name: "Warm hi-fi",             v: [5, -3, 1, 10, 95] },
-        { name: "Single-ended sweetness", v: [16, 3, 1, 2, 95] },
-        { name: "Guitar-amp style",       v: [1, 15, 2, 2, 100] },
-        { name: "Push-pull power",        v: [12, 0, 1, 6, 95] }]
+        { name: qsTr("Clean default"),          v: [1, -12, 1, 2, 95] },
+        { name: qsTr("Warm hi-fi"),             v: [5, -3, 1, 10, 95] },
+        { name: qsTr("Single-ended sweetness"), v: [16, 3, 1, 2, 95] },
+        { name: qsTr("Guitar-amp style"),       v: [1, 15, 2, 2, 100] },
+        { name: qsTr("Push-pull power"),        v: [12, 0, 1, 6, 95] }]
     function applyPreset(p) {
         bridge.setTubeParam(pType, p.v[0])
         bridge.setTubeParam(pDrive, p.v[1])
@@ -157,17 +157,17 @@ AppWindow {
             width: parent.width
             height: 20
             SectionLabel {
-                text: "OUTPUTS"
+                text: qsTr("OUTPUTS")
                 anchors.verticalCenter: parent.verticalCenter
                 MouseArea { id: outHover; anchors.fill: parent; hoverEnabled: true }
                 ToolTip.visible: outHover.containsMouse
                 ToolTip.delay: 500
-                ToolTip.text: "Tube runs before the crossover and the per-output EQ, where a real preamp sits: a sub output saturates the full-band program and then low-passes the result."
+                ToolTip.text: qsTr("Tube runs before the crossover and the per-output EQ, where a real preamp sits: a sub output saturates the full-band program and then low-passes the result.")
             }
             MenuLink {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Presets"
+                text: qsTr("Presets")
                 menu: outputPresetMenu
             }
         }
@@ -184,15 +184,15 @@ AppWindow {
         id: header
         width: parent.width
         icon: "tube"
-        title: "Tube Modeller"
-        subtitle: "Valve-style harmonic colour, supply sag and a tube amplifier's output stage"
+        title: qsTr("Tube Modeller")
+        subtitle: qsTr("Valve-style harmonic colour, supply sag and a tube amplifier's output stage")
         checked: win.active
         onToggled: bridge.setTubeParam(win.pEnabled, enable ? 1 : 0)
         accessories: [
             SegmentedControl {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 150
-                model: ["Basic", "Advanced"]
+                model: [qsTr("Basic"), qsTr("Advanced")]
                 currentIndex: prefs.advanced ? 1 : 0
                 onActivated: { win.refitAnimated(); prefs.advanced = (index === 1) }
             }
@@ -289,11 +289,11 @@ AppWindow {
                 spacing: 12
 
                 SectionLabel {
-                    text: "TUBE"
+                    text: qsTr("TUBE")
                     MouseArea { id: tubeHover; anchors.fill: parent; hoverEnabled: true }
                     ToolTip.visible: tubeHover.containsMouse
                     ToolTip.delay: 500
-                    ToolTip.text: "Loads the character of a real tube: its bias, asymmetry, knee hardness and sag. Drive, mix and everything in Advanced keep their values."
+                    ToolTip.text: qsTr("Loads the character of a real tube: its bias, asymmetry, knee hardness and sag. Drive, mix and everything in Advanced keep their values.")
                 }
                 Repeater {
                     model: win.groups
@@ -313,17 +313,17 @@ AppWindow {
                 }
                 Divider {}
                 ParamRow {
-                    label: "Drive"; unit: "dB"; from: -30; to: 24; stepSize: 0.5; defaultValue: -12
-                    leftHint: "Clean"; rightHint: "Overdrive"
-                    tip: "How hard the tube is driven. Drive moves the knee, not the level: at the -12 dB default the knee sits 12 dB above full scale and the colour is subtle, the -30 dB floor is close to transparent, and the top of the range is overdrive."
+                    label: qsTr("Drive"); unit: qsTr("dB"); from: -30; to: 24; stepSize: 0.5; defaultValue: -12
+                    leftHint: qsTr("Clean"); rightHint: qsTr("Overdrive")
+                    tip: qsTr("How hard the tube is driven. Drive moves the knee, not the level: at the -12 dB default the knee sits 12 dB above full scale and the colour is subtle, the -30 dB floor is close to transparent, and the top of the range is overdrive.")
                     value: win.params[win.pDrive]
                     onLiveChanged: bridge.setTubeParam(win.pDrive, v, true)
                     onCommitted: bridge.setTubeParam(win.pDrive, v)
                 }
                 ParamRow {
-                    label: "Mix"; unit: "%"; from: 0; to: 100; stepSize: 1; decimals: 0; defaultValue: 100
-                    leftHint: "Dry"; rightHint: "All tube"
-                    tip: "Blends the tube with the untouched signal. Below 100% the original transients stay intact under the colour, which is the easiest way to use heavy drive subtly."
+                    label: qsTr("Mix"); unit: "%"; from: 0; to: 100; stepSize: 1; decimals: 0; defaultValue: 100
+                    leftHint: qsTr("Dry"); rightHint: qsTr("All tube")
+                    tip: qsTr("Blends the tube with the untouched signal. Below 100% the original transients stay intact under the colour, which is the easiest way to use heavy drive subtly.")
                     value: win.params[win.pMix]
                     onLiveChanged: bridge.setTubeParam(win.pMix, v, true)
                     onCommitted: bridge.setTubeParam(win.pMix, v)
@@ -350,11 +350,11 @@ AppWindow {
                 Item {
                     width: parent.width
                     height: 20
-                    SectionLabel { text: "TRANSFER CURVE"; anchors.verticalCenter: parent.verticalCenter }
+                    SectionLabel { text: qsTr("TRANSFER CURVE"); anchors.verticalCenter: parent.verticalCenter }
                     MenuLink {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Apply preset"
+                        text: qsTr("Apply preset")
                         menu: presetMenu
                     }
                 }
@@ -442,14 +442,14 @@ AppWindow {
                             ctx.beginPath(); ctx.moveTo(0, yOf(0)); ctx.lineTo(w, yOf(0)); ctx.stroke()
                             ctx.fillStyle = isMacOS ? MacColors.opacity(MacColors.secondaryLabel, 0.6) : "rgba(255,255,255,0.4)"
                             ctx.font = "9px sans-serif"
-                            ctx.fillText("out", xOf(0) + 4, 10)
-                            ctx.fillText("in", w - 12, yOf(0) - 4)
+                            ctx.fillText(qsTr("out"), xOf(0) + 4, 10)
+                            ctx.fillText(qsTr("in"), w - 12, yOf(0) - 4)
 
                             if (!shown) {
                                 ctx.textAlign = "center"
                                 ctx.fillStyle = isMacOS ? MacColors.opacity(MacColors.secondaryLabel, 0.5) : "rgba(255,255,255,0.35)"
                                 ctx.font = "12px sans-serif"
-                                ctx.fillText("Disabled", w / 2, h / 2 - 12)
+                                ctx.fillText(qsTr("Disabled"), w / 2, h / 2 - 12)
                                 return
                             }
                             var t = transfer()
@@ -464,7 +464,7 @@ AppWindow {
                             ctx.beginPath(); ctx.moveTo(0, yOf(1)); ctx.lineTo(w, yOf(1)); ctx.stroke()
                             ctx.beginPath(); ctx.moveTo(0, yOf(-1)); ctx.lineTo(w, yOf(-1)); ctx.stroke()
                             ctx.fillStyle = isMacOS ? MacColors.opacity(MacColors.red, 0.5) : "rgba(255,105,97,0.8)"
-                            ctx.fillText("0 dBFS", 4, yOf(1) - 3)
+                            ctx.fillText(qsTr("0 dBFS"), 4, yOf(1) - 3)
                             // Unity reference
                             ctx.strokeStyle = isMacOS ? MacColors.opacity(MacColors.label, 0.25) : "rgba(255,255,255,0.25)"
                             ctx.beginPath(); ctx.moveTo(xOf(-1), yOf(-1)); ctx.lineTo(xOf(1), yOf(1)); ctx.stroke()
@@ -486,18 +486,18 @@ AppWindow {
                 Item {
                     width: parent.width
                     height: 20
-                    SectionLabel { text: "AT FULL SCALE"; anchors.verticalCenter: parent.verticalCenter }
+                    SectionLabel { text: qsTr("AT FULL SCALE"); anchors.verticalCenter: parent.verticalCenter }
                     Row {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 16
                         Repeater {
-                            model: [["2nd", curve.h2], ["3rd", curve.h3]]
+                            model: [[qsTr("2nd"), curve.h2], [qsTr("3rd"), curve.h3]]
                             Row {
                                 spacing: 5
                                 Text { text: modelData[0]; font.pixelSize: 12; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
                                 Text {
-                                    text: !win.active ? "—" : modelData[1] <= -100 ? "none" : modelData[1].toFixed(0) + " dB"
+                                    text: !win.active ? "—" : modelData[1] <= -100 ? qsTr("none") : qsTr("%1 dB").arg(modelData[1].toFixed(0))
                                     font.pixelSize: 12
                                     color: isMacOS ? (modelData[1] > -100 ? MacColors.label : MacColors.secondaryLabel) : Qt.rgba(1, 1, 1, 0.9)
                                 }
@@ -507,27 +507,27 @@ AppWindow {
                     MouseArea { id: harmHover; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
                     ToolTip.visible: harmHover.containsMouse
                     ToolTip.delay: 500
-                    ToolTip.text: "Level of the second and third harmonic relative to the fundamental, for a full-scale sine through the static curve after mix and trim. Sag lowers the drive on sustained loud passages and the output stage adds its own low-frequency lift, so the running figures sit somewhat lower."
+                    ToolTip.text: qsTr("Level of the second and third harmonic relative to the fundamental, for a full-scale sine through the static curve after mix and trim. Sag lowers the drive on sustained loud passages and the output stage adds its own low-frequency lift, so the running figures sit somewhat lower.")
                 }
 
                 Divider {}
-                SectionLabel { text: "STAGE" }
+                SectionLabel { text: qsTr("STAGE") }
 
                 Item {
                     width: parent.width
                     height: 28
-                    Text { text: "Tube"; font.pixelSize: 13; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9); anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: qsTr("Tube"); font.pixelSize: 13; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9); anchors.verticalCenter: parent.verticalCenter }
                     StyledComboBox {
-                        Accessible.name: "Tube"
+                        Accessible.name: qsTr("Tube")
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 190
+                        width: Math.max(190, fitWidth)
                         model: win.tubeNames
                         currentIndex: win.tubeType
                         onActivated: bridge.setTubeParam(win.pType, index)
                         ToolTip.visible: hovered && !popup.visible
                         ToolTip.delay: 500
-                        ToolTip.text: "Loads the bias, asymmetry, knee hardness and sag of a real tube. Drive, mix, the rectifier and the output stage are left alone. Editing any of the four character controls switches this to Custom."
+                        ToolTip.text: qsTr("Loads the bias, asymmetry, knee hardness and sag of a real tube. Drive, mix, the rectifier and the output stage are left alone. Editing any of the four character controls switches this to Custom.")
                     }
                 }
                 Text {
@@ -539,24 +539,24 @@ AppWindow {
                 }
                 ParamRow {
                     id: driveRow
-                    label: "Drive"; unit: "dB"; from: -30; to: 24; stepSize: 0.5; defaultValue: -12
-                    tip: "Gain ahead of the shaper. At 0 dB a full-scale signal just reaches the knee, so this alone sets how hard the stage is driven. The shaper carries matching makeup gain, so clean material keeps its level at every drive; harmonics and sag rise with it."
+                    label: qsTr("Drive"); unit: qsTr("dB"); from: -30; to: 24; stepSize: 0.5; defaultValue: -12
+                    tip: qsTr("Gain ahead of the shaper. At 0 dB a full-scale signal just reaches the knee, so this alone sets how hard the stage is driven. The shaper carries matching makeup gain, so clean material keeps its level at every drive; harmonics and sag rise with it.")
                     value: win.params[win.pDrive]
                     onLiveChanged: bridge.setTubeParam(win.pDrive, v, true)
                     onCommitted: bridge.setTubeParam(win.pDrive, v)
                 }
                 ParamRow {
                     id: mixRow
-                    label: "Mix"; unit: "%"; from: 0; to: 100; stepSize: 1; decimals: 0; defaultValue: 100
-                    tip: "Blend of the processed signal with the untouched input. The dry path is sample-aligned with the wet one, so blending never combs."
+                    label: qsTr("Mix"); unit: "%"; from: 0; to: 100; stepSize: 1; decimals: 0; defaultValue: 100
+                    tip: qsTr("Blend of the processed signal with the untouched input. The dry path is sample-aligned with the wet one, so blending never combs.")
                     value: win.params[win.pMix]
                     onLiveChanged: bridge.setTubeParam(win.pMix, v, true)
                     onCommitted: bridge.setTubeParam(win.pMix, v)
                 }
                 ParamRow {
                     id: trimRow
-                    label: "Output Trim"; unit: "dB"; from: -12; to: 12; stepSize: 0.5; defaultValue: 0
-                    tip: "Level of the processed signal only. A hard-driven, strongly asymmetric setting can push the wet path above full scale; watch the output clip indicators and bring it back here."
+                    label: qsTr("Output Trim"); unit: qsTr("dB"); from: -12; to: 12; stepSize: 0.5; defaultValue: 0
+                    tip: qsTr("Level of the processed signal only. A hard-driven, strongly asymmetric setting can push the wet path above full scale; watch the output clip indicators and bring it back here.")
                     value: win.params[win.pTrim]
                     onLiveChanged: bridge.setTubeParam(win.pTrim, v, true)
                     onCommitted: bridge.setTubeParam(win.pTrim, v)
@@ -574,43 +574,43 @@ AppWindow {
                 Item {
                     width: parent.width
                     height: 20
-                    SectionLabel { text: "CHARACTER"; anchors.verticalCenter: parent.verticalCenter }
+                    SectionLabel { text: qsTr("CHARACTER"); anchors.verticalCenter: parent.verticalCenter }
                     Text {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        text: win.tubeType > 0 ? "from " + win.tubeNames[win.tubeType] : "custom"
+                        text: win.tubeType > 0 ? qsTr("from %1").arg(win.tubeNames[win.tubeType]) : qsTr("custom")
                         font.pixelSize: 11
                         color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
                     }
                 }
                 ParamRow {
                     id: biasRow
-                    label: "Bias"; unit: "%"; from: -100; to: 100; stepSize: 1; decimals: 0; defaultValue: 10
-                    tip: "Shifts the operating point along the curve. Positive values give the classic warm second harmonic that grows with level; negative values give the same amount with the even products inverted, which only matters when mixed with the dry signal."
+                    label: qsTr("Bias"); unit: "%"; from: -100; to: 100; stepSize: 1; decimals: 0; defaultValue: 10
+                    tip: qsTr("Shifts the operating point along the curve. Positive values give the classic warm second harmonic that grows with level; negative values give the same amount with the even products inverted, which only matters when mixed with the dry signal.")
                     value: win.params[win.pBias]
                     onLiveChanged: bridge.setTubeParam(win.pBias, v, true)
                     onCommitted: bridge.setTubeParam(win.pBias, v)
                 }
                 ParamRow {
                     id: asymRow
-                    label: "Asymmetry"; unit: "dB"; from: -12; to: 12; stepSize: 0.5; defaultValue: 3
-                    tip: "How much later the negative half reaches its knee than the positive half. Adds even-order content at heavy drive. Zero is symmetric, as in a push-pull stage."
+                    label: qsTr("Asymmetry"); unit: qsTr("dB"); from: -12; to: 12; stepSize: 0.5; defaultValue: 3
+                    tip: qsTr("How much later the negative half reaches its knee than the positive half. Adds even-order content at heavy drive. Zero is symmetric, as in a push-pull stage.")
                     value: win.params[win.pAsym]
                     onLiveChanged: bridge.setTubeParam(win.pAsym, v, true)
                     onCommitted: bridge.setTubeParam(win.pAsym, v)
                 }
                 ParamRow {
                     id: hardRow
-                    label: "Knee Hardness"; unit: "%"; from: 0; to: 100; stepSize: 1; decimals: 0; defaultValue: 40
-                    tip: "Blends from a soft cubic knee (0%) to a harder quintic one (100%). Clean material stays at the same level at every setting; only how abruptly the stage runs out changes."
+                    label: qsTr("Knee Hardness"); unit: "%"; from: 0; to: 100; stepSize: 1; decimals: 0; defaultValue: 40
+                    tip: qsTr("Blends from a soft cubic knee (0%) to a harder quintic one (100%). Clean material stays at the same level at every setting; only how abruptly the stage runs out changes.")
                     value: win.params[win.pHard]
                     onLiveChanged: bridge.setTubeParam(win.pHard, v, true)
                     onCommitted: bridge.setTubeParam(win.pHard, v)
                 }
                 ParamRow {
-                    label: "Sag"; unit: "%"; from: 0; to: 100; stepSize: 1; decimals: 0; defaultValue: 15
+                    label: qsTr("Sag"); unit: "%"; from: 0; to: 100; stepSize: 1; decimals: 0; defaultValue: 15
                     opacity: win.rectifier === 0 ? 0.5 : 1
-                    tip: "Supply-sag compression: sustained heavy drive pulls the gain down slowly, then recovers. The rectifier below scales the depth and sets the timing."
+                    tip: qsTr("Supply-sag compression: sustained heavy drive pulls the gain down slowly, then recovers. The rectifier below scales the depth and sets the timing.")
                     value: win.params[win.pSag]
                     onLiveChanged: bridge.setTubeParam(win.pSag, v, true)
                     onCommitted: bridge.setTubeParam(win.pSag, v)
@@ -618,12 +618,12 @@ AppWindow {
                 Column {
                     width: parent.width
                     spacing: 6
-                    Text { text: "Rectifier"; font.pixelSize: 13; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9) }
+                    Text { text: qsTr("Rectifier"); font.pixelSize: 13; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9) }
                     SegmentedControl {
                         width: parent.width
                         model: win.rectifiers
                         currentIndex: win.rectifier
-                        tips: ["The power-supply rectifier sets how deep and how slow the sag is. Solid state switches sag off entirely; the valve rectifiers get progressively softer and slower from GZ34 to 5Y3."]
+                        tips: [qsTr("The power-supply rectifier sets how deep and how slow the sag is. Solid state switches sag off entirely; the valve rectifiers get progressively softer and slower from GZ34 to 5Y3.")]
                         onActivated: bridge.setTubeParam(win.pRect, index)
                     }
                     Text {
@@ -642,8 +642,8 @@ AppWindow {
                     Column {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 1
-                        SectionLabel { text: "OUTPUT STAGE" }
-                        Text { text: "A valve amplifier's loose grip on the speaker."; font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
+                        SectionLabel { text: qsTr("OUTPUT STAGE") }
+                        Text { text: qsTr("A valve amplifier's loose grip on the speaker."); font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
                     }
                     MouseArea {
                         id: stageHover
@@ -654,26 +654,26 @@ AppWindow {
                     }
                     ToolTip.visible: stageHover.containsMouse
                     ToolTip.delay: 500
-                    ToolTip.text: "A tube amplifier's high source impedance lets the speaker's own impedance curve shape the response: a broad bump at the woofer resonance and a small lift at the top. Nothing here is nonlinear, and the firmware skips the whole stage while it is off."
+                    ToolTip.text: qsTr("A tube amplifier's high source impedance lets the speaker's own impedance curve shape the response: a broad bump at the woofer resonance and a small lift at the top. Nothing here is nonlinear, and the firmware skips the whole stage while it is off.")
                     ToggleSwitch {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
                         checked: win.outputStage
-                        Accessible.name: "Output stage"
+                        Accessible.name: qsTr("Output stage")
                         onToggled: bridge.setTubeParam(win.pXfmr, checked ? 1 : 0)
                     }
                 }
                 ParamRow {
                     id: dampingRow
                     visible: win.outputStage
-                    label: "Damping Factor"; unit: ""; from: 1; to: 20; stepSize: 0.5; defaultValue: 2
-                    leftHint: "1 (loose)"; rightHint: "20 (tight)"
-                    tip: "The speaker's nominal impedance divided by the amplifier's source impedance. A single-ended triode amplifier without feedback sits around 2 to 3; a push-pull pentode amplifier with feedback around 8 to 15. It sets the size of both the bell and the top lift."
+                    label: qsTr("Damping Factor"); unit: ""; from: 1; to: 20; stepSize: 0.5; defaultValue: 2
+                    leftHint: qsTr("1 (loose)"); rightHint: qsTr("20 (tight)")
+                    tip: qsTr("The speaker's nominal impedance divided by the amplifier's source impedance. A single-ended triode amplifier without feedback sits around 2 to 3; a push-pull pentode amplifier with feedback around 8 to 15. It sets the size of both the bell and the top lift.")
                     caption: {
                         var df = displayValue
                         var bell = 20 * Math.log(4 * (df + 1) / (4 * df + 1)) / Math.LN10
                         var top = 20 * Math.log(2 * (df + 1) / (2 * df + 1)) / Math.LN10
-                        return "+" + bell.toFixed(1) + " dB at resonance, +" + top.toFixed(1) + " dB at the top."
+                        return qsTr("+%1 dB at resonance, +%2 dB at the top.").arg(bell.toFixed(1)).arg(top.toFixed(1))
                     }
                     value: win.params[win.pDamping]
                     onLiveChanged: bridge.setTubeParam(win.pDamping, v, true)
@@ -681,9 +681,9 @@ AppWindow {
                 }
                 ParamRow {
                     visible: win.outputStage
-                    label: "Speaker Resonance"; unit: "Hz"; from: 30; to: 150; stepSize: 1; decimals: 0; defaultValue: 95
-                    leftHint: "30 Hz"; rightHint: "150 Hz"
-                    tip: "Where the loudspeaker resonates in its enclosure, which is where the bell sits. Q is fixed at 0.707, so the bump is broad. 95 Hz suits a typical small to medium woofer; larger drivers sit lower."
+                    label: qsTr("Speaker Resonance"); unit: qsTr("Hz"); from: 30; to: 150; stepSize: 1; decimals: 0; defaultValue: 95
+                    leftHint: qsTr("30 Hz"); rightHint: qsTr("150 Hz")
+                    tip: qsTr("Where the loudspeaker resonates in its enclosure, which is where the bell sits. Q is fixed at 0.707, so the bump is broad. 95 Hz suits a typical small to medium woofer; larger drivers sit lower.")
                     value: win.params[win.pRes]
                     onLiveChanged: bridge.setTubeParam(win.pRes, v, true)
                     onCommitted: bridge.setTubeParam(win.pRes, v)
@@ -703,9 +703,9 @@ AppWindow {
         id: outputPresetMenu
         parent: Overlay.overlay
         items: [
-            { key: "all", text: "All Outputs" },
-            { key: "nosub", text: "Exclude Sub" },
-            { key: "none", text: "None" }
+            { key: "all", text: qsTr("All Outputs") },
+            { key: "nosub", text: qsTr("Exclude Sub") },
+            { key: "none", text: qsTr("None") }
         ]
         onTriggered: {
             var all = (1 << win.numOut) - 1

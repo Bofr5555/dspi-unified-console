@@ -34,7 +34,7 @@ Row {
                 cursorShape: Qt.PointingHandCursor
                 focusRadius: 8
                 Accessible.role: Accessible.CheckBox
-                Accessible.name: chips.names.length > index && chips.names[index] !== "" ? chips.names[index] : "Channel " + (index + 1)
+                Accessible.name: chips.names.length > index && chips.names[index] !== "" ? chips.names[index] : qsTr("Channel %1").arg(index + 1)
                 Accessible.checkable: true
                 Accessible.checked: parent.isOn
                 onActivated: chips.maskEdited(chips.mask ^ (1 << index))

@@ -3,8 +3,11 @@
 
 #include <QObject>
 #include <QStringList>
+// -- WP QD23 --
+#include <QSet>
 #include <functional>
 
+class QCoreApplication;
 class QQmlApplicationEngine;
 class QQuickItem;
 class QQuickWindow;
@@ -144,6 +147,14 @@ private:
     // -- WP QD16 --
     void testUpdates();
     void testNoUpdates();
+    // -- WP QD23 --
+public:
+    static void installPseudoLocale(QCoreApplication *app);
+private:
+    void runPseudoLocale();
+    void pseudoScan(QQuickWindow *w, QQuickItem *scope, const QString &where);
+    QStringList m_pseudoClipped;
+    QSet<QString> m_pseudoBaseline;
 
     // Whether a bypass toggle repaints the open channel's graph editor. Leaves
     // bypass as it found it. NotRun fills `why`.

@@ -152,11 +152,11 @@ PopoverWindow {
                 RowLayout {
                     width: parent.width
                     visible: rta.supported && bridge.connected
-                    SectionLabel { text: "SPECTRUM" }
+                    SectionLabel { text: qsTr("SPECTRUM") }
                     Item { Layout.fillWidth: true }
                     SegmentedControl {
                         Layout.preferredWidth: 150
-                        model: ["Inputs", "Outputs"]
+                        model: [qsTr("Inputs"), qsTr("Outputs")]
                         currentIndex: pop.sel.tap
                         onActivated: pop.app.rtaSwitchSide(index)
                     }
@@ -168,7 +168,7 @@ PopoverWindow {
                     wrapMode: Text.WordWrap
                     font.pixelSize: 12
                     color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.55)
-                    text: bridge.connected ? "This firmware has no spectrum analyser." : "Connect a DSPi to show its spectrum."
+                    text: bridge.connected ? qsTr("This firmware has no spectrum analyser.") : qsTr("Connect a DSPi to show its spectrum.")
                 }
 
                 // Channel chips, two to a row
@@ -215,7 +215,7 @@ PopoverWindow {
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 Accessible.role: Accessible.CheckBox
-                                Accessible.name: bridge.channelName(chip.app) + " spectrum"
+                                Accessible.name: qsTr("%1 spectrum").arg(bridge.channelName(chip.app))
                                 Accessible.checkable: true
                                 Accessible.checked: chip.on
                                 onActivated: pop.app.rtaToggle(modelData)
@@ -231,16 +231,16 @@ PopoverWindow {
                         Layout.fillWidth: true
                         font.pixelSize: 11
                         color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
-                        text: pop.sel.channels.length === 0 ? "Spectrum hidden"
-                            : pop.sel.channels.length === 1 ? "1 channel" : pop.sel.channels.length + " channels"
+                        text: pop.sel.channels.length === 0 ? qsTr("Spectrum hidden")
+                            : pop.sel.channels.length === 1 ? qsTr("1 channel") : qsTr("%1 channels").arg(pop.sel.channels.length)
                     }
                     Text {
                         visible: pop.sel.channels.length > 0
-                        text: "Clear"
+                        text: qsTr("Clear")
                         font.pixelSize: 11
                         color: isMacOS ? MacColors.accent : clearMouse.containsMouse ? "white" : "#3a96ff"
                         ClickArea { id: clearMouse; anchors.fill: parent; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                                    Accessible.name: "Clear the spectrum channels"; onActivated: pop.app.rtaClear() }
+                                    Accessible.name: qsTr("Clear the spectrum channels"); onActivated: pop.app.rtaClear() }
                     }
                 }
             }
@@ -253,13 +253,13 @@ PopoverWindow {
                 bottomPadding: 6
                 SwitchRow {
                     icon: "waveform"
-                    text: "FFT Graph"
+                    text: qsTr("FFT Graph")
                     checked: pop.app ? pop.app.rtaShowGraph : false
                     onToggled: pop.app.rtaSetShowGraph(checked)
                 }
                 SwitchRow {
                     icon: "spectrum"
-                    text: "RTA Bars"
+                    text: qsTr("RTA Bars")
                     checked: pop.app ? pop.app.rtaShowBars : false
                     onToggled: pop.app.rtaSetShowBars(checked)
                 }
@@ -269,11 +269,11 @@ PopoverWindow {
                 width: parent.width
                 topPadding: 6
                 bottomPadding: 6
-                ActionRow { icon: "sliders"; text: "Graph Setup"; chevron: true; onClicked: pop.page = 1 }
+                ActionRow { icon: "sliders"; text: qsTr("Graph Setup"); chevron: true; onClicked: pop.page = 1 }
                 ActionRow {
                     visible: !pop.inPopOut
                     icon: "external"
-                    text: "Pop Out Graph"
+                    text: qsTr("Pop Out Graph")
                     onClicked: { pop.close(); pop.popOutRequested() }
                 }
             }
@@ -294,7 +294,7 @@ PopoverWindow {
                 height: 32
                 Text {
                     anchors.centerIn: parent
-                    text: "Graph Setup"
+                    text: qsTr("Graph Setup")
                     font.pixelSize: 12
                     font.weight: Font.DemiBold
                     color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9)
@@ -306,10 +306,10 @@ PopoverWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 2
                     Icon { name: "chev-left"; size: 12; color: isMacOS ? MacColors.accent : backMouse.containsMouse ? "white" : "#3a96ff"; anchors.verticalCenter: parent.verticalCenter }
-                    Text { text: "Back"; font.pixelSize: 12; color: isMacOS ? MacColors.accent : backMouse.containsMouse ? "white" : "#3a96ff"; anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: qsTr("Back"); font.pixelSize: 12; color: isMacOS ? MacColors.accent : backMouse.containsMouse ? "white" : "#3a96ff"; anchors.verticalCenter: parent.verticalCenter }
                 }
                 ClickArea { id: backMouse; anchors.fill: backRow; anchors.margins: -4; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                            Accessible.name: "Back"; onActivated: pop.page = 0 }
+                            Accessible.name: qsTr("Back"); onActivated: pop.page = 0 }
             }
             Divider {}
 
@@ -317,13 +317,13 @@ PopoverWindow {
             Item {
                 width: parent.width
                 height: 32
-                SectionLabel { x: 12; anchors.bottom: parent.bottom; anchors.bottomMargin: 6; text: "SCALE" }
+                SectionLabel { x: 12; anchors.bottom: parent.bottom; anchors.bottomMargin: 6; text: qsTr("SCALE") }
                 Text {
                     anchors.right: parent.right
                     anchors.rightMargin: 12
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: 6
-                    text: "Reset"
+                    text: qsTr("Reset")
                     font.pixelSize: 11
                     color: isMacOS ? MacColors.accent : resetMouse.containsMouse ? "white" : "#3a96ff"
                     ClickArea {
@@ -332,7 +332,7 @@ PopoverWindow {
                         anchors.margins: -4
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        Accessible.name: "Reset the scale"
+                        Accessible.name: qsTr("Reset the scale")
                         onActivated: {
                             pop.app.graphMinFreq = 15
                             pop.app.graphMaxFreq = 20000
@@ -341,7 +341,7 @@ PopoverWindow {
                         }
                         ToolTip.visible: containsMouse
                         ToolTip.delay: 600
-                        ToolTip.text: "Restore the default frequency and dB range"
+                        ToolTip.text: qsTr("Restore the default frequency and dB range")
                     }
                 }
             }
@@ -349,60 +349,60 @@ PopoverWindow {
                 x: 12
                 width: parent.width - 24
                 height: 30
-                Text { id: freqLabel; width: 70; text: "Frequency"; font.pixelSize: 12; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9); anchors.verticalCenter: parent.verticalCenter }
+                Text { id: freqLabel; width: 70; text: qsTr("Frequency"); font.pixelSize: 12; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9); anchors.verticalCenter: parent.verticalCenter }
                 Row {
                     anchors.left: freqLabel.right
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 5
                     StyledComboBox {
                         id: minBox
-                        width: 80
-                        Accessible.name: "Lowest frequency"
+                        width: Math.max(80, fitWidth)
+                        Accessible.name: qsTr("Lowest frequency")
                         leftPadding: 0
                         rightPadding: 0
                         readonly property var values: [10, 15, 20, 50, 100]
-                        model: ["10 Hz", "15 Hz", "20 Hz", "50 Hz", "100 Hz"]
+                        model: [qsTr("%1 Hz").arg(10), qsTr("%1 Hz").arg(15), qsTr("%1 Hz").arg(20), qsTr("%1 Hz").arg(50), qsTr("%1 Hz").arg(100)]
                         currentIndex: pop.app ? values.indexOf(pop.app.graphMinFreq) : 1
                         onActivated: pop.app.graphMinFreq = values[index]
                     }
-                    Text { text: "to"; font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5); anchors.verticalCenter: parent.verticalCenter }
+                    Text { text: qsTr("to"); font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5); anchors.verticalCenter: parent.verticalCenter }
                     StyledComboBox {
-                        width: 80
+                        width: Math.max(80, fitWidth)
                         leftPadding: 0
                         rightPadding: 0
-                        Accessible.name: "Highest frequency"
+                        Accessible.name: qsTr("Highest frequency")
                         readonly property var values: [5000, 10000, 20000]
-                        model: ["5 kHz", "10 kHz", "20 kHz"]
+                        model: [qsTr("%1 kHz").arg(5), qsTr("%1 kHz").arg(10), qsTr("%1 kHz").arg(20)]
                         currentIndex: pop.app ? values.indexOf(pop.app.graphMaxFreq) : 2
                         onActivated: pop.app.graphMaxFreq = values[index]
                     }
                 }
             }
             SliderRow {
-                text: "Range"
+                text: qsTr("Range")
                 from: 10; to: 100; stepSize: 1
                 value: pop.app ? pop.app.graphDbRange : 50
-                valueText: Math.round(value) + " dB"
+                valueText: qsTr("%1 dB").arg(Math.round(value))
                 onMoved: pop.app.graphDbRange = Math.round(value)
             }
             SliderRow {
-                text: "Center"
+                text: qsTr("Center")
                 from: -40; to: 20; stepSize: 1
                 value: pop.app ? pop.app.graphDbCenter : 0
-                valueText: (value > 0 ? "+" : value < 0 ? "−" : "±") + Math.abs(Math.round(value)) + " dB"
+                valueText: qsTr("%1 dB").arg((value > 0 ? "+" : value < 0 ? "−" : "±") + Math.abs(Math.round(value)))
                 onMoved: pop.app.graphDbCenter = Math.round(value)
             }
 
             // GRID & LABELS
-            Item { width: parent.width; height: 30; SectionLabel { x: 12; anchors.bottom: parent.bottom; anchors.bottomMargin: 6; text: "GRID & LABELS" } }
-            SwitchRow { text: "Frequency Grid"; checked: pop.app ? pop.app.graphShowFreqGrid : true; onToggled: pop.app.graphShowFreqGrid = checked }
-            SwitchRow { text: "Frequency Labels"; checked: pop.app ? pop.app.graphShowFreqLabels : true; onToggled: pop.app.graphShowFreqLabels = checked }
-            SwitchRow { text: "dB Grid"; checked: pop.app ? pop.app.graphShowDbGrid : true; onToggled: pop.app.graphShowDbGrid = checked }
-            SwitchRow { text: "dB Labels"; checked: pop.app ? pop.app.graphShowDbLabels : true; onToggled: pop.app.graphShowDbLabels = checked }
-            SwitchRow { text: "Frequency Readout"; checked: pop.app ? pop.app.graphFreqReadout : true; onToggled: pop.app.graphFreqReadout = checked }
-            SwitchRow { text: "Gain Readout"; checked: pop.app ? pop.app.graphLevelReadout : true; onToggled: pop.app.graphLevelReadout = checked }
+            Item { width: parent.width; height: 30; SectionLabel { x: 12; anchors.bottom: parent.bottom; anchors.bottomMargin: 6; text: qsTr("GRID & LABELS") } }
+            SwitchRow { text: qsTr("Frequency Grid"); checked: pop.app ? pop.app.graphShowFreqGrid : true; onToggled: pop.app.graphShowFreqGrid = checked }
+            SwitchRow { text: qsTr("Frequency Labels"); checked: pop.app ? pop.app.graphShowFreqLabels : true; onToggled: pop.app.graphShowFreqLabels = checked }
+            SwitchRow { text: qsTr("dB Grid"); checked: pop.app ? pop.app.graphShowDbGrid : true; onToggled: pop.app.graphShowDbGrid = checked }
+            SwitchRow { text: qsTr("dB Labels"); checked: pop.app ? pop.app.graphShowDbLabels : true; onToggled: pop.app.graphShowDbLabels = checked }
+            SwitchRow { text: qsTr("Frequency Readout"); checked: pop.app ? pop.app.graphFreqReadout : true; onToggled: pop.app.graphFreqReadout = checked }
+            SwitchRow { text: qsTr("Gain Readout"); checked: pop.app ? pop.app.graphLevelReadout : true; onToggled: pop.app.graphLevelReadout = checked }
             SliderRow {
-                text: "Grid Opacity"
+                text: qsTr("Grid Opacity")
                 enabled: pop.app ? pop.app.graphShowFreqGrid || pop.app.graphShowDbGrid : true
                 from: 0; to: 2; stepSize: 0.05
                 value: pop.app ? pop.app.graphGridOpacity : 0.5
@@ -411,25 +411,25 @@ PopoverWindow {
             }
 
             // CURVES
-            Item { width: parent.width; height: 30; SectionLabel { x: 12; anchors.bottom: parent.bottom; anchors.bottomMargin: 6; text: "CURVES" } }
+            Item { width: parent.width; height: 30; SectionLabel { x: 12; anchors.bottom: parent.bottom; anchors.bottomMargin: 6; text: qsTr("CURVES") } }
             SliderRow {
-                text: "Line Width"
+                text: qsTr("Line Width")
                 from: 1; to: 4; stepSize: 0.5
                 value: pop.app ? pop.app.graphLineWidth : 1.5
-                valueText: value.toFixed(1) + " pt"
+                valueText: qsTr("%1 pt").arg(value.toFixed(1))
                 onMoved: pop.app.graphLineWidth = value
             }
-            SwitchRow { text: "Glow"; checked: pop.app ? pop.app.graphShowGlow : false; onToggled: pop.app.graphShowGlow = checked }
-            SwitchRow { text: "Phase Response"; checked: pop.app ? pop.app.graphShowPhase : false; onToggled: pop.app.graphShowPhase = checked }
+            SwitchRow { text: qsTr("Glow"); checked: pop.app ? pop.app.graphShowGlow : false; onToggled: pop.app.graphShowGlow = checked }
+            SwitchRow { text: qsTr("Phase Response"); checked: pop.app ? pop.app.graphShowPhase : false; onToggled: pop.app.graphShowPhase = checked }
             SwitchRow {
-                text: "Unwrap Phase"
+                text: qsTr("Unwrap Phase")
                 enabled: pop.app ? pop.app.graphShowPhase : false
                 checked: pop.app ? pop.app.graphPhaseUnwrapped : false
                 onToggled: pop.app.graphPhaseUnwrapped = checked
             }
             SwitchRow {
                 visible: pop.inPopOut
-                text: "Follow Channel Selection"
+                text: qsTr("Follow Channel Selection")
                 checked: pop.app ? pop.app.graphPopOutFollows : true
                 onToggled: pop.app.graphPopOutFollows = checked
             }

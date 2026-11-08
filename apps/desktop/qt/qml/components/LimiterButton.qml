@@ -46,8 +46,8 @@ Rectangle {
         focusRadius: btn.radius + 2
         // -- WP QD22 -- Space switches it, the menu key opens its settings
         Accessible.role: Accessible.CheckBox
-        Accessible.name: "Output limiter"
-        Accessible.description: btn.limiting ? "Reducing the level now" : ""
+        Accessible.name: qsTr("Output limiter")
+        Accessible.description: btn.limiting ? qsTr("Reducing the level now") : ""
         Accessible.checkable: true
         Accessible.checked: btn.enabled_
         onActivated: if (bridge.writable) bridge.setLimiterEnabled(btn.outputIndex, !btn.enabled_)   // -- WP QD6 --
@@ -57,8 +57,8 @@ Rectangle {
         }
         ToolTip.visible: containsMouse && !popup.visible
         ToolTip.delay: 600
-        ToolTip.text: "Output limiter: click to switch " + (btn.enabled_ ? "off" : "on")
-                      + ", right-click for settings"
+        ToolTip.text: btn.enabled_ ? qsTr("Output limiter: click to switch off, right-click for settings")
+                                   : qsTr("Output limiter: click to switch on, right-click for settings")
     }
 
     // Opens under the button (or above it when there's no room), right-aligned
@@ -155,21 +155,21 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 2
                     Text {
-                        text: "Output Limiter"
+                        text: qsTr("Output Limiter")
                         font.pixelSize: 13
                         font.weight: Font.DemiBold
                         color: isMacOS ? MacColors.label : "white"
                     }
                     Text {
-                        text: !btn.enabled_ ? "Off"
-                            : btn.limiting ? "Reducing by " + btn.reduction.toFixed(1) + " dB"
-                            : "On · not limiting"
+                        text: !btn.enabled_ ? qsTr("Off")
+                            : btn.limiting ? qsTr("Reducing by %1 dB").arg(btn.reduction.toFixed(1))
+                            : qsTr("On · not limiting")
                         font.pixelSize: 11
                         color: isMacOS ? (btn.limiting ? MacColors.orange : MacColors.secondaryLabel) : btn.limiting ? "#ff9f0a" : Qt.rgba(1, 1, 1, 0.5)
                     }
                 }
                 ToggleSwitch {
-                    Accessible.name: "Limiter"
+                    Accessible.name: qsTr("Limiter")
                     checked: btn.enabled_
                     onToggled: bridge.setLimiterEnabled(btn.outputIndex, checked)
                 }
@@ -183,10 +183,10 @@ Rectangle {
                 spacing: 4
                 RowLayout {
                     width: parent.width
-                    SectionLabel { text: "THRESHOLD" }
+                    SectionLabel { text: qsTr("THRESHOLD") }
                     Item { Layout.fillWidth: true }
                     ValueField {
-                        fieldWidth: 56; height: 22; suffix: "dBFS"; decimals: 1; wheelStep: 0.5
+                        fieldWidth: 56; height: 22; suffix: qsTr("dBFS"); decimals: 1; wheelStep: 0.5
                         minValue: -30; maxValue: 0
                         value: btn.threshold
                         onValueEdited: bridge.setLimiterThreshold(btn.outputIndex, newValue)
@@ -194,7 +194,7 @@ Rectangle {
                 }
                 StyledSlider {
                     width: parent.width
-                    Accessible.name: "Threshold"
+                    Accessible.name: qsTr("Threshold")
                     from: -30; to: 0; stepSize: 0.5
                     value: btn.threshold
                     onMoved: { btn.threshold = value; thresholdLive.push(value) }
@@ -209,10 +209,10 @@ Rectangle {
                 spacing: 4
                 RowLayout {
                     width: parent.width
-                    SectionLabel { text: "RELEASE" }
+                    SectionLabel { text: qsTr("RELEASE") }
                     Item { Layout.fillWidth: true }
                     ValueField {
-                        fieldWidth: 56; height: 22; suffix: "ms"; decimals: 0; wheelStep: 10
+                        fieldWidth: 56; height: 22; suffix: qsTr("ms"); decimals: 0; wheelStep: 10
                         minValue: 10; maxValue: 1000
                         value: btn.release
                         onValueEdited: bridge.setLimiterRelease(btn.outputIndex, newValue)
@@ -220,7 +220,7 @@ Rectangle {
                 }
                 StyledSlider {
                     width: parent.width
-                    Accessible.name: "Release"
+                    Accessible.name: qsTr("Release")
                     from: 10; to: 1000; stepSize: 10
                     value: btn.release
                     onMoved: { btn.release = value; releaseLive.push(value) }
@@ -234,7 +234,7 @@ Rectangle {
                 width: parent.width
                 spacing: 4
                 SectionLabel {
-                    text: "LINK GROUP"
+                    text: qsTr("LINK GROUP")
                     MouseArea {
                         id: linkHelp
                         anchors.fill: parent
@@ -243,7 +243,7 @@ Rectangle {
                     }
                     ToolTip.visible: linkHelp.containsMouse
                     ToolTip.delay: 400
-                    ToolTip.text: "Outputs in the same group share the deepest gain reduction, so a stereo image doesn't shift."
+                    ToolTip.text: qsTr("Outputs in the same group share the deepest gain reduction, so a stereo image doesn't shift.")
                 }
                 Rectangle {
                     width: parent.width
@@ -255,7 +255,7 @@ Rectangle {
                         anchors.fill: parent
                         anchors.margins: 2
                         Repeater {
-                            model: ["Off", "1", "2", "3", "4"]
+                            model: [qsTr("Off"), "1", "2", "3", "4"]
                             Rectangle {
                                 readonly property bool isCurrent: btn.linkGroup === index
                                 width: parent.width / 5
@@ -276,7 +276,7 @@ Rectangle {
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     Accessible.role: Accessible.RadioButton
-                                    Accessible.name: "Link group " + modelData
+                                    Accessible.name: qsTr("Link group %1").arg(modelData)
                                     Accessible.checkable: true
                                     Accessible.checked: parent.isCurrent
                                     onActivated: bridge.setLimiterLinkGroup(btn.outputIndex, index)
@@ -296,13 +296,13 @@ Rectangle {
                 spacing: 8
                 OutlineButton {
                     Layout.fillWidth: true
-                    text: "Copy to All Outputs"
+                    text: qsTr("Copy to All Outputs")
                     onClicked: bridge.copyLimiterToAll(btn.outputIndex)
                 }
                 OutlineButton {
                     id: allButton
                     Layout.preferredWidth: 104
-                    text: "All Outputs"
+                    text: qsTr("All Outputs")
                     chevron: true
                     onClicked: allMenu.openAt(allButton, 0, allButton.height + 4)
                 }
@@ -314,10 +314,10 @@ Rectangle {
         id: allMenu
         parent: Overlay.overlay
         items: [
-            { key: "link", text: "Link All Stereo Pairs", icon: "link" },
-            { key: "unlink", text: "Unlink All Outputs" },
+            { key: "link", text: qsTr("Link All Stereo Pairs"), icon: "link" },
+            { key: "unlink", text: qsTr("Unlink All Outputs") },
             { separator: true },
-            { key: "off", text: "Switch Every Limiter Off", icon: "power", danger: true }
+            { key: "off", text: qsTr("Switch Every Limiter Off"), icon: "power", danger: true }
         ]
         onTriggered: {
             if (key === "link") bridge.linkAllLimiterPairs()

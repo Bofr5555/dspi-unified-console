@@ -21,10 +21,10 @@ Rectangle {
     property bool graphHovered: false
 
     // Full names by firmware type (PEQ types 0..13), as on the macOS Console
-    readonly property var typeNames: ["Off", "Peaking", "Low Shelf (12dB)", "High Shelf (12dB)",
-        "High Cut (12dB)", "Low Cut (12dB)", "Notch", "All Pass (360°)", "All Pass (180°)",
-        "Low Shelf (6dB)", "High Shelf (6dB)", "Linkwitz Transform",
-        "High Cut (6dB)", "Low Cut (6dB)"]
+    readonly property var typeNames: [qsTr("Off"), qsTr("Peaking"), qsTr("Low Shelf (12dB)"), qsTr("High Shelf (12dB)"),
+        qsTr("High Cut (12dB)"), qsTr("Low Cut (12dB)"), qsTr("Notch"), qsTr("All Pass (360°)"), qsTr("All Pass (180°)"),
+        qsTr("Low Shelf (6dB)"), qsTr("High Shelf (6dB)"), qsTr("Linkwitz Transform"),
+        qsTr("High Cut (6dB)"), qsTr("Low Cut (6dB)")]
     // Each band has its own colour (bypass dot and number)
     readonly property var bandColors: isMacOS ? ["#ED7873", "#F2A35C", "#EBC966", "#8CCC85", "#5CC4AD",
         "#70ADF0", "#9499F0", "#BA91EB", "#E38AB8", "#CC9E80"] : ["#4A8FE3", "#F57373", "#73C78C", "#EDB34D", "#998CEB",
@@ -86,7 +86,7 @@ Rectangle {
             bypassed: filterBypass
             dotColor: bandColors[bandIndex % bandColors.length]
             anchors.verticalCenter: parent.verticalCenter
-            accessibleName: "Band " + (bandIndex + 1) + " active"
+            accessibleName: qsTr("Band %1 active").arg(bandIndex + 1)
             onToggled: filterRowRoot.bypassToggled(!filterBypass)
         }
 
@@ -104,7 +104,7 @@ Rectangle {
                 enabled: linked && isActive
                 cursorShape: Qt.PointingHandCursor
                 Accessible.role: Accessible.CheckBox
-                Accessible.name: "Select band " + (bandIndex + 1) + " on the graph"
+                Accessible.name: qsTr("Select band %1 on the graph").arg(bandIndex + 1)
                 Accessible.checkable: true
                 Accessible.checked: selected
                 onActivated: if (byKeyboard) filterRowRoot.numberClicked(0)
@@ -129,7 +129,7 @@ Rectangle {
                 anchors.rightMargin: 6
                 anchors.verticalCenter: parent.verticalCenter
                 elide: Text.ElideRight
-                text: typeNames[filterType] || "Unknown"
+                text: typeNames[filterType] || qsTr("Unknown")
                 font.pixelSize: 14
                 color: isMacOS ? MacColors.opacity(MacColors.label, filterBypass || !isActive ? 0.45 : 1.0) : "#cccccc"
             }
@@ -149,7 +149,7 @@ Rectangle {
                 cursorShape: Qt.PointingHandCursor
                 focusRadius: typeBtn.radius + 2
                 Accessible.role: Accessible.ComboBox
-                Accessible.name: "Band " + (bandIndex + 1) + " type"
+                Accessible.name: qsTr("Band %1 type").arg(bandIndex + 1)
                 Accessible.description: typeNames[filterType] || ""
                 onActivated: typeMenu.toggleAt(typeBtn)
             }
@@ -178,14 +178,14 @@ Rectangle {
                 verticalAlignment: Text.AlignVCenter
                 font.pixelSize: 13
                 color: isMacOS ? MacColors.opacity(MacColors.secondaryLabel, filterBypass ? 0.45 : 1.0) : "#cccccc"
-                text: "⚙  f0 " + filterFreq.toFixed(0) + " Hz → fp " + filterGain.toFixed(0) + " Hz"
+                text: qsTr("⚙  f0 %1 Hz → fp %2 Hz").arg(filterFreq.toFixed(0)).arg(filterGain.toFixed(0))
             }
             ClickArea {
                 id: ltMouse
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                Accessible.name: "Band " + (bandIndex + 1) + " Linkwitz transform: f0 " + filterFreq.toFixed(0) + " Hz, fp " + filterGain.toFixed(0) + " Hz"
+                Accessible.name: qsTr("Band %1 Linkwitz transform: f0 %2 Hz, fp %3 Hz").arg(bandIndex + 1).arg(filterFreq.toFixed(0)).arg(filterGain.toFixed(0))
                 onActivated: ltEditor.openFor(filterRowRoot.channelId, filterRowRoot.bandIndex)
             }
             LinkwitzEditor { id: ltEditor; y: parent.height + 4 }
@@ -199,7 +199,7 @@ Rectangle {
             ValueField {
                 anchors.verticalCenter: parent.verticalCenter
                 textColor: isMacOS ? MacColors.opacity(MacColors.label, filterBypass ? 0.45 : 1.0) : "#cccccc"; unitColor: isMacOS ? MacColors.opacity(MacColors.secondaryLabel, filterBypass ? 0.45 : 1.0) : "#888888"; unitSize: 10
-                fieldWidth: 70; height: 28; suffix: "Hz"; accessibleName: "Band " + (bandIndex + 1) + " frequency"; decimals: 1; wheelStep: 10; minValue: 10; maxValue: 20000
+                fieldWidth: 70; height: 28; suffix: qsTr("Hz"); accessibleName: qsTr("Band %1 frequency").arg(bandIndex + 1); decimals: 1; wheelStep: 10; minValue: 10; maxValue: 20000
                 value: filterFreq
                 onValueEdited: filterRowRoot.filterChanged(filterType, newValue, filterGain, filterQ)
             }
@@ -214,7 +214,7 @@ Rectangle {
                 visible: hasGain
                 anchors.verticalCenter: parent.verticalCenter
                 textColor: isMacOS ? MacColors.opacity(MacColors.label, filterBypass ? 0.45 : 1.0) : "#cccccc"; unitColor: isMacOS ? MacColors.opacity(MacColors.secondaryLabel, filterBypass ? 0.45 : 1.0) : "#888888"; unitSize: 10
-                fieldWidth: 60; height: 28; suffix: "dB"; accessibleName: "Band " + (bandIndex + 1) + " gain"; decimals: 1; minValue: -30; maxValue: 30
+                fieldWidth: 60; height: 28; suffix: qsTr("dB"); accessibleName: qsTr("Band %1 gain").arg(bandIndex + 1); decimals: 1; minValue: -30; maxValue: 30
                 value: filterGain
                 onValueEdited: filterRowRoot.filterChanged(filterType, filterFreq, newValue, filterQ)
             }
@@ -229,7 +229,7 @@ Rectangle {
                 visible: hasQ
                 anchors.verticalCenter: parent.verticalCenter
                 textColor: isMacOS ? MacColors.opacity(MacColors.label, filterBypass ? 0.45 : 1.0) : "#cccccc"; unitColor: isMacOS ? MacColors.opacity(MacColors.secondaryLabel, filterBypass ? 0.45 : 1.0) : "#888888"; unitSize: 10
-                fieldWidth: 56; height: 28; suffix: "Q"; accessibleName: "Band " + (bandIndex + 1) + " Q"; decimals: 3; wheelStep: 0.1; minValue: 0.1; maxValue: 20
+                fieldWidth: 56; height: 28; suffix: qsTr("Q"); accessibleName: qsTr("Band %1 Q").arg(bandIndex + 1); decimals: 3; wheelStep: 0.1; minValue: 0.1; maxValue: 20
                 value: filterQ
                 onValueEdited: filterRowRoot.filterChanged(filterType, filterFreq, filterGain, newValue)
             }

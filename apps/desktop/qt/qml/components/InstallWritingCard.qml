@@ -8,8 +8,8 @@ Rectangle {
     property string boardName: ""
     property string version: ""
     // -- WP QD32 -- The wizard's come from the core
-    property string title: "Writing firmware"
-    property string note: "Near the end the board restarts itself and its drive disappears. That is normal - do not unplug it."
+    property string title: qsTr("Writing firmware")
+    property string note: qsTr("Near the end the board restarts itself and its drive disappears. That is normal - do not unplug it.")
 
     radius: 8
     color: isMacOS ? MacColors.opacity(MacColors.controlBackground, 0.6) : Qt.rgba(1, 1, 1, 0.045)
@@ -56,8 +56,8 @@ Rectangle {
         }
         Column {
             spacing: 4
-            LabelValueRow { visible: card.boardName !== ""; label: "Board"; value: card.boardName }
-            LabelValueRow { label: "Firmware"; value: card.version }
+            LabelValueRow { visible: card.boardName !== ""; label: qsTr("Board"); value: card.boardName }
+            LabelValueRow { label: qsTr("Firmware"); value: card.version }
         }
     }
     Row {

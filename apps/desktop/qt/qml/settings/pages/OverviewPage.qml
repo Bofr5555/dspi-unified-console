@@ -10,15 +10,15 @@ import "../../components"
 SettingsPage {
     writesToDevice: false   // -- WP QD6 --
     id: page
-    title: "Overview"
-    subtitle: "Every GPIO the device has claimed, by what uses it."
+    title: qsTr("Overview")
+    subtitle: qsTr("Every GPIO the device has claimed, by what uses it.")
 
     readonly property var roles: [
-        { key: "output", title: "Outputs", color: "#0278c7" },
-        { key: "clock", title: "Clocks", color: "#ba3822" },
-        { key: "input", title: "Inputs", color: "#04856f" },
-        { key: "control", title: "Control", color: "#9543a7" },
-        { key: "other", title: "Other", color: "#807701" }]
+        { key: "output", title: qsTr("Outputs"), color: "#0278c7" },
+        { key: "clock", title: qsTr("Clocks"), color: "#ba3822" },
+        { key: "input", title: qsTr("Inputs"), color: "#04856f" },
+        { key: "control", title: qsTr("Control"), color: "#9543a7" },
+        { key: "other", title: qsTr("Other"), color: "#807701" }]
     function roleColor(key) {
         for (var i = 0; i < roles.length; i++) if (roles[i].key === key) return roles[i].color
         return "#807701"
@@ -50,83 +50,83 @@ SettingsPage {
     // Volts for a VREG code, as dspi_proto::ext::vreg_mv; the C API has it only for
     // the live code, as `millivolts`
     function vregVolts(code) {
-        if (code < 0x06 || code > 0x0F) return "code 0x" + ("0" + code.toString(16).toUpperCase()).slice(-2)
-        return ((850 + 50 * (code - 0x06)) / 1000).toFixed(2) + " V"
+        if (code < 0x06 || code > 0x0F) return qsTr("code 0x%1").arg(("0" + code.toString(16).toUpperCase()).slice(-2))
+        return qsTr("%1 V").arg(((850 + 50 * (code - 0x06)) / 1000).toFixed(2))
     }
     function liveVolts() {
-        return vreg.millivolts > 0 ? (vreg.millivolts / 1000).toFixed(2) + " V" : vregVolts(vreg.liveVreg)
+        return vreg.millivolts > 0 ? qsTr("%1 V").arg((vreg.millivolts / 1000).toFixed(2)) : vregVolts(vreg.liveVreg)
     }
     function formatUptime(s) {
         var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60
-        if (d > 0) return d + " d " + h + " h"
-        if (h > 0) return h + " h " + m + " min"
-        if (m > 0) return m + " min " + sec + " s"
-        return sec + " s"
+        if (d > 0) return qsTr("%1 d %2 h").arg(d).arg(h)
+        if (h > 0) return qsTr("%1 h %2 min").arg(h).arg(m)
+        if (m > 0) return qsTr("%1 min %2 s").arg(m).arg(String(sec))
+        return qsTr("%1 s").arg(String(sec))
     }
     SettingsSection {
         objectName: "coreVoltageSection"
         visible: ext.hasCoreVreg
-        title: "Core Voltage"
-        footnote: "At its 307.2 MHz clock the device raises its stored voltage one step by itself after two watchdog hangs in one power session, up to 1.25 V."
+        title: qsTr("Core Voltage")
+        footnote: qsTr("At its 307.2 MHz clock the device raises its stored voltage one step by itself after two watchdog hangs in one power session, up to 1.25 V.")
 
         SettingsValueRow {
             objectName: "coreVregRunning"
-            title: "Running at"
-            value: page.vregRead ? page.liveVolts() + (page.vreg.trialActive ? " (trial)" : "")
-                                 : ext.coreVregFailed ? "The device did not answer" : "Reading…"
+            title: qsTr("Running at")
+            value: page.vregRead ? (page.vreg.trialActive ? qsTr("%1 (trial)").arg(page.liveVolts()) : page.liveVolts())
+                                 : ext.coreVregFailed ? qsTr("The device did not answer") : qsTr("Reading…")
         }
         SettingsValueRow {
             objectName: "coreVregTrial"
             visible: page.vregRead && page.vreg.trialActive && page.vreg.trialVreg !== page.vreg.liveVreg
-            title: "Trial voltage"
+            title: qsTr("Trial voltage")
             value: visible ? page.vregVolts(page.vreg.trialVreg) : ""
         }
         SettingsValueRow {
             objectName: "coreVregStored"
             visible: page.vregRead
-            title: "Stored"
-            value: !page.vregRead ? "" : page.vreg.storedSel === 0 ? "Build default"
-                 : page.vregVolts(page.vreg.storedSel) + (page.vreg.autoRaised ? ", raised by the device" : "")
+            title: qsTr("Stored")
+            value: !page.vregRead ? "" : page.vreg.storedSel === 0 ? qsTr("Build default")
+                 : (page.vreg.autoRaised ? qsTr("%1, raised by the device").arg(page.vregVolts(page.vreg.storedSel)) : page.vregVolts(page.vreg.storedSel))
         }
         SettingsValueRow {
             objectName: "coreVregDefault"
             visible: page.vregRead
-            title: "Build default"
+            title: qsTr("Build default")
             value: page.vregRead ? page.vregVolts(page.vreg.defaultVreg) : ""
         }
         SettingsValueRow {
             objectName: "coreVregAuto"
             visible: page.vregRead
-            title: "Automatic raising"
-            value: page.vreg.autoDisabled ? "Off" : "On"
+            title: qsTr("Automatic raising")
+            value: page.vreg.autoDisabled ? qsTr("Off") : qsTr("On")
         }
         SettingsValueRow {
             objectName: "coreVregHangs"
             visible: page.vregRead
-            title: "Hangs this session"
+            title: qsTr("Hangs this session")
             value: page.vregRead ? String(page.vreg.hangCount) : ""
         }
         SettingsValueRow {
             objectName: "coreVregFailedTrial"
             visible: page.vregRead
-            title: "Last failed trial"
-            value: !page.vregRead || page.vreg.failedTrialVreg === 0 ? "None"
-                 : page.vregVolts(page.vreg.failedTrialVreg)
-                   + (page.vreg.failedTrialUptimeS > 0 ? ", hung after " + page.formatUptime(page.vreg.failedTrialUptimeS) : "")
+            title: qsTr("Last failed trial")
+            value: !page.vregRead || page.vreg.failedTrialVreg === 0 ? qsTr("None")
+                 : (page.vreg.failedTrialUptimeS > 0 ? qsTr("%1, hung after %2").arg(page.vregVolts(page.vreg.failedTrialVreg)).arg(page.formatUptime(page.vreg.failedTrialUptimeS))
+                   : page.vregVolts(page.vreg.failedTrialVreg))
         }
         SettingsValueRow {
             objectName: "coreVregUptime"
             visible: page.vregRead
-            title: "Uptime"
+            title: qsTr("Uptime")
             value: page.vregRead ? page.formatUptime(page.vreg.uptimeS) : ""
         }
     }
 
     // ── Map ──
     SettingsSection {
-        title: bridge.connected ? page.used + " of " + bridge.validPins.length + " GPIOs in use" : "Pins"
-        footnote: bridge.connected ? (bridge.validPins.length - page.used) + " free. GPIO 23-25 are wired inside the Pico and not offered."
-                                   : "Pin assignments live on the device. Connect a DSPi to see which GPIOs are in use."
+        title: bridge.connected ? qsTr("%1 of %2 GPIOs in use").arg(page.used).arg(bridge.validPins.length) : qsTr("Pins")
+        footnote: bridge.connected ? qsTr("%1 free. GPIO 23-25 are wired inside the Pico and not offered.").arg(bridge.validPins.length - page.used)
+                                   : qsTr("Pin assignments live on the device. Connect a DSPi to see which GPIOs are in use.")
 
         Item {
             width: parent.width
@@ -148,7 +148,7 @@ SettingsPage {
                         border.color: isMacOS ? "transparent" : owner ? Qt.lighter(page.roleColor(owner.role), 1.3) : Qt.rgba(1, 1, 1, 0.08)
                         Text {
                             anchors.centerIn: parent
-                            text: "GP" + modelData
+                            text: qsTr("GP%1").arg(modelData)
                             font.pixelSize: 11
                             font.weight: Font.DemiBold
                             color: isMacOS ? (parent.owner ? "white" : MacColors.secondaryLabel) : parent.owner ? "white" : Qt.rgba(1, 1, 1, 0.4)
@@ -160,7 +160,7 @@ SettingsPage {
                         }
                         ToolTip.visible: chipHover.containsMouse
                         ToolTip.delay: 300
-                        ToolTip.text: "GPIO " + modelData + ": " + (owner ? owner.owner : "free")
+                        ToolTip.text: owner ? qsTr("GPIO %1: %2").arg(modelData).arg(owner.owner) : qsTr("GPIO %1: free").arg(modelData)
                     }
                 }
             }
@@ -198,7 +198,7 @@ SettingsPage {
                 model: roleSection.members
                 SettingsValueRow {
                     title: modelData.owner
-                    value: "GPIO " + modelData.pin
+                    value: qsTr("GPIO %1").arg(modelData.pin)
                 }
             }
         }
@@ -206,7 +206,7 @@ SettingsPage {
 
     Text {
         visible: bridge.connected && page.owners.length === 0
-        text: "No GPIOs are currently claimed."
+        text: qsTr("No GPIOs are currently claimed.")
         font.pixelSize: 13
         color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
     }

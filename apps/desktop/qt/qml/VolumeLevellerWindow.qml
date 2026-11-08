@@ -7,7 +7,7 @@ import "components"
 AppWindow {
     id: win
     fitHeight: header.height + flick.contentHeight
-    title: "Volume Leveller"
+    title: qsTr("Volume Leveller")
     visible: false
     width: 380
     height: 560 + titlebarHeight
@@ -17,9 +17,9 @@ AppWindow {
     // -- WP QD18 --
     readonly property int inputCount: hostAudio.inputCount
     readonly property var speedCaptions: [
-        "Slow — Gentle response for music and wide dynamic range content.",
-        "Medium — Balanced response for general purpose use.",
-        "Fast — Tight response for speech, dialogue, and podcasts."]
+        qsTr("Slow — Gentle response for music and wide dynamic range content."),
+        qsTr("Medium — Balanced response for general purpose use."),
+        qsTr("Fast — Tight response for speech, dialogue, and podcasts.")]
 
     function inputNames() {
         var n = []
@@ -47,8 +47,8 @@ AppWindow {
         id: header
         width: parent.width
         icon: "waveform"
-        title: "Volume Leveller"
-        subtitle: "Upward dynamic range compression"
+        title: qsTr("Volume Leveller")
+        subtitle: qsTr("Upward dynamic range compression")
         checked: bridge.levellerEnabled
         onToggled: bridge.setLevellerEnabled(enable)
     }
@@ -80,7 +80,7 @@ AppWindow {
                 Item {
                     width: parent.width
                     height: 20
-                    SectionLabel { text: "CHANNELS"; anchors.verticalCenter: parent.verticalCenter }
+                    SectionLabel { text: qsTr("CHANNELS"); anchors.verticalCenter: parent.verticalCenter }
                     Item {
                         id: presetsLink
                         anchors.right: parent.right
@@ -91,7 +91,7 @@ AppWindow {
                             id: presetsRow
                             spacing: 4
                             Text {
-                                text: "Presets"
+                                text: qsTr("Presets")
                                 font.pixelSize: 12
                                 color: isMacOS ? MacColors.label : presetMouse.containsMouse ? "white" : Qt.rgba(1, 1, 1, 0.75)
                             }
@@ -103,13 +103,13 @@ AppWindow {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             Accessible.role: Accessible.ButtonMenu
-                            Accessible.name: "Presets"
+                            Accessible.name: qsTr("Presets")
                             onActivated: presetMenu.openAt(presetsLink, 0, presetsLink.height + 4)
                         }
                     }
                 }
 
-                RowTitle { text: "Detector"; note: "sets the shared gain" }
+                RowTitle { text: qsTr("Detector"); note: qsTr("sets the shared gain") }
                 ChannelChips {
                     width: parent.width
                     count: inputCount
@@ -118,7 +118,7 @@ AppWindow {
                     onMaskEdited: bridge.setLevellerMasks(mask, bridge.levellerApplyMask)
                 }
 
-                RowTitle { text: "Apply"; note: "receives the gain" }
+                RowTitle { text: qsTr("Apply"); note: qsTr("receives the gain") }
                 ChannelChips {
                     width: parent.width
                     count: inputCount
@@ -131,12 +131,12 @@ AppWindow {
                 Divider {}
             }
 
-            SectionLabel { text: "PARAMETERS" }
+            SectionLabel { text: qsTr("PARAMETERS") }
 
             ParamRow {
-                label: "Amount"; unit: "%"; from: 0; to: 100; stepSize: 0.5
+                label: qsTr("Amount"); unit: "%"; from: 0; to: 100; stepSize: 0.5
                 value: bridge.levellerAmount
-                caption: "Compression strength. Higher values reduce dynamic range more aggressively."
+                caption: qsTr("Compression strength. Higher values reduce dynamic range more aggressively.")
                 onLiveChanged: bridge.setLevellerAmount(v, true)
                 onCommitted: bridge.setLevellerAmount(v)
             }
@@ -146,7 +146,7 @@ AppWindow {
             Column {
                 width: parent.width
                 spacing: 6
-                Text { text: "Speed"; font.pixelSize: 13; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9) }
+                Text { text: qsTr("Speed"); font.pixelSize: 13; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9) }
                 Rectangle {
                     width: parent.width
                     height: 26
@@ -157,7 +157,7 @@ AppWindow {
                         anchors.fill: parent
                         anchors.margins: 2
                         Repeater {
-                            model: ["Slow", "Medium", "Fast"]
+                            model: [qsTr("Slow"), qsTr("Medium"), qsTr("Fast")]
                             Rectangle {
                                 readonly property bool isCurrent: bridge.levellerSpeed === index
                                 width: parent.width / 3
@@ -179,7 +179,7 @@ AppWindow {
                                     cursorShape: Qt.PointingHandCursor
                                     focusRadius: 7
                                     Accessible.role: Accessible.RadioButton
-                                    Accessible.name: "Speed " + modelData
+                                    Accessible.name: qsTr("Speed %1").arg(modelData)
                                     Accessible.checkable: true
                                     Accessible.checked: parent.isCurrent
                                     onActivated: bridge.setLevellerSpeed(index)
@@ -199,18 +199,18 @@ AppWindow {
             Divider {}
 
             ParamRow {
-                label: "Max Gain"; unit: "dB"; from: 0; to: 35; stepSize: 0.5
+                label: qsTr("Max Gain"); unit: qsTr("dB"); from: 0; to: 35; stepSize: 0.5
                 value: bridge.levellerMaxGain
-                caption: "Maximum boost for quiet passages. Higher values risk amplifying noise."
+                caption: qsTr("Maximum boost for quiet passages. Higher values risk amplifying noise.")
                 onLiveChanged: bridge.setLevellerMaxGain(v, true)
                 onCommitted: bridge.setLevellerMaxGain(v)
             }
             Divider {}
 
             ParamRow {
-                label: "Gate Threshold"; unit: "dB"; from: -96; to: 0; stepSize: 1; decimals: 1
+                label: qsTr("Gate Threshold"); unit: qsTr("dB"); from: -96; to: 0; stepSize: 1; decimals: 1
                 value: bridge.levellerGate
-                caption: "Silence gate. Signals below this level are not boosted, preventing noise amplification."
+                caption: qsTr("Silence gate. Signals below this level are not boosted, preventing noise amplification.")
                 onLiveChanged: bridge.setLevellerGate(v, true)
                 onCommitted: bridge.setLevellerGate(v)
             }
@@ -225,12 +225,12 @@ AppWindow {
                     anchors.rightMargin: 10
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 2
-                    Text { text: "Lookahead"; font.pixelSize: 13; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9) }
-                    Text { width: parent.width; wrapMode: Text.WordWrap; text: "Adds 5 ms latency. Improves transient handling."; font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
+                    Text { text: qsTr("Lookahead"); font.pixelSize: 13; color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9) }
+                    Text { width: parent.width; wrapMode: Text.WordWrap; text: qsTr("Adds 5 ms latency. Improves transient handling."); font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
                 }
                 ToggleSwitch {
                     id: lookSwitch
-                    Accessible.name: "Lookahead"
+                    Accessible.name: qsTr("Lookahead")
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     checked: bridge.levellerLookahead
@@ -244,9 +244,9 @@ AppWindow {
         id: presetMenu
         parent: Overlay.overlay
         items: [
-            { key: "all", text: "All Channels (Night Mode)" },
-            { key: "center", text: "Center Only (Dialogue Boost)" },
-            { key: "front", text: "Front L / R Only" }
+            { key: "all", text: qsTr("All Channels (Night Mode)") },
+            { key: "center", text: qsTr("Center Only (Dialogue Boost)") },
+            { key: "front", text: qsTr("Front L / R Only") }
         ]
         onTriggered: {
             if (key === "all") bridge.setLevellerMasks(0xFF, 0xFF)
