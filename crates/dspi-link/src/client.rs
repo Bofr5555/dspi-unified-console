@@ -733,6 +733,14 @@ impl LinkClient {
         }
     }
 
+    // -- WP LK4 --
+    /// How long the hub has sent nothing at all (control frames included),
+    /// by the session's clock.
+    pub fn silent_for(&self) -> Duration {
+        let last_inbound = *lock(&self.inner.last_inbound);
+        self.inner.clock.now().saturating_duration_since(last_inbound)
+    }
+
     /// This session's process-unique number, passed to
     /// [`LinkEvents::session_closed`] and [`LinkEvents::session_devices_changed`].
     pub fn epoch(&self) -> u64 {

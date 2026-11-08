@@ -235,15 +235,18 @@ fn wp_lk4_a_stalled_bridge_feed_runs_slow_then_recovers() {
     });
     assert_eq!(guard(&side.feed).meter_hz, Some(METER_HZ_BRIDGED));
 
-    // A stall: no frame for longer than FEED_LOST
+    // A stall: no frame for longer than FEED_LOST. The hub stops sending
+    // (as the stalled link would), the frames on their way are drained
+    side.client.poll_unsubscribe(side.handle, &[METER_SLOT]);
+    std::thread::sleep(Duration::from_millis(300));
     let now = Instant::now();
     {
         let mut feed = guard(&side.feed);
+        side.drain(&mut feed, now);
         feed.latest.remove(&METER_SLOT);
         feed.meter_subscribed_at = now.checked_sub(FEED_LOST * 2);
         feed.meter_asked = Some(now);
     }
-    // Drain nothing new into the past: the hub's frames arrive as they do
     side.maintain(now);
     assert_eq!(
         guard(&side.feed).meter_hz,
@@ -297,9 +300,12 @@ fn wp_lk4_a_stall_on_another_hub_keeps_the_rate() {
         core.fetch_status().is_ok_and(|s| !s.stale)
     });
     let full = guard(&side.feed).meter_hz;
+    side.client.poll_unsubscribe(side.handle, &[METER_SLOT]);
+    std::thread::sleep(Duration::from_millis(300));
     let now = Instant::now();
     {
         let mut feed = guard(&side.feed);
+        side.drain(&mut feed, now);
         feed.latest.remove(&METER_SLOT);
         feed.meter_subscribed_at = now.checked_sub(FEED_LOST * 2);
         feed.meter_asked = Some(now);
@@ -307,5 +313,119 @@ fn wp_lk4_a_stall_on_another_hub_keeps_the_rate() {
     side.maintain(now);
     assert_eq!(guard(&side.feed).meter_hz, full);
     assert!(guard(&side.feed).meter_slow_since.is_none());
+    core.link_close();
+}
+
+/// The first connection's inbound traffic can be dropped (a session whose
+/// hub went quiet, as after the bridge closed it during an outage); later
+/// connections are untouched.
+#[derive(Default)]
+struct Quiet {
+    muted: AtomicBool,
+    connects: std::sync::atomic::AtomicUsize,
+}
+
+struct QuietConnector(Arc<Quiet>);
+
+impl WsConnector for QuietConnector {
+    fn connect(&self, url: &str, protocol: &str) -> std::result::Result<WsPair, LinkError> {
+        let (tx, rx) = TcpConnector::default().connect(url, protocol)?;
+        let first = self.0.connects.fetch_add(1, Ordering::SeqCst) == 0;
+        let rx: Box<dyn WsReceiver> = Box::new(QuietReceiver(rx, Arc::clone(&self.0), first));
+        Ok((tx, rx))
+    }
+}
+
+struct QuietReceiver(Box<dyn WsReceiver>, Arc<Quiet>, bool);
+
+impl WsReceiver for QuietReceiver {
+    fn recv(&mut self) -> dspi_link::socket::WsRecv {
+        use dspi_link::socket::WsRecv;
+        loop {
+            let r = self.0.recv();
+            let quiet = self.2 && self.1.muted.load(Ordering::SeqCst);
+            match r {
+                WsRecv::Message(_) | WsRecv::Alive if quiet => {}
+                other => return other,
+            }
+        }
+    }
+}
+
+fn connect_quiet(
+    core: &DspiCore,
+    hub: &FakeHub,
+    quiet: &Arc<Quiet>,
+    clock: &Arc<dspi_link::clock::ManualClock>,
+) {
+    core.link_connect_with(
+        hub.url(),
+        "wp-lk4".into(),
+        "test".into(),
+        String::new(),
+        String::new(),
+        Tuning {
+            connector: Arc::new(QuietConnector(Arc::clone(quiet))),
+            clock: Arc::clone(clock) as Arc<dyn Clock>,
+            backoff_divisor: 50,
+            ..Tuning::default()
+        },
+    )
+    .unwrap();
+    wait_until("the device list", || !core.link_devices().is_empty());
+}
+
+#[test]
+fn wp_lk4_a_silent_bridge_session_is_replaced_once_a_new_one_connects() {
+    let hub = bridge_with(4);
+    let core = DspiCore::new();
+    let quiet = Arc::new(Quiet::default());
+    let clock = Arc::new(dspi_link::clock::ManualClock::new());
+    connect_quiet(&core, &hub, &quiet, &clock);
+    select(&core).unwrap();
+    core.fetch_all().unwrap();
+    let generation = core.lock().conn().unwrap().generation;
+    let old = core.lock().link.as_ref().unwrap().client.clone().unwrap();
+
+    // Not yet past the bridge's limit: nothing happens
+    quiet.muted.store(true, Ordering::SeqCst);
+    clock.advance(PROBE_AFTER - Duration::from_secs(2));
+    std::thread::sleep(FEED_CHECK * 2);
+    assert_eq!(quiet.connects.load(Ordering::SeqCst), 1);
+
+    // Past it: a new session connects, so the old one is dead
+    clock.advance(Duration::from_secs(3));
+    wait_until("the replacement", || {
+        core.lock()
+            .conn
+            .as_ref()
+            .is_some_and(|c| c.generation != generation)
+            && core.link_status().phase == LinkPhase::Bound
+    });
+    assert_eq!(quiet.connects.load(Ordering::SeqCst), 2);
+    assert!(old.is_closed(), "the silent session was closed");
+    wait_until("live meters again", || {
+        core.fetch_status().is_ok_and(|s| !s.stale)
+    });
+    core.link_close();
+}
+
+#[test]
+fn wp_lk4_a_silent_session_on_another_hub_is_left_to_the_silence_limit() {
+    let hub = FakeHub::start(HubConfig {
+        auth: Auth::None,
+        ..HubConfig::default()
+    })
+    .unwrap();
+    let core = DspiCore::new();
+    let quiet = Arc::new(Quiet::default());
+    let clock = Arc::new(dspi_link::clock::ManualClock::new());
+    connect_quiet(&core, &hub, &quiet, &clock);
+    select(&core).unwrap();
+    quiet.muted.store(true, Ordering::SeqCst);
+    clock.advance(PROBE_AFTER + Duration::from_secs(1));
+    std::thread::sleep(FEED_CHECK * 3);
+    assert_eq!(quiet.connects.load(Ordering::SeqCst), 1, "no probe dial");
+    assert_eq!(core.link_status().phase, LinkPhase::Bound);
     core.link_close();
 }

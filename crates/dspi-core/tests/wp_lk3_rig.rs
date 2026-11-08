@@ -49,6 +49,22 @@ fn secs(start: Instant) -> f64 {
     start.elapsed().as_secs_f64()
 }
 
+/// Wall-clock time of day (UTC), HH:MM:SS.mmm, to line events up with the
+/// rig's own log (`rig.sh outage` prints its times so).
+fn wall() -> String {
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis());
+    let day = ms % 86_400_000;
+    format!(
+        "{:02}:{:02}:{:02}.{:03}",
+        day / 3_600_000,
+        day / 60_000 % 60,
+        day / 1000 % 60,
+        day % 1000
+    )
+}
+
 /// `DspiBridgeImpl.deviceSelected` and the `deviceChangedHooks`, in order.
 fn startup_reads(core: &DspiCore, chain: u64) {
     if std::env::var("LK3_NO_READS").is_ok_and(|v| v == "1") {
@@ -205,8 +221,9 @@ fn one_client(id: usize, url: &str, mode: &str, seconds: u64, reread_s: u64, cha
                 if was_bound && !bound {
                     drops += 1;
                     println!(
-                        "LK3 c{id} t={:.2}s session lost: {:?} code={} reason={}",
+                        "LK3 c{id} t={:.2}s wall={} session lost: {:?} code={} reason={}",
                         secs(start),
+                        wall(),
                         st.phase,
                         st.close_code,
                         st.close_reason
@@ -218,7 +235,11 @@ fn one_client(id: usize, url: &str, mode: &str, seconds: u64, reread_s: u64, cha
                 }
                 if !was_bound && bound {
                     rebinds += 1;
-                    println!("LK3 c{id} t={:.2}s bound again", secs(start));
+                    println!(
+                        "LK3 c{id} t={:.2}s wall={} bound again",
+                        secs(start),
+                        wall()
+                    );
                 }
                 was_bound = bound;
             }
@@ -275,8 +296,9 @@ fn one_client(id: usize, url: &str, mode: &str, seconds: u64, reread_s: u64, cha
                     if gap > FREEZE {
                         run.freezes += 1;
                         println!(
-                            "LK3 c{id} t={:.2}s meter freeze {:.1}s",
+                            "LK3 c{id} t={:.2}s wall={} meter freeze {:.1}s",
                             secs(start),
+                            wall(),
                             gap.as_secs_f64()
                         );
                     }

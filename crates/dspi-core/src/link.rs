@@ -312,6 +312,9 @@ pub(crate) struct LinkSession {
     released: bool,
     /// The side of a binding given up, to be dropped outside the lock.
     retired: Option<Arc<LinkSide>>,
+    // -- WP LK4 --
+    /// The last probe dial past a silent bridge session ([`PROBE_AFTER`]).
+    probed_at: Option<Instant>,
     /// The next re-attach's read fails.
     #[cfg(test)]
     fail_next_read: bool,
@@ -458,8 +461,30 @@ enum Step {
     Wait(Option<Duration>, Option<Arc<LinkSide>>),
     Dial(Box<Target>),
     Rebind(u8, String),
+    /// -- WP LK4 -- dial past a silent bridge session ([`PROBE_AFTER`]).
+    Probe(Box<Target>),
     /// Read a device list that failed after a pairing.
     ReadDevices(LinkClient),
+}
+
+// -- WP LK4 --
+/// A bridge closes a session whose queued frames it could not write for 10 s
+/// (bridge spec 8.2, `LINK_UNWRITABLE_TIMEOUT_MS`); with a poll or its own
+/// pings running it always has some. Silence past this on a bridge means that
+/// close is likely, and the reset that would say so reaches us only when our
+/// own TCP retries again, which a long outage backs off by many seconds. So
+/// from then on a new session is dialled every [`PROBE_EVERY`]: if one
+/// connects while the old one is still silent, the network works and the old
+/// session is dead; the new one replaces it at once.
+const PROBE_AFTER: Duration = Duration::from_secs(12);
+const PROBE_EVERY: Duration = Duration::from_secs(2);
+
+/// Whether a probe dial past session `s`'s silent client is due.
+fn probe_due(s: &LinkSession, client: &LinkClient, now: Instant) -> bool {
+    client.hello().hub.kind == "bridge"
+        && client.silent_for() >= PROBE_AFTER
+        && s.probed_at
+            .is_none_or(|t| now.saturating_duration_since(t) >= PROBE_EVERY)
 }
 
 /// A session number; never reused.
@@ -860,6 +885,7 @@ impl DspiCore {
             refused: false,
             released: false,
             retired: None,
+            probed_at: None,
             #[cfg(test)]
             fail_next_read: false,
             unreported_end: None,
@@ -1149,6 +1175,46 @@ impl DspiCore {
         true
     }
 
+    // -- WP LK4 --
+    /// A probe dial connected: if the old client is still silent, it is dead
+    /// (the network works); close it and take the new one, as after a lost
+    /// session. Otherwise the old one spoke meanwhile and the new one goes.
+    /// Returns false when the session has gone.
+    fn finish_probe(&self, id: u64, dialled: (LinkClient, AuthState)) -> bool {
+        let old = {
+            let mut inner = self.lock();
+            let Some(s) = inner
+                .link
+                .as_mut()
+                .filter(|s| s.id == id && !s.cancel.load(Ordering::SeqCst))
+            else {
+                drop(inner);
+                dialled.0.close();
+                return false;
+            };
+            let silent = s
+                .client
+                .as_ref()
+                .is_some_and(|c| !c.is_closed() && c.silent_for() >= PROBE_AFTER);
+            if !silent {
+                drop(inner);
+                dialled.0.set_events(None);
+                dialled.0.close();
+                return true;
+            }
+            s.client.take()
+        };
+        if let Some(old) = old {
+            log::info!(
+                "the Link hub answers a new session while this one has been silent for {:?}: replacing it",
+                old.silent_for()
+            );
+            old.set_events(None);
+            old.close();
+        }
+        self.finish_dial(id, Ok(dialled))
+    }
+
     /// The read after a re-attach.
     fn read_rebound(&self) -> Result<()> {
         #[cfg(test)]
@@ -1316,6 +1382,10 @@ fn next_step(s: &mut LinkSession, conn_gen: Option<u64>, now: Instant) -> Step {
         b.attached = false;
     }
     if b.attached {
+        if probe_due(s, &client, now) {
+            s.probed_at = Some(now);
+            return Step::Probe(Box::new(s.target.clone()));
+        }
         return Step::Wait(Some(FEED_CHECK), feed);
     }
     let handle = u8::try_from(d.handle).unwrap_or(b.handle);
@@ -1556,6 +1626,27 @@ fn run_steps(me: &Weak<DspiCore>, id: u64, cancel: &AtomicBool) -> Option<Option
                 }
             }
             Step::Rebind(handle, serial) => core.rebind(id, handle, serial),
+            // -- WP LK4 --
+            Step::Probe(target) => {
+                let tx = core.lock().link.as_ref().map(|s| s.tx.clone())?;
+                drop(core);
+                let dialled = redial(&target, &tx);
+                let Some(core) = me.upgrade() else {
+                    if let Ok((client, _)) = dialled {
+                        client.close();
+                    }
+                    return None;
+                };
+                match dialled {
+                    Ok(dialled) => {
+                        if !core.finish_probe(id, dialled) {
+                            return None;
+                        }
+                        core.listeners.link.call(|l| l.on_link_status_changed());
+                    }
+                    Err(e) => log::debug!("probe dial past a silent session failed: {e}"),
+                }
+            }
             Step::ReadDevices(client) => core.read_devices(id, &client),
         }
     }
