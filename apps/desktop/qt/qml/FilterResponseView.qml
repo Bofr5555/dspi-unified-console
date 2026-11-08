@@ -40,6 +40,7 @@ Column {
                                           : Math.max(250, Math.min(350, root.graphHeight))
 
         Rectangle {
+            id: plotRect
             anchors.fill: parent
             anchors.leftMargin: 16
             anchors.rightMargin: 16
@@ -122,94 +123,101 @@ Column {
             }
 
             // Drag, select and create the open channel's bands on the graph
-            PeqEditorItem {
-                id: editor
-                enabled: bridge.writable   // -- WP QD6 --
+            // -- WP QD22 -- Tab reaches the editor through this scope (Qt 5 has no
+            // activeFocusOnTab on the app's own types)
+            FocusScope {
+                id: editorScope
                 anchors.fill: parent
-                channel: filterResponseRoot.follows && !root.crossoverTabOpen ? root.openChannelId : -1
-                showGlow: root.graphShowGlow
-                lineWidth: root.graphLineWidth
-                dbTop: bodePlot.dbTop
-                dbBottom: bodePlot.dbBottom
-                minFreq: root.graphMinFreq
-                maxFreq: root.graphMaxFreq
-                showFreqReadout: root.graphFreqReadout
-                showLevelReadout: root.graphLevelReadout
-                backgroundColor: parent.color
-                Component.onCompleted: setBridge(bridge)
-                // -- WP QD22 -- Tab steps through the bands (as on the Mac) and, from
-                // the last one (or with none), on out of the graph with nothing
-                // selected, so the graph never holds the focus; Shift+Tab the same way back
-                activeFocusOnTab: active
-                Accessible.ignored: !active   // no channel open: nothing to edit
-                Accessible.role: Accessible.Chart
-                Accessible.name: "EQ graph"
-                Accessible.description: "Tab steps through the bands. Arrows move the selected band, Alt with Up or Down sets its width, Delete removes it, Escape deselects."
-                property bool keyFocused: false
-                onActiveFocusChanged: keyFocused = activeFocus && !plotPointer.hovered
-                FocusRing { gap: -2; radius: 4; shown: editor.keyFocused }   // inside: the plot clips
-                function leavesOn(back) {
-                    var sel = editor.selectedBands
-                    var edge = -1, edgeFreq = 0
-                    for (var b = 0; b < 10; b++) {   // BANDS_PER_CHANNEL, as FilterListView
-                        var t = bridge.filterType(editor.channel, b)
-                        if (t === 0 || t >= 32) continue   // flat, or a crossover (isEditable)
-                        var f = bridge.filterFreq(editor.channel, b)
-                        if (edge < 0 || (back ? f < edgeFreq : f > edgeFreq)) { edge = b; edgeFreq = f }
-                    }
-                    // No band to step to, or the last one selected
-                    return edge < 0 || (sel.length === 1 && edge === sel[0])
-                }
-                function leave(forward) {
-                    editor.deselectAll()
-                    var n = editor.nextItemInFocusChain(forward)
-                    for (var i = 0; n && i < 200; i++) {
-                        var inside = false
-                        for (var p = n; p; p = p.parent) if (p === editor) inside = true
-                        if (!inside) break
-                        n = n.nextItemInFocusChain(forward)
-                    }
-                    if (n) n.forceActiveFocus(forward ? Qt.TabFocusReason : Qt.BacktabFocusReason)
-                }
-                Keys.onTabPressed: function (event) {
-                    if (leavesOn(false)) leave(true)
-                    else event.accepted = false
-                }
-                Keys.onBacktabPressed: function (event) {
-                    if (leavesOn(true)) leave(false)
-                    else event.accepted = false
-                }
-                onContextMenuRequested: {
-                    var items = []
-                    if (band >= 0) {
-                        var info = editor.bandInfo(band)
-                        items.push({ key: "header", text: selectionCount > 1 ? selectionCount + " Bands" : "Band " + (band + 1), enabled: false })
-                        if (info.order > 0) {
-                            var labels = info.allPass ? ["180\u00b0", "360\u00b0"] : ["6 dB/oct", "12 dB/oct"]
-                            items.push({ key: "order1", text: labels[0], enabled: info.order !== 1 })
-                            items.push({ key: "order2", text: labels[1], enabled: info.order !== 2 })
+                activeFocusOnTab: editor.active
+                PeqEditorItem {
+                    id: editor
+                    focus: true
+                    enabled: bridge.writable   // -- WP QD6 --
+                    anchors.fill: parent
+                    channel: filterResponseRoot.follows && !root.crossoverTabOpen ? root.openChannelId : -1
+                    showGlow: root.graphShowGlow
+                    lineWidth: root.graphLineWidth
+                    dbTop: bodePlot.dbTop
+                    dbBottom: bodePlot.dbBottom
+                    minFreq: root.graphMinFreq
+                    maxFreq: root.graphMaxFreq
+                    showFreqReadout: root.graphFreqReadout
+                    showLevelReadout: root.graphLevelReadout
+                    backgroundColor: plotRect.color
+                    Component.onCompleted: setBridge(bridge)
+                    // -- WP QD22 -- Tab steps through the bands (as on the Mac) and, from
+                    // the last one (or with none), on out of the graph with nothing
+                    // selected, so the graph never holds the focus; Shift+Tab the same way back
+                    Accessible.ignored: !active   // no channel open: nothing to edit
+                    Accessible.role: Accessible.Chart
+                    Accessible.name: "EQ graph"
+                    Accessible.description: "Tab steps through the bands. Arrows move the selected band, Alt with Up or Down sets its width, Delete removes it, Escape deselects."
+                    property bool keyFocused: false
+                    onActiveFocusChanged: keyFocused = activeFocus && !plotPointer.hovered
+                    FocusRing { gap: -2; radius: 4; shown: editor.keyFocused }   // inside: the plot clips
+                    function leavesOn(back) {
+                        var sel = editor.selectedBands
+                        var edge = -1, edgeFreq = 0
+                        for (var b = 0; b < 10; b++) {   // BANDS_PER_CHANNEL, as FilterListView
+                            var t = bridge.filterType(editor.channel, b)
+                            if (t === 0 || t >= 32) continue   // flat, or a crossover (isEditable)
+                            var f = bridge.filterFreq(editor.channel, b)
+                            if (edge < 0 || (back ? f < edgeFreq : f > edgeFreq)) { edge = b; edgeFreq = f }
                         }
-                        items.push({ separator: true })
-                        items.push({ key: "bypass", text: info.bypass ? "Enable" : "Bypass" })
-                        if (info.hasGain) items.push({ key: "invert", text: "Invert Gain" })
-                        items.push({ separator: true })
-                        items.push({ key: "delete", text: selectionCount > 1 ? "Delete " + selectionCount + " Bands" : "Delete Band", danger: true })
-                    } else {
-                        items.push({ key: "all", text: "Select All Bands", shortcut: "Ctrl+A" })
-                        items.push({ key: "none", text: "Deselect All", shortcut: "Esc" })
-                        if (selectionCount > 0) {
+                        // No band to step to, or the last one selected
+                        return edge < 0 || (sel.length === 1 && edge === sel[0])
+                    }
+                    function leave(forward) {
+                        editor.deselectAll()
+                        var n = editorScope.nextItemInFocusChain(forward)
+                        for (var i = 0; n && i < 200; i++) {
+                            var inside = false
+                            for (var p = n; p; p = p.parent) if (p === editorScope) inside = true
+                            if (!inside) break
+                            n = n.nextItemInFocusChain(forward)
+                        }
+                        if (n) n.forceActiveFocus(forward ? Qt.TabFocusReason : Qt.BacktabFocusReason)
+                    }
+                    Keys.onTabPressed: function (event) {
+                        if (leavesOn(false)) leave(true)
+                        else event.accepted = false
+                    }
+                    Keys.onBacktabPressed: function (event) {
+                        if (leavesOn(true)) leave(false)
+                        else event.accepted = false
+                    }
+                    onContextMenuRequested: {
+                        var items = []
+                        if (band >= 0) {
+                            var info = editor.bandInfo(band)
+                            items.push({ key: "header", text: selectionCount > 1 ? selectionCount + " Bands" : "Band " + (band + 1), enabled: false })
+                            if (info.order > 0) {
+                                var labels = info.allPass ? ["180\u00b0", "360\u00b0"] : ["6 dB/oct", "12 dB/oct"]
+                                items.push({ key: "order1", text: labels[0], enabled: info.order !== 1 })
+                                items.push({ key: "order2", text: labels[1], enabled: info.order !== 2 })
+                            }
                             items.push({ separator: true })
-                            items.push({ key: "delete", text: selectionCount > 1 ? "Delete Selected Bands" : "Delete Selected Band", danger: true })
+                            items.push({ key: "bypass", text: info.bypass ? "Enable" : "Bypass" })
+                            if (info.hasGain) items.push({ key: "invert", text: "Invert Gain" })
+                            items.push({ separator: true })
+                            items.push({ key: "delete", text: selectionCount > 1 ? "Delete " + selectionCount + " Bands" : "Delete Band", danger: true })
+                        } else {
+                            items.push({ key: "all", text: "Select All Bands", shortcut: "Ctrl+A" })
+                            items.push({ key: "none", text: "Deselect All", shortcut: "Esc" })
+                            if (selectionCount > 0) {
+                                items.push({ separator: true })
+                                items.push({ key: "delete", text: selectionCount > 1 ? "Delete Selected Bands" : "Delete Selected Band", danger: true })
+                            }
                         }
+                        graphMenu.band = band
+                        graphMenu.items = items
+                        graphMenu.openAt(editor, x, y)
                     }
-                    graphMenu.band = band
-                    graphMenu.items = items
-                    graphMenu.openAt(editor, x, y)
-                }
-                onShapeCardRequested: {
-                    shapeCard.createFreq = freq
-                    shapeCard.createGain = gain
-                    shapeCard.openBeside(x, y, boost)
+                    onShapeCardRequested: {
+                        shapeCard.createFreq = freq
+                        shapeCard.createGain = gain
+                        shapeCard.openBeside(x, y, boost)
+                    }
                 }
             }
 

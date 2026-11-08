@@ -12,6 +12,8 @@ SettingsRow {
     Button {
         id: button
         text: row.buttonText
+        // -- WP QD22 -- Qt 5 takes no name from a replaced contentItem
+        Accessible.name: row.buttonText
         Accessible.description: row.title
         onClicked: row.clicked()
         contentItem: Text {
