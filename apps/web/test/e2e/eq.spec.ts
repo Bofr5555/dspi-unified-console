@@ -41,6 +41,8 @@ async function openEq(page: Page, venue = "Venue A") {
   await session.locator(".eq-pick", { hasText: "OUT1" }).click();
   const graph = session.getByRole("application", { name: /^EQ graph, OUT1/ });
   await expect(graph).toBeVisible();
+  // -- WP WB6c -- an output's settings card sits above the graph: on screen for the mouse
+  await graph.evaluate((e) => e.scrollIntoView({ block: "center" }));
   await drawn(graph);
   return { session, graph };
 }

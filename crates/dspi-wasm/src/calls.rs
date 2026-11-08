@@ -29,6 +29,8 @@ use crate::curves;
 use crate::link;
 // -- WP WB6a --
 use crate::presets;
+// -- WP WB6c --
+use crate::outputs;
 // -- WP WB4a --
 use crate::usb;
 use crate::write;
@@ -251,6 +253,13 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "curves" => curves::curves(params(req.params)?),
         // -- WP CG34 -- the filter types' names, the core's one table
         "filterTypeNames" => Ok(curves::type_names()),
+        // -- WP WB6c -- the crossover's type, a crosspoint, the delay limit (src/outputs.rs)
+        "crossoverType" => outputs::crossover_type(&core, params(req.params)?),
+        "crosspoint" => outputs::crosspoint(&core, params(req.params)?),
+        "outputLimits" => {
+            need_open(&core)?;
+            Ok(outputs::limits(&core))
+        }
         "close" => {
             core.disconnect();
             set_demo(h, false);
