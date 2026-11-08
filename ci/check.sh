@@ -68,6 +68,10 @@
 #                                     run-clients.sh ts): the build container and
 #                                     NODE from images.conf; needs the DSPi-Link
 #                                     clone in work/consoles (README there)
+#       web                           the web client (apps/web/tools/ci.sh): npm ci
+#                                     from the lockfile, typecheck, unit tests, and
+#                                     e2e in Chromium and Firefox on the demo
+#                                     device, in PLAYWRIGHT from images.conf
 #   ci/check.sh --all                 full gate plus every optional step
 #   ci/check.sh --all-clients         every client, then the matrix (ci/matrix.sh);
 #                                     builds missing images first
@@ -96,7 +100,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --crate) crates+=("$2"); shift 2 ;;
     --step) steps+=("$2"); shift 2 ;;
-    --all) steps=(fetch fmt clippy test windows-gnu android-contract licences deny windows-msvc android android-tests android-aab wasm wasm-core qt qt5 qt-offscreen qt5-offscreen terminal qt-windows proptest kotlin swift ios-check drift conformance-ts); shift ;;
+    --all) steps=(fetch fmt clippy test windows-gnu android-contract licences deny windows-msvc android android-tests android-aab wasm wasm-core qt qt5 qt-offscreen qt5-offscreen terminal qt-windows proptest kotlin swift ios-check drift conformance-ts web); shift ;;
     --all-clients) exec ci/matrix.sh ;;
     -h|--help) sed -n "2,/^set -euo/p" "$0" | sed '$d'; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
@@ -183,6 +187,9 @@ for s in "${steps[@]}"; do
     conformance-ts)
       # -- WP HB8 --
       crates/dspi-hub/tests/conformance/run-clients.sh ts ;;
+    web)
+      # -- WP WB5 --
+      apps/web/tools/ci.sh ;;
     ios-check)
       # -- WP CG3 --
       $RUN 'set -euo pipefail
