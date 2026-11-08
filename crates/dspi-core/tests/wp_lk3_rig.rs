@@ -21,6 +21,8 @@
 //! - `LK3_TRACE=1`: print what `fetch_status` returned once a second.
 //! - `LK3_NO_READS=1`: no start-up reads at all, only the meters (to tell the
 //!   reads' cost on the meters apart).
+//! - `LK3_UNTIL_USABLE=1` (lk4 order): the start-up reads stop at the usable
+//!   UI (for first-meter / usable-UI runs; the core's background reads go on).
 
 #![cfg(feature = "link")]
 
@@ -77,6 +79,11 @@ fn startup_reads(core: &DspiCore, chain: u64, lk4: bool, usable: &dyn Fn()) {
     let _ = core.fetch_all();
     if lk4 {
         usable();
+        // WP LK4: the measurement ends at the usable UI (the core's own
+        // background reads go on regardless)
+        if std::env::var("LK3_UNTIL_USABLE").is_ok_and(|v| v == "1") {
+            return;
+        }
     }
     core.rta_start();
     let _ = core.fetch_crossfeed_pair_map();
