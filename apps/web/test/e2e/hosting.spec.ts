@@ -120,7 +120,9 @@ async function openHubDemo(page: Page, host: string) {
 async function writeOnce(session: ReturnType<Page["getByRole"]>, info: TestInfo, db: string) {
   if (info.project.name !== "chromium") return;
   const slider = session.getByRole("slider", { name: "Volume" });
-  await slider.fill(db);
+  // -- WP WB6a -- the main window's slider is the Console's taper: the position of `db`
+  // (as link.spec.ts writes it; the values used here are ones the taper reaches exactly)
+  await slider.fill(String(Math.round(((Number(db) + 60) / 60) ** 2 * 200)));
   await slider.dispatchEvent("change");
   await expect(session.locator(".volume-value")).toHaveText(`${Number(db).toFixed(1)} dB`);
 }
@@ -174,7 +176,7 @@ test.describe("served by dspi hub --web", () => {
     await expect(page.getByRole("link", { name: "Hub page" })).toHaveAttribute("href", "/hub/");
     const session = await openHubDemo(page, new URL(HUB).host);
     await expect(session.locator(".volume-value")).toHaveText(/dB$/);
-    await writeOnce(session, info, "-7.5");
+    await writeOnce(session, info, "-6.0");
     expect(violations).toEqual([]);
     expect(errors).toEqual([]);
   });
@@ -257,7 +259,7 @@ test.describe("served by dspi web on localhost", () => {
     await expect(usbSession.locator(".device-meta")).toHaveText("RP2350 · firmware 1.1.6 · MOCKA001");
 
     const hubSession = await openHubDemo(page, `localhost:${LOCAL_PORT}`);
-    await writeOnce(hubSession, info, "-4.5");
+    await writeOnce(hubSession, info, "-18.0");
     // Both open at once, each its own session.
     await expect(page.getByRole("tab")).toHaveCount(2);
     await page.getByRole("tab").first().click();
