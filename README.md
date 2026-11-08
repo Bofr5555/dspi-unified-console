@@ -2,8 +2,8 @@
 
 One repository with one Rust core and every DSPi console client built on it:
 the Qt app for Windows and Linux, the Android app, the `dspi` terminal client,
-the Swift app for macOS and iOS (being moved onto the core), and a Rust DSPi Link
-hub.
+the Swift app for macOS and iOS (partly moved onto the core), a web console,
+and a Rust DSPi Link hub.
 
 [DSPi](https://github.com/WeebLabs/DSPi) is Weeb Labs' open-source DSP firmware
 for the Raspberry Pi Pico and Pico 2. Weeb Labs also wrote the original DSPi
@@ -15,31 +15,54 @@ client from Bofr5555's Android console ([Credits](#credits)). The clients talk t
 stock Weeb Labs firmware, and to the extension channel of Bofr5555's firmware
 fork where it is present ([The core](#the-core)).
 
-The goal is one project, built from one base, for every client.
-This repository is **private** and is not an official
-Weeb Labs repository. The macOS DSPi Console remains the reference for behaviour
-and look ([`docs/PARITY.md`](docs/PARITY.md)).
+The goal is one project, built from one base, for every client. This repository
+is **private** and is not an official Weeb Labs repository. The macOS DSPi
+Console remains the reference for behaviour and look
+([`docs/PARITY.md`](docs/PARITY.md)).
 
 ## Status
 
-Per client, from the status table in
-[`docs/core-merge/PLAN-CLIENTS.md`](docs/core-merge/PLAN-CLIENTS.md#status-2026-11-07)
-(2026-11-07; CG23 to CG27 and AN34 have merged into `main` since). Every client
-is tested against the simulated device, mocks and a fake hub; the hardware passes
-for each client are still owed (the `[HW]` items in the table).
+As of 2026-11-08, on `main` at `17ab1e50`. The detail, one row per work package,
+is in [`docs/core-merge/PLAN-CLIENTS.md`](docs/core-merge/PLAN-CLIENTS.md#status-2026-11-08).
+Every client is tested in CI against the simulated device, mocks and a fake hub.
+Hardware runs are recorded in `docs/core-merge/HW-*.md` and
+`docs/HIL-NEW-CORE.md`; what they still lack is listed under
+[What is owed](#what-is-owed).
 
 | Client | Where | Status |
 |---|---|---|
-| Core | `crates/` | Merged and in use by Qt, Android and the terminal. The core gaps the clients need are mostly done (CG1 to CG27); CG28 is open. |
-| Qt, Linux and Windows | `apps/desktop/` | On the core through the C ABI. Most of its track is merged; the lost-connection banner, networking page, analyser over Link and shortcuts are on their branches (QD10, QD14, QD19, QD17); the device list, packaging, accessibility and the hardware passes on Linux and Windows are open. The Windows build is cross-compiled from Linux. |
-| Android | `apps/android/` | On the core through UniFFI (AN1). Most of its track is merged. `release/android-0.12` is waiting for its hardware test (AN13); the follow-ups AN35 and AN36, accessibility and localisation are open. |
-| Terminal | `apps/terminal/` | Its track is done but for the hardware pass on the K340 (TM13). |
-| Swift, macOS and iOS | `apps/apple/` | In progress. The core builds as an XCFramework and the app's tests call it through the generated bindings (SW1, SW2); the seam map is done (SW3). The app itself still runs on its own Swift code: moving it onto the core starts with SW4. |
-| Link hub | `crates/dspi-hub/` | Server, pairing, roles, registry, advertising, web UI and a C ABI are merged (HB0 to HB6); `dspi hub` runs it from the terminal. Conformance (HB7) and hardware checks are open. |
-| Web | none | Deferred by the owner. CI checks that the core still builds for wasm32 (WB1); there is no web client. |
+| Core | `crates/` | In use by every client except the Swift app's writes and transports. The core gaps the clients asked for are done (CG1 to CG37). Recent: writes by parameter path (`write_param`), one filter-type name table, delays kept to 0.0001 ms, and one delay limit per platform (42 ms on RP2350, 21 ms on RP2040): a longer delay, NaN or infinity is refused with a message, and an import names each delay it shortened. |
+| Qt, Linux and Windows | `apps/desktop/` | On the core through the C ABI. Its track is merged, including accessibility (names, roles, keyboard), localisation plumbing (every string through `qsTr`/`tr`), sliders that commit from the keyboard, and the delay limit with a refusal banner. Packages: `.deb`, `.rpm`, AppImage (Qt 6.8 LTS) and an Arch `PKGBUILD` for Linux; a zip and an installer for Windows (cross-built from Linux); a universal `.dmg` for macOS (built in CI, launch-tested on x86_64 only). None are signed or published. |
+| Android | `apps/android/` | On the core through UniFFI. **0.12.0, the first release on the core, is on Google Play.** On `main` for the next release: R8 shrinking, accessibility (TalkBack labels and roles, with the layout unchanged), faster Link meters (they start in seconds, not minutes, on a lossy network), fractional delays kept, delay sliders in whole milliseconds, and the delay limit from the core. Open: edge-to-edge, localisation. |
+| Terminal | `apps/terminal/` | Done but for a physical replug in its hardware pass (TM13). Refuses delays past the limit and non-finite numbers. |
+| Swift, macOS and iOS | `apps/apple/` | On the core for reads: the bulk read, notifications, the view model's mirror, the unsaved-changes list and the delay limit. Read-only is enforced everywhere. iOS imports and exports files through the system document picker. Still Swift-only: writes, USB, MIDI, Link, firmware updates and the hub. Moving those depends on the owner's look-and-feel decision (OD3). |
+| Link hub | `crates/dspi-hub/` | Server, pairing, roles, registry, advertising, conformance and a C ABI are merged; `dspi hub` runs it. With `--web` it serves `/` (a landing page without scripts), `/console/` (our web console) and `/hub/` (Weeb Labs' DSPi-Link page, built from a pinned commit). Connection budgets: plain HTTP 48 in all and 16 per address; WebSocket 16 in all and 4 per address before sign-in, so web pages cannot use up the app's slots. |
+| Web | `apps/web/`, `crates/dspi-wasm/` | The same core in wasm, in one Worker per session, without threads. Works: the core's demo device, USB through WebUSB (Chromium, tested on a mock), DSPis behind hubs over Link (Chromium and Firefox), hosting by a hub, by `dspi web` or by any static server. Screens: main window, EQ (with Linkwitz), crossover, outputs and matrix. Next: the remaining screens (WB6), Web MIDI (WB4c), hardware runs (WB8) and its gate (WB9). Not published. |
+| Link over the ESP32 bridge | `crates/dspi-link/`, `tools/esp-rig/` | LK1 and LK2 are merged: meters no longer wait behind start-up reads, and Link tolerates short silences (5 s ping, closes only after a long silence). LK3 (an emulated bridge: the real bridge firmware in Espressif's QEMU, its UART tunnelled to a DSPi, with set baud rates and network loss) and LK4 (a faster connect, and a silent bridge session replaced as soon as a new one connects) are on their branches, not merged yet. Target: at least as fast as Weeb Labs' own Link client. |
+| CI | `ci/` | `ci/check.sh` is the gate (27 steps with `--all`, the web console included); `ci/matrix.sh` builds and tests every client from one commit, one row each, with the macOS Swift app, the iOS Simulator and the Qt `.dmg` on a macOS VM. The ESP32 rig comes with LK3 as an opt-in step (`--step esp-rig`), not in `--all`. The GitHub Actions file is a draft and not enabled. |
 
 What each client lacks against the macOS reference is in
 [`docs/PARITY.md`](docs/PARITY.md), section 5.
+
+### What is owed
+
+- **Hardware passes:** a physical replug on Linux (terminal and Qt); Link,
+  notifications from another client and the firmware path from Qt on Linux and
+  Windows; the Swift app on an Apple silicon Mac and on an iPhone or iPad; the
+  web console against real USB and real hubs; the ESP32 bridge suite with a
+  real bridge.
+- **Phone checks for the next Android release:** R8, TalkBack and Link meters
+  (checklist in [`docs/HIL-NEW-CORE.md`](docs/HIL-NEW-CORE.md)), and what 0.12.0
+  still owes: the Link half, older firmware, background and notifications.
+- **Signing:** none of the Qt packages or the `.dmg` is signed; a Developer ID
+  is the owner's decision. Packages still lack the LGPL text and Qt source
+  offer.
+- **Publishing:** only Android 0.12.0 is out. The other clients are to be
+  published as GitHub releases at the next Android release (not iOS). Making
+  the repository public, any store upload and any contact with Weeb Labs are
+  the owner's.
+- **Decisions:** the Swift app's look and feel (OD3), and the licence terms for
+  an iOS build ([Licensing](#licensing)).
 
 ## Layout
 
@@ -52,16 +75,20 @@ What each client lacks against the macOS reference is in
 | `crates/dspi-core/` | The embedder API: one `DspiCore` object for a GUI or a binding, with the device manager, hotplug, hub discovery, Link sessions and firmware files. |
 | `crates/dspi-capi/` | C ABI over `dspi-core` for the Qt app (`include/dspi_core.h`, generated by its `build.rs`). |
 | `crates/dspi-ffi/` | UniFFI library over `dspi-core` for Kotlin and Swift. |
+| `crates/dspi-wasm/` | The wasm binding over `dspi-core` for the web console (WebUSB and Link). |
 | `crates/dspi-hub/` | The DSPi Link hub ([`docs/core-merge/HUB.md`](docs/core-merge/HUB.md)). |
 | `crates/dspi-cmd/`, `crates/dspi-tui/` | The terminal's command grammar and interface (ratatui). |
-| `apps/desktop/` | The Qt 6 (or 5.15) and QML app, CMake (`qt/`), and its packaging (`packaging/`). Its docs are in `Documentation/`. |
+| `apps/desktop/` | The Qt 6 (or 5.15) and QML app, CMake (`qt/`). Its docs are in `Documentation/`. |
+| `apps/desktop/packaging/` | Qt packages: `linux/` (`.deb`, `.rpm`, AppImage, udev rule), `arch/`, `windows/` (zip and installer), `macos/` (`.dmg`). |
 | `apps/android/` | The Android app, Kotlin and Compose, Gradle. |
 | `apps/apple/` | The Swift app, one Xcode project with macOS and iOS targets. |
 | `apps/terminal/` | The `dspi` terminal client, a TUI and CLI (package `dspi-term`). |
+| `apps/web/` | The web console, TypeScript and Preact, Playwright tests ([`apps/web/DEPLOY.md`](apps/web/DEPLOY.md) for hosting). |
+| `tools/esp-rig/` | The emulated ESP32 Link bridge rig (on `wp/LK3` and `wp/LK4`, not yet on `main`). |
 | `assets/` | Data shared by every client, `about.json` (the About pages) and `onboarding/`. |
 | `tests/fixtures/` | Filter-file fixtures and the DSPi Link fixtures (`link/`, from WeebLabs/DSPi-Link). |
 | `xtask/` | Developer tasks, and the udev rule they install. |
-| `docs/` | `core-merge/` (the core plan `PLAN.md`, the client plan `PLAN-CLIENTS.md`, the hub, the web study), `PARITY.md`, `PORTABILITY.md`, `SWIFT-SEAMS.md`, `licensing/`, `terminal/`. |
+| `docs/` | `core-merge/` (the core plan `PLAN.md`, the client plan `PLAN-CLIENTS.md`, the hub, the web study, the hardware records), `PARITY.md`, `PORTABILITY.md`, `SWIFT-SEAMS.md`, `licensing/`, `terminal/`. |
 | `ci/` | `check.sh` and `run.sh` (the checks and their container wrapper), `matrix.sh` (every client from one commit), the container files, and a **draft** GitHub Actions file that is not enabled. |
 
 ## Building and testing
@@ -73,7 +100,8 @@ through it. The images are listed in `ci/container/images.conf`, and
 `ci/container/build-images.sh` builds any that are missing.
 
 ```
-ci/check.sh                               # the full gate: fmt, clippy, tests, Windows GNU, wasm-core, Android contract, licences, deny
+ci/check.sh                               # the gate: fmt, clippy, tests, Windows GNU, wasm-core, Android contract, licences, deny
+ci/check.sh --all                         # every container step, the web console included
 ci/check.sh --crate dspi-core             # fmt, clippy and tests of one crate
 ci/check.sh --step qt --step terminal     # named steps; the list is at the top of ci/check.sh
 ci/matrix.sh                              # build and test every client from one commit, and print the matrix
@@ -88,18 +116,21 @@ Per client:
 | Qt, Windows | `--step qt-windows` (MinGW app, zip and installer); `--step windows-msvc` builds the core and terminal with MSVC | `apps/desktop/packaging/windows/build-windows.sh` |
 | Android | `--step android` (core libraries), `android-tests`, `android-aab` | `apps/android/tools/ci.sh` |
 | Swift, macOS and iOS | not in a container: `ci/macvm.sh macos` or `ios` runs it in the macOS VM | `apps/apple/build-xcframework.sh`, then `apps/apple/ci-test.sh macos` or `ios` |
+| Web | `--step web` (Chromium and Firefox on the core's demo) | `apps/web/README.md`; `dspi web --demo` serves it on localhost |
+| Qt, macOS | not in a container: `ci/macvm.sh qt-dmg` builds the `.dmg` and starts it on the demo device | `apps/desktop/packaging/macos/ci-dmg.sh` |
 | Bindings | `--step kotlin`, `--step swift`, `--step drift` | `ci/compile-bindings.sh` |
 
 Other checks: `--step test`, `proptest`, `deny`, `licences`, `wasm`, `wasm-core`,
 `ios-check`. On Linux the workspace needs ALSA development files for MIDI; the
 Linux Qt app needs the udev rule in `apps/desktop/packaging/linux/` for USB access.
-`apps/desktop/packaging/macos/build-macos.sh` (Qt on macOS) is kept but not run on
-this tree; macOS is the Swift app's.
+`apps/desktop/packaging/macos/` builds the Qt app as a `.dmg` (the `qt-dmg` row);
+the Swift app remains the macOS client.
 
 ## The core
 
 Qt reaches `dspi-core` through the C ABI (`dspi-capi`); Android through UniFFI
-(`dspi-ffi`), as the Swift app will. The terminal uses the session crates
+(`dspi-ffi`), as does the Swift app for its reads; its writes and transports
+are still its own Swift code. The terminal uses the session crates
 directly, with `dspi-core` and `dspi-hub` for some commands.
 
 - **Wire format V32** (firmware 1.1.6) is read and written. Older formats, and

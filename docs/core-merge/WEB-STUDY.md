@@ -2,6 +2,9 @@
 
 *Written 2026-11-06 at `9a157a9`. For the owner, who decides. Nothing here was published or contacted.*
 
+*Note, 2026-11-08: the owner chose route 2 (WB2 to WB9 in `PLAN-CLIENTS.md`, section 5.5). The project's goal is now
+worded as one project, built from one base, for every client; the two mentions of an "offer" below are reworded to match.*
+
 Evidence is marked: **Ran** means I ran it in headless Chromium 156 or Firefox 159 in a container. **Read** means I read
 the code. **Source** means a published document, listed at the end. No device was attached, so **nothing here has been
 tried against real USB, MIDI or a real hub.** WB4 covers that.
