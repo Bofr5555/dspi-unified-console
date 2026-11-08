@@ -135,7 +135,9 @@ impl DspiCore {
     ///   mirror cannot patch re-read the whole image and the preset
     ///   directory: `NOTIFY_STATE | NOTIFY_CURVES | NOTIFY_REFRESHED`. A
     ///   preset load or factory reset also makes the new state the
-    ///   baseline of `preset_dirty`. If the re-read fails, the flags say
+    ///   baseline of `preset_dirty`, except what was changed on the device
+    ///   after the load (an edit made before the notification arrived):
+    ///   that stays unsaved. If the re-read fails, the flags say
     ///   only what was patched, and it is tried again: up to 5 times over
     ///   about 31 s, each try announced by a call of the [`NotifyListener`].
     ///   After the last one the result carries [`NOTIFY_STALE`], once; the
@@ -203,7 +205,8 @@ impl DspiCore {
     }
 
     /// The unlocked phase: re-read the image (C2's path), then the preset
-    /// directory, and rebaseline if a preset was loaded.
+    /// directory, and rebaseline if a preset was loaded (keeping what
+    /// changed after the load unsaved, WP CG33).
     fn refresh_after_notifications(
         &self,
         rebaseline: bool,
@@ -212,6 +215,8 @@ impl DspiCore {
     ) {
         let mut guard = self.lock();
         let inner = &mut *guard;
+        // -- WP CG33 -- What the re-read must not count as saved.
+        let before = rebaseline.then(|| (inner.baseline.clone(), inner.state.bulk_raw.clone()));
         if let Err(e) = connect::refresh_params_locked(inner) {
             log::warn!("re-reading the device after a notification failed: {e}");
             let wake = inner
@@ -238,8 +243,8 @@ impl DspiCore {
                 crate::info::read_device_name(conn);
             }
         }
-        if rebaseline {
-            crate::presets::capture_baseline_locked(inner);
+        if let Some((old, mirror)) = before {
+            crate::presets::rebaseline_after_load_locked(inner, old.as_deref(), &mirror);
         }
         result.flags |= NOTIFY_STATE | NOTIFY_CURVES | NOTIFY_REFRESHED;
     }
@@ -1595,3 +1600,8 @@ mod tests_wp_cg25 {
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 mod tests_wp_cg31;
+
+// -- WP CG33 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_cg33;

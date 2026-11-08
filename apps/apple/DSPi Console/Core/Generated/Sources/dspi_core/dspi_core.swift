@@ -2386,7 +2386,8 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * directory. The baseline becomes the loaded state. Runs under the Link
      * device lock. The device also notifies `PRESET_LOADED` and then
      * `BULK_INVALIDATED` (source `PRESET`); `process_notifications`
-     * re-reads on those as on any foreign change.
+     * re-reads on those as on any foreign change, and an edit made between
+     * this call and that notification stays unsaved (WP CG33).
      *
      * Errors: [`DspiError::Refused`] with the `PRESET_*` status;
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
@@ -2543,7 +2544,9 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * mirror cannot patch re-read the whole image and the preset
      * directory: `NOTIFY_STATE | NOTIFY_CURVES | NOTIFY_REFRESHED`. A
      * preset load or factory reset also makes the new state the
-     * baseline of `preset_dirty`. If the re-read fails, the flags say
+     * baseline of `preset_dirty`, except what was changed on the device
+     * after the load (an edit made before the notification arrived):
+     * that stays unsaved. If the re-read fails, the flags say
      * only what was patched, and it is tried again: up to 5 times over
      * about 31 s, each try announced by a call of the [`NotifyListener`].
      * After the last one the result carries [`NOTIFY_STALE`], once; the
@@ -5407,7 +5410,8 @@ open func loadParams()throws   {try rustCallWithError(FfiConverterTypeDspiError_
      * directory. The baseline becomes the loaded state. Runs under the Link
      * device lock. The device also notifies `PRESET_LOADED` and then
      * `BULK_INVALIDATED` (source `PRESET`); `process_notifications`
-     * re-reads on those as on any foreign change.
+     * re-reads on those as on any foreign change, and an edit made between
+     * this call and that notification stays unsaved (WP CG33).
      *
      * Errors: [`DspiError::Refused`] with the `PRESET_*` status;
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
@@ -5635,7 +5639,9 @@ open func presetDirty() -> Bool  {
      * mirror cannot patch re-read the whole image and the preset
      * directory: `NOTIFY_STATE | NOTIFY_CURVES | NOTIFY_REFRESHED`. A
      * preset load or factory reset also makes the new state the
-     * baseline of `preset_dirty`. If the re-read fails, the flags say
+     * baseline of `preset_dirty`, except what was changed on the device
+     * after the load (an edit made before the notification arrived):
+     * that stays unsaved. If the re-read fails, the flags say
      * only what was patched, and it is tried again: up to 5 times over
      * about 31 s, each try announced by a call of the [`NotifyListener`].
      * After the last one the result carries [`NOTIFY_STALE`], once; the
@@ -21967,7 +21973,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_load_params() != 50295) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_load_preset() != 31859) {
+    if (uniffi_dspi_core_checksum_method_dspicore_load_preset() != 51595) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_max_delay_ms() != 14810) {
@@ -22009,7 +22015,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_preset_dirty() != 19546) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_process_notifications() != 39404) {
+    if (uniffi_dspi_core_checksum_method_dspicore_process_notifications() != 22812) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_raw_get() != 1394) {

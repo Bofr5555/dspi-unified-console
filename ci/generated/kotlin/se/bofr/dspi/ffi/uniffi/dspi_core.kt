@@ -3145,7 +3145,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_load_params() != 50295.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_load_preset() != 31859.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_load_preset() != 51595.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_max_delay_ms() != 14810.toShort()) {
@@ -3187,7 +3187,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_preset_dirty() != 19546.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_process_notifications() != 39404.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_process_notifications() != 22812.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_raw_get() != 1394.toShort()) {
@@ -6181,7 +6181,8 @@ public interface DspiCoreInterface {
      * directory. The baseline becomes the loaded state. Runs under the Link
      * device lock. The device also notifies `PRESET_LOADED` and then
      * `BULK_INVALIDATED` (source `PRESET`); `process_notifications`
-     * re-reads on those as on any foreign change.
+     * re-reads on those as on any foreign change, and an edit made between
+     * this call and that notification stays unsaved (WP CG33).
      *
      * Errors: [`DspiError::Refused`] with the `PRESET_*` status;
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
@@ -6338,7 +6339,9 @@ public interface DspiCoreInterface {
      * mirror cannot patch re-read the whole image and the preset
      * directory: `NOTIFY_STATE | NOTIFY_CURVES | NOTIFY_REFRESHED`. A
      * preset load or factory reset also makes the new state the
-     * baseline of `preset_dirty`. If the re-read fails, the flags say
+     * baseline of `preset_dirty`, except what was changed on the device
+     * after the load (an edit made before the notification arrived):
+     * that stays unsaved. If the re-read fails, the flags say
      * only what was patched, and it is tried again: up to 5 times over
      * about 31 s, each try announced by a call of the [`NotifyListener`].
      * After the last one the result carries [`NOTIFY_STALE`], once; the
@@ -9717,7 +9720,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * directory. The baseline becomes the loaded state. Runs under the Link
      * device lock. The device also notifies `PRESET_LOADED` and then
      * `BULK_INVALIDATED` (source `PRESET`); `process_notifications`
-     * re-reads on those as on any foreign change.
+     * re-reads on those as on any foreign change, and an edit made between
+     * this call and that notification stays unsaved (WP CG33).
      *
      * Errors: [`DspiError::Refused`] with the `PRESET_*` status;
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
@@ -10011,7 +10015,9 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * mirror cannot patch re-read the whole image and the preset
      * directory: `NOTIFY_STATE | NOTIFY_CURVES | NOTIFY_REFRESHED`. A
      * preset load or factory reset also makes the new state the
-     * baseline of `preset_dirty`. If the re-read fails, the flags say
+     * baseline of `preset_dirty`, except what was changed on the device
+     * after the load (an edit made before the notification arrived):
+     * that stays unsaved. If the re-read fails, the flags say
      * only what was patched, and it is tried again: up to 5 times over
      * about 31 s, each try announced by a call of the [`NotifyListener`].
      * After the last one the result carries [`NOTIFY_STALE`], once; the
