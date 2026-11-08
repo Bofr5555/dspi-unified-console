@@ -810,12 +810,13 @@ fn atk_connection_exhaustion_bounded_and_good_session_survives() {
             Err(code) => panic!("unexpected upgrade status {code}"),
         }
     }
-    let live = t.net.connections();
+    // -- WP HB9 -- WebSockets: a 503's plain HTTP socket may still be closing.
+    let live = t.net.websockets();
     let threads = std::fs::read_dir("/proc/self/task")
         .map(|d| d.count())
         .unwrap_or(0);
     eprintln!(
-        "exhaustion: held={} refused(503)={} net.connections()={} process_threads={}",
+        "exhaustion: held={} refused(503)={} net.websockets()={} process_threads={}",
         held.len(),
         refusals,
         live,
@@ -1073,5 +1074,297 @@ fn probe_run1_exhaustion_loss_was_a_keepalive_drop_not_a_stall() {
         "dropped within dead_peer: {took:?}"
     );
     assert_eq!(code, Some(1001), "the drop is keepalive 1001");
+    t.hub.stop();
+}
+
+// ─────────── Q. WP HB9: page loads apart from the WebSocket pre-auth budget ───────────
+
+const BIG: usize = 32 << 20;
+
+/// A console dist with a file far bigger than any socket buffer, for readers that stall.
+fn console_dist() -> std::path::PathBuf {
+    let dir = store_dir().with_extension("dist");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("index.html"),
+        r#"<head><meta name="dspi-hub" content="" /><meta name="dspi-hub-page" content="" /></head>"#,
+    )
+    .unwrap();
+    std::fs::write(dir.join("app.js"), b"console.log(1);").unwrap();
+    std::fs::write(dir.join("big.js"), vec![b'x'; BIG]).unwrap();
+    dir
+}
+
+fn start_console(access: AccessMode, limits: ServerLimits) -> Target {
+    let console = dspi_hub::web::Console::load(&console_dist()).unwrap();
+    let cfg = NetworkConfig {
+        port: 0,
+        access,
+        web: true,
+        bind: IpAddr::V4(LOOPBACK),
+        limits,
+        console: Some(std::sync::Arc::new(console)),
+        ..NetworkConfig::new(store_dir())
+    };
+    let hub = Hub::start(HubConfig {
+        network: Some(cfg),
+        ..HubConfig::in_process("Attack hub")
+    })
+    .unwrap();
+    hub.attach(Box::new(FakeDevice::demo()), 0).unwrap();
+    let net = hub.network().unwrap();
+    let port = net.port();
+    Target { hub, net, port }
+}
+
+fn get_text(port: u16, path: &str, connection: &str) -> String {
+    format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: {connection}\r\n\r\n")
+}
+
+/// One response on a socket that may stay open: status, head, its `Content-Length` body.
+fn read_response(tcp: &mut TcpStream) -> (u16, String, Vec<u8>) {
+    let head = read_http_head(tcp);
+    let code = head
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let length = head
+        .lines()
+        .find_map(|l| {
+            l.to_ascii_lowercase()
+                .strip_prefix("content-length:")
+                .map(|v| v.trim().to_owned())
+        })
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let mut body = vec![0u8; length];
+    tcp.read_exact(&mut body).unwrap();
+    (code, head, body)
+}
+
+/// Whether the hub has closed this socket, without waiting for more than a moment.
+fn closed_by_hub(tcp: &mut TcpStream) -> bool {
+    tcp.set_read_timeout(Some(Duration::from_millis(5)))
+        .unwrap();
+    let mut byte = [0u8; 1];
+    match tcp.read(&mut byte) {
+        Ok(0) => true,
+        Ok(_) => false,
+        Err(e) => !matches!(
+            e.kind(),
+            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+        ),
+    }
+}
+
+/// HB9 (a), review c6r WB7-1: one dual-stack machine is two peer keys (its IPv4 and its
+/// IPv6 /64; two loopback addresses here). Each holds every unauthenticated WebSocket it
+/// may, half its plain HTTP share in responses it never reads, and opens three times its
+/// share of silent sockets on top. A third address still reads `/dspi/v1/info`, pairs
+/// with the PIN, and loads a page. With one budget for both (WB7), the same two
+/// addresses held all 16 slots and the third was answered 503.
+#[test]
+fn atk_hb9_a_dual_stack_host_cannot_keep_a_third_peer_from_pairing() {
+    let limits = ServerLimits {
+        close_grace: Duration::from_millis(200),
+        ..ServerLimits::default()
+    };
+    let (http_share, ws_share) = (limits.max_http_per_peer, limits.max_preauth_per_peer);
+    let t = start_console(AccessMode::Pin, limits);
+    let w = t.net.auth().begin_pairing(Instant::now()).unwrap();
+    let mut sockets = Vec::new();
+    let mut websockets = Vec::new();
+    for ip in [Ipv4Addr::new(127, 0, 0, 2), Ipv4Addr::new(127, 0, 0, 3)] {
+        for _ in 0..ws_share {
+            websockets.push(Cx::open(t.port, Some(ip), None).unwrap());
+        }
+        assert_eq!(
+            Cx::open(t.port, Some(ip), None).err(),
+            Some(503),
+            "{ip}: past its WebSocket share"
+        );
+        for _ in 0..http_share / 2 {
+            let mut tcp = raw_from(Some(ip), t.port);
+            tcp.write_all(get_text(t.port, "/console/big.js", "keep-alive").as_bytes())
+                .unwrap();
+            sockets.push(tcp);
+        }
+        for _ in 0..http_share * 3 {
+            sockets.push(raw_from(Some(ip), t.port));
+        }
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    let (live, ws) = (t.net.connections(), t.net.websockets());
+    eprintln!(
+        "two addresses opened {} sockets and {} WebSockets: connections()={live} websockets()={ws}",
+        sockets.len(),
+        websockets.len()
+    );
+    assert_eq!(ws, 2 * ws_share);
+    assert!(live <= 2 * (http_share + ws_share), "{live}");
+
+    let third = Ipv4Addr::new(127, 0, 0, 4);
+    let mut info = raw_from(Some(third), t.port);
+    info.write_all(get_text(t.port, "/dspi/v1/info", "close").as_bytes())
+        .unwrap();
+    let (code, _, _) = read_response(&mut info);
+    eprintln!("the third address's GET /dspi/v1/info -> {code}");
+    assert_eq!(code, 200);
+    let mut cx = Cx::open(t.port, Some(third), None).expect("the third address's upgrade");
+    cx.hello();
+    let reply = cx.pair(&w.pin, Some("admin"), "third");
+    eprintln!("the third address pairs -> {}", reply["t"]);
+    assert_eq!(reply["t"], "ok", "{reply}");
+    let mut page = raw_from(Some(third), t.port);
+    page.write_all(get_text(t.port, "/console/", "keep-alive").as_bytes())
+        .unwrap();
+    assert_eq!(read_response(&mut page).0, 200);
+    drop((sockets, websockets));
+    t.hub.stop();
+}
+
+/// HB9 (b): slowloris on the static GETs. A head trickled a byte at a time is cut
+/// `request_timeout` after its first byte, long before `head_timeout`; a kept-alive
+/// socket answers twice, then closes `keepalive_idle` after its last answer.
+#[test]
+fn atk_hb9_slowloris_heads_and_idle_keepalive_are_cut() {
+    let limits = ServerLimits {
+        head_timeout: Duration::from_secs(5),
+        request_timeout: Duration::from_millis(400),
+        keepalive_idle: Duration::from_millis(400),
+        close_grace: Duration::from_millis(200),
+        ..ServerLimits::default()
+    };
+    let t = start_console(AccessMode::Pin, limits);
+
+    let mut tcp = raw_from(None, t.port);
+    let request = get_text(t.port, "/console/app.js", "keep-alive");
+    let t0 = Instant::now();
+    let mut cut = None;
+    for byte in request.bytes().take(60) {
+        if tcp.write_all(&[byte]).is_err() || closed_by_hub(&mut tcp) {
+            cut = Some(t0.elapsed());
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(40));
+    }
+    eprintln!("a head trickled at 25 bytes/s: cut after {cut:?}");
+    let cut = cut.expect("the hub must cut a trickled head");
+    assert!(cut < Duration::from_millis(1500), "{cut:?}");
+
+    let mut tcp = raw_from(None, t.port);
+    for path in ["/landing.css", "/console/app.js"] {
+        tcp.write_all(get_text(t.port, path, "keep-alive").as_bytes())
+            .unwrap();
+        let (code, head, _) = read_response(&mut tcp);
+        assert_eq!(code, 200, "{path}");
+        assert!(head.contains("Keep-Alive: timeout="), "{head}");
+    }
+    let t0 = Instant::now();
+    while !closed_by_hub(&mut tcp) {
+        assert!(
+            t0.elapsed() < Duration::from_secs(3),
+            "an idle kept-alive socket stays"
+        );
+    }
+    eprintln!("an idle kept-alive socket: closed after {:?}", t0.elapsed());
+    // Asked to close, or not asked to stay: closed behind the answer, as before.
+    for connection in ["close", "Upgrade"] {
+        let mut tcp = raw_from(None, t.port);
+        tcp.write_all(get_text(t.port, "/landing.css", connection).as_bytes())
+            .unwrap();
+        let (code, head, _) = read_response(&mut tcp);
+        assert_eq!(code, 200);
+        assert!(head.contains("Connection: close"), "{head}");
+    }
+    t.hub.stop();
+}
+
+/// HB9 (b): slow readers of a big file. One that stops reading frees its slot a few
+/// `write_stall`s after its last progress (a write that took some bytes may wait out its
+/// timeout before it returns), well before `response_timeout`; one that keeps taking
+/// some is cut at `response_timeout`. Neither holds it for `auth_timeout` (30 s from
+/// open, under WB7).
+#[test]
+fn atk_hb9_slow_readers_of_a_big_file_are_cut() {
+    let limits = ServerLimits {
+        write_stall: Duration::from_millis(400),
+        response_timeout: Duration::from_secs(3),
+        close_grace: Duration::from_millis(200),
+        ..ServerLimits::default()
+    };
+    let t = start_console(AccessMode::Pin, limits);
+
+    let mut stopped = raw_from(None, t.port);
+    stopped
+        .write_all(get_text(t.port, "/console/big.js", "keep-alive").as_bytes())
+        .unwrap();
+    let t0 = Instant::now();
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(t.net.connections(), 1);
+    while t.net.connections() > 0 {
+        assert!(
+            t0.elapsed() < Duration::from_millis(2400),
+            "not by the stall"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    eprintln!(
+        "a reader that stops: its slot free after {:?}",
+        t0.elapsed()
+    );
+    let mut got = Vec::new();
+    stopped
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    let _ = stopped.read_to_end(&mut got);
+    assert!(got.len() < BIG, "{}", got.len());
+
+    let mut trickle = raw_from(None, t.port);
+    trickle
+        .write_all(get_text(t.port, "/console/big.js", "keep-alive").as_bytes())
+        .unwrap();
+    let t0 = Instant::now();
+    let mut got = 0usize;
+    let mut chunk = vec![0u8; 64 << 10];
+    loop {
+        match trickle.read(&mut chunk) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => got += n,
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let took = t0.elapsed();
+    eprintln!("a reader at up to 6 MB/s: cut after {took:?} and {got} of {BIG} bytes");
+    assert!(got < BIG, "{got}");
+    assert!(
+        took >= Duration::from_millis(2800) && took < Duration::from_secs(6),
+        "{took:?}"
+    );
+    t.hub.stop();
+}
+
+/// HB9: a kept-alive socket is plain HTTP until its request upgrades, and only then counts
+/// in the WebSocket budget: a page's socket can carry its files and then the page's
+/// WebSocket.
+#[test]
+fn atk_hb9_a_kept_alive_socket_upgrades_into_the_websocket_budget() {
+    let t = start_console(AccessMode::Open, fast());
+    let mut tcp = raw_from(None, t.port);
+    tcp.write_all(get_text(t.port, "/console/", "keep-alive").as_bytes())
+        .unwrap();
+    assert_eq!(read_response(&mut tcp).0, 200);
+    assert_eq!((t.net.connections(), t.net.websockets()), (1, 0));
+    tcp.write_all(upgrade_bytes(t.port, None, "/dspi/v1").as_bytes())
+        .unwrap();
+    let head = read_http_head(&mut tcp);
+    assert!(head.starts_with("HTTP/1.1 101"), "{head}");
+    assert_eq!((t.net.connections(), t.net.websockets()), (1, 1));
+    let mut cx = Cx {
+        ws: WebSocket::from_raw_socket(tcp, WsRole::Client, None),
+    };
+    assert_eq!(cx.hello()["t"], "hello");
     t.hub.stop();
 }

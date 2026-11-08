@@ -23,18 +23,11 @@ const linkWords = (await import("../../../../ci/generated/web/link-words.json", 
 };
 const words = (key: string) => linkWords.link.find((w) => w.key === key)!;
 
-// Each project has its own `dspi hub --web` and `dspi web` (playwright.config.ts), set
-// per test from its project.
-const PROJECTS = ["chromium", "firefox", "narrow"];
+// -- WP HB9 -- Each group below starts its own `dspi hub --web` or `dspi web` on a free
+// port (ownHub), so parallel workers and `--repeat-each` copies never share one.
 let HUB = "";
 let LOCAL_PORT = 0;
 let LOCAL = "";
-test.beforeEach(({}, info) => {
-  const i = Math.max(0, PROJECTS.indexOf(info.project.name));
-  HUB = `http://127.0.0.1:${Number(process.env.DSPI_HUB_PORT ?? 8740) + i}`;
-  LOCAL_PORT = Number(process.env.DSPI_WEB_PORT ?? 8750) + i;
-  LOCAL = `http://localhost:${LOCAL_PORT}`;
-});
 const PLAIN = `http://127.0.0.1:${Number(process.env.PORT ?? 8737)}`;
 /** The core's simulated DSPi (FakeDevice::demo), which `dspi --demo hub` shares. */
 const DEMO = "DEMO0000DSPI0001";
@@ -79,26 +72,38 @@ async function upstreamOpensDemo(page: Page, connect = true) {
   await expect(page.getByText("Reading the DSPi…")).toHaveCount(0);
 }
 
-/** A hub of this test's own, with PIN pairing open: `dspi --demo hub --web --pair --json` on a free port. */
-async function pinHub(): Promise<{ port: number; pin: string; child: ChildProcess }> {
-  const store = `${process.env.TMPDIR ?? "test-results"}/wb7-pin-${process.pid}-${Math.random().toString(36).slice(2)}`;
+type OwnHub = { port: number; pin: string; child: ChildProcess };
+
+/** A hub of the caller's own on a free port, `dspi --demo <args> --port 0 --json`, once it
+ *  says it is up (with `pairing`, once it shows its PIN). */
+async function ownHub(args: string[], pairing = false): Promise<OwnHub> {
+  const store = `${process.env.TMPDIR ?? "test-results"}/wb7-${args[0]}-${process.pid}-${Math.random().toString(36).slice(2)}`;
   const child = spawn(
     process.env.DSPI_TERM!,
-    ["--demo", "hub", "--web", "--loopback", "--port", "0", "--pair", "--json", "--no-keep-awake", "--store", store],
+    ["--demo", ...args, "--port", "0", "--json", "--no-keep-awake", "--store", store],
     { stdio: ["ignore", "pipe", "inherit"] },
   );
   const lines = createInterface({ input: child.stdout! });
   let port = 0;
   const pin = await new Promise<string>((ok, fail) => {
-    child.on("exit", (code) => fail(new Error(`dspi hub exited ${code}`)));
+    child.on("exit", (code) => fail(new Error(`dspi ${args[0]} exited ${code}`)));
     lines.on("line", (line) => {
       const e = JSON.parse(line) as { event?: string; port?: number; pin?: string };
-      if (e.event === "status") port = e.port ?? 0;
+      if (e.event === "status") {
+        port = e.port ?? 0;
+        if (!pairing) ok("");
+      }
       if (e.event === "pairing" && e.pin) ok(e.pin);
     });
   });
   return { port, pin, child };
 }
+
+/** A hub of this test's own, with PIN pairing open: `dspi --demo hub --web --pair --json` on a free port. */
+const pinHub = () => ownHub(["hub", "--web", "--loopback", "--pair"], true);
+
+/** The console's hubs as the e2e had them in playwright.config.ts: open access, the built console. */
+const CONSOLE_FLAGS = ["--console", "dist", "--open", "--forget-clients"];
 
 const picker = (page: Page) => page.getByRole("navigation", { name: "DSPi devices" });
 
@@ -136,8 +141,16 @@ if (!process.env.DSPI_TERM) {
 
 test.describe("served by dspi hub --web", () => {
   test.skip(!process.env.DSPI_TERM, "no dspi binary (set DSPI_TERM)");
-  // One browser at a time on this project's hub, as a person would use it.
+  // One browser at a time on this group's hub, as a person would use it.
   test.describe.configure({ mode: "serial" });
+  let hub: OwnHub | undefined;
+  test.beforeAll(async () => {
+    hub = await ownHub(["hub", "--web", "--loopback", ...CONSOLE_FLAGS, "--name", "WB7 hub"]);
+    HUB = `http://127.0.0.1:${hub.port}`;
+  });
+  test.afterAll(() => {
+    hub?.child.kill();
+  });
 
   test("WB7: / is the landing page and /hub/ upstream's page, byte for byte its build", async ({ request }) => {
     const r = await request.get(`${HUB}/`);
@@ -225,6 +238,47 @@ test.describe("served by dspi hub --web", () => {
     }
   });
 
+  // -- WP HB9 -- A browser's page loads have their own budget, apart from WebSockets: four
+  // windows of their own (each a socket pool, up to six sockets and pre-connects) on one
+  // address load the console and its hub's demo at once, three times over, and nothing is
+  // answered 503 or fails.
+  test("HB9: four browser windows on one address load the console at once, and none is refused", async ({ browser }) => {
+    test.setTimeout(120_000);
+    const refused: string[] = [];
+    for (let round = 0; round < 3; round++) {
+      const contexts = await Promise.all([0, 1, 2, 3].map(() => browser.newContext()));
+      try {
+        // Until the windows close, which aborts whatever they still have open.
+        let watching = true;
+        for (const c of contexts) {
+          c.on("response", (r) => {
+            if (watching && r.status() === 503) refused.push(`${round}: 503 ${r.url()}`);
+          });
+          c.on("requestfailed", (r) => {
+            if (watching) refused.push(`${round}: failed ${r.url()} ${r.failure()?.errorText}`);
+          });
+        }
+        const pages = await Promise.all(contexts.map((c) => c.newPage()));
+        await Promise.all(
+          pages.map(async (page) => {
+            await page.goto(`${HUB}/console/`);
+            await expect(page.getByRole("heading", { name: "DSPi Console" })).toBeVisible();
+            const session = await openHubDemo(page, new URL(HUB).host);
+            await expect(session.locator(".volume-value")).toHaveText(/dB$/);
+          }),
+        );
+        // And the other two pages, all at once, beside the open consoles' sockets.
+        const others = await Promise.all(contexts.map((c) => c.newPage()));
+        await Promise.all(others.map((page, i) => page.goto(i % 2 ? `${HUB}/hub/` : `${HUB}/`)));
+        for (const page of others) await expect(page.locator("body")).not.toBeEmpty();
+        watching = false;
+      } finally {
+        await Promise.all(contexts.map((c) => c.close()));
+      }
+    }
+    expect(refused).toEqual([]);
+  });
+
   test("WB7: the Origin rule is the hub's: a page from elsewhere is refused", async ({ page }) => {
     await page.goto(`${PLAIN}/`);
     await picker(page).getByLabel("Add a hub").fill(new URL(HUB).host);
@@ -240,6 +294,15 @@ test.describe("served by dspi hub --web", () => {
 test.describe("served by dspi web on localhost", () => {
   test.skip(!process.env.DSPI_TERM, "no dspi binary (set DSPI_TERM)");
   test.describe.configure({ mode: "serial" });
+  let hub: OwnHub | undefined;
+  test.beforeAll(async () => {
+    hub = await ownHub(["web", ...CONSOLE_FLAGS, "--name", "WB7 local"]);
+    LOCAL_PORT = hub.port;
+    LOCAL = `http://localhost:${LOCAL_PORT}`;
+  });
+  test.afterAll(() => {
+    hub?.child.kill();
+  });
 
   test("WB7: the console on http://localhost is a secure page and reaches the local hub's demo", async ({ page }) => {
     const errors = await noPageErrors(page);

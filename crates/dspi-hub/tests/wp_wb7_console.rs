@@ -382,26 +382,43 @@ fn wp_wb7_the_three_paths_with_their_policies() {
     hub.stop();
 }
 
-/// A browser opens a page's files over up to six connections at once: with web on, one
-/// address may hold 8 unanswered sockets (it was 4, and the console's `app.js` was
-/// answered 503), and the next is refused as before.
+/// A browser opens a page's files over up to six connections at once, and more with
+/// several windows. -- WP HB9 -- Plain HTTP has its own budget (WB7 had raised the shared
+/// one to 8): an address past its share loses its own idlest socket, not the request.
 #[test]
-fn wp_wb7_a_browsers_parallel_loads_fit_the_per_peer_budget() {
-    let budget = dspi_hub::server::ServerLimits::default().max_preauth_per_peer_web;
-    assert_eq!(budget, 8);
-    for (web, room) in [(true, budget), (false, 4)] {
+fn wp_hb9_a_browsers_parallel_loads_fit_the_http_budget() {
+    let limits = dspi_hub::server::ServerLimits::default();
+    assert_eq!(
+        (limits.max_http_per_peer, limits.max_preauth_per_peer),
+        (16, 4)
+    );
+    for web in [true, false] {
         let (hub, port) = start(web, Some(&fake_dist()));
-        // Sockets that have sent nothing yet: each holds a pre-auth slot.
-        let held: Vec<TcpStream> = (0..room - 1)
+        // Sockets that have sent nothing yet, as a browser's spare ones: twice the share.
+        let held: Vec<TcpStream> = (0..2 * limits.max_http_per_peer)
             .map(|_| TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap())
             .collect();
         std::thread::sleep(Duration::from_millis(200));
         let path = if web { "/landing.css" } else { "/dspi/v1/info" };
-        assert_eq!(get(port, path).0, 200, "web {web}: the last slot");
-        let more = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
-        std::thread::sleep(Duration::from_millis(200));
-        assert_eq!(get(port, path).0, 503, "web {web}: past the budget");
-        drop((held, more));
+        for _ in 0..4 {
+            assert_eq!(get(port, path).0, 200, "web {web}: past the share");
+        }
+        drop(held);
         hub.stop();
     }
+}
+
+/// WB7-4 (review c6r): only a directory's `index.html` is the directory.
+#[test]
+fn wp_hb9_index_html_is_stripped_only_after_a_slash() {
+    let (hub, port) = start(true, Some(&fake_dist()));
+    assert_eq!(get(port, "/console/index.html").0, 200);
+    for path in [
+        "/console/app.jsindex.html",
+        "/console/xindex.html",
+        "/console/test/index.html",
+    ] {
+        assert_eq!(get(port, path).0, 404, "{path}");
+    }
+    hub.stop();
 }
