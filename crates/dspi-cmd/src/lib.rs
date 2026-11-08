@@ -18,6 +18,24 @@ use dspi_proto::value::Value;
 
 pub use complete::{Candidate, complete};
 
+// -- WP CG37 --
+/// The paths whose range is the delay line's ([`delay_range`]).
+pub fn is_delay(path: &str) -> bool {
+    matches!(path, "ch.delay" | "out.delay")
+}
+
+/// A delay's range as the CLI and the `:` line offer it without a device:
+/// the delay line's (`Platform::max_delay_ms`), not the registry's 85 ms
+/// ceiling. "0 to 42 ms (21 on RP2040)".
+pub fn delay_range() -> String {
+    use dspi_proto::Platform;
+    format!(
+        "0 to {} ms ({} on RP2040)",
+        Platform::Rp2350.max_delay_ms(),
+        Platform::Rp2040.max_delay_ms()
+    )
+}
+
 #[derive(Debug, thiserror::Error, PartialEq)]
 pub enum ParseError {
     #[error("no parameter or command called `{0}`. Try `dspi params`.")]

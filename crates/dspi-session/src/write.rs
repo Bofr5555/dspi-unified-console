@@ -416,13 +416,13 @@ impl Session {
         self.check_available(d)?;
         self.check_indices(d, indices)?;
 
+        // The platform's limits first (-- WP CG37 --): the delay line holds
+        // 1024 samples on an RP2040 and 2048 on an RP2350 (config.h), 21 ms
+        // against 42 ms at 48 kHz, where the registry carries the schema's 85.
+        self.check_platform_range(d, value)?;
         // Validate before the wire, so the user gets a message naming the limits
         // rather than a bare stall from the device.
         let value = d.kind.validate(value)?;
-        // The delay buffers are 1024 samples on an RP2040 and 2048 on an
-        // RP2350 (config.h:94-99): 42 ms against 85 ms at 48 kHz. The registry
-        // carries the larger; the smaller is a platform fact, checked here.
-        self.check_platform_range(d, &value)?;
         Ok(value)
     }
 

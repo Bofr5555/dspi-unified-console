@@ -781,6 +781,8 @@ pub static REGISTRY: &[ParamDesc] = &[
         Float {
             unit: Unit::Ms,
             min: 0.0,
+            // -- WP CG37 -- the schema's ceiling only: the line holds
+            // `Platform::max_delay_ms` (21 or 42 ms), checked by the session.
             max: 85.0,
         },
         Tg::Channel,
@@ -886,6 +888,8 @@ pub static REGISTRY: &[ParamDesc] = &[
         Float {
             unit: Unit::Ms,
             min: 0.0,
+            // -- WP CG37 -- the schema's ceiling only: the line holds
+            // `Platform::max_delay_ms` (21 or 42 ms), checked by the session.
             max: 85.0,
         },
         Tg::Output,

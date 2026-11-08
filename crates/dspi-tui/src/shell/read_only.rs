@@ -1083,7 +1083,12 @@ mod tests_wp_tm4 {
             // S/PDIF input 0 is always on, so its enable starts at 1.
             let first = u8::from(d.path == "in.spdif.enable");
             let indices = vec![first; d.target.arity()];
-            let value = sample(d.kind);
+            // -- WP CG37 -- a delay's midpoint (42.5 ms) is past every line.
+            let value = if dspi_cmd::is_delay(d.path) {
+                Value::Float(1.0)
+            } else {
+                sample(d.kind)
+            };
             let is_exception = d.set.is_some_and(|s| HOUSEKEEPING.contains(&s));
 
             // The control: on a writable device this row does write.

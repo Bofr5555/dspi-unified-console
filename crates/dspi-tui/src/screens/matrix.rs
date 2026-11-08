@@ -19,7 +19,9 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 
-use super::{Shared, channel_name, clipboard, max_delay_ms, number, output_channel};
+use super::{
+    Shared, channel_name, clipboard, delivered_delay_ms, max_delay_ms, number, output_channel,
+};
 use crate::shell::{Screen, ScreenEvent};
 use crate::theme::{ChannelRole, Glyphs, Theme};
 use crate::widgets::text::{fit_centre, fit_left};
@@ -325,7 +327,7 @@ impl MatrixPanel {
         match self.row_at(state) {
             Row::Input(i) => Some(state.crosspoint(i, self.col).gain_db as f64),
             Row::Gain => Some(state.output(self.col).gain_db as f64),
-            Row::Delay => Some(state.output(self.col).delay_ms as f64),
+            Row::Delay => Some(delivered_delay_ms(state, state.output(self.col).delay_ms)),
             Row::Enable | Row::Mute => None,
         }
     }
@@ -365,7 +367,10 @@ impl MatrixPanel {
         let (value, step) = match row {
             Row::Input(i) => (state.crosspoint(i, self.col).gain_db as f64, 0.5),
             Row::Gain => (state.output(self.col).gain_db as f64, 0.5),
-            Row::Delay => (state.output(self.col).delay_ms as f64, 0.1),
+            Row::Delay => (
+                delivered_delay_ms(state, state.output(self.col).delay_ms),
+                0.1,
+            ),
             _ => (0.0, 0.0),
         };
         value + dir * step * mult
@@ -902,7 +907,7 @@ impl MatrixPanel {
                 let text = match (self.edit.as_ref().filter(|_| focused), row) {
                     (Some(e), _) => format!("[{}]", e.text),
                     (None, Row::Gain) => format!("{:.1}", out.gain_db),
-                    (None, _) => format!("{:.1}", out.delay_ms),
+                    (None, _) => format!("{:.1}", delivered_delay_ms(state, out.delay_ms)),
                 };
                 let style = if armed {
                     theme.editing()
@@ -1812,7 +1817,32 @@ mod tests {
         }
         assert_eq!(
             p.handle(key(KeyCode::Enter), &state),
-            ScreenEvent::Command("out.delay 0 85".into())
+            ScreenEvent::Command("out.delay 0 42".into())
+        );
+    }
+
+    // -- WP CG37 --
+    /// The matrix's delay row reads what the line delivers, and an RP2040's
+    /// typed delay stops at 21 ms.
+    #[test]
+    fn wp_cg37_the_delay_row_holds_the_line() {
+        let state = fixture::with_output_delay(0, 85.0);
+        let mut p = panel();
+        for _ in 0..10 {
+            p.handle(key(KeyCode::Down), &state);
+        }
+        assert_eq!(p.row_at(&state), Row::Delay);
+        assert_eq!(p.value_at(&state), Some(42.0));
+
+        let mut rp2040 = fixture::state();
+        rp2040.caps.platform = dspi_proto::Platform::Rp2040;
+        p.handle(key(KeyCode::Enter), &rp2040);
+        for c in "30".chars() {
+            p.handle(key(KeyCode::Char(c)), &rp2040);
+        }
+        assert_eq!(
+            p.handle(key(KeyCode::Enter), &rp2040),
+            ScreenEvent::Command("out.delay 0 21".into())
         );
     }
 

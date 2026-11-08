@@ -148,6 +148,10 @@ pub fn write(core: &DspiCore, p: &WriteParams) -> Result<ParamValue, CallError> 
             eq_type_fits(p.indices.get(1).copied().unwrap_or(0), *c)
                 .map_err(|why| CallError::new("out_of_range", why))?;
         }
+        // -- WP CG37 -- a delay's range is the connected platform's line,
+        // checked by the core on the quantized value; the registry's 85 ms
+        // is the schema's ceiling only.
+        ("out.delay" | "ch.delay", ParamValue::Float(_) | ParamValue::Int(_)) => {}
         _ => check_value(d, &p.value)?,
     }
     if let Some(why) = write_refusal(d.path) {
@@ -158,8 +162,10 @@ pub fn write(core: &DspiCore, p: &WriteParams) -> Result<ParamValue, CallError> 
         .map_err(|e| {
             // -- WP CG36 -- a delay past the platform's line is out of
             // range, in the core's words (which name the limit).
-            let past_line =
-                matches!(d.path, "out.delay" | "ch.delay") && float(&p.value) > core.max_delay_ms();
+            // -- WP CG37 -- or below 0, on the value the core checks.
+            let ms = dspi_core::quantize_delay(float(&p.value));
+            let past_line = matches!(d.path, "out.delay" | "ch.delay")
+                && !(0.0..=core.max_delay_ms()).contains(&ms);
             match e {
                 dspi_core::DspiError::InvalidArgument { msg } if past_line => {
                     CallError::new("out_of_range", msg)
@@ -185,8 +191,11 @@ pub fn core1_conflict(core: &DspiCore, p: &Core1Params) -> Result<serde_json::Va
 }
 
 /// `describe`: what the registry says of a path, for a control's range and
-/// label.
-pub fn describe(path: &str) -> Result<serde_json::Value, CallError> {
+/// label. -- WP CG37 -- a delay's `max` is the connected platform's line
+/// (`DspiCore::max_delay_ms`: 21 ms RP2040, 42 ms RP2350), the longest any
+/// line holds (42) while nothing is connected; the registry's 85 is the
+/// schema's ceiling only.
+pub fn describe(core: &DspiCore, path: &str) -> Result<serde_json::Value, CallError> {
     let d = descriptor(path)?;
     let mut v = serde_json::json!({
         "path": d.path,
@@ -201,6 +210,13 @@ pub fn describe(path: &str) -> Result<serde_json::Value, CallError> {
         Kind::Bool => serde_json::json!({ "kind": "bool" }),
         Kind::Trigger => serde_json::json!({ "kind": "trigger" }),
         Kind::Float { unit, min, max } => {
+            let max = if !matches!(d.path, "out.delay" | "ch.delay") {
+                max
+            } else if core.is_connected() {
+                core.max_delay_ms()
+            } else {
+                dspi_proto::Platform::Rp2350.max_delay_ms()
+            };
             serde_json::json!({
                 "kind": "float",
                 "unit": unit.suffix().trim(),
@@ -234,11 +250,27 @@ mod tests {
     fn wb3_every_route_is_a_writable_registry_path() {
         // -- WP CG32 -- the routes are the core's: every writable path but
         // the ones a flow of their own writes.
-        assert_eq!(describe("vol.user").unwrap()["routed"], true);
-        assert_eq!(describe("tube.drive").unwrap()["routed"], true);
-        assert_eq!(describe("dev.reset").unwrap()["routed"], false);
-        assert_eq!(describe("cs.binding").unwrap()["routed"], false);
-        assert_eq!(describe("meters").unwrap()["routed"], false, "read only");
+        assert_eq!(
+            describe(&DspiCore::new(), "vol.user").unwrap()["routed"],
+            true
+        );
+        assert_eq!(
+            describe(&DspiCore::new(), "tube.drive").unwrap()["routed"],
+            true
+        );
+        assert_eq!(
+            describe(&DspiCore::new(), "dev.reset").unwrap()["routed"],
+            false
+        );
+        assert_eq!(
+            describe(&DspiCore::new(), "cs.binding").unwrap()["routed"],
+            false
+        );
+        assert_eq!(
+            describe(&DspiCore::new(), "meters").unwrap()["routed"],
+            false,
+            "read only"
+        );
     }
 
     // -- WP CG32 --
@@ -322,13 +354,55 @@ mod tests {
 
     #[test]
     fn wb3_describe_gives_the_registry_range() {
-        let d = describe("vol.user").unwrap();
+        let d = describe(&DspiCore::new(), "vol.user").unwrap();
         assert_eq!(d["kind"], "float");
         assert_eq!(d["min"], -60.0);
         assert_eq!(d["max"], 0.0);
         assert_eq!(d["unit"], "dB");
         assert_eq!(d["routed"], true);
-        assert_eq!(describe("nope").unwrap_err().code, "unknown_param");
+        assert_eq!(
+            describe(&DspiCore::new(), "nope").unwrap_err().code,
+            "unknown_param"
+        );
+    }
+
+    // -- WP CG37 --
+    /// A delay's `describe` and `write` follow the connected platform's
+    /// line, and the value the core checks is the quantized one.
+    #[test]
+    fn wp_cg37_describe_and_write_hold_the_delay_line() {
+        let core = DspiCore::new();
+        assert_eq!(
+            describe(&core, "out.delay").unwrap()["max"],
+            42.0,
+            "unconnected"
+        );
+        core.open_demo().unwrap();
+        let max = core.max_delay_ms();
+        for path in ["out.delay", "ch.delay"] {
+            let d = describe(&core, path).unwrap();
+            assert_eq!(
+                (d["min"].as_f64(), d["max"].as_f64()),
+                (Some(0.0), Some(f64::from(max)))
+            );
+        }
+        assert_eq!(
+            put(&core, "out.delay", &[0], ParamValue::Float(max + 0.00004)).unwrap(),
+            ParamValue::Float(max)
+        );
+        for bad in [max + 0.5, -1.0] {
+            let e = put(&core, "out.delay", &[0], ParamValue::Float(bad)).unwrap_err();
+            assert_eq!(e.code, "out_of_range", "{bad}: {}", e.message);
+            assert!(
+                e.message.contains(&format!("0 to {max} ms")),
+                "{}",
+                e.message
+            );
+        }
+        let e = put(&core, "ch.delay", &[0], ParamValue::Int(-2)).unwrap_err();
+        assert_eq!(e.code, "out_of_range", "{}", e.message);
+        // The rest of the registry's ranges are unchanged.
+        assert_eq!(describe(&core, "vol.user").unwrap()["max"], 0.0);
     }
 
     // -- WP CG34 --

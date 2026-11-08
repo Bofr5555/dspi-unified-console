@@ -59,7 +59,8 @@ fn wp_cg36_core1_question_crossover_types_and_the_delay_line_through_c() {
     );
     assert_eq!(r["ok"], false, "{r}");
     assert!(
-        r["error"].as_str().unwrap().contains("at most 42 ms"),
+        // -- WP CG37 -- the range, 0 to the line.
+        r["error"].as_str().unwrap().contains("0 to 42 ms"),
         "{r}"
     );
     assert!(!crate::fns_device::dspi_set_output_delay(h, 0, 50.0));
