@@ -1,0 +1,30 @@
+# Debian 13 (glibc 2.41, Qt 6.8, KDE Frameworks 6): the AppImage built here runs
+# on it and on every newer distribution (Ubuntu 25.04, Fedora 42 and newer); the
+# .deb installs on Debian 13 and Ubuntu 25.04 and newer. Qt 6 raised the floor
+# from Ubuntu 22.04 (Qt 5.15). Not Ubuntu 24.04: the app crashes at its first
+# window activation on 24.04's Qt 6.4 (a recursion inside QQuickItem::event).
+# Rust from rustup-init, pinned and checked as in ci/container/Containerfile.qtport.
+FROM docker.io/library/debian:13
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake ninja-build pkg-config curl ca-certificates file patchelf \
+        qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools \
+        libgl-dev libopengl-dev libglx-dev libvulkan-dev \
+        libqt6svg6 qt6-svg-plugins qt6-wayland qt6-xdgdesktopportal-platformtheme \
+        qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-layouts \
+        qml6-module-qtquick-controls qml6-module-qtquick-templates qml6-module-qtqml \
+        qml6-module-qtqml-workerscript qml6-module-qtqml-models qml6-module-qtquick-shapes \
+        qml6-module-qt-labs-settings qml6-module-qt-labs-platform \
+        libkf6windowsystem-dev libasound2-dev \
+    && rm -rf /var/lib/apt/lists/*
+ARG RUSTUP_VERSION=1.29.2
+ARG RUSTUP_INIT_SHA256=5be191e8c70a5007074254cb74d78dbfdd25cd5a61c27de7b8e5410122ec24f4
+ARG RUST_TOOLCHAIN=1.99.1
+ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH=/opt/cargo/bin:$PATH
+RUN d=$(mktemp -d) \
+ && curl --proto '=https' --tlsv1.2 -fsSL -o "$d/rustup-init" \
+      "https://static.rust-lang.org/rustup/archive/$RUSTUP_VERSION/x86_64-unknown-linux-gnu/rustup-init" \
+ && echo "$RUSTUP_INIT_SHA256  $d/rustup-init" | sha256sum -c - \
+ && chmod +x "$d/rustup-init" \
+ && "$d/rustup-init" -y --no-modify-path --profile minimal --default-toolchain "$RUST_TOOLCHAIN" \
+ && rm -rf "$d"
