@@ -128,7 +128,12 @@ fun defaultDspState(): DspState = DspState(
     presetStartupMode = 0,
     presetDefaultSlot = 0,
     bulkValid = false,
-    bulkRaw = ByteArray(BULK_PARAMS_SIZE)
+    bulkRaw = ByteArray(BULK_PARAMS_SIZE),
+    // -- WP CG32 --
+    i2sClockPinModePresent = false,
+    spdifInputsEnabledPresent = false,
+    adatInputEnabledPresent = false,
+    adatInputClockModePresent = false
 )
 
 /** Tables of protocol.rs @ 4683a2c the core uses to clamp and default tool parameters. */

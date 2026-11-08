@@ -129,6 +129,10 @@ final class CoreMirror {
     /// snapshot.
     private var rebaseOnRefresh = false
 
+    /// Counts the sources followed (-- WP SWF4 --): a state change or a
+    /// revert read under an earlier one is dropped.
+    private(set) var attachment: UInt64 = 0
+
     /// The source the view model follows now, if any.
     var attachedSource: CoreStateSource? { source }
 
@@ -148,7 +152,15 @@ final class CoreMirror {
         if source !== self.source || source == nil { reset() }
         guard source !== self.source else { return }
         self.source = source
-        stateObserver = source?.addStateObserver { [weak self] change in self?.changed(change) }
+        // -- WP SWF4 -- A change carries the attachment it came from: one the
+        // core published a main-queue hop before a member switch (or a
+        // disconnect) is dropped, not applied to the next device's view.
+        attachment &+= 1
+        let attached = attachment
+        stateObserver = source?.addStateObserver { [weak self] change in
+            guard let self = self, self.attachment == attached else { return }
+            self.changed(change)
+        }
     }
 
     /// Forget pending keys and applied values (a new connection).
@@ -174,9 +186,14 @@ final class CoreMirror {
     /// a refused write left the device as it was (RefusedWrite's resync).
     func revertToCore() {
         guard let source = source else { return }
+        let attached = attachment
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let state = source.readState()
-            DispatchQueue.main.async { self?.vm?.applyCoreState(state, force: true) }
+            DispatchQueue.main.async {
+                // -- WP SWF4 -- Only onto the view of the device it was read from.
+                guard let self = self, self.attachment == attached else { return }
+                self.vm?.applyCoreState(state, force: true)
+            }
         }
     }
 
@@ -775,7 +792,7 @@ struct ReadOnlyBanner: View {
         }
     }
 
-    private var message: String {
+    var message: String {   // -- WP SWF4 -- internal, for the tests
         if vm.firmwareWireFormatVersion > WIRE_FORMAT_VERSION {
             return "Read only: this device's firmware is newer than DSPi Console. Update DSPi Console to change its settings."
         }

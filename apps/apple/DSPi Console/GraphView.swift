@@ -176,7 +176,9 @@ struct BodePlotView: View {
     /// overlay, so the SwiftUI curves leave it out.  None on the XO tab,
     /// where PEQ bands are not what the page lists.
     var editedChannel: Int? {
-        guard PeqGraphEditorView.isAvailable, vm.isDeviceReady, !useOverride,
+        // -- WP SWF4 -- None on read-only firmware: the graph shows the
+        // bands and drags none.
+        guard PeqGraphEditorView.isAvailable, vm.isDeviceReady, !useOverride, !vm.deviceReadOnly,
               let ch = vm.activeEqChannel, vm.channelVisibility[ch] == true,
               !(vm.crossoverTabShown && ch >= vm.chOut1) else { return nil }
         return ch

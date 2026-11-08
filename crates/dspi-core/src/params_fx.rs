@@ -688,6 +688,37 @@ impl DspiCore {
     }
 }
 
+// -- WP CG32 --
+/// The effect a registry path of the tables above belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Fx {
+    Psybass,
+    Upmix,
+    Subharm,
+    Tube,
+    Limiter,
+}
+
+/// The effect and parameter id of `path` in the tables above, for
+/// `DspiCore::write_param`: the id its `set_*_param` takes.
+pub(crate) fn fx_param(path: &str) -> Option<(Fx, u8)> {
+    let id = |paths: &[&str]| {
+        paths
+            .iter()
+            .position(|p| *p == path)
+            .and_then(|i| u8::try_from(i).ok())
+    };
+    let ranged = |t: &[(&'static str, f32, f32)]| t.iter().map(|r| r.0).collect::<Vec<_>>();
+    let tables: [(Fx, Option<u8>); 5] = [
+        (Fx::Psybass, id(&ranged(&PSYBASS))),
+        (Fx::Upmix, id(&ranged(&UPMIX))),
+        (Fx::Subharm, id(&ranged(&SUBHARM))),
+        (Fx::Tube, id(&ranged(&TUBE))),
+        (Fx::Limiter, id(&LIMITER)),
+    ];
+    tables.into_iter().find_map(|(fx, i)| i.map(|i| (fx, i)))
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_c4 {

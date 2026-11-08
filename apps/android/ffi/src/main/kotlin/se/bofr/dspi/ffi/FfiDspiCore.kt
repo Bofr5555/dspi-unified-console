@@ -904,6 +904,10 @@ internal fun se.bofr.dspi.ffi.uniffi.DspState.toDomain() =
         presetDefaultSlot = presetDefaultSlot.toInt(),
         bulkValid = bulkValid,
         bulkRaw = bulkRaw.copyOf(),
+        i2sClockPinModePresent = i2sClockPinModePresent,
+        spdifInputsEnabledPresent = spdifInputsEnabledPresent,
+        adatInputEnabledPresent = adatInputEnabledPresent,
+        adatInputClockModePresent = adatInputClockModePresent,
     )
 
 internal fun DspState.toFfi() =
@@ -1011,6 +1015,10 @@ internal fun DspState.toFfi() =
         presetDefaultSlot = presetDefaultSlot.toUByte(),
         bulkValid = bulkValid,
         bulkRaw = bulkRaw.copyOf(),
+        i2sClockPinModePresent = i2sClockPinModePresent,
+        spdifInputsEnabledPresent = spdifInputsEnabledPresent,
+        adatInputEnabledPresent = adatInputEnabledPresent,
+        adatInputClockModePresent = adatInputClockModePresent,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.NotifyResult.toDomain() =

@@ -1556,6 +1556,11 @@ void uniffi_dspi_core_fn_method_dspicore_test_dac_mute(void*_Nonnull ptr, RustCa
 uint32_t uniffi_dspi_core_fn_method_dspicore_wire_features(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_WRITE_PARAM
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_WRITE_PARAM
+RustBuffer uniffi_dspi_core_fn_method_dspicore_write_param(void*_Nonnull ptr, RustBuffer path, RustBuffer indices, RustBuffer value, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_HOSTTRANSPORT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_HOSTTRANSPORT
 void*_Nonnull uniffi_dspi_core_fn_clone_hosttransport(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -3627,6 +3632,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_test_dac_mute(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_WIRE_FEATURES
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_WIRE_FEATURES
 uint16_t uniffi_dspi_core_checksum_method_dspicore_wire_features(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_WRITE_PARAM
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_WRITE_PARAM
+uint16_t uniffi_dspi_core_checksum_method_dspicore_write_param(void
     
 );
 #endif

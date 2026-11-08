@@ -461,6 +461,11 @@ pub fn default_state() -> DspState {
         preset_default_slot: 0,
         bulk_valid: false,
         bulk_raw: vec![0; BULK_SIZE],
+        // -- WP CG32 --
+        i2s_clock_pin_mode_present: false,
+        spdif_inputs_enabled_present: false,
+        adat_input_enabled_present: false,
+        adat_input_clock_mode_present: false,
     }
 }
 
@@ -682,6 +687,28 @@ fn parse_spdif_enabled(ext_p1: u8) -> u8 {
     0x01 | decode_p1(ext_p1).map_or(0, |m| (m & 0x07).wrapping_shl(1))
 }
 
+// -- WP CG32 --
+/// Write one +1-encoded byte (0 = absent) at `at`: `wire + 1` when the
+/// state has the value, 0 when it does not. The state has it when its
+/// presence flag says so, or when the value is not what an absent byte reads
+/// as (`moved`: a setter changed it). `state` is the value and the flag;
+/// `read` is how decoding reads a byte. Nothing is written when the image's
+/// byte already reads as the state does, so an out-of-range byte stays.
+fn write_p1<T: PartialEq>(
+    w: &mut Wr<'_>,
+    at: usize,
+    state: (T, bool),
+    moved: bool,
+    wire: u8,
+    read: impl Fn(u8) -> T,
+) {
+    let cur = w.rd().u8(at);
+    let present = state.1 || moved;
+    if (read(cur), cur != 0) != (state.0, present) {
+        w.u8(at, if present { encode_p1(Some(wire)) } else { 0 });
+    }
+}
+
 // ── The codec ─────────────────────────────────────────────────────────
 
 /// Decode a V32-layout image into `state` (see the module docs). An image of
@@ -694,6 +721,10 @@ fn parse_spdif_enabled(ext_p1: u8) -> u8 {
 /// clears `bulk_valid` afterwards. The fields the image marks absent (an
 /// unset I2S or S/PDIF pin, the I2S slave BCK pin, the ADAT output pin and
 /// input clock mode, the I2S channel count) keep their value in `state`.
+/// The four `*_present` flags say whether the image carried the I2S
+/// clock-pin mode, the S/PDIF 2-4 mask, the ADAT input enable and clock mode
+/// (their +1-encoded bytes are not 0); `encode_bulk` writes them back absent
+/// unless the flag is set or the value was changed.
 ///
 /// Fails, with `state` untouched, with `WireError::WrongSize` unless the
 /// image is exactly `BULK_SIZE` (6136) bytes, and with
@@ -812,8 +843,13 @@ pub fn decode_bulk(image: &[u8], state: &mut DspState) -> Result<(), WireError> 
     // Input config. Extension bytes use 0 for "absent, keep".
     let c = d.sec(S_INPUT_CONFIG);
     s.input_source = c.u8(ic::INPUT_SOURCE);
-    s.spdif_inputs_enabled = parse_spdif_enabled(c.u8(ic::SPDIF_RX_ENABLED_EXT_P1));
-    s.adat_input_enabled = c.u8(ic::ADAT_INPUT_ENABLED_P1) == 2;
+    // -- WP CG32 -- and the presence flags say which were there.
+    let spdif_p1 = c.u8(ic::SPDIF_RX_ENABLED_EXT_P1);
+    s.spdif_inputs_enabled = parse_spdif_enabled(spdif_p1);
+    s.spdif_inputs_enabled_present = spdif_p1 != 0;
+    let adat_p1 = c.u8(ic::ADAT_INPUT_ENABLED_P1);
+    s.adat_input_enabled = adat_p1 == 2;
+    s.adat_input_enabled_present = adat_p1 != 0;
     fit(&mut s.spdif_rx_pins, &SPDIF_RX_PIN_DEFAULTS);
     fit(&mut s.i2s_rx_pins, &I2S_RX_PIN_DEFAULTS);
     let ext = |at| c.arr::<3>(at).unwrap_or_default();
@@ -838,9 +874,11 @@ pub fn decode_bulk(image: &[u8], state: &mut DspState) -> Result<(), WireError> 
         0 => 0xFF,
         pin => pin,
     };
-    if let Some(mode) = decode_p1(c.u8(ic::ADAT_CLOCK_MODE_P1)) {
+    let clock_p1 = c.u8(ic::ADAT_CLOCK_MODE_P1);
+    if let Some(mode) = decode_p1(clock_p1) {
         s.adat_input_clock_mode = mode.min(1);
     }
+    s.adat_input_clock_mode_present = clock_p1 != 0;
 
     // Psychoacoustic bass
     let p = d.sec(S_PSYBASS);
@@ -868,7 +906,9 @@ pub fn decode_bulk(image: &[u8], state: &mut DspState) -> Result<(), WireError> 
     s.mck_enabled = i.flag(i2s::MCK_ENABLED);
     s.mck_multiplier = i.u8(i2s::MCK_MULTIPLIER).min(1);
     // +1 encoded, 0 = absent (read as unified)
-    s.i2s_clock_pin_mode = i.u8(i2s::CLOCK_PIN_MODE_P1).saturating_sub(1).min(1);
+    let pins_p1 = i.u8(i2s::CLOCK_PIN_MODE_P1);
+    s.i2s_clock_pin_mode = pins_p1.saturating_sub(1).min(1);
+    s.i2s_clock_pin_mode_present = pins_p1 != 0;
     if i.u8(i2s::BCK_PIN_SLAVE) != 0 {
         s.i2s_bck_pin_slave = i.u8(i2s::BCK_PIN_SLAVE);
     }
@@ -1075,13 +1115,16 @@ pub fn encode_bulk(state: &DspState) -> Vec<u8> {
         write_pins(&mut w, ic::I2S_RX_PIN, ic::I2S_RX_PIN_EXT, &s.i2s_rx_pins);
         w.u8(ic::I2S_INPUT_RATE, s.i2s_input_rate);
         w.u8(ic::I2S_INPUT_CHANNELS, s.i2s_input_channels);
-        // Not written when the image already says the same: its "absent" (0)
-        // and out-of-range masks read back as they are.
-        let ext_p1 = w.rd().u8(ic::SPDIF_RX_ENABLED_EXT_P1);
-        if parse_spdif_enabled(ext_p1) != s.spdif_inputs_enabled {
-            let mask = s.spdif_inputs_enabled.wrapping_shr(1) & 0x07;
-            w.u8(ic::SPDIF_RX_ENABLED_EXT_P1, encode_p1(Some(mask)));
-        }
+        // -- WP CG32 -- The four +1-encoded bytes: see `write_p1`.
+        let mask = s.spdif_inputs_enabled.wrapping_shr(1) & 0x07;
+        write_p1(
+            &mut w,
+            ic::SPDIF_RX_ENABLED_EXT_P1,
+            (s.spdif_inputs_enabled, s.spdif_inputs_enabled_present),
+            s.spdif_inputs_enabled != 0x01,
+            mask,
+            parse_spdif_enabled,
+        );
         w.u8(ic::I2S_CLOCK_MODE, s.i2s_clock_mode);
         // 0xFF (unset) goes out as 0, the firmware's mapping
         // (bulk_params.c:252).
@@ -1091,11 +1134,23 @@ pub fn encode_bulk(state: &DspState) -> Vec<u8> {
             s.adat_input_pin
         };
         w.u8(ic::ADAT_INPUT_PIN, adat_pin);
-        let adat_en = encode_p1(Some(u8::from(s.adat_input_enabled)));
-        w.u8(ic::ADAT_INPUT_ENABLED_P1, adat_en);
-        w.u8(
+        write_p1(
+            &mut w,
+            ic::ADAT_INPUT_ENABLED_P1,
+            (s.adat_input_enabled, s.adat_input_enabled_present),
+            s.adat_input_enabled,
+            u8::from(s.adat_input_enabled),
+            |b| b == 2,
+        );
+        let mode = s.adat_input_clock_mode;
+        write_p1(
+            &mut w,
             ic::ADAT_CLOCK_MODE_P1,
-            encode_p1(Some(s.adat_input_clock_mode)),
+            (mode, s.adat_input_clock_mode_present),
+            mode != 0,
+            mode,
+            // An absent byte keeps the state's mode.
+            |b| decode_p1(b).map_or(mode, |m| m.min(1)),
         );
     }
     {
@@ -1124,12 +1179,14 @@ pub fn encode_bulk(state: &DspState) -> Vec<u8> {
         w.u8(i2s::MCK_PIN, s.mck_pin);
         w.flag(i2s::MCK_ENABLED, s.mck_enabled);
         w.u8(i2s::MCK_MULTIPLIER, s.mck_multiplier);
-        if w.rd().u8(i2s::CLOCK_PIN_MODE_P1) != 0 {
-            w.u8(
-                i2s::CLOCK_PIN_MODE_P1,
-                encode_p1(Some(s.i2s_clock_pin_mode)),
-            );
-        }
+        write_p1(
+            &mut w,
+            i2s::CLOCK_PIN_MODE_P1,
+            (s.i2s_clock_pin_mode, s.i2s_clock_pin_mode_present),
+            s.i2s_clock_pin_mode != 0,
+            s.i2s_clock_pin_mode,
+            |b| b.saturating_sub(1).min(1),
+        );
         if w.rd().u8(i2s::BCK_PIN_SLAVE) != 0 {
             w.u8(i2s::BCK_PIN_SLAVE, s.i2s_bck_pin_slave);
         }
@@ -1516,5 +1573,131 @@ mod tests_wp_c0 {
             let _ = apply_platform(&reply, &mut s);
             prop_assert_eq!(encode_bulk(&s).len(), BULK_SIZE);
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg32 {
+    use super::*;
+
+    const BULK: &[u8] = include_bytes!("../../../tests/fixtures/link/device/bulk_v32.bin");
+
+    /// Where the four presence bytes sit in the image.
+    fn offsets() -> [usize; 4] {
+        let c = g::OFF_INPUT_CONFIG;
+        [
+            g::OFF_I2S_CONFIG + i2s::CLOCK_PIN_MODE_P1,
+            c + ic::SPDIF_RX_ENABLED_EXT_P1,
+            c + ic::ADAT_INPUT_ENABLED_P1,
+            c + ic::ADAT_CLOCK_MODE_P1,
+        ]
+    }
+
+    fn flags(s: &DspState) -> [bool; 4] {
+        [
+            s.i2s_clock_pin_mode_present,
+            s.spdif_inputs_enabled_present,
+            s.adat_input_enabled_present,
+            s.adat_input_clock_mode_present,
+        ]
+    }
+
+    fn decoded(img: &[u8]) -> DspState {
+        let mut s = default_state();
+        decode_bulk(img, &mut s).unwrap();
+        s
+    }
+
+    #[test]
+    fn wp_cg32_absent_bytes_decode_as_absent_not_as_zero() {
+        let mut img = BULK.to_vec();
+        for at in offsets() {
+            img[at] = 0;
+        }
+        let s = decoded(&img);
+        assert_eq!(flags(&s), [false; 4]);
+        // The values beside them read as an absent byte does.
+        assert_eq!(s.i2s_clock_pin_mode, 0);
+        assert_eq!(s.spdif_inputs_enabled, 0x01);
+        assert!(!s.adat_input_enabled);
+
+        // Present and 0 ("+1": the byte is 1) is another thing.
+        for at in offsets() {
+            img[at] = 1;
+        }
+        let s = decoded(&img);
+        assert_eq!(flags(&s), [true; 4]);
+        assert_eq!(
+            (
+                s.i2s_clock_pin_mode,
+                s.spdif_inputs_enabled,
+                s.adat_input_enabled,
+                s.adat_input_clock_mode
+            ),
+            (0, 0x01, false, 0)
+        );
+    }
+
+    #[test]
+    fn wp_cg32_presence_round_trips_through_encode() {
+        // Every byte value, absent and corrupt ones included, comes back as
+        // it was when nothing changed.
+        for b in 0..=u8::MAX {
+            let mut img = BULK.to_vec();
+            for at in offsets() {
+                img[at] = b;
+            }
+            let s = decoded(&img);
+            assert_eq!(flags(&s), [b != 0; 4], "byte {b}");
+            let e = encode_bulk(&s);
+            for at in offsets() {
+                assert_eq!(e[at], b, "byte {b} at {at}");
+            }
+            assert_eq!(flags(&decoded(&e)), flags(&s));
+        }
+    }
+
+    #[test]
+    fn wp_cg32_a_value_set_on_an_absent_byte_becomes_present() {
+        let mut img = BULK.to_vec();
+        for at in offsets() {
+            img[at] = 0;
+        }
+        let mut s = decoded(&img);
+        // What a setter does: the value only.
+        s.i2s_clock_pin_mode = 1;
+        s.spdif_inputs_enabled = 0x05;
+        s.adat_input_enabled = true;
+        s.adat_input_clock_mode = 1;
+        let t = decoded(&encode_bulk(&s));
+        assert_eq!(flags(&t), [true; 4]);
+        assert_eq!(
+            (
+                t.i2s_clock_pin_mode,
+                t.spdif_inputs_enabled,
+                t.adat_input_enabled,
+                t.adat_input_clock_mode
+            ),
+            (1, 0x05, true, 1)
+        );
+
+        // A flag set with the absent reading's value writes it present too,
+        // and a flag cleared on a present byte writes it absent.
+        let mut s = decoded(&img);
+        s.adat_input_enabled_present = true;
+        let e = encode_bulk(&s);
+        assert_eq!(e[offsets()[2]], 1, "present, disabled");
+        let mut s = decoded(&e);
+        s.adat_input_enabled_present = false;
+        assert_eq!(encode_bulk(&s)[offsets()[2]], 0);
+    }
+
+    #[test]
+    fn wp_cg32_the_default_state_has_nothing_present() {
+        assert_eq!(flags(&default_state()), [false; 4]);
+        let mut s = default_state();
+        s.bulk_raw[0] = V32;
+        assert_eq!(flags(&decoded(&encode_bulk(&s))), [false; 4]);
     }
 }
