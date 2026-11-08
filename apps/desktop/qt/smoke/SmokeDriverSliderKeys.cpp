@@ -100,30 +100,33 @@ void SmokeDriver::testSliderKeys() {
     for (const QString &line : b->presetChanges()) printf("smoke: QD41 unsaved: %s\n", qPrintable(line));
     check("QD41: the gain field shows it", page->property("gainDB").toDouble() > -2.95 && page->property("gainDB").toDouble() < -2.85);
 
-    // Held: auto-repeated releases don't commit, the last release does, once
+    // Held: auto-repeated releases don't commit (Qt's own Left/Right did,
+    // each one), the last release does, once
     gainCommits.count = 0;
-    key(main, QEvent::KeyPress, Qt::Key_Up);
-    key(main, QEvent::KeyRelease, Qt::Key_Up, true);
-    key(main, QEvent::KeyPress, Qt::Key_Up, true);
-    key(main, QEvent::KeyRelease, Qt::Key_Up, true);
-    key(main, QEvent::KeyPress, Qt::Key_Up, true);
+    key(main, QEvent::KeyPress, Qt::Key_Right);
+    key(main, QEvent::KeyRelease, Qt::Key_Right, true);
+    key(main, QEvent::KeyPress, Qt::Key_Right, true);
+    key(main, QEvent::KeyRelease, Qt::Key_Right, true);
+    key(main, QEvent::KeyPress, Qt::Key_Right, true);
     spin(50);
-    check("QD41: a held Up steps the gain live", near(b->outputGainDB(0), -2.6));
+    check("QD41: a held Right steps the gain live", near(b->outputGainDB(0), -2.6));
     check("QD41: auto-repeat commits nothing", gainCommits.count == 0);
-    key(main, QEvent::KeyRelease, Qt::Key_Up);
+    key(main, QEvent::KeyRelease, Qt::Key_Right);
     spin(500);
     check("QD41: the final release commits once", gainCommits.count == 1 && near(b->outputGainDB(0), -2.6));
 
-    // Down, Home and End
+    // Up, Down, Home and End
     gainCommits.count = 0;
+    tap(main, Qt::Key_Up);
+    check("QD41: Up commits a tenth of a dB up", gainCommits.count == 1 && near(b->outputGainDB(0), -2.5));
     tap(main, Qt::Key_Down);
-    check("QD41: Down commits a tenth of a dB down", gainCommits.count == 1 && near(b->outputGainDB(0), -2.7));
+    check("QD41: Down commits a tenth of a dB down", gainCommits.count == 2 && near(b->outputGainDB(0), -2.6));
     tap(main, Qt::Key_End);
-    check("QD41: End commits the top of the range (+12 dB)", gainCommits.count == 2 && near(b->outputGainDB(0), 12.0));
+    check("QD41: End commits the top of the range (+12 dB)", gainCommits.count == 3 && near(b->outputGainDB(0), 12.0));
     tap(main, Qt::Key_End);
-    check("QD41: End at the top commits nothing", gainCommits.count == 2);
+    check("QD41: End at the top commits nothing", gainCommits.count == 3);
     tap(main, Qt::Key_Home);
-    check("QD41: Home commits the bottom (-60 dB)", gainCommits.count == 3 && near(b->outputGainDB(0), -60.0));
+    check("QD41: Home commits the bottom (-60 dB)", gainCommits.count == 4 && near(b->outputGainDB(0), -60.0));
 
     // An accessibility increase sends live, then commits once after a pause
     b->setOutputGain(0, -3.0f);
