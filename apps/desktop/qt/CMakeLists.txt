@@ -23,7 +23,8 @@ find_package(QT NAMES ${_qt_names} REQUIRED COMPONENTS Core)
 if(QT_VERSION_MAJOR EQUAL 5)
     find_package(Qt5 5.15 REQUIRED COMPONENTS Core Gui Widgets Quick QuickControls2 Qml Network)
 else()
-    find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Quick QuickControls2 Qml Network)
+    # -- WP QD21c -- 6.5: on Qt 6.4 (6.4.2, 6.4.3) the app crashes at its first window activation
+    find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Quick QuickControls2 Qml Network)
 endif()
 message(STATUS "Building against Qt ${QT_VERSION}")
 # -- WP QD8 -- Linux keeps Link tokens through the Secret Service, over D-Bus
@@ -220,7 +221,9 @@ if(APPLE)
         MACOSX_BUNDLE ON
         OUTPUT_NAME "DSPi Console"
         MACOSX_BUNDLE_INFO_PLIST ${DSPI_MAC_DIR}/Info.plist.in
-        MACOSX_BUNDLE_GUI_IDENTIFIER io.github.weeblabs.DSPiConsole
+        # -- WP QD21b -- a neutral placeholder: .invalid is reserved (RFC 6761), so
+        # no one can hold it; a real id needs a domain the maintainers own
+        MACOSX_BUNDLE_GUI_IDENTIFIER invalid.dspi-unified-console.DSPiConsole
         MACOSX_BUNDLE_SHORT_VERSION_STRING ${DSPI_VER_MAJOR}.${DSPI_VER_MINOR}.${DSPI_VER_PATCH}
         MACOSX_BUNDLE_BUNDLE_VERSION ${DSPI_VERSION})
 
@@ -267,16 +270,16 @@ if(UNIX AND NOT APPLE)
     install(PROGRAMS $<TARGET_FILE:DSPiConsole> DESTINATION bin RENAME dspi-console)
     install(FILES ${PKG}/dspi-console.desktop DESTINATION share/applications)
     install(FILES ${CMAKE_SOURCE_DIR}/dspi-console.svg DESTINATION share/icons/hicolor/scalable/apps)
-    install(FILES ${PKG}/io.github.weeblabs.DSPiConsole.metainfo.xml DESTINATION share/metainfo)
+    install(FILES ${PKG}/dspi-console.metainfo.xml DESTINATION share/metainfo)
     install(FILES ${PKG}/70-dspi.rules DESTINATION lib/udev/rules.d)
 
     set(CPACK_PACKAGE_NAME dspi-console)
     set(CPACK_PACKAGE_VERSION ${DSPI_PKG_VERSION})
-    set(CPACK_PACKAGE_VENDOR "WeebLabs")
-    set(CPACK_PACKAGE_CONTACT "WeebLabs <https://github.com/WeebLabs/DSPi-Console-Linux>")
+    # Placeholder maker until the project has a home of its own: no address, no homepage
+    set(CPACK_PACKAGE_VENDOR "DSPi unified console maintainers")
+    set(CPACK_PACKAGE_CONTACT "DSPi unified console maintainers")
     set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Control application for the DSPi audio processor")
     set(CPACK_PACKAGE_DESCRIPTION "DSPi Console configures and tunes a DSPi, open source DSP firmware for the Raspberry Pi Pico: parametric EQ, crossovers, routing, delay, effects, limiters, control surfaces and firmware updates, applied live over USB.")
-    set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/WeebLabs/DSPi-Console-Linux")
     set(CPACK_PACKAGING_INSTALL_PREFIX /usr)
     set(CPACK_STRIP_FILES ON)
 
@@ -288,7 +291,7 @@ if(UNIX AND NOT APPLE)
     if(QT_VERSION_MAJOR EQUAL 5)
         set(CPACK_DEBIAN_PACKAGE_DEPENDS "qml-module-qtquick2, qml-module-qtquick-window2, qml-module-qtquick-layouts, qml-module-qtquick-controls2, qml-module-qtquick-templates2, qml-module-qtqml, qml-module-qt-labs-settings, qml-module-qt-labs-platform, libqt5svg5 | libqt5svg5t64, qtwayland5")
     else()
-        set(CPACK_DEBIAN_PACKAGE_DEPENDS "qml6-module-qtquick, qml6-module-qtquick-window, qml6-module-qtquick-layouts, qml6-module-qtquick-controls, qml6-module-qtquick-templates, qml6-module-qtqml, qml6-module-qtqml-workerscript, qml6-module-qt-labs-settings, qml6-module-qt-labs-platform, libqt6svg6, qt6-wayland")
+        set(CPACK_DEBIAN_PACKAGE_DEPENDS "qml6-module-qtquick, qml6-module-qtquick-window, qml6-module-qtquick-layouts, qml6-module-qtquick-controls, qml6-module-qtquick-templates, qml6-module-qtqml, qml6-module-qtqml-workerscript, qml6-module-qt-labs-settings, qml6-module-qt-labs-platform, libqt6svg6, qt6-svg-plugins, qt6-wayland")
     endif()
     set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "kwayland-integration, xdg-desktop-portal, udisks2")
     set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${PKG}/postinst;${PKG}/postrm")
@@ -298,7 +301,6 @@ if(UNIX AND NOT APPLE)
     set(CPACK_RPM_PACKAGE_RELEASE 1)
     set(CPACK_RPM_PACKAGE_LICENSE "Unspecified")
     set(CPACK_RPM_PACKAGE_GROUP "Applications/Multimedia")
-    set(CPACK_RPM_PACKAGE_URL "https://github.com/WeebLabs/DSPi-Console-Linux")
     if(QT_VERSION_MAJOR EQUAL 5)
         set(CPACK_RPM_PACKAGE_REQUIRES "qt5-qtdeclarative, qt5-qtquickcontrols2, qt5-qtsvg, qt5-qtwayland")
     else()

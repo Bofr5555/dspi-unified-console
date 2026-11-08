@@ -110,8 +110,8 @@ Item {
         anchors.rightMargin: 8
         anchors.verticalCenter: parent.verticalCenter
         spacing: 4
-        BarButton { visible: bar.showMinMax; icon: "win-min"; accessibleName: "Minimise"; onClicked: bar.window.showMinimized() }
-        BarButton { visible: bar.showMinMax; icon: bar.maximized ? "win-restore" : "win-max"; accessibleName: bar.maximized ? "Restore" : "Maximise"; onClicked: bar.toggleMaximized() }
+        BarButton { visible: bar.showMinMax; icon: "win-min"; accessibleName: "Minimize"; onClicked: bar.window.showMinimized() }
+        BarButton { visible: bar.showMinMax; icon: bar.maximized ? "win-restore" : "win-max"; accessibleName: bar.maximized ? "Restore" : "Maximize"; onClicked: bar.toggleMaximized() }
         BarButton { icon: "win-close"; accessibleName: "Close"; danger: true; onClicked: bar.window.close() }
     }
 
@@ -148,8 +148,8 @@ Item {
         visible: isWindows
         anchors.right: parent.right
         anchors.top: parent.top
-        CaptionButton { visible: bar.showMinMax; icon: "win-min"; accessibleName: "Minimise"; onClicked: bar.window.showMinimized() }
-        CaptionButton { visible: bar.showMinMax; icon: bar.maximized ? "win-restore" : "win-max"; accessibleName: bar.maximized ? "Restore" : "Maximise"; onClicked: bar.toggleMaximized() }
+        CaptionButton { visible: bar.showMinMax; icon: "win-min"; accessibleName: "Minimize"; onClicked: bar.window.showMinimized() }
+        CaptionButton { visible: bar.showMinMax; icon: bar.maximized ? "win-restore" : "win-max"; accessibleName: bar.maximized ? "Restore" : "Maximize"; onClicked: bar.toggleMaximized() }
         CaptionButton { icon: "win-close"; accessibleName: "Close"; danger: true; onClicked: bar.window.close() }
     }
 }

@@ -51,7 +51,8 @@ rows=(
   # -- WP SW2 -- Not run (exit 3) when the VM is down or has no GUI login.
   "macos-swift|macOS Swift app|macvm|=ci/macvm.sh macos"
   "ios-sim|iOS Simulator|macvm|=ci/macvm.sh ios"
-  "qt-dmg|Qt .dmg (build only)|macvm|-no Qt build for macOS yet (QD21)"
+  # -- WP QD21b -- built, then started from the .dmg on the demo device
+  "qt-dmg|Qt .dmg, demo device|macvm|=ci/macvm.sh qt-dmg"
 )
 
 only=""

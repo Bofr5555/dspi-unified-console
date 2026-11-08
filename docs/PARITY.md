@@ -51,7 +51,7 @@ Most of the Qt desktop, many Android packages, and the Terminal's control-surfac
 3. **Older firmware leaves the app blank, not read-only.** It shows a banner, and every write and every parameter read is skipped.
 4. **Firmware updater only flashes the bundled 1.1.6-beta4 images.** That is older than 1.1.6 final, and there is no custom `.uf2` and no download.
 5. **Missing settings:** no input-source names and no device-name edit (opcodes 0x54–0x57 are not in `dspi-core-linux`), and no clock/output-latency diagnostics.
-6. **No accessibility** (no `Accessible.*` anywhere), **no localisation** (no `qsTr`), and no tray or menu-bar mode.
+6. **Accessibility is done (QD22):** names and roles on every custom control, a keyboard walk through every window; the screen-reader (Orca) pass is still to do. **No localisation** (no `qsTr`), and no tray or menu-bar mode.
 7. Almost everything is marked "Done, untested on hardware"; USB has never run on Windows.
 
 ### Terminal (TUI/CLI)
@@ -180,7 +180,7 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 | G3 | Media keys, OS volume, notification controls | ◐ user volume follows the macOS volume (UAC); no media keys | n.a. | ◐ OS volume via UAC1 | ◐ shows OS-slider changes | ◐ notification Vol −/+, Mute, Next preset; no MediaSession or volume keys | ◐ UAC1 reflected |
 | G4 | Background behaviour | ✓ keeps sharing from the menu bar, prevents sleep | ◐ no background; reconnects on foreground *(ours)* | n.a. (desktop app) | n.a. | ✓ foreground service keeps USB or Link open | n.a. |
 | G5 | Onboarding, What's New, coach marks | ✓ | ◐ wizard (firmware step can't work), What's New; no coach marks | ◐ Getting Started + What's New; no coach marks | ✗ (by design) | ✗ | ✗ |
-| G6 | Accessibility | ◐ SwiftUI defaults + `.help` | ◐ Dynamic Type capped at xxxLarge, 44 pt targets | ✗ | ◐ `--lite`, ASCII fallback, no screen reader | ◐ thin TalkBack | ✗ |
+| G6 | Accessibility | ◐ SwiftUI defaults + `.help` | ◐ Dynamic Type capped at xxxLarge, 44 pt targets | ✓ `Accessible.*` on every custom control, Tab through every window (QD22); Orca pass pending | ◐ `--lite`, ASCII fallback, no screen reader | ◐ thin TalkBack | ✗ |
 | G7 | Localisation | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | G8 | Pop-out windows, multi-window, large screens | ✓ tool windows, pop-out graph | ◐ one sheet at a time; iPad split view/slide-over widths | ✓ | ◐ in-terminal graph pop-out | ◐ routes, 600/840 dp breakpoints, no foldable posture handling | ✓ |
 | G9 | Host audio-format monitor | ✓ CoreAudio channel count | ✗ (stub) | ◐ shown in Stats only | ✓ INPUT_FORMAT notifications | ✗ | ◐ channel count only |
@@ -247,7 +247,7 @@ The core itself still needs an FFI surface (C ABI or UniFFI) over `dspi-session`
 | Demo device | S | Core |
 | Firmware updater: 1.1.6 final images, custom `.uf2`, optional download | S | UI (bundle) / Core (writer) |
 | Tray / menu-bar mode (keep running, quick volume) | M | UI (`QSystemTrayIcon`) |
-| Accessibility (`Accessible.name/role` on custom controls) | M | UI |
+| Accessibility (`Accessible.name/role` on custom controls) | M | UI: done in QD22; the Orca pass is left |
 | Localisation (`qsTr` + `.ts` files) | M | UI |
 | Separate C0/C1 CPU bars | S | UI (declined on purpose; optional) |
 | Hardware validation, especially Windows USB | M | Testing |

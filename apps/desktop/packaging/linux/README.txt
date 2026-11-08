@@ -23,7 +23,7 @@ You still need the udev rule once, or the device can't be opened:
 
 Requirements
 ------------
-64-bit x86 Linux with glibc 2.41 or newer (Debian 13, Ubuntu 25.04,
+64-bit x86 Linux with glibc 2.39 or newer (Ubuntu 24.04, Debian 13,
 Fedora 42, or anything newer). X11 and Wayland are both supported. The
 AppImage brings its own Qt 6; it uses your system's graphics (OpenGL),
 fonts and sound (ALSA) libraries, which every desktop has.

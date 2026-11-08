@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Placeholder identity until the project has a home of its own: the id is the
+     desktop file's name (a reverse-DNS id needs a domain the maintainers hold), no
+     homepage or bug tracker. -->
 <component type="desktop-application">
-  <id>io.github.weeblabs.DSPiConsole</id>
+  <id>dspi-console</id>
   <metadata_license>CC0-1.0</metadata_license>
   <name>DSPi Console</name>
   <summary>Configure and tune a DSPi audio processor</summary>
@@ -16,10 +19,8 @@
     </p>
   </description>
   <launchable type="desktop-id">dspi-console.desktop</launchable>
-  <url type="homepage">https://github.com/WeebLabs/DSPi-Console-Linux</url>
-  <url type="bugtracker">https://github.com/WeebLabs/DSPi-Console-Linux/issues</url>
-  <developer id="io.github.weeblabs">
-    <name>WeebLabs</name>
+  <developer>
+    <name>DSPi unified console maintainers</name>
   </developer>
   <categories>
     <category>AudioVideo</category>
