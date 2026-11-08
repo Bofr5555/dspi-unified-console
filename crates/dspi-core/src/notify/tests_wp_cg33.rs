@@ -423,10 +423,10 @@ fn wp_cg33_edits_before_a_retried_reread_stay_unsaved() {
     assert!(changes[0].contains("0.0 dB → -3.0 dB"), "{changes:?}");
 }
 
-/// The baseline is fixed byte run by byte run: a run the mirror changed
-/// that the device does not hold (the load replaced it) is the re-read's,
-/// one it holds is the old baseline's; images of another size are left as
-/// read.
+/// An image without the bulk layout goes by byte runs: a run the mirror
+/// changed that the device does not hold (the load replaced it) is the
+/// re-read's, one it holds is the old baseline's; images of another size
+/// are left as read.
 #[test]
 fn wp_cg33_keep_edits_after_load_restores_only_held_runs() {
     let old = [1u8, 2, 3, 4, 5, 6];
@@ -437,4 +437,160 @@ fn wp_cg33_keep_edits_after_load_restores_only_held_runs() {
     let mut short = [9u8, 9];
     crate::presets::keep_edits_after_load(&mut short, &old, &mirror);
     assert_eq!(short, [9, 9]);
+}
+
+// -- WP CG33b --
+/// Review c6s N1: values whose four LE bytes all differ from the baseline's,
+/// so the pre-load edit of input 0 and the post-load edit of input 1
+/// (adjacent f32s at OFF_PREAMP) differ from the baseline in one unbroken
+/// byte run. The load replaced input 0; the edit of input 1 still stays
+/// unsaved, field by field.
+#[test]
+fn wp_cg33b_adjacent_fields_keep_a_later_edit() {
+    for link in [false, true] {
+        let rig = rig(link);
+        rig.core.set_input_preamp(0, 3.1).unwrap();
+        rig.deliver();
+        rig.hold();
+        rig.load_elsewhere(1);
+        rig.core.set_input_preamp(1, -2.7).unwrap();
+        rig.delivered_load();
+        assert_eq!(preamp(&rig.core, 0), -4.0);
+        assert_eq!(preamp(&rig.core, 1), -2.7);
+        let changes = rig.changes();
+        assert_eq!(changes.len(), 1, "link {link}: {changes:?}");
+        assert!(changes[0].contains("0.0 dB → -2.7 dB"), "{changes:?}");
+    }
+}
+
+/// The reviewer's anchor: the same with "round" values (separate byte
+/// runs), which passed before the fix too.
+#[test]
+fn wp_cg33b_adjacent_fields_in_separate_runs() {
+    let rig = rig(true);
+    rig.core.set_input_preamp(0, 3.0).unwrap();
+    rig.deliver();
+    rig.hold();
+    rig.load_elsewhere(1);
+    rig.core.set_input_preamp(1, -2.5).unwrap();
+    rig.delivered_load();
+    let changes = rig.changes();
+    assert_eq!(changes.len(), 1, "{changes:?}");
+    assert!(changes[0].contains("0.0 dB → -2.5 dB"), "{changes:?}");
+}
+
+/// On a bulk image the rule goes field by field: of two adjacent preamps
+/// the mirror changed, the one the load replaced is the re-read's, the one
+/// the device holds is the old baseline's, whole (no mixed bytes), and a
+/// field the mirror did not change is the re-read's.
+#[test]
+fn wp_cg33b_keep_edits_after_load_goes_by_field() {
+    let at = |i: usize| g::OFF_PREAMP + 4 * i;
+    let put = |img: &mut Vec<u8>, i: usize, v: f32| {
+        img[at(i)..at(i) + 4].copy_from_slice(&v.to_le_bytes());
+    };
+    let get = |img: &[u8], i: usize| f32::from_le_bytes(img[at(i)..at(i) + 4].try_into().unwrap());
+    let old = vec![0u8; g::BULK_SIZE];
+    let mut mirror = old.clone();
+    put(&mut mirror, 0, 3.1);
+    put(&mut mirror, 1, -2.7);
+    // The re-read: the load put -4.0 into input 0 and 1.5 into input 2.
+    let mut baseline = mirror.clone();
+    put(&mut baseline, 0, -4.0);
+    put(&mut baseline, 2, 1.5);
+    crate::presets::keep_edits_after_load(&mut baseline, &old, &mirror);
+    assert_eq!(get(&baseline, 0), -4.0);
+    assert_eq!(get(&baseline, 1), 0.0);
+    assert_eq!(get(&baseline, 2), 1.5);
+    // A preset that shares a byte with the pre-load edit: still the
+    // re-read's whole value, not a mix of it and the old baseline's.
+    let mut mirror = old.clone();
+    put(&mut mirror, 0, 3.1);
+    let mut partly = 3.1f32.to_le_bytes();
+    partly[0] ^= 0x55;
+    let mut baseline = old.clone();
+    baseline[at(0)..at(0) + 4].copy_from_slice(&partly);
+    crate::presets::keep_edits_after_load(&mut baseline, &old, &mirror);
+    assert_eq!(&baseline[at(0)..at(0) + 4], &partly);
+}
+
+/// The field table covers the whole bulk image, section by section, with
+/// whole records, and agrees with dspi-proto's field tables and with the
+/// codec's own offsets for the sections it spells out.
+#[test]
+fn wp_cg33b_image_fields_match_the_layout() {
+    use dspi_proto::wire::{
+        INPUT_CONFIG_FIELDS, LIMITER_OUTPUT_FIELDS, LIMITER_OUTPUT_LEN, SUBHARM_FIELDS, TUBE_FIELDS,
+    };
+    let fields = crate::presets::image_fields();
+    let mut at = 0;
+    for f in &fields {
+        assert_eq!(f.start, at, "gap or overlap at {at}");
+        assert!(f.end > f.start);
+        at = f.end;
+    }
+    assert_eq!(at, g::BULK_SIZE);
+    for (off, len, widths) in crate::presets::IMAGE_FIELDS {
+        let record: usize = widths.iter().sum();
+        assert_eq!(
+            len % record,
+            0,
+            "section at {off}: {len} bytes, {record}-byte records"
+        );
+    }
+    let starts: std::collections::BTreeSet<usize> = fields.iter().map(|f| f.start).collect();
+    let ends: std::collections::BTreeSet<usize> = fields.iter().map(|f| f.end).collect();
+    let spans = |base: usize, table: &[(&str, usize, usize)], records: usize, stride: usize| {
+        for r in 0..records {
+            for &(name, off, len) in table {
+                let s = base + r * stride + off;
+                assert!(
+                    starts.contains(&s),
+                    "{name} (record {r}) starts inside a field"
+                );
+                assert!(
+                    ends.contains(&(s + len)),
+                    "{name} (record {r}) ends inside a field"
+                );
+            }
+        }
+    };
+    spans(g::OFF_INPUT_CONFIG, &INPUT_CONFIG_FIELDS, 1, 0);
+    spans(g::OFF_SUBHARM, &SUBHARM_FIELDS, 1, 0);
+    spans(g::OFF_TUBE, &TUBE_FIELDS, 1, 0);
+    let outs = g::LEN_LIMITER / LIMITER_OUTPUT_LEN;
+    spans(
+        g::OFF_LIMITER,
+        &LIMITER_OUTPUT_FIELDS,
+        outs,
+        LIMITER_OUTPUT_LEN,
+    );
+    // Every f32 the codec reads is one 4-byte field.
+    let f32_at = |off: usize| {
+        assert!(
+            starts.contains(&off) && ends.contains(&(off + 4)),
+            "f32 at {off}"
+        );
+    };
+    for i in 0..g::LEN_PREAMP / 4 {
+        f32_at(g::OFF_PREAMP + 4 * i);
+    }
+    for i in 0..g::LEN_DELAYS / 4 {
+        f32_at(g::OFF_DELAYS + 4 * i);
+    }
+    for band in 0..g::LEN_EQ / 16 {
+        for off in [4, 8, 12] {
+            f32_at(g::OFF_EQ + 16 * band + off);
+        }
+    }
+    for off in [0, 8, 12] {
+        f32_at(g::OFF_GLOBAL + off);
+    }
+    f32_at(g::OFF_MASTER_VOLUME);
+    f32_at(g::OFF_USER_VOLUME);
+    // A channel name is one field.
+    for ch in 0..g::LEN_CHANNEL_NAMES / CHANNEL_NAME_LEN {
+        let s = g::OFF_CHANNEL_NAMES + CHANNEL_NAME_LEN * ch;
+        assert!(fields.contains(&(s..s + CHANNEL_NAME_LEN)), "name {ch}");
+    }
 }
