@@ -77,8 +77,10 @@ final class HubTransport: DeviceTransport {
     func sendControlRequest(request: UInt8, value: UInt16, index: UInt16, data: Data) {
         let req = LinkCmdRequest(tag: 0, handle: hub.currentHandle, direction: .set,
                                  bRequest: request, wValue: value, wIndex: index, payload: data)
-        hub.submit(req, from: localSession.id) { response in
-            if response.status == .locked { DeviceLock.notice.post() }
+        // -- WP SWF2 -- A refused write is put back on screen (hw-mac F3).
+        hub.submit(req, from: localSession.id) { [weak self] response in
+            guard let self = self else { return }
+            RefusedWrite.handle(response.status, fanout: self.notifyFanout)
         }
     }
 

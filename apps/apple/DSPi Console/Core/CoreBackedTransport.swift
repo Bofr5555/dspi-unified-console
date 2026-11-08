@@ -308,8 +308,14 @@ final class CoreBackedTransport: DeviceTransport {
             do {
                 try self.onCore { try $0.rawSet(opcode: request, value: value, data: data) }
             } catch {
-                let status = CoreBackedTransport.status(for: error)
-                if status == .locked { DeviceLock.notice.post() }
+                // -- WP SWF2 -- A write the hub refused is put back on screen
+                // (hw-mac F3).  Read-only firmware also maps to .denied, but
+                // that is not the hub's refusal: only the core's own two count.
+                switch error as? DspiError {
+                case .Denied?: RefusedWrite.handle(.denied, fanout: self.fanout)
+                case .Locked?: RefusedWrite.handle(.locked, fanout: self.fanout)
+                default: break
+                }
                 Self.log.info("SET 0x\(String(format: "%02X", request), privacy: .public) wValue=\(value) failed: \(String(describing: error), privacy: .public)")
             }
         }

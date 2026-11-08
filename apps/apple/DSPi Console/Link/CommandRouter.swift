@@ -11,6 +11,7 @@
 //
 
 import Foundation
+import os
 
 /// What the caller must know about a session to route its command.  The hub
 /// supplies the live role (it can change mid-session) and the session id.
@@ -185,6 +186,17 @@ final class CommandRouter {
                                                attributedTo: 0))
             }
 
+            // -- WP SWF2 -- A core voltage raise the owner's rule would ask a
+            // word for, from any session but the app's: DENIED, as the Rust
+            // hub (HB2).  The status is read here, in queue order, so nothing
+            // lands between the read and the write.
+            if session.id != LinkHub.localSessionID,
+               CoreVoltageRule.refuses(request, readStatus: { self.readCoreVreg(on: device) }) {
+                let op = request.payload.map { String(format: "%02X", $0) }.joined(separator: " ")
+                Self.log.warning("session \(session.id) asked for a core voltage raise, [\(op, privacy: .public)]: refused")
+                return completion(self.reject(request, .denied))
+            }
+
             // Anything that can change device state is a write for attribution,
             // whichever transfer direction carries it (write-as-read included).
             var writerToken: UInt64?
@@ -285,6 +297,20 @@ final class CommandRouter {
             return LinkCmdResponse(tag: request.tag, status: .timeout)
         }
         return result ?? LinkCmdResponse(tag: request.tag, status: .error)
+    }
+
+    // -- WP SWF2 --
+    private static let log = Logger(subsystem: "WeebLabs.DSPi-Console", category: "link")
+
+    /// The unit's EXT_CORE_VREG status now, or nil when it does not answer.
+    /// Call on the router queue.
+    private func readCoreVreg(on device: HubDevice) -> CoreVregStatus? {
+        let read = LinkCmdRequest(tag: 0, handle: handle, direction: .get, bRequest: REQ_EXTENSION,
+                                  wValue: EXT_CORE_VREG, wIndex: EXT_WINDEX,
+                                  wLength: UInt16(CoreVregStatus.size))
+        let response = runWithTimeout(read, on: device, timeout: commandTimeout)
+        guard response.status == .ok else { return nil }
+        return CoreVregStatus(response.payload)
     }
 
     private func reject(_ request: LinkCmdRequest, _ status: LinkStatus) -> RoutedResult {

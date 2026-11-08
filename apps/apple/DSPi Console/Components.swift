@@ -553,8 +553,9 @@ struct ConnectionStatusIndicator: View {
 
             // A command or flow refused with LOCKED (spec 7.7) shows here for a
             // few seconds, rather than through every command's own error path.
+            // -- WP SWF2 -- So does a write the hub's role check refused.
             if let message = lockNotice.message {
-                Label(message, systemImage: "lock.fill")
+                Label(message, systemImage: message == DeviceLock.lockedMessage ? "lock.fill" : "hand.raised.fill")
                     .font(.caption2)
                     .foregroundColor(.orange)
                     .lineLimit(1)

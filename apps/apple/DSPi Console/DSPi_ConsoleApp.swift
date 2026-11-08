@@ -65,6 +65,15 @@ class AppState: ObservableObject {
     }
     lazy var demoTransport: FakeTransport = FakeTransport(autoSelect: true)
 
+    // -- WP SWF2 -- The default local device: the DSPi on its vendor interface
+    // (through the hub), and the same DSPi on its USB MIDI port when the
+    // vendor path cannot be opened (hw-mac F2).  The MIDI member never opens
+    // the port by itself, so a DAW's MIDI is left alone while USB works.
+    lazy var localWithMIDIFallback: LocalTransportSet = LocalTransportSet([
+        localTransport,
+        MIDITransport(port: TestHostGuard.midiPort(), autoSelect: false),
+    ])
+
     // -- WP SW4 -- `-CoreTransport YES`: the Rust core drives the local
     // device, over the hub's session 1 (docs/SWIFT-SEAMS.md 5.4), or its own
     // demo device with `-LocalTransport demo`.
@@ -80,7 +89,7 @@ class AppState: ObservableObject {
         if AppState.usesMIDITransport { local = midiTransport }
         else if CoreBackedTransport.isEnabled { local = coreTransport }   // -- WP SW4 --
         else if AppState.usesDemoTransport { local = demoTransport }
-        else { local = localTransport }
+        else { local = localWithMIDIFallback }   // -- WP SWF2 --
         let composite = CompositeTransport(
             local: local,
             tokens: LinkTokenStore(),

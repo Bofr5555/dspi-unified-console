@@ -43,6 +43,7 @@ enum LinkStatus: UInt8, Error, Equatable {
     var userMessage: String? {
         switch self {
         case .locked: return DeviceLock.lockedMessage
+        case .denied: return DeviceLock.deniedMessage   // -- WP SWF2 --
         default: return nil
         }
     }
@@ -181,6 +182,9 @@ protocol DeviceTransport: AnyObject {
 /// Shared wording and limits for the device lock.
 enum DeviceLock {
     static let lockedMessage = "Another console is applying changes"
+    // -- WP SWF2 -- The core's wording for DENIED (`DspiError::Denied`), as
+    // `lockedMessage` is its `Locked`: a write this session's role may not make.
+    static let deniedMessage = "This console's role on the hub does not allow that"
     /// Hubs cap a lock at 60 s (spec 7.7).
     static let maxTimeout: TimeInterval = 60
 
@@ -195,14 +199,41 @@ final class DeviceLockNotice: ObservableObject {
     @Published private(set) var message: String?
     private var clearWork: DispatchWorkItem?
 
-    func post() {
+    func post(_ message: String = DeviceLock.lockedMessage) {
         DispatchQueue.main.async {
-            self.message = DeviceLock.lockedMessage
+            self.message = message
             self.clearWork?.cancel()
             let work = DispatchWorkItem { [weak self] in self?.message = nil }
             self.clearWork = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: work)
         }
+    }
+}
+
+// -- WP SWF2 --
+/// A SET the hub would not carry out (hw-mac F3).  The view model applied the
+/// value locally when it sent it, so the UI shows a value the device does not
+/// have.  The hub answers with no change made, so nothing is retried: the
+/// view model re-reads the device (a synthetic BULK_INVALIDATED, the same
+/// recovery as a RESYNC), which puts the device's value back on screen and
+/// clears a dirty preset, and the status row says why.
+enum RefusedWrite {
+    /// v2 BULK_INVALIDATED with source UNKNOWN (0).
+    static let resyncPacket = Data([0x02, 0x03, 0, 0, 0, 0, 0, 0])
+
+    /// The refusals that leave the device unchanged and that a user can act on.
+    static func reverts(_ status: LinkStatus) -> Bool {
+        status == .denied || status == .locked
+    }
+
+    /// Handle a SET's answer: for a refusal, post its wording and have the
+    /// view model re-read through `fanout`.  True when it was a refusal.
+    @discardableResult
+    static func handle(_ status: LinkStatus, fanout: NotificationFanout) -> Bool {
+        guard reverts(status), let message = status.userMessage else { return false }
+        DeviceLock.notice.post(message)
+        fanout.publish(LinkNotification(packet: resyncPacket, origin: 0, receivedAt: Date()))
+        return true
     }
 }
 

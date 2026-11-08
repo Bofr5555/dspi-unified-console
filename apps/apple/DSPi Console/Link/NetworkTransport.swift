@@ -340,8 +340,10 @@ final class NetworkTransport: DeviceTransport {
         guard let handle = boundHandle else { return }
         let req = LinkCmdRequest(tag: 0, handle: handle, direction: .set, bRequest: request,
                                  wValue: value, wIndex: index, payload: data)
-        client.command(req) { response in
-            if response.status == .locked { DeviceLock.notice.post() }
+        // -- WP SWF2 -- A refused write is put back on screen (hw-mac F3).
+        client.command(req) { [weak self] response in
+            guard let self = self, handle == self.boundHandle else { return }
+            RefusedWrite.handle(response.status, fanout: self.notifyFanout)
         }
     }
 
