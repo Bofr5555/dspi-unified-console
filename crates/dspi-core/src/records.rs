@@ -450,6 +450,18 @@ pub struct DspState {
     pub bulk_valid: bool,
     /// The image itself.
     pub bulk_raw: Vec<u8>,
+    // -- WP CG32 -- Presence of the image's +1-encoded bytes (0 = absent,
+    // which older firmware sends): with the flag false, the field beside it
+    // holds what an absent byte reads as, not a value the device reported.
+    /// The image carries `i2s_clock_pin_mode` (firmware with split clock pins).
+    pub i2s_clock_pin_mode_present: bool,
+    /// The image carries the S/PDIF inputs 2-4 bits of `spdif_inputs_enabled`
+    /// (firmware with several S/PDIF inputs).
+    pub spdif_inputs_enabled_present: bool,
+    /// The image carries `adat_input_enabled`.
+    pub adat_input_enabled_present: bool,
+    /// The image carries `adat_input_clock_mode`.
+    pub adat_input_clock_mode_present: bool,
 }
 
 // ── notify.rs ─────────────────────────────────────────────────────────

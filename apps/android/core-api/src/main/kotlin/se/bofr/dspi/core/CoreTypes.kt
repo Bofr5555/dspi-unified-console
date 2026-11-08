@@ -738,6 +738,23 @@ data class DspState(
      * The image itself.
      */
     val bulkRaw: ByteArray,
+    /**
+     * The image carries `i2s_clock_pin_mode` (firmware with split clock pins).
+     */
+    val i2sClockPinModePresent: Boolean,
+    /**
+     * The image carries the S/PDIF inputs 2-4 bits of `spdif_inputs_enabled`
+     * (firmware with several S/PDIF inputs).
+     */
+    val spdifInputsEnabledPresent: Boolean,
+    /**
+     * The image carries `adat_input_enabled`.
+     */
+    val adatInputEnabledPresent: Boolean,
+    /**
+     * The image carries `adat_input_clock_mode`.
+     */
+    val adatInputClockModePresent: Boolean,
 )
 
 /**

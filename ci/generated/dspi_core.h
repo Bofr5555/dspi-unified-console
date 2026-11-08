@@ -5118,6 +5118,30 @@ uint32_t dspi_flash_to_drive_guarded(const uint8_t *image,
                                      uint32_t len);
 
 /**
+ * Write one parameter by its registry path (`DspiCore::write_param`).
+ * `request` is JSON {path, indices, value}, the value tagged by kind:
+ * {"float": -3}, {"bool": true}, {"int": 4}, {"choice": 1}, {"mask": 3},
+ * {"text": "x"}, {"bytes": [1, 2]} or "trigger"; `indices` may be left out
+ * for a path without any. Writes JSON {ok, value} with the value read back,
+ * or the failure reply. Returns the length needed.
+ *
+ * Don't retry on a short buffer: a reply too long means the write has
+ * happened, and a second call applies it again. Give it a large enough buffer
+ * the first time.
+ */
+uint32_t dspi_write_param(struct FfiCore *core, const char *request, char *buf, uint32_t len);
+
+/**
+ * Which of the image's +1-encoded bytes the state's image carried (older
+ * firmware sends 0, "absent"), as bits: 1 `i2s_clock_pin_mode`, 2 the S/PDIF
+ * inputs 2-4 bits of `spdif_inputs_enabled`, 4 `adat_input_enabled`, 8
+ * `adat_input_clock_mode`. A field whose bit is clear holds what an absent
+ * byte reads as, not a value the device reported. The `DspState` record
+ * keeps the old core's layout, so these are not in it. 0 for a null handle.
+ */
+uint8_t dspi_state_presence(const struct FfiCore *core);
+
+/**
  * Answer a fetch: the HTTP status and body, as received, for any status.
  * `retry_after_s`, `rate_limit_remaining` and `rate_limit_reset` (Unix seconds) are
  * the `Retry-After`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers, -1 if

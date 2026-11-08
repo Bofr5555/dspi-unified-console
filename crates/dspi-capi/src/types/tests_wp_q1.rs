@@ -1783,6 +1783,11 @@ fn sample_state() -> r::DspState {
         preset_default_slot: 101,
         bulk_valid: true,
         bulk_raw: (0..BULK_PARAMS_SIZE).map(|i| (103 + i) as u8).collect(),
+        // -- WP CG32 -- not in the C record (its layout is the old core's)
+        i2s_clock_pin_mode_present: true,
+        spdif_inputs_enabled_present: true,
+        adat_input_enabled_present: true,
+        adat_input_clock_mode_present: true,
     }
 }
 

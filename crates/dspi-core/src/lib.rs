@@ -101,6 +101,8 @@ mod vreg;
 pub mod autoeq;
 // -- WP CG10 --
 mod link_text;
+// -- WP CG32 --
+mod write_param;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -143,6 +145,8 @@ pub use dspi_proto::ext::PairMap;
 pub use raw::RawNotification;
 // -- WP CG26 --
 pub use host_transport::{HostTransport, HostTransportKind};
+// -- WP CG32 --
+pub use write_param::{ParamValue, write_refusal};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
