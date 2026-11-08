@@ -208,6 +208,8 @@ void SmokeDriver::run() {
     testVregCalibration();
     // -- WP QD6 --
     testReadOnly();
+    // -- WP SL1 -- Here, as CG31 in testLink: no later pass walks the output page's popovers (QD30 does)
+    testDelaySliders();
     // -- WP QD8 --
     testLink();
     // -- WP QD10 --
