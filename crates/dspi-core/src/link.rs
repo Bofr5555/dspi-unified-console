@@ -480,7 +480,9 @@ enum Step {
 /// own TCP retries again, which a long outage backs off by many seconds. So
 /// from then on a new session is dialled every [`PROBE_EVERY`]: if one
 /// connects while the old one is still silent, the network works and the old
-/// session is dead; the new one replaces it at once.
+/// session is dead; the new one replaces it at once. Accepted by the owner
+/// (2026-11-08) as the one exception to the 30 s silence rule
+/// (`dspi_link::client::Timing::silence_limit`).
 const PROBE_AFTER: Duration = Duration::from_secs(12);
 const PROBE_EVERY: Duration = Duration::from_secs(2);
 /// How long a select that lost its session waits for the next one.
@@ -870,11 +872,53 @@ impl DspiCore {
         };
         // -- WP WB4b -- decided on the caller's thread, as the client's own mode is
         let pumped = dspi_link::client::caller_driven();
-        let (client, state) = dial(&target, true, &tx).map_err(map_error)?;
+        // -- WP LK4 -- the first dial retries as the reference client does, and
+        // `link_close` (the app's Disconnect) stops it
+        let id = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
+        let cancel = Arc::new(AtomicBool::new(false));
+        if !pumped {
+            *guard(&self.link_control) = Some(LinkControl {
+                id,
+                cancel: Arc::clone(&cancel),
+                tx: tx.clone(),
+                client: None,
+                pumped,
+                driver: None,
+            });
+        }
+        let dialled = dial_first(
+            &target,
+            &tx,
+            &cancel,
+            (!pumped).then_some(tuning.backoff_divisor),
+        );
+        let dialled = match dialled {
+            Ok(d) if !cancel.load(Ordering::SeqCst) => Ok(d),
+            Ok((client, _)) => {
+                client.set_events(None);
+                client.close();
+                Err(closed_by_client())
+            }
+            Err(e) => Err(e),
+        };
+        let (client, state) = match dialled {
+            Ok(d) => d,
+            Err(e) => {
+                let mut control = guard(&self.link_control);
+                if control.as_ref().is_some_and(|c| c.id == id) {
+                    *control = None;
+                }
+                return Err(map_error(e));
+            }
+        };
         if !target.hub_id.is_empty() && !client.hello().hub.id.eq_ignore_ascii_case(&target.hub_id)
         {
             client.set_events(None);
             client.close();
+            let mut control = guard(&self.link_control);
+            if control.as_ref().is_some_and(|c| c.id == id) {
+                *control = None;
+            }
             return Err(DspiError::Link {
                 code: "wrong_hub".into(),
                 msg: "Another hub answers at this address.".into(),
@@ -886,9 +930,8 @@ impl DspiCore {
             target.token.clear();
         }
         let instance = client.epoch();
-        let cancel = Arc::new(AtomicBool::new(false));
         let session = LinkSession {
-            id: NEXT_SESSION.fetch_add(1, Ordering::Relaxed),
+            id,
             target,
             tuning,
             client: Some(client),
@@ -926,6 +969,27 @@ impl DspiCore {
         // Installed first: the supervisor ends when it finds no session.
         let displaced = self.lock().link.replace(session);
         drop(displaced);
+        // -- WP LK4 -- a `link_close` that came while this was installed
+        if cancel.load(Ordering::SeqCst) {
+            let gone = {
+                let mut inner = self.lock();
+                if inner.link.as_ref().is_some_and(|s| s.id == id) {
+                    inner.link.take()
+                } else {
+                    None
+                }
+            };
+            if let Some(c) = gone.as_ref().and_then(|s| s.client.clone()) {
+                c.set_events(None);
+                c.close();
+            }
+            drop(gone);
+            let mut control = guard(&self.link_control);
+            if control.as_ref().is_some_and(|c| c.id == id) {
+                *control = None;
+            }
+            return Err(map_error(closed_by_client()));
+        }
         // -- WP WB4b -- the caller turns the supervisor (`link_tick`)
         if pumped {
             if let Some(c) = guard(&self.link_control).as_mut().filter(|c| c.id == id) {
@@ -1881,6 +1945,70 @@ fn dial(
         Some(Arc::new(Forward { tx: tx.clone() })),
         &cfg,
     )
+}
+
+// -- WP LK4 --
+/// How long the first dial keeps trying (each try bounded by the connector's
+/// and the client's own connect timeouts): longer than the reference
+/// client's 15 s handshake plus its prober's 1 s retries.
+pub(crate) const FIRST_DIAL_BUDGET: Duration = Duration::from_secs(60);
+/// The wait before the first dial's second try, doubled each time up to
+/// [`FIRST_DIAL_RETRY_MAX`] (or the hub's own advice when longer).
+const FIRST_DIAL_RETRY: Duration = Duration::from_millis(500);
+const FIRST_DIAL_RETRY_MAX: Duration = Duration::from_secs(2);
+
+/// The first dial of a session: as [`dial`], tried again with a short
+/// backoff while the error's advice is to retry (a timeout, a lost socket, a
+/// busy hub; never a refusal, a protocol error or a pairing problem) and
+/// within [`FIRST_DIAL_BUDGET`], until `cancel`. Nothing is sent before the
+/// hello, so nothing is replayed. `retry`: the backoff divisor (tests speed
+/// it up; 1 in production), `None` for one try (a caller-driven session).
+fn dial_first(
+    target: &Target,
+    tx: &Sender<Msg>,
+    cancel: &AtomicBool,
+    retry: Option<u32>,
+) -> std::result::Result<(LinkClient, AuthState), LinkError> {
+    let divided = |d: Duration, by: u32| d.checked_div(by.max(1)).unwrap_or(d);
+    let start = Instant::now();
+    let mut failures = 0u32;
+    loop {
+        let e = match dial(target, true, tx) {
+            Ok(d) => return Ok(d),
+            Err(e) => e,
+        };
+        let Some(by) = retry.filter(|_| !cancel.load(Ordering::SeqCst)) else {
+            return Err(e);
+        };
+        let RetryAdvice::Retry { min_delay } = e.retry_advice() else {
+            return Err(e);
+        };
+        let wait = FIRST_DIAL_RETRY
+            .saturating_mul(1u32.checked_shl(failures).unwrap_or(u32::MAX))
+            .min(FIRST_DIAL_RETRY_MAX)
+            .max(min_delay);
+        let wait = divided(wait, by);
+        if start.elapsed().saturating_add(wait) >= divided(FIRST_DIAL_BUDGET, by) {
+            return Err(e);
+        }
+        log::info!("DSPi Link: the first dial failed ({e}); trying again in {wait:?}");
+        let waited = Instant::now();
+        while waited.elapsed() < wait {
+            if cancel.load(Ordering::SeqCst) {
+                return Err(e);
+            }
+            dspi_transport::clock::sleep(Duration::from_millis(50));
+        }
+        failures = failures.saturating_add(1);
+    }
+}
+
+/// The error a dial stopped by `link_close` ends with.
+fn closed_by_client() -> LinkError {
+    LinkError::Closed {
+        code: Some(1000),
+        reason: dspi_link::close_reason(Some(1000)),
+    }
 }
 
 /// Whether `url` is `ws://host[:port][/path]`.

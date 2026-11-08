@@ -85,6 +85,15 @@ pub enum WriteError {
         confirm: String,
     },
 
+    // -- WP LK4 --
+    /// The device's capabilities are still being read (a DSPi Link bind
+    /// completes its probe after the image) and this write depends on them: it
+    /// was not sent. It may go once they are in.
+    #[error(
+        "`{path}` waits for the device's capabilities, which are still being read; nothing was sent"
+    )]
+    Unprobed { path: String },
+
     #[error("{0}")]
     Value(#[from] ValueError),
 
@@ -102,6 +111,22 @@ pub enum WriteError {
         waited_ms: u64,
         why: String,
     },
+}
+
+// -- WP LK4 --
+/// Whether writing `d` depends on the probe's reads (see
+/// [`Session::waits_for_probe`]).
+pub fn depends_on_probe(d: &ParamDesc) -> bool {
+    matches!(d.requires, Requires::Feature(_))
+        || matches!(
+            d.target,
+            Target::ChannelBand
+                | Target::CsSlot
+                | Target::CsIrSlot
+                | Target::CsGroup
+                | Target::CsMacro
+                | Target::CsMacroStep
+        )
 }
 
 /// What actually happened, which is not always what was asked for.
@@ -247,6 +272,9 @@ pub struct Session {
     /// Set while [`Session::enable_output`] drives the Core 1 interlock itself,
     /// so the check inside [`Session::write`] does not run it twice.
     pub(crate) core1_checked: bool,
+    // -- WP LK4 --
+    /// The capabilities are provisional (see [`Session::set_provisional`]).
+    provisional: bool,
     /// The status byte the last write-as-read answered.
     ///
     /// Pin and clock setters report `PIN_CONFIG_*` here (config.h:607-613) and
@@ -270,6 +298,7 @@ impl Session {
             replaying: false,
             core1_checked: false,
             last_status: None,
+            provisional: false,
         })
     }
 
@@ -288,7 +317,23 @@ impl Session {
             return false;
         }
         self.caps = caps;
+        self.provisional = false;
         true
+    }
+
+    /// Mark the capabilities provisional: the channel model and identity are
+    /// the device's, the features, band count and control-surface caps not yet
+    /// read. Until [`Session::complete_capabilities`], a write that depends on
+    /// them is refused with [`WriteError::Unprobed`], never sent.
+    pub fn set_provisional(&mut self, provisional: bool) {
+        self.provisional = provisional;
+    }
+
+    /// Whether writing `d` depends on what the probe has not read yet: a
+    /// feature requirement, a band index (the live count is measured), a
+    /// control-surface slot.
+    pub fn waits_for_probe(&self, d: &ParamDesc) -> bool {
+        self.provisional && depends_on_probe(d)
     }
 
     /// The status byte the last write-as-read answered, if there was one.
@@ -514,6 +559,10 @@ impl Session {
     /// than seven, and it cannot leave the band in a half-updated state if the
     /// device disappears midway.
     pub fn write_band(&mut self, packet: &EqParamPacket) -> Result<Outcome, WriteError> {
+        // -- WP LK4 -- the live band count is not measured yet
+        if self.provisional {
+            return Err(WriteError::Unprobed { path: "eq".into() });
+        }
         if self.dry_run {
             return Ok(Outcome::Accepted);
         }
@@ -850,6 +899,12 @@ impl Session {
 
     /// Refuse a parameter this device does not have, with the reason.
     pub(crate) fn check_available(&self, d: &ParamDesc) -> Result<(), WriteError> {
+        // -- WP LK4 -- (writes only: a read the device cannot answer just stalls)
+        if self.waits_for_probe(d) {
+            return Err(WriteError::Unprobed {
+                path: d.path.into(),
+            });
+        }
         let why = match d.requires {
             Requires::Always => return Ok(()),
             Requires::Rp2350 => {
@@ -2468,5 +2523,68 @@ mod matrix_tests {
             !seen.iter().any(|e| e.opcode == op::REQ_GET_MATRIX_ROUTE),
             "per-crosspoint reads would be 72 transfers"
         );
+    }
+}
+
+/// WP LK4: provisional capabilities hold back the writes that depend on them.
+#[cfg(test)]
+mod tests_wp_lk4 {
+    use super::tests::caps;
+    use super::*;
+    use dspi_transport::MockTransport;
+    use dspi_transport::mock::Direction;
+
+    #[test]
+    fn wp_lk4_a_provisional_session_sends_no_write_that_depends_on_the_probe() {
+        let t = MockTransport::new();
+        let log = t.log_handle();
+        let mut s = Session::new(
+            Box::new(t),
+            caps(Platform::Rp2350, &[("psychoacoustic_bass", true)]),
+        )
+        .unwrap();
+        s.set_provisional(true);
+        // A feature-gated parameter, a band index, a control-surface slot, a whole band
+        for (path, idx, v) in [
+            ("bass.on", vec![], Value::Bool(true)),
+            ("eq.freq", vec![0, 11], Value::Float(1000.0)),
+        ] {
+            let e = s.write(path, &idx, v).unwrap_err();
+            assert!(matches!(e, WriteError::Unprobed { .. }), "{path}: {e:?}");
+        }
+        let band = EqParamPacket {
+            channel: 0,
+            band: 11,
+            filter_type: dspi_proto::FilterType::Peaking,
+            bypass: false,
+            freq: 1000.0,
+            q: 0.7,
+            gain_db: 0.0,
+            qp: None,
+        };
+        assert!(matches!(
+            s.write_band(&band),
+            Err(WriteError::Unprobed { .. })
+        ));
+        let sent = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|x| x.direction == Direction::Out)
+            .count();
+        assert_eq!(sent, 0, "nothing went to the device");
+        // What does not depend on the probe goes as ever: refused for its own reasons only
+        assert!(!matches!(
+            s.check("vol.user", &[], &Value::Float(-6.0)),
+            Err(WriteError::Unprobed { .. })
+        ));
+        // Completed: the same writes are judged on what the device said
+        let full = caps(Platform::Rp2350, &[("psychoacoustic_bass", true)]);
+        assert!(s.complete_capabilities(full));
+        assert!(!s.waits_for_probe(dspi_proto::registry::by_path("bass.on").unwrap()));
+        assert!(matches!(
+            s.check("eq.freq", &[0, 11], &Value::Float(1000.0)),
+            Err(WriteError::BadTarget(..))
+        ));
     }
 }

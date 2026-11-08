@@ -134,6 +134,6 @@ AN20 (TalkBack on in Settings > Accessibility; demo mode is enough for most):
 
 LK2 (Link meters over the real ESP32 hub, not the fake hub):
 20. Connect over Link: meters move at once (before the start-up reads finish), no grey/frozen meters while cs/siggen load.
-21. Keep the app open 2 minutes idle and during re-reads (open/close pages): the session stays up (5 s pings, 30 s silence rule);
+21. Keep the app open 2 minutes idle and during re-reads (open/close pages): the session stays up (5 s pings, 30 s silence rule; on an ESP32 bridge, a session that has heard nothing for 12 s is replaced as soon as a new one connects, since the bridge has dropped it: owner decision 2026-11-08, WP LK4);
     walk out of Wi-Fi range for ~20 s and back: no spurious "lost link".
 22. Check the ESP32 does not close the session under POLL load (its 10 s unwritable rule) with meters running on two clients.

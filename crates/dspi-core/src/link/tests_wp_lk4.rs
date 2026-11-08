@@ -594,3 +594,201 @@ fn wp_lk4_a_select_whose_session_is_replaced_binds_on_the_new_one() {
     assert_eq!(core.link_status().phase, LinkPhase::Bound);
     core.link_close();
 }
+
+/// Fails the first `fail` connects with `error`, then dials for real.
+struct Flaky {
+    fail: usize,
+    error: fn() -> LinkError,
+    connects: std::sync::atomic::AtomicUsize,
+}
+
+impl WsConnector for Flaky {
+    fn connect(&self, url: &str, protocol: &str) -> std::result::Result<WsPair, LinkError> {
+        if self.connects.fetch_add(1, Ordering::SeqCst) < self.fail {
+            return Err((self.error)());
+        }
+        TcpConnector::default().connect(url, protocol)
+    }
+}
+
+fn connect_flaky(
+    core: &DspiCore,
+    hub: &FakeHub,
+    flaky: &Arc<Flaky>,
+    divisor: u32,
+) -> Result<LinkHello> {
+    core.link_connect_with(
+        hub.url(),
+        "wp-lk4".into(),
+        "test".into(),
+        String::new(),
+        String::new(),
+        Tuning {
+            connector: Arc::clone(flaky) as Arc<dyn WsConnector>,
+            backoff_divisor: divisor,
+            ..Tuning::default()
+        },
+    )
+}
+
+#[test]
+fn wp_lk4_the_first_dial_keeps_trying_until_the_hub_answers() {
+    let hub = bridge_with(4);
+    let core = DspiCore::new();
+    let flaky = Arc::new(Flaky {
+        fail: 3,
+        error: || LinkError::Timeout,
+        connects: Default::default(),
+    });
+    // Production's backoff: 0.5 + 1 + 2 s before the fourth try
+    let started = Instant::now();
+    connect_flaky(&core, &hub, &flaky, 1).expect("connected on the fourth try");
+    assert_eq!(flaky.connects.load(Ordering::SeqCst), 4);
+    assert!(
+        started.elapsed() < Duration::from_secs(6),
+        "{:?}",
+        started.elapsed()
+    );
+    wait_until("the device list", || !core.link_devices().is_empty());
+    core.link_close();
+}
+
+#[test]
+fn wp_lk4_disconnect_stops_a_first_dial_that_keeps_failing() {
+    let hub = bridge_with(4);
+    let core = DspiCore::new();
+    let flaky = Arc::new(Flaky {
+        fail: usize::MAX,
+        error: || LinkError::Io("connection refused".into()),
+        connects: Default::default(),
+    });
+    let dialer = {
+        let (core, flaky) = (Arc::clone(&core), Arc::clone(&flaky));
+        let url = hub.url();
+        std::thread::spawn(move || {
+            let started = Instant::now();
+            let r = core.link_connect_with(
+                url,
+                "wp-lk4".into(),
+                "test".into(),
+                String::new(),
+                String::new(),
+                Tuning {
+                    connector: flaky as Arc<dyn WsConnector>,
+                    ..Tuning::default()
+                },
+            );
+            (r, started.elapsed())
+        })
+    };
+    wait_until("a few tries", || flaky.connects.load(Ordering::SeqCst) >= 2);
+    let closing = Instant::now();
+    core.link_close();
+    assert!(
+        closing.elapsed() < Duration::from_millis(500),
+        "link_close waited"
+    );
+    let (r, took) = dialer.join().unwrap();
+    assert!(r.is_err(), "{r:?}");
+    assert!(
+        took < Duration::from_secs(10),
+        "stopped, not the whole budget: {took:?}"
+    );
+    assert_eq!(core.link_status().phase, LinkPhase::Idle);
+    let tries = flaky.connects.load(Ordering::SeqCst);
+    std::thread::sleep(Duration::from_secs(2));
+    assert_eq!(
+        flaky.connects.load(Ordering::SeqCst),
+        tries,
+        "no try after the close"
+    );
+}
+
+#[test]
+fn wp_lk4_a_refusal_is_not_tried_again() {
+    let hub = bridge_with(4);
+    let core = DspiCore::new();
+    let flaky = Arc::new(Flaky {
+        fail: usize::MAX,
+        error: || LinkError::HandshakeRefused {
+            status: 403,
+            msg: "forbidden".into(),
+        },
+        connects: Default::default(),
+    });
+    assert!(connect_flaky(&core, &hub, &flaky, 1).is_err());
+    assert_eq!(flaky.connects.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn wp_lk4_a_write_that_needs_the_probe_waits_for_it_and_never_goes_out_unknown() {
+    let hub = bridge_with(4);
+    let core = DspiCore::new();
+    let slow = Arc::new(SlowCommands::default());
+    connect_slow(&core, &hub, &slow);
+    slow.delay_ms.store(30, Ordering::SeqCst);
+    select(&core).unwrap();
+    assert!(
+        core.lock()
+            .conn
+            .as_ref()
+            .is_some_and(|c| c.pending_probe.is_some())
+    );
+    // psychoacoustic bass is a probed feature (the fake firmware lacks it)
+    let set = dspi_proto::registry::by_path("bass.on")
+        .unwrap()
+        .set
+        .unwrap();
+    let r = core.write_param("bass.on".into(), vec![], crate::ParamValue::Bool(true));
+    let features = core
+        .lock()
+        .conn()
+        .unwrap()
+        .session()
+        .unwrap()
+        .capabilities()
+        .features
+        .len();
+    assert!(features > 0, "answered after the probe completed");
+    assert_eq!(
+        r,
+        Err(DspiError::Unsupported),
+        "refused in the core's words"
+    );
+    assert_eq!(
+        ran(&hub, set),
+        0,
+        "nothing the device would reject went out"
+    );
+    // The typed effect setter waits the same way
+    assert_eq!(core.set_psybass_enabled(true), Err(DspiError::Unsupported));
+    assert_eq!(ran(&hub, set), 0);
+    core.link_close();
+}
+
+#[test]
+fn wp_lk4_a_write_that_races_the_probe_is_refused_with_its_reason() {
+    let hub = bridge_with(4);
+    let core = DspiCore::new();
+    let slow = Arc::new(SlowCommands::default());
+    connect_slow(&core, &hub, &slow);
+    slow.delay_ms.store(30, Ordering::SeqCst);
+    select(&core).unwrap();
+    // A path that reaches the session without waiting (as a flow of its own would)
+    let mut inner = core.lock();
+    let session = inner.conn().unwrap().session().unwrap();
+    let e = session
+        .write("bass.on", &[], dspi_proto::value::Value::Bool(true))
+        .unwrap_err();
+    assert!(
+        matches!(e, dspi_session::WriteError::Unprobed { .. }),
+        "{e:?}"
+    );
+    let d = DspiError::from(e);
+    assert!(
+        matches!(&d, DspiError::Link { code, .. } if code == "still_reading"),
+        "{d:?}"
+    );
+    drop(inner);
+    core.link_close();
+}

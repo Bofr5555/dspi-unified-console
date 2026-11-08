@@ -293,9 +293,26 @@ fn wp_c15_a_connect_failure_names_the_cause() {
     drop(hub);
     std::thread::sleep(Duration::from_millis(100));
     let core = DspiCore::new();
+    // WP LK4: the first dial retries (within FIRST_DIAL_BUDGET / FAST here)
+    let started = Instant::now();
     let e = core
-        .link_connect(url, "t".into(), "1".into(), String::new(), String::new())
+        .link_connect_with(
+            url,
+            "t".into(),
+            "1".into(),
+            String::new(),
+            String::new(),
+            Tuning {
+                backoff_divisor: FAST,
+                ..Tuning::default()
+            },
+        )
         .unwrap_err();
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
     assert!(matches!(e, DspiError::Link { .. }), "{e:?}");
     assert_eq!(core.link_status().phase, LinkPhase::Idle);
 }

@@ -126,6 +126,16 @@ pub struct Timing {
     /// unless a ping was answered) turned every Wi-Fi stall of about 15 s into
     /// a reconnect and a full re-read; a truly dead hub is now noticed after
     /// this limit instead of after about 15 s.
+    ///
+    /// WP LK4 (owner decision 2026-11-08), the one exception, on an ESP32
+    /// bridge only (hello `kind` "bridge"): the bridge closes a session whose
+    /// queued frames it could not write for 10 s, and says so only with a
+    /// reset that reaches us when our own TCP retries. So the core
+    /// (`dspi-core` link.rs, `PROBE_AFTER`) dials a new session every 2 s once
+    /// a bridge session has heard nothing for 12 s, and when one connects
+    /// while the old is still silent, the old one, which the bridge has
+    /// already dropped, is closed and the new one takes over. Nothing is
+    /// replayed. Other hubs keep this limit alone.
     pub silence_limit: Duration,
     /// How often the keepalive thread looks at the clock.
     pub keepalive_tick: Duration,

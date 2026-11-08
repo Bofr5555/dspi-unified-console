@@ -867,9 +867,11 @@ impl DspiCore {
 
         let conn_caps = transport.caps();
         let session_id = transport.session_id();
-        let session = Session::new(transport, caps).ok_or(DspiError::InvalidArgument {
+        let mut session = Session::new(transport, caps).ok_or(DspiError::InvalidArgument {
             msg: "the device reported an impossible channel layout".into(),
         })?;
+        // -- WP LK4 -- writes that depend on the rest of the probe wait for it
+        session.set_provisional(pending.is_some());
 
         let mut conn = Connection::new(Box::new(NoTransport), serial.clone(), vid);
         conn.caps = conn_caps;
