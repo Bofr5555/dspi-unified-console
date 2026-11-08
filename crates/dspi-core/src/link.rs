@@ -975,6 +975,19 @@ impl DspiCore {
                 side: Arc::clone(&side) as Arc<dyn SideChannel>,
             })));
         };
+        // The hub's device list says how many channels there are (as the
+        // reference client sizes its poll), so the feed starts before even
+        // the identity read; the image corrects it if it says otherwise.
+        let listed = client
+            .devices()
+            .into_iter()
+            .find(|d| d.handle == u32::from(handle) && d.serial == serial)
+            .and_then(|d| d.inputs.zip(d.outputs))
+            .and_then(|(i, o)| u8::try_from(i.checked_add(o)?).ok())
+            .filter(|n| (1..=crate::consts::MAX_CHANNELS as u8).contains(n));
+        if let Some(n) = listed {
+            on_channels(n);
+        }
         let attached = self.attach_opened_with(
             Box::new(transport),
             serial.clone(),
@@ -1893,7 +1906,13 @@ impl LinkSide {
     fn want_meters(&self, len: u16, now: bool) {
         {
             let mut feed = guard(&self.feed);
-            feed.meter_len = len;
+            if feed.meter_len != len {
+                // Another size than asked before (the image corrects the
+                // device list): subscribe again
+                feed.meter_len = len;
+                feed.meter_hz = None;
+                feed.latest.remove(&METER_SLOT);
+            }
             feed.meter_asked = Some(Instant::now());
             if !now && !std::mem::replace(&mut feed.kicked, true) {
                 let _ = self.tx.send(Msg::Kick);
