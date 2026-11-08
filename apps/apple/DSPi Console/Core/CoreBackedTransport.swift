@@ -321,6 +321,8 @@ final class CoreBackedTransport: DeviceTransport {
                 switch error as? DspiError {
                 case .Denied?: RefusedWrite.handle(.denied, fanout: self.fanout)
                 case .Locked?: RefusedWrite.handle(.locked, fanout: self.fanout)
+                // -- WP SWF4 -- Read-only firmware: put the edit back too.
+                case .ReadOnly?: RefusedWrite.handleReadOnly(fanout: self.fanout)
                 default: break
                 }
                 Self.log.info("SET 0x\(String(format: "%02X", request), privacy: .public) wValue=\(value) failed: \(String(describing: error), privacy: .public)")
@@ -340,6 +342,9 @@ final class CoreBackedTransport: DeviceTransport {
             } catch {
                 let status = CoreBackedTransport.status(for: error)
                 if status == .locked { DeviceLock.notice.post() }
+                // -- WP SWF4 -- A write-as-read (preset load or save, commit)
+                // on read-only firmware: what the caller showed goes back.
+                if case .ReadOnly? = error as? DspiError { RefusedWrite.handleReadOnly(fanout: self.fanout) }
                 return .failure(status)
             }
         }
