@@ -1320,8 +1320,11 @@ fn wp_c15_meters_read_stale_before_the_first_frame() {
     connect_faulty(&core, &hub, "");
     bind(&core);
     let first = core.fetch_status().unwrap();
-    assert!(first.stale, "all zero, and not silence");
-    assert!(first.peaks.iter().all(|p| *p == 0.0));
+    // WP LK4: the poll is subscribed during the select, so a frame may be in
+    // already; before one, the block is all zero and stale, not silence
+    if first.stale {
+        assert!(first.peaks.iter().all(|p| *p == 0.0), "all zero, and not silence");
+    }
     meters_live(&core);
     let live = core.fetch_status().unwrap();
     assert!(!live.stale);
@@ -1653,12 +1656,15 @@ fn wp_c15_band_frames_come_from_polls_on_a_bridge() {
     let (faults, _) = connect_faulty(&core, &hub, "");
     bind(&core);
     let side = bound_side(&core);
+    // WP LK4: the meter poll is subscribed during the select
+    wait_until("the meter poll", || guard(&side.feed).meter_hz.is_some());
+    let before = faults.sent("poll.subscribe");
 
     let mut t = Arc::clone(&side).rta_transport(0b11);
-    assert_eq!(faults.sent("poll.subscribe"), 1);
+    assert_eq!(faults.sent("poll.subscribe"), before + 1);
     let v: Value = {
         let out = guard(&faults.outbound);
-        serde_json::from_str(out.iter().find(|t| t.contains("poll.subscribe")).unwrap()).unwrap()
+        serde_json::from_str(out.iter().rev().find(|t| t.contains("poll.subscribe")).unwrap()).unwrap()
     };
     let polls = v["polls"].as_array().unwrap();
     assert_eq!(polls.len(), 2);
@@ -1669,7 +1675,7 @@ fn wp_c15_band_frames_come_from_polls_on_a_bridge() {
     // Same channels: no more traffic.
     drop(t);
     t = Arc::clone(&side).rta_transport(0b11);
-    assert_eq!(faults.sent("poll.subscribe"), 1);
+    assert_eq!(faults.sent("poll.subscribe"), before + 1);
 
     // The feed answers; the link is not asked for 0x0B or 0x0F.
     inject_band(&faults, 0, 1);
@@ -1713,6 +1719,12 @@ fn wp_c15_a_refused_band_poll_throttles_tunnelled_reads_on_a_bridge() {
     bind(&core);
     let side = bound_side(&core);
     let size = RtaBandFrame::SIZE as u16;
+    // WP LK4: the meter poll is subscribed (or refused) during the select
+    wait_until("the meter poll", || {
+        let feed = guard(&side.feed);
+        feed.meter_hz.is_some() || feed.meter_refused_until.is_some()
+    });
+    let before = faults.sent("poll.subscribe");
 
     let mut t = Arc::clone(&side).rta_transport(0b1);
     assert!(guard(&side.feed).band_refused_until.is_some());
@@ -1730,7 +1742,7 @@ fn wp_c15_a_refused_band_poll_throttles_tunnelled_reads_on_a_bridge() {
         .filter(|e| e.2 == op::REQ_RTA_GET_BANDS)
         .count();
     assert!((2..=4).contains(&reads), "{reads}");
-    assert_eq!(faults.sent("poll.subscribe"), 1, "asked again only later");
+    assert_eq!(faults.sent("poll.subscribe"), before + 1, "asked again only later");
 }
 
 #[test]

@@ -626,9 +626,10 @@ impl DspiCore {
     ///    subscription;
     /// 3. probe whatever the wire format (`probe_any_with_image`, WP S2): one
     ///    bulk read serves the probe and the mirror; `wire` is its read mode;
-    /// 4. probe the extension channel (`ExtState::probe`, WP S3);
-    /// 5. build the [`Session`]; read `GET_PLATFORM` into a fresh mirror
-    ///    ([`state::apply_platform`]: platform, firmware version) and decode
+    /// 4. probe the extension channel (`ExtState::probe`, WP S3); WP LK4: 3
+    ///    and 4 are one `probe_connect`, batched;
+    /// 5. build the [`Session`]; apply the probe's `GET_PLATFORM` reply to a
+    ///    fresh mirror ([`state::apply_platform`]: platform, firmware version) and decode
     ///    the image into it ([`state::decode_bulk`], WP C0). An image of another wire format is
     ///    decoded read-only: `bulk_valid` false, `compat` too old / too new;
     /// 6. install the connection (with a new echo filter, `fresh_image`
@@ -669,10 +670,29 @@ impl DspiCore {
     /// (a Link re-attach keeps the last known state until then).
     pub(crate) fn attach_opened(
         &self,
-        mut transport: Box<dyn Transport>,
+        transport: Box<dyn Transport>,
         serial: String,
         vid: u16,
     ) -> Result<()> {
+        self.attach_opened_with(transport, serial, vid, &mut |_| {}, None)
+            .map(drop)
+    }
+
+    // -- WP LK4 --
+    /// [`DspiCore::attach_opened`], calling `on_channels` with the image's
+    /// channel count as soon as the image is in (before the feature reads),
+    /// and describing the device from `reuse` when it is the same device and
+    /// firmware ([`dspi_session::probe::probe_connect`]). Returns the probe
+    /// for a later re-attach (`None` for an unmappable device or one whose
+    /// extension channel could not be read).
+    pub(crate) fn attach_opened_with(
+        &self,
+        mut transport: Box<dyn Transport>,
+        serial: String,
+        vid: u16,
+        on_channels: &mut dyn FnMut(u8),
+        reuse: Option<&dspi_session::probe::Reusable>,
+    ) -> Result<Option<dspi_session::probe::Reusable>> {
         let listeners = Arc::clone(&self.listeners);
         let waker: dspi_session::notify::Waker =
             Arc::new(move || listeners.notify.call(|l| l.on_notifications()));
@@ -689,21 +709,36 @@ impl DspiCore {
             None => None,
         };
 
-        let (caps, image) = match dspi_session::probe::probe_any_with_image(&mut *transport) {
-            Ok(probed) => probed,
-            Err(e) => {
-                // §1.5 "Unmappable images": a device that identifies itself
-                // but whose image cannot be read is still shown, read-only.
-                let Some(mirror) = device::unmappable_mirror(&mut *transport, &e, vid) else {
-                    return Err(DspiError::from(e));
-                };
-                let mut conn = Connection::new(transport, serial.clone(), vid);
-                conn.notifications = notifications;
-                self.install(conn, mirror, serial, vid);
-                return Ok(());
-            }
+        // WP LK4: one probe for the device and its extension channel, in as
+        // few round trips as the transport allows, handing back GET_PLATFORM's
+        // reply for the mirror (no second read).
+        let mut on_image = |image: &dspi_proto::wire_compat::Normalized| {
+            on_channels(image.packet.header().num_channels);
         };
-        let ext = match ExtState::probe(&mut *transport) {
+        let probed =
+            match dspi_session::probe::probe_connect(&mut *transport, &mut on_image, reuse) {
+                Ok(probed) => probed,
+                Err(e) => {
+                    // §1.5 "Unmappable images": a device that identifies itself
+                    // but whose image cannot be read is still shown, read-only.
+                    let Some(mirror) = device::unmappable_mirror(&mut *transport, &e, vid) else {
+                        return Err(DspiError::from(e));
+                    };
+                    let mut conn = Connection::new(transport, serial.clone(), vid);
+                    conn.notifications = notifications;
+                    self.install(conn, mirror, serial, vid);
+                    return Ok(None);
+                }
+            };
+        let reusable = probed.reusable();
+        let dspi_session::probe::Probed {
+            caps,
+            image,
+            platform,
+            ext,
+            ..
+        } = probed;
+        let ext = match ext {
             Ok(ext) => ext,
             Err(dspi_transport::TransportError::Disconnected) => {
                 return Err(DspiError::Disconnected);
@@ -716,12 +751,18 @@ impl DspiCore {
             }
         };
 
-        // The firmware identity is not in the image: GET_PLATFORM (the probe
-        // keeps only its typed version, not the reply) fills it, before the
-        // decode, as `fetch_all` does, so the mirror is complete and
-        // `fresh_image` may let `fetch_all` skip both reads.
+        // The firmware identity is not in the image: GET_PLATFORM's reply
+        // (the probe's own) fills it, before the decode, as `fetch_all` does,
+        // so the mirror is complete and `fresh_image` may let `fetch_all`
+        // skip both reads.
         let mut mirror = state::default_state();
-        let platform_known = device::read_platform_into(&mut *transport, &mut mirror)?;
+        let platform_known = match state::apply_platform(&platform, &mut mirror) {
+            Ok(()) => true,
+            Err(e) => {
+                log::warn!("GET_PLATFORM reply not applied: {e}");
+                false
+            }
+        };
         state::decode_bulk(image.packet.as_bytes(), &mut mirror).map_err(|e| {
             DspiError::Transfer {
                 msg: format!("the bulk image could not be decoded: {e}"),
@@ -756,7 +797,7 @@ impl DspiCore {
         conn.fresh_image = platform_known;
 
         self.install(conn, mirror, serial, vid);
-        Ok(())
+        Ok(reusable)
     }
 
     /// Tell the Link supervisor the open connection changed, so that it sees a

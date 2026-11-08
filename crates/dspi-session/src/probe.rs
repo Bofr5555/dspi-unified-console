@@ -14,7 +14,9 @@ use dspi_proto::generated::wire::WIRE_FORMAT_VERSION;
 use dspi_proto::packets::{BuildInfo, FirmwareVersion, PlatformInfo};
 use dspi_proto::wire::{BulkPacket, WireHeader};
 use dspi_proto::{Platform, generated};
-use dspi_transport::{InRead, Result, Transport, TransportError, with_busy_retry};
+use dspi_transport::{InRead, Result, Transport, TransportError, TransportKind, with_busy_retry};
+
+use crate::ext_state::ExtState;
 
 /// Everything discovered about a connected device.
 #[derive(Debug, Clone)]
@@ -226,10 +228,134 @@ pub fn probe_any(
 pub fn probe_any_with_image(
     t: &mut dyn Transport,
 ) -> Result<(Capabilities, dspi_proto::wire_compat::Normalized)> {
-    let (info, serial) = identify(t)?;
+    let (info, serial, _) = identify(t)?;
     let image = crate::compat::read_any(t, Some(&info.version))?;
-    let caps = describe(t, info, serial, &image.packet, image.device_version)?;
+    let (caps, _) = describe(t, info, serial, &image.packet, image.device_version, false)?;
     Ok((caps, image))
+}
+
+// -- WP LK4 --
+/// What [`probe_connect`] read.
+pub struct Probed {
+    pub caps: Capabilities,
+    /// The bulk image, mapped onto V32 (as [`probe_any_with_image`]'s).
+    pub image: dspi_proto::wire_compat::Normalized,
+    /// The `GET_PLATFORM` reply, so the mirror needs no second read.
+    pub platform: Vec<u8>,
+    /// The extension channel ([`crate::ext_state::ExtState::probe`]), read in
+    /// the probe's own batches. An error is a transport failure there; the
+    /// channel being absent is the empty state.
+    pub ext: Result<ExtState>,
+    /// The feature reads were skipped: an earlier probe of the same device
+    /// and firmware served ([`Reusable`]).
+    pub reused: bool,
+    key: ProbeKey,
+}
+
+/// What must match for an earlier probe to describe a device: the platform
+/// reply (firmware version), the serial, the build, and the image's header
+/// and wire format. Anything the user can change (names, presets) is not in
+/// the probe's reusable part.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProbeKey {
+    platform: Vec<u8>,
+    serial: String,
+    build: Option<BuildInfo>,
+    header: WireHeader,
+    device_version: u8,
+}
+
+/// A probe kept to describe the same device again without its feature reads
+/// (a DSPi Link re-attach after a lost session): see [`probe_connect`].
+#[derive(Debug, Clone)]
+pub struct Reusable {
+    key: ProbeKey,
+    caps: Capabilities,
+    ext: ExtState,
+}
+
+impl Probed {
+    /// This probe, to pass to a later [`probe_connect`] of the same device.
+    /// `None` when the extension channel could not be read.
+    pub fn reusable(&self) -> Option<Reusable> {
+        Some(Reusable {
+            key: self.key.clone(),
+            caps: self.caps.clone(),
+            ext: self.ext.as_ref().ok()?.clone(),
+        })
+    }
+}
+
+/// The connect's probe: what [`probe_any_with_image`] reads plus the
+/// extension channel, in as few round trips as the transport allows (over
+/// DSPi Link up to the hub's `max_inflight` reads at once; elsewhere one at a
+/// time, as before). `on_image` runs once the image is in, before the
+/// feature reads: the channel count is known from then on (the core starts
+/// the Link meter feed there).
+///
+/// With `reuse`, the build info and active preset are read with the identity;
+/// when the platform reply, serial, build and the image's header all match
+/// `reuse`'s, its features, caps and extension channel describe the device and
+/// nothing more is read (the channel names come from the new image). Anything
+/// that differs means a full probe.
+pub fn probe_connect(
+    t: &mut dyn Transport,
+    on_image: &mut dyn FnMut(&dspi_proto::wire_compat::Normalized),
+    reuse: Option<&Reusable>,
+) -> Result<Probed> {
+    // The build and the active preset ride along with the identity
+    let extra = if reuse.is_some() {
+        vec![
+            InRead::exact(op::REQ_GET_BUILD_INFO, 0, BuildInfo::SIZE as u16),
+            InRead::exact(op::REQ_PRESET_GET_ACTIVE, 0, 1),
+        ]
+    } else {
+        Vec::new()
+    };
+    let (info, serial, platform, extra) = identify_with(t, &extra)?;
+    let again = reuse.filter(|r| r.key.platform == platform && r.key.serial == serial).and_then(|r| {
+        let mut answers = extra.into_iter();
+        let build = answers.next().and_then(Result::ok).and_then(|d| BuildInfo::decode(&d).ok());
+        let active = answers.next().and_then(Result::ok).and_then(|d| d.first().copied());
+        (r.key.build == build).then_some((r, active))
+    });
+    let image = crate::compat::read_any(t, Some(&info.version))?;
+    on_image(&image);
+    let header = *image.packet.header();
+    if let Some((r, active_preset)) = again
+        && r.key.header == header
+        && r.key.device_version == image.device_version
+    {
+        let caps = Capabilities {
+            channels: channels_of(&image.packet)?,
+            active_preset,
+            ..r.caps.clone()
+        };
+        return Ok(Probed {
+            caps,
+            image,
+            platform,
+            ext: Ok(r.ext.clone()),
+            reused: true,
+            key: r.key.clone(),
+        });
+    }
+    let (caps, ext) = describe(t, info, serial.clone(), &image.packet, image.device_version, true)?;
+    let key = ProbeKey {
+        platform: platform.clone(),
+        serial,
+        build: caps.build_info.clone(),
+        header,
+        device_version: image.device_version,
+    };
+    Ok(Probed {
+        caps,
+        image,
+        platform,
+        ext: ext.unwrap_or_else(|| Ok(ExtState::default())),
+        reused: false,
+        key,
+    })
 }
 
 /// Ask the device what it is and what it can do.
@@ -237,79 +363,104 @@ pub fn probe_any_with_image(
 /// Strict: a device on another wire format is refused with a message that
 /// names its firmware ([`refusal`]). [`probe_any`] describes it instead.
 pub fn probe(t: &mut dyn Transport) -> Result<Capabilities> {
-    let (info, serial) = identify(t)?;
+    let (info, serial, _) = identify(t)?;
     let bulk = read_bulk_from(t, Some(&info.version))?;
     let wire = bulk.header().format_version;
-    describe(t, info, serial, &bulk, wire)
+    describe(t, info, serial, &bulk, wire, false).map(|(caps, _)| caps)
 }
 
-/// The liveness read and the serial: what GET_PLATFORM says, and the serial
-/// as the device reports it (empty if it does not).
-fn identify(t: &mut dyn Transport) -> Result<(PlatformInfo, String)> {
+/// The liveness read and the serial: what GET_PLATFORM says, the serial as
+/// the device reports it (empty if it does not), and GET_PLATFORM's reply.
+fn identify(t: &mut dyn Transport) -> Result<(PlatformInfo, String, Vec<u8>)> {
+    identify_with(t, &[]).map(|(info, serial, platform, _)| (info, serial, platform))
+}
+
+/// What [`identify_with`] read: the platform, the serial, GET_PLATFORM's
+/// reply and the answers to the extra reads.
+type Identity = (PlatformInfo, String, Vec<u8>, Vec<Result<Vec<u8>>>);
+
+/// [`identify`], and the answers to `extra` reads sent along (over DSPi Link
+/// in the same round trip; elsewhere after the identity).
+fn identify_with(
+    t: &mut dyn Transport,
+    extra: &[InRead],
+) -> Result<Identity> {
     // GET_PLATFORM is the canonical liveness read; do it first so a dead or
     // wrongly-bound device fails here with a clear message rather than midway
     // through a 6136-byte transfer. Ask for 7 bytes and take what comes: older
     // firmware answers 4 or 6, and the decode follows the spec's fallback
     // rule (firmware_versioning_spec.md:109).
     let kind = t.caps().kind;
-    let plat = with_busy_retry(
-        kind,
-        || t.control_in_upto(op::REQ_GET_PLATFORM, 0, PlatformInfo::REQUEST_LEN as u16),
-        op::REQ_GET_PLATFORM,
-    )?;
+    let platform_read = InRead::upto(op::REQ_GET_PLATFORM, 0, PlatformInfo::REQUEST_LEN as u16);
+    let (plat, serial_raw, extra) = if kind == TransportKind::Link {
+        // WP LK4: all in one round trip. The batch retries a busy answer
+        // itself, and a dead link fails them all quickly.
+        let mut reads = vec![platform_read, InRead::exact(op::REQ_GET_SERIAL, 0, 16)];
+        reads.extend_from_slice(extra);
+        let mut answers = t.control_in_batch(&reads).into_iter();
+        let plat = answers.next().unwrap_or(Err(TransportError::Disconnected))?;
+        let serial = answers.next().and_then(Result::ok).unwrap_or_default();
+        (plat, serial, answers.collect())
+    } else {
+        let r = platform_read;
+        let plat = with_busy_retry(kind, || t.control_in_upto(r.opcode, r.value, r.len), op::REQ_GET_PLATFORM)?;
+        let serial = t.control_in(op::REQ_GET_SERIAL, 0, 16).unwrap_or_default();
+        let extra = if extra.is_empty() { Vec::new() } else { t.control_in_batch(extra) };
+        (plat, serial, extra)
+    };
     let info = PlatformInfo::decode(&plat)
         .map_err(|e| TransportError::Usb(format!("the device could not identify itself: {e}")))?;
-
-    let serial_raw = t.control_in(op::REQ_GET_SERIAL, 0, 16).unwrap_or_default();
     let serial = String::from_utf8_lossy(&serial_raw)
         .trim_end_matches('\0')
         .trim()
         .to_string();
-    Ok((info, serial))
+    Ok((info, serial, plat, extra))
 }
 
 /// Everything after the bulk read: the channel model from `bulk` (a V32
 /// layout, mapped or not), then the per-feature probes. `wire_format` is the
-/// device's own wire format.
+/// device's own wire format. With `ext`, the extension channel is read in the
+/// same batches ([`probe_connect`]).
 fn describe(
     t: &mut dyn Transport,
     info: PlatformInfo,
     serial: String,
     bulk: &BulkPacket,
     wire_format: u8,
-) -> Result<Capabilities> {
+    ext: bool,
+) -> Result<(Capabilities, Option<Result<ExtState>>)> {
     let platform = info.platform();
     let firmware_version = info.version;
     let h: &WireHeader = bulk.header();
 
-    let map = bulk
-        .channel_map()
-        .ok_or_else(|| TransportError::Usb("device reported an impossible channel map".into()))?;
-    let map = map.with_names(channel_names(bulk, h.num_channels));
-
-    let channels = (0..h.num_channels)
-        .map(|i| ChannelInfo {
-            index: i,
-            name: map.label(i),
-            slug: map.slug(i),
-            is_output: map.is_output(i),
-        })
-        .collect();
+    let channels = channels_of(bulk)?;
 
     // WP LK2: every read that needs no earlier answer goes out in one batch,
     // pipelined over DSPi Link (one at a time elsewhere): the feature probes,
     // the control-surface and generator caps headers, the build info, the
     // active preset and the first band; then what depends on them.
+    // WP LK4: also the band search's first round, the whole control-surface
+    // caps header in one read, and the extension list; then one more batch
+    // for everything that depends on those answers.
     let mut reads = feature_reads();
     let first = reads.len();
     reads.extend([
-        InRead::exact(op::REQ_GET_CS_CAPS, 0xFFFF, 4),
+        InRead::upto(op::REQ_GET_CS_CAPS, 0xFFFF, CS_CAPS_MAX),
         InRead::exact(op::REQ_SIGGEN_GET_CAPS, 0xFFFF, 8),
         InRead::exact(op::REQ_GET_BUILD_INFO, 0, BuildInfo::SIZE as u16),
         InRead::exact(op::REQ_PRESET_GET_ACTIVE, 0, 1),
     ]);
-    if h.max_bands != 0 {
+    let mut bands = BandSearch::new(h.max_bands);
+    let round1 = if h.max_bands != 0 {
         reads.push(band_read(0));
+        let points = bands.points();
+        reads.extend(points.iter().map(|b| band_read(*b)));
+        points
+    } else {
+        Vec::new()
+    };
+    if ext {
+        reads.push(ExtState::list_read());
     }
     let mut answers = t.control_in_batch(&reads).into_iter();
     let features = features_from(answers.by_ref().take(first));
@@ -320,31 +471,164 @@ fn describe(
     let build_info = next().ok().and_then(|d| BuildInfo::decode(&d).ok());
     let active_preset = next().ok().and_then(|d| d.first().copied());
     let band0 = h.max_bands != 0 && next().is_ok();
-    let cs = cs_caps_after(t, cs_header);
-    let siggen = siggen_caps_after(t, siggen_header);
+    let round1: Vec<(u8, bool)> = round1.into_iter().map(|b| (b, next().is_ok())).collect();
+    let ext_list = ext.then(&mut next);
+    if band0 {
+        bands.answer(&round1);
+    }
 
-    Ok(Capabilities {
-        serial: if serial.is_empty() {
-            t.descriptor().serial.clone()
-        } else {
-            serial
+    // The second batch: what the answers above decide.
+    let cs = cs_caps_from(cs_header);
+    let display = cs
+        .as_ref()
+        .is_some_and(|c| c.caps_version >= 10)
+        .then(|| InRead::exact(op::REQ_GET_CS_DISPLAY_CFG, 0, 16));
+    let siggen = siggen_header_from(siggen_header);
+    let descriptors = siggen.as_ref().map_or(0, |s| s.type_count);
+    let round2 = if band0 { bands.points() } else { Vec::new() };
+    let ext_reads = ext_list.as_ref().map(ExtState::follow_up).unwrap_or_default();
+    let mut reads: Vec<InRead> = (0..u16::from(descriptors))
+        .map(|i| InRead::exact(op::REQ_SIGGEN_GET_CAPS, i, dspi_proto::packets::SiggenTypeDesc::SIZE as u16))
+        .collect();
+    reads.extend(display);
+    reads.extend(round2.iter().map(|b| band_read(*b)));
+    reads.extend(ext_reads.iter().copied());
+    let mut answers = if reads.is_empty() { Vec::new() } else { t.control_in_batch(&reads) }.into_iter();
+    let mut next = || answers.next().unwrap_or(Err(TransportError::Disconnected));
+    let types = (0..descriptors)
+        .filter_map(|_| dspi_proto::packets::SiggenTypeDesc::decode(&next().ok()?).ok())
+        .collect();
+    let siggen = siggen.map(|s| SiggenCaps { types, ..s });
+    let cs = cs.map(|mut c| {
+        if display.is_some() {
+            // The display page limit lives in the display config reply, not
+            // the caps header (control_surfaces.h, REQ_GET_CS_DISPLAY_CFG: 16
+            // bytes with `max_pages` and `model_count` ahead of the 12-byte
+            // config).
+            (c.max_pages, c.display_models) = next()
+                .ok()
+                .and_then(|d| dspi_proto::packets::CsDisplayCfgReply::decode(&d).ok())
+                .map(|r| (r.max_pages, r.model_count))
+                .unwrap_or((0, 0));
+        }
+        c
+    });
+    let round2: Vec<(u8, bool)> = round2.into_iter().map(|b| (b, next().is_ok())).collect();
+    bands.answer(&round2);
+    let ext = ext_list.map(|list| ExtState::from_answers(list, ext_reads.iter().map(|_| next()).collect()));
+    let max_bands = if band0 { bands.finish(t) } else { h.max_bands };
+
+    Ok((
+        Capabilities {
+            serial: if serial.is_empty() {
+                t.descriptor().serial.clone()
+            } else {
+                serial
+            },
+            platform,
+            firmware: firmware_version.to_string(),
+            firmware_version,
+            build_info,
+            wire_format,
+            num_channels: h.num_channels,
+            num_inputs: h.num_input_channels,
+            num_outputs: h.num_output_channels,
+            max_bands,
+            band_storage: h.max_bands,
+            channels,
+            features,
+            cs,
+            siggen,
+            active_preset,
         },
-        platform,
-        firmware: firmware_version.to_string(),
-        firmware_version,
-        build_info,
-        wire_format,
-        num_channels: h.num_channels,
-        num_inputs: h.num_input_channels,
-        num_outputs: h.num_output_channels,
-        max_bands: band_count_after(t, h.max_bands, band0),
-        band_storage: h.max_bands,
-        channels,
-        features,
-        cs,
-        siggen,
-        active_preset,
-    })
+        ext,
+    ))
+}
+
+/// The channel model from the image, names included.
+fn channels_of(bulk: &BulkPacket) -> Result<Vec<ChannelInfo>> {
+    let h = bulk.header();
+    let map = bulk
+        .channel_map()
+        .ok_or_else(|| TransportError::Usb("device reported an impossible channel map".into()))?;
+    let map = map.with_names(channel_names(bulk, h.num_channels));
+    Ok((0..h.num_channels)
+        .map(|i| ChannelInfo {
+            index: i,
+            name: map.label(i),
+            slug: map.slug(i),
+            is_output: map.is_output(i),
+        })
+        .collect())
+}
+
+/// `wLength` of the control-surface caps header read: room for the header
+/// with a type table of 26 rows (52 bytes at caps v18); the firmware answers
+/// what it has (`vendor_send_response`, cut to `wLength`).
+const CS_CAPS_MAX: u16 = 128;
+
+/// Bands asked at once in each round of the band search.
+const BAND_FANOUT: u16 = 3;
+
+/// WP LK4: the search for the first dead band ([`probe_band_count`]), a few
+/// bands per round instead of one, so that over a pipelined link it takes two
+/// rounds (the first inside the probe's main batch) instead of four serial
+/// reads. Invariant: `lo` is live, `hi` is not.
+struct BandSearch {
+    lo: u8,
+    hi: u8,
+}
+
+impl BandSearch {
+    fn new(storage: u8) -> Self {
+        Self { lo: 0, hi: storage }
+    }
+
+    /// The bands to ask next: every one left when that is few enough, else
+    /// [`BAND_FANOUT`] that split the interval evenly.
+    fn points(&self) -> Vec<u8> {
+        let (lo, hi) = (u16::from(self.lo), u16::from(self.hi));
+        if hi <= lo + 1 {
+            return Vec::new();
+        }
+        let gap = hi - lo;
+        let mut points: Vec<u16> = if gap - 1 <= BAND_FANOUT {
+            (lo + 1..hi).collect()
+        } else {
+            (1..=BAND_FANOUT).map(|k| lo + gap * k / (BAND_FANOUT + 1)).collect()
+        };
+        points.retain(|p| *p > lo && *p < hi);
+        points.dedup();
+        points.into_iter().filter_map(|p| u8::try_from(p).ok()).collect()
+    }
+
+    /// Narrow by `answers` (band, answered): the highest live band and the
+    /// lowest dead one above it. An answer that contradicts the invariant
+    /// (a dead band below a live one) is ignored.
+    fn answer(&mut self, answers: &[(u8, bool)]) {
+        for &(band, live) in answers {
+            if live && band > self.lo && band < self.hi {
+                self.lo = band;
+            }
+        }
+        for &(band, live) in answers {
+            if !live && band > self.lo && band < self.hi {
+                self.hi = band;
+            }
+        }
+    }
+
+    /// The count: what is left of the interval is searched one read at a
+    /// time (only for band arrays far deeper than today's).
+    fn finish(mut self, t: &mut dyn Transport) -> u8 {
+        while self.hi - self.lo > 1 {
+            let mid = self.lo + (self.hi - self.lo) / 2;
+            let r = band_read(mid);
+            let live = t.control_in(r.opcode, r.value, r.len).is_ok();
+            self.answer(&[(mid, live)]);
+        }
+        self.hi
+    }
 }
 
 /// How many PEQ bands the firmware will actually accept per channel.
@@ -357,47 +641,36 @@ fn describe(
 ///
 /// No opcode reports the count, so it is measured: `GET_EQ_PARAM` answers for a
 /// live band and stalls for a reserved one, and that boundary is monotonic, so
-/// a binary search finds it in four transfers. Measuring rather than hardcoding
+/// a search finds it in a few transfers (WP LK4: three bands per round, two
+/// rounds for today's 12-deep array, the first inside the probe's main batch). Measuring rather than hardcoding
 /// means a firmware that grows to 20 bands is picked up without a code change.
 ///
 /// Deliberately not wrapped in `with_busy_retry`: here a stall is the answer,
 /// and retrying it would cost 600 ms per probe.
 #[cfg(test)]
 fn probe_band_count(t: &mut dyn Transport, storage: u8) -> u8 {
-    let band0 = storage != 0 && {
-        let r = band_read(0);
+    let live = |t: &mut dyn Transport, band: u8| {
+        let r = band_read(band);
         t.control_in(r.opcode, r.value, r.len).is_ok()
     };
-    band_count_after(t, storage, band0)
+    // If even band 0 will not answer, the device is not in a state to be
+    // measured. Report the header's depth rather than claiming it has no EQ.
+    if storage == 0 || !live(t, 0) {
+        return storage;
+    }
+    // The probe's two rounds, one read at a time here
+    let mut search = BandSearch::new(storage);
+    for _ in 0..2 {
+        let answers: Vec<(u8, bool)> = search.points().into_iter().map(|b| (b, live(t, b))).collect();
+        search.answer(&answers);
+    }
+    search.finish(t)
 }
 
 /// The read of `band`'s filter type on channel 0: any live band answers,
 /// reserved ones stall.
 fn band_read(band: u8) -> InRead {
     InRead::exact(op::REQ_GET_EQ_PARAM, (band as u16) << 3, 4)
-}
-
-/// [`probe_band_count`] once band 0's answer is known (`band0`: it answered).
-fn band_count_after(t: &mut dyn Transport, storage: u8, band0: bool) -> u8 {
-    let live = |t: &mut dyn Transport, band: u8| {
-        let r = band_read(band);
-        t.control_in(r.opcode, r.value, r.len).is_ok()
-    };
-
-    // If even band 0 will not answer, the device is not in a state to be
-    // measured. Report the header's depth rather than claiming it has no EQ.
-    if storage == 0 || !band0 {
-        return storage;
-    }
-
-    // Invariant: `lo` is live, `hi` is not. `storage` is past the array, so it
-    // is dead by construction, and the count is the first dead index.
-    let (mut lo, mut hi) = (0u8, storage);
-    while hi - lo > 1 {
-        let mid = lo + (hi - lo) / 2;
-        if live(t, mid) { lo = mid } else { hi = mid }
-    }
-    hi
 }
 
 /// Channel names live in the bulk packet, so they cost nothing extra to read.
@@ -522,8 +795,9 @@ fn probe_cs_caps(t: &mut dyn Transport) -> Option<ControlSurfaceCaps> {
     cs_caps_after(t, header)
 }
 
-/// The control-surface caps once the 4-byte header's read is answered.
-fn cs_caps_after(t: &mut dyn Transport, header: Result<Vec<u8>>) -> Option<ControlSurfaceCaps> {
+/// The control-surface caps from the header read (wValue 0xFFFF, up to
+/// [`CS_CAPS_MAX`] bytes); the display page limit is not filled in here.
+fn cs_caps_from(header: Result<Vec<u8>>) -> Option<ControlSurfaceCaps> {
     let d = header.ok()?;
     let caps_version = *d.first()?;
     let max_bindings = *d.get(1)?;
@@ -535,29 +809,15 @@ fn cs_caps_after(t: &mut dyn Transport, header: Result<Vec<u8>>) -> Option<Contr
     // maxima, at `4 + 4*type_count` (control_surfaces.h:644-651). The table grew
     // by a row at caps v10 when CS_TYPE_DISPLAY arrived, taking the header from
     // 40 bytes to 44, and by two at v18 for the auxiliary outputs, taking it to
-    // 52, so a fixed offset here would read the wrong four bytes.
+    // 52, so a fixed offset here would read the wrong four bytes. A reply
+    // shorter than that has no table to trust (as a short exact read before).
     let post_table = 4 + 4 * type_count as usize;
     let full_len = post_table + 4;
-    let full = t
-        .control_in(op::REQ_GET_CS_CAPS, 0xFFFF, full_len as u16)
-        .unwrap_or_default();
+    let full = d.get(..full_len).unwrap_or_default();
     let at = |i: usize| full.get(post_table + i).copied().unwrap_or(0);
-    let types = dspi_proto::packets::CsCapsHeader::decode(&full)
+    let types = dspi_proto::packets::CsCapsHeader::decode(full)
         .map(|h| h.types)
         .unwrap_or_default();
-
-    // The display page limit lives in the display config reply, not the caps
-    // header (control_surfaces.h, REQ_GET_CS_DISPLAY_CFG: 16 bytes with
-    // `max_pages` and `model_count` ahead of the 12-byte config).
-    let (max_pages, display_models) = if caps_version >= 10 {
-        t.control_in(op::REQ_GET_CS_DISPLAY_CFG, 0, 16)
-            .ok()
-            .and_then(|d| dspi_proto::packets::CsDisplayCfgReply::decode(&d).ok())
-            .map(|r| (r.max_pages, r.model_count))
-            .unwrap_or((0, 0))
-    } else {
-        (0, 0)
-    };
 
     Some(ControlSurfaceCaps {
         caps_version,
@@ -568,41 +828,41 @@ fn cs_caps_after(t: &mut dyn Transport, header: Result<Vec<u8>>) -> Option<Contr
         max_groups: at(1),
         max_macros: at(2),
         max_macro_steps: at(3),
-        max_pages,
-        display_models,
+        max_pages: 0,
+        display_models: 0,
         types,
     })
 }
 
-/// The generator's caps once the 8-byte header's read is answered.
-fn siggen_caps_after(t: &mut dyn Transport, header: Result<Vec<u8>>) -> Option<SiggenCaps> {
+#[cfg(test)]
+fn cs_caps_after(t: &mut dyn Transport, header: Result<Vec<u8>>) -> Option<ControlSurfaceCaps> {
+    let header = header.and_then(|_| t.control_in_upto(op::REQ_GET_CS_CAPS, 0xFFFF, CS_CAPS_MAX));
+    let mut c = cs_caps_from(header)?;
+    if c.caps_version >= 10 {
+        (c.max_pages, c.display_models) = t
+            .control_in(op::REQ_GET_CS_DISPLAY_CFG, 0, 16)
+            .ok()
+            .and_then(|d| dspi_proto::packets::CsDisplayCfgReply::decode(&d).ok())
+            .map(|r| (r.max_pages, r.model_count))
+            .unwrap_or((0, 0));
+    }
+    Some(c)
+}
+
+/// The generator's caps from the 8-byte header's answer, without the
+/// per-type descriptors (each its own transfer, indexed by wValue; read in
+/// the probe's second batch, where one that fails to read is skipped rather
+/// than failing the probe, so a device with an odd table still gets a
+/// generator panel).
+fn siggen_header_from(header: Result<Vec<u8>>) -> Option<SiggenCaps> {
     let d = header.ok()?;
-    let type_count = *d.get(1)?;
-    // Each descriptor is its own transfer, indexed by wValue; a descriptor
-    // that fails to read is skipped rather than failing the probe, so a
-    // device with an odd table still gets a generator panel.
-    // WP LK2: one batch, pipelined over DSPi Link
-    let reads: Vec<InRead> = (0..type_count as u16)
-        .map(|i| {
-            InRead::exact(
-                op::REQ_SIGGEN_GET_CAPS,
-                i,
-                dspi_proto::packets::SiggenTypeDesc::SIZE as u16,
-            )
-        })
-        .collect();
-    let types = t
-        .control_in_batch(&reads)
-        .into_iter()
-        .filter_map(|b| dspi_proto::packets::SiggenTypeDesc::decode(&b.ok()?).ok())
-        .collect();
     Some(SiggenCaps {
         version: *d.first()?,
-        type_count,
+        type_count: *d.get(1)?,
         output_channels: *d.get(2)?,
         multitone_max: *d.get(3)?,
         valid_channel_mask: u16::from_le_bytes([*d.get(4)?, *d.get(5)?]),
-        types,
+        types: Vec::new(),
     })
 }
 
@@ -671,14 +931,16 @@ mod tests {
         }
     }
 
-    /// Four transfers, not twelve: the probe runs on every connect, and a linear
-    /// walk would put the cost back into startup.
+    /// Six transfers in two rounds, not twelve: the probe runs on every
+    /// connect, and a linear walk would put the cost back into startup. (WP
+    /// LK4: three per round instead of a binary search's one, so a pipelined
+    /// link pays two round trips, the first shared with the feature probes.)
     #[test]
     fn the_probe_is_a_binary_search() {
         let mut t = BandLimited::new(10);
         probe_band_count(&mut t, 12);
         assert!(
-            t.asked.len() <= 5,
+            t.asked.len() <= 6,
             "took {} transfers: {:?}",
             t.asked.len(),
             t.asked

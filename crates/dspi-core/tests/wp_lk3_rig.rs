@@ -10,7 +10,9 @@
 //!       --features link --test wp_lk3_rig -- --ignored --nocapture
 //!
 //! - `LK3_MODE`: `seq` (0.12.0: the meter loop starts after every start-up
-//!   read) or `android` (LK2: the meter loop runs from `link_select_device`).
+//!   read), `android` (LK2: the meter loop runs from `link_select_device`'s
+//!   return) or `lk4` (WP LK4: the meter loop runs from `link_select_device`'s
+//!   start, as the Android app does since LK4; select runs on the FFI thread).
 //! - `LK3_SECONDS` (60): how long the meters run after the first one.
 //! - `LK3_REREAD_S` (0 = never): a `fetch_all` re-read every this many seconds
 //!   while the meters run, on its own thread as Android's FFI thread.
@@ -84,6 +86,13 @@ struct Run {
 }
 
 fn connect(core: &DspiCore, url: &str, name: &str) -> Result<(), String> {
+    let (handle, serial) = connect_only(core, url, name)?;
+    core.link_select_device(handle, serial)
+        .map_err(|e| format!("select: {e}"))
+}
+
+/// `link_connect` and the first device of the hub's list.
+fn connect_only(core: &DspiCore, url: &str, name: &str) -> Result<(u32, String), String> {
     core.link_connect(
         url.to_owned(),
         name.to_owned(),
@@ -100,23 +109,39 @@ fn connect(core: &DspiCore, url: &str, name: &str) -> Result<(), String> {
         std::thread::sleep(Duration::from_millis(10));
     }
     let d = core.link_devices().remove(0);
-    core.link_select_device(d.handle, d.serial)
-        .map_err(|e| format!("select: {e}"))
+    Ok((d.handle, d.serial))
 }
 
 /// One app: connect, start-up reads and meters in `mode`'s order, then the
 /// meters for `seconds` with re-reads, counting freezes and drops.
-fn one_client(id: usize, url: &str, android: bool, seconds: u64, reread_s: u64, chain: u64) -> Run {
+fn one_client(id: usize, url: &str, mode: &str, seconds: u64, reread_s: u64, chain: u64) -> Run {
+    let android = mode != "seq";
+    // WP LK4: select on the FFI thread, the meters from its start
+    let early = mode == "lk4";
     let mut run = Run::default();
     let core = DspiCore::new();
     let start = Instant::now();
-    if let Err(e) = connect(&core, url, &format!("lk3 rust c{id}")) {
-        run.failed = Some(e);
-        return run;
+    let mut device = None;
+    if early {
+        match connect_only(&core, url, &format!("lk3 rust c{id}")) {
+            Ok(d) => device = Some(d),
+            Err(e) => {
+                run.failed = Some(e);
+                return run;
+            }
+        }
+        println!("LK3 c{id} t={:.2}s connected", secs(start));
+    } else {
+        if let Err(e) = connect(&core, url, &format!("lk3 rust c{id}")) {
+            run.failed = Some(e);
+            return run;
+        }
+        run.select_at = Some(secs(start));
+        println!("LK3 c{id} t={:.2}s selected", secs(start));
     }
     let selected = Instant::now();
-    run.select_at = Some(secs(start));
-    println!("LK3 c{id} t={:.2}s selected", secs(start));
+    let select_at = std::sync::Mutex::new(run.select_at);
+    let select_failed = std::sync::Mutex::new(None::<String>);
     let reads_done = AtomicBool::new(false);
     let reads_done_at = std::sync::Mutex::new(None::<f64>);
     let stop = AtomicBool::new(false);
@@ -126,6 +151,19 @@ fn one_client(id: usize, url: &str, android: bool, seconds: u64, reread_s: u64, 
         // then the periodic re-reads.
         let ffi = scope.spawn(|| {
             let mut times = Vec::new();
+            if let Some((handle, serial)) = device.clone() {
+                if let Err(e) = core.link_select_device(handle, serial) {
+                    if let Ok(mut f) = select_failed.lock() {
+                        *f = Some(format!("select: {e}"));
+                    }
+                    stop.store(true, Ordering::SeqCst);
+                    return times;
+                }
+                if let Ok(mut at) = select_at.lock() {
+                    *at = Some(secs(start));
+                }
+                println!("LK3 c{id} t={:.2}s selected", secs(start));
+            }
             startup_reads(&core, chain);
             reads_done.store(true, Ordering::SeqCst);
             if let Ok(mut at) = reads_done_at.lock() {
@@ -157,7 +195,9 @@ fn one_client(id: usize, url: &str, android: bool, seconds: u64, reread_s: u64, 
         // thread of its own (Android asks `isConnected` on its FFI thread
         // without waiting); it may block behind the start-up reads.
         let watcher = scope.spawn(|| {
-            let (mut drops, mut rebinds, mut was_bound) = (0u32, 0u32, true);
+            // In lk4 order select is still running: the first bind is not a re-bind
+            let (mut drops, mut rebinds, mut was_bound) = (0u32, 0u32, !early);
+            let mut first_bind = early;
             while !stop.load(Ordering::SeqCst) {
                 std::thread::sleep(Duration::from_millis(200));
                 let st = core.link_status();
@@ -171,6 +211,10 @@ fn one_client(id: usize, url: &str, android: bool, seconds: u64, reread_s: u64, 
                         st.close_code,
                         st.close_reason
                     );
+                }
+                if !was_bound && bound && std::mem::take(&mut first_bind) {
+                    was_bound = true;
+                    continue;
                 }
                 if !was_bound && bound {
                     rebinds += 1;
@@ -188,6 +232,9 @@ fn one_client(id: usize, url: &str, android: bool, seconds: u64, reread_s: u64, 
         loop {
             std::thread::sleep(STATUS_POLL);
             let now = Instant::now();
+            if stop.load(Ordering::SeqCst) {
+                break;
+            }
             if run.first_meter.is_none() && start.elapsed() > LIMIT {
                 run.failed = Some(format!("no live meter within {LIMIT:?}"));
                 break;
@@ -210,7 +257,11 @@ fn one_client(id: usize, url: &str, android: bool, seconds: u64, reread_s: u64, 
             if got.is_ok_and(|s| !s.stale) {
                 if run.first_meter.is_none() {
                     run.first_meter = Some(secs(start));
-                    run.after_select = Some(selected.elapsed().as_secs_f64());
+                    // In lk4 order: from the start of select (negative: before it returned)
+                    run.after_select = Some(match select_at.lock().ok().and_then(|a| *a) {
+                        Some(at) if early => secs(start) - at,
+                        _ => selected.elapsed().as_secs_f64(),
+                    });
                     println!(
                         "LK3 c{id} t={:.2}s first live meter (start-up reads still running: {})",
                         secs(start),
@@ -238,6 +289,10 @@ fn one_client(id: usize, url: &str, android: bool, seconds: u64, reread_s: u64, 
         (run.drops, run.rebinds) = watcher.join().unwrap_or_default();
     });
     run.reads_done = reads_done_at.lock().ok().and_then(|at| *at);
+    run.select_at = select_at.lock().ok().and_then(|at| *at);
+    if let Some(e) = select_failed.lock().ok().and_then(|f| f.clone()) {
+        run.failed = Some(e);
+    }
     for (d, ok) in reread_times {
         run.reread += 1;
         if ok {
@@ -257,7 +312,7 @@ fn one_client(id: usize, url: &str, android: bool, seconds: u64, reread_s: u64, 
 #[ignore = "measurement against the emulated bridge (WP LK3, tools/esp-rig)"]
 fn wp_lk3_meters_against_the_emulated_bridge() {
     let url = std::env::var("LK3_URL").unwrap_or_else(|_| "ws://10.77.0.2:11915/dspi/v1".into());
-    let android = std::env::var("LK3_MODE").is_ok_and(|m| m == "android");
+    let mode = std::env::var("LK3_MODE").unwrap_or_else(|_| "seq".into());
     let seconds = env_num("LK3_SECONDS", 60);
     let reread_s = env_num("LK3_REREAD_S", 0);
     let clients = env_num("LK3_CLIENTS", 1).max(1) as usize;
@@ -266,7 +321,8 @@ fn wp_lk3_meters_against_the_emulated_bridge() {
         let handles: Vec<_> = (1..=clients)
             .map(|id| {
                 let url = url.clone();
-                scope.spawn(move || one_client(id, &url, android, seconds, reread_s, chain))
+                let mode = mode.clone();
+                scope.spawn(move || one_client(id, &url, &mode, seconds, reread_s, chain))
             })
             .collect();
         handles
@@ -280,7 +336,7 @@ fn wp_lk3_meters_against_the_emulated_bridge() {
             "LK3 summary client=rust mode={} c={} first_meter={} after_select={} select={} reads_done={} \
              freezes={} longest_gap_s={:.1} drops={} rebinds={} rereads={} reread_failed={} reread_max_s={:.2} \
              final_read_failed={} failed={}",
-            if android { "android" } else { "seq" },
+            mode,
             i + 1,
             f(r.first_meter),
             f(r.after_select),

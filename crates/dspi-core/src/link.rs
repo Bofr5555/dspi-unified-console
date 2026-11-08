@@ -266,6 +266,10 @@ struct Bound {
     /// flap, however quick: the hub ended this session's polls.
     offline_base: u64,
     side: Option<Arc<LinkSide>>,
+    // -- WP LK4 --
+    /// The probe of its last attach, to describe it again on a re-attach
+    /// when it is the same device and firmware (no feature reads).
+    probe: Option<dspi_session::probe::Reusable>,
 }
 
 /// A planned try: how many have failed, and when the next one is due.
@@ -620,8 +624,13 @@ impl DspiCore {
                 seen_offline: false,
                 offline_base: 0,
                 side: None,
+                probe: None,
             })
         };
+        // -- WP LK4 -- before the open: the new side subscribes the meter
+        // poll during it, and an old side of the same handle unsubscribes
+        // its slot when dropped
+        drop(_replaced);
         let opened = self.open_bound(handle, serial, false);
         if opened.is_err() {
             {
@@ -928,38 +937,77 @@ impl DspiCore {
     /// `keep_mirror`: a re-attach. The mirror stays last known until the new
     /// image replaces it, and a failure leaves it.
     fn open_bound(&self, handle: u8, serial: String, keep_mirror: bool) -> Result<()> {
-        let (client, instance) = {
-            let inner = self.lock();
-            let s = inner.link.as_ref().ok_or(DspiError::Disconnected)?;
+        let (client, instance, tx, reuse, old_side) = {
+            let mut inner = self.lock();
+            let s = inner.link.as_mut().ok_or(DspiError::Disconnected)?;
             let client = s.client.clone().filter(LinkClient::is_ready);
-            (client.ok_or(DspiError::Disconnected)?, s.instance)
+            // -- WP LK4 -- the last probe of this device, for a re-attach
+            let reuse = s
+                .bound
+                .as_ref()
+                .filter(|b| keep_mirror && b.serial == serial)
+                .and_then(|b| b.probe.clone());
+            let client = client.ok_or(DspiError::Disconnected)?;
+            // -- WP LK4 -- the old side goes before the new one subscribes:
+            // its drop unsubscribes the meter slot on this handle
+            let old_side = s.bound.as_mut().and_then(|b| b.side.take());
+            (client, s.instance, s.tx.clone(), reuse, old_side)
         };
         // Read before the attach: a flap during it counts as one after it.
         let offline_base = client.offline_count(u32::from(handle));
         let transport = LinkTransport::new(client.clone(), handle, &serial);
+        // -- WP LK4 -- the meter feed starts as soon as the image says how
+        // many channels there are, before the feature reads: `fetch_status`
+        // serves it from then on. On the supervisor's own thread (a
+        // re-attach) it subscribes here; otherwise the supervisor does,
+        // alongside the reads.
         if keep_mirror {
             self.close_keeping_mirror();
-            self.attach_opened(Box::new(transport), serial.clone(), 0)?;
         } else {
-            self.open_transport(Box::new(transport), serial.clone(), 0)?;
+            self.close_connection();
         }
+        drop(old_side);
+        let side = Arc::new(LinkSide::new(client.clone(), handle, &serial, tx.clone()));
+        let mut on_channels = |n: u8| {
+            side.want_meters(crate::connect::meter_len(n), keep_mirror);
+            drop(self.set_meter_path(Some(crate::MeterPath {
+                num_channels: n,
+                side: Arc::clone(&side) as Arc<dyn SideChannel>,
+            })));
+        };
+        let attached = self.attach_opened_with(
+            Box::new(transport),
+            serial.clone(),
+            0,
+            &mut on_channels,
+            reuse.as_ref(),
+        );
+        let probe = match attached {
+            Ok(probe) => probe,
+            Err(e) => {
+                self.drop_meter_path_of(&side);
+                return Err(e);
+            }
+        };
 
         // Dropped with the lock released: a side's drop writes to the socket.
         let mut old_side = None;
         let mut guard = self.lock();
         let inner = &mut *guard;
-        let current = inner
-            .link
-            .as_mut()
-            .filter(|s| s.instance == instance)
-            .ok_or(DspiError::Disconnected)?;
-        let tx = current.tx.clone();
-        let conn = inner
+        let Some(current) = inner.link.as_mut().filter(|s| s.instance == instance) else {
+            drop(guard);
+            self.drop_meter_path_of(&side);
+            return Err(DspiError::Disconnected);
+        };
+        let Some(conn) = inner
             .conn
             .as_mut()
             .filter(|c| c.caps.kind == TransportKind::Link && c.serial == serial)
-            .ok_or(DspiError::Disconnected)?;
-        let side = Arc::new(LinkSide::new(client, handle, &serial, tx));
+        else {
+            drop(guard);
+            self.drop_meter_path_of(&side);
+            return Err(DspiError::Disconnected);
+        };
         conn.side = Some(Arc::clone(&side) as Arc<dyn SideChannel>);
         // -- WP LK2 -- meters from now on, whatever holds the core lock
         let old_path = self.set_meter_path(Some(crate::MeterPath {
@@ -973,6 +1021,7 @@ impl DspiCore {
             b.attached = true;
             b.seen_offline = false;
             b.offline_base = offline_base;
+            b.probe = probe;
             old_side = b.side.replace(side);
         }
         current.retry = None;
@@ -981,6 +1030,17 @@ impl DspiCore {
         drop(old_side);
         drop(old_path);
         Ok(())
+    }
+
+    // -- WP LK4 --
+    /// Clear the meter path if it is `side`'s (a failed open set it early).
+    fn drop_meter_path_of(&self, side: &Arc<LinkSide>) {
+        let ours = self.meter_path().is_some_and(|p| {
+            std::ptr::addr_eq(Arc::as_ptr(&p.side), Arc::as_ptr(side))
+        });
+        if ours {
+            drop(self.set_meter_path(None));
+        }
     }
 
     /// Decide the next supervisor step, under the lock.
@@ -1823,6 +1883,24 @@ impl LinkSide {
                 feed.meter_hz = None;
                 feed.meter_refused_until = now.checked_add(POLL_RETRY_AFTER);
             }
+        }
+    }
+
+    // -- WP LK4 --
+    /// Ask for the meter block of `len` bytes now, as a first `fetch_status`
+    /// would, so the poll is subscribed before the app's first look: here
+    /// with `now` (one round trip), else by a word to the supervisor.
+    fn want_meters(&self, len: u16, now: bool) {
+        {
+            let mut feed = guard(&self.feed);
+            feed.meter_len = len;
+            feed.meter_asked = Some(Instant::now());
+            if !now && !std::mem::replace(&mut feed.kicked, true) {
+                let _ = self.tx.send(Msg::Kick);
+            }
+        }
+        if now {
+            self.maintain(Instant::now());
         }
     }
 

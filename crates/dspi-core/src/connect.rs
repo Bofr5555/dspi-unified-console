@@ -269,6 +269,15 @@ impl DspiCore {
     }
 }
 
+// -- WP LK4 --
+/// `wLength` of the meter block (`REQ_GET_STATUS` wValue 9) for
+/// `num_channels`: what [`DspiCore::fetch_status`] asks for.
+pub(crate) fn meter_len(num_channels: u8) -> u16 {
+    let n = usize::from(num_channels).min(MAX_CHANNELS);
+    // n <= 17: at most 41 bytes.
+    u16::try_from(n.saturating_mul(2).saturating_add(7)).unwrap_or(u16::MAX)
+}
+
 // -- WP LK2 --
 /// What [`DspiCore::fetch_status`] found with the lock held.
 enum Locked {
@@ -286,7 +295,13 @@ impl DspiCore {
         let inner = &mut *guard;
         let n = usize::from(inner.state.num_channels).min(MAX_CHANNELS);
         let num_channels = inner.state.num_channels;
-        let conn = inner.conn.as_mut().ok_or(DspiError::Disconnected)?;
+        let Some(conn) = inner.conn.as_mut() else {
+            // -- WP LK4 -- a Link device being opened: its meter feed runs
+            // from the image on, before the connection is installed
+            drop(guard);
+            let path = self.meter_path().ok_or(DspiError::Disconnected)?;
+            return Ok(Locked::Side(usize::from(path.num_channels), path.side, None));
+        };
         let Some(side) = conn.side.clone() else {
             // n <= 17: at most 41 bytes.
             let want = n.saturating_mul(2).saturating_add(7);
