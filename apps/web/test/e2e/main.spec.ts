@@ -179,13 +179,8 @@ test("WB6a presets: switching asks about unsaved changes (Cancel, Discard, Save)
   await expect.poll(async () => (await coreState(page)).activePresetSlot).toBe(other);
   await expect(presets.getByText("Unsaved changes")).toHaveCount(0);
 
-  // Save: the change is stored in the slot left, then the switch.
-  // The load's own notification (PRESET_LOADED, then BULK_INVALIDATED from a
-  // preset) reaches the core on the Worker's next poll, and the core then takes
-  // what the device runs as the new baseline; an edit made before that would
-  // count as saved (a core race, reported with WB6a). Let it land first.
-  // TODO(CG33): drop this wait once the core's preset-load baseline fix (CG33) is on main (-- WP WB6b --: not yet).
-  await page.waitForTimeout(500);
+  // Save: the change is stored in the slot left, then the switch. An edit made
+  // right after the load counts as unsaved (core fix CG33), so no wait is needed.
   await setRange(outputs.getByRole("slider").first(), -7.5);
   await expect(presets.getByText("Unsaved changes")).toBeVisible();
   await picker.selectOption(String(start));

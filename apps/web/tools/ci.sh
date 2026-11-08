@@ -44,7 +44,7 @@ DSPI_PROFILE=cross "$root/ci/run.sh" "cargo build -p dspi-term --no-default-feat
 cp "$B/target/${branch//\//-}-cross/debug/dspi" "$work/hub/"
 
 podman image exists "$PLAYWRIGHT" || podman pull -q "$PLAYWRIGHT" >/dev/null
-podman run --rm --init --userns=keep-id --user "$(id -u):$(id -g)" --ipc=private \
+podman run --rm --init --userns=keep-id --user "$(id -u):$(id -g)" --ipc=private --shm-size=1g \
   -v "$root":/src:ro,z \
   -v "$work/node_modules":/src/apps/web/node_modules:z \
   -v "$work/dist":/src/apps/web/dist:z \
