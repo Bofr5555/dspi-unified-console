@@ -44,6 +44,29 @@ class ControllersTest {
         assertEquals(listOf(0, 1, 2, 3), b.rta.availableChannels(DspiConstants.RTA_TAP_OUTPUT))
     }
 
+    // -- WP CG30 --
+    @Test
+    fun cg30AViewWithNoChannelWatchesAndAsksForNothing() = runTest {
+        val core = FakeDspiCore()
+        val b = newBridge(core)
+        b.setUiVisible(false)
+        attach(b, core)
+        runCurrent()
+        b.rta.update(1, DspiConstants.RTA_TAP_OUTPUT, 0, true)
+        runCurrent()
+        val req = core.calls.last { it.startsWith("rtaSetRequest") }
+        assertTrue(req, req.contains("mask=0") && req.contains("watching=true"))
+        b.rta.update(2, DspiConstants.RTA_TAP_OUTPUT, 0x2, false)
+        runCurrent()
+        val two = core.calls.last { it.startsWith("rtaSetRequest") }
+        assertTrue(two, two.contains("mask=2") && two.contains("watching=true"))
+        b.rta.release(2)
+        b.rta.release(1)
+        runCurrent()
+        val none = core.calls.last { it.startsWith("rtaSetRequest") }
+        assertTrue(none, none.contains("mask=0") && none.contains("watching=false"))
+    }
+
     @Test
     fun signalGeneratorEditsApplyLiveAfterAPause() = runTest {
         val core = FakeDspiCore()

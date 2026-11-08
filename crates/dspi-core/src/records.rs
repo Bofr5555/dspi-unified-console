@@ -473,7 +473,7 @@ pub struct NotifyResult {
 pub struct RtaRequest {
     /// `RTA_TAP_INPUT` (0) / `RTA_TAP_OUTPUT` (1).
     pub tap: u8,
-    /// Channel mask within the tap; 0 releases the analyser.
+    /// Channel mask within the tap; 0 releases the analyser unless `watching`.
     pub mask: u16,
     /// Ask for the FFT bins as well as the bands; the device sends them for a
     /// single analysed channel.
@@ -484,6 +484,14 @@ pub struct RtaRequest {
     pub avg_ms: u16,
     /// Peak decay, dB/s; 0 = peak hold off.
     pub peak_decay_db_s: u8,
+    // -- WP CG30 --
+    /// A view shows the analyser, also with no channel chosen
+    /// (`isWatching`, SpectrumAnalyser.swift:827). With mask 0 it asks for
+    /// nothing of its own, but while another console is followed the device's
+    /// configuration keeps being polled and drawn. A mask other than 0 watches
+    /// anyway.
+    #[cfg_attr(feature = "uniffi", uniffi(default = false))]
+    pub watching: bool,
 }
 
 /// The analyser's capabilities (`rta_get_caps`).

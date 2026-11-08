@@ -2683,6 +2683,11 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * A request that changes what this console asks for takes the analyser
      * back from a console being followed ([`Self::rta_get_ownership`]).
      * Releasing it (mask 0) and asking for the same thing again does not.
+     *
+     * Mask 0 with `watching` set (WP CG30): a view shows the analyser with
+     * no channel chosen. It asks for nothing of its own, so while driving
+     * the analyser is released as with mask 0; while following, the
+     * device's configuration is still polled and in the snapshot.
      */
     func rtaSetRequest(request: RtaRequest) 
     
@@ -5796,6 +5801,11 @@ open func rtaSetListener(listener: RtaListener?)  {try! rustCall() {
      * A request that changes what this console asks for takes the analyser
      * back from a console being followed ([`Self::rta_get_ownership`]).
      * Releasing it (mask 0) and asking for the same thing again does not.
+     *
+     * Mask 0 with `watching` set (WP CG30): a view shows the analyser with
+     * no channel chosen. It asks for nothing of its own, so while driving
+     * the analyser is released as with mask 0; while following, the
+     * device's configuration is still polled and in the snapshot.
      */
 open func rtaSetRequest(request: RtaRequest)  {try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_rta_set_request(self.uniffiClonePointer(),
@@ -15867,7 +15877,7 @@ public struct RtaRequest {
      */
     public var tap: UInt8
     /**
-     * Channel mask within the tap; 0 releases the analyser.
+     * Channel mask within the tap; 0 releases the analyser unless `watching`.
      */
     public var mask: UInt16
     /**
@@ -15887,6 +15897,14 @@ public struct RtaRequest {
      * Peak decay, dB/s; 0 = peak hold off.
      */
     public var peakDecayDbS: UInt8
+    /**
+     * A view shows the analyser, also with no channel chosen
+     * (`isWatching`, SpectrumAnalyser.swift:827). With mask 0 it asks for
+     * nothing of its own, but while another console is followed the device's
+     * configuration keeps being polled and drawn. A mask other than 0 watches
+     * anyway.
+     */
+    public var watching: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -15895,7 +15913,7 @@ public struct RtaRequest {
          * `RTA_TAP_INPUT` (0) / `RTA_TAP_OUTPUT` (1).
          */tap: UInt8, 
         /**
-         * Channel mask within the tap; 0 releases the analyser.
+         * Channel mask within the tap; 0 releases the analyser unless `watching`.
          */mask: UInt16, 
         /**
          * Ask for the FFT bins as well as the bands; the device sends them for a
@@ -15909,13 +15927,21 @@ public struct RtaRequest {
          */avgMs: UInt16, 
         /**
          * Peak decay, dB/s; 0 = peak hold off.
-         */peakDecayDbS: UInt8) {
+         */peakDecayDbS: UInt8, 
+        /**
+         * A view shows the analyser, also with no channel chosen
+         * (`isWatching`, SpectrumAnalyser.swift:827). With mask 0 it asks for
+         * nothing of its own, but while another console is followed the device's
+         * configuration keeps being polled and drawn. A mask other than 0 watches
+         * anyway.
+         */watching: Bool = false) {
         self.tap = tap
         self.mask = mask
         self.wantsBins = wantsBins
         self.fftOrder = fftOrder
         self.avgMs = avgMs
         self.peakDecayDbS = peakDecayDbS
+        self.watching = watching
     }
 }
 
@@ -15944,6 +15970,9 @@ extension RtaRequest: Equatable, Hashable {
         if lhs.peakDecayDbS != rhs.peakDecayDbS {
             return false
         }
+        if lhs.watching != rhs.watching {
+            return false
+        }
         return true
     }
 
@@ -15954,6 +15983,7 @@ extension RtaRequest: Equatable, Hashable {
         hasher.combine(fftOrder)
         hasher.combine(avgMs)
         hasher.combine(peakDecayDbS)
+        hasher.combine(watching)
     }
 }
 
@@ -15971,7 +16001,8 @@ public struct FfiConverterTypeRtaRequest: FfiConverterRustBuffer {
                 wantsBins: FfiConverterBool.read(from: &buf), 
                 fftOrder: FfiConverterUInt8.read(from: &buf), 
                 avgMs: FfiConverterUInt16.read(from: &buf), 
-                peakDecayDbS: FfiConverterUInt8.read(from: &buf)
+                peakDecayDbS: FfiConverterUInt8.read(from: &buf), 
+                watching: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -15982,6 +16013,7 @@ public struct FfiConverterTypeRtaRequest: FfiConverterRustBuffer {
         FfiConverterUInt8.write(value.fftOrder, into: &buf)
         FfiConverterUInt16.write(value.avgMs, into: &buf)
         FfiConverterUInt8.write(value.peakDecayDbS, into: &buf)
+        FfiConverterBool.write(value.watching, into: &buf)
     }
 }
 
@@ -21732,7 +21764,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_rta_set_listener() != 3531) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_rta_set_request() != 28027) {
+    if (uniffi_dspi_core_checksum_method_dspicore_rta_set_request() != 55894) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_rta_start() != 14405) {

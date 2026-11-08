@@ -136,10 +136,14 @@ class RtaControllerImpl internal constructor(private val bridge: DspiBridgeImpl)
     // The newest subscription picks the tap; every subscription at that tap adds
     // its channels, except that one drawing bins gets its own channel alone (the
     // device keeps bins for the last channel it transformed).
+    // -- WP CG30 -- A view registered with no channel still watches (Swift
+    // `isWatching`, SpectrumAnalyser.swift:827): it asks for nothing of its own,
+    // and the core keeps polling and drawing a console being followed.
     private fun pushRequest() {
         val c = _caps.value
         val primary = subs.values.filter { it.mask != 0 }.maxByOrNull { it.seq }
-        var r = RtaRequest(tap = 0, mask = 0, wantsBins = false, fftOrder = 0, avgMs = 0, peakDecayDbS = 0)
+        val watching = subs.isNotEmpty() && c != null && c.supported
+        var r = RtaRequest(tap = 0, mask = 0, wantsBins = false, fftOrder = 0, avgMs = 0, peakDecayDbS = 0, watching = watching)
         if (primary != null && c != null && c.supported) {
             val mask = if (primary.bins) primary.mask else subs.values.filter { it.tap == primary.tap }.fold(0) { m, s -> m or s.mask }
             val bins = Integer.bitCount(mask) == 1 && subs.values.any { it.tap == primary.tap && it.bins && it.mask == mask }
@@ -150,7 +154,8 @@ class RtaControllerImpl internal constructor(private val bridge: DspiBridgeImpl)
                     wantsBins = bins,
                     fftOrder = fftOrder.coerceIn(c.orderMin, maxOf(c.orderMin, c.orderMax)),
                     avgMs = avgMs.coerceIn(0, 10000),
-                    peakDecayDbS = peakDecay.coerceIn(0, 100)
+                    peakDecayDbS = peakDecay.coerceIn(0, 100),
+                    watching = true
                 )
         }
         if (r == sent) return

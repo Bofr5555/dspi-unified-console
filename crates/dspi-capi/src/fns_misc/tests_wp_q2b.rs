@@ -481,6 +481,42 @@ fn wp_q2b_rta_on_a_device_without_an_analyser() {
     free(h);
 }
 
+/// WP CG30: the watching variant takes a null handle or record without
+/// harm, and on the demo device (CG22's analyser) a channel is analysed and a
+/// watching view with none chosen asks for nothing while driving.
+#[test]
+fn wp_cg30_set_request_watching() {
+    let request = RtaRequest {
+        mask: 1,
+        tap: 1,
+        ..Default::default()
+    };
+    dspi_rta_set_request_watching(null_mut(), &request, true);
+    let h = demo();
+    dspi_rta_set_request_watching(h, null(), true);
+    dspi_rta_start(h);
+    let snapshot = |h| {
+        let mut s = Box::<RtaSnapshot>::default();
+        dspi_rta_get_snapshot(h, &mut *s);
+        s
+    };
+    let wait = |what: &str, f: &dyn Fn() -> bool| {
+        for _ in 0..1000 {
+            if f() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        panic!("timed out waiting for {what}");
+    };
+    dspi_rta_set_request_watching(h, &request, true);
+    wait("frames", &|| snapshot(h).count > 0);
+    let none = RtaRequest { mask: 0, ..request };
+    dspi_rta_set_request_watching(h, &none, true);
+    wait("an empty picture", &|| snapshot(h).count == 0);
+    free(h);
+}
+
 #[test]
 fn wp_q2b_notify_callback_wakes_and_clears() {
     let h = handle();

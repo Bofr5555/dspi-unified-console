@@ -11,7 +11,8 @@ Item {
     property var app                      // main window: selection and settings
     signal openAnalyser()
 
-    readonly property var sel: app.rtaSelection
+    // -- WP CG30 -- what is drawn; the bars ask for the page's own selection
+    readonly property var sel: app.rtaDrawn
     readonly property int count: sel.channels.length
     readonly property bool shown: app.rtaShowBars && rta.supported && bridge.connected && count > 0
     readonly property int columns: Math.max(1, Math.min(count, app.rtaBarColumns))
@@ -70,6 +71,7 @@ Item {
                         active: strip.shown && Window.visibility !== Window.Minimized
                         tap: strip.sel.tap
                         channel: modelData
+                        request: strip.app.rtaSelection
                         color: bridge.channelColor(parent.app)
                         floorDb: strip.app.rtaFloorDb
                         ceilingDb: strip.app.rtaCeilingDb

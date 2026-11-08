@@ -473,7 +473,9 @@ internal fun BodePlotView(bridge: DspiBridge, modifier: Modifier, channels: Set<
             .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
     ) {
         GraphGrid(settings, minFreq, maxFreq, dbTop, dbBottom)
-        if (connected && settings.rtaShowsGraph(onDashboard) && !spectrumSelection.isEmpty) {
+        // -- WP CG30 -- also with an empty own selection: it registers as watching, asks for nothing,
+        // and draws what another console drives (GraphView.swift:328)
+        if (connected && settings.rtaShowsGraph(onDashboard)) {
             GraphSpectrumOverlay(bridge, spectrumSelection, minFreq, maxFreq, settings, Modifier.fillMaxSize())
         }
         Box(Modifier.fillMaxSize().alpha(curvesAlpha)) {

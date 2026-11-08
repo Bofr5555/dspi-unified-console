@@ -691,6 +691,32 @@ pub extern "C" fn dspi_rta_set_request(core: *mut FfiCore, request: *const RtaRe
     });
 }
 
+// -- WP CG30 --
+/// As `dspi_rta_set_request`, saying whether a view shows the analyser. With
+/// `watching` true and a zero mask, nothing of this console's is analysed,
+/// but while another console is followed its configuration is still polled
+/// and in the snapshot. The record keeps the old layout, so the flag is an
+/// argument.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_rta_set_request_watching(
+    core: *mut FfiCore,
+    request: *const RtaRequest,
+    watching: bool,
+) {
+    if request.is_null() || !request.is_aligned() {
+        return;
+    }
+    with_core(core, (), |h| {
+        // SAFETY: not null, aligned, and points to a record; the C caller's
+        // contract.
+        let request = unsafe { request.read() };
+        h.core.rta_set_request(dspi_core::RtaRequest {
+            watching,
+            ..(&request).into()
+        });
+    });
+}
+
 /// The analyser's capabilities (`supported` false until probed or without
 /// one, and for a null handle).
 #[unsafe(no_mangle)]

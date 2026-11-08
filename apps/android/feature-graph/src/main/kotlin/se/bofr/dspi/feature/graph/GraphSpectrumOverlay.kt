@@ -516,7 +516,8 @@ fun followedSelection(ownership: RtaOwnership?): RtaChannelSelection? {
  * the analyser while shown; the analyser stops when nothing shows it. While
  * another console drives the analyser it draws the device's channels but
  * keeps registering [selection], so following never takes control (AN34,
- * GraphSpectrumOverlay.swift:90).
+ * GraphSpectrumOverlay.swift:90). An empty [selection] still registers: it
+ * asks for nothing and draws only a followed one (CG30).
  *
  * Three stacked layers in macOS order: fills, the glow (blurred, API 31+),
  * then edges and peak contours. The first layer builds the frame's paths in

@@ -166,7 +166,7 @@ class FakeDspiCoreTest {
         val core = FakeDspiCore()
         core.rtaStart()
         assertTrue(core.rtaGetCaps().supported)
-        core.rtaSetRequest(se.bofr.dspi.core.RtaRequest(0, 0x3, false, 10, 300, 12))
+        core.rtaSetRequest(se.bofr.dspi.core.RtaRequest(0, 0x3, false, 10, 300, 12, true))
         core.emitRtaFrame()
         val snap = core.rtaGetSnapshot()
         assertEquals(1L, snap.version)
@@ -180,7 +180,7 @@ class FakeDspiCoreTest {
     fun analyserFramesArePackedAndPopulatedIsABandMask() {
         val core = FakeDspiCore()
         core.rtaStart()
-        core.rtaSetRequest(se.bofr.dspi.core.RtaRequest(1, 0b1010_0000, false, 10, 300, 12))
+        core.rtaSetRequest(se.bofr.dspi.core.RtaRequest(1, 0b1010_0000, false, 10, 300, 12, true))
         val snap = core.rtaGetSnapshot()
         assertEquals(2, snap.count)
         assertEquals(listOf(5, 7), snap.frames.take(2).map { it.channel })

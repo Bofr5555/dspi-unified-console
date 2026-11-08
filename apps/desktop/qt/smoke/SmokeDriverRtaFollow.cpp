@@ -225,6 +225,54 @@ void SmokeDriver::testRtaFollowing() {
     if (savedSelection.toString() == QLatin1String("overview")) QMetaObject::invokeMethod(main, "selectOverview");
     else main->setProperty("selection", savedSelection);
 
+    // -- WP CG30 -- The dashboard's graph with its own choice cleared, the
+    // analyser window closed: the graph is the only view, registered with no
+    // channel. Another console's choice is still polled and drawn, and nothing
+    // of the app's is pushed (GraphView.swift:328, isWatching)
+    win->setVisible(false);
+    QMetaObject::invokeMethod(main, "selectOverview");
+    const QVariant savedDashSource = main->property("rtaDashboardSource");
+    const QVariant savedDashGraph = main->property("rtaDashboardShowGraph");
+    main->setProperty("rtaDashboardShowGraph", true);
+    QVariant firstOut;
+    QMetaObject::invokeMethod(main, "rtaDefaultSource", Q_RETURN_ARG(QVariant, firstOut));
+    QMetaObject::invokeMethod(main, "rtaSetSource", Q_ARG(QVariant, firstOut));
+    check("CG30: the dashboard drives with its first output", waitFor(10000, [&] { return !rta->following() && otherFollows(); }));
+    // The main window's (a pop-out graph has one too, built while open)
+    QQuickItem *graph = nullptr;
+    for (QQuickItem *g : root()->findChildren<QQuickItem *>(QStringLiteral("graphSpectrum")))
+        if (g->window() == root()) graph = g;
+    check("CG30: the graph's spectrum", graph != nullptr);
+    if (graph) {
+        QMetaObject::invokeMethod(main, "rtaClear");
+        check("CG30: cleared while driving: nothing drawn or polled",
+              waitFor(5000, [&] { return !graph->isVisible() && rta->snapshot().count == 0; }) && !rta->following());
+        theirs.mask = 0b11;
+        dspi_rta_set_request(otherCore, &theirs);
+        check("CG30: the app follows with none of its own", waitFor(10000, [&] { return rta->following(); }));
+        const bool drawn = waitFor(5000, [&] { return graph->isVisible() && graph->property("tap").toInt() == otherTap
+                                                       && ints(graph->property("channels").toList()) == QList<int>({ 0, 1 }); });
+        if (!drawn) {
+            bool shown = true;
+            for (QQuickItem *i = graph->parentItem(); i; i = i->parentItem()) shown = shown && i->isVisible();
+            printf("smoke: CG30 graph: visible %d opacity %.2f active %d tap %d channels %d, parents shown %d\n", int(graph->isVisible()),
+                   graph->opacity(), int(graph->property("active").toBool()), graph->property("tap").toInt(),
+                   int(graph->property("channels").toList().size()), int(shown));
+        }
+        check("CG30: the graph draws the device's channels", drawn);
+        check("CG30: from frames still polled",
+              waitFor(5000, [&] { return rta->snapshot().tap == otherTap && rta->snapshot().count == 2; }));
+        spin(1500);
+        check("CG30: nothing taken back", rta->following() && !otherFollows()
+                                              && main->property("rtaDashboardSource").toString() == QLatin1String("out:"));
+        printf("smoke: CG30 following session %d with an empty selection, %d frames\n", rta->followedOrigin(), int(rta->snapshot().count));
+        if (auto *mainWin = qobject_cast<QQuickWindow *>(root()))
+            mainWin->grabWindow().save(m_out + QStringLiteral("/graph-following-empty-selection.png"));
+    }
+    main->setProperty("rtaDashboardSource", savedDashSource);
+    main->setProperty("rtaDashboardShowGraph", savedDashGraph);
+    if (savedSelection.toString() != QLatin1String("overview")) main->setProperty("selection", savedSelection);
+
     other->closeSession();
     other.reset();
     dspi_core_free(otherCore);
