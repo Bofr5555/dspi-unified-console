@@ -102,6 +102,7 @@ extension DSPViewModel {
         // draft snapshots values that tier fetches.
         DispatchQueue.main.async {
             SettingsSaveCoordinator.shared.refreshGlobalDraftIfClean()
+            self.fullReadGeneration = generation   // -- WP SWF1 --
         }
     }
 

@@ -2331,6 +2331,13 @@ class DSPViewModel: ObservableObject {
     /// clears the rest on disconnect.  Gating logic (menus, commands) should
     /// keep using `isDeviceConnected`.
     @Published var isDeviceReady: Bool = false
+    // -- WP SWF1 --
+    /// The transport generation of the last `fetchAll` that ran to its end,
+    /// published after every state update it queued.  `isDeviceReady` flips
+    /// before the Settings-page tier, so whoever needs the device's complete
+    /// state (an export, a test capture) waits for this to equal
+    /// `transport.generation`.
+    @Published var fullReadGeneration: UInt64? = nil
     @Published var availableDevices: [DSPiDevice] = []
     @Published var selectedDevice: DSPiDevice? = nil
     /// Last USB connection error, mirrored from USBDevice so the status dot can

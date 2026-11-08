@@ -5,10 +5,21 @@ import XCTest
 /// starts it, and watches the status for two seconds to see whether the
 /// engine actually advances (elapsed_ms growing, state leaving FADE_IN).
 /// Skips with no device.  Always stops the generator on exit.
+///
+/// WP SWF1: these play a signal on a real output, and the staged generator
+/// config is not restored, so they need their own opt-in on top of the USB
+/// one: `TEST_RUNNER_DSPI_SIGGEN_HW=1`.
 final class SiggenHardwareDiagTests: XCTestCase {
 
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        guard ProcessInfo.processInfo.environment["DSPI_SIGGEN_HW"] == "1" else {
+            throw XCTSkip("Plays a test signal on the device: set TEST_RUNNER_DSPI_SIGGEN_HW=1 to run it.")
+        }
+    }
+
     func testSineStartAdvances() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
 
         guard let capsData = usb.getControlRequest(request: REQ_SIGGEN_GET_CAPS,
                                                    value: SIGGEN_CAPS_HEADER, index: 2, length: 8),
@@ -108,7 +119,7 @@ final class SiggenHardwareDiagTests: XCTestCase {
     /// exactly the requested output: the walk channel latches to that output's
     /// index, and the two-pass config auto-completes to idle.
     func testIdentifyOutputPlaysChannelId() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         let vm = AppState.shared.viewModel
 
         // The VM populates siggenSupported during its connect-time fetchAll on

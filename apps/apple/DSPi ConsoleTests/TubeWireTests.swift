@@ -121,7 +121,7 @@ final class TubeWireTests: XCTestCase {
     // MARK: - Feature detection (spec §6)
 
     func testFeatureDetectionThreshold() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.firmwareWireFormatVersion = 30
         XCTAssertFalse(vm.firmwareSupportsTube)
         vm.firmwareWireFormatVersion = 31
@@ -133,7 +133,7 @@ final class TubeWireTests: XCTestCase {
 
     /// An unconnected app and a fresh device agree before the first bulk read.
     func testDefaultsMatchTheFirmware() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         XCTAssertFalse(vm.tubeEnabled)
         XCTAssertEqual(vm.tube.outputMask, 0xFFFF)
         XCTAssertEqual(vm.tube.type, 1)
@@ -154,7 +154,7 @@ final class TubeWireTests: XCTestCase {
 
     /// A type 1..16 loads its row into the four character knobs.
     func testTypeLoadsItsRow() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.setTubeType(12)   // EL34
         XCTAssertEqual(vm.tube.type, 12)
         XCTAssertEqual(vm.tube.biasPct, 0)
@@ -168,7 +168,7 @@ final class TubeWireTests: XCTestCase {
 
     /// Custom stores 0 and leaves the knobs where they are.
     func testCustomLeavesKnobsAlone() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.setTubeType(16)
         vm.setTubeType(TUBE_TYPE_CUSTOM)
         XCTAssertEqual(vm.tube.type, TUBE_TYPE_CUSTOM)
@@ -179,7 +179,7 @@ final class TubeWireTests: XCTestCase {
     /// A real change to a character knob drops the type to Custom; re-sending
     /// the stored value does not, exactly as the firmware gates it.
     func testCharacterEditDropsToCustomOnlyOnChange() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.setTubeType(1)
         vm.setTubeBias(10)       // same as the 12AX7 row
         XCTAssertEqual(vm.tube.type, 1)
@@ -191,7 +191,7 @@ final class TubeWireTests: XCTestCase {
     /// The comparison is made after clamping: an over-range write that lands on
     /// the value already stored is not a change, so the type survives it.
     func testClampedRewriteIsNotAChange() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.setTubeBias(TUBE_BIAS_MAX)
         vm.tube.type = 5          // as if a notification had set the type since
         vm.setTubeBias(250)      // clamps to the stored +100
@@ -200,7 +200,7 @@ final class TubeWireTests: XCTestCase {
 
     /// Floats clamp to their ranges and enums to theirs, as the firmware does.
     func testClamping() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.setTubeDrive(40);        XCTAssertEqual(vm.tube.driveDB, TUBE_DRIVE_MAX)
         vm.setTubeDrive(-40);       XCTAssertEqual(vm.tube.driveDB, TUBE_DRIVE_MIN)
         vm.setTubeBias(-500);       XCTAssertEqual(vm.tube.biasPct, TUBE_BIAS_MIN)
@@ -216,7 +216,7 @@ final class TubeWireTests: XCTestCase {
     }
 
     func testOutputChannelMaskToggle() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.tube.outputMask = 0
         vm.setTubeOutputChannel(8, enabled: true)
         XCTAssertEqual(vm.tube.outputMask, 0x0100)
@@ -338,7 +338,7 @@ final class TubeWireTests: XCTestCase {
     /// importing writes the type first and the knobs after, so the knobs win
     /// and the type drops to Custom, just as the firmware would.
     func testImportOrderPreservesStoredKnobs() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.setTubeType(1)
         vm.setTubeBias(12)
         XCTAssertEqual(vm.tube.type, TUBE_TYPE_CUSTOM)
@@ -360,7 +360,7 @@ final class TubeWireTests: XCTestCase {
     }
 
     private func requireTube() throws -> USBDevice {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard getParam(usb, TUBE_PARAM_ENABLED) != nil else {
             throw XCTSkip("Firmware has no tube modeller (REQ_GET_TUBE_PARAM index 0 STALLed).")
         }

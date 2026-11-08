@@ -128,7 +128,7 @@ final class LinkFixtureGeneratorTests: XCTestCase {
 
     func testCaptureDeviceFixtures() throws {
         guard root != nil else { throw XCTSkip("DSPiFixtureDir not set") }
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         HardwareTest.settle()
         guard let bulk = usb.getControlRequest(request: REQ_GET_ALL_PARAMS, value: 0, index: 2, length: BULK_PARAMS_SIZE),
               bulk.count == Int(BULK_PARAMS_SIZE),

@@ -105,7 +105,7 @@ final class AdatWireTests: XCTestCase {
     /// REQ_GET_ADAT_STATUS returns a well-formed 8-byte struct whose fields are
     /// internally consistent.  On RP2040 it's all zeros, which is still valid.
     func testAdatStatusReadable() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let d = usb.getControlRequest(request: REQ_GET_ADAT_STATUS, value: 0, index: 2, length: 8),
               let status = AdatStatus.fromData(d) else {
             throw XCTSkip("Firmware predates ADAT bulk output (0xCE STALLed).")
@@ -121,7 +121,7 @@ final class AdatWireTests: XCTestCase {
     /// The configured enable byte (0xCB) and pin byte (0xCD) agree with the
     /// status struct's mirror fields.
     func testAdatConfigConsistency() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let en = usb.getControlRequest(request: REQ_GET_ADAT_ENABLE, value: 0, index: 2, length: 1),
               let pin = usb.getControlRequest(request: REQ_GET_ADAT_PIN, value: 0, index: 2, length: 1),
               let st = usb.getControlRequest(request: REQ_GET_ADAT_STATUS, value: 0, index: 2, length: 8),
@@ -136,7 +136,7 @@ final class AdatWireTests: XCTestCase {
     /// nothing because it never changes.  Verifies the SET path returns a
     /// PIN_CONFIG_* status byte rather than STALLing on supported firmware.
     func testAdatPinSetIdempotent() throws {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let pin = usb.getControlRequest(request: REQ_GET_ADAT_PIN, value: 0, index: 2, length: 1),
               let current = pin.first, current != 0 else {
             throw XCTSkip("Firmware predates ADAT bulk output or reported no pin.")

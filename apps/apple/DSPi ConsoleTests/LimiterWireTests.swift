@@ -69,7 +69,7 @@ final class LimiterWireTests: XCTestCase {
     // MARK: - App-side mirror
 
     func testFeatureDetectionThreshold() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.firmwareWireFormatVersion = 31
         XCTAssertFalse(vm.firmwareSupportsLimiter)
         vm.firmwareWireFormatVersion = 32
@@ -79,7 +79,7 @@ final class LimiterWireTests: XCTestCase {
     /// The app clamps and rounds exactly as the firmware does, since it never
     /// hears its own writes echoed back.
     func testSettersClampLikeTheFirmware() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.setLimiterThreshold(output: 0, 6)
         XCTAssertEqual(vm.limiter.outputs[0].thresholdDB, LIMITER_THRESHOLD_MAX)
         vm.setLimiterThreshold(output: 0, -99)
@@ -101,7 +101,7 @@ final class LimiterWireTests: XCTestCase {
     /// Copying writes threshold, release and enable everywhere and leaves the
     /// link groups alone, which would otherwise all end up in one group.
     func testCopyToAllLeavesLinkGroups() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.setLimiterLinkGroup(output: 1, 2)
         vm.setLimiterThreshold(output: 0, -4)
         vm.setLimiterRelease(output: 0, 300)
@@ -165,7 +165,7 @@ final class LimiterWireTests: XCTestCase {
 
     /// The view model's setters mirror the ganging, as the device would.
     func testSettersMirrorGanging() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.setLimiterThreshold(output: 0, -6)
         vm.setLimiterLinkGroup(output: 0, 1)
         vm.setLimiterLinkGroup(output: 1, 1)
@@ -179,7 +179,7 @@ final class LimiterWireTests: XCTestCase {
     /// unlink / write / relink order, writing output 0's threshold while it is
     /// still grouped with output 1 would spread to output 1.
     func testApplySettingsLandsExactValuesAcrossRegrouping() {
-        let vm = DSPViewModel()
+        let vm = HardwareTest.offlineViewModel()
         vm.setLimiterLinkGroup(output: 0, 1)
         vm.setLimiterLinkGroup(output: 1, 1)
         let targets: [Int: LimiterOutputSettings] = [
@@ -214,7 +214,7 @@ final class LimiterWireTests: XCTestCase {
 
     /// Returns the device and its output count, from the status block.
     private func requireLimiter() throws -> (USBDevice, Int) {
-        let usb = try HardwareTest.requireDevice()
+        let usb = try HardwareTest.requireDevice(self)
         guard let s = status(usb) else {
             throw XCTSkip("Firmware has no output limiter (REQ_LIMITER status block STALLed).")
         }
