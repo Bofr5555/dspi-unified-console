@@ -20,7 +20,7 @@
 
 use dspi_proto::generated::opcodes as op;
 use dspi_proto::value::Value;
-use dspi_transport::TransportError;
+use dspi_transport::{InRead, TransportError};
 // -- WP QD4 --
 use dspi_transport::TransportKind;
 use dspi_transport::fake::EXT_FAKE_RENAME_ELSEWHERE;
@@ -341,6 +341,53 @@ const SOURCE_NAME_EVENT_FIELD: std::ops::Range<usize> = 4..4 + CHANNEL_NAME_LEN;
 /// names gets no request at all (it may answer the opcode with a legacy gain).
 /// A source whose read fails keeps its last name, "" after a connect, as
 /// names are optional and the built-in title stands in.
+// -- WP LK4 --
+/// The reads of [`read_source_names`] and [`read_device_name`], for a caller
+/// that batches them (`fetch_all`'s per-item reads): one exact 32-byte GET per
+/// source, then the device name, each only when the probe found it.
+pub(crate) fn name_reads(conn: &mut Connection) -> Vec<InRead> {
+    let has = |conn: &mut Connection, f: &str| conn.session().is_ok_and(|s| require_feature(s, f).is_ok());
+    let mut reads = Vec::new();
+    if has(conn, F_SOURCE_NAMES) {
+        reads.extend(
+            (0..conn.source_names.len())
+                .filter_map(|i| u16::try_from(i).ok())
+                .map(|i| InRead::exact(op::REQ_GET_INPUT_SOURCE_NAME, i, NAME_LEN)),
+        );
+    }
+    if has(conn, F_DEVICE_NAME) {
+        reads.push(InRead::exact(op::REQ_GET_DEVICE_NAME, 0, NAME_LEN));
+    }
+    reads
+}
+
+/// The answers to [`name_reads`]' `reads`, into the caches, as the registry
+/// read (`Repr::Text`) and [`read_source_names`] / [`read_device_name`] take
+/// them.
+pub(crate) fn apply_names(conn: &mut Connection, reads: &[InRead], answers: Vec<Result<Vec<u8>>>) {
+    for (r, answer) in reads.iter().zip(answers) {
+        let text = match answer.map(|b| dspi_proto::value::Repr::Text(usize::from(NAME_LEN)).decode(&b)) {
+            Ok(Some(Value::Text(t))) => t,
+            Ok(other) => {
+                log::debug!("name 0x{:02X}/{}: read {other:?}", r.opcode, r.value);
+                continue;
+            }
+            Err(e) => {
+                log::debug!("name 0x{:02X}/{} not read: {e}", r.opcode, r.value);
+                continue;
+            }
+        };
+        if r.opcode == op::REQ_GET_DEVICE_NAME {
+            conn.device_name = decode_name(text.as_bytes());
+        } else if let Ok(source) = u8::try_from(r.value) {
+            note_source_name(conn, source, decode_name(text.as_bytes()));
+        }
+    }
+}
+
+/// `wLength` of a name read (`Text { max: 32 }` in the registry).
+const NAME_LEN: u16 = 32;
+
 pub(crate) fn read_source_names(conn: &mut Connection) {
     let supported = conn
         .session()

@@ -448,6 +448,9 @@ fn read_per_item(conn: &mut Connection, s: &mut DspState) {
             .iter()
             .map(|slot| InRead::upto(op::REQ_PRESET_GET_NAME, u16::from(*slot), name_len)),
     );
+    // -- WP LK4 -- the source and device names (WP CG13, QD4) in the same batch
+    let names = crate::info::name_reads(conn);
+    reads.extend(names.iter().copied());
     let second = conn.transport().control_in_batch(&reads);
     let mut second = second.into_iter().map(|r| r.map_err(DspiError::from));
     let mut next = || second.next().unwrap_or(Err(DspiError::Disconnected));
@@ -464,10 +467,9 @@ fn read_per_item(conn: &mut Connection, s: &mut DspState) {
     for slot in slots {
         apply_preset_name(next().map(|d| name_from(&d)).as_ref(), s, slot);
     }
-    // -- WP CG13 --
-    crate::info::read_source_names(conn);
-    // -- WP QD4 --
-    crate::info::read_device_name(conn);
+    // -- WP CG13 -- -- WP QD4 -- (batched since WP LK4)
+    let answers = names.iter().map(|_| next()).collect();
+    crate::info::apply_names(conn, &names, answers);
 }
 
 /// `COMPAT_*` for a device wire format other than V32's (0: unknown, old).

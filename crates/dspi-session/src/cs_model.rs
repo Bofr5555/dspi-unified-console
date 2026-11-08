@@ -55,7 +55,97 @@ use crate::surfaces::{
 use crate::surfaces::{SurfaceError, explain_status};
 use crate::{DeviceState, Session};
 use dspi_proto::packets::CsTypeDesc;
-use dspi_transport::TransportError;
+use dspi_transport::{InRead, Transport, TransportError};
+
+// -- WP LK4 --
+/// [`CsData::read`]'s reads, batched: the same requests, decoded and
+/// tolerated as each `Surfaces::read_*` would be (any failure is a default
+/// record; a missing display config means no pages).
+fn read_batched(t: &mut dyn Transport, caps: CsCaps, limits: &Limits, pages_hint: u8) -> CsData {
+    use dspi_proto::generated::opcodes as op;
+    use dspi_proto::packets::CsDisplayCfgReply;
+    let len = |n: usize| u16::try_from(n).unwrap_or(u16::MAX);
+    let indexed = |opcode: u8, count: u8, size: usize| {
+        (0..count).map(move |i| InRead::exact(opcode, u16::from(i), len(size)))
+    };
+    let mut reads: Vec<InRead> = Vec::new();
+    reads.extend(indexed(op::REQ_GET_CS_CAPS, caps.noun_count, CsNounDesc::SIZE));
+    reads.extend(indexed(op::REQ_GET_CS_BINDING, caps.max_bindings, CsBinding::SIZE));
+    reads.extend(indexed(op::REQ_GET_CS_NAME, caps.max_bindings, 32));
+    reads.extend(indexed(op::REQ_GET_CS_IR_CMD, caps.max_ir_commands, IrCommand::SIZE));
+    reads.extend(indexed(op::REQ_GET_CS_GROUP, caps.max_groups, CsGroup::SIZE));
+    reads.extend(indexed(op::REQ_GET_CS_MACRO, caps.max_macros, CsMacro::SIZE));
+    reads.push(InRead::exact(op::REQ_GET_CS_DISPLAY_CFG, 0, len(CsDisplayCfgReply::SIZE)));
+    reads.extend(indexed(op::REQ_GET_CS_DISPLAY_PAGE, pages_hint, CsDisplayPage::SIZE));
+    let status_len = CsStatusPacket::wire_len(limits.max_bindings, limits.max_ir_commands);
+    reads.push(InRead::exact(op::REQ_GET_CS_STATUS, 0, len(status_len)));
+    reads.push(InRead::exact(op::REQ_GET_CS_EXT_STATUS, 0, len(CsExtStatusPacket::SIZE)));
+    reads.push(InRead::exact(op::REQ_GET_CS_DISPLAY_STATUS, 0, len(CsDisplayStatus::SIZE)));
+    let mut answers = t.control_in_batch(&reads).into_iter();
+    let a = &mut answers;
+    let nouns = records(a, caps.noun_count, |d| CsNounDesc::decode(d).ok());
+    let bindings = records(a, caps.max_bindings, |d| CsBinding::decode(d).ok());
+    let names = records(a, caps.max_bindings, |d| {
+        Some(String::from_utf8_lossy(d).trim_end_matches('\0').trim().to_string())
+    });
+    let ir = records(a, caps.max_ir_commands, |d| IrCommand::decode(d).ok());
+    let groups = records(a, caps.max_groups, |d| CsGroup::decode(d).ok());
+    let macros = records(a, caps.max_macros, |d| CsMacro::decode(d).ok());
+    let reply = record(a, |d| CsDisplayCfgReply::decode(d).ok());
+    let mut pages = records(a, pages_hint, |d| CsDisplayPage::decode(d).ok());
+    let status = record(a, |d| {
+        CsStatusPacket::decode_sized(d, limits.max_bindings, limits.max_ir_commands).ok()
+    })
+    .unwrap_or_default();
+    let ext = record(a, |d| CsExtStatusPacket::decode(d).ok()).unwrap_or_default();
+    let display_status = record(a, |d| CsDisplayStatus::decode(d).ok()).unwrap_or_default();
+    let max_pages = reply.as_ref().map(|r| r.max_pages).unwrap_or(0);
+    let model_count = reply.as_ref().map(|r| r.model_count).unwrap_or(0);
+    let display_cfg = reply.map(|r| r.cfg).unwrap_or_default();
+    pages.truncate(usize::from(max_pages));
+    if max_pages > pages_hint {
+        let more: Vec<InRead> = (pages_hint..max_pages)
+            .map(|p| InRead::exact(op::REQ_GET_CS_DISPLAY_PAGE, u16::from(p), len(CsDisplayPage::SIZE)))
+            .collect();
+        let mut answers = t.control_in_batch(&more).into_iter();
+        pages.extend(records(&mut answers, max_pages.saturating_sub(pages_hint), |d| CsDisplayPage::decode(d).ok()));
+    }
+    CsData {
+        caps,
+        nouns,
+        bindings,
+        names,
+        ir,
+        groups,
+        macros,
+        display_cfg,
+        max_pages,
+        model_count,
+        pages,
+        status,
+        ext,
+        display_status,
+    }
+}
+
+/// The next answer of a batch, decoded by `f`; `None` when the read or the
+/// decode failed.
+fn record<T>(
+    answers: &mut impl Iterator<Item = dspi_transport::Result<Vec<u8>>>,
+    f: impl Fn(&[u8]) -> Option<T>,
+) -> Option<T> {
+    answers.next().and_then(Result::ok).and_then(|d| f(&d))
+}
+
+/// The next `count` answers, decoded by `f`; a default record where the read
+/// or the decode failed.
+fn records<T: Default>(
+    answers: &mut impl Iterator<Item = dspi_transport::Result<Vec<u8>>>,
+    count: u8,
+    f: impl Fn(&[u8]) -> Option<T>,
+) -> Vec<T> {
+    (0..count).map(|_| record(answers, &f).unwrap_or_default()).collect()
+}
 
 // ---------------------------------------------------------------------------
 // The wire vocabulary, by name
@@ -865,51 +955,13 @@ impl CsData {
         let probed = session.capabilities().cs.clone()?;
         let limits = Limits::from(&probed);
         let caps = CsCaps::from(&probed);
+        // WP LK4: every record is an independent read, so they go in one
+        // batch (pipelined over DSPi Link, about 150 reads in a few dozen
+        // round trips instead of one each; one at a time elsewhere, in the
+        // same order as before). The display pages are sized by the probe's
+        // own display config read; the reply here can only add to them.
         session
-            .with_transport(|t| {
-                let mut s = Surfaces::new(t, limits);
-                let nouns = (0..caps.noun_count)
-                    .map(|n| s.read_noun(n).unwrap_or_default())
-                    .collect();
-                let bindings = (0..caps.max_bindings)
-                    .map(|slot| s.read_binding(slot).unwrap_or_default())
-                    .collect();
-                let names = (0..caps.max_bindings)
-                    .map(|slot| s.read_name(slot).unwrap_or_default())
-                    .collect();
-                let ir = (0..caps.max_ir_commands)
-                    .map(|sub| s.read_ir_command(sub).unwrap_or_default())
-                    .collect();
-                let groups = (0..caps.max_groups)
-                    .map(|g| s.read_group(g).unwrap_or_default())
-                    .collect();
-                let macros = (0..caps.max_macros)
-                    .map(|m| s.read_macro(m).unwrap_or_default())
-                    .collect();
-                let reply = s.read_display_cfg().ok();
-                let max_pages = reply.as_ref().map(|r| r.max_pages).unwrap_or(0);
-                let model_count = reply.as_ref().map(|r| r.model_count).unwrap_or(0);
-                let display_cfg = reply.map(|r| r.cfg).unwrap_or_default();
-                let pages = (0..max_pages)
-                    .map(|p| s.read_display_page(p).unwrap_or_default())
-                    .collect();
-                Ok(CsData {
-                    nouns,
-                    bindings,
-                    names,
-                    ir,
-                    groups,
-                    macros,
-                    display_cfg,
-                    max_pages,
-                    model_count,
-                    pages,
-                    status: s.read_status().unwrap_or_default(),
-                    ext: s.read_ext_status().unwrap_or_default(),
-                    display_status: s.read_display_status().unwrap_or_default(),
-                    caps,
-                })
-            })
+            .with_transport(|t| Ok(read_batched(t, caps, &limits, probed.max_pages)))
             .ok()
     }
 
