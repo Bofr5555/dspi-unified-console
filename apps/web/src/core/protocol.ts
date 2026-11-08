@@ -137,7 +137,41 @@ export interface DspState {
   inputSource: number;
   /** The configured I2S input channel count (2, 4, 6, 8). */
   i2sInputChannels: number;
+  // -- WP WB6b -- the EQ's
+  /** PEQ bands, `[wire channel][band]`; the first `maxBands` of each are the device's. */
+  filters: FilterParams[][];
+  /** Crossover bands of each wire channel (outputs'), drawn with its curve. */
+  xover: FilterParams[][];
+  /** PEQ bands per channel the firmware takes. */
+  maxBands: number;
   [field: string]: unknown;
+}
+
+// -- WP WB6b --
+/** One filter band (`dspi_core::FilterParams`). */
+export interface FilterParams {
+  /** The firmware's type: 0 off, 1..13 PEQ, 32..63 crossover. */
+  filterType: number;
+  bypass: boolean;
+  /** Centre or corner, Hz. */
+  freq: number;
+  q: number;
+  /** dB; for the Linkwitz Transform its target frequency. */
+  gain: number;
+  /** The Linkwitz Transform's target Q. */
+  qp: number;
+}
+
+/** One band of the edited channel, as `curves` answers it (crates/dspi-wasm/src/curves.rs). */
+export interface BandCurve {
+  /** The band alone, its bypass ignored, on the grid; empty for an off band. */
+  curve: number[];
+  /** Its level at its own frequency, dB. */
+  at: number;
+  /** For a type with gain: its level there per dB of gain (1 for a bell, about ½ for a shelf). */
+  unit: number;
+  usesGain: boolean;
+  usesQ: boolean;
 }
 
 /** What the page shows of a device. Read again after every write. */
@@ -288,6 +322,14 @@ export interface CoreMethods {
   presetRevert: { params: undefined; result: null };
   /** Factory Reset, once the user confirmed it: the defaults; stored presets are kept. */
   factoryReset: { params: undefined; result: null };
+  // -- WP WB6b -- the EQ graph's curves: the core's maths, no device I/O
+  /** The frequency (Hz) of each curve point: 201, log-spaced 10 Hz..20 kHz. */
+  curveGrid: { params: undefined; result: { freqs: number[] } };
+  /**
+   * Each chain's combined magnitude (dB) on the grid, and each band's own
+   * curve and dot level. Bands need not be the device's (a drag in progress).
+   */
+  curves: { params: { chains?: FilterParams[][]; bands?: FilterParams[] }; result: { chains: number[][]; bands: BandCurve[] } };
   /** Tests only: make the stub core lose its link. The real core answers `unknown_method`. */
   simulate: { params: { what: "link-lost" | "link-closed" }; result: null };
 }

@@ -8,7 +8,7 @@ import { memo } from "preact/compat";
 import { useState } from "preact/hooks";
 import type { Session } from "../../ui/session";
 import { RenameDialog } from "./Dialog";
-import type { Ask } from "./MainScreen";
+import type { Ask, Unsaved } from "../../ui/screens";
 import { Menu } from "./Menu";
 import { PRESET_SLOTS, presetLabel, sameItems } from "./model";
 
@@ -20,8 +20,7 @@ export interface PresetView {
   defaultSlot: number;
 }
 
-/** What the user chose about unsaved changes before an action. */
-export type Unsaved = "clean" | "save" | "discard" | "cancel";
+export type { Unsaved } from "../../ui/screens";
 
 export const PresetsCard = memo(
   function PresetsCard(props: {
@@ -52,7 +51,8 @@ export const PresetsCard = memo(
         setBusy(false);
       }
     };
-    const save = (slot: number) => session.write("preset.save", "trigger", [slot]);
+    // -- WP WB6b -- (c6p WB6a-3) every Save names an unnamed slot "Preset N" first
+    const save = (slot: number) => session.savePreset(slot);
     const load = (slot: number) => session.write("preset.load", "trigger", [slot]);
 
     const switchTo = (slot: number) =>
