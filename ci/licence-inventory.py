@@ -53,6 +53,8 @@ OUT_MD = OUT_DIR / "IOS-INVENTORY.md"
 OUT_JSON = OUT_DIR / "ios-inventory.json"
 # -- WP WB7 --
 WEB_LOCK = ROOT / "apps/web/package-lock.json"
+# Upstream's DSPi-Link web page, built into `dspi hub` (crates/dspi-hub/tools/build-link-web.sh)
+HUB_PAGE = ROOT / "crates/dspi-hub/assets/web/hub/PROVENANCE.json"
 NOTES_MD = OUT_DIR / "ios-inventory-notes.md"
 
 BUILD_CACHE = Path(os.environ.get("DSPI_BUILD_CACHE", Path.home() / ".cache/dspi-build"))
@@ -629,7 +631,18 @@ def collect_web() -> dict:
             continue
         name = path.rsplit("node_modules/", 1)[-1]
         packages[name] = {"version": pkg.get("version", ""), "license": pkg.get("license", "")}
-    return {"packages": packages}
+    hub = json.loads(HUB_PAGE.read_text())
+    return {
+        "packages": packages,
+        # The hub's /hub/ page: upstream's, built unmodified (its own lockfile's packages).
+        "hub_page": {
+            "repository": hub["repository"],
+            "commit": hub["commit"],
+            "version": hub["version"],
+            "license": hub["license"],
+            "packages": hub["bundled_packages"],
+        },
+    }
 
 
 def light_snapshot(args) -> dict:
@@ -711,6 +724,15 @@ def compare(old: dict, new: dict) -> tuple[list[str], list[str]]:
                 hard.append(f"web licence changed: {name}: {old_p[name]['license']!r} -> {new_p[name]['license']!r}")
             if old_p[name]["version"] != new_p[name]["version"]:
                 soft.append(f"web version changed: {name} {old_p[name]['version']} -> {new_p[name]['version']}")
+        old_h, new_h = old_w.get("hub_page"), new_w.get("hub_page")
+        if old_h is None:
+            hard.append("the record has no hub page (upstream's DSPi-Link web page): run --write")
+        elif new_h != old_h:
+            for key in ("license", "packages"):
+                if old_h.get(key) != new_h.get(key):
+                    hard.append(f"hub page {key} changed: {old_h.get(key)!r} -> {new_h.get(key)!r}")
+            if old_h.get("commit") != new_h.get("commit"):
+                soft.append(f"hub page commit changed: {old_h['commit'][:8]} -> {new_h['commit'][:8]}")
 
     old_s, new_s = old.get("swift"), new.get("swift")
     if new_s is None:
@@ -982,6 +1004,13 @@ def render(data: dict) -> str:
         for name, pkg in sorted(web["packages"].items()):
             emit(f"| `{name}` | {pkg['version']} | {pkg['license'] or 'none given'} | {classify_licence(pkg['license'])} |")
         emit("")
+        hub = web.get("hub_page")
+        if hub:
+            emit(f"**`dspi hub`'s page at `/hub/`** is upstream's DSPi Link web page, built unmodified and compiled into the hub "
+                 f"(`crates/dspi-hub/assets/web/hub/`, `PROVENANCE.json`): {hub['repository']} at `{hub['commit'][:8]}`, "
+                 f"`@dspi/web` {hub['version']}, **{hub['license']}** (its `LICENSE`, served in the hub's `/THIRD-PARTY-NOTICES.txt`). "
+                 f"Bundled: {', '.join(f'`{p}`' for p in hub['packages'])}; `@dspi/web` declares no licence field, the repository's "
+                 "`LICENSE` covers it. Not in the iOS build.\n")
 
     emit("## 7. Flags\n")
     for flag in data["flags"]:

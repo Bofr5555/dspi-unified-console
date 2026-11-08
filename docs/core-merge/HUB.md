@@ -8,7 +8,7 @@ WP HB0, `crates/dspi-hub`. HB1, HB2, HB3, HB5 and HB6 build on this
 network side: the server, pairing, roles, commands, notifications, polls, snapshots and names, over real
 sockets (`tests/wp_hb1_server.rs`, `tests/wp_hb1_vreg_wire.rs`, `tests/wp_hb3_meter_feed.rs`), and
 advertising and what a browser is served (HB5: `tests/wp_hb5_advertise.rs`, `tests/wp_hb5_web.rs`). The
-upstream web bundle is not included: the owner's question (section 9, "HB5 as built").
+upstream web page is served at `/hub/` since WB7 (section 9, "WB7 as built").
 
 ## 1. Decisions in one place
 
@@ -505,10 +505,10 @@ from HB1's HTTP path, and only with `web` on.
   record. `tests/wp_hb5_advertise.rs` and `wp_hb5_web.rs` pass in a container with only `lo`
   (`podman run --network=none`).
 - **Web:** `web::asset` serves only what is compiled into its table, `/` being `/index.html`, never under
-  `/dspi/`, with `nosniff` and `no-cache`. Today that is a placeholder page of ours, which shows the hub's
-  name and devices from `/dspi/v1/info` and opens the WebSocket. It is no control UI, so `web` should stay
-  off in the apps until there is one: `web=1` tells clients `GET /` serves a UI.
-- **The upstream bundle, not included** (the owner would rather have one base than ship an external
+  `/dspi/`, with `nosniff` and `no-cache`. HB5 served a placeholder page of ours there; since WB7 `/` is a
+  landing page leading to the console and to upstream's page (section 9, "WB7 as built").
+- **The upstream bundle** (as HB5 left it; WB7 bundles it at `/hub/` on the owner's decision of
+  2026-11-08, from this pin), not included then (the owner would rather have one base than ship an external
   project). If approved it goes in as its built `dist/` as entries of `web::FILES`, its licence in
   `NOTICE.md`. Pin: WeebLabs/DSPi-Link commit `86f10e38dd760d01d4f589e4b606a5250b2d523d` (2026-11-02,
   upstream `HEAD` on 2026-11-07; no web release tag exists, only `bridge-v0.1.0`), `js/apps/web` is
@@ -550,15 +550,31 @@ reference to the hub (section 3). Set `initial_scan: false` when an app is to at
   `PKGBUILD`, `ci/github-actions-build.yml` and the `windows-msvc` step. The smoke builds have it.
 
 <!-- WP WB7 -->
-**WB7 as built: the web console beside the hub's page.** `NetworkConfig::console`
-(`Option<Arc<web::Console>>`) serves `apps/web`'s built dist at `/console/` while `web` is on; `/` stays
-HB5's page byte for byte (owner decision 1, 2026-11-08). **The files come at run time**, from a directory
+**WB7 as built: three paths** (owner, 2026-11-08). `/` is a landing page (`assets/web/index.html`,
+`landing.css`; no scripts) with two links, "DSPi Console" (`/console/`) and "Hub" (`/hub/`), and a line saying
+which is which; HB5's placeholder text is gone; `web=1` stays. **`/hub/` is upstream's DSPi Link web page**
+(`js/apps/web`, `@dspi/web` 1.2.0, MIT) at the commit the conformance run pins (`86f10e38`, `js` tree
+`128dca29`), built by `tools/build-link-web.sh` from `git archive` (tree checked) with `npm ci --ignore-scripts`
+from its own lockfile and Vite in `NODE` (images.conf, by digest); reproducible (`--check` rebuilds and
+compares byte for byte). Output committed in `assets/web/hub/` (index.html and the three files it loads, 80 KB;
+`setup.html`, the bridge's Wi-Fi page, left out) with `LICENSE` and `PROVENANCE.json` (every file's SHA-256, which
+`web::tests_wp_wb7` holds the compiled bytes to), and the generated table `src/link_web.rs`. It finds its hub at
+`location.host`: no configuration. Policy for `/hub/`: `script-src 'self'; connect-src 'self' ws://<Host>;
+style-src 'self'` (its inline styles are set through the DOM, which CSP does not stop); for `/`: no scripts.
+`/hub/assets/*` (hashed names) are cached `immutable`. `/THIRD-PARTY-NOTICES.txt` carries DSPi-Link's MIT text.
+**`ServerLimits::max_preauth_per_peer_web` = 8** replaces `max_preauth_per_peer` (4) while `web` is on: one
+browser opening the console from the landing page was answered 503 for `app.js` with 4 (each plain HTTP
+request counts as unauthenticated until answered, and Chromium opens up to six at once). `max_connections`
+(16) and the web-off budget are unchanged.
+
+**WB7: the web console.** `NetworkConfig::console`
+(`Option<Arc<web::Console>>`) serves `apps/web`'s built dist at `/console/` while `web` is on. **The files come at run time**, from a directory
 the embedder names (`Console::load`), read whole once at start, never per request: the Rust build needs no
 Node, the console and the hub version apart, and a request path is only a key, as for `FILES` (only plain
 names, served kinds, no hidden files, no symlinks, at most 512 files and 64 MB; directories are no keys,
 so no listing). The console's `index.html` gets `<meta name="dspi-hub" content="ws://<Host>">` (the
 request's `Host`, only when the `Origin` rule's own names accept it; else left empty) and
-`<meta name="dspi-hub-page" content="/">`. Every console response: CSP `default-src 'none'; script-src
+`<meta name="dspi-hub-page" content="/hub/">`. Every console response: CSP `default-src 'none'; script-src
 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self' ws://<Host>; style-src 'self'; ...
 frame-ancestors 'none'`, `nosniff`, `no-cache` with an ETag (304), `Referrer-Policy: no-referrer`;
 `/console` redirects to `/console/`. The `Origin` check is untouched. The C ABI (HB6) does not offer

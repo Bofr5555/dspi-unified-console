@@ -123,7 +123,8 @@ struct RunOptions {
     keep_awake: bool,
     forget_clients: bool,
     // -- WP WB7 --
-    /// `--web`: the hub's page at `/` and the console at `/console/`.
+    /// `--web`: a landing page at `/`, the console at `/console/`, the hub's own page
+    /// (upstream's DSPi Link page) at `/hub/`.
     web: bool,
     /// `--console DIR`: where the console is; else [`find_console`] looks.
     console: Option<PathBuf>,
@@ -231,8 +232,9 @@ OPTIONS:
                               anyone else on this network. PIN pairing is the default
     --forget-clients          agree to a change of --open that forgets every
                               paired client
-    --web                     serve the hub's page at / and the web console at
-                              /console/ (a browser on this network can use it)
+    --web                     serve web pages to browsers on this network: the
+                              web console at /console/, the hub's own page
+                              (DSPi Link's) at /hub/, and a page at / linking both
     --console <dir>           the built web console (apps/web's dist); implies
                               --web. Else ${CONSOLE_ENV}, else web/ beside this
                               program or ../share/dspi/web/ above it
@@ -662,11 +664,13 @@ fn load_console(opts: &RunOptions) -> Result<Option<Arc<dspi_hub::web::Console>>
     let Some(dir) = found else {
         if opts.local {
             return Err(Failure::Usage(format!(
-                "no web console found: give --console DIR (apps/web's built dist),                  or set {CONSOLE_ENV}"
+                "no web console found: give --console DIR (apps/web's built dist), \
+                 or set {CONSOLE_ENV}"
             )));
         }
         eprintln!(
-            "dspi hub: no web console found (--console DIR, {CONSOLE_ENV}): serving the              hub's page only"
+            "dspi hub: no web console found (--console DIR, {CONSOLE_ENV}): serving / and \
+             /hub/ only"
         );
         return Ok(None);
     };

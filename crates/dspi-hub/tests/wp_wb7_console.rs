@@ -209,7 +209,7 @@ fn wp_wb7_the_page_names_its_hub_and_the_policy_this_hubs_socket() {
             "{page}"
         );
         assert!(
-            page.contains(r#"<meta name="dspi-hub-page" content="/" />"#),
+            page.contains(r#"<meta name="dspi-hub-page" content="/hub/" />"#),
             "{page}"
         );
         assert_eq!(
@@ -309,4 +309,99 @@ fn wp_wb7_nothing_with_web_off_and_404_without_a_console() {
         "the hub's page is there all the same"
     );
     hub.stop();
+}
+
+#[test]
+fn wp_wb7_the_three_paths_with_their_policies() {
+    let (hub, port) = start(true, Some(&fake_dist()));
+    // `/`: the landing page, scripts not allowed at all.
+    let (code, head, body) = get(port, "/");
+    assert_eq!(code, 200);
+    assert_eq!(body, web::asset("/").unwrap().body);
+    let csp = header(&head, "content-security-policy").unwrap();
+    assert!(
+        !csp.contains("script-src") && csp.starts_with("default-src 'none';"),
+        "{csp}"
+    );
+    let (code, head, _) = get(port, "/landing.css");
+    assert_eq!(
+        (code, header(&head, "content-type")),
+        (200, Some("text/css; charset=utf-8"))
+    );
+    // `/hub/`: upstream's page and its files, as built, under its own policy.
+    let (code, head, body) = get(port, "/hub/");
+    assert_eq!(code, 200);
+    assert_eq!(body, web::asset("/hub/").unwrap().body);
+    assert_eq!(header(&head, "cache-control"), Some("no-cache"));
+    let csp = header(&head, "content-security-policy").unwrap();
+    assert!(
+        csp.contains(&format!("connect-src 'self' ws://127.0.0.1:{port};")),
+        "{csp}"
+    );
+    assert!(csp.contains("script-src 'self';"), "{csp}");
+    let page = String::from_utf8(body).unwrap();
+    let script = page
+        .split("src=\"./")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap();
+    let (code, head, body) = get(port, &format!("/hub/{script}"));
+    assert_eq!(code, 200, "{script}");
+    assert_eq!(
+        header(&head, "content-type"),
+        Some("text/javascript; charset=utf-8")
+    );
+    assert_eq!(
+        header(&head, "cache-control"),
+        Some("public, max-age=31536000, immutable")
+    );
+    assert_eq!(body, web::asset(&format!("/hub/{script}")).unwrap().body);
+    let (code, head, _) = get(port, "/hub");
+    assert_eq!((code, header(&head, "location")), (301, Some("/hub/")));
+    for path in [
+        "/hub/setup.html",
+        "/hub/assets/",
+        "/hub/LICENSE",
+        "/hub/PROVENANCE.json",
+    ] {
+        assert_eq!(get(port, path).0, 404, "{path}");
+    }
+    let (code, _, body) = get(port, "/THIRD-PARTY-NOTICES.txt");
+    assert_eq!(code, 200);
+    assert!(String::from_utf8(body).unwrap().contains("MIT License"));
+    // `/console/` as before.
+    assert_eq!(get(port, "/console/").0, 200);
+    hub.stop();
+    // With web off: none of the three.
+    let (hub, port) = start(false, Some(&fake_dist()));
+    for path in ["/", "/hub/", "/hub", "/console/", "/landing.css"] {
+        assert_eq!(get(port, path).0, 404, "{path}");
+    }
+    hub.stop();
+}
+
+/// A browser opens a page's files over up to six connections at once: with web on, one
+/// address may hold 8 unanswered sockets (it was 4, and the console's `app.js` was
+/// answered 503), and the next is refused as before.
+#[test]
+fn wp_wb7_a_browsers_parallel_loads_fit_the_per_peer_budget() {
+    let budget = dspi_hub::server::ServerLimits::default().max_preauth_per_peer_web;
+    assert_eq!(budget, 8);
+    for (web, room) in [(true, budget), (false, 4)] {
+        let (hub, port) = start(web, Some(&fake_dist()));
+        // Sockets that have sent nothing yet: each holds a pre-auth slot.
+        let held: Vec<TcpStream> = (0..room - 1)
+            .map(|_| TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap())
+            .collect();
+        std::thread::sleep(Duration::from_millis(200));
+        let path = if web { "/landing.css" } else { "/dspi/v1/info" };
+        assert_eq!(get(port, path).0, 200, "web {web}: the last slot");
+        let more = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+        assert_eq!(get(port, path).0, 503, "web {web}: past the budget");
+        drop((held, more));
+        hub.stop();
+    }
 }

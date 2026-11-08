@@ -1,5 +1,5 @@
 {
- "repo_commit": "0998de32",
+ "repo_commit": "97014521",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -406,7 +406,7 @@
    "Weeb Labs",
    "owner (bofr)"
   ],
-  "commit": "0998de32368e7b5d3085a312ffb195f851bd8a3c",
+  "commit": "970145214fd68c032831670677554956eb7a1fb6",
   "files": [
    "DSPi Console iOS/Info.plist",
    "DSPi Console/Assets.xcassets/AccentColor.colorset/Contents.json",
@@ -526,6 +526,16 @@
   ]
  },
  "web": {
+  "hub_page": {
+   "commit": "86f10e38dd760d01d4f589e4b606a5250b2d523d",
+   "license": "MIT",
+   "packages": [
+    "@dspi/link 1.2.0 MIT",
+    "@dspi/web 1.2.0 no licence field"
+   ],
+   "repository": "https://github.com/WeebLabs/DSPi-Link",
+   "version": "1.2.0"
+  },
   "packages": {
    "preact": {
     "license": "MIT",

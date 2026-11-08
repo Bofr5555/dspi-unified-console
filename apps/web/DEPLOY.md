@@ -31,15 +31,29 @@ not a long max-age.
 ## 1. From a hub: `dspi hub --web`
 
 ```bash
-dspi hub --web --console <out-dir>      # a hub on the LAN; its page at /, the console at /console/
+dspi hub --web --console <out-dir>      # a hub on the LAN
 ```
 
-The hub serves the console **beside** its own page, which stays as it is (the owner's
-decision 1): `/` is the hub's page, `/console/` the console, which links back to `/`.
+Three paths (the owner's decision, 2026-11-08):
+
+| Path | What |
+|---|---|
+| `/` | a small landing page: "DSPi Console" and "Hub", and one line saying which is which |
+| `/console/` | this console, which links to `/hub/` ("Hub page") |
+| `/hub/` | the hub's own page: upstream's DSPi Link web page, built unmodified and compiled into the hub (`crates/dspi-hub/tools/build-link-web.sh`, `assets/web/hub/PROVENANCE.json`; MIT, in the hub's `/THIRD-PARTY-NOTICES.txt`). It finds its hub at the address it was loaded from, so it needs no setting |
+
+mDNS still says `web=1`: `/` leads to a UI. `/` and `/hub/` have their own policies, the
+narrowest each works under: the landing page no scripts at all (`default-src 'none';
+style-src 'self'; ...`), upstream's page `script-src 'self'; connect-src 'self'
+ws://<the address>; style-src 'self'` (no wasm). Its hashed `assets/` are cached
+`immutable`; the rest `no-cache`. `/hub` and `/console` redirect to their slash.
+
 The hub fills in the console's `<meta name="dspi-hub">` with its own Link address, so
 the page lists that hub first, and a browser lets the page's WebSocket through the hub's
 `Origin` check because the page is the hub's own. Plain `http`, no WebUSB there (WebUSB
-needs a secure page). What the hub sends with every console file: the right
+needs a secure page). One address may hold 8 unanswered sockets with `web` on (4 without):
+a browser loads a page's files over up to six connections at once. What the hub sends
+with every console file: the right
 `Content-Type` (`application/wasm` for the core), `nosniff`, `no-cache` with an ETag (304
 when unchanged), `Referrer-Policy: no-referrer`, and this policy:
 
@@ -52,7 +66,8 @@ frame-ancestors 'none'
 
 No directory listing (only files are keys; `/console/test/` is a 404), no hidden files,
 no symbolic links, only the file kinds a build writes. The files are read once, whole,
-when the hub starts. Without `--console` a hub looks in `$DSPI_WEB_CONSOLE`, then `web/`
+when the hub starts. Without a console found, `/console/` is a 404 (the hub says so when
+it starts; `/` and `/hub/` are served all the same). Without `--console` a hub looks in `$DSPI_WEB_CONSOLE`, then `web/`
 beside the `dspi` binary, then `../share/dspi/web/` above it; an installer puts the dist
 in one of those.
 

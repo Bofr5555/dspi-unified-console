@@ -17,6 +17,7 @@ the per-directory table.
 | Part | What it says | Where |
 |---|---|---|
 | `tests/fixtures/link/` | MIT, Copyright (c) 2026 Weeb Labs | `tests/fixtures/link/LICENSE.DSPi-Link` |
+| `crates/dspi-hub/assets/web/hub/` | DSPi-Link's web page (`js/apps/web`), built unmodified; MIT, Copyright (c) 2026 Weeb Labs. `dspi hub --web` serves it at `/hub/` and its licence at `/THIRD-PARTY-NOTICES.txt` | `crates/dspi-hub/assets/web/hub/LICENSE`, `PROVENANCE.json` |
 | `crates/dspi-link/` | The owner's, from `dspi-android`; follows Weeb Labs' MIT DSPi-Link spec and policy | its `Cargo.toml` |
 | `crates/dspi-proto/firmware/` | Vendored DSPi firmware headers, GPL-3.0 | `PROVENANCE.toml` there |
 | `apps/desktop/qt/firmware/*.uf2` | DSPi firmware images, GPL-3.0, with third-party parts | https://github.com/WeebLabs/DSPi |

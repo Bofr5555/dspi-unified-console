@@ -10,6 +10,7 @@
 #                                   the hosting routes on the real `dspi`:
 #                                   `dspi hub --web`, `dspi web` (WB7)
 #   apps/web/tools/ci.sh --no-e2e   all but the browsers
+#   PW_ARGS="test/e2e/x.spec.ts --repeat-each 5" apps/web/tools/ci.sh   (WB7) e2e arguments
 #
 # npm installs only what package-lock.json names, with its integrity hashes. The
 # npm cache and node_modules live under ${DSPI_BUILD_CACHE:-~/.cache/dspi-build}/work/web
@@ -55,12 +56,12 @@ podman run --rm --init --userns=keep-id --user "$(id -u):$(id -g)" --ipc=private
   -e DSPI_WEB_SOURCE_URL="${DSPI_WEB_SOURCE_URL:-https://example.invalid/dspi-web-source}" \
   -v "$work/npm":/npm:z -v "$work/home":/home/web:z -v "$work/tmp":/wtmp:z \
   -e HOME=/home/web -e TMPDIR=/wtmp -e npm_config_cache=/npm -e npm_config_update_notifier=false \
-  -e CI=1 -e E2E=$e2e -w /src/apps/web "$PLAYWRIGHT" bash -euo pipefail -c '
+  -e CI=1 -e E2E=$e2e -e PW_ARGS="${PW_ARGS:-}" -w /src/apps/web "$PLAYWRIGHT" bash -euo pipefail -c '
     npm ci --no-audit --no-fund --ignore-scripts
     node node_modules/esbuild/install.js
     npx tsc --version && npm run typecheck
     npm run test:unit
     node tools/build.mjs --pages
     ls -l dist
-    if [ "$E2E" = 1 ]; then npx playwright test; fi'
+    if [ "$E2E" = 1 ]; then npx playwright test $PW_ARGS; fi'
 echo "web: OK"

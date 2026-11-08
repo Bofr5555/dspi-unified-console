@@ -3,43 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>DSPi hub</title>
-<style>
-  body { font: 16px system-ui, sans-serif; margin: 2rem auto; padding: 0 1rem; max-width: 36rem; }
-</style>
+<link rel="stylesheet" href="/landing.css">
 </head>
 <body>
-<h1 id="hub">DSPi hub</h1>
-<p>This hub has no control page yet. Use DSPi Console or the DSPi terminal to connect to it.</p>
-<h2>Devices</h2>
-<ul id="devices"></ul>
-<p>Connection: <span id="link">checking</span></p>
-<script>
-  const show = (id, text) => { document.getElementById(id).textContent = text; };
-  fetch("/dspi/v1/info").then(r => r.json()).then(info => {
-    show("hub", info.hub.name);
-    document.title = info.hub.name;
-    const list = document.getElementById("devices");
-    for (const d of info.devices) {
-      const item = document.createElement("li");
-      item.textContent = d.name + " (" + d.serial + ")";
-      list.append(item);
-    }
-    const ws = new WebSocket("ws://" + location.host + info.ws, "dspi-link-1");
-    ws.onopen = () => ws.send(JSON.stringify({
-      t: "hello",
-      proto: { major: 1, minor: 2 },
-      client: { name: "Browser", app: "hub page", version: "0" },
-    }));
-    ws.onmessage = e => {
-      const message = JSON.parse(e.data);
-      if (message.t === "hello") {
-        show("link", "reached the hub (access: " + message.auth + ")");
-        ws.close();
-      }
-    };
-    ws.onerror = () => show("link", "refused");
-  }).catch(() => show("link", "cannot reach the hub"));
-</script>
+<main>
+<h1>DSPi hub</h1>
+<ul class="choices">
+<li><a href="/console/">DSPi Console</a></li>
+<li><a href="/hub/">Hub</a></li>
+</ul>
+<p>DSPi Console controls the DSPis this hub shares, several at once. Hub is the hub's own page, from DSPi Link.</p>
+<p class="notes"><a href="/THIRD-PARTY-NOTICES.txt">Notices</a></p>
+</main>
 </body>
 </html>

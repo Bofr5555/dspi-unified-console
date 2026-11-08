@@ -1,9 +1,10 @@
 // WP WB7 e2e: the console reaches the demo device through each hosting route.
 //
-//   1. `dspi hub --web`: the real hub (DSPI_TERM, the Terminal's binary) serves the
-//      console at /console/ beside its own page at /, which stays byte for byte the
-//      page it was; the console knows its hub from the <meta> the hub fills in and
-//      reaches the hub's demo DSPi over Link, under the hub's policy (CSP).
+//   1. `dspi hub --web`: the real hub (DSPI_TERM, the Terminal's binary) serves three
+//      paths: / a landing page with two links, /console/ the console, /hub/ upstream's
+//      DSPi Link page, byte for byte its build. The console knows its hub from the
+//      <meta> the hub fills in and reaches the hub's demo DSPi over Link, under the
+//      hub's policy (CSP); upstream's page pairs (PIN) and reaches it too.
 //   2. `dspi web`: a hub on loopback serving the console on http://localhost, a
 //      secure context, so one page holds a DSPi on USB (the WebUSB mock, Chromium)
 //      and the hub's demo over Link at once.
@@ -12,7 +13,9 @@
 //
 // The Origin rule is the hub's, unchanged: a page from anywhere else is refused.
 
+import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { createInterface } from "node:readline";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 const linkWords = (await import("../../../../ci/generated/web/link-words.json", { with: { type: "json" } })).default as {
@@ -20,13 +23,27 @@ const linkWords = (await import("../../../../ci/generated/web/link-words.json", 
 };
 const words = (key: string) => linkWords.link.find((w) => w.key === key)!;
 
-const HUB = `http://127.0.0.1:${Number(process.env.DSPI_HUB_PORT ?? 8739)}`;
-const LOCAL_PORT = Number(process.env.DSPI_WEB_PORT ?? 8740);
-const LOCAL = `http://localhost:${LOCAL_PORT}`;
+// Each project has its own `dspi hub --web` and `dspi web` (playwright.config.ts), set
+// per test from its project.
+const PROJECTS = ["chromium", "firefox", "narrow"];
+let HUB = "";
+let LOCAL_PORT = 0;
+let LOCAL = "";
+test.beforeEach(({}, info) => {
+  const i = Math.max(0, PROJECTS.indexOf(info.project.name));
+  HUB = `http://127.0.0.1:${Number(process.env.DSPI_HUB_PORT ?? 8740) + i}`;
+  LOCAL_PORT = Number(process.env.DSPI_WEB_PORT ?? 8750) + i;
+  LOCAL = `http://localhost:${LOCAL_PORT}`;
+});
 const PLAIN = `http://127.0.0.1:${Number(process.env.PORT ?? 8737)}`;
 /** The core's simulated DSPi (FakeDevice::demo), which `dspi --demo hub` shares. */
 const DEMO = "DEMO0000DSPI0001";
-const PLACEHOLDER = readFileSync(new URL("../../../../crates/dspi-hub/assets/web/index.html", import.meta.url));
+const ASSETS = new URL("../../../../crates/dspi-hub/assets/web/", import.meta.url);
+const LANDING = readFileSync(new URL("index.html", ASSETS));
+/** Upstream's page as built (crates/dspi-hub/tools/build-link-web.sh): path under /hub/ -> bytes. */
+const UPSTREAM = Object.keys(JSON.parse(readFileSync(new URL("hub/PROVENANCE.json", ASSETS), "utf8")).files as Record<string, string>).map(
+  (rel) => [rel === "index.html" ? "" : rel, readFileSync(new URL(`hub/${rel}`, ASSETS))] as const,
+);
 
 async function noPageErrors(page: Page) {
   const errors: string[] = [];
@@ -36,6 +53,51 @@ async function noPageErrors(page: Page) {
     if (m.type() === "error" && !/WebSocket/i.test(m.text())) errors.push(m.text());
   });
   return errors;
+}
+
+/** Messages a browser logs when a Content Security Policy blocks something. */
+function cspViolations(page: Page): string[] {
+  const seen: string[] = [];
+  page.on("console", (m) => {
+    if (/Content Security Policy|Content-Security-Policy/i.test(m.text())) seen.push(m.text());
+  });
+  return seen;
+}
+
+/** On upstream's page: connect to the hub it was served by, open the demo DSPi. */
+async function upstreamOpensDemo(page: Page, connect = true) {
+  if (connect) {
+    await expect(page.getByLabel("Hub address")).toHaveValue(/^127\.0\.0\.1:\d+$/);
+    await page.getByRole("button", { name: "Connect" }).click();
+  }
+  await expect(page.getByRole("heading", { name: "Devices" })).toBeVisible();
+  const row = page.getByRole("button").filter({ hasText: DEMO });
+  await expect(row).toBeEnabled();
+  await row.click();
+  await expect(page.getByRole("button", { name: "Back" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("DSPi Demo");
+  await expect(page.getByText("Reading the DSPi…")).toHaveCount(0);
+}
+
+/** A hub of this test's own, with PIN pairing open: `dspi --demo hub --web --pair --json` on a free port. */
+async function pinHub(): Promise<{ port: number; pin: string; child: ChildProcess }> {
+  const store = `${process.env.TMPDIR ?? "test-results"}/wb7-pin-${process.pid}-${Math.random().toString(36).slice(2)}`;
+  const child = spawn(
+    process.env.DSPI_TERM!,
+    ["--demo", "hub", "--web", "--loopback", "--port", "0", "--pair", "--json", "--no-keep-awake", "--store", store],
+    { stdio: ["ignore", "pipe", "inherit"] },
+  );
+  const lines = createInterface({ input: child.stdout! });
+  let port = 0;
+  const pin = await new Promise<string>((ok, fail) => {
+    child.on("exit", (code) => fail(new Error(`dspi hub exited ${code}`)));
+    lines.on("line", (line) => {
+      const e = JSON.parse(line) as { event?: string; port?: number; pin?: string };
+      if (e.event === "status") port = e.port ?? 0;
+      if (e.event === "pairing" && e.pin) ok(e.pin);
+    });
+  });
+  return { port, pin, child };
 }
 
 const picker = (page: Page) => page.getByRole("navigation", { name: "DSPi devices" });
@@ -72,11 +134,18 @@ if (!process.env.DSPI_TERM) {
 
 test.describe("served by dspi hub --web", () => {
   test.skip(!process.env.DSPI_TERM, "no dspi binary (set DSPI_TERM)");
+  // One browser at a time on this project's hub, as a person would use it.
+  test.describe.configure({ mode: "serial" });
 
-  test("WB7: the hub's own page at / is unchanged, byte for byte", async ({ request }) => {
+  test("WB7: / is the landing page and /hub/ upstream's page, byte for byte its build", async ({ request }) => {
     const r = await request.get(`${HUB}/`);
     expect(r.status()).toBe(200);
-    expect(Buffer.compare(await r.body(), PLACEHOLDER)).toBe(0);
+    expect(Buffer.compare(await r.body(), LANDING)).toBe(0);
+    for (const [rel, bytes] of UPSTREAM) {
+      const f = await request.get(`${HUB}/hub/${rel}`);
+      expect(f.status(), rel).toBe(200);
+      expect(Buffer.compare(await f.body(), bytes), rel).toBe(0);
+    }
     // And the console is beside it, under its policy, with its types.
     const page = await request.get(`${HUB}/console/`);
     expect(page.headers()["content-type"]).toBe("text/html; charset=utf-8");
@@ -102,12 +171,56 @@ test.describe("served by dspi hub --web", () => {
     await page.goto(`${HUB}/console/`);
     await expect(page.getByRole("heading", { name: "DSPi Console" })).toBeVisible();
     // The link to the hub's own page, from ours only.
-    await expect(page.getByRole("link", { name: "Hub page" })).toHaveAttribute("href", "/");
+    await expect(page.getByRole("link", { name: "Hub page" })).toHaveAttribute("href", "/hub/");
     const session = await openHubDemo(page, new URL(HUB).host);
     await expect(session.locator(".volume-value")).toHaveText(/dB$/);
     await writeOnce(session, info, "-7.5");
     expect(violations).toEqual([]);
     expect(errors).toEqual([]);
+  });
+
+  test("WB7: the landing page leads to the console and to the hub's own page", async ({ page }) => {
+    const errors = await noPageErrors(page);
+    const violations = cspViolations(page);
+    await page.goto(`${HUB}/`);
+    await expect(page.getByRole("heading", { name: "DSPi hub" })).toBeVisible();
+    await expect(page.getByText("DSPi Console controls the DSPis this hub shares")).toBeVisible();
+    await page.getByRole("link", { name: "DSPi Console" }).click();
+    await expect(page).toHaveURL(`${HUB}/console/`);
+    await expect(page.getByRole("heading", { name: "DSPi Console" })).toBeVisible();
+    await page.goto(`${HUB}/`);
+    await page.getByRole("link", { name: "Hub", exact: true }).click();
+    await expect(page).toHaveURL(`${HUB}/hub/`);
+    await expect(page.getByLabel("Hub address")).toHaveValue(new URL(HUB).host);
+    expect(violations).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  test("WB7: upstream's page at /hub/ loads under its policy and reaches the hub's demo DSPi", async ({ page }) => {
+    const errors = await noPageErrors(page);
+    const violations = cspViolations(page);
+    await page.goto(`${HUB}/hub/`);
+    await upstreamOpensDemo(page);
+    expect(violations).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+
+  test("WB7: upstream's page pairs with the hub's PIN, then reaches the demo DSPi", async ({ page }) => {
+    const errors = await noPageErrors(page);
+    const violations = cspViolations(page);
+    const hub = await pinHub();
+    try {
+      await page.goto(`http://127.0.0.1:${hub.port}/hub/`);
+      await page.getByRole("button", { name: "Connect" }).click();
+      await expect(page.getByRole("heading", { name: "Pairing" })).toBeVisible();
+      await page.getByLabel("PIN (6 digits)").fill(hub.pin);
+      await page.getByRole("button", { name: "Pair" }).click();
+      await upstreamOpensDemo(page, false);
+      expect(violations).toEqual([]);
+      expect(errors).toEqual([]);
+    } finally {
+      hub.child.kill();
+    }
   });
 
   test("WB7: the Origin rule is the hub's: a page from elsewhere is refused", async ({ page }) => {
@@ -124,6 +237,7 @@ test.describe("served by dspi hub --web", () => {
 
 test.describe("served by dspi web on localhost", () => {
   test.skip(!process.env.DSPI_TERM, "no dspi binary (set DSPI_TERM)");
+  test.describe.configure({ mode: "serial" });
 
   test("WB7: the console on http://localhost is a secure page and reaches the local hub's demo", async ({ page }) => {
     const errors = await noPageErrors(page);

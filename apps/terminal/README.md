@@ -206,7 +206,8 @@ install notes.
 The web console (WP WB7, `apps/web`'s built dist; [`apps/web/DEPLOY.md`](../web/DEPLOY.md)):
 
 ```sh
-dspi hub --web --console <dist>   # the hub's page at /, the console at /console/
+dspi hub --web --console <dist>   # / links both: the console at /console/,
+                                  # the hub's own page (DSPi Link's) at /hub/
 dspi web [--demo]                 # this machine only: http://localhost:11916/console/,
                                   # WebUSB and Link in one page (dspi hub --local)
 ```

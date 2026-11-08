@@ -180,7 +180,8 @@ decides access. Styles are scoped under `.dspi-web` (`dist/dspi-web.css`); light
 and dark follow the system unless the host sets `data-theme` on `.dspi-web`. A
 host page's own element styles can still reach the console's buttons and inputs.
 `hubPage` (a URL) adds a link to the serving hub's own page in the header; the
-standalone page sets it from `<meta name="dspi-hub-page">`, which a hub fills in (WB7).
+standalone page sets it from `<meta name="dspi-hub-page">`, which a hub fills in with
+`/hub/`, upstream's DSPi Link page (WB7; `/` on a hub is a landing page linking both).
 How to serve the build, the headers and the policy a host needs: [`DEPLOY.md`](DEPLOY.md).
 
 Reaching hubs from a server-hosted page is bounded by the Link spec's `Origin`

@@ -14,7 +14,7 @@
 //!
 //! | Cost | Bound |
 //! |---|---|
-//! | Sockets and threads | [`ServerLimits::max_connections`] over every kind of socket, of which [`ServerLimits::max_preauth_per_peer`] unauthenticated from one address. Past that an answer of HTTP 503 on a short-lived thread, at most [`ServerLimits::max_refusing`] at a time; past that, closed unread |
+//! | Sockets and threads | [`ServerLimits::max_connections`] over every kind of socket, of which [`ServerLimits::max_preauth_per_peer`] unauthenticated from one address ([`ServerLimits::max_preauth_per_peer_web`] with `web` on, WP WB7). Past that an answer of HTTP 503 on a short-lived thread, at most [`ServerLimits::max_refusing`] at a time; past that, closed unread |
 //! | A socket that says nothing | The request head within [`ServerLimits::head_timeout`], however slowly it trickles; authenticated within [`ServerLimits::auth_timeout`] of opening, or close 4001 |
 //! | Memory per socket | A head of [`MAX_HEAD`] bytes; a frame or message of [`MAX_FRAME`], refused from its header before it is buffered |
 //! | A peer that stops reading | One write's [`ServerLimits::write_stall`]. Behind that, the outbox's limits (HUB.md section 6) |
@@ -87,6 +87,12 @@ pub struct ServerLimits {
     /// Unauthenticated sockets from one address (an IPv6 /64 counts as one), so one
     /// machine cannot hold every slot. Past it: HTTP 503.
     pub max_preauth_per_peer: usize,
+    // -- WP WB7 --
+    /// The same with `web` on, in its place: a browser loads a page's files over up to
+    /// six connections at once, each a plain HTTP request that counts here until it is
+    /// answered, beside its WebSocket and its fetch of `/dspi/v1/info`. With 4, one
+    /// browser opening the console was answered 503 for `app.js`.
+    pub max_preauth_per_peer_web: usize,
     /// Threads answering 503 at once. Past it a socket is closed unanswered.
     pub max_refusing: usize,
     /// From accept to the whole HTTP request head.
@@ -110,6 +116,8 @@ impl Default for ServerLimits {
         Self {
             max_connections: 16,
             max_preauth_per_peer: 4,
+            // -- WP WB7 --
+            max_preauth_per_peer_web: 8,
             max_refusing: 4,
             head_timeout: Duration::from_secs(10),
             auth_timeout: Duration::from_secs(30),
@@ -570,9 +578,13 @@ impl Shared {
                 .filter(|e| e.stage == Stage::PreAuth && e.peer == key)
                 .count();
             let refusing = live().filter(|e| e.stage == Stage::Refusing).count();
-            let stage = if connections < self.limits.max_connections
-                && from_peer < self.limits.max_preauth_per_peer
-            {
+            // -- WP WB7 -- a browser's parallel page loads, with web on
+            let per_peer = if self.web {
+                self.limits.max_preauth_per_peer_web
+            } else {
+                self.limits.max_preauth_per_peer
+            };
+            let stage = if connections < self.limits.max_connections && from_peer < per_peer {
                 Stage::PreAuth
             } else if refusing < self.limits.max_refusing {
                 Stage::Refusing
@@ -855,13 +867,30 @@ fn serve(shared: &Arc<Shared>, id: u64, mut tcp: TcpStream, peer: IpAddr, opened
     let asset = (shared.web && !path.starts_with("/dspi/"))
         .then(|| crate::web::asset(path))
         .flatten();
+    // -- WP WB7 -- `/hub` to `/hub/`, where upstream's relative URLs resolve.
+    if let Some(to) = shared.web.then(|| crate::web::redirect(path)).flatten() {
+        let headers = [TEXT, ("Location", to)];
+        respond(
+            shared,
+            &mut tcp,
+            "301 Moved Permanently",
+            &headers,
+            b"Moved.",
+            deadline,
+        );
+        return;
+    }
     match asset {
         Some(asset) => {
             // -- WP HB5 -- A hub's update changes these under the same paths.
+            // -- WP WB7 -- ...but for upstream's hashed asset names; and a policy per page.
+            let csp = crate::web::page_csp(path, own_authority(shared, &request));
             let headers = [
                 ("Content-Type", asset.content_type),
                 ("X-Content-Type-Options", "nosniff"),
-                ("Cache-Control", "no-cache"),
+                ("Cache-Control", crate::web::cache_control(path)),
+                ("Content-Security-Policy", csp.as_str()),
+                ("Referrer-Policy", "no-referrer"),
             ];
             // The peer's slot is held until its time runs out, however big the file.
             let until = after(opened, shared.limits.auth_timeout);
