@@ -231,6 +231,28 @@ void SmokeDriver::testUpdates() {
     check("QD16: an answer that is no list is a failure", up->result() == "failed" && !up->failure().isEmpty());
     up->setFeed(QUrl(QStringLiteral("file:///etc/passwd")));
     check("QD16: a feed that is not http(s) is none", !up->hasFeed());
+    // -- WP QD37 -- (review c4q N4) https only for the built-in feed; plain http only
+    // for an override on this machine
+    {
+        const QUrl https(QStringLiteral("https://releases.example/feed"));
+        const QUrl http(QStringLiteral("http://releases.example/feed"));
+        check("QD37: an http built-in feed is refused", AppUpdater::resolveFeed(QUrl(), http).isEmpty()
+              && !AppUpdater::feedAllowed(http, true) && !AppUpdater::feedAllowed(QUrl(QStringLiteral("http://127.0.0.1/feed")), true));
+        check("QD37: an https built-in feed is taken", AppUpdater::resolveFeed(QUrl(), https) == https);
+        bool loopback = true;
+        for (const char *u : { "http://127.0.0.1:8080/feed", "http://localhost/feed", "http://[::1]:9/feed", "http://127.1.2.3/feed" })
+            loopback = loopback && AppUpdater::resolveFeed(QUrl(QString::fromLatin1(u)), https) == QUrl(QString::fromLatin1(u));
+        check("QD37: a loopback http override is allowed", loopback);
+        bool remote = true;
+        for (const char *u : { "http://releases.example/feed", "http://192.168.1.20/feed", "http://127.0.0.1.example/feed", "http:///feed" })
+            remote = remote && AppUpdater::resolveFeed(QUrl(QString::fromLatin1(u)), https).isEmpty();
+        check("QD37: an http override off this machine is refused, not swapped for the built-in", remote);
+        up->setFeed(http);
+        check("QD37: setFeed refuses it too", !up->hasFeed());
+        up->setFeed(QUrl(server.url("/feed")));
+        check("QD37: and takes the loopback test feed", up->hasFeed() && up->feedHost() == QLatin1String("127.0.0.1"));
+        up->setFeed(QUrl(QStringLiteral("file:///etc/passwd")));
+    }
     up->checkNow();
     check("QD16: and is never asked", up->result() == "failed" && !up->checking());
 
