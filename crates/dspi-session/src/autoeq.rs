@@ -149,18 +149,27 @@ pub fn favourites_path() -> std::path::PathBuf {
 /// empty list: a favourites file is a convenience, never a reason to refuse to
 /// open the browser.
 pub fn load_favourites() -> Vec<String> {
-    std::fs::read_to_string(favourites_path())
-        .ok()
-        .and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok())
+    std::fs::read(favourites_path())
+        .map(|b| favourites_from_bytes(&b))
         .unwrap_or_default()
 }
 
 pub fn save_favourites(ids: &[String]) -> Result<(), AutoEqError> {
     let path = favourites_path();
-    write_config(
-        &path,
-        &serde_json::to_string_pretty(ids).unwrap_or_default(),
-    )
+    write_config(&path, &favourites_text(ids))
+}
+
+// -- WP WB2 --
+/// The favourites file's bytes as ids, for a host that keeps the file itself
+/// (the web has no file system). Anything unreadable is an empty list, as in
+/// [`load_favourites`].
+pub fn favourites_from_bytes(data: &[u8]) -> Vec<String> {
+    serde_json::from_slice::<Vec<String>>(data).unwrap_or_default()
+}
+
+/// The favourites file's text, as [`save_favourites`] writes it.
+pub fn favourites_text(ids: &[String]) -> String {
+    serde_json::to_string_pretty(ids).unwrap_or_default()
 }
 
 fn write_config(path: &std::path::Path, text: &str) -> Result<(), AutoEqError> {
@@ -301,10 +310,23 @@ pub fn load() -> Result<Database, AutoEqError> {
 pub fn load_user_database(db_path: &std::path::Path) -> Result<Database, AutoEqError> {
     let text =
         std::fs::read_to_string(db_path).map_err(|e| AutoEqError::Unreadable(e.to_string()))?;
+    user_database_from(&text)
+}
+
+fn user_database_from(text: &str) -> Result<Database, AutoEqError> {
     let mut db: Database =
-        serde_json::from_str(&text).map_err(|e| AutoEqError::Unreadable(e.to_string()))?;
+        serde_json::from_str(text).map_err(|e| AutoEqError::Unreadable(e.to_string()))?;
     db.origin = Origin::User;
     Ok(db)
+}
+
+// -- WP WB2 --
+/// A user database from its file's bytes, for a host that keeps the file
+/// itself (the web has no file system). As [`load_user_database`], which
+/// reads the file and calls this.
+pub fn parse_user_database(data: &[u8]) -> Result<Database, AutoEqError> {
+    let text = std::str::from_utf8(data).map_err(|e| AutoEqError::Unreadable(e.to_string()))?;
+    user_database_from(text)
 }
 
 impl Database {
@@ -607,16 +629,36 @@ pub struct RebuildProgress {
 /// The interface polls [`RebuildHandle::poll`] each tick rather than blocking:
 /// a full rebuild is thousands of requests and takes minutes, and an interface
 /// that stops answering for minutes is broken however good the result is.
+///
+/// On `wasm32-unknown-unknown`, which has no threads, there is no thread: each
+/// [`RebuildHandle::poll`] does one step (one listing, or one batch of profiles
+/// one after the other) on the caller's own call, then reports (WP WB2).
 pub struct RebuildHandle {
     rx: std::sync::mpsc::Receiver<RebuildProgress>,
     stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
     latest: RebuildProgress,
     thread: Option<std::thread::JoinHandle<()>>,
+    /// The database's text once a [`rebuild_bytes`] rebuild succeeded.
+    database: std::sync::Arc<std::sync::Mutex<Option<Vec<u8>>>>,
+    /// The rebuild itself, where the caller's polls drive it.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    driven: Option<Driven>,
+}
+
+/// A rebuild without a thread: what the thread would own (WP WB2).
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+struct Driven {
+    fetch: Box<dyn Fetch>,
+    rebuild: Rebuild,
+    out: RebuildOutput,
+    tx: std::sync::mpsc::Sender<RebuildProgress>,
 }
 
 impl RebuildHandle {
     /// The newest progress, or the last one seen if nothing new arrived.
     pub fn poll(&mut self) -> &RebuildProgress {
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        self.drive();
         loop {
             match self.rx.try_recv() {
                 Ok(p) => self.latest = p,
@@ -634,6 +676,30 @@ impl RebuildHandle {
         &self.latest
     }
 
+    /// One step of a rebuild the caller drives; the last one ends it.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn drive(&mut self) {
+        let Some(d) = self.driven.as_mut() else {
+            return;
+        };
+        let tx = d.tx.clone();
+        let send = move |fraction: f32, status: String, done: Option<RebuildDone>| {
+            let _ = tx.send(RebuildProgress {
+                fraction,
+                status,
+                done,
+            });
+        };
+        let stopped = self.stop.load(std::sync::atomic::Ordering::Relaxed);
+        let Some(result) = d.rebuild.step(d.fetch.as_ref(), stopped, &send) else {
+            return;
+        };
+        let result = result.and_then(|(summary, text)| d.out.store(&self.database, summary, text));
+        finish(&send, result);
+        // Dropping the sender ends the channel after `done`, as the thread does.
+        self.driven = None;
+    }
+
     /// Stop at the next batch of profiles.
     pub fn cancel(&self) {
         self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -647,6 +713,29 @@ impl RebuildHandle {
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        if let Some(d) = self.driven.take() {
+            finish(
+                &|fraction, status, done| {
+                    let _ = d.tx.send(RebuildProgress {
+                        fraction,
+                        status,
+                        done,
+                    });
+                },
+                Err(AutoEqError::Cancelled),
+            );
+        }
+    }
+
+    /// The database a [`rebuild_bytes`] rebuild made, once it has finished
+    /// with success: JSON, as the file would hold. `None` before then, after a
+    /// failure, for a rebuild that wrote a file, and after the first take.
+    pub fn take_database(&mut self) -> Option<Vec<u8>> {
+        self.database
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
     }
 }
 
@@ -683,11 +772,65 @@ pub fn rebuild_from_github(fetch: Box<dyn Fetch>) -> RebuildHandle {
 }
 
 /// Start a rebuild of the database at `db_path` on a background thread. The file
-/// changes only when the rebuild succeeds, and in one step.
+/// changes only when the rebuild succeeds, and in one step. Where there is no
+/// file system (the web), use [`rebuild_bytes`].
 pub fn rebuild_to(fetch: Box<dyn Fetch>, db_path: std::path::PathBuf) -> RebuildHandle {
+    start_rebuild(fetch, RebuildOutput::File(db_path))
+}
+
+/// Start a rebuild that writes no file (WP WB2): on success the database's
+/// bytes wait in [`RebuildHandle::take_database`], for a host that keeps them
+/// itself (a page's storage). Otherwise as [`rebuild_to`].
+pub fn rebuild_bytes(fetch: Box<dyn Fetch>) -> RebuildHandle {
+    start_rebuild(fetch, RebuildOutput::Bytes)
+}
+
+/// Where a finished rebuild's database goes.
+enum RebuildOutput {
+    File(std::path::PathBuf),
+    /// [`RebuildHandle::take_database`].
+    Bytes,
+}
+
+impl RebuildOutput {
+    /// Write or keep the database; the summary when that worked.
+    fn store(
+        &self,
+        database: &std::sync::Mutex<Option<Vec<u8>>>,
+        summary: RebuildSummary,
+        text: String,
+    ) -> RebuildDone {
+        match self {
+            Self::File(path) => write_config(path, &text)?,
+            Self::Bytes => {
+                *database
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(text.into_bytes());
+            }
+        }
+        Ok(summary)
+    }
+}
+
+/// The last message of a rebuild.
+fn finish(send: &dyn Fn(f32, String, Option<RebuildDone>), result: RebuildDone) {
+    match result {
+        Ok(s) => send(
+            1.0,
+            format!("Complete! {} profiles.", s.entries),
+            Some(Ok(s)),
+        ),
+        Err(e) => send(0.0, e.to_string(), Some(Err(e))),
+    }
+}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+fn start_rebuild(fetch: Box<dyn Fetch>, out: RebuildOutput) -> RebuildHandle {
     let (tx, rx) = std::sync::mpsc::channel();
     let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let flag = std::sync::Arc::clone(&stop);
+    let database = std::sync::Arc::default();
+    let db = std::sync::Arc::clone(&database);
     let thread = std::thread::Builder::new()
         .name("dspi-autoeq-rebuild".into())
         .spawn(move || {
@@ -698,14 +841,9 @@ pub fn rebuild_to(fetch: Box<dyn Fetch>, db_path: std::path::PathBuf) -> Rebuild
                     done,
                 });
             };
-            match run_rebuild(fetch.as_ref(), &flag, &db_path, &send) {
-                Ok(s) => send(
-                    1.0,
-                    format!("Complete! {} profiles.", s.entries),
-                    Some(Ok(s)),
-                ),
-                Err(e) => send(0.0, e.to_string(), Some(Err(e))),
-            }
+            let result = rebuild_text(fetch.as_ref(), &flag, &send)
+                .and_then(|(summary, text)| out.store(&db, summary, text));
+            finish(&send, result);
         });
     let (thread, done) = match thread {
         Ok(t) => (Some(t), None),
@@ -726,6 +864,30 @@ pub fn rebuild_to(fetch: Box<dyn Fetch>, db_path: std::path::PathBuf) -> Rebuild
             done,
         },
         thread,
+        database,
+    }
+}
+
+/// The web's [`start_rebuild`]: the caller's polls drive it (WP WB2).
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+fn start_rebuild(fetch: Box<dyn Fetch>, out: RebuildOutput) -> RebuildHandle {
+    let (tx, rx) = std::sync::mpsc::channel();
+    RebuildHandle {
+        rx,
+        stop: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        latest: RebuildProgress {
+            fraction: 0.0,
+            status: "Connecting to GitHub...".into(),
+            done: None,
+        },
+        thread: None,
+        database: std::sync::Arc::default(),
+        driven: Some(Driven {
+            fetch,
+            rebuild: Rebuild::default(),
+            out,
+            tx,
+        }),
     }
 }
 
@@ -751,91 +913,192 @@ struct Wanted {
 ///   came at all, nothing is written.
 ///
 /// What is on disk changes only at the very end, and in one step.
+#[cfg(test)]
 fn run_rebuild(
     fetch: &dyn Fetch,
     stop: &std::sync::atomic::AtomicBool,
     out: &std::path::Path,
     send: &dyn Fn(f32, String, Option<RebuildDone>),
 ) -> RebuildDone {
-    let stopped = || stop.load(std::sync::atomic::Ordering::Relaxed);
-    let mut summary = RebuildSummary::default();
-    let mut last_error = None;
-    send(0.0, "Connecting to GitHub...".into(), None);
-    send(0.0, "Discovering profiles...".into(), None);
+    let (summary, text) = rebuild_text(fetch, stop, send)?;
+    write_config(out, &text)?;
+    Ok(summary)
+}
 
-    let mut listings = 0usize;
-    // A listing that failed on its own is `None`; a 404 is an empty folder.
-    let mut list =
-        |path: String, summary: &mut RebuildSummary| -> Result<Option<Vec<String>>, AutoEqError> {
-            listings = listings.saturating_add(1);
-            match list_dir(fetch, &path) {
-                Ok(names) => Ok(Some(names)),
-                Err(e @ FetchError::RateLimited { .. }) => Err(AutoEqError::Fetch(e)),
-                Err(FetchError::Status(404)) => Ok(None),
-                Err(e) => {
-                    summary.failed_listings = summary.failed_listings.saturating_add(1);
-                    last_error = Some(e);
-                    Ok(None)
+/// The rebuild up to the database's text, which it does not write: the
+/// steps back to back, on the rebuild's thread.
+#[cfg(any(test, not(all(target_arch = "wasm32", target_os = "unknown"))))]
+fn rebuild_text(
+    fetch: &dyn Fetch,
+    stop: &std::sync::atomic::AtomicBool,
+    send: &dyn Fn(f32, String, Option<RebuildDone>),
+) -> Result<(RebuildSummary, String), AutoEqError> {
+    let mut rebuild = Rebuild::default();
+    loop {
+        let stopped = stop.load(std::sync::atomic::Ordering::Relaxed);
+        if let Some(result) = rebuild.step(fetch, stopped, send) {
+            return result;
+        }
+    }
+}
+
+/// The rebuild as steps, so a caller without threads can drive it (WP WB2):
+/// each [`Rebuild::step`] reads one listing or one batch of profiles. The
+/// thread runs the same steps back to back.
+#[derive(Default)]
+struct Rebuild {
+    started: bool,
+    summary: RebuildSummary,
+    last_error: Option<FetchError>,
+    /// Listings read so far.
+    listings: usize,
+    /// Listings still to read, in order: a source (by its index in
+    /// [`SOURCES`]) and a target folder, or no target for the source's own.
+    queue: std::collections::VecDeque<(usize, Option<String>)>,
+    /// The source whose own listing worked, to be announced once its
+    /// targets are read.
+    found: Option<usize>,
+    /// The listing is over and checked.
+    listed: bool,
+    wanted: Vec<Wanted>,
+    /// Profiles downloaded so far.
+    done: usize,
+    /// Keyed by manufacturer and model so two sources measuring the same
+    /// headphone collapse to the better-regarded one. Results are read in
+    /// listing order, so which of two equals wins does not depend on network
+    /// timing.
+    best: std::collections::BTreeMap<String, (Entry, u8)>,
+}
+
+impl Rebuild {
+    /// One listing; a listing that failed on its own is `None`, and a 404 is
+    /// an empty folder.
+    fn list(
+        &mut self,
+        fetch: &dyn Fetch,
+        path: String,
+    ) -> Result<Option<Vec<String>>, AutoEqError> {
+        self.listings = self.listings.saturating_add(1);
+        match list_dir(fetch, &path) {
+            Ok(names) => Ok(Some(names)),
+            Err(e @ FetchError::RateLimited { .. }) => Err(AutoEqError::Fetch(e)),
+            Err(FetchError::Status(404)) => Ok(None),
+            Err(e) => {
+                self.summary.failed_listings = self.summary.failed_listings.saturating_add(1);
+                self.last_error = Some(e);
+                Ok(None)
+            }
+        }
+    }
+
+    /// The next step; `Some` once the rebuild is over, with the database's
+    /// text on success. `stopped`: the person cancelled.
+    fn step(
+        &mut self,
+        fetch: &dyn Fetch,
+        stopped: bool,
+        send: &dyn Fn(f32, String, Option<RebuildDone>),
+    ) -> Option<Result<(RebuildSummary, String), AutoEqError>> {
+        if !self.started {
+            self.started = true;
+            send(0.0, "Connecting to GitHub...".into(), None);
+            send(0.0, "Discovering profiles...".into(), None);
+            self.queue = (0..SOURCES.len()).map(|i| (i, None)).collect();
+        }
+        if let Some((source, target)) = self.queue.pop_front() {
+            if stopped {
+                return Some(Err(AutoEqError::Cancelled));
+            }
+            return self.list_step(fetch, source, target, send).err().map(Err);
+        }
+        if !self.listed {
+            self.listed = true;
+            if self.wanted.is_empty() {
+                return Some(Err(AutoEqError::NoProfiles {
+                    reason: self.last_error.take().map_or_else(
+                        || "GitHub listed no profiles".to_string(),
+                        |e: FetchError| e.to_string(),
+                    ),
+                }));
+            }
+            if self.summary.failed_listings.saturating_mul(2) > self.listings {
+                return Some(Err(AutoEqError::TooManyFailures {
+                    failed: self.summary.failed_listings,
+                    total: self.listings,
+                }));
+            }
+            send(
+                0.0,
+                format!("Downloading 0 / {} profiles...", self.wanted.len()),
+                None,
+            );
+        }
+        if self.done < self.wanted.len() {
+            if stopped {
+                return Some(Err(AutoEqError::Cancelled));
+            }
+            return self.batch_step(fetch, send).err().map(Err);
+        }
+        Some(self.build(send))
+    }
+
+    /// Read one listing: a source's targets, or a target's headphones.
+    fn list_step(
+        &mut self,
+        fetch: &dyn Fetch,
+        source: usize,
+        target: Option<String>,
+        send: &dyn Fn(f32, String, Option<RebuildDone>),
+    ) -> Result<(), AutoEqError> {
+        let Some(&(folder, name, priority)) = SOURCES.get(source) else {
+            return Ok(());
+        };
+        match target {
+            None => {
+                if let Some(targets) = self.list(fetch, format!("results/{folder}"))? {
+                    self.found = Some(source);
+                    for t in targets.into_iter().rev() {
+                        self.queue.push_front((source, Some(t)));
+                    }
                 }
             }
-        };
-
-    let mut wanted: Vec<Wanted> = Vec::new();
-    for (folder, name, priority) in SOURCES {
-        if stopped() {
-            return Err(AutoEqError::Cancelled);
-        }
-        let Some(targets) = list(format!("results/{folder}"), &mut summary)? else {
-            continue;
-        };
-        for target in targets {
-            if stopped() {
-                return Err(AutoEqError::Cancelled);
-            }
-            let path = format!("results/{folder}/{target}");
-            let Some(headphones) = list(path, &mut summary)? else {
-                continue;
-            };
-            for headphone in headphones {
-                wanted.push(Wanted {
-                    folder,
-                    name,
-                    priority,
-                    target: target.clone(),
-                    headphone,
-                });
+            Some(target) => {
+                let path = format!("results/{folder}/{target}");
+                if let Some(headphones) = self.list(fetch, path)? {
+                    for headphone in headphones {
+                        self.wanted.push(Wanted {
+                            folder,
+                            name,
+                            priority,
+                            target: target.clone(),
+                            headphone,
+                        });
+                    }
+                }
             }
         }
-        send(0.0, format!("Found {} profiles...", wanted.len()), None);
-    }
-    if wanted.is_empty() {
-        return Err(AutoEqError::NoProfiles {
-            reason: last_error.map_or_else(
-                || "GitHub listed no profiles".to_string(),
-                |e: FetchError| e.to_string(),
-            ),
-        });
-    }
-    if summary.failed_listings.saturating_mul(2) > listings {
-        return Err(AutoEqError::TooManyFailures {
-            failed: summary.failed_listings,
-            total: listings,
-        });
-    }
-
-    let total = wanted.len();
-    send(0.0, format!("Downloading 0 / {total} profiles..."), None);
-
-    // Keyed by manufacturer and model so two sources measuring the same
-    // headphone collapse to the better-regarded one. Results are read in listing
-    // order, so which of two equals wins does not depend on network timing.
-    let mut best: std::collections::BTreeMap<String, (Entry, u8)> =
-        std::collections::BTreeMap::new();
-    let mut done = 0usize;
-    for batch in wanted.chunks(BATCH_SIZE) {
-        if stopped() {
-            return Err(AutoEqError::Cancelled);
+        let source_over = self.queue.front().is_none_or(|(s, _)| *s != source);
+        if source_over && self.found == Some(source) {
+            self.found = None;
+            send(
+                0.0,
+                format!("Found {} profiles...", self.wanted.len()),
+                None,
+            );
         }
+        Ok(())
+    }
+
+    /// Download one batch of profiles.
+    fn batch_step(
+        &mut self,
+        fetch: &dyn Fetch,
+        send: &dyn Fn(f32, String, Option<RebuildDone>),
+    ) -> Result<(), AutoEqError> {
+        let total = self.wanted.len();
+        let end = self.done.saturating_add(BATCH_SIZE).min(total);
+        let batch = self.wanted.get(self.done..end).unwrap_or_default();
+        let summary = &mut self.summary;
         for (profile, result) in batch.iter().zip(fetch_batch(fetch, batch)) {
             let text = match result {
                 Ok(text) => text,
@@ -860,10 +1123,10 @@ fn run_rebuild(
                 entry.manufacturer.to_ascii_lowercase(),
                 entry.model.to_ascii_lowercase()
             );
-            match best.get(&key) {
+            match self.best.get(&key) {
                 Some((_, p)) if *p <= profile.priority => {}
                 _ => {
-                    best.insert(key, (entry, profile.priority));
+                    self.best.insert(key, (entry, profile.priority));
                 }
             }
         }
@@ -874,39 +1137,49 @@ fn run_rebuild(
                 total,
             });
         }
-        done = done.saturating_add(batch.len());
+        self.done = end;
         send(
-            done as f32 / total as f32,
-            format!("Downloading {done} / {total} profiles..."),
+            self.done as f32 / total as f32,
+            format!("Downloading {} / {total} profiles...", self.done),
             None,
         );
+        Ok(())
     }
 
-    send(1.0, "Building database...".into(), None);
-    let mut entries: Vec<Entry> = best.into_values().map(|(e, _)| e).collect();
-    if entries.is_empty() {
-        return Err(AutoEqError::NoProfiles {
-            reason: "none of the profiles could be read".to_string(),
+    /// The database's text from what was downloaded.
+    fn build(
+        &mut self,
+        send: &dyn Fn(f32, String, Option<RebuildDone>),
+    ) -> Result<(RebuildSummary, String), AutoEqError> {
+        send(1.0, "Building database...".into(), None);
+        let mut entries: Vec<Entry> = std::mem::take(&mut self.best)
+            .into_values()
+            .map(|(e, _)| e)
+            .collect();
+        if entries.is_empty() {
+            return Err(AutoEqError::NoProfiles {
+                reason: "none of the profiles could be read".to_string(),
+            });
+        }
+        entries.sort_by_key(|e| {
+            (
+                e.manufacturer.to_ascii_lowercase(),
+                e.model.to_ascii_lowercase(),
+            )
         });
+        let mut summary = std::mem::take(&mut self.summary);
+        summary.entries = entries.len();
+        let db = Database {
+            version: 1,
+            generated_at: iso8601_utc(unix_now()),
+            entry_count: i32::try_from(entries.len()).unwrap_or(i32::MAX),
+            entries,
+            origin: Origin::User,
+        };
+        let text = serde_json::to_string_pretty(&db)
+            .map_err(|e| AutoEqError::Unreadable(e.to_string()))?;
+        Ok((summary, text))
     }
-    entries.sort_by_key(|e| {
-        (
-            e.manufacturer.to_ascii_lowercase(),
-            e.model.to_ascii_lowercase(),
-        )
-    });
-    summary.entries = entries.len();
-    let db = Database {
-        version: 1,
-        generated_at: iso8601_utc(unix_now()),
-        entry_count: i32::try_from(entries.len()).unwrap_or(i32::MAX),
-        entries,
-        origin: Origin::User,
-    };
-    let text =
-        serde_json::to_string_pretty(&db).map_err(|e| AutoEqError::Unreadable(e.to_string()))?;
-    write_config(out, &text)?;
-    Ok(summary)
 }
 
 /// Fetch a batch at once. The answers come back in the batch's order.
@@ -921,6 +1194,10 @@ fn fetch_batch(fetch: &dyn Fetch, batch: &[Wanted]) -> Vec<Result<String, FetchE
         );
         fetch_text(fetch, &FetchRequest::new(url, None))
     };
+    // No threads on the web: one after the other (WP WB2).
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    return batch.iter().map(one).collect();
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     std::thread::scope(|scope| {
         let workers: Vec<_> = batch
             .iter()
@@ -1144,6 +1421,23 @@ pub fn import_bytes(data: &[u8], db_path: &std::path::Path) -> Result<Database, 
     write_atomic(db_path, data)?;
     db.origin = Origin::User;
     Ok(db)
+}
+
+// -- WP WB2 --
+/// Check an imported file's bytes as [`import_bytes`] does, writing nothing:
+/// for a host that stores the database itself. Store `data` only on `Ok`.
+pub fn check_import(data: &[u8]) -> Result<Database, AutoEqError> {
+    let mut db = validate(data)?;
+    db.origin = Origin::User;
+    Ok(db)
+}
+
+/// [`update_from_url`] for a host that stores the database itself: the
+/// download, once it is known to be a database, and its bytes to store.
+pub fn update_bytes(fetch: &dyn Fetch, url: &str) -> Result<(Database, Vec<u8>), AutoEqError> {
+    let data = fetch_bytes(fetch, &FetchRequest::new(url.to_string(), None))
+        .map_err(AutoEqError::Fetch)?;
+    Ok((check_import(&data)?, data))
 }
 
 /// Replace the user database with a file the person chose.
@@ -2017,6 +2311,7 @@ Filter 3: ON None
                 done: None,
             },
             thread: None,
+            database: Default::default(),
         };
         assert_eq!(handle.poll().done, Some(Err(AutoEqError::Stopped)));
     }
@@ -2194,5 +2489,119 @@ Filter 3: ON None
         let w = rebuild_warning_for(std::path::Path::new("/somewhere/db.json"));
         assert!(w.contains("/somewhere/db.json"), "{w}");
         assert!(w.contains("api.github.com"), "{w}");
+    }
+
+    // -- WP WB2 --
+    /// Drive a rebuild step by step, as the web's polls do.
+    fn steps(
+        fetch: &dyn Fetch,
+    ) -> (
+        usize,
+        Vec<String>,
+        Result<(RebuildSummary, String), AutoEqError>,
+    ) {
+        let lines = std::sync::Mutex::new(Vec::new());
+        let send = |_: f32, s: String, _: Option<RebuildDone>| lines.lock().unwrap().push(s);
+        let mut rebuild = Rebuild::default();
+        let mut n = 0;
+        loop {
+            n += 1;
+            if let Some(r) = rebuild.step(fetch, false, &send) {
+                return (n, lines.into_inner().unwrap(), r);
+            }
+        }
+    }
+
+    #[test]
+    fn wb2_a_rebuild_runs_in_steps_with_the_threads_messages() {
+        let fetch = || {
+            Script::default()
+                .listing("oratory1990", &["Sennheiser HD 600", "Sony A"])
+                .profile("oratory1990", "Sennheiser HD 600")
+                .profile("oratory1990", "Sony A")
+        };
+        let (n, lines, result) = steps(&fetch());
+        // Five sources, one target listing, one batch, the build.
+        assert_eq!(n, 5 + 1 + 1 + 1, "{lines:?}");
+        let (summary, text) = result.unwrap();
+        assert_eq!(summary.entries, 2);
+        assert!(text.contains("Sennheiser"), "{text}");
+
+        let threaded = std::sync::Mutex::new(Vec::new());
+        let stop = std::sync::atomic::AtomicBool::new(false);
+        let (summary_t, _) =
+            rebuild_text(&fetch(), &stop, &|_, s, _| threaded.lock().unwrap().push(s)).unwrap();
+        assert_eq!(summary_t, summary);
+        assert_eq!(threaded.into_inner().unwrap(), lines);
+        assert_eq!(
+            lines.iter().filter(|l| l.starts_with("Found")).count(),
+            1,
+            "only the source that listed is announced: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn wb2_a_stop_between_steps_cancels_without_a_result() {
+        let fetch = Script::default()
+            .listing("oratory1990", &["Sony A"])
+            .profile("oratory1990", "Sony A");
+        let mut rebuild = Rebuild::default();
+        assert!(rebuild.step(&fetch, false, &|_, _, _| {}).is_none());
+        assert_eq!(
+            rebuild.step(&fetch, true, &|_, _, _| {}),
+            Some(Err(AutoEqError::Cancelled))
+        );
+    }
+
+    #[test]
+    fn wb2_rebuild_bytes_keeps_the_database_and_writes_no_file() {
+        let fetch = Script::default()
+            .listing("oratory1990", &["Sony A"])
+            .profile("oratory1990", "Sony A");
+        let mut handle = rebuild_bytes(Box::new(fetch));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let done = loop {
+            if let Some(done) = handle.poll().done.clone() {
+                break done;
+            }
+            assert!(handle.take_database().is_none(), "not before the end");
+            assert!(std::time::Instant::now() < deadline, "no result");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        };
+        assert_eq!(done.unwrap().entries, 1);
+        let bytes = handle.take_database().expect("the database");
+        assert_eq!(parse_user_database(&bytes).unwrap().entries.len(), 1);
+        assert!(handle.take_database().is_none(), "taken once");
+    }
+
+    #[test]
+    fn wb2_the_byte_apis_match_the_file_ones() {
+        let dir = test_dir("autoeq-wb2");
+        std::fs::create_dir_all(&dir).unwrap();
+        let out = dir.join(USER_DB_NAME);
+        std::fs::write(&out, SMALL_DB).unwrap();
+        let from_file = load_user_database(&out).unwrap();
+        let from_bytes = parse_user_database(SMALL_DB.as_bytes()).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(from_bytes.entries.len(), from_file.entries.len());
+        assert_eq!(from_bytes.origin, Origin::User);
+        assert!(parse_user_database(&[0xFF, 0xFE]).is_err());
+
+        assert_eq!(check_import(SMALL_DB.as_bytes()).unwrap().entries.len(), 1);
+        assert!(check_import(b"{}").is_err(), "an empty database is refused");
+
+        let ids = vec!["a".to_string(), "b".to_string()];
+        assert_eq!(favourites_from_bytes(favourites_text(&ids).as_bytes()), ids);
+        assert!(favourites_from_bytes(b"not json").is_empty());
+
+        let url = "https://example.invalid/db.json".to_string();
+        let fetch = Script::default().on(url.clone(), answer(200, SMALL_DB));
+        let (db, bytes) = update_bytes(&fetch, &url).unwrap();
+        assert_eq!(
+            (db.entries.len(), bytes.as_slice()),
+            (1, SMALL_DB.as_bytes())
+        );
+        let bad = Script::default().on(url.clone(), answer(200, "{}"));
+        assert!(update_bytes(&bad, &url).is_err());
     }
 }

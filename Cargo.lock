@@ -667,6 +667,7 @@ name = "dspi-link"
 version = "0.1.0"
 dependencies = [
  "data-encoding",
+ "getrandom 0.4.3",
  "log",
  "mdns-sd",
  "serde",
@@ -753,6 +754,16 @@ dependencies = [
  "toml 1.1.4+spec-1.1.0",
  "unicode-width 0.2.0",
  "ureq",
+]
+
+[[package]]
+name = "dspi-wasm-scenario"
+version = "2.0.0-dev"
+dependencies = [
+ "dspi-core",
+ "dspi-proto",
+ "dspi-session",
+ "dspi-transport",
 ]
 
 [[package]]

@@ -29,9 +29,6 @@ mdns = ["dep:mdns-sd"]
 # plaintext (spec 6.4). `handshake` = the HTTP upgrade (http, httparse, sha1,
 # data-encoding). See docs/SUPPLY-CHAIN.md for why this crate.
 tungstenite = { version = "=0.30.0", default-features = false, features = ["handshake"] }
-# SO_KEEPALIVE with its timers: std has no API for it, and this is the one
-# portable way (Android, Linux, macOS, Windows) without unsafe in this crate.
-socket2 = "=0.6.1"
 # base64 for `bulk_b64` / `status_b64`; already a tungstenite dependency.
 data-encoding = "2"
 serde = { version = "1", features = ["derive"] }
@@ -45,6 +42,20 @@ thiserror = { workspace = true }
 # mDNS by hand is the alternative: a multi-interface RFC 6762 cache is not small.
 # Without `async` (we use its blocking receiver) and with `logging` (log crate).
 mdns-sd = { version = "=0.21.7", default-features = false, features = ["logging"], optional = true }
+
+# -- WP WB2 --
+[target.'cfg(not(all(target_arch = "wasm32", target_os = "unknown")))'.dependencies]
+# SO_KEEPALIVE with its timers: std has no API for it, and this is the one
+# portable way (Android, Linux, macOS, Windows) without unsafe in this crate.
+# It has no wasm32-unknown-unknown backend, and there are no sockets there.
+socket2 = "=0.6.1"
+
+# -- WP WB2 --
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+# Only for the error type of its custom backend (`clock.rs`, `random`), which
+# the web build selects: tungstenite reaches getrandom through rand. The
+# version the lock already holds for rand.
+getrandom = "=0.4.3"
 
 [[bin]]
 name = "dspi-link-fakehub"

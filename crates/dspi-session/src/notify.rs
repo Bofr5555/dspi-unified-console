@@ -10,7 +10,9 @@
 //!
 //! [`Notifications`] runs the reader on its own thread and hands decoded
 //! events to the application through a channel, so the interface never
-//! blocks on the endpoint.
+//! blocks on the endpoint. Where there are no threads (`wasm32-unknown-unknown`)
+//! it is caller-driven instead: drains read the source, and the caller can push
+//! packets it read itself (WP WB2, [`Notifications::caller_driven`]).
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -636,6 +638,81 @@ impl SeqTracker {
 /// Called by the reader thread when notifications are waiting.
 pub type Waker = Arc<dyn Fn() + Send + Sync>;
 
+/// What the reader does with each packet, on its thread or for a caller-driven
+/// reader (WP WB2): drop idle packets, decode, track the sequence, queue.
+struct Reader {
+    tx: mpsc::SyncSender<Notification>,
+    seqs: SeqTracker,
+    /// Set when the queue was full and a packet was dropped.
+    overflowed: bool,
+    waker: Option<Waker>,
+}
+
+impl Reader {
+    /// Queue one notification; false when the receiver is gone.
+    fn deliver(&mut self, mut n: Notification) -> bool {
+        n.lost |= self.overflowed;
+        match self.tx.try_send(n) {
+            Ok(()) => {
+                self.overflowed = false;
+                if let Some(w) = &self.waker {
+                    w();
+                }
+                true
+            }
+            Err(mpsc::TrySendError::Full(_)) => {
+                self.overflowed = true;
+                true
+            }
+            Err(mpsc::TrySendError::Disconnected(_)) => false,
+        }
+    }
+
+    /// One packet as it arrived; false when the receiver is gone.
+    fn packet(&mut self, packet: Vec<u8>, origin: Option<u16>) -> bool {
+        if packet.is_empty() {
+            return true;
+        }
+        let received = Instant::now();
+        let n = match decode(&packet) {
+            Ok((_, Event::Idle)) => return true,
+            Ok((seq, event)) => {
+                // The v1 volume packet carries no sequence number and does
+                // not consume one (notify.c:156-159, 178), so it says
+                // nothing about loss.
+                let lost = !matches!(event, Event::MasterVolume(_)) && self.seqs.observe(seq);
+                Notification {
+                    seq,
+                    event,
+                    lost,
+                    origin,
+                    received,
+                }
+            }
+            // A packet we cannot read is still a packet we missed; say so
+            // through the loss flag.
+            Err(_) => Notification {
+                seq: 0,
+                event: Event::Unknown {
+                    id: 0xFF,
+                    bytes: packet,
+                },
+                lost: true,
+                origin,
+                received,
+            },
+        };
+        self.deliver(n)
+    }
+}
+
+/// A reader without a thread (WP WB2): the caller's own calls move it.
+struct CallerDriven {
+    reader: Reader,
+    /// Read with a zero timeout on each drain, until it is quiet.
+    source: Option<Box<dyn NotificationSource>>,
+}
+
 /// The reader thread and its channel.
 pub struct Notifications {
     rx: Receiver<Notification>,
@@ -643,6 +720,8 @@ pub struct Notifications {
     thread: Option<JoinHandle<()>>,
     /// Set by the reader when the device went away.
     disconnected: Arc<AtomicBool>,
+    /// `Some` for a reader without a thread ([`Notifications::caller_driven`]).
+    caller: Option<std::sync::Mutex<CallerDriven>>,
 }
 
 impl Notifications {
@@ -677,6 +756,10 @@ impl Notifications {
     /// [`Notifications::start`], calling `waker` (on the reader thread) each
     /// time a notification has been queued. A GUI's waker only schedules a
     /// drain; it must not block or call back into the reader's owner.
+    ///
+    /// On `wasm32-unknown-unknown`, which has no threads, this is
+    /// [`Notifications::caller_driven`] and `waker` is never called (WP WB2).
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     pub fn start_with_waker(
         mut source: Box<dyn NotificationSource>,
         waker: Option<Waker>,
@@ -689,26 +772,11 @@ impl Notifications {
         let thread = std::thread::Builder::new()
             .name("dspi-notify".into())
             .spawn(move || {
-                let mut seqs = SeqTracker::default();
-                // Set when the queue was full and a packet was dropped.
-                let mut overflowed = false;
-                // Queue one notification; false when the receiver is gone.
-                let mut deliver = |mut n: Notification| -> bool {
-                    n.lost |= overflowed;
-                    match tx.try_send(n) {
-                        Ok(()) => {
-                            overflowed = false;
-                            if let Some(w) = &waker {
-                                w();
-                            }
-                            true
-                        }
-                        Err(mpsc::TrySendError::Full(_)) => {
-                            overflowed = true;
-                            true
-                        }
-                        Err(mpsc::TrySendError::Disconnected(_)) => false,
-                    }
+                let mut reader = Reader {
+                    tx,
+                    seqs: SeqTracker::default(),
+                    overflowed: false,
+                    waker,
                 };
                 while !stop_flag.load(Ordering::Relaxed) {
                     let (packet, origin) = match source.read_attributed(Self::READ_TIMEOUT) {
@@ -718,7 +786,7 @@ impl Notifications {
                             // Wake the client once so it notices the end
                             // (MIDI port closed, Link session over) instead
                             // of waiting for a packet that never comes.
-                            if let Some(w) = &waker {
+                            if let Some(w) = &reader.waker {
                                 w();
                             }
                             break;
@@ -730,40 +798,7 @@ impl Notifications {
                             continue;
                         }
                     };
-                    if packet.is_empty() {
-                        continue;
-                    }
-                    let received = Instant::now();
-                    let n = match decode(&packet) {
-                        Ok((_, Event::Idle)) => continue,
-                        Ok((seq, event)) => {
-                            // The v1 volume packet carries no sequence number
-                            // and does not consume one (notify.c:156-159,
-                            // 178), so it says nothing about loss.
-                            let lost =
-                                !matches!(event, Event::MasterVolume(_)) && seqs.observe(seq);
-                            Notification {
-                                seq,
-                                event,
-                                lost,
-                                origin,
-                                received,
-                            }
-                        }
-                        // A packet we cannot read is still a packet we
-                        // missed; say so through the loss flag.
-                        Err(_) => Notification {
-                            seq: 0,
-                            event: Event::Unknown {
-                                id: 0xFF,
-                                bytes: packet,
-                            },
-                            lost: true,
-                            origin,
-                            received,
-                        },
-                    };
-                    if !deliver(n) {
+                    if !reader.packet(packet, origin) {
                         break;
                     }
                 }
@@ -773,11 +808,98 @@ impl Notifications {
             stop,
             thread: Some(thread),
             disconnected,
+            caller: None,
         })
+    }
+
+    /// The web's [`Notifications::start_with_waker`]: no thread (WP WB2).
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    pub fn start_with_waker(
+        source: Box<dyn NotificationSource>,
+        _waker: Option<Waker>,
+    ) -> std::io::Result<Self> {
+        Ok(Self::caller_driven(Some(source)))
+    }
+
+    /// A reader with no thread (WP WB2), for a target without threads. Packets
+    /// come in two ways, both on the caller's own calls:
+    /// - [`Notifications::drain`] and [`Notifications::next`] first read
+    ///   `source` with a zero timeout until it is quiet (at most
+    ///   [`Self::QUEUE`] packets per call);
+    /// - [`Notifications::push`] hands in a packet the caller read itself
+    ///   (a page's own endpoint or socket loop).
+    ///
+    /// No waker is called: whoever reads or pushes knows to drain. Decoding,
+    /// the sequence check, the queue limit and the disconnect flag are the
+    /// reader thread's.
+    pub fn caller_driven(source: Option<Box<dyn NotificationSource>>) -> Self {
+        let (tx, rx) = mpsc::sync_channel(Self::QUEUE);
+        Self {
+            rx,
+            stop: Arc::new(AtomicBool::new(false)),
+            thread: None,
+            disconnected: Arc::new(AtomicBool::new(false)),
+            caller: Some(std::sync::Mutex::new(CallerDriven {
+                reader: Reader {
+                    tx,
+                    seqs: SeqTracker::default(),
+                    overflowed: false,
+                    waker: None,
+                },
+                source,
+            })),
+        }
+    }
+
+    /// Hand in one packet as the device sent it, with the link's origin, for
+    /// a [`Notifications::caller_driven`] reader. False, and nothing queued,
+    /// for a reader with a thread (it reads its own source).
+    pub fn push(&self, packet: Vec<u8>, origin: Option<u16>) -> bool {
+        let Some(caller) = &self.caller else {
+            return false;
+        };
+        caller
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .reader
+            .packet(packet, origin);
+        true
+    }
+
+    /// A caller-driven reader's turn at its source: read what is waiting.
+    fn pump(&self) {
+        let Some(caller) = &self.caller else {
+            return;
+        };
+        let mut c = caller
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let CallerDriven { reader, source } = &mut *c;
+        let Some(src) = source.as_mut() else {
+            return;
+        };
+        for _ in 0..Self::QUEUE {
+            match src.read_attributed(Duration::ZERO) {
+                Ok(a) if a.packet.is_empty() => return,
+                Ok(a) => {
+                    if !reader.packet(a.packet, a.origin) {
+                        return;
+                    }
+                }
+                Err(dspi_transport::TransportError::Disconnected) => {
+                    self.disconnected.store(true, Ordering::Relaxed);
+                    *source = None;
+                    return;
+                }
+                // A stall or a transient error: try again on the next call.
+                Err(_) => return,
+            }
+        }
     }
 
     /// Everything that has arrived since the last drain, oldest first.
     pub fn drain(&self) -> Vec<Notification> {
+        self.pump();
         let mut out = Vec::new();
         while let Ok(n) = self.rx.try_recv() {
             out.push(n);
@@ -785,8 +907,13 @@ impl Notifications {
         out
     }
 
-    /// Block for the next notification, up to `timeout`.
+    /// Block for the next notification, up to `timeout`. A caller-driven
+    /// reader does not wait: it reads what is there.
     pub fn next(&self, timeout: Duration) -> Option<Notification> {
+        if self.caller.is_some() {
+            self.pump();
+            return self.rx.try_recv().ok();
+        }
         self.rx.recv_timeout(timeout).ok()
     }
 
@@ -1325,5 +1452,92 @@ mod tests {
         for b in 0..=255u8 {
             assert!(!Source::from_raw(b).describe().contains("this host"));
         }
+    }
+}
+
+// -- WP WB2 --
+#[cfg(test)]
+mod tests_wp_wb2 {
+    use super::*;
+    use dspi_transport::MockTransport;
+    use dspi_transport::Transport;
+    use dspi_transport::mock::MockNotifications;
+
+    fn param(seq: u8) -> Vec<u8> {
+        let mut p = vec![2, evt::PARAM_CHANGED, 0, seq];
+        p.extend(4748u16.to_le_bytes());
+        p.extend(4u16.to_le_bytes());
+        p.extend([5, 0, 0, 0, 0, 0, 0, 0]);
+        p
+    }
+
+    #[test]
+    fn wb2_a_drain_reads_the_source_without_a_thread() {
+        let mock = MockTransport::new();
+        mock.push_notification(param(1));
+        mock.push_notification(vec![0]);
+        mock.push_notification(param(3));
+        let n = Notifications::caller_driven(mock.notifications());
+        let got = n.drain();
+        assert_eq!(got.iter().map(|g| g.seq).collect::<Vec<_>>(), [1, 3]);
+        assert!(!got[0].lost);
+        assert!(got[1].lost, "seq 2 never arrived");
+        assert!(n.drain().is_empty());
+        mock.push_notification(param(4));
+        assert_eq!(n.next(Duration::from_secs(5)).map(|g| g.seq), Some(4));
+        assert!(n.next(Duration::from_secs(5)).is_none(), "does not wait");
+    }
+
+    #[test]
+    fn wb2_pushed_packets_are_decoded_like_read_ones() {
+        let n = Notifications::caller_driven(None);
+        assert!(n.push(param(7), Some(3)));
+        assert!(n.push(vec![0], None));
+        assert!(
+            n.push(vec![9, 9, 9, 9], None),
+            "a version this build cannot read"
+        );
+        let got = n.drain();
+        assert_eq!(got.len(), 2, "the idle packet is dropped");
+        assert_eq!((got[0].seq, got[0].origin), (7, Some(3)));
+        assert!(matches!(got[1].event, Event::Unknown { id: 0xFF, .. }));
+        assert!(got[1].lost, "an unreadable packet counts as lost");
+    }
+
+    #[test]
+    fn wb2_a_full_queue_marks_the_next_delivery_lost() {
+        let n = Notifications::caller_driven(None);
+        let mut seq = 0u8;
+        for _ in 0..=Notifications::QUEUE {
+            n.push(param(seq), None);
+            seq = seq.wrapping_add(1);
+        }
+        assert_eq!(n.drain().len(), Notifications::QUEUE);
+        n.push(param(seq), None);
+        let got = n.drain();
+        assert!(got[0].lost, "one was dropped while the queue was full");
+    }
+
+    #[test]
+    fn wb2_a_disconnect_is_seen_on_the_next_drain() {
+        let mock = MockTransport::new();
+        mock.push_notification(param(1));
+        mock.push_notification(MockNotifications::DISCONNECT.to_vec());
+        let n = Notifications::caller_driven(mock.notifications());
+        assert!(!n.is_disconnected());
+        assert_eq!(n.drain().len(), 1);
+        assert!(n.is_disconnected());
+        // The source is gone; pushes still work.
+        mock.push_notification(param(2));
+        assert!(n.drain().is_empty());
+        assert!(n.push(param(2), None));
+        assert_eq!(n.drain().len(), 1);
+    }
+
+    #[test]
+    fn wb2_a_threaded_reader_refuses_pushes() {
+        let mock = MockTransport::new();
+        let n = Notifications::start(mock.notifications().unwrap()).unwrap();
+        assert!(!n.push(param(1), None));
     }
 }

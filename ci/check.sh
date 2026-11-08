@@ -25,10 +25,13 @@
 #                                     (gen_kotlin_contract.py --check)
 #       wasm                          dspi-proto for wasm32-unknown-unknown
 #       wasm-core                     dspi-session and dspi-core for wasm32-unknown-
-#                                     unknown, cargo check only, without `usb`; their
-#                                     library code may not call std's clock or sleep
-#                                     (ci/wasm-clippy, use dspi_transport::clock).
-#                                     Nothing is run: docs/core-merge/WEB-STUDY.md 11
+#                                     unknown, without `usb`, also with `link`; their
+#                                     library code and dspi-link's may not call std's
+#                                     clock or sleep (ci/wasm-clippy, use
+#                                     dspi_transport::clock). Then runs the core there
+#                                     (WP WB2, ci/wasm-scenario/run.sh): Node with
+#                                     JSPI (NODE in images.conf), the demo device in
+#                                     two sessions, no threads
 #       qt                            the Qt 6 desktop app (crates/dspi-capi,
 #                                     library dspi_capi)
 #       qt5                           the same against Qt 5.15
@@ -144,7 +147,12 @@ for s in "${steps[@]}"; do
         cargo check -p dspi-session --no-default-features --features serde,bundled-autoeq,undo \$t
         cargo check -p dspi-session -p dspi-core --no-default-features \$t
         CLIPPY_CONF_DIR=ci/wasm-clippy cargo clippy -p dspi-transport -p dspi-session -p dspi-core \\
-          --no-default-features --lib \$t -- -A clippy::all -D clippy::disallowed_methods -D warnings" ;;
+          --no-default-features --lib \$t -- -A clippy::all -D clippy::disallowed_methods -D warnings
+        # -- WP WB2 -- with Link: dspi-link's clock and getrandom's backend
+        CLIPPY_CONF_DIR=ci/wasm-clippy cargo clippy -p dspi-link -p dspi-core \\
+          --no-default-features --features dspi-core/link --lib \$t -- -A clippy::all -D clippy::disallowed_methods -D warnings"
+      # -- WP WB2 -- and run it
+      ci/wasm-scenario/run.sh ;;
     qt)
       # The build directory's name moved with the core: /work/build-desktop-qt6
       # may still cache the old core's paths.

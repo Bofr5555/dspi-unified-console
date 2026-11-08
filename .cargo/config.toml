@@ -6,3 +6,10 @@ rustflags = ["-C", "target-feature=+crt-static"]
 
 [target.aarch64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
+
+# -- WP WB2 --
+# The web build: getrandom (reached by dspi-link through tungstenite and rand)
+# has no backend of its own on this target; dspi-link's `clock.rs` supplies the
+# custom one over the page's `dspi.dspi_random_fill`.
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg", "getrandom_backend=\"custom\""]
