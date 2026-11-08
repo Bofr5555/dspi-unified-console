@@ -556,6 +556,11 @@ uint64_t uniffi_dspi_core_fn_method_dspicore_connection_generation(void*_Nonnull
 void uniffi_dspi_core_fn_method_dspicore_copy_preset(void*_Nonnull ptr, uint8_t source, uint8_t dest, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE1_CONFLICT_REASON
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE1_CONFLICT_REASON
+RustBuffer uniffi_dspi_core_fn_method_dspicore_core1_conflict_reason(void*_Nonnull ptr, uint8_t output, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_CLOSE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_CLOSE
 void uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_close(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -2455,6 +2460,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_connection_generation(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_COPY_PRESET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_COPY_PRESET
 uint16_t uniffi_dspi_core_checksum_method_dspicore_copy_preset(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE1_CONFLICT_REASON
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE1_CONFLICT_REASON
+uint16_t uniffi_dspi_core_checksum_method_dspicore_core1_conflict_reason(void
     
 );
 #endif

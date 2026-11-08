@@ -439,7 +439,8 @@ const PIN_MODE: &[(u8, &str)] = &[(0, "unified"), (1, "split")];
 const PERSIST_MODE: &[(u8, &str)] = &[(0, "independent"), (1, "with-preset")];
 /// PEQ filter types. Crossover types (32-63) are chosen as a family plus an
 /// order in the crossover view, never as a raw number, so they are not listed
-/// here.
+/// here; a crossover band (20..23) takes them through `eq.type` all the same
+/// ([`eq_type_fits`], WP CG36).
 const FILTER_TYPE: &[(u8, &str)] = &[
     (0, "flat"),
     (1, "peak"),
@@ -3855,6 +3856,47 @@ pub fn eq_field_fits(path: &str, band: u8, t: FilterType) -> Result<(), String> 
     }
 }
 
+// -- WP CG36 --
+/// Whether a band at wire index `band` takes filter type `code` (`eq.type`),
+/// and if not, why.
+///
+/// `eq.type`'s choices are the PEQ types (0..13), which is what a PEQ band
+/// (0..9) takes. A crossover band (20..23) takes Off (0) or a crossover type
+/// (32..63, a family and an order), and nothing else, as `set_crossover`
+/// does. `Kind::validate` knows only the first list, so a writer checks
+/// `eq.type` with this instead.
+pub fn eq_type_fits(band: u8, code: u8) -> Result<(), String> {
+    let t = FilterType::from_raw(code);
+    let peq = FILTER_TYPE.iter().any(|(n, _)| *n == code);
+    if is_crossover_band(band) {
+        if t == FilterType::Flat || t.is_crossover() {
+            Ok(())
+        } else if peq {
+            Err(format!(
+                "band {band} is a crossover band: it takes Off (0) or a crossover type \
+                 (32..63), not {} ({code})",
+                t.display_name()
+            ))
+        } else {
+            Err(format!(
+                "{code} is not a filter type; crossover band {band} takes Off (0) or a \
+                 crossover type (32..63)"
+            ))
+        }
+    } else if peq {
+        Ok(())
+    } else if t.is_crossover() {
+        Err(format!(
+            "band {band} is a PEQ band: crossover type {code} belongs on a crossover band \
+             (20..23)"
+        ))
+    } else {
+        Err(format!(
+            "{code} is not a filter type; PEQ band {band} takes 0..13"
+        ))
+    }
+}
+
 // -- WP CG35 --
 /// Whether `band` is one of the crossover bands (`XOVER_BAND_BASE`, 20..23).
 fn is_crossover_band(band: u8) -> bool {
@@ -4291,5 +4333,36 @@ mod tests {
             [1.0, 2.0, 3.0, 4.0]
         );
         assert_eq!(retyped(lt, lt, [1.0, 2.0, 3.0, 4.0]), [1.0, 2.0, 3.0, 4.0]);
+    }
+
+    // -- WP CG36 --
+    #[test]
+    fn wp_cg36_eq_type_choices_depend_on_the_band() {
+        // PEQ bands: 0..13 and nothing else.
+        for b in [0u8, 9] {
+            for code in 0..=13u8 {
+                assert_eq!(eq_type_fits(b, code), Ok(()), "band {b} type {code}");
+            }
+            for code in [14u8, 31, 32, 40, 63, 64, 255] {
+                assert!(eq_type_fits(b, code).is_err(), "band {b} type {code}");
+            }
+            let e = eq_type_fits(b, 40).unwrap_err();
+            assert!(e.contains("PEQ band") && e.contains("20..23"), "{e}");
+        }
+        // Crossover bands: Off and 32..63, as set_crossover takes.
+        for b in 20..=23u8 {
+            assert_eq!(eq_type_fits(b, 0), Ok(()));
+            for code in FilterType::XOVER_FIRST..=FilterType::XOVER_LAST {
+                assert_eq!(eq_type_fits(b, code), Ok(()), "band {b} type {code}");
+            }
+            for code in (1..=13u8).chain([14, 31, 64, 255]) {
+                assert!(eq_type_fits(b, code).is_err(), "band {b} type {code}");
+            }
+        }
+        let e = eq_type_fits(20, 5).unwrap_err();
+        assert!(e.contains("crossover band") && e.contains("32..63"), "{e}");
+        // Kind::validate still lists the PEQ types only (describe's choices).
+        let ty = by_path("eq.type").unwrap();
+        assert!(ty.kind.validate(&Value::Choice(40)).is_err());
     }
 }

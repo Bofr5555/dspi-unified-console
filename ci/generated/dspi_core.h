@@ -5157,6 +5157,16 @@ uint32_t dspi_filter_type_names(char *buf, uint32_t len);
 uint32_t dspi_filter_type_name(uint8_t code, char *buf, uint32_t len);
 
 /**
+ * Whether enabling `output` would collide on Core 1, as the device answers it
+ * (`dspi_check_core1_conflict`), with the core's reason: the words
+ * `dspi_write_param` refuses such an `out.enable` with
+ * (`DspiCore::core1_conflict_reason`). Writes JSON {ok, conflict, reason},
+ * `reason` null without a conflict, or the failure reply. Returns the length
+ * needed including the NUL, 0 for a null handle.
+ */
+uint32_t dspi_core1_conflict_reason(struct FfiCore *core, uint8_t output, char *buf, uint32_t len);
+
+/**
  * Answer a fetch: the HTTP status and body, as received, for any status.
  * `retry_after_s`, `rate_limit_remaining` and `rate_limit_reset` (Unix seconds) are
  * the `Retry-After`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers, -1 if
