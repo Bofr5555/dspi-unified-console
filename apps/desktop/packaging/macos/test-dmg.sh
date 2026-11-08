@@ -27,6 +27,7 @@ for f in NOTICE.txt LICENSES/GPL-3.0.txt LICENSES/LGPL-3.0.txt LICENSES/BUNDLED.
 done
 grep -q "^Qt	.*	qtbase-everywhere-src-" "$app/Contents/Resources/LICENSES/BUNDLED.txt" \
     || { echo "test-dmg: BUNDLED.txt does not name Qt's source archives"; exit 1; }
+grep -q "any later version" "$app/Contents/Resources/NOTICE.txt" || { echo "test-dmg: NOTICE.txt does not say GPL-3.0-or-later"; exit 1; }
 echo "test-dmg: NOTICE.txt and LICENSES/ are in the app"
 QT_FORCE_STDERR_LOGGING=1 "$app/Contents/MacOS/DSPi Console" --demo >"$log" 2>&1 &
 pid=$!

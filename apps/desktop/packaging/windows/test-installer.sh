@@ -41,6 +41,13 @@ for f in NOTICE.txt LICENSES/GPL-3.0.txt LICENSES/LGPL-3.0.txt LICENSES/BUNDLED.
          LICENSES/Qt/LGPL-3.0-only.txt LICENSES/bundled/mingw64-libgcc/COPYING.RUNTIME LICENSES/bundled/mingw64-libstdc++/COPYING.RUNTIME; do
     [ -s "$unix/$f" ] || { echo "test-installer: FAIL: no $f in the install"; lic_ok=; }
 done
+grep -q "any later version" "$unix/NOTICE.txt" || { echo "test-installer: FAIL: NOTICE.txt does not say GPL-3.0-or-later"; lic_ok=; }
+# Every bundled package has its licence text (a non-empty LICENSES/bundled/<package>/)
+while IFS='	' read -r pkgname _; do
+    case $pkgname in '#'*|'') continue ;; esac
+    [ -n "$(find "$unix/LICENSES/bundled/$pkgname" -type f -size +0 2>/dev/null)" ] \
+        || { echo "test-installer: FAIL: no licence file for $pkgname in LICENSES/bundled/"; lic_ok=; }
+done <"$unix/LICENSES/BUNDLED.txt"
 for dll in "$unix"/*.dll; do
     b=${dll##*/}
     [ "$b" = dspi_capi.dll ] && continue
@@ -53,7 +60,7 @@ if [ -f "$zip" ]; then
         grep -q "^[^/]*/$f$" <<<"$names" || { echo "test-installer: FAIL: no $f in ${zip##*/}"; lic_ok=; }
     done
 fi
-[ -n "$lic_ok" ] && echo "test-installer: ok: NOTICE.txt and LICENSES/ installed${zip:+ and in the zip}, every DLL listed" \
+[ -n "$lic_ok" ] && echo "test-installer: ok: NOTICE.txt and LICENSES/ installed${zip:+ and in the zip}, every DLL listed, every bundled package with its licence file" \
     || fails=$((fails + 1))
 
 # The installed app, running (on the demo device). Only whether it stays up:

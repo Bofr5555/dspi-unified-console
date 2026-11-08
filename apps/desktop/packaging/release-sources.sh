@@ -22,6 +22,10 @@
 #   icu/       ICU (in the AppImage, from Qt's ICU build), from the ICU
 #              project's GitHub release: SHASUM512.txt and its signature,
 #              against ICU's KEYS (also $ICU_VERSIONS, e.g. "73.2")
+#   runtime/   the AppImage runtime (type2-runtime, the commit it states): its
+#              tree by git at that commit, and the libfuse and squashfuse
+#              archives its build script pins by SHA-256 (libfuse's signature
+#              checked against its maintainer's key) (also $RUNTIME_COMMITS)
 #   ubuntu/    the Ubuntu 24.04 source packages of the AppImage's other
 #              libraries, by apt-get source (the archive's signed index; a
 #              version since replaced from snapshot.ubuntu.com, at the time
@@ -146,6 +150,50 @@ for v in $({ awk -F'\t' '$4 == "unicode-org/icu" {print $3}' "$bundled.rows"; tr
         mv "$f.part" "$f"
     fi
     row AppImage "icu/$base" "$rel/$base" "sha512-in-SHASUM512.txt;signature-by-$isig"
+done
+
+# The AppImage runtime (AppImage's type2-runtime, at the commit it states): its
+# tree at that commit, by git (the commit's hash checks every file), and the
+# archives its build script downloads and pins by SHA-256
+# (scripts/common/install-dependencies.sh: libfuse, LGPL-2.1, linked in
+# statically, with the patch in the tree's patches/libfuse/; squashfuse).
+# libfuse's release signature is checked against its maintainer's key.
+# (RUNTIME_COMMITS="fedfad5 ..." adds commits, as ICU_VERSIONS does)
+libfuse_key=ED31791B2C5C1613AF388B8AD113FCAC3C4E599F   # Nikolaus Rath, libfuse's maintainer, who signs its releases
+for c in $({ awk -F'\t' '$4 == "github.com/AppImage/type2-runtime" {print $3}' "$bundled.rows"; tr ' ' '\n' <<<"${RUNTIME_COMMITS:-}"; } | grep . | sort -u); do
+    full=$(get_from api.github.com "https://api.github.com/repos/AppImage/type2-runtime/commits/$c" \
+           | python3 -c 'import json, sys; print(json.load(sys.stdin)["sha"])') || fail "GitHub knows no type2-runtime commit $c"
+    case $full in "$c"*) ;; *) fail "type2-runtime commit $c resolves to $full" ;; esac
+    git=$out/.git-runtime
+    mkdir -p "$out/runtime"
+    [ -d "$git" ] || git init -q --bare "$git"
+    git -C "$git" cat-file -e "$full^{commit}" 2>/dev/null \
+        || git -C "$git" fetch -q --depth 1 https://github.com/AppImage/type2-runtime.git "$full"
+    [ "$(git -C "$git" rev-parse "$full^{commit}")" = "$full" ] || fail "git fetched no commit $full"
+    tarball=runtime/type2-runtime-$full.tar.gz
+    git -C "$git" archive --format=tar --prefix="type2-runtime-$full/" "$full" | gzip -n >"$out/$tarball"
+    row AppImage "$tarball" "https://github.com/AppImage/type2-runtime/tree/$full" "git-commit-$full"
+    deps=$(git -C "$git" show "$full:scripts/common/install-dependencies.sh")
+    for pin in $(sed -n 's/^echo "\([0-9a-f]\{64\}\)  \([^"]*\)" | sha256sum -c -$/\1:\2/p' <<<"$deps"); do
+        sum=${pin%%:*}; file=${pin#*:}
+        url=$(sed -n 's/^wget "\{0,1\}\([^" ]*\)"\{0,1\}$/\1/p' <<<"$deps" | awk -v f="$file" '{n = split($0, a, "/"); if (a[n] == f) print}' | head -n 1)
+        [ -n "$url" ] || fail "type2-runtime $c: no download for $file in its install-dependencies.sh"
+        local_name=$file
+        case $url in https://github.com/vasi/squashfuse/*) local_name=squashfuse-$file ;; esac
+        fetch "$url" "runtime/$local_name" "$sum"
+        how="sha256-pinned-in-type2-runtime-$c"
+        case $url in https://github.com/libfuse/libfuse/releases/download/*)
+            curl -sSfL --retry 3 -o "$out/runtime/$local_name.asc" "$url.asc" || fail "no signature for $url"
+            mkdir -p "$out/keys"
+            get_from keyserver.ubuntu.com "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x$libfuse_key" >"$out/keys/libfuse.asc" \
+                || fail "cannot read libfuse's signing key"
+            lsig=$(gpg_verify keys/libfuse.asc "runtime/$local_name.asc" "runtime/$local_name") || fail "$file: the signature does not verify"
+            [ "$lsig" = "$libfuse_key" ] || fail "$file is signed by $lsig, not libfuse's maintainer"
+            how="$how;signature-by-$lsig"
+            row AppImage "runtime/$local_name.asc" "$url.asc" "signature" ;;
+        esac
+        row AppImage "runtime/$local_name" "$url" "$how"
+    done
 done
 
 # Ubuntu's source packages (AppImage). A version the archive has since replaced

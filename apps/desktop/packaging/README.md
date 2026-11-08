@@ -4,11 +4,15 @@
 
 ## Licence texts in the packages
 
+DSPi Console is GPL-3.0-or-later (the owner's decision, 2026-11-08): the notices say "version 3 or (at your
+option) any later version", the GPL text shipped is version 3 (as the repository's `LICENSE`), and the .rpm's
+License field, the Arch `PKGBUILD` and the AppStream `project_license` say `GPL-3.0-or-later`.
+
 Every package carries DSPi Console's licence and, where it bundles libraries, theirs:
 
 | Package | Where | What |
 |---|---|---|
-| AppImage | `usr/share/doc/dspi-console/` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `Qt/` (Qt 6.8's licence files and `THIRD-PARTY.txt`), `KWindowSystem/`, `ICU/`, `BUNDLED.txt`, `bundled/<Ubuntu package>/copyright` |
+| AppImage | `usr/share/doc/dspi-console/` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `Qt/` (Qt 6.8's licence files and `THIRD-PARTY.txt`), `KWindowSystem/`, `ICU/`, `AppImage-runtime/` (the runtime's, libfuse's LGPL-2.1, squashfuse's), `BUNDLED.txt`, `bundled/<Ubuntu package>/copyright` |
 | `-linux-x86_64.tar.gz` | top level | the AppImage's `NOTICE.txt` and `LICENSES/` |
 | Windows `.zip` and installer | next to `DSPiConsole.exe` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `Qt/`, `BUNDLED.txt`, `bundled/<Fedora package>/` (MinGW Qt's, GCC's runtime with its exception, the other DLLs') |
 | macOS `.dmg` | `DSPi Console.app/Contents/Resources/` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `Qt/`, `BUNDLED.txt` |
@@ -23,11 +27,12 @@ only the GPL and the notice (`licences/NOTICE-distro.txt.in`, installed by `qt/C
 
 The texts in `licences/` are copied verbatim from their official sources by `licences/update-licences.sh`:
 the GPL-3.0 and LGPL-3.0 from www.gnu.org, Qt's `LICENSES/` and third-party notices from Qt's source
-archives (`licences/qt-third-party.py`), KWindowSystem's `LICENSES/` and ICU's `LICENSE` from theirs. When a
-pinned Qt, KWindowSystem or ICU version changes, run `release-sources.sh` and then `update-licences.sh`,
-and commit the result; until then the build fails, as it has no texts for the new version.
-
-The notices' wording is pending the owner's approval.
+archives (`licences/qt-third-party.py`), KWindowSystem's `LICENSES/`, ICU's `LICENSE`, the AppImage runtime's,
+libfuse's and squashfuse's from theirs, and (`licences/fedora/`) the licence file of each Fedora MinGW
+package that ships none (bzip2, OpenSSL, zlib, win-iconv) from the upstream archive in its source RPM. When a
+pinned Qt, KWindowSystem or ICU version, the AppImage runtime or such a Fedora package changes, run
+`release-sources.sh` (with the dist directories) and then `update-licences.sh`, and commit the result; until
+then the build fails, as it has no texts for the new version.
 
 ## The release's sources: `release-sources.sh`
 
@@ -52,13 +57,19 @@ and writes `MANIFEST.tsv` (packages, file, URL, SHA-256, how it was checked):
 - `ubuntu/`: the Ubuntu 24.04 source packages of the AppImage's other libraries (`BUNDLED.txt`), by
   `apt-get source` (the archive's signed index; a version the archive has since replaced comes from
   snapshot.ubuntu.com at the time Launchpad states it was published).
+- `runtime/`: the AppImage runtime (AppImage's type2-runtime, at the commit it states): its tree at that commit
+  by git (`git archive`; the commit hash checks every file), and the archives its build script
+  (`scripts/common/install-dependencies.sh`) downloads and pins by SHA-256: libfuse 3.15.0 (LGPL-2.1, linked
+  in statically, with the patch in the tree's `patches/libfuse/`; its release signature checked against its
+  maintainer's key) and squashfuse 0.5.2.
 - `fedora/`: the Fedora source RPMs of the Windows DLLs (`BUNDLED.txt`: MinGW Qt, GCC's runtime, GLib,
   ...), by `dnf download --srpm`, signatures checked against Fedora's key.
 
-The AppImage's runtime (AppImage's type2-runtime, the first part of the AppImage file) is listed in
-`BUNDLED.txt` with the commit it states; it links in libfuse (LGPL-2.1), musl, squashfuse, libzstd and zlib,
-as its `--appimage-help` says. `release-sources.sh` does not fetch its source.
-
 Without dist directories it fetches only Qt and KWindowSystem. Fedora's mirrors keep only current package
-versions, so run it soon after the Windows build. It is not run in CI, and nothing is published; attach
-the files to the release by hand. The archives are never committed.
+versions, so run it soon after the Windows build. It is not run in CI, and nothing is published. The
+archives are never committed.
+
+**Publishing a release:** every notice says the bundled libraries' source "is included with this release", so
+attach the whole output of `release-sources.sh` (every file `MANIFEST.tsv` lists, and `MANIFEST.tsv` itself)
+to the GitHub release, next to the binaries, built from the same tree and dist directories. A release
+without them does not match its notices.

@@ -1,7 +1,8 @@
 DSPi Console @DSPI_VERSION@
 
-DSPi Console is licensed under the GNU General Public License version 3
-(@DSPI_GPL_TEXT@). Its source code:
+DSPi Console is licensed under the GNU General Public License, version 3 or
+(at your option) any later version (@DSPI_GPL_TEXT@ holds version 3).
+Its source code:
 https://github.com/Bofr5555/dspi-unified-console
 
 This program uses Qt from this system's packages, licensed under the GNU Lesser

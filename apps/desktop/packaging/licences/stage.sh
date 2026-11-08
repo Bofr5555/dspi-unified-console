@@ -86,8 +86,16 @@ appimage)
     if [ -n "${APPIMAGE_RUNTIME:-}" ]; then
         rc=$(grep -ao 'type2-runtime/commit/[0-9a-f]*' "$APPIMAGE_RUNTIME" | head -n 1 | sed 's|.*/||')
         [ -n "$rc" ] || fail "$APPIMAGE_RUNTIME states no type2-runtime commit"
-        row "AppImage runtime" "$rc" github.com/AppImage/type2-runtime "https://github.com/AppImage/type2-runtime/commit/$rc" \
-            "MIT, with musl, libfuse (LGPL-2.1), squashfuse, libzstd and zlib linked in: the runtime's notice (--appimage-help)" "the AppImage file's runtime"
+        # Its licence, squashfuse's and libfuse's (LGPL-2.1), and the sources
+        # release-sources.sh fetches for it (SOURCES.txt, from update-licences.sh)
+        copy_dir "appimage-runtime-$rc" AppImage-runtime "the AppImage runtime $rc"
+        rsrc=$(grep -v '^https://' "$L/AppImage-runtime/SOURCES.txt" | cut -d' ' -f1)
+        for u in $(grep '^https://' "$L/AppImage-runtime/SOURCES.txt"); do
+            case $u in https://github.com/vasi/squashfuse/*) rsrc="$rsrc squashfuse-${u##*/}" ;; *) rsrc="$rsrc ${u##*/}" ;; esac
+        done
+        row "AppImage runtime" "$rc" github.com/AppImage/type2-runtime "$rsrc" \
+            "MIT (LICENSES/AppImage-runtime/LICENSE), with libfuse (LGPL-2.1, LICENSES/AppImage-runtime/libfuse-LICENSE and libfuse-LGPL2.txt), squashfuse (LICENSES/AppImage-runtime/squashfuse-LICENSE), musl, libzstd and zlib linked in (the runtime's notice: --appimage-help)" \
+            "the AppImage file's runtime"
     fi
     distro=$(. /etc/os-release && echo "$ID-$VERSION_ID")
     for p in $(sed -n 's/ .*//p' <<<"$debs" | sort -u); do
@@ -98,7 +106,7 @@ appimage)
             || fail "${p%%:*} has no /usr/share/doc/${p%%:*}/copyright"
         row "${p%%:*}" "$ver" "$distro" "$src=$srcver" "LICENSES/bundled/${p%%:*}/copyright" "$files"
     done
-    sources="Their source code, Qt's among it, is included with this release (the source archives and Ubuntu source packages named there), except the AppImage runtime's: see the link given there."
+    sources="Their source code, Qt's among it, is included with this release (the source archives and Ubuntu source packages named there)."
     ;;
 windows)
     M=${MINGW_ROOT:-/usr/x86_64-w64-mingw32/sys-root/mingw}
@@ -124,11 +132,17 @@ windows)
         read -r ver srpm < <(rpm -q --qf '%{VERSION}-%{RELEASE} %{SOURCERPM}\n' "$p")
         lic=$(rpm -q --qf '%{LICENSE}' "$p")
         lfiles=$(rpm -qL "$p" | grep -v '^(contains no files)$' || true)
+        mkdir -p "$L/bundled/$p"
         if [ -n "$lfiles" ]; then
-            mkdir -p "$L/bundled/$p"
             for lf in $lfiles; do cp "$lf" "$L/bundled/$p/"; done
-            lic="$lic (LICENSES/bundled/$p/)"
+        else
+            # The package ships no licence file: the one update-licences.sh took from its source RPM
+            sname=${srpm%-"$ver".src.rpm}
+            fl=$here/fedora/$sname-$(rpm -q --qf '%{VERSION}' "$p")
+            [ -d "$fl" ] || fail "$p ships no licence file and $fl is missing (add $sname to update-licences.sh's FEDORA_NO_LICENCE)"
+            cp "$fl"/* "$L/bundled/$p/"
         fi
+        lic="$lic (LICENSES/bundled/$p/)"
         row "$p" "$ver" "$distro" "$srpm" "$lic" "$files"
     done
     sources="Their source code, Qt's among it, is included with this release (the Fedora source packages named there)."
@@ -151,12 +165,13 @@ macos)
 *) fail "unknown package kind $kind" ;;
 esac
 
-# The notice: plain facts, pending the owner's approval
+# The notice: plain facts. DSPi Console's licence: GPL-3.0-or-later (owner, 2026-11-08)
 {
     echo "DSPi Console $version"
     echo
-    echo "DSPi Console is licensed under the GNU General Public License version 3"
-    echo "(LICENSES/GPL-3.0.txt). Its source code:"
+    echo "DSPi Console is licensed under the GNU General Public License, version 3 or"
+    echo "(at your option) any later version (LICENSES/GPL-3.0.txt holds version 3)."
+    echo "Its source code:"
     echo "https://github.com/Bofr5555/dspi-unified-console"
     echo
     echo "This program uses Qt $qt, licensed under the GNU Lesser General Public"
@@ -164,6 +179,13 @@ esac
     echo "Public License version 3, LICENSES/GPL-3.0.txt). Qt's licence files are in"
     echo "LICENSES/Qt/; the third-party components in Qt and their licences are listed"
     echo "in LICENSES/Qt/THIRD-PARTY.txt."
+    if [ -d "$L/AppImage-runtime" ]; then
+        echo
+        echo "The AppImage's runtime (AppImage's type2-runtime $rc) contains libfuse,"
+        echo "licensed under the GNU Lesser General Public License version 2.1"
+        echo "(LICENSES/AppImage-runtime/libfuse-LGPL2.txt), and other code listed in"
+        echo "LICENSES/BUNDLED.txt."
+    fi
     if [ -d "$L/KWindowSystem" ]; then
         echo
         echo "This program uses KDE's KWindowSystem $kf; its licence files are in"

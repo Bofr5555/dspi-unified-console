@@ -28,10 +28,13 @@ else echo "app exit $code; the log:"; cat /root/app.log; exit 1; fi'
 # -- WP QD42 -- In the container: the licence files under $1 (NOTICE.txt, LICENSES/)
 lic_check='
 for f in NOTICE.txt LICENSES/GPL-3.0.txt LICENSES/LGPL-3.0.txt LICENSES/BUNDLED.txt LICENSES/Qt/THIRD-PARTY.txt \
-         LICENSES/Qt/LGPL-3.0-only.txt LICENSES/KWindowSystem/LGPL-2.1-only.txt LICENSES/ICU/LICENSE; do
+         LICENSES/Qt/LGPL-3.0-only.txt LICENSES/KWindowSystem/LGPL-2.1-only.txt LICENSES/ICU/LICENSE \
+         LICENSES/AppImage-runtime/LICENSE LICENSES/AppImage-runtime/libfuse-LGPL2.txt LICENSES/AppImage-runtime/squashfuse-LICENSE; do
     [ -s "$1/$f" ] || { echo "licences: no $f in $1"; exit 1; }
 done
 grep -q "GNU LESSER GENERAL PUBLIC LICENSE" "$1/LICENSES/LGPL-3.0.txt" || { echo "licences: LGPL-3.0.txt is not the LGPL"; exit 1; }
+grep -q "any later version" "$1/NOTICE.txt" || { echo "licences: NOTICE.txt does not say GPL-3.0-or-later"; exit 1; }
+grep -q "^AppImage runtime	.*	type2-runtime-[0-9a-f]*\.tar\.gz fuse-" "$1/LICENSES/BUNDLED.txt" || { echo "licences: BUNDLED.txt does not name the runtime'"'"'s sources"; exit 1; }
 grep -q "^Qt	.*	qtbase-everywhere-src-" "$1/LICENSES/BUNDLED.txt" || { echo "licences: BUNDLED.txt does not name Qt'"'"'s source archives"; exit 1; }
 for l in "$2"/*.so*; do
     cut -f6 "$1/LICENSES/BUNDLED.txt" | tr " " "\n" | grep -qx "usr/lib/${l##*/}" || { echo "licences: ${l##*/} is not in BUNDLED.txt"; exit 1; }
@@ -50,12 +53,14 @@ t() {  # <name> <image> <script>
 t deb-debian-13 docker.io/library/debian:13 "
     apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends /dist/dspi-console_*_amd64.deb >/dev/null
     grep -q /usr/share/common-licenses/GPL-3 /usr/share/doc/dspi-console/copyright && test -s /usr/share/common-licenses/GPL-3 \
+        && grep -q 'any later version' /usr/share/doc/dspi-console/copyright \
         || { echo 'licences: no copyright file pointing at the GPL'; exit 1; }
     run() { $run_app
     }; QT_QPA_PLATFORM=offscreen run dspi-console"
 t rpm-fedora-42 registry.fedoraproject.org/fedora:42 "
     dnf -y -q install --setopt=install_weak_deps=False /dist/dspi-console-*.x86_64.rpm >/dev/null
-    grep -q 'GNU GENERAL PUBLIC LICENSE' /usr/share/licenses/dspi-console/GPL-3.0.txt && grep -q GPL /usr/share/licenses/dspi-console/NOTICE.txt \
+    grep -q 'GNU GENERAL PUBLIC LICENSE' /usr/share/licenses/dspi-console/GPL-3.0.txt && grep -q 'any later version' /usr/share/licenses/dspi-console/NOTICE.txt \
+        && [ \"\$(rpm -q --qf '%{LICENSE}' dspi-console)\" = GPL-3.0-or-later ] \
         || { echo 'licences: no GPL text or notice in /usr/share/licenses/dspi-console'; exit 1; }
     run() { $run_app
     }; QT_QPA_PLATFORM=offscreen run dspi-console"

@@ -137,10 +137,11 @@ The imports, with history (each upstream's paths rewritten with
 
 ## Licensing
 
-**Nothing here is final.** The repository is private. It carries GPL-3.0
-(`LICENSE`), with `GPL-3.0-or-later` as the workspace's licence field, as the
-owner's **working assumption**. Final terms are open between the owner and Weeb
-Labs. This table says what is known; it is not legal text.
+**Nothing here is final.** The repository is private. The owner's own code is
+`GPL-3.0-or-later` (owner, 2026-11-08): `LICENSE` holds the GPL version 3 text,
+as usual for "or later", and the workspace's licence field says
+`GPL-3.0-or-later`. Final terms for Weeb Labs' parts are open between the owner
+and Weeb Labs. This table says what is known; it is not legal text.
 
 | Component | What applies now | Open point |
 |---|---|---|
