@@ -155,7 +155,7 @@ struct SubharmonicSynthView: View {
                 // The graph sits over the band levels that move it, at a
                 // column's width; the right column runs the rest of the
                 // signal path top to bottom.
-                HStack(alignment: .top, spacing: 0) {
+                ToolColumns {
                     VStack(alignment: .leading, spacing: 14) {
                         bandGraph
                         Divider()
@@ -178,13 +178,11 @@ struct SubharmonicSynthView: View {
                     }
                     .toolColumn()
                 }
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.vertical, 16)
             } else {
                 unsupportedNote
             }
         }
-        .frame(minWidth: 620, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .toolWindowFrame(minWidth: 620)
         .onAppear {
             // The bulk fetch carries every field except the headroom, which the
             // firmware derives on demand, and solo, which is runtime-only and

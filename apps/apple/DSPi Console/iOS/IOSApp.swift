@@ -636,6 +636,7 @@ private struct ConsoleDetailFrame: ViewModifier {
                     content.frame(width: max(proxy.size.width, minimum),
                                   height: max(proxy.size.height, Self.minimumHeight),
                                   alignment: .topLeading)
+                        .environment(\.consoleVisibleWidth, proxy.size.width)
                 }
                 .scrollBounceBehavior(.basedOnSize, axes: [.horizontal, .vertical])
             }

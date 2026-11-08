@@ -134,7 +134,12 @@ struct UpmixerView: View {
                 unsupportedNote
             }
         }
+        #if os(macOS)
         .frame(minWidth: 400, maxWidth: 400)
+        #else
+        // The sheet's width: a phone is barely 400 pt, an iPad far more.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        #endif
     }
 
     // MARK: - Header

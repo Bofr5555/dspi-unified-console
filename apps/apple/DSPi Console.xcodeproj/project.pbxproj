@@ -653,7 +653,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = "1.1.6-beta5";
+				MARKETING_VERSION = 1.1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = "WeebLabs.DSPi-Console-iOS";
 				PRODUCT_MODULE_NAME = DSPi_Console;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -690,7 +690,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = "1.1.6-beta5";
+				MARKETING_VERSION = 1.1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = "WeebLabs.DSPi-Console-iOS";
 				PRODUCT_MODULE_NAME = DSPi_Console;
 				PRODUCT_NAME = "$(TARGET_NAME)";

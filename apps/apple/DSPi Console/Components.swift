@@ -904,6 +904,20 @@ struct OutputRow: View {
 
 // MARK: - Channel Settings
 
+private struct ConsoleVisibleWidthKey: EnvironmentKey {
+    static let defaultValue: CGFloat? = nil
+}
+
+extension EnvironmentValues {
+    /// The width of the console's detail pane that is on screen, set where
+    /// the page inside it can be wider and scroll sideways (iOS, one pane).
+    /// nil where the page always fits, as on the Mac.
+    var consoleVisibleWidth: CGFloat? {
+        get { self[ConsoleVisibleWidthKey.self] }
+        set { self[ConsoleVisibleWidthKey.self] = newValue }
+    }
+}
+
 /// Header row for the output channel page.  Layout from left to right:
 ///   1. Input routing preview — up to two USB input rows with
 ///      a connected indicator, the input's name, the per-crosspoint gain, and a
@@ -914,6 +928,8 @@ struct OutputRow: View {
 ///   4. Output MUTE toggle.
 ///
 /// All four panels share the same rounded container and divider visual style.
+/// Where the console is narrower than one row (an iPhone, `consoleVisibleWidth`),
+/// they take two: routing and mute over gain and delay.
 struct ChannelSettingsView: View {
     @ObservedObject var vm: DSPViewModel
     let outputIndex: Int
@@ -960,125 +976,173 @@ struct ChannelSettingsView: View {
         .onDisappear { vm.limiter.watchers -= 1 }
     }
 
+    /// Narrower than this, the four panels do not fit in one row.
+    private static let oneRowWidth: CGFloat = 560
+    @Environment(\.consoleVisibleWidth) private var visibleWidth
+
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            // INPUT ROUTING PREVIEW
-            InputRoutingPanel(vm: vm, outputIndex: outputIndex)
-                .padding(.vertical, 8)
-                .padding(.leading, 12)
-                .padding(.trailing, 12)
-                .fixedSize(horizontal: true, vertical: false)
-
-            Divider()
-
-            // GAIN — label + value on top row, slider full width below
-            VStack(spacing: 4) {
-                HStack {
-                    Text("GAIN")
-                        .font(.caption).fontWeight(.bold).foregroundColor(.secondary)
-                    Spacer()
-                    ValueField(label: "dB", value: localGain, width: 60) {
-                        localGain = $0
-                        gainDB = $0
+        if let width = visibleWidth, width < Self.oneRowWidth {
+            // A phone: routing and mute over gain and delay, at the screen's
+            // width and its leading edge even when the page below is wider
+            // and scrolls sideways, so the delay field and mute button stay
+            // in reach.
+            card(
+                VStack(spacing: 0) {
+                    HStack(alignment: .top, spacing: 0) {
+                        routingPanel
+                        Spacer(minLength: 0)
+                        Divider()
+                        muteColumn
                     }
-                }
-
-                Slider(value: $localGain, in: -60...10) { editing in
-                    isDraggingGain = editing
-                    if !editing { gainDB = localGain }
-                }
-                .controlSize(.small)
-                .frame(height: 24)
-                .onChange(of: localGain) { val in
-                    if isDraggingGain { onGainDrag?(val) }
-                }
-                .onAppear { localGain = gainDB }
-                .onChange(of: gainDB) { val in if !isDraggingGain { localGain = val } }
-                .onRightClick { localGain = 0; gainDB = 0 }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity)
-
-            Divider()
-
-            // DELAY — same layout as GAIN
-            VStack(spacing: 4) {
-                HStack {
-                    Text("DELAY")
-                        .font(.caption).fontWeight(.bold).foregroundColor(.secondary)
-                    Spacer()
-                    ValueField(label: "ms", value: localDelay, width: 60) {
-                        localDelay = $0
-                        delayMS = $0
+                    .frame(height: 68)
+                    Divider()
+                    HStack(alignment: .top, spacing: 0) {
+                        gainPanel
+                        Divider()
+                        delayPanel
                     }
+                    .frame(height: 68)
                 }
-
-                Slider(value: $localDelay, in: 0...maxDelay) { editing in
-                    isDraggingDelay = editing
-                    if !editing { delayMS = localDelay }
+                .frame(width: max(0, width - 32))
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            card(
+                HStack(alignment: .top, spacing: 0) {
+                    routingPanel
+                    Divider()
+                    gainPanel
+                    Divider()
+                    delayPanel
+                    Divider()
+                    muteColumn
                 }
-                .controlSize(.small)
-                .frame(height: 24)
-                .onChange(of: localDelay) { val in
-                    if isDraggingDelay { onDelayDrag?(val) }
-                }
-                .onAppear { localDelay = delayMS }
-                .onChange(of: delayMS) { val in if !isDraggingDelay { localDelay = val } }
-                .onRightClick { localDelay = 0; delayMS = 0 }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity)
-
-            Divider()
-
-            // MUTE over the output limiter, so the limiter costs the page no
-            // vertical space.  The two icons sit in equal fixed-height slots
-            // with equal gaps above, between and below them; centring each in
-            // half the column left twice the gap between them.  The icons'
-            // colours carry the state; a tinted half would read as a divider.
-            // Without limiter firmware, mute keeps the whole column and its
-            // tint as before.
-            VStack(spacing: 0) {
-                let split = vm.firmwareSupportsLimiter
-                if split { Spacer(minLength: 0) }
-                // Without the split it fills the height and centres its icon,
-                // otherwise the top-aligned HStack would pin it to the top.
-                Toggle(isOn: $isMuted) {
-                    Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                        .font(split ? .title3 : .title2)
-                        .foregroundColor(isMuted ? .red : .secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .contentShape(Rectangle())
-                }
-                .toggleStyle(.button)
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity)
-                .frame(height: split ? iconSlot : nil)
-                .frame(maxHeight: split ? nil : .infinity)
-                .offset(y: split ? 1 : 0)
-
-                if split {
-                    Spacer(minLength: 0)
-                    // Equal slots do not give equal gaps between the ink: the
-                    // gauge sits low in its slot (the dial is open at the
-                    // bottom) and is taller than the speaker.  This offset and
-                    // the speaker's 1 pt, measured from a render, even
-                    // the three gaps to within half a point.
-                    limiterCell
-                        .frame(height: iconSlot)
-                        .offset(y: -2)
-                    Spacer(minLength: 0)
-                }
-            }
-            .frame(width: 60)
-            .background(isMuted && !vm.firmwareSupportsLimiter ? Color.red.opacity(0.1) : Color.clear)
+                .frame(height: 68)
+            )
         }
-        .frame(height: 68)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
-        .cornerRadius(10)
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+    }
+
+    /// The rounded container all four panels share.
+    private func card<Content: View>(_ content: Content) -> some View {
+        content
+            .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+            .cornerRadius(10)
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+    }
+
+    // INPUT ROUTING PREVIEW
+    private var routingPanel: some View {
+        InputRoutingPanel(vm: vm, outputIndex: outputIndex)
+            .padding(.vertical, 8)
+            .padding(.leading, 12)
+            .padding(.trailing, 12)
+            .fixedSize(horizontal: true, vertical: false)
+    }
+
+    // GAIN — label + value on top row, slider full width below
+    private var gainPanel: some View {
+        VStack(spacing: 4) {
+            HStack {
+                Text("GAIN")
+                    .font(.caption).fontWeight(.bold).foregroundColor(.secondary)
+                Spacer()
+                ValueField(label: "dB", value: localGain, width: 60) {
+                    localGain = $0
+                    gainDB = $0
+                }
+            }
+
+            Slider(value: $localGain, in: -60...10) { editing in
+                isDraggingGain = editing
+                if !editing { gainDB = localGain }
+            }
+            .controlSize(.small)
+            .frame(height: 24)
+            .onChange(of: localGain) { val in
+                if isDraggingGain { onGainDrag?(val) }
+            }
+            .onAppear { localGain = gainDB }
+            .onChange(of: gainDB) { val in if !isDraggingGain { localGain = val } }
+            .onRightClick { localGain = 0; gainDB = 0 }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+    }
+
+    // DELAY — same layout as GAIN
+    private var delayPanel: some View {
+        VStack(spacing: 4) {
+            HStack {
+                Text("DELAY")
+                    .font(.caption).fontWeight(.bold).foregroundColor(.secondary)
+                Spacer()
+                ValueField(label: "ms", value: localDelay, width: 60) {
+                    localDelay = $0
+                    delayMS = $0
+                }
+            }
+
+            Slider(value: $localDelay, in: 0...maxDelay) { editing in
+                isDraggingDelay = editing
+                if !editing { delayMS = localDelay }
+            }
+            .controlSize(.small)
+            .frame(height: 24)
+            .onChange(of: localDelay) { val in
+                if isDraggingDelay { onDelayDrag?(val) }
+            }
+            .onAppear { localDelay = delayMS }
+            .onChange(of: delayMS) { val in if !isDraggingDelay { localDelay = val } }
+            .onRightClick { localDelay = 0; delayMS = 0 }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+    }
+
+    // MUTE over the output limiter, so the limiter costs the page no
+    // vertical space.  The two icons sit in equal fixed-height slots
+    // with equal gaps above, between and below them; centring each in
+    // half the column left twice the gap between them.  The icons'
+    // colours carry the state; a tinted half would read as a divider.
+    // Without limiter firmware, mute keeps the whole column and its
+    // tint as before.
+    private var muteColumn: some View {
+        VStack(spacing: 0) {
+            let split = vm.firmwareSupportsLimiter
+            if split { Spacer(minLength: 0) }
+            // Without the split it fills the height and centres its icon,
+            // otherwise the top-aligned HStack would pin it to the top.
+            Toggle(isOn: $isMuted) {
+                Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(split ? .title3 : .title2)
+                    .foregroundColor(isMuted ? .red : .secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .toggleStyle(.button)
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
+            .frame(height: split ? iconSlot : nil)
+            .frame(maxHeight: split ? nil : .infinity)
+            .offset(y: split ? 1 : 0)
+
+            if split {
+                Spacer(minLength: 0)
+                // Equal slots do not give equal gaps between the ink: the
+                // gauge sits low in its slot (the dial is open at the
+                // bottom) and is taller than the speaker.  This offset and
+                // the speaker's 1 pt, measured from a render, even
+                // the three gaps to within half a point.
+                limiterCell
+                    .frame(height: iconSlot)
+                    .offset(y: -2)
+                Spacer(minLength: 0)
+            }
+        }
+        .frame(width: 60)
+        .background(isMuted && !vm.firmwareSupportsLimiter ? Color.red.opacity(0.1) : Color.clear)
     }
 }
 
@@ -2975,6 +3039,53 @@ extension View {
         self
             .padding(.horizontal, 16)
             .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    /// The frame of a tool window with columns: at least `minWidth` wide while
+    /// the columns sit side by side, any width once `ToolColumns` stacks them.
+    func toolWindowFrame(minWidth: CGFloat) -> some View {
+        modifier(ToolWindowFrame(minWidth: minWidth))
+    }
+}
+
+/// The columns of a tool window, each a `toolColumn()` with `Divider`s
+/// between them: side by side, or one above the other in a compact-width iOS
+/// sheet (iPhone, a narrow iPad window), where side by side they would run
+/// off the screen.  Never stacked on the Mac.
+struct ToolColumns<Content: View>: View {
+    var stackedSpacing: CGFloat = 14
+    @ViewBuilder let content: Content
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    private var stacked: Bool { sizeClass == .compact }
+    #else
+    private var stacked: Bool { false }
+    #endif
+
+    var body: some View {
+        Group {
+            if stacked {
+                VStack(alignment: .leading, spacing: stackedSpacing) { content }
+            } else {
+                HStack(alignment: .top, spacing: 0) { content }
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, 16)
+    }
+}
+
+private struct ToolWindowFrame: ViewModifier {
+    let minWidth: CGFloat
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    private var stacked: Bool { sizeClass == .compact }
+    #else
+    private var stacked: Bool { false }
+    #endif
+
+    func body(content: Content) -> some View {
+        content.frame(minWidth: stacked ? nil : minWidth, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
 
