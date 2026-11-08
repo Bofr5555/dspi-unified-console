@@ -98,13 +98,18 @@ FAKEHUB="cargo build --release -p dspi-link --features fake-hub --bin dspi-link-
 TERMINAL="cargo build --release --locked -p dspi-term"
 # -- WP QD40 -- The Qt app's .ts is what lupdate makes of the sources now: lupdate
 # runs as the dspi_lupdate target does (apps/desktop/qt/CMakeLists.txt, the same
-# arguments) on a copy of qml/, src/ and translations/ laid out as in the tree, so
-# the relative locations match, and any difference from the committed file fails.
+# arguments) on a copy of qml/, src/ and translations/ laid out as in the tree,
+# and any difference from the committed file fails. -- WP QD41 -- Without
+# locations (-locations none), so moved lines don't make a difference; the fix
+# names the command, which runs in the CI image (lupdate 6.11.2: another version
+# may write the file differently).
+TSUPDATE='lupdate-qt6 -silent -locations none -no-obsolete -source-language en -target-language en qml src -ts translations/dspi-console_en.ts'
 TSCHECK='set -e; d=/work/ts-check; rm -rf "$d"; mkdir -p "$d"
   cp -r apps/desktop/qt/qml apps/desktop/qt/src apps/desktop/qt/translations "$d"/
-  (cd "$d" && lupdate-qt6 -silent -locations relative -no-obsolete -source-language en -target-language en qml src -ts translations/dspi-console_en.ts)
+  (cd "$d" && '"$TSUPDATE"')
   if ! diff -u apps/desktop/qt/translations/dspi-console_en.ts "$d"/translations/dspi-console_en.ts; then
-    echo "qt-ts: apps/desktop/qt/translations/dspi-console_en.ts is not current: run cmake --build <build dir> --target dspi_lupdate and commit it" >&2
+    echo "qt-ts: apps/desktop/qt/translations/dspi-console_en.ts is not current. Regenerate it in the CI image (lupdate $(lupdate-qt6 -version 2>&1 | grep -o "[0-9][0-9.]*" | head -1)) and commit it:" >&2
+    echo "  ci/run.sh '"'"'cd apps/desktop/qt && '"$TSUPDATE"''"'"'" >&2
     exit 1
   fi
   echo "qt-ts: dspi-console_en.ts is current"'

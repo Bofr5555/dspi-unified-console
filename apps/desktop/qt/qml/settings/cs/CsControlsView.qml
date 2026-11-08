@@ -557,7 +557,7 @@ Column {
                                     target: levelRow
                                     function onStoredChanged() { if (!levelSlider.pressed) levelSlider.value = levelRow.stored }
                                 }
-                                onPressedChanged: if (!pressed) {
+                                onSettled: {
                                     levelThrottle.cancel()
                                     // -- WP QD1 -- Refused: the slider goes back to what the device holds
                                     if (view.commitAuxLevel(card.slot, value) !== 0) value = levelRow.stored
@@ -664,7 +664,7 @@ Column {
                                     target: card
                                     function onBChanged() { if (!bootSlider.pressed) bootSlider.value = card.b.value / 256 }
                                 }
-                                onPressedChanged: if (!pressed) aux.setB("value", Math.max(0, Math.min(25600, Math.round(value * 256))))
+                                onSettled: aux.setB("value", Math.max(0, Math.min(25600, Math.round(value * 256))))
                             }
                             Text {
                                 width: 38

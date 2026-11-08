@@ -121,7 +121,7 @@ Rectangle {
             // outside the slider's range elsewhere stays as it is
             property bool dragged: false
             onMoved: { dragged = true; sec.shown = value; live.push(sec.dragValue(value)) }
-            onPressedChanged: if (!pressed) {
+            onSettled: {
                 live.cancel()
                 if (dragged) {
                     // the thumb snaps to what was committed (-- WP SL1 --)
@@ -242,6 +242,7 @@ Rectangle {
         LevelSection {
             id: gainSection
             enabled: bridge.writable   // -- WP QD6 --
+            objectName: "gainSection"   // -- WP QD41 --
             label: qsTr("GAIN"); unit: qsTr("dB"); decimals: 1
             from: -60; to: 12; stepSize: 0.1      // the firmware's output gain range
             value: gainDB
