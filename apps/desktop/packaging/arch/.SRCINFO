@@ -1,30 +1,30 @@
 pkgbase = dspi-console
 	pkgdesc = Control application for the DSPi audio processor
-	pkgver = 1.1.6beta4
+	pkgver = 1.1.6
 	pkgrel = 1
-	url = https://github.com/WeebLabs/DSPi-Console-Linux
+	url = https://github.com/Bofr5555/dspi-unified-console
 	install = dspi-console.install
 	arch = x86_64
 	license = unknown
 	makedepends = git
 	makedepends = cargo
 	makedepends = cmake
-	depends = qt5-base
-	depends = qt5-declarative
-	depends = qt5-quickcontrols2
-	depends = qt5-svg
-	depends = qt5-wayland
+	makedepends = ninja
+	depends = qt6-base
+	depends = qt6-declarative
+	depends = qt6-svg
+	depends = qt6-wayland
+	depends = kwindowsystem
 	depends = hicolor-icon-theme
-	depends = kwindowsystem5
-	depends = libusb
-	depends = systemd-libs
+	depends = alsa-lib
 	depends = libx11
-	depends = gcc-libs
+	depends = libglvnd
+	depends = libstdc++
+	depends = libgcc
 	depends = glibc
-	optdepends = kwayland-integration: blurred sidebar on KDE Plasma (Wayland)
 	optdepends = xdg-desktop-portal: native file dialogs
 	optdepends = udisks2: firmware updates
-	source = dspi-console::git+https://github.com/WeebLabs/DSPi-Console-Linux.git#commit=7b9143787b1f3d60f4a9f757e617e93292c35ea7
+	source = dspi-console::git+https://github.com/Bofr5555/dspi-unified-console.git#commit=c4b71f136d79b7d434674696cfdcfb0924cb0f99
 	sha256sums = SKIP
 
 pkgname = dspi-console

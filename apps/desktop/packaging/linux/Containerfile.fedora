@@ -1,8 +1,18 @@
-# Fedora 42: the .rpm built here installs on Fedora 42 and newer.
+# Fedora 42 (glibc 2.41, Qt 6.9): the .rpm built here installs on Fedora 42 and newer.
+# Rust from rustup-init, pinned and checked as in ci/container/Containerfile.qtport.
 FROM registry.fedoraproject.org/fedora:42
-RUN dnf -y install gcc-c++ cmake make pkgconf-pkg-config rpm-build curl \
-        qt5-qtbase-devel qt5-qtdeclarative-devel \
-        qt5-qtquickcontrols2-devel kf5-kwindowsystem-devel alsa-lib-devel \
+RUN dnf -y install --setopt=install_weak_deps=False \
+        gcc-c++ cmake ninja-build make pkgconf-pkg-config rpm-build curl \
+        qt6-qtbase-devel qt6-qtdeclarative-devel kf6-kwindowsystem-devel alsa-lib-devel \
     && dnf clean all
-RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
-ENV PATH=/root/.cargo/bin:$PATH
+ARG RUSTUP_VERSION=1.29.2
+ARG RUSTUP_INIT_SHA256=5be191e8c70a5007074254cb74d78dbfdd25cd5a61c27de7b8e5410122ec24f4
+ARG RUST_TOOLCHAIN=1.99.1
+ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH=/opt/cargo/bin:$PATH
+RUN d=$(mktemp -d) \
+ && curl --proto '=https' --tlsv1.2 -fsSL -o "$d/rustup-init" \
+      "https://static.rust-lang.org/rustup/archive/$RUSTUP_VERSION/x86_64-unknown-linux-gnu/rustup-init" \
+ && echo "$RUSTUP_INIT_SHA256  $d/rustup-init" | sha256sum -c - \
+ && chmod +x "$d/rustup-init" \
+ && "$d/rustup-init" -y --no-modify-path --profile minimal --default-toolchain "$RUST_TOOLCHAIN" \
+ && rm -rf "$d"

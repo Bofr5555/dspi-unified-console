@@ -23,8 +23,10 @@ You still need the udev rule once, or the device can't be opened:
 
 Requirements
 ------------
-64-bit x86 Linux with glibc 2.35 or newer (Ubuntu 22.04, Debian 12,
-Fedora 36, or anything newer). X11 and Wayland are both supported.
+64-bit x86 Linux with glibc 2.41 or newer (Debian 13, Ubuntu 25.04,
+Fedora 42, or anything newer). X11 and Wayland are both supported. The
+AppImage brings its own Qt 6; it uses your system's graphics (OpenGL),
+fonts and sound (ALSA) libraries, which every desktop has.
 
 If the AppImage won't start with a FUSE error, run it with
 --appimage-extract-and-run, or install your distribution's FUSE package
