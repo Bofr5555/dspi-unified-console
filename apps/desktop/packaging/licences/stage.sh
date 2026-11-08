@@ -2,8 +2,15 @@
 # -- WP QD42 -- Puts the licence texts and the notice into a package that
 # bundles Qt, at <dest>: NOTICE.txt and LICENSES/ with
 #   GPL-3.0.txt, LGPL-3.0.txt   DSPi Console's licence, and Qt's (from www.gnu.org)
+#   TERMS.txt                   (WP LIC1) DSPi Console's additional terms under
+#                               GPL-3.0 section 7, and its copyright (TERMS.txt here)
+#   rust-crates.txt             (WP LIC1) the Rust crates in its core and their
+#                               licence texts (gen_rust_notices.py)
 #   Qt/                         Qt's LICENSES/ and THIRD-PARTY.txt (qt-<version>/)
 #   KWindowSystem/, ICU/        (AppImage) theirs
+#   AppImage-runtime/           (AppImage) the runtime's, and those of what it links
+#                               (libfuse, squashfuse; WP LIC1: musl, zlib, zstd and
+#                               mimalloc from Alpine, ALPINE.txt)
 #   BUNDLED.txt                 every library in the package that is not DSPi
 #                               Console's own: package, version, where it comes
 #                               from, its source, its licence, its files
@@ -26,6 +33,7 @@ fail() { echo "stage-licences: $*" >&2; exit 1; }
 L=$dest/LICENSES
 rm -rf "$L"; mkdir -p "$L"
 cp "$here/GPL-3.0.txt" "$here/LGPL-3.0.txt" "$L/"
+cp "$here/TERMS.txt" "$here/rust-crates.txt" "$L/"   # -- WP LIC1 --
 tab=$(printf '\t')
 bundled=$L/BUNDLED.txt
 printf '# Libraries in this package that are not part of DSPi Console (tab-separated):\n# package\tversion\tfrom\tsource\tlicence\tfiles\n' >"$bundled"
@@ -89,12 +97,12 @@ appimage)
         # Its licence, squashfuse's and libfuse's (LGPL-2.1), and the sources
         # release-sources.sh fetches for it (SOURCES.txt, from update-licences.sh)
         copy_dir "appimage-runtime-$rc" AppImage-runtime "the AppImage runtime $rc"
-        rsrc=$(grep -v '^https://' "$L/AppImage-runtime/SOURCES.txt" | cut -d' ' -f1)
+        rsrc=$(grep -v '^https://' "$L/AppImage-runtime/SOURCES.txt" | cut -d' ' -f1 | join)   # -- WP LIC1 -- one line (ALPINE.txt adds several)
         for u in $(grep '^https://' "$L/AppImage-runtime/SOURCES.txt"); do
             case $u in https://github.com/vasi/squashfuse/*) rsrc="$rsrc squashfuse-${u##*/}" ;; *) rsrc="$rsrc ${u##*/}" ;; esac
         done
         row "AppImage runtime" "$rc" github.com/AppImage/type2-runtime "$rsrc" \
-            "MIT (LICENSES/AppImage-runtime/LICENSE), with libfuse (LGPL-2.1, LICENSES/AppImage-runtime/libfuse-LICENSE and libfuse-LGPL2.txt), squashfuse (LICENSES/AppImage-runtime/squashfuse-LICENSE), musl, libzstd and zlib linked in (the runtime's notice: --appimage-help)" \
+            "MIT (LICENSES/AppImage-runtime/LICENSE), with libfuse (LGPL-2.1, LICENSES/AppImage-runtime/libfuse-LICENSE and libfuse-LGPL2.txt), squashfuse (LICENSES/AppImage-runtime/squashfuse-LICENSE), and Alpine 3.21's musl (MIT, musl-COPYRIGHT), zlib (Zlib, zlib-LICENSE), zstd (BSD-3-Clause OR GPL-2.0-or-later, zstd-LICENSE and zstd-COPYING) and mimalloc (MIT, mimalloc-LICENSE) linked in, as LICENSES/AppImage-runtime/ALPINE.txt pins them" \
             "the AppImage file's runtime"
     fi
     distro=$(. /etc/os-release && echo "$ID-$VERSION_ID")
@@ -170,9 +178,14 @@ esac
     echo "DSPi Console $version"
     echo
     echo "DSPi Console is licensed under the GNU General Public License, version 3 or"
-    echo "(at your option) any later version (LICENSES/GPL-3.0.txt holds version 3)."
+    echo "(at your option) any later version (LICENSES/GPL-3.0.txt holds version 3),"
+    echo "with additional terms under its section 7 (LICENSES/TERMS.txt, also below)."
     echo "Its source code:"
     echo "https://github.com/Bofr5555/dspi-unified-console"
+    # -- WP LIC1 -- the Rust crates in its core
+    echo
+    echo "Its core links third-party Rust crates; they and their licence texts are"
+    echo "listed in LICENSES/rust-crates.txt."
     echo
     echo "This program uses Qt $qt, licensed under the GNU Lesser General Public"
     echo "License version 3 (LICENSES/LGPL-3.0.txt, which incorporates the GNU General"
@@ -184,7 +197,8 @@ esac
         echo "The AppImage's runtime (AppImage's type2-runtime $rc) contains libfuse,"
         echo "licensed under the GNU Lesser General Public License version 2.1"
         echo "(LICENSES/AppImage-runtime/libfuse-LGPL2.txt), and other code listed in"
-        echo "LICENSES/BUNDLED.txt."
+        echo "LICENSES/BUNDLED.txt: squashfuse, musl, zlib, zstd and mimalloc, their"
+        echo "licence texts in LICENSES/AppImage-runtime/."
     fi
     if [ -d "$L/KWindowSystem" ]; then
         echo
@@ -195,5 +209,10 @@ esac
     echo "Every library in this package that is not part of DSPi Console is listed in"
     echo "LICENSES/BUNDLED.txt, with its version, its source and its licence."
     echo "$sources" | fold -s -w 79 | sed 's/ $//'
+    # -- WP LIC1 -- the copyright and the additional terms, verbatim
+    echo
+    echo "-------------------------------------------------------------------------------"
+    echo
+    cat "$here/TERMS.txt"
 } >"$dest/NOTICE.txt"
 echo "stage-licences: $kind: $(grep -vc '^#' "$bundled") bundled libraries listed, NOTICE.txt and LICENSES/ in $dest"

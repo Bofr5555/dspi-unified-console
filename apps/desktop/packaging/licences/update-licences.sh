@@ -15,7 +15,10 @@
 #   appimage-runtime-<commit>/  the AppImage runtime's LICENSE, libfuse's LICENSE and
 #                               LGPL2.txt (the LGPL-2.1), squashfuse's LICENSE, from
 #                               their checked archives, and SOURCES.txt
-#                               (the runtime's commit and the archives it builds on)
+#                               (the runtime's commit and the archives it builds on);
+#                               (WP LIC1) the licence files of the Alpine packages
+#                               ALPINE.txt pins (musl, zlib, zstd, mimalloc), from
+#                               their checked upstream archives
 #   fedora/<source>-<version>/  the licence file of a Fedora MinGW package that
 #                               ships none (FEDORA_NO_LICENCE below), from the
 #                               upstream archive in its checked source RPM
@@ -67,6 +70,7 @@ for a in "$src"/runtime/type2-runtime-*.tar.gz; do
     [ -f "$a" ] || continue
     full=$(basename "$a" .tar.gz); full=${full#type2-runtime-}
     d=$here/appimage-runtime-${full:0:7}
+    pins=; [ -f "$d/ALPINE.txt" ] && pins=$(cat "$d/ALPINE.txt")   # -- WP LIC1 -- kept: it is a pin, not a copy
     rm -rf "$d"; mkdir -p "$d"
     tar -xzOf "$a" "type2-runtime-$full/LICENSE" >"$d/LICENSE"
     deps=$(tar -xzOf "$a" "type2-runtime-$full/scripts/common/install-dependencies.sh")
@@ -76,10 +80,26 @@ for a in "$src"/runtime/type2-runtime-*.tar.gz; do
     tar -xJOf "$fz" --wildcards '*/LICENSE' >"$d/libfuse-LICENSE"
     tar -xJOf "$fz" --wildcards '*/LGPL2.txt' >"$d/libfuse-LGPL2.txt"
     grep -q 'GNU LESSER GENERAL PUBLIC LICENSE' "$d/libfuse-LGPL2.txt" || fail "$fz has no LGPL in LGPL2.txt"
+    # -- WP LIC1 -- the Alpine packages it links statically (ALPINE.txt, kept):
+    # their licence files from the upstream archives release-sources.sh checked
     {
         echo "type2-runtime-$full.tar.gz (https://github.com/AppImage/type2-runtime, commit $full)"
         sed -n 's/^wget "\{0,1\}\([^" ]*\)"\{0,1\}$/\1/p' <<<"$deps"
     } >"$d/SOURCES.txt"
+    if [ -n "$pins" ]; then
+        printf '%s\n' "$pins" >"$d/ALPINE.txt"
+        while IFS=$'\t' read -r apkg aver apath acommit aarchive afiles; do
+            case $apkg in '#'*|'') continue ;; esac
+            aa=$src/runtime/$aarchive
+            [ -f "$aa" ] || fail "no $aa: run release-sources.sh first"
+            base=${aarchive%%-[0-9]*}
+            for lf in $afiles; do   # at the archive's top: <name>-<version>/<file>
+                tar -xzOf "$aa" "${aarchive%.tar.gz}/$lf" >"$d/$base-$lf" 2>/dev/null && [ -s "$d/$base-$lf" ] || fail "no $lf in $aa"
+            done
+            echo "alpine-$apkg-$aver-aports.tar.gz (Alpine 3.21's $apkg $aver: https://gitlab.alpinelinux.org/alpine/aports, $apath at commit $acommit)"
+            echo "$aarchive (upstream source of $apkg $aver, as its APKBUILD names it)"
+        done <"$d/ALPINE.txt" >>"$d/SOURCES.txt"
+    fi
 done
 
 # Fedora MinGW packages whose RPM ships no licence file: <source package> <file in its upstream archive>

@@ -25,7 +25,12 @@
 #   runtime/   the AppImage runtime (type2-runtime, the commit it states): its
 #              tree by git at that commit, and the libfuse and squashfuse
 #              archives its build script pins by SHA-256 (libfuse's signature
-#              checked against its maintainer's key) (also $RUNTIME_COMMITS)
+#              checked against its maintainer's key) (also $RUNTIME_COMMITS);
+#              (WP LIC1) the Alpine packages it links statically
+#              (licences/appimage-runtime-<commit>/ALPINE.txt): their aports
+#              directories by git at the pinned commit, and the upstream archives
+#              the APKBUILDs name, against the APKBUILDs' SHA-512 (musl's release
+#              signature against musl's key)
 #   ubuntu/    the Ubuntu 24.04 source packages of the AppImage's other
 #              libraries, by apt-get source (the archive's signed index; a
 #              version since replaced from snapshot.ubuntu.com, at the time
@@ -58,9 +63,9 @@ get_from() {  # <host> <url>
 fetch() {  # <url> <file under $out> <sha256>: (mirrors allowed; the hash decides)
     local f=$out/$2
     mkdir -p "$(dirname "$f")"
-    if [ -f "$f" ] && echo "$3  $f" | sha256sum -c --quiet - 2>/dev/null; then return 0; fi
+    if [ -f "$f" ] && echo "$3  $f" | sha256sum -c --status - 2>/dev/null; then return 0; fi
     curl -sSfL --retry 4 --retry-all-errors --proto-redir =https -o "$f.part" "$1"
-    echo "$3  $f.part" | sha256sum -c --quiet - || { rm -f "$f.part"; fail "$2 does not match SHA-256 $3"; }
+    echo "$3  $f.part" | sha256sum -c --status - || { rm -f "$f.part"; fail "$2 does not match SHA-256 $3"; }
     mv "$f.part" "$f"
 }
 
@@ -144,9 +149,9 @@ for v in $({ awk -F'\t' '$4 == "unicode-org/icu" {print $3}' "$bundled.rows"; tr
     sum=$(awk -v f="$base" '$2 == f || $2 == "*" f {print $1}' "$out/icu/SHASUM512.txt")
     [ -n "$sum" ] || fail "ICU $v: $base is not in SHASUM512.txt"
     f=$out/icu/$base
-    if ! { [ -f "$f" ] && echo "$sum  $f" | sha512sum -c --quiet - 2>/dev/null; }; then
+    if ! { [ -f "$f" ] && echo "$sum  $f" | sha512sum -c --status - 2>/dev/null; }; then
         curl -sSfL --retry 4 -o "$f.part" "$rel/$base"
-        echo "$sum  $f.part" | sha512sum -c --quiet - || { rm -f "$f.part"; fail "$base does not match ICU's SHA-512"; }
+        echo "$sum  $f.part" | sha512sum -c --status - || { rm -f "$f.part"; fail "$base does not match ICU's SHA-512"; }
         mv "$f.part" "$f"
     fi
     row AppImage "icu/$base" "$rel/$base" "sha512-in-SHASUM512.txt;signature-by-$isig"
@@ -160,6 +165,7 @@ done
 # libfuse's release signature is checked against its maintainer's key.
 # (RUNTIME_COMMITS="fedfad5 ..." adds commits, as ICU_VERSIONS does)
 libfuse_key=ED31791B2C5C1613AF388B8AD113FCAC3C4E599F   # Nikolaus Rath, libfuse's maintainer, who signs its releases
+musl_key=836489290BB6B70F99FFDA0556BCDB593020450F     # -- WP LIC1 -- musl's release key (Rich Felker), https://musl.libc.org/musl.pub
 for c in $({ awk -F'\t' '$4 == "github.com/AppImage/type2-runtime" {print $3}' "$bundled.rows"; tr ' ' '\n' <<<"${RUNTIME_COMMITS:-}"; } | grep . | sort -u); do
     full=$(get_from api.github.com "https://api.github.com/repos/AppImage/type2-runtime/commits/$c" \
            | python3 -c 'import json, sys; print(json.load(sys.stdin)["sha"])') || fail "GitHub knows no type2-runtime commit $c"
@@ -194,6 +200,71 @@ for c in $({ awk -F'\t' '$4 == "github.com/AppImage/type2-runtime" {print $3}' "
         esac
         row AppImage "runtime/$local_name" "$url" "$how"
     done
+    # -- WP LIC1 -- The Alpine packages the runtime links statically (musl, zlib,
+    # zstd, mimalloc), as licences/appimage-runtime-<commit>/ALPINE.txt pins them:
+    # each package's aports directory at the pinned commit, by git (the commit's
+    # hash checks every file), and the upstream archive its APKBUILD names,
+    # against the APKBUILD's SHA-512 (from upstream, else Alpine's distfiles
+    # mirror). The APKBUILD is a shell script: it is read only in a container
+    # with no network. musl's release signature is checked against musl's key.
+    alpine=$here/licences/appimage-runtime-${full:0:7}/ALPINE.txt
+    [ -f "$alpine" ] || continue
+    ag=$out/.git-aports
+    [ -d "$ag" ] || git init -q --bare "$ag"
+    while IFS=$'\t' read -r apkg aver apath acommit aarchive _; do
+        case $apkg in '#'*|'') continue ;; esac
+        git -C "$ag" cat-file -e "$acommit^{commit}" 2>/dev/null \
+            || git -C "$ag" fetch -q --depth 1 --filter=blob:none https://gitlab.alpinelinux.org/alpine/aports.git "$acommit"
+        [ "$(git -C "$ag" rev-parse "$acommit^{commit}")" = "$acommit" ] || fail "git fetched no aports commit $acommit"
+        ad=$out/.alpine/$apkg
+        rm -rf "$ad"; mkdir -p "$ad"
+        git -C "$ag" show "$acommit:$apath/APKBUILD" >"$ad/APKBUILD" || fail "aports $acommit has no $apath/APKBUILD"
+        apk_info=$(podman run --rm --network=none -v "$ad":/a:ro,z docker.io/library/alpine:3.21 sh -c '
+            set -e; cd /a; CARCH=x86_64; CBUILD=x86_64-alpine-linux-musl; CHOST=$CBUILD; CTARGET=$CBUILD
+            srcdir=/nonexistent/src; pkgdir=/nonexistent/pkg; startdir=/a
+            . ./APKBUILD
+            echo "V $pkgver-r$pkgrel"
+            for s in $source; do echo "S $s"; done
+            echo "$sha512sums" | sed -n "s/^\([0-9a-f]\{128\}\)  *\(.*\)\$/H \1 \2/p"') \
+            || fail "cannot read $apath/APKBUILD at $acommit"
+        [ "$(sed -n 's/^V //p' <<<"$apk_info")" = "$aver" ] || fail "$apath/APKBUILD at $acommit is not $apkg $aver"
+        tarball=runtime/alpine-$apkg-$aver-aports.tar.gz
+        git -C "$ag" archive --format=tar --prefix="aports-$acommit/" "$acommit" "$apath" | gzip -n >"$out/$tarball"
+        row AppImage "$tarball" "https://gitlab.alpinelinux.org/alpine/aports/-/tree/$acommit/$apath" "git-commit-$acommit"
+        found=
+        while read -r _ src; do
+            case $src in *://*) ;; *) continue ;; esac
+            name=${src%%::*}; aurl=${src#*::}
+            [ "$name" != "$src" ] || name=${src##*/}
+            sum=$(awk -v f="$name" '$1 == "H" && $3 == f {print $2}' <<<"$apk_info")
+            [ -n "$sum" ] || fail "$apath/APKBUILD gives no SHA-512 for $name"
+            f=$out/runtime/$name
+            if ! { [ -f "$f" ] && echo "$sum  $f" | sha512sum -c --status - 2>/dev/null; }; then
+                got=
+                for u in "$aurl" "https://distfiles.alpinelinux.org/distfiles/v3.21/$name"; do
+                    curl -sSfL --retry 4 --retry-all-errors --proto-redir =https -o "$f.part" "$u" 2>/dev/null \
+                        && echo "$sum  $f.part" | sha512sum -c --status - && { got=$u; break; }
+                    rm -f "$f.part"
+                done
+                [ -n "$got" ] || fail "$name: neither $aurl nor Alpine's distfiles match the APKBUILD's SHA-512"
+                mv "$f.part" "$f"
+            fi
+            how="sha512-in-aports-$acommit-$apath/APKBUILD"
+            case $aurl in https://musl.libc.org/releases/*)
+                get_from musl.libc.org "$aurl.asc" >"$f.asc" || fail "no signature for $aurl"
+                mkdir -p "$out/keys"
+                get_from musl.libc.org https://musl.libc.org/musl.pub >"$out/keys/musl.pub" || fail "cannot read musl's signing key"
+                msig=$(gpg_verify keys/musl.pub "runtime/$name.asc" "runtime/$name") || fail "$name: the signature does not verify"
+                [ "$msig" = "$musl_key" ] || fail "$name is signed by $msig, not musl's release key"
+                how="$how;signature-by-$msig"
+                row AppImage "runtime/$name.asc" "$aurl.asc" "signature" ;;
+            esac
+            row AppImage "runtime/$name" "$aurl" "$how"
+            [ "$name" = "$aarchive" ] && found=1
+        done < <(grep '^S ' <<<"$apk_info")
+        [ -n "$found" ] || fail "$apath/APKBUILD at $acommit does not name $aarchive"
+    done <"$alpine"
+    rm -rf "$out/.alpine"
 done
 
 # Ubuntu's source packages (AppImage). A version the archive has since replaced

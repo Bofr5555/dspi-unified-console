@@ -20,6 +20,21 @@ internal data class AboutLink(val id: String, val title: String, val detail: Str
 
 internal data class AboutCredit(val name: String, val what: String?, val url: String?)
 
+// -- WP LIC1 -- the project's licence and its GPL v3 section 7 terms (the table's `licence`).
+internal data class AboutTerm(val title: String, val text: String)
+
+internal data class AboutLicence(
+    val title: String? = null,
+    val spdx: String? = null,
+    val copyright: List<String> = emptyList(),
+    val statement: String? = null,
+    val termsTitle: String? = null,
+    val termsNote: String? = null,
+    val terms: List<AboutTerm> = emptyList(),
+    val freedoms: String? = null,
+    val notices: String? = null
+)
+
 internal data class AboutInfo(
     val creditLines: List<String> = emptyList(),
     val makers: List<AboutMaker> = emptyList(),
@@ -27,7 +42,8 @@ internal data class AboutInfo(
     val linksTitle: String? = null,
     val linksNote: String? = null,
     val links: List<AboutLink> = emptyList(),
-    val credits: List<AboutCredit> = emptyList()
+    val credits: List<AboutCredit> = emptyList(),
+    val licence: AboutLicence = AboutLicence()
 )
 
 /**
@@ -50,9 +66,29 @@ internal fun parseAbout(json: String): AboutInfo {
         },
         credits = root.entries("credits").mapNotNull { c ->
             c.text("name")?.let { AboutCredit(it, c.text("what"), c.text("url")) }
-        }
+        },
+        licence = parseLicence(root.obj("licence"))
     )
 }
+
+// -- WP LIC1 --
+private fun parseLicence(l: Map<String, Any?>?): AboutLicence {
+    if (l == null) return AboutLicence()
+    return AboutLicence(
+        title = l.text("title"),
+        spdx = l.text("spdx"),
+        copyright = l.list("copyright").orEmpty().filterIsInstance<String>().filter { it.isNotBlank() },
+        statement = l.text("statement"),
+        termsTitle = l.text("terms_title"),
+        termsNote = l.text("terms_note"),
+        terms = l.entries("terms").mapNotNull { t -> t.text("text")?.let { AboutTerm(t.text("title").orEmpty(), it) } },
+        freedoms = l.text("freedoms"),
+        notices = l.text("notices")
+    )
+}
+
+@Suppress("UNCHECKED_CAST")
+private fun Map<String, Any?>.obj(key: String): Map<String, Any?>? = this[key] as? Map<String, Any?>
 
 private fun Map<String, Any?>.text(key: String): String? = str(key)?.takeIf { it.isNotBlank() }
 

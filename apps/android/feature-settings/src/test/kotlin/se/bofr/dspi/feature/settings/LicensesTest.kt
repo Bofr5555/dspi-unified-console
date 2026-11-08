@@ -29,8 +29,21 @@ class LicensesTest {
         assertFalse(t.contains("\nmidir "))
     }
 
+    /** WP LIC1: the terms the screen shows are the About table's; the first keeps both authors' attributions. */
     @Test
     fun aboutCreditsBothAuthors() {
-        assertTrue(ADDITIONAL_TERMS.first().contains("Weeb Labs") && ADDITIONAL_TERMS.first().contains("Bofr5555"))
+        val licence = parseAbout(File("../../../assets/about.json").readText()).licence
+        val first = licence.terms.first().text
+        assertTrue(first.contains("Weeb Labs") && first.contains("Bofr5555"))
+    }
+
+    @Test
+    fun wpLic1TheLicenceIsGpl3OrLaterWithThreeTerms() {
+        val licence = parseAbout(File("../../../assets/about.json").readText()).licence
+        assertTrue(licence.spdx == "GPL-3.0-or-later")
+        assertTrue(licence.statement!!.contains("either version 3 of the License, or (at your option) any later version"))
+        val titles = listOf("Attributions (7b)", "Modified versions are marked (7c)", "No trademark rights (7e)")
+        assertTrue(licence.terms.map { it.title } == titles)
+        assertTrue(licence.copyright.size == 2 && licence.freedoms != null && licence.notices != null)
     }
 }

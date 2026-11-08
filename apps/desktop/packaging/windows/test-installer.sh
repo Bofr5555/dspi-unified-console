@@ -38,10 +38,16 @@ publisher=$(wine reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\Unins
 # -- WP QD42 -- the licence files
 lic_ok=1
 for f in NOTICE.txt LICENSES/GPL-3.0.txt LICENSES/LGPL-3.0.txt LICENSES/BUNDLED.txt LICENSES/Qt/THIRD-PARTY.txt \
-         LICENSES/Qt/LGPL-3.0-only.txt LICENSES/bundled/mingw64-libgcc/COPYING.RUNTIME LICENSES/bundled/mingw64-libstdc++/COPYING.RUNTIME; do
+         LICENSES/Qt/LGPL-3.0-only.txt LICENSES/bundled/mingw64-libgcc/COPYING.RUNTIME LICENSES/bundled/mingw64-libstdc++/COPYING.RUNTIME \
+         LICENSES/TERMS.txt LICENSES/rust-crates.txt; do
     [ -s "$unix/$f" ] || { echo "test-installer: FAIL: no $f in the install"; lic_ok=; }
 done
 grep -q "any later version" "$unix/NOTICE.txt" || { echo "test-installer: FAIL: NOTICE.txt does not say GPL-3.0-or-later"; lic_ok=; }
+# -- WP LIC1 -- the additional terms in the notice, and the Rust crates notice
+grep -q "section 7 (LICENSES/TERMS.txt" "$unix/NOTICE.txt" && grep -q "No trademark rights (7e)" "$unix/NOTICE.txt" \
+    || { echo "test-installer: FAIL: NOTICE.txt lacks the additional terms"; lic_ok=; }
+grep -q "^Third-party Rust crates linked into" "$unix/LICENSES/rust-crates.txt" 2>/dev/null \
+    || { echo "test-installer: FAIL: LICENSES/rust-crates.txt is not the Rust crates notice"; lic_ok=; }
 # Every bundled package has its licence text (a non-empty LICENSES/bundled/<package>/)
 while IFS='	' read -r pkgname _; do
     case $pkgname in '#'*|'') continue ;; esac
@@ -56,7 +62,7 @@ done
 zip=${setup%-setup.exe}.zip
 if [ -f "$zip" ]; then
     names=$(python3 -m zipfile -l "$zip" | awk '{print $1}')
-    for f in NOTICE.txt LICENSES/BUNDLED.txt LICENSES/Qt/THIRD-PARTY.txt; do
+    for f in NOTICE.txt LICENSES/BUNDLED.txt LICENSES/Qt/THIRD-PARTY.txt LICENSES/TERMS.txt LICENSES/rust-crates.txt; do
         grep -q "^[^/]*/$f$" <<<"$names" || { echo "test-installer: FAIL: no $f in ${zip##*/}"; lic_ok=; }
     done
 fi

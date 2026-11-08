@@ -341,14 +341,21 @@ if(UNIX AND NOT APPLE)
     # in share/licenses, as Fedora and Arch expect
     set(DSPI_PACKAGE_FORMAT "" CACHE STRING "deb: the licence as Debian lays it out (build-debian.sh)")
     set(LIC ${CMAKE_SOURCE_DIR}/../packaging/licences)
+    # -- WP LIC1 -- the additional terms (GPL-3.0 section 7) in the notice, verbatim,
+    # and the Rust crates' notices next to it
+    file(READ ${LIC}/TERMS.txt DSPI_TERMS)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${LIC}/TERMS.txt)
     if(DSPI_PACKAGE_FORMAT STREQUAL "deb")
         set(DSPI_GPL_TEXT "/usr/share/common-licenses/GPL-3")
+        set(DSPI_RUST_CRATES "/usr/share/doc/dspi-console/rust-crates.txt")
         configure_file(${LIC}/NOTICE-distro.txt.in ${CMAKE_BINARY_DIR}/copyright @ONLY)
-        install(FILES ${CMAKE_BINARY_DIR}/copyright DESTINATION share/doc/dspi-console)
+        install(FILES ${CMAKE_BINARY_DIR}/copyright ${LIC}/rust-crates.txt DESTINATION share/doc/dspi-console)
     else()
         set(DSPI_GPL_TEXT "GPL-3.0.txt, next to this file,")
+        set(DSPI_RUST_CRATES "rust-crates.txt, next to this file")
         configure_file(${LIC}/NOTICE-distro.txt.in ${CMAKE_BINARY_DIR}/NOTICE.txt @ONLY)
-        install(FILES ${LIC}/GPL-3.0.txt ${CMAKE_BINARY_DIR}/NOTICE.txt DESTINATION share/licenses/dspi-console)
+        install(FILES ${LIC}/GPL-3.0.txt ${CMAKE_BINARY_DIR}/NOTICE.txt ${LIC}/TERMS.txt ${LIC}/rust-crates.txt
+            DESTINATION share/licenses/dspi-console)
     endif()
 
     set(CPACK_PACKAGE_NAME dspi-console)

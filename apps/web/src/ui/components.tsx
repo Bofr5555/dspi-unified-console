@@ -481,12 +481,36 @@ export function About(props: { onClose: () => void; sourceUrl: string | null }) 
           </li>
         ))}
       </ul>
+      {/* -- WP LIC1 -- the project's licence and its section 7 terms, as the table words them */}
+      <h3>{a.licence.title}</h3>
+      {a.licence.copyright.map((c) => (
+        <p key={c} class="note">
+          {c}
+        </p>
+      ))}
+      <p class="note">{a.licence.statement}</p>
+      <h4>{a.licence.terms_title}</h4>
+      <p class="note">{a.licence.terms_note}</p>
+      <ol class="terms">
+        {a.licence.terms.map((t) => (
+          <li key={t.id}>
+            <strong>{t.title}.</strong> {t.text}
+          </li>
+        ))}
+      </ol>
+      <p class="note">{a.licence.freedoms}</p>
       <p class="note">
-        Licence: GNU GPL, version 3 or later.{" "}
+        {a.licence.notices}{" "}
+        <a href="THIRD-PARTY-NOTICES.txt" target="_blank" rel="noopener noreferrer">
+          Third-party notices
+        </a>
         {props.sourceUrl ? (
-          <a href={props.sourceUrl} target="_blank" rel="noopener noreferrer">
-            Source code
-          </a>
+          <>
+            {" · "}
+            <a href={props.sourceUrl} target="_blank" rel="noopener noreferrer">
+              Source code
+            </a>
+          </>
         ) : null}
       </p>
       <button type="button" onClick={props.onClose}>
