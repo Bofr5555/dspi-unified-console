@@ -15,6 +15,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,6 +28,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
@@ -54,6 +58,8 @@ import androidx.compose.ui.unit.dp
  *   that has no slider (e.g. a matrix crosspoint gain -> 0 dB).
  * @param range when set, a typed entry may carry its unit and is kept within
  *   it ([ValueFormat.parse] with a range; the tool windows' rows).
+ * @param accessibilityLabel what TalkBack calls the field ("Preamp"); it then
+ *   reads the value with [label] as its state.
  *
  * Stable API (lot 3).
  */
@@ -74,6 +80,7 @@ fun ValueField(
     textStyle: TextStyle = DspiType.bodyMono,
     onReset: (() -> Unit)? = null,
     range: ClosedFloatingPointRange<Float>? = null,
+    accessibilityLabel: String? = null,
     onCommit: (Float) -> Unit
 ) {
     @Suppress("NAME_SHADOWING")
@@ -95,18 +102,32 @@ fun ValueField(
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         Box(
             Modifier
+                // -- WP AN20 -- room for a 48 dp target around the field
+                .minimumInteractiveComponentSize()
                 .width(width)
                 .border(1.dp, if (editing) colors.accent else colors.pillStroke.copy(alpha = 0.15f), RoundedCornerShape(5.dp))
                 .combinedClickable(
                     enabled = enabled && !editing,
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
+                    onClickLabel = "Edit",
                     onLongClick = onReset,
                     onLongClickLabel = if (onReset != null) "Reset" else null
                 ) {
                     field = TextFieldValue(shown, TextRange(0, shown.length))
                     editing = true
-                }.padding(horizontal = 4.dp, vertical = 4.dp),
+                }.then(
+                    // -- WP AN20 --
+                    if (accessibilityLabel != null && !editing) {
+                        Modifier.semantics {
+                            contentDescription = accessibilityLabel
+                            stateDescription =
+                                listOf(liveText ?: displayOverride ?: shown, label).filter { it.isNotEmpty() }.joinToString(" ")
+                        }
+                    } else {
+                        Modifier
+                    }
+                ).padding(horizontal = 4.dp, vertical = 4.dp),
             contentAlignment = Alignment.CenterEnd
         ) {
             if (editing) {

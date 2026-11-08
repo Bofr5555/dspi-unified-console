@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +42,12 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
@@ -241,6 +248,8 @@ private fun CompactValueField(
     Box(
         modifier =
         modifier
+            // -- WP AN20 -- room for a 48 dp target around the field
+            .minimumInteractiveComponentSize()
             .width(width)
             .background(
                 if (dragging) accent.copy(alpha = 0.15f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
@@ -282,6 +291,19 @@ private fun CompactValueField(
                         }
                     }
                 )
+            }
+            // -- WP AN20 -- the drag needs a long-press first; TalkBack gets the field's name, its value and
+            // a click that opens the editor, as a tap does
+            .semantics(mergeDescendants = true) {
+                contentDescription = title
+                stateDescription = display(shown)
+                role = Role.Button
+                if (enabled) {
+                    onClick(label = "Edit") {
+                        editing = true
+                        true
+                    }
+                }
             }
             .padding(vertical = 4.dp),
         contentAlignment = Alignment.Center

@@ -22,6 +22,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -30,6 +33,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +46,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role as SemanticsRole
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -93,10 +103,14 @@ fun SegmentedControl(tabs: List<SegmentTab>, modifier: Modifier = Modifier, enab
     val shape = RoundedCornerShape(6.dp)
     Row(
         modifier
+            // -- WP AN20 -- room for 48 dp targets around the segments
+            .minimumInteractiveComponentSize()
             .height(IntrinsicSize.Min)
             .clip(shape)
             .border(1.dp, c.pillStroke, shape)
             .alpha(if (enabled) 1f else 0.4f)
+            // -- WP AN20 -- TalkBack: "PEQ, selected, tab 1 of 2"
+            .selectableGroup()
     ) {
         tabs.forEachIndexed { i, tab ->
             if (i > 0) Box(Modifier.width(1.dp).height(16.dp).align(Alignment.CenterVertically).background(c.pillStroke))
@@ -104,7 +118,9 @@ fun SegmentedControl(tabs: List<SegmentTab>, modifier: Modifier = Modifier, enab
                 Modifier
                     .weight(1f)
                     .background(if (tab.isSelected) c.gray.copy(alpha = 0.22f) else Color.Transparent)
-                    .clickable(enabled = enabled) { if (!tab.isSelected) tab.action() }
+                    .selectable(selected = tab.isSelected, enabled = enabled, role = SemanticsRole.Tab) {
+                        if (!tab.isSelected) tab.action()
+                    }
                     .padding(horizontal = 10.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -138,7 +154,11 @@ fun SplitActionPill(
 
     @Suppress("NAME_SHADOWING")
     val rightDisabled = rightDisabled || !canWrite
-    Row(modifier.height(IntrinsicSize.Min).clip(shape).border(1.dp, c.pillStroke, shape), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        // -- WP AN20 -- room for 48 dp targets around the pill
+        modifier.minimumInteractiveComponentSize().height(IntrinsicSize.Min).clip(shape).border(1.dp, c.pillStroke, shape),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         PillHalf(leftTitle, leftDisabled, onLeft)
         Box(Modifier.width(1.dp).height(16.dp).background(c.pillStroke))
         PillHalf(rightTitle, rightDisabled, onRight)
@@ -147,7 +167,10 @@ fun SplitActionPill(
 
 @Composable
 private fun PillHalf(title: String, disabled: Boolean, action: () -> Unit) {
-    Box(Modifier.clickable(enabled = !disabled, onClick = action).padding(horizontal = 10.dp, vertical = 6.dp)) {
+    Box(
+        Modifier.clickable(enabled = !disabled, role = SemanticsRole.Button, onClick = action)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
         Text(
             title,
             style = DspiType.captionMedium,
@@ -179,10 +202,14 @@ fun PillButton(
     val fg = if (selected) c.accent else c.secondaryLabel
     Row(
         modifier
+            // -- WP AN20 -- room for a 48 dp target around the pill
+            .minimumInteractiveComponentSize()
             .clip(shape)
             .background(if (selected) c.accent.copy(alpha = 0.18f) else Color.Transparent, shape)
             .border(1.dp, if (selected) c.accent.copy(alpha = 0.45f) else c.pillStroke, shape)
-            .clickable(enabled = enabled, onClick = onClick)
+            .clickable(enabled = enabled, role = SemanticsRole.Button, onClick = onClick)
+            // -- WP AN20 -- a pill that shows a state (Link) says so
+            .then(if (selected) Modifier.semantics { stateDescription = "On" } else Modifier)
             .alpha(if (enabled) 1f else 0.4f)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -222,10 +249,12 @@ fun <T> PopUpButton(
                 .clip(RoundedCornerShape(5.dp))
                 .combinedClickable(
                     enabled = enabled || onLongClick != null,
+                    role = SemanticsRole.DropdownList,
                     onClick = { if (enabled) open = true },
                     onLongClick = onLongClick
                 ).alpha(if (enabled || !dimWhenDisabled) 1f else 0.4f)
-                .heightIn(min = 32.dp)
+                // -- WP AN20 -- a 48 dp target (was 32)
+                .heightIn(min = 48.dp)
                 .padding(horizontal = 6.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -261,6 +290,8 @@ fun <T> PopUpButton(
  * secondary otherwise. [onLongClick] is the touch counterpart of the macOS
  * right-click that opens the tool's settings window. [enabled] false
  * ignores the tap (a toggle while read-only, G1) but keeps the long-press.
+ * [isToggle]: the tap switches [isActive] (an effect, bypass), and TalkBack
+ * reads it as a switch, on or off; otherwise it is a button.
  */
 @Composable
 fun SidebarIconButton(
@@ -271,16 +302,25 @@ fun SidebarIconButton(
     modifier: Modifier = Modifier,
     activeColor: Color? = null,
     onLongClick: (() -> Unit)? = null,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    isToggle: Boolean = false
 ) {
     val c = DspiTheme.colors
     val tint = if (isActive) activeColor ?: (if (c.isDark) Color.White else c.accent) else c.secondaryLabel.copy(alpha = 0.6f)
     Box(
         modifier
+            // -- WP AN20 -- room for a 48 dp target around the 44 dp circle
+            .minimumInteractiveComponentSize()
             .size(44.dp)
             .clip(CircleShape)
-            .combinedClickable(onClick = { if (enabled) onClick() }, onLongClick = onLongClick, onLongClickLabel = tooltip)
-            .alpha(if (enabled) 1f else 0.4f),
+            .combinedClickable(
+                role = if (isToggle) SemanticsRole.Switch else SemanticsRole.Button,
+                onClick = { if (enabled) onClick() },
+                onLongClick = onLongClick,
+                onLongClickLabel = if (onLongClick != null) "Open $tooltip" else null
+            ).then(
+                if (isToggle) Modifier.semantics { toggleableState = ToggleableState(isActive) } else Modifier
+            ).alpha(if (enabled) 1f else 0.4f),
         contentAlignment = Alignment.Center
     ) {
         Icon(icon, contentDescription = tooltip, tint = tint, modifier = Modifier.size(20.dp))
@@ -291,9 +331,17 @@ fun SidebarIconButton(
  * Per-band bypass indicator (macOS `BypassCheckbox`): a filled disc when the
  * band is active, a hollow ring when bypassed or Off; dimmed when the band is
  * Off. [color] is the band's graph colour when the graph edits it.
+ * [label] names the band for TalkBack ("Band 3"): a checkbox, checked while active.
  */
 @Composable
-fun BypassCheckbox(isActive: Boolean, isEnabled: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier, color: Color? = null) {
+fun BypassCheckbox(
+    isActive: Boolean,
+    isEnabled: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
+    color: Color? = null,
+    label: String? = null
+) {
     @Suppress("NAME_SHADOWING")
     val isEnabled = writeEnabled(isEnabled)
     val c = DspiTheme.colors
@@ -301,16 +349,20 @@ fun BypassCheckbox(isActive: Boolean, isEnabled: Boolean, onToggle: () -> Unit, 
     val fillAlpha by animateFloatAsState(if (isActive) 1f else 0f, label = "bypass")
     Box(
         modifier
+            // -- WP AN20 -- a 48 dp target around the 14 dp disc
+            .minimumInteractiveComponentSize()
             .size(36.dp)
             .clip(CircleShape)
-            .clickable(
+            .toggleable(
+                value = isActive,
                 enabled = isEnabled,
+                role = SemanticsRole.Checkbox,
                 interactionSource = remember {
                     MutableInteractionSource()
                 },
                 indication = null,
-                onClick = onToggle
-            )
+                onValueChange = { onToggle() }
+            ).then(if (label != null) Modifier.semantics { contentDescription = label } else Modifier)
             .alpha(if (isEnabled) 1f else 0.35f),
         contentAlignment = Alignment.Center
     ) {
