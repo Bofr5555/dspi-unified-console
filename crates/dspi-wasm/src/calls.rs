@@ -23,6 +23,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::guard::{self, Refusal};
+// -- WP WB6b --
+use crate::curves;
 // -- WP WB4b --
 use crate::link;
 // -- WP WB6a --
@@ -244,6 +246,9 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "presetCopy" => presets::copy(&core, params(req.params)?),
         "presetRevert" => presets::revert(&core),
         "factoryReset" => presets::factory_reset(&core),
+        // -- WP WB6b -- the EQ graph's curves, the core's maths (src/curves.rs)
+        "curveGrid" => Ok(curves::grid()),
+        "curves" => curves::curves(params(req.params)?),
         "close" => {
             core.disconnect();
             set_demo(h, false);
@@ -334,8 +339,11 @@ fn open(h: u32, core: &DspiCore, target: Target) -> CallResult {
             // -- WP WB4b -- (c6g N1) whatever this session had on USB or a hub is not it
             usb::closed(h);
             link::forget(h);
-            // -- WP WB6a --
-            presets::opened(core)?;
+            // -- WP WB6a -- -- WP WB6b -- (c6p WB6a-2) a failed read leaves no demo flag
+            if let Err(e) = presets::opened(core) {
+                set_demo(h, false);
+                return Err(e);
+            }
             Ok(snapshot(core, true))
         }
         // -- WP WB4a --
@@ -343,9 +351,7 @@ fn open(h: u32, core: &DspiCore, target: Target) -> CallResult {
             link::forget(h);
             usb::open(h, core, t)?;
             set_demo(h, false);
-            // -- WP WB6a --
-            presets::opened(core)?;
-            Ok(usb::with_serial(h, snapshot(core, false)))
+            usb_opened(h, core)
         }
         // -- WP WB4b --
         Target::Hub(t) => {
@@ -355,6 +361,18 @@ fn open(h: u32, core: &DspiCore, target: Target) -> CallResult {
             Ok(link::with_serial(h, snapshot(core, false)))
         }
     }
+}
+
+// -- WP WB6a -- -- WP WB6b --
+/// The rest of a USB open once the device is claimed: the reads (as the
+/// demo's), then the snapshot. (c6p WB6a-2) When they fail the device is
+/// closed and its claim forgotten too, as `close` does.
+pub(crate) fn usb_opened(h: u32, core: &DspiCore) -> CallResult {
+    if let Err(e) = presets::opened(core) {
+        usb::closed(h);
+        return Err(e);
+    }
+    Ok(usb::with_serial(h, snapshot(core, false)))
 }
 
 // -- WP WB4a --

@@ -37,14 +37,25 @@ const spawnCore = () => {
   clients.push(c);
   return c;
 };
-mount(document.getElementById("one")!, {
+// -- WP WB6b -- the mounted consoles, so the tests can ask what is unsaved;
+// console two leaves the leave prompt to its host page (here: none).
+const consoles = [] as ReturnType<typeof mount>[];
+(globalThis as unknown as { dspiConsoles: typeof consoles }).dspiConsoles = consoles;
+const changes: boolean[] = [];
+(globalThis as unknown as { dspiUnsavedChanges: boolean[] }).dspiUnsavedChanges = changes;
+consoles.push(mount(document.getElementById("one")!, {
   backend: new FakeFleet("Operator One", { "venue-a": "control", "venue-b": "view" }),
   spawnCore,
   title: "Fleet console one",
-});
-mount(document.getElementById("two")!, {
+}));
+// `?one`: console one alone, the page's whole width (the 375 px tests).
+const single = new URLSearchParams(location.search).has("one");
+if (single) document.body.style.gridTemplateColumns = "1fr";
+if (!single) consoles.push(mount(document.getElementById("two")!, {
   backend: new FakeFleet("Operator Two", { "venue-a": "control" }),
   spawnCore,
   title: "Fleet console two",
-});
+  leavePrompt: false,
+}));
+consoles[1]?.onUnsavedChange((u) => changes.push(u));
 (globalThis as unknown as { VIEW_ONLY_REASON: string }).VIEW_ONLY_REASON = VIEW_ONLY_REASON;
