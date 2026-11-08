@@ -48,6 +48,9 @@ grep -q 'DLL Name: Qt6Core.dll' <<<"$imports" \
 
 mkdir -p "$out"
 "$root/packaging/windows/deploy-mingw.sh" "$build" "$out/$name" 6
+# -- WP QD42 -- The licence texts (Qt's, GCC's runtime and the other DLLs'), the
+# notice and the list of bundled libraries, in the zip and the installer
+"$root/packaging/licences/stage.sh" windows "$out/$name" "$out/$name" "$version"
 (cd "$out" && rm -f "$name.zip" && python3 -m zipfile -c "$name.zip" "$name")
 makensis -V2 -DVERSION="$version" -DBUNDLE="$out/$name" -DOUTFILE="$out/$name-setup.exe" \
          "$root/packaging/windows/dspi-console.nsi"

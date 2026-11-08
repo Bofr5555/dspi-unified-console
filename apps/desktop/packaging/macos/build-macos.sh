@@ -60,6 +60,10 @@ if otool -l "$exe" | grep -A2 LC_RPATH | grep -q "$QTDIR"; then
     echo "build-macos: the app still looks for Qt in $QTDIR" >&2; exit 1
 fi
 
+# -- WP QD42 -- The licence texts, the notice and the list of bundled libraries
+# (before signing: the signature covers them)
+QTDIR=$QTDIR "$root/packaging/licences/stage.sh" macos "$app" "$app/Contents/Resources" "$version"
+
 # The hardened runtime (needed for notarisation) only with a real identity:
 # ad hoc, its library validation would refuse the bundled Qt plugins
 if [ -n "${SIGN_ID:-}" ]; then

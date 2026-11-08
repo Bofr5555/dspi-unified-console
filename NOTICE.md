@@ -9,8 +9,8 @@ the per-directory table.
 - **DSPi, the DSPi firmware, the DSPi Consoles and DSPi-Terminal:** Weeb Labs (https://github.com/WeebLabs).
   "DSPi" and "DSPi Console" are Weeb Labs' names. This repository grants no rights to them.
 - **The core merge, the Android console and the Rust Link client:** Bofr5555 (https://github.com/Bofr5555).
-- **The repository as a whole:** root `LICENSE` is GPL-3.0; the Cargo workspace's field is `GPL-3.0-or-later`. Both are
-  the owner's working assumption.
+- **The repository as a whole:** `GPL-3.0-or-later` (the owner's decision, 2026-11-08). Root `LICENSE` holds the GPL
+  version 3 text, as usual for "or later"; the Cargo workspace's field is `GPL-3.0-or-later`.
 
 ## Parts with their own words
 

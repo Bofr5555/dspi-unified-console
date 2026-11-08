@@ -5,6 +5,7 @@
 <component type="desktop-application">
   <id>dspi-console</id>
   <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
   <name>DSPi Console</name>
   <summary>Configure and tune a DSPi audio processor</summary>
   <description>
