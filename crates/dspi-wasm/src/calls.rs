@@ -560,6 +560,32 @@ mod tests {
         );
         assert_eq!(g, json!({ "float": -3.0 }));
 
+        // -- c6e W3-1 -- `pre` trims the one input asked for, `pre.all` every input.
+        let p = ok(
+            a,
+            "write",
+            json!({ "path": "pre", "indices": [1], "value": { "float": -4.0 } }),
+        );
+        assert_eq!(p, json!({ "float": -4.0 }));
+        let st = ok(a, "state", Value::Null);
+        assert_eq!(st["state"]["inputPreampDb"][1], -4.0);
+        assert_eq!(st["state"]["inputPreampDb"][0], 0.0, "only input 1 changed");
+        let r = run(
+            a,
+            "write",
+            json!({ "path": "pre", "indices": [200], "value": { "float": -4.0 } }),
+        );
+        assert!(
+            !code(&r).is_empty(),
+            "an input the device does not have is refused: {r}"
+        );
+        let all = ok(
+            a,
+            "write",
+            json!({ "path": "pre.all", "value": { "float": -2.0 } }),
+        );
+        assert_eq!(all, json!({ "float": -2.0 }));
+
         let r = run(
             a,
             "write",

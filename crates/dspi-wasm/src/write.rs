@@ -64,7 +64,19 @@ const ROUTES: &[(&str, Setter, Reader)] = &[
         |s, _| Some(ParamValue::Float(s.master_volume_db)),
     ),
     (
+        // -- c6e W3-1 -- `pre` is one input's trim (REQ_SET_PREAMP_CH); `pre.all`
+        // is the legacy all-inputs preamp.
         "pre",
+        |c, i, v| c.set_input_preamp(first(i), float(v)),
+        |s, i| {
+            s.input_preamp_db
+                .get(usize::from(first(i)))
+                .copied()
+                .map(ParamValue::Float)
+        },
+    ),
+    (
+        "pre.all",
         |c, _, v| c.set_preamp(float(v)),
         |s, _| Some(ParamValue::Float(s.preamp_db)),
     ),
