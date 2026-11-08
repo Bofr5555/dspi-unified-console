@@ -4317,10 +4317,18 @@ extension DSPViewModel {
         guard let data = transport.getControlRequest(request: REQ_PRESET_SAVE, value: UInt16(slot), index: 2, length: 1) else { return 0xFF }
         let status = data[0]
         if status == PRESET_OK {
+            // -- WP SWF6 -- Through the core, its baseline is taken here, off
+            // main and right after the save.
+            let source = transport.coreStateSource
+            let changes = source?.capturePresetBaseline()
             DispatchQueue.main.async {
                 self.activePresetSlot = slot
                 self.presetOccupied |= UInt16(1 << slot)
-                self.updateSavedSnapshot()
+                if let changes = changes, self.unsavedChangesFromCore {
+                    self.coreMirror.showPresetChanges(changes, from: source)
+                } else {
+                    self.updateSavedSnapshot()
+                }
             }
         }
         return status
@@ -4374,6 +4382,13 @@ extension DSPViewModel {
     @discardableResult
     func loadPreset(slot: Int) -> UInt8 {
         print("[PRESET] loadPreset(\(slot)) starting")
+        // -- WP SWF6 -- Through the core: its load re-reads and rebases, and an
+        // edit made before its notifications arrive stays unsaved (CG33).
+        if let source = transport.coreStateSource {
+            let status = loadPresetThroughCore(source, slot: slot)
+            print("[PRESET] loadPreset(\(slot)) through the core, status=\(status)")
+            return status
+        }
         // We refetch everything below, so drop the PRESET_LOADED /
         // BULK_INVALIDATED pair the device is about to send rather than pay for
         // a second bulk read of the state we are already fetching.  Armed

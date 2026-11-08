@@ -110,6 +110,9 @@ final class CoreBackedTransport: DeviceTransport {
     /// transport made; any other value means the core changed it (coreQueue).
     private var knownCoreGeneration: UInt64 = 0
     private var drainScheduled = false
+    /// -- WP SWF6 -- Tests only: drains wait while set, so a notification
+    /// window (a preset load's, say) stays open for as long as a test needs.
+    private var drainHeldForTest = false
 
     private static let log = Logger(subsystem: "WeebLabs.DSPi-Console", category: "CoreBackedTransport")
     #if DEBUG
@@ -278,7 +281,11 @@ final class CoreBackedTransport: DeviceTransport {
     // On coreQueue.  Apply the queued packets to the core's mirror, hand the
     // tap's copies to the observers, and follow the connection.
     private func drain() {
-        stateLock.lock(); drainScheduled = false; stateLock.unlock()
+        stateLock.lock()
+        drainScheduled = false
+        let held = drainHeldForTest
+        stateLock.unlock()
+        guard !held else { return }   // -- WP SWF6 --
         let result = onCore { $0.processNotifications() }
         let packets = onCore { $0.notifyTapDrain() }
         for raw in packets {
@@ -290,7 +297,9 @@ final class CoreBackedTransport: DeviceTransport {
         // -- WP SW8 -- The mirror after the change, after the tap's packets
         // (both reach main in this order).
         if result.flags & CoreStateChange.stateFlags != 0, !stateFanout.isEmpty {
-            stateFanout.publish(CoreStateChange(flags: result.flags, state: onCore { $0.getState() }))
+            // -- WP SWF6 -- With the core's unsaved-changes list after it.
+            stateFanout.publish(CoreStateChange(flags: result.flags, state: onCore { $0.getState() },
+                                                presetChanges: onCore { $0.presetChanges() }))
         }
         let connected = onCore { $0.isConnected() }
         let coreGeneration = onCore { $0.connectionGeneration() }
@@ -304,6 +313,14 @@ final class CoreBackedTransport: DeviceTransport {
         if result.flags & DspiConstants.NOTIFY_DISCONNECTED != 0 || connected != isConnected {
             DispatchQueue.main.async { self.publishConnected(connected) }
         }
+    }
+
+    // -- WP SWF6 --
+    /// Tests only: hold the notification drain (true), or let it run again
+    /// and process what arrived meanwhile in one batch (false).
+    func holdDrainForTest(_ hold: Bool) {
+        stateLock.lock(); drainHeldForTest = hold; stateLock.unlock()
+        if !hold { scheduleDrain() }
     }
 
     // MARK: - SET (host to device)
@@ -460,6 +477,39 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
 
     func addStateObserver(_ handler: @escaping (CoreStateChange) -> Void) -> AnyCancellable {
         stateFanout.add(handler)
+    }
+
+    // -- WP SWF6 -- The unsaved-changes baseline is the core's.
+
+    func readPresetChanges() -> [String] {
+        onCoreSync { self.onCore { $0.presetChanges() } }
+    }
+
+    func capturePresetBaseline() -> [String] {
+        onCoreSync {
+            // The echoes of the last raw SETs are in the mirror first.
+            self.drain()
+            self.onCore { $0.captureBaseline() }
+            return self.onCore { $0.presetChanges() }
+        }
+    }
+
+    func loadPreset(slot: UInt8) -> Result<(DspState, [String]), DspiError> {
+        onCoreSync {
+            do {
+                try self.onCore { try $0.loadPreset(slot: slot) }
+                return .success((self.onCore { $0.getState() }, self.onCore { $0.presetChanges() }))
+            } catch {
+                let failure = error as? DspiError ?? .Transfer(msg: String(describing: error))
+                // As a raw write-as-read's failure (getControlResult).
+                switch failure {
+                case .Locked: DeviceLock.notice.post()
+                case .ReadOnly: RefusedWrite.handleReadOnly(fanout: self.fanout)
+                default: break
+                }
+                return .failure(failure)
+            }
+        }
     }
 }
 
