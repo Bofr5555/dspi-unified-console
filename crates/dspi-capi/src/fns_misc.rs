@@ -1981,3 +1981,81 @@ mod tests_wp_cg24;
 #[cfg(test)]
 #[path = "fns_misc/tests_wp_cg23.rs"]
 mod tests_wp_cg23;
+
+// -- WP CG32 -- ── Added: a parameter by registry path ─────────────────
+
+/// `dspi_write_param`'s request.
+#[derive(serde::Deserialize)]
+struct WriteParamRequest {
+    path: String,
+    #[serde(default)]
+    indices: Vec<u8>,
+    value: dspi_core::ParamValue,
+}
+
+/// `dspi_write_param`'s reply: the value read back.
+#[derive(Serialize)]
+struct WriteParamReply {
+    value: dspi_core::ParamValue,
+}
+
+/// The request's JSON, parsed and written.
+fn write_param_json(c: &DspiCore, request: Option<&str>) -> Result<WriteParamReply> {
+    let text = request.ok_or_else(|| DspiError::InvalidArgument {
+        msg: "the request is null or not UTF-8".into(),
+    })?;
+    let r: WriteParamRequest =
+        serde_json::from_str(text).map_err(|e| DspiError::InvalidArgument {
+            msg: format!("the request is not {{path, indices, value}}: {e}"),
+        })?;
+    let value = c.write_param(r.path, r.indices, r.value)?;
+    Ok(WriteParamReply { value })
+}
+
+/// Write one parameter by its registry path (`DspiCore::write_param`).
+/// `request` is JSON {path, indices, value}, the value tagged by kind:
+/// {"float": -3}, {"bool": true}, {"int": 4}, {"choice": 1}, {"mask": 3},
+/// {"text": "x"}, {"bytes": [1, 2]} or "trigger"; `indices` may be left out
+/// for a path without any. Writes JSON {ok, value} with the value read back,
+/// or the failure reply. Returns the length needed.
+///
+/// Don't retry on a short buffer: a reply too long means the write has
+/// happened, and a second call applies it again. Give it a large enough buffer
+/// the first time.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_write_param(
+    core: *mut FfiCore,
+    request: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        json_reply(write_param_json(c, c_str(request)))
+    })
+}
+
+/// Which of the image's +1-encoded bytes the state's image carried (older
+/// firmware sends 0, "absent"), as bits: 1 `i2s_clock_pin_mode`, 2 the S/PDIF
+/// inputs 2-4 bits of `spdif_inputs_enabled`, 4 `adat_input_enabled`, 8
+/// `adat_input_clock_mode`. A field whose bit is clear holds what an absent
+/// byte reads as, not a value the device reported. The `DspState` record
+/// keeps the old core's layout, so these are not in it. 0 for a null handle.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_state_presence(core: *const FfiCore) -> u8 {
+    with_core(core, 0, |h| {
+        let s = h.core.get_state();
+        [
+            s.i2s_clock_pin_mode_present,
+            s.spdif_inputs_enabled_present,
+            s.adat_input_enabled_present,
+            s.adat_input_clock_mode_present,
+        ]
+        .iter()
+        .rev()
+        .fold(0, |bits, &on| (bits << 1) | u8::from(on))
+    })
+}
+
+#[cfg(test)]
+#[path = "fns_misc/tests_wp_cg32.rs"]
+mod tests_wp_cg32;

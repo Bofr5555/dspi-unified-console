@@ -3646,6 +3646,28 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      */
     func wireFeatures()  -> UInt32
     
+    /**
+     * Write the parameter at registry `path` (`vol.user`, `out.gain`,
+     * `eq.freq`, ...) with `indices` (an output, a channel and a band, ...)
+     * and return the value read back: the mirror's value once the typed
+     * setter for the path has run (clamped and quantized as that setter
+     * does), the device's read-back for a path without one, the value sent
+     * for an action or a value the mirror does not hold.
+     *
+     * The checks, guards, mirror update and echo are those of the typed
+     * setter (module docs). Over DSPi Link the setters' device lock applies.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown or read-only
+     * path, the wrong number of indices, an index the device does not have,
+     * a value of the wrong kind, out of range or NaN, or a path a flow of
+     * its own writes ([`write_refusal`]); [`DspiError::Unsupported`] for a
+     * feature the firmware lacks; [`DspiError::Disconnected`],
+     * [`DspiError::ReadOnly`]; then the setter's own errors
+     * ([`DspiError::Refused`] with a status byte, [`DspiError::Locked`],
+     * [`DspiError::Transfer`], ...).
+     */
+    func writeParam(path: String, indices: Data, value: ParamValue) throws  -> ParamValue
+    
 }
 /**
  * The embedder API. Create one per app with [`DspiCore::new`].
@@ -7247,6 +7269,36 @@ open func testDacMute()throws   {try rustCallWithError(FfiConverterTypeDspiError
 open func wireFeatures() -> UInt32  {
     return try!  FfiConverterUInt32.lift(try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_wire_features(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Write the parameter at registry `path` (`vol.user`, `out.gain`,
+     * `eq.freq`, ...) with `indices` (an output, a channel and a band, ...)
+     * and return the value read back: the mirror's value once the typed
+     * setter for the path has run (clamped and quantized as that setter
+     * does), the device's read-back for a path without one, the value sent
+     * for an action or a value the mirror does not hold.
+     *
+     * The checks, guards, mirror update and echo are those of the typed
+     * setter (module docs). Over DSPi Link the setters' device lock applies.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown or read-only
+     * path, the wrong number of indices, an index the device does not have,
+     * a value of the wrong kind, out of range or NaN, or a path a flow of
+     * its own writes ([`write_refusal`]); [`DspiError::Unsupported`] for a
+     * feature the firmware lacks; [`DspiError::Disconnected`],
+     * [`DspiError::ReadOnly`]; then the setter's own errors
+     * ([`DspiError::Refused`] with a status byte, [`DspiError::Locked`],
+     * [`DspiError::Transfer`], ...).
+     */
+open func writeParam(path: String, indices: Data, value: ParamValue)throws  -> ParamValue  {
+    return try  FfiConverterTypeParamValue_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_write_param(self.uniffiClonePointer(),
+        FfiConverterString.lower(path),
+        FfiConverterData.lower(indices),
+        FfiConverterTypeParamValue_lower(value),$0
     )
 })
 }
@@ -10924,6 +10976,23 @@ public struct DspState {
      * The image itself.
      */
     public var bulkRaw: Data
+    /**
+     * The image carries `i2s_clock_pin_mode` (firmware with split clock pins).
+     */
+    public var i2sClockPinModePresent: Bool
+    /**
+     * The image carries the S/PDIF inputs 2-4 bits of `spdif_inputs_enabled`
+     * (firmware with several S/PDIF inputs).
+     */
+    public var spdifInputsEnabledPresent: Bool
+    /**
+     * The image carries `adat_input_enabled`.
+     */
+    public var adatInputEnabledPresent: Bool
+    /**
+     * The image carries `adat_input_clock_mode`.
+     */
+    public var adatInputClockModePresent: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -11240,7 +11309,20 @@ public struct DspState {
          */bulkValid: Bool, 
         /**
          * The image itself.
-         */bulkRaw: Data) {
+         */bulkRaw: Data, 
+        /**
+         * The image carries `i2s_clock_pin_mode` (firmware with split clock pins).
+         */i2sClockPinModePresent: Bool, 
+        /**
+         * The image carries the S/PDIF inputs 2-4 bits of `spdif_inputs_enabled`
+         * (firmware with several S/PDIF inputs).
+         */spdifInputsEnabledPresent: Bool, 
+        /**
+         * The image carries `adat_input_enabled`.
+         */adatInputEnabledPresent: Bool, 
+        /**
+         * The image carries `adat_input_clock_mode`.
+         */adatInputClockModePresent: Bool) {
         self.platformId = platformId
         self.numChannels = numChannels
         self.numInputChannels = numInputChannels
@@ -11344,6 +11426,10 @@ public struct DspState {
         self.presetDefaultSlot = presetDefaultSlot
         self.bulkValid = bulkValid
         self.bulkRaw = bulkRaw
+        self.i2sClockPinModePresent = i2sClockPinModePresent
+        self.spdifInputsEnabledPresent = spdifInputsEnabledPresent
+        self.adatInputEnabledPresent = adatInputEnabledPresent
+        self.adatInputClockModePresent = adatInputClockModePresent
     }
 }
 
@@ -11663,6 +11749,18 @@ extension DspState: Equatable, Hashable {
         if lhs.bulkRaw != rhs.bulkRaw {
             return false
         }
+        if lhs.i2sClockPinModePresent != rhs.i2sClockPinModePresent {
+            return false
+        }
+        if lhs.spdifInputsEnabledPresent != rhs.spdifInputsEnabledPresent {
+            return false
+        }
+        if lhs.adatInputEnabledPresent != rhs.adatInputEnabledPresent {
+            return false
+        }
+        if lhs.adatInputClockModePresent != rhs.adatInputClockModePresent {
+            return false
+        }
         return true
     }
 
@@ -11770,6 +11868,10 @@ extension DspState: Equatable, Hashable {
         hasher.combine(presetDefaultSlot)
         hasher.combine(bulkValid)
         hasher.combine(bulkRaw)
+        hasher.combine(i2sClockPinModePresent)
+        hasher.combine(spdifInputsEnabledPresent)
+        hasher.combine(adatInputEnabledPresent)
+        hasher.combine(adatInputClockModePresent)
     }
 }
 
@@ -11884,7 +11986,11 @@ public struct FfiConverterTypeDspState: FfiConverterRustBuffer {
                 presetStartupMode: FfiConverterUInt8.read(from: &buf), 
                 presetDefaultSlot: FfiConverterUInt8.read(from: &buf), 
                 bulkValid: FfiConverterBool.read(from: &buf), 
-                bulkRaw: FfiConverterData.read(from: &buf)
+                bulkRaw: FfiConverterData.read(from: &buf), 
+                i2sClockPinModePresent: FfiConverterBool.read(from: &buf), 
+                spdifInputsEnabledPresent: FfiConverterBool.read(from: &buf), 
+                adatInputEnabledPresent: FfiConverterBool.read(from: &buf), 
+                adatInputClockModePresent: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -11992,6 +12098,10 @@ public struct FfiConverterTypeDspState: FfiConverterRustBuffer {
         FfiConverterUInt8.write(value.presetDefaultSlot, into: &buf)
         FfiConverterBool.write(value.bulkValid, into: &buf)
         FfiConverterData.write(value.bulkRaw, into: &buf)
+        FfiConverterBool.write(value.i2sClockPinModePresent, into: &buf)
+        FfiConverterBool.write(value.spdifInputsEnabledPresent, into: &buf)
+        FfiConverterBool.write(value.adatInputEnabledPresent, into: &buf)
+        FfiConverterBool.write(value.adatInputClockModePresent, into: &buf)
     }
 }
 
@@ -19682,6 +19792,168 @@ extension LinkPhase: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * A parameter value: `dspi_proto::value::Value` across the bindings. In
+ * JSON (the C ABI, the web binding) it is tagged by kind in lower case:
+ * `{"float": -12.5}`, `{"bool": true}`, `{"bytes": [1, 2]}`, `"trigger"`.
+ */
+
+public enum ParamValue {
+    
+    /**
+     * A yes/no value.
+     */
+    case bool(Bool
+    )
+    /**
+     * A number.
+     */
+    case float(Float
+    )
+    /**
+     * A whole number.
+     */
+    case int(Int64
+    )
+    /**
+     * A choice, as its wire number (the registry has the labels).
+     */
+    case choice(UInt8
+    )
+    /**
+     * A bit mask.
+     */
+    case mask(UInt32
+    )
+    /**
+     * Text.
+     */
+    case text(String
+    )
+    /**
+     * A structured payload, as the registry's packet encodes it.
+     */
+    case bytes(Data
+    )
+    /**
+     * An action with no value.
+     */
+    case trigger
+}
+
+
+#if compiler(>=6)
+extension ParamValue: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeParamValue: FfiConverterRustBuffer {
+    typealias SwiftType = ParamValue
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ParamValue {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .bool(try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 2: return .float(try FfiConverterFloat.read(from: &buf)
+        )
+        
+        case 3: return .int(try FfiConverterInt64.read(from: &buf)
+        )
+        
+        case 4: return .choice(try FfiConverterUInt8.read(from: &buf)
+        )
+        
+        case 5: return .mask(try FfiConverterUInt32.read(from: &buf)
+        )
+        
+        case 6: return .text(try FfiConverterString.read(from: &buf)
+        )
+        
+        case 7: return .bytes(try FfiConverterData.read(from: &buf)
+        )
+        
+        case 8: return .trigger
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ParamValue, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .bool(v1):
+            writeInt(&buf, Int32(1))
+            FfiConverterBool.write(v1, into: &buf)
+            
+        
+        case let .float(v1):
+            writeInt(&buf, Int32(2))
+            FfiConverterFloat.write(v1, into: &buf)
+            
+        
+        case let .int(v1):
+            writeInt(&buf, Int32(3))
+            FfiConverterInt64.write(v1, into: &buf)
+            
+        
+        case let .choice(v1):
+            writeInt(&buf, Int32(4))
+            FfiConverterUInt8.write(v1, into: &buf)
+            
+        
+        case let .mask(v1):
+            writeInt(&buf, Int32(5))
+            FfiConverterUInt32.write(v1, into: &buf)
+            
+        
+        case let .text(v1):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(v1, into: &buf)
+            
+        
+        case let .bytes(v1):
+            writeInt(&buf, Int32(7))
+            FfiConverterData.write(v1, into: &buf)
+            
+        
+        case .trigger:
+            writeInt(&buf, Int32(8))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeParamValue_lift(_ buf: RustBuffer) throws -> ParamValue {
+    return try FfiConverterTypeParamValue.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeParamValue_lower(_ value: ParamValue) -> RustBuffer {
+    return FfiConverterTypeParamValue.lower(value)
+}
+
+
+extension ParamValue: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * Where a run is: [`VregCalView::phase`]. The details are in the view.
  */
 
@@ -22035,6 +22307,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_wire_features() != 30561) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_write_param() != 35371) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_hosttransport_control_in() != 18930) {

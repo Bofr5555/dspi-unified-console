@@ -1444,6 +1444,8 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1950,6 +1952,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_siggen_set_config(
 fun uniffi_dspi_core_checksum_method_dspicore_test_dac_mute(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_wire_features(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_write_param(
 ): Short
 fun uniffi_dspi_core_checksum_method_hosttransport_control_in(
 ): Short
@@ -2493,6 +2497,8 @@ fun uniffi_dspi_core_fn_method_dspicore_test_dac_mute(`ptr`: Pointer,uniffi_out_
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_wire_features(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
+fun uniffi_dspi_core_fn_method_dspicore_write_param(`ptr`: Pointer,`path`: RustBuffer.ByValue,`indices`: RustBuffer.ByValue,`value`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_clone_hosttransport(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Pointer
 fun uniffi_dspi_core_fn_free_hosttransport(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -3479,6 +3485,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_wire_features() != 30561.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_write_param() != 35371.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_hosttransport_control_in() != 18930.toShort()) {
@@ -7431,6 +7440,28 @@ public interface DspiCoreInterface {
      * every known bit on V32 and newer, none with no device or below V16.
      */
     fun `wireFeatures`(): kotlin.UInt
+    
+    /**
+     * Write the parameter at registry `path` (`vol.user`, `out.gain`,
+     * `eq.freq`, ...) with `indices` (an output, a channel and a band, ...)
+     * and return the value read back: the mirror's value once the typed
+     * setter for the path has run (clamped and quantized as that setter
+     * does), the device's read-back for a path without one, the value sent
+     * for an action or a value the mirror does not hold.
+     *
+     * The checks, guards, mirror update and echo are those of the typed
+     * setter (module docs). Over DSPi Link the setters' device lock applies.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown or read-only
+     * path, the wrong number of indices, an index the device does not have,
+     * a value of the wrong kind, out of range or NaN, or a path a flow of
+     * its own writes ([`write_refusal`]); [`DspiError::Unsupported`] for a
+     * feature the firmware lacks; [`DspiError::Disconnected`],
+     * [`DspiError::ReadOnly`]; then the setter's own errors
+     * ([`DspiError::Refused`] with a status byte, [`DspiError::Locked`],
+     * [`DspiError::Transfer`], ...).
+     */
+    fun `writeParam`(`path`: kotlin.String, `indices`: kotlin.ByteArray, `value`: ParamValue): ParamValue
     
     companion object
 }
@@ -12081,6 +12112,39 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     
 
     
+    /**
+     * Write the parameter at registry `path` (`vol.user`, `out.gain`,
+     * `eq.freq`, ...) with `indices` (an output, a channel and a band, ...)
+     * and return the value read back: the mirror's value once the typed
+     * setter for the path has run (clamped and quantized as that setter
+     * does), the device's read-back for a path without one, the value sent
+     * for an action or a value the mirror does not hold.
+     *
+     * The checks, guards, mirror update and echo are those of the typed
+     * setter (module docs). Over DSPi Link the setters' device lock applies.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown or read-only
+     * path, the wrong number of indices, an index the device does not have,
+     * a value of the wrong kind, out of range or NaN, or a path a flow of
+     * its own writes ([`write_refusal`]); [`DspiError::Unsupported`] for a
+     * feature the firmware lacks; [`DspiError::Disconnected`],
+     * [`DspiError::ReadOnly`]; then the setter's own errors
+     * ([`DspiError::Refused`] with a status byte, [`DspiError::Locked`],
+     * [`DspiError::Transfer`], ...).
+     */
+    @Throws(DspiException::class)override fun `writeParam`(`path`: kotlin.String, `indices`: kotlin.ByteArray, `value`: ParamValue): ParamValue {
+            return FfiConverterTypeParamValue.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_write_param(
+        it, FfiConverterString.lower(`path`),FfiConverterByteArray.lower(`indices`),FfiConverterTypeParamValue.lower(`value`),_status)
+}
+    }
+    )
+    }
+    
+
+    
 
     
     
@@ -15440,7 +15504,24 @@ data class DspState (
     /**
      * The image itself.
      */
-    var `bulkRaw`: kotlin.ByteArray
+    var `bulkRaw`: kotlin.ByteArray, 
+    /**
+     * The image carries `i2s_clock_pin_mode` (firmware with split clock pins).
+     */
+    var `i2sClockPinModePresent`: kotlin.Boolean, 
+    /**
+     * The image carries the S/PDIF inputs 2-4 bits of `spdif_inputs_enabled`
+     * (firmware with several S/PDIF inputs).
+     */
+    var `spdifInputsEnabledPresent`: kotlin.Boolean, 
+    /**
+     * The image carries `adat_input_enabled`.
+     */
+    var `adatInputEnabledPresent`: kotlin.Boolean, 
+    /**
+     * The image carries `adat_input_clock_mode`.
+     */
+    var `adatInputClockModePresent`: kotlin.Boolean
 ) {
     
     companion object
@@ -15555,6 +15636,10 @@ public object FfiConverterTypeDspState: FfiConverterRustBuffer<DspState> {
             FfiConverterUByte.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterByteArray.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
@@ -15661,7 +15746,11 @@ public object FfiConverterTypeDspState: FfiConverterRustBuffer<DspState> {
             FfiConverterUByte.allocationSize(value.`presetStartupMode`) +
             FfiConverterUByte.allocationSize(value.`presetDefaultSlot`) +
             FfiConverterBoolean.allocationSize(value.`bulkValid`) +
-            FfiConverterByteArray.allocationSize(value.`bulkRaw`)
+            FfiConverterByteArray.allocationSize(value.`bulkRaw`) +
+            FfiConverterBoolean.allocationSize(value.`i2sClockPinModePresent`) +
+            FfiConverterBoolean.allocationSize(value.`spdifInputsEnabledPresent`) +
+            FfiConverterBoolean.allocationSize(value.`adatInputEnabledPresent`) +
+            FfiConverterBoolean.allocationSize(value.`adatInputClockModePresent`)
     )
 
     override fun write(value: DspState, buf: ByteBuffer) {
@@ -15768,6 +15857,10 @@ public object FfiConverterTypeDspState: FfiConverterRustBuffer<DspState> {
             FfiConverterUByte.write(value.`presetDefaultSlot`, buf)
             FfiConverterBoolean.write(value.`bulkValid`, buf)
             FfiConverterByteArray.write(value.`bulkRaw`, buf)
+            FfiConverterBoolean.write(value.`i2sClockPinModePresent`, buf)
+            FfiConverterBoolean.write(value.`spdifInputsEnabledPresent`, buf)
+            FfiConverterBoolean.write(value.`adatInputEnabledPresent`, buf)
+            FfiConverterBoolean.write(value.`adatInputClockModePresent`, buf)
     }
 }
 
@@ -19835,6 +19928,219 @@ public object FfiConverterTypeLinkPhase: FfiConverterRustBuffer<LinkPhase> {
 
     override fun write(value: LinkPhase, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * A parameter value: `dspi_proto::value::Value` across the bindings. In
+ * JSON (the C ABI, the web binding) it is tagged by kind in lower case:
+ * `{"float": -12.5}`, `{"bool": true}`, `{"bytes": [1, 2]}`, `"trigger"`.
+ */
+sealed class ParamValue {
+    
+    /**
+     * A yes/no value.
+     */
+    data class Bool(
+        val v1: kotlin.Boolean) : ParamValue() {
+        companion object
+    }
+    
+    /**
+     * A number.
+     */
+    data class Float(
+        val v1: kotlin.Float) : ParamValue() {
+        companion object
+    }
+    
+    /**
+     * A whole number.
+     */
+    data class Int(
+        val v1: kotlin.Long) : ParamValue() {
+        companion object
+    }
+    
+    /**
+     * A choice, as its wire number (the registry has the labels).
+     */
+    data class Choice(
+        val v1: kotlin.UByte) : ParamValue() {
+        companion object
+    }
+    
+    /**
+     * A bit mask.
+     */
+    data class Mask(
+        val v1: kotlin.UInt) : ParamValue() {
+        companion object
+    }
+    
+    /**
+     * Text.
+     */
+    data class Text(
+        val v1: kotlin.String) : ParamValue() {
+        companion object
+    }
+    
+    /**
+     * A structured payload, as the registry's packet encodes it.
+     */
+    data class Bytes(
+        val v1: kotlin.ByteArray) : ParamValue() {
+        companion object
+    }
+    
+    /**
+     * An action with no value.
+     */
+    object Trigger : ParamValue()
+    
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeParamValue : FfiConverterRustBuffer<ParamValue>{
+    override fun read(buf: ByteBuffer): ParamValue {
+        return when(buf.getInt()) {
+            1 -> ParamValue.Bool(
+                FfiConverterBoolean.read(buf),
+                )
+            2 -> ParamValue.Float(
+                FfiConverterFloat.read(buf),
+                )
+            3 -> ParamValue.Int(
+                FfiConverterLong.read(buf),
+                )
+            4 -> ParamValue.Choice(
+                FfiConverterUByte.read(buf),
+                )
+            5 -> ParamValue.Mask(
+                FfiConverterUInt.read(buf),
+                )
+            6 -> ParamValue.Text(
+                FfiConverterString.read(buf),
+                )
+            7 -> ParamValue.Bytes(
+                FfiConverterByteArray.read(buf),
+                )
+            8 -> ParamValue.Trigger
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: ParamValue) = when(value) {
+        is ParamValue.Bool -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterBoolean.allocationSize(value.v1)
+            )
+        }
+        is ParamValue.Float -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterFloat.allocationSize(value.v1)
+            )
+        }
+        is ParamValue.Int -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterLong.allocationSize(value.v1)
+            )
+        }
+        is ParamValue.Choice -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterUByte.allocationSize(value.v1)
+            )
+        }
+        is ParamValue.Mask -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterUInt.allocationSize(value.v1)
+            )
+        }
+        is ParamValue.Text -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.v1)
+            )
+        }
+        is ParamValue.Bytes -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterByteArray.allocationSize(value.v1)
+            )
+        }
+        is ParamValue.Trigger -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+    }
+
+    override fun write(value: ParamValue, buf: ByteBuffer) {
+        when(value) {
+            is ParamValue.Bool -> {
+                buf.putInt(1)
+                FfiConverterBoolean.write(value.v1, buf)
+                Unit
+            }
+            is ParamValue.Float -> {
+                buf.putInt(2)
+                FfiConverterFloat.write(value.v1, buf)
+                Unit
+            }
+            is ParamValue.Int -> {
+                buf.putInt(3)
+                FfiConverterLong.write(value.v1, buf)
+                Unit
+            }
+            is ParamValue.Choice -> {
+                buf.putInt(4)
+                FfiConverterUByte.write(value.v1, buf)
+                Unit
+            }
+            is ParamValue.Mask -> {
+                buf.putInt(5)
+                FfiConverterUInt.write(value.v1, buf)
+                Unit
+            }
+            is ParamValue.Text -> {
+                buf.putInt(6)
+                FfiConverterString.write(value.v1, buf)
+                Unit
+            }
+            is ParamValue.Bytes -> {
+                buf.putInt(7)
+                FfiConverterByteArray.write(value.v1, buf)
+                Unit
+            }
+            is ParamValue.Trigger -> {
+                buf.putInt(8)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
     }
 }
 

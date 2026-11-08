@@ -130,7 +130,12 @@ object DspStateJson {
         presetStartupMode = m.int("presetStartupMode") ?: base.presetStartupMode,
         presetDefaultSlot = m.int("presetDefaultSlot") ?: base.presetDefaultSlot,
         bulkValid = m.bool("bulkValid") ?: base.bulkValid,
-        bulkRaw = m.bytes("bulkRaw") ?: base.bulkRaw
+        bulkRaw = m.bytes("bulkRaw") ?: base.bulkRaw,
+        // -- WP CG32 --
+        i2sClockPinModePresent = m.bool("i2sClockPinModePresent") ?: base.i2sClockPinModePresent,
+        spdifInputsEnabledPresent = m.bool("spdifInputsEnabledPresent") ?: base.spdifInputsEnabledPresent,
+        adatInputEnabledPresent = m.bool("adatInputEnabledPresent") ?: base.adatInputEnabledPresent,
+        adatInputClockModePresent = m.bool("adatInputClockModePresent") ?: base.adatInputClockModePresent
     )
 
     fun toMap(s: DspState): Map<String, Any?> = linkedMapOf(
@@ -236,7 +241,12 @@ object DspStateJson {
         "presetStartupMode" to s.presetStartupMode,
         "presetDefaultSlot" to s.presetDefaultSlot,
         "bulkValid" to s.bulkValid,
-        "bulkRaw" to s.bulkRaw.map { it.toInt() and 0xFF }
+        "bulkRaw" to s.bulkRaw.map { it.toInt() and 0xFF },
+        // -- WP CG32 --
+        "i2sClockPinModePresent" to s.i2sClockPinModePresent,
+        "spdifInputsEnabledPresent" to s.spdifInputsEnabledPresent,
+        "adatInputEnabledPresent" to s.adatInputEnabledPresent,
+        "adatInputClockModePresent" to s.adatInputClockModePresent
     )
 
     private fun filterMap(f: FilterParams) =
