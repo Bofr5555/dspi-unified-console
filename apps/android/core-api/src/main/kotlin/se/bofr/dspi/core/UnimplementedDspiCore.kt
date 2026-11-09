@@ -220,6 +220,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun processNotifications(): NotifyResult = throw NotImplementedError("process_notifications")
 
+    override fun outputLabels(): List<OutputLabel> = throw NotImplementedError("output_labels")
+
+    override fun outputCards(): List<OutputCard> = throw NotImplementedError("output_cards")
+
     override fun setFilter(ch: Int, band: Int, params: FilterParams): Unit = throw NotImplementedError("set_filter")
 
     override fun setCrossover(ch: Int, xband: Int, params: FilterParams): Unit = throw NotImplementedError("set_crossover")
@@ -493,4 +497,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun filterTypeNames(): List<FilterTypeName> = throw NotImplementedError("filter_type_names")
 
     override fun filterTypeName(code: Int): String = throw NotImplementedError("filter_type_name")
+
+    override fun outputLabelsFor(input: OutputLabelInput): List<OutputLabel> = throw NotImplementedError("output_labels_for")
+
+    override fun outputCardsFor(input: OutputLabelInput): List<OutputCard> = throw NotImplementedError("output_cards_for")
 }

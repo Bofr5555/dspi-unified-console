@@ -388,7 +388,7 @@ fn channel_label(state: &DeviceState, tap: u8, channel: u8) -> String {
         // An upmixer row by what it carries, as the matrix names it.
         return super::matrix::row_name(state, channel as usize);
     }
-    super::channel_name(state, global_channel(state, tap, channel))
+    super::channel_label(state, global_channel(state, tap, channel))
 }
 
 /// The Console's summary under the chips (SpectrumAnalyserView.swift:936-942).

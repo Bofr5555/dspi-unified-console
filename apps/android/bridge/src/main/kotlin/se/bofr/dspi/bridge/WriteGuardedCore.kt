@@ -830,6 +830,11 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP CG34 -- stateless: the filter types' names.
             "filterTypeNames",
             "filterTypeName",
+            // -- BUG1 -- reads of the mirror, and stateless: output labels and cards.
+            "outputLabels",
+            "outputCards",
+            "outputLabelsFor",
+            "outputCardsFor",
             // -- WP CG24 -- The device lock across a flow: no device write
             // (the firmware-update path, as enterBootloader; the writes
             // inside it are guarded one by one).

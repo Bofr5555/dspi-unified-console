@@ -149,7 +149,8 @@ class ChannelPageSpectrumAn37Test {
         settleUntil("the other side starts empty") { !stripCell(input, usb2) }
         val outputs = bridge.rta.availableChannels(DspiConstants.RTA_TAP_OUTPUT)
         val out = outputs.first()
-        clickInGear(bridge.channelName(bridge.rta.appChannel(DspiConstants.RTA_TAP_OUTPUT, out)))
+        // BUG1: the gear lists outputs by their labels
+        clickInGear(bridge.channelLabel(bridge.rta.appChannel(DspiConstants.RTA_TAP_OUTPUT, out)))
         val output = DspiConstants.RTA_TAP_OUTPUT
         settleUntil("the strip on the output side") { stripCell(output, out) }
         assertTrue(overlay(output, out))

@@ -204,6 +204,13 @@ void SmokeDriver::pseudoScan(QQuickWindow *w, QQuickItem *scope, const QString &
     for (int ch = 0; ch < 32; ++ch) {
         data.insert(m_.bridge->channelName(ch));
         data.insert(m_.bridge->channelDescriptor(ch));
+        // -- BUG1 -- the core's output labels and slot names, and its card headings
+        data.insert(m_.bridge->channelLabel(ch));
+        data.insert(m_.bridge->outputSlotName(ch));
+    }
+    for (const QVariant &v : m_.bridge->outputCards()) {
+        data.insert(v.toMap().value(QStringLiteral("leftName")).toString());
+        data.insert(v.toMap().value(QStringLiteral("rightName")).toString());
     }
     for (int slot = 0; slot < 16; ++slot) data.insert(m_.bridge->presetName(slot));
     // The core's onboarding and release-note words (CG10), as the views ask for them

@@ -356,6 +356,7 @@ class ReadOnlyTest {
                 "scanDevices", "selectDevice", "disconnectDevice", "reconnect", "rescan",
                 "setUiVisible", "beginOutputEdit", "canPaste", "canSetAllBypass", "copyChannel", "channelBands", "channelColor",
                 "channelDelayMS", "channelDescriptor", "channelExists", "channelGainOffset", "channelName", "channelVisible",
+                "channelLabel", "channelShortLabel", "outputSlotName", "outputCards", // -- BUG1 --
                 "setChannelVisible", "checkCore1Conflict", "core1ConflictOutputs", "crossoverBypass", "crossoverFreq",
                 "crossoverType", "enterBootloader", "fetchActiveSpdifRxPin", "fetchAdatOutStatus", "fetchInputLock",
                 "fetchInputRate", "fetchLgStatus", "fetchSpdifChannelStatus", "fetchSpdifRxStatus", "fetchSubharmHeadroom",

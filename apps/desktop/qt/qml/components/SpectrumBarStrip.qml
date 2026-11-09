@@ -56,7 +56,7 @@ Item {
                         Rectangle { width: 5; height: 5; radius: 2.5; color: bridge.channelColor(parent.parent.app); anchors.verticalCenter: parent.verticalCenter }
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: bridge.channelName(parent.parent.app)
+                            text: (bridge.labelsRevision, bridge.channelLabel(parent.parent.app))   // -- BUG1 -- follows the labels
                             font.pixelSize: 11
                             font.weight: Font.DemiBold
                             color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.6)

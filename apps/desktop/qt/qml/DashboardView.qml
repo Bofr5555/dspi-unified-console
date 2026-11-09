@@ -14,6 +14,8 @@ Flickable {
     Connections {
         target: bridge
         function onStateChanged() { dashboardRoot.revision++; grid.updateCards() }
+        // -- BUG1 -- the labels and cards, read by the bridge after stateChanged
+        function onOutputLabelsChanged() { dashboardRoot.revision++; grid.updateCards() }
     }
     Component.onCompleted: grid.updateCards()
 
@@ -32,9 +34,10 @@ Flickable {
             onOpenAnalyser: root.openToolWindow("spectrum")
         }
 
-        // The cards: inputs 1 and 2, then the outputs in fixed pairs (Out 1+2,
-        // 3+4, ...; both enabled share a card, one alone gets its own) and the
-        // PDM subwoofer on its own. Laid out in a grid: as many per row as
+        // The cards: inputs 1 and 2, then the core's output cards (-- BUG1 --
+        // bridge.outputCards: paired by the crossfeed pair map when the device has
+        // one, "Woofers L | Woofers R", else in fixed pairs Out 1+2, 3+4, ...; both
+        // enabled share a card, one alone gets its own) and the PDM subwoofer on its own. Laid out in a grid: as many per row as
         // fit (Auto), or 1-3, set from the gear on any card
         Grid {
             id: grid
@@ -42,6 +45,16 @@ Flickable {
             property var cards: []
             function updateCards() {
                 var list = [{ input: true, stereo: true, leftIdx: -1, rightIdx: -1 }]
+                var core = bridge.connected ? bridge.outputCards() : []
+                if (core.length > 0) {
+                    for (var k = 0; k < core.length; k++) {
+                        var c = core[k]
+                        list.push({ stereo: c.right >= 0, leftIdx: c.left, rightIdx: c.right,
+                                    leftName: c.leftName, rightName: c.rightName })
+                    }
+                    if (JSON.stringify(list) !== JSON.stringify(cards)) cards = list
+                    return
+                }
                 var numOut = bridge.numOutputChannels
                 for (var i = 0; i < numOut; i++) {
                     if (bridge.isPdmOutput(i)) {
@@ -84,8 +97,8 @@ Flickable {
                         isStereo: slot.c.stereo
                         leftChannel: slot.leftCh
                         rightChannel: slot.rightCh
-                        leftName: { dashboardRoot.revision; return bridge.channelName(slot.leftCh) }
-                        rightName: { dashboardRoot.revision; return slot.rightCh >= 0 ? bridge.channelName(slot.rightCh) : "" }
+                        leftName: { dashboardRoot.revision; return slot.c.leftName || bridge.channelLabel(slot.leftCh) }
+                        rightName: { dashboardRoot.revision; return slot.rightCh >= 0 ? (slot.c.rightName || bridge.channelLabel(slot.rightCh)) : "" }
                         leftColor: { dashboardRoot.revision; return bridge.channelColor(slot.leftCh) }
                         rightColor: { dashboardRoot.revision; return slot.rightCh >= 0 ? bridge.channelColor(slot.rightCh) : "" }
                         leftDescriptor: { dashboardRoot.revision; return bridge.channelDescriptor(slot.leftCh) }

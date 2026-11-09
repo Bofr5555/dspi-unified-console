@@ -31,6 +31,12 @@ type State = {
 type Client = { call(m: string, p: unknown): Promise<unknown> };
 type G = { dspiClients: Client[]; dspiLog: [string, unknown][] };
 
+// -- BUG1 -- An output's name on the page is its label ("Out 3 · R · Full"), which follows the
+// routing and the filters while the device keeps the slot's default name: matched by its number.
+const OUT = (o: number) => `Out ${o + 1} · [^·]+ · \\w+`;
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const re = (s: string) => new RegExp(`^${s}$`);
+
 async function core(page: Page, n = 0): Promise<State> {
   const snap = (await page.evaluate((n) => (globalThis as unknown as G).dspiClients[n]!.call("state", null), n)) as { state: State };
   return snap.state;
@@ -397,28 +403,27 @@ test("WB6c matrix: crosspoints connect, level and invert; outputs enable, gain, 
   const { matrix } = await openMatrix(page);
   const s0 = await core(page);
   const inName = s0.channelNames[1]!;
-  const outName = s0.channelNames[s0.numInputChannels + 2]!;
-  const where = `${inName} to ${outName}`;
-  const point = matrix.getByRole("button", { name: `Route ${where}` });
+  const where = `${esc(inName)} to ${OUT(2)}`;
+  const point = matrix.getByRole("button", { name: re(`Route ${where}`) });
   const was = s0.matrixRouting[1]![2]!;
   await point.click();
   await expect.poll(async () => (await core(page)).matrixRouting[1]![2]).toBe(!was);
   if (was) await point.click();
   await expect.poll(async () => (await core(page)).matrixRouting[1]![2]).toBe(true);
   await expect(point).toHaveAttribute("aria-pressed", "true");
-  await type(matrix.getByRole("textbox", { name: `${where} level` }), "+3.5");
+  await type(matrix.getByRole("textbox", { name: re(`${where} level`) }), "+3.5");
   await expect.poll(async () => (await core(page)).matrixGain[1]![2]).toBe(3.5);
-  await expect(matrix.getByRole("textbox", { name: `${where} level` })).toHaveValue("+3.5 dB");
-  await matrix.getByRole("button", { name: `${where} inverted` }).click();
+  await expect(matrix.getByRole("textbox", { name: re(`${where} level`) })).toHaveValue("+3.5 dB");
+  await matrix.getByRole("button", { name: re(`${where} inverted`) }).click();
   await expect.poll(async () => (await core(page)).matrixInvert[1]![2]).toBe(true);
 
   // Output rows.
   const o = 1;
-  const oName = s0.channelNames[s0.numInputChannels + o]!;
-  await type(matrix.getByRole("textbox", { name: `${oName} gain` }), "-2.5");
+  const oName = OUT(o);
+  await type(matrix.getByRole("textbox", { name: re(`${oName} gain`) }), "-2.5");
   await expect.poll(async () => (await core(page)).outputGainDb[o]).toBe(-2.5);
-  await expect(matrix.getByRole("textbox", { name: `${oName} gain` })).toHaveValue("-2.5 dB");
-  const delay = matrix.getByRole("textbox", { name: `${oName} delay` });
+  await expect(matrix.getByRole("textbox", { name: re(`${oName} gain`) })).toHaveValue("-2.5 dB");
+  const delay = matrix.getByRole("textbox", { name: re(`${oName} delay`) });
   await type(delay, "4.125");
   await expect.poll(async () => (await core(page)).outputDelayMs[o]).toBe(4.125);
   await expect(delay).toHaveValue("4.125 ms");
@@ -428,11 +433,11 @@ test("WB6c matrix: crosspoints connect, level and invert; outputs enable, gain, 
   await page.mouse.wheel(0, 100);
   await expect.poll(async () => (await core(page)).outputDelayMs[o]).toBe(4);
   await expect(delay).toHaveValue("4.0 ms");
-  const mute = matrix.getByRole("button", { name: `Mute ${oName}` });
+  const mute = matrix.getByRole("button", { name: re(`Mute ${oName}`) });
   await mute.click();
   await expect.poll(async () => (await core(page)).outputMuted[o]).toBe(true);
   await expect(mute).toHaveAttribute("aria-pressed", "true");
-  const enable = matrix.getByRole("button", { name: `Enable ${oName}` });
+  const enable = matrix.getByRole("button", { name: re(`Enable ${oName}`) });
   await enable.click();
   await expect.poll(async () => (await core(page)).outputEnabled[o]).toBe(false);
   await expect(enable).toHaveAttribute("aria-pressed", "false");
@@ -442,9 +447,8 @@ test("WB6c matrix: crosspoints connect, level and invert; outputs enable, gain, 
   // Enabling PDM while EQ-worker outputs are on asks first; Cancel changes nothing.
   const s1 = await core(page);
   const pdm = s1.numOutputChannels - 1;
-  const pdmName = s1.channelNames[s1.numInputChannels + pdm]!;
   if (!s1.outputEnabled[pdm] && s1.outputEnabled.slice(2, pdm).some((x) => x)) {
-    await matrix.getByRole("button", { name: `Enable ${pdmName}` }).click();
+    await matrix.getByRole("button", { name: re(`Enable ${OUT(pdm)}`) }).click();
     const ask = page.getByRole("dialog", { name: "Warning" });
     await expect(ask).toContainText("will be disabled. Are you sure?");
     await ask.getByRole("button", { name: "Cancel" }).click();
@@ -452,9 +456,9 @@ test("WB6c matrix: crosspoints connect, level and invert; outputs enable, gain, 
   }
 
   // Rename from the column's menu.
-  await matrix.getByRole("button", { name: oName, exact: true }).click();
+  await matrix.getByRole("button", { name: re(oName) }).click();
   await matrix.getByRole("menuitem", { name: "Rename…" }).click();
-  const dlg = page.getByRole("dialog", { name: `Rename ${oName}` });
+  const dlg = page.getByRole("dialog", { name: re(`Rename ${oName}`) });
   await dlg.getByRole("textbox").fill("Sub left");
   await dlg.getByRole("button", { name: "Rename" }).click();
   await expect.poll(async () => (await core(page)).channelNames[s0.numInputChannels + o]).toBe("Sub left");
@@ -547,8 +551,7 @@ test.describe("375 px, in every browser", () => {
     expect(await scroll.evaluate((e) => e.scrollWidth > e.clientWidth)).toBe(true);
     const ms = (await session.locator(".matrix-screen").boundingBox())!.height;
     const inName = s0.channelNames[0]!;
-    const outName = s0.channelNames[s0.numInputChannels + 1]!;
-    const point = scroll.getByRole("button", { name: `Route ${inName} to ${outName}` });
+    const point = scroll.getByRole("button", { name: re(`Route ${esc(inName)} to ${OUT(1)}`) });
     const was = (await core(page)).matrixRouting[0]![1]!;
     await point.tap();
     await expect.poll(async () => (await core(page)).matrixRouting[0]![1]).toBe(!was);

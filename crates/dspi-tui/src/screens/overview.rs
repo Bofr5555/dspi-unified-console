@@ -17,7 +17,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Borders, Widget};
 
-use super::{Shared, channel_name, type_code};
+use super::{Shared, type_code};
 use crate::graph::{Graph, GraphCurve, GraphSettings};
 use crate::shell::{Screen, ScreenEvent, Selection};
 use crate::theme::{ChannelRole, Glyphs, Theme};
@@ -439,7 +439,7 @@ fn draw_cell(
     let names: Vec<String> = cell
         .channels
         .iter()
-        .map(|ch| channel_name(state, *ch))
+        .map(|ch| super::channel_label(state, *ch))
         .collect();
     let title = fit_left(&names.join(" "), area.width.saturating_sub(4) as usize);
     let title_style = if focused {

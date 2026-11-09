@@ -72,7 +72,7 @@ fun GraphScreen(bridge: DspiBridge, onNavigate: (String) -> Unit, onBack: () -> 
     // (review-stalestate #7, audit N4).
     val labels =
         remember(stateRev, choices) {
-            choices.associateWith { "${bridge.channelDescriptor(it)}  ${bridge.channelName(it)}" }
+            choices.associateWith { "${bridge.channelDescriptor(it)}  ${bridge.channelLabel(it)}" }
         }
     val editedDescriptor = remember(stateRev, edited) { if (edited >= 0) bridge.channelDescriptor(edited) else null }
     Column(modifier.fillMaxSize().background(Color(0xFF1A1A1C)).padding(8.dp)) {

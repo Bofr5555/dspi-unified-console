@@ -78,7 +78,14 @@ impl OutputPage {
         let channel = output_channel(state, output);
         Self {
             output,
-            name: channel_name(state, channel),
+            // -- BUG1 -- the label, with the slot it plays on: "Out 1 · R · Low (I2S 1 L)"
+            name: {
+                let label = super::channel_label(state, channel);
+                match super::slot_name(state, output) {
+                    slot if slot.is_empty() => label,
+                    slot => format!("{label} ({slot})"),
+                }
+            },
             shared,
             list: FilterList::new(channel)
                 .linkwitz(true)
@@ -1339,7 +1346,7 @@ mod tests {
     #[test]
     fn golden_frames_of_the_settings() {
         let state = limited();
-        let name = |o| channel_name(&state, output_channel(&state, o));
+        let name = |o| crate::screens::channel_label(&state, output_channel(&state, o));
         let title = format!("Output Limiter · {}", name(0));
         let linked = format!("Linked with {}.", name(1));
         // `downs` walks the cursor down the settings first, which is how the

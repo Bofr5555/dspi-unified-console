@@ -827,7 +827,9 @@ impl Live {
 
         let item = |ch: usize, role: ChannelRole, inactive: bool, peaks: &[PeakHold]| ChannelItem {
             name: {
-                let n = s.channel_name(ch);
+                // -- BUG1 -- an output's label, short beside its OUTn: the user's name, else
+                // channel and band from the routing and the filters ("R·Lo")
+                let n = screens::channel_short_label(s, ch);
                 if n.is_empty() {
                     role.descriptor(no as u8)
                 } else {
@@ -979,7 +981,7 @@ impl Live {
             });
         }
         m.curves = curves;
-        m.graph_channel = graphed.map(|ch| screens::channel_name(s, ch));
+        m.graph_channel = graphed.map(|ch| screens::channel_label(s, ch));
         self.shared.borrow_mut().graph = m.graph.clone();
         // -- WP TM5 --
         m.spectrum = screens::spectrum::overlay_picture(&self.shared, s, t, Instant::now());
@@ -2138,7 +2140,7 @@ impl Live {
                     .linked_partner(row, self.state.caps.num_inputs as usize);
                 let cmds = clipboard::paste_commands(&clip, &self.state, row, mirror);
                 self.run_commands(session, &cmds.join("\n"));
-                let name = screens::channel_name(&self.state, row);
+                let name = screens::channel_label(&self.state, row);
                 self.note(format!("Pasted {} onto {name}", clip.source));
             }
             ShellEvent::Identify(row) => self.identify(session, row),
@@ -2151,7 +2153,7 @@ impl Live {
     fn identify(&mut self, session: &mut Session, row: usize) {
         let ni = self.state.caps.num_inputs as usize;
         let output = row.saturating_sub(ni);
-        let name = screens::channel_name(&self.state, row);
+        let name = screens::channel_label(&self.state, row);
         match screens::identify_command(&self.state, output) {
             Some(cmd) => {
                 self.run_commands(session, &cmd);

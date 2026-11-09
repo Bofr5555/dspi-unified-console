@@ -13,6 +13,7 @@ import type { Session } from "./session";
 import { aboutData, linkText } from "./texts";
 // -- WP WB6a --
 import { Screens } from "./screens";
+import { meterNames } from "../screens/main/model";
 
 export function useSessionState(s: Session) {
   const [, bump] = useState(0);
@@ -302,7 +303,7 @@ export function SessionView(props: { session: Session; onClose: () => void }) {
         <div class="controls">
           {/* -- WP WB6a -- the session's screens (WB6 slices); the skeleton's volume is the main window's now */}
           <Screens session={s} />
-          <Meters session={s} names={snap.state.channelNames.slice(0, snap.state.numChannels)} />
+          <Meters session={s} names={meterNames(snap.state, snap.outputLabels)} />
         </div>
       ) : null}
     </article>

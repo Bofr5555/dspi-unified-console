@@ -189,7 +189,8 @@ struct CrossfeedPairMapControls: View {
 extension DSPViewModel {
     /// Channel name of output `o` (0-based), or "Out n" before names arrive.
     func crossfeedOutputName(_ o: Int) -> String {
-        let idx = chOut1 + o
-        return idx < channelNames.count && !channelNames[idx].isEmpty ? channelNames[idx] : "Out \(o + 1)"
+        // -- BUG1 -- the output's label (the user's name, else from the routing and the filters)
+        let label = outputLabel(o)
+        return label.isEmpty ? "Out \(o + 1)" : label
     }
 }

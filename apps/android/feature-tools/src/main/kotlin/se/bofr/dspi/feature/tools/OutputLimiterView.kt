@@ -65,7 +65,7 @@ fun OutputLimiterView(bridge: DspiBridge, out: Int, onNavigate: (String) -> Unit
     val s = limiter.outputs.getOrElse(out) { LimiterOutputSettings() }
     val reduction = status.limiterReduction.getOrElse(out) { 0f }
     val limiting = LimiterParameters.isLimiting(s.enabled, reduction)
-    fun outputName(o: Int) = bridge.channelName(2 + o)
+    fun outputName(o: Int) = bridge.channelLabel(2 + o)
     // Read here, where `st` is observed: the header lambda is skipped on a rename (audit T3).
     val title = if (present) outputName(out) else "Output ${out + 1}"
 

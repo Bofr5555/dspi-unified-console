@@ -177,7 +177,7 @@ fun SpectrumAnalyserView(bridge: DspiBridge, modifier: Modifier = Modifier, stor
             snapshot = rta.snapshot,
             // New lambdas per state revision: they read plain getters, and the header/bars that
             // call them are skipped when handed the same instances (audit A1).
-            channelName = remember(revision) { { tap, ch -> bridge.channelName(rta.appChannel(tap, ch)).ifEmpty { "Ch ${ch + 1}" } } },
+            channelName = remember(revision) { { tap, ch -> bridge.channelLabel(rta.appChannel(tap, ch)).ifEmpty { "Ch ${ch + 1}" } } },
             channelColor = remember(revision) {
                 { tap, ch ->
                     val app = rta.appChannel(tap, ch)

@@ -156,7 +156,7 @@ fun MatrixMixerContent(
     }
     renamingOutput?.let { idx ->
         RenameDialog(
-            initial = state.visibleOutputs.getOrNull(idx)?.name.orEmpty(),
+            initial = state.visibleOutputs.getOrNull(idx)?.storedName.orEmpty(),
             onDismiss = actions::cancelRename,
             onCommit = { actions.commitRename(idx, it) }
         )

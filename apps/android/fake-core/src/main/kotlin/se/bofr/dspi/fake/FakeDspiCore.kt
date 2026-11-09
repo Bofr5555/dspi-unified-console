@@ -43,7 +43,9 @@ import se.bofr.dspi.core.MonitorEntry
 import se.bofr.dspi.core.NamedValue
 import se.bofr.dspi.core.NotifyListener
 import se.bofr.dspi.core.NotifyResult
+import se.bofr.dspi.core.OutputCard
 import se.bofr.dspi.core.OutputFill
+import se.bofr.dspi.core.OutputLabel
 import se.bofr.dspi.core.OutputLatency
 import se.bofr.dspi.core.OutputLatencyOption
 import se.bofr.dspi.core.PdmBufferStats
@@ -393,6 +395,44 @@ open class FakeDspiCore(
     override fun applyAllParams() = op("applyAllParams") { if (!s.bulkValid) throw DspiException.Disconnected() }
 
     override fun getState(): DspState = state
+
+    // -- BUG1 -- The fake has none of the core's label rules (dspi-session output_label.rs, tested
+    // there and through FfiDspiCore): an output's label is its stored name, else its slot's name,
+    // and the cards pair by slot. Overridable for a test that needs the core's labels.
+    override fun outputLabels(): List<OutputLabel> {
+        val s = state
+        return (0 until s.numOutputChannels).map { o ->
+            val slot = if (o ==
+                s.numOutputChannels - 1
+            ) {
+                "PDM"
+            } else {
+                "${if (s.outputTypes.getOrNull(o / 2) == 1) "I2S" else "SPDIF"} ${o / 2 + 1} ${if (o % 2 == 0) "L" else "R"}"
+            }
+            val name = s.channelNames.getOrElse(s.numInputChannels + o) { "" }
+            OutputLabel(o, name.ifEmpty { slot }, name.ifEmpty { slot }, slot, false, "", "")
+        }
+    }
+
+    override fun outputCards(): List<OutputCard> {
+        val s = state
+        val labels = outputLabels()
+        val on = { o: Int -> s.outputEnabled.getOrElse(o) { false } }
+        val cards = mutableListOf<OutputCard>()
+        var o = 0
+        while (o < s.numOutputChannels) {
+            val r = if (o + 1 < s.numOutputChannels - 1) o + 1 else -1
+            when {
+                r >= 0 && on(o) && on(r) ->
+                    cards +=
+                        OutputCard(o, r, "", labels[o].label, labels[r].label, labels[o].shortLabel, labels[r].shortLabel)
+                on(o) -> cards += OutputCard(o, null, "", labels[o].label, "", labels[o].shortLabel, "")
+                r >= 0 && on(r) -> cards += OutputCard(r, null, "", labels[r].label, "", labels[r].shortLabel, "")
+            }
+            o += if (r >= 0) 2 else 1
+        }
+        return cards
+    }
 
     private var tick = 0
     private var stickyClips = 0L

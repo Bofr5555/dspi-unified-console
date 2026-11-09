@@ -5167,6 +5167,25 @@ uint32_t dspi_filter_type_name(uint8_t code, char *buf, uint32_t len);
 uint32_t dspi_core1_conflict_reason(struct FfiCore *core, uint8_t output, char *buf, uint32_t len);
 
 /**
+ * Every output's label from the mirror (`DspiCore::output_labels`): JSON
+ * {ok, value: [{output, label, slotName, userNamed, channel, band}, ...]} in
+ * output order. `label` is the user's name, else "Out 1 · R · Low" from the
+ * routing and the filters; `slotName` the firmware's name for the slot, for a
+ * tooltip. Call it when the state changes, not per frame. Returns the length
+ * needed including the NUL, 0 for a null handle.
+ */
+uint32_t dspi_output_labels(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The dashboard's output cards (`DspiCore::output_cards`): JSON {ok, value:
+ * [{left, right, title, leftName, rightName}, ...]}, `right` null for a card
+ * of one output. Paired by the crossfeed pair map when the device has one,
+ * else by slot. Returns the length needed including the NUL, 0 for a null
+ * handle.
+ */
+uint32_t dspi_output_cards(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * Answer a fetch: the HTTP status and body, as received, for any status.
  * `retry_after_s`, `rate_limit_remaining` and `rate_limit_reset` (Unix seconds) are
  * the `Retry-After`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers, -1 if

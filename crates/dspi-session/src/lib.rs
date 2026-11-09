@@ -18,6 +18,8 @@ pub mod filterfile;
 // -- WP TM8 --
 pub mod link_words;
 pub mod notify;
+// -- BUG1 --
+pub mod output_label;
 pub mod pins;
 pub mod preset_file;
 pub mod probe;

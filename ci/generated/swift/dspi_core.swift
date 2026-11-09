@@ -2489,6 +2489,19 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func openMidi(input: MidiInputHandle) throws 
     
     /**
+     * The dashboard's output cards from the mirror: paired by the crossfeed
+     * pair map when the device has one, else by slot. Never fails.
+     */
+    func outputCards()  -> [OutputCard]
+    
+    /**
+     * Every output's label from the mirror, in output order: the user's name,
+     * else "Out N · channel · band" from the routing and the filters. Call it
+     * when the state changes, not per frame. Never fails.
+     */
+    func outputLabels()  -> [OutputLabel]
+    
+    /**
      * Compare the USB bus with the last poll and report arrivals and
      * departures (by serial) to the hotplug listener; reconnect the
      * selected device when it reappears, and close the open device when it
@@ -5581,6 +5594,29 @@ open func openMidi(input: MidiInputHandle)throws   {try rustCallWithError(FfiCon
         FfiConverterTypeMidiInputHandle_lower(input),$0
     )
 }
+}
+    
+    /**
+     * The dashboard's output cards from the mirror: paired by the crossfeed
+     * pair map when the device has one, else by slot. Never fails.
+     */
+open func outputCards() -> [OutputCard]  {
+    return try!  FfiConverterSequenceTypeOutputCard.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_output_cards(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Every output's label from the mirror, in output order: the user's name,
+     * else "Out N · channel · band" from the routing and the filters. Call it
+     * when the state changes, not per frame. Never fails.
+     */
+open func outputLabels() -> [OutputLabel]  {
+    return try!  FfiConverterSequenceTypeOutputLabel.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_output_labels(self.uniffiClonePointer(),$0
+    )
+})
 }
     
     /**
@@ -14585,6 +14621,171 @@ public func FfiConverterTypeNotifyResult_lower(_ value: NotifyResult) -> RustBuf
 
 
 /**
+ * One dashboard card: two outputs side by side, or one alone.
+ */
+public struct OutputCard {
+    /**
+     * 0-based output index of the left (or only) column.
+     */
+    public var left: UInt8
+    /**
+     * The right column's output; none for a card of one output.
+     */
+    public var right: UInt8?
+    /**
+     * "Woofers", "Tweeters" or "Mids" for a pair on one band with default
+     * names whose left output plays L and right output R by the routing;
+     * empty otherwise.
+     */
+    public var title: String
+    /**
+     * The columns' headings: "Woofers L" / "Woofers R" under a title, else
+     * the outputs' labels.
+     */
+    public var leftName: String
+    /**
+     * The right column's heading; empty for a card of one output.
+     */
+    public var rightName: String
+    /**
+     * The left column's heading on a phone: "Woofers L" under a title, else
+     * the output's short label ("R · Low").
+     */
+    public var leftShortName: String
+    /**
+     * The right column's heading on a phone: "R" under a title, else the
+     * output's short label; empty for a card of one output.
+     */
+    public var rightShortName: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 0-based output index of the left (or only) column.
+         */left: UInt8, 
+        /**
+         * The right column's output; none for a card of one output.
+         */right: UInt8?, 
+        /**
+         * "Woofers", "Tweeters" or "Mids" for a pair on one band with default
+         * names whose left output plays L and right output R by the routing;
+         * empty otherwise.
+         */title: String, 
+        /**
+         * The columns' headings: "Woofers L" / "Woofers R" under a title, else
+         * the outputs' labels.
+         */leftName: String, 
+        /**
+         * The right column's heading; empty for a card of one output.
+         */rightName: String, 
+        /**
+         * The left column's heading on a phone: "Woofers L" under a title, else
+         * the output's short label ("R · Low").
+         */leftShortName: String, 
+        /**
+         * The right column's heading on a phone: "R" under a title, else the
+         * output's short label; empty for a card of one output.
+         */rightShortName: String) {
+        self.left = left
+        self.right = right
+        self.title = title
+        self.leftName = leftName
+        self.rightName = rightName
+        self.leftShortName = leftShortName
+        self.rightShortName = rightShortName
+    }
+}
+
+#if compiler(>=6)
+extension OutputCard: Sendable {}
+#endif
+
+
+extension OutputCard: Equatable, Hashable {
+    public static func ==(lhs: OutputCard, rhs: OutputCard) -> Bool {
+        if lhs.left != rhs.left {
+            return false
+        }
+        if lhs.right != rhs.right {
+            return false
+        }
+        if lhs.title != rhs.title {
+            return false
+        }
+        if lhs.leftName != rhs.leftName {
+            return false
+        }
+        if lhs.rightName != rhs.rightName {
+            return false
+        }
+        if lhs.leftShortName != rhs.leftShortName {
+            return false
+        }
+        if lhs.rightShortName != rhs.rightShortName {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(left)
+        hasher.combine(right)
+        hasher.combine(title)
+        hasher.combine(leftName)
+        hasher.combine(rightName)
+        hasher.combine(leftShortName)
+        hasher.combine(rightShortName)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeOutputCard: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> OutputCard {
+        return
+            try OutputCard(
+                left: FfiConverterUInt8.read(from: &buf), 
+                right: FfiConverterOptionUInt8.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                leftName: FfiConverterString.read(from: &buf), 
+                rightName: FfiConverterString.read(from: &buf), 
+                leftShortName: FfiConverterString.read(from: &buf), 
+                rightShortName: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: OutputCard, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.left, into: &buf)
+        FfiConverterOptionUInt8.write(value.right, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.leftName, into: &buf)
+        FfiConverterString.write(value.rightName, into: &buf)
+        FfiConverterString.write(value.leftShortName, into: &buf)
+        FfiConverterString.write(value.rightShortName, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOutputCard_lift(_ buf: RustBuffer) throws -> OutputCard {
+    return try FfiConverterTypeOutputCard.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOutputCard_lower(_ value: OutputCard) -> RustBuffer {
+    return FfiConverterTypeOutputCard.lower(value)
+}
+
+
+/**
  * One output's fill, scaled and judged (`fetch_output_fills`).
  */
 public struct OutputFill {
@@ -14700,6 +14901,334 @@ public func FfiConverterTypeOutputFill_lift(_ buf: RustBuffer) throws -> OutputF
 #endif
 public func FfiConverterTypeOutputFill_lower(_ value: OutputFill) -> RustBuffer {
     return FfiConverterTypeOutputFill.lower(value)
+}
+
+
+/**
+ * One output's label.
+ */
+public struct OutputLabel {
+    /**
+     * 0-based output index.
+     */
+    public var output: UInt8
+    /**
+     * What to show: the user's name, else "Out 1 · R · Low".
+     */
+    public var label: String
+    /**
+     * The same for a phone row, beside the output's "OUTn" button: the
+     * user's name, else "R · Low" (owner decision, review c86 F3).
+     */
+    public var shortLabel: String
+    /**
+     * The firmware's name for the slot ("I2S 1 L", "PDM"), for a tooltip or
+     * a detail line.
+     */
+    public var slotName: String
+    /**
+     * The output has a name the user set; `label` is that name.
+     */
+    public var userNamed: Bool
+    /**
+     * "L", "R", "L+R", an input's name, "Mix", or "None".
+     */
+    public var channel: String
+    /**
+     * "Low", "High", "Band" or "Full".
+     */
+    public var band: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 0-based output index.
+         */output: UInt8, 
+        /**
+         * What to show: the user's name, else "Out 1 · R · Low".
+         */label: String, 
+        /**
+         * The same for a phone row, beside the output's "OUTn" button: the
+         * user's name, else "R · Low" (owner decision, review c86 F3).
+         */shortLabel: String, 
+        /**
+         * The firmware's name for the slot ("I2S 1 L", "PDM"), for a tooltip or
+         * a detail line.
+         */slotName: String, 
+        /**
+         * The output has a name the user set; `label` is that name.
+         */userNamed: Bool, 
+        /**
+         * "L", "R", "L+R", an input's name, "Mix", or "None".
+         */channel: String, 
+        /**
+         * "Low", "High", "Band" or "Full".
+         */band: String) {
+        self.output = output
+        self.label = label
+        self.shortLabel = shortLabel
+        self.slotName = slotName
+        self.userNamed = userNamed
+        self.channel = channel
+        self.band = band
+    }
+}
+
+#if compiler(>=6)
+extension OutputLabel: Sendable {}
+#endif
+
+
+extension OutputLabel: Equatable, Hashable {
+    public static func ==(lhs: OutputLabel, rhs: OutputLabel) -> Bool {
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.label != rhs.label {
+            return false
+        }
+        if lhs.shortLabel != rhs.shortLabel {
+            return false
+        }
+        if lhs.slotName != rhs.slotName {
+            return false
+        }
+        if lhs.userNamed != rhs.userNamed {
+            return false
+        }
+        if lhs.channel != rhs.channel {
+            return false
+        }
+        if lhs.band != rhs.band {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(output)
+        hasher.combine(label)
+        hasher.combine(shortLabel)
+        hasher.combine(slotName)
+        hasher.combine(userNamed)
+        hasher.combine(channel)
+        hasher.combine(band)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeOutputLabel: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> OutputLabel {
+        return
+            try OutputLabel(
+                output: FfiConverterUInt8.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
+                shortLabel: FfiConverterString.read(from: &buf), 
+                slotName: FfiConverterString.read(from: &buf), 
+                userNamed: FfiConverterBool.read(from: &buf), 
+                channel: FfiConverterString.read(from: &buf), 
+                band: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: OutputLabel, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterString.write(value.shortLabel, into: &buf)
+        FfiConverterString.write(value.slotName, into: &buf)
+        FfiConverterBool.write(value.userNamed, into: &buf)
+        FfiConverterString.write(value.channel, into: &buf)
+        FfiConverterString.write(value.band, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOutputLabel_lift(_ buf: RustBuffer) throws -> OutputLabel {
+    return try FfiConverterTypeOutputLabel.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOutputLabel_lower(_ value: OutputLabel) -> RustBuffer {
+    return FfiConverterTypeOutputLabel.lower(value)
+}
+
+
+/**
+ * The state the labels read, for a client that keeps its own copy.
+ */
+public struct OutputLabelInput {
+    /**
+     * Live input channels.
+     */
+    public var numInputs: UInt8
+    /**
+     * Live output channels, the PDM sub last.
+     */
+    public var numOutputs: UInt8
+    /**
+     * Per slot: 1 = I2S, else S/PDIF.
+     */
+    public var outputTypes: Data
+    /**
+     * Channel names in wire order: inputs, then outputs.
+     */
+    public var channelNames: [String]
+    /**
+     * Crosspoint on, `[input][output]`.
+     */
+    public var matrixRouting: [[Bool]]
+    /**
+     * Each output's bands: PEQ and crossover, in any order.
+     */
+    public var outputFilters: [[FilterParams]]
+    /**
+     * Output enabled, per output.
+     */
+    public var outputEnabled: [Bool]
+    /**
+     * The K340 crossfeed pair map, 4 bytes; empty or zero elsewhere.
+     */
+    public var crossfeedPairMap: Data
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Live input channels.
+         */numInputs: UInt8, 
+        /**
+         * Live output channels, the PDM sub last.
+         */numOutputs: UInt8, 
+        /**
+         * Per slot: 1 = I2S, else S/PDIF.
+         */outputTypes: Data, 
+        /**
+         * Channel names in wire order: inputs, then outputs.
+         */channelNames: [String], 
+        /**
+         * Crosspoint on, `[input][output]`.
+         */matrixRouting: [[Bool]], 
+        /**
+         * Each output's bands: PEQ and crossover, in any order.
+         */outputFilters: [[FilterParams]], 
+        /**
+         * Output enabled, per output.
+         */outputEnabled: [Bool], 
+        /**
+         * The K340 crossfeed pair map, 4 bytes; empty or zero elsewhere.
+         */crossfeedPairMap: Data) {
+        self.numInputs = numInputs
+        self.numOutputs = numOutputs
+        self.outputTypes = outputTypes
+        self.channelNames = channelNames
+        self.matrixRouting = matrixRouting
+        self.outputFilters = outputFilters
+        self.outputEnabled = outputEnabled
+        self.crossfeedPairMap = crossfeedPairMap
+    }
+}
+
+#if compiler(>=6)
+extension OutputLabelInput: Sendable {}
+#endif
+
+
+extension OutputLabelInput: Equatable, Hashable {
+    public static func ==(lhs: OutputLabelInput, rhs: OutputLabelInput) -> Bool {
+        if lhs.numInputs != rhs.numInputs {
+            return false
+        }
+        if lhs.numOutputs != rhs.numOutputs {
+            return false
+        }
+        if lhs.outputTypes != rhs.outputTypes {
+            return false
+        }
+        if lhs.channelNames != rhs.channelNames {
+            return false
+        }
+        if lhs.matrixRouting != rhs.matrixRouting {
+            return false
+        }
+        if lhs.outputFilters != rhs.outputFilters {
+            return false
+        }
+        if lhs.outputEnabled != rhs.outputEnabled {
+            return false
+        }
+        if lhs.crossfeedPairMap != rhs.crossfeedPairMap {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(numInputs)
+        hasher.combine(numOutputs)
+        hasher.combine(outputTypes)
+        hasher.combine(channelNames)
+        hasher.combine(matrixRouting)
+        hasher.combine(outputFilters)
+        hasher.combine(outputEnabled)
+        hasher.combine(crossfeedPairMap)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeOutputLabelInput: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> OutputLabelInput {
+        return
+            try OutputLabelInput(
+                numInputs: FfiConverterUInt8.read(from: &buf), 
+                numOutputs: FfiConverterUInt8.read(from: &buf), 
+                outputTypes: FfiConverterData.read(from: &buf), 
+                channelNames: FfiConverterSequenceString.read(from: &buf), 
+                matrixRouting: FfiConverterSequenceSequenceBool.read(from: &buf), 
+                outputFilters: FfiConverterSequenceSequenceTypeFilterParams.read(from: &buf), 
+                outputEnabled: FfiConverterSequenceBool.read(from: &buf), 
+                crossfeedPairMap: FfiConverterData.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: OutputLabelInput, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.numInputs, into: &buf)
+        FfiConverterUInt8.write(value.numOutputs, into: &buf)
+        FfiConverterData.write(value.outputTypes, into: &buf)
+        FfiConverterSequenceString.write(value.channelNames, into: &buf)
+        FfiConverterSequenceSequenceBool.write(value.matrixRouting, into: &buf)
+        FfiConverterSequenceSequenceTypeFilterParams.write(value.outputFilters, into: &buf)
+        FfiConverterSequenceBool.write(value.outputEnabled, into: &buf)
+        FfiConverterData.write(value.crossfeedPairMap, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOutputLabelInput_lift(_ buf: RustBuffer) throws -> OutputLabelInput {
+    return try FfiConverterTypeOutputLabelInput.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOutputLabelInput_lower(_ value: OutputLabelInput) -> RustBuffer {
+    return FfiConverterTypeOutputLabelInput.lower(value)
 }
 
 
@@ -20385,6 +20914,30 @@ extension VregDemoEvent: Equatable, Hashable {}
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionUInt8: FfiConverterRustBuffer {
+    typealias SwiftType = UInt8?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterUInt8.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterUInt8.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionUInt16: FfiConverterRustBuffer {
     typealias SwiftType = UInt16?
 
@@ -20999,6 +21552,31 @@ fileprivate struct FfiConverterSequenceTypeNamedValue: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeOutputCard: FfiConverterRustBuffer {
+    typealias SwiftType = [OutputCard]
+
+    public static func write(_ value: [OutputCard], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeOutputCard.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [OutputCard] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [OutputCard]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeOutputCard.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeOutputFill: FfiConverterRustBuffer {
     typealias SwiftType = [OutputFill]
 
@@ -21016,6 +21594,31 @@ fileprivate struct FfiConverterSequenceTypeOutputFill: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeOutputFill.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeOutputLabel: FfiConverterRustBuffer {
+    typealias SwiftType = [OutputLabel]
+
+    public static func write(_ value: [OutputLabel], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeOutputLabel.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [OutputLabel] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [OutputLabel]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeOutputLabel.read(from: &buf))
         }
         return seq
     }
@@ -21678,6 +22281,26 @@ public func onboardingWhatsNewJson() -> String  {
 })
 }
 /**
+ * The dashboard's output cards for the state `input`, in order.
+ */
+public func outputCardsFor(input: OutputLabelInput) -> [OutputCard]  {
+    return try!  FfiConverterSequenceTypeOutputCard.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_output_cards_for(
+        FfiConverterTypeOutputLabelInput_lower(input),$0
+    )
+})
+}
+/**
+ * Every output's label for the state `input`, in output order.
+ */
+public func outputLabelsFor(input: OutputLabelInput) -> [OutputLabel]  {
+    return try!  FfiConverterSequenceTypeOutputLabel.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_output_labels_for(
+        FfiConverterTypeOutputLabelInput_lower(input),$0
+    )
+})
+}
+/**
  * Quantize a delay (ms) to 0.0001 ms, as the delay setters do before
  * sending (the old core's `dsp_math::quantize_delay`, bit for bit; the
  * Windows Console's step).
@@ -21825,6 +22448,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_onboarding_whats_new_json() != 47484) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_output_cards_for() != 36798) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_output_labels_for() != 60813) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_quantize_delay() != 45128) {
@@ -22173,6 +22802,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_open_midi() != 37496) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_output_cards() != 18705) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_output_labels() != 34681) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_poll_hotplug() != 29460) {

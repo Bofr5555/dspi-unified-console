@@ -1,7 +1,7 @@
 // The main window's arithmetic (WP WB6a): the Console's volume tapers, preset
 // slot labels and the channel layout. No I/O, so the unit tests reach it.
 
-import type { DspState } from "../../core/protocol";
+import type { DspState, OutputLabel } from "../../core/protocol";
 
 /** Preset slots on every DSPi. */
 export const PRESET_SLOTS = 10;
@@ -76,7 +76,12 @@ export interface ChannelRow {
   index: number;
   /** "IN1", "OUT3", as the Console's sidebar. */
   descriptor: string;
+  /** What to show: an output's label (-- BUG1 --), else the stored name. */
   name: string;
+  /** -- BUG1 -- The name stored on the device, what a rename starts from (`name` when absent). */
+  stored?: string;
+  /** -- BUG1 -- An output's slot ("I2S 1 L"), for a tooltip. */
+  detail?: string;
 }
 
 /** Inputs every source has. */
@@ -119,15 +124,30 @@ export function inputRows(s: DspState, count: number): ChannelRow[] {
   return rows;
 }
 
-/** The enabled outputs, as the Console's sidebar lists them: wire channel numInputChannels + output. */
-export function outputRows(s: DspState): ChannelRow[] {
+/**
+ * The enabled outputs, as the Console's sidebar lists them: wire channel numInputChannels + output.
+ * -- BUG1 -- Named by the core's labels when the snapshot has them (`outputLabels`).
+ */
+export function outputRows(s: DspState, labels?: OutputLabel[]): ChannelRow[] {
   const rows: ChannelRow[] = [];
   for (let o = 0; o < s.numOutputChannels; o++) {
     if (s.outputEnabled[o] === false) continue;
     const wire = s.numInputChannels + o;
-    rows.push({ wire, index: o, descriptor: `OUT${o + 1}`, name: s.channelNames[wire] ?? `Output ${o + 1}` });
+    const stored = s.channelNames[wire] ?? `Output ${o + 1}`;
+    const l = labels?.[o];
+    rows.push({ wire, index: o, descriptor: `OUT${o + 1}`, name: outputLabel(s, labels, o), stored, detail: l?.slotName || undefined });
   }
   return rows;
+}
+
+/** -- BUG1 -- Output `o`'s label from the core, else its stored name. */
+export function outputLabel(s: DspState, labels: OutputLabel[] | undefined, o: number): string {
+  return labels?.[o]?.label || (s.channelNames[s.numInputChannels + o] ?? `Output ${o + 1}`);
+}
+
+/** -- BUG1 -- Every live wire channel's name for the meter strip: inputs' names, outputs' labels. */
+export function meterNames(s: DspState, labels?: OutputLabel[]): string[] {
+  return s.channelNames.slice(0, s.numChannels).map((n, w) => (w >= s.numInputChannels ? outputLabel(s, labels, w - s.numInputChannels) : n));
 }
 
 /** UTF-8 bytes of a name, which the device's limits count. */

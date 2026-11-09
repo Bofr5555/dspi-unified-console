@@ -54,7 +54,7 @@ final class ExtensionChannelUITests: XCTestCase {
         scrollTo(apply, in: app)
         // Pair 1's right output (the only "Out 2" picker on the default map).
         app.buttons.matching(NSPredicate(format: "label == 'Out 2'")).firstMatch.tap()
-        app.buttons["1 — SPDIF 1 L"].tap()
+        pickOutput(app, 1).tap()
         XCTAssertTrue(app.staticTexts["Each pair needs two different outputs, and no output can be in two pairs."]
             .waitForExistence(timeout: 5))
         XCTAssertFalse(apply.isEnabled)
@@ -71,10 +71,10 @@ final class ExtensionChannelUITests: XCTestCase {
         scrollTo(apply, in: app)
         let out = { (label: String) in app.buttons.matching(NSPredicate(format: "label == %@", label)) }
         out("Out 1").firstMatch.tap()
-        app.buttons["2 — SPDIF 1 R"].tap()
+        pickOutput(app, 2).tap()
         XCTAssertFalse(apply.isEnabled, "pair 1 on output 2 twice")
         out("Out 2").element(boundBy: 1).tap()
-        app.buttons["1 — SPDIF 1 L"].tap()
+        pickOutput(app, 1).tap()
         XCTAssertTrue(apply.isEnabled)
         keepScreenshot(app, "crossfeed-editor-valid")
         apply.tap()
@@ -92,3 +92,12 @@ final class ExtensionChannelUITests: XCTestCase {
         keepScreenshot(app, "overview-core-voltage")
     }
 }
+
+// -- BUG1 -- An output in the pair editor's menu by its number: the name after the dash is the
+// output's label ("1 — Out 1 · L · Full"), which follows the routing.
+private extension XCTestCase {
+    func pickOutput(_ app: XCUIApplication, _ n: Int) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "\(n) — ")).firstMatch
+    }
+}
+

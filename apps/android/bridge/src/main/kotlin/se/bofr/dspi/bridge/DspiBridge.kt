@@ -13,6 +13,7 @@ import se.bofr.dspi.core.DspState
 import se.bofr.dspi.core.DspiConstants
 import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.FlashStatus
+import se.bofr.dspi.core.OutputCard
 import se.bofr.dspi.core.PinConfigStatus
 import se.bofr.dspi.core.PresetStatus
 
@@ -302,7 +303,30 @@ interface DspiBridge {
 
     fun isClipping(ch: Int): Boolean
 
+    /** The name stored on the device (what a rename starts from); a fallback when it is empty. */
     fun channelName(ch: Int): String
+
+    /**
+     * -- BUG1 -- What to show for a channel: an input's name; for an output, the name the user
+     * set, else the core's label from the routing and the filters ("Out 1 · R · Low",
+     * `DspiCore.outputLabels`). Worked out once per state change on the FFI thread.
+     */
+    fun channelLabel(ch: Int): String
+
+    /**
+     * -- BUG1, review c86 F3 -- [channelLabel] for a phone row beside its OUTn button: an
+     * input's name; an output's user-set name, else channel and band alone ("R · Low").
+     */
+    fun channelShortLabel(ch: Int): String
+
+    /** -- BUG1 -- The firmware's name for output [output]'s slot ("I2S 1 L", "PDM"), for a detail line; "" if absent. */
+    fun outputSlotName(output: Int): String
+
+    /**
+     * -- BUG1 -- The dashboard's output cards: paired by the crossfeed pair map when the device
+     * has one ("Woofers L" | "Woofers R"), else by slot (`DspiCore.outputCards`).
+     */
+    fun outputCards(): List<OutputCard>
 
     /** Hex colour from the channel palette (ChannelPalette). */
     fun channelColor(ch: Int): String

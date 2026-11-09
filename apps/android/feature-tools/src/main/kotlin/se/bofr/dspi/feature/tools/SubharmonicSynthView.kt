@@ -118,7 +118,7 @@ fun SubharmonicSynthView(bridge: DspiBridge, modifier: Modifier = Modifier) {
     val subharm = SubharmParameters.from(st)
     val outputCount = st.numOutputChannels
     // Names are plain getters: read here, where `st` is observed, not inside the skippable column lambdas (audit T3).
-    val outputNames = (0 until outputCount).map { bridge.channelName(2 + it) }
+    val outputNames = (0 until outputCount).map { bridge.channelLabel(2 + it) }
     val supported = ToolFirmware.supportsSubharm(st.formatVersion)
     val extended = ToolFirmware.supportsSubharmExtended(st.formatVersion)
     val graphLive =
