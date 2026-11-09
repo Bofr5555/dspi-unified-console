@@ -15,7 +15,8 @@
 //                         an embedder's mount({sourceUrl}) overrides it
 //   DSPI_WEB_RELEASE=1    a build for publishing: refuses to build without the
 //                         source link
-// dist/ also gets page.css (the standalone page's frame) and THIRD-PARTY-NOTICES.txt:
+// dist/ also gets page.css (the standalone page's frame), the page's icons (icons/:
+// favicon.ico, favicon.svg, apple-touch-icon.png) and THIRD-PARTY-NOTICES.txt:
 // Preact's licence from node_modules and the core's Rust crates
 // (notices/rust-crates.txt, tools/gen_rust_notices.py).
 
@@ -71,6 +72,8 @@ if (args.has("--unit")) {
   cpSync(join(root, "src/dspi-web.css"), join(out, "dspi-web.css"));
   // -- WP WB7 --
   cpSync(join(root, "src/page.css"), join(out, "page.css"));
+  // -- job ICON1 -- the standalone page's icons (assets/icon/render.sh makes them)
+  cpSync(join(root, "icons"), out, { recursive: true });
   writeFileSync(join(out, "THIRD-PARTY-NOTICES.txt"), notices());
   if (!sourceUrl) {
     if (process.env.DSPI_WEB_RELEASE === "1") {

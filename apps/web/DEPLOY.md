@@ -18,6 +18,7 @@ build refuses to build without one; `mount({ sourceUrl })` overrides it per host
 | File | What |
 |---|---|
 | `index.html`, `app.js`, `page.css` | the standalone page |
+| `favicon.ico`, `favicon.svg`, `apple-touch-icon.png` | the standalone page's icons |
 | `dspi-web.js`, `dspi-web.css` | the library, for embedding (`mount()`) |
 | `worker.js`, `dspi_wasm.wasm` | one Worker per session; the core (about 1.1 MB, 360 KB gzip) |
 | `THIRD-PARTY-NOTICES.txt` | Preact's licence and the Rust crates in the core; serve it with the rest |

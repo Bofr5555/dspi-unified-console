@@ -1,0 +1,8 @@
+# The icon renderer's container (job ICON1): assets/icon/render.sh builds and runs it.
+# Pillow, FreeType and Noto Sans Mono are the versions store/play/tools/make_graphics.py
+# first ran with (Fedora 44), so its Play and launcher outputs stay byte-identical.
+FROM registry.fedoraproject.org/fedora:44
+RUN dnf -y install --setopt=install_weak_deps=False \
+        python3-pillow python3-fonttools google-noto-sans-mono-fonts \
+        ImageMagick librsvg2-tools icoutils libicns-utils \
+    && dnf clean all
