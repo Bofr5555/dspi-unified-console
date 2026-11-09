@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-internal const val APP_SOURCE_URL = "https://github.com/Bofr5555/dspi-android"
+internal const val APP_SOURCE_URL = "https://github.com/Bofr5555/dspi-unified-console"
 internal const val PRIVACY_POLICY_URL = "https://github.com/Bofr5555/dspi-android/blob/main/PRIVACY.md"
 
 /** One bundled licence text (assets/licenses/[asset]). */

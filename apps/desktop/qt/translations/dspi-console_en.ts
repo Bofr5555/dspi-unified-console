@@ -250,7 +250,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Weeb Labs&apos; DSPi Console for Linux on GitHub</source>
+        <source>DSPi Console on GitHub</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
