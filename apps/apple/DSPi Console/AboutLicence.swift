@@ -11,6 +11,9 @@
 
 import SwiftUI
 import dspi_core
+#if os(macOS)
+import AppKit
+#endif
 
 /// The parts of the core's About table this page shows.
 struct AboutTable: Decodable {
@@ -69,9 +72,19 @@ struct AboutLicenceSections: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
+            #if os(macOS)
+            // -- WP REL013M -- the bundled text replaces the web page's link
+            if BundledLicenceFiles.url("LICENSES/GPL-3.0.txt") == nil {
+                Link(destination: gplTextURL) {
+                    Label("GNU General Public License, version 3", systemImage: "doc.text")
+                }
+            }
+            BundledLicenceFiles(spdx: licence.spdx)
+            #else
             Link(destination: gplTextURL) {
                 Label("GNU General Public License, version 3", systemImage: "doc.text")
             }
+            #endif
             Text(licence.notices)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -96,3 +109,53 @@ struct AboutLicenceSections: View {
         }
     }
 }
+
+#if os(macOS)
+/// -- WP REL013M -- The licence texts in the app's Contents/Resources (NOTICE.txt
+/// and LICENSES/, from apps/apple/package-macos.sh, as the Qt .dmg carries them),
+/// listed as in the Qt app's About and opened in the user's text viewer.  A
+/// build straight from Xcode has none and lists none.
+struct BundledLicenceFiles: View {
+    let spdx: String
+
+    struct File: Identifiable {
+        let title: String
+        let detail: String
+        let path: String
+        var id: String { path }
+    }
+
+    var files: [File] {
+        [File(title: "GNU General Public License, version 3", detail: spdx, path: "LICENSES/GPL-3.0.txt"),
+         File(title: "Rust crates: licences and notices", detail: "The crates the core links", path: "LICENSES/rust-crates.txt"),
+         File(title: "NOTICE.txt", detail: "", path: "NOTICE.txt"),
+         File(title: "BUNDLED.txt", detail: "", path: "LICENSES/BUNDLED.txt"),
+         File(title: "LICENSES", detail: "", path: "LICENSES")]
+    }
+
+    static func url(_ path: String) -> URL? {
+        guard let url = Bundle.main.resourceURL?.appendingPathComponent(path),
+              FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return url
+    }
+
+    var body: some View {
+        ForEach(files.filter { Self.url($0.path) != nil }) { file in
+            Button {
+                if let url = Self.url(file.path) { NSWorkspace.shared.open(url) }
+            } label: {
+                HStack {
+                    Label(file.title, systemImage: file.path == "LICENSES" ? "folder" : "doc.text")
+                    Spacer()
+                    if !file.detail.isEmpty {
+                        Text(file.detail).foregroundStyle(.secondary)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.accentColor)
+        }
+    }
+}
+#endif

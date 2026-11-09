@@ -13,9 +13,19 @@ import Security
 final class LinkTokenStore {
     private let service: String
 
+    /// -- WP REL013M -- On macOS the items are named after this app's bundle
+    /// identifier, apart from Weeb Labs' DSPi Console's in the same keychain.
+    static var defaultService: String {
+        #if os(macOS)
+        return AppIdentity.bundleID + ".link"
+        #else
+        return "com.weeblabs.dspi-console.link"
+        #endif
+    }
+
     /// `service` namespaces the keychain items; tests pass their own so they
     /// never touch the real tokens.
-    init(service: String = "com.weeblabs.dspi-console.link") {
+    init(service: String = LinkTokenStore.defaultService) {
         self.service = service
     }
 

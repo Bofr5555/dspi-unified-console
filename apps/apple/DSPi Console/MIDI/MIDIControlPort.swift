@@ -57,7 +57,7 @@ final class CoreMIDIControlPort: MIDIControlPort {
     /// descriptor of the MIDIStreaming interface).
     static let controlPortName = "DSPi Control"
 
-    private static let log = Logger(subsystem: "WeebLabs.DSPi-Console", category: "MIDITransport")
+    private static let log = Logger(subsystem: AppIdentity.logSubsystem, category: "MIDITransport")
 
     var onEndpointsChanged: (() -> Void)?
     var onReceive: (([UInt32]) -> Void)?

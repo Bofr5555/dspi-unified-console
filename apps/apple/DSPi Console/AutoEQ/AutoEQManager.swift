@@ -94,7 +94,7 @@ class AutoEQManager: ObservableObject {
     init() {
         // Setup Application Support directory for user updates
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        appSupportDirectory = appSupport.appendingPathComponent("com.weeblabs.DSPi-Console", isDirectory: true)
+        appSupportDirectory = appSupport.appendingPathComponent(AppIdentity.supportFolder(legacy: "com.weeblabs.DSPi-Console"), isDirectory: true)
         userDatabaseURL = appSupportDirectory.appendingPathComponent("autoeq_database.json")
 
         // Create directory if needed

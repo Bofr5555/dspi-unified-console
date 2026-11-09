@@ -110,7 +110,7 @@ final class FakeTransport: DeviceTransport {
         var description: String { String(format: "0x%02X wValue=%u wIndex=%u", request, value, index) }
     }
 
-    private static let log = Logger(subsystem: "WeebLabs.DSPi-Console", category: "FakeTransport")
+    private static let log = Logger(subsystem: AppIdentity.logSubsystem, category: "FakeTransport")
 
     /// - Parameters:
     ///   - autoSelect: connect to the demo device straight away.

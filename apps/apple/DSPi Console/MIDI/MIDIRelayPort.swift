@@ -29,7 +29,7 @@ final class MIDIRelayPort: MIDIControlPort {
         return MIDIRelayPort(host: String(parts[0]), port: port)
     }
 
-    private static let log = Logger(subsystem: "WeebLabs.DSPi-Console", category: "MIDITransport")
+    private static let log = Logger(subsystem: AppIdentity.logSubsystem, category: "MIDITransport")
 
     let host: String
     let port: UInt16

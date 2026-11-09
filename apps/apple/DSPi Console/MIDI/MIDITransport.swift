@@ -51,7 +51,7 @@ final class MIDITransport: DeviceTransport {
     /// This many timeouts in a row and the link is declared dead.
     static let deadAfterTimeouts = 3
 
-    private static let log = Logger(subsystem: "WeebLabs.DSPi-Console", category: "MIDITransport")
+    private static let log = Logger(subsystem: AppIdentity.logSubsystem, category: "MIDITransport")
 
     // MARK: - DeviceTransport state
 
