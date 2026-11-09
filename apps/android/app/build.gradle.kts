@@ -21,10 +21,18 @@ val uploadKeyProps: File =
 val uploadKey: Properties? =
     uploadKeyProps.takeIf { it.isFile }?.let { f -> Properties().apply { f.inputStream().use { load(it) } } }
 
+// The sideload APK (owner 2026-11-09): -Pdspi.sideload=true builds the same app
+// as a separate one, se.bofr.dspi_console_android_apk named "DSPi Console (APK)",
+// so it installs next to the Play copy instead of colliding with it. Task names
+// and outputs stay the same; without the property the build is the Play one.
+val sideload: Boolean = providers.gradleProperty("dspi.sideload").map { it.toBoolean() }.getOrElse(false)
+
 android {
     namespace = "se.bofr.dspi.app"
     defaultConfig {
-        applicationId = "se.bofr.dspi_console_android"
+        applicationId = "se.bofr.dspi_console_android" + if (sideload) "_apk" else ""
+        // The launcher label, which the About page shows as its title too
+        resValue("string", "app_name", if (sideload) "DSPi Console (APK)" else "DSPi Console")
         // The ONE place for the app version (runtime reads PackageInfo).
         // Every upload to Play needs a higher versionCode than any before it.
         versionCode = 13

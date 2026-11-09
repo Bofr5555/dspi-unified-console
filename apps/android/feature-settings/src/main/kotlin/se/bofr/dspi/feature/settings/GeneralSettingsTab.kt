@@ -70,6 +70,11 @@ private fun AboutPage(onOpenLicenses: () -> Unit, onNavigate: (String) -> Unit) 
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "—"
     }
+    // The launcher label: "DSPi Console", or "DSPi Console (APK)" in the sideload build
+    val appName = remember {
+        runCatching { context.applicationInfo.loadLabel(context.packageManager).toString() }.getOrNull()
+            ?.takeIf { it.isNotBlank() && it != context.packageName } ?: "DSPi Console"
+    }
     val readAbout = LocalAboutJson.current
     val about = remember(readAbout) { runCatching { parseAbout(readAbout()) }.getOrDefault(AboutInfo()) }
     SettingsForm {
@@ -79,7 +84,7 @@ private fun AboutPage(onOpenLicenses: () -> Unit, onNavigate: (String) -> Unit) 
                     Text("🔊", fontSize = 32.sp)
                     Spacer(Modifier.width(14.dp))
                     Column {
-                        Text("DSPi Console", style = MaterialTheme.typography.titleMedium)
+                        Text(appName, style = MaterialTheme.typography.titleMedium)
                         Text(
                             "USB Audio DSP Controller",
                             style = MaterialTheme.typography.bodySmall,
