@@ -157,8 +157,10 @@ New compared with DSPi-Terminal:
   line; exports no longer fill in values for reads that failed; the settings
   pages work at 40 columns; options before the command are read correctly.
 
-Downloads: Linux x86_64, Linux aarch64 (for Raspberry Pi; without MIDI in
-this build), Windows x86_64 and macOS (Apple silicon and Intel).
+Downloads: Linux x86_64 and aarch64 (64-bit Raspberry Pi and other Arm
+boards; without MIDI in this build), both for distributions with glibc 2.39
+or later (Ubuntu 24.04, Debian 13 and later), Windows x86_64, and macOS
+(Apple silicon and Intel).
 
 ## Web console (preview)
 
