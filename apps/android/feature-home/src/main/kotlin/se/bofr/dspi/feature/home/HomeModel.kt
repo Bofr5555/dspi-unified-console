@@ -10,6 +10,7 @@ package se.bofr.dspi.feature.home
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.core.DspState
 import se.bofr.dspi.core.DspiConstants
+import se.bofr.dspi.core.OutputCard
 
 /** What the detail pane shows (macOS `SidebarSelection`); ids are APP channel ids / output indices. */
 sealed interface SidebarSelection {
@@ -208,9 +209,10 @@ object HomeModel {
 sealed interface DashboardCard {
     data object Input : DashboardCard
 
-    data class OutputPair(val left: Int, val right: Int) : DashboardCard
+    /** -- BUG1 -- [leftName]/[rightName]: the core's column headings ("Woofers L"); null shows the outputs' labels. */
+    data class OutputPair(val left: Int, val right: Int, val leftName: String? = null, val rightName: String? = null) : DashboardCard
 
-    data class Output(val index: Int) : DashboardCard
+    data class Output(val index: Int, val name: String? = null) : DashboardCard
 
     companion object {
         /** Narrowest a stereo pair's two lists stay readable side by side (pt -> dp). */
@@ -237,6 +239,18 @@ sealed interface DashboardCard {
             val pdm = numOutputs - 1
             if (en(pdm)) items += Output(pdm)
             return items
+        }
+
+        /**
+         * -- BUG1 -- The input pair, then the core's output cards (`DspiCore.outputCards`: paired by
+         * the crossfeed pair map when the device has one, else by slot); [cards] when there are none.
+         */
+        fun cards(core: List<OutputCard>, numOutputs: Int, outputEnabled: List<Boolean>): List<DashboardCard> {
+            if (core.isEmpty()) return cards(numOutputs, outputEnabled)
+            return listOf<DashboardCard>(Input) + core.map { c ->
+                val r = c.right
+                if (r != null) OutputPair(c.left, r, c.leftName, c.rightName) else Output(c.left, c.leftName)
+            }
         }
 
         /** `columnCount(for:)`: Auto fits by width, else the user's choice; never more than [count]. */

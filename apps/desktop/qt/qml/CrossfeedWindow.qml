@@ -66,7 +66,7 @@ AppWindow {
         onTriggered: win.revealPairEditor()
     }
 
-    function outputName(o) { return bridge.channelName(o + 2) || qsTr("Out %1").arg(o + 1) }
+    function outputName(o) { return bridge.channelLabel(o + 2) || qsTr("Out %1").arg(o + 1) }
 
     function pairNames() {
         var n = []

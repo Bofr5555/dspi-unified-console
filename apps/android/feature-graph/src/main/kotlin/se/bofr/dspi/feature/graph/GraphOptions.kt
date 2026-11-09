@@ -333,7 +333,7 @@ private fun SpectrumChannelSection(bridge: DspiBridge, spectrum: SpectrumSelecti
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(Modifier.size(7.dp).clip(CircleShape).background(color.copy(alpha = if (on) 1f else 0.4f)))
-                            Text(bridge.channelName(app), fontSize = 11.sp, maxLines = 1, modifier = Modifier.padding(start = 6.dp))
+                            Text(bridge.channelLabel(app), fontSize = 11.sp, maxLines = 1, modifier = Modifier.padding(start = 6.dp))
                         }
                     }
                     if (pair.size == 1) Spacer(Modifier.weight(1f))

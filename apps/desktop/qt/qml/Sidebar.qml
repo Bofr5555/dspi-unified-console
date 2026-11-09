@@ -103,6 +103,27 @@ Rectangle {
                 width: parent.width - 16
                 spacing: 2
 
+                // -- BUG1 -- One name column for every row: 72 as on macOS, wider (to 120) when an
+                // output's label ("Out 2 · R · High") needs it. Measured on state changes only.
+                property int nameColumn: 72
+                function updateNameColumn() {
+                    var w = 72
+                    if (bridge.connected)
+                        for (var o = 0; o < bridge.numOutputChannels; o++)
+                            if (bridge.outputEnabled(o)) {
+                                nameMetrics.text = bridge.channelLabel(o + 2)
+                                w = Math.max(w, Math.ceil(nameMetrics.advanceWidth) + 2)
+                            }
+                    nameColumn = Math.min(w, 120)
+                }
+                TextMetrics { id: nameMetrics; font.pixelSize: 14 }
+                Connections {
+                    target: bridge
+                    function onOutputLabelsChanged() { channelColumn.updateNameColumn() }
+                    function onStatusChanged() { if (!bridge.connected && channelColumn.nameColumn !== 72) channelColumn.updateNameColumn() }
+                }
+                Component.onCompleted: updateNameColumn()
+
                 SectionHeader { text: qsTr("INPUTS"); leftPadding: 4 }
 
                 // -- WP QD18 -- The inputs in use (at least the stereo pair), held while the host idles
@@ -116,6 +137,7 @@ Rectangle {
                         width: channelColumn.width
                         channelIndex: appId
                         channelName: bridge.channelName(appId)
+                        nameWidth: channelColumn.nameColumn
                         channelColor: bridge.channelColor(appId)
                         descriptor: bridge.channelDescriptor(appId)
                         isSelected: root.selection === "channel:" + appId
@@ -149,7 +171,11 @@ Rectangle {
                         visible: bridge.outputEnabled(index)
                         height: visible ? 30 : 0
                         channelIndex: index + 2
-                        channelName: bridge.channelName(index + 2)
+                        // -- BUG1 -- the label; a rename starts from the stored name, the slot is the tooltip
+                        channelName: bridge.channelLabel(index + 2)
+                        renameFrom: bridge.channelName(index + 2)
+                        nameDetail: bridge.outputSlotName(index)
+                        nameWidth: channelColumn.nameColumn
                         channelColor: bridge.channelColor(index + 2)
                         descriptor: bridge.channelDescriptor(index + 2)
                         isMuted: bridge.outputMuted(index)
@@ -166,7 +192,11 @@ Rectangle {
                             function onStateChanged() {
                                 outputRow.visible = bridge.outputEnabled(index)
                                 outputRow.isMuted = bridge.outputMuted(index)
-                                outputRow.channelName = bridge.channelName(index + 2)
+                                outputRow.renameFrom = bridge.channelName(index + 2)
+                            }
+                            function onOutputLabelsChanged() {
+                                outputRow.channelName = bridge.channelLabel(index + 2)
+                                outputRow.nameDetail = bridge.outputSlotName(index)
                             }
                         }
                     }

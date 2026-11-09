@@ -344,8 +344,10 @@ class DspiBridgeImplTest {
         attach(b, core)
         b.resetChannelNames()
         runCurrent()
-        assertEquals(listOf("I2S 1 L", "I2S 1 R", "I2S 2 L", "I2S 2 R", "SPDIF 3 L", "SPDIF 4 R", "PDM"),
-            listOf(2, 3, 4, 5, 6, 9, 10).map { b.channelName(it) })
+        assertEquals(
+            listOf("I2S 1 L", "I2S 1 R", "I2S 2 L", "I2S 2 R", "SPDIF 3 L", "SPDIF 4 R", "PDM"),
+            listOf(2, 3, 4, 5, 6, 9, 10).map { b.channelName(it) }
+        )
     }
 
     @Test

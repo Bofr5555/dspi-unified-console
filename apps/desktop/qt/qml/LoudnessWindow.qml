@@ -20,7 +20,7 @@ AppWindow {
 
     function outputNames() {
         var n = []
-        for (var o = 0; o < numOut; o++) n.push(bridge.channelName(o + 2))
+        for (var o = 0; o < numOut; o++) n.push(bridge.channelLabel(o + 2))
         return n
     }
 

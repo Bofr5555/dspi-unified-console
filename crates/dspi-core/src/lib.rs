@@ -105,6 +105,8 @@ mod link_text;
 mod write_param;
 // -- WP CG34 --
 mod names;
+// -- BUG1 --
+mod output_labels;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -151,6 +153,10 @@ pub use host_transport::{HostTransport, HostTransportKind};
 pub use write_param::{ParamValue, write_refusal};
 // -- WP CG34 --
 pub use names::{FilterTypeName, filter_type_name, filter_type_names};
+// -- BUG1 --
+pub use output_labels::{
+    OutputCard, OutputLabel, OutputLabelInput, output_cards_for, output_labels_for,
+};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///

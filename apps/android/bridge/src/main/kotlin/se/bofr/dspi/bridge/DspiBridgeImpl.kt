@@ -47,6 +47,8 @@ import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.InputLockStatus
 import se.bofr.dspi.core.LgStatus
 import se.bofr.dspi.core.NotifyListener
+import se.bofr.dspi.core.OutputCard
+import se.bofr.dspi.core.OutputLabel
 import se.bofr.dspi.core.PinConfigStatus
 import se.bofr.dspi.core.PresetStatus
 import se.bofr.dspi.core.UartConfig
@@ -370,7 +372,10 @@ class DspiBridgeImpl(
         val curves: Map<Int, List<Double>>,
         val all: Boolean,
         val preampMax: Float,
-        val maxDelay: Float
+        val maxDelay: Float,
+        // -- BUG1 --
+        val labels: List<OutputLabel> = emptyList(),
+        val cards: List<OutputCard> = emptyList()
     )
 
     /** FFI: the state after a change, the preset-dirty flag and the curves that changed. */
@@ -384,8 +389,15 @@ class DspiBridgeImpl(
         val m = ChannelMap(st.numInputChannels, st.numOutputChannels)
         val pre = runCatching { core.preampMaxDb() }.getOrDefault(if (st.platformId == 1) 24f else 18f)
         val dl = runCatching { core.maxDelayMs() }.getOrDefault(if (st.platformId == 1) 42f else 21f)
-        return Snapshot(st, dirty, ids.associateWith { rawCurve(st, m, it) }, all, pre, dl)
+        // -- BUG1 -- once per state change, never per frame; an old core has none
+        val labels = runCatching { core.outputLabels() }.getOrDefault(emptyList())
+        val cards = runCatching { core.outputCards() }.getOrDefault(emptyList())
+        return Snapshot(st, dirty, ids.associateWith { rawCurve(st, m, it) }, all, pre, dl, labels, cards)
     }
+
+    // -- BUG1 -- the outputs' labels and the dashboard's cards as of the last published snapshot
+    private var labels: List<OutputLabel> = emptyList()
+    private var cards: List<OutputCard> = emptyList()
 
     /** -- WP AN6 -- `core.wireFeatures()` as of the last snapshot: [hardwareCaps] is read on the main thread. */
     @Volatile private var features = 0L
@@ -402,6 +414,8 @@ class DspiBridgeImpl(
     /** Main: apply a snapshot — Qt's `emit stateChanged()` (+ `magnitudesChanged()`). */
     private fun publish(snap: Snapshot, magnitudes: Boolean = false) {
         current = snap.state
+        labels = snap.labels
+        cards = snap.cards
         preampMax = snap.preampMax
         maxDelay = snap.maxDelay
         _state.value = snap.state
@@ -1077,6 +1091,17 @@ class DspiBridgeImpl(
     override fun peakLevel(ch: Int): Float = if (map.wire(ch) >= 0) _status.value.peaks.getOrElse(ch) { 0f } else 0f
 
     override fun isClipping(ch: Int): Boolean = map.wire(ch).let { it >= 0 && (_status.value.clipFlags shr it) and 1L == 1L }
+
+    // -- BUG1 --
+    override fun channelLabel(ch: Int): String {
+        val out = map.outputOf(ch)
+        if (out < 0) return channelName(ch)
+        return labels.getOrNull(out)?.label?.takeIf { it.isNotEmpty() } ?: channelName(ch)
+    }
+
+    override fun outputSlotName(output: Int): String = labels.getOrNull(output)?.slotName ?: ""
+
+    override fun outputCards(): List<OutputCard> = cards
 
     override fun channelName(ch: Int): String {
         val w = map.wire(ch)

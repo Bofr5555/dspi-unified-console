@@ -65,7 +65,7 @@ fun DashboardOverview(bridge: DspiBridge, prefs: AppSettingsStore, modifier: Mod
     val s = bridge.observeState()
     val ready = bridge.observeDeviceReady()
     val cardsPerRow = prefs.settings.collectAsStateWithLifecycle().value.dashboardCardsPerRow
-    val cards = DashboardCard.cards(s.numOutputChannels, s.outputEnabled)
+    val cards = DashboardCard.cards(bridge.outputCards(), s.numOutputChannels, s.outputEnabled)
     BoxWithConstraints(modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 4.dp).alpha(if (ready) 1f else 0f)) {
         val columns = DashboardCard.columnCount(cardsPerRow, maxWidth.value, cards.size)
         Column(verticalArrangement = Arrangement.spacedBy(DashboardCard.SPACING.dp)) {
@@ -93,17 +93,24 @@ private fun DashboardCardView(bridge: DspiBridge, s: DspState, card: DashboardCa
             )
         is DashboardCard.OutputPair ->
             StereoDashboardCard(
-                left = outputColumn(bridge, s, card.left),
-                right = outputColumn(bridge, s, card.right)
+                left = outputColumn(bridge, s, card.left, card.leftName),
+                right = outputColumn(bridge, s, card.right, card.rightName)
             )
-        is DashboardCard.Output -> MonoDashboardCard(outputColumn(bridge, s, card.index))
+        is DashboardCard.Output -> MonoDashboardCard(outputColumn(bridge, s, card.index, card.name))
     }
 }
 
 private fun bands(bridge: DspiBridge, ch: Int): List<BandFields> = bridge.channelBands(ch)?.peq?.map { it.toFields() } ?: emptyList()
 
-private fun outputColumn(bridge: DspiBridge, s: DspState, index: Int) =
-    ChannelColumn(bridge.channelName(2 + index), outputColor(s, index), s.outputDelayMs.getOrElse(index) { 0f }, bands(bridge, 2 + index))
+private fun outputColumn(bridge: DspiBridge, s: DspState, index: Int, name: String? = null) = ChannelColumn(
+    name ?: bridge.channelLabel(2 + index),
+    outputColor(s, index),
+    s.outputDelayMs.getOrElse(index) { 0f },
+    bands(
+        bridge,
+        2 + index
+    )
+)
 
 /**
  * macOS "Delay: %.0fms", with up to two decimals when the delay has them

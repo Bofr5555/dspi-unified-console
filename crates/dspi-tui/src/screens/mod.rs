@@ -432,6 +432,81 @@ pub fn channel_name(state: &DeviceState, channel: usize) -> String {
         .descriptor(state.caps.num_outputs)
 }
 
+// -- BUG1 --
+thread_local! {
+    /// The outputs' labels and slot names for the bulk image they were worked
+    /// out from: [`channel_label`] is called while drawing, the labels change
+    /// only with the image.
+    static LABELS: std::cell::RefCell<(Vec<u8>, Vec<(String, String, String)>)> =
+        const { std::cell::RefCell::new((Vec::new(), Vec::new())) };
+}
+
+/// The outputs' (label, slot name, short label) for `state`, read again only
+/// when its bulk image changed.
+fn output_labels(state: &DeviceState) -> Vec<(String, String, String)> {
+    LABELS.with_borrow_mut(|(key, labels)| {
+        if key.as_slice() != state.bulk.as_bytes() {
+            use dspi_session::output_label::{LabelSource, output_labels};
+            *labels = output_labels(&LabelSource::from_state(state))
+                .into_iter()
+                .map(|l| {
+                    use dspi_session::output_label::Band;
+                    let short = match (l.user_named, l.band) {
+                        (true, _) => l.label.clone(),
+                        (false, Band::Full) => l.channel.clone(),
+                        (false, Band::Low) => format!("{}·Lo", l.channel),
+                        (false, Band::High) => format!("{}·Hi", l.channel),
+                        (false, Band::Mid) => format!("{}·Mid", l.channel),
+                    };
+                    (l.label, l.slot_name, short)
+                })
+                .collect();
+            *key = state.bulk.as_bytes().to_vec();
+        }
+        labels.clone()
+    })
+}
+
+/// What to show for a channel (BUG1): an input's name; for an output, the
+/// name the user set, else the core's label from the routing and the filters
+/// ("Out 1 · R · Low", dspi-session's `output_label`). [`channel_name`] stays
+/// the stored name, for a rename and the filter file.
+pub fn channel_label(state: &DeviceState, channel: usize) -> String {
+    let ni = usize::from(state.caps.num_inputs);
+    match channel.checked_sub(ni) {
+        Some(o) if o < usize::from(state.caps.num_outputs) => output_labels(state)
+            .get(o)
+            .map(|l| l.0.clone())
+            .filter(|l| !l.is_empty())
+            .unwrap_or_else(|| channel_name(state, channel)),
+        _ => channel_name(state, channel),
+    }
+}
+
+/// [`channel_label`] for the sidebar's five columns beside the output's
+/// `OUTn`: the user's name, else the channel with its band cut short ("R·Lo",
+/// "R·Hi", "L·Mid"; a full-range output just "L", "R" or "L+R").
+pub fn channel_short_label(state: &DeviceState, channel: usize) -> String {
+    let ni = usize::from(state.caps.num_inputs);
+    match channel.checked_sub(ni) {
+        Some(o) if o < usize::from(state.caps.num_outputs) => output_labels(state)
+            .get(o)
+            .map(|l| l.2.clone())
+            .filter(|l| !l.is_empty())
+            .unwrap_or_else(|| channel_name(state, channel)),
+        _ => channel_name(state, channel),
+    }
+}
+
+/// The firmware's name for output `output`'s slot ("I2S 1 L", "PDM"), for a
+/// detail line; empty past the outputs.
+pub fn slot_name(state: &DeviceState, output: usize) -> String {
+    output_labels(state)
+        .get(output)
+        .map(|l| l.1.clone())
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -817,5 +892,99 @@ pub(crate) mod tests {
         assert_eq!(st.linked_partner(0, 8), Some(1));
         assert_eq!(st.linked_partner(1, 8), Some(0));
         assert_eq!(st.linked_partner(1, 1), None, "partner is not live");
+    }
+
+    // -- BUG1 --
+    /// The K340's own configuration (tests/fixtures/preset/k340-bug1.dspipreset)
+    /// on the demo device, applied as the Terminal's `import` does.
+    fn k340() -> (DeviceState, dspi_session::Session) {
+        use dspi_session::preset_file::{ApplyOptions, apply, parse};
+        use dspi_transport::Transport;
+        let mut t: Box<dyn Transport> = Box::new(dspi_transport::FakeDevice::demo());
+        let caps = dspi_session::probe(t.as_mut()).unwrap();
+        let mut session = dspi_session::Session::new(t, caps.clone()).unwrap();
+        let doc = parse(include_str!(
+            "../../../../tests/fixtures/preset/k340-bug1.dspipreset"
+        ))
+        .unwrap();
+        let options = ApplyOptions {
+            hardware_io: true,
+            ..ApplyOptions::default()
+        };
+        let _ = apply(&mut session, &doc, options);
+        let bulk = session.snapshot().unwrap();
+        (DeviceState::new(caps, bulk), session)
+    }
+
+    #[test]
+    fn bug1_k340_outputs_show_their_labels_and_slots() {
+        let (s, mut session) = k340();
+        let ni = s.caps.num_inputs as usize;
+        let shown: Vec<String> = (0..4).map(|o| channel_label(&s, ni + o)).collect();
+        assert_eq!(
+            shown,
+            [
+                "Out 1 · R · Low",
+                "Out 2 · R · High",
+                "Out 3 · L · Low",
+                "Out 4 · L · High"
+            ]
+        );
+        let slots: Vec<String> = (0..4).map(|o| slot_name(&s, o)).collect();
+        assert_eq!(slots, ["I2S 1 L", "I2S 1 R", "I2S 2 L", "I2S 2 R"]);
+        // The stored name stays what a rename and a filter file read
+        assert_eq!(channel_name(&s, ni), "I2S 1 L");
+        // An input keeps its name
+        assert_eq!(channel_label(&s, 0), channel_name(&s, 0));
+
+        // A user's name wins, read again once the image changed
+        session
+            .write(
+                "ch.name",
+                &[ni as u8],
+                dspi_proto::value::Value::Text("Right woofer".into()),
+            )
+            .unwrap();
+        let s = DeviceState::new(s.caps.clone(), session.snapshot().unwrap());
+        assert_eq!(channel_label(&s, ni), "Right woofer");
+        assert_eq!(channel_label(&s, ni + 1), "Out 2 · R · High");
+    }
+
+    #[test]
+    fn bug1_the_fixture_state_is_labelled_too() {
+        let s = fixture::state();
+        let ni = s.caps.num_inputs as usize;
+        for o in 0..s.caps.num_outputs as usize {
+            let l = channel_label(&s, ni + o);
+            let stored = channel_name(&s, ni + o);
+            assert!(
+                l == stored || l.starts_with(&format!("Out {} · ", o + 1)),
+                "{o}: {l} / {stored}"
+            );
+        }
+    }
+
+    /// The Terminal's main screen on the K340: the sidebar rows carry the
+    /// labels. Prints the frame (`--nocapture`) for the BUG1 report.
+    #[test]
+    fn bug1_k340_sidebar_frame() {
+        let (s, mut session) = k340();
+        let theme = crate::Theme::console(
+            crate::theme::ColorDepth::TrueColor,
+            crate::theme::Glyphs::Braille,
+        );
+        let mut live = crate::live::Live::new(
+            s,
+            theme,
+            crate::perf::Performance::lite(),
+            Box::new(crate::live::ConsoleScreens::new()),
+        );
+        live.tick(&mut session, None);
+        let frame = crate::render_frame(110, 30, |a, b| live.draw(a, b));
+        println!("{frame}");
+        for l in ["R·Lo", "R·Hi", "L·Lo", "L·Hi", "Out 1 · R · Low"] {
+            assert!(frame.contains(l), "{l} not in\n{frame}");
+        }
+        assert_eq!(channel_short_label(&live.state, 8), "R·Lo");
     }
 }

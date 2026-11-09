@@ -430,6 +430,10 @@ fn snapshot(core: &DspiCore, demo: bool) -> Value {
             "readOnlyReason": if read_only { DspiError::ReadOnly.to_string() } else { String::new() },
         },
         "state": state,
+        // -- BUG1 -- what each output is called and how the dashboard pairs
+        // them, worked out once per snapshot (src/output_labels.rs in the core)
+        "outputLabels": tidy(&core.output_labels()),
+        "outputCards": tidy(&core.output_cards()),
     })
 }
 
@@ -906,6 +910,47 @@ mod tests {
         );
         let r = run(h, "core1Conflict", json!({ "output": 200 }));
         assert_eq!(code(&r), "invalid", "{r}");
+        session_free(h).unwrap();
+    }
+    // -- BUG1 --
+    #[test]
+    fn bug1_the_snapshot_carries_output_labels_and_cards() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        let snap = ok(h, "open", json!({ "kind": "demo" }));
+        let n = snap["state"]["numOutputChannels"].as_u64().unwrap() as usize;
+        assert_eq!(snap["outputLabels"].as_array().unwrap().len(), n);
+        assert_eq!(
+            snap["outputLabels"][0]["label"], "Out 1 · L · Full",
+            "{}",
+            snap["outputLabels"]
+        );
+        // The K340's own configuration on the demo device
+        let core = core_of(h).unwrap();
+        let doc = include_str!("../../../tests/fixtures/preset/k340-bug1.dspipreset");
+        let r: Value = serde_json::from_str(&core.config_import(doc.into(), 2)).unwrap();
+        assert_eq!(r["ok"], true, "{r}");
+        let snap = ok(h, "state", Value::Null);
+        let labels: Vec<&str> = snap["outputLabels"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| l["label"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            labels[..4],
+            [
+                "Out 1 · R · Low",
+                "Out 2 · R · High",
+                "Out 3 · L · Low",
+                "Out 4 · L · High"
+            ]
+        );
+        assert_eq!(snap["outputLabels"][1]["slotName"], "I2S 1 R");
+        assert_eq!(
+            snap["outputCards"][0],
+            json!({ "left": 2, "right": 0, "title": "Woofers", "leftName": "Woofers L", "rightName": "Woofers R" })
+        );
         session_free(h).unwrap();
     }
 }

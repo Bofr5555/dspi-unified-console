@@ -1375,6 +1375,19 @@ interface DspiCoreApi : AutoCloseable {
     fun processNotifications(): NotifyResult
 
     /**
+     * Every output's label from the mirror, in output order: the user's name,
+     * else "Out N · channel · band" from the routing and the filters. Call it
+     * when the state changes, not per frame. Never fails.
+     */
+    fun outputLabels(): List<OutputLabel>
+
+    /**
+     * The dashboard's output cards from the mirror: paired by the crossfeed
+     * pair map when the device has one, else by slot. Never fails.
+     */
+    fun outputCards(): List<OutputCard>
+
+    /**
      * PEQ band 0..9 of wire channel `ch`, sent as one whole band
      * (`REQ_SET_EQ_PARAM`).
      *
@@ -2909,4 +2922,18 @@ interface DspiCoreApi : AutoCloseable {
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun filterTypeName(code: Int): String
+
+    /**
+     * Every output's label for the state `input`, in output order.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun outputLabelsFor(input: OutputLabelInput): List<OutputLabel>
+
+    /**
+     * The dashboard's output cards for the state `input`, in order.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun outputCardsFor(input: OutputLabelInput): List<OutputCard>
 }

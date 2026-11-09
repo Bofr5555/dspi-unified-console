@@ -191,7 +191,7 @@ fun TubeModellerView(bridge: DspiBridge, modifier: Modifier = Modifier) {
     val tube = TubeParameters.from(st)
     val outputCount = st.numOutputChannels
     // Names are plain getters: read here, where `st` is observed, not inside the skippable column lambdas (audit T3).
-    val outputNames = (0 until outputCount).map { bridge.channelName(2 + it) }
+    val outputNames = (0 until outputCount).map { bridge.channelLabel(2 + it) }
     val supported = ToolFirmware.supportsTube(st.formatVersion)
     val appSettings = LocalAppSettings.current
     // Basic shows the tube and the two controls most people need; remembered across launches (@AppStorage "tubeModellerAdvanced").

@@ -2123,3 +2123,30 @@ pub extern "C" fn dspi_core1_conflict_reason(
 #[cfg(test)]
 #[path = "fns_misc/tests_wp_cg36.rs"]
 mod tests_wp_cg36;
+
+// -- BUG1 -- ── Added: output labels and dashboard cards ───────────────
+
+/// Every output's label from the mirror (`DspiCore::output_labels`): JSON
+/// {ok, value: [{output, label, slotName, userNamed, channel, band}, ...]} in
+/// output order. `label` is the user's name, else "Out 1 · R · Low" from the
+/// routing and the filters; `slotName` the firmware's name for the slot, for a
+/// tooltip. Call it when the state changes, not per frame. Returns the length
+/// needed including the NUL, 0 for a null handle.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_output_labels(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
+    text(core, buf, len, |c| json_reply(Ok(c.output_labels())))
+}
+
+/// The dashboard's output cards (`DspiCore::output_cards`): JSON {ok, value:
+/// [{left, right, title, leftName, rightName}, ...]}, `right` null for a card
+/// of one output. Paired by the crossfeed pair map when the device has one,
+/// else by slot. Returns the length needed including the NUL, 0 for a null
+/// handle.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_output_cards(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
+    text(core, buf, len, |c| json_reply(Ok(c.output_cards())))
+}
+
+#[cfg(test)]
+#[path = "fns_misc/tests_bug1.rs"]
+mod tests_bug1;

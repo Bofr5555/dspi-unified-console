@@ -591,7 +591,7 @@ impl SignalsPanel {
             .map(|o| {
                 let bit = 1u16 << o;
                 ChipSpec {
-                    label: super::channel_name(state, state.caps.num_inputs as usize + o),
+                    label: super::channel_label(state, state.caps.num_inputs as usize + o),
                     state: if self.draft.channel_mask & bit == 0 {
                         ChipState::Off
                     } else if self.draft.invert_mask & bit != 0 {
@@ -774,7 +774,7 @@ impl SignalsPanel {
             if let Some((_, _, _, channel)) = state.siggen_state
                 && channel != 0xFF
             {
-                parts.push(super::channel_name(
+                parts.push(super::channel_label(
                     state,
                     state.caps.num_inputs as usize + channel as usize,
                 ));

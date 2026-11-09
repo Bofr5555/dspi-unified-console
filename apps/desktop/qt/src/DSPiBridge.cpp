@@ -53,6 +53,9 @@ DSPiBridge::DSPiBridge(Mode mode, QObject *parent)
     m_core = dspi_core_new();
     // Every state change may make the preset dirty or clean again
     connect(this, &DSPiBridge::stateChanged, this, &DSPiBridge::updatePresetDirty);
+    // -- BUG1 -- and may rename, reroute or refilter an output: the labels are read again, once.
+    // QML's handlers of stateChanged run before this; views that show labels follow outputLabelsChanged
+    connect(this, &DSPiBridge::stateChanged, this, &DSPiBridge::readOutputLabels);
     // Ahead of every outside listener, which then sees it current
     connect(this, &DSPiBridge::stateChanged, this, &DSPiBridge::updateWritable);
     connect(this, &DSPiBridge::statusChanged, this, &DSPiBridge::updateWritable);
@@ -448,6 +451,64 @@ QString DSPiBridge::channelName(int ch) const {
     if (in >= 0) return in < 2 ? (in == 0 ? "USB L" : "USB R") : tr("Input %1").arg(in + 1);
     int out = outputOf(ch);
     return isPdmOutput(out) ? QString("PDM") : tr("Output %1").arg(out + 1);
+}
+
+// -- BUG1 --
+namespace {
+QJsonArray coreArray(FfiCore *core, uint32_t (*call)(FfiCore *, char *, uint32_t)) {
+    QByteArray buf(4 * 1024, '\0');
+    uint32_t needed = call(core, buf.data(), uint32_t(buf.size()));
+    if (needed > uint32_t(buf.size())) {
+        buf.resize(int(needed));
+        needed = call(core, buf.data(), uint32_t(buf.size()));
+    }
+    if (needed == 0 || needed > uint32_t(buf.size())) return {};
+    buf.truncate(int(needed - 1));
+    return QJsonDocument::fromJson(buf).object().value(QStringLiteral("value")).toArray();
+}
+}
+
+void DSPiBridge::refreshOutputLabels() const {
+    if (!m_labelsStale) return;
+    m_labelsStale = false;
+    m_outputLabels.clear();
+    m_outputSlots.clear();
+    m_outputCards.clear();
+    for (const QJsonValue &v : coreArray(m_core, dspi_output_labels)) {
+        m_outputLabels << v[QStringLiteral("label")].toString();
+        m_outputSlots << v[QStringLiteral("slotName")].toString();
+    }
+    for (const QJsonValue &v : coreArray(m_core, dspi_output_cards)) {
+        QVariantMap c = v.toObject().toVariantMap();
+        if (v[QStringLiteral("right")].isNull()) c[QStringLiteral("right")] = -1;
+        m_outputCards << c;
+    }
+}
+
+void DSPiBridge::readOutputLabels() {
+    const QStringList labels = m_outputLabels, slotNames = m_outputSlots;
+    const QVariantList cards = m_outputCards;
+    m_labelsStale = true;
+    refreshOutputLabels();
+    if (labels != m_outputLabels || slotNames != m_outputSlots || cards != m_outputCards) emit outputLabelsChanged();
+}
+
+QString DSPiBridge::channelLabel(int ch) const {
+    const int out = outputOf(ch);
+    if (out < 0) return channelName(ch);
+    refreshOutputLabels();
+    const QString label = m_outputLabels.value(out);
+    return label.isEmpty() ? channelName(ch) : label;
+}
+
+QString DSPiBridge::outputSlotName(int output) const {
+    refreshOutputLabels();
+    return m_outputSlots.value(output);
+}
+
+QVariantList DSPiBridge::outputCards() const {
+    refreshOutputLabels();
+    return m_outputCards;
 }
 
 QString DSPiBridge::channelColor(int ch) const {

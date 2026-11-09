@@ -276,6 +276,10 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun processNotifications(): NotifyResult = core.processNotifications().toDomain()
 
+    override fun outputLabels(): List<OutputLabel> = core.outputLabels().map { it.toDomain() }
+
+    override fun outputCards(): List<OutputCard> = core.outputCards().map { it.toDomain() }
+
     override fun setFilter(ch: Int, band: Int, params: FilterParams) = call { core.setFilter(ch.toUByte(), band.toUByte(), params.toFfi()) }
 
     override fun setCrossover(ch: Int, xband: Int, params: FilterParams) = call { core.setCrossover(ch.toUByte(), xband.toUByte(), params.toFfi()) }
@@ -549,6 +553,10 @@ class FfiDspiCore : DspiCoreApi {
     override fun filterTypeNames(): List<FilterTypeName> = se.bofr.dspi.ffi.uniffi.filterTypeNames().map { it.toDomain() }
 
     override fun filterTypeName(code: Int): String = se.bofr.dspi.ffi.uniffi.filterTypeName(code.toUByte())
+
+    override fun outputLabelsFor(input: OutputLabelInput): List<OutputLabel> = se.bofr.dspi.ffi.uniffi.outputLabelsFor(input.toFfi()).map { it.toDomain() }
+
+    override fun outputCardsFor(input: OutputLabelInput): List<OutputCard> = se.bofr.dspi.ffi.uniffi.outputCardsFor(input.toFfi()).map { it.toDomain() }
 }
 
 internal class FfiAutoEqRebuild(private val inner: se.bofr.dspi.ffi.uniffi.AutoEqRebuild) : AutoEqRebuild {
@@ -1907,6 +1915,68 @@ internal fun FilterTypeName.toFfi() =
     se.bofr.dspi.ffi.uniffi.FilterTypeName(
         code = code.toUByte(),
         name = name,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.OutputLabel.toDomain() =
+    OutputLabel(
+        output = output.toInt(),
+        label = label,
+        slotName = slotName,
+        userNamed = userNamed,
+        channel = channel,
+        band = band,
+    )
+
+internal fun OutputLabel.toFfi() =
+    se.bofr.dspi.ffi.uniffi.OutputLabel(
+        output = output.toUByte(),
+        label = label,
+        slotName = slotName,
+        userNamed = userNamed,
+        channel = channel,
+        band = band,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.OutputCard.toDomain() =
+    OutputCard(
+        left = left.toInt(),
+        right = right?.let { it.toInt() },
+        title = title,
+        leftName = leftName,
+        rightName = rightName,
+    )
+
+internal fun OutputCard.toFfi() =
+    se.bofr.dspi.ffi.uniffi.OutputCard(
+        left = left.toUByte(),
+        right = right?.let { it.toUByte() },
+        title = title,
+        leftName = leftName,
+        rightName = rightName,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.OutputLabelInput.toDomain() =
+    OutputLabelInput(
+        numInputs = numInputs.toInt(),
+        numOutputs = numOutputs.toInt(),
+        outputTypes = outputTypes.map { it.toInt() and 0xFF },
+        channelNames = channelNames,
+        matrixRouting = matrixRouting,
+        outputFilters = outputFilters.map { it.map { it.toDomain() } },
+        outputEnabled = outputEnabled,
+        crossfeedPairMap = crossfeedPairMap.map { it.toInt() and 0xFF },
+    )
+
+internal fun OutputLabelInput.toFfi() =
+    se.bofr.dspi.ffi.uniffi.OutputLabelInput(
+        numInputs = numInputs.toUByte(),
+        numOutputs = numOutputs.toUByte(),
+        outputTypes = ByteArray(outputTypes.size) { outputTypes[it].toByte() },
+        channelNames = channelNames,
+        matrixRouting = matrixRouting,
+        outputFilters = outputFilters.map { it.map { it.toFfi() } },
+        outputEnabled = outputEnabled,
+        crossfeedPairMap = ByteArray(crossfeedPairMap.size) { crossfeedPairMap[it].toByte() },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.RawNotification.toDomain() =

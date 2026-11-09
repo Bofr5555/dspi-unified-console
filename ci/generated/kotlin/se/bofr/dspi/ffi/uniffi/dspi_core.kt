@@ -1452,6 +1452,14 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1524,6 +1532,10 @@ fun uniffi_dspi_core_checksum_func_link_ws_url(
 fun uniffi_dspi_core_checksum_func_onboarding_getting_started_json(
 ): Short
 fun uniffi_dspi_core_checksum_func_onboarding_whats_new_json(
+): Short
+fun uniffi_dspi_core_checksum_func_output_cards_for(
+): Short
+fun uniffi_dspi_core_checksum_func_output_labels_for(
 ): Short
 fun uniffi_dspi_core_checksum_func_quantize_delay(
 ): Short
@@ -1756,6 +1768,10 @@ fun uniffi_dspi_core_checksum_method_dspicore_open_fd(
 fun uniffi_dspi_core_checksum_method_dspicore_open_host(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_open_midi(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_output_cards(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_output_labels(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_poll_hotplug(
 ): Short
@@ -2303,6 +2319,10 @@ fun uniffi_dspi_core_fn_method_dspicore_open_host(`ptr`: Pointer,`transport`: Po
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_open_midi(`ptr`: Pointer,`input`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_output_cards(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_output_labels(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_poll_hotplug(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_preamp_max_db(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2635,6 +2655,10 @@ fun uniffi_dspi_core_fn_func_onboarding_getting_started_json(uniffi_out_err: Uni
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_onboarding_whats_new_json(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_output_cards_for(`input`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_output_labels_for(`input`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_quantize_delay(`ms`: Float,uniffi_out_err: UniffiRustCallStatus, 
 ): Float
 fun uniffi_dspi_core_fn_func_quantize_gain(`db`: Float,uniffi_out_err: UniffiRustCallStatus, 
@@ -2852,6 +2876,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_onboarding_whats_new_json() != 47484.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_output_cards_for() != 36798.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_output_labels_for() != 60813.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_quantize_delay() != 45128.toShort()) {
@@ -3200,6 +3230,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_open_midi() != 37496.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_output_cards() != 18705.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_output_labels() != 34681.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_poll_hotplug() != 29460.toShort()) {
@@ -6309,6 +6345,19 @@ public interface DspiCoreInterface {
      * sequence (a silent device is a timeout).
      */
     fun `openMidi`(`input`: MidiInputHandle)
+    
+    /**
+     * The dashboard's output cards from the mirror: paired by the crossfeed
+     * pair map when the device has one, else by slot. Never fails.
+     */
+    fun `outputCards`(): List<OutputCard>
+    
+    /**
+     * Every output's label from the mirror, in output order: the user's name,
+     * else "Out N · channel · band" from the routing and the filters. Call it
+     * when the state changes, not per frame. Never fails.
+     */
+    fun `outputLabels`(): List<OutputLabel>
     
     /**
      * Compare the USB bus with the last poll and report arrivals and
@@ -9968,6 +10017,39 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * The dashboard's output cards from the mirror: paired by the crossfeed
+     * pair map when the device has one, else by slot. Never fails.
+     */override fun `outputCards`(): List<OutputCard> {
+            return FfiConverterSequenceTypeOutputCard.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_output_cards(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Every output's label from the mirror, in output order: the user's name,
+     * else "Out N · channel · band" from the routing and the filters. Call it
+     * when the state changes, not per frame. Never fails.
+     */override fun `outputLabels`(): List<OutputLabel> {
+            return FfiConverterSequenceTypeOutputLabel.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_output_labels(
+        it, _status)
+}
+    }
+    )
+    }
     
 
     
@@ -17123,6 +17205,70 @@ public object FfiConverterTypeNotifyResult: FfiConverterRustBuffer<NotifyResult>
 
 
 /**
+ * One dashboard card: two outputs side by side, or one alone.
+ */
+data class OutputCard (
+    /**
+     * 0-based output index of the left (or only) column.
+     */
+    var `left`: kotlin.UByte, 
+    /**
+     * The right column's output; none for a card of one output.
+     */
+    var `right`: kotlin.UByte?, 
+    /**
+     * "Woofers", "Tweeters" or "Mids" for a pair on one band with default
+     * names; empty otherwise.
+     */
+    var `title`: kotlin.String, 
+    /**
+     * The columns' headings: "Woofers L" / "Woofers R" under a title, else
+     * the outputs' labels.
+     */
+    var `leftName`: kotlin.String, 
+    /**
+     * The right column's heading; empty for a card of one output.
+     */
+    var `rightName`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeOutputCard: FfiConverterRustBuffer<OutputCard> {
+    override fun read(buf: ByteBuffer): OutputCard {
+        return OutputCard(
+            FfiConverterUByte.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: OutputCard) = (
+            FfiConverterUByte.allocationSize(value.`left`) +
+            FfiConverterOptionalUByte.allocationSize(value.`right`) +
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterString.allocationSize(value.`leftName`) +
+            FfiConverterString.allocationSize(value.`rightName`)
+    )
+
+    override fun write(value: OutputCard, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`left`, buf)
+            FfiConverterOptionalUByte.write(value.`right`, buf)
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterString.write(value.`leftName`, buf)
+            FfiConverterString.write(value.`rightName`, buf)
+    }
+}
+
+
+
+/**
  * One output's fill, scaled and judged (`fetch_output_fills`).
  */
 data class OutputFill (
@@ -17175,6 +17321,159 @@ public object FfiConverterTypeOutputFill: FfiConverterRustBuffer<OutputFill> {
             FfiConverterUByte.write(value.`minPct`, buf)
             FfiConverterUByte.write(value.`maxPct`, buf)
             FfiConverterTypeFillBand.write(value.`band`, buf)
+    }
+}
+
+
+
+/**
+ * One output's label.
+ */
+data class OutputLabel (
+    /**
+     * 0-based output index.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * What to show: the user's name, else "Out 1 · R · Low".
+     */
+    var `label`: kotlin.String, 
+    /**
+     * The firmware's name for the slot ("I2S 1 L", "PDM"), for a tooltip or
+     * a detail line.
+     */
+    var `slotName`: kotlin.String, 
+    /**
+     * The output has a name the user set; `label` is that name.
+     */
+    var `userNamed`: kotlin.Boolean, 
+    /**
+     * "L", "R", "L+R", an input's name, "Mix", or "None".
+     */
+    var `channel`: kotlin.String, 
+    /**
+     * "Low", "High", "Band" or "Full".
+     */
+    var `band`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeOutputLabel: FfiConverterRustBuffer<OutputLabel> {
+    override fun read(buf: ByteBuffer): OutputLabel {
+        return OutputLabel(
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: OutputLabel) = (
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterString.allocationSize(value.`label`) +
+            FfiConverterString.allocationSize(value.`slotName`) +
+            FfiConverterBoolean.allocationSize(value.`userNamed`) +
+            FfiConverterString.allocationSize(value.`channel`) +
+            FfiConverterString.allocationSize(value.`band`)
+    )
+
+    override fun write(value: OutputLabel, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterString.write(value.`label`, buf)
+            FfiConverterString.write(value.`slotName`, buf)
+            FfiConverterBoolean.write(value.`userNamed`, buf)
+            FfiConverterString.write(value.`channel`, buf)
+            FfiConverterString.write(value.`band`, buf)
+    }
+}
+
+
+
+/**
+ * The state the labels read, for a client that keeps its own copy.
+ */
+data class OutputLabelInput (
+    /**
+     * Live input channels.
+     */
+    var `numInputs`: kotlin.UByte, 
+    /**
+     * Live output channels, the PDM sub last.
+     */
+    var `numOutputs`: kotlin.UByte, 
+    /**
+     * Per slot: 1 = I2S, else S/PDIF.
+     */
+    var `outputTypes`: kotlin.ByteArray, 
+    /**
+     * Channel names in wire order: inputs, then outputs.
+     */
+    var `channelNames`: List<kotlin.String>, 
+    /**
+     * Crosspoint on, `[input][output]`.
+     */
+    var `matrixRouting`: List<List<kotlin.Boolean>>, 
+    /**
+     * Each output's bands: PEQ and crossover, in any order.
+     */
+    var `outputFilters`: List<List<FilterParams>>, 
+    /**
+     * Output enabled, per output.
+     */
+    var `outputEnabled`: List<kotlin.Boolean>, 
+    /**
+     * The K340 crossfeed pair map, 4 bytes; empty or zero elsewhere.
+     */
+    var `crossfeedPairMap`: kotlin.ByteArray
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeOutputLabelInput: FfiConverterRustBuffer<OutputLabelInput> {
+    override fun read(buf: ByteBuffer): OutputLabelInput {
+        return OutputLabelInput(
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceSequenceBoolean.read(buf),
+            FfiConverterSequenceSequenceTypeFilterParams.read(buf),
+            FfiConverterSequenceBoolean.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: OutputLabelInput) = (
+            FfiConverterUByte.allocationSize(value.`numInputs`) +
+            FfiConverterUByte.allocationSize(value.`numOutputs`) +
+            FfiConverterByteArray.allocationSize(value.`outputTypes`) +
+            FfiConverterSequenceString.allocationSize(value.`channelNames`) +
+            FfiConverterSequenceSequenceBoolean.allocationSize(value.`matrixRouting`) +
+            FfiConverterSequenceSequenceTypeFilterParams.allocationSize(value.`outputFilters`) +
+            FfiConverterSequenceBoolean.allocationSize(value.`outputEnabled`) +
+            FfiConverterByteArray.allocationSize(value.`crossfeedPairMap`)
+    )
+
+    override fun write(value: OutputLabelInput, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`numInputs`, buf)
+            FfiConverterUByte.write(value.`numOutputs`, buf)
+            FfiConverterByteArray.write(value.`outputTypes`, buf)
+            FfiConverterSequenceString.write(value.`channelNames`, buf)
+            FfiConverterSequenceSequenceBoolean.write(value.`matrixRouting`, buf)
+            FfiConverterSequenceSequenceTypeFilterParams.write(value.`outputFilters`, buf)
+            FfiConverterSequenceBoolean.write(value.`outputEnabled`, buf)
+            FfiConverterByteArray.write(value.`crossfeedPairMap`, buf)
     }
 }
 
@@ -20401,6 +20700,38 @@ public object FfiConverterTypeVregDemoEvent: FfiConverterRustBuffer<VregDemoEven
 /**
  * @suppress
  */
+public object FfiConverterOptionalUByte: FfiConverterRustBuffer<kotlin.UByte?> {
+    override fun read(buf: ByteBuffer): kotlin.UByte? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterUByte.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.UByte?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterUByte.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.UByte?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterUByte.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalUShort: FfiConverterRustBuffer<kotlin.UShort?> {
     override fun read(buf: ByteBuffer): kotlin.UShort? {
         if (buf.get().toInt() == 0) {
@@ -21145,6 +21476,34 @@ public object FfiConverterSequenceTypeNamedValue: FfiConverterRustBuffer<List<Na
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeOutputCard: FfiConverterRustBuffer<List<OutputCard>> {
+    override fun read(buf: ByteBuffer): List<OutputCard> {
+        val len = buf.getInt()
+        return List<OutputCard>(len) {
+            FfiConverterTypeOutputCard.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<OutputCard>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeOutputCard.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<OutputCard>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeOutputCard.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeOutputFill: FfiConverterRustBuffer<List<OutputFill>> {
     override fun read(buf: ByteBuffer): List<OutputFill> {
         val len = buf.getInt()
@@ -21163,6 +21522,34 @@ public object FfiConverterSequenceTypeOutputFill: FfiConverterRustBuffer<List<Ou
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeOutputFill.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeOutputLabel: FfiConverterRustBuffer<List<OutputLabel>> {
+    override fun read(buf: ByteBuffer): List<OutputLabel> {
+        val len = buf.getInt()
+        return List<OutputLabel>(len) {
+            FfiConverterTypeOutputLabel.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<OutputLabel>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeOutputLabel.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<OutputLabel>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeOutputLabel.write(it, buf)
         }
     }
 }
@@ -21908,6 +22295,30 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_onboarding_whats_new_json(
         _status)
+}
+    )
+    }
+    
+
+        /**
+         * The dashboard's output cards for the state `input`, in order.
+         */ fun `outputCardsFor`(`input`: OutputLabelInput): List<OutputCard> {
+            return FfiConverterSequenceTypeOutputCard.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_output_cards_for(
+        FfiConverterTypeOutputLabelInput.lower(`input`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Every output's label for the state `input`, in output order.
+         */ fun `outputLabelsFor`(`input`: OutputLabelInput): List<OutputLabel> {
+            return FfiConverterSequenceTypeOutputLabel.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_output_labels_for(
+        FfiConverterTypeOutputLabelInput.lower(`input`),_status)
 }
     )
     }

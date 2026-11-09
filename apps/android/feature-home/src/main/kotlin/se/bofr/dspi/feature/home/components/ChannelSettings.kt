@@ -297,7 +297,7 @@ private fun InputRoutingRow(
     val liveGain = gains.getOrNull(input)?.getOrNull(output) ?: 0f
     val inputColor = ChannelPalette.input(input)
     val name = bridge.channelName(bridge.inputAppId(input))
-    val outputName = bridge.channelName(2 + output).trim().ifEmpty { "Out ${output + 1}" }
+    val outputName = bridge.channelLabel(2 + output).trim().ifEmpty { "Out ${output + 1}" }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             Modifier

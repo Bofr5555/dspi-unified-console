@@ -403,8 +403,8 @@ Item {
         icon: "warning"
         iconTint: "#ff6961"
         title: qsTr("Clear All Bands?")
-        message: xo ? qsTr("Every crossover band on %1 will be set to Off.").arg(bridge.channelName(filterListRoot.channelId))
-                 : qsTr("Every PEQ band on %1 will be set to Off.").arg(bridge.channelName(filterListRoot.channelId))
+        message: xo ? qsTr("Every crossover band on %1 will be set to Off.").arg(bridge.channelLabel(filterListRoot.channelId))
+                 : qsTr("Every PEQ band on %1 will be set to Off.").arg(bridge.channelLabel(filterListRoot.channelId))
         buttons: [
             { key: "cancel", text: qsTr("Cancel") },
             { key: "clear", text: qsTr("Clear All"), role: "destructive" }

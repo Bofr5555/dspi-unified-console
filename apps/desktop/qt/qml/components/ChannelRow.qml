@@ -13,6 +13,12 @@ Rectangle {
 
     property int channelIndex: 0
     property string channelName: ""
+    // -- BUG1 -- the stored name a rename starts from (the row may show a derived label), the
+    // name column's width (the sidebar's, so every row's meter starts at the same place) and the
+    // name's tooltip (an output's slot)
+    property string renameFrom: channelName
+    property int nameWidth: 72
+    property string nameDetail: ""
     property string channelColor: "#FFFFFF"
     property color parsedColor: channelColor
     property string descriptor: ""
@@ -33,7 +39,7 @@ Rectangle {
 
     function startRename() {
         renaming = true
-        nameEdit.text = channelName
+        nameEdit.text = renameFrom
         nameEdit.forceActiveFocus()
         nameEdit.selectAll()
     }
@@ -41,7 +47,7 @@ Rectangle {
         if (!renaming) return
         renaming = false
         var name = nameEdit.text.trim()
-        if (commit && name.length > 0 && name !== channelName)
+        if (commit && name.length > 0 && name !== renameFrom)
             bridge.setChannelName(channelIndex, name.substring(0, 31))
     }
 
@@ -73,8 +79,12 @@ Rectangle {
         id: nameText
         visible: !renaming
         text: channelName
-        // Name column as on macOS (72 + 4 gap), so meters line up close to the names
-        width: 72
+        // Name column as on macOS (72 + 4 gap), so meters line up close to the names; wider when
+        // an output's label needs it (-- BUG1 --, Sidebar.qml's nameColumn)
+        width: nameWidth
+        ToolTip.text: nameDetail
+        ToolTip.visible: nameDetail !== "" && hover.containsMouse && !renaming
+        ToolTip.delay: 600
         elide: Text.ElideRight
         font.pixelSize: 14
         color: isMacOS ? (isSelected || isLinkedHighlight ? MacColors.label : MacColors.opacity(MacColors.label, 0.9)) : isMuted ? Qt.rgba(1, 1, 1, 0.35) : "#d6d6d6"

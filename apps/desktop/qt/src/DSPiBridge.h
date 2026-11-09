@@ -240,6 +240,15 @@ public:
     Q_INVOKABLE QString channelName(int ch) const;
     Q_INVOKABLE QString channelColor(int ch) const;
     Q_INVOKABLE QString channelDescriptor(int ch) const;
+    // -- BUG1 -- What to show for a channel: an input's name; an output's user-set name, else the
+    // core's label from the routing and the filters ("Out 1 · R · Low"). channelName stays the
+    // stored name, what a rename starts from.
+    Q_INVOKABLE QString channelLabel(int ch) const;
+    // The firmware's name for an output's slot ("I2S 1 L", "PDM"), for a tooltip; "" if absent
+    Q_INVOKABLE QString outputSlotName(int output) const;
+    // The dashboard's output cards, [{left, right (-1: one output), title, leftName, rightName}]:
+    // paired by the crossfeed pair map when the device has one, else by slot
+    Q_INVOKABLE QVariantList outputCards() const;
 
     // PEQ bands (app id, band 0..9)
     Q_INVOKABLE int filterType(int ch, int band) const;
@@ -537,6 +546,9 @@ signals:
     void deviceArrived(const QString &serial);
     void deviceDeparted(const QString &serial);
     void magnitudesChanged();
+    // -- BUG1 -- an output's label or the dashboard's cards changed: after stateChanged, which
+    // QML handlers receive before the bridge has read the new labels
+    void outputLabelsChanged();
     void dacMuteApplied(bool accepted);
     void ctrlIfaceApplied(int which, int status);
     // A value shown on the graph changed mid-drag (output gain): redraw
@@ -572,6 +584,13 @@ private:
     // hardware knob sends many), each batch with one stateChanged
     QTimer *m_notifyTimer = nullptr;
     bool m_hardwareUnsaved = false;
+    // -- BUG1 -- the core's output labels and cards, read again after a stateChanged (never per frame)
+    void refreshOutputLabels() const;
+    void readOutputLabels();
+    mutable bool m_labelsStale = true;
+    mutable QStringList m_outputLabels;
+    mutable QStringList m_outputSlots;
+    mutable QVariantList m_outputCards;
     bool m_presetDirty = false;
     QString m_connectionError;
     void updatePresetDirty();
