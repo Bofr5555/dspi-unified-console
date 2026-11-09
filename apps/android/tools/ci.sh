@@ -192,7 +192,9 @@ pkg_release() {
 
   # -- WP AN15 -- R8 is on: Play retraces crash reports with the mapping the bundle carries
   step "release: R8 mapping in the bundle"
-  unzip -l "$aab" | grep -q "BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map"
+  # (by name, not `unzip -l | grep -q`: grep -q exits at the first match and the
+  # SIGPIPE to unzip fails the pipeline under pipefail; gate-4 F4)
+  unzip -l "$aab" "BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map" >/dev/null
 
   step "release: bundletool validate"
   bundletool validate --bundle="$aab" >/dev/null
