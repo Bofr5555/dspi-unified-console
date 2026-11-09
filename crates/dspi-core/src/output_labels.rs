@@ -290,8 +290,7 @@ mod tests_bug1 {
             qp: 0.707,
         };
         for o in 0..2u8 {
-            core.set_crossover(ni + o, 0, lp.clone())
-                .expect("crossover");
+            core.set_crossover(ni + o, 0, lp).expect("crossover");
             core.set_matrix_route(0, o, true, 0.0, false)
                 .expect("route");
             core.set_matrix_route(1, o, true, 0.0, false)
