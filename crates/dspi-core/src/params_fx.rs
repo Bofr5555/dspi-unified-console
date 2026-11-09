@@ -529,7 +529,7 @@ impl DspiCore {
     /// `ReadOnly`, `Unsupported` (no psychoacoustic bass), `Transfer`.
     pub fn set_psybass_param(&self, param: u8, value: f32) -> Result<()> {
         let (path, v) = psybass_quantize(param, value)?;
-        self.lock().fx_write(path, &[], v, |s| match param {
+        self.fx_lock().fx_write(path, &[], v, |s| match param {
             PSYBASS_PARAM_CUTOFF => s.psybass_cutoff_hz = v,
             PSYBASS_PARAM_HARMONICS => s.psybass_harmonics_db = v,
             PSYBASS_PARAM_DRIVE => s.psybass_drive_db = v,
@@ -542,7 +542,7 @@ impl DspiCore {
     ///
     /// Errors: `Disconnected`, `ReadOnly`, `Unsupported`, `Transfer`.
     pub fn set_psybass_mask(&self, mask: u16) -> Result<()> {
-        self.lock()
+        self.fx_lock()
             .fx_write("bass.mask", &[], f32::from(mask), |s| {
                 s.psybass_output_mask = mask;
             })
@@ -552,7 +552,7 @@ impl DspiCore {
     ///
     /// Errors: `Disconnected`, `ReadOnly`, `Unsupported`, `Transfer`.
     pub fn set_psybass_enabled(&self, enabled: bool) -> Result<()> {
-        self.lock()
+        self.fx_lock()
             .fx_write("bass.on", &[], f32::from(u8::from(enabled)), |s| {
                 s.psybass_enabled = enabled;
             })
@@ -572,7 +572,7 @@ impl DspiCore {
     /// `Transfer`.
     pub fn set_limiter_param(&self, output: u8, param: u8, value: f32) -> Result<()> {
         let (path, v) = limiter_quantize(param, value)?;
-        self.lock().fx_write(path, &[output], v, |s| {
+        self.fx_lock().fx_write(path, &[output], v, |s| {
             limiters(s).set(output, param, v);
         })
     }
@@ -584,6 +584,7 @@ impl DspiCore {
     /// Errors: `Disconnected`, `Unsupported` (no limiter), `Transfer`
     /// (including a short reply).
     pub fn fetch_limiter_meter(&self) -> Result<Vec<f32>> {
+        self.ensure_probed(); // -- WP LK4 --
         let mut inner = self.lock();
         inner.require_feature("output_limiter")?;
         inner.read_meter(
@@ -603,7 +604,7 @@ impl DspiCore {
     /// `ReadOnly`, `Unsupported` (RP2040), `Transfer`.
     pub fn set_upmix_param(&self, id: u8, value: f32) -> Result<()> {
         let (path, v) = upmix_quantize(id, value)?;
-        self.lock().fx_write(path, &[], v, |s| {
+        self.fx_lock().fx_write(path, &[], v, |s| {
             if let Some(slot) = s.upmix.get_mut(usize::from(id)) {
                 *slot = v;
             }
@@ -629,7 +630,7 @@ impl DspiCore {
     /// `ReadOnly`, `Unsupported` (no subharmonic synth), `Transfer`.
     pub fn set_subharm_param(&self, id: u8, value: f32) -> Result<()> {
         let (path, v) = subharm_quantize(id, value)?;
-        self.lock().fx_write(path, &[], v, |s| {
+        self.fx_lock().fx_write(path, &[], v, |s| {
             if let Some(slot) = s.subharm.get_mut(usize::from(id)) {
                 *slot = v;
             }
@@ -641,7 +642,7 @@ impl DspiCore {
     ///
     /// Errors: `Disconnected`, `ReadOnly`, `Unsupported`, `Transfer`.
     pub fn set_subharm_solo(&self, solo: bool) -> Result<()> {
-        self.lock()
+        self.fx_lock()
             .fx_write("sub.solo", &[], f32::from(u8::from(solo)), |s| {
                 s.subharm_solo = solo;
             })
@@ -652,6 +653,7 @@ impl DspiCore {
     ///
     /// Errors: `Disconnected`, `Unsupported`, `Transfer`.
     pub fn fetch_subharm_headroom(&self) -> Result<f32> {
+        self.ensure_probed(); // -- WP LK4 --
         let mut inner = self.lock();
         inner.require_feature("subharmonic_synth")?;
         let d = inner.conn()?.get(op::REQ_GET_SUBHARM_HEADROOM, 0, 4)?;
@@ -668,6 +670,7 @@ impl DspiCore {
     ///
     /// Errors: `Disconnected`, `Unsupported`, `Transfer`.
     pub fn fetch_subharm_meter(&self) -> Result<Vec<f32>> {
+        self.ensure_probed(); // -- WP LK4 --
         let mut inner = self.lock();
         inner.require_feature("subharmonic_synth")?;
         inner.read_meter(op::REQ_GET_SUBHARM_METER, 0, 32767.0, "subharm meter")
@@ -683,7 +686,7 @@ impl DspiCore {
     /// `ReadOnly`, `Unsupported` (no tube preamp), `Transfer`.
     pub fn set_tube_param(&self, idx: u8, value: f32) -> Result<()> {
         let (path, v) = tube_quantize(idx, value)?;
-        self.lock()
+        self.fx_lock()
             .fx_write(path, &[], v, |s| tube_apply(&mut s.tube, idx, v))
     }
 }
@@ -717,6 +720,17 @@ pub(crate) fn fx_param(path: &str) -> Option<(Fx, u8)> {
         (Fx::Limiter, id(&LIMITER)),
     ];
     tables.into_iter().find_map(|(fx, i)| i.map(|i| (fx, i)))
+}
+
+// -- WP LK4 --
+impl DspiCore {
+    /// The lock for an effect write: every effect is a probed feature, so a
+    /// DSPi Link bind still completing its probe completes it first (the write
+    /// then goes, or is refused as unsupported, on what the device said).
+    fn fx_lock(&self) -> std::sync::MutexGuard<'_, Inner> {
+        self.ensure_probed();
+        self.lock()
+    }
 }
 
 #[cfg(test)]

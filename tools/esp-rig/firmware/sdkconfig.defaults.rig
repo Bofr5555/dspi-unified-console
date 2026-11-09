@@ -1,0 +1,6 @@
+# LK3 rig: applied after upstream's sdkconfig.defaults and .esp32. QEMU's
+# OpenCores Ethernet MAC carries the network instead of the Wi-Fi radio.
+CONFIG_ETH_USE_OPENETH=y
+CONFIG_ETH_OPENETH_DMA_RX_BUFFER_NUM=8
+CONFIG_ETH_OPENETH_DMA_TX_BUFFER_NUM=4
+# QEMU has no PSRAM; upstream already boots without it (IGNORE_NOTFOUND).

@@ -97,6 +97,7 @@ use dspi_transport::{
 use crate::callbacks::LinkListener;
 use crate::records::*;
 use crate::{DspiCore, DspiError, MeterRead, Result, SideChannel};
+use dspi_session::ext_state::ExtState;
 
 /// The role asked for when pairing, as the macOS Console does.
 const PAIR_ROLE: &str = "control";
@@ -117,6 +118,11 @@ const METER_SLOT: u8 = 0;
 /// Requested meter rate. A bridge shares a UART with everything else.
 const METER_HZ: u32 = 15;
 const METER_HZ_BRIDGED: u32 = 10;
+// -- WP LK4 --
+/// The meter rate on a bridge after its feed went silent (a stall).
+const METER_HZ_STALLED: u32 = 2;
+/// How long frames must flow again before the full rate comes back.
+const METER_SLOW_FOR: Duration = Duration::from_secs(10);
 /// No `fetch_status` for this long: the UI stopped asking, so unsubscribe.
 const METER_IDLE: Duration = Duration::from_secs(2);
 /// How often the supervisor looks at a bound device's meter feed.
@@ -266,6 +272,10 @@ struct Bound {
     /// flap, however quick: the hub ended this session's polls.
     offline_base: u64,
     side: Option<Arc<LinkSide>>,
+    // -- WP LK4 --
+    /// The probe of its last attach, to describe it again on a re-attach
+    /// when it is the same device and firmware (no feature reads).
+    probe: Option<dspi_session::probe::Reusable>,
 }
 
 /// A planned try: how many have failed, and when the next one is due.
@@ -303,6 +313,11 @@ pub(crate) struct LinkSession {
     released: bool,
     /// The side of a binding given up, to be dropped outside the lock.
     retired: Option<Arc<LinkSide>>,
+    // -- WP LK4 --
+    /// The last probe dial past a silent bridge session ([`PROBE_AFTER`]).
+    probed_at: Option<Instant>,
+    /// The last try to complete the bound device's probe.
+    completed_at: Option<Instant>,
     /// The next re-attach's read fails.
     #[cfg(test)]
     fail_next_read: bool,
@@ -449,8 +464,39 @@ enum Step {
     Wait(Option<Duration>, Option<Arc<LinkSide>>),
     Dial(Box<Target>),
     Rebind(u8, String),
+    /// -- WP LK4 -- dial past a silent bridge session ([`PROBE_AFTER`]).
+    Probe(Box<Target>),
+    /// -- WP LK4 -- complete the bound device's probe ([`DspiCore::ensure_probed`]).
+    Complete,
     /// Read a device list that failed after a pairing.
     ReadDevices(LinkClient),
+}
+
+// -- WP LK4 --
+/// A bridge closes a session whose queued frames it could not write for 10 s
+/// (bridge spec 8.2, `LINK_UNWRITABLE_TIMEOUT_MS`); with a poll or its own
+/// pings running it always has some. Silence past this on a bridge means that
+/// close is likely, and the reset that would say so reaches us only when our
+/// own TCP retries again, which a long outage backs off by many seconds. So
+/// from then on a new session is dialled every [`PROBE_EVERY`]: if one
+/// connects while the old one is still silent, the network works and the old
+/// session is dead; the new one replaces it at once. Accepted by the owner
+/// (2026-11-08) as the one exception to the 30 s silence rule
+/// (`dspi_link::client::Timing::silence_limit`).
+const PROBE_AFTER: Duration = Duration::from_secs(12);
+const PROBE_EVERY: Duration = Duration::from_secs(2);
+/// How long a select that lost its session waits for the next one.
+const SELECT_AGAIN_WITHIN: Duration = Duration::from_secs(10);
+/// After a failed try, the bound device's probe is completed again this much
+/// later.
+const COMPLETE_AGAIN: Duration = Duration::from_secs(2);
+
+/// Whether a probe dial past session `s`'s silent client is due.
+fn probe_due(s: &LinkSession, client: &LinkClient, now: Instant) -> bool {
+    client.hello().hub.kind == "bridge"
+        && client.silent_for() >= PROBE_AFTER
+        && s.probed_at
+            .is_none_or(|t| now.saturating_duration_since(t) >= PROBE_EVERY)
 }
 
 /// A session number; never reused.
@@ -620,9 +666,22 @@ impl DspiCore {
                 seen_offline: false,
                 offline_base: 0,
                 side: None,
+                probe: None,
             })
         };
-        let opened = self.open_bound(handle, serial, false);
+        // -- WP LK4 -- before the open: the new side subscribes the meter
+        // poll during it, and an old side of the same handle unsubscribes
+        // its slot when dropped
+        drop(_replaced);
+        let mut opened = self.open_bound(handle, serial.clone(), false);
+        // -- WP LK4 -- the session was replaced meanwhile (the hub closed it on
+        // a lossy link, or a probe dial found it dead): bind once more on the
+        // new one
+        if matches!(opened, Err(DspiError::Disconnected))
+            && let Some(handle) = self.ready_again(&serial)
+        {
+            opened = self.open_bound(handle, serial, false);
+        }
         if opened.is_err() {
             {
                 let mut inner = self.lock();
@@ -813,11 +872,53 @@ impl DspiCore {
         };
         // -- WP WB4b -- decided on the caller's thread, as the client's own mode is
         let pumped = dspi_link::client::caller_driven();
-        let (client, state) = dial(&target, true, &tx).map_err(map_error)?;
+        // -- WP LK4 -- the first dial retries as the reference client does, and
+        // `link_close` (the app's Disconnect) stops it
+        let id = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
+        let cancel = Arc::new(AtomicBool::new(false));
+        if !pumped {
+            *guard(&self.link_control) = Some(LinkControl {
+                id,
+                cancel: Arc::clone(&cancel),
+                tx: tx.clone(),
+                client: None,
+                pumped,
+                driver: None,
+            });
+        }
+        let dialled = dial_first(
+            &target,
+            &tx,
+            &cancel,
+            (!pumped).then_some(tuning.backoff_divisor),
+        );
+        let dialled = match dialled {
+            Ok(d) if !cancel.load(Ordering::SeqCst) => Ok(d),
+            Ok((client, _)) => {
+                client.set_events(None);
+                client.close();
+                Err(closed_by_client())
+            }
+            Err(e) => Err(e),
+        };
+        let (client, state) = match dialled {
+            Ok(d) => d,
+            Err(e) => {
+                let mut control = guard(&self.link_control);
+                if control.as_ref().is_some_and(|c| c.id == id) {
+                    *control = None;
+                }
+                return Err(map_error(e));
+            }
+        };
         if !target.hub_id.is_empty() && !client.hello().hub.id.eq_ignore_ascii_case(&target.hub_id)
         {
             client.set_events(None);
             client.close();
+            let mut control = guard(&self.link_control);
+            if control.as_ref().is_some_and(|c| c.id == id) {
+                *control = None;
+            }
             return Err(DspiError::Link {
                 code: "wrong_hub".into(),
                 msg: "Another hub answers at this address.".into(),
@@ -829,9 +930,8 @@ impl DspiCore {
             target.token.clear();
         }
         let instance = client.epoch();
-        let cancel = Arc::new(AtomicBool::new(false));
         let session = LinkSession {
-            id: NEXT_SESSION.fetch_add(1, Ordering::Relaxed),
+            id,
             target,
             tuning,
             client: Some(client),
@@ -846,6 +946,8 @@ impl DspiCore {
             refused: false,
             released: false,
             retired: None,
+            probed_at: None,
+            completed_at: None,
             #[cfg(test)]
             fail_next_read: false,
             unreported_end: None,
@@ -867,6 +969,27 @@ impl DspiCore {
         // Installed first: the supervisor ends when it finds no session.
         let displaced = self.lock().link.replace(session);
         drop(displaced);
+        // -- WP LK4 -- a `link_close` that came while this was installed
+        if cancel.load(Ordering::SeqCst) {
+            let gone = {
+                let mut inner = self.lock();
+                if inner.link.as_ref().is_some_and(|s| s.id == id) {
+                    inner.link.take()
+                } else {
+                    None
+                }
+            };
+            if let Some(c) = gone.as_ref().and_then(|s| s.client.clone()) {
+                c.set_events(None);
+                c.close();
+            }
+            drop(gone);
+            let mut control = guard(&self.link_control);
+            if control.as_ref().is_some_and(|c| c.id == id) {
+                *control = None;
+            }
+            return Err(map_error(closed_by_client()));
+        }
         // -- WP WB4b -- the caller turns the supervisor (`link_tick`)
         if pumped {
             if let Some(c) = guard(&self.link_control).as_mut().filter(|c| c.id == id) {
@@ -928,38 +1051,107 @@ impl DspiCore {
     /// `keep_mirror`: a re-attach. The mirror stays last known until the new
     /// image replaces it, and a failure leaves it.
     fn open_bound(&self, handle: u8, serial: String, keep_mirror: bool) -> Result<()> {
-        let (client, instance) = {
-            let inner = self.lock();
-            let s = inner.link.as_ref().ok_or(DspiError::Disconnected)?;
+        let (client, instance, tx, reuse, old_side) = {
+            let mut inner = self.lock();
+            let s = inner.link.as_mut().ok_or(DspiError::Disconnected)?;
             let client = s.client.clone().filter(LinkClient::is_ready);
-            (client.ok_or(DspiError::Disconnected)?, s.instance)
+            // -- WP LK4 -- the last probe of this device, for a re-attach
+            let reuse = s
+                .bound
+                .as_ref()
+                .filter(|b| keep_mirror && b.serial == serial)
+                .and_then(|b| b.probe.clone());
+            let client = client.ok_or(DspiError::Disconnected)?;
+            // -- WP LK4 -- the old side goes before the new one subscribes:
+            // its drop unsubscribes the meter slot on this handle
+            let old_side = s.bound.as_mut().and_then(|b| b.side.take());
+            (client, s.instance, s.tx.clone(), reuse, old_side)
         };
         // Read before the attach: a flap during it counts as one after it.
         let offline_base = client.offline_count(u32::from(handle));
-        let transport = LinkTransport::new(client.clone(), handle, &serial);
+        // -- WP LK4 -- the meter feed starts as soon as the image says how
+        // many channels there are, before the feature reads: `fetch_status`
+        // serves it from then on. On the supervisor's own thread (a
+        // re-attach) it subscribes here; otherwise the supervisor does,
+        // alongside the reads.
         if keep_mirror {
             self.close_keeping_mirror();
-            self.attach_opened(Box::new(transport), serial.clone(), 0)?;
         } else {
-            self.open_transport(Box::new(transport), serial.clone(), 0)?;
+            self.close_connection();
         }
+        drop(old_side);
+        let side = Arc::new(LinkSide::new(client.clone(), handle, &serial, tx.clone()));
+        // A subscription sent ahead is settled by the supervisor, never here
+        let ahead = std::cell::Cell::new(false);
+        let mut on_channels = |n: u8| {
+            side.want_meters(crate::connect::meter_len(n), keep_mirror && !ahead.get());
+            drop(self.set_meter_path(Some(crate::MeterPath {
+                num_channels: n,
+                side: Arc::clone(&side) as Arc<dyn SideChannel>,
+            })));
+        };
+        // The hub's device list says how many channels there are (as the
+        // reference client sizes its poll), so the feed starts before even
+        // the identity read; the image corrects it if it says otherwise.
+        let device = client
+            .devices()
+            .into_iter()
+            .find(|d| d.handle == u32::from(handle) && d.serial == serial);
+        let channels = device
+            .as_ref()
+            .and_then(|d| d.inputs.zip(d.outputs))
+            .and_then(|(i, o)| u8::try_from(i.checked_add(o)?).ok())
+            .filter(|n| (1..=crate::consts::MAX_CHANNELS as u8).contains(n));
+        if let Some(n) = channels {
+            // Sent ahead of the snapshot: the hub answers in order, so its
+            // POLL frames start before the snapshot's bytes, not behind them
+            side.subscribe_ahead(crate::connect::meter_len(n));
+            ahead.set(true);
+            on_channels(n);
+        }
+        let mut transport = LinkTransport::new(client.clone(), handle, &serial);
+        // -- WP LK4 -- the snapshot is on its way while the identity is read
+        transport.prefetch_snapshot();
+        // The identity too: GET_PLATFORM and the serial are what the hub
+        // lists, so the bind reads only the snapshot (the background
+        // completion reads GET_PLATFORM and corrects the mirror if it differs)
+        let listed = device.as_ref().and_then(listed_identity);
+        let attached = self.attach_opened_with(
+            Box::new(transport),
+            serial.clone(),
+            0,
+            &mut on_channels,
+            Some(crate::LinkBind {
+                reuse: reuse.as_ref(),
+                listed: listed.as_ref(),
+            }),
+        );
+        let probe = match attached {
+            Ok(probe) => probe,
+            Err(e) => {
+                self.drop_meter_path_of(&side);
+                return Err(e);
+            }
+        };
 
         // Dropped with the lock released: a side's drop writes to the socket.
         let mut old_side = None;
         let mut guard = self.lock();
         let inner = &mut *guard;
-        let current = inner
-            .link
-            .as_mut()
-            .filter(|s| s.instance == instance)
-            .ok_or(DspiError::Disconnected)?;
-        let tx = current.tx.clone();
-        let conn = inner
+        let Some(current) = inner.link.as_mut().filter(|s| s.instance == instance) else {
+            drop(guard);
+            self.drop_meter_path_of(&side);
+            return Err(DspiError::Disconnected);
+        };
+        let Some(conn) = inner
             .conn
             .as_mut()
             .filter(|c| c.caps.kind == TransportKind::Link && c.serial == serial)
-            .ok_or(DspiError::Disconnected)?;
-        let side = Arc::new(LinkSide::new(client, handle, &serial, tx));
+        else {
+            drop(guard);
+            self.drop_meter_path_of(&side);
+            return Err(DspiError::Disconnected);
+        };
         conn.side = Some(Arc::clone(&side) as Arc<dyn SideChannel>);
         // -- WP LK2 -- meters from now on, whatever holds the core lock
         let old_path = self.set_meter_path(Some(crate::MeterPath {
@@ -973,14 +1165,58 @@ impl DspiCore {
             b.attached = true;
             b.seen_offline = false;
             b.offline_base = offline_base;
-            old_side = b.side.replace(side);
+            b.probe = probe;
+            old_side = b.side.replace(Arc::clone(&side));
         }
         current.retry = None;
         let _ = current.tx.send(Msg::Kick);
+        side.bind_done(); // -- WP LK4 --
         drop(guard);
         drop(old_side);
         drop(old_path);
         Ok(())
+    }
+
+    // -- WP LK4 --
+    /// After a select lost its session: the device's handle once the session
+    /// is ready again (within [`SELECT_AGAIN_WITHIN`]), if the select is still
+    /// wanted; `None` at once for a session that ended or a caller-driven one
+    /// (it cannot wait here).
+    fn ready_again(&self, serial: &str) -> Option<u8> {
+        if guard(&self.link_control).as_ref().is_none_or(|c| c.pumped) {
+            return None;
+        }
+        let start = Instant::now();
+        while start.elapsed() < SELECT_AGAIN_WITHIN {
+            {
+                let inner = self.lock();
+                let s = inner.link.as_ref()?;
+                let wanted = s
+                    .bound
+                    .as_ref()
+                    .is_some_and(|b| b.opening && b.serial == serial);
+                if s.ended || s.cancel.load(Ordering::SeqCst) || !wanted {
+                    return None;
+                }
+                if let Some(c) = s.client.as_ref().filter(|c| c.is_ready())
+                    && let Some(d) = c.devices().into_iter().find(|d| d.serial == serial)
+                {
+                    return u8::try_from(d.handle).ok();
+                }
+            }
+            dspi_transport::clock::sleep(Duration::from_millis(50));
+        }
+        None
+    }
+
+    /// Clear the meter path if it is `side`'s (a failed open set it early).
+    fn drop_meter_path_of(&self, side: &Arc<LinkSide>) {
+        let ours = self
+            .meter_path()
+            .is_some_and(|p| std::ptr::addr_eq(Arc::as_ptr(&p.side), Arc::as_ptr(side)));
+        if ours {
+            drop(self.set_meter_path(None));
+        }
     }
 
     /// Decide the next supervisor step, under the lock.
@@ -988,6 +1224,11 @@ impl DspiCore {
         let mut locked = self.lock();
         let inner = &mut *locked;
         let conn_gen = inner.conn.as_ref().map(|c| c.generation);
+        // -- WP LK4 -- a bound device whose probe is still to complete
+        let pending = inner
+            .conn
+            .as_ref()
+            .is_some_and(|c| c.pending_probe.is_some() && c.side.is_some());
         let Some(s) = inner
             .link
             .as_mut()
@@ -1011,7 +1252,7 @@ impl DspiCore {
             return (Step::Stop, None, true);
         }
         s.note_loss(conn_gen, now);
-        let step = next_step(s, conn_gen, now);
+        let step = next_step(s, conn_gen, pending, now);
         let retired = s.retired.take();
         let ended = s.unreported_end.take();
         let phase = s.phase(conn_gen);
@@ -1069,6 +1310,181 @@ impl DspiCore {
             }
         }
         true
+    }
+
+    // -- WP LK4 --
+    /// A probe dial connected: if the old client is still silent, it is dead
+    /// (the network works); close it and take the new one, as after a lost
+    /// session. Otherwise the old one spoke meanwhile and the new one goes.
+    /// Returns false when the session has gone.
+    fn finish_probe(&self, id: u64, dialled: (LinkClient, AuthState)) -> bool {
+        let old = {
+            let mut inner = self.lock();
+            let Some(s) = inner
+                .link
+                .as_mut()
+                .filter(|s| s.id == id && !s.cancel.load(Ordering::SeqCst))
+            else {
+                drop(inner);
+                dialled.0.close();
+                return false;
+            };
+            let silent = s
+                .client
+                .as_ref()
+                .is_some_and(|c| !c.is_closed() && c.silent_for() >= PROBE_AFTER);
+            if !silent {
+                drop(inner);
+                dialled.0.set_events(None);
+                dialled.0.close();
+                return true;
+            }
+            s.client.take()
+        };
+        if let Some(old) = old {
+            log::info!(
+                "the Link hub answers a new session while this one has been silent for {:?}: replacing it",
+                old.silent_for()
+            );
+            old.set_events(None);
+            old.close();
+        }
+        self.finish_dial(id, Ok(dialled))
+    }
+
+    /// Complete the open Link device's pending probe (see
+    /// [`DspiCore::ensure_probed`]): the features, caps, band count and
+    /// extension channel, then the per-item reads, all through the side
+    /// channel's background transport without the core lock (never ahead of a
+    /// user's command: it leaves one of the hub's slots free); then, under the
+    /// lock and only for the same connection, the results go in and the next
+    /// `process_notifications` reports a full refresh. A failure leaves it
+    /// pending, for the next try.
+    pub(crate) fn complete_probe(&self) {
+        let _one = guard(&self.probe_lock);
+        self.complete_probe_held();
+    }
+
+    /// [`DspiCore::ensure_probed`] for a Link build: waits for a completion
+    /// in progress, then completes what is still pending.
+    pub(crate) fn ensure_probed_link(&self) {
+        let _one = guard(&self.probe_lock);
+        let pending = self
+            .lock()
+            .conn
+            .as_ref()
+            .is_some_and(|c| c.pending_probe.is_some());
+        if pending {
+            self.complete_probe_held();
+        }
+    }
+
+    /// [`DspiCore::complete_probe`] with `probe_lock` held.
+    fn complete_probe_held(&self) {
+        let (quick, side, generation, sources, mut scratch, names_before) = {
+            let mut guard = self.lock();
+            let inner = &mut *guard;
+            let Some(conn) = inner.conn.as_mut() else {
+                return;
+            };
+            // The side comes with the bind's end (`open_bound`)
+            let Some(side) = conn.side.clone().filter(|_| conn.pending_probe.is_some()) else {
+                return;
+            };
+            // Left in place until the results go in: meanwhile `fetch_all`
+            // still knows the per-item reads are this completion's
+            let Some(quick) = conn.pending_probe.clone() else {
+                return;
+            };
+            (
+                quick,
+                side,
+                conn.generation,
+                conn.source_names.len(),
+                inner.state.clone(),
+                (conn.source_names.clone(), conn.device_name.clone()),
+            )
+        };
+        // What the mirror held as the reads went out: a value that differs at
+        // the end was written (or notified) meanwhile, and stays (review c82 F1)
+        let before = scratch.clone();
+        let Some(mut t) = side.background() else {
+            return;
+        };
+        // The bind took the hub's word for the identity: the device's own
+        let platform = t
+            .control_in_upto(op::REQ_GET_PLATFORM, 0, 7)
+            .ok()
+            .filter(|p| *p != quick.platform);
+        let done = match dspi_session::probe::probe_rest(&mut *t, &quick) {
+            Ok(done) => done,
+            Err(TransportError::Disconnected) => return,
+            Err(e) => {
+                log::info!("completing the Link device's probe failed, trying again: {e}");
+                return;
+            }
+        };
+        let names = crate::info::name_reads_for(&done.caps, sources);
+        // From the mirror, not from defaults: a read that fails (firmware
+        // without it, a stall) is no value, and leaves the field as it is
+        let answers = crate::connect::read_per_item_on(&mut *t, &names, &mut scratch);
+        let reusable = done.reusable();
+        let ext = match done.ext {
+            Ok(ext) => ext,
+            Err(TransportError::Disconnected) => return,
+            // As at a whole probe: the device stays, without the channel
+            Err(e) => {
+                log::warn!("extension probe failed, continuing without it: {e}");
+                ExtState::default()
+            }
+        };
+        {
+            let mut guard = self.lock();
+            let inner = &mut *guard;
+            let Some(conn) = inner.conn.as_mut().filter(|c| c.generation == generation) else {
+                return;
+            };
+            let fits = conn
+                .session()
+                .is_ok_and(|session| session.complete_capabilities(done.caps));
+            if !fits {
+                log::warn!(
+                    "the Link device's completed probe does not fit its image; kept as it was"
+                );
+                conn.pending_probe = None;
+                return;
+            }
+            conn.pending_probe = None;
+            conn.echo.set_bulk_source(ext.bulk_source());
+            conn.ext = ext;
+            // The names likewise: one renamed meanwhile keeps its new name
+            let names_now = (conn.source_names.clone(), conn.device_name.clone());
+            crate::info::apply_names(conn, &names, answers);
+            for (i, (now, was)) in names_now.0.iter().zip(names_before.0.iter()).enumerate() {
+                if now != was
+                    && let Some(slot) = conn.source_names.get_mut(i)
+                {
+                    slot.clone_from(now);
+                }
+            }
+            if names_now.1 != names_before.1 {
+                conn.device_name = names_now.1;
+            }
+            conn.announce_refresh = true;
+            crate::connect::merge_per_item(&before, &scratch, &mut inner.state);
+            if let Some(p) = platform {
+                log::info!(
+                    "the Link device's GET_PLATFORM differs from the hub's list; the mirror follows the device"
+                );
+                if let Err(e) = crate::state::apply_platform(&p, &mut inner.state) {
+                    log::warn!("GET_PLATFORM reply not applied: {e}");
+                }
+            }
+            if let Some(b) = inner.link.as_mut().and_then(|s| s.bound.as_mut()) {
+                b.probe = reusable;
+            }
+        }
+        self.listeners.notify.call(|l| l.on_notifications());
     }
 
     /// The read after a re-attach.
@@ -1176,7 +1592,7 @@ pub(crate) fn session_recovers(inner: &crate::Inner) -> bool {
 }
 
 /// The next step for session `s`, under the lock.
-fn next_step(s: &mut LinkSession, conn_gen: Option<u64>, now: Instant) -> Step {
+fn next_step(s: &mut LinkSession, conn_gen: Option<u64>, pending: bool, now: Instant) -> Step {
     let feed = s.bound.as_ref().and_then(|b| b.side.clone());
     if s.ended {
         return Step::Wait(None, None);
@@ -1238,6 +1654,19 @@ fn next_step(s: &mut LinkSession, conn_gen: Option<u64>, now: Instant) -> Step {
         b.attached = false;
     }
     if b.attached {
+        // -- WP LK4 -- the rest of the bind's probe, in the background
+        if pending
+            && client.silent_for() < PROBE_AFTER
+            && s.completed_at
+                .is_none_or(|t| now.saturating_duration_since(t) >= COMPLETE_AGAIN)
+        {
+            s.completed_at = Some(now);
+            return Step::Complete;
+        }
+        if probe_due(s, &client, now) {
+            s.probed_at = Some(now);
+            return Step::Probe(Box::new(s.target.clone()));
+        }
         return Step::Wait(Some(FEED_CHECK), feed);
     }
     let handle = u8::try_from(d.handle).unwrap_or(b.handle);
@@ -1478,7 +1907,30 @@ fn run_steps(me: &Weak<DspiCore>, id: u64, cancel: &AtomicBool) -> Option<Option
                 }
             }
             Step::Rebind(handle, serial) => core.rebind(id, handle, serial),
+            // -- WP LK4 --
+            Step::Probe(target) => {
+                let tx = core.lock().link.as_ref().map(|s| s.tx.clone())?;
+                drop(core);
+                let dialled = redial(&target, &tx);
+                let Some(core) = me.upgrade() else {
+                    if let Ok((client, _)) = dialled {
+                        client.close();
+                    }
+                    return None;
+                };
+                match dialled {
+                    Ok(dialled) => {
+                        if !core.finish_probe(id, dialled) {
+                            return None;
+                        }
+                        core.listeners.link.call(|l| l.on_link_status_changed());
+                    }
+                    Err(e) => log::debug!("probe dial past a silent session failed: {e}"),
+                }
+            }
             Step::ReadDevices(client) => core.read_devices(id, &client),
+            // -- WP LK4 --
+            Step::Complete => core.complete_probe(),
         }
     }
 }
@@ -1517,6 +1969,91 @@ fn dial(
         Some(Arc::new(Forward { tx: tx.clone() })),
         &cfg,
     )
+}
+
+// -- WP LK4 --
+/// How long the first dial keeps trying (each try bounded by the connector's
+/// and the client's own connect timeouts): longer than the reference
+/// client's 15 s handshake plus its prober's 1 s retries.
+pub(crate) const FIRST_DIAL_BUDGET: Duration = Duration::from_secs(60);
+/// The environment variable that overrides [`FIRST_DIAL_BUDGET`], in ms, for
+/// tests and integration rigs that drive the core through its bindings (the
+/// Android suite's fake-hub tests): unset, empty or unparsable means the
+/// default. Read at each first dial, in debug builds only (review c83 N1: a
+/// release build ignores it).
+pub const FIRST_DIAL_BUDGET_ENV: &str = "DSPI_LINK_FIRST_DIAL_MS";
+
+/// [`FIRST_DIAL_BUDGET`], or its override from [`FIRST_DIAL_BUDGET_ENV`].
+fn first_dial_budget() -> Duration {
+    #[cfg(all(
+        debug_assertions,
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ))]
+    if let Some(ms) = std::env::var(FIRST_DIAL_BUDGET_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+    {
+        return Duration::from_millis(ms.min(600_000));
+    }
+    FIRST_DIAL_BUDGET
+}
+/// The wait before the first dial's second try, doubled each time up to
+/// [`FIRST_DIAL_RETRY_MAX`] (or the hub's own advice when longer).
+const FIRST_DIAL_RETRY: Duration = Duration::from_millis(500);
+const FIRST_DIAL_RETRY_MAX: Duration = Duration::from_secs(2);
+
+/// The first dial of a session: as [`dial`], tried again with a short
+/// backoff while the error's advice is to retry (a timeout, a lost socket, a
+/// busy hub; never a refusal, a protocol error or a pairing problem) and
+/// within [`FIRST_DIAL_BUDGET`], until `cancel`. Nothing is sent before the
+/// hello, so nothing is replayed. `retry`: the backoff divisor (tests speed
+/// it up; 1 in production), `None` for one try (a caller-driven session).
+fn dial_first(
+    target: &Target,
+    tx: &Sender<Msg>,
+    cancel: &AtomicBool,
+    retry: Option<u32>,
+) -> std::result::Result<(LinkClient, AuthState), LinkError> {
+    let divided = |d: Duration, by: u32| d.checked_div(by.max(1)).unwrap_or(d);
+    let start = Instant::now();
+    let mut failures = 0u32;
+    loop {
+        let e = match dial(target, true, tx) {
+            Ok(d) => return Ok(d),
+            Err(e) => e,
+        };
+        let Some(by) = retry.filter(|_| !cancel.load(Ordering::SeqCst)) else {
+            return Err(e);
+        };
+        let RetryAdvice::Retry { min_delay } = e.retry_advice() else {
+            return Err(e);
+        };
+        let wait = FIRST_DIAL_RETRY
+            .saturating_mul(1u32.checked_shl(failures).unwrap_or(u32::MAX))
+            .min(FIRST_DIAL_RETRY_MAX)
+            .max(min_delay);
+        let wait = divided(wait, by);
+        if start.elapsed().saturating_add(wait) >= divided(first_dial_budget(), by) {
+            return Err(e);
+        }
+        log::info!("DSPi Link: the first dial failed ({e}); trying again in {wait:?}");
+        let waited = Instant::now();
+        while waited.elapsed() < wait {
+            if cancel.load(Ordering::SeqCst) {
+                return Err(e);
+            }
+            dspi_transport::clock::sleep(Duration::from_millis(50));
+        }
+        failures = failures.saturating_add(1);
+    }
+}
+
+/// The error a dial stopped by `link_close` ends with.
+fn closed_by_client() -> LinkError {
+    LinkError::Closed {
+        code: Some(1000),
+        reason: dspi_link::close_reason(Some(1000)),
+    }
 }
 
 /// Whether `url` is `ws://host[:port][/path]`.
@@ -1587,6 +2124,32 @@ fn hello_record(client: &LinkClient, state: &AuthState) -> LinkHello {
     }
 }
 
+// -- WP LK4 --
+/// The GET_PLATFORM reply and serial the hub lists for `d`, when it says all
+/// of it (platform, firmware `major.minor.patch` with its beta, outputs);
+/// `None` otherwise, and the bind reads them.
+fn listed_identity(d: &DeviceInfo) -> Option<dspi_session::probe::Listed> {
+    use dspi_proto::packets::{FirmwareVersion, PlatformInfo};
+    let mut parts =
+        d.fw.as_deref()?
+            .split('.')
+            .map(|p| p.trim().parse::<u8>().ok());
+    let (major, minor, patch) = (parts.next()??, parts.next()??, parts.next()??);
+    if parts.next().is_some() || d.serial.is_empty() {
+        return None;
+    }
+    let info = PlatformInfo {
+        platform_id: u8::try_from(d.platform?).ok()?,
+        num_output_channels: u8::try_from(d.outputs?).ok()?,
+        version: FirmwareVersion::new(major, minor, patch, u8::try_from(d.fw_beta?).ok()?),
+        reply_len: PlatformInfo::REQUEST_LEN,
+    };
+    Some(dspi_session::probe::Listed {
+        platform: info.encode().to_vec(),
+        serial: d.serial.clone(),
+    })
+}
+
 fn device_record(d: DeviceInfo) -> LinkDevice {
     LinkDevice {
         handle: d.handle,
@@ -1616,6 +2179,22 @@ struct Feed {
     meter_hz: Option<u32>,
     meter_refused_until: Option<Instant>,
     meter_subscribed_at: Option<Instant>,
+    // -- WP LK4 --
+    /// The meter feed last went silent on a bridge then: it runs at
+    /// [`METER_HZ_STALLED`] until frames have flowed for [`METER_SLOW_FOR`].
+    meter_slow_since: Option<Instant>,
+    /// A subscription sent ahead of the bind's snapshot, its grant not read
+    /// yet ([`LinkSide::subscribe_ahead`]), with the rate asked.
+    meter_pending: Option<(dspi_link::client::PendingPolls, u32)>,
+    /// The rate of a subscription sent ahead whose grant is not read yet
+    /// (also while the supervisor waits for it): its frames count meanwhile.
+    meter_ahead_hz: Option<u32>,
+    /// A bind is reading the snapshot: on a bridge the feed runs at
+    /// [`METER_HZ_STALLED`] meanwhile, so its frames take little from the
+    /// snapshot on a lossy link ([`LinkSide::bind_done`] lifts it).
+    meter_binding: bool,
+    /// The current subscription was asked at the slow rate.
+    meter_asked_slow: bool,
     /// A wake-up to the supervisor is on its way.
     kicked: bool,
     /// The channels the analyser wants.
@@ -1773,6 +2352,10 @@ impl LinkSide {
         if !self.polls || self.client.is_closed() {
             return;
         }
+        self.settle_pending(now); // -- WP LK4 --
+        // -- review c84 F1 -- settle_pending can block for the ahead grant; frames
+        // drained after it are stamped with the time they arrive, not the call's.
+        let now = Instant::now();
         let spec = {
             let mut feed = guard(&self.feed);
             feed.kicked = false;
@@ -1799,11 +2382,34 @@ impl LinkSide {
                     .map(|f| f.1)
                     .max(feed.meter_subscribed_at)
                     .is_none_or(|t| now.saturating_duration_since(t) >= FEED_LOST);
-            if feed.meter_hz.is_some() && !silent {
+            // -- WP LK4 -- a bridge closes a session whose queued frames it
+            // could not write for 10 s (bridge spec 8.2; a stall fills its
+            // send buffer sooner the faster it polls): a feed gone silent is
+            // asked again at a low rate, and back at the full rate once
+            // frames have flowed again for a while
+            if self.bridged && silent {
+                feed.meter_slow_since = Some(now);
+            }
+            let flowing = feed.latest.get(&METER_SLOT).is_some_and(|f| {
+                now.saturating_duration_since(f.1) < stale_after(METER_HZ_STALLED)
+            });
+            let recovered = !silent
+                && flowing
+                && feed
+                    .meter_slow_since
+                    .is_some_and(|t| now.saturating_duration_since(t) >= METER_SLOW_FOR);
+            if recovered {
+                feed.meter_slow_since = None;
+            }
+            // The bind's slow rate is over: up to the full one
+            let slow = feed.meter_slow_since.is_some() || feed.meter_binding;
+            let upgrade = !slow && feed.meter_asked_slow && feed.meter_hz.is_some();
+            if feed.meter_hz.is_some() && !silent && !recovered && !upgrade {
                 return;
             }
             feed.meter_subscribed_at = Some(now);
-            self.meter_spec(feed.meter_len)
+            feed.meter_asked_slow = slow;
+            self.meter_spec(feed.meter_len, slow)
         };
         let granted = self.client.poll_subscribe(self.handle, &[spec]);
         let mut feed = guard(&self.feed);
@@ -1826,8 +2432,95 @@ impl LinkSide {
         }
     }
 
-    fn meter_spec(&self, len: u16) -> PollSpec {
-        let wanted = if self.bridged {
+    // -- WP LK4 --
+    /// Subscribe the meter block of `len` bytes now without waiting for the
+    /// grant (the supervisor reads it), so the request goes out ahead of
+    /// whatever the caller sends next: the bind's snapshot.
+    fn subscribe_ahead(&self, len: u16) {
+        if !self.polls || self.client.is_closed() {
+            return;
+        }
+        let now = Instant::now();
+        let spec = self.meter_spec(len, self.bridged);
+        let Ok(pending) = self.client.poll_subscribe_begin(self.handle, &[spec]) else {
+            return;
+        };
+        let mut feed = guard(&self.feed);
+        feed.meter_binding = self.bridged;
+        feed.meter_asked_slow = self.bridged;
+        feed.meter_len = len;
+        feed.meter_asked = Some(now);
+        feed.meter_subscribed_at = Some(now);
+        feed.meter_pending = Some((pending, spec.hz));
+        feed.meter_ahead_hz = Some(spec.hz);
+        if !std::mem::replace(&mut feed.kicked, true) {
+            let _ = self.tx.send(Msg::Kick);
+        }
+    }
+
+    /// The bind has its snapshot: the feed goes to its full rate.
+    fn bind_done(&self) {
+        let mut feed = guard(&self.feed);
+        if std::mem::take(&mut feed.meter_binding) && !std::mem::replace(&mut feed.kicked, true) {
+            let _ = self.tx.send(Msg::Kick);
+        }
+    }
+
+    /// Read the grant of [`LinkSide::subscribe_ahead`]'s request, if one is
+    /// pending: the supervisor's, may wait for the answer.
+    fn settle_pending(&self, now: Instant) {
+        let Some((pending, _)) = guard(&self.feed).meter_pending.take() else {
+            return;
+        };
+        let granted = self.client.poll_subscribe_finish(pending);
+        let mut feed = guard(&self.feed);
+        feed.meter_ahead_hz = None;
+        match granted {
+            Ok(g) => match g.iter().find(|g| g.slot == METER_SLOT && g.hz > 0) {
+                Some(g) => {
+                    feed.meter_hz = Some(g.hz);
+                    feed.meter_refused_until = None;
+                }
+                None => {
+                    feed.meter_hz = None;
+                    feed.meter_refused_until = now.checked_add(POLL_RETRY_AFTER);
+                }
+            },
+            Err(e) => {
+                log::info!("the hub did not grant the meter poll: {e}");
+                feed.meter_hz = None;
+                feed.meter_refused_until = now.checked_add(POLL_RETRY_AFTER);
+            }
+        }
+    }
+
+    /// Ask for the meter block of `len` bytes now, as a first `fetch_status`
+    /// would, so the poll is subscribed before the app's first look: here
+    /// with `now` (one round trip), else by a word to the supervisor.
+    fn want_meters(&self, len: u16, now: bool) {
+        {
+            let mut feed = guard(&self.feed);
+            if feed.meter_len != len {
+                // Another size than asked before (the image corrects the
+                // device list): subscribe again
+                feed.meter_len = len;
+                feed.meter_hz = None;
+                feed.latest.remove(&METER_SLOT);
+            }
+            feed.meter_asked = Some(Instant::now());
+            if !now && !std::mem::replace(&mut feed.kicked, true) {
+                let _ = self.tx.send(Msg::Kick);
+            }
+        }
+        if now {
+            self.maintain(Instant::now());
+        }
+    }
+
+    fn meter_spec(&self, len: u16, slow: bool) -> PollSpec {
+        let wanted = if slow {
+            METER_HZ_STALLED
+        } else if self.bridged {
             METER_HZ_BRIDGED
         } else {
             METER_HZ
@@ -2016,6 +2709,11 @@ impl SideChannel for LinkSide {
         self.maintain(Instant::now());
     }
 
+    // -- WP LK4 --
+    fn background(self: Arc<Self>) -> Option<Box<dyn Transport>> {
+        Some(Box::new(BackgroundTransport { side: self }))
+    }
+
     fn meters(&self, len: u16) -> Result<MeterRead> {
         if self.client.is_closed() {
             return Err(DspiError::Disconnected);
@@ -2034,7 +2732,12 @@ impl SideChannel for LinkSide {
             drop(feed);
             return self.meters_tunnel(len, now);
         }
-        let Some(hz) = feed.meter_hz else {
+        // -- WP LK4 -- frames of a subscription sent ahead count before its
+        // grant is read (the supervisor may be busy with the re-attach)
+        let ahead = feed
+            .meter_ahead_hz
+            .filter(|_| feed.latest.contains_key(&METER_SLOT));
+        let Some(hz) = feed.meter_hz.or(ahead) else {
             if !std::mem::replace(&mut feed.kicked, true) {
                 let _ = self.tx.send(Msg::Kick);
             }
@@ -2066,11 +2769,150 @@ impl Drop for LinkSide {
         let mut slots: Vec<u8> = band_channels(feed.band_granted)
             .filter_map(band_slot)
             .collect();
-        if feed.meter_hz.is_some() {
+        // -- WP LK4 -- (review c83 N5) also a subscription sent ahead whose
+        // grant was never read (a bind that failed before it)
+        if feed.meter_hz.is_some() || feed.meter_pending.is_some() || feed.meter_ahead_hz.is_some()
+        {
             slots.push(METER_SLOT);
         }
         if !slots.is_empty() {
             self.client.poll_unsubscribe(self.handle, &slots);
+        }
+    }
+}
+
+// -- WP LK4 --
+/// Background reads of a Link device without the core lock (a bind's probe
+/// completing): tunnelled GETs, batches with one of the hub's
+/// `max_inflight` slots left free for the commands a user waits for. Reads
+/// only.
+struct BackgroundTransport {
+    side: Arc<LinkSide>,
+}
+
+impl BackgroundTransport {
+    /// `reply` as [`Transport::control_in`] (`exact`) or
+    /// [`Transport::control_in_upto`] answers it.
+    fn shaped(
+        opcode: u8,
+        len: u16,
+        exact: bool,
+        reply: Vec<u8>,
+    ) -> dspi_transport::Result<Vec<u8>> {
+        let mut reply = reply;
+        reply.truncate(usize::from(len));
+        if exact && reply.len() < usize::from(len) {
+            return Err(TransportError::ShortRead {
+                opcode,
+                wanted: usize::from(len),
+                got: reply.len(),
+            });
+        }
+        Ok(reply)
+    }
+
+    /// One GET, a busy answer (spec 8.1, refused before it ran) tried again.
+    fn get(&self, opcode: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
+        let mut tries = 0;
+        loop {
+            let r = self.side.client.command(
+                self.side.handle,
+                Dir::Get,
+                opcode,
+                value,
+                dspi_proto::VENDOR_INTERFACE,
+                len,
+                &[],
+            );
+            if busy(r.status) && tries < dspi_transport::BUSY_RETRIES {
+                tries = tries.saturating_add(1);
+                dspi_transport::clock::sleep(dspi_transport::BUSY_BACKOFF);
+                continue;
+            }
+            return match map_status(r.status, opcode) {
+                Some(e) => Err(e),
+                None => Ok(r.payload),
+            };
+        }
+    }
+}
+
+/// A status that says the command did not run and may go again (spec 8.1;
+/// RATE_LIMITED: a slot the hub still counts for one of ours).
+fn busy(status: u8) -> bool {
+    use dspi_link::status as st;
+    matches!(
+        status,
+        st::BUSY | st::BULK_LOCKED | st::CRC_ERROR | st::RATE_LIMITED
+    )
+}
+
+impl Transport for BackgroundTransport {
+    fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
+        let reply = self.get(opcode, value, len)?;
+        Self::shaped(opcode, len, true, reply)
+    }
+
+    fn control_in_upto(
+        &mut self,
+        opcode: u8,
+        value: u16,
+        len: u16,
+    ) -> dspi_transport::Result<Vec<u8>> {
+        let reply = self.get(opcode, value, len)?;
+        Self::shaped(opcode, len, false, reply)
+    }
+
+    fn control_out(&mut self, opcode: u8, _value: u16, _data: &[u8]) -> dspi_transport::Result<()> {
+        Err(TransportError::Remote(format!(
+            "opcode 0x{opcode:02X}: background reads only"
+        )))
+    }
+
+    fn control_in_batch(
+        &mut self,
+        reads: &[dspi_transport::InRead],
+    ) -> Vec<dspi_transport::Result<Vec<u8>>> {
+        let client = &self.side.client;
+        let specs: Vec<dspi_link::CmdSpec> = reads
+            .iter()
+            .map(|r| dspi_link::CmdSpec {
+                handle: self.side.handle,
+                dir: Dir::Get,
+                b_request: r.opcode,
+                w_value: r.value,
+                w_index: dspi_proto::VENDOR_INTERFACE,
+                w_length: r.len,
+                payload: Vec::new(),
+            })
+            .collect();
+        let slots = client.max_inflight().saturating_sub(1).max(1);
+        let answers = client.commands_within(&specs, slots);
+        reads
+            .iter()
+            .zip(answers)
+            .map(|(r, a)| {
+                let reply = if busy(a.status) {
+                    self.get(r.opcode, r.value, r.len)?
+                } else if let Some(e) = map_status(a.status, r.opcode) {
+                    return Err(e);
+                } else {
+                    a.payload
+                };
+                Self::shaped(r.opcode, r.len, r.exact, reply)
+            })
+            .collect()
+    }
+
+    fn descriptor(&self) -> &DeviceDescriptor {
+        &self.side.descriptor
+    }
+
+    fn caps(&self) -> TransportCaps {
+        TransportCaps {
+            kind: TransportKind::Link,
+            chunked_bulk: false,
+            remote: true,
         }
     }
 }
@@ -2285,6 +3127,11 @@ mod tests_wp_cg24;
 #[cfg(test)]
 #[path = "link/tests_wp_lk2.rs"]
 mod tests_wp_lk2;
+
+// -- WP LK4 --
+#[cfg(test)]
+#[path = "link/tests_wp_lk4.rs"]
+mod tests_wp_lk4;
 
 // -- WP WB4b --
 #[cfg(test)]

@@ -110,14 +110,26 @@ impl DspiCore {
         let conn = inner.conn.as_mut().ok_or(DspiError::Disconnected)?;
         let (mut next, wire) = if conn.fresh_image {
             let mut next = inner.state.clone();
-            reset_per_item(&mut next);
+            // -- WP LK4 -- (review c82 F1) while a DSPi Link bind's background
+            // reads fill them, the per-item values stay as they are: a reset
+            // here would put defaults over what a user set meanwhile
+            if conn.pending_probe.is_none() {
+                reset_per_item(&mut next);
+            }
             (next, conn.wire)
         } else {
             let mut next = state::default_state();
             let wire = read_platform_and_image(conn, &mut next)?;
+            // -- WP LK4 -- (review c83 F1b) a later call in the window keeps
+            // them too: the background reads still own them
+            if conn.pending_probe.is_some() {
+                carry_per_item(&inner.state, &mut next);
+            }
             (next, wire)
         };
-        if wire.is_some() {
+        // -- WP LK4 -- a DSPi Link bind still completing its probe reads
+        // them in the background (and announces a refresh then)
+        if wire.is_some() && conn.pending_probe.is_none() {
             read_per_item(conn, &mut next);
         }
         conn.wire = wire;
@@ -269,6 +281,15 @@ impl DspiCore {
     }
 }
 
+// -- WP LK4 --
+/// `wLength` of the meter block (`REQ_GET_STATUS` wValue 9) for
+/// `num_channels`: what [`DspiCore::fetch_status`] asks for.
+pub(crate) fn meter_len(num_channels: u8) -> u16 {
+    let n = usize::from(num_channels).min(MAX_CHANNELS);
+    // n <= 17: at most 41 bytes.
+    u16::try_from(n.saturating_mul(2).saturating_add(7)).unwrap_or(u16::MAX)
+}
+
 // -- WP LK2 --
 /// What [`DspiCore::fetch_status`] found with the lock held.
 enum Locked {
@@ -286,7 +307,17 @@ impl DspiCore {
         let inner = &mut *guard;
         let n = usize::from(inner.state.num_channels).min(MAX_CHANNELS);
         let num_channels = inner.state.num_channels;
-        let conn = inner.conn.as_mut().ok_or(DspiError::Disconnected)?;
+        let Some(conn) = inner.conn.as_mut() else {
+            // -- WP LK4 -- a Link device being opened: its meter feed runs
+            // from the image on, before the connection is installed
+            drop(guard);
+            let path = self.meter_path().ok_or(DspiError::Disconnected)?;
+            return Ok(Locked::Side(
+                usize::from(path.num_channels),
+                path.side,
+                None,
+            ));
+        };
         let Some(side) = conn.side.clone() else {
             // n <= 17: at most 41 bytes.
             let want = n.saturating_mul(2).saturating_add(7);
@@ -367,7 +398,7 @@ fn read_platform_and_image(conn: &mut Connection, s: &mut DspState) -> Result<Op
 
 /// Put the values the image does not carry back to their defaults, so a
 /// failed per-item read cannot leave a previous device's value behind.
-fn reset_per_item(s: &mut DspState) {
+pub(crate) fn reset_per_item(s: &mut DspState) {
     let d = state::default_state();
     s.core1_mode = d.core1_mode;
     s.subharm_solo = d.subharm_solo;
@@ -396,7 +427,22 @@ fn reset_per_item(s: &mut DspState) {
 /// the names. The one difference: a UART config that fails after the status
 /// answered no longer skips the I2C read.
 fn read_per_item(conn: &mut Connection, s: &mut DspState) {
-    let first = conn.transport().control_in_batch(&[
+    // -- WP LK4 -- the reads on any transport, the names applied here
+    let names = crate::info::name_reads(conn);
+    let answers = read_per_item_on(conn.transport(), &names, s);
+    crate::info::apply_names(conn, &names, answers);
+}
+
+/// [`read_per_item`]'s reads on `t` into `s`, with the name reads `names`
+/// in the second batch; their answers are returned, to apply to the
+/// connection ([`crate::info::apply_names`]). WP LK4: a DSPi Link bind runs
+/// it in the background, without the core lock.
+pub(crate) fn read_per_item_on(
+    t: &mut dyn dspi_transport::Transport,
+    names: &[InRead],
+    s: &mut DspState,
+) -> Vec<Result<Vec<u8>>> {
+    let first = t.control_in_batch(&[
         InRead::upto(op::REQ_GET_CORE1_MODE, 0, 1),
         InRead::upto(op::REQ_GET_SUBHARM_SOLO, 0, 1),
         InRead::upto(op::REQ_GET_DAC_HW_MUTE_CONFIG, 0, 16),
@@ -433,7 +479,9 @@ fn read_per_item(conn: &mut Connection, s: &mut DspState) {
             .iter()
             .map(|slot| InRead::upto(op::REQ_PRESET_GET_NAME, u16::from(*slot), name_len)),
     );
-    let second = conn.transport().control_in_batch(&reads);
+    // -- WP LK4 -- the source and device names (WP CG13, QD4) in the same batch
+    reads.extend(names.iter().copied());
+    let second = t.control_in_batch(&reads);
     let mut second = second.into_iter().map(|r| r.map_err(DspiError::from));
     let mut next = || second.next().unwrap_or(Err(DspiError::Disconnected));
     if let Ok(st) = status {
@@ -449,10 +497,76 @@ fn read_per_item(conn: &mut Connection, s: &mut DspState) {
     for slot in slots {
         apply_preset_name(next().map(|d| name_from(&d)).as_ref(), s, slot);
     }
-    // -- WP CG13 --
-    crate::info::read_source_names(conn);
-    // -- WP QD4 --
-    crate::info::read_device_name(conn);
+    // -- WP CG13 -- -- WP QD4 -- (batched since WP LK4)
+    names.iter().map(|_| next()).collect()
+}
+
+// -- WP LK4 --
+/// Carry the values the image does not carry ([`reset_per_item`]'s list) from
+/// `from` into `to` as they are (review c83 F1b).
+fn carry_per_item(from: &DspState, to: &mut DspState) {
+    macro_rules! carry {
+        ($($f:ident),*) => {$( to.$f = from.$f.clone(); )*};
+    }
+    carry!(
+        core1_mode,
+        subharm_solo,
+        dac_mute_supported,
+        ctrl_iface_supported,
+        ctrl_status,
+        uart,
+        i2c,
+        preset_occupied,
+        preset_startup_mode,
+        preset_default_slot,
+        active_preset_slot,
+        output_config_mode,
+        master_volume_mode,
+        preset_names
+    );
+}
+
+// -- WP LK4 --
+/// Fill the values the image does not carry ([`reset_per_item`]'s list) from
+/// `read`, the background per-item reads of a DSPi Link bind, into `to`, the
+/// mirror now; `before` is what the mirror held when those reads were issued.
+/// Field by field (preset names name by name), only a value nobody changed
+/// since takes the read one: a user's write or a notification that arrived
+/// meanwhile is newer than the read and wins (review c82 F1). The rule
+/// compares values, not writes (review c83 N2): a write of exactly the value
+/// the mirror held (or A, then B, then A again) cannot be told from none, and
+/// the read wins; a per-connection write count would be exact. Narrow: the
+/// field then shows what the device answered moments before.
+pub(crate) fn merge_per_item(before: &DspState, read: &DspState, to: &mut DspState) {
+    macro_rules! fill {
+        ($($f:ident),*) => {$(
+            if to.$f == before.$f {
+                to.$f = read.$f.clone();
+            }
+        )*};
+    }
+    fill!(
+        core1_mode,
+        subharm_solo,
+        dac_mute_supported,
+        ctrl_iface_supported,
+        ctrl_status,
+        uart,
+        i2c,
+        preset_occupied,
+        preset_startup_mode,
+        preset_default_slot,
+        active_preset_slot,
+        output_config_mode,
+        master_volume_mode
+    );
+    for (i, name) in to.preset_names.iter_mut().enumerate() {
+        if before.preset_names.get(i) == Some(name)
+            && let Some(r) = read.preset_names.get(i)
+        {
+            name.clone_from(r);
+        }
+    }
 }
 
 /// `COMPAT_*` for a device wire format other than V32's (0: unknown, old).

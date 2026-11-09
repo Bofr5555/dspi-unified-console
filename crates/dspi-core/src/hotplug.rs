@@ -120,7 +120,17 @@ impl Closing {
 
     /// Stop the RTA worker and the reader, then drop the transport. Call
     /// with the lock released (PLAN §1.2).
-    fn finish(self) {
+    fn finish(self, core: &DspiCore) {
+        // -- WP LK4 -- (review c6j N1) the meter path goes with its
+        // connection: `fetch_status` serves it while no connection is open
+        if let Some(side) = &self.conn.side {
+            let ours = core
+                .meter_path()
+                .is_some_and(|p| std::ptr::addr_eq(Arc::as_ptr(&p.side), Arc::as_ptr(side)));
+            if ours {
+                drop(core.set_meter_path(None));
+            }
+        }
         if let Some(worker) = self.worker {
             worker.stop();
         }
@@ -247,7 +257,7 @@ impl DspiCore {
                 "device {} lost: its notification stream ended",
                 lost.conn.serial
             );
-            lost.finish();
+            lost.finish(self);
         }
 
         // 2. Enumerate with the lock released.
@@ -276,7 +286,7 @@ impl DspiCore {
         // 5. Lock released: close, reopen, then tell the app.
         if let Some(closing) = departed {
             log::info!("device {} departed", closing.conn.serial);
-            closing.finish();
+            closing.finish(self);
         }
         if let Some(serial) = &plan.reopen {
             match reopen(serial) {
@@ -304,7 +314,7 @@ impl DspiCore {
                     };
                     if let Some(closing) = moved {
                         log::info!("selection moved during the reconnect of {serial}");
-                        closing.finish();
+                        closing.finish(self);
                     }
                 }
                 Err(e) => log::warn!("reconnecting {serial} failed: {e}"),

@@ -46,6 +46,8 @@ fn selected(hub: &FakeHub) -> Arc<DspiCore> {
     wait_until("the device list", || !core.link_devices().is_empty());
     let d = core.link_devices().remove(0);
     core.link_select_device(d.handle, d.serial).unwrap();
+    // WP LK4: the bind completes its probe in the background; settle it
+    core.ensure_probed();
     core
 }
 
@@ -200,6 +202,8 @@ fn wp_lk2_a_resync_re_read_does_not_stop_the_meters() {
     let core = selected(&hub);
     core.fetch_all().unwrap();
     live_meters(&core);
+    // WP LK4: the completed probe's refresh, seen first
+    let _ = core.process_notifications();
     // The re-read after a RESYNC waits for the hub; the poll feed goes on
     hub.hold_replies();
     let reads = hub.log().len();

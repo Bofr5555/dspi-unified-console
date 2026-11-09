@@ -41,6 +41,7 @@ impl DspiCore {
     /// EXT_WRITE_REFUSED }` when the device stalls the write; `Denied`,
     /// `Locked` or `Transfer` from the link.
     pub fn set_crossfeed_pair_map(&self, map: Vec<u8>) -> Result<()> {
+        self.ensure_probed(); // -- WP LK4 --
         set_pair_map_locked(&mut self.lock(), &map)
     }
 
@@ -54,6 +55,7 @@ impl DspiCore {
     /// pairing, on stock firmware). `Disconnected` without a device;
     /// `Transfer` for a short or failed read.
     pub fn fetch_crossfeed_pair_map(&self) -> Result<Vec<u8>> {
+        self.ensure_probed(); // -- WP LK4 --
         fetch_pair_map_locked(&mut self.lock())
     }
 
@@ -62,6 +64,7 @@ impl DspiCore {
     /// `has_core_vreg` are true only when the sub-command was listed *and*
     /// its probe read succeeded. `Disconnected` without a device.
     pub fn ext_status(&self) -> Result<ExtStatus> {
+        self.ensure_probed(); // -- WP LK4 --
         let mut inner = self.lock();
         let ext = &inner.conn()?.ext;
         Ok(ExtStatus {
@@ -78,6 +81,7 @@ impl DspiCore {
     /// refuses it; `Disconnected` without a device; `Transfer` for a short
     /// or failed read.
     pub fn fetch_core_vreg(&self) -> Result<CoreVregInfo> {
+        self.ensure_probed(); // -- WP LK4 --
         let mut inner = self.lock();
         let conn = inner.conn()?;
         if conn.ext.core_vreg.is_none() {
@@ -111,6 +115,7 @@ impl DspiCore {
     /// `Refused { status: EXT_WRITE_REFUSED }` when the device stalls the
     /// request anyway; `Denied`, `Locked` or `Transfer` from the link.
     pub fn core_vreg_op(&self, op: u8, value: u8, word: Option<String>) -> Result<()> {
+        self.ensure_probed(); // -- WP LK4 --
         let mut inner = self.lock();
         let floor = match &inner.conn()?.ext.core_vreg {
             Some(s) => s.default_vreg,

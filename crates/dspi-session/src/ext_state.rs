@@ -17,7 +17,7 @@
 use dspi_proto::ext::{CoreVregStatus, LIST_READ_LEN, PairMap, decode_list};
 use dspi_proto::generated::ext as g;
 use dspi_proto::generated::opcodes as op;
-use dspi_transport::{Transport, TransportError};
+use dspi_transport::{InRead, Transport, TransportError};
 
 /// The extension channel's view of a device. `supported` is empty on stock
 /// firmware (`EXT_LIST` stalls there), and then everything else is `None`.
@@ -61,7 +61,44 @@ impl ExtState {
     /// sub-command whose read is absent is left `None` (it stays in
     /// `supported`, which is what the device claimed).
     pub fn probe(t: &mut dyn Transport) -> Result<Self, TransportError> {
-        let list = match t.control_in_upto(op::REQ_EXTENSION, g::EXT_LIST, LIST_LEN) {
+        let r = Self::list_read();
+        let list = t.control_in_upto(r.opcode, r.value, r.len);
+        let reads = Self::follow_up(&list);
+        let answers = if reads.is_empty() {
+            Vec::new()
+        } else {
+            t.control_in_batch(&reads)
+        };
+        Self::from_answers(list, answers)
+    }
+
+    // -- WP LK4 --
+    /// The `EXT_LIST` read of [`ExtState::probe`], for a caller that sends it
+    /// in a batch with others.
+    pub fn list_read() -> InRead {
+        InRead::upto(op::REQ_EXTENSION, g::EXT_LIST, LIST_LEN)
+    }
+
+    /// The reads that follow `EXT_LIST`'s answer `list`: none when it was
+    /// absent or failed.
+    pub fn follow_up(list: &Result<Vec<u8>, TransportError>) -> Vec<InRead> {
+        let Ok(list) = list else {
+            return Vec::new();
+        };
+        reads_for(&supported_from_list(list))
+            .into_iter()
+            .map(|(id, len)| InRead::exact(op::REQ_EXTENSION, id, len))
+            .collect()
+    }
+
+    /// The state from `EXT_LIST`'s answer and the answers to
+    /// [`ExtState::follow_up`]'s reads, in their order: as
+    /// [`ExtState::probe`] would build it, with the same errors.
+    pub fn from_answers(
+        list: Result<Vec<u8>, TransportError>,
+        answers: Vec<Result<Vec<u8>, TransportError>>,
+    ) -> Result<Self, TransportError> {
+        let list = match list {
             Ok(b) => b,
             Err(e) => {
                 absent(e)?;
@@ -70,8 +107,8 @@ impl ExtState {
         };
         let supported = supported_from_list(&list);
         let mut replies = Vec::new();
-        for (id, len) in reads_for(&supported) {
-            match t.control_in(op::REQ_EXTENSION, id, len) {
+        for ((id, _), answer) in reads_for(&supported).into_iter().zip(answers) {
+            match answer {
                 Ok(b) => replies.push((id, b)),
                 Err(e) => absent(e)?,
             }

@@ -457,6 +457,8 @@ impl State {
         json!({
             "handle": 0, "serial": self.cfg.serial, "name": self.cfg.device_name,
             "platform": p[0], "fw": format!("{}.{}.{}", p[1], p[4], p[5]), "fw_beta": p[6], "outputs": p[3],
+            // -- WP LK4 -- as the ESP32 bridge lists it once it has read the header
+            "inputs": self.image.get(4).copied().unwrap_or(0),
             "wire_version": self.image[0], "state": if self.board == Board::Online { "online" } else { "offline" },
             "link": if self.cfg.kind == "bridge" { "uart" } else { "usb" },
             "locked_by": self.lock.map(|l| l.0),

@@ -186,6 +186,11 @@ impl DspiCore {
             )));
         }
         let value = Value::from(value);
+        // -- WP LK4 -- a write that depends on the probe (a feature, a band
+        // index, a control-surface slot) waits for a DSPi Link bind's probe
+        if dspi_session::write::depends_on_probe(d) {
+            self.ensure_probed();
+        }
         // Diagnostics housekeeping: allowed on a read-only connection too,
         // as its typed call is.
         match d.path {

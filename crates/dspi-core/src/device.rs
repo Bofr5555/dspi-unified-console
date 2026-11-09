@@ -199,34 +199,6 @@ pub(crate) fn unmappable_mirror(
     Some(mirror)
 }
 
-/// Read `GET_PLATFORM` into `mirror` (platform, output count, firmware
-/// version): `Ok(true)` when applied. A lost device is
-/// [`DspiError::Disconnected`]; any other failure (the probe has just read
-/// the same request, so it is unlikely) is logged and gives `Ok(false)`, the
-/// mirror untouched.
-pub(crate) fn read_platform_into(t: &mut dyn Transport, mirror: &mut DspState) -> Result<bool> {
-    let kind = t.caps().kind;
-    let reply = dspi_transport::with_busy_retry(
-        kind,
-        || t.control_in_upto(op::REQ_GET_PLATFORM, 0, PLATFORM_REQUEST_LEN),
-        op::REQ_GET_PLATFORM,
-    );
-    match reply {
-        Ok(reply) => match state::apply_platform(&reply, mirror) {
-            Ok(()) => Ok(true),
-            Err(e) => {
-                log::warn!("GET_PLATFORM reply not applied: {e}");
-                Ok(false)
-            }
-        },
-        Err(TransportError::Disconnected) => Err(DspiError::Disconnected),
-        Err(e) => {
-            log::warn!("GET_PLATFORM failed after the probe: {e}");
-            Ok(false)
-        }
-    }
-}
-
 /// `wLength` of the `GET_PLATFORM` read: 7 bytes, the longest reply.
 const PLATFORM_REQUEST_LEN: u16 = {
     assert!(PlatformInfo::REQUEST_LEN <= u16::MAX as usize);

@@ -2248,6 +2248,8 @@ fn write_exit(e: &dspi_session::WriteError) -> u8 {
         W::Transport(e) => transfer_exit(e),
         // -- WP TM20 -- Sent, and the device never said it finished.
         W::Unsettled { .. } => exit::TRANSPORT,
+        // -- WP LK4 -- not sent; the device's capabilities are still being read: retry
+        W::Unprobed { .. } => exit::TRANSPORT,
     }
 }
 
