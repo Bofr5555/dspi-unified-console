@@ -1099,6 +1099,12 @@ class DspiBridgeImpl(
         return labels.getOrNull(out)?.label?.takeIf { it.isNotEmpty() } ?: channelName(ch)
     }
 
+    override fun channelShortLabel(ch: Int): String {
+        val out = map.outputOf(ch)
+        if (out < 0) return channelName(ch)
+        return labels.getOrNull(out)?.shortLabel?.takeIf { it.isNotEmpty() } ?: channelName(ch)
+    }
+
     override fun outputSlotName(output: Int): String = labels.getOrNull(output)?.slotName ?: ""
 
     override fun outputCards(): List<OutputCard> = cards

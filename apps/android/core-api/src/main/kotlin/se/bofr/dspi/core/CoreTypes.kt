@@ -2134,6 +2134,11 @@ data class OutputLabel(
      */
     val label: String,
     /**
+     * The same for a phone row, beside the output's "OUTn" button: the
+     * user's name, else "R · Low" (owner decision, review c86 F3).
+     */
+    val shortLabel: String,
+    /**
      * The firmware's name for the slot ("I2S 1 L", "PDM"), for a tooltip or
      * a detail line.
      */
@@ -2166,7 +2171,8 @@ data class OutputCard(
     val right: Int?,
     /**
      * "Woofers", "Tweeters" or "Mids" for a pair on one band with default
-     * names; empty otherwise.
+     * names whose left output plays L and right output R by the routing;
+     * empty otherwise.
      */
     val title: String,
     /**
@@ -2178,6 +2184,16 @@ data class OutputCard(
      * The right column's heading; empty for a card of one output.
      */
     val rightName: String,
+    /**
+     * The left column's heading on a phone: "Woofers L" under a title, else
+     * the output's short label ("R · Low").
+     */
+    val leftShortName: String,
+    /**
+     * The right column's heading on a phone: "R" under a title, else the
+     * output's short label; empty for a card of one output.
+     */
+    val rightShortName: String,
 )
 
 /**

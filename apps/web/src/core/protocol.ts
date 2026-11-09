@@ -218,6 +218,8 @@ export interface DeviceSnapshot {
 export interface OutputLabel {
   output: number;
   label: string;
+  /** A phone row's form beside its OUTn button: the user's name, else "R · Low". */
+  shortLabel: string;
   /** The firmware's name for the slot, "I2S 1 L" or "PDM": for a tooltip. */
   slotName: string;
   userNamed: boolean;
@@ -234,6 +236,9 @@ export interface OutputCard {
   title: string;
   leftName: string;
   rightName: string;
+  /** A phone's narrow columns: "Woofers L" | "R", else the short labels. */
+  leftShortName: string;
+  rightShortName: string;
 }
 
 /**

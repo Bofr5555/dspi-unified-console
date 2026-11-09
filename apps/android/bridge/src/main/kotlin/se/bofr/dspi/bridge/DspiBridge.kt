@@ -313,6 +313,12 @@ interface DspiBridge {
      */
     fun channelLabel(ch: Int): String
 
+    /**
+     * -- BUG1, review c86 F3 -- [channelLabel] for a phone row beside its OUTn button: an
+     * input's name; an output's user-set name, else channel and band alone ("R · Low").
+     */
+    fun channelShortLabel(ch: Int): String
+
     /** -- BUG1 -- The firmware's name for output [output]'s slot ("I2S 1 L", "PDM"), for a detail line; "" if absent. */
     fun outputSlotName(output: Int): String
 

@@ -14634,7 +14634,8 @@ public struct OutputCard {
     public var right: UInt8?
     /**
      * "Woofers", "Tweeters" or "Mids" for a pair on one band with default
-     * names; empty otherwise.
+     * names whose left output plays L and right output R by the routing;
+     * empty otherwise.
      */
     public var title: String
     /**
@@ -14646,6 +14647,16 @@ public struct OutputCard {
      * The right column's heading; empty for a card of one output.
      */
     public var rightName: String
+    /**
+     * The left column's heading on a phone: "Woofers L" under a title, else
+     * the output's short label ("R · Low").
+     */
+    public var leftShortName: String
+    /**
+     * The right column's heading on a phone: "R" under a title, else the
+     * output's short label; empty for a card of one output.
+     */
+    public var rightShortName: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -14658,7 +14669,8 @@ public struct OutputCard {
          */right: UInt8?, 
         /**
          * "Woofers", "Tweeters" or "Mids" for a pair on one band with default
-         * names; empty otherwise.
+         * names whose left output plays L and right output R by the routing;
+         * empty otherwise.
          */title: String, 
         /**
          * The columns' headings: "Woofers L" / "Woofers R" under a title, else
@@ -14666,12 +14678,22 @@ public struct OutputCard {
          */leftName: String, 
         /**
          * The right column's heading; empty for a card of one output.
-         */rightName: String) {
+         */rightName: String, 
+        /**
+         * The left column's heading on a phone: "Woofers L" under a title, else
+         * the output's short label ("R · Low").
+         */leftShortName: String, 
+        /**
+         * The right column's heading on a phone: "R" under a title, else the
+         * output's short label; empty for a card of one output.
+         */rightShortName: String) {
         self.left = left
         self.right = right
         self.title = title
         self.leftName = leftName
         self.rightName = rightName
+        self.leftShortName = leftShortName
+        self.rightShortName = rightShortName
     }
 }
 
@@ -14697,6 +14719,12 @@ extension OutputCard: Equatable, Hashable {
         if lhs.rightName != rhs.rightName {
             return false
         }
+        if lhs.leftShortName != rhs.leftShortName {
+            return false
+        }
+        if lhs.rightShortName != rhs.rightShortName {
+            return false
+        }
         return true
     }
 
@@ -14706,6 +14734,8 @@ extension OutputCard: Equatable, Hashable {
         hasher.combine(title)
         hasher.combine(leftName)
         hasher.combine(rightName)
+        hasher.combine(leftShortName)
+        hasher.combine(rightShortName)
     }
 }
 
@@ -14722,7 +14752,9 @@ public struct FfiConverterTypeOutputCard: FfiConverterRustBuffer {
                 right: FfiConverterOptionUInt8.read(from: &buf), 
                 title: FfiConverterString.read(from: &buf), 
                 leftName: FfiConverterString.read(from: &buf), 
-                rightName: FfiConverterString.read(from: &buf)
+                rightName: FfiConverterString.read(from: &buf), 
+                leftShortName: FfiConverterString.read(from: &buf), 
+                rightShortName: FfiConverterString.read(from: &buf)
         )
     }
 
@@ -14732,6 +14764,8 @@ public struct FfiConverterTypeOutputCard: FfiConverterRustBuffer {
         FfiConverterString.write(value.title, into: &buf)
         FfiConverterString.write(value.leftName, into: &buf)
         FfiConverterString.write(value.rightName, into: &buf)
+        FfiConverterString.write(value.leftShortName, into: &buf)
+        FfiConverterString.write(value.rightShortName, into: &buf)
     }
 }
 
@@ -14883,6 +14917,11 @@ public struct OutputLabel {
      */
     public var label: String
     /**
+     * The same for a phone row, beside the output's "OUTn" button: the
+     * user's name, else "R · Low" (owner decision, review c86 F3).
+     */
+    public var shortLabel: String
+    /**
      * The firmware's name for the slot ("I2S 1 L", "PDM"), for a tooltip or
      * a detail line.
      */
@@ -14910,6 +14949,10 @@ public struct OutputLabel {
          * What to show: the user's name, else "Out 1 · R · Low".
          */label: String, 
         /**
+         * The same for a phone row, beside the output's "OUTn" button: the
+         * user's name, else "R · Low" (owner decision, review c86 F3).
+         */shortLabel: String, 
+        /**
          * The firmware's name for the slot ("I2S 1 L", "PDM"), for a tooltip or
          * a detail line.
          */slotName: String, 
@@ -14924,6 +14967,7 @@ public struct OutputLabel {
          */band: String) {
         self.output = output
         self.label = label
+        self.shortLabel = shortLabel
         self.slotName = slotName
         self.userNamed = userNamed
         self.channel = channel
@@ -14944,6 +14988,9 @@ extension OutputLabel: Equatable, Hashable {
         if lhs.label != rhs.label {
             return false
         }
+        if lhs.shortLabel != rhs.shortLabel {
+            return false
+        }
         if lhs.slotName != rhs.slotName {
             return false
         }
@@ -14962,6 +15009,7 @@ extension OutputLabel: Equatable, Hashable {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(output)
         hasher.combine(label)
+        hasher.combine(shortLabel)
         hasher.combine(slotName)
         hasher.combine(userNamed)
         hasher.combine(channel)
@@ -14980,6 +15028,7 @@ public struct FfiConverterTypeOutputLabel: FfiConverterRustBuffer {
             try OutputLabel(
                 output: FfiConverterUInt8.read(from: &buf), 
                 label: FfiConverterString.read(from: &buf), 
+                shortLabel: FfiConverterString.read(from: &buf), 
                 slotName: FfiConverterString.read(from: &buf), 
                 userNamed: FfiConverterBool.read(from: &buf), 
                 channel: FfiConverterString.read(from: &buf), 
@@ -14990,6 +15039,7 @@ public struct FfiConverterTypeOutputLabel: FfiConverterRustBuffer {
     public static func write(_ value: OutputLabel, into buf: inout [UInt8]) {
         FfiConverterUInt8.write(value.output, into: &buf)
         FfiConverterString.write(value.label, into: &buf)
+        FfiConverterString.write(value.shortLabel, into: &buf)
         FfiConverterString.write(value.slotName, into: &buf)
         FfiConverterBool.write(value.userNamed, into: &buf)
         FfiConverterString.write(value.channel, into: &buf)

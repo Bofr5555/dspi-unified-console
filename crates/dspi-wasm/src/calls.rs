@@ -949,7 +949,7 @@ mod tests {
         assert_eq!(snap["outputLabels"][1]["slotName"], "I2S 1 R");
         assert_eq!(
             snap["outputCards"][0],
-            json!({ "left": 2, "right": 0, "title": "Woofers", "leftName": "Woofers L", "rightName": "Woofers R" })
+            json!({ "left": 2, "right": 0, "title": "Woofers", "leftName": "Woofers L", "rightName": "Woofers R", "leftShortName": "Woofers L", "rightShortName": "R" })
         );
         session_free(h).unwrap();
     }

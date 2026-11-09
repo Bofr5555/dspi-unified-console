@@ -1455,6 +1455,7 @@ class DSPViewModel: ObservableObject {
     // -- BUG1 -- Each output's label (the user's name, else from the routing and the filters),
     // its slot's name and the dashboard's cards: Core/OutputLabels.swift keeps them current.
     @Published var outputLabelTexts: [String] = []
+    @Published var outputShortTexts: [String] = []   // review c86 F3: a phone's row
     @Published var outputSlotNames: [String] = []
     @Published var outputCardPlan: [OutputCardPlan] = []
     var outputLabelWatch: AnyCancellable?

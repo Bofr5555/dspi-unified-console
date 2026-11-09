@@ -17218,7 +17218,8 @@ data class OutputCard (
     var `right`: kotlin.UByte?, 
     /**
      * "Woofers", "Tweeters" or "Mids" for a pair on one band with default
-     * names; empty otherwise.
+     * names whose left output plays L and right output R by the routing;
+     * empty otherwise.
      */
     var `title`: kotlin.String, 
     /**
@@ -17229,7 +17230,17 @@ data class OutputCard (
     /**
      * The right column's heading; empty for a card of one output.
      */
-    var `rightName`: kotlin.String
+    var `rightName`: kotlin.String, 
+    /**
+     * The left column's heading on a phone: "Woofers L" under a title, else
+     * the output's short label ("R · Low").
+     */
+    var `leftShortName`: kotlin.String, 
+    /**
+     * The right column's heading on a phone: "R" under a title, else the
+     * output's short label; empty for a card of one output.
+     */
+    var `rightShortName`: kotlin.String
 ) {
     
     companion object
@@ -17246,6 +17257,8 @@ public object FfiConverterTypeOutputCard: FfiConverterRustBuffer<OutputCard> {
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
         )
     }
 
@@ -17254,7 +17267,9 @@ public object FfiConverterTypeOutputCard: FfiConverterRustBuffer<OutputCard> {
             FfiConverterOptionalUByte.allocationSize(value.`right`) +
             FfiConverterString.allocationSize(value.`title`) +
             FfiConverterString.allocationSize(value.`leftName`) +
-            FfiConverterString.allocationSize(value.`rightName`)
+            FfiConverterString.allocationSize(value.`rightName`) +
+            FfiConverterString.allocationSize(value.`leftShortName`) +
+            FfiConverterString.allocationSize(value.`rightShortName`)
     )
 
     override fun write(value: OutputCard, buf: ByteBuffer) {
@@ -17263,6 +17278,8 @@ public object FfiConverterTypeOutputCard: FfiConverterRustBuffer<OutputCard> {
             FfiConverterString.write(value.`title`, buf)
             FfiConverterString.write(value.`leftName`, buf)
             FfiConverterString.write(value.`rightName`, buf)
+            FfiConverterString.write(value.`leftShortName`, buf)
+            FfiConverterString.write(value.`rightShortName`, buf)
     }
 }
 
@@ -17339,6 +17356,11 @@ data class OutputLabel (
      */
     var `label`: kotlin.String, 
     /**
+     * The same for a phone row, beside the output's "OUTn" button: the
+     * user's name, else "R · Low" (owner decision, review c86 F3).
+     */
+    var `shortLabel`: kotlin.String, 
+    /**
      * The firmware's name for the slot ("I2S 1 L", "PDM"), for a tooltip or
      * a detail line.
      */
@@ -17369,6 +17391,7 @@ public object FfiConverterTypeOutputLabel: FfiConverterRustBuffer<OutputLabel> {
             FfiConverterUByte.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
@@ -17378,6 +17401,7 @@ public object FfiConverterTypeOutputLabel: FfiConverterRustBuffer<OutputLabel> {
     override fun allocationSize(value: OutputLabel) = (
             FfiConverterUByte.allocationSize(value.`output`) +
             FfiConverterString.allocationSize(value.`label`) +
+            FfiConverterString.allocationSize(value.`shortLabel`) +
             FfiConverterString.allocationSize(value.`slotName`) +
             FfiConverterBoolean.allocationSize(value.`userNamed`) +
             FfiConverterString.allocationSize(value.`channel`) +
@@ -17387,6 +17411,7 @@ public object FfiConverterTypeOutputLabel: FfiConverterRustBuffer<OutputLabel> {
     override fun write(value: OutputLabel, buf: ByteBuffer) {
             FfiConverterUByte.write(value.`output`, buf)
             FfiConverterString.write(value.`label`, buf)
+            FfiConverterString.write(value.`shortLabel`, buf)
             FfiConverterString.write(value.`slotName`, buf)
             FfiConverterBoolean.write(value.`userNamed`, buf)
             FfiConverterString.write(value.`channel`, buf)

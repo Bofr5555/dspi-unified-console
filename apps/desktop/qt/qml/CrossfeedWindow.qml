@@ -66,7 +66,8 @@ AppWindow {
         onTriggered: win.revealPairEditor()
     }
 
-    function outputName(o) { return bridge.channelLabel(o + 2) || qsTr("Out %1").arg(o + 1) }
+    // -- BUG1 -- reads labelsRevision, so the bindings calling it follow the labels (review c86 N1)
+    function outputName(o) { bridge.labelsRevision; return bridge.channelLabel(o + 2) || qsTr("Out %1").arg(o + 1) }
 
     function pairNames() {
         var n = []

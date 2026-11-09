@@ -1921,6 +1921,7 @@ internal fun se.bofr.dspi.ffi.uniffi.OutputLabel.toDomain() =
     OutputLabel(
         output = output.toInt(),
         label = label,
+        shortLabel = shortLabel,
         slotName = slotName,
         userNamed = userNamed,
         channel = channel,
@@ -1931,6 +1932,7 @@ internal fun OutputLabel.toFfi() =
     se.bofr.dspi.ffi.uniffi.OutputLabel(
         output = output.toUByte(),
         label = label,
+        shortLabel = shortLabel,
         slotName = slotName,
         userNamed = userNamed,
         channel = channel,
@@ -1944,6 +1946,8 @@ internal fun se.bofr.dspi.ffi.uniffi.OutputCard.toDomain() =
         title = title,
         leftName = leftName,
         rightName = rightName,
+        leftShortName = leftShortName,
+        rightShortName = rightShortName,
     )
 
 internal fun OutputCard.toFfi() =
@@ -1953,6 +1957,8 @@ internal fun OutputCard.toFfi() =
         title = title,
         leftName = leftName,
         rightName = rightName,
+        leftShortName = leftShortName,
+        rightShortName = rightShortName,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.OutputLabelInput.toDomain() =

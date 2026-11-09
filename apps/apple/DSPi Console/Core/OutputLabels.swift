@@ -21,12 +21,24 @@ import Combine
 import Foundation
 import dspi_core
 
-/// One dashboard card: two outputs side by side, or one (`right` nil).
+/// One dashboard card: two outputs side by side, or one (`right` nil).  The short
+/// names are a phone's ("Woofers L" | "R", "R · Low"; review c86 F2, F3).
 struct OutputCardPlan: Hashable {
     let left: Int
     let right: Int?
     let leftName: String
     let rightName: String
+    var leftShortName: String = ""
+    var rightShortName: String = ""
+
+    #if os(iOS)
+    /// What this platform's card shows: the short headings on iOS.
+    var shownLeft: String { leftShortName.isEmpty ? leftName : leftShortName }
+    var shownRight: String { rightShortName.isEmpty ? rightName : rightShortName }
+    #else
+    var shownLeft: String { leftName }
+    var shownRight: String { rightName }
+    #endif
 }
 
 extension DSPViewModel {
@@ -37,6 +49,25 @@ extension DSPViewModel {
         }
         let ch = eqChannel(forOutput: output)
         return ch >= 0 && ch < channelNames.count ? channelNames[ch] : "Output \(output + 1)"
+    }
+
+    /// The short form for a phone row beside its OUTn pill: the user's name, else
+    /// "R · Low" (owner decision, review c86 F3); the stored name before the labels.
+    func outputShortLabel(_ output: Int) -> String {
+        if output >= 0, output < outputShortTexts.count, !outputShortTexts[output].isEmpty {
+            return outputShortTexts[output]
+        }
+        return outputLabel(output)
+    }
+
+    /// What a sidebar row shows: the short form on iOS (a phone's row, beside OUTn), the
+    /// full label on macOS.
+    func outputRowLabel(_ output: Int) -> String {
+        #if os(iOS)
+        return outputShortLabel(output)
+        #else
+        return outputLabel(output)
+        #endif
     }
 
     /// The firmware's name for output `output`'s slot ("I2S 1 L", "PDM"); "" before the labels.
@@ -68,11 +99,14 @@ extension DSPViewModel {
         let input = outputLabelInput()
         let labels = outputLabelsFor(input: input)
         let texts = labels.map(\.label)
+        let shorts = labels.map(\.shortLabel)
         let slots = labels.map(\.slotName)
         let cards = outputCardsFor(input: input).map {
-            OutputCardPlan(left: Int($0.left), right: $0.right.map(Int.init), leftName: $0.leftName, rightName: $0.rightName)
+            OutputCardPlan(left: Int($0.left), right: $0.right.map(Int.init), leftName: $0.leftName, rightName: $0.rightName,
+                           leftShortName: $0.leftShortName, rightShortName: $0.rightShortName)
         }
         if texts != outputLabelTexts { outputLabelTexts = texts }
+        if shorts != outputShortTexts { outputShortTexts = shorts }
         if slots != outputSlotNames { outputSlotNames = slots }
         if cards != outputCardPlan { outputCardPlan = cards }
     }

@@ -82,7 +82,18 @@ struct ContentView: View {
             let stored = ch < vm.channelNames.count ? vm.channelNames[ch] : ""
             return o < vm.outputEnabled.count && vm.outputEnabled[o] && vm.outputLabelTexts[o] != stored
         }
-        return derived ? 112 : 80
+        guard derived else { return 80 }
+        #if os(iOS)
+        // -- review c86 F2/F3 -- iOS rows show the short form ("R · High"): the column fits
+        // the widest one shown at the body size in use (Dynamic Type), from 80 to 140 pt.
+        let font = UIFont.preferredFont(forTextStyle: .body)
+        let widest = vm.outputEnabled.indices.filter { vm.outputEnabled[$0] }
+            .map { (vm.outputRowLabel($0) as NSString).size(withAttributes: [.font: font]).width }
+            .max() ?? 0
+        return min(max(80, ceil(widest) + 2), 140)
+        #else
+        return 112
+        #endif
     }
 
     /// -- BUG1 -- VoiceOver's name for an output's pill: "OUT1, Out 1, R, Low, slot I2S 1 L".
@@ -516,7 +527,7 @@ struct ContentView: View {
                         let eqCh = vm.eqChannel(forOutput: out.index)
                         OutputRow(output: out, isSelected: selection == .output(out.index),
                                   // -- BUG1 -- the label; a rename starts from the stored name
-                                  name: vm.outputLabel(out.index),
+                                  name: vm.outputRowLabel(out.index),
                                   isMuted: vm.isOutputInactive(out.index),
                                   meters: vm.meters,
                                   isRenaming: renamingChannel == eqCh,

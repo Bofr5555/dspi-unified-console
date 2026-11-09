@@ -25,6 +25,9 @@ pub struct OutputLabel {
     pub output: u8,
     /// What to show: the user's name, else "Out 1 · R · Low".
     pub label: String,
+    /// The same for a phone row, beside the output's "OUTn" button: the
+    /// user's name, else "R · Low" (owner decision, review c86 F3).
+    pub short_label: String,
     /// The firmware's name for the slot ("I2S 1 L", "PDM"), for a tooltip or
     /// a detail line.
     pub slot_name: String,
@@ -46,13 +49,20 @@ pub struct OutputCard {
     /// The right column's output; none for a card of one output.
     pub right: Option<u8>,
     /// "Woofers", "Tweeters" or "Mids" for a pair on one band with default
-    /// names; empty otherwise.
+    /// names whose left output plays L and right output R by the routing;
+    /// empty otherwise.
     pub title: String,
     /// The columns' headings: "Woofers L" / "Woofers R" under a title, else
     /// the outputs' labels.
     pub left_name: String,
     /// The right column's heading; empty for a card of one output.
     pub right_name: String,
+    /// The left column's heading on a phone: "Woofers L" under a title, else
+    /// the output's short label ("R · Low").
+    pub left_short_name: String,
+    /// The right column's heading on a phone: "R" under a title, else the
+    /// output's short label; empty for a card of one output.
+    pub right_short_name: String,
 }
 
 /// The state the labels read, for a client that keeps its own copy.
@@ -143,6 +153,7 @@ fn labels(src: &LabelSource) -> Vec<OutputLabel> {
         .map(|l| OutputLabel {
             output: index(l.output),
             label: l.label,
+            short_label: l.short_label,
             slot_name: l.slot_name,
             user_named: l.user_named,
             channel: l.channel,
@@ -160,6 +171,8 @@ fn cards(src: &LabelSource) -> Vec<OutputCard> {
             title: c.title,
             left_name: c.left_name,
             right_name: c.right_name,
+            left_short_name: c.left_short_name,
+            right_short_name: c.right_short_name,
         })
         .collect()
 }
@@ -237,7 +250,17 @@ mod tests_bug1 {
         let slots: Vec<&str> = l.iter().take(4).map(|l| l.slot_name.as_str()).collect();
         assert_eq!(slots, ["I2S 1 L", "I2S 1 R", "I2S 2 L", "I2S 2 R"]);
         assert_eq!((l[0].channel.as_str(), l[0].band.as_str()), ("R", "Low"));
+        // -- review c86 F3 -- a phone's form beside the OUTn button
+        let short: Vec<&str> = l.iter().take(4).map(|l| l.short_label.as_str()).collect();
+        assert_eq!(short, ["R · Low", "R · High", "L · Low", "L · High"]);
         let c = core.output_cards();
+        assert_eq!(
+            (
+                c[0].left_short_name.as_str(),
+                c[0].right_short_name.as_str()
+            ),
+            ("Woofers L", "R")
+        );
         let shape: Vec<(u8, Option<u8>, &str, &str)> = c
             .iter()
             .map(|c| (c.left, c.right, c.left_name.as_str(), c.right_name.as_str()))
@@ -248,6 +271,47 @@ mod tests_bug1 {
                 (2, Some(0), "Woofers L", "Woofers R"),
                 (3, Some(1), "Tweeters L", "Tweeters R")
             ]
+        );
+    }
+
+    /// Review c86 F1 on the real core: the demo device's outputs 1 and 2
+    /// low-passed, first both fed L+R (two mono subs), then fed R and L. The
+    /// card names neither pair "Woofers L | R".
+    #[test]
+    fn bug1_c86_cards_take_sides_from_the_routing() {
+        let core = demo();
+        let ni = core.get_state().num_input_channels;
+        let lp = FilterParams {
+            filter_type: 34,
+            bypass: false,
+            freq: 80.0,
+            q: 0.707,
+            gain: 0.0,
+            qp: 0.707,
+        };
+        for o in 0..2u8 {
+            core.set_crossover(ni + o, 0, lp.clone())
+                .expect("crossover");
+            core.set_matrix_route(0, o, true, 0.0, false)
+                .expect("route");
+            core.set_matrix_route(1, o, true, 0.0, false)
+                .expect("route");
+        }
+        let c = &core.output_cards()[0];
+        assert_eq!((c.left, c.right, c.title.as_str()), (0, Some(1), ""));
+        assert_eq!(
+            (c.left_name.as_str(), c.right_name.as_str()),
+            ("Out 1 · L+R · Low", "Out 2 · L+R · Low")
+        );
+        core.set_matrix_route(0, 0, false, 0.0, false)
+            .expect("route");
+        core.set_matrix_route(1, 1, false, 0.0, false)
+            .expect("route");
+        let c = &core.output_cards()[0];
+        assert_eq!(c.title, "");
+        assert_eq!(
+            (c.left_short_name.as_str(), c.right_short_name.as_str()),
+            ("R · Low", "L · Low")
         );
     }
 

@@ -34,6 +34,9 @@ class DSPiBridge : public QObject
 
     // Connection / device
     Q_PROPERTY(bool connected READ connected NOTIFY statusChanged)
+    // -- BUG1, review c86 N1 -- Read in a binding (or a function a binding calls) that shows
+    // output labels, so it follows them as they change with the routing and the filters
+    Q_PROPERTY(int labelsRevision READ labelsRevision NOTIFY outputLabelsChanged)
     // The live settings differ from the active preset (the `*` after its name)
     Q_PROPERTY(bool presetDirty READ presetDirty NOTIFY presetDirtyChanged)
     // Why the last connection attempt failed ("" if it didn't)
@@ -244,6 +247,7 @@ public:
     // core's label from the routing and the filters ("Out 1 · R · Low"). channelName stays the
     // stored name, what a rename starts from.
     Q_INVOKABLE QString channelLabel(int ch) const;
+    int labelsRevision() const { return m_labelsRevision; }
     // The firmware's name for an output's slot ("I2S 1 L", "PDM"), for a tooltip; "" if absent
     Q_INVOKABLE QString outputSlotName(int output) const;
     // The dashboard's output cards, [{left, right (-1: one output), title, leftName, rightName}]:
@@ -588,6 +592,7 @@ private:
     void refreshOutputLabels() const;
     void readOutputLabels();
     mutable bool m_labelsStale = true;
+    int m_labelsRevision = 0;
     mutable QStringList m_outputLabels;
     mutable QStringList m_outputSlots;
     mutable QVariantList m_outputCards;

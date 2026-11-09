@@ -34,9 +34,20 @@ final class OutputLabelsBug1Tests: XCTestCase {
         XCTAssertEqual(vm.outputSlotName(0), "I2S 1 L")
         XCTAssertEqual(vm.outputLabel(3), "Out 4 · L · High")
         XCTAssertEqual(vm.outputCardPlan, [
-            OutputCardPlan(left: 2, right: 0, leftName: "Woofers L", rightName: "Woofers R"),
-            OutputCardPlan(left: 3, right: 1, leftName: "Tweeters L", rightName: "Tweeters R"),
+            OutputCardPlan(left: 2, right: 0, leftName: "Woofers L", rightName: "Woofers R",
+                           leftShortName: "Woofers L", rightShortName: "R"),
+            OutputCardPlan(left: 3, right: 1, leftName: "Tweeters L", rightName: "Tweeters R",
+                           leftShortName: "Tweeters L", rightShortName: "R"),
         ])
+        // Review c86 F3: a phone's row beside its OUTn pill; macOS keeps the full label
+        XCTAssertEqual((0..<4).map { vm.outputShortLabel($0) }, ["R · Low", "R · High", "L · Low", "L · High"])
+        #if os(iOS)
+        XCTAssertEqual(vm.outputRowLabel(1), "R · High")
+        XCTAssertEqual(vm.outputCardPlan.first?.shownRight, "R")
+        #else
+        XCTAssertEqual(vm.outputRowLabel(1), "Out 2 · R · High")
+        XCTAssertEqual(vm.outputCardPlan.first?.shownRight, "Woofers R")
+        #endif
     }
 
     func testBUG1AUserNameWins() {
@@ -46,6 +57,23 @@ final class OutputLabelsBug1Tests: XCTestCase {
         XCTAssertEqual(vm.outputLabel(0), "Right woofer")
         XCTAssertEqual(vm.outputLabel(1), "Out 2 · R · High")
         XCTAssertEqual(vm.outputCardPlan.first?.rightName, "Right woofer")
+        XCTAssertEqual(vm.outputShortLabel(0), "Right woofer")
+    }
+
+    /// Review c86 F1: outputs 1 and 2 low-passed and routed R and L: no "Woofers L" over the R one.
+    func testBUG1CardSidesFollowTheRouting() {
+        let vm = k340()
+        vm.crossfeed.pairMap = .default
+        var routing = Array(repeating: Array(repeating: false, count: 9), count: vm.matrixRouting.count)
+        routing[1][0] = true; routing[0][1] = true
+        vm.matrixRouting = routing
+        var bands = Array(repeating: FilterParams(), count: 10)
+        bands[0] = FilterParams(type: .lowPass, freq: 80, q: 0.707, gain: 0)
+        vm.channelData[vm.eqChannel(forOutput: 1)] = bands
+        vm.outputEnabled = (0..<9).map { $0 < 2 }
+        vm.refreshOutputLabels()
+        XCTAssertEqual(vm.outputCardPlan.first?.leftName, "Out 1 · R · Low")
+        XCTAssertEqual(vm.outputCardPlan.first?.rightName, "Out 2 · L · Low")
     }
 
     /// The labels follow a change by themselves, once per burst (the debounced watch).

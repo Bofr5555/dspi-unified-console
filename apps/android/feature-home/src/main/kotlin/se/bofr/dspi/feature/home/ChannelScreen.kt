@@ -92,7 +92,7 @@ fun ChannelScreen(bridge: DspiBridge, ch: Int, onNavigate: (String) -> Unit, onB
             Box(Modifier.size(8.dp).background(color, CircleShape))
             Spacer(Modifier.size(8.dp))
             Text(
-                bridge.channelLabel(ch).ifEmpty { bridge.channelDescriptor(ch).ifEmpty { "Channel $ch" } },
+                bridge.channelShortLabel(ch).ifEmpty { bridge.channelDescriptor(ch).ifEmpty { "Channel $ch" } },
                 style = DspiType.headline,
                 color = c.label,
                 maxLines = 1,

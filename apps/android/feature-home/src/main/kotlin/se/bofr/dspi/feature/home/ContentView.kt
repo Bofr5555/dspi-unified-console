@@ -338,8 +338,9 @@ private fun SidebarChannels(bridge: DspiBridge, selection: SidebarSelection, onS
                 ch = ch,
                 color = ChannelPalette.output(out.index, out.isPdm),
                 descriptor = out.descriptor,
-                // -- BUG1 -- the label (the user's name, else from the routing and the filters)
-                name = bridge.channelLabel(ch),
+                // -- BUG1 -- the label, short beside the OUTn pill (review c86 F3): the user's
+                // name, else channel and band ("R · Low")
+                name = bridge.channelShortLabel(ch),
                 renameFrom = bridge.channelName(ch),
                 pillDescription = outputPillDescription(out.descriptor, bridge.channelLabel(ch), bridge.outputSlotName(out.index)),
                 isSelected = selection == SidebarSelection.Output(out.index),

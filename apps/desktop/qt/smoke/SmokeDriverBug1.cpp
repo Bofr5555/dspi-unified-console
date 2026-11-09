@@ -65,6 +65,7 @@ void SmokeDriver::runK340Labels() {
     printf("smoke: BUG1 cards: %s\n", qPrintable(shape.join(QStringLiteral(", "))));
     check("BUG1: the cards pair by the crossfeed map",
           shape == QStringList({ QStringLiteral("2+0 Woofers L|Woofers R"), QStringLiteral("3+1 Tweeters L|Tweeters R") }));
+    // -- review c86 F1 -- the side letters stand: the map's left outputs play L, its right ones R
 
     const auto grabMain = [&](const QString &file) {
         if (!main) return;
@@ -107,8 +108,11 @@ void SmokeDriver::runK340Labels() {
     check("BUG1: labels after the reset", b->channelLabel(2) == QStringLiteral("Out 1 · R · Low"));
 
     // A name the user sets is shown as it is, and a rename starts from it
+    const int revision = b->labelsRevision();
     b->setChannelName(2, QStringLiteral("Right woofer"));
     spin(400);
+    // -- review c86 N1 -- the windows' bindings follow labelsRevision
+    check("BUG1: a rename moves labelsRevision", b->labelsRevision() > revision);
     check("BUG1: a user's name wins", b->channelLabel(2) == QStringLiteral("Right woofer")
                                           && b->channelLabel(3) == QStringLiteral("Out 2 · R · High"));
     const QVariantMap first = b->outputCards().value(0).toMap();

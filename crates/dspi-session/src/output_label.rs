@@ -98,6 +98,9 @@ pub struct OutputLabel {
     pub output: usize,
     /// What to show: the user's name, else "Out 1 · R · Low".
     pub label: String,
+    /// The same for a phone row, beside the output's "OUTn" button: the
+    /// user's name, else channel and band alone, "R · Low" (owner, c86 F3).
+    pub short_label: String,
     /// The firmware's name for the slot, "I2S 1 L" or "PDM".
     pub slot_name: String,
     /// The output has a name the user set, shown as `label`.
@@ -112,13 +115,18 @@ pub struct OutputLabel {
 pub struct OutputCard {
     pub left: usize,
     pub right: Option<usize>,
-    /// "Woofers" when both outputs carry default names and the same band;
-    /// empty otherwise.
+    /// "Woofers" when both outputs carry default names and the same band,
+    /// and the left one plays L and the right one R by the routing; empty
+    /// otherwise.
     pub title: String,
     /// The column headings: "Woofers L" / "Woofers R" under a title, else the
     /// outputs' labels. `right_name` is empty for a single output.
     pub left_name: String,
     pub right_name: String,
+    /// The same for a phone's narrow columns: "Woofers L" / "R" under a
+    /// title, else the outputs' short labels ("R · Low").
+    pub left_short_name: String,
+    pub right_short_name: String,
 }
 
 /// The firmware's name for output `out`'s slot (`get_default_channel_name`,
@@ -137,11 +145,12 @@ pub fn slot_name(out: usize, num_outputs: usize, output_types: &[u8]) -> String 
     format!("{kind} {} {side}", slot.saturating_add(1))
 }
 
-/// Whether `name` is a firmware default for output `out`: empty, its slot's
+/// Whether `name` is a firmware default for output `out`: empty (or only
+/// spaces, which show as nothing), its slot's
 /// name, or the slot's name under the other slot type (what an old Reset
 /// Channel Names wrote on an I2S slot).
 fn is_default_name(name: &str, out: usize, src: &LabelSource) -> bool {
-    if name.is_empty() || name == slot_name(out, src.num_outputs, &src.output_types) {
+    if name.trim().is_empty() || name == slot_name(out, src.num_outputs, &src.output_types) {
         return true;
     }
     let flipped: Vec<u8> = (0..PairMap::SIZE)
@@ -237,9 +246,15 @@ pub fn output_labels(src: &LabelSource) -> Vec<OutputLabel> {
                     band.word()
                 )
             };
+            let short_label = if user_named {
+                name.to_string()
+            } else {
+                format!("{channel} · {}", band.word())
+            };
             OutputLabel {
                 output: out,
                 label,
+                short_label,
                 slot_name: slot_name(out, src.num_outputs, &src.output_types),
                 user_named,
                 channel,
@@ -292,10 +307,13 @@ pub fn output_cards(src: &LabelSource) -> Vec<OutputCard> {
         let card = match (on(l), r.filter(|&r| on(r))) {
             (true, Some(r)) => {
                 let (a, b) = (&labels[l], &labels[r]);
+                // A side letter only where the routing says it (review c86 F1):
+                // the left output plays L and the right one R, not by position
+                let sides = a.channel == "L" && b.channel == "R";
                 match a
                     .band
                     .drivers()
-                    .filter(|_| a.band == b.band && !a.user_named && !b.user_named)
+                    .filter(|_| sides && a.band == b.band && !a.user_named && !b.user_named)
                 {
                     Some(t) => OutputCard {
                         left: l,
@@ -303,6 +321,8 @@ pub fn output_cards(src: &LabelSource) -> Vec<OutputCard> {
                         title: t.into(),
                         left_name: format!("{t} L"),
                         right_name: format!("{t} R"),
+                        left_short_name: format!("{t} L"),
+                        right_short_name: "R".into(),
                     },
                     None => OutputCard {
                         left: l,
@@ -310,6 +330,8 @@ pub fn output_cards(src: &LabelSource) -> Vec<OutputCard> {
                         title: String::new(),
                         left_name: a.label.clone(),
                         right_name: b.label.clone(),
+                        left_short_name: a.short_label.clone(),
+                        right_short_name: b.short_label.clone(),
                     },
                 }
             }
@@ -329,6 +351,8 @@ fn single(l: &OutputLabel) -> OutputCard {
         title: String::new(),
         left_name: l.label.clone(),
         right_name: String::new(),
+        left_short_name: l.short_label.clone(),
+        right_short_name: String::new(),
     }
 }
 
@@ -636,5 +660,116 @@ mod tests_bug1 {
         odd.pair_map = [0xFF; 4];
         odd.output_enabled = vec![true; 5];
         assert_eq!(output_cards(&odd).len(), 5);
+    }
+
+    // -- review c86 --
+    /// Two mono subs on outputs 1 and 2, both fed L+R and low-passed, no pair
+    /// map: the card must not call them L and R.
+    #[test]
+    fn bug1_c86_two_mono_subs_are_not_l_and_r() {
+        let mut s = k340();
+        s.pair_map = [0; 4];
+        s.routing = vec![vec![false; 9]; 8];
+        for o in 0..2 {
+            s.routing[0][o] = true;
+            s.routing[1][o] = true;
+            s.filters[o] = vec![f(LP, 80.0)];
+        }
+        let c = output_cards(&s);
+        assert_eq!((c[0].left, c[0].right), (0, Some(1)));
+        assert_eq!(c[0].title, "");
+        assert_eq!(
+            (c[0].left_name.as_str(), c[0].right_name.as_str()),
+            ("Out 1 · L+R · Low", "Out 2 · L+R · Low")
+        );
+        assert_eq!(
+            (
+                c[0].left_short_name.as_str(),
+                c[0].right_short_name.as_str()
+            ),
+            ("L+R · Low", "L+R · Low")
+        );
+    }
+
+    /// Outputs 1 and 2 low-passed, output 1 fed R and output 2 fed L: the
+    /// left column plays R, so no "Woofers L" over it.
+    #[test]
+    fn bug1_c86_swapped_routing_keeps_each_outputs_side() {
+        let mut s = k340();
+        s.pair_map = [0; 4];
+        s.routing = vec![vec![false; 9]; 8];
+        s.routing[1][0] = true;
+        s.routing[0][1] = true;
+        s.filters[0] = vec![f(LP, 80.0)];
+        s.filters[1] = vec![f(LP, 80.0)];
+        let c = output_cards(&s);
+        assert_eq!(c[0].title, "");
+        assert_eq!(
+            (c[0].left_name.as_str(), c[0].right_name.as_str()),
+            ("Out 1 · R · Low", "Out 2 · L · Low")
+        );
+        assert_eq!(
+            (
+                c[0].left_short_name.as_str(),
+                c[0].right_short_name.as_str()
+            ),
+            ("R · Low", "L · Low")
+        );
+        // Routed the other way round, the same pair is woofers L and R
+        s.routing[1][0] = false;
+        s.routing[0][1] = false;
+        s.routing[0][0] = true;
+        s.routing[1][1] = true;
+        let c = output_cards(&s);
+        assert_eq!(
+            (
+                c[0].title.as_str(),
+                c[0].left_name.as_str(),
+                c[0].right_name.as_str()
+            ),
+            ("Woofers", "Woofers L", "Woofers R")
+        );
+    }
+
+    /// The K340: by the map, left is L and right is R, so the headings stand;
+    /// the phone's forms are the short ones.
+    #[test]
+    fn bug1_c86_k340_headings_and_short_forms() {
+        let l = output_labels(&k340());
+        let short: Vec<&str> = l.iter().take(4).map(|l| l.short_label.as_str()).collect();
+        assert_eq!(short, ["R · Low", "R · High", "L · Low", "L · High"]);
+        let c = output_cards(&k340());
+        let heads: Vec<(&str, &str, &str, &str)> = c
+            .iter()
+            .map(|c| {
+                (
+                    c.left_name.as_str(),
+                    c.right_name.as_str(),
+                    c.left_short_name.as_str(),
+                    c.right_short_name.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            heads,
+            [
+                ("Woofers L", "Woofers R", "Woofers L", "R"),
+                ("Tweeters L", "Tweeters R", "Tweeters L", "R")
+            ]
+        );
+        // A user's name is its own short form
+        let mut s = k340();
+        s.names[8] = "Right woofer".into();
+        assert_eq!(output_labels(&s)[0].short_label, "Right woofer");
+    }
+
+    /// A name of only spaces shows as nothing: it counts as unnamed (c86 N2).
+    #[test]
+    fn bug1_c86_a_blank_name_is_unnamed() {
+        let mut s = k340();
+        s.names[8] = "   ".into();
+        let l = &output_labels(&s)[0];
+        assert!(!l.user_named);
+        assert_eq!(l.label, "Out 1 · R · Low");
     }
 }

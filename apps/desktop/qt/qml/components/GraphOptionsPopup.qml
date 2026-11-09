@@ -203,7 +203,7 @@ PopoverWindow {
                                 Text {
                                     width: parent.width - 13
                                     elide: Text.ElideRight
-                                    text: bridge.channelLabel(chip.app)
+                                    text: (bridge.labelsRevision, bridge.channelLabel(chip.app))   // -- BUG1 -- follows the labels
                                     font.pixelSize: 11
                                     font.weight: chip.on ? Font.DemiBold : Font.Normal
                                     color: isMacOS ? (chip.on ? MacColors.label : MacColors.secondaryLabel) : Qt.rgba(1, 1, 1, chip.on ? 0.95 : 0.7)
@@ -215,7 +215,7 @@ PopoverWindow {
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 Accessible.role: Accessible.CheckBox
-                                Accessible.name: qsTr("%1 spectrum").arg(bridge.channelLabel(chip.app))
+                                Accessible.name: (bridge.labelsRevision, qsTr("%1 spectrum").arg(bridge.channelLabel(chip.app)))
                                 Accessible.checkable: true
                                 Accessible.checked: chip.on
                                 onActivated: pop.app.rtaToggle(modelData)

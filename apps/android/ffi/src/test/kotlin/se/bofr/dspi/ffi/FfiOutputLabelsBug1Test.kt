@@ -28,11 +28,13 @@ class FfiOutputLabelsBug1Test {
                 labels.take(4).map { it.label }
             )
             assertEquals(listOf("I2S 1 L", "I2S 1 R", "I2S 2 L", "I2S 2 R"), labels.take(4).map { it.slotName })
+            // Review c86 F3: a phone's row beside the OUTn button
+            assertEquals(listOf("R · Low", "R · High", "L · Low", "L · High"), labels.take(4).map { it.shortLabel })
             assertTrue(labels.none { it.userNamed })
             assertEquals(
                 listOf(
-                    OutputCard(2, 0, "Woofers", "Woofers L", "Woofers R"),
-                    OutputCard(3, 1, "Tweeters", "Tweeters L", "Tweeters R")
+                    OutputCard(2, 0, "Woofers", "Woofers L", "Woofers R", "Woofers L", "R"),
+                    OutputCard(3, 1, "Tweeters", "Tweeters L", "Tweeters R", "Tweeters L", "R")
                 ),
                 core.outputCards()
             )

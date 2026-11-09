@@ -249,7 +249,8 @@ sealed interface DashboardCard {
             if (core.isEmpty()) return cards(numOutputs, outputEnabled)
             return listOf<DashboardCard>(Input) + core.map { c ->
                 val r = c.right
-                if (r != null) OutputPair(c.left, r, c.leftName, c.rightName) else Output(c.left, c.leftName)
+                // A phone's narrow columns: the short headings ("Woofers L" | "R", "R · Low")
+                if (r != null) OutputPair(c.left, r, c.leftShortName, c.rightShortName) else Output(c.left, c.leftShortName)
             }
         }
 

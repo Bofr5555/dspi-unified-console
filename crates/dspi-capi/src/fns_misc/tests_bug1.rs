@@ -57,8 +57,8 @@ fn bug1_labels_and_cards_through_c() {
     assert_eq!(
         r["value"],
         serde_json::json!([
-            { "left": 2, "right": 0, "title": "Woofers", "leftName": "Woofers L", "rightName": "Woofers R" },
-            { "left": 3, "right": 1, "title": "Tweeters", "leftName": "Tweeters L", "rightName": "Tweeters R" },
+            { "left": 2, "right": 0, "title": "Woofers", "leftName": "Woofers L", "rightName": "Woofers R", "leftShortName": "Woofers L", "rightShortName": "R" },
+            { "left": 3, "right": 1, "title": "Tweeters", "leftName": "Tweeters L", "rightName": "Tweeters R", "leftShortName": "Tweeters L", "rightShortName": "R" },
         ])
     );
     dspi_core_free(h);

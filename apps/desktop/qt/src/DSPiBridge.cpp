@@ -490,7 +490,10 @@ void DSPiBridge::readOutputLabels() {
     const QVariantList cards = m_outputCards;
     m_labelsStale = true;
     refreshOutputLabels();
-    if (labels != m_outputLabels || slotNames != m_outputSlots || cards != m_outputCards) emit outputLabelsChanged();
+    if (labels != m_outputLabels || slotNames != m_outputSlots || cards != m_outputCards) {
+        m_labelsRevision++;
+        emit outputLabelsChanged();
+    }
 }
 
 QString DSPiBridge::channelLabel(int ch) const {

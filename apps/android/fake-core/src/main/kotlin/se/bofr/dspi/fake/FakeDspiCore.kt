@@ -410,7 +410,7 @@ open class FakeDspiCore(
                 "${if (s.outputTypes.getOrNull(o / 2) == 1) "I2S" else "SPDIF"} ${o / 2 + 1} ${if (o % 2 == 0) "L" else "R"}"
             }
             val name = s.channelNames.getOrElse(s.numInputChannels + o) { "" }
-            OutputLabel(o, name.ifEmpty { slot }, slot, false, "", "")
+            OutputLabel(o, name.ifEmpty { slot }, name.ifEmpty { slot }, slot, false, "", "")
         }
     }
 
@@ -423,9 +423,11 @@ open class FakeDspiCore(
         while (o < s.numOutputChannels) {
             val r = if (o + 1 < s.numOutputChannels - 1) o + 1 else -1
             when {
-                r >= 0 && on(o) && on(r) -> cards += OutputCard(o, r, "", labels[o].label, labels[r].label)
-                on(o) -> cards += OutputCard(o, null, "", labels[o].label, "")
-                r >= 0 && on(r) -> cards += OutputCard(r, null, "", labels[r].label, "")
+                r >= 0 && on(o) && on(r) ->
+                    cards +=
+                        OutputCard(o, r, "", labels[o].label, labels[r].label, labels[o].shortLabel, labels[r].shortLabel)
+                on(o) -> cards += OutputCard(o, null, "", labels[o].label, "", labels[o].shortLabel, "")
+                r >= 0 && on(r) -> cards += OutputCard(r, null, "", labels[r].label, "", labels[r].shortLabel, "")
             }
             o += if (r >= 0) 2 else 1
         }

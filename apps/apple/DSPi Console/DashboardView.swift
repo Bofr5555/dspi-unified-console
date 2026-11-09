@@ -246,15 +246,15 @@ struct StereoOutputDashboardCard: View {
     private var rightEqCh: Int { vm.eqChannel(forOutput: rightIndex) }
     // -- BUG1 -- The core's column headings for this pair ("Woofers L"), else the outputs' labels
     private var plan: OutputCardPlan? { vm.outputCardPlan.first { $0.left == leftIndex && $0.right == rightIndex } }
-    private var leftName: String { plan?.leftName ?? vm.outputLabel(leftIndex) }
-    private var rightName: String { plan?.rightName ?? vm.outputLabel(rightIndex) }
+    private var leftName: String { plan?.shownLeft ?? vm.outputRowLabel(leftIndex) }
+    private var rightName: String { plan?.shownRight ?? vm.outputRowLabel(rightIndex) }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 HStack {
                     Circle().fill(left.color).frame(width: 6, height: 6)
-                    Text(leftName).font(.system(size: 11, weight: .bold)).foregroundColor(.secondary)
+                    Text(leftName).font(.system(size: 11, weight: .bold)).foregroundColor(.secondary).lineLimit(1)
                     Spacer()
                     Text("Delay: \(ValueField.delayText(vm.outputDelayMS[leftIndex]))ms")   // -- WP SWF5 --
                         .font(.system(size: 9, design: .monospaced))
@@ -268,7 +268,7 @@ struct StereoOutputDashboardCard: View {
 
                 HStack {
                     Circle().fill(right.color).frame(width: 6, height: 6)
-                    Text(rightName).font(.system(size: 11, weight: .bold)).foregroundColor(.secondary)
+                    Text(rightName).font(.system(size: 11, weight: .bold)).foregroundColor(.secondary).lineLimit(1)
                     Spacer()
                     Text("Delay: \(ValueField.delayText(vm.outputDelayMS[rightIndex]))ms")   // -- WP SWF5 --
                         .font(.system(size: 9, design: .monospaced))
@@ -342,7 +342,7 @@ struct OutputDashboardCard: View {
         VStack(spacing: 0) {
             HStack {
                 Circle().fill(output.color).frame(width: 6, height: 6)
-                Text(vm.outputLabel(outputIndex)).font(.system(size: 11, weight: .bold)).foregroundColor(.secondary)
+                Text(vm.outputRowLabel(outputIndex)).font(.system(size: 11, weight: .bold)).foregroundColor(.secondary).lineLimit(1)
                 Spacer()
                 Text("Delay: \(ValueField.delayText(vm.outputDelayMS[outputIndex]))ms")   // -- WP SWF5 --
                     .font(.system(size: 9, design: .monospaced))

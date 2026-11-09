@@ -72,6 +72,7 @@ AppWindow {
         bridge.setSubharmParam(pTop, -30)
     }
     function outputNames() {
+        bridge.labelsRevision   // -- BUG1 -- follow the labels (review c86 N1)
         var n = []
         for (var o = 0; o < numOut; o++) n.push(bridge.channelLabel(o + 2))
         return n
