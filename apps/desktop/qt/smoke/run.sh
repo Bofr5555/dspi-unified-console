@@ -99,3 +99,18 @@ if [ -z "${DSPI_SMOKE_HW:-}" ] && [ -z "${DSPI_SMOKE_DEMO_ENTRY:-}" ]; then
         fi
     done
 fi
+# -- BUG1 -- The K340's configuration on the demo device (SmokeDriverBug1.cpp):
+# its sidebar, meters and graph pills as screenshots in bug1/, and Reset
+# Channel Names on its I2S slots. A launch of its own, so no other pass sees it.
+if [ -z "${DSPI_SMOKE_HW:-}" ] && [ -z "${DSPI_SMOKE_DEMO_ENTRY:-}" ]; then
+    printf '[onboarding]\nsetupDone=true\n' > "$HOME/.config/DSPi/DSPi Console.conf"
+    mkdir -p "$out/bug1"
+    DSPI_SMOKE_BUG1=1 DSPI_SMOKE_OUT="$out/bug1" timeout 120 "$app" --demo > "$out/log-bug1.txt" 2>&1
+    code=$?
+    grep -E '^(smoke:|FAIL)' "$out/log-bug1.txt"
+    if [ "$code" != 0 ]; then
+        echo "BUG1 run exited with $code; the end of its log:" >&2
+        tail -30 "$out/log-bug1.txt" >&2
+        exit 1
+    fi
+fi

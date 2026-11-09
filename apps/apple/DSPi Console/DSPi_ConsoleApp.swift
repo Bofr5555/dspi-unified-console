@@ -2425,7 +2425,9 @@ struct AdvancedSettingsTab: View {
                         .font(.body)
                     Spacer()
                     Button("Reset") {
-                        let defaults = DSPViewModel.defaultChannelNames(for: vm.platformName)
+                        // BUG1: the slots' types, so an I2S slot resets to "I2S 1 L" as the firmware names it
+                        let defaults = DSPViewModel.defaultChannelNames(for: vm.platformName,
+                                                                        slotTypes: vm.outputSlotTypes)
                         DispatchQueue.global(qos: .userInitiated).async {
                             for ch in 0..<vm.numChannels {
                                 vm.setChannelName(channel: ch, name: defaults[ch])

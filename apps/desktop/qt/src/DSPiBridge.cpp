@@ -1718,9 +1718,12 @@ void DSPiBridge::resetChannelNames() {
         QString name = nIn == 2 ? (i == 0 ? "USB L" : "USB R") : QString("USB %1").arg(i + 1);
         dspi_set_channel_name(m_core, i, name.toUtf8().constData());
     }
+    // BUG1: the firmware's default names a slot by its type, "I2S 1 L" on an I2S slot
+    const int slotCount = qBound(0, int(s->num_pin_outputs) - 1, int(sizeof s->output_types));
     for (int o = 0; o < nOut; o++) {
+        const char *kind = o / 2 < slotCount && s->output_types[o / 2] == 1 ? "I2S" : "SPDIF";
         QString name = (o == nOut - 1) ? QString("PDM")
-                     : QString("SPDIF %1 %2").arg(o / 2 + 1).arg(o % 2 ? "R" : "L");
+                     : QString("%1 %2 %3").arg(kind).arg(o / 2 + 1).arg(o % 2 ? "R" : "L");
         dspi_set_channel_name(m_core, nIn + o, name.toUtf8().constData());
     }
     emit stateChanged();

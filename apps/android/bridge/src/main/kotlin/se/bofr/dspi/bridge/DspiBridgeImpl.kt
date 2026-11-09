@@ -1640,11 +1640,14 @@ class DspiBridgeImpl(
     override fun resetChannelNames() {
         val nIn = current.numInputChannels
         val nOut = current.numOutputChannels
+        val types = current.outputTypes
         fire("resetChannelNames") {
             // Stereo USB input: USB L / USB R; multichannel: USB 1..8
             for (i in 0 until nIn) core.setChannelName(i, if (nIn == 2) (if (i == 0) "USB L" else "USB R") else "USB ${i + 1}")
+            // BUG1: the firmware's default names a slot by its type, "I2S 1 L" on an I2S slot
             for (o in 0 until nOut) {
-                core.setChannelName(nIn + o, if (o == nOut - 1) "PDM" else "SPDIF ${o / 2 + 1} ${if (o % 2 == 1) "R" else "L"}")
+                val kind = if (types.getOrNull(o / 2) == 1) "I2S" else "SPDIF"
+                core.setChannelName(nIn + o, if (o == nOut - 1) "PDM" else "$kind ${o / 2 + 1} ${if (o % 2 == 1) "R" else "L"}")
             }
         }
     }
