@@ -115,7 +115,7 @@ final class LinkService: ObservableObject {
 
     /// Turn sharing on: start the server, advertise, and hold the power
     /// assertions.  Persists the choice.
-    private static let log = Logger(subsystem: "WeebLabs.DSPi-Console", category: "link")
+    private static let log = Logger(subsystem: AppIdentity.logSubsystem, category: "link")
 
     func start() {
         lastError = nil

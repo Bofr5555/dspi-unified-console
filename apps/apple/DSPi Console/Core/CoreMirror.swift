@@ -159,7 +159,7 @@ final class CoreMirror {
     /// The window in use (tests set 0 to show what the rule prevents).
     var pendingWindow: TimeInterval = CoreMirror.defaultPendingWindow
 
-    private static let log = Logger(subsystem: "WeebLabs.DSPi-Console", category: "CoreMirror")
+    private static let log = Logger(subsystem: AppIdentity.logSubsystem, category: "CoreMirror")
 
     /// The clock of the pending window (tests move it).
     var now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
@@ -851,7 +851,7 @@ extension DSPViewModel {
 }
 
 enum CoreMirrorLog {
-    static let log = Logger(subsystem: "WeebLabs.DSPi-Console", category: "CoreMirror")
+    static let log = Logger(subsystem: AppIdentity.logSubsystem, category: "CoreMirror")
 }
 
 // MARK: - Read-only banner

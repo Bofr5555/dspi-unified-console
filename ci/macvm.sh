@@ -7,6 +7,9 @@
 #   ci/macvm.sh qt-dmg  Qt app: the .dmg (apps/desktop/packaging/macos/ci-dmg.sh),
 #                       started from the .dmg on the demo device; the .dmg is
 #                       copied back next to the matrix logs (WP QD21b)
+#   ci/macvm.sh swift-dmg  Swift app: its .dmg (apps/apple/ci-dmg.sh), started
+#                       from the .dmg on the demo device, copied back the same
+#                       way (WP REL013M)
 #
 # Exits 3 when the VM cannot run it (no ssh, or nobody logged in to its GUI):
 # ci/matrix.sh prints the row as "not run". One heavy job at a time in the VM:
@@ -21,7 +24,8 @@ platform=${1:-}
 case "$platform" in
   macos|ios) script="apps/apple/ci-test.sh $platform" ;;
   qt-dmg) script=apps/desktop/packaging/macos/ci-dmg.sh ;;  # -- WP QD21b --
-  *) echo "usage: $0 macos|ios|qt-dmg" >&2; exit 2 ;;
+  swift-dmg) script=apps/apple/ci-dmg.sh ;;  # -- WP REL013M --
+  *) echo "usage: $0 macos|ios|qt-dmg|swift-dmg" >&2; exit 2 ;;
 esac
 host=${DSPI_MACVM:-macvm}
 vm() { ssh -o ConnectTimeout=10 -o BatchMode=yes "$host" "$@"; }
@@ -54,10 +58,10 @@ git ls-files -z --cached --others --exclude-standard |
     exit \$rc"
 rc=$?
 # -- WP QD21b -- the .dmg, an unpublished artefact, next to the matrix logs
-if [ "$platform" = qt-dmg ] && [ "$rc" = 0 ]; then
+if [ "${platform%-dmg}" != "$platform" ] && [ "$rc" = 0 ]; then   # -- WP REL013M -- swift-dmg too
   dest=${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}/work/matrix/$(git rev-parse --short=12 HEAD)
   mkdir -p "$dest"
-  scp -q -o BatchMode=yes "$host:work/matrix/out/qt-dmg/DSPi-Console-*-macos.dmg" "$dest/" || rc=1
+  scp -q -o BatchMode=yes "$host:work/matrix/out/$platform/DSPi-Console-*-macos.dmg" "$dest/" || rc=1
   echo "macvm: the .dmg is in $dest"
 fi
 exit "$rc"

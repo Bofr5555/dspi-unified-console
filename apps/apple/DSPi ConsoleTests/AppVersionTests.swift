@@ -6,9 +6,9 @@ import XCTest
 /// banner.  Both apps carry one version, and the banner stays quiet when the
 /// device runs exactly that version.
 final class AppVersionTests: XCTestCase {
-    /// MARKETING_VERSION of every build configuration of the two app targets,
+    /// The setting `key` of every build configuration of the two app targets,
     /// keyed by bundle identifier, read from the project file.
-    private func appMarketingVersions() throws -> [String: Set<String>] {
+    private func appSettings(_ key: String) throws -> [String: Set<String>] {
         let project = URL(fileURLWithPath: #filePath)        // .../DSPi ConsoleTests/AppVersionTests.swift
             .deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("DSPi Console.xcodeproj/project.pbxproj")
@@ -20,26 +20,55 @@ final class AppVersionTests: XCTestCase {
             return line.split(separator: "=", maxSplits: 1)[1]
                 .trimmingCharacters(in: CharacterSet(charactersIn: " \t;\""))
         }
-        var versions: [String: Set<String>] = [:]
+        var values: [String: Set<String>] = [:]
         for block in text.components(separatedBy: "isa = XCBuildConfiguration;").dropFirst() {
             let settings = block.prefix { $0 != "}" }
             guard let id = setting("PRODUCT_BUNDLE_IDENTIFIER", in: settings),
-                  id == "WeebLabs.DSPi-Console" || id == "WeebLabs.DSPi-Console-iOS" else { continue }
-            versions[id, default: []].insert(setting("MARKETING_VERSION", in: settings) ?? "missing")
+                  id == Self.macID || id == Self.iosID else { continue }
+            values[id, default: []].insert(setting(key, in: settings) ?? "missing")
         }
+        return values
+    }
+
+    // -- WP REL013M -- the macOS app has the unified console's identifier and
+    // version; the firmware it expects is DSPI_FIRMWARE_VERSION.  The iOS app
+    // still expects its MARKETING_VERSION.
+    private static let macID = "invalid.dspi-unified-console.DSPiConsole"
+    private static let iosID = "WeebLabs.DSPi-Console-iOS"
+
+    /// The firmware version each app expects, from the project file.
+    private func expectedFirmware() throws -> [String: Set<String>] {
+        var versions = try appSettings("MARKETING_VERSION")
+        versions[Self.macID] = try appSettings("DSPI_FIRMWARE_VERSION")[Self.macID]
         return versions
     }
 
     func testBothAppsCarryOneVersion() throws {
-        let versions = try appMarketingVersions()
-        XCTAssertEqual(Set(versions.keys), ["WeebLabs.DSPi-Console", "WeebLabs.DSPi-Console-iOS"])
+        let versions = try expectedFirmware()
+        XCTAssertEqual(Set(versions.keys), [Self.macID, Self.iosID])
         let all = versions.values.reduce(into: Set<String>()) { $0.formUnion($1) }
-        XCTAssertEqual(all.count, 1, "MARKETING_VERSION differs between the apps or configurations: \(versions)")
+        XCTAssertEqual(all.count, 1, "The expected firmware differs between the apps or configurations: \(versions)")
     }
 
     func testThisAppExpectsTheProjectVersion() throws {
-        let version = try XCTUnwrap(try appMarketingVersions().values.first?.first)
+        let version = try XCTUnwrap(try expectedFirmware().values.first?.first)
         XCTAssertEqual(FirmwareVersion.expected, FirmwareVersion(version))
+    }
+
+    /// The macOS app's version is the release's (the workspace's Cargo.toml),
+    /// its build number the minor version, as the 0.13.0 release has it.
+    func testMacAppCarriesTheReleaseVersion() throws {
+        let cargo = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Cargo.toml")
+        let toml = try String(contentsOf: cargo, encoding: .utf8)
+        let workspace = try XCTUnwrap(toml.components(separatedBy: "\n[workspace.package]").dropFirst().first)
+        let line = try XCTUnwrap(workspace.split(separator: "\n").first { $0.hasPrefix("version = ") })
+        let release = line.split(separator: "\"")[1]
+        XCTAssertEqual(try appSettings("MARKETING_VERSION")[Self.macID], [String(release)])
+        let minor = String(release.split(separator: ".")[1])
+        XCTAssertEqual(try appSettings("CURRENT_PROJECT_VERSION")[Self.macID], [minor])
     }
 
     func testBannerOnlyForADifferentFirmware() throws {

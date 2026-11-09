@@ -22,12 +22,17 @@
 #   stage.sh appimage <AppDir> <dest> <app version>   in Containerfile.ubuntu's image
 #   stage.sh windows <bundle> <dest> <app version>    in the MinGW build image (Fedora)
 #   stage.sh macos <app bundle> <dest> <app version>  on the Mac (bash 3.2)
+#   stage.sh swift <app bundle> <dest> <app version>  (WP REL013M) the Swift macOS
+#                               app, on the Mac: no Qt, no LGPL-3.0.txt; its core's
+#                               crates (apps/apple/licences/rust-crates.txt) and the
+#                               Swift packages linked into it, from $PACKAGE_RESOLVED
+#                               with their licence files from $SWIFTPM_CHECKOUTS
 # Fails on a file in the package it cannot account for, and when this folder
 # has no licence texts for the Qt (or KWindowSystem, ICU) the package carries
 # (update-licences.sh adds them).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-kind=${1:?usage: stage.sh appimage|windows|macos <package dir> <dest> <app version>}
+kind=${1:?usage: stage.sh appimage|windows|macos|swift <package dir> <dest> <app version>}
 pkg=${2:?}; dest=${3:?}; version=${4:?}
 fail() { echo "stage-licences: $*" >&2; exit 1; }
 L=$dest/LICENSES
@@ -170,6 +175,44 @@ macos)
         "Contents/Frameworks/Qt*.framework Contents/PlugIns Contents/Resources/qml"
     sources="Qt's source for this version is included with this release (the source archives named there)."
     ;;
+swift)
+    # -- WP REL013M --
+    rm "$L/LGPL-3.0.txt"
+    cp "$here/../../../apple/licences/rust-crates.txt" "$L/rust-crates.txt"
+    resolved=${PACKAGE_RESOLVED:?set PACKAGE_RESOLVED to Package.resolved of the Xcode project}
+    checkouts=${SWIFTPM_CHECKOUTS:?set SWIFTPM_CHECKOUTS to the SwiftPM checkouts in DerivedData}
+    # Xcode embeds the Swift runtime's back-deployment libraries (libswift*.dylib)
+    # for older macOS versions; nothing else may be there
+    rt=
+    for f in "$pkg"/Contents/Frameworks/*; do
+        [ -e "$f" ] || continue
+        case ${f##*/} in
+            libswift*.dylib) rt="$rt Contents/Frameworks/${f##*/}" ;;
+            *) fail "Contents/Frameworks/${f##*/}: not a Swift runtime library" ;;
+        esac
+    done
+    if [ -n "$rt" ]; then
+        sv=$(xcrun swift --version 2>/dev/null | sed -n 's/.*Apple Swift version \([0-9.]*\).*/\1/p' | head -n 1)
+        row "Swift runtime" "${sv:-?}" "Xcode $(xcodebuild -version | sed -n 's/^Xcode //p')" github.com/swiftlang/swift \
+            "Apache-2.0 with the Runtime Library Exception (https://swift.org/LICENSE.txt)" "${rt# }"
+    fi
+    i=0
+    while id=$(plutil -extract "pins.$i.identity" raw -o - "$resolved" 2>/dev/null); do
+        loc=$(plutil -extract "pins.$i.location" raw -o - "$resolved")
+        ver=$(plutil -extract "pins.$i.state.version" raw -o - "$resolved")
+        rev=$(plutil -extract "pins.$i.state.revision" raw -o - "$resolved")
+        [ -d "$checkouts/$id" ] || fail "no checkout of $id in $checkouts"
+        mkdir -p "$L/swift/$id"
+        for f in "$checkouts/$id"/LICENSE* "$checkouts/$id"/NOTICE*; do
+            if [ -f "$f" ]; then cp "$f" "$L/swift/$id/"; fi
+        done
+        ls "$L/swift/$id"/LICENSE* >/dev/null 2>&1 || fail "$id has no LICENSE file"
+        row "$id" "$ver" "${loc%.git}" "$id at $rev" "LICENSES/swift/$id/" "Contents/MacOS/DSPi Console (linked in)"
+        i=$((i + 1))
+    done
+    [ "$i" -gt 0 ] || fail "no Swift packages in $resolved"
+    sources=
+    ;;
 *) fail "unknown package kind $kind" ;;
 esac
 
@@ -186,12 +229,14 @@ esac
     echo
     echo "Its core links third-party Rust crates; they and their licence texts are"
     echo "listed in LICENSES/rust-crates.txt."
-    echo
-    echo "This program uses Qt $qt, licensed under the GNU Lesser General Public"
-    echo "License version 3 (LICENSES/LGPL-3.0.txt, which incorporates the GNU General"
-    echo "Public License version 3, LICENSES/GPL-3.0.txt). Qt's licence files are in"
-    echo "LICENSES/Qt/; the third-party components in Qt and their licences are listed"
-    echo "in LICENSES/Qt/THIRD-PARTY.txt."
+    if [ -d "$L/Qt" ]; then   # -- WP REL013M -- not in the Swift app
+        echo
+        echo "This program uses Qt $qt, licensed under the GNU Lesser General Public"
+        echo "License version 3 (LICENSES/LGPL-3.0.txt, which incorporates the GNU General"
+        echo "Public License version 3, LICENSES/GPL-3.0.txt). Qt's licence files are in"
+        echo "LICENSES/Qt/; the third-party components in Qt and their licences are listed"
+        echo "in LICENSES/Qt/THIRD-PARTY.txt."
+    fi
     if [ -d "$L/AppImage-runtime" ]; then
         echo
         echo "The AppImage's runtime (AppImage's type2-runtime $rc) contains libfuse,"
@@ -208,7 +253,7 @@ esac
     echo
     echo "Every library in this package that is not part of DSPi Console is listed in"
     echo "LICENSES/BUNDLED.txt, with its version, its source and its licence."
-    echo "$sources" | fold -s -w 79 | sed 's/ $//'
+    [ -z "$sources" ] || echo "$sources" | fold -s -w 79 | sed 's/ $//'
     # -- WP LIC1 -- the copyright and the additional terms, verbatim
     echo
     echo "-------------------------------------------------------------------------------"

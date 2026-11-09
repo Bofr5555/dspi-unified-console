@@ -1095,7 +1095,7 @@ struct GeneralSettingsTab: View {
 /// check, and the controls to check or install.  Driven by AppUpdateChecker.
 struct SoftwareUpdateSettingsTab: View {
     @ObservedObject private var updates = AppUpdateChecker.shared
-    @AppStorage(AppUpdateChecker.automaticKey) private var checkAutomatically = true
+    @AppStorage(AppUpdateChecker.automaticKey) private var checkAutomatically = false   // -- WP REL013M -- opt-in
 
     private var replaceable: Bool { AppUpdateInstaller.canReplace(Bundle.main.bundleURL) }
 
@@ -1136,6 +1136,25 @@ struct SoftwareUpdateSettingsTab: View {
     }
 
     var body: some View {
+        // -- WP REL013M -- a build without update checks says so, as the Qt app does
+        if !AppUpdateChecker.enabled {
+            Form {
+                Section {
+                    Text("Version \(GeneralSettingsTab.appVersion)").font(.headline)
+                    Text("This build has no release feed, so it never checks.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Label("Status", systemImage: "arrow.down.circle")
+                }
+            }
+            .formStyle(.grouped)
+        } else {
+            checkerForm
+        }
+    }
+
+    private var checkerForm: some View {
         Form {
             Section {
                 HStack(alignment: .top, spacing: 12) {
@@ -11764,7 +11783,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Network sharing is a persisted choice; bring the gateway up at launch
         // if it was on, rather than only when the Networking page is opened.
         let resumeSharing = UserDefaults.standard.bool(forKey: "LinkSharingEnabled")
-        Logger(subsystem: "WeebLabs.DSPi-Console", category: "link")
+        Logger(subsystem: AppIdentity.logSubsystem, category: "link")
             .notice("Launch: sharing preference is \(resumeSharing, privacy: .public)")
         if resumeSharing {
             _ = AppState.shared.linkService
@@ -12064,8 +12083,10 @@ struct DSPi_ConsoleApp: App {
                     ])
                 }
 
-                Button("Check for Updates...") {
-                    AppUpdateChecker.shared.checkInteractively()
+                if AppUpdateChecker.enabled {   // -- WP REL013M --
+                    Button("Check for Updates...") {
+                        AppUpdateChecker.shared.checkInteractively()
+                    }
                 }
             }
 

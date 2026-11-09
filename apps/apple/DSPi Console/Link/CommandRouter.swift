@@ -300,7 +300,7 @@ final class CommandRouter {
     }
 
     // -- WP SWF2 --
-    private static let log = Logger(subsystem: "WeebLabs.DSPi-Console", category: "link")
+    private static let log = Logger(subsystem: AppIdentity.logSubsystem, category: "link")
 
     /// The unit's EXT_CORE_VREG status now, or nil when it does not answer.
     /// Call on the router queue.

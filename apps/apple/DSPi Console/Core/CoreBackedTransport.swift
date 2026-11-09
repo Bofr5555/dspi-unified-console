@@ -120,7 +120,7 @@ final class CoreBackedTransport: DeviceTransport {
     private var lastRawSetSentAt: TimeInterval = 0
     private var lastNotifiedAt: TimeInterval = 0
 
-    private static let log = Logger(subsystem: "WeebLabs.DSPi-Console", category: "CoreBackedTransport")
+    private static let log = Logger(subsystem: AppIdentity.logSubsystem, category: "CoreBackedTransport")
     #if DEBUG
     private let mainGetLock = NSLock()
     private var mainGets: Set<UInt8> = []

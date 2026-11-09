@@ -9,7 +9,13 @@ import SwiftUI
 final class AppUpdateChecker: ObservableObject {
     static let shared = AppUpdateChecker()
 
-    static let releasesURL = URL(string: "https://api.github.com/repos/WeebLabs/DSPi-Console/releases?per_page=30")!
+    // -- WP REL013M -- The unified console's releases, tagged "v0.13.0".  Off:
+    // the Qt .dmg of the same release is built without a release feed
+    // (DSPI_UPDATE_FEED_URL empty), so it never checks, and the repository is
+    // private, so GitHub answers 404 without a login.  With `enabled` true the
+    // checks are opt-in, as in the Qt app, and a 404 passes silently.
+    static let enabled = false
+    static let releasesURL = URL(string: "https://api.github.com/repos/Bofr5555/dspi-unified-console/releases?per_page=30")!
     static let automaticKey = "checkForUpdatesAutomatically"
     /// Developer override for the release list, for exercising the installer
     /// against a local feed.  Safe to honour: an install still needs a zip
@@ -57,9 +63,18 @@ final class AppUpdateChecker: ObservableObject {
             assets = try c.decodeIfPresent([Asset].self, forKey: .assets) ?? []
         }
 
-        /// Tags are spelled "v1.1.6-beta4", the same scheme as MARKETING_VERSION.
+        /// Tags are spelled "v0.13.0", the same scheme as MARKETING_VERSION.
         var version: FirmwareVersion? {
             FirmwareVersion(tagName.hasPrefix("v") ? String(tagName.dropFirst()) : tagName)
+        }
+
+        /// -- WP REL013M -- Whether the release carries this app's .dmg
+        /// ("DSPi-Console-Swift-0.13.0-macos.dmg").  The repository has other
+        /// tags (Weeb Labs' "v1.1.6-beta4", the Android app's): only a release
+        /// with the Swift app in it is an update for it.
+        var hasMacApp: Bool {
+            let version = tagName.hasPrefix("v") ? String(tagName.dropFirst()) : tagName
+            return assets.contains { $0.name == "DSPi-Console-Swift-\(version)-macos.dmg" }
         }
     }
 
@@ -90,9 +105,16 @@ final class AppUpdateChecker: ObservableObject {
         lastChecked = UserDefaults.standard.object(forKey: Self.lastCheckedKey) as? Date
     }
 
-    /// The running app's version.  Console and firmware share one version
-    /// scheme, so `FirmwareVersion.expected` is also the app's own version.
-    var currentVersion: FirmwareVersion? { FirmwareVersion.expected }
+    /// The running app's version (CFBundleShortVersionString), parsed with the
+    /// firmware's version scheme.  -- WP REL013M -- not `FirmwareVersion.expected`:
+    /// the app and the firmware it expects no longer share a version.
+    var currentVersion: FirmwareVersion? {
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String).flatMap(FirmwareVersion.init)
+    }
+
+    /// The feed answered 404: the repository is private, or has no releases.
+    /// Never reported to the user.
+    struct FeedNotFound: Error {}
 
     /// Picks the newest release worth offering over `current`.  Someone on a
     /// final release is only offered finals; someone already on a beta is
@@ -100,7 +122,7 @@ final class AppUpdateChecker: ObservableObject {
     /// releases are not flagged as pre-releases on GitHub.
     nonisolated static func newestUpdate(in releases: [Release], over current: FirmwareVersion) -> Release? {
         releases
-            .filter { !$0.draft }
+            .filter { !$0.draft && $0.hasMacApp }
             .compactMap { release in release.version.map { (release, $0) } }
             .filter { current.beta != 0 || $0.1.beta == 0 }
             .filter { $0.1 > current }
@@ -125,7 +147,9 @@ final class AppUpdateChecker: ObservableObject {
 
     /// Starts the launch check and the daily repeat, if the user allows them.
     func startAutomaticChecks() {
-        UserDefaults.standard.register(defaults: [Self.automaticKey: true])
+        // -- WP REL013M -- opt-in, as in the Qt app
+        UserDefaults.standard.register(defaults: [Self.automaticKey: false])
+        guard Self.enabled else { return }
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: Self.interval, repeats: true) { _ in
             Task { @MainActor in await AppUpdateChecker.shared.checkAutomatically() }
@@ -148,6 +172,7 @@ final class AppUpdateChecker: ObservableObject {
     /// The "Check for Updates..." path: always answers, including when there
     /// is nothing new or the check failed, and ignores a skipped version.
     func checkInteractively() {
+        guard Self.enabled else { return }
         guard !isInstalling else {
             progressPanel?.makeKeyAndOrderFront(nil)
             return
@@ -162,6 +187,8 @@ final class AppUpdateChecker: ObservableObject {
                     alert.informativeText = "Version \(currentVersion?.description ?? GeneralSettingsTab.appVersion) is the newest version available."
                     alert.runModal()
                 }
+            } catch is FeedNotFound {
+                // -- WP REL013M -- a private repository: no dialog
             } catch {
                 let alert = NSAlert()
                 alert.alertStyle = .warning
@@ -176,7 +203,7 @@ final class AppUpdateChecker: ObservableObject {
     /// to offer, or nil when the running version is already the newest.
     @discardableResult
     func check() async throws -> Release? {
-        guard !isChecking else { return available }
+        guard Self.enabled, !isChecking else { return available }
         guard let current = currentVersion else { return nil }
         isChecking = true
         defer { isChecking = false }
@@ -187,7 +214,7 @@ final class AppUpdateChecker: ObservableObject {
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         let (data, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-            throw URLError(.badServerResponse)
+            throw http.statusCode == 404 ? FeedNotFound() : URLError(.badServerResponse)
         }
         let releases = try JSONDecoder().decode([Release].self, from: data)
 

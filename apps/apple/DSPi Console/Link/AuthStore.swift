@@ -112,12 +112,12 @@ final class LinkAuthStore {
         }
     }
 
-    /// `~/Library/Application Support/DSPi Console/link-auth.json`, creating
-    /// the directory if needed.
+    /// `~/Library/Application Support/<AppIdentity folder>/link-auth.json`
+    /// (iOS: `DSPi Console/`), creating the directory if needed.
     static func defaultURL() -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        let dir = base.appendingPathComponent("DSPi Console", isDirectory: true)
+        let dir = base.appendingPathComponent(AppIdentity.supportFolder(legacy: "DSPi Console"), isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("link-auth.json")
     }

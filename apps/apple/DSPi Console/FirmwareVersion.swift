@@ -119,8 +119,14 @@ extension FirmwareVersion {
     /// device version off it removes a way for the two to drift apart.  nil
     /// only if the bundle version is unparseable, in which case callers must
     /// treat the expectation as unknown rather than guessing.
+    ///
+    /// -- WP REL013M -- The macOS app carries the unified console's own version
+    /// (0.13.0) as MARKETING_VERSION, so its Info.plist names the firmware in
+    /// `DSPiFirmwareVersion` (build setting DSPI_FIRMWARE_VERSION).  Without
+    /// that key (the iOS app) the bundle version is the firmware's, as before.
     static let expected: FirmwareVersion? =
-        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String)
+        ((Bundle.main.infoDictionary?["DSPiFirmwareVersion"] as? String)
+            ?? (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String))
             .flatMap(FirmwareVersion.init)
 }
 
