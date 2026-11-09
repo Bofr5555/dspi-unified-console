@@ -282,7 +282,8 @@ not in the tree). `node tools/serve.mjs <dist>` serves a build on loopback for a
 would, with the `Origin` rule, over fake hubs it starts on request (the Link
 e2e's host; `DSPI_FAKEHUB` names the binary, which `tools/ci.sh` builds).
 
-`dist/` holds `index.html`, `app.js` and `page.css` (the standalone page), `dspi-web.js` (the
+`dist/` holds `index.html`, `app.js`, `page.css` and the icons `favicon.ico`, `favicon.svg`,
+`apple-touch-icon.png` (the standalone page), `dspi-web.js` (the
 library), `worker.js`, `dspi_wasm.wasm` (the core: 1 086 KB, 362 KB gzip with WebUSB and Link),
 `dspi-web.css` and `THIRD-PARTY-NOTICES.txt`. A host serves `dspi_wasm.wasm` beside `worker.js`.
 (With WB6a's preset calls the core is 1 126 KB, 373 KB gzip; with WB6b's curves 1 154 KB, 381 KB gzip;

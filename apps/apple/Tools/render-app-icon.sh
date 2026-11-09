@@ -1,26 +1,33 @@
 #!/bin/bash
-# Render the Swift app's AppIcon set from the desktop app's icon (job REL013M2).
+# Render the Swift app's AppIcon set from the project's icon (jobs REL013M2, ICON1).
 #
-#   ci/run.sh apps/apple/Tools/render-app-icon.sh
+#   assets/icon/render.sh      (runs this, after drawing the masters)
+#   ci/run.sh apps/apple/Tools/render-app-icon.sh     (this alone: ImageMagick)
 #
-# The artwork is apps/desktop/qt/dspi-console.svg, the icon the Qt app and its
-# dspi-console.icns use; this only rasterises it (ImageMagick with librsvg, in
-# the build container), once per pixel size the asset catalog names:
-#   macOS  16, 32, 128, 256 and 512 pt at 1x and 2x
-#   iOS    one 1024 px universal image (the macOS and iOS targets share the set)
-# Run it again after changing the SVG, and commit the PNGs.
+# The masters are assets/icon/dspi-icon-*-1024.png, drawn by
+# apps/android/store/play/tools/make_graphics.py. The macOS and iOS targets share
+# the set:
+#   macOS  16, 32, 128, 256 and 512 pt at 1x and 2x, from the rounded master
+#          (the macOS icon grid: rounded square, transparent margin)
+#   iOS    one 1024 px universal image, from the square master (full bleed, no
+#          alpha: iOS applies its own mask)
+# Commit the PNGs.
 set -euo pipefail
 repo=$(cd "$(dirname "$0")/../../.." && pwd)
-svg=$repo/apps/desktop/qt/dspi-console.svg
+rounded=$repo/assets/icon/dspi-icon-rounded-1024.png
+square=$repo/assets/icon/dspi-icon-square-1024.png
 out="$repo/apps/apple/DSPi Console/Assets.xcassets/AppIcon.appiconset"
 
+check() {  # check <file> <size> <channels>
+    local got
+    got=$(magick identify -format '%wx%h %[channels]' "$1")
+    case $got in "$2 $3 "*) ;; *) echo "$1 is $got, not $2 $3" >&2; exit 1 ;; esac
+}
 for px in 16 32 64 128 256 512 1024; do
-    # The SVG is 256 px square and rsvg takes 96 dpi as 1:1, so this draws it at $px.
-    density=$(awk "BEGIN { print 96 * $px / 256 }")
-    magick -background none -density "$density" "$svg" \
-        -strip -define png:exclude-chunks=date,time \
-        "PNG32:$out/icon_${px}.png"
-    size=$(magick identify -format '%wx%h' "$out/icon_${px}.png")
-    [ "$size" = "${px}x${px}" ] || { echo "icon_${px}.png is $size" >&2; exit 1; }
+    magick "$rounded" -filter Lanczos -resize "${px}x${px}" \
+        -strip -define png:exclude-chunks=date,time "PNG32:$out/icon_${px}.png"
+    check "$out/icon_${px}.png" "${px}x${px}" srgba
 done
-echo "render-app-icon: wrote 7 sizes to $out"
+magick "$square" -alpha off -strip -define png:exclude-chunks=date,time "PNG24:$out/icon_ios_1024.png"
+check "$out/icon_ios_1024.png" 1024x1024 srgb
+echo "render-app-icon: wrote 8 images to $out"

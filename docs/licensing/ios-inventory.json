@@ -1,5 +1,5 @@
 {
- "repo_commit": "97014521",
+ "repo_commit": "6046707d",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -89,12 +89,12 @@
    "dspi-core": {
     "first_party": true,
     "license": "GPL-3.0-or-later",
-    "version": "2.0.0-dev"
+    "version": "0.13.0"
    },
    "dspi-ffi": {
     "first_party": true,
     "license": "GPL-3.0-or-later",
-    "version": "2.0.0-dev"
+    "version": "0.13.0"
    },
    "dspi-link": {
     "first_party": true,
@@ -104,17 +104,17 @@
    "dspi-proto": {
     "first_party": true,
     "license": "GPL-3.0-or-later",
-    "version": "2.0.0-dev"
+    "version": "0.13.0"
    },
    "dspi-session": {
     "first_party": true,
     "license": "GPL-3.0-or-later",
-    "version": "2.0.0-dev"
+    "version": "0.13.0"
    },
    "dspi-transport": {
     "first_party": true,
     "license": "GPL-3.0-or-later",
-    "version": "2.0.0-dev"
+    "version": "0.13.0"
    },
    "equivalent": {
     "first_party": false,
@@ -312,7 +312,9 @@
    "crates/dspi-core/src/link.rs",
    "crates/dspi-core/src/link_text.rs",
    "crates/dspi-core/src/monitor.rs",
+   "crates/dspi-core/src/names.rs",
    "crates/dspi-core/src/notify.rs",
+   "crates/dspi-core/src/output_labels.rs",
    "crates/dspi-core/src/params.rs",
    "crates/dspi-core/src/params_fx.rs",
    "crates/dspi-core/src/presets.rs",
@@ -357,6 +359,7 @@
    "crates/dspi-session/src/lib.rs",
    "crates/dspi-session/src/link_words.rs",
    "crates/dspi-session/src/notify.rs",
+   "crates/dspi-session/src/output_label.rs",
    "crates/dspi-session/src/overvolt.rs",
    "crates/dspi-session/src/pins.rs",
    "crates/dspi-session/src/preset_file.rs",
@@ -406,11 +409,21 @@
    "Weeb Labs",
    "owner (bofr)"
   ],
-  "commit": "077f5364344316a23b96fd76315ef76e22bb0d75",
+  "commit": "6046707d790de96c83bdbdae49be5b52c903d7ba",
   "files": [
    "DSPi Console iOS/Info.plist",
+   "DSPi Console/AboutLicence.swift",
+   "DSPi Console/AppIdentity.swift",
    "DSPi Console/Assets.xcassets/AccentColor.colorset/Contents.json",
    "DSPi Console/Assets.xcassets/AppIcon.appiconset/Contents.json",
+   "DSPi Console/Assets.xcassets/AppIcon.appiconset/icon_1024.png",
+   "DSPi Console/Assets.xcassets/AppIcon.appiconset/icon_128.png",
+   "DSPi Console/Assets.xcassets/AppIcon.appiconset/icon_16.png",
+   "DSPi Console/Assets.xcassets/AppIcon.appiconset/icon_256.png",
+   "DSPi Console/Assets.xcassets/AppIcon.appiconset/icon_32.png",
+   "DSPi Console/Assets.xcassets/AppIcon.appiconset/icon_512.png",
+   "DSPi Console/Assets.xcassets/AppIcon.appiconset/icon_64.png",
+   "DSPi Console/Assets.xcassets/AppIcon.appiconset/icon_ios_1024.png",
    "DSPi Console/Assets.xcassets/Contents.json",
    "DSPi Console/AutoEQ/AutoEQBrowser.swift",
    "DSPi Console/AutoEQ/AutoEQManager.swift",
@@ -423,6 +436,7 @@
    "DSPi Console/ContentView.swift",
    "DSPi Console/Core/CoreBackedTransport.swift",
    "DSPi Console/Core/CoreMirror.swift",
+   "DSPi Console/Core/OutputLabels.swift",
    "DSPi Console/CoreVoltageStatusView.swift",
    "DSPi Console/CrossfeedPairMapView.swift",
    "DSPi Console/CrossfeedView.swift",
@@ -513,6 +527,7 @@
    "DSPi Console/Web/assets/index-Dbz_9Gsv.js",
    "DSPi Console/Web/assets/style--bAmF9Uc.css",
    "DSPi Console/Web/index.html",
+   "DSPi Console/iOS/DocumentPicker.swift",
    "DSPi Console/iOS/IOSApp.swift",
    "DSPi Console/iOS/IOSLinkPairing.swift",
    "DSPi Console/iOS/PeqTouchEditor.swift",
