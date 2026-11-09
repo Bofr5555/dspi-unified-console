@@ -236,6 +236,9 @@ class DspiBridgeImpl(
     /** The hub's device is open: the meter poll may run before [connected] (Link only). */
     @Volatile private var remoteOpen = false
 
+    // -- WP LK4 -- linkSelectDevice is running: its meter feed already serves
+    @Volatile private var remoteOpening = false
+
     /** The latest limiter meter read on [ffi] for the Link poll; null before the first. */
     @Volatile private var remoteLimiter: List<Float>? = null
     private var remoteLimiterJob: Job? = null
@@ -742,7 +745,7 @@ class DspiBridgeImpl(
         val anyLimiter = (0 until current.numOutputChannels).any { current.limiterEnabled[it] }
         val prev = _status.value
         // -- WP LK2 -- over Link on [meters]: nothing here may wait for the core lock
-        val remote = attachedRemote != null
+        val remote = attachedRemote != null || remoteOpening
         val gen = generation
         val r =
             withContext(if (remote) meters else ffi) {
@@ -1816,7 +1819,11 @@ class DspiBridgeImpl(
             if (outputEditSerial.isNotEmpty()) clearOutputEdit()
             outputEditSerial = serial
         }
-        class Opened(val snap: Snapshot, val error: String, val pairMap: Boolean)
+        class Opened(val snap: Snapshot, val error: String, val pairMap: Boolean, val probesLeft: Boolean)
+        // -- WP LK4 -- over Link the device is shown as soon as its image is
+        // read (the core binds on the snapshot and completes its probe in the
+        // background); the analyser start and the pair-map probe follow
+        val remote = attachedRemote != null
         val r =
             onFfi {
                 clearClipTimes()
@@ -1825,17 +1832,32 @@ class DspiBridgeImpl(
                 val st = core.getState()
                 val compatOk = core.isConnected() && st.compat == COMPAT_OK
                 if (fetched && compatOk) core.captureBaseline()
-                if (compatOk) runCatching { core.rtaStart() } // probes for the spectrum analyser
+                if (!remote && compatOk) runCatching { core.rtaStart() } // probes for the spectrum analyser
                 // K340 fork probe (core patch 0002): upstream firmware STALLs 0x00
                 // (Transfer: the answer, no retry); any other error retries once.
-                val pairMap = fetched && compatOk && probeCrossfeedPairMap()
+                val pairMap = !remote && fetched && compatOk && probeCrossfeedPairMap()
                 Opened(
                     snapshot(all = true),
                     if (fetched) "" else "Connected, but the device's settings could not be read. Reconnect it to retry.",
-                    pairMap
+                    pairMap,
+                    remote && fetched && compatOk
                 )
             }
         crossfeedPairMapSupported = r.pairMap
+        if (r.probesLeft) {
+            val gen = generation
+            scope.launch(main) {
+                val pairMap =
+                    onFfi {
+                        runCatching { core.rtaStart() }
+                        probeCrossfeedPairMap()
+                    }
+                if (gen == generation) {
+                    crossfeedPairMapSupported = pairMap
+                    if (pairMap) publish(onFfi { snapshot(all = true) })
+                }
+            }
+        }
         _hardwareUnsaved.value = false
         _status.value = BridgeStatus(connected = true, connectionError = r.error)
         val d = _devices.value
@@ -1958,20 +1980,26 @@ class DspiBridgeImpl(
     }
 
     override suspend fun attachRemote(handle: Long, serial: String): Boolean {
+        // -- WP LK2 -- the meters run alongside the reads; WP LK4: from the
+        // open on, since the core's meter feed starts once the image is in,
+        // before the probe's feature reads
+        firstMeter = CompletableDeferred()
+        remoteLimiter = null
+        clearClipTimes()
+        remoteOpening = true
+        remoteOpen = true
+        updateTimers()
         val err = onFfi { runCatching { core.linkSelectDevice(handle, serial) }.exceptionOrNull() }
+        remoteOpening = false
         if (err != null) {
+            remoteOpen = false
+            updateTimers()
             _status.value = _status.value.copy(connected = false, connectionError = "Could not open the DSPi on the hub.")
             refreshWritesAllowed()
             emit(BridgeEvent.CommandFailed("attachRemote", err))
             return false
         }
         attachedRemote = handle to serial
-        // -- WP LK2 -- the meters start now, alongside the reads below
-        firstMeter = CompletableDeferred()
-        remoteLimiter = null
-        clearClipTimes()
-        remoteOpen = true
-        updateTimers()
         deviceSelected(serial)
         return true
     }

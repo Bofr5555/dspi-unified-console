@@ -253,13 +253,32 @@ impl DspiCore {
     /// Errors: [`DspiError::Disconnected`]; another transfer failure of the
     /// header (a timeout) as [`DspiError::Transfer`].
     pub fn siggen_fetch_caps(&self) -> Result<SiggenCaps> {
+        self.ensure_probed(); // -- WP LK4 --
         let mut guard = self.lock();
         let conn = guard.conn()?;
-        let t = conn.transport();
         let mut caps = SiggenCaps {
             types: vec![empty_type(); SIGGEN_TYPE_COUNT],
             ..Default::default()
         };
+        // -- WP LK4 -- the connect probe read the header and every
+        // descriptor: answer from it (14 round trips fewer over DSPi Link)
+        if let Ok(session) = conn.session()
+            && let Some(sg) = session.capabilities().siggen.as_ref()
+            && sg.version == SIGGEN_VERSION
+            && sg.types.len() == usize::from(sg.type_count)
+        {
+            let count = usize::from(sg.type_count).min(SIGGEN_TYPE_COUNT);
+            caps.type_count = u8::try_from(count).unwrap_or(u8::MAX);
+            caps.output_channels = sg.output_channels;
+            caps.multitone_max = sg.multitone_max;
+            caps.valid_mask = sg.valid_channel_mask;
+            for (slot, d) in caps.types.iter_mut().zip(sg.types.iter().take(count)) {
+                *slot = caps_type(d.clone());
+            }
+            caps.supported = true;
+            return Ok(caps);
+        }
+        let t = conn.transport();
         let header = match t.control_in(
             op::REQ_SIGGEN_GET_CAPS,
             CAPS_HEADER,

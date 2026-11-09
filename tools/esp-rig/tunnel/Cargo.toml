@@ -1,0 +1,18 @@
+[package]
+name = "dspi-esp-rig"
+description = "WP LK3: the ESP32 bridge emulator rig's UART tunnel, a DSPi on the emulated bridge's UART"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "esp-rig-tunnel"
+path = "src/main.rs"
+
+[dependencies]
+dspi-proto.workspace = true
+# Default features: the USB backend, for the real K340 on the host.
+dspi-transport.workspace = true

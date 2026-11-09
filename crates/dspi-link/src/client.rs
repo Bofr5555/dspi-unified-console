@@ -126,6 +126,16 @@ pub struct Timing {
     /// unless a ping was answered) turned every Wi-Fi stall of about 15 s into
     /// a reconnect and a full re-read; a truly dead hub is now noticed after
     /// this limit instead of after about 15 s.
+    ///
+    /// WP LK4 (owner decision 2026-11-08), the one exception, on an ESP32
+    /// bridge only (hello `kind` "bridge"): the bridge closes a session whose
+    /// queued frames it could not write for 10 s, and says so only with a
+    /// reset that reaches us when our own TCP retries. So the core
+    /// (`dspi-core` link.rs, `PROBE_AFTER`) dials a new session every 2 s once
+    /// a bridge session has heard nothing for 12 s, and when one connects
+    /// while the old is still silent, the old one, which the bridge has
+    /// already dropped, is closed and the new one takes over. Nothing is
+    /// replayed. Other hubs keep this limit alone.
     pub silence_limit: Duration,
     /// How often the keepalive thread looks at the clock.
     pub keepalive_tick: Duration,
@@ -148,6 +158,20 @@ impl Default for Timing {
         }
     }
 }
+
+// -- WP LK4 --
+/// A request sent and not yet answered.
+struct PendingRequest {
+    id: u64,
+    rx: Receiver<Result<Value, LinkError>>,
+    deadline: Instant,
+}
+
+/// A `device.snapshot` sent with [`LinkClient::snapshot_begin`].
+pub struct PendingSnapshot(PendingRequest);
+
+/// A `poll.subscribe` sent with [`LinkClient::poll_subscribe_begin`].
+pub struct PendingPolls(PendingRequest);
 
 /// Picks the token for the hub whose `hub.id` it is given, after the hello has
 /// said which hub answered (spec 6.2, `tokenFor` in dspi-link-js).
@@ -733,6 +757,14 @@ impl LinkClient {
         }
     }
 
+    // -- WP LK4 --
+    /// How long the hub has sent nothing at all (control frames included),
+    /// by the session's clock.
+    pub fn silent_for(&self) -> Duration {
+        let last_inbound = *lock(&self.inner.last_inbound);
+        self.inner.clock.now().saturating_duration_since(last_inbound)
+    }
+
     /// This session's process-unique number, passed to
     /// [`LinkEvents::session_closed`] and [`LinkEvents::session_devices_changed`].
     pub fn epoch(&self) -> u64 {
@@ -799,11 +831,20 @@ impl LinkClient {
     /// never goes past the limit (no RATE_LIMITED). Each request has its own
     /// timeout from the moment it is sent; a timed-out one is not repeated.
     pub fn commands(&self, specs: &[CmdSpec]) -> Vec<CmdResponse> {
+        self.commands_within(specs, u32::MAX)
+    }
+
+    // -- WP LK4 --
+    /// [`LinkClient::commands`] with at most `max_slots` of them on the wire
+    /// at once (and never more than `max_inflight`): a background batch that
+    /// leaves slots to the commands a user is waiting for.
+    pub fn commands_within(&self, specs: &[CmdSpec], max_slots: u32) -> Vec<CmdResponse> {
+        let max_slots = usize::try_from(max_slots.max(1)).unwrap_or(usize::MAX);
         let mut out: Vec<Option<CmdResponse>> = vec![None; specs.len()];
         let mut sent = std::collections::VecDeque::new();
         let mut next = 0;
         while next < specs.len() || !sent.is_empty() {
-            while let Some(spec) = specs.get(next) {
+            while let Some(spec) = specs.get(next).filter(|_| sent.len() < max_slots) {
                 if !self.is_ready() {
                     out[next] = Some(CmdResponse { tag: 0, status: status::NO_DEVICE, payload: Vec::new() });
                     next += 1;
@@ -974,6 +1015,46 @@ impl LinkClient {
         serde_json::from_value(v).map_err(|e| LinkError::Protocol(e.to_string()))
     }
 
+    // -- WP LK4 --
+    /// `device.snapshot` sent now, its answer read later with
+    /// [`LinkClient::snapshot_finish`], so other requests can go out
+    /// meanwhile (a bind sends its identity reads behind it).
+    pub fn snapshot_begin(&self, handle: u8) -> Result<PendingSnapshot, LinkError> {
+        let id = self.inner.next_id.fetch_add(1, Ordering::SeqCst);
+        let text = out::device_snapshot(id, handle);
+        self.request_begin(id, text, self.inner.timing.bulk_timeout).map(PendingSnapshot)
+    }
+
+    /// The answer to [`LinkClient::snapshot_begin`]'s request, as
+    /// [`LinkClient::snapshot`] would give it.
+    pub fn snapshot_finish(&self, pending: PendingSnapshot) -> Result<Snapshot, LinkError> {
+        let v = self.request_finish(pending.0)?;
+        serde_json::from_value(v).map_err(|e| LinkError::Protocol(e.to_string()))
+    }
+
+    // -- WP LK4 --
+    /// `poll.subscribe` sent now, its grant read later with
+    /// [`LinkClient::poll_subscribe_finish`]: a bind sends it ahead of the
+    /// snapshot, so the hub's first POLL frames come before the snapshot's
+    /// bytes on the stream instead of behind them.
+    pub fn poll_subscribe_begin(&self, handle: u8, polls: &[PollSpec]) -> Result<PendingPolls, LinkError> {
+        let id = self.inner.next_id.fetch_add(1, Ordering::SeqCst);
+        let text = out::poll_subscribe(id, handle, polls);
+        self.request_begin(id, text, self.inner.timing.request_timeout).map(PendingPolls)
+    }
+
+    /// The grant to [`LinkClient::poll_subscribe_begin`]'s request, as
+    /// [`LinkClient::poll_subscribe`] would give it.
+    pub fn poll_subscribe_finish(&self, pending: PendingPolls) -> Result<Vec<PollGrant>, LinkError> {
+        let v = self.request_finish(pending.0)?;
+        v.get("granted")
+            .cloned()
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|e| LinkError::Protocol(e.to_string()))
+            .map(Option::unwrap_or_default)
+    }
+
     pub fn poll_subscribe(&self, handle: u8, polls: &[PollSpec]) -> Result<Vec<PollGrant>, LinkError> {
         let v = self.request(|id| out::poll_subscribe(id, handle, polls), self.inner.timing.request_timeout)?;
         v.get("granted")
@@ -1023,6 +1104,13 @@ impl LinkClient {
     }
 
     fn request_id(&self, id: u64, text: String, timeout: Duration) -> Result<Value, LinkError> {
+        let pending = self.request_begin(id, text, timeout)?;
+        self.request_finish(pending)
+    }
+
+    // -- WP LK4 --
+    /// Send a request without waiting for its answer ([`Self::request_finish`] waits).
+    fn request_begin(&self, id: u64, text: String, timeout: Duration) -> Result<PendingRequest, LinkError> {
         let (tx, rx) = mpsc::sync_channel(1);
         lock(&self.inner.pending_json).insert(id, tx);
         // After the insert: socket_failed sets `closed` before it drains, so either
@@ -1036,11 +1124,17 @@ impl LinkClient {
             self.socket_failed(None, &close_reason(None));
             return Err(LinkError::Io(e.to_string()));
         }
+        Ok(PendingRequest { id, rx, deadline: Instant::now() + timeout })
+    }
+
+    /// The answer to a request [`Self::request_begin`] sent, by its deadline.
+    fn request_finish(&self, pending: PendingRequest) -> Result<Value, LinkError> {
+        let PendingRequest { id, rx, deadline } = pending;
         // -- WP WB4b --
         let answer = if self.inner.caller_driven {
-            self.pumped_recv(&rx, Instant::now() + timeout)
+            self.pumped_recv(&rx, deadline)
         } else {
-            rx.recv_timeout(timeout)
+            rx.recv_timeout(deadline.saturating_duration_since(Instant::now()))
         };
         match answer {
             Ok(r) => r,

@@ -145,6 +145,11 @@ impl From<WriteError> for DspiError {
         match e {
             WriteError::Transport(t) => t.into(),
             WriteError::Unavailable { .. } => DspiError::Unsupported,
+            // -- WP LK4 --
+            WriteError::Unprobed { .. } => DspiError::Link {
+                code: "still_reading".into(),
+                msg: "Still reading the device; try again in a moment.".into(),
+            },
             other => DspiError::InvalidArgument {
                 msg: other.to_string(),
             },

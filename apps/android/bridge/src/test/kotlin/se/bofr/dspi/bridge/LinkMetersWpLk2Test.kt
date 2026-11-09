@@ -18,7 +18,7 @@ import org.junit.Test
 import se.bofr.dspi.core.DspiConstants
 import se.bofr.dspi.fake.FakeDspiCore
 
-/** WP LK2: over DSPi Link the meters start at once and never wait behind the start-up reads. */
+/** WP LK2: over DSPi Link the meters start at once and never wait behind the start-up reads (WP LK4: from the open on). */
 @OptIn(ExperimentalCoroutinesApi::class)
 class LinkMetersWpLk2Test {
     /** A fake on a Link session whose fetchAll blocks until [release] (a slow link's start-up read). */
@@ -71,6 +71,93 @@ class LinkMetersWpLk2Test {
             ffiExec.shutdownNow()
             mainExec.shutdownNow()
         }
+    }
+
+    /** A fake whose linkSelectDevice is held after the image (the probe's feature reads on a slow link). */
+    private class SlowSelect : FakeDspiCore() {
+        val release = CountDownLatch(1)
+
+        @Volatile var selectReturned = false
+
+        override fun linkSelectDevice(handle: Long, serial: String) {
+            super.linkSelectDevice(handle, serial)
+            release.await(10, TimeUnit.SECONDS)
+            selectReturned = true
+        }
+    }
+
+    @Test
+    fun wpLk4TheMeterPollRunsWhileLinkSelectDeviceBlocks() {
+        val core = SlowSelect().linked()
+        val ffiExec = Executors.newSingleThreadExecutor()
+        val mainExec = Executors.newSingleThreadExecutor()
+        val ffi = ffiExec.asCoroutineDispatcher()
+        val main = mainExec.asCoroutineDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + main)
+        val b = DspiBridgeImpl(core, scope, ffi = ffi, main = main)
+        try {
+            scope.launch { b.attachRemote(0, core.serial) }
+            waitFor("the select to start") { core.callCount("linkSelectDevice") == 1 }
+            waitFor("meter reads while the select is held") { core.callCount("fetchStatus") >= 3 }
+            assertTrue("the select has not returned", !core.selectReturned)
+            assertEquals("no start-up read yet", 0, core.callCount("fetchAll"))
+            core.release.countDown()
+            waitFor("the connection") { b.status.value.connected }
+            assertEquals(1, core.callCount("fetchAll"))
+        } finally {
+            core.release.countDown()
+            b.close()
+            scope.cancel()
+            ffiExec.shutdownNow()
+            mainExec.shutdownNow()
+        }
+    }
+
+    /** A fake whose analyser start is held (a probe read on a slow link). */
+    private class SlowRta : FakeDspiCore() {
+        val release = CountDownLatch(1)
+
+        override fun rtaStart() {
+            release.await(10, TimeUnit.SECONDS)
+            super.rtaStart()
+        }
+    }
+
+    @Test
+    fun wpLk4OverLinkTheDeviceShowsBeforeTheAnalyserStarts() {
+        val core = SlowRta().linked()
+        val ffiExec = Executors.newSingleThreadExecutor()
+        val mainExec = Executors.newSingleThreadExecutor()
+        val ffi = ffiExec.asCoroutineDispatcher()
+        val main = mainExec.asCoroutineDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + main)
+        val b = DspiBridgeImpl(core, scope, ffi = ffi, main = main)
+        try {
+            scope.launch { b.attachRemote(0, core.serial) }
+            waitFor("the connection") { b.status.value.connected }
+            assertEquals("the analyser start still held", 0, core.callCount("fetchCrossfeedPairMap"))
+            core.release.countDown()
+            waitFor("the pair-map probe after it") { core.callCount("fetchCrossfeedPairMap") >= 1 }
+        } finally {
+            core.release.countDown()
+            b.close()
+            scope.cancel()
+            ffiExec.shutdownNow()
+            mainExec.shutdownNow()
+        }
+    }
+
+    @Test
+    fun wpLk4AFailedSelectStopsThePoll() = runTest {
+        val core = FakeDspiCore().apply { closeFd() } // nothing open, no Link session: the select fails
+        val b = newBridge(core)
+        assertTrue(!b.attachRemote(0, core.serial))
+        runCurrent()
+        val polled = core.callCount("fetchStatus")
+        advanceTimeBy(DspiBridgeImpl.STATUS_POLL_MS * 5)
+        runCurrent()
+        assertEquals("no meter poll after a failed open", polled, core.callCount("fetchStatus"))
+        b.close()
     }
 
     @Test

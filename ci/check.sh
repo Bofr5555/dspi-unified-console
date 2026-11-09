@@ -75,6 +75,11 @@
 #                                     from the lockfile, typecheck, unit tests, and
 #                                     e2e in Chromium and Firefox on the demo
 #                                     device, in PLAYWRIGHT from images.conf
+#       esp-rig                       NOT in --all (WP LK3): the emulated ESP32
+#                                     DSPi-Link bridge (tools/esp-rig/ci.sh): upstream's
+#                                     firmware in Espressif's QEMU, the demo device on
+#                                     its UART; our client and the TS client must reach
+#                                     live meters through it
 #   ci/check.sh --all                 full gate plus every optional step
 #   ci/check.sh --all-clients         every client, then the matrix (ci/matrix.sh);
 #                                     builds missing images first
@@ -220,6 +225,9 @@ for s in "${steps[@]}"; do
     web)
       # -- WP WB5 --
       apps/web/tools/ci.sh ;;
+    esp-rig)
+      # -- WP LK3 --
+      tools/esp-rig/ci.sh ;;
     ios-check)
       # -- WP CG3 --
       $RUN 'set -euo pipefail
