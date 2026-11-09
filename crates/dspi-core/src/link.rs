@@ -2182,12 +2182,19 @@ struct Feed {
     /// A subscription sent ahead of the bind's snapshot, its grant not read
     /// yet ([`LinkSide::subscribe_ahead`]), with the rate asked.
     meter_pending: Option<(dspi_link::client::PendingPolls, u32)>,
+    /// The rate of a subscription sent ahead whose grant is not read yet
+    /// (also while the supervisor waits for it): its frames count meanwhile.
+    meter_ahead_hz: Option<u32>,
     /// A bind is reading the snapshot: on a bridge the feed runs at
     /// [`METER_HZ_STALLED`] meanwhile, so its frames take little from the
     /// snapshot on a lossy link ([`LinkSide::bind_done`] lifts it).
     meter_binding: bool,
     /// The current subscription was asked at the slow rate.
     meter_asked_slow: bool,
+    /// The bind's feed gave its first frame and is paused until the bind has
+    /// its snapshot (review c82: every frame on a lossy stream ahead of the
+    /// snapshot's bytes is one more segment whose loss stalls them).
+    meter_paused: bool,
     /// A wake-up to the supervisor is on its way.
     kicked: bool,
     /// The channels the analyser wants.
@@ -2350,6 +2357,10 @@ impl LinkSide {
             let mut feed = guard(&self.feed);
             feed.kicked = false;
             self.drain(&mut feed, now);
+            // -- WP LK4 -- paused during the bind: nothing to keep up
+            if feed.meter_paused {
+                return;
+            }
             let asked = feed
                 .meter_asked
                 .is_some_and(|t| now.saturating_duration_since(t) < METER_IDLE);
@@ -2442,6 +2453,7 @@ impl LinkSide {
         feed.meter_asked = Some(now);
         feed.meter_subscribed_at = Some(now);
         feed.meter_pending = Some((pending, spec.hz));
+        feed.meter_ahead_hz = Some(spec.hz);
         if !std::mem::replace(&mut feed.kicked, true) {
             let _ = self.tx.send(Msg::Kick);
         }
@@ -2450,9 +2462,28 @@ impl LinkSide {
     /// The bind has its snapshot: the feed goes to its full rate.
     fn bind_done(&self) {
         let mut feed = guard(&self.feed);
+        if std::mem::take(&mut feed.meter_paused) {
+            // Paused at the first frame: subscribe again, at the full rate
+            feed.meter_hz = None;
+            feed.meter_asked_slow = false;
+        }
         if std::mem::take(&mut feed.meter_binding) && !std::mem::replace(&mut feed.kicked, true) {
             let _ = self.tx.send(Msg::Kick);
         }
+    }
+
+    /// The bind's feed has given its first frame: pause it until the bind has
+    /// its snapshot ([`LinkSide::bind_done`] resumes it). Call with `feed`
+    /// released; a no-op unless binding and not yet paused.
+    fn pause_after_first_frame(&self) {
+        {
+            let mut feed = guard(&self.feed);
+            if !feed.meter_binding || feed.meter_paused || !feed.latest.contains_key(&METER_SLOT) {
+                return;
+            }
+            feed.meter_paused = true;
+        }
+        self.client.poll_unsubscribe(self.handle, &[METER_SLOT]);
     }
 
     /// Read the grant of [`LinkSide::subscribe_ahead`]'s request, if one is
@@ -2463,6 +2494,7 @@ impl LinkSide {
         };
         let granted = self.client.poll_subscribe_finish(pending);
         let mut feed = guard(&self.feed);
+        feed.meter_ahead_hz = None;
         match granted {
             Ok(g) => match g.iter().find(|g| g.slot == METER_SLOT && g.hz > 0) {
                 Some(g) => {
@@ -2706,6 +2738,9 @@ impl SideChannel for LinkSide {
         if self.client.is_closed() {
             return Err(DspiError::Disconnected);
         }
+        // -- WP LK4 -- the bind's first frame is in: hold the rest back
+        self.drain(&mut guard(&self.feed), Instant::now());
+        self.pause_after_first_frame();
         let now = Instant::now();
         let mut feed = guard(&self.feed);
         self.drain(&mut feed, now);
@@ -2723,10 +2758,8 @@ impl SideChannel for LinkSide {
         // -- WP LK4 -- frames of a subscription sent ahead count before its
         // grant is read (the supervisor may be busy with the re-attach)
         let ahead = feed
-            .meter_pending
-            .as_ref()
-            .filter(|_| feed.latest.contains_key(&METER_SLOT))
-            .map(|p| p.1);
+            .meter_ahead_hz
+            .filter(|_| feed.latest.contains_key(&METER_SLOT));
         let Some(hz) = feed.meter_hz.or(ahead) else {
             if !std::mem::replace(&mut feed.kicked, true) {
                 let _ = self.tx.send(Msg::Kick);

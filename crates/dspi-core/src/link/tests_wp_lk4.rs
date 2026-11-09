@@ -956,3 +956,51 @@ fn wp_lk4_the_background_reads_fill_only_what_nobody_changed() {
     assert_eq!(now.preset_names[0], "mine");
     assert_eq!(now.preset_names[1], "B");
 }
+
+#[test]
+fn wp_lk4_the_binds_feed_pauses_after_its_first_frame_until_the_snapshot() {
+    let hub = bridge_with(4);
+    let core = DspiCore::new();
+    let sent = Arc::new(Sent::default());
+    core.link_connect_with(
+        hub.url(),
+        "wp-lk4".into(),
+        "test".into(),
+        String::new(),
+        String::new(),
+        Tuning {
+            connector: Arc::new(RecordingConnector(Arc::clone(&sent))),
+            ..Tuning::default()
+        },
+    )
+    .unwrap();
+    wait_until("the device list", || !core.link_devices().is_empty());
+    // The snapshot is held back (a lossy link); the poll's frames still come
+    hub.hold_replies();
+    let opener = {
+        let core = Arc::clone(&core);
+        std::thread::spawn(move || select(&core))
+    };
+    wait_until("the first live meter", || {
+        core.fetch_status().is_ok_and(|s| !s.stale)
+    });
+    wait_until("the pause", || {
+        guard(&sent.0)
+            .iter()
+            .any(|t| t.contains("poll.unsubscribe"))
+    });
+    let side = core.meter_path().unwrap();
+    drop(side);
+    hub.release_replies();
+    opener.join().unwrap().unwrap();
+    let side = bound_side(&core);
+    wait_until("the full rate again", || {
+        let _ = core.fetch_status();
+        let feed = guard(&side.feed);
+        feed.meter_hz == Some(METER_HZ_BRIDGED) && !feed.meter_paused && !feed.meter_binding
+    });
+    wait_until("live meters again", || {
+        core.fetch_status().is_ok_and(|s| !s.stale)
+    });
+    core.link_close();
+}
