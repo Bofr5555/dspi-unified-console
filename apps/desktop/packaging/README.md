@@ -4,20 +4,20 @@
 
 ## Licence texts in the packages
 
-DSPi Console is GPL-3.0-or-later (the owner's decision, 2026-11-08): the notices say "version 3 or (at your
+DSPi uConsole is GPL-3.0-or-later (the owner's decision, 2026-11-08): the notices say "version 3 or (at your
 option) any later version", the GPL text shipped is version 3 (as the repository's `LICENSE`), and the .rpm's
 License field, the Arch `PKGBUILD` and the AppStream `project_license` say `GPL-3.0-or-later`.
 
-Every package carries DSPi Console's licence and, where it bundles libraries, theirs:
+Every package carries DSPi uConsole's licence and, where it bundles libraries, theirs:
 
 | Package | Where | What |
 |---|---|---|
-| AppImage | `usr/share/doc/dspi-console/` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `TERMS.txt`, `rust-crates.txt`, `Qt/` (Qt 6.8's licence files and `THIRD-PARTY.txt`), `KWindowSystem/`, `ICU/`, `AppImage-runtime/` (the runtime's, libfuse's LGPL-2.1, squashfuse's, and Alpine's musl, zlib, zstd and mimalloc it links), `BUNDLED.txt`, `bundled/<Ubuntu package>/copyright` |
+| AppImage | `usr/share/doc/dspi-uconsole/` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `TERMS.txt`, `rust-crates.txt`, `Qt/` (Qt 6.8's licence files and `THIRD-PARTY.txt`), `KWindowSystem/`, `ICU/`, `AppImage-runtime/` (the runtime's, libfuse's LGPL-2.1, squashfuse's, and Alpine's musl, zlib, zstd and mimalloc it links), `BUNDLED.txt`, `bundled/<Ubuntu package>/copyright` |
 | `-linux-x86_64.tar.gz` | top level | the AppImage's `NOTICE.txt` and `LICENSES/` |
 | Windows `.zip` and installer | next to `DSPiConsole.exe` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `TERMS.txt`, `rust-crates.txt`, `Qt/`, `BUNDLED.txt`, `bundled/<Fedora package>/` (MinGW Qt's, GCC's runtime with its exception, the other DLLs') |
-| macOS `.dmg` | `DSPi Console.app/Contents/Resources/` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `TERMS.txt`, `rust-crates.txt`, `Qt/`, `BUNDLED.txt` |
-| `.deb` | `/usr/share/doc/dspi-console/` | `copyright` (the notice with the additional terms; the GPL is Debian's `/usr/share/common-licenses/GPL-3`), `rust-crates.txt` |
-| `.rpm`, a plain `cmake --install` | `/usr/share/licenses/dspi-console/` | `GPL-3.0.txt`, `NOTICE.txt` (with the additional terms), `TERMS.txt`, `rust-crates.txt` |
+| macOS `.dmg` | `DSPi uConsole.app/Contents/Resources/` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `TERMS.txt`, `rust-crates.txt`, `Qt/`, `BUNDLED.txt` |
+| `.deb` | `/usr/share/doc/dspi-uconsole/` | `copyright` (the notice with the additional terms; the GPL is Debian's `/usr/share/common-licenses/GPL-3`), `rust-crates.txt` |
+| `.rpm`, a plain `cmake --install` | `/usr/share/licenses/dspi-uconsole/` | `GPL-3.0.txt`, `NOTICE.txt` (with the additional terms), `TERMS.txt`, `rust-crates.txt` |
 
 <!-- WP LIC1 --> Every notice states the additional terms under GPL-3.0 section 7 (the project's `NOTICE.md`),
 verbatim from `licences/TERMS.txt`, which a test in `crates/dspi-session` (about.rs) holds equal to the words every
@@ -27,7 +27,7 @@ writes it and `ci/check.sh --step qt` fails when it is stale.
 
 `licences/stage.sh` lays these out for the AppImage (`linux/build-ubuntu.sh`), Windows
 (`windows/build-windows.sh`) and macOS (`macos/build-macos.sh`). It lists every library in the package
-that is not DSPi Console's own in `LICENSES/BUNDLED.txt` (package, version, origin, source, licence, files)
+that is not DSPi uConsole's own in `LICENSES/BUNDLED.txt` (package, version, origin, source, licence, files)
 and fails on a file it cannot account for. The `.deb` and `.rpm` use the distribution's Qt, so they carry
 only the GPL and the notice (`licences/NOTICE-distro.txt.in`, installed by `qt/CMakeLists.txt`).
 

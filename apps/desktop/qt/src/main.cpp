@@ -225,7 +225,7 @@ int main(int argc, char *argv[])
 #ifndef Q_OS_MACOS
     // X11 WM_CLASS instance, matched to the desktop entry's StartupWMClass
     // (otherwise the binary's name, which an AppImage changes)
-    if (!qEnvironmentVariableIsSet("RESOURCE_NAME")) qputenv("RESOURCE_NAME", "dspi-console");
+    if (!qEnvironmentVariableIsSet("RESOURCE_NAME")) qputenv("RESOURCE_NAME", "dspi-uconsole");
 #endif
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);   // always on in Qt 6
@@ -253,6 +253,9 @@ int main(int argc, char *argv[])
     // distance-field glyphs (softer, lighter, approximate tracking)
     QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
 #endif
+    // The settings' names (~/.config/DSPi/DSPi Console.conf, %APPDATA%\DSPi\DSPi Console.ini):
+    // kept from before the app was renamed DSPi uConsole, so its settings stay. The
+    // name users see is the window's title, the desktop entry's and the bundle's
     app.setApplicationName("DSPi Console");
     app.setOrganizationName("DSPi");
     app.setApplicationVersion("0.13.0");   // the release of this Console (the firmware it targets is the bundled image's)
@@ -263,8 +266,8 @@ int main(int argc, char *argv[])
     QSettings::setDefaultFormat(QSettings::IniFormat);
 #endif
 #ifndef Q_OS_MACOS
-    // The Wayland app id, matched to dspi-console.desktop for the taskbar icon
-    app.setDesktopFileName(QStringLiteral("dspi-console"));
+    // The Wayland app id, matched to dspi-uconsole.desktop for the taskbar icon
+    app.setDesktopFileName(QStringLiteral("dspi-uconsole"));
     app.setWindowIcon(QIcon(QStringLiteral(":/dspi-console.svg")));
 #endif
 

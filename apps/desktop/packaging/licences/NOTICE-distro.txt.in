@@ -1,6 +1,6 @@
-DSPi Console @DSPI_VERSION@
+DSPi uConsole @DSPI_VERSION@
 
-DSPi Console is licensed under the GNU General Public License, version 3 or
+DSPi uConsole is licensed under the GNU General Public License, version 3 or
 (at your option) any later version (@DSPI_GPL_TEXT@ holds version 3),
 with additional terms under its section 7 (below).
 Its source code:

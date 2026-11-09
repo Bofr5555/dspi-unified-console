@@ -115,7 +115,7 @@ public:
     Outcome write(const QString &hubId, const QString &token) override {
         std::wstring name = target(hubId);
         QByteArray secret = token.toUtf8();
-        std::wstring comment = L"DSPi Console: DSPi Link hub token";
+        std::wstring comment = L"DSPi uConsole: DSPi Link hub token";
         CREDENTIALW cred = {};
         cred.Type = CRED_TYPE_GENERIC;
         cred.TargetName = name.data();

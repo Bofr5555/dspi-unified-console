@@ -253,7 +253,7 @@ void AppUpdater::finished() {
     const QVector<Release> releases = parseFeed(body);
     const Release *best = newest(releases, m_current);
     m_offer = best ? *best : Release();
-    if (best && m_offer.title.isEmpty()) m_offer.title = QStringLiteral("DSPi Console ") + m_offer.version.text();
+    if (best && m_offer.title.isEmpty()) m_offer.title = QStringLiteral("DSPi uConsole ") + m_offer.version.text();
     m_result = best ? QStringLiteral("available") : QStringLiteral("current");
     m_dismissed = false;
     m_lastChecked = QDateTime::currentDateTime();

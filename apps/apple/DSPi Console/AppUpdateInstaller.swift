@@ -36,7 +36,7 @@ enum AppUpdateInstaller {
         var errorDescription: String? {
             switch self {
             case .notWritable:
-                return "DSPi Console can't replace itself where it is.  Move it to the Applications folder with Finder, then try again."
+                return "DSPi uConsole can't replace itself where it is.  Move it to the Applications folder with Finder, then try again."
             case .noSignedAsset:
                 return "This release has no signed download, so it can't be installed automatically."
             case .download:
@@ -46,7 +46,7 @@ enum AppUpdateInstaller {
             case .unpack:
                 return "The download couldn't be unpacked."
             case .wrongApp(let detail):
-                return "The download isn't the expected DSPi Console (\(detail))."
+                return "The download isn't the expected DSPi uConsole (\(detail))."
             case .invalidCodeSignature:
                 return "The downloaded app's code signature is invalid."
             case .helper:

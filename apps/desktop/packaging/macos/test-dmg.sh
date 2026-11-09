@@ -19,8 +19,14 @@ hdiutil attach -quiet -readonly -nobrowse -mountpoint "$mnt" "$dmg" || { echo "t
 detach() { hdiutil detach -quiet "$mnt" || hdiutil detach -quiet -force "$mnt"; }
 trap detach EXIT
 
-app="$mnt/DSPi Console.app"
+app="$mnt/DSPi uConsole.app"
 codesign --verify --deep --strict "$app" || { echo "test-dmg: the signature does not verify"; exit 1; }
+# -- WP REL013R -- the name in Finder, the Dock and the menu bar
+for k in CFBundleName CFBundleDisplayName; do
+    v=$(/usr/libexec/PlistBuddy -c "Print :$k" "$app/Contents/Info.plist")
+    [ "$v" = "DSPi uConsole" ] || { echo "test-dmg: $k is \"$v\", not DSPi uConsole"; exit 1; }
+done
+echo "test-dmg: named DSPi uConsole"
 # -- WP QD42 -- the licence files
 for f in NOTICE.txt LICENSES/GPL-3.0.txt LICENSES/LGPL-3.0.txt LICENSES/BUNDLED.txt LICENSES/Qt/THIRD-PARTY.txt LICENSES/Qt/LGPL-3.0-only.txt \
          LICENSES/TERMS.txt LICENSES/rust-crates.txt; do   # -- WP LIC1 -- TERMS.txt, rust-crates.txt
@@ -31,7 +37,7 @@ grep -q "^Qt	.*	qtbase-everywhere-src-" "$app/Contents/Resources/LICENSES/BUNDLE
 grep -q "any later version" "$app/Contents/Resources/NOTICE.txt" || { echo "test-dmg: NOTICE.txt does not say GPL-3.0-or-later"; exit 1; }
 grep -q "No trademark rights (7e)" "$app/Contents/Resources/NOTICE.txt" || { echo "test-dmg: NOTICE.txt lacks the additional terms"; exit 1; }   # -- WP LIC1 --
 echo "test-dmg: NOTICE.txt and LICENSES/ are in the app"
-QT_FORCE_STDERR_LOGGING=1 "$app/Contents/MacOS/DSPi Console" --demo >"$log" 2>&1 &
+QT_FORCE_STDERR_LOGGING=1 "$app/Contents/MacOS/DSPi uConsole" --demo >"$log" 2>&1 &
 pid=$!
 sleep "$secs"
 if kill -0 "$pid" 2>/dev/null; then

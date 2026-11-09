@@ -31,8 +31,8 @@ const char *const kKeepAwakeKey = "system/keepAwake";
 const char *const kReason = "Sharing DSPi devices on the local network";
 // The Run key's value name, and the autostart file's; the latter matches the
 // installed launcher's, so a desktop sees one app
-const char *const kRunName = "DSPi Console";
-const char *const kDesktopFile = "dspi-console.desktop";
+const char *const kRunName = "DSPi uConsole";
+const char *const kDesktopFile = "dspi-uconsole.desktop";
 
 // ── XDG autostart ──
 
@@ -126,10 +126,10 @@ public:
             return QCoreApplication::translate("SystemIntegration", "Could not write %1: %2").arg(file(), f.errorString());
         const QString entry = QStringLiteral("[Desktop Entry]\n"
                                              "Type=Application\n"
-                                             "Name=DSPi Console\n"
+                                             "Name=DSPi uConsole\n"
                                              "Comment=Configure and tune a DSPi audio processor\n"
                                              "Exec=%1\n"
-                                             "Icon=dspi-console\n"
+                                             "Icon=dspi-uconsole\n"
                                              "Terminal=false\n"
                                              "X-GNOME-Autostart-enabled=true\n")
                                   .arg(execArgument(program));
@@ -278,7 +278,7 @@ private:
         QDBusMessage call = QDBusMessage::createMethodCall(m_logind, QLatin1String(kLogindPath),
                                                            QStringLiteral("org.freedesktop.login1.Manager"),
                                                            QStringLiteral("Inhibit"));
-        call << QStringLiteral("idle") << QStringLiteral("DSPi Console") << reason << QStringLiteral("block");
+        call << QStringLiteral("idle") << QStringLiteral("DSPi uConsole") << reason << QStringLiteral("block");
         watch(m_logindBus.asyncCall(call), [this, generation, portalError, done](QDBusPendingCallWatcher *w) {
             QDBusPendingReply<QDBusUnixFileDescriptor> reply = *w;
             if (generation != m_generation) return;     // the fd closes with the reply

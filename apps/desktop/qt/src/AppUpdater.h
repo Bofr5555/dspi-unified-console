@@ -13,7 +13,7 @@ class DSPiBridge;
 class QNetworkAccessManager;
 class QNetworkReply;
 
-// WP QD16: tells the user when a newer DSPi Console is published, shows its notes
+// WP QD16: tells the user when a newer DSPi uConsole is published, shows its notes
 // and opens its page (AppUpdateChecker.swift, without the installer: OD8 says
 // check-and-link). The feed is a GitHub release list (GET /repos/../releases).
 //

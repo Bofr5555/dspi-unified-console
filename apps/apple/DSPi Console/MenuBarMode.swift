@@ -70,7 +70,7 @@ final class MenuBarController: ObservableObject {
     var reopenMainWindow: (() -> Void)?
 
     private func mainWindow() -> NSWindow? {
-        NSApp.windows.first { $0.title == "DSPi Console" }
+        NSApp.windows.first { $0.title == "DSPi uConsole" }
     }
 
     // MARK: - Start at login
@@ -110,7 +110,7 @@ struct MenuBarMenu: View {
             }
         }
         Divider()
-        Button(controller.isMinimised ? "Open DSPi Console" : "Show DSPi Console") {
+        Button(controller.isMinimised ? "Open DSPi uConsole" : "Show DSPi uConsole") {
             controller.restore()
         }
         // A Toggle in a menu renders as a checkmark item.
@@ -123,7 +123,7 @@ struct MenuBarMenu: View {
             .disabled(!service.isRunning)
         }
         Divider()
-        Button("Quit DSPi Console") {
+        Button("Quit DSPi uConsole") {
             NSApp.terminate(nil)
         }
     }

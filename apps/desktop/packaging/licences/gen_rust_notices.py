@@ -35,13 +35,13 @@ if SWIFT:
     OUT = TOP / "apps/apple/licences/rust-crates.txt"
     SELECT = ["-p", "dspi-ffi"]
     TARGETS = ("aarch64-apple-darwin", "x86_64-apple-darwin")
-    TITLE = "Third-party Rust crates linked into DSPi Console's core (dspi_ffi) in the Swift macOS app\n"
+    TITLE = "Third-party Rust crates linked into DSPi uConsole's core (dspi_ffi) in the Swift macOS app\n"
     SCOPE = "The union for Apple silicon and Intel: a crate may be linked on only one of them.\n"
 else:
     OUT = TOP / "apps/desktop/packaging/licences/rust-crates.txt"
     SELECT = ["-p", "dspi-capi", "--features", "link,midir,mdns,hub"]
     TARGETS = ("x86_64-unknown-linux-gnu", "x86_64-pc-windows-gnu", "aarch64-apple-darwin", "x86_64-apple-darwin")
-    TITLE = "Third-party Rust crates linked into DSPi Console's core (dspi_capi) in the desktop packages\n"
+    TITLE = "Third-party Rust crates linked into DSPi uConsole's core (dspi_capi) in the desktop packages\n"
     SCOPE = "The union for Linux, Windows and macOS: a crate may be linked on only some of them.\n"
 NOTICE_GLOBS = ("LICENSE*", "LICENCE*", "COPYING*", "NOTICE*", "UNLICENSE*", "COPYRIGHT*")
 
@@ -78,7 +78,7 @@ def main():
     out.append("Where a crate offers a choice (\"MIT OR Apache-2.0\"), this program uses it under the\n"
                "licence compatible with GPL-3.0 (MIT or Apache-2.0).\n\n")
     for p in crate_closure():
-        # This project's own (dspi-*): DSPi Console's licence, in NOTICE.txt
+        # This project's own (dspi-*): DSPi uConsole's licence, in NOTICE.txt
         if Path(p["manifest_path"]).resolve().is_relative_to(TOP):
             continue
         lic = p.get("license") or "(see files)"

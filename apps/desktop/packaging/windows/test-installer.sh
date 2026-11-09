@@ -1,9 +1,9 @@
 #!/bin/bash
 # Tests the installer and uninstaller under Wine, silently (/S), in a fresh
 # Wine prefix: they install and remove the app, and refuse (exit code 2,
-# nothing replaced or removed) while the installed DSPi Console is running.
+# nothing replaced or removed) while the installed DSPi uConsole is running.
 # Runs in the build image, after build-windows.sh:
-#   ci/run.sh 'apps/desktop/packaging/windows/test-installer.sh /work/dist-windows/DSPi-Console-<v>-windows-x86_64-setup.exe'
+#   ci/run.sh 'apps/desktop/packaging/windows/test-installer.sh /work/dist-windows/DSPi-uConsole-<v>-windows-x86_64-setup.exe'
 # The app runs on the demo device under Xvfb; no device, no network needed.
 # -- WP QD42 -- The install, and the zip beside the installer, carry the licence
 # texts: NOTICE.txt and LICENSES/ (Qt's, GCC's runtime exception, every DLL
@@ -31,9 +31,16 @@ wineboot -i >/dev/null 2>&1; wineserver -w
 wine "$setup" /S "/D=$dir"; check "install" 0 $?
 [ -f "$unix/DSPiConsole.exe" ] || { echo "test-installer: FAIL: no DSPiConsole.exe after the install"; exit 1; }
 # -- WP QD21c -- the publisher Apps & features shows
-publisher=$(wine reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\DSPiConsole' /v Publisher 2>/dev/null | tr -d '\r' | sed -n 's/.*REG_SZ *//p')
+key='HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\DSPiuConsole'
+publisher=$(wine reg query "$key" /v Publisher 2>/dev/null | tr -d '\r' | sed -n 's/.*REG_SZ *//p')
 [ -n "$publisher" ] && echo "test-installer: ok: Publisher \"$publisher\"" \
     || { echo "test-installer: FAIL: no Publisher in the uninstall entry"; fails=$((fails + 1)); }
+# -- WP REL013R -- the name in Settings > Apps and the Start menu
+display=$(wine reg query "$key" /v DisplayName 2>/dev/null | tr -d '\r' | sed -n 's/.*REG_SZ *//p')
+menu=$(find "$WINEPREFIX/drive_c/users" -path '*Start Menu/Programs/*' -name '*.lnk' -printf '%f\n' 2>/dev/null)
+[ "$display" = "DSPi uConsole" ] && [ "$menu" = "DSPi uConsole.lnk" ] \
+    && echo "test-installer: ok: DisplayName \"$display\", Start menu \"$menu\"" \
+    || { echo "test-installer: FAIL: DisplayName \"$display\", Start menu \"$menu\" (expected DSPi uConsole)"; fails=$((fails + 1)); }
 
 # -- WP QD42 -- the licence files
 lic_ok=1

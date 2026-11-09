@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-# DSPi Console — copyright, licence and additional terms
+# DSPi uConsole — copyright, licence and additional terms
 
 <!-- WP LIC1: the owner's decisions of 2026-11-08, in the wording of apps/android/NOTICE.md adapted to the whole
 project. Pending the owner's approval. The same words are in assets/about.json (`licence`), which every client
@@ -11,7 +11,7 @@ crates/dspi-session (about.rs) holds them equal. -->
 
 "DSPi" and "DSPi Console" are Weeb Labs' names. This repository grants no rights to them.
 
-DSPi Console (the Qt console for Linux, Windows and macOS, the Android console, the Swift console for macOS and iOS, the
+DSPi uConsole (the Qt console for Linux, Windows and macOS, the Android console, the Swift console for macOS and iOS, the
 DSPi Terminal, the web console and the hub) is free software: you can redistribute it and/or modify it under the terms
 of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at
 your option) any later version, with the additional terms below. It is distributed in the hope that it will be useful,
@@ -41,7 +41,7 @@ Each client shows this notice and these terms where it shows licences: the Qt co
 Licences, the Android console's Settings › About › Licences, the Swift console's Settings › About (macOS and iOS),
 the web console's About, the DSPi Terminal's Settings › About and `dspi --license` (which the hub shares, as part of
 `dspi`). The desktop packages carry it in `NOTICE.txt` and `LICENSES/TERMS.txt` (AppImage, Windows, .dmg), in
-`copyright` (.deb) and in `share/licenses/dspi-console/` (.rpm and a plain install).
+`copyright` (.deb) and in `share/licenses/dspi-uconsole/` (.rpm and a plain install).
 
 **Open point** (for the owner and Weeb Labs, not settled here): parts of the clients are ported from Weeb Labs'
 DSPi Console for macOS, whose `LICENSE` says GPL-3.0 without "or later". README's Licensing section lists it with

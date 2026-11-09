@@ -97,10 +97,10 @@ Popup {
         ]},
         { text: qsTr("Help"), icon: "question-circle", help: true, items: [
             { icon: "cap", text: qsTr("Getting Started…"), window: "gettingStarted", help: true },
-            { icon: "sparkles", text: qsTr("What's New in DSPi Console"), window: "whatsNew", help: true },
+            { icon: "sparkles", text: qsTr("What's New in DSPi uConsole"), window: "whatsNew", help: true },
             { sep: true },
             // -- WP REL013M2 -- this app's own project (was Weeb Labs' Linux console, WP QD40)
-            { icon: "github", text: qsTr("DSPi Console on GitHub"), window: "url:https://github.com/Bofr5555/dspi-unified-console", help: true },
+            { icon: "github", text: qsTr("DSPi uConsole on GitHub"), window: "url:https://github.com/Bofr5555/dspi-unified-console", help: true },
             { icon: "github", text: qsTr("DSPi Firmware on GitHub"), window: "url:https://github.com/WeebLabs/DSPi", help: true }
         ]}
     ]

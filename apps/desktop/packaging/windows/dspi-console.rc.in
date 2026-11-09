@@ -18,11 +18,11 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "CompanyName", "DSPi unified console maintainers\0"
-            VALUE "FileDescription", "DSPi Console\0"
+            VALUE "FileDescription", "DSPi uConsole\0"
             VALUE "FileVersion", "@DSPI_VERSION@\0"
             VALUE "InternalName", "DSPiConsole\0"
             VALUE "OriginalFilename", "DSPiConsole.exe\0"
-            VALUE "ProductName", "DSPi Console\0"
+            VALUE "ProductName", "DSPi uConsole\0"
             VALUE "ProductVersion", "@DSPI_VERSION@\0"
         END
     END

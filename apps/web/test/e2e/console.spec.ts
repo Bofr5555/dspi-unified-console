@@ -46,7 +46,7 @@ async function noPageErrors(page: Page) {
 test("standalone: the core's demo connects, a volume write reads back, meters are read", async ({ page }) => {
   const errors = await noPageErrors(page);
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "DSPi Console" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "DSPi uConsole" })).toBeVisible();
   const picker = page.getByRole("navigation", { name: "DSPi devices" });
   await picker.getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
 

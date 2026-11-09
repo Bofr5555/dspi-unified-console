@@ -1,7 +1,7 @@
 # Maintainer: DSPi unified console maintainers
-# Builds DSPi Console from source against the system Qt 6, from the
+# Builds DSPi uConsole from source against the system Qt 6, from the
 # dspi-unified-console repository (the app is apps/desktop, its core crates/).
-pkgname=dspi-console
+pkgname=dspi-uconsole
 pkgver=0.13.0
 pkgrel=1
 pkgdesc="Control application for the DSPi audio processor"
@@ -14,7 +14,7 @@ depends=('qt6-base' 'qt6-declarative' 'qt6-svg' 'qt6-wayland' 'kwindowsystem' 'h
 makedepends=('git' 'cargo' 'cmake' 'ninja')
 optdepends=('xdg-desktop-portal: native file dialogs'
             'udisks2: firmware updates')
-install=dspi-console.install
+install=dspi-uconsole.install
 source=("$pkgname::git+$url.git#tag=v$pkgver")
 sha256sums=('SKIP')
 

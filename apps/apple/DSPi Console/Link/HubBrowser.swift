@@ -197,7 +197,7 @@ final class HubBrowser: ObservableObject {
             #if os(macOS)
             return "Local network access is not allowed for Console. Allow it in System Settings, Privacy & Security, Local Network."
             #else
-            return "Local network access is not allowed for DSPi Console. Allow it in Settings, Privacy & Security, Local Network."
+            return "Local network access is not allowed for DSPi uConsole. Allow it in Settings, Privacy & Security, Local Network."
             #endif
         }
         return "Could not look for hubs: \(error.localizedDescription)"

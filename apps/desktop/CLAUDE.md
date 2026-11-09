@@ -1,4 +1,4 @@
-# DSPi Console for Linux
+# DSPi uConsole for Linux (the Qt app; it was DSPi Console until 2026-11-09)
 
 Qt 6 or 5.15 / QML front end (`qt/`) on the repository's Rust core:
 `crates/dspi-capi` (library `dspi_capi`, header `dspi_core.h` via cbindgen) over
@@ -43,9 +43,9 @@ CMake install rules and CPack config at the end of `qt/CMakeLists.txt`. The
 version comes from `setApplicationVersion` in `qt/src/main.cpp`, the same
 version as every other client of the project (packages use `~` for a
 pre-release: `0.14.0~beta1`). Per release, also bump the `<release>`
-in `packaging/linux/dspi-console.metainfo.xml` and `pkgver` in
+in `packaging/linux/dspi-uconsole.metainfo.xml` and `pkgver` in
 `packaging/arch/PKGBUILD`, which fetches the tag `v<pkgver>` (then regenerate `.SRCINFO`). Releases are
-tagged `v<version>` and named `DSPi Console v<version>`, like the macOS and
+tagged `v<version>` and named `DSPi uConsole v<version>`, like the macOS and
 Windows repos.
 
 ## Git

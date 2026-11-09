@@ -5,14 +5,14 @@
     "skip": "Skip Setup",
     "back": "Back",
     "continue": "Continue",
-    "finish": "Start Using DSPi Console",
+    "finish": "Start Using DSPi uConsole",
     "try_again": "Try Again"
   },
   "stages": [
     {
       "id": "welcome",
       "label": "Welcome",
-      "title": "Welcome to DSPi Console",
+      "title": "Welcome to DSPi uConsole",
       "paragraphs": [
         {
           "id": "welcome.intro",
@@ -26,7 +26,7 @@
         {
           "id": "welcome.job_elsewhere",
           "when": "cannot_install_firmware",
-          "text": "This app cannot install firmware: use DSPi Console on macOS, Windows or Linux. Once the firmware is running, everything else is set up in the app as you need it."
+          "text": "This app cannot install firmware: use DSPi uConsole on macOS, Windows or Linux. Once the firmware is running, everything else is set up in the app as you need it."
         }
       ],
       "rows": [

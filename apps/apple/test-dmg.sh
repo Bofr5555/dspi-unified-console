@@ -20,14 +20,14 @@ mnt=$work/mnt-swift
 log=$work/swift-app.log
 fail() { echo "test-dmg: FAILED: $*"; exit 1; }
 
-version=$(basename "$dmg" | sed -n 's/^DSPi-Console-Swift-\(.*\)-macos\.dmg$/\1/p')
-[ -n "$version" ] || fail "$dmg is not named DSPi-Console-Swift-<version>-macos.dmg"
+version=$(basename "$dmg" | sed -n 's/^DSPi-uConsole-Swift-\(.*\)-macos\.dmg$/\1/p')
+[ -n "$version" ] || fail "$dmg is not named DSPi-uConsole-Swift-<version>-macos.dmg"
 mkdir -p "$mnt"
 hdiutil attach -quiet -readonly -nobrowse -mountpoint "$mnt" "$dmg" || fail "cannot mount $dmg"
 detach() { hdiutil detach -quiet "$mnt" || hdiutil detach -quiet -force "$mnt"; }
 trap detach EXIT
 
-app="$mnt/DSPi Console.app"
+app="$mnt/DSPi uConsole.app"
 codesign --verify --deep --strict "$app" || fail "the signature does not verify"
 sig=$(codesign -dv "$app" 2>&1)
 grep -q "Signature=adhoc" <<<"$sig" || fail "not ad-hoc signed"
@@ -36,8 +36,10 @@ info() { /usr/libexec/PlistBuddy -c "Print :$1" "$plist" 2>/dev/null; }
 [ "$(info CFBundleIdentifier)" = "$id" ] || fail "CFBundleIdentifier is $(info CFBundleIdentifier)"
 [ "$(info CFBundleShortVersionString)" = "$version" ] || fail "CFBundleShortVersionString is $(info CFBundleShortVersionString)"
 [ "$(info CFBundleVersion)" = "$(echo "$version" | cut -d. -f2)" ] || fail "CFBundleVersion is $(info CFBundleVersion)"
+[ "$(info CFBundleName)" = "DSPi uConsole" ] || fail "CFBundleName is $(info CFBundleName)"
+[ "$(info CFBundleExecutable)" = "DSPi uConsole" ] || fail "CFBundleExecutable is $(info CFBundleExecutable)"
 echo "test-dmg: $id $(info CFBundleShortVersionString) ($(info CFBundleVersion)), name $(info CFBundleName), firmware $(info DSPiFirmwareVersion)"
-lipo -info "$app/Contents/MacOS/DSPi Console"
+lipo -info "$app/Contents/MacOS/DSPi uConsole"
 
 r=$app/Contents/Resources
 for f in NOTICE.txt LICENSES/GPL-3.0.txt LICENSES/TERMS.txt LICENSES/rust-crates.txt LICENSES/BUNDLED.txt \
@@ -54,7 +56,7 @@ prefs=$HOME/Library/Preferences
 weeb_before=$(stat -f %m "$prefs/WeebLabs.DSPi-Console.plist" 2>/dev/null || echo none)
 marker=$work/swift-start.marker
 touch "$marker"
-"$app/Contents/MacOS/DSPi Console" -LocalTransport demo >"$log" 2>&1 &
+"$app/Contents/MacOS/DSPi uConsole" -LocalTransport demo >"$log" 2>&1 &
 pid=$!
 sleep "$secs"
 net=$(lsof -nP -a -p "$pid" -i 2>/dev/null | sed 1d)

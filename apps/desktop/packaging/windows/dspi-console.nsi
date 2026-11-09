@@ -1,5 +1,5 @@
-; Per-user installer for DSPi Console on Windows (no administrator rights):
-; installs to %LOCALAPPDATA%\Programs\DSPi Console, adds a Start menu
+; Per-user installer for DSPi uConsole on Windows (no administrator rights):
+; installs to %LOCALAPPDATA%\Programs\DSPi uConsole, adds a Start menu
 ; shortcut and an entry in Settings > Apps. Build on Linux or Windows with
 ;   makensis -DVERSION=0.13.0 -DBUNDLE=<deployed folder> -DOUTFILE=<setup.exe> dspi-console.nsi
 ; (packaging/windows/build-windows.sh does this).
@@ -14,11 +14,11 @@ Unicode true
   !error "pass -DBUNDLE=<folder made by deploy-mingw.sh>"
 !endif
 !ifndef OUTFILE
-  !define OUTFILE "DSPi-Console-${VERSION}-windows-x86_64-setup.exe"
+  !define OUTFILE "DSPi-uConsole-${VERSION}-windows-x86_64-setup.exe"
 !endif
 
-!define APP "DSPi Console"
-!define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\DSPiConsole"
+!define APP "DSPi uConsole"
+!define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\DSPiuConsole"
 
 Name "${APP}"
 OutFile "${OUTFILE}"
@@ -29,11 +29,11 @@ SetCompressor /SOLID lzma
 
 !define MUI_ICON "${__FILEDIR__}\dspi-console.ico"
 !define MUI_UNICON "${__FILEDIR__}\dspi-console.ico"
-; "Run DSPi Console" on the last page, started through the shell like the
+; "Run DSPi uConsole" on the last page, started through the shell like the
 ; Start menu does. The first start after an install takes several seconds
 ; (QML compiled into the cache, files scanned by Defender).
 !define MUI_FINISHPAGE_RUN
-!define MUI_FINISHPAGE_RUN_TEXT "Run DSPi Console"
+!define MUI_FINISHPAGE_RUN_TEXT "Run ${APP}"
 !define MUI_FINISHPAGE_RUN_FUNCTION LaunchApp
 ; The welcome / finish page artwork (164 x 314) instead of NSIS's default
 !define MUI_WELCOMEFINISHPAGE_BITMAP "${__FILEDIR__}\installer-side.bmp"
@@ -49,7 +49,7 @@ Function LaunchApp
   ExecShell "open" "$INSTDIR\DSPiConsole.exe" "" SW_SHOWNORMAL
 FunctionEnd
 
-; -- WP QD21a -- DSPi Console must not be running while its files are replaced or
+; -- WP QD21a -- DSPi uConsole must not be running while its files are replaced or
 ; removed. A running exe can't be opened for writing (Windows maps it), which is
 ; the case that matters: this copy, also when it only shows in the tray. Retry
 ; or cancel; a silent run (/S) cancels, with exit code 2.

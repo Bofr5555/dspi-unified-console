@@ -2,7 +2,7 @@ import QtQuick 2.15
 import "../"
 import "../../components"
 
-// WP QD16: checking for a newer DSPi Console (AppUpdater). Opt-in: nothing is
+// WP QD16: checking for a newer DSPi uConsole (AppUpdater). Opt-in: nothing is
 // fetched until automatic checks are turned on or Check Now is pressed. The
 // privacy line says what a check sends. Check and link only (OD8): the release
 // page opens in the browser.
@@ -39,7 +39,7 @@ SettingsPage {
     SettingsStatusLine {
         objectName: "updatesStatus"
         text: appUpdater.checking ? ""
-              : appUpdater.result === "current" ? qsTr("DSPi Console %1 is the newest version.").arg(appUpdater.currentVersion)
+              : appUpdater.result === "current" ? qsTr("DSPi uConsole %1 is the newest version.").arg(appUpdater.currentVersion)
               : appUpdater.result === "failed" ? qsTr("Couldn't check for updates: %1").arg(appUpdater.failure)
               : ""
         error: appUpdater.result === "failed"

@@ -4,7 +4,7 @@
 set -euo pipefail
 export APPIMAGE_EXTRACT_AND_RUN=1
 tools=/dist/tools
-name="DSPi-Console-$VERSION"
+name="DSPi-uConsole-$VERSION"
 here=/src/apps/desktop/packaging/linux
 
 # Build from a copy, leaving the host's build directories alone
@@ -22,14 +22,14 @@ export QMAKE=$QTDIR/bin/qmake
 export QML_SOURCES_PATHS=/work/apps/desktop/qt/qml
 export EXTRA_PLATFORM_PLUGINS="libqwayland-generic.so;libqwayland-egl.so"
 export EXTRA_QT_MODULES="waylandcompositor;svg"
-cp qt/dspi-console.svg build/dspi-console.svg
-cp build/DSPiConsole build/dspi-console
+cp qt/dspi-console.svg build/dspi-uconsole.svg
+cp build/DSPiConsole build/dspi-uconsole
 # In place before linuxdeploy writes AppRun, which then sources the hooks; named
 # to run after any hook linuxdeploy-plugin-qt adds
 mkdir -p AppDir/apprun-hooks
-cp packaging/linux/apprun-hook.sh AppDir/apprun-hooks/zz-dspi-console.sh
-"$tools/linuxdeploy-x86_64.AppImage" --appdir AppDir -e build/dspi-console \
-    -d packaging/linux/dspi-console.desktop -i build/dspi-console.svg --plugin qt
+cp packaging/linux/apprun-hook.sh AppDir/apprun-hooks/zz-dspi-uconsole.sh
+"$tools/linuxdeploy-x86_64.AppImage" --appdir AppDir -e build/dspi-uconsole \
+    -d packaging/linux/dspi-uconsole.desktop -i build/dspi-uconsole.svg --plugin qt
 
 # KDE window effects (blur, shadow) load these at run time; KWindowSystem is
 # built in the image (/opt/kf6)
@@ -42,15 +42,16 @@ cp "$QTDIR/plugins/platformthemes/libqxdgdesktopportal.so" AppDir/usr/plugins/pl
     --deploy-deps-only AppDir/usr/plugins/platformthemes
 
 # -- WP QD42 -- The licence texts, the notice and the list of bundled libraries
-APPIMAGE_RUNTIME="$tools/runtime-x86_64" "$here/../licences/stage.sh" appimage AppDir AppDir/usr/share/doc/dspi-console "${VERSION#v}"
+APPIMAGE_RUNTIME="$tools/runtime-x86_64" "$here/../licences/stage.sh" appimage AppDir AppDir/usr/share/doc/dspi-uconsole "${VERSION#v}"
 
 # The runtime build-release.sh fetched, so appimagetool downloads nothing
 OUTPUT="$name-x86_64.AppImage" LDAI_RUNTIME_FILE="$tools/runtime-x86_64" "$tools/linuxdeploy-x86_64.AppImage" --appdir AppDir --output appimage
 
 # Release archive: the AppImage, the udev rule and the installer
 rm -rf "$name" && mkdir "$name"
-cp "$name-x86_64.AppImage" packaging/linux/70-dspi.rules packaging/linux/install.sh qt/dspi-console.svg "$name/"
+cp "$name-x86_64.AppImage" packaging/linux/70-dspi.rules packaging/linux/install.sh "$name/"
+cp qt/dspi-console.svg "$name/dspi-uconsole.svg"
 cp packaging/linux/README.txt "$name/"
-cp -R AppDir/usr/share/doc/dspi-console/NOTICE.txt AppDir/usr/share/doc/dspi-console/LICENSES "$name/"   # -- WP QD42 --
+cp -R AppDir/usr/share/doc/dspi-uconsole/NOTICE.txt AppDir/usr/share/doc/dspi-uconsole/LICENSES "$name/"   # -- WP QD42 --
 tar -czf "$name-linux-x86_64.tar.gz" "$name"
 cp "$name-x86_64.AppImage" "$name-linux-x86_64.tar.gz" /dist/

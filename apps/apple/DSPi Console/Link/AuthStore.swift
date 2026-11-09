@@ -129,7 +129,7 @@ final class LinkAuthStore {
         // The iOS app is never a hub; this only keeps the shared store building.
         let machine = ProcessInfo.processInfo.hostName
         #endif
-        return "\(machine) DSPi Console"
+        return "\(machine) DSPi uConsole"
     }
 
     // MARK: - Identity and mode

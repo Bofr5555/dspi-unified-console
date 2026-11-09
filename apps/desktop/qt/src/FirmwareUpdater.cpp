@@ -629,7 +629,7 @@ void FirmwareUpdater::runGate(const QString &typed) {
             } else {
                 const QString path = imagePath(platform);
                 if (path.isEmpty()) {
-                    r.failure = tr("This build of DSPi Console does not include firmware for the %1. Nothing was changed.").arg(chipOf(platform));
+                    r.failure = tr("This build of DSPi uConsole does not include firmware for the %1. Nothing was changed.").arg(chipOf(platform));
                 } else {
                     image = readImage(path, QFileInfo(path).fileName());
                     if (!image.loaded) r.failure = image.problem;

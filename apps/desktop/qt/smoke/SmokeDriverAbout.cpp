@@ -288,7 +288,7 @@ void SmokeDriver::testAbout() {
     about->load("not json");
     spin(200);
     check("QD33: an empty table leaves no row", rowsOf(page).isEmpty() && about->makers().isEmpty());
-    check("QD33: the name stays", shownTexts(page).contains(QStringLiteral("DSPi Console")));
+    check("QD33: the name stays", shownTexts(page).contains(QStringLiteral("DSPi uConsole")));
     check("QD33: no QML error from any of it", qmlErrors() == errorsBefore);
 
     QDesktopServices::unsetUrlHandler(QStringLiteral("https"));

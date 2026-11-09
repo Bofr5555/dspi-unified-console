@@ -723,7 +723,7 @@ fn parse_config(text: &str) -> std::result::Result<Value, String> {
     }
     if version > SCHEMA_VERSION {
         return Err(format!(
-            "This configuration was written by a newer version of DSPi Console (format {version}, this build reads {SCHEMA_VERSION})."
+            "This configuration was written by a newer version of DSPi uConsole (format {version}, this build reads {SCHEMA_VERSION})."
         ));
     }
     Ok(v)

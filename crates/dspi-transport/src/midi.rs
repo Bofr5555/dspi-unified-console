@@ -642,7 +642,7 @@ pub mod midir_port {
     pub const PORT_NAME: &str = "DSPi Control";
 
     /// The client name this host registers (ALSA shows it to other apps).
-    const CLIENT_NAME: &str = "DSPi Console";
+    const CLIENT_NAME: &str = "DSPi uConsole";
 
     /// How often an opened pair checks that its device is still there.
     pub const WATCH_INTERVAL: Duration = Duration::from_millis(500);

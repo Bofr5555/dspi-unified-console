@@ -276,13 +276,13 @@ else()
 endif()
 
 if(APPLE)
-    # An app bundle, "DSPi Console.app", with its icon and Info.plist
+    # An app bundle, "DSPi uConsole.app", with its icon and Info.plist
     set(DSPI_MAC_DIR ${CMAKE_SOURCE_DIR}/../packaging/macos)
     set_source_files_properties(${DSPI_MAC_DIR}/dspi-console.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
     target_sources(DSPiConsole PRIVATE ${DSPI_MAC_DIR}/dspi-console.icns)
     set_target_properties(DSPiConsole PROPERTIES
         MACOSX_BUNDLE ON
-        OUTPUT_NAME "DSPi Console"
+        OUTPUT_NAME "DSPi uConsole"
         MACOSX_BUNDLE_INFO_PLIST ${DSPI_MAC_DIR}/Info.plist.in
         # -- WP QD21b -- a neutral placeholder: .invalid is reserved (RFC 6761), so
         # no one can hold it; a real id needs a domain the maintainers own
@@ -330,11 +330,12 @@ if(UNIX AND NOT APPLE)
     string(REPLACE "-" "~" DSPI_PKG_VERSION "${DSPI_VERSION}")
 
     set(PKG ${CMAKE_SOURCE_DIR}/../packaging/linux)
-    install(PROGRAMS $<TARGET_FILE:DSPiConsole> DESTINATION bin RENAME dspi-console)
-    install(FILES ${PKG}/dspi-console.desktop DESTINATION share/applications)
-    install(FILES ${CMAKE_SOURCE_DIR}/dspi-console.svg DESTINATION share/icons/hicolor/scalable/apps)
-    install(FILES ${PKG}/dspi-console.metainfo.xml DESTINATION share/metainfo)
-    install(FILES ${PKG}/70-dspi.rules DESTINATION lib/udev/rules.d)
+    install(PROGRAMS $<TARGET_FILE:DSPiConsole> DESTINATION bin RENAME dspi-uconsole)
+    install(FILES ${PKG}/dspi-uconsole.desktop DESTINATION share/applications)
+    install(FILES ${CMAKE_SOURCE_DIR}/dspi-console.svg DESTINATION share/icons/hicolor/scalable/apps RENAME dspi-uconsole.svg)
+    install(FILES ${PKG}/dspi-uconsole.metainfo.xml DESTINATION share/metainfo)
+    # Named after the package, so it installs next to another package's 70-dspi.rules
+    install(FILES ${PKG}/70-dspi.rules DESTINATION lib/udev/rules.d RENAME 70-dspi-uconsole.rules)
     # -- WP QD42 -- The licence and the notice (Qt is the distribution's): in
     # the .deb, Debian's copyright file, pointing at Debian's copy of the GPL;
     # elsewhere (the .rpm, Arch, a plain install) the GPL's text and the notice
@@ -347,24 +348,24 @@ if(UNIX AND NOT APPLE)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${LIC}/TERMS.txt)
     if(DSPI_PACKAGE_FORMAT STREQUAL "deb")
         set(DSPI_GPL_TEXT "/usr/share/common-licenses/GPL-3")
-        set(DSPI_RUST_CRATES "/usr/share/doc/dspi-console/rust-crates.txt")
+        set(DSPI_RUST_CRATES "/usr/share/doc/dspi-uconsole/rust-crates.txt")
         configure_file(${LIC}/NOTICE-distro.txt.in ${CMAKE_BINARY_DIR}/copyright @ONLY)
-        install(FILES ${CMAKE_BINARY_DIR}/copyright ${LIC}/rust-crates.txt DESTINATION share/doc/dspi-console)
+        install(FILES ${CMAKE_BINARY_DIR}/copyright ${LIC}/rust-crates.txt DESTINATION share/doc/dspi-uconsole)
     else()
         set(DSPI_GPL_TEXT "GPL-3.0.txt, next to this file,")
         set(DSPI_RUST_CRATES "rust-crates.txt, next to this file")
         configure_file(${LIC}/NOTICE-distro.txt.in ${CMAKE_BINARY_DIR}/NOTICE.txt @ONLY)
         install(FILES ${LIC}/GPL-3.0.txt ${CMAKE_BINARY_DIR}/NOTICE.txt ${LIC}/TERMS.txt ${LIC}/rust-crates.txt
-            DESTINATION share/licenses/dspi-console)
+            DESTINATION share/licenses/dspi-uconsole)
     endif()
 
-    set(CPACK_PACKAGE_NAME dspi-console)
+    set(CPACK_PACKAGE_NAME dspi-uconsole)
     set(CPACK_PACKAGE_VERSION ${DSPI_PKG_VERSION})
     # Placeholder maker until the project has a home of its own: no address, no homepage
     set(CPACK_PACKAGE_VENDOR "DSPi unified console maintainers")
     set(CPACK_PACKAGE_CONTACT "DSPi unified console maintainers")
     set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Control application for the DSPi audio processor")
-    set(CPACK_PACKAGE_DESCRIPTION "DSPi Console configures and tunes a DSPi, open source DSP firmware for the Raspberry Pi Pico: parametric EQ, crossovers, routing, delay, effects, limiters, control surfaces and firmware updates, applied live over USB.")
+    set(CPACK_PACKAGE_DESCRIPTION "DSPi uConsole configures and tunes a DSPi, open source DSP firmware for the Raspberry Pi Pico: parametric EQ, crossovers, routing, delay, effects, limiters, control surfaces and firmware updates, applied live over USB.")
     set(CPACK_PACKAGING_INSTALL_PREFIX /usr)
     set(CPACK_STRIP_FILES ON)
 

@@ -303,7 +303,7 @@ void SmokeDriver::testUpdates() {
     spin(300);
     QQuickItem *banner = named(qobject_cast<QQuickWindow *>(root())->contentItem(), "updateBanner");
     check("QD16: the banner shows the find", banner && banner->isVisible()
-          && shownTexts(banner).contains("DSPi Console 1.2.0 is available. You have 1.1.6."));
+          && shownTexts(banner).contains("DSPi uConsole 1.2.0 is available. You have 1.1.6."));
     qobject_cast<QQuickWindow *>(root())->grabWindow().save(m_out + QStringLiteral("/update-banner.png"));
     if (QQuickItem *later = banner ? named(banner, "updateBannerLater") : nullptr) QMetaObject::invokeMethod(later, "clicked");
     spin(200);

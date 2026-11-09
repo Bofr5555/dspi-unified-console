@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Builds every Linux release file into dist/ (or $DSPI_DIST), against Qt 6:
-#   DSPi-Console-v<version>-x86_64.AppImage       any distribution (glibc 2.39+: Ubuntu 24.04+)
-#   DSPi-Console-v<version>-linux-x86_64.tar.gz   the AppImage, udev rule and installer
-#   dspi-console_<version>_amd64.deb              Debian 13+, Ubuntu 25.04+
-#   dspi-console-<version>-1.x86_64.rpm           Fedora 42+
+#   DSPi-uConsole-v<version>-x86_64.AppImage       any distribution (glibc 2.39+: Ubuntu 24.04+)
+#   DSPi-uConsole-v<version>-linux-x86_64.tar.gz   the AppImage, udev rule and installer
+#   dspi-uconsole_<version>_amd64.deb              Debian 13+, Ubuntu 25.04+
+#   dspi-uconsole-<version>-1.x86_64.rpm           Fedora 42+
 # Each is built in a podman container of the oldest distribution it targets:
 # the AppImage on Ubuntu 24.04 with the official Qt 6.8 LTS (checked against
 # download.qt.io's SHA-256, see fetch-qt.sh), the packages on the

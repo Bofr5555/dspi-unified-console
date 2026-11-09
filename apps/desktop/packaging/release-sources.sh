@@ -125,12 +125,12 @@ bundled=$out/.bundled
 : >"$bundled"
 for d in "$@"; do
     d=$(cd "$d" && pwd)
-    for t in "$d"/DSPi-Console-*-linux-x86_64.tar.gz; do
+    for t in "$d"/DSPi-uConsole-*-linux-x86_64.tar.gz; do
         [ -f "$t" ] || continue
         tar -xzOf "$t" --wildcards '*/LICENSES/BUNDLED.txt' | sed 's/^/AppImage\t/' >>"$bundled" \
             || fail "$t has no LICENSES/BUNDLED.txt"
     done
-    for b in "$d"/DSPi-Console-*-windows-x86_64/LICENSES/BUNDLED.txt; do
+    for b in "$d"/DSPi-uConsole-*-windows-x86_64/LICENSES/BUNDLED.txt; do
         [ -f "$b" ] && sed 's/^/Windows\t/' "$b" >>"$bundled"
     done
 done
@@ -339,7 +339,7 @@ if [ -n "$fd" ]; then
 fi
 
 {
-    printf '# Sources for DSPi Console release packages; made by apps/desktop/packaging/release-sources.sh on %s\n' "$(date -u +%Y-%m-%d)"
+    printf '# Sources for DSPi uConsole release packages; made by apps/desktop/packaging/release-sources.sh on %s\n' "$(date -u +%Y-%m-%d)"
     printf '# packages\tfile\turl\tsha256\tchecked by\n'
     sort -k2,2 "$rows"
 } >"$manifest"

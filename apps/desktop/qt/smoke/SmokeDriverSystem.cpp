@@ -149,15 +149,15 @@ void SmokeDriver::testSystemIntegration() {
 
     // ── XDG autostart, the real backend ──
     const QString autostart = QDir(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)).filePath(QStringLiteral("autostart"));
-    const QString entry = autostart + QStringLiteral("/dspi-console.desktop");
+    const QString entry = autostart + QStringLiteral("/dspi-uconsole.desktop");
     check("QD13: under this run's XDG_CONFIG_HOME", autostart.startsWith(qEnvironmentVariable("XDG_CONFIG_HOME")));
     check("QD13: off to start with", !system->openAtLogin() && !QFile::exists(entry));
     system->setOpenAtLogin(true);
     const QString program = SystemIntegration::programPath();
     const QString text = fileText(entry);
     check("QD13: on writes the entry", system->openAtLogin() && system->loginError().isEmpty());
-    check("QD13: the entry is an application", text.startsWith(QLatin1String("[Desktop Entry]\nType=Application\nName=DSPi Console\n"))
-          && text.contains(QLatin1String("\nIcon=dspi-console\n")) && text.contains(QLatin1String("\nX-GNOME-Autostart-enabled=true\n")));
+    check("QD13: the entry is an application", text.startsWith(QLatin1String("[Desktop Entry]\nType=Application\nName=DSPi uConsole\n"))
+          && text.contains(QLatin1String("\nIcon=dspi-uconsole\n")) && text.contains(QLatin1String("\nX-GNOME-Autostart-enabled=true\n")));
     check("QD13: it starts this program, quoted", text.contains(QStringLiteral("\nExec=\"%1\"\n").arg(program)));
     check("QD13: the program is this executable outside an AppImage", program == QCoreApplication::applicationFilePath());
 
@@ -231,9 +231,9 @@ void SmokeDriver::testSystemIntegration() {
     {
         const QString runIni = QDir(m_out).filePath(QStringLiteral("qd13b-run.ini"));
         QFile::remove(runIni);
-        const auto runValue = [&]() { return QSettings(runIni, QSettings::IniFormat).value(QStringLiteral("DSPi Console")).toString(); };
+        const auto runValue = [&]() { return QSettings(runIni, QSettings::IniFormat).value(QStringLiteral("DSPi uConsole")).toString(); };
         const auto setRun = [&](const QString &value) {
-            QSettings(runIni, QSettings::IniFormat).setValue(QStringLiteral("DSPi Console"), value);
+            QSettings(runIni, QSettings::IniFormat).setValue(QStringLiteral("DSPi uConsole"), value);
             system->setLoginItem(makeRunKeyLoginItem(std::make_unique<QSettings>(runIni, QSettings::IniFormat)));
         };
         setRun(QLatin1Char('"') + other + QStringLiteral("\" --hidden"));
@@ -242,7 +242,7 @@ void SmokeDriver::testSystemIntegration() {
         setRun(QStringLiteral("\"/no/such/place/DSPiConsole.exe\""));
         check("QD13b: Run key: a copy that is gone is pointed here",
               runValue() == QLatin1Char('"') + program + QLatin1Char('"') && system->loginOtherProgram().isEmpty());
-        QSettings(runIni, QSettings::IniFormat).setValue(QStringLiteral("DSPi Console"), QStringLiteral("C:\\Program Files\\DSPi\\DSPiConsole.EXE --x"));
+        QSettings(runIni, QSettings::IniFormat).setValue(QStringLiteral("DSPi uConsole"), QStringLiteral("C:\\Program Files\\DSPi\\DSPiConsole.EXE --x"));
         auto unquoted = makeRunKeyLoginItem(std::make_unique<QSettings>(runIni, QSettings::IniFormat));
         check("QD13b: Run key: an unquoted path reads up to .exe", unquoted->program() == QLatin1String("C:\\Program Files\\DSPi\\DSPiConsole.EXE"));
     }
@@ -299,7 +299,7 @@ void SmokeDriver::testSystemIntegration() {
     auto oddItem = makeXdgLoginItem(odd);
     oddItem->set(true, QStringLiteral("/opt/My Apps/a\"b`c$d\\e%f/dspi"));
     check("QD13: Exec quotes the reserved characters",
-          fileText(odd + QStringLiteral("/dspi-console.desktop")).contains(QLatin1String("\nExec=\"/opt/My Apps/a\\\\\"b\\\\`c\\\\$d\\\\\\\\e%%f/dspi\"\n")));
+          fileText(odd + QStringLiteral("/dspi-uconsole.desktop")).contains(QLatin1String("\nExec=\"/opt/My Apps/a\\\\\"b\\\\`c\\\\$d\\\\\\\\e%%f/dspi\"\n")));
     check("QD13: and reads back as the same program", oddItem->matches(QStringLiteral("/opt/My Apps/a\"b`c$d\\e%f/dspi")));
 
     // A directory that cannot be made
@@ -314,14 +314,14 @@ void SmokeDriver::testSystemIntegration() {
     const QString ini = QDir(m_out).filePath(QStringLiteral("qd13-run.ini"));
     QFile::remove(ini);
     auto run = makeRunKeyLoginItem(std::make_unique<QSettings>(ini, QSettings::IniFormat));
-    const QString exe = QStringLiteral("C:\\Program Files\\DSPi Console\\DSPiConsole.exe");
+    const QString exe = QStringLiteral("C:\\Program Files\\DSPi uConsole\\DSPiConsole.exe");
     check("QD13: Run key: off to start with", !run->isOn());
     check("QD13: Run key: on", run->set(true, exe).isEmpty() && run->isOn() && run->matches(exe));
     check("QD13: Run key: the value is the quoted exe",
-          QSettings(ini, QSettings::IniFormat).value(QStringLiteral("DSPi Console")).toString() == QLatin1Char('"') + exe + QLatin1Char('"'));
+          QSettings(ini, QSettings::IniFormat).value(QStringLiteral("DSPi uConsole")).toString() == QLatin1Char('"') + exe + QLatin1Char('"'));
     check("QD13: Run key: another exe does not match", !run->matches(QStringLiteral("C:\\Other\\DSPiConsole.exe")));
     check("QD13: Run key: off removes the value", run->set(false, exe).isEmpty() && !run->isOn()
-          && !QSettings(ini, QSettings::IniFormat).contains(QStringLiteral("DSPi Console")));
+          && !QSettings(ini, QSettings::IniFormat).contains(QStringLiteral("DSPi uConsole")));
 
     // ── Keep awake: the portal, then logind ──
     const QString scratch = QDir(m_out).filePath(QStringLiteral("qd13"));
@@ -369,7 +369,7 @@ void SmokeDriver::testSystemIntegration() {
     check("QD13: no portal: logind holds it", waitFor(3000, [&] { return system->holdingAwake(); }));
     const FakePower::Call lock = fake->last(logind, "Inhibit");
     check("QD13: the logind call: idle, block", lock.path == QLatin1String("/org/freedesktop/login1") && lock.args.size() == 4
-          && lock.args.at(0).toString() == QLatin1String("idle") && lock.args.at(1).toString() == QLatin1String("DSPi Console")
+          && lock.args.at(0).toString() == QLatin1String("idle") && lock.args.at(1).toString() == QLatin1String("DSPi uConsole")
           && lock.args.at(3).toString() == QLatin1String("block"));
     check("QD13: the lock is open while held", !fake->lockClosed());
     system->setKeepAwake(false);
