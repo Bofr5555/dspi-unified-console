@@ -737,6 +737,8 @@ struct ChannelVisibilityPill: View {
     let color: Color
     let isVisible: Bool
     let onToggle: () -> Void
+    /// -- BUG1 -- What VoiceOver reads: an output's label and slot, not just "OUT1".
+    var accessibleName: String? = nil
 
     var body: some View {
         Button(action: {
@@ -764,6 +766,7 @@ struct ChannelVisibilityPill: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(accessibleName ?? descriptor)
         .help(isVisible ? "Hide \(descriptor) on the graph"
                         : "Show \(descriptor) on the graph")
     }
@@ -785,6 +788,8 @@ struct ChannelRow: View {
     /// Graph-curve visibility for this channel, toggled by the descriptor pill.
     let isCurveVisible: Bool
     let onToggleCurve: () -> Void
+    /// -- BUG1 -- The name column, the sidebar's: wider while an output shows a derived label.
+    var nameWidth: CGFloat = 80
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -802,13 +807,13 @@ struct ChannelRow: View {
                     .focused($isFocused)
                     .onSubmit { onCommitRename() }
                     .padding(.leading, 8)
-                    .frame(width: 80, alignment: .leading)
+                    .frame(width: nameWidth, alignment: .leading)
             } else {
                 Text(name)
                     .font(.body)
                     .foregroundColor(isSelected ? .primary : .primary.opacity(0.9))
                     .padding(.leading, 8)
-                    .frame(width: 80, alignment: .leading)
+                    .frame(width: nameWidth, alignment: .leading)
             }
 
             ChannelMeterBar(meters: meters, channel: channelIndex, color: color)
@@ -852,6 +857,11 @@ struct OutputRow: View {
     /// Graph-curve visibility for this channel, toggled by the descriptor pill.
     let isCurveVisible: Bool
     let onToggleCurve: () -> Void
+    /// -- BUG1 -- The slot's name ("I2S 1 L") for the tooltip, the name column's width (the
+    /// sidebar's) and what VoiceOver reads for the pill.
+    var detail: String = ""
+    var nameWidth: CGFloat = 80
+    var pillAccessibleName: String? = nil
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -869,13 +879,15 @@ struct OutputRow: View {
                     .focused($isFocused)
                     .onSubmit { onCommitRename() }
                     .padding(.leading, 8)
-                    .frame(width: 80, alignment: .leading)
+                    .frame(width: nameWidth, alignment: .leading)
             } else {
                 Text(name)
                     .font(.body)
+                    .lineLimit(1)
                     .foregroundColor(isSelected ? .primary : .primary.opacity(0.9))
                     .padding(.leading, 8)
-                    .frame(width: 80, alignment: .leading)
+                    .frame(width: nameWidth, alignment: .leading)
+                    .help(detail)
             }
 
             ChannelMeterBar(meters: meters, channel: chIdx, color: output.color, isMuted: isMuted)
@@ -884,7 +896,8 @@ struct OutputRow: View {
             ChannelVisibilityPill(descriptor: output.descriptor,
                                   color: output.color,
                                   isVisible: isCurveVisible,
-                                  onToggle: onToggleCurve)
+                                  onToggle: onToggleCurve,
+                                  accessibleName: pillAccessibleName)
         }
         .frame(height: rowHeight)
         .contentShape(Rectangle())

@@ -10,7 +10,7 @@
 
 import { memo } from "preact/compat";
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
-import type { DspState, FilterParams } from "../../core/protocol";
+import type { DspState, FilterParams, OutputLabel } from "../../core/protocol";
 import { useSessionState } from "../../ui/components";
 import type { ScreenProps } from "../../ui/screens";
 import { inputRows, liveInputs, outputRows, type ChannelRow } from "../main/model";
@@ -124,7 +124,7 @@ export function EqScreen(props: ScreenProps) {
   }, [session]);
 
   if (!s || !Array.isArray(s.filters) || !named) return <p class="empty">This DSPi's filters are not known yet.</p>;
-  return <EqView session={session} ask={ask} s={s} ro={ro} usbActive={usbActive} limits={limits} outLimits={outLimits} />;
+  return <EqView session={session} ask={ask} s={s} ro={ro} usbActive={usbActive} limits={limits} outLimits={outLimits} labels={st.snapshot?.outputLabels} />;
 }
 
 // -- WP WB6c --
@@ -138,16 +138,19 @@ const EqView = memo(
     ro: boolean;
     usbActive: number | null;
     limits: Limits;
+    /** -- BUG1 -- the outputs' labels, the snapshot's */
+    labels?: OutputLabel[];
     outLimits: OutputLimits;
   }) {
     const { session, ask, s, ro, limits } = props;
     const idBase = useMemo(() => `eq-${Math.random().toString(36).slice(2, 9)}`, []);
 
     // The channels, as the Console's sidebar lists them.
-    const channelsKey = JSON.stringify([s.channelNames, s.outputEnabled, s.numInputChannels, s.numOutputChannels, s.inputSource, s.i2sInputChannels, props.usbActive]);
+    const labels = props.labels;
+    const channelsKey = JSON.stringify([s.channelNames, s.outputEnabled, s.numInputChannels, s.numOutputChannels, s.inputSource, s.i2sInputChannels, props.usbActive, labels]);
     const channels = useMemo<EqChannel[]>(() => {
       const ins = inputRows(s, liveInputs(s, props.usbActive)).map((r) => ({ ...r, output: false }));
-      const outs = outputRows(s).map((r) => ({ ...r, output: true }));
+      const outs = outputRows(s, labels).map((r) => ({ ...r, output: true }));
       return [...ins, ...outs].map((c) => ({ ...c, colour: channelColour(c.wire) }));
     }, [channelsKey]);
 
@@ -244,7 +247,7 @@ const EqView = memo(
         <div class="eq-channels" role="group" aria-label="Channels">
           {channels.map((c) => (
             <span class="eq-channel" key={c.wire}>
-              <button type="button" class="eq-pick" aria-pressed={c.wire === cw} onClick={() => setWire(c.wire)} title={c.name}>
+              <button type="button" class="eq-pick" aria-pressed={c.wire === cw} onClick={() => setWire(c.wire)} title={c.detail ? `${c.name} (${c.detail})` : c.name}>
                 <span class="swatch" style={{ background: c.colour }} aria-hidden="true" />
                 <span class="eq-desc">{c.descriptor}</span> <span class="eq-name">{c.name}</span>
               </button>
@@ -277,6 +280,7 @@ const EqView = memo(
             inputs={channels.filter((c) => !c.output)}
             limits={props.outLimits}
             disabled={ro}
+            labels={props.labels}
           />
         ) : null}
         <section class="card eq-graph-card" aria-label="Graph">
@@ -368,6 +372,7 @@ const EqView = memo(
     a.usbActive === b.usbActive &&
     a.limits === b.limits &&
     a.outLimits === b.outLimits &&
+    JSON.stringify(a.labels) === JSON.stringify(b.labels) &&
     eqKey(a.s) === eqKey(b.s),
 );
 

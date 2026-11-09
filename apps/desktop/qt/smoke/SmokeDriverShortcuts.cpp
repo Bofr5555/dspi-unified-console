@@ -787,7 +787,8 @@ void SmokeDriver::testAccessibility() {
     if (matrix) {
         QMetaObject::invokeMethod(root(), "openToolWindow", Q_ARG(QVariant, QStringLiteral("matrix")));
         spin(400);
-        const QString in = b->channelName(b->inputAppId(0)), out = b->channelName(2);
+        // -- BUG1 -- the matrix names an output by its label
+        const QString in = b->channelLabel(b->inputAppId(0)), out = b->channelLabel(2);
         QQuickItem *point = byAccessibleName(matrix->contentItem(), in + QLatin1String(" to ") + out);
         check("QD22: the Matrix's first point", point != nullptr);
         if (point) {

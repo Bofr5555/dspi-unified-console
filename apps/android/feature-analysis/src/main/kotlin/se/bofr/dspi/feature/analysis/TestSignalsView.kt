@@ -153,7 +153,7 @@ fun TestSignalsView(bridge: DspiBridge, modifier: Modifier = Modifier) {
             caps = caps,
             draft = draft ?: DEFAULT_SIGGEN_DRAFT,
             status = status,
-            outputNames = List(count) { o -> bridge.channelName(o + 2).ifEmpty { "Out ${o + 1}" } },
+            outputNames = List(count) { o -> bridge.channelLabel(o + 2).ifEmpty { "Out ${o + 1}" } },
             outputEnabled = List(count) { o -> bridge.outputEnabled(o) },
             writable = writesAllowed()
         )

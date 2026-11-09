@@ -170,7 +170,10 @@ impl CrossfeedPanel {
     /// `Out n` and its channel name, or just `Out n` before names arrive.
     fn output_label(state: &DeviceState, output: u8) -> String {
         let number = u16::from(output) + 1;
-        let name = state.channel_name(usize::from(state.caps.num_inputs) + usize::from(output));
+        let name = super::channel_label(
+            state,
+            usize::from(state.caps.num_inputs) + usize::from(output),
+        );
         if name.is_empty() {
             format!("{number} - Out {number}")
         } else {

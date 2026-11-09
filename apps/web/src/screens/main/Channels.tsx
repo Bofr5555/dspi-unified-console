@@ -46,7 +46,7 @@ export const ChannelList = memo(
           <RenameDialog
             title={`Rename ${renaming.name}`}
             label="Name"
-            initial={renaming.name}
+            initial={renaming.stored ?? renaming.name}
             onCancel={() => setRenaming(null)}
             onSave={(name) => {
               const wire = renaming.wire;
@@ -93,7 +93,7 @@ const Row = memo(
       <span class="ch-tag" aria-hidden="true">
         {row.descriptor}
       </span>
-      <button type="button" class="ch-name" title="Rename" disabled={disabled} onClick={() => props.onRename(row)}>
+      <button type="button" class="ch-name" title={row.detail ? `${row.detail}: rename` : "Rename"} disabled={disabled} onClick={() => props.onRename(row)}>
         <span class="visually-hidden">Rename </span>
         {row.name}
       </button>

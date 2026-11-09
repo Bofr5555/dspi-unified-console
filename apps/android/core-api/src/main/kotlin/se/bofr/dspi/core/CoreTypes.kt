@@ -2122,6 +2122,119 @@ data class FilterTypeName(
 )
 
 /**
+ * One output's label.
+ */
+data class OutputLabel(
+    /**
+     * 0-based output index.
+     */
+    val output: Int,
+    /**
+     * What to show: the user's name, else "Out 1 · R · Low".
+     */
+    val label: String,
+    /**
+     * The same for a phone row, beside the output's "OUTn" button: the
+     * user's name, else "R · Low" (owner decision, review c86 F3).
+     */
+    val shortLabel: String,
+    /**
+     * The firmware's name for the slot ("I2S 1 L", "PDM"), for a tooltip or
+     * a detail line.
+     */
+    val slotName: String,
+    /**
+     * The output has a name the user set; `label` is that name.
+     */
+    val userNamed: Boolean,
+    /**
+     * "L", "R", "L+R", an input's name, "Mix", or "None".
+     */
+    val channel: String,
+    /**
+     * "Low", "High", "Band" or "Full".
+     */
+    val band: String,
+)
+
+/**
+ * One dashboard card: two outputs side by side, or one alone.
+ */
+data class OutputCard(
+    /**
+     * 0-based output index of the left (or only) column.
+     */
+    val left: Int,
+    /**
+     * The right column's output; none for a card of one output.
+     */
+    val right: Int?,
+    /**
+     * "Woofers", "Tweeters" or "Mids" for a pair on one band with default
+     * names whose left output plays L and right output R by the routing;
+     * empty otherwise.
+     */
+    val title: String,
+    /**
+     * The columns' headings: "Woofers L" / "Woofers R" under a title, else
+     * the outputs' labels.
+     */
+    val leftName: String,
+    /**
+     * The right column's heading; empty for a card of one output.
+     */
+    val rightName: String,
+    /**
+     * The left column's heading on a phone: "Woofers L" under a title, else
+     * the output's short label ("R · Low").
+     */
+    val leftShortName: String,
+    /**
+     * The right column's heading on a phone: "R" under a title, else the
+     * output's short label; empty for a card of one output.
+     */
+    val rightShortName: String,
+)
+
+/**
+ * The state the labels read, for a client that keeps its own copy.
+ */
+data class OutputLabelInput(
+    /**
+     * Live input channels.
+     */
+    val numInputs: Int,
+    /**
+     * Live output channels, the PDM sub last.
+     */
+    val numOutputs: Int,
+    /**
+     * Per slot: 1 = I2S, else S/PDIF.
+     */
+    val outputTypes: List<Int>,
+    /**
+     * Channel names in wire order: inputs, then outputs.
+     */
+    val channelNames: List<String>,
+    /**
+     * Crosspoint on, `[input][output]`.
+     */
+    val matrixRouting: List<List<Boolean>>,
+    /**
+     * Each output's bands: PEQ and crossover, in any order.
+     */
+    val outputFilters: List<List<FilterParams>>,
+    /**
+     * Output enabled, per output.
+     */
+    val outputEnabled: List<Boolean>,
+    /**
+     * The K340 crossfeed pair map, 4 bytes; empty or zero elsewhere.
+     */
+    val crossfeedPairMap: List<Int>,
+)
+
+/**
  * One notification as the tap saw it (WP CG23).
  */
 data class RawNotification(

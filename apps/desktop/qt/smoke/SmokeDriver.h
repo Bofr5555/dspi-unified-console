@@ -61,6 +61,7 @@ private:
     // -- WP QD41 --
     void testSliderKeys();
     void testDelayRefusal();   // -- WP DL3 --
+    void runK340Labels();      // -- BUG1 --
     void testRouting();
     void testCrossfeedRows();
     void testPresets();

@@ -13,7 +13,7 @@
 
 import { memo } from "preact/compat";
 import { useEffect, useState } from "preact/hooks";
-import type { DspState } from "../../core/protocol";
+import type { DspState, OutputLabel } from "../../core/protocol";
 import { useSessionState } from "../../ui/components";
 import type { Ask, ScreenProps } from "../../ui/screens";
 import type { Session } from "../../ui/session";
@@ -22,7 +22,7 @@ import { channelColour } from "../eq/model";
 import { RenameDialog } from "../main/Dialog";
 import { useLiveWrite } from "../main/live";
 import { Menu } from "../main/Menu";
-import { inputRows, liveInputs, type ChannelRow } from "../main/model";
+import { inputRows, liveInputs, outputLabel, type ChannelRow } from "../main/model";
 import { CROSSPOINT_RANGE } from "../outputs/OutputCard";
 import { clamp, compactGain, delayText, enableConflict, eqWorkerRange, outputSlotName, parseLevel, pdmOutput, stepGrid } from "../outputs/model";
 
@@ -50,19 +50,21 @@ export function MatrixScreen(props: ScreenProps) {
   }, [session]);
 
   if (!s || !Array.isArray(s.matrixRouting) || !s.matrixRouting.length) return <p class="empty">This DSPi's matrix is not known yet.</p>;
-  return <MatrixView session={session} ask={ask} s={s} ro={ro} usbActive={usbActive} maxDelay={maxDelay} />;
+  return <MatrixView session={session} ask={ask} s={s} ro={ro} usbActive={usbActive} maxDelay={maxDelay} labels={st.snapshot?.outputLabels} />;
 }
 
 const MatrixView = memo(
-  function MatrixView(props: { session: Session; ask: Ask; s: DspState; ro: boolean; usbActive: number | null; maxDelay: number }) {
+  // -- BUG1 -- labels: the outputs' labels, the snapshot's
+  function MatrixView(props: { session: Session; ask: Ask; s: DspState; ro: boolean; usbActive: number | null; maxDelay: number; labels?: OutputLabel[] }) {
     const { session, ask, s, ro } = props;
     const inputs = inputRows(s, liveInputs(s, props.usbActive));
     const outs = Array.from({ length: s.numOutputChannels }, (_, o) => ({
       index: o,
       wire: s.numInputChannels + o,
       descriptor: `OUT${o + 1}`,
-      name: s.channelNames[s.numInputChannels + o] ?? `Output ${o + 1}`,
-      slot: outputSlotName(s, o),
+      name: outputLabel(s, props.labels, o),
+      stored: s.channelNames[s.numInputChannels + o] ?? `Output ${o + 1}`,
+      slot: props.labels?.[o]?.slotName || outputSlotName(s, o),
       enabled: s.outputEnabled[o] ?? false,
     }));
     const [renaming, setRenaming] = useState<(typeof outs)[number] | null>(null);
@@ -264,7 +266,7 @@ const MatrixView = memo(
           <RenameDialog
             title={`Rename ${renaming.name}`}
             label="Name"
-            initial={renaming.name}
+            initial={renaming.stored}
             onCancel={() => setRenaming(null)}
             onSave={(name) => {
               const wire = renaming.wire;
@@ -276,7 +278,7 @@ const MatrixView = memo(
       </div>
     );
   },
-  (a, b) => a.session === b.session && a.ask === b.ask && a.ro === b.ro && a.usbActive === b.usbActive && a.maxDelay === b.maxDelay && matrixKey(a.s) === matrixKey(b.s),
+  (a, b) => a.session === b.session && a.ask === b.ask && a.ro === b.ro && a.usbActive === b.usbActive && a.maxDelay === b.maxDelay && matrixKey(a.s) === matrixKey(b.s) && JSON.stringify(a.labels) === JSON.stringify(b.labels),
 );
 
 /** The Console's dividers: after the first row in stereo, after each pair with more inputs. */

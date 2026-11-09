@@ -36,8 +36,12 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -65,14 +69,16 @@ fun DashboardOverview(bridge: DspiBridge, prefs: AppSettingsStore, modifier: Mod
     val s = bridge.observeState()
     val ready = bridge.observeDeviceReady()
     val cardsPerRow = prefs.settings.collectAsStateWithLifecycle().value.dashboardCardsPerRow
-    val cards = DashboardCard.cards(s.numOutputChannels, s.outputEnabled)
+    val cards = DashboardCard.cards(bridge.outputCards(), s.numOutputChannels, s.outputEnabled)
     BoxWithConstraints(modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 4.dp).alpha(if (ready) 1f else 0f)) {
         val columns = DashboardCard.columnCount(cardsPerRow, maxWidth.value, cards.size)
+        // -- BUG1, review c86 F2 -- a card's width, for its headers' narrow form
+        val cardWidth = (maxWidth - DashboardCard.SPACING.dp * (columns - 1)) / columns
         Column(verticalArrangement = Arrangement.spacedBy(DashboardCard.SPACING.dp)) {
             cards.chunked(columns).forEach { row ->
                 Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(DashboardCard.SPACING.dp)) {
                     row.forEach { card ->
-                        Box(Modifier.weight(1f)) { DashboardCardFrame(prefs) { DashboardCardView(bridge, s, card) } }
+                        Box(Modifier.weight(1f)) { DashboardCardFrame(prefs) { DashboardCardView(bridge, s, card, cardWidth) } }
                     }
                     repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
@@ -84,26 +90,38 @@ fun DashboardOverview(bridge: DspiBridge, prefs: AppSettingsStore, modifier: Mod
 private fun outputColor(s: DspState, index: Int) = ChannelPalette.output(index, isPdm = index == s.numOutputChannels - 1)
 
 @Composable
-private fun DashboardCardView(bridge: DspiBridge, s: DspState, card: DashboardCard) {
+private fun DashboardCardView(bridge: DspiBridge, s: DspState, card: DashboardCard, width: Dp) {
+    // A stereo card's half (or a mono card) narrower than NARROW_HEADER: a phone's column
+    val narrowStereo = width / 2 < NARROW_HEADER
     when (card) {
         DashboardCard.Input ->
             StereoDashboardCard(
                 left = ChannelColumn(bridge.channelName(0), ChannelPalette.input(0), null, bands(bridge, 0)),
-                right = ChannelColumn(bridge.channelName(1), ChannelPalette.input(1), null, bands(bridge, 1))
+                right = ChannelColumn(bridge.channelName(1), ChannelPalette.input(1), null, bands(bridge, 1)),
+                narrow = narrowStereo
             )
         is DashboardCard.OutputPair ->
             StereoDashboardCard(
-                left = outputColumn(bridge, s, card.left),
-                right = outputColumn(bridge, s, card.right)
+                left = outputColumn(bridge, s, card.left, card.leftName),
+                right = outputColumn(bridge, s, card.right, card.rightName),
+                narrow = narrowStereo
             )
-        is DashboardCard.Output -> MonoDashboardCard(outputColumn(bridge, s, card.index))
+        is DashboardCard.Output -> MonoDashboardCard(outputColumn(bridge, s, card.index, card.name), narrow = width < NARROW_HEADER)
     }
 }
 
 private fun bands(bridge: DspiBridge, ch: Int): List<BandFields> = bridge.channelBands(ch)?.peq?.map { it.toFields() } ?: emptyList()
 
-private fun outputColumn(bridge: DspiBridge, s: DspState, index: Int) =
-    ChannelColumn(bridge.channelName(2 + index), outputColor(s, index), s.outputDelayMs.getOrElse(index) { 0f }, bands(bridge, 2 + index))
+private fun outputColumn(bridge: DspiBridge, s: DspState, index: Int, name: String? = null) = ChannelColumn(
+    // -- BUG1, review c86 F3 -- a phone's column: the short label ("R · Low")
+    name ?: bridge.channelShortLabel(2 + index),
+    outputColor(s, index),
+    s.outputDelayMs.getOrElse(index) { 0f },
+    bands(
+        bridge,
+        2 + index
+    )
+)
 
 /**
  * macOS "Delay: %.0fms", with up to two decimals when the delay has them
@@ -120,7 +138,7 @@ data class ChannelColumn(val name: String, val color: Color, val delayMs: Float?
 
 /** Two channels side by side (`StereoDashboardCard` / `StereoOutputDashboardCard`). */
 @Composable
-fun StereoDashboardCard(left: ChannelColumn, right: ChannelColumn, modifier: Modifier = Modifier) {
+fun StereoDashboardCard(left: ChannelColumn, right: ChannelColumn, modifier: Modifier = Modifier, narrow: Boolean = false) {
     val c = DspiTheme.colors
     val shape = RoundedCornerShape(10.dp)
     Column(
@@ -134,9 +152,9 @@ fun StereoDashboardCard(left: ChannelColumn, right: ChannelColumn, modifier: Mod
             )
     ) {
         Row(Modifier.height(IntrinsicSize.Min)) {
-            CardHeader(left, Modifier.weight(1f))
+            CardHeader(left, Modifier.weight(1f), narrow)
             VerticalRule()
-            CardHeader(right, Modifier.weight(1f).padding(end = 18.dp))
+            CardHeader(right, Modifier.weight(1f).padding(end = 18.dp), narrow)
         }
         HorizontalRule(Modifier.fillMaxWidth())
         Row(Modifier.height(IntrinsicSize.Min)) {
@@ -149,23 +167,29 @@ fun StereoDashboardCard(left: ChannelColumn, right: ChannelColumn, modifier: Mod
 
 /** One channel alone (`MonoDashboardCard` / `OutputDashboardCard`). */
 @Composable
-fun MonoDashboardCard(channel: ChannelColumn, modifier: Modifier = Modifier) {
+fun MonoDashboardCard(channel: ChannelColumn, modifier: Modifier = Modifier, narrow: Boolean = false) {
     val c = DspiTheme.colors
     val shape = RoundedCornerShape(10.dp)
     Column(modifier.clip(shape).background(c.card, shape).border(1.dp, channel.color.copy(alpha = 0.3f), shape)) {
-        CardHeader(channel, Modifier.fillMaxWidth().padding(end = 18.dp))
+        CardHeader(channel, Modifier.fillMaxWidth().padding(end = 18.dp), narrow)
         HorizontalRule(Modifier.fillMaxWidth())
         BandColumn(channel, Modifier.fillMaxWidth())
     }
 }
 
 @Composable
-private fun CardHeader(ch: ChannelColumn, modifier: Modifier) {
+private fun CardHeader(ch: ChannelColumn, modifier: Modifier, narrow: Boolean) {
+    // -- BUG1, review c86 F2 -- In a phone's narrow column (a stereo card's half on a 360 dp
+    // screen) the heading comes first: it is measured before the delay, which shows its value
+    // alone ("0ms") in what is left, cut short if it must be. A wider card keeps the Console's
+    // layout and "Delay: 0ms". The header keeps its height.
+    val first = narrow && ch.delayMs != null
     val c = DspiTheme.colors
     Row(
-        modifier.height(32.dp).padding(horizontal = 8.dp),
+        // Narrow: a little less padding and gap, so a heading and a delay such as "0.25ms" share it
+        modifier.height(32.dp).padding(horizontal = if (narrow) 6.dp else 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(if (narrow) 4.dp else 6.dp)
     ) {
         Box(Modifier.size(6.dp).background(ch.color, CircleShape))
         Text(
@@ -175,13 +199,26 @@ private fun CardHeader(ch: ChannelColumn, modifier: Modifier) {
             color = c.secondaryLabel,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
+            modifier = if (first) Modifier else Modifier.weight(1f)
         )
         if (ch.delayMs != null) {
-            Text(dashboardDelayText(ch.delayMs), style = DspiType.mono9, color = c.secondaryLabel, maxLines = 1)
+            val text = dashboardDelayText(ch.delayMs)
+            val value = text.removePrefix("Delay: ")
+            Text(
+                if (narrow) value else text,
+                style = DspiType.mono9,
+                color = c.secondaryLabel,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.End,
+                modifier = (if (first) Modifier.weight(1f) else Modifier).semantics { contentDescription = "Delay $value" }
+            )
         }
     }
 }
+
+/** -- BUG1 -- A card column narrower than this is a phone's (see [CardHeader]). */
+private val NARROW_HEADER = 200.dp
 
 @Composable
 private fun BandColumn(ch: ChannelColumn, modifier: Modifier) {

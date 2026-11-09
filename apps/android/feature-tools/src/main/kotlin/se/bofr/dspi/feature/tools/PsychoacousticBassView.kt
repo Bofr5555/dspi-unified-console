@@ -53,7 +53,7 @@ fun PsychoacousticBassView(bridge: DspiBridge, modifier: Modifier = Modifier) {
     val psybass = PsybassParameters.from(st)
     val outputCount = st.numOutputChannels
     // Names are plain getters: read here, where `st` is observed, not inside the skippable column lambdas (audit T3).
-    val outputNames = (0 until outputCount).map { bridge.channelName(2 + it) }
+    val outputNames = (0 until outputCount).map { bridge.channelLabel(2 + it) }
     val supported = ToolFirmware.supportsPsybass(st.formatVersion)
     val graphLive = rememberGraphLive<PsybassGraphKey>(Triple(psybass.cutoffHz, psybass.harmonicsDB, psybass.originalDB))
 

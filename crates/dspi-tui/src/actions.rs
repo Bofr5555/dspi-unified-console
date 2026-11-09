@@ -1022,7 +1022,7 @@ pub fn channel_picker(
             targets.push(ImportTarget {
                 channel: ch as u8,
                 bank: 0,
-                label: crate::screens::channel_name(state, ch),
+                label: crate::screens::channel_label(state, ch),
                 checked: true,
             });
         }
@@ -1033,7 +1033,7 @@ pub fn channel_picker(
             targets.push(ImportTarget {
                 channel: (ni + o) as u8,
                 bank: 0,
-                label: crate::screens::channel_name(state, ni + o),
+                label: crate::screens::channel_label(state, ni + o),
                 checked: false,
             });
         }
@@ -1065,7 +1065,7 @@ pub fn channel_picker(
         targets.push(ImportTarget {
             channel,
             bank: i,
-            label: crate::screens::channel_name(state, channel as usize),
+            label: crate::screens::channel_label(state, channel as usize),
             checked: true,
         });
     }

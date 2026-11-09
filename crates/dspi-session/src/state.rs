@@ -1420,6 +1420,18 @@ impl DeviceState {
         decode_crossfeed(sec(self.bulk.as_bytes(), "crossfeed"))
     }
 
+    // -- BUG1 --
+    /// The K340 firmware's crossfeed pair map, `WireCrossfeedParams.pair_map`
+    /// (bulk_params.h:80, 12 bytes into the section); all zero on other firmware.
+    pub fn crossfeed_pair_map(&self) -> dspi_proto::ext::PairMap {
+        let c = sec(self.bulk.as_bytes(), "crossfeed");
+        let mut map = [0u8; dspi_proto::ext::PairMap::SIZE];
+        if let Some(b) = c.get(12..12 + dspi_proto::ext::PairMap::SIZE) {
+            map.copy_from_slice(b);
+        }
+        dspi_proto::ext::PairMap(map)
+    }
+
     /// Per-channel delay in ms, unified channel index.
     pub fn delay_ms(&self, channel: usize) -> f32 {
         let d = sec(self.bulk.as_bytes(), "delays");

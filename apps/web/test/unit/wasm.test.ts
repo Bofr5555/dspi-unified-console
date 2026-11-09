@@ -179,3 +179,22 @@ test("WB3: a panic marks the core dead: an error reply, a lost event, every late
   assert.ok(events.some((e) => e.event === "lost" && /internal error/.test(e.reason)));
   assert.throws(() => m.newSession(), code("dead"));
 });
+
+// -- BUG1 --
+test("BUG1: the core's snapshot carries each output's label and the dashboard's cards", { skip }, async () => {
+  const core = session(await load(pageModule));
+  const snap: DeviceSnapshot = await core.call("open", { kind: "demo" });
+  const labels = snap.outputLabels ?? [];
+  assert.equal(labels.length, snap.state.numOutputChannels);
+  // The demo routes USB 1 to output 1 and USB 2 to output 2, unfiltered, under the slots' default names
+  assert.equal(labels[0]?.label, "Out 1 · L · Full");
+  assert.equal(labels[1]?.label, "Out 2 · R · Full");
+  assert.equal(labels[0]?.slotName, "SPDIF 1 L");
+  assert.ok(Array.isArray(snap.outputCards));
+  // A rename wins, in the next snapshot
+  await core.call("write", { path: "ch.name", indices: [snap.state.numInputChannels], value: { text: "Left" } });
+  const after: DeviceSnapshot = await core.call("state", undefined);
+  assert.equal(after.outputLabels?.[0]?.label, "Left");
+  assert.equal(after.outputLabels?.[0]?.userNamed, true);
+});
+

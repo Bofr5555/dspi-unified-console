@@ -14,11 +14,13 @@ import se.bofr.dspi.ui.ChannelPalette
 /** One matrix column (macOS `MatrixOutput`). [color] is "#RRGGBB". */
 data class MatrixOutput(
     val index: Int,
-    /** The output's channel name (renamable, stored on the device). */
+    /** What the column shows: the output's label (-- BUG1 -- the user's name, else from the routing). */
     val name: String,
     /** "OUT1" … "OUT9". */
     val descriptor: String,
-    val color: String
+    val color: String,
+    /** -- BUG1 -- The name stored on the device, what a rename starts from. */
+    val storedName: String = name
 )
 
 /** One matrix source row (macOS `MatrixInput`). */
@@ -131,7 +133,15 @@ data class MatrixMixerState(
             val rows = matrixSourceRowCount(derives, surroundOff, eff)
             val outs = (0 until numOut).map { o ->
                 val app = o + 2
-                MatrixOutput(o, bridge.channelName(app), bridge.channelDescriptor(app).ifEmpty { "OUT${o + 1}" }, bridge.channelColor(app))
+                MatrixOutput(
+                    o,
+                    bridge.channelLabel(app),
+                    bridge.channelDescriptor(app).ifEmpty {
+                        "OUT${o + 1}"
+                    },
+                    bridge.channelColor(app),
+                    bridge.channelName(app)
+                )
             }
             val enabled = (0 until numOut).map { bridge.outputEnabled(it) }
             val pdm = pdmOutputIndex(numOut)

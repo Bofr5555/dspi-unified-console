@@ -335,6 +335,22 @@ class DspiBridgeImplTest {
     }
 
     @Test
+    fun bug1ResetChannelNamesNamesI2sSlotsI2s() = runTest {
+        // The K340's slots: 1 and 2 are I2S, 3 and 4 S/PDIF (tests/fixtures/preset/k340-bug1.dspipreset)
+        val core = FakeDspiCore()
+        core.setOutputType(0, 1)
+        core.setOutputType(1, 1)
+        val b = newBridge(core)
+        attach(b, core)
+        b.resetChannelNames()
+        runCurrent()
+        assertEquals(
+            listOf("I2S 1 L", "I2S 1 R", "I2S 2 L", "I2S 2 R", "SPDIF 3 L", "SPDIF 4 R", "PDM"),
+            listOf(2, 3, 4, 5, 6, 9, 10).map { b.channelName(it) }
+        )
+    }
+
+    @Test
     fun inputSourcesFollowTheEnabledInputs() = runTest {
         val core = FakeDspiCore()
         val b = newBridge(core)

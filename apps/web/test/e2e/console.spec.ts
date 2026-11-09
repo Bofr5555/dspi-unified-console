@@ -10,6 +10,11 @@ import { expect, test, type Page } from "@playwright/test";
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 
 /** A call on the n-th session the embedding page opened, straight to its core. */
+// -- BUG1 -- An output's name on the page is its label ("Out 3 · R · Full"), which follows the
+// routing and the filters while the device keeps the slot's default name: matched by its number.
+const OUT = (o: number) => `Out ${o + 1} · [^·]+ · \\w+`;
+const re = (s: string) => new RegExp(`^${s}$`);
+
 function core(page: Page, n: number, method: string, params: unknown = null) {
   return page.evaluate(
     ([n, method, params]) => (globalThis as unknown as Clients).dspiClients[n as number]!.call(method as string, params),
@@ -58,7 +63,7 @@ test("standalone: the core's demo connects, a volume write reads back, meters ar
   // The demo's meter capture is silent: every channel the core named, at the floor.
   await expect(session.getByRole("meter")).toHaveCount(17);
   await expect(session.getByRole("meter", { name: "USB 1" })).toHaveAttribute("aria-valuenow", "-90");
-  await expect(session.getByRole("meter", { name: "PDM" })).toBeVisible();
+  await expect(session.getByRole("meter", { name: re(OUT(8)) })).toBeVisible();
 
   await session.getByRole("button", { name: "Disconnect" }).click();
   await expect(page.getByText("Choose a DSPi to connect to.")).toBeVisible();

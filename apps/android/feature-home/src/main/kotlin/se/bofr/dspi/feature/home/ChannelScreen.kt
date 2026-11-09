@@ -92,14 +92,21 @@ fun ChannelScreen(bridge: DspiBridge, ch: Int, onNavigate: (String) -> Unit, onB
             Box(Modifier.size(8.dp).background(color, CircleShape))
             Spacer(Modifier.size(8.dp))
             Text(
-                bridge.channelName(ch).ifEmpty { bridge.channelDescriptor(ch).ifEmpty { "Channel $ch" } },
+                bridge.channelShortLabel(ch).ifEmpty { bridge.channelDescriptor(ch).ifEmpty { "Channel $ch" } },
                 style = DspiType.headline,
                 color = c.label,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            Text(bridge.channelDescriptor(ch), style = DspiType.captionBold, color = color)
+            // -- BUG1 -- an output's slot beside its descriptor: "OUT1 · I2S 1 L"
+            val slot = if (output >= 0) bridge.outputSlotName(output) else ""
+            Text(
+                bridge.channelDescriptor(ch) + if (slot.isEmpty()) "" else " · $slot",
+                style = DspiType.captionBold,
+                color = color,
+                maxLines = 1
+            )
         }
         if (!exists) {
             Text(

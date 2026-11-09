@@ -84,7 +84,7 @@ export function MainScreen(props: ScreenProps) {
   );
   if (!s || !presetView) return null;
   const inputs = inputRows(s, liveInputs(s, usbActive));
-  const outputs = outputRows(s);
+  const outputs = outputRows(s, snap?.outputLabels);
 
   return (
     <div class="main-screen">

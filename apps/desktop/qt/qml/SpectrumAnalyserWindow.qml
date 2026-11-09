@@ -45,7 +45,8 @@ AppWindow {
     }
 
     function colorOf(c) { return bridge.channelColor(rta.appChannel(sel.tap, c)) }
-    function nameOf(c) { return bridge.channelName(rta.appChannel(sel.tap, c)) }
+    // -- BUG1 -- reads labelsRevision, so the bindings calling it follow the labels (review c86 N1)
+    function nameOf(c) { bridge.labelsRevision; return bridge.channelLabel(rta.appChannel(sel.tap, c)) }
     function toggleHidden(c) {
         var h = hiddenChannels.slice(), i = h.indexOf(c)
         if (i >= 0) h.splice(i, 1); else h.push(c)
@@ -67,7 +68,7 @@ AppWindow {
                 anchors.rightMargin: 12
                 spacing: 10
                 Text {
-                    text: !win.app || win.app.onDashboard ? qsTr("Dashboard") : bridge.channelName(win.app.openChannelId)
+                    text: !win.app || win.app.onDashboard ? qsTr("Dashboard") : (bridge.labelsRevision, bridge.channelLabel(win.app.openChannelId))
                     font.pixelSize: 12
                     font.weight: Font.DemiBold
                     color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.9)

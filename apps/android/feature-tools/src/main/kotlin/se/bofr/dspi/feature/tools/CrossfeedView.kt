@@ -106,7 +106,7 @@ fun CrossfeedView(bridge: DspiBridge, modifier: Modifier = Modifier) {
         supported = bridge.hardwareCaps.crossfeedPairMapSupported,
         connected = connected,
         writesAllowed = writesAllowed(),
-        outputName = { bridge.channelName(2 + it) }
+        outputName = { bridge.channelLabel(2 + it) }
     )
     val pairActions = remember(bridge) { CrossfeedPairActions(bridge) }
 

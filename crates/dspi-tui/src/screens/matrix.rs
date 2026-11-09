@@ -717,7 +717,7 @@ impl MatrixPanel {
         let (area, theme, state) = (p.area, p.theme, p.state);
         for (n, &o) in cols.iter().enumerate() {
             let x = area.x + self.label_w + n as u16 * self.col_w;
-            let name = channel_name(state, output_channel(state, o));
+            let name = super::channel_label(state, output_channel(state, o));
             // `DESIGN.md` 7.7: "Column headers in the output colour". Both
             // header rows name the same column, so both take it.
             let color = column_color(state, theme, o, o == self.col);

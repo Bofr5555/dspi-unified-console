@@ -34,6 +34,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,10 +54,27 @@ import se.bofr.dspi.ui.HorizontalMeterBar
  * the row.
  */
 @Composable
-fun ChannelVisibilityPill(descriptor: String, color: Color, isVisible: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+fun ChannelVisibilityPill(
+    descriptor: String,
+    color: Color,
+    isVisible: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
+    accessibleName: String? = null
+) {
     val gray = Color.Gray
     Box(
         modifier
+            // -- BUG1 -- TalkBack reads what the output carries and its slot, not just "OUT1"
+            .then(
+                if (accessibleName !=
+                    null
+                ) {
+                    Modifier.semantics(mergeDescendants = true) { contentDescription = accessibleName }
+                } else {
+                    Modifier
+                }
+            )
             .clickable(
                 onClickLabel = if (isVisible) "Hide $descriptor on the graph" else "Show $descriptor on the graph",
                 onClick = onToggle
@@ -132,6 +151,9 @@ fun ChannelRow(
     onLongPress: () -> Unit,
     onCommitRename: (String) -> Unit,
     modifier: Modifier = Modifier,
+    // -- BUG1 -- the stored name a rename starts from (the row may show a derived label), and the pill's spoken name
+    renameFrom: String = name,
+    pillDescription: String? = null,
     menu: @Composable () -> Unit = {}
 ) {
     val c = DspiTheme.colors
@@ -152,7 +174,7 @@ fun ChannelRow(
                     .background(if (isSelected) c.accent else Color.Transparent)
             )
             if (isRenaming) {
-                RenameField(name, onCommitRename, Modifier.padding(start = 8.dp).width(96.dp))
+                RenameField(renameFrom, onCommitRename, Modifier.padding(start = 8.dp).width(NAME_WIDTH))
             } else {
                 Text(
                     name,
@@ -160,15 +182,23 @@ fun ChannelRow(
                     color = if (isSelected) c.label else c.label.copy(alpha = c.label.alpha * 0.9f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(start = 8.dp).width(96.dp)
+                    modifier = Modifier.padding(start = 8.dp).width(NAME_WIDTH)
                 )
             }
             ChannelMeterBar(bridge, status, ch, color, Modifier.weight(1f).padding(start = 4.dp), isMuted = isMuted, label = "Level")
-            ChannelVisibilityPill(descriptor, color, isCurveVisible, onToggleCurve)
+            ChannelVisibilityPill(descriptor, color, isCurveVisible, onToggleCurve, accessibleName = pillDescription)
         }
         menu()
     }
 }
+
+/**
+ * -- BUG1, review c86 F3 -- The name column: an output shows its short label here ("R · High",
+ * beside its OUTn pill). 100 dp, not the old 96: the narrowest that keeps the short forms whole
+ * at 15 sp on a 360 dp phone at font scale 1.0 and 1.3, the longest being "USB 3 · Full" (98 dp at
+ * 1.3; OutputLabelsFitBug1Test). The meter beside it takes what is left, so the row does not grow.
+ */
+private val NAME_WIDTH = 100.dp
 
 /** The inline rename field: commits on Done or when focus leaves (macOS `onSubmit` / focus loss). */
 @Composable

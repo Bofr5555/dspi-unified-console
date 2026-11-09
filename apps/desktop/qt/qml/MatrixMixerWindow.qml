@@ -36,7 +36,11 @@ AppWindow {
     readonly property int gridWidth: labelWidth + numOut * colWidth + 12
 
     property int rev: 0
-    Connections { target: bridge; function onStateChanged() { matrixWindow.rev++ } }
+    Connections {
+        target: bridge
+        function onStateChanged() { matrixWindow.rev++ }
+        function onOutputLabelsChanged() { matrixWindow.rev++ }   // -- BUG1 --
+    }
 
     // Size to the content; with many inputs the window can be resized and scrolls
     readonly property int contentW: body.implicitWidth + 48
@@ -48,7 +52,7 @@ AppWindow {
     onContentWChanged: width = Math.min(contentW, Screen.desktopAvailableWidth - 40)
     onContentHChanged: height = Math.min(contentH, Screen.desktopAvailableHeight - 80)
 
-    function inName(i) { return upmixRows && i >= 2 ? [qsTr("Upmix C"), qsTr("Upmix Ls"), qsTr("Upmix Rs")][i - 2] : bridge.channelName(bridge.inputAppId(i)) }
+    function inName(i) { return upmixRows && i >= 2 ? [qsTr("Upmix C"), qsTr("Upmix Ls"), qsTr("Upmix Rs")][i - 2] : bridge.channelLabel(bridge.inputAppId(i)) }
     function inColor(i) {
         if (upmixRows && i >= 2)
             return isMacOS ? [Qt.rgba(0.45, 0.78, 0.55, 1), Qt.rgba(0.93, 0.70, 0.30, 1), Qt.rgba(0.60, 0.55, 0.92, 1)][i - 2] : i === 2 && bridge.upmixParams[1] === 2 ? Qt.rgba(1, 1, 1, 0.35)   // centre off: silent row
@@ -166,7 +170,7 @@ AppWindow {
                                     width: colWidth - 6
                                     horizontalAlignment: Text.AlignHCenter
                                     elide: Text.ElideRight
-                                    text: { rev; return bridge.channelName(index + 2) }
+                                    text: { rev; return bridge.channelLabel(index + 2) }
                                     font.pixelSize: 13; font.weight: Font.DemiBold
                                     color: isMacOS ? MacColors.secondaryLabel : "white"
                                 }
@@ -282,7 +286,7 @@ AppWindow {
                                         y: 4
                                         fieldWidth: 44; height: 20; suffix: qsTr("dB"); decimals: 1
                                         minValue: -60; maxValue: 12; plainWheel: true
-                                        accessibleName: { rev; return Format.fmt(qsTr("%1 to %2 gain"), [inName(inputIndex), bridge.channelName(o + 2)]) }
+                                        accessibleName: { rev; return Format.fmt(qsTr("%1 to %2 gain"), [inName(inputIndex), bridge.channelLabel(o + 2)]) }
                                         value: parent.gain
                                         onValueEdited: bridge.setMatrixRoute(inputIndex, o, true, newValue, parent.inverted)
                                     }
@@ -303,7 +307,7 @@ AppWindow {
                                             cursorShape: Qt.PointingHandCursor
                                             focusRadius: width / 2 + 2
                                             Accessible.role: Accessible.CheckBox
-                                            Accessible.name: { rev; return Format.fmt(qsTr("%1 to %2"), [inName(inputIndex), bridge.channelName(o + 2)]) }
+                                            Accessible.name: { rev; return Format.fmt(qsTr("%1 to %2"), [inName(inputIndex), bridge.channelLabel(o + 2)]) }
                                             Accessible.checkable: true
                                             Accessible.checked: parent.parent.connected
                                             onActivated: bridge.setMatrixRoute(inputIndex, o, !parent.parent.connected,
@@ -323,7 +327,7 @@ AppWindow {
                                             anchors.margins: -4
                                             cursorShape: Qt.PointingHandCursor
                                             Accessible.role: Accessible.CheckBox
-                                            Accessible.name: { rev; return Format.fmt(qsTr("%1 to %2 inverted"), [inName(inputIndex), bridge.channelName(o + 2)]) }
+                                            Accessible.name: { rev; return Format.fmt(qsTr("%1 to %2 inverted"), [inName(inputIndex), bridge.channelLabel(o + 2)]) }
                                             Accessible.checkable: true
                                             Accessible.checked: parent.parent.inverted
                                             onActivated: bridge.setMatrixRoute(inputIndex, o, true, parent.parent.gain,
@@ -366,7 +370,7 @@ AppWindow {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
                                 Accessible.role: Accessible.CheckBox
-                                Accessible.name: { rev; return qsTr("%1 enabled").arg(bridge.channelName(index + 2)) }
+                                Accessible.name: { rev; return qsTr("%1 enabled").arg(bridge.channelLabel(index + 2)) }
                                 Accessible.checkable: true
                                 Accessible.checked: parent.isOn
                                 onActivated: toggleEnable(index)
@@ -390,7 +394,7 @@ AppWindow {
                                 anchors.centerIn: parent
                                 fieldWidth: 44; height: 22; suffix: qsTr("dB"); decimals: 1
                                 minValue: -60; maxValue: 12; plainWheel: true
-                                accessibleName: { rev; return qsTr("%1 gain").arg(bridge.channelName(index + 2)) }
+                                accessibleName: { rev; return qsTr("%1 gain").arg(bridge.channelLabel(index + 2)) }
                                 value: { rev; return bridge.outputGainDB(index) }
                                 onValueEdited: bridge.setOutputGain(index, newValue)
                             }
@@ -415,7 +419,7 @@ AppWindow {
                                 minValue: 0; maxValue: bridge.maxDelayMs; plainWheel: true
                                 wheelOnGrid: true   // -- WP SL1 -- whole ms from a fractional start too
                                 objectName: "matrixDelayField" + index
-                                accessibleName: { rev; return qsTr("%1 delay").arg(bridge.channelName(index + 2)) }
+                                accessibleName: { rev; return qsTr("%1 delay").arg(bridge.channelLabel(index + 2)) }
                                 value: { rev; return bridge.outputDelayMS(index) }
                                 onValueEdited: bridge.setOutputDelay(index, newValue)
                             }
@@ -445,7 +449,7 @@ AppWindow {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
                                 Accessible.role: Accessible.CheckBox
-                                Accessible.name: { rev; return qsTr("%1 muted").arg(bridge.channelName(index + 2)) }
+                                Accessible.name: { rev; return qsTr("%1 muted").arg(bridge.channelLabel(index + 2)) }
                                 Accessible.checkable: true
                                 Accessible.checked: parent.muted
                                 onActivated: bridge.setOutputMute(index, !parent.muted)

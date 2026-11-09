@@ -2,5 +2,7 @@
     <qresource prefix="/smoke">
         <file>SeamProbeBanner.qml</file>
         <file>SeamProbeTopBanner.qml</file>
+        <!-- BUG1 -->
+        <file alias="k340-bug1.dspipreset">../../../../tests/fixtures/preset/k340-bug1.dspipreset</file>
     </qresource>
 </RCC>

@@ -119,7 +119,7 @@ fun SpectrumBarStrip(
     if (!shown) return
 
     val (render, tick) = rememberRtaFrames(rta, watching, drawn, false, prefs)
-    val name = remember(revision) { { tap: Int, ch: Int -> bridge.channelName(rta.appChannel(tap, ch)).ifEmpty { "Ch ${ch + 1}" } } }
+    val name = remember(revision) { { tap: Int, ch: Int -> bridge.channelLabel(rta.appChannel(tap, ch)).ifEmpty { "Ch ${ch + 1}" } } }
     val color =
         remember(revision) {
             { tap: Int, ch: Int ->

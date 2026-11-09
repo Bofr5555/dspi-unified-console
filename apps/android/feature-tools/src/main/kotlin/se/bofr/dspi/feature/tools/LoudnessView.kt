@@ -115,7 +115,7 @@ fun LoudnessView(bridge: DspiBridge, modifier: Modifier = Modifier) {
     val loudness = LoudnessParameters.from(st)
     val outputCount = st.numOutputChannels
     // Names are plain getters: read here, where `st` is observed, not inside the skippable column lambdas (audit T3).
-    val outputNames = (0 until outputCount).map { bridge.channelName(2 + it) }
+    val outputNames = (0 until outputCount).map { bridge.channelLabel(2 + it) }
     val showMask = ToolFirmware.supportsLoudnessMask(st.formatVersion)
     val graphLive = rememberGraphLive<LoudnessGraphKey>(loudness.refSPL to loudness.intensity)
 

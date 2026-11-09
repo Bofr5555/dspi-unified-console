@@ -1041,6 +1041,16 @@ void uniffi_dspi_core_fn_method_dspicore_open_host(void*_Nonnull ptr, void*_Nonn
 void uniffi_dspi_core_fn_method_dspicore_open_midi(void*_Nonnull ptr, void*_Nonnull input, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OUTPUT_CARDS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OUTPUT_CARDS
+RustBuffer uniffi_dspi_core_fn_method_dspicore_output_cards(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OUTPUT_LABELS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OUTPUT_LABELS
+RustBuffer uniffi_dspi_core_fn_method_dspicore_output_labels(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_POLL_HOTPLUG
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_POLL_HOTPLUG
 void uniffi_dspi_core_fn_method_dspicore_poll_hotplug(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -1880,6 +1890,16 @@ RustBuffer uniffi_dspi_core_fn_func_onboarding_whats_new_json(RustCallStatus *_N
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_OUTPUT_CARDS_FOR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_OUTPUT_CARDS_FOR
+RustBuffer uniffi_dspi_core_fn_func_output_cards_for(RustBuffer input, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_OUTPUT_LABELS_FOR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_OUTPUT_LABELS_FOR
+RustBuffer uniffi_dspi_core_fn_func_output_labels_for(RustBuffer input, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_QUANTIZE_DELAY
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_QUANTIZE_DELAY
 float uniffi_dspi_core_fn_func_quantize_delay(float ms, RustCallStatus *_Nonnull out_status
@@ -2346,6 +2366,18 @@ uint16_t uniffi_dspi_core_checksum_func_onboarding_getting_started_json(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_ONBOARDING_WHATS_NEW_JSON
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_ONBOARDING_WHATS_NEW_JSON
 uint16_t uniffi_dspi_core_checksum_func_onboarding_whats_new_json(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_OUTPUT_CARDS_FOR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_OUTPUT_CARDS_FOR
+uint16_t uniffi_dspi_core_checksum_func_output_cards_for(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_OUTPUT_LABELS_FOR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_OUTPUT_LABELS_FOR
+uint16_t uniffi_dspi_core_checksum_func_output_labels_for(void
     
 );
 #endif
@@ -3042,6 +3074,18 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_open_host(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_MIDI
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_MIDI
 uint16_t uniffi_dspi_core_checksum_method_dspicore_open_midi(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OUTPUT_CARDS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OUTPUT_CARDS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_output_cards(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OUTPUT_LABELS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OUTPUT_LABELS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_output_labels(void
     
 );
 #endif

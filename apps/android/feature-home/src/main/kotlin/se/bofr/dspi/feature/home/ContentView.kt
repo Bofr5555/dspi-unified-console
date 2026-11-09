@@ -338,7 +338,11 @@ private fun SidebarChannels(bridge: DspiBridge, selection: SidebarSelection, onS
                 ch = ch,
                 color = ChannelPalette.output(out.index, out.isPdm),
                 descriptor = out.descriptor,
-                name = bridge.channelName(ch),
+                // -- BUG1 -- the label, short beside the OUTn pill (review c86 F3): the user's
+                // name, else channel and band ("R · Low")
+                name = bridge.channelShortLabel(ch),
+                renameFrom = bridge.channelName(ch),
+                pillDescription = outputPillDescription(out.descriptor, bridge.channelLabel(ch), bridge.outputSlotName(out.index)),
                 isSelected = selection == SidebarSelection.Output(out.index),
                 isMuted = !s.outputEnabled.getOrElse(out.index) { false } || s.outputMuted.getOrElse(out.index) { false },
                 isRenaming = renaming == ch,
@@ -635,3 +639,10 @@ fun MasterModeSection(bridge: DspiBridge, prefs: AppSettingsStore, modifier: Mod
         )
     }
 }
+
+/**
+ * -- BUG1 -- What TalkBack reads for an output's pill: "OUT1, Out 1, R, Low, slot I2S 1 L" (the
+ * label's dots read as pauses, not "middle dot").
+ */
+internal fun outputPillDescription(descriptor: String, label: String, slot: String): String =
+    listOf(descriptor, label.replace(" · ", ", "), if (slot.isEmpty()) "" else "slot $slot").filter { it.isNotEmpty() }.joinToString(", ")
