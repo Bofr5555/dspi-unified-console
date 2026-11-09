@@ -2353,6 +2353,9 @@ impl LinkSide {
             return;
         }
         self.settle_pending(now); // -- WP LK4 --
+        // -- review c84 F1 -- settle_pending can block for the ahead grant; frames
+        // drained after it are stamped with the time they arrive, not the call's.
+        let now = Instant::now();
         let spec = {
             let mut feed = guard(&self.feed);
             feed.kicked = false;
