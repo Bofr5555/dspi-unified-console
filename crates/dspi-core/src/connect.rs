@@ -284,6 +284,7 @@ impl DspiCore {
 // -- WP LK4 --
 /// `wLength` of the meter block (`REQ_GET_STATUS` wValue 9) for
 /// `num_channels`: what [`DspiCore::fetch_status`] asks for.
+#[cfg(feature = "link")]
 pub(crate) fn meter_len(num_channels: u8) -> u16 {
     let n = usize::from(num_channels).min(MAX_CHANNELS);
     // n <= 17: at most 41 bytes.
@@ -537,6 +538,7 @@ fn carry_per_item(from: &DspState, to: &mut DspState) {
 /// the mirror held (or A, then B, then A again) cannot be told from none, and
 /// the read wins; a per-connection write count would be exact. Narrow: the
 /// field then shows what the device answered moments before.
+#[cfg(feature = "link")]
 pub(crate) fn merge_per_item(before: &DspState, read: &DspState, to: &mut DspState) {
     macro_rules! fill {
         ($($f:ident),*) => {$(

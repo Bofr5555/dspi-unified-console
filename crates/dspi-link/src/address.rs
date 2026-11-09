@@ -2,7 +2,9 @@
 
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use crate::clock::Instant;
 
 use crate::messages::InfoDoc;
 use crate::{LinkError, DEFAULT_PATH, DEFAULT_PORT};

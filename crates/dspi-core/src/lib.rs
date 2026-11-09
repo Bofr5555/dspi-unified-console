@@ -193,6 +193,7 @@ pub struct DspiCore {
     // -- WP LK4 --
     /// Held while a pending probe is completed ([`DspiCore::ensure_probed`]),
     /// so it runs once. Taken without `inner`, never while holding it.
+    #[cfg(feature = "link")]
     pub(crate) probe_lock: Mutex<()>,
 }
 
@@ -653,6 +654,7 @@ impl DspiCore {
             host_feed: host_transport::FeedSlot::default(),
             // -- WP LK2 --
             meter_path: Mutex::new(None),
+            #[cfg(feature = "link")]
             probe_lock: Mutex::new(()),
         })
     }
