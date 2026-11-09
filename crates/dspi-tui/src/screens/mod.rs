@@ -433,24 +433,37 @@ pub fn channel_name(state: &DeviceState, channel: usize) -> String {
 }
 
 // -- BUG1 --
-thread_local! {
-    /// The outputs' labels and slot names for the bulk image they were worked
-    /// out from: [`channel_label`] is called while drawing, the labels change
-    /// only with the image.
-    static LABELS: std::cell::RefCell<(Vec<u8>, Vec<(String, String, String)>)> =
-        const { std::cell::RefCell::new((Vec::new(), Vec::new())) };
+/// How one output is shown: its label, its slot's name, and the label cut
+/// short for the sidebar.
+#[derive(Debug, Clone, Default)]
+struct Shown {
+    label: String,
+    slot: String,
+    short: String,
 }
 
-/// The outputs' (label, slot name, short label) for `state`, read again only
-/// when its bulk image changed.
-fn output_labels(state: &DeviceState) -> Vec<(String, String, String)> {
-    LABELS.with_borrow_mut(|(key, labels)| {
-        if key.as_slice() != state.bulk.as_bytes() {
-            use dspi_session::output_label::{LabelSource, output_labels};
-            *labels = output_labels(&LabelSource::from_state(state))
+/// The bulk image the labels were worked out from, and the labels.
+#[derive(Default)]
+struct LabelCache {
+    key: Vec<u8>,
+    outputs: Vec<Shown>,
+}
+
+thread_local! {
+    /// [`channel_label`] is called while drawing; the labels change only
+    /// with the image.
+    static LABELS: std::cell::RefCell<LabelCache> = std::cell::RefCell::new(LabelCache::default());
+}
+
+/// `f` of output `output`'s [`Shown`] for `state`, the labels read again only
+/// when its bulk image changed; `None` past the outputs.
+fn with_shown<T>(state: &DeviceState, output: usize, f: impl FnOnce(&Shown) -> T) -> Option<T> {
+    use dspi_session::output_label::{Band, LabelSource, output_labels};
+    LABELS.with_borrow_mut(|c| {
+        if c.key.as_slice() != state.bulk.as_bytes() {
+            c.outputs = output_labels(&LabelSource::from_state(state))
                 .into_iter()
                 .map(|l| {
-                    use dspi_session::output_label::Band;
                     let short = match (l.user_named, l.band) {
                         (true, _) => l.label.clone(),
                         (false, Band::Full) => l.channel.clone(),
@@ -458,12 +471,16 @@ fn output_labels(state: &DeviceState) -> Vec<(String, String, String)> {
                         (false, Band::High) => format!("{}·Hi", l.channel),
                         (false, Band::Mid) => format!("{}·Mid", l.channel),
                     };
-                    (l.label, l.slot_name, short)
+                    Shown {
+                        label: l.label,
+                        slot: l.slot_name,
+                        short,
+                    }
                 })
                 .collect();
-            *key = state.bulk.as_bytes().to_vec();
+            c.key = state.bulk.as_bytes().to_vec();
         }
-        labels.clone()
+        c.outputs.get(output).map(f)
     })
 }
 
@@ -474,11 +491,11 @@ fn output_labels(state: &DeviceState) -> Vec<(String, String, String)> {
 pub fn channel_label(state: &DeviceState, channel: usize) -> String {
     let ni = usize::from(state.caps.num_inputs);
     match channel.checked_sub(ni) {
-        Some(o) if o < usize::from(state.caps.num_outputs) => output_labels(state)
-            .get(o)
-            .map(|l| l.0.clone())
-            .filter(|l| !l.is_empty())
-            .unwrap_or_else(|| channel_name(state, channel)),
+        Some(o) if o < usize::from(state.caps.num_outputs) => {
+            with_shown(state, o, |s| s.label.clone())
+                .filter(|l| !l.is_empty())
+                .unwrap_or_else(|| channel_name(state, channel))
+        }
         _ => channel_name(state, channel),
     }
 }
@@ -489,11 +506,11 @@ pub fn channel_label(state: &DeviceState, channel: usize) -> String {
 pub fn channel_short_label(state: &DeviceState, channel: usize) -> String {
     let ni = usize::from(state.caps.num_inputs);
     match channel.checked_sub(ni) {
-        Some(o) if o < usize::from(state.caps.num_outputs) => output_labels(state)
-            .get(o)
-            .map(|l| l.2.clone())
-            .filter(|l| !l.is_empty())
-            .unwrap_or_else(|| channel_name(state, channel)),
+        Some(o) if o < usize::from(state.caps.num_outputs) => {
+            with_shown(state, o, |s| s.short.clone())
+                .filter(|l| !l.is_empty())
+                .unwrap_or_else(|| channel_name(state, channel))
+        }
         _ => channel_name(state, channel),
     }
 }
@@ -501,10 +518,7 @@ pub fn channel_short_label(state: &DeviceState, channel: usize) -> String {
 /// The firmware's name for output `output`'s slot ("I2S 1 L", "PDM"), for a
 /// detail line; empty past the outputs.
 pub fn slot_name(state: &DeviceState, output: usize) -> String {
-    output_labels(state)
-        .get(output)
-        .map(|l| l.1.clone())
-        .unwrap_or_default()
+    with_shown(state, output, |s| s.slot.clone()).unwrap_or_default()
 }
 
 #[cfg(test)]
