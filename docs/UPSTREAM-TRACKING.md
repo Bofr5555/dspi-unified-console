@@ -3,7 +3,7 @@
 *2026-11-07, SW-U1.* How `apps/apple` keeps following Weeb Labs' Swift DSPi Console, which changes
 this repository may make to it, and how an upstream release gets merged. The rule is in
 [`core-merge/PLAN-CLIENTS.md`](core-merge/PLAN-CLIENTS.md) section 0.1; this file is its procedure.
-Measured on `main` at `bf1bbd91`.
+Measured on `main` at `e6db6e70`.
 
 ## 1. The repositories
 
@@ -52,7 +52,7 @@ core-merge work and the rule does not ask to undo it. It shrinks as the core tak
 (the MIDI transport and extension commands are wire code, so they go with point 2). New work in this
 layer also needs a reason in its review.
 
-**Today** (`main` at `bf1bbd91`), the core-merge part of the diff (`09e16a31` to `bf1bbd91`) is 18 files,
+**Today** (`main` at `e6db6e70`), the core-merge part of the diff (`09e16a31` to `e6db6e70`) is 18 files,
 +25 311 / -24, of which 22 080 lines are the generated bindings. Outside points 1-4: nothing.
 `Commands.swift` is not removed yet: SW4 put `CoreBackedTransport` behind `-CoreTransport YES`, and the
 command functions still run on both paths.
@@ -114,7 +114,7 @@ section 1), so a release can create work in every client, not only in `apps/appl
 
 Upstream has no release newer than `release/v1.1.6`, which `main` already contains: every upstream
 `main` and `release/*` commit is in this history. Two upstream branches have commits that are not,
-and both were dry-run merged into `main` at `bf1bbd91` in a scratch clone
+and both were dry-run merged into `main` at `e6db6e70` in a scratch clone
 (`~/.cache/dspi-build/work/wp-SWU1/mono`), with the procedure of section 3:
 
 | Upstream branch | Tip | Rewritten | Base found by `git merge-base` | New commits | Result |

@@ -67,7 +67,7 @@ DSPi-Link clone in `~/.cache/dspi-build/work/consoles/DSPi-Link`, as `conformanc
 
 ```
 tools/esp-rig/rig.sh build                 # firmware (about 3 min the first time), tunnel, our probe
-tools/esp-rig/rig.sh build-before          # our probe on the pre-LK2 core (4cdefa24), for comparisons
+tools/esp-rig/rig.sh build-before          # our probe on the pre-LK2 core (da91dec2), for comparisons
 tools/esp-rig/rig.sh provision 115200      # a bridge image with its UART saved at 115200, detection off
 tools/esp-rig/rig.sh provision 1000000
 

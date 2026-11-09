@@ -1,7 +1,7 @@
 # Platform support
 
 *The `dspi` terminal client (`apps/terminal/`, package `dspi-term`). Updated
-2026-11-07 for this repository at `fd3d6219`. The earlier version of this page
+2026-11-07 for this repository at `2f1e95f3`. The earlier version of this page
 described DSPi-Terminal before the merge; its runs are kept below, marked as
 such.*
 

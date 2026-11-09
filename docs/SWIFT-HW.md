@@ -8,8 +8,8 @@ happened. Facts are from the run reports named below; nothing here was re-run fo
 
 | run | date | commit | report |
 |---|---|---|---|
-| hw-mac | 2026-11-08 (00:47–02:15) | `main` @ dd9bffe7 | `~/.cache/dspi-build/work/hw-mac/REPORT.md` |
-| hw-mac-2 (confirms SWF1–SWF3) | 2026-11-08 (03:18–03:50) | `main` @ c4b71f13 | `~/.cache/dspi-build/work/hw-mac-2/REPORT.md` |
+| hw-mac | 2026-11-08 (00:47–02:15) | `main` @ 2df60015 | `~/.cache/dspi-build/work/hw-mac/REPORT.md` |
+| hw-mac-2 (confirms SWF1–SWF3) | 2026-11-08 (03:18–03:50) | `main` @ bc1f9ff4 | `~/.cache/dspi-build/work/hw-mac-2/REPORT.md` |
 
 - **Device:** PCB unit BB66A44F2AC1E7B6, RP2350, firmware 1.1.6 (bofr-main; wire V32), core 1.20 V.
 - **Who:** both runs by an agent; no owner hands.

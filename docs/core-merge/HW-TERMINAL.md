@@ -7,8 +7,8 @@ Facts are from the run reports named in each section; nothing here was re-run fo
 
 | run | date | commit | where | report |
 |---|---|---|---|---|
-| hw-1 | 2026-11-07/08 | `main` @ fd3d6219 | Linux host, podman containers | `~/.cache/dspi-build/work/hw-1/REPORT.md` |
-| hw-win (the `dspi.exe` part) | 2026-11-08 | `main` @ fd3d6219 | `winvm` (`dspi-win11`, Windows 11 Pro 26300) | `~/.cache/dspi-build/work/hw-win/REPORT.md` |
+| hw-1 | 2026-11-07/08 | `main` @ 2f1e95f3 | Linux host, podman containers | `~/.cache/dspi-build/work/hw-1/REPORT.md` |
+| hw-win (the `dspi.exe` part) | 2026-11-08 | `main` @ 2f1e95f3 | `winvm` (`dspi-win11`, Windows 11 Pro 26300) | `~/.cache/dspi-build/work/hw-win/REPORT.md` |
 
 Device in both: PCB unit BB66A44F2AC1E7B6, RP2350, firmware `v1.1.6-20-g04122d3` (bofr-main @ 04122d3, 2026-11-06),
 wire V32, 17 channels, core 1.20 V, USB 2e8b:feaa. Both runs were scripted by an agent; no owner hands.
@@ -86,14 +86,14 @@ The WinUSB 4 KB control-transfer cap did not bite (export, dump and the bulk rea
 
 | id | what | fixed |
 |---|---|---|
-| D1 | a boolean global flag before the command (`--json`, `--quiet`, `--dry-run`) read as "no command", opened the full-screen interface and panicked without a tty (exit 101); the write did not happen | TM26 (dd9bffe7) |
+| D1 | a boolean global flag before the command (`--json`, `--quiet`, `--dry-run`) read as "no command", opened the full-screen interface and panicked without a tty (exit 101); the write did not happen | TM26 (2df60015) |
 | D2 | `get rta.control` says "read-only" for a write-only action | TM26 |
 | M1 | `cs.aux 0` / `cs.aux.level 0` report "stalled" on a slot with no aux | TM26 |
 | M2 | the hub accepts connections ~0.3 s before it has attached the device | TM26 |
 | M3 | `RUST_LOG=info` still prints `[DEBUG tungstenite::protocol]` lines (72 on Linux, 70 on Windows); no PIN or token in them | TM26 |
 | M4 | `dspi hub` reads `pair`/`quit` only from a terminal; scripts restart with `--pair` | by design |
 | M5 | `systemd-inhibit` refused in the container | expected there |
-| F2 (hw-win) | `dspi-hub-task.xml` declared `encoding="UTF-8"`; `Register-ScheduledTask -Xml` fails "unable to switch the encoding" | CG31 (25990e0d) |
+| F2 (hw-win) | `dspi-hub-task.xml` declared `encoding="UTF-8"`; `Register-ScheduledTask -Xml` fails "unable to switch the encoding" | CG31 (0f163dfa) |
 | — | first start of `dspi.exe` in a new path took ~10–30 s to listen (hw-win O1) | cause not found; may be the VM |
 | — | Windows Firewall prompts on the hub's first start; Cancel creates two Block rules | not filed; the report suggests a README line |
 

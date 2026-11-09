@@ -4,7 +4,7 @@ AN13's record (`docs/core-merge/PLAN-CLIENTS.md`, **AN13**). Done when: the earl
 path: USB, notifications, old firmware, Link with a Mac hub, 45 s background, no secrets in logcat. The `.hil` build runs
 side by side with the Play build (`applicationIdSuffix ".hil"`); the Play build is never uninstalled.
 
-0.12.0 shipped (tag `android-v0.12.0` = eb66e5e5, uploaded to Play by the owner) on the partial checks below.
+0.12.0 shipped (tag `android-v0.12.0` = ca6d52f3, uploaded to Play by the owner) on the partial checks below.
 
 ## Sources
 
@@ -23,7 +23,7 @@ HOME. The Play app `se.bofr.dspi_console_android` stayed at 0.10.0 (code 10), un
 ## 1. The owner's checks (owner's hands, real DSPi on USB)
 
 - **Date:** 2026-11-07, before 20:15 (from the order of the log; the log entries carry no times).
-- **Build:** not recorded. Most likely the `.hil` 0.12.0 build from `release/android-0.12` @ 4535dda2 that was installed at
+- **Build:** not recorded. Most likely the `.hil` 0.12.0 build from `release/android-0.12` @ af2d269e that was installed at
   17:32 that day (phone-test-2 found it installed); **unclear**.
 - **Device and firmware:** "the DSPi" on the phone's USB; the unit and firmware were not recorded (**unclear**).
 
@@ -38,7 +38,7 @@ Not reported: notifications on USB, logcat during the USB checks, the device res
 ## 2. phone-test-2 (agent, demo mode)
 
 - **Date:** 2026-11-07 20:15–20:21. **Build:** `se.bofr.dspi_console_android.hil` 0.12.0 (code 12) from
-  `release/android-0.12` @ 4535dda2, not rebuilt.
+  `release/android-0.12` @ af2d269e, not rebuilt.
 - **Device:** `dumpsys usb` listed a "Weeb Labs DSPi" on the phone's USB, but the app showed "No DSPi connected", so no real
   device was open. Nothing was unplugged; demo was entered from the connection strip ("Nothing is sent over USB"); the app
   log has no USB or connect lines. No device writes, so no backup or diff.
@@ -60,7 +60,7 @@ request (`accelerometer_rotation` 1 → 0) and left off. App left out of demo mo
 
 ## 3. release-check-2 (agent, About on the release tip)
 
-- **Date:** 2026-11-07 20:30–20:50. **Build:** debug APK from `release/android-0.12` @ 3c5c7d0b (CG29), with the local `.hil`
+- **Date:** 2026-11-07 20:30–20:50. **Build:** debug APK from `release/android-0.12` @ 1eaaa771 (CG29), with the local `.hil`
   suffix (reverted afterwards), installed over the `.hil` app: 0.12.0, code 12, same signature.
 - **Device:** none on USB (`dumpsys usb` host_connected=false).
 
@@ -70,7 +70,7 @@ request (`accelerometer_rotation` 1 → 0) and left off. App left out of demo mo
 | logcat: no crash; no E/F lines and no pin/token/secret/password/bearer matches from the app | pass |
 | rotation: `accelerometer_rotation` 0 before and after | unchanged |
 
-The shipped build is eb66e5e5 (CG29b, "I (Weeb Labs)" in the support paragraph), one commit after this check; it was not
+The shipped build is ca6d52f3 (CG29b, "I (Weeb Labs)" in the support paragraph), one commit after this check; it was not
 put on the phone by these runs (**unclear** whether the owner ran it before the upload).
 
 ## What this covers of the done criterion
@@ -98,7 +98,7 @@ put on the phone by these runs (**unclear** whether the owner ran it before the 
 
 ## Phone checklist for the next Android release (AN15 + AN20 + LK2), from review c6o, 2026-11-08
 
-Run on a release build of main (aa721b13 or later). Owed by the owner; not yet run.
+Run on a release build of main (3e3583e7 or later). Owed by the owner; not yet run.
 
 AN15 (R8 minified release, real upload key, side by side with `applicationIdSuffix ".hil"`):
 1. USB: plug the DSPi, chooser, connect, read state, write (volume, crossfeed), replug 3x; logcat has no

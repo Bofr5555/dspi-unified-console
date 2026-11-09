@@ -318,8 +318,8 @@ Audited 2026-11-06 by reading code; nothing was built or run. The Mac has every 
 | Client | Where | Path prefix below |
 |---|---|---|
 | macOS, iOS | `~/.cache/dspi-build/work/parity-ref` (export of `ext-channel-116`), not the stale `_ref/DSPi-Console`. iOS is this tree minus `project.pbxproj:56-79` | `DSPi Console/` |
-| Qt | this tree, `52ad5f4` | `apps/desktop/qt/` |
-| Terminal | this tree, `52ad5f4` | `crates/dspi-tui/src/` |
+| Qt | this tree, `ab95c7f` | `apps/desktop/qt/` |
+| Terminal | this tree, `ab95c7f` | `crates/dspi-tui/src/` |
 | Android | `~/prog/dspi-mobile/dspi-android` `63492af`, v0.10.1 on its old core (moves to `apps/android` in MR1) | the module path, `feature-home/` and so on; Kotlin package directories are left out, so `feature-home/ContentView.kt` is `feature-home/src/main/kotlin/se/bofr/dspi/feature/home/ContentView.kt` |
 
 **Cells:**
@@ -502,7 +502,7 @@ switch guarded, M42), SW18 (banner button and Tools entry, M41), QD12 and QD14 (
 `apps/desktop/Documentation/parity-plan.md` was retired into this file by WP HO1a (2026-11-07). It was the Linux
 console's own phase plan against the macOS and Windows consoles and firmware 1.1.6 (wire format V32), written on the
 old core before the merge. Every phase, 0 to 10, was marked done and most "untested on hardware". To read it:
-`git show fd3d6219:apps/desktop/Documentation/parity-plan.md`.
+`git show 2f1e95f3:apps/desktop/Documentation/parity-plan.md`.
 
 Where its content went:
 

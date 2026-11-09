@@ -64,7 +64,7 @@ the table until someone decides what it means here.
 
 ## Last run
 
-2026-11-07, `wp/HB7`, against `main` d75bed08:
+2026-11-07, `wp/HB7`, against `main` f6e74fa9:
 
 - ours: 27 passed, 1 ignored (the serve test); 8 more runs, no failure;
 - TypeScript: `DONE 14/14`;

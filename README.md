@@ -22,7 +22,7 @@ Console remains the reference for behaviour and look
 
 ## Status
 
-As of 2026-11-08, on `main` at `17ab1e50`. The detail, one row per work package,
+As of 2026-11-08, on `main` at `73ce0a89`. The detail, one row per work package,
 is in [`docs/core-merge/PLAN-CLIENTS.md`](docs/core-merge/PLAN-CLIENTS.md#status-2026-11-08).
 Every client is tested in CI against the simulated device, mocks and a fake hub.
 Hardware runs are recorded in `docs/core-merge/HW-*.md` and

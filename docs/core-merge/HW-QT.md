@@ -15,7 +15,7 @@ part.
 
 ## QD24: Linux (hw-1)
 
-- **Date:** 2026-11-07/08. **Commit:** `main` @ fd3d6219. **Report:** `~/.cache/dspi-build/work/hw-1/REPORT.md`.
+- **Date:** 2026-11-07/08. **Commit:** `main` @ 2f1e95f3. **Report:** `~/.cache/dspi-build/work/hw-1/REPORT.md`.
 - **Setup:** Linux host; the Qt 6 and Qt 5 builds in podman (`localhost/dspi-coremerge:4`). The smoke driver ran with
   `DSPI_SMOKE_HW=1` in a container with only the device node, real sysfs, `--network=none`, no keep-id: `run-hw.sh`'s
   command, reproduced by hand (its `ci/run.sh` build would have used a shared target dir). Logs:
@@ -48,7 +48,7 @@ break, `hang_count 0`.
 
 ## QD25: Windows (hw-win)
 
-- **Date:** 2026-11-08. **Commit:** `main` @ fd3d6219. **Report:** `~/.cache/dspi-build/work/hw-win/REPORT.md`.
+- **Date:** 2026-11-08. **Commit:** `main` @ 2f1e95f3. **Report:** `~/.cache/dspi-build/work/hw-win/REPORT.md`.
 - **Setup:** VM `dspi-win11` (`winvm`, Windows 11 Pro 26300, WARP), the DSPi passed with a stock `usb-host` hostdev
   (`dspi-usb.xml`), detached at the end; the bootloader device was not attached (no flash). App: DSPiConsole 1.1.6 release
   zip from `apps/desktop/packaging/windows/build-windows.sh` (MinGW Qt 6, in a container). The smoke driver does not build for
@@ -87,7 +87,7 @@ the host.
 
 | id | what | fixed |
 |---|---|---|
-| F1 | the Qt app did not show a channel delay written by another client (the image holds an output's delay twice; a notified write patched one copy) | CG31 (25990e0d); not re-run on the K340 |
+| F1 | the Qt app did not show a channel delay written by another client (the image holds an output's delay twice; a notified write patched one copy) | CG31 (0f163dfa); not re-run on the K340 |
 | F3 | `DSPiConsoleSmoke` is Linux-only (DBus, `pipe2`, the D-Bus secret-service fake) | open, QD25 |
 | O1 | slow first starts in the VM, cause not found | open; time it on real Windows hardware |
 | O2 | S/PDIF DMA starvation counters for instances 3 and 4 read huge in Windows, 0 on Linux | a firmware question |

@@ -1,6 +1,6 @@
 # Web study (WP WB0)
 
-*Written 2026-11-06 at `9a157a9`. For the owner, who decides. Nothing here was published or contacted.*
+*Written 2026-11-06 at `ae93893`. For the owner, who decides. Nothing here was published or contacted.*
 
 *Note, 2026-11-08: the owner chose route 2 (WB2 to WB9 in `PLAN-CLIENTS.md`, section 5.5). The project's goal is now
 worded as one project, built from one base, for every client; the two mentions of an "offer" below are reworded to match.*
@@ -268,7 +268,7 @@ Corrections for the plan's coordinator, none applied:
 
 ## 11. State after WB1
 
-*Added by WP WB1, which the owner's "don't make the code more difficult to port to the web than necessary" asked for. Sections 1 to 10 are the study as written at `9a157a9`; this section is the current state. No web client, UI or hosting came with it, and none is scheduled.*
+*Added by WP WB1, which the owner's "don't make the code more difficult to port to the web than necessary" asked for. Sections 1 to 10 are the study as written at `ae93893`; this section is the current state. No web client, UI or hosting came with it, and none is scheduled.*
 
 **What the tree does now.**
 

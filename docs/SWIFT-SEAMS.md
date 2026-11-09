@@ -2,7 +2,7 @@
 
 What each wire-using function in the Swift app (`apps/apple`) becomes when it runs over the Rust core, which
 core methods are missing, and the threading and mirror rules that SW4-SW14 follow. SW3 in
-`docs/core-merge/PLAN-CLIENTS.md` section 5.4. Checked against `main` at `9620d21f`.
+`docs/core-merge/PLAN-CLIENTS.md` section 5.4. Checked against `main` at `c2375fd8`.
 
 **Path conventions.** Swift paths are relative to `apps/apple/DSPi Console/`. Rust paths without a directory
 are relative to `crates/dspi-core/src/`. "Binding line" is the line of that method's declaration in
