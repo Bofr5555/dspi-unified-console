@@ -219,8 +219,17 @@ void SmokeDriver::testLink() {
         check("QD8: rate_limited", settled(l) && l.errorCode() == QLatin1String("rate_limited"));
         check("QD8: rate_limited keeps the token", storedIn(file, hub.id) == firstToken);
         check("QD8: the hub takes token internal", hub.fault("token internal"));
+        // -- WP QD43 -- a busy hub (internal) is worth another try: since LK4 the first
+        // dial keeps trying for 60 s (a release build has no shorter budget), so the
+        // app shows Connecting and Disconnect is the way out
         l.connectToHub(hub.url, hub.id);
-        check("QD8: another failure", settled(l) && !l.errorCode().isEmpty());
+        spin(1500);
+        check("QD8: another failure: still dialling", l.busy() && l.errorCode().isEmpty() && l.phase() == QLatin1String("idle"));
+        QElapsedTimer stop;
+        stop.start();
+        l.closeSession();
+        check("QD8: another failure: Disconnect stops the dial", settled(l) && stop.elapsed() < 10000 && l.errorCode().isEmpty());
+        check("QD8: another failure leaves no session", l.phase() == QLatin1String("idle") && !dspi_is_connected(run.core));
         check("QD8: another failure keeps the token", storedIn(file, hub.id) == firstToken);
         check("QD8: the hub takes token ok", hub.fault("token ok"));
         l.connectToHub(hub.url, hub.id);
@@ -247,7 +256,8 @@ void SmokeDriver::testLink() {
         check("QD8: the session is still up", settled(l) && l.errorCode().isEmpty());
     }
     {
-        // A way out during a first dial: the session it makes is thrown away
+        // A way out during a first dial (Disconnect): -- WP QD43 -- since LK4 the
+        // core throws that dial away itself, so its session never comes up
         check("QD8: the hub takes stall", hub.fault("stall"));
         Run run(file);
         LinkController &l = *run.link;
@@ -257,8 +267,23 @@ void SmokeDriver::testLink() {
         t.start();
         l.closeSession();
         check("QD8: closing during a dial does not wait", t.elapsed() < 1000 && l.phase() == QLatin1String("idle"));
-        // -- WP QD8b -- The race: while that session is up, an event from it shows
-        // its phase here. Its close is quiet, so nothing else would correct that.
+        bool staleUp = false;
+        l.setStaleDialHook([&] { staleUp = true; });
+        check("QD8: the hub takes unstall", hub.fault("unstall"));
+        check("QD8: the dial ends", settled(l));
+        check("QD8: a dial Disconnect stopped brings up no session", !staleUp && l.phase() == QLatin1String("idle"));
+        spin(300);
+        check("QD8: and none shows later", l.phase() == QLatin1String("idle") && l.errorCode().isEmpty());
+    }
+    {
+        // -- WP QD8b, QD43 -- Replaced during a first dial: that dial's session comes up
+        // and is thrown away. The race: while it is up, an event from it shows its
+        // phase here. Its close is quiet, so nothing else would correct that.
+        check("QD8: the hub takes stall again", hub.fault("stall"));
+        Run run(file);
+        LinkController &l = *run.link;
+        l.connectToHub(hub.url, hub.id);
+        spin(200);
         QString phaseMeanwhile;
         l.setStaleDialHook([&] {
             QMetaObject::invokeMethod(&l, [&] {
@@ -266,9 +291,12 @@ void SmokeDriver::testLink() {
                 phaseMeanwhile = l.phase();
             }, Qt::BlockingQueuedConnection);
         });
-        check("QD8: the hub takes unstall", hub.fault("unstall"));
-        check("QD8: the dial ends", settled(l));
+        l.connectToHub(hub.url, hub.id);
+        check("QD8: the hub takes unstall again", hub.fault("unstall"));
+        check("QD8: both dials end", settled(l) && l.errorCode().isEmpty());
         check("QD8: the thrown-away session was up for a moment", !phaseMeanwhile.isEmpty() && phaseMeanwhile != QLatin1String("idle"));
+        check("QD8: the replacing session is the one up", waitFor(3000, [&] { return l.phase() == QLatin1String("choose_device"); }));
+        l.closeSession();
         check("QD8: its session is gone", waitFor(3000, [&] { return l.phase() == QLatin1String("idle"); }));
     }
     {
