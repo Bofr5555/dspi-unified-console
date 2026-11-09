@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 # Rust core is built for the same (MACOSX_DEPLOYMENT_TARGET, see
 # packaging/macos/build-macos.sh)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Oldest macOS the app runs on")
-project(DSPiConsole VERSION 1.0 LANGUAGES CXX)
+project(DSPiConsole VERSION 0.13.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -48,7 +48,7 @@ else()
     set(DSPI_CORE_LIBDIR "${DSPI_CARGO_TARGET_DIR}/release")
 endif()
 
-# The version the app reports, e.g. 1.1.6-beta4
+# The version the app reports, e.g. 0.13.0 (or 0.14.0-beta1)
 file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp _ver REGEX "setApplicationVersion\\(\"[^\"]+\"\\)")
 string(REGEX REPLACE ".*setApplicationVersion\\(\"([^\"]+)\"\\).*" "\\1" DSPI_VERSION "${_ver}")
 string(REGEX MATCH "^([0-9]+)\\.([0-9]+)\\.([0-9]+)" _ "${DSPI_VERSION}")
@@ -326,7 +326,7 @@ endif()
 # `cmake --install` lays out a system install; `cpack -G DEB` / `cpack -G RPM`
 # build the packages (packaging/linux/build-release.sh runs them).
 if(UNIX AND NOT APPLE)
-    # Packages sort a pre-release before its release with ~: 1.1.6~beta4 < 1.1.6
+    # Packages sort a pre-release before its release with ~: 0.14.0~beta1 < 0.14.0
     string(REPLACE "-" "~" DSPI_PKG_VERSION "${DSPI_VERSION}")
 
     set(PKG ${CMAKE_SOURCE_DIR}/../packaging/linux)

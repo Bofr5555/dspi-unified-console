@@ -1,7 +1,7 @@
 ; Per-user installer for DSPi Console on Windows (no administrator rights):
 ; installs to %LOCALAPPDATA%\Programs\DSPi Console, adds a Start menu
 ; shortcut and an entry in Settings > Apps. Build on Linux or Windows with
-;   makensis -DVERSION=1.1.6 -DBUNDLE=<deployed folder> -DOUTFILE=<setup.exe> dspi-console.nsi
+;   makensis -DVERSION=0.13.0 -DBUNDLE=<deployed folder> -DOUTFILE=<setup.exe> dspi-console.nsi
 ; (packaging/windows/build-windows.sh does this).
 
 Unicode true

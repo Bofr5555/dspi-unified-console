@@ -27,8 +27,8 @@ android {
         applicationId = "se.bofr.dspi_console_android"
         // The ONE place for the app version (runtime reads PackageInfo).
         // Every upload to Play needs a higher versionCode than any before it.
-        versionCode = 12
-        versionName = "0.12.0"
+        versionCode = 13
+        versionName = "0.13.0"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
     // The container's home (and with it ~/.android/debug.keystore) is thrown
