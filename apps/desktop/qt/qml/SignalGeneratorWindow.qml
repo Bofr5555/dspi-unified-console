@@ -55,7 +55,8 @@ AppWindow {
     readonly property var stateColors: isMacOS ? [MacColors.secondaryLabel, MacColors.green, MacColors.green, MacColors.yellow, MacColors.orange] : [Qt.rgba(1, 1, 1, 0.4), "#32d74b", "#32d74b", "#ffd60a", "#ff9f0a"]
 
     readonly property int outputCount: siggen.outputChannels > 0 ? siggen.outputChannels : bridge.numOutputChannels
-    function outputName(o) { var n = bridge.channelLabel(o + 2); return n !== "" ? n : qsTr("Out %1").arg(o + 1) }
+    // -- review c87 N3 -- reading labelsRevision makes every binding that calls this follow label changes
+    function outputName(o) { bridge.labelsRevision; var n = bridge.channelLabel(o + 2); return n !== "" ? n : qsTr("Out %1").arg(o + 1) }
     function popcount(m) { var n = 0; while (m) { n += m & 1; m >>= 1 } return n }
 
     readonly property string blocker: !bridge.connected ? qsTr("No device connected")
