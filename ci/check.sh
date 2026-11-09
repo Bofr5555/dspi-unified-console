@@ -211,7 +211,9 @@ for s in "${steps[@]}"; do
       # -- WP MR2 --
       $RUN "cargo build --release --locked -p dspi-term && /target/release/dspi --version" ;;
     kotlin|swift)
-      $RUN "ci/compile-bindings.sh $s" ;;
+      $RUN "ci/compile-bindings.sh $s"
+      # -- WP REL013M -- and the Swift macOS app's Rust crates notice is current
+      if [ "$s" = swift ]; then $RUN "python3 apps/desktop/packaging/licences/gen_rust_notices.py --swift --check"; fi ;;
     licences) python3 ci/licence-inventory.py --gate --fetch-console ;;
     deny)
       podman image exists "$DENY" || ci/container/build-images.sh
