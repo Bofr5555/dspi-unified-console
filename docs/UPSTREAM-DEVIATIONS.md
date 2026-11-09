@@ -21,5 +21,9 @@ its four places; this is where it is written down. Android keeps its own list in
   `output_label.rs`): "Out 1 · R · Low" (output, channel L/R/L+R/an input's name/Mix/None, band
   Low/High/Band/Full); a name the user set is shown as it is; the slot name is the row's tooltip and is in
   the pill's VoiceOver label. The sidebar's name column widens from 80 to 112 pt while a derived label shows.
-  The dashboard pairs output cards by the K340 crossfeed pair map when the device has one ("Woofers L" |
-  "Woofers R"), else by slot as upstream. Every client of this project does the same.
+  The dashboard pairs output cards by the K340 crossfeed pair map when the device has one, else by slot as
+  upstream; a pair is headed "Woofers L" | "Woofers R" only when its left output plays L and its right output R
+  by the routing, else each column shows its output's label. On iOS (a phone's row beside its OUTn pill, owner
+  decision review c86 F3) the rows and cards show the core's short form instead ("R · Low"; cards "Woofers L" |
+  "R"), and the name column is sized to the widest short form shown at the body size in use (80 to 140 pt).
+  Every client of this project does the same, by platform.

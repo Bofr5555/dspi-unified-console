@@ -1043,7 +1043,7 @@ Reference: DSPi-Console `release/v1.1.6` (`9a42965`) `Link/` and
     not offered.
 
 
-## OUTPUT LABELS (BUG1, owner decision 2026-11-09, option B)
+## OUTPUT LABELS (BUG1, owner decision 2026-11-09, option B; review c86 fixups)
 
 The macOS Console shows an output's stored name, which until the user renames
 it is the firmware's slot name ("I2S 1 L": the left half of DAC slot 1). On
@@ -1056,16 +1056,25 @@ now shows the core's label instead while the name is a default
    channel L/R/L+R/an input's name/Mix/None, band Low/High/Band/Full) for an
    output with a default name, the user's name as it is otherwise. Worked out
    once per state snapshot on the FFI thread, never per frame. Shown on the
-   Home rows, the channel page, the dashboard, the graph's channel picker and
-   options, the matrix, the tools and the analyser. `channelName` stays the
-   stored name: renames start from it.
-2. **Slot name:** beside the descriptor on the channel page ("OUT1 · I2S 1 L")
+   graph's channel picker and options, the matrix, the tools and the analyser.
+   `channelName` stays the stored name: renames start from it.
+2. **Phone short form** (owner decision F3, review c86): beside an OUTn pill
+   the "Out N · " repeats the pill, so the Home rows, the channel page title
+   and the dashboard columns show `channelShortLabel`: "R · Low" (the core's
+   `shortLabel`), the user's name as it is.
+3. **Slot name:** beside the descriptor on the channel page ("OUT1 · I2S 1 L")
    and in each output pill's TalkBack text ("OUT1, Out 1, R, Low, slot I2S 1 L");
    not on the Home rows (no room on a phone).
-3. **Row width:** the Home rows' name column is 116 dp, not 96 dp, so
-   "Out 2 · R · High" fits whole at 15 sp on a 360 dp phone
+4. **Row width:** the Home rows' name column is 100 dp, not 96 dp: the
+   narrowest that keeps the short forms whole at 15 sp on a 360 dp phone at
+   font scale 1.0 and 1.3, the longest being "USB 3 · Full"
    (`OutputLabelsFitBug1Test`); the meter beside it takes what is left, so the
    row does not grow.
-4. **Dashboard:** output cards pair by the K340 crossfeed pair map when the
-   device has one, titled by band ("Woofers L" | "Woofers R",
-   `DspiCore.outputCards`), else by slot as the Console does.
+5. **Dashboard:** output cards pair by the K340 crossfeed pair map when the
+   device has one, else by slot as the Console does. A pair whose left output
+   plays L and right output R by the routing, on one band, is headed
+   "Woofers L" | "R" (`DspiCore.outputCards`, `leftShortName`/`rightShortName`);
+   otherwise each column shows its output's short label. In a phone's narrow
+   column (below 200 dp) the heading is measured first and the delay shows its
+   value alone ("0ms", cut short if it must be), with a little less padding;
+   a wider card keeps the Console's "Delay: 0ms". The header keeps its height.
