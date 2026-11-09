@@ -20,6 +20,48 @@ is **private** and is not an official Weeb Labs repository. The macOS DSPi
 Console remains the reference for behaviour and look
 ([`docs/PARITY.md`](docs/PARITY.md)).
 
+## Download and install
+
+Prebuilt version **0.13.0** is on the
+[Releases page](https://github.com/Bofr5555/dspi-unified-console/releases) (tag `v0.13.0`).
+Every client shares the version number. Check a download against `SHA256SUMS`.
+The desktop installers, the `.dmg` and the Terminal binaries are **not code-signed** yet,
+so each system warns the first time (how to get past it is below).
+
+| System | Download | How |
+|---|---|---|
+| **Windows** 10/11 (x86_64) | `DSPi-Console-0.13.0-windows-x86_64-setup.exe` (or the portable `…-windows-x86_64.zip`) | Run the installer. SmartScreen warns about an unknown publisher: *More info* → *Run anyway*. No driver step on a clean machine. |
+| **macOS** 13+ (Intel and Apple silicon) | `DSPi-Console-0.13.0-macos.dmg` | Open the `.dmg` and drag the app to Applications. The first start is blocked (unsigned): *System Settings* → *Privacy & Security* → *Open Anyway*. |
+| **Debian 13, Ubuntu 25.04 or newer** | `dspi-console_0.13.0_amd64.deb` | `sudo apt install ./dspi-console_0.13.0_amd64.deb` (installs the USB rule too). |
+| **Fedora 42 or newer** | `dspi-console-0.13.0-1.x86_64.rpm` | `sudo dnf install ./dspi-console-0.13.0-1.x86_64.rpm` (installs the USB rule too). |
+| **Other Linux** (Ubuntu 24.04 and newer, x86_64) | `DSPi-Console-v0.13.0-x86_64.AppImage`, or `DSPi-Console-v0.13.0-linux-x86_64.tar.gz` with an installer | Make the AppImage executable and run it. For USB access install the rule once: the tar.gz's `install.sh` does it, or copy `70-dspi.rules` to `/etc/udev/rules.d/` and run `sudo udevadm control --reload`, then replug. |
+| **Arch Linux** | `dspi-console-0.13.0-arch-PKGBUILD.tar.gz` (or the test-built `…pkg.tar.zst`) | `makepkg -si` in the unpacked folder. |
+| **Android** 8+ | Google Play: *DSPi Console for Android*. Without Play: `DSPi-Console-APK-0.13.0.apk` | The APK is a separate app, *DSPi Console (APK)*, so it installs next to the Play version. Allow installs from your browser or file manager when asked. |
+| **iOS / iPadOS** | none | Not distributed (an unsigned build cannot be installed). |
+| **Terminal** (`dspi`, every system) | `dspi-0.13.0-<system>.tar.gz` / `.zip`: Linux x86_64 and aarch64 (glibc 2.39+), Windows x86_64, macOS universal | Unpack and run `dspi`. On Linux, `sudo dspi --install-udev` once for USB access. The aarch64 build has no MIDI. |
+| **Web console** | `dspi-console-web-0.13.0.tar.gz` | See below. |
+
+### The web console
+
+The web console runs in the browser and is served by the `dspi` Terminal program or by a
+web server. Pick one:
+
+1. **On this computer, with USB and hubs:** unpack the web download into a folder named
+   `web` next to the `dspi` program (or pass `--console <folder>`), run `dspi web`, and open
+   **http://localhost:11916/console/** in Chrome or Edge. USB needs a Chromium-based browser
+   (Firefox and Safari have no WebUSB); on Linux the USB rule above is needed.
+2. **From a hub on the network:** run `dspi hub --web --console <folder>` on the machine
+   the DSPi is plugged into, then open **http://&lt;that machine&gt;:11915/** from any
+   browser on the network. The page links to the console (`/console/`) and to the hub page
+   (`/hub/`). Pair with the hub's PIN when asked.
+3. **On your own web server:** serve the unpacked folder over HTTPS
+   ([`apps/web/DEPLOY.md`](apps/web/DEPLOY.md) has the details, also for embedding it in a
+   fleet product). USB works there in Chromium; hubs can only be reached from a page the
+   hub itself serves (option 2), because a hub accepts only its own pages.
+
+The Swift app for macOS and iOS in `apps/apple/` is not distributed; on macOS the Qt app
+above is the download.
+
 ## Status
 
 As of 2026-11-08, on `main` at `73ce0a89`. The detail, one row per work package,

@@ -2,9 +2,8 @@
 # Builds DSPi Console from source against the system Qt 6, from the
 # dspi-unified-console repository (the app is apps/desktop, its core crates/).
 pkgname=dspi-console
-pkgver=1.1.6
+pkgver=0.13.0
 pkgrel=1
-_commit=c4b71f136d79b7d434674696cfdcfb0924cb0f99
 pkgdesc="Control application for the DSPi audio processor"
 arch=('x86_64')
 # The repository is private for now: AUR users can fetch the source only once it is public
@@ -16,7 +15,7 @@ makedepends=('git' 'cargo' 'cmake' 'ninja')
 optdepends=('xdg-desktop-portal: native file dialogs'
             'udisks2: firmware updates')
 install=dspi-console.install
-source=("$pkgname::git+$url.git#commit=$_commit")
+source=("$pkgname::git+$url.git#tag=v$pkgver")
 sha256sums=('SKIP')
 
 prepare() {

@@ -255,7 +255,7 @@ int main(int argc, char *argv[])
 #endif
     app.setApplicationName("DSPi Console");
     app.setOrganizationName("DSPi");
-    app.setApplicationVersion("1.1.6");   // firmware release this Console targets
+    app.setApplicationVersion("0.13.0");   // the release of this Console (the firmware it targets is the bundled image's)
 #ifdef Q_OS_WIN
     // Settings in an INI file in the user's roaming AppData
     // (%APPDATA%\DSPi\DSPi Console.ini) rather than the registry: per user,

@@ -1,0 +1,8 @@
+• DSPi Link meters start within seconds, even on weak Wi-Fi; hubs connect faster.
+• TalkBack reads sliders, meters, switches, the matrix and EQ handles.
+• Outputs show what they play, e.g. "R · Low", from routing and filters.
+• Fractional delays such as 0.5 ms are kept; delay limits match your DSPi.
+• Spectrum bars on Home and channel pages.
+• One Devices menu for USB, hubs and Demo.
+• Edit control surfaces in full.
+• Smaller download: about 5 MB instead of 12 MB.
