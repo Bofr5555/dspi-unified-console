@@ -74,6 +74,24 @@ struct ContentView: View {
     /// At higher input-channel counts the sidebar gets crowded, so tighten
     /// each row's height to keep all inputs plus outputs comfortably visible.
     /// Graduated: a little tighter at 6-ch, tighter still at 8-ch.
+    /// -- BUG1 -- The sidebar's name column: 80 as before, wide enough for a derived output
+    /// label ("Out 2 · R · High") while one shows, so every row's meter starts at one place.
+    private var sidebarNameWidth: CGFloat {
+        let derived = vm.outputLabelTexts.indices.contains { o in
+            let ch = vm.eqChannel(forOutput: o)
+            let stored = ch < vm.channelNames.count ? vm.channelNames[ch] : ""
+            return o < vm.outputEnabled.count && vm.outputEnabled[o] && vm.outputLabelTexts[o] != stored
+        }
+        return derived ? 112 : 80
+    }
+
+    /// -- BUG1 -- VoiceOver's name for an output's pill: "OUT1, Out 1, R, Low, slot I2S 1 L".
+    private func outputPillName(_ out: MatrixOutput) -> String {
+        let slot = vm.outputSlotName(out.index)
+        return [out.descriptor, vm.outputLabel(out.index).replacingOccurrences(of: " · ", with: ", "),
+                slot.isEmpty ? "" : "slot \(slot)"].filter { !$0.isEmpty }.joined(separator: ", ")
+    }
+
     private var sidebarRowHeight: CGFloat {
         switch vm.numMatrixInputs {
         case 8...: return 23
@@ -462,7 +480,8 @@ struct ContentView: View {
                                   rowHeight: sidebarRowHeight,
                                   onCommitRename: { commitRename() },
                                   isCurveVisible: vm.channelVisibility[ch] ?? true,
-                                  onToggleCurve: { toggleCurve(ch) })
+                                  onToggleCurve: { toggleCurve(ch) },
+                                  nameWidth: sidebarNameWidth)
                             .onOptionClick { startRename(ch) }
                             .onTapGesture {
                                 if renamingChannel != nil { commitRename() }
@@ -496,7 +515,8 @@ struct ContentView: View {
                     ForEach(MatrixOutput.visible(for: vm.platformName, slotTypes: vm.outputSlotTypes).filter { vm.outputEnabled[$0.index] }, id: \.index) { out in
                         let eqCh = vm.eqChannel(forOutput: out.index)
                         OutputRow(output: out, isSelected: selection == .output(out.index),
-                                  name: vm.channelNames[eqCh],
+                                  // -- BUG1 -- the label; a rename starts from the stored name
+                                  name: vm.outputLabel(out.index),
                                   isMuted: vm.isOutputInactive(out.index),
                                   meters: vm.meters,
                                   isRenaming: renamingChannel == eqCh,
@@ -505,7 +525,10 @@ struct ContentView: View {
                                   onCommitRename: { commitRename() },
                                   chIdx: eqCh,
                                   isCurveVisible: vm.channelVisibility[eqCh] ?? true,
-                                  onToggleCurve: { toggleCurve(eqCh) })
+                                  onToggleCurve: { toggleCurve(eqCh) },
+                                  detail: vm.outputSlotName(out.index),
+                                  nameWidth: sidebarNameWidth,
+                                  pillAccessibleName: outputPillName(out))
                             .onOptionClick { startRename(eqCh) }
                             .onTapGesture {
                                 if renamingChannel != nil { commitRename() }

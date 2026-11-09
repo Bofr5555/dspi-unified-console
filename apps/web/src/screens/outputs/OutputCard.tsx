@@ -7,10 +7,10 @@
 
 import { memo } from "preact/compat";
 import { useState } from "preact/hooks";
-import type { DspState } from "../../core/protocol";
+import type { DspState, OutputLabel } from "../../core/protocol";
 import type { Session } from "../../ui/session";
 import { ValueField } from "../eq/Field";
-import type { ChannelRow } from "../main/model";
+import { outputLabel, type ChannelRow } from "../main/model";
 import { LevelControl } from "./Level";
 import { LimiterButtons, LimiterDialog } from "./Limiter";
 import { clamp, compactGain, delayText, levelText, limiterSupported, parseLevel } from "./model";
@@ -38,11 +38,13 @@ export const OutputCard = memo(function OutputCard(props: {
   inputs: ChannelRow[];
   limits: OutputLimits;
   disabled: boolean;
+  /** -- BUG1 -- the outputs' labels, the snapshot's */
+  labels?: OutputLabel[];
 }) {
   const { session, s, output, disabled, limits } = props;
   const [limiter, setLimiter] = useState(false);
   const muted = s.outputMuted[output] ?? false;
-  const names = Array.from({ length: s.numOutputChannels }, (_, o) => s.channelNames[s.numInputChannels + o] ?? `Output ${o + 1}`);
+  const names = Array.from({ length: s.numOutputChannels }, (_, o) => outputLabel(s, props.labels, o));
   return (
     <section class="card output-card" aria-label={`Output settings, ${props.name}`}>
       <div class="output-routes" role="group" aria-label="Routing">

@@ -31,6 +31,11 @@ type State = {
  * the device's value once its writes are read back, so a read made in between
  * may come before the last write (it shares the Worker's queue).
  */
+// -- BUG1 -- An output's name on the page is its label ("Out 3 · R · Full"), which follows the
+// routing and the filters while the device keeps the slot's default name: matched by its number.
+const OUT = (o: number) => `Out ${o + 1} · [^·]+ · \\w+`;
+const re = (s: string) => new RegExp(`^${s}$`);
+
 async function coreState(page: Page, n = 0): Promise<State> {
   const snap = (await page.evaluate(
     (n) => (globalThis as unknown as Clients).dspiClients[n]!.call("state", null),
@@ -338,12 +343,11 @@ test("WB6a channels: inputs and outputs are renamed, trimmed and muted, each rea
   await expect.poll(async () => (await coreState(page)).inputPreampDb[0]).toBe(0);
 
   // The first output: trim and mute.
-  const outName = st0.channelNames[st0.numInputChannels]!;
-  const gain = outputs.getByRole("slider", { name: `${outName} Output gain` });
+  const gain = outputs.getByRole("slider", { name: re(`${OUT(0)} Output gain`) });
   await setRange(gain, -3.5);
   await expect(outputs.locator(".ch-value").first()).toHaveText("-3.5 dB");
   await expect.poll(async () => (await coreState(page)).outputGainDb[0]).toBe(-3.5);
-  const mute = outputs.getByRole("button", { name: `Mute ${outName}` });
+  const mute = outputs.getByRole("button", { name: re(`Mute ${OUT(0)}`) });
   await mute.click();
   await expect(mute).toHaveAttribute("aria-pressed", "true");
   await expect.poll(async () => (await coreState(page)).outputMuted[0]).toBe(true);

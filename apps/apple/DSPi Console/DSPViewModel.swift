@@ -1452,6 +1452,12 @@ class DSPViewModel: ObservableObject {
 
     // I2S configuration state
     @Published var outputSlotTypes: [UInt8] = [0, 0, 0, 0]  // Per-slot: 0=S/PDIF, 1=I2S
+    // -- BUG1 -- Each output's label (the user's name, else from the routing and the filters),
+    // its slot's name and the dashboard's cards: Core/OutputLabels.swift keeps them current.
+    @Published var outputLabelTexts: [String] = []
+    @Published var outputSlotNames: [String] = []
+    @Published var outputCardPlan: [OutputCardPlan] = []
+    var outputLabelWatch: AnyCancellable?
     @Published var i2sBckPin: UInt8 = 14      // BCK GPIO (LRCLK = BCK + 1)
     @Published var mckEnabled: Bool = false
     @Published var mckPin: UInt8 = 13
@@ -2692,6 +2698,7 @@ class DSPViewModel: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "outputNames")
 
         recomputeAllMagnitudes()
+        watchOutputLabels()   // -- BUG1 --
 
         // Mirror change notifications back into UI, except the echoes of our
         // own writes: those already updated local state synchronously at the

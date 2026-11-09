@@ -204,6 +204,36 @@ export interface BandCurve {
 export interface DeviceSnapshot {
   device: DeviceRecord;
   state: DspState;
+  // -- BUG1 -- the core's, worked out once per snapshot; absent from a host or stub without them
+  /** Each output's label, in output order (`DspiCore::output_labels`). */
+  outputLabels?: OutputLabel[];
+  /** The dashboard's output cards (`DspiCore::output_cards`). */
+  outputCards?: OutputCard[];
+}
+
+/**
+ * -- BUG1 -- What an output is called: the name the user set, else "Out 1 · R · Low" from the
+ * routing and the filters while the device still has the slot's default name.
+ */
+export interface OutputLabel {
+  output: number;
+  label: string;
+  /** The firmware's name for the slot, "I2S 1 L" or "PDM": for a tooltip. */
+  slotName: string;
+  userNamed: boolean;
+  /** "L", "R", "L+R", an input's name, "Mix" or "None". */
+  channel: string;
+  /** "Low", "High", "Band" or "Full". */
+  band: string;
+}
+
+/** -- BUG1 -- A dashboard card: two outputs side by side ("Woofers L" | "Woofers R"), or one. */
+export interface OutputCard {
+  left: number;
+  right: number | null;
+  title: string;
+  leftName: string;
+  rightName: string;
 }
 
 /**

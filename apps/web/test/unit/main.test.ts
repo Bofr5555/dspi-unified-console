@@ -11,6 +11,7 @@ import {
   inputRows,
   liveInputs,
   masterToPos,
+  meterNames,
   outputRows,
   posToMaster,
   posToUser,
@@ -18,7 +19,7 @@ import {
   userToPos,
   volumeText,
 } from "../../src/screens/main/model";
-import type { DspState } from "../../src/core/protocol";
+import type { DspState, OutputLabel } from "../../src/core/protocol";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { WasmCore, loadWasmModule } from "../../src/core/wasm";
@@ -161,3 +162,31 @@ test("WB6a: read-only firmware and a viewer write nothing: the session refuses b
     assert.equal(session.state.error, reason);
   }
 });
+
+// -- BUG1 --
+test("BUG1: outputs show the core's labels, keep their stored name for a rename and their slot for a tooltip", () => {
+  // The K340 (tests/fixtures/preset/k340-bug1.dspipreset): the core's labels for its four outputs
+  const k340 = {
+    numChannels: 6,
+    numInputChannels: 2,
+    numOutputChannels: 4,
+    channelNames: ["USB 1", "USB 2", "I2S 1 L", "I2S 1 R", "I2S 2 L", "I2S 2 R"],
+    outputEnabled: [true, true, true, true],
+  } as unknown as DspState;
+  const label = (output: number, l: string, slotName: string): OutputLabel => ({ output, label: l, slotName, userNamed: false, channel: "", band: "" });
+  const labels = [label(0, "Out 1 · R · Low", "I2S 1 L"), label(1, "Out 2 · R · High", "I2S 1 R"), label(2, "Out 3 · L · Low", "I2S 2 L"), label(3, "Out 4 · L · High", "I2S 2 R")];
+  assert.deepEqual(
+    outputRows(k340, labels).map((r) => [r.descriptor, r.name, r.stored, r.detail]),
+    [
+      ["OUT1", "Out 1 · R · Low", "I2S 1 L", "I2S 1 L"],
+      ["OUT2", "Out 2 · R · High", "I2S 1 R", "I2S 1 R"],
+      ["OUT3", "Out 3 · L · Low", "I2S 2 L", "I2S 2 L"],
+      ["OUT4", "Out 4 · L · High", "I2S 2 R", "I2S 2 R"],
+    ],
+  );
+  assert.deepEqual(meterNames(k340, labels), ["USB 1", "USB 2", "Out 1 · R · Low", "Out 2 · R · High", "Out 3 · L · Low", "Out 4 · L · High"]);
+  // Without the core's labels (a stub, an older host): the stored names
+  assert.deepEqual(meterNames(k340), ["USB 1", "USB 2", "I2S 1 L", "I2S 1 R", "I2S 2 L", "I2S 2 R"]);
+  assert.deepEqual(outputRows(k340).map((r) => r.name), ["I2S 1 L", "I2S 1 R", "I2S 2 L", "I2S 2 R"]);
+});
+

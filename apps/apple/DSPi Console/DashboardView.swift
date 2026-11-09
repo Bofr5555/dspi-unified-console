@@ -31,6 +31,14 @@ struct DashboardOverview: View {
 
     private var cards: [CardItem] {
         var items: [CardItem] = [.input]
+        // -- BUG1 -- The core's cards: paired by the crossfeed pair map when the device has one
+        // ("Woofers L" | "Woofers R"), else by slot as below (Core/OutputLabels.swift).
+        if !vm.outputCardPlan.isEmpty {
+            for c in vm.outputCardPlan {
+                if let r = c.right { items.append(.outputPair(c.left, r)) } else { items.append(.output(c.left)) }
+            }
+            return items
+        }
         // SPDIF stereo pairs (RP2040: 2 pairs, RP2350: 4 pairs); a pair with
         // one side disabled shows the other side alone.
         let spdifPairs = (vm.numOutputChannels - 1) / 2
@@ -236,13 +244,17 @@ struct StereoOutputDashboardCard: View {
     private var right: MatrixOutput { MatrixOutput.all[rightIndex] }
     private var leftEqCh: Int { vm.eqChannel(forOutput: leftIndex) }
     private var rightEqCh: Int { vm.eqChannel(forOutput: rightIndex) }
+    // -- BUG1 -- The core's column headings for this pair ("Woofers L"), else the outputs' labels
+    private var plan: OutputCardPlan? { vm.outputCardPlan.first { $0.left == leftIndex && $0.right == rightIndex } }
+    private var leftName: String { plan?.leftName ?? vm.outputLabel(leftIndex) }
+    private var rightName: String { plan?.rightName ?? vm.outputLabel(rightIndex) }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 HStack {
                     Circle().fill(left.color).frame(width: 6, height: 6)
-                    Text(vm.channelNames[leftEqCh]).font(.system(size: 11, weight: .bold)).foregroundColor(.secondary)
+                    Text(leftName).font(.system(size: 11, weight: .bold)).foregroundColor(.secondary)
                     Spacer()
                     Text("Delay: \(ValueField.delayText(vm.outputDelayMS[leftIndex]))ms")   // -- WP SWF5 --
                         .font(.system(size: 9, design: .monospaced))
@@ -256,7 +268,7 @@ struct StereoOutputDashboardCard: View {
 
                 HStack {
                     Circle().fill(right.color).frame(width: 6, height: 6)
-                    Text(vm.channelNames[rightEqCh]).font(.system(size: 11, weight: .bold)).foregroundColor(.secondary)
+                    Text(rightName).font(.system(size: 11, weight: .bold)).foregroundColor(.secondary)
                     Spacer()
                     Text("Delay: \(ValueField.delayText(vm.outputDelayMS[rightIndex]))ms")   // -- WP SWF5 --
                         .font(.system(size: 9, design: .monospaced))
@@ -330,7 +342,7 @@ struct OutputDashboardCard: View {
         VStack(spacing: 0) {
             HStack {
                 Circle().fill(output.color).frame(width: 6, height: 6)
-                Text(vm.channelNames[eqChannel]).font(.system(size: 11, weight: .bold)).foregroundColor(.secondary)
+                Text(vm.outputLabel(outputIndex)).font(.system(size: 11, weight: .bold)).foregroundColor(.secondary)
                 Spacer()
                 Text("Delay: \(ValueField.delayText(vm.outputDelayMS[outputIndex]))ms")   // -- WP SWF5 --
                     .font(.system(size: 9, design: .monospaced))

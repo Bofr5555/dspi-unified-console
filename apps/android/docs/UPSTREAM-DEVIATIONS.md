@@ -1042,3 +1042,30 @@ Reference: DSPi-Console `release/v1.1.6` (`9a42965`) `Link/` and
     the board's own name on 1.1.6 firmware); renaming (`device.rename`) is
     not offered.
 
+
+## OUTPUT LABELS (BUG1, owner decision 2026-11-09, option B)
+
+The macOS Console shows an output's stored name, which until the user renames
+it is the firmware's slot name ("I2S 1 L": the left half of DAC slot 1). On
+the owner's K340, where slot 1 drives the right speaker's woofer and tweeter,
+every "L" was a woofer and every "R" a tweeter. Every client of this project
+now shows the core's label instead while the name is a default
+(`DspiCore.outputLabels`, dspi-session `output_label.rs`).
+
+1. **Labels:** `DspiBridge.channelLabel` gives "Out 1 · R · Low" (output,
+   channel L/R/L+R/an input's name/Mix/None, band Low/High/Band/Full) for an
+   output with a default name, the user's name as it is otherwise. Worked out
+   once per state snapshot on the FFI thread, never per frame. Shown on the
+   Home rows, the channel page, the dashboard, the graph's channel picker and
+   options, the matrix, the tools and the analyser. `channelName` stays the
+   stored name: renames start from it.
+2. **Slot name:** beside the descriptor on the channel page ("OUT1 · I2S 1 L")
+   and in each output pill's TalkBack text ("OUT1, Out 1, R, Low, slot I2S 1 L");
+   not on the Home rows (no room on a phone).
+3. **Row width:** the Home rows' name column is 116 dp, not 96 dp, so
+   "Out 2 · R · High" fits whole at 15 sp on a 360 dp phone
+   (`OutputLabelsFitBug1Test`); the meter beside it takes what is left, so the
+   row does not grow.
+4. **Dashboard:** output cards pair by the K340 crossfeed pair map when the
+   device has one, titled by band ("Woofers L" | "Woofers R",
+   `DspiCore.outputCards`), else by slot as the Console does.
