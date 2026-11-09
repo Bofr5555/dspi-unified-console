@@ -120,6 +120,11 @@ impl DspiCore {
         } else {
             let mut next = state::default_state();
             let wire = read_platform_and_image(conn, &mut next)?;
+            // -- WP LK4 -- (review c83 F1b) a later call in the window keeps
+            // them too: the background reads still own them
+            if conn.pending_probe.is_some() {
+                carry_per_item(&inner.state, &mut next);
+            }
             (next, wire)
         };
         // -- WP LK4 -- a DSPi Link bind still completing its probe reads
@@ -497,12 +502,41 @@ pub(crate) fn read_per_item_on(
 }
 
 // -- WP LK4 --
+/// Carry the values the image does not carry ([`reset_per_item`]'s list) from
+/// `from` into `to` as they are (review c83 F1b).
+fn carry_per_item(from: &DspState, to: &mut DspState) {
+    macro_rules! carry {
+        ($($f:ident),*) => {$( to.$f = from.$f.clone(); )*};
+    }
+    carry!(
+        core1_mode,
+        subharm_solo,
+        dac_mute_supported,
+        ctrl_iface_supported,
+        ctrl_status,
+        uart,
+        i2c,
+        preset_occupied,
+        preset_startup_mode,
+        preset_default_slot,
+        active_preset_slot,
+        output_config_mode,
+        master_volume_mode,
+        preset_names
+    );
+}
+
+// -- WP LK4 --
 /// Fill the values the image does not carry ([`reset_per_item`]'s list) from
 /// `read`, the background per-item reads of a DSPi Link bind, into `to`, the
 /// mirror now; `before` is what the mirror held when those reads were issued.
 /// Field by field (preset names name by name), only a value nobody changed
 /// since takes the read one: a user's write or a notification that arrived
-/// meanwhile is newer than the read and wins (review c82 F1).
+/// meanwhile is newer than the read and wins (review c82 F1). The rule
+/// compares values, not writes (review c83 N2): a write of exactly the value
+/// the mirror held (or A, then B, then A again) cannot be told from none, and
+/// the read wins; a per-connection write count would be exact. Narrow: the
+/// field then shows what the device answered moments before.
 pub(crate) fn merge_per_item(before: &DspState, read: &DspState, to: &mut DspState) {
     macro_rules! fill {
         ($($f:ident),*) => {$(

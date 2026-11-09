@@ -117,7 +117,13 @@ cmd_up() {
   local dir; dir=$(run_dir "$run")
   [ -f "$dir/ids" ] && die "rig $run is up (rig.sh down $run)"
   local image=$fw/flash-$baud.bin
-  [ -f "$image" ] || image=$fw/flash.bin
+  # -- WP LK4 -- (review c83 N6) a rig at a rate the bridge was not provisioned for
+  # would auto-detect another rate and give bogus results: refuse. Only the
+  # provisioning run itself boots the plain image.
+  if [ ! -f "$image" ]; then
+    [[ $run == prov-* ]] || die "no bridge image saved at $baud baud: run 'rig.sh provision $baud' first"
+    image=$fw/flash.bin
+  fi
   [ -f "$image" ] || die "no firmware (rig.sh build)"
   [ -x "$work/esp-rig-tunnel" ] || die "no tunnel (rig.sh build)"
   netem_image

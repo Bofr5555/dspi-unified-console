@@ -1979,12 +1979,16 @@ pub(crate) const FIRST_DIAL_BUDGET: Duration = Duration::from_secs(60);
 /// The environment variable that overrides [`FIRST_DIAL_BUDGET`], in ms, for
 /// tests and integration rigs that drive the core through its bindings (the
 /// Android suite's fake-hub tests): unset, empty or unparsable means the
-/// default. Read at each first dial.
+/// default. Read at each first dial, in debug builds only (review c83 N1: a
+/// release build ignores it).
 pub const FIRST_DIAL_BUDGET_ENV: &str = "DSPI_LINK_FIRST_DIAL_MS";
 
 /// [`FIRST_DIAL_BUDGET`], or its override from [`FIRST_DIAL_BUDGET_ENV`].
 fn first_dial_budget() -> Duration {
-    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[cfg(all(
+        debug_assertions,
+        not(all(target_arch = "wasm32", target_os = "unknown"))
+    ))]
     if let Some(ms) = std::env::var(FIRST_DIAL_BUDGET_ENV)
         .ok()
         .and_then(|v| v.trim().parse::<u64>().ok())
@@ -2191,10 +2195,6 @@ struct Feed {
     meter_binding: bool,
     /// The current subscription was asked at the slow rate.
     meter_asked_slow: bool,
-    /// The bind's feed gave its first frame and is paused until the bind has
-    /// its snapshot (review c82: every frame on a lossy stream ahead of the
-    /// snapshot's bytes is one more segment whose loss stalls them).
-    meter_paused: bool,
     /// A wake-up to the supervisor is on its way.
     kicked: bool,
     /// The channels the analyser wants.
@@ -2357,10 +2357,6 @@ impl LinkSide {
             let mut feed = guard(&self.feed);
             feed.kicked = false;
             self.drain(&mut feed, now);
-            // -- WP LK4 -- paused during the bind: nothing to keep up
-            if feed.meter_paused {
-                return;
-            }
             let asked = feed
                 .meter_asked
                 .is_some_and(|t| now.saturating_duration_since(t) < METER_IDLE);
@@ -2462,28 +2458,9 @@ impl LinkSide {
     /// The bind has its snapshot: the feed goes to its full rate.
     fn bind_done(&self) {
         let mut feed = guard(&self.feed);
-        if std::mem::take(&mut feed.meter_paused) {
-            // Paused at the first frame: subscribe again, at the full rate
-            feed.meter_hz = None;
-            feed.meter_asked_slow = false;
-        }
         if std::mem::take(&mut feed.meter_binding) && !std::mem::replace(&mut feed.kicked, true) {
             let _ = self.tx.send(Msg::Kick);
         }
-    }
-
-    /// The bind's feed has given its first frame: pause it until the bind has
-    /// its snapshot ([`LinkSide::bind_done`] resumes it). Call with `feed`
-    /// released; a no-op unless binding and not yet paused.
-    fn pause_after_first_frame(&self) {
-        {
-            let mut feed = guard(&self.feed);
-            if !feed.meter_binding || feed.meter_paused || !feed.latest.contains_key(&METER_SLOT) {
-                return;
-            }
-            feed.meter_paused = true;
-        }
-        self.client.poll_unsubscribe(self.handle, &[METER_SLOT]);
     }
 
     /// Read the grant of [`LinkSide::subscribe_ahead`]'s request, if one is
@@ -2738,9 +2715,6 @@ impl SideChannel for LinkSide {
         if self.client.is_closed() {
             return Err(DspiError::Disconnected);
         }
-        // -- WP LK4 -- the bind's first frame is in: hold the rest back
-        self.drain(&mut guard(&self.feed), Instant::now());
-        self.pause_after_first_frame();
         let now = Instant::now();
         let mut feed = guard(&self.feed);
         self.drain(&mut feed, now);
@@ -2792,7 +2766,10 @@ impl Drop for LinkSide {
         let mut slots: Vec<u8> = band_channels(feed.band_granted)
             .filter_map(band_slot)
             .collect();
-        if feed.meter_hz.is_some() {
+        // -- WP LK4 -- (review c83 N5) also a subscription sent ahead whose
+        // grant was never read (a bind that failed before it)
+        if feed.meter_hz.is_some() || feed.meter_pending.is_some() || feed.meter_ahead_hz.is_some()
+        {
             slots.push(METER_SLOT);
         }
         if !slots.is_empty() {

@@ -957,8 +957,10 @@ fn wp_lk4_the_background_reads_fill_only_what_nobody_changed() {
     assert_eq!(now.preset_names[1], "B");
 }
 
+// Owner decision 2026-11-09 (review c83 N4): the meters keep moving at 2 Hz
+// while a bind loads the snapshot on a bridge, never grey or blank
 #[test]
-fn wp_lk4_the_binds_feed_pauses_after_its_first_frame_until_the_snapshot() {
+fn wp_lk4_the_meters_keep_moving_while_the_bind_loads_the_snapshot() {
     let hub = bridge_with(4);
     let core = DspiCore::new();
     let sent = Arc::new(Sent::default());
@@ -975,7 +977,7 @@ fn wp_lk4_the_binds_feed_pauses_after_its_first_frame_until_the_snapshot() {
     )
     .unwrap();
     wait_until("the device list", || !core.link_devices().is_empty());
-    // The snapshot is held back (a lossy link); the poll's frames still come
+    // The snapshot (and the poll's grant) are held back: a slow, lossy link
     hub.hold_replies();
     let opener = {
         let core = Arc::clone(&core);
@@ -984,23 +986,74 @@ fn wp_lk4_the_binds_feed_pauses_after_its_first_frame_until_the_snapshot() {
     wait_until("the first live meter", || {
         core.fetch_status().is_ok_and(|s| !s.stale)
     });
-    wait_until("the pause", || {
-        guard(&sent.0)
+    // For three seconds (past one 2 Hz frame's stale limit) the meters stay live
+    let start = Instant::now();
+    while start.elapsed() < Duration::from_secs(3) {
+        assert!(
+            core.fetch_status().is_ok_and(|s| !s.stale),
+            "a grey meter during the bind"
+        );
+        std::thread::sleep(Duration::from_millis(60));
+    }
+    assert!(
+        !guard(&sent.0)
             .iter()
-            .any(|t| t.contains("poll.unsubscribe"))
-    });
-    let side = core.meter_path().unwrap();
-    drop(side);
+            .any(|t| t.contains("poll.unsubscribe")),
+        "the feed was not paused"
+    );
     hub.release_replies();
     opener.join().unwrap().unwrap();
     let side = bound_side(&core);
-    wait_until("the full rate again", || {
+    wait_until("the full rate", || {
         let _ = core.fetch_status();
         let feed = guard(&side.feed);
-        feed.meter_hz == Some(METER_HZ_BRIDGED) && !feed.meter_paused && !feed.meter_binding
-    });
-    wait_until("live meters again", || {
-        core.fetch_status().is_ok_and(|s| !s.stale)
+        feed.meter_hz == Some(METER_HZ_BRIDGED) && !feed.meter_binding
     });
     core.link_close();
+}
+
+// -- review c83 F1b -- (the reviewer's probe, adopted)
+#[test]
+fn wp_lk4_a_second_fetch_all_in_the_window_keeps_the_users_value() {
+    let hub = bridge_with(4);
+    let core = DspiCore::new();
+    let slow = Arc::new(SlowCommands::default());
+    connect_slow(&core, &hub, &slow);
+    slow.delay_ms.store(40, Ordering::SeqCst);
+    select(&core).unwrap();
+    assert!(core.lock().conn.as_ref().unwrap().pending_probe.is_some());
+    core.fetch_all().unwrap(); // the app's first: consumes fresh_image
+    assert!(
+        core.lock().conn.as_ref().unwrap().pending_probe.is_some(),
+        "still completing after the first fetch_all"
+    );
+    let before = core.get_state();
+    let mode = if before.preset_startup_mode == 0 {
+        1
+    } else {
+        0
+    };
+    core.set_preset_startup(mode, 2).unwrap();
+    assert!(
+        !core.lock().conn.as_ref().unwrap().fresh_image,
+        "the second call takes the re-read branch"
+    );
+    core.fetch_all().unwrap(); // a second one, still in the window
+    assert!(
+        core.lock().conn.as_ref().unwrap().pending_probe.is_some(),
+        "still completing after the second fetch_all"
+    );
+    let mid = core.get_state();
+    core.ensure_probed();
+    let after = core.get_state();
+    core.link_close();
+    assert_eq!(
+        (mid.preset_startup_mode, mid.preset_default_slot),
+        (mode, 2),
+        "the second fetch_all in the window reset the user's value"
+    );
+    assert_eq!(
+        (after.preset_startup_mode, after.preset_default_slot),
+        (mode, 2)
+    );
 }
